@@ -5,6 +5,8 @@ export interface MenuCallbacks {
   onPlanet(kind: PlanetKind): void;
   onDeploy(kind: PlanetKind, seed: number, settings: MenuSettings): void;
   onSettings(s: MenuSettings): void;
+  /** Seed edited or randomised. */
+  onSeed?(seed: number): void;
 }
 
 const css = (n: number) => '#' + n.toString(16).padStart(6, '0');
@@ -51,8 +53,8 @@ export class MainMenu {
     this.seedInput = this.el.querySelector('#seed')!;
     this.errEl = this.el.querySelector('#menu-err')!;
     this.el.querySelectorAll<HTMLElement>('.world-card').forEach((c) => (c.onclick = () => this.select(c.dataset.k as PlanetKind, true)));
-    this.seedInput.oninput = () => { const n = parseInt(this.seedInput.value, 10); if (Number.isFinite(n)) this.seed = n >>> 0; };
-    (this.el.querySelector('#dice') as HTMLElement).onclick = () => { this.seed = (Math.random() * 99999) | 0; this.seedInput.value = String(this.seed); };
+    this.seedInput.oninput = () => { const n = parseInt(this.seedInput.value, 10); if (Number.isFinite(n)) { this.seed = n >>> 0; cb.onSeed?.(this.seed); } };
+    (this.el.querySelector('#dice') as HTMLElement).onclick = () => { this.seed = (Math.random() * 99999) | 0; this.seedInput.value = String(this.seed); cb.onSeed?.(this.seed); };
     const sb = this.el.querySelector('#s-bloom') as HTMLInputElement, sq = this.el.querySelector('#s-q') as HTMLSelectElement, ss = this.el.querySelector('#s-skip') as HTMLInputElement;
     const push = () => { this.settings = { bloom: sb.checked, quality: sq.value as 'low' | 'high', skipCinematic: ss.checked }; cb.onSettings(this.settings); };
     sb.onchange = sq.onchange = ss.onchange = push;

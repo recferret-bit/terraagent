@@ -35,6 +35,8 @@ export interface DescentHandoff {
   hemiColor: THREE.Color; hemiGround: THREE.Color; hemiIntensity: number;
   exposure: number; envIntensity: number; bloom: number;
   bayGlow: number; podYawLocal: number;
+  /** World scale of carrier.root inside the descent (the drop rig is expressed in descent world units). */
+  carrierScale: number;
   /** Telemetry to show while the hand-off dolly plays. */
   tel: DescentTelemetry;
 }

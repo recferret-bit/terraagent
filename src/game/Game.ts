@@ -13,7 +13,13 @@ import '../../frontend/design/css/tokens.css';
 import '../../frontend/design/css/base.css';
 import '../ui/ui.css';
 
-type Phase = 'menu' | 'loading' | 'descent' | 'gameplay';
+type Phase = 'menu' | 'loading' | 'deploying' | 'descent' | 'gameplay';
+
+/** A descent session built ahead of time (while the menu idles) so DEPLOY never shows a loading gap. */
+interface Prepared {
+  key: string; spec: PlanetSpec; surface: PlanetSurface; descent: DescentSequence;
+  ready: boolean; whenReady: Promise<void>;
+}
 
 export class Game {
   readonly viewport: ColonyViewport;
@@ -30,6 +36,9 @@ export class Game {
   private gHud: GameHud | null = null; private play: Gameplay | null = null;
   private fastForward = 0; private time = 0; private last = performance.now(); private raf = 0;
   private escListener = (e: KeyboardEvent) => this.onKey(e);
+  private prepared: Prepared | null = null; private prepTimer = 0;
+  private deploySession: Prepared | null = null;
+  private cutFlash = 0;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -42,9 +51,10 @@ export class Game {
     if (q.has('menutime')) this.time = parseFloat(q.get('menutime')!) || 0; // QA: start the menu clock late to test long-run stability
     const seed = q.get('seed') ? parseInt(q.get('seed')!, 10) : undefined;
     this.menu = new MainMenu(document.body, {
-      onPlanet: (k) => this.stage?.setPlanet(this.makeSpec(k, PLANET_SPECS[k].seed)),
+      onPlanet: (k) => { this.stage?.setPlanet(this.makeSpec(k, PLANET_SPECS[k].seed)); this.schedulePrepare(); },
+      onSeed: () => this.schedulePrepare(),
       onDeploy: (k, s, st) => { this.settings = st; this.deploy(k, s); },
-      onSettings: (st) => { this.settings = st; this.applySettings(); },
+      onSettings: (st) => { this.settings = st; this.applySettings(); this.schedulePrepare(); },
     }, kind, seed);
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
@@ -53,7 +63,7 @@ export class Game {
       this.settings.skipCinematic = q.get('skip') === '1';
       this.fastForward = Math.max(0, parseFloat(q.get('t') ?? '0') || 0);
       setTimeout(() => this.deploy(kind, this.menu.seed, true), 50);
-    }
+    } else this.schedulePrepare(900);
   }
 
   private makeSpec(kind: PlanetKind, seed: number): PlanetSpec { return { ...PLANET_SPECS[kind], seed }; }
@@ -76,51 +86,135 @@ export class Game {
     sc.background = new THREE.Color(0xb9dcef);
   }
 
-  // ------------------------------------------------------------------ deploy
-  private async deploy(kind: PlanetKind, seed: number, instant = false) {
-    if (this.phase !== 'menu') return;
-    this.phase = 'loading';
-    const missing = [!createPlanetSurface && 'createPlanetSurface', !createDescentSequence && 'createDescentSequence'].filter(Boolean);
-    if (missing.length) { this.phase = 'menu'; this.menu.setError('Missing modules: ' + missing.join(', ')); return; }
-    this.menu.hide();
-    if (!instant) { this.fade.classList.add('on'); await new Promise((r) => setTimeout(r, 750)); }
-    try {
-      this.stage?.dispose(); this.stage = null;
+  // ------------------------------------------------------------------ session pre-build (no loading gap on DEPLOY)
+  /** Renderer-global values the menu stage owns; building a session must not disturb them. */
+  private withMenuGlobals<T>(fn: () => T): T {
+    const vp = this.viewport, exp = vp.renderer.toneMappingExposure, bloom = vp.bloom.strength;
+    try { return fn(); } finally { vp.renderer.toneMappingExposure = exp; vp.bloom.strength = bloom; }
+  }
+
+  private schedulePrepare(delay = 650) {
+    clearTimeout(this.prepTimer);
+    this.prepTimer = window.setTimeout(() => {
+      if (this.phase !== 'menu' || !createPlanetSurface || !createDescentSequence) return;
+      try { this.prepare(this.menu.kind, this.menu.seed); } catch (e) { console.warn('prepare failed', e); }
+    }, delay);
+  }
+
+  /** Builds surface + descent into viewport.scene (not rendered while the menu shows) and pre-compiles every shader. */
+  private prepare(kind: PlanetKind, seed: number): Prepared {
+    const key = `${kind}:${seed}:${this.settings.quality}`;
+    if (this.prepared?.key === key) return this.prepared;
+    this.discardPrepared();
+    const vp = this.viewport, scene = vp.scene, camera = vp.camera;
+    const p = this.withMenuGlobals(() => {
       this.resetScene();
-      const vp = this.viewport; const scene = vp.scene, camera = vp.camera;
       camera.fov = 28; camera.updateProjectionMatrix();
-      this.spec = this.makeSpec(kind, seed);
-      vp.applySky(this.spec);
-      this.surface = createPlanetSurface!(this.spec, { quality: this.settings.quality });
-      scene.add(this.surface.group);
-      this.callLook();
-      vp.setView(scene, camera);
-      this.descent = createDescentSequence!({ viewport: vp, scene, camera, spec: this.spec, surface: this.surface });
-      this.dHud = new DescentHud(document.body);
-      this.gHud = new GameHud(document.body, this.spec.name, this.spec.seed, { onResume: () => this.setPaused(false), onReturn: () => this.returnToOrbit() });
-      this.descent.onTelemetry((t) => this.dHud?.update(t));
-      this.descent.onComplete((hero) => this.startGameplay(hero));
-      this.descent.start();
-      this.phase = 'descent';
+      const spec = this.makeSpec(kind, seed);
+      vp.applySky(spec);
+      const surface = createPlanetSurface!(spec, { quality: this.settings.quality });
+      scene.add(surface.group);
+      this.callLook(spec);
+      const descent = createDescentSequence!({ viewport: vp, scene, camera, spec, surface, startAt: 2 });
+      const prep: Prepared = { key, spec, surface, descent, ready: false, whenReady: Promise.resolve() };
+      return prep;
+    });
+    p.whenReady = this.warmup(p).then(() => { p.ready = true; });
+    this.prepared = p;
+    return p;
+  }
+
+  /**
+   * Compile every program the descent will ever use (objects that only appear mid-dive are force-shown) against an
+   * off-screen target — the same tone-mapping/colour-space variant the composer uses — then draw once so geometry and
+   * textures are uploaded. Removes every mid-descent shader-compile hitch, not just the first-frame one.
+   */
+  private async warmup(p: Prepared) {
+    const vp = this.viewport, r = vp.renderer, scene = vp.scene, camera = vp.camera;
+    const reveal = () => {
+      const hidden: THREE.Object3D[] = [], culled: THREE.Object3D[] = [];
+      scene.traverse((o) => { if (!o.visible) { hidden.push(o); o.visible = true; } if (o.frustumCulled) { culled.push(o); o.frustumCulled = false; } });
+      return () => { hidden.forEach((o) => (o.visible = false)); culled.forEach((o) => (o.frustumCulled = true)); };
+    };
+    const rt = new THREE.WebGLRenderTarget(64, 64, { type: THREE.HalfFloatType });
+    const prev = r.getRenderTarget();
+    let restore = reveal();
+    let pending: Promise<unknown>;
+    try { r.setRenderTarget(rt); pending = r.compileAsync(scene, camera); } finally { r.setRenderTarget(prev); restore(); }
+    try { await pending; } catch (e) { console.warn('compileAsync', e); }
+    await new Promise((res) => requestAnimationFrame(res));
+    if (this.prepared !== p && this.deploySession !== p) { rt.dispose(); return; }
+    restore = reveal();
+    try { r.setRenderTarget(rt); r.render(scene, camera); } finally { r.setRenderTarget(prev); restore(); rt.dispose(); }
+  }
+
+  private discardPrepared() {
+    const p = this.prepared; this.prepared = null;
+    if (!p) return;
+    this.withMenuGlobals(() => {
+      try { p.descent.dispose(); } catch (e) { console.warn(e); }
+      this.viewport.scene.remove(p.surface.group); p.surface.dispose();
+      this.resetScene();
+    });
+  }
+
+  // ------------------------------------------------------------------ deploy
+  private deploy(kind: PlanetKind, seed: number, instant = false) {
+    if (this.phase !== 'menu') return;
+    const missing = [!createPlanetSurface && 'createPlanetSurface', !createDescentSequence && 'createDescentSequence'].filter(Boolean);
+    if (missing.length) { this.menu.setError('Missing modules: ' + missing.join(', ')); return; }
+    clearTimeout(this.prepTimer);
+    let p: Prepared;
+    try { p = this.prepare(kind, seed); }
+    catch (err) {
+      console.error('deploy failed', err);
+      this.discardPrepared();
+      this.menu.setError('Deploy failed: ' + (err as Error).message);
+      return;
+    }
+    // the prepared session becomes the live one
+    this.prepared = null; this.deploySession = p;
+    this.spec = p.spec; this.surface = p.surface; this.descent = p.descent;
+    this.dHud = new DescentHud(document.body);
+    this.gHud = new GameHud(document.body, this.spec.name, this.spec.seed, { onResume: () => this.setPaused(false), onReturn: () => this.returnToOrbit() });
+    this.descent.onTelemetry((t) => this.dHud?.update(t));
+    this.descent.onComplete((hero) => this.startGameplay(hero));
+    this.dHud.update(this.descent.handoff.tel);
+
+    if (instant || !this.stage || this.settings.skipCinematic) {
+      this.menu.hide();
+      this.cutToDescent(false);
       this.dHud.show();
-      this.fade.classList.remove('on');
       if (this.settings.skipCinematic) this.skipDescent();
       else if (this.fastForward > 0) {
         const steps = Math.floor(this.fastForward * 30);
-        for (let i = 0; i < steps && this.phase === 'descent'; i++) this.descent.update(1 / 30);
+        for (let i = 0; i < steps && (this.phase as Phase) === 'descent'; i++) this.descent!.update(1 / 30);
       }
-    } catch (err) {
-      console.error('deploy failed', err);
-      this.teardownSession();
-      this.mountStage(this.makeSpec(kind, seed));
-      this.menu.show(); this.menu.setError('Deploy failed: ' + (err as Error).message);
-      this.fade.classList.remove('on'); this.phase = 'menu';
+      return;
     }
+    // cinematic hand-off: UI tweens away, the orbital camera dollies into the carrier while the pod lowers into the
+    // bay; the cut to the descent happens on an identical carrier-local frame once the dolly lands and shaders are warm.
+    this.phase = 'deploying';
+    this.menu.hide();
+    window.setTimeout(() => this.dHud?.show(), 450);
+    this.stage.beginDeploy(this.descent.handoff, { duration: 3.0, biomeKey: this.spec.biomeKey });
   }
 
-  private callLook() {
+  private cutToDescent(flash = true) {
+    if (!this.descent) return;
     const vp = this.viewport;
-    try { (applyPlanetLook as any)?.(vp, this.spec); } catch (e) { console.warn('applyPlanetLook failed', e); }
+    const st = this.stage; this.stage = null;
+    vp.setView(vp.scene, vp.camera);
+    this.descent.start();
+    this.phase = 'descent';
+    this.deploySession = null;
+    this.cutFlash = flash ? 1 : 0;
+    if (st) window.setTimeout(() => st.dispose(), 0);
+  }
+
+  private callLook(spec: PlanetSpec = this.spec) {
+    const vp = this.viewport;
+    try { (applyPlanetLook as any)?.(vp, spec); } catch (e) { console.warn('applyPlanetLook failed', e); }
   }
 
   private skipDescent() {
@@ -144,7 +238,8 @@ export class Game {
 
   // ------------------------------------------------------------------ states
   private onKey(e: KeyboardEvent) {
-    if (this.phase === 'descent' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.skipDescent(); }
+    if (this.phase === 'deploying' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.cutToDescent(false); this.skipDescent(); }
+    else if (this.phase === 'descent' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.skipDescent(); }
     else if (this.phase === 'gameplay' && e.key === 'Escape') this.setPaused(!(this.gHud?.paused));
   }
   private setPaused(p: boolean) { this.gHud?.setPaused(p); if (this.play) { this.play.paused = p; this.play.cam.enabled = !p; } }
@@ -166,6 +261,7 @@ export class Game {
     this.teardownSession();
     this.mountStage(this.makeSpec(kind, seed));
     this.menu.show();
+    this.schedulePrepare(1200);
     history.replaceState(null, '', location.pathname);
     this.fade.classList.remove('on');
     this.phase = 'menu';
@@ -178,7 +274,13 @@ export class Game {
     const vp = this.viewport;
     try {
       if (this.phase === 'menu') this.stage?.update(dt, this.time);
-      else if (this.phase === 'descent') { this.descent?.update(dt); this.surface?.update(dt, this.time); }
+      else if (this.phase === 'deploying') {
+        this.stage?.update(dt, this.time);
+        if (this.stage && this.stage.deployProgress() >= 1 && this.deploySession?.ready) this.cutToDescent();
+      } else if (this.phase === 'descent') {
+        this.descent?.update(dt); this.surface?.update(dt, this.time);
+        if (this.cutFlash > 0) { vp.bloom.strength += 0.55 * this.cutFlash * this.cutFlash; this.cutFlash = Math.max(0, this.cutFlash - dt / 0.5); }
+      }
       else if (this.phase === 'gameplay') {
         this.play?.update(dt);
         this.surface?.update(dt, this.time);
@@ -192,6 +294,7 @@ export class Game {
   dispose() {
     cancelAnimationFrame(this.raf);
     window.removeEventListener('keydown', this.escListener);
+    clearTimeout(this.prepTimer); this.discardPrepared();
     this.teardownSession(); this.stage?.dispose(); this.menu.dispose(); this.fade.remove(); this.viewport.dispose();
   }
   /** QA */

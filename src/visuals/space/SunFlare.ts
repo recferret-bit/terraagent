@@ -11,6 +11,8 @@ export interface SunFlare {
   setExcite(k: number): void;
   /** Pointer in NDC (-1..1). Only the lens glow reacts: ghost axis pivots on it, streak leans toward it. */
   setPointer(x: number, y: number): void;
+  /** 0..1 overall flare visibility (deploy dolly fades it out). */
+  setFade(f: number): void;
   update(camera: THREE.PerspectiveCamera, time: number): void;
   dispose(): void;
 }
@@ -66,6 +68,7 @@ export function createSunFlare(color: THREE.ColorRepresentation = 0xfff0d8): Sun
   const rayA = new THREE.Sprite(raysAMat), rayB = new THREE.Sprite(raysBMat);
   rayA.renderOrder = 3; rayB.renderOrder = 3;
   group.add(halo, rayA, rayB, streak, core);
+  let fadeK = 1;
   let excite = 0, exciteS = 0, px = 0, py = 0, pxS = 0, pyS = 0;
   const ghostMats: THREE.SpriteMaterial[] = [];
   const ghosts: { s: THREE.Sprite; k: number; size: number; a: number }[] = [];
@@ -81,6 +84,7 @@ export function createSunFlare(color: THREE.ColorRepresentation = 0xfff0d8): Sun
     group,
     setPosition(p) { sun.copy(p); group.position.copy(p); core.position.set(0, 0, 0); halo.position.set(0, 0, 0); streak.position.set(0, 0, 0); },
     setPointer(x, y) { px = x; py = y; },
+    setFade(f) { fadeK = Math.min(1, Math.max(0, f)); group.visible = fadeK > 0.002; },
     setExcite(k) { excite = THREE.MathUtils.clamp(k, 0, 1); },
     setOccluder(c, r) { occC.copy(c); occR = r; },
     update(camera, time) {
@@ -117,6 +121,7 @@ export function createSunFlare(color: THREE.ColorRepresentation = 0xfff0d8): Sun
         g.s.scale.setScalar(g.size * 30 * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * 2);
         ghostMats[i].color.copy(base).multiplyScalar(g.a * 2.2 * (1 + 1.2 * exciteS) * vis * edge);
       }
+      for (const m of [coreMat, haloMat, streakMat, raysAMat, raysBMat, ...ghostMats]) m.color.multiplyScalar(fadeK);
       streakMat.rotation = Math.atan2(pyS - ndc.y, pxS - ndc.x) * 0.22 * exciteS; streakMat.opacity = vis; haloMat.opacity = 0.5 + 0.5 * vis; raysAMat.opacity = raysBMat.opacity = 0.35 + 0.65 * vis;
     },
     dispose() {

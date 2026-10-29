@@ -400,7 +400,7 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     sunColor: spaceSun.clone(), sunIntensity: 3.4,
     hemiColor: spaceHemi.clone(), hemiGround: spaceHemiG.clone(), hemiIntensity: 0.3,
     exposure: 1.0, envIntensity: 0.3, bloom: saved.bloom,
-    bayGlow: bayGlowAt(startAt), podYawLocal: -0.3,
+    bayGlow: bayGlowAt(startAt), podYawLocal: -0.3, carrierScale: carrier.root.scale.x,
     tel: { t: startAt / tScale, duration, progress: clamp(startAt / TL), phase: phaseOf(startAt), altitudeKm: 400, speedKmh: speedCurve(startAt), gForce: 0, heatPct: 0, caption: caption(startAt, spec.name) },
   };
 

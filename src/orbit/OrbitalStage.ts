@@ -6,6 +6,8 @@ import { createSpaceBackdrop } from '../visuals/space/SpaceBackdrop';
 import { createSunFlare } from '../visuals/space/SunFlare';
 import { createParallaxLayers } from '../visuals/space/ParallaxLayers';
 import { createMoon, moonsFor, type Moon } from './Moons';
+import { createDropRig, type DropRig } from '../descent/dropRig';
+import type { DescentHandoff } from '../descent/types';
 import { acquireModel, tickArchetypeMesh, type FittedModel } from '../visuals/space/placeholders';
 
 const R = 9.5;            // globe radius (world units)
@@ -108,6 +110,20 @@ export const createOrbitalStage: CreateOrbitalStage = (viewport, spec) => {
   const tintFromSpec = (s: PlanetSpec) => nebTarget.set(s.orbital.atmosphereColor).lerp(new THREE.Color(0x30408a), 0.55);
   backdrop.uniforms.uNebA.value.copy(tintFromSpec(spec)); nebTint.copy(backdrop.uniforms.uNebA.value); layers.setNebulaTint(nebTint);
 
+  // ---- deploy dolly state
+  interface Deploy {
+    u: number; dur: number; h: DescentHandoff; rig: DropRig;
+    p0: THREE.Vector3; t0: THREE.Vector3; up0: THREE.Vector3;
+    p1: THREE.Vector3; t1: THREE.Vector3; up1: THREE.Vector3;
+    sun0: THREE.Vector3; sun1: THREE.Vector3; sunI0: number; sunC0: THREE.Color;
+    hemi0: [THREE.Color, THREE.Color, number]; rim0: number; env0: number; exp0: number; bloom0: number;
+  }
+  let deploy: Deploy | null = null;
+  const lookNow = new THREE.Vector3(0, 0.3, 0);
+  const dTmp = new THREE.Vector3(), dTmp2 = new THREE.Vector3(), dQ = new THREE.Quaternion();
+  const smoother = (x: number) => { const t = Math.min(1, Math.max(0, x)); return t * t * t * (t * (t * 6 - 15) + 10); };
+  const win = (a: number, b: number, x: number) => smoother((x - a) / (b - a));
+
   let layoutX = 0, lx = NaN;
   const place = (dt: number) => {
     const a = aspect();
@@ -120,6 +136,27 @@ export const createOrbitalStage: CreateOrbitalStage = (viewport, spec) => {
 
   const api: OrbitalStage = {
     scene, camera,
+    beginDeploy(h, opts = {}) {
+      if (deploy) return;
+      carrier.root.updateWorldMatrix(true, false);
+      const rig = createDropRig(carrier.root, { biomeKey: opts.biomeKey ?? 'dune', carrierScale: h.carrierScale, podYaw: h.podYawLocal, attachPod: true });
+      rig.setBayGlow(0); rig.setOpen(0);
+      rig.podRig.visible = false;
+      carrier.root.getWorldQuaternion(dQ);
+      const p1 = carrier.root.localToWorld(h.camLocal.clone());
+      const t1 = carrier.root.localToWorld(h.targetLocal.clone());
+      const up1 = h.upLocal.clone().applyQuaternion(dQ).normalize();
+      const sun1 = h.sunLocal.clone().applyQuaternion(dQ).normalize();
+      deploy = {
+        u: 0, dur: opts.duration ?? 2.8, h, rig,
+        p0: camera.position.clone(), t0: lookNow.clone(), up0: camera.up.clone(), p1, t1, up1,
+        sun0: sunLight.position.clone().normalize(), sun1, sunI0: sunLight.intensity, sunC0: sunLight.color.clone(),
+        hemi0: [hemi.color.clone(), hemi.groundColor.clone(), hemi.intensity], rim0: rim.intensity,
+        env0: scene.environmentIntensity, exp0: viewport.renderer.toneMappingExposure, bloom0: viewport.bloom.strength,
+      };
+      for (const m of [rig.pod.root, rig.group]) m.traverse((o) => { const mm = (o as THREE.Mesh).material as (THREE.Material & { fog?: boolean }) | undefined; if (mm) mm.fog = false; });
+    },
+    deployProgress() { return deploy ? Math.min(1, deploy.u) : 0; },
     setPlanet(next) {
       if (next.kind === current.spec.kind) return;
       if (outgoing) outgoing.group.visible = false;
@@ -151,15 +188,51 @@ export const createOrbitalStage: CreateOrbitalStage = (viewport, spec) => {
       nebTint.lerp(nebTarget, 1 - Math.exp(-dt * 1.5)); layers.setNebulaTint(nebTint);
       backdrop.uniforms.uNebA.value.copy(nebTint);
 
-      // camera: slow cinematic sway + mouse-driven parallax (planet/carrier/moons/layers separate by depth)
-      mouseS.lerp(mouse, 1 - Math.exp(-dt * 2.5));
-      camera.position.set(
-        camBase.x + Math.sin(time * 0.05) * 0.9 + mouseS.x * 3.6,
-        camBase.y + Math.sin(time * 0.037 + 1.0) * 0.35 + mouseS.y * 2.0,
-        camBase.z,
-      );
-      camera.lookAt(planetPos.x * 0.35, 0.3, 0);
-      camera.updateMatrixWorld();
+      if (deploy) {
+        // ---- deploy dolly: one eased move into the carrier-local hand-off pose (with a gentle arc), lights converge
+        const d = deploy;
+        d.u = Math.min(1, d.u + dt / d.dur);
+        const e = smoother(d.u);
+        camera.position.lerpVectors(d.p0, d.p1, e);
+        dTmp.subVectors(d.p1, d.p0);
+        const arc = Math.sin(Math.PI * e) * dTmp.length() * 0.12;
+        camera.position.y += arc; camera.position.x -= arc * 0.5;
+        lookNow.lerpVectors(d.t0, d.t1, smoother(Math.min(1, d.u * 1.15)));
+        camera.up.lerpVectors(d.up0, d.up1, e).normalize();
+        camera.lookAt(lookNow);
+        camera.updateMatrixWorld();
+        // pod lowers out of the hull into the bay, bay lights up
+        const podIn = win(0.12, 0.75, d.u);
+        d.rig.podRig.visible = podIn > 0;
+        d.rig.podRig.position.copy(d.rig.dockedCentre);
+        d.rig.podRig.position.y += (1 - podIn) * d.rig.podH * 0.95 / d.h.carrierScale;
+        d.rig.setBayGlow(d.h.bayGlow * win(0.05, 0.8, d.u));
+        tickArchetypeMesh(d.rig.pod.mesh, time);
+        // lighting / grading converge to the descent's first frame so the cut is invisible
+        const l = win(0.1, 0.95, d.u);
+        dTmp2.copy(d.sun0).lerp(d.sun1, l).normalize();
+        sunLight.position.copy(dTmp2).multiplyScalar(60);
+        sunLight.intensity = THREE.MathUtils.lerp(d.sunI0, d.h.sunIntensity, l);
+        sunLight.color.copy(d.sunC0).lerp(d.h.sunColor, l);
+        hemi.color.copy(d.hemi0[0]).lerp(d.h.hemiColor, l); hemi.groundColor.copy(d.hemi0[1]).lerp(d.h.hemiGround, l);
+        hemi.intensity = THREE.MathUtils.lerp(d.hemi0[2], d.h.hemiIntensity, l);
+        rim.intensity = d.rim0 * (1 - l);
+        scene.environmentIntensity = THREE.MathUtils.lerp(d.env0, d.h.envIntensity, l);
+        viewport.renderer.toneMappingExposure = THREE.MathUtils.lerp(d.exp0, d.h.exposure, l);
+        viewport.bloom.strength = THREE.MathUtils.lerp(d.bloom0, d.h.bloom, l);
+        sunFlare.setFade(1 - win(0.0, 0.6, d.u));
+      } else {
+        // camera: slow cinematic sway + mouse-driven parallax (planet/carrier/moons/layers separate by depth)
+        mouseS.lerp(mouse, 1 - Math.exp(-dt * 2.5));
+        camera.position.set(
+          camBase.x + Math.sin(time * 0.05) * 0.9 + mouseS.x * 3.6,
+          camBase.y + Math.sin(time * 0.037 + 1.0) * 0.35 + mouseS.y * 2.0,
+          camBase.z,
+        );
+        lookNow.set(planetPos.x * 0.35, 0.3, 0);
+        camera.lookAt(lookNow);
+        camera.updateMatrixWorld();
+      }
       backdrop.update(camera, time);
       layers.update(dt, time);
 
@@ -198,17 +271,20 @@ export const createOrbitalStage: CreateOrbitalStage = (viewport, spec) => {
       }
 
       // carrier hover drift (lower-left of the planet, between camera and globe)
+      if (!deploy) {
       const cx = planetPos.x - 13.5 + Math.sin(time * 0.11) * 1.4;
       const cy = -5.2 + Math.sin(time * 0.17 + 0.6) * 0.45;
       const cz = 12 + Math.sin(time * 0.083) * 2.0;
       carrier.root.position.set(cx, cy, cz);
       carrier.root.rotation.set(0.08 + Math.sin(time * 0.21) * 0.03, 0.9 + Math.sin(time * 0.07) * 0.22, -0.1 + Math.sin(time * 0.13) * 0.04);
+      }
       tickArchetypeMesh(carrier.mesh, time);
     },
     dispose() {
       cache.forEach((g) => g.dispose()); cache.clear();
       window.removeEventListener('pointermove', onMove);
       layers.dispose(); moonSets.forEach((ms) => ms.moons.forEach((m) => m.dispose())); moonSets.clear(); sats.forEach((x) => x.model.dispose());
+      deploy?.rig.dispose(); deploy = null;
       backdrop.dispose(); sunFlare.dispose(); carrier.dispose();
       scene.remove(sunLight, hemi, rim);
       scene.environment = null;

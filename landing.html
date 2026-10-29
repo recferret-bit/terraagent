@@ -141,12 +141,20 @@ It keeps building.</h1>
       <div class="container section">
         <p class="eyebrow">03 · ECONOMY IS THE GAMEPLAY</p>
         <h2 class="h1">Five resources. Every building draws power. Nothing is free.</h2>
-        <div class="resources">
-          <div class="res plate-sm"><div class="res-code">M</div><div class="res-name">Metals</div><div class="res-use">Robots, buildings, rockets, ammo</div></div>
-          <div class="res plate-sm"><div class="res-code">MIN</div><div class="res-name">Minerals</div><div class="res-use">Advanced parts, electronics</div></div>
-          <div class="res plate-sm"><div class="res-code">PET</div><div class="res-name">Petroleum</div><div class="res-use">Fuel, plastics, some power</div></div>
-          <div class="res plate-sm"><div class="res-code">W</div><div class="res-name">Water</div><div class="res-use">Cooling, terraforming, biology</div></div>
-          <div class="res plate-sm is-dark"><div class="res-code">E/S</div><div class="res-name">Energy</div><div class="res-use">Everything. Even storage silos.</div></div>
+        <div class="resources" role="tablist" aria-label="Resources">
+          <button class="res plate-sm" role="tab" data-res="metals" aria-selected="true" aria-controls="rv-panel"><span class="res-code">M</span><span class="res-name">Metals</span><span class="res-use">Robots, buildings, rockets, ammo</span></button>
+          <button class="res plate-sm" role="tab" data-res="minerals" aria-selected="false" tabindex="-1" aria-controls="rv-panel"><span class="res-code">MIN</span><span class="res-name">Minerals</span><span class="res-use">Advanced parts, electronics</span></button>
+          <button class="res plate-sm" role="tab" data-res="petroleum" aria-selected="false" tabindex="-1" aria-controls="rv-panel"><span class="res-code">PET</span><span class="res-name">Petroleum</span><span class="res-use">Fuel, plastics, some power</span></button>
+          <button class="res plate-sm" role="tab" data-res="water" aria-selected="false" tabindex="-1" aria-controls="rv-panel"><span class="res-code">W</span><span class="res-name">Water</span><span class="res-use">Cooling, terraforming, biology</span></button>
+          <button class="res plate-sm" role="tab" data-res="energy" aria-selected="false" tabindex="-1" aria-controls="rv-panel"><span class="res-code">E/S</span><span class="res-name">Energy</span><span class="res-use">Everything. Even storage silos.</span></button>
+        </div>
+        <div class="rv" id="rv-panel" role="tabpanel">
+          <div class="rv-view plate">
+            <div class="rv-stage" id="rv-stage"></div>
+            <div class="scanlines"></div>
+            <div class="rv-tag" id="rv-tag" aria-live="off"></div>
+          </div>
+          <div class="rv-info plate" id="rv-info"></div>
         </div>
         <div class="econ-row">
           <div class="table-wrap">
@@ -294,6 +302,7 @@ It keeps building.</h1>
 
 <script type="module" src="/frontend/design/js/landing.js"></script>
 <script type="module" src="/src/landing/planetCards.ts"></script>
+<script type="module" src="/src/landing/resourceViewer.ts"></script>
 <script type="module" src="/src/ui/crtEntry.ts"></script>
 </body>
 </html>
