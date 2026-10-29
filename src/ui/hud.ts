@@ -4,6 +4,7 @@ import type { DescentTelemetry } from '../descent/types';
 export class DescentHud {
   readonly el = document.createElement('div');
   private q: Record<string, HTMLElement> = {};
+  private lastTemp = -40;
   constructor(parent: HTMLElement) {
     this.el.id = 'descent'; this.el.className = 'ui-layer';
     this.el.innerHTML = `<div class="lb top"></div><div class="lb bot"></div>
@@ -11,14 +12,14 @@ export class DescentHud {
         <div><span class="k">ALTITUDE</span><b id="d-alt">—</b> km</div>
         <div><span class="k">SPEED</span><b id="d-spd">—</b> km/h</div>
         <div><span class="k">G-FORCE</span><b id="d-g">—</b> g</div>
-        <div><span class="k">HULL HEAT</span><span class="heat"><i id="d-heat"></i></span> <b id="d-heatp">0</b>%</div>
+        <div class="temp" id="d-temp"><span class="k">HULL TEMP</span><b id="d-tc">−40</b> <span class="u">°C</span><span class="trend" id="d-trend"></span></div>
       </div>
       <div class="phase plate-sm" id="d-phase"></div>
       <div class="caption" id="d-cap"></div>
       <div class="progress"><i id="d-prog"></i></div>
       <div class="skip">PRESS ESC / SPACE TO SKIP</div>`;
     parent.appendChild(this.el);
-    for (const id of ['alt', 'spd', 'g', 'heat', 'heatp', 'phase', 'cap', 'prog']) this.q[id] = this.el.querySelector('#d-' + id)!;
+    for (const id of ['alt', 'spd', 'g', 'temp', 'tc', 'trend', 'phase', 'cap', 'prog']) this.q[id] = this.el.querySelector('#d-' + id)!;
   }
   show() { requestAnimationFrame(() => this.el.classList.add('on')); }
   hide() { this.el.classList.remove('on'); }
@@ -27,8 +28,12 @@ export class DescentHud {
     this.q.alt.textContent = f(t.altitudeKm, t.altitudeKm < 10 ? 2 : 0);
     this.q.spd.textContent = f(t.speedKmh);
     this.q.g.textContent = f(t.gForce, 1);
-    this.q.heat.style.width = t.heatPct + '%';
-    this.q.heatp.textContent = f(t.heatPct);
+    // hull temperature in °C: colour band + rising/falling arrow (replaces the old heat bar)
+    const c = Math.round(t.hullTempC);
+    this.q.tc.textContent = (c < 0 ? '−' : '') + f(Math.abs(c));
+    this.q.temp.dataset.band = c > 1100 ? 'crit' : c > 450 ? 'hot' : c > 60 ? 'warm' : 'cold';
+    const d = c - this.lastTemp; this.lastTemp = c;
+    this.q.trend.textContent = d > 2 ? '▲' : d < -2 ? '▼' : '';
     this.q.phase.textContent = t.phase;
     this.q.cap.textContent = t.caption;
     this.q.prog.style.width = (t.progress * 100).toFixed(1) + '%';

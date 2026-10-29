@@ -67,10 +67,10 @@ It keeps building.</h1>
         </div>
 
         <div class="viewport viewport-hero plate brackets">
-          <canvas id="hero-canvas" role="img" aria-label="Live WebGL render of a desert planet being terraformed"></canvas>
+          <div id="hero-stage" role="img" aria-label="Live 3D orbit view: a planet with moons, satellites and asteroids, morphing between worlds"></div>
           <div class="scanlines"></div>
-          <div class="viewport-tag tl"><div><span class="c-orange">●</span> LIVE RENDER · WEBGL</div><div>SECTOR 01 · DESERT CLASS</div></div>
-          <div class="viewport-tag br"><div>TERRAFORM FRONT <span class="c-terra">▬</span></div><div>NIGHT-SIDE COLONIES <span class="c-orange">▪</span></div><div>ATMOSPHERE <span class="c-blue">▬</span></div></div>
+          <div class="viewport-tag tl"><div><span class="c-orange">●</span> LIVE RENDER · WEBGL</div><div id="hero-world">KHARON DUNES</div></div>
+          <div class="viewport-tag br"><div>ORBIT VIEW · SAME AS THE GAME MENU</div><div id="hero-morph">WORLD 1 / 3 · MORPH IN 10 S</div></div>
         </div>
       </div>
     </section>
@@ -301,6 +301,7 @@ It keeps building.</h1>
 </div>
 
 <script type="module" src="/frontend/design/js/landing.js"></script>
+<script type="module" src="/src/landing/heroStage.ts"></script>
 <script type="module" src="/src/landing/planetCards.ts"></script>
 <script type="module" src="/src/landing/resourceViewer.ts"></script>
 <script type="module" src="/src/ui/crtEntry.ts"></script>

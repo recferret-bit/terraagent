@@ -5,15 +5,22 @@ import type { PlanetSpec } from '../planets/PlanetSpec';
 export interface OrbitalStage {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
-  /** Smoothly swap the displayed planet (≈1.2s crossfade/rotate). */
-  setPlanet(spec: PlanetSpec): void;
+  /** Smoothly swap the displayed planet (≈1.2s crossfade/rotate by default; `duration` stretches the whole morph: globe, nebula tint and moons). */
+  setPlanet(spec: PlanetSpec, opts?: { duration?: number; continuousSpin?: boolean }): void;
+  /** Terraform the currently shown planet: 0 = untouched … 4 = fully terraformed (see PlanetGlobe.setTerraform). */
+  setTerraform(stage: number, smooth?: boolean): void;
+  /** Axial spin of every globe in rad/s (default 0.025). `continuousSpin` on setPlanet keeps it forward-only through a morph. */
+  setSpinRate(radPerSec: number): void;
   /**
-   * DEPLOY: freeze the carrier, lower the drop pod into its bay and dolly the camera (smoothly, from wherever it is)
-   * into the descent's carrier-local hand-off pose while lights/exposure converge to the descent's first frame.
+   * DEPLOY: camera flies behind the carrier, the pod lowers into the bay, is released, and falls toward the REAL
+   * menu planet; pod + camera shrink continuously (scale-dive) until the frame is the descent's frame `h.startAt`
+   * rotated/scaled onto this globe. Returns the globe orientation the descent must adopt so the planets coincide.
    */
-  beginDeploy(h: import('../descent/types').DescentHandoff, opts?: { duration?: number; biomeKey?: string }): void;
-  /** 0..1 progress of the deploy dolly (1 = parked on the hand-off pose, safe to cut). */
+  beginDeploy(h: import('../descent/types').DescentHandoff, opts?: { biomeKey?: string }): { spinQuat: THREE.Quaternion; cloudRotY: number };
+  /** 0..1 progress of the deploy sequence (1 = stage frame == descent frame `h.startAt`, safe to cut). */
   deployProgress(): number;
+  /** Authored descent second the deploy sequence currently represents (for telemetry). */
+  deployTn(): number;
   /** Idle menu motion (slow orbit + ship drift). */
   update(dt: number, time: number): void;
   dispose(): void;

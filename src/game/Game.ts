@@ -63,7 +63,14 @@ export class Game {
       this.settings.skipCinematic = q.get('skip') === '1';
       this.fastForward = Math.max(0, parseFloat(q.get('t') ?? '0') || 0);
       setTimeout(() => this.deploy(kind, this.menu.seed, true), 50);
-    } else this.schedulePrepare(900);
+    } else {
+      this.schedulePrepare(900);
+      // QA: ?autodeploy=<ms> clicks DEPLOY after that delay (cinematic path), for headless frame captures
+      if (q.has('autodeploy')) setTimeout(() => {
+        this.deploy(this.menu.kind, this.menu.seed);
+        if (q.has('qat')) this.qaAdvance(parseFloat(q.get('qat')!) || 0); // ?qat=<s>: jump the deploy/descent clock
+      }, parseInt(q.get('autodeploy')!, 10) || 1500);
+    }
   }
 
   private makeSpec(kind: PlanetKind, seed: number): PlanetSpec { return { ...PLANET_SPECS[kind], seed }; }
@@ -93,7 +100,7 @@ export class Game {
     try { return fn(); } finally { vp.renderer.toneMappingExposure = exp; vp.bloom.strength = bloom; }
   }
 
-  private schedulePrepare(delay = 650) {
+  private schedulePrepare(delay = 1400) {
     clearTimeout(this.prepTimer);
     this.prepTimer = window.setTimeout(() => {
       if (this.phase !== 'menu' || !createPlanetSurface || !createDescentSequence) return;
@@ -115,7 +122,7 @@ export class Game {
       const surface = createPlanetSurface!(spec, { quality: this.settings.quality });
       scene.add(surface.group);
       this.callLook(spec);
-      const descent = createDescentSequence!({ viewport: vp, scene, camera, spec, surface, startAt: 2 });
+      const descent = createDescentSequence!({ viewport: vp, scene, camera, spec, surface, startAt: 9 });
       const prep: Prepared = { key, spec, surface, descent, ready: false, whenReady: Promise.resolve() };
       return prep;
     });
@@ -187,7 +194,7 @@ export class Game {
       this.dHud.show();
       if (this.settings.skipCinematic) this.skipDescent();
       else if (this.fastForward > 0) {
-        const steps = Math.floor(this.fastForward * 30);
+        const steps = Math.floor(Math.max(0, this.fastForward - this.descent.handoff.startAt) * 30); // ?t= is the authored second
         for (let i = 0; i < steps && (this.phase as Phase) === 'descent'; i++) this.descent!.update(1 / 30);
       }
       return;
@@ -197,7 +204,8 @@ export class Game {
     this.phase = 'deploying';
     this.menu.hide();
     window.setTimeout(() => this.dHud?.show(), 450);
-    this.stage.beginDeploy(this.descent.handoff, { duration: 3.0, biomeKey: this.spec.biomeKey });
+    const align = this.stage.beginDeploy(this.descent.handoff, { biomeKey: this.spec.biomeKey });
+    this.descent.alignGlobe(align.spinQuat, align.cloudRotY);
   }
 
   private cutToDescent(flash = true) {
@@ -270,26 +278,31 @@ export class Game {
   // ------------------------------------------------------------------ loop
   private loop = () => {
     const now = performance.now();
-    const dt = Math.min((now - this.last) / 1000, 0.05); this.last = now; this.time += dt;
-    const vp = this.viewport;
-    try {
-      if (this.phase === 'menu') this.stage?.update(dt, this.time);
-      else if (this.phase === 'deploying') {
-        this.stage?.update(dt, this.time);
-        if (this.stage && this.stage.deployProgress() >= 1 && this.deploySession?.ready) this.cutToDescent();
-      } else if (this.phase === 'descent') {
-        this.descent?.update(dt); this.surface?.update(dt, this.time);
-        if (this.cutFlash > 0) { vp.bloom.strength += 0.55 * this.cutFlash * this.cutFlash; this.cutFlash = Math.max(0, this.cutFlash - dt / 0.5); }
-      }
-      else if (this.phase === 'gameplay') {
-        this.play?.update(dt);
-        this.surface?.update(dt, this.time);
-        if (this.play) vp.followShadow(this.play.cam.target);
-      }
-      vp.render();
-    } catch (e) { console.error('frame error', e); }
+    const dt = Math.min((now - this.last) / 1000, 0.05); this.last = now;
+    try { this.tick(dt); this.viewport.render(); } catch (e) { console.error('frame error', e); }
     this.raf = requestAnimationFrame(this.loop);
   };
+
+  private tick(dt: number, forceReady = false) {
+    this.time += dt;
+    const vp = this.viewport;
+    if (this.phase === 'menu') this.stage?.update(dt, this.time);
+    else if (this.phase === 'deploying') {
+      this.stage?.update(dt, this.time);
+      if (this.stage && this.descent) this.dHud?.update(this.descent.handoff.telAt(this.stage.deployTn()));
+      if (this.stage && this.stage.deployProgress() >= 1 && (this.deploySession?.ready || forceReady)) this.cutToDescent();
+    } else if (this.phase === 'descent') {
+      this.descent?.update(dt); this.surface?.update(dt, this.time);
+      if (this.cutFlash > 0) { vp.bloom.strength += 0.55 * this.cutFlash * this.cutFlash; this.cutFlash = Math.max(0, this.cutFlash - dt / 0.5); }
+    } else if (this.phase === 'gameplay') {
+      this.play?.update(dt);
+      this.surface?.update(dt, this.time);
+      if (this.play) vp.followShadow(this.play.cam.target);
+    }
+  }
+
+  /** QA: deterministically advance the whole state machine by `seconds` in 1/30 s steps (headless frame capture). */
+  qaAdvance(seconds: number) { for (let i = 0; i < Math.round(seconds * 30); i++) this.tick(1 / 30, true); }
 
   dispose() {
     cancelAnimationFrame(this.raf);

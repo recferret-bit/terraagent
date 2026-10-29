@@ -94,8 +94,8 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       (scene.fog as THREE.FogExp2).density = k.fogDensity;
       sun.color.set(k.sunColor);
       sun.intensity = k.sunIntensity;
-      hemi.color.set(k.skyColor);
-      hemi.groundColor.set(k.hemiGround);
+      hemi.color.set(k.ambientSky ?? k.skyColor);
+      hemi.groundColor.set(k.ambientGround ?? k.hemiGround);
       hemi.intensity = k.hemiIntensity;
       renderer.toneMappingExposure = k.exposure;
     },

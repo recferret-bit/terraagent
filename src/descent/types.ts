@@ -11,6 +11,8 @@ export interface DescentTelemetry {
   phase: DescentPhase;
   /** Fake-but-plausible HUD numbers. */
   altitudeKm: number; speedKmh: number; gForce: number; heatPct: number;
+  /** Heat-shield / hull skin temperature, °C (space-cold ≈ −40 → ~2000 at peak plasma). */
+  hullTempC: number;
   /** Short HUD caption for the current beat, e.g. "Atmospheric interface — hold on". */
   caption: string;
 }
@@ -39,12 +41,21 @@ export interface DescentHandoff {
   carrierScale: number;
   /** Telemetry to show while the hand-off dolly plays. */
   tel: DescentTelemetry;
+  /** Telemetry for any authored second (the menu stage plays authored 0..startAt itself). */
+  telAt(tn: number): DescentTelemetry;
+  /** Frame `startAt` in descent world space — the menu stage reproduces it (scaled + rotated) on its own globe. */
+  R: number; centre: THREE.Vector3; fov: number; podH: number;
+  pod: THREE.Vector3; podQuat: THREE.Quaternion; cam: THREE.Vector3; camTarget: THREE.Vector3;
+  /** Direction TO the sun in descent world space (lights + globe shading). */
+  sunDir: THREE.Vector3;
 }
 
 export interface DescentSequence {
   readonly duration: number; // default 35
   /** Hand-off pose/lighting for a seamless cut from the menu stage. */
   readonly handoff: DescentHandoff;
+  /** Orient the descent globe (world quaternion of its spin group + cloud drift) so it matches the menu globe at the cut. */
+  alignGlobe(spinQuat: THREE.Quaternion, cloudRotY: number): void;
   /** Where the camera ends (gameplay diorama pose). Valid immediately after creation. */
   readonly finalPose: { position: THREE.Vector3; target: THREE.Vector3 };
   start(): void;

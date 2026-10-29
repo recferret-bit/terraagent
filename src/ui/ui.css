@@ -7,8 +7,18 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 .fade{position:fixed;inset:0;background:var(--ta-void);opacity:0;pointer-events:none;transition:opacity .7s var(--ta-ease-hydraulic);z-index:50}
 .fade.on{opacity:1}
 /* ---------- menu ---------- */
-#menu{display:flex;flex-direction:column;justify-content:space-between;padding:4vh 4vw;transition:opacity .8s ease,transform .8s ease;background:linear-gradient(90deg,rgba(7,8,10,.8) 0%,rgba(7,8,10,.25) 45%,transparent 70%),linear-gradient(0deg,rgba(7,8,10,.9),transparent 40%)}
-#menu.hide{opacity:0;transform:scale(1.04);pointer-events:none;visibility:hidden;transition:opacity .8s ease,transform .8s ease,visibility 0s .8s}
+#menu{display:flex;flex-direction:column;justify-content:space-between;padding:4vh 4vw;transition:opacity .6s ease .1s;background:linear-gradient(90deg,rgba(7,8,10,.8) 0%,rgba(7,8,10,.25) 45%,transparent 70%),linear-gradient(0deg,rgba(7,8,10,.9),transparent 40%)}
+#menu.hide{opacity:0;pointer-events:none;visibility:hidden;transition:opacity .55s ease .35s,visibility 0s 1s}
+/* deploy: every interface block tweens off its nearest edge (staggered), then the backdrop gradient fades — and the
+   reverse on return to orbit. Transforms only (GPU-composited), so the 3D dolly underneath never stutters. */
+#menu .menu-top,#menu .deploy-box,#menu .world-card,#menu .menu-top .btn{transition:transform .75s cubic-bezier(.65,0,.25,1),opacity .55s ease,border-color var(--ta-dur-quick) ease,background-color var(--ta-dur-quick) ease}
+#menu:not(.hide) .menu-top,#menu:not(.hide) .deploy-box,#menu:not(.hide) .world-card{transition-delay:.15s}
+#menu.hide .menu-top{transform:translateY(-90px);opacity:0}
+#menu.hide .world-card{transform:translateY(140px);opacity:0}
+#menu.hide .world-card:nth-child(2){transition-delay:.06s}
+#menu.hide .world-card:nth-child(3){transition-delay:.12s}
+#menu.hide .world-card:nth-child(4){transition-delay:.18s}
+#menu.hide .deploy-box{transform:translateX(130%);opacity:0;transition-delay:.04s}
 #menu.hide *{pointer-events:none}
 .menu-top{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap}
 .title{margin:0;font-family:var(--ta-font-display);font-weight:700;font-size:clamp(34px,6vw,84px);line-height:1;letter-spacing:.14em;color:var(--ta-hull)}
@@ -44,8 +54,15 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 .telemetry{position:absolute;left:4vw;top:13vh;display:grid;gap:6px;padding:14px 18px;background:rgba(7,8,10,.78);border-left:3px solid var(--ta-orange);font-family:var(--ta-font-mono);font-size:12px;letter-spacing:.14em;color:var(--ta-text-2)}
 .telemetry .k{color:var(--ta-steel);display:inline-block;width:92px}
 .telemetry b{font-family:var(--ta-font-display);font-size:15px;color:var(--ta-hull);font-weight:700}
-.heat{width:210px;height:8px;border:1px solid var(--ta-seam-2);overflow:hidden;display:inline-block;vertical-align:middle;background:var(--ta-deep)}
-.heat i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--ta-orange-hi),var(--ta-orange),var(--ta-fault))}
+.telemetry .temp b{font-size:22px;transition:color .4s,text-shadow .4s;font-variant-numeric:tabular-nums;display:inline-block;min-width:76px;text-align:right}
+.telemetry .temp .u{color:var(--ta-steel)}
+.telemetry .temp .trend{margin-left:8px;font-size:11px;color:inherit}
+.telemetry .temp[data-band=cold] b{color:#8fc8ff}
+.telemetry .temp[data-band=warm] b{color:var(--ta-orange-hi)}
+.telemetry .temp[data-band=hot] b{color:var(--ta-orange);text-shadow:0 0 12px rgba(255,106,19,.55)}
+.telemetry .temp[data-band=crit] b{color:#ff5a3c;text-shadow:0 0 16px rgba(255,70,40,.8);animation:tempPulse .5s ease-in-out infinite alternate}
+.telemetry .temp[data-band=cold] .trend{color:#8fc8ff}.telemetry .temp[data-band=crit] .trend,.telemetry .temp[data-band=hot] .trend{color:#ff7a4a}
+@keyframes tempPulse{to{text-shadow:0 0 26px rgba(255,90,40,1)}}
 .caption{position:absolute;left:0;right:0;bottom:13vh;text-align:center;font-family:var(--ta-font-display);font-weight:600;text-transform:uppercase;font-size:clamp(14px,1.7vw,22px);letter-spacing:.2em;color:var(--ta-hull);text-shadow:0 2px 16px rgba(7,8,10,.9),0 0 2px rgba(7,8,10,.9);transition:opacity .4s}
 .progress{position:absolute;left:4vw;right:4vw;bottom:10.4vh;height:3px;background:rgba(242,244,247,.15);overflow:hidden}
 .progress i{display:block;height:100%;width:0;background:var(--ta-orange)}

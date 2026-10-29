@@ -31,7 +31,7 @@ const speedCurve = makeCurve([[0, 27600], [4, 27600], [8, 27200], [15, 21000], [
 const gCurve = makeCurve([[0, 0], [8, 0.1], [14, 0.6], [17, 3.5], [19.5, 6.8], [22, 4.0], [23, 2.0], [24, 3.8], [25, 1.2], [29, 1.0], [30, 2.4], [33, 1.6], [34, 1.0], [35, 1.0]]);
 const streakSpeed = makeCurve([[0, 0], [8, 0], [10, 60], [15, 180], [19, 260], [23, 150], [26, 30], [29, 0]]);
 const camPhi = makeCurve([[3.6, 112], [8, 96], [11, 88], [15, 85], [17, 100], [21, 130], [23, 150], [26, 160], [29, 150]]);
-const camEps = makeCurve([[3.6, -12], [6, -5], [8, 14], [11, 40], [15, 58], [17, 22], [21, 10], [23, 12], [26, 14], [29, 18]]);
+const camEps = makeCurve([[3.6, -12], [5.2, -2], [6.8, 18], [8, 32], [11, 48], [15, 58], [17, 22], [21, 10], [23, 12], [26, 14], [29, 18]]);
 const camLnD = makeCurve([[3.6, Math.log(46)], [8, Math.log(52)], [11, Math.log(38)], [15, Math.log(22)], [17, Math.log(17)], [21, Math.log(15)], [23, Math.log(26)], [26, Math.log(38)], [29, Math.log(40)]]);
 const camLookY = makeCurve([[3.6, 0], [8, 2], [15, 0], [23, 3], [26, 6], [29, 4]]);
 
@@ -118,8 +118,18 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
   hasTop.add(streaks.mesh);
   const plasma = track(createPlasma(podR, podH));
   plasma.group.position.y = 0; hasTop.add(plasma.group);
-  const flames = track(createFlames(podR));
-  podRoot.add(flames.group); flames.group.position.y = -podH / 2;
+  // retro jets sit on the pod model's 4 real nozzles (model space: ring r≈1.42 at y≈0.43, tilted 0.45 rad outward)
+  podRoot.updateMatrixWorld(true);
+  const toPodRoot = new THREE.Matrix4().copy(podRoot.matrixWorld).invert().multiply(pod.mesh.matrixWorld);
+  const nozzles = [0, 1, 2, 3].map((i) => {
+    const a = (i * Math.PI) / 2 + Math.PI / 4;
+    const tilt = new THREE.Euler(-Math.sin(a) * 0.45, 0, Math.cos(a) * 0.45);
+    const pos = new THREE.Vector3(Math.cos(a) * 1.44, 0.4, Math.sin(a) * 1.44).applyMatrix4(toPodRoot);
+    const dir = new THREE.Vector3(0, -1, 0).applyEuler(tilt).transformDirection(toPodRoot);
+    return { pos, dir };
+  });
+  const flames = track(createFlames(nozzles));
+  podRoot.add(flames.group);
   const canopy = track(createCanopy(podH / 2, podR, new THREE.Color(spec.palette.accent).lerp(new THREE.Color(0xff6a2a), 0.5), 0xe8e4da));
   podRoot.add(canopy.group);
   const gfx = track(createGroundFX(spec.kind, spec.seed));
@@ -131,12 +141,12 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
   // ---- state
   let t = 0, started = false, finished = false, disposed = false, delivered = false, scroll = 0;
   const telCbs: ((x: DescentTelemetry) => void)[] = [], doneCbs: ((h: THREE.Object3D) => void)[] = [];
-  const tel: DescentTelemetry = { t: 0, duration, progress: 0, phase: 'orbit', altitudeKm: 400, speedKmh: 0, gForce: 0, heatPct: 0, caption: '' };
+  const tel: DescentTelemetry = { t: 0, duration, progress: 0, phase: 'orbit', altitudeKm: 400, speedKmh: 0, gForce: 0, heatPct: 0, hullTempC: -40, caption: '' };
   const podBase = new THREE.Vector3(), podCenter = new THREE.Vector3(), camPos = new THREE.Vector3(), camTgt = new THREE.Vector3();
   const tmpA = new THREE.Vector3(), tmpB = new THREE.Vector3(), tmpC = new THREE.Vector3();
   const colA = new THREE.Color(), colB = new THREE.Color(), colC = new THREE.Color();
   const atmCol = new THREE.Color(o.atmosphereColor);
-  const skyZ = new THREE.Color(spec.sky.skyColor), skyH = new THREE.Color(spec.sky.horizonColor), fogC = new THREE.Color(spec.sky.fogColor), sunC = new THREE.Color(spec.sky.sunColor), hemiC = new THREE.Color(spec.sky.skyColor), hemiG = new THREE.Color(spec.sky.hemiGround);
+  const skyZ = new THREE.Color(spec.sky.skyColor), skyH = new THREE.Color(spec.sky.horizonColor), fogC = new THREE.Color(spec.sky.fogColor), sunC = new THREE.Color(spec.sky.sunColor), hemiC = new THREE.Color(spec.sky.ambientSky ?? spec.sky.skyColor), hemiG = new THREE.Color(spec.sky.ambientGround ?? spec.sky.hemiGround);
   const haze = new THREE.Color(spec.sky.horizonColor).lerp(cloudCol, 0.5);
   const spaceSun = new THREE.Color(1.0, 0.96, 0.88), spaceHemi = new THREE.Color(0.45, 0.55, 0.85), spaceHemiG = new THREE.Color(0.04, 0.04, 0.07);
   const sunPosDelta = viewport.sun.position.clone().sub(viewport.sun.target.position);
@@ -170,14 +180,26 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     return mesh;
   };
 
+  // pure pose helpers (shared by applyFrame and the menu hand-off, which must reproduce frame `startAt` exactly)
+  const podRot = (tn: number, out: THREE.Euler) => {
+    const tum = smoothstep(4, 4.6, tn) * (1 - smoothstep(8, 13, tn));
+    const sway = 0.07 * Math.sin(tn * 1.1) * smoothstep(24, 26, tn) * (1 - smoothstep(30, 33, tn));
+    return out.set(0.35 * Math.sin(1.3 * (tn - 4)) * tum + sway * 0.5, 2.4 * smoother(4, 12, tn), 0.5 * Math.sin(0.9 * (tn - 4) + 1) * tum + sway, 'YXZ');
+  };
+  const camCurve = (tn: number, pc: THREE.Vector3, outPos: THREE.Vector3, outTgt: THREE.Vector3) => {
+    const k = clamp(tn, 3.6, 29), ph = camPhi(k) * D2R, ep = camEps(k) * D2R, D = Math.exp(camLnD(k));
+    outPos.set(pc.x + D * Math.cos(ep) * Math.cos(ph), pc.y + D * Math.sin(ep), pc.z + D * Math.cos(ep) * Math.sin(ph));
+    outTgt.set(pc.x, pc.y + camLookY(k), pc.z);
+    const e = smoother(29, 34, tn);
+    if (e > 0) { if (e >= 1) { outPos.copy(FINAL_POS); outTgt.copy(FINAL_TARGET); } else { outPos.lerp(FINAL_POS, e); outTgt.lerp(FINAL_TARGET, e); } }
+  };
+
   function applyFrame(tn: number, dtn: number) {
     // ---------- pod kinematics
     pos(tn, podBase);
     podCenter.set(podBase.x, podBase.y + podH / 2, podBase.z);
-    const tum = smoothstep(4, 4.6, tn) * (1 - smoothstep(8, 13, tn));
-    const sway = 0.07 * Math.sin(tn * 1.1) * smoothstep(24, 26, tn) * (1 - smoothstep(30, 33, tn));
     podRoot.position.copy(podCenter);
-    podRoot.rotation.set(0.35 * Math.sin(1.3 * (tn - 4)) * tum + sway * 0.5, 2.4 * smoother(4, 12, tn), 0.5 * Math.sin(0.9 * (tn - 4) + 1) * tum + sway);
+    podRot(tn, podRoot.rotation);
     const yRel = altCurve(tn);
 
     // envelopes
@@ -188,7 +210,7 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
 
     // ---------- carrier + bay
     const cDrift = smoother(4, 14, tn);
-    carrier.root.visible = tn < 14.6;
+    carrier.root.visible = tn < 14.6 && startAt < 6; // a late start means the menu stage already played the release
     carrier.root.position.set(pod0.x - 100 * cDrift, Y0 + podH - 0.4 + 60 * cDrift, pod0.z - 80 * cDrift);
     carrier.root.rotation.set(0.02 * Math.sin(tn * 0.6), 0.3 + 0.05 * cDrift, 0);
     const open = smoother(2.2, 3.8, tn);
@@ -211,7 +233,8 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     plasma.group.visible = plasmaI > 0.01;
     plasma.group.position.set(podCenter.x, podCenter.y, podCenter.z);
     plasma.u.uI.value = plasmaI; plasma.u.uTime.value = tn;
-    plasma.u.uCool.value.set(o.atmosphereColor).multiplyScalar(0).add(colA.setRGB(1.4, 0.32, 0.05).lerp(atmCol, 0.25).multiplyScalar(1.0));
+    plasma.u.uCool.value.setRGB(1.4, 0.32, 0.05).lerp(atmCol, 0.2);
+    plasma.u.uAtm.value.copy(atmCol).lerp(colA.setRGB(0.9, 0.3, 1.0), 0.35);
     const sp = streakSpeed(tn);
     scroll += sp * dtn / tScale; // streak scroll in "authored seconds"
     const dist = camPos.distanceTo(podCenter);
@@ -235,12 +258,13 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
 
     // ---------- retro flames + ground fx + light
     flames.group.visible = thr > 0.01;
-    flames.u.uI.value = thr * (0.88 + 0.12 * Math.sin(tn * 40)); flames.u.uTime.value = tn;
+    const ign = 1 + 0.45 * Math.exp(-Math.pow((tn - 29.25) / 0.25, 2));         // ignition kick
+    flames.u.uI.value = thr * ign * (0.9 + 0.1 * Math.sin(tn * 40)); flames.u.uTime.value = tn;
     const gx = podBase.x, gz = podBase.z;
     tmpA.set(gx, surface.heightAt(gx, gz), gz);
     const pxScale = viewport.renderer.domElement.height / (2 * Math.tan(camera.fov * D2R * 0.5));
     gfx.update(tn, tmpA, thr * smoothstep(30, 3, yRel) + 0.0, pxScale);
-    const lightI = 60 * plasmaI + 45 * thr;
+    const lightI = 24 * plasmaI + 22 * thr;
     fxLight.intensity = lightI; fxLight.visible = lightI > 0.1;
     fxLight.color.setRGB(1, 0.5, 0.18).lerp(colC.setRGB(1, 0.75, 0.5), thr);
     fxLight.position.set(podBase.x, podBase.y - 1.0, podBase.z);
@@ -266,15 +290,9 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     tickArchetypeMesh(pod.mesh, tn); tickArchetypeMesh(carrier.mesh, tn);
 
     // ---------- camera
-    {
-      const k = clamp(tn, 3.6, 29), ph = camPhi(k) * D2R, ep = camEps(k) * D2R, D = Math.exp(camLnD(k));
-      camPos.set(podCenter.x + D * Math.cos(ep) * Math.cos(ph), podCenter.y + D * Math.sin(ep), podCenter.z + D * Math.cos(ep) * Math.sin(ph));
-      camTgt.set(podCenter.x, podCenter.y + camLookY(k), podCenter.z);
-      const e = smoother(29, 34, tn);
-      if (e > 0) { if (e >= 1) { camPos.copy(FINAL_POS); camTgt.copy(FINAL_TARGET); } else { camPos.lerp(FINAL_POS, e); camTgt.lerp(FINAL_TARGET, e); } }
-    }
+    camCurve(tn, podCenter, camPos, camTgt);
     // carrier-locked hand-off shot (same carrier-local pose the menu stage dollies into), released as the pod drops
-    const cw = 1 - smoother(startAt + 1.4, 6.4, tn);
+    const cw = startAt < 4 ? 1 - smoother(startAt + 1.4, 6.4, tn) : 0;
     camera.up.set(0, 1, 0);
     if (cw > 0) {
       carrier.root.updateWorldMatrix(true, false);
@@ -327,9 +345,12 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     surface.group.visible = tn >= 19;
 
     globe.setOpacity(1 - smoothstep(27, 31, tn));
-    globe.shared.uSkyBlend.value = smoothstep(16, 24, tn) * 0.9;
-    globe.shared.uSkyColor.value.copy(backdrop.uniforms.uHorizon.value);
-    globe.shared.uHazeDist.value.set(100, 9000);
+    // once the surface patch is visible the globe around it must dissolve into exactly the fog colour the patch's
+    // edge fades to — otherwise the patch boundary reads as a square/ring against the globe
+    const toFog = smoothstep(20, 27, tn);
+    globe.shared.uSkyBlend.value = Math.min(1, smoothstep(16, 24, tn) * 0.9 + 0.1 * toFog);
+    globe.shared.uSkyColor.value.copy(backdrop.uniforms.uHorizon.value).lerp(fog.color, toFog);
+    globe.shared.uHazeDist.value.set(lerp(100, 20, toFog), lerp(9000, 260, toFog));
     globe.shared.uCloudNear.value.set(40, 500);
     globe.shared.uAtmStrength.value = smoothstep(140, 420, camAlt);
     globe.shared.uTime.value = tn;
@@ -345,7 +366,7 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     viewport.hemi.intensity = lerp(0.3, spec.sky.hemiIntensity, kSky);
     viewport.renderer.toneMappingExposure = lerp(1.0, spec.sky.exposure, kSky);
     scene.environmentIntensity = lerp(0.3, saved.envI, smoothstep(20, 30, tn));
-    viewport.bloom.strength = saved.bloom + 0.2 * P + 0.15 * thr;
+    viewport.bloom.strength = saved.bloom + 0.08 * P + 0.06 * thr;
     tmpC.copy(podCenter); viewport.followShadow(tmpC);
     posNoSink.copy(podBase);
 
@@ -357,6 +378,7 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     tel.speedKmh = speedCurve(tn);
     tel.gForce = gCurve(tn) * (0.75 + 0.5 * dens);
     tel.heatPct = heat * 100;
+    tel.hullTempC = hullTemp(tn, heat);
     tel.caption = caption(tn, spec.name);
     for (const cb2 of telCbs) cb2(tel);
   }
@@ -391,6 +413,22 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     for (const c of doneCbs) c(h);
   }
 
+  /** Skin temperature: cold soak in orbit, steep rise in the plasma, residual soak-back after the shield drops, retro heat. */
+  const hullTemp = (tn: number, heat: number) => {
+    const peak = 1450 + 650 * dens;
+    const soak = 260 * smoothstep(21, 24, tn) * (1 - smoothstep(26, 33, tn));   // hot structure cooling down slowly
+    const retro = 140 * smoothstep(28.9, 30, tn) * (1 - smoothstep(34, 35, tn));
+    const ambient = lerp(-40, 18, smoothstep(22, 32, tn));                      // space cold → planet air
+    return ambient + peak * Math.pow(heat, 1.15) + soak + retro;
+  };
+  const telAt = (tn: number): DescentTelemetry => {
+    const yRel = altCurve(tn);
+    return {
+      t: tn / tScale, duration, progress: clamp(tn / TL), phase: phaseOf(tn),
+      altitudeKm: 400 * Math.pow(Math.max(yRel, 0) / Y0, 1.6), speedKmh: speedCurve(tn), gForce: gCurve(tn) * (0.75 + 0.5 * dens),
+      heatPct: 0, hullTempC: hullTemp(tn, 0), caption: caption(tn, spec.name),
+    };
+  };
   // hand-off description for the menu stage (carrier-local camera pose + the lighting it must converge to)
   const cq0 = new THREE.Quaternion().setFromEuler(new THREE.Euler(0.02 * Math.sin(startAt * 0.6), 0.3, 0));
   const handoff: DescentHandoff = {
@@ -401,11 +439,25 @@ export const createDescentSequence: CreateDescentSequence = (opts) => {
     hemiColor: spaceHemi.clone(), hemiGround: spaceHemiG.clone(), hemiIntensity: 0.3,
     exposure: 1.0, envIntensity: 0.3, bloom: saved.bloom,
     bayGlow: bayGlowAt(startAt), podYawLocal: -0.3, carrierScale: carrier.root.scale.x,
-    tel: { t: startAt / tScale, duration, progress: clamp(startAt / TL), phase: phaseOf(startAt), altitudeKm: 400, speedKmh: speedCurve(startAt), gForce: 0, heatPct: 0, caption: caption(startAt, spec.name) },
+    tel: telAt(Math.min(startAt, 2.6)),
+    telAt,
+    R, centre: C.clone(), fov: 28 + 8 * smoothstep(13, 17, startAt) * (1 - smoothstep(25, 31, startAt)),
+    pod: new THREE.Vector3(), podQuat: new THREE.Quaternion(), cam: new THREE.Vector3(), camTarget: new THREE.Vector3(),
+    sunDir: sunDir.clone(), podH,
   };
+  {
+    const pb = pos(startAt, new THREE.Vector3());
+    handoff.pod.set(pb.x, pb.y + podH / 2, pb.z);
+    handoff.podQuat.setFromEuler(podRot(startAt, new THREE.Euler()));
+    camCurve(startAt, handoff.pod, handoff.cam, handoff.camTarget);
+  }
 
   const api: DescentSequence = {
     duration, handoff,
+    alignGlobe(spinQuat, cloudRotY) {
+      globe.spin.quaternion.copy(spinQuat);
+      globe.clouds.rotation.y = cloudRotY;
+    },
     finalPose: { position: FINAL_POS.clone(), target: FINAL_TARGET.clone() },
     start() { if (started) return; started = true; t = startAt / tScale; scroll = 0; applyFrame(startAt, 0); },
     update(dt) {
