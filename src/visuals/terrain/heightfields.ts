@@ -1,5 +1,6 @@
 import type { PlanetSpec } from '../../planets/PlanetSpec';
 import { Noise2, mulberry32, smoothstep, mix } from './noise';
+import { scatterLandforms, smax } from './landforms';
 
 export interface LiquidInfo { level: number; kind: 'water' }
 export interface HeightField {
@@ -7,6 +8,8 @@ export interface HeightField {
   liquid: LiquidInfo | null;
   /** wind direction (unit, xz) used by dune shading/particles */
   wind: [number, number];
+  /** Optional 0..1 bedrock mask (1 = exposed rock: cliffs/plateaus, fading over the scree). Absent → slope-based. */
+  rock?(x: number, z: number): number;
 }
 
 /** Smooth max against a floor: never goes below `f`, identity well above it. */
@@ -27,6 +30,7 @@ export function createHeightField(spec: PlanetSpec, extent: number): HeightField
   let raw: (x: number, z: number) => number;
   let liquid: LiquidInfo | null = null;
   let edgeY = 0;
+  let rock: ((x: number, z: number) => number) | undefined;
 
   const place = (minR: number, maxR: number) => {
     const a = rng() * Math.PI * 2, r = minR + rng() * (maxR - minR);
@@ -36,26 +40,39 @@ export function createHeightField(spec: PlanetSpec, extent: number): HeightField
   switch (spec.kind) {
     case 'dune': {
       edgeY = 0.8;
-      const mesas = Array.from({ length: 6 }, (_, i) => {
-        const p = place(24 + (i % 3) * 9, 56);
-        return { ...p, r: 4.5 + rng() * 4.5, h: 5 + rng() * 6 };
+      // Rock landforms from the shared generator: mesas, buttes, hoodoo clusters, cuesta ridges, inselbergs —
+      // every one seeded individually, spaced apart, neighbours never the same archetype.
+      const forms = scatterLandforms({
+        seed: spec.seed, noise: n, count: 7, minR: 30, maxR: 60, spacing: 24,
+        kinds: [['mesa', 3], ['butte', 2], ['spires', 2], ['ridge', 2], ['dome', 1]],
       });
-      raw = (x, z) => {
+      const smp = { h: 0, rock: 0 };
+      const raw0 = (x: number, z: number) => {
         const u = x * wind[0] + z * wind[1], v = -x * wind[1] + z * wind[0];
         const warp = n.fbm(x * 0.016 + 11, z * 0.016, 3) * 14;
         const sabs = (q: number) => Math.sqrt(q * q + 0.06) - 0.2449;
         const R = 1 - sabs(n.n(u * 0.065 + warp * 0.07, v * 0.019 + 3.7));
         let h = 4.3 * Math.pow(R, 1.8) + 2.2 * n.fbm(x * 0.013, z * 0.013, 3);
         h += 0.5 * Math.pow(1 - sabs(n.n(u * 0.13 + warp * 0.1, v * 0.045 + 9)), 3);
-        for (const m of mesas) {
-          const dx = x - m.x, dz = z - m.z;
-          const dd = Math.hypot(dx, dz) / (m.r * (1 + 0.22 * n.n(x * 0.07, z * 0.07)));
-          if (dd > 1.9) continue;
-          const top = m.h + 0.35 * n.fbm(x * 0.25, z * 0.25, 2) + h * 0.12;
-          h += (1 - smoothstep(1.0, 1.9, dd)) * m.h * 0.22;
-          h = mix(h, top, 1 - smoothstep(0.78, 1.0, dd));
+        return h;
+      };
+      raw = (x, z) => {
+        let h = raw0(x, z);
+        for (const f of forms) {
+          if (!f.sample(x, z, smp)) continue;
+          h = smax(h, smp.h, 1.4);                     // sand piles against the rock, rock rises out of the dunes
         }
         return h;
+      };
+      rock = (x, z) => {
+        let r = 0;
+        const base = raw0(x, z);
+        for (const f of forms) {
+          if (!f.sample(x, z, smp)) continue;
+          // rock only where the landform actually rises out of the sand (buried apron stays sand)
+          r = Math.max(r, smp.rock * Math.min(1, Math.max(0, (smp.h - base + 0.4) / 1.2)));
+        }
+        return r;
       };
       break;
     }
@@ -97,5 +114,9 @@ export function createHeightField(spec: PlanetSpec, extent: number): HeightField
     const e = smoothstep(extent * 0.55, extent * 0.98, Math.max(Math.abs(x), Math.abs(z)));
     return mix(h, edgeY, e);
   };
-  return { height, liquid, wind };
+  const rockOut = rock && ((x: number, z: number) => {
+    const r = Math.hypot(x, z);
+    return rock!(x, z) * smoothstep(9, 22, r) * (1 - smoothstep(extent * 0.55, extent * 0.98, Math.max(Math.abs(x), Math.abs(z))));
+  });
+  return { height, liquid, wind, rock: rockOut };
 }

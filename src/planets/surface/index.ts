@@ -22,7 +22,7 @@ const jitter = (amt: number, hueShift = 0) => (r: number, c: THREE.Color) => {
 export const createPlanetSurface: CreatePlanetSurface = (spec, opts) => {
   const half = opts?.halfSize ?? 64;
   const quality = opts?.quality ?? 'high';
-  const N = quality === 'high' ? 320 : 200;
+  const N = quality === 'high' ? 420 : 240;
   const cellMul = quality === 'high' ? 1 : 1.4;
   const field = createHeightField(spec, half * 2);
   const terrain = createTerrain(spec, field, half, N);

@@ -53,6 +53,11 @@ ${NOISE_GLSL}`)
 { vec2 q = vWaterWorldPos.xz; float tt = uTime;
   vec3 g = vec3(cos(q.x*1.8+tt*2.2)*0.2 + cos(q.x*4.5+tt*3.0+q.y*1.7)*0.06, 0.0, -sin(q.y*2.3-tt*1.7)*0.18 + sin(q.y*5.1-tt*2.6+q.x*1.3)*0.06);
   normal = normalize(normal + (viewMatrix*vec4(g,0.0)).xyz*0.5); }`)
+      .replace('#include <fog_fragment>', `#include <fog_fragment>
+#ifdef USE_FOG
+  { float eg = smoothstep(0.5, 0.93, length(vWaterWorldPos.xz) / (uSpan * 0.5)); // same radial fade as the terrain edge
+    gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, eg); gl_FragColor.a = mix(gl_FragColor.a, 1.0, eg); }
+#endif`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
 { float fr = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 3.0); totalEmissiveRadiance += uSky*fr*0.55; }`);
   };
