@@ -1,0 +1,87 @@
+/* Motion library demos. Requires tokens.css + base.css.
+   Easings: servo = var(--ta-ease-servo), hydraulic = var(--ta-ease-hydraulic), circuit = steps(n). */
+.stage{position:relative;height:200px;background:#050608;border:1px solid #222631;overflow:hidden;display:flex;align-items:center;justify-content:center}
+
+/* 1 boot */
+.boot div{opacity:0;animation:bootIn .01s steps(1) forwards}
+.boot div:nth-child(1){animation-delay:.2s}.boot div:nth-child(2){animation-delay:.6s}.boot div:nth-child(3){animation-delay:1s}.boot div:nth-child(4){animation-delay:1.5s}.boot div:nth-child(5){animation-delay:2.1s}
+@keyframes bootIn{to{opacity:1}}
+.caret{animation:blink 1s steps(2,start) infinite}
+@keyframes blink{to{visibility:hidden}}
+
+/* 2 plate assemble */
+.asm span{position:absolute;background:#F2F4F7;animation:asm .9s var(--ta-ease-servo) both}
+.asm .a{left:0;top:0;width:60px;height:60px;--fx:-120px;--fy:-80px;--r:-40deg;background:#FF6A13}
+.asm .b{left:64px;top:0;width:60px;height:60px;--fx:120px;--fy:-90px;--r:30deg;animation-delay:.12s}
+.asm .c{left:0;top:64px;width:60px;height:60px;--fx:-110px;--fy:90px;--r:25deg;animation-delay:.24s;background:#1E5BFF}
+.asm .d{left:64px;top:64px;width:60px;height:60px;--fx:130px;--fy:80px;--r:-35deg;animation-delay:.36s;background:#111318;border:2px solid #FF6A13}
+@keyframes asm{from{transform:translate(var(--fx),var(--fy)) rotate(var(--r));opacity:0}to{transform:none;opacity:1}}
+.asm{animation:lock .3s ease-out 1.25s both}
+@keyframes lock{0%{filter:none}40%{filter:drop-shadow(0 0 14px #FF6A13)}100%{filter:none}}
+
+/* 3 servo press */
+.servo{animation:servo 2.4s var(--ta-ease-servo) infinite}
+@keyframes servo{0%,60%,100%{transform:none;box-shadow:0 0 0 0 rgba(255,106,19,.6)}65%{transform:translateY(3px) scale(.97)}75%{transform:translateY(-2px);box-shadow:0 0 0 14px rgba(255,106,19,0)}}
+
+/* 4 scan */
+.scanbar{position:absolute;left:0;right:0;height:40px;background:linear-gradient(180deg,transparent,rgba(57,208,255,.35),transparent);animation:scan 2.6s linear infinite}
+@keyframes scan{from{top:-40px}to{top:100%}}
+
+/* 5 radar */
+.radar{width:150px;height:150px;border-radius:50%;border:1px solid #1E5BFF;position:relative;background:repeating-radial-gradient(circle,transparent 0 24px,rgba(30,91,255,.35) 24px 25px)}
+.radar .sweep{position:absolute;inset:0;border-radius:50%;background:conic-gradient(from 0deg,rgba(91,140,255,.55),transparent 70deg);animation:rot 2.8s linear infinite}
+@keyframes rot{to{transform:rotate(360deg)}}
+.blip{position:absolute;width:8px;height:8px;background:#FF6A13;border-radius:50%;animation:blip 2.8s ease-out infinite}
+@keyframes blip{0%,20%{opacity:0;transform:scale(.4)}25%{opacity:1;transform:scale(1.4)}80%,100%{opacity:0;transform:scale(1)}}
+
+/* 6 lightning */
+.bolt{animation:bolt 3.2s steps(1) infinite}
+@keyframes bolt{0%,70%{opacity:0}71%{opacity:1}73%{opacity:.2}75%{opacity:1}80%,100%{opacity:0}}
+.flash{position:absolute;inset:0;background:#C8F0FF;animation:flash 3.2s ease-out infinite}
+@keyframes flash{0%,70%{opacity:0}71%{opacity:.35}85%,100%{opacity:0}}
+
+/* 7 robot bob */
+.bob{animation:bob 1.6s ease-in-out infinite}
+@keyframes bob{50%{transform:translateY(-8px)}}
+.visor{animation:visor 4s steps(1) infinite}
+@keyframes visor{0%,92%{opacity:1}93%,96%{opacity:.15}97%,100%{opacity:1}}
+.shadow{animation:sh 1.6s ease-in-out infinite}
+@keyframes sh{50%{transform:scaleX(.75);opacity:.35}}
+
+/* 8 energy flow */
+.flow{stroke-dasharray:12 10;animation:flow .8s linear infinite}
+@keyframes flow{to{stroke-dashoffset:-22}}
+
+/* 9 terraform */
+.tf{position:absolute;left:0;top:0;bottom:0;background:linear-gradient(90deg,#1E3A2A,#2D6B57);animation:tf 4s var(--ta-ease-hydraulic) infinite}
+.tf::after{content:"";position:absolute;right:-3px;top:-6px;bottom:-6px;width:6px;background:#3DDC84;box-shadow:0 0 18px #3DDC84}
+@keyframes tf{0%{width:4%}85%,100%{width:92%}}
+
+/* 10 counter */
+.digit{display:inline-block;height:56px;overflow:hidden;vertical-align:top}
+.digit span{display:block;animation:roll 3s steps(10) infinite}
+.digit.d2 span{animation-duration:30s}
+@keyframes roll{to{transform:translateY(-560px)}}
+
+/* 11 hazard loader */
+.hz{height:22px;width:260px;background:repeating-linear-gradient(-45deg,#FF6A13 0 14px,#07080A 14px 28px);background-size:40px 40px;animation:hz .7s linear infinite}
+@keyframes hz{to{background-position:40px 0}}
+
+/* 12 glitch */
+.gl{position:relative;font-family:'Chakra Petch',sans-serif;font-weight:700;font-size:44px;letter-spacing:.06em}
+.gl::before,.gl::after{content:attr(data-t);position:absolute;left:0;top:0}
+.gl::before{color:#FF6A13;animation:g1 2.6s steps(1) infinite}
+.gl::after{color:#1E5BFF;animation:g2 2.6s steps(1) infinite}
+@keyframes g1{0%,88%{transform:none;clip-path:inset(0 0 100% 0)}89%{transform:translate(-4px,0);clip-path:inset(10% 0 55% 0)}92%{transform:translate(3px,0);clip-path:inset(60% 0 10% 0)}95%,100%{clip-path:inset(0 0 100% 0)}}
+@keyframes g2{0%,89%{transform:none;clip-path:inset(0 0 100% 0)}90%{transform:translate(4px,0);clip-path:inset(40% 0 30% 0)}94%{transform:translate(-3px,0);clip-path:inset(5% 0 75% 0)}97%,100%{clip-path:inset(0 0 100% 0)}}
+
+.paused *,.paused *::before,.paused *::after{animation-play-state:paused !important}
+@media (prefers-reduced-motion: reduce){.mo *,.mo *::before,.mo *::after{animation-duration:.01s !important;animation-iteration-count:1 !important}}
+
+/* page layout */
+.mo { max-width: 1440px; margin: 0 auto; padding: 72px 80px; display: flex; flex-direction: column; gap: 40px; }
+.mo-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+.mo-grid figure { margin: 0; display: flex; flex-direction: column; gap: 10px; }
+.mo-grid figcaption b { display: block; font-family: var(--ta-font-display); text-transform: uppercase; }
+.mo-grid figcaption span { font-family: var(--ta-font-mono); font-size: 11px; color: var(--ta-steel); }
+@media (max-width: 900px) { .mo { padding: 40px 16px; } }

@@ -1,0 +1,85 @@
+/* TerraAgent design tokens — "Faction Plate" (spacerobopunk)
+   Core: void black · hull white · ignition orange · signal blue. */
+@import url("https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap");
+
+:root {
+  /* core */
+  --ta-void: #07080A;
+  --ta-hull: #F2F4F7;
+  --ta-orange: #FF6A13;
+  --ta-blue: #1E5BFF;
+
+  /* surfaces (dark) */
+  --ta-deep: #0B0D11;
+  --ta-plate: #111318;
+  --ta-plate-2: #0F1116;
+  --ta-plate-3: #15181F;
+  --ta-seam: #222631;
+  --ta-seam-2: #2A2F3A;
+  --ta-seam-3: #3A4150;
+  --ta-black-hole: #050608;
+
+  /* text */
+  --ta-text: #F2F4F7;
+  --ta-text-2: #C9CFDA;
+  --ta-text-3: #A9B1C1;
+  --ta-steel: #8A93A6;
+  --ta-dim: #6B7385;
+  --ta-ink: #0A0B0D;          /* text on hull */
+  --ta-ink-2: #4A5263;
+  --ta-hull-line: #D5DAE3;
+
+  /* accents */
+  --ta-orange-hi: #FF8A3D;    /* orange text on void */
+  --ta-orange-ink: #C2410C;   /* orange text on hull (4.8:1) */
+  --ta-blue-hi: #5B8CFF;      /* blue text on void (6.3:1) */
+  --ta-blue-deep: #0E2A80;
+  --ta-energy: #39D0FF;
+  --ta-terra: #3DDC84;
+  --ta-fault: #FF3B3B;
+  --ta-fault-text: #FF6B6B;
+
+  /* type */
+  --ta-font-display: "Chakra Petch", system-ui, sans-serif;
+  --ta-font-body: "IBM Plex Sans", system-ui, sans-serif;
+  --ta-font-mono: "IBM Plex Mono", ui-monospace, monospace;
+
+  --ta-fs-display-xl: clamp(44px, 6.4vw, 92px);
+  --ta-fs-h1: clamp(34px, 4.2vw, 56px);
+  --ta-fs-h2: 40px;
+  --ta-fs-h3: 24px;
+  --ta-fs-body-l: 19px;
+  --ta-fs-body: 17px;
+  --ta-fs-small: 15px;
+  --ta-fs-eyebrow: 13px;
+  --ta-fs-label: 11px;
+
+  --ta-track-eyebrow: 0.16em;
+  --ta-track-label: 0.14em;
+  --ta-track-button: 0.12em;
+
+  /* spacing (4 px base) */
+  --ta-s1: 4px; --ta-s2: 8px; --ta-s3: 12px; --ta-s4: 16px; --ta-s5: 24px;
+  --ta-s6: 32px; --ta-s7: 48px; --ta-s8: 64px; --ta-s9: 96px;
+
+  /* plates (chamfer sizes) */
+  --ta-chamfer-s: 10px;
+  --ta-chamfer-m: 16px;
+  --ta-chamfer-l: 28px;
+
+  /* glow */
+  --ta-glow-1: 0 0 14px rgba(255, 106, 19, 0.35);
+  --ta-glow-2: 0 0 28px rgba(57, 208, 255, 0.5);
+  --ta-glow-3: 0 0 44px rgba(255, 106, 19, 0.75);
+
+  /* motion */
+  --ta-dur-instant: 80ms;
+  --ta-dur-quick: 150ms;
+  --ta-dur-base: 240ms;
+  --ta-dur-plate: 420ms;
+  --ta-dur-cinematic: 900ms;
+  --ta-ease-servo: cubic-bezier(.2, .9, .3, 1.2);
+  --ta-ease-hydraulic: cubic-bezier(.7, 0, .2, 1);
+
+  --ta-container: 1320px;
+}

@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TerraAgent — Hub</title>
+<meta name="theme-color" content="#07080A">
+<link rel="stylesheet" href="/frontend/design/css/tokens.css">
+<link rel="stylesheet" href="/frontend/design/css/base.css">
+<style>
+  body { min-height: 100vh; display: flex; flex-direction: column; }
+  .hub { flex: 1; width: 100%; padding-top: 72px; padding-bottom: 64px; }
+  .hub-head { display: flex; flex-wrap: wrap; gap: 24px; align-items: end; justify-content: space-between; }
+  .wordmark { margin: 16px 0 0; font-family: var(--ta-font-display); font-weight: 700; font-size: var(--ta-fs-display-xl); line-height: 0.96; letter-spacing: 0.08em; }
+  .wordmark b { color: var(--ta-orange); font-weight: 700; }
+  .hub-head .lede { margin: 20px 0 0; max-width: 560px; }
+  .doors { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-top: 56px; }
+  .door { position: relative; display: flex; flex-direction: column; gap: 14px; min-height: 380px; padding: 0; color: inherit; text-decoration: none; background: var(--ta-plate-2); border: 1px solid var(--ta-seam); }
+  .door:hover { color: inherit; }
+  .door-art { position: relative; height: 150px; overflow: hidden; background: var(--ta-black-hole); border-bottom: 1px solid var(--ta-seam); }
+  .door-body { display: flex; flex-direction: column; gap: 12px; flex: 1; padding: 0 28px 28px; }
+  .door-top { display: flex; justify-content: space-between; align-items: center; }
+  .door-num { font-family: var(--ta-font-display); font-size: 40px; font-weight: 700; line-height: 1; color: var(--ta-seam-3); }
+  .door p { margin: 0; color: var(--ta-text-3); font-size: 15px; }
+  .door .path { margin-top: auto; font-family: var(--ta-font-mono); font-size: 12px; letter-spacing: 0.08em; color: var(--ta-steel); }
+  .door .go { align-self: flex-start; }
+  .door.is-key { border-color: var(--ta-orange); }
+  .door.is-key .door-num { color: var(--ta-orange); }
+  .quick { display: flex; flex-wrap: wrap; gap: 6px; }
+  .quick a { position: relative; z-index: 1; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.1em; text-decoration: none; padding: 4px 8px; border: 1px solid var(--ta-seam-3); color: var(--ta-text-2); }
+  .quick a:hover { border-color: var(--ta-orange); color: var(--ta-orange-hi); }
+  /* card-wide click target that still lets the quick links work */
+  .door > .cover { position: absolute; inset: 0; z-index: 0; }
+  .door-body > * { position: relative; z-index: 1; }
+  .door-body > .path, .door-body > p, .door-body > .door-top, .door-body > .h3 { pointer-events: none; }
+
+  /* door art: pure CSS so the hub stays dependency-free */
+  .art-landing { background: radial-gradient(900px 300px at 80% 50%, rgba(30,91,255,.22), transparent 60%), var(--ta-black-hole); }
+  .art-landing::before { content: ""; position: absolute; right: 36px; top: 22px; width: 104px; height: 104px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #F0CF8C 0 12%, #C98A4B 34%, #3DDC84 35% 46%, #2D6B57 62%, #0E2A3A 100%); box-shadow: 0 0 0 6px rgba(91,140,255,.18), 0 0 40px rgba(91,140,255,.35); }
+  .art-landing::after { content: "DROP ONE ROBOT."; position: absolute; left: 28px; bottom: 22px; font-family: var(--ta-font-display); font-weight: 700; font-size: 26px; color: var(--ta-hull); }
+  .art-play { background: repeating-linear-gradient(-45deg, var(--ta-orange) 0 18px, var(--ta-void) 18px 36px); }
+  .art-play::after { content: "DEPLOY"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 14px 30px 14px 38px; font-family: var(--ta-font-display); font-weight: 700; font-size: 22px; letter-spacing: 0.3em; background: var(--ta-void); color: var(--ta-orange); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+  .art-pg { background:
+      linear-gradient(rgba(91,140,255,.22) 1px, transparent 1px) 0 0 / 24px 24px,
+      linear-gradient(90deg, rgba(91,140,255,.22) 1px, transparent 1px) 0 0 / 24px 24px,
+      var(--ta-black-hole); }
+  .art-pg::before { content: ""; position: absolute; left: 50%; top: 50%; width: 120px; height: 44px; transform: translate(-50%, 10px); border: 2px solid var(--ta-orange); border-radius: 50%; }
+  .art-pg::after { content: "ISO · FRONT · SIDE · TOP"; position: absolute; left: 18px; top: 14px; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ta-steel); }
+  .art-pg i { position: absolute; left: 50%; top: 30px; width: 46px; height: 70px; transform: translateX(-50%); background: var(--ta-hull); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+  .art-pg i::after { content: ""; position: absolute; left: 8px; right: 8px; top: 12px; height: 8px; background: var(--ta-energy); }
+
+  .ref { display: flex; flex-wrap: wrap; gap: 20px; align-items: center; justify-content: space-between; margin-top: 20px; padding: 22px 28px; background: var(--ta-deep); border: 1px solid var(--ta-seam); }
+  .ref .h3 { font-size: 20px; }
+  .ref p { margin: 4px 0 0; color: var(--ta-text-3); font-size: 15px; }
+  .ref nav { display: flex; flex-wrap: wrap; gap: 8px; }
+  .hub-foot { border-top: 1px solid var(--ta-seam); }
+  .hub-foot .container { display: flex; flex-wrap: wrap; gap: 16px; justify-content: space-between; padding-top: 24px; padding-bottom: 24px; font-family: var(--ta-font-mono); font-size: 12px; letter-spacing: 0.08em; color: var(--ta-steel); }
+</style>
+</head>
+<body>
+<main class="container hub">
+  <header class="hub-head">
+    <div>
+      <p class="eyebrow">PROJECT HUB · LOCAL BUILD</p>
+      <h1 class="wordmark">TERRA<b>AGENT</b></h1>
+      <p class="lede">Autonomous colony builder. Pick where to go: the public site, the game, or the 3D model playground.</p>
+    </div>
+    <span class="chip-live"><span class="dot-live"></span>VITE · THREE.JS</span>
+  </header>
+
+  <section class="doors" aria-label="Pages">
+    <article class="door plate card-hover">
+      <a class="cover" href="/landing.html" aria-label="Open the landing page"></a>
+      <div class="door-art art-landing" aria-hidden="true"></div>
+      <div class="door-body">
+        <div class="door-top"><span class="label c-orange">PUBLIC SITE</span><span class="door-num">01</span></div>
+        <h2 class="h3">Landing</h2>
+        <p>terraagent.com: live WebGL planet, the colony loop, economy, planets, AI Director and FAQ.</p>
+        <span class="path">/landing.html</span>
+        <a class="btn btn-ghost btn-sm go" href="/landing.html">OPEN LANDING <span aria-hidden="true">→</span></a>
+      </div>
+    </article>
+
+    <article class="door plate card-hover is-key">
+      <a class="cover" href="/play.html" aria-label="Play the game"></a>
+      <div class="door-art art-play" aria-hidden="true"></div>
+      <div class="door-body">
+        <div class="door-top"><span class="label c-orange">GAME</span><span class="door-num">02</span></div>
+        <h2 class="h3">Play</h2>
+        <p>Orbit menu, drop-pod descent and the colony diorama. Jump straight to a world:</p>
+        <div class="quick">
+          <a href="/play.html?planet=dune">KHARON DUNES</a>
+          <a href="/play.html?planet=oceanForest">THALASSA VERDE</a>
+          <a href="/play.html?planet=forestRock">GRANITE HOLLOW</a>
+        </div>
+        <span class="path">/play.html</span>
+        <a class="btn btn-primary btn-sm go" href="/play.html">PLAY <span aria-hidden="true">→</span></a>
+      </div>
+    </article>
+
+    <article class="door plate card-hover">
+      <a class="cover" href="/playground.html" aria-label="Open the 3D playground"></a>
+      <div class="door-art art-pg" aria-hidden="true"><i></i></div>
+      <div class="door-body">
+        <div class="door-top"><span class="label c-blue">3D STORYBOOK</span><span class="door-num">03</span></div>
+        <h2 class="h3">Playground</h2>
+        <p>Every kitbash archetype on a calibrated pedestal: 4 diagnostic views, biomes, triangle budget, ground contact.</p>
+        <div class="quick">
+          <a href="/playground.html?inspect=robot.hero">ROBOT.HERO</a>
+          <a href="/playground.html?inspect=building.commandHub">COMMAND HUB</a>
+          <a href="/playground.html?inspect=ship.carrier">CARRIER</a>
+        </div>
+        <span class="path">/playground.html</span>
+        <a class="btn btn-ghost btn-sm go" href="/playground.html">OPEN PLAYGROUND <span aria-hidden="true">→</span></a>
+      </div>
+    </article>
+  </section>
+
+  <section class="ref plate-sm" aria-label="Design system">
+    <div>
+      <p class="label">REFERENCE</p>
+      <h2 class="h3">Design system · Faction Plate</h2>
+      <p>Tokens, components and motion that every page above is built from.</p>
+    </div>
+    <nav>
+      <a class="btn btn-ghost btn-sm" href="/frontend/design/index.html">INDEX</a>
+      <a class="btn btn-ghost btn-sm" href="/frontend/design/foundations.html">FOUNDATIONS</a>
+      <a class="btn btn-ghost btn-sm" href="/frontend/design/storybook.html">STORYBOOK</a>
+      <a class="btn btn-ghost btn-sm" href="/frontend/design/motion.html">MOTION</a>
+    </nav>
+  </section>
+</main>
+<footer class="hub-foot">
+  <div class="container"><span>TERRAAGENT · AUTONOMOUS COLONY BUILDER</span><span>npm run dev · 127.0.0.1:5173</span></div>
+</footer>
+</body>
+</html>

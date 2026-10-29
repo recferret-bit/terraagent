@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TerraAgent — Motion</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/docs.css">
+<link rel="stylesheet" href="css/motion.css">
+</head>
+<body>
+<nav class="doc-nav" aria-label="Design system" style="max-width:1440px;margin:0 auto;padding:24px 80px 0"><a href="index.html">INDEX</a><a href="landing.html">LANDING</a><a href="foundations.html">FOUNDATIONS</a><a href="storybook.html">STORYBOOK</a><a href="motion.html" aria-current="page">MOTION</a></nav>
+<main class="mo">
+  <div style="display: flex; justify-content: space-between; align-items: end; gap: 32px">
+    <div>
+      <p style="margin: 0; font-family: 'IBM Plex Mono', monospace; font-size: 13px; letter-spacing: 0.16em; color: #FF6A13">TERRAAGENT DESIGN SYSTEM · MOTION</p>
+      <h1 style="margin: 12px 0 0; font-family: 'Chakra Petch', sans-serif; font-weight: 700; font-size: 64px; line-height: 1; text-transform: uppercase">Machines move like machines</h1>
+      <p style="margin: 14px 0 0; color: #C9CFDA; font-size: 18px; max-width: 780px">Servo overshoot for things that lock into place, hydraulic ease for things that travel, hard steps for anything electronic. Nothing floats. Everything respects reduced motion.</p>
+    </div>
+    <div style="display: flex; gap: 10px">
+      <button class="btn btn-primary btn-sm" id="replay">↻ REPLAY ALL</button>
+      <button class="btn btn-ghost btn-sm" id="pause" aria-pressed="false">❚❚ PAUSE</button>
+    </div>
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px">
+    <div style="border: 1px solid #222631; padding: 14px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF6A13; letter-spacing: 0.12em">INSTANT · 80 MS</div><div style="font-size: 13px; color: #A9B1C1">Toggles, checkmarks</div></div>
+    <div style="border: 1px solid #222631; padding: 14px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF6A13; letter-spacing: 0.12em">QUICK · 150 MS</div><div style="font-size: 13px; color: #A9B1C1">Hover lift, press</div></div>
+    <div style="border: 1px solid #222631; padding: 14px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF6A13; letter-spacing: 0.12em">BASE · 240 MS</div><div style="font-size: 13px; color: #A9B1C1">Panels, tabs, toasts</div></div>
+    <div style="border: 1px solid #222631; padding: 14px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF6A13; letter-spacing: 0.12em">PLATE · 420 MS</div><div style="font-size: 13px; color: #A9B1C1">Assemble, modal in</div></div>
+    <div style="border: 1px solid #222631; padding: 14px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF6A13; letter-spacing: 0.12em">CINEMATIC · 900 MS+</div><div style="font-size: 13px; color: #A9B1C1">Boot, hero, rocket</div></div>
+  </div>
+
+  
+  <div class="mo-grid" id="demos">
+
+    <figure>
+      <div class="stage plate" style="justify-content: flex-start; align-items: flex-start; padding: 22px">
+        <div class="boot" style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; line-height: 1.8; color: #8A93A6">
+          <div>&gt; FOUNDER UNIT BOOT</div>
+          <div>&gt; HULL INTEGRITY ...... <span style="color: #3DDC84">OK</span></div>
+          <div>&gt; POWER CORE .......... <span style="color: #3DDC84">OK</span></div>
+          <div>&gt; LINK api.terraagent .. <span style="color: #5B8CFF">SYNCED</span></div>
+          <div style="color: #FF6A13">&gt; READY FOR DROP<span class="caret">▌</span></div>
+        </div>
+      </div>
+      <figcaption><b>01 Boot sequence</b><span>steps(1) · 400 ms stagger · loading, first welcome</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate"><div class="asm" style="position: relative; width: 124px; height: 124px"><span class="a"></span><span class="b"></span><span class="c"></span><span class="d"></span></div></div>
+      <figcaption><b>02 Plate assemble</b><span>servo overshoot · 900 ms · cards, modals, build complete</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate"><span class="servo plate-sm" style="background: #FF6A13; color: #07080A; font-family: 'Chakra Petch', sans-serif; font-weight: 700; letter-spacing: 0.12em; padding: 16px 26px">DROP IN →</span></div>
+      <figcaption><b>03 Servo press</b><span>150 ms down · 240 ms release ring · primary CTA</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate" style="background: #0F1116"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 12px; color: #8A93A6; text-align: center; line-height: 1.8">SCANNING SECTOR 01<br><span style="color: #F2F4F7; font-size: 22px; font-family: 'Chakra Petch', sans-serif; font-weight: 700">3 PLANETS OPEN</span></div><div class="scanbar"></div></div>
+      <figcaption><b>04 Scan sweep</b><span>linear · 2.6 s loop · picker loading, queue</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate"><div class="radar"><div class="sweep"></div><span class="blip" style="left: 98px; top: 38px"></span><span class="blip" style="left: 40px; top: 96px; animation-delay: 1.4s; background: #5B8CFF"></span></div></div>
+      <figcaption><b>05 Radar</b><span>2.8 s rotation · matchmaking queue position</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate"><div class="flash"></div><svg class="bolt" width="90" height="150" viewBox="0 0 90 150" aria-hidden="true" style="filter: drop-shadow(0 0 10px #9FE7FF)"><path d="M58 0 L30 62 L50 64 L22 150 L70 52 L48 50 L72 0 Z" fill="#E9FBFF"></path></svg><div style="position: absolute; bottom: 14px; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF3B3B; letter-spacing: 0.12em">PYLON P3 SEVERED</div></div>
+      <figcaption><b>06 Lightning hazard</b><span>steps flicker · flash ≤ 35 % · never &gt; 3 per second</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate" style="flex-direction: column; gap: 6px">
+        <svg class="bob" width="90" height="90" viewBox="0 0 90 90" aria-hidden="true"><path d="M58 18 L64 6" stroke="#8A93A6" stroke-width="2"></path><circle cx="64" cy="6" r="3" fill="#FF6A13"></circle><path d="M24 18 H70 V58 L62 66 H16 V26 Z" fill="#F2F4F7"></path><rect class="visor" x="28" y="32" width="34" height="10" fill="#FF6A13"></rect><rect x="12" y="66" width="62" height="10" fill="#1A1D24"></rect><rect x="18" y="48" width="8" height="10" fill="#1E5BFF"></rect></svg>
+        <span class="shadow" style="width: 70px; height: 10px; border-radius: 50%; background: rgba(0,0,0,0.6); display: block"></span>
+      </div>
+      <figcaption><b>07 Hover-bob &amp; visor</b><span>1.6 s sine · idle robots, empty states</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate"><svg width="240" height="120" viewBox="0 0 240 120" aria-hidden="true"><path d="M20 90 Q 80 40 120 70 T 220 40" fill="none" stroke="#1A3A55" stroke-width="6"></path><path class="flow" d="M20 90 Q 80 40 120 70 T 220 40" fill="none" stroke="#39D0FF" stroke-width="3" style="filter: drop-shadow(0 0 6px #39D0FF)"></path><rect x="12" y="82" width="16" height="16" fill="#F2F4F7"></rect><rect x="212" y="32" width="16" height="16" fill="#FF6A13"></rect></svg></div>
+      <figcaption><b>08 Energy flow</b><span>dash offset · speed ∝ load · power lines</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate" style="flex-direction: column; gap: 14px; padding: 0 24px; align-items: stretch"><div style="display: flex; justify-content: space-between; font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8A93A6; letter-spacing: 0.12em"><span>TERRAFORM</span><span style="color: #3DDC84">FRONT ADVANCING</span></div><div style="position: relative; height: 26px; background: #3A2414"><div class="tf"></div></div></div>
+      <figcaption><b>09 Terraform front</b><span>hydraulic ease · glowing leading edge</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate" style="flex-direction: column; gap: 6px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8A93A6; letter-spacing: 0.12em">TICK</div><div style="font-family: 'Chakra Petch', sans-serif; font-weight: 700; font-size: 48px; line-height: 56px; color: #FF6A13">0 1 8 2 <span class="digit d2"><span>0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</span></span><span class="digit"><span>0<br>1<br>2<br>3<br>4<br>5<br>6<br>7<br>8<br>9</span></span></div></div>
+      <figcaption><b>10 Telemetry roll</b><span>steps(10) · never faster than the tick</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate" style="flex-direction: column; gap: 14px"><div class="hz plate-sm"></div><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #8A93A6; letter-spacing: 0.12em">RESTORING PLANET ON NEW WORKER</div></div>
+      <figcaption><b>11 Hazard loader</b><span>0.7 s marquee · failover, reconnect</span></figcaption>
+    </figure>
+
+    <figure>
+      <div class="stage plate"><span class="gl" data-t="SEALED">SEALED</span></div>
+      <figcaption><b>12 Glitch stamp</b><span>2 frames every 2.6 s · state changes only</span></figcaption>
+    </figure>
+  </div>
+  
+
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px">
+    <div style="border: 1px solid #222631; padding: 18px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF6A13; letter-spacing: 0.12em">SERVO</div><code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #C9CFDA">cubic-bezier(.2, .9, .3, 1.2)</code><div style="font-size: 13px; color: #A9B1C1; margin-top: 6px">Locks into place with a small overshoot.</div></div>
+    <div style="border: 1px solid #222631; padding: 18px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF6A13; letter-spacing: 0.12em">HYDRAULIC</div><code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #C9CFDA">cubic-bezier(.7, 0, .2, 1)</code><div style="font-size: 13px; color: #A9B1C1; margin-top: 6px">Heavy start, firm stop. Travel and progress.</div></div>
+    <div style="border: 1px solid #222631; padding: 18px"><div style="font-family: 'IBM Plex Mono', monospace; font-size: 11px; color: #FF6A13; letter-spacing: 0.12em">CIRCUIT</div><code style="font-family: 'IBM Plex Mono', monospace; font-size: 13px; color: #C9CFDA">steps(n) · no easing</code><div style="font-size: 13px; color: #A9B1C1; margin-top: 6px">Text, counters, flicker. Electronics do not ease.</div></div>
+  </div>
+</main>
+<script>
+(function () {
+  var grid = document.getElementById('demos'), pause = document.getElementById('pause');
+  document.getElementById('replay').addEventListener('click', function () {
+    // re-inserting the grid restarts every CSS animation
+    var clone = grid.cloneNode(true); grid.replaceWith(clone); grid = clone;
+    grid.classList.remove('paused'); pause.setAttribute('aria-pressed', 'false'); pause.textContent = '❚❚ PAUSE';
+  });
+  pause.addEventListener('click', function () {
+    var on = grid.classList.toggle('paused');
+    pause.setAttribute('aria-pressed', String(on)); pause.textContent = on ? '▶ RESUME' : '❚❚ PAUSE';
+  });
+})();
+</script>
+</body>
+</html>

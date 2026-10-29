@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TerraAgent — Foundations</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/docs.css">
+</head>
+<body>
+<main class="doc">
+  <nav class="doc-nav" aria-label="Design system"><a href="index.html">INDEX</a><a href="landing.html">LANDING</a><a href="foundations.html" aria-current="page">FOUNDATIONS</a><a href="storybook.html">STORYBOOK</a><a href="motion.html">MOTION</a></nav>
+
+  <header class="doc-title">
+    <div>
+      <p class="eyebrow">TERRAAGENT DESIGN SYSTEM · V0.1 · FOUNDATIONS</p>
+      <h1 class="display">Faction Plate</h1>
+      <p class="lede">Spacerobopunk: armour-plated machines in deep space. White hull, black void, orange for action and heat, blue for systems and intelligence. Every surface looks bolted on, every number looks like telemetry.</p>
+    </div>
+    <div class="principles">
+      <div class="box"><div class="label">01 PLATES</div><div class="muted">Chamfered corners, never round.</div></div>
+      <div class="box"><div class="label">02 SIGNAL</div><div class="muted">Orange means act. Blue means system.</div></div>
+      <div class="box"><div class="label">03 TELEMETRY</div><div class="muted">Numbers and labels in mono.</div></div>
+      <div class="box"><div class="label">04 VOID</div><div class="muted">Black first; light plates for reading.</div></div>
+    </div>
+  </header>
+
+  <!-- COLOR -->
+  <section>
+    <div class="sec-row"><h2 class="h2">Color</h2><span class="label">4 CORE · 9 SUPPORT · RATIO 60 / 25 / 10 / 5</span></div>
+    <div class="core-swatches">
+      <div class="core-swatch plate sw-void"><div class="name" style="color:var(--ta-text)">VOID</div><div class="spec">#07080A · --ta-void<br>Backgrounds, frames, text on orange<br><span class="dim">≈ 60 % of any screen</span></div></div>
+      <div class="core-swatch plate sw-hull"><div class="name">HULL WHITE</div><div class="spec">#F2F4F7 · --ta-hull<br>Primary text, light plates, robot bodies<br><span style="color:var(--ta-ink-2)">≈ 25 %</span></div></div>
+      <div class="core-swatch plate sw-orange"><div class="name">IGNITION</div><div class="spec">#FF6A13 · --ta-orange<br>Primary action, player faction, heat<br>≈ 10 %</div></div>
+      <div class="core-swatch plate sw-blue"><div class="name">SIGNAL BLUE</div><div class="spec">#1E5BFF · --ta-blue<br>Systems, AI, links, neighbours<br>≈ 5 %</div></div>
+    </div>
+    <div class="support-swatches">
+      <div><div class="chipc" style="background:#0B0D11;border:1px solid var(--ta-seam)"></div><div class="meta">DEEP<br>#0B0D11</div></div>
+      <div><div class="chipc" style="background:#111318"></div><div class="meta">PLATE<br>#111318</div></div>
+      <div><div class="chipc" style="background:#222631"></div><div class="meta">SEAM<br>#222631</div></div>
+      <div><div class="chipc" style="background:#8A93A6"></div><div class="meta">STEEL<br>#8A93A6</div></div>
+      <div><div class="chipc" style="background:#FF8A3D"></div><div class="meta">ORANGE HI<br>#FF8A3D</div></div>
+      <div><div class="chipc" style="background:#C2410C"></div><div class="meta">ORANGE INK<br>#C2410C</div></div>
+      <div><div class="chipc" style="background:#5B8CFF"></div><div class="meta">BLUE HI<br>#5B8CFF</div></div>
+      <div><div class="chipc" style="background:#39D0FF;box-shadow:var(--ta-glow-2)"></div><div class="meta">ENERGY<br>#39D0FF</div></div>
+      <div><div class="chipc" style="display:flex"><span style="flex:1;background:#3DDC84"></span><span style="flex:1;background:#FF3B3B"></span></div><div class="meta">TERRA / FAULT<br>#3DDC84 #FF3B3B</div></div>
+    </div>
+    <div class="contrast">
+      <div style="background:var(--ta-orange);color:var(--ta-void)"><b>Aa 6.9:1</b><span>✓ VOID ON IGNITION</span></div>
+      <div style="background:var(--ta-blue);color:#FFFFFF"><b>Aa 5.3:1</b><span>✓ WHITE ON BLUE</span></div>
+      <div style="background:var(--ta-void);color:var(--ta-blue-hi);border:1px solid var(--ta-seam)"><b>Aa 6.3:1</b><span>✓ BLUE HI ON VOID</span></div>
+      <div style="background:var(--ta-void);color:var(--ta-steel);border:1px solid var(--ta-seam)"><b>Aa 6.2:1</b><span>✓ STEEL ON VOID</span></div>
+      <div style="background:var(--ta-hull);color:var(--ta-orange-ink)"><b>Aa 4.8:1</b><span>✓ ORANGE INK ON HULL</span></div>
+      <div class="bad" style="background:var(--ta-orange);color:#FFFFFF"><b>Aa 2.9:1</b><span>✗ NEVER WHITE ON ORANGE</span></div>
+    </div>
+  </section>
+
+  <!-- TYPE -->
+  <section>
+    <div class="sec-row"><h2 class="h2">Type</h2><span class="label">CHAKRA PETCH · IBM PLEX SANS · IBM PLEX MONO</span></div>
+    <div class="cols-3">
+      <div class="font-card plate"><div class="aa" style="font-family:var(--ta-font-display);font-weight:700">Aa</div><div class="fname">Chakra Petch</div><p>Display and headings. Angular cuts echo the armour plates. Uppercase, 600–700.</p></div>
+      <div class="font-card plate"><div class="aa" style="font-family:var(--ta-font-body);font-weight:500">Aa</div><div class="fname">IBM Plex Sans</div><p>Body and UI copy. Engineered, calm, very readable at 15–19 px. Sentence case.</p></div>
+      <div class="font-card plate"><div class="aa" style="font-family:var(--ta-font-mono);font-weight:500">Aa</div><div class="fname">IBM Plex Mono</div><p>Telemetry: eyebrows, labels, counters, logs, codes. Uppercase with wide tracking.</p></div>
+    </div>
+    <div class="type-scale">
+      <div class="type-row"><span class="label">DISPLAY XL · 92 / 0.96</span><span class="display" style="font-size:var(--ta-fs-display-xl)">It keeps building</span></div>
+      <div class="type-row"><span class="label">H1 · 56 / 1.0</span><span class="h1">New players land on new worlds</span></div>
+      <div class="type-row"><span class="label">H2 · 40 / 1.05</span><span class="h2">Power stations</span></div>
+      <div class="type-row"><span class="label">H3 · 24 / 1.2 · +0.04EM</span><span class="h3">Drop the founder</span></div>
+      <div class="type-row"><span class="label">EYEBROW · MONO 13 · +0.16EM</span><span class="eyebrow">04 · PLANETS &amp; MATCHMAKING</span></div>
+      <div class="type-row"><span class="label">BODY L · 19 / 1.55</span><span class="lede" style="max-width:860px">Your robots mine, build, defend and trade on a live planet, around the clock. You set the priorities; the colony does the rest.</span></div>
+      <div class="type-row"><span class="label">BODY · 17 / 1.55</span><span class="muted" style="max-width:860px">Power is physical. Cut a pylon and everything down the line goes offline until a builder repairs it.</span></div>
+      <div class="type-row"><span class="label">READOUT · CHAKRA 34</span><span class="readout c-orange">1,240 <small class="label" style="font-size:16px">M</small> · <span class="c-blue">+18.0</span><small class="label" style="font-size:16px"> /S</small></span></div>
+      <div class="type-row"><span class="label">LABEL · MONO 11 · +0.14EM</span><span class="label">SEATS 3 / 5 · CLOSES IN 14 H · TICK 018240</span></div>
+      <div class="type-row"><span class="label">LOG · MONO 14 / 1.7</span><span class="mono" style="font-size:14px;color:var(--ta-text-2)">▸ <span class="c-fault">LIGHTNING STRIKE · PYLON P3 SEVERED</span> → <span class="c-orange-hi">BUILDER B1 DISPATCHED</span> → <span class="c-terra">RESTORED</span></span></div>
+    </div>
+  </section>
+
+  <!-- VOICE -->
+  <section>
+    <div class="sec-row"><h2 class="h2">Text variants &amp; voice</h2><span class="label">SHORT · CONCRETE · MACHINE-CALM</span></div>
+    <div class="cols-3">
+      <div class="variant plate"><span class="label c-orange">HERO A · ROBOT</span><div class="say">Drop one robot. Leave. It keeps building.</div><div class="muted" style="font-size:15px">Leads with the core promise: autonomy and offline play.</div></div>
+      <div class="variant v-blue plate"><span class="label c-blue">HERO B · WORLD</span><div class="say">Colonize a planet that never logs off.</div><div class="muted" style="font-size:15px">Leads with the shared, persistent multiplayer world.</div></div>
+      <div class="variant v-white plate"><span class="label" style="color:var(--ta-text-2)">HERO C · DIRECTOR</span><div class="say">Set the intent. The colony executes.</div><div class="muted" style="font-size:15px">Leads with indirect control and strategy.</div></div>
+    </div>
+    <div class="cols-4">
+      <div class="voice"><span class="label">SYSTEM VOICE</span><p>Planet sealed. 5 of 5 colonies. It keeps running; it stops taking new colonies.</p></div>
+      <div class="voice ai"><span class="label c-blue">DIRECTOR VOICE</span><p>Water is critical. Accepting the neighbour's trade and queuing a pump.</p></div>
+      <div class="voice alert"><span class="label" style="color:var(--ta-fault-text)">ALERT VOICE</span><p class="h3" style="font-size:20px">Raid on the east beacon</p><p style="font-size:14px;color:var(--ta-text-2)">3 combat bots inbound. Turrets are holding.</p></div>
+      <div class="voice"><span class="label">AWAY REPORT</span><p>While you were away for 9 h: +2,140 metals, 2 storms survived, 1 pylon rebuilt.</p></div>
+    </div>
+    <div class="cols-4">
+      <span class="btn btn-primary">PICK A PLANET →</span>
+      <span class="btn btn-primary">DROP IN →</span>
+      <span class="btn btn-primary">RETURN TO COLONY →</span>
+      <span class="btn btn-system">START A NEW PLANET</span>
+    </div>
+    <p class="dim" style="margin:0;font-size:15px">Rules: buttons are verbs in uppercase; headings in uppercase Chakra; body in sentence case. Use numbers, not adjectives ("5 of 5 colonies", not "full"). Never say "blockchain" in gameplay copy. Say "colony", never "account".</p>
+  </section>
+
+  <!-- PLATES & ICONS -->
+  <section>
+    <div class="sec-row"><h2 class="h2">Plates, motifs &amp; icons</h2><span class="label">CHAMFER 10 · 16 · 28 PX · STROKE 1.6</span></div>
+    <div class="motifs">
+      <div class="plate-sm" style="background:var(--ta-hull);color:var(--ta-void)">PLATE S · 10<br>chips, inputs</div>
+      <div class="plate" style="background:var(--ta-plate);border:1px solid var(--ta-seam-2);color:var(--ta-text-2)">PLATE M · 16<br>cards, buttons</div>
+      <div class="plate-lg" style="background:var(--ta-orange);color:var(--ta-void)">PLATE L · 28<br>hero frames</div>
+      <div class="brackets" style="border:1px solid var(--ta-seam);color:var(--ta-text-2);padding-left:40px">HUD BRACKETS</div>
+      <div style="display:flex;flex-direction:column;gap:10px;color:var(--ta-text-2)"><div class="hazard" style="flex:1"></div><div class="hazard-system" style="flex:1"></div>HAZARD · DANGER / SYSTEM</div>
+      <div class="rivets" style="border:1px solid var(--ta-seam);color:var(--ta-text-2)">RIVET GRID · 16</div>
+    </div>
+    <div class="icons">
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F2F4F7" stroke-width="1.6" aria-hidden="true"><path d="M4 16l4-8h8l4 8z"/><path d="M4 16h16v3H4z"/></svg><figcaption>METALS</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F2F4F7" stroke-width="1.6" aria-hidden="true"><path d="M12 3l6 6-6 12-6-12z"/><path d="M6 9h12"/></svg><figcaption>MINERALS</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F2F4F7" stroke-width="1.6" aria-hidden="true"><rect x="6" y="7" width="12" height="13"/><path d="M9 7V4h6v3M9 12h6"/></svg><figcaption>PETROLEUM</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F2F4F7" stroke-width="1.6" aria-hidden="true"><path d="M12 3c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z"/></svg><figcaption>WATER</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#39D0FF" stroke-width="1.6" aria-hidden="true"><path d="M13 2L5 14h6l-1 8 8-12h-6z"/></svg><figcaption>ENERGY</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#FF6A13" stroke-width="1.6" aria-hidden="true"><rect x="5" y="8" width="14" height="10"/><path d="M8 12h8M12 8V4M7 18v2M17 18v2"/></svg><figcaption>ROBOT</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F2F4F7" stroke-width="1.6" aria-hidden="true"><path d="M12 3v18M7 7h10M8 11h8M9 21h6"/></svg><figcaption>PYLON</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F2F4F7" stroke-width="1.6" aria-hidden="true"><path d="M12 3l7 4v10l-7 4-7-4V7z"/><circle cx="12" cy="12" r="2.5"/></svg><figcaption>BEACON</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F2F4F7" stroke-width="1.6" aria-hidden="true"><path d="M12 2c3 3 4 7 4 11l-4 3-4-3c0-4 1-8 4-11z"/><path d="M8 13l-3 4h4M16 13l3 4h-4M11 19l1 3 1-3"/></svg><figcaption>ROCKET</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#FF3B3B" stroke-width="1.6" aria-hidden="true"><path d="M14 2l-6 9h5l-3 11 8-13h-5z"/></svg><figcaption>HAZARD</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#F2F4F7" stroke-width="1.6" aria-hidden="true"><path d="M12 3l8 3v6c0 5-4 8-8 9-4-1-8-4-8-9V6z"/></svg><figcaption>DEFENSE</figcaption></figure>
+      <figure><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#5B8CFF" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6"/></svg><figcaption>AI DIRECTOR</figcaption></figure>
+    </div>
+  </section>
+
+  <!-- SPACING & GLOW -->
+  <section class="cols-2" style="gap:40px">
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <h2 class="h2">Spacing</h2>
+      <div class="spacing">
+        <div><i style="width:4px;height:4px"></i>4</div><div><i style="width:8px;height:8px"></i>8</div><div><i style="width:12px;height:12px"></i>12</div><div><i style="width:16px;height:16px"></i>16</div><div><i style="width:24px;height:24px"></i>24</div><div><i style="width:32px;height:32px"></i>32</div><div><i style="width:48px;height:48px"></i>48</div><div><i style="width:64px;height:64px"></i>64</div><div><i style="width:96px;height:96px"></i>96 SECTION</div>
+      </div>
+      <p class="muted" style="margin:0;font-size:15px">4-px base. Sections breathe at 96; cards pad 24–28; touch targets never under 44 px.</p>
+    </div>
+    <div style="display:flex;flex-direction:column;gap:18px">
+      <h2 class="h2">Emissive glow</h2>
+      <div class="glows"><div>G0 · NONE</div><div class="g1">G1 · FOCUS</div><div class="g2">G2 · ENERGY</div><div class="g3">G3 · HDR</div></div>
+      <p class="muted" style="margin:0;font-size:15px">Glow is earned: only live energy, focus and the one primary action glow. Matches the in-game 10 % accent / HDR emissive rule from the 3D pillars.</p>
+    </div>
+  </section>
+</main>
+</body>
+</html>

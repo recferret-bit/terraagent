@@ -1,0 +1,128 @@
+import * as THREE from 'three';
+
+/** Procedural lens-flare-ish sun: HDR core glow + streak + ghost rings along the sun→screen-centre line. */
+export interface SunFlare {
+  readonly group: THREE.Group;
+  /** World position of the sun (glow core sits here, depth-tested so the planet can eclipse it). */
+  setPosition(p: THREE.Vector3): void;
+  /** Planet that can occlude the sun (world centre + radius) — ghosts fade when the sun is behind it. */
+  setOccluder(centre: THREE.Vector3, radius: number): void;
+  /** 0..1 — how strongly the viewer is "interacting" with the sun (mouse proximity). Smoothly brightens/expands the flare. */
+  setExcite(k: number): void;
+  /** Pointer in NDC (-1..1). Only the lens glow reacts: ghost axis pivots on it, streak leans toward it. */
+  setPointer(x: number, y: number): void;
+  update(camera: THREE.PerspectiveCamera, time: number): void;
+  dispose(): void;
+}
+
+function canvasTex(draw: (g: CanvasRenderingContext2D, s: number) => void, size = 256) {
+  const c = document.createElement('canvas'); c.width = c.height = size;
+  draw(c.getContext('2d')!, size);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+
+export function createSunFlare(color: THREE.ColorRepresentation = 0xfff0d8): SunFlare {
+  const group = new THREE.Group();
+  group.name = 'SunFlare';
+  const base = new THREE.Color(color);
+  const glowTex = canvasTex((g, s) => {
+    const gr = g.createRadialGradient(s / 2, s / 2, 0, s / 2, s / 2, s / 2);
+    gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.08, 'rgba(255,245,225,0.9)');
+    gr.addColorStop(0.28, 'rgba(255,200,140,0.28)'); gr.addColorStop(0.6, 'rgba(255,150,90,0.06)'); gr.addColorStop(1, 'rgba(255,120,60,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, s, s);
+  });
+  const streakTex = canvasTex((g, s) => {
+    const gr = g.createLinearGradient(0, 0, s, 0);
+    gr.addColorStop(0, 'rgba(255,220,170,0)'); gr.addColorStop(0.5, 'rgba(255,240,215,1)'); gr.addColorStop(1, 'rgba(255,220,170,0)');
+    g.fillStyle = gr; g.fillRect(0, s * 0.47, s, s * 0.06);
+    const v = g.createLinearGradient(0, 0, 0, s); v.addColorStop(0, 'rgba(0,0,0,1)'); v.addColorStop(0.5, 'rgba(0,0,0,0)'); v.addColorStop(1, 'rgba(0,0,0,1)');
+  });
+  // Radial diffraction spikes (two layers counter-rotate for a shimmering star-burst)
+  const raysTex = (seed: number, n: number) => canvasTex((g, sz) => {
+    const c = sz / 2; let r = seed;
+    const rnd = () => { r = (r * 16807) % 2147483647; return r / 2147483647; };
+    g.translate(c, c);
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + (rnd() - 0.5) * 0.12, len = c * (0.35 + rnd() * 0.65), w = 0.012 + rnd() * 0.02;
+      const gr = g.createLinearGradient(0, 0, Math.cos(a) * len, Math.sin(a) * len);
+      gr.addColorStop(0, 'rgba(255,240,215,0.85)'); gr.addColorStop(0.35, 'rgba(255,200,140,0.22)'); gr.addColorStop(1, 'rgba(255,160,90,0)');
+      g.fillStyle = gr; g.beginPath(); g.moveTo(0, 0);
+      g.lineTo(Math.cos(a - w) * len, Math.sin(a - w) * len); g.lineTo(Math.cos(a + w) * len, Math.sin(a + w) * len); g.closePath(); g.fill();
+    }
+  }, 512);
+  const raysA = raysTex(11, 22), raysB = raysTex(97, 14);
+  const ringTex = canvasTex((g, s) => {
+    const gr = g.createRadialGradient(s / 2, s / 2, s * 0.28, s / 2, s / 2, s * 0.5);
+    gr.addColorStop(0, 'rgba(255,255,255,0)'); gr.addColorStop(0.7, 'rgba(180,210,255,0.5)'); gr.addColorStop(0.9, 'rgba(255,190,150,0.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    g.fillStyle = gr; g.fillRect(0, 0, s, s);
+  });
+  const mk = (tex: THREE.Texture, depthTest: boolean) => new THREE.SpriteMaterial({
+    map: tex, color: base.clone(), transparent: true, blending: THREE.AdditiveBlending, depthTest, depthWrite: false, toneMapped: false, fog: false,
+  });
+  const coreMat = mk(glowTex, true), haloMat = mk(glowTex, true), streakMat = mk(streakTex, true);
+  const core = new THREE.Sprite(coreMat), halo = new THREE.Sprite(haloMat), streak = new THREE.Sprite(streakMat);
+  core.renderOrder = 5; halo.renderOrder = 4; streak.renderOrder = 4;
+  const raysAMat = mk(raysA, true), raysBMat = mk(raysB, true);
+  const rayA = new THREE.Sprite(raysAMat), rayB = new THREE.Sprite(raysBMat);
+  rayA.renderOrder = 3; rayB.renderOrder = 3;
+  group.add(halo, rayA, rayB, streak, core);
+  let excite = 0, exciteS = 0, px = 0, py = 0, pxS = 0, pyS = 0;
+  const ghostMats: THREE.SpriteMaterial[] = [];
+  const ghosts: { s: THREE.Sprite; k: number; size: number; a: number }[] = [];
+  const GH = [[-0.45, 0.07, 0.05], [-0.9, 0.12, 0.03], [0.55, 0.05, 0.04], [1.4, 0.18, 0.025], [-1.35, 0.04, 0.05], [0.25, 0.09, 0.03]];
+  for (const [k, size, a] of GH) {
+    const m = mk(ringTex, false); ghostMats.push(m);
+    const s = new THREE.Sprite(m); s.renderOrder = 6; group.add(s); ghosts.push({ s, k, size, a });
+  }
+  const sun = new THREE.Vector3(), occC = new THREE.Vector3(), tmpV = new THREE.Vector3(), ndc = new THREE.Vector3();
+  let occR = 0;
+
+  return {
+    group,
+    setPosition(p) { sun.copy(p); group.position.copy(p); core.position.set(0, 0, 0); halo.position.set(0, 0, 0); streak.position.set(0, 0, 0); },
+    setPointer(x, y) { px = x; py = y; },
+    setExcite(k) { excite = THREE.MathUtils.clamp(k, 0, 1); },
+    setOccluder(c, r) { occC.copy(c); occR = r; },
+    update(camera, time) {
+      const dist = camera.position.distanceTo(sun);
+      const fovK = Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * 2 * dist; // world height covered at sun distance
+      exciteS += (excite - exciteS) * 0.08; pxS += (px - pxS) * 0.08; pyS += (py - pyS) * 0.08;
+      const flick = 1 + 0.05 * Math.sin(time * 1.7) + 0.035 * Math.sin(time * 4.9 + 1.3) + 0.02 * Math.sin(time * 11.0);
+      const pulse = flick * (1 + 0.35 * exciteS);
+      core.scale.setScalar(fovK * 0.07 * pulse); halo.scale.setScalar(fovK * (0.38 + 0.12 * exciteS) * (0.97 + 0.03 * flick));
+      streak.scale.set(fovK * (0.9 + 0.5 * exciteS), fovK * 0.12, 1);
+      rayA.scale.setScalar(fovK * (0.55 + 0.2 * exciteS) * flick); rayB.scale.setScalar(fovK * (0.42 + 0.15 * exciteS) * (2 - flick));
+      raysAMat.rotation = time * 0.035 + exciteS * 0.4; raysBMat.rotation = -time * 0.05 - exciteS * 0.3;
+      const k = 1 + 0.9 * exciteS;
+      coreMat.color.copy(base).multiplyScalar(2.6 * k); haloMat.color.copy(base).multiplyScalar(0.7 * k); streakMat.color.copy(base).multiplyScalar(0.45 * k);
+      raysAMat.color.copy(base).multiplyScalar(0.5 * k * flick); raysBMat.color.copy(base).multiplyScalar(0.35 * k);
+      // occlusion by planet: distance of camera→sun ray from the planet centre
+      let vis = 1;
+      if (occR > 0) {
+        tmpV.copy(sun).sub(camera.position); const L = tmpV.length(); tmpV.divideScalar(L);
+        const oc = occC.clone().sub(camera.position); const t = oc.dot(tmpV);
+        if (t > 0 && t < L) { const d = Math.sqrt(Math.max(oc.lengthSq() - t * t, 0)); vis = THREE.MathUtils.smoothstep(d, occR * 0.97, occR * 1.06); }
+      }
+      // ghosts along line sun → screen centre (in NDC), placed on a plane 30 units in front of the camera
+      ndc.copy(sun).project(camera);
+      const onScreen = ndc.z < 1 && Math.abs(ndc.x) < 1.4 && Math.abs(ndc.y) < 1.4;
+      const edge = 1 - THREE.MathUtils.smoothstep(Math.max(Math.abs(ndc.x), Math.abs(ndc.y)), 0.9, 1.4);
+      for (let i = 0; i < ghosts.length; i++) {
+        const g = ghosts[i];
+        g.s.visible = onScreen && vis > 0.01;
+        if (!g.s.visible) continue;
+        tmpV.set(pxS + (ndc.x - pxS) * g.k, pyS + (ndc.y - pyS) * g.k, 0.5).unproject(camera);
+        tmpV.sub(camera.position).normalize();
+        g.s.position.copy(camera.position).addScaledVector(tmpV, 30).sub(group.position);
+        g.s.scale.setScalar(g.size * 30 * Math.tan(THREE.MathUtils.degToRad(camera.fov * 0.5)) * 2);
+        ghostMats[i].color.copy(base).multiplyScalar(g.a * 2.2 * (1 + 1.2 * exciteS) * vis * edge);
+      }
+      streakMat.rotation = Math.atan2(pyS - ndc.y, pxS - ndc.x) * 0.22 * exciteS; streakMat.opacity = vis; haloMat.opacity = 0.5 + 0.5 * vis; raysAMat.opacity = raysBMat.opacity = 0.35 + 0.65 * vis;
+    },
+    dispose() {
+      glowTex.dispose(); raysA.dispose(); raysB.dispose(); raysAMat.dispose(); raysBMat.dispose(); streakTex.dispose(); ringTex.dispose();
+      coreMat.dispose(); haloMat.dispose(); streakMat.dispose(); ghostMats.forEach((m) => m.dispose());
+      group.removeFromParent();
+    },
+  };
+}

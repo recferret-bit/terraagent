@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TerraAgent — Storybook</title>
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/storybook.css">
+</head>
+<body>
+<div class="sb">
+
+  <aside class="sb-side">
+    <a class="sb-brand" href="index.html" style="text-decoration:none;color:inherit">
+      <svg width="26" height="26" viewBox="0 0 34 34" aria-hidden="true"><path d="M17 2 L30 9.5 V24.5 L17 32 L4 24.5 V9.5 Z" fill="#111318" stroke="#FF6A13" stroke-width="2"/><path d="M10 15 H24 L22 20 H12 Z" fill="#1E5BFF"/></svg>
+      <span><b>TERRA<em>AGENT</em> UI</b><span class="label" style="font-size:10px">STORYBOOK · V0.1</span></span>
+    </a>
+    <div class="sb-search">
+      <label for="sb-search" class="sr-only">Find a component</label>
+      <input id="sb-search" class="input" placeholder="Find components…" autocomplete="off">
+    </div>
+    <nav class="sb-tree" aria-label="Stories">
+      <div class="sb-group">INPUTS</div>
+      <button class="sb-item" data-story="button" aria-current="page">Button</button>
+      <button class="sb-item" data-story="radio">Radio · Planet picker</button>
+      <button class="sb-item" data-story="toggle">Toggle · Checkbox</button>
+      <button class="sb-item" data-story="slider">Slider · Priorities</button>
+      <button class="sb-item" data-story="input">Input · Badges</button>
+      <div class="sb-group">GAME HUD</div>
+      <button class="sb-item" data-story="hud">Resource bar · Log · Toast</button>
+    </nav>
+  </aside>
+
+  <main class="sb-main">
+    <div class="sb-toolbar" role="toolbar">
+      <div role="tablist" aria-label="View">
+        <button class="sb-tab" role="tab" aria-selected="true" data-tab="canvas">CANVAS</button>
+        <button class="sb-tab" role="tab" aria-selected="false" data-tab="docs">DOCS</button>
+      </div>
+      <span class="sb-sep"></span>
+      <span class="dim">BACKGROUND</span>
+      <button class="sb-chip" data-bg="dark" aria-pressed="true">VOID</button>
+      <button class="sb-chip" data-bg="light" aria-pressed="false">HULL</button>
+      <span class="sb-path">components / <span data-path>button</span></span>
+    </div>
+
+    <div class="sb-preview" id="preview">
+      <div class="sb-head"><h1 class="sb-title" data-title>Button</h1><span class="label" data-tag>COMPONENTS / BUTTON / PLAYGROUND</span></div>
+
+      <div class="sb-docs plate" hidden>
+        <p class="label c-orange">USAGE</p><p data-doc="usage"></p>
+        <p class="label c-orange">DO / DON'T</p><p>✓ <span data-doc="do"></span></p><p>✗ <span data-doc="dont"></span></p>
+        <p class="label c-orange">IMPORT</p><code data-doc="code"></code>
+      </div>
+
+      <div class="sb-canvas">
+        <!-- BUTTON -->
+        <div class="story" data-panel="button">
+          <div class="stage-box plate">
+            <button class="btn btn-primary btn-lg" id="pg-btn"><span class="spin" hidden></span><span data-pg-label>PICK A PLANET</span><span data-pg-arrow aria-hidden="true">→</span></button>
+          </div>
+          <div>
+            <p class="label" style="margin:0 0 12px">ALL VARIANTS</p>
+            <div class="row">
+              <button class="btn btn-primary">PRIMARY</button>
+              <button class="btn btn-system">SYSTEM</button>
+              <button class="btn btn-hull">HULL</button>
+              <button class="btn btn-ghost">GHOST</button>
+              <button class="btn btn-danger">DEMOLISH</button>
+              <button class="btn" disabled>DISABLED</button>
+              <button class="btn btn-icon plate-sm" aria-label="Launch rocket"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M12 2c3 3 4 7 4 11l-4 3-4-3c0-4 1-8 4-11z"/><path d="M8 13l-3 4h4M16 13l3 4h-4"/></svg></button>
+            </div>
+          </div>
+        </div>
+
+        <!-- RADIO -->
+        <div class="story" data-panel="radio" hidden>
+          <fieldset>
+            <legend class="label">PLANET TYPE · CARD RADIO</legend>
+            <div class="planets">
+              <label class="radio-card plate"><input class="sr-only" type="radio" name="planet" value="temperate"><span class="rc-head"><span class="rc-name">Temperate</span><span class="radio-ind"></span></span><span class="rc-desc">Balanced resources, forests to clear.</span><span class="label">NEW PLANET · 0 / 5</span></label>
+              <label class="radio-card plate"><input class="sr-only" type="radio" name="planet" value="desert" checked><span class="rc-head"><span class="rc-name">Desert</span><span class="radio-ind"></span></span><span class="rc-desc">Metals rich, water poor, sandstorms.</span><span class="label">RECRUITING · 3 / 5 · 14 H LEFT</span></label>
+              <label class="radio-card plate"><input class="sr-only" type="radio" name="planet" value="ice" disabled><span class="rc-head"><span class="rc-name">Ice</span><span class="radio-ind"></span></span><span class="rc-desc">Water rich, petroleum scarce.</span><span class="label">SEALED · 5 / 5</span></label>
+            </div>
+          </fieldset>
+          <fieldset>
+            <legend class="label">JOIN FALLBACK · INLINE RADIO</legend>
+            <div class="row" style="gap:28px">
+              <label class="radio-inline"><input class="sr-only" type="radio" name="fallback" checked><span class="radio-ind"></span>Auto-place me on a similar planet</label>
+              <label class="radio-inline"><input class="sr-only" type="radio" name="fallback"><span class="radio-ind"></span>Send me back to the picker</label>
+            </div>
+          </fieldset>
+        </div>
+
+        <!-- TOGGLE -->
+        <div class="story" data-panel="toggle" hidden>
+          <div>
+            <div class="setting"><div><b id="tg-1">AI Director</b><span>Calls the AI on big events, max once per 5 min.</span></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="tg-1"><span class="switch-knob"></span><span class="switch-text"></span></button></div>
+            <div class="setting"><div><b id="tg-2">Rules only</b><span>No AI calls; the rule engine runs the colony.</span></div><button class="switch" role="switch" aria-checked="false" aria-labelledby="tg-2"><span class="switch-knob"></span><span class="switch-text"></span></button></div>
+            <div class="setting"><div><b id="tg-3">Away alerts</b><span>Tell me when the colony is under attack.</span></div><button class="switch" role="switch" aria-checked="false" aria-labelledby="tg-3"><span class="switch-knob"></span><span class="switch-text"></span></button></div>
+            <div class="setting"><div><b id="tg-4">Animations</b><span>Turn off to follow reduced-motion.</span></div><button class="switch" role="switch" aria-checked="true" aria-labelledby="tg-4"><span class="switch-knob"></span><span class="switch-text"></span></button></div>
+          </div>
+          <div class="row" style="gap:18px">
+            <label class="check"><input class="sr-only" type="checkbox" checked><span class="check-box"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#07080A" stroke-width="3.5" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></span>Let the AI accept trades</label>
+            <label class="check"><input class="sr-only" type="checkbox"><span class="check-box"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#07080A" stroke-width="3.5" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></span>Auto-trade surplus</label>
+            <label class="check"><input class="sr-only" type="checkbox"><span class="check-box"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#07080A" stroke-width="3.5" aria-hidden="true"><path d="M4 12l5 5L20 6"/></svg></span>Raids while away</label>
+          </div>
+        </div>
+
+        <!-- SLIDER -->
+        <div class="story" data-panel="slider" hidden>
+          <div class="priorities plate">
+            <div class="row" style="justify-content:space-between"><span class="label c-orange">COLONY PRIORITIES</span><span class="label">SENT AS setPriorities · APPLIED NEXT TICK</span></div>
+            <div class="prio"><label for="pr-economy">Economy</label><input id="pr-economy" class="range" type="range" min="0" max="100" step="5" value="60"><output for="pr-economy">60</output></div>
+            <div class="prio"><label for="pr-expand">Expand</label><input id="pr-expand" class="range" type="range" min="0" max="100" step="5" value="40"><output for="pr-expand">40</output></div>
+            <div class="prio"><label for="pr-defense">Defense</label><input id="pr-defense" class="range" type="range" min="0" max="100" step="5" value="30"><output for="pr-defense">30</output></div>
+            <div class="prio"><label for="pr-rocket">Rocket</label><input id="pr-rocket" class="range" type="range" min="0" max="100" step="5" value="10"><output for="pr-rocket">10</output></div>
+            <div class="muted" style="font-size:14px" data-prio-hint></div>
+          </div>
+        </div>
+
+        <!-- INPUT & BADGES -->
+        <div class="story" data-panel="input" hidden>
+          <div class="forms">
+            <div class="field"><label class="field-label" for="in1">COLONY NAME</label><input id="in1" class="input" value="Vega Forge"><span class="field-hint">Shown to neighbours. Up to 32 characters.</span></div>
+            <div class="field is-error"><label class="field-label" for="in2">NEAR ACCOUNT</label><input id="in2" class="input" value="pilot.near" aria-invalid="true" aria-describedby="in2e"><span class="field-hint" id="in2e">That signature did not match. Sign the message again.</span></div>
+            <div class="field"><label class="field-label" for="in3">INVITE CODE</label><div class="input-row"><input id="in3" class="input mono" placeholder="ORBIT-0000" style="letter-spacing:.1em"><button class="btn btn-primary btn-sm" style="min-height:46px">CLAIM</button></div></div>
+            <div class="field"><label class="field-label" for="in4" style="color:var(--ta-dim)">PLANET SEED</label><input id="in4" class="input" value="Locked after landing" disabled></div>
+          </div>
+          <div class="row" style="gap:10px">
+            <span class="badge badge-recruiting">RECRUITING</span>
+            <span class="badge badge-new">NEW PLANET</span>
+            <span class="badge badge-sealed">SEALED</span>
+            <span class="badge badge-ok">● OPERATING</span>
+            <span class="badge badge-alert">▲ UNDER ATTACK</span>
+            <span class="badge badge-ai">◆ AI DIRECTIVE</span>
+            <span class="badge badge-tier">MK.II</span>
+            <span class="badge badge-away">AWAY · AUTOPILOT</span>
+          </div>
+        </div>
+
+        <!-- HUD -->
+        <div class="story" data-panel="hud" hidden>
+          <div class="hud-bar plate">
+            <div class="hud-res"><span class="label">METALS</span><span class="val">1,240 <small class="c-blue">+18.0/s</small></span><span class="meter"><i style="width:62%"></i></span></div>
+            <div class="hud-res"><span class="label">MINERALS</span><span class="val">410 <small class="c-blue">+6.0/s</small></span><span class="meter"><i style="width:28%"></i></span></div>
+            <div class="hud-res"><span class="label">PETROLEUM</span><span class="val">96 <small class="c-orange-hi">−1.5/s</small></span><span class="meter"><i class="low" style="width:12%"></i></span></div>
+            <div class="hud-res"><span class="label">WATER</span><span class="val">35 <small class="c-orange-hi">−4.0/s</small></span><span class="meter"><i class="low" style="width:7%"></i></span></div>
+            <div class="hud-res"><span class="label">SUPPLY</span><span class="val">9 / 10 <small class="c-steel">robots</small></span><span class="meter"><i style="width:90%"></i></span></div>
+          </div>
+          <div class="hud-grid">
+            <div class="log plate">
+              <div class="label" style="font-size:10px;margin-bottom:6px">EVENT LOG</div>
+              <div><span style="color:var(--ta-dim)">T+00:41</span> <span class="c-fault">LIGHTNING STRIKE · PYLON P3 SEVERED</span></div>
+              <div><span style="color:var(--ta-dim)">T+00:42</span> <span class="c-orange-hi">BUILDER B1 DISPATCHED</span></div>
+              <div><span style="color:var(--ta-dim)">T+00:47</span> <span class="c-terra">P3 RESTORED · GRID ONLINE</span></div>
+              <div><span style="color:var(--ta-dim)">T+01:10</span> <span class="c-blue">◆ DIRECTOR: QUEUE WATER PUMP</span></div>
+            </div>
+            <div class="card plate" style="padding:18px 20px;display:flex;flex-direction:column;gap:10px">
+              <div class="row label" style="justify-content:space-between;font-size:10px"><span>POWER GRID</span><span class="c-energy">+42 / −35 E/S</span></div>
+              <div class="grid-meter"><span class="fill"></span><span class="mark"></span></div>
+              <div class="muted" style="font-size:13px">Demand at 83 % of generation. Brownout sheds terraforming first, defenses last.</div>
+            </div>
+          </div>
+          <div class="row">
+            <button class="btn btn-system btn-sm" id="fire-toast">FIRE A TOAST</button>
+            <div id="toast-slot" role="status"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="sb-controls">
+      <div class="sb-controls-tabs"><span class="on">CONTROLS</span><span>ACTIONS</span><span>ACCESSIBILITY · 0 VIOLATIONS</span></div>
+      <div class="args" data-args>
+        <label for="c-variant">variant</label>
+        <select id="c-variant" class="input"><option value="primary">primary</option><option value="system">system</option><option value="hull">hull</option><option value="ghost">ghost</option><option value="danger">danger</option></select>
+        <label for="c-size">size</label>
+        <select id="c-size" class="input"><option value="sm">sm · 40</option><option value="md">md · 50</option><option value="lg" selected>lg · 60</option></select>
+        <label for="c-label">label</label>
+        <input id="c-label" class="input" value="PICK A PLANET">
+        <span>state</span>
+        <div class="flags">
+          <label><input type="checkbox" id="c-disabled"> disabled</label>
+          <label><input type="checkbox" id="c-loading"> loading</label>
+          <label><input type="checkbox" id="c-arrow" checked> arrow</label>
+        </div>
+      </div>
+      <div class="no-args" data-no-args hidden>This story is interactive. Click, tab and drag inside the preview; its state is the component's own. Args are listed in Docs.</div>
+    </div>
+  </main>
+</div>
+
+<template id="toast-tpl">
+  <div class="toast plate-sm">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#C2410C" stroke-width="2" aria-hidden="true"><path d="M12 2c3 3 4 7 4 11l-4 3-4-3c0-4 1-8 4-11z"/></svg>
+    <div><div class="h3" style="font-size:16px;font-weight:700">Rocket silo complete</div><div style="font-size:13px;color:var(--ta-ink-2)">Fuel the rocket to pick your next planet.</div></div>
+  </div>
+</template>
+
+<script type="module" src="js/storybook.js"></script>
+</body>
+</html>
