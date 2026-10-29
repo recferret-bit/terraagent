@@ -35,7 +35,9 @@
         <a href="#planets"><span>04</span> PLANETS</a>
         <a href="#director"><span>05</span> DIRECTOR</a>
         <a href="#chain"><span>06</span> CHAIN</a>
-        <a href="#faq"><span>07</span> FAQ</a>
+        <a href="#roadmap"><span>07</span> ROADMAP</a>
+        <a href="#market"><span>08</span> MARKET</a>
+        <a href="#faq"><span>09</span> FAQ</a>
       </nav>
       <div class="header-right">
         <span class="chip-live"><span class="dot-live"></span><span data-stat="planetsActive">—</span> PLANETS LIVE</span>
@@ -270,10 +272,175 @@ It keeps building.</h1>
       </div>
     </section>
 
-    <!-- 07 FAQ -->
+    <!-- 07 ROADMAP -->
+    <section class="band" id="roadmap">
+      <div class="container section">
+        <div class="sec-head">
+          <div>
+            <p class="eyebrow">07 · ROADMAP</p>
+            <h2 class="h1">Flight plan.<br><span class="sub">Where the colony is, and where it is going.</span></h2>
+          </div>
+          <p>Scroll to fly the route. Green is done, orange is next, blue is booked, red was cut on purpose. Only the hackathon window has dates so far; everything after it is a sequence, not a promise.</p>
+        </div>
+
+        <div class="mission" id="mission">
+          <div class="m-spine" aria-hidden="true">
+            <i class="m-fill"></i>
+            <span class="m-ship"><svg width="34" height="46" viewBox="0 0 34 46"><path d="M17 1 C25 10 27 22 25 34 H9 C7 22 9 10 17 1Z" fill="#F2F4F7" stroke="#07080A" stroke-width="1.5"/><path d="M9 34 L3 42 L11 38Z M25 34 L31 42 L23 38Z" fill="#FF6A13"/><circle cx="17" cy="19" r="4" fill="#1E5BFF"/><g class="m-flame"><path d="M12 35 Q17 52 22 35Z" fill="#FF8A3D"/><path d="M14.5 35 Q17 46 19.5 35Z" fill="#F2F4F7"/></g></svg></span>
+          </div>
+
+          <article class="leg is-done" data-leg>
+            <span class="leg-node" aria-hidden="true"></span>
+            <div class="leg-card plate">
+              <header class="leg-h"><span class="leg-id">LEG 0</span><span class="badge badge-ok">DONE</span></header>
+              <h3 class="h3">Prototype baseline</h3>
+              <p class="leg-when">Built before the hackathon window · playable in the browser today</p>
+              <div class="leg-meter" role="img" aria-label="5 of 5 done"><i style="width:100%"></i></div>
+              <ul class="tasks">
+                <li class="t-done">Orbit menu with three procedural worlds: Kharon Dunes, Thalassa Verde, Granite Hollow</li>
+                <li class="t-done">Drop-pod descent cinematic, then the colony diorama with RTS camera and HUD</li>
+                <li class="t-done">29 kitbash models: robots, buildings, ships, deposits, fauna, satellites</li>
+                <li class="t-done">3D playground with 4-view QA, triangle budget and ground-contact checks</li>
+                <li class="t-done">Faction Plate design system, this landing page, the live orbit hero and resource viewer</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="leg is-next" data-leg>
+            <span class="leg-node" aria-hidden="true"></span>
+            <div class="leg-card plate">
+              <header class="leg-h"><span class="leg-id">LEG 1</span><span class="badge badge-recruiting">NEXT · NOV 1</span></header>
+              <h3 class="h3">Hackathon build</h3>
+              <p class="leg-when">Nov 1 – Nov 14, 2026 23:59 UTC · solo developer plus AI agents</p>
+              <div class="leg-meter" role="img" aria-label="0 of 8 core items done"><i style="width:0%"></i></div>
+              <ul class="tasks">
+                <li class="t-next">One Node app plus Postgres, with the server running the simulation</li>
+                <li class="t-next">A Temperate planet, stages S0 to S4 and terrain walls</li>
+                <li class="t-next"><b>F5</b> Invisible chain: social login, named accounts, gasless play</li>
+                <li class="t-next"><b>F1</b> Orbital Port: cargo minted as NEP-245 tokens when you export at the Trade Hub</li>
+                <li class="t-next"><b>F2</b> Player-owned markets settled with NEAR Intents</li>
+                <li class="t-next"><b>F3</b> Orbital Guild: NPC traders with their own wallets</li>
+                <li class="t-next"><b>F4</b> Colony agent: HQ trades for you while you are away, with a capped key</li>
+                <li class="t-next">Public repo with a LICENSE, a "do X, see Y" README and an X video</li>
+                <li class="cut-line" aria-hidden="true"><span>CUT LINE · ONLY IF AHEAD OF SCHEDULE</span></li>
+                <li class="t-later"><b>F6</b> Colony Deed NFT and staking your own NEAR</li>
+                <li class="t-later"><b>F7</b> Planet Treasury your colony can vote on</li>
+                <li class="t-later"><b>F8</b> Bounties and mercenary NPCs</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="leg is-later" data-leg>
+            <span class="leg-node" aria-hidden="true"></span>
+            <div class="leg-card plate">
+              <header class="leg-h"><span class="leg-id">LEG 2</span><span class="badge badge-new">BOOKED</span></header>
+              <h3 class="h3">Online foundation</h3>
+              <p class="leg-when">After the window · waves W0 to W2 of the 101-task plan</p>
+              <div class="leg-meter" role="img" aria-label="0 of 47 tasks done"><i style="width:0%"></i></div>
+              <ul class="tasks">
+                <li class="t-later"><b>W0</b> Foundation: monorepo, shared contracts, schema, dev stack, test harness</li>
+                <li class="t-later"><b>W1</b> Skeletons: every service healthy, simulation kernel, landing and game shells</li>
+                <li class="t-later"><b>W2</b> First playable online: guest, picker, queue, seat, a live planet over WebSocket</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="leg is-later" data-leg>
+            <span class="leg-node" aria-hidden="true"></span>
+            <div class="leg-card plate">
+              <header class="leg-h"><span class="leg-id">LEG 3</span><span class="badge badge-new">BOOKED</span></header>
+              <h3 class="h3">Persistent world</h3>
+              <p class="leg-when">Waves W3 and W4 · the colony runs while you sleep</p>
+              <div class="leg-meter" role="img" aria-label="0 of 44 tasks done"><i style="width:0%"></i></div>
+              <ul class="tasks">
+                <li class="t-later"><b>W3</b> Leave and come back with a digest, failover, matchmaker, AI Director, power grid, goals and truces</li>
+                <li class="t-later"><b>W4</b> Combat and walls, hazards, fauna, PvP, rocket to a Settled colony, Intents trades</li>
+                <li class="t-later"><b>W4</b> Hard offline mode with Web Push and Telegram pings, party tickets, phone play, admin tools</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="leg is-later" data-leg>
+            <span class="leg-node" aria-hidden="true"></span>
+            <div class="leg-card plate">
+              <header class="leg-h"><span class="leg-id">LEG 4</span><span class="badge badge-new">BOOKED</span></header>
+              <h3 class="h3">Launch readiness</h3>
+              <p class="leg-when">Wave W5 · mainnet only after the owner signs the launch checklist</p>
+              <div class="leg-meter" role="img" aria-label="0 of 10 tasks done"><i style="width:0%"></i></div>
+              <ul class="tasks">
+                <li class="t-later">Balance harness, account claim and staking, notification opt-in, the live landing hero</li>
+                <li class="t-later">End-to-end, failover, load and soak tests, observability, production smoke test</li>
+              </ul>
+            </div>
+          </article>
+
+          <article class="leg is-cut" data-leg>
+            <span class="leg-node" aria-hidden="true"></span>
+            <div class="leg-card plate">
+              <div class="hazard" aria-hidden="true" style="height:8px"></div>
+              <header class="leg-h"><span class="leg-id">LEFT BEHIND</span><span class="badge badge-alert">CUT</span></header>
+              <h3 class="h3">Not in v1, on purpose</h3>
+              <p class="leg-when">Decisions D-22, D-19, D-25 · each one keeps the first release small enough to finish</p>
+              <ul class="tasks">
+                <li class="t-cut">Spectators</li>
+                <li class="t-cut">Trades across planets (same planet only)</li>
+                <li class="t-cut">Rejoining a planet after your colony is eliminated</li>
+                <li class="t-cut">Anti-cheat and anti-bot machinery: the server simulation decides, accepted for beta</li>
+                <li class="t-cut">WebGPU (WebGL2 first)</li>
+              </ul>
+            </div>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <!-- 08 ROAD TO MARKET -->
+    <section class="container section" id="market">
+      <div class="sec-head">
+        <div>
+          <p class="eyebrow">08 · ROAD TO MARKET</p>
+          <h2 class="h1">From first click<br><span class="sub-blue">to your own market.</span></h2>
+        </div>
+        <p>Every lane is a way a player finds the game, stays in it, or earns from it. COST is what the player pays. WHEN is the plan, and STATUS flips as lanes open.</p>
+      </div>
+
+      <ol class="route" aria-label="Player route">
+        <li class="plate-sm"><span class="r-n">01</span><b>ARRIVE</b><span>The orbit is already running behind the headline.</span></li>
+        <li class="plate-sm"><span class="r-n">02</span><b>DROP</b><span>Guest play. One robot, no wallet, no download.</span></li>
+        <li class="plate-sm"><span class="r-n">03</span><b>PARTY UP</b><span>Friends land on the same planet together.</span></li>
+        <li class="plate-sm"><span class="r-n">04</span><b>TRADE</b><span>Export cargo, own a market. The chain stays out of sight.</span></li>
+        <li class="plate-sm"><span class="r-n">05</span><b>RETURN</b><span>A ping brings you back to a colony that kept running.</span></li>
+      </ol>
+
+      <div class="board plate" id="board">
+        <div class="board-h"><span>ORBITAL TRADE HUB · LANE BOARD</span><span><i class="dot-live"></i> PLAN · UPDATED OCT 30 2026</span></div>
+        <div class="lanes" role="table" aria-label="Go-to-market lanes">
+          <div class="lane lane-head" role="row"><span role="columnheader">LANE</span><span role="columnheader">CARGO</span><span role="columnheader">COST</span><span role="columnheader">WHEN</span><span role="columnheader">STATUS</span></div>
+          <div class="lane" role="row"><b>GUEST PLAY</b><span>Open the page, pick a world, drop in. No wallet, no download, no sign-up.</span><span class="cost">$0</span><span class="when">today</span><em class="flap s-live" data-flap>IN PROTOTYPE</em></div>
+          <div class="lane" role="row"><b>PARTY TICKETS</b><span>Friends join the same planet together. Required for launch.</span><span class="cost">$0</span><span class="when">W2 to W4</span><em class="flap s-plan" data-flap>BOOKED</em></div>
+          <div class="lane" role="row"><b>AWAY PINGS</b><span>Web Push and Telegram tell you when your colony needs you. You choose how long it may run unattended.</span><span class="cost">$0</span><span class="when">W4</span><em class="flap s-plan" data-flap>BOOKED</em></div>
+          <div class="lane" role="row"><b>CARGO TOKENS</b><span>Exporting at the Trade Hub mints NEP-245 resource tokens. Open in beta: swap them for NEAR or USDC. In the game they are just cargo.</span><span class="cost">NEAR / USDC</span><span class="when">Nov 1 to 14</span><em class="flap s-next" data-flap>HACKATHON</em></div>
+          <div class="lane" role="row"><b>PLAYER MARKETS</b><span>Own a Trade Hub market, set the prices and earn the fees. Orders settle through NEAR Intents.</span><span class="cost">owner fees</span><span class="when">Nov 1 to 14</span><em class="flap s-next" data-flap>HACKATHON</em></div>
+          <div class="lane" role="row"><b>ORBITAL GUILD</b><span>NPC traders with their own wallets. Their prices follow real trade history, so the economy moves without a patch.</span><span class="cost">$0</span><span class="when">Nov 1 to 14</span><em class="flap s-next" data-flap>HACKATHON</em></div>
+          <div class="lane" role="row"><b>COLONY AGENT</b><span>HQ signs trades for you while you are away, with a capped key it cannot overspend.</span><span class="cost">a capped key</span><span class="when">Nov 1 to 14</span><em class="flap s-next" data-flap>HACKATHON</em></div>
+          <div class="lane" role="row"><b>COLONY DEED</b><span>A living NFT of your colony, plus staking your own NEAR through the colony account. Colony accounts become claimable at launch.</span><span class="cost">your NEAR</span><span class="when">stretch · W5</span><em class="flap s-stretch" data-flap>STRETCH</em></div>
+          <div class="lane" role="row"><b>TREASURY &amp; BOUNTIES</b><span>A planet treasury players vote on, and bounties that mercenary NPCs collect.</span><span class="cost">–</span><span class="when">stretch</span><em class="flap s-stretch" data-flap>STRETCH</em></div>
+          <div class="lane" role="row"><b>NEAR HACKATHON</b><span>Track 09, Games With Real Economies: judged on the game loop, not the token. Public repo, README and an X video.</span><span class="cost">time</span><span class="when">Nov 1 to 14</span><em class="flap s-next" data-flap>OPENS NOV 1</em></div>
+          <div class="lane is-off" role="row"><b>SPECTATORS</b><span>No spectator mode in v1.</span><span class="cost">–</span><span class="when">–</span><em class="flap s-off" data-flap>NOT LISTED</em></div>
+          <div class="lane is-off" role="row"><b>CROSS-PLANET TRADES</b><span>Deals settle on the same planet only.</span><span class="cost">–</span><span class="when">–</span><em class="flap s-off" data-flap>NOT LISTED</em></div>
+        </div>
+        <div class="board-f">
+          <span><b>CHAIN</b> hidden by design: social login, named accounts, no gas prompts.</span>
+          <span><b>TRUST</b> the server simulation is the only mint authority.</span>
+          <span><b>PLAN</b> dates exist only for the Nov 1 to 14 window.</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- 09 FAQ -->
     <section class="band" id="faq" style="border-bottom:0">
       <div class="container section faq">
-        <p class="eyebrow">07 · FAQ</p>
+        <p class="eyebrow">09 · FAQ</p>
         <h2 class="h1">Questions from orbit</h2>
         <details open><summary>What happens to my colony when I close the tab?</summary><p>It keeps running on the server. The rule engine follows your last priorities, the AI Director handles emergencies, and builders repair what storms break. Next time you open the game you land straight in your colony.</p></details>
         <details><summary>Why can't I join any planet I like?</summary><p>Planets stop taking colonies once they have 5 or are a day old. That keeps every new player on a fair start. A fresh planet of each type is always kept ready.</p></details>
@@ -302,6 +469,7 @@ It keeps building.</h1>
 
 <script type="module" src="/frontend/design/js/landing.js"></script>
 <script type="module" src="/src/landing/heroStage.ts"></script>
+<script type="module" src="/src/landing/roadmap.ts"></script>
 <script type="module" src="/src/landing/planetCards.ts"></script>
 <script type="module" src="/src/landing/resourceViewer.ts"></script>
 <script type="module" src="/src/ui/crtEntry.ts"></script>
