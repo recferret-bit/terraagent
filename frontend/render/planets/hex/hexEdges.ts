@@ -1,12 +1,15 @@
 import type * as THREE from 'three';
 
 /**
- * Thin hex edge lines as a shader term (no line geometry: nothing to z-fight, antialiased by `fwidth`, constant on-screen
- * thinness). Injected after the terrain shader's colour block, so the lines darken the terrain colour a little.
+ * Per-tile terrain class colour tint (`vTileColor`) + thin hex edge lines as a shader term (no line geometry: nothing to
+ * z-fight, antialiased by `fwidth`, constant on-screen thinness). Injected after the terrain shader's colour block.
  * World xz → tile units (2 m centre spacing, pointy-top) → distance to the nearest cell edge.
  */
 const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 {
+  float baseLum = max(0.08, dot(uLow, vec3(0.3333)));
+  float detail = clamp(dot(diffuseColor.rgb, vec3(0.3333)) / baseLum, 0.65, 1.35);
+  diffuseColor.rgb = mix(diffuseColor.rgb, vTileColor * detail, 0.72);
   vec2 tp = vLP.xz / 2.0;                          // tile units
   float hr = tp.y * 1.1547005;                     // 2/sqrt(3)
   vec2 ax = vec2(tp.x - hr * 0.5, hr);             // fractional axial (q, r)
@@ -25,7 +28,10 @@ const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 
 export function addHexEdges(sh: THREE.WebGLProgramParametersWithUniforms, edge: THREE.IUniform<number>): void {
   sh.uniforms.uEdge = edge;
+  sh.vertexShader = sh.vertexShader
+    .replace('#include <common>', '#include <common>\n#ifndef USE_COLOR\nattribute vec3 color;\n#endif\nvarying vec3 vTileColor;')
+    .replace('vLP = position;', 'vLP = position; vTileColor = color;');
   sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', '#include <common>\nuniform float uEdge;')
+    .replace('#include <common>', '#include <common>\nuniform float uEdge;\nvarying vec3 vTileColor;')
     .replace('#include <alphatest_fragment>', EDGE_FRAG);
 }
