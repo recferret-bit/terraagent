@@ -22,7 +22,7 @@ npm run dev            # → Postgres (docker, :15434), the app (:4001) and the 
 | Press `` ` `` and type `warp 10` (`warp 1` to undo) | The tick rate rises to about 50/s and a `×10` badge appears |
 | Open the flag panel (top right) or add `&waves=..00` | `W00` on, every later wave off |
 | `npm run dev:restart` while the page is open | "Reconnecting…", then the tick continues from the saved snapshot, not 0 |
-| Open http://127.0.0.1:5173/dev/chain/ and run `chain.ping` in the dev console | A `mock:` receipt appears after 300–1 500 ms |
+| Open http://127.0.0.1:5173/dev/chain/ in a second tab, then run `chain.ping` in the play page's dev console (or press `CHAIN.PING` on the explorer) | A `mock:` receipt appears in the explorer after 300–1 500 ms |
 | Stop the app; open `/play.html?host=local&scenario=w00` | The same planet runs in the browser alone; a reload resumes from IndexedDB |
 | `/play.html?scenario=w00&lag=300`, then `nudge 1` in the console (the scenario's test entity) | The robot moves on the next frame (client-side prediction); `teleport! 1 6 0` (server-only) blends over 150 ms |
 | `npm run ci:fast` / `npm run e2e -- --waves ..00` | Green checks / the W00 demo in headless Chrome |
