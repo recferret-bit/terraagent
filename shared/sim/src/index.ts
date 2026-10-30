@@ -19,3 +19,4 @@ export { DEV_PLANET_RADIUS } from './gen/flat';
 export * from './codec';
 export * from './systems/define';
 export * from './systems/registry';
+export * from './host';
