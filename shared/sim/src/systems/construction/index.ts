@@ -7,6 +7,7 @@ import { setBlob, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import {
+  checkBuildingAffordability,
   findAliveColonyHqRow,
   getBuildingFootprintTiles,
   getHubFootprintTiles,
@@ -15,12 +16,14 @@ import {
   resolveHubT1Row,
   validateBuildingPlacement,
   validateHubPlacement,
+  type BuildingAffordabilityResult,
   type FootprintTileInfo,
   type ValidateHubPlacementOpts,
   type ValidateHubPlacementResult,
 } from './validate';
 
 export {
+  checkBuildingAffordability,
   findAliveColonyHqRow,
   getBuildingFootprintTiles,
   getHubFootprintTiles,
@@ -29,6 +32,7 @@ export {
   resolveHubT1Row,
   validateBuildingPlacement,
   validateHubPlacement,
+  type BuildingAffordabilityResult,
   type FootprintTileInfo,
   type ValidateHubPlacementOpts,
   type ValidateHubPlacementResult,
@@ -147,8 +151,29 @@ export function placeBuildingOrder(
     return { ok: false, reason: validation.reason ?? 'site_blocked', validation };
   }
 
-  const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const hubRow = resolveHubT1Row(opts.data ?? ctx?.data);
+  const colStock =
+    state.colonies[opts.colonyId]?.stock ??
+    (state.blobs.colonyStock?.value as Record<number | string, Record<string, number>> | undefined)?.[opts.colonyId];
+  if (colStock !== undefined || opts.checkResources) {
+    const cost = hubRow.cost as Record<string, number> | undefined;
+    if (cost) {
+      const afford = checkBuildingAffordability(cost, colStock as Record<string, number> | undefined);
+      if (!afford.ok) {
+        return {
+          ok: false,
+          reason: 'insufficient_resources',
+          validation: {
+            ...validation,
+            ok: false,
+            reason: 'insufficient_resources',
+          },
+        };
+      }
+    }
+  }
+
+  const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const isHub = isHubBuildingKind(opts.buildingKind);
   const entityId = ctx?.newEntityId ? ctx.newEntityId() : state.meta.nextEntityId++;
   const row = insertRow(state.entities, entityId, tick);
