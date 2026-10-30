@@ -17,9 +17,6 @@
     "validate:models": "node .agents/skills/model-geometry-validator/scripts/validate-model.mjs",
     "test:models": "node .agents/skills/model-geometry-validator/scripts/self-test.mjs"
   },
-  "dependencies": {
-    "three": "^0.174.0"
-  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@playwright/test": "^1.64.1",
@@ -43,6 +40,11 @@
     "shared/config",
     "shared/db",
     "shared/sim",
-    "backend/app"
+    "backend/app",
+    "frontend/render",
+    "frontend/design",
+    "frontend/game",
+    "frontend/landing",
+    "frontend/playground"
   ]
 }

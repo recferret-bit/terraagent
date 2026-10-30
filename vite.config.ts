@@ -4,9 +4,9 @@ import { resolve } from 'node:path';
 const frontend = resolve(__dirname, 'frontend');
 
 // One Vite app rooted at frontend/. URLs mirror the file layout: /play.html, /landing.html, /playground.html, /design/.
+// `@terra/*` (render, sim, contracts, …) resolve as npm workspace packages; there are no path aliases.
 export default defineConfig({
   root: frontend,
-  resolve: { alias: { '@terra/render': resolve(frontend, 'render') } },
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,
