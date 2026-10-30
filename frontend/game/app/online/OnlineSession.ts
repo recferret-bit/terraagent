@@ -15,10 +15,19 @@ import type { OnlineMode } from './onlineMode';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
 
-/** Tile indices whose height differs between two tile snapshots (the replica only says "tiles changed"). */
-function changedHeights(a: ArrayLike<number>, b: ArrayLike<number>): number[] {
+/** Tile indices whose height, terrain, prep or deposit differs between two tile snapshots. */
+function changedTiles(a: ClientTiles, b: ClientTiles): number[] {
   const out: number[] = [];
-  for (let i = 0; i < b.length; i++) if (a[i] !== b[i]) out.push(i);
+  for (let i = 0; i < b.count; i++) {
+    if (
+      a.height[i] !== b.height[i] ||
+      a.terrain[i] !== b.terrain[i] ||
+      a.prep[i] !== b.prep[i] ||
+      a.deposit?.[i] !== b.deposit?.[i]
+    ) {
+      out.push(i);
+    }
+  }
   return out;
 }
 
@@ -75,7 +84,7 @@ export class OnlineSession {
       const surface = hexSurface(terrain, look);
       this.cam = new RTSCamera(this.viewport.camera, this.viewport.renderer.domElement, surface, new THREE.Vector3(42, 46, 42), new THREE.Vector3(0, 0, 0));
     } else if (this.tiles) {
-      const changed = changedHeights(this.tiles.height, tiles.height);
+      const changed = changedTiles(this.tiles, tiles);
       if (changed.length) this.terrain.updateTiles(tiles as HexTiles, changed);
     }
     this.tiles = tiles;
