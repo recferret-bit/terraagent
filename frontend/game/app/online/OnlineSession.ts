@@ -70,7 +70,14 @@ export class OnlineSession {
       tileToWorld: (x, y) => { const [wx, wz] = tileXZ(x, y); return { x: wx, y: this.terrain?.heightAt(wx, wz) ?? 0, z: wz }; },
       biomeKey: () => this.biomeKey,
     };
-    this.hud = new FeatureHud(document.body, this.flags, local ? 'local' : 'server', { sendCommand: this.commands.send, devServer: local ? local.devServer : httpDevServer(), session: { planetId: () => this.store.currentPlanetId() }, scene3d, netStats: this.netStats });
+    this.hud = new FeatureHud(document.body, this.flags, local ? 'local' : 'server', {
+      sendCommand: this.commands.send,
+      devServer: local ? local.devServer : httpDevServer(),
+      session: { planetId: () => this.store.currentPlanetId() },
+      scene3d,
+      netStats: this.netStats,
+      getView: () => this.store.latest ?? undefined,
+    });
     if (local) this.keepLocalSaved(local);
     this.cleanups.push(this.store.onCommandRejected(() => this.netStats.recordRollback()));
     this.cleanups.push(this.transport.onMessage((m) => {
@@ -96,12 +103,13 @@ export class OnlineSession {
 
   private onView(v: ClientView): void {
     if (v.tiles) this.onTiles(v, v.tiles);
-    this.hud.update({ tick: v.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
+    this.hud.update({ ...v, tiles: this.tiles ?? v.tiles, tick: v.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
   }
 
   private setWarp(k: number): void {
     this.warp = k;
-    this.hud.update({ tick: this.store.latest?.tick, warp: k });
+    const v = this.store.latest;
+    this.hud.update({ ...(v ?? {}), tiles: this.tiles ?? v?.tiles, tick: v?.tick, warp: k });
   }
 
   private onTiles(v: ClientView, tiles: ClientTiles): void {
@@ -173,7 +181,10 @@ export class OnlineSession {
     const v = this.store.latest;
     if (!v) return;
     this.hud.frame({ sim: { view: v, serverTick: this.store.serverTickF(), predicting: this.store.predictionMode === 'on' } }, dt);
-    if (now - this.lastHudMs > 250) { this.lastHudMs = now; this.hud.update({ tick: v.tick, net: this.netStats.view(this.store.predictionInfo) }); }
+    if (now - this.lastHudMs > 250) {
+      this.lastHudMs = now;
+      this.hud.update({ ...v, tiles: this.tiles ?? v.tiles, tick: v.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
+    }
   }
 
   dispose(): void {

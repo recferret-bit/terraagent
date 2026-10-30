@@ -41,12 +41,6 @@ export function estimateResourceIncomePerS(
   if (typeof explicitColony === 'number' && explicitColony > 0) {
     return explicitColony;
   }
-  const explicitProd = (
-    colony.production as { incomePerS?: Partial<Record<ResourceKey, number>> } | undefined
-  )?.incomePerS?.[key];
-  if (typeof explicitProd === 'number' && explicitProd > 0) {
-    return explicitProd;
-  }
 
   let rate = 0;
   let idleOrMovingHarvesters = 0;

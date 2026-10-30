@@ -297,6 +297,15 @@ const standingHarvestYieldSystem = defineSystem({
     const assignments = { ...(rawBlob.assignments ?? {}) };
     let changed = false;
 
+    for (const c of state.colonies) {
+      if (!c) continue;
+      const col = ensureColony(state, c.index, ctx.tick);
+      col.production.incomePerS['minerals.t1'] = 0;
+      col.production.incomePerS['bio.biomass'] = 0;
+      col.production.familyIncomePerS.minerals = 0;
+      col.production.familyIncomePerS.bio = 0;
+    }
+
     for (let row = 0; row < e.count; row++) {
       if (cols.kind[row] !== ENTITY_KIND.harvester || cols.hp[row] <= 0) continue;
       const id = cols.id[row];
