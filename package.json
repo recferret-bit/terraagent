@@ -28,7 +28,9 @@
     "db:down": "docker compose -f infra/docker-compose.yml down",
     "db:gen": "npm run db:gen -w @terra/db --silent --",
     "db:migrate": "npm run db:migrate -w @terra/db --silent",
-    "db:reset": "npm run db:reset -w @terra/db --silent"
+    "db:reset": "npm run db:reset -w @terra/db --silent",
+    "test:integration": "vitest run --config vitest.integration.config.ts",
+    "db:seed": "npm run db:seed -w @terra/db --silent"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -13,7 +13,9 @@
     "db:gen": "tsx scripts/db.ts gen",
     "db:migrate": "tsx scripts/db.ts migrate",
     "db:reset": "tsx scripts/db.ts reset",
-    "db:merge": "node scripts/merge-schema.mjs"
+    "db:merge": "node scripts/merge-schema.mjs",
+    "postinstall": "prisma generate --schema prisma/schema.prisma",
+    "db:seed": "tsx scripts/seed.ts"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3"
