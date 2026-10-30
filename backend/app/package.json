@@ -15,6 +15,7 @@
     "@terra/config": "0.1.0",
     "@terra/contracts": "0.1.0",
     "@terra/db": "0.1.0",
+    "@terra/scenarios": "0.1.0",
     "@terra/sim": "0.1.0",
     "pino": "^10.4.0",
     "prom-client": "^15.1.3",
