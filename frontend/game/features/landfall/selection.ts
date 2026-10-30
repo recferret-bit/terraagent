@@ -1,4 +1,5 @@
 import { ENTITY_KIND, ENTITY_STATE, hexDistance, type HqJob, type ViewColony, type ViewEntity } from '@terra/sim';
+import type { GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
 import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
 
@@ -21,12 +22,12 @@ export interface HqStatusView {
 }
 
 export interface StoreLike {
-  readonly latest?: ClientView | null;
+  readonly latest?: ClientView | GameView | null;
   onView?(fn: (v: ClientView) => void): () => void;
-  sendCommand?(cmd: { type: 'moveUnit'; entityId: number; q: number; r: number }): unknown;
+  sendCommand?(cmd: unknown, args?: unknown): unknown;
 }
 
-export type TilePicker = (clientX: number, clientY: number) => { q: number; r: number } | null;
+export type TilePicker = (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
 
 export interface LandfallControllerOptions {
   store?: StoreLike;
@@ -190,6 +191,7 @@ export function isTileNearHq(hq: HqStatusView, q: number, r: number, maxDist = 1
 export class LandfallController {
   private selectedEntityId: number | null = null;
   private autoSelect: boolean;
+  private ownerColonyIndex?: number;
   private latestHq: HqStatusView | null = null;
   private readonly listeners = new Set<LandfallListener>();
   private readonly cleanups: Array<() => void> = [];
@@ -197,6 +199,7 @@ export class LandfallController {
 
   constructor(private readonly opts: LandfallControllerOptions = {}) {
     this.autoSelect = opts.autoSelect !== false;
+    this.ownerColonyIndex = opts.ownerColonyIndex;
     this.pickTile = opts.pickTile;
     if (opts.store?.latest) {
       this.onView(opts.store.latest);
@@ -220,8 +223,15 @@ export class LandfallController {
     for (const fn of this.listeners) fn(snap);
   }
 
+  setOwnerColonyIndex(colonyIndex: number | undefined): void {
+    this.ownerColonyIndex = colonyIndex;
+    if (this.opts.store?.latest) {
+      this.onView(this.opts.store.latest);
+    }
+  }
+
   onView(view: unknown): void {
-    const hq = extractHqFromView(view, this.opts.ownerColonyIndex);
+    const hq = extractHqFromView(view, this.ownerColonyIndex);
     if (!hq && view && typeof view === 'object' && !('entities' in view) && !('colonies' in view)) {
       return;
     }

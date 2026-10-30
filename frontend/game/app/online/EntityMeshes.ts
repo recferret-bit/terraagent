@@ -153,7 +153,12 @@ export class EntityMeshes {
       seen.add(id);
 
       const [wx, wz] = tileXZ(x, y);
-      const wy = terrain ? terrain.heightAt(wx, wz) : 0;
+      const baseWy = terrain ? terrain.heightAt(wx, wz) : 0;
+      const podLift =
+        kind === ENTITY_KIND.pod && state === ENTITY_STATE.descending
+          ? Math.max(0, 1 - Math.min(1, Math.max(0, progress))) * 36
+          : 0;
+      const wy = baseWy + podLift;
       const yaw = Math.PI / 2 - rot;
       const buildProg = kind === ENTITY_KIND.commandHub ? hubBuildProgressForState(state, progress) : 1;
       let rec = this.entries.get(id);
@@ -220,9 +225,12 @@ export class EntityMeshes {
     const rotLerp = Math.min(1, 1 - Math.exp(-dt * 10));
 
     for (const rec of this.entries.values()) {
-      if (terrain) {
-        rec.targetPos.y = terrain.heightAt(rec.targetPos.x, rec.targetPos.z);
-      }
+      const baseWy = terrain ? terrain.heightAt(rec.targetPos.x, rec.targetPos.z) : 0;
+      const podLift =
+        rec.kind === ENTITY_KIND.pod && rec.state === ENTITY_STATE.descending
+          ? Math.max(0, 1 - Math.min(1, Math.max(0, rec.progress))) * 36
+          : 0;
+      rec.targetPos.y = baseWy + podLift;
       rec.mesh.position.lerp(rec.targetPos, posLerp);
       let diff = ((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       rec.mesh.rotation.y += diff * rotLerp;

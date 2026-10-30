@@ -3,6 +3,7 @@ import { compileData, createPlanet, SIM_VERSION, SimHost, TICK_MS, type PlanetSt
 import { Emitter } from '../net/emitter';
 import type { ConnectionState, Outgoing, Transport } from '../net/types';
 import type { FromWorker, ToWorker } from './worker/protocol';
+import { SimWorkerController } from './worker/SimWorkerController';
 import { packView, unpackView, type ClientTiles, type ClientView } from './replica/viewCodec';
 import type { ReplicaStatus } from './replica/ReplicaCore';
 
@@ -15,16 +16,17 @@ export type CommandInput =
       [key: string]: unknown;
     };
 
-function normalizeCommand(input: CommandInput, maybeArgs?: unknown): { kind: string; args: unknown } {
+function normalizeCommand(input: CommandInput | unknown, maybeArgs?: unknown): { kind: string; args: unknown } {
   if (typeof input === 'string') {
     return { kind: input, args: maybeArgs ?? {} };
   }
-  const kind = input.kind ?? input.type ?? '';
-  if (input.args !== undefined) {
-    return { kind, args: input.args };
+  const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const kind = String(obj.kind ?? obj.type ?? '');
+  if (obj.args !== undefined) {
+    return { kind, args: obj.args };
   }
   const rest: Record<string, unknown> = {};
-  for (const [k, v] of Object.entries(input)) {
+  for (const [k, v] of Object.entries(obj)) {
     if (k !== 'type' && k !== 'kind') rest[k] = v;
   }
   return { kind, args: rest };
@@ -37,8 +39,20 @@ export interface WorkerLike {
   terminate(): void;
 }
 
-export const createSimWorker = (): WorkerLike =>
-  new Worker(new URL('./worker/sim.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
+export const createSimWorker = (): WorkerLike => {
+  if (typeof Worker === 'function') {
+    return new Worker(new URL('./worker/sim.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
+  }
+  const w: WorkerLike = {
+    onmessage: null,
+    terminate() {},
+    postMessage(msg) {
+      queueMicrotask(() => ctl.handle(msg));
+    },
+  };
+  const ctl = new SimWorkerController((m) => queueMicrotask(() => w.onmessage?.({ data: m })));
+  return w;
+};
 
 export interface WorldStatus { status: ReplicaStatus | 'idle'; detail?: string }
 
@@ -91,7 +105,7 @@ export class WorldStore {
    * Sends a command over the transport and notifies the worker for immediate prediction.
    * Accepts either `(kind, args)` or `({ type, ...args })`.
    */
-  sendCommand(input: CommandInput, maybeArgs?: unknown): string {
+  sendCommand(input: CommandInput | unknown, maybeArgs?: unknown): string {
     const { kind, args } = normalizeCommand(input, maybeArgs);
     const id = newId('cm');
     this.transport.send({ t: 'cmd', id, d: { kind, args } });
