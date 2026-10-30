@@ -1,11 +1,9 @@
 import type { SimCommandV1 } from '@terra/contracts';
 import {
-  allModules, createPlanet, diffSince, mergeOverrides, restore, snapshot, step,
-  type BalanceOverrides, type Pipeline, type PlanetState, type SimEvent, type SimModule,
+  allModules, buildPipeline, createPlanet, diffSince, effectiveOverrides, mergeOverrides, restore, snapshot, step, tune,
+  type BalanceOverrides, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent, type SimModule, type TuneRequest,
 } from '@terra/sim';
 import type { LoadMsg, PassStat, Post, PlanetStats, ToThread } from './protocol';
-import type { PlanetSchedule } from './scheduler';
-import { buildPipeline, effectiveOverrides, tune, type PlanetTuning, type TuneRequest } from './tuning';
 
 /** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
 export interface SchedulerView {

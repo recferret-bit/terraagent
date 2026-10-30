@@ -1,9 +1,12 @@
 import { track } from '../../core/analytics';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
-import type { Disposable, FeatureServices, GameView, RendererInstance } from '../../core/registry/types';
+import type { Disposable, FeatureServices, GameView, HostKind, RendererInstance } from '../../core/registry/types';
 import type { ClientFlagsStore } from '../../core/flags';
 import { mountDevConsole } from '../../dev/console';
+
+/** Analytics intake is a server feature: the local host records nothing. */
+const noTrack: typeof track = () => undefined;
 
 /**
  * Feature-registry HUD + dev console for the online flow: re-mounts both when the flags change (so only enabled
@@ -16,7 +19,7 @@ export class FeatureHud {
   private last: GameView = {};
   private readonly off: () => void;
 
-  constructor(private readonly parent: HTMLElement, private readonly flags: ClientFlagsStore, private readonly services: Partial<FeatureServices> = {}) {
+  constructor(private readonly parent: HTMLElement, private readonly flags: ClientFlagsStore, private readonly host: HostKind = 'server', private readonly services: Partial<FeatureServices> = {}) {
     this.off = flags.onChange(() => this.mount());
     this.mount();
   }
@@ -37,8 +40,8 @@ export class FeatureHud {
     this.devConsole?.dispose();
     const { source } = this.flags.current;
     const set = this.flags.set;
-    const features = loadFeatures({ flags: set, host: 'server' });
-    const ctx = { flags: set, host: 'server' as const, services: { ...this.services, track, flagsSource: source } };
+    const features = loadFeatures({ flags: set, host: this.host });
+    const ctx = { flags: set, host: this.host, services: { ...this.services, track: this.host === 'local' ? noTrack : track, flagsSource: source } };
     this.root = new HudRoot(this.parent, features, ctx);
     this.devConsole = mountDevConsole({ parent: this.parent, features, ctx });
     this.renderers = features.flatMap((f) => f.renderers ?? []).flatMap((r) => {

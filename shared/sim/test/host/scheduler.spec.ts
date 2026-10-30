@@ -1,6 +1,6 @@
-import { COARSE_DT, TICK_MS } from '@terra/sim';
+import { COARSE_DT, TICK_MS } from '../../src/kernel/constants';
 import { describe, expect, it } from 'vitest';
-import { COARSE_STEP_MS, MAX_CATCHUP, PlanetScheduler } from '../../src/game/thread/scheduler';
+import { COARSE_STEP_MS, MAX_CATCHUP, PlanetScheduler } from '../../src/host/scheduler';
 
 /** Fake clock + timer: `advance(ms)` jumps time, firing due timers in order; `jump(ms)` models a blocked thread. */
 function rig() {

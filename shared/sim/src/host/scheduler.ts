@@ -1,4 +1,4 @@
-import { COARSE_DT, TICK_MS } from '@terra/sim';
+import { COARSE_DT, TICK_MS } from '../kernel/constants';
 
 /** Per-planet cadence (SIM-H-03/04): `active` = `dt 1` every `TICK_MS`; `coarse` = `dt COARSE_DT` every `COARSE_STEP_MS`. */
 export type StepMode = 'active' | 'coarse';

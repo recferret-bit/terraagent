@@ -1,6 +1,6 @@
 import type { SimCommandV1 } from '@terra/contracts';
 import type { BalanceOverrides, SimEvent } from '@terra/sim';
-import type { TuneRequest } from './tuning';
+import type { TuneRequest } from '@terra/sim';
 
 /** In-process MessagePort protocol between the main thread and a sim thread (PROTOCOL §6). Plain structured-clone data only. */
 

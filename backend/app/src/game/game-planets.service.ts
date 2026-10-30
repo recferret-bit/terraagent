@@ -2,7 +2,7 @@ import type { SimCommandV1 } from '@terra/contracts';
 import type { BalanceOverrides, SimEvent } from '@terra/sim';
 import type { SimThreadPool } from './sim-thread-pool';
 import type { FromThread, LoadMsg } from './thread/protocol';
-import type { TuneRequest } from './thread/tuning';
+import type { TuneRequest } from '@terra/sim';
 
 export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
