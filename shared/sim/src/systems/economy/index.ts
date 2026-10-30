@@ -1,10 +1,12 @@
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { constructionSystem, demolishHandler } from './construction';
+import { resourceShortageSystem } from './events';
 import { ensureColonyLedger } from './ledger';
 
 export * from './ledger';
 export * from './construction';
+export * from './events';
 
 const ledgerInitSystem = defineSystem({
   id: 'economy.ledger',
@@ -22,6 +24,6 @@ const ledgerInitSystem = defineSystem({
 export default defineSimModule({
   id: 'economy',
   wave: 'W02',
-  systems: [constructionSystem, ledgerInitSystem],
+  systems: [constructionSystem, ledgerInitSystem, resourceShortageSystem],
   handlers: [demolishHandler],
 });
