@@ -1,0 +1,159 @@
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { parseWaves } from '@terra/contracts';
+import {
+  ENTITY_KIND,
+  ENTITY_STATE,
+  createState,
+  creditResource,
+  ensureColonyLedger,
+  insertRow,
+} from '@terra/sim';
+import type { FeatureContext } from '../../core/registry/types';
+import { installMockDocument } from '../test-dom';
+import { QueuePanel } from './QueuePanel';
+
+function makeContext(): { ctx: FeatureContext; commands: Array<{ kind: string; args: unknown }> } {
+  const commands: Array<{ kind: string; args: unknown }> = [];
+  const ctx: FeatureContext = {
+    flags: parseWaves('..02'),
+    services: {
+      sendCommand(kind: string, args: unknown) {
+        commands.push({ kind, args });
+      },
+    },
+  };
+  return { ctx, commands };
+}
+
+describe('W02-25 Queue panel UI — Construction & Units lanes, ETA chip, cancel, reorder, collapsed mode', () => {
+  let restoreDoc: (() => void) | null = null;
+
+  beforeEach(() => {
+    restoreDoc = installMockDocument();
+  });
+
+  afterEach(() => {
+    restoreDoc?.();
+    restoreDoc = null;
+  });
+
+  it('queue a Solar short on Minerals -> chip shows waiting: Minerals 5/20 · ~30 s; click cancel -> removed with no cost paid', () => {
+    const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
+    const colony = ensureColonyLedger({
+      index: 0,
+      id: 'col-0',
+      name: 'Alpha',
+      color: 0xff6b00,
+      status: 'active',
+      changedAt: 0,
+    });
+    state.colonies.push(colony);
+
+    // 1 Harvester providing 0.5/s income
+    const hRow = insertRow(state.entities, 10, 0);
+    state.entities.cols.kind[hRow] = ENTITY_KIND.harvester;
+    state.entities.cols.owner[hRow] = 0;
+    state.entities.cols.state[hRow] = ENTITY_STATE.idle;
+
+    // Seed colony with 100 Metals, 5 Minerals, 20 Biomass, 10 Water
+    creditResource(colony, 'metals.t1', 100, 0);
+    creditResource(colony, 'minerals.t1', 5, 0);
+    creditResource(colony, 'bio.biomass', 20, 0);
+    creditResource(colony, 'bio.water', 10, 0);
+
+    const host = document.createElement('div');
+    const { ctx, commands } = makeContext();
+    const panel = new QueuePanel(host, ctx);
+    panel.bindSimState(state, 0);
+
+    // Queue Solar short on Minerals (needs 20 Minerals, has 5 -> missing 15 @ 0.5/s = 30s)
+    const entry = panel.enqueue({
+      taskId: 'solar-short',
+      costOverride: { 'metals.t1': 60, 'minerals.t1': 20, 'bio.biomass': 10, 'bio.water': 5 },
+      task: { kind: 'build', building: 'solar', q: 2, r: 1 },
+    });
+    expect(entry).not.toBeNull();
+
+    const chip = host.querySelector('[data-task-id="solar-short"]') as HTMLElement | null;
+    expect(chip).not.toBeNull();
+    expect(chip?.dataset.state).toBe('waiting');
+    const statusEl = chip?.querySelector('[data-chip-status]') as HTMLElement | null;
+    expect(statusEl?.textContent).toBe('waiting: Minerals 5/20 · ~30 s');
+
+    // Click cancel -> removed with no cost paid (stock unchanged: 100 Metals, 5 Minerals)
+    const cancelBtn = chip?.querySelector('[data-cancel-task="solar-short"]') as HTMLButtonElement | null;
+    expect(cancelBtn).not.toBeNull();
+    cancelBtn?.click();
+
+    expect(host.querySelector('[data-task-id="solar-short"]')).toBeNull();
+    expect(colony.stock['metals.t1']).toBe(100);
+    expect(colony.stock['minerals.t1']).toBe(5);
+    expect(commands).toContainEqual({ kind: 'cancelTask', args: { taskId: 'solar-short' } });
+
+    panel.dispose();
+  });
+});
+
+describe('W02-25 Queue panel UI — lanes, progress, reorder, and collapsed mode', () => {
+  let restoreDoc: (() => void) | null = null;
+
+  beforeEach(() => {
+    restoreDoc = installMockDocument();
+  });
+
+  afterEach(() => {
+    restoreDoc?.();
+    restoreDoc = null;
+  });
+
+  it('renders Construction and Units lanes, progress %, reorder buttons, and collapsed mode', () => {
+    const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
+    const colony = ensureColonyLedger({
+      index: 0,
+      id: 'col-0',
+      name: 'Alpha',
+      color: 0xff6b00,
+      status: 'active',
+      changedAt: 0,
+    });
+    state.colonies.push(colony);
+
+    // Give enough stock for 1 Solar to start in_progress, second Solar waiting, plus 1 Harvester in Units lane
+    creditResource(colony, 'metals.t1', 60, 0);
+    creditResource(colony, 'minerals.t1', 75, 0);
+    creditResource(colony, 'bio.biomass', 10, 0);
+    creditResource(colony, 'bio.water', 5, 0);
+
+    const host = document.createElement('div');
+    const { ctx, commands } = makeContext();
+    const panel = new QueuePanel(host, ctx);
+    panel.bindSimState(state, 0);
+
+    panel.enqueue({ taskId: 'c-1', task: { kind: 'build', building: 'solar', q: 2, r: 1 } });
+    panel.enqueue({ taskId: 'c-2', task: { kind: 'build', building: 'metalsExtractor', q: 4, r: 1 } });
+    panel.enqueue({ taskId: 'u-1', task: { kind: 'buildUnit', unit: 'harvester' } });
+
+    const cLane = host.querySelector('[data-lane="construction"]');
+    const uLane = host.querySelector('[data-lane="units"]');
+    const cChips = cLane?.querySelectorAll('.ta-queue-chip') ?? [];
+    const uChips = uLane?.querySelectorAll('.ta-queue-chip') ?? [];
+    expect(cChips.length).toBe(2);
+    expect(uChips.length).toBe(1);
+    expect((cChips[0] as HTMLElement).dataset.state).toBe('in_progress');
+
+    // Reorder c-2 up to index 0
+    const upBtn = cChips[1].querySelector('[data-reorder-up="c-2"]') as HTMLButtonElement | null;
+    expect(upBtn).not.toBeNull();
+    upBtn?.click();
+    expect(commands).toContainEqual({ kind: 'reorderTask', args: { taskId: 'c-2', toIndex: 0 } });
+    expect(panel.getEntries('construction').map((e) => e.taskId)).toEqual(['c-2', 'c-1']);
+
+    // Collapsed mode toggle
+    const collapseBtn = host.querySelector('[data-queue-collapse]') as HTMLButtonElement | null;
+    collapseBtn?.click();
+    expect(panel.isCollapsed()).toBe(true);
+    expect(collapseBtn?.textContent).toBe('+3 more');
+
+    panel.dispose();
+  });
+});

@@ -9,7 +9,23 @@ export class MockElement {
   private attrs = new Map<string, string>();
   children: MockElement[] = [];
   parentElement: MockElement | null = null;
+  draggable = false;
   onclick?: (e?: unknown) => void;
+  ondragstart?: (e?: unknown) => void;
+  ondragover?: (e?: unknown) => void;
+  ondrop?: (e?: unknown) => void;
+  private listeners = new Map<string, Array<(e?: unknown) => void>>();
+
+  addEventListener(type: string, cb: (e?: unknown) => void): void {
+    const arr = this.listeners.get(type) ?? [];
+    arr.push(cb);
+    this.listeners.set(type, arr);
+  }
+
+  click(): void {
+    this.onclick?.();
+    for (const cb of this.listeners.get('click') ?? []) cb();
+  }
   classList = {
     add: (...names: string[]) => {
       const set = new Set(this.className.split(/\s+/).filter(Boolean));
