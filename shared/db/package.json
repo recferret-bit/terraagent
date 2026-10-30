@@ -9,7 +9,11 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "db:gen": "tsx scripts/db.ts gen",
+    "db:migrate": "tsx scripts/db.ts migrate",
+    "db:reset": "tsx scripts/db.ts reset",
+    "db:merge": "node scripts/merge-schema.mjs"
   },
   "dependencies": {
     "@prisma/client": "^6.19.3"

@@ -3,9 +3,10 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
+import { simPurity } from './shared/sim/eslint.rules.js';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/generated/**', '.agents/**', 'docs/**', 'e2e/.out/**', 'playwright-report/**', 'test-results/**'] },
+  { ignores: ['**/node_modules/**', '**/dist/**', '**/generated/**', '.agents/**', 'docs/**', 'e2e/.out/**', 'playwright-report/**', 'test-results/**', 'shared/sim/test/lint/*.fixture.ts'] },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
@@ -24,4 +25,5 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-vars': 'off', '@typescript-eslint/no-unused-expressions': 'off',
     },
   },
+  ...simPurity,
 );
