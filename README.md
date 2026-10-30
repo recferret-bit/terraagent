@@ -6,7 +6,10 @@ Autonomous colony builder in the browser: drop one robot on a live planet, set p
 
 ```bash
 npm install
-npm run dev        # http://127.0.0.1:5173/
+npm run dev        # Postgres (docker) + app + Vite: http://127.0.0.1:5173/ (app :4001, /v1 and /ws proxied); Ctrl-C stops app + Vite
+npm run dev:restart  # restart only the app process of a running `npm run dev` (SIGTERM, Vite keeps running)
+npm run dev:client   # Vite only, no backend
+npm run ci:fast    # check + test + build (no integration/e2e)
 npm run typecheck  # tsc --noEmit
 npm run build      # typecheck + check:structure + vite build → dist/
 npm run check:structure  # ≤ 500-line files, ≤ 100-line functions, layers point inward
