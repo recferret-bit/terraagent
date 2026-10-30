@@ -1,0 +1,176 @@
+.ta-construction {
+  width: 280px;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s2) var(--ta-s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-construction[data-open='false'] {
+  width: auto;
+  padding: var(--ta-s2) var(--ta-s3);
+}
+
+.ta-construction[data-open='false'] .ta-construction__cards {
+  display: none;
+}
+
+.ta-construction__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ta-construction__toggle {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  box-sizing: border-box;
+  color: var(--ta-text);
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-construction__toggle:hover {
+  background: var(--ta-plate-3);
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}
+
+.ta-construction__toggle:focus-visible {
+  outline: 2px solid var(--ta-orange);
+}
+
+.ta-construction__cards {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  max-height: 480px;
+  overflow-y: auto;
+}
+
+.ta-construction__card {
+  all: unset;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+  box-sizing: border-box;
+  transition: border-color var(--ta-dur-quick) ease, background-color var(--ta-dur-quick) ease;
+}
+
+.ta-construction__card:hover:not([data-disabled='true']) {
+  background: var(--ta-plate-3);
+  border-color: var(--ta-orange);
+}
+
+.ta-construction__card:focus-visible {
+  outline: 2px solid var(--ta-orange);
+}
+
+.ta-construction__card[data-selected='true'] {
+  border-color: var(--ta-orange);
+  background: var(--ta-plate-3);
+}
+
+.ta-construction__card[data-disabled='true'] {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-color: var(--ta-seam);
+  background: var(--ta-deep);
+}
+
+.ta-construction__card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.ta-construction__title {
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-small);
+  color: var(--ta-text);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+}
+
+.ta-construction__card[data-selected='true'] .ta-construction__title {
+  color: var(--ta-orange-hi);
+}
+
+.ta-construction__footprint {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  color: var(--ta-blue-hi);
+  background: var(--ta-blue-deep);
+  padding: 2px var(--ta-s1);
+  border: 1px solid var(--ta-blue);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-construction__meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-3);
+}
+
+.ta-construction__time {
+  color: var(--ta-steel);
+}
+
+.ta-construction__power {
+  color: var(--ta-energy);
+}
+
+.ta-construction__costs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s1);
+  margin-top: 2px;
+}
+
+.ta-construction__cost-pill {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
+  padding: 1px var(--ta-s1);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-construction__reason {
+  align-self: flex-start;
+  margin-top: 2px;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-fault-text);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-fault);
+  padding: 2px var(--ta-s1);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
