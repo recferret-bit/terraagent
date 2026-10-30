@@ -23,6 +23,7 @@ export * from './systems/define';
 export * from './systems/registry';
 export * from './systems/hq';
 export * from './systems/movement';
+export * from './systems/harvest/unit';
 export * from './systems/economy/ledger';
 export * from './systems/economy/construction';
 export * from './systems/environment';
