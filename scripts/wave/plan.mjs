@@ -1,4 +1,4 @@
-// Wave plan + git state: which waves exist, which are landed (tag), open (branch) or ready to open.
+// Wave plan + git state: which waves exist, which are landed (tag), open (branch), ready to land, or ready to open.
 import { basename, dirname, join, resolve } from 'node:path';
 import { out, tryOut, fail } from './sh.mjs';
 
@@ -10,13 +10,22 @@ export function mainRoot() {
 
 export const worktreeDir = (root, wave) => resolve(root, '..', 'TerraAgent-wt', wave.toLowerCase());
 
-/** Waves from `index_waves.py --waves-json`, each with id, file, slug, branch, tag base and hard deps. */
+/** Waves from `index_waves.py --waves-json`, each with id, file, slug, branch, tag base, hard deps and issue ids per tag. */
 export function loadPlan(root) {
   const json = JSON.parse(out('python3', ['scripts/plan/index_waves.py', '--waves-json'], { cwd: root }));
   if (json.problems.length) fail(`the plan has problems; run: python3 scripts/plan/index_waves.py\n${json.problems.slice(0, 5).join('\n')}`);
   const waves = Object.entries(json.waves).map(([id, w]) => {
     const slug = basename(w.file, '.md').toLowerCase();
-    return { id, file: w.file, slug, branch: `wave/${slug}`, tag: `wave-${id.slice(1)}`, deps: [...new Set(w.deps)], tags: w.tags };
+    return {
+      id,
+      file: w.file,
+      slug,
+      branch: `wave/${slug}`,
+      tag: `wave-${id.slice(1)}`,
+      deps: [...new Set(w.deps)],
+      tags: w.tags,
+      issues: w.issues ?? {},
+    };
   });
   return { waves, valueOrder: json.valueOrder };
 }
@@ -30,15 +39,30 @@ export function ordered(plan) {
 const branches = (root) => new Set(out('git', ['branch', '--format=%(refname:short)'], { cwd: root }).split('\n').filter(Boolean));
 const tags = (root) => new Set(out('git', ['tag', '--list', 'wave-*'], { cwd: root }).split('\n').filter(Boolean));
 
-/** Adds `landed`, `open` and `worktree` to every wave. */
+function mergedIssueIds(root, w) {
+  const log = tryOut('git', ['log', `main..${w.branch}`, '--format=%s%n%b'], { cwd: root }) ?? '';
+  const re = new RegExp(`\\b(${w.id}-\\d{2})\\b`, 'g');
+  return new Set([...log.matchAll(re)].map((m) => m[1]));
+}
+
+/** Adds `landed`, `open`, `worktree` and `merged` (Set of merged issue IDs) to every wave. */
 export function withState(root, plan) {
   const b = branches(root), t = tags(root);
   for (const w of plan.waves) {
     w.landed = [...t].some((x) => x === w.tag || x.startsWith(`${w.tag}.`));
     w.open = b.has(w.branch);
     w.worktree = worktreeDir(root, w.id);
+    w.merged = w.open ? mergedIssueIds(root, w) : new Set();
   }
   return plan;
+}
+
+/** Computes in-scope issue completion (`done`, `remaining`, `complete`) for the given tag list. */
+export function waveProgress(w, activeTags) {
+  const total = activeTags.flatMap((t) => w.issues[t] ?? []);
+  const done = total.filter((id) => w.merged?.has(id));
+  const remaining = total.filter((id) => !w.merged?.has(id));
+  return { total, done, remaining, complete: total.length > 0 && remaining.length === 0 };
 }
 
 /** Deps that are open but not landed yet: they get stacked (merged into the new wave branch). */

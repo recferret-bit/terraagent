@@ -4,7 +4,7 @@
 **Target Platform:** Modern Web Browser (60 FPS Desktop & Laptop, Zero Install)  
 **Core Engine:** Three.js (`r170+` WebGPU / WebGL2 Hybrid)
 
-> **Status (2026-10-30): early design note; the built renderer wins.** The 3D look is implemented and approved in `frontend/render` on **WebGL2** (`WebGLRenderer` + `EffectComposer`, D-22) with **GLSL** shader chunks (`onBeforeCompile`, unified material, terrain/water shaders), not `WebGPURenderer` + TSL, and the HUD is vanilla DOM (D-36). Don't port the renderer to WebGPU/TSL or restructure it to the tree below; extend `frontend/render` as PRODUCT_WAVES §4 "One renderer" maps it. The sections below stay as background on instancing, GPU animation and LOD.
+> **Status (2026-10-30): early design note; the built renderer wins.** The 3D look is implemented and approved in `frontend/render` on **WebGL2** (`WebGLRenderer` + `EffectComposer`, D-22) with **GLSL** shader chunks (`onBeforeCompile`, unified material, terrain/water shaders), not `WebGPURenderer` + TSL, and the HUD is vanilla DOM (D-36). Keeping WebGL2 + GLSL is the owner's decision; a later WebGPU/TSL migration is an open question (`docs/plan/OWNER_TASKS.md` N7). Don't port the renderer or restructure it to the tree below; extend `frontend/render` as PRODUCT_WAVES §4 "One renderer" maps it. The sections below stay as background on instancing, GPU animation and LOD.
 
 ---
 

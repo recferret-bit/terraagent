@@ -70,6 +70,7 @@ The wave plan was reviewed against the specs and the existing `frontend/` protot
 | N3 | Ports gain methods `NEAR.md` does not list (`keyStatus`, Deed `get`, Staking `listPools`/`withdraw`/`position`, Treasury `addMember`/`removeMember`/`get`, Escrow `get`) | Add them to NEAR.md's port table | W06, W20, W22 |
 | N4 | Hackathon rule ids Q-002…Q-017 are cited but defined nowhere in the repo | Copy the hackathon rules into `HACKATHON_CUT.md` | W00-48, W25 |
 | N6 | HUD technology | **Answered 2026-10-30 → D-36:** vanilla DOM + design-system CSS; ARCHITECTURE §12 and tech-stack-spec amended | W02-26, W01-29 |
+| N7 | **Open question:** migrate the renderer to WebGPU + TSL (as the early `tech-stack-spec.md` proposed) at some point? | **Decided for now: keep the current WebGL2 + GLSL renderer in `frontend/render` unchanged.** No wave contains a renderer migration. Revisit only after the hackathon, if a measured need appears (draw calls, phone performance, WebGPU-only features) | `tech-stack-spec.md`, PRODUCT_WAVES §4 "One renderer" |
 | N5 | `colony eliminate` dev command: owned by W09-31, but W11-29 registers it itself when W09 is off | Keep both (flag-safe fallback) | W09-31, W11-29 |
 
 ## Before W0 — decisions to grill (post-hackathon plan)

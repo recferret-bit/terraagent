@@ -81,29 +81,20 @@ docs/                     game design (game/), online architecture (spec/), buil
 
 The online game is built in **26 product waves** ([`docs/plan/PRODUCT_WAVES.md`](./docs/plan/PRODUCT_WAVES.md), one file per wave in [`docs/plan/waves/`](./docs/plan/waves/)). Every wave ends in a working, tested app and lands in `main` only after you have played its demo. The waves build on the existing 3D renderer in `frontend/render` and the prototype views in `frontend/game`; they extend them, never replace them (PRODUCT_WAVES §4 "One renderer").
 
-**One command:**
+**Two commands:**
 
 ```bash
-npm run wave
+npm run wave            # auto-lands any completed open wave, then opens/resumes the next wave with its built-in preset
+npm run wave -- status  # full board: state, issue progress (done/total), preset (runner:model, effort, parallel) & track
 ```
 
-It resumes the open wave, or opens the next ready one (hackathon priority order; dependencies landed, or still open and stacked). It creates the wave's worktree `../TerraAgent-wt/wNN` on branch `wave/wNN-<slug>`, runs `npm ci` there and starts **Claude Code** in it as the wave lead. Claude builds the wave's `H` issues in dependency order (one branch per issue, up to 4 in parallel), keeps `npm run build` green, never touches `main`, and ends with the demo steps and a URL for your check.
+Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/prompt.mjs) that automatically selects the runner (`agy` or `claude`), lead & subagent models (`argon`+`flash`, `opus`+`sonnet`, `fable`+`sonnet`), reasoning effort (`high`/`xhigh`/`max`), execution mode (`auto`), parallel subagent factor (`2`–`6`), serial plan gate (`serial-spine` or `contract-first`), and domain skills.
 
 **Your loop:**
 
-1. `npm run wave`, and let the session work.
-2. When it says the wave is ready: open the URL and play the demo story from the wave file.
-3. `npm run wave -- land`: merges into `main`, tags `wave-NN`, pushes, removes the worktree and branch. It refuses when a wave it depends on is not in `main` yet, the worktree has uncommitted changes, or the merge would touch uncommitted files in your checkout.
-4. `npm run wave` again for the next one.
-
-| Command | What it does |
-|---|---|
-| `npm run wave -- status` | Every wave: landed, open, ready or blocked (and by what) |
-| `npm run wave -- next 06` | Open or resume a specific wave |
-| `npm run wave -- next --new` | Open another wave in parallel while one is open |
-| `--tags H,H+` | Which rows to build (default `H` = hackathon must; every row for post-hackathon waves) |
-| `--parallel 6` | Issue subagents at once (default 4) |
-| `--dry-run` · `--no-launch` | Show what it would do · print the prompt instead of starting Claude |
+1. Run `npm run wave` and let the wave lead session build its issues.
+2. When it finishes and prints the demo URL, play the demo story from the wave file.
+3. Run `npm run wave` again: it sees all in-scope issues (`done/total`) merged on the wave branch, automatically merges into `main`, tags `wave-NN`, pushes, cleans up the worktree and branch, and opens the next ready wave.
 
 **Plan files:** the hackathon cut and drop order are in [`HACKATHON_CUT.md`](./docs/plan/HACKATHON_CUT.md), the generated start order in [`HACKATHON_SCHEDULE.md`](./docs/plan/HACKATHON_SCHEDULE.md), your to-dos and open decisions in [`OWNER_TASKS.md`](./docs/plan/OWNER_TASKS.md). After editing a wave file, run `python3 scripts/plan/index_waves.py` (must print `problems 0`) and `--write` to regenerate the index and schedule.
 

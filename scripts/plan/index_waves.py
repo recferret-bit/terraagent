@@ -173,8 +173,10 @@ if '--waves-json' in sys.argv:  # machine-readable wave list for scripts/wave/wa
     import json
     waves = {}
     for iid, d in issues.items():
-        w = waves.setdefault(d['wave'], {'file': d['file'], 'deps': wave_deps.get(d['wave'], []), 'tags': {}})
-        w['tags'][d['tag'] or '-'] = w['tags'].get(d['tag'] or '-', 0) + 1
+        t = d['tag'] or '-'
+        w = waves.setdefault(d['wave'], {'file': d['file'], 'deps': wave_deps.get(d['wave'], []), 'tags': {}, 'issues': {}})
+        w['tags'][t] = w['tags'].get(t, 0) + 1
+        w['issues'].setdefault(t, []).append(iid)
     print(json.dumps({'valueOrder': VALUE_ORDER, 'waves': waves, 'problems': problems}))
     sys.exit(0)
 
