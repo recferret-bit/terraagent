@@ -11,3 +11,39 @@ datasource db {
   url      = env("DATABASE_URL")
   schemas  = ["core", "world", "ai", "chain"]
 }
+
+// --- world.prisma ---
+enum SnapshotKind {
+  PERIODIC
+  SHUTDOWN
+  SEAL
+  END
+  HOURLY
+
+  @@schema("world")
+}
+
+model PlanetSnapshot {
+  id         BigInt       @id @default(autoincrement())
+  planetId   String       @map("planet_id")
+  tick       BigInt
+  simVersion Int          @map("sim_version")
+  /// "msgpack+gz"
+  codec      String       @db.VarChar(16)
+  /// compressed size
+  sizeBytes  Int          @map("size_bytes")
+  /// uncompressed size
+  rawBytes   Int          @map("raw_bytes")
+  /// of compressed bytes; corruption means fall back to the previous snapshot
+  crc32      Int
+  kind       SnapshotKind
+  /// wall clock at capture; restart fast-run uses now - savedAt (CONTINUITY CT-51)
+  savedAt    DateTime     @map("saved_at") @db.Timestamptz(3)
+  data       Bytes
+  createdAt  DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([planetId, tick])
+  @@index([planetId, tick(sort: Desc)])
+  @@schema("world")
+  @@map("planet_snapshot")
+}
