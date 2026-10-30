@@ -29,7 +29,7 @@ import {
   type TerraformOrder,
   type TerraformTasksBlobValue,
 } from './queue';
-import { addColonyResource, getColonyStock, setColonyStock } from './stock';
+import { addColonyResource } from './stock';
 
 export {
   addColonyResource,
