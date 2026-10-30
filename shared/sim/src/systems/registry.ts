@@ -22,7 +22,8 @@ export interface EngineConfigInput {
 export function createEngineConfig(input: EngineConfigInput): EngineConfig {
   const modules = input.modules ?? SIM_MODULES;
   const flags = new Set(input.flags);
-  return { flags, data: input.data ?? compileData(flags), systems: allSystems(modules), handlers: allHandlers(modules) };
+  const systems = allSystems(modules).filter((s) => flags.has(s.wave));
+  return { flags, data: input.data ?? compileData(flags), systems, handlers: allHandlers(modules) };
 }
 
 export const createRegistryPipeline = (input: EngineConfigInput): Pipeline => createPipeline(createEngineConfig(input));
