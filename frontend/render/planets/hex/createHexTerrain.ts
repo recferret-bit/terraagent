@@ -2,7 +2,14 @@ import * as THREE from 'three';
 import { hexIndex } from '@terra/sim/grid/hex';
 import type { PlanetSpec } from '../PlanetSpec';
 import { createTerrainMaterial, terrainUniforms } from '../../visuals/terrain/terrainMaterial';
-import { buildChunk, computeEffectiveHeights, type HexTileLayers } from './chunkMesh';
+import {
+  buildChunk,
+  computeEffectiveHeights,
+  HEX_PREP,
+  INITIAL_PREP_START_TIME,
+  PREP_BLEND_DURATION_S,
+  type HexTileLayers,
+} from './chunkMesh';
 import { chunkKey, chunkLayout, type ChunkDef } from './chunks';
 import { createHexPropScatter, scatterChunkProps, type HexPropScatter } from './chunkPropScatter';
 import { addHexEdges } from './hexEdges';
@@ -23,6 +30,8 @@ export interface HexPick { q: number; r: number; i: number }
 export interface HexTerrain {
   readonly group: THREE.Group;
   readonly chunks: readonly THREE.Mesh[];
+  readonly material: THREE.MeshStandardMaterial;
+  readonly uniforms: Record<string, THREE.IUniform>;
   readonly water: HexWater;
   readonly props: HexPropScatter;
   readonly radius: number;
@@ -33,8 +42,14 @@ export interface HexTerrain {
   pick(ray: THREE.Raycaster | THREE.Vector2, camera?: THREE.Camera): HexPick | null;
   /** New tile layers; rebuilds only the chunks around `changed` tile indices (all when omitted). */
   updateTiles(tiles: HexTiles, changed?: ArrayLike<number>): void;
+  /** Advances shader time (`uTime`) for the 0.4 s Wild -> Prepared pad transition and water ripples. */
+  tick(dt: number): void;
+  /** Returns the current [0..1] Prepared pad blend factor for tile `(q, r)`. */
+  getTilePrepBlend(q: number, r: number): number;
   dispose(): void;
 }
+
+export type HexTerrainHandle = HexTerrain;
 
 export interface HexTerrainOptions {
   radius: number;
@@ -46,12 +61,73 @@ export interface HexTerrainOptions {
 
 const WIND: [number, number] = [0.8, 0.6];
 
+function buildChunkMesh(
+  radius: number,
+  def: ChunkDef,
+  layers: HexTileLayers,
+  material: THREE.Material,
+): THREE.Mesh {
+  const b = buildChunk(radius, def.tiles, layers);
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(b.position, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(b.normal, 3));
+  geo.setAttribute('aAO', new THREE.BufferAttribute(b.aAO, 1));
+  geo.setAttribute('aRock', new THREE.BufferAttribute(b.aRock, 1));
+  geo.setAttribute('color', new THREE.BufferAttribute(b.color, 3));
+  geo.setAttribute('aPrepTarget', new THREE.BufferAttribute(b.aPrepTarget, 1));
+  geo.setAttribute('aPrepStartTime', new THREE.BufferAttribute(b.aPrepStartTime, 1));
+  geo.setIndex(new THREE.BufferAttribute(b.index, 1));
+  geo.computeBoundingSphere();
+  geo.computeBoundingBox();
+  const mesh = new THREE.Mesh(geo, material);
+  mesh.name = `hexChunk ${def.cq},${def.cr}`;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+function syncPrepTransitionTimes(
+  prevPrep: Uint8Array,
+  startTimes: Float32Array,
+  nextPrep: ArrayLike<number> | undefined,
+  now: number,
+): void {
+  for (let i = 0; i < prevPrep.length; i++) {
+    const wasPrep = prevPrep[i] === HEX_PREP.prepared;
+    const p = nextPrep?.[i] ?? 0;
+    const nowPrep = p === HEX_PREP.prepared;
+    if (!wasPrep && nowPrep) startTimes[i] = now;
+    else if (!nowPrep) startTimes[i] = INITIAL_PREP_START_TIME;
+    prevPrep[i] = p;
+  }
+}
+
+function collectDirtyChunks(
+  hx: ReturnType<typeof hexIndex>,
+  changed: ArrayLike<number>,
+  byKey: ReadonlyMap<string, ChunkDef>,
+): Set<string> {
+  const dirty = new Set<string>();
+  for (let n = 0; n < changed.length; n++) {
+    const i = changed[n]!, q = hx.q[i]!, r = hx.r[i]!;
+    for (let dq = -2; dq <= 2; dq++) for (let dr = -2; dr <= 2; dr++) {
+      const k = chunkKey(q + dq, r + dr);
+      if (byKey.has(k)) dirty.add(k);
+    }
+  }
+  return dirty;
+}
+
 /** Hex terrain from the sim tile grid: 32x32-tile chunks, class relief, hydro water plane, and per-tile prop scatter. */
 export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const { radius, look } = opts;
-  let tiles = opts.tiles;
-  let effHeights = computeEffectiveHeights(radius, tiles);
   const hx = hexIndex(radius);
+  let tiles = opts.tiles;
+  let elapsedTime = 0;
+  const prevPrep = new Uint8Array(hx.count);
+  const prepStartTimes = new Float32Array(hx.count).fill(INITIAL_PREP_START_TIME);
+  for (let i = 0; i < hx.count; i++) prevPrep[i] = tiles.prep?.[i] ?? 0;
+
+  let effHeights = computeEffectiveHeights(radius, tiles);
   const ext = planetExtent(radius);
   const uniforms = terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, WIND);
   const edge: THREE.IUniform<number> = { value: opts.edges ?? 0.55 };
@@ -64,27 +140,10 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const water = createHexWater(radius, look, tiles);
   const props = createHexPropScatter(look);
 
-  const build = (def: ChunkDef): THREE.Mesh => {
-    const b = buildChunk(radius, def.tiles, tiles);
-    const geo = new THREE.BufferGeometry();
-    geo.setAttribute('position', new THREE.BufferAttribute(b.position, 3));
-    geo.setAttribute('normal', new THREE.BufferAttribute(b.normal, 3));
-    geo.setAttribute('aAO', new THREE.BufferAttribute(b.aAO, 1));
-    geo.setAttribute('aRock', new THREE.BufferAttribute(b.aRock, 1));
-    geo.setAttribute('color', new THREE.BufferAttribute(b.color, 3));
-    geo.setIndex(new THREE.BufferAttribute(b.index, 1));
-    geo.computeBoundingSphere();
-    geo.computeBoundingBox();
-    const mesh = new THREE.Mesh(geo, material);
-    mesh.name = `hexChunk ${def.cq},${def.cr}`;
-    mesh.receiveShadow = true;
-    return mesh;
-  };
-
   const place = (def: ChunkDef) => {
     const k = `${def.cq},${def.cr}`, old = meshes.get(k);
     if (old) { group.remove(old); old.geometry.dispose(); }
-    const m = build(def);
+    const m = buildChunkMesh(radius, def, { ...tiles, prepStartTime: prepStartTimes }, material);
     meshes.set(k, m);
     group.add(m);
     props.setChunk(k, scatterChunkProps(radius, def.tiles, tiles, heightAt));
@@ -95,10 +154,12 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   group.add(water.mesh);
   group.add(props.group);
   const byKey = new Map(defs.map((d) => [`${d.cq},${d.cr}`, d]));
-
   const ray = new THREE.Raycaster();
+
   return {
     group,
+    material,
+    uniforms,
     water,
     props,
     radius,
@@ -112,25 +173,27 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       return hit ? tileAt(radius, hit.x, hit.z) : null;
     },
     updateTiles(next, changed) {
+      syncPrepTransitionTimes(prevPrep, prepStartTimes, next.prep, elapsedTime);
       tiles = next;
       effHeights = computeEffectiveHeights(radius, tiles);
       if (!changed) {
         defs.forEach(place);
-        props.rebuildMeshes();
-        water.update(tiles);
-        return;
+      } else {
+        for (const k of collectDirtyChunks(hx, changed, byKey)) place(byKey.get(k)!);
       }
-      const dirty = new Set<string>();
-      for (let n = 0; n < changed.length; n++) {
-        const i = changed[n]!, q = hx.q[i]!, r = hx.r[i]!;
-        for (let dq = -2; dq <= 2; dq++) for (let dr = -2; dr <= 2; dr++) {
-          const k = chunkKey(q + dq, r + dr);
-          if (byKey.has(k)) dirty.add(k);
-        }
-      }
-      for (const k of dirty) place(byKey.get(k)!);
       props.rebuildMeshes();
       water.update(tiles);
+    },
+    tick(dt) {
+      elapsedTime += Math.max(0, dt);
+      if (uniforms.uTime) uniforms.uTime.value = elapsedTime;
+      if (water.uniforms.uTime) water.uniforms.uTime.value = elapsedTime;
+    },
+    getTilePrepBlend(q, r) {
+      const i = hx.indexOf(q, r);
+      if (i < 0 || (tiles.prep?.[i] ?? 0) !== HEX_PREP.prepared) return 0;
+      const start = prepStartTimes[i] ?? INITIAL_PREP_START_TIME;
+      return Math.min(1, Math.max(0, (elapsedTime - start) / PREP_BLEND_DURATION_S));
     },
     dispose() {
       for (const m of meshes.values()) m.geometry.dispose();

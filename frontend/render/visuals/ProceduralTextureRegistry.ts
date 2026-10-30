@@ -4,29 +4,38 @@ import * as THREE from 'three';
 export interface ProceduralPBRBundle {
   map?: THREE.Texture;
   normalMap?: THREE.DataTexture;
-  roughnessMap?: THREE.CanvasTexture;
-  emissiveMap?: THREE.CanvasTexture;
+  roughnessMap?: THREE.Texture;
+  emissiveMap?: THREE.Texture;
+}
+
+export interface HeightBuffer {
+  width: number;
+  height: number;
+  data: Uint8Array;
 }
 
 export type ProceduralTextureGeneratorFn = (size?: number) => ProceduralPBRBundle;
 
 /**
- * Converts a grayscale height canvas into a seamless tangent-space Normal DataTexture
+ * Converts a grayscale height canvas or raw `HeightBuffer` into a seamless tangent-space Normal DataTexture
  * using a wrapping 3x3 Sobel filter.
  */
 export function heightToNormalTexture(
-  heightCanvas: HTMLCanvasElement,
+  heightSource: HTMLCanvasElement | HeightBuffer,
   normalStrength = 2.5
 ): THREE.DataTexture {
-  const size = heightCanvas.width;
-  const ctx = heightCanvas.getContext('2d')!;
-  const src = ctx.getImageData(0, 0, size, size).data;
+  const size = heightSource.width;
+  const isBuffer = 'data' in heightSource;
+  const src = isBuffer
+    ? heightSource.data
+    : heightSource.getContext('2d')!.getImageData(0, 0, size, size).data;
+  const stride = isBuffer && src.length === size * size ? 1 : 4;
   const out = new Uint8Array(size * size * 4);
 
   const h = (x: number, y: number): number => {
     const wx = (x + size) % size;
     const wy = (y + size) % size;
-    return src[(wy * size + wx) * 4] / 255.0;
+    return src[(wy * size + wx) * stride]! / 255.0;
   };
 
   const invStrength = 1.0 / Math.max(normalStrength, 0.01);
@@ -58,6 +67,7 @@ export function heightToNormalTexture(
   const normalTex = new THREE.DataTexture(out, size, size, THREE.RGBAFormat);
   normalTex.wrapS = THREE.RepeatWrapping;
   normalTex.wrapT = THREE.RepeatWrapping;
+  normalTex.anisotropy = 4;
   normalTex.colorSpace = THREE.NoColorSpace;
   normalTex.needsUpdate = true;
   return normalTex;
@@ -196,4 +206,81 @@ ProceduralTextureRegistry.register('solarHexGrid', (size = 512) => {
 
   const normalMap = heightToNormalTexture(heightCanvas, 2.2);
   return { map, normalMap };
+});
+
+function sampleFoundationHexPadPixel(u: number, v: number, grain: number): [number, number, number, number, number] {
+  const cx = (u * 2) % 1;
+  const cy = (v * 2) % 1;
+  const cellId = (Math.floor(u * 2) + 2 * Math.floor(v * 2)) & 3;
+  const bx = Math.min(cx, 1 - cx);
+  const by = Math.min(cy, 1 - cy);
+  const borderDist = Math.min(bx, by);
+  const cornerDist = bx + by;
+  const dx = cx - 0.5;
+  const dy = cy - 0.5;
+  const hexDist = Math.max(Math.abs(dx), Math.abs(dx) * 0.5 + Math.abs(dy) * 0.8660254);
+  const boltDist = Math.hypot(bx - 0.14, by - 0.14);
+
+  if (borderDist < 0.045 || cornerDist < 0.095 || Math.abs(hexDist - 0.27) < 0.018) {
+    return [32, 42, 48, 54, 220]; // deep expansion groove
+  }
+  if (boltDist < 0.032) {
+    return [214, 218, 148, 56, 84]; // raised amber-steel corner anchor bolt head
+  }
+  if (boltDist < 0.058) {
+    return [56, 56, 62, 68, 186]; // recessed bolt socket collar
+  }
+  if (borderDist < 0.085 || Math.abs(hexDist - 0.24) < 0.022) {
+    return [196, 154, 162, 152, 96]; // raised inner chamfer bevel
+  }
+  const shift = (cellId - 1.5) * 4 + (grain - 0.5) * 8;
+  const r = Math.min(255, Math.max(0, Math.round(124 + shift)));
+  const g = Math.min(255, Math.max(0, Math.round(132 + shift)));
+  const b = Math.min(255, Math.max(0, Math.round(121 + shift)));
+  const h = Math.min(255, Math.max(0, Math.round(148 + (grain - 0.5) * 10)));
+  const rough = Math.min(255, Math.max(0, Math.round(112 + (cellId - 1.5) * 3)));
+  return [h, r, g, b, rough];
+}
+
+function makeRepeatDataTex(data: Uint8Array, size: number, colorSpace: THREE.ColorSpace): THREE.DataTexture {
+  const tex = new THREE.DataTexture(data, size, size, THREE.RGBAFormat);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  tex.colorSpace = colorSpace;
+  tex.needsUpdate = true;
+  return tex;
+}
+
+ProceduralTextureRegistry.register('foundationHexPad', (size = 128) => {
+  const heightData = new Uint8Array(size * size);
+  const albedoData = new Uint8Array(size * size * 4);
+  const roughData = new Uint8Array(size * size * 4);
+
+  for (let y = 0; y < size; y++) {
+    const v = y / size;
+    for (let x = 0; x < size; x++) {
+      const u = x / size;
+      let h = (Math.imul(x + 11, 0x9e3779b1) ^ Math.imul(y + 23, 0x85ebca6b)) >>> 0;
+      h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
+      const grain = (h >>> 8) / 16777216;
+      const [hVal, r, g, b, rough] = sampleFoundationHexPadPixel(u, v, grain);
+      const p = y * size + x;
+      const idx = p * 4;
+      heightData[p] = hVal;
+      albedoData[idx] = r;
+      albedoData[idx + 1] = g;
+      albedoData[idx + 2] = b;
+      albedoData[idx + 3] = 255;
+      roughData[idx] = rough;
+      roughData[idx + 1] = rough;
+      roughData[idx + 2] = rough;
+      roughData[idx + 3] = 255;
+    }
+  }
+
+  const map = makeRepeatDataTex(albedoData, size, THREE.SRGBColorSpace);
+  const normalMap = heightToNormalTexture({ width: size, height: size, data: heightData }, 2.6);
+  const roughnessMap = makeRepeatDataTex(roughData, size, THREE.NoColorSpace);
+  return { map, normalMap, roughnessMap };
 });

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import * as THREE from 'three';
 import { hexCount, hexIndex } from '@terra/sim/grid/hex';
+import { ProceduralTextureRegistry } from '../../visuals/ProceduralTextureRegistry';
 import {
   buildChunk,
   computeEffectiveHeights,
@@ -8,6 +10,7 @@ import {
   HEX_PREP,
   HEX_TERRAIN,
   HEX_WATER_LEVEL,
+  PREP_BLEND_DURATION_S,
   scatterTileProps,
   specForPlanetType,
   tileHash01,
@@ -257,6 +260,81 @@ describe('W01-20: Water plane and per-tile prop scatter reactivity', () => {
     expect(hexTerrain.props.instancesForTile(rk2)).toEqual(rk2Before);
     expect(hexTerrain.props.instancesForTile(depTile).length).toBeGreaterThanOrEqual(2);
     expect(scatterTileProps(2, -1, depTile, HEX_TERRAIN.flat, HEX_PREP.prepared, HEX_DEPOSIT.minerals)[0]?.kind).toBe('minerals');
+    hexTerrain.dispose();
+  });
+});
+
+describe('W01-21: Prepared-ground pad material and 0.4s shader blend', () => {
+  it('synthesizes foundationHexPad PBR textures in ProceduralTextureRegistry and extends the single terrain shader', () => {
+    const bundle = ProceduralTextureRegistry.get('foundationHexPad');
+    expect(bundle.map).toBeDefined();
+    expect(bundle.normalMap).toBeDefined();
+    expect(bundle.roughnessMap).toBeDefined();
+    expect(bundle.map!.wrapS).toBe(THREE.RepeatWrapping);
+    expect(bundle.map!.colorSpace).toBe(THREE.SRGBColorSpace);
+    expect(bundle.normalMap!.colorSpace).toBe(THREE.NoColorSpace);
+    expect(bundle.roughnessMap!.colorSpace).toBe(THREE.NoColorSpace);
+    expect(ProceduralTextureRegistry.get('foundationHexPad')).toBe(bundle);
+
+    const r = 6;
+    const count = hexCount(r);
+    const terrain = new Uint8Array(count).fill(HEX_TERRAIN.flat);
+    const prep = new Uint8Array(count).fill(HEX_PREP.flat);
+    const height = new Float32Array(count);
+    const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType('temperate') });
+
+    for (const chunkMesh of hexTerrain.chunks) {
+      expect(chunkMesh.material).toBe(hexTerrain.material);
+    }
+    expect(hexTerrain.uniforms.uPadMap?.value).toBe(bundle.map);
+    expect(hexTerrain.uniforms.uPadNormal?.value).toBe(bundle.normalMap);
+    expect(hexTerrain.uniforms.uPadRough?.value).toBe(bundle.roughnessMap);
+
+    const mockShader: THREE.WebGLProgramParametersWithUniforms = {
+      uniforms: {},
+      vertexShader: '#include <common>\nvoid main() {\n#include <begin_vertex>\n}',
+      fragmentShader:
+        '#include <common>\nvoid main() {\n#include <color_fragment>\n#include <alphatest_fragment>\n#include <roughnessmap_fragment>\n#include <normal_fragment_maps>\n#include <emissivemap_fragment>\n#include <fog_fragment>\n}',
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    hexTerrain.material.onBeforeCompile(mockShader, null as unknown as THREE.WebGLRenderer);
+
+    expect(mockShader.vertexShader).toContain('attribute float aPrepTarget;');
+    expect(mockShader.vertexShader).toContain('attribute float aPrepStartTime;');
+    expect(mockShader.vertexShader).toContain('float prepBlend = aPrepTarget * clamp((uTime - aPrepStartTime) / 0.4, 0.0, 1.0);');
+    expect(mockShader.fragmentShader).toContain('evalFoundationPad');
+    expect(mockShader.fragmentShader).toContain('frontierGlow');
+    hexTerrain.dispose();
+  });
+
+  it('blends a newly graded tile from 0 -> 0.5 -> 1.0 over 0.4s while starting initially Prepared tiles at 1.0', () => {
+    const r = 6;
+    const count = hexCount(r);
+    const hx = hexIndex(r);
+    const terrain = new Uint8Array(count).fill(HEX_TERRAIN.flat);
+    const prep = new Uint8Array(count).fill(HEX_PREP.flat);
+    const height = new Float32Array(count);
+
+    const preloadedIdx = hx.indexOf(-2, 1);
+    const gradedIdx = hx.indexOf(1, 0);
+    prep[preloadedIdx] = HEX_PREP.prepared;
+
+    const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType('temperate') });
+    expect(PREP_BLEND_DURATION_S).toBe(0.4);
+    expect(hexTerrain.getTilePrepBlend(-2, 1)).toBe(1.0);
+    expect(hexTerrain.getTilePrepBlend(1, 0)).toBe(0.0);
+
+    hexTerrain.tick(1.25);
+    prep[gradedIdx] = HEX_PREP.prepared;
+    hexTerrain.updateTiles({ terrain, prep, height }, [gradedIdx]);
+
+    expect(hexTerrain.getTilePrepBlend(1, 0)).toBeCloseTo(0.0, 5);
+    hexTerrain.tick(0.2);
+    expect(hexTerrain.getTilePrepBlend(1, 0)).toBeCloseTo(0.5, 5);
+    hexTerrain.tick(0.2);
+    expect(hexTerrain.getTilePrepBlend(1, 0)).toBeCloseTo(1.0, 5);
+    hexTerrain.tick(0.5);
+    expect(hexTerrain.getTilePrepBlend(1, 0)).toBe(1.0);
+    expect(hexTerrain.getTilePrepBlend(-2, 1)).toBe(1.0);
     hexTerrain.dispose();
   });
 });

@@ -123,6 +123,7 @@ export class OnlineSession {
     const dt = Math.min((now - this.last) / 1000, 0.05); this.last = now;
     try {
       if (this.cam) { this.cam.update(dt); this.viewport.followShadow(this.cam.target); }
+      this.terrain?.tick(dt);
       this.viewport.render();
     } catch (e) { console.error('frame error', e); }
     this.raf = requestAnimationFrame(this.loop);
