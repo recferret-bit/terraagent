@@ -29,6 +29,8 @@ export default defineTable({
       },
       powerDrainPerS: 5,
       founderCoreGenPerS: 8,
+      founderCoreEPerS: 8,
+      powerGen: 8,
       hp: 1500,
       claimRadius: 10,
       storageCapPerFamily: 500,
