@@ -8,10 +8,11 @@ import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { getEnvironment } from '../environment';
 import { applyBrownoutShedding, type ShedCandidate } from './shedding';
+import { evaluatePowerEventsForColony, type PowerEventTracker } from './events';
 
 export * from './shedding';
-
 export * from './solar';
+export * from './events';
 
 export interface BuildingFootprintTile {
   q: number;
@@ -237,7 +238,13 @@ const powerCoreSystem = defineSystem({
   slot: 7,
   wave: 'W02',
   run(state, ctx) {
+    const prevBlob = (state.blobs.power?.value as {
+      byColony?: Record<number, ColonyPowerSummary>;
+      trackers?: Record<number, PowerEventTracker>;
+    } | undefined) ?? {};
+    const prevTrackers = prevBlob.trackers ?? {};
     const byColony: Record<number, ColonyPowerSummary> = {};
+    const trackers: Record<number, PowerEventTracker> = {};
     const colonyIndices = new Set<number>();
     for (const c of state.colonies) colonyIndices.add(c.index);
     for (let row = 0; row < state.entities.count; row++) colonyIndices.add(state.entities.cols.owner[row]);
@@ -246,10 +253,11 @@ const powerCoreSystem = defineSystem({
     for (const idx of colonyIndices) {
       const summary = evaluateColonyPower(state, idx, ctx.data, ctx.tick);
       byColony[idx] = summary;
+      trackers[idx] = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, ctx.data);
       const col = state.colonies[idx];
       if (col) { col.power = summary; col.changedAt = ctx.tick; }
     }
-    setBlob(state, 'power', { byColony }, ctx.tick);
+    setBlob(state, 'power', { byColony, trackers }, ctx.tick);
   },
 });
 
