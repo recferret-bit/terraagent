@@ -3,7 +3,7 @@ import { z } from 'zod';
 /** `cmd.reject` codes (PROTOCOL §4.3) plus `wave_disabled` (PRODUCT_WAVES §3) and `host_unavailable` (D-31 local host). */
 export const REJECT_CODES = [
   'invalid_args', 'unknown_kind', 'not_own_colony', 'colony_inactive', 'not_own_territory', 'site_blocked',
-  'terrain_unbuildable', 'insufficient_resources', 'supply_cap', 'tier_locked', 'worker_tier_locked', 'stage_locked',
+  'terrain_unbuildable', 'insufficient_resources', 'supply_cap', 'unknown_entity', 'tier_locked', 'worker_tier_locked', 'stage_locked',
   'no_trade_hub', 'raid_protected', 'truce_active', 'would_isolate', 'launch_gate', 'mint_cap', 'market_unavailable',
   'planet_ended', 'wave_disabled', 'host_unavailable', 'internal',
 ] as const;

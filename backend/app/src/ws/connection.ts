@@ -1,7 +1,7 @@
 import type { Logger } from 'pino';
 import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type ClientMessageOf, type CloseCode } from '@terra/contracts';
 import type { RawData, WebSocket } from 'ws';
-import type { GamePlanets } from '../game/game-planets.service';
+import type { FullState, GamePlanets } from '../game/game-planets.service';
 import type { CommandIngress } from './command-ingress';
 import type { PlanetRooms, RoomMember } from './rooms';
 import type { SessionVerifier } from './session-verifier';
@@ -44,6 +44,8 @@ export class Connection implements RoomMember {
   playerId: string | undefined;
   planetId: string | undefined;
   welcomeTick: number | undefined;
+  paused = false;
+  private resyncing = false;
   private chain: Promise<void> = Promise.resolve();
   private helloTimer: NodeJS.Timeout | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
@@ -62,6 +64,26 @@ export class Connection implements RoomMember {
 
   send(frame: string | Uint8Array): void {
     if (this.ws.readyState === this.ws.OPEN) this.ws.send(frame);
+  }
+
+  get bufferedAmount(): number {
+    return this.ws.bufferedAmount;
+  }
+
+  /** WS-22: replaces the deltas a backed-up socket missed with a fresh engine snapshot; deltas resume after its tick. */
+  resync(): void {
+    if (this.resyncing || this.state !== 'playing' || !this.planetId) return;
+    this.resyncing = true;
+    const planetId = this.planetId;
+    this.welcomeTick = undefined; // no deltas until the snapshot is out
+    this.d.planets.fullState(planetId).then(
+      (snap) => {
+        if (this.state !== 'playing' || this.planetId !== planetId) return;
+        this.sendWelcome('resync', planetId, snap);
+        this.welcomeTick = snap.tick;
+      },
+      (e) => { this.d.log.error({ err: e, planetId }, 'resync fullState failed'); this.bye(CLOSE_CODES.forbidden, 'planet_unavailable'); },
+    ).finally(() => { this.resyncing = false; this.paused = false; });
   }
 
   sendMsg(msg: object): void {
@@ -168,20 +190,24 @@ export class Connection implements RoomMember {
       return this.bye(CLOSE_CODES.forbidden, 'planet_unavailable');
     }
     if (this.state !== 'joining') return; // closed or left meanwhile
+    this.sendWelcome('join', planetId, snap);
+    this.welcomeTick = snap.tick;
+    this.state = 'playing';
+    this.d.onWelcome();
+    this.d.onJoined(this);
+  }
+
+  private sendWelcome(reason: 'join' | 'resync', planetId: string, snap: FullState): void {
     const type = PlanetType.safeParse(snap.planetType);
     this.sendMsg({
       v: 1, t: 'welcome', tick: snap.tick,
       d: {
-        reason: 'join', colonyId: null,
+        reason, colonyId: null,
         planet: { id: planetId, type: type.success ? type.data : 'temperate', name: planetId },
         state: snap.bytes, simVersion: snap.simVersion, dataHash: snap.dataHash, tick: snap.tick,
         serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: DELTA_HZ, flags: this.d.flags,
       },
     });
-    this.welcomeTick = snap.tick;
-    this.state = 'playing';
-    this.d.onWelcome();
-    this.d.onJoined(this);
   }
 
   private async onCmd(msg: ClientMessageOf<'cmd'>): Promise<void> {

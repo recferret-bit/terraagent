@@ -9,7 +9,8 @@ import { APP_ENV, LOGGER, type AppEnv, type RootLogger } from '../core/tokens';
 import { FlagsService } from '../flags/flags.service';
 import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
-import { COMMAND_INGRESS, NotWiredCommandIngress, type CommandIngress } from './command-ingress';
+import { COMMAND_INGRESS, type CommandIngress } from './command-ingress';
+import { SimCommandIngress } from './sim-command-ingress';
 import { DevSessionVerifier, SESSION_VERIFIER, type SessionVerifier } from './session-verifier';
 import { WsGateway } from './ws.gateway';
 
@@ -25,7 +26,12 @@ export const env = defineEnv('ws', {
   imports: [GameModule],
   providers: [
     { provide: SESSION_VERIFIER, inject: [APP_ENV], useFactory: (e: AppEnv): SessionVerifier => new DevSessionVerifier(e.NODE_ENV === 'production') },
-    { provide: COMMAND_INGRESS, useFactory: (): CommandIngress => new NotWiredCommandIngress() },
+    {
+      provide: COMMAND_INGRESS,
+      inject: [APP_ENV, MetricsRegistry, FlagsService, GamePlanets],
+      useFactory: (e: AppEnv, m: MetricsRegistry, flags: FlagsService, planets: GamePlanets): CommandIngress =>
+        new SimCommandIngress({ planets, flags, registry: m.registry, production: e.NODE_ENV === 'production' }),
+    },
     {
       provide: WsGateway,
       inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS],
