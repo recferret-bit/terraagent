@@ -114,6 +114,13 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.confi
 | Play | `&deploy=1` | Deploy immediately (plays the descent). |
 | Play | `&skip=1` | Deploy and skip the descent, straight into gameplay. |
 | Play | `&t=<seconds>` | Deploy and fast-forward the descent by `t` seconds. |
+| Play (online) | `?scenario=<id>` | Online flow: create a fresh planet from `scenarios/<id>` (e.g. `w00`) and join it; skips the prototype menu and descent. |
+| Play (online) | `?host=local` | Run the engine in the browser alone (no app or Postgres); snapshots in IndexedDB. Combine with `&scenario=`. |
+| Play (online) | `&waves=..NN` / `&waves=00,03` | Dev: narrow the enabled waves (never wider than the server's set). |
+| Play (online) | `&lag=<ms>` | Dev: delay the connection both ways (prediction testing). |
+| Play (online) | `&predict=0` | Turn client-side prediction off (interpolate 400 ms behind). |
+| Play (online) | `&as=<name>` | Dev session name (`dev:<name>` token). |
+| Play (online) | `&dev=1` | Dev console in a non-dev build. |
 | Playground | `?inspect=<archetype id>` | Select a model, e.g. `robot.hero`, `building.commandHub`, `ship.carrier`. |
 | Playground | `&biome=dune\|oceanForest\|forestRock` | Pedestal / sky / weathering biome. |
 | Playground | `&view=iso\|front\|side\|top` | Camera view. |
@@ -121,7 +128,8 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.confi
 
 ### Controls
 
-- **Game:** LMB move hero · WASD / edge pan · MMB drag · wheel zoom · Q/E rotate · Home focus hero · Esc pause. During the descent: Esc / Space skips.
+- **Game (online, dev):** `` ` `` opens the dev console (`help` lists the commands of the enabled waves: `warp`, `spawn`, `nudge`, `teleport`, `tune`, `scenario`, `chain.ping`, `flags`, …). LMB on a tile logs its `q, r`.
+- **Game (prototype):** LMB move hero · WASD / edge pan · MMB drag · wheel zoom · Q/E rotate · Home focus hero · Esc pause. During the descent: Esc / Space skips.
 - **Playground:** `[` `]` cycle models · `1`–`4` views · `T` turntable · `F` focus · `G` grid · `W` wireframe · `B` bloom · `R` spawn the whole category in a row · `V` validate (outline floating/overlapping parts) · `/` search · double-click to refocus.
 - **Landing and Game:** `F9` toggles the CRT overlay ([`frontend/render/ui/crt.ts`](./frontend/render/ui/crt.ts)).
 
