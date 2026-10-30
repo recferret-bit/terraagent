@@ -1,7 +1,6 @@
-import type { ViewColony } from '@terra/sim';
+import type { ViewColony, ViewEntity } from '@terra/sim';
 import { defineFeature, type Feature, type FeatureContext, type GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
-import type { ClientView } from '../../store/replica/viewCodec';
 import { HqPanel } from './HqPanel';
 import {
   extractHqFromView,
@@ -29,7 +28,7 @@ export {
 
 declare module '../../core/registry/types' {
   interface GameView {
-    entities?: Float32Array | ClientView['entities'];
+    entities?: Float32Array | ViewEntity[];
     count?: number;
     colonies?: ViewColony[];
     blobs?: Record<string, unknown>;

@@ -1,0 +1,121 @@
+.ta-hub-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s3) var(--ta-s4);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  min-width: 280px;
+}
+
+.ta-hub-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding-bottom: var(--ta-s1);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-hub-menu__build-btn {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  width: 100%;
+}
+
+.ta-hub-menu__build-cost {
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-hub-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s3);
+  background: var(--ta-plate-2);
+  border: 1.5px solid var(--ta-seam-3);
+  color: var(--ta-text);
+}
+
+.ta-hub-ghost.ghost-valid,
+.ta-hub-ghost[data-tint='valid'] {
+  border-color: var(--ta-terra);
+  box-shadow: var(--ta-glow-2);
+}
+
+.ta-hub-ghost.ghost-invalid,
+.ta-hub-ghost[data-tint='invalid'] {
+  border-color: var(--ta-fault);
+}
+
+.ta-hub-ghost__reason {
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+.ta-hub-ghost.ghost-valid .ta-hub-ghost__reason {
+  color: var(--ta-terra);
+}
+
+.ta-hub-ghost.ghost-invalid .ta-hub-ghost__reason {
+  color: var(--ta-fault-text);
+}
+
+.ta-hub-ghost__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ta-s1);
+}
+
+.ta-hub-ghost__tile {
+  padding: var(--ta-s1);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+  font-size: var(--ta-fs-label);
+  text-align: center;
+}
+
+.ta-hub-ghost__tile.is-valid {
+  border-color: var(--ta-terra);
+  color: var(--ta-terra);
+}
+
+.ta-hub-ghost__tile.is-invalid {
+  border-color: var(--ta-fault);
+  color: var(--ta-fault-text);
+}
+
+.ta-hub-bill {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-hub-bill__row {
+  color: var(--ta-text-2);
+}
+
+.ta-hub-ghost__actions,
+.ta-hub-menu__order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ta-s2);
+}
+
+.ta-hub-menu__order-status {
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-text-3);
+}

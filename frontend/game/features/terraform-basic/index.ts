@@ -106,19 +106,12 @@ declare module '../../core/registry/types' {
       deposit?: Uint8Array;
       explored?: Uint8Array;
     };
-    colonies?: Array<{ index: number; id: string; name: string; [k: string]: unknown }>;
     blobs?: Record<string, unknown>;
   }
 
   interface FeatureServices {
     colonyId?: number;
     surface?: HTMLElement | null;
-    pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => TileCoord | null;
-    store?: {
-      latest?: GameView | null;
-      latestTiles?: GameView['tiles'] | null;
-      sendCommand?: (cmdOrKind: unknown, args?: unknown) => unknown;
-    };
     host?: SimHostLike;
     state?: PlanetState;
     terraform?: TerraformFeatureHandle;

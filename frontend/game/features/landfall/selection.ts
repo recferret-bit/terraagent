@@ -22,11 +22,13 @@ export interface HqStatusView {
 
 export interface StoreLike {
   readonly latest?: ClientView | null;
+  readonly latestTiles?: ClientView['tiles'] | null;
   onView?(fn: (v: ClientView) => void): () => void;
-  sendCommand?(cmd: { type: 'moveUnit'; entityId: number; q: number; r: number }): unknown;
+  onCommandRejected?(fn: (r: { id: string; kind: string; code: string }) => void): () => void;
+  sendCommand?(cmdOrKind: any, args?: unknown): unknown;
 }
 
-export type TilePicker = (clientX: number, clientY: number) => { q: number; r: number } | null;
+export type TilePicker = (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
 
 export interface LandfallControllerOptions {
   store?: StoreLike;
