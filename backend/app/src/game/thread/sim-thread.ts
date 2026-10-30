@@ -1,4 +1,5 @@
 import { parentPort, workerData } from 'node:worker_threads';
+import type { SimModule } from '@terra/sim';
 import { PlanetHost } from './planet-host';
 import type { FromThread, PassStat, ThreadInit, ToThread } from './protocol';
 import { PlanetScheduler } from './scheduler';
@@ -23,6 +24,7 @@ const scheduler = new PlanetScheduler({
   },
 });
 scheduler.onPass = (r) => {
+  host.flushDeltas();
   if (r.steps === 0) return;
   ring.push({ steps: r.steps, maxPlanetSteps: r.maxPlanetSteps, maxLag: r.maxLag });
   if (ring.length > RING) ring.shift();
@@ -32,6 +34,9 @@ const host = new PlanetHost(init.thread, init.flags, post, {
   info: (id) => scheduler.info(id),
   get maxLag() { return scheduler.maxLag; },
   recentPasses: () => [...ring],
+}, {
+  deltaHz: init.deltaHz,
+  modules: await Promise.all((init.simModules ?? []).map(async (u) => ((await import(u)) as { default: SimModule }).default)),
 });
 if (init.autoStep) scheduler.start();
 

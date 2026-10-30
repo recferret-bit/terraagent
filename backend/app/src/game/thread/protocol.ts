@@ -10,6 +10,10 @@ export interface ThreadInit {
   readonly flags: readonly string[];
   /** Run the drift-free scheduler loop; when false no loop runs (tests drive `stepPlanet` directly). */
   readonly autoStep: boolean;
+  /** Deltas per second per subscribed planet. */
+  readonly deltaHz?: number;
+  /** Test/dev hook: file URLs of modules whose default export is an extra `SimModule` added to every planet's pipeline. */
+  readonly simModules?: readonly string[];
 }
 
 export type CtlOp =
@@ -47,6 +51,9 @@ export interface PlanetStats {
   readonly entities: number;
   readonly pendingCmds: number;
   readonly subscribed: boolean;
+  /** Build time (ms) and size (bytes) of the last delta. */
+  readonly deltaMs: number;
+  readonly deltaBytes: number;
   /** Steps behind the due time after the last pass (0 = on time). */
   readonly lagSteps: number;
   readonly mode: 'active' | 'coarse';
