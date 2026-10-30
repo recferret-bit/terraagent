@@ -50,9 +50,10 @@ In this repo the turntable is the **3D playground** page: run `npm run dev` and 
 
 ### Step 2: Capture & Inspect via Browser / DevTools
 1. Open the running dev server in Chrome DevTools MCP (or headless screenshot tool).
-2. Inspect the rendered frame against this QA checklist:
+2. Run `npm run validate:models -- <id>` first (skill `model-geometry-validator`), and open the playground with `&validate=1` (or press `V`) so offending parts are outlined red/amber and numbered in the screenshots. While looking, judge readability too: each functional group (wheels, body, arm) is a different colour, and every part says what it is (solar panel with a visible cell grid, wheels with rims). The numeric colour/detail checks are in the same report; a clean report with a blob-looking part means a check is missing.
+3. Inspect the rendered frame against this QA checklist:
    - [ ] **Ground Contact:** Does the foundation/tread sit flush on `Y = 0` without floating or clipping?
    - [ ] **No Disconnected Floating Parts:** Are all antennas, arms, solar panels, and vents physically connected to the main hull via struts, joints, or cables?
    - [ ] **Edge Readability:** Are beveled edges catching bright specular highlights from the IBL environment?
    - [ ] **Bloom Selectivity:** Are only the intended emissive cores/vison strips glowing, while primary armor remains crisp and matte?
-3. If any check fails, adjust the part coordinates or shader uniforms and re-verify before completing the task.
+4. If any check fails, adjust the part coordinates or shader uniforms and re-verify before completing the task.

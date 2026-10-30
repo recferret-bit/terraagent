@@ -7,6 +7,7 @@ export type MaterialZoneId =
   | 'hullPrimary'
   | 'hullSecondary'
   | 'frameGunmetal'
+  | 'rubberDark'
   | 'solarCell'
   | 'glassVisor'
   | 'energyCyan'
@@ -25,7 +26,10 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
   hullPrimary:      { color: 0xd8dee9, roughness: 0.42, metalness: 0.15, emissiveIntensity: 0.0 },
   hullSecondary:    { color: 0xe59838, roughness: 0.48, metalness: 0.10, emissiveIntensity: 0.0 },
   frameGunmetal:    { color: 0x242933, roughness: 0.55, metalness: 0.80, emissiveIntensity: 0.0 },
-  solarCell:        { color: 0x162b4d, roughness: 0.20, metalness: 0.60, emissiveIntensity: 0.0 },
+  // tyres, rollers, seals: near-black but matte, so it reads as rubber next to gunmetal
+  rubberDark:       { color: 0x14171c, roughness: 0.85, metalness: 0.05, emissiveIntensity: 0.0 },
+  // mid-blue (not near-black) so the cell grid reads against its gunmetal frame; gaps between cells show the dark backing
+  solarCell:        { color: 0x2f6fc4, roughness: 0.22, metalness: 0.55, emissiveIntensity: 0.0 },
   glassVisor:       { color: 0x0f172a, roughness: 0.10, metalness: 0.90, emissiveIntensity: 0.0 },
   energyCyan:       { color: 0x00f0ff, roughness: 0.20, metalness: 0.10, emissiveIntensity: 3.8 },
   warningAmber:     { color: 0xffaa00, roughness: 0.20, metalness: 0.10, emissiveIntensity: 3.4 },
@@ -42,6 +46,8 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
  * - 3: Forward recoil / thumper oscillation
  */
 export interface PartOptions {
+  /** Human-readable label used by the model validator's reports (defaults to "<geometry type>#<index>"). */
+  name?: string;
   position?: THREE.Vector3Tuple;
   rotation?: THREE.Vector3Tuple;
   scale?: THREE.Vector3Tuple;
@@ -50,8 +56,38 @@ export interface PartOptions {
   animPivot?: THREE.Vector3Tuple;
 }
 
+/** What the model validator needs to know about each sub-part after merging. */
+export interface PartMeta {
+  index: number;
+  name: string;
+  zone: string;
+  /** three.js geometry class the part was made from (RoundedBoxGeometry, CylinderGeometry, TubeGeometry, ...). */
+  kind: string;
+  animType: number;
+  pivot: [number, number, number];
+  emissive: number;
+  /** Zone surface the part was stamped with (sRGB hex, roughness, metalness): the appearance checks read these. */
+  color: number; roughness: number; metalness: number;
+  /** Vertices this part owns in the merged buffer (parts are concatenated in order, non-indexed). */
+  vertexCount: number;
+}
+export interface BuiltModel { geometry: THREE.BufferGeometry; parts: PartMeta[] }
+
 export class KitbashBuilder {
   private parts: THREE.BufferGeometry[] = [];
+  private meta: PartMeta[] = [];
+  private static sink: BuiltModel[] | null = null;
+
+  /**
+   * Run `fn` and collect every model any KitbashBuilder.build() produced meanwhile, with per-part metadata.
+   * The geometry is the builder's merged object, so it already includes whatever a caller did to it afterwards in place
+   * (scale, minY snap). Used by `frontend/shared/engine/kitbash/validate` and never by the game.
+   */
+  public static capture<T>(fn: () => T): { result: T; built: BuiltModel[] } {
+    const prev = KitbashBuilder.sink; const built: BuiltModel[] = [];
+    KitbashBuilder.sink = built;
+    try { return { result: fn(), built }; } finally { KitbashBuilder.sink = prev; }
+  }
   private zones: Record<string, MaterialZoneSpec>;
 
   constructor(customZones?: Partial<Record<MaterialZoneId, MaterialZoneSpec>>) {
@@ -85,6 +121,10 @@ export class KitbashBuilder {
     const mult = glow > 0 ? glow : 1.0;
     const pivot = options.animPivot ?? options.position ?? [0, 0, 0];
     const animType = options.animType ?? 0;
+    this.meta.push({
+      index: this.parts.length, name: options.name ?? `${geometry.type.replace('Geometry', '')}#${this.parts.length}`, zone: zoneId,
+      kind: geometry.type, animType, pivot: [pivot[0], pivot[1], pivot[2]], emissive: glow, color: zone.color, roughness: zone.roughness, metalness: zone.metalness, vertexCount: count,
+    });
 
     for (let i = 0; i < count; i++) {
       colorAttr[i * 4 + 0] = c.r * mult;
@@ -122,6 +162,7 @@ export class KitbashBuilder {
     merged.computeVertexNormals();
     merged.computeBoundingBox();
     merged.computeBoundingSphere();
+    KitbashBuilder.sink?.push({ geometry: merged, parts: this.meta.slice() });
     return merged;
   }
 }

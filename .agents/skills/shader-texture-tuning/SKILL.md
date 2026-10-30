@@ -27,6 +27,9 @@ This skill enforces **Pillar 3 (The Unifier Shader Architecture)** so procedural
 5. **Maintain Zoom Readability with Top-Down Gradient & Fresnel Rim:**
    - Apply a subtle vertical hemisphere darkening (`0.75` at base to `1.10` at top) plus a view-dependent Fresnel rim highlight (`pow(1.0 - NdotV, 3.5)`) tinted by the planet's sky color so dark gunmetal robots pop against dark terrain when zoomed out.
 
+6. **Colour Contrast Survives the Shader:**
+   - The unifier shader only adds ±4 % grain, biome dust on the lowest `uWeatheringHeight` metres, a top-down gradient and a rim light; it does **not** add panel lines or cell grids. Distinctions between parts must therefore come from zone colours and geometry. When you change a zone colour or the weathering uniforms, re-run `npm run validate:models -- --category <cat>` (skill `model-geometry-validator`): `GROUP_SAME_COLOR`, `LOW_CONTRAST_INSET` and `MODEL_TOO_DARK` catch a palette that no longer separates parts. Near-black zones (`L* < 20`) merge into one silhouette under tone mapping: keep `solarCell` and other inset zones clearly lighter than the frame they sit on.
+
 ---
 
 ## Step-by-Step Tuning Workflow

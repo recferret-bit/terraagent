@@ -28,6 +28,7 @@ Never use direct Text-to-3D prompts for production assets. Generate or supply an
 - **Lighting:** Flat, neutral studio illumination with **zero cast ground shadows** and **zero strong directional specular highlights** (prevents the 3D AI from baking dark shadow blotches into albedo textures).
 - **Background:** Pure solid white (`#FFFFFF`) or transparent PNG alpha.
 - **Silhouette:** Chunky, thick mechanical forms; avoid hair-thin wires that fragment during voxel/mesh reconstruction.
+- **Colour roles and detail:** Specify a different colour for each functional group (wheels / chassis / arm / body), real surface detail on every function (a solar panel with visible cells and bus bars, wheels with rims, vents with louvres) and trim plus one emissive light. A reference that is one colour with blank panels reconstructs as a blank mesh. Reject a concept image that fails this before spending a 3D generation.
 
 ### Stage 2: 3D Reconstruction (Provider Selection or Blender MCP)
 Choose the generator plugin/provider based on the asset archetype:
@@ -57,7 +58,8 @@ What this script enforces automatically:
 
 ### Stage 4: Validation & Registration
 1. Verify that the output `.glb` file size is `< 1.5 MB` and triangle count meets the archetype budget printed by `sanitize-glb.mjs`.
-2. Load the sanitized asset through the runtime `loadUnifiedModel()` helper and apply the Unifier Shader (see `shader-texture-tuning` skill).
+2. Judge the result like a kitbash model: no parts floating off the body, no overlapping or z-fighting shells, animated parts clear of their neighbours, each functional group a distinct colour, no large blank faces (the rules of the `model-geometry-validator` skill; its CLI only reads archetypes registered through `KitbashBuilder`, so for a `.glb` apply them in the playground with `?inspect=` plus the 4-view sheet).
+3. Load the sanitized asset through the runtime `loadUnifiedModel()` helper and apply the Unifier Shader (see `shader-texture-tuning` skill).
 
 ---
 

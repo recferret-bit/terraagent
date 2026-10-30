@@ -30,6 +30,7 @@ This catalog defines the standard parameterized sub-assemblies ("greebles") used
 
 | Greeble ID | Parameters | Geometry Recipe | Default Material Zone |
 | :--- | :--- | :--- | :--- |
+| `solarPanel` (implemented: `solarPanel(b, { position, rotation, height, width, name })` in `frontend/shared/engine/kitbash/greebles/unitParts.ts`) | `{ position, rotation, height = 0.5, width = 0.6, thickness = 0.04, cell = 0.14 }` | Frame, a grid of separate `solarCell` tiles 1 cm proud with 1.2 cm gaps, a `hullPrimary` bus bar in every column gap, two back ribs. ~200 tris. Passes the validator's `ROLE_DETAIL` (≥ 6 cells) without a texture. | `solarCell` + `frameGunmetal` + `hullPrimary` |
 | `solarWing` | `{ width, length, panelCols = 2, panelRows = 4, tiltRad }` | Thin `frameGunmetal` backing plate + slightly raised `solarCell` photovoltaic tiles separated by `0.02m` gaps. | `solarCell` + `frameGunmetal` |
 | `turbineRotor` | `{ bladeCount = 3, bladeLength = 1.6, hubRadius = 0.2 }` | Aerodynamic tapered blades attached to a nose cone; tagged with `animType = 1` (continuous GPU vertex rotation). | `hullPrimary` + `hullSecondary` tips |
 | `radarDish` | `{ radius = 0.45, depth = 0.15, tilt = 0.5 }` | Parabolic `LatheGeometry` reflector + central tripod feed horn with an HDR `energyCyan` tip beacon; tagged with `animType = 1`. | `hullPrimary` + `energyCyan` |
@@ -40,7 +41,7 @@ This catalog defines the standard parameterized sub-assemblies ("greebles") used
 
 ## 4. How to Register a Custom Greeble Extension
 
-Any agent can extend the catalog by registering a new generator in `src/visuals/kitbash/extensions/`:
+Any agent can extend the catalog by registering a new generator in `frontend/shared/engine/kitbash/greebles/`:
 
 ```typescript
 import { KitbashRegistry } from '../KitbashRegistry';

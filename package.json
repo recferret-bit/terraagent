@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1 --port 5173",
-    "build": "tsc --noEmit && vite build",
-    "typecheck": "tsc --noEmit"
+    "build": "tsc --noEmit && node scripts/check-structure.mjs && vite build",
+    "typecheck": "tsc --noEmit",
+    "check:structure": "node scripts/check-structure.mjs",
+    "validate:models": "node .agents/skills/model-geometry-validator/scripts/validate-model.mjs",
+    "test:models": "node .agents/skills/model-geometry-validator/scripts/self-test.mjs"
   },
   "dependencies": {
     "three": "^0.174.0"

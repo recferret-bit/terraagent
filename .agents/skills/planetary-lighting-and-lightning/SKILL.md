@@ -10,7 +10,7 @@ description: >-
 
 # Planetary Lighting & Procedural Lightning VFX Skill (`planetary-lighting-and-lightning`)
 
-This skill governs both **Dynamic Planetary Lighting** (linking Solar Energy efficiency and time-of-day to Three.js lights and shadows) and **Procedural 3D Lightning Strikes & Electrical Grid Hazards** (Section 6 of `autonomous-colony-spec.md`).
+This skill governs both **Dynamic Planetary Lighting** (linking Solar Energy efficiency and time-of-day to Three.js lights and shadows) and **Procedural 3D Lightning Strikes & Electrical Grid Hazards** (Section 6 of `docs/game/autonomous-colony-spec.md`).
 
 ---
 

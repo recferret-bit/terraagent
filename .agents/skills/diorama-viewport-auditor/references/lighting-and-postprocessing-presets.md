@@ -21,7 +21,7 @@ This reference defines the calibrated lighting, fog, shadow, and post-processing
 
 ## 2. Dynamic Hazard & Weather Lighting Modifiers
 
-When planetary events occur (Section 6 of `autonomous-colony-spec.md`), interpolate the viewport uniforms smoothly over `3.0` seconds:
+When planetary events occur (Section 6 of `docs/game/autonomous-colony-spec.md`), interpolate the viewport uniforms smoothly over `3.0` seconds:
 
 - **Sandstorm (Arid Planet):**
   - Multiply `FogExp2.density` by `2.4x` (`0.020`), reduce `sunLight.intensity` to `1.4`, and increase `uWeatheringIntensity` on all `UnifiedColonyMaterial` instances to `0.85`.

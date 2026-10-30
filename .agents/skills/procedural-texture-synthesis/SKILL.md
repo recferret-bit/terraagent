@@ -12,6 +12,8 @@ description: >-
 
 This skill enables AI coding agents to generate crisp, tileable PBR texture sets (`map`, `normalMap`, `roughnessMap`, `emissiveMap`) in pure code at startup (`< 25ms`) without relying on external `.png` assets.
 
+> **Note for kitbashed models.** The procedural kitbash pipeline does not bind these textures: kitbash parts carry zone colours, roughness and metalness as vertex attributes, so surface detail (solar cells, rims, vents, panel lines) must be real geometry. Before adding a texture to cover for a plain part, run `npm run validate:models -- <id>` (skill `model-geometry-validator`): `ROLE_DETAIL`, `FLAT_SURFACE` and `LOW_CONTRAST_INSET` say which parts are too plain or too close in colour to their support. Textures from this skill are for terrain, loaded `.glb` props and UI, and must still respect the same colour-separation rules (neighbouring functional parts differ in lightness by a clear margin).
+
 ---
 
 ## Core Principles

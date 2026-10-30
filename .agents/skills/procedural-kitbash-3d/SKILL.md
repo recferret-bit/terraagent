@@ -27,6 +27,12 @@ This skill enforces **Pillar 1 (Modular Hard-Surface Kitbashing)** so AI-generat
 4. **Single-Draw-Call Merging (`InstancedMesh` Ready):**
    - Stamp material zone IDs and GPU animation weights into **Vertex Attributes** (`color` and `aPartMeta`) and merge all sub-parts with `BufferGeometryUtils.mergeGeometries()` so 500+ units render in a single `THREE.InstancedMesh` draw call.
 
+5. **Colour Roles and Surface Detail (checked by `model-geometry-validator`):**
+   - **Every functional group gets its own colour.** Locomotion (wheels, treads, legs), platform (chassis, body, cabin) and manipulator (arm, boom, claw, torch) must not share a zone. Default tiers: tyres/treads `rubberDark`, rims/body `hullPrimary`, chassis/joints `frameGunmetal`, arms/trim `hullSecondary`, lights emissive (`>= 3.0`). A thin inset (panel, cell slab, stripe) never has its base's colour.
+   - **There are no image textures; geometry carries the detail.** A part that has a function must show it: solar panel = frame + a grid of separate `solarCell` tiles (1 to 2 cm gaps) + bus bars + back ribs (use `solarPanel()` in `greebles/unitParts.ts`); wheel = tyre + rim + hub; vent = plate + 3 louvres; tank = bands + cap; antenna dish = mast + feed. A single flat primitive with one colour is a placeholder, not a model.
+   - **Big faces carry features.** Any face over ~5 % of the model's squared length needs at least one mounted feature (panel line, hatch, vent, bolt row, stripe, emissive strip), more as it grows. Features stand ≥ 5 mm proud and overlap their face by ≥ 1 cm.
+   - **Name every part** (`name` in `PartOptions`): role keywords in the names (`wheel`, `chassis`, `boom`, `solar`, `radar`) drive the colour-group checks.
+
 ---
 
 ## Step-by-Step Workflow
@@ -54,12 +60,13 @@ Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`
 - `animType = 2`: Sinusoidal vertical hover/bobbing or hydraulic piston oscillation.
 - `animType = 3`: Recoil / pulse scaling along part forward vector (turret barrels, thumper pistons).
 
-### Step 4: Visual Diagnostic Verification
-After generating a new procedural model:
+### Step 4: Geometry Validation, then Visual Diagnostic Verification
+After generating a new procedural model, **first** run the numeric check from the [`model-geometry-validator`](../model-geometry-validator/SKILL.md) skill: `npm run validate:models -- <archetype id>`. It must report 0 errors and 0 warnings (floating parts, hairline gaps, z-fighting, parts cutting through each other, cables clipping, animated parts hitting something, plus colour roles, colour separation between functional groups, palette balance and surface detail: rule 5 above). Name your parts (`name` in `PartOptions`) so its report maps back to code. Then:
 1. Mount the geometry in the diagnostic turntable scene: any archetype registered in `ArchetypeCatalog` appears automatically in the 3D playground at `/playground.html?inspect=<id>` (see `diorama-viewport-auditor` skill). Its info panel must show `minY 0.000` and fewer than 3.5k triangles.
 2. Verify that:
-   - No sub-parts float disconnected in mid-air.
+   - No sub-parts float disconnected in mid-air (the validator proves it numerically; the playground's `&validate=1` overlay shows it).
    - The bottom of the foundation/treads sits flush with the `Y = 0` ground plane.
+   - Each functional group reads as its own colour and every part says what it is (a solar panel shows cells, a wheel shows a rim) at the telephoto angle; check `dune`, `ocean` and `forest` because biome dust pulls the lowest parts toward one tint.
    - Specular edge highlights and HDR emissive bloom accents are clearly readable from the `28°` telephoto RTS camera angle.
 
 ---
