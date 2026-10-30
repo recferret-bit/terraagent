@@ -2,6 +2,7 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { axialToPlane, hexDistance, hexIndex, hexRound } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
+import { PATH_EXPANSION_BUDGET_PER_STEP, stepPathQueue } from '../../grid/path';
 import { defineCommandHandler } from '../../kernel/commands';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
@@ -95,6 +96,8 @@ export const movement = defineSystem({
   slot: 5,
   wave: 'W01',
   run(state, ctx) {
+    stepPathQueue(state, PATH_EXPANSION_BUDGET_PER_STEP, ctx.data, ctx.tick);
+
     const e = state.entities;
     const cols = e.cols;
     const hqRow = resolveHqT1Row(ctx.data);
