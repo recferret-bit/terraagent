@@ -75,4 +75,29 @@ describe('WorldStore', () => {
     expect(seen).toContain('versionMismatch');
     expect(store.latest).toBeNull();
   });
+
+  it('predicts a notified command, applies acks and surfaces rejects', async () => {
+    const auth = new SimHost({ flags: ['W00'], modules: TEST_MODULES });
+    auth.load(createPlanet({ type: 'flat', seed: 'ws' }));
+    auth.submit({ colonyIndex: null, source: 'dev', commandId: 'cm_s', kind: 't.spawn', args: { q: 1, r: 1 } });
+    auth.step(1);
+    const t = new FakeTransport();
+    const store = new WorldStore(t, inProcessWorker, () => 1000);
+    store.start(['W00']);
+    t.msgs.emit({ v: 1, t: 'welcome', d: { reason: 'join', colonyId: null, planet: { id: 'pl_x', type: 'temperate', name: 'x' }, state: auth.snapshot(), simVersion: SIM_VERSION, dataHash: compileData(flagsFromList(['W00'])).hash, tick: auth.tick, serverTimeMs: 1000, tickMs: 200, deltaHz: 5, flags: ['W00'] } } as never);
+    await tick();
+    const id = auth.view().entities[0].id;
+    const x = () => store.latest!.entities[5];
+    const x0 = x();
+    const rejected: string[] = [];
+    store.onCommandRejected((r) => rejected.push(`${r.id}:${r.code}`));
+    store.notifySent('cm_1', 't.move', { id, x: 9 });
+    await tick();
+    expect(x()).toBe(9);
+    t.msgs.emit({ v: 1, t: 'cmd.reject', d: { id: 'cm_1', code: 'unknown_entity' } } as never);
+    await tick();
+    expect(x()).toBe(x0);
+    expect(rejected).toEqual(['cm_1:unknown_entity']);
+    store.dispose();
+  });
 });
