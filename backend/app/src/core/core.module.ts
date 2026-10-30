@@ -9,6 +9,8 @@ import { ReadinessRegistry } from './readiness.registry';
 export const env = defineEnv('core-app', {
   /** Bind address; 127.0.0.1 by default, set 0.0.0.0 to expose. */
   TA_HOST: z.string().default('127.0.0.1'),
+  /** Per-layer log levels, e.g. `sim=warn,http=info` (layers: http, domain, infra, sim). */
+  LOG_LEVELS: z.string().optional(),
 });
 
 /** Health, readiness and metrics. Global: the registries are injectable from any module. */
