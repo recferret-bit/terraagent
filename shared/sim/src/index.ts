@@ -32,5 +32,6 @@ export * from './systems/power-core';
 export * from './systems/production';
 export * from './systems/factories-hub';
 export * from './systems/queue';
+export * from './systems/dispatch';
 export * from './data';
 export * from './host';
