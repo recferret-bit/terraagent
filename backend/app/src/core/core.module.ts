@@ -9,6 +9,7 @@ import {
   BearerAuthGuard,
 } from './auth';
 import { HealthController } from './health.controller';
+import { HomeController, HomeRepository, HomeService } from './home';
 import { MetricsRegistry } from './metrics.registry';
 import { ReadinessRegistry } from './readiness.registry';
 
@@ -22,10 +23,10 @@ export const env = defineEnv('core-app', {
   JWT_ACCESS_SECRET: z.string().min(16).default('terra-dev-jwt-secret-change-in-prod'),
 });
 
-/** Health, readiness, metrics and guest auth. Global: the registries and auth services are injectable from any module. */
+/** Health, readiness, metrics, guest auth and home routing. Global: injectable from any module. */
 @Global()
 @Module({
-  controllers: [HealthController, AuthController],
+  controllers: [HealthController, AuthController, HomeController],
   providers: [
     ReadinessRegistry,
     MetricsRegistry,
@@ -33,6 +34,8 @@ export const env = defineEnv('core-app', {
     AuthRepository,
     AuthService,
     BearerAuthGuard,
+    HomeRepository,
+    HomeService,
   ],
   exports: [
     ReadinessRegistry,
@@ -41,6 +44,8 @@ export const env = defineEnv('core-app', {
     AuthRepository,
     AuthService,
     BearerAuthGuard,
+    HomeRepository,
+    HomeService,
   ],
 })
 export class CoreModule {}

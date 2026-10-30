@@ -22,7 +22,26 @@ export * from './gen/spawnSlots';
 export * from './codec';
 export * from './systems/define';
 export * from './systems/registry';
-export * from './systems/hq';
-export * from './systems/movement';
+export {
+  defaultW01Data,
+  getHqRechargeRateEPerS,
+  getHqView,
+  hq,
+  hqJobFromState,
+  resolveHqRow,
+  resolveHqT1Row,
+  revealVision,
+  setHqCellEnergy,
+  spawnHqUnit,
+  stepHq,
+  stepTerraformWorkWithCell,
+  syncHqView,
+  type HqJob,
+  type HqUnitView,
+  type SpawnHqOpts,
+  type StepTerraformWorkOpts,
+  type StepTerraformWorkResult,
+} from './systems/hq';
+export { moveUnit, movement } from './systems/movement';
 export * from './data';
 export * from './host';

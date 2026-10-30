@@ -1,5 +1,6 @@
 import type { HomeResponse } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
+import type { HomeService } from '../core/home/home.service';
 import type { AppEnv } from '../core/tokens';
 
 /** Resolves the player's `HomeResponse` for the WS `ready` payload (PROTOCOL §4.3, W01-03). */
@@ -16,8 +17,8 @@ export const DEFAULT_HOME: HomeResponse = {
 };
 
 /**
- * Default WS home provider: checks `core.colony` / `core.planet` when Postgres is configured, otherwise returns the
- * `NEW` home summary. W01-04 can rebind `HOME_PROVIDER` or populate `core.colony` on `/v1/me/home`.
+ * Default WS home provider: checks `HomeService` (in-memory + DB) or `core.colony` / `core.planet` when Postgres is
+ * configured, otherwise returns the `NEW` home summary.
  */
 export class DbHomeProvider implements HomeProvider {
   private readonly dbEnabled: boolean;
@@ -25,11 +26,16 @@ export class DbHomeProvider implements HomeProvider {
   constructor(
     private readonly prisma?: PrismaClient,
     env?: Pick<AppEnv, 'NODE_ENV' | 'DATABASE_URL'>,
+    private readonly homeService?: HomeService,
   ) {
     this.dbEnabled = Boolean(prisma) && (!env || env.NODE_ENV !== 'test' || Boolean(env.DATABASE_URL));
   }
 
   async getHome(playerId: string): Promise<HomeResponse> {
+    if (this.homeService) {
+      const existing = await this.homeService.getExistingHome(playerId);
+      if (existing) return existing;
+    }
     if (!this.dbEnabled || !this.prisma) return DEFAULT_HOME;
     try {
       const colony = await this.prisma.colony.findFirst({
