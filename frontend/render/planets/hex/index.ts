@@ -1,4 +1,11 @@
-export { createHexTerrain, type HexTerrain, type HexTiles, type HexPick, type HexTerrainOptions } from './createHexTerrain';
+export {
+  createHexTerrain,
+  type HexTerrain,
+  type HexTerrainHandle,
+  type HexTiles,
+  type HexPick,
+  type HexTerrainOptions,
+} from './createHexTerrain';
 export {
   buildChunk,
   computeEffectiveHeights,
@@ -6,6 +13,8 @@ export {
   HEX_DEPOSIT,
   HEX_PREP,
   HEX_TERRAIN,
+  INITIAL_PREP_START_TIME,
+  PREP_BLEND_DURATION_S,
   tileHash01,
   tileHashU32,
   tileStyle,

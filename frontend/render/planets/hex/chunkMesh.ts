@@ -28,11 +28,16 @@ export const HEX_DEPOSIT = {
   oil: 3,
 } as const;
 
+export const PREP_BLEND_DURATION_S = 0.4;
+export const INITIAL_PREP_START_TIME = -10.0;
+
 export interface HexTileLayers {
   terrain?: ArrayLike<number>;
   prep?: ArrayLike<number>;
   height: ArrayLike<number>;
   deposit?: ArrayLike<number>;
+  /** Optional per-tile timestamp (s) when a tile transitioned to Prepared; defaults to -10 (already complete). */
+  prepStartTime?: ArrayLike<number>;
 }
 
 /** Plain buffers of one chunk's surface (vertices = tile centres, y = effective height, color = class/deposit RGB). */
@@ -42,6 +47,8 @@ export interface ChunkBuffers {
   aAO: Float32Array;
   aRock: Float32Array;
   color: Float32Array;
+  aPrepTarget: Float32Array;
+  aPrepStartTime: Float32Array;
   index: Uint32Array;
   /** Tile index of each vertex (a chunk also holds the border vertices of its neighbours' tiles). */
   vertexTile: Int32Array;
@@ -216,6 +223,8 @@ export function buildChunk(
   const aAO = new Float32Array(V);
   const aRock = new Float32Array(V);
   const color = new Float32Array(V * 3);
+  const aPrepTarget = new Float32Array(V);
+  const aPrepStartTime = new Float32Array(V);
   const hasTerrain = Boolean(layers.terrain);
 
   for (let v = 0; v < V; v++) {
@@ -225,8 +234,14 @@ export function buildChunk(
     position[v * 3 + 1] = effHeight[i]!;
     position[v * 3 + 2] = z;
     fanNormal(radius, i, effHeight, normal, v * 3);
+    const prepVal = layers.prep?.[i] ?? 0;
+    const isPrep = prepVal === HEX_PREP.prepared;
+    const startT = isPrep ? (layers.prepStartTime?.[i] ?? INITIAL_PREP_START_TIME) : INITIAL_PREP_START_TIME;
+    aPrepTarget[v] = isPrep ? 1.0 : 0.0;
+    aPrepStartTime[v] = startT;
     if (hasTerrain) {
-      const st = tileStyle(q, r, layers.terrain![i] ?? 0, layers.prep?.[i] ?? 0, layers.deposit?.[i] ?? 0);
+      const stylePrep = isPrep && startT >= 0 ? HEX_PREP.flat : prepVal;
+      const st = tileStyle(q, r, layers.terrain![i] ?? 0, stylePrep, layers.deposit?.[i] ?? 0);
       aAO[v] = st.ao;
       aRock[v] = st.rock;
       color[v * 3] = st.r;
@@ -246,6 +261,8 @@ export function buildChunk(
     aAO,
     aRock,
     color,
+    aPrepTarget,
+    aPrepStartTime,
     index: Uint32Array.from(idx),
     vertexTile: Int32Array.from(order),
   };
