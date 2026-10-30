@@ -6,7 +6,8 @@ import { createApp, type CreateAppOptions } from '../../src/app';
 import { ReadinessRegistry } from '../../src/core/readiness.registry';
 import { MetricsRegistry } from '../../src/core/metrics.registry';
 
-const srcDir = fileURLToPath(new URL('../../src/', import.meta.url));
+// core module only: real modules (db, ...) are covered by their own specs
+const srcDir = fileURLToPath(new URL('./fixtures/base/', import.meta.url));
 const fixtures = fileURLToPath(new URL('./fixtures/modules/', import.meta.url));
 
 let current: INestApplication | undefined;
