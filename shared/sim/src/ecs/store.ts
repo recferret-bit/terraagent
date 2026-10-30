@@ -34,6 +34,12 @@ export function createStore(capacity = 64): EntityStore {
 function grow(s: EntityStore, min: number): void {
   let cap = s.capacity;
   while (cap < min) cap *= 2;
+  setCapacity(s, cap);
+}
+
+/** Reallocates every column to exactly `cap` rows (a replica uses it to match the authority's capacity). Never shrinks. */
+export function setCapacity(s: EntityStore, cap: number): void {
+  if (cap <= s.capacity) return;
   for (const c of entityColumns()) {
     const next = allocate(c.dtype, cap);
     const prev = s.cols[c.name];
@@ -81,6 +87,7 @@ export function removeRow(s: EntityStore, id: number, tick: number): boolean {
   const row = rowOf(s, id);
   if (row < 0) return false;
   for (const c of entityColumns()) s.cols[c.name].copyWithin(row, row + 1, s.count);
+  for (const c of entityColumns()) s.cols[c.name][s.count - 1] = 0; // keep the vacated tail row canonical (deep-equal replicas)
   s.count--;
   s.removed.push({ id, at: tick });
   return true;
