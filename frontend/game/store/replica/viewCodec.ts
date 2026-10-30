@@ -12,7 +12,15 @@ export const ENTITY_FIELDS = ['id', 'kind', 'owner', 'q', 'r', 'x', 'y', 'rot', 
 export const MAX_EXACT_ID = 1 << 24;
 
 /** Tile layers sent to the renderer (copies, never views of the replica state). */
-export interface ClientTiles { count: number; terrain: Uint8Array; prep: Uint8Array; height: Float32Array; owner: Int8Array }
+export interface ClientTiles {
+  count: number;
+  terrain: Uint8Array;
+  prep: Uint8Array;
+  height: Float32Array;
+  owner: Int8Array;
+  deposit?: Uint8Array;
+  explored?: Uint8Array;
+}
 
 /** What the main thread sees. `tiles` is present on the first view after a welcome and whenever a tile changed. */
 export interface ClientView {
@@ -24,16 +32,26 @@ export interface ClientView {
   entities: Float32Array;
   count: number;
   colonies: ViewColony[];
+  blobs?: Record<string, unknown>;
 }
 
 /** The structured-clone form: only plain data and ArrayBuffers (listed in `transfer`). */
 export interface WireView {
   tick: number;
   planet: ClientView['planet'];
-  tiles?: { count: number; terrain: ArrayBuffer; prep: ArrayBuffer; height: ArrayBuffer; owner: ArrayBuffer };
+  tiles?: {
+    count: number;
+    terrain: ArrayBuffer;
+    prep: ArrayBuffer;
+    height: ArrayBuffer;
+    owner: ArrayBuffer;
+    deposit?: ArrayBuffer;
+    explored?: ArrayBuffer;
+  };
   entities: ArrayBuffer;
   count: number;
   colonies: ViewColony[];
+  blobs?: Record<string, unknown>;
 }
 
 export function packEntities(entities: SimView['entities']): Float32Array {
@@ -53,21 +71,39 @@ const copy = <T extends Uint8Array | Int8Array | Float32Array>(a: T): T => a.sli
 export function packView(v: SimView, withTiles: boolean): { view: WireView; transfer: ArrayBuffer[] } {
   const entities = packEntities(v.entities);
   const transfer: ArrayBuffer[] = [entities.buffer as ArrayBuffer];
-  const view: WireView = { tick: v.tick, planet: v.planet, entities: entities.buffer as ArrayBuffer, count: v.entities.length, colonies: v.colonies };
+  const view: WireView = { tick: v.tick, planet: v.planet, entities: entities.buffer as ArrayBuffer, count: v.entities.length, colonies: v.colonies, blobs: v.blobs };
   if (withTiles) {
     const t = v.tiles;
     const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = copy(t.owner);
-    view.tiles = { count: t.count, terrain: terrain.buffer as ArrayBuffer, prep: prep.buffer as ArrayBuffer, height: height.buffer as ArrayBuffer, owner: owner.buffer as ArrayBuffer };
+    const deposit = t.deposit ? copy(t.deposit) : undefined;
+    const explored = t.explored ? copy(t.explored) : undefined;
+    view.tiles = {
+      count: t.count,
+      terrain: terrain.buffer as ArrayBuffer,
+      prep: prep.buffer as ArrayBuffer,
+      height: height.buffer as ArrayBuffer,
+      owner: owner.buffer as ArrayBuffer,
+      ...(deposit ? { deposit: deposit.buffer as ArrayBuffer } : {}),
+      ...(explored ? { explored: explored.buffer as ArrayBuffer } : {}),
+    };
     transfer.push(view.tiles.terrain, view.tiles.prep, view.tiles.height, view.tiles.owner);
   }
   return { view, transfer };
 }
 
 export function unpackView(w: WireView, serverTimeMs?: number): ClientView {
-  const out: ClientView = { tick: w.tick, planet: w.planet, entities: new Float32Array(w.entities), count: w.count, colonies: w.colonies };
+  const out: ClientView = { tick: w.tick, planet: w.planet, entities: new Float32Array(w.entities), count: w.count, colonies: w.colonies, blobs: w.blobs };
   if (serverTimeMs !== undefined) out.serverTimeMs = serverTimeMs;
   if (w.tiles) {
-    out.tiles = { count: w.tiles.count, terrain: new Uint8Array(w.tiles.terrain), prep: new Uint8Array(w.tiles.prep), height: new Float32Array(w.tiles.height), owner: new Int8Array(w.tiles.owner) };
+    out.tiles = {
+      count: w.tiles.count,
+      terrain: new Uint8Array(w.tiles.terrain),
+      prep: new Uint8Array(w.tiles.prep),
+      height: new Float32Array(w.tiles.height),
+      owner: new Int8Array(w.tiles.owner),
+      ...(w.tiles.deposit ? { deposit: new Uint8Array(w.tiles.deposit) } : {}),
+      ...(w.tiles.explored ? { explored: new Uint8Array(w.tiles.explored) } : {}),
+    };
   }
   return out;
 }

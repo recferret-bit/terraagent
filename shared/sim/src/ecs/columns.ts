@@ -19,9 +19,33 @@ const BASE: FieldDef[] = [
   { name: 'hpMax', dtype: 'f32', wave: 'W00' },
   { name: 'state', dtype: 'u8', wave: 'W00' },
   { name: 'progress', dtype: 'f32', wave: 'W00' },
+  { name: 'cell', dtype: 'f32', wave: 'W01' }, // HQ power cell current energy (E)
+  { name: 'cellMax', dtype: 'f32', wave: 'W01' }, // HQ power cell capacity (E)
+  { name: 'targetQ', dtype: 'i16', wave: 'W01' }, // current move/work destination q
+  { name: 'targetR', dtype: 'i16', wave: 'W01' }, // current move/work destination r
+  { name: 'workRate', dtype: 'f32', wave: 'W01' }, // worker rate multiplier (1.5 for HQ T1)
   { name: 'createdAt', dtype: 'u32', wave: 'W00' },
   { name: 'changedAt', dtype: 'u32', wave: 'W00' }, // tick of the last change; the delta picks rows with changedAt > fromTick
 ];
+
+export const ENTITY_KIND = {
+  devProbe: 1,
+  dropPod: 2,
+  hq: 3,
+  commandHub: 4,
+} as const;
+export type EntityKindCode = (typeof ENTITY_KIND)[keyof typeof ENTITY_KIND];
+
+export const ENTITY_STATE = {
+  idle: 0,
+  moving: 1,
+  working: 2,
+  descending: 3,
+  constructing: 4,
+  active: 5,
+  inert: 6,
+} as const;
+export type EntityStateCode = (typeof ENTITY_STATE)[keyof typeof ENTITY_STATE];
 
 const columns: FieldDef[] = [...BASE];
 
