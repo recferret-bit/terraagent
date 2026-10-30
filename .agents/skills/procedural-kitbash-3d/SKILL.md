@@ -63,6 +63,9 @@ Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`
 - `animType = 5` (`BipedArm`): Counter-phase sagittal shoulder swing balancing `BipedLeg` (`robot.hero` arms; all parts of an arm share the shoulder socket `animPivot`).
 - `animType = 6` (`SpiderLeg`): Multi-legged alternating diagonal/tripod coxa yaw + stepping lift arc (`robot.combat` spider legs; all parts of a leg share the hip socket `animPivot`).
 - `animType = 7` (`WheelSpin`): Continuous X-axis rolling rotation around wheel axle (`robot.builder` wheels, `robot.miner` track rollers).
+- `animType = 8` (`BipedBody`): Full-body step reaction (`robot.hero` pelvis, torso, head, backpack, cables).
+- `animType = 9` (`SpiderBody`): Heavy quadruped/arachnid chassis suspension (`robot.combat` carapace, underbelly, turret, cables).
+- `animType = 18, 28, 38` / `19, 29, 39`: Compound secondary motion (`SpinY 1`, `HoverBob 2`, `RecoilPulse 3`) riding on `BipedBody (8)` or `SpiderBody (9)`.
 
 ### Step 4: Geometry Validation, then Visual Diagnostic Verification
 After generating a new procedural model, **first** run the numeric check from the [`model-geometry-validator`](../model-geometry-validator/SKILL.md) skill: `npm run validate:models -- <archetype id>`. It must report 0 errors and 0 warnings (floating parts, hairline gaps, z-fighting, parts cutting through each other, cables clipping, animated parts hitting something, plus colour roles, colour separation between functional groups, palette balance and surface detail: rule 5 above). Name your parts (`name` in `PartOptions`) so its report maps back to code. Then:

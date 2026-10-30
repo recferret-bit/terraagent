@@ -63,9 +63,10 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune'): ArchetypeMes
   return mesh;
 }
 
-/** Call once per frame with elapsed seconds (and optional 0..1 walkWeight) so aPartAnim GPU animation advances. */
-export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight?: number) {
+/** Call once per frame with elapsed seconds (and optional 0..1 walkWeight / workWeight) so aPartAnim GPU animation advances. */
+export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight?: number, workWeight?: number) {
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
   if (u?.uTime) u.uTime.value = time;
   if (walkWeight !== undefined && u?.uWalkWeight) u.uWalkWeight.value = walkWeight;
+  if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
 }
