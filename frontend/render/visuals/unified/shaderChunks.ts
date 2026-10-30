@@ -8,6 +8,7 @@ export const VERT_COMMON = /* glsl */ `#include <common>
         varying vec2 vSurfacePBR;
         uniform float uTime;
         uniform float uWalkWeight;
+        uniform float uWorkWeight;
 
         vec3 bipedBodyTransform(vec3 p, float g, float w) {
           vec3 c = vec3(0.0, 0.92, 0.0);
@@ -33,9 +34,9 @@ export const VERT_COMMON = /* glsl */ `#include <common>
         vec3 spiderBodyTransform(vec3 p, float g, float w) {
           vec3 c = vec3(0.0, 0.76, 0.0);
           vec3 r = p - c;
-          float roll = sin(g - 0.25) * 0.095 * w;
-          float pitch = sin(g * 2.0 - 0.45) * 0.068 * w;
-          float yaw = cos(g) * 0.065 * w;
+          float roll = sin(g - 0.25) * 0.065 * w;
+          float pitch = sin(g * 2.0 - 0.45) * 0.048 * w;
+          float yaw = cos(g) * 0.050 * w;
           float cr = cos(roll), sr = sin(roll);
           float rx1 = r.x * cr - r.y * sr;
           float ry1 = r.x * sr + r.y * cr;
@@ -45,26 +46,27 @@ export const VERT_COMMON = /* glsl */ `#include <common>
           float cy = cos(yaw), sy = sin(yaw);
           float rx3 = rx1 * cy - rz2 * sy;
           float rz3 = rx1 * sy + rz2 * cy;
-          float heaveY = (-cos(g * 2.0) * 0.044 - sin(g * 2.0) * 0.026) * w;
-          float swayX = cos(g) * 0.042 * w;
-          float surgeZ = sin(g * 2.0) * 0.034 * w;
+          float heaveY = (-cos(g * 2.0) * 0.032 - sin(g * 2.0) * 0.018) * w;
+          float swayX = cos(g) * 0.030 * w;
+          float surgeZ = sin(g * 2.0) * 0.024 * w;
           return c + vec3(rx3 + swayX, ry2 + heaveY, rz3 + surgeZ);
         }`;
 
 const VERT_SUB_ANIM = /* glsl */ `
-        // 1..3: Local secondary animations (standalone or mounted on a moving body carrier)
-        if (abs(animType - 1.0) < 0.1 || abs(subAnim - 1.0) < 0.1) {
-          float angle = (animType > 7.5) ? g : uTime * 2.5;
+        // 1..3: Local secondary animations (standalone 1..3, or 18..39 mounted on a moving body carrier 8/9)
+        bool hasBodyCarrier = animType > 7.5;
+        if (abs(animType - 1.0) < 0.1 || (hasBodyCarrier && abs(subAnim - 1.0) < 0.1)) {
+          float angle = hasBodyCarrier ? g : uTime * 2.5;
           float s = sin(angle);
           float c = cos(angle);
           vec3 rel = transformed - pivot;
           transformed.x = pivot.x + rel.x * c - rel.z * s;
           transformed.z = pivot.z + rel.x * s + rel.z * c;
-        } else if (abs(animType - 2.0) < 0.1 || abs(subAnim - 2.0) < 0.1) {
-          float bobAmp = (animType > 7.5) ? 0.025 : 0.05;
-          float bobFreq = (animType > 7.5) ? g : uTime * 4.0;
+        } else if (abs(animType - 2.0) < 0.1 || (hasBodyCarrier && abs(subAnim - 2.0) < 0.1)) {
+          float bobAmp = hasBodyCarrier ? 0.025 : 0.05;
+          float bobFreq = hasBodyCarrier ? g : uTime * 4.0;
           transformed.y += sin(bobFreq + pivot.x * 3.1) * bobAmp;
-        } else if (abs(animType - 3.0) < 0.1 || abs(subAnim - 3.0) < 0.1) {
+        } else if (abs(animType - 3.0) < 0.1 || (hasBodyCarrier && abs(subAnim - 3.0) < 0.1)) {
           transformed.z -= pow(max(sin(g + pivot.x * 2.3), 0.0), 6.0) * 0.06;
         }`;
 
@@ -107,10 +109,11 @@ const VERT_GAIT_ANIM = /* glsl */ `
             transformed = ankleMoved + (transformed - ankleRest);
           }
         } else if (abs(animType - 5.0) < 0.1) {
-          // 5: BipedArm — rigid counter-phase shoulder pitch swing riding on BipedBody
+          // 5: BipedArm — rigid counter-phase shoulder pitch swing + active forward work pose riding on BipedBody
           float phase = (pivot.x >= 0.0) ? 3.14159265 : 0.0;
           float tau = g + phase;
-          float armAngle = sin(tau) * 0.22 * uWalkWeight;
+          float workAngle = (-0.52 + sin(g * 1.6 + phase * 0.5) * 0.16) * uWorkWeight;
+          float armAngle = sin(tau) * 0.22 * uWalkWeight + workAngle;
           float ca = cos(armAngle);
           float sa = sin(armAngle);
           float ry = transformed.y - pivot.y;
@@ -126,8 +129,8 @@ const VERT_GAIT_ANIM = /* glsl */ `
           float yaw = sideSign * sin(tau) * 0.18 * uWalkWeight;
           float cy = cos(yaw), sy = sin(yaw);
           vec3 dh = spiderBodyTransform(pivot, g, uWalkWeight) - pivot;
-          float stepLift = pow(max(0.0, cos(tau)), 0.8) * 0.10 * uWalkWeight;
-          float femAngle = sideSign * (stepLift - dh.y + 0.004 * uWalkWeight) / max(abs(pivot.x), 0.20);
+          float stepLift = pow(max(0.0, cos(tau)), 0.8) * 0.085 * uWalkWeight;
+          float femAngle = sideSign * (stepLift - dh.y + 0.004 * uWalkWeight) / max(abs(pivot.x), 0.25);
           float cf = cos(femAngle), sf = sin(femAngle);
           if (subAnim < 0.5) {
             vec3 r = transformed - pivot;

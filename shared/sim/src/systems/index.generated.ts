@@ -4,5 +4,7 @@ import mod_dev from './dev/index';
 import mod_economy from './economy/index';
 import mod_environment from './environment/index';
 import mod_finalize from './finalize/index';
+import mod_hq from './hq/index';
+import mod_movement from './movement/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_economy, mod_environment, mod_finalize];
+export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_economy, mod_environment, mod_finalize, mod_hq, mod_movement];
