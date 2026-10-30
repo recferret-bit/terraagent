@@ -1,5 +1,8 @@
 export {
   createHexTerrain,
+  getActiveHexTerrains,
+  getGlobalTerritoryColorBlindMode,
+  setGlobalTerritoryColorBlindMode,
   type HexTerrain,
   type HexTerrainHandle,
   type HexTiles,
@@ -32,5 +35,19 @@ export {
   type TilePropInstance,
 } from './chunkPropScatter';
 export { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
+export {
+  BORDER_Y_OFFSET,
+  buildTerritoryBorderGeometry,
+  createTerritoryBorderMaterial,
+  DEFAULT_COLONY_COLORS,
+  FROZEN_BORDER_WIDTH,
+  GLOBE_PLAYER_COLORS,
+  NORMAL_BORDER_WIDTH,
+  resolveColonyColorHex,
+  resolveColonyColorRgb,
+  type TerritoryBorderBuildResult,
+  type TerritoryBorderOptions,
+  type TerritoryBorderStats,
+} from './territoryBorder';
 export { kindForPlanetType, specForPlanetType, type SimPlanetType } from './planetKind';
 export { CHUNK_TILES, TILE_M, tileXZ, tileAt, planetExtent } from './hexMath';
