@@ -23,7 +23,7 @@ export const RESOURCE_DISPLAY_LABELS: Readonly<Record<ResourceKey, string>> = {
 function depositCodeToResourceKey(dep: number): ResourceKey | null {
   if (dep === DEPOSIT.metals) return 'metals.t1';
   if (dep === DEPOSIT.minerals) return 'minerals.t1';
-  if (dep === DEPOSIT.organics) return 'bio.biomass';
+  if (dep === DEPOSIT.oil) return 'bio.biomass';
   return null;
 }
 
@@ -111,7 +111,8 @@ export function computeResourceWaitState(
   }
 
   const label = RESOURCE_DISPLAY_LABELS[bottleneckKey] ?? bottleneckKey;
-  const haveAmt = Math.floor(colony.stock?.[bottleneckKey] ?? 0);
+  const stockMap = (colony.stock ?? {}) as Partial<Record<ResourceKey, number>>;
+  const haveAmt = Math.floor(stockMap[bottleneckKey] ?? 0);
   const needAmt = cost[bottleneckKey] ?? 0;
   const waitDetail =
     maxEta !== null
@@ -123,7 +124,8 @@ export function computeResourceWaitState(
 
 export function isBlockedByPower(state: PlanetState, colony: ColonyState, entry: QueueEntry): boolean {
   const taskAny = entry.task as { requiresPower?: boolean; producerId?: number };
-  if (taskAny.requiresPower && (colony.power?.status === 'brownout' || (colony.power?.net ?? 0) < 0)) {
+  const pwr = (colony.power ?? {}) as { status?: string; brownout?: boolean; net?: number };
+  if (taskAny.requiresPower && (pwr.status === 'brownout' || pwr.brownout || (pwr.net ?? 0) < 0)) {
     return true;
   }
   if (entry.task.kind === 'buildUnit' && typeof entry.task.producerId === 'number') {

@@ -14,6 +14,7 @@ import {
   step,
   type Pipeline,
   type PlanetState,
+  type SimEvent,
 } from '@terra/sim';
 import { EventBus } from '../../src/bus/event-bus';
 import {
@@ -31,7 +32,7 @@ interface ScenarioContext {
   readonly service: ProgressionEventsService;
   readonly buildingEvents: BuildingCompletedEvent[];
   readonly resourceEvents: ResourceProducedEvent[];
-  readonly planetEvents: any[];
+  readonly planetEvents: Array<{ kind: string; data: unknown }>;
 }
 
 function setupSolarAndExtractorScenario(): ScenarioContext {
@@ -71,11 +72,11 @@ function setupSolarAndExtractorScenario(): ScenarioContext {
   const service = new ProgressionEventsService(bus);
   const buildingEvents: BuildingCompletedEvent[] = [];
   const resourceEvents: ResourceProducedEvent[] = [];
-  const planetEvents: any[] = [];
+  const planetEvents: Array<{ kind: string; data: unknown }> = [];
 
   bus.on('buildingCompleted', (e) => buildingEvents.push(e), { module: 'test' });
   bus.on('resourceProduced', (e) => resourceEvents.push(e), { module: 'test' });
-  bus.on('planet.event', (e) => planetEvents.push(e), { module: 'test' });
+  bus.on('planet.event', (e) => planetEvents.push(e as { kind: string; data: unknown }), { module: 'test' });
 
   return { state, pipeline, bus, service, buildingEvents, resourceEvents, planetEvents };
 }
@@ -215,9 +216,9 @@ describe('W02-28 Progression events: API & integration hooks', () => {
     const seen: BuildingCompletedEvent[] = [];
     bus.on('buildingCompleted', (e) => seen.push(e), { module: 'test' });
 
-    let listener: ((planetId: string, events: readonly any[]) => void) | undefined;
+    let listener: ((planetId: string, events: readonly SimEvent[]) => void) | undefined;
     const fakePlanets = {
-      onEvents: (l: (planetId: string, events: readonly any[]) => void) => {
+      onEvents: (l: (planetId: string, events: readonly SimEvent[]) => void) => {
         listener = l;
         return () => { listener = undefined; };
       },

@@ -96,7 +96,7 @@ describe('W02-13 Queue v1 part 1 — Construction and Units lanes, payment at st
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
     const res = step(
       state,
-      [{ commandId: 'c-ro', colonyIndex: 0, kind: 'reorderTask', args: { taskId: 't-2', toIndex: 0 } }],
+      [{ commandId: 'c-ro', colonyIndex: 0, source: 'player', kind: 'reorderTask', args: { taskId: 't-2', toIndex: 0 } }],
       1,
       pipeline,
     );

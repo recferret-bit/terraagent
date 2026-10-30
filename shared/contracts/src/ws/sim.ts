@@ -66,7 +66,7 @@ export const SimEventWire = z.object({
   kind: z.string().min(1).max(64),
   severity: z.enum(['info', 'warn', 'critical']),
   atTick: z.number().int().nonnegative(),
-  colonyIds: z.array(z.string()),
+  colonyIds: z.array(z.union([z.string(), z.number()])),
   data: z.record(z.string(), z.unknown()),
 });
 export type SimEventWire = z.infer<typeof SimEventWire>;

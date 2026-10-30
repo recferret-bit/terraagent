@@ -15,10 +15,13 @@ import { QueuePanel } from './QueuePanel';
 function makeContext(): { ctx: FeatureContext; commands: Array<{ kind: string; args: unknown }> } {
   const commands: Array<{ kind: string; args: unknown }> = [];
   const ctx: FeatureContext = {
-    flags: parseWaves('..02'),
+    flags: new Set(parseWaves('..02').list),
+    host: 'server',
     services: {
-      sendCommand(kind: string, args: unknown) {
+      track: () => {},
+      async sendCommand(kind: string, args?: unknown) {
         commands.push({ kind, args });
+        return { ok: true as const, appliedAtTick: 1 };
       },
     },
   };

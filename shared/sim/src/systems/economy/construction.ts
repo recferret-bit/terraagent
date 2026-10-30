@@ -40,6 +40,7 @@ export interface StartConstructionOptions {
   instant?: boolean;
   tick?: number;
   data?: CompiledDataLike;
+  costOverride?: Partial<Record<ResourceKey, number>>;
 }
 
 let cachedData: CompiledDataLike | null = null;

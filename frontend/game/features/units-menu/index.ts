@@ -16,7 +16,6 @@ declare module '../../core/registry/types' {
 
   interface GameView {
     unitQueue?: Array<unknown>;
-    blobs?: Record<string, unknown>;
     supply?: {
       used: number;
       cap: number;

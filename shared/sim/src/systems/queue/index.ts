@@ -236,8 +236,9 @@ export function enqueueQueueTask(
     return { ok: false, code: 'queue_full', detail: `${lane} lane full` };
   }
   if (opts.task.kind === 'buildUnit' && typeof opts.task.producerId === 'number') {
+    const producerId = opts.task.producerId;
     const producerEntries = activeLane.filter(
-      (e) => e.task.kind === 'buildUnit' && e.task.producerId === opts.task.producerId,
+      (e) => e.task.kind === 'buildUnit' && e.task.producerId === producerId,
     );
     if (producerEntries.length >= PRODUCER_BUFFER_LIMIT) {
       return { ok: false, code: 'producer_buffer_full', detail: 'producer buffer full' };

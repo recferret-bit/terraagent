@@ -1860,7 +1860,10 @@
                   },
                   "colonyIds": {
                     "items": {
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "number"
+                      ]
                     },
                     "type": "array"
                   },
@@ -1952,7 +1955,10 @@
             },
             "colonyIds": {
               "items": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "number"
+                ]
               },
               "type": "array"
             },

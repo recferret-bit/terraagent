@@ -48,7 +48,7 @@ export default defineScenario({
           state.grid.layers.terrain[idx] = TERRAIN.flat;
           state.grid.layers.deposit[idx] = DEPOSIT.none;
           state.grid.layers.richness[idx] = 0;
-          setTilePrep(state, idx, PREP.none, 0);
+          setTilePrep(state, idx, PREP.wild, 0);
         }
       }
     }
@@ -60,7 +60,7 @@ export default defineScenario({
       [6, 0, DEPOSIT.metals],
       [0, 3, DEPOSIT.minerals],
       [1, 3, DEPOSIT.minerals],
-      [-3, 0, DEPOSIT.organics],
+      [-3, 0, DEPOSIT.oil],
     ];
     for (const [q, r, dep] of deposits) {
       const idx = indexOf(state.grid.radius, q, r);

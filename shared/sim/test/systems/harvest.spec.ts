@@ -50,7 +50,7 @@ describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
     // Send setHarvestWeights to prioritize Minerals (metals: 0, minerals: 100, bio: 0) -> retargets to (0, 2)
     const retargetStep = step(
       state,
-      [{ commandId: 'c-w', colonyIndex: 0, kind: 'setHarvestWeights', args: { metals: 0, minerals: 100, bio: 0 } }],
+      [{ commandId: 'c-w', colonyIndex: 0, source: 'player', kind: 'setHarvestWeights', args: { metals: 0, minerals: 100, bio: 0 } }],
       1,
       pipeline,
     );

@@ -40,7 +40,7 @@ export function resolveExtractorRow(data?: CompiledDataLike): CompiledRow {
   return dataRow(defaultW02Data(), 'economyT1Basic', 'metalsExtractor');
 }
 
-function normalizeRichness(raw: number): number {
+export function normalizeRichness(raw: number): number {
   if (!Number.isFinite(raw) || raw <= 0) return 1.0;
   // generateTemperate stores richness in basis points (e.g. 9000..13800 bp); tests may set float (e.g. 1.15)
   return raw > 10 ? raw / 10000 : raw;

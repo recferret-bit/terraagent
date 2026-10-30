@@ -1,6 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { ENTITY_KIND, ENTITY_STATE, enqueueQueueTask, getColonyQueue } from '@terra/sim';
+import {
+  ENTITY_KIND,
+  ENTITY_STATE,
+  ensureColonyLedger,
+  enqueueQueueTask,
+  getColonyQueue,
+  type ColonyWithLedger,
+} from '@terra/sim';
 import { createScenarioPlanet, getScenario } from '../_loader';
+
+interface TestColonyPower {
+  supply?: number;
+  demand?: number;
+  net?: number;
+  phase?: string;
+  clockText?: string;
+  daylight?: number;
+  solarGrossPerS?: number;
+  solarNetPerS?: number;
+  brownout?: boolean;
+}
+
+function getCol(host: ReturnType<typeof createScenarioPlanet>['host']): ColonyWithLedger & { power?: TestColonyPower } {
+  return ensureColonyLedger(host.state.colonies[0]) as ColonyWithLedger & { power?: TestColonyPower };
+}
 
 describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', () => {
   it('loads w02 / w02-first-light with Hub done, morning 06:00, stock 400/250/150/150, +8 supply / -5 demand', () => {
@@ -8,7 +31,7 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
     expect(getScenario('w02-first-light')).toBe(getScenario('w02'));
 
     const { host } = createScenarioPlanet('w02');
-    const col = host.state.colonies[0];
+    const col = getCol(host);
     expect(col.stock).toMatchObject({
       'metals.t1': 400,
       'minerals.t1': 250,
@@ -28,7 +51,7 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
 
   it('runs demo steps 2–5: Harvester production & standing harvest, Extractor + Solar build & output, and waiting ETA', () => {
     const { host } = createScenarioPlanet('w02');
-    const col = host.state.colonies[0];
+    const col = getCol(host);
 
     // Step 2: Queue 1 Harvester -> paid on start (-40/-15/-5/0), completes in 10s (50 ticks) and harvests
     host.submit({
@@ -87,7 +110,7 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
 describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, storage cap, cancel refunds)', () => {
   it('runs demo steps 6–8: time night brownout & restore, fill to cap & storage wait, and cancel refunds', () => {
     const { host } = createScenarioPlanet('w02');
-    const col = host.state.colonies[0];
+    const col = getCol(host);
 
     // Build Solar + Extractor so colony depends on Solar power
     host.submit({

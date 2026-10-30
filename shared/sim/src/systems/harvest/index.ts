@@ -11,10 +11,10 @@ import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import { setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import { defineCommandHandler } from '../../kernel/commands';
 import { TICK_MS } from '../../kernel/constants';
-import { setBlob, type ColonyState, type PlanetState } from '../../kernel/state';
+import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
-import { creditResource, ensureColonyLedger, familyStock, isFamilyAtCap } from '../economy/ledger';
+import { creditResource, ensureColonyLedger, familyStock, isFamilyAtCap, type ColonyWithLedger } from '../economy/ledger';
 import { resolveHarvesterRow, syncHarvesterView } from './unit';
 
 export * from './unit';
@@ -35,7 +35,7 @@ export interface HarvesterTargetAssignment {
 
 const DEFAULT_WEIGHTS: HarvestWeights = { metals: 100, minerals: 100, bio: 100 };
 
-function ensureColony(state: PlanetState, owner: number, tick: number): ColonyState {
+function ensureColony(state: PlanetState, owner: number, tick: number): ColonyWithLedger {
   let col = state.colonies[owner];
   if (!col) {
     col = { index: owner, id: `col-${owner}`, name: `Colony ${owner + 1}`, color: 0xff6b00, status: 'active', changedAt: tick };
@@ -52,11 +52,6 @@ export function getColonyHarvestWeights(state: PlanetState, colonyIndex = 0): Ha
   const fromBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights> } | undefined)?.weightsByColony?.[colonyIndex];
   if (fromBlob) return { ...fromBlob };
   return { ...DEFAULT_WEIGHTS };
-}
-
-function getAssignments(state: PlanetState): Record<number, HarvesterTargetAssignment> {
-  const raw = (state.blobs.harvest?.value as { assignments?: Record<number, HarvesterTargetAssignment> } | undefined)?.assignments;
-  return raw ? { ...raw } : {};
 }
 
 function saveHarvestBlob(

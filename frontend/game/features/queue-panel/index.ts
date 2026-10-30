@@ -19,7 +19,7 @@ export default defineFeature({
   hud: [
     {
       id: 'queue-panel',
-      slot: 'right',
+      slot: 'bottom-right',
       order: 10,
       mount(el, ctx) {
         const panel = new QueuePanel(el, ctx);

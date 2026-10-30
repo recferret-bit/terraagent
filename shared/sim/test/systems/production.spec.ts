@@ -6,8 +6,10 @@ import {
   creditResource,
   DEPOSIT,
   ensureColonyLedger,
+  ENTITY_KIND,
   ENTITY_STATE,
   hexIndex,
+  insertRow,
   placeMetalsExtractor,
   setTileDeposit,
   step,
@@ -31,6 +33,14 @@ describe('W02-08 Metals Extractor T1 production & deposit coverage', () => {
     expect(placed.ok).toBe(true);
     if (!placed.ok) throw new Error('expected ok');
     expect(placed.richnessMult).toBeCloseTo(1.15, 5);
+
+    // Provide power (+20 MW Solar) so the extractor (-8 MW) is not shed by power.core
+    const solarRow = insertRow(state.entities, state.meta.nextEntityId++, 0);
+    state.entities.cols.kind[solarRow] = ENTITY_KIND.solar;
+    state.entities.cols.owner[solarRow] = 0;
+    state.entities.cols.hp[solarRow] = 200;
+    state.entities.cols.hpMax[solarRow] = 200;
+    state.entities.cols.state[solarRow] = ENTITY_STATE.active;
 
     // Advance 5 ticks (1 second at 5 TPS) -> produces 1.0 * 1.15 = 1.15 metals.t1
     step(state, [], 5, pipeline);
