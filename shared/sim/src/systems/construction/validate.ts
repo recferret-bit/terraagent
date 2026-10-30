@@ -29,6 +29,41 @@ export interface ValidateHubPlacementOpts {
   footprint?: number;
   allowUnclaimed?: boolean;
   data?: CompiledDataLike;
+  checkResources?: boolean;
+}
+
+export interface BuildingAffordabilityResult {
+  ok: boolean;
+  shortResource?: string;
+  have: number;
+  need: number;
+}
+
+/**
+ * Checks whether `stock` meets the required `cost`.
+ * Prioritizes metals -> minerals -> biomass -> water -> others.
+ */
+export function checkBuildingAffordability(
+  cost: Record<string, number>,
+  stock: Record<string, number> | undefined,
+): BuildingAffordabilityResult {
+  const stockMap = stock ?? {};
+  const orderRank = (k: string): number => {
+    if (k.startsWith('metals')) return 0;
+    if (k.startsWith('minerals')) return 1;
+    if (k.includes('biomass')) return 2;
+    if (k.includes('water')) return 3;
+    return 4;
+  };
+  const keys = Object.keys(cost).sort((a, b) => orderRank(a) - orderRank(b));
+  for (const key of keys) {
+    const need = cost[key] ?? 0;
+    const have = stockMap[key] ?? 0;
+    if (have < need) {
+      return { ok: false, shortResource: key, have, need };
+    }
+  }
+  return { ok: true, have: 0, need: 0 };
 }
 
 export interface ValidateHubPlacementResult {
@@ -269,6 +304,19 @@ export function validateBuildingPlacement(
   const builderErr = validateBuilderEntity(state, colonyId, builderEntityId, hqOnly);
   if (builderErr) {
     return { ok: false, reason: builderErr, tiles, unpreparedCount, preparedCount };
+  }
+
+  if (opts.checkResources) {
+    const colStock =
+      state.colonies[colonyId]?.stock ??
+      (state.blobs.colonyStock?.value as Record<number | string, Record<string, number>> | undefined)?.[colonyId];
+    const cost = hubRow.cost as Record<string, number> | undefined;
+    if (cost) {
+      const afford = checkBuildingAffordability(cost, colStock as Record<string, number> | undefined);
+      if (!afford.ok) {
+        return { ok: false, reason: 'insufficient_resources', tiles, unpreparedCount, preparedCount };
+      }
+    }
   }
 
   return { ok: true, tiles, unpreparedCount, preparedCount };

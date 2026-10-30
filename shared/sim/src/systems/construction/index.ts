@@ -17,6 +17,7 @@ import {
 } from '../terraform-basic/queue';
 import { buildLinkedPrepJobs, computeSitePrepBill, type SitePrepBill } from './prep';
 import {
+  checkBuildingAffordability,
   findAliveColonyHqRow,
   getBuildingFootprintTiles,
   getHubFootprintTiles,
@@ -25,6 +26,7 @@ import {
   resolveHubT1Row,
   validateBuildingPlacement,
   validateHubPlacement,
+  type BuildingAffordabilityResult,
   type FootprintTileInfo,
   type ValidateHubPlacementOpts,
   type ValidateHubPlacementResult,
@@ -32,6 +34,7 @@ import {
 
 export {
   buildLinkedPrepJobs,
+  checkBuildingAffordability,
   computeSitePrepBill,
   findAliveColonyHqRow,
   getBuildingFootprintTiles,
@@ -42,6 +45,7 @@ export {
   resolveHubT1Row,
   validateBuildingPlacement,
   validateHubPlacement,
+  type BuildingAffordabilityResult,
   type FootprintTileInfo,
   type SitePrepBill,
   type ValidateHubPlacementOpts,
@@ -149,6 +153,20 @@ export interface PlaceHubResult {
   validation: ValidateHubPlacementResult;
 }
 
+function hasAffordableStock(
+  state: PlanetState,
+  colonyId: number,
+  cost: Record<string, number> | undefined,
+  forceCheck?: boolean,
+): boolean {
+  const colStock =
+    state.colonies[colonyId]?.stock ??
+    (state.blobs.colonyStock?.value as Record<number | string, Record<string, number>> | undefined)?.[colonyId];
+  if (colStock === undefined && !forceCheck) return true;
+  if (!cost) return true;
+  return checkBuildingAffordability(cost, colStock as Record<string, number> | undefined).ok;
+}
+
 /**
  * Validates and places a Command Hub (or structure) at `(opts.q, opts.r)` for `opts.colonyId`.
  * Spawns the pending Hub entity (`ENTITY_STATE.waiting` if tiles are unprepared, else `ENTITY_STATE.constructing`)
@@ -165,8 +183,15 @@ export function placeBuildingOrder(
     return { ok: false, reason: validation.reason ?? 'site_blocked', validation };
   }
 
-  const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const hubRow = resolveHubT1Row(data);
+  if (!hasAffordableStock(state, opts.colonyId, hubRow.cost as Record<string, number> | undefined, opts.checkResources)) {
+    return {
+      ok: false,
+      reason: 'insufficient_resources',
+      validation: { ...validation, ok: false, reason: 'insufficient_resources' },
+    };
+  }
+  const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const isHub = isHubBuildingKind(opts.buildingKind);
   const entityId = ctx?.newEntityId ? ctx.newEntityId() : state.meta.nextEntityId++;
   const row = insertRow(state.entities, entityId, tick);

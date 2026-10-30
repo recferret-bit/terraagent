@@ -78,6 +78,7 @@ export class OnlineSession {
     );
     this.hud = new FeatureHud(document.body, this.flags, {
       sendCommand: this.commandBus.send,
+      transport: this.transport,
       store: this.store,
       landfall: this.landfall,
       pickTile: (cx, cy) => this.pickAt(cx, cy),
