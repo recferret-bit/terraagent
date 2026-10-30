@@ -3,14 +3,16 @@ import type { PlanetState, PlanetType } from '../kernel/state';
 /** Parameters every planet generator receives (SIMULATION §10). */
 export interface PlanetParams {
   /** Generator id: `flat` (the W00 dev planet); the real generators register their own ids. */
-  type: string;
+  type?: string;
   seed: string;
   planetId?: string;
+  /** Convenience alias for `planetId`. */
+  id?: string;
   planetType?: PlanetType;
   radius?: number;
 }
 
-export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type'>>) => PlanetState;
+export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id'>>) => PlanetState;
 
 const generators = new Map<string, PlanetGenerator>();
 
