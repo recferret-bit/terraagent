@@ -36,6 +36,8 @@ export interface TerraformOrder {
   op: TerraformOpKind;
   jobs: TerraformJob[];
   skippedCount: number;
+  totalJobs?: number;
+  completedJobs?: number;
   linkedBuildingId?: number | string;
   allowUnclaimed?: boolean;
 }
@@ -132,6 +134,43 @@ export function canRunTerraformOpOnTile(
   return { ok: false, reason: 'invalid_args' };
 }
 
+/**
+ * Resolves which S0 terraform operation (`'grade' | 'clear' | 'break'`) is needed for tile `(q, r)`,
+ * or returns `{ ok: false, reason }` if no S0 op is valid on that tile.
+ */
+export function resolveTerraformOpForTile(
+  state: SimState,
+  colonyId: number,
+  q: number,
+  r: number,
+  opts?: { allowUnclaimed?: boolean },
+): { ok: true; op: TerraformOpKind } | { ok: false; reason: RejectCode } {
+  if (!Number.isInteger(q) || !Number.isInteger(r)) {
+    return { ok: false, reason: 'invalid_args' };
+  }
+  const tileIdx = hexIndex(state.grid.radius).indexOf(q, r);
+  if (tileIdx < 0 || !isValidTileIndex(state.grid, tileIdx)) {
+    return { ok: false, reason: 'invalid_args' };
+  }
+  const terrain = state.grid.layers.terrain[tileIdx];
+  const candidateOp: TerraformOpKind | null =
+    terrain === TERRAIN.flat
+      ? 'grade'
+      : terrain === TERRAIN.forest
+        ? 'clear'
+        : terrain === TERRAIN.rock
+          ? 'break'
+          : null;
+  if (!candidateOp) {
+    return { ok: false, reason: 'site_blocked' };
+  }
+  const check = canRunTerraformOpOnTile(state, colonyId, candidateOp, q, r, opts);
+  if (!check.ok) {
+    return { ok: false, reason: check.reason ?? 'site_blocked' };
+  }
+  return { ok: true, op: candidateOp };
+}
+
 export function readOrdersByColony(state: PlanetState): Record<number, TerraformOrder[]> {
   const blob = state.blobs.terraformTasks;
   if (!blob) return {};
@@ -201,7 +240,8 @@ export function getColonyTerraformOrders(state: SimState, colonyId: number): Ter
 
 export interface EnqueueTerraformOrderOpts {
   colonyId: number;
-  op?: TerraformOpKind;
+  op?: TerraformOpKind | 'auto';
+  autoPrepare?: boolean;
   tiles?: ReadonlyArray<{ q: number; r: number; op?: TerraformOpKind }>;
   jobs?: ReadonlyArray<{ q: number; r: number; op: TerraformOpKind; baseTimeS?: number; totalEnergyE?: number }>;
   orderId?: string;
@@ -217,6 +257,59 @@ export interface EnqueueTerraformOrderResult {
   reason?: RejectCode;
   order?: TerraformOrder;
   skippedCount: number;
+}
+
+function buildJobsFromTiles(
+  state: SimState,
+  opts: EnqueueTerraformOrderOpts,
+): { jobs: TerraformJob[]; skippedCount: number; firstReject?: RejectCode; invalidArgs?: boolean } {
+  const jobs: TerraformJob[] = [];
+  let skippedCount = 0;
+  let firstReject: RejectCode | undefined;
+  const colonyId = opts.colonyId;
+  const defaultOp = opts.op;
+  const useAuto = Boolean(opts.autoPrepare) || defaultOp === 'auto';
+
+  for (const tile of opts.tiles ?? []) {
+    let tileOp: TerraformOpKind | undefined = tile.op;
+    if (!tileOp) {
+      if (useAuto) {
+        const resolved = resolveTerraformOpForTile(state, colonyId, tile.q, tile.r, {
+          allowUnclaimed: opts.allowUnclaimed,
+        });
+        if (!resolved.ok) {
+          skippedCount++;
+          if (!firstReject) firstReject = resolved.reason ?? 'site_blocked';
+          continue;
+        }
+        tileOp = resolved.op;
+      } else if (defaultOp && isTerraformOpKind(defaultOp)) {
+        tileOp = defaultOp;
+      }
+    }
+    if (!tileOp || !isTerraformOpKind(tileOp)) {
+      return { jobs, skippedCount, invalidArgs: true };
+    }
+    const check = canRunTerraformOpOnTile(state, colonyId, tileOp, tile.q, tile.r, {
+      allowUnclaimed: opts.allowUnclaimed,
+    });
+    if (!check.ok) {
+      skippedCount++;
+      if (!firstReject) firstReject = check.reason ?? 'site_blocked';
+      continue;
+    }
+    const spec = getTerraformOpSpec(tileOp, opts.data);
+    jobs.push({
+      q: tile.q,
+      r: tile.r,
+      op: tileOp,
+      progress: 0,
+      baseTimeS: spec.baseTimeS,
+      totalEnergyE: spec.energyCostE,
+      energyDrawnE: 0,
+    });
+  }
+  return { jobs, skippedCount, firstReject };
 }
 
 /** Enqueues a single-tile, brush, or linked multi-step terraform order for `opts.colonyId`. */
@@ -247,31 +340,13 @@ export function enqueueTerraformOrder(
       });
     }
   } else if (Array.isArray(opts.tiles) && opts.tiles.length > 0) {
-    const defaultOp = opts.op;
-    for (const tile of opts.tiles) {
-      const tileOp = tile.op ?? defaultOp;
-      if (!tileOp || !isTerraformOpKind(tileOp)) {
-        return { ok: false, reason: 'invalid_args', skippedCount };
-      }
-      const check = canRunTerraformOpOnTile(state, colonyId, tileOp, tile.q, tile.r, {
-        allowUnclaimed: opts.allowUnclaimed,
-      });
-      if (!check.ok) {
-        skippedCount++;
-        if (!firstReject) firstReject = check.reason ?? 'site_blocked';
-        continue;
-      }
-      const spec = getTerraformOpSpec(tileOp, opts.data);
-      jobs.push({
-        q: tile.q,
-        r: tile.r,
-        op: tileOp,
-        progress: 0,
-        baseTimeS: spec.baseTimeS,
-        totalEnergyE: spec.energyCostE,
-        energyDrawnE: 0,
-      });
+    const built = buildJobsFromTiles(state, opts);
+    if (built.invalidArgs) {
+      return { ok: false, reason: 'invalid_args', skippedCount: built.skippedCount };
     }
+    jobs.push(...built.jobs);
+    skippedCount = built.skippedCount;
+    firstReject = built.firstReject;
   } else {
     return { ok: false, reason: 'invalid_args', skippedCount: 0 };
   }
@@ -283,13 +358,16 @@ export function enqueueTerraformOrder(
   const byColony = readOrdersByColony(state);
   const existing = byColony[colonyId] ?? [];
   const resolvedId = opts.orderId ?? opts.taskId ?? `tf_${colonyId}_${tick}_${existing.length + 1}`;
+  const orderOp: TerraformOpKind = isTerraformOpKind(opts.op) ? opts.op : jobs[0].op;
   const order: TerraformOrder = {
     orderId: resolvedId,
     taskId: resolvedId,
     colonyId,
-    op: opts.op ?? jobs[0].op,
+    op: orderOp,
     jobs,
     skippedCount,
+    totalJobs: jobs.length,
+    completedJobs: 0,
     ...(opts.linkedBuildingId !== undefined ? { linkedBuildingId: opts.linkedBuildingId } : {}),
     ...(opts.allowUnclaimed ? { allowUnclaimed: true } : {}),
   };

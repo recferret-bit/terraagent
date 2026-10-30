@@ -20,6 +20,7 @@ import {
   hasColonyClaimedTerritory,
   isTerraformOpKind,
   readOrdersByColony,
+  resolveTerraformOpForTile,
   writeOrdersByColony,
   type EnqueueTerraformOrderOpts,
   type EnqueueTerraformOrderResult,
@@ -40,6 +41,7 @@ export {
   getTerraformOpSpec,
   hasColonyClaimedTerritory,
   isTerraformOpKind,
+  resolveTerraformOpForTile,
   type EnqueueTerraformOrderOpts,
   type EnqueueTerraformOrderResult,
   type TerraformJob,
@@ -50,8 +52,9 @@ export {
 };
 
 function parseEnqueueArgs(args: unknown): {
-  op?: TerraformOpKind;
-  tiles?: Array<{ q: number; r: number }>;
+  op?: TerraformOpKind | 'auto';
+  autoPrepare?: boolean;
+  tiles?: Array<{ q: number; r: number; op?: TerraformOpKind }>;
   taskId?: string;
   allowUnclaimed?: boolean;
 } {
@@ -61,7 +64,15 @@ function parseEnqueueArgs(args: unknown): {
     typeof raw.terraform === 'object' && raw.terraform !== null
       ? (raw.terraform as Record<string, unknown>)
       : raw;
-  const op = isTerraformOpKind(inner.op) ? inner.op : isTerraformOpKind(raw.op) ? raw.op : undefined;
+  const op = isTerraformOpKind(inner.op)
+    ? inner.op
+    : isTerraformOpKind(raw.op)
+      ? raw.op
+      : inner.op === 'auto' || raw.op === 'auto'
+        ? 'auto'
+        : undefined;
+  const rawAuto = inner.autoPrepare ?? raw.autoPrepare;
+  const autoPrepare = typeof rawAuto === 'boolean' ? rawAuto : undefined;
   const taskId =
     typeof inner.taskId === 'string'
       ? inner.taskId
@@ -72,12 +83,18 @@ function parseEnqueueArgs(args: unknown): {
           : undefined;
   const allowUnclaimed = Boolean(inner.allowUnclaimed ?? raw.allowUnclaimed);
   if (Array.isArray(inner.tiles)) {
-    return { op, tiles: inner.tiles as Array<{ q: number; r: number }>, taskId, allowUnclaimed };
+    return {
+      op,
+      autoPrepare,
+      tiles: inner.tiles as Array<{ q: number; r: number; op?: TerraformOpKind }>,
+      taskId,
+      allowUnclaimed,
+    };
   }
   if (typeof inner.q === 'number' && typeof inner.r === 'number') {
-    return { op, tiles: [{ q: inner.q, r: inner.r }], taskId, allowUnclaimed };
+    return { op, autoPrepare, tiles: [{ q: inner.q, r: inner.r }], taskId, allowUnclaimed };
   }
-  return { op, taskId, allowUnclaimed };
+  return { op, autoPrepare, taskId, allowUnclaimed };
 }
 
 export const enqueueTask = defineCommandHandler({
@@ -86,12 +103,15 @@ export const enqueueTask = defineCommandHandler({
   handle(state, cmd, ctx) {
     const colonyId = cmd.colonyIndex ?? (cmd as { colony?: number }).colony ?? 0;
     const parsed = parseEnqueueArgs(cmd.args);
-    if (!parsed.op || !parsed.tiles || parsed.tiles.length === 0) {
+    if ((!parsed.op && !parsed.autoPrepare) || !parsed.tiles || parsed.tiles.length === 0) {
       return 'invalid_args';
     }
+    const autoPrepare =
+      parsed.autoPrepare ?? (parsed.op === 'auto' || (parsed.op === 'grade' && parsed.tiles.length > 1));
     const res = enqueueTerraformOrder(state, {
       colonyId,
       op: parsed.op,
+      autoPrepare,
       tiles: parsed.tiles,
       orderId: parsed.taskId ?? cmd.commandId,
       allowUnclaimed: parsed.allowUnclaimed,
@@ -216,6 +236,8 @@ export function stepTerraformBasic(state: PlanetState, ctx?: Partial<StepContext
 
     if (job.progress >= 1 - 1e-6) {
       completeTerraformJob(state, colonyId, job, tick, ctx);
+      order.totalJobs = order.totalJobs ?? order.jobs.length;
+      order.completedJobs = (order.completedJobs ?? 0) + 1;
       order.jobs.shift();
       if (order.jobs.length === 0) {
         orders.shift();
