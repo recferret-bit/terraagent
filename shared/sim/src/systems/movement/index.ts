@@ -1,3 +1,4 @@
+import type { CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { axialToPlane, hexDistance, hexIndex, hexRound } from '../../grid/hex';
@@ -5,6 +6,7 @@ import { PREP, TERRAIN } from '../../grid/layers';
 import { defineCommandHandler } from '../../kernel/commands';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
+import { resolveHarvesterRow, syncHarvesterView } from '../harvest/unit';
 import {
   getHqView,
   hqJobFromState,
@@ -67,7 +69,8 @@ export const moveUnit = defineCommandHandler({
     if (cmd.colonyIndex !== null && cmd.colonyIndex !== undefined && cols.owner[row] !== cmd.colonyIndex) {
       return 'not_own_colony';
     }
-    if (cols.kind[row] !== ENTITY_KIND.hq || cols.hp[row] <= 0) {
+    const isMovable = cols.kind[row] === ENTITY_KIND.hq || cols.kind[row] === ENTITY_KIND.harvester;
+    if (!isMovable || cols.hp[row] <= 0) {
       return 'invalid_args';
     }
 
@@ -86,7 +89,11 @@ export const moveUnit = defineCommandHandler({
     const dist = hexDistance(cols.x[row], cols.y[row], targetQ, targetR);
     setField(state.entities, row, 'state', dist <= ARRIVAL_EPS ? ENTITY_STATE.idle : ENTITY_STATE.moving, ctx.tick);
     setField(state.entities, row, 'progress', 0, ctx.tick);
-    syncHqView(state, row, ctx.tick, ctx.data);
+    if (cols.kind[row] === ENTITY_KIND.hq) {
+      syncHqView(state, row, ctx.tick, ctx.data);
+    } else if (cols.kind[row] === ENTITY_KIND.harvester) {
+      syncHarvesterView(state, row, ctx.tick, ctx.data);
+    }
   },
 });
 
@@ -97,14 +104,28 @@ export const movement = defineSystem({
   run(state, ctx) {
     const e = state.entities;
     const cols = e.cols;
-    const hqRow = resolveHqT1Row(ctx.data);
-    const speedPerTick = Math.fround(Number(hqRow.speedTilesPerS));
-    const viewRadius = Number(hqRow.viewRadius);
-    const stepDist = Math.fround(speedPerTick * ctx.dt);
+    let hqRow: CompiledRow | null = null;
+    let harvesterRow: CompiledRow | null = null;
 
     for (let row = 0; row < e.count; row++) {
       if (cols.state[row] !== ENTITY_STATE.moving) continue;
       if (cols.hp[row] <= 0) continue;
+
+      const kind = cols.kind[row];
+      let speedPerTick = 0;
+      let viewRadius = 0;
+      if (kind === ENTITY_KIND.hq) {
+        if (!hqRow) hqRow = resolveHqT1Row(ctx.data);
+        speedPerTick = Math.fround(Number(hqRow.speedTilesPerS));
+        viewRadius = Number(hqRow.viewRadius);
+      } else if (kind === ENTITY_KIND.harvester) {
+        if (!harvesterRow) harvesterRow = resolveHarvesterRow(ctx.data);
+        speedPerTick = Math.fround(Number(harvesterRow.speedTilesPerS));
+        viewRadius = Number(harvesterRow.viewRadius ?? 7);
+      } else {
+        continue;
+      }
+      const stepDist = Math.fround(speedPerTick * ctx.dt);
 
       const x = cols.x[row];
       const y = cols.y[row];
@@ -148,6 +169,8 @@ export const movement = defineSystem({
 
       if (cols.kind[row] === ENTITY_KIND.hq) {
         syncHqView(state, row, ctx.tick, ctx.data);
+      } else if (cols.kind[row] === ENTITY_KIND.harvester) {
+        syncHarvesterView(state, row, ctx.tick, ctx.data);
       }
     }
   },
