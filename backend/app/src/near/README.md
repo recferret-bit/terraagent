@@ -45,3 +45,30 @@ State of the mock NEAR adapters lives in Postgres (`chain.mock_chain_*`: account
 | `MOCK_SEED` | unset | Seeds latency, failure and hash randomness for reproducible tests |
 
 Tests build the base with `new FixtureMock(prisma, config, { sleep })` (fake sleep, no real waits); see `backend/app/test/near/`. The binding module provides `MOCK_CHAIN_CONFIG` (optional; defaults to `parseMockChainConfig()`).
+
+## Chain outbox
+
+**Rule: every chain write goes through the outbox, in the same database transaction as the game change that causes it, with a deterministic `opId`.** Game code never calls a NEAR port directly (NEAR §1a rule 6).
+
+```ts
+await withTransaction(prisma, async (tx) => {
+  await colonies.recordExport(colonyId, seq, tx);                       // the game change
+  await outbox.enqueue({ opId: opId('cargo-export', colonyId, seq),     // cargo-export:{colonyId}:{seq}
+                         port: 'CargoToken', method: 'mint', payload }, tx);
+});
+```
+
+- `ChainOutboxRepository.enqueue(entry, tx?)` (`application/outbox/`): insert-or-ignore on `opId`, so repeating it is a no-op returning the existing row. A rolled-back game change leaves no outbox row. Derive the id from the game fact (never random, never a timestamp); build it with `opId(kind, ...parts)` (max 160 chars).
+- `OutboxRelay` (started by `OutboxRelayService`) polls `chain.chain_outbox` for due `PENDING`/`FAILED` rows, claims them with `FOR UPDATE SKIP LOCKED` (`RUNNING`, `lockedUntil = now + lease`), resolves the port from the Nest container by name and calls `port[method]({ ...payload, opId })`. Success stores `receipt` + `txHash` and sets `DONE`.
+- **Crash safety.** A relay that dies mid-call leaves the row `RUNNING`; once `lockedUntil` passes, any relay reclaims it and calls again with the same `opId`. Adapters are idempotent by `opId`, so the retry returns the stored receipt: one effect, one receipt. Result writes are fenced on the claim, so a stale relay cannot overwrite a newer one.
+- **Failure.** Every claim counts as an attempt. On error: `FAILED`, `nextAttemptAt = now + jitter(min(2^attempts s, 10 min))`, `lastError`; after `OUTBOX_MAX_ATTEMPTS` the row is `DEAD` (alert on `ta_chain_outbox_dead`).
+- Methods used through the outbox must take their input as one object containing `opId` (all port methods do).
+
+| Env | Default | Meaning |
+|---|---|---|
+| `OUTBOX_RELAY_ENABLED` | on (off when `NODE_ENV=test`) | `true`/`false` |
+| `OUTBOX_POLL_MS` | 1000 | Poll interval |
+| `OUTBOX_LEASE_MS` | 30000 | Claim lease; must exceed the slowest port call |
+| `OUTBOX_MAX_ATTEMPTS` | 8 | Attempts before `DEAD` |
+
+Metrics: `ta_chain_outbox_pending`, `ta_chain_outbox_dead`, `ta_chain_outbox_relayed_total{port,status}` (`done`/`failed`/`dead`).
