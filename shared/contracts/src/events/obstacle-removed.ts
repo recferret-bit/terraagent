@@ -13,6 +13,7 @@ export const event = defineEvent({
     count: z.number().int().positive(),
     q: z.number().int().optional(),
     r: z.number().int().optional(),
+    achievement: z.string().optional(),
   }),
   summary: 'Emitted when a Forest or Rock obstacle is removed via Clear or Break (Stone Mason progression, W01-13, W01-31).',
 });

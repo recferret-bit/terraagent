@@ -12,6 +12,74 @@ export type PlanetEventOf<K extends EventKind> = {
 };
 export type PlanetEventV1 = { [K in EventKind]: PlanetEventOf<K> }[EventKind];
 
+export interface BatchedTilePreparedEvent {
+  readonly planetId: string;
+  readonly tick: number;
+  readonly kind: 'tilePrepared';
+  readonly severity: 'info';
+  readonly colonyIds: readonly string[];
+  readonly colonyId: string;
+  readonly playerId: string;
+  readonly count: number;
+  readonly q?: number;
+  readonly r?: number;
+  readonly achievement?: string;
+  readonly data: {
+    readonly colonyId: string;
+    readonly playerId: string;
+    readonly count: number;
+    readonly q?: number;
+    readonly r?: number;
+    readonly achievement?: string;
+  };
+}
+
+export interface BatchedObstacleRemovedEvent {
+  readonly planetId: string;
+  readonly tick: number;
+  readonly kind: 'obstacleRemoved';
+  readonly severity: 'info';
+  readonly colonyIds: readonly string[];
+  readonly colonyId: string;
+  readonly playerId: string;
+  readonly op: 'clear' | 'break';
+  readonly count: number;
+  readonly q?: number;
+  readonly r?: number;
+  readonly achievement?: string;
+  readonly data: {
+    readonly colonyId: string;
+    readonly playerId: string;
+    readonly op: 'clear' | 'break';
+    readonly count: number;
+    readonly q?: number;
+    readonly r?: number;
+    readonly achievement?: string;
+  };
+}
+
+export interface BatchedColonyFoundedEvent {
+  readonly planetId: string;
+  readonly tick: number;
+  readonly kind: 'colonyFounded';
+  readonly severity: 'info';
+  readonly colonyIds: readonly string[];
+  readonly colonyId: string;
+  readonly playerId: string;
+  readonly hubId?: number;
+  readonly q?: number;
+  readonly r?: number;
+  readonly achievement?: string;
+  readonly data: {
+    readonly colonyId: string;
+    readonly playerId: string;
+    readonly hubId?: number;
+    readonly q?: number;
+    readonly r?: number;
+    readonly achievement?: string;
+  };
+}
+
 /**
  * Channel map. A module adds a channel without touching this file via declaration merging:
  *
@@ -21,5 +89,11 @@ export type PlanetEventV1 = { [K in EventKind]: PlanetEventOf<K> }[EventKind];
  */
 export interface BusChannels {
   'planet.event': PlanetEventV1;
+  'tilePrepared': BatchedTilePreparedEvent;
+  'progression.tilePrepared': BatchedTilePreparedEvent;
+  'obstacleRemoved': BatchedObstacleRemovedEvent;
+  'progression.obstacleRemoved': BatchedObstacleRemovedEvent;
+  'colonyFounded': BatchedColonyFoundedEvent;
+  'progression.colonyFounded': BatchedColonyFoundedEvent;
 }
 export type BusChannel = keyof BusChannels;
