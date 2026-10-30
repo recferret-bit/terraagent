@@ -4,6 +4,10 @@ import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createHexTerrain, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles } from '@terra/render/planets/hex';
 import { ConnectionBanner } from '../../net/ConnectionBanner';
 import { WsTransport, browserDeps } from '../../net/WsTransport';
+import { withDevLag } from '../../net/LagTransport';
+import { CommandBus } from '../../net/commandBus';
+import { httpDevServer } from '../../net/devServer';
+import type { Transport } from '../../net/types';
 import { WorldStore } from '../../store/WorldStore';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import { createClientFlagsStore, resolveClientFlags, type ClientFlagsStore } from '../../core/flags';
@@ -29,8 +33,9 @@ function changedHeights(a: ArrayLike<number>, b: ArrayLike<number>): number[] {
  */
 export class OnlineSession {
   readonly viewport: ColonyViewport;
-  readonly transport: WsTransport;
+  readonly transport: Transport;
   readonly store: WorldStore;
+  readonly commands: CommandBus;
   readonly flags: ClientFlagsStore = createClientFlagsStore();
   terrain: HexTerrain | null = null;
   cam: RTSCamera | null = null;
@@ -44,15 +49,17 @@ export class OnlineSession {
 
   constructor(root: HTMLElement, readonly mode: OnlineMode) {
     this.viewport = createColonyViewport(root);
-    this.transport = new WsTransport(createSessionTarget(location), browserDeps());
+    // dev `?lag=<ms>` delays the transport both ways (prediction testing, D-31)
+    this.transport = withDevLag(new WsTransport(createSessionTarget(location), browserDeps()), location.search);
     this.banner = new ConnectionBanner(document.body, this.transport, () => this.transport.start());
-    this.hud = new FeatureHud(document.body, this.flags);
     this.store = new WorldStore(this.transport);
+    this.commands = new CommandBus(this.transport, undefined, (id, kind, args) => this.store.notifySent(id, kind, args));
+    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer() });
     this.cleanups.push(this.transport.onMessage((m) => {
       if (m.t === 'welcome') this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: location.search, dev: import.meta.env.DEV }));
     }));
     this.cleanups.push(this.store.onView((v) => this.onView(v)));
-    this.store.start();
+    this.store.start([], { predict: new URLSearchParams(location.search).get('predict') !== '0' });
     this.transport.start();
     this.bindPicking();
     this.loop();
@@ -123,7 +130,7 @@ export class OnlineSession {
     cancelAnimationFrame(this.raf);
     this.cleanups.forEach((f) => f());
     this.cam?.dispose();
-    this.store.dispose(); this.transport.stop();
+    this.commands.dispose(); this.store.dispose(); this.transport.stop();
     this.hud.dispose(); this.banner.dispose();
     this.terrain?.dispose();
     this.viewport.dispose();

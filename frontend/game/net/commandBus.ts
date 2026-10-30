@@ -19,7 +19,12 @@ export class CommandBus {
   private readonly pending = new Map<string, Pending>();
   private readonly off: () => void;
 
-  constructor(private readonly transport: Pick<Transport, 'send' | 'onMessage'>, private readonly timeoutMs = COMMAND_TIMEOUT_MS) {
+  /** `onSent` sees every command right after it is sent (the sim worker predicts it, D-31). */
+  constructor(
+    private readonly transport: Pick<Transport, 'send' | 'onMessage'>,
+    private readonly timeoutMs = COMMAND_TIMEOUT_MS,
+    private readonly onSent?: (id: string, kind: string, args: unknown) => void,
+  ) {
     this.off = transport.onMessage((m) => {
       if (m.t !== 'cmd.ack' && m.t !== 'cmd.reject') return;
       const p = this.pending.get(m.d.id);
@@ -37,6 +42,7 @@ export class CommandBus {
       }, this.timeoutMs);
       this.pending.set(id, { resolve, timer });
       this.transport.send({ t: 'cmd', id, d: { kind, args } });
+      this.onSent?.(id, kind, args);
     });
   };
 
