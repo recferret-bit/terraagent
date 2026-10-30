@@ -24,5 +24,15 @@ conflict the spec wins and the code is fixed.
 
 ## Adding a command or event kind
 
-Add one file to `src/commands/` or `src/events/` (never edit a shared list); the generator builds the `CommandKind` /
-`EventKind` unions and the JSON-Schema snapshot that CI diffs.
+1. Add ONE file: `src/commands/<name>.ts` exporting `command = defineCommand({ kind, wave, origin, args, summary })`, or
+   `src/events/<name>.ts` exporting `event = defineEvent({ kind, wave, severity, audience, data, summary })`. Never edit a
+   shared list. Files starting with `_` and `define.ts` / `index.ts` / `*.generated.ts` are not kinds.
+2. Run `npm run gen`. It rewrites `src/{commands,events}/index.generated.ts` (`COMMANDS`, `COMMAND_KINDS`, `CommandKind`,
+   `CommandKindSchema`, `commandDef(kind)`, `parseCommandArgs(kind, args)`; `EVENTS`, `EVENT_KINDS`, `EventKind`,
+   `EventKindSchema`, `eventDef(kind)`) and the JSON-Schema snapshot `schema/contracts.schema.json`.
+3. Commit the generated files with the kind file. `npm run gen:check` (part of `npm run check`, i.e. CI) fails while they
+   are stale, so a contract change can never land without an explicit, reviewable snapshot diff.
+4. A snapshot diff is a protocol change: reviewers check that `docs/spec/PROTOCOL.md` was updated with it (PR-06).
+
+The `cmd` envelope keeps `kind: string`; the server routes on it, answers unknown kinds with `cmd.reject unknown_kind`
+and validates `args` with `parseCommandArgs(kind, args)`.
