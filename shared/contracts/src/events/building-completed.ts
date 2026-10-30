@@ -8,11 +8,13 @@ export const event = defineEvent({
   audience: 'player',
   data: z.strictObject({
     colonyId: z.string(),
+    playerId: z.string().optional(),
     entityId: z.number().int(),
     building: z.string(),
+    kind: z.string().optional(),
     tier: z.number().int(),
     q: z.number().int(),
     r: z.number().int(),
   }),
-  summary: 'Emitted when construction of a structure reaches 100 % completion (W01-16).',
+  summary: 'Emitted when construction of a structure reaches 100 % completion (W01-16, W02-17, W02-28).',
 });

@@ -2,21 +2,28 @@
 
 import { z } from 'zod';
 import { command as command_cancelTask } from './cancel-task';
+import { command as command_demolish } from './demolish';
 import { command as command_devCell } from './dev-cell';
+import { command as command_devFill } from './dev-fill';
 import { command as command_devGrant } from './dev-grant';
 import { command as command_devLand } from './dev-land';
 import { command as command_devNudge } from './dev-nudge';
 import { command as command_devPing } from './dev-ping';
+import { command as command_devPower } from './dev-power';
 import { command as command_devReveal } from './dev-reveal';
 import { command as command_devSeed } from './dev-seed';
+import { command as command_devSkipnight } from './dev-skipnight';
 import { command as command_devSpawn } from './dev-spawn';
 import { command as command_devTeleport } from './dev-teleport';
+import { command as command_devTime } from './dev-time';
 import { command as command_enqueueTask } from './enqueue-task';
 import { command as command_moveUnit } from './move-unit';
 import { command as command_placeBuilding } from './place-building';
+import { command as command_reorderTask } from './reorder-task';
+import { command as command_setHarvestWeights } from './set-harvest-weights';
 import { command as command_systemSpawnColony } from './system-spawn-colony';
 
-export const COMMANDS = [command_cancelTask, command_devCell, command_devGrant, command_devLand, command_devNudge, command_devPing, command_devReveal, command_devSeed, command_devSpawn, command_devTeleport, command_enqueueTask, command_moveUnit, command_placeBuilding, command_systemSpawnColony] as const;
+export const COMMANDS = [command_cancelTask, command_demolish, command_devCell, command_devFill, command_devGrant, command_devLand, command_devNudge, command_devPing, command_devPower, command_devReveal, command_devSeed, command_devSkipnight, command_devSpawn, command_devTeleport, command_devTime, command_enqueueTask, command_moveUnit, command_placeBuilding, command_reorderTask, command_setHarvestWeights, command_systemSpawnColony] as const;
 
 export type CommandKind = (typeof COMMANDS)[number]['kind'];
 export const COMMAND_KINDS = [...COMMANDS.map((d) => d.kind)] as unknown as readonly [CommandKind, ...CommandKind[]];
