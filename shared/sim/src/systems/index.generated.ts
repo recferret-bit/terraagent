@@ -7,5 +7,6 @@ import mod_hq from './hq/index';
 import mod_landing from './landing/index';
 import mod_movement from './movement/index';
 import mod_terraform_basic from './terraform-basic/index';
+import mod_territory_claim from './territory-claim/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_construction, mod_dev, mod_finalize, mod_hq, mod_landing, mod_movement, mod_terraform_basic];
+export const SIM_MODULES: readonly SimModule[] = [mod_construction, mod_dev, mod_finalize, mod_hq, mod_landing, mod_movement, mod_terraform_basic, mod_territory_claim];

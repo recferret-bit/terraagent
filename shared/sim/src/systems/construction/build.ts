@@ -8,8 +8,9 @@ import type { PlanetState, SimState } from '../../kernel/state';
 import { defaultW01Data, resolveHqT1Row, syncHqView } from '../hq';
 import { addColonyStock, getColonyStock, resolveStartingKitRow, setColonyStock } from '../landing';
 import { getColonyTerraformOrders } from '../terraform-basic/queue';
+import { applyHubCompletionEffects } from '../territory-claim';
 import type { ConstructionOrder } from './index';
-import { resolveHubT1Row } from './validate';
+import { isHubBuildingKind, resolveHubT1Row } from './validate';
 
 export interface CostCheckResult {
   ok: boolean;
@@ -243,6 +244,9 @@ export function advanceConstructionProgress(
         r: order.r,
       },
     });
+    if (isHubBuildingKind(order.building)) {
+      applyHubCompletionEffects(state, order, tick, ctx);
+    }
     return true;
   }
 
