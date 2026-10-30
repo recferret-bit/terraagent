@@ -3,7 +3,7 @@ import { SQ, LOD_DETAIL } from './lodDetail';
 
 export const CLOUD_FRAG = /* glsl */ `
 ${SQ}${GLSL_NOISE}${LOD_DETAIL}
-uniform float uSeed, uCover, uOpacity, uSunI, uTime, uCloudTween;
+uniform float uSeed, uCover, uOpacity, uSunI, uTime, uCloudTween, uRadius, uOpt;
 uniform vec3 uCloudCol, uSunDir, uSunColor, uAtm, uSkyColor; uniform vec2 uCloudNear; uniform float uSkyBlend; uniform vec2 uHazeDist;
 varying vec3 vObj; varying vec3 vWN; varying vec3 vWP; varying vec3 vC; varying float vS;
 const float CF0 = 170.0;   // first extra cloud octave (base fbm ends at ~114 cycles / unit sphere)
@@ -19,7 +19,7 @@ void main(){
   float thr = mix(0.70, 0.40, uCover) + (1.0 - uCloudTween) * 0.62;
   // close-up erosion: zero-mean, footprint-faded octaves stretched along longitude → wispy, torn
   // edges and billow texture near the camera; exactly 0 from orbit so coverage is unchanged there.
-  float wc0 = lodW(CF0, fp);
+  float wc0 = (uOpt > 0.5 && uRadius < 100.0) ? 0.0 : lodW(CF0, fp);
   if (wc0 > 0.002 && n > thr - 0.16 && n < thr + 0.5) {
     vec3 e = lodOctaves(P, fract(seedOff * 0.0917) * 11.0, CF0, fp, vec3(1.0, 2.4, 1.0), 4);
     float edge = 1.0 - smoothstep(thr + 0.1, thr + 0.45, n);    // erode edges hard, interiors softly

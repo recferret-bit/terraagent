@@ -3,7 +3,7 @@ import { SQ, LOD_DETAIL } from './lodDetail';
 
 export const GLOBE_FRAG = /* glsl */ `
 ${SQ}${GLSL_NOISE}${LOD_DETAIL}
-uniform float uKind, uSeed, uHasSea, uSeaLevel, uRadius, uTime, uOpacity, uSkyBlend, uSunI, uIce, uBump;
+uniform float uKind, uSeed, uHasSea, uSeaLevel, uRadius, uTime, uOpacity, uSkyBlend, uSunI, uIce, uBump, uOpt;
 uniform vec3 uL0, uL1, uL2, uSea, uAtm, uSunDir, uSunColor, uSkyColor, uAccent;
 uniform vec2 uHazeDist;
 uniform float uAtmDensity;
@@ -20,15 +20,16 @@ void main(){
   vec3 seedOff = vec3(uSeed * 0.37, uSeed * 0.11, uSeed * 0.23);
   vec3 q = P * 2.1 + seedOff;
   float w = fbm3(q * 1.7 + 3.1);
-  float hr = fbm3(q + (w - 0.5) * 0.9);
+  vec2 hrs = uOpt > 0.5 ? fbm3Both(q + (w - 0.5) * 0.9) : vec2(fbm3(q + (w - 0.5) * 0.9), fbm3lo(q + (w - 0.5) * 0.9));
+  float hr = hrs.x;
   float h = smoothstep(0.22, 0.78, hr);
   float detail = fbm3lo(q * 7.0);
-  float hLow = smoothstep(0.22, 0.78, fbm3lo(q + (w - 0.5) * 0.9));
+  float hLow = smoothstep(0.22, 0.78, hrs.y);
   vec3 alb; float isSea = 0.0; vec3 emis = vec3(0.0); float bh = h;
   float lvl = uSeaLevel;
 
-  // ---- distance-faded fine detail (skipped entirely when the first extra octave is sub-pixel)
-  float near = lodW(FD0, fp);
+  // ---- distance-faded fine detail (skipped entirely when the first extra octave is sub-pixel or on the orbit globe)
+  float near = (uOpt > 0.5 && uRadius < 100.0) ? 0.0 : lodW(FD0, fp);
   vec3 fd = vec3(0.0);
   vec3 so = fract(seedOff * 0.0713) * 13.0;     // small seed offset keeps high-frequency inputs < 1e4
   if (near > 0.002) {

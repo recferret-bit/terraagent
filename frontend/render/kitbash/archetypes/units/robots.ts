@@ -17,20 +17,22 @@ register({
     mirror((s) => {
       const x = 0.2 * s;
       const hip: V3 = [x, 1.04, 0];
-      const legAnim = { animType: 4 as const, animPivot: hip };
-      // Articulated Biped Leg (animType 4): hip ball-joint in pelvis socket, thigh, knee, shin, ankle, foot
-      b.addPart(sph(0.085, 8, 6), 'frameGunmetal', { name: 'leg hip', position: hip, ...legAnim });
-      b.addPart(rbox(0.18, 0.26, 0.2, 0.035, 1), 'rubberDark', { name: 'leg thigh', position: [x, 0.86, 0], ...legAnim });
-      b.addPart(sph(0.085, 8, 6), 'frameGunmetal', { name: 'leg knee', position: [x, 0.71, 0.01], ...legAnim });
-      strut(b, [x, 0.6, 0.09], [x, 0.86, 0.09], 0.015, 'hullSecondary', { name: 'leg hydraulic', ...legAnim });
-      b.addPart(rbox(0.18, 0.44, 0.2, 0.035, 1), 'rubberDark', { name: 'leg shin', position: [x, 0.49, 0], ...legAnim });
-      b.addPart(box(0.14, 0.12, 0.03), 'hullSecondary', { name: 'leg shin plate', position: [x, 0.46, 0.1], ...legAnim });
-      b.addPart(cyl(0.06, 0.07, 0.2, 8), 'frameGunmetal', { name: 'leg ankle', position: [x, 0.2, 0], ...legAnim });
-      b.addPart(rbox(0.24, 0.12, 0.42, 0.035, 1), 'rubberDark', { name: 'leg foot', position: [x, 0.06, 0.04], ...legAnim });
-      b.addPart(box(0.18, 0.06, 0.16), 'hullSecondary', { name: 'leg toe cap', position: [x, 0.12, 0.15], ...legAnim });
+      const thighAnim = { animType: 4 as const, animPivot: hip };
+      const shinAnim = { animType: 14 as const, animPivot: hip };
+      const footAnim = { animType: 24 as const, animPivot: hip };
+      // Articulated 3-Link Rigid Biped Leg: upper thigh (4) + lower shin/ankle (14) + dorsiflexed foot (24)
+      b.addPart(sph(0.085, 8, 6), 'frameGunmetal', { name: 'leg hip', position: hip, ...thighAnim });
+      b.addPart(rbox(0.18, 0.24, 0.18, 0.035, 1), 'rubberDark', { name: 'leg thigh', position: [x, 0.85, 0], ...thighAnim });
+      strut(b, [x, 0.72, 0.09], [x, 0.94, 0.09], 0.015, 'hullSecondary', { name: 'leg hydraulic', ...thighAnim });
+      b.addPart(sph(0.085, 8, 6), 'frameGunmetal', { name: 'leg knee', position: [x, 0.71, 0], ...shinAnim });
+      b.addPart(rbox(0.18, 0.44, 0.2, 0.035, 1), 'rubberDark', { name: 'leg shin', position: [x, 0.49, 0], ...shinAnim });
+      b.addPart(box(0.14, 0.12, 0.03), 'hullSecondary', { name: 'leg shin plate', position: [x, 0.46, 0.1], ...shinAnim });
+      b.addPart(cyl(0.06, 0.07, 0.2, 8), 'frameGunmetal', { name: 'leg ankle', position: [x, 0.2, 0], ...shinAnim });
+      b.addPart(rbox(0.24, 0.12, 0.42, 0.035, 1), 'rubberDark', { name: 'leg foot', position: [x, 0.06, 0.04], ...footAnim });
+      b.addPart(box(0.18, 0.06, 0.16), 'hullSecondary', { name: 'leg toe cap', position: [x, 0.12, 0.15], ...footAnim });
 
-      // Counter-Swinging Biped Arm (animType 5): static shoulder bracket -> animated shoulder ball-joint + arm chain
-      b.addPart(box(0.1, 0.1, 0.12), 'frameGunmetal', { name: 'shoulder mount', position: [0.35 * s, 1.5, 0] });
+      // Counter-Swinging Biped Arm (animType 5):shoulder bracket on BipedBody (8) -> animated shoulder ball-joint + arm chain
+      b.addPart(box(0.1, 0.1, 0.12), 'frameGunmetal', { name: 'shoulder mount', position: [0.35 * s, 1.5, 0], animType: 8 });
       const shoulder: V3 = [0.44 * s, 1.48, 0];
       const armAnim = { animType: 5 as const, animPivot: shoulder };
       const ax = 0.465 * s;
@@ -42,45 +44,46 @@ register({
       b.addPart(box(0.135, 0.04, 0.155), 'warningAmber', { name: 'arm cuff light', position: [ax, 1.0, 0.09], rotation: [-0.45, 0, 0], emissiveIntensity: 3.4, ...armAnim });
     });
 
-    // Pelvis + belt + torso
-    b.addPart(rbox(0.48, 0.18, 0.32, 0.05, 1), 'frameGunmetal', { name: 'body pelvis', position: [0, 1.11, 0] });
-    b.addPart(box(0.5, 0.05, 0.34), 'hullSecondary', { name: 'body belt', position: [0, 1.2, 0] });
-    b.addPart(rbox(0.64, 0.48, 0.4, 0.08, 1), 'hullPrimary', { name: 'body torso', position: [0, 1.45, 0] });
-    b.addPart(box(0.46, 0.2, 0.08), 'hullSecondary', { name: 'chest plate', position: [0, 1.5, 0.2] });
-    b.addPart(cyl(0.06, 0.06, 0.03, 10), 'energyCyan', { name: 'chest core light', position: [0, 1.5, 0.245], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.0 });
+    // Pelvis + belt + torso (animType 8: BipedBody step-reaction carrier)
+    const bodyAnim = { animType: 8 as const };
+    b.addPart(rbox(0.48, 0.18, 0.32, 0.05, 1), 'frameGunmetal', { name: 'body pelvis', position: [0, 1.11, 0], ...bodyAnim });
+    b.addPart(box(0.5, 0.05, 0.34), 'hullSecondary', { name: 'body belt', position: [0, 1.2, 0], ...bodyAnim });
+    b.addPart(rbox(0.64, 0.48, 0.4, 0.08, 1), 'hullPrimary', { name: 'body torso', position: [0, 1.45, 0], ...bodyAnim });
+    b.addPart(box(0.46, 0.2, 0.08), 'hullSecondary', { name: 'chest plate', position: [0, 1.5, 0.2], ...bodyAnim });
+    b.addPart(cyl(0.06, 0.06, 0.03, 10), 'energyCyan', { name: 'chest core light', position: [0, 1.5, 0.245], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.0, ...bodyAnim });
     // Neck + head + visor
-    b.addPart(cyl(0.07, 0.09, 0.12, 8), 'frameGunmetal', { name: 'neck joint', position: [0, 1.72, 0] });
-    b.addPart(rbox(0.38, 0.28, 0.34, 0.07, 1), 'hullPrimary', { name: 'head helmet', position: [0, 1.89, 0.01] });
-    b.addPart(box(0.3, 0.11, 0.05), 'glassVisor', { name: 'head visor', position: [0, 1.91, 0.18] });
-    b.addPart(box(0.24, 0.03, 0.03), 'energyCyan', { name: 'visor glow light', position: [0, 1.91, 0.205], emissiveIntensity: 4.5 });
-    b.addPart(box(0.08, 0.16, 0.18), 'hullSecondary', { name: 'ear pod L', position: [0.21, 1.89, 0] });
-    b.addPart(box(0.08, 0.16, 0.18), 'hullSecondary', { name: 'ear pod R', position: [-0.21, 1.89, 0] });
+    b.addPart(cyl(0.07, 0.09, 0.12, 8), 'frameGunmetal', { name: 'neck joint', position: [0, 1.72, 0], ...bodyAnim });
+    b.addPart(rbox(0.38, 0.28, 0.34, 0.07, 1), 'hullPrimary', { name: 'head helmet', position: [0, 1.89, 0.01], ...bodyAnim });
+    b.addPart(box(0.3, 0.11, 0.05), 'glassVisor', { name: 'head visor', position: [0, 1.91, 0.18], ...bodyAnim });
+    b.addPart(box(0.24, 0.03, 0.03), 'energyCyan', { name: 'visor glow light', position: [0, 1.91, 0.205], emissiveIntensity: 4.5, ...bodyAnim });
+    b.addPart(box(0.08, 0.16, 0.18), 'hullSecondary', { name: 'ear pod L', position: [0.21, 1.89, 0], ...bodyAnim });
+    b.addPart(box(0.08, 0.16, 0.18), 'hullSecondary', { name: 'ear pod R', position: [-0.21, 1.89, 0], ...bodyAnim });
     // Angled antenna (silhouette breaker, sunk into ear pod R)
-    strut(b, [-0.21, 1.94, -0.04], [-0.33, 2.38, -0.14], 0.012, 'frameGunmetal', { name: 'antenna mast' });
-    b.addPart(sph(0.032, 8, 6), 'warningAmber', { name: 'antenna beacon light', position: [-0.33, 2.39, -0.14], emissiveIntensity: 4.0, animType: 3, animPivot: [-0.33, 2.39, -0.14] });
+    strut(b, [-0.21, 1.94, -0.04], [-0.33, 2.38, -0.14], 0.012, 'frameGunmetal', { name: 'antenna mast', ...bodyAnim });
+    b.addPart(sph(0.032, 8, 6), 'warningAmber', { name: 'antenna beacon light', position: [-0.33, 2.39, -0.14], emissiveIntensity: 4.0, animType: 38, animPivot: [-0.33, 2.39, -0.14] });
 
-    // Backpack + thrusters + rotating radar dish
-    b.addPart(rbox(0.46, 0.52, 0.24, 0.06, 1), 'frameGunmetal', { name: 'backpack frame', position: [0, 1.4, -0.3] });
-    b.addPart(box(0.38, 0.07, 0.22), 'hullSecondary', { name: 'backpack cap', position: [0, 1.67, -0.3] });
+    // Backpack + thrusters + rotating radar dish (riding on BipedBody)
+    b.addPart(rbox(0.46, 0.52, 0.24, 0.06, 1), 'frameGunmetal', { name: 'backpack frame', position: [0, 1.4, -0.3], ...bodyAnim });
+    b.addPart(box(0.38, 0.07, 0.22), 'hullSecondary', { name: 'backpack cap', position: [0, 1.67, -0.3], ...bodyAnim });
     mirror((s) => {
-      b.addPart(cyl(0.07, 0.07, 0.34, 10), 'hullPrimary', { name: 'pack tank', position: [0.27 * s, 1.44, -0.31] });
-      b.addPart(cyl(0.06, 0.095, 0.16, 10), 'frameGunmetal', { name: 'thruster bell', position: [0.27 * s, 1.21, -0.31] });
+      b.addPart(cyl(0.07, 0.07, 0.34, 10), 'hullPrimary', { name: 'pack tank', position: [0.27 * s, 1.44, -0.31], ...bodyAnim });
+      b.addPart(cyl(0.06, 0.095, 0.16, 10), 'frameGunmetal', { name: 'thruster bell', position: [0.27 * s, 1.21, -0.31], ...bodyAnim });
       b.addPart(cyl(0.048, 0.032, 0.12, 10), 'energyCyan', {
-        name: 'thruster core light', position: [0.27 * s, 1.13, -0.31], emissiveIntensity: 4.2, animType: 2, animPivot: [0.27 * s, 1.13, -0.31],
+        name: 'thruster core light', position: [0.27 * s, 1.13, -0.31], emissiveIntensity: 4.2, animType: 28, animPivot: [0.27 * s, 1.13, -0.31],
       });
     });
-    // Rotating radar dish on pack (animType 1) — set back to clear helmet over full 360° spin
-    b.addPart(cyl(0.025, 0.03, 0.18, 8), 'frameGunmetal', { name: 'radar mast', position: [0, 1.74, -0.36] });
+    // Rotating radar dish on pack (animType 18 = SpinY on BipedBody)
+    b.addPart(cyl(0.025, 0.03, 0.18, 8), 'frameGunmetal', { name: 'radar mast', position: [0, 1.74, -0.36], ...bodyAnim });
     b.addPart(
       lathe([[0.0, 0.0], [0.07, 0.015], [0.14, 0.07], [0.0, 0.025]], 12),
       'hullPrimary',
-      { name: 'radar dish', position: [0.0, 1.82, -0.36], rotation: [-0.45, 0, 0], animType: 1, animPivot: [0, 1.82, -0.36] }
+      { name: 'radar dish', position: [0.0, 1.82, -0.36], rotation: [-0.45, 0, 0], animType: 18, animPivot: [0, 1.82, -0.36] }
     );
-    b.addPart(sph(0.026, 8, 6), 'energyCyan', { name: 'radar feed light', position: [0, 1.86, -0.33], emissiveIntensity: 4.0, animType: 1, animPivot: [0, 1.82, -0.36] });
+    b.addPart(sph(0.026, 8, 6), 'energyCyan', { name: 'radar feed light', position: [0, 1.86, -0.33], emissiveIntensity: 4.0, animType: 18, animPivot: [0, 1.82, -0.36] });
 
-    // External power cables (anchored from backpack cap to shoulder mount tops, clearing tanks and torso)
-    cable(b, [[0.16, 1.69, -0.3], [0.32, 1.74, -0.16], [0.35, 1.52, -0.02]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable L' });
-    cable(b, [[-0.16, 1.69, -0.3], [-0.32, 1.74, -0.16], [-0.35, 1.52, -0.02]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable R' });
+    // External power cables (anchored from backpack cap to shoulder mount tops, riding on BipedBody)
+    cable(b, [[0.16, 1.69, -0.3], [0.32, 1.74, -0.16], [0.35, 1.52, -0.02]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable L', ...bodyAnim });
+    cable(b, [[-0.16, 1.69, -0.3], [-0.32, 1.74, -0.16], [-0.35, 1.52, -0.02]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable R', ...bodyAnim });
   },
 });
 
@@ -182,59 +185,61 @@ register({
   label: 'Combat T1',
   category: 'robot',
   footprint: [2, 2],
-  notes: 'Four-legged spider walker (animType 6 alternating gait), armored carapace, twin-barrel recoil turret, crimson sensor, radar.',
+  notes: 'Four-legged spider walker (animType 6 gait + animType 9 carapace step-reaction), twin-barrel recoil turret, crimson sensor, radar.',
   build: (b) => {
-    // Hull & under-chassis
-    b.addPart(rbox(0.8, 0.28, 1.0, 0.1, 1), 'hullPrimary', { name: 'body carapace', position: [0, 0.82, 0] });
-    b.addPart(rbox(0.6, 0.22, 0.7, 0.08, 1), 'frameGunmetal', { name: 'under chassis', position: [0, 0.62, 0] });
-    b.addPart(rbox(0.7, 0.08, 0.5, 0.03, 1), 'hullSecondary', { name: 'hull deck', position: [0, 0.98, -0.15] });
-    b.addPart(rbox(0.3, 0.14, 0.2, 0.04, 1), 'hullSecondary', { name: 'hull glacis', position: [0, 0.8, 0.48], rotation: [0.3, 0, 0] });
-    b.addPart(rbox(0.22, 0.06, 0.04, 0.015, 1), 'dangerCrimson', { name: 'visor sensor', position: [0, 0.82, 0.58], emissiveIntensity: 4.5 });
+    const spiderBody = { animType: 9 as const };
+    // Hull & under-chassis (animType 9: SpiderBody step-reaction carrier — heaves, rolls, pitches, and surges on every stomp)
+    b.addPart(rbox(0.8, 0.28, 1.0, 0.1, 1), 'hullPrimary', { name: 'body carapace', position: [0, 0.82, 0], ...spiderBody });
+    b.addPart(rbox(0.6, 0.22, 0.7, 0.08, 1), 'frameGunmetal', { name: 'under chassis', position: [0, 0.62, 0], ...spiderBody });
+    b.addPart(rbox(0.7, 0.08, 0.5, 0.03, 1), 'hullSecondary', { name: 'hull deck', position: [0, 0.98, -0.15], ...spiderBody });
+    b.addPart(rbox(0.3, 0.14, 0.2, 0.04, 1), 'hullSecondary', { name: 'hull glacis', position: [0, 0.8, 0.48], rotation: [0.3, 0, 0], ...spiderBody });
+    b.addPart(rbox(0.22, 0.06, 0.04, 0.015, 1), 'dangerCrimson', { name: 'visor sensor', position: [0, 0.82, 0.58], emissiveIntensity: 4.5, ...spiderBody });
     // Side hull vents (surface detail on left/right carapace faces)
     mirror((s) => {
-      b.addPart(rbox(0.03, 0.1, 0.28, 0.01, 1), 'hullSecondary', { name: 'hull side plate', position: [0.405 * s, 0.84, 0.0] });
+      b.addPart(rbox(0.03, 0.1, 0.28, 0.01, 1), 'hullSecondary', { name: 'hull side plate', position: [0.405 * s, 0.84, 0.0], ...spiderBody });
     });
-    // Articulated Spider Legs (4) — animType 6 (SpiderLeg) around hip socket pivot
+    // Articulated Spider Legs (4) — animType 6 (SpiderLeg) around hip socket pivot (couples to SpiderBody at hip, locks to ground at foot)
     mirror((s) => {
       [0.4, -0.4].forEach((z, i) => {
         const hip: V3 = [0.39 * s, 0.76, z * 0.8];
-        const femurStart: V3 = [0.46 * s, 0.8, z * 0.86];
+        const femurStart: V3 = [0.475 * s, 0.81, z * 0.87];
         const knee: V3 = [0.78 * s, 1.0, z * 1.2];
         const femurEnd: V3 = [0.73 * s, 0.97, z * 1.15];
         const tibiaStart: V3 = [0.8 * s, 0.94, z * 1.21];
         const footTop: V3 = [0.92 * s, 0.08, z * 1.3];
-        const animOpts = { animType: 6 as const, animPivot: hip };
-        b.addPart(sph(0.095, 10, 8), 'frameGunmetal', { name: 'leg hip', position: hip, ...animOpts });
-        strut(b, femurStart, femurEnd, 0.044, 'rubberDark', { name: 'leg femur', ...animOpts }, 0.052);
-        b.addPart(sph(0.075, 10, 8), 'frameGunmetal', { name: 'leg knee', position: knee, ...animOpts });
-        strut(b, tibiaStart, footTop, 0.028, 'rubberDark', { name: 'leg tibia', ...animOpts }, 0.05);
-        b.addPart(cyl(0.085, 0.115, 0.1, 8), 'rubberDark', { name: 'leg foot', position: [footTop[0], 0.05, footTop[2]], ...animOpts });
-        b.addPart(cyl(0.095, 0.095, 0.03, 8), 'hullSecondary', { name: 'leg foot rim', position: [footTop[0], 0.09, footTop[2]], ...animOpts });
+        const femurAnim = { animType: 6 as const, animPivot: hip };
+        const tibiaAnim = { animType: 16 as const, animPivot: hip };
+        b.addPart(sph(0.105, 10, 8), 'frameGunmetal', { name: 'leg hip', position: hip, ...femurAnim });
+        strut(b, femurStart, femurEnd, 0.044, 'rubberDark', { name: 'leg femur', ...femurAnim }, 0.052);
+        b.addPart(sph(0.075, 10, 8), 'frameGunmetal', { name: 'leg knee', position: knee, ...tibiaAnim });
+        strut(b, tibiaStart, footTop, 0.028, 'rubberDark', { name: 'leg tibia', ...tibiaAnim }, 0.05);
+        b.addPart(cyl(0.085, 0.115, 0.1, 8), 'rubberDark', { name: 'leg foot', position: [footTop[0], 0.05, footTop[2]], ...tibiaAnim });
+        b.addPart(cyl(0.095, 0.095, 0.03, 8), 'hullSecondary', { name: 'leg foot rim', position: [footTop[0], 0.09, footTop[2]], ...tibiaAnim });
         if (i === 0) {
           b.addPart(rbox(0.06, 0.04, 0.1, 0.012, 1), 'warningAmber', {
-            name: 'leg knee light', position: [knee[0], knee[1] + 0.07, knee[2]], emissiveIntensity: 3.4, ...animOpts,
+            name: 'leg knee light', position: [knee[0], knee[1] + 0.07, knee[2]], emissiveIntensity: 3.4, ...tibiaAnim,
           });
         }
       });
     });
-    // Turret (manipulator group: hullSecondary housing + frameGunmetal barrels)
-    b.addPart(cyl(0.26, 0.3, 0.1, 12), 'frameGunmetal', { name: 'turret ring', position: [0, 1.0, 0.1] });
-    b.addPart(rbox(0.46, 0.22, 0.44, 0.07, 1), 'hullSecondary', { name: 'turret housing', position: [0, 1.14, 0.08] });
+    // Turret (manipulator group riding on SpiderBody + animType 39 recoiling barrels)
+    b.addPart(cyl(0.26, 0.3, 0.1, 12), 'frameGunmetal', { name: 'turret ring', position: [0, 1.0, 0.1], ...spiderBody });
+    b.addPart(rbox(0.46, 0.22, 0.44, 0.07, 1), 'hullSecondary', { name: 'turret housing', position: [0, 1.14, 0.08], ...spiderBody });
     mirror((s) => {
       const bPivot: V3 = [0.13 * s, 1.14, 0.3];
-      b.addPart(cyl(0.035, 0.04, 0.66, 8), 'frameGunmetal', { name: 'cannon barrel', position: [0.13 * s, 1.14, 0.56], rotation: [Math.PI / 2, 0, 0], animType: 3, animPivot: bPivot });
-      b.addPart(cyl(0.055, 0.055, 0.1, 8), 'hullPrimary', { name: 'cannon muzzle', position: [0.13 * s, 1.14, 0.9], rotation: [Math.PI / 2, 0, 0], animType: 3, animPivot: bPivot });
-      b.addPart(cyl(0.03, 0.03, 0.03, 8), 'dangerCrimson', { name: 'cannon laser', position: [0.13 * s, 1.14, 0.955], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.5, animType: 3, animPivot: bPivot });
+      b.addPart(cyl(0.035, 0.04, 0.66, 8), 'frameGunmetal', { name: 'cannon barrel', position: [0.13 * s, 1.14, 0.56], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
+      b.addPart(cyl(0.055, 0.055, 0.1, 8), 'hullPrimary', { name: 'cannon muzzle', position: [0.13 * s, 1.14, 0.9], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
+      b.addPart(cyl(0.03, 0.03, 0.03, 8), 'dangerCrimson', { name: 'cannon laser', position: [0.13 * s, 1.14, 0.955], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.5, animType: 39, animPivot: bPivot });
     });
-    // Sensor head + radar + antenna
-    b.addPart(sph(0.065, 10, 8), 'dangerCrimson', { name: 'turret sensor light', position: [0, 1.28, 0.2], emissiveIntensity: 4.5 });
-    b.addPart(cyl(0.02, 0.02, 0.16, 6), 'frameGunmetal', { name: 'radar mast', position: [-0.15, 1.31, -0.06] });
+    // Sensor head + radar (animType 19 = SpinY on SpiderBody) + antenna
+    b.addPart(sph(0.065, 10, 8), 'dangerCrimson', { name: 'turret sensor light', position: [0, 1.28, 0.2], emissiveIntensity: 4.5, ...spiderBody });
+    b.addPart(cyl(0.02, 0.02, 0.16, 6), 'frameGunmetal', { name: 'radar mast', position: [-0.15, 1.31, -0.06], ...spiderBody });
     b.addPart(lathe([[0, 0], [0.07, 0.01], [0.14, 0.06], [0, 0.02]], 12), 'hullPrimary', {
-      name: 'radar dish', position: [-0.15, 1.38, -0.06], rotation: [-0.5, 0, 0], animType: 1, animPivot: [-0.15, 1.38, -0.06],
+      name: 'radar dish', position: [-0.15, 1.38, -0.06], rotation: [-0.5, 0, 0], animType: 19, animPivot: [-0.15, 1.38, -0.06],
     });
-    strut(b, [0.22, 1.0, -0.22], [0.38, 1.52, -0.32], 0.012, 'frameGunmetal', { name: 'antenna mast' });
-    // Ammo box + external power cable (clears carapace)
-    b.addPart(rbox(0.3, 0.18, 0.24, 0.04, 1), 'hullPrimary', { name: 'ammo box', position: [0, 1.09, -0.32] });
-    cable(b, [[0.14, 1.12, -0.32], [0.28, 1.08, -0.14], [0.22, 1.14, 0.04]] as V3[], 0.016, 'frameGunmetal', { name: 'power cable' });
+    strut(b, [0.22, 1.0, -0.22], [0.38, 1.52, -0.32], 0.012, 'frameGunmetal', { name: 'antenna mast', ...spiderBody });
+    // Ammo box + external power cable (riding on SpiderBody)
+    b.addPart(rbox(0.3, 0.18, 0.24, 0.04, 1), 'hullPrimary', { name: 'ammo box', position: [0, 1.09, -0.32], ...spiderBody });
+    cable(b, [[0.14, 1.12, -0.32], [0.28, 1.08, -0.14], [0.22, 1.14, 0.04]] as V3[], 0.016, 'frameGunmetal', { name: 'power cable', ...spiderBody });
   },
 });

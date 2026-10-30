@@ -25,6 +25,8 @@ export interface ColonyViewport {
   applySky(spec: PlanetSpec): void;
   /** Keep the shadow frustum centred (1m-quantised) on a ground target. */
   followShadow(target: THREE.Vector3): void;
+  /** Lock the internal render buffer to a preset W×H (at DPR 1), or pass null for native container size. */
+  setResolution(size: { width: number; height: number } | null, maxPixelRatio?: number): void;
   resize(): void;
   render(): void;
   dispose(): void;
@@ -46,6 +48,19 @@ function createSunAndHemi(scene: THREE.Scene) {
   return { sun, hemi };
 }
 
+function applySkyToScene(scene: THREE.Scene, sun: THREE.DirectionalLight, hemi: THREE.HemisphereLight, renderer: THREE.WebGLRenderer, spec: PlanetSpec) {
+  const k = spec.sky;
+  (scene.background as THREE.Color).set(k.fogColor);
+  (scene.fog as THREE.FogExp2).color.set(k.fogColor);
+  (scene.fog as THREE.FogExp2).density = k.fogDensity;
+  sun.color.set(k.sunColor);
+  sun.intensity = k.sunIntensity;
+  hemi.color.set(k.ambientSky ?? k.skyColor);
+  hemi.groundColor.set(k.ambientGround ?? k.hemiGround);
+  hemi.intensity = k.hemiIntensity;
+  renderer.toneMappingExposure = k.exposure;
+}
+
 /** Pillar 4 bootstrap: 28° FOV, ACES, PMREM RoomEnvironment, warm sun + cool hemi, bloom threshold 1.1. */
 export function createColonyViewport(container: HTMLElement): ColonyViewport {
   const w = () => container.clientWidth || window.innerWidth;
@@ -59,15 +74,20 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   camera.position.set(42, 46, 42);
   camera.lookAt(0, 0, 0);
 
+  let customRes: { width: number; height: number } | null = null;
+  let maxDpr = Math.min(window.devicePixelRatio, 2);
+
   const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-  renderer.setSize(w(), h());
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+  renderer.setSize(w(), h(), false);
+  renderer.setPixelRatio(maxDpr);
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
   renderer.toneMappingExposure = 1.1;
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.style.display = 'block';
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
   renderer.domElement.dataset.pixelShader = '1';
   container.appendChild(renderer.domElement);
 
@@ -99,33 +119,33 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       c.aspect = w() / h();
       c.updateProjectionMatrix();
     },
-    applySky(spec) {
-      const k = spec.sky;
-      (scene.background as THREE.Color).set(k.fogColor);
-      (scene.fog as THREE.FogExp2).color.set(k.fogColor);
-      (scene.fog as THREE.FogExp2).density = k.fogDensity;
-      sun.color.set(k.sunColor);
-      sun.intensity = k.sunIntensity;
-      hemi.color.set(k.ambientSky ?? k.skyColor);
-      hemi.groundColor.set(k.ambientGround ?? k.hemiGround);
-      hemi.intensity = k.hemiIntensity;
-      renderer.toneMappingExposure = k.exposure;
-    },
+    applySky(spec) { applySkyToScene(scene, sun, hemi, renderer, spec); },
     followShadow(t) {
       const x = Math.round(t.x), z = Math.round(t.z);
       sun.target.position.set(x, t.y, z);
       sun.position.set(x + sunOffset.x, t.y + sunOffset.y, z + sunOffset.z);
     },
+    setResolution(size, maxPixelRatio) {
+      customRes = size;
+      if (maxPixelRatio !== undefined) maxDpr = maxPixelRatio;
+      vp.resize();
+    },
     resize() {
-      renderer.setSize(w(), h());
-      composer.setSize(w(), h());
-      bloom.resolution.set(w(), h());
-      setPixelArtSize(pixelArt, w(), h());
+      const cw = w(), ch = h();
+      const rw = customRes ? customRes.width : cw;
+      const rh = customRes ? customRes.height : ch;
+      const dpr = customRes ? 1 : maxDpr;
+      renderer.setPixelRatio(dpr);
+      renderer.setSize(rw, rh, false);
+      composer.setPixelRatio(dpr);
+      composer.setSize(rw, rh);
+      bloom.resolution.set(rw * dpr, rh * dpr);
+      setPixelArtSize(pixelArt, rw * dpr, rh * dpr);
       for (const p of renderPass.camera ? [renderPass.camera as THREE.PerspectiveCamera] : []) {
-        p.aspect = w() / h();
+        p.aspect = cw / ch;
         p.updateProjectionMatrix();
       }
-      camera.aspect = w() / h();
+      camera.aspect = cw / ch;
       camera.updateProjectionMatrix();
     },
     render() { composer.render(); },

@@ -135,10 +135,11 @@ flush opposite-facing faces (that is a clean contact), and cables as structural 
    - `animType 1` (`SpinY`): rotates about **+Y through `animPivot`**, one full turn. **All spinners share the same angle** (they move in lockstep).
    - `animType 2` (`HoverBob`): bobs **±5 cm in Y**; phase depends on `pivot.x`, so equal `pivot.x` means lockstep.
    - `animType 3` (`RecoilPulse`): recoils **0 to 6 cm toward −Z**; phase depends on `pivot.x`.
-   - `animType 4` (`BipedLeg`): sagittal hip swing + knee bend + foot clearance lift around hip `animPivot`; left (`pivot.x >= 0`) and right (`pivot.x < 0`) alternate by $\pi$.
-   - `animType 5` (`BipedArm`): counter-phase shoulder swing around shoulder `animPivot` (opposite same-side `BipedLeg`).
-   - `animType 6` (`SpiderLeg`): alternating diagonal/tripod coxa yaw + radial stepping lift around hip `animPivot` (phase from `pivot.x` and `pivot.z`).
+   - `animType 4` (`BipedLeg`): sagittal hip swing + knee bend + foot clearance lift around hip `animPivot`, coupled to `BipedBody (8)` at the hip socket; left (`pivot.x >= 0`) and right (`pivot.x < 0`) alternate by $\pi$.
+   - `animType 5` (`BipedArm`): counter-phase shoulder swing around shoulder `animPivot` (opposite same-side `BipedLeg`), riding on `BipedBody (8)`.
+   - `animType 6` (`SpiderLeg`): alternating diagonal/tripod coxa yaw + snappy stepping lift + stance knee flex around hip `animPivot`, coupled to `SpiderBody (9)` at the hip socket.
    - `animType 7` (`WheelSpin`): continuous X-axis rolling around wheel axle `animPivot`.
+   - `animType 8` (`BipedBody`) & `animType 9` (`SpiderBody`): full-body step-reaction suspension (spring-damped $2\omega$ impact heave, roll, pitch, yaw, sway, surge). Compound codes `18, 28, 38` and `19, 29, 39` layer `SpinY (1)`, `HoverBob (2)`, or `RecoilPulse (3)` on top of the moving body carrier.
    All sub-parts of a single limb or wheel must share the exact same `animType` and `animPivot` (`sameRig`), with a ball-joint (`sph`) centered at `animPivot` sunk into the static mount and moving struts kept ≥ 1.5 cm clear of static hull walls.
 5. **Name the parts** so a report points at code.
 

@@ -15,15 +15,20 @@ function strut(b: KitbashBuilder, a: V3, c: V3, r: number, zone: MaterialZoneId,
 }
 
 /**
- * Example 1: Articulated Spider Leg (`animType: 6`)
- * Every part of the leg shares the same hip socket `animPivot` so the coxa, femur,
- * knee, tibia, and foot swivel and lift as one cohesive assembly with zero joint tearing.
+ * Example 1: Battle Spider Carapace (`animType: 9`) + Mounted Cannon (`animType: 39`) + Articulated Legs (`animType: 6`)
+ * All hull/turret parts use `animType: 9` (`SpiderBody`) so the chassis heaves, rolls, and pitches on every step.
+ * Mounted recoiling barrels use `39` (`RecoilPulse` riding on `SpiderBody`), and spinning radar dishes use `19` (`SpinY` on `SpiderBody`).
+ * Every sub-part of a leg shares its hip socket `animPivot` (`animType: 6`), seamlessly blending from `SpiderBody` at the hip to the ground at the foot.
  */
-export function addSpiderLegPair(b: KitbashBuilder, zSign: 1 | -1) {
+export function addSpiderBodyAndLegPair(b: KitbashBuilder, zSign: 1 | -1) {
+  const bodyAnim = { animType: 9 as const, animPivot: [0, 0.76, 0] as V3 };
+  b.addPart(box(0.8, 0.28, 0.85), 'hullPrimary', { name: 'body carapace', position: [0, 0.76, 0], ...bodyAnim });
+  b.addPart(cyl(0.032, 0.032, 0.56, 8), 'frameGunmetal', { name: 'cannon barrel', position: [0.16, 1.07, 0.34], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: [0.16, 1.07, 0.1] });
+
   for (const s of [1, -1] as const) {
     const z = 0.4 * zSign;
     const hip: V3 = [0.39 * s, 0.76, z * 0.8];
-    const femurStart: V3 = [0.46 * s, 0.8, z * 0.86]; // >= 1.5 cm clear of static carapace at x = ±0.40
+    const femurStart: V3 = [0.46 * s, 0.8, z * 0.86]; // >= 1.5 cm clear of carapace at x = ±0.40
     const knee: V3 = [0.78 * s, 1.0, z * 1.2];
     const femurEnd: V3 = [0.73 * s, 0.97, z * 1.15];
     const tibiaStart: V3 = [0.8 * s, 0.94, z * 1.21];
@@ -40,10 +45,11 @@ export function addSpiderLegPair(b: KitbashBuilder, zSign: 1 | -1) {
 }
 
 /**
- * Example 2: Coupled Bipedal Leg (`animType: 4`) & Counter-Swinging Arm (`animType: 5`)
- * Left (s = +1) and Right (s = -1) automatically alternate phase by PI in the vertex shader.
+ * Example 2: Coupled Bipedal Body (`animType: 8`), Leg (`animType: 4`) & Counter-Swinging Arm (`animType: 5`)
+ * All torso/pelvis/head parts use `animType: 8` (`BipedBody`). Left (`s = +1`) and Right (`s = -1`) alternate phase by PI.
  */
 export function addBipedLimbPair(b: KitbashBuilder) {
+  const bodyAnim = { animType: 8 as const, animPivot: [0, 0.92, 0] as V3 };
   for (const s of [1, -1] as const) {
     const x = 0.2 * s;
     const hip: V3 = [x, 1.04, 0];
@@ -55,8 +61,8 @@ export function addBipedLimbPair(b: KitbashBuilder) {
     b.addPart(cyl(0.06, 0.07, 0.2, 8), 'frameGunmetal', { name: 'leg ankle', position: [x, 0.2, 0], ...legAnim });
     b.addPart(box(0.24, 0.12, 0.42), 'rubberDark', { name: 'leg foot', position: [x, 0.06, 0.04], ...legAnim });
 
-    // Static shoulder bracket bridges torso to animated shoulder ball-joint
-    b.addPart(box(0.1, 0.1, 0.12), 'frameGunmetal', { name: 'shoulder mount', position: [0.35 * s, 1.5, 0] });
+    // Shoulder bracket rides on BipedBody (8) and bridges torso to animated shoulder ball-joint (5)
+    b.addPart(box(0.1, 0.1, 0.12), 'frameGunmetal', { name: 'shoulder mount', position: [0.35 * s, 1.5, 0], ...bodyAnim });
     const shoulder: V3 = [0.44 * s, 1.48, 0];
     const armAnim = { animType: 5 as const, animPivot: shoulder };
     const ax = 0.465 * s;

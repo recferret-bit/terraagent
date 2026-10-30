@@ -33,23 +33,33 @@ This skill enforces **Zero-CPU Runtime Procedural Animation** across all `TerraA
    - During the ground stance phase ($\cos(\tau) \le 0$), the planted foot touches $y = 0.000$; during the forward recovery stroke ($\cos(\tau) > 0$), the knee and foot lift cleanly above ground, never dipping below $y = -0.02\text{ m}$ (`ANIM_BELOW_GROUND`).
 5. **Frustum-Culling Bounding Sphere Expansion:**
    - Because vertices displace on the GPU, `common.ts` expands `geometry.boundingSphere.radius *= 1.15` after `computeBoundingSphere()` so legs at full stride never pop out of view near screen edges.
+6. **Full-Body Step Reaction, Mass, Suspension & Phase-Lagged Inertia (`BipedBody 8` & `SpiderBody 9`):**
+   - **Never leave a legged walker's chassis static (`animType = 0`)!** A static hull while legs swing makes a heavy mech or battle spider look weightless and robotic in the bad sense (zero ground reaction force, zero suspension compression, zero momentum).
+   - Tag all body, carapace, pelvis, torso, head, turret, and cable sub-parts of a biped with **`animType = 8` (`BipedBody`)** and of a multi-legged walker with **`animType = 9` (`SpiderBody`)**.
+   - Both body carriers evaluate **spring-damped $2\omega$ step-impact heave** (`-cos(2g) - 0.6 sin(2g)`, dropping sharply right after each foot/diagonal pair strikes the ground and rebounding as the stance legs push off), **phase-lagged roll, pitch, and yaw** around the center of mass, **lateral weight shift** onto the planted side, and **forward surge impulse**.
+   - **Hip-Socket Lock & Planted-Leg Shock-Absorption Flex:** In the vertex shader (`shaderChunks.ts`) and validator (`poses.ts`), `BipedLeg (4)` and `SpiderLeg (6)` blend seamlessly from the moving body carrier (`bipedBodyTransform` / `spiderBodyTransform`) at the hip socket (`legT = 0` / `radial = 0` via `smoothstep` deadzones) to the ground-anchored foot (`legT = 1` / `radial = 1`), while adding mid-leg knee compression (`stanceFlex` / `kneeArch = sin(t * PI) * max(0, -cos(tau))`) during the ground stance phase. This locks hips 100% into the heaving chassis and planted feet 100% onto the ground (`minY = 0.000`).
+   - **Compound Mounted Channels (`18, 19, 28, 29, 38, 39`):** Parts mounted on a moving body that also have their own local motion (e.g., spinning radar dish, bobbing thruster core, recoiling cannon barrel) use compound code `subAnim * 10 + bodyCarrier` (`18, 28, 38` on `BipedBody 8`; `19, 29, 39` on `SpiderBody 9`). The shader applies the local spin/bob/recoil around `pivot` first, then transforms the result by the moving body carrier so mounted parts never detach from their hull mounts.
 
 ---
 
-## The 8 GPU Animation Channels (`aPartAnim`)
+## The GPU Animation Channels (`aPartAnim`)
 
 Stamp each part in `KitbashBuilder.addPart(geo, zone, { name, position, animType, animPivot })`:
 
 | `animType` | Channel Name | Typical Parts | Kinematic Formula in `shaderChunks.ts` & `poses.ts` |
 | :---: | :--- | :--- | :--- |
-| **`0`** | `Static` | Hulls, cabins, static struts | $\Delta\mathbf{p} = \mathbf{0}$ (rest pose). |
+| **`0`** | `Static` | Building foundations, rover/miner hulls | $\Delta\mathbf{p} = \mathbf{0}$ (rest pose). |
 | **`1`** | `SpinY` | Radar dishes, turbines, auger drills | Continuous Y-axis spin around `pivot`: $\theta = 2.5 t$. |
 | **`2`** | `HoverBob` | Thruster cores, hover pads, crystal nodes | Vertical oscillation: $\Delta y = \sin(4.0 t + 3.1 p_x) \cdot 0.05\text{ m}$. |
 | **`3`** | `RecoilPulse` | Cannon barrels, thumpers, beacons, torches | Impulse recoil along $-Z$: $\Delta z = -\max(\sin(5.0 t + 2.3 p_x), 0)^6 \cdot 0.06\text{ m}$. |
-| **`4`** | `BipedLeg` | Bipedal legs (`robot.hero` hip $\rightarrow$ foot) | Opposite left/right phase $\phi = (p_x \ge 0) ? 0 : \pi$, $\tau = 5.0 t + \phi$.<br>Hip pitch $\theta = 0.18 w_{\text{walk}} \sin\tau$ in $YZ$ around `pivot`, plus foot lift $\Delta y = w_{\text{walk}} \text{legT} (|\sin\tau| \cdot 0.038 + \max(0, \cos\tau) \cdot 0.045)$ and knee tuck $\Delta z = -w_{\text{walk}} \text{kneeT} \max(0, \cos\tau) \cdot 0.055$. |
-| **`5`** | `BipedArm` | Bipedal arms (`robot.hero` shoulder $\rightarrow$ hand) | Counter-phase shoulder swing $\phi = (p_x \ge 0) ? \pi : 0$ (balances `BipedLeg`), $\tau = 5.0 t + \phi$.<br>Pitches $(y - p_y, z - p_z)$ around shoulder `pivot` by $\theta = 0.16 w_{\text{walk}} \sin\tau$. |
-| **`6`** | `SpiderLeg` | 4/6/8-legged walkers (`robot.combat` spider legs) | Automatic diagonal/tripod/metachronal phase $\phi = ((p_x \ge 0) ? 0 : \pi) + 4.9 p_z$, $\tau = 5.0 t + \phi$.<br>Coxa yaw $\theta = 0.14 w_{\text{walk}} \text{sign}(p_x) \sin\tau$ in $XZ$ around hip `pivot`, plus radial stepping lift $\Delta y = 0.075 w_{\text{walk}} \text{radial} \max(0, \cos\tau)$. |
+| **`4`** | `BipedLeg` | Bipedal legs (`robot.hero` hip $\rightarrow$ foot) | Coupled to `BipedBody (8)` at hip (`legT = smoothstep(0.06, 0.92, rawT)`). Opposite L/R phase $\phi = (p_x \ge 0) ? 0 : \pi$, $\tau = 5.0 t + \phi$. Hip pitch $\theta = 0.20 w \sin\tau$, step lift, knee tuck, and stance knee compression (`stanceFlex`). |
+| **`5`** | `BipedArm` | Bipedal arms (`robot.hero` shoulder $\rightarrow$ hand) | Counter-phase shoulder swing $\phi = (p_x \ge 0) ? \pi : 0$ around `pivot`, then transformed by `BipedBody (8)` so shoulders stay locked to the torso. |
+| **`6`** | `SpiderLeg` | 4/6/8-legged walkers (`robot.combat` spider legs) | Coupled to `SpiderBody (9)` at hip (`radial = smoothstep(0.08, 0.52, r)`). Diagonal/tripod phase $\phi = ((p_x \ge 0) ? 0 : \pi) + 4.9 p_z$. Coxa yaw $\theta = 0.16 w \text{sign}(p_x) \sin\tau$, snappy step lift (`0.11 m`), and stance shock-absorption knee flex (`kneeArch`). |
 | **`7`** | `WheelSpin` | Rover wheels (`tyre`+`rim`+`hub`), track rollers | Continuous X-axis rolling around wheel axle `pivot`: $\theta = 4.0 t w_{\text{walk}}$. |
+| **`8`** | `BipedBody` | Bipedal pelvis, torso, head, backpack, cables | Full-body step reaction around COM `(0, 0.92, 0)`: $2\omega$ impact heave, lateral weight sway, forward surge, hip roll, forward/aft pitch, and counter-yaw. |
+| **`9`** | `SpiderBody` | Spider carapace, underbelly, turret, cables | Heavy quadruped/arachnid chassis suspension around COM `(0, 0.76, 0)`: spring-damped $2\omega$ step-impact heave, phase-lagged roll (`0.095 rad`), pitch (`0.068 rad`), yaw (`0.065 rad`), sway, and surge. |
+| **`18, 28, 38`** | `Sub + BipedBody` | Radar (`18`), thruster (`28`), beacon (`38`) on biped | Evaluates local `SpinY (1)` / `HoverBob (2)` / `RecoilPulse (3)` around `pivot`, then rides on `BipedBody (8)`. |
+| **`19, 29, 39`** | `Sub + SpiderBody` | Radar (`19`), core (`29`), cannons (`39`) on spider | Evaluates local `SpinY (1)` / `HoverBob (2)` / `RecoilPulse (3)` around `pivot`, then rides on `SpiderBody (9)`. |
 
 Full mathematical derivations and phase tables are in [references/gait-and-ik-math.md](./references/gait-and-ik-math.md).
 

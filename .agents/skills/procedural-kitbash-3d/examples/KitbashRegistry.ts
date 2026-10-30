@@ -48,8 +48,12 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
  * - 5: BipedArm — Counter-phase sagittal shoulder swing (balances BipedLeg)
  * - 6: SpiderLeg — Multi-legged alternating tripod/diagonal coxa yaw + stepping lift arc
  * - 7: WheelSpin — Continuous X-axis rolling rotation around wheel axle pivot
+ * - 8: BipedBody — Full-body step reaction (impact heave, lateral weight shift, hip roll, pitch, torso yaw)
+ * - 9: SpiderBody — Heavy quadruped/spider chassis suspension (step-impact heave, roll, pitch, yaw, surge)
+ * - 18, 28, 38: SpinY (1) / HoverBob (2) / RecoilPulse (3) mounted on BipedBody (8)
+ * - 19, 29, 39: SpinY (1) / HoverBob (2) / RecoilPulse (3) mounted on SpiderBody (9)
  */
-export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 18 | 19 | 28 | 29 | 38 | 39;
 
 export interface PartOptions {
   /** Human-readable label used by the model validator's reports (defaults to "<geometry type>#<index>"). */

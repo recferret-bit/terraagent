@@ -7,21 +7,26 @@ export const DOME_VERT = /* glsl */ `
 export const DOME_FRAG = /* glsl */ `
       ${GLSL_NOISE}
       uniform vec3 uZenith, uHorizon, uCloudColor, uSunDir, uSunColor, uBandColor, uNebA, uNebB;
-      uniform float uSpace, uCloud, uSunDisc, uHorizonH, uBandUp, uBandI, uNebI, uTime;
+      uniform float uSpace, uCloud, uSunDisc, uHorizonH, uBandUp, uBandI, uNebI, uTime, uOpt;
       varying vec3 vDir;
       void main(){
         vec3 d = normalize(vDir);
-        float h = d.y;
-        float hh = clamp((h - uHorizonH) / max(1.0 - uHorizonH, 0.2), 0.0, 1.0);
-        vec3 sky = mix(uHorizon, uZenith, pow(hh, 0.42));
-        float band = exp(-(((h - uHorizonH - uBandUp) / 0.14) * ((h - uHorizonH - uBandUp) / 0.14)));
-        sky += uBandColor * band * uBandI;
+        vec3 sky = vec3(0.0);
+        if (uOpt < 0.5 || uSpace < 0.999) {
+          float h = d.y;
+          float hh = clamp((h - uHorizonH) / max(1.0 - uHorizonH, 0.2), 0.0, 1.0);
+          sky = mix(uHorizon, uZenith, pow(hh, 0.42));
+          float band = exp(-(((h - uHorizonH - uBandUp) / 0.14) * ((h - uHorizonH - uBandUp) / 0.14)));
+          sky += uBandColor * band * uBandI;
+        }
         // deep space: faint base + galactic band + nebula wisps
         vec3 bn = normalize(vec3(0.3, 0.8, -0.5));
         float gal = exp(-(dot(d, bn) * 2.6) * (dot(d, bn) * 2.6));
-        float n1 = fbm3lo(d * 2.4 + 3.0), n2 = fbm3lo(d * 5.0 - 7.0);
-        vec3 neb = mix(uNebA, uNebB, smoothstep(0.35, 0.7, n2)) * pow(smoothstep(0.38, 0.85, n1), 2.2) * (0.35 + gal * 1.4);
-        vec3 space = vec3(0.004, 0.005, 0.011) + neb * uNebI + vec3(0.5,0.55,0.7) * gal * pow(n2, 3.0) * 0.05;
+        float n1 = uOpt > 0.5 ? fbm3Dome(d * 2.4 + 3.0) : fbm3lo(d * 2.4 + 3.0);
+        float w1 = smoothstep(0.38, 0.85, n1);
+        float n2 = (uOpt > 0.5 && w1 < 0.002 && gal < 0.04) ? 0.5 : (uOpt > 0.5 ? fbm3Dome(d * 5.0 - 7.0) : fbm3lo(d * 5.0 - 7.0));
+        vec3 neb = mix(uNebA, uNebB, smoothstep(0.35, 0.7, n2)) * pow(w1, 2.2) * (0.35 + gal * 1.4);
+        vec3 space = vec3(0.004, 0.005, 0.011) + neb * uNebI + vec3(0.5,0.55,0.7) * gal * (n2 * n2 * n2) * 0.05;
         vec3 col = mix(sky, space, uSpace);
         col = mix(col, uCloudColor, uCloud);
         float sd = max(dot(d, uSunDir), 0.0);

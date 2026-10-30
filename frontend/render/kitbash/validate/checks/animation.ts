@@ -10,8 +10,13 @@ interface Sweep { poses: Pose[]; box: Box }
 
 const samePivot = (a: [number, number, number], b: [number, number, number]) =>
   Math.abs(a[0] - b[0]) < 1e-4 && Math.abs(a[1] - b[1]) < 1e-4 && Math.abs(a[2] - b[2]) < 1e-4;
-const sameRig = (a: P, b: P) => a.def.animType === b.def.animType && samePivot(a.def.pivot, b.def.pivot);
-const isGait = (t: number) => t >= 4 && t <= 6;
+const sameRig = (a: P, b: P) =>
+  (a.def.animType === b.def.animType &&
+    (a.def.animType === 8 || a.def.animType === 9 || samePivot(a.def.pivot, b.def.pivot))) ||
+  (a.def.animType % 10 === b.def.animType % 10 &&
+    (a.def.animType % 10 === 4 || a.def.animType % 10 === 6) &&
+    samePivot(a.def.pivot, b.def.pivot));
+const isGait = (t: number) => { const b = t % 10; return (b >= 4 && b <= 6) || b === 8 || b === 9; };
 const inSync = (a: P, b: P) =>
   (a.def.animType === 1 && b.def.animType === 1) ||
   (a.def.animType === 7 && b.def.animType === 7) ||
@@ -60,18 +65,24 @@ function sweepAgainst(ctx: ValidationContext, sweeps: Map<number, Sweep>, report
 }
 
 /** Does a bob / recoil / limb swing open a visible gap to its external mount? Reports the worst pose. */
-function checkDetach(ctx: ValidationContext, a: P, sw: Sweep, mounts: number[]) {
+function checkDetach(ctx: ValidationContext, sweeps: Map<number, Sweep>, a: P, sw: Sweep, mounts: number[]) {
   const { parts: P_, o, add } = ctx;
   const extMounts = mounts.filter((m) => !sameRig(a, P_[m]));
   if (!extMounts.length) return;
   let detached: { pose: string; d: number } | null = null;
-  for (const pose of sw.poses) {
+  for (let pk = 0; pk < sw.poses.length; pk++) {
+    const pose = sw.poses[pk];
     const pa = prepare(a.def, pose.tris);
     let dMin = Infinity;
-    for (const m of extMounts) dMin = Math.min(dMin, relate(pa, P_[m], 0.2).dist);
+    for (const m of extMounts) {
+      const mSw = sweeps.get(m);
+      const pm = mSw && inSync(a, P_[m]) && mSw.poses.length === sw.poses.length ? prepare(P_[m].def, mSw.poses[pk].tris) : P_[m];
+      dMin = Math.min(dMin, relate(pa, pm, 0.2).dist);
+    }
     if (dMin > o.contactTol && (!detached || dMin > detached.d)) detached = { pose: pose.label, d: dMin };
   }
-  if (detached) add(detached.d > 0.03 && a.def.animType !== 3 ? 'warn' : 'info', 'ANIM_DETACH', `${a.label} lifts ${fmt(detached.d)} off its mount at ${detached.pose}${detached.d > 0.03 ? ' and reads as detached' : ''}.`, [a.def.index, extMounts[0]], at(a.box), 'Intentional for hover glows; otherwise overlap it deeper into the mount so it stays attached through the whole motion.');
+  const isRecoil = a.def.animType === 3 || Math.floor(a.def.animType / 10) === 3;
+  if (detached) add(detached.d > 0.03 && !isRecoil ? 'warn' : 'info', 'ANIM_DETACH', `${a.label} lifts ${fmt(detached.d)} off its mount at ${detached.pose}${detached.d > 0.03 ? ' and reads as detached' : ''}.`, [a.def.index, extMounts[0]], at(a.box), 'Intentional for hover glows; otherwise overlap it deeper into the mount so it stays attached through the whole motion.');
 }
 
 export const animationStage: CheckStage = (ctx) => {
@@ -90,6 +101,6 @@ export const animationStage: CheckStage = (ctx) => {
       if (!isMount && R(a.def.index, b).dist <= o.clearance) continue; // already too tight at rest: a static problem, reported above
       sweepAgainst(ctx, sweeps, reported, a, b, isMount);
     }
-    if (mounts.length && a.def.animType >= 2) checkDetach(ctx, a, sw, mounts);
+    if (mounts.length && a.def.animType >= 2) checkDetach(ctx, sweeps, a, sw, mounts);
   }
 };
