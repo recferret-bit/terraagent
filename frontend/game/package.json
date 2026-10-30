@@ -1,0 +1,8 @@
+{
+  "name": "@terra/game",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Game client (/play.html).",
+  "dependencies": { "@terra/contracts": "0.1.0", "@terra/design": "0.1.0", "@terra/render": "0.1.0", "@terra/sim": "0.1.0", "three": "^0.174.0" }
+}

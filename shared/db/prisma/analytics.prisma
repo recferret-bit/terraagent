@@ -1,0 +1,14 @@
+/// Consented product-analytics events (CLIENT §10). No IP is stored. 90-day retention (job lands with W25).
+model AnalyticsEvent {
+  id         BigInt   @id @default(autoincrement())
+  name       String   @db.VarChar(64)
+  ts         DateTime @db.Timestamptz(3)
+  anonId     String   @map("anon_id") @db.Uuid
+  sessionId  String   @map("session_id") @db.VarChar(64)
+  props      Json
+  receivedAt DateTime @default(now()) @map("received_at") @db.Timestamptz(3)
+
+  @@index([name, ts])
+  @@map("analytics_event")
+  @@schema("core")
+}

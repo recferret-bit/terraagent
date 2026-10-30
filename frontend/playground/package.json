@@ -1,0 +1,8 @@
+{
+  "name": "@terra/playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "3D model storybook / visual QA (/playground.html, dev only).",
+  "dependencies": { "@terra/design": "0.1.0", "@terra/render": "0.1.0", "three": "^0.174.0" }
+}
