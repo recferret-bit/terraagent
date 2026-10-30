@@ -5,6 +5,7 @@
   "type": "module",
   "exports": {
     ".": "./index.ts",
+    "./parity": "./parity/index.ts",
     "./*": "./*.ts"
   },
   "scripts": {

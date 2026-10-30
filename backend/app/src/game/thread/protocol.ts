@@ -25,6 +25,8 @@ export type CtlOp =
   | { readonly op: 'warp'; readonly planetId: string; readonly k: number }
   /** Test/dev only (ignored in production): busy-wait the thread for `ms`. */
   | { readonly op: 'block'; readonly ms: number }
+  /** Test/dev only (ignored in production): step the planet by `dt` now, in message order (engine parity test, run with `autoStep: false`). */
+  | { readonly op: 'step'; readonly planetId: string; readonly dt: number }
   | { readonly op: 'stop' };
 
 export interface LoadMsg {

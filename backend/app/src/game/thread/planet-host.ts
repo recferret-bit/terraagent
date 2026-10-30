@@ -252,6 +252,8 @@ export class PlanetHost {
         t: 'stats', thread: this.thread, reqId: msg.reqId, planets: this.stats(), steps: this.steps,
         maxLag: this.sched?.maxLag ?? 0, recentPasses: this.sched?.recentPasses() ?? [],
       });
+    } else if (msg.op === 'step') {
+      if (process.env.NODE_ENV !== 'production') this.stepPlanet(msg.planetId, msg.dt);
     } else if (msg.op === 'block') {
       if (process.env.NODE_ENV === 'production') return;
       const end = performance.now() + msg.ms;
