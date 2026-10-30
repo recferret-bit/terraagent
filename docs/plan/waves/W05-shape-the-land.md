@@ -20,19 +20,19 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 
 ## Demo story (e2e `e2e/w05.spec.ts`)
 
-1. Load `?scenario=w05`: S4 colony (Reclaim / Irrigate / Seed and the Beacon unlock at S4), `temperate`, a shallow lake and a crater near the Hub.
-2. Units lane → order a Terraformer → it appears.
-3. Place a Quarry on a slope + crater footprint → the ghost shows the prep bill (Level ×2, Fill ×1, Grade ×4: time, E, M/Min). Confirm → the construction shows `waiting(site: 0/4 tiles prepared)` and a linked terraform order runs. The building starts at 4/4.
-4. Brush **Reclaim** over 6 shallow-water tiles → they turn Flat, then Prepared after Grade.
-5. Brush **Irrigate → Seed** over 10 Prepared tiles → they turn Living. The HUD shows `Terraform 10 / 412 (2.4 %)`, and a unit on Living tiles moves 10 % faster.
+1. Open `/play.html?scenario=w05`: S4 colony (Reclaim / Irrigate / Seed and the Beacon unlock at S4), `temperate`, a shallow lake and a crater near the Hub.
+2. Units menu → order a Terraformer → it appears.
+3. Construction menu → place a Quarry on the slope + crater footprint → the ghost shows the prep bill (Level ×2, Fill ×1, Grade ×4: time, E, M/Min). Confirm → the construction shows `waiting(site: 0/4 tiles prepared)` and a linked terraform order runs. The building starts at 4/4.
+4. Terraform menu → brush **Reclaim** over 6 shallow-water tiles → they turn Flat, then Prepared after Grade.
+5. Terraform menu → brush **Irrigate → Seed** over 10 Prepared tiles → they turn Living. The HUD shows `Terraform 10 / 412 (2.4 %)`, and a unit on Living tiles moves 10 % faster.
 6. Build a Territory Beacon T1 → R 8 is claimed on completion and the border expands.
-7. Spawn a second colony via the dev console next to the border → the border is frozen and is never overwritten.
-8. Destroy the beacon → its tiles show a 60 s revert countdown, then revert.
-9. Start a storm with the dev console → lightning hits a pylon (300 HP). Build a Lightning Rod and the next strike within R 10 is intercepted.
-10. Spawn a meteor → radius-2 damage, radius-1 tiles become Hole, and a 30 % chance reveals a new deposit.
-11. Night falls while terraforming → terraform ops pause first (`waiting(power)`) and resume at dawn.
-12. Generate a `desert` planet with `?scenario=w05-desert` → the terrain-class shares match the D-33 `desert` column (rock ≈ 12 %, water ≈ 1 %) and the terrain renders with the existing `dune` look; `?scenario=w05-ocean` → water ≈ 35 %, forest ≈ 30 %, the existing `oceanForest` look.
-13. Load `?scenario=w05-tiers` (Terraform 31 %, the Metals Extractor ringed by Living tiles) → the Metals chip's tier breakdown shows `metals.t2` income (30 % of that Extractor's output); a second Extractor on unterraformed ground stays T1 only.
+7. Run `spawnColony <q> <r>` in the dev console next to the border → the border is frozen and is never overwritten.
+8. Destroy the beacon (`damage <entity> 100` in the dev console) → its tiles show a 60 s revert countdown (`warp 10` to speed it up), then revert.
+9. Run `startStorm` in the dev console → lightning hits a pylon (300 HP). Build a Lightning Rod and the next strike within R 10 is intercepted.
+10. Run `meteor <q> <r>` in the dev console → radius-2 damage, radius-1 tiles become Hole, and a 30 % chance reveals a new deposit.
+11. Queue a terraform order, then run `time night` → terraform ops pause first (`waiting(power)`) and resume at `time day`.
+12. Open `/play.html?scenario=w05-desert` → the terrain-class shares match the D-33 `desert` column (rock ≈ 12 %, water ≈ 1 %: exact shares are (e2e only); by eye, mostly rock and sand with almost no water) and the terrain renders with the existing `dune` look. `/play.html?scenario=w05-ocean` → water ≈ 35 %, forest ≈ 30 %, the existing `oceanForest` look.
+13. Open `/play.html?scenario=w05-tiers` (Terraform 31 %, the Metals Extractor ringed by Living tiles) → the Metals chip's tier breakdown shows `metals.t2` income (30 % of that Extractor's output); a second Extractor on unterraformed ground stays T1 only.
 
 ## Hackathon slice
 

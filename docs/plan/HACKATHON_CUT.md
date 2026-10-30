@@ -104,7 +104,7 @@ The prototype predates the window, so the README must disclose it as **pre-windo
 
 Never dropped: W00–W03, W05–W07 (the playable colony and battle), W06, W10, W13, W15 (the economy the judges score), W12 (achievements), W25 submission, the contract suites and the README run.
 
-**Review and merge: the wave development pipeline** ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7). Each wave lives in its own branch and worktree. Issues merge into their wave branch automatically when the gates are green (typecheck, unit, contract suites, the wave's `@hack` e2e), so there is no per-issue human review. The owner does **one manual check per wave** — 19 hackathon waves, about 1.5 a day — and only then does the wave merge into `main`, get tagged, lose its worktree and branch, and `main` gets pushed. A wave the owner has not checked yet can still be stacked on by the waves that need it, so the check does not stall the critical path; it does gate the landing order.
+**Review and merge: the wave development pipeline** ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7). Each wave lives in its own branch and worktree. Issues merge into their wave branch automatically when the gates are green (typecheck, unit, contract suites, the wave's `@hack` e2e), so there is no per-issue human review. The owner does **one manual check per wave** — 19 hackathon waves, about 1.5 a day — and only then does the wave merge into `main`, get tagged, lose its worktree and branch, and `main` gets pushed. A wave opens only after every wave it depends on has landed in `main` (no stacking on unchecked waves), so each check also gates the waves that depend on it: check and land promptly to keep the critical path moving.
 
 ### Submission form checklist (D14)
 

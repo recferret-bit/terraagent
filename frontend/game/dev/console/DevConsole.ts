@@ -74,7 +74,7 @@ export class DevConsole {
   }
 
   private readonly onWindowKey = (e: KeyboardEvent) => {
-    if (e.key !== '`' || e.ctrlKey || e.metaKey || e.altKey) return;
+    if ((e.key !== '`' && e.code !== 'Backquote') || e.ctrlKey || e.metaKey || e.altKey) return;
     const t = e.target as HTMLElement | null;
     const typing = t && t !== this.input && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
     if (typing) return;

@@ -27,7 +27,7 @@ npm run dev            # → Postgres (docker, :15434), the app (:4001) and the 
 | `/play.html?scenario=w00&lag=300`, then `nudge 1` in the console (the scenario's test entity) | The robot moves on the next frame (client-side prediction); `teleport! 1 6 0` (server-only) blends over 150 ms |
 | `npm run ci:fast` / `npm run e2e -- --waves ..00` | Green checks / the W00 demo in headless Chrome |
 
-The wave file [`docs/plan/waves/W00-platform-skeleton.md`](./docs/plan/waves/W00-platform-skeleton.md) has the full demo story.
+The wave file [`docs/plan/waves/W00-platform-skeleton.md`](./docs/plan/waves/W00-platform-skeleton.md) has the full demo story. **Every URL parameter, dev console command, dev page, mock-chain detail, env variable and debug handle is in [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md).**
 
 ## Commands
 
@@ -152,18 +152,18 @@ The online game is built in **26 product waves** ([`docs/plan/PRODUCT_WAVES.md`]
 **Two commands:**
 
 ```bash
-npm run wave            # auto-lands any completed open wave, then opens/resumes the next wave with its built-in preset
+npm run wave            # lands completed waves whose dependencies are in main, then resumes the open wave or opens the next one whose dependencies have all landed in main
 npm run wave -- status  # full board: state, issue progress (done/total), preset (runner:model, effort, parallel) & track
 ```
 
 **Single steps** (the same pipeline, one command each; add `--dry-run` to preview, `--root <dir>` or `TA_WAVE_ROOT` to run against a sandbox clone, `npm run test:wave` tests them in one):
 
 ```bash
-npm run wave:open -- 07              # open/resume the wave worktree (no agent started)
+npm run wave:open -- 07              # open (only once every dependency is in main) or resume the wave worktree; no agent started
 npm run wave:issue -- W07-03         # ../TerraAgent-wt/W07-03 on issue/W07-03 from the wave branch (node_modules cloned)
 npm run wave:issue:land -- W07-03    # gates, then `git merge --no-ff` as "W07-03: <title>"; removes worktree + branch; stops on a conflict
 npm run wave:check -- 07             # merge main in, ci:fast + e2e --waves ..07 --hack, prints the demo story and ?scenario=w07 URL
-npm run wave:land -- 07              # refuses unless every depended-on/stacked wave is in main, gates pass and no dirty main-checkout file is touched; tags wave-07 (or wave-07.k), pushes, cleans up
+npm run wave:land -- 07              # refuses unless every depended-on wave is in main, gates pass and no dirty main-checkout file is touched; tags wave-07 (or wave-07.k), pushes, cleans up
 ```
 
 Every worktree these scripts create gets a gitignored `.env.worktree` with its own `TA_PORT_BASE` (4100, 4200, …) and `TA_DB_NAME=terra_<branch>`.
@@ -173,8 +173,8 @@ Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/p
 **Your loop:**
 
 1. Run `npm run wave` and let the wave lead session build its issues.
-2. When it finishes and prints the demo URL, play the demo story from the wave file.
-3. Run `npm run wave` again: it sees all in-scope issues (`done/total`) merged on the wave branch, automatically merges into `main`, tags `wave-NN`, pushes, cleans up the worktree and branch, and opens the next ready wave.
+2. When it finishes, it hands you an **owner check guide**, `docs/plan/checks/wNN-check.md` (also printed by `npm run wave:check -- NN`): the exact URLs with this worktree's ports, where to type (the in-game dev console is the `` ` `` key), what to see, step by step. Follow it on the running dev stack. Example: [`docs/plan/checks/w00-check.md`](./docs/plan/checks/w00-check.md).
+3. All good → land it: **`npm run wave -- land NN`** (e.g. `npm run wave -- land 00`) re-runs the gates, merges into `main`, tags `wave-NN`, pushes, and removes the worktree and branch. Plain `npm run wave` does the same for every completed wave whose dependencies are in `main`, then opens the next ready wave. Something wrong → tell the wave lead which step and what you saw.
 
 **Plan files:** the hackathon cut and drop order are in [`HACKATHON_CUT.md`](./docs/plan/HACKATHON_CUT.md), the generated start order in [`HACKATHON_SCHEDULE.md`](./docs/plan/HACKATHON_SCHEDULE.md), your to-dos and open decisions in [`OWNER_TASKS.md`](./docs/plan/OWNER_TASKS.md). After editing a wave file, run `python3 scripts/plan/index_waves.py` (must print `problems 0`) and `--write` to regenerate the index and schedule.
 
@@ -217,3 +217,4 @@ Everything that is not code is in [`docs/`](./docs) (index: [`docs/README.md`](.
 - [`docs/spec/`](./docs/spec): online architecture; start with `DECISIONS.md`. Built wave by wave.
 - [`docs/plan/`](./docs/plan): the hackathon cut and the wave plan (26 waves).
 - [`docs/visuals/`](./docs/visuals): 3D coding rules, the AI-mesh pipeline, procedural textures, shaders and lighting.
+- [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md): dev tools reference — URL parameters, dev console, dev pages and routes, mock blockchain, env variables, debug handles, test commands.

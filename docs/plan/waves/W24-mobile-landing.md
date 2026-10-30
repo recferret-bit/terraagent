@@ -21,16 +21,16 @@
 
 ## Demo story (`e2e/w24.spec.ts`, emulated iPhone 13 and Pixel 7 profiles)
 
-1. Open `/play.html?scenario=w24` in **portrait** → **see** the "Rotate your phone" prompt with the colony status card (resources, alerts, stage).
-2. Rotate to **landscape** → **see** the "Tap to play fullscreen" plate. Tap it → **see** fullscreen; the orientation stays locked to landscape on Android.
-3. On the iOS profile (no element fullscreen) → **see** the "Add to Home Screen" sheet. Open with `display-mode: standalone` → **see** the game fill the screen inside the safe areas.
-4. One-finger drag → **see** the camera pan. Pinch → **see** it zoom. Two-finger twist → **see** a 90° yaw snap.
+1. Open `/play.html?scenario=w24` in a phone-sized browser (DevTools device mode, portrait; or dev console `device.emulate phone`) → **see** the "Rotate your phone" prompt with the colony status card (resources, alerts, stage).
+2. Rotate to **landscape** (DevTools rotate icon) → **see** the "Tap to play fullscreen" plate. Tap it → **see** fullscreen; the orientation stays locked to landscape on Android (real device only).
+3. On the iOS profile (no element fullscreen; real device or Safari responsive mode) → **see** the "Add to Home Screen" sheet. Open with `display-mode: standalone` → **see** the game fill the screen inside the safe areas.
+4. One-finger drag → **see** the camera pan. Pinch → **see** it zoom. Two-finger twist → **see** a 90° yaw snap (touch device or DevTools touch emulation).
 5. Tap a harvester → **see** it selected. Long-press a tile → **see** the context menu (Build here / Terraform / Move).
 6. Open the bottom drawer → **see** the Construction, Terraform, Units and HQ Goals menus as tabs. Place a building with a tap-to-place ghost and a confirm button → **see** the order appear in the queue.
-7. The perf probe runs 20 s with 150 buildings and 250 robots → **see** ≥ 30 FPS median on the `low` tier.
-8. Open `/landing.html` on 4G throttling → **see** the poster within 1.5 s and the live orbit-stage hero swap in after first paint; the initial JS is ≤ 50 KB gzip; the stats band shows live counts.
-9. Tap PLAY in a fresh browser → **see** `/play.html` open on the guest boot flow; with a session → **see** the CTA read "Resume colony".
-10. Toggle `?waves=..23` → **see** desktop-only behaviour: no rotate prompt, no drawer, no PWA install prompt; the landing hero is unchanged.
+7. Dev console `perf.probe 20` runs 20 s with 150 buildings and 250 robots → **see** ≥ 30 FPS median on the `low` tier (`quality.set low`) printed in the console.
+8. Open `/landing.html` with DevTools network throttling on Fast 4G → **see** the poster appear and the live orbit-stage hero swap in after first paint; the stats band shows live counts. (The 1.5 s poster time and the ≤ 50 KB gzip initial JS are (e2e only).)
+9. Tap PLAY on `/landing.html` in a fresh browser → **see** `/play.html` open on the guest boot flow; with a session → **see** the CTA read "Resume colony".
+10. Reload `/play.html?scenario=w24&waves=..23` → **see** desktop-only behaviour: no rotate prompt, no drawer, no PWA install prompt; the landing hero is unchanged.
 
 ## Hackathon slice
 

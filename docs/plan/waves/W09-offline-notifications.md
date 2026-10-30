@@ -12,14 +12,14 @@ Leaving is safe and honest. A colony keeps running while its player is away: the
 
 ## Demo story (e2e)
 
-1. Load `?scenario=w09` (a colony at S3) → open the **Away settings** panel: set the away budget to 30 % of metals, turn `awayRaids` off, switch the autopilot mode to `rules_only`.
+1. Open `/play.html?scenario=w09` (a colony at S3) → open the **Away settings** panel: set the away budget to 30 % of metals, turn `awayRaids` off, switch the autopilot mode to `rules_only`.
 2. Open **Notifications** → enable Web Push (a mock permission in e2e) → see the subscription row; open "Link Telegram" → see a one-time code `/start ABC123` (mock Telegram adapter).
-3. Close the tab → after 60 s the server log shows `presence away`, and the planet steps coarse (`ta_game_planet_mode{mode="coarse"}` = 1).
-4. Dev console `away.warp 8h` and `raid spawn` → the mock notifier records `under_attack` once (debounced), and the colony survives (or does not; hard mode).
-5. Kill the server with `kill -9`, restart → the planet loads from its snapshot and fast-runs the gap; the notifications found during the fast-run are sent once.
+3. Close the tab → after 60 s the terminal running `npm run dev` logs `presence away`, and `curl /v1/metrics` shows `ta_game_planet_mode{mode="coarse"} 1`. (Dev console `presence away` does it at once.)
+4. In a tab opened again (`/play.html?scenario=w09`) run `away.warp 8` and `spawnRaid 3` in the dev console → the mock notifier (its dev viewer, see W09-20) records `under_attack` once (debounced), and the colony survives (or does not; hard mode).
+5. Run `server crash` in the dev console (dev-only restart helper; or `kill -9` the app, then `npm run dev:restart`) → the planet loads from its snapshot and fast-runs the gap; the notifications found during the fast-run are sent once.
 6. Reopen the deep link (`/play.html?colony={colonyId}` locally; CT-37's `/c/{colonyId}` in production) → the game resumes straight into the colony, and the **"While you were away"** modal shows resources before/after, losses, the raid, and AI decisions.
-7. Open the game in a second tab → the first tab shows "Opened on another tab — Resume here" (`bye 4001`).
-8. Set `TA_WAVES=..08` → no away panel, no digest, no notifications. Presence and coarse stepping still work (they are the platform), but nothing is shown.
+7. Open `/play.html` (same browser) in a second tab → the first tab shows "Opened on another tab — Resume here" (`bye 4001`).
+8. Run `TA_WAVES=..08 npm run dev:restart` and reload `/play.html?scenario=w09` → no away panel, no digest, no notifications. Presence and coarse stepping still work (they are the platform), but nothing is shown.
 
 ## Hackathon slice
 

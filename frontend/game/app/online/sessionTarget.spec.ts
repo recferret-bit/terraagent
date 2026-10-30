@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createSessionTarget, scenarioParam } from './sessionTarget';
+import { createSessionTarget, joinParam, scenarioParam } from './sessionTarget';
+import { onlineMode } from './onlineMode';
 
 const loc = (search: string) => ({ protocol: 'http:', host: 'x:1', search });
 const okJson = (body: unknown) => ({ ok: true, status: 200, json: async () => body });
@@ -33,5 +34,19 @@ describe('session target', () => {
   it('validates the scenario param', () => {
     expect(scenarioParam('?scenario=../x')).toBeNull();
     expect(scenarioParam('?scenario=w00-empty')).toBe('w00-empty');
+  });
+});
+
+describe('?join=<planetId>', () => {
+  it('joins the given planet without creating one', async () => {
+    const calls: string[] = [];
+    const t = createSessionTarget({ protocol: 'http:', host: 'x', search: '?scenario=w00&join=pl_01ABC&as=b' }, async (u) => { calls.push(u); return { ok: true, status: 200, json: async () => ({}) }; });
+    expect(await t.resolve()).toEqual({ planetId: 'pl_01ABC' });
+    expect(calls).toEqual([]);
+    expect(t.accessToken).toBe('dev:b');
+  });
+  it('ignores a malformed id', () => {
+    expect(joinParam('?join=bad id')).toBeNull();
+    expect(onlineMode('?join=pl_1')).toBe('scenario');
   });
 });

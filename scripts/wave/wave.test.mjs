@@ -16,6 +16,15 @@ test('wave:land -- 07 refuses while W03 is not in main and names W03', () => {
   assert.equal(sb.git('tag', '--list'), '');
 });
 
+test('wave:open -- 07 refuses while its dependency W03 is open but not landed in main (no stacking)', () => {
+  const sb = makeSandbox();
+  openWaveBranch(sb, '03');
+  const r = sb.run(['open', '07']);
+  assert.notEqual(r.status, 0);
+  assert.match(r.out, /W07 waits for W03 to land in main/);
+  assert.equal(sb.git('branch', '--list', 'wave/w07-*'), '');
+});
+
 test('wave:land refuses a wave that stacks an unlanded wave', () => {
   const sb = makeSandbox();
   const w02 = openWaveBranch(sb, '02');
@@ -135,13 +144,13 @@ test('status counts only commit subjects that start with the issue id', () => {
   assert.match(line, /OPEN \(1\//);
 });
 
-test('wave:check prints the demo steps and the worktree URL (dry run)', () => {
+test('wave:check prints the owner check guide (or the demo story) and the worktree URL (dry run)', () => {
   const sb = makeSandbox();
   openWaveBranch(sb, '00');
   sb.run(['open', '00']);
   const r = sb.run(['check', '00', '--dry-run']);
   assert.equal(r.status, 0, r.out);
-  assert.match(r.out, /Demo story/);
+  assert.match(r.out, /W00 — Platform Skeleton: owner check|Demo story/);
   assert.match(r.out, /http:\/\/127\.0\.0\.1:5273\/play\.html\?scenario=w00/);
   assert.ok(readFileSync(join(sb.wt('w00'), '.env.worktree'), 'utf8').includes('4100'));
 });
