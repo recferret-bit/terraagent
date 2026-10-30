@@ -10,6 +10,7 @@ import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createDescentSequence } from '../descent/createDescent';
 import { warmupScene } from './warmup';
 import { Gameplay } from './Gameplay';
+import { track } from '../core/analytics';
 import { MainMenu, type MenuSettings } from '../ui/menu';
 import { DescentHud, GameHud } from '../ui/hud';
 import { HudRoot } from '../core/hud/HudRoot';
@@ -236,7 +237,7 @@ export class Game {
   /** Feature registry HUD; all waves on and host 'server' until the online flow lands. */
   private mountFeatureHud() {
     const flags = new Set(Array.from({ length: 26 }, (_, i) => `W${String(i).padStart(2, '0')}`));
-    const ctx = { flags, host: 'server' as const, services: {} };
+    const ctx = { flags, host: 'server' as const, services: { track } };
     this.featureHud = new HudRoot(this.root, loadFeatures({ flags, host: 'server' }), ctx);
   }
 
