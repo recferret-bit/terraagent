@@ -163,7 +163,7 @@ describe('WS gateway: join, leave, shutdown', () => {
     expect((await a.closed).code).toBe(4001);
   });
 
-  it('answers ping with pong, and cmd with a reject until commands are wired', async () => {
+  it('answers ping with pong, and cmd and an unknown cmd kind with unknown_kind', async () => {
     const { url } = await boot();
     const c = await Client.open(url);
     c.hello();
@@ -174,7 +174,7 @@ describe('WS gateway: join, leave, shutdown', () => {
     c.send({ t: 'join', d: { planetId: PLANET } });
     await c.next('welcome');
     c.send({ t: 'cmd', id: 'cm_00000000000000000000000000', d: { kind: 'x', args: {} } });
-    expect((await c.next('cmd.reject')).d).toMatchObject({ id: 'cm_00000000000000000000000000', code: 'internal' });
+    expect((await c.next('cmd.reject')).d).toMatchObject({ id: 'cm_00000000000000000000000000', code: 'unknown_kind' });
   });
 
   it('idle sockets close 1001', async () => {

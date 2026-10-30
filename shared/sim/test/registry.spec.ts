@@ -6,7 +6,7 @@ describe('sim registry', () => {
   it('discovers the finalize module via the generated list', () => {
     expect(allModules().map((m) => m.id)).toContain('finalize');
     expect(allSystems().find((s) => s.id === 'finalize')?.slot).toBe(14);
-    expect(allHandlers()).toEqual([]);
+    expect(allHandlers().map((h) => h.kind)).toEqual(expect.arrayContaining(['dev.ping', 'dev.spawn', 'dev.nudge', 'dev.teleport']));
   });
 
   it('builds a pipeline from the registry that runs', () => {

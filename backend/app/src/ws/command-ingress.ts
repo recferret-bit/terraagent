@@ -8,16 +8,9 @@ export interface CommandContext {
   reply(msg: object): void;
 }
 
-/** Hook for the command pipeline (next issue): validates a `cmd` frame, submits it, answers with `cmd.ack`/`cmd.reject`. */
+/** Validates a `cmd` frame, submits it to the owning planet thread, answers with `cmd.ack`/`cmd.reject` (PROTOCOL §4.2). */
 export interface CommandIngress {
   handle(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>): Promise<void> | void;
 }
 
 export const COMMAND_INGRESS = Symbol('COMMAND_INGRESS');
-
-/** Placeholder until commands are wired. */
-export class NotWiredCommandIngress implements CommandIngress {
-  handle(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>): void {
-    ctx.reply({ v: 1, t: 'cmd.reject', d: { id: cmd.id, code: 'internal', detail: 'commands not wired yet' } });
-  }
-}

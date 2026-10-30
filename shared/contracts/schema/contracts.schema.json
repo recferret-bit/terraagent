@@ -392,6 +392,37 @@
     }
   },
   "commands": {
+    "dev.nudge": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "dq": {
+            "maximum": 1,
+            "minimum": -1,
+            "type": "number"
+          },
+          "dr": {
+            "maximum": 1,
+            "minimum": -1,
+            "type": "number"
+          },
+          "id": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Moves a test entity by dev.probe.nudgeTiles tiles along (dq, dr); default direction +q.",
+      "wave": "W00"
+    },
     "dev.ping": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -407,6 +438,66 @@
       "dev": true,
       "origin": "client",
       "summary": "No-op command that round-trips through the sim; acked with the tick it was applied at.",
+      "wave": "W00"
+    },
+    "dev.spawn": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Inserts the W00 test entity (kind 1) at tile (q, r); x/y are the tile centre in axial float coordinates.",
+      "wave": "W00"
+    },
+    "dev.teleport": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Sets a test entity position directly to tile (q, r).",
       "wave": "W00"
     }
   },
@@ -570,6 +661,7 @@
                 "terrain_unbuildable",
                 "insufficient_resources",
                 "supply_cap",
+                "unknown_entity",
                 "tier_locked",
                 "worker_tier_locked",
                 "stage_locked",
