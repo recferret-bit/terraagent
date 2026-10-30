@@ -97,7 +97,13 @@ export class PlanetHost {
   private load(msg: LoadMsg): void {
     const state = msg.snapshot
       ? restore(msg.snapshot)
-      : createPlanet({ type: msg.params?.type ?? 'flat', seed: msg.params?.seed ?? msg.planetId, planetId: msg.planetId, radius: msg.params?.radius });
+      : createPlanet({
+          type: msg.params?.type ?? 'flat',
+          seed: msg.params?.seed ?? msg.planetId,
+          planetId: msg.planetId,
+          radius: msg.params?.radius,
+          capacity: msg.params?.capacity,
+        });
     const modules = this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined;
     const pipeline = createRegistryPipeline({ flags: msg.flags ?? this.flags, ...(modules ? { modules } : {}) });
     this.planets.set(msg.planetId, {

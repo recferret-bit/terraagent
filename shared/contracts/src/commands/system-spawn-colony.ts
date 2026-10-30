@@ -1,5 +1,6 @@
 import { z } from 'zod';
-import { ColonyId, PlayerId } from '../ids';
+import { PlayerId } from '../ids';
+import { HomeColonyId } from '../rest/home';
 import { TileCoord } from '../ws/sim';
 import { defineCommand } from './define';
 
@@ -8,9 +9,11 @@ export const command = defineCommand({
   wave: 'W01',
   origin: 'module',
   args: z.strictObject({
-    colonyId: ColonyId,
+    colonyId: HomeColonyId,
+    colonyIndex: z.number().int().nonnegative().optional(),
     playerId: PlayerId.optional(),
-    name: z.string().min(1).max(32),
+    handle: z.string().min(1).max(64).optional(),
+    name: z.string().min(1).max(64),
     color: z.number().int().nonnegative().optional(),
     slotIndex: z.number().int().nonnegative().optional(),
     q: TileCoord.optional(),

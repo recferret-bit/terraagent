@@ -1,9 +1,14 @@
 import { availableParallelism } from 'node:os';
-import { Inject, Module, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 import { defineEnv } from '@terra/config';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
+import {
+  type ColonySeatAssignment,
+  createSpawnColonyCommand,
+  HomeService,
+} from '../core/home/home.service';
 import { FlagsService } from '../flags/flags.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { ReadinessRegistry } from '../core/readiness.registry';
@@ -46,6 +51,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
   exports: [GamePlanets],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
+  private unsubHomeSeat: (() => void) | undefined;
+
   constructor(
     @Inject(POOL) private readonly pool: SimThreadPool,
     private readonly planets: GamePlanets,
@@ -54,11 +61,15 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly metrics: MetricsRegistry,
     private readonly readiness: ReadinessRegistry,
     private readonly bus: EventBus,
+    @Optional() private readonly homeService?: HomeService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
     await this.pool.start();
     bridgePlanetEvents(this.planets, this.bus);
+    if (this.homeService) {
+      this.unsubHomeSeat = this.homeService.onColonySeated((assignment) => this.seatColony(assignment));
+    }
     const pool = this.pool;
     const reg = this.metrics.registry;
     new Gauge({ name: 'ta_game_threads', help: 'Live sim threads', registers: [reg], collect() { this.set(pool.live); } });
@@ -94,7 +105,22 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.unsubHomeSeat?.();
+    this.unsubHomeSeat = undefined;
     this.readiness.unregister('simThreads');
     await this.planets.shutdown();
+  }
+
+  private async seatColony(assignment: ColonySeatAssignment): Promise<void> {
+    const { planet } = assignment;
+    await this.planets.ensureLoaded(planet.id, {
+      params: {
+        type: planet.type,
+        seed: planet.seed,
+        radius: planet.radius,
+        capacity: planet.capacity,
+      },
+    });
+    await this.planets.submit(planet.id, createSpawnColonyCommand(assignment));
   }
 }
