@@ -18,17 +18,17 @@ Turn the single-generator colony from W02 into a real **power grid with workers 
 
 ## Demo story (e2e `e2e/w03.spec.ts`)
 
-1. Load `?scenario=w03`. This is the colony at the end of W02: Hub, 1 Metals Extractor, 1 Solar, 2 Harvesters.
-2. Units lane → order 1 Builder at the Hub → the Builder appears; Construction can now run on 2 workers.
-3. Drag a power line of 3 pylons toward a minerals deposit → it becomes **one** queue entry. The pylons get built and the power overlay shows them connected.
+1. Open `/play.html?scenario=w03`. This is the colony at the end of W02: Hub, 1 Metals Extractor, 1 Solar, 2 Harvesters.
+2. Units menu → order 1 Builder at the Hub → the Builder appears; the queue now runs Construction on 2 workers.
+3. Construction menu → Power Line: drag a line of 3 pylons toward a minerals deposit → it becomes **one** queue entry. The pylons get built and the power overlay shows them connected.
 4. Place a Minerals Quarry beyond the last pylon's reach → it shows `offline: no grid`. Extend the line → it turns online.
 5. Build a Wind Turbine, a Capacitor and a Supply Depot → the storage cap of every family goes from 500 to 1 500 and the capacitor charges.
-6. Time-warp to night → solar drops to 0, the capacitor discharges, the wind holds. With the dev command `addLoad 200`, the brownout sheds **group 1 first, then group 2…**, and the HUD lists shed buildings with reasons.
-7. Overload a T1 pylon (> 80 E/s through it) → its branch sheds, the pylon shows `overload`, and a `powerOverload` alert fires.
-8. Damage a building with the dev console → a repair job appears and the Builder repairs it at 1.5×.
-9. Queue an item costing more than the storage cap → `waiting(storage)` with a "build a Supply Depot" hint.
-10. Let a cheaper item and a starved item compete → after 60 s the starved item earmarks, and the HUD shows the earmark.
-11. Dawn arrives with no shedding beyond group 1 → `nightSurvived` fires, and Night Shift progress +1.
+6. Dev console `time night` (add `warp 20` to speed it up) → solar drops to 0, the capacitor discharges, the wind holds. Then `addLoad 200` → the brownout sheds **group 1 first, then group 2…**, and the HUD lists shed buildings with reasons.
+7. Dev console `addLoad 200` while the load runs through one T1 pylon (> 80 E/s) → its branch sheds, the pylon shows `overload`, and a `powerOverload` alert fires.
+8. Select a building, note its id in the selection panel, run `damage <entity> 50` in the dev console → a repair job appears in the queue and the Builder repairs it at 1.5×.
+9. On a fresh load of `?scenario=w03` (cap still 500, before the Depot of step 5), queue an item costing more than 500 of one family → `waiting(storage)` with a "build a Supply Depot" hint.
+10. Queue a cheap item and an item starved of Minerals so they compete, then run `warp 10` → after 60 s of game time the starved item earmarks, and the HUD shows the earmark.
+11. Run `time night`, then `time 06:00` with no shedding beyond group 1 → `nightSurvived` fires (toast / event log), and Night Shift progress +1 (on `/me.html` when W12 is on).
 
 ## Hackathon slice
 

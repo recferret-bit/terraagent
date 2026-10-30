@@ -14,10 +14,10 @@ A player can go from **guest → social login → a named account ("Pilot ID")**
 1. Open `/play.html?scenario=w06` → you land as a guest with a colony (W01 state). The HUD shows "Guest pilot".
 2. Click **Save progress → Continue with Google (mock)** → the mock provider screen opens. Pick "test-pilot" → you return to the game with the same colony and the HUD shows **Pilot ID `test-pilot.terraagent.mock`**.
 3. Open **Settings → Account** → you see the Pilot ID, the linked provider, active sessions, and "Take custody" (disabled, "coming later"). There are no wallet words.
-4. Open `/dev/chain` (dev chain explorer) → you see the accounts `test-pilot.terraagent.mock` and `{colony}.test-pilot.terraagent.mock`, and one relayed `storage_deposit` meta-tx on `res.terraagent.mock` for the colony account, with a `mock:` hash, paid by `relayer`.
-5. In a second browser, log in with the same mock identity → the same player and colony load.
-6. Dev console `near.mock.fail relayer 1.0`, then trigger a relayed action → the UI shows a pending state, then a friendly "Couldn't save to orbit, retrying" with retry. Reset the failure rate → it succeeds.
-7. Restart with `TA_WAVES=..05` → the login button and the Pilot ID disappear; guest play still works.
+4. Open `/dev/chain/` (dev chain explorer) → you see the accounts `test-pilot.terraagent.mock` and `{colony}.test-pilot.terraagent.mock`, and one relayed `storage_deposit` meta-tx on `res.terraagent.mock` for the colony account, with a `mock:` hash, paid by `relayer`.
+5. In a second browser profile open `/play.html` (no `?scenario`, so no new planet), click **Continue with Google (mock)** and pick "test-pilot" → the same player and colony load.
+6. In the dev console run `near.mock.fail relayer 1.0`, then trigger a relayed action (log in as a new mock pilot in a third profile, as in step 2) → the UI shows a pending state, then a friendly "Couldn't save to orbit, retrying" with retry. Run `near.mock.fail relayer 0` → the retry succeeds.
+7. Run `TA_WAVES=..05 npm run dev:restart` and reload `/play.html?scenario=w06` (or add `&waves=..05`) → the login button and the Pilot ID disappear, `/dev/chain/` is gone, and guest play still works.
 
 ## Hackathon slice
 

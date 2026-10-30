@@ -24,6 +24,7 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 |---|---|
 | `?scenario=<id>` | `POST /v1/dev/scenarios/<id>` creates a **fresh** planet from `scenarios/<id>.ts` (`w00` = flat radius-56 planet + test entity id 1 at tile 0,0) and joins it. Each page load creates a new planet; reconnects in the same page rejoin it |
 | `?host=local` | Browser local host: the authoritative engine runs in a Web Worker at 5 TPS; snapshots in IndexedDB (resumed on reload); server-only commands answer `host_unavailable`. Without `scenario`, uses `w00` |
+| `?join=<planetId>` | Join an **existing** planet instead of creating one — how a second player (another browser profile, with `&as=b`) joins the first player's scenario planet. The dev console `planet [name]` prints the ready link |
 | `&waves=..NN` / `&waves=00,03` | Dev: narrow the enabled waves (never wider than the server's `TA_WAVES`); the flag panel shows the result |
 | `&lag=<ms>` | Dev: delay the connection by `ms` each way (tests client-side prediction) |
 | `&predict=0` | Turn client-side prediction off: render the server state interpolated 400 ms behind |
@@ -50,6 +51,7 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 | `warp <k>` | Time warp ×1…×100 for this planet (`×k` HUD badge; the server lowers it if the sim thread can't keep up) | both |
 | `tune <table>.<row>.<field> <value>` | Live balance override (design units, D-35), e.g. `tune dev.probe.nudgeTiles 3`; prints the new data hash | both |
 | `tune reset` / `tune export` | Drop live overrides / print them as `balance.overrides.json` | both |
+| `planet [name]` | Print this planet's id and a link that joins it as another player (`?join=<id>&as=<name>`, default `b`); open it in a second browser profile | server |
 | `scenario <id>` | Create a fresh planet from a scenario and print its id (local host: restart the local planet from it) | both |
 | `chain.ping` | Write a ping receipt through the mock chain; prints its `mock:` hash (shows in `/dev/chain/`) | server |
 | `local.reset` | Start a fresh local planet (drops the IndexedDB snapshot) | local |

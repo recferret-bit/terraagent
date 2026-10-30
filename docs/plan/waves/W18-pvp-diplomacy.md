@@ -11,13 +11,13 @@ Colonies on the same planet can fight and make peace. Players raid each other wi
 
 ## Demo story (e2e)
 
-1. Load `?scenario=w18`: A at S6 with an army, B at S6 without a shield. Order Raid Colony on B. → The army attack-moves into B's territory and turrets engage. Combat units next to B's depot siphon resources into A.
-2. Switch to colony C, aged 1 h at S3. → The Raid Colony goal is greyed with "newcomer shield: 5 h left" and the command is rejected `raid_protected`.
-3. Kill B's HQ drone (dev). → B's Hub reprints the HQ (90 s, top of the Units lane). Destroy B's Hub. → B becomes `critical` with a 10-min re-establish timer. Destroy the re-printed HQ too. → B is eliminated, its buildings become ruins, and the lobby frees the seat if the planet is under 2 h old (W11-16).
-4. From A, open Negotiate on D and offer a 6 h truce. D accepts. → A's attack-move into D's territory is rejected `truce_active`, and neither colony's units fire at the other's.
-5. A cancels. → A 10-min notice starts while the truce still holds, and A's HQ card shows "Oathbreaker 24 h".
-6. D, now away with AI allowed, receives a truce offer from E. → The director accepts it (W16 on; with W16 off the dev console `offerTruce` + an `ai.directive` fixture stands in).
-7. Set `TA_WAVES=..17` → no raid or truce UI; a Hub loss only makes the colony critical.
+1. Open `/play.html?scenario=w18`: A at S6 with an army, B at S6 without a shield. HQ Goals menu → Raid Colony on B. → The army attack-moves into B's territory and turrets engage. Combat units next to B's depot siphon resources into A.
+2. Open colony C in a second profile (from A's tab, dev console `planet c` prints the join link `/play.html?join=<planet id>&as=c`), aged 1 h at S3. → The Raid Colony goal is greyed with "newcomer shield: 5 h left" and the command is rejected `raid_protected`. (Dev console `setShield <h>` changes the shield.)
+3. In B's tab (join link from `planet b`) run `killHq` in the dev console. → B's Hub reprints the HQ (90 s, top of the Units lane). Run `killHub`. → B becomes `critical` with a 10-min re-establish timer. Kill the re-printed HQ too (`killHq`). → B is eliminated, its buildings become ruins, and the lobby frees the seat if the planet is under 2 h old (W11-16).
+4. From A, open Negotiate on D and offer a 6 h truce; D (join link from `planet d`) accepts in its Diplomacy panel. → A's attack-move into D's territory is rejected `truce_active`, and neither colony's units fire at the other's.
+5. A cancels the truce in Negotiate. → A 10-min notice starts while the truce still holds, and A's HQ card shows "Oathbreaker 24 h".
+6. D, now away (`presence away`) with AI allowed, receives a truce offer from E (`offerTruce <colony> <h>` in E's console). → The director accepts it (W16 on; with W16 off the `offerTruce` console command + an `ai.directive` fixture stands in).
+7. Run `TA_WAVES=..17 npm run dev:restart` and reload `/play.html?scenario=w18` → no raid or truce UI; a Hub loss only makes the colony critical.
 
 ## Features covered
 

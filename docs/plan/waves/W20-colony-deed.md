@@ -10,13 +10,13 @@ Every colony owns a **living Colony Deed** (dynamic NEP-171 NFT, mocked). The de
 
 ## Demo story (wave e2e)
 
-1. Load `?scenario=w20` → a colony at S4 with terraform progress → open **Colony menu → Deed** → see the deed card with name, planet, stage, Terraform % and a "Recorded on NEAR (mock)" receipt.
-2. Dev console `terraform.add 10%` → within the debounce window (time warp) → the card shows the new Terraform %, and the metadata history gains a version.
+1. Open `/play.html?scenario=w20` → a colony at S4 with terraform progress → open **Colony menu → Deed** → see the deed card with name, planet, stage, Terraform % and a "Recorded on NEAR (mock)" receipt.
+2. Dev console `deed.bump terraform 10` → after the debounce window (`warp 20`) → the card shows the new Terraform %, and the metadata history gains a version.
 3. Click **Share** → the public page `/deed/<tokenId>` opens with the OG image of the card.
 4. Try **Stake** on a non-settled deed → see "Available after your colony is Settled".
-5. Dev console `deed.settle` (or a real W21 launch) → the card turns into a **Settled Deed** (gold frame) → the staking panel unlocks → "Account not claimed" → mock claim → pick a whitelisted pool, enter 1 NEAR, sign in the mock wallet → position shows 1 NEAR and rewards ticking.
-6. Unstake → unbonding timer → withdraw → the balance returns.
-7. Run with `TA_WAVES=..19` → no Deed menu, no deed mint, no `deed.*` pushes; existing deeds stay in the DB untouched.
+5. Dev console `deed.settle <colony>` (or a real W21 launch) → the card turns into a **Settled Deed** (gold frame) → the staking panel unlocks → "Account not claimed" → run `account.claim --mock` → pick a whitelisted pool, enter 1 NEAR (`stake.fund <account> 1` if short), sign in the mock wallet → position shows 1 NEAR and rewards ticking.
+6. Unstake in the staking panel → unbonding timer (`warp 100`) → withdraw → the balance returns.
+7. Run `TA_WAVES=..19 npm run dev:restart` and reload `/play.html?scenario=w20` → no Deed menu, no deed mint, no `deed.*` pushes; existing deeds stay in the DB untouched.
 
 ## Owned paths
 

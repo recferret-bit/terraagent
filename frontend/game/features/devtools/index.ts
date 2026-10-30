@@ -46,12 +46,26 @@ const scenarioCommand: DevCommandDef = {
   },
 };
 
+/** `planet`: the current planet id and a ready-to-open link for a second player (`&join=<id>&as=<name>`). */
+const planet: DevCommandDef = {
+  name: 'planet',
+  help: 'planet [name]  Print this planet\'s id and a link that joins it as another player (default name b) — open it in a second browser profile',
+  run(a, ctx) {
+    const id = ctx.services.session?.planetId();
+    if (!id) throw new Error('no planet joined yet');
+    const q = new URLSearchParams(location.search);
+    q.delete('scenario'); q.delete('as'); q.set('join', id); q.set('as', a[0] ?? 'b');
+    return `planet ${id}\njoin as another player: ${location.origin}${location.pathname}?${q}`;
+  },
+};
+
 export default defineFeature({
   id: 'devtools',
   wave: 'W00',
   devCommands: [
     chainPing,
     scenarioCommand,
+    planet,
     simCommand('ping', 'Round-trip a no-op sim command; prints the ack tick', () => ({})),
     simCommand('spawn', 'spawn [q r]  Insert a test entity at tile (default 0 0)', (a) => ({ q: numArg(a, 0, 'q', 0), r: numArg(a, 1, 'r', 0) })),
     simCommand('nudge', 'nudge <id> [dq dr]  Move a test entity one nudge step (default +q)', (a) => {
