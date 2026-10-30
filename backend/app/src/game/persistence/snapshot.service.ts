@@ -19,6 +19,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
   private readonly bytes: Gauge;
   private readonly seconds: Histogram;
   private readonly total: Counter<'kind'>;
+  /** `SNAPSHOTS=on|off`; unset → on, except under NODE_ENV=test so unit tests never touch the dev database. */
+  readonly enabled: boolean;
 
   constructor(
     private readonly planets: GamePlanets,
@@ -28,6 +30,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
     @Inject(LOGGER) root: Logger,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
+    this.enabled = env.SNAPSHOTS === 'on' || (env.SNAPSHOTS !== 'off' && env.NODE_ENV !== 'test');
     const registers = [metrics.registry];
     this.bytes = new Gauge({ name: 'ta_game_snapshot_bytes', help: 'Compressed size of the last saved snapshot', registers });
     this.seconds = new Histogram({ name: 'ta_game_snapshot_save_seconds', help: 'Snapshot compress + write time', buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5], registers });
@@ -36,6 +39,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
     this.scheduler = new SnapshotScheduler(planets, (id, s) => this.write(id, s), periodMs, (id, e) => {
       this.log.error({ planetId: id, err: e instanceof Error ? e.message : String(e) }, 'snapshot save failed');
     });
+    if (!this.enabled) return;
     planets.onPlanetLoaded((id) => this.scheduler.track(id));
     planets.onPlanetUnloaded((id) => this.scheduler.untrack(id));
     planets.onPlanetSnapshot((id, s) => this.scheduler.onSnapshot(id, s));
@@ -44,6 +48,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
   /** Loads every live planet from its latest snapshot; returns the restored ids. Without a database it logs and restores nothing. */
   async restoreAll(): Promise<string[]> {
     const restored: string[] = [];
+    if (!this.enabled) return restored;
     let ids: string[];
     try { ids = await this.store.livePlanetIds(); } catch (e) {
       this.log.error({ err: e instanceof Error ? e.message : String(e) }, 'snapshot restore skipped: database unavailable');
@@ -64,6 +69,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
   }
 
   async beforeApplicationShutdown(): Promise<void> {
+    if (!this.enabled) return;
     const t0 = Date.now();
     const r = await this.scheduler.flushAll('SHUTDOWN', SHUTDOWN_BUDGET_MS);
     this.log.info({ planets: r.planets, ms: Date.now() - t0, timedOut: r.timedOut }, 'shutdown snapshots written');

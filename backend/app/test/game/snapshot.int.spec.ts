@@ -73,7 +73,7 @@ describe('SnapshotStore', () => {
 
 describe('boot restore', () => {
   it('app B resumes the dev planet at the tick app A reached', async () => {
-    const source = { NODE_ENV: 'test', LOG_LEVEL: 'silent', DATABASE_URL: db.url, SIM_THREADS: '1', GAME_DEV_PLANETS: '1', SNAPSHOT_EVERY_S: '30' };
+    const source = { NODE_ENV: 'test', LOG_LEVEL: 'silent', DATABASE_URL: db.url, SIM_THREADS: '1', GAME_DEV_PLANETS: '1', SNAPSHOT_EVERY_S: '30', SNAPSHOTS: 'on' };
     const id = devPlanetIds(1, 1)[0]!;
     const tickOf = async (app: INestApplication) => (await app.get(GamePlanets).pool.stats()).flatMap((s) => s.planets).find((p) => p.planetId === id)?.tick ?? -1;
 
