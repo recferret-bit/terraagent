@@ -26,5 +26,6 @@ export * from './systems/movement';
 export * from './systems/economy/ledger';
 export * from './systems/environment';
 export * from './systems/power-core';
+export * from './systems/production';
 export * from './data';
 export * from './host';
