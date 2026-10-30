@@ -11,3 +11,4 @@ export {
   setTerritoryColonyColors,
   syncTerritoryBordersFromView,
 } from './territory-border';
+export { default as hubPlacement, hubPlacementFeature, mountHubPlacement, HubPlacementMenu, evaluateHubGhost, computeGhostPrepBill } from './hub-placement';

@@ -23,8 +23,10 @@ export interface HqStatusView {
 
 export interface StoreLike {
   readonly latest?: ClientView | GameView | null;
+  readonly latestTiles?: ClientView['tiles'] | null;
   onView?(fn: (v: ClientView) => void): () => void;
-  sendCommand?(cmd: unknown, args?: unknown): unknown;
+  onCommandRejected?(fn: (r: { id: string; kind: string; code: string }) => void): () => void;
+  sendCommand?(cmdOrKind: unknown, args?: unknown): unknown;
 }
 
 export type TilePicker = (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;

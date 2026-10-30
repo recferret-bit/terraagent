@@ -112,12 +112,6 @@ declare module '../../core/registry/types' {
   interface FeatureServices {
     colonyId?: number;
     surface?: HTMLElement | null;
-    pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => TileCoord | null;
-    store?: {
-      latest?: GameView | null;
-      latestTiles?: GameView['tiles'] | null;
-      sendCommand?: (cmdOrKind: unknown, args?: unknown) => unknown;
-    };
     host?: SimHostLike;
     state?: PlanetState;
     terraform?: TerraformFeatureHandle;
