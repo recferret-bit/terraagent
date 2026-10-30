@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { createArchetypeMesh, tickArchetypeMesh } from '@terra/render/kitbash';
+import { createArchetypeMesh, setArchetypeBuildProgress, tickArchetypeMesh } from '@terra/render/kitbash';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
@@ -17,6 +17,7 @@ export interface EntityMeshRecord {
   hpMax: number;
   state: number;
   progress: number;
+  buildStage: number;
   mesh: THREE.Object3D;
   targetPos: THREE.Vector3;
   targetYaw: number;
@@ -31,6 +32,12 @@ export function archetypeForKind(kind: number): string {
   if (kind === ENTITY_KIND.pod) return 'ship.dropPod';
   if (kind === ENTITY_KIND.commandHub) return 'building.commandHub';
   return 'robot.scout';
+}
+
+function hubBuildProgressForState(state: number, progress: number): number {
+  if (state === ENTITY_STATE.waiting) return 0;
+  if (state === ENTITY_STATE.constructing) return progress;
+  return 1;
 }
 
 function disposeObject3D(obj: THREE.Object3D): void {
@@ -148,11 +155,13 @@ export class EntityMeshes {
       const [wx, wz] = tileXZ(x, y);
       const wy = terrain ? terrain.heightAt(wx, wz) : 0;
       const yaw = Math.PI / 2 - rot;
+      const buildProg = kind === ENTITY_KIND.commandHub ? hubBuildProgressForState(state, progress) : 1;
       let rec = this.entries.get(id);
       if (!rec) {
         const mesh = this.makeMesh(archetypeForKind(kind), this.biomeKey);
         mesh.position.set(wx, wy, wz);
         mesh.rotation.y = yaw;
+        const buildStage = setArchetypeBuildProgress(mesh, buildProg);
         this.group.add(mesh);
         rec = {
           id,
@@ -167,6 +176,7 @@ export class EntityMeshes {
           hpMax,
           state,
           progress,
+          buildStage,
           mesh,
           targetPos: new THREE.Vector3(wx, wy, wz),
           targetYaw: yaw,
@@ -177,11 +187,7 @@ export class EntityMeshes {
       } else {
         const dx = wx - rec.mesh.position.x;
         const dz = wz - rec.mesh.position.z;
-        if (Math.hypot(dx, dz) > 0.01) {
-          rec.targetYaw = Math.atan2(dx, dz);
-        } else {
-          rec.targetYaw = yaw;
-        }
+        rec.targetYaw = Math.hypot(dx, dz) > 0.01 ? Math.atan2(dx, dz) : yaw;
         rec.kind = kind;
         rec.owner = owner;
         rec.q = q;
@@ -193,6 +199,7 @@ export class EntityMeshes {
         rec.hpMax = hpMax;
         rec.state = state;
         rec.progress = progress;
+        rec.buildStage = setArchetypeBuildProgress(rec.mesh, buildProg);
         rec.targetPos.set(wx, wy, wz);
       }
     }
