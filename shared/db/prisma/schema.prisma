@@ -27,3 +27,125 @@ model AnalyticsEvent {
   @@map("analytics_event")
   @@schema("core")
 }
+
+// --- mock-chain.prisma ---
+/// Mock NEAR chain state (NEAR §1a rule 4). Written only by the `Mock*Adapter` classes; real adapters never touch it.
+model MockChainAccount {
+  accountId String   @id @map("account_id") @db.VarChar(64)
+  kind      String   @db.VarChar(16)
+  publicKey String?  @map("public_key") @db.VarChar(128)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("mock_chain_account")
+  @@schema("chain")
+}
+
+/// Fungible/multi-token ledger: `tokenId` is `NEAR`, `USDC` or a `ResourceKey`; `amount` in base units.
+model MockChainBalance {
+  accountId String  @map("account_id") @db.VarChar(64)
+  tokenId   String  @map("token_id") @db.VarChar(64)
+  amount    Decimal @default(0) @db.Decimal(40, 0)
+
+  @@id([accountId, tokenId])
+  @@map("mock_chain_balance")
+  @@schema("chain")
+}
+
+model MockChainNft {
+  collection     String   @db.VarChar(64)
+  tokenId        String   @map("token_id") @db.VarChar(128)
+  ownerAccountId String   @map("owner_account_id") @db.VarChar(64)
+  metadata       Json
+  opId           String   @unique @map("op_id") @db.VarChar(200)
+  mintedAt       DateTime @default(now()) @map("minted_at") @db.Timestamptz(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.Timestamptz(3)
+
+  @@id([collection, tokenId])
+  @@index([ownerAccountId])
+  @@map("mock_chain_nft")
+  @@schema("chain")
+}
+
+model MockChainNftMetaHistory {
+  id         BigInt   @id @default(autoincrement())
+  collection String   @db.VarChar(64)
+  tokenId    String   @map("token_id") @db.VarChar(128)
+  metadata   Json
+  opId       String   @map("op_id") @db.VarChar(200)
+  at         DateTime @default(now()) @db.Timestamptz(3)
+
+  @@index([collection, tokenId, id])
+  @@map("mock_chain_nft_meta_history")
+  @@schema("chain")
+}
+
+/// Signed token-diff intents (`status`: `signed` | `executed` | `failed`).
+model MockChainIntent {
+  id        String   @id @db.VarChar(64)
+  signer    String   @db.VarChar(64)
+  diff      Json
+  status    String   @db.VarChar(16)
+  opId      String?  @unique @map("op_id") @db.VarChar(200)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("mock_chain_intent")
+  @@schema("chain")
+}
+
+model MockChainDao {
+  id        String   @id @db.VarChar(64)
+  policy    Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  proposals MockChainDaoProposal[]
+
+  @@map("mock_chain_dao")
+  @@schema("chain")
+}
+
+/// SputnikDAO-like states: `InProgress` | `Approved` | `Rejected` | `Expired`.
+model MockChainDaoProposal {
+  daoId      String   @map("dao_id") @db.VarChar(64)
+  id         Int
+  proposer   String   @db.VarChar(64)
+  kind       Json
+  status     String   @db.VarChar(16)
+  votes      Json
+  submitTime DateTime @default(now()) @map("submit_time") @db.Timestamptz(3)
+
+  dao MockChainDao @relation(fields: [daoId], references: [id], onDelete: Cascade)
+
+  @@id([daoId, id])
+  @@map("mock_chain_dao_proposal")
+  @@schema("chain")
+}
+
+/// `status`: `open` | `claimed` | `refunded`.
+model MockChainEscrow {
+  id          String   @id @db.VarChar(64)
+  opener      String   @db.VarChar(64)
+  beneficiary String?  @db.VarChar(64)
+  tokenId     String   @map("token_id") @db.VarChar(64)
+  amount      Decimal  @db.Decimal(40, 0)
+  status      String   @db.VarChar(16)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("mock_chain_escrow")
+  @@schema("chain")
+}
+
+model MockChainReceipt {
+  txHash      String   @id @map("tx_hash") @db.VarChar(64)
+  opId        String?  @unique @map("op_id") @db.VarChar(200)
+  port        String   @db.VarChar(32)
+  method      String   @db.VarChar(64)
+  status      String   @db.VarChar(8)
+  errorCode   String?  @map("error_code") @db.VarChar(64)
+  payload     Json
+  blockHeight BigInt   @map("block_height")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([blockHeight])
+  @@map("mock_chain_receipt")
+  @@schema("chain")
+}
