@@ -19,6 +19,7 @@ export class SimWorkerController {
   private stopped = false;
   /** The last view was predicted and carried tile layers the replica does not have: the next view must resend them. */
   private predictedTilesSent = false;
+  private reportedOff = false;
   constructor(private readonly post: Post, core: ReplicaCore = new ReplicaCore(), private readonly now: () => number = () => performance.now()) {
     this.core = core;
     this.predictor = new Predictor(core, { now: () => this.now() });
@@ -78,7 +79,15 @@ export class SimWorkerController {
     const { view, transfer } = packView(host.view(), withTiles);
     this.predictedTilesSent = predictedChanged;
     this.core.markViewed();
-    this.post({ t: 'view', view, applyMs: this.now() - t0 }, transfer);
+    const pred = { on: this.predictor.enabled, pending: this.predictor.pending.length, p95Ms: this.predictor.steps.p95() };
+    this.post({ t: 'view', view, applyMs: this.now() - t0, pred }, transfer);
+    const events = this.predictor.takeRenderEvents();
+    if (events.length) this.post({ t: 'renderEvents', events }, []);
+    const off = this.predictor.autoOff;
+    if (off && !this.reportedOff) {
+      this.reportedOff = true;
+      this.post({ t: 'status', status: 'predictionOff', p95Ms: off.p95Ms, detail: `step p95 ${off.p95Ms.toFixed(2)} ms over the limit` }, []);
+    }
   }
 
   /** True when the predicted steps touched tiles after the confirmed tick. */

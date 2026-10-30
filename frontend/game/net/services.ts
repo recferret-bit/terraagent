@@ -1,5 +1,6 @@
 import type { SendCommand } from './commandBus';
 import type { DevServer } from './devServer';
+import type { NetStatsBoard, NetStatsView } from './netStats';
 
 declare module '../core/registry/types' {
   interface FeatureServices {
@@ -9,5 +10,11 @@ declare module '../core/registry/types' {
     devServer?: DevServer;
     /** The joined planet of this session (`null` before the welcome). Provided by the online session. */
     session?: { planetId(): string | null };
+    /** Dev overlay counters (online session). */
+    netStats?: NetStatsBoard;
+  }
+  interface GameView {
+    /** Prediction / correction numbers for the dev overlay. */
+    net?: NetStatsView;
   }
 }

@@ -6,9 +6,9 @@ import '../../net/services';
 
 /** Dev console commands that talk to the game: sim `dev.*` commands over the transport, server dev commands over HTTP. */
 
-async function sim(ctx: FeatureContext, kind: string, args: unknown): Promise<CommandResult> {
+async function sim(ctx: FeatureContext, kind: string, args: unknown, predict = true): Promise<CommandResult> {
   const send = ctx.services.sendCommand;
-  return send ? send(kind, args) : { ok: false, code: 'not_connected', detail: 'no game server connection' };
+  return send ? (predict ? send(kind, args) : send(kind, args, { predict: false })) : { ok: false, code: 'not_connected', detail: 'no game server connection' };
 }
 
 function ackText(kind: string, r: CommandResult): string {
@@ -16,10 +16,11 @@ function ackText(kind: string, r: CommandResult): string {
   throw new Error(`${kind} rejected: ${r.code}${r.detail ? ` (${r.detail})` : ''}`);
 }
 
-const simCommand = (name: string, help: string, args: (a: string[]) => unknown): DevCommandDef => ({
-  name, help,
-  async run(a, ctx) { return ackText(`dev.${name}`, await sim(ctx, `dev.${name}`, args(a))); },
-});
+/** `name` may end in `!`: the command is sent without telling the predictor (the client sees the result only through the server delta). */
+const simCommand = (name: string, help: string, args: (a: string[]) => unknown): DevCommandDef => {
+  const kind = `dev.${name.replace(/!$/, '')}`;
+  return { name, help, async run(a, ctx) { return ackText(kind, await sim(ctx, kind, args(a), !name.endsWith('!'))); } };
+};
 
 const chainPing: DevCommandDef = {
   name: 'chain.ping',
@@ -59,5 +60,6 @@ export default defineFeature({
       return { id: numArg(a, 0, 'id'), ...(dq !== undefined ? { dq } : {}), ...(dr !== undefined ? { dr } : {}) };
     }),
     simCommand('teleport', 'teleport <id> <q> <r>  Set a test entity position', (a) => ({ id: numArg(a, 0, 'id'), q: numArg(a, 1, 'q'), r: numArg(a, 2, 'r') })),
+    simCommand('teleport!', 'teleport! <id> <q> <r>  Like teleport, but the client does not predict it (watch the correction blend)', (a) => ({ id: numArg(a, 0, 'id'), q: numArg(a, 1, 'q'), r: numArg(a, 2, 'r') })),
   ],
 });

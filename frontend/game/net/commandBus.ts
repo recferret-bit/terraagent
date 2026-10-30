@@ -5,7 +5,8 @@ import type { Transport } from './types';
 export type CommandResult = { ok: true; appliedAtTick: number } | { ok: false; code: string; detail?: string };
 
 /** Sends a sim command and resolves with its ack/reject. Features reach it through `FeatureServices.sendCommand`. */
-export type SendCommand = (kind: string, args?: unknown) => Promise<CommandResult>;
+/** `opts.predict: false` sends without telling the predictor (dev: the client learns of the result only from the server). */
+export type SendCommand = (kind: string, args?: unknown, opts?: { predict?: boolean }) => Promise<CommandResult>;
 
 /** Service for contexts with no transport (the prototype page, a local host that has no such command). */
 export const notConnectedSend: SendCommand = async () => ({ ok: false, code: 'not_connected', detail: 'no game server connection' });
@@ -34,7 +35,7 @@ export class CommandBus {
   }
 
   /** Bound for use as `FeatureServices.sendCommand`. */
-  readonly send: SendCommand = (kind, args = {}) => {
+  readonly send: SendCommand = (kind, args = {}, opts) => {
     const id = newId('cm');
     return new Promise<CommandResult>((resolve) => {
       const timer = setTimeout(() => {
@@ -42,7 +43,7 @@ export class CommandBus {
       }, this.timeoutMs);
       this.pending.set(id, { resolve, timer });
       this.transport.send({ t: 'cmd', id, d: { kind, args } });
-      this.onSent?.(id, kind, args);
+      if (opts?.predict !== false) this.onSent?.(id, kind, args);
     });
   };
 
