@@ -81,7 +81,7 @@ describe('error responses', () => {
   });
 
   it('unknown error: 500 INTERNAL hides the message in production, shows it in test; logs at error level', async () => {
-    const prod = await boot({ NODE_ENV: 'production' });
+    const prod = await boot({ NODE_ENV: 'production', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
     const r = await fetch(`${prod.url}/v1/_test/boom`);
     const text = await r.text();
     expect(r.status).toBe(500);

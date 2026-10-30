@@ -29,5 +29,11 @@ export default tseslint.config(
     files: ['backend/app/src/near/**/*.ts', 'backend/app/src/ports/**/*.ts'],
     rules: { '@typescript-eslint/no-explicit-any': 'error' },
   },
+  {
+    // adapters are imported only by their binding modules (D-30 rule 1); everything else depends on the abstract ports
+    files: ['backend/app/src/**/*.ts'],
+    ignores: ['backend/app/src/near/infrastructure/**', 'backend/app/src/ai/**', 'backend/app/src/notify/**'],
+    rules: { 'no-restricted-imports': ['error', { patterns: [{ group: ['**/adapters/**'], message: 'Only near/infrastructure, ai and notify may import adapters; depend on the abstract port instead.' }] }] },
+  },
   ...simPurity,
 );
