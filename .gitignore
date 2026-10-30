@@ -5,3 +5,9 @@ dist/
 .env
 .env.*
 *-E
+!.env.example
+test-results/
+playwright-report/
+e2e/.out/
+coverage/
+.dev/

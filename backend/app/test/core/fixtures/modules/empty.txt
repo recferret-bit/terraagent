@@ -1,0 +1,1 @@
+A folder without a module file: discovery must skip it.

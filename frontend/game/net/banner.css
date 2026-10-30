@@ -1,0 +1,9 @@
+.ta-net-banner {
+  position: fixed; top: var(--ta-s4); left: 50%; transform: translateX(-50%); z-index: 40;
+  padding: var(--ta-s2) var(--ta-s4);
+  font-family: var(--ta-font-mono); font-size: var(--ta-fs-label); letter-spacing: 0.08em; text-transform: uppercase;
+  color: var(--ta-text); background: var(--ta-plate-2); border: 1px solid var(--ta-blue);
+  pointer-events: auto;
+}
+.ta-net-banner[data-phase='terminal'] { border-color: var(--ta-orange); }
+.ta-net-banner[hidden] { display: none; }
