@@ -14,6 +14,7 @@ import { MainMenu, type MenuSettings } from '../ui/menu';
 import { DescentHud, GameHud } from '../ui/hud';
 import { HudRoot } from '../core/hud/HudRoot';
 import { loadFeatures } from '../core/registry';
+import { createClientFlagsStore, type ClientFlagsStore } from '../core/flags';
 import '@terra/render/kitbash';
 import '../../design/css/tokens.css';
 import '../../design/css/base.css';
@@ -31,6 +32,8 @@ export class Game {
   readonly viewport: ColonyViewport;
   private root: HTMLElement;
   private featureHud: HudRoot | null = null;
+  private flagsStore: ClientFlagsStore | null = null;
+  private offFlags: (() => void) | null = null;
   private fade = document.createElement('div');
   private phase: Phase = 'menu';
   private menu!: MainMenu;
@@ -233,14 +236,22 @@ export class Game {
   }
   private setPaused(p: boolean) { this.gHud?.setPaused(p); if (this.play) { this.play.paused = p; this.play.cam.enabled = !p; } }
 
-  /** Feature registry HUD; all waves on and host 'server' until the online flow lands. */
+  /** Feature registry HUD: flags from `?waves=` (dev) or `all` until the server welcome lands; re-mounts on change. On body: #app is a stacking context below the prototype #hud (z 10). */
   private mountFeatureHud() {
-    const flags = new Set(Array.from({ length: 26 }, (_, i) => `W${String(i).padStart(2, '0')}`));
-    const ctx = { flags, host: 'server' as const, services: {} };
-    this.featureHud = new HudRoot(this.root, loadFeatures({ flags, host: 'server' }), ctx);
+    const store = this.flagsStore ??= createClientFlagsStore();
+    const mount = () => {
+      this.featureHud?.dispose();
+      const { flags, source } = store.current;
+      const set = store.set;
+      const ctx = { flags: set, host: 'server' as const, services: { flagsSource: source } };
+      this.featureHud = new HudRoot(document.body, loadFeatures({ flags: set, host: 'server' }), ctx);
+    };
+    this.offFlags?.(); this.offFlags = store.onChange(mount);
+    mount();
   }
 
   private teardownSession() {
+    this.offFlags?.(); this.offFlags = null;
     this.featureHud?.dispose(); this.featureHud = null;
     this.play?.dispose(); this.play = null;
     try { this.descent?.dispose(); } catch (e) { console.warn(e); } this.descent = null;
