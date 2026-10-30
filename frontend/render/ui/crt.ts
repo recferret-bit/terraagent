@@ -3,6 +3,8 @@
    One absolutely-positioned layer per host (the element that holds a WebGL canvas), so HTML interface layers that sit
    above the host are never touched. Plus a small on/off switch (button, or F9). The choice is remembered.
    Pure CSS + wall-clock animation — a look only, never read by game logic. reduced-motion keeps still lines + vignette. */
+import { disposePixelArt, initPixelArt } from './pixelArt';
+import { initFpsCounter } from './fps';
 
 const KEY = 'terraagent.crt';
 const CFG = { ON: true, LINE: 3, SCAN: 0.18, CRAWL_S: 0.9, ROLL: 0.045, ROLL_S: 8, NOISE: 0.05, FLICKER: 0.05, VIGNETTE: 0.5, WAVE_EVERY: [12, 35], WAVE_DUR: [0.5, 0.9], WAVE_PX: 14, WAVE_FREQ: 0.012 } as const;
@@ -110,11 +112,14 @@ export function initCrt(targets: HTMLElement[]) {
     e.preventDefault(); toggleCrt();
   });
   apply();
+  initPixelArt();
+  initFpsCounter();
   if (!matchMedia('(prefers-reduced-motion:reduce)').matches) { document.body.insertAdjacentHTML('beforeend', SVG); schedule(); }
 }
 
 export function disposeCrt() {
   clearTimeout(timer);
+  disposePixelArt();
   document.querySelectorAll('.crt').forEach((e) => e.remove()); document.getElementById('crt-switch')?.remove();
   document.getElementById('crt-css')?.remove(); document.getElementById('crt-wave')?.closest('svg')?.remove();
   btn = null; hosts = [];

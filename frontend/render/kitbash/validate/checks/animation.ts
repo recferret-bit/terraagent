@@ -8,6 +8,16 @@ import type { P } from '../types';
 
 interface Sweep { poses: Pose[]; box: Box }
 
+const samePivot = (a: [number, number, number], b: [number, number, number]) =>
+  Math.abs(a[0] - b[0]) < 1e-4 && Math.abs(a[1] - b[1]) < 1e-4 && Math.abs(a[2] - b[2]) < 1e-4;
+const sameRig = (a: P, b: P) => a.def.animType === b.def.animType && samePivot(a.def.pivot, b.def.pivot);
+const isGait = (t: number) => t >= 4 && t <= 6;
+const inSync = (a: P, b: P) =>
+  (a.def.animType === 1 && b.def.animType === 1) ||
+  (a.def.animType === 7 && b.def.animType === 7) ||
+  (isGait(a.def.animType) && isGait(b.def.animType)) ||
+  (a.def.animType === b.def.animType && Math.abs(a.def.pivot[0] - b.def.pivot[0]) < 1e-4);
+
 /** Poses of every animated part plus the box swept by all of them. */
 function buildSweeps(ctx: ValidationContext, anim: P[]): Map<number, Sweep> {
   const sweeps = new Map<number, Sweep>();
@@ -15,19 +25,20 @@ function buildSweeps(ctx: ValidationContext, anim: P[]): Map<number, Sweep> {
     const ps = poses(a.def); const box = expandBox(a.box, 0);
     for (const pose of ps) { const b = trisBox(pose.tris); for (let k = 0; k < 3; k++) { box[k] = Math.min(box[k], b[k]); box[k + 3] = Math.max(box[k + 3], b[k + 3]); } }
     sweeps.set(a.def.index, { poses: ps, box });
-    if (a.def.animType === 2 && box[1] < -0.02) ctx.add('warn', 'ANIM_BELOW_GROUND', `${a.label} dips ${fmt(-box[1])} below the ground while bobbing.`, [a.def.index], at(a.box));
+    if (a.def.animType >= 2 && box[1] < -0.02) ctx.add('warn', 'ANIM_BELOW_GROUND', `${a.label} dips ${fmt(-box[1])} below the ground while animating.`, [a.def.index], at(a.box));
   }
   return sweeps;
 }
 
 /** Sweeps animated part `a` against part `b`: collisions with neighbours, deeper overlap into its mount. */
 function sweepAgainst(ctx: ValidationContext, sweeps: Map<number, Sweep>, reported: Set<string>, a: P, b: number, isMount: boolean) {
-  const { parts: P_, o, add, R } = ctx;
+  const { parts: P_, o, add } = ctx;
   const sw = sweeps.get(a.def.index)!;
   const other = P_[b];
+  if (sameRig(a, other)) return;
   const otherSw = other.def.animType > 0 ? sweeps.get(b) : undefined;
-  // The shader gives every spinner the same angle, and bobbers/recoilers with the same pivot.x the same phase: those move in lockstep.
-  const lock = !!otherSw && other.def.animType === a.def.animType && (a.def.animType === 1 || Math.abs(other.def.pivot[0] - a.def.pivot[0]) < 1e-4);
+  // Spinners, wheels, gait channels, and bobbers/recoilers with equal pivot.x share a single shader clock.
+  const lock = !!otherSw && inSync(a, other) && sw.poses.length === otherSw.poses.length;
   const otherPosesFor = (k: number): (Pose | null)[] => (!otherSw ? [null] : lock ? [otherSw.poses[k]] : [null, ...otherSw.poses]);
   const restDepth = isMount ? Math.max(embed(a, other).depth, embed(other, a).depth) : 0;
   for (let pk = 0; pk < sw.poses.length; pk++) for (const op of otherPosesFor(pk)) {
@@ -39,7 +50,7 @@ function sweepAgainst(ctx: ValidationContext, sweeps: Map<number, Sweep>, report
     if (isMount) {
       if (r.crossing) {
         const d = Math.max(embed(pa, po).depth, embed(po, pa).depth);
-        if (d > restDepth + 0.025 && !reported.has(k)) { reported.add(k); add(a.def.animType === 3 ? 'info' : 'warn', 'ANIM_DEEPENS_OVERLAP', `${a.label} pushes ${fmt(d - restDepth)} deeper into its mount ${other.label} at ${pose.label}.`, [a.def.index, b], r.at); }
+        if (d > restDepth + 0.025 && !reported.has(k)) { reported.add(k); add(a.def.animType >= 3 ? 'info' : 'warn', 'ANIM_DEEPENS_OVERLAP', `${a.label} pushes ${fmt(d - restDepth)} deeper into its mount ${other.label} at ${pose.label}.`, [a.def.index, b], r.at); }
       }
     } else if (r.dist <= o.clearance && !reported.has(k)) {
       reported.add(k);
@@ -48,17 +59,19 @@ function sweepAgainst(ctx: ValidationContext, sweeps: Map<number, Sweep>, report
   }
 }
 
-/** Does a bob / recoil open a visible gap to the mount? Reports the worst pose. */
+/** Does a bob / recoil / limb swing open a visible gap to its external mount? Reports the worst pose. */
 function checkDetach(ctx: ValidationContext, a: P, sw: Sweep, mounts: number[]) {
   const { parts: P_, o, add } = ctx;
+  const extMounts = mounts.filter((m) => !sameRig(a, P_[m]));
+  if (!extMounts.length) return;
   let detached: { pose: string; d: number } | null = null;
   for (const pose of sw.poses) {
     const pa = prepare(a.def, pose.tris);
     let dMin = Infinity;
-    for (const m of mounts) dMin = Math.min(dMin, relate(pa, P_[m], 0.2).dist);
+    for (const m of extMounts) dMin = Math.min(dMin, relate(pa, P_[m], 0.2).dist);
     if (dMin > o.contactTol && (!detached || dMin > detached.d)) detached = { pose: pose.label, d: dMin };
   }
-  if (detached) add(detached.d > 0.03 && a.def.animType === 2 ? 'warn' : 'info', 'ANIM_DETACH', `${a.label} lifts ${fmt(detached.d)} off its mount at ${detached.pose}${detached.d > 0.03 ? ' and reads as detached' : ''}.`, [a.def.index, mounts[0]], at(a.box), 'Intentional for hover glows; otherwise overlap it deeper into the mount so it stays attached through the whole motion.');
+  if (detached) add(detached.d > 0.03 && a.def.animType !== 3 ? 'warn' : 'info', 'ANIM_DETACH', `${a.label} lifts ${fmt(detached.d)} off its mount at ${detached.pose}${detached.d > 0.03 ? ' and reads as detached' : ''}.`, [a.def.index, extMounts[0]], at(a.box), 'Intentional for hover glows; otherwise overlap it deeper into the mount so it stays attached through the whole motion.');
 }
 
 export const animationStage: CheckStage = (ctx) => {

@@ -54,11 +54,15 @@ Assemble the entity in four layers from bottom to top:
    - Glowing sensor visors, status LED beacons, plasma coils, or rotating radar/wind vanes tagged with GPU animation channels.
 
 ### Step 3: Encode GPU Animation Channels (Zero CPU Overhead)
-Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`, tag vertices via `PartAnimationTag` in [KitbashRegistry.ts](./examples/KitbashRegistry.ts):
+Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`, tag vertices via `PartOptions` (`animType` + `animPivot`) in [KitbashRegistry.ts](./examples/KitbashRegistry.ts) (see the [`procedural-animation-3d`](../procedural-animation-3d/SKILL.md) skill for coupled limb rigging and gait math):
 - `animType = 0`: Static chassis part.
-- `animType = 1`: Continuous Y/Z-axis rotation around local part pivot (wind turbine blades, radar dishes, mining drills).
-- `animType = 2`: Sinusoidal vertical hover/bobbing or hydraulic piston oscillation.
-- `animType = 3`: Recoil / pulse scaling along part forward vector (turret barrels, thumper pistons).
+- `animType = 1` (`SpinY`): Continuous Y-axis rotation around local part pivot (wind turbine blades, radar dishes, mining drills).
+- `animType = 2` (`HoverBob`): Sinusoidal vertical hover/bobbing oscillation (`±5 cm`).
+- `animType = 3` (`RecoilPulse`): Recoil / pulse along part forward vector (turret barrels, thumper pistons, beacons).
+- `animType = 4` (`BipedLeg`): Coupled sagittal hip pitch + knee tuck + asymmetric foot-clearance lift (`robot.hero` legs; all parts of a leg share the hip socket `animPivot`).
+- `animType = 5` (`BipedArm`): Counter-phase sagittal shoulder swing balancing `BipedLeg` (`robot.hero` arms; all parts of an arm share the shoulder socket `animPivot`).
+- `animType = 6` (`SpiderLeg`): Multi-legged alternating diagonal/tripod coxa yaw + stepping lift arc (`robot.combat` spider legs; all parts of a leg share the hip socket `animPivot`).
+- `animType = 7` (`WheelSpin`): Continuous X-axis rolling rotation around wheel axle (`robot.builder` wheels, `robot.miner` track rollers).
 
 ### Step 4: Geometry Validation, then Visual Diagnostic Verification
 After generating a new procedural model, **first** run the numeric check from the [`model-geometry-validator`](../model-geometry-validator/SKILL.md) skill: `npm run validate:models -- <archetype id>`. It must report 0 errors and 0 warnings (floating parts, hairline gaps, z-fighting, parts cutting through each other, cables clipping, animated parts hitting something, plus colour roles, colour separation between functional groups, palette balance and surface detail: rule 5 above). Name your parts (`name` in `PartOptions`) so its report maps back to code. Then:

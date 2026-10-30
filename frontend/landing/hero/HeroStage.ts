@@ -57,6 +57,7 @@ export class HeroStage {
     this.stage.setTerraform(0); // the outgoing world is fully collapsed (barren) before it starts to fade
     this.idx = (this.idx + 1) % PLANET_KINDS.length;
     this.stage.setPlanet(PLANET_SPECS[PLANET_KINDS[this.idx]], { duration: MORPH_FADE_S, continuousSpin: true });
+    this.stage.setTerraform(0); // incoming hero world also begins barren before its 4-step terraform cycle
     this.label();
   }
 

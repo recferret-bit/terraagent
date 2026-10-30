@@ -4,7 +4,7 @@ import type { RoleSummary } from './appearance';
 
 export interface PartDef {
   index: number; name: string; zone: string; kind: string;
-  /** 0 static · 1 spin about +Y through `pivot` · 2 bob ±5 cm in Y · 3 recoil 0..6 cm toward -Z (see UnifiedColonyMaterial). */
+  /** 0 static · 1 spinY · 2 bobY · 3 recoilZ · 4 bipedLeg · 5 bipedArm · 6 spiderLeg · 7 wheelSpin (see UnifiedColonyMaterial). */
   animType: number;
   pivot: [number, number, number];
   emissive: number;

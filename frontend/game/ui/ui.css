@@ -72,7 +72,7 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 @keyframes pulse{50%{opacity:.35}}
 /* ---------- gameplay HUD ---------- */
 #hud{opacity:0;transition:opacity .8s}#hud.on{opacity:1}
-.hud-top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.hud-top{position:absolute;top:12px;left:12px;right:110px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .chip{background:rgba(11,13,17,.9);backdrop-filter:blur(8px);border:1px solid var(--ta-seam-2);padding:10px 14px;font-size:12px}
 .chip h4{margin:0;font-family:var(--ta-font-display);font-weight:700;font-size:15px;letter-spacing:.12em;color:var(--ta-text)}
 .chip small{font-family:var(--ta-font-mono);font-size:11px;letter-spacing:.06em;color:var(--ta-steel)}

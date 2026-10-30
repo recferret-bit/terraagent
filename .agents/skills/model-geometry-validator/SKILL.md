@@ -131,11 +131,15 @@ flush opposite-facing faces (that is a clean contact), and cables as structural 
 1. **Every part touches its support by ≥ 1 cm of overlap** (contact tolerance is 4 mm). Overlap hides inside the neighbour.
 2. **Insets stand proud**: a panel on a frame is thicker or offset by ≥ 2 mm; never coplanar, never inside.
 3. **Cables end on anchors**: both ends inside a joint or socket, mid-span clear of every solid. Cables are not supports.
-4. **Animated parts are clean about their motion** (from `UnifiedColonyMaterial.ts`):
-   - `animType 1`: rotates about **+Y through `animPivot`**, one full turn. **All spinners share the same angle** (they move in lockstep).
-   - `animType 2`: bobs **±5 cm in Y**; phase depends on `pivot.x`, so equal `pivot.x` means lockstep.
-   - `animType 3`: recoils **0 to 6 cm toward −Z**; phase depends on `pivot.x`.
-   Keep ≥ 1 cm clearance from everything except the mount the part rests against. Put `animPivot` on the part's own axis.
+4. **Animated parts are clean about their motion** (from `UnifiedColonyMaterial.ts` and [`procedural-animation-3d`](../procedural-animation-3d/SKILL.md)):
+   - `animType 1` (`SpinY`): rotates about **+Y through `animPivot`**, one full turn. **All spinners share the same angle** (they move in lockstep).
+   - `animType 2` (`HoverBob`): bobs **±5 cm in Y**; phase depends on `pivot.x`, so equal `pivot.x` means lockstep.
+   - `animType 3` (`RecoilPulse`): recoils **0 to 6 cm toward −Z**; phase depends on `pivot.x`.
+   - `animType 4` (`BipedLeg`): sagittal hip swing + knee bend + foot clearance lift around hip `animPivot`; left (`pivot.x >= 0`) and right (`pivot.x < 0`) alternate by $\pi$.
+   - `animType 5` (`BipedArm`): counter-phase shoulder swing around shoulder `animPivot` (opposite same-side `BipedLeg`).
+   - `animType 6` (`SpiderLeg`): alternating diagonal/tripod coxa yaw + radial stepping lift around hip `animPivot` (phase from `pivot.x` and `pivot.z`).
+   - `animType 7` (`WheelSpin`): continuous X-axis rolling around wheel axle `animPivot`.
+   All sub-parts of a single limb or wheel must share the exact same `animType` and `animPivot` (`sameRig`), with a ball-joint (`sph`) centered at `animPivot` sunk into the static mount and moving struts kept ≥ 1.5 cm clear of static hull walls.
 5. **Name the parts** so a report points at code.
 
 ## Limits (read before trusting a PASS)

@@ -28,7 +28,7 @@ html,body{margin:0;height:100%;background:var(--ta-void);color:var(--ta-text-2);
 .side-foot{padding:10px 12px;border-top:1px solid var(--ta-seam);color:var(--ta-steel);font-size:10px;line-height:1.8}
 kbd{background:var(--ta-plate);border:1px solid var(--ta-seam-2);padding:0 4px;color:var(--ta-text);font:inherit;font-size:10px}
 .panel{position:absolute;background:rgba(11,13,17,.9);backdrop-filter:blur(8px);border:1px solid var(--ta-seam-2);padding:12px 14px;clip-path:polygon(var(--ta-chamfer-s) 0,100% 0,100% calc(100% - var(--ta-chamfer-s)),calc(100% - var(--ta-chamfer-s)) 100%,0 100%,0 var(--ta-chamfer-s))}
-#info{top:14px;right:14px;width:280px;border-top:3px solid var(--ta-blue)}
+#info{top:48px;right:14px;width:280px;border-top:3px solid var(--ta-blue)}
 #info h3{margin:0 0 10px;font-family:var(--ta-font-display);font-weight:700;font-size:17px;letter-spacing:.06em;text-transform:uppercase;color:var(--ta-text)}
 #info h3 small{display:block;margin-top:2px;font-family:var(--ta-font-mono);font-weight:400;font-size:11px;letter-spacing:.04em;text-transform:none;color:var(--ta-blue-hi)}
 #info table{width:100%;border-collapse:collapse;font-size:12px}

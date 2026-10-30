@@ -43,9 +43,9 @@ export function cable(b: KitbashBuilder, pts: V3[], r = 0.02, zone: Zone = 'fram
 }
 
 /** Sagging cable between two points. */
-export function sag(b: KitbashBuilder, p1: V3, p2: V3, slack = 0.12, r = 0.02, zone: Zone = 'frameGunmetal') {
+export function sag(b: KitbashBuilder, p1: V3, p2: V3, slack = 0.12, r = 0.02, zone: Zone = 'frameGunmetal', opts: PartOptions = {}) {
   const m: V3 = [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2 - slack, (p1[2] + p2[2]) / 2];
-  cable(b, [p1, m, p2], r, zone);
+  cable(b, [p1, m, p2], r, zone, opts);
 }
 
 /**
@@ -120,18 +120,27 @@ KitbashRegistry.registerGreeble(
   }
 );
 
-/** Tracked drive unit (rounded housing, bogie wheels, sprockets). */
+/** Tracked drive unit (rounded housing, spinning bogie wheels, inner drive mount). */
 KitbashRegistry.registerGreeble(
   'trackUnit',
   ({ x = 0.3, length = 1.0, height = 0.3, width = 0.22 }: any, b: KitbashBuilder) => {
-    b.addPart(rbox(width, height, length, 0.1), 'frameGunmetal', { position: [x, height / 2, 0] });
+    const sign = Math.sign(x) || 1;
+    b.addPart(rbox(width, height, length, 0.08, 1), 'rubberDark', { name: 'track tread', position: [x, height / 2, 0] });
+    b.addPart(rbox(0.03, height * 0.45, length * 0.55, 0.01, 1), 'frameGunmetal', {
+      name: 'track inner rail',
+      position: [x - sign * (width / 2 - 0.005), height / 2, 0],
+    });
     const n = 4;
     for (let i = 0; i < n; i++) {
-      const z = -length / 2 + length * 0.12 + (i / (n - 1)) * length * 0.76;
-      const out = Math.sign(x) * (width / 2 + 0.005);
-      b.addPart(cyl(height * 0.34, height * 0.34, 0.03, 12), 'hullSecondary', {
-        position: [x + out, height / 2, z],
+      const z = -length / 2 + length * 0.14 + (i / (n - 1)) * length * 0.72;
+      const out = sign * (width / 2 + 0.005);
+      const wPivot: V3 = [x + out, height / 2, z];
+      b.addPart(cyl(height * 0.32, height * 0.32, 0.03, 10), 'hullSecondary', {
+        name: 'track roller',
+        position: wPivot,
         rotation: [0, 0, Math.PI / 2],
+        animType: 7,
+        animPivot: wPivot,
       });
     }
   }

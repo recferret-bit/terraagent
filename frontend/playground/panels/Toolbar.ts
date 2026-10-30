@@ -6,7 +6,7 @@ export interface ToolbarHandlers {
   onView(v: View): void; onPlanet(k: PlanetKind): void; onToggle(k: ToggleKey): void; onShot(): void; onSheet(): void;
 }
 
-const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { wire: 'wireframe', surface: 'planet surface', row: 'spawn row', validate: 'validate parts', hex: 'hex grid', human: '1.8m human' };
+const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', row: 'spawn row', validate: 'validate parts', hex: 'hex grid', human: '1.8m human' };
 
 /** Bottom toolbar (views, planets, toggles, capture) and the info/tip/toast overlay shell. */
 export class Toolbar {

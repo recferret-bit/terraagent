@@ -8,7 +8,7 @@ import { groundPick } from './groundPick';
 import { isDry, layoutColony } from './colonyLayout';
 
 interface Agent {
-  obj: THREE.Object3D; speed: number; goal: THREE.Vector3 | null; wander?: { c: THREE.Vector3; r: number; wait: number }; yawVel: number;
+  obj: THREE.Object3D; speed: number; goal: THREE.Vector3 | null; wander?: { c: THREE.Vector3; r: number; wait: number }; yawVel: number; walk: number;
 }
 
 /** Gameplay state: hero + starter colony + RTS camera + click-to-move. */
@@ -30,7 +30,7 @@ export class Gameplay {
     private spec: PlanetSpec, hero: THREE.Object3D, private hud: GameHud, camPose: { position: THREE.Vector3; target: THREE.Vector3 },
   ) {
     hero.position.y = surface.heightAt(hero.position.x, hero.position.z);
-    this.hero = { obj: hero, speed: 7, goal: null, yawVel: 0 };
+    this.hero = { obj: hero, speed: 7, goal: null, yawVel: 0, walk: 0 };
     this.cam = new RTSCamera(camera, dom, surface, camPose.position, camPose.target);
     this.cam.followTarget = hero;
 
@@ -79,7 +79,7 @@ export class Gameplay {
   private buildColony() {
     for (const p of layoutColony(this.surface, this.spec)) {
       const m = this.place(p.id, p.x, p.z, p.yaw);
-      if (p.wander) this.agents.push({ obj: m, speed: p.wander.speed, goal: null, yawVel: 0, wander: { c: p.wander.c, r: p.wander.r, wait: p.wander.wait } });
+      if (p.wander) this.agents.push({ obj: m, speed: p.wander.speed, goal: null, yawVel: 0, walk: 0, wander: { c: p.wander.c, r: p.wander.r, wait: p.wander.wait } });
     }
     this.res.energy = 120;
   }
@@ -111,7 +111,8 @@ export class Gameplay {
   update(dt: number) {
     this.time += dt;
     if (!this.paused) {
-      this.steer(this.hero, dt);
+      const heroMoving = this.steer(this.hero, dt);
+      this.hero.walk += ((heroMoving ? 1 : 0) - this.hero.walk) * Math.min(1, dt * 10);
       for (const a of this.agents) {
         if (!a.goal && a.wander) {
           a.wander.wait -= dt;
@@ -124,7 +125,8 @@ export class Gameplay {
             a.wander.wait = 1 + Math.random() * 3;
           }
         }
-        this.steer(a, dt);
+        const moving = this.steer(a, dt);
+        a.walk += ((moving ? 1 : 0) - a.walk) * Math.min(1, dt * 10);
       }
       this.resT += dt;
       if (this.resT > 1) { this.resT = 0; this.res.energy += 3; this.res.metal += 1; this.res.water += 0.5; this.res.bio += 0.2; this.hud.setResources(this.res); }
@@ -136,8 +138,9 @@ export class Gameplay {
       if (!this.hero.goal && this.markerT > 0.6) this.marker.visible = false;
     }
     this.cam.update(dt);
-    tickArchetypeMesh(this.hero.obj, this.time);
+    tickArchetypeMesh(this.hero.obj, this.time, this.hero.walk);
     for (const m of this.owned) tickArchetypeMesh(m, this.time);
+    for (const a of this.agents) tickArchetypeMesh(a.obj, this.time, a.walk);
   }
 
   get heroPos() { return this.hero.obj.position; }

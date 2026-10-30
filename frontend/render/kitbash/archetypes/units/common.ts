@@ -38,6 +38,7 @@ export function register(opts: {
         if (Math.abs(minY) > 1e-5) { g.translate(0, -minY, 0); shiftPivot(1, -minY); }
         g.computeBoundingBox();
         g.computeBoundingSphere();
+        if (g.boundingSphere) g.boundingSphere.radius *= 1.15;
       }
       return g as THREE.BufferGeometry;
     },

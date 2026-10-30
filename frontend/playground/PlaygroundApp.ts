@@ -1,5 +1,7 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
+import { initPixelDialog } from '@terra/render/ui/pixelDialog';
 import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { ArchetypeCatalog, type ArchetypeCategory } from '@terra/render/kitbash';
 import { validateArchetype } from '@terra/render/kitbash/validate';
@@ -69,6 +71,8 @@ export class PlaygroundApp {
     if (state.id) this.select(state.id, { rebuild: false, frame: true }); else this.setView(state.view, { instant: true });
     this.sidebar.render();
     this.toolbar.syncToggles();
+    initPixelDialog();
+    onPixelArtChange((on) => { this.state.pixel = on; this.toolbar.syncToggles(); syncURL(this.state); });
     this.setView(state.view, { instant: true });
     this.frame();
   }
@@ -167,6 +171,7 @@ export class PlaygroundApp {
     state[k] = !state[k];
     switch (k) {
       case 'bloom': vp.bloom.enabled = state.bloom; break;
+      case 'pixel': setPixelArt(state.pixel, false); break;
       case 'wire': this.spawns.applyWire(state.wire); break;
       case 'grid': this.rig.grid.visible = state.grid; break;
       case 'ruler': this.rig.ruler.visible = state.ruler; break;

@@ -41,10 +41,16 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
  * GPU Vertex-Shader Animation Tag
  * Stored in `aPartAnim` (vec4: [animType, pivotX, pivotY, pivotZ])
  * - 0: Static
- * - 1: Continuous Y-axis rotation around (pivotX, pivotY, pivotZ)
- * - 2: Vertical hover/bob oscillation
- * - 3: Forward recoil / thumper oscillation
+ * - 1: SpinY — Continuous Y-axis rotation around (pivotX, pivotY, pivotZ)
+ * - 2: HoverBob — Vertical hover/bob oscillation (±5 cm)
+ * - 3: RecoilPulse — Forward recoil / thumper oscillation along local +Z (0..6 cm)
+ * - 4: BipedLeg — Coupled sagittal hip swing + knee bend + foot ground-clearance arc
+ * - 5: BipedArm — Counter-phase sagittal shoulder swing (balances BipedLeg)
+ * - 6: SpiderLeg — Multi-legged alternating tripod/diagonal coxa yaw + stepping lift arc
+ * - 7: WheelSpin — Continuous X-axis rolling rotation around wheel axle pivot
  */
+export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7;
+
 export interface PartOptions {
   /** Human-readable label used by the model validator's reports (defaults to "<geometry type>#<index>"). */
   name?: string;
@@ -52,7 +58,7 @@ export interface PartOptions {
   rotation?: THREE.Vector3Tuple;
   scale?: THREE.Vector3Tuple;
   emissiveIntensity?: number;
-  animType?: 0 | 1 | 2 | 3;
+  animType?: AnimChannelId;
   animPivot?: THREE.Vector3Tuple;
 }
 

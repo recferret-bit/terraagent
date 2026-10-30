@@ -4,12 +4,15 @@ import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
 import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+import type { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import type { PlanetSpec } from '../planets/PlanetSpec';
+import { createPixelArtPass, onPixelArtChange, setPixelArtSize } from './pixelArtPass';
 
 export interface ColonyViewport {
   renderer: THREE.WebGLRenderer;
   composer: EffectComposer;
   bloom: UnrealBloomPass;
+  pixelArt: ShaderPass;
   /** Default diorama scene/camera (28° telephoto). Systems may swap via setView(). */
   scene: THREE.Scene;
   camera: THREE.PerspectiveCamera;
@@ -25,6 +28,22 @@ export interface ColonyViewport {
   resize(): void;
   render(): void;
   dispose(): void;
+}
+
+function createSunAndHemi(scene: THREE.Scene) {
+  const hemi = new THREE.HemisphereLight(0x9ccfff, 0x4a5a3a, 0.85);
+  scene.add(hemi);
+  const sun = new THREE.DirectionalLight(0xfff1d6, 3.0);
+  sun.position.set(35, 55, 25);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.camera.near = 5;
+  sun.shadow.camera.far = 160;
+  const d = 35;
+  Object.assign(sun.shadow.camera, { left: -d, right: d, top: d, bottom: -d });
+  sun.shadow.bias = -0.0005;
+  scene.add(sun, sun.target);
+  return { sun, hemi };
 }
 
 /** Pillar 4 bootstrap: 28° FOV, ACES, PMREM RoomEnvironment, warm sun + cool hemi, bloom threshold 1.1. */
@@ -49,6 +68,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   renderer.shadowMap.enabled = true;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
   renderer.domElement.style.display = 'block';
+  renderer.domElement.dataset.pixelShader = '1';
   container.appendChild(renderer.domElement);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -56,18 +76,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   scene.environment = environment;
   scene.environmentIntensity = 0.75;
 
-  const hemi = new THREE.HemisphereLight(0x9ccfff, 0x4a5a3a, 0.85);
-  scene.add(hemi);
-  const sun = new THREE.DirectionalLight(0xfff1d6, 3.0);
-  sun.position.set(35, 55, 25);
-  sun.castShadow = true;
-  sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.near = 5;
-  sun.shadow.camera.far = 160;
-  const d = 35;
-  Object.assign(sun.shadow.camera, { left: -d, right: d, top: d, bottom: -d });
-  sun.shadow.bias = -0.0005;
-  scene.add(sun, sun.target);
+  const { sun, hemi } = createSunAndHemi(scene);
 
   const composer = new EffectComposer(renderer);
   const renderPass = new RenderPass(scene, camera);
@@ -75,11 +84,14 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   const bloom = new UnrealBloomPass(new THREE.Vector2(w(), h()), 0.45, 0.35, 1.1);
   composer.addPass(bloom);
   composer.addPass(new OutputPass());
+  const pixelArt = createPixelArtPass(w(), h());
+  composer.addPass(pixelArt);
+  const offPixel = onPixelArtChange((enabled) => { pixelArt.enabled = enabled; composer.render(); });
 
   const sunOffset = new THREE.Vector3(35, 55, 25);
 
   const vp: ColonyViewport = {
-    renderer, composer, bloom, scene, camera, sun, hemi, environment,
+    renderer, composer, bloom, pixelArt, scene, camera, sun, hemi, environment,
     setView(s, c) {
       renderPass.scene = s;
       renderPass.camera = c;
@@ -108,6 +120,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       renderer.setSize(w(), h());
       composer.setSize(w(), h());
       bloom.resolution.set(w(), h());
+      setPixelArtSize(pixelArt, w(), h());
       for (const p of renderPass.camera ? [renderPass.camera as THREE.PerspectiveCamera] : []) {
         p.aspect = w() / h();
         p.updateProjectionMatrix();
@@ -118,6 +131,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
     render() { composer.render(); },
     dispose() {
       window.removeEventListener('resize', onResize);
+      offPixel();
       composer.dispose(); pmrem.dispose(); renderer.dispose();
       renderer.domElement.remove();
     },

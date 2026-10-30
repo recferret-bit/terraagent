@@ -46,6 +46,12 @@ t('spinning arm sweeping into a wall → ANIM_COLLISION', spinner(0.3), (r) => c
 t('spinning arm with clearance → clean', spinner(0.5), (r) => !codes(r).includes('ANIM_COLLISION'));
 t('bobbing part dipping below the ground → ANIM_BELOW_GROUND', () => [ground(), part(box(0.2, 0.2, 0.2), [0, 0.1, 0.8], { name: 'hoverer', anim: 2 })], (r) => codes(r).includes('ANIM_BELOW_GROUND'));
 t('lockstep spinners (same angle) never collide with each other', () => [ground(), part(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 10), [0, 0.4, 0]), part(box(0.5, 0.04, 0.06), [0, 0.7, 0], { name: 'arm A', anim: 1, pivot: [0, 0.7, 0] }), part(box(0.5, 0.04, 0.06), [0, 0.76, 0], { name: 'arm B', anim: 1, pivot: [0, 0.76, 0] })], (r) => !codes(r).includes('ANIM_COLLISION'));
+const spider = (wallZ) => () => [ground(), part(box(0.3, 0.4, 0.3), [0, 0.38, 0], { name: 'hull' }), part(box(0.5, 0.06, 0.06), [0.35, 0.4, 0.1], { name: 'spider leg', anim: 6, pivot: [0.14, 0.4, 0.1] }), part(box(0.2, 0.4, 0.06), [0.5, 0.38, wallZ], { name: 'post' })];
+t('spider leg (anim 6) sweeping into a nearby post → ANIM_COLLISION', spider(0.18), (r) => codes(r).includes('ANIM_COLLISION'));
+t('spider leg (anim 6) with stride clearance → clean', spider(0.35), (r) => !codes(r).includes('ANIM_COLLISION'));
+const biped = (armX) => () => [part(box(0.5, 0.2, 0.3), [0, 0.8, 0], { name: 'pelvis' }), part(box(0.12, 0.72, 0.06), [0.15, 0.36, 0], { name: 'leg', anim: 4, pivot: [0.15, 0.72, 0] }), part(box(0.1, 0.45, 0.06), [armX, 0.62, 0.09], { name: 'arm', anim: 5, pivot: [armX, 0.82, 0.09] })];
+t('biped arm (anim 5) sweeping into biped leg (anim 4) → ANIM_COLLISION', biped(0.18), (r) => codes(r).includes('ANIM_COLLISION'));
+t('biped arm (anim 5) and leg (anim 4) with lateral clearance → clean', biped(0.28), (r) => !codes(r).includes('ANIM_COLLISION'));
 t('foundation sunk 10 cm below ground is allowed', () => [part(box(1, 0.4, 1), [0, 0.1, 0])], (r) => !codes(r).includes('GROUND_CONTACT'));
 t('foundation sunk 30 cm below ground → GROUND_CONTACT', () => [part(box(1, 0.4, 1), [0, -0.1, 0])], (r) => codes(r).includes('GROUND_CONTACT'));
 t('lowest point 12 cm above the ground → GROUND_CONTACT', () => [part(box(1, 0.2, 1), [0, 0.22, 0])], (r) => codes(r).includes('GROUND_CONTACT'));

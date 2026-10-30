@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Two-command wave pipeline (docs/plan/PRODUCT_WAVES.md §7):
 //   npm run wave            auto-lands any completed open wave, then opens/resumes the next wave with its built-in preset
-//   npm run wave -- status  full board: state, issue progress (done/total), preset (runner:model, effort, parallel) & track
+//   npm run wave -- status  full board: state, issue progress (done/total), preset (runner:model+advisor, effort, parallel) & track
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -10,7 +10,7 @@ import { mainRoot, loadPlan, ordered, withState, waveProgress, readiness, curren
 import { wavePrompt, resolvePreset, buildRunnerCommand } from './prompt.mjs';
 
 const args = process.argv.slice(2);
-const VALUE_OPTS = ['--tags', '--parallel', '--runner', '--model', '--mode', '--effort'];
+const VALUE_OPTS = ['--tags', '--parallel', '--runner', '--model', '--advisor', '--mode', '--effort'];
 const flag = (n) => args.includes(n);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_OPTS.includes(args[i - 1]));
@@ -22,6 +22,7 @@ const byId = (n) => plan.waves.find((w) => w.id === `W${String(n).padStart(2, '0
 const overrides = () => ({
   runner: opt('--runner', null),
   model: opt('--model', null),
+  advisor: opt('--advisor', null),
   mode: opt('--mode', null),
   effort: opt('--effort', null),
   parallel: opt('--parallel', null),
@@ -43,8 +44,8 @@ function status() {
           : r.ready
             ? 'ready'
             : `blocked by ${r.missing.map((d) => d.id).join(', ')}`;
-    const agent = `${p.runner}:${p.model}`.padEnd(13);
-    const params = `eff=${p.effort} par=${p.parallel}`.padEnd(16);
+    const agent = p.label.padEnd(19);
+    const params = `par=${p.parallel}`.padEnd(7);
     console.log(`${w.id}  ${state.padEnd(25)} ${tagLabel.padEnd(7)} ${agent} ${params} ${p.track.padEnd(15)} ${w.slug}`);
   }
 }
@@ -120,7 +121,7 @@ function next() {
     if (!r.ready) return console.log(`${w.id} is blocked by ${r.missing.map((d) => d.id).join(', ')}`);
     console.log(
       `would ${w.open ? 'resume' : 'open'} ${w.id} ${w.slug} (${progress.done.length}/${progress.total.length} issues done) in ${w.worktree} ` +
-      `with preset ${preset.runner}:${preset.model} (cli=${preset.cliModel}, mode=${preset.mode}, effort=${preset.effort}, parallel=${preset.parallel}, plan=${preset.plan})`,
+      `with preset ${preset.label} (cli=${preset.cliModel}${preset.advisor ? `, advisor=${preset.advisor}` : ''}, mode=${preset.mode}, parallel=${preset.parallel}, plan=${preset.plan})`,
     );
     return;
   }
@@ -129,7 +130,7 @@ function next() {
   const { cmd, args: cmdArgs } = buildRunnerCommand(preset, prompt, [dirname(w.worktree), root]);
   console.log(
     `\n▶ ${w.id} ${w.slug} (${progress.done.length}/${progress.total.length} done) — ${w.worktree}` +
-    ` — preset ${preset.runner}:${preset.model} (effort=${preset.effort}, parallel=${preset.parallel}, mode=${preset.mode})` +
+    ` — preset ${preset.label} (parallel=${preset.parallel}, mode=${preset.mode})` +
     `${stacked.length ? ` — stacked on ${stacked.join(', ')}` : ''}`,
   );
   if (flag('--no-launch')) {
