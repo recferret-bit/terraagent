@@ -13,6 +13,15 @@ export interface PlanetSubscriber {
   onSnapshot?(s: { tick: number; bytes: Uint8Array }): void;
 }
 
+export interface FullState {
+  readonly planetId: string;
+  readonly tick: number;
+  readonly bytes: Uint8Array;
+  readonly simVersion: number;
+  readonly dataHash: string;
+  readonly planetType: string;
+}
+
 export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'>;
 
 interface Waiter<T> { resolve(v: T): void; reject(e: Error): void }
@@ -25,6 +34,8 @@ export class GamePlanets {
   private readonly loading = new Map<string, Waiter<number>[]>();
   private readonly loaded = new Set<string>();
   private readonly cmdWaiters = new Map<string, Waiter<CommandOutcomeMsg>[]>();
+  private readonly fullWaiters = new Map<number, Waiter<FullState>>();
+  private nextReq = 1;
   private readonly subs = new Map<string, Set<PlanetSubscriber>>();
   private readonly shutdownHooks: (() => void | Promise<void>)[] = [];
   private readonly unlisten: () => void;
@@ -89,6 +100,24 @@ export class GamePlanets {
     else for (let t = 0; t < this.pool.size; t++) this.pool.send(t, { t: 'snapshotNow' });
   }
 
+  isLoaded(planetId: string): boolean {
+    return this.loaded.has(planetId);
+  }
+
+  /** Engine snapshot + simVersion + dataHash of a loaded planet, fetched from its owning thread (welcome payload). */
+  fullState(planetId: string, timeoutMs = 10_000): Promise<FullState> {
+    return new Promise<FullState>((resolve, reject) => {
+      const reqId = this.nextReq++;
+      const timer = setTimeout(() => { this.fullWaiters.delete(reqId); reject(new Error(`fullState timeout for ${planetId}`)); }, timeoutMs);
+      this.fullWaiters.set(reqId, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
+      if (!this.loaded.has(planetId) || !this.pool.sendToPlanet(planetId, { t: 'fullState', planetId, reqId })) {
+        this.fullWaiters.delete(reqId);
+        clearTimeout(timer);
+        reject(new Error(`planet ${planetId} is not loaded`));
+      }
+    });
+  }
+
   /** Registers work to run before threads stop (a later issue snapshots every planet here). */
   onBeforeShutdown(fn: () => void | Promise<void>): void {
     this.shutdownHooks.push(fn);
@@ -99,6 +128,7 @@ export class GamePlanets {
     await this.pool.shutdown();
     this.unlisten();
     const err = new Error('game threads stopped');
+    for (const [id, w] of [...this.fullWaiters]) { this.fullWaiters.delete(id); w.reject(err); }
     for (const id of [...this.loading.keys()]) this.failLoad(id, err);
     for (const key of [...this.cmdWaiters.keys()]) this.settleCmd(key, { ok: false, commandId: key.split('\0')[1] ?? '', code: 'thread_down' });
   }
@@ -115,6 +145,11 @@ export class GamePlanets {
         return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick });
       case 'delta': return this.each(msg.planetId, (s) => s.onDelta?.(msg));
       case 'event': return this.each(msg.planetId, (s) => s.onEvent?.(msg.events));
+      case 'fullState': {
+        const w = this.fullWaiters.get(msg.reqId);
+        this.fullWaiters.delete(msg.reqId);
+        return w?.resolve(msg);
+      }
       case 'snapshot': return this.each(msg.planetId, (s) => s.onSnapshot?.(msg));
       case 'error':
         if (msg.planetId && this.loading.has(msg.planetId)) this.failLoad(msg.planetId, new Error(msg.message));

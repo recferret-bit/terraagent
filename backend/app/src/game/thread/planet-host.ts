@@ -60,6 +60,7 @@ export class PlanetHost {
         return;
       }
       case 'snapshotNow': return this.snapshotNow(msg.planetId);
+      case 'fullState': return this.fullState(msg.planetId, msg.reqId);
       case 'ctl': return this.ctl(msg);
     }
   }
@@ -113,6 +114,17 @@ export class PlanetHost {
       const bytes = owned(snapshot(p.state));
       this.post({ t: 'snapshot', planetId: id, tick: p.state.meta.tick, bytes }, [bytes.buffer as ArrayBuffer]);
     }
+  }
+
+  /** Reply to `fullState`: the engine snapshot (D-31) plus the sim/data identity the client must match (SIM-X-08). */
+  private fullState(planetId: string, reqId: number): void {
+    const p = this.planets.get(planetId);
+    if (!p) return this.post({ t: 'error', thread: this.thread, planetId, message: `fullState: planet ${planetId} is not loaded` });
+    const bytes = owned(snapshot(p.state));
+    this.post({
+      t: 'fullState', planetId, reqId, tick: p.state.meta.tick, bytes, simVersion: p.state.meta.simVersion,
+      dataHash: p.pipeline.config.data.hash, planetType: p.state.meta.planetType,
+    }, [bytes.buffer as ArrayBuffer]);
   }
 
   stats(): PlanetStats[] {

@@ -36,6 +36,7 @@ export type ToThread =
   | { readonly t: 'subscribe'; readonly planetId: string }
   | { readonly t: 'unsubscribe'; readonly planetId: string }
   | { readonly t: 'snapshotNow'; readonly planetId?: string }
+  | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number }
   | ({ readonly t: 'ctl' } & CtlOp);
 
 export interface PlanetStats {
@@ -56,6 +57,7 @@ export type FromThread =
   | { readonly t: 'ack'; readonly planetId: string; readonly commandId: string; readonly appliedAtTick: number }
   | { readonly t: 'reject'; readonly planetId: string; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number }
   | { readonly t: 'snapshot'; readonly planetId: string; readonly tick: number; readonly bytes: Uint8Array }
+  | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number; readonly tick: number; readonly bytes: Uint8Array; readonly simVersion: number; readonly dataHash: string; readonly planetType: string }
   | { readonly t: 'stats'; readonly thread: number; readonly reqId: number; readonly planets: PlanetStats[]; readonly steps: number }
   | { readonly t: 'error'; readonly thread: number; readonly planetId?: string; readonly commandId?: string; readonly message: string }
   | { readonly t: 'stopped'; readonly thread: number };
