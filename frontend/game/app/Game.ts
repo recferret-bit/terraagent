@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { getPresetDimensions, getViewportPreset, isShaderOptimized, setShaderOptimized, setViewportPreset } from '@terra/render/core/perfConfig';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import type { OrbitalStage } from '@terra/render/orbit/types';
@@ -44,7 +45,7 @@ export class Game {
   private phase: Phase = 'menu';
   private menu!: MainMenu;
   private stage: OrbitalStage | null = null;
-  private settings: MenuSettings = { bloom: true, quality: 'high', skipCinematic: false };
+  private settings: MenuSettings = { bloom: true, quality: 'high', skipCinematic: false, optimized: isShaderOptimized(), resolution: getViewportPreset() };
   private baseChildren = new Set<THREE.Object3D>();
   // per-session
   private spec!: PlanetSpec; private surface: PlanetSurface | null = null;
@@ -72,6 +73,7 @@ export class Game {
       onDeploy: (k, s, st) => { this.settings = st; this.deploy(k, s); },
       onSettings: (st) => { this.settings = st; this.applySettings(); this.schedulePrepare(); },
     }, kind, seed);
+    this.settings = this.menu.settings;
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
     this.loop();
@@ -92,9 +94,11 @@ export class Game {
   private makeSpec(kind: PlanetKind, seed: number): PlanetSpec { return { ...PLANET_SPECS[kind], seed }; }
 
   private applySettings() {
+    setShaderOptimized(this.settings.optimized);
+    setViewportPreset(this.settings.resolution);
     this.viewport.bloom.enabled = this.settings.bloom;
-    this.viewport.renderer.setPixelRatio(this.settings.quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2));
-    this.viewport.resize();
+    const dpr = this.settings.quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2);
+    this.viewport.setResolution(getPresetDimensions(this.settings.resolution), dpr);
   }
 
   private mountStage(spec: PlanetSpec) {

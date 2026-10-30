@@ -9,3 +9,4 @@ export { defineEvent, type EventDef } from './events/define';
 export * from './commands/index.generated';
 export * from './events/index.generated';
 export * from './rest';
+export * from './precheck';

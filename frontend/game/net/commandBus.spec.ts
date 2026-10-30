@@ -60,4 +60,15 @@ describe('CommandBus', () => {
     expect(f.listeners()).toBe(0);
     expect(await p).toMatchObject({ ok: false, code: 'not_connected' });
   });
+
+  it('reports sends to onSent unless predict is false', () => {
+    const f = fakeTransport();
+    const seen: string[] = [];
+    const bus = new CommandBus(f.t, undefined, (_id, kind) => seen.push(kind));
+    void bus.send('dev.teleport', { id: 1 });
+    void bus.send('dev.teleport', { id: 1 }, { predict: false });
+    expect(f.sent).toHaveLength(2);
+    expect(seen).toEqual(['dev.teleport']);
+    bus.dispose();
+  });
 });

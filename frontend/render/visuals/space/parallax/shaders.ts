@@ -21,15 +21,26 @@ void main(){
 
 export const NEB_FRAG = /* glsl */ `
 ${GLSL_NOISE}
-uniform vec3 uA, uB; uniform float uTime, uI, uSeed; varying vec2 vUv;
+uniform vec3 uA, uB; uniform float uTime, uI, uSeed, uOpt; varying vec2 vUv;
 void main(){
+  float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x) * smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.82, vUv.y);
   vec2 p = (vUv - 0.5) * vec2(3.2, 2.0) + vec2(uSeed, uSeed * 0.7);
+  if (uOpt > 0.5) {
+    if (edge <= 0.001) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+    vec2 w = vec2(vnoise2(p * 1.1 + uTime * 0.004), vnoise2(p * 1.1 + 7.0 - uTime * 0.003));
+    float n = fbm2Fast(p * 1.6 + (w - 0.5) * 1.8);
+    float m = smoothstep(0.42, 0.85, n);
+    if (m <= 0.001) { gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+    float lane = smoothstep(0.35, 0.8, fbm2Fast(p * 3.2 + 11.0 + w));
+    vec3 col = mix(uA, uB, smoothstep(0.3, 0.8, w.x)) * m * (0.45 + 0.8 * lane);
+    gl_FragColor = vec4(col * uI * edge, 1.0);
+    return;
+  }
   vec2 w = vec2(fbm2(p * 1.1 + uTime * 0.004), fbm2(p * 1.1 + 7.0 - uTime * 0.003));
   float n = fbm2(p * 1.6 + (w - 0.5) * 1.8);
   float m = smoothstep(0.42, 0.85, n);
   float lane = smoothstep(0.35, 0.8, fbm2(p * 3.2 + 11.0 + w));
   vec3 col = mix(uA, uB, smoothstep(0.3, 0.8, fbm2(p * 0.8 + 3.0))) * m * (0.45 + 0.8 * lane);
-  float edge = smoothstep(0.0, 0.18, vUv.x) * smoothstep(1.0, 0.82, vUv.x) * smoothstep(0.0, 0.18, vUv.y) * smoothstep(1.0, 0.82, vUv.y);
   gl_FragColor = vec4(col * uI * edge, 1.0);
 }`;
 

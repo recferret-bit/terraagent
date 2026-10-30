@@ -1,23 +1,40 @@
 import { track } from '../../core/analytics';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
-import type { Disposable, FeatureServices, GameView } from '../../core/registry/types';
+import type { Disposable, FeatureServices, GameView, HostKind, RendererInstance } from '../../core/registry/types';
 import type { ClientFlagsStore } from '../../core/flags';
 import { mountDevConsole } from '../../dev/console';
 import { httpDevServer } from '../../net/devServer';
 
-/** Feature-registry HUD for the online flow: re-mounts when the flags change and replays the last view into the new panels. */
+/** Analytics intake is a server feature: the local host records nothing. */
+const noTrack: typeof track = () => undefined;
+
+/**
+ * Feature-registry HUD + dev console for the online flow: re-mounts both when the flags change (so only enabled
+ * waves' panels and commands exist) and replays the last view into the new panels.
+ */
 export class FeatureHud {
   private root: HudRoot | null = null;
   private devConsole: Disposable | null = null;
+  private renderers: RendererInstance[] = [];
   private last: GameView = {};
   private readonly off: () => void;
+  private readonly host: HostKind;
+  private readonly services: Partial<FeatureServices>;
 
   constructor(
     private readonly parent: HTMLElement,
     private readonly flags: ClientFlagsStore,
-    private readonly extraServices: Partial<FeatureServices> = {},
+    hostOrServices: HostKind | Partial<FeatureServices> = 'server',
+    maybeServices: Partial<FeatureServices> = {},
   ) {
+    if (typeof hostOrServices === 'string') {
+      this.host = hostOrServices;
+      this.services = maybeServices;
+    } else {
+      this.host = 'server';
+      this.services = hostOrServices;
+    }
     this.off = flags.onChange(() => this.mount());
     this.mount();
   }
@@ -27,26 +44,46 @@ export class FeatureHud {
     this.root?.update(view);
   }
 
+  /** Per-frame tick of the features' 3D renderers with the newest view. */
+  frame(view: GameView, dt: number): void {
+    for (const r of this.renderers) r.update(view, dt);
+  }
+
   private mount(): void {
+    this.disposeRenderers();
     this.root?.dispose();
     this.devConsole?.dispose();
     const { source } = this.flags.current;
     const set = this.flags.set;
-    const features = loadFeatures({ flags: set, host: 'server' });
+    const features = loadFeatures({ flags: set, host: this.host });
     const ctx = {
       flags: set,
-      host: 'server' as const,
-      services: { track, flagsSource: source, devServer: httpDevServer(), ...this.extraServices },
+      host: this.host,
+      services: {
+        devServer: httpDevServer(),
+        ...this.services,
+        track: this.host === 'local' ? noTrack : track,
+        flagsSource: source,
+      },
     };
     this.root = new HudRoot(this.parent, features, ctx);
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof location !== 'undefined') {
       this.devConsole = mountDevConsole({ parent: this.parent, features, ctx });
     }
+    this.renderers = features.flatMap((f) => f.renderers ?? []).flatMap((r) => {
+      try { return [r.mount(ctx)]; } catch (e) { console.warn(`renderer ${r.id} failed`, e); return []; }
+    });
     this.root.update(this.last);
+  }
+
+  private disposeRenderers(): void {
+    for (const r of this.renderers) { try { r.dispose(); } catch (e) { console.warn(e); } }
+    this.renderers = [];
   }
 
   dispose(): void {
     this.off();
+    this.disposeRenderers();
     this.root?.dispose();
     this.devConsole?.dispose();
     this.root = null;

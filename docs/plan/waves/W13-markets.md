@@ -20,15 +20,15 @@ Every Trade Hub is a **market stall** whose owner sets a fee (0–3 %). Players 
 
 ## Demo story (the e2e in words)
 
-1. Open `?scenario=w13` → two logged-in colonies (A and B, two browser contexts) on one planet, each with an online Trade Hub T1 and cargo in orbit: A has 600 water, B has 400 metals.
-2. A opens their Trade Hub → **Market** tab → sets the stall fee to **1 %**.
+1. Open `/play.html?scenario=w13&as=a` in one browser profile (colony A); the dev console `planet b` prints a join link (`/play.html?join=<planet id>&as=b`) — open it in a second profile (colony B) → two logged-in colonies on one planet, each with an online Trade Hub T1 and cargo in orbit: A has 600 water, B has 400 metals. (Solo alternative: dev console `market.seed here bio.water/metals.t1` adds a counterparty bot.)
+2. In A: click the Trade Hub → **Market** tab → set the stall fee to **1 %**.
 3. A places **sell 300 water for 120 metals** (TTL 1 h) at A's stall → the order appears in the book, and A's "Cargo in orbit" shows 300 water reserved.
-4. B places **buy 300 water for 120 metals** → match. Both see a toast **"Contract signed: 300 water for 120 metals at A's Port (1 % fee)"**. Balances: B +297 water, A +120 metals, and A's stall earns 3 water in fees. `/dev/chain` shows one `execute_intents` batch with 3 legs that sum to zero per token.
-5. The price board shows the last price (0.4 metals per water), 24 h volume and a sparkline. The global map Market layer (if W04 is on) shows the price tag at A's hub.
+4. In B: place **buy 300 water for 120 metals** → match. Both see a toast **"Contract signed: 300 water for 120 metals at A's Port (1 % fee)"**. Balances: B +297 water, A +120 metals, and A's stall earns 3 water in fees. `/dev/chain/` shows one `execute_intents` batch with 3 legs that sum to zero per token.
+5. The Market tab's price board shows the last price (0.4 metals per water), 24 h volume and a sparkline. The global map (`M`) Market layer (if W04 is on) shows the price tag at A's hub.
 6. B places a partial buy of 100 water at a higher price against A's order of 200 → a partial fill of 100, with 100 left on the book.
 7. A cancels the rest → the order disappears, and the reserved cargo is freed.
-8. Set the mock Intents failure rate to 1.0 and match two new orders → settlement fails, both orders go back to the book, the reservations stay correct, and a "Contract failed, order returned" toast shows.
-9. Restart with `TA_WAVES=..12` → the Market tab is gone, and market commands are rejected `wave_disabled`.
+8. Dev console `near.mock.fail intents 1.0`, then match two new orders → settlement fails, both orders go back to the book, the reservations stay correct, and a "Contract failed, order returned" toast shows.
+9. Run `TA_WAVES=..12 npm run dev:restart` and reload `/play.html?scenario=w13` → the Market tab is gone, and market commands are rejected `wave_disabled`.
 
 ## Hackathon slice
 

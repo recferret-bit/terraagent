@@ -12,16 +12,16 @@ Players have a home outside the planet. The `/me` page shows who they are (pilot
 
 ## Demo story (e2e)
 
-1. Load `?scenario=w12` (a pilot with 2 past colonies, a live colony at S4 and some facts) → open `/me.html` → see the sticky tabs **PILOT · PROGRESS · PLANETS · HISTORY · ACHIEVEMENTS · PLAY**.
+1. Open `/play.html?scenario=w12` (a pilot with 2 past colonies, a live colony at S4 and some facts), then in the same browser open `/me.html` → see the sticky tabs **PILOT · PROGRESS · PLANETS · HISTORY · ACHIEVEMENTS · PLAY**.
 2. Pilot: name, Pilot ID, "pilot since", level 4 badge, XP bar 1 120 / 1 500, title "Surveyor".
 3. Progress: the stage track shows `unlockStage` S4, the next 3 closest achievements show progress bars, and the stats tiles show colonies, tiles prepared, Living tiles and more.
 4. Planets: one current colony card with **Dive in**, and past cards for an eliminated colony and a Settled colony (Settled only if W21 is on).
 5. History: filter by planet → the timeline shows only that planet's rows; scroll → the next page loads.
 6. Achievements: the header reads "ACHIEVEMENTS · 9 / 60". Hover a card → it flips (sheen); press Tab + Enter → it flips with `aria-expanded=true`; with reduced motion → it crossfades.
-7. Dev console `fact add groundbreaker 900` → the Groundbreaker Silver card turns earned within 1 s; XP +150 once; a level-up toast if the threshold is crossed. Run the same command again → no second XP.
-8. The card back shows "Badge minting…", then "Recorded (mock)" after the outbox runs (1 h delay, warped).
-9. Cards of families whose producer wave is off (e.g. Warlord with `TA_WAVES=..12`) show "Coming soon".
-10. Set `TA_WAVES=..11` → no `/me` link in the game, and `/me.html` shows a "Player page is off" plate (`/v1/me/profile` → `wave_disabled`); the game is unaffected.
+7. Dev console on the game tab (`/play.html?scenario=w12`) `fact add groundbreaker 900` → on `/me.html` (reload) the Groundbreaker Silver card turns earned within 1 s; XP +150 once; a level-up toast in the game if the threshold is crossed. Run the same command again → no second XP.
+8. The card back shows "Badge minting…", then "Recorded (mock)" after the outbox runs (1 h delay; dev console `warp 100` for a minute).
+9. Cards of families whose producer wave is off (Warlord, Diplomat, Merchant, Settler with `TA_WAVES=..12 npm run dev:restart`) show "Coming soon".
+10. Run `TA_WAVES=..11 npm run dev:restart` → no `/me` link in the game, and `/me.html` shows a "Player page is off" plate (`/v1/me/profile` → `wave_disabled`); the game is unaffected.
 
 ## Hackathon slice
 

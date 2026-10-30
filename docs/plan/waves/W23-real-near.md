@@ -22,12 +22,12 @@ Swap each NEAR port from its Postgres mock to the **real adapter**, one port at 
 
 ## Demo story (wave e2e, "real mode")
 
-1. Set `NEAR_ADAPTER_IDENTITY=testnet`, `NEAR_ADAPTER_RELAYER=testnet` → log in with the real social provider → a `{name}.terraagent.testnet` account appears on the explorer, with no wallet popup.
-2. Set `NEAR_ADAPTER_CARGO=mainnet` → export 1 metal at the Trade Hub → a real NEP-245 mint tx with a nearblocks link on the cargo panel.
-3. Set `NEAR_ADAPTER_INTENTS=mainnet` → place two mirror orders between two dev colonies → `simulate_intents` passes, then `execute_intents` settles one tiny trade on mainnet → both colonies see the trade, with a real receipt.
-4. Open **Settings → Chain status** (dev) → the table shows each port as mock / testnet / mainnet with health. The README table matches.
-5. Rollback: set `NEAR_ADAPTER_INTENTS=mock` and restart → markets work on the mock again; real balances are shown read-only with a "frozen in chain mode" notice.
-6. Every earlier wave e2e still passes in default (all-mock) mode.
+1. Set `NEAR_ADAPTER_IDENTITY=testnet NEAR_ADAPTER_RELAYER=testnet` and run `npm run dev:restart` → at `/play.html?scenario=w23` log in with the real social provider → a `{name}.terraagent.testnet` account appears on the explorer (the nearblocks link in **Settings → Chain status**), with no wallet popup.
+2. Set `NEAR_ADAPTER_CARGO=mainnet` and `npm run dev:restart` → export 1 metal at the Trade Hub (Trade Hub panel → Export) → a real NEP-245 mint tx with a nearblocks link on the cargo panel.
+3. Set `NEAR_ADAPTER_INTENTS=mainnet` and `npm run dev:restart` → in the Market tab place two mirror orders between two dev colonies (two profiles: `&as=a`, and the join link from the dev console `planet b`) → `simulate_intents` passes, then `execute_intents` settles one tiny trade on mainnet → both colonies see the trade, with a real receipt.
+4. Open **Settings → Chain status** (dev), or run `near.ports` in the dev console → the table shows each port as mock / testnet / mainnet with health. The README table matches.
+5. Rollback: run `NEAR_ADAPTER_INTENTS=mock npm run dev:restart` → markets work on the mock again; real balances are shown read-only with a "frozen in chain mode" notice.
+6. (e2e only) Every earlier wave e2e still passes in default (all-mock) mode: `npm run e2e -- --waves ..23`.
 
 ## Owned paths
 

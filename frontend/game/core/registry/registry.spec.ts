@@ -15,6 +15,11 @@ describe('selectFeatures', () => {
     const all = [mk('a', 'W00', { hostOnly: 'server' }), mk('b', 'W00')];
     expect(selectFeatures(all, opts(['W00'], 'local')).map((f) => f.id)).toEqual(['b']);
   });
+  it('hides local-only features on the game server host', () => {
+    const all = [mk('a', 'W00', { hostOnly: 'local' }), mk('b', 'W00')];
+    expect(selectFeatures(all, opts(['W00'], 'server')).map((f) => f.id)).toEqual(['b']);
+    expect(selectFeatures(all, opts(['W00'], 'local')).map((f) => f.id)).toEqual(['a', 'b']);
+  });
   it('sorts by id', () => {
     expect(selectFeatures([mk('z', 'W00'), mk('a', 'W00')], opts(['W00'])).map((f) => f.id)).toEqual(['a', 'z']);
   });

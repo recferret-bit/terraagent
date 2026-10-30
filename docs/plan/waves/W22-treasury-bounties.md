@@ -20,14 +20,14 @@
 
 ## Demo story (wave e2e)
 
-1. Load `?scenario=w22` → a planet with 2 colonies, a fee history and a nest → **Planet menu → Council** → see the treasury balance (fees collected), 2 members and no proposals.
-2. Settle one market trade (W13) → the treasury balance rises by `TREASURY_FEE_SHARE_BP` of the fee.
-3. Propose **Meteor shield** → colony B votes yes via a second browser → it passes → the HUD shows the shield badge with a timer, and the meteor rate drops (the console `hazard.stats` shows −75 %).
-4. **Planet menu → Bounties** → post "Clear nest N-3: 200 metals" → the escrow receipt (mock) appears and the reward leaves the poster's cargo.
-5. Colony B claims and destroys the nest → `bountyCompleted` → B's cargo +200 metals, and the board shows Paid.
-6. Post "Defend area for 2 h" and hire a **mercenary** → a squad of NPC units spawns on your territory, guards it, and leaves at the end. Escrow pays the mercenary account.
-7. Let a bounty expire → the poster is refunded.
-8. Run with `TA_WAVES=..21` → no Council or Bounties menus, and no fee share is taken from trades.
+1. Open `/play.html?scenario=w22` → a planet with 2 colonies, a fee history and a nest → **Planet menu → Council** → see the treasury balance (fees collected), 2 members and no proposals.
+2. Settle one market trade (W13, two profiles as in the W13 demo; or dev console `treasury.fund <planet> <amount>`) → the treasury balance rises by `TREASURY_FEE_SHARE_BP` of the fee.
+3. Council → propose **Meteor shield** → colony B votes yes in a second profile (open the join link that the dev console `planet b` prints) → it passes → the HUD shows the shield badge with a timer. (Dev console `treasury.effect meteor_shield` shows the badge without a vote; the −75 % meteor rate itself is (e2e only).)
+4. **Planet menu → Bounties** → post "Clear nest N-3: 200 metals" → the escrow receipt (mock, `/dev/chain/`) appears and the reward leaves the poster's cargo.
+5. Colony B claims and destroys the nest (or dev console `bounty.complete <id>`) → `bountyCompleted` → B's cargo +200 metals, and the board shows Paid.
+6. Post "Defend area for 2 h" and hire a **mercenary** (`merc.hire 2` in the console) → a squad of NPC units spawns on your territory, guards it, and leaves at the end (`warp 100`). Escrow pays the mercenary account in `/dev/chain/`.
+7. Let a bounty expire (`warp 100`) → the poster is refunded.
+8. Run `TA_WAVES=..21 npm run dev:restart` and reload `/play.html?scenario=w22` → no Council or Bounties menus, and no fee share is taken from trades.
 
 ## Owned paths
 

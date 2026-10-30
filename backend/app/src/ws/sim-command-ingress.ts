@@ -1,4 +1,4 @@
-import { commandDef, hasCommandKind, parseCommandArgs, REJECT_CODES, type ClientMessageOf, type RejectCode, type SimCommandV1 } from '@terra/contracts';
+import { hasCommandKind, precheckClientCommand, REJECT_CODES, type ClientMessageOf, type RejectCode, type SimCommandV1 } from '@terra/contracts';
 import { Counter, type Registry } from 'prom-client';
 import type { ColonyRecord } from '../core/home/home.repository';
 import type { FlagsService, CommandWaveLookup } from '../flags/flags.service';
@@ -44,50 +44,53 @@ export class SimCommandIngress implements CommandIngress {
   }
 
   handle(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>): void {
-    const pre = this.precheck(cmd);
-    if (pre.reject) return this.reject(ctx, cmd, pre.reject, pre.detail);
-
     const resolved = this.resolveColony(ctx.playerId, ctx.planetId);
     if (resolved instanceof Promise) {
       resolved.then(
-        (colony) => this.dispatchWithColony(ctx, cmd, pre, colony),
+        (colony) => this.dispatchWithColony(ctx, cmd, colony),
         () => this.reject(ctx, cmd, 'internal', 'colony lookup failed'),
       );
       return;
     }
-    this.dispatchWithColony(ctx, cmd, pre, resolved);
+    this.dispatchWithColony(ctx, cmd, resolved);
   }
 
   private resolveColony(playerId: string, planetId: string): ColonyRecord | null | Promise<ColonyRecord | null> {
+    const fallback = (): ColonyRecord | null =>
+      this.o.planets.isScenarioColonyPlanet?.(planetId)
+        ? ({ id: 'col_0', playerId, planetId, colonyIndex: 0, name: 'Colony 1', spawnQ: 0, spawnR: 0, status: 'ACTIVE' } as ColonyRecord)
+        : null;
     const repo = this.o.homeRepo;
-    if (!repo) return null;
+    if (!repo) return fallback();
     if (repo.findMemColonyByPlayerAndPlanet) {
       const mem = repo.findMemColonyByPlayerAndPlanet(playerId, planetId);
-      if (mem || !repo.dbEnabled) return mem;
+      if (mem || !repo.dbEnabled) return mem ?? fallback();
     }
     if (repo.findColonyByPlayerAndPlanet) {
-      return repo.findColonyByPlayerAndPlanet(playerId, planetId);
+      return repo.findColonyByPlayerAndPlanet(playerId, planetId).then((c) => c ?? fallback());
     }
     if (repo.findColonyByPlayerId) {
-      return repo.findColonyByPlayerId(playerId).then((c) => (c?.planetId === planetId ? c : null));
+      return repo.findColonyByPlayerId(playerId).then((c) => (c?.planetId === planetId ? c : fallback()));
     }
     if (repo.findColonyByPlayer) {
-      return repo.findColonyByPlayer(playerId).then((c) => (c?.planetId === planetId ? c : null));
+      return repo.findColonyByPlayer(playerId).then((c) => (c?.planetId === planetId ? c : fallback()));
     }
-    return null;
+    return fallback();
   }
 
   private dispatchWithColony(
     ctx: CommandContext,
     cmd: ClientMessageOf<'cmd'>,
-    pre: { args: unknown; dev: boolean },
     colony: ColonyRecord | null,
   ): void {
-    if (!pre.dev) {
-      if (!colony) return this.reject(ctx, cmd, 'not_own_colony');
-      if (colony.status === 'ELIMINATED' || colony.state === 'ELIMINATED') {
-        return this.reject(ctx, cmd, 'colony_inactive');
-      }
+    const pre = precheckClientCommand(cmd.d.kind, cmd.d.args, {
+      gate: (k) => this.o.flags.gate(k, this.waveOf),
+      production: this.o.production,
+      hasColony: Boolean(colony),
+    });
+    if (!pre.ok) return this.reject(ctx, cmd, pre.code, pre.detail);
+    if (!pre.dev && (colony?.status === 'ELIMINATED' || colony?.state === 'ELIMINATED')) {
+      return this.reject(ctx, cmd, 'colony_inactive');
     }
     const simCmd: SimCommandV1 = {
       colonyIndex: colony ? colony.colonyIndex : null,
@@ -105,20 +108,6 @@ export class SimCommandIngress implements CommandIngress {
       },
       () => this.reject(ctx, cmd, 'internal', 'engine unavailable'),
     );
-  }
-
-  private precheck(cmd: ClientMessageOf<'cmd'>): { reject: RejectCode; detail?: string; args?: undefined; dev?: undefined } | { reject?: undefined; detail?: undefined; args: unknown; dev: boolean } {
-    const gate = this.o.flags.gate(cmd.d.kind, this.waveOf);
-    if (gate) return { reject: gate };
-    const parsed = parseCommandArgs(cmd.d.kind, cmd.d.args);
-    if (!hasCommandKind(cmd.d.kind)) return { reject: 'unknown_kind' };
-    const def = commandDef(cmd.d.kind);
-    if (def.origin !== 'client' || (def.dev && this.o.production)) return { reject: 'unknown_kind' };
-    if (!parsed.success) {
-      const i = parsed.error.issues[0];
-      return { reject: 'invalid_args', detail: i ? `${i.path.join('.') || 'args'}: ${i.message}`.slice(0, 200) : undefined };
-    }
-    return { args: parsed.data, dev: Boolean(def.dev) };
   }
 
   private reject(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>, code: RejectCode, detail?: string): void {

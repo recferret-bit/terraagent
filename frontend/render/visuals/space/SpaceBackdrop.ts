@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isShaderOptimized } from '../../core/perfConfig';
 import { mulberry32 } from '../terrain/noise';
 import { DOME_VERT, DOME_FRAG, STAR_POINT_VERT, STAR_POINT_FRAG } from './backdropShaders';
 
@@ -70,7 +71,7 @@ export function createSpaceBackdrop(opts: SpaceBackdropOptions = {}): SpaceBackd
     uSunDir: { value: sunDir }, uSunColor: { value: new THREE.Color(1.0, 0.92, 0.78) }, uSunDisc: { value: 1 },
     uHorizonH: { value: 0 }, uBandUp: { value: 0 }, uBandI: { value: 0 }, uBandColor: { value: new THREE.Color(0xffa060) },
     uNebA: { value: new THREE.Color(opts.nebulaA ?? 0x2a3f9a) }, uNebB: { value: new THREE.Color(opts.nebulaB ?? 0x8a2a6a) },
-    uNebI: { value: 0.3 }, uTime: { value: 0 },
+    uNebI: { value: 0.3 }, uTime: { value: 0 }, uOpt: { value: isShaderOptimized() ? 1 : 0 },
   };
 
   const domeMat = new THREE.ShaderMaterial({
@@ -102,6 +103,7 @@ export function createSpaceBackdrop(opts: SpaceBackdropOptions = {}): SpaceBackd
     update(camera, time) {
       group.position.copy(camera.position);
       uniforms.uTime.value = time;
+      uniforms.uOpt.value = isShaderOptimized() ? 1 : 0;
       starOpacity.value = Math.min(1, uniforms.uSpace.value * 1.4) * (1 - uniforms.uCloud.value);
       stars.visible = starOpacity.value > 0.003;
     },

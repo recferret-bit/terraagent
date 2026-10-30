@@ -98,10 +98,8 @@ function planGateText(w, preset) {
   return `1. **Phase 1 — Plan & Contract-First Gate (serial):** Map out the dependency tiers for ${w.id}, then build and merge \`${w.id}-01\` (contracts, schemas, data rows, wave flag) SERIALLY into \`${w.branch}\` first before spawning any parallel subagents.`;
 }
 
-export function wavePrompt(w, title, { preset, stacked, progress }) {
-  const stack = stacked.length
-    ? `\nThis branch stacks the unlanded wave(s) ${stacked.map((d) => `${d.id} (\`${d.branch}\`)`).join(', ')} (PRODUCT_WAVES §7 step 2); never commit on their branches. If a stacked wave is still building in parallel and an issue here depends on a \`WNN-XX\` issue from it that landed after this branch opened, run \`git merge --no-edit <stacked-branch>\` on \`${w.branch}\` to pull it in.`
-    : '';
+export function wavePrompt(w, title, { preset, progress }) {
+  const stack = `\nThis branch was cut from \`main\` after every wave it depends on landed there (PRODUCT_WAVES §7: no stacking of unlanded waves). After any other wave lands, merge \`main\` into \`${w.branch}\` before building further.`;
   const skillsLine = preset.skills.length
     ? `\nMandatory skills for this wave: activate ${preset.skills.map((s) => `\`.agents/skills/${s}/SKILL.md\``).join(', ')} whenever touching their domain.`
     : '';
@@ -136,5 +134,5 @@ For each issue:
 
 Rules: build on the existing 3D renderer in \`frontend/render\` and the prototype views in \`frontend/game\` (PRODUCT_WAVES §4 "One renderer": extend and register, never replace or duplicate; keep its approved look and run the model validator + playground 4-view check for any model change); one engine (game rules only in \`shared/sim\`, D-31), registries instead of edits to shared files, balance numbers only in data tables (D-35), the layout of D-32 and the size/layer limits of AGENTS.md §6. Touch another wave's owned paths only where the wave file says so. Never push, never touch \`main\`.
 
-When every in-scope issue (${progress.total.length}/${progress.total.length}) has landed: merge the latest \`main\` into \`${w.branch}\`, run the wave e2e and every earlier wave's e2e (once the harness exists), start the dev stack, and finish with the wave's demo steps and the URL for the owner's manual check. On the next \`npm run wave\`, the completed wave will automatically land into \`main\` and open the next wave.`;
+When every in-scope issue (${progress.total.length}/${progress.total.length}) has landed: merge the latest \`main\` into \`${w.branch}\`, run the wave e2e and every earlier wave's e2e, and start the dev stack on this worktree's ports (\`.env.worktree\`). Then play every demo step yourself on that running stack and write the **owner check guide** \`docs/plan/checks/w${w.id.slice(1)}-check.md\` in the format of \`docs/plan/checks/README.md\` (worked example: \`docs/plan/checks/w00-check.md\`): before-you-start (ports, start/stop, how to reach every tool — the in-game dev console is the \`\` \` \`\` key, not DevTools), one numbered step per demo-story step with exact where / how / see, deferred and e2e-only steps marked, the automated checks, and "when you're done": \`npm run wave -- land ${w.id.slice(1)}\`. Add any new dev tool (URL parameter, console command, dev page, env variable) to \`docs/dev/DEV_TOOLS.md\`. Commit both, then finish with the guide as your final message. The owner lands the wave with \`npm run wave -- land ${w.id.slice(1)}\` (or the next \`npm run wave\`) after the check.`;
 }

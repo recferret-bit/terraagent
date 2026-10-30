@@ -7,8 +7,9 @@ export type OnlineMode = 'boot' | 'scenario' | 'host';
  * - Prototype mode (`null`):
  *   - `?planet=dune|oceanForest|forestRock` (or `?autodeploy=` / `?menutime=`)
  *   - `?host=local` without `?scenario=` (prototype world picker)
- *   - `!flags.has('W01')` (e.g. `?waves=..00`) without `?scenario=` or `?host=`
- * - W00 online mode (`'scenario'` | `'host'`):
+ *   - `!flags.has('W01')` (e.g. `?waves=..00`) without `?scenario=`, `?join=` or `?host=`
+ * - W00 / join online mode (`'scenario'` | `'host'`):
+ *   - `?join=<planetId>`
  *   - `?scenario=w00*` or `!flags.has('W01')` with `?scenario=` / `?host=`
  * - W01 automatic boot flow (`'boot'`):
  *   - Default on `/play.html` when `flags.has('W01')` (including `?scenario=w01*` or `?host=local&scenario=w01*`)
@@ -16,6 +17,7 @@ export type OnlineMode = 'boot' | 'scenario' | 'host';
 export function onlineMode(search: string): OnlineMode | null {
   const q = new URLSearchParams(search);
   if (q.has('planet') || q.has('autodeploy') || q.has('menutime')) return null;
+  if (q.has('join')) return 'scenario';
   const host = q.get('host');
   const scenario = q.get('scenario')?.trim().toLowerCase() ?? null;
   if (host === 'local' && !scenario) return null;

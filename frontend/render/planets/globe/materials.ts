@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isShaderOptimized } from '../../core/perfConfig';
 import type { PlanetSpec } from '../PlanetSpec';
 import { VERT } from './globeVert';
 import { GLOBE_FRAG } from './surfaceFrag';
@@ -9,7 +10,7 @@ import { KIND_INDEX, TERRA, colonyPoints, playerColorVecs } from './terraform';
 export type SharedUniforms = {
   uSunDir: THREE.IUniform<THREE.Vector3>; uSunI: THREE.IUniform<number>; uOpacity: THREE.IUniform<number>;
   uTime: THREE.IUniform<number>; uSkyBlend: THREE.IUniform<number>; uSkyColor: THREE.IUniform<THREE.Color>; uAtmStrength: THREE.IUniform<number>;
-  uCloudNear: THREE.IUniform<THREE.Vector2>; uHazeDist: THREE.IUniform<THREE.Vector2>;
+  uCloudNear: THREE.IUniform<THREE.Vector2>; uHazeDist: THREE.IUniform<THREE.Vector2>; uOpt: THREE.IUniform<number>;
 };
 
 const col = (n: number) => new THREE.Color(n);
@@ -19,6 +20,7 @@ export const createSharedUniforms = (spec: PlanetSpec): SharedUniforms => ({
   uSunI: { value: 1.05 }, uOpacity: { value: 1 }, uTime: { value: 0 },
   uSkyBlend: { value: 0 }, uSkyColor: { value: col(spec.sky.horizonColor) }, uAtmStrength: { value: 1 },
   uCloudNear: { value: new THREE.Vector2(0, 0.0001) }, uHazeDist: { value: new THREE.Vector2(100, 6000) },
+  uOpt: { value: isShaderOptimized() ? 1 : 0 },
 });
 
 /** The three shader layers of a globe (surface, cloud shell, atmosphere shell) with their shared uniform blocks. */
@@ -49,7 +51,7 @@ export function createGlobeMaterials(spec: PlanetSpec, radius: number, atmScale:
   const cloudMat = new THREE.ShaderMaterial({
     vertexShader: VERT, fragmentShader: CLOUD_FRAG, transparent: true, depthWrite: false,
     uniforms: {
-      ...shared, uSeed: { value: (spec.seed * 3) % 991 }, uCover: { value: o.cloudCover }, uCloudTween: { value: 1 }, uCloudCol: { value: col(o.cloudColor) }, uAtm: atm, uSunColor: sunColor,
+      ...shared, uRadius: radiusU, uSeed: { value: (spec.seed * 3) % 991 }, uCover: { value: o.cloudCover }, uCloudTween: { value: 1 }, uCloudCol: { value: col(o.cloudColor) }, uAtm: atm, uSunColor: sunColor,
     },
   });
   const atmMat = new THREE.ShaderMaterial({

@@ -1,9 +1,9 @@
 import 'reflect-metadata';
+import { MAX_CATCHUP } from '@terra/sim';
 import { afterEach, describe, expect, it } from 'vitest';
 import { devPlanetIds } from '../../src/game/dev-planets';
 import { GamePlanets } from '../../src/game/game-planets.service';
 import { SimThreadPool } from '../../src/game/sim-thread-pool';
-import { MAX_CATCHUP } from '../../src/game/thread/scheduler';
 
 let games: GamePlanets | undefined;
 afterEach(async () => { await games?.shutdown(); games = undefined; });

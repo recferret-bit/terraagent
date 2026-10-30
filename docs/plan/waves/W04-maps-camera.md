@@ -18,16 +18,16 @@ Layers and markers belonging to waves that are not enabled stay hidden. W04 depe
 
 ## Demo story (`e2e/w04.spec.ts`)
 
-1. Load `?scenario=w04`: a W01 colony (HQ, Hub, prepared ground), a second colony far away, and the map partly explored → **see** the minimap at the bottom-left showing tile states, own territory in orange, explored tiles dim and unexplored tiles black, and a white camera trapezoid.
+1. Open `/play.html?scenario=w04`: a W01 colony (HQ, Hub, prepared ground), a second colony far away, and the map partly explored → **see** the minimap at the bottom-left showing tile states, own territory in orange, explored tiles dim and unexplored tiles black, and a white camera trapezoid.
 2. Click the far corner of the minimap → **see** the camera pan there and the trapezoid move.
 3. Drag on the minimap → **see** the camera follow the drag continuously.
 4. Press `M` → **see** the global map fullscreen, with layer chips.
-5. Toggle `Terrain` off and `Territory` on → **see** the map redraw. With `TA_WAVES=..04`, the `Market`, `Threats` and `Walls` chips are absent.
+5. In the map's layer chips toggle `Terrain` off and `Territory` on → **see** the map redraw. Reload with `&waves=..04` (or `TA_WAVES=..04 npm run dev:restart`) → the `Market`, `Threats` and `Walls` chips are absent.
 6. Wheel-zoom to 3× and click a tile → **see** the overlay close and the camera fly to that tile.
-7. Box-select the HQ → **see** the selection ring and the selection panel.
+7. Drag a selection box around the HQ → **see** the selection ring and the selection panel.
 8. Press `Ctrl+1`, deselect, press `1` → **see** the HQ selected again; press `1` twice → **see** the camera centre on it.
-9. Use the dev console `alert.ping 40 12` → **see** a pulse on the minimap at that spot for 5 s.
-10. Toggle `?waves=..03` → **see** no minimap, no `M` handling and the old W01 camera behaviour.
+9. In the dev console run `alert.ping 40 12` → **see** a pulse on the minimap at that spot for 5 s.
+10. Reload with `&waves=..03` → **see** no minimap, no `M` handling and the old W01 camera behaviour.
 
 ## Hackathon slice
 

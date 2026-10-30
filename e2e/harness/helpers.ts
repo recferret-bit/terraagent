@@ -54,6 +54,13 @@ export async function loadScenario(page: Page, id: string, params: Record<string
   return waitForTick(page, () => true, opts.timeout ?? 30_000);
 }
 
+/** Opens `/play.html?host=local&scenario=<id>&…` (the engine runs in the browser; no app needed) and waits for the first view. */
+export async function loadLocal(page: Page, scenario = 'w00', params: Record<string, string> = {}, timeout = 30_000): Promise<number> {
+  track(page);
+  await page.goto(`/play.html?${new URLSearchParams({ host: 'local', scenario, ...params })}`);
+  return waitForTick(page, () => true, timeout);
+}
+
 /** Measures the tick rate (ticks per second) over `ms` of wall time. */
 export async function ticksPerSecond(page: Page, ms = 3000): Promise<number> {
   const a = await waitForTick(page, () => true);

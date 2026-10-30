@@ -35,6 +35,11 @@ describe('devtools commands', () => {
     expect(await run('spawn', {})).toContain('not_connected');
     expect(await run('teleport 1 2', { sendCommand: acking() })).toBe('error: missing <r>');
   });
+  it('teleport! sends the command without prediction', async () => {
+    const sendCommand = acking();
+    expect(await run('teleport! 3 6 0', { sendCommand })).toBe('dev.teleport ok, applied at tick 42');
+    expect(sendCommand).toHaveBeenCalledWith('dev.teleport', { id: 3, q: 6, r: 0 }, { predict: false });
+  });
   it('chain.ping prints the mock: hash; host_unavailable without a server', async () => {
     const devServer = vi.fn(async () => ({ txHash: 'mock:abc', status: 'success', blockHeight: 7 }));
     expect(await run('chain.ping', { devServer })).toBe('mock:abc  success  block 7');

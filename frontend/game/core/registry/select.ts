@@ -1,9 +1,9 @@
 import type { Feature, LoadOptions } from './types';
 
-/** Pure filter + sort: drops disabled waves and server-only features on the local host; sorted by id. */
+/** Pure filter + sort: drops disabled waves and features of the other host (`hostOnly`); sorted by id. */
 export function selectFeatures(all: readonly Feature[], opts: LoadOptions): Feature[] {
   return all
-    .filter((f) => opts.flags.has(f.wave) && !(f.hostOnly === 'server' && opts.host === 'local'))
+    .filter((f) => opts.flags.has(f.wave) && (!f.hostOnly || f.hostOnly === opts.host))
     .sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 

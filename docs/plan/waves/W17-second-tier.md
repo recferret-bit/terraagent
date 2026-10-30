@@ -15,12 +15,12 @@ The colony moves past T1:
 
 ## Demo story (e2e `e2e/w17.spec.ts`)
 
-1. Load `?scenario=w17`: an S4 colony with 3 min of S4 dwell, Hub T1, Factory T1, a Terraformer, Recon ×2, two Supply Depots, stock 2 000 of every T1 sub-resource plus 600 `metals.t2` / `minerals.t2` / `bio.t2` (D-34 T2 costs) and a Skitter nest at 20 tiles. Order a Hub T2 upgrade from the Construction menu → the order waits ("available in 5:00") because S4 dwell is under 8 min.
-2. Use dev time-warp: the upgrade becomes orderable. The HQ prepares the +1 ring and upgrades the Hub. → The HQ docks for a 20 s refit and comes back as HQ T2 (multirole). Stage toast "S5 Second Tier".
+1. Open `/play.html?scenario=w17`: an S4 colony with 3 min of S4 dwell, Hub T1, Factory T1, a Terraformer, Recon ×2, two Supply Depots, stock 2 000 of every T1 sub-resource plus 600 `metals.t2` / `minerals.t2` / `bio.t2` (D-34 T2 costs) and a Skitter nest at 20 tiles. Construction menu → order a Hub T2 upgrade → the order waits ("available in 5:00") because S4 dwell is under 8 min.
+2. Dev console `warp 20` (or `setDwell 4 8`) → the upgrade becomes orderable. The HQ prepares the +1 ring and upgrades the Hub. → The HQ docks for a 20 s refit and comes back as HQ T2 (multirole). Stage toast "S5 Second Tier".
 3. Queue a Multitask T2 at the Hub. → It builds a T2 Metals Extractor. A Builder T1 cannot take that job (`waiting: worker (T2 needed)`).
-4. Upgrade the Factory to T2 (S6 after 5 min dwell) and build Tank ×2 + Artillery ×2. → A raid with a Brute arrives.
+4. Upgrade the Factory to T2 (S6 after 5 min dwell; `warp 20` or `setDwell 5 5`) and build Tank ×2 + Artillery ×2 from the Units menu. Run `spawnBrute 1` → a raid with a Brute arrives.
 5. With no spotter, Artillery does not fire at the Brute beyond its 6-tile view. Build Mobile Radar. → Radar contacts are spotted, and artillery shells land on the Brute from 14 tiles.
-6. Spawn a hostile Recon squad (dev console) near the artillery. → Shells miss the strafing Recon, and Tanks kill it.
+6. Dev console `spawnUnit recon 3 enemy` near the artillery. → Shells miss the strafing Recon, and Tanks kill it.
 
 ## Features covered
 

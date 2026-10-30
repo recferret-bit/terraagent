@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isShaderOptimized } from '../core/perfConfig';
 import { GLSL_NOISE } from '../visuals/space/glslNoise';
 import type { PlanetKind } from '../planets/PlanetSpec';
 
@@ -47,7 +48,7 @@ void main(){
 
 const FRAG = /* glsl */ `
 ${GLSL_NOISE}
-uniform vec3 uBase, uDark, uTint, uSunDir; uniform float uSeed, uCraters, uBump, uIce, uBand, uSunI;
+uniform vec3 uBase, uDark, uTint, uSunDir; uniform float uSeed, uCraters, uBump, uIce, uBand, uSunI, uOpt;
 varying vec3 vObj; varying vec3 vWN; varying vec3 vWP;
 // Cheap worley crater field: bowl + raised rim, 2 octaves.
 float craterField(vec3 p, float scale){
@@ -67,18 +68,28 @@ float craterField(vec3 p, float scale){
   return h;
 }
 float height(vec3 p){
-  float c = craterField(p, 3.2) * 0.9 + craterField(p, 7.5) * 0.45;
+  float c = uOpt > 0.5 ? craterField(p, 3.6) * 1.15 : (craterField(p, 3.2) * 0.9 + craterField(p, 7.5) * 0.45);
   return c * uCraters + (fbm3lo(p * 3.0 + uSeed) - 0.5) * 0.7;
 }
 void main(){
   vec3 P = normalize(vObj);
   float h = height(P);
-  // finite-difference bump in object space (the moon spin is slow, so world≈object for lighting)
-  float e = 0.012;
-  vec3 t1 = normalize(cross(P, vec3(0.0, 1.0, 0.01))); vec3 t2 = cross(P, t1);
-  float hx = height(normalize(P + t1 * e)) - h, hy = height(normalize(P + t2 * e)) - h;
   vec3 Ng = normalize(vWN);
-  vec3 N = normalize(Ng - (t1 * hx + t2 * hy) / e * 0.06 * uBump);
+  vec3 N;
+  if (uOpt > 0.5) {
+    vec3 dpx = dFdx(vWP), dpy = dFdy(vWP);
+    vec2 dH = vec2(dFdx(h), dFdy(h)) * (0.06 * uBump);
+    vec3 r1 = cross(dpy, Ng), r2 = cross(Ng, dpx);
+    float det = dot(dpx, r1);
+    vec3 Nb = abs(det) * Ng - sign(det) * (dH.x * r1 + dH.y * r2);
+    N = dot(Nb, Nb) > 1e-20 ? normalize(Nb) : Ng;
+  } else {
+    // finite-difference bump in object space (the moon spin is slow, so world≈object for lighting)
+    float e = 0.012;
+    vec3 t1 = normalize(cross(P, vec3(0.0, 1.0, 0.01))); vec3 t2 = cross(P, t1);
+    float hx = height(normalize(P + t1 * e)) - h, hy = height(normalize(P + t2 * e)) - h;
+    N = normalize(Ng - (t1 * hx + t2 * hy) / e * 0.06 * uBump);
+  }
   vec3 L = normalize(uSunDir);
   float albN = fbm3lo(P * 5.0 + uSeed * 0.7);
   vec3 alb = mix(uDark, uBase, smoothstep(0.15, 0.85, albN + h * 0.18));
@@ -127,7 +138,7 @@ export function createMoon(def: MoonDef, sunDir: THREE.Vector3, seed: number): M
     uniforms: {
       uBase: { value: new THREE.Color(def.base) }, uDark: { value: new THREE.Color(def.dark) }, uTint: { value: new THREE.Color(def.tint) },
       uSunDir: { value: sunDir.clone().normalize() }, uSeed: { value: seed % 53 }, uCraters: { value: def.craters }, uBump: { value: def.bump },
-      uIce: { value: def.ice ?? 0 }, uBand: { value: def.banding ?? 0 }, uSunI: { value: 1.15 },
+      uIce: { value: def.ice ?? 0 }, uBand: { value: def.banding ?? 0 }, uSunI: { value: 1.15 }, uOpt: { value: isShaderOptimized() ? 1 : 0 },
     },
   });
   const mesh = new THREE.Mesh(geo, mat); mesh.frustumCulled = false;
@@ -138,6 +149,7 @@ export function createMoon(def: MoonDef, sunDir: THREE.Vector3, seed: number): M
   return {
     group, def,
     update(planetPos, time) {
+      mat.uniforms.uOpt.value = isShaderOptimized() ? 1 : 0;
       const a = def.phase + (time / def.period) * Math.PI * 2;
       tmp.set(Math.cos(a) * def.orbit, 0, Math.sin(a) * def.orbit).applyEuler(plane);
       group.position.copy(planetPos).add(tmp);

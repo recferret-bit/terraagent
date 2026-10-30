@@ -23,18 +23,18 @@ Also in this wave:
 
 ## Demo story (e2e `e2e/w07.spec.ts`)
 
-1. Load `?scenario=w07`: an S3 colony with power, a nest 30 tiles away, and the time warped to 5 min before the first raid.
-2. Build a Robotics Factory T1 → the Units menu shows an Army section. Order 3 Recon → they roll out to the rally flag.
-3. Order another Recon at supply 10/10 → rejected `supply_cap`. Build a Drone Control Array → the cap reads 18 and the order proceeds.
-4. Build an Autocannon and a Laser Tower (Laser Tower T1 unlocks at S3, B7 default) → selecting each shows its weapon range ring and view ring. `Alt` shows rings for every own unit.
-5. A raid arrives (`2 + threatStage` skitters) → `underAttack` fires and an alert ping shows on the screen edge (and on the minimap when W04 is on).
+1. Open `/play.html?scenario=w07`: an S3 colony with power, a nest 30 tiles away, and the time warped to 5 min before the first raid.
+2. Construction menu → build a Robotics Factory T1 → the Units menu shows an Army section. Order 3 Recon → they roll out to the rally flag.
+3. Order another Recon at supply 10/10 → rejected `supply_cap` (toast). Build a Drone Control Array → the cap reads 18 and the order proceeds.
+4. Build an Autocannon and a Laser Tower (Laser Tower T1 unlocks at S3, B7 default) → selecting each shows its weapon range ring and view ring. Hold `Alt` → rings for every own unit.
+5. Wait for the raid (dev console `warp 10` shortens it, or run `spawnRaid 5`) (`2 + threatStage` skitters) → `underAttack` fires and an alert ping shows on the screen edge (and on the minimap when W04 is on).
    - Turrets fire: tracers for bullets, a beam for the laser.
    - HP bars appear on damaged units and buildings.
    - Dead skitters are removed and counted.
-6. `spawnUnit demoArtillery` (dev only) fires shells at the evasive Recon → the shells **miss** and explode at the aim point with an AoE decal. Shells at a stationary skitter → hit.
-7. Set the Recon to **Hunt** and attack-move them to the nest → they destroy the nest (HP 1 500). `nestDestroyed` fires.
-8. A raid is repelled with no building lost → `raidRepelled` and Unbreached progress +1.
-9. Destroy a building with the dev console → collapse VFX, then the tile shows a Prepared pad.
+6. In the dev console run `spawnUnit demoArtillery`, and move a Recon in front of the skitters → the shells **miss** the evasive Recon and explode at the aim point with an AoE decal (`hitDebug on` draws aim points and hit circles). Shells at a stationary skitter → hit.
+7. Select the Recon, set stance **Hunt**, and attack-move (right-click the ground) them to the nest → they destroy the nest (HP 1 500). `nestDestroyed` fires (toast / event log).
+8. Repel a raid (`spawnRaid 3`) with no building lost → `raidRepelled` fires and Unbreached progress +1 (on `/me.html` when W12 is on).
+9. Destroy a building with `damage <entity> 100` in the dev console → collapse VFX, then the tile shows a Prepared pad.
 
 ## Hackathon slice
 

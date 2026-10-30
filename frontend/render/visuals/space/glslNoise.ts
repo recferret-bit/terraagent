@@ -28,4 +28,23 @@ float fbm2(vec2 p){
   for (int i = 0; i < 5; i++) { s += a * vnoise2(p); n += a; p = mat2(1.6,1.2,-1.2,1.6) * p + 3.1; a *= 0.5; }
   return s / n;
 }
+float fbm2Fast(vec2 p){
+  float s = 0.5 * vnoise2(p); p = mat2(1.6,1.2,-1.2,1.6) * p + 3.1;
+  s += 0.25 * vnoise2(p);
+  return s / 0.75;
+}
+float fbm3Dome(vec3 p){
+  float s = 0.5 * vnoise3(p); p = ROT3 * p * 2.03 + 5.3;
+  s += 0.25 * vnoise3(p);
+  return s / 0.75;
+}
+vec2 fbm3Both(vec3 p){
+  float a = 0.5, s = 0.0, n = 0.0, s4 = 0.0, n4 = 1.0;
+  for (int i = 0; i < 6; i++) {
+    s += a * vnoise3(p); n += a;
+    if (i == 3) { s4 = s; n4 = n; }
+    p = ROT3 * p * 2.03 + 11.7; a *= 0.5;
+  }
+  return vec2(s / n, s4 / n4);
+}
 `;

@@ -40,18 +40,18 @@ The colony **director** gets its own capped key (allowance = the trading share o
 
 ## Demo story (the e2e in words)
 
-1. Open `?scenario=w15` → a solo logged-in colony at S2 with a Trade Hub. Storage: 1 400 / 1 500 metals, 20 water. The Guild has 2 NPCs; Guild ship "Kestrel" is due in 30 s.
-2. Time warp → the **Guild ship lands** at orbit with landing VFX. A toast "Guild trader Kestrel has docked — 6 offers" appears, and the Trade Hub panel shows a **Guild** tab with offers and a "departs in 12:00" countdown.
-3. The book now shows Guild bids and asks around the mid price. Accept **"Buy 200 metals for 70 water"** → instant contract settled with the NPC account `guild-1.npc.terraagent.mock` (visible in `/dev/chain`).
+1. Open `/play.html?scenario=w15` → a solo logged-in colony at S2 with a Trade Hub. Storage: 1 400 / 1 500 metals, 20 water. The Guild has 2 NPCs; Guild ship "Kestrel" is due in 30 s.
+2. Dev console `warp 10` (or `guild.summon kestrel`) → the **Guild ship lands** at orbit with landing VFX. A toast "Guild trader Kestrel has docked — 6 offers" appears, and the Trade Hub panel shows a **Guild** tab with offers and a "departs in 12:00" countdown.
+3. The Trade Hub panel's book now shows Guild bids and asks around the mid price. Accept **"Buy 200 metals for 70 water"** → instant contract settled with the NPC account `guild-1.npc.terraagent.mock` (visible in `/dev/chain/`).
 4. Sell 600 metals into the Guild bid → the next Guild quote for metals drops (inventory up, price down) and the spread widens on the thin side.
 5. Open **Settings → Away**:
    - set autoTrade "sell metals above 80 % storage, max 300 per trade, max 600 per away session, keep ≥ 200; partners: Guild";
    - **enable the director key** → the status shows "Allowance 600 metals · spent 0" and a Revoke button.
-6. Dev console `away.simulate on`, then time warp until storage fills → the director sells 300 metals to the Guild; the allowance shows "spent 300 / 600".
-7. `away.simulate off` → the digest line **"While you were away: Director sold 300 metals to the Guild."** appears (W09 digest when on; otherwise in the event log).
+6. Dev console `away.simulate on`, then `warp 20` until storage fills → the director sells 300 metals to the Guild; the allowance shows "spent 300 / 600".
+7. Dev console `away.simulate off` → the digest line **"While you were away: Director sold 300 metals to the Guild."** appears (W09 digest when on; otherwise in the event log).
 8. Tap **Revoke** → the key status shows "Revoked", and the next away trade is skipped with reason `director_key_revoked`.
-9. Time warp past departure → the ship lifts off, its quotes vanish from the book, and with W11 on it arrives at a second planet carrying its cargo.
-10. Restart with `TA_WAVES=..14` → no Guild ship, no Guild tab, no Away autoTrade section. Player markets from W13 still work.
+9. Dev console `warp 100` past the 12 min departure (or `guild.depart kestrel`) → the ship lifts off, its quotes vanish from the book, and with W11 on it arrives at a second planet carrying its cargo.
+10. Run `TA_WAVES=..14 npm run dev:restart` and reload `/play.html?scenario=w15` → no Guild ship, no Guild tab, no Away autoTrade section. Player markets from W13 still work.
 
 ## Hackathon slice
 

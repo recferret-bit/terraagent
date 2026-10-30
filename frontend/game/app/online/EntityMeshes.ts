@@ -136,10 +136,12 @@ export class EntityMeshes {
     const seen = new Set<number>();
     const buf = view.entities;
 
+    const hasEntityLayer = Boolean(this.scene.getObjectByName('entities'));
     for (let i = 0; i < view.count; i++) {
       const o = i * ENTITY_STRIDE;
       const id = buf[o];
       const kind = buf[o + 1];
+      if (hasEntityLayer && kind === ENTITY_KIND.devProbe) continue;
       const owner = buf[o + 2];
       const q = buf[o + 3];
       const r = buf[o + 4];
