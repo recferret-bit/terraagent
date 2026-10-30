@@ -32,7 +32,8 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "test:contract": "vitest run --config vitest.contract.config.ts",
     "contract:real": "node scripts/dev/contract-real.mjs",
-    "db:seed": "npm run db:seed -w @terra/db --silent"
+    "db:seed": "npm run db:seed -w @terra/db --silent",
+    "build:strict": "node scripts/ci/build-warnings.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
