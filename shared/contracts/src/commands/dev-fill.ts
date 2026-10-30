@@ -9,6 +9,9 @@ export const command = defineCommand({
   dev: true,
   args: z.strictObject({
     resource: z.union([ResourceKey, ResourceFamily, z.literal('all')]).optional(),
+    res: z.union([ResourceKey, ResourceFamily, z.literal('all')]).optional(),
+    amount: z.number().nonnegative().optional(),
+    colonyIndex: z.number().int().nonnegative().optional(),
   }),
   summary: 'Dev console: fills a resource (or family / all T1 resources) up to its colony family storage cap (W02-30).',
 });

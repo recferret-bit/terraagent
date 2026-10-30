@@ -3,7 +3,7 @@ export interface SimEvent {
   kind: string;
   severity: 'info' | 'warn' | 'critical';
   atTick: number;
-  colonyIds: string[];
+  colonyIds: (string | number)[];
   data: Record<string, unknown>;
 }
 

@@ -112,8 +112,8 @@ export const movement = defineSystem({
       if (cols.hp[row] <= 0) continue;
 
       const kind = cols.kind[row];
-      let speedPerTick = 0;
-      let viewRadius = 0;
+      let speedPerTick: number;
+      let viewRadius: number;
       if (kind === ENTITY_KIND.hq) {
         if (!hqRow) hqRow = resolveHqT1Row(ctx.data);
         speedPerTick = Math.fround(Number(hqRow.speedTilesPerS));
