@@ -1,0 +1,166 @@
+/* Power HUD — Faction Plate Day Clock, Balance, Brownout Banner & Building Inspector */
+
+.ta-power-hud {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2, 8px);
+  align-items: flex-end;
+  color: var(--ta-text);
+  font-family: var(--ta-font-body);
+  user-select: none;
+}
+
+.ta-power-hud__bar {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s3, 12px);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  padding: 6px 14px;
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-power-hud__clock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--ta-font-mono);
+  font-size: 12px;
+  padding-right: var(--ta-s3, 12px);
+  border-right: 1px solid var(--ta-seam);
+}
+
+.ta-power-hud__clock-icon {
+  font-size: 14px;
+  color: var(--ta-orange);
+  line-height: 1;
+}
+
+.ta-power-hud__clock[data-phase='night'] .ta-power-hud__clock-icon {
+  color: var(--ta-blue-hi);
+}
+
+.ta-power-hud__clock-text {
+  font-weight: 600;
+  color: var(--ta-text);
+}
+
+.ta-power-hud__daylight {
+  font-size: 10px;
+  color: var(--ta-steel);
+}
+
+.ta-power-hud__balance {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.ta-power-hud__flow {
+  font-family: var(--ta-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--ta-text);
+  white-space: nowrap;
+}
+
+.ta-power-hud__net {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ta-terra);
+  white-space: nowrap;
+}
+
+.ta-power-hud__net[data-deficit='true'] {
+  color: var(--ta-fault-text);
+}
+
+/* Red Brownout Banner */
+.ta-power-hud__brownout {
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+  background: rgba(255, 59, 59, 0.2);
+  border: 1px solid var(--ta-fault);
+  color: var(--ta-fault-text, var(--ta-fault));
+  font-family: var(--ta-font-display);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 6px 14px;
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-power-hud__brownout[data-brownout='true'] {
+  display: flex;
+}
+
+/* Building Inspector */
+.ta-building-inspector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 220px;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  padding: 8px 14px;
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-building-inspector__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ta-building-inspector__title {
+  font-family: var(--ta-font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--ta-text);
+}
+
+.ta-building-inspector__state {
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--ta-terra);
+  text-transform: uppercase;
+}
+
+.ta-building-inspector[data-offline='true'] .ta-building-inspector__state,
+.ta-building-inspector__state[data-offline='true'] {
+  color: var(--ta-fault-text);
+}
+
+.ta-building-inspector__body {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  color: var(--ta-steel);
+}
+
+.ta-building-inspector__hp {
+  color: var(--ta-text-2);
+}
+
+.ta-building-inspector__reason {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  color: var(--ta-fault-text);
+  text-transform: uppercase;
+  border-top: 1px solid var(--ta-seam);
+  padding-top: 4px;
+  margin-top: 2px;
+}
