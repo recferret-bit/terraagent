@@ -39,15 +39,9 @@ export function view(state: PlanetState): SimView {
   }
   const blobs: Record<string, unknown> = {};
   for (const [k, b] of Object.entries(state.blobs)) blobs[k] = b.value;
-  const stockBlob = state.blobs.colonyStock?.value as Record<number, Record<string, number>> | undefined;
-  const colonies: ViewColony[] = state.colonies.map((k) => {
-    const blobStock = stockBlob?.[k.index];
-    const colStock = k.stock as Record<string, number> | undefined;
-    if (blobStock || colStock) {
-      return { ...k, stock: { ...(colStock ?? {}), ...(blobStock ?? {}) } };
-    }
-    return { ...k };
-  });
+  const stockBlob =
+    (state.blobs.colonyStock?.value as Record<string | number, Record<string, number>> | undefined) ??
+    (state.blobs.colonyStock as unknown as Record<string | number, Record<string, number>> | undefined);
   return {
     tick: state.meta.tick,
     planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius },
@@ -61,7 +55,12 @@ export function view(state: PlanetState): SimView {
       explored: L.explored as Uint8Array,
     },
     entities,
-    colonies,
+    colonies: state.colonies.map((k) => {
+      const fromBlob = stockBlob?.[k.index] ?? stockBlob?.[k.id];
+      const existing = k.stock as Record<string, number> | undefined;
+      const mergedStock = fromBlob || existing ? { ...(existing ?? {}), ...(fromBlob ?? {}) } : undefined;
+      return mergedStock !== undefined ? { ...k, stock: mergedStock } : { ...k };
+    }),
     blobs,
   };
 }

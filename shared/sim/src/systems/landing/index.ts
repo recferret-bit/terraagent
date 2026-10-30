@@ -121,12 +121,13 @@ function readStockBlob(state: SimState): Record<number, Record<string, number>> 
 
 export function getColonyStock(state: SimState, colonyId: number): Record<string, number> {
   const blobMap = readStockBlob(state);
-  if (blobMap[colonyId]) return { ...blobMap[colonyId] };
   const colStock = state.colonies[colonyId]?.stock;
-  if (colStock && typeof colStock === 'object' && !Array.isArray(colStock)) {
-    return { ...(colStock as Record<string, number>) };
-  }
-  return {};
+  const fromCol =
+    colStock && typeof colStock === 'object' && !Array.isArray(colStock)
+      ? (colStock as Record<string, number>)
+      : {};
+  const fromBlob = blobMap[colonyId] ?? {};
+  return { ...fromCol, ...fromBlob };
 }
 
 export function setColonyStock(state: SimState, colonyId: number, stock: Record<string, number>): void {
