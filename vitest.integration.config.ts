@@ -11,6 +11,7 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**', '.claude/**'],
     environment: 'node',
     reporters: ['verbose'], // shows the [test-db] created/migrated/dropped log lines
+    pool: 'threads', // sim worker threads (game module) misbehave under the default forks pool
     fileParallelism: false,
     testTimeout: 30_000,
     hookTimeout: 60_000,

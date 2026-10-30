@@ -26,6 +26,9 @@ export class GamePlanets {
   private readonly loaded = new Set<string>();
   private readonly cmdWaiters = new Map<string, Waiter<CommandOutcomeMsg>[]>();
   private readonly subs = new Map<string, Set<PlanetSubscriber>>();
+  private readonly loadedListeners: ((planetId: string, tick: number) => void)[] = [];
+  private readonly unloadedListeners: ((planetId: string) => void)[] = [];
+  private readonly snapshotListeners: ((planetId: string, s: { tick: number; bytes: Uint8Array }) => void)[] = [];
   private readonly shutdownHooks: (() => void | Promise<void>)[] = [];
   private readonly unlisten: () => void;
 
@@ -52,8 +55,14 @@ export class GamePlanets {
     });
   }
 
+  /** Global listeners (persistence): a planet finished loading / was unloaded / a snapshot arrived (subscribed or not). */
+  onPlanetLoaded(fn: (planetId: string, tick: number) => void): void { this.loadedListeners.push(fn); }
+  onPlanetUnloaded(fn: (planetId: string) => void): void { this.unloadedListeners.push(fn); }
+  onPlanetSnapshot(fn: (planetId: string, s: { tick: number; bytes: Uint8Array }) => void): void { this.snapshotListeners.push(fn); }
+
   unload(planetId: string): void {
     this.loaded.delete(planetId);
+    for (const fn of this.unloadedListeners) fn(planetId);
     this.pool.sendToPlanet(planetId, { t: 'unload', planetId });
   }
 
@@ -109,13 +118,16 @@ export class GamePlanets {
         this.loaded.add(msg.planetId);
         for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
         this.loading.delete(msg.planetId);
+        for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick);
         return;
       case 'ack': return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: true, commandId: msg.commandId, appliedAtTick: msg.appliedAtTick });
       case 'reject':
         return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick });
       case 'delta': return this.each(msg.planetId, (s) => s.onDelta?.(msg));
       case 'event': return this.each(msg.planetId, (s) => s.onEvent?.(msg.events));
-      case 'snapshot': return this.each(msg.planetId, (s) => s.onSnapshot?.(msg));
+      case 'snapshot':
+        for (const fn of this.snapshotListeners) fn(msg.planetId, msg);
+        return this.each(msg.planetId, (s) => s.onSnapshot?.(msg));
       case 'error':
         if (msg.planetId && this.loading.has(msg.planetId)) this.failLoad(msg.planetId, new Error(msg.message));
         return;

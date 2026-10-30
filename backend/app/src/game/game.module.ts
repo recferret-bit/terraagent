@@ -8,6 +8,8 @@ import { ReadinessRegistry } from '../core/readiness.registry';
 import { APP_ENV, type AppEnv } from '../core/tokens';
 import { devPlanetIds } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
+import { SnapshotService } from './persistence/snapshot.service';
+import { SnapshotStore } from './persistence/snapshot-store';
 import { SimThreadPool } from './sim-thread-pool';
 import { ALL_WAVES } from './thread/assign';
 
@@ -15,6 +17,8 @@ export const env = defineEnv('game', {
   /** Sim worker threads (SIM-H-01); default: cores - 1, at least 1. */
   SIM_THREADS: z.coerce.number().int().positive().default(Math.max(1, availableParallelism() - 1)),
   /** Number of flat dev planets loaded at boot, spread evenly over the threads. */
+  /** Seconds between periodic snapshots per planet (SIM-H-06); fractional allowed. */
+  SNAPSHOT_EVERY_S: z.coerce.number().positive().default(60),
   GAME_DEV_PLANETS: z.coerce.number().int().min(0).default(0),
 });
 
@@ -28,6 +32,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
       useFactory: (e: AppEnv) => new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: ALL_WAVES }),
     },
     { provide: GamePlanets, inject: [POOL], useFactory: (pool: SimThreadPool) => new GamePlanets(pool) },
+    SnapshotStore,
+    SnapshotService,
   ],
   exports: [GamePlanets],
 })
@@ -35,6 +41,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   constructor(
     @Inject(POOL) private readonly pool: SimThreadPool,
     private readonly planets: GamePlanets,
+    private readonly snapshots: SnapshotService,
     @Inject(APP_ENV) private readonly env: AppEnv,
     private readonly metrics: MetricsRegistry,
     private readonly readiness: ReadinessRegistry,
@@ -56,7 +63,9 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       if (pool.live === 0) throw new Error('no live sim threads');
       return pool.live;
     });
-    const ids = devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size);
+    await this.snapshots.restoreAll();
+    const have = new Set(this.planets.loadedIds());
+    const ids = devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size).filter((id) => !have.has(id));
     await Promise.all(ids.map((id) => this.planets.load(id)));
   }
 
