@@ -4,8 +4,9 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { devPlanetIds } from '../../src/game/dev-planets';
 import { GamePlanets } from '../../src/game/game-planets.service';
 import { SimThreadPool } from '../../src/game/sim-thread-pool';
-import { ALL_WAVES, threadOf } from '../../src/game/thread/assign';
+import { threadOf } from '../../src/game/thread/assign';
 
+const ALL_WAVES = Array.from({ length: 21 }, (_, i) => `W${String(i).padStart(2, '0')}`);
 let games: GamePlanets | undefined;
 const boot = async (threads: number, autoStep = true) => {
   const pool = new SimThreadPool({ threads, flags: ALL_WAVES, autoStep });
