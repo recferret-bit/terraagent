@@ -8,6 +8,7 @@ import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { cancelConstructionOrder } from '../construction';
 import { defineSimModule } from '../define';
 import { stepTerraformWorkWithCell, syncHqView } from '../hq';
 import {
@@ -16,6 +17,7 @@ import {
   enqueueTerraformOrder,
   findColonyHqSlot,
   getColonyTerraformOrders,
+  getManualTerraformLaneCount,
   getTerraformOpSpec,
   hasColonyClaimedTerritory,
   isTerraformOpKind,
@@ -37,6 +39,7 @@ export {
   canRunTerraformOpOnTile,
   enqueueTerraformOrder,
   getColonyTerraformOrders,
+  getManualTerraformLaneCount,
   getTerraformOpSpec,
   hasColonyClaimedTerritory,
   isTerraformOpKind,
@@ -107,12 +110,24 @@ export const cancelTask = defineCommandHandler({
   wave: 'W01',
   handle(state, cmd, ctx) {
     const colonyId = cmd.colonyIndex ?? (cmd as { colony?: number }).colony ?? 0;
-    const raw = (cmd.args ?? {}) as { taskId?: unknown; orderId?: unknown };
-    const id = raw.taskId ?? raw.orderId;
+    const raw = (cmd.args ?? {}) as { taskId?: unknown; orderId?: unknown; entityId?: unknown };
+    const id = raw.taskId ?? raw.orderId ?? raw.entityId;
     if (id !== undefined && typeof id !== 'string' && typeof id !== 'number') {
       return 'invalid_args';
     }
-    cancelTerraformOrder(state, colonyId, id as string | number | undefined, ctx.tick, ctx.data);
+    if (id !== undefined && cancelConstructionOrder(state, colonyId, id, ctx.tick, ctx.data)) {
+      return;
+    }
+    const cancelledTf = cancelTerraformOrder(
+      state,
+      colonyId,
+      id as string | number | undefined,
+      ctx.tick,
+      ctx.data,
+    );
+    if (!cancelledTf && id === undefined) {
+      cancelConstructionOrder(state, colonyId, undefined, ctx.tick, ctx.data);
+    }
   },
 });
 
