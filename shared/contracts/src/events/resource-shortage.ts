@@ -8,8 +8,8 @@ export const event = defineEvent({
   severity: 'warn',
   audience: 'player',
   data: z.strictObject({
-    colonyId: z.string(),
-    resource: ResourceKey,
+    colonyId: z.string().optional(),
+    resource: ResourceKey.optional(),
     family: ResourceFamily,
     stock: z.number(),
     cap: z.number(),

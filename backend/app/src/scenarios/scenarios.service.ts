@@ -26,7 +26,7 @@ export class ScenariosService {
     const planetId = newId('pl');
     const { host } = createScenarioPlanet(def.id, { planetId, flags: this.flags.list });
     const tick = host.tick;
-    await this.planets.load(planetId, { snapshot: snapshot(host.state), flags: [...host.pipeline.config.flags] });
+    await this.planets.load(planetId, { snapshot: snapshot(host.state), flags: this.flags.list });
     return { planetId, scenario: def.id, tick };
   }
 }

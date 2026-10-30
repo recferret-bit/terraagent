@@ -5,7 +5,7 @@ import { DEPOSIT } from '../../grid/layers';
 import { indexOf } from '../../grid/hex';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { normalizeRichness } from '../production';
-import type { QueueEntry } from './types';
+import type { QueueEntry, QueuePrecedence, QueueTaskPayload } from './types';
 
 export const RESOURCE_DISPLAY_LABELS: Readonly<Record<ResourceKey, string>> = {
   'metals.t1': 'Metals',
@@ -135,4 +135,45 @@ export function isBlockedByPower(state: PlanetState, colony: ColonyState, entry:
     }
   }
   return false;
+}
+
+export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
+  task?: QueueTaskPayload;
+  precedence?: QueuePrecedence;
+  taskId?: string;
+  costOverride?: Partial<Record<ResourceKey, number>>;
+} {
+  if (raw.task && typeof (raw.task as { kind?: unknown }).kind === 'string') {
+    return raw as {
+      task: QueueTaskPayload;
+      precedence?: QueuePrecedence;
+      taskId?: string;
+      costOverride?: Partial<Record<ResourceKey, number>>;
+    };
+  }
+  if (raw.build && typeof raw.build === 'object') {
+    const b = raw.build as { building: string; q: number; r: number; rotation?: number; rot?: number; tier?: number };
+    return {
+      taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+      task: { kind: 'build', building: b.building, q: b.q, r: b.r, tier: b.tier, rotation: b.rotation ?? b.rot },
+    };
+  }
+  if (raw.buildUnit && typeof raw.buildUnit === 'object') {
+    const u = raw.buildUnit as { unit: string; count?: number; repeat?: boolean; producerId?: number };
+    return {
+      taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+      task: { kind: 'buildUnit', unit: u.unit, count: u.count, repeat: u.repeat, producerId: u.producerId },
+    };
+  }
+  if (raw.terraform && typeof raw.terraform === 'object') {
+    const tf = raw.terraform as { op: 'grade' | 'clear' | 'break'; tiles?: Array<{ q: number; r: number }> };
+    const first = tf.tiles?.[0];
+    if (first) {
+      return {
+        taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+        task: { kind: 'terraform', op: tf.op, q: first.q, r: first.r },
+      };
+    }
+  }
+  return {};
 }

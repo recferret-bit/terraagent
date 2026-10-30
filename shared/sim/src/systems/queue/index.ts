@@ -21,7 +21,7 @@ import {
   type QueuePrecedence,
   type QueueTaskPayload,
 } from './types';
-import { computeResourceWaitState, isBlockedByPower } from './wait';
+import { computeResourceWaitState, isBlockedByPower, normalizeEnqueueArgs } from './wait';
 
 export * from './types';
 export * from './wait';
@@ -364,11 +364,19 @@ export const enqueueTaskHandler = defineCommandHandler({
   kind: 'enqueueTask',
   wave: 'W01',
   handle(state, cmd, ctx) {
-    const args = (cmd.args ?? {}) as { task?: QueueTaskPayload; precedence?: QueuePrecedence; taskId?: string };
-    if (!args.task || typeof args.task.kind !== 'string') return 'invalid_args';
+    const norm = normalizeEnqueueArgs((cmd.args ?? {}) as Record<string, unknown>);
+    if (!norm.task || typeof norm.task.kind !== 'string') return 'invalid_args';
     const res = enqueueQueueTask(
       state,
-      { colonyIndex: cmd.colonyIndex ?? 0, task: args.task, precedence: args.precedence, taskId: args.taskId, tick: ctx.tick, data: ctx.data },
+      {
+        colonyIndex: cmd.colonyIndex ?? 0,
+        task: norm.task,
+        precedence: norm.precedence,
+        taskId: norm.taskId,
+        costOverride: norm.costOverride,
+        tick: ctx.tick,
+        data: ctx.data,
+      },
       ctx,
     );
     return res.ok ? undefined : res.code;

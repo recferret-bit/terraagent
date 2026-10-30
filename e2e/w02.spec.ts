@@ -152,7 +152,7 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   // Step 6: Run `time night` in dev console -> Solar drops to 0, brownout banner appears; `time day` restores
   await devConsole(page, 'time night');
   await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? false).toBe(true);
-  await expect(page.locator('[data-brownout-banner]')).toBeVisible();
+  await expect(page.locator('.ta-power-hud__brownout[data-brownout="true"]')).toBeVisible();
   await screenshot(page, '6-night-brownout');
 
   await devConsole(page, 'time day');

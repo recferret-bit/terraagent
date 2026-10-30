@@ -101,6 +101,7 @@ export class PowerHud implements Disposable {
 
     this.brownoutBanner = document.createElement('div');
     this.brownoutBanner.className = 'ta-power-hud__brownout plate-sm';
+    this.brownoutBanner.setAttribute('data-brownout-banner', '');
     this.brownoutBanner.setAttribute('data-brownout', 'false');
     this.brownoutBanner.textContent = 'BROWNOUT — SHEDDING GROUP 3';
 

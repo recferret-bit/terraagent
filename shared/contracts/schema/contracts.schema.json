@@ -923,6 +923,160 @@
               "buildUnit"
             ],
             "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "costOverride": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "precedence": {
+                "enum": [
+                  "explicit",
+                  "autoSitePrep",
+                  "queued",
+                  "standing"
+                ],
+                "type": "string"
+              },
+              "task": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "building": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "build",
+                        "type": "string"
+                      },
+                      "q": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "r": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "rot": {
+                        "maximum": 5,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "rotation": {
+                        "maximum": 5,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "tier": {
+                        "maximum": 3,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "building",
+                      "q",
+                      "r"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "hubEntityId": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "buildUnit",
+                        "type": "string"
+                      },
+                      "producerId": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "repeat": {
+                        "type": "boolean"
+                      },
+                      "unit": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "unit"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "terraform",
+                        "type": "string"
+                      },
+                      "op": {
+                        "enum": [
+                          "grade",
+                          "clear",
+                          "break"
+                        ],
+                        "type": "string"
+                      },
+                      "q": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "r": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "op",
+                      "q",
+                      "r"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "taskId": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "task"
+            ],
+            "type": "object"
           }
         ]
       },
@@ -1166,10 +1320,17 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "shedEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
           }
         },
         "required": [
-          "colonyId",
           "group"
         ],
         "type": "object"
@@ -1218,10 +1379,8 @@
           }
         },
         "required": [
-          "colonyId",
           "entityId",
           "building",
-          "tier",
           "q",
           "r"
         ],
@@ -1347,22 +1506,30 @@
           "colonyId": {
             "type": "string"
           },
+          "deficitPerS": {
+            "type": "number"
+          },
           "deficitSeconds": {
             "type": "number"
           },
           "demandPerS": {
             "type": "number"
           },
+          "durationS": {
+            "type": "number"
+          },
+          "shedGroups": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          },
           "supplyPerS": {
             "type": "number"
           }
         },
-        "required": [
-          "colonyId",
-          "deficitSeconds",
-          "supplyPerS",
-          "demandPerS"
-        ],
         "type": "object"
       },
       "severity": "critical",
@@ -1543,8 +1710,6 @@
           }
         },
         "required": [
-          "colonyId",
-          "resource",
           "family",
           "stock",
           "cap",
@@ -1628,7 +1793,6 @@
           }
         },
         "required": [
-          "colonyId",
           "entityId",
           "unit",
           "q",

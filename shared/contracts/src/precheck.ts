@@ -24,7 +24,11 @@ export type CommandPrecheck = { ok: true; args: unknown } | { ok: false; code: R
  * outside production, strict args. Ownership lands with colonies (W01): a W00 session has none, so only dev kinds pass.
  * Shared by the app's ingress and the local host, so both reject identically.
  */
-export function precheckClientCommand(kind: string, args: unknown, o: { gate(kind: string): RejectCode | null; production: boolean }): CommandPrecheck {
+export function precheckClientCommand(
+  kind: string,
+  args: unknown,
+  o: { gate(kind: string): RejectCode | null; production: boolean; hasColony?: boolean },
+): CommandPrecheck {
   const gate = o.gate(kind);
   if (gate) return { ok: false, code: gate };
   if (!hasCommandKind(kind)) return { ok: false, code: 'unknown_kind' };
@@ -35,6 +39,6 @@ export function precheckClientCommand(kind: string, args: unknown, o: { gate(kin
     const i = parsed.error.issues[0];
     return { ok: false, code: 'invalid_args', ...(i ? { detail: `${i.path.join('.') || 'args'}: ${i.message}`.slice(0, 200) } : {}) };
   }
-  if (!def.dev) return { ok: false, code: 'not_own_colony' };
+  if (!def.dev && o.hasColony === false) return { ok: false, code: 'not_own_colony' };
   return { ok: true, args: parsed.data };
 }
