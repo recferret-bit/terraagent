@@ -97,10 +97,16 @@ function applyTiles(state: PlanetState, d: EngineDiff): void {
   }
 }
 
-/** Applies a diff to a replica at exactly `fromTick`; afterwards the replica deep-equals the authority at `toTick`. */
-export function applyDiff(state: PlanetState, bytes: Uint8Array): void {
+/** Decodes an engine diff produced by `diffSince`. */
+export function decodeDiff(bytes: Uint8Array): EngineDiff {
   const d = decodeValue(bytes) as EngineDiff;
   if (d.v !== DIFF_FORMAT) throw new Error(`unsupported diff format ${String(d.v)}`);
+  return d;
+}
+
+/** Applies a diff to a replica at exactly `fromTick`; afterwards the replica deep-equals the authority at `toTick`. */
+export function applyDiff(state: PlanetState, bytes: Uint8Array): void {
+  const d = decodeDiff(bytes);
   if (state.meta.tick !== d.fromTick) throw new DiffGapError(state.meta.tick, d.fromTick);
   applyEntities(state, d);
   applyTiles(state, d);

@@ -1,6 +1,7 @@
 import { createStore, type EntityStore } from '../ecs/store';
 import { hexCount } from '../grid/hex';
 import { tileLayers } from '../grid/layers';
+import { linkGridMeta } from '../grid/tileModel';
 import { SIM_VERSION } from './constants';
 import { seedRng, type RngState } from './rng';
 import { allocate, type TypedArray } from './types';
@@ -22,6 +23,16 @@ export interface Grid {
   radius: number;
   count: number;
   layers: Record<string, TypedArray> & { changedAt: Uint32Array };
+  readonly terrain?: Uint8Array;
+  readonly prep?: Uint8Array;
+  readonly deposit?: Uint8Array;
+  readonly richness?: Float32Array;
+  readonly height?: Float32Array;
+  readonly owner?: Int8Array;
+  readonly explored?: Uint8Array;
+  readonly anchors?: Uint8Array;
+  readonly graceUntil?: Float64Array;
+  readonly changedAt?: Uint32Array;
 }
 
 /** One colony's record. Fields beyond these are added by the waves that need them (stock, caps, stage, …). */
@@ -65,10 +76,13 @@ export function createState(p: NewStateParams): PlanetState {
   const layers = {} as Grid['layers'];
   for (const l of tileLayers()) layers[l.name] = allocate(l.dtype, count);
   layers.owner.fill(-1);
+  const meta: PlanetMeta = { simVersion: SIM_VERSION, planetId: p.planetId, planetType: p.planetType, seed: p.seed, tick: 0, nextEntityId: 1, ended: false };
+  const grid: Grid = { radius: p.radius, count, layers };
+  linkGridMeta(grid, meta);
   return {
-    meta: { simVersion: SIM_VERSION, planetId: p.planetId, planetType: p.planetType, seed: p.seed, tick: 0, nextEntityId: 1, ended: false },
+    meta,
     rng: seedRng(p.seed),
-    grid: { radius: p.radius, count, layers },
+    grid,
     colonies: [],
     entities: createStore(),
     blobs: {},
