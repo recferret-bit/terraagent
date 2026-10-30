@@ -205,6 +205,7 @@ export class Connection implements RoomMember {
         planet: { id: planetId, type: type.success ? type.data : 'temperate', name: planetId },
         state: snap.bytes, simVersion: snap.simVersion, dataHash: snap.dataHash, tick: snap.tick,
         serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: this.d.planets.deltaHz, flags: this.d.flags,
+        ...(snap.warp > 1 ? { warp: snap.warp } : {}),
       },
     });
   }

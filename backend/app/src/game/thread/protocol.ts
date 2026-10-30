@@ -18,7 +18,8 @@ export interface ThreadInit {
 
 export type CtlOp =
   | { readonly op: 'stats'; readonly reqId: number }
-  | { readonly op: 'warp'; readonly planetId: string; readonly ticks: number }
+  /** Dev time warp: `k` engine steps per due slot (1..100); the thread may run less (budget cap) and answers with a `warp` message. */
+  | { readonly op: 'warp'; readonly planetId: string; readonly k: number }
   /** Test/dev only (ignored in production): busy-wait the thread for `ms`. */
   | { readonly op: 'block'; readonly ms: number }
   | { readonly op: 'stop' };
@@ -59,6 +60,9 @@ export interface PlanetStats {
   readonly mode: 'active' | 'coarse';
   readonly nextDueMs: number;
   readonly stepsLastPass: number;
+  /** Effective time warp (after the budget cap) and the requested one. */
+  readonly warp: number;
+  readonly warpRequested: number;
 }
 
 /** Diagnostic ring of recent scheduler passes that stepped something. */
@@ -74,7 +78,8 @@ export type FromThread =
   | { readonly t: 'ack'; readonly planetId: string; readonly commandId: string; readonly appliedAtTick: number }
   | { readonly t: 'reject'; readonly planetId: string; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number }
   | { readonly t: 'snapshot'; readonly planetId: string; readonly tick: number; readonly bytes: Uint8Array }
-  | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number; readonly tick: number; readonly bytes: Uint8Array; readonly simVersion: number; readonly dataHash: string; readonly planetType: string }
+  | { readonly t: 'warp'; readonly planetId: string; /** effective warp */ readonly k: number; readonly requested: number }
+  | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number; readonly tick: number; readonly warp: number; readonly bytes: Uint8Array; readonly simVersion: number; readonly dataHash: string; readonly planetType: string }
   | { readonly t: 'stats'; readonly thread: number; readonly reqId: number; readonly planets: PlanetStats[]; readonly steps: number; readonly maxLag: number; readonly recentPasses: PassStat[] }
   | { readonly t: 'error'; readonly thread: number; readonly planetId?: string; readonly commandId?: string; readonly message: string }
   | { readonly t: 'stopped'; readonly thread: number };

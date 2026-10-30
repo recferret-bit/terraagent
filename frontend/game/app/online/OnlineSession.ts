@@ -15,6 +15,7 @@ import { RTSCamera } from '../RTSCamera';
 import { FeatureHud } from './featureHud';
 import { hexSurface } from './hexSurface';
 import { createSessionTarget } from './sessionTarget';
+import { warpOfMessage } from '../../net/warpFeed';
 import type { OnlineMode } from './onlineMode';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
@@ -43,6 +44,7 @@ export class OnlineSession {
   private readonly banner: ConnectionBanner;
   private readonly hud: FeatureHud;
   private tiles: ClientTiles | null = null;
+  private warp = 1;
   private raf = 0;
   private last = performance.now();
   private cleanups: Array<() => void> = [];
@@ -54,8 +56,10 @@ export class OnlineSession {
     this.banner = new ConnectionBanner(document.body, this.transport, () => this.transport.start());
     this.store = new WorldStore(this.transport);
     this.commands = new CommandBus(this.transport, undefined, (id, kind, args) => this.store.notifySent(id, kind, args));
-    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer() });
+    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer(), session: { planetId: () => this.store.latest?.planet.id ?? null } });
     this.cleanups.push(this.transport.onMessage((m) => {
+      const k = warpOfMessage(m);
+      if (k !== undefined) this.setWarp(k);
       if (m.t === 'welcome') this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: location.search, dev: import.meta.env.DEV }));
     }));
     this.cleanups.push(this.store.onView((v) => this.onView(v)));
@@ -67,7 +71,12 @@ export class OnlineSession {
 
   private onView(v: ClientView): void {
     if (v.tiles) this.onTiles(v, v.tiles);
-    this.hud.update({ tick: v.tick });
+    this.hud.update({ tick: v.tick, warp: this.warp });
+  }
+
+  private setWarp(k: number): void {
+    this.warp = k;
+    this.hud.update({ tick: this.store.latest?.tick, warp: k });
   }
 
   private onTiles(v: ClientView, tiles: ClientTiles): void {

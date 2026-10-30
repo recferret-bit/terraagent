@@ -76,6 +76,14 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
         for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.maxLag);
       },
     });
+    const planets = this.planets;
+    new Gauge({
+      name: 'ta_game_warp', help: 'Effective dev time warp per planet (only planets above 1)', labelNames: ['planet'], registers: [reg],
+      collect() {
+        this.reset();
+        for (const [id, k] of planets.warped()) this.set({ planet: id }, k);
+      },
+    });
     new Counter({
       name: 'ta_game_steps_total', help: 'Engine steps executed per sim thread', labelNames: ['thread'], registers: [reg],
       async collect() {

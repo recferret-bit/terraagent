@@ -8,6 +8,13 @@ export const COARSE_STEP_MS = 1000;
 export const MAX_CATCHUP = 5;
 /** Cap of the time-warp multiplier. */
 export const MAX_WARP = 100;
+/**
+ * Thread budget cap: a warped planet still `OVERLOAD_LAG_SLOTS` or more due slots behind after `OVERLOAD_PASSES` consecutive
+ * passes cannot be kept up with, so its effective warp is halved (down to 1). It never rises again by itself; a new
+ * `setWarp` request starts over from the requested value.
+ */
+export const OVERLOAD_LAG_SLOTS = 2;
+export const OVERLOAD_PASSES = 3;
 
 export interface SchedulerClock {
   now(): number;
@@ -23,7 +30,9 @@ export interface SchedulerOptions extends SchedulerClock {
 export interface PlanetSchedule {
   readonly planetId: string;
   readonly mode: StepMode;
+  /** Effective warp (requested, minus the budget cap). */
   readonly warp: number;
+  readonly warpRequested: number;
   readonly nextDueMs: number;
   /** How many steps the planet is behind its due time after the last pass (0 = on time). */
   readonly lagSteps: number;
@@ -43,6 +52,8 @@ export interface PassReport {
 interface Entry {
   mode: StepMode;
   warp: number;
+  warpRequested: number;
+  overloaded: number;
   nextDueMs: number;
   lagSteps: number;
   stepsLastPass: number;
@@ -68,6 +79,8 @@ export class PlanetScheduler {
   totalSteps = 0;
   lastPass: PassReport = { atMs: 0, steps: 0, maxPlanetSteps: 0, maxLag: 0 };
   onPass: ((r: PassReport) => void) | undefined;
+  /** Called when a planet's effective warp changes (a request or a budget cap reduction). */
+  onWarp: ((planetId: string, effective: number, requested: number) => void) | undefined;
 
   constructor(private readonly o: SchedulerOptions) {}
 
@@ -85,7 +98,7 @@ export class PlanetScheduler {
   /** Registers a planet as `active`, due now. */
   add(planetId: string, mode: StepMode = 'active'): void {
     if (this.entries.has(planetId)) return;
-    this.entries.set(planetId, { mode, warp: 1, nextDueMs: this.o.now(), lagSteps: 0, stepsLastPass: 0 });
+    this.entries.set(planetId, { mode, warp: 1, warpRequested: 1, overloaded: 0, nextDueMs: this.o.now(), lagSteps: 0, stepsLastPass: 0 });
     if (this.running) this.arm();
   }
 
@@ -101,12 +114,15 @@ export class PlanetScheduler {
   /** `k` engine steps per due slot, clamped to 1..MAX_WARP. */
   setWarp(planetId: string, k: number): void {
     const e = this.entries.get(planetId);
-    if (e) e.warp = Math.min(MAX_WARP, Math.max(1, Math.floor(k) || 1));
+    if (!e) return;
+    e.warp = e.warpRequested = Math.min(MAX_WARP, Math.max(1, Math.floor(k) || 1));
+    e.overloaded = 0;
+    this.onWarp?.(planetId, e.warp, e.warpRequested);
   }
 
   info(planetId: string): PlanetSchedule | undefined {
     const e = this.entries.get(planetId);
-    return e && { planetId, ...e };
+    return e && { planetId, mode: e.mode, warp: e.warp, warpRequested: e.warpRequested, nextDueMs: e.nextDueMs, lagSteps: e.lagSteps, stepsLastPass: e.stepsLastPass };
   }
 
   /** Max lag over all planets (the `ta_game_tick_lag_steps` value of this thread). */
@@ -133,6 +149,7 @@ export class PlanetScheduler {
       }
       e.stepsLastPass = n;
       e.lagSteps = e.nextDueMs <= now ? Math.floor((now - e.nextDueMs) / interval) + 1 : 0;
+      this.capWarp(id, e);
       steps += n;
       maxPlanetSteps = Math.max(maxPlanetSteps, n);
     }
@@ -140,6 +157,14 @@ export class PlanetScheduler {
     this.lastPass = { atMs: now, steps, maxPlanetSteps, maxLag: this.maxLag };
     this.onPass?.(this.lastPass);
     return this.lastPass;
+  }
+
+  private capWarp(id: string, e: Entry): void {
+    e.overloaded = e.warp > 1 && e.lagSteps >= OVERLOAD_LAG_SLOTS ? e.overloaded + 1 : 0;
+    if (e.overloaded < OVERLOAD_PASSES) return;
+    e.overloaded = 0;
+    e.warp = Math.max(1, Math.floor(e.warp / 2));
+    this.onWarp?.(id, e.warp, e.warpRequested);
   }
 
   private arm(): void {
