@@ -39,6 +39,10 @@ export interface TerraformOrder {
   totalJobs?: number;
   completedJobs?: number;
   linkedBuildingId?: number | string;
+  linkedOrderId?: string;
+  linkedBuildingEntityId?: number;
+  isLinkedPrep?: boolean;
+  countsTowardLaneLimit?: boolean;
   allowUnclaimed?: boolean;
 }
 
@@ -238,6 +242,13 @@ export function getColonyTerraformOrders(state: SimState, colonyId: number): Ter
   return readOrdersByColony(state)[colonyId] ?? [];
 }
 
+/** Returns the count of manual (non-linked-prep) terraform orders in `colonyId`'s Terraform lane (`UO-TF-03`). */
+export function getManualTerraformLaneCount(state: SimState, colonyId: number): number {
+  return getColonyTerraformOrders(state, colonyId).filter(
+    (o) => !o.isLinkedPrep && o.countsTowardLaneLimit !== false,
+  ).length;
+}
+
 export interface EnqueueTerraformOrderOpts {
   colonyId: number;
   op?: TerraformOpKind | 'auto';
@@ -247,6 +258,10 @@ export interface EnqueueTerraformOrderOpts {
   orderId?: string;
   taskId?: string;
   linkedBuildingId?: number | string;
+  linkedOrderId?: string;
+  linkedBuildingEntityId?: number;
+  isLinkedPrep?: boolean;
+  countsTowardLaneLimit?: boolean;
   allowUnclaimed?: boolean;
   tick?: number;
   data?: CompiledDataLike;
@@ -359,6 +374,12 @@ export function enqueueTerraformOrder(
   const existing = byColony[colonyId] ?? [];
   const resolvedId = opts.orderId ?? opts.taskId ?? `tf_${colonyId}_${tick}_${existing.length + 1}`;
   const orderOp: TerraformOpKind = isTerraformOpKind(opts.op) ? opts.op : jobs[0].op;
+  const isLinkedPrep = Boolean(opts.isLinkedPrep);
+  const countsTowardLaneLimit = opts.countsTowardLaneLimit ?? !isLinkedPrep;
+  const linkedBuildingEntityId =
+    opts.linkedBuildingEntityId ??
+    (typeof opts.linkedBuildingId === 'number' ? opts.linkedBuildingId : undefined);
+  const linkedBuildingId = opts.linkedBuildingId ?? linkedBuildingEntityId;
   const order: TerraformOrder = {
     orderId: resolvedId,
     taskId: resolvedId,
@@ -368,7 +389,11 @@ export function enqueueTerraformOrder(
     skippedCount,
     totalJobs: jobs.length,
     completedJobs: 0,
-    ...(opts.linkedBuildingId !== undefined ? { linkedBuildingId: opts.linkedBuildingId } : {}),
+    isLinkedPrep,
+    countsTowardLaneLimit,
+    ...(opts.linkedOrderId !== undefined ? { linkedOrderId: opts.linkedOrderId } : {}),
+    ...(linkedBuildingId !== undefined ? { linkedBuildingId } : {}),
+    ...(linkedBuildingEntityId !== undefined ? { linkedBuildingEntityId } : {}),
     ...(opts.allowUnclaimed ? { allowUnclaimed: true } : {}),
   };
   byColony[colonyId] = [...existing, order];
@@ -402,7 +427,9 @@ export function cancelTerraformOrder(
       (o) =>
         o.orderId === target ||
         o.taskId === target ||
-        (o.linkedBuildingId !== undefined && String(o.linkedBuildingId) === target),
+        (o.linkedOrderId !== undefined && o.linkedOrderId === target) ||
+        (o.linkedBuildingId !== undefined && String(o.linkedBuildingId) === target) ||
+        (o.linkedBuildingEntityId !== undefined && String(o.linkedBuildingEntityId) === target),
     );
   }
   if (removeIdx < 0) return false;
