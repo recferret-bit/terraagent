@@ -1,0 +1,144 @@
+import type { SimCommandV1 } from '@terra/contracts';
+import type { SimEvent } from '@terra/sim';
+import type { SimThreadPool } from './sim-thread-pool';
+import type { FromThread, LoadMsg } from './thread/protocol';
+
+export type CommandOutcomeMsg =
+  | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
+  | { readonly ok: false; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number };
+
+export interface PlanetSubscriber {
+  onDelta?(d: { fromTick: number; toTick: number; diff: Uint8Array; events: SimEvent[] }): void;
+  onEvent?(events: SimEvent[]): void;
+  onSnapshot?(s: { tick: number; bytes: Uint8Array }): void;
+}
+
+export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'>;
+
+interface Waiter<T> { resolve(v: T): void; reject(e: Error): void }
+
+/**
+ * Main-thread directory of planets: which are loaded, on which thread, plus promise/callback APIs over the message
+ * protocol. Other modules (WS gateway, admin) use this; they never see planet state.
+ */
+export class GamePlanets {
+  private readonly loading = new Map<string, Waiter<number>[]>();
+  private readonly loaded = new Set<string>();
+  private readonly cmdWaiters = new Map<string, Waiter<CommandOutcomeMsg>[]>();
+  private readonly subs = new Map<string, Set<PlanetSubscriber>>();
+  private readonly shutdownHooks: (() => void | Promise<void>)[] = [];
+  private readonly unlisten: () => void;
+
+  constructor(readonly pool: SimThreadPool) {
+    this.unlisten = pool.listen((thread, msg) => this.onMessage(thread, msg));
+  }
+
+  threadOf(planetId: string): number {
+    return this.pool.threadOf(planetId);
+  }
+
+  loadedIds(): string[] {
+    return [...this.loaded];
+  }
+
+  /** Loads (or restores from `opts.snapshot`) a planet on its thread; resolves with its tick. */
+  load(planetId: string, opts: LoadOptions = {}): Promise<number> {
+    return new Promise<number>((resolve, reject) => {
+      const list = this.loading.get(planetId) ?? [];
+      list.push({ resolve, reject });
+      this.loading.set(planetId, list);
+      const transfer = opts.snapshot ? [opts.snapshot.buffer as ArrayBuffer] : [];
+      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...opts }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
+    });
+  }
+
+  unload(planetId: string): void {
+    this.loaded.delete(planetId);
+    this.pool.sendToPlanet(planetId, { t: 'unload', planetId });
+  }
+
+  /** Queues a command for the planet's next step; resolves with the ack/reject outcome. */
+  submit(planetId: string, cmd: SimCommandV1): Promise<CommandOutcomeMsg> {
+    return new Promise<CommandOutcomeMsg>((resolve, reject) => {
+      const key = `${planetId}\0${cmd.commandId}`;
+      const list = this.cmdWaiters.get(key) ?? [];
+      list.push({ resolve, reject });
+      this.cmdWaiters.set(key, list);
+      if (!this.pool.sendToPlanet(planetId, { t: 'cmd', planetId, cmd })) {
+        this.settleCmd(key, { ok: false, commandId: cmd.commandId, code: 'thread_down' });
+      }
+    });
+  }
+
+  /** Registers delta/event handlers for a planet; the thread publishes only while someone is subscribed. Returns unsubscribe. */
+  subscribe(planetId: string, sub: PlanetSubscriber): () => void {
+    let set = this.subs.get(planetId);
+    if (!set) this.subs.set(planetId, (set = new Set()));
+    set.add(sub);
+    if (set.size === 1) this.pool.sendToPlanet(planetId, { t: 'subscribe', planetId });
+    return () => {
+      const s = this.subs.get(planetId);
+      if (!s?.delete(sub)) return;
+      if (s.size === 0) { this.subs.delete(planetId); this.pool.sendToPlanet(planetId, { t: 'unsubscribe', planetId }); }
+    };
+  }
+
+  /** Asks the owning thread for a snapshot; it arrives through `onSnapshot` of the planet's subscribers. */
+  requestSnapshot(planetId?: string): void {
+    if (planetId) this.pool.sendToPlanet(planetId, { t: 'snapshotNow', planetId });
+    else for (let t = 0; t < this.pool.size; t++) this.pool.send(t, { t: 'snapshotNow' });
+  }
+
+  /** Registers work to run before threads stop (a later issue snapshots every planet here). */
+  onBeforeShutdown(fn: () => void | Promise<void>): void {
+    this.shutdownHooks.push(fn);
+  }
+
+  async shutdown(): Promise<void> {
+    for (const h of this.shutdownHooks) await h();
+    await this.pool.shutdown();
+    this.unlisten();
+    const err = new Error('game threads stopped');
+    for (const id of [...this.loading.keys()]) this.failLoad(id, err);
+    for (const key of [...this.cmdWaiters.keys()]) this.settleCmd(key, { ok: false, commandId: key.split('\0')[1] ?? '', code: 'thread_down' });
+  }
+
+  private onMessage(thread: number, msg: FromThread): void {
+    switch (msg.t) {
+      case 'loaded':
+        this.loaded.add(msg.planetId);
+        for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
+        this.loading.delete(msg.planetId);
+        return;
+      case 'ack': return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: true, commandId: msg.commandId, appliedAtTick: msg.appliedAtTick });
+      case 'reject':
+        return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick });
+      case 'delta': return this.each(msg.planetId, (s) => s.onDelta?.(msg));
+      case 'event': return this.each(msg.planetId, (s) => s.onEvent?.(msg.events));
+      case 'snapshot': return this.each(msg.planetId, (s) => s.onSnapshot?.(msg));
+      case 'error':
+        if (msg.planetId && this.loading.has(msg.planetId)) this.failLoad(msg.planetId, new Error(msg.message));
+        return;
+      case 'stopped': // a thread died: its planets are gone
+        for (const id of [...this.loaded]) if (this.threadOf(id) === thread) this.loaded.delete(id);
+        return;
+      default: return;
+    }
+  }
+
+  private each(planetId: string, fn: (s: PlanetSubscriber) => void): void {
+    for (const s of this.subs.get(planetId) ?? []) fn(s);
+  }
+
+  private settleCmd(key: string, outcome: CommandOutcomeMsg): void {
+    const list = this.cmdWaiters.get(key);
+    const w = list?.shift();
+    if (!list?.length) this.cmdWaiters.delete(key);
+    w?.resolve(outcome);
+  }
+
+  private failLoad(planetId: string, e: Error): void {
+    for (const w of this.loading.get(planetId) ?? []) w.reject(e);
+    this.loading.delete(planetId);
+  }
+}

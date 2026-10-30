@@ -12,7 +12,7 @@ const fixtures = fileURLToPath(new URL('./fixtures/modules/', import.meta.url));
 
 let current: INestApplication | undefined;
 async function boot(source: Record<string, string> = {}, o: CreateAppOptions = {}) {
-  const created = await createApp({ source: { NODE_ENV: 'test', ...source }, modulesDirs: [srcDir], ...o });
+  const created = await createApp({ source: { NODE_ENV: 'test', SIM_THREADS: '1', ...source }, modulesDirs: [srcDir], ...o });
   await created.app.listen(0, '127.0.0.1');
   current = created.app;
   const url = await created.app.getUrl();
@@ -55,11 +55,11 @@ describe('health, readiness, metrics', () => {
     expect(body.db).toEqual({ status: 'fail', error: 'connection refused' });
   });
 
-  it('readyz with no checks is 200 {}', async () => {
+  it('readyz is 200 and reports only module-registered checks', async () => {
     const { url } = await boot();
     const r = await fetch(`${url}/v1/readyz`);
     expect(r.status).toBe(200);
-    expect(await r.json()).toEqual({});
+    expect(await r.json()).toEqual({}); // the base fixture boots core only; real modules register their own checks
   });
 
   it('metrics is Prometheus text with app info, default metrics and module metrics', async () => {
@@ -99,6 +99,7 @@ describe('module discovery and env', () => {
     const { url, modules } = await boot({ PROBE_FLAG: 'on' }, { modulesDirs: [srcDir, fixtures] });
     expect(modules).toEqual(expect.arrayContaining(['core', 'probe'])); // other real modules join as waves add them
     expect(modules.indexOf('core')).toBeLessThan(modules.indexOf('probe'));
+    expect(modules).not.toContain('empty');
     expect(await (await fetch(`${url}/v1/probe`)).json()).toEqual({ flag: 'on' });
   });
 
