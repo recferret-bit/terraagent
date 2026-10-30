@@ -11,7 +11,7 @@ export const allSystems = (modules: readonly SimModule[] = SIM_MODULES): SimSyst
 export const allHandlers = (modules: readonly SimModule[] = SIM_MODULES): CommandHandlerDef[] => modules.flatMap((m) => m.handlers);
 
 export interface EngineConfigInput {
-  flags: Iterable<string>;
+  flags: Iterable<string> | { readonly list: readonly string[] };
   /** Defaults to `compileData(flags)` over every discovered table. */
   data?: CompiledDataLike;
   /** Defaults to every discovered module; tests may pass a subset or extras. */
@@ -21,7 +21,8 @@ export interface EngineConfigInput {
 /** Default engine config from the registry: hosts pass flags + data and never assemble system lists by hand. */
 export function createEngineConfig(input: EngineConfigInput): EngineConfig {
   const modules = input.modules ?? SIM_MODULES;
-  const flags = new Set(input.flags);
+  const rawFlags = 'list' in input.flags ? input.flags.list : input.flags;
+  const flags = new Set(rawFlags);
   const systems = allSystems(modules).filter((s) => flags.has(s.wave));
   return { flags, data: input.data ?? compileData(flags), systems, handlers: allHandlers(modules) };
 }

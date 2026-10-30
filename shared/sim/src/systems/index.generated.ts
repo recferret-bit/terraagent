@@ -2,6 +2,7 @@
 import type { SimModule } from './define';
 import mod_dev from './dev/index';
 import mod_economy from './economy/index';
+import mod_environment from './environment/index';
 import mod_finalize from './finalize/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_economy, mod_finalize];
+export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_economy, mod_environment, mod_finalize];
