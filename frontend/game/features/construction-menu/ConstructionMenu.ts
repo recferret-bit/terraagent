@@ -1,5 +1,6 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { buildConstructionCatalog, type BuildingCardModel, type BuildingKind } from './catalog';
+import { PlacementGhostController, type PlacementGhostState } from './PlacementGhost';
 
 const RESOURCE_LABELS: Record<string, string> = {
   'metals.t1': 'Metals',
@@ -17,12 +18,14 @@ export function formatResourceLabel(res: string): string {
 
 export class ConstructionMenu implements Disposable {
   readonly root: HTMLElement;
+  readonly ghost: PlacementGhostController;
   private readonly headBtn: HTMLButtonElement;
   private readonly cardsContainer: HTMLElement;
   private isOpen = true;
   private view?: GameView;
   selectedBuilding: BuildingKind | null = null;
   private readonly onKeyDown: (e: KeyboardEvent) => void;
+  private readonly externalStartPlacement?: (building: BuildingKind) => void;
 
   constructor(
     private readonly el: HTMLElement,
@@ -46,13 +49,6 @@ export class ConstructionMenu implements Disposable {
     header.appendChild(this.headBtn);
     this.root.appendChild(header);
 
-    this.cardsContainer = document.createElement('div');
-    this.cardsContainer.className = 'ta-construction__cards';
-    this.cardsContainer.setAttribute('data-cards', '');
-    this.root.appendChild(this.cardsContainer);
-
-    this.el.appendChild(this.root);
-
     this.onKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'b' || e.key === 'B') {
         const target = e.target as HTMLElement | null;
@@ -64,7 +60,74 @@ export class ConstructionMenu implements Disposable {
       window.addEventListener('keydown', this.onKeyDown);
     }
 
+    this.ghost = new PlacementGhostController({
+      container: this.root,
+      ctx: this.ctx,
+      initialView: this.view,
+      onCancel: () => {
+        this.selectedBuilding = null;
+        this.renderCards();
+      },
+      onConfirm: () => {
+        this.selectedBuilding = null;
+        this.renderCards();
+      },
+    });
+
+    this.cardsContainer = document.createElement('div');
+    this.cardsContainer.className = 'ta-construction__cards';
+    this.cardsContainer.setAttribute('data-cards', '');
+    this.root.appendChild(this.cardsContainer);
+
+    this.el.appendChild(this.root);
+
+    this.externalStartPlacement = this.ctx.services.startPlacement;
+    this.ctx.services.startPlacement = (building) => {
+      this.startPlacement(building);
+      if (this.externalStartPlacement && this.externalStartPlacement !== this.ctx.services.startPlacement) {
+        this.externalStartPlacement(building as BuildingKind);
+      }
+    };
+    const s = this.ctx.services as unknown as Record<string, unknown>;
+    s.setHoverTile = (q: number, r: number) => this.setHoverTile(q, r);
+    s.rotate = () => this.rotate();
+    s.confirm = () => this.confirm();
+    s.cancel = () => this.cancel();
+    s.getGhostState = () => this.getGhostState();
+    s.setPlacementHoverTile = (q: number, r: number) => this.setHoverTile(q, r);
+    s.rotatePlacement = () => this.rotate();
+    s.confirmPlacement = () => this.confirm();
+    s.cancelPlacement = () => this.cancel();
+    s.getPlacementGhostState = () => this.getGhostState();
+
     this.renderCards();
+  }
+
+  startPlacement(building: BuildingKind | string): void {
+    this.selectedBuilding = building as BuildingKind;
+    this.setOpen(true);
+    this.ghost.start(building);
+    this.renderCards();
+  }
+
+  setHoverTile(q: number, r: number): void {
+    this.ghost.setHoverTile(q, r);
+  }
+
+  rotate(): void {
+    this.ghost.rotate();
+  }
+
+  confirm(): boolean {
+    return this.ghost.confirm();
+  }
+
+  cancel(): void {
+    this.ghost.cancel();
+  }
+
+  getGhostState(): PlacementGhostState | null {
+    return this.ghost.getState();
   }
 
   setOpen(open: boolean): void {
@@ -79,6 +142,7 @@ export class ConstructionMenu implements Disposable {
 
   update(view: GameView): void {
     this.view = view;
+    this.ghost.updateView(view);
     this.renderCards();
   }
 
@@ -148,9 +212,10 @@ export class ConstructionMenu implements Disposable {
 
     btn.onclick = () => {
       if (card.disabled) return;
-      this.selectedBuilding = card.building;
-      this.ctx.services.startPlacement?.(card.building);
-      this.renderCards();
+      this.startPlacement(card.building);
+      if (this.externalStartPlacement && this.externalStartPlacement !== this.ctx.services.startPlacement) {
+        this.externalStartPlacement(card.building);
+      }
     };
 
     return btn;
@@ -160,6 +225,8 @@ export class ConstructionMenu implements Disposable {
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.onKeyDown);
     }
+    this.ghost.dispose();
     this.root.remove();
   }
 }
+
