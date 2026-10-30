@@ -39,11 +39,13 @@ function status() {
       ? 'landed'
       : w.open && prog.complete
         ? `READY TO LAND (${prog.done.length}/${prog.total.length})`
-        : w.open
-          ? `OPEN (${prog.done.length}/${prog.total.length})`
-          : r.ready
-            ? 'ready'
-            : `blocked by ${r.missing.map((d) => d.id).join(', ')}`;
+        : w.open && w.running
+          ? `RUNNING (${prog.done.length}/${prog.total.length})`
+          : w.open
+            ? `OPEN (${prog.done.length}/${prog.total.length})`
+            : r.ready
+              ? 'ready'
+              : `blocked by ${r.missing.map((d) => d.id).join(', ')}`;
     const agent = p.label.padEnd(19);
     const params = `par=${p.parallel}`.padEnd(7);
     console.log(`${w.id}  ${state.padEnd(25)} ${tagLabel.padEnd(7)} ${agent} ${params} ${p.track.padEnd(15)} ${w.slug}`);
@@ -92,10 +94,10 @@ function autoLandCompleted() {
 function pickNext() {
   if (waveArg) return byId(waveArg);
   const list = ordered(plan);
-  const open = list.find((w) => w.open && !waveProgress(w, resolvePreset(w, overrides()).tags).complete);
-  if (open && !flag('--new')) return open;
+  const paused = list.find((w) => w.open && !w.running && !waveProgress(w, resolvePreset(w, overrides()).tags).complete);
+  if (paused && !flag('--new')) return paused;
   const nextWave = list.find((w) => !w.landed && !w.open && readiness(plan, w).ready);
-  return nextWave ?? fail('all ready waves are landed or waiting on dependencies (see `npm run wave -- status`)');
+  return nextWave ?? fail('all ready waves are landed, already running, or waiting on dependencies (see `npm run wave -- status`)');
 }
 
 function openWave(w) {
@@ -103,6 +105,9 @@ function openWave(w) {
   if (!r.ready) fail(`${w.id} waits for ${r.missing.map((d) => d.id).join(', ')}: open those first`);
   if (w.open) {
     if (!existsSync(w.worktree)) run('git', ['worktree', 'add', w.worktree, w.branch], { cwd: root });
+    if (!out('git', ['status', '--porcelain'], { cwd: w.worktree })) {
+      for (const d of r.stack) run('git', ['merge', '--no-edit', d.branch], { cwd: w.worktree });
+    }
     return r.stack;
   }
   run('git', ['worktree', 'add', w.worktree, '-b', w.branch, 'main'], { cwd: root });
@@ -114,6 +119,9 @@ function openWave(w) {
 function next() {
   if (!waveArg) autoLandCompleted();
   const w = pickNext();
+  if (w.running && !flag('--force') && !flag('--dry-run')) {
+    fail(`${w.id} is already running in another terminal (pass --force to launch another session on ${w.id})`);
+  }
   const preset = resolvePreset(w, overrides());
   const progress = waveProgress(w, preset.tags);
   const r = readiness(plan, w);
@@ -125,13 +133,13 @@ function next() {
     );
     return;
   }
-  const stacked = openWave(w).map((d) => d.id);
+  const stacked = openWave(w);
   const prompt = wavePrompt(w, waveTitle(root, w), { preset, stacked, progress });
   const { cmd, args: cmdArgs } = buildRunnerCommand(preset, prompt, [dirname(w.worktree), root]);
   console.log(
     `\n▶ ${w.id} ${w.slug} (${progress.done.length}/${progress.total.length} done) — ${w.worktree}` +
     ` — preset ${preset.label} (parallel=${preset.parallel}, mode=${preset.mode})` +
-    `${stacked.length ? ` — stacked on ${stacked.join(', ')}` : ''}`,
+    `${stacked.length ? ` — stacked on ${stacked.map((d) => d.id).join(', ')}` : ''}`,
   );
   if (flag('--no-launch')) {
     console.log(`\ncd ${w.worktree} && ${cmd} ${cmdArgs.slice(0, -1).join(' ')} "<prompt below>"\n\n${prompt}`);

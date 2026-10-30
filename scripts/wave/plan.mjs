@@ -39,18 +39,34 @@ export function ordered(plan) {
 const branches = (root) => new Set(out('git', ['branch', '--format=%(refname:short)'], { cwd: root }).split('\n').filter(Boolean));
 const tags = (root) => new Set(out('git', ['tag', '--list', 'wave-*'], { cwd: root }).split('\n').filter(Boolean));
 
+function runningWaves() {
+  const ps = tryOut('ps', ['-ax', '-o', 'pid=,command=']) ?? '';
+  const active = new Set();
+  for (const line of ps.split('\n')) {
+    const m = line.match(/^\s*(\d+)\s+(.*)$/);
+    if (!m) continue;
+    const pid = Number(m[1]), cmd = m[2];
+    if (pid === process.pid || pid === process.ppid) continue;
+    if (!/\b(claude|agy)\b/.test(cmd)) continue;
+    const waveMatch = cmd.match(/You are the lead for wave (W\d{2})\b/);
+    if (waveMatch) active.add(waveMatch[1]);
+  }
+  return active;
+}
+
 function mergedIssueIds(root, w) {
   const log = tryOut('git', ['log', `main..${w.branch}`, '--format=%s%n%b'], { cwd: root }) ?? '';
   const re = new RegExp(`\\b(${w.id}-\\d{2})\\b`, 'g');
   return new Set([...log.matchAll(re)].map((m) => m[1]));
 }
 
-/** Adds `landed`, `open`, `worktree` and `merged` (Set of merged issue IDs) to every wave. */
+/** Adds `landed`, `open`, `running`, `worktree` and `merged` (Set of merged issue IDs) to every wave. */
 export function withState(root, plan) {
-  const b = branches(root), t = tags(root);
+  const b = branches(root), t = tags(root), r = runningWaves();
   for (const w of plan.waves) {
     w.landed = [...t].some((x) => x === w.tag || x.startsWith(`${w.tag}.`));
     w.open = b.has(w.branch);
+    w.running = r.has(w.id);
     w.worktree = worktreeDir(root, w.id);
     w.merged = w.open ? mergedIssueIds(root, w) : new Set();
   }

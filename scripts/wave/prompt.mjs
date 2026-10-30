@@ -100,7 +100,7 @@ function planGateText(w, preset) {
 
 export function wavePrompt(w, title, { preset, stacked, progress }) {
   const stack = stacked.length
-    ? `\nThis branch stacks the unlanded wave(s) ${stacked.join(', ')} (PRODUCT_WAVES §7 step 2); never commit on their branches.`
+    ? `\nThis branch stacks the unlanded wave(s) ${stacked.map((d) => `${d.id} (\`${d.branch}\`)`).join(', ')} (PRODUCT_WAVES §7 step 2); never commit on their branches. If a stacked wave is still building in parallel and an issue here depends on a \`WNN-XX\` issue from it that landed after this branch opened, run \`git merge --no-edit <stacked-branch>\` on \`${w.branch}\` to pull it in.`
     : '';
   const skillsLine = preset.skills.length
     ? `\nMandatory skills for this wave: activate ${preset.skills.map((s) => `\`.agents/skills/${s}/SKILL.md\``).join(', ')} whenever touching their domain.`
