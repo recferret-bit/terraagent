@@ -604,6 +604,11 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "id": {
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -621,7 +626,6 @@
           }
         },
         "required": [
-          "id",
           "q",
           "r"
         ],
