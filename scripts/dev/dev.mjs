@@ -7,6 +7,8 @@ import { resolve } from 'node:path';
 import { devDir, loadEnv, root } from './env.mjs';
 
 const { env, appPort, clientPort, dbName } = loadEnv();
+// `/play.html?scenario=w00` needs a planet to join: load one flat dev planet unless the env says otherwise.
+env.GAME_DEV_PLANETS ??= '1';
 const colors = { dev: 36, app: 32, client: 35 };
 const out = (tag, line) => console.log(`\x1b[${colors[tag] ?? 0}m[${tag}]\x1b[0m ${line}`);
 
