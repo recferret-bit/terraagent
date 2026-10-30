@@ -52,7 +52,7 @@ export class StageGlobes {
     this.current = this.globeFor(next);
     this.current.group.visible = true;
     this.current.spin.rotation.y = this.outgoing.spin.rotation.y + (this.continuousSpin ? 0 : 0.9); // arrives mid-rotation → reads as a smooth turn
-    this.current.setOpacity(0); this.current.setCloudPresence(0); this.current.setTerraform(0);
+    this.current.setOpacity(0); this.current.setCloudPresence(0);
     this.fade = 0;
     return true;
   }

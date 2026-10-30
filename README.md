@@ -124,14 +124,15 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.confi
 | Playground | `?inspect=<archetype id>` | Select a model, e.g. `robot.hero`, `building.commandHub`, `ship.carrier`. |
 | Playground | `&biome=dune\|oceanForest\|forestRock` | Pedestal / sky / weathering biome. |
 | Playground | `&view=iso\|front\|side\|top` | Camera view. |
-| Playground | `&turntable=1`, `&surface=1` | Auto-rotate; real planet surface instead of the pedestal. |
+| Playground | `&turntable=1`, `&surface=1`, `&pixel=1` | Auto-rotate; real planet surface instead of the pedestal; pixel-art shader. |
+| All 3D pages | `?pixel=1\|0` | Enable or disable the experimental pixel-art post-processing shader. |
 
 ### Controls
 
 - **Game (online, dev):** `` ` `` opens the dev console (`help` lists the commands of the enabled waves: `warp`, `spawn`, `nudge`, `teleport`, `tune`, `scenario`, `chain.ping`, `flags`, …). LMB on a tile logs its `q, r`.
 - **Game (prototype):** LMB move hero · WASD / edge pan · MMB drag · wheel zoom · Q/E rotate · Home focus hero · Esc pause. During the descent: Esc / Space skips.
-- **Playground:** `[` `]` cycle models · `1`–`4` views · `T` turntable · `F` focus · `G` grid · `W` wireframe · `B` bloom · `R` spawn the whole category in a row · `V` validate (outline floating/overlapping parts) · `/` search · double-click to refocus.
-- **Landing and Game:** `F9` toggles the CRT overlay ([`frontend/render/ui/crt.ts`](./frontend/render/ui/crt.ts)).
+- **Playground:** `[` `]` cycle models · `1`–`4` views · `T` turntable · `F` focus · `G` grid · `W` wireframe · `B` bloom · `P` pixel art · `R` spawn the whole category in a row · `V` validate (outline floating/overlapping parts) · `/` search · double-click to refocus.
+- **Landing and Game:** `F9` toggles the CRT overlay ([`frontend/render/ui/crt.ts`](./frontend/render/ui/crt.ts)) · `F10` toggles the Pixel-Art shader ([`frontend/render/ui/pixelArt.ts`](./frontend/render/ui/pixelArt.ts), [`frontend/render/core/pixelArtPass.ts`](./frontend/render/core/pixelArtPass.ts)) · `F8` (or `Shift+P`) opens/closes the floating Pixel Shader Lab dialog ([`frontend/render/ui/pixelDialog.ts`](./frontend/render/ui/pixelDialog.ts)).
 
 ## Design system: Faction Plate
 
@@ -167,7 +168,7 @@ npm run wave:land -- 07              # refuses unless every depended-on/stacked 
 
 Every worktree these scripts create gets a gitignored `.env.worktree` with its own `TA_PORT_BASE` (4100, 4200, …) and `TA_DB_NAME=terra_<branch>`.
 
-Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/prompt.mjs) that automatically selects the runner (`agy` or `claude`), lead & subagent models (`argon`+`flash`, `opus`+`sonnet`, `fable`+`sonnet`), reasoning effort (`high`/`xhigh`/`max`), execution mode (`auto`), parallel subagent factor (`2`–`6`), serial plan gate (`serial-spine` or `contract-first`), and domain skills.
+Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/prompt.mjs) that automatically selects the runner (`agy` or `claude`), worker + advisor (`agy:argon` with `flash` subagents, `claude:sonnet+opus` for standard waves, or `claude:opus+fable` for complex waves via `--advisor`, using each model's default effort), execution mode (`auto`), parallel subagent factor (`2`–`6`), serial plan gate (`serial-spine` or `contract-first`), and domain skills.
 
 **Your loop:**
 

@@ -86,6 +86,7 @@ with a visibly wrong model means a check is missing: add a fixture and a check (
 | `HAIRLINE_GAP` | error | Stops < 6 cm short of its support: reads as attached, is not. Reported as a **minimal set of missing links**, so a dish on a mast on a cabin gives two short gaps | Overlap the neighbour by ≥ 1 cm; the overlap hides inside the hull |
 | `COPLANAR_Z_FIGHT` | error | Same-facing faces of two parts share a plane: they flicker | Make an inset thicker/thinner than its frame so it stands ≥ 2 mm proud |
 | `ANIM_COLLISION` | error | An animated part comes within 1 cm of (or cuts) a part it does not rest against, at some point of its motion | Shorten the part, move the pivot, or shift the neighbour ≥ 1 cm |
+| `ANIM_DISTORTION` | error | An animated part stretches, resizes, shears, or bends (> 0.5 mm edge-length drift) during its motion | Use pure rigid-body 3D rotations and translations per part; never scale or blend per-vertex coordinates |
 | `GROUND_CONTACT` | error/warn | Grounded model hovers (> 2 mm) or its foundation sinks > 10.5 cm | Snap minY to 0; plinth may go to -0.1 m |
 | `NAN_VERTEX` | error | NaN/Infinity (zero-length strut, bad scale) | Fix the inputs |
 | `NEAR_COPLANAR` | warn | Faces cross at a grazing angle within 3 mm of the same plane: the edge shimmers | Offset one part ≥ 3 mm or tilt it more |
@@ -131,11 +132,16 @@ flush opposite-facing faces (that is a clean contact), and cables as structural 
 1. **Every part touches its support by ≥ 1 cm of overlap** (contact tolerance is 4 mm). Overlap hides inside the neighbour.
 2. **Insets stand proud**: a panel on a frame is thicker or offset by ≥ 2 mm; never coplanar, never inside.
 3. **Cables end on anchors**: both ends inside a joint or socket, mid-span clear of every solid. Cables are not supports.
-4. **Animated parts are clean about their motion** (from `UnifiedColonyMaterial.ts`):
-   - `animType 1`: rotates about **+Y through `animPivot`**, one full turn. **All spinners share the same angle** (they move in lockstep).
-   - `animType 2`: bobs **±5 cm in Y**; phase depends on `pivot.x`, so equal `pivot.x` means lockstep.
-   - `animType 3`: recoils **0 to 6 cm toward −Z**; phase depends on `pivot.x`.
-   Keep ≥ 1 cm clearance from everything except the mount the part rests against. Put `animPivot` on the part's own axis.
+4. **Animated parts are clean about their motion** (from `UnifiedColonyMaterial.ts` and [`procedural-animation-3d`](../procedural-animation-3d/SKILL.md)):
+   - `animType 1` (`SpinY`): rotates about **+Y through `animPivot`**, one full turn. **All spinners share the same angle** (they move in lockstep).
+   - `animType 2` (`HoverBob`): bobs **±5 cm in Y**; phase depends on `pivot.x`, so equal `pivot.x` means lockstep.
+   - `animType 3` (`RecoilPulse`): recoils **0 to 6 cm toward −Z**; phase depends on `pivot.x`.
+   - `animType 4` (`BipedLeg`): sagittal hip swing + knee bend + foot clearance lift around hip `animPivot`, coupled to `BipedBody (8)` at the hip socket; left (`pivot.x >= 0`) and right (`pivot.x < 0`) alternate by $\pi$.
+   - `animType 5` (`BipedArm`): counter-phase shoulder swing around shoulder `animPivot` (opposite same-side `BipedLeg`), riding on `BipedBody (8)`.
+   - `animType 6` (`SpiderLeg`): alternating diagonal/tripod coxa yaw + snappy stepping lift + stance knee flex around hip `animPivot`, coupled to `SpiderBody (9)` at the hip socket.
+   - `animType 7` (`WheelSpin`): continuous X-axis rolling around wheel axle `animPivot`.
+   - `animType 8` (`BipedBody`) & `animType 9` (`SpiderBody`): full-body step-reaction suspension (spring-damped $2\omega$ impact heave, roll, pitch, yaw, sway, surge). Compound codes `18, 28, 38` and `19, 29, 39` layer `SpinY (1)`, `HoverBob (2)`, or `RecoilPulse (3)` on top of the moving body carrier.
+   All sub-parts of a single limb or wheel must share the exact same `animType` and `animPivot` (`sameRig`), with a ball-joint (`sph`) centered at `animPivot` sunk into the static mount and moving struts kept ≥ 1.5 cm clear of static hull walls.
 5. **Name the parts** so a report points at code.
 
 ## Limits (read before trusting a PASS)

@@ -41,10 +41,23 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
  * GPU Vertex-Shader Animation Tag
  * Stored in `aPartAnim` (vec4: [animType, pivotX, pivotY, pivotZ])
  * - 0: Static
- * - 1: Continuous Y-axis rotation around (pivotX, pivotY, pivotZ)
- * - 2: Vertical hover/bob oscillation
- * - 3: Forward recoil / thumper oscillation
+ * - 1: SpinY — Continuous Y-axis rotation around (pivotX, pivotY, pivotZ)
+ * - 2: HoverBob — Vertical hover/bob oscillation (±5 cm)
+ * - 3: RecoilPulse — Forward recoil / thumper oscillation along local +Z (0..6 cm)
+ * - 4: BipedLeg — Rigid upper-leg (hip + thigh) sagittal pitch around hip pivot, coupled to BipedBody (8)
+ * - 14: BipedShin — Rigid lower-leg (knee + shin + ankle) knee flexion around moving knee joint
+ * - 24: BipedFoot — Rigid foot (foot + toe cap) dorsiflexed level with ground at moving ankle joint
+ * - 5: BipedArm — Rigid counter-phase sagittal shoulder swing riding on BipedBody (8)
+ * - 6: SpiderLeg — Rigid upper-leg (hip + femur) 3D coxa yaw + femur elevation around hip pivot, coupled to SpiderBody (9)
+ * - 16: SpiderTibia — Rigid lower-leg (knee + tibia + foot) coxa yaw around moving knee joint
+ * - 7: WheelSpin — Continuous X-axis rolling rotation around wheel axle pivot
+ * - 8: BipedBody — Full-body step reaction (impact heave, lateral weight shift, hip roll, pitch, torso yaw)
+ * - 9: SpiderBody — Heavy quadruped/spider chassis suspension (step-impact heave, roll, pitch, yaw, surge)
+ * - 18, 28, 38: SpinY (1) / HoverBob (2) / RecoilPulse (3) mounted on BipedBody (8)
+ * - 19, 29, 39: SpinY (1) / HoverBob (2) / RecoilPulse (3) mounted on SpiderBody (9)
  */
+export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18 | 19 | 24 | 28 | 29 | 38 | 39;
+
 export interface PartOptions {
   /** Human-readable label used by the model validator's reports (defaults to "<geometry type>#<index>"). */
   name?: string;
@@ -52,7 +65,7 @@ export interface PartOptions {
   rotation?: THREE.Vector3Tuple;
   scale?: THREE.Vector3Tuple;
   emissiveIntensity?: number;
-  animType?: 0 | 1 | 2 | 3;
+  animType?: AnimChannelId;
   animPivot?: THREE.Vector3Tuple;
 }
 

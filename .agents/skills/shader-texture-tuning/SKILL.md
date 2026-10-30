@@ -20,8 +20,8 @@ This skill enforces **Pillar 3 (The Unifier Shader Architecture)** so procedural
    - External AI meshes have fragmented UV islands. Project micro-surface details (brushed metal, hex solar grids, rock strata) in **Object or World Space via Triplanar Mapping** (see [tsl-and-shader-recipes.md](./references/tsl-and-shader-recipes.md)).
 2. **Anchor Every Object with Vertical Ground-Up Biome Weathering:**
    - Blend the active planet's `dustTint` (iron-oxide sand, glacial frost, or mossy loam) into the bottom `0.0m → 1.1m` of every building and robot (`smoothstep(0.0, uWeatheringHeight, vLocalPos.y)`) and increase `roughness` toward `0.9` near the ground.
-3. **Decode GPU Vertex Animation Channels in the Vertex Shader:**
-   - Read `aPartAnim` (`vec4: [animType, pivotX, pivotY, pivotZ]`) to rotate wind turbines/radar dishes (`animType == 1`), bob hover units (`animType == 2`), or recoil turret barrels (`animType == 3`) on the GPU—never spawn CPU `AnimationMixer` instances for hundreds of units.
+3. **Decode GPU Vertex Animation Channels in the Vertex Shader (`procedural-animation-3d`):**
+   - Read `aPartAnim` (`vec4: [animType, pivotX, pivotY, pivotZ]`) and `uWalkWeight` (`0..1`, default `1.0`) to drive all GPU channels: `1` (`SpinY` radars/turbines/drills), `2` (`HoverBob`), `3` (`RecoilPulse`), `4` (`BipedLeg` coupled stride), `5` (`BipedArm` counter-swing), `6` (`SpiderLeg` alternating arachnid gait), `7` (`WheelSpin` axle roll), `8` (`BipedBody` step-reaction suspension), `9` (`SpiderBody` heavy quadruped suspension), and compound codes `18, 19, 28, 29, 38, 39` (`SpinY`/`HoverBob`/`RecoilPulse` riding on `BipedBody`/`SpiderBody`) — never spawn CPU `AnimationMixer` instances for colony units.
 4. **Drive Selective Bloom via HDR Emissive Thresholding (`> 1.1`):**
    - Keep standard sunlit albedo luminance `< 1.0`. Multiply emissive zones (`color.a > 0.5` or high-saturation energy masks) by `uEmissiveBoost` (`3.2 – 4.5`) so only power cores, status beacons, mining lasers, and terraforming waves trigger `UnrealBloomPass`.
 5. **Maintain Zoom Readability with Top-Down Gradient & Fresnel Rim:**

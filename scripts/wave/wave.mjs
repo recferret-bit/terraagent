@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Two-command wave pipeline (docs/plan/PRODUCT_WAVES.md §7):
 //   npm run wave            auto-lands any completed open wave, then opens/resumes the next wave with its built-in preset
-//   npm run wave -- status  full board: state, issue progress (done/total), preset (runner:model, effort, parallel) & track
+//   npm run wave -- status  full board: state, issue progress (done/total), preset (runner:model+advisor, effort, parallel) & track
 // Single steps of the pipeline (each is also an npm script):
 //   wave:open -- NN         open/resume the wave worktree (ports + database in .env.worktree), no agent started
 //   wave:issue -- WNN-XX    create the issue worktree `issue/WNN-XX` from its wave branch
@@ -21,7 +21,7 @@ import { runGates } from './gates.mjs';
 import { wavePrompt, resolvePreset, buildRunnerCommand } from './prompt.mjs';
 
 const args = process.argv.slice(2);
-const VALUE_OPTS = ['--tags', '--parallel', '--runner', '--model', '--mode', '--effort', '--root'];
+const VALUE_OPTS = ['--tags', '--parallel', '--runner', '--model', '--advisor', '--mode', '--effort', '--root'];
 const flag = (n) => args.includes(n);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_OPTS.includes(args[i - 1]));
@@ -33,6 +33,7 @@ const byId = (n) => plan.waves.find((w) => w.id === `W${String(n).padStart(2, '0
 const overrides = () => ({
   runner: opt('--runner', null),
   model: opt('--model', null),
+  advisor: opt('--advisor', null),
   mode: opt('--mode', null),
   effort: opt('--effort', null),
   parallel: opt('--parallel', null),
@@ -49,13 +50,15 @@ function status() {
       ? 'landed'
       : w.open && prog.complete
         ? `READY TO LAND (${prog.done.length}/${prog.total.length})`
-        : w.open
-          ? `OPEN (${prog.done.length}/${prog.total.length})`
-          : r.ready
-            ? 'ready'
-            : `blocked by ${r.missing.map((d) => d.id).join(', ')}`;
-    const agent = `${p.runner}:${p.model}`.padEnd(13);
-    const params = `eff=${p.effort} par=${p.parallel}`.padEnd(16);
+        : w.open && w.running
+          ? `RUNNING (${prog.done.length}/${prog.total.length})`
+          : w.open
+            ? `OPEN (${prog.done.length}/${prog.total.length})`
+            : r.ready
+              ? 'ready'
+              : `blocked by ${r.missing.map((d) => d.id).join(', ')}`;
+    const agent = p.label.padEnd(19);
+    const params = `par=${p.parallel}`.padEnd(7);
     console.log(`${w.id}  ${state.padEnd(25)} ${tagLabel.padEnd(7)} ${agent} ${params} ${p.track.padEnd(15)} ${w.slug}`);
   }
 }
@@ -118,10 +121,10 @@ function autoLandCompleted() {
 function pickNext() {
   if (waveArg) return byId(waveArg);
   const list = ordered(plan);
-  const open = list.find((w) => w.open && !waveProgress(w, resolvePreset(w, overrides()).tags).complete);
-  if (open && !flag('--new')) return open;
+  const paused = list.find((w) => w.open && !w.running && !waveProgress(w, resolvePreset(w, overrides()).tags).complete);
+  if (paused && !flag('--new')) return paused;
   const nextWave = list.find((w) => !w.landed && !w.open && readiness(plan, w).ready);
-  return nextWave ?? fail('all ready waves are landed or waiting on dependencies (see `npm run wave -- status`)');
+  return nextWave ?? fail('all ready waves are landed, already running, or waiting on dependencies (see `npm run wave -- status`)');
 }
 
 function openWave(w) {
@@ -129,6 +132,9 @@ function openWave(w) {
   if (!r.ready) fail(`${w.id} waits for ${r.missing.map((d) => d.id).join(', ')}: open those first`);
   if (w.open) {
     if (!existsSync(w.worktree)) run('git', ['worktree', 'add', w.worktree, w.branch], { cwd: root });
+    if (!out('git', ['status', '--porcelain'], { cwd: w.worktree })) {
+      for (const d of r.stack) run('git', ['merge', '--no-edit', d.branch], { cwd: w.worktree });
+    }
   } else {
     run('git', ['worktree', 'add', w.worktree, '-b', w.branch, 'main'], { cwd: root });
     for (const d of r.stack) run('git', ['merge', '--no-edit', d.branch], { cwd: w.worktree });
@@ -142,6 +148,9 @@ function openWave(w) {
 function next() {
   if (!waveArg) autoLandCompleted();
   const w = pickNext();
+  if (w.running && !flag('--force') && !flag('--dry-run')) {
+    fail(`${w.id} is already running in another terminal (pass --force to launch another session on ${w.id})`);
+  }
   const preset = resolvePreset(w, overrides());
   const progress = waveProgress(w, preset.tags);
   const r = readiness(plan, w);
@@ -149,17 +158,17 @@ function next() {
     if (!r.ready) return console.log(`${w.id} is blocked by ${r.missing.map((d) => d.id).join(', ')}`);
     console.log(
       `would ${w.open ? 'resume' : 'open'} ${w.id} ${w.slug} (${progress.done.length}/${progress.total.length} issues done) in ${w.worktree} ` +
-      `with preset ${preset.runner}:${preset.model} (cli=${preset.cliModel}, mode=${preset.mode}, effort=${preset.effort}, parallel=${preset.parallel}, plan=${preset.plan})`,
+      `with preset ${preset.label} (cli=${preset.cliModel}${preset.advisor ? `, advisor=${preset.advisor}` : ''}, mode=${preset.mode}, parallel=${preset.parallel}, plan=${preset.plan})`,
     );
     return;
   }
-  const stacked = openWave(w).map((d) => d.id);
+  const stacked = openWave(w);
   const prompt = wavePrompt(w, waveTitle(root, w), { preset, stacked, progress });
   const { cmd, args: cmdArgs } = buildRunnerCommand(preset, prompt, [dirname(w.worktree), root]);
   console.log(
     `\n▶ ${w.id} ${w.slug} (${progress.done.length}/${progress.total.length} done) — ${w.worktree}` +
-    ` — preset ${preset.runner}:${preset.model} (effort=${preset.effort}, parallel=${preset.parallel}, mode=${preset.mode})` +
-    `${stacked.length ? ` — stacked on ${stacked.join(', ')}` : ''}`,
+    ` — preset ${preset.label} (parallel=${preset.parallel}, mode=${preset.mode})` +
+    `${stacked.length ? ` — stacked on ${stacked.map((d) => d.id).join(', ')}` : ''}`,
   );
   if (flag('--no-launch')) {
     console.log(`\ncd ${w.worktree} && ${cmd} ${cmdArgs.slice(0, -1).join(' ')} "<prompt below>"\n\n${prompt}`);

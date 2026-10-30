@@ -42,6 +42,12 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 .settings label{display:flex;gap:6px;align-items:center;cursor:pointer}
 .settings input[type=checkbox]{accent-color:var(--ta-orange);width:14px;height:14px;margin:0}
 .settings select{background:var(--ta-deep);color:var(--ta-text);border:1px solid var(--ta-seam-2);border-radius:0;padding:3px 6px;font:inherit;text-transform:uppercase}
+.radio-group{display:flex;flex-direction:column;gap:5px}
+.radios{display:flex;gap:6px;flex-wrap:wrap;font-family:var(--ta-font-mono);font-size:11px;letter-spacing:.08em;text-transform:uppercase;color:var(--ta-steel)}
+.radios label{display:flex;gap:5px;align-items:center;padding:4px 8px;border:1px solid var(--ta-seam-2);background:var(--ta-deep);cursor:pointer;transition:border-color var(--ta-dur-quick) ease,color var(--ta-dur-quick) ease,background-color var(--ta-dur-quick) ease}
+.radios label:hover{border-color:var(--ta-orange);color:var(--ta-text)}
+.radios label:has(input:checked){border-color:var(--ta-orange);color:var(--ta-orange-hi);background:rgba(255,106,19,.12)}
+.radios input[type=radio]{accent-color:var(--ta-orange);width:12px;height:12px;margin:0}
 #menu-err{color:var(--ta-fault-text);font-family:var(--ta-font-mono);font-size:12px;min-height:14px}
 #deploy{width:100%;font-size:22px;letter-spacing:.3em}
 #deploy:disabled{cursor:wait}
@@ -72,7 +78,7 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 @keyframes pulse{50%{opacity:.35}}
 /* ---------- gameplay HUD ---------- */
 #hud{opacity:0;transition:opacity .8s}#hud.on{opacity:1}
-.hud-top{position:absolute;top:12px;left:12px;right:12px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.hud-top{position:absolute;top:12px;left:12px;right:110px;display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
 .chip{background:rgba(11,13,17,.9);backdrop-filter:blur(8px);border:1px solid var(--ta-seam-2);padding:10px 14px;font-size:12px}
 .chip h4{margin:0;font-family:var(--ta-font-display);font-weight:700;font-size:15px;letter-spacing:.12em;color:var(--ta-text)}
 .chip small{font-family:var(--ta-font-mono);font-size:11px;letter-spacing:.06em;color:var(--ta-steel)}

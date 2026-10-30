@@ -17,6 +17,7 @@ export interface UnifiedColonyMaterialOptions {
 
 export interface UnifiedColonyMaterialUniforms {
   uTime: THREE.IUniform<number>;
+  uWalkWeight: THREE.IUniform<number>;
   uBiomeDustColor: THREE.IUniform<THREE.Color>;
   uRimTint: THREE.IUniform<THREE.Color>;
   uWeatheringHeight: THREE.IUniform<number>;
@@ -37,6 +38,7 @@ export function createUnifiedColonyMaterial(
 
   const uniforms: UnifiedColonyMaterialUniforms = {
     uTime: { value: 0 },
+    uWalkWeight: { value: 1.0 },
     uBiomeDustColor: { value: new THREE.Color(biome.dustColor) },
     uRimTint: { value: new THREE.Color(biome.rimTint) },
     uWeatheringHeight: { value: biome.weatheringHeight },

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { isShaderOptimized } from '../core/perfConfig';
 import type { PlanetSpec } from './PlanetSpec';
 
 export interface PlanetGlobeOptions {
@@ -105,6 +106,7 @@ export function createPlanetGlobe(spec: PlanetSpec, opts: PlanetGlobeOptions = {
     setCloudPresence(v) { cloudMat.uniforms.uCloudTween.value = THREE.MathUtils.clamp(v, 0, 1); },
     update(dt, time) {
       shared.uTime.value = time;
+      shared.uOpt.value = isShaderOptimized() ? 1 : 0;
       spin.rotation.y += dt * spinRate;
       clouds.rotation.y += dt * spinRate * 0.24; // clouds drift relative to the surface
     },

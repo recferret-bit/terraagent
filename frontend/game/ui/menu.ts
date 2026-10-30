@@ -1,7 +1,14 @@
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { getViewportPreset, isShaderOptimized, type ViewportPreset } from '@terra/render/core/perfConfig';
 import { worldCardHtml } from './worldCard';
 
-export interface MenuSettings { bloom: boolean; quality: 'low' | 'high'; skipCinematic: boolean; }
+export interface MenuSettings {
+  bloom: boolean;
+  quality: 'low' | 'high';
+  skipCinematic: boolean;
+  optimized: boolean;
+  resolution: ViewportPreset;
+}
 export interface MenuCallbacks {
   onPlanet(kind: PlanetKind): void;
   onDeploy(kind: PlanetKind, seed: number, settings: MenuSettings): void;
@@ -14,7 +21,13 @@ export class MainMenu {
   readonly el = document.createElement('div');
   kind: PlanetKind;
   seed: number;
-  settings: MenuSettings = { bloom: true, quality: 'high', skipCinematic: false };
+  settings: MenuSettings = {
+    bloom: true,
+    quality: 'high',
+    skipCinematic: false,
+    optimized: isShaderOptimized(),
+    resolution: getViewportPreset(),
+  };
   private deployBtn!: HTMLButtonElement;
   private seedInput!: HTMLInputElement;
   private errEl!: HTMLElement;
@@ -24,6 +37,9 @@ export class MainMenu {
     this.seed = seed ?? PLANET_SPECS[kind].seed;
     this.el.id = 'menu'; this.el.className = 'ui-layer';
     const cards = PLANET_KINDS.map(worldCardHtml).join('');
+    const { optimized, resolution } = this.settings;
+    const resOpts: [ViewportPreset, string][] = [['auto', 'AUTO'], ['2560x1440', '2560×1440'], ['1920x1080', '1920×1080'], ['1280x720', '1280×720']];
+    const resRadios = resOpts.map(([v, lbl]) => `<label><input type="radio" name="s-res" value="${v}" ${resolution === v ? 'checked' : ''} /><span>${lbl}</span></label>`).join('');
     this.el.innerHTML = `
       <div class="menu-top"><div><h1 class="title">TERRA<b>AGENT</b></h1><div class="subtitle">AUTONOMOUS COLONY BUILDER · SELECT A WORLD</div></div><a class="btn btn-ghost btn-sm" href="/landing.html">◂ TERRAAGENT.COM</a></div>
       <div class="menu-bottom">
@@ -35,6 +51,17 @@ export class MainMenu {
             <label><input type="checkbox" id="s-bloom" checked /> bloom</label>
             <label>quality <select id="s-q"><option value="high">high</option><option value="low">low</option></select></label>
             <label><input type="checkbox" id="s-skip" /> skip cinematic</label>
+          </div>
+          <div class="radio-group">
+            <div class="field-label">OPTIMIZATIONS</div>
+            <div class="radios">
+              <label><input type="radio" name="s-opt" value="1" ${optimized ? 'checked' : ''} /><span>ON</span></label>
+              <label><input type="radio" name="s-opt" value="0" ${!optimized ? 'checked' : ''} /><span>OFF</span></label>
+            </div>
+          </div>
+          <div class="radio-group">
+            <div class="field-label">VIEWPORT W×H</div>
+            <div class="radios">${resRadios}</div>
           </div>
           <div id="menu-err"></div>
           <button class="btn btn-primary btn-lg" id="deploy">DEPLOY</button>
@@ -48,8 +75,20 @@ export class MainMenu {
     this.seedInput.oninput = () => { const n = parseInt(this.seedInput.value, 10); if (Number.isFinite(n)) { this.seed = n >>> 0; cb.onSeed?.(this.seed); } };
     (this.el.querySelector('#dice') as HTMLElement).onclick = () => { this.seed = (Math.random() * 99999) | 0; this.seedInput.value = String(this.seed); cb.onSeed?.(this.seed); };
     const sb = this.el.querySelector('#s-bloom') as HTMLInputElement, sq = this.el.querySelector('#s-q') as HTMLSelectElement, ss = this.el.querySelector('#s-skip') as HTMLInputElement;
-    const push = () => { this.settings = { bloom: sb.checked, quality: sq.value as 'low' | 'high', skipCinematic: ss.checked }; cb.onSettings(this.settings); };
+    const push = () => {
+      const optEl = this.el.querySelector<HTMLInputElement>('input[name="s-opt"]:checked');
+      const resEl = this.el.querySelector<HTMLInputElement>('input[name="s-res"]:checked');
+      this.settings = {
+        bloom: sb.checked,
+        quality: sq.value as 'low' | 'high',
+        skipCinematic: ss.checked,
+        optimized: optEl ? optEl.value === '1' : true,
+        resolution: (resEl?.value as ViewportPreset) ?? 'auto',
+      };
+      cb.onSettings(this.settings);
+    };
     sb.onchange = sq.onchange = ss.onchange = push;
+    this.el.querySelectorAll<HTMLInputElement>('input[name="s-opt"], input[name="s-res"]').forEach((r) => (r.onchange = push));
     this.deployBtn.onclick = () => { this.deployBtn.disabled = true; cb.onDeploy(this.kind, this.seed, this.settings); };
     this.select(kind, false);
   }
