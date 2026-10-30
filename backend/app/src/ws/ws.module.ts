@@ -6,6 +6,7 @@ import type { Server } from 'node:http';
 import { z } from 'zod';
 import { AuthTokenService } from '../core/auth/auth-token.service';
 import { CoreModule } from '../core/core.module';
+import { HomeService } from '../core/home/home.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv, type RootLogger } from '../core/tokens';
@@ -38,8 +39,9 @@ export const env = defineEnv('ws', {
     },
     {
       provide: HOME_PROVIDER,
-      inject: [APP_ENV, { token: PRISMA, optional: true }],
-      useFactory: (e: AppEnv, prisma?: PrismaClient): HomeProvider => new DbHomeProvider(prisma, e),
+      inject: [APP_ENV, { token: PRISMA, optional: true }, { token: HomeService, optional: true }],
+      useFactory: (e: AppEnv, prisma?: PrismaClient, homeService?: HomeService): HomeProvider =>
+        new DbHomeProvider(prisma, e, homeService),
     },
     {
       provide: COMMAND_INGRESS,
