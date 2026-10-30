@@ -33,6 +33,7 @@ export const ENTITY_KIND = {
   dropPod: 2,
   hq: 3,
   commandHub: 4,
+  hub: 4,
 } as const;
 export type EntityKindCode = (typeof ENTITY_KIND)[keyof typeof ENTITY_KIND];
 
@@ -44,6 +45,7 @@ export const ENTITY_STATE = {
   constructing: 4,
   active: 5,
   inert: 6,
+  waiting: 7,
 } as const;
 export type EntityStateCode = (typeof ENTITY_STATE)[keyof typeof ENTITY_STATE];
 
