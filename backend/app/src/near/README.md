@@ -72,3 +72,13 @@ await withTransaction(prisma, async (tx) => {
 | `OUTBOX_MAX_ATTEMPTS` | 8 | Attempts before `DEAD` |
 
 Metrics: `ta_chain_outbox_pending`, `ta_chain_outbox_dead`, `ta_chain_outbox_relayed_total{port,status}` (`done`/`failed`/`dead`).
+
+## Contract tests
+
+Every port has one suite, and the same assertions run against every adapter of that port (NEAR §1a rules 5 and 8, D-30).
+
+- **Harness** (`near/__contract__/harness.ts`): `describePortContract(port, label, makeAdapter, suite)` is generic (the LLM and notifier ports use it too); `describeNearPortContract` adds `expectReceipt` (`mock:` hash and network `mock` for mocks, a real base58 hash otherwise). `makeAdapter(env)` returns `{ port, kind: 'mock' | 'testnet' | 'mainnet', cleanup?, ...helpers }`. A suite calls `test`, `mockOnly` or `realOnly` (the latter two skip on the wrong kind).
+- **A wave adds its port's suite** by creating one file `near/__contract__/<port>.contract.ts` (LLM and notifier: `src/ports/__contract__/`) that exports `contract = defineNearContract({ port: 'CargoToken', helpers, suite })`. `helpers(port, kind, env)` supplies what the suite needs beyond the port (e.g. `ChainRead` gets `writeReceipt`). Shared suites live in `*.suite.ts` (not discovered), e.g. `nft.suite.ts` for Badge and Deed. No runner edit.
+- **Mocks in CI**: `npm run test:contract` runs `backend/app/test/contract/ports.contract.spec.ts`. It discovers every `*.contract.ts`, boots the app on a fresh test database (Postgres needed), resolves each port from the container and runs its suite against the adapter `NEAR_ADAPTER_<PORT>` selects (mock by default). Its own Vitest config is `vitest.contract.config.ts`; the file is not an `*.int.spec.ts` and is excluded from the default config, so `npx vitest run` and `npm run test:integration` never repeat it. Mock-specific checks stay in `test/near/*.int.spec.ts`.
+- **Real adapters** (W23): `npm run contract:real -- --port ChainRead [--network mainnet]` sets `NEAR_ADAPTER_CHAIN_READ=testnet` and runs only that port's suite. With no adapter of that kind registered it fails with `no testnet adapter registered for ChainRead`. `ChainRead` reads an existing receipt from `CONTRACT_CHAIN_READ_TX` (a successful tx hash on the network) since a real adapter has no write.
+- **Fakes** (`near/testing/`, rule 8): `InMemoryChainRead`, `InMemoryBadgeNft`, `InMemoryCargoToken` extend the abstract ports over a Map ledger (idempotent by `opId`, `mock:` hashes, the same `NearException` codes). Unit tests construct them directly; they are never bound in a module. `test/near/in-memory-contract.spec.ts` runs the ChainRead and Badge suites against them in the default `npx vitest run`, which proves a suite does not depend on Postgres. A new fake gets a line there.
