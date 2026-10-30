@@ -6,3 +6,5 @@ export * from './flags';
 export * from './ws';
 export { defineCommand, type CommandDef } from './commands/define';
 export { defineEvent, type EventDef } from './events/define';
+export * from './commands/index.generated';
+export * from './events/index.generated';
