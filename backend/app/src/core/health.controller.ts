@@ -1,4 +1,5 @@
-import { Controller, Get, Header, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Header, Res } from '@nestjs/common';
+import type { HttpRes } from './logging/request-id';
 import { MetricsRegistry } from './metrics.registry';
 import { ReadinessRegistry } from './readiness.registry';
 
@@ -15,9 +16,9 @@ export class HealthController {
   }
 
   @Get('readyz')
-  async readyz() {
+  async readyz(@Res({ passthrough: true }) res: HttpRes) {
     const { ok, body } = await this.readiness.run();
-    if (!ok) throw new ServiceUnavailableException(body);
+    if (!ok) res.status(503); // probe body, not the error envelope
     return body;
   }
 

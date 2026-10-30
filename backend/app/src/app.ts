@@ -3,8 +3,13 @@ import { fileURLToPath } from 'node:url';
 import { Module, type DynamicModule, type INestApplication } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { coreEnv, parseEnv, readEnvSource, type EnvSection } from '@terra/config';
+import type { DestinationStream, Logger } from 'pino';
 import { corsOrigin } from './core/cors';
-import { APP_ENV, type AppEnv } from './core/tokens';
+import { AllExceptionsFilter } from './core/errors/all-exceptions.filter';
+import { createRootLogger, layerLogger } from './core/logging/logger';
+import { PinoNestLogger } from './core/logging/nest-logger';
+import { requestIdMiddleware } from './core/logging/request-id';
+import { APP_ENV, LOGGER, type AppEnv } from './core/tokens';
 import { discoverModules } from './discovery';
 
 const here = (rel: string) => fileURLToPath(new URL(rel, import.meta.url));
@@ -14,7 +19,8 @@ export interface CreateAppOptions {
   readonly source?: Record<string, string | undefined>;
   /** Directories scanned for `<name>/<name>.module.ts`; default: this folder (`src/`). Tests add fixture dirs. */
   readonly modulesDirs?: readonly string[];
-  readonly logger?: false | ('log' | 'error' | 'warn' | 'debug' | 'verbose')[];
+  /** Test hook: pino output destination (default stdout). */
+  readonly logDestination?: DestinationStream;
 }
 
 export interface CreatedApp {
@@ -25,8 +31,8 @@ export interface CreatedApp {
 
 @Module({})
 class AppModule {
-  static build(imports: DynamicModule['imports'], env: AppEnv): DynamicModule {
-    return { module: AppModule, global: true, imports, providers: [{ provide: APP_ENV, useValue: env }], exports: [APP_ENV] };
+  static build(imports: DynamicModule['imports'], env: AppEnv, logger: Logger): DynamicModule {
+    return { module: AppModule, global: true, imports, providers: [{ provide: APP_ENV, useValue: env }, { provide: LOGGER, useValue: logger }], exports: [APP_ENV, LOGGER] };
   }
 }
 
@@ -36,9 +42,11 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Created
   const sections: EnvSection[] = [coreEnv, ...found.flatMap((m) => (m.env ? [m.env] : []))];
   const source = options.source ?? readEnvSource(here('../../../'));
   const env = parseEnv(sections, source) as unknown as AppEnv;
-  const app = await NestFactory.create(AppModule.build(found.map((m) => m.module), env), {
-    logger: options.logger ?? (env.NODE_ENV === 'test' ? false : ['log', 'warn', 'error']),
-  });
+  const root = createRootLogger({ level: env.LOG_LEVEL, nodeEnv: env.NODE_ENV, layerLevels: env.LOG_LEVELS as string | undefined, destination: options.logDestination });
+  const app = await NestFactory.create(AppModule.build(found.map((m) => m.module), env, root), { logger: false });
+  app.useLogger(new PinoNestLogger(layerLogger(root, 'infra', env.LOG_LEVELS as string | undefined)));
+  app.use(requestIdMiddleware);
+  app.useGlobalFilters(new AllExceptionsFilter(layerLogger(root, 'http', env.LOG_LEVELS as string | undefined), env.NODE_ENV === 'production'));
   app.setGlobalPrefix('v1');
   app.enableCors({ origin: corsOrigin(env) });
   app.enableShutdownHooks();
