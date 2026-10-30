@@ -8,7 +8,7 @@ Autonomous colony builder in the browser: drop one robot on a live planet, set p
 
 ## Quick start: do X → see Y
 
-Needs Node 22+ (24 tested), npm 10+, Docker (for Postgres), Chrome for the e2e suite.
+Needs Node 22+ (24 tested), npm 10+, Docker (for Postgres on port 15434), and Chrome for the e2e and parity suites.
 
 ```bash
 npm ci
@@ -17,14 +17,14 @@ npm run dev            # → Postgres (docker, :15434), the app (:4001) and the 
 
 | Do | See |
 |---|---|
-| `curl 127.0.0.1:4001/v1/healthz` and `/v1/readyz` | `{"ok":true}` and `{"db":"ok","simThreads":1, …}` |
+| `curl 127.0.0.1:4001/v1/healthz` and `/v1/readyz` | `{"ok":true}` and `{"db":"ok","simThreads":N}` (N = cores − 1 unless `SIM_THREADS` is set) |
 | Open http://127.0.0.1:5173/play.html?scenario=w00 | A flat hex planet; the HUD `TICK` chip rises about 5 per second |
 | Press `` ` `` and type `warp 10` (`warp 1` to undo) | The tick rate rises to about 50/s and a `×10` badge appears |
 | Open the flag panel (top right) or add `&waves=..00` | `W00` on, every later wave off |
 | `npm run dev:restart` while the page is open | "Reconnecting…", then the tick continues from the saved snapshot, not 0 |
 | Open http://127.0.0.1:5173/dev/chain/ and run `chain.ping` in the dev console | A `mock:` receipt appears after 300–1 500 ms |
 | Stop the app; open `/play.html?host=local&scenario=w00` | The same planet runs in the browser alone; a reload resumes from IndexedDB |
-| `/play.html?scenario=w00&lag=300`, then `spawn` and `nudge <id>` in the console | The entity moves on the next frame (client-side prediction) |
+| `/play.html?scenario=w00&lag=300`, then `nudge 1` in the console (the scenario's test entity) | The robot moves on the next frame (client-side prediction); `teleport! 1 6 0` (server-only) blends over 150 ms |
 | `npm run ci:fast` / `npm run e2e -- --waves ..00` | Green checks / the W00 demo in headless Chrome |
 
 The wave file [`docs/plan/waves/W00-platform-skeleton.md`](./docs/plan/waves/W00-platform-skeleton.md) has the full demo story.
