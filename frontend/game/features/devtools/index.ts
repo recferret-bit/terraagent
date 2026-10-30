@@ -32,11 +32,25 @@ const chainPing: DevCommandDef = {
   },
 };
 
+const scenarioCommand: DevCommandDef = {
+  name: 'scenario',
+  help: 'scenario <id>  Server: create a fresh dev planet from a seed scenario (e.g. w00), print its id (open ?scenario=<id> to play it)',
+  async run(a, ctx) {
+    const id = a[0];
+    if (!id) throw new Error('usage: scenario <id>');
+    const server = ctx.services.devServer;
+    if (!server) throw new DevServerError('host_unavailable', 'scenario needs the game server; not available on this host');
+    const r = (await server('scenario', { id })) as { planetId: string };
+    return `created ${r.planetId} from scenario ${id}`;
+  },
+};
+
 export default defineFeature({
   id: 'devtools',
   wave: 'W00',
   devCommands: [
     chainPing,
+    scenarioCommand,
     simCommand('ping', 'Round-trip a no-op sim command; prints the ack tick', () => ({})),
     simCommand('spawn', 'spawn [q r]  Insert a test entity at tile (default 0 0)', (a) => ({ q: numArg(a, 0, 'q', 0), r: numArg(a, 1, 'r', 0) })),
     simCommand('nudge', 'nudge <id> [dq dr]  Move a test entity one nudge step (default +q)', (a) => {
