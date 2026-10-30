@@ -1,6 +1,6 @@
-import type { RejectCode } from '../errors';
-import type { FlagSet } from '../flags';
-import { commandDef, hasCommandKind, parseCommandArgs } from './index.generated';
+import type { RejectCode } from './errors';
+import type { FlagSet } from './flags';
+import { commandDef, hasCommandKind, parseCommandArgs } from './commands/index.generated';
 
 /** The kind's owning wave, or undefined for an unknown kind. Injectable for tests (fixture kinds of other waves). */
 export type CommandWaveLookup = (kind: string) => string | undefined;

@@ -5,6 +5,8 @@ import { createHexTerrain, specForPlanetType, tileXZ, type HexPick, type HexTerr
 import { ConnectionBanner } from '../../net/ConnectionBanner';
 import { WsTransport, browserDeps } from '../../net/WsTransport';
 import { withDevLag } from '../../net/LagTransport';
+import { createLocalWorker, LocalTransport, workerLink } from '../../net/LocalTransport';
+import { localHostOptions } from './localHost';
 import { CommandBus } from '../../net/commandBus';
 import { httpDevServer } from '../../net/devServer';
 import type { Transport } from '../../net/types';
@@ -32,7 +34,7 @@ function changedHeights(a: ArrayLike<number>, b: ArrayLike<number>): number[] {
 /**
  * The online play flow (`?scenario=` / `?host=`): viewport + planet look for the sim's planet type, WS transport,
  * replica store, hex terrain from the welcome tiles, RTS camera and the feature HUD (tick chip). No game rules here.
- * `?host=local` is not implemented yet: it connects to the server like `?scenario=` does.
+ * `?host=local` swaps the WebSocket for `LocalTransport` (the engine in a dedicated worker, snapshots in IndexedDB); the rest is the same.
  */
 export class OnlineSession {
   readonly viewport: ColonyViewport;
@@ -57,7 +59,9 @@ export class OnlineSession {
   constructor(root: HTMLElement, readonly mode: OnlineMode) {
     this.viewport = createColonyViewport(root);
     // dev `?lag=<ms>` delays the transport both ways (prediction testing, D-31)
-    this.transport = withDevLag(new WsTransport(createSessionTarget(location), browserDeps()), location.search);
+    const localOpts = localHostOptions(location.search);
+    const local = localOpts ? new LocalTransport(workerLink(createLocalWorker()), localOpts) : null;
+    this.transport = withDevLag(local ?? new WsTransport(createSessionTarget(location), browserDeps()), location.search);
     this.banner = new ConnectionBanner(document.body, this.transport, () => this.transport.start());
     this.store = new WorldStore(this.transport);
     this.commands = new CommandBus(this.transport, undefined, (id, kind, args) => this.store.notifySent(id, kind, args));
@@ -66,7 +70,8 @@ export class OnlineSession {
       tileToWorld: (x, y) => { const [wx, wz] = tileXZ(x, y); return { x: wx, y: this.terrain?.heightAt(wx, wz) ?? 0, z: wz }; },
       biomeKey: () => this.biomeKey,
     };
-    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer(), session: { planetId: () => this.store.currentPlanetId() }, scene3d, netStats: this.netStats });
+    this.hud = new FeatureHud(document.body, this.flags, local ? 'local' : 'server', { sendCommand: this.commands.send, devServer: local ? local.devServer : httpDevServer(), session: { planetId: () => this.store.currentPlanetId() }, scene3d, netStats: this.netStats });
+    if (local) this.keepLocalSaved(local);
     this.cleanups.push(this.store.onCommandRejected(() => this.netStats.recordRollback()));
     this.cleanups.push(this.transport.onMessage((m) => {
       const k = warpOfMessage(m);
@@ -78,6 +83,15 @@ export class OnlineSession {
     this.transport.start();
     this.bindPicking();
     this.loop();
+  }
+
+  /** The local planet is written to IndexedDB every 10 s by the host; also when the page hides or unloads. */
+  private keepLocalSaved(local: LocalTransport): void {
+    const save = () => local.saveNow();
+    const onVis = () => { if (document.visibilityState === 'hidden') save(); };
+    addEventListener('pagehide', save);
+    document.addEventListener('visibilitychange', onVis);
+    this.cleanups.push(() => { removeEventListener('pagehide', save); document.removeEventListener('visibilitychange', onVis); });
   }
 
   private onView(v: ClientView): void {

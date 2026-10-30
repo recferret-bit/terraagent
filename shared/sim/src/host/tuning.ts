@@ -1,7 +1,8 @@
-import {
-  compileData, createRegistryPipeline, exportOverrides, mergeOverrides, setOverride,
-  type BalanceOverrides, type Pipeline, type RowValue, type SimEvent, type SimModule,
-} from '@terra/sim';
+import { compileData, exportOverrides, mergeOverrides, setOverride, type BalanceOverrides, type RowValue } from '../data';
+import type { SimEvent } from '../kernel/events';
+import type { Pipeline } from '../kernel/step';
+import { createRegistryPipeline } from '../systems/registry';
+import type { SimModule } from '../systems/define';
 
 /** Per-planet balance state (D-35): `base` = file ⊕ scenario overrides, `live` = dev-console tunes on top. */
 export interface PlanetTuning {

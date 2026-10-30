@@ -1,5 +1,6 @@
 import type { ServerMessage, SimEventWire } from '@terra/contracts';
 import { TICK_MS, type BalanceOverrides } from '@terra/sim';
+import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
 import type { Transport } from '../net/types';
 import type { FromWorker, ToWorker } from './worker/protocol';
@@ -19,8 +20,6 @@ export const createSimWorker = (): WorkerLike =>
 
 export interface WorldStatus { status: ReplicaStatus | 'idle'; detail?: string }
 
-/** Bytes that exactly fill their buffer, so the buffer can be transferred without detaching unrelated data. */
-const own = (u: Uint8Array): Uint8Array => (u.byteOffset === 0 && u.byteLength === u.buffer.byteLength ? u : u.slice());
 
 /**
  * Main-thread side of the replica (CLIENT §7): owns the sim worker, feeds it `welcome` / `delta` from a Transport
@@ -113,11 +112,11 @@ export class WorldStore {
       this.planetId = m.d.planet.id;
       this.offsetMs = m.d.serverTimeMs - this.now();
       this.baseTick = m.d.tick; this.baseLocalMs = this.now();
-      const state = own(m.d.state);
+      const state = ownBytes(m.d.state);
       w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
     } else if (m.t === 'delta') {
       this.baseTick = m.d.toTick; this.baseLocalMs = this.now();
-      const diff = own(m.d.diff);
+      const diff = ownBytes(m.d.diff);
       w.postMessage({ t: 'delta', fromTick: m.d.fromTick, toTick: m.d.toTick, diff }, [diff.buffer]);
       if (m.d.events?.length) this.serverEvents.emit(m.d.events);
     } else if (m.t === 'event') {

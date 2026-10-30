@@ -6,7 +6,7 @@ import { OUT, ROOT, urls } from './ports';
 
 /**
  * The E2E stack: a fresh migrated Postgres database (`createTestDatabase()`, dropped at the end), the app and Vite.
- * Booted by Playwright's globalSetup (main process). Suites run in a worker, so they control the app through a tiny
+ * With `E2E_HOST=local` only Vite is started (no database, no app). Booted by Playwright's globalSetup (main process). Suites run in a worker, so they control the app through a tiny
  * loopback HTTP control server (URL in `E2E_CONTROL`): see `restartApp` / `stopApp` / `startApp` below.
  */
 export interface Stack { stop(): Promise<void> }
@@ -45,6 +45,7 @@ function logged(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv
 /** Boots DB + app + Vite and the control server. Throws (after cleanup) when something does not come up. */
 export async function bootStack(): Promise<Stack> {
   const u = urls();
+  if (process.env.E2E_HOST === 'local') return bootViteOnly(u);
   if (u.reuse) {
     await waitFor(`${u.app}/v1/readyz`, 'app (E2E_REUSE)', 10_000);
     await waitFor(u.client, 'client (E2E_REUSE)', 10_000);
@@ -83,6 +84,14 @@ export async function bootStack(): Promise<Stack> {
     throw e;
   }
   return { stop };
+}
+
+/** `--host local`: the browser local host needs no app and no database, only the page server (D-31, SIM-X-06). */
+async function bootViteOnly(u: ReturnType<typeof urls>): Promise<Stack> {
+  const vite = logged(process.execPath, [resolve(ROOT, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(u.clientPort), '--strictPort'], ROOT, { ...process.env }, 'vite.log');
+  try { await waitFor(u.client, 'client'); } catch (e) { await terminate(vite); throw e; }
+  process.env.E2E_CONTROL = '';
+  return { stop: () => terminate(vite) };
 }
 
 function listenControl(h: { startApp(): Promise<void>; stopApp(): Promise<void> }): Promise<Server> {
