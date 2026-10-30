@@ -1,5 +1,6 @@
 import { entityColumns } from '../ecs/columns';
 import { tileLayers } from '../grid/layers';
+import { linkGridMeta } from '../grid/tileModel';
 import { SIM_VERSION } from '../kernel/constants';
 import type { PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
@@ -43,6 +44,7 @@ function validate(s: unknown): PlanetState {
   const state = s as unknown as PlanetState;
   fillMissing(state.grid.layers, tileLayers(), state.grid.count, 'grid layer');
   fillMissing(state.entities.cols as Record<string, TypedArray>, entityColumns(), state.entities.capacity, 'entity');
+  linkGridMeta(state.grid, state.meta);
   return state;
 }
 

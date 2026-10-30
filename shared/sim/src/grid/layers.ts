@@ -31,7 +31,7 @@ export function defineTileLayer(name: string, dtype: DType, wave: WaveId): void 
 export const tileLayers = (): readonly FieldDef[] => layers;
 
 /** Enum values of the base layers (tables later waves extend by appending values, never renumbering). */
-export const TERRAIN = {
+const TERRAIN_BASE = {
   flat: 0,
   forest: 1,
   rock: 2,
@@ -40,9 +40,31 @@ export const TERRAIN = {
   shallow: 5,
   deep: 6,
 } as const;
-export type TerrainCode = (typeof TERRAIN)[keyof typeof TERRAIN];
+export type TerrainKey = keyof typeof TERRAIN_BASE;
+export type TerrainCode = (typeof TERRAIN_BASE)[TerrainKey];
 
-export const PREP = {
+export const TERRAIN = Object.defineProperties(
+  { ...TERRAIN_BASE },
+  {
+    Flat: { value: 0 },
+    Forest: { value: 1 },
+    Rock: { value: 2 },
+    Slope: { value: 3 },
+    Hole: { value: 4 },
+    Shallow: { value: 5 },
+    Deep: { value: 6 },
+  },
+) as typeof TERRAIN_BASE & {
+  readonly Flat: 0;
+  readonly Forest: 1;
+  readonly Rock: 2;
+  readonly Slope: 3;
+  readonly Hole: 4;
+  readonly Shallow: 5;
+  readonly Deep: 6;
+};
+
+const PREP_BASE = {
   wild: 0,
   flat: 1,
   prepared: 2,
@@ -51,12 +73,50 @@ export const PREP = {
   ridge: 5,
   moat: 6,
 } as const;
-export type PrepCode = (typeof PREP)[keyof typeof PREP];
+export type PrepKey = keyof typeof PREP_BASE;
+export type PrepCode = (typeof PREP_BASE)[PrepKey];
 
-export const DEPOSIT = {
+export const PREP = Object.defineProperties(
+  { ...PREP_BASE },
+  {
+    Wild: { value: 0 },
+    Flat: { value: 1 },
+    Prepared: { value: 2 },
+    Irrigated: { value: 3 },
+    Living: { value: 4 },
+    Ridge: { value: 5 },
+    Moat: { value: 6 },
+  },
+) as typeof PREP_BASE & {
+  readonly Wild: 0;
+  readonly Flat: 1;
+  readonly Prepared: 2;
+  readonly Irrigated: 3;
+  readonly Living: 4;
+  readonly Ridge: 5;
+  readonly Moat: 6;
+};
+
+const DEPOSIT_BASE = {
   none: 0,
   metals: 1,
   minerals: 2,
   oil: 3,
 } as const;
-export type DepositCode = (typeof DEPOSIT)[keyof typeof DEPOSIT];
+export type DepositKey = keyof typeof DEPOSIT_BASE;
+export type DepositCode = (typeof DEPOSIT_BASE)[DepositKey];
+
+export const DEPOSIT = Object.defineProperties(
+  { ...DEPOSIT_BASE },
+  {
+    None: { value: 0 },
+    Metals: { value: 1 },
+    Minerals: { value: 2 },
+    Oil: { value: 3 },
+  },
+) as typeof DEPOSIT_BASE & {
+  readonly None: 0;
+  readonly Metals: 1;
+  readonly Minerals: 2;
+  readonly Oil: 3;
+};
