@@ -10,6 +10,7 @@
     "ci:fast": "npm run check && npm test && npm run build",
     "scenario": "tsx scripts/dev/scenario.ts",
     "e2e": "node scripts/dev/e2e.mjs",
+    "test:parity": "node --import @swc-node/register/esm-register e2e/parity/run.ts",
     "sim:bench": "node scripts/dev/sim-bench.mjs",
     "build": "npm run typecheck && node scripts/check-structure.mjs && vite build",
     "typecheck": "tsc --noEmit && tsc --noEmit -p e2e && npm run typecheck --workspaces --if-present --silent",
