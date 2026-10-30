@@ -1,0 +1,2 @@
+.ta-tick { padding: 6px 10px; background: var(--ta-plate); border: 1px solid var(--ta-seam-2); color: var(--ta-text-2); font: 600 11px/1 'Chakra Petch', sans-serif; letter-spacing: var(--ta-track-label); text-transform: uppercase; }
+.ta-tick__n { color: var(--ta-blue-hi); font-family: 'IBM Plex Mono', monospace; font-weight: 500; }
