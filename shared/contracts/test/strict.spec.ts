@@ -58,3 +58,19 @@ describe('codes and ids', () => {
     expect(newId('cm')).toMatch(/^cm_[0-9A-HJKMNP-TV-Z]{26}$/);
   });
 });
+
+import { AnalyticsBatchV1 } from '../src';
+
+describe('AnalyticsBatchV1 (CLIENT §10.2)', () => {
+  const ev = { name: 'test_event', ts: 1, props: {} };
+  const ok = { anonId: '3f0c6f0e-6a53-4d34-9a3e-2f1b6a1a9c11', sessionId: 's', events: [ev] };
+  it('accepts a valid batch', () => expect(AnalyticsBatchV1.safeParse(ok).success).toBe(true));
+  it('rejects unknown keys, bad names, >20 events, >20 props, nested props', () => {
+    expect(AnalyticsBatchV1.safeParse({ ...ok, ip: '1.2.3.4' }).success).toBe(false);
+    expect(AnalyticsBatchV1.safeParse({ ...ok, events: [{ ...ev, name: 'Bad-Name' }] }).success).toBe(false);
+    expect(AnalyticsBatchV1.safeParse({ ...ok, events: Array.from({ length: 21 }, () => ev) }).success).toBe(false);
+    expect(AnalyticsBatchV1.safeParse({ ...ok, events: [{ ...ev, props: Object.fromEntries(Array.from({ length: 21 }, (_, i) => [`k${i}`, i])) }] }).success).toBe(false);
+    expect(AnalyticsBatchV1.safeParse({ ...ok, events: [{ ...ev, props: { a: { b: 1 } } }] }).success).toBe(false);
+    expect(AnalyticsBatchV1.safeParse({ ...ok, anonId: 'x' }).success).toBe(false);
+  });
+});
