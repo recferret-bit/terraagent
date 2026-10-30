@@ -9,48 +9,36 @@ import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
+import { syncHqView } from '../hq';
 import {
   cancelTerraformOrder,
   enqueueTerraformOrder,
+  findColonyHqSlot,
   getManualTerraformLaneCount,
   type TerraformOrder,
 } from '../terraform-basic/queue';
-import { buildLinkedPrepJobs, computeSitePrepBill, type SitePrepBill } from './prep';
+import {
+  advanceConstructionProgress,
+  payConstructionCost,
+  refundCancelledConstruction,
+  resolveHubBuildTimeS,
+  resolveHubCost,
+} from './build';
+import { buildLinkedPrepJobs } from './prep';
 import {
   checkBuildingAffordability,
-  findAliveColonyHqRow,
   getBuildingFootprintTiles,
-  getHubFootprintTiles,
-  hasColonyHub,
   isHubBuildingKind,
   resolveHubT1Row,
   validateBuildingPlacement,
-  validateHubPlacement,
-  type BuildingAffordabilityResult,
-  type FootprintTileInfo,
   type ValidateHubPlacementOpts,
   type ValidateHubPlacementResult,
 } from './validate';
 
-export {
-  buildLinkedPrepJobs,
-  checkBuildingAffordability,
-  computeSitePrepBill,
-  findAliveColonyHqRow,
-  getBuildingFootprintTiles,
-  getHubFootprintTiles,
-  getManualTerraformLaneCount,
-  hasColonyHub,
-  isHubBuildingKind,
-  resolveHubT1Row,
-  validateBuildingPlacement,
-  validateHubPlacement,
-  type BuildingAffordabilityResult,
-  type FootprintTileInfo,
-  type SitePrepBill,
-  type ValidateHubPlacementOpts,
-  type ValidateHubPlacementResult,
-};
+export { getManualTerraformLaneCount };
+export * from './build';
+export * from './prep';
+export * from './validate';
 
 export interface ConstructionOrder {
   orderId: string;
@@ -70,7 +58,11 @@ export interface ConstructionOrder {
   linkedPrepOrderId?: string;
   linkedOrderId?: string;
   progress: number;
+  buildProgress?: number;
   buildTimeS: number;
+  cost?: Record<string, number>;
+  costPaid?: boolean;
+  paidAmounts?: Record<string, number>;
   createdAtTick: number;
 }
 
@@ -96,27 +88,11 @@ function parsePlaceBuildingArgs(raw: unknown): {
 } {
   if (typeof raw !== 'object' || raw === null) return {};
   const obj = raw as PlaceBuildingArgs;
-  const buildingKind =
-    typeof obj.building === 'string'
-      ? obj.building
-      : typeof obj.buildingKind === 'string'
-        ? obj.buildingKind
-        : typeof obj.kind === 'string'
-          ? obj.kind
-          : typeof obj.archetype === 'string'
-            ? obj.archetype
-            : undefined;
+  const buildingKind = [obj.building, obj.buildingKind, obj.kind, obj.archetype].find((v) => typeof v === 'string');
   const q = typeof obj.q === 'number' ? obj.q : undefined;
   const r = typeof obj.r === 'number' ? obj.r : undefined;
   const tier = typeof obj.tier === 'number' ? obj.tier : undefined;
-  const builderEntityId =
-    typeof obj.builderEntityId === 'number'
-      ? obj.builderEntityId
-      : typeof obj.entityId === 'number'
-        ? obj.entityId
-        : typeof obj.unitId === 'number'
-          ? obj.unitId
-          : undefined;
+  const builderEntityId = [obj.builderEntityId, obj.entityId, obj.unitId].find((v) => typeof v === 'number');
   return { buildingKind, q, r, tier, builderEntityId };
 }
 
@@ -153,25 +129,54 @@ export interface PlaceHubResult {
   validation: ValidateHubPlacementResult;
 }
 
-function hasAffordableStock(
+function shouldRejectInsufficientOnPlace(
   state: PlanetState,
   colonyId: number,
   cost: Record<string, number> | undefined,
+  unpreparedCount: number,
   forceCheck?: boolean,
 ): boolean {
   const colStock =
     state.colonies[colonyId]?.stock ??
     (state.blobs.colonyStock?.value as Record<number | string, Record<string, number>> | undefined)?.[colonyId];
-  if (colStock === undefined && !forceCheck) return true;
-  if (!cost) return true;
-  return checkBuildingAffordability(cost, colStock as Record<string, number> | undefined).ok;
+  if (colStock === undefined && !forceCheck) return false;
+  if (!cost) return false;
+  const afford = checkBuildingAffordability(cost, colStock as Record<string, number> | undefined);
+  if (afford.ok) return false;
+  if (forceCheck) return true;
+  return unpreparedCount > 0 && ((colStock as Record<string, number>)['metals.t1'] ?? 0) === 0;
 }
 
-/**
- * Validates and places a Command Hub (or structure) at `(opts.q, opts.r)` for `opts.colonyId`.
- * Spawns the pending Hub entity (`ENTITY_STATE.waiting` if tiles are unprepared, else `ENTITY_STATE.constructing`)
- * and auto-enqueues one linked site prep `TerraformOrder` covering all missing sub-jobs (`UO-TF-03`, `W01-15`).
- */
+function spawnPendingHubRow(
+  state: PlanetState,
+  opts: ValidateHubPlacementOpts,
+  entityId: number,
+  hp: number,
+  initialState: number,
+  tick: number,
+): number {
+  const row = insertRow(state.entities, entityId, tick);
+  const cols = state.entities.cols;
+  cols.kind[row] = ENTITY_KIND.hub;
+  cols.owner[row] = opts.colonyId;
+  cols.tier[row] = opts.tier ?? 1;
+  cols.q[row] = opts.q;
+  cols.r[row] = opts.r;
+  cols.x[row] = Math.fround(opts.q);
+  cols.y[row] = Math.fround(opts.r);
+  cols.rot[row] = 0;
+  cols.hp[row] = hp;
+  cols.hpMax[row] = hp;
+  cols.state[row] = initialState;
+  cols.progress[row] = 0;
+  cols.targetQ[row] = opts.q;
+  cols.targetR[row] = opts.r;
+  cols.createdAt[row] = tick;
+  cols.changedAt[row] = tick;
+  return row;
+}
+
+/** Validates and places a Command Hub (or structure) at `(opts.q, opts.r)` for `opts.colonyId`. */
 export function placeBuildingOrder(
   state: PlanetState,
   opts: ValidateHubPlacementOpts & { orderId?: string; tick?: number },
@@ -179,12 +184,18 @@ export function placeBuildingOrder(
 ): PlaceHubResult {
   const data = opts.data ?? ctx?.data;
   const validation = validateBuildingPlacement(state, { ...opts, data });
-  if (!validation.ok) {
-    return { ok: false, reason: validation.reason ?? 'site_blocked', validation };
-  }
+  if (!validation.ok) return { ok: false, reason: validation.reason ?? 'site_blocked', validation };
 
   const hubRow = resolveHubT1Row(data);
-  if (!hasAffordableStock(state, opts.colonyId, hubRow.cost as Record<string, number> | undefined, opts.checkResources)) {
+  if (
+    shouldRejectInsufficientOnPlace(
+      state,
+      opts.colonyId,
+      hubRow.cost as Record<string, number> | undefined,
+      validation.unpreparedCount,
+      opts.checkResources,
+    )
+  ) {
     return {
       ok: false,
       reason: 'insufficient_resources',
@@ -194,51 +205,33 @@ export function placeBuildingOrder(
   const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const isHub = isHubBuildingKind(opts.buildingKind);
   const entityId = ctx?.newEntityId ? ctx.newEntityId() : state.meta.nextEntityId++;
-  const row = insertRow(state.entities, entityId, tick);
-  const cols = state.entities.cols;
   const hp = Math.fround(Number(hubRow.hp ?? 1500));
-
-  cols.kind[row] = isHub ? ENTITY_KIND.hub : ENTITY_KIND.hub;
-  cols.owner[row] = opts.colonyId;
-  cols.tier[row] = opts.tier ?? Number(hubRow.tier ?? 1);
-  cols.q[row] = opts.q;
-  cols.r[row] = opts.r;
-  cols.x[row] = Math.fround(opts.q);
-  cols.y[row] = Math.fround(opts.r);
-  cols.rot[row] = 0;
-  cols.hp[row] = hp;
-  cols.hpMax[row] = hp;
-  cols.state[row] = validation.unpreparedCount > 0 ? ENTITY_STATE.waiting : ENTITY_STATE.constructing;
-  cols.progress[row] = 0;
-  cols.targetQ[row] = opts.q;
-  cols.targetR[row] = opts.r;
-  cols.createdAt[row] = tick;
-  cols.changedAt[row] = tick;
+  const initState = validation.unpreparedCount > 0 ? ENTITY_STATE.waiting : ENTITY_STATE.constructing;
+  const row = spawnPendingHubRow(state, opts, entityId, hp, initState, tick);
 
   const totalTiles = validation.tiles.length;
   const preparedTiles = validation.preparedCount;
   const existing = readConstructionOrders(state);
   const orderId = opts.orderId ?? `build_${opts.colonyId}_${tick}_${existing.length + 1}`;
   const prepJobs = buildLinkedPrepJobs(state, validation.tiles, data);
-  let prepOrder: TerraformOrder | undefined;
-  if (prepJobs.length > 0) {
-    const prepRes = enqueueTerraformOrder(state, {
-      colonyId: opts.colonyId,
-      jobs: prepJobs,
-      orderId: `${orderId}_prep`,
-      linkedOrderId: orderId,
-      linkedBuildingId: entityId,
-      linkedBuildingEntityId: entityId,
-      isLinkedPrep: true,
-      countsTowardLaneLimit: false,
-      allowUnclaimed: isHub,
-      tick,
-      data,
-    });
-    prepOrder = prepRes.order;
-  }
+  const prepOrder =
+    prepJobs.length > 0
+      ? enqueueTerraformOrder(state, {
+          colonyId: opts.colonyId,
+          jobs: prepJobs,
+          orderId: `${orderId}_prep`,
+          linkedOrderId: orderId,
+          linkedBuildingId: entityId,
+          linkedBuildingEntityId: entityId,
+          isLinkedPrep: true,
+          countsTowardLaneLimit: false,
+          allowUnclaimed: isHub,
+          tick,
+          data,
+        }).order
+      : undefined;
 
-  const statusText = `waiting(site: ${preparedTiles}/${totalTiles})`;
+  const siteStatusText = `waiting(site: ${preparedTiles}/${totalTiles})`;
   const order: ConstructionOrder = {
     orderId,
     colonyId: opts.colonyId,
@@ -249,24 +242,38 @@ export function placeBuildingOrder(
     r: opts.r,
     footprint: isHub ? 3 : 1,
     status: validation.unpreparedCount > 0 ? 'waiting_site' : 'in_progress',
-    ...(validation.unpreparedCount > 0 ? { waitingReason: statusText } : {}),
-    statusText,
+    ...(validation.unpreparedCount > 0 ? { waitingReason: siteStatusText } : {}),
+    statusText: siteStatusText,
     preparedCount: preparedTiles,
     preparedTiles,
     totalTiles,
     ...(prepOrder ? { linkedPrepOrderId: prepOrder.orderId, linkedOrderId: prepOrder.orderId } : {}),
     progress: 0,
-    buildTimeS: Number(hubRow.designBuildS ?? hubRow.buildTimeS ?? 30),
+    buildProgress: 0,
+    buildTimeS: resolveHubBuildTimeS(data),
+    cost: resolveHubCost(data),
+    costPaid: false,
     createdAtTick: tick,
   };
-  writeConstructionOrders(state, [...existing, order], tick);
 
+  if (validation.unpreparedCount === 0) {
+    const payRes = payConstructionCost(state, order, data);
+    if (!payRes.ok) {
+      order.status = 'waiting_resources';
+      order.waitingReason = payRes.waitingReason ?? 'waiting(resources)';
+      order.statusText = order.waitingReason;
+      state.entities.cols.state[row] = ENTITY_STATE.waiting;
+    }
+  }
+
+  writeConstructionOrders(state, [...existing, order], tick);
   return { ok: true, entityId, order, prepOrder, validation };
 }
 
 /**
- * Cancels a queued or active construction order for `colonyId`, cancels its linked site prep order,
- * and removes the pending building entity while preserving any tiles already prepared (`UO-TF-03`, `UO-Q-02`).
+ * Cancels a queued or active construction order for `colonyId`, refunds 75 % of the paid cost when in progress,
+ * cancels its linked site prep order, and removes the pending building entity while preserving any tiles already prepared
+ * (`UO-TF-03`, `UO-Q-02`, `W01-16`).
  */
 export function cancelConstructionOrder(
   state: SimState,
@@ -283,12 +290,16 @@ export function cancelConstructionOrder(
     idOrEntityId === 'current' ||
     idOrEntityId === 'active'
   ) {
-    targetIdx = all.findIndex((o) => o.colonyId === colonyId);
+    targetIdx = all.findIndex(
+      (o) => o.colonyId === colonyId && o.status !== 'completed' && o.status !== 'cancelled',
+    );
   } else {
     const key = String(idOrEntityId);
     targetIdx = all.findIndex(
       (o) =>
         o.colonyId === colonyId &&
+        o.status !== 'completed' &&
+        o.status !== 'cancelled' &&
         (o.orderId === key ||
           String(o.entityId) === key ||
           o.linkedPrepOrderId === key ||
@@ -302,6 +313,10 @@ export function cancelConstructionOrder(
   all.splice(targetIdx, 1);
   writeConstructionOrders(state, all, tick);
 
+  if (target.costPaid && target.status !== 'completed') {
+    refundCancelledConstruction(state, target, data);
+  }
+
   if (target.linkedPrepOrderId) {
     cancelTerraformOrder(state, colonyId, target.linkedPrepOrderId, tick, data);
   }
@@ -309,6 +324,15 @@ export function cancelConstructionOrder(
   cancelTerraformOrder(state, colonyId, target.entityId, tick, data);
 
   removeRow(state.entities, target.entityId, tick);
+
+  const hqSlot = findColonyHqSlot(state, colonyId);
+  if (hqSlot >= 0) {
+    if (state.entities.cols.state[hqSlot] === ENTITY_STATE.constructing) {
+      setField(state.entities, hqSlot, 'state', ENTITY_STATE.idle, tick);
+    }
+    setField(state.entities, hqSlot, 'progress', 0, tick);
+    syncHqView(state, hqSlot, tick, data);
+  }
   return true;
 }
 
@@ -340,62 +364,108 @@ export const placeBuilding = defineCommandHandler({
   },
 });
 
+function countPreparedFootprintTiles(state: PlanetState, order: ConstructionOrder): {
+  preparedCount: number;
+  totalTiles: number;
+} {
+  const hex = hexIndex(state.grid.radius);
+  const coords = getBuildingFootprintTiles(order.q, order.r, order.footprint);
+  let preparedCount = 0;
+  for (const pos of coords) {
+    const tileIdx = hex.indexOf(pos.q, pos.r);
+    if (tileIdx >= 0 && isBuildablePrepared(state.grid, tileIdx)) {
+      preparedCount++;
+    }
+  }
+  return { preparedCount, totalTiles: coords.length };
+}
+
 /**
- * Steps building construction orders (`UO-TF-03`, `UO-Q-04`, `W01-15`):
- * recounts prepared footprint tiles (`waiting(site: n/m)`) and transitions the building entity
- * to `ENTITY_STATE.constructing` once all footprint tiles are `PREP.prepared` / `PREP.living`.
+ * Steps building construction orders (`UO-TF-03`, `UO-Q-01/02/04`, `UO-L-05`, `W01-15`, `W01-16`):
+ * recounts prepared footprint tiles (`waiting(site: n/m)`), pays the construction cost on start once all
+ * footprint tiles are `PREP.prepared` / `PREP.living`, advances construction progress by `(dtS * sumRate) / buildTimeS`,
+ * and emits `buildingCompleted` when progress reaches `1.0`.
  */
 export function stepConstruction(state: PlanetState, ctx?: Partial<StepContext>): void {
   const tick = ctx?.tick ?? state.meta.tick;
   const orders = readConstructionOrders(state);
   if (orders.length === 0) return;
 
-  const hex = hexIndex(state.grid.radius);
   let changed = false;
 
   for (const order of orders) {
     if (order.status === 'completed' || order.status === 'cancelled') continue;
-    const coords = getBuildingFootprintTiles(order.q, order.r, order.footprint);
-    const totalTiles = coords.length;
-    let preparedCount = 0;
-    for (const pos of coords) {
-      const tileIdx = hex.indexOf(pos.q, pos.r);
-      if (tileIdx >= 0 && isBuildablePrepared(state.grid, tileIdx)) {
-        preparedCount++;
+    const { preparedCount, totalTiles } = countPreparedFootprintTiles(state, order);
+    const entityRow = rowOf(state.entities, order.entityId);
+
+    if (preparedCount < totalTiles) {
+      const siteText = `waiting(site: ${preparedCount}/${totalTiles})`;
+      if (
+        order.preparedCount !== preparedCount ||
+        order.preparedTiles !== preparedCount ||
+        order.totalTiles !== totalTiles ||
+        order.status !== 'waiting_site' ||
+        order.waitingReason !== siteText ||
+        order.statusText !== siteText
+      ) {
+        order.preparedCount = preparedCount;
+        order.preparedTiles = preparedCount;
+        order.totalTiles = totalTiles;
+        order.status = 'waiting_site';
+        order.waitingReason = siteText;
+        order.statusText = siteText;
+        changed = true;
       }
+      if (entityRow >= 0 && state.entities.cols.state[entityRow] !== ENTITY_STATE.waiting) {
+        setField(state.entities, entityRow, 'state', ENTITY_STATE.waiting, tick);
+      }
+      continue;
     }
 
-    const statusText = `waiting(site: ${preparedCount}/${totalTiles})`;
-    const nextStatus = preparedCount < totalTiles ? 'waiting_site' : 'in_progress';
-    const nextWaitingReason = preparedCount < totalTiles ? statusText : undefined;
-
+    const justFinishedSitePrep = order.preparedCount < totalTiles;
     if (
       order.preparedCount !== preparedCount ||
       order.preparedTiles !== preparedCount ||
-      order.totalTiles !== totalTiles ||
-      order.status !== nextStatus ||
-      order.waitingReason !== nextWaitingReason ||
-      order.statusText !== statusText
+      order.totalTiles !== totalTiles
     ) {
       order.preparedCount = preparedCount;
       order.preparedTiles = preparedCount;
       order.totalTiles = totalTiles;
-      order.status = nextStatus;
-      order.statusText = statusText;
-      if (nextWaitingReason !== undefined) {
-        order.waitingReason = nextWaitingReason;
-      } else {
-        delete order.waitingReason;
-      }
       changed = true;
     }
 
-    const entityRow = rowOf(state.entities, order.entityId);
-    if (entityRow >= 0) {
-      const desiredState = preparedCount < totalTiles ? ENTITY_STATE.waiting : ENTITY_STATE.constructing;
-      if (state.entities.cols.state[entityRow] !== desiredState) {
-        setField(state.entities, entityRow, 'state', desiredState, tick);
+    if (!order.costPaid) {
+      const payRes = payConstructionCost(state, order, ctx?.data);
+      changed = true;
+      if (!payRes.ok) {
+        const waitReason = payRes.waitingReason ?? 'waiting(resources)';
+        order.status = 'waiting_resources';
+        order.waitingReason = waitReason;
+        order.statusText = waitReason;
+        if (entityRow >= 0 && state.entities.cols.state[entityRow] !== ENTITY_STATE.waiting) {
+          setField(state.entities, entityRow, 'state', ENTITY_STATE.waiting, tick);
+        }
+        continue;
       }
+    }
+
+    if (order.status !== 'in_progress' || order.waitingReason !== undefined) {
+      order.status = 'in_progress';
+      delete order.waitingReason;
+      changed = true;
+    }
+
+    if (justFinishedSitePrep) {
+      order.statusText = `waiting(site: ${preparedCount}/${totalTiles})`;
+      if (entityRow >= 0 && state.entities.cols.state[entityRow] !== ENTITY_STATE.constructing) {
+        setField(state.entities, entityRow, 'state', ENTITY_STATE.constructing, tick);
+      }
+      changed = true;
+      continue;
+    }
+
+    if (advanceConstructionProgress(state, order, entityRow, tick, ctx)) {
+      changed = true;
     }
   }
 
