@@ -81,7 +81,7 @@ describe('MockBadgeNftAdapter on Postgres', () => {
   });
 
   it('BadgeNftPort resolves to the mock from the booted app', async () => {
-    const app = await createApp({ source: { NODE_ENV: 'test', LOG_LEVEL: 'silent', DATABASE_URL: db.url, SIM_THREADS: '1', MOCK_LATENCY_MIN_MS: '0', MOCK_LATENCY_MAX_MS: '0' } });
+    const { app } = await createApp({ source: { NODE_ENV: 'test', LOG_LEVEL: 'silent', DATABASE_URL: db.url, SIM_THREADS: '1', MOCK_LATENCY_MIN_MS: '0', MOCK_LATENCY_MAX_MS: '0' } });
     try {
       const port = app.get(BadgeNftPort, { strict: false });
       expect(port).toBeInstanceOf(MockBadgeNftAdapter);
