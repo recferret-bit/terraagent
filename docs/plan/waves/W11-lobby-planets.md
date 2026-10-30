@@ -13,14 +13,14 @@ The app becomes multi-planet and multiplayer. Players pick a planet or get match
 
 ## Demo story (e2e)
 
-1. Load `/play.html?scenario=w11` (2 `temperate` planets: one with 3/5 seats, one empty warm) as a **new** guest → the orbital menu shows live planet cards with the 3/5 planet first (fill-first sort) and a "New planet" card for each of the three landing worlds (Granite Hollow open; Kharon Dunes and Thalassa Verde "Coming soon" until W05-17 is on).
+1. Open `/play.html?scenario=w11` (2 `temperate` planets: one with 3/5 seats, one empty warm) as a **new** guest → the orbital menu shows live planet cards with the 3/5 planet first (fill-first sort) and a "New planet" card for each of the three landing worlds (Granite Hollow open; Kharon Dunes and Thalassa Verde "Coming soon" until W05-17 is on).
 2. Click **Join** on the 3/5 planet → the queue panel shows position and ETA → assigned → the existing deploy + descent cinematic plays into the new colony.
-3. Second guest: create a **party**, share the code; third guest joins with the code → the leader enqueues → both colonies spawn on the **same** planet, on neighbouring spawn slots.
-4. Dev console `planet fill <id>` until full → the planet becomes `SEALED` in the same transaction; it disappears from the picker. A 4th guest's `JOIN_PLANET` on it falls back to `AUTO` ("That planet just filled — you've been placed on …").
-5. Dev console `planet age +2h` → seat refill is off; eliminate one colony → its seat stays taken. On a 1 h old planet, eliminating frees the seat.
+3. Second guest (second browser profile at `/play.html?scenario=w11&as=guest2`): create a **party**, share the code; third guest (third profile, `&as=guest3`) joins with the code → the leader enqueues → both colonies spawn on the **same** planet, on neighbouring spawn slots.
+4. Dev console `planet fill <id>` (planet id from the card) until full → the planet becomes `SEALED` in the same transaction; it disappears from the picker. A 4th guest's `JOIN_PLANET` on it falls back to `AUTO` ("That planet just filled — you've been placed on …").
+5. Dev console `planet age +2h` → seat refill is off; run `colony eliminate` → its seat stays taken. On a 1 h old planet, eliminating frees the seat.
 6. Dev console `planet age +14d` → `ENDED` → `ARCHIVED`; the player lands on the **planet results** screen (`PLANET_ENDED`) and can join again.
 7. Reload the tab at any point → it routes to the same place (home state machine).
-8. Set `TA_WAVES=..10` → no live planet cards: `/me/home` keeps W01-05's auto-seat on the dev planet and the game opens straight into that colony.
+8. Run `TA_WAVES=..10 npm run dev:restart` and reload `/play.html?scenario=w11` → no live planet cards: `/me/home` keeps W01-05's auto-seat on the dev planet and the game opens straight into that colony.
 
 ## Hackathon slice
 

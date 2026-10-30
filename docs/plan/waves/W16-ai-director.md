@@ -12,14 +12,14 @@ Add a strategic LLM director that makes the rare high-level calls, about 5–10 
 
 ## Demo story (e2e)
 
-1. Load `?scenario=w16` (a colony at S4, mock LLM) → open the **Director** panel → it shows mode `director`, "next call allowed in —", and budget 0 / 20M.
-2. Dev console `water drain` → `resource.critical(bio.water)` fires (D-34 key) → within 2 s the event log shows "Director: Water critical — building 2 pumps near the oasis" and two `ai`-tagged orders appear.
-3. Fire `resource.critical` again within 120 s → the log shows "rate limited", and nothing else happens.
-4. Set `AI_MOCK_MODE=invalid_json` → the next trigger is logged `invalid`; the colony keeps running on rules.
-5. Admin `POST /v1/admin/ai {op:'disable'}` → the next trigger is logged `disabled` within 5 s.
-6. Go away (W09) with `awayRaids=false` and let the mock propose a raid → the raid is **clamped** away (`clampedFields:['actions.raid']`).
-7. Return from away → the digest shows a one-paragraph **away story** (W09 modal).
-8. Set `TA_WAVES=..15` → no director panel, no LLM calls, and the colony runs on rules alone.
+1. Open `/play.html?scenario=w16` (a colony at S4, mock LLM) → open the **Director** panel → it shows mode `director`, "next call allowed in —", and budget 0 / 20M.
+2. Dev console `ai trigger resource.critical` (a water-critical state, D-34 key `bio.water`) → within 2 s the event log shows "Director: Water critical — building 2 pumps near the oasis" and two `ai`-tagged orders appear. `ai brief` prints the brief it used.
+3. Run `ai trigger resource.critical` again within 120 s → the log shows "rate limited", and nothing else happens.
+4. Dev console `ai mock invalid_json` (same as `AI_MOCK_MODE=invalid_json`), then `ai trigger resource.critical` → the trigger is logged `invalid`; the colony keeps running on rules.
+5. Run `curl -X POST /v1/admin/ai -d '{"op":"disable"}'` against the app → the next `ai trigger resource.critical` is logged `disabled` within 5 s.
+6. Dev console `presence away` with `awayRaids=false` (Away settings) and `ai mock` set to the mode that proposes a raid → the raid is **clamped** away (`clampedFields:['actions.raid']`, visible in the event log).
+7. Reload `/play.html?scenario=w16` after `away.warp 1` → the digest shows a one-paragraph **away story** (W09 modal).
+8. Run `TA_WAVES=..15 npm run dev:restart` and reload `/play.html?scenario=w16` → no director panel, no LLM calls, and the colony runs on rules alone.
 
 ## Features covered
 

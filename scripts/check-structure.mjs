@@ -1,19 +1,22 @@
 #!/usr/bin/env node
 // Enforces the architecture limits from AGENTS.md §6: no source file over 500 lines, no function over 100 lines,
-// and layering: frontend/render imports no app, an app imports no other app.
-//   npm run check:structure            (scans frontend/ and scripts/)
+// and layering: frontend/render imports no app and no `@terra/sim`, an app imports no other app, and `shared/*`
+// imports neither frontend nor backend code.
+//   npm run check:structure            (scans frontend/, shared/, backend/, scenarios/, e2e/ and scripts/)
 import ts from 'typescript';
-import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const MAX_FILE = 500, MAX_FUNC = 100;
-const SKIP = new Set(['node_modules', 'dist']);
+const SKIP = new Set(['node_modules', 'dist', 'generated', 'test-results', 'playwright-report', '.out']);
 const FILE_EXT = /\.(ts|js|mjs|css|html)$/, CODE_EXT = /\.(ts|js|mjs)$/;
 const problems = [];
 const APPS = ['game', 'landing', 'playground']; // design/ (tokens, base.css) is a shared layer any app may import
 // frontend/<area>/… → area name ('render' or an app); anything else → null
 const areaOf = (rel) => { const m = /^frontend\/([^/]+)\//.exec(rel); return m ? m[1] : null; };
+// packages a shared/* package must never import (frontend apps, the render engine, the server)
+const NOT_FROM_SHARED = /^@terra\/(app|game|landing|playground|render|design)(\/|$)/;
 
 function walk(dir) {
   for (const name of readdirSync(dir)) {
@@ -48,6 +51,13 @@ function check(path) {
 }
 
 function checkLayer(rel, spec, line) {
+  if (rel.startsWith('shared/')) {
+    const target = spec.startsWith('.') ? relative(ROOT, resolve(ROOT, dirname(rel), spec)) : '';
+    if (NOT_FROM_SHARED.test(spec) || /^(frontend|backend)\//.test(target)) problems.push(`layer shared imports app code '${spec}'  ${rel}:${line}`);
+    return;
+  }
+  // render may use the presentation-safe hex math (CLIENT §7), nothing else of the engine
+  if (areaOf(rel) === 'render' && /^@terra\/sim(\/|$)/.test(spec) && spec !== '@terra/sim/grid/hex') problems.push(`layer render imports '${spec}' (apps pass sim views in)  ${rel}:${line}`);
   const from = areaOf(rel);
   if (!from || !spec.startsWith('.')) return;
   const to = areaOf(relative(ROOT, resolve(ROOT, dirname(rel), spec)));
@@ -57,6 +67,6 @@ function checkLayer(rel, spec, line) {
   else if (APPS.includes(from) && to === 'render') problems.push(`layer use '@terra/render/…', not a relative path  ${rel}:${line}`);
 }
 
-for (const dir of ['frontend', 'scripts']) walk(join(ROOT, dir));
+for (const dir of ['frontend', 'shared', 'backend', 'scenarios', 'e2e', 'scripts']) if (existsSync(join(ROOT, dir))) walk(join(ROOT, dir));
 if (problems.length) { console.error(problems.join('\n') + `\n\n${problems.length} structure violation(s)`); process.exit(1); }
 console.log('structure ok: every file ≤ 500 lines, every function ≤ 100 lines, layers point inward');

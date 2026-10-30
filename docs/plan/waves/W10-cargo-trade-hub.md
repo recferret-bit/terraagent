@@ -29,15 +29,15 @@ A player builds a **Trade Hub** and **exports** colony stock to "cargo in orbit"
 
 ## Demo story (the e2e in words)
 
-1. Open `?scenario=w10` → a logged-in colony at S2 with 900 `metals.t1` stock, an online Trade Hub T1, and powered storage.
+1. Open `/play.html?scenario=w10` → a logged-in colony at S2 with 900 `metals.t1` stock, an online Trade Hub T1, and powered storage.
 2. Click the Trade Hub → the **Trade Hub panel** opens on Export, showing "Cargo in orbit: 0".
 3. Export **300 metals** → stock drops by 300 immediately, a shuttle launches from the hub, and a "Loading cargo…" chip shows (mock latency).
-4. After settlement → "Cargo in orbit: 300 metals". `/dev/chain` shows an `mt_mint` of token `metals.t1` to the colony account by `minter`.
-5. Export another 300 metals within the same minute at T1 throughput (250/min) → the request is clamped or rejected with "Port throughput reached, next slot in 34 s" (`mint_cap`).
+4. After settlement → "Cargo in orbit: 300 metals". `/dev/chain/` shows an `mt_mint` of token `metals.t1` to the colony account by `minter`.
+5. Export another 300 metals within the same minute at T1 throughput (250/min) → the request is clamped or rejected with "Port throughput reached, next slot in 34 s" (`mint_cap`). Dev console `cargo.cap.reset <colony>` clears it.
 6. Import **200 metals** → a shuttle lands, the stock rises by 200 after the burn settles, and in-orbit drops to 100.
-7. Set the mock failure rate for cargo to 1.0 and export 50 metals → after retries the export fails, the 50 metals are **refunded** to storage, and a toast explains it.
-8. Cut power so the hub is shed (brownout group 2) → the Export button disables with "Trade Hub offline".
-9. Restart with `TA_WAVES=..09` → the Trade Hub disappears from the Construction menu, the existing hub is inert and hidden, and no cargo commands are accepted (`wave_disabled`).
+7. Dev console `near.mock.fail cargo 1.0`, then export 50 metals → after retries the export fails, the 50 metals are **refunded** to storage, and a toast explains it. `near.mock.fail cargo 0` restores it.
+8. Cut power so the hub is shed (dev console `addLoad 500`, or `time night`) → the Export button disables with "Trade Hub offline".
+9. Run `TA_WAVES=..09 npm run dev:restart` and reload `/play.html?scenario=w10` → the Trade Hub disappears from the Construction menu, the existing hub is inert and hidden, and no cargo commands are accepted (`wave_disabled`).
 
 ## Hackathon slice
 

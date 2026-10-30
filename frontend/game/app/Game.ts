@@ -11,8 +11,16 @@ import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createDescentSequence } from '../descent/createDescent';
 import { warmupScene } from './warmup';
 import { Gameplay } from './Gameplay';
+import { track } from '../core/analytics';
 import { MainMenu, type MenuSettings } from '../ui/menu';
 import { DescentHud, GameHud } from '../ui/hud';
+import { HudRoot } from '../core/hud/HudRoot';
+import { loadFeatures } from '../core/registry';
+import { mountDevConsole } from '../dev/console';
+import { notConnectedSend } from '../net/commandBus';
+import { httpDevServer } from '../net/devServer';
+import '../net/services';
+import { createClientFlagsStore, type ClientFlagsStore } from '../core/flags';
 import '@terra/render/kitbash';
 import '../../design/css/tokens.css';
 import '../../design/css/base.css';
@@ -29,6 +37,10 @@ interface Prepared {
 export class Game {
   readonly viewport: ColonyViewport;
   private root: HTMLElement;
+  private featureHud: HudRoot | null = null;
+  private devConsole: { dispose(): void } | null = null;
+  private flagsStore: ClientFlagsStore | null = null;
+  private offFlags: (() => void) | null = null;
   private fade = document.createElement('div');
   private phase: Phase = 'menu';
   private menu!: MainMenu;
@@ -220,6 +232,7 @@ export class Game {
     this.viewport.camera.fov = 28; this.viewport.camera.updateProjectionMatrix();
     this.play = new Gameplay(this.viewport.scene, this.viewport.camera, this.viewport.renderer.domElement, this.surface, this.spec, hero, this.gHud!, { position: pose.position.clone(), target: pose.target.clone() });
     this.gHud!.show();
+    this.mountFeatureHud();
     this.gHud!.setResources({ energy: 120, metal: 60, water: 40, bio: 10 });
     const d = this.descent; this.descent = null;
     setTimeout(() => { try { d.dispose(); } catch (e) { console.warn(e); } this.dHud?.dispose(); this.dHud = null; }, 900);
@@ -233,7 +246,27 @@ export class Game {
   }
   private setPaused(p: boolean) { this.gHud?.setPaused(p); if (this.play) { this.play.paused = p; this.play.cam.enabled = !p; } }
 
+  /** Feature registry HUD: flags from `?waves=` (dev) or `all` until the server welcome lands; re-mounts on change. On body: #app is a stacking context below the prototype #hud (z 10). */
+  private mountFeatureHud() {
+    const store = this.flagsStore ??= createClientFlagsStore();
+    const mount = () => {
+      this.featureHud?.dispose(); this.devConsole?.dispose();
+      const { flags, source } = store.current;
+      const set = store.set;
+      // The prototype has no transport: sim commands report "not connected"; server dev commands go over the Vite /v1 proxy.
+      const ctx = { flags: set, host: 'server' as const, services: { track, flagsSource: source, sendCommand: notConnectedSend, devServer: httpDevServer() } };
+      const features = loadFeatures({ flags: set, host: 'server' });
+      this.featureHud = new HudRoot(document.body, features, ctx);
+      this.devConsole = mountDevConsole({ parent: document.body, features, ctx });
+    };
+    this.offFlags?.(); this.offFlags = store.onChange(mount);
+    mount();
+  }
+
   private teardownSession() {
+    this.offFlags?.(); this.offFlags = null;
+    this.featureHud?.dispose(); this.featureHud = null;
+    this.devConsole?.dispose(); this.devConsole = null;
     this.play?.dispose(); this.play = null;
     try { this.descent?.dispose(); } catch (e) { console.warn(e); } this.descent = null;
     this.dHud?.dispose(); this.dHud = null; this.gHud?.dispose(); this.gHud = null;

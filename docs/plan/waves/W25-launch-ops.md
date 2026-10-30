@@ -32,9 +32,9 @@ Take the app from "works on my machine" to a hosted, monitored, backed-up public
    - a restart resumes the planet from its snapshot.
 3. Run `npm run deploy -- --dry-run` → **see** the plan: checks, upload, build, backup, migrate, restart (SIGTERM snapshot), static swap, smoke, with rollback armed.
 4. Run `npm run backup && npm run backup:verify` → **see** the dump restored into a scratch DB with the planet count matching.
-5. Open `/admin/analytics` → **see** the funnel from `landing_view` to `return_visit` with counts from the e2e runs.
+5. Open `/admin/analytics` (after a few runs of `npm run e2e`) → **see** the funnel from `landing_view` to `return_visit` with counts from the e2e runs.
 6. Run `npm run e2e:readme` → **see** a fresh clone follow the README's "do X → see Y" steps headless and pass.
-7. The hosted demo URL answers, the X post links to it, and the submission form is sent before 2026-11-14 20:00 UTC.
+7. (Manual, outside the game) The hosted demo URL answers, the X post links to it, and the submission form is sent before 2026-11-14 20:00 UTC.
 
 ## Hackathon slice
 

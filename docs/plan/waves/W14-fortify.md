@@ -17,16 +17,16 @@
 
 ## Demo story (e2e `e2e/w14.spec.ts`)
 
-1. Load `?scenario=w14`: an S4 colony (demo build unlock), a Terraformer, Prepared ground around the core, a nest 25 tiles away, and an Autocannon inside the planned wall line.
-2. Terraform → **Raise Ridge**, then drag a wall line around the core, leaving one gap → the ghost shows cost (15 M + 10 Min + 150 E per tile) and time.
+1. Open `/play.html?scenario=w14`: an S4 colony (demo build unlock), a Terraformer, Prepared ground around the core, a nest 25 tiles away, and an Autocannon inside the planned wall line.
+2. Terraform menu → **Raise Ridge**, then drag a wall line around the core, leaving one gap → the ghost shows cost (15 M + 10 Min + 150 E per tile) and time.
 3. Close the gap fully → the confirm plate warns "isolates Quarry #12" and the order is rejected `would_isolate`. Place a **Wall Gate** in the gap instead → accepted.
 4. Dig a **Moat** segment on the far side → impassable, but turrets can fire across it.
-5. `spawnRaid 6` → the skitters path to the **gate**, not through the ridge. Destroy the gate with the dev console → they pour through the breach.
+5. Dev console `spawnRaid 6` → the skitters path to the **gate**, not through the ridge. Run `breach <q> <r>` on the gate tile (or `damage <entity> 100`), and `siegeDebug` to see their path → they pour through the breach.
 6. Rebuild the gate, then remove it and lower one ridge tile with **Lower** (50 % refund) → reopened.
 7. Remove the gate entirely → the next raid besieges the wall for 5 min, leaves, and counts as `raidRepelled`.
-8. Parapet: the Autocannon standing directly behind the ridge fires over it at skitters outside. A Recon 3 tiles behind the ridge cannot (line of fire blocked). `demoArtillery` fires over the ridge.
-9. `meteor` on a ridge tile → the ridge becomes Rock (a breach); skitters path through it; a repair re-raise is offered.
-10. Terraform % is unchanged by wall tiles, and Great Wall progress counts raised tiles.
+8. Parapet: the Autocannon standing directly behind the ridge fires over it at skitters outside. A Recon 3 tiles behind the ridge cannot (line of fire blocked). Dev console `spawnUnit demoArtillery` fires over the ridge.
+9. Dev console `meteor <q> <r>` on a ridge tile → the ridge becomes Rock (a breach); skitters path through it; a repair re-raise is offered.
+10. Terraform % in the HUD is unchanged by wall tiles, and Great Wall progress counts raised tiles (on `/me.html` when W12 is on).
 
 ## Hackathon slice
 

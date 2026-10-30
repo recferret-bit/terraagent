@@ -1,0 +1,2 @@
+.ta-netstats { padding: 6px 10px; background: var(--ta-plate); border: 1px solid var(--ta-seam-2); color: var(--ta-text-2); font: 600 10px/1.5 'Chakra Petch', sans-serif; letter-spacing: var(--ta-track-label); text-transform: uppercase; }
+.ta-netstats__v { color: var(--ta-blue-hi); font-family: 'IBM Plex Mono', monospace; font-weight: 500; }

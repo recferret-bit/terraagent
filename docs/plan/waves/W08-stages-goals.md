@@ -11,14 +11,14 @@ The colony teaches itself. A data-driven **stage engine** (S0–S10) unlocks con
 
 ## Demo story (e2e)
 
-1. Load `?scenario=w08` (a fresh colony at S0) → see the stage track at **S0 Landfall** and a suggestion card "Establish Colony".
-2. Accept the card → see the goal "Establish Colony" in the HQ Goals panel with a progress bar, and the HQ preparing the Hub site.
+1. Open `/play.html?scenario=w08` (a fresh colony at S0) → see the stage track at **S0 Landfall** and a suggestion card "Establish Colony".
+2. Accept the card (or add it from the HQ Goals menu) → see the goal "Establish Colony" in the HQ Goals panel with a progress bar, and the HQ preparing the Hub site.
 3. The Hub completes → see the toast "S1 First Light", plus Harvester, Metals Extractor and Solar becoming un-greyed in the menus. Locked items show "Unlocks at S2: extractor + generator complete · 2 min".
-4. Wait (time warp ×20) until the extractor and generator are done and 2 min have passed → see S2. Dwell is enforced: the dev console's "skip dwell" is needed to go faster.
-5. Move the **expansion** slider to 80 → see the autopilot's next suggestion change toward beacons. At S2 the autopilot only *suggests* power builds (`UO-LC-05`); at S3 it starts adding `auto` orders.
-6. Dev console `spawn fauna near` → the S3 override fires before the dwell ends; see "S3 First Contact".
-7. Open the profile → the **Ascendant** progress counter moves (W12 consumer; "coming soon" if W12 is off).
-8. Set `TA_WAVES=..07` → no stage track, no goals panel, no sliders; the colony still plays.
+4. Dev console `warp 20` until the extractor and generator are done and 2 min have passed → see S2. Dwell is enforced: dev console `stage skip-dwell` is needed to go faster.
+5. Autopilot panel: move the **expansion** slider to 80, then run `autopilot next` in the dev console → see the suggestion change toward beacons. At S2 the autopilot only *suggests* power builds (`UO-LC-05`); at S3 it starts adding `auto` orders.
+6. Dev console `stage trigger <override>` with the S3 fauna override (`help stage` lists the names) → the S3 override fires before the dwell ends; see "S3 First Contact".
+7. Open `/me.html` in the same browser → the **Ascendant** progress counter moves (W12 consumer; "coming soon" if W12 is off).
+8. Run `TA_WAVES=..07 npm run dev:restart` and reload `/play.html?scenario=w08` (or add `&waves=..07`) → no stage track, no goals panel, no sliders; the colony still plays.
 
 ## Hackathon slice
 

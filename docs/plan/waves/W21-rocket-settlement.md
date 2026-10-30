@@ -11,14 +11,14 @@ The colony's endgame works end to end. The player terraforms all owned land to L
 
 ## Demo story (e2e)
 
-1. Load `?scenario=w21`: the near-complete colony (Hub T2, 96 % Living, stock for the silo). Build the Rocket Silo T2. → The Rocket panel shows `Living 312 / 325`, with an overlay highlighting the 13 missing tiles.
-2. Click Launch. → Rejected `launch_gate`, and the overlay pulses.
-3. Let terraformers finish (warp). → Launch enabled. Click Launch, then confirm (`AW-12`). → 30 s countdown with VFX; the rocket lifts off.
-4. The colony turns **Settled**: buildings freeze with a monument tint, and enemy units cannot target them (dev spawn).
-5. The picker offers a new planet with the carry summary; join it. → The existing orbit deploy and drop-pod descent play, and the Founder Pod lands with 125 % starting stock.
-6. On the old planet, the other two colonies also settle (dev). → The planet ends early (`MM-07`, W11-04's sweeper).
-7. On `/me`, "Claim account" runs the mock claim flow. → The account shows "claimed".
-8. Set `TA_WAVES=..20` → no silo, no launch, no settled state.
+1. Open `/play.html?scenario=w21`: the near-complete colony (Hub T2, 96 % Living, stock for the silo). Construction menu → build the Rocket Silo T2. → The Rocket panel shows `Living 312 / 325`, with an overlay highlighting the 13 missing tiles.
+2. Click Launch in the Rocket panel. → Rejected `launch_gate`, and the overlay pulses.
+3. Dev console `warp 20` until terraformers finish (or `setLiving 100`). → Launch enabled. Click Launch, then confirm (`AW-12`; `launch` in the console does the same). → 30 s countdown with VFX; the rocket lifts off.
+4. The colony turns **Settled**: buildings freeze with a monument tint, and enemy units cannot target them (dev console `spawnUnit <id> 3 enemy`).
+5. The orbital picker offers a new planet with the carry summary; join it. → The existing orbit deploy and drop-pod descent play, and the Founder Pod lands with 125 % starting stock.
+6. On the old planet, run `settle <colony>` for the other two colonies. → The planet ends early (`MM-07`, W11-04's sweeper).
+7. Open `/me.html` → "Claim account" runs the mock claim flow. → The account shows "claimed".
+8. Run `TA_WAVES=..20 npm run dev:restart` and reload `/play.html?scenario=w21` → no silo, no launch, no settled state.
 
 ## Features covered
 

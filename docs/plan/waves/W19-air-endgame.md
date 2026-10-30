@@ -15,14 +15,14 @@ The air layer and the top tier:
 
 ## Demo story (e2e `e2e/w19.spec.ts`)
 
-1. Load `?scenario=w19`: an S7 colony with Hub T2, Factory T2, Multitask T2 ×2, enough Depots for stock 5 000 each, a Skitter nest at 25 tiles, and an enemy colony with air units for duels. Build an Aero Hangar T2. → Toast "S8 Skies"; Air Recon and Anti-Air unlock.
-2. Fly Air Recon across a ridge and a deep-water lake. → It moves in a straight line and reveals 14 tiles.
-3. Trigger a raid (S8: it brings a Drifter flock). → Autocannons hit the Drifters at baseline, and Anti-Air lasers clear the flock.
-4. After the first air unit plus 10 min dwell (warped) → "S9 Air War". Build 4 Fighters vs an enemy's 4 Gunships (dev spawn). → Fighters win.
-5. Gunships strafe Recons. → Gunships win.
-6. On a fresh S6 colony, spawn enemy air in view (dev). → S8 Anti-Air unlocks immediately (override), buildable at Factory T1.
-7. Upgrade the Hub to T3. → HQ refits to T3; "S10 Strategic"; T3 rows, Multitask T3, Hangar T3 and Bomber unlock; the HQ can build a T3 Fusion Reactor.
-8. Upgrade the Hangar to T3 and build Bombers. → Bombers vs Tanks: Bombers win. Anti-Air vs Bombers: Anti-Air wins.
+1. Open `/play.html?scenario=w19`: an S7 colony with Hub T2, Factory T2, Multitask T2 ×2, enough Depots for stock 5 000 each, a Skitter nest at 25 tiles, and an enemy colony with air units for duels. Construction menu → build an Aero Hangar T2. → Toast "S8 Skies"; Air Recon and Anti-Air unlock.
+2. Order an Air Recon and send it across a ridge and a deep-water lake. → It moves in a straight line and reveals 14 tiles.
+3. Dev console `spawnRaid 5` and `spawnDrifters 6` (S8 raids bring a Drifter flock). → Autocannons hit the Drifters at baseline, and Anti-Air lasers clear the flock.
+4. Dev console `warp 20` for the 10 min dwell after the first air unit → "S9 Air War". Build 4 Fighters, then run `spawnAir gunship 4 enemy`. → Fighters win.
+5. Order 2 Recons next to the enemy Gunships (`spawnAir gunship 2 enemy`). → Gunships strafe the Recons and win.
+6. Reload `/play.html?scenario=w19`, run `stage set 6`, then `spawnAir gunship 2 enemy` in view. → S8 Anti-Air unlocks immediately (override), buildable at Factory T1.
+7. Dev console `upgradeHub 3` (or upgrade from the Construction menu). → HQ refits to T3; "S10 Strategic"; T3 rows, Multitask T3, Hangar T3 and Bomber unlock; the HQ can build a T3 Fusion Reactor.
+8. Upgrade the Hangar to T3 and build Bombers. → Bombers vs Tanks (`spawnUnit tank 3 enemy`): Bombers win. Anti-Air vs Bombers (`spawnAir bomber 3 enemy`): Anti-Air wins.
 
 ## Features covered
 

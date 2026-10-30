@@ -47,14 +47,14 @@ Content follows stage S1, limited to what this wave owns: Harvester, Metals Extr
 
 ## Demo story (`e2e/w02.spec.ts`)
 
-1. Load `?scenario=w02`: Hub done, stock `metals.t1 400, minerals.t1 250, bio.biomass 150, bio.water 150`, morning → **see** the resource bar (three family chips Metals / Minerals / Bio with stock / cap / income and a tier breakdown, plus Energy) and the power widget (`+8 supply / −5 demand`, sun icon).
+1. Open `/play.html?scenario=w02`: Hub done, stock `metals.t1 400, minerals.t1 250, bio.biomass 150, bio.water 150`, morning → **see** the resource bar (three family chips Metals / Minerals / Bio with stock / cap / income and a tier breakdown, plus Energy) and the power widget (`+8 supply / −5 demand`, sun icon).
 2. Open the Units menu → queue 1 Harvester → **see** the Units lane entry go `in_progress`. The stock drops `40/15/5/0` at start. About 10 s later a Harvester rolls out and starts harvesting the nearest surface deposit by itself.
 3. Open the Construction menu → place a Metals Extractor on a deposit and a Solar → **see** both ghosts show prep bills, linked prep, then construction by the HQ, one after the other.
 4. **See** the Extractor produce about `1.0 metals.t1/s` (× richness) once powered. The power widget shows Solar +20.
-5. Queue a second Extractor with too little Minerals → **see** `waiting: Minerals 5/20 · ~30 s at +0.5/s`. It starts automatically when affordable.
-6. Run `time night` in the dev console → **see** Solar drop to 0, demand exceed supply, and the Extractor shed (`offline: brownout`) with a red banner. `time day` restores everything.
-7. Fill Metals to the cap (`grant metals.t1 9999`) → **see** the Metals chip at `500/500`, extraction paused, and an entry costing more than the cap show `waiting(storage)` with a "build a Supply Depot" hint (the Depot arrives in W03, so the hint is greyed out).
-8. Cancel an in-progress order → **see** 75 % refunded. Cancel a waiting order → **see** nothing charged.
+5. Queue builds until the Minerals chip is under 20, then queue a second Extractor → **see** `waiting: Minerals 5/20 · ~30 s at +0.5/s` in the queue panel. It starts automatically when affordable.
+6. In the dev console run `time night` → **see** Solar drop to 0, demand exceed supply, and the Extractor shed (`offline: brownout`) with a red banner. `time day` restores everything.
+7. In the dev console run `fill metals.t1` (or `grant metals.t1 9999`) → **see** the Metals chip at `500/500`, extraction paused, and an entry costing more than the cap show `waiting(storage)` with a "build a Supply Depot" hint (the Depot arrives in W03, so the hint is greyed out).
+8. In the queue panel cancel an in-progress order → **see** 75 % refunded in the stock chips. Cancel a waiting order → **see** nothing charged.
 
 ## Hackathon slice
 

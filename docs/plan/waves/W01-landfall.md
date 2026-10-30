@@ -48,14 +48,14 @@ The colony survives a server restart. Everything lands as a shippable app: no lo
 
 ## Demo story (`e2e/w01.spec.ts`)
 
-1. Open `/play.html` on a fresh browser profile → **see** the orbital boot splash while guest login happens silently, then the hand-over to the colony view (`/me/home = ACTIVE` on the dev planet) with no click.
+1. Open `/play.html` in a private window (fresh profile, no `?scenario`) → **see** the orbital boot splash while guest login happens silently, then the hand-over to the colony view (`/me/home = ACTIVE` on the dev planet) with no click.
 2. **See** the existing descent cinematic bring the drop pod down onto the spawn slot and the HQ drone deploy. The HUD shows the stock (Metals 600, Minerals 350, Bio 400 = water 200 + biomass 200) and the HQ cell at `800 / 800 E`.
 3. Open the Construction menu → **see** only "Command Hub". Hover a site → **see** a ghost footprint (3×3) with a prep bill (tiles, seconds, E, yields). Confirm.
 4. **See** the HQ walk to the site and Grade, Clear and Break tiles one by one. Tiles change Wild → Prepared, and the cell bar drains. Rock and forest tiles yield +10 `metals.t1` / +5 `bio.biomass`.
-5. **See** construction start once all 9 tiles are Prepared: the queue shows `waiting(site: 9/9)` → `in_progress`. The stock drops by `200/100/50/50`, and the Hub completes about 20 s later.
+5. **See** construction start once all 9 tiles are Prepared: the queue shows `waiting(site: 9/9)` → `in_progress`. The stock drops by `200/100/50/50`, and the Hub completes about 20 s later (dev console `warp 10` shortens the wait).
 6. **See** the territory ring (R 10) appear in the colony colour. The HUD shows storage cap 500 per family and supply 0/10.
-7. Restart the app → **see** "Reconnecting…", then the same colony with its Hub and prepared tiles.
-8. A second scenario run with no input for 60 s → **see** the Hub auto-placed on the lowest-prep-cost site and built (`UO-LC-07`).
+7. Run `npm run dev:restart` → **see** "Reconnecting…", then the same colony with its Hub and prepared tiles.
+8. Open `/play.html?scenario=w01` in a new private window and touch nothing for 60 s (dev console `warp 10` makes it 6 s) → **see** the Hub auto-placed on the lowest-prep-cost site and built (`UO-LC-07`).
 
 ## Hackathon slice
 

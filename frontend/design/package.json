@@ -1,0 +1,7 @@
+{
+  "name": "@terra/design",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Faction Plate design system: tokens.css, base.css and the /design/ docs pages."
+}
