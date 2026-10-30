@@ -1,10 +1,9 @@
 import type { SimCommandV1 } from '@terra/contracts';
 import {
   allModules, createPlanet, createRegistryPipeline, diffSince, restore, snapshot, step,
-  type Pipeline, type PlanetState, type SimEvent, type SimModule,
+  type Pipeline, type PlanetSchedule, type PlanetState, type SimEvent, type SimModule,
 } from '@terra/sim';
 import type { LoadMsg, PassStat, Post, PlanetStats, ToThread } from './protocol';
-import type { PlanetSchedule } from './scheduler';
 
 /** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
 export interface SchedulerView {

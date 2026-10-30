@@ -1,4 +1,4 @@
-import { commandDef, hasCommandKind, parseCommandArgs, REJECT_CODES, type ClientMessageOf, type RejectCode, type SimCommandV1 } from '@terra/contracts';
+import { hasCommandKind, precheckClientCommand, REJECT_CODES, type ClientMessageOf, type RejectCode, type SimCommandV1 } from '@terra/contracts';
 import { Counter, type Registry } from 'prom-client';
 import type { FlagsService, CommandWaveLookup } from '../flags/flags.service';
 import type { GamePlanets } from '../game/game-planets.service';
@@ -33,8 +33,8 @@ export class SimCommandIngress implements CommandIngress {
   }
 
   handle(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>): void {
-    const pre = this.precheck(cmd);
-    if (pre.reject) return this.reject(ctx, cmd, pre.reject, pre.detail);
+    const pre = precheckClientCommand(cmd.d.kind, cmd.d.args, { gate: (k) => this.o.flags.gate(k, this.waveOf), production: this.o.production });
+    if (!pre.ok) return this.reject(ctx, cmd, pre.code, pre.detail);
     const simCmd: SimCommandV1 = { colonyIndex: null, source: 'dev', commandId: cmd.id, kind: cmd.d.kind, args: pre.args };
     this.o.planets.submit(ctx.planetId, simCmd).then(
       (out) => {
@@ -45,22 +45,6 @@ export class SimCommandIngress implements CommandIngress {
       },
       () => this.reject(ctx, cmd, 'internal', 'engine unavailable'),
     );
-  }
-
-  private precheck(cmd: ClientMessageOf<'cmd'>): { reject: RejectCode; detail?: string; args?: undefined } | { reject?: undefined; detail?: undefined; args: unknown } {
-    const gate = this.o.flags.gate(cmd.d.kind, this.waveOf);
-    if (gate) return { reject: gate };
-    const parsed = parseCommandArgs(cmd.d.kind, cmd.d.args);
-    if (!hasCommandKind(cmd.d.kind)) return { reject: 'unknown_kind' };
-    const def = commandDef(cmd.d.kind);
-    if (def.origin !== 'client' || (def.dev && this.o.production)) return { reject: 'unknown_kind' };
-    if (!parsed.success) {
-      const i = parsed.error.issues[0];
-      return { reject: 'invalid_args', detail: i ? `${i.path.join('.') || 'args'}: ${i.message}`.slice(0, 200) : undefined };
-    }
-    // Ownership lands with colonies in W01: a W00 session has none, so only dev kinds may run.
-    if (!def.dev) return { reject: 'not_own_colony' };
-    return { args: parsed.data };
   }
 
   private reject(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>, code: RejectCode, detail?: string): void {
