@@ -163,7 +163,7 @@ function tryStartQueueEntry(
   if (entry.task.kind === 'build') {
     const started = startBuildingConstruction(
       state,
-      { owner: entry.colonyIndex, building: entry.task.building, q: entry.task.q, r: entry.task.r, rot: entry.task.rotation ?? 0, workRate: entry.workRate, tick, data },
+      { owner: entry.colonyIndex, building: entry.task.building, q: entry.task.q, r: entry.task.r, rot: entry.task.rotation ?? 0, workRate: entry.workRate, tick, data, costOverride: entry.cost },
       ctx,
     );
     if (!started.ok) {
@@ -185,6 +185,12 @@ function tryStartQueueEntry(
   entry.etaSeconds = undefined;
 }
 
+/**
+ * Non-blocking queue scan (`W02-15`):
+ * Evaluates waiting/queued entries in `system > player > auto` precedence order (preserving lane FIFO within each tier).
+ * A blocked head entry (`waiting` on resources, storage, site, power, or supply) never earmarks stock or worker slots,
+ * so any later startable entry starts immediately.
+ */
 export function scanAndStartQueueEntries(
   state: PlanetState,
   entries: QueueEntry[],
@@ -192,15 +198,26 @@ export function scanAndStartQueueEntries(
   tick: number,
   data?: CompiledDataLike,
   ctx?: StepContext,
-): void {
-  const candidates = entries
-    .filter((e) => e.colonyIndex === colonyIndex && (e.state === 'queued' || e.state === 'waiting'))
-    .sort((a, b) => PRECEDENCE_RANK[b.precedence] - PRECEDENCE_RANK[a.precedence]);
+): QueueEntry[] {
+  const indexed = entries
+    .map((entry, idx) => ({ entry, idx }))
+    .filter(({ entry }) => entry.colonyIndex === colonyIndex && (entry.state === 'queued' || entry.state === 'waiting'))
+    .sort((a, b) => {
+      const rankDiff = PRECEDENCE_RANK[b.entry.precedence] - PRECEDENCE_RANK[a.entry.precedence];
+      return rankDiff !== 0 ? rankDiff : a.idx - b.idx;
+    });
 
-  for (const entry of candidates) {
+  const started: QueueEntry[] = [];
+  for (const { entry } of indexed) {
     tryStartQueueEntry(state, entry, entries, tick, data, ctx);
+    if (entry.state === 'in_progress') {
+      started.push(entry);
+    }
   }
+  return started;
 }
+
+export const scanQueueNonBlocking = scanAndStartQueueEntries;
 
 export function enqueueQueueTask(
   state: PlanetState,

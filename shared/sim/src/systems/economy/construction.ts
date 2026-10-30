@@ -177,7 +177,7 @@ export function startBuildingConstruction(
   }
 
   const colony = ensureColony(state, opts.owner, tick);
-  const cost = (row.cost ?? {}) as Partial<Record<ResourceKey, number>>;
+  const cost = (opts.costOverride ?? row.cost ?? {}) as Partial<Record<ResourceKey, number>>;
   const totalStock = Object.values(colony.stock as Record<string, number>).reduce((a, b) => a + b, 0);
   if (totalStock > 0) {
     const afford = checkCostAffordability(colony, cost);
