@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
-import { createHexTerrain, specForPlanetType, type HexPick, type HexTerrain, type HexTiles } from '@terra/render/planets/hex';
+import { createHexTerrain, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles } from '@terra/render/planets/hex';
 import { ConnectionBanner } from '../../net/ConnectionBanner';
 import { WsTransport, browserDeps } from '../../net/WsTransport';
 import { WorldStore } from '../../store/WorldStore';
@@ -89,6 +89,15 @@ export class OnlineSession {
     this.lastPick = this.terrain.pick(ndc, this.viewport.camera);
     console.log('[pick]', this.lastPick ? `q=${this.lastPick.q} r=${this.lastPick.r} i=${this.lastPick.i}` : 'off-planet');
     return this.lastPick;
+  }
+
+  /** Client-space pixel of a tile centre (debug/E2E: `clickTile`), or null before the terrain exists. */
+  tileToScreen(q: number, r: number): { x: number; y: number } | null {
+    if (!this.terrain) return null;
+    const [x, z] = tileXZ(q, r);
+    const p = new THREE.Vector3(x, this.terrain.heightAt(x, z), z).project(this.viewport.camera);
+    const rect = this.viewport.renderer.domElement.getBoundingClientRect();
+    return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
   }
 
   private bindPicking(): void {
