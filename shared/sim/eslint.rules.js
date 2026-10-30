@@ -11,7 +11,7 @@ const GLOBALS = [
   ...banned(['crypto'], 'No randomness: use ctx.rng(stream).'),
 ];
 
-const NODE_MODULES = ['node:*', 'fs', 'fs/*', 'path', 'os', 'child_process', 'worker_threads', 'http', 'net'];
+const NODE_MODULES = ['node:*', 'fs', 'fs/*', 'path', 'os', 'child_process', 'worker_threads', 'http', 'net', '!./*', '!./**', '!../*', '!../**'];
 
 const asyncMsg = `${WHY}. step() is synchronous: no async functions or await.`;
 
