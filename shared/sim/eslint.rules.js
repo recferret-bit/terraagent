@@ -15,16 +15,16 @@ const NODE_MODULES = ['node:*', 'fs', 'fs/*', 'path', 'os', 'child_process', 'wo
 
 const asyncMsg = `${WHY}. step() is synchronous: no async functions or await.`;
 
-export const simPurity = [
+const purity = (files, allowed) => [
   {
-    files: ['shared/sim/src/**/*.ts'],
+    files,
     rules: {
       'no-restricted-globals': ['error', ...GLOBALS],
       'no-restricted-properties': ['error', { object: 'Math', property: 'random', message: `${WHY}. Use ctx.rng(stream).` }],
       'no-restricted-imports': ['error', {
         patterns: [
           { group: NODE_MODULES, message: `${WHY}. No Node or I/O modules.` },
-          { group: ['@terra/*', '!@terra/contracts', '!@terra/contracts/*'], message: `${WHY}. Only @terra/contracts may be imported (type-only is the norm).` },
+          { group: ['@terra/*', ...allowed.flatMap((n) => [`!@terra/${n}`, `!@terra/${n}/*`])], message: `${WHY}. Only ${allowed.map((n) => `@terra/${n}`).join(', ')} may be imported.` },
         ],
       }],
       'no-restricted-syntax': ['error',
@@ -33,4 +33,10 @@ export const simPurity = [
       ],
     },
   },
+];
+
+export const simPurity = [
+  ...purity(['shared/sim/src/**/*.ts'], ['contracts']),
+  // seed scenarios run on every host (server thread, browser local host, CLI): same purity, plus the engine API itself
+  ...purity(['scenarios/*.ts'], ['contracts', 'sim']),
 ];

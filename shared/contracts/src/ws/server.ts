@@ -29,6 +29,7 @@ export const Welcome = ServerEnvelope('welcome', z.object({
   state: SimSnapshotFrame, // engine snapshot (D-31), everything on the planet (D-25)
   simVersion: z.number().int(),
   dataHash: z.string(), // a client whose engine/data differ reloads (SIM-X-08)
+  overrides: z.record(z.string(), z.unknown()).optional(), // balance overrides (D-35) the planet's data was compiled with; the client compiles the same
   tick: z.number().int().nonnegative(),
   serverTimeMs: z.number().int(),
   tickMs: z.literal(200),

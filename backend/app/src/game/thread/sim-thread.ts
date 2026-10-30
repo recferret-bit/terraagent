@@ -1,8 +1,7 @@
 import { parentPort, workerData } from 'node:worker_threads';
-import type { SimModule } from '@terra/sim';
+import { PlanetScheduler, type SimModule } from '@terra/sim';
 import { PlanetHost } from './planet-host';
 import type { FromThread, PassStat, ThreadInit, ToThread } from './protocol';
-import { PlanetScheduler } from './scheduler';
 
 /** Sim thread entry (SIM-H-01): owns the planets assigned to it; the main thread talks to it only through `protocol.ts` messages. */
 const port = parentPort;
@@ -30,12 +29,15 @@ scheduler.onPass = (r) => {
   if (ring.length > RING) ring.shift();
 };
 
+scheduler.onWarp = (planetId, k, requested) => post({ t: 'warp', planetId, k, requested });
+
 const host = new PlanetHost(init.thread, init.flags, post, {
   info: (id) => scheduler.info(id),
   get maxLag() { return scheduler.maxLag; },
   recentPasses: () => [...ring],
 }, {
   deltaHz: init.deltaHz,
+  overrides: init.overrides,
   modules: await Promise.all((init.simModules ?? []).map(async (u) => ((await import(u)) as { default: SimModule }).default)),
 });
 if (init.autoStep) scheduler.start();
@@ -45,6 +47,10 @@ port.on('message', (msg: ToThread) => {
     scheduler.stop();
     post({ t: 'stopped', thread: init.thread });
     port.close();
+    return;
+  }
+  if (msg.t === 'ctl' && msg.op === 'warp') {
+    if (host.planets.has(msg.planetId)) scheduler.setWarp(msg.planetId, msg.k);
     return;
   }
   host.handle(msg);

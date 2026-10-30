@@ -518,6 +518,59 @@
       "severity": "info",
       "summary": "Emitted by the sim when a dev.ping command is applied.",
       "wave": "W00"
+    },
+    "dev.tuned": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "dataHash": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "set",
+              "reset"
+            ],
+            "type": "string"
+          },
+          "path": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "value": {}
+        },
+        "required": [
+          "op",
+          "dataHash"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A balance override was tuned live (dev console `tune`); dataHash is the planet data hash after the change (D-35).",
+      "wave": "W00"
+    },
+    "dev.warp": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "k": {
+            "maximum": 100,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "k"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Dev time warp changed: the planet now steps `k` engine steps per tick slot (effective value after the thread budget cap).",
+      "wave": "W00"
     }
   },
   "serverMessages": {
@@ -1023,6 +1076,13 @@
                 "type": "string"
               },
               "type": "array"
+            },
+            "overrides": {
+              "additionalProperties": {},
+              "propertyNames": {
+                "type": "string"
+              },
+              "type": "object"
             },
             "planet": {
               "properties": {

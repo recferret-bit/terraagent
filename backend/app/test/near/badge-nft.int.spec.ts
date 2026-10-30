@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { describeNftPortContract } from '../../src/near/__contract__/nft.contract';
+import { describeNftPortContract } from '../../src/near/__contract__/badge-nft.contract';
 import { BadgeNftPort } from '../../src/near/application/ports/badge-nft.port';
 import { MockBadgeNftAdapter } from '../../src/near/infrastructure/adapters/badge-nft/mock-badge-nft.adapter';
 import { nearAdapters } from '../../src/near/infrastructure/near-infrastructure.module';
@@ -18,8 +18,8 @@ const rows = (collection: string) => db.prisma.mockChainNft.findMany({ where: { 
 beforeAll(async () => { db = await createTestDatabase(); });
 afterAll(async () => { await db?.drop(); });
 
-describeNftPortContract('MockBadgeNftAdapter', () => ({ port: badge(), collection: 'badge', mock: true }));
-describeNftPortContract('TestNftMock (base reuse)', () => ({ port: new TestNftMock(db.prisma, cfg(), { sleep }) as never, collection: 'test', mock: true }));
+// MockBadgeNftAdapter itself runs the BadgeNft contract from `npm run test:contract`.
+describeNftPortContract('TestNftMock (base reuse)', async () => ({ port: new TestNftMock(db.prisma, cfg(), { sleep }) as never, kind: 'mock', collection: 'test' }));
 
 describe('MockBadgeNftAdapter on Postgres', () => {
   it('acceptance: mint twice with the same opId gives one NFT row and the same mock: receipt', async () => {

@@ -29,6 +29,8 @@ export default defineConfig({
         landing: resolve(frontend, 'landing.html'),
         play: resolve(frontend, 'play.html'),
         playground: resolve(frontend, 'playground.html'),
+        devChain: resolve(frontend, 'dev/chain/index.html'),
+        devParity: resolve(frontend, 'dev/parity/index.html'),
         design: resolve(frontend, 'design/index.html'),
         designFoundations: resolve(frontend, 'design/foundations.html'),
         designStorybook: resolve(frontend, 'design/storybook.html'),

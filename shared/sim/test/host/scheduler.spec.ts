@@ -1,6 +1,6 @@
-import { COARSE_DT, TICK_MS } from '@terra/sim';
+import { COARSE_DT, TICK_MS } from '../../src/kernel/constants';
 import { describe, expect, it } from 'vitest';
-import { COARSE_STEP_MS, MAX_CATCHUP, PlanetScheduler } from '../../src/game/thread/scheduler';
+import { COARSE_STEP_MS, MAX_CATCHUP, PlanetScheduler } from '../../src/host/scheduler';
 
 /** Fake clock + timer: `advance(ms)` jumps time, firing due timers in order; `jump(ms)` models a blocked thread. */
 function rig() {
@@ -95,5 +95,49 @@ describe('PlanetScheduler', () => {
     r.s.setWarp('a', 1000);
     expect(r.s.info('a')?.warp).toBe(100);
     expect(TICK_MS).toBe(200);
+  });
+
+  it('warp x1 restores 5 ticks per second and reports the change', () => {
+    const r = rig();
+    const seen: number[] = [];
+    r.s.onWarp = (_id, k) => seen.push(k);
+    r.s.add('a');
+    r.s.start();
+    r.s.setWarp('a', 10);
+    r.advance(1000 - 1);
+    expect(r.steps.length).toBe(50);
+    r.steps.length = 0;
+    r.s.setWarp('a', 1);
+    r.advance(1000);
+    expect(r.steps.length).toBe(5);
+    expect(seen).toEqual([10, 1]);
+  });
+});
+
+describe('time warp thread budget cap', () => {
+  /** A scheduler whose every engine step costs `costMs` of clock time (a thread that cannot keep up). */
+  function slow(costMs: number) {
+    let now = 0;
+    const s = new PlanetScheduler({ now: () => now, schedule: () => () => undefined, step: () => { now += costMs; } });
+    return { s, tick: (ms: number) => { now += ms; s.runPass(); } };
+  }
+
+  it('halves the effective warp while the planet stays behind, and reports it; the request stays', () => {
+    const r = slow(50); // 10 steps = 500 ms per 200 ms slot
+    const seen: number[] = [];
+    r.s.add('a');
+    r.s.onWarp = (_id, k) => seen.push(k);
+    r.s.setWarp('a', 10);
+    for (let i = 0; i < 60 && (r.s.info('a')?.warp ?? 0) > 4; i++) r.tick(0);
+    expect(r.s.info('a')).toMatchObject({ warp: 2, warpRequested: 10 });
+    expect(seen.slice(0, 3)).toEqual([10, 5, 2]);
+  });
+
+  it('never reduces a planet that keeps up', () => {
+    const r = slow(1);
+    r.s.add('a');
+    r.s.setWarp('a', 10);
+    for (let i = 0; i < 50; i++) r.tick(200);
+    expect(r.s.info('a')).toMatchObject({ warp: 10, warpRequested: 10 });
   });
 });
