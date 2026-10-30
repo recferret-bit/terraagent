@@ -20,5 +20,7 @@ export { generateTemperate, getDepositRichnessBp } from './gen/temperate';
 export * from './codec';
 export * from './systems/define';
 export * from './systems/registry';
+export * from './systems/hq';
+export * from './systems/movement';
 export * from './data';
 export * from './host';

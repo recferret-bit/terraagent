@@ -2,5 +2,7 @@
 import type { SimModule } from './define';
 import mod_dev from './dev/index';
 import mod_finalize from './finalize/index';
+import mod_hq from './hq/index';
+import mod_movement from './movement/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_finalize];
+export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_finalize, mod_hq, mod_movement];
