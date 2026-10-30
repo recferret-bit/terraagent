@@ -13,3 +13,6 @@ export * from './ecs/columns';
 export * from './ecs/store';
 export * from './grid/hex';
 export * from './grid/layers';
+export * from './gen/generators';
+export { createPlanet } from './gen/createPlanet';
+export { DEV_PLANET_RADIUS } from './gen/flat';
