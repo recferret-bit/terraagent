@@ -28,6 +28,42 @@ model AnalyticsEvent {
   @@schema("core")
 }
 
+// --- chain-outbox.prisma ---
+enum OutboxStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+  DEAD
+
+  @@map("outbox_status")
+  @@schema("chain")
+}
+
+/// Chain write queue (NEAR §1a rule 6): inserted in the same transaction as the game change, executed by the relay.
+/// `opId` is deterministic (`cargo-export:{colonyId}:{seq}`), so an enqueue repeat is a no-op and a retry is idempotent on the adapter.
+/// `FAILED` = failed once or more and waiting for its next attempt (`nextAttemptAt`); `DEAD` = gave up (alert).
+model ChainOutbox {
+  id            BigInt       @id @default(autoincrement())
+  opId          String       @unique @map("op_id") @db.VarChar(160)
+  port          String       @db.VarChar(40)
+  method        String       @db.VarChar(40)
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+  attempts      Int          @default(0)
+  nextAttemptAt DateTime     @default(now()) @map("next_attempt_at") @db.Timestamptz(3)
+  lockedUntil   DateTime?    @map("locked_until") @db.Timestamptz(3)
+  lastError     String?      @map("last_error") @db.VarChar(400)
+  receipt       Json?
+  txHash        String?      @map("tx_hash") @db.VarChar(96)
+  createdAt     DateTime     @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([status, nextAttemptAt])
+  @@map("chain_outbox")
+  @@schema("chain")
+}
+
 // --- mock-chain.prisma ---
 /// Mock NEAR chain state (NEAR §1a rule 4). Written only by the `Mock*Adapter` classes; real adapters never touch it.
 model MockChainAccount {
