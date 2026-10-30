@@ -48,7 +48,7 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Created
   app.use(requestIdMiddleware);
   app.useGlobalFilters(new AllExceptionsFilter(layerLogger(root, 'http', env.LOG_LEVELS as string | undefined), env.NODE_ENV === 'production'));
   app.setGlobalPrefix('v1');
-  app.enableCors({ origin: corsOrigin(env) });
+  app.enableCors({ origin: corsOrigin(env), credentials: true });
   app.enableShutdownHooks();
   return { app, env, modules: found.map((m) => m.name) };
 }

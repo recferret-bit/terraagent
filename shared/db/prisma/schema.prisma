@@ -64,6 +64,67 @@ model ChainOutbox {
   @@schema("chain")
 }
 
+// --- core.prisma ---
+model Player {
+  id               String   @id
+  handle           String   @unique
+  deviceSecretHash String?  @unique @map("device_secret_hash")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  sessions AuthSession[]
+
+  @@map("player")
+  @@schema("core")
+}
+
+model AuthSession {
+  id               String    @id
+  playerId         String    @map("player_id")
+  refreshTokenHash String    @unique @map("refresh_token_hash")
+  expiresAt        DateTime  @map("expires_at") @db.Timestamptz(3)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
+  @@map("auth_session")
+  @@schema("core")
+}
+
+model Planet {
+  id         String   @id
+  name       String
+  type       String   @default("temperate")
+  seed       String   @default("dev")
+  state      String   @default("RECRUITING")
+  capacity   Int      @default(5)
+  seatsTaken Int      @default(0) @map("seats_taken")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@map("planet")
+  @@schema("core")
+}
+
+model Colony {
+  id          String   @id
+  playerId    String   @map("player_id")
+  planetId    String   @map("planet_id")
+  colonyIndex Int      @default(0) @map("colony_index")
+  name        String
+  color       Int      @default(0)
+  status      String   @default("ACTIVE")
+  spawnQ      Int      @default(0) @map("spawn_q")
+  spawnR      Int      @default(0) @map("spawn_r")
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([planetId, colonyIndex])
+  @@index([playerId])
+  @@map("colony")
+  @@schema("core")
+}
+
 // --- mock-chain.prisma ---
 /// Mock NEAR chain state (NEAR §1a rule 4). Written only by the `Mock*Adapter` classes; real adapters never touch it.
 model MockChainAccount {
