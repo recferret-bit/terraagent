@@ -13,5 +13,5 @@ export const command = defineCommand({
     amount: z.number().nonnegative().optional(),
     colonyIndex: z.number().int().nonnegative().optional(),
   }),
-  summary: 'Dev console: fills a resource (or family / all T1 resources) up to its colony family storage cap (W02-30).',
+  summary: 'Dev console: fills a resource (or family / all T1 resources) up to its colony family storage cap, or sets it to `amount` when provided (clamped to cap, W02-30).',
 });

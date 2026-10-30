@@ -63,7 +63,7 @@ const chainPing: DevCommandDef = {
 
 const fill: DevCommandDef = {
   name: 'fill',
-  help: 'fill [res] [amount]  Fill colony stock to cap (all, family, or ResourceKey)',
+  help: 'fill [res] [amount]  Fill colony stock to cap (or set to exact amount, clamped to cap)',
   async run(a, ctx) {
     const res = a[0] ?? 'all';
     const amount = a[1] !== undefined ? Number(a[1]) : undefined;

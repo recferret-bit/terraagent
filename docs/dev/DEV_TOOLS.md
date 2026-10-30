@@ -22,7 +22,7 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 
 | Parameter | Effect |
 |---|---|
-| `?scenario=<id>` | `POST /v1/dev/scenarios/<id>` creates a **fresh** planet from `scenarios/<id>.ts` (`w00` = flat radius-56 planet + test entity id 1 at tile 0,0) and joins it. Each page load creates a new planet; reconnects in the same page rejoin it |
+| `?scenario=<id>` | `POST /v1/dev/scenarios/<id>` creates a **fresh** planet from `scenarios/<id>.ts` (`w00` = flat radius-56 planet + test entity id 1 at tile 0,0; `w02` / `w02-first-light` = completed Command Hub T1, HQ unit, morning 06:00, stock `400/250/150/150`, nearby deposits) and joins it. Each page load creates a new planet; reconnects in the same page rejoin it |
 | `?host=local` | Browser local host: the authoritative engine runs in a Web Worker at 5 TPS; snapshots in IndexedDB (resumed on reload); server-only commands answer `host_unavailable`. Without `scenario`, uses `w00` |
 | `?join=<planetId>` | Join an **existing** planet instead of creating one — how a second player (another browser profile, with `&as=b`) joins the first player's scenario planet. The dev console `planet [name]` prints the ready link |
 | `&waves=..NN` / `&waves=00,03` | Dev: narrow the enabled waves (never wider than the server's `TA_WAVES`); the flag panel shows the result |
@@ -55,6 +55,10 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 | `scenario <id>` | Create a fresh planet from a scenario and print its id (local host: restart the local planet from it) | both |
 | `chain.ping` | Write a ping receipt through the mock chain; prints its `mock:` hash (shows in `/dev/chain/`) | server |
 | `local.reset` | Start a fresh local planet (drops the IndexedDB snapshot) | local |
+| `fill [res] [amount]` | Fill colony stock to cap (`all`, family `metals`/`minerals`/`bio`, or `ResourceKey`), or set it to `amount` (clamped to `[0, cap]`, e.g. `fill minerals.t1 5`, W02) | both |
+| `time <day\|night\|hh:mm>` | Set planetary time of day (e.g. `time night`, `time day`, `time 18:00`) and recompute colony power (W02) | both |
+| `skipnight` | Skip to next sunrise (`06:00`, full daylight, W02) | both |
+| `power [colonyIndex]` | Print colony power supply/demand, Solar gross/net, daylight phase/clock, and active brownout shed groups/entities (W02) | both |
 
 **Adding a command:** a client feature (`frontend/game/features/<id>/index.ts`) lists it in `devCommands` (`{ name, help, run(args, ctx) }`); it can send sim commands (`ctx.services.sendCommand(kind, args)`) or server dev commands (`ctx.services.devServer(name, args)`). A server dev command registers in `DevCommandRegistry` (`backend/app/src/dev/`) with `defineDevCommand({ name, help, args: zod, run })`. The game rule itself goes in `shared/sim` (D-31).
 
@@ -64,6 +68,9 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 - **WAVES** flag panel (top right): one chip per wave, on/off, and the flag source; collapsible.
 - **Net stats** overlay (bottom right, dev only): prediction mode (on / off / auto-off), pending commands, rollbacks, last correction in tiles, worker step p95.
 - "Connecting…" / "Reconnecting…" / "still trying" banner (top centre) while the socket is down.
+- **Family resource bar** (top centre, W02): Metals, Minerals and Bio family chips (`stock/cap +income/s`, red at cap, hover for T1/T2/T3 breakdown) plus Energy (`net E/s`).
+- **Power widget** (top right, W02): supply/demand E/s, sun/moon phase icon + planetary clock (`HH:MM`), and red `OFFLINE: BROWNOUT` banner when demand exceeds supply.
+- **Construction menu** (`B` key or `[B] BUILD`, W02), **Units menu** (`U` key or `[U] UNITS`, W02), **Order Queue panel** (`Q` key, W02: Construction + Units lanes, wait reason + ETA, cancel, drag reorder), and **Building info panel** (online/offline status + brownout reason).
 - Left click on a tile logs its `q, r` (`window.__online.lastPick`).
 
 ## Mock blockchain (NEAR phase 1, D-30)

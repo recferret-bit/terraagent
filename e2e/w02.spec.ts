@@ -149,6 +149,18 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   await expect.poll(async () => (await getColony0(page))?.power?.solarNetPerS ?? 0, { timeout: 20_000 }).toBe(20);
   await devConsole(page, 'warp 1');
 
+  // Step 5: Lower Minerals to 5 (< 20) and queue a second Extractor -> see `waiting(resources)` in the queue
+  await devConsole(page, 'fill minerals.t1 5');
+  await expect.poll(async () => (await getColony0(page))?.stock?.['minerals.t1'] ?? 250).toBe(5);
+  await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext-wait', task: { kind: 'build', building: 'metalsExtractor', q: 4, r: 0 } });
+  await expect.poll(async () => {
+    const q = (await getColony0(page))?.queue ?? [];
+    return q.find((e) => e.taskId === 'b-ext-wait')?.waitReason ?? '';
+  }).toBe('resources');
+  await screenshot(page, '5-queue-waiting-minerals');
+  await sendSimCmd(page, 'cancelTask', { taskId: 'b-ext-wait' });
+  await devConsole(page, 'fill minerals.t1 250');
+
   // Step 6: Run `time night` in dev console -> Solar drops to 0, brownout banner appears; `time day` restores
   await devConsole(page, 'time night');
   await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? false).toBe(true);

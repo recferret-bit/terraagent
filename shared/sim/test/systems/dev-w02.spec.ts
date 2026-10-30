@@ -139,6 +139,11 @@ describe('W02-30 dev.fill and dev.power', () => {
     expect(familyStock(colony, 'metals')).toBe(500);
     expect(familyStock(colony, 'minerals')).toBe(500);
     expect(familyStock(colony, 'bio')).toBe(500);
+
+    // 4. Fill with exact low amount (e.g. fill minerals.t1 5 for W02 step 5) sets stock to 5
+    step(state, [cmd('dev.fill', { res: 'minerals.t1', amount: 5 })], 1, pipeline);
+    expect(ensureColonyLedger(colony).stock['minerals.t1']).toBe(5);
+    expect(familyStock(colony, 'minerals')).toBe(5);
   });
 
   it('power command evaluates power and emits dev.powerDump event', () => {

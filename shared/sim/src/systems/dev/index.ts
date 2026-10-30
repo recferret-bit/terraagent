@@ -81,6 +81,22 @@ function ensureColony(state: PlanetState, colonyIndex: number, tick: number) {
   return ensureColonyLedger(colony);
 }
 
+function setOrFillKey(
+  colony: ReturnType<typeof ensureColony>,
+  key: ResourceKey,
+  amount: number | undefined,
+  tick: number,
+): void {
+  const family = RESOURCE_FAMILY_OF[key];
+  if (amount !== undefined) {
+    colony.stock[key] = 0;
+    colony.changedAt = tick;
+    if (amount > 0) creditResource(colony, key, amount, tick);
+  } else {
+    creditResource(colony, key, remainingFamilyCap(colony, family), tick);
+  }
+}
+
 const fill = defineCommandHandler({
   kind: 'dev.fill', wave: 'W02',
   handle(s, c, ctx) {
@@ -91,29 +107,42 @@ const fill = defineCommandHandler({
     const amount = args.amount;
 
     if (targetRes === 'all') {
-      const metalsAmt = amount ?? remainingFamilyCap(colony, 'metals');
-      const mineralsAmt = amount ?? remainingFamilyCap(colony, 'minerals');
-      creditResource(colony, 'metals.t1', metalsAmt, ctx.tick);
-      creditResource(colony, 'minerals.t1', mineralsAmt, ctx.tick);
       if (amount !== undefined) {
+        for (const k of RESOURCE_KEYS) colony.stock[k] = 0;
+        colony.changedAt = ctx.tick;
+        creditResource(colony, 'metals.t1', amount, ctx.tick);
+        creditResource(colony, 'minerals.t1', amount, ctx.tick);
         creditResource(colony, 'bio.biomass', amount, ctx.tick);
         creditResource(colony, 'bio.water', amount, ctx.tick);
       } else {
+        creditResource(colony, 'metals.t1', remainingFamilyCap(colony, 'metals'), ctx.tick);
+        creditResource(colony, 'minerals.t1', remainingFamilyCap(colony, 'minerals'), ctx.tick);
         const bioRem = remainingFamilyCap(colony, 'bio');
         const half = Math.floor(bioRem / 2);
         creditResource(colony, 'bio.biomass', half, ctx.tick);
         creditResource(colony, 'bio.water', remainingFamilyCap(colony, 'bio'), ctx.tick);
       }
     } else if (targetRes === 'metals') {
-      creditResource(colony, 'metals.t1', amount ?? remainingFamilyCap(colony, 'metals'), ctx.tick);
+      if (amount !== undefined) {
+        colony.stock['metals.t2'] = 0;
+        colony.stock['metals.t3'] = 0;
+      }
+      setOrFillKey(colony, 'metals.t1', amount, ctx.tick);
     } else if (targetRes === 'minerals') {
-      creditResource(colony, 'minerals.t1', amount ?? remainingFamilyCap(colony, 'minerals'), ctx.tick);
+      if (amount !== undefined) {
+        colony.stock['minerals.t2'] = 0;
+        colony.stock['minerals.t3'] = 0;
+      }
+      setOrFillKey(colony, 'minerals.t1', amount, ctx.tick);
     } else if (targetRes === 'bio') {
-      creditResource(colony, 'bio.biomass', amount ?? remainingFamilyCap(colony, 'bio'), ctx.tick);
+      if (amount !== undefined) {
+        colony.stock['bio.water'] = 0;
+        colony.stock['bio.t2'] = 0;
+        colony.stock['bio.t3'] = 0;
+      }
+      setOrFillKey(colony, 'bio.biomass', amount, ctx.tick);
     } else if ((RESOURCE_KEYS as readonly string[]).includes(targetRes)) {
-      const resKey = targetRes as ResourceKey;
-      const family = RESOURCE_FAMILY_OF[resKey];
-      creditResource(colony, resKey, amount ?? remainingFamilyCap(colony, family), ctx.tick);
+      setOrFillKey(colony, targetRes as ResourceKey, amount, ctx.tick);
     } else {
       return 'invalid_args';
     }
