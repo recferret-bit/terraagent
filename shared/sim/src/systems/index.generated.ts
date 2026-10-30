@@ -6,5 +6,6 @@ import mod_environment from './environment/index';
 import mod_finalize from './finalize/index';
 import mod_hq from './hq/index';
 import mod_movement from './movement/index';
+import mod_production from './production/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_economy, mod_environment, mod_finalize, mod_hq, mod_movement];
+export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_economy, mod_environment, mod_finalize, mod_hq, mod_movement, mod_production];
