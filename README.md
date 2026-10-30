@@ -27,7 +27,7 @@ npm run dev            # → Postgres (docker, :15434), the app (:4001) and the 
 | `/play.html?scenario=w00&lag=300`, then `nudge 1` in the console (the scenario's test entity) | The robot moves on the next frame (client-side prediction); `teleport! 1 6 0` (server-only) blends over 150 ms |
 | `npm run ci:fast` / `npm run e2e -- --waves ..00` | Green checks / the W00 demo in headless Chrome |
 
-The wave file [`docs/plan/waves/W00-platform-skeleton.md`](./docs/plan/waves/W00-platform-skeleton.md) has the full demo story.
+The wave file [`docs/plan/waves/W00-platform-skeleton.md`](./docs/plan/waves/W00-platform-skeleton.md) has the full demo story. **Every URL parameter, dev console command, dev page, mock-chain detail, env variable and debug handle is in [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md).**
 
 ## Commands
 
@@ -217,3 +217,4 @@ Everything that is not code is in [`docs/`](./docs) (index: [`docs/README.md`](.
 - [`docs/spec/`](./docs/spec): online architecture; start with `DECISIONS.md`. Built wave by wave.
 - [`docs/plan/`](./docs/plan): the hackathon cut and the wave plan (26 waves).
 - [`docs/visuals/`](./docs/visuals): 3D coding rules, the AI-mesh pipeline, procedural textures, shaders and lighting.
+- [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md): dev tools reference — URL parameters, dev console, dev pages and routes, mock blockchain, env variables, debug handles, test commands.

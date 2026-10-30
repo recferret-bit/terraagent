@@ -69,7 +69,8 @@ One Vite app, several HTML entries (`vite.config.ts` → `rollupOptions.input`, 
 - **All HTML/CSS chrome** (menus, HUDs, panels, buttons, overlays) MUST use the Faction Plate tokens from `frontend/design/css/tokens.css` + `base.css`. Use `--ta-*` variables, never raw hex. Corners are chamfered (`.plate*`, `.btn*`), never `border-radius` (planet thumbnails are the only round exception). Orange = action/selection (≈10 %), blue = systems/reference (≈5 %), void text on orange (never white).
 - Pages that import `base.css` already get its `.btn`, `.card`, `.input`, `.label` classes. Don't reuse those names for page-specific components (the playground uses `.pg-btn`, the game menu uses `.world-card`).
 - A new page MUST be added to `rollupOptions.input`, linked from the hub (`frontend/index.html`), and must use `<script type="module">` (classic scripts are not bundled).
-- Debug handles: `window.__game` (game; `__game.debug`, `__game.setPaused(true)`) and `window.__pg` (playground; `__pg.select(id)`, `__pg.setView(v)`, `__pg.contactSheet()`).
+- Debug handles: `window.__game` (game; `__game.debug`, `__game.setPaused(true)`) and `window.__pg` (playground; `__pg.select(id)`, `__pg.setView(v)`, `__pg.contactSheet()`); the online flow adds `window.__online`.
+- **Dev tools reference: [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md)** — online play URL parameters (`?scenario=`, `?host=local`, `&waves=`, `&lag=`, `&predict=0`, `&as=`), the in-game dev console (`` ` ``; `warp`, `spawn`, `nudge`, `teleport`, `tune`, `scenario`, `chain.ping`, …), dev pages (`/dev/chain/`, `/dev/parity/`) and `/v1/dev/*` routes, the mock blockchain, env variables, debug handles and test commands. Keep it current: a change that adds or renames one of these updates that file in the same commit.
 
 **Visual QA for 3D work (Pillar 4):** first run `npm run validate:models -- <id>` (numeric geometry check), then open the playground with `&validate=1` (or press `V`) to see offending parts outlined and numbered. The playground *is* the diagnostic turntable. After creating or changing an archetype or shader, open `/playground.html?inspect=<id>` and check `iso`, `front`, `side` and `top` (or press `4-VIEW SHEET`). The info panel must show `ground contact ✔ minY 0.000` and a triangle count under 3.5k. Check all three biomes for weathering. For game-flow changes, use `/play.html?planet=<kind>&skip=1` to land directly in gameplay.
 
@@ -85,6 +86,7 @@ Everything that is not code goes in `docs/` (index: [docs/README.md](./docs/READ
 | `docs/spec/` | Online architecture and decisions (`DECISIONS.md` is the source of truth) |
 | `docs/plan/` | Build plans, status boards, owner tasks |
 | `docs/visuals/` | 3D coding rules, AI-mesh pipeline, procedural textures, shaders, lighting |
+| `docs/dev/` | Developer tooling reference ([`DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md)): URL params, dev console, dev pages/routes, mock chain, env vars, debug handles |
 
 When you move or rename a document, update every link to it (`grep -r <name> --include='*.md'`), and keep relative links working.
 
