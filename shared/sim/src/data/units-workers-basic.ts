@@ -9,6 +9,7 @@ export default defineTable({
   units: {
     buildS: 'seconds',
     speedTilesPerS: 'perSecond',
+    harvestRatePerS: 'resourceFlow',
   },
   rows: [
     {

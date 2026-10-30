@@ -3,12 +3,22 @@ import { compileTables, type CompiledData } from './_compile';
 import { DATA_TABLES } from './index.generated';
 
 export { defineTable, type TableDef, type Row, type RowValue, type Unit } from './_define';
-export { compileTables, dataRow, type CompiledData, type CompiledRow, type CompiledTable, type CompileInput } from './_compile';
+export {
+  compileTables,
+  dataRow,
+  ECONOMY_RATE_SCALE,
+  type CompiledData,
+  type CompiledRow,
+  type CompiledTable,
+  type CompileInput,
+} from './_compile';
 export { dataHash, canonical } from './_hash';
 
 /** Every discovered table (`shared/sim/src/data/*.ts`, listed by `npm run gen`). */
 export const allTables = (): readonly TableDef[] => DATA_TABLES;
 
 /** Compiles every discovered table for an enabled wave set. */
-export const compileData = (flags: { has(wave: string): boolean } | ReadonlySet<string>): CompiledData =>
-  compileTables({ flags, tables: DATA_TABLES });
+export const compileData = (
+  flags: { has(wave: string): boolean } | ReadonlySet<string>,
+  opts?: { economyRateScale?: number },
+): CompiledData => compileTables({ flags, tables: DATA_TABLES, ...opts });

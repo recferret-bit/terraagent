@@ -12,6 +12,7 @@ export default defineTable({
     dayLengthS: 'seconds',
     energyCollapseAfterS: 'seconds',
     resourceShortageWindowS: 'seconds',
+    outputPerS: 'resourceFlow',
   },
   rows: [
     {
