@@ -16,6 +16,15 @@ test('wave:land -- 07 refuses while W03 is not in main and names W03', () => {
   assert.equal(sb.git('tag', '--list'), '');
 });
 
+test('wave:open -- 07 refuses while its dependency W03 is open but not landed in main (no stacking)', () => {
+  const sb = makeSandbox();
+  openWaveBranch(sb, '03');
+  const r = sb.run(['open', '07']);
+  assert.notEqual(r.status, 0);
+  assert.match(r.out, /W07 waits for W03 to land in main/);
+  assert.equal(sb.git('branch', '--list', 'wave/w07-*'), '');
+});
+
 test('wave:land refuses a wave that stacks an unlanded wave', () => {
   const sb = makeSandbox();
   const w02 = openWaveBranch(sb, '02');

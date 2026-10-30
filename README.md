@@ -152,18 +152,18 @@ The online game is built in **26 product waves** ([`docs/plan/PRODUCT_WAVES.md`]
 **Two commands:**
 
 ```bash
-npm run wave            # auto-lands any completed open wave, then opens/resumes the next wave with its built-in preset
+npm run wave            # lands completed waves whose dependencies are in main, then resumes the open wave or opens the next one whose dependencies have all landed in main
 npm run wave -- status  # full board: state, issue progress (done/total), preset (runner:model, effort, parallel) & track
 ```
 
 **Single steps** (the same pipeline, one command each; add `--dry-run` to preview, `--root <dir>` or `TA_WAVE_ROOT` to run against a sandbox clone, `npm run test:wave` tests them in one):
 
 ```bash
-npm run wave:open -- 07              # open/resume the wave worktree (no agent started)
+npm run wave:open -- 07              # open (only once every dependency is in main) or resume the wave worktree; no agent started
 npm run wave:issue -- W07-03         # ../TerraAgent-wt/W07-03 on issue/W07-03 from the wave branch (node_modules cloned)
 npm run wave:issue:land -- W07-03    # gates, then `git merge --no-ff` as "W07-03: <title>"; removes worktree + branch; stops on a conflict
 npm run wave:check -- 07             # merge main in, ci:fast + e2e --waves ..07 --hack, prints the demo story and ?scenario=w07 URL
-npm run wave:land -- 07              # refuses unless every depended-on/stacked wave is in main, gates pass and no dirty main-checkout file is touched; tags wave-07 (or wave-07.k), pushes, cleans up
+npm run wave:land -- 07              # refuses unless every depended-on wave is in main, gates pass and no dirty main-checkout file is touched; tags wave-07 (or wave-07.k), pushes, cleans up
 ```
 
 Every worktree these scripts create gets a gitignored `.env.worktree` with its own `TA_PORT_BASE` (4100, 4200, …) and `TA_DB_NAME=terra_<branch>`.

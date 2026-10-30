@@ -88,12 +88,17 @@ export function waveProgress(w, activeTags) {
   return { total, done, remaining, complete: total.length > 0 && remaining.length === 0 };
 }
 
-/** Deps that are open but not landed yet: they get stacked (merged into the new wave branch). */
+/**
+ * A wave may open only when every wave in its header "Depends on" has **landed in main** (tag `wave-NN`); there is no
+ * stacking of unlanded wave branches (PRODUCT_WAVES §7). `waiting` = deps that are open but not landed yet,
+ * `missing` = deps not even opened; `unlanded` = both.
+ */
 export function readiness(plan, w) {
   const byId = Object.fromEntries(plan.waves.map((x) => [x.id, x]));
   const deps = w.deps.map((d) => byId[d]).filter(Boolean);
   const missing = deps.filter((d) => !d.landed && !d.open);
-  return { ready: missing.length === 0, missing, stack: deps.filter((d) => !d.landed && d.open) };
+  const waiting = deps.filter((d) => !d.landed && d.open);
+  return { ready: missing.length === 0 && waiting.length === 0, missing, waiting, unlanded: [...waiting, ...missing] };
 }
 
 /** The wave whose worktree contains the current directory, if any. */

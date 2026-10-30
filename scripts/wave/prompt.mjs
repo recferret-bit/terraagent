@@ -98,10 +98,8 @@ function planGateText(w, preset) {
   return `1. **Phase 1 — Plan & Contract-First Gate (serial):** Map out the dependency tiers for ${w.id}, then build and merge \`${w.id}-01\` (contracts, schemas, data rows, wave flag) SERIALLY into \`${w.branch}\` first before spawning any parallel subagents.`;
 }
 
-export function wavePrompt(w, title, { preset, stacked, progress }) {
-  const stack = stacked.length
-    ? `\nThis branch stacks the unlanded wave(s) ${stacked.map((d) => `${d.id} (\`${d.branch}\`)`).join(', ')} (PRODUCT_WAVES §7 step 2); never commit on their branches. If a stacked wave is still building in parallel and an issue here depends on a \`WNN-XX\` issue from it that landed after this branch opened, run \`git merge --no-edit <stacked-branch>\` on \`${w.branch}\` to pull it in.`
-    : '';
+export function wavePrompt(w, title, { preset, progress }) {
+  const stack = `\nThis branch was cut from \`main\` after every wave it depends on landed there (PRODUCT_WAVES §7: no stacking of unlanded waves). After any other wave lands, merge \`main\` into \`${w.branch}\` before building further.`;
   const skillsLine = preset.skills.length
     ? `\nMandatory skills for this wave: activate ${preset.skills.map((s) => `\`.agents/skills/${s}/SKILL.md\``).join(', ')} whenever touching their domain.`
     : '';
