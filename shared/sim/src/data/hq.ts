@@ -1,0 +1,63 @@
+import { defineTable } from './_define';
+
+/**
+ * HQ Commander Drone T1 (`UO-HQ-01..03`, `UO-HQ-06`) and starting landing kit (§6.4 S0, W01-09).
+ */
+export default defineTable({
+  name: 'hq',
+  summary: 'HQ Commander Drone T1 stats, power cell parameters, and starting pod cargo (W01).',
+  units: {
+    speedTilesPerS: 'perSecond',
+    cellSelfRechargePerS: 'perSecond',
+    cellFastRechargePerS: 'perSecond',
+    podDescentS: 'seconds',
+    autoPlaceIdleS: 'seconds',
+  },
+  rows: [
+    {
+      id: 't1',
+      wave: 'W01',
+      tier: 1,
+      hp: 900,
+      speedTilesPerS: 1.6,
+      designSpeedTilesPerS: 1.6,
+      radius: 0.6,
+      viewRadius: 9,
+      workRate: 1.5,
+      supply: 0,
+      gridDrawPerS: 0,
+      maxBuildTier: 1,
+      cellCapacity: 800,
+      cellSelfRechargePerS: 3,
+      designCellSelfRechargePerS: 3,
+      cellFastRechargePerS: 20,
+      designCellFastRechargePerS: 20,
+      cellFastRechargeRadius: 6,
+      cellFastRechargeShedGroup: 3,
+      selfPreservationHpRatio: 0.4,
+      dps: 12,
+      weaponRange: 5,
+      archetype: 'robot.hero',
+    },
+    {
+      id: 'startingKit',
+      wave: 'W01',
+      podDescentS: 6,
+      designPodDescentS: 6,
+      autoPlaceIdleS: 60,
+      designAutoPlaceIdleS: 60,
+      cargo: {
+        'metals.t1': 600,
+        'metals.t2': 0,
+        'metals.t3': 0,
+        'minerals.t1': 350,
+        'minerals.t2': 0,
+        'minerals.t3': 0,
+        'bio.water': 200,
+        'bio.biomass': 200,
+        'bio.t2': 0,
+        'bio.t3': 0,
+      },
+    },
+  ],
+});
