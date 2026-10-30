@@ -1,281 +1,267 @@
 # TerraAgent — NEAR Integration Specification
 
-> **Status:** Draft v0.1 (2026-10-29) · **Service:** `backend/near-gateway` (`@terra/near-gateway`, internal, port `3300` prod / `4004` dev) · **Contract:** `backend/near-contracts/colony-registry`
-> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6, §11 · **Decisions:** [D-10](./DECISIONS.md#d-10--guest-first-auth-near-link-optional), [D-11](./DECISIONS.md#d-11--trades-in-game-settlement--on-chain-receipt-in-mvp) · **Plan:** [`TA-10`](../plan/issues/TA-10-near-gateway.md), core side [`TA-04.3`](../plan/issues/TA-04-core-api-auth-and-home.md)
-> **Game design:** [`autonomous-colony-spec.md`](../../autonomous-colony-spec.md) §11, §13 pillar 5 ("chain is invisible")
+> **Status:** v0.2 (2026-10-30). Rewritten around the NEAR economy features **F1–F8** (D-26), hosted by the `near` module of the one app (D-24). There is no `near-gateway` service and no NATS.
+> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §11 · **Feature design:** [`docs/game/near-economy-features-spec.md`](../game/near-economy-features-spec.md) · **Decisions:** D-10, D-18, D-19, D-23, D-25, D-26 · **Plan:** [`TA-10`](../plan/issues/TA-10-near-gateway.md)
+> **Game design:** [`docs/game/autonomous-colony-spec.md`](../game/autonomous-colony-spec.md) §11, §13 pillar 5 ("chain is invisible") · Hackathon track 09 "Games With Real Economies".
 
 ---
 
 ## 1. Purpose & principles
 
-1. **The chain is invisible.** Players never sign gameplay. Every gameplay transaction is signed by keys the gateway holds, and gas is paid by the game's relayer.
-2. **The chain is a record, not the engine.** Simulation state lives in planet workers and Postgres. On-chain we store identity (colony accounts), milestones and trade receipts, which are verifiable and portable.
-3. **Nothing in gameplay waits for the chain.** Every chain write is an async job with retries. A NEAR outage delays receipts but never stops a planet.
-4. **Only `near-gateway` talks to NEAR RPC.** Other services use NATS (§9).
+1. **Players never notice the chain (F5).** Guest play first, then social login with a named account. Every gameplay transaction is signed by keys the app holds and paid by the app's relayer (NEP-366). Wallets appear only for account claim and staking (D-18).
+2. **The server simulation is the mint authority (D-26).** Cargo tokens are minted only from simulated stock exported at a Trade Hub, and burned on import. No client claim ever mints.
+3. **The economy touches the chain at one door: the Trade Hub.** Production, combat and terraforming stay in the sim. Cargo, markets, NPC traders, deeds, the treasury and bounties are on-chain.
+4. **Gameplay never blocks on the chain, except a trade's own settlement.** Mint, burn and settlement are async outbox jobs (`chain.*_tx`). If NEAR or `intents.near` is unreachable, the market and cargo commands return `market_unavailable` and the planet keeps running.
+5. **No anti-cheat and no anti-bot (D-25).** Cargo is **open in beta**: it can be swapped for NEAR or USDC through Intents. Mint caps are economic pacing, not security.
+6. **Only the `near` module talks to NEAR RPC and `intents.near`.** Other modules call it in-process.
 
 ```mermaid
 flowchart LR
-  subgraph Game
-    CORE[core]
-    W[planet-worker]
+  subgraph App["app (one process)"]
+    GAME[game module<br/>sim threads]
+    NEARM[near module<br/>relayer · minter · market bus · guild · deeds]
   end
-  GW[near-gateway]
-  subgraph NEAR["NEAR (testnet → mainnet)"]
-    ROOT["terraagent.testnet<br/>(owner)"]
-    COL["colonies.terraagent.testnet<br/>(parent of colony accounts)"]
-    REL["relayer.terraagent.testnet<br/>(pays gas)"]
-    REG["registry.terraagent.testnet<br/>colony-registry contract"]
-    CA["c-7k2f9.colonies.terraagent.testnet<br/>(one per colony)"]
+  subgraph NEAR["NEAR mainnet"]
+    ROOT["terraagent.near (owner)"]
+    PL["{name}.terraagent.near<br/>player accounts"]
+    COL["{colony}.{name}.terraagent.near<br/>colony accounts"]
+    RES["res.terraagent.near<br/>NEP-245 cargo"]
+    DEED["deed.terraagent.near<br/>NEP-171 deeds"]
+    NPC["guild-N.npc.terraagent.near"]
+    ESC["bounty.terraagent.near<br/>escrow"]
+    DAO["{planet}.sputnik-dao.near"]
+    INT["intents.near<br/>(verifier)"]
   end
-  CORE -- "near.verify (req/reply)" --> GW
-  CORE -- "near.account.provision (job)" --> GW
-  W -- "PLANET_EVENTS (milestones, trade legs)" --> GW
-  GW -- "trade cmds → planet.{id}.cmd" --> W
-  GW --> COL --> CA
-  GW --> REL
-  REL -- "meta-tx (NEP-366) signed by CA" --> REG
+  GAME -- "cargo.export / market.* events" --> NEARM
+  NEARM -- "cargo.settled / market.settled" --> GAME
+  NEARM --> RES & DEED & ESC & DAO
+  NEARM -- "execute_intents (paired token_diff)" --> INT
+  COL & NPC -- "signed intents (NEP-413)" --> INT
 ```
 
 ---
 
-## 2. Accounts & key custody
+## 1a. Ports, adapters and the mock-first rule (D-30)
 
-| Account (testnet) | Mainnet | Role | Keys held by gateway |
-|---|---|---|---|
-| `terraagent.testnet` | `terraagent.near` | Owner/root. Creates the accounts below. | **Not** on the server. Owner's hardware or cold wallet. |
-| `colonies.terraagent.testnet` | `colonies.terraagent.near` | Parent. Creates colony sub-accounts. | Full-access key, file secret `near-colonies.json` |
-| `relayer.terraagent.testnet` | `relayer.terraagent.near` | Pays gas for meta-transactions | Full-access key, file secret `near-relayer.json` |
-| `registry.terraagent.testnet` | `registry.terraagent.near` | Hosts `colony-registry`. Owner = `terraagent.*`, operator = `relayer.*` | Deploy key **not** on the server after deploy |
-| `{shortId}.colonies.terraagent.testnet` | `…colonies.terraagent.near` | One per colony (`shortId` = `c-` + 5 base32 chars from `colonyId`, collision-checked) | Per-colony key pair, envelope-encrypted in Postgres |
+**Phase 1 runs every NEAR feature (F1–F8) on mock adapters.** The game code depends only on **ports**, so a real adapter replaces the mock without touching game or application code. The patterns are copied from galaxyqube's `casino-core-systems` (see `AGENTS-MCP.md` there).
 
-**Colony keys.** The gateway generates an ed25519 key per colony. The secret is encrypted with AES-256-GCM using the key-encryption key `NEAR_COLONY_KEK` (32-byte hex, file secret) and stored in `chain.near_colony_account.encrypted_secret` with `kek_version`. The colony account gets:
-- this key as a **function-call key** restricted to `registry.*` methods `register_colony` and `record_milestone` (allowance 0.25 NEAR; in practice unused, because the relayer pays gas through delegate actions), and
-- the same key as **full-access** in MVP so the gateway can later hand the account to the player.
+**Pattern rules.**
+1. **Ports are abstract classes**, and the class is the DI token. Example: `export abstract class CargoTokenPort { abstract mint(cmd: MintCargo): Promise<ChainReceipt> … }`. Files are named `*.port.ts` and live in `backend/app/src/near/application/ports/`.
+2. **All bindings live in one place**, `near/infrastructure/near-infrastructure.module.ts`, for example `{ provide: CargoTokenPort, useClass: MockCargoTokenAdapter }`. No other file imports an adapter.
+3. **Adapter selection happens at module composition, per port.** It uses a **fail-closed env predicate** that can be read before DI, so a typo can never select the real chain:
+   - `NEAR_ADAPTER_<PORT>=mock|testnet|mainnet`, default `mock`.
+   - `nearAdapterFor(port)` accepts only the exact strings `testnet` or `mainnet`; anything else means `mock`.
+   - In production, a `mock` setting is allowed only when `NEAR_ALLOW_MOCK_IN_PROD=true`, so a demo can run on mocks on purpose.
+4. **The mock is real-shaped.** `Mock*Adapter` classes keep their state in Postgres tables (`mock_chain_*`: accounts, balances, NFTs, intents, DAO proposals). They produce the same receipts, using fake tx hashes with the prefix `mock:`. They return the same errors (`CoreException` subclasses with stable `errorCode`s such as `NEAR_INSUFFICIENT_BALANCE` and `NEAR_INTENT_DIFF_NOT_ZERO`). They simulate a latency of 300–1 500 ms and an injectable failure rate, so the UI's pending and failed states get exercised.
+5. **Shared contract tests.** `describeNearPortContract(name, makeAdapter)` lives in `near/__contract__/*.contract.ts`. The **same suite** runs against the mock in CI and against the real adapter in a manual or nightly job, so "replace the implementation" is checked rather than hoped for. galaxyqube lacks this; we add it.
+6. **Side effects go through an outbox with idempotency keys.** Every chain write (mint, burn, intent execution, NFT mint, DAO action) is written in the same Postgres transaction as the game state change, as `chain_outbox (opId unique, port, payload, status)`. A relay then calls the port. `opId` is deterministic, e.g. `cargo-export:{colonyId}:{exportSeq}`, so a retry can never double-mint, whether the adapter is mock or real.
+7. **Every boundary is validated with zod:** env, port inputs and adapter responses. No `any`.
+8. **In-memory fakes** (`InMemoryCargoToken extends CargoTokenPort`) are for unit tests only. The Postgres mock is for running the game.
 
-**Player claim (later).** When a NEAR-linked player claims a colony, the gateway adds the player's public key as full-access and deletes its own full-access key. That is out of scope for the MVP tasks and listed as an open question.
+| Port | Feature | Main methods | Mock behaviour | Real adapter (later) |
+|---|---|---|---|---|
+| `IdentityPort` | F5 | `loginSocial`, `createNamedAccount`, `claimAccount` | Fake OAuth screen; account `name.terraagent.mock` | Social-login provider (to be chosen) + account creation |
+| `RelayerPort` | F5 | `submitMetaTx` | Instant, deterministic `mock:` hash | NEP-366 relayer |
+| `CargoTokenPort` | F1 | `mint`, `burn`, `balanceOf`, `transfer` | Postgres ledger (NEP-245 semantics, token ids `metals` …) | NEP-245 contract `res.terraagent.near` |
+| `IntentsPort` | F2, F4 | `deposit`, `signTokenDiff`, `simulate`, `execute`, `withdraw` | Diffs checked to sum to zero, then applied atomically to the mock ledger | `intents.near` (`execute_intents`, `simulate_intents`) |
+| `AgentWalletPort` | F3, F4 | `createSubAccount`, `addLimitedKey(allowance)`, `revokeKey` | Mock keys with allowance accounting | Sub-accounts + function-call keys |
+| `DeedNftPort` / `BadgeNftPort` | F6, achievements | `mint`, `updateMetadata`, `ownerOf` | Postgres NFTs with a metadata JSON history | NEP-171 contract |
+| `StakingPort` | F6 | `stake`, `unstake`, `rewards` | Fake validator pool at 9 % APY over game time | Whitelisted staking pools |
+| `TreasuryDaoPort` | F7 | `createDao`, `propose`, `vote`, `finalize`, `deposit` | Postgres DAO with SputnikDAO-like states | SputnikDAO / Trezu |
+| `EscrowPort` | F8 | `open`, `claim`, `refund` | Postgres escrow | Escrow contract |
+| `ChainReadPort` | all | `explorerUrl`, `receipt`, `health` | `mock:` receipts; no explorer link | RPC (FastNEAR + fallback) |
 
-**Rotation.** `NEAR_COLONY_KEK` rotation re-encrypts rows lazily (`kek_version`). Relayer/parent keys rotate via `AddKey`/`DeleteKey` run by the owner.
+**Swap order after phase 1:** F5 (`IdentityPort`, `RelayerPort`) → F1 (`CargoTokenPort`) → F2 (`IntentsPort`, mainnet only, starting with `dry: true` quotes) → F3/F4 (`AgentWalletPort`) → F6 → F7 → F8. A port goes real only after its contract suite passes against the real adapter. The README must state which ports are real and which are mocked.
+
+The same pattern applies outside NEAR: `LlmProviderPort` (AI director: mock and Z.ai) and `NotifierPort` (mock, Web Push, Telegram).
+
+## 2. Accounts & key custody (F5)
+
+| Account | Role | Keys held by the app |
+|---|---|---|
+| `terraagent.near` (+ `terraagent.testnet` for dev) | Owner/root; creates the sub-accounts below | **None.** It stays on the owner's hardware or cold wallet. |
+| `relayer.terraagent.near` | Pays gas for meta-transactions; operator of the game contracts | Full-access, file secret |
+| `minter.terraagent.near` | Sole mint/burn authority on `res.terraagent.near` | Full-access, file secret |
+| `{name}.terraagent.near` | **Player named account**, created on social login (F5) | Per-player key, envelope-encrypted (KEK) until claimed |
+| `{colony}.{name}.terraagent.near` | **Colony account**: holds cargo, signs market intents, owns the deed, stakes after claim | Per-colony key, envelope-encrypted until claimed |
+| `guild-N.npc.terraagent.near` | Orbital Guild NPC traders (F3) | Function-call keys for `intents.near` and `res.*` only |
+
+- **Keys.** The app generates ed25519 keys and encrypts the secrets with AES-256-GCM under `NEAR_KEK` (stored in `chain.near_colony_account.encrypted_secret` with `kek_version`).
+- **Account claim (D-18, at launch).** The player links a wallet (NEP-413, §3). The app adds the player's key as full-access and removes its own full-access key. It keeps only a **function-call key with an allowance** scoped to `intents.near` and `res.*`. Gameplay keeps working, but the game can no longer move the player's NEAR. Claiming is one-way and is required for staking.
+- **Director key (F4).** A separate key on the colony account whose allowance equals the player's away budget for trading. The AI director uses it to sign `autoTrade` orders. The player revokes it in one tap; the HUD shows spent versus allowance.
+- **Social-login provider: verify in docs.** HOT is a listed hackathon partner; other providers must be checked for NEAR named-account support. TA-10 decides.
 
 ---
 
-## 3. Sign-in: NEP-413 (wallet link)
+## 3. Wallet link: NEP-413 (optional)
 
-Guest-first ([D-10](./DECISIONS.md#d-10--guest-first-auth-near-link-optional)). Linking a NEAR wallet is optional and makes the account portable across devices.
+The flow is unchanged in substance. The app issues a challenge `{nonce (32 B), recipient: "terraagent.com", message}`, and the wallet signs it (`signMessage`). The app verifies `borsh({tag: 2^31+413, message, nonce, recipient, callbackUrl?})` → SHA-256 → ed25519 against a **FullAccess** key of the account at `final` finality (`view_access_key`). The nonce is single-use with a 5-minute expiry. A wrong network suffix is rejected. A link is needed only for account claim, staking and cross-device portability (D-10).
+
+---
+
+## 4. Relayer (NEP-366)
+
+- **Signing.** Colony, player and NPC keys sign `DelegateAction`s. `relayer.*` wraps them in `Action::Delegate` and pays gas.
+- **In-process only.** The relayer has no public HTTP surface.
+- **Allow-list** of receiver contracts: `res.terraagent.near`, `deed.terraagent.near`, `bounty.terraagent.near`, the planet DAOs, and `intents.near`. This is cost control, not anti-cheat (D-25).
+- **Nonces.** A per-signer async mutex plus an access-key nonce cache, with one retry on `InvalidNonce`.
+
+---
+
+## 5. F1 — Cargo tokens (NEP-245)
+
+| ID | Rule |
+|---|---|
+| `NEAR-50` | One NEP-245 multi-token contract, `res.terraagent.near`. Token ids `metals`, `minerals`, `petroleum`, `water` (18 decimals). `mt_mint` and `mt_burn` are callable only by `minter.*`. Transfers are **unrestricted in beta** (D-26). |
+| `NEAR-51` | **Export.** `cargo.export {resource, amount}` (SIMULATION `SIM-C-05`): the sim removes the stock and records `pendingMint`. The `near` module writes a `chain.cargo_tx` row and calls `mt_mint` to the colony account; on final it answers `cargo.settled {ok: true}`. On failure (after retries) it answers `{ok: false}` and the sim refunds. |
+| `NEAR-52` | **Import.** `cargo.import`: the module burns tokens from the colony account (colony key, via the relayer). On final, the sim credits the stock, capped by storage, with any overflow kept in orbit. |
+| `NEAR-53` | **Mint caps (economic pacing).** Per colony: export ≤ Trade Hub throughput (250 / 900 / 3 500 units per min by tier) and ≤ `CARGO_MINT_CAP_PER_DAY`. Proposed default: 20 000 units per resource per day. Over the cap → `mint_cap`. |
+| `NEAR-54` | **Rocket carry-over.** Cargo stays in the colony account and follows the player. The new colony can import it (`system.arrive` lists the balance). |
+| `NEAR-55` | **Deposit path into `intents.near`.** Cargo must be deposited into the verifier to trade there (`mt_transfer_call` to `intents.near`, credited as an `nep245:res.terraagent.near:<id>` balance). **Verify the exact deposit method and token-id format in the Intents docs.** If NEP-245 deposits are not supported, fall back to four NEP-141 tokens. |
+
+---
+
+## 6. F2 — Player-owned markets on NEAR Intents
 
 ```mermaid
 sequenceDiagram
-  participant G as Game SPA (wallet-selector)
-  participant C as core
-  participant N as near-gateway
-  participant R as NEAR RPC
-  G->>C: POST /v1/auth/near/challenge
-  C-->>G: { nonce (32 bytes, b64), recipient: "terraagent.com", message: "Link NEAR account to TerraAgent", expiresAt (+5 min) }
-  G->>G: wallet.signMessage({message, nonce, recipient})
-  G->>C: POST /v1/auth/near/verify { accountId, publicKey, signature, nonce }
-  C->>C: nonce exists, unused, not expired → mark used
-  C->>N: near.verify { accountId, publicKey, signature, message, nonce, recipient }
-  N->>N: borsh(NEP-413 payload) → sha256 → ed25519.verify
-  N->>R: query view_access_key(accountId, publicKey) finality=final
-  N-->>C: { ok: true, accountId, keyPermission: "FullAccess" } | { ok:false, reason }
-  C->>C: link/merge AuthIdentity(kind=near) → issue JWTs
+  participant P as Player / director (colony key)
+  participant A as app near module (message bus)
+  participant I as intents.near
+  P->>A: market.placeOrder {sell 300 water, want 120 metals, hub H}
+  A->>A: sim reserves 300 water in orbit (market.reserve) · store signed token_diff
+  Note over A: another colony / Guild NPC places the mirror order
+  A->>A: match: maker + taker + hub-owner fee leg (sum to zero per token)
+  A->>I: execute_intents([maker, taker, feeLeg])  (via relayer)
+  I-->>A: final
+  A->>P: market.settled → push market.trade
 ```
 
 | ID | Rule |
 |---|---|
-| `NEAR-01` | The signed payload is `borsh({ tag: u32 = 2^31 + 413, message: string, nonce: [u8;32], recipient: string, callbackUrl: Option<string> })`, hashed with SHA-256 and verified with ed25519 against `publicKey`. |
-| `NEAR-02` | `publicKey` MUST be a **FullAccess** key of `accountId` at `final` finality. A function-call key → `reason: "not_full_access"`. Unknown → `"key_not_found"`. |
-| `NEAR-03` | `recipient` MUST equal `NEAR_SIGNIN_RECIPIENT` (`terraagent.com`). `message` MUST equal the challenge message exactly. |
-| `NEAR-04` | Nonce single-use and expiry are enforced by **core** (it owns the challenge row). The gateway is stateless for verify. |
-| `NEAR-05` | `near.verify` reply within 3 s (RPC timeout 2.5 s, one RPC fallback URL). A timeout → `reason: "rpc_unavailable"`, and core returns `503 near_unavailable`. |
-| `NEAR-06` | The account id network suffix MUST match `NEAR_NETWORK` (`.testnet` vs `.near` / implicit 64-hex). Otherwise `"wrong_network"`. |
+| `NEAR-60` | An order is a **signed `token_diff` intent** (NEP-413 payload) from the maker's colony account. It covers in-orbit cargo (or NEAR / USDC balances in the verifier) and has a deadline equal to the order TTL. The app stores it in `chain.market_order`. |
+| `NEAR-61` | **Matching.** The `near` module is the **message bus**. Each planet has one order book per resource pair, with price-time priority. A match builds the batch `[maker, taker, feeLeg]`. The fee leg pays `fee_bp` (0–3 %, set by the Trade Hub owner with `market.setHubFee`) to the hub owner's colony account. Per token, the batch must sum to zero, or `execute_intents` rejects the whole batch. |
+| `NEAR-62` | **Settlement.** The batch is submitted through the relayer. When it is final, the app writes `chain.intent_trade` and sends `market.settled` to both sims (they release reservations, and trade history feeds the price board). On failure, orders go back to the book or expire and reservations are released. |
+| `NEAR-63` | **Scope.** Same-planet order books only (D-19). Cross-planet flow comes only from Guild NPCs (F3). A Trade Hub T1 is required to place orders; truces are not. |
+| `NEAR-64` | **Dev and test.** `intents.near` is **mainnet only, with no testnet**. Development uses dedicated mainnet dev accounts with tiny amounts plus `simulate_intents` / `dry: true` quotes. CI stubs the verifier. |
+| `NEAR-65` | **Open in beta.** Orders may be priced in NEAR or USDC (via verifier balances). The 1Click API may be used for external swaps (0.2 % fee without a JWT). **Verify the API details in the docs.** |
 
 ---
 
-## 4. Colony account provisioning
-
-Triggered by core when a colony is founded (seat confirmed, TA-05.3/05.4) via a job on `{ns}.near.account.provision` (`{NS}_NEAR_JOBS` work queue).
+## 7. F3 — Orbital Guild NPC traders
 
 | ID | Rule |
 |---|---|
-| `NEAR-10` | Provisioning MUST be idempotent: the account id is deterministic from `colonyId`. If `view_account` already exists with our key → mark `CREATED` and continue. |
-| `NEAR-11` | One transaction from `colonies.*`: `CreateAccount` → `Transfer(NEAR_COLONY_DEPOSIT = 0.01 NEAR)` → `AddKey(FA colony key)` → `AddKey(FC key → registry)`. |
-| `NEAR-12` | Then `register_colony` via meta-tx (§5) signed by the colony key and relayed by `relayer.*`. |
-| `NEAR-13` | Retries: exponential (5 s, 30 s, 2 min, 10 min, 1 h), max 5. After that the row goes `FAILED` + alert `near_job_failed_total`. Gameplay is unaffected. |
-| `NEAR-14` | States: `PENDING → CREATED → REGISTERED` (or `FAILED`). The status is visible to core via the `{ns}.near.account.status` request (contract change request) for the profile UI. |
+| `NEAR-70` | Guild NPCs are app-run agents with **their own sub-account wallets** and function-call keys. They hold cargo and NEAR inventories and sign their own intents. They act as **market makers** on every planet book. |
+| `NEAR-71` | **Pricing core** (deterministic, in the app): the NPC's mid price drifts with its inventory and the planet's last 24 h of settled trades. The spread widens when inventory is thin. An optional LLM layer (the `ai` module, within the same budget) picks routes and stockpile goals about once an hour. |
+| `NEAR-72` | **Visits.** NPCs travel a schedule between planets (`chain.guild_visit`). While docked they quote offers to that planet's Trade Hubs (`guild.arrived` push). They are the **only cross-planet trade route**. |
+| `NEAR-73` | **Funding.** NPC wallets are seeded from the owner treasury with a small NEAR float plus initial cargo minted by `minter.*`. They are capped in size so a bug cannot drain the treasury. |
 
 ---
 
-## 5. Relayer: meta-transactions (NEP-366)
-
-- The colony key signs a `DelegateAction { sender_id: colonyAccount, receiver_id: registry.*, actions: [FunctionCall], nonce: accessKeyNonce+1, max_block_height: head+100, public_key }` → `SignedDelegateAction`.
-- The relayer wraps it in a transaction `Action::Delegate` from `relayer.*` and pays gas.
-- **In-process:** the relayer is a module inside `near-gateway`, not a public HTTP relayer, so there is no open relay attack surface.
-- **Nonce management:** a per-signer async mutex plus an access-key nonce cache refreshed on `InvalidNonce` (one retry).
-- **Allow-list:** the relayer only relays delegate actions whose `receiver_id = registry.*` and methods are in `{register_colony, record_milestone}`. Anything else is refused (`NEAR-20`).
-- Operator-only methods (`register_planet`, `record_trade_receipt`) are signed directly by `relayer.*` (the contract operator) without meta-tx.
-
----
-
-## 6. `colony-registry` contract (Rust, near-sdk 5.x)
-
-```rust
-#[near(contract_state)]
-pub struct Registry {
-    owner_id: AccountId,
-    operators: IterableSet<AccountId>,          // relayer.*
-    planets: LookupMap<String, Planet>,         // planet_id → Planet
-    colonies: LookupMap<AccountId, Colony>,     // colony account → Colony
-    milestones: LookupMap<AccountId, Vector<Milestone>>, // capped at MAX_MILESTONES_PER_COLONY = 64
-    trades: LookupMap<String, TradeReceipt>,    // trade_id → receipt
-}
-
-pub enum MilestoneKind { ColonyFounded, TerraformPct { pct: u8 }, RocketLaunched { to_planet_type: String },
-                         ColonyEliminated, PlanetResult { rank: u8, colonies: u8 } }
-
-// --- change methods ---
-#[init] fn new(owner_id: AccountId, operators: Vec<AccountId>) -> Self;
-fn register_planet(&mut self, planet_id: String, planet_type: String, seed_hash: Base64VecU8, created_at_ms: u64); // operator
-fn register_colony(&mut self, planet_id: String, player_ref: String /* sha256(playerId) hex */, founded_tick: u64); // predecessor = colony account (meta-tx) — the colony registers itself
-fn record_milestone(&mut self, kind: MilestoneKind, tick: u64, state_hash: String); // predecessor = colony account, OR operator with explicit `colony: AccountId` via record_milestone_for
-fn record_milestone_for(&mut self, colony: AccountId, kind: MilestoneKind, tick: u64, state_hash: String); // operator (eliminated colonies may no longer sign)
-fn record_trade_receipt(&mut self, trade_id: String, a: AccountId, b: AccountId, a_gives: Vec<ResAmount>, b_gives: Vec<ResAmount>,
-                        a_tick: u64, b_tick: u64); // operator
-fn set_operators(&mut self, operators: Vec<AccountId>); // owner
-// --- views ---
-fn get_planet(&self, planet_id: String) -> Option<Planet>;
-fn get_colony(&self, account: AccountId) -> Option<Colony>;
-fn get_milestones(&self, account: AccountId, from: u32, limit: u32) -> Vec<Milestone>;
-fn get_trade(&self, trade_id: String) -> Option<TradeReceipt>;
-```
-
-- **Events (NEP-297):** `EVENT_JSON:{"standard":"terraagent","version":"1.0.0","event":"<name>","data":[…]}` for `planet_registered`, `colony_registered`, `milestone_recorded`, `trade_recorded`.
-- **Storage:** paid by the contract balance. The operator tops it up, and `storage_balance` is monitored. Re-recording the same `(colony, kind, tick)` is a no-op, which makes jobs idempotent.
-- **Upgrades:** owner-only `migrate` with a versioned state.
-- **Tests:** `cargo test` (unit) and `near-workspaces` sandbox tests (`npm run near:contract:test`).
-
-### Milestones written
-
-| Planet event (from `{NS}_PLANET_EVENTS`) | Contract call | Signer |
-|---|---|---|
-| `planet.created` (core sends `{ns}.near.registry.planet`) | `register_planet` | relayer (operator) |
-| `colony.founded` | `register_colony` (after provisioning) | colony via meta-tx |
-| `terraform.milestone` (25/50/75/100 %) | `record_milestone(TerraformPct)` | colony via meta-tx |
-| `rocket.launched` | `record_milestone(RocketLaunched)` | colony via meta-tx |
-| `colony.eliminated` | `record_milestone_for(ColonyEliminated)` | operator |
-| `planet.ended` | `record_milestone_for(PlanetResult)` × colonies | operator |
-
-The gateway consumes `{NS}_PLANET_EVENTS` with the durable consumer `near-registry`, filtered to the kinds above. Each write is a row in the `chain.near_tx` outbox (dedupe key `kind:colony:tick`), processed by the job runner (§4 retry policy).
-
----
-
-## 7. Trades ([D-11](./DECISIONS.md#d-11--trades-in-game-settlement--on-chain-receipt-in-mvp))
-
-MVP trades are between colonies on the **same planet** (neighbors). The saga is written generically over two planets' command streams, so cross-planet trades can be enabled later without redesign. Settlement is **in-game** (sim commands). The chain gets a **receipt** after settlement.
-
-```mermaid
-stateDiagram-v2
-  [*] --> OPEN: A trade.offer cmd → sim reserves A.give → evt trade.offer_created
-  OPEN --> ACCEPTED: B trade.respond(accept) cmd → sim reserves B.give → evt trade.accept_reserved
-  OPEN --> CANCELLED: A cancels → trade.release(A)
-  OPEN --> EXPIRED: TTL 10 min → trade.release(A)
-  OPEN --> DECLINED: B declines → trade.release(A)
-  ACCEPTED --> SETTLING: gateway → trade.commit(A), trade.commit(B)
-  SETTLING --> SETTLED: evt trade.leg_applied × 2
-  SETTLING --> COMPENSATING: a leg rejected (colony eliminated / planet ended)
-  COMPENSATING --> COMPENSATED: trade.revert on the applied leg + trade.release on the other
-  SETTLED --> RECEIPTED: record_trade_receipt tx final
-```
+## 8. F4 — Colony director key
 
 | ID | Rule |
 |---|---|
-| `NEAR-30` | All trade commands carry `tradeId` and are idempotent in the sim (applying the same `(tradeId, leg, op)` twice is a no-op). They are published with `Nats-Msg-Id = tradeId:leg:op`. |
-| `NEAR-31` | Reservations lock goods in the colony storage (not spendable) until commit or release. The sim rejects an offer if `give` > available − reserved. |
-| `NEAR-32` | Limits: ≤ 3 open offers per colony; `give.amount` ≤ 50 % of the colony's stock of that resource; offer TTL 10 min. |
-| `NEAR-33` | The saga state is persisted in `chain.trade_offer` **before** each step's commands are published (outbox pattern), so a gateway restart resumes it. |
-| `NEAR-34` | The on-chain receipt is written only after `SETTLED`. Receipt failure never reverses the trade. It retries per `NEAR-13`. |
-| `NEAR-35` | Gas and storage for receipts are paid by the relayer and contract, never by players. |
-
-**Resolved by lead (2026-10-29):** the reservation model and trade command handlers were added to TA-06.4 (W2 / L2); contract kinds/events land in the W2 pre-step, so TA-10.5 (W4) runs against the real sim.
+| `NEAR-80` | `POST /v1/near/director-key` adds a function-call / intents key to the colony account. Its allowance equals the away trading budget (CONTINUITY AW-13 / AW-20). Revoke deletes the key. |
+| `NEAR-81` | The AI director signs orders with this key only within `autoTrade` limits. The sim and the `near` module both check the limits before matching. |
 
 ---
 
-## 8. Network switch & funding
+## 9. F6 — Colony Deed (NEP-171) & own-NEAR staking
+
+| ID | Rule |
+|---|---|
+| `NEAR-90` | `deed.terraagent.near` mints one NFT per colony at founding, owned by the colony account. It replaces the earlier `colony-registry` milestone log. |
+| `NEAR-91` | **Dynamic metadata.** The relayer (operator) updates `extra` (stage, terraform %, walls, trade volume, truces, rank) on milestones, debounced to at most one update per colony per 10 min. The image is rendered by the app from the colony snapshot. |
+| `NEAR-92` | **Settled Deed.** On `colonySettled` (SIMULATION §7.7) the deed is marked settled and becomes the home for **own-NEAR staking**. The player, through a **claimed** account, sends NEAR to the colony account, which calls `deposit_and_stake` on a pool from `NEAR_STAKING_POOLS`. Validator rewards accrue to the player. The game never pays NEAR and never holds the player's funds. |
+| `NEAR-93` | In-game perks are independent of the staked amount (no pay-to-win). |
+
+*Follow-up:* the staking UI is wallet-signed and sits outside the "invisible chain"; validator whitelist governance; legal review.
+
+---
+
+## 10. F7 — Planet Treasury DAO
+
+| ID | Rule |
+|---|---|
+| `NEAR-100` | Each planet gets a SputnikDAO instance (`{planet}.sputnik-dao.near`) when it is created. Members are the colony accounts on the planet. |
+| `NEAR-101` | A share of every market fee leg (proposed: 20 % of `fee_bp`) goes to the planet DAO. |
+| `NEAR-102` | Proposal kinds map to sim effects: `meteor_shield` (hazard reduction for N hours), `terraform_boost` (Living-op cost −X %), and `guild_subsidy` (extra Guild visit). When a proposal passes, the app sends the effect to the sim as a `system.*` command. |
+
+---
+
+## 11. F8 — Bounties & mercenary NPCs
+
+| ID | Rule |
+|---|---|
+| `NEAR-110` | `bounty.terraagent.near` escrows cargo or NEAR for a posted target: clear a nest, defend an area for N hours, or deliver X units. |
+| `NEAR-111` | The sim emits `bountyCompleted {bountyId, claimer}` when the target condition is met. The app then releases the escrow to the claimer's colony account (operator call). |
+| `NEAR-112` | **Mercenary NPCs** are app-run agents (sub-accounts like the Guild) that accept defense bounties. They spawn NPC combat units on the poster's territory for the contract duration and are paid from escrow. |
+
+---
+
+## 12. Network switch & funding
 
 | Key | Default | Notes |
 |---|---|---|
-| `NEAR_NETWORK` | `testnet` | `testnet` \| `mainnet` \| `sandbox` (L4 local `near-sandbox` on `:13030`) |
-| `NEAR_RPC_URL` / `NEAR_RPC_FALLBACK_URL` | provider URLs (owner picks a provider; public `rpc.*.near.org` endpoints are rate-limited) | |
-| `NEAR_ACCOUNT_ROOT` | `terraagent.testnet` | Derived suffixes: `colonies.`, `relayer.`, `registry.` |
-| `NEAR_SIGNIN_RECIPIENT` | `terraagent.com` | |
-| `NEAR_COLONY_DEPOSIT` | `0.01` NEAR | |
-| `NEAR_MIN_RELAYER_BALANCE` / `NEAR_MIN_PARENT_BALANCE` | `5` / `5` NEAR | Below threshold → `near_balance_low` alert; provisioning pauses below 1 NEAR |
-| `NEAR_ALLOW_MAINNET` | `0` | `validate-env` refuses `mainnet` unless `1` and the registry account exists |
+| `NEAR_NETWORK` | `testnet` for accounts and deeds in dev; **`mainnet` for cargo + markets** (Intents has no testnet) | `NEAR_ALLOW_MAINNET=1` required |
+| `NEAR_RPC_URL` / `NEAR_RPC_FALLBACK_URL` | **FastNEAR** / a second provider | D-23 |
+| `NEAR_ACCOUNT_ROOT` | `terraagent.near` | |
+| `NEAR_STAKING_POOLS` | whitelist of validator pools | NEAR-92 |
+| `CARGO_MINT_CAP_PER_DAY` | 20 000 per resource per colony (proposed) | NEAR-53 |
+| `MARKET_FEE_BP_MAX` / `TREASURY_FEE_SHARE_BP` | 300 / 2 000 | NEAR-61, NEAR-101 |
+| `NEAR_MIN_RELAYER_BALANCE` | 5 NEAR | alert below |
 
-**Cost estimate (to verify on testnet in TA-10.3/10.4):** gas price ≈ 1e8 yN/gas → 1 Tgas ≈ 0.0001 NEAR; storage 1 NEAR per 100 kB.
+**Cost estimate** (verify in TA-10): account creation ≈ 0.01 NEAR; mint/burn and intent batches ≈ 0.0005–0.002 NEAR each in gas, paid by the relayer; NEP-245 and NEP-171 storage deposits paid by the relayer.
 
-| Item | NEAR |
+---
+
+## 13. Persistence
+
+Tables (sketches in DATA_MODEL §4.4 / §4.4.1):
+- `chain.near_colony_account` and the outbox `chain.near_tx`;
+- `chain.cargo_tx`, `chain.market_order`, `chain.intent_trade`;
+- `chain.guild_npc`, `chain.guild_visit`, `chain.director_key`;
+- `chain.deed`, `chain.staking_position`;
+- `chain.treasury`, `chain.treasury_proposal`, `chain.bounty`.
+
+---
+
+## 14. Telemetry
+
+`near_rpc_latency_seconds{method}` · `near_tx_total{kind,result}` · `near_tx_pending` · `near_balance_near{account}` · `cargo_minted_total{resource}` · `cargo_burned_total{resource}` · `market_orders_open{planet}` · `market_trades_total{planet,maker_kind}` (player/npc) · `intent_batch_failed_total{reason}` · `guild_inventory{npc,resource}` · `treasury_balance{planet}`.
+
+---
+
+## 15. Test matrix
+
+| Rule | Test |
 |---|---|
-| Colony account (deposit incl. storage for 2 keys) | 0.01 |
-| `register_colony` + ~8 milestones (≈ 5 Tgas + ~200 B storage each) | ≈ 0.02 |
-| **Per colony lifetime** | **≈ 0.03** |
-| 1,000 colonies | ≈ 30 NEAR (+ receipts ≈ 0.003 each) |
-
-The switch to mainnet is an owner action (`OWNER_TASKS.md`): create the 4 mainnet accounts, fund them, deploy the contract, set the env, run `deploy`.
-
----
-
-## 9. NATS interface (owned by `@terra/contracts`)
-
-| Subject | Kind | Payload → Reply |
-|---|---|---|
-| `{ns}.near.verify` | request/reply | `NearVerifyReqV1` → `NearVerifyResV1` |
-| `{ns}.near.account.provision` | `{NS}_NEAR_JOBS` | `NearProvisionJobV1 { colonyId, planetId, playerId }` |
-| `{ns}.near.account.status` | request/reply (**CR**) | `{ colonyId }` → `{ accountId, status }` |
-| `{ns}.near.registry.planet` | `{NS}_NEAR_JOBS` | `{ planetId, planetType, seedHash, createdAtMs }` |
-| `{ns}.trade.offer.list` | request/reply (**CR**) | for HUD/core: open offers for a colony |
-| consumes `{NS}_PLANET_EVENTS` | durable `near-registry`, `near-trades` | milestone + trade events |
-| publishes `{ns}.planet.{id}.cmd` | trade commands | `trade.commit`/`trade.revert`/`trade.release` |
-| publishes `{NS}_NEAR_EVENTS` | `{ns}.near.evt.account_provisioned` · `{ns}.near.evt.account_failed` · `{ns}.near.evt.milestone_recorded` · `{ns}.trade.evt.state_changed` · `{ns}.trade.evt.receipt_recorded` | results for core (profile, admin) and worker (HUD notifications); `Nats-Msg-Id` = dedupe key of the job/transition |
-
-**Stream subject caution:** `{NS}_NEAR_JOBS` must list **exact** subjects (`…near.account.provision`, `…near.registry.>`). If a stream captured `{ns}.near.>` it would also capture `near.verify` requests, and JetStream would answer them with a PubAck.
+| §3 | `nep413.verifier.spec.ts` (vectors, tampering, wrong network) |
+| §4 | `relayer.spec.ts` (allow-list, nonce retry) |
+| NEAR-50..55 | `res-contract` `cargo test` + `near-workspaces`; `cargo.int.spec.ts` (export → mint → settled; failure → refund; cap) |
+| NEAR-60..65 | `market-matcher.spec.ts` (price-time priority, fee leg, zero-sum batch); `intents-settle.int.spec.ts` (stubbed verifier + `simulate_intents` on mainnet dev account, manual) |
+| NEAR-70..73 | `guild-pricing.spec.ts` (inventory drift, spread) |
+| NEAR-80..81 | `director-key.int.spec.ts` (allowance enforced, revoke) |
+| NEAR-90..93 | `deed` contract tests; `deed-metadata.spec.ts` |
+| NEAR-100..112 | DAO proposal → sim effect; bounty escrow release (workspaces) |
 
 ---
 
-## 10. Persistence (`chain` namespace)
+## 16. Owner decisions (2026-10-29 / 2026-10-30)
 
-| Table | Key columns |
-|---|---|
-| `chain.near_colony_account` | `colony_id` PK, `account_id` unique, `public_key`, `encrypted_secret bytea`, `kek_version`, `status`, `attempts`, `last_error`, `created_tx`, `registered_tx`, timestamps |
-| `chain.near_tx` | `id`, `dedupe_key` unique, `kind`, `payload jsonb`, `status` (`PENDING/SENT/FINAL/FAILED`), `tx_hash`, `attempts`, `next_attempt_at`, `last_error` |
-| `chain.trade_offer` | `trade_id` PK, `planet_a`, `colony_a`, `planet_b`, `colony_b`, `a_gives jsonb`, `b_gives jsonb`, `state`, `expires_at`, `legs jsonb`, `receipt_tx`, timestamps |
+| # | Question | Decision | Ref | Consequence for this spec |
+|---|---|---|---|---|
+| 1 | Root accounts | Register `terraagent.testnet` and `terraagent.near` now | D-23 | Owner task |
+| 2 | RPC provider | **FastNEAR** + fallback | D-23 | §12 |
+| 3 | Player claim of a colony account | **At launch** | D-18 | §2 |
+| 4 | Cross-planet trades | **Same-planet only** for players; Guild NPCs carry goods between planets | D-19, D-26 | NEAR-63, NEAR-72 |
+| 5 | NEAR Intents settlement | **In MVP** | D-19 | §6 (designed; replaces the D-11 receipt saga) |
+| 6 | Colony left after the rocket | **Settled**; own-NEAR staking through the deed and colony account | D-18 | §9 |
+| 7 | One app, no gateway service or NATS | **Yes** | D-24 | The `near` module is in-process |
+| 8 | Anti-cheat / anti-bot | **None** | D-25 | Principle 5 |
+| 9 | NEAR economy features | **F1–F8**; cargo **open in beta** | D-26 | §5–§11 |
 
-Must be present in Prisma v1 (TA-03.1). Anything missing → migration CR for the next pre-step.
-
----
-
-## 11. Telemetry
-
-`near_rpc_latency_seconds{method}` (histogram) · `near_verify_total{result}` · `near_jobs_total{kind,result}` · `near_job_failed_total{kind}` · `near_tx_pending` (gauge) · `near_balance_near{account}` (gauge) · `near_relayer_nonce_retries_total` · `trade_saga_total{state}` · `trade_settle_seconds` (histogram, OPEN→SETTLED) · log events `near.tx.final`, `trade.state_changed`.
-
----
-
-## 12. Test matrix
-
-| Rule | Test | Task |
-|---|---|---|
-| NEAR-01..03, 06 | `nep413.verifier.spec.ts`: generated vectors, a recorded real-wallet signature fixture, tampered message/nonce/recipient, wrong network | TA-10.2 |
-| NEAR-02, 05 | `near-verify.int.spec.ts` against `near-sandbox`: FA ok, FC refused, RPC down → `rpc_unavailable` < 3 s | TA-10.2 |
-| NEAR-10..13 | `provision.int.spec.ts` (sandbox): create, re-run idempotent, RPC failure → retry → FAILED after 5 | TA-10.3 |
-| NEAR-20 | `relayer.spec.ts`: non-allow-listed receiver/method refused; nonce retry | TA-10.3 |
-| §6 | `colony-registry` `cargo test` + `near-workspaces` tests: operator auth, self-registration via meta-tx, milestone cap 64, idempotency, events emitted | TA-10.4 |
-| NEAR-30..35 | `trade-saga.int.spec.ts`: happy path, expiry, decline, leg rejected → compensated, gateway restart mid-SETTLING resumes, receipt on sandbox | TA-10.5 |
-
----
-
-## 13. Open questions for the owner
-
-1. Root account names: is `terraagent.testnet` / `terraagent.near` available and owned by you?
-2. RPC provider for testnet and mainnet (FastNEAR, Lava, Pagoda successor, self-hosted)?
-3. Player **claim** of a colony account (add the player's key, drop ours): in scope for launch or later?
-4. Cross-planet trades: allowed after rockets (needs a transport-delay mechanic), or same-planet only?
-5. Do we want real **NEAR Intents** settlement (tokenised resources) in a later season, or are on-chain receipts enough?
+**Verify in docs before building:** the social-login provider with NEAR named accounts (§2); the exact NEP-245 deposit path and token-id format in `intents.near` (NEAR-55); 1Click API details (NEAR-65).
+**Schedule risk:** F1–F8 ≈ 20 dev-days against a 14-day solo window. Build order and cut line are in D-27.

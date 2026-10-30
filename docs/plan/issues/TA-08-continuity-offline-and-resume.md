@@ -54,6 +54,8 @@ sequenceDiagram
 | `TA-08.4` | Resume flow in core: home → ticket → reconnect; failover retry; device takeover | W3 / L1 | TA-04.4, TA-04.5, TA-05.5 |
 | `TA-08.2` | Away-mode autopilot policy & safety rules | W4 / L3 | TA-08.1, TA-06.7, TA-09.4 |
 | `TA-08.5` | Elimination, planet end & re-entry flows | W4 / L1 | TA-05.4, TA-08.4, TA-10.4 |
+| `TA-08.6` | Hard offline mode: player-set away budget, autoTrade limits, opt-in AI raids, elimination-while-away safety, LLM away story flag (D-17) | W4 / L3 | TA-08.2 |
+| `TA-08.7` | Notification service in core: Web Push (VAPID) + Telegram bot, event → alert routing, quiet hours, dedupe (D-17) | W4 / L1 | TA-04.1, TA-07.7 |
 
 ---
 
@@ -182,7 +184,7 @@ sequenceDiagram
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W4 / L3`
 - **Depends On:** `TA-08.1`, `TA-06.7`, `TA-09.4`
-- **Spec:** [`CONTINUITY.md`](../../spec/CONTINUITY.md) §4 (AW-01..23); [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) (directive kinds); [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md) §1.2 (brownout order)
+- **Spec:** [`CONTINUITY.md`](../../spec/CONTINUITY.md) §4 (AW-01..23); [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) (directive kinds); [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §1.2 (brownout order)
 - **Target Files:**
   - `backend/planet-worker/src/continuity/{away-policy.ts,away-policy.version.ts,away-budget.ts}`
   - `backend/planet-worker/src/continuity/away-policy.hook.ts` (wires into command apply path of TA-07.4)
@@ -209,7 +211,7 @@ export function awayPolicy(view: ColonyView, cmd: StampedCommand, budget: AwayBu
 - `setAutopilot` (`director`/`rules_only`) stored in colony state; `rules_only` ⇒ worker stops publishing `{ns}.ai.request` for that colony.
 
 #### Definition of Ready (DoR)
-- [ ] Directive kinds (`DirectiveV1`) final from TA-09.3/09.4; trade command kinds from TA-10.5 contracts (W4 pre-step).
+- [ ] Directive kinds (`DirectiveV1`) final from TA-09.3/09.4; market and cargo command kinds from TA-10.9/10.10 contracts (D-30; TA-10.5 is obsolete).
 - [ ] Command stamp record supports `rejected{rule}` (TA-07.4) — else **Contract change request (lead pre-step)**.
 - [ ] Owner answer to CONTINUITY Q1–Q3 recorded (defaults apply if not).
 
@@ -258,4 +260,75 @@ export function awayPolicy(view: ColonyView, cmd: StampedCommand, budget: AwayBu
 - [ ] `planet-end-flow.int-spec.ts`: 14 d fake clock → saga completes; worker missing mid-saga → saga resumes after placement; results rows correct; NEAR job enqueued.
 - [ ] `transfer-flow.int-spec.ts`: rocket event → `TRANSFER` ticket priority 10 → new planet → home `ACTIVE` on new planet.
 - [ ] Recap endpoint: foreign colony → 404.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-08.6` — Hard offline mode: away budget, autoTrade, opt-in AI raids, elimination-while-away safety (D-17)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W4 / L3 (after TA-08.2)`
+- **Depends On:** `TA-08.2`
+- **Spec:** [`DECISIONS.md`](../../spec/DECISIONS.md) D-17; [`CONTINUITY.md`](../../spec/CONTINUITY.md) §4 (`AW-*`, follow-up), Q2/Q3/Q5 answered; units spec `UO-DIP-05`
+- **Target Files:**
+  - `backend/planet-worker/src/continuity/{away-budget.ts,auto-trade.ts,raid-optin.ts}`
+  - `backend/planet-worker/test/continuity/{away-budget.spec.ts,auto-trade.spec.ts}`
+  - `tests/integration/worker/hard-offline.int.spec.ts`
+- **Verify:** `npm run test -w @terra/planet-worker -- continuity && npm run test:integration -- --suite worker --grep hard-offline`
+
+#### Analytics
+- **Problems:**
+  - Colonies can now be eliminated while away (by players, fauna or environment).
+  - Players set their own away budget, replacing the fixed 40 %/60 % caps.
+  - autoTrade trades within per-resource limits.
+  - AI raids are opt-in per colony.
+  - AI may accept truces but never cancel them.
+  - The LLM away story runs behind `AWAY_STORY_ENABLED`.
+- **Risk:** an autoTrade exploit by bots → per-trade and per-session caps, partner reputation (no Oathbreaker), and same-planet trades only (D-19).
+- **Telemetry:** `away_policy_rejections_total{rule}`, `ta_worker_autotrade_total`.
+
+#### Architecture
+- `setAutopilot` gains `awayBudget {perResourcePct, perDecisionPct}`, `autoTrade {resource: {maxGive, maxPerTrade}}` and `allowRaidsWhileAway`.
+- `awayPolicy()` (AW-21) reads them; `AWAY_POLICY_VERSION` is bumped.
+- Defense and repair spending is never capped.
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: CONTINUITY `AW-*` rewritten for D-17; `Autopilot` contract extended (lead, W4 pre-step).
+
+#### Definition of Done (DoD)
+- [ ] `hard-offline.int.spec.ts`: an away colony under fauna pressure can reach `colonyCritical` → a notify event is published ≥ 10 min before elimination; autoTrade never exceeds its limits; an AI raid is rejected unless opted in; truce cancel by AI is rejected.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-08.7` — Notification service in core: Web Push + Telegram bot, alert routing, quiet hours, dedupe (D-17)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W4 / L1 (last W4 L1 task)`
+- **Depends On:** `TA-04.1`, `TA-07.7`
+- **Spec:** [`DECISIONS.md`](../../spec/DECISIONS.md) D-17; [`CONTINUITY.md`](../../spec/CONTINUITY.md) Q4 (answered)
+- **Target Files:**
+  - `backend/core/src/notifications/{notifications.module.ts,webpush.adapter.ts,telegram.adapter.ts,router.ts,link.controller.ts}`
+  - `backend/core/test/notifications/*.spec.ts`
+  - `tests/integration/core/notifications.int.spec.ts`
+- **Verify:** `npm run test -w @terra/core -- notifications && npm run test:integration -- --suite core --grep notifications`
+
+#### Analytics
+- **Problem:** players must learn about attacks and critical states while away.
+- **Channels:** Web Push (VAPID) and a Telegram bot (owner tokens in OWNER_TASKS).
+- **Alert kinds:** `underAttack`, `colonyCritical`, `colonyEliminated`, `rocketReady`, `truceOffered`, `tradeOffer`.
+- **Risks:** spam → per-kind dedupe (`underAttack` ≤ 1 per 15 min), quiet hours, and a per-player cap of 20/day.
+- **Telemetry:** `ta_core_notifications_sent_total{channel,kind}`, `ta_core_notifications_failed_total`.
+
+#### Architecture
+- Consumes `{NS}_PLANET_EVENTS`, maps colony → player → subscriptions, and sends through the adapters; an outbox table gives retries.
+- Telegram uses a webhook with a one-time link code.
+
+#### Definition of Ready (DoR)
+- [ ] Migration for `core.notification_subscription` and the outbox (W4 pre-step).
+- [ ] Contracts: notification DTOs (lead).
+- [ ] Owner: Telegram bot token + VAPID keys (mock adapters otherwise).
+
+#### Definition of Done (DoD)
+- [ ] `notifications.int.spec.ts`: a `colonyCritical` event → exactly one push and one Telegram message (mock adapters); dedupe and quiet hours work.
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).

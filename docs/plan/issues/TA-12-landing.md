@@ -1,7 +1,7 @@
 # Epic TA-12 — Landing (`frontend/landing`, `terraagent.com`)
 
 > **Orchestrator:** [`EXECUTION_ORCHESTRATOR.md`](../EXECUTION_ORCHESTRATOR.md) · **Status Board:** [`STATUS.md`](../STATUS.md)
-> **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3, §4 · [`CLIENT.md`](../../spec/CLIENT.md) §9 (budgets), §10 (analytics & consent), §14 (open question 5) · [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §1, §13
+> **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3, §4 · [`CLIENT.md`](../../spec/CLIENT.md) §9 (budgets), §10 (analytics & consent), §14 (open question 5) · [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §1, §13
 > **Lane:** `L5` Clients & Infra. Owned path: `frontend/landing/**`.
 
 ## Overview
@@ -46,6 +46,7 @@ Source layout (target): `frontend/landing/{index.html, privacy/index.html, terms
 |---|---|---|---|
 | `TA-12.1` | Landing page: hero, loop explainer, CTA, live planet stats | W1 / L5 | TA-01.1 |
 | `TA-12.2` | Landing SEO/meta, legal placeholders, analytics opt-in | W4 / L5 | TA-12.1, TA-11.1 |
+| `TA-12.3` | Live Three.js mini-diorama hero with lazy load + static poster fallback (D-22) | W5 / L5 | TA-12.1, TA-14.9 |
 
 ---
 
@@ -56,7 +57,7 @@ Source layout (target): `frontend/landing/{index.html, privacy/index.html, terms
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W1 / L5`
 - **Depends On:** `TA-01.1`
-- **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §4 · [`CLIENT.md`](../../spec/CLIENT.md) §9, §10.3 (`landing_view`, `play_click`) · [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §1, §5, §9, §10, §13
+- **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §4 · [`CLIENT.md`](../../spec/CLIENT.md) §9, §10.3 (`landing_view`, `play_click`) · [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §1, §5, §9, §10, §13
 - **Target Files:**
   - `frontend/landing/package.json`, `frontend/landing/vite.config.ts`, `frontend/landing/index.html`, `frontend/landing/.env.example`
   - `frontend/landing/src/{main.ts,stats.ts,styles.css}`
@@ -73,7 +74,7 @@ Source layout (target): `frontend/landing/{index.html, privacy/index.html, terms
   - ≤ 50 KB JS gzip (CLIENT.md §9).
   - Works with JS disabled (CTA is a plain link; stats are progressive enhancement).
   - The stats API must not block rendering.
-  - Brand visuals must follow the palette (`agent-3d-coding-rules.md` §2) so landing and game feel like one product.
+  - Brand visuals must follow the palette (`docs/visuals/agent-3d-coding-rules.md` §2) so landing and game feel like one product.
 - **Risks → mitigations:**
   - Hero video weight hurting LCP. `poster.webp` (≤ 120 KB) is the LCP element; `hero.mp4` (≤ 2.5 MB, H.264, muted, `preload="none"`) loads after `load`, and `prefers-reduced-motion` keeps the poster.
   - The stats endpoint being down. Hide the stats block on any error or timeout (> 1.5 s); never show zeros.
@@ -168,4 +169,32 @@ Source layout (target): `frontend/landing/{index.html, privacy/index.html, terms
 - [ ] `consent.test.ts`: default off; no `ta_aid` before opt-in; withdrawal deletes `ta_aid`; the cookie domain is correct for prod vs localhost.
 - [ ] E2E `consent.spec.ts` `@consent`, on the local nginx stack (`*.terraagent.localhost`): zero `/v1/analytics/events` requests before consent; after opt-in on the landing, the game at `game.terraagent.localhost` sees consent and sends `planet_picker_view`.
 - [ ] `/privacy/` and `/terms/` are reachable, carry the "Draft" banner, and are linked from the footer and the game Settings.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-12.3` — Live Three.js mini-diorama hero with lazy load + static poster fallback (D-22)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W5 / L5 (first W5 L5 task)`
+- **Depends On:** `TA-12.1`, `TA-14.9`
+- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §9, §14 Q5 (answered: live diorama); [`DECISIONS.md`](../../spec/DECISIONS.md) D-22; [`AGENTS.md`](../../../AGENTS.md) Pillar 4
+- **Target Files:**
+  - `frontend/landing/src/hero/{diorama.ts,scene.ts,poster.webp}`
+  - `frontend/landing/test/hero.spec.ts`
+- **Verify:** `npm run build -w @terra/landing && npm run test -w @terra/landing -- hero && npm run lighthouse -w @terra/landing`
+
+#### Analytics
+- **Problem:** the owner chose a live diorama over a video. LCP must not regress.
+- **Constraints:** a static poster paints first; the diorama (≤ 160 KB gz) loads after `load`/idle and is skipped when `prefers-reduced-motion` is set or on low-end devices.
+- **Telemetry:** `hero_mode{live|poster}`.
+
+#### Architecture
+- Reuses the kitbash archetypes from TA-14.9: a Hub, a few drones, a wall ring and a terraformed patch on a turntable.
+
+#### Definition of Ready (DoR)
+- [ ] `TA-14.9` archetypes merged.
+
+#### Definition of Done (DoD)
+- [ ] Lighthouse mobile LCP ≤ 2.5 s with the poster; the diorama swaps in without layout shift (CLS < 0.05).
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).

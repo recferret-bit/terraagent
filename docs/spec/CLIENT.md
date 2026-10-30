@@ -1,9 +1,9 @@
 # TerraAgent — Game Client & Landing Specification
 
-> **Status:** Draft v0.1 (2026-10-29), for owner review.
-> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §4, §7, §12, §13 · **Decisions:** [`DECISIONS.md`](./DECISIONS.md) (D-01, D-06, D-10, D-15)
+> **Status:** v0.2 (2026-10-30). This targets the one-app server (D-24): one WS endpoint, **full planet state with fog drawn on the client** (D-25), and NEAR economy surfaces for F1–F8 (D-26).
+> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §4, §7, §12, §13 · **Decisions:** [`DECISIONS.md`](./DECISIONS.md) (D-10, D-16, D-22, D-24, D-25, D-26)
 > **Issues:** [`TA-11`](../plan/issues/TA-11-game-client.md) (game), [`TA-12`](../plan/issues/TA-12-landing.md) (landing), [`TA-13.3`](../plan/issues/TA-13-qa-observability-and-load.md) (E2E)
-> **Visual rules:** [`AGENTS.md`](../../AGENTS.md) (4 pillars) and `.agents/skills/*` · [`tech-stack-spec.md`](../../tech-stack-spec.md) §2–§3 (rendering parts only)
+> **Visual rules:** [`AGENTS.md`](../../AGENTS.md) (4 pillars) and `.agents/skills/*` · [`docs/spec/tech-stack-spec.md`](tech-stack-spec.md) §2–§3 (rendering parts only)
 
 ---
 
@@ -11,7 +11,7 @@
 
 This spec defines how `frontend/game` (`game.terraagent.com`) and `frontend/landing` (`terraagent.com`) behave: boot and routing, the picker and queue, dive-in and resume, the planet WebSocket client, the world store and interpolation, the render architecture, UI commands, performance budgets, accessibility, product analytics and privacy.
 
-The client is a **view and an intent emitter**. The planet worker owns the simulation (D-01). The client never decides an outcome. Its only predictions are cosmetic: interpolation, ghost previews, and pending-command indicators.
+The client is a **view and an intent emitter** that runs the **same engine as the server** (`@terra/sim`, D-31) in a Web Worker: as an exact replica of the server state, to **predict** the player's own commands, and, with `?host=local`, as a single-player local host for testing. The server simulation owns the outcomes online (D-24); the client's predictions are provisional and are corrected by every delta.
 
 ---
 
@@ -20,19 +20,20 @@ The client is a **view and an intent emitter**. The planet worker owns the simul
 | ID | Rule |
 |---|---|
 | `CL-01` | The game MUST resolve where to go by calling `GET /v1/me/home` on every boot and every planet-socket reconnect. Routing state is never trusted from local storage. |
-| `CL-02` | Planet tickets are single-use and expire in 60 s (`PLANET_TICKET_TTL_S`). The client MUST NOT cache or reuse a ticket. Each connection attempt gets a fresh `/me/home`. |
+| `CL-02` | There are no planet tickets (D-24). Each connection attempt does `/me/home`, then `hello {accessToken}` → `join {planetId}` on `wss://api.terraagent.com/ws`. |
 | `CL-03` | The access JWT lives only in memory. The refresh/device credential is an httpOnly cookie on `api.terraagent.com` (D-10), and every auth call uses `credentials: "include"`. |
 | `CL-04` | All REST responses and WS messages MUST be parsed with `@terra/contracts` zod schemas: `strict` in dev/test (a failure throws), `warn` in prod (log, then drop the message). For `delta` in prod, only the envelope is validated and the ops are trusted, to stay inside the decode budget. |
 | `CL-05` | The world state for rendering lives in a **mutable, non-React world store** that the render loop reads directly. React components subscribe only to a throttled HUD projection (≤ 10 Hz). |
 | `CL-06` | Rendering MUST follow the 4 visual pillars (`AGENTS.md`): kitbashed procedural meshes (Pillar 1), sanitized `.glb` only (Pillar 2), `createUnifiedColonyMaterial()` for every colony mesh (Pillar 3), and a 28° diorama viewport with ACES, PMREM `RoomEnvironment` and selective bloom at `threshold 1.1` (Pillar 4). |
 | `CL-07` | Every repeated entity (robots, buildings, fauna, deposits, projectiles) MUST render through `InstancedMesh`, with one draw call per archetype × LOD. `scene.add(new Mesh())` per entity is forbidden. |
 | `CL-08` | UI commands MUST be sent as `cmd` envelopes with a client `id` and tracked until `cmd.ack` or `cmd.reject`. If neither arrives within 5 s, the client shows "not confirmed". A reconnect does **not** resend unacknowledged commands (no double-apply). The UI marks them "unknown — check the colony". |
-| `CL-09` | The client MUST obey the protocol rate limit (≤ 10 cmds/s, burst 20) with a local token bucket, so a `4008 rate_limited` close cannot happen in normal use. |
+| `CL-09` | There is no server rate limit (D-25). The client still debounces UI-generated commands (for example drag placement) to ≤ 10 per second for its own HUD sanity. |
 | `CL-10` | Close codes MUST map to exactly the behaviours in §6.3. Codes not in that table go to the generic reconnect path. |
 | `CL-11` | Product analytics MUST be off by default. Nothing is sent and no analytics identifier is created until the visitor opts in (§10). Operational metrics are counted server-side and carry no personal data. |
 | `CL-12` | Native browser dialogs (`alert`, `confirm`, `prompt`) are forbidden. Use in-app modals. |
 | `CL-13` | A colony page reload or tab restore MUST bring the player back into the same colony with no extra clicks when `home.state = ACTIVE`. |
-| `CL-14` | The game MUST keep working when the lobby WS is unavailable, by falling back to REST polling (picker every 10 s, ticket every 2 s). |
+| `CL-14` | The game MUST keep working when the lobby topics are unavailable, by falling back to REST polling (picker every 10 s, match ticket every 2 s). |
+| `CL-16` | **Fog-of-war is client-side (D-25).** The client receives the full planet state and hides tiles and entities its colony cannot see, using `tile.explored` plus its own vision radii. This is presentation only, not secrecy. |
 | `CL-15` | The client MUST expose `window.__terraDebug` (state, last tick, RTT, draw calls, socket state) **only** in dev or when built with `VITE_E2E=1`. Production builds MUST NOT include it. |
 
 ---
@@ -71,7 +72,7 @@ sequenceDiagram
   else QUEUED
     C-->>B: { state: QUEUED, ticketId, position } → /planets (queue panel open)
   else ACTIVE
-    C-->>B: { state: ACTIVE, colony, planet, ws, ticket, awaySummary? } → /play
+    C-->>B: { state: ACTIVE, colony, planet, awaySummary? } → /play
   else ELIMINATED
     C-->>B: → /recap/eliminated
   else PLANET_ENDED
@@ -80,7 +81,7 @@ sequenceDiagram
 ```
 
 - The boot target is **≤ 1.5 s p75** from navigation to a routed screen on desktop broadband. The splash shows a skeleton immediately.
-- If `ACTIVE` has `ws: null`, the planet is mid-failover. The client shows "Your colony is relocating to a new server…" and retries `/me/home` after `retryAfterMs` (default 2000 ms), with jittered backoff capped at 10 s. After 60 s it shows "still trying" plus a manual retry. It never leaves `/play`.
+- If the WS cannot connect (app restarting), the client shows "Reconnecting…" and retries with jittered backoff capped at 10 s. After 60 s it shows "still trying" plus a manual retry. It never leaves `/play`.
 - The exact REST paths and DTO names are owned by `@terra/contracts` (TA-01.4). This spec uses the names from `ARCHITECTURE.md`: `/v1/auth/*`, `/v1/me/home`, and the planet/match endpoints of TA-05.2/05.3.
 
 ---
@@ -128,13 +129,13 @@ stateDiagram-v2
 ## 5. Dive-in, resume & away digest
 
 ### 5.1 Dive-in
-`ACTIVE` → mount the viewport → connect the planet WS → `welcome` → fade out the splash. Target: **≤ 3 s p75** from `/` to first rendered frame for a returning player.
+`ACTIVE` → mount the viewport → `/ws` `hello` → `join` → `welcome` → fade out the splash. Target: **≤ 3 s p75** from `/` to first rendered frame for a returning player.
 
 ### 5.2 Resume triggers
 | Trigger | Behaviour |
 |---|---|
 | Page load or reload | Boot flow (§3.2), then dive-in. |
-| Socket closed unexpectedly (1006/1001/network) | Reconnect path (§6.3): fresh `/me/home`, then a new ticket. The scene stays on screen and shows a "Reconnecting…" pill. |
+| Socket closed unexpectedly (1006/1001/network) | Reconnect path (§6.3): fresh `/me/home`, then `hello` → `join`. The scene stays on screen and shows a "Reconnecting…" pill. |
 | Tab hidden for > 60 s (`AWAY_AFTER_S`) | The socket is **kept open** while the browser allows it. If the browser froze the tab and the socket died, `visibilitychange → visible` triggers the reconnect path immediately (no backoff wait). |
 | Another device took over (`4001 replaced`) | Terminal overlay: "Your colony is open on another device." with a "Play here" button, which re-runs the boot flow and takes the colony back. |
 
@@ -161,13 +162,11 @@ The modal is dismissible (Esc, ×, "Continue"). Its content is fixed once fetche
 ```mermaid
 stateDiagram-v2
   [*] --> resolving
-  resolving --> connecting: /me/home ACTIVE (ws, ticket)
-  resolving --> waitingRelocation: ACTIVE, ws = null
-  waitingRelocation --> resolving: after retryAfterMs
-  connecting --> welcomed: hello → welcome
+  resolving --> connecting: /me/home ACTIVE
+  connecting --> welcomed: hello → join → welcome
   connecting --> reconnecting: socket error / close before welcome
   welcomed --> streaming: first delta applied
-  streaming --> resyncing: tick gap or > 50 ticks behind
+  streaming --> resyncing: tick gap
   resyncing --> streaming: fresh welcome/snapshot applied
   streaming --> reconnecting: retryable close
   reconnecting --> resolving: backoff elapsed
@@ -180,42 +179,43 @@ stateDiagram-v2
 | Item | Value |
 |---|---|
 | `ping` interval | 20 s (nginx idle timeout 75 s) |
-| `ack.delta {tick}` | Every 1 s and after any resync |
-| Resync trigger | `delta.fromTick ≠ lastAppliedTick`, or the server notices the client is > 50 ticks behind its last ack |
-| Resync method | Send `resync {}` (contract change request, see TA-11.4). Until that lands, close with 1000 and take the reconnect path. |
+| Resync trigger | `delta.fromTick ≠ lastAppliedTick` (client sends `join` again), or the server's send buffer exceeds 1 MiB (`welcome {reason: "resync"}`) |
 | Reconnect backoff | 0.5 s → 1 → 2 → 4 → 8 → 10 s cap, ±20 % jitter, reset after 30 s of streaming |
-| Command rate | Local token bucket, 10/s, burst 20 (`CL-09`) |
+| Command rate | Client-side debounce only (`CL-09`) |
 | Command confirm timeout | 5 s → "not confirmed" (`CL-08`) |
 
 ### 6.3 Close-code handling (`CL-10`)
 | Code | Meaning | Client behaviour |
 |---|---|---|
-| `4000 bad_hello` | Malformed or expired ticket | Re-resolve once immediately. A second `4000` within 30 s → terminal "Couldn't join colony", with a Retry button. |
+| `4000 bad_hello` | Malformed `hello` or expired token | Refresh the token and re-resolve once immediately. A second `4000` within 30 s → terminal "Couldn't join colony", with a Retry button. |
 | `4001 replaced` | Newer socket for the same colony | Terminal overlay, "Play here" (§5.2). No auto-reconnect, to avoid ping-pong between devices. |
-| `4003 forbidden` | Ticket does not match the player or colony | Refresh the token, then re-resolve. On repeat → terminal and back to `/`. |
-| `4004 planet_not_here` | Stale worker URL | Re-resolve immediately (no backoff). |
-| `4008 rate_limited` | Client too chatty | Re-resolve after 5 s. Log a client error (this is a bug per `CL-09`). |
-| `4009 lease_lost` | Worker lost the planet (failover) | Re-resolve immediately. Expect `ws: null` + `retryAfterMs`. |
+| `4003 forbidden` | Token invalid, or `join` for a planet that is not the player's | Refresh the token, then re-resolve. On repeat → terminal and back to `/`. |
 | `4010 planet_ended` | Planet ended | Terminal → `/recap/ended`. |
 | `4011 colony_eliminated` | Colony destroyed | Terminal → `/recap/eliminated`. |
-| `4012 server_draining` | Deploy or drain | Re-resolve after 0–1 s jitter. |
+| `4012 server_restarting` | Deploy or restart | Backoff reconnect (the app needs 10–30 s to come back). |
 | `1000/1001/1006/other` | Network or unknown | Backoff reconnect (§6.2). |
 
 ### 6.4 Command lifecycle
-`UI action → CommandBus.send(kind, args) → {id} pending → cmd.ack {id, appliedAtTick}` (resolved: the HUD shows the effect once a delta with tick ≥ appliedAtTick is applied) `| cmd.reject {id, code}` (revert ghost, toast with a mapped message). Command kinds come from `ARCHITECTURE.md` §13: `setPriorities`, `enqueueTask`, `cancelTask`, `placeBuilding`, `upgradeBuilding`, `demolish`, `setAutopilot`.
+`UI action → CommandBus.send(kind, args) → {id} pending → cmd.ack {id, appliedAtTick}` (resolved: the HUD shows the effect once a delta with tick ≥ appliedAtTick is applied) `| cmd.reject {id, code}` (revert ghost, toast with a mapped message). Command kinds come from [`PROTOCOL.md`](./PROTOCOL.md) §4.2 `CommandKind` (colony control, away settings, cargo, market, diplomacy, bounties).
 
 ---
 
 ## 7. World store, snapshot/delta & interpolation
 
+> **D-31 (2026-10-30) supersedes the view-store design below where they differ.** The world store is a **sim worker** running `@terra/sim`:
+> - **Transport:** `WsTransport` (online) or `LocalTransport` (`?host=local`, the engine is authoritative in the worker). Both deliver the same `welcome` / delta / `cmd.ack` / `cmd.reject` messages.
+> - **Replica:** `welcome.state` is loaded with `load()`, each delta with `applyDiff()`; the replica equals the server state at tick T (SIMULATION `SIM-V-03`).
+> - **Prediction:** `predicted = clone(replica)` + the player's pending commands, stepped to the estimated server tick; rebuilt on every delta; mismatching positions blend over 150 ms, discrete fields snap; rejects roll back (SIMULATION `SIM-X-03..05`). The render loop interpolates between predicted ticks at 60 fps.
+> - **Views:** the worker derives render buffers and the 10 Hz HUD projection with the engine's `view()` and posts them as transferable buffers. The entity/colony record shapes below describe what `view()` returns.
+> - **Fallback:** `?predict=0` or a worker step p95 above 4 ms → render the replica 400 ms behind server time, exactly as below.
+> - **Budget:** the engine is a lazily loaded worker chunk (≤ 250 KB gzipped).
+
 ```mermaid
 flowchart LR
-  WS["planet socket<br/>welcome / delta / event"] --> DEC["decoder<br/>(zod envelope)"]
-  DEC --> WSTORE["WorldStore (mutable)<br/>terrain · entities · territory · colony stats"]
-  WSTORE --> INTERP["Interpolator<br/>renderTime = serverNow − 400 ms"]
-  INTERP --> RENDER["Render loop (rAF)<br/>InstancedMesh attrs"]
-  WSTORE -->|10 Hz projection| HUD["Zustand HUD store → React"]
-  DEC -->|event| LOG["Event log + toasts"]
+  WS["WsTransport / LocalTransport<br/>welcome / delta / ack / event"] --> WK["Sim worker (@terra/sim)<br/>replica @ T · predicted @ now"]
+  WK -->|view() buffers| RENDER["Render loop (rAF)<br/>InstancedMesh attrs"]
+  WK -->|10 Hz view()| HUD["Zustand HUD store → React"]
+  WS -->|server events| LOG["Event log + toasts"]
 ```
 
 - **WorldStore** (`frontend/game/src/world/`):
@@ -224,22 +224,76 @@ flowchart LR
   - Colony stats hold resources, caps, power and supply. The event ring keeps the last 200 events.
 - **Applying `welcome`:** clear the store, load the snapshot, set `lastAppliedTick = tick`, estimate the clock offset from `serverTimeMs`.
 - **Applying `delta`:** check `fromTick === lastAppliedTick`, then apply ops in order (`add`, `update` (partial fields), `remove`, `terrain`, `territory`, `stats`), then `lastAppliedTick = toTick`.
-- **Interpolation:** the server ticks at 10 TPS and sends deltas at 5 Hz (2 ticks each). The client renders at `renderTime = estimatedServerNow − 400 ms` (2 delta intervals) and lerps position and heading between the two samples around `renderTime`. If the buffer underruns, it extrapolates for ≤ 200 ms and then holds the position. Removed entities play a 300 ms despawn effect when the server sent a `destroyed` event, otherwise they vanish.
+- **Interpolation:** the server steps an active planet at 5 TPS and sends deltas at 5 Hz (1 tick each). The client renders at `renderTime = estimatedServerNow − 400 ms` (2 delta intervals) and lerps position and heading between the two samples around `renderTime`. If the buffer underruns, it extrapolates for ≤ 200 ms and then holds the position. Removed entities play a 300 ms despawn effect when the server sent a `destroyed` event, otherwise they vanish.
 - **Clock sync:** offset = EWMA over `pong` round-trips, using `serverTimeMs` echoed in `pong` (contract change request if it is absent from v1).
-- Shared pure helpers (hex axial math, footprints, interpolation) come from `@terra/sim` presentation-safe entry points only (ARCHITECTURE §12). The client never imports the sim kernel.
+- The client imports `@terra/sim` only inside the sim worker (D-31). Main-thread code uses its presentation-safe entry points (hex axial math, footprints, interpolation).
 
 ---
 
 ## 8. Render architecture
 
-- **Stack:** Vite 6 + TypeScript (strict), vanilla **Three.js** for the canvas, **React 19 + Zustand 5 + Tailwind 4** for the HUD overlay (`pointer-events-none` root with interactive islands), per `tech-stack-spec.md` §2.
-- **Renderer choice for the online MVP:** `WebGLRenderer` + `EffectComposer`, using the exact bootstrap in `agent-3d-coding-rules.md` §3 (Pillar 4 reference). The `WebGPURenderer` + TSL path in `tech-stack-spec.md` is deferred until TSL bloom/GTAO parity is confirmed. Materials stay written so they can move behind `createUnifiedColonyMaterial()`. *(Owner decision, see Open questions.)*
+- **Stack:** Vite 6 + TypeScript (strict), vanilla **Three.js** for the canvas, **React 19 + Zustand 5 + Tailwind 4** for the HUD overlay (`pointer-events-none` root with interactive islands), per `docs/spec/tech-stack-spec.md` §2.
+- **Renderer choice for the online MVP:** `WebGLRenderer` + `EffectComposer`, using the exact bootstrap in `docs/visuals/agent-3d-coding-rules.md` §3 (Pillar 4 reference). The `WebGPURenderer` + TSL path in `docs/spec/tech-stack-spec.md` is deferred until TSL bloom/GTAO parity is confirmed. Materials stay written so they can move behind `createUnifiedColonyMaterial()`. *(Owner-confirmed 2026-10-29, D-22.)*
 - **Viewport (Pillar 4, `diorama-viewport-auditor`):** `PerspectiveCamera(28°)` at 40–45° elevation; ACES filmic, exposure 1.05–1.15; PMREM `RoomEnvironment`; warm key sun + cool hemisphere fill; a ±35 m shadow frustum that follows the camera's look-at target; `UnrealBloomPass(strength 0.45, radius 0.35, threshold 1.1)`; `FogExp2` matched to the background. Camera: pan (WASD / edge / drag), zoom (wheel, clamped), rotate in 90° steps (Q/E), "focus my hub" (Home key).
-- **Terrain (`shader-texture-tuning`, `procedural-texture-synthesis`):** hex terrain from the welcome snapshot, in chunks of 32×32 tiles with one merged `BufferGeometry` per chunk (≤ 16 visible chunks). Biome terrain shader with a splatmap `DataTexture` for terraform/moisture. Territory borders as an overlay pass using owner colours plus hatching patterns (colour-blind safe). Fog-of-war darkening for unrevealed tiles.
-- **Entities (Pillars 1 & 3, `procedural-kitbash-3d`):** one `InstancedMesh` per archetype (the MVP catalog in D-15: Miner/Builder/Combat T1, the T1 building set, the T2 Hub/Beacon/Solar/Mine, 1 fauna species, deposits). Each archetype is kitbashed (≥ 7 parts, a silhouette breaker, 60/30/10 materials, `aPartAnim` GPU animation) and uses `createUnifiedColonyMaterial()` with biome weathering. Per-instance attributes: `instanceMatrix`, `aStateColor` (faction tint, hp, powered/offline), `aAnimData` (`animPhase, speed, taskState, hitFlash`). Construction shows a scaffold/ghost variant via a shader uniform, not a separate mesh.
+- **Terrain (`shader-texture-tuning`, `procedural-texture-synthesis`):** hex terrain from the welcome snapshot, in chunks of 32×32 tiles with one merged `BufferGeometry` per chunk (≤ 16 visible chunks). Biome terrain shader with a splatmap `DataTexture` for terraform/moisture. Territory borders as an overlay pass using owner colours plus hatching patterns (colour-blind safe). Fog-of-war darkening is computed **on the client** from the full state (`CL-16`).
+- **Entities (Pillars 1 & 3, `procedural-kitbash-3d`):** one `InstancedMesh` per archetype (the MVP catalog in D-16: HQ, Harvester, Builder, Terraformer, Multitask T2, Recon, Tank, Artillery, Mobile Radar, the building set incl. Wall Gate, fauna, deposits). Each archetype is kitbashed (≥ 7 parts, a silhouette breaker, 60/30/10 materials, `aPartAnim` GPU animation) and uses `createUnifiedColonyMaterial()` with biome weathering. Per-instance attributes: `instanceMatrix`, `aStateColor` (faction tint, hp, powered/offline), `aAnimData` (`animPhase, speed, taskState, hitFlash`). Construction shows a scaffold/ghost variant via a shader uniform, not a separate mesh.
 - **Lighting & hazards (`planetary-lighting-and-lightning`):** the day/night cycle is derived deterministically from the server tick and `planet.dayLengthTicks` (contract change request). Lightning/meteor VFX are triggered by `event` messages, using a pooled `PointLight` set (≤ 8).
 - **External models (Pillar 2, `ai-mesh-pipeline`):** only `.glb` files that passed `sanitize-glb.mjs` may be loaded (< 3.5k tris, bottom-centre pivot, 512 px WebP). MVP needs none.
 - **Visual QA:** every new archetype or shader is checked in `/inspect` across `iso/front/side/top` (ground contact `minY == 0`, connected parts, bloom selectivity). The screenshots are attached to the task's PR.
+
+---
+
+## 8b. Minimap, global planet map & range rings (D-28, D-29)
+
+**Minimap (always on, HUD bottom-left).**
+- A 180 × 180 px chamfered plate; 140 px on phones in landscape.
+- It is a top-down render of the planet's hex grid from a cached 2D canvas. Tiles are coloured by state: Wild by terrain class, Prepared grey, Living green, Ridge/Moat dark, water blue. Territory borders show in each colony's colour.
+- Dots: own units and buildings in orange, other colonies in their colour, fauna red, the Orbital Guild ship blue.
+- Fog: the client draws it from the full state (CL-16) as unexplored black and explored dim.
+- The camera footprint shows as a white trapezoid.
+- **Click or tap** pans the camera there. **Drag** pans continuously. **Click the expand icon, or press `M`,** to open the global map. Alerts (`underAttack`, a raid incoming, a meteor) pulse at their position for 5 s.
+
+**Global planet map (fullscreen overlay).**
+- Opened from the minimap or `M`; closed with `Esc`, `M`, or a click on the close plate.
+- It shows the whole planet at fit-to-screen zoom, with wheel and pinch zoom from 1× to 4×.
+- **Layers** (toggle chips, orange when active): Territory · Terrain · Terraform % (heat map) · Resources/deposits · Units · Threats (nests, raid paths) · Market (Trade Hub stalls with price tags) · Walls.
+- Each colony shows its name, stage and truce state in a hover card.
+- **Click** a point to close the map and fly the camera there. **Shift-click** places a rally point or an attack-move for selected units.
+- It is rendered as a 2D canvas layer, not the 3D scene, so it stays cheap on phones. It is redrawn on state deltas at ≤ 2 Hz.
+
+**Range and view rings (battle v1, `UO-C-08`).**
+- Rings are ground decals in world space at `radius_tiles × 2 m`:
+  - weapon range: solid ring in faction orange;
+  - min range: dashed red ring;
+  - view: thin dashed white ring at 40 %;
+  - an enemy's weapon range on hover: red.
+- `Alt` shows rings for every own unit on screen. A turret's placement ghost shows its range.
+- They are drawn as one instanced ring mesh with a dash shader, so there is a single draw call for every ring.
+
+**Projectiles (client-only visuals).** The server sends `projectileFired {from, aim, kind, impactAt}`. The client animates:
+- bullets as tracers;
+- shells as parabolic arcs;
+- rockets as straight lines with a smoke trail;
+- lasers as a beam held for 0.1 s.
+
+At `impactAt` the client plays the impact flash plus an AoE decal. It never decides hits; the server's `hit`/`miss` comes in the next delta.
+
+## 8a. NEAR economy surfaces (D-26, summary)
+
+The chain stays invisible (F5): cargo reads as "cargo in orbit", trades as "contracts". No wallet UI appears except for account claim and staking.
+
+| Surface | Where | Feature |
+|---|---|---|
+| Trade Hub panel: Export / Import cargo, in-orbit balances, pending mints | Click a Trade Hub | F1 |
+| Market stall: order book, place/cancel order, hub fee slider (owner), price board, last trades | Trade Hub panel → Market tab; pushes `market.book` / `market.trade` | F2 |
+| Guild ship arrival toast + offers list with "Accept" | Toast + Trade Hub panel | F3 |
+| Away settings: away budget, `autoTrade` limits, director key status (allowance spent / revoke) | Settings → Away | F4 |
+| Social login; "Your colony account" with a claim button | First-run and Settings → Account | F5 |
+| Colony Deed card (live NFT preview, shareable) and staking panel (after settlement, wallet-signed) | Colony menu → Deed | F6 |
+| Planet council: treasury balance, proposals, vote | Planet menu → Council | F7 |
+| Bounty board: post, claim, mercenary contracts | Planet menu → Bounties | F8 |
+
+UI details follow the TA-14.8 / TA-11 tasks. All amounts are shown in game units; base-unit token strings are formatted by the client.
 
 ---
 
@@ -254,7 +308,8 @@ flowchart LR
 | Delta decode + apply | ≤ 2 ms p95 per message | Performance marks |
 | HUD React re-render | ≤ 10 Hz, ≤ 3 ms per commit | React Profiler in e2e perf run |
 | GPU memory | ≤ 256 MB | Estimated from textures/geometry |
-| Initial JS (gzip) | ≤ 450 KB for the game (three ≈ 160 KB), ≤ 50 KB for the landing | Build report |
+| Initial JS (gzip) | ≤ 450 KB for the game (three ≈ 160 KB); landing ≤ 50 KB **initial**, with the live hero diorama lazy-loaded as a separate chunk of ≤ 200 KB after first paint (D-22) | Build report |
+| Phone frame rate (D-22) | **≥ 30 FPS** on a reference phone (iPhone 13 / Pixel 7, landscape, DPR cap 1.25, `low` tier) with 150 buildings + 250 robots visible | e2e perf probe (device lab or BrowserStack) |
 | Boot → routed screen | ≤ 1.5 s p75 | Analytics timing (opt-in) / e2e |
 | `/` → first frame (returning) | ≤ 3 s p75 | e2e |
 
@@ -299,7 +354,12 @@ Supporting events (not part of the funnel): `ws_reconnect {code}`, `resync`, `cm
 
 - **Desktop first:** ≥ 1280×720, mouse + keyboard, Chrome/Edge/Firefox/Safari, last 2 major versions, WebGL2 required. Without WebGL2, show an explanatory screen.
 - **Tablets:** best effort (touch pan/zoom, tap to select).
-- **Phones (< 768 px):** the landing is fully responsive. The game shows the picker and a "Your colony is running. Continue on desktop" card with the latest `/me/home` status. No 3D on phones in MVP *(open question)*.
+- **Phones: full gameplay in landscape fullscreen (D-22).** The landing is fully responsive.
+  - In **portrait**, the game shows a "Rotate your phone" prompt with the latest `/me/home` status, so an away player can still glance at the colony.
+  - In **landscape**, it requests fullscreen (Fullscreen API; on iOS Safari, where element fullscreen is unavailable, it offers "Add to Home Screen" and runs as a standalone PWA) and runs the full 3D game on the `low` quality tier by default.
+  - Touch: one-finger pan, pinch zoom, two-finger rotate, tap to select, long-press for context. The four order menus become a bottom drawer.
+  - Notification deep links (CONTINUITY CT-37) open here.
+  - *Follow-up design needed:* touch layout for the HUD and queue panel, safe-area insets, the PWA manifest, and phone thermal/battery behaviour.
 - **WCAG 2.2 AA for HUD and menus:** text contrast ≥ 4.5:1; full keyboard navigation (Tab order, Esc closes modals, shortcuts listed in a `?` overlay); `aria-live="polite"` for event-log highlights and `assertive` for "colony under attack"; visible focus rings.
 - `prefers-reduced-motion`: disables camera easing, bloom pulsing and screen shake.
 - **Colour-blind safety:** territory owners use colour plus hatch pattern. Resource icons are never colour-only.
@@ -327,13 +387,14 @@ Supporting events (not part of the funnel): `ws_reconnect {code}`, `resync`, `cm
 | Rule | Test | Task |
 |---|---|---|
 | `CL-01`, `CL-13` | `frontend/game/src/boot/boot.test.ts` (each home state → route); e2e `w3-leave-and-return.spec.ts` | TA-11.1, TA-11.3, TA-13.3 |
-| `CL-02` | `planet-socket.test.ts › never reuses ticket across reconnects` | TA-11.4 |
+| `CL-02` | `planet-socket.test.ts › hello → join on every reconnect` | TA-11.4 |
 | `CL-03` | `api-client.test.ts › access token not persisted; refresh uses credentials include` | TA-11.1 |
 | `CL-04` | `decoder.test.ts › strict mode throws / warn mode drops` | TA-11.4 |
 | `CL-05` | `world-store.test.ts › HUD projection throttled ≤ 10 Hz` | TA-11.4, TA-11.7 |
 | `CL-06` | `/inspect` 4-view screenshots per archetype + `viewport.test.ts › renderer config matches Pillar 4` | TA-11.5, TA-11.6 |
 | `CL-07` | e2e perf probe: `draw calls ≤ 60` with the 300/500 scenario | TA-11.6, TA-13.3 |
-| `CL-08`, `CL-09` | `command-bus.test.ts › ack / reject / timeout / no resend on reconnect / token bucket` | TA-11.4, TA-11.8 |
+| `CL-08`, `CL-09` | `command-bus.test.ts › ack / reject / timeout / no resend on reconnect / debounce` | TA-11.4, TA-11.8 |
+| `CL-16` | `fog.test.ts › hidden foreign entities are not rendered; own vision reveals` | TA-11.5 |
 | `CL-10` | `planet-socket.test.ts › close code table` (one case per row of §6.3) | TA-11.4, TA-11.3 |
 | `CL-11` | `analytics.test.ts › no network + no anonId before consent`; e2e `consent.spec.ts` | TA-11.1, TA-12.2 |
 | `CL-12` | ESLint `no-restricted-globals: alert, confirm, prompt` | TA-11.1 |
@@ -342,10 +403,19 @@ Supporting events (not part of the funnel): `ws_reconnect {code}`, `resync`, `cm
 
 ---
 
-## 14. Open questions for the owner
+## 14. Owner decisions (2026-10-29 / 2026-10-30)
 
-1. **Renderer:** is WebGL2 + EffectComposer acceptable for the MVP (proven Pillar 4 recipe), with WebGPU/TSL as a follow-up? `tech-stack-spec.md` currently asks for `WebGPURenderer` first.
-2. **Phones:** should phones get a 2D "colony status" view (resources, events, AI decisions) so players can check on an away colony, or is a "continue on desktop" card enough for MVP?
-3. **Analytics backend:** use a first-party `core` endpoint plus a Postgres table (as specified), or self-host Plausible/Umami on an extra subdomain? The first option avoids another service. The second gives dashboards for free.
-4. **Spectating:** can players watch sealed planets they are not on (read-only socket)? This is not in scope now, but it affects the ticket claims.
-5. **Hero on landing:** live mini-diorama (Three.js, about 160 KB) or a pre-rendered loop video (lighter, better LCP)? The spec assumes the video plus a static poster.
+| # | Question | Decision | Ref | Consequence for this spec |
+|---|---|---|---|---|
+| 1 | Renderer | **WebGL2 + EffectComposer** for MVP; WebGPU/TSL later | D-22 | §8 confirmed |
+| 2 | Phones | **Full gameplay in landscape fullscreen**; portrait shows a rotate prompt | D-22 | §11 rewritten; phone perf row in §9 |
+| 3 | Analytics backend | **First-party `core` endpoint + Postgres** | — | §10 unchanged |
+| 4 | Spectating | **Not in v1** | D-22 | `join` only for your own colony's planet |
+| 5 | Landing hero | **Live Three.js mini-diorama**, lazy-loaded after a static poster | D-22 | §9 landing JS row; landing LCP uses the poster |
+| — | AI rationale in the HUD | **Yes**, "Director: …" lines in the event log | D-09 | HUD event log (TA-11.7) |
+| — | Party join (needed for launch) | Party invite and party queue UI in the picker | D-22 | MATCHMAKING MM-55; follow-up UI design |
+| — | Notifications | Web Push permission prompt and Telegram link in Settings | D-17 | CONTINUITY §5a |
+| — | Player names | Generated by default, optional rename (≤ 32 chars) | — | Settings / first-run |
+| — | One app, one WS endpoint, no tickets | **Yes** | D-24 | §3.2, §6 rewritten |
+| — | Anti-cheat | **None**: full state; fog drawn on the client | D-25 | `CL-16`, `CL-09` |
+| — | NEAR economy | F1–F8 surfaces | D-26 | §8a |

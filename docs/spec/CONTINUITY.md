@@ -1,7 +1,7 @@
 # TerraAgent — Continuity Specification (Offline Play, Resume, Failover)
 
-> **Status:** Draft v0.1 (2026-10-29) — for owner review.
-> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, §9, §10, §14, §15 · **Decisions:** D-01, D-02, D-05, D-13 · **Related:** [`MATCHMAKING.md`](./MATCHMAKING.md)
+> **Status:** v0.2 (2026-10-30). This is the simplified one-app host (D-24). A restart resumes from the last snapshot and fast-runs the missed time. There is no failover, lease or drain machinery.
+> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, §9, §10, §14, §15 · **Decisions:** D-17, D-24, D-25 · **Related:** [`MATCHMAKING.md`](./MATCHMAKING.md)
 > **Plan:** [`TA-08`](../plan/issues/TA-08-continuity-offline-and-resume.md) · [`TA-04.4`/`TA-04.5`](../plan/issues/TA-04-core-api-auth-and-home.md) · [`TA-07.3`/`TA-07.5`/`TA-07.6`](../plan/issues/TA-07-planet-worker.md) · [`TA-05.5`](../plan/issues/TA-05-matchmaking-and-planet-lifecycle.md) · [`TA-11.3`](../plan/issues/TA-11-game-client.md)
 
 ---
@@ -15,7 +15,7 @@ The owner's promise: **the colony works without the player**, and **the player c
 3. What the colony may and may not do while the player is away (**away-mode autopilot safety rules**, §4).
 4. What the player is told on return (**away digest**, §5).
 5. How a reconnect/resume works, including multi-device takeover (§6).
-6. How a planet survives a worker crash or deploy with no lost commands (**failover & drain**, §7).
+6. How a planet survives an app crash or deploy (**restart & fast-run**, §7).
 
 ---
 
@@ -31,14 +31,13 @@ The owner's promise: **the colony works without the player**, and **the player c
 | `openTicket` — ticket in `QUEUED`/`RESERVED`/`SPAWNING` | `core.match_ticket` |
 | `lastColony` — most recent colony in a terminal state (`ELIMINATED`/`TRANSFERRED`/`RETIRED`) and its planet state | `core.colony`, `core.planet` |
 | `everHadColony` | `core.colony` count > 0 |
-| `endpoint` — `{workerId, wsUrl}` for the live colony's planet, or `null` | worker directory (KV, TA-04.5) |
 | `away` — `{since, durationS}` if last presence is `away` | `core.colony.last_seen_at` + presence event (TA-08.4) |
 
 ### 2.2 Resolution table (first match wins)
 
 | # | Condition | State | Payload |
 |---|---|---|---|
-| H1 | `liveColony.state = ALIVE` | `ACTIVE` | `colony`, `planet`, `ws` (or `null` + `retryAfterMs: 2000` if no lease), `ticket` (if `ws`), `awaySummary?` |
+| H1 | `liveColony.state = ALIVE` | `ACTIVE` | `colony`, `planet`, `awaySummary?` (the client then sends `join {planetId}` on `/ws`) |
 | H2 | `liveColony.state = FOUNDING` or `openTicket` exists | `QUEUED` | `ticketId`, `state`, `position`, `etaS`, `planetId?` |
 | H3 | `lastColony.state = ELIMINATED` and no newer ticket | `ELIMINATED` | `recap` (planet, survivedS, peak stats, cause), `recapSeen`, `planets` (picker data) |
 | H4 | `lastColony`'s planet `ENDED`/`ARCHIVED` while colony survived (`RETIRED` reason `planet_ended`) | `PLANET_ENDED` | `results` (`core.planet_result`), `recapSeen`, `planets` |
@@ -62,9 +61,9 @@ stateDiagram-v2
 | ID | Rule |
 |---|---|
 | `CT-01` | The client MUST route on `home.state` only: `NEW`/`ELIMINATED`/`PLANET_ENDED` → `/planets` (recap/results modal first if `recapSeen=false`), `QUEUED` → `/planets` with queue panel, `ACTIVE` → `/play` (dive straight in). |
-| `CT-02` | `ACTIVE` with `ws != null` MUST include a fresh single-use planet ticket so resume costs **one** REST round-trip + one WS connect. |
+| `CT-02` | Resume costs **one** REST round-trip plus one WS `hello` → `join`. There are no planet tickets (D-24). |
 | `CT-03` | `resolveHome` is a pure function with a table-driven unit test covering H1..H6 and every combination of facts. |
-| `CT-04` | `/v1/me/home` p95 ≤ **80 ms** server time (excluding the optional `awaySummary` call, budget 300 ms, omitted on timeout). Rate limit 30/min/player. |
+| `CT-04` | `/v1/me/home` p95 ≤ **80 ms** server time (excluding the optional `awaySummary` call, budget 300 ms, omitted on timeout). |
 | `CT-05` | `POST /v1/me/recap/seen {colonyId}` sets `recapSeenAt`; the recap is still available via `GET /v1/me/colonies/:id/recap`. |
 
 ---
@@ -73,11 +72,11 @@ stateDiagram-v2
 
 | ID | Rule |
 |---|---|
-| `CT-10` | The worker owning the planet is the presence authority. On `welcome` it writes `{ns}_presence[colonyId] = {connected:true, since, workerId}`; on socket close it writes `connected:false` and starts an away timer. |
-| `CT-11` | A colony is **away** when it has had **no** game socket for `AWAY_AFTER_S` (60 s). Reconnecting within 60 s is a "blip": no away transition, no digest. |
-| `CT-12` | Presence changes that affect gameplay MUST enter the deterministic log: the worker appends `core.presence { colonyId, away: true|false }` to `{NS}_PLANET_CMDS` when the colony becomes away / comes back. Replays therefore reproduce away-mode behaviour exactly. |
-| `CT-13` | The worker publishes `{ns}.planet.{id}.evt.presence { colonyId, state: 'connected'|'away', at }`. Core consumes it and updates `core.colony.last_seen_at` (on `away`, `last_seen_at = disconnect time`) and `core.player.last_seen_at`. |
-| `CT-14` | After failover the new worker initialises every colony as `connected:false` with `since = restore time`; colonies already away (per restored sim state) stay away; colonies that were connected become away only after `AWAY_AFTER_S` without reconnect. |
+| `CT-10` | The `game` module is the presence authority. It holds presence in memory: `join` marks the colony connected; socket close marks it disconnected and starts an away timer. |
+| `CT-11` | A colony is **away** when it has had **no** planet socket for `AWAY_AFTER_S` (60 s). Reconnecting within 60 s is a "blip": no away transition, no digest. |
+| `CT-12` | Presence changes that affect gameplay enter the sim as a command: `system.presence { colonyId, away }` when the colony becomes away or comes back. |
+| `CT-13` | On every presence change, the `game` module updates `core.colony.last_seen_at` and `core.player.last_seen_at`. |
+| `CT-14` | **Planet stepping follows presence (D-24).** While at least one colony on the planet has a connected socket, the planet steps at 5 TPS. When none has, it steps coarse (1 step per second, `dt = 5`). After an app restart every colony starts disconnected; colonies that were away stay away. |
 
 ---
 
@@ -85,7 +84,9 @@ stateDiagram-v2
 
 Autonomy is the design (the colony is always run by the rule engine following player priorities). "Away mode" only **narrows** what automated actors may do when no human is watching, so the player never returns to a colony that was gambled away.
 
-**Actors:** rule engine (in `@terra/sim`, every tick), AI director (`ai-orchestrator` directives as `cmd`), automated trade acceptance (`near-gateway`/core trades).
+> **Hard mode (D-17).** Away colonies **can be eliminated** by other players, fauna or the environment. The away rules stop automation from *gambling* the colony away; they do not guarantee survival. Automation therefore puts defense and repair first (uncapped, AW-20), and the player is notified of danger in time to come back (§5a).
+
+**Actors:** the rule engine (in `@terra/sim`, every step), the AI director (`ai` module directives as commands), and automated trades (`near` module, `autoTrade` and the director key F4).
 
 **Player setting** (`setAutopilot` command): `director` (default: rule engine + AI director) · `rules_only` (rule engine only; AI requests are not sent for this colony). Both are subject to the rules below while away.
 
@@ -94,25 +95,25 @@ Autonomy is the design (the colony is always run by the rule engine following pl
 | `AW-01` | keep executing the player's task queue and last priorities (rule engine). |
 | `AW-02` | repair damaged buildings, power lines and robots; rebuild **destroyed** buildings that existed when the player left (same tier, same tile) if affordable. |
 | `AW-03` | build/upgrade defenses (turrets, shields) and power capacity in response to `attack`/`brownout` events, within the spend cap AW-20. |
-| `AW-04` | produce T1 robots up to the supply cap to replace losses. |
-| `AW-05` | shed load per the brownout priority order (`colony-economy-and-buildings-spec.md` §1.2). |
+| `AW-04` | produce worker and combat units up to the supply cap to replace losses (types the colony already owns, ≤ current `unlockStage`). |
+| `AW-05` | shed load per the brownout priority order (`docs/game/colony-economy-and-buildings-spec.md` §1.2). |
 | `AW-06` | accept AI director `setPriorities` within the **guard band**: each weight may move at most ±1 step from the player's last explicit setting. |
 | `AW-07` | claim unowned territory with already-queued beacons. |
 
 | ID | While away the colony **MUST NOT** … |
 |---|---|
 | `AW-10` | demolish or downgrade any player-placed building. |
-| `AW-11` | start offensive PvP (raids on other colonies). Defensive combat and counter-attacking units inside own territory are allowed. |
+| `AW-11` | start offensive PvP (raids on other colonies), **unless** the player opted in for this colony before leaving (`setAutopilot.awayRaids = true`, default `false`; AI_ORCHESTRATOR Q3). Defensive combat and counter-attacking units inside own territory are always allowed. |
 | `AW-12` | launch the rocket / start a planet transfer (needs explicit player confirmation; a `rocket.ready` alert is put in the digest instead). |
-| `AW-13` | accept, propose or settle trades, unless the player enabled `autoTrade` with explicit per-resource limits before leaving. |
+| `AW-13` | accept, propose or settle trades **outside the player's `autoTrade` limits**. `autoTrade` **ships in MVP**: per resource, the max give per trade and per away session, the min stock floor, and allowed partners (truce partners / anyone). Truce offers may be proposed or accepted while away; cancelling a truce never happens (units spec `UO-DIP-05`). |
 | `AW-14` | change `setAutopilot`, abandon/retire the colony, or change anything account- or chain-related. |
 | `AW-15` | build T3 structures or start projects whose cost exceeds AW-20 (big strategic bets wait for the player). |
 
 | ID | Enforcement |
 |---|---|
-| `AW-20` | **Spend cap:** a single automated directive (AI) or rebuild batch may not spend more than **40 %** of the current stock of any resource; total automated spending on non-repair items while away is capped at **60 %** of the stock the colony had when it went away, per resource, per away session. |
-| `AW-21` | The policy is a **pure, versioned function** `awayPolicy(view, command) → allow | reject(reason)` evaluated on the worker inside the deterministic apply path at the tick-marked tick (same inputs on replay ⇒ same decision). `AWAY_POLICY_VERSION` is stored in snapshots; changing it is a sim-compatibility change. |
-| `AW-22` | Rejected automated commands produce `cmd.reject {code:'away_policy', rule:'AW-1x'}` in the decision log and count in `away_policy_rejections_total{rule}`; the AI orchestrator receives the rejection so it does not retry the same directive. |
+| `AW-20` | **Away budget (player-set, D-17):** before leaving (or at any time), the player sets an away budget in the HUD, as a % of stock per resource, defaulting to the old caps: **40 %** per automated directive and **60 %** of the away-start stock per away session. Spending on **defense and repair is never capped**: repairs, rebuilding destroyed defenses, turrets, walls and combat units within the supply cap. Hard-mode losses must not come from a budget the player forgot to raise. `autoTrade` limits (AW-13) are separate. |
+| `AW-21` | The policy is a **pure, versioned function** `awayPolicy(view, command) → allow | reject(reason)` evaluated inside the sim's `commands` system when a command is applied. `AWAY_POLICY_VERSION` is stored in snapshots. |
+| `AW-22` | Rejected automated commands produce `cmd.reject {code:'away_policy', rule:'AW-1x'}` in the decision log and count in `away_policy_rejections_total{rule}`; the `ai` module receives the rejection so it does not retry the same directive. |
 | `AW-23` | Player commands are never subject to away policy (the player is, by definition, present). |
 
 ---
@@ -121,9 +122,9 @@ Autonomy is the design (the colony is always run by the rule engine following pl
 
 | ID | Rule |
 |---|---|
-| `CT-30` | When a colony becomes away (CT-11), the worker opens a digest row in `world.planet_event_digest` with a **baseline**: resources, energy balance, building counts by type, robot counts, territory tiles, terraform %. |
-| `CT-31` | While away, the worker folds the colony's significant events from `{NS}_PLANET_EVENTS` into the row (counters + capped lists, max 20 items per list), flushed with each snapshot (30 s), so the digest survives failover. |
-| `CT-32` | On reconnect after ≥ `AWAY_AFTER_S`, the worker closes the digest (end baseline, `durationS`) and sends it in `welcome.awayDigest`. Core may expose a headline `awaySummary` in `/me/home` via `{ns}.planet.{id}.ctl getAwayDigest { colonyId, headline: true }` (300 ms budget). |
+| `CT-30` | When a colony becomes away (CT-11), the `game` module opens a digest row in `world.planet_event_digest` with a **baseline**: resources, energy balance, building counts by type, robot counts, territory tiles, terraform %. |
+| `CT-31` | While away, the `game` module folds the colony's significant events from the event bus into the row (counters plus capped lists, max 20 items per list). The row is flushed with each snapshot (60 s), so the digest survives a restart. |
+| `CT-32` | On reconnect after ≥ `AWAY_AFTER_S`, the `game` module closes the digest (end baseline, `durationS`) and sends it in `welcome.away`. `/me/home` reads the headline `awaySummary` from the digest row. |
 | `CT-33` | Digests are kept for **7 days**, then purged. Only the latest unseen digest per colony is delivered; older unseen ones are merged into it. |
 
 ```ts
@@ -142,6 +143,19 @@ type AwayDigestV1 = {
 };
 ```
 
+- `CT-34` **Away story (flag `AWAY_STORY_ENABLED`, default on in prod).** On digest close, the `ai` module may make one LLM call (`trigger: away.story`) that turns the digest into one paragraph of at most 600 characters. It is shown above the structured digest. The call counts against the daily AI budget, and the structured digest is always shown even if the call fails.
+
+## 5a. Notifications (D-17)
+
+| ID | Rule |
+|---|---|
+| `CT-35` | Channels in MVP: **Web Push** (service worker + VAPID; desktop and Android; iOS only for an installed PWA) and a **Telegram bot** (the player links it once with a one-time code from the HUD). Email is out of scope. |
+| `CT-36` | Notified events (per colony, player-configurable, all on by default): `under_attack` (debounced 10 min), `colony_critical`, `colony_eliminated`, `energy_collapse`, `rocket_ready`, `truce_offered`, `trade_offer` (only when it is outside `autoTrade`), `away_budget_exhausted`. |
+| `CT-37` | A notification deep-links to `game.terraagent.com/c/{colonyId}`. On a phone this opens the full game in landscape fullscreen (CLIENT, D-22). |
+| `CT-38` | Delivery runs in the `notify` module from the event bus, idempotent per `(colonyId, eventId, channel)`. There is no notification while the player is connected. |
+
+Follow-up design needed: the Telegram link flow and bot hosting, and VAPID key management. The `core.notification_subscription` table is sketched in DATA_MODEL.
+
 ---
 
 ## 6. Resume sequence & multi-device takeover
@@ -149,70 +163,36 @@ type AwayDigestV1 = {
 ```mermaid
 sequenceDiagram
   participant G as Game (tab B)
-  participant C as core
-  participant W as planet-worker
+  participant A as app
   participant O as Game (tab A, old)
-  G->>C: GET /v1/me/home
-  C-->>G: ACTIVE {ws, ticket(jti, 60 s), awaySummary?}
-  G->>W: WS /w/{workerId}  hello{ticket}
-  W->>W: verify EdDSA + aud=planet + planet leased here + jti unused
-  W->>O: bye 4001 replaced (close)
-  W-->>G: welcome {snapshot, tick, awayDigest?}
-  W->>W: presence connected; core.presence{away:false} if was away
-  Note over G,W: on any close (except 4010/4011): backoff 0.5 s→10 s, then GET /v1/me/home again
+  G->>A: GET /v1/me/home
+  A-->>G: ACTIVE {colony, planet, awaySummary?}
+  G->>A: WS /ws  hello{accessToken} → join{planetId}
+  A->>O: bye 4001 replaced (close)
+  A-->>G: welcome {state, tick, away?}
+  A->>A: presence connected; system.presence{away:false} if it was away
+  Note over G,A: on any close (except 4001/4010/4011): backoff 0.5 s→10 s, then GET /v1/me/home again
 ```
 
 | ID | Rule |
 |---|---|
-| `CT-40` | Tickets are single use (`jti` remembered 120 s on the worker). Every reconnect MUST go through `/v1/me/home` (or `POST /v1/me/ticket`, which returns only `{ws, ticket}` for the live colony). |
-| `CT-41` | One game socket per colony. A valid `hello` for a colony that already has a socket **takes over**: old socket gets `bye 4001 replaced`. The replaced client MUST NOT auto-reconnect; it shows "Opened on another device/tab — Resume here". |
-| `CT-42` | If the planet has no lease (failover in progress), home returns `ACTIVE` with `ws: null, retryAfterMs: 2000`; the client shows "Reconnecting to planet…" and retries. |
-| `CT-43` | Close codes drive client behaviour: `4009 lease_lost`, `4012 server_draining` → immediate re-home (no backoff for first try); `4010 planet_ended` → home (`PLANET_ENDED`); `4011 colony_eliminated` → home (`ELIMINATED`); `4003 forbidden` → refresh auth then re-home; `4008 rate_limited` → backoff ≥ 5 s. |
-| `CT-44` | Commands the client sent but did not see `cmd.ack` for before a disconnect are **not** resent automatically (they may have been applied). The client re-reads state from `welcome` and the HUD shows pending items as "unconfirmed". |
-| `CT-45` | Resume target: **≤ 2 s** from page load to first rendered frame of the planet on a warm cache (p75, measured by `client.resume_ms`). |
+| `CT-40` | Every reconnect goes through `/v1/me/home`, then `hello` → `join`. |
+| `CT-41` | One planet socket per colony. A `join` for a colony that already has a socket **takes over**: the old socket gets `bye 4001 replaced`. The replaced client MUST NOT auto-reconnect; it shows "Opened on another device/tab — Resume here". |
+| `CT-43` | Close codes drive client behaviour: `4012 server_restarting` → reconnect with backoff; `4010 planet_ended` → home (`PLANET_ENDED`); `4011 colony_eliminated` → home (`ELIMINATED`); `4003 forbidden` → refresh auth, then re-home. |
+| `CT-44` | Commands the client sent without seeing `cmd.ack` before a disconnect are **not** resent automatically. The client re-reads state from `welcome`, and the HUD shows them as "unconfirmed". |
+| `CT-45` | Resume target: **≤ 2 s** from page load to the first rendered frame of the planet on a warm cache (p75, measured by `client.resume_ms`). |
 
 ---
 
-## 7. Failover & graceful drain
-
-### 7.1 Crash failover
-
-```mermaid
-sequenceDiagram
-  participant W1 as worker pw-1 (dies)
-  participant K as NATS KV
-  participant S as core scheduler (leader)
-  participant W2 as worker pw-2
-  participant P as Postgres
-  participant J as JetStream PLANET_CMDS
-  W1--xK: heartbeats & lease renewals stop
-  Note over K: lease TTL 15 s expires
-  S->>K: reconcile (≤ 5 s): planet has no lease
-  S->>W2: worker.pw-2.ctl assignPlanet {restoreFrom: snapshot}
-  W2->>K: create lease (epoch+1)
-  W2->>P: load latest snapshot (tick T, hash H)
-  W2->>J: replay cmds per tick markers with tick > T (ordered)
-  W2->>W2: verify hash at last checkpoint == recorded
-  W2-->>S: loaded {epoch, tick, stateHash}
-  Note over W2: clients re-home → ticket → connect
-```
+## 7. Restart & deploy (D-24)
 
 | ID | Rule |
 |---|---|
-| `CT-50` | **RPO = 0 commands.** A command is acked to its producer (client `cmd.ack`, core, AI) only after JetStream `PubAck`. The tick-marked tick is persisted with the command (tick marker record in the stream, TA-07.4) before it is applied. |
-| `CT-51` | **RTO ≤ 30 s** (p95) from worker death to the planet ticking again: lease expiry ≤ 15 s + detection ≤ 5 s + assign ≤ 1 s + restore/replay ≤ 5 s (≤ 300 ticks since snapshot at 10 TPS) + slack. Measured by `sched_failover_seconds`. |
-| `CT-52` | **Fencing:** every lease has a monotonically increasing `epoch`. Snapshot writes are conditional (`INSERT … WHERE epoch >= current planet epoch`); a worker whose lease renewal has not succeeded within `LEASE_TTL_S − 2×HEARTBEAT_S` (5 s) MUST stop ticking that planet and close its sockets with `4009`. No two workers ever tick the same planet past a stale epoch. |
-| `CT-53` | **Determinism check:** after replay the restored `stateHash` at the last recorded checkpoint MUST equal the recorded one; mismatch ⇒ planet `health=FAULTED`, restore from the previous snapshot is attempted once, alert `planet.desync`. |
-| `CT-54` | Wall-clock time lost during failover is **not** fast-forwarded (D-13): the planet resumes at the tick it reached. Away digests and lifetimes use wall-clock so the player sees "away 3 h" correctly. |
-
-### 7.2 Graceful drain (deploys)
-
-| ID | Rule |
-|---|---|
-| `CT-60` | `worker.{id}.ctl drain` (admin or deploy script) sets `draining=true` in the worker heartbeat; the scheduler stops placing planets on it. |
-| `CT-61` | For each planet, sequentially in batches of 5: stop command intake → finish current tick → snapshot at tick T → publish `planet.{id}.evt.handoff {tick: T}` → **delete** the lease key (no TTL wait) → close sockets `4012 server_draining`. |
-| `CT-62` | The scheduler sees the missing lease (KV watch) and places the planet immediately; the new worker restores from the T snapshot with zero commands to replay. Commands published during handoff wait in JetStream and are applied by the new owner. |
-| `CT-63` | Targets: per-planet handoff ≤ 3 s; whole-worker drain (50 planets) ≤ 60 s; zero lost commands (`deploy:drain` asserts command counts before/after). |
+| `CT-50` | **Snapshots.** Every live planet is snapshotted every **60 s** and on graceful shutdown (SIMULATION `SIM-H-06`). Commands are not durable: a crash loses at most the player actions since the last snapshot (≤ 60 s). |
+| `CT-51` | **Restart fast-run.** On start the app loads each live planet's latest snapshot. It runs the missed wall-clock time (`now − savedAt`, capped at `RESTART_FASTRUN_MAX_H` = 24 h) in coarse steps, faster than real time, then resumes. Away digests, lifetimes and seal/end timers use wall clock. |
+| `CT-52` | **Deploy.** Stop intake → snapshot all planets (graceful shutdown, budget 30 s) → start the new version → fast-run the gap. Clients get `4012 server_restarting` and reconnect. There is no drain, lease handover or second worker. |
+| `CT-53` | **Fault.** A planet whose `step()` throws is quarantined and retried once from its latest snapshot (SIMULATION `SIM-H-08`). Other planets keep running. |
+| `CT-54` | **Hard mode during downtime (D-17).** The fast-run applies the same rules as live play, so a colony can take damage during missed time. Notifications for events found during the fast-run are sent once it completes, deduplicated per event. |
 
 ---
 
@@ -221,12 +201,11 @@ sequenceDiagram
 | Key | Default | Source |
 |---|---|---|
 | `AWAY_AFTER_S` | 60 | ARCHITECTURE §15 |
-| `PLANET_TICKET_TTL_S` | 60 | ARCHITECTURE §15 |
-| `LEASE_TTL_S` / `HEARTBEAT_S` | 15 / 5 | ARCHITECTURE §15 |
-| `SNAPSHOT_EVERY_TICKS` | 300 (30 s) | ARCHITECTURE §15 |
-| Command stream max age | 48 h | ARCHITECTURE §6 |
+| `SNAPSHOT_EVERY_S` | 60 | ARCHITECTURE §15 |
+| `RESTART_FASTRUN_MAX_H` | 24 | ARCHITECTURE §15 |
+| Active / coarse stepping | 5 TPS / 1 step per s with `dt = 5` | ARCHITECTURE §15 |
 | Digest retention | 7 d | local |
-| Away spend caps (AW-20) | 40 % per directive, 60 % per away session | local |
+| Away budget defaults (AW-20) | 40 % per directive, 60 % per away session; player-adjustable; defense/repair uncapped | D-17 |
 | Client reconnect backoff | 0.5 s → 10 s cap, jitter ±20 % | ARCHITECTURE §12 |
 
 ---
@@ -235,18 +214,16 @@ sequenceDiagram
 
 | Name | Type | Meaning |
 |---|---|---|
-| `presence_colonies{state}` | gauge (worker) | connected / away colonies |
+| `presence_colonies{state}` | gauge (game) | connected / away colonies |
 | `presence_transitions_total{to}` | counter | connected / away / blip |
 | `away_policy_rejections_total{rule,actor}` | counter | AW-22 |
 | `away_digest_delivered_total` / `away_digest_bytes` | counter / histogram | CT-32 |
-| `home_requests_total{state}` | counter (core) | distribution of home states |
-| `home_resolve_seconds` | histogram (core) | CT-04 |
-| `resume_ticket_issued_total{result}` | counter (core) | `ok` / `no_lease` |
-| `ws_takeover_total` | counter (worker) | CT-41 |
-| `sched_failover_seconds` | histogram (core) | CT-51 |
-| `planet_restore_seconds`, `planet_replay_commands` | histogram (worker) | restore cost |
-| `planet_desync_total` | counter (worker) | CT-53 |
-| `drain_handoff_seconds` | histogram (worker) | CT-63 |
+| `home_requests_total{state}` | counter (api) | distribution of home states |
+| `home_resolve_seconds` | histogram (api) | CT-04 |
+| `ws_takeover_total` | counter (game) | CT-41 |
+| `restart_fastrun_seconds{planet}` | histogram (game) | CT-51 |
+| `planet_faulted_total` | counter (game) | CT-53 |
+| `notify_sent_total{channel,kind}` | counter (notify) | CT-35..38 |
 | `client.resume_ms` | client beacon | CT-45 |
 
 ---
@@ -256,21 +233,27 @@ sequenceDiagram
 | Rule | Test | Task |
 |---|---|---|
 | CT-01..05 | `resolve-home.spec.ts` (table), `me-home.int-spec.ts` | TA-04.4, TA-08.4 |
-| CT-10..14 | `presence.int-spec.ts` (blip < 60 s, away ≥ 60 s, failover init) | TA-08.1 |
-| AW-01..23 | `away-policy.spec.ts` (one case per rule), `away-replay.spec.ts` (replay yields same decisions) | TA-08.2 |
-| CT-30..33 | `away-digest.int-spec.ts` (fold, flush, failover survival, merge) | TA-08.3 |
-| CT-40..44 | `resume-flow.int-spec.ts`, worker `takeover.int-spec.ts` | TA-08.4, TA-07.3 |
+| CT-10..14 | `presence.int-spec.ts` (blip < 60 s, away ≥ 60 s, active/coarse switch, restart init) | TA-08.1 |
+| AW-01..23 | `away-policy.spec.ts` (one case per rule), `away-reproducible.spec.ts` (same inputs give the same decisions) | TA-08.2 |
+| CT-30..33 | `away-digest.int-spec.ts` (fold, flush, restart survival, merge) | TA-08.3 |
+| CT-40..44 | `resume-flow.int-spec.ts`, `takeover.int-spec.ts` | TA-08.4, TA-07.3 |
 | CT-45 | e2e `@w3 resume` journey with timing assertion | TA-11.3, TA-13.3 |
-| CT-50..54 | `tests/failover` kill -9 suite (hash equality, RTO) | TA-07.6, TA-05.5, TA-13.4 |
-| CT-60..63 | `drain.int-spec.ts`, `deploy:drain` command-count assertion | TA-07.5, TA-02.5 |
+| CT-50..54 | `restart-fastrun.int-spec.ts` (kill -9, restart, gap simulated, ≤ 60 s command loss) | TA-07 |
 | Elimination / end | `elimination-flow.int-spec.ts`, `planet-end-flow.int-spec.ts` | TA-08.5 |
 
 ---
 
-## 11. Open questions for the owner
+## 11. Owner decisions (2026-10-29 / 2026-10-30)
 
-- **Q1 — AI while away.** Is the AI director allowed to act while the player is away (current: yes, within AW rules), or should away colonies be rules-only to save tokens?
-- **Q2 — Spend caps.** Are 40 % / 60 % right, or should the player set an "away budget" in the HUD before leaving?
-- **Q3 — Auto-trade.** Ship `autoTrade` (AW-13 exception) in MVP or leave trades strictly manual?
-- **Q4 — Notifications.** Push/email/Telegram on "under attack" or "rocket ready" while away? (Out of scope; would need a notification service and player contact.)
-- **Q5 — Digest narrative.** Add a one-paragraph LLM-written story of the away period (one extra `glm-5.3` call per return)?
+| # | Question | Decision | Ref | Consequence for this spec |
+|---|---|---|---|---|
+| Q1 | AI director while away | **Yes**, within the AW rules | D-17 | AW-06 unchanged |
+| Q2 | Spend caps | **Player-set away budget** (defaults 40 % / 60 %), defense and repair uncapped | D-17 | AW-20 rewritten |
+| Q3 | Auto-trade | **Ships in MVP** | D-17 | AW-13 rewritten |
+| Q4 | Notifications | **Web Push + Telegram bot** in MVP | D-17 | New §5a (CT-35..38) |
+| Q5 | Away story | **Yes**, behind a flag | D-17 | CT-34 |
+| — | Away-mode raids | Opt-in per colony, default off | D-17 | AW-11 |
+| — | Offline difficulty | **Hard**: colonies can be eliminated while away | D-17 | §4 note |
+| — | Failover downtime | ~~Fast-forwarded by catch-up~~ → restart from snapshot + coarse fast-run (≤ 24 h) | D-20 → D-24 | §7 rewritten |
+| — | One app, simplified host | **Yes**: no leases, drain or tickets; presence in memory | D-24 | §3, §6, §7 |
+| — | Anti-cheat / anti-bot | **None**; `/me/home` has no rate limit | D-25 | CT-04 |

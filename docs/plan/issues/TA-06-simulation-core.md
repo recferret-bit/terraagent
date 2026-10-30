@@ -1,7 +1,7 @@
 # Epic TA-06 — Simulation Core (`@terra/sim`)
 
 > **Orchestrator:** [`EXECUTION_ORCHESTRATOR.md`](../EXECUTION_ORCHESTRATOR.md) · **Status Board:** [`STATUS.md`](../STATUS.md)
-> **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §9, §15 · [`SIMULATION.md`](../../spec/SIMULATION.md) (all sections) · [`DECISIONS.md`](../../spec/DECISIONS.md) D-01, D-13, D-15 · Gameplay: [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md), [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md)
+> **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §9, §15 · [`SIMULATION.md`](../../spec/SIMULATION.md) (all sections) · [`DECISIONS.md`](../../spec/DECISIONS.md) D-01, D-13, D-15 · Gameplay: [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md), [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md)
 > **Lane:** `L2` · **Owned paths:** `shared/sim/**` except `shared/sim/src/api.ts` (lead) · W5 extra: `tests/failover/**` (TA-13.4, separate epic)
 
 ## Overview
@@ -17,7 +17,7 @@
   - Scenario `unattended-24h-compressed`: a colony left alone with default priorities grows (≥ 8 buildings, ≥ 6 robots, positive energy at night) and survives default hazards/fauna.
   - Snapshot ≤ 512 KB compressed; round-trip property test 1 000/1 000.
 - **In scope:** kernel, PRNG, fixed-point math, SoA store, hex grid + generator, territory, economy (D-15 catalog), power grid, robots + pathfinding, rule engine + priorities + directives, hazards + fauna, PvP raids, rocket departure, codec, view/diff, events.
-- **Out of scope:** networking, persistence, timers (TA-07); presence policy (TA-08.2; the worker issues `core.presence`); rendering (TA-11); T2+ content beyond D-15; per-pylon load routing; terraforming; dormant fast-forward (D-13).
+- **Out of scope:** networking, persistence, timers (TA-07); presence policy (TA-08.2; the worker issues `core.presence`); rendering (TA-11); dormant fast-forward (D-13). **D-16 / D-21 (2026-10-29):** ground prep, terraforming, walls, roster, queue, progression and diplomacy are in [`TA-14`](./TA-14-units-orders-progression.md); per-pylon load is TA-06.12; Settled colony is TA-06.13.
 - **Key risks:** hidden non-determinism (floats, Map order, `Math.sin`) → lint + integer-only canonicalizer + cross-realm determinism leg; perf blow-ups in pathfinding/grid rebuild → budgets + `sim:bench` in every task's Verify; balance making unattended colonies die → `unattended-24h-compressed` scenario as a gate.
 
 ## Architecture overview
@@ -51,12 +51,14 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 | `TA-06.9` | Snapshot codec, fog-of-war view & delta diff | W1 / L2 | TA-06.1, TA-06.2 |
 | `TA-06.3` | Territory claim & immutable border collision | W2 / L2 | TA-06.2, TA-06.9 |
 | `TA-06.4` | Economy: resources, storage caps, MVP building catalog, construction & upgrades | W2 / L2 | TA-06.3 |
-| `TA-06.6` | Robots: Miner/Builder/Combat T1, supply cap, task queue, pathfinding | W2 / L2 | TA-06.4 |
+| `TA-06.6` | Units & production (D-16): HQ, workers, MVP combat units, Hub/Factory production, supply cap, wall-aware pathfinding | W2 / L2 | TA-06.4, TA-14.1, TA-14.3 |
 | `TA-06.5` | Power grid: generation, pylons, connectivity, brownout shedding | W3 / L2 | TA-06.4, TA-06.6 |
-| `TA-06.7` | Rule engine (utility AI) + player priorities + directive application | W3 / L2 | TA-06.5, TA-06.6 |
+| `TA-06.7` | Rule engine (utility AI) + canonical priorities (economy/expansion/defense/power/terraform) + directive application | W3 / L2 | TA-06.5, TA-06.6 |
 | `TA-06.8` | Hazards (lightning, meteor) + fauna (1 species, nests) | W4 / L2 | TA-06.5, TA-06.7 |
-| `TA-06.11` | Basic PvP raids (combat bots vs. foreign buildings) | W4 / L2 | TA-06.8 |
+| `TA-06.11` | PvP raids with army groups: gate pathing, newcomer shield & truce checks (D-16) | W4 / L2 | TA-06.8 |
 | `TA-06.10` | Rocket build/launch & colony transfer to a new planet | W4 / L2 | TA-06.7 |
+| `TA-06.12` | Per-pylon max load: capacity-limited power routing, overload trips, UI stats (D-21) | W3 / L2 | TA-06.5 |
+| `TA-06.13` | Settled colony: rocket launch gate (own territory 100 % Living), inert Settled state, `colonySettled` event (D-18) | W4 / L2 | TA-06.10, TA-14.3 |
 
 ---
 
@@ -116,7 +118,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W1 / L2`
 - **Depends On:** `TA-06.1`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §5 (`grid`), §10 (`SIM-GEN`); [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §5
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §5 (`grid`), §10 (`SIM-GEN`); [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §5
 - **Target Files:**
   - `shared/sim/src/grid/{hex.ts,index.ts,neighbors.ts,ring.ts,footprint.ts}` (pure helpers also used by the client for presentation)
   - `shared/sim/src/gen/{noise.ts,planet.ts,deposits.ts,spawn-slots.ts}`
@@ -195,7 +197,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W2 / L2`
 - **Depends On:** `TA-06.2`, `TA-06.9`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.5 (`SIM-G-TER`); [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md) §1.5, §2
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.5 (`SIM-G-TER`); [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §1.5, §2
 - **Target Files:**
   - `shared/sim/src/systems/territory.ts`
   - `shared/sim/src/systems/commands/spawn-colony.ts` (claims Hub radius at spawn)
@@ -230,7 +232,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W2 / L2`
 - **Depends On:** `TA-06.3`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §4.1 (`SIM-C-02..04`), §7.1, §7.3; [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md) §1, §3
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §4.1 (`SIM-C-02..04`), §7.1, §7.3; [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §1, §3
 - **Target Files:**
   - `shared/sim/src/data/{buildings.ts,starting-kit.ts,compile.ts}` (full economy tables; D-15 subset `enabled: true`)
   - `shared/sim/src/systems/{construction.ts,production.ts}`
@@ -261,17 +263,17 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - [ ] `construction.spec.ts`: place → reserve → complete after `buildTicks`; cancel refunds 75 %; demolish refunds 50 %; upgrade Δ cost + footprint growth; insufficient resources / blocked site / wrong terrain rejections.
 - [ ] `production.spec.ts`: Metals Extractor T1 on 10 000 bp deposit yields exactly 4 000 mu/s; Desert water ×0.5; cap clamp.
 - [ ] `founder` scenario 36 000 ticks deterministic.
-- [ ] **Trade legs (scope added by lead for TA-10.5):** resource **reservation** model (reserved amounts are excluded from spendable stock and storage-cap checks count them), and handlers for `trade.offer` (reserve giver side), `trade.respond` (reserve receiver side on accept), `trade.offerReceived` (visible to the target colony and its AI), `trade.commit` (apply one leg: debit reserved, credit other side clamped to cap, report overflow), `trade.revert` (undo an applied leg), `trade.release` (drop a reservation); Trade Hub T1 required (SIMULATION §7). Unit tests `trade-legs.spec.ts`: reserve → commit both legs; one leg rejected → revert + release restores both colonies exactly; reservation survives snapshot/restore.
+- [ ] **Trade legs (scope added by lead for TA-10.5; under D-30 they serve the market module TA-10.10 instead):** resource **reservation** model (reserved amounts are excluded from spendable stock and storage-cap checks count them), and handlers for `trade.offer` (reserve giver side), `trade.respond` (reserve receiver side on accept), `trade.offerReceived` (visible to the target colony and its AI), `trade.commit` (apply one leg: debit reserved, credit other side clamped to cap, report overflow), `trade.revert` (undo an applied leg), `trade.release` (drop a reservation); Trade Hub T1 required (SIMULATION §7). Unit tests `trade-legs.spec.ts`: reserve → commit both legs; one leg rejected → revert + release restores both colonies exactly; reservation survives snapshot/restore.
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6)
 
 ---
 
-### `TA-06.6` — Robots: Miner/Builder/Combat T1, supply cap, task queue, pathfinding
+### `TA-06.6` — Units & production (D-16): HQ, workers, MVP combat units, Hub/Factory production, supply cap, wall-aware pathfinding
 
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W2 / L2`
-- **Depends On:** `TA-06.4`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §3 (`SIM-T-03`), §4.1 (`enqueueTask`, `SIM-C-04`), §7.2
+- **Depends On:** `TA-06.4`, `TA-14.1`, `TA-14.3`
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §3 (`SIM-T-03`), §4.1; **superseded in part by** [`docs/game/units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §2, §3, §5.1–5.2 (D-16): roster, Hub-produced workers, Factory-produced combat units; queue/dispatch moved to TA-14.2, combat to TA-14.4
 - **Target Files:**
   - `shared/sim/src/data/robots.ts`
   - `shared/sim/src/systems/{robots.ts,factories.ts}`
@@ -314,7 +316,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W3 / L2`
 - **Depends On:** `TA-06.4`, `TA-06.6`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.4 (`SIM-G-PWR`), §7.6 (day/wind); [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md) §1.2, §1.3, §3.2, §3.3
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.4 (`SIM-G-PWR`), §7.6 (day/wind); [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §1.2, §1.3, §3.2, §3.3
 - **Target Files:**
   - `shared/sim/src/systems/{power.ts,environment.ts}`
   - `shared/sim/src/power/{graph.ts,components.ts,shedding.ts,capacitors.ts}`
@@ -347,12 +349,12 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 
 ---
 
-### `TA-06.7` — Rule engine (utility AI) + player priorities + directive application
+### `TA-06.7` — Rule engine (utility AI) + canonical priorities (economy/expansion/defense/power/terraform) + directive application
 
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W3 / L2`
 - **Depends On:** `TA-06.5`, `TA-06.6`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §8 (`SIM-R-01..06`), §4.1 (`setPriorities`, `ai.directive`, `setAutopilot`); [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) (`DirectiveV1`); [`CONTINUITY.md`](../../spec/CONTINUITY.md) (away mode); [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §10
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §8 (`SIM-R-01..06`), §4.1 (`setPriorities`, `ai.directive`, `setAutopilot`); [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) (`DirectiveV1`); [`CONTINUITY.md`](../../spec/CONTINUITY.md) (away mode); [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §10
 - **Target Files:**
   - `shared/sim/src/systems/rule-engine.ts`
   - `shared/sim/src/ai/{needs.ts,scoring.ts,site-selection.ts,planner.ts,directive.ts}`
@@ -365,7 +367,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - **Problem & goal:** 90–95 % of decisions are made here, for free, every second — this is what keeps a colony alive and growing while the player is offline (G3).
 - **Constraints:** each colony evaluated every 10 ticks, staggered; must only issue valid tasks; directives clamp and expire (≤ 18 000 ticks); presence enters only via the `core.presence` command (`SIM-T-02`); `setAutopilot` is the player preference (`director`/`rules_only`); rule-engine cost ≤ 0.3 ms per colony evaluation.
 - **Risks → mitigations:** colony death spiral when unattended (no power at night) → `energy` need forecasts night deficit and builds capacitors/wind; scenario gate; AI directive abuse (huge intents) → per-directive cap 5 intents, each validated independently.
-- **Alternatives rejected:** behaviour trees (harder to weight by player sliders); GOAP planner (cost, opacity); LLM per decision (cost — `autonomous-colony-spec.md` §10).
+- **Alternatives rejected:** behaviour trees (harder to weight by player sliders); GOAP planner (cost, opacity); LLM per decision (cost — `docs/game/autonomous-colony-spec.md` §10).
 - **Telemetry:** `StepResult.stats.{ruleEvals, autoTasksCreated, directiveIntentsAccepted, directiveIntentsDropped}`; `ColonyView.director {topNeeds[3], directiveActiveUntil}` for the HUD/event log.
 
 #### Architecture
@@ -392,7 +394,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W4 / L2`
 - **Depends On:** `TA-06.5`, `TA-06.7`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.6, §7.7, §9; [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §6, §7
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.6, §7.7, §9; [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §6, §7
 - **Target Files:**
   - `shared/sim/src/data/{hazards.ts,fauna.ts}`
   - `shared/sim/src/systems/{hazards.ts,fauna.ts,combat.ts}`
@@ -426,12 +428,12 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 
 ---
 
-### `TA-06.11` — Basic PvP raids (combat bots vs. foreign buildings)
+### `TA-06.11` — PvP raids with army groups: gate pathing, newcomer shield & truce checks (D-16)
 
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W4 / L2`
 - **Depends On:** `TA-06.8`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.7 (raids), §8 `SIM-R-06`; [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §8
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.7 (raids), §8 `SIM-R-06`; [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §8
 - **Target Files:**
   - `shared/sim/src/systems/raids.ts`
   - `shared/sim/src/systems/commands/enqueue-task-raid.ts`
@@ -466,7 +468,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W4 / L2`
 - **Depends On:** `TA-06.7`
-- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.1 (Rocket Silo T2), §7.7 (departure), §9 (`rocketReady`, `rocketLaunched`); [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §9; [`CONTINUITY.md`](../../spec/CONTINUITY.md) (re-entry, TA-08.5)
+- **Spec:** [`SIMULATION.md`](../../spec/SIMULATION.md) §7.1 (Rocket Silo T2), §7.7 (departure), §9 (`rocketReady`, `rocketLaunched`); [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §9; [`CONTINUITY.md`](../../spec/CONTINUITY.md) (re-entry, TA-08.5)
 - **Target Files:**
   - `shared/sim/src/systems/progression.ts`
   - `shared/sim/src/systems/commands/enqueue-task-launch.ts`
@@ -477,7 +479,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 
 #### Analytics
 - **Problem & goal:** the end goal of a planet run: build a rocket and move on to a new planet with a bonus (spec §9) — the in-sim half of the transfer; core does re-placement (TA-08.5).
-- **Constraints:** Silo T2 (Lander) only, ‑120 E/s, shed first in brownouts; launch requires player or directive intent (`launchRocket`), 300-tick countdown; departure turns the colony into ruins (owner Q2); carry = `stockMultiplierBp 12 500` per spec "+25 % starting stock".
+- **Constraints:** Silo T2 (Lander) only, ‑120 E/s, shed first in brownouts; launch requires player or directive intent (`launchRocket`), 300-tick countdown; departure turns the colony into ruins (owner Q2; **superseded by D-18**: TA-06.13 replaces ruins with an inert Settled colony and adds the 100 % Living launch gate); carry = `stockMultiplierBp 12 500` per spec "+25 % starting stock".
 - **Risks → mitigations:** accidental AI launch → `launchRocket` from `ai` source requires `priorities.rocket ≥ 50` set by the player; double transfer → event idempotent per colony (worker dedupe key `colonyId:rocketLaunched`).
 - **Alternatives rejected:** legacy AI-run colony after departure (cost; owner Q2 can flip it).
 - **Telemetry:** events `rocketReady`, `rocketLaunched` (→ core, near-gateway milestone); stats `siloProgressBp`.
@@ -491,6 +493,68 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - [ ] Contract change request (lead): `rocketLaunched {colonyId, carry}` payload in `PlanetEventV1`.
 
 #### Definition of Done (DoD)
-- [ ] `progression.spec.ts`: launch rejected before Silo complete; AI-sourced launch rejected unless `rocket ≥ 50`; countdown 300 ticks; `rocketLaunched` emitted once; colony `departed`; ruins neutral; tiles revert after grace.
+- [ ] `progression.spec.ts`: launch rejected before Silo complete; AI-sourced launch rejected unless `rocket ≥ 50`; countdown 300 ticks; `rocketLaunched` emitted once; colony `departed` (TA-06.13 then switches it to `settled`; the ruins and grace assertions move there).
 - [ ] `rocket-rush` (resources granted by test setup) deterministic over 3 runs.
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6)
+
+---
+
+### `TA-06.12` — Per-pylon max load: capacity-limited power routing, overload trips, UI stats (D-21)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W3 / L2`
+- **Depends On:** `TA-06.5`
+- **Spec:** [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §1.3, §3.2 (Max load per pylon tier); [`DECISIONS.md`](../../spec/DECISIONS.md) D-21 (supersedes SIMULATION §7.4 "not enforced in MVP")
+- **Target Files:**
+  - `shared/sim/src/systems/power/{routing.ts,overload.ts}`
+  - `shared/sim/test/systems/power-load.spec.ts`
+  - `shared/sim/scenarios/grid-overload.ts`
+- **Verify:** `npm run test -w @terra/sim -- power-load && npm run sim:determinism -w @terra/sim -- --ticks 36000 --scenario grid-overload && npm run sim:bench -w @terra/sim`
+
+#### Analytics
+- **Problem:** pylons have max load (T1 80, T2 300, T3 1 200 E/s). The owner wants this enforced in MVP.
+- **Constraints:** deterministic integer flow, within the `SIM-P` budget.
+- **Risk:** max-flow cost → a per-component greedy BFS from generators in entity order, recomputed only when the grid is dirty or every 10 ticks.
+- **Telemetry:** stats `pylonsOverloaded`; event `gridOverload`.
+
+#### Architecture
+- Consumers beyond the capacity of the path that feeds them are shed using the brownout order, so terraform load (group 1) is shed first.
+- A pylon that stays at > 100 % for 50 ticks trips: it goes offline for 300 ticks and a Builder can reset it.
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: SIMULATION §7.4 rewritten for per-pylon load (lead, W3 pre-step).
+- [ ] `TA-06.5` done.
+
+#### Definition of Done (DoD)
+- [ ] `power-load.spec.ts`: a T1 chain feeding 120 E/s of demand delivers 80; overflow is shed in order; the trip/reset cycle works.
+- [ ] `sim:bench` p99 stays within budget with 200 pylons.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-06.13` — Settled colony: rocket launch gate, inert Settled state, `colonySettled` event (D-18)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W4 / L2`
+- **Depends On:** `TA-06.10`, `TA-14.3`
+- **Spec:** [`DECISIONS.md`](../../spec/DECISIONS.md) D-18; units spec §4.5 `UO-TF-06` (Terraform %); replaces the "ruins on departure" rule of TA-06.10
+- **Target Files:**
+  - `shared/sim/src/systems/progression/settle.ts`
+  - `shared/sim/src/systems/lifecycle.ts` (state `settled`)
+  - `shared/sim/test/systems/settle.spec.ts`
+- **Verify:** `npm run test -w @terra/sim -- settle && npm run sim:determinism -w @terra/sim -- --ticks 72000 --scenario rocket-rush`
+
+#### Analytics
+- **Problem:** a rocket may launch only when **every owned tile is Living** (walls, deep water and footprints excluded). The colony left behind becomes an inert **Settled** colony: it keeps its territory and the frozen borders and cannot be attacked or eliminated, and it backs the player's NEAR staking (TA-10.7).
+- **Telemetry:** event `colonySettled {colonyId, livingTiles, score}`.
+
+#### Architecture
+- `launchRocket` is rejected with `not_fully_terraformed` while Terraform % < 100 %.
+- On launch the colony becomes `settled`: production stops, units are removed, buildings are frozen as decor, tiles stay owned (no grace revert), and it is excluded from raids and fauna.
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: SIMULATION §7.7 departure → Settled rules; `colonySettled` event in contracts (lead, W4 pre-step).
+
+#### Definition of Done (DoD)
+- [ ] `settle.spec.ts`: the gate rejects at 99 %; Settled tiles never revert; raids on a Settled colony are rejected; the event is emitted once.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).

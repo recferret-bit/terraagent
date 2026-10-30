@@ -3,6 +3,22 @@
 > **Orchestrator:** [`EXECUTION_ORCHESTRATOR.md`](../EXECUTION_ORCHESTRATOR.md) · **Status Board:** [`STATUS.md`](../STATUS.md)
 > **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3, §6, §7, §13, §14, §15 · [`SIMULATION.md`](../../spec/SIMULATION.md) §4.2, §11, §12 · [`PROTOCOL.md`](../../spec/PROTOCOL.md) · [`CONTINUITY.md`](../../spec/CONTINUITY.md) · [`DECISIONS.md`](../../spec/DECISIONS.md) D-01, D-02, D-05, D-06, D-14
 > **Lane:** `L3` · **Owned paths:** `backend/planet-worker/**`, `tests/integration/worker/**` · W5 extra: `tests/load/planet/**` (TA-13.5, separate epic)
+>
+> **⚠ 2026-10-30 — superseded in large part by D-24 (one app, simplified server sim).** There is no separate planet-worker service, NATS/JetStream, KV leases, tick markers, replay with state hashes, catch-up ticking, or fog-of-war views. The planet host becomes the **`game` module of the one app** (`backend/app/src/game/**`): the main thread owns HTTP/WS, and `cores − 1` `worker_threads` run the sims, with planets sharded by id. The detailed text below describes the old distributed design and is kept as **Future**. Read each task through this mapping:
+>
+> | Task | Under D-24 |
+> |---|---|
+> | TA-07.1 registration/heartbeat | **Obsolete → Future** |
+> | TA-07.5 leases + drain | **Obsolete → Future** (deploy = stop / snapshot / start) |
+> | TA-07.2 planet host | **Kept, simplified:** thread pool + per-planet step loop; 5 TPS active, coarse 1 step/s (dt 5) when empty; fault quarantine per planet |
+> | TA-07.3 WS gateway | **Kept, simplified:** one WS endpoint; `join` → `welcome {fullState}` → 5 Hz entity deltas (JSON); no tickets to a worker, no fog filter, no rate limits (D-25) |
+> | TA-07.4 command ingestion | **Kept, simplified:** zod + own-colony check, posted to the sim thread over `MessagePort`; no stream, no tick markers, no durable log |
+> | TA-07.7 event emission | **Kept, simplified:** in-process event bus (`planet.event`) to `ai`, `near`, `notify`, `lobby`, `progression` |
+> | TA-07.6 snapshots + restore | **Kept, simplified:** snapshot every 60 s and on shutdown; restart = load the snapshot + coarse fast-run of the gap (cap 24 h); no replay, no hash check, ≤ 60 s of actions can be lost |
+> | TA-07.9 catch-up ticking | **Obsolete → Future** (replaced by the coarse fast-run in TA-07.6) |
+> | TA-07.8 metrics / load shedding | **Kept:** per-thread tick duration, planets, sockets |
+>
+> Success metrics about failover RTO, acked-command RPO, `stateHash`, `4009 lease_lost` and drain no longer apply. The new ones are: tick p99 per thread, restart-to-playable < 30 s, and delta bandwidth ≤ 8 KB/s per socket.
 
 ## Overview
 
@@ -63,6 +79,7 @@ Layout: `backend/planet-worker/src/{main.ts,app.module.ts,config/,registry/,leas
 | `TA-07.4` | Command ingestion: WS + `planet.{id}.cmd` stream → validated, tick-stamped, acked | W2 / L3 | TA-07.3, TA-02.2 |
 | `TA-07.7` | Significant-event emission to `{NS}_PLANET_EVENTS` | W2 / L3 | TA-07.4 |
 | `TA-07.6` | Snapshot persistence & failover restore (snapshot + replay + hash check) | W3 / L3 | TA-07.4, TA-03.3, TA-06.9 |
+| `TA-07.9` | Catch-up ticking after failover/restore: bounded fast-forward of downtime (D-20) | W3 / L3 | TA-07.6 |
 | `TA-07.8` | Worker metrics: tick duration, planets, sockets, lag; load shedding | W4 / L3 | TA-07.6 |
 
 ---
@@ -370,3 +387,34 @@ Layout: `backend/planet-worker/src/{main.ts,app.module.ts,config/,registry/,leas
 - [ ] `metrics.int.spec.ts`: `/metrics` exposes every metric listed above with expected types.
 - [ ] Shedding never skips a tick (scheduler spec extended).
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6)
+
+---
+
+### `TA-07.9` — Catch-up ticking after failover/restore: bounded fast-forward of downtime (D-20)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W3 / L3 (after TA-07.6)`
+- **Depends On:** `TA-07.6`
+- **Spec:** [`DECISIONS.md`](../../spec/DECISIONS.md) D-20 (supersedes `SIM-C-10` "no fast-forward"); [`CONTINUITY.md`](../../spec/CONTINUITY.md) §7
+- **Target Files:**
+  - `backend/planet-worker/src/host/catch-up.ts`
+  - `backend/planet-worker/test/host/catch-up.spec.ts`
+  - `tests/integration/worker/catch-up.int.spec.ts`
+- **Verify:** `npm run test -w @terra/planet-worker -- catch-up && npm run test:integration -- --suite worker --grep catch-up`
+
+#### Analytics
+- **Problem:** after a restore, game time must match wall time again, so the planet fast-forwards the downtime.
+- **Constraints:** determinism (`SIM-D`). Catch-up runs at up to `CATCHUP_MAX_TPS` (proposed 50) in budgeted slices and is capped at `CATCHUP_MAX_S` (proposed 900 s); anything longer is skipped and reported. Commands arriving during catch-up are tick-marked at the live head.
+- **Risk:** CPU spikes on a shared worker → per-planet slice budget plus load shedding (TA-07.8).
+- **Telemetry:** `ta_worker_catchup_seconds`, `ta_worker_catchup_skipped_seconds_total`.
+
+#### Architecture
+- The catch-up start/end is itself a tick-marked `core.catchUp {fromTick, toTick}` marker, so replays reproduce it bit-exactly.
+- Sockets get `welcome` after catch-up completes, or a progress status while it runs.
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: SIMULATION `SIM-C-10` and CONTINUITY §7 rewritten for D-20; `core.catchUp` marker in contracts (lead, W3 pre-step).
+
+#### Definition of Done (DoD)
+- [ ] `catch-up.int.spec.ts`: kill the worker, wait 120 s, restore elsewhere → game tick advanced by ≈ 1 200 ticks (±100), `stateHash` matches a reference replay; downtime above the cap is skipped and reported.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).

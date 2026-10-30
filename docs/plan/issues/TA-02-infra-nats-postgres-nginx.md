@@ -3,6 +3,8 @@
 > **Orchestrator:** [`EXECUTION_ORCHESTRATOR.md`](../EXECUTION_ORCHESTRATOR.md) · **Status Board:** [`STATUS.md`](../STATUS.md)
 > **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3, §4, §5, §6, §14 · [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) · [`DECISIONS.md`](../../spec/DECISIONS.md) D-05, D-06, D-07 · Reference: `../freightchain/infra/deploy`
 
+> **Owner decisions (2026-10-29, D-23):** single region; launch host **4 vCPU / 8 GB** (load test may raise it); **Cloudflare** proxy TLS (origin cert, Full strict); **R2** for off-site backups; **no HSTS preload** at launch. TA-02.5 implements Cloudflare + R2 only.
+
 ## Overview
 
 This epic covers everything that runs the services, from a laptop to production. It includes:

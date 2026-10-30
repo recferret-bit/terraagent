@@ -33,3 +33,4 @@ Adding a page: create the HTML, add it to `rollupOptions.input` in `vite.config.
 - `docs/spec/` and `docs/plan/` describe the not-yet-built online backend. `docs/spec/CLIENT.md` assumes separate `game.` and root domains; the current local build serves everything from one app.
 - Other people or agents may edit this repo at the same time (e.g. `src/ui/crt.ts`). Re-read a file before editing it and don't revert changes you didn't make.
 - The project is not a git repository, so there is no commit history to fall back on.
+- **Wave build (from W00 on):** each wave is built in its own branch `wave/wNN-<slug>` and worktree `../TerraAgent-wt/wNN`, issues in `issue/WNN-XX` worktrees off it. A wave merges into `main` only after the owner's manual check, then its worktree and branch are deleted and `main` is pushed. See `docs/plan/PRODUCT_WAVES.md` §7.

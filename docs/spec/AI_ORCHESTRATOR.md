@@ -1,8 +1,8 @@
 # TerraAgent — AI Orchestrator Specification
 
-> **Status:** Draft v0.1 (2026-10-29) · **Service:** `backend/ai-orchestrator` (`@terra/ai-orchestrator`, internal, port `3200` prod / `4003` dev)
-> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6, §10, §15 · **Decisions:** [D-05](./DECISIONS.md#d-05--nats-is-the-only-inter-service-transport), [D-09](./DECISIONS.md#d-09--zai-glm-53) · **Plan:** [`TA-09`](../plan/issues/TA-09-ai-orchestrator.md)
-> **Game design:** [`autonomous-colony-spec.md`](../../autonomous-colony-spec.md) §10 (rules first, LLM rarely)
+> **Status:** v0.2 (2026-10-30) · **Module:** `ai` inside the one app (`backend/app/src/ai`, D-24). There is no separate service, NATS or work queue.
+> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6, §10, §15 · **Decisions:** [D-09](./DECISIONS.md#d-09--zai-glm-53), D-17, D-24, D-25, D-26 · **Plan:** [`TA-09`](../plan/issues/TA-09-ai-orchestrator.md)
+> **Game design:** [`docs/game/autonomous-colony-spec.md`](../game/autonomous-colony-spec.md) §10 (rules first, LLM rarely)
 
 ---
 
@@ -10,28 +10,26 @@
 
 The colony is autonomous. The rule engine inside `@terra/sim` (TA-06.7) makes **90–95 %** of decisions every tick for free. The AI orchestrator is the **strategic director** for the remaining **5–10 %**: rare, event-driven decisions such as re-prioritising after an attack, answering a trade offer, deciding when to start a rocket. It runs whether the player is connected or away. Away behaviour follows [`CONTINUITY.md`](./CONTINUITY.md) and TA-08.2.
 
-It never touches simulation state directly. It reads a compact **colony brief** sent by the worker and returns a validated **`DirectiveV1`**. The directive is published as an ordinary command on `{ns}.planet.{planetId}.cmd`. The sim applies it deterministically at a tick the worker chooses, like any other command.
+It never touches simulation state directly. Triggers come **straight from sim events** on the in-process event bus. The module reads a compact **colony brief** from the sim thread and returns a validated **`DirectiveV1`**. The directive goes to the planet's sim thread as an ordinary command (`ai.directive`), which is applied at the next step.
 
 ```mermaid
 sequenceDiagram
-  participant W as planet-worker
-  participant S as {NS}_AI_REQUESTS (work queue)
-  participant A as ai-orchestrator
+  participant T as sim thread (planet)
+  participant B as event bus
+  participant A as ai module
   participant PG as Postgres (ai.*)
   participant Z as api.z.ai (glm-5.3)
-  participant C as {NS}_PLANET_CMDS
-  W->>S: AiRequestV1 {trigger, severity, brief}  (Nats-Msg-Id = colony:trigger:tickBucket)
-  S->>A: deliver (explicit ack)
+  T->>B: planet.event (trigger-worthy, with brief)
+  B->>A: AiRequestV1 {trigger, severity, brief}
   A->>PG: gate: kill switch · per-colony interval · daily cap · global token budget · in-flight
   alt rejected
-    A-->>S: ack (outcome = rate_limited | budget_exhausted | disabled | duplicate)
+    A->>A: drop (outcome = rate_limited | budget_exhausted | disabled | duplicate)
   else allowed
     A->>Z: chat/completions (system v1 + brief, JSON mode, max_tokens 400, 20 s)
     Z-->>A: JSON
     A->>A: zod-validate DirectiveV1 → clamp → staleness check
-    A->>C: publish planet.{id}.cmd {kind: ai.directive} (Nats-Msg-Id = requestId)
+    A->>T: cmd {kind: ai.directive, commandId = requestId}
     A->>PG: ai_decision row (outcome, tokens, latency)
-    A-->>S: ack
   end
 ```
 
@@ -42,27 +40,28 @@ sequenceDiagram
 | ID | Rule |
 |---|---|
 | `AI-01` | The orchestrator MUST NOT be on the tick path. A missing, late or invalid directive MUST leave the colony running on the rule engine with the player's last priorities. |
-| `AI-02` | LLM calls MUST be triggered only by `AiRequestV1` messages from `{NS}_AI_REQUESTS`. There are no timers inside the AI service except the `idle.checkpoint` trigger, which the worker also emits. |
+| `AI-02` | LLM calls are triggered only by `AiRequestV1` built from sim events on the event bus (§3). The only timer is the `idle.checkpoint` trigger, which the `game` module emits. In-memory requests are lost on restart, which is accepted (`AI-01`). |
 | `AI-03` | Per colony there MUST be at most **1 call / `AI_MIN_INTERVAL_S` (300 s)** for `normal` triggers, at most **1 call / `AI_CRITICAL_INTERVAL_S` (120 s)** for `critical` triggers, and at most **`AI_MAX_CALLS_PER_DAY` (150)** calls per UTC day. A critical call also resets the normal interval. |
 | `AI-04` | A global daily token budget `AI_DAILY_TOKEN_BUDGET` MUST be enforced before each call, using an estimate of prompt tokens plus `max_tokens`. When it is exhausted, requests get `budget_exhausted` until 00:00 UTC. |
 | `AI-05` | At most one in-flight call per colony. A second request for the same colony while one is in flight MUST be dropped as `duplicate`. |
 | `AI-06` | Every provider response MUST be parsed as JSON and validated against `DirectiveV1` (zod, `.strict()`). Invalid → outcome `invalid` and nothing is published. |
 | `AI-07` | Valid directives MUST be **clamped** (§6.3) before they are published. Clamping is logged as `clampedFields[]`. |
 | `AI-08` | A directive MUST be dropped as `stale` if more than `AI_TIMEOUT_S` (20 s) passed since the request was enqueued, or if the request's `basedOnTick` is older than the planet's latest known tick by more than 600 ticks (60 s). |
-| `AI-09` | Directives MUST be published to `{ns}.planet.{planetId}.cmd` with `Nats-Msg-Id = requestId`, so redelivery never applies a directive twice. |
+| `AI-09` | Directives are posted to the sim thread with `commandId = requestId`. The sim ignores a second directive with the same `requestId`. |
 | `AI-10` | Every attempted provider call MUST write exactly one `ai.ai_decision` row. Rejections before the call are counted in metrics and are not written as rows. |
-| `AI-11` | `AI_ENABLED=false` (env) or the runtime kill switch (`{ns}.ai.ctl`) MUST stop all provider calls within 5 s. Requests are acked as `disabled`. |
+| `AI-11` | `AI_ENABLED=false` (env) or the runtime kill switch (admin endpoint, persisted in `ai.ai_settings`) MUST stop all provider calls within 5 s. Requests are dropped as `disabled`. |
 | `AI-12` | Away-mode limits (TA-08.2) are enforced **in the sim** when the directive is applied, for example no raids on other players while away unless allowed. The AI side only avoids proposing them (system prompt + clamp). The sim is the authority. |
 | `AI-13` | Tests and every lane except L4 MUST use the mock provider. Real Z.ai calls require `AI_PROVIDER=zai` **and** `AI_LIVE=1` outside production. |
-| `AI-14` | Secrets (`ZAI_API_KEY`) MUST never be logged. Prompts and responses are stored as a SHA-256 hash plus the parsed directive. Raw text is stored only when `AI_LOG_RAW=1` (default off in prod). |
+| `AI-14` | Secrets (`ZAI_API_KEY`) MUST never be logged. Prompts and responses are stored as a SHA-256 hash plus the parsed directive. Raw text is stored when `AI_LOG_RAW=1`, which is **on in prod** (owner decision). Raw columns are purged after **14 days**; hashes and directives follow the 30-day `ai_decision` retention. Prompts contain no PII. |
+| `AI-15` | **No per-player throttling beyond the budgets (D-25).** The per-colony intervals, the daily cap and the global token budget are cost controls. There are no abuse checks. |
 
 ---
 
 ## 3. Triggers
 
-Event kinds are owned by `@terra/contracts` (TA-01.3 / TA-07.7). This table maps them to AI triggers. The **worker** decides when to emit an `AiRequestV1`, using its own hysteresis (re-emit no more than once per 60 s per trigger while the condition persists). The AI service enforces the limits in §2.
+Event kinds are owned by `@terra/contracts` (TA-01.3 / TA-07.7). This table maps them to AI triggers. The **`game` module** decides when to emit an `AiRequestV1` from sim events, using its own hysteresis (re-emit no more than once per 60 s per trigger while the condition persists). The AI service enforces the limits in §2.
 
-| Trigger (`AiRequestV1.trigger`) | Source condition (worker/sim) | Severity |
+| Trigger (`AiRequestV1.trigger`) | Source condition (sim event) | Severity |
 |---|---|---|
 | `colony.under_attack` | fauna or another colony damages a building or robot owned by the colony, with no attack in the last 120 s | **critical** |
 | `power.collapse` | brownout shedding reached group ≥ 3 (extractors/depots) or generation < 50 % of demand for 30 s | **critical** |
@@ -85,20 +84,21 @@ Event kinds are owned by `@terra/contracts` (TA-01.3 / TA-07.7). This table maps
 
 | Key | Default | Meaning |
 |---|---|---|
-| `AI_ENABLED` | `true` | Global env switch (restart). The runtime switch is `{ns}.ai.ctl` (§9). |
+| `AI_ENABLED` | `true` | Global env switch (restart). The runtime switch is the admin endpoint (§9). |
 | `AI_PROVIDER` | `zai` in prod, `mock` otherwise | `zai` \| `mock` |
-| `AI_MODEL` | `glm-5.3` | **Owner to confirm** ([D-09](./DECISIONS.md#d-09--zai-glm-53)) |
-| `AI_BASE_URL` | `https://api.z.ai/api/paas/v4` | OpenAI-compatible endpoint. Owner confirms general vs coding-plan endpoint. |
+| `AI_MODEL` | `glm-5.3` | Owner-confirmed ([D-09](./DECISIONS.md#d-09--zai-glm-53)); check account rate limits in the Z.ai console |
+| `AI_BASE_URL` | `https://api.z.ai/api/paas/v4` | OpenAI-compatible **general** endpoint (owner-confirmed) |
 | `AI_MIN_INTERVAL_S` | `300` | Normal trigger interval per colony |
 | `AI_CRITICAL_INTERVAL_S` | `120` | Critical trigger interval per colony |
 | `AI_MAX_CALLS_PER_DAY` | `150` | Per colony per UTC day |
-| `AI_DAILY_TOKEN_BUDGET` | `20000000` (≈ $40/day, §8) | Global, input + output tokens. **New key**, proposed default. |
+| `AI_DAILY_TOKEN_BUDGET` | `20000000` (≈ $40/day, §8) | Global, input + output tokens. Owner-confirmed for launch. Includes `away.story` calls (CONTINUITY CT-34). |
 | `AI_TIMEOUT_S` | `20` | End-to-end per call, including one retry |
 | `AI_MAX_TOKENS` | `400` | Completion cap |
-| `AI_CONCURRENCY` | `8` | Max parallel provider calls per replica (= consumer `max_ack_pending`) |
-| `AI_LOG_RAW` | `0` | Store raw prompt and response text |
+| `AI_CONCURRENCY` | `8` | Max parallel provider calls |
+| `AI_LOG_RAW` | `1` in prod | Store raw prompt and response text (14-day retention, AI-14) |
+| `AI_RAW_RETENTION_D` | `14` | Purge window for `raw_prompt` / `raw_response` |
 
-**State.** Per-colony limits live in Postgres (`ai.ai_colony_budget`). The gate is one atomic `UPDATE … WHERE … RETURNING`, so several replicas never double-spend. NATS KV was rejected because limits must survive restarts and be auditable together with `ai_decision`.
+**State.** Per-colony limits live in Postgres (`ai.ai_colony_budget`). The gate is one atomic `UPDATE … WHERE … RETURNING`, so limits survive restarts and can be audited together with `ai_decision`.
 
 ```sql
 UPDATE ai.ai_colony_budget
@@ -127,7 +127,7 @@ RETURNING colony_id;
 
 ### 5.2 User message: compact brief (≤ 1200 chars, ~150–300 tokens)
 
-Built only from `ColonyBriefV1` (contract, produced by the worker/sim). Fixed field order. Integers only.
+Built only from `ColonyBriefV1` (contract, produced by the sim thread). Fixed field order. Numbers rounded to integers in the brief.
 
 ```text
 T=18342 planet=desert day=2.1 night=no weather=sandstorm(90s)
@@ -236,20 +236,20 @@ Prices **per third-party listing, verify on the Z.ai console**: input **$1.40 / 
 | Directive | ~200 out | $0.00088 |
 | **Total** | **~700 in + 200 out** | **≈ $0.0019** |
 
-| Scenario | Calls / colony / day | $ / colony / day | 1,000 colonies (200 planets × 5) / day |
+| Scenario | Calls / colony / day | $ / colony / day | 1,000 colonies (200 planets × 5, future scale) / day |
 |---|---|---|---|
 | Quiet (mostly `idle.checkpoint` while away) | 20 | $0.04 | $38 |
 | Typical (events + checkpoints) | 45 | $0.09 | $86 |
 | Worst case (hard cap) | 150 | $0.29 | $285 |
 
-Default `AI_DAILY_TOKEN_BUDGET = 20M` tokens/day (≈ 22k calls ≈ $40/day) caps spend below the "typical" scenario at full scale. At the budget, the colonies still run on rules. Owner sets the real number (`OWNER_TASKS.md`). Context caching of the static system prompt (if Z.ai bills cached input lower) would cut input cost by ~60 %.
+`AI_DAILY_TOKEN_BUDGET = 20M` tokens/day (≈ 22k calls ≈ $40/day) is owner-confirmed. It caps spend below the "typical" scenario at full scale; at the budget, colonies still run on rules. With the launch host (D-23, `MAX_ACTIVE_PLANETS` 60 ⇒ ≤ 300 colonies) the typical scenario is ≈ $26/day, so the cap is rarely hit at launch. Hard offline mode (D-17) makes away calls (`idle.checkpoint`, critical triggers) more valuable; keep them inside the per-colony caps. Context caching of the static system prompt (if Z.ai bills cached input lower) would cut input cost by ~60 %.
 
 ---
 
 ## 9. Kill switch & ops
 
-- **Env:** `AI_ENABLED=false` → service boots, consumes and acks every request as `disabled`.
-- **Runtime:** `{ns}.ai.ctl` request/reply `{ op: 'disable' | 'enable' | 'status', scope: 'global' | { planetId } }`, sent by core admin (TA-04.7). State is held in memory and persisted to `ai.ai_settings` so a restart keeps it. **Contract change request:** new subject `{ns}.ai.ctl` + payload schemas.
+- **Env:** `AI_ENABLED=false` → the module drops every request as `disabled`.
+- **Runtime:** admin endpoint `POST /v1/admin/ai {op: 'disable' | 'enable' | 'status', scope: 'global' | {planetId}}`. State is held in memory and persisted to `ai.ai_settings`, so a restart keeps it.
 - **Budget alarms:** `ai_budget_used_ratio` gauge, alert at 0.8 and 1.0 (TA-13.2).
 
 ---
@@ -258,7 +258,7 @@ Default `AI_DAILY_TOKEN_BUDGET = 20M` tokens/day (≈ 22k calls ≈ $40/day) cap
 
 | Table | Columns (key ones) | Notes |
 |---|---|---|
-| `ai.ai_decision` | `id uuid`, `request_id` (unique), `planet_id`, `colony_id`, `trigger`, `severity`, `based_on_tick`, `prompt_version`, `model`, `prompt_tokens`, `completion_tokens`, `latency_ms`, `outcome` enum, `directive jsonb`, `clamped_fields text[]`, `prompt_sha256`, `response_sha256`, `raw_prompt text null`, `raw_response text null`, `error text null`, `created_at` | Retention 30 days (daily purge job) |
+| `ai.ai_decision` | `id uuid`, `request_id` (unique), `planet_id`, `colony_id`, `trigger`, `severity`, `based_on_tick`, `prompt_version`, `model`, `prompt_tokens`, `completion_tokens`, `latency_ms`, `outcome` enum, `directive jsonb`, `clamped_fields text[]`, `prompt_sha256`, `response_sha256`, `raw_prompt text null`, `raw_response text null`, `error text null`, `created_at` | Retention 30 days; raw columns nulled after 14 days (daily purge job) |
 | `ai.ai_colony_budget` | `colony_id` PK, `last_call_at`, `last_critical_at`, `day date`, `calls_today int`, `in_flight_until` | Created lazily on first request |
 | `ai.ai_usage_daily` | `day` PK, `calls`, `prompt_tokens`, `completion_tokens`, `est_cost_usd numeric(10,4)` | Budget source of truth |
 | `ai.ai_settings` | `scope` PK (`global` or `planet:{id}`), `enabled bool`, `updated_by`, `updated_at` | Runtime kill switch |
@@ -281,8 +281,8 @@ Fault injection via `AI_MOCK_MODE`: `ok` (default) · `timeout` · `invalid_json
 
 ## 12. Eval harness
 
-`npm run ai:eval -w @terra/ai-orchestrator [-- --live]`
-- Fixtures: `backend/ai-orchestrator/eval/fixtures/*.json`, ≥ 30 `{ brief, expectations[] }` cases covering every trigger in §3 and both planet types.
+`npm run ai:eval -w @terra/app [-- --live]`
+- Fixtures: `backend/app/src/ai/eval/fixtures/*.json`, ≥ 30 `{ brief, expectations[] }` cases covering every trigger in §3 and both planet types.
 - Expectations are properties, not exact text. Examples: `actions contains queueBuild(pump)`, `no raid`, `priorities.defense ≥ 40`, `tradeRespond(o81).accept = true`.
 - Report `eval/out/report.json`: validity rate, property-pass rate, clamp rate, p50/p95 latency, tokens/call.
 - **Gate (live, L4 only, owner key):** validity ≥ 98 %, property-pass ≥ 80 %, p95 latency ≤ 8 s, mean total tokens ≤ 1,000. The mock run must be 100 % valid (regression test for the clamper and validator).
@@ -309,24 +309,34 @@ Fault injection via `AI_MOCK_MODE`: `ok` (default) · `timeout` · `invalid_json
 
 | Rule | Test | Task |
 |---|---|---|
-| AI-01 | `tests/integration/edge/ai-fallback.spec.ts`: mock `timeout` → no cmd published, request acked | TA-09.4 |
-| AI-03 | `rate-limiter.spec.ts`: normal 300 s / critical 120 s / 150/day with a fake clock; `ai-budget.int.spec.ts`: two replicas race → one call | TA-09.2 |
+| AI-01 | `backend/app/test/ai/ai-fallback.spec.ts`: mock `timeout` → no command posted | TA-09.4 |
+| AI-03 | `rate-limiter.spec.ts`: normal 300 s / critical 120 s / 150/day with a fake clock; `ai-budget.int.spec.ts`: two concurrent requests → one call | TA-09.2 |
 | AI-04 | `budget.service.spec.ts`: estimate gate; rollover at 00:00 UTC | TA-09.2 |
 | AI-05 | `ai-dedupe.int.spec.ts`: same colony twice → 1 call, 1 `duplicate` | TA-09.2 |
 | AI-06/07 | `directive-validator.spec.ts`, `clamp.spec.ts` (table-driven, ≥ 25 cases) | TA-09.3 |
 | AI-08 | `staleness.spec.ts` | TA-09.4 |
-| AI-09 | `ai-publish.int.spec.ts`: redelivery → JetStream dedupes by `Nats-Msg-Id` | TA-09.4 |
+| AI-09 | `ai-directive-dedupe.spec.ts`: the same `requestId` twice → applied once | TA-09.4 |
 | AI-10 | `decision-log.int.spec.ts` | TA-09.4 |
-| AI-11 | `kill-switch.int.spec.ts`: `ai.ctl disable` → next request `disabled` in < 5 s | TA-09.5 |
+| AI-11 | `kill-switch.int.spec.ts`: admin disable → next request `disabled` in < 5 s | TA-09.5 |
 | AI-13 | `config.spec.ts`: prod + `mock` refused; non-prod `zai` without `AI_LIVE=1` refused | TA-09.1 |
 | AI-14 | `redaction.spec.ts`: logger never contains the key; raw text null by default | TA-09.1 / TA-09.4 |
 
 ---
 
-## 15. Open questions for the owner
+## 15. Owner decisions (2026-10-29 / 2026-10-30)
 
-1. Confirm the model id `glm-5.3` and the endpoint (general `api/paas/v4` vs coding plan) and the account tier and rate limits on the Z.ai console.
-2. Daily spend cap: is `AI_DAILY_TOKEN_BUDGET=20M` (~$40/day) acceptable for launch?
-3. Should the AI be allowed to **initiate** raids while the player is away? (Default: no; the player opts in per colony in TA-08.2.)
-4. Should the player see the AI `rationale` in the HUD event log? (Default: yes, as "Director: …".)
-5. Keep raw prompts and responses in prod for tuning (privacy is fine, no PII), or hashes only? (Default: hashes only, `AI_LOG_RAW=0`.)
+| # | Question | Decision | Ref | Consequence for this spec |
+|---|---|---|---|---|
+| 1 | Model and endpoint | **`glm-5.3`, general `/api/paas/v4`**; check rate limits in the console | D-09 | §4 rows confirmed |
+| 2 | Daily spend cap | **20M tokens/day (~$40)** | D-09 | §4, §8 |
+| 3 | AI-initiated raids while away | **Opt-in per colony, default off** | D-17 | §6.3 `raid` clamp: removed when `away=yes` unless `awayRaids=true` (CONTINUITY AW-11) |
+| 4 | Show `rationale` in the HUD | **Yes**, as "Director: …" in the event log | D-09 | CLIENT §5.3 / HUD |
+| 5 | Raw prompt logging | **Raw in prod, 14-day retention** | D-09 | AI-14, §4, §10 |
+| 6 | One app (no NATS, no separate service) | **Yes** | D-24 | Triggers from the event bus; directives posted to the sim thread; admin endpoint kill switch |
+| 7 | Anti-abuse throttling | **None beyond budgets** | D-25 | `AI-15` |
+| 8 | NEAR economy | The director key (F4) signs `autoTrade` market orders within the away budget; briefs add market prices, cargo and Guild offers | D-26 | §5.2 brief fields, `DirectiveV1` v2 `marketOrder` action (contract change) |
+
+Also affecting this spec (D-16, D-17):
+- `DirectiveV1` v2: `queueUnit`, `queueGoal`, `truceOffer` and `truceRespond` (units spec §7, rows 7 and 16).
+- New triggers `diplomacy.truce_offered` and `away.story`. The away story is one call per return, behind a flag.
+- `autoTrade`: offers the AI makes or accepts while away must fit the player's `autoTrade` limits (CONTINUITY AW-13).

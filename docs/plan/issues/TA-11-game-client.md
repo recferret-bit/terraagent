@@ -30,7 +30,7 @@ This epic builds the browser game: boot and auth, the planet picker and queue, t
   - 3D on phones.
   - WebGPU/TSL renderer (deferred, CLIENT.md §8).
   - Spectating other planets.
-  - Trade UI. This is a TA-10.5 follow-up; the HUD shows trade events only.
+  - Trade UI. Market stall and price board UI land with TA-10.10 (D-30; TA-10.5 is obsolete); the HUD shows trade events only.
   - NEAR wallet-link UI beyond one Settings button. The button calls the TA-04.3 flow and is wired in TA-11.7.
 - **Key risks:**
   - Delta decode cost at 500+ entities.
@@ -81,7 +81,9 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 | `TA-11.3` | Home routing & resume UX: dive-in, retry, away digest modal | W3 / L5 | TA-11.2, TA-11.4 |
 | `TA-11.6` | Instanced entity rendering: robots & buildings (Pillars 1/3) | W3 / L5 | TA-11.5 |
 | `TA-11.7` | HUD: resources, power, task queue, priorities, event log | W3 / L5 | TA-11.4 |
-| `TA-11.8` | Building placement & upgrade UX → commands | W4 / L5 | TA-11.6, TA-11.7 |
+| `TA-11.8` | Placement, upgrade & ground-prep UX: ghost footprint with prep bill, tile-state overlay → commands (D-16) | W4 / L5 | TA-11.6, TA-11.7 |
+| `TA-11.9` | Full gameplay on phones: landscape fullscreen, touch camera & orders, rotate prompt (D-22) | W4 / L5 | TA-11.8, TA-14.8 |
+| `TA-11.10` | Notification opt-in UX: Web Push service worker + Telegram link flow (D-17) | W5 / L5 | TA-08.7, TA-11.9 |
 
 ---
 
@@ -289,7 +291,7 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W2 / L5`
 - **Depends On:** `TA-11.1`, `TA-11.4` (WorldStore interface; can start against a fixture snapshot)
-- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §8, §9 (`CL-06`) · [`AGENTS.md`](../../../AGENTS.md) Pillar 4 · [`agent-3d-coding-rules.md`](../../../agent-3d-coding-rules.md) §3 · [`textures-shaders-lighting-spec.md`](../../../textures-shaders-lighting-spec.md) §3.1, §4 · [`tech-stack-spec.md`](../../../tech-stack-spec.md) §3.3
+- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §8, §9 (`CL-06`) · [`AGENTS.md`](../../../AGENTS.md) Pillar 4 · [`docs/visuals/agent-3d-coding-rules.md`](../../visuals/agent-3d-coding-rules.md) §3 · [`docs/visuals/textures-shaders-lighting-spec.md`](../../visuals/textures-shaders-lighting-spec.md) §3.1, §4 · [`docs/spec/tech-stack-spec.md`](../../spec/tech-stack-spec.md) §3.3
 - **Target Files:**
   - `frontend/game/src/render/viewport.ts` (`createColonyViewport`), `frontend/game/src/render/camera-rig.ts`, `frontend/game/src/render/quality-tiers.ts`
   - `frontend/game/src/render/terrain/{TerrainChunks.ts,terrain-material.ts,territory-overlay.ts,fog-of-war.ts,hex-picking.ts}`
@@ -319,7 +321,7 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 - **Telemetry (proves it works):** `__terraDebug.drawCalls`, `.triangles`, `.fps`, `.qualityTier`; opt-in event `quality_tier_auto {tier}`; e2e assertion: a non-black frame, terrain draw calls ≤ 16.
 
 #### Architecture
-- `createColonyViewport(container, biome)` follows `agent-3d-coding-rules.md` §3 exactly:
+- `createColonyViewport(container, biome)` follows `docs/visuals/agent-3d-coding-rules.md` §3 exactly:
   - 28° camera; ACES at exposure 1.1; PMREM `RoomEnvironment`; hemisphere + sun;
   - 2048 PCF soft shadows; `UnrealBloomPass(0.45, 0.35, 1.1)`; `OutputPass`; `FogExp2(biome.fogColor, 0.007)`.
   - Returns `{scene, camera, renderer, composer, sunLight, dispose}`.
@@ -410,7 +412,7 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W3 / L5`
 - **Depends On:** `TA-11.5`
-- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §8, §9 (`CL-06`, `CL-07`) · [`AGENTS.md`](../../../AGENTS.md) Pillars 1–3 · [`agent-3d-coding-rules.md`](../../../agent-3d-coding-rules.md) §2, §4, §5 · [`ai-3d-visuals-and-models-spec.md`](../../../ai-3d-visuals-and-models-spec.md) §3, §5 · [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md) §3–§4 · D-15
+- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §8, §9 (`CL-06`, `CL-07`) · [`AGENTS.md`](../../../AGENTS.md) Pillars 1–3 · [`docs/visuals/agent-3d-coding-rules.md`](../../visuals/agent-3d-coding-rules.md) §2, §4, §5 · [`docs/visuals/ai-3d-visuals-and-models-spec.md`](../../visuals/ai-3d-visuals-and-models-spec.md) §3, §5 · [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §3–§4 · D-15
 - **Target Files:**
   - `frontend/game/src/render/entities/{EntityRenderer.ts,archetype-registry.ts,instance-attributes.ts,selection-outline.ts}`
   - `frontend/game/src/visuals/kitbash/{KitbashRegistry.ts,greebles/*.ts,archetypes/*.ts}`
@@ -471,7 +473,7 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W3 / L5`
 - **Depends On:** `TA-11.4`
-- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §6.4, §11 (`CL-05`, `CL-08`) · [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §10, §13 · [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md) §1 · `AI_ORCHESTRATOR.md` (directive display)
+- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §6.4, §11 (`CL-05`, `CL-08`) · [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §10, §13 · [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §1 · `AI_ORCHESTRATOR.md` (directive display)
 - **Target Files:**
   - `frontend/game/src/ui/hud/{HudRoot,ResourceBar,PowerPanel,SupplyMeter,TaskQueue,PrioritySliders,AutopilotToggle,EventLog,AiDirectorPanel,PlanetInfo,ConnectionBadge,Settings}.tsx`
   - `frontend/game/src/state/hud-store.ts`
@@ -522,12 +524,12 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 
 ---
 
-### `TA-11.8` — Building placement & upgrade UX → commands
+### `TA-11.8` — Placement, upgrade & ground-prep UX: ghost footprint with prep bill, tile-state overlay → commands (D-16)
 
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W4 / L5`
 - **Depends On:** `TA-11.6`, `TA-11.7`
-- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §6.4 (`CL-08`, `CL-12`) · [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md) §1 (in-place upgrade, territory rule), §2, §3 · D-15
+- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §6.4 (`CL-08`, `CL-12`) · [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §1 (in-place upgrade, territory rule), §2, §3 · D-15
 - **Target Files:**
   - `frontend/game/src/ui/build/{BuildMenu,BuildingCard,SelectionPanel,DemolishConfirm}.tsx`
   - `frontend/game/src/render/placement/{GhostPreview.ts,footprint-validator.ts}`
@@ -573,4 +575,66 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 - [ ] `footprint-validator.test.ts`: owned/free/affordable matrix; in-place upgrade ring check; border collision tiles invalid; matches the sim's own validator on 500 random fixture placements (same input → same verdict).
 - [ ] `placement.test.tsx`: pending ghost until ack; reject reverts with the mapped message; demolish uses the in-app modal (no `window.confirm`).
 - [ ] E2E `w4-build-upgrade.spec.ts` `@w4`: place a Solar T1 → ack → scaffold → completed; upgrade Mine T1 → T2 with Δ cost deducted; invalid placement on a foreign tile shows `not_owned_tile`.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-11.9` — Full gameplay on phones: landscape fullscreen, touch camera & orders, rotate prompt (D-22)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W4 / L5`
+- **Depends On:** `TA-11.8`, `TA-14.8`
+- **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §9, §11 (follow-up); [`DECISIONS.md`](../../spec/DECISIONS.md) D-22
+- **Target Files:**
+  - `frontend/game/src/mobile/{orientation.ts,fullscreen.ts,touch-camera.ts,touch-orders.ts}`
+  - `frontend/game/src/hud/layout/compact.css`
+  - `frontend/game/test/mobile/*.test.ts`
+  - `tests/e2e/mobile-landscape.spec.ts`
+- **Verify:** `npm run test -w @terra/game -- mobile && npm run test:e2e -- --grep @mobile`
+
+#### Analytics
+- **Problem:** phones get the full game. In portrait they see a rotate prompt; in landscape they get fullscreen with touch controls.
+- **Constraints:** CLIENT §9 budgets on a mid-range Android device (WebGL2, D-22), with a reduced post-processing tier.
+- **Risks:** HUD density → the order menus from TA-14.8 use a compact layout.
+- **Telemetry:** `device_class`, `orientation_prompt_shown`, `fps_p50{device}`.
+
+#### Architecture
+- The Fullscreen API plus `screen.orientation.lock('landscape')` where supported, with a CSS fallback.
+- Touch: pinch zoom, two-finger pan, long-press for the context/order menu, tap to place with a confirm button (no hover).
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: CLIENT §11 mobile section rewritten for D-22 (lead).
+
+#### Definition of Done (DoD)
+- [ ] E2E `@mobile` (Pixel-class emulation, landscape): join → place a building on forest → it completes; portrait shows the rotate prompt.
+- [ ] p50 ≥ 30 fps on the reference device profile on `mvp-scale`.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-11.10` — Notification opt-in UX: Web Push service worker + Telegram link flow (D-17)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W5 / L5 (before TA-13.3)`
+- **Depends On:** `TA-08.7`, `TA-11.9`
+- **Spec:** [`DECISIONS.md`](../../spec/DECISIONS.md) D-17; [`CONTINUITY.md`](../../spec/CONTINUITY.md) (notifications follow-up)
+- **Target Files:**
+  - `frontend/game/src/notifications/{sw.ts,subscribe.ts,TelegramLink.tsx,NotificationSettings.tsx}`
+  - `frontend/game/test/notifications/*.test.ts`
+  - `tests/e2e/notifications.spec.ts`
+- **Verify:** `npm run test -w @terra/game -- notifications && npm run test:e2e -- --grep @notify`
+
+#### Analytics
+- **Problem:** with hard offline mode, players must opt in to alerts (under attack, critical, eliminated, rocket ready, truce offer).
+- **Telemetry:** `notify_optin{channel}`.
+
+#### Architecture
+- The VAPID public key comes from config, and the subscription is posted to core (TA-08.7).
+- Telegram: a deep link `t.me/<bot>?start=<one-time code>`; the UI polls the link status.
+
+#### Definition of Ready (DoR)
+- [ ] `TA-08.7` endpoints available.
+
+#### Definition of Done (DoD)
+- [ ] E2E `@notify`: subscribe → core receives the subscription; a Telegram link code is shown and expires after 10 min.
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).

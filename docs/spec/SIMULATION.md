@@ -1,189 +1,162 @@
 # TerraAgent — Simulation & Planet Host Specification
 
-> **Status:** Draft v0.1 (2026-10-29) — for owner review.
-> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §9 (simulation), §6 (NATS), §13 (WS), §14 (failover), §15 (tunables) · [`DECISIONS.md`](./DECISIONS.md) D-01, D-02, D-13, D-15
-> **Gameplay source:** [`colony-economy-and-buildings-spec.md`](../../colony-economy-and-buildings-spec.md), [`autonomous-colony-spec.md`](../../autonomous-colony-spec.md)
-> **Implemented by:** [`TA-06`](../plan/issues/TA-06-simulation-core.md) (`@terra/sim`, lane L2) and [`TA-07`](../plan/issues/TA-07-planet-worker.md) (`@terra/planet-worker`, lane L3)
+> **Status:** v0.2 (2026-10-30). This is the **simplified server simulation** (D-24): one app, sim in `worker_threads`, reproducible but not bit-exact, snapshot + coarse fast-run on restart, full state to clients, and no anti-cheat checks (D-25). The earlier deterministic, lease-based host is summarised in §15 as Future.
+> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §9, §14, §15 · [`DECISIONS.md`](./DECISIONS.md) D-16, D-17, D-18, D-21, D-24, D-25
+> **Gameplay source:** [`docs/game/colony-economy-and-buildings-spec.md`](../game/colony-economy-and-buildings-spec.md), [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md), [`docs/game/autonomous-colony-spec.md`](../game/autonomous-colony-spec.md)
+> **Implemented by:** [`TA-06`](../plan/issues/TA-06-simulation-core.md) / [`TA-14`](../plan/issues/TA-14-units-orders-progression.md) (`@terra/sim`) and [`TA-07`](../plan/issues/TA-07-planet-worker.md) (the `game` module host)
 
 ---
 
 ## 1. Purpose
 
-Defines the authoritative planet simulation (`shared/sim`) and how a planet-worker hosts it: determinism rules, the per-tick system pipeline, the command model, state layout, snapshot/hash format, fog-of-war views and deltas, the MVP content set with numbers, the rule engine, and the host (scheduler, leases, snapshots, restore + replay). Rules are numbered so they can be grilled and traced to tests (§13).
+This spec defines:
+- the planet simulation (`shared/sim`): reproducibility rules, the per-step system pipeline with `dt`, the command model, state layout and snapshots;
+- state sync to clients (engine snapshot + engine diffs, D-31) and the three hosts of the one engine: server, client replica with prediction, browser local host (§6a);
+- the MVP content set with numbers, and the rule engine;
+- how the `game` module hosts the sim: thread pool, active and coarse stepping, snapshots, and restart fast-run.
 
-Numbers marked **(proposed)** are not in the game-design specs; they are balance placeholders, owner-tunable, and live in data tables (`shared/sim/src/data/*.ts`), never in system code.
+Rules are numbered so they can be traced to tests (§13).
+
+Numbers marked **(proposed)** are not in the game-design specs. They are owner-tunable balance placeholders and live in data tables (`shared/sim/src/data/*.ts`), never in system code.
 
 ---
 
-## 2. Determinism rules (`SIM-D`)
+## 2. Reproducibility rules (`SIM-D`)
+
+The sim must be **reproducible in tests**: same seed + same commands at the same steps, on the same runtime, give the same result. **Bit-exact cross-runtime determinism is not required** (D-24). There is no durable command log, no replay and no state hash.
 
 | ID | Rule |
 |---|---|
-| `SIM-D-01` | `@terra/sim` MUST produce bit-identical state for identical `(initial params, seed, tick-marked command log)` on any Node ≥ 22 and in any browser. |
-| `SIM-D-02` | All persisted/hashed state MUST be integers within `±2^53`. Floating-point values are forbidden in state. The canonicalizer used by `hash()` and `snapshot()` MUST throw `SimNonIntegerError` on any non-integer number. |
-| `SIM-D-03` | Fixed units (all integers): **resources** in milli-units (`1 unit = 1000 mu`); **energy** in milli-E; **HP** in milli-HP; **percentages** in basis points (`10000 bp = 100 %`); **time** in ticks (`1 s = 10 ticks`, `TICK_MS = 100`); **positions** in sub-tile units (`1 tile = 1024 su`) on top of axial hex `(q, r)`. Spec values like `+1.5 E/s` become `150 milli-E/tick`; `+4.0 Metals/s` becomes `400 mu/tick`. |
-| `SIM-D-04` | Arithmetic helpers live in `shared/sim/src/math/fixed.ts`: `mulBp(a, bp)`, `mulDiv(a, b, c)` (floor), `idiv(a, b)` (floor toward −∞), `isqrt(n)`, `clamp`. Division in systems MUST go through these. Trigonometry uses integer lookup tables (`sinTable[4096]`, values in bp). |
-| `SIM-D-05` | Randomness only from the planet PRNG: **xoshiro128\*\***, seeded by `splitmix64(planet.seed ^ STREAM_ID)`. Independent streams: `gen` (map generation), `weather`, `hazard`, `fauna`, `ai` (rule-engine tie-breaks), `combat`. Stream states are part of state and of the snapshot. Adding a draw in one stream MUST NOT shift the others. |
-| `SIM-D-06` | Iteration order is canonical: entities in ascending `entityId`; colonies in ascending `colonyIndex`; tiles in ascending tile index. Entity ids are monotonic (`meta.nextEntityId`) and **never reused**. `Map`/`Set` may be used only as caches rebuilt from canonical arrays; systems MUST NOT make decisions by iterating an unsorted `Map`/`Set`. |
-| `SIM-D-07` | Banned in `shared/sim/src/**` (lint config `@terra/eslint-config/sim`, enforced in `npm run check`): `Date`, `performance`, `Math.random`, `Math.sin/cos/tan/atan2/exp/log/pow/hypot/cbrt`, `setTimeout`, `setInterval`, `queueMicrotask`, `process`, `globalThis`, `crypto`, `async`/`await`, `Promise`, `for…in`, `Object.keys/values/entries` over state objects (use explicit field lists), `JSON.stringify` in hashing paths, `parseFloat`, `toFixed`, float literals outside `src/data/**`, and imports of `node:*`, `fs`, `path`, DOM globals, or any package not in the sim allow-list (`xxhash-wasm`). Implementation: `no-restricted-globals`, `no-restricted-properties`, `no-restricted-syntax`, `import/no-nodejs-modules`, plus the custom rule `terra/no-float-literal` (ignores `src/data/**`). |
-| `SIM-D-08` | Data tables (`src/data/**`) MAY be authored in design units with decimals; `compileData()` converts them to integer units at module load and asserts exact conversion (`1.5 E/s → 150` exact, else throw). |
-| `SIM-D-09` | Every behaviour change that alters outcomes for an existing log MUST bump `SIM_VERSION` (semver-ish integer). Snapshots record `simVersion`; a worker refuses to restore a snapshot whose `simVersion` differs unless a registered migration exists (`src/codec/migrations/`). Running planets are therefore pinned to the sim version they were created with until migrated (see §11.6). |
-| `SIM-D-10` | `npm run sim:determinism -w @terra/sim -- --ticks N --runs R --scenario S` runs scenario `S` R times from scratch, plus once via `snapshot → restore` at a random mid-tick, and fails if any `stateHash` checkpoint differs. It also runs one leg in a different JS realm (`vm.Context`) to catch hidden global state. |
+| `SIM-D-01` | Same `(initial params, seed, command list per step)` on the same Node version gives the same state. This is used by unit tests, scenarios and the balance duel harness. |
+| `SIM-D-02` | **Floats are allowed** in state. Use plain numbers with design units: resources in units, energy in E, HP in HP, time in seconds. |
+| `SIM-D-03` | **Time.** One sim **tick** = `TICK_MS` = 200 ms of game time (5 TPS). `step(state, commands, dt)` advances `dt` ticks at once: `dt = 1` on active planets, `dt = 5` on empty planets (coarse, §11). Every rate in the data tables is per second. `compileData()` converts table durations and rates. Durations in §7–§10 written as "N ticks" come from the 100 ms draft: read them as **N × 0.1 s of game time**, and `compileData()` converts them. |
+| `SIM-D-04` | **Randomness** comes only from the planet PRNG: xoshiro128\*\* seeded per stream (`gen`, `weather`, `hazard`, `fauna`, `ai`, `combat`). Stream states are part of the snapshot. `Math.random` is banned in `shared/sim/src/**`. |
+| `SIM-D-05` | **Iteration order** is fixed: entities in ascending `entityId`, colonies in ascending `colonyIndex`. Entity ids are monotonic. |
+| `SIM-D-06` | **Purity.** The sim reads no wall clock, network or presence. Presence enters as a command (`system.presence`). Banned in `shared/sim/src/**`: `Date`, `performance`, `setTimeout`, `process`, `fs`, DOM globals, `async`. Lint rule `@terra/eslint-config/sim`. |
+| `SIM-D-07` | **Versioning.** `SIM_VERSION` is stored in snapshots. Restoring an older snapshot needs a registered migration (`src/codec/migrations/`), or the planet is restored best-effort with a warning. |
 
 ---
 
-## 3. Tick pipeline (`SIM-T`)
+## 3. Step pipeline (`SIM-T`)
 
-`step(state, commands)` advances **exactly one tick** and mutates `state` in place (returns the same reference plus `events` and `stats`). Order of systems is fixed and part of `SIM_VERSION`:
+`step(state, commands, dt)` applies the commands, then advances `dt` ticks of game time through the systems in a fixed order. It mutates `state` and returns `events` and `stats`.
 
-| # | System | File | Notes |
-|---|---|---|---|
-| 0 | `commands` | `systems/commands.ts` | Apply this tick's commands in ascending `seq`. Semantic validation here; failures emit `cmd.rejected {seq, code}` (§4.3). |
-| 1 | `environment` | `systems/environment.ts` | Day/night phase, weather (wind factor), storm state. |
-| 2 | `hazards` | `systems/hazards.ts` | Lightning strikes, meteor impacts (PRNG `hazard`). W4. |
-| 3 | `fauna` | `systems/fauna.ts` | Nest spawns, aggro, movement intents (PRNG `fauna`). W4. |
-| 4 | `ruleEngine` | `systems/rule-engine.ts` | Each colony evaluated every 10 ticks, staggered: colony `i` runs when `tick % 10 == i * 2`. Produces tasks. |
-| 5 | `robots` | `systems/robots.ts` | Task assignment, path requests (budgeted A\*), movement. |
-| 6 | `construction` | `systems/construction.ts` | Build/upgrade/repair progress, completion, demolition. |
-| 7 | `power` | `systems/power.ts` | Rebuild grid graph if dirty, per-component balance, capacitors, brownout shedding. |
-| 8 | `production` | `systems/production.ts` | Extractors, fuel upkeep, storage caps, robot harvesting credit. |
-| 9 | `factories` | `systems/factories.ts` | Robot build queues, supply cap. |
-| 10 | `combat` | `systems/combat.ts` | Turrets, combat bots, fauna attacks, raids; damage; destruction (PRNG `combat` for target tie-breaks). |
-| 11 | `territory` | `systems/territory.ts` | Claims on completion, anchor removal, 600-tick grace reverts. |
-| 12 | `progression` | `systems/progression.ts` | Rocket silo progress/launch, colony score every 600 ticks. W4. |
-| 13 | `lifecycle` | `systems/lifecycle.ts` | Colony elimination / departure, planet-wide end flags. |
-| 14 | `finalize` | `kernel/finalize.ts` | `tick += 1`; on `tick % 100 == 0` compute `stateHash` into `meta.lastHash` and emit `hash.checkpoint`. |
+| # | System | Notes |
+|---|---|---|
+| 0 | `commands` | Apply this step's commands in arrival order. Game-rule validation here; failures emit `cmd.rejected {commandId, code}` (§4). |
+| 1 | `environment` | Day/night, weather, storms (advance by `dt`). |
+| 2 | `hazards` | Lightning and meteors. Probability per step scales with `dt`. |
+| 3 | `fauna` | Nest spawns, aggro, movement. |
+| 4 | `ruleEngine` | Each colony is evaluated once per second of game time, staggered by colony index. On coarse steps (`dt = 5`) every colony runs once. |
+| 5 | `units` | Dispatch from order lanes, path requests (budgeted A\*), movement × `dt`. |
+| 6 | `construction` | Build, upgrade, repair and terraform progress × `dt`. |
+| 7 | `power` | Rebuild the grid graph if dirty; per-component balance; pylon flow and overload (§7.4); brownout shedding. |
+| 8 | `production` | Extractors, fuel upkeep, storage caps × `dt`. |
+| 9 | `factories` | Unit production queues, supply cap. |
+| 10 | `combat` | Damage = DPS × multiplier × `dt × TICK_MS`. On coarse steps, fights resolve in larger chunks; accepted (D-24). |
+| 11 | `territory` | Claims, anchor removal, grace reverts. |
+| 12 | `progression` | Stages, launch gate, rocket, score. |
+| 13 | `lifecycle` | Elimination, settlement, planet end flags. |
+| 14 | `finalize` | `tick += dt`; mark changed entities for the next delta. |
 
-- `SIM-T-01` Systems not yet implemented are registered as no-ops so the order (and therefore `SIM_VERSION`) only changes when a system gains behaviour.
-- `SIM-T-02` A system MUST NOT read wall-clock, presence, or connection state. Anything presence-dependent enters as a command (`core.presence` published by the worker, §4).
-- `SIM-T-03` Per-tick hard budget inside the sim: A\* node expansions ≤ `2000` per planet per tick; overflow requests wait in a FIFO (`state.pathQueue`) — deterministic.
+- `SIM-T-01` Systems not yet implemented are registered as no-ops, so the order stays fixed.
+- `SIM-T-02` Per-step budget: A\* node expansions ≤ 2 000 per planet per step. Overflow requests wait in a FIFO (`state.pathQueue`).
 
 ---
 
 ## 4. Command model (`SIM-C`)
 
-### 4.1 Shape
-
 ```ts
-// shared/contracts/src/sim/commands.ts (owned by lead; sim consumes)
+// shared/contracts/src/sim/commands.ts
 type SimCommandV1 = {
-  seq: number;              // JetStream stream sequence of the command message (canonical order)
-  tick: number;             // tick at which it is applied (from the tick marker, §4.2)
-  colonyIndex: number | null; // null = planet-level (system/admin)
-  source: 'player' | 'ai' | 'trade' | 'admin' | 'system';
-  commandId: string;        // idempotency key (Nats-Msg-Id), e.g. `${colonyId}:${clientCmdId}`
-  kind: SimCommandKind;
-  args: unknown;            // zod-validated per kind at worker ingress
+  colonyIndex: number | null;   // null = planet-level (system/admin)
+  source: 'player' | 'ai' | 'near' | 'admin' | 'system';
+  commandId: string;            // client or module id, echoed in ack/reject
+  kind: SimCommandKind;         // authoritative list: PROTOCOL.md CommandKind
+  args: unknown;                // zod-validated per kind on the main thread
 };
 ```
 
-| Kind | Source(s) | Args (summary) | Semantic validation (sim) |
-|---|---|---|---|
-| `setPriorities` | player, ai | `{economy, expand, defense, rocket}` each `0..100` | colony active |
-| `enqueueTask` | player, ai | `{task: 'build'\|'upgrade'\|'repair'\|'clear'\|'buildRobot'\|'raid'\|'launchRocket', …}` | per task (territory, resources, tier unlocked, target exists) |
-| `cancelTask` | player | `{taskId}` | task owned by colony |
-| `placeBuilding` | player | `{building, tier, q, r, rotation}` | footprint on own territory, free, terrain buildable, resources reservable |
-| `upgradeBuilding` | player | `{entityId}` | owned, next tier enabled, +1 ring free & owned, Δcost reservable |
-| `demolish` | player | `{entityId}` | owned, not Command Hub |
-| `setAutopilot` | player | `Autopilot` (PROTOCOL) — player preference only; the away toggle is `core.presence` | — |
-| `ai.directive` | ai | `DirectiveV1` (see `AI_ORCHESTRATOR.md`) | clamp weights, drop invalid intents individually |
-| `trade.commit` | trade | `{tradeId, deltas: {metals?, minerals?, petroleum?, water?}}` | colony has Trade Hub T1 online; negative deltas covered; positive clamped to cap (overflow lost, reported) |
-| `core.spawnColony` | core | `{colonyId, playerId, spawnSlot, startingStock?, kit}` | slot free, planet not ended |
-| `core.retireColony` | core | `{colonyId, reason}` | — |
-| `core.end` | core | `{reason}` | — |
-| `core.seal` | core | `{reason}` | — (informational; admission is enforced by core) |
-| `core.presence` | core (worker on presence change) | `{colonyId, away}` | switches autopilot policy (CONTINUITY `CT-12`, `AW-*`) |
-| `core.arrive` | core | `{colonyId, playerId, carriedResources, founderTier}` | rocket transfer arrival (TA-06.10) |
-| `trade.offer` / `trade.respond` / `trade.offerReceived` | near (trade saga), ai via directive | see NEAR.md §7 | Trade Hub T1 online; reserves the giving side |
-| `trade.revert` / `trade.release` | near (trade saga) | `{tradeId, leg}` | undo an applied leg / drop a reservation |
+Command kinds (summary; arguments in PROTOCOL.md):
 
-> Authoritative kind names: [`PROTOCOL.md`](./PROTOCOL.md) `CommandKind`.
+| Group | Kinds | Source |
+|---|---|---|
+| Colony control | `setPriorities`, `enqueueTask` (build / upgrade / repair / terraform / buildUnit / queueGoal / raid / launchRocket), `cancelTask`, `placeBuilding`, `upgradeBuilding`, `demolish`, `setAutopilot`, `setAwayBudget`, `setHarvestWeights`, `setStance`, `attackMove`, `setRally` | player, ai |
+| AI | `ai.directive` (DirectiveV1/v2) | ai |
+| Cargo & market (D-26) | `cargo.export {resource, amount}` (moves stock to "in orbit" pending mint), `cargo.import {resource, amount}` (credited after the burn confirms), `cargo.settled {ref, ok}`, `market.reserve` / `market.release` / `market.settled {tradeId, deltas}` | player, ai, near |
+| Diplomacy & bounties | `diplomacy.proposeTruce` / `respondTruce` / `cancelTruce`, `bounty.post` / `bounty.claim` / `bounty.paid` | player, ai, near |
+| System | `system.spawnColony`, `system.retireColony`, `system.seal`, `system.end`, `system.presence {colonyId, away}`, `system.arrive` | lobby, game |
 
-- `SIM-C-01` Schema validation (zod, `@terra/contracts`) happens at the worker ingress; the sim re-checks only **semantic** validity at the application tick, because state may have changed since ingress.
-- `SIM-C-02` Rejections never throw. They emit `cmd.rejected {commandId, seq, code}` with codes: `invalid_args`, `colony_inactive`, `not_owner`, `not_own_territory`, `site_blocked`, `terrain_unbuildable`, `insufficient_resources`, `tier_locked`, `supply_cap`, `unknown_entity`, `no_trade_hub`, `raid_protected`, `planet_ended`.
-- `SIM-C-03` Resources for `placeBuilding`/`upgradeBuilding`/`buildRobot` are **deducted at acceptance** (reserved into the construction site); cancel refunds 75 %, demolish refunds 50 % of the building's total cost **(proposed)**. In-place upgrade costs `Cost(Tn+1) − Cost(Tn)` per the economy spec §1.1.
-- `SIM-C-04` Task precedence inside a colony queue: `player` tasks > `ai` directive tasks > autonomous rule-engine tasks; FIFO within each class; at most `50` queued tasks per colony (oldest autonomous tasks dropped first).
-
-### 4.2 Tick tick marking & the durable log
-
-- `SIM-C-05` Every command — from WS ingress, core, AI, NEAR — is first published to JetStream subject `{ns}.planet.{planetId}.cmd` (stream `{NS}_PLANET_CMDS`). The stream sequence is `seq`.
-- `SIM-C-06` The owning worker consumes the subject in order. At the start of computing tick `t` it takes all received-but-unapplied commands (contiguous `seq` range) and applies them at tick `t`.
-- `SIM-C-07` For every tick that applied ≥ 1 command, and in any case every `100` ticks, the worker publishes a **tick marker** `{planetId, tick, lastCmdSeq, count, leaseEpoch, stateHash?}` (hash present on `tick % 100 == 0`) to `{ns}.planet.{planetId}.tick` in the **same stream**. Landed in ARCHITECTURE §6.1; schema and rules in [`PROTOCOL.md`](./PROTOCOL.md) `NT-11`/`NT-13`.
-- `SIM-C-08` A client/producer is acked (`cmd.ack {id, appliedAtTick}`) only after the tick marker covering it is durable (JetStream PubAck). Therefore every acked command is replayed at exactly the same tick after failover (RPO = 0 acked commands, bit-exact up to the last durable tick marker). Unstamped commands found in the stream during restore are applied at the first live tick after replay.
-- `SIM-C-09` Replay rule: starting from snapshot `(tick T0, lastAppliedSeq S0)`, for each tick marker in order with `tick ≥ T0` and `leaseEpoch ≤ restoringEpoch`, step ticks up to `marker.tick`, applying commands `(prevUpToSeq, lastCmdSeq]` at `tick marker.tick`; verify `stateHash` where present. A hash mismatch aborts restore and marks the planet `FAULTED` (§11.5).
-- `SIM-C-10` Lost game time: ticks after the last durable tick marker (≤ 100 ticks = 10 s) are recomputed; downtime itself is **not** fast-forwarded — the planet resumes from the last durably marked tick. Planet wall-clock lifecycle (seal/end) is owned by core and unaffected.
+- `SIM-C-01` **Validation (D-25).** Exactly three checks:
+  - the zod schema, on the main thread;
+  - **the command controls only the sender's own colony** (`colonyIndex` is derived from the authenticated player, never taken from the client);
+  - game rules in the `commands` system (territory, prepared ground, resources, tier, stage, supply, newcomer shield, truce).
+  There are no rate limits, plausibility checks or anti-cheat checks.
+- `SIM-C-02` Rejections never throw. They emit `cmd.rejected {commandId, code}`. Codes: `invalid_args`, `colony_inactive`, `not_own_territory`, `site_blocked`, `terrain_unbuildable`, `insufficient_resources`, `tier_locked`, `worker_tier_locked`, `stage_locked`, `supply_cap`, `unknown_entity`, `no_trade_hub`, `raid_protected`, `truce_active`, `would_isolate`, `launch_gate`, `mint_cap`, `planet_ended`.
+- `SIM-C-03` **Payment.** Orders are paid when work starts (units spec `UO-Q-01`). Cancelling in progress refunds 75 %; demolish refunds 50 %. In-place upgrades cost the Δ.
+- `SIM-C-04` Queue precedence and limits follow units spec §4.4.
+- `SIM-C-05` **Cargo export** is the only path from sim stock to the chain. The sim removes the stock and records a `pendingMint`. The `near` module mints and answers with `cargo.settled`; a failed mint refunds the stock. Exports obey `CARGO_MINT_CAP_PER_DAY` and the Trade Hub throughput (`mint_cap`) as **economic pacing** (D-26).
 
 ---
 
 ## 5. State layout (`SIM-S`)
 
-Custom Structure-of-Arrays store (`shared/sim/src/ecs/store.ts`), inspired by bitECS but without global worlds or id recycling (bitECS rejected: global module state and recycled ids break `SIM-D-06` and snapshotting).
+A structure-of-arrays entity store (`shared/sim/src/ecs/store.ts`) with no id recycling.
 
 ```ts
 interface PlanetState {
-  meta: {
-    simVersion: number; planetId: string; planetType: 'temperate' | 'desert';
-    seed: string /* u64 hex */; tick: number; nextEntityId: number;
-    lastAppliedSeq: number; lastHash: string; rng: Record<RngStream, Uint32Array /*4*/>;
-    ended: boolean;
-  };
-  grid: {                        // hex, radius R, tile index = axialToIndex(q, r)
-    radius: number;              // 56 (proposed) → 9 577 tiles
-    terrain: Uint8Array;         // plain | rock | forest | water | dune | crater
-    deposit: Uint8Array;         // none | metals | minerals | petroleum | water
-    richnessBp: Uint16Array;     // 5000..15000
-    owner: Int8Array;            // colonyIndex or -1
-    anchors: Uint8Array;         // count of friendly anchoring buildings
-    graceUntil: Int32Array;      // tick at which an un-anchored tile reverts, 0 = none
-    explored: Uint8Array;        // bitmask per colony (5 bits)
-  };
-  colonies: ColonyState[];       // index = colonyIndex (0..PLANET_CAPACITY-1)
-  entities: {                    // SoA, dense, sorted by id
-    id: Uint32Array; kind: Uint8Array; owner: Int8Array; tier: Uint8Array;
-    q: Int16Array; r: Int16Array; x: Int32Array; y: Int32Array; /* su */
-    hp: Int32Array; hpMax: Int32Array; state: Uint8Array; progress: Int32Array;
-    // component-specific columns live in typed sub-stores keyed by dense index
-  };
+  meta: { simVersion: number; planetId: string; planetType: 'temperate' | 'desert';
+          seed: string; tick: number; nextEntityId: number; rng: Record<RngStream, Uint32Array>;
+          ended: boolean; };
+  grid: { radius: number; terrain: Uint8Array; prep: Uint8Array; deposit: Uint8Array;
+          richness: Float32Array; owner: Int8Array; anchors: Uint8Array; graceUntil: Float64Array;
+          explored: Uint8Array /* kept for client-side fog, not used for filtering */ };
+  colonies: ColonyState[];
+  entities: { id: Uint32Array; kind: Uint8Array; owner: Int8Array; tier: Uint8Array;
+              q: Int16Array; r: Int16Array; x: Float32Array; y: Float32Array;
+              hp: Float32Array; hpMax: Float32Array; state: Uint8Array; progress: Float32Array;
+              changedAt: Uint32Array; };
   power: { components: …; dirty: boolean };
-  tasks: TaskQueue[];            // per colony
-  pathQueue: PathRequest[];
-  hazards: ActiveHazard[]; fauna: NestState[];
-}
-
-interface ColonyState {
-  colonyId: string; playerId: string; status: 'active' | 'critical' | 'eliminated' | 'departed' | 'retired';
-  resources: { metals, minerals, petroleum, water: number };   // mu
-  caps: { storage: number; supply: number }; supplyUsed: number;
-  energy: { lastNet: number; deficitTicks: number };            // milli-E
-  priorities: { economy, expand, defense, rocket: number };      // 0..100
-  autopilot: 'player' | 'away';
-  directive: { weightsBp: …; intents: …; expiresAt: number } | null;
-  raidProtectedUntil: number; criticalSince: number; score: number;
+  lanes: OrderLanes[]; goals: HqGoal[][]; pathQueue: PathRequest[];
+  hazards: ActiveHazard[]; fauna: NestState[]; truces: Truce[]; pendingCargo: PendingCargo[];
 }
 ```
 
-- `SIM-S-01` `snapshot(state) → Uint8Array` and `restore(bytes) → PlanetState` round-trip exactly: `hash(restore(snapshot(s))) === hash(s)` (property test over 1 000 random states).
-- `SIM-S-02` Snapshot binary format **TASN v1**: header `magic "TASN" | u16 formatVersion | u16 simVersion | u64 tick | u32 epoch | u64 lastAppliedSeq | u64 stateHash | u32 sectionCount`, then sections `[u16 id | u32 byteLength | bytes]` (little-endian typed arrays, UTF-8 string table for ids). Uncompressed; the snapshot store (TA-03.3) compresses (gzip level 6). Target ≤ 512 KB compressed at MVP scale.
-- `SIM-S-03` `hash(state)` = **xxHash64** (`xxhash-wasm`, isomorphic) over the canonical section bytes excluding the header's hash field; hex string. Computed every 100 ticks in `finalize` and on `snapshot()`.
+- `SIM-S-01` `snapshot(state) → Uint8Array`: MessagePack of the state (typed arrays as binary), gzip-compressed by the host. `restore(bytes)` round-trips (property test: `restore(snapshot(s))` deep-equals `s`). Target ≤ 512 KB compressed.
+- `SIM-S-02` No state hash (D-24).
 
 ---
 
-## 6. Fog-of-war view & deltas (`SIM-V`)
+## 6. State sync to clients (`SIM-V`)
 
-- `SIM-V-01` `view(state, colonyIndex) → ColonyViewV1` contains: own colony (resources, caps, supply, energy, priorities, autopilot, task queue, all own entities); tiles explored by the colony (terrain, deposit, owner); **foreign/fauna entities only within current vision**: own territory + radius `6` around own buildings, `5` around own robots, `20` around Beacon T2 **(proposed except T2 beacon = spec)**. Foreign entities expose `id, kind, tier, owner, q, r, x, y, hpPct`; never resources or tasks.
-- `SIM-V-02` `diff(prevView, state, colonyIndex) → ViewDeltaV1 { fromTick, toTick, ops[] }` with ops:
-  - `{o: 'e+', e: EntityView}` entity entered view · `{o: 'e~', id, f: Partial<EntityView>}` changed fields only · `{o: 'e-', id, why: 'destroyed' | 'out_of_view'}`
-  - `{o: 't', tiles: [index, terrain, deposit, owner][]}` tile changes · `{o: 'x', tiles: number[]}` newly explored
-  - `{o: 'c', f: Partial<ColonyView>}` own colony fields · `{o: 'q', tasks}` task queue replaced when changed
-  - `{o: 'ev', events: PlayerEventV1[]}` player-visible events since `fromTick`
-- `SIM-V-03` Movement fields (`x, y`) are always included for moving entities in view so the client can interpolate (`tick` on the envelope); static entities send `e~` only on change.
-- `SIM-V-04` `diff` cost MUST be O(entities in view), using per-entity `changedAt` ticks rather than deep comparison. Contract change request (lead): `ColonyViewV1`, `EntityViewV1`, `ViewDeltaV1` schemas in `@terra/contracts/ws`.
+- `SIM-V-01` **Full state, no fog filtering (D-25).** On join, the client receives the **engine snapshot** (`snapshot()`, the shared codec, D-31): every colony, entity, tile, lane and PRNG stream. The client loads it into its own engine and draws fog-of-war from `grid.explored` and its own vision.
+- `SIM-V-02` **Deltas are engine diffs.** Every `1 / DELTA_HZ` s the host emits one delta per planet: `{fromTick, toTick, diff: diffSince(fromTick), events}`. The diff holds changed entity rows (from `changedAt`), created and removed entities, tile changes, colony records, order lanes and goals, and PRNG stream states. It is **the same for every socket on that planet** (built once, broadcast as one binary frame).
+- `SIM-V-03` `applyDiff(diff)` on a replica at `fromTick` gives a state deep-equal to the server's at `toTick`. Views for rendering and the HUD come from the engine's `view()` on the client, not from the wire.
+- `SIM-V-04` Delta cost is O(changed entities). There are no per-socket diffs.
+- `SIM-V-05` A wave that adds state registers which fields are synced; it does not write delta code. Server-private fields do not exist (D-25).
+
+## 6a. One engine, three hosts (`SIM-X`) — D-31
+
+| Host | Where | Authority | Used for |
+|---|---|---|---|
+| **Server** | `game` module, worker threads (§11) | yes | every online planet |
+| **Client replica + prediction** | browser Web Worker (CLIENT §7) | no | rendering the server state at tick T exactly, and predicting the player's own commands ahead of it |
+| **Local host** | the same Web Worker, `?host=local` | yes, locally | single-player testing and sim-only e2e runs without the app or Postgres |
+
+- `SIM-X-01` **One API.** All hosts use `SimHost`: `load(snapshot)`, `step(dt)`, `submit(cmd)`, `snapshot()`, `diffSince(tick)`, `applyDiff(diff)`, `clone()`, `view()`, `events`. Hosts own clocks, timers and I/O; the engine never does (`SIM-D-06`).
+- `SIM-X-02` **Every game rule lives in `@terra/sim`.** Server modules and client features call the engine; they do not re-implement rules. Command validation in the engine (game rules) runs identically in every host; the server additionally checks schema and ownership (`WS-20`).
+- `SIM-X-03` **Prediction.** The client keeps `confirmed` (the replica at server tick T) and the player's commands not yet applied (`cmd.ack.appliedAtTick` > T). It renders `predicted = clone(confirmed)`, then submits the pending commands at their ticks and steps to the estimated server tick. Each delta: apply to `confirmed`, drop applied commands, rebuild `predicted`. A `cmd.reject` drops the command and shows the reason.
+- `SIM-X-04` **Correction.** When the rebuilt prediction moves an entity, the renderer blends to the new position over 150 ms; discrete fields (HP, state, ownership, tiles) snap. Render-only events (projectiles, impacts, VFX) come from `predicted`; player-facing events (toasts, alerts, notifications, achievements) come only from the server.
+- `SIM-X-05` **Fallback.** `?predict=0`, or a worker step p95 above 4 ms, turns prediction off: the client renders the replica interpolated 400 ms behind server time.
+- `SIM-X-06` **Local host.** Steps at 5 TPS from the worker's timer, accepts commands through `LocalTransport` (same messages as `/ws`), loads scenarios and generator seeds, supports time warp and the dev console, and saves snapshots to IndexedDB. Features that need server modules report `host_unavailable` and are hidden.
+- `SIM-X-07` **Parity.** `npm run test:parity` runs each registered scenario with a scripted command log for 600 ticks on Node and in headless Chrome: discrete state must be equal and positions within 0.01 tile. Bit-exact equality is not required (D-24).
+- `SIM-X-08` **Versioning.** `welcome` carries `simVersion` and `dataHash` (hash of the compiled data tables for the enabled waves). A client whose engine differs reloads before joining.
 
 ---
 
 ## 7. MVP content (`SIM-G`) — per D-15
 
-All numbers from `colony-economy-and-buildings-spec.md` unless marked **(proposed)**. Unit conversion per `SIM-D-03` happens in `compileData()`.
+All numbers from `docs/game/colony-economy-and-buildings-spec.md` unless marked **(proposed)**. `compileData()` converts design units and durations (`SIM-D-03`). The unit roster, lanes, ground prep, walls, truces and progression follow [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md) (D-16, accepted); where §7.2–§7.7 below differ, the units spec wins.
 
 ### 7.1 Buildings enabled in MVP
 
@@ -193,7 +166,7 @@ All numbers from `colony-economy-and-buildings-spec.md` unless marked **(propose
 | Command Hub | T2 | 4×4 | 75 s | 600/350/200/150 | −14 | 3 800 | Claim R 15; storage +1 500; supply +25 |
 | Territory Claim Beacon | T1 | 1×1 | 18 s | 80/40/0/10 | −4 | 400 | Claim R 8 |
 | Territory Claim Beacon | T2 | 2×2 | 42 s | 220/140/40/30 | −11 | 1 100 | Claim R 14; vision R 20 |
-| Power Line Pylon | T1 | 1×1 | 4 s | 15/5/0/0 | −0.5 | 120 | Span 6; max load 80 E/s (**not enforced in MVP**, §7.4) |
+| Power Line Pylon | T1 | 1×1 | 4 s | 15/5/0/0 | −0.5 | 120 | Span 6; max load 80 E/s (enforced, `SIM-G-PWR`, D-21) |
 | Energy Capacitor Bank | T1 | 2×2 | 16 s | 70/60/10/10 | −1.5 | 450 | Stores 1 500 E; discharge ≤ 30 E/s |
 | Coal/Oil Thermal Plant | T1 | 2×2 | 15 s | 80/20/20/10 | −3 | 450 **(proposed HP)** | +28 gross; consumes 1.5 Pet/s; pollution +1 |
 | Wind Turbine | T1 | 2×2 | 14 s | 70/35/5/0 | −1 | 400 **(proposed HP)** | +16 gross × wind factor 50–140 % |
@@ -207,14 +180,14 @@ All numbers from `colony-economy-and-buildings-spec.md` unless marked **(propose
 | Drone Control Array | T1 | 1×1 | 14 s | 55/45/10/5 | −5 | 350 | Supply +8 |
 | Robotics Factory | T1 | 3×3 | 25 s | 120/70/30/20 | −10 | 800 | Builds T1 robots |
 | Autocannon Turret | T1 | 1×1 | 12 s | 55/20/10/0 | −3 | 450 | Range 8; 18 DPS; −0.2 Metals/s while firing |
-| Inter-Colony Trade Hub | T1 | 2×2 | 22 s | 100/80/30/10 | −6 | 650 | Required for `trade.commit`; ≤ 250 units/min — *outside the D-15 list; added for TA-10.5, owner to confirm* |
-| Interplanetary Rocket Silo (Lander) | T2 | 4×4 | 210 s | 1 800/1 600/1 400/700 | −120 | 4 800 | Launches Founder Pod (+25 % starting stock on next planet) — *only rocket tier in MVP; owner to confirm* |
+| Inter-Colony Trade Hub | T1 | 2×2 | 22 s | 100/80/30/10 | −6 | 650 | Required for trades (owner-confirmed 2026-10-29; truces do not need it); ≤ 250 units/min |
+| Interplanetary Rocket Silo (Lander) | T2 | 4×4 | 210 s | 1 800/1 600/1 400/700 | −120 | 4 800 | Launches Founder Pod (+25 % starting stock on next planet) — the only rocket tier in MVP. Launch gate: the colony's own territory is 100 % Living (D-18, §7.7) |
 
 "Mine" in D-15 is interpreted as the three deposit extractors (Metals, Minerals, Petroleum). Everything else in the economy spec stays in the data tables with `enabled: false`.
 
 ### 7.2 Robots (T1 only)
 
-> **Superseded if D-16 is accepted:** roster, lanes, queue, combat matrix, starting kit and threat scaling move to [`units-orders-and-progression-spec.md`](../../units-orders-and-progression-spec.md); that spec's §7 lists every rule in this file that changes.
+> **Superseded (D-16 accepted):** roster, lanes, queue, combat matrix, starting kit and threat scaling are in [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md); this table is history.
 
 | Robot | Build | Cost M/Min/Pet/W | Supply | Drain E/s | HP | Speed **(proposed)** | Capability |
 |---|---|---|---|---|---|---|---|
@@ -234,13 +207,22 @@ Command Hub T1 (instant), 1 Builder (the founder robot), 1 Miner; stock `400 M /
 - Per connected component: `supply = Σ online generator net output (with daylight/wind/Desert modifiers; thermal only while Pet > 0) + Σ capacitor discharge (≤ max)`; `demand = Σ drains of online consumers (+ robot drain on the Hub's component)`.
 - Brownout shedding when `demand > supply`, in the economy spec's order — shed first: Rocket Silo; second: Robotics Factory, Trade Hub; third: extractors, Supply Depot; keep last: Turrets, Beacons, Drone Control Arrays, generators' internal drain. Within a tier, shed newest first (descending `entityId`). Surplus charges capacitors.
 - Components without any generator or charged capacitor are fully `OFFLINE`. Severed by pylon destruction → graph marked dirty → recomputed same tick.
-- Per-pylon max-load routing is **deferred** (post-MVP); recorded as a known deviation from the economy spec §1.3.
+- **Per-pylon max load is enforced in MVP (D-21)**, using the economy spec §1.3 capacities: Pylon T1 80 E/s, T2 300 E/s, T3 1 200 E/s. The Command Hub acts as a pylon with a 150 E/s max load **(proposed)**.
+  - **Flow model (deterministic):** per connected component, build a BFS spanning tree rooted at the generator with the highest net output (ties go to the lowest `entityId`). Neighbours are visited in ascending `entityId`. Every consumer and generator attaches to its nearest pylon or Hub (ties go to the lowest `entityId`).
+  - A pylon's flow is the absolute net power of its subtree: attached and downstream drains minus generation and capacitor discharge inside the subtree.
+  - **Overload:** if a pylon's flow exceeds its max load, its subtree is an over-capacity **branch**. Consumers in that branch are shed in the brownout order above (newest first within a group) until the flow fits. Shed consumers show `offline: overload`. Other branches are unaffected.
+  - The tree is rebuilt when the graph is dirty. Flows are re-evaluated every 10 ticks (staggered per colony).
+  - Event `powerOverload {pylonId}` is debounced to 600 ticks. The rule engine's `energy` need adds a `capacity` term that suggests a T2 relay or a second line.
 
 ### 7.5 Territory rules (`SIM-G-TER`)
 
 Exactly the economy spec §2: claim on construction completion (radius by tier), unclaimed → claim, same owner → add anchor, foreign → frozen border (never overwritten). Unpowered beacon cannot claim new tiles and takes +25 % damage. Anchor removal → tiles with zero anchors revert after `600` ticks unless re-anchored. All building placement requires own tiles.
 
+> **D-16 (accepted):** placement also requires every footprint tile to be **Prepared** (terraformed). Terrain classes, the 8 terraform ops and their energy draw, linked prep orders, meteor holes and the spawn guarantee are in [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md) §4.5.
+
 ### 7.6 Environment, hazards & fauna **(all proposed, owner-tunable)**
+
+> **Pressure level: hard (D-17).** At default difficulty, an unattended colony **can be eliminated** by fauna, hazards or other players; the player is notified (CONTINUITY §5a). Stage-scaled raid sizes, Brute and Drifter species, meteor timing and wall rules are in `docs/game/units-orders-and-progression-spec.md` §6.3 and §4.8, and they supersede the raid row below. The "must survive a night offline" goal is dropped. What the tests guarantee instead is that the colony **defends itself sensibly** (AC-03 in the units spec), not that it survives.
 
 | Item | Temperate | Desert |
 |---|---|---|
@@ -255,101 +237,98 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 
 ### 7.7 Combat, PvP, elimination
 
-- Damage is instant-hit per tick (`DPS × 100` milli-HP per tick); target = nearest hostile in range, tie by lowest `entityId`.
+- Damage is instant-hit per step (`DPS × dt × TICK_MS`); target = nearest hostile in range, tie by lowest `entityId`.
 - **Raids (PvP):** `enqueueTask {task: 'raid', targetColonyIndex, q, r}` sends idle combat bots. Combat bots adjacent to a foreign Supply Depot or Hub siphon 1 unit/s of each resource (attacker cap-limited) **(proposed)**. Not allowed against colonies with `raidProtectedUntil > tick` (`raid_protected`).
-- **Elimination:** Hub destroyed → colony `critical`; if no Hub is rebuilt within 6 000 ticks, or no Builder exists while critical → `eliminated`: entities become neutral ruins (`owner = -1`, decaying 1 % HP/s), tiles un-anchored (grace applies), event `colonyEliminated`.
-- **Departure (rocket):** Rocket Silo T2 complete + `launchRocket` → after 300-tick countdown emit `rocketLaunched {colonyId, carry: {stockMultiplierBp: 12500}}`; colony → `departed` (same ruin rules as elimination). Core re-places the player (TA-08.5 / TA-05).
+- **Elimination:** Hub destroyed → colony `critical`; if no Hub is rebuilt within 6 000 ticks, or the HQ drone is also lost (`UO-HQ-04`) → `eliminated`: entities become neutral ruins (`owner = -1`, decaying 1 % HP/s), tiles un-anchored (grace applies), event `colonyEliminated`.
+- **Departure (rocket):** Rocket Silo T2 complete + `launchRocket` → after 300-tick countdown emit `rocketLaunched {colonyId, carry: {stockMultiplierBp: 12500}}`; colony → **`settled`** (D-18). The `lobby` module re-places the player (TA-08.5 / TA-05).
+  - **Launch gate (D-18):** `launchRocket` is rejected (`launch_gate`) unless the colony's own territory is 100 % Living. Wall, Deep Water and building-footprint tiles are excluded, as in units spec `UO-TF-06`.
+  - **Settled colony:** stays on the planet as an inert, invulnerable entity group. It keeps its tiles and its frozen border (anchors are never removed, so there is no grace revert). It runs no systems: no power, production, robots, combat or rule engine, so it has no tick cost. It cannot be raided or targeted. It still counts toward planet score and occupancy.
+  - Settled status is the precondition for the player's NEAR staking flow (NEAR.md, D-18). The sim only emits `colonySettled {colonyId, terraformBp, ownedTiles}`.
 
 ---
 
 ## 8. Rule engine & priorities (`SIM-R`)
 
-- `SIM-R-01` Utility AI per colony every 10 ticks (staggered per §3). It never spends more than it has and only issues tasks the command validator would accept.
+- `SIM-R-01` Utility AI per colony once per second of game time (staggered per §3). It never spends more than it has and only issues tasks the command validator would accept.
 - `SIM-R-02` Needs (each scored 0–10 000 bp): `energy` (net balance, deficit ticks, night forecast), `storage` (fill ratio ≥ 85 %), `supply` (used/cap ≥ 90 % and factory idle), `extraction` (per-resource income vs. spend over last 600 ticks), `defense` (threat level = hostiles within 15 tiles + recent damage), `expand` (free buildable owned tiles < 30 or unclaimed deposits within 20 tiles), `repair` (damaged/severed), `rocket` (silo progress affordability).
 - `SIM-R-03` Priority sliders scale needs: `score = need × (5 000 + priority × 100) / 10 000`; `repair` and `defense under attack` are floored at 8 000 bp regardless of sliders.
 - `SIM-R-04` Directive (`ai.directive`) overrides slider weights for its `ttlTicks` (≤ 18 000) and injects intents as `ai` tasks; it can never exceed resources or bypass validation; expired directives are dropped.
 - `SIM-R-05` Site selection is deterministic: candidates scored by distance to Hub/deposit/pylon, ties by tile index; random tie-breaks only from the `ai` stream.
-- `SIM-R-06` `away = true` (set by the worker via the `core.presence` command when the player is away — policy in `CONTINUITY.md`, TA-08.2) changes only rule-engine behaviour flags: no new raids are initiated; demolition is not performed; defense floor +1 000 bp. Everything else runs identically, so offline colonies keep growing.
+- `SIM-R-06` `away = true` (set by the `game` module via the `system.presence` command when the player is away; policy in `CONTINUITY.md`) changes only rule-engine behaviour flags: no new raids are initiated; demolition is not performed; defense floor +1 000 bp. Everything else runs identically, so offline colonies keep growing.
 
 ---
 
 ## 9. Significant events (`SIM-E`)
 
-`step()` returns `events: SimEventV1[]`. The worker forwards *significant* ones to `{ns}.planet.{id}.evt.{type}` (TA-07.7). Kinds and severities:
+`step()` returns `events: SimEventV1[]`. The host forwards significant ones to the in-process event bus (`planet.event`), which feeds `ai`, `notify`, `near` and the away digest.
 
 | Event | Severity | Trigger / debounce |
 |---|---|---|
 | `colonyFounded` | info | `spawnColony` applied |
-| `underAttack` | critical | hostile damage to colony entity; debounce 600 ticks per colony |
+| `underAttack` | critical | hostile damage to a colony entity; debounce 60 s per colony |
 | `buildingDestroyed` | warn | any own building destroyed |
-| `powerSevered` | warn | component split leaves consumers offline |
-| `energyCollapse` | critical | colony brownout ≥ 300 consecutive ticks |
-| `resourceShortage` | warn → critical | resource < 5 % of cap with negative net over 600 ticks (critical if Pet/energy blocks generation) |
-| `hazardStrike` | info / warn | lightning / meteor hit on colony |
-| `neighborContact` | info | first foreign entity seen by a colony |
-| `territoryCollision` | info | first frozen border between two colonies |
-| `raidStarted` / `raidRepelled` | warn | raid task begins / all raiders dead |
-| `rocketReady` / `rocketLaunched` | info | silo complete / launch |
-| `colonyCritical` / `colonyEliminated` | critical | §7.7 |
-| `cmd.rejected` | — | internal, routed to the issuing socket/producer only |
-| `hash.checkpoint` | — | internal, every 100 ticks |
-
-Contract change request (lead): `SimEventV1` / `PlanetEventV1` kind union in `@terra/contracts`.
+| `powerSevered` / `powerOverload` | warn | component split / pylon over max load (60 s debounce) |
+| `energyCollapse` | critical | colony brownout ≥ 30 s |
+| `resourceShortage` | warn → critical | resource < 5 % of cap with negative net over 60 s |
+| `hazardStrike` | info / warn | lightning or meteor hit on the colony |
+| `neighborContact` / `territoryCollision` | info | first foreign entity seen / first frozen border |
+| `raidStarted` / `raidRepelled` | warn | raid begins / all raiders dead |
+| `rocketReady` / `rocketLaunched` / `colonySettled` | info | silo complete / launch / settled |
+| `colonyCritical` / `colonyEliminated` | critical | units spec `UO-HQ-04` |
+| `cargoExportRequested` / `marketOrderMatched` / `truceSigned` / `bountyCompleted` | info | inputs for the `near` module (D-26) |
+| `cmd.rejected` | — | routed to the issuing socket or module only |
 
 ---
 
 ## 10. Planet generation (`SIM-GEN`)
 
-`createPlanet({planetId, type, seed, capacity})` — hex radius 56 **(proposed)**; `capacity` spawn slots on a ring of radius 32 at equal angles + `gen`-stream jitter ±3 tiles; each slot guaranteed within 12 tiles: ≥ 1 metals, 1 minerals, 1 petroleum deposit (richness 9 000–12 000 bp) and buildable 7×7 area. Terrain from integer value-noise (hashing, no trig). Temperate: forest 20 %, water 6 %, rock 8 %. Desert: dune 30 %, rock 12 %, water 1 %, metals/minerals richness +15 %. Same `(type, seed)` ⇒ identical planet (golden hash test).
+`createPlanet({planetId, type, seed, capacity})` — hex radius 56 **(proposed)**; `capacity` spawn slots on a ring of radius 32 at equal angles + `gen`-stream jitter ±3 tiles; each slot guaranteed within 12 tiles: ≥ 1 metals, 1 minerals, 1 petroleum deposit (richness 9 000–12 000 bp) and buildable 7×7 area. Terrain from value-noise on the `gen` stream. Temperate: forest 20 %, water 6 %, rock 8 %. Desert: dune 30 %, rock 12 %, water 1 %, metals/minerals richness +15 %. Same `(type, seed)` ⇒ identical planet (golden test).
+
+Terrain classes, spawn guarantee and terrain mix follow units spec §4.5 (`UO-TF-09`).
 
 ---
 
-## 11. Worker host model (`SIM-H`)
+## 11. Host model (`SIM-H`) — `game` module
 
-### 11.1 Scheduler
-- `SIM-H-01` One Node event loop hosts up to `WORKER_MAX_PLANETS` (50) planets. Each planet has `nextDueMs = startMs + phaseMs + tick × TICK_MS`, where `phaseMs = (slotIndex × TICK_MS) / WORKER_MAX_PLANETS` spreads load.
-- `SIM-H-02` The host loop wakes at the earliest `nextDueMs` (`setTimeout` + `setImmediate` yield between planets), steps every due planet once per pass, and never sleeps while any planet is behind. A planet more than `5` ticks behind steps at most 5 ticks per pass (catch-up) and raises `ta_worker_tick_lag_ticks`. Drift-free: due times derive from tick count, not from "previous tick + 100 ms".
-- `SIM-H-03` Ticks are never skipped or merged (determinism). Overload is handled by lag + load shedding (§11.7), not by dropping work.
+### 11.1 Thread pool
+- `SIM-H-01` The `game` module starts `SIM_THREADS = cores − 1` `worker_threads` (3 on the launch host). Each owns a disjoint set of planets: `hash(planetId) % SIM_THREADS`. Planet state never leaves its thread, except as snapshot bytes, deltas and events.
+- `SIM-H-02` The main thread validates commands (§4) and posts them to the owning thread. Threads post deltas, events and snapshots back. Each thread runs one drift-free loop: planets carry `nextDueMs`, and the thread steps every due planet once per pass.
 
-### 11.2 Lease
-- Acquire with KV `create(planetId, {workerId, epoch, since})` (fails if present). `epoch` comes from core's `assignPlanet` (core increments `planet.leaseEpoch` in Postgres), renewed every 5 s via `update(key, value, lastRevision)`; TTL 15 s (ARCHITECTURE §6.2).
-- Renewal failure ⇒ stop ticking that planet **immediately**, drop its in-memory state, close its sockets `4009 lease_lost`. Epoch fences writes: snapshot inserts and tick markers carry `leaseEpoch`; the snapshot store rejects `epoch < max(epoch)` for the planet.
+### 11.2 Active and coarse stepping
+- `SIM-H-03` **Active planet** (≥ 1 connected player socket): step `dt = 1` every `TICK_MS` (200 ms). Deltas go out at `DELTA_HZ` (5 Hz).
+- `SIM-H-04` **Empty planet**: step `dt = COARSE_DT` (5) every `COARSE_STEP_MS` (1 s). No deltas are built. Events still go to the bus (notifications, AI, digest). A join switches the planet to active at its next step. The last leave switches it to coarse after `AWAY_AFTER_S`.
+- `SIM-H-05` A planet more than 5 steps behind its due time steps at most 5 times per pass and raises `ta_game_tick_lag_steps`.
 
-### 11.3 Snapshot cadence
-- Every `SNAPSHOT_EVERY_TICKS` (300) ticks, staggered (`tick % 300 == slotIndex % 300`), plus on seal/end/unload/drain. Encoding is synchronous at the tick boundary (budget ≤ 5 ms); compression and the Postgres write are async off the tick path. If a write is still in flight when the next is due, the newer replaces the queued one (never two concurrent writes per planet).
+### 11.3 Snapshots
+- `SIM-H-06` Every `SNAPSHOT_EVERY_S` (60 s) per planet, staggered. Also on seal, end and graceful shutdown. Encoding happens on the sim thread; compression and the Postgres write happen async on the main thread. At most one in-flight write per planet; a newer snapshot replaces a queued one.
 
-### 11.4 Restore + replay
-1. Load latest snapshot (highest `tick`, `epoch ≤ mine`) → `restore` → recompute hash == header hash.
-2. Read `{NS}_PLANET_CMDS` for this planet from `lastAppliedSeq + 1`, apply tick markers per `SIM-C-09` verifying checkpoint hashes.
-3. Re-subscribe live from the last seq, apply unmarked leftovers at the next tick, start the scheduler. Target: restore ≤ 5 s for a 30 s replay window; total failover RTO ≤ 30 s (ARCHITECTURE §14).
-
-### 11.5 Fault quarantine
-- An exception inside `step()` for planet P: catch, stop P's ticking, emit `planetFaulted` event + metric, keep other planets running. One automatic retry: restore from latest snapshot + replay; because the sim is deterministic, a reproducing crash at the same tick marks P `FAULTED` permanently (no retry loop) and pages ops; non-reproducing crashes (host bug) resume.
-
-### 11.6 Versioning
-- Planets are pinned to `simVersion`. A worker build supports `SIM_VERSIONS_SUPPORTED` (current + previous) via side-by-side sim bundles or registered migrations; core places a planet only on workers supporting its version (advertised in `{ns}_workers.version`).
-
-### 11.7 Load shedding
-- If `tick_duration` p99 over 60 s exceeds the budget (§12) or lag > 20 ticks for 30 s: mark `load: 'high'` in `{ns}_workers` (scheduler stops placing planets there), reduce delta rate to 2 Hz for that worker's sockets; if lag > 100 ticks for 60 s, request core to move the newest planet away (`drain` of one planet).
+### 11.4 Restart and fast-run
+- `SIM-H-07` On app start, every live planet:
+  1. loads its latest snapshot;
+  2. computes the missed wall-clock time `gap = now − snapshot.savedAt`;
+  3. **fast-runs** `min(gap, RESTART_FASTRUN_MAX_H)` of game time in coarse steps (`dt = 5`), as fast as the thread allows and yielding between planets;
+  4. resumes normal stepping.
+  Any gap beyond the cap is not simulated. Player actions after the last snapshot are lost (≤ 60 s), which is accepted (D-24).
+- `SIM-H-08` **Fault quarantine.** An exception in `step()` for planet P: stop P, log, emit `planetFaulted`, keep the other planets running. One automatic retry from the latest snapshot. If it faults again it stays `FAULTED` until an admin acts.
 
 ---
 
 ## 12. Performance budget (`SIM-P`)
 
-MVP scale per planet: 5 colonies, ≤ 300 robots, ≤ 400 buildings, ≤ 60 fauna, 9 577 tiles.
+MVP scale per planet: 5 colonies, ≤ 300 units, ≤ 400 buildings, ≤ 60 fauna, ~9 600 tiles.
 
 | Metric | Target |
 |---|---|
-| `step()` mean | ≤ 1.0 ms |
-| `step()` p99 | ≤ 2.0 ms |
-| `step()` max (any tick, incl. grid rebuild) | ≤ 10 ms |
-| `view()` full (welcome) | ≤ 5 ms |
-| `diff()` per socket per 200 ms | ≤ 0.3 ms |
-| `snapshot()` encode | ≤ 5 ms; ≤ 512 KB compressed |
+| `step(dt=1)` mean / p99 | ≤ 1.5 ms / ≤ 3 ms |
+| `step(dt=5)` p99 (coarse) | ≤ 5 ms |
+| `snapshot()` for `welcome` (D-31) | ≤ 10 ms; ≤ 1 MB before compression |
+| Client sim worker step (D-31) | p95 ≤ 4 ms on an iPhone 13-class phone at MVP scale; above it prediction switches off |
+| Delta build per planet | ≤ 1 ms per 200 ms |
+| `snapshot()` encode | ≤ 10 ms; ≤ 512 KB compressed |
 | Memory per planet | ≤ 40 MB |
-| Worker (50 planets) | mean ≤ 50 % of one core for sim; ≥ 40 % left for WS/deltas/NATS |
+| 3 sim threads | ≥ 60 planets with ≤ 20 active at a time and ≥ 40 % headroom per thread |
 
-The `sim:bench` script (`shared/sim/scripts/bench.ts`) measures these on the `mvp-scale` scenario; TA-13.5 confirms them end-to-end and sets `WORKER_MAX_PLANETS`.
+`npm run sim:bench` measures these on the `mvp-scale` scenario. The load test confirms `MAX_ACTIVE_PLANETS`.
 
 ---
 
@@ -357,34 +336,47 @@ The `sim:bench` script (`shared/sim/scripts/bench.ts`) measures these on the `mv
 
 | Rule | Test | Task |
 |---|---|---|
-| `SIM-D-01/10` | `shared/sim/test/determinism.spec.ts`, `npm run sim:determinism` | TA-06.1 |
-| `SIM-D-02/03/04` | `test/math/fixed.spec.ts`, `test/kernel/integer-state.spec.ts` | TA-06.1 |
-| `SIM-D-05` | `test/kernel/rng-streams.spec.ts` (stream independence) | TA-06.1 |
-| `SIM-D-07` | lint fixture `test/lint/banned-apis.fixture.ts` must fail `eslint` | TA-06.1 |
+| `SIM-D-01/04/05` | `shared/sim/test/reproducible.spec.ts` (same seed + commands → same state) | TA-06.1 |
+| `SIM-D-06` | lint fixture `test/lint/banned-apis.fixture.ts` must fail `eslint` | TA-06.1 |
+| `SIM-D-03`, `SIM-H-04` | `test/kernel/coarse-dt.spec.ts` (production, timers and hazards scale with `dt`; coarse vs fine within tolerance over 1 h) | TA-06.1 |
 | `SIM-GEN` | `test/gen/planet-golden.spec.ts` | TA-06.2 |
-| `SIM-S-01/02/03` | `test/codec/roundtrip.property.spec.ts`, `test/codec/tasn-format.spec.ts` | TA-06.9 |
-| `SIM-V-01..04` | `test/view/fog.spec.ts`, `test/view/diff.spec.ts` | TA-06.9 |
-| `SIM-G-TER` | `test/systems/territory.spec.ts` (frozen border, grace revert) | TA-06.3 |
-| `SIM-C-02/03`, §7.1 | `test/systems/construction.spec.ts`, `test/data/catalog.spec.ts` | TA-06.4 |
-| `SIM-G-PWR` | `test/systems/power.spec.ts` (severing, shedding order, capacitors) | TA-06.5 |
-| §7.2, `SIM-T-03` | `test/systems/robots.spec.ts`, `test/systems/pathfinding-budget.spec.ts` | TA-06.6 |
-| `SIM-R-01..06` | `test/systems/rule-engine.spec.ts`, scenario `unattended-24h-compressed` | TA-06.7 |
-| §7.6 | `test/systems/hazards.spec.ts`, `test/systems/fauna.spec.ts` | TA-06.8 |
-| §7.7 rocket | `test/systems/progression.spec.ts` | TA-06.10 |
-| §7.7 raids | `test/systems/raids.spec.ts` | TA-06.11 |
-| `SIM-C-05..10`, §11.4 | `backend/planet-worker/test/integration/restore-replay.int.spec.ts` | TA-07.4, TA-07.6 |
-| `SIM-H-01..03` | `backend/planet-worker/test/host/scheduler.spec.ts` | TA-07.2 |
-| §11.2 | `backend/planet-worker/test/integration/lease.int.spec.ts` | TA-07.5 |
-| §11.5 | `backend/planet-worker/test/host/quarantine.spec.ts` | TA-07.2 |
-| §11.7, `SIM-P` | `npm run sim:bench`, worker metrics test | TA-07.8, TA-13.5 |
+| `SIM-S-01` | `test/codec/roundtrip.property.spec.ts` | TA-06.9 |
+| `SIM-V-01..05` | `test/view/full-state.spec.ts`, `test/view/delta.spec.ts` (replica deep-equal after `applyDiff`) | TA-06.9, W00-24 |
+| `SIM-X-01..08` | `test/host/sim-host.spec.ts`, `npm run test:parity`, client `prediction.spec.ts` | W00-54 … W00-58 |
+| `SIM-G-TER` | `test/systems/territory.spec.ts` | TA-06.3 |
+| `SIM-C-01..05`, §7.1 | `test/systems/commands.spec.ts`, `test/data/catalog.spec.ts`, `test/systems/cargo.spec.ts` | TA-06.4, TA-14 |
+| `SIM-G-PWR` | `test/systems/power.spec.ts` (severing, shedding order, capacitors, pylon overload) | TA-06.5, TA-06.12 |
+| `SIM-R-01..06` | `test/systems/rule-engine.spec.ts`, scenario `unattended` | TA-06.7 |
+| §7.6–§7.7 | hazards, fauna, progression, raids, settlement specs | TA-06.8, 06.10, 06.11, 06.13 |
+| `SIM-H-01..08` | `backend/app/test/game/{thread-pool,coarse,snapshot,restart-fastrun,quarantine}.spec.ts` | TA-07 |
+| `SIM-P` | `npm run sim:bench`, load test | TA-13.5 |
 
 ---
 
-## 14. Open questions for the owner
+## 14. Owner decisions (2026-10-29 / 2026-10-30)
 
-1. **Founder Core +8 E/s** on the Hub (without it the starting colony has negative power until the first generator). Alternative: start with a prebuilt Solar T1 + Capacitor T1.
-2. **Rocket in MVP = Silo T2 (Lander) only**, and the departing colony becomes ruins. Alternative: the old colony stays AI-run ("legacy colony") — more fun, more cost.
-3. **Trade Hub T1** as a requirement for trades (economy spec says yes; D-15 list omits it).
-4. **Fauna/hazard numbers** in §7.6 are placeholders; please confirm the intended pressure level for unattended colonies (they must survive a night offline at default difficulty).
-5. **Per-pylon max load** deferred — acceptable for MVP?
-6. **No downtime fast-forward** on failover (`SIM-C-10`): planet game time loses ≤ RTO per failover. OK?
+| # | Question | Decision | Ref | Consequence for this spec |
+|---|---|---|---|---|
+| 1 | Founder Core +8 E/s on the Hub | **Keep** | D-16 | §7.1 Hub row unchanged |
+| 2 | Rocket tier and the colony left behind | Silo T2 only; the colony becomes **Settled** (not ruins); launch needs 100 % Living own territory | D-18 | §7.7 Departure; event `colonySettled`, reject code `launch_gate` |
+| 3 | Trade Hub T1 required for trades | **Yes** (truces don't need it) | — | §7.1 Trade Hub row confirmed |
+| 4 | Fauna/hazard pressure on unattended colonies | **Hard**: unattended colonies can be eliminated; the player is notified | D-17 | §7.6 note; numbers in units spec §6.3 |
+| 5 | Per-pylon max load | **Enforced in MVP** | D-21 | §7.4 flow model and overload shedding |
+| 6 | Failover downtime | ~~Fast-forwarded by catch-up~~ → **restart fast-run from snapshot** | D-20 → D-24 | §11.4 |
+| 7 | Server simulation, simplified | **Yes**: one app, thread pool, 5 TPS active / coarse when empty, floats, no replay | D-24 | §2–§6, §11, §12 rewritten |
+| 8 | Anti-cheat / anti-bot | **None**: zod + own-colony + game rules only; full state to clients | D-25 | `SIM-C-01`, §6 |
+| 9 | NEAR economy | Cargo export/import, market reservations, bounties enter the sim as commands | D-26 | §4 command groups, `SIM-C-05` |
+
+Follow-up design needed:
+- Settled colonies and the planet `ENDED` condition: resolved in MATCHMAKING `MM-07`. An all-settled planet ends early (proposed).
+
+---
+
+## 15. Future: deterministic distributed host (not built now)
+
+Kept for later (ARCHITECTURE §16):
+- integer-only, bit-exact sim across runtimes (`SIM-D` v0.1: milli-units, lookup-table trig, banned float literals);
+- a JetStream command log with tick markers, so `restore + replay` is exact;
+- `stateHash` checkpoints every 100 ticks, worker leases with fencing epochs, catch-up ticking after failover (former D-20);
+- per-colony fog-of-war views and diffs on the server;
+- replay audits as an anti-cheat option.

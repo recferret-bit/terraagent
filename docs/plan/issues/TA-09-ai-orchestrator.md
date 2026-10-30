@@ -1,7 +1,7 @@
 # Epic TA-09 — AI Orchestrator (Z.ai glm-5.3)
 
 > **Orchestrator:** [`EXECUTION_ORCHESTRATOR.md`](../EXECUTION_ORCHESTRATOR.md) · **Status Board:** [`STATUS.md`](../STATUS.md)
-> **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §6, §10, §15 · [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) · [`DECISIONS.md`](../../spec/DECISIONS.md) D-05, D-09 · [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §10
+> **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §6, §10, §15 · [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) · [`DECISIONS.md`](../../spec/DECISIONS.md) D-05, D-09 · [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §10
 
 ## Overview
 
@@ -60,6 +60,7 @@ Module layout (`backend/ai-orchestrator/src`): `main.ts`, `app.module.ts`, `conf
 | `TA-09.3` | Prompt builder (compact state) + `DirectiveV1` JSON schema & validation | W3 / L4 | TA-09.2 |
 | `TA-09.4` | Directive publish to command stream, decision log, timeouts & fallback | W3 / L4 | TA-09.3 |
 | `TA-09.5` | Cost controls & ops: token accounting, kill switch, eval harness | W4 / L4 | TA-09.4 |
+| `TA-09.6` | `DirectiveV1` v2: units, goals, truces, autoTrade-aware brief; rationale to HUD; raw log retention 14 d (D-16, D-17, D-09) | W4 / L4 | TA-09.5, TA-14.6 |
 
 ---
 
@@ -195,7 +196,7 @@ export interface LlmProviderPort {
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W3 / L4`
 - **Depends On:** `TA-09.2`
-- **Spec:** [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) §5, §6 (AI-06, AI-07) · [`colony-economy-and-buildings-spec.md`](../../../colony-economy-and-buildings-spec.md) §3–4 (catalog ids)
+- **Spec:** [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) §5, §6 (AI-06, AI-07) · [`docs/game/colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §3–4 (catalog ids)
 - **Target Files:**
   - `backend/ai-orchestrator/src/prompt/system-prompt.v1.ts`, `prompt-builder.ts`, `token-estimate.ts`
   - `backend/ai-orchestrator/src/directive/directive-validator.ts`, `clamp.ts`
@@ -353,4 +354,37 @@ flowchart LR
 - [ ] `npm run ai:eval -w @terra/ai-orchestrator` (mock) → 100 % validity, report written. With `--live` (L4, owner key) → thresholds from spec §12 met, or the gaps are written up in the PR with the report attached.
 - [ ] ≥ 30 fixtures covering all 14 triggers × both planet types (at least one each).
 - [ ] Budget alarms exposed as metrics for TA-13.2 (`ai_budget_used_ratio`, `ai_circuit_open`, `ai_provider_errors_total`).
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-09.6` — `DirectiveV1` v2: units, goals, truces; brief stage fields; rationale to HUD; raw logs 14 d
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W4 / L4 (after TA-09.5)`
+- **Depends On:** `TA-09.5`, `TA-14.6`
+- **Spec:** units spec §7 rows 7, 8, 16; [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) §6 (follow-up), Q2–Q5 answered; [`DECISIONS.md`](../../spec/DECISIONS.md) D-09 (confirmed: `glm-5.3` general endpoint, 20 M tokens/day), D-16, D-17
+- **Target Files:**
+  - `backend/ai-orchestrator/src/directive/v2.ts`
+  - `backend/ai-orchestrator/src/prompt/brief-v2.ts`
+  - `backend/ai-orchestrator/src/log/raw-retention.ts`
+  - `backend/ai-orchestrator/test/directive/v2.spec.ts`
+  - `backend/ai-orchestrator/eval/fixtures/v2/*.json`
+- **Verify:** `npm run test -w @terra/ai-orchestrator -- v2 && npm run ai:eval -w @terra/ai-orchestrator -- --suite v2`
+
+#### Analytics
+- **Problem:** the AI speaks the new roster and goal language.
+- **Directive actions:** `queueUnit` (14 ids, gated by Hub tier + `unlockStage`), `queueGoal`, `truceOffer`, `truceRespond` (never cancel).
+- **Brief:** adds `stage`, `threatStage`, away budget and autoTrade limits.
+- **Owner answers:** raw prompts and responses are stored for 14 days (`AI_LOG_RAW=1`, purge job); the rationale is shown in the HUD; AI raids while away are opt-in.
+- **Telemetry:** `ta_ai_directive_actions_total{kind}`.
+
+#### Architecture
+- Validation and clamping are extended per AI_ORCHESTRATOR §6.2–6.3; the v1 → v2 migration is behind `PROMPT_VERSION = 2`.
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: AI_ORCHESTRATOR `DirectiveV1` v2 + new triggers (`diplomacy.truce_offered`); contracts (lead, W4 pre-step).
+
+#### Definition of Done (DoD)
+- [ ] Eval: ≥ 20 v2 fixtures pass; no action outside `unlockStage` or Hub tier survives clamping; the raw log purge removes rows older than 14 d.
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).

@@ -1,7 +1,30 @@
-# Epic TA-10 — NEAR Gateway
+# Epic TA-10 — NEAR Integration: Ports, Mocks & Real Adapters
 
 > **Orchestrator:** [`EXECUTION_ORCHESTRATOR.md`](../EXECUTION_ORCHESTRATOR.md) · **Status Board:** [`STATUS.md`](../STATUS.md)
-> **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §6, §11, §15 · [`NEAR.md`](../../spec/NEAR.md) · [`DECISIONS.md`](../../spec/DECISIONS.md) D-05, D-10, D-11 · [`autonomous-colony-spec.md`](../../../autonomous-colony-spec.md) §11
+> **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §6, §11, §15 · [`NEAR.md`](../../spec/NEAR.md) · [`DECISIONS.md`](../../spec/DECISIONS.md) D-05, D-10, D-11 · [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §11
+>
+> **⚠ 2026-10-30 — D-24, D-26 and D-30 apply.**
+> - **No separate gateway service.** NEAR lives in the `near` module of the one app (`backend/app/src/near/**`, lane L4). There is no NATS, so the `near.verify`, `NEAR_JOBS` and event-stream wiring below is *Future*.
+> - **Phase 1 = every NEAR feature on mock adapters behind real ports** ([`NEAR.md`](../../spec/NEAR.md) §1a):
+>   - abstract-class ports as DI tokens, all bound in `near-infrastructure.module.ts`;
+>   - fail-closed `NEAR_ADAPTER_<PORT>=mock|testnet|mainnet`;
+>   - Postgres `mock_chain_*` tables;
+>   - `chain_outbox` with deterministic `opId`;
+>   - one `describeNearPortContract` suite per port, run against both mock and real.
+> - **New tasks:**
+>   - TA-10.8: ports + mocks + contract suites (first);
+>   - TA-10.9–10.12: F1–F8 game features on mocks;
+>   - TA-10.13: real Agent / DAO / Escrow adapters.
+> - **Existing tasks are rescoped to phase 2 (real adapters)** and keep their ids:
+>   - TA-10.1: real chain infra;
+>   - TA-10.3: real `IdentityPort` + `RelayerPort` (F5);
+>   - TA-10.6: real `CargoTokenPort` + `IntentsPort` (F1/F2);
+>   - TA-10.2: real NEP-413 wallet link;
+>   - TA-10.4: real `DeedNftPort` / `BadgeNftPort` (NEP-171), replacing the `colony-registry`;
+>   - TA-10.7: real `StakingPort` + account claim.
+> - **TA-10.5 is obsolete:** its trade saga is replaced by the market module in TA-10.10.
+> - **Text inside the rescoped tasks:** their bodies still describe the old gateway design. Read them as *how the real adapter talks to the chain*. The service wiring is replaced by the port that adapter implements.
+> - **Swap order:** F5 → F1 → F2 → F3/F4 → F6 → F7 → F8. A port goes real only when its contract suite passes against the real adapter.
 
 ## Overview
 
@@ -60,21 +83,31 @@ Module layout (`backend/near-gateway/src`): `config/`, `chain/` (`near-rpc.clien
 
 | Task | Title | Wave / Lane | Depends On |
 |---|---|---|---|
-| `TA-10.1` | NEAR gateway skeleton: network config, key management, RPC client | W1 / L4 | TA-01.3, TA-01.6, TA-03.2, TA-13.1 |
-| `TA-10.2` | NEP-413 verification on `{ns}.near.verify` | W1 / L4 | TA-10.1 |
-| `TA-10.3` | Colony account provisioning job + relayer (meta-tx, NEP-366) | W2 / L4 | TA-10.1, TA-02.2 |
-| `TA-10.4` | `colony-registry` contract + milestone writes | W3 / L4 | TA-10.3, TA-07.7 |
-| `TA-10.5` | Inter-colony trades: offer/accept saga, in-game settlement, on-chain receipt | W4 / L4 | TA-10.4, TA-06.4 |
+| `TA-10.8` | **Ports & mocks foundation (D-30):** 10 NEAR port classes, binding module, fail-closed adapter selection, Postgres mocks, `chain_outbox`, contract suites | W1 / L4 | TA-01.1, TA-03.2 |
+| `TA-10.9` | F5 + F1 on mocks: named accounts through `IdentityPort`, relayed actions, cargo Export/Import at the Trade Hub with mint caps | W2 / L4 | TA-10.8, TA-04.2, TA-06.4 |
+| `TA-10.10` | F2 on mocks: market stalls + owner fees, order book = message bus, paired `token_diff` through `IntentsPort`, price board, Negotiate orders | W3 / L4 | TA-10.9 |
+| `TA-10.11` | F3 + F4 on mocks: Orbital Guild NPC accounts + pricing core + ship visits; colony director key with allowance (autoTrade policy in TA-08.6) | W3 / L4 | TA-10.10 |
+| `TA-10.12` | F6 + F7 + F8 on mocks: Colony Deed + staking panel, planet treasury DAO, bounty escrow | W4 / L4 | TA-10.11, TA-15.1 |
+| `TA-10.1` | *Phase 2:* real chain infra: network config, key store, RPC (FastNEAR + fallback), real `ChainReadPort` | W4 / L4 | TA-10.8 |
+| `TA-10.3` | *Phase 2:* real `IdentityPort` (social login + named accounts) + real `RelayerPort` (NEP-366) | W4 / L4 | TA-10.1, TA-10.9 |
+| `TA-10.5` | **Obsolete (D-30):** in-game trade saga + receipt, replaced by TA-10.10 | W4 / L4 | — |
+| `TA-10.6` | *Phase 2:* real `CargoTokenPort` (NEP-245 contract) + real `IntentsPort` (`intents.near`, mainnet, dry-run first) | W5 / L4 | TA-10.3, TA-10.10 |
+| `TA-10.2` | *Phase 2:* NEP-413 wallet link (real) | W5 / L4 | TA-10.1 |
+| `TA-10.4` | *Phase 2:* real `DeedNftPort` / `BadgeNftPort` (NEP-171 contracts), replacing the `colony-registry` | W5 / L4 | TA-10.1, TA-10.12, TA-15.8 |
+| `TA-10.7` | *Phase 2:* real `StakingPort` (whitelisted pools) + claimable colony accounts; Settled-colony binding (D-18) | W5 / L4 | TA-10.3, TA-10.4, TA-06.13 |
+| `TA-10.13` | *Phase 2:* real `AgentWalletPort` (sub-accounts + limited keys), `TreasuryDaoPort` (SputnikDAO / Trezu), `EscrowPort` (escrow contract) | W5 / L4 | TA-10.3, TA-10.12 |
 
 ---
 
 ## Tasks
 
-### `TA-10.1` — NEAR gateway skeleton: network config, key management, RPC client
+### `TA-10.1` — *Phase 2:* real chain infra (network config, key store, RPC client, real `ChainReadPort`)
+
+> Rescoped (D-30). The body below describes the original gateway skeleton. Keep the key management and RPC client parts; the service skeleton is replaced by `backend/app/src/near/infrastructure/real/`.
 
 - **Status:** `[ ] Todo`
-- **Wave / Lane:** `W1 / L4`
-- **Depends On:** `TA-01.3`, `TA-01.6`, `TA-03.2`, `TA-13.1`
+- **Wave / Lane:** `W4 / L4` (phase 2; hackathon D11)
+- **Depends On:** `TA-10.8`
 - **Spec:** [`NEAR.md`](../../spec/NEAR.md) §2, §8 · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3, §11 · [D-14](../../spec/DECISIONS.md#d-14--all-backend-services-are-nestjs)
 - **Target Files:**
   - `backend/near-gateway/package.json`, `tsconfig.json`, `.env.example`
@@ -91,7 +124,7 @@ Module layout (`backend/near-gateway/src`): `config/`, `chain/` (`near-rpc.clien
   - Internal port 3300 prod / 4004 dev (4404 L4).
   - `near-sandbox` on `:13030` in L4 only.
   - Keys from file secrets (`NEAR_*_KEY_FILE`, `NEAR_COLONY_KEK_FILE`).
-  - The `@near-js/*` modular packages (per `tech-stack-spec.md` §5).
+  - The `@near-js/*` modular packages (per `docs/spec/tech-stack-spec.md` §5).
   - `NEAR_NETWORK ∈ {sandbox, testnet, mainnet}`; mainnet requires `NEAR_ALLOW_MAINNET=1`.
 - **Risks → mitigations:**
   - Public RPC throttling → `NEAR_RPC_URL` + `NEAR_RPC_FALLBACK_URL`, failover on 429/5xx/timeout (2.5 s).
@@ -126,10 +159,12 @@ Module layout (`backend/near-gateway/src`): `config/`, `chain/` (`near-rpc.clien
 
 ---
 
-### `TA-10.2` — NEP-413 verification on `{ns}.near.verify`
+### `TA-10.2` — *Phase 2:* NEP-413 wallet link (real)
+
+> Rescoped (D-30). In-process call instead of `{ns}.near.verify`.
 
 - **Status:** `[ ] Todo`
-- **Wave / Lane:** `W1 / L4`
+- **Wave / Lane:** `W5 / L4` (phase 2)
 - **Depends On:** `TA-10.1`
 - **Spec:** [`NEAR.md`](../../spec/NEAR.md) §3 (NEAR-01..06) · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §6.1 (`{ns}.near.verify`) · [D-10](../../spec/DECISIONS.md#d-10--guest-first-auth-near-link-optional)
 - **Target Files:**
@@ -175,11 +210,13 @@ const ok = ed25519.verify(sha256(payload), signature, publicKey);
 
 ---
 
-### `TA-10.3` — Colony account provisioning job + relayer (meta-tx, NEP-366)
+### `TA-10.3` — *Phase 2:* real `IdentityPort` + `RelayerPort` (F5: named accounts, provisioning, NEP-366 relayer)
+
+> Rescoped (D-30). It implements the ports whose mocks landed in TA-10.8 and TA-10.9, and must pass their contract suites. The provisioning job runs from `chain_outbox` instead of `NEAR_JOBS`.
 
 - **Status:** `[ ] Todo`
-- **Wave / Lane:** `W2 / L4`
-- **Depends On:** `TA-10.1`, `TA-02.2`
+- **Wave / Lane:** `W4 / L4` (phase 2; hackathon D11)
+- **Depends On:** `TA-10.1`, `TA-10.9`
 - **Spec:** [`NEAR.md`](../../spec/NEAR.md) §2, §4 (NEAR-10..14), §5, §8 · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §6.1 (`{ns}.near.account.provision`)
 - **Target Files:**
   - `backend/near-gateway/src/jobs/job-runner.ts`, `near-tx.repository.ts`
@@ -247,11 +284,13 @@ sequenceDiagram
 
 ---
 
-### `TA-10.4` — `colony-registry` contract + milestone writes
+### `TA-10.4` — *Phase 2:* real `DeedNftPort` / `BadgeNftPort` (NEP-171), replacing the `colony-registry`
+
+> Rescoped (D-30, D-26 F6, D-29 badges). Milestones become dynamic Deed metadata updates plus soulbound badges. The registry contract below is *Future* / optional.
 
 - **Status:** `[ ] Todo`
-- **Wave / Lane:** `W3 / L4`
-- **Depends On:** `TA-10.3`, `TA-07.7`
+- **Wave / Lane:** `W5 / L4` (phase 2)
+- **Depends On:** `TA-10.1`, `TA-10.12`, `TA-15.8`
 - **Spec:** [`NEAR.md`](../../spec/NEAR.md) §5, §6 · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §6.1 (`PLANET_EVENTS`, `near.registry.*`), §11
 - **Target Files:**
   - `backend/near-contracts/colony-registry/Cargo.toml`, `src/lib.rs`, `src/events.rs`, `src/types.rs`
@@ -302,7 +341,9 @@ sequenceDiagram
 
 ---
 
-### `TA-10.5` — Inter-colony trades: offer/accept saga, in-game settlement, on-chain receipt
+### `TA-10.5` — Inter-colony trades: offer/accept saga, in-game settlement, on-chain receipt — **OBSOLETE (D-30)**
+
+> Replaced by TA-10.10 (market module on `IntentsPort`, mocked in phase 1). Kept for history; do not implement.
 
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W4 / L4`
@@ -369,3 +410,213 @@ sequenceDiagram
 - [ ] Every state transition publishes `{ns}.trade.evt.state_changed` and the FINAL receipt publishes `{ns}.trade.evt.receipt_recorded` (`Nats-Msg-Id = tradeId:state`), asserted in `trade-saga.int.spec.ts`.
 - [ ] p95 OPEN→SETTLED < 2 s in the integration test (same planet).
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-10.6` — *Phase 2:* real `CargoTokenPort` (NEP-245) + real `IntentsPort` (D-19)
+
+> Rescoped (D-30). The market logic lives in TA-10.10. This task only implements the real adapters: the cargo contract, deposits into `intents.near`, and `simulate_intents` / `execute_intents`. It must pass the `CargoTokenPort` and `IntentsPort` contract suites. Mainnet only: `dry: true` quotes first, tiny amounts. The `TRADE_SETTLEMENT` flag is replaced by `NEAR_ADAPTER_INTENTS`.
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W5 / L4` (phase 2; hackathon D12)
+- **Depends On:** `TA-10.3`, `TA-10.10`
+- **Spec:** [`DECISIONS.md`](../../spec/DECISIONS.md) D-19 (supersedes D-11 settlement); [`NEAR.md`](../../spec/NEAR.md) §7 (follow-up: Intents)
+- **Target Files:**
+  - `backend/near-contracts/resource-token/**` (multi-token for M/Min/Pet/W)
+  - `backend/near-gateway/src/intents/{intents.client.ts,settle.saga.ts,mint-burn.ts}`
+  - `backend/near-gateway/test/intents/*.spec.ts`
+  - `tests/integration/edge/intents.int.spec.ts`
+- **Verify:** `npm run near:contract:test && npm run test -w @terra/near-gateway -- intents && npm run test:integration -- --suite edge --grep intents`
+
+#### Analytics
+- **Problem:** trades settle through NEAR Intents in MVP. Resources are mirrored as tokens per colony account; trades stay same-planet only.
+- **Constraints:** the sim stays authoritative for stock. Tokens are minted and burned by the gateway against `trade.commit` legs (escrow model) and never move outside the game in MVP.
+- **Risks:**
+  - Solver latency → timeouts fall back to compensation (`trade.revert`).
+  - Contract bugs → sandbox tests and a minimal surface.
+  - Schedule → this is the largest new L4 item; if it slips, it falls back to D-11 receipts behind a flag.
+- **Telemetry:** `ta_near_intents_settle_seconds`, `ta_near_intents_failed_total`.
+
+#### Architecture
+- Offer → intent published (give/want) → matched counter-intent → settlement → both sims apply `trade.commit`.
+- The receipt stays in `colony-registry`.
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: NEAR.md §7 Intents design + D-19 (lead, W4 pre-step).
+- [ ] Owner: testnet accounts registered, FastNEAR key.
+
+#### Definition of Done (DoD)
+- [ ] `intents.int.spec.ts` on sandbox: an offer settles on both colonies with token balances matching sim deltas; a failed settlement reverts both legs; p95 < 10 s.
+- [ ] The feature flag `TRADE_SETTLEMENT=intents|receipt` is tested both ways.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-10.7` — *Phase 2:* real `StakingPort` + claimable colony accounts (D-18)
+
+> Rescoped (D-30). The staking panel and flows already run on the mock `StakingPort` (TA-10.12).
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W5 / L4 (before TA-13.2)`
+- **Depends On:** `TA-10.3`, `TA-10.4`, `TA-06.13`
+- **Spec:** [`DECISIONS.md`](../../spec/DECISIONS.md) D-18; [`NEAR.md`](../../spec/NEAR.md) Q3 (answered: claimable at launch), follow-up: staking
+- **Target Files:**
+  - `backend/near-gateway/src/accounts/{claim.ts,staking.ts,validator-whitelist.ts}`
+  - `backend/near-gateway/test/accounts/{claim.spec.ts,staking.spec.ts}`
+  - `tests/integration/edge/claim-staking.int.spec.ts`
+- **Verify:** `npm run test -w @terra/near-gateway -- claim staking && npm run test:integration -- --suite edge --grep claim`
+
+#### Analytics
+- **Problem:** players claim their colony account (add their own key, remove ours). They can stake **their own** NEAR through it to a whitelisted validator pool. A Settled colony (TA-06.13) unlocks this and shows a badge or in-game boost. The game never pays yield from its own funds.
+- **Risks:**
+  - Custody/legal → the player signs every staking tx (we are not a custodian after the claim).
+  - Whitelist abuse → validators are set via config, owner-approved.
+- **Telemetry:** `ta_near_claims_total`, `ta_near_staking_deposits_total`.
+
+#### Architecture
+- Claim flow: NEP-413 proof → gateway adds the player's full-access key → gateway removes its own key → `colony-registry` records `claimed`.
+- Staking: a deposit-and-stake call to a pool contract, signed by the player in their wallet; the gateway only reads balances to show them in the HUD.
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: NEAR.md claim + staking section (lead, W5 pre-step).
+- [ ] Owner: validator whitelist, `terraagent.near` registered for mainnet.
+
+#### Definition of Done (DoD)
+- [ ] `claim-staking.int.spec.ts` (sandbox): after the claim the gateway key is gone and gateway writes fail cleanly; a stake to a whitelisted pool succeeds and a non-whitelisted one is rejected in the UI layer; the Settled colony shows the staked balance.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-10.8` — Ports & mocks foundation (D-30)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W1 / L4` (first L4 task; hackathon D2)
+- **Depends On:** `TA-01.1`, `TA-03.2`
+- **Spec:** [`NEAR.md`](../../spec/NEAR.md) §1a (rules 1–8, port table); [`DECISIONS.md`](../../spec/DECISIONS.md) D-30
+- **Target Files:**
+  - `backend/app/src/near/application/ports/{identity,relayer,cargo-token,intents,agent-wallet,deed-nft,badge-nft,staking,treasury-dao,escrow,chain-read}.port.ts`
+  - `backend/app/src/near/infrastructure/near-infrastructure.module.ts` (the only place that binds adapters)
+  - `backend/app/src/near/infrastructure/adapter-selection.ts` (`nearAdapterFor(port)`: exact `testnet`/`mainnet`, else `mock`; refuses `mock` in prod unless `NEAR_ALLOW_MOCK_IN_PROD=true`)
+  - `backend/app/src/near/infrastructure/mock/*.mock.adapter.ts` (Postgres `mock_chain_*`, `mock:` hashes, 300–1 500 ms latency, injectable failure rate)
+  - `backend/app/src/near/infrastructure/outbox/{chain-outbox.repository.ts,chain-outbox.relay.ts}` (`opId` unique)
+  - `backend/app/src/near/domain/errors.ts` (`CoreException` subclasses with stable `errorCode`s)
+  - `backend/app/src/near/__contract__/*.contract.ts` (`describeNearPortContract(name, makeAdapter)`)
+  - `backend/app/src/near/__fixtures__/in-memory-*.ts` (unit-test fakes extending the ports)
+  - `shared/db/prisma/schema.prisma` (lead pre-step: `mock_chain_*`, `chain_outbox`)
+  - `shared/config/src/near.env.ts` (zod: `NEAR_ADAPTER_*`, `NEAR_ALLOW_MOCK_IN_PROD`)
+- **Verify:** `npm run test -w @terra/app -- near-contract && npm run test -w @terra/app -- near/adapter-selection`
+
+#### Analytics
+- **Problem:** every NEAR feature must be buildable and playable before any chain work, and the later swap must not touch game code.
+- **Constraints:** galaxyqube patterns (abstract-class ports as DI tokens, one binding module, fail-closed env, zod everywhere, no `any`). Contract suites are the addition galaxyqube lacks.
+- **Risks → mitigations:**
+  - Mock drift from reality → the contract suites assert the behaviour the real adapter must also show (balances, sum-to-zero, idempotent `opId`, error codes).
+  - A typo selects the real chain → fail-closed predicate plus a startup log of the adapter per port.
+- **Telemetry:** `near_port_call{port,adapter,outcome}`, `chain_outbox_pending`.
+
+#### Definition of Done (DoD)
+- [ ] All 11 ports (10 NEAR + `ChainReadPort`) exist as abstract classes. Each has a Postgres mock and a contract suite that is green against the mock in CI.
+- [ ] `adapter-selection.spec.ts`: `mainnet`/`testnet` exact matches only; anything else gives `mock`; prod without the allow flag refuses to boot on a mock.
+- [ ] Outbox: the same `opId` twice causes one effect, for both mock and in-memory fakes.
+- [ ] No file outside `near-infrastructure.module.ts` imports an adapter (lint rule).
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-10.9` — F5 + F1 on mocks: named accounts, relayed actions, cargo Export/Import
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W2 / L4` (hackathon D3 for F5, D7 for F1)
+- **Depends On:** `TA-10.8`, `TA-04.2`, `TA-06.4`
+- **Spec:** near-economy spec F1, F5; NEAR.md §2, §4, §5; SIMULATION `SIM-C-05` (cargo export is the only mint path)
+- **Target Files:**
+  - `backend/app/src/near/application/{accounts.service.ts,cargo.service.ts,mint-caps.ts}`
+  - `backend/app/src/game/commands/cargo.handlers.ts` (Export/Import → sim stock change + outbox write in one transaction)
+  - `frontend/game/src/hud/cargo/CargoPanel.tsx`; hackathon: `src/ui/cargo.ts`
+  - `backend/app/test/near/{accounts,cargo}.spec.ts`
+- **Verify:** `npm run test -w @terra/app -- near/accounts near/cargo`
+
+#### Definition of Done (DoD)
+- [ ] A guest gets a named mock account (`name.terraagent.mock`) through `IdentityPort`. Upgrading keeps the colony.
+- [ ] Export 100 metals → sim stock −100 → `CargoTokenPort.mint` via the outbox → the cargo panel shows 100 with a `mock:` receipt. Import burns and credits stock.
+- [ ] Mint caps (Trade Hub throughput + daily ceiling) reject excess with a stable error code.
+- [ ] A crash between the stock change and the mint never double-mints (`opId = cargo-export:{colonyId}:{seq}`).
+- [ ] Status synced (§1.6).
+
+---
+
+### `TA-10.10` — F2 on mocks: player-owned markets
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W3 / L4` (hackathon D8)
+- **Depends On:** `TA-10.9`
+- **Spec:** near-economy spec F2; NEAR.md §6
+- **Target Files:**
+  - `backend/app/src/near/market/{stall.service.ts,order-book.ts,matcher.ts,settlement.ts,price-board.ts}`
+  - `frontend/game/src/hud/market/{MarketStall.tsx,PriceBoard.tsx}`; hackathon: `src/ui/market.ts`
+  - `backend/app/test/near/market/*.spec.ts`
+- **Verify:** `npm run test -w @terra/app -- near/market`
+
+#### Definition of Done (DoD)
+- [ ] Each Trade Hub is a stall whose owner sets a fee of 0–3 %. Orders are price-time ordered; the matcher is the message bus.
+- [ ] A matched pair is settled as signed `token_diff`s through `IntentsPort.simulate` then `execute`, including the fee leg. A non-zero sum is rejected with `NEAR_INTENT_DIFF_NOT_ZERO`.
+- [ ] The price board shows the last price, 24 h volume and spread per resource. The HQ Negotiate goal places orders.
+- [ ] Status synced (§1.6).
+
+---
+
+### `TA-10.11` — F3 + F4 on mocks: Orbital Guild + director key
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W3 / L4` (hackathon D9)
+- **Depends On:** `TA-10.10`
+- **Spec:** near-economy spec F3, F4; NEAR.md §7, §8
+- **Target Files:**
+  - `backend/app/src/near/guild/{guild.service.ts,pricing.ts,visits.scheduler.ts}`
+  - `backend/app/src/near/director/director-key.service.ts`
+  - `backend/app/test/near/{guild,director}/*.spec.ts`
+- **Verify:** `npm run test -w @terra/app -- near/guild near/director`
+
+#### Definition of Done (DoD)
+- [ ] Guild NPC accounts are created through `AgentWalletPort`, with inventories. Pricing is deterministic, drifting with inventory and planet trade history. Ship visits are scheduled. The Guild is the only cross-planet route.
+- [ ] The director key is added with allowance = away budget, revocable in one tap. Spending past the allowance is rejected. TA-08.6 consumes this for `autoTrade`.
+- [ ] Status synced (§1.6).
+
+---
+
+### `TA-10.12` — F6 + F7 + F8 on mocks: Deed + staking, treasury DAO, bounties
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W4 / L4` (hackathon D10)
+- **Depends On:** `TA-10.11`, `TA-15.1`
+- **Spec:** near-economy spec F6–F8; NEAR.md §9–§11
+- **Target Files:**
+  - `backend/app/src/near/{deed,staking,treasury,bounty}/*.service.ts`
+  - `frontend/game/src/hud/{deed,treasury,bounty}/*.tsx`; hackathon: `src/ui/{deed,treasury,bounty}.ts`
+  - `backend/app/test/near/{deed,staking,treasury,bounty}.spec.ts`
+- **Verify:** `npm run test -w @terra/app -- near/deed near/staking near/treasury near/bounty`
+
+#### Definition of Done (DoD)
+- [ ] The Deed is minted at founding; its metadata updates on stage-up, terraform %, walls and trade volume (`DeedNftPort`).
+- [ ] The staking panel stakes in the mock pool (game-time APY).
+- [ ] A fee share flows to the planet DAO; one proposal type ("fund meteor shield") can pass and set the flag.
+- [ ] A "clear nest" bounty is escrowed and pays out on the nest-destroyed event; refund on expiry.
+- [ ] Status synced (§1.6).
+
+---
+
+### `TA-10.13` — *Phase 2:* real Agent wallet, Treasury DAO and Escrow adapters
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W5 / L4`
+- **Depends On:** `TA-10.3`, `TA-10.12`
+- **Spec:** NEAR.md §1a port table (real adapter column), §7–§11
+- **Target Files:**
+  - `backend/app/src/near/infrastructure/real/{agent-wallet,treasury-dao,escrow}.real.adapter.ts`
+  - `backend/near-contracts/bounty-escrow/**`
+- **Verify:** `npm run near:contract:test && npm run test -w @terra/app -- near-contract --adapter real --grep "AgentWallet|TreasuryDao|Escrow"` (manual or nightly)
+
+#### Definition of Done (DoD)
+- [ ] Each real adapter passes the same contract suite as its mock.
+- [ ] The README mock/real table is updated.
+- [ ] Status synced (§1.6).

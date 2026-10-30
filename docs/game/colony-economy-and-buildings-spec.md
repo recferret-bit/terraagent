@@ -7,7 +7,7 @@
 
 ## 1. Core Economy & Construction Rules
 
-Every object constructed in a player's colony obeys **5 Hard Constraints**:
+Every object constructed in a player's colony obeys **5 Hard Constraints** (plus a proposed 6th, Prepared Ground):
 
 1. **Strict 3-Tier Progression (`Tier 1 → Tier 2 → Tier 3`) & Dual Upgrade Mode:**
    - Every building archetype exists in 3 tiers (`Mk.I`, `Mk.II`, `Mk.III`).
@@ -31,6 +31,9 @@ Every object constructed in a player's colony obeys **5 Hard Constraints**:
    - **All buildings (including mines, turrets, and power lines) can ONLY be placed on tiles owned by the player's colony.**
    - Territory is expanded by building **Territory Claim Beacons (T1 / T2 / T3)**.
    - **Immutable Collision Rule:** When two players' territories meet, **the border locks permanently along the collision line and NEVER moves or pushes back existing tiles**, even if the neighbor upgrades to a Tier 3 Beacon right next to a Tier 1 Beacon.
+6. **Prepared Ground Only (proposed, D-16):**
+   - Every footprint tile must be terraformed to **Prepared** (or Living) before construction starts. Rocks, holes, water, forest and slopes must be terraformed; even Flat ground needs a Grade. Every terraform op consumes energy, and that load is shed first in a brownout.
+   - The HQ Drone can terraform from landing, using its own power cell, so it can always prepare its own Command Hub site. Rules, op table and energy costs: [`docs/game/units-orders-and-progression-spec.md`](./units-orders-and-progression-spec.md) §4.5.
 
 ---
 
@@ -203,7 +206,7 @@ flowchart LR
 
 ## 4. Autonomous Robot Units Table (3 Tiers)
 
-> **Superseded (proposed D-16):** the robot roster, unit balance, order queue and progression now live in [`units-orders-and-progression-spec.md`](./units-orders-and-progression-spec.md). The table below is kept for history only.
+> **Superseded (proposed D-16):** the robot roster, unit balance, order queue and progression now live in [`docs/game/units-orders-and-progression-spec.md`](./units-orders-and-progression-spec.md). The table below is kept for history only.
 
 *Robots are built at the **Robotics Factory** (T1/T2/T3), consume **Robot Supply Slots** from **Drone Control Arrays**, and draw continuous recharge power (`-E/s`) from the colony grid.*
 

@@ -57,6 +57,7 @@ flowchart TB
 | `TA-05.4` | Matchmaker leader loop: assign/create planets, warm pool, sealing | W3 / L1 | TA-05.3 |
 | `TA-05.5` | Planet scheduler: capacity-aware placement, lease reconcile, failover reassignment | W3 / L1 | TA-05.1, TA-05.4, TA-07.5 |
 | `TA-05.6` | Managed queue controls: caps, backpressure, pause, priority, metrics | W4 / L1 | TA-05.4 |
+| `TA-05.7` | Party tickets (friends join one planet together) + seat refill only within the first 2 h (D-22, D-12 amended) | W4 / L1 | TA-05.4, TA-05.6 |
 
 ---
 
@@ -289,4 +290,35 @@ flowchart TB
 - [ ] `queue-controls.int-spec.ts`: 1000 open tickets → 1001st gets 503 + `Retry-After`; pause → 0 assignments for 5 s of loops, expiry suspended (E11); resume → assignments continue in order; priority bump reorders positions; aging lifts an old priority-0 ticket.
 - [ ] `eta-estimator.spec.ts`: EWMA math, `null` when paused/at cap.
 - [ ] Metrics above asserted in the integration test.
+- [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
+
+---
+
+### `TA-05.7` — Party tickets + 2 h seat refill (D-22, D-12 amended)
+
+- **Status:** `[ ] Todo`
+- **Wave / Lane:** `W4 / L1 (after TA-05.6)`
+- **Depends On:** `TA-05.4`, `TA-05.6`
+- **Spec:** [`MATCHMAKING.md`](../../spec/MATCHMAKING.md) (follow-up: parties, `MM-*` refill rule); [`DECISIONS.md`](../../spec/DECISIONS.md) D-12 (amended), D-22
+- **Target Files:**
+  - `backend/core/src/matchmaking/{party.service.ts,party.controller.ts,refill.policy.ts}`
+  - `backend/core/test/matchmaking/{party.spec.ts,refill.spec.ts}`
+  - `tests/integration/core/party.int.spec.ts`
+- **Verify:** `npm run test -w @terra/core -- party refill && npm run test:integration -- --suite core --grep party`
+
+#### Analytics
+- **Problem:** friends must land on the same planet, and seats freed by early elimination refill only during the first 2 h. Planets still seal at 24 h; small planets stay sealed (owner).
+- **Risks:** a party larger than the free seats → all-or-nothing reservation under `FOR UPDATE SKIP LOCKED`.
+- **Telemetry:** `ta_core_party_size`, `ta_core_seat_refills_total`.
+
+#### Architecture
+- A party has a leader and an invite code, with at most `PLANET_CAPACITY` members; the party ticket reserves N seats atomically.
+- Refill: a seat freed while the planet is `RECRUITING` and its age is < 2 h becomes available again; otherwise `seatsTaken` stays monotonic.
+
+#### Definition of Ready (DoR)
+- [ ] Spec follow-up landed: MATCHMAKING parties + refill rules; contracts for party DTOs and lobby topic (lead, W4 pre-step); migration for `core.party` (W4).
+
+#### Definition of Done (DoD)
+- [ ] `party.int.spec.ts`: 3 friends → same planet; 3 friends with 2 free seats → placed together on a new planet.
+- [ ] `refill.spec.ts`: refill at 1 h 59 m, none at 2 h 01 m.
 - [ ] Status synced in orchestrator, issue file and STATUS.md (§1.6).
