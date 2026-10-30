@@ -147,7 +147,7 @@ Every wave is built in its **own branch and its own git worktree**. Nothing is c
 
 **Pipeline**
 
-| # | Step | Who | Commands (W00-53 wraps them as `npm run wave:*`; until it lands, run the git lines by hand) |
+| # | Step | Who | Commands (`npm run wave` already does steps 1, 2, 3 and 7 — see below; W00-53 adds the rest) |
 |---|---|---|---|
 | 1 | **Open the wave**: branch from the current `main` into its own worktree, with its own dev ports and database | agent | `git worktree add ../TerraAgent-wt/w07 -b wave/w07-first-contact main` → `npm run wave:open -- 07` |
 | 2 | **Stack, if needed**: when an issue depends on a wave that is not in `main` yet, merge that wave's branch in (read-only: never commit on another wave's branch). The wave then cannot land before the stacked wave | agent | in the wave worktree: `git merge wave/w03-the-grid` → `npm run wave:stack -- 07 03` |
@@ -156,6 +156,8 @@ Every wave is built in its **own branch and its own git worktree**. Nothing is c
 | 5 | **Wave ready for check**: every tagged issue of this landing has landed; merge the latest `main` into the wave branch; the wave e2e **and every earlier wave's e2e** pass; the dev stack runs on the worktree's ports with `?scenario=wNN` | agent | `git merge main` · `npm run ci:fast && npm run e2e -- --waves ..07` → `npm run wave:check -- 07` (prints the demo steps to try and the URL) |
 | 6 | **Manual check**: play the wave's demo story (the `@hack` steps in the hackathon) in the worktree's dev stack. Not OK → note what is wrong; agents fix it with new issue branches (steps 3–5) and ask again | **owner** | open the URL from step 5 |
 | 7 | **Land the wave**: on the owner's go — merge into `main`, tag, push, delete the worktree and the branch, and tell every open wave to merge the new `main` | agent, on the owner's explicit go | in the main checkout: `git pull --ff-only` · `git merge --no-ff wave/w07-first-contact -m "W07 First Contact"` · `git tag wave-07` · `git push origin main --tags` · `git worktree remove ../TerraAgent-wt/w07` · `git branch -d wave/w07-first-contact` → `npm run wave:land -- 07` |
+
+**One command.** `npm run wave` resumes the open wave or opens the next ready one (hackathon value order, dependencies landed or stacked), runs `npm ci` in its worktree and starts Claude Code there as the wave lead, with instructions to build the wave's `H` rows issue by issue and stop at the owner check. After your check, `npm run wave -- land` merges, tags, pushes and removes the worktree and branch. Also: `npm run wave -- status`, `npm run wave -- next 06`, `--new` (open a second wave in parallel), `--tags H,H+`, `--dry-run`, `--no-launch`.
 
 **Rules**
 - **Landing order follows dependencies.** A wave lands only after every wave it depends on (header **Depends on**) and every wave it stacked (step 2) is in `main`. `wave:land` refuses otherwise.

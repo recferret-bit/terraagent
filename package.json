@@ -8,6 +8,7 @@
     "build": "tsc --noEmit && node scripts/check-structure.mjs && vite build",
     "typecheck": "tsc --noEmit",
     "check:structure": "node scripts/check-structure.mjs",
+    "wave": "node scripts/wave/wave.mjs",
     "validate:models": "node .agents/skills/model-geometry-validator/scripts/validate-model.mjs",
     "test:models": "node .agents/skills/model-geometry-validator/scripts/self-test.mjs"
   },

@@ -3,6 +3,7 @@
   python3 scripts/plan/index_waves.py            # validate + summary
   python3 scripts/plan/index_waves.py --write    # also write ISSUE_INDEX.md and HACKATHON_SCHEDULE.md
   python3 scripts/plan/index_waves.py --agents 10 --write
+  python3 scripts/plan/index_waves.py --waves-json   # wave list for scripts/wave/wave.mjs
 
 Columns are located by the issue-table header row. Deps understand ranges
 (`W07-03..07`, `W06-01…W06-27`, `W04-02 … W04-32`), `all above` and `all WNN`.
@@ -167,6 +168,15 @@ VALUE_ORDER = ['W00', 'W01', 'W02', 'W06', 'W10', 'W13', 'W03', 'W07', 'W05', 'W
                'W04', 'W09', 'W20', 'W22', 'W14', 'W11', 'W25']
 VALUE_WEIGHT = 1.0  # one rank step = one unit of remaining path
 BUILD_DAYS = 13
+
+if '--waves-json' in sys.argv:  # machine-readable wave list for scripts/wave/wave.mjs
+    import json
+    waves = {}
+    for iid, d in issues.items():
+        w = waves.setdefault(d['wave'], {'file': d['file'], 'deps': wave_deps.get(d['wave'], []), 'tags': {}})
+        w['tags'][d['tag'] or '-'] = w['tags'].get(d['tag'] or '-', 0) + 1
+    print(json.dumps({'valueOrder': VALUE_ORDER, 'waves': waves, 'problems': problems}))
+    sys.exit(0)
 
 
 def schedule(nodes, g, agents):
