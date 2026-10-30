@@ -13,3 +13,4 @@ export * from './ecs/columns';
 export * from './ecs/store';
 export * from './grid/hex';
 export * from './grid/layers';
+export * from './codec';
