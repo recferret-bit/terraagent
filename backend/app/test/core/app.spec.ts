@@ -96,7 +96,8 @@ describe('CORS', () => {
 describe('module discovery and env', () => {
   it('picks up modules from every dir, skips folders without a module file, merges their env', async () => {
     const { url, modules } = await boot({ PROBE_FLAG: 'on' }, { modulesDirs: [srcDir, fixtures] });
-    expect(modules).toEqual(['core', 'probe']);
+    expect(modules).toEqual(expect.arrayContaining(['core', 'probe'])); // other real modules join as waves add them
+    expect(modules.indexOf('core')).toBeLessThan(modules.indexOf('probe'));
     expect(await (await fetch(`${url}/v1/probe`)).json()).toEqual({ flag: 'on' });
   });
 
