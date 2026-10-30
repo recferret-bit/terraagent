@@ -94,7 +94,7 @@ describe('SimHost (D-31)', () => {
     }
     expect(h.state.entities.removed.length).toBeGreaterThan(0);
     expect(h.state.entities.capacity).toBeGreaterThan(64); // grew, and the replica matched
-  });
+  }, 60_000); // heavy deep-equal loop: slow under the parallel full-suite run
 
   it('a diff over an empty window is a no-op and replays idempotently from the same base', () => {
     const h = authority();

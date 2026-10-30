@@ -8,13 +8,15 @@ export interface ThreadInit {
   readonly thread: number;
   /** Enabled wave flags used by every planet loaded on this thread unless `load` overrides them. */
   readonly flags: readonly string[];
-  /** Run the placeholder fixed-interval stepper (to be replaced by the scheduler). */
+  /** Run the drift-free scheduler loop; when false no loop runs (tests drive `stepPlanet` directly). */
   readonly autoStep: boolean;
 }
 
 export type CtlOp =
   | { readonly op: 'stats'; readonly reqId: number }
   | { readonly op: 'warp'; readonly planetId: string; readonly ticks: number }
+  /** Test/dev only (ignored in production): busy-wait the thread for `ms`. */
+  | { readonly op: 'block'; readonly ms: number }
   | { readonly op: 'stop' };
 
 export interface LoadMsg {
@@ -36,6 +38,7 @@ export type ToThread =
   | { readonly t: 'subscribe'; readonly planetId: string }
   | { readonly t: 'unsubscribe'; readonly planetId: string }
   | { readonly t: 'snapshotNow'; readonly planetId?: string }
+  | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number }
   | ({ readonly t: 'ctl' } & CtlOp);
 
 export interface PlanetStats {
@@ -44,7 +47,15 @@ export interface PlanetStats {
   readonly entities: number;
   readonly pendingCmds: number;
   readonly subscribed: boolean;
+  /** Steps behind the due time after the last pass (0 = on time). */
+  readonly lagSteps: number;
+  readonly mode: 'active' | 'coarse';
+  readonly nextDueMs: number;
+  readonly stepsLastPass: number;
 }
+
+/** Diagnostic ring of recent scheduler passes that stepped something. */
+export interface PassStat { readonly steps: number; readonly maxPlanetSteps: number; readonly maxLag: number }
 
 /** thread → main */
 export type FromThread =
@@ -56,7 +67,8 @@ export type FromThread =
   | { readonly t: 'ack'; readonly planetId: string; readonly commandId: string; readonly appliedAtTick: number }
   | { readonly t: 'reject'; readonly planetId: string; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number }
   | { readonly t: 'snapshot'; readonly planetId: string; readonly tick: number; readonly bytes: Uint8Array }
-  | { readonly t: 'stats'; readonly thread: number; readonly reqId: number; readonly planets: PlanetStats[]; readonly steps: number }
+  | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number; readonly tick: number; readonly bytes: Uint8Array; readonly simVersion: number; readonly dataHash: string; readonly planetType: string }
+  | { readonly t: 'stats'; readonly thread: number; readonly reqId: number; readonly planets: PlanetStats[]; readonly steps: number; readonly maxLag: number; readonly recentPasses: PassStat[] }
   | { readonly t: 'error'; readonly thread: number; readonly planetId?: string; readonly commandId?: string; readonly message: string }
   | { readonly t: 'stopped'; readonly thread: number };
 

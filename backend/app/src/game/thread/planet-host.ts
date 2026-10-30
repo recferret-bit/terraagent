@@ -3,7 +3,15 @@ import {
   createPlanet, createRegistryPipeline, restore, snapshot, step,
   type Pipeline, type PlanetState, type SimEvent,
 } from '@terra/sim';
-import type { LoadMsg, Post, PlanetStats, ToThread } from './protocol';
+import type { LoadMsg, PassStat, Post, PlanetStats, ToThread } from './protocol';
+import type { PlanetSchedule } from './scheduler';
+
+/** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
+export interface SchedulerView {
+  info(planetId: string): PlanetSchedule | undefined;
+  readonly maxLag: number;
+  recentPasses(): PassStat[];
+}
 
 interface Planet {
   state: PlanetState;
@@ -34,6 +42,7 @@ export class PlanetHost {
     readonly thread: number,
     private readonly flags: readonly string[],
     private readonly post: Post,
+    private readonly sched?: SchedulerView,
   ) {}
 
   handle(msg: ToThread): void {
@@ -60,6 +69,7 @@ export class PlanetHost {
         return;
       }
       case 'snapshotNow': return this.snapshotNow(msg.planetId);
+      case 'fullState': return this.fullState(msg.planetId, msg.reqId);
       case 'ctl': return this.ctl(msg);
     }
   }
@@ -97,7 +107,7 @@ export class PlanetHost {
     else if (r.events.length) this.post({ t: 'event', planetId, events: r.events as SimEvent[] });
   }
 
-  /** PLACEHOLDER scheduling: one `dt = 1` step for every loaded planet. The scheduler issue replaces the caller. */
+  /** Steps every loaded planet once (tests/tools); the thread's `PlanetScheduler` does the timing. */
   stepAll(dt = 1): void {
     for (const id of [...this.planets.keys()]) {
       try { this.stepPlanet(id, dt); } catch (e) {
@@ -115,15 +125,38 @@ export class PlanetHost {
     }
   }
 
+  /** Reply to `fullState`: the engine snapshot (D-31) plus the sim/data identity the client must match (SIM-X-08). */
+  private fullState(planetId: string, reqId: number): void {
+    const p = this.planets.get(planetId);
+    if (!p) return this.post({ t: 'error', thread: this.thread, planetId, message: `fullState: planet ${planetId} is not loaded` });
+    const bytes = owned(snapshot(p.state));
+    this.post({
+      t: 'fullState', planetId, reqId, tick: p.state.meta.tick, bytes, simVersion: p.state.meta.simVersion,
+      dataHash: p.pipeline.config.data.hash, planetType: p.state.meta.planetType,
+    }, [bytes.buffer as ArrayBuffer]);
+  }
+
   stats(): PlanetStats[] {
-    return [...this.planets].map(([planetId, p]) => ({
-      planetId, tick: p.state.meta.tick, entities: p.state.entities.count, pendingCmds: p.pending.length, subscribed: p.subscribed,
-    }));
+    return [...this.planets].map(([planetId, p]) => {
+      const s = this.sched?.info(planetId);
+      return {
+        planetId, tick: p.state.meta.tick, entities: p.state.entities.count, pendingCmds: p.pending.length, subscribed: p.subscribed,
+        lagSteps: s?.lagSteps ?? 0, mode: s?.mode ?? 'active', nextDueMs: s?.nextDueMs ?? 0, stepsLastPass: s?.stepsLastPass ?? 0,
+      };
+    });
   }
 
   private ctl(msg: Extract<ToThread, { t: 'ctl' }>): void {
-    if (msg.op === 'stats') this.post({ t: 'stats', thread: this.thread, reqId: msg.reqId, planets: this.stats(), steps: this.steps });
-    else if (msg.op === 'warp') for (let i = 0; i < Math.min(msg.ticks, 100_000); i++) this.stepPlanet(msg.planetId, 1);
+    if (msg.op === 'stats') {
+      this.post({
+        t: 'stats', thread: this.thread, reqId: msg.reqId, planets: this.stats(), steps: this.steps,
+        maxLag: this.sched?.maxLag ?? 0, recentPasses: this.sched?.recentPasses() ?? [],
+      });
+    } else if (msg.op === 'block') {
+      if (process.env.NODE_ENV === 'production') return;
+      const end = performance.now() + msg.ms;
+      while (performance.now() < end) { /* busy-wait: simulates a stalled thread */ }
+    } else if (msg.op === 'warp') for (let i = 0; i < Math.min(msg.ticks, 100_000); i++) this.stepPlanet(msg.planetId, 1);
     // 'stop' is handled by the thread entry (it owns the port and the timer).
   }
 }

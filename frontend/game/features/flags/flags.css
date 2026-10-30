@@ -1,0 +1,9 @@
+.ta-flags { width: 212px; padding: 8px 10px 10px; background: var(--ta-plate); border: 1px solid var(--ta-seam-2); }
+.ta-flags__head { all: unset; cursor: pointer; display: flex; justify-content: space-between; width: 100%; box-sizing: border-box; color: var(--ta-text-2); font: 600 11px/1 'Chakra Petch', sans-serif; letter-spacing: var(--ta-track-label); text-transform: uppercase; }
+.ta-flags__head:focus-visible { outline: 1px solid var(--ta-orange); }
+.ta-flags__count { color: var(--ta-blue-hi); }
+.ta-flags[data-open='false'] { width: auto; padding: 8px 12px; }
+.ta-flags__chips { display: grid; grid-template-columns: repeat(6, 1fr); gap: 3px; margin-top: 8px; }
+.ta-flags__chip { text-align: center; padding: 3px 0; font: 500 9px/1 'IBM Plex Mono', monospace; border: 1px solid var(--ta-seam); color: var(--ta-dim); }
+.ta-flags__chip[data-on='true'] { color: var(--ta-blue-hi); border-color: var(--ta-blue); background: var(--ta-blue-deep); }
+.ta-flags__src { margin-top: 8px; font: 500 10px/1 'IBM Plex Mono', monospace; color: var(--ta-steel); }

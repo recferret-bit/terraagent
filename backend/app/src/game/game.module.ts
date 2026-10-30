@@ -1,15 +1,15 @@
 import { availableParallelism } from 'node:os';
 import { Inject, Module, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 import { defineEnv } from '@terra/config';
-import { Gauge } from 'prom-client';
+import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
+import { FlagsService } from '../flags/flags.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { ReadinessRegistry } from '../core/readiness.registry';
 import { APP_ENV, type AppEnv } from '../core/tokens';
 import { devPlanetIds } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
 import { SimThreadPool } from './sim-thread-pool';
-import { ALL_WAVES } from './thread/assign';
 
 export const env = defineEnv('game', {
   /** Sim worker threads (SIM-H-01); default: cores - 1, at least 1. */
@@ -24,8 +24,8 @@ const POOL = Symbol('SIM_THREAD_POOL');
   providers: [
     {
       provide: POOL,
-      inject: [APP_ENV],
-      useFactory: (e: AppEnv) => new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: ALL_WAVES }),
+      inject: [APP_ENV, FlagsService],
+      useFactory: (e: AppEnv, f: FlagsService) => new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: f.list }),
     },
     { provide: GamePlanets, inject: [POOL], useFactory: (pool: SimThreadPool) => new GamePlanets(pool) },
   ],
@@ -50,6 +50,20 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       async collect() {
         this.reset();
         for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.planets.length);
+      },
+    });
+    new Gauge({
+      name: 'ta_game_tick_lag_steps', help: 'Max steps a planet is behind its due time, per sim thread', labelNames: ['thread'], registers: [reg],
+      async collect() {
+        this.reset();
+        for (const s of await pool.stats()) this.set({ thread: String(s.thread) }, s.maxLag);
+      },
+    });
+    new Counter({
+      name: 'ta_game_steps_total', help: 'Engine steps executed per sim thread', labelNames: ['thread'], registers: [reg],
+      async collect() {
+        this.reset();
+        for (const s of await pool.stats()) this.inc({ thread: String(s.thread) }, s.steps);
       },
     });
     this.readiness.register('simThreads', () => {
