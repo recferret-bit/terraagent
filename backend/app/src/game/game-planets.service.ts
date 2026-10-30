@@ -22,6 +22,9 @@ export interface FullState {
   readonly planetType: string;
 }
 
+/** Global tap on every sim event leaving a thread (each exactly once: from a delta or from a bare `event`). */
+export type PlanetEventsListener = (planetId: string, events: readonly SimEvent[]) => void;
+
 export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'>;
 
 interface Waiter<T> { resolve(v: T): void; reject(e: Error): void }
@@ -41,9 +44,10 @@ export class GamePlanets {
   private readonly unloadedListeners: ((planetId: string) => void)[] = [];
   private readonly snapshotListeners: ((planetId: string, s: { tick: number; bytes: Uint8Array }) => void)[] = [];
   private readonly shutdownHooks: (() => void | Promise<void>)[] = [];
+  private readonly eventListeners = new Set<PlanetEventsListener>();
   private readonly unlisten: () => void;
 
-  constructor(readonly pool: SimThreadPool) {
+  constructor(readonly pool: SimThreadPool, readonly deltaHz = 5) {
     this.unlisten = pool.listen((thread, msg) => this.onMessage(thread, msg));
   }
 
@@ -103,6 +107,16 @@ export class GamePlanets {
     };
   }
 
+  /** Registers a tap on all planet events (the bus bridge). Returns unsubscribe. */
+  onEvents(l: PlanetEventsListener): () => void {
+    this.eventListeners.add(l);
+    return () => this.eventListeners.delete(l);
+  }
+
+  private tap(planetId: string, events: readonly SimEvent[]): void {
+    if (events.length) for (const l of this.eventListeners) l(planetId, events);
+  }
+
   /** Asks the owning thread for a snapshot; it arrives through `onSnapshot` of the planet's subscribers. */
   requestSnapshot(planetId?: string): void {
     if (planetId) this.pool.sendToPlanet(planetId, { t: 'snapshotNow', planetId });
@@ -153,8 +167,12 @@ export class GamePlanets {
       case 'ack': return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: true, commandId: msg.commandId, appliedAtTick: msg.appliedAtTick });
       case 'reject':
         return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick });
-      case 'delta': return this.each(msg.planetId, (s) => s.onDelta?.(msg));
-      case 'event': return this.each(msg.planetId, (s) => s.onEvent?.(msg.events));
+      case 'delta':
+        this.tap(msg.planetId, msg.events);
+        return this.each(msg.planetId, (s) => s.onDelta?.(msg));
+      case 'event':
+        this.tap(msg.planetId, msg.events);
+        return this.each(msg.planetId, (s) => s.onEvent?.(msg.events));
       case 'fullState': {
         const w = this.fullWaiters.get(msg.reqId);
         this.fullWaiters.delete(msg.reqId);

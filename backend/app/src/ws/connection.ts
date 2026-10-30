@@ -7,7 +7,6 @@ import type { PlanetRooms, RoomMember } from './rooms';
 import type { SessionVerifier } from './session-verifier';
 
 export const TICK_MS = 200;
-export const DELTA_HZ = 5;
 export const PROTO_VERSION = 1;
 
 export interface ConnectionDeps {
@@ -175,7 +174,7 @@ export class Connection implements RoomMember {
         reason: 'join', colonyId: null,
         planet: { id: planetId, type: type.success ? type.data : 'temperate', name: planetId },
         state: snap.bytes, simVersion: snap.simVersion, dataHash: snap.dataHash, tick: snap.tick,
-        serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: DELTA_HZ, flags: this.d.flags,
+        serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: this.d.planets.deltaHz, flags: this.d.flags,
       },
     });
     this.welcomeTick = snap.tick;

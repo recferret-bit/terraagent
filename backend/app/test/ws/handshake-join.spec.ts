@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
-import { decodeWire, Pong, Ready, Welcome } from '@terra/contracts';
-import { restore, SIM_VERSION } from '@terra/sim';
+import { decodeWire, Delta, Pong, Ready, Welcome } from '@terra/contracts';
+import { applyDiff, restore, SIM_VERSION } from '@terra/sim';
 import { afterEach, describe, expect, it } from 'vitest';
 import WebSocket from 'ws';
 import { createApp } from '../../src/app';
@@ -84,6 +84,24 @@ describe('WS gateway', () => {
     c.send({ t: 'join', d: { planetId: PLANET } });
     const welcome = Welcome.parse(await c.next('welcome'));
     expect(restore(welcome.d.state).meta.tick).toBe(welcome.d.tick);
+  });
+
+  it('after the welcome, binary deltas chain from the welcome tick and apply to the welcome state', async () => {
+    const { url } = await boot();
+    const c = await Client.open(url);
+    c.hello();
+    await c.next('ready');
+    c.send({ t: 'join', d: { planetId: PLANET } });
+    const welcome = Welcome.parse(await c.next('welcome'));
+    const replica = restore(welcome.d.state);
+    const deltas = [];
+    for (let i = 0; i < 3; i++) deltas.push(Delta.parse(await c.next('delta')));
+    expect(deltas[0]!.d.fromTick).toBe(welcome.d.tick);
+    for (const [i, d] of deltas.entries()) {
+      if (i > 0) expect(d.d.fromTick).toBe(deltas[i - 1]!.d.toTick);
+      applyDiff(replica, d.d.diff);
+      expect(replica.meta.tick).toBe(d.d.toTick);
+    }
   });
 
   it('no hello in time closes 4000', async () => {

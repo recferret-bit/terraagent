@@ -7,6 +7,10 @@ export interface SimThreadPoolOptions {
   readonly flags: readonly string[];
   /** Run the scheduler loop inside each thread (default true). */
   readonly autoStep?: boolean;
+  /** Deltas per second per subscribed planet (default 5). */
+  readonly deltaHz?: number;
+  /** Test/dev hook: file URLs of extra `SimModule`s (default export) loaded into every thread. */
+  readonly simModules?: readonly string[];
   /** Thread entry; default `./thread/sim-thread.ts` next to this file. */
   readonly entry?: URL;
 }
@@ -61,7 +65,7 @@ export class SimThreadPool {
   }
 
   private spawn(thread: number, entry: URL, execArgv: string[] | undefined): Promise<void> {
-    const init: ThreadInit = { thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true };
+    const init: ThreadInit = { thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true, deltaHz: this.opts.deltaHz, simModules: this.opts.simModules };
     const w = new Worker(entry, { workerData: init, ...(execArgv ? { execArgv } : {}) });
     this.workers[thread] = w;
     return new Promise<void>((resolve, reject) => {
