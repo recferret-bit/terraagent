@@ -11,8 +11,10 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "test": "vitest run",
-    "check": "npm run typecheck && npm run lint && npm run check:structure",
+    "check": "npm run typecheck && npm run lint && npm run check:structure && npm run gen:check",
     "check:structure": "node scripts/check-structure.mjs",
+    "gen": "node scripts/gen/run.mjs",
+    "gen:check": "node scripts/gen/run.mjs --check",
     "wave": "node scripts/wave/wave.mjs",
     "validate:models": "node .agents/skills/model-geometry-validator/scripts/validate-model.mjs",
     "test:models": "node .agents/skills/model-geometry-validator/scripts/self-test.mjs"
