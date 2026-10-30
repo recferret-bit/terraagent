@@ -1,0 +1,2 @@
+.ta-warp { padding: 6px 10px; background: var(--ta-orange); border: 1px solid var(--ta-orange); color: var(--ta-void); font: 700 11px/1 'IBM Plex Mono', monospace; letter-spacing: var(--ta-track-label); }
+.ta-warp[hidden] { display: none; }

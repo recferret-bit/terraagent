@@ -1,5 +1,6 @@
-import type { SimCommandV1 } from '@terra/contracts';
+import type { SimCommandV1, SimEventWire } from '@terra/contracts';
 import { TICK_MS, type SimHost, type SimView } from '@terra/sim';
+import { PREDICT_P95_LIMIT_MS, StepTimes } from './stepTimes';
 import type { DeltaInput, DeltaResult, ReplicaCore, WelcomeInput, WelcomeResult } from '../replica/ReplicaCore';
 
 /** A command the player sent that the confirmed state does not include yet. */
@@ -19,6 +20,8 @@ export interface PredictorOptions {
   maxLeadTicks?: number;
   /** false (`?predict=0`): `view()` is always the confirmed state. */
   enabled?: boolean;
+  /** Rebuild-time p95 (ms) above which prediction turns itself off. Default 4. */
+  p95LimitMs?: number;
 }
 
 export const DEFAULT_MAX_LEAD_TICKS = 25;
@@ -38,6 +41,13 @@ export class Predictor {
   private offsetMs = 0;
   private lastRejected: { cmd: PendingCommand; code: string } | null = null;
   enabled: boolean;
+  /** Rebuild times (clone + steps) of the predicted host. */
+  readonly steps = new StepTimes();
+  /** Set when prediction switched itself off because the step p95 went over the limit. */
+  autoOff: { p95Ms: number } | null = null;
+  private renderEvents: SimEventWire[] = [];
+  private renderHigh = -1;
+  private readonly p95LimitMs: number;
   private readonly maxLead: number;
   private readonly now: () => number;
 
@@ -45,6 +55,7 @@ export class Predictor {
     this.now = opts.now;
     this.maxLead = opts.maxLeadTicks ?? DEFAULT_MAX_LEAD_TICKS;
     this.enabled = opts.enabled ?? true;
+    this.p95LimitMs = opts.p95LimitMs ?? PREDICT_P95_LIMIT_MS;
   }
 
   get pending(): readonly PendingCommand[] { return this.pend; }
@@ -58,6 +69,7 @@ export class Predictor {
       this.epochServerMs = w.serverTimeMs - w.tick * TICK_MS;
       this.offsetMs = w.serverTimeMs - this.now();
     }
+    if (w.tick < this.renderHigh - this.maxLead) this.renderHigh = -1;
     this.bump();
     if (r.ok) this.dropApplied();
     return r;
@@ -122,7 +134,10 @@ export class Predictor {
     if (!this.enabled || this.pend.length === 0) return this.confirmed.simHost;
     const target = this.targetTick();
     if (this.cache && this.cache.version === this.version && this.cache.target === target) return this.cache.host;
+    const t0 = this.now();
     const host = this.rebuild(target);
+    this.steps.add(this.now() - t0);
+    if (this.steps.exceeds(this.p95LimitMs)) { this.enabled = false; this.autoOff = { p95Ms: this.steps.p95() }; }
     this.cache = { version: this.version, target, host };
     return host;
   }
@@ -143,9 +158,24 @@ export class Predictor {
     }
     for (let tick = first; tick <= target; tick++) {
       for (const c of byTick.get(tick) ?? []) host.submit(c);
-      host.step(1);
+      this.collect(host.step(1).events);
     }
     return host;
+  }
+
+  /** Render-only events (projectiles, VFX) of the predicted steps not shown before. Player-facing events come from the server only. */
+  takeRenderEvents(): SimEventWire[] {
+    const out = this.renderEvents;
+    this.renderEvents = [];
+    return out;
+  }
+
+  private collect(events: readonly SimEventWire[]): void {
+    for (const e of events) {
+      if (e.atTick <= this.renderHigh) continue;
+      this.renderEvents.push({ kind: e.kind, severity: e.severity, atTick: e.atTick, colonyIds: e.colonyIds, data: e.data });
+    }
+    for (const e of events) this.renderHigh = Math.max(this.renderHigh, e.atTick);
   }
 
   private dropApplied(): void {

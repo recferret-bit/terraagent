@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import type { BalanceOverrides } from '@terra/sim';
 import { threadOf } from './thread/assign';
 import type { FromThread, PassStat, PlanetStats, ThreadInit, ToThread } from './thread/protocol';
 
@@ -11,6 +12,8 @@ export interface SimThreadPoolOptions {
   readonly deltaHz?: number;
   /** Test/dev hook: file URLs of extra `SimModule`s (default export) loaded into every thread. */
   readonly simModules?: readonly string[];
+  /** Balance overrides from `TA_BALANCE_OVERRIDES` (D-35), applied to every planet. */
+  readonly overrides?: BalanceOverrides;
   /** Thread entry; default `./thread/sim-thread.ts` next to this file. */
   readonly entry?: URL;
 }
@@ -65,7 +68,7 @@ export class SimThreadPool {
   }
 
   private spawn(thread: number, entry: URL, execArgv: string[] | undefined): Promise<void> {
-    const init: ThreadInit = { thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true, deltaHz: this.opts.deltaHz, simModules: this.opts.simModules };
+    const init: ThreadInit = { thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true, deltaHz: this.opts.deltaHz, simModules: this.opts.simModules, overrides: this.opts.overrides };
     const w = new Worker(entry, { workerData: init, ...(execArgv ? { execArgv } : {}) });
     this.workers[thread] = w;
     return new Promise<void>((resolve, reject) => {

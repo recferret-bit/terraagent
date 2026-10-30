@@ -1,6 +1,6 @@
 import type { IncomingMessage, Server } from 'node:http';
 import type { Duplex } from 'node:stream';
-import { CLOSE_CODES } from '@terra/contracts';
+import { CLOSE_CODES, encodeWire } from '@terra/contracts';
 import type { Logger } from 'pino';
 import { Counter, Gauge, type Registry } from 'prom-client';
 import { WebSocketServer } from 'ws';
@@ -35,10 +35,14 @@ export class WsGateway {
   private readonly originOk: ReturnType<typeof corsOrigin>;
   private readonly welcomes: Counter;
   private detach: (() => void) | undefined;
+  private readonly unwarp: () => void;
 
   constructor(private readonly o: GatewayOptions) {
     this.rooms = new PlanetRooms(o.planets);
     this.originOk = corsOrigin(o.env);
+    this.unwarp = o.planets.onWarp((planetId, k) => this.rooms.broadcast(planetId, encodeWire({
+      v: 1, t: 'event', tick: 0, d: { kind: 'dev.warp', severity: 'info', atTick: 0, colonyIds: [], data: { k } },
+    })));
     const conns = this.conns;
     new Gauge({ name: 'ta_ws_connections', help: 'Open WebSocket connections', registers: [o.registry], collect() { this.set(conns.size); } });
     this.welcomes = new Counter({ name: 'ta_planet_ws_welcome_total', help: 'welcome messages sent', registers: [o.registry] });
@@ -88,6 +92,7 @@ export class WsGateway {
   /** Shutdown: `bye 4012` to everyone, then wait briefly for the closing handshakes. Must run before the sim threads stop. */
   async closeAll(graceMs = 1000): Promise<void> {
     this.detach?.();
+    this.unwarp();
     const all = [...this.conns];
     for (const c of all) c.bye(CLOSE_CODES.server_restarting, 'server_restarting');
     await new Promise<void>((resolve) => {

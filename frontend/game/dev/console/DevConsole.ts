@@ -13,7 +13,8 @@ export class DevConsole {
   private readonly history: string[] = [];
   private cursor = 0;
   private draft = '';
-  private busy = false;
+  /** Commands run one after another; Enter while one is running queues the next instead of dropping it. */
+  private queue: Promise<void> = Promise.resolve();
 
   constructor(parent: HTMLElement, features: readonly Feature[], ctx: FeatureContext) {
     this.runner = new CommandRunner(features, ctx);
@@ -86,15 +87,14 @@ export class DevConsole {
     e.stopPropagation();
     if (e.key === 'Escape') { e.preventDefault(); this.setOpen(false); return; }
     if (e.key === 'ArrowUp' || e.key === 'ArrowDown') { e.preventDefault(); this.walkHistory(e.key === 'ArrowUp' ? -1 : 1); return; }
-    if (e.key !== 'Enter' || this.busy) return;
+    if (e.key !== 'Enter') return;
     const line = this.input.value.trim();
     this.input.value = '';
     if (!line) return;
     if (this.history[this.history.length - 1] !== line) this.history.push(line);
     if (this.history.length > HISTORY_MAX) this.history.shift();
     this.cursor = this.history.length;
-    this.busy = true;
-    void this.exec(line).finally(() => { this.busy = false; });
+    this.queue = this.queue.then(() => this.exec(line));
   };
 
   private walkHistory(dir: -1 | 1): void {

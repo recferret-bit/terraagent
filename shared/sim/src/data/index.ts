@@ -1,3 +1,4 @@
+import type { BalanceOverrides } from './_overrides';
 import type { TableDef } from './_define';
 import { compileTables, type CompiledData } from './_compile';
 import { DATA_TABLES } from './index.generated';
@@ -12,6 +13,10 @@ export {
   type CompiledTable,
   type CompileInput,
 } from './_compile';
+export {
+  parseTunePath, parseTuneValue, setOverride, mergeOverrides, exportOverrides, parseOverrides, isEmptyOverrides,
+  type BalanceOverrides, type TunePath,
+} from './_overrides';
 export { dataHash, canonical } from './_hash';
 
 /** Every discovered table (`shared/sim/src/data/*.ts`, listed by `npm run gen`). */
@@ -20,5 +25,12 @@ export const allTables = (): readonly TableDef[] => DATA_TABLES;
 /** Compiles every discovered table for an enabled wave set. */
 export const compileData = (
   flags: { has(wave: string): boolean } | ReadonlySet<string>,
-  opts?: { economyRateScale?: number },
-): CompiledData => compileTables({ flags, tables: DATA_TABLES, ...opts });
+  optsOrOverrides?: { economyRateScale?: number; overrides?: BalanceOverrides } | BalanceOverrides,
+): CompiledData => {
+  if (!optsOrOverrides) return compileTables({ flags, tables: DATA_TABLES });
+  if ('economyRateScale' in optsOrOverrides || 'overrides' in optsOrOverrides) {
+    const o = optsOrOverrides as { economyRateScale?: number; overrides?: BalanceOverrides };
+    return compileTables({ flags, tables: DATA_TABLES, economyRateScale: o.economyRateScale, overrides: o.overrides });
+  }
+  return compileTables({ flags, tables: DATA_TABLES, overrides: optsOrOverrides as BalanceOverrides });
+};

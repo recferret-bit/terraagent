@@ -5,6 +5,8 @@ import { event as event_brownout } from './brownout';
 import { event as event_buildingCompleted } from './building-completed';
 import { event as event_colonyFounded } from './colony-founded';
 import { event as event_devPong } from './dev-pong';
+import { event as event_devTuned } from './dev-tuned';
+import { event as event_devWarp } from './dev-warp';
 import { event as event_energyCollapse } from './energy-collapse';
 import { event as event_hqLanded } from './hq-landed';
 import { event as event_obstacleRemoved } from './obstacle-removed';
@@ -13,7 +15,7 @@ import { event as event_resourceShortage } from './resource-shortage';
 import { event as event_tilePrepared } from './tile-prepared';
 import { event as event_unitProduced } from './unit-produced';
 
-export const EVENTS = [event_brownout, event_buildingCompleted, event_colonyFounded, event_devPong, event_energyCollapse, event_hqLanded, event_obstacleRemoved, event_resourceProduced, event_resourceShortage, event_tilePrepared, event_unitProduced] as const;
+export const EVENTS = [event_brownout, event_buildingCompleted, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_hqLanded, event_obstacleRemoved, event_resourceProduced, event_resourceShortage, event_tilePrepared, event_unitProduced] as const;
 
 export type EventKind = (typeof EVENTS)[number]['kind'];
 export const EVENT_KINDS = [...EVENTS.map((d) => d.kind)] as unknown as readonly [EventKind, ...EventKind[]];

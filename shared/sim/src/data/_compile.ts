@@ -2,6 +2,7 @@ import { TICK_MS } from '../kernel/constants';
 import type { CompiledDataLike } from '../kernel/config';
 import type { Row, RowValue, TableDef, Unit } from './_define';
 import { dataHash } from './_hash';
+import { applyOverrides, type BalanceOverrides } from './_overrides';
 
 export type CompiledRow = Readonly<Record<string, RowValue>> & { readonly id: string; readonly wave: string };
 export type CompiledTable = Readonly<Record<string, CompiledRow>>;
@@ -44,6 +45,8 @@ export interface CompileInput {
   flags: { has(wave: string): boolean } | ReadonlySet<string>;
   tables: readonly TableDef[];
   economyRateScale?: number;
+  /** Balance overrides in design units, merged over the rows before unit conversion (D-35). */
+  overrides?: BalanceOverrides;
 }
 
 /**
@@ -51,7 +54,8 @@ export interface CompileInput {
  * (default `ECONOMY_RATE_SCALE = 0.25`), and keeps only the rows of enabled waves. Pure; the same tables + flags
  * always give the same `hash`.
  */
-export function compileTables({ flags, tables, economyRateScale = ECONOMY_RATE_SCALE }: CompileInput): CompiledData {
+export function compileTables({ flags, tables: base, economyRateScale = ECONOMY_RATE_SCALE, overrides }: CompileInput): CompiledData {
+  const tables = overrides ? applyOverrides(base, overrides) : base;
   const out: Record<string, CompiledTable> = {};
   for (const t of tables) {
     if (out[t.name]) throw new Error(`duplicate data table ${t.name}`);

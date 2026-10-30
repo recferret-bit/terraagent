@@ -44,6 +44,11 @@ export class PlanetRooms {
     if (room.members.size === 0) { this.rooms.delete(planetId); room.unsubscribe(); }
   }
 
+  /** Sends one already-encoded frame to every joined socket of the planet (host-level notices such as `dev.warp`). */
+  broadcast(planetId: string, frame: string | Uint8Array): void {
+    for (const m of this.rooms.get(planetId)?.members ?? []) if (m.welcomeTick !== undefined && this.writable(m)) m.send(frame);
+  }
+
   size(planetId: string): number {
     return this.rooms.get(planetId)?.members.size ?? 0;
   }

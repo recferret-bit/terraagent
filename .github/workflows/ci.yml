@@ -1,0 +1,135 @@
+# CI (W00, PRODUCT_WAVES §4 merge rule): one job per gate so a failure names its gate.
+# Required on `main` via branch protection (repository settings, owner).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '24'
+  TA_PG_PORT: '15434'
+  NODE_ENV: test
+
+jobs:
+  typecheck:
+    name: typecheck + structure + codegen
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run check:structure
+      - run: npm run gen:check
+
+  lint:
+    name: lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - run: npm run lint
+
+  unit:
+    name: unit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - run: npm test
+
+  contract:
+    name: integration + contract (Postgres)
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: terra, POSTGRES_PASSWORD: terra, POSTGRES_DB: terraagent }
+        ports: ['15434:5432']
+        options: >-
+          --health-cmd "pg_isready -U terra" --health-interval 2s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - run: npm run test:integration
+      - run: npm run test:contract
+
+  build:
+    name: build (warning-free)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - run: npm run build:strict
+
+  parity:
+    name: engine parity (server host vs local host)
+    runs-on: ubuntu-latest
+    needs: [unit]
+    env:
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run test:parity
+
+  e2e:
+    name: e2e (waves ..${{ matrix.upto }})
+    runs-on: ubuntu-latest
+    needs: [unit, build]
+    strategy:
+      fail-fast: false
+      matrix:
+        # one entry per landed wave range; a wave adds its number here when its suite lands
+        upto: ['00']
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env: { POSTGRES_USER: terra, POSTGRES_PASSWORD: terra, POSTGRES_DB: terraagent }
+        ports: ['15434:5432']
+        options: >-
+          --health-cmd "pg_isready -U terra" --health-interval 2s --health-timeout 5s --health-retries 20
+    env:
+      NODE_ENV: development
+      CI: 'true'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '${{ env.NODE_VERSION }}', cache: npm }
+      - run: npm ci
+      - name: Cache Playwright browsers
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e -- --waves ..${{ matrix.upto }}
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: e2e-${{ matrix.upto }}
+          path: e2e/.out/
+          if-no-files-found: ignore

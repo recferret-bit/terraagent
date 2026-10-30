@@ -49,8 +49,8 @@ export interface Feature {
   id: string;
   /** Wave id ('W00'..'W25'); the feature is skipped unless this flag is on. */
   wave: string;
-  /** Hidden on the browser local host (?host=local) when 'server'. */
-  hostOnly?: 'server';
+  /** `'server'`: hidden on the browser local host (?host=local); `'local'`: hidden on the game server host. */
+  hostOnly?: 'server' | 'local';
   hud?: HudPanelDef[];
   menus?: MenuDef[];
   renderers?: RendererDef[];

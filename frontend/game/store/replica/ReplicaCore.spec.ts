@@ -124,3 +124,14 @@ describe('viewCodec', () => {
     expect(unpackView(packView(replica.view(), false).view).tiles).toBeUndefined();
   });
 });
+
+describe('ReplicaCore with balance overrides (D-35)', () => {
+  const OV = { dev: { probe: { nudgeTiles: 3 } } };
+  it('a welcome with the server overrides compiles the same data; without them the hash mismatches', () => {
+    const auth = authority();
+    const dataHash = compileData(flagsFromList(FLAGS), OV).hash;
+    expect(new ReplicaCore({ modules: TEST_MODULES }).welcome(welcomeOf(auth, { dataHash, overrides: OV }))).toEqual({ ok: true });
+    const stale = new ReplicaCore({ modules: TEST_MODULES });
+    expect(stale.welcome(welcomeOf(auth, { dataHash }))).toMatchObject({ ok: false, reason: 'dataHash' });
+  });
+});
