@@ -6,13 +6,17 @@ import {
   dataRow,
   ENTITY_KIND,
   ENTITY_STATE,
+  getHqRechargeRateEPerS,
   getHqView,
   hexDistance,
   hexIndex,
+  insertRow,
   PREP,
   rowOf,
+  setHqCellEnergy,
   SimHost,
   spawnHqUnit,
+  stepTerraformWorkWithCell,
   TERRAIN,
   type SimCommand,
 } from '../../src';
@@ -171,5 +175,106 @@ describe('W01-10: HQ T1 movement order and validation', () => {
     expect(state.entities.cols.state[row]).toBe(ENTITY_STATE.idle);
     expect(state.entities.cols.q[row]).toBe(8);
     expect(state.entities.cols.r[row]).toBe(8);
+  });
+});
+
+describe('W01-11: HQ power cell recharge and terraform energy draw', () => {
+  it('self-recharges at 3 E/s (0.6 E/tick) and clamps at 800 E capacity', () => {
+    const host = createW01Host();
+    const state = host.state;
+    const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    const slot = rowOf(state.entities, hqId);
+
+    setHqCellEnergy(state, slot, 0);
+    expect(state.entities.cols.cell[slot]).toBe(0);
+    expect(getHqView(state, 0)?.cell).toBe(0);
+    expect(getHqRechargeRateEPerS(state, slot)).toBe(3);
+
+    host.step(1);
+    expect(state.entities.cols.cell[slot]).toBeCloseTo(0.6, 5);
+    expect(getHqView(state, 0)?.cell).toBeCloseTo(0.6, 5);
+
+    host.step(4);
+    expect(state.entities.cols.cell[slot]).toBeCloseTo(3.0, 4);
+
+    setHqCellEnergy(state, slot, 799.7);
+    host.step(1);
+    expect(state.entities.cols.cell[slot]).toBe(800);
+    expect(getHqView(state, 0)?.cell).toBe(800);
+  });
+
+  it('fast-recharges at 20 E/s (4.0 E/tick) within 6 hexes of an active own Command Hub and drops to 3 E/s beyond 6 hexes', () => {
+    const host = createW01Host();
+    const state = host.state;
+    const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    const slot = rowOf(state.entities, hqId);
+    const cols = state.entities.cols;
+
+    const hubRow = insertRow(state.entities, state.meta.nextEntityId++, 0);
+    cols.kind[hubRow] = ENTITY_KIND.hub;
+    cols.owner[hubRow] = 0;
+    cols.q[hubRow] = 6;
+    cols.r[hubRow] = 0;
+    cols.hp[hubRow] = 1500;
+    cols.hpMax[hubRow] = 1500;
+    cols.state[hubRow] = ENTITY_STATE.constructing;
+
+    // Constructing Hub does not provide fast recharge
+    expect(getHqRechargeRateEPerS(state, slot)).toBe(3);
+
+    // Active Hub within distance 6 -> 20 E/s (4.0 E/tick)
+    cols.state[hubRow] = ENTITY_STATE.active;
+    expect(getHqRechargeRateEPerS(state, slot)).toBe(20);
+    setHqCellEnergy(state, slot, 100);
+    host.step(1);
+    expect(cols.cell[slot]).toBeCloseTo(104, 5);
+
+    // Move HQ to (-1, 0), hex distance 7 from Hub at (6, 0) -> drops back to 3 E/s (0.6 E/tick)
+    cols.q[slot] = -1;
+    cols.r[slot] = 0;
+    expect(getHqRechargeRateEPerS(state, slot)).toBe(3);
+    host.step(1);
+    expect(cols.cell[slot]).toBeCloseTo(104.6, 4);
+  });
+
+  it('completes Grade (3s base, 20 E) in 10 ticks (2.0s) with full cell and continues at 3 E/s trickle in 34 ticks (6.8s) when drained to 0', () => {
+    const host = createW01Host();
+    const state = host.state;
+    const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    const slot = rowOf(state.entities, hqId);
+
+    // 1. Full cell (800 E): Grade takes 2.0 s (10 ticks) at 1.5x work rate, drawing 20 E total (2.0 E/tick)
+    let fullProgress = 0;
+    let fullTicks = 0;
+    let totalDrawnFull = 0;
+    while (fullProgress < 1 - 1e-6 && fullTicks < 100) {
+      host.step(1);
+      const stepRes = stepTerraformWorkWithCell(state, slot, { baseTimeS: 3, totalEnergyE: 20 });
+      fullProgress += stepRes.progressDelta;
+      totalDrawnFull += stepRes.energyDrawnE;
+      fullTicks++;
+    }
+    expect(fullTicks).toBe(10);
+    expect(fullProgress).toBeCloseTo(1.0, 5);
+    expect(totalDrawnFull).toBeCloseTo(20, 4);
+
+    // 2. Acceptance check: Drain cell to 0 -> Grade continues at 3 E/s trickle (0.6 E/tick -> 0.03 progress/tick -> 34 ticks = 6.8s)
+    setHqCellEnergy(state, slot, 0);
+    expect(state.entities.cols.cell[slot]).toBe(0);
+
+    let trickleProgress = 0;
+    let trickleTicks = 0;
+    while (trickleProgress < 1 - 1e-6 && trickleTicks < 100) {
+      host.step(1);
+      const stepRes = stepTerraformWorkWithCell(state, slot, { baseTimeS: 3, totalEnergyE: 20 });
+      expect(stepRes.energyDrawnE).toBeCloseTo(0.6, 5);
+      expect(stepRes.progressDelta).toBeCloseTo(0.03, 5);
+      expect(state.entities.cols.cell[slot]).toBe(0);
+      trickleProgress += stepRes.progressDelta;
+      trickleTicks++;
+    }
+    expect(trickleTicks).toBe(34);
+    expect(trickleProgress).toBeGreaterThanOrEqual(1.0);
+    expect(trickleTicks * 0.2).toBeCloseTo(6.8, 5);
   });
 });
