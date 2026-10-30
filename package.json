@@ -17,7 +17,12 @@
     "gen:check": "node scripts/gen/run.mjs --check",
     "wave": "node scripts/wave/wave.mjs",
     "validate:models": "node .agents/skills/model-geometry-validator/scripts/validate-model.mjs",
-    "test:models": "node .agents/skills/model-geometry-validator/scripts/self-test.mjs"
+    "test:models": "node .agents/skills/model-geometry-validator/scripts/self-test.mjs",
+    "db:up": "docker compose -f infra/docker-compose.yml up -d --wait",
+    "db:down": "docker compose -f infra/docker-compose.yml down",
+    "db:gen": "npm run db:gen -w @terra/db --silent --",
+    "db:migrate": "npm run db:migrate -w @terra/db --silent",
+    "db:reset": "npm run db:reset -w @terra/db --silent"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
