@@ -21,8 +21,10 @@ import {
   type QueuePrecedence,
   type QueueTaskPayload,
 } from './types';
+import { computeResourceWaitState, isBlockedByPower } from './wait';
 
 export * from './types';
+export * from './wait';
 
 export const CONSTRUCTION_LANE_LIMIT = 20;
 export const UNITS_LANE_LIMIT = 10;
@@ -105,6 +107,13 @@ export interface EnqueueQueueTaskOptions {
   data?: CompiledDataLike;
 }
 
+function markWaiting(entry: QueueEntry, reason: QueueEntry['waitReason'], detail: string, eta: number | null = null): void {
+  entry.state = 'waiting';
+  entry.waitReason = reason;
+  entry.etaSeconds = eta;
+  entry.waitDetail = detail;
+}
+
 function tryStartQueueEntry(
   state: PlanetState,
   entry: QueueEntry,
@@ -117,85 +126,63 @@ function tryStartQueueEntry(
   const afford = checkCostAffordability(colony, entry.cost);
 
   if (Object.keys(afford.exceedsCap).length > 0) {
-    entry.state = 'waiting';
-    entry.waitReason = 'storage';
     entry.exceedsCap = afford.exceedsCap;
     entry.missingResources = undefined;
-    entry.etaSeconds = null;
-    entry.waitDetail = 'waiting: storage (no ETA)';
+    markWaiting(entry, 'storage', 'waiting: storage (no ETA)');
     return;
   }
-
+  if (isBlockedByPower(state, colony, entry)) {
+    markWaiting(entry, 'power', 'waiting: power');
+    return;
+  }
   if (entry.lane === 'units') {
     const supply = getColonySupply(state, entry.colonyIndex, [], data);
     const inProgUnits = allEntries.filter(
       (e) => e.colonyIndex === entry.colonyIndex && e.lane === 'units' && e.state === 'in_progress',
     ).length;
     if (supply.activeUnits + inProgUnits + 1 > supply.cap) {
-      entry.state = 'waiting';
-      entry.waitReason = 'supply';
-      entry.waitDetail = 'waiting: supply';
+      markWaiting(entry, 'supply', 'waiting: supply');
       return;
     }
   }
-
   if (!afford.ok) {
-    entry.state = 'waiting';
-    entry.waitReason = 'resources';
     entry.missingResources = afford.missing;
-    const firstKey = Object.keys(afford.missing)[0] as ResourceKey | undefined;
-    const needAmt = firstKey ? (entry.cost[firstKey] ?? 0) : 0;
-    const haveAmt = firstKey ? Math.floor(colony.stock[firstKey] ?? 0) : 0;
-    entry.waitDetail = firstKey ? `waiting: ${firstKey} ${haveAmt}/${needAmt}` : 'waiting: resources';
+    entry.exceedsCap = undefined;
+    const waitInfo = computeResourceWaitState(state, colony, entry.cost, afford.missing);
+    markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds);
     return;
   }
-
-  // Check if another in-progress entry on the same single-worker/producer slot blocks starting right now
   const activeInLane = allEntries.some(
     (e) => e.colonyIndex === entry.colonyIndex && e.lane === entry.lane && e.state === 'in_progress' && e.taskId !== entry.taskId,
   );
   if (activeInLane) {
-    entry.state = 'waiting';
-    entry.waitReason = 'worker';
-    entry.waitDetail = 'waiting: worker';
+    markWaiting(entry, 'worker', 'waiting: worker');
     return;
   }
 
   if (entry.task.kind === 'build') {
     const started = startBuildingConstruction(
       state,
-      {
-        owner: entry.colonyIndex,
-        building: entry.task.building,
-        q: entry.task.q,
-        r: entry.task.r,
-        rot: entry.task.rotation ?? 0,
-        workRate: entry.workRate,
-        tick,
-        data,
-      },
+      { owner: entry.colonyIndex, building: entry.task.building, q: entry.task.q, r: entry.task.r, rot: entry.task.rotation ?? 0, workRate: entry.workRate, tick, data },
       ctx,
     );
     if (!started.ok) {
-      entry.state = 'waiting';
-      entry.waitReason = started.code === 'site_blocked' ? 'site' : 'resources';
-      entry.waitDetail = `waiting: ${ entry.waitReason }`;
+      const reason = started.code === 'site_blocked' ? 'site' : 'resources';
+      const detail = started.code === 'site_blocked' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
+      markWaiting(entry, reason, detail);
       return;
     }
     entry.entityId = started.entityId;
-    entry.paid = true;
-    entry.state = 'in_progress';
-    entry.waitReason = undefined;
-    entry.waitDetail = undefined;
-    return;
+  } else {
+    debitCost(colony, entry.cost, tick);
   }
-
-  // Units or Terraform task: debit cost at start
-  debitCost(colony, entry.cost, tick);
   entry.paid = true;
   entry.state = 'in_progress';
   entry.waitReason = undefined;
   entry.waitDetail = undefined;
+  entry.missingResources = undefined;
+  entry.exceedsCap = undefined;
+  entry.etaSeconds = undefined;
 }
 
 export function scanAndStartQueueEntries(
@@ -230,6 +217,14 @@ export function enqueueQueueTask(
   const limit = lane === 'units' ? UNITS_LANE_LIMIT : CONSTRUCTION_LANE_LIMIT;
   if (activeLane.length >= limit) {
     return { ok: false, code: 'queue_full', detail: `${lane} lane full` };
+  }
+  if (opts.task.kind === 'buildUnit' && typeof opts.task.producerId === 'number') {
+    const producerEntries = activeLane.filter(
+      (e) => e.task.kind === 'buildUnit' && e.task.producerId === opts.task.producerId,
+    );
+    if (producerEntries.length >= PRODUCER_BUFFER_LIMIT) {
+      return { ok: false, code: 'producer_buffer_full', detail: 'producer buffer full' };
+    }
   }
 
   const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(opts.task, opts.data ?? ctx?.data);
