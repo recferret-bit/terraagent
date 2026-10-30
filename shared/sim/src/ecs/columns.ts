@@ -24,6 +24,9 @@ const BASE: FieldDef[] = [
   { name: 'targetQ', dtype: 'i16', wave: 'W01' }, // current move/work destination q
   { name: 'targetR', dtype: 'i16', wave: 'W01' }, // current move/work destination r
   { name: 'workRate', dtype: 'f32', wave: 'W01' }, // worker rate multiplier (1.5 for HQ T1)
+  { name: 'footprintW', dtype: 'u8', wave: 'W02' }, // building footprint width in tiles
+  { name: 'footprintD', dtype: 'u8', wave: 'W02' }, // building footprint depth in tiles
+  { name: 'shedGroup', dtype: 'u8', wave: 'W02' }, // brownout shedding group (1..4)
   { name: 'createdAt', dtype: 'u32', wave: 'W00' },
   { name: 'changedAt', dtype: 'u32', wave: 'W00' }, // tick of the last change; the delta picks rows with changedAt > fromTick
 ];
@@ -33,6 +36,9 @@ export const ENTITY_KIND = {
   dropPod: 2,
   hq: 3,
   commandHub: 4,
+  metalsExtractor: 5,
+  solar: 6,
+  harvester: 7,
 } as const;
 export type EntityKindCode = (typeof ENTITY_KIND)[keyof typeof ENTITY_KIND];
 
@@ -44,6 +50,10 @@ export const ENTITY_STATE = {
   constructing: 4,
   active: 5,
   inert: 6,
+  offlineBrownout: 7,
+  offlineUnpowered: 8,
+  offlineCapped: 9,
+  harvesting: 10,
 } as const;
 export type EntityStateCode = (typeof ENTITY_STATE)[keyof typeof ENTITY_STATE];
 

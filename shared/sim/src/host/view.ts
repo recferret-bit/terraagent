@@ -10,6 +10,7 @@ export interface ViewEntity {
   q: number; r: number; x: number; y: number; rot: number;
   hp: number; hpMax: number; state: number; progress: number;
   cell?: number; cellMax?: number; targetQ?: number; targetR?: number;
+  footprintW?: number; footprintD?: number; shedGroup?: number;
 }
 export interface ViewColony {
   index: number; id: string; name: string; color: number; status: string;
@@ -18,7 +19,16 @@ export interface ViewColony {
 export interface SimView {
   tick: number;
   planet: { id: string; type: PlanetType; radius: number };
-  tiles: { count: number; terrain: Uint8Array; prep: Uint8Array; deposit: Uint8Array; height: Float32Array; owner: Int8Array; explored: Uint8Array };
+  tiles: {
+    count: number;
+    terrain: Uint8Array;
+    prep: Uint8Array;
+    deposit: Uint8Array;
+    richness?: Float32Array;
+    height: Float32Array;
+    owner: Int8Array;
+    explored: Uint8Array;
+  };
   entities: ViewEntity[];
   colonies: ViewColony[];
   blobs?: Record<string, unknown>;
@@ -34,6 +44,8 @@ export function view(state: PlanetState): SimView {
       hp: c.hp[i], hpMax: c.hpMax[i], state: c.state[i], progress: c.progress[i],
       cell: c.cell?.[i] ?? 0, cellMax: c.cellMax?.[i] ?? 0,
       targetQ: c.targetQ?.[i] ?? 0, targetR: c.targetR?.[i] ?? 0,
+      footprintW: c.footprintW?.[i] ?? 0, footprintD: c.footprintD?.[i] ?? 0,
+      shedGroup: c.shedGroup?.[i] ?? 0,
     });
   }
   const blobs: Record<string, unknown> = {};
@@ -46,6 +58,7 @@ export function view(state: PlanetState): SimView {
       terrain: L.terrain as Uint8Array,
       prep: L.prep as Uint8Array,
       deposit: L.deposit as Uint8Array,
+      richness: L.richness as Float32Array,
       height: L.height as Float32Array,
       owner: L.owner as Int8Array,
       explored: L.explored as Uint8Array,
