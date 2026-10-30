@@ -9,6 +9,7 @@ import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
 import type { CommandIngress } from './command-ingress';
 import { Connection, type ConnectionDeps } from './connection';
+import type { HomeProvider } from './home-provider';
 import { PlanetRooms } from './rooms';
 import type { SessionVerifier } from './session-verifier';
 
@@ -19,6 +20,7 @@ export interface GatewayOptions {
   readonly planets: GamePlanets;
   readonly verifier: SessionVerifier;
   readonly ingress: CommandIngress;
+  readonly home?: HomeProvider;
   readonly flags: readonly string[];
   readonly log: Logger;
   readonly registry: Registry;
@@ -65,7 +67,7 @@ export class WsGateway {
 
   private accept(ws: import('ws').WebSocket): void {
     const deps: ConnectionDeps = {
-      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, flags: this.o.flags,
+      verifier: this.o.verifier, planets: this.o.planets, rooms: this.rooms, ingress: this.o.ingress, home: this.o.home, flags: this.o.flags,
       log: this.o.log, helloTimeoutMs: this.o.helloTimeoutMs, idleTimeoutMs: this.o.idleTimeoutMs,
       onWelcome: () => this.welcomes.inc(),
       onJoined: (c) => this.replaceOlder(c),
