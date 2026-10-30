@@ -1,9 +1,13 @@
 // Wave plan + git state: which waves exist, which are landed (tag), open (branch), ready to land, or ready to open.
+import { readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { out, tryOut, fail } from './sh.mjs';
 
-/** Absolute path of the main checkout (works from inside any worktree). */
+/** Absolute path of the main checkout (works from inside any worktree). `--root <dir>` / `TA_WAVE_ROOT` point the scripts at another repository (tests, dry runs in a sandbox clone). */
 export function mainRoot() {
+  const i = process.argv.indexOf('--root');
+  const override = (i >= 0 ? process.argv[i + 1] : null) ?? process.env.TA_WAVE_ROOT;
+  if (override) return resolve(override);
   const common = out('git', ['rev-parse', '--path-format=absolute', '--git-common-dir']);
   return dirname(common);
 }
@@ -39,10 +43,11 @@ export function ordered(plan) {
 const branches = (root) => new Set(out('git', ['branch', '--format=%(refname:short)'], { cwd: root }).split('\n').filter(Boolean));
 const tags = (root) => new Set(out('git', ['tag', '--list', 'wave-*'], { cwd: root }).split('\n').filter(Boolean));
 
-function mergedIssueIds(root, w) {
-  const log = tryOut('git', ['log', `main..${w.branch}`, '--format=%s%n%b'], { cwd: root }) ?? '';
-  const re = new RegExp(`\\b(${w.id}-\\d{2})\\b`, 'g');
-  return new Set([...log.matchAll(re)].map((m) => m[1]));
+/** Issue ids merged into the wave branch: only commit subjects that start with `WNN-XX:` count (a stray id in a body or later in a subject does not). */
+export function mergedIssueIds(root, w) {
+  const log = tryOut('git', ['log', `main..${w.branch}`, '--format=%s'], { cwd: root }) ?? '';
+  const re = new RegExp(`^(${w.id}-\\d{2}):`);
+  return new Set(log.split('\n').map((l) => re.exec(l)?.[1]).filter(Boolean));
 }
 
 /** Adds `landed`, `open`, `worktree` and `merged` (Set of merged issue IDs) to every wave. */
@@ -77,6 +82,15 @@ export function readiness(plan, w) {
 export function currentWave(plan) {
   const top = tryOut('git', ['rev-parse', '--show-toplevel']);
   return plan.waves.find((w) => top && resolve(top) === w.worktree) ?? null;
+}
+
+/** Title of one issue from its wave file row (`| W07-03 | title … | type |`), shortened for a merge subject. */
+export function issueTitle(root, plan, issueId) {
+  const w = plan.waves.find((x) => x.id === issueId.slice(0, 3)) ?? fail(`unknown wave for issue ${issueId}`);
+  const row = readFileSync(join(root, w.file), 'utf8').split('\n').find((l) => l.startsWith(`| ${issueId} |`)) ?? fail(`issue ${issueId} is not in ${w.file}`);
+  const full = row.split('|')[2].trim();
+  const cut = full.split(/: |\s\(/)[0].trim() || full;
+  return cut.length > 72 ? `${cut.slice(0, 71).replace(/\s+\S*$/, '')}…` : cut;
 }
 
 export const waveTitle = (root, w) => tryOut('head', ['-1', join(root, w.file)])?.replace(/^#\s*/, '') ?? w.id;
