@@ -1,14 +1,17 @@
 import type { AnalyticsDeps } from './client';
 
 const DAY = 86_400;
-const cookieAttrs = (maxAge: number) => `; Path=/; Max-Age=${maxAge}; SameSite=Lax${location.protocol === 'https:' ? '; Secure' : ''}`;
+const cookieAttrs = (maxAge: number) =>
+  `; Path=/; Max-Age=${maxAge}; SameSite=Lax${typeof location !== 'undefined' && location.protocol === 'https:' ? '; Secure' : ''}`;
 // Production shares the choice across subdomains (CLIENT §10.1); dev/localhost sets no Domain.
-const domainAttr = () => (location.hostname.endsWith('terraagent.com') ? '; Domain=.terraagent.com' : '');
+const domainAttr = () => (typeof location !== 'undefined' && location.hostname.endsWith('terraagent.com') ? '; Domain=.terraagent.com' : '');
 
 export function getCookie(name: string): string | undefined {
+  if (typeof document === 'undefined' || typeof document.cookie !== 'string') return undefined;
   return document.cookie.split('; ').find((c) => c.startsWith(`${name}=`))?.slice(name.length + 1);
 }
 function setCookie(name: string, value: string, maxAge: number): void {
+  if (typeof document === 'undefined') return;
   document.cookie = `${name}=${value}${domainAttr()}${cookieAttrs(maxAge)}`;
 }
 

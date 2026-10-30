@@ -106,7 +106,6 @@ declare module '../../core/registry/types' {
       deposit?: Uint8Array;
       explored?: Uint8Array;
     };
-    colonies?: Array<{ index: number; id: string; name: string; [k: string]: unknown }>;
     blobs?: Record<string, unknown>;
   }
 

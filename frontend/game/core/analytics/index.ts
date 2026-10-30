@@ -7,7 +7,7 @@ let client: AnalyticsClient | undefined;
 const get = (): AnalyticsClient => {
   if (!client) {
     client = new AnalyticsClient(browserDeps());
-    addEventListener('pagehide', () => client?.onPageHide());
+    if (typeof addEventListener === 'function') addEventListener('pagehide', () => client?.onPageHide());
   }
   return client;
 };
@@ -28,4 +28,6 @@ declare module '../registry/types' {
 }
 
 /** Dev helper: `window.__track.setConsent(true); __track.track('x'); await __track.flush()`. */
-if (import.meta.env?.DEV) (window as unknown as { __track: unknown }).__track = { track, setConsent, getConsent, flush };
+if (import.meta.env?.DEV && typeof window !== 'undefined') {
+  (window as unknown as { __track: unknown }).__track = { track, setConsent, getConsent, flush };
+}

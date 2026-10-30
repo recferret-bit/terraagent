@@ -1,4 +1,4 @@
-import type { ViewColony } from '@terra/sim';
+import type { ViewEntity } from '@terra/sim';
 import { defineFeature, type Feature, type FeatureContext, type GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
 import type { ClientView } from '../../store/replica/viewCodec';
@@ -29,15 +29,12 @@ export {
 
 declare module '../../core/registry/types' {
   interface GameView {
-    entities?: Float32Array | ClientView['entities'];
+    entities?: Float32Array | ClientView['entities'] | ViewEntity[];
     count?: number;
-    colonies?: ViewColony[];
     blobs?: Record<string, unknown>;
   }
   interface FeatureServices {
-    store?: StoreLike;
     landfall?: LandfallController;
-    pickTile?: TilePicker;
     canvas?: HTMLElement | null;
   }
 }

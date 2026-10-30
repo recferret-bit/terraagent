@@ -21,8 +21,14 @@ export class RTSCamera {
     this.yaw = this.yawGoal = Math.atan2(off.x, off.z);
     this.halfSize = surface.halfSize;
     this.apply();
-    const on = <K extends keyof WindowEventMap>(t: Window | HTMLElement, ev: string, fn: (e: any) => void, opts?: any) => { t.addEventListener(ev, fn, opts); this.cleanups.push(() => t.removeEventListener(ev, fn, opts)); };
-    on(window, 'keydown', (e: KeyboardEvent) => {
+    const on = <K extends keyof WindowEventMap>(t: { addEventListener?: any; removeEventListener?: any } | null | undefined, ev: K | string, fn: (e: any) => void, opts?: any) => {
+      if (!t || typeof t.addEventListener !== 'function') return;
+      t.addEventListener(ev, fn, opts);
+      this.cleanups.push(() => t.removeEventListener?.(ev, fn, opts));
+    };
+    const win = typeof window !== 'undefined' ? window : null;
+    const docEl = typeof document !== 'undefined' ? document.documentElement : null;
+    on(win, 'keydown', (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       const k = e.key.toLowerCase(); this.keys.add(k);
       if (!this.enabled) return;
@@ -30,12 +36,12 @@ export class RTSCamera {
       if (k === 'e') this.yawGoal -= Math.PI / 2;
       if (k === 'home' && this.followTarget) { this.goal.copy(this.followTarget.position); }
     });
-    on(window, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase()));
-    on(window, 'blur', () => this.keys.clear());
+    on(win, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase()));
+    on(win, 'blur', () => this.keys.clear());
     on(dom, 'wheel', (e: WheelEvent) => { e.preventDefault(); this.distGoal = THREE.MathUtils.clamp(this.distGoal * Math.exp(e.deltaY * 0.0012), this.minDist, this.maxDist); }, { passive: false });
     on(dom, 'pointerdown', (e: PointerEvent) => { if (e.button === 1) { e.preventDefault(); this.mouse.drag = true; this.mouse.lx = e.clientX; this.mouse.ly = e.clientY; } });
-    on(window, 'pointerup', (e: PointerEvent) => { if (e.button === 1) this.mouse.drag = false; });
-    on(window, 'pointermove', (e: PointerEvent) => {
+    on(win, 'pointerup', (e: PointerEvent) => { if (e.button === 1) this.mouse.drag = false; });
+    on(win, 'pointermove', (e: PointerEvent) => {
       this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.inside = true;
       if (this.mouse.drag && this.enabled) {
         const k = this.dist * 0.0021;
@@ -43,7 +49,7 @@ export class RTSCamera {
         this.mouse.lx = e.clientX; this.mouse.ly = e.clientY;
       }
     });
-    on(document.documentElement, 'mouseleave', () => (this.mouse.inside = false));
+    on(docEl, 'mouseleave', () => (this.mouse.inside = false));
   }
 
   /** dx = screen-right metres, dz = screen-down (toward camera) metres, in yaw-relative ground axes. */
@@ -61,7 +67,7 @@ export class RTSCamera {
       if (this.keys.has('s') || this.keys.has('arrowdown')) mz += 1;
       if (this.keys.has('a') || this.keys.has('arrowleft')) mx -= 1;
       if (this.keys.has('d') || this.keys.has('arrowright')) mx += 1;
-      const m = this.mouse, W = window.innerWidth, H = window.innerHeight, edge = 8;
+      const m = this.mouse, W = typeof window !== 'undefined' ? window.innerWidth : 1280, H = typeof window !== 'undefined' ? window.innerHeight : 720, edge = 8;
       if (m.inside && !m.drag && m.x >= 0) {
         if (m.x < edge) mx -= 1; else if (m.x > W - edge) mx += 1;
         if (m.y < edge) mz -= 1; else if (m.y > H - edge) mz += 1;
@@ -80,7 +86,13 @@ export class RTSCamera {
     this.apply();
   }
 
-  focus(p: THREE.Vector3) { this.goal.copy(p); }
+  focus(p: THREE.Vector3, instant = false) {
+    this.goal.copy(p);
+    if (instant) {
+      this.target.copy(p);
+      this.apply();
+    }
+  }
   private apply() {
     const h = Math.sin(this.elev) * this.dist, r = Math.cos(this.elev) * this.dist;
     this.camera.position.set(this.target.x + Math.sin(this.yaw) * r, this.target.y + h, this.target.z + Math.cos(this.yaw) * r);
