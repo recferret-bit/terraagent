@@ -1,2 +1,15 @@
 /** @terra/sim: the one game engine (D-31). Pure and isomorphic: no Node, DOM, clock or randomness APIs (SIM-D-06). */
-export {};
+export * from './kernel/constants';
+export * from './kernel/types';
+export * from './kernel/rng';
+export * from './kernel/state';
+export * from './kernel/events';
+export * from './kernel/commands';
+export * from './kernel/context';
+export * from './kernel/config';
+export * from './kernel/system';
+export * from './kernel/step';
+export * from './ecs/columns';
+export * from './ecs/store';
+export * from './grid/hex';
+export * from './grid/layers';
