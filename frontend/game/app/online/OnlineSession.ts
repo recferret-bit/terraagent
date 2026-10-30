@@ -54,7 +54,7 @@ export class OnlineSession {
     this.banner = new ConnectionBanner(document.body, this.transport, () => this.transport.start());
     this.store = new WorldStore(this.transport);
     this.commands = new CommandBus(this.transport, undefined, (id, kind, args) => this.store.notifySent(id, kind, args));
-    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer() });
+    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer(), session: { planetId: () => this.store.currentPlanetId() } });
     this.cleanups.push(this.transport.onMessage((m) => {
       if (m.t === 'welcome') this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: location.search, dev: import.meta.env.DEV }));
     }));

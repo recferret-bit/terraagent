@@ -1,10 +1,11 @@
+import type { BalanceOverrides } from '@terra/sim';
 import type { WireView } from '../replica/viewCodec';
 import type { ReplicaStatus } from '../replica/ReplicaCore';
 
 /** Main thread → sim worker. `state` / `diff` are transferred (their buffers move, the sender must not reuse them). */
 export type ToWorker =
   | { t: 'init'; flags: string[]; /** false: no prediction (`?predict=0`), views are the confirmed state. Default true. */ predict?: boolean }
-  | { t: 'welcome'; state: Uint8Array; tick: number; flags: string[]; dataHash: string; simVersion: number; serverTimeMs?: number }
+  | { t: 'welcome'; state: Uint8Array; tick: number; flags: string[]; dataHash: string; simVersion: number; serverTimeMs?: number; overrides?: BalanceOverrides }
   | { t: 'delta'; fromTick: number; toTick: number; diff: Uint8Array }
   /** The player sent a command (`cm_` id): it is predicted until its ack is covered by a delta. */
   | { t: 'cmdSent'; id: string; kind: string; args: unknown; sentAtMs: number }

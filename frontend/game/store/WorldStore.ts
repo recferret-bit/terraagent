@@ -1,5 +1,5 @@
 import type { ServerMessage } from '@terra/contracts';
-import { TICK_MS } from '@terra/sim';
+import { TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { Emitter } from '../net/emitter';
 import type { Transport } from '../net/types';
 import type { FromWorker, ToWorker } from './worker/protocol';
@@ -32,6 +32,8 @@ export class WorldStore {
   private readonly views = new Emitter<ClientView>();
   private readonly statuses = new Emitter<WorldStatus>();
   private planetId = '';
+  /** The planet of the last welcome, or null before it. */
+  currentPlanetId(): string | null { return this.planetId || null; }
   private latestView: ClientView | null = null;
   private currentStatus: WorldStatus = { status: 'idle' };
   private tiles: ClientTiles | null = null;
@@ -95,7 +97,7 @@ export class WorldStore {
       this.offsetMs = m.d.serverTimeMs - this.now();
       this.baseTick = m.d.tick; this.baseLocalMs = this.now();
       const state = own(m.d.state);
-      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs }, [state.buffer]);
+      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
     } else if (m.t === 'delta') {
       this.baseTick = m.d.toTick; this.baseLocalMs = this.now();
       const diff = own(m.d.diff);

@@ -1,7 +1,8 @@
 import type { SimCommandV1 } from '@terra/contracts';
-import type { SimEvent } from '@terra/sim';
+import type { BalanceOverrides, SimEvent } from '@terra/sim';
 import type { SimThreadPool } from './sim-thread-pool';
 import type { FromThread, LoadMsg } from './thread/protocol';
+import type { TuneRequest } from './thread/tuning';
 
 export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
@@ -20,6 +21,18 @@ export interface FullState {
   readonly simVersion: number;
   readonly dataHash: string;
   readonly planetType: string;
+  /** Balance overrides the planet's data was compiled with (D-35); absent = none. */
+  readonly overrides?: BalanceOverrides;
+}
+
+export interface TuneResult {
+  readonly ok: boolean;
+  readonly dataHash: string;
+  /** Effective overrides (file ⊕ scenario ⊕ live). */
+  readonly overrides: BalanceOverrides;
+  /** `export`: the overrides as `balance.overrides.json` text. */
+  readonly text?: string;
+  readonly error?: string;
 }
 
 /** Global tap on every sim event leaving a thread (each exactly once: from a delta or from a bare `event`). */
@@ -38,6 +51,7 @@ export class GamePlanets {
   private readonly loaded = new Set<string>();
   private readonly cmdWaiters = new Map<string, Waiter<CommandOutcomeMsg>[]>();
   private readonly fullWaiters = new Map<number, Waiter<FullState>>();
+  private readonly tuneWaiters = new Map<number, Waiter<TuneResult>>();
   private nextReq = 1;
   private readonly subs = new Map<string, Set<PlanetSubscriber>>();
   private readonly loadedListeners: ((planetId: string, tick: number) => void)[] = [];
@@ -141,6 +155,20 @@ export class GamePlanets {
     });
   }
 
+  /** Dev `tune` (D-35) on a loaded planet; resolves with the new data hash / export text, or `ok: false` + `error` for a bad path or value. */
+  tune(planetId: string, req: TuneRequest, timeoutMs = 10_000): Promise<TuneResult> {
+    return new Promise<TuneResult>((resolve, reject) => {
+      const reqId = this.nextReq++;
+      const timer = setTimeout(() => { this.tuneWaiters.delete(reqId); reject(new Error(`tune timeout for ${planetId}`)); }, timeoutMs);
+      this.tuneWaiters.set(reqId, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
+      if (!this.loaded.has(planetId) || !this.pool.sendToPlanet(planetId, { t: 'tune', planetId, reqId, req })) {
+        this.tuneWaiters.delete(reqId);
+        clearTimeout(timer);
+        reject(new Error(`planet ${planetId} is not loaded`));
+      }
+    });
+  }
+
   /** Registers work to run before threads stop (a later issue snapshots every planet here). */
   onBeforeShutdown(fn: () => void | Promise<void>): void {
     this.shutdownHooks.push(fn);
@@ -152,6 +180,7 @@ export class GamePlanets {
     this.unlisten();
     const err = new Error('game threads stopped');
     for (const [id, w] of [...this.fullWaiters]) { this.fullWaiters.delete(id); w.reject(err); }
+    for (const [id, w] of [...this.tuneWaiters]) { this.tuneWaiters.delete(id); w.reject(err); }
     for (const id of [...this.loading.keys()]) this.failLoad(id, err);
     for (const key of [...this.cmdWaiters.keys()]) this.settleCmd(key, { ok: false, commandId: key.split('\0')[1] ?? '', code: 'thread_down' });
   }
@@ -176,6 +205,11 @@ export class GamePlanets {
       case 'fullState': {
         const w = this.fullWaiters.get(msg.reqId);
         this.fullWaiters.delete(msg.reqId);
+        return w?.resolve(msg);
+      }
+      case 'tuned': {
+        const w = this.tuneWaiters.get(msg.reqId);
+        this.tuneWaiters.delete(msg.reqId);
         return w?.resolve(msg);
       }
       case 'snapshot':
