@@ -5,11 +5,11 @@ import { hexDistance, hexIndex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
-import { setBlob, touchTile, type PlanetState } from '../../kernel/state';
+import { setBlob, touchTile, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 
-export type SimState = PlanetState;
+export type { SimState };
 
 export type HqJob = 'idle' | 'moving' | 'working' | 'constructing';
 

@@ -30,6 +30,7 @@ const BASE: FieldDef[] = [
 
 export const ENTITY_KIND = {
   devProbe: 1,
+  pod: 2,
   dropPod: 2,
   hq: 3,
   commandHub: 4,

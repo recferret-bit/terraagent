@@ -13,6 +13,7 @@ export interface ViewEntity {
 }
 export interface ViewColony {
   index: number; id: string; name: string; color: number; status: string;
+  stock?: Record<string, number>;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -38,6 +39,15 @@ export function view(state: PlanetState): SimView {
   }
   const blobs: Record<string, unknown> = {};
   for (const [k, b] of Object.entries(state.blobs)) blobs[k] = b.value;
+  const stockBlob = state.blobs.colonyStock?.value as Record<number, Record<string, number>> | undefined;
+  const colonies: ViewColony[] = state.colonies.map((k) => {
+    const blobStock = stockBlob?.[k.index];
+    const colStock = k.stock as Record<string, number> | undefined;
+    if (blobStock || colStock) {
+      return { ...k, stock: { ...(colStock ?? {}), ...(blobStock ?? {}) } };
+    }
+    return { ...k };
+  });
   return {
     tick: state.meta.tick,
     planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius },
@@ -51,7 +61,9 @@ export function view(state: PlanetState): SimView {
       explored: L.explored as Uint8Array,
     },
     entities,
-    colonies: state.colonies.map((k) => ({ ...k })),
+    colonies,
     blobs,
   };
 }
+
+export const buildView = view;
