@@ -4,10 +4,10 @@ import { insertRow } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
-import { setBlob, touchTile, type PlanetState } from '../../kernel/state';
+import { setBlob, touchTile, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSimModule } from '../define';
 
-export type SimState = PlanetState;
+export type { SimState };
 
 export type HqJob = 'idle' | 'moving' | 'working' | 'constructing';
 
