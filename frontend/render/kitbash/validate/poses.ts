@@ -17,7 +17,7 @@ const bipedBody = (x: number, y: number, z: number, g: number) =>
   bodyTransform(x, y, z, 0.92, -Math.cos(g) * 0.055, Math.sin(g * 2 - 0.4) * 0.048, -Math.sin(g) * 0.075, -Math.cos(g) * 0.036, -Math.cos(g * 2) * 0.022 - Math.sin(g * 2) * 0.012, Math.sin(g * 2) * 0.025);
 
 const spiderBody = (x: number, y: number, z: number, g: number) =>
-  bodyTransform(x, y, z, 0.76, Math.sin(g - 0.25) * 0.095, Math.sin(g * 2 - 0.45) * 0.068, Math.cos(g) * 0.065, Math.cos(g) * 0.042, -Math.cos(g * 2) * 0.044 - Math.sin(g * 2) * 0.026, Math.sin(g * 2) * 0.034);
+  bodyTransform(x, y, z, 0.76, Math.sin(g - 0.25) * 0.065, Math.sin(g * 2 - 0.45) * 0.048, Math.cos(g) * 0.05, Math.cos(g) * 0.03, -Math.cos(g * 2) * 0.032 - Math.sin(g * 2) * 0.018, Math.sin(g * 2) * 0.024);
 
 function bipedLegPoint(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number): [number, number, number] {
   const tau = g + (px >= 0 ? 0 : Math.PI), s = Math.sin(tau), lift = Math.max(0, Math.cos(tau));
@@ -43,8 +43,8 @@ function spiderLegPoint(x: number, y: number, z: number, px: number, py: number,
   const yaw = sideSign * Math.sin(tau) * 0.18, cy = Math.cos(yaw), sy = Math.sin(yaw);
   const [bhx, bhy, bhz] = spiderBody(px, py, pz, g);
   const dhx = bhx - px, dhy = bhy - py, dhz = bhz - pz;
-  const stepLift = Math.pow(Math.max(0, Math.cos(tau)), 0.8) * 0.1;
-  const femAngle = (sideSign * (stepLift - dhy + 0.004)) / Math.max(Math.abs(px), 0.2);
+  const stepLift = Math.pow(Math.max(0, Math.cos(tau)), 0.8) * 0.085;
+  const femAngle = (sideSign * (stepLift - dhy + 0.004)) / Math.max(Math.abs(px), 0.25);
   const cf = Math.cos(femAngle), sf = Math.sin(femAngle);
   if (sub === 0) {
     const rx = x - px, ry = y - py, rz = z - pz, rx1 = rx * cf - ry * sf, ry1 = rx * sf + ry * cf;

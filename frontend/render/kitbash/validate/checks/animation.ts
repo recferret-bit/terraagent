@@ -11,11 +11,8 @@ interface Sweep { poses: Pose[]; box: Box }
 const samePivot = (a: [number, number, number], b: [number, number, number]) =>
   Math.abs(a[0] - b[0]) < 1e-4 && Math.abs(a[1] - b[1]) < 1e-4 && Math.abs(a[2] - b[2]) < 1e-4;
 const sameRig = (a: P, b: P) =>
-  (a.def.animType === b.def.animType &&
-    (a.def.animType === 8 || a.def.animType === 9 || samePivot(a.def.pivot, b.def.pivot))) ||
-  (a.def.animType % 10 === b.def.animType % 10 &&
-    (a.def.animType % 10 === 4 || a.def.animType % 10 === 6) &&
-    samePivot(a.def.pivot, b.def.pivot));
+  a.def.animType === b.def.animType &&
+  (a.def.animType === 8 || a.def.animType === 9 || samePivot(a.def.pivot, b.def.pivot));
 const isGait = (t: number) => { const b = t % 10; return (b >= 4 && b <= 6) || b === 8 || b === 9; };
 const inSync = (a: P, b: P) =>
   (a.def.animType === 1 && b.def.animType === 1) ||
@@ -23,13 +20,30 @@ const inSync = (a: P, b: P) =>
   (isGait(a.def.animType) && isGait(b.def.animType)) ||
   (a.def.animType === b.def.animType && Math.abs(a.def.pivot[0] - b.def.pivot[0]) < 1e-4);
 
+function maxEdgeDrift(rest: Float32Array, posed: Float32Array): number {
+  let max = 0;
+  for (let i = 0; i < rest.length; i += 9) {
+    const r0 = Math.hypot(rest[i + 3] - rest[i], rest[i + 4] - rest[i + 1], rest[i + 5] - rest[i + 2]);
+    const p0 = Math.hypot(posed[i + 3] - posed[i], posed[i + 4] - posed[i + 1], posed[i + 5] - posed[i + 2]);
+    const d = Math.abs(p0 - r0);
+    if (d > max) max = d;
+  }
+  return max;
+}
+
 /** Poses of every animated part plus the box swept by all of them. */
 function buildSweeps(ctx: ValidationContext, anim: P[]): Map<number, Sweep> {
   const sweeps = new Map<number, Sweep>();
   for (const a of anim) {
     const ps = poses(a.def); const box = expandBox(a.box, 0);
-    for (const pose of ps) { const b = trisBox(pose.tris); for (let k = 0; k < 3; k++) { box[k] = Math.min(box[k], b[k]); box[k + 3] = Math.max(box[k + 3], b[k + 3]); } }
+    let maxDrift = 0;
+    for (const pose of ps) {
+      const b = trisBox(pose.tris);
+      for (let k = 0; k < 3; k++) { box[k] = Math.min(box[k], b[k]); box[k + 3] = Math.max(box[k + 3], b[k + 3]); }
+      maxDrift = Math.max(maxDrift, maxEdgeDrift(a.def.tris, pose.tris));
+    }
     sweeps.set(a.def.index, { poses: ps, box });
+    if (maxDrift > 0.0005) ctx.add('error', 'ANIM_DISTORTION', `${a.label} distorts/resizes by ${fmt(maxDrift)} while animating (moving parts must be 100% rigid bodies).`, [a.def.index], at(a.box), 'Use pure rigid-body rotations and translations per part; never scale or blend per-vertex coordinates.');
     if (a.def.animType >= 2 && box[1] < -0.02) ctx.add('warn', 'ANIM_BELOW_GROUND', `${a.label} dips ${fmt(-box[1])} below the ground while animating.`, [a.def.index], at(a.box));
   }
   return sweeps;

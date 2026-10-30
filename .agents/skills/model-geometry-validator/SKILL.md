@@ -86,6 +86,7 @@ with a visibly wrong model means a check is missing: add a fixture and a check (
 | `HAIRLINE_GAP` | error | Stops < 6 cm short of its support: reads as attached, is not. Reported as a **minimal set of missing links**, so a dish on a mast on a cabin gives two short gaps | Overlap the neighbour by ≥ 1 cm; the overlap hides inside the hull |
 | `COPLANAR_Z_FIGHT` | error | Same-facing faces of two parts share a plane: they flicker | Make an inset thicker/thinner than its frame so it stands ≥ 2 mm proud |
 | `ANIM_COLLISION` | error | An animated part comes within 1 cm of (or cuts) a part it does not rest against, at some point of its motion | Shorten the part, move the pivot, or shift the neighbour ≥ 1 cm |
+| `ANIM_DISTORTION` | error | An animated part stretches, resizes, shears, or bends (> 0.5 mm edge-length drift) during its motion | Use pure rigid-body 3D rotations and translations per part; never scale or blend per-vertex coordinates |
 | `GROUND_CONTACT` | error/warn | Grounded model hovers (> 2 mm) or its foundation sinks > 10.5 cm | Snap minY to 0; plinth may go to -0.1 m |
 | `NAN_VERTEX` | error | NaN/Infinity (zero-length strut, bad scale) | Fix the inputs |
 | `NEAR_COPLANAR` | warn | Faces cross at a grazing angle within 3 mm of the same plane: the edge shimmers | Offset one part ≥ 3 mm or tilt it more |

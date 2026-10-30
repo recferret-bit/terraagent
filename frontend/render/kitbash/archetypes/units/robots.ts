@@ -21,12 +21,12 @@ register({
       const shinAnim = { animType: 14 as const, animPivot: hip };
       const footAnim = { animType: 24 as const, animPivot: hip };
       // Articulated 3-Link Rigid Biped Leg: upper thigh (4) + lower shin/ankle (14) + dorsiflexed foot (24)
-      b.addPart(sph(0.085, 8, 6), 'frameGunmetal', { name: 'leg hip', position: hip, ...thighAnim });
-      b.addPart(rbox(0.18, 0.24, 0.18, 0.035, 1), 'rubberDark', { name: 'leg thigh', position: [x, 0.85, 0], ...thighAnim });
-      strut(b, [x, 0.72, 0.09], [x, 0.94, 0.09], 0.015, 'hullSecondary', { name: 'leg hydraulic', ...thighAnim });
-      b.addPart(sph(0.085, 8, 6), 'frameGunmetal', { name: 'leg knee', position: [x, 0.71, 0], ...shinAnim });
-      b.addPart(rbox(0.18, 0.44, 0.2, 0.035, 1), 'rubberDark', { name: 'leg shin', position: [x, 0.49, 0], ...shinAnim });
-      b.addPart(box(0.14, 0.12, 0.03), 'hullSecondary', { name: 'leg shin plate', position: [x, 0.46, 0.1], ...shinAnim });
+      b.addPart(sph(0.095, 8, 6), 'frameGunmetal', { name: 'leg hip', position: hip, ...thighAnim });
+      b.addPart(rbox(0.18, 0.22, 0.18, 0.035, 1), 'rubberDark', { name: 'leg thigh', position: [x, 0.87, 0], ...thighAnim });
+      strut(b, [x, 0.76, 0.09], [x, 0.95, 0.09], 0.015, 'hullSecondary', { name: 'leg hydraulic', ...thighAnim });
+      b.addPart(sph(0.095, 8, 6), 'frameGunmetal', { name: 'leg knee', position: [x, 0.71, 0], ...shinAnim });
+      b.addPart(rbox(0.18, 0.4, 0.18, 0.035, 1), 'rubberDark', { name: 'leg shin', position: [x, 0.45, 0], ...shinAnim });
+      b.addPart(box(0.14, 0.12, 0.03), 'hullSecondary', { name: 'leg shin plate', position: [x, 0.45, 0.09], ...shinAnim });
       b.addPart(cyl(0.06, 0.07, 0.2, 8), 'frameGunmetal', { name: 'leg ankle', position: [x, 0.2, 0], ...shinAnim });
       b.addPart(rbox(0.24, 0.12, 0.42, 0.035, 1), 'rubberDark', { name: 'leg foot', position: [x, 0.06, 0.04], ...footAnim });
       b.addPart(box(0.18, 0.06, 0.16), 'hullSecondary', { name: 'leg toe cap', position: [x, 0.12, 0.15], ...footAnim });
@@ -204,8 +204,8 @@ register({
         const hip: V3 = [0.39 * s, 0.76, z * 0.8];
         const femurStart: V3 = [0.475 * s, 0.81, z * 0.87];
         const knee: V3 = [0.78 * s, 1.0, z * 1.2];
-        const femurEnd: V3 = [0.73 * s, 0.97, z * 1.15];
-        const tibiaStart: V3 = [0.8 * s, 0.94, z * 1.21];
+        const femurEnd: V3 = [0.75 * s, 0.98, z * 1.17];
+        const tibiaStart: V3 = [0.785 * s, 0.96, z * 1.205];
         const footTop: V3 = [0.92 * s, 0.08, z * 1.3];
         const femurAnim = { animType: 6 as const, animPivot: hip };
         const tibiaAnim = { animType: 16 as const, animPivot: hip };
