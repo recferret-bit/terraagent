@@ -1,5 +1,6 @@
 import type { PlanetState } from '../kernel/state';
 import type { PlanetType } from '../kernel/state';
+import type { HqJob, HqUnitView } from '../systems/hq';
 
 /**
  * W00 view: a minimal read-only projection for render/HUD. Tile arrays are shared with the state (no copy; do not
@@ -14,6 +15,10 @@ export interface ViewEntity {
 export interface ViewColony {
   index: number; id: string; name: string; color: number; status: string;
   stock?: Record<string, number>;
+  caps?: Record<string, number>;
+  hq?: HqUnitView;
+  currentJob?: HqJob;
+  queueCount?: number;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -40,13 +45,19 @@ export function view(state: PlanetState): SimView {
   const blobs: Record<string, unknown> = {};
   for (const [k, b] of Object.entries(state.blobs)) blobs[k] = b.value;
   const stockBlob = state.blobs.colonyStock?.value as Record<number, Record<string, number>> | undefined;
+  const hqBlob = state.blobs.hq?.value as (HqUnitView & { byColony?: Record<number, HqUnitView> }) | undefined;
   const colonies: ViewColony[] = state.colonies.map((k) => {
     const blobStock = stockBlob?.[k.index];
     const colStock = k.stock as Record<string, number> | undefined;
-    if (blobStock || colStock) {
-      return { ...k, stock: { ...(colStock ?? {}), ...(blobStock ?? {}) } };
+    const hq = (k.hq as HqUnitView | undefined) ?? hqBlob?.byColony?.[k.index];
+    const out: ViewColony = { ...k };
+    if (blobStock || colStock) out.stock = { ...(colStock ?? {}), ...(blobStock ?? {}) };
+    if (hq) {
+      out.hq = hq;
+      out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;
+      out.queueCount = (k.queueCount as number | undefined) ?? hq.queueCount;
     }
-    return { ...k };
+    return out;
   });
   return {
     tick: state.meta.tick,

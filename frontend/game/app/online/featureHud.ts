@@ -1,7 +1,7 @@
 import { track } from '../../core/analytics';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
-import type { GameView } from '../../core/registry/types';
+import type { FeatureServices, GameView } from '../../core/registry/types';
 import type { ClientFlagsStore } from '../../core/flags';
 
 /** Feature-registry HUD for the online flow: re-mounts when the flags change and replays the last view into the new panels. */
@@ -10,7 +10,11 @@ export class FeatureHud {
   private last: GameView = {};
   private readonly off: () => void;
 
-  constructor(private readonly parent: HTMLElement, private readonly flags: ClientFlagsStore) {
+  constructor(
+    private readonly parent: HTMLElement,
+    private readonly flags: ClientFlagsStore,
+    private readonly extraServices: Partial<FeatureServices> = {},
+  ) {
     this.off = flags.onChange(() => this.mount());
     this.mount();
   }
@@ -24,7 +28,11 @@ export class FeatureHud {
     this.root?.dispose();
     const { source } = this.flags.current;
     const set = this.flags.set;
-    this.root = new HudRoot(this.parent, loadFeatures({ flags: set, host: 'server' }), { flags: set, host: 'server', services: { track, flagsSource: source } });
+    this.root = new HudRoot(this.parent, loadFeatures({ flags: set, host: 'server' }), {
+      flags: set,
+      host: 'server',
+      services: { track, flagsSource: source, ...this.extraServices },
+    });
     this.root.update(this.last);
   }
 

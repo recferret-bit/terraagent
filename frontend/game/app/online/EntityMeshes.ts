@@ -1,0 +1,271 @@
+import * as THREE from 'three';
+import { createArchetypeMesh, tickArchetypeMesh } from '@terra/render/kitbash';
+import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
+import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
+import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
+
+export interface EntityMeshRecord {
+  id: number;
+  kind: number;
+  owner: number;
+  q: number;
+  r: number;
+  x: number;
+  y: number;
+  rot: number;
+  hp: number;
+  hpMax: number;
+  state: number;
+  progress: number;
+  mesh: THREE.Object3D;
+  targetPos: THREE.Vector3;
+  targetYaw: number;
+  walk: number;
+  work: number;
+}
+
+export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
+
+export function archetypeForKind(kind: number): string {
+  if (kind === ENTITY_KIND.hq) return 'robot.hero';
+  if (kind === ENTITY_KIND.pod) return 'ship.dropPod';
+  if (kind === ENTITY_KIND.commandHub) return 'building.commandHub';
+  return 'robot.scout';
+}
+
+function disposeObject3D(obj: THREE.Object3D): void {
+  obj.traverse((child) => {
+    const mesh = child as THREE.Mesh;
+    if (mesh.isMesh) {
+      mesh.geometry?.dispose?.();
+      const mat = mesh.material;
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
+      else mat?.dispose?.();
+    }
+  });
+}
+
+/**
+ * Renders sim entities (`devProbe`, `pod`, `hq`, `commandHub`) in the online 3D scene, interpolating continuous axial
+ * coordinates `(x, y)` smoothly and driving `aPartAnim` walk/work weights plus selection & move-target ground rings.
+ */
+export class EntityMeshes {
+  readonly group = new THREE.Group();
+  readonly selectionRing: THREE.Mesh;
+  readonly targetMarker: THREE.Mesh;
+  private readonly entries = new Map<number, EntityMeshRecord>();
+  private selectedEntityId: number | null = null;
+  private markerT = 99;
+  private markerTile: { q: number; r: number } | null = null;
+  private time = 0;
+  private biomeKey = 'forestRock';
+
+  constructor(
+    private readonly scene: THREE.Scene,
+    private readonly makeMesh: MeshFactory = (id, biome) => createArchetypeMesh(id, biome),
+  ) {
+    this.group.name = 'online-entities';
+    this.scene.add(this.group);
+
+    this.selectionRing = new THREE.Mesh(
+      new THREE.RingGeometry(0.75, 0.95, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({
+        color: 0xff6a13,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        fog: false,
+      }),
+    );
+    this.selectionRing.name = 'selection-ring';
+    this.selectionRing.visible = false;
+    this.scene.add(this.selectionRing);
+
+    this.targetMarker = new THREE.Mesh(
+      new THREE.RingGeometry(0.55, 0.75, 32).rotateX(-Math.PI / 2),
+      new THREE.MeshBasicMaterial({
+        color: 0x00f0ff,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        fog: false,
+      }),
+    );
+    this.targetMarker.name = 'target-marker';
+    this.targetMarker.visible = false;
+    this.scene.add(this.targetMarker);
+  }
+
+  get count(): number {
+    return this.entries.size;
+  }
+
+  getRecord(entityId: number): EntityMeshRecord | undefined {
+    return this.entries.get(entityId);
+  }
+
+  setSelectedEntityId(entityId: number | null): void {
+    this.selectedEntityId = entityId;
+    this.updateSelectionRing();
+  }
+
+  getSelectedEntityId(): number | null {
+    return this.selectedEntityId;
+  }
+
+  flashTarget(q: number, r: number, terrain: HexTerrain | null = null, color = 0x00f0ff): void {
+    const [wx, wz] = tileXZ(q, r);
+    const wy = terrain ? terrain.heightAt(wx, wz) : 0;
+    (this.targetMarker.material as THREE.MeshBasicMaterial).color.setHex(color);
+    this.targetMarker.position.set(wx, wy + 0.08, wz);
+    this.targetMarker.scale.setScalar(1);
+    this.targetMarker.visible = true;
+    this.markerTile = { q, r };
+    this.markerT = 0;
+  }
+
+  syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey): void {
+    this.biomeKey = biomeKey;
+    const seen = new Set<number>();
+    const buf = view.entities;
+
+    for (let i = 0; i < view.count; i++) {
+      const o = i * ENTITY_STRIDE;
+      const id = buf[o];
+      const kind = buf[o + 1];
+      const owner = buf[o + 2];
+      const q = buf[o + 3];
+      const r = buf[o + 4];
+      const x = buf[o + 5];
+      const y = buf[o + 6];
+      const rot = buf[o + 7];
+      const hp = buf[o + 8];
+      const hpMax = buf[o + 9];
+      const state = buf[o + 10];
+      const progress = buf[o + 11];
+      seen.add(id);
+
+      const [wx, wz] = tileXZ(x, y);
+      const wy = terrain ? terrain.heightAt(wx, wz) : 0;
+      const yaw = Math.PI / 2 - rot;
+      let rec = this.entries.get(id);
+      if (!rec) {
+        const mesh = this.makeMesh(archetypeForKind(kind), this.biomeKey);
+        mesh.position.set(wx, wy, wz);
+        mesh.rotation.y = yaw;
+        this.group.add(mesh);
+        rec = {
+          id,
+          kind,
+          owner,
+          q,
+          r,
+          x,
+          y,
+          rot,
+          hp,
+          hpMax,
+          state,
+          progress,
+          mesh,
+          targetPos: new THREE.Vector3(wx, wy, wz),
+          targetYaw: yaw,
+          walk: state === ENTITY_STATE.moving ? 1 : 0,
+          work: state === ENTITY_STATE.working || state === ENTITY_STATE.constructing ? 1 : 0,
+        };
+        this.entries.set(id, rec);
+      } else {
+        const dx = wx - rec.mesh.position.x;
+        const dz = wz - rec.mesh.position.z;
+        if (Math.hypot(dx, dz) > 0.01) {
+          rec.targetYaw = Math.atan2(dx, dz);
+        } else {
+          rec.targetYaw = yaw;
+        }
+        rec.kind = kind;
+        rec.owner = owner;
+        rec.q = q;
+        rec.r = r;
+        rec.x = x;
+        rec.y = y;
+        rec.rot = rot;
+        rec.hp = hp;
+        rec.hpMax = hpMax;
+        rec.state = state;
+        rec.progress = progress;
+        rec.targetPos.set(wx, wy, wz);
+      }
+    }
+
+    for (const [id, rec] of [...this.entries]) {
+      if (!seen.has(id)) {
+        this.group.remove(rec.mesh);
+        disposeObject3D(rec.mesh);
+        this.entries.delete(id);
+      }
+    }
+    this.updateSelectionRing();
+  }
+
+  update(dt: number, terrain: HexTerrain | null = null): void {
+    this.time += dt;
+    const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
+    const rotLerp = Math.min(1, 1 - Math.exp(-dt * 10));
+
+    for (const rec of this.entries.values()) {
+      if (terrain) {
+        rec.targetPos.y = terrain.heightAt(rec.targetPos.x, rec.targetPos.z);
+      }
+      rec.mesh.position.lerp(rec.targetPos, posLerp);
+      let diff = ((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      rec.mesh.rotation.y += diff * rotLerp;
+
+      const wantWalk = rec.state === ENTITY_STATE.moving ? 1 : 0;
+      const wantWork = rec.state === ENTITY_STATE.working || rec.state === ENTITY_STATE.constructing ? 1 : 0;
+      rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);
+      rec.work += (wantWork - rec.work) * Math.min(1, dt * 10);
+      tickArchetypeMesh(rec.mesh, this.time, rec.walk, rec.work);
+    }
+
+    this.updateSelectionRing();
+
+    if (this.targetMarker.visible) {
+      this.markerT += dt;
+      this.targetMarker.scale.setScalar(1 + 0.22 * Math.sin(this.markerT * 8));
+      const sel = this.selectedEntityId !== null ? this.entries.get(this.selectedEntityId) : undefined;
+      const stillMoving = sel?.state === ENTITY_STATE.moving;
+      if (!stillMoving && this.markerT > 0.6) {
+        this.targetMarker.visible = false;
+        this.markerTile = null;
+      } else if (terrain && this.markerTile) {
+        const [wx, wz] = tileXZ(this.markerTile.q, this.markerTile.r);
+        this.targetMarker.position.set(wx, terrain.heightAt(wx, wz) + 0.08, wz);
+      }
+    }
+  }
+
+  private updateSelectionRing(): void {
+    const sel = this.selectedEntityId !== null ? this.entries.get(this.selectedEntityId) : undefined;
+    if (!sel) {
+      this.selectionRing.visible = false;
+      return;
+    }
+    this.selectionRing.visible = true;
+    this.selectionRing.position.set(sel.mesh.position.x, sel.mesh.position.y + 0.06, sel.mesh.position.z);
+  }
+
+  dispose(): void {
+    for (const rec of this.entries.values()) {
+      this.group.remove(rec.mesh);
+      disposeObject3D(rec.mesh);
+    }
+    this.entries.clear();
+    this.scene.remove(this.group);
+    this.scene.remove(this.selectionRing);
+    this.selectionRing.geometry.dispose();
+    (this.selectionRing.material as THREE.Material).dispose();
+    this.scene.remove(this.targetMarker);
+    this.targetMarker.geometry.dispose();
+    (this.targetMarker.material as THREE.Material).dispose();
+  }
+}
