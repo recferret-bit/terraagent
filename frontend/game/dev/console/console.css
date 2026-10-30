@@ -1,0 +1,22 @@
+.ta-devcon {
+  position: fixed; left: 12px; right: 12px; bottom: 12px; z-index: 60;
+  display: flex; flex-direction: column; gap: 6px;
+  max-height: 42vh; padding: 10px 12px;
+  background: var(--ta-black-hole); border: 1px solid var(--ta-seam-3);
+  font: 400 12px/1.45 var(--ta-font-mono); color: var(--ta-text-2);
+  pointer-events: auto;
+}
+.ta-devcon[hidden] { display: none; }
+.ta-devcon__log { overflow-y: auto; min-height: 80px; scrollbar-width: thin; }
+.ta-devcon__line { margin: 0; white-space: pre-wrap; word-break: break-word; font: inherit; }
+.ta-devcon__line--echo { color: var(--ta-orange-hi); }
+.ta-devcon__line--info { color: var(--ta-steel); }
+.ta-devcon__line--error { color: var(--ta-fault-text); }
+.ta-devcon__row { display: flex; align-items: center; gap: 8px; border-top: 1px solid var(--ta-seam); padding-top: 6px; }
+.ta-devcon__prompt { color: var(--ta-orange); font-weight: 600; }
+.ta-devcon__input {
+  flex: 1; min-width: 0; padding: 2px 0; background: transparent; border: 0; outline: none;
+  font: inherit; color: var(--ta-text); caret-color: var(--ta-orange);
+}
+.ta-devcon__row:focus-within { border-top-color: var(--ta-orange); }
+input.ta-devcon__input:focus,input.ta-devcon__input:focus-visible{outline:none;box-shadow:none}
