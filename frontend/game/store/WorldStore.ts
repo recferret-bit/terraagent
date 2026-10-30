@@ -40,6 +40,7 @@ export class WorldStore {
   private offsetMs = 0;
   private baseTick = 0;
   private baseLocalMs = 0;
+  private readonly rejects = new Emitter<{ id: string; kind: string; code: string }>();
 
   constructor(private readonly transport: Transport, private readonly makeWorker: () => WorkerLike = createSimWorker, private readonly now: () => number = () => Date.now()) {}
 
@@ -53,12 +54,24 @@ export class WorldStore {
   onView(fn: (v: ClientView) => void): () => void { return this.views.on(fn); }
   onStatus(fn: (s: WorldStatus) => void): () => void { return this.statuses.on(fn); }
 
-  start(flags: readonly string[] = []): void {
+  /** A pending command was rolled back by `cmd.reject` (also reaches the CommandBus through the transport). */
+  onCommandRejected(fn: (r: { id: string; kind: string; code: string }) => void): () => void { return this.rejects.on(fn); }
+
+  /**
+   * The player sent a command (the CommandBus / online session calls this right after `transport.send`): the worker
+   * predicts it from the next view on. Acks and rejects are picked up from the transport by the store itself.
+   */
+  notifySent(id: string, kind: string, args: unknown): void {
+    this.worker?.postMessage({ t: 'cmdSent', id, kind, args, sentAtMs: this.now() }, []);
+  }
+
+  /** `predict: false` is `?predict=0`: views are the confirmed state only. */
+  start(flags: readonly string[] = [], opts: { predict?: boolean } = {}): void {
     if (this.worker) return;
     const w = this.makeWorker();
     this.worker = w;
     w.onmessage = (e) => this.fromWorker(e.data);
-    w.postMessage({ t: 'init', flags: [...flags] }, []);
+    w.postMessage({ t: 'init', flags: [...flags], predict: opts.predict !== false }, []);
     this.off = this.transport.onMessage((m) => this.fromServer(m));
   }
 
@@ -82,7 +95,7 @@ export class WorldStore {
       this.offsetMs = m.d.serverTimeMs - this.now();
       this.baseTick = m.d.tick; this.baseLocalMs = this.now();
       const state = own(m.d.state);
-      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion }, [state.buffer]);
+      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs }, [state.buffer]);
     } else if (m.t === 'delta') {
       this.baseTick = m.d.toTick; this.baseLocalMs = this.now();
       const diff = own(m.d.diff);
@@ -90,6 +103,11 @@ export class WorldStore {
     } else if (m.t === 'pong') {
       const rtt = this.now() - m.d.clientTimeMs;
       this.offsetMs = m.d.serverTimeMs + rtt / 2 - this.now();
+      w.postMessage({ t: 'clock', serverNowMs: this.serverTimeMs() }, []);
+    } else if (m.t === 'cmd.ack') {
+      w.postMessage({ t: 'ack', id: m.d.id, appliedAtTick: m.d.appliedAtTick }, []);
+    } else if (m.t === 'cmd.reject') {
+      w.postMessage({ t: 'reject', id: m.d.id, code: m.d.code }, []);
     }
   }
 
@@ -100,6 +118,8 @@ export class WorldStore {
       if (v.tiles) this.tiles = v.tiles;
       this.latestView = v;
       this.views.emit(v);
+    } else if (m.t === 'cmdRejected') {
+      this.rejects.emit({ id: m.id, kind: m.kind, code: m.code });
     } else if (m.t === 'status') {
       this.currentStatus = { status: m.status, detail: m.detail };
       this.statuses.emit(this.currentStatus);
