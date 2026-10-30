@@ -56,7 +56,7 @@ export class OnlineSession {
     this.banner = new ConnectionBanner(document.body, this.transport, () => this.transport.start());
     this.store = new WorldStore(this.transport);
     this.commands = new CommandBus(this.transport, undefined, (id, kind, args) => this.store.notifySent(id, kind, args));
-    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer(), session: { planetId: () => this.store.latest?.planet.id ?? null } });
+    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer(), session: { planetId: () => this.store.currentPlanetId() } });
     this.cleanups.push(this.transport.onMessage((m) => {
       const k = warpOfMessage(m);
       if (k !== undefined) this.setWarp(k);

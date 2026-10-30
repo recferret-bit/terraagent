@@ -7,5 +7,7 @@ declare module '../core/registry/types' {
     sendCommand?: SendCommand;
     /** Server dev command (`/v1/dev/commands/:name`); replaced on the local host. */
     devServer?: DevServer;
+    /** The joined planet of this session (`null` before the welcome). Provided by the online session. */
+    session?: { planetId(): string | null };
   }
 }

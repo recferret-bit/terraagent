@@ -1,10 +1,11 @@
 import type { SimCommandV1 } from '@terra/contracts';
 import {
-  allModules, createPlanet, createRegistryPipeline, diffSince, restore, snapshot, step,
-  type Pipeline, type PlanetState, type SimEvent, type SimModule,
+  allModules, createPlanet, diffSince, mergeOverrides, restore, snapshot, step,
+  type BalanceOverrides, type Pipeline, type PlanetState, type SimEvent, type SimModule,
 } from '@terra/sim';
 import type { LoadMsg, PassStat, Post, PlanetStats, ToThread } from './protocol';
 import type { PlanetSchedule } from './scheduler';
+import { buildPipeline, effectiveOverrides, tune, type PlanetTuning, type TuneRequest } from './tuning';
 
 /** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
 export interface SchedulerView {
@@ -16,6 +17,8 @@ export interface SchedulerView {
 interface Planet {
   state: PlanetState;
   pipeline: Pipeline;
+  /** Balance overrides (D-35): `base` = file ⊕ scenario, `live` = dev tunes. */
+  tuning: PlanetTuning;
   pending: SimCommandV1[];
   subscribed: boolean;
   /** Tick of the last delta sent (or of the subscription); the next delta starts here (D-31). */
@@ -33,6 +36,8 @@ export interface HostOptions {
   /** Deltas per second per subscribed planet (default 5). */
   readonly deltaHz?: number;
   readonly now?: () => number;
+  /** Balance overrides from `TA_BALANCE_OVERRIDES`, under every planet's scenario overrides. */
+  readonly overrides?: BalanceOverrides;
 }
 
 /** Exact-size copy so the buffer can be transferred without dragging along unrelated bytes. */
@@ -90,6 +95,7 @@ export class PlanetHost {
       }
       case 'snapshotNow': return this.snapshotNow(msg.planetId);
       case 'fullState': return this.fullState(msg.planetId, msg.reqId);
+      case 'tune': return this.tune(msg.planetId, msg.reqId, msg.req);
       case 'ctl': return this.ctl(msg);
     }
   }
@@ -99,9 +105,11 @@ export class PlanetHost {
       ? restore(msg.snapshot)
       : createPlanet({ type: msg.params?.type ?? 'flat', seed: msg.params?.seed ?? msg.planetId, planetId: msg.planetId, radius: msg.params?.radius });
     const modules = this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined;
-    const pipeline = createRegistryPipeline({ flags: msg.flags ?? this.flags, ...(modules ? { modules } : {}) });
+    const flags = msg.flags ?? this.flags;
+    const base = mergeOverrides(this.opts.overrides ?? {}, msg.overrides ?? {});
+    const pipeline = buildPipeline(flags, base, modules);
     this.planets.set(msg.planetId, {
-      state, pipeline, pending: [], subscribed: false, lastDeltaTick: state.meta.tick, nextDeltaMs: 0, windowEvents: [], deltaMs: 0, deltaBytes: 0,
+      state, pipeline, tuning: { flags, base, live: {} }, pending: [], subscribed: false, lastDeltaTick: state.meta.tick, nextDeltaMs: 0, windowEvents: [], deltaMs: 0, deltaBytes: 0,
     });
     this.post({ t: 'loaded', planetId: msg.planetId, tick: state.meta.tick });
   }
@@ -123,9 +131,7 @@ export class PlanetHost {
       if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick });
       else this.post({ t: 'ack', planetId, commandId: o.commandId, appliedAtTick: o.appliedAtTick });
     }
-    // Each event leaves the thread exactly once: inside a delta when the planet is subscribed, else as a bare `event`.
-    if (p.subscribed) p.windowEvents.push(...r.events);
-    else if (r.events.length) this.post({ t: 'event', planetId, events: r.events });
+    this.publish(planetId, p, r.events);
   }
 
   private setSubscribed(planetId: string, p: Planet, on: boolean): void {
@@ -198,8 +204,36 @@ export class PlanetHost {
     const bytes = owned(snapshot(p.state));
     this.post({
       t: 'fullState', planetId, reqId, tick: p.state.meta.tick, warp: this.sched?.info(planetId)?.warp ?? 1, bytes, simVersion: p.state.meta.simVersion,
-      dataHash: p.pipeline.config.data.hash, planetType: p.state.meta.planetType,
+      dataHash: p.pipeline.config.data.hash, planetType: p.state.meta.planetType, overrides: effectiveOverrides(p.tuning),
     }, [bytes.buffer as ArrayBuffer]);
+  }
+
+  /**
+   * Dev `tune` (D-35): rebuilds the planet's pipeline from file ⊕ scenario ⊕ live overrides, so the next step already uses
+   * the new numbers, and records a `dev.tuned` event (event log / bus). A bad path or value leaves the planet untouched.
+   */
+  private tune(planetId: string, reqId: number, req: TuneRequest): void {
+    const p = this.planets.get(planetId);
+    if (!p) return this.post({ t: 'error', thread: this.thread, planetId, message: `tune: planet ${planetId} is not loaded` });
+    const reply = (extra: { ok: boolean; text?: string; error?: string }) =>
+      this.post({ t: 'tuned', planetId, reqId, dataHash: p.pipeline.config.data.hash, overrides: effectiveOverrides(p.tuning), ...extra });
+    try {
+      const out = tune(p.tuning, req, this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined);
+      if (out.next) {
+        p.pipeline = out.next.pipeline;
+        p.tuning.live = out.next.live;
+      }
+      if (out.event) this.publish(planetId, p, [{ ...out.event, atTick: p.state.meta.tick }]);
+      reply({ ok: true, ...(out.text !== undefined ? { text: out.text } : {}) });
+    } catch (e) {
+      reply({ ok: false, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
+  /** Each event leaves the thread exactly once: inside a delta when the planet is subscribed, else as a bare `event`. */
+  private publish(planetId: string, p: Planet, events: SimEvent[]): void {
+    if (p.subscribed) p.windowEvents.push(...events);
+    else if (events.length) this.post({ t: 'event', planetId, events });
   }
 
   stats(): PlanetStats[] {
