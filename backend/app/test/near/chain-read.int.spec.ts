@@ -2,7 +2,6 @@ import type { INestApplication } from '@nestjs/common';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
-import { describeChainReadContract } from '../../src/near/__contract__/chain-read.contract';
 import { MockChainReadAdapter } from '../../src/near/infrastructure/adapters/chain-read/mock-chain-read.adapter';
 import { MOCK_HASH_RE } from '../../src/near/infrastructure/mock/tx-hash';
 
@@ -12,11 +11,7 @@ afterAll(async () => { await db?.drop(); });
 
 const fast = { latencyMinMs: 0, latencyMaxMs: 0, failRate: 0 };
 
-describeChainReadContract('MockChainReadAdapter', () => {
-  const adapter = new MockChainReadAdapter(db.prisma, fast);
-  return { port: adapter, mock: true, writeReceipt: () => adapter.ping() };
-});
-
+// The port contract (health / receipt / explorerUrl) runs from `npm run test:contract`; this file keeps the mock-specific checks.
 describe('MockChainReadAdapter specifics', () => {
   it('health() is not ok with detail when the database is down', async () => {
     const broken = { $queryRaw: async () => { throw new Error('db down'); } } as unknown as typeof db.prisma;
