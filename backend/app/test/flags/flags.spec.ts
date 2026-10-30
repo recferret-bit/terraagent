@@ -24,14 +24,14 @@ describe('command gate', () => {
 
 describe('FlagsService in the app', () => {
   it('reads TA_WAVES and lists the welcome flags', async () => {
-    const { app } = await createApp({ source: { TA_WAVES: '..00' }, logger: false });
+    const { app } = await createApp({ source: { TA_WAVES: '..00' } });
     const flags = app.get(FlagsService);
     expect(flags.list).toEqual(['W00']);
     expect(flags.gate('dev.ping')).toBeNull();
     await app.close();
   });
   it('aborts boot on a malformed TA_WAVES', async () => {
-    await expect(createApp({ source: { TA_WAVES: '..7x' }, logger: false })).rejects.toThrow(EnvError);
-    await expect(createApp({ source: { TA_WAVES: '..7x' }, logger: false })).rejects.toThrow(/TA_WAVES/);
+    await expect(createApp({ source: { TA_WAVES: '..7x' } })).rejects.toThrow(EnvError);
+    await expect(createApp({ source: { TA_WAVES: '..7x' } })).rejects.toThrow(/TA_WAVES/);
   });
 });
