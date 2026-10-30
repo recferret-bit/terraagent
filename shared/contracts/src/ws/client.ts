@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { ClientEnvelope } from '../envelope';
-import { CmdId, PlanetId } from '../ids';
+import { CmdId } from '../ids';
+import { HomePlanetId } from '../rest/home';
 import { PlanetType } from './sim';
 
 /** Client → app messages (PROTOCOL §4.2). All strict: the server rejects unknown keys (PR-01). */
@@ -9,7 +10,7 @@ export const Hello = ClientEnvelope('hello', z.strictObject({
   proto: z.array(z.number().int()).nonempty(),
   client: z.strictObject({ app: z.literal('game'), version: z.string().max(32) }),
 }));
-export const Join = ClientEnvelope('join', z.strictObject({ planetId: PlanetId }));
+export const Join = ClientEnvelope('join', z.strictObject({ planetId: HomePlanetId }));
 export const Leave = ClientEnvelope('leave', z.strictObject({}));
 const Topic = z.enum(['planets', 'queue', 'party', 'market']);
 export const Subscribe = ClientEnvelope('subscribe', z.strictObject({ topic: Topic, planetType: PlanetType.optional() }));

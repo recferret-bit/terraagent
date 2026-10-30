@@ -29,7 +29,12 @@ export interface LoadMsg {
   /** Restore from this snapshot (buffer is transferred); otherwise a new planet is generated. */
   readonly snapshot?: Uint8Array;
   /** New-planet params; `seed` defaults to the planet id. */
-  readonly params?: { readonly type?: string; readonly seed?: string; readonly radius?: number };
+  readonly params?: {
+    readonly type?: string;
+    readonly seed?: string;
+    readonly radius?: number;
+    readonly capacity?: number;
+  };
   /** Overrides the thread's wave flags for this planet. */
   readonly flags?: readonly string[];
 }

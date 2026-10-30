@@ -45,6 +45,7 @@ export class Connection implements RoomMember {
   session: VerifiedSession | undefined;
   playerId: string | undefined;
   planetId: string | undefined;
+  colonyId: string | null = null;
   welcomeTick: number | undefined;
   paused = false;
   private resyncing = false;
@@ -149,6 +150,7 @@ export class Connection implements RoomMember {
   private leaveRoom(): void {
     if (this.planetId) this.d.rooms.leave(this.planetId, this);
     this.planetId = undefined;
+    this.colonyId = null;
     this.welcomeTick = undefined;
   }
 
@@ -232,6 +234,12 @@ export class Connection implements RoomMember {
     if (!this.d.planets.isLoaded(planetId)) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     this.state = 'joining';
     this.planetId = planetId;
+    if (this.playerId) {
+      const home = await this.resolveHome(this.playerId);
+      this.colonyId = home.state === 'ACTIVE' && home.colony.planetId === planetId ? home.colony.id : null;
+    } else {
+      this.colonyId = null;
+    }
     this.d.rooms.join(planetId, this);
     let snap;
     try {
@@ -253,7 +261,7 @@ export class Connection implements RoomMember {
     this.sendMsg({
       v: 1, t: 'welcome', tick: snap.tick,
       d: {
-        reason, colonyId: null,
+        reason, colonyId: this.colonyId,
         planet: { id: planetId, type: type.success ? type.data : 'temperate', name: planetId },
         state: snap.bytes, simVersion: snap.simVersion, dataHash: snap.dataHash, tick: snap.tick,
         serverTimeMs: Date.now(), tickMs: TICK_MS, deltaHz: this.d.planets.deltaHz, flags: this.d.flags,

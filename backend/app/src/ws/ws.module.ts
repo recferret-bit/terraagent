@@ -6,6 +6,7 @@ import type { Server } from 'node:http';
 import { z } from 'zod';
 import { AuthTokenService } from '../core/auth/auth-token.service';
 import { CoreModule } from '../core/core.module';
+import { HomeRepository } from '../core/home/home.repository';
 import { HomeService } from '../core/home/home.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { layerLogger } from '../core/logging/logger';
@@ -45,9 +46,21 @@ export const env = defineEnv('ws', {
     },
     {
       provide: COMMAND_INGRESS,
-      inject: [APP_ENV, MetricsRegistry, FlagsService, GamePlanets],
-      useFactory: (e: AppEnv, m: MetricsRegistry, flags: FlagsService, planets: GamePlanets): CommandIngress =>
-        new SimCommandIngress({ planets, flags, registry: m.registry, production: e.NODE_ENV === 'production' }),
+      inject: [APP_ENV, MetricsRegistry, FlagsService, GamePlanets, { token: HomeRepository, optional: true }],
+      useFactory: (
+        e: AppEnv,
+        m: MetricsRegistry,
+        flags: FlagsService,
+        planets: GamePlanets,
+        homeRepo?: HomeRepository,
+      ): CommandIngress =>
+        new SimCommandIngress({
+          planets,
+          flags,
+          registry: m.registry,
+          production: e.NODE_ENV === 'production',
+          homeRepo,
+        }),
     },
     {
       provide: WsGateway,

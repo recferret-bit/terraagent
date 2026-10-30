@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import type { ColonySummary, HomeResponse, PlanetSummary } from '@terra/contracts';
+import { newId, type ColonySummary, type HomeResponse, type PlanetSummary, type SimCommandV1 } from '@terra/contracts';
 import { createPlanet, getSpawnSlots, type SpawnSlot } from '@terra/sim';
 import {
   type ColonyRecord,
@@ -25,6 +25,27 @@ export interface HomeSeatNotifier {
 }
 
 export type ColonySeatListener = (assignment: ColonySeatAssignment) => void | Promise<void>;
+
+export function createSpawnColonyCommand(assignment: ColonySeatAssignment): SimCommandV1 {
+  const { player, colony, slot } = assignment;
+  return {
+    colonyIndex: colony.colonyIndex,
+    source: 'system',
+    commandId: newId('cm'),
+    kind: 'system.spawnColony',
+    args: {
+      colonyId: colony.id,
+      colonyIndex: colony.colonyIndex,
+      playerId: player.id,
+      handle: player.handle,
+      name: colony.name,
+      color: colony.color,
+      slotIndex: slot.index ?? colony.colonyIndex,
+      q: colony.spawnQ,
+      r: colony.spawnR,
+    },
+  };
+}
 
 export function toColonySummary(colony: ColonyRecord): ColonySummary {
   return {
@@ -107,7 +128,15 @@ export class HomeService {
       const handle = player.handle?.trim() || `Colonist-${player.id.slice(-4)}`;
       const { planet: openPlanet, colonyIndex } = await this.repo.findOrCreateOpenDevPlanet();
       const slots = this.getSpawnSlotsForPlanet(openPlanet);
-      const slot = slots[colonyIndex] ?? slots[0] ?? { index: colonyIndex, q: 0, r: 0 };
+      const existingColonies = await this.repo.listColoniesByPlanetId(openPlanet.id);
+      const takenCoords = new Set(existingColonies.map((c) => `${c.spawnQ},${c.spawnR}`));
+      const preferred = slots[colonyIndex];
+      const slot =
+        (preferred && !takenCoords.has(`${preferred.q},${preferred.r}`) ? preferred : undefined) ??
+        slots.find((s) => !takenCoords.has(`${s.q},${s.r}`)) ??
+        preferred ??
+        slots[0] ??
+        { index: colonyIndex, q: 0, r: 0 };
       const colonyName = `${handle.slice(0, 22)}'s Colony`;
 
       const { colony, planet } = await this.repo.createColony({

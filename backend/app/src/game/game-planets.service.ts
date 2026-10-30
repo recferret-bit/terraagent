@@ -62,12 +62,23 @@ export class GamePlanets {
   /** Loads (or restores from `opts.snapshot`) a planet on its thread; resolves with its tick. */
   load(planetId: string, opts: LoadOptions = {}): Promise<number> {
     return new Promise<number>((resolve, reject) => {
-      const list = this.loading.get(planetId) ?? [];
+      const existing = this.loading.get(planetId);
+      if (existing && !opts.snapshot) {
+        existing.push({ resolve, reject });
+        return;
+      }
+      const list = existing ?? [];
       list.push({ resolve, reject });
       this.loading.set(planetId, list);
       const transfer = opts.snapshot ? [opts.snapshot.buffer as ArrayBuffer] : [];
       if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...opts }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
     });
+  }
+
+  /** Ensures `planetId` is loaded on its thread, loading it with `opts` if not yet loaded. */
+  async ensureLoaded(planetId: string, opts: LoadOptions = {}): Promise<number> {
+    if (this.loaded.has(planetId)) return 0;
+    return this.load(planetId, opts);
   }
 
   /** Global listeners (persistence): a planet finished loading / was unloaded / a snapshot arrived (subscribed or not). */

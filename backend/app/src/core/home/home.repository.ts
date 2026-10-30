@@ -34,6 +34,7 @@ export interface ColonyRecord {
   readonly state: string;
   readonly spawnQ: number;
   readonly spawnR: number;
+  readonly spawn: { readonly q: number; readonly r: number };
   readonly createdAt: Date;
 }
 
@@ -82,7 +83,7 @@ function generateColonyId(): string {
 export class HomeRepository {
   private readonly planetsById = new Map<string, PlanetRecord>();
   private readonly coloniesById = new Map<string, ColonyRecord>();
-  private readonly dbEnabled: boolean;
+  readonly dbEnabled: boolean;
 
   constructor(
     @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
@@ -199,6 +200,41 @@ export class HomeRepository {
     return this.findLatestColonyByPlayerId(playerId);
   }
 
+  async findColonyByPlayer(playerId: string): Promise<ColonyRecord | null> {
+    return this.findLatestColonyByPlayerId(playerId);
+  }
+
+  findMemColonyByPlayerAndPlanet(playerId: string, planetId: string): ColonyRecord | null {
+    let latest: ColonyRecord | null = null;
+    for (const colony of this.coloniesById.values()) {
+      if (colony.playerId !== playerId || colony.planetId !== planetId) continue;
+      if (!latest || colony.createdAt.getTime() >= latest.createdAt.getTime()) {
+        latest = colony;
+      }
+    }
+    return latest;
+  }
+
+  async findColonyByPlayerAndPlanet(playerId: string, planetId: string): Promise<ColonyRecord | null> {
+    const inMem = this.findMemColonyByPlayerAndPlanet(playerId, planetId);
+    if (inMem && !this.dbEnabled) return inMem;
+    if (this.dbEnabled && this.prisma) {
+      try {
+        const row = await this.prisma.colony.findFirst({
+          where: { playerId, planetId },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (row) {
+          return this.saveMemColony(this.fromDbColony(row));
+        }
+        return null;
+      } catch {
+        // Fall through to in-memory store
+      }
+    }
+    return inMem;
+  }
+
   async findColonyById(id: string): Promise<ColonyRecord | null> {
     if (this.dbEnabled && this.prisma) {
       try {
@@ -277,6 +313,7 @@ export class HomeRepository {
       state: status,
       spawnQ: input.spawnQ,
       spawnR: input.spawnR,
+      spawn: { q: input.spawnQ, r: input.spawnR },
       createdAt: new Date(),
     };
     this.saveMemColony(colony);
@@ -396,6 +433,7 @@ export class HomeRepository {
       state: row.status,
       spawnQ: row.spawnQ,
       spawnR: row.spawnR,
+      spawn: { q: row.spawnQ, r: row.spawnR },
       createdAt: row.createdAt,
     };
   }

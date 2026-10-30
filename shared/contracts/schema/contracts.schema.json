@@ -128,8 +128,16 @@
           "additionalProperties": false,
           "properties": {
             "planetId": {
-              "pattern": "^pl_[0-9A-HJKMNP-TV-Z]{26}$",
-              "type": "string"
+              "anyOf": [
+                {
+                  "pattern": "^pl_[0-9A-HJKMNP-TV-Z]{26}$",
+                  "type": "string"
+                },
+                {
+                  "pattern": "^pl_[A-Za-z0-9_-]+$",
+                  "type": "string"
+                }
+              ]
             }
           },
           "required": [
@@ -769,16 +777,34 @@
         "additionalProperties": false,
         "properties": {
           "colonyId": {
-            "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^col?_[A-Za-z0-9_-]+$",
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "color": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
           },
+          "handle": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "name": {
-            "maxLength": 32,
+            "maxLength": 64,
             "minLength": 1,
             "type": "string"
           },
@@ -1524,8 +1550,16 @@
             "colonyId": {
               "anyOf": [
                 {
-                  "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^col?_[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    }
+                  ]
                 },
                 {
                   "type": "null"
@@ -1554,8 +1588,16 @@
                   "type": "integer"
                 },
                 "id": {
-                  "pattern": "^pl_[0-9A-HJKMNP-TV-Z]{26}$",
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "pattern": "^pl_[0-9A-HJKMNP-TV-Z]{26}$",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^pl_[A-Za-z0-9_-]+$",
+                      "type": "string"
+                    }
+                  ]
                 },
                 "name": {
                   "type": "string"
