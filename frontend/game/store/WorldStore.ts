@@ -1,10 +1,34 @@
-import type { ServerMessage } from '@terra/contracts';
-import { TICK_MS } from '@terra/sim';
+import { flagsFromList, newId, type ServerMessage } from '@terra/contracts';
+import { compileData, createPlanet, SIM_VERSION, SimHost, TICK_MS, type PlanetState, type SimCommand } from '@terra/sim';
 import { Emitter } from '../net/emitter';
-import type { Transport } from '../net/types';
+import type { ConnectionState, Outgoing, Transport } from '../net/types';
 import type { FromWorker, ToWorker } from './worker/protocol';
-import { unpackView, type ClientTiles, type ClientView } from './replica/viewCodec';
+import { packView, unpackView, type ClientTiles, type ClientView } from './replica/viewCodec';
 import type { ReplicaStatus } from './replica/ReplicaCore';
+
+export type CommandInput =
+  | string
+  | {
+      type?: string;
+      kind?: string;
+      args?: unknown;
+      [key: string]: unknown;
+    };
+
+function normalizeCommand(input: CommandInput, maybeArgs?: unknown): { kind: string; args: unknown } {
+  if (typeof input === 'string') {
+    return { kind: input, args: maybeArgs ?? {} };
+  }
+  const kind = input.kind ?? input.type ?? '';
+  if (input.args !== undefined) {
+    return { kind, args: input.args };
+  }
+  const rest: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(input)) {
+    if (k !== 'type' && k !== 'kind') rest[k] = v;
+  }
+  return { kind, args: rest };
+}
 
 /** The bits of a `Worker` the store uses (tests pass an in-process fake). */
 export interface WorkerLike {
@@ -42,7 +66,13 @@ export class WorldStore {
   private baseLocalMs = 0;
   private readonly rejects = new Emitter<{ id: string; kind: string; code: string }>();
 
-  constructor(private readonly transport: Transport, private readonly makeWorker: () => WorkerLike = createSimWorker, private readonly now: () => number = () => Date.now()) {}
+  constructor(
+    private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
+    private readonly makeWorker: () => WorkerLike = createSimWorker,
+    private readonly now: () => number = () => Date.now(),
+  ) {
+    this.transport.bindStore?.(this);
+  }
 
   get latest(): ClientView | null { return this.latestView; }
   /** The newest tile layers (views carry `tiles` only when they changed). */
@@ -56,6 +86,25 @@ export class WorldStore {
 
   /** A pending command was rolled back by `cmd.reject` (also reaches the CommandBus through the transport). */
   onCommandRejected(fn: (r: { id: string; kind: string; code: string }) => void): () => void { return this.rejects.on(fn); }
+
+  /**
+   * Sends a command over the transport and notifies the worker for immediate prediction.
+   * Accepts either `(kind, args)` or `({ type, ...args })`.
+   */
+  sendCommand(input: CommandInput, maybeArgs?: unknown): string {
+    const { kind, args } = normalizeCommand(input, maybeArgs);
+    const id = newId('cm');
+    this.transport.send({ t: 'cmd', id, d: { kind, args } });
+    this.notifySent(id, kind, args);
+    return id;
+  }
+
+  /** Directly publishes a `ClientView` (used by `LocalHost` in-process mode). */
+  pushView(view: ClientView): void {
+    if (view.tiles) this.tiles = view.tiles;
+    this.latestView = view;
+    this.views.emit(view);
+  }
 
   /**
    * The player sent a command (the CommandBus / online session calls this right after `transport.send`): the worker
@@ -132,5 +181,126 @@ export class WorldStore {
   private requestResync(): void {
     if (!this.planetId) return;
     try { this.transport.send({ t: 'join', d: { planetId: this.planetId } }); } catch (e) { console.warn('[world] resync join failed', e); }
+  }
+}
+
+export interface LocalHostOpts {
+  flags?: readonly string[];
+  planet?: PlanetState;
+  radius?: number;
+  seed?: string;
+  colonyIndex?: number;
+}
+
+/**
+ * In-process local host (`SimHost` + `Transport` + `WorldStore`) for single-player `?host=local` and deterministic unit tests.
+ */
+export class LocalHost {
+  readonly sim: SimHost;
+  readonly store: WorldStore;
+  readonly msgs = new Emitter<ServerMessage>();
+  readonly sent: Outgoing[] = [];
+  readonly connectionState: ConnectionState = { phase: 'streaming', attempt: 0, downSinceMs: null };
+  private readonly flagsList: string[];
+  private readonly colonyIndex: number;
+  private boundStores = new Set<WorldStore>();
+  private welcomed = false;
+
+  constructor(opts: LocalHostOpts = {}) {
+    this.flagsList = [...(opts.flags ?? ['W00', 'W01'])];
+    this.colonyIndex = opts.colonyIndex ?? 0;
+    this.sim = new SimHost({ flags: flagsFromList(this.flagsList) });
+    const planet = opts.planet ?? createPlanet({ type: 'flat', seed: opts.seed ?? 'local-host', radius: opts.radius ?? 16 });
+    this.sim.load(planet);
+    this.store = new WorldStore(this, () => ({ postMessage() {}, onmessage: null, terminate() {} }));
+    this.sync(true);
+  }
+
+  get state(): PlanetState {
+    return this.sim.state;
+  }
+
+  get tick(): number {
+    return this.sim.tick;
+  }
+
+  bindStore(store: WorldStore): void {
+    this.boundStores.add(store);
+    if (this.sim.loaded) {
+      const { view } = packView(this.sim.view(), true);
+      store.pushView(unpackView(view, Date.now()));
+    }
+  }
+
+  start(): void {}
+  stop(): void {}
+
+  send(m: Outgoing): void {
+    this.sent.push(m);
+    if (m.t === 'cmd') {
+      const cmd: SimCommand = {
+        colonyIndex: this.colonyIndex,
+        source: 'player',
+        commandId: m.id,
+        kind: m.d.kind,
+        args: m.d.args,
+      };
+      this.sim.submit(cmd);
+    }
+  }
+
+  onMessage(fn: (m: ServerMessage) => void): () => void {
+    return this.msgs.on(fn);
+  }
+
+  onState(): () => void {
+    return () => {};
+  }
+
+  /** Syncs the current `SimHost` state to all bound `WorldStore` instances. */
+  sync(withTiles = false): ClientView {
+    if (!this.welcomed) {
+      this.welcomed = true;
+      withTiles = true;
+      this.msgs.emit({
+        v: 1,
+        t: 'welcome',
+        d: {
+          reason: 'join',
+          colonyId: null,
+          planet: { id: this.sim.state.meta.planetId, type: this.sim.state.meta.planetType, name: 'local' },
+          state: this.sim.snapshot(),
+          simVersion: SIM_VERSION,
+          dataHash: compileData(flagsFromList(this.flagsList)).hash,
+          tick: this.sim.tick,
+          serverTimeMs: Date.now(),
+          tickMs: 200,
+          deltaHz: 5,
+          flags: this.flagsList,
+        },
+      } as ServerMessage);
+    }
+    const { view } = packView(this.sim.view(), withTiles);
+    const unpacked = unpackView(view, Date.now());
+    for (const s of this.boundStores) s.pushView(unpacked);
+    return unpacked;
+  }
+
+  /** Steps the `SimHost` by `dt` ticks and publishes the resulting `ClientView` + delta. */
+  step(dt = 1): ClientView {
+    for (let i = 0; i < dt; i++) {
+      const from = this.sim.tick;
+      const res = this.sim.step(1);
+      for (const o of res.outcomes) {
+        if (o.code) this.msgs.emit({ v: 1, t: 'cmd.reject', d: { id: o.commandId, code: o.code } } as ServerMessage);
+        else this.msgs.emit({ v: 1, t: 'cmd.ack', d: { id: o.commandId, appliedAtTick: o.appliedAtTick } } as ServerMessage);
+      }
+      this.msgs.emit({
+        v: 1,
+        t: 'delta',
+        d: { fromTick: from, toTick: this.sim.tick, diff: this.sim.diffSince(from) },
+      } as ServerMessage);
+    }
+    return this.sync(false);
   }
 }

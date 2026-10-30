@@ -11,7 +11,7 @@ if (import.meta.hot) import.meta.hot.dispose(() => dispose());
 
 function startOnline(el: HTMLElement, m: NonNullable<typeof mode>): () => void {
   let session: { dispose(): void } | null = null;
-  void import('./app/online/OnlineSession').then(({ OnlineSession }) => { const s = new OnlineSession(el, m); session = s; (window as any).__online = s; });
+  void import('./app/online/OnlineSession').then(({ OnlineSession }) => { const s = new OnlineSession(el, m); session = s; (window as any).__online = s; (window as any).__game = s; });
   return () => session?.dispose();
 }
 

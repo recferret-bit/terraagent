@@ -2,12 +2,15 @@ import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createHexTerrain, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles } from '@terra/render/planets/hex';
+import { CommandBus } from '../../net/commandBus';
 import { ConnectionBanner } from '../../net/ConnectionBanner';
 import { WsTransport, browserDeps } from '../../net/WsTransport';
 import { WorldStore } from '../../store/WorldStore';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import { createClientFlagsStore, resolveClientFlags, type ClientFlagsStore } from '../../core/flags';
+import { LandfallController } from '../../features/landfall';
 import { RTSCamera } from '../RTSCamera';
+import { EntityMeshes } from './EntityMeshes';
 import { FeatureHud } from './featureHud';
 import { hexSurface } from './hexSurface';
 import { createSessionTarget } from './sessionTarget';
@@ -40,6 +43,9 @@ export class OnlineSession {
   readonly viewport: ColonyViewport;
   readonly transport: WsTransport;
   readonly store: WorldStore;
+  readonly commandBus: CommandBus;
+  readonly entities: EntityMeshes;
+  readonly landfall: LandfallController;
   readonly flags: ClientFlagsStore = createClientFlagsStore();
   terrain: HexTerrain | null = null;
   cam: RTSCamera | null = null;
@@ -55,21 +61,55 @@ export class OnlineSession {
     this.viewport = createColonyViewport(root);
     this.transport = new WsTransport(createSessionTarget(location), browserDeps());
     this.banner = new ConnectionBanner(document.body, this.transport, () => this.transport.start());
-    this.hud = new FeatureHud(document.body, this.flags);
     this.store = new WorldStore(this.transport);
+    this.commandBus = new CommandBus(this.transport);
+    this.entities = new EntityMeshes(this.viewport.scene);
+    this.landfall = new LandfallController({
+      store: this.store,
+      sendCommand: this.commandBus.send,
+      pickTile: (cx, cy) => this.pickAt(cx, cy),
+      canvas: this.viewport.renderer.domElement,
+      onTargetMove: (q, r) => this.entities.flashTarget(q, r, this.terrain),
+    });
+    this.cleanups.push(
+      this.landfall.onChange(({ selectedEntityId }) => {
+        this.entities.setSelectedEntityId(selectedEntityId);
+      }),
+    );
+    this.hud = new FeatureHud(document.body, this.flags, {
+      sendCommand: this.commandBus.send,
+      store: this.store,
+      landfall: this.landfall,
+      pickTile: (cx, cy) => this.pickAt(cx, cy),
+      canvas: this.viewport.renderer.domElement,
+    });
     this.cleanups.push(this.transport.onMessage((m) => {
       if (m.t === 'welcome') this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: location.search, dev: import.meta.env.DEV }));
     }));
     this.cleanups.push(this.store.onView((v) => this.onView(v)));
     this.store.start();
     this.transport.start();
-    this.bindPicking();
     this.loop();
+  }
+
+  selectHq(): number | null {
+    return this.landfall.selectHq();
+  }
+
+  orderMove(q: number, r: number): boolean {
+    return this.landfall.orderMove(q, r);
+  }
+
+  getSelectedEntityId(): number | null {
+    return this.landfall.getSelectedEntityId();
   }
 
   private onView(v: ClientView): void {
     if (v.tiles) this.onTiles(v, v.tiles);
-    this.hud.update({ tick: v.tick });
+    const biomeKey = specForPlanetType(v.planet.type).biomeKey;
+    this.entities.syncView(v, this.terrain, biomeKey);
+    this.landfall.onView(v);
+    this.hud.update(v);
   }
 
   private onTiles(v: ClientView, tiles: ClientTiles): void {
@@ -109,19 +149,11 @@ export class OnlineSession {
     return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
   }
 
-  private bindPicking(): void {
-    const dom = this.viewport.renderer.domElement;
-    let down = { x: 0, y: 0 };
-    const onDown = (e: PointerEvent) => { down = { x: e.clientX, y: e.clientY }; };
-    const onUp = (e: PointerEvent) => { if (e.button === 0 && Math.hypot(e.clientX - down.x, e.clientY - down.y) <= 5) this.pickAt(e.clientX, e.clientY); };
-    dom.addEventListener('pointerdown', onDown); dom.addEventListener('pointerup', onUp);
-    this.cleanups.push(() => { dom.removeEventListener('pointerdown', onDown); dom.removeEventListener('pointerup', onUp); });
-  }
-
   private loop = () => {
     const now = performance.now();
     const dt = Math.min((now - this.last) / 1000, 0.05); this.last = now;
     try {
+      this.entities.update(dt, this.terrain);
       if (this.cam) { this.cam.update(dt); this.viewport.followShadow(this.cam.target); }
       this.terrain?.tick(dt);
       this.viewport.render();
@@ -132,6 +164,9 @@ export class OnlineSession {
   dispose(): void {
     cancelAnimationFrame(this.raf);
     this.cleanups.forEach((f) => f());
+    this.landfall.dispose();
+    this.entities.dispose();
+    this.commandBus.dispose();
     this.cam?.dispose();
     this.store.dispose(); this.transport.stop();
     this.hud.dispose(); this.banner.dispose();

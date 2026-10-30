@@ -1,5 +1,6 @@
 import type { PlanetState } from '../kernel/state';
 import type { PlanetType } from '../kernel/state';
+import type { HqJob, HqUnitView } from '../systems/hq';
 
 /**
  * W00 view: a minimal read-only projection for render/HUD. Tile arrays are shared with the state (no copy; do not
@@ -14,6 +15,10 @@ export interface ViewEntity {
 export interface ViewColony {
   index: number; id: string; name: string; color: number; status: string;
   stock?: Record<string, number>;
+  caps?: Record<string, number>;
+  hq?: HqUnitView;
+  currentJob?: HqJob;
+  queueCount?: number;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -42,6 +47,20 @@ export function view(state: PlanetState): SimView {
   const stockBlob =
     (state.blobs.colonyStock?.value as Record<string | number, Record<string, number>> | undefined) ??
     (state.blobs.colonyStock as unknown as Record<string | number, Record<string, number>> | undefined);
+  const hqBlob = state.blobs.hq?.value as (HqUnitView & { byColony?: Record<number, HqUnitView> }) | undefined;
+  const colonies: ViewColony[] = state.colonies.map((k) => {
+    const fromBlob = stockBlob?.[k.index] ?? stockBlob?.[k.id];
+    const existing = k.stock as Record<string, number> | undefined;
+    const hq = (k.hq as HqUnitView | undefined) ?? hqBlob?.byColony?.[k.index];
+    const out: ViewColony = { ...k };
+    if (fromBlob || existing) out.stock = { ...(existing ?? {}), ...(fromBlob ?? {}) };
+    if (hq) {
+      out.hq = hq;
+      out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;
+      out.queueCount = (k.queueCount as number | undefined) ?? hq.queueCount;
+    }
+    return out;
+  });
   return {
     tick: state.meta.tick,
     planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius },
@@ -55,12 +74,7 @@ export function view(state: PlanetState): SimView {
       explored: L.explored as Uint8Array,
     },
     entities,
-    colonies: state.colonies.map((k) => {
-      const fromBlob = stockBlob?.[k.index] ?? stockBlob?.[k.id];
-      const existing = k.stock as Record<string, number> | undefined;
-      const mergedStock = fromBlob || existing ? { ...(existing ?? {}), ...(fromBlob ?? {}) } : undefined;
-      return mergedStock !== undefined ? { ...k, stock: mergedStock } : { ...k };
-    }),
+    colonies,
     blobs,
   };
 }
