@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { DescentHandoff } from '../../../../game/descent/types';
+import type { DescentHandoff } from '../../descent/types';
 import { tickArchetypeMesh } from '../../visuals/space/placeholders';
 import { win } from '../stage/math';
 import { planDeploy } from './DeployPlan';

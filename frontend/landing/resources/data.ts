@@ -1,5 +1,5 @@
 // The five landing resources: which kitbash archetype shows them and the technical sheet beside it.
-import type { PlanetKind } from '@shared/engine/planets/PlanetSpec';
+import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 
 export interface ResourceInfo {
   archetype: string; biome: PlanetKind; symbol: string; name: string;

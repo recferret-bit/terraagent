@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { createArchetypeMesh, tickArchetypeMesh } from '@shared/engine/kitbash';
-import type { PlanetSurface } from '@shared/engine/planets/surface/types';
-import type { PlanetSpec } from '@shared/engine/planets/PlanetSpec';
+import { createArchetypeMesh, tickArchetypeMesh } from '@terra/render/kitbash';
+import type { PlanetSurface } from '@terra/render/planets/surface/types';
+import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 import { RTSCamera } from './RTSCamera';
 import { GameHud } from '../ui/hud';
 import { groundPick } from './groundPick';

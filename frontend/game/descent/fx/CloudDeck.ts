@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLSL_NOISE } from '@shared/engine/visuals/space/glslNoise';
+import { GLSL_NOISE } from '@terra/render/visuals/space/glslNoise';
 
 /** Stacked cloud layers (soft-faded near the camera) so the pod punches through a deck that "rushes past". */
 export interface CloudDeck {

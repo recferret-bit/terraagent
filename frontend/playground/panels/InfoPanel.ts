@@ -1,4 +1,4 @@
-import { ArchetypeCatalog } from '@shared/engine/kitbash';
+import { ArchetypeCatalog } from '@terra/render/kitbash';
 import { $ } from '../dom';
 import { ANIM_NAME, archetypeStats } from '../content/archetypeStats';
 

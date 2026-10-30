@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import { createPlanetGlobe, type PlanetGlobe } from '@shared/engine/planets/PlanetGlobe';
-import { createSpaceBackdrop, type SpaceBackdrop } from '@shared/engine/visuals/space/SpaceBackdrop';
+import { createPlanetGlobe, type PlanetGlobe } from '@terra/render/planets/PlanetGlobe';
+import { createSpaceBackdrop, type SpaceBackdrop } from '@terra/render/visuals/space/SpaceBackdrop';
 import { lerp, smoothstep, smoother } from '../math';
 import { createCloudDeck, type CloudDeck } from '../fx/CloudDeck';
 import { DECK, FOGMAX, R } from '../constants';

@@ -1,14 +1,14 @@
 # docs/plan — TerraAgent online build plan
 
-Docs only. Nothing here is implemented yet (2026-10-30).
+Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What already exists is a client-only prototype in `frontend/` (landing, orbit menu, descent, colony diorama, 3D playground, kitbash archetypes; see the inventory in [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) §2 "Reuse, don't rebuild"). The waves reuse it instead of rebuilding it. Layout: D-32.
 
-**Start with [`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md)** (2026-10-30). It is the plan: **26 product waves, 862 issues (≈ 625 agent-days)**, listed in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md), with one file per wave in [`waves/`](./waves/).
+**Start with [`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md)** (2026-10-30). It is the plan: **26 product waves, 861 issues (≈ 611 agent-days)**, listed in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md), with one file per wave in [`waves/`](./waves/).
 - **Every wave ships a working app.** Each wave has a flag, a git tag, a seed scenario and its own e2e suite, so it can be tested on its own and you can go back and forward.
 - **Waves run in parallel** on five tracks after the spine (W00–W02).
 - **Each wave has its own branch and worktree** and reaches `main` only after the owner's manual check; then the worktree and branch are deleted and `main` is pushed ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7).
 - **The old layer-based plan** (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`) is superseded and kept only for traceability.
 
-**Hackathon (2026-11-01 → 11-14):** option B: the `H` column in each wave file tags the must set (384 issues, ≈ 294 units). [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) has what ships, the pace check and the drop order; [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) has the generated critical path and start order. Decisions D-24..D-30 apply:
+**Hackathon (2026-11-01 → 11-14):** option B: the `H` column in each wave file tags the must set (387 issues, ≈ 293 units). [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) has what ships, the pace check and the drop order; [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) has the generated critical path and start order. Decisions D-24..D-30 apply:
 - one NestJS app + Postgres, a simplified server sim, no anti-cheat or anti-bot;
 - NEAR features F1–F8, **all on mock adapters behind real ports in phase 1** (D-30), with real adapters swapped in phase 2 (F5 → F1 → F2);
 - battle v1 (D-28);
@@ -54,7 +54,7 @@ Docs only. Nothing here is implemented yet (2026-10-30).
 | File | Purpose |
 |---|---|
 | [`ARCHITECTURE.md`](../spec/ARCHITECTURE.md) | **Source of truth for cross-service contracts:** apps, domains, ports, NATS subjects/KV, resume path, lifecycle summary, tunables |
-| [`DECISIONS.md`](../spec/DECISIONS.md) | D-01..D-30 with alternatives (D-16 Accepted; D-17..D-23 = owner answers of 2026-10-29; D-24..D-27 = one app / no anti-cheat / NEAR features / hackathon; D-28..D-30 = battle v1 / player page & maps / ports & mocks) |
+| [`DECISIONS.md`](../spec/DECISIONS.md) | D-01..D-32 with alternatives (D-16 Accepted; D-17..D-23 = owner answers of 2026-10-29; D-24..D-27 = one app / no anti-cheat / NEAR features / hackathon; D-28..D-30 = battle v1 / player page & maps / ports & mocks; D-31 = one engine, three hosts; D-32 = frontend layout) |
 | [`PROTOCOL.md`](../spec/PROTOCOL.md) | WebSocket (worker + lobby) and NATS message contracts |
 | [`DATA_MODEL.md`](../spec/DATA_MODEL.md) | Prisma model, invariants, retention |
 | [`MATCHMAKING.md`](../spec/MATCHMAKING.md) | Planet lifecycle, picker, managed queue |

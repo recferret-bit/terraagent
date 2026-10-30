@@ -81,7 +81,7 @@ export class KitbashBuilder {
   /**
    * Run `fn` and collect every model any KitbashBuilder.build() produced meanwhile, with per-part metadata.
    * The geometry is the builder's merged object, so it already includes whatever a caller did to it afterwards in place
-   * (scale, minY snap). Used by `frontend/shared/engine/kitbash/validate` and never by the game.
+   * (scale, minY snap). Used by `frontend/render/kitbash/validate` and never by the game.
    */
   public static capture<T>(fn: () => T): { result: T; built: BuiltModel[] } {
     const prev = KitbashBuilder.sink; const built: BuiltModel[] = [];

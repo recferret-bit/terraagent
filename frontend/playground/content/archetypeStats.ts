@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ArchetypeCatalog } from '@shared/engine/kitbash';
+import { ArchetypeCatalog } from '@terra/render/kitbash';
 
 export const ANIM_NAME: Record<number, string> = { 0: 'static', 1: 'spin', 2: 'bob', 3: 'recoil' };
 

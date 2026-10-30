@@ -1,9 +1,9 @@
 import * as THREE from 'three';
-import type { DescentHandoff, DescentOptions, DescentSequence, DescentTelemetry } from './types';
-import { acquireModel } from '@shared/engine/visuals/space/placeholders';
+import type { DescentHandoff, DescentOptions, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
+import { acquireModel } from '@terra/render/visuals/space/placeholders';
 import { clamp } from './math';
 import { altCurve, Telemetry } from './timeline';
-import { createDropRig, CUT_POSE } from './dropRig';
+import { createDropRig, CUT_POSE } from '@terra/render/descent/dropRig';
 import { FINAL_POS, FINAL_TARGET, R, TL } from './constants';
 import { FrameState, type DescentContext, type FramePart } from './parts/FrameState';
 import { Trajectory } from './parts/Trajectory';

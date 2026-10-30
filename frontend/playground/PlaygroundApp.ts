@@ -1,8 +1,8 @@
 import * as THREE from 'three';
-import { createColonyViewport, type ColonyViewport } from '@shared/engine/core/createColonyViewport';
-import { PLANET_SPECS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
-import { ArchetypeCatalog, type ArchetypeCategory } from '@shared/engine/kitbash';
-import { validateArchetype } from '@shared/engine/kitbash/validate';
+import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { ArchetypeCatalog, type ArchetypeCategory } from '@terra/render/kitbash';
+import { validateArchetype } from '@terra/render/kitbash/validate';
 import { $ } from './dom';
 import { createState, syncURL, type PgState, type ToggleKey, type View } from './state';
 import { StageRig } from './stage/StageRig';

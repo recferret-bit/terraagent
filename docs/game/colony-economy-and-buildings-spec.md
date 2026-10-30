@@ -25,7 +25,7 @@ Every object constructed in a player's colony obeys **5 Hard Constraints** (plus
    - Power is not global magic. Buildings must be linked to Energy Stations via **Power Lines / Relay Pylons**.
    - Power Lines have physical HP, maximum transmission capacity (`Max Load E/s`), and can be severed by **Lightning Strikes**, **Meteorites**, **Alien Fauna**, or **PvP Raids**. Severed branches immediately go `UNPOWERED` until repaired by a Builder Bot.
 4. **Dual Supply System (Resource Storage Cap + Robot Control Supply):**
-   - **Resource Supply Cap:** The colony can only hold a finite amount of `Metals`, `Minerals`, `Petroleum`, and `Water`. Exceeding the cap halts mining until the player builds or upgrades **Resource Supply Depots**.
+   - **Resource Supply Cap (per family, D-34):** The colony holds three resource families, `Metals`, `Minerals` and `Bio`, each with T1/T2/T3 sub-resources (§3.0). Each family has **one storage cap shared by its sub-resources** (their sum may not exceed it, **proposed**). Hub and Supply Depot storage adds the same amount to all three family caps. A full family halts every source of that family until the player builds or upgrades **Resource Supply Depots**. `Energy` is not a family: it is grid power (`E/s`), stored only in Capacitor Banks.
    - **Robot Control Supply (Bandwidth Cap):** Autonomous robots require active AI telemetry bandwidth (`Supply Slots`). To field larger robot fleets, the colony must build and power **Drone Control Arrays (Supply Extensions)**.
 5. **Mandatory Territory Ownership & Immutable Border Collision:**
    - **All buildings (including mines, turrets, and power lines) can ONLY be placed on tiles owned by the player's colony.**
@@ -78,10 +78,41 @@ flowchart LR
 
 ## 3. Master Building Economy Tables (Tiers 1, 2, 3)
 
+### 3.0 Resource tiers and terraforming unlock (D-34)
+
+**Families and sub-resources.** 10 stored sub-resources; `ResourceKey` is the stock key used by the sim, contracts and cargo tokens.
+
+| Family | T1 (from landing) | T2 | T3 | Sources |
+|---|---|---|---|---|
+| **Metals** | Iron `metals.t1` | Light alloys (copper, aluminium) `metals.t2` | Titanium `metals.t3` | Metals Extractor on metal deposits; Harvester on surface metal deposits (T1); Break yields |
+| **Minerals** | Silica `minerals.t1` | Rare earths `minerals.t2` | Exotic crystal `minerals.t3` | Minerals Quarry on mineral deposits; Harvester on surface mineral deposits (T1); Dig Moat yields |
+| **Bio** | Water `bio.water` and Biomass `bio.biomass` | Petroleum / organics `bio.t2` | Gene-stock `bio.t3` | Water Extractor (`bio.water`); Harvester clearing forest (`bio.biomass`) and harvesting Living ground (`bio.t3` once T3 is unlocked, **proposed**); Petroleum Well & Refinery on oil deposits (`bio.t2`) |
+
+**Energy** is not a family: it stays grid power (`E/s`), stored only in Capacitor Banks.
+
+**Unlock rule (both gates, D-34; numbers proposed, data rows per D-35).** An extractor yields its family's T2 sub-resource only when (1) the colony's Terraform % (`UO-TF-06`) is **≥ 30 %** and (2) its deposit ground is terraformed: **≥ 50 % of the tiles within 2 of its footprint** (the ring) are Irrigated or Living. T3 needs Terraform % **≥ 70 %** and **≥ 50 % Living** tiles in that ring. T1 is always produced.
+
+**Yield split (proposed).** Applies to the Metals Extractor and the Minerals Quarry. With T2 unlocked, 30 % of the output becomes T2 (70 % T1). With T3 unlocked, 50 % T1 + 30 % T2 + 20 % T3. Extractor tier (Mk.I–III) only scales the rate, never the split. The Bio sources produce the sub-resource named in the table: the Water Extractor always `bio.water`; the Petroleum Well only `bio.t2`, under the T2 gates; the Harvester `bio.biomass`, plus `bio.t3` on Living ground under the T3 gates.
+
+**Trading.** Every sub-resource is its own cargo token and market pair (F1/F2). T1 trades from day one, so a colony can **buy T2/T3 before it can mine them**.
+
 ### Resource Legend
-- **M:** `Metals` · **Min:** `Minerals` · **Pet:** `Petroleum` · **W:** `Water` · **E/s:** `Energy per second`
+- **M:** `Metals` · **Min:** `Minerals` · **Pet:** Bio fuel/organics (old *Petroleum*) · **W:** `Water` (`bio.water`) · **E/s:** `Energy per second`
+- **Reading the cost columns (D-34 tier rule, until each table is rebalanced).** The `M / Min / Pet / W` columns are read by the tier of the item (a building's tier, a unit's tier per the units spec §5):
+  - **T1 item:** M → `metals.t1`, Min → `minerals.t1`, Pet → `bio.biomass`, W → `bio.water`.
+  - **T2 item:** M and Min are paid 60 % in T1 and 40 % in T2 of their family; Pet → `bio.t2`; W → `bio.water`.
+  - **T3 item:** M and Min are paid 40 % T1, 30 % T2, 30 % T3; Pet → `bio.t2`; W → `bio.water`; **plus 10 % of its M as `bio.t3`**.
+  - Running upkeep (fuel, coolant, terraform water) follows the T1 reading of the building that consumes it: Pet/s → `bio.biomass`, W/s → `bio.water`, Min/s → `minerals.t1` **(proposed)**.
 - **Size:** Grid footprint in tiles (`W × D`).
 - **Build Time:** Construction time in seconds (with 1 Tier-1 Builder Bot; faster with T2/T3 Builder Bots).
+
+### Planet modifiers (D-33)
+
+Planet types are `desert`, `ocean` and `temperate` ([`SIMULATION.md`](../spec/SIMULATION.md) §7.6, §10). Modifiers used in the tables below: Solar **+35 % on Desert**; Water Extractor **×0.5 on Desert**; storms **×1.5 as frequent on Ocean**; deposit richness Desert Metals and Minerals +15 %, Ocean Bio +20 % and Metals −15 %, Temperate Minerals +15 % (generator mix, **proposed**).
+
+### Balance data and the battle-v1 defaults (D-35)
+
+Every number in this spec lives in a data row (`shared/sim/src/data/*.ts`) and can be overridden at runtime (overrides file from `TA_BALANCE_OVERRIDES`, dev console `tune`; SIMULATION `SIM-G-DATA`). Values marked **(proposed, tunable D-35)** are the B1–B13 defaults accepted on 2026-10-30 ([`OWNER_TASKS.md`](../plan/OWNER_TASKS.md)).
 
 ---
 
@@ -89,12 +120,12 @@ flowchart LR
 
 | Building Name | Tier | Size (Tiles) | Build Time | Cost (M / Min / Pet / W) | Power Drain (`-E/s`) | HP | Territory Radius & Effect |
 | :--- | :-: | :-: | :-: | :--- | :-: | :-: | :--- |
-| **Colony Command Hub** *(Starting Core)* | **T1** | `3×3` | `30s` *(0s start)* | `200 M / 100 Min / 50 Pet / 50 W` | `-5 E/s` | `1,500` | Claims **R = 10** tiles; Base Storage `+500` all; Base Robot Supply `+10` |
-| **Colony Command Hub** *(Sector HQ)* | **T2** | `4×4` | `75s` | `600 M / 350 Min / 200 Pet / 150 W` | `-14 E/s` | `3,800` | Claims **R = 15** tiles; Base Storage `+1,500` all; Robot Supply `+25` |
-| **Colony Command Hub** *(Planetary Citadel)* | **T3** | `5×5` | `160s` | `1,800 M / 1,100 Min / 650 Pet / 500 W` | `-35 E/s` | `9,500` | Claims **R = 22** tiles; Base Storage `+4,500` all; Robot Supply `+60` |
+| **Colony Command Hub** *(Starting Core)* | **T1** | `3×3` | `30s` *(0s start)* | `200 M / 100 Min / 50 Pet / 50 W` | `-5 E/s` | `1,500` | Claims **R = 10** tiles; Base Storage `+500` per family; Base Robot Supply `+10` |
+| **Colony Command Hub** *(Sector HQ)* | **T2** | `4×4` | `75s` | `600 M / 350 Min / 200 Pet / 150 W` | `-14 E/s` | `3,800` | Claims **R = 15** tiles; Base Storage `+1,500` per family; Robot Supply `+25` |
+| **Colony Command Hub** *(Planetary Citadel)* | **T3** | `5×5` | `160s` | `1,800 M / 1,100 Min / 650 Pet / 500 W` | `-35 E/s` | `9,500` | Claims **R = 22** tiles; Base Storage `+4,500` per family; Robot Supply `+60`. Upgrade orderable after **10 min in S7** (proposed, tunable D-35) |
 | **Territory Claim Beacon** *(Outpost Spire)* | **T1** | `1×1` | `18s` | `80 M / 40 Min / 0 Pet / 10 W` | `-4 E/s` | `400` | Extends territory by **R = 8** tiles (stops at enemy border) |
 | **Territory Claim Beacon** *(Regional Relay)* | **T2** | `2×2` | `42s` | `220 M / 140 Min / 40 Pet / 30 W` | `-11 E/s` | `1,100` | Extends territory by **R = 14** tiles; reveals fog-of-war `R = 20` |
-| **Territory Claim Beacon** *(Sovereign Obelisk)* | **T3** | `3×3` | `90s` | `600 M / 450 Min / 150 Pet / 100 W` | `-28 E/s` | `3,000` | Extends territory by **R = 22** tiles; buffs friendly turret range `+15%` in radius |
+| **Territory Claim Beacon** *(Sovereign Obelisk)* | **T3** | `3×3` | `90s` | `600 M / 450 Min / 150 Pet / 100 W` | `-28 E/s` | `3,000` | Extends territory by **R = 22** tiles; buffs friendly turret range `+15%` in radius (battle v1: not applied, plain stat bump only, B6) |
 
 ---
 
@@ -119,19 +150,19 @@ flowchart LR
 
 | Station Type | Tier | Size (Tiles) | Build Time | Cost (M / Min / Pet / W) | Internal Drain (`-E/s`) | Gross Output (`+E/s`) | **Net Output (`+E/s`)** | Resource Upkeep & Planet Notes |
 | :--- | :-: | :-: | :-: | :--- | :-: | :-: | :-: | :--- |
-| **Coal / Oil Thermal Plant** | **T1** | `2×2` | `15s` | `80 M / 20 Min / 20 Pet / 10 W` | `-3 E/s` | `+28 E/s` | **`+25 E/s`** | Consumes `-1.5 Pet/s`; pollutes (attracts fauna) |
+| **Coal / Oil Thermal Plant** | **T1** | `2×2` | `15s` | `80 M / 20 Min / 20 Pet / 10 W` | `-3 E/s` | `+28 E/s` | **`+25 E/s`** | Consumes `-1.5 Pet/s` (`bio.biomass`); pollutes (attracts fauna) |
 | **Coal / Oil Thermal Plant** | **T2** | `3×3` | `35s` | `210 M / 70 Min / 60 Pet / 30 W` | `-8 E/s` | `+83 E/s` | **`+75 E/s`** | Consumes `-3.8 Pet/s`; higher heat signature |
 | **Coal / Oil Thermal Plant** | **T3** | `4×4` | `75s` | `550 M / 220 Min / 180 Pet / 90 W` | `-20 E/s` | `+240 E/s` | **`+220 E/s`** | Consumes `-9.0 Pet/s`; heavy industrial output |
 | **Wind Turbine Station** | **T1** | `2×2` | `14s` | `70 M / 35 Min / 5 Pet / 0 W` | `-1 E/s` | `+16 E/s` | **`+15 E/s`** | `0` fuel; output varies `50%–140%` with wind |
-| **Wind Turbine Station** | **T2** | `3×3` | `32s` | `180 M / 110 Min / 25 Pet / 0 W` | `-3 E/s` | `+48 E/s` | **`+45 E/s`** | High-altitude rotor; steady in storms |
-| **Wind Turbine Station** | **T3** | `4×4` | `70s` | `480 M / 320 Min / 80 Pet / 0 W` | `-8 E/s` | `+143 E/s` | **`+135 E/s`** | Vortex multi-rotor; harvests storm energy (`+30%`) |
+| **Wind Turbine Station** | **T2** | `3×3` | `32s` | `180 M / 110 Min / 25 Pet / 0 W` | `-3 E/s` | `+48 E/s` | **`+45 E/s`** | High-altitude rotor (storms do not change wind, B13) |
+| **Wind Turbine Station** | **T3** | `4×4` | `70s` | `480 M / 320 Min / 80 Pet / 0 W` | `-8 E/s` | `+143 E/s` | **`+135 E/s`** | Vortex multi-rotor (battle v1 / B6, B13: plain output bump; no storm bonus) |
 | **Solar Collector Array** | **T1** | `2×2` | `18s` | `60 M / 75 Min / 10 Pet / 5 W` | `-1 E/s` | `+21 E/s` | **`+20 E/s`** | `0 E/s` at night; **`+35%` bonus on Desert** |
-| **Solar Collector Array** | **T2** | `3×3` | `40s` | `160 M / 220 Min / 35 Pet / 15 W` | `-3 E/s` | `+63 E/s` | **`+60 E/s`** | Sun-tracking heliostats; `-25%` on Ice planet |
+| **Solar Collector Array** | **T2** | `3×3` | `40s` | `160 M / 220 Min / 35 Pet / 15 W` | `-3 E/s` | `+63 E/s` | **`+60 E/s`** | Sun-tracking heliostats; same planet modifiers as T1 |
 | **Solar Collector Array** | **T3** | `4×4` | `85s` | `420 M / 640 Min / 110 Pet / 40 W` | `-8 E/s` | `+188 E/s` | **`+180 E/s`** | Concentrated solar thermal tower |
 | **Hydro Power Station** | **T1** | `2×3` | `25s` | `110 M / 60 Min / 15 Pet / 40 W` | `-4 E/s` | `+39 E/s` | **`+35 E/s`** | Must be placed on/adjacent to Water/River tiles |
-| **Hydro Power Station** | **T2** | `3×4` | `55s` | `300 M / 180 Min / 50 Pet / 120 W` | `-10 E/s` | `+115 E/s` | **`+105 E/s`** | `-30%` efficiency during Ice Planet deep freeze |
+| **Hydro Power Station** | **T2** | `3×4` | `55s` | `300 M / 180 Min / 50 Pet / 120 W` | `-10 E/s` | `+115 E/s` | **`+105 E/s`** | No planet modifier (the Ice planet is not a type, D-33) |
 | **Hydro Power Station** | **T3** | `4×5` | `115s` | `820 M / 520 Min / 160 Pet / 350 W` | `-25 E/s` | `+335 E/s` | **`+310 E/s`** | Deep-crust geothermal-hydro dam |
-| **Nuclear Reactor** | **T1** | `3×3` | `60s` | `350 M / 300 Min / 120 Pet / 150 W` | `-15 E/s` | `+135 E/s` | **`+120 E/s`** | Consumes `-1.0 Min/s` & `-3.0 W/s` (cooling) |
+| **Nuclear Reactor** | **T1** | `3×3` | `60s` | `350 M / 300 Min / 120 Pet / 150 W` | `-15 E/s` | `+135 E/s` | **`+120 E/s`** | Consumes `-1.0 Min/s` & `-3.0 W/s` (cooling; `minerals.t1` & `bio.water`) |
 | **Nuclear Reactor** | **T2** | `4×4` | `130s` | `950 M / 850 Min / 350 Pet / 400 W` | `-40 E/s` | `+400 E/s` | **`+360 E/s`** | Consumes `-2.5 Min/s` & `-7.5 W/s` |
 | **Nuclear Reactor** | **T3** | `5×5` | `240s` | `2,600 M / 2,400 Min / 950 Pet / 1,100 W` | `-90 E/s` | `+1,190 E/s`| **`+1,100 E/s`**| Tokamak Fusion Core; powers late-game Rocket & Terraforming |
 
@@ -141,18 +172,18 @@ flowchart LR
 
 | Building Name | Tier | Size (Tiles) | Build Time | Cost (M / Min / Pet / W) | Power Drain (`-E/s`) | HP | Base Production Rate |
 | :--- | :-: | :-: | :-: | :--- | :-: | :-: | :--- |
-| **Metals Extractor** | **T1** | `2×2` | `14s` | `65 M / 20 Min / 0 Pet / 10 W` | `-6 E/s` | `500` | **`+4.0 Metals/s`** (scaled by deposit richness) |
-| **Metals Extractor** | **T2** | `3×3` | `34s` | `180 M / 75 Min / 25 Pet / 30 W` | `-18 E/s` | `1,350` | **`+12.5 Metals/s`** |
-| **Metals Extractor** | **T3** | `4×4` | `75s` | `490 M / 240 Min / 90 Pet / 85 W` | `-48 E/s` | `3,400` | **`+38.0 Metals/s`** (deep-core laser bore) |
-| **Minerals Quarry** | **T1** | `2×2` | `16s` | `75 M / 30 Min / 5 Pet / 15 W` | `-8 E/s` | `500` | **`+3.0 Minerals/s`** |
-| **Minerals Quarry** | **T2** | `3×3` | `38s` | `210 M / 95 Min / 35 Pet / 45 W` | `-22 E/s` | `1,350` | **`+9.5 Minerals/s`** |
-| **Minerals Quarry** | **T3** | `4×4` | `82s` | `560 M / 300 Min / 110 Pet / 120 W` | `-58 E/s` | `3,400` | **`+30.0 Minerals/s`** |
-| **Petroleum Well & Refinery** | **T1** | `2×2` | `20s` | `90 M / 45 Min / 15 Pet / 20 W` | `-10 E/s` | `450` | **`+2.5 Petroleum/s`** (flammable if attacked) |
-| **Petroleum Well & Refinery** | **T2** | `3×3` | `45s` | `250 M / 140 Min / 50 Pet / 60 W` | `-28 E/s` | `1,200` | **`+8.0 Petroleum/s`** |
-| **Petroleum Well & Refinery** | **T3** | `4×4` | `95s` | `680 M / 420 Min / 160 Pet / 170 W` | `-72 E/s` | `3,000` | **`+25.0 Petroleum/s`** |
-| **Water Extractor / Condenser**| **T1** | `2×2` | `15s` | `60 M / 35 Min / 10 Pet / 0 W` | `-7 E/s` | `480` | **`+3.5 Water/s`** (`0.5x` on Desert, `1.5x` on Ice) |
-| **Water Extractor / Condenser**| **T2** | `3×3` | `35s` | `165 M / 110 Min / 35 Pet / 0 W` | `-20 E/s` | `1,250` | **`+11.0 Water/s`** |
-| **Water Extractor / Condenser**| **T3** | `4×4` | `78s` | `450 M / 330 Min / 110 Pet / 0 W` | `-52 E/s` | `3,200` | **`+34.0 Water/s`** |
+| **Metals Extractor** | **T1** | `2×2` | `14s` | `65 M / 20 Min / 0 Pet / 10 W` | `-6 E/s` | `500` | **`+4.0 Metals/s`** (scaled by deposit richness; `metals.t1`, with T2/T3 shares per the §3.0 unlock rule and yield split) |
+| **Metals Extractor** | **T2** | `3×3` | `34s` | `180 M / 75 Min / 25 Pet / 30 W` | `-18 E/s` | `1,350` | **`+12.5 Metals/s`** (same split) |
+| **Metals Extractor** | **T3** | `4×4` | `75s` | `490 M / 240 Min / 90 Pet / 85 W` | `-48 E/s` | `3,400` | **`+38.0 Metals/s`** (deep-core laser bore; same split) |
+| **Minerals Quarry** | **T1** | `2×2` | `16s` | `75 M / 30 Min / 5 Pet / 15 W` | `-8 E/s` | `500` | **`+3.0 Minerals/s`** (`minerals.t1`, with T2/T3 shares per §3.0) |
+| **Minerals Quarry** | **T2** | `3×3` | `38s` | `210 M / 95 Min / 35 Pet / 45 W` | `-22 E/s` | `1,350` | **`+9.5 Minerals/s`** (same split) |
+| **Minerals Quarry** | **T3** | `4×4` | `82s` | `560 M / 300 Min / 110 Pet / 120 W` | `-58 E/s` | `3,400` | **`+30.0 Minerals/s`** (same split) |
+| **Petroleum Well & Refinery** | **T1** | `2×2` | `20s` | `90 M / 45 Min / 15 Pet / 20 W` | `-10 E/s` | `450` | **`+2.5 bio.t2/s`** on an oil deposit, **only while the T2 gates of §3.0 are met** (0 before); flammable if attacked |
+| **Petroleum Well & Refinery** | **T2** | `3×3` | `45s` | `250 M / 140 Min / 50 Pet / 60 W` | `-28 E/s` | `1,200` | **`+8.0 bio.t2/s`** (T2 gates) |
+| **Petroleum Well & Refinery** | **T3** | `4×4` | `95s` | `680 M / 420 Min / 160 Pet / 170 W` | `-72 E/s` | `3,000` | **`+25.0 bio.t2/s`** (T2 gates) |
+| **Water Extractor / Condenser**| **T1** | `2×2` | `15s` | `60 M / 35 Min / 10 Pet / 0 W` | `-7 E/s` | `480` | **`+3.5 bio.water/s`** (`0.5x` on Desert); no deposit needed; always T1 |
+| **Water Extractor / Condenser**| **T2** | `3×3` | `35s` | `165 M / 110 Min / 35 Pet / 0 W` | `-20 E/s` | `1,250` | **`+11.0 bio.water/s`** |
+| **Water Extractor / Condenser**| **T3** | `4×4` | `78s` | `450 M / 330 Min / 110 Pet / 0 W` | `-52 E/s` | `3,200` | **`+34.0 bio.water/s`** |
 
 ---
 
@@ -160,12 +191,12 @@ flowchart LR
 
 | Building Name | Tier | Size (Tiles) | Build Time | Cost (M / Min / Pet / W) | Power Drain (`-E/s`) | HP | Supply / Storage Extension Provided |
 | :--- | :-: | :-: | :-: | :--- | :-: | :-: | :--- |
-| **Resource Supply Depot** *(Storage Silo)* | **T1** | `2×2` | `12s` | `60 M / 25 Min / 10 Pet / 0 W` | `-2 E/s` | `600` | **`+1,000` Max Storage Cap** for Metals, Minerals, Pet, Water |
-| **Resource Supply Depot** *(Logistics Warehouse)* | **T2** | `3×3` | `28s` | `170 M / 80 Min / 35 Pet / 10 W` | `-6 E/s` | `1,600` | **`+3,500` Max Storage Cap** for all 4 solid/liquid resources |
-| **Resource Supply Depot** *(Mega Vault)* | **T3** | `4×4` | `65s` | `480 M / 260 Min / 110 Pet / 40 W` | `-16 E/s` | `4,200` | **`+12,000` Max Storage Cap** + protects `30%` from PvP raids |
-| **Drone Control Array** *(Unit Supply Extension)* | **T1** | `1×1` | `14s` | `55 M / 45 Min / 10 Pet / 5 W` | `-5 E/s` | `350` | **`+8` Robot Supply Cap** (allows building more robots) |
-| **Drone Control Array** *(Unit Supply Extension)* | **T2** | `2×2` | `32s` | `150 M / 140 Min / 40 Pet / 20 W` | `-14 E/s` | `950` | **`+22` Robot Supply Cap** + `+10%` robot movement speed in sector |
-| **Drone Control Array** *(Unit Supply Extension)* | **T3** | `3×3` | `70s` | `420 M / 420 Min / 130 Pet / 65 W` | `-36 E/s` | `2,500` | **`+60` Robot Supply Cap** + `+20%` robot work/mining speed |
+| **Resource Supply Depot** *(Storage Silo)* | **T1** | `2×2` | `12s` | `60 M / 25 Min / 10 Pet / 0 W` | `-2 E/s` | `600` | **`+1,000` storage cap** for each family (Metals, Minerals, Bio) |
+| **Resource Supply Depot** *(Logistics Warehouse)* | **T2** | `3×3` | `28s` | `170 M / 80 Min / 35 Pet / 10 W` | `-6 E/s` | `1,600` | **`+3,500` storage cap** for each family |
+| **Resource Supply Depot** *(Mega Vault)* | **T3** | `4×4` | `65s` | `480 M / 260 Min / 110 Pet / 40 W` | `-16 E/s` | `4,200` | **`+12,000` storage cap** for each family + protects `30%` from PvP raids (battle v1: not applied, B6) |
+| **Drone Control Array** *(Unit Supply Extension)* | **T1** | `1×1` (data footprint; the model is refit, B8) | `14s` | `55 M / 45 Min / 10 Pet / 5 W` | `-5 E/s` | `350` | **`+8` Robot Supply Cap** (allows building more robots) |
+| **Drone Control Array** *(Unit Supply Extension)* | **T2** | `2×2` | `32s` | `150 M / 140 Min / 40 Pet / 20 W` | `-14 E/s` | `950` | **`+22` Robot Supply Cap** + `+10%` robot movement speed in sector (battle v1: not applied, B6) |
+| **Drone Control Array** *(Unit Supply Extension)* | **T3** | `3×3` | `70s` | `420 M / 420 Min / 130 Pet / 65 W` | `-36 E/s` | `2,500` | **`+60` Robot Supply Cap** + `+20%` robot work/mining speed (battle v1: not applied, B6) |
 | **Inter-Colony Trade Hub** *(NEAR Intents Port)* | **T1** | `2×2` | `22s` | `100 M / 80 Min / 30 Pet / 10 W` | `-6 E/s` | `650` | Enables NEAR Intents trades up to **250 units/min** |
 | **Inter-Colony Trade Hub** *(NEAR Intents Port)* | **T2** | `3×3` | `50s` | `280 M / 240 Min / 95 Pet / 30 W` | `-16 E/s` | `1,750` | Trade throughput **900 units/min**; lower transport fuel fee |
 | **Inter-Colony Trade Hub** *(NEAR Intents Port)* | **T3** | `4×4` | `110s` | `780 M / 700 Min / 280 Pet / 90 W` | `-42 E/s` | `4,500` | Trade throughput **3,500 units/min**; orbital drop pod delivery |
@@ -176,12 +207,12 @@ flowchart LR
 
 | Building Name | Tier | Size (Tiles) | Build Time | Cost (M / Min / Pet / W) | Power Drain (`-E/s`) | HP | Function & Output |
 | :--- | :-: | :-: | :-: | :--- | :-: | :-: | :--- |
-| **Robotics Factory** | **T1** | `3×3` | `25s` | `120 M / 70 Min / 30 Pet / 20 W` | `-10 E/s` | `800` | Produces **Tier 1** Robots (`1.0x` build speed) |
+| **Robotics Factory** | **T1** | `3×3` (data footprint; the model is refit, B8) | `25s` | `120 M / 70 Min / 30 Pet / 20 W` | `-10 E/s` | `800` | Produces **Tier 1** Robots (`1.0x` build speed) |
 | **Robotics Factory** | **T2** | `4×4` | `60s` | `340 M / 230 Min / 100 Pet / 60 W` | `-28 E/s` | `2,200` | Produces **Tier 1 & Tier 2** Robots (`1.5x` speed on T1) |
 | **Robotics Factory** | **T3** | `5×5` | `130s` | `950 M / 720 Min / 320 Pet / 180 W` | `-75 E/s` | `5,800` | Produces **Tier 1, 2 & 3** Robots (`2.2x` speed on T1/T2) |
-| **Terraforming Processor** | **T1** | `3×3` | `40s` | `200 M / 180 Min / 80 Pet / 100 W` | `-25 E/s` | `900` | Consumes `-4 W/s`; terraforms **R = 10** tiles (`+0.15%/s` planet score) |
-| **Terraforming Processor** | **T2** | `4×4` | `90s` | `580 M / 540 Min / 250 Pet / 300 W` | `-70 E/s` | `2,400` | Consumes `-10 W/s`; terraforms **R = 20** tiles (`+0.50%/s` planet score) |
-| **Terraforming Processor** | **T3** | `5×5` | `190s` | `1,650 M / 1,600 Min / 750 Pet / 900 W`| `-190 E/s`| `6,500` | Consumes `-26 W/s`; atmospheric converter (**R = 38**, `+1.65%/s` score) |
+| **Terraforming Processor** | **T1** | `3×3` | `40s` | `200 M / 180 Min / 80 Pet / 100 W` | `-25 E/s` | `900` | Consumes `-4 W/s` (`bio.water`); turns Prepared tiles in **R = 10** into Living at **0.5 tiles/s** (proposed, tunable D-35) (`+0.15%/s` planet score) |
+| **Terraforming Processor** | **T2** | `4×4` | `90s` | `580 M / 540 Min / 250 Pet / 300 W` | `-70 E/s` | `2,400` | Consumes `-10 W/s`; **R = 20** tiles at **1.7 tiles/s** (proposed: T1 rate × the score-rate ratio) (`+0.50%/s` planet score) |
+| **Terraforming Processor** | **T3** | `5×5` | `190s` | `1,650 M / 1,600 Min / 750 Pet / 900 W`| `-190 E/s`| `6,500` | Consumes `-26 W/s`; atmospheric converter (**R = 38**, **5.5 tiles/s** proposed, `+1.65%/s` score) |
 | **Interplanetary Rocket Silo**| **T1** *(Probe)* | `3×3` | `90s` | `600 M / 500 Min / 400 Pet / 200 W` | `-45 E/s` | `1,800` | Launches **Sector Recon Probe** (reveals target planets & resource yields) |
 | **Interplanetary Rocket Silo**| **T2** *(Lander)*| `4×4` | `210s` | `1,800 M / 1,600 Min / 1,400 Pet / 700 W`| `-120 E/s`| `4,800` | Launches **Founder Pod** to colonize next planet (`+25%` starting stock) |
 | **Interplanetary Rocket Silo**| **T3** *(Ark)* | `6×6` | `420s` | `5,200 M / 4,800 Min / 4,200 Pet / 2,000 W`| `-320 E/s`| `12,000`| Launches **Colony Ark** (starts new planet with T2 Hub + 3 T2 Robots) |
@@ -192,15 +223,21 @@ flowchart LR
 
 | Building Name | Tier | Size (Tiles) | Build Time | Cost (M / Min / Pet / W) | Power Drain (`-E/s`) | HP | Combat / Defense Stats |
 | :--- | :-: | :-: | :-: | :--- | :-: | :-: | :--- |
-| **Autocannon Turret** *(Kinetic)* | **T1** | `1×1` | `12s` | `55 M / 20 Min / 10 Pet / 0 W` | `-3 E/s` | `450` | Range `8`; `18 DPS`; consumes `-0.2 Metals/s` while firing |
+| **Autocannon Turret** *(Kinetic)* | **T1** | `1×1` | `12s` | `55 M / 20 Min / 10 Pet / 0 W` | `-3 E/s` | `450` | Range `8`; `18 DPS`; hits ground **and air**. Ammo drain `-0.2 metals.t1/s` while firing: **not in battle v1** (proposed, tunable D-35) |
 | **Autocannon Turret** *(Twin Gatling)*| **T2** | `2×2` | `28s` | `150 M / 65 Min / 35 Pet / 10 W` | `-8 E/s` | `1,250` | Range `11`; `52 DPS`; shreds light swarm fauna |
-| **Autocannon Turret** *(Railgun)* | **T3** | `3×3` | `62s` | `410 M / 210 Min / 110 Pet / 30 W` | `-22 E/s` | `3,300` | Range `16`; `155 DPS`; armor-piercing anti-robot rounds |
-| **Laser Defense Tower** *(Energy)* | **T1** | `1×1` | `16s` | `50 M / 55 Min / 15 Pet / 10 W` | `-8 E/s` | `400` | Range `9`; `24 DPS`; `0` ammo cost, spikes grid `-12 E/s` on fire |
+| **Autocannon Turret** *(Railgun)* | **T3** | `3×3` | `62s` | `410 M / 210 Min / 110 Pet / 30 W` | `-22 E/s` | `3,300` | Range `16`; `155 DPS`; armor-piercing anti-robot rounds (battle v1: plain stat bump, B6) |
+| **Laser Defense Tower** *(Energy)* | **T1** | `1×1` | `16s` | `50 M / 55 Min / 15 Pet / 10 W` | `-8 E/s` | `400` | Range `9`; `24 DPS`; hits ground **and air**; `0` ammo cost. Grid spike `-12 E/s` on fire: **not in battle v1** (proposed, tunable D-35). Unlocks at **S3** (B7) |
 | **Laser Defense Tower** *(Pulse Beam)*| **T2** | `2×2` | `36s` | `140 M / 165 Min / 50 Pet / 35 W` | `-22 E/s` | `1,100` | Range `13`; `72 DPS`; melts heavy carapace |
-| **Laser Defense Tower** *(Plasma Arc)*| **T3** | `3×3` | `78s` | `390 M / 480 Min / 150 Pet / 100 W`| `-60 E/s` | `2,900` | Range `17`; `215 DPS`; chains lightning between 3 targets |
+| **Laser Defense Tower** *(Plasma Arc)*| **T3** | `3×3` | `78s` | `390 M / 480 Min / 150 Pet / 100 W`| `-60 E/s` | `2,900` | Range `17`; `215 DPS`; chains lightning between 3 targets (battle v1: plain stat bump, B6) |
 | **Hazard Shield & Lightning Rod** | **T1** | `1×1` | `14s` | `45 M / 50 Min / 5 Pet / 10 W` | `-4 E/s` | `500` | Intercepts **Lightning Strikes** within `R = 10` (protects Power Lines) |
-| **Hazard Shield & Lightning Rod** | **T2** | `2×2` | `34s` | `130 M / 150 Min / 30 Pet / 30 W` | `-12 E/s` | `1,400` | Intercepts **Lightning & Small Meteorites** in `R = 16`; converts strike to `+200 E` |
-| **Hazard Shield & Lightning Rod** | **T3** | `3×3` | `75s` | `360 M / 440 Min / 100 Pet / 90 W` | `-32 E/s` | `3,800` | Projects dome shield (`R = 24`, `2,500 Shield HP`) against PvP rockets & storms |
+| **Hazard Shield & Lightning Rod** | **T2** | `2×2` | `34s` | `130 M / 150 Min / 30 Pet / 30 W` | `-12 E/s` | `1,400` | Intercepts **Lightning & Small Meteorites** in `R = 16`; converts strike to `+200 E` (battle v1: lightning interception only, B6) |
+| **Hazard Shield & Lightning Rod** | **T3** | `3×3` | `75s` | `360 M / 440 Min / 100 Pet / 90 W` | `-32 E/s` | `3,800` | Projects dome shield (`R = 24`, `2,500 Shield HP`) against PvP rockets & storms (battle v1: not applied, B6) |
+
+**Battle v1 defaults (proposed, tunable D-35; B2, B4, B6, B10, B11).** Units-spec §5.4 rules apply to turrets:
+- Only the **Autocannon** and the **Laser Tower** (plus the Anti-Air unit and the Fighter) hit air; Recon, Tank, Artillery and HQ weapons do not.
+- T2/T3 special effects (Plasma Arc chain, Shield dome, Railgun AP, Depot T3 raid protection, Beacon T3 turret range, DCA T2/T3 bonuses, Hazard Shield T2) are **not** simulated in battle v1: a higher tier is a plain stat bump (HP, DPS, range, radius) only.
+- No Autocannon ammo drain and no Laser grid spike in battle v1.
+- Building view radius = footprint radius + 4 tiles; Command Hub and Beacon T1 = footprint radius + 6 tiles.
 
 ---
 

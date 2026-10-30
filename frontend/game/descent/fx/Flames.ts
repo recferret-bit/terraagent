@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLSL_NOISE } from '@shared/engine/visuals/space/glslNoise';
+import { GLSL_NOISE } from '@terra/render/visuals/space/glslNoise';
 
 /**
  * Retro-rocket jets, one per pod nozzle. Each jet = white-blue HDR core with standing shock diamonds (Mach disks)

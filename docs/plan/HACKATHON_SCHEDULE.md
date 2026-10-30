@@ -6,10 +6,10 @@
 
 | Set | Issues | Effort (units) | Critical path (units) |
 |---|---|---|---|
-| **H** (must) | 384 | 293.5 | 21.5 |
-| H + H+ (stretch) | 445 | 338.0 | 21.5 |
-| H + H2 (real NEAR) | 405 | 309.0 | 21.5 |
-| Whole plan | 862 | 625.0 | 21.5 |
+| **H** (must) | 387 | 293.0 | 21.0 |
+| H + H+ (stretch) | 451 | 334.5 | 21.0 |
+| H + H2 (real NEAR) | 408 | 308.0 | 21.0 |
+| Whole plan | 861 | 611.0 | 22.0 |
 
 One **unit** = one M issue (an S is ½). The critical path is the longest chain of dependencies, including each wave e2e waiting for the e2e of the waves it depends on. No number of agents finishes faster than it.
 
@@ -17,11 +17,11 @@ One **unit** = one M issue (an S is ½). The critical path is the longest chain 
 
 | Agents | 4 | 6 | 8 | 10 | 12 | 16 | 20 |
 |---|---|---|---|---|---|---|---|
-| Units to finish | 75.0 | 51.5 | 40.0 | 33.0 | 29.0 | 24.0 | 21.5 |
-| Merges per unit (avg) | 5.1 | 7.5 | 9.6 | 11.6 | 13.2 | 16.0 | 17.9 |
-| Days at 1 unit/agent/day | 75.0 | 51.5 | 40.0 | 33.0 | 29.0 | 24.0 | 21.5 |
-| Days at 2 units/agent/day | 37.5 | 25.8 | 20.0 | 16.5 | 14.5 | 12.0 | 10.8 |
-| Days at 3 units/agent/day | 25.0 | 17.2 | 13.3 | 11.0 | 9.7 | 8.0 | 7.2 |
+| Units to finish | 75.5 | 52.0 | 40.5 | 34.0 | 29.0 | 23.5 | 21.0 |
+| Merges per unit (avg) | 5.1 | 7.4 | 9.6 | 11.4 | 13.3 | 16.5 | 18.4 |
+| Days at 1 unit/agent/day | 75.5 | 52.0 | 40.5 | 34.0 | 29.0 | 23.5 | 21.0 |
+| Days at 2 units/agent/day | 37.8 | 26.0 | 20.2 | 17.0 | 14.5 | 11.8 | 10.5 |
+| Days at 3 units/agent/day | 25.2 | 17.3 | 13.5 | 11.3 | 9.7 | 7.8 | 7.0 |
 
 The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units/agent/day is the measured throughput of one agent including review, CI and merge; see the calibration rule in HACKATHON_CUT.md.
 
@@ -29,7 +29,7 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 
 | # | Issue | Size | Finishes at | Title |
 |---|---|---|---|---|
-| 1 | [W00-02](waves/W00-platform-skeleton.md) | M | 1.0 | npm-workspaces root: `shared/{contracts,config,db,sim}`, `backend/app`, `client`; `tsconfig.base.json`, ESLint |
+| 1 | [W00-02](waves/W00-platform-skeleton.md) | M | 1.0 | npm-workspaces root: new packages `shared/{contracts,config,db,sim}` (`@terra/contracts`, `@terra/config`, `@t |
 | 2 | [W00-05](waves/W00-platform-skeleton.md) | S | 1.5 | `@terra/config`: zod env loader merged per module, `.env.example`, `envFlagTrue()` (only the exact string `tru |
 | 3 | [W00-09](waves/W00-platform-skeleton.md) | M | 2.5 | NestJS app skeleton: `main.ts`, module list auto-built from `modules/*/`, CORS allow-list, `/v1/healthz`, `/v1 |
 | 4 | [W00-18](waves/W00-platform-skeleton.md) | M | 3.5 | `game` module thread pool: `SIM_THREADS = cores − 1`, planet → thread by `hash(planetId) % n`, MessagePort pro |
@@ -44,73 +44,78 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 | 13 | [W02-10](waves/W02-first-light.md) | M | 11.0 | Hub worker production: Units lane at the Hub (5-slot buffer, 1.0×), paid on start, `supply_cap` check (supply  |
 | 14 | [W02-13](waves/W02-first-light.md) | M | 12.0 | Queue v1, part 1: Construction and Units lanes; entry lifecycle `queued → waiting(reason) → in_progress → done |
 | 15 | [W02-14](waves/W02-first-light.md) | M | 13.0 | Queue v1, part 2: wait reasons `resources` (with the missing amounts), `storage` (cost > cap, never earmarks), |
-| 16 | [W03-12](waves/W03-the-grid.md) | M | 14.0 | Four lanes in sim: Construction, Terraform, Units, HQ-goal shell; precedence `system > player > hq > ai > auto |
-| 17 | [W03-13](waves/W03-the-grid.md) | M | 15.0 | Dispatch v2: scan by precedence, first affordable + eligible starts (non-blocking), nearest idle eligible work |
-| 18 | [W03-19](waves/W03-the-grid.md) | M | 16.0 | Queue panel v2: four lane tabs, drag reorder, wait-reason chips with ETA, earmark bars, `waiting(storage)` hin |
-| 19 | [W03-29](waves/W03-the-grid.md) | M | 17.0 | Wave e2e + scenario `w03-the-grid` + tag `wave-03` |
-| 20 | [W05-33](waves/W05-shape-the-land.md) | M | 18.0 | Wave e2e + scenarios `w05-shape-the-land` and `w05-desert` + tag `wave-05` |
-| 21 | [W14-28](waves/W14-fortify.md) | M | 19.0 | Wave e2e + scenario `w14-fortify` + tag `wave-14` |
-| 22 | [W25-29](waves/W25-launch-ops.md) | M | 20.0 | Demo video: a 2–3 min script covering landfall → economy → terraform → combat → walls → cargo → market → Guild |
-| 23 | [W25-30](waves/W25-launch-ops.md) | S | 20.5 | X post: "built at NEAR HACKATHON", video, link to the repo and demo |
-| 24 | [W25-31](waves/W25-launch-ops.md) | S | 21.0 | Submission form: name, team lead, email, team size solo, tracks (09 + 07 + 05, + 10/12 if F6/F7 qualify), main |
-| 25 | [W25-33](waves/W25-launch-ops.md) | S | 21.5 | Wave e2e `e2e/w25.spec.ts` (demo steps 1–6 against `stack:local`; the hackathon `@hack` run is steps 3, 4 and  |
+| 16 | [W03-12](waves/W03-the-grid.md) | M | 14.0 | Four lanes in sim (extends W02-13/W02-14): Construction, Terraform, Units, HQ-goal shell; precedence `system > |
+| 17 | [W03-13](waves/W03-the-grid.md) | S | 14.5 | Earmarks: a resource-starved entry earmarks its missing amount after 60 s, capped at 80 % of storage; `waiting |
+| 18 | [W03-19](waves/W03-the-grid.md) | M | 15.5 | Queue panel v2 (extends W02-25): four lane tabs, earmark bars, `waiting(storage)` hint button ("build Depot" o |
+| 19 | [W03-29](waves/W03-the-grid.md) | M | 16.5 | Wave e2e + scenario `w03-the-grid` + tag `wave-03` |
+| 20 | [W05-33](waves/W05-shape-the-land.md) | M | 17.5 | Wave e2e + scenarios `w05-shape-the-land`, `w05-desert` and `w05-ocean` (both land with W05-17; `w05-tiers` co |
+| 21 | [W14-28](waves/W14-fortify.md) | M | 18.5 | Wave e2e + scenario `w14-fortify` + tag `wave-14` |
+| 22 | [W25-29](waves/W25-launch-ops.md) | M | 19.5 | Demo video: a 2–3 min script covering landfall → economy → terraform → combat → walls → cargo → market → Guild |
+| 23 | [W25-30](waves/W25-launch-ops.md) | S | 20.0 | X post: "built at NEAR HACKATHON", video, link to the repo and demo |
+| 24 | [W25-31](waves/W25-launch-ops.md) | S | 20.5 | Submission form: name, team lead, email, team size solo, tracks (09 + 07 + 05, + 10/12 if F6/F7 qualify), main |
+| 25 | [W25-33](waves/W25-launch-ops.md) | S | 21.0 | Wave e2e `e2e/w25.spec.ts` (demo steps 1–6 against `stack:local`; the hackathon `@hack` run is steps 3, 4 and  |
 
-## 3. Start order with 12 agents (H)
+## 3. Start order with 10 agents (H)
 
-Issues grouped by the unit in which they start (`--plan-agents 12`); ★ = on the critical path. Finishes after **29.0 units**. An agent that runs out of H work picks the next ready H+ issue of the same wave.
+Issues grouped by the unit in which they start (`--plan-agents 10`); ★ = on the critical path. Finishes after **34.0 units**. An agent that runs out of H work picks the next ready H+ issue of the same wave.
 
 | Unit | Waves active | Starts |
 |---|---|---|
-| 1 | W00 W10 W13 W15 | W00-02★, W10-16, W13-02, W15-14 |
-| 2 | W00 | W00-01, W00-03, W00-04, W00-05★, W00-09★, W00-11, W00-14, W00-48 |
-| 3 | W00 W01 W11 W12 W25 | W00-06, W00-07, W00-08, W00-10, W00-12, W00-15, W00-16, W00-17, W00-18★, W00-21, W00-27, W00-44, W01-02, W01-06, W11-01, W12-01, W25-25 |
-| 4 | W00 W01 W02 W05 W11 W12 W25 | W00-13, W00-19, W00-22★, W00-29, W00-30, W00-54, W01-01, W01-04, W01-07, W02-04, W05-17, W11-02, W12-02, W12-08, W12-23, W25-02 |
-| 5 | W00 W01 W02 W04 W12 W25 | W00-23, W00-24★, W00-25, W00-31, W00-32, W01-03, W01-05, W01-09, W01-10, W01-11, W02-01, W04-01, W12-03, W25-03 |
-| 6 | W00 W01 W02 W03 W05 W06 W10 W12 | W00-26, W00-33, W00-35, W00-37, W00-40, W01-08★, W01-24, W02-02, W02-03, W02-22, W03-01, W05-18, W06-01, W06-09, W06-10, W10-01, W12-05 |
-| 7 | W00 W01 W06 W10 W13 | W00-28, W00-38, W00-39, W00-41, W00-42, W00-56, W01-12, W01-13★, W01-35, W06-02, W10-02, W10-04, W10-06, W10-10, W13-01 |
-| 8 | W00 W01 W06 W10 W13 | W00-45, W00-55, W00-57, W01-14★, W01-15★, W01-20, W01-26, W01-27, W06-03, W06-04, W06-05, W06-13, W06-15, W10-05, W10-12, W13-08 |
-| 9 | W00 W01 W02 W06 W10 W13 | W00-46, W00-53, W00-58, W01-16★, W01-21, W01-28, W01-29, W02-08, W02-30, W06-06, W06-08, W06-11, W10-08, W10-09, W10-13, W13-07, W13-11 |
-| 10 | W00 W01 W02 W06 W10 W13 | W00-50, W01-17, W01-25, W01-30, W01-31, W01-34, W02-05, W02-09★, W02-23, W06-12, W06-14, W06-16, W06-22, W10-14, W13-12 |
-| 11 | W01 W02 W03 W06 W07 W10 W13 | W01-37, W02-06, W02-07, W02-10★, W02-26, W03-05, W06-19, W06-20, W06-25, W06-28, W07-01, W10-03, W10-20, W13-03, W13-04, W13-13 |
-| 12 | W02 W03 W07 W10 W13 | W02-11, W02-12, W02-13★, W02-17, W02-24, W03-07, W07-02, W10-07, W10-11, W10-19, W10-21, W10-26, W13-05, W13-09, W13-18 |
-| 13 | W02 W03 W05 W07 W10 W13 | W02-14★, W02-16, W02-28, W03-02, W03-06, W03-10, W03-11, W03-17, W05-01, W07-03, W07-05, W07-08, W10-22, W13-06, W13-14, W13-19, W13-20 |
-| 14 | W02 W03 W05 W07 W13 | W02-15, W02-25, W03-03, W03-12★, W03-16, W05-02, W07-09, W07-10, W07-14, W13-10, W13-15, W13-16, W13-21, W13-23, W13-24 |
-| 15 | W02 W03 W05 W07 W10 W12 W13 W15 | W02-34, W03-13★, W05-03, W05-04, W05-05, W05-07, W07-07, W07-11, W07-12, W07-13, W07-15, W07-17, W10-30, W12-09, W13-27, W13-30, W15-01 |
-| 16 | W03 W05 W07 W13 W15 | W03-19★, W05-09, W07-04, W07-06, W07-16, W07-18, W07-19, W07-20, W07-21, W07-22, W07-27, W07-29, W13-35, W15-02, W15-03, W15-06 |
-| 17 | W03 W05 W08 W09 W12 W15 | W03-29★, W05-08, W05-10, W05-19, W05-20, W05-22, W05-23, W05-29, W08-01, W09-01, W12-12, W12-13, W15-04, W15-05, W15-08, W15-18 |
-| 18 | W04 W05 W07 W08 W09 W12 W14 W15 W22 | W04-03, W05-33★, W07-32, W08-02, W08-16, W08-23, W09-13, W12-14, W12-15, W12-16, W12-20, W12-27, W14-01, W15-09, W15-11, W22-01 |
-| 19 | W04 W08 W09 W12 W15 W20 | W04-05, W08-03, W08-08, W08-11, W08-17, W09-02, W09-05, W12-21, W15-16, W15-17, W15-19, W15-21, W15-23, W15-25, W20-01 |
-| 20 | W04 W08 W12 W14 W15 W22 | W04-11, W04-13, W08-04, W08-06, W08-09, W08-12, W08-21, W08-24, W12-22, W14-02, W15-20, W15-22, W15-28, W22-02 |
-| 21 | W04 W08 W09 W12 W14 W15 W20 W22 | W04-04, W04-09, W04-15, W08-10, W08-13, W08-25, W08-27, W08-30, W09-03, W09-15, W09-20, W12-32, W14-05, W15-34, W20-03, W20-05, W22-17 |
-| 22 | W04 W08 W09 W14 W20 W22 | W04-07, W04-10, W04-14, W04-16, W04-22, W04-33, W08-33, W09-06, W09-09, W09-16, W09-17, W09-21, W14-08, W14-10, W14-12, W20-06, W22-03, W22-19 |
-| 23 | W09 W11 W14 W20 W22 | W09-31, W09-33, W11-10, W14-03, W14-04, W14-11, W14-13, W14-14, W14-15, W14-18, W20-09, W22-08, W22-20 |
-| 24 | W11 W14 W20 W22 W25 | W11-03, W11-11, W14-16, W14-21, W14-26, W14-28★, W20-04, W20-07, W20-08, W20-10, W22-04, W22-09, W22-23, W25-01, W25-04 |
-| 25 | W11 W20 W22 W25 | W11-08, W11-12, W20-28, W22-05, W22-11, W22-13, W22-14, W22-18, W22-25, W25-05, W25-06, W25-07, W25-09, W25-26 |
-| 26 | W11 W22 W25 | W11-13, W11-22, W22-06, W22-07, W25-28 |
-| 27 | W11 W22 W25 | W11-32, W22-36, W25-29★ |
-| 28 | W25 | W25-30★ |
-| 29 | W25 | W25-31★, W25-33★ |
+| 1 | W00 W10 W13 | W00-02★, W10-16, W13-02 |
+| 2 | W00 | W00-01, W00-03, W00-04, W00-05★, W00-09★, W00-11, W00-14, W00-27, W00-48 |
+| 3 | W00 W01 W11 W12 W25 | W00-06, W00-08, W00-10, W00-12, W00-15, W00-16, W00-17, W00-18★, W00-21, W01-02, W01-06, W11-01, W12-01, W25-25 |
+| 4 | W00 W01 W02 W12 | W00-07, W00-13, W00-19, W00-22★, W00-29, W00-30, W00-44, W00-54, W01-01, W01-04, W01-07, W02-04, W12-02, W12-08, W12-23 |
+| 5 | W00 W01 W02 W04 W06 | W00-23, W00-24★, W00-25, W00-31, W00-32, W01-03, W01-10, W01-11, W01-24, W02-01, W04-01, W06-01 |
+| 6 | W00 W01 W06 W10 W13 | W00-26, W00-33, W00-35, W00-37, W00-40, W01-05, W01-08★, W01-09, W06-02, W06-09, W06-10, W10-01, W10-02, W13-01 |
+| 7 | W00 W01 W10 | W00-28, W00-38, W00-39, W00-41, W00-42, W00-56, W00-59, W01-12, W01-13★, W10-04, W10-06, W10-10 |
+| 8 | W00 W01 W10 W13 | W00-45, W00-55, W00-57, W01-14★, W01-15★, W01-20, W01-26, W01-27, W01-35, W01-38, W10-05, W13-08 |
+| 9 | W00 W01 W02 W06 W10 W13 | W00-46, W00-53, W00-58, W01-16★, W01-21, W01-28, W01-29, W02-22, W06-03, W06-04, W10-12, W13-04 |
+| 10 | W00 W01 W02 W06 W10 W13 | W00-50, W01-17, W01-25, W01-30, W01-31, W01-34, W02-02, W02-05, W02-09★, W06-05, W10-08, W13-11 |
+| 11 | W01 W02 W03 W06 W10 W13 | W01-37, W02-03, W02-06, W02-07, W02-08, W02-10★, W02-23, W02-26, W03-01, W06-08, W06-15, W10-09, W10-13, W13-07 |
+| 12 | W02 W06 W10 W13 | W02-11, W02-12, W02-13★, W02-17, W02-24, W02-30, W06-06, W06-11, W06-12, W06-13, W06-14, W06-16, W06-19, W06-22, W10-14, W13-12 |
+| 13 | W02 W03 W06 W07 W10 W13 | W02-14★, W02-16, W02-28, W03-05, W06-20, W06-25, W06-28, W07-01, W10-03, W10-07, W10-11, W10-20, W13-03, W13-13 |
+| 14 | W02 W03 W07 W10 W13 | W02-15, W02-25, W03-02, W03-07, W03-10, W03-12★, W07-02, W10-19, W10-21, W10-26, W13-05, W13-09, W13-18 |
+| 15 | W02 W03 W05 W07 W08 W10 W13 | W02-34, W03-06, W03-11, W03-13★, W03-17, W03-19★, W05-01, W07-05, W07-08, W07-14, W08-01, W10-22, W10-30, W13-19, W13-20 |
+| 16 | W03 W07 W12 W13 | W03-03, W03-16, W03-27, W07-03, W07-09, W07-10, W12-03, W13-06, W13-14, W13-21 |
+| 17 | W03 W05 W07 W08 W12 W13 W15 | W03-29★, W05-02, W07-07, W07-11, W07-12, W07-15, W08-02, W12-05, W13-10, W13-15, W13-16, W13-23, W13-24, W13-27, W13-30, W15-01 |
+| 18 | W05 W07 W08 W13 | W05-03, W05-04, W05-05, W05-07, W07-13, W07-16, W07-17, W07-18, W07-19, W07-21, W08-03, W13-35 |
+| 19 | W05 W07 W08 W15 | W05-08, W05-09, W05-10, W05-19, W05-20, W05-34, W07-04, W07-06, W07-20, W07-22, W07-27, W07-29, W08-06, W15-02, W15-03, W15-06 |
+| 20 | W05 W07 W09 W12 W15 | W05-22, W05-23, W05-29, W05-33★, W07-32, W09-01, W09-05, W12-09, W12-12, W15-04, W15-05, W15-08, W15-18 |
+| 21 | W04 W08 W09 W12 W15 | W04-03, W08-16, W08-23, W09-02, W09-09, W09-13, W09-20, W12-13, W12-27, W12-31, W15-09, W15-11 |
+| 22 | W09 W12 W15 | W09-03, W09-15, W09-21, W12-14, W12-15, W12-16, W12-20, W15-16, W15-17, W15-19, W15-21, W15-23, W15-25 |
+| 23 | W04 W08 W09 W12 W14 W15 W22 | W04-05, W04-11, W08-12, W09-06, W09-16, W09-31, W12-21, W14-01, W15-20, W15-22, W15-28, W22-01 |
+| 24 | W04 W08 W09 W12 W14 W20 | W04-13, W08-08, W08-11, W08-17, W08-21, W08-24, W08-25, W09-17, W12-22, W14-02, W20-01 |
+| 25 | W04 W08 W09 W11 W12 W14 W20 W22 | W04-04, W04-09, W04-15, W08-04, W08-09, W08-10, W08-13, W08-27, W08-30, W08-33, W09-33, W11-02, W12-32, W14-05, W20-03, W22-02 |
+| 26 | W04 W11 W14 W15 W20 W22 W25 | W04-07, W04-10, W04-14, W04-16, W04-22, W04-33, W11-10, W14-08, W14-10, W14-12, W15-34, W20-05, W22-03, W22-17, W25-02 |
+| 27 | W11 W14 W20 W22 W25 | W11-03, W11-11, W14-15, W14-18, W20-06, W20-09, W22-08, W22-19, W22-20, W25-03 |
+| 28 | W11 W14 W20 W22 | W11-08, W11-20, W14-03, W14-04, W14-11, W14-14, W14-16, W14-21, W14-26, W20-04, W20-07, W20-08, W20-10, W22-23 |
+| 29 | W11 W14 W20 W22 W25 | W11-12, W11-22, W14-28★, W20-28, W22-04, W22-05, W22-07, W22-09, W22-14, W22-25, W25-01, W25-04, W25-06 |
+| 30 | W11 W22 W25 | W11-13, W11-33, W22-06, W22-11, W22-13, W22-18, W25-05, W25-07, W25-09, W25-26 |
+| 31 | W11 W25 | W11-32, W25-28 |
+| 32 | W22 W25 | W22-36, W25-29★ |
+| 33 | W25 | W25-30★ |
+| 34 | W25 | W25-31★, W25-33★ |
 
 ## 4. Wave e2e finish (H)
 
-| Wave | e2e issue | Earliest finish (∞ agents) | Finish with 12 agents |
+| Wave | e2e issue | Earliest finish (∞ agents) | Finish with 10 agents |
 |---|---|---|---|
 | W00 | W00-50 | 10.0 | 10.0 |
 | W01 | W01-37 | 10.5 | 10.5 |
 | W02 | W02-34 | 14.5 | 14.5 |
-| W03 | W03-29 | 17.0 | 17.0 |
-| W04 | W04-33 | 11.5 | 22.5 |
-| W05 | W05-33 | 18.0 | 18.0 |
-| W06 | W06-28 | 11.0 | 11.5 |
-| W07 | W07-32 | 18.0 | 18.0 |
-| W08 | W08-33 | 15.5 | 22.0 |
-| W09 | W09-33 | 15.5 | 23.5 |
+| W03 | W03-29 | 16.5 | 17.5 |
+| W04 | W04-33 | 11.5 | 26.5 |
+| W05 | W05-33 | 17.5 | 20.5 |
+| W06 | W06-28 | 12.5 | 13.5 |
+| W07 | W07-32 | 17.5 | 20.0 |
+| W08 | W08-33 | 15.5 | 25.5 |
+| W09 | W09-33 | 15.5 | 25.0 |
 | W10 | W10-30 | 15.5 | 15.5 |
-| W11 | W11-32 | 11.5 | 27.5 |
-| W12 | W12-32 | 12.0 | 21.0 |
-| W13 | W13-35 | 16.5 | 16.5 |
-| W14 | W14-28 | 19.0 | 24.5 |
-| W15 | W15-34 | 17.5 | 21.0 |
-| W20 | W20-28 | 14.0 | 25.0 |
-| W22 | W22-36 | 19.0 | 27.0 |
-| W25 | W25-33 | 21.5 | 29.0 |
+| W11 | W11-32 | 11.5 | 31.5 |
+| W12 | W12-32 | 14.5 | 25.0 |
+| W13 | W13-35 | 16.5 | 18.0 |
+| W14 | W14-28 | 18.5 | 29.0 |
+| W15 | W15-34 | 17.5 | 26.0 |
+| W20 | W20-28 | 14.0 | 29.5 |
+| W22 | W22-36 | 18.5 | 32.5 |
+| W25 | W25-33 | 21.0 | 34.0 |

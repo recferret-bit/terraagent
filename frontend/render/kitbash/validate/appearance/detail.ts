@@ -20,7 +20,7 @@ const solarRule: RoleRule = (ctx, s) => {
   if (slab || siblings.length < o.minCells) {
     for (const q of siblings) flagged.add(q.i);
     if (frame) flagged.add(frame.i);
-    add('warn', 'ROLE_DETAIL', `${s.p.label} ${slab ? `is one ${slab.faceMax.toFixed(2)} m² slab` : `has only ${siblings.length} cell part${siblings.length === 1 ? '' : 's'}`}: a solar panel needs a visible cell grid (≥ ${o.minCells} cells ≤ ${Math.sqrt(o.cellMaxFace).toFixed(2)} m wide, 1 to 2 cm gaps that show the dark backing, a bus bar) or it reads as a plain dark plate.`, [s.i, ...(frame ? [frame.i] : [])], faceAt(s), 'Use the `solarPanel()` greeble (src/kitbash/greebles/unitParts.ts) or build a cell grid yourself; add 2 ribs on the back of the frame.');
+    add('warn', 'ROLE_DETAIL', `${s.p.label} ${slab ? `is one ${slab.faceMax.toFixed(2)} m² slab` : `has only ${siblings.length} cell part${siblings.length === 1 ? '' : 's'}`}: a solar panel needs a visible cell grid (≥ ${o.minCells} cells ≤ ${Math.sqrt(o.cellMaxFace).toFixed(2)} m wide, 1 to 2 cm gaps that show the dark backing, a bus bar) or it reads as a plain dark plate.`, [s.i, ...(frame ? [frame.i] : [])], faceAt(s), 'Use the `solarPanel()` greeble (frontend/render/kitbash/greebles/unitParts.ts) or build a cell grid yourself; add 2 ribs on the back of the frame.');
   }
 };
 

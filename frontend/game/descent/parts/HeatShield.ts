@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { smoothstep } from '../math';
-import type { DropRig } from '../dropRig';
+import type { DropRig } from '@terra/render/descent/dropRig';
 import type { DescentContext, FramePart, FrameState } from './FrameState';
 
 /** Heat shield: attached to the pod (glowing in the plasma) until 23 s, then a free-falling copy. */

@@ -1,8 +1,8 @@
 import * as THREE from 'three';
 import { clamp, makeCurve, smoother, smoothstep } from '../math';
-import { CUT_POSE } from '../dropRig';
+import { CUT_POSE } from '@terra/render/descent/dropRig';
 import { D2R, FINAL_POS, FINAL_TARGET, R } from '../constants';
-import type { FittedModel } from '@shared/engine/visuals/space/placeholders';
+import type { FittedModel } from '@terra/render/visuals/space/placeholders';
 import type { DescentContext, FramePart, FrameState } from './FrameState';
 
 const camPhi = makeCurve([[3.6, 112], [8, 96], [11, 88], [15, 85], [17, 100], [21, 130], [23, 150], [26, 160], [29, 150]]);

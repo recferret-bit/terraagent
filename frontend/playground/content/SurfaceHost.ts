@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { PLANET_SPECS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
-import { createPlanetSurface } from '@shared/engine/planets/surface';
-import type { PlanetSurface } from '@shared/engine/planets/surface/types';
+import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { createPlanetSurface } from '@terra/render/planets/surface';
+import type { PlanetSurface } from '@terra/render/planets/surface/types';
 
 /** Optional full planet-surface patch drawn under the archetypes (`surface=1`). */
 export class SurfaceHost {

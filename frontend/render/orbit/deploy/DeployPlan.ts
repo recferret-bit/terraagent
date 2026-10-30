@@ -1,6 +1,6 @@
 import * as THREE from 'three';
-import type { DescentHandoff } from '../../../../game/descent/types';
-import { createDropRig } from '../../../../game/descent/dropRig';
+import type { DescentHandoff } from '../../descent/types';
+import { createDropRig } from '../../descent/dropRig';
 import { frameRot } from '../stage/math';
 import { R } from '../stage/StageGlobes';
 import type { Deploy, DeployHost } from './types';

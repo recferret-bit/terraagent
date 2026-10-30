@@ -1,5 +1,5 @@
 import { Game } from './app/Game';
-import { initCrt } from '@shared/ui/crt';
+import { initCrt } from '@terra/render/ui/crt';
 
 const app = document.getElementById('app')!;
 const game = new Game(app);

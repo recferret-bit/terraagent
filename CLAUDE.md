@@ -25,7 +25,7 @@ There is no test suite. Verify changes by loading the pages in a browser or head
 | `/playground.html` | 3D model storybook / visual QA | `frontend/playground/` (`PlaygroundApp`) |
 | `/design/` | Faction Plate design system docs | `frontend/design/` |
 
-Vite `root` is `frontend/`; code shared by two or more apps lives in `frontend/shared/` (alias `@shared/*`). Architecture limits and layering: `AGENTS.md` §6.
+Vite `root` is `frontend/`; the 3D render engine used by two or more apps lives in `frontend/render/` (alias `@terra/render/*`); from W00, code used by frontend and backend lives in top-level `shared/{contracts,config,db,sim}`. Architecture limits and layering: `AGENTS.md` §6.
 
 Adding a page: create the HTML, add it to `rollupOptions.input` in `vite.config.ts`, link it from `frontend/index.html`, and load scripts with `<script type="module">`.
 
@@ -38,6 +38,6 @@ Adding a page: create the HTML, add it to `rollupOptions.input` in `vite.config.
 - **Architecture limits:** no file over 500 lines, no function over 100 lines, no copy/paste, orchestrator classes compose small parts (details and layers in `AGENTS.md` §6). Run `npm run check:structure` after every refactor; `npm run build` runs it too.
 - Docs live in `docs/` (index: `docs/README.md`): `game/` design, `spec/` architecture (start with `DECISIONS.md`), `plan/` build plan, `visuals/` 3D rules. Keep the repo root free of loose `.md` files: only `README.md`, `AGENTS.md` and `CLAUDE.md` belong there.
 - `docs/spec/` and `docs/plan/` describe the not-yet-built online backend. `docs/spec/CLIENT.md` assumes separate `game.` and root domains; the current local build serves everything from one app.
-- Other people or agents may edit this repo at the same time (e.g. `frontend/shared/ui/crt.ts`). Re-read a file before editing it and don't revert changes you didn't make.
+- Other people or agents may edit this repo at the same time (e.g. `frontend/render/ui/crt.ts`). Re-read a file before editing it and don't revert changes you didn't make.
 - This is a git repository (`main`). Commit only the files you changed: other people's work is often uncommitted in the same tree.
 - **Wave build (from W00 on):** each wave is built in its own branch `wave/wNN-<slug>` and worktree `../TerraAgent-wt/wNN`, issues in `issue/WNN-XX` worktrees off it. A wave merges into `main` only after the owner's manual check, then its worktree and branch are deleted and `main` is pushed. See `docs/plan/PRODUCT_WAVES.md` §7.

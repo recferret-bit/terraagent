@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { ColonyViewport } from '@shared/engine/core/createColonyViewport';
+import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 
 /** Temporarily make every object visible and un-culled so all of its shaders get compiled; returns the undo. */
 function revealAll(scene: THREE.Scene) {

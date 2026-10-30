@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ArchetypeCatalog, createArchetypeMesh, tickArchetypeMesh, type ArchetypeCategory, type ArchetypeMesh } from '@shared/engine/kitbash';
+import { ArchetypeCatalog, createArchetypeMesh, tickArchetypeMesh, type ArchetypeCategory, type ArchetypeMesh } from '@terra/render/kitbash';
 
 export interface Spawn { id: string; mesh: ArchetypeMesh; box: THREE.Box3; }
 const footprint = (b: THREE.Box3) => Math.max(b.max.x - b.min.x, b.max.z - b.min.z, 1);

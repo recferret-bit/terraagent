@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { validateArchetype, type Report } from '@shared/engine/kitbash/validate';
+import { validateArchetype, type Report } from '@terra/render/kitbash/validate';
 import { textSprite } from '../stage/textSprite';
 import type { Spawn } from './SpawnSet';
 

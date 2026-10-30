@@ -1,4 +1,4 @@
-import { PLANET_SPECS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
+import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 
 const css = (n: number) => '#' + n.toString(16).padStart(6, '0');
 

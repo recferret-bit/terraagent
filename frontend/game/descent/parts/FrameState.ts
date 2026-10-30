@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import type { PlanetSpec } from '@shared/engine/planets/PlanetSpec';
-import type { PlanetSurface } from '@shared/engine/planets/surface/types';
-import type { ColonyViewport } from '@shared/engine/core/createColonyViewport';
+import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
+import type { PlanetSurface } from '@terra/render/planets/surface/types';
+import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { clamp, smoothstep } from '../math';
 import type { Trajectory } from './Trajectory';
 

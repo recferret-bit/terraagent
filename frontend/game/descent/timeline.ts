@@ -1,4 +1,4 @@
-import type { DescentPhase, DescentTelemetry } from './types';
+import type { DescentPhase, DescentTelemetry } from '@terra/render/descent/types';
 import { clamp, lerp, makeCurve, smoothstep } from './math';
 import { TL, Y0 } from './constants';
 

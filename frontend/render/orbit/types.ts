@@ -16,7 +16,7 @@ export interface OrbitalStage {
    * menu planet; pod + camera shrink continuously (scale-dive) until the frame is the descent's frame `h.startAt`
    * rotated/scaled onto this globe. Returns the globe orientation the descent must adopt so the planets coincide.
    */
-  beginDeploy(h: import('../../../game/descent/types').DescentHandoff, opts?: { biomeKey?: string }): { spinQuat: THREE.Quaternion; cloudRotY: number };
+  beginDeploy(h: import('../descent/types').DescentHandoff, opts?: { biomeKey?: string }): { spinQuat: THREE.Quaternion; cloudRotY: number };
   /** 0..1 progress of the deploy sequence (1 = stage frame == descent frame `h.startAt`, safe to cut). */
   deployProgress(): number;
   /** Authored descent second the deploy sequence currently represents (for telemetry). */

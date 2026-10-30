@@ -1,4 +1,4 @@
-import { ArchetypeCatalog, type ArchetypeCategory } from '@shared/engine/kitbash';
+import { ArchetypeCatalog, type ArchetypeCategory } from '@terra/render/kitbash';
 import { $ } from '../dom';
 import { CATS, type PgState } from '../state';
 

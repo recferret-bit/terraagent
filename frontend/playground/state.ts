@@ -1,5 +1,5 @@
-import { PLANET_KINDS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
-import type { ArchetypeCategory } from '@shared/engine/kitbash';
+import { PLANET_KINDS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import type { ArchetypeCategory } from '@terra/render/kitbash';
 
 export type View = 'iso' | 'front' | 'side' | 'top';
 export const VIEWS: View[] = ['iso', 'front', 'side', 'top'];

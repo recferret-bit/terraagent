@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { FittedModel } from '@shared/engine/visuals/space/placeholders';
+import type { FittedModel } from '@terra/render/visuals/space/placeholders';
 import { createFlames, type Flames } from '../fx/Flames';
 import type { FramePart, FrameState } from './FrameState';
 

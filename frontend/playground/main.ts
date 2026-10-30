@@ -1,7 +1,7 @@
 import '../design/css/tokens.css';
 import '../design/css/base.css';
 import './playground.css';
-import '@shared/engine/kitbash';
+import '@terra/render/kitbash';
 import { PlaygroundApp } from './PlaygroundApp';
 
 const app = new PlaygroundApp(new URLSearchParams(location.search));

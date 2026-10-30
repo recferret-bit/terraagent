@@ -1,4 +1,4 @@
-import { PLANET_KINDS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
+import { PLANET_KINDS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { $, setBtn } from '../dom';
 import { PLANET_LABEL, TOGGLES, VIEWS, type PgState, type ToggleKey, type View } from '../state';
 

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { acquireModel, type FittedModel } from '@shared/engine/visuals/space/placeholders';
+import { acquireModel, type FittedModel } from '../visuals/space/placeholders';
 
 /**
  * Drop hardware shared by the menu stage (deploy dolly) and the descent, so both sides of the camera cut show the

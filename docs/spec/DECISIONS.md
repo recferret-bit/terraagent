@@ -7,7 +7,7 @@
 |---|---|---|
 | D-01 | Server-authoritative deterministic simulation in planet workers | Amended by D-24 (server sim kept; bit-exact determinism and workers dropped) and D-31 (same engine in the browser for prediction and local play) |
 | D-02 | Planet is the unit of isolation and scaling | Amended by D-24 (planets sharded over worker threads in one app) |
-| D-03 | npm-workspaces monorepo modelled on `../freightchain` | Proposed |
+| D-03 | npm-workspaces monorepo modelled on `../freightchain` | Proposed; frontend layout fixed by D-32 |
 | D-04 | One Prisma schema, Postgres namespaces per service, forward-only migrations in wave pre-steps | Proposed |
 | D-05 | NATS (JetStream + KV) is the only inter-service transport | Superseded by D-24 (no NATS; future) |
 | D-06 | Path-based worker routing `ws.terraagent.com/w/{workerId}` | Superseded by D-24 (one WS endpoint) |
@@ -36,6 +36,11 @@
 | D-29 | Player page, 20 × 3-tier achievements, XP and levels, minimap + global planet map | Proposed (2026-10-30) |
 | D-30 | Ports & adapters; all NEAR features mocked in phase 1 (galaxyqube patterns + shared contract tests) | Proposed (2026-10-30) |
 | D-31 | One shared game engine (`@terra/sim`) in three hosts: server simulation, browser single-player local host (testing), client-side prediction; state synced as engine snapshots and diffs | Accepted (2026-10-30) |
+| D-32 | Frontend layout: apps `frontend/{game,landing,playground,design}`, 3D render engine `frontend/render` (`@terra/render`), cross-tier packages `shared/{contracts,config,db,sim}`, `backend/app`; enforced layering and size limits | Accepted (2026-10-30) |
+| D-33 | Three planet types, as on the landing page: Desert (Kharon Dunes, `dune`), Ocean (Thalassa Verde, `oceanForest`), Temperate (Granite Hollow, `forestRock`) | Accepted (2026-10-30) |
+| D-34 | Resources: three stored families Metals, Minerals, Bio, each with T1/T2/T3 sub-resources; T2/T3 unlock by terraforming (colony threshold **and** terraformed deposit ground); Energy stays grid power | Accepted (2026-10-30) |
+| D-35 | Every balance number lives in data tables and can be tuned at runtime in playtests (overrides file + dev console), without a rebuild | Accepted (2026-10-30) |
+| D-36 | HUD and menus are vanilla DOM + Faction Plate CSS (no React/Zustand), built on the prototype's `frontend/game/ui/` | Accepted (2026-10-30) |
 
 ---
 
@@ -297,7 +302,7 @@ NPC traders (F3) and the test reference bot are game and test features, not "bot
 - **Day plan:** [`docs/plan/HACKATHON_CUT.md`](../plan/HACKATHON_CUT.md).
 - **Post-hackathon:** every issue not tagged `H`/`H2` in [`docs/plan/waves/`](../plan/waves/).
 
-**Amendment (2026-10-30, option B).** The cut is expressed per issue: column `H` in every wave file (`H` must, `H+` stretch, `H2` real NEAR after the D10 gate). Every hackathon wave keeps its contracts, core slice and e2e (`@hack` steps), so each still ends in a working app. The `H` set is 384 issues, ≈ 294 units, with a 21.5-unit critical path; it fits 13 build days only at ≥ 2.2 units per agent per day with 12 agents. Waves land in the value order W00 W01 W02 W06 W10 W13 W03 W07 W05 W15 W12 W08 W04 W09 W20 W22 W14 W11 W25, and the drop order in HACKATHON_CUT §3 applies when behind. This replaces the F-number cut line above: F6–F8 sit late in the value order and are dropped first.
+**Amendment (2026-10-30, option B).** The cut is expressed per issue: column `H` in every wave file (`H` must, `H+` stretch, `H2` real NEAR after the D10 gate). Every hackathon wave keeps its contracts, core slice and e2e (`@hack` steps), so each still ends in a working app. The `H` set is 387 issues, ≈ 293 units, with a 21.0-unit critical path (after the 2026-10-30 review); it fits 13 build days only at ≥ 2.2 units per agent per day with 12 agents. Waves land in the value order W00 W01 W02 W06 W10 W13 W03 W07 W05 W15 W12 W08 W04 W09 W20 W22 W14 W11 W25, and the drop order in HACKATHON_CUT §3 applies when behind. This replaces the F-number cut line above: F6–F8 sit late in the value order and are dropped first.
 
 ## D-28 — Battle system v1
 
@@ -356,3 +361,73 @@ NPC traders (F3) and the test reference bot are game and test features, not "bot
 - The client bundle gains the engine as a lazily loaded worker chunk. Budgets: worker step p95 ≤ 4 ms on an iPhone 13-class phone at MVP scale; above it prediction switches itself off and the client falls back to interpolation. `?predict=0` forces the fallback.
 - **Plan:** W00-14, W00-24, W00-26 and the new W00-54 … W00-58 ([`docs/plan/waves/W00-platform-skeleton.md`](../plan/waves/W00-platform-skeleton.md)); PRODUCT_WAVES §4 "One engine" rule.
 - **Specs:** [`SIMULATION.md`](./SIMULATION.md) §6 and §6a, [`CLIENT.md`](./CLIENT.md) §7, [`PROTOCOL.md`](./PROTOCOL.md) §4.3, [`ARCHITECTURE.md`](./ARCHITECTURE.md) §9 and §12.
+
+## D-32 — Frontend layout and the render/sim split
+
+**Context.** The prototype was restructured on 2026-10-30 from `src/` into `frontend/` (one Vite app rooted at `frontend/`), following `../freightchain`. The wave plan still used `client/src/…` and `landing/`, and `frontend/shared/` (3D engine) clashed by name with the planned top-level `shared/` packages (game rules, contracts).
+
+**Decision.**
+- **Apps:** `frontend/game` (`play.html`; the game client of CLIENT.md, served as `game.terraagent.com`), `frontend/landing` (`terraagent.com`), `frontend/playground` (3D model storybook, dev only), `frontend/design` (Faction Plate tokens and docs). Page URLs stay `/play.html`, `/landing.html`, `/playground.html`, `/design/` in dev.
+- **Render engine:** `frontend/render` (`@terra/render`): viewport, kitbash archetypes and validator, unified material, terrain/water, space, planets, orbit stage, descent drop rig, lighting, CRT overlay. It draws; it holds no game rule (D-31).
+- **Cross-tier packages:** `shared/{contracts,config,db,sim}` (`@terra/*`) and `backend/app` as in ARCHITECTURE §3. `shared/sim` decides; apps pass its views into `render`.
+- **Layering:** `render` imports no app; an app imports `render`, `design` CSS, `shared/*` and itself, never another app. Files ≤ 500 lines, functions ≤ 100 lines. `npm run check:structure` enforces all three ([`AGENTS.md`](../../AGENTS.md) §6).
+- Game features live in `frontend/game/features/<feature>/`; core client code in `frontend/game/{net,store,core,dev,camera,maps,mobile,pages}/`.
+
+**Alternatives.** (a) Keep `frontend/shared` next to top-level `shared/` (two folders with the same name and different meaning). (b) Put cross-tier packages in `packages/` (diverges from ARCHITECTURE §3 and every spec's code-home paths).
+
+**Consequences.** W00-04 shrinks to turning the existing folders into npm workspaces. Every wave's owned paths use this layout (`client/src/…` → `frontend/game/…`, `landing/` → `frontend/landing/`, archetypes → `frontend/render/kitbash/archetypes/`).
+
+## D-33 — Three planet types, matching the landing page
+
+**Context.** The specs had two sim types (`temperate`, `desert`, D-15); the landing page, the orbit menu and the render engine already ship three worlds (`frontend/render/planets/PlanetSpec.ts`).
+
+**Decision.** `PlanetType = 'desert' | 'ocean' | 'temperate'`, one-to-one with the existing looks:
+
+| Sim type | World (landing) | Render look (`PlanetKind`) | Traits (landing card) | Generator mix **(proposed)** |
+|---|---|---|---|---|
+| `desert` | Kharon Dunes | `dune` | solar +35 %, water scarce, sandstorms | slope 30 % (dunes, drawn as sand), rock 12 %, water 1 %; Metals and Minerals deposits richness +15 %; Water Extractor ×0.5 |
+| `ocean` | Thalassa Verde | `oceanForest` | hydro +, wood, storms | water 35 % (shallow 20 %, deep 15 %), forest 30 %, rock 5 %; Bio deposits richness +20 %; Metals −15 %; storms ×1.5 frequency |
+| `temperate` | Granite Hollow | `forestRock` | minerals +, wood, cold nights | forest 20 %, water 6 %, rock 8 % (as SIMULATION §10); Minerals deposits richness +15 %; night 45 % of the day |
+
+The sim owns the type; the client picks the look from it (`planetType → PlanetKind`), and the landing cards keep their names. Planet names are generated per planet; the landing names are the type showcase.
+
+**Hackathon.** The `H` demo stays on `temperate` (D-27); `desert` and `ocean` generators are post-hackathon rows (W05).
+
+**Consequences.** SIMULATION §7.6/§10 tables gain an Ocean column; MATCHMAKING `type` filter and auto-place accept three types; the W01/W05/W11 plan rows use these names.
+
+## D-34 — Resource families with tiers unlocked by terraforming
+
+**Context.** The specs had five resources (Metals, Minerals, Petroleum, Water, Energy). The owner's model: three families (Metals, Bio, Minerals), each with T1/T2/T3 sub-resources; T1 is available from landing, T2/T3 only after terraforming.
+
+**Decision.**
+
+| Family | T1 (from landing) | T2 | T3 |
+|---|---|---|---|
+| **Metals** | Iron | Light alloys (copper, aluminium) | Titanium |
+| **Minerals** | Silica | Rare earths | Exotic crystal |
+| **Bio** | Water and Biomass (two T1 sub-resources) | Petroleum / organics | Gene-stock |
+
+- **Stockpiles:** 10 stored sub-resources, keyed `metals.t1 … metals.t3`, `minerals.t1 … minerals.t3`, `bio.water`, `bio.biomass`, `bio.t2`, `bio.t3`. Storage caps are per family (Depots add to all three). **Energy** is not a family: it stays grid power (E/s), stored only in capacitors.
+- **Sources:** Metals Extractor on metal deposits; Minerals Quarry on mineral deposits; Bio: Water Extractor (water), Harvester clearing forest and harvesting Living ground (biomass, gene-stock), Petroleum Well on oil deposits (`bio.t2`).
+- **Unlock rule (both gates, owner choice):** an extractor yields its family's T2 sub-resource only when (1) the colony's Terraform % ≥ **30 %** and (2) the extractor's deposit ground is terraformed: ≥ 50 % of the tiles within 2 of its footprint are Irrigated or Living. T3 needs Terraform % ≥ **70 %** and ≥ 50 % Living tiles in that ring. T1 is always produced. Percentages and ring size are data (D-35), all **(proposed)**.
+- **Yield split (proposed):** with T2 unlocked, 30 % of an extractor's output becomes T2; with T3 unlocked, 20 % T3 + 30 % T2 + 50 % T1. Extractor tier (Mk.I–III) only scales the rate.
+- **Costs:** the economy spec's `M/Min/Pet/W` cost columns are read through a tier rule until each table is rebalanced: a T1 building or unit pays M → `metals.t1`, Min → `minerals.t1`, Pet → `bio.biomass`, W → `bio.water`. A T2 item pays 60 % of M and Min in T1 and 40 % in T2, and its Pet in `bio.t2`. A T3 item pays 40 % T1, 30 % T2, 30 % T3 of M and Min, Pet in `bio.t2`, plus 10 % of its M as `bio.t3`. Terraform ops consume `bio.water` where the old specs said Water.
+- **Trading:** each tradable sub-resource is its own cargo token (F1) and market pair (F2); T1 trades from day one, so a colony can buy T2/T3 it cannot yet mine.
+
+**Alternatives.** Keep five flat resources (no tie between terraforming and economy). Colony-wide thresholds only (no reason to terraform around deposits). Per-tile gates only (no colony-wide pacing).
+
+**Consequences.** Rewrite the resource sections of the economy, units, SIMULATION (§7.1–7.3 cost columns, §7.1 storage rows, `SIM-G-RES`), DATA_MODEL, PROTOCOL/contracts (`ResourceKey`), CLIENT (resource bar: three family chips with tier breakdown), NEAR (cargo token ids) and the landing resource tabs (Metals / Minerals / Bio / Energy). The prototype HUD's energy/metal/water/biomass bar becomes the family bar (W02-26).
+
+## D-35 — Balance is data, tunable at runtime
+
+**Decision.** Every balance number (costs, HP, DPS, ranges, view radii, timers, rates, thresholds, AI weights) lives in `shared/sim/src/data/*.ts` rows, never in system code (units spec rule). For playtests the engine loads an optional **overrides file** (`balance.overrides.json`, path from `TA_BALANCE_OVERRIDES`; per planet via the scenario) merged over the tables at `compileData`, and the dev console has `tune <table>.<row>.<field> <value>` / `tune reset` / `tune export`, applied live to the running planet (server and local host) and recorded in the planet's event log. `dataHash` in `welcome` changes with overrides, so clients reload the same numbers. Values marked **(proposed)** in the specs and the defaults in `docs/plan/OWNER_TASKS.md` (B1–B13) are the starting rows.
+
+**Consequences.** One W00 issue for the override loader + `tune` command; every gameplay wave keeps its numbers in data rows (a review check).
+
+## D-36 — HUD is vanilla DOM on the design system
+
+**Context.** ARCHITECTURE §12 and tech-stack-spec named React 19 + Zustand for the HUD; the prototype and every wave build on the vanilla-DOM HUD in `frontend/game/ui/` with Faction Plate CSS.
+
+**Decision.** No React/Zustand. HUD panels are small TypeScript view classes (one per panel) registered by features, rendering into the design-system classes (`--ta-*` tokens, `.plate`, `.btn`), fed by the sim `view()`; state flows one way (sim view → panel). The AGENTS.md §6 rules apply (orchestrator + parts, ≤ 500 / ≤ 100 lines).
+
+**Alternatives.** React + Zustand (bigger bundle, a second UI idiom next to the existing code).

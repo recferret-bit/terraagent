@@ -20,7 +20,7 @@ class LandingPage {
     lazy(() => import('./hero/HeroStage').then((m) => m.initHeroStage)),
     lazy(() => import('./sections/planetCards').then((m) => m.initPlanetCards)),
     lazy(() => import('./resources').then((m) => m.initResources)),
-    lazy(() => import('@shared/ui/crtEntry').then(() => () => {})),
+    lazy(() => import('@terra/render/ui/crtEntry').then(() => () => {})),
   ];
 
   boot() {

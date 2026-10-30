@@ -38,10 +38,11 @@ Track 09 asks for three things: **NPCs with wallets, player-owned markets, and e
 Days are hackathon build days for one developer who knows the stack. "Tracks" lists every track a feature also qualifies for; a project may enter several tracks.
 
 ### F1 — Orbital Port: resource tokens (NEP-245) · **2 days**
-- **Primitive.** One NEP-245 multi-token contract, `res.terraagent.near`, with token ids `metals`, `minerals`, `petroleum` and `water`. Minting and burning are restricted to the port service account.
+- **Primitive.** One NEP-245 multi-token contract, `res.terraagent.near`, with **one token id per tradable sub-resource** (D-34), equal to the sim's `ResourceKey`: `metals.t1` (iron), `metals.t2` (light alloys), `metals.t3` (titanium), `minerals.t1` (silica), `minerals.t2` (rare earths), `minerals.t3` (exotic crystal), `bio.water`, `bio.biomass`, `bio.t2` (petroleum / organics), `bio.t3` (gene-stock). Energy is grid power, not a token. Minting and burning are restricted to the port service account.
+- **Tiers on the market.** T1 tokens trade from day one. Each sub-resource is its own market pair (F2), so a colony can **buy T2/T3 before it can mine them** (it mines them only after terraforming, economy spec §3.0); only colonies that mine them can export and mint them.
 - **Loop.** At a Trade Hub the player taps **Export**: cargo leaves storage, the shuttle VFX plays, and tokens are minted to the colony account. **Import** burns tokens and adds the cargo to storage.
 - **Rocket carry-over.** The cargo hold persists across planets.
-- **Players see:** "Cargo in orbit: 1 200 metals".
+- **Players see:** "Cargo in orbit: 1 200 iron".
 - **Tracks:** 09.
 
 ### F2 — Player-owned markets on NEAR Intents · **3–4 days** (needs F1, F5)
@@ -51,7 +52,7 @@ Days are hackathon build days for one developer who knows the stack. "Tracks" li
   - Each settled trade carries a fee leg to the owner, so the hub is a business.
   - The Negotiate goal (§4.6 of the units spec) and `autoTrade` place orders.
   - The planet price board is built from settled diffs.
-- **Players see:** "Contract signed: 300 water for 120 metals at Vega Port (1 % fee)".
+- **Players see:** "Contract signed: 300 water for 120 light alloys at Vega Port (1 % fee)".
 - **Tracks:** 09, 01 (DeFi: markets that never close).
 
 ### F3 — Orbital Guild: agent NPC traders with wallets · **3 days** (needs F1, F2)
@@ -68,7 +69,7 @@ Days are hackathon build days for one developer who knows the stack. "Tracks" li
 ### F4 — Colony agent wallet (HQ director signs while you're away) · **1–2 days** (needs F2)
 - **Primitive.** The colony account adds a **function-call / intents key with an allowance** that equals the player-set away budget (D-17). The AI director uses it to sign orders under `autoTrade` limits. The player can revoke the key in one tap.
 - **Loop.** Hard offline mode: your colony can buy the water it needs, or sell surplus to the Guild, while you sleep.
-- **Players see:** "While you were away: Director sold 400 metals to the Guild."
+- **Players see:** "While you were away: Director sold 400 iron to the Guild."
 - **Tracks:** 09, 06 (AI Security: function-call keys).
 
 ### F5 — Invisible chain: social login, named accounts, gasless · **2 days**
@@ -90,7 +91,7 @@ Days are hackathon build days for one developer who knows the stack. "Tracks" li
 - **Tracks:** 09, 12 (Social Money).
 
 ### F8 — Bounties & mercenaries · **3 days** (stretch)
-- **Primitive.** An escrow contract holds tokens. Posted contracts ("clear the nest near my border: 200 metals") are claimed by players or by **mercenary NPC agents**, which guard offline colonies for pay.
+- **Primitive.** An escrow contract holds tokens. Posted contracts ("clear the nest near my border: 200 iron") are claimed by players or by **mercenary NPC agents**, which guard offline colonies for pay.
 - **Tracks:** 09, 07.
 
 ## 4. Owner picks and build order (D-26, D-27)

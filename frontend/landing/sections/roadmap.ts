@@ -1,6 +1,6 @@
 // Roadmap: the flight plan (a burn line and a ship that ride your scroll, legs ignite as you pass them) and the
 // road-to-market board (split-flap statuses that flip when the board comes into view, then now and then on their own).
-import { clamp, prefersReducedMotion } from '@shared/engine/core/StageHost';
+import { clamp, prefersReducedMotion } from '@terra/render/core/StageHost';
 
 const GLYPHS = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
 

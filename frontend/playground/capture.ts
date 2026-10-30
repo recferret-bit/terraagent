@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { ColonyViewport } from '@shared/engine/core/createColonyViewport';
+import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { DIRS, type CameraRig } from './camera/CameraRig';
 import { download } from './dom';
 import { VIEWS, type PgState } from './state';

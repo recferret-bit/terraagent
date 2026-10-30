@@ -86,9 +86,12 @@ TerraAgent/
 ├── backend/
 │   ├── app/                     # @terra/app — the one NestJS app: modules api, lobby, game, ai, near, notify
 │   └── near-contracts/          # Rust near-sdk: cargo (NEP-245), deed (NEP-171), bounty escrow, registry
-├── frontend/
+├── frontend/                    # D-32; one Vite root today, workspaces from W00
 │   ├── landing/                 # @terra/landing  Vite — terraagent.com (live mini-diorama, D-22)
-│   └── game/                    # @terra/game     Vite + TS + Three.js + React HUD — game.terraagent.com
+│   ├── game/                    # @terra/game     Vite + TS + Three.js + vanilla-DOM HUD (D-36) — game.terraagent.com
+│   ├── render/                  # @terra/render   3D render engine shared by the apps (kitbash, terrain, planets, orbit, lighting)
+│   ├── playground/              # 3D model storybook / visual QA (dev only)
+│   └── design/                  # Faction Plate tokens + design-system docs
 ├── infra/
 │   ├── docker-compose.yml       # dev: postgres
 │   └── deploy/                  # prod compose, Dockerfile, nginx, deploy script
@@ -229,7 +232,7 @@ stateDiagram-v2
 
 ## 12. Client (summary)
 
-- `frontend/game`: Vite + TypeScript, Three.js on WebGL2 (diorama viewport per `AGENTS.md`), React 19 + Zustand HUD. Full gameplay on phones in landscape fullscreen (D-22).
+- `frontend/game`: Vite + TypeScript, Three.js on WebGL2 (diorama viewport per `AGENTS.md`). **HUD: vanilla DOM on the Faction Plate design system (D-36)**: one TypeScript view class per panel, registered by features, rendering into the design-system classes (`--ta-*` tokens, `.plate`, `.btn`), fed one way by the sim `view()`; no React or Zustand. Full gameplay on phones in landscape fullscreen (D-22).
 - One WS to `api.terraagent.com/ws` for lobby and planet. Exponential reconnect (0.5 s → 10 s cap) and a fresh `/me/home` on every reconnect.
 - The client receives full planet state and **draws fog-of-war itself**.
 - A **sim worker** runs `@terra/sim` (D-31): replica of the server state, client-side prediction of the player's commands, and the local host for single-player testing (`?host=local`). See SIMULATION §6a.
@@ -282,7 +285,8 @@ JSON in v1; MessagePack if the load test shows more than 30 KB/s per socket. Clo
 | `MATCH_SEAT_TTL_S` / `MATCH_QUEUE_MAX` / `MATCH_TICKET_MAX_WAIT_S` | `90` / `1000` / `900` | lobby |
 | `MM_LOOP_MS` / `MM_BATCH` / `MM_PRIORITY_AGING_MIN` | `500` / `50` / `5` | lobby |
 | `PICKER_HIDE_BEFORE_CLOSE_MIN` | `15` | lobby |
-| `PLANET_TYPES_ENABLED` | `temperate,desert` (hackathon: `temperate`) | lobby |
+| `PLANET_TYPES_ENABLED` | `desert,ocean,temperate` (D-33; hackathon: `temperate`) | lobby |
+| `TA_BALANCE_OVERRIDES` | unset (path to `balance.overrides.json`, merged over the data tables at `compileData`; D-35) | game / sim host |
 | `ACCESS_JWT_TTL_M` / `REFRESH_TTL_D` | `15` / `30` | api |
 | `AWAY_AFTER_S` | `60` | game |
 | `SIM_THREADS` | `cores − 1` | game |

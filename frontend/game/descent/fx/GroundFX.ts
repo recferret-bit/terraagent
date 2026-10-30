@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { PlanetKind } from '@shared/engine/planets/PlanetSpec';
+import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { mulberry32 } from '../math';
 
 /** Thruster-kicked dust / embers / spray. All motion is analytic in the vertex shader (deterministic, zero CPU per particle). */

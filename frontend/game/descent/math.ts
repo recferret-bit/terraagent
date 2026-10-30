@@ -17,4 +17,4 @@ export function makeCurve(keys: [number, number][]): (t: number) => number {
     return (2 * s3 - 3 * s2 + 1) * keys[i][1] + (s3 - 2 * s2 + s) * h * m[i] + (-2 * s3 + 3 * s2) * keys[i + 1][1] + (s3 - s2) * h * m[i + 1];
   };
 }
-export { mulberry32 } from '@shared/engine/visuals/space/SpaceBackdrop';
+export { mulberry32 } from '@terra/render/visuals/space/SpaceBackdrop';

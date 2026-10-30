@@ -3,7 +3,7 @@
     "target": "ES2022", "module": "ESNext", "moduleResolution": "bundler",
     "lib": ["ES2022", "DOM", "DOM.Iterable"], "strict": true, "skipLibCheck": true,
     "noEmit": true, "isolatedModules": true, "resolveJsonModule": true, "types": ["vite/client"],
-    "baseUrl": ".", "paths": { "@shared/*": ["frontend/shared/*"] }
+    "baseUrl": ".", "paths": { "@terra/render/*": ["frontend/render/*"] }
   },
   "include": ["frontend", "vite.config.ts"]
 }

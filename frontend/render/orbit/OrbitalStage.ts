@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import type { CreateOrbitalStage, OrbitalStage } from './types';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { ColonyViewport } from '../core/createColonyViewport';
-import type { DescentHandoff } from '../../../game/descent/types';
+import type { DescentHandoff } from '../descent/types';
 import { createSpaceBackdrop, type SpaceBackdrop } from '../visuals/space/SpaceBackdrop';
 import { createParallaxLayers, type ParallaxLayers } from '../visuals/space/ParallaxLayers';
 import { acquireModel, tickArchetypeMesh, type FittedModel } from '../visuals/space/placeholders';

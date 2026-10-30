@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { ColonyViewport } from '../../core/createColonyViewport';
-import type { DescentHandoff } from '../../../../game/descent/types';
-import type { DropRig } from '../../../../game/descent/dropRig';
+import type { DescentHandoff } from '../../descent/types';
+import type { DropRig } from '../../descent/dropRig';
 import type { FittedModel } from '../../visuals/space/placeholders';
 import type { StageGlobes } from '../stage/StageGlobes';
 import type { SunRig } from '../stage/SunRig';

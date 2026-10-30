@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { PlanetSurface } from '@shared/engine/planets/surface/types';
+import type { PlanetSurface } from '@terra/render/planets/surface/types';
 
 /** Diorama RTS camera: FOV stays 28°, fixed ~42° elevation, yaw in 90° steps, clamped zoom. */
 export class RTSCamera {

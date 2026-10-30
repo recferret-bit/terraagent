@@ -1,6 +1,6 @@
 # Checks, thresholds and algorithm notes
 
-All lengths are metres. Source of truth: `DEFAULT_OPTIONS` in `frontend/shared/engine/kitbash/validate/types.ts`.
+All lengths are metres. Source of truth: `DEFAULT_OPTIONS` in `frontend/render/kitbash/validate/types.ts`.
 
 | Option | Default | Used by |
 | :--- | :--- | :--- |

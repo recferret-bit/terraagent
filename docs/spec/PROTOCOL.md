@@ -105,8 +105,8 @@ const Cmd       = Envelope("cmd", z.object({ kind: CommandKind, args: z.unknown(
 |---|---|
 | Colony control | `setPriorities` · `enqueueTask` (`build`, `upgrade`, `repair`, `terraform {op, tiles}`, `buildUnit {unit, count, repeat}`, `queueGoal {goal, params}`, `raid`, `launchRocket`) · `cancelTask` · `placeBuilding` · `upgradeBuilding` · `demolish` · `setStance` · `attackMove` · `setRally` · `setHarvestWeights` |
 | Away & autopilot | `setAutopilot {aiDirector, awayRaids}` · `setAwayBudget {perResource}` · `setAutoTrade {limits}` |
-| Cargo (F1) | `cargo.export {resource, amount}` · `cargo.import {resource, amount}` |
-| Market (F2/F3) | `market.placeOrder {side, resource, amount, price: {resource \| "NEAR" \| "USDC", amount}, ttlS}` · `market.cancelOrder {orderId}` · `market.setHubFee {bp}` · `market.acceptGuildOffer {offerId}` |
+| Cargo (F1) | `cargo.export {resource, amount}` · `cargo.import {resource, amount}` (`resource`: `ResourceKey`, any tier; T1 trades from day one, D-34) |
+| Market (F2/F3) | `market.placeOrder {side, resource: ResourceKey, amount, price: {resource: ResourceKey \| "NEAR" \| "USDC", amount}, ttlS}` · `market.cancelOrder {orderId}` · `market.setHubFee {bp}` · `market.acceptGuildOffer {offerId}` |
 | Diplomacy & bounties (F8) | `diplomacy.proposeTruce` · `diplomacy.respondTruce` · `diplomacy.cancelTruce` · `bounty.post {target, reward}` · `bounty.claim {bountyId}` |
 | Module-only (never from clients) | `ai.directive` · `cargo.settled` · `market.settled` · `bounty.paid` · `system.spawnColony` · `system.retireColony` · `system.seal` · `system.end` · `system.presence` · `system.arrive` |
 
@@ -172,15 +172,20 @@ const PlanetStateViewV1 = z.object({
   market: MarketSnapshot.optional(),     // order book + last trades on this planet (F2)
 });
 const ColonyView = z.object({ colonyId: ColonyId, name: z.string(), color: z.number().int(), status: ColonyStatus,
-  resources: Resources, caps: Resources, supply: z.object({ used: z.number(), cap: z.number() }), power: PowerView,
+  resources: Stock, caps: FamilyCaps, supply: z.object({ used: z.number(), cap: z.number() }), power: PowerView,
   priorities: Priorities, stage: z.number().int(), threatStage: z.number().int(), cargo: CargoView, present: z.boolean() });
-const Resources = z.object({ metals: z.number(), minerals: z.number(), petroleum: z.number(), water: z.number(), energy: z.number() });
+const PlanetType  = z.enum(["desert", "ocean", "temperate"]);                 // D-33
+const ResourceKey = z.enum(["metals.t1", "metals.t2", "metals.t3", "minerals.t1", "minerals.t2", "minerals.t3",
+                            "bio.water", "bio.biomass", "bio.t2", "bio.t3"]);   // D-34; also the NEP-245 cargo token ids
+const Stock      = z.record(ResourceKey, z.number());                            // every key present in views; partial in payloads
+const FamilyCaps = z.object({ metals: z.number(), minerals: z.number(), bio: z.number() }); // one storage cap per family
+// Energy is grid power, not stock: see PowerView (gen, demand, stored in capacitors).
 const TileView  = z.object({ i: z.number().int(), terrain: z.number().int(), prep: z.number().int(), owner: ColonyId.nullable(), deposit: z.number().int().nullable(), explored: z.number().int() /* bitmask per colony */ });
 const EntityView = z.object({ id: z.string(), kind: z.enum(["building", "unit", "fauna", "nest", "projectile", "hazard"]),
   arch: z.string(), tier: z.number().int(), owner: ColonyId.nullable(), pos: z.tuple([z.number(), z.number()]),
   rot: z.number(), hp: z.number(), hpMax: z.number(), state: z.string(), progress: z.number().min(0).max(1).optional() });
 const PowerView = z.object({ gen: z.number(), demand: z.number(), stored: z.number(), storeCap: z.number(), state: z.enum(["ok", "brownout", "blackout", "overload"]) });
-const CargoView = z.object({ inOrbit: Resources.omit({ energy: true }), pendingMint: Resources.omit({ energy: true }) });
+const CargoView = z.object({ inOrbit: Stock, pendingMint: Stock });
 ```
 
 | ID | Rule |

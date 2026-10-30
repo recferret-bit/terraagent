@@ -1,8 +1,8 @@
 # TerraAgent — Product Waves (master plan)
 
 > **Status:** v1 (2026-10-30). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
-> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-30) · [`../game/`](../game/) · [`../spec/`](../spec/)
-> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**862 issues in 26 waves, ≈ 625 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
+> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-32; D-32 = frontend layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
+> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**861 issues in 26 waves, ≈ 611 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
 
 ## 1. The rule
 
@@ -18,57 +18,55 @@
 |---|---|---|---|---|
 | **W00** | Platform Skeleton | Spine | App boots, the client connects over WS, and an empty hex planet renders with a live server tick. Dev console, scenario loader, time warp, flags, CI and the e2e harness work. Ports + Postgres mocks + contract tests exist | — |
 | **W01** | Landfall | Spine | Guest login → drop pod lands → HQ drone prepares ground (Grade / Clear / Break) → builds the Command Hub → the colony survives a server restart (snapshot) | W00 |
-| **W02** | First Light | Spine | Harvester and Metals Extractor produce resources, Solar powers the colony, day/night cycles, storage caps, order queue v1 (pay on start, wait reasons, ETA), Construction menu | W01 |
-| **W03** | The Grid | Gameplay | Builder, pylons with reach and per-pylon load, capacitor, wind, thermal fuel, depot, quarry / water / petroleum, brownout shedding, repair, all 4 order lanes with earmarks | W02 |
+| **W02** | First Light | Spine | Harvester and Metals Extractor produce resources (D-34 families Metals / Minerals / Bio, T1 sub-resources; Energy is grid power), Solar powers the colony, day/night cycles, storage caps, order queue v1 (pay on start, wait reasons, ETA), Construction menu | W01 |
+| **W03** | The Grid | Gameplay | Builder, pylons with reach and per-pylon load, capacitor, wind, thermal fuel, depot, quarry / water extractor / petroleum well (Bio T2 source), brownout shedding, repair, all 4 order lanes with earmarks | W02 |
 | **W04** | Maps & Camera | Client | Minimap (click to pan), global planet map on `M` with layers, selection and camera polish, tile-state overlay | W01 |
-| **W05** | Shape the Land | Gameplay | Terraformer and all terrain ops (Level, Fill, Reclaim, Deep Reclaim, Irrigate, Seed), linked prep, beacons + territory + frozen borders, Terraform %, Living bonuses, lightning + meteors (holes) | W03 |
-| **W06** | Invisible Chain (F5, mock) | Economy/NEAR | Social login (mock), named account "Pilot ID", gasless relayer (mock), mock receipts in a dev chain explorer | W00 |
+| **W05** | Shape the Land | Gameplay | Terraformer and all terrain ops (Level, Fill, Reclaim, Deep Reclaim, Irrigate, Seed), linked prep, beacons + territory + frozen borders, Terraform %, Living bonuses, T2/T3 resource tiers unlocked by terraforming (D-34), `desert` and `ocean` planet types next to `temperate` (D-33), lightning + meteors (holes) | W03 |
+| **W06** | Invisible Chain (F5, mock) | Economy/NEAR | Social login (mock), named account "Pilot ID", gasless relayer (mock), mock receipts in a dev chain explorer | W00, W01 |
 | **W07** | First Contact (battle v1) | Gameplay | Skitter nests and raids, Robotics Factory T1, Recon, Autocannon, Laser Tower, supply (DCA), battle v1 (projectiles judged at impact time, lasers, rockets, AoE, evasive units), range and view rings, projectile VFX | W03 |
 | **W08** | Stages & HQ Goals | Autonomy | Stage engine S0–S10 (data-driven), triggers / dwell / overrides, `unlockStage` / `threatStage`, suggestion cards, HQ goals with budgets, rule-engine autopilot, priority sliders | W02 |
 | **W09** | Offline & Notifications | Autonomy | Presence, coarse ticking for empty planets, restart fast-run, away mode + away budget, "while you were away" digest, hard mode, Web Push + Telegram (via `NotifierPort`, mock first) | W02 |
 | **W10** | Cargo & Trade Hub (F1, mock) | Economy/NEAR | Trade Hub building, export mints cargo (mock NEP-245), import burns it, mint caps, cargo panel | W02, W06 |
 | **W11** | Lobby & Planets | Meta | Planet picker, queue, planet lifecycle (capacity, admission 24 h, seal, lifetime, end, early end), join fallback, 2 h seat refill, parties, many planets across sim threads | W01 |
 | **W12** | Player Page & Achievements | Meta | `/me` (pilot, progress, planets, stats, history, play), XP and levels, 20 × 3 achievement flip cards, badge art, badge mint outbox (mock) | W01 (more families light up as producer waves land) |
-| **W13** | Markets (F2, mock) | Economy/NEAR | Market stalls at Trade Hubs, buy/sell orders, matching, owner fees, `token_diff` settlement on mock Intents, price board | W10 |
+| **W13** | Markets (F2, mock) | Economy/NEAR | Market stalls at Trade Hubs, buy/sell orders, matching, owner fees, `token_diff` settlement on mock Intents, price board | W06, W10 |
 | **W14** | Fortify (walls) | Gameplay | Ridge, Moat, Lower, Wall Gate, line of fire + parapet, wall-aware pathing, fauna siege, `would_isolate` | W05, W07 |
-| **W15** | Guild & Agents (F3, F4, mock) | Economy/NEAR | Orbital Guild NPC traders with wallets visit, quote and trade; colony director key with allowance; `autoTrade` | W13 |
+| **W15** | Guild & Agents (F3, F4, mock) | Economy/NEAR | Orbital Guild NPC traders with wallets visit, quote and trade; colony director key with allowance; `autoTrade` | W09, W13 |
 | **W16** | AI Director | Autonomy | `LlmProviderPort` (mock + Z.ai glm-5.3), triggers, brief, DirectiveV1 v2, budgets, raw logs, rationale in the HUD, away story | W08 |
-| **W17** | Second Tier (S5–S7) | Gameplay | Hub T2 + HQ refit, Multitask T2, T2 buildings, Factory T2, Tank, Artillery, Mobile Radar + spotting, Brute fauna | W07, W08 |
-| **W18** | PvP & Diplomacy | Gameplay | Raids on colonies, newcomer shield, colony critical / elimination, HQ reprint, truces (offer, notice, Oathbreaker), AI raid opt-in | W07, W11 |
-| **W19** | Air & Endgame (S8–S10) | Gameplay | Aero Hangar, Air Recon, Fighter, Gunship, Bomber, Anti-Air, Drifter, T3 structures, Multitask T3, HQ T3 | W17 |
-| **W20** | Colony Deed & Staking (F6, mock) | Economy/NEAR | A dynamic Deed NFT minted at founding that updates with milestones, a Deed card, own-NEAR staking (mock pool) | W06 |
-| **W21** | Rocket & Settlement | Gameplay | Rocket Silo, launch gate (100 % Living), countdown, Settled colony, carry-over to a new planet, all-settled planet ends early, account claim (mock) | W17, W20, W11 |
-| **W22** | Treasury & Bounties (F7, F8, mock) | Economy/NEAR | Planet treasury DAO (fees in, proposals, votes, projects), bounty escrow, mercenary NPCs | W13, W18 |
-| **W23** | Real NEAR (phase 2) | Economy/NEAR | Each port switches to its real adapter after its contract suite passes: Identity, Relayer → Cargo → Intents → Agent wallet → Deed / Staking → DAO → Escrow | per port: W06, W10, W13, W15, W20, W22 |
-| **W24** | Mobile, PWA & Landing | Client | Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls, live landing diorama | W04 |
+| **W17** | Second Tier (S5–S7) | Gameplay | Hub T2 + HQ refit, Multitask T2, T2 buildings, Factory T2, Tank, Artillery, Mobile Radar + spotting, Brute fauna | W05, W07, W08 |
+| **W18** | PvP & Diplomacy | Gameplay | Raids on colonies, newcomer shield, colony critical / elimination, HQ reprint, truces (offer, notice, Oathbreaker), AI raid opt-in | W07, W09, W11 |
+| **W19** | Air & Endgame (S8–S10) | Gameplay | Aero Hangar, Air Recon, Fighter, Gunship, Bomber, Anti-Air, Drifter, T3 structures, Multitask T3, HQ T3 | W08, W14, W17 |
+| **W20** | Colony Deed & Staking (F6, mock) | Economy/NEAR | A dynamic Deed NFT minted at founding that updates with milestones, a Deed card, own-NEAR staking (mock pool) | W00, W01, W06 |
+| **W21** | Rocket & Settlement | Gameplay | Rocket Silo, launch gate (100 % Living), countdown, Settled colony, carry-over to a new planet, all-settled planet ends early, account claim (mock) | W05, W06, W11, W17, W20 |
+| **W22** | Treasury & Bounties (F7, F8, mock) | Economy/NEAR | Planet treasury DAO (fees in, proposals, votes, projects), bounty escrow, mercenary NPCs | W06, W07, W10, W11, W13 (W18 optional) |
+| **W23** | Real NEAR (phase 2) | Economy/NEAR | Each port switches to its real adapter after its contract suite passes: Identity, Relayer → Cargo → Intents → Agent wallet → Deed / Staking → DAO → Escrow | per port: W00, W06, W10, W12, W13, W15, W20, W21, W22; ops: W25 |
+| **W24** | Mobile, PWA & Landing | Client | Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls, live landing diorama | W02, W04 |
 | **W25** | Launch Ops & Submission | Ops | Docker, Cloudflare, R2 backups, monitoring, first-party analytics, load test, balance harness + reference bot, README / LICENSE / video / X post / form | W00 (grows with each wave) |
 
 ```mermaid
 flowchart LR
   W00 --> W01 --> W02
-  W02 --> W03 --> W05 --> W14
-  W03 --> W07 --> W14
-  W07 --> W17 --> W19
-  W08 --> W17
-  W17 --> W21
-  W07 --> W18
-  W11 --> W18
-  W01 --> W04 --> W24
-  W00 --> W06 --> W10 --> W13 --> W15
-  W02 --> W10
-  W06 --> W20 --> W21
-  W11 --> W21
-  W13 --> W22
-  W18 --> W22
+  W00 & W01 --> W06
+  W02 --> W03 --> W05
+  W03 --> W07
+  W05 & W07 --> W14
+  W01 --> W04
+  W02 & W04 --> W24
   W02 --> W08 --> W16
   W02 --> W09
   W01 --> W11
   W01 --> W12
-  W06 & W10 & W13 & W15 & W20 & W22 --> W23
+  W05 & W07 & W08 --> W17
+  W08 & W14 & W17 --> W19
+  W07 & W09 & W11 --> W18
+  W02 & W06 --> W10
+  W06 & W10 --> W13
+  W09 & W13 --> W15
+  W00 & W01 & W06 --> W20
+  W05 & W06 & W11 & W17 & W20 --> W21
+  W06 & W07 & W10 & W11 & W13 --> W22
+  W00 & W06 & W10 & W12 & W13 & W15 & W20 & W21 & W22 & W25 --> W23
   W00 --> W25
-  W05 --> W21
-  W10 --> W22
-  W01 --> W06
 ```
 
 The **spine** is W00 → W01 → W02. Everything after W02 can run on up to **five parallel tracks**.
@@ -94,15 +92,15 @@ Each wave file lists its soft dependencies in its header.
 | **Seed scenarios** | Each wave has `scenarios/wNN-<slug>.ts`, which creates a planet already in the state that wave needs (e.g. W14 starts with a colony at S4, a Terraformer and a nest nearby). Load it with `?scenario=w14` or `npm run scenario w14` |
 | **E2E per wave** | `e2e/wNN.spec.ts` drives headless Chrome against the running app and asserts the wave's demo. `npm run e2e -- --waves ..NN` runs every suite up to NN, so a regression in an earlier wave is caught. Wave DoD = its e2e passes **and** every earlier wave's e2e still passes |
 | **Local host** | `?host=local` runs the shared engine in the browser with no backend (D-31): gameplay waves can be played and tested without the app or Postgres, and `npm run e2e -- --host local` runs sim-only suites. Features that need server modules (accounts, NEAR, lobby, notifications, progression, LLM) are hidden locally |
-| **Dev tools (W00)** | Dev console (grant resources, set stage, spawn raid, spawn unit, reveal map), time warp ×1–×100, state inspector, mock chain explorer, flag panel. Dev-only builds; they are not anti-cheat (D-25) and are not shipped in production |
+| **Dev tools (W00)** | Dev console (grant resources, set stage, spawn raid, spawn unit, reveal map, `tune` balance rows live with a `TA_BALANCE_OVERRIDES` file, D-35), time warp ×1–×100, state inspector, mock chain explorer, flag panel. Dev-only builds; they are not anti-cheat (D-25) and are not shipped in production |
 
 ## 4. Building waves in parallel
 
 | Rule | Detail |
 |---|---|
-| **Tracks own paths** | Spine/lead: kernel, contracts core, app shell. **Gameplay (G):** `shared/sim/src/systems/<feature>/`, `shared/sim/src/data/<feature>.ts`, `client/src/features/<feature>/`, kitbash archetypes. **Economy/NEAR (E):** `backend/app/src/near/**`, `backend/app/src/market/**`, sim `systems/{trade,treasury,bounty,mercenary}/`, client `features/{cargo,market,deed,treasury,bounty,identity}/`. **Autonomy (P):** sim `systems/{progression,goals,rule-engine}/`, `backend/app/src/{ai,notify}/`, client `features/{goals,stages,away,notify}/`. **Meta (M):** `backend/app/src/{lobby,profile,progression}/`, client `pages/{me,lobby}/`. **Client (C):** `client/src/{core,render,camera,maps,mobile}/`, `landing/`. **Ops (O):** `infra/`, `.github/`, `scripts/`, `e2e/harness/` |
+| **Tracks own paths** | Spine/lead: kernel, contracts core, app shell. **Gameplay (G):** `shared/sim/src/systems/<feature>/`, `shared/sim/src/data/<feature>.ts`, `frontend/game/features/<feature>/`, kitbash archetypes (`frontend/render/kitbash/archetypes/`). **Economy/NEAR (E):** `backend/app/src/near/**`, `backend/app/src/market/**`, sim `systems/{trade,treasury,bounty,mercenary}/`, client `features/{cargo,market,deed,treasury,bounty,identity}/`. **Autonomy (P):** sim `systems/{progression,goals,rule-engine}/`, `backend/app/src/{ai,notify}/`, client `features/{goals,stages,away,notify}/`. **Meta (M):** `backend/app/src/{lobby,profile,progression}/`, client `pages/{me,lobby}/`. **Client (C):** `frontend/game/{core,net,store,camera,maps,mobile}/`, `frontend/render/**`, `frontend/landing/**`. **Ops (O):** `infra/`, `.github/`, `scripts/`, `e2e/harness/` |
 | **One engine** | Every game rule lives in `@terra/sim` (D-31). The server sim thread, client-side prediction and the local host run that same code, so a wave never puts a game rule in a server module or a client feature. A wave that adds state registers its synced fields (no delta code) and adds its scenario to the engine parity test (W00-58) |
-| **Registries, not edits** | Shared lists are assembled by **auto-discovery**, so a new feature adds a file instead of editing a shared one: sim systems `systems/*/index.ts` (each declares its pipeline order), contracts `shared/contracts/src/commands/*.ts` and `events/*.ts`, data `data/*.ts`, client features via `import.meta.glob('features/*/index.ts')` (each registers menus, HUD panels, renderers), server modules via a module list built from `modules/*/`. This follows the registry pattern in `AGENTS.md` (`KitbashRegistry` etc.) |
+| **Registries, not edits** | Shared lists are assembled by **auto-discovery**, so a new feature adds a file instead of editing a shared one: sim systems `systems/*/index.ts` (each declares its pipeline order), contracts `shared/contracts/src/commands/*.ts` and `events/*.ts`, data `data/*.ts`, client features via `import.meta.glob('./features/*/index.ts')` in `frontend/game` (a feature never imports another feature or app; AGENTS.md §6) (each registers menus, HUD panels, renderers), server modules via a module list built from `modules/*/`. This follows the registry pattern in `AGENTS.md` (`KitbashRegistry` etc.) |
 | **Contract-first** | Each wave's **first issue** (`WNN-01`) lands its contracts: zod schemas for commands and events, data-table rows, port methods, flag. Other waves can then code against those contracts and mocks before the producing wave finishes, by **stacking** on its branch (§7) |
 | **Mocks for missing waves** | All NEAR, LLM and notifications behind ports with mocks (D-30). A wave that needs data from an unfinished wave uses the dev console or a scenario to fake it |
 | **Shared-file pre-step** | The few files that cannot be auto-discovered (root `package.json`, Prisma schema core, `CommandKind` union generation script) are changed only in a **lead pre-step** at the start of a wave. Prisma: one schema file per module (`prisma/<module>.prisma`), merged by script |

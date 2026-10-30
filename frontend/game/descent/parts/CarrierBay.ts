@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import type { FittedModel } from '@shared/engine/visuals/space/placeholders';
+import type { FittedModel } from '@terra/render/visuals/space/placeholders';
 import { smoother, smoothstep } from '../math';
-import type { DropRig } from '../dropRig';
+import type { DropRig } from '@terra/render/descent/dropRig';
 import { Y0 } from '../constants';
 import type { DescentContext, FramePart, FrameState } from './FrameState';
 

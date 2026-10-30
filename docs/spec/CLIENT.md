@@ -23,7 +23,7 @@ The client is a **view and an intent emitter** that runs the **same engine as th
 | `CL-02` | There are no planet tickets (D-24). Each connection attempt does `/me/home`, then `hello {accessToken}` → `join {planetId}` on `wss://api.terraagent.com/ws`. |
 | `CL-03` | The access JWT lives only in memory. The refresh/device credential is an httpOnly cookie on `api.terraagent.com` (D-10), and every auth call uses `credentials: "include"`. |
 | `CL-04` | All REST responses and WS messages MUST be parsed with `@terra/contracts` zod schemas: `strict` in dev/test (a failure throws), `warn` in prod (log, then drop the message). For `delta` in prod, only the envelope is validated and the ops are trusted, to stay inside the decode budget. |
-| `CL-05` | The world state for rendering lives in a **mutable, non-React world store** that the render loop reads directly. React components subscribe only to a throttled HUD projection (≤ 10 Hz). |
+| `CL-05` | The world state for rendering lives in a **mutable world store** that the render loop reads directly. HUD panels (vanilla-DOM view classes, D-36) read only a throttled HUD projection (≤ 10 Hz). |
 | `CL-06` | Rendering MUST follow the 4 visual pillars (`AGENTS.md`): kitbashed procedural meshes (Pillar 1), sanitized `.glb` only (Pillar 2), `createUnifiedColonyMaterial()` for every colony mesh (Pillar 3), and a 28° diorama viewport with ACES, PMREM `RoomEnvironment` and selective bloom at `threshold 1.1` (Pillar 4). |
 | `CL-07` | Every repeated entity (robots, buildings, fauna, deposits, projectiles) MUST render through `InstancedMesh`, with one draw call per archetype × LOD. `scene.add(new Mesh())` per entity is forbidden. |
 | `CL-08` | UI commands MUST be sent as `cmd` envelopes with a client `id` and tracked until `cmd.ack` or `cmd.reject`. If neither arrives within 5 s, the client shows "not confirmed". A reconnect does **not** resend unacknowledged commands (no double-apply). The UI marks them "unknown — check the colony". |
@@ -89,7 +89,7 @@ sequenceDiagram
 ## 4. Planet picker & queue UX
 
 ### 4.1 Picker content
-- **Recruiting planets.** Planets with `status = RECRUITING`. Each card shows: planet type (Temperate or Desert), seats `n/5`, age, "admission closes in" (`24h − age`), "ends in" (`14d − age`), and a thumbnail generated from the seed (procedural mini-map, so no image download is needed). Sort order: most seats filled first, then oldest first. This fills planets faster.
+- **Recruiting planets.** Planets with `status = RECRUITING`. Each card shows: planet type (Desert, Ocean or Temperate, D-33), seats `n/5`, age, "admission closes in" (`24h − age`), "ends in" (`14d − age`), and a thumbnail generated from the seed (procedural mini-map, so no image download is needed). Sort order: most seats filled first, then oldest first. This fills planets faster.
 - **New planet.** One card per enabled planet type. It is always shown, even when recruiting planets exist.
 - **Empty state.** With no recruiting planets, only the "New planet" cards show, with the copy "Be the first colonist".
 - Sealed and ended planets are **never** listed (G6).
@@ -145,7 +145,7 @@ Shown on `/play` when `home.awaySummary` is present (the player was away ≥ 60 
 | Section | Content |
 |---|---|
 | Header | Away duration ("6 h 12 m"), planet name and type, colony status (healthy / damaged / under attack). |
-| Economy | Net change per resource (`+1 240 Metals`) and storage-cap hits ("Minerals hit cap for 2 h — build a Supply Depot"). |
+| Economy | Net change per family with its tier breakdown (`+1 240 Metals · T1 1 100 · T2 140`) and family storage-cap hits ("Minerals hit cap for 2 h — build a Supply Depot"). |
 | Construction | Buildings completed, upgraded and lost. Robots built and lost. |
 | Threats | Hazards (lightning, meteor), fauna attacks, PvP raids, with outcomes. |
 | AI director | The top 5 AI decisions (time, one-line rationale, actions). The full list is in the HUD event log. |
@@ -214,11 +214,11 @@ stateDiagram-v2
 flowchart LR
   WS["WsTransport / LocalTransport<br/>welcome / delta / ack / event"] --> WK["Sim worker (@terra/sim)<br/>replica @ T · predicted @ now"]
   WK -->|view() buffers| RENDER["Render loop (rAF)<br/>InstancedMesh attrs"]
-  WK -->|10 Hz view()| HUD["Zustand HUD store → React"]
+  WK -->|10 Hz view()| HUD["HUD panel views<br/>(vanilla DOM, D-36)"]
   WS -->|server events| LOG["Event log + toasts"]
 ```
 
-- **WorldStore** (`frontend/game/src/world/`):
+- **WorldStore** (`frontend/game/world/`):
   - Terrain is immutable per session apart from territory and terraform changes: an `Int16Array` of tile type/height plus an owner array.
   - Entities live in a `Map<EntityId, EntityRecord>` with `archetype`, `ownerColonyId`, `state`, `hp`, `progress`, and a 3-sample position ring buffer (`tick`, `q`, `r`, `heading`), all as typed-array slots.
   - Colony stats hold resources, caps, power and supply. The event ring keeps the last 200 events.
@@ -232,7 +232,9 @@ flowchart LR
 
 ## 8. Render architecture
 
-- **Stack:** Vite 6 + TypeScript (strict), vanilla **Three.js** for the canvas, **React 19 + Zustand 5 + Tailwind 4** for the HUD overlay (`pointer-events-none` root with interactive islands), per `docs/spec/tech-stack-spec.md` §2.
+- **Stack:** Vite 6 + TypeScript (strict), vanilla **Three.js** for the canvas, and a **vanilla-DOM HUD on the Faction Plate design system** (D-36): one small TypeScript view class per panel, registered by its feature, rendering into the design-system classes (`--ta-*` tokens, `.plate`, `.btn`) inside a `pointer-events: none` root with interactive islands. State flows one way: sim `view()` → panel. No React, Zustand or Tailwind. See `docs/spec/tech-stack-spec.md` §2.
+- **Planet look (D-33).** The sim owns `planetType`; the client picks the render look from it: `desert → dune`, `ocean → oceanForest`, `temperate → forestRock` (`PlanetKind` in `frontend/render/planets/PlanetSpec.ts`). Picker cards, the orbit menu and the in-game terrain use the same mapping.
+- **Resource bar (D-34).** Three **family chips** (Metals, Minerals, Bio), each showing the family total against its storage cap, with a hover/tap breakdown by tier (Metals: Iron / Light alloys / Titanium; Minerals: Silica / Rare earths / Exotic crystal; Bio: Water + Biomass / Petroleum / Gene-stock). Locked tiers show their unlock condition (Terraform % and the deposit ring). A fourth chip shows **Energy** as grid power (net E/s and capacitor charge). This replaces the prototype's energy/metal/water/biomass bar.
 - **Renderer choice for the online MVP:** `WebGLRenderer` + `EffectComposer`, using the exact bootstrap in `docs/visuals/agent-3d-coding-rules.md` §3 (Pillar 4 reference). The `WebGPURenderer` + TSL path in `docs/spec/tech-stack-spec.md` is deferred until TSL bloom/GTAO parity is confirmed. Materials stay written so they can move behind `createUnifiedColonyMaterial()`. *(Owner-confirmed 2026-10-29, D-22.)*
 - **Viewport (Pillar 4, `diorama-viewport-auditor`):** `PerspectiveCamera(28°)` at 40–45° elevation; ACES filmic, exposure 1.05–1.15; PMREM `RoomEnvironment`; warm key sun + cool hemisphere fill; a ±35 m shadow frustum that follows the camera's look-at target; `UnrealBloomPass(strength 0.45, radius 0.35, threshold 1.1)`; `FogExp2` matched to the background. Camera: pan (WASD / edge / drag), zoom (wheel, clamped), rotate in 90° steps (Q/E), "focus my hub" (Home key).
 - **Terrain (`shader-texture-tuning`, `procedural-texture-synthesis`):** hex terrain from the welcome snapshot, in chunks of 32×32 tiles with one merged `BufferGeometry` per chunk (≤ 16 visible chunks). Biome terrain shader with a splatmap `DataTexture` for terraform/moisture. Territory borders as an overlay pass using owner colours plus hatching patterns (colour-blind safe). Fog-of-war darkening is computed **on the client** from the full state (`CL-16`).
@@ -297,6 +299,13 @@ UI details follow the TA-14.8 / TA-11 tasks. All amounts are shown in game units
 
 ---
 
+## 8c. Landing resource and world tabs (D-33, D-34)
+
+- The landing's resource tabs are **Metals / Minerals / Bio / Energy**. Each family tab shows its T1 → T2 → T3 sub-resources and the rule "T1 from landing, T2/T3 after terraforming"; the Energy tab shows grid power and the generator types.
+- The landing world cards stay **Kharon Dunes** (`desert`), **Thalassa Verde** (`ocean`) and **Granite Hollow** (`temperate`), with the traits of D-33. In-game planet names are generated per planet; the landing names are the type showcase.
+
+---
+
 ## 9. Performance budget
 
 | Metric | Budget | Measured by |
@@ -306,7 +315,7 @@ UI details follow the TA-14.8 / TA-11 tasks. All amounts are shown in game units
 | Triangles | ≤ 1.5 M per frame | `renderer.info.render.triangles` |
 | Main-thread JS per frame | ≤ 6 ms p95 (render + interpolation, excluding the HUD) | Performance marks |
 | Delta decode + apply | ≤ 2 ms p95 per message | Performance marks |
-| HUD React re-render | ≤ 10 Hz, ≤ 3 ms per commit | React Profiler in e2e perf run |
+| HUD panel render | ≤ 10 Hz, ≤ 3 ms per update | Performance marks in e2e perf run |
 | GPU memory | ≤ 256 MB | Estimated from textures/geometry |
 | Initial JS (gzip) | ≤ 450 KB for the game (three ≈ 160 KB); landing ≤ 50 KB **initial**, with the live hero diorama lazy-loaded as a separate chunk of ≤ 200 KB after first paint (D-22) | Build report |
 | Phone frame rate (D-22) | **≥ 30 FPS** on a reference phone (iPhone 13 / Pixel 7, landscape, DPR cap 1.25, `low` tier) with 150 buildings + 250 robots visible | e2e perf probe (device lab or BrowserStack) |
@@ -386,7 +395,7 @@ Supporting events (not part of the funnel): `ws_reconnect {code}`, `resync`, `cm
 
 | Rule | Test | Task |
 |---|---|---|
-| `CL-01`, `CL-13` | `frontend/game/src/boot/boot.test.ts` (each home state → route); e2e `w3-leave-and-return.spec.ts` | TA-11.1, TA-11.3, TA-13.3 |
+| `CL-01`, `CL-13` | `frontend/game/boot/boot.test.ts` (each home state → route); e2e `w3-leave-and-return.spec.ts` | TA-11.1, TA-11.3, TA-13.3 |
 | `CL-02` | `planet-socket.test.ts › hello → join on every reconnect` | TA-11.4 |
 | `CL-03` | `api-client.test.ts › access token not persisted; refresh uses credentials include` | TA-11.1 |
 | `CL-04` | `decoder.test.ts › strict mode throws / warn mode drops` | TA-11.4 |
@@ -419,3 +428,6 @@ Supporting events (not part of the funnel): `ws_reconnect {code}`, `resync`, `cm
 | — | One app, one WS endpoint, no tickets | **Yes** | D-24 | §3.2, §6 rewritten |
 | — | Anti-cheat | **None**: full state; fog drawn on the client | D-25 | `CL-16`, `CL-09` |
 | — | NEAR economy | F1–F8 surfaces | D-26 | §8a |
+| — | Planet types | `desert` / `ocean` / `temperate` → looks `dune` / `oceanForest` / `forestRock` | D-33 | §4.1, §8 |
+| — | Resources | Three family chips with tier breakdown + Energy; landing resource tabs Metals / Minerals / Bio / Energy | D-34 | §5.3, §8, §8c |
+| — | HUD technology | Vanilla DOM + Faction Plate CSS; no React/Zustand | D-36 | `CL-05`, §7, §8, §9 |

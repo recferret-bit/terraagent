@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { PLANET_SPECS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
+import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { PEDESTAL_R, buildGrid } from './grid';
 import { buildHuman, buildRuler } from './props';
 

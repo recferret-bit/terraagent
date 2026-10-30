@@ -1,5 +1,5 @@
 // Section 02: the Canvas2D hex colony, gated to the viewport; reduced motion renders one still frame (t = 9 s).
-import { StageHost } from '@shared/engine/core/StageHost';
+import { StageHost } from '@terra/render/core/StageHost';
 import { ColonyScene } from '../colony/ColonyScene';
 
 export function initColonyCanvas() {

@@ -6,7 +6,7 @@ const frontend = resolve(__dirname, 'frontend');
 // One Vite app rooted at frontend/. URLs mirror the file layout: /play.html, /landing.html, /playground.html, /design/.
 export default defineConfig({
   root: frontend,
-  resolve: { alias: { '@shared': resolve(frontend, 'shared') } },
+  resolve: { alias: { '@terra/render': resolve(frontend, 'render') } },
   build: {
     outDir: resolve(__dirname, 'dist'),
     emptyOutDir: true,

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { GLSL_NOISE } from '@shared/engine/visuals/space/glslNoise';
+import { GLSL_NOISE } from '@terra/render/visuals/space/glslNoise';
 
 /**
  * Reentry plasma, built so the pod stays readable inside it (the camera is above/behind the pod for most of reentry):

@@ -1,4 +1,4 @@
-import type { Report } from '@shared/engine/kitbash/validate';
+import type { Report } from '@terra/render/kitbash/validate';
 import { esc } from '../dom';
 import { VAL_LIST_MAX } from '../content/Validation';
 

@@ -46,7 +46,7 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.confi
 
 - **Game:** LMB move hero · WASD / edge pan · MMB drag · wheel zoom · Q/E rotate · Home focus hero · Esc pause. During the descent: Esc / Space skips.
 - **Playground:** `[` `]` cycle models · `1`–`4` views · `T` turntable · `F` focus · `G` grid · `W` wireframe · `B` bloom · `R` spawn the whole category in a row · `V` validate (outline floating/overlapping parts) · `/` search · double-click to refocus.
-- **Landing and Game:** `F9` toggles the CRT overlay ([`frontend/shared/ui/crt.ts`](./frontend/shared/ui/crt.ts)).
+- **Landing and Game:** `F9` toggles the CRT overlay ([`frontend/render/ui/crt.ts`](./frontend/render/ui/crt.ts)).
 
 ## Design system: Faction Plate
 
@@ -68,9 +68,8 @@ frontend/                 One Vite app (root of vite.config.ts); URLs mirror the
   landing/                Landing site: main.ts (LandingPage) + sections/, hero/, colony/, resources/
   game/                   Game: main.ts, app/ (Game, Gameplay, RTS camera), ui/ (menu, HUD), descent/ (cinematic, parts/, fx/)
   playground/             3D playground: PlaygroundApp + stage/, content/, camera/, panels/
-  shared/                 Used by 2+ apps (alias @shared/*)
-    engine/               core (viewport, StageHost), kitbash (+validate/), visuals, planets, orbit, lighting
-    ui/                   CRT overlay
+  render/                 3D render engine used by 2+ apps (alias @terra/render/*): core, kitbash (+validate/),
+                          visuals, planets, orbit, descent (drop rig), lighting, ui (CRT overlay)
 scripts/                  check-structure.mjs (500-line / 100-line limits)
 .agents/skills/           Agent skills for 3D work (see AGENTS.md)
 docs/                     game design (game/), online architecture (spec/), build plan (plan/), 3D rules (visuals/)
@@ -78,7 +77,7 @@ docs/                     game design (game/), online architecture (spec/), buil
 
 ## Adding a 3D model
 
-1. Register an archetype in `frontend/shared/engine/kitbash/archetypes/…` (via `ArchetypeCatalog.register`) following the `procedural-kitbash-3d` skill.
+1. Register an archetype in `frontend/render/kitbash/archetypes/…` (via `ArchetypeCatalog.register`) following the `procedural-kitbash-3d` skill.
 2. Open `/playground.html?inspect=<your.id>`. It appears in the sidebar automatically.
 3. Run `npm run validate:models -- <your.id>`: it must report 0 errors and 0 warnings (floating parts, gaps, z-fighting, parts cutting through each other, animated parts hitting something, wheels/chassis/arm in one colour, a solar panel that is a flat slab, blank faces). Name your parts; roles come from names. Add `&validate=1` to the playground URL (or press `V`) to see offending parts outlined and numbered.
 4. Check all four views, ground contact (`minY 0.000` ✔) and the triangle count against the 3.5k budget. Export a 4-view sheet if needed.

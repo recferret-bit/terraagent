@@ -1,9 +1,9 @@
 // Renders the game's real PlanetGlobe (same shaders as the orbit menu) into each planet card.
 // One shared WebGL renderer draws every globe, then blits into the card's 2D canvas, so the page uses a single extra GL context.
 import * as THREE from 'three';
-import { PLANET_SPECS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
-import { createPlanetGlobe } from '@shared/engine/planets/PlanetGlobe';
-import { StageHost } from '@shared/engine/core/StageHost';
+import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { createPlanetGlobe } from '@terra/render/planets/PlanetGlobe';
+import { StageHost } from '@terra/render/core/StageHost';
 
 const R = 10, SIZE = 360; // render square; blitted down to the card
 

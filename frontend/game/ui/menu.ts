@@ -1,4 +1,4 @@
-import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
+import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { worldCardHtml } from './worldCard';
 
 export interface MenuSettings { bloom: boolean; quality: 'low' | 'high'; skipCinematic: boolean; }

@@ -1,4 +1,4 @@
-import type { DescentTelemetry } from '../descent/types';
+import type { DescentTelemetry } from '@terra/render/descent/types';
 
 /** Cinematic descent overlay (telemetry, letterbox, progress, skip hint). */
 export class DescentHud {

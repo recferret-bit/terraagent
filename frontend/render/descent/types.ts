@@ -1,7 +1,7 @@
 import type * as THREE from 'three';
-import type { PlanetSpec } from '@shared/engine/planets/PlanetSpec';
-import type { PlanetSurface } from '@shared/engine/planets/surface/types';
-import type { ColonyViewport } from '@shared/engine/core/createColonyViewport';
+import type { PlanetSpec } from '../planets/PlanetSpec';
+import type { PlanetSurface } from '../planets/surface/types';
+import type { ColonyViewport } from '../core/createColonyViewport';
 
 export type DescentPhase = 'orbit' | 'release' | 'freefall' | 'reentry' | 'chute' | 'retro' | 'touchdown';
 

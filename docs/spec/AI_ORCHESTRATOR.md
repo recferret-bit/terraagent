@@ -66,9 +66,9 @@ Event kinds are owned by `@terra/contracts` (TA-01.3 / TA-07.7). This table maps
 | `colony.under_attack` | fauna or another colony damages a building or robot owned by the colony, with no attack in the last 120 s | **critical** |
 | `power.collapse` | brownout shedding reached group ≥ 3 (extractors/depots) or generation < 50 % of demand for 30 s | **critical** |
 | `hub.critical` | Command Hub HP < 50 % | **critical** |
-| `resource.critical` | a consumed resource reaches 0 within ≤ 120 s at the current net rate | **critical** |
+| `resource.critical` | a consumed sub-resource (`ResourceKey`, D-34) reaches 0 within ≤ 120 s at the current net rate | **critical** |
 | `resource.shortage` | a consumed resource reaches 0 within ≤ 600 s | normal |
-| `storage.full` | any resource ≥ 95 % of its cap for 60 s (mining halted) | normal |
+| `storage.full` | any resource family (Metals, Minerals, Bio) ≥ 95 % of its cap for 60 s (its sources halted) | normal |
 | `supply.capped` | robot supply used = cap and the build queue holds robots | normal |
 | `neighbor.contact` | first territory border contact with another colony | normal |
 | `trade.offer_received` | an incoming trade offer arrived (TA-10.5) | normal |
@@ -131,12 +131,12 @@ Built only from `ColonyBriefV1` (contract, produced by the sim thread). Fixed fi
 
 ```text
 T=18342 planet=desert day=2.1 night=no weather=sandstorm(90s)
-trigger=resource.critical(W eta=95s) sev=critical
-res M=820/1500 Min=310/1500 Pet=40/1500 W=12/1500 | E +14/s (gen 62 use 48) batt 40%
+trigger=resource.critical(bio.water eta=95s) sev=critical
+res Met=820/1500[t1 820 t2 0 t3 0] Min=310/1500[t1 310 t2 0 t3 0] Bio=52/1500[water 12 biomass 40 t2 0 t3 0] | E +14/s (gen 62 use 48) batt 40%
 bld hub1:1 beacon1:2 solar1:4 coal1:1 mine1:3 pump1:0 depot1:1 dca1:1 fac1:1 turret1:1
 bots miner1:5 builder1:2 combat1:1 supply 9/10 queue: mine1,miner1
 threats nest@NE d=14 lvl1 | neighbors C-7 border=yes hostile=no
-offers in: #o81 C-7 gives W150 wants M200 exp=240s
+offers in: #o81 C-7 gives bio.water 150 wants metals.t1 200 exp=240s
 prio econ60 exp20 def10 pow10 terra0 | away=yes 47m raidsAllowed=no
 catalog bld=[hub,beacon,pylon,capacitor,solar,wind,coal,mine,pump,depot,dca,factory,turret] bots=[miner,builder,combat]
 ```
@@ -166,10 +166,10 @@ Authorization: Bearer ${ZAI_API_KEY}
 ```ts
 export const Priority = z.number().int().min(0).max(100);
 export const DirectiveActionV1 = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('queueBuild'),   building: BuildingId, tier: z.literal(1).or(z.literal(2)), near: z.enum(['hub','frontier','deposit:metals','deposit:minerals','deposit:petroleum','deposit:water']), count: z.number().int().min(1).max(3) }).strict(),
+  z.object({ kind: z.literal('queueBuild'),   building: BuildingId, tier: z.literal(1).or(z.literal(2)), near: z.enum(['hub','frontier','deposit:metals','deposit:minerals','deposit:oil','water']), count: z.number().int().min(1).max(3) }).strict(),
   z.object({ kind: z.literal('queueRobot'),   robot: RobotId, tier: z.literal(1), count: z.number().int().min(1).max(5) }).strict(),
   z.object({ kind: z.literal('upgrade'),      building: BuildingId, toTier: z.literal(2) }).strict(),
-  z.object({ kind: z.literal('tradeOffer'),   give: ResAmount, want: ResAmount, to: ColonyId.optional() }).strict(),
+  z.object({ kind: z.literal('tradeOffer'),   give: ResAmount, want: ResAmount, to: ColonyId.optional() }).strict(),   // ResAmount = { resource: ResourceKey, amount }
   z.object({ kind: z.literal('tradeRespond'), offerId: z.string(), accept: z.boolean() }).strict(),
   z.object({ kind: z.literal('rally'),        target: z.enum(['hub','frontier','nest','enemyBorder']) }).strict(),
   z.object({ kind: z.literal('raid'),         targetColonyId: ColonyId }).strict(),

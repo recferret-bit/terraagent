@@ -17,8 +17,8 @@ const ids = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--cate
 
 const vite = await createServer({ root: resolve(root, 'frontend'), configFile: resolve(root, 'vite.config.ts'), logLevel: 'error', appType: 'custom', server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, include: [] } });
 try {
-  const kit = await vite.ssrLoadModule('/shared/engine/kitbash/index.ts');
-  const v = await vite.ssrLoadModule('/shared/engine/kitbash/validate/index.ts');
+  const kit = await vite.ssrLoadModule('/render/kitbash/index.ts');
+  const v = await vite.ssrLoadModule('/render/kitbash/validate/index.ts');
   let targets = ids;
   if (flag('--all')) targets = kit.ArchetypeCatalog.list().map((e) => e.id);
   else if (val('--category')) targets = kit.ArchetypeCatalog.list(val('--category')).map((e) => e.id);

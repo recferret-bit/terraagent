@@ -6,7 +6,7 @@ Everything that is not code lives here. The repo root only keeps `README.md`, `A
 |---|---|---|
 | [`game/`](./game) | **Game design:** the concept, the economy and buildings, units and orders, and the NEAR economy features | [`autonomous-colony-spec.md`](./game/autonomous-colony-spec.md) |
 | [`spec/`](./spec) | **Online architecture** for the server, protocol, client, NEAR and deployment, plus the browser tech stack. `DECISIONS.md` is the source of truth for what was decided | [`DECISIONS.md`](./spec/DECISIONS.md) |
-| [`plan/`](./plan) | **Build plan:** 26 product waves (862 issues, one file per wave), the hackathon cut (`H` tags) and its generated schedule | [`PRODUCT_WAVES.md`](./plan/PRODUCT_WAVES.md), [`HACKATHON_CUT.md`](./plan/HACKATHON_CUT.md) |
+| [`plan/`](./plan) | **Build plan:** 26 product waves (861 issues, one file per wave), the hackathon cut (`H` tags) and its generated schedule | [`PRODUCT_WAVES.md`](./plan/PRODUCT_WAVES.md), [`HACKATHON_CUT.md`](./plan/HACKATHON_CUT.md) |
 | [`visuals/`](./visuals) | **3D and rendering rules** for agents and artists: coding rules, the AI-mesh pipeline, procedural textures, shaders and lighting | [`agent-3d-coding-rules.md`](./visuals/agent-3d-coding-rules.md) |
 
 ## Game design (`game/`)

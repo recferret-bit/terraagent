@@ -22,24 +22,26 @@ An autonomous colony builder ("Factorio-lite" + RTS + multi-planet simulation) h
 | **Shader System** | **TSL (Three.js Shading Language)** | Write shaders in TypeScript (NodeMaterials) instead of fragile GLSL strings; compiles to both WebGPU (WGSL) and WebGL2 (GLSL). |
 | **ECS / Simulation** | **bitECS** (or **Miniplex**) in a Fixed Timestep | Structure-of-Arrays (SoA) typed arrays map directly to Three.js `InstancedBufferAttribute` matrices for zero-GC-pause updates. |
 | **Pathfinding & Sim** | **Web Worker** (`RedBlobGames` Hex Flow Fields / A*) | Keeps pathfinding, rule-engine scoring, and terrain cellular automata off the main UI/render thread. |
-| **2D UI / HUD Overlay** | **React 19 + Tailwind CSS v4 + Zustand** | HTML/CSS is vastly superior to 3D canvas UI for complex RTS dashboards, priority queues, trade tables, and NEAR wallet modals. |
+| **2D UI / HUD Overlay** | **Vanilla DOM + Faction Plate CSS** (`frontend/design/css/tokens.css` + `base.css`; D-36) | HTML/CSS is vastly superior to 3D canvas UI for complex RTS dashboards, priority queues, trade tables, and NEAR wallet modals. Small TypeScript panel view classes fed by the sim `view()` keep one UI idiom and a small bundle. |
 | **Audio / Juice** | **Howler.js** + **Motion (Framer)** | Spatial SFX for mining/lasers/weather + crisp HUD micro-animations. |
 | **3D Asset Pipeline** | **@gltf-transform/cli** + **Meshopt** + **KTX2** | Compresses AI-generated `.glb` models by 80–90% and normalizes pivots, polycounts, and materials automatically. |
 | **Web3 & AI Layer** | **NEAR JS SDK (`@near-js/*`)** + **NEAR Intents** + **JSON Schema LLM** | Non-blocking async intents; 95% local deterministic Rule Engine + 5% event-driven LLM Director calls. |
 
 ---
 
-## 2. Why Vanilla Three.js Core + React HUD (Instead of Full React Three Fiber)
+## 2. Why Vanilla Three.js Core + Vanilla-DOM HUD (Instead of React Three Fiber or a React HUD)
+
+> **D-36 (2026-10-30):** the HUD is vanilla DOM on the design system. React and Zustand are not used anywhere in the game client.
 
 While **React Three Fiber (R3F)** is great for product configurators, in a simulation/RTS game where AI coding agents write procedural generators, custom instanced buffers, and tick-by-tick simulation loops:
-- **Vanilla Three.js for the Canvas** avoids React component lifecycle clashes with imperative `InstancedMesh` matrix updates, `BufferGeometryUtils` kitbashing, and TSL node graphs.
-- **React for the 2D HUD Overlay** sits as a transparent `<div class="pointer-events-none fixed inset-0">` over the `<canvas>`, subscribing to simulation state via **Zustand** (throttled to 10–15 Hz for resource counters so React never re-renders at 60 Hz).
+- **Vanilla Three.js for the Canvas** avoids component lifecycle clashes with imperative `InstancedMesh` matrix updates, `BufferGeometryUtils` kitbashing, and TSL node graphs.
+- **Vanilla DOM for the 2D HUD Overlay** sits as a transparent `pointer-events: none` root over the `<canvas>`, with interactive islands. Each panel (resource bar, task queue, priorities, trade, minimap) is a small TypeScript **view class**, registered by its feature and rendering into the Faction Plate classes (`--ta-*` tokens, `.plate`, `.btn`). Panels are fed by the sim worker's `view()` projection, throttled to ≤ 10 Hz, so the DOM never updates at 60 Hz. State flows one way (sim view → panel); panels send commands through the command bus. The `AGENTS.md` §6 limits apply (orchestrator + parts, files ≤ 500 lines, functions ≤ 100 lines).
 
 ```mermaid
 flowchart TD
     subgraph MainThread["Main Thread (60 FPS Render & Input)"]
-        UI["React 19 + Tailwind HUD\n(Task Queue, Priorities, Trade UI)"]
-        Store["Zustand State Bridge\n(Throttled Telemetry + Commands)"]
+        UI["Vanilla-DOM HUD panels (Faction Plate CSS)\n(Task Queue, Priorities, Trade UI)"]
+        Store["HUD projection + command bus\n(Throttled sim view() + Commands)"]
         Renderer["Three.js WebGPURenderer\n(InstancedMesh, TSL Shaders, PostProcessing)"]
     end
 
@@ -124,8 +126,8 @@ TerraAgent/
 │   ├── near/
 │   │   └── NearIntents.ts   # Invisible chain signatures & inter-colony trade intents
 │   └── ui/
-│       ├── HUD.tsx          # Tactical orbital overlay, task queue, priority sliders
-│       └── store.ts         # Zustand bridge between Worker and React UI
+│       ├── HudRoot.ts       # Tactical orbital overlay root; registers panel view classes
+│       └── projection.ts    # Throttled sim view() projection + command bus for the panels
 ```
 
 ---
@@ -137,10 +139,6 @@ TerraAgent/
   "dependencies": {
     "three": "^0.174.0",
     "bitecs": "^0.4.0",
-    "zustand": "^5.0.0",
-    "react": "^19.0.0",
-    "react-dom": "^19.0.0",
-    "lucide-react": "^0.470.0",
     "howler": "^2.2.4",
     "@near-js/accounts": "^1.2.0",
     "@near-js/transactions": "^1.2.0"
@@ -152,8 +150,7 @@ TerraAgent/
     "@gltf-transform/functions": "^4.1.0",
     "meshoptimizer": "^0.22.0",
     "typescript": "^5.7.0",
-    "vite": "^6.1.0",
-    "tailwindcss": "^4.0.0"
+    "vite": "^6.1.0"
   }
 }
 ```

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { tickArchetypeMesh, type FittedModel } from '@shared/engine/visuals/space/placeholders';
+import { tickArchetypeMesh, type FittedModel } from '@terra/render/visuals/space/placeholders';
 import { lerp, smoother } from '../math';
 import type { DescentContext, FramePart, FrameState } from './FrameState';
 

@@ -1,7 +1,7 @@
 import * as THREE from 'three';
-import { ArchetypeCatalog } from '@shared/engine/kitbash';
-import type { PlanetSurface } from '@shared/engine/planets/surface/types';
-import type { PlanetSpec } from '@shared/engine/planets/PlanetSpec';
+import { ArchetypeCatalog } from '@terra/render/kitbash';
+import type { PlanetSurface } from '@terra/render/planets/surface/types';
+import type { PlanetSpec } from '@terra/render/planets/PlanetSpec';
 
 /** Seeded PRNG (mulberry32) so the starter colony layout is deterministic per seed. */
 export function rng(seed: number) {

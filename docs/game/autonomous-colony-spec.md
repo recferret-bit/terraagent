@@ -19,15 +19,18 @@ The player exercises **indirect control** through a task queue and high-level pr
 
 ## 2. Resources
 
-| Resource       | Primary Use                          | Notes                          |
-|----------------|--------------------------------------|--------------------------------|
-| Metals         | Robots, buildings, rockets, ammo     | Mining                         |
-| Minerals       | Advanced components, electronics     | Quarrying + processing         |
-| Petroleum      | Fuel, plastics, some power           | Wells + refining               |
-| Energy         | Everything                           | Multiple generator types       |
-| Water          | Cooling, terraforming, biology       | Wells, condensation, rivers    |
+Three resource families, each with three tiers (D-34). **T1 is available from landing; T2 and T3 only after terraforming** (the colony's Terraform % and the ground around the extractor). Energy is not a family: it is grid power.
 
-**Starting resources:** The founder robot begins with a small balanced stock of all five resources.
+| Family | T1 (from landing) | T2 (after terraforming) | T3 (after more terraforming) | Primary use | Sources |
+|---|---|---|---|---|---|
+| **Metals** | Iron | Light alloys (copper, aluminium) | Titanium | Robots, buildings, rockets | Metals Extractor on metal deposits; Harvester |
+| **Minerals** | Silica | Rare earths | Exotic crystal | Advanced components, electronics | Minerals Quarry on mineral deposits; Harvester |
+| **Bio** | Water and Biomass (two T1 sub-resources) | Petroleum / organics | Gene-stock | Fuel, cooling, terraforming, biology | Water Extractor (water); Harvester clearing forest (biomass) and harvesting Living ground (gene-stock); Petroleum Well on oil deposits (petroleum / organics) |
+| **Energy** | — | — | — | Everything (grid power, E/s; stored only in capacitors) | Multiple generator types (§3) |
+
+Stock keys: `metals.t1 … metals.t3`, `minerals.t1 … minerals.t3`, `bio.water`, `bio.biomass`, `bio.t2`, `bio.t3`. Unlock thresholds, yield split and cost reading: [`colony-economy-and-buildings-spec.md`](./colony-economy-and-buildings-spec.md) §3.0. Every sub-resource trades as its own cargo token, so a colony can buy T2/T3 before it can mine them.
+
+**Starting resources:** The founder robot begins with a small balanced stock of the T1 sub-resources (iron, silica, water, biomass).
 
 ---
 
@@ -54,20 +57,24 @@ The player exercises **indirect control** through a task queue and high-level pr
 
 ## 5. Planet Types
 
-### 5.1 Temperate (Baseline)
-- Balanced resources
-- Forests that must be cleared
-- Moderate danger
+Three types (D-33), one-to-one with the worlds on the landing page and the render looks. Generator numbers: [`SIMULATION.md`](../spec/SIMULATION.md) §7.6 and §10.
 
-### 5.2 Arid / Desert
-- Rich in metals & minerals, poor in water
+### 5.1 Desert (`desert`, Kharon Dunes, look `dune`)
+- Rich in Metals and Minerals deposits, scarce water (Water Extractor ×0.5)
 - Sandstorms
-- Solar is more effective
+- Solar is more effective (+35 %)
 
-### 5.3 Ice / Cold (Optional)
-- Abundant water (ice), scarce petroleum
-- Cold reduces efficiency of some stations
-- Frequent blizzards
+### 5.2 Ocean (`ocean`, Thalassa Verde, look `oceanForest`)
+- Much water and forest; rich Bio deposits, poorer Metals
+- Hydro-friendly coasts; land must be reclaimed from the sea
+- Frequent storms (×1.5)
+
+### 5.3 Temperate (`temperate`, Granite Hollow, look `forestRock`)
+- Baseline; richer Minerals deposits
+- Forests that must be cleared
+- Cold, long nights (45 % of the day)
+
+The hackathon demo runs on Temperate only (D-27). Ice / Cold is not a planet type.
 
 ---
 
@@ -158,8 +165,8 @@ Decision (1-2 sentences + actions):
 
 ## 12. MVP Scope (2-week Hackathon)
 
-- 2 planet types
-- 5 resources + 3–4 energy station types
+- 3 planet types (`desert`, `ocean`, `temperate`; the hackathon demo uses Temperate only)
+- 3 resource families with T1–T3 sub-resources, plus Energy as grid power; 3–4 energy station types
 - Basic factories and 1–2 production chains
 - Simple fauna (1–2 creature types)
 - 2–3 event types

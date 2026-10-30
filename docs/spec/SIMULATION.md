@@ -17,7 +17,7 @@ This spec defines:
 
 Rules are numbered so they can be traced to tests (§13).
 
-Numbers marked **(proposed)** are not in the game-design specs. They are owner-tunable balance placeholders and live in data tables (`shared/sim/src/data/*.ts`), never in system code.
+Numbers marked **(proposed)** are not in the game-design specs. They are owner-tunable balance placeholders and live in data tables (`shared/sim/src/data/*.ts`), never in system code. Every data row can be overridden at runtime for playtests (D-35, `SIM-G-DATA` in §7).
 
 ---
 
@@ -104,14 +104,21 @@ Command kinds (summary; arguments in PROTOCOL.md):
 A structure-of-arrays entity store (`shared/sim/src/ecs/store.ts`) with no id recycling.
 
 ```ts
+type PlanetType = 'desert' | 'ocean' | 'temperate';             // D-33; client look: desert→dune, ocean→oceanForest, temperate→forestRock
+type ResourceFamily = 'metals' | 'minerals' | 'bio';             // D-34; one storage cap per family
+type ResourceKey =                                               // D-34; the 10 stored sub-resources (energy is grid power, not stock)
+  | 'metals.t1' | 'metals.t2' | 'metals.t3'
+  | 'minerals.t1' | 'minerals.t2' | 'minerals.t3'
+  | 'bio.water' | 'bio.biomass' | 'bio.t2' | 'bio.t3';
+
 interface PlanetState {
-  meta: { simVersion: number; planetId: string; planetType: 'temperate' | 'desert';
+  meta: { simVersion: number; planetId: string; planetType: PlanetType;
           seed: string; tick: number; nextEntityId: number; rng: Record<RngStream, Uint32Array>;
           ended: boolean; };
   grid: { radius: number; terrain: Uint8Array; prep: Uint8Array; deposit: Uint8Array;
           richness: Float32Array; owner: Int8Array; anchors: Uint8Array; graceUntil: Float64Array;
           explored: Uint8Array /* kept for client-side fog, not used for filtering */ };
-  colonies: ColonyState[];
+  colonies: ColonyState[];   // ColonyState.stock: Record<ResourceKey, number>; ColonyState.caps: Record<ResourceFamily, number>
   entities: { id: Uint32Array; kind: Uint8Array; owner: Int8Array; tier: Uint8Array;
               q: Int16Array; r: Int16Array; x: Float32Array; y: Float32Array;
               hp: Float32Array; hpMax: Float32Array; state: Uint8Array; progress: Float32Array;
@@ -158,32 +165,36 @@ interface PlanetState {
 
 All numbers from `docs/game/colony-economy-and-buildings-spec.md` unless marked **(proposed)**. `compileData()` converts design units and durations (`SIM-D-03`). The unit roster, lanes, ground prep, walls, truces and progression follow [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md) (D-16, accepted); where §7.2–§7.7 below differ, the units spec wins.
 
+- `SIM-G-DATA` **Balance is data, tunable at runtime (D-35).** Every balance number (costs, HP, DPS, ranges, view radii, timers, rates, thresholds, AI weights) is a row in `shared/sim/src/data/*.ts`, never a constant in system code. `compileData()` merges an optional **overrides file** (`balance.overrides.json`, path from `TA_BALANCE_OVERRIDES`; per planet via the scenario) over the tables. The dev console's `tune <table>.<row>.<field> <value>` / `tune reset` / `tune export` applies a change live to the running planet (server and local host) and records it in the planet's event log. `dataHash` in `welcome` (`SIM-X-08`) covers the overrides, so clients reload the same numbers. Values marked **(proposed)** here and the B1–B13 defaults in `docs/plan/OWNER_TASKS.md` are the starting rows.
+- `SIM-G-RES` **Resources (D-34).** Stock is 10 sub-resources keyed by `ResourceKey` (§5) in three families (Metals, Minerals, Bio), each with T1/T2/T3; T2/T3 output needs the terraforming gates of the economy spec §3.0. Storage caps are **per family** (Hub and Depot storage adds to all three; the sub-resources of a family share its cap, proposed). Energy is grid power (E/s), stored only in capacitors.
+- **Reading the cost columns in §7.1–§7.3 (D-34 tier rule).** Costs stay written `M/Min/Pet/W` until each table is rebalanced. A **T1** item pays M → `metals.t1`, Min → `minerals.t1`, Pet → `bio.biomass`, W → `bio.water`. A **T2** item pays 60 % of M and Min in T1 and 40 % in T2 of the same family, and its Pet in `bio.t2`. A **T3** item pays 40 % T1, 30 % T2, 30 % T3 of M and Min, Pet in `bio.t2`, plus 10 % of its M as `bio.t3`. W is always `bio.water`. Upkeep per second (fuel, coolant, terraform water) uses the T1 reading (proposed).
+
 ### 7.1 Buildings enabled in MVP
 
 | Building | Tier | Size | Build | Cost M/Min/Pet/W | Drain E/s | HP | Effect |
 |---|---|---|---|---|---|---|---|
-| Command Hub | T1 | 3×3 | 30 s (0 s at spawn) | 200/100/50/50 | −5 | 1 500 | Claim R 10; storage +500; supply +10; **Founder Core +8 E/s (proposed)**; acts as a pylon (span 6) |
-| Command Hub | T2 | 4×4 | 75 s | 600/350/200/150 | −14 | 3 800 | Claim R 15; storage +1 500; supply +25 |
+| Command Hub | T1 | 3×3 | 30 s (0 s at spawn) | 200/100/50/50 | −5 | 1 500 | Claim R 10; storage +500 per family; supply +10; **Founder Core +8 E/s (proposed)**; acts as a pylon (span 6) |
+| Command Hub | T2 | 4×4 | 75 s | 600/350/200/150 | −14 | 3 800 | Claim R 15; storage +1 500 per family; supply +25 |
 | Territory Claim Beacon | T1 | 1×1 | 18 s | 80/40/0/10 | −4 | 400 | Claim R 8 |
 | Territory Claim Beacon | T2 | 2×2 | 42 s | 220/140/40/30 | −11 | 1 100 | Claim R 14; vision R 20 |
 | Power Line Pylon | T1 | 1×1 | 4 s | 15/5/0/0 | −0.5 | 120 | Span 6; max load 80 E/s (enforced, `SIM-G-PWR`, D-21) |
 | Energy Capacitor Bank | T1 | 2×2 | 16 s | 70/60/10/10 | −1.5 | 450 | Stores 1 500 E; discharge ≤ 30 E/s |
-| Coal/Oil Thermal Plant | T1 | 2×2 | 15 s | 80/20/20/10 | −3 | 450 **(proposed HP)** | +28 gross; consumes 1.5 Pet/s; pollution +1 |
-| Wind Turbine | T1 | 2×2 | 14 s | 70/35/5/0 | −1 | 400 **(proposed HP)** | +16 gross × wind factor 50–140 % |
+| Coal/Oil Thermal Plant | T1 | 2×2 | 15 s | 80/20/20/10 | −3 | 450 **(proposed HP)** | +28 gross; consumes 1.5 `bio.biomass`/s; pollution +1 |
+| Wind Turbine | T1 | 2×2 | 14 s | 70/35/5/0 | −1 | 400 **(proposed HP)** | +16 gross × wind factor 50–140 % (storms do not change it, B13) |
 | Solar Collector | T1 | 2×2 | 18 s | 60/75/10/5 | −1 | 400 **(proposed HP)** | +21 gross × daylight; 0 at night; +35 % on Desert |
 | Solar Collector | T2 | 3×3 | 40 s | 160/220/35/15 | −3 | 1 000 **(proposed HP)** | +63 gross, same modifiers |
-| Metals Extractor | T1 / T2 | 2×2 / 3×3 | 14 s / 34 s | 65/20/0/10 · 180/75/25/30 | −6 / −18 | 500 / 1 350 | +4.0 / +12.5 Metals/s × richness (must cover a metals deposit) |
-| Minerals Quarry | T1 / T2 | 2×2 / 3×3 | 16 s / 38 s | 75/30/5/15 · 210/95/35/45 | −8 / −22 | 500 / 1 350 | +3.0 / +9.5 Minerals/s × richness |
-| Petroleum Well & Refinery | T1 / T2 | 2×2 / 3×3 | 20 s / 45 s | 90/45/15/20 · 250/140/50/60 | −10 / −28 | 450 / 1 200 | +2.5 / +8.0 Pet/s × richness |
-| Water Extractor | T1 | 2×2 | 15 s | 60/35/10/0 | −7 | 480 | +3.5 Water/s (×0.5 Desert); no deposit needed |
-| Resource Supply Depot | T1 | 2×2 | 12 s | 60/25/10/0 | −2 | 600 | Storage +1 000 (M, Min, Pet, W) |
-| Drone Control Array | T1 | 1×1 | 14 s | 55/45/10/5 | −5 | 350 | Supply +8 |
-| Robotics Factory | T1 | 3×3 | 25 s | 120/70/30/20 | −10 | 800 | Builds T1 robots |
-| Autocannon Turret | T1 | 1×1 | 12 s | 55/20/10/0 | −3 | 450 | Range 8; 18 DPS; −0.2 Metals/s while firing |
+| Metals Extractor | T1 / T2 | 2×2 / 3×3 | 14 s / 34 s | 65/20/0/10 · 180/75/25/30 | −6 / −18 | 500 / 1 350 | +4.0 / +12.5 Metals/s × richness (must cover a metals deposit); `metals.t1`, plus T2/T3 shares under the terraforming gates (economy spec §3.0) |
+| Minerals Quarry | T1 / T2 | 2×2 / 3×3 | 16 s / 38 s | 75/30/5/15 · 210/95/35/45 | −8 / −22 | 500 / 1 350 | +3.0 / +9.5 Minerals/s × richness; `minerals.t1`, plus T2/T3 shares under the gates |
+| Petroleum Well & Refinery | T1 / T2 | 2×2 / 3×3 | 20 s / 45 s | 90/45/15/20 · 250/140/50/60 | −10 / −28 | 450 / 1 200 | +2.5 / +8.0 `bio.t2`/s × richness on an oil deposit, **only under the T2 gates** (0 before) |
+| Water Extractor | T1 | 2×2 | 15 s | 60/35/10/0 | −7 | 480 | +3.5 `bio.water`/s (×0.5 Desert); no deposit needed |
+| Resource Supply Depot | T1 | 2×2 | 12 s | 60/25/10/0 | −2 | 600 | Storage +1 000 per family (Metals, Minerals, Bio) |
+| Drone Control Array | T1 | 1×1 (data; model refit, B8) | 14 s | 55/45/10/5 | −5 | 350 | Supply +8 |
+| Robotics Factory | T1 | 3×3 (data; model refit, B8) | 25 s | 120/70/30/20 | −10 | 800 | Builds T1 robots |
+| Autocannon Turret | T1 | 1×1 | 12 s | 55/20/10/0 | −3 | 450 | Range 8; 18 DPS; hits ground and air; no ammo drain in battle v1 (B10) |
 | Inter-Colony Trade Hub | T1 | 2×2 | 22 s | 100/80/30/10 | −6 | 650 | Required for trades (owner-confirmed 2026-10-29; truces do not need it); ≤ 250 units/min |
 | Interplanetary Rocket Silo (Lander) | T2 | 4×4 | 210 s | 1 800/1 600/1 400/700 | −120 | 4 800 | Launches Founder Pod (+25 % starting stock on next planet) — the only rocket tier in MVP. Launch gate: the colony's own territory is 100 % Living (D-18, §7.7) |
 
-"Mine" in D-15 is interpreted as the three deposit extractors (Metals, Minerals, Petroleum). Everything else in the economy spec stays in the data tables with `enabled: false`.
+"Mine" in D-15 is interpreted as the three deposit extractors (Metals Extractor, Minerals Quarry, Petroleum Well on oil deposits). Everything else in the economy spec stays in the data tables with `enabled: false`.
 
 ### 7.2 Robots (T1 only)
 
@@ -199,12 +210,12 @@ Logistics are abstract in MVP: harvested/extracted resources are credited direct
 
 ### 7.3 Starting kit **(proposed)**
 
-Command Hub T1 (instant), 1 Builder (the founder robot), 1 Miner; stock `400 M / 250 Min / 150 Pet / 150 W` (base storage 500 from the Hub). Founder Pod arrivals get stock × 1.25 (spec §3.6). Raid protection for `72 000` ticks (2 h) after founding.
+Command Hub T1 (instant), 1 Builder (the founder robot), 1 Miner; stock `metals.t1 400 / minerals.t1 250 / bio.biomass 150 / bio.water 150`, every T2/T3 key 0 (base storage 500 per family from the Hub). Founder Pod arrivals get stock × 1.25 (spec §3.6). Raid protection for `72 000` ticks (2 h) after founding.
 
 ### 7.4 Power grid rules (`SIM-G-PWR`)
 
 - Graph nodes: Hub, pylons, and every powered building. Pylons/Hub link to other pylons/Hub within span (T1: 6 tiles); a building connects if any footprint tile is within **3 tiles (proposed)** of a pylon or the Hub.
-- Per connected component: `supply = Σ online generator net output (with daylight/wind/Desert modifiers; thermal only while Pet > 0) + Σ capacitor discharge (≤ max)`; `demand = Σ drains of online consumers (+ robot drain on the Hub's component)`.
+- Per connected component: `supply = Σ online generator net output (with daylight/wind/Desert modifiers; thermal only while `bio.biomass` > 0) + Σ capacitor discharge (≤ max)`; `demand = Σ drains of online consumers (+ robot drain on the Hub's component)`.
 - Brownout shedding when `demand > supply`, in the economy spec's order — shed first: Rocket Silo; second: Robotics Factory, Trade Hub; third: extractors, Supply Depot; keep last: Turrets, Beacons, Drone Control Arrays, generators' internal drain. Within a tier, shed newest first (descending `entityId`). Surplus charges capacitors.
 - Components without any generator or charged capacitor are fully `OFFLINE`. Severed by pylon destruction → graph marked dirty → recomputed same tick.
 - **Per-pylon max load is enforced in MVP (D-21)**, using the economy spec §1.3 capacities: Pylon T1 80 E/s, T2 300 E/s, T3 1 200 E/s. The Command Hub acts as a pylon with a 150 E/s max load **(proposed)**.
@@ -224,16 +235,17 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 
 > **Pressure level: hard (D-17).** At default difficulty, an unattended colony **can be eliminated** by fauna, hazards or other players; the player is notified (CONTINUITY §5a). Stage-scaled raid sizes, Brute and Drifter species, meteor timing and wall rules are in `docs/game/units-orders-and-progression-spec.md` §6.3 and §4.8, and they supersede the raid row below. The "must survive a night offline" goal is dropped. What the tests guarantee instead is that the colony **defends itself sensibly** (AC-03 in the units spec), not that it survives.
 
-| Item | Temperate | Desert |
-|---|---|---|
-| Day length | 12 000 ticks (20 min): 60 % day, 40 % night; daylight curve from `sinTable` | same |
-| Wind factor | resampled every 1 200 ticks, smoothed, 5 000–14 000 bp | same |
-| Storms | mean interval 27 000 ticks (45 min), duration 1 800 ticks | sandstorm mean 54 000 ticks; solar −50 % during storm |
-| Lightning (storms only) | strike every 200 ticks ± jitter on a random tile within any colony territory, tall-structure weight ×4 for pylons; 300 HP damage | same |
-| Meteor | mean interval 36 000 ticks per planet; radius 2 tiles; 400 HP at centre, linear falloff; 30 % chance to create a new deposit | same |
-| Fauna species (MVP) | **Skitter swarm** (one species for both types; skin differs): HP 120, 8 DPS melee, speed 2 tiles/s, aggro radius 6 from nest | same |
-| Nests | 1 per ~400 tiles outside radius 25 of spawn slots; HP 1 500; spawns 1 Skitter / 900 ticks, max 6 alive per nest | density ×0.7 |
-| Raids on colonies | every 6 000 ticks per colony: chance `10 % + 5 % × thermal plants` that the nearest nest sends 3 + ⌊tick/72 000⌋ skitters (cap 12) | same |
+| Item | Temperate (`forestRock`) | Desert (`dune`) | Ocean (`oceanForest`) |
+|---|---|---|---|
+| Day length | 12 000 ticks (20 min): **55 % day, 45 % night** (cold nights, D-33); daylight curve from `sinTable` | 12 000 ticks: 60 % day, 40 % night | as Desert |
+| Wind factor | resampled every 1 200 ticks, smoothed, 5 000–14 000 bp; **storms do not change it** (B13, proposed, tunable D-35) | same | same |
+| Storms | mean interval 27 000 ticks (45 min), duration 1 800 ticks | sandstorm mean 54 000 ticks; solar −50 % during storm | **×1.5 as frequent** (D-33): mean 18 000 ticks, duration 1 800 ticks |
+| Lightning (storms only) | strike every 200 ticks ± jitter on a random tile within any colony territory, tall-structure weight ×4 for pylons; 300 HP damage | same | same |
+| Meteor | mean interval 36 000 ticks per planet; radius 2 tiles; 400 HP at centre, linear falloff; 30 % chance to create a new deposit | same | same |
+| Fauna species (MVP) | **Skitter swarm** (one species for every type; skin differs): HP 120, 8 DPS melee, speed 2 tiles/s, aggro radius 6 from nest | same | same |
+| Nests | 1 per ~400 tiles outside radius 25 of spawn slots; HP 1 500; spawns 1 Skitter / 900 ticks, max 6 alive per nest | density ×0.7 | same as Temperate |
+| Raids on colonies | every 6 000 ticks per colony: chance `10 % + 5 % × thermal plants` that the nearest nest sends 3 + ⌊tick/72 000⌋ skitters (cap 12) | same | same |
+| Production modifiers | Minerals deposits richness +15 % | Metals and Minerals richness +15 %; Water Extractor ×0.5; Solar +35 % | Bio deposits richness +20 %; Metals −15 % |
 
 ### 7.7 Combat, PvP, elimination
 
@@ -267,7 +279,7 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 | `colonyFounded` | info | `spawnColony` applied |
 | `underAttack` | critical | hostile damage to a colony entity; debounce 60 s per colony |
 | `buildingDestroyed` | warn | any own building destroyed |
-| `powerSevered` / `powerOverload` | warn | component split / pylon over max load (60 s debounce) |
+| `powerSevered` / `powerOverload` | warn | component split / pylon over max load (`powerOverload` debounced to 600 ticks, as §7.4) |
 | `energyCollapse` | critical | colony brownout ≥ 30 s |
 | `resourceShortage` | warn → critical | resource < 5 % of cap with negative net over 60 s |
 | `hazardStrike` | info / warn | lightning or meteor hit on the colony |
@@ -282,7 +294,12 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 
 ## 10. Planet generation (`SIM-GEN`)
 
-`createPlanet({planetId, type, seed, capacity})` — hex radius 56 **(proposed)**; `capacity` spawn slots on a ring of radius 32 at equal angles + `gen`-stream jitter ±3 tiles; each slot guaranteed within 12 tiles: ≥ 1 metals, 1 minerals, 1 petroleum deposit (richness 9 000–12 000 bp) and buildable 7×7 area. Terrain from value-noise on the `gen` stream. Temperate: forest 20 %, water 6 %, rock 8 %. Desert: dune 30 %, rock 12 %, water 1 %, metals/minerals richness +15 %. Same `(type, seed)` ⇒ identical planet (golden test).
+`createPlanet({planetId, type, seed, capacity})` — hex radius 56 **(proposed)**; `capacity` spawn slots on a ring of radius 32 at equal angles + `gen`-stream jitter ±3 tiles; each slot guaranteed within 12 tiles: ≥ 1 metals, 1 minerals, 1 oil deposit (richness 9 000–12 000 bp) and buildable 7×7 area. Terrain from value-noise on the `gen` stream. Mix per type (D-33, **proposed**):
+- `temperate`: forest 20 %, water 6 %, rock 8 %; Minerals deposits richness +15 %.
+- `desert`: slope 30 % (dunes, drawn as sand), rock 12 %, water 1 %; Metals and Minerals deposits richness +15 %; Water Extractor ×0.5.
+- `ocean`: water 35 % (shallow 20 %, deep 15 %), forest 30 %, rock 5 %; Bio (oil) deposits richness +20 %; Metals −15 %; storms ×1.5 frequency (§7.6).
+
+Hackathon (D-27): only `temperate` is generated; `desert` and `ocean` are post-hackathon (W05). Same `(type, seed)` ⇒ identical planet (golden test).
 
 Terrain classes, spawn guarantee and terrain mix follow units spec §4.5 (`UO-TF-09`).
 
@@ -366,6 +383,10 @@ MVP scale per planet: 5 colonies, ≤ 300 units, ≤ 400 buildings, ≤ 60 fauna
 | 7 | Server simulation, simplified | **Yes**: one app, thread pool, 5 TPS active / coarse when empty, floats, no replay | D-24 | §2–§6, §11, §12 rewritten |
 | 8 | Anti-cheat / anti-bot | **None**: zod + own-colony + game rules only; full state to clients | D-25 | `SIM-C-01`, §6 |
 | 9 | NEAR economy | Cargo export/import, market reservations, bounties enter the sim as commands | D-26 | §4 command groups, `SIM-C-05` |
+| 10 | Planet types | `desert` / `ocean` / `temperate`, one-to-one with the landing worlds | D-33 | §5 `PlanetType`, §7.6 Ocean column, §10 mix |
+| 11 | Resources | Metals / Minerals / Bio × T1–T3, unlocked by terraforming; Energy is grid power | D-34 | §5 `ResourceKey`, `SIM-G-RES`, §7.1–§7.3 cost reading, storage per family |
+| 12 | Balance tuning | Data rows + overrides file + dev `tune` | D-35 | `SIM-G-DATA` |
+| 13 | `powerOverload` debounce | 600 ticks in §7.4 and §9 (under `SIM-D-03` that is 60 s of game time) | R8 | §9 row |
 
 Follow-up design needed:
 - Settled colonies and the planet `ENDED` condition: resolved in MATCHMAKING `MM-07`. An all-settled planet ends early (proposed).

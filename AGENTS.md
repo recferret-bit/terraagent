@@ -45,7 +45,7 @@ Before writing any 3D, shader, or asset-pipeline code, read the `SKILL.md` for t
 All seven skills are designed as open registries so you can extend the visual system without modifying core engine loops:
 - **New Kitbash Greebles & Unit Archetypes:** Register via `KitbashRegistry.registerGreeble()` and `KitbashRegistry.registerArchetype()` in `procedural-kitbash-3d`.
 - **New AI 3D Providers:** Implement `Ai3dProviderAdapter` and pipe into `sanitizeAiGlb()` in `ai-mesh-pipeline`.
-- **New Geometry Checks:** Add to `frontend/shared/engine/kitbash/validate/checks/` (one stage per file, wired in `ModelValidator.ts`) plus a known-bad and a known-good fixture in `model-geometry-validator/scripts/self-test.mjs` (`npm run test:models`).
+- **New Geometry Checks:** Add to `frontend/render/kitbash/validate/checks/` (one stage per file, wired in `ModelValidator.ts`) plus a known-bad and a known-good fixture in `model-geometry-validator/scripts/self-test.mjs` (`npm run test:models`).
 - **New Procedural PBR Texture Patterns:** Register via `ProceduralTextureRegistry.register()` + `heightToNormalTexture()` in `procedural-texture-synthesis`.
 - **New Planet Biomes & Shader Effects:** Register via `BiomeMaterialRegistry.registerBiome()` and `ShaderPluginRegistry.registerModifier()` in `shader-texture-tuning`.
 - **New Weather States & Lightning/Plasma Arcs:** Register via `WeatherPresetRegistry.register()` and `LightningStrikeSystem` in `planetary-lighting-and-lightning`.
@@ -94,22 +94,25 @@ When you move or rename a document, update every link to it (`grep -r <name> --i
 ```
 frontend/
   index.html landing.html play.html playground.html   thin page entries (Vite root = frontend/)
-  design/       Faction Plate tokens + docs pages
+  design/       Faction Plate tokens + docs pages (shared layer: any app may import its CSS)
   landing/      app: main.ts (LandingPage orchestrator) + sections/ hero/ colony/ resources/
   game/         app: main.ts, app/ (Game, Gameplay, camera), ui/, descent/ (DescentRunner + parts/ + fx/)
   playground/   app: PlaygroundApp orchestrator + stage/ content/ camera/ panels/
-  shared/       only code used by 2+ apps (import via `@shared/*`)
-    engine/     core (viewport, StageHost), kitbash (+validate/), visuals, planets, orbit, lighting
-    ui/         CRT overlay
+  render/       3D render engine used by 2+ apps (`@terra/render/*`): core (viewport, StageHost), kitbash (+validate/),
+                visuals, planets, orbit, descent (drop rig + handoff types), lighting, ui (CRT overlay)
+shared/         (from W00) code used by frontend AND backend: `contracts/`, `config/`, `db/`, `sim/` (`@terra/*`, game rules, D-31)
+backend/app/    (from W00) the one NestJS app (D-24)
 ```
+
+`frontend/render/` draws things; `shared/sim/` decides things. A game rule never goes into `render/` or an app (D-31), and `render/` never imports `shared/sim` internals: apps pass sim views into it.
 
 **Limits (checked by `npm run check:structure`, also part of `npm run build`):** no file over **500 lines**, no function (methods, closures, arrows included) over **100 lines**. Fix by extracting, not by compressing lines.
 
 **Rules**
-- **Layers point inward:** `shared/` imports nothing from an app; an app imports `shared/` (via `@shared/*`) and itself, never another app. Code needed by two apps moves to `shared/` first.
+- **Layers point inward:** `render/` imports nothing from an app; an app imports `render/` (via `@terra/render/*`), the `shared/*` packages and itself, never another app. Code needed by two apps moves to `render/` (visual) or `shared/` (rules, contracts) first. `npm run check:structure` fails on a wrong-way import.
 - **Orchestrators compose, parts do the work:** a big `createX()` closure becomes a thin orchestrator class (`DescentRunner`, `OrbitalStageImpl`, `PlaygroundApp`, `LandingPage`) that wires single-purpose parts, each in its own file under a subfolder (`parts/`, `stage/`, `panels/`, `sections/`). Keep the old factory name as the public entry when others import it.
 - **No copy/paste:** the second copy is the signal to extract a helper or base abstraction (`StageHost` is the shared rAF/visibility/resize host; `mulberry32` lives in `visuals/terrain/noise.ts`). Variation goes into registries/strategies (biomes, landforms, archetypes, validator stages), not `if` ladders.
 - **GLSL** is split into named chunk constants composed by a builder, never one giant template string in a factory.
 - **Pages stay thin:** HTML entries only load one `<script type="module">` (`main.ts`); logic lives in TypeScript, not inline or in plain `.js`.
-- `.agents/skills/*/examples/` are reference copies for the skills, not app code; the app copies in `frontend/shared/engine/` are the source of truth.
+- `.agents/skills/*/examples/` are reference copies for the skills, not app code; the app copies in `frontend/render/` are the source of truth.
 - Pure refactors must keep behaviour identical: kitbash geometry unchanged (`npm run validate:models -- --all` same output), screenshots of `/play.html?planet=dune&seed=1&skip=1`, `/landing.html`, `/playground.html?inspect=<id>` unchanged.

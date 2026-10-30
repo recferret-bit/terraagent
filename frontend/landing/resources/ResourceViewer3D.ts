@@ -1,9 +1,9 @@
 // Live 3D model of the selected resource: the same kitbash archetypes, Unifier material and diorama viewport as the game.
 import * as THREE from 'three';
-import { createColonyViewport, type ColonyViewport } from '@shared/engine/core/createColonyViewport';
-import { StageHost, prefersReducedMotion } from '@shared/engine/core/StageHost';
-import { PLANET_SPECS } from '@shared/engine/planets/PlanetSpec';
-import { createArchetypeMesh, tickArchetypeMesh, type ArchetypeMesh } from '@shared/engine/kitbash';
+import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { StageHost, prefersReducedMotion } from '@terra/render/core/StageHost';
+import { PLANET_SPECS } from '@terra/render/planets/PlanetSpec';
+import { createArchetypeMesh, tickArchetypeMesh, type ArchetypeMesh } from '@terra/render/kitbash';
 import { RES } from './data';
 import { Pedestal } from './Pedestal';
 

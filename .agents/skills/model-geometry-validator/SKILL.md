@@ -142,7 +142,7 @@ flush opposite-facing faces (that is a clean contact), and cables as structural 
 
 - Colour checks compare zone colours (dust-blended for touching parts of different groups), not rendered pixels: lighting, IBL, bloom and rim light also change what is seen. They catch "same colour" and "no hierarchy", not taste.
 - Detail is counted in parts, not triangles: a part that is only a normal-map or a shader trick would count as blank (there are no such textures in this pipeline).
-- Group colours need named parts (role keywords in `frontend/shared/engine/kitbash/validate/appearance.ts`). Unnamed parts fall under `other` and skip the group and role checks; `FLAT_SURFACE`, `LOW_CONTRAST_INSET` and the palette checks still run.
+- Group colours need named parts (role keywords in `frontend/render/kitbash/validate/appearance.ts`). Unnamed parts fall under `other` and skip the group and role checks; `FLAT_SURFACE`, `LOW_CONTRAST_INSET` and the palette checks still run.
 - A pass means "no detected defect", not "looks good". The 4-view visual loop is still mandatory.
 - Not detected: a **dangling free end** of a strut that is attached at its other end, UV/normal problems, silhouette quality, material balance.
 - Archetypes that do not go through `KitbashBuilder` fall back to connected islands of the merged mesh (reported as such); part names are then generic.
@@ -152,7 +152,7 @@ flush opposite-facing faces (that is a clean contact), and cables as structural 
 
 ## Extending
 
-1. Add the check as a stage in `frontend/shared/engine/kitbash/validate/checks/` and run it from `ModelValidator.ts` (use `relate()` for distance/crossing, `embed()` for containment, both in `relation.ts`) or, for colour/material/detail, in `frontend/shared/engine/kitbash/validate/appearance.ts` (role keywords, ΔE, face features).
+1. Add the check as a stage in `frontend/render/kitbash/validate/checks/` and run it from `ModelValidator.ts` (use `relate()` for distance/crossing, `embed()` for containment, both in `relation.ts`) or, for colour/material/detail, in `frontend/render/kitbash/validate/appearance.ts` (role keywords, ΔE, face features).
 2. Add a **known-bad and a known-good** fixture to `scripts/self-test.mjs` and make `npm run test:models` pass.
 3. Document the code in the table above and in [references/checks-and-thresholds.md](./references/checks-and-thresholds.md).
 4. Thresholds are `DEFAULT_OPTIONS` in `validate/types.ts`; calibrate with `--pairs` on real models, never to silence one model.

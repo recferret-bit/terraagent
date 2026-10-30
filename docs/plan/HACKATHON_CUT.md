@@ -4,11 +4,11 @@
 >
 > | Set | Issues | Effort (units) | Critical path (units) |
 > |---|---|---|---|
-> | **H** must | 384 | ≈ 294 | 21.5 |
-> | H+ stretch | 61 more | ≈ 45 more | — |
-> | H2 real NEAR (after the D10 gate) | 21 | ≈ 16 | — |
+> | **H** must | 387 | ≈ 293 | 21.0 |
+> | H+ stretch | 64 more | ≈ 41.5 more | — |
+> | H2 real NEAR (after the D10 gate) | 21 | ≈ 15 | — |
 >
-> One **unit** = one M issue (S = ½). The earlier "≈ 185 agent-days" for option B was a guess; tagging every issue gives **≈ 294**, because the issues are already fine-grained and most of each wave is its core. It fits **only if agents are fast**: with 12 parallel agents the `H` set takes 29 units of wall-clock, so each agent must close **≥ 2.2 units a day** (an M issue, reviewed and merged, in ≲ 3.5 h). At 1 unit/agent/day it does not fit at any agent count, because the critical path alone is 21.5 units. §3 has the pace check and the drop order.
+> One **unit** = one M issue (S = ½). The earlier "≈ 185 agent-days" for option B was a guess; tagging every issue gives **≈ 293** (after the 2026-10-30 review, which dropped duplicates and work that already exists, and the D-33..D-36 decisions, which added W00-59 balance overrides and W05-34 resource tier gate), because the issues are already fine-grained and most of each wave is its core. It fits **only if agents are fast**: with 12 parallel agents the `H` set takes 29 units of wall-clock, so each agent must close **≥ 2.2 units a day** (an M issue, reviewed and merged, in ≲ 3.5 h). At 1 unit/agent/day it does not fit at any agent count, because the critical path alone is 21.5 units. §3 has the pace check and the drop order.
 >
 > **Decisions:**
 > - [`D-24`](../spec/DECISIONS.md): one app + simplified server sim
@@ -43,34 +43,35 @@ The demo can run on mocks in production on purpose: `NEAR_ALLOW_MOCK_IN_PROD=tru
 
 | Wave | `H` issues · units | Ships in the hackathon | Deferred (H+ or later) |
 |---|---|---|---|
-| W00 Platform | 50 · 40.5 | Workspaces, NestJS + sim threads, shared engine in the browser (replica, client-side prediction, `?host=local` single-player testing, parity test), WS engine snapshot + diffs, flags, scenarios, dev console, time warp, wave pipeline scripts, snapshots, ports + mock base + outbox + contract harness, chain explorer, e2e harness, CI | State inspector, fault quarantine, i18n, snapshot migrations, bench |
-| W01 Landfall | 30 · 21.5 | Guest auth, generator, HQ + power cell, Grade/Clear/Break, linked prep, Command Hub (new archetype), territory, menus, HUD | Drop-pod descent (stretch), Hub auto-placement, touch |
-| W02 First Light | 25 · 18.5 | Resources and caps, power v0, brownout, Solar, Extractor, Harvester, queue v1, construction/units menus, resource bar | New archetypes (existing models stand in), day/night lighting |
-| W03 The Grid | 14 · 12.5 | Builder, repair, pylon graph with per-pylon load, shedding groups, Thermal, Depot/Quarry/Water/Petroleum, four lanes, dispatch v2, power-line tool, overlay | Wind, Capacitor, demolish, power events |
+| W00 Platform | 51 · 41.0 | Workspaces, NestJS + sim threads, shared engine in the browser (replica, client-side prediction, `?host=local` single-player testing, parity test), WS engine snapshot + diffs, flags, scenarios, dev console, balance overrides + `tune` (D-35), time warp, wave pipeline scripts, snapshots, ports + mock base + outbox + contract harness, chain explorer, e2e harness, CI | State inspector, fault quarantine, i18n, snapshot migrations, bench |
+| W01 Landfall | 31 · 23.0 | Guest auth, `temperate` generator (D-33), HQ + power cell, Grade/Clear/Break, linked prep, Command Hub (existing `building.commandHub`, cut to the tri budget), territory, menus, HUD | Syncing the existing descent cinematic to the sim (stretch), Hub auto-placement (stretch), touch (W24) |
+| W02 First Light | 25 · 18.5 | Resources (D-34: Metals / Minerals / Bio, T1 sub-resources, caps per family), power v0, brownout, Solar, Extractor, Harvester, queue v1, construction/units menus, family resource bar + Energy | New archetypes (existing models stand in), day/night lighting |
+| W03 The Grid | 15 · 12.0 | Builder, repair, pylon graph with per-pylon load, shedding groups, Thermal (biomass fuel), Depot / Quarry / Water Extractor (T1), four lanes, dispatch v2, power-line tool, overlay | Wind, Capacitor, Petroleum Well (Bio T2 source, H+), power events (demolish and reorder are W02) |
 | W04 Maps | 14 · 8.5 | Minimap (tiles, territory, dots, camera trapezoid, click/drag pan), global map with layer chips | Click-to-fly, selection core, control groups, fog, pings |
-| W05 Shape the Land | 17 · 12.5 | Terraformer, Level/Fill/Reclaim, Irrigate/Seed → Living, Terraform %, full generator (Temperate + Desert), terraform menu, Living materials | Beacon, storms, meteors, Hydro, Deep Reclaim |
+| W05 Shape the Land | 16 · 11.0 | Terraformer, Level/Fill/Reclaim, Irrigate/Seed → Living, Terraform %, T2 tier gate on extractors (D-34; shown with the seeded `w05-tiers` scenario), terraform menu, Living materials | `desert` and `ocean` generators (D-33), T3 / Bio tiers, tier-unlock indicator, Beacon, storms, meteors, Hydro, Deep Reclaim |
 | W06 Invisible Chain (F5) | 20 · 12.5 | Mock social login, named + colony accounts, key store, mock relayer, first gasless action, pending/retry UX, contract suites | Account settings, second-device login, wallet link |
 | W07 First Contact | 25 · 19.0 | Battle v1 (projectiles, lasers, AoE, evasive, layers, view), Factory, Recon, supply, turrets, fauna, raids, stances, rings, projectile VFX | Collapse VFX, new archetypes, CI duel harness |
 | W08 Stages & Goals | 20 · 15.5 | Stage engine S0–S4, dwell, unlock gating with greyed menus, stage HUD, HQ goals (3 kinds), rule engine + sliders, lane automation, autopilot | Suggestion cards, overrides, other goal kinds |
-| W09 Offline | 14 · 12.5 | Presence, coarse stepping, restart fast-run, away policy, digest + "While you were away", mock notifier + routing | Away settings panel, Web Push, Telegram, hard-mode elimination |
-| W10 Cargo (F1) | 21 · 14.5 | Trade Hub (new archetype), export/import with mint caps and refunds, mock NEP-245, panel, contract suite | Shuttle VFX, send-to-account (stretch) |
-| W11 Lobby | 10 · 10.0 | Planet list and picker, join via tickets → reservation → spawn | Parties, queue panel, sealing, refill, warm pool |
-| W12 Player Page | 17 · 14.0 | `/me` with Pilot, Progress, stats, 20 × 3 flip cards with art, XP and levels, toasts | Planets cards, history, badge minting, titles |
-| W13 Markets (F2) | 25 · 18.5 | Order book, matching with partial fills, mock Intents `token_diff` settlement, failure handling, cancel/expiry, market tab, price board | Fee controls (default fee used), extra quote tokens, matcher tests (stretch) |
-| W14 Fortify | 17 · 12.5 | Raise Ridge, Dig Moat, Lower, walls block ground units and fauna, Wall Gate, `would_isolate`, wall tool | Line of fire / parapet, meteor breach, gate archetype |
-| W15 Guild & Agents (F3, F4) | 21 · 16.0 | Guild NPC wallets, pricing, market making, visits, Guild tab, director key with allowance, autoTrade loop, revoke | Price reaction after fills, guardrails, cross-planet carry |
+| W09 Offline | 14 · 12.0 | Presence, coarse stepping, restart fast-run, away policy, digest + "While you were away", mock notifier + routing | Away settings panel, Web Push, Telegram, hard-mode elimination |
+| W10 Cargo (F1) | 21 · 14.0 | Trade Hub (new archetype), export/import with mint caps and refunds, mock NEP-245 with one token per sub-resource (D-34), panel, contract suite | Shuttle VFX, send-to-account (stretch) |
+| W11 Lobby | 12 · 11.5 | Planet list and picker (cards for the three landing worlds; only `temperate` is open), join via tickets → reservation → spawn | Parties, queue panel, sealing, refill, warm pool |
+| W12 Player Page | 18 · 14.5 | `/me` with Pilot, Progress, stats, 20 × 3 flip cards with art, XP and levels, toasts | Planets cards, history, badge minting, titles |
+| W13 Markets (F2) | 25 · 18.5 | Order book per sub-resource pair (D-34; T1 from day one), matching with partial fills, mock Intents `token_diff` settlement, failure handling, cancel/expiry, market tab, price board | Fee controls (default fee used), extra quote tokens, matcher tests (stretch) |
+| W14 Fortify | 16 · 12.0 | Raise Ridge, Dig Moat, Lower, walls block ground units and fauna, Wall Gate, `would_isolate`, wall tool | Line of fire / parapet, meteor breach, gate archetype |
+| W15 Guild & Agents (F3, F4) | 20 · 15.0 | Guild NPC wallets, pricing, market making, visits, Guild tab, director key with allowance, autoTrade loop, revoke | Price reaction after fills, guardrails, cross-planet carry |
 | W20 Deed (F6) | 10 · 8.5 | Deed NFT (mock) minted on founding, metadata updates, rendered card | Share page, staking (needs W21 Settled colonies) |
 | W22 Treasury & Bounties (F7, F8) | 19 · 15.5 | Planet DAO, fee share, proposals + vote + Terraform boost, nest bounties with escrow, board | Meteor shield, mercenaries, other bounty kinds |
 | W25 Launch | 15 · 10.5 | Docker, nginx, compose, Cloudflare, secrets, deploy script, backups, README, hosted demo, video, X post, submission | stack:local, dashboards, load/soak, analytics page |
 
 Counts are as of 2026-10-30; the live per-wave numbers are in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) and change when tags move.
 
-W16 (AI director) is not in the cut: the W08 rule engine and autopilot carry the autonomy. Kitbash rule: new archetypes only for the hero silhouettes (Command Hub, Trade Hub, Guild ship); everything else uses an existing archetype until its H+ row lands.
+W16 (AI director) is not in the cut: the W08 rule engine and autopilot carry the autonomy. Kitbash rule: the only new archetype on the `H` path is the Trade Hub (W10-16); the HQ and Command Hub are existing models cut to the triangle budget (W01-24, W01-25); everything else uses an existing archetype until its H+ row lands.
 
-**Reuse, don't rebuild.**
-- `frontend/game/app/Gameplay.ts` already has an RTS camera, click-to-move and a seeded starter colony.
-- `src/kitbash/` holds the robot and fauna archetypes, `src/planets/surface/` the terrain, and `src/ui/hud.ts` a HUD.
-- `frontend/design/css/tokens.css` has the Faction Plate tokens for `/me`.
+**Reuse, don't rebuild** (inventory of 2026-10-30; layout per D-32).
+- **Game prototype (`frontend/game/`, client-only, no sim):** orbital world picker, drop-pod descent cinematic, colony diorama with RTS camera, hero click-to-move, a decorative starter colony, a static resource bar (energy/metal/water/biomass; becomes the D-34 family bar in W02-26, vanilla DOM per D-36), pause menu. The *visuals* are reused as they are; the *rules* (movement, colony, resources) move into `@terra/sim` (D-31) and drive these views.
+- **Render engine (`frontend/render/`):** kitbash archetypes `building.{commandHub, solar, wind, capacitor, coalGen, pylon, mine, waterPump, supplyDepot, turret, roboticsFactory, droneArray, claimBeacon, rocket}`, `robot.{hero, miner, builder, combat}`, `fauna.{skitter, drifter}`, `resource.{metal, crystal, oil}Deposit`, `ship.{carrier, dropPod}`; terrain/water, unified material, planet globe with terraform stages, orbit stage + deploy, `PlanetaryLightingSystem` (day/night) and `LightningStrikeSystem` (both not yet wired), CRT overlay.
+- **Landing (`frontend/landing/`):** orbit-stage hero, hex colony canvas, planet cards (the three D-33 worlds: Kharon Dunes `desert`, Thalassa Verde `ocean`, Granite Hollow `temperate`), resource viewer (its five tabs become Metals / Minerals / Bio / Energy in W24-36, H+), roadmap, road-to-market board.
+- **Design system (`frontend/design/`):** Faction Plate tokens and components for `/me` and every HUD.
 
 The prototype predates the window, so the README must disclose it as **pre-window baseline** (hackathon rule Q-002).
 
@@ -94,11 +95,11 @@ The prototype predates the window, so the README must disclose it as **pre-windo
 
 **Drop order when behind** (move a wave's `H` rows to `H+`, rerun the script; units saved):
 1. All `H+` work stops (agents stay on `H`).
-2. W11 Lobby (10.0): the W01 dev-seat flow stays.
-3. W14 Fortify (12.5).
+2. W11 Lobby (11.5): the W01 dev-seat flow stays.
+3. W14 Fortify (12.0).
 4. W22 Treasury & Bounties (15.5).
 5. W20 Deed (8.5).
-6. W09 Offline (12.5): coarse stepping and restart stay in W00/W09-03.
+6. W09 Offline (12.0): coarse stepping and restart stay in W00/W09-03.
 7. W04 Maps (8.5).
 
 Never dropped: W00–W03, W05–W07 (the playable colony and battle), W06, W10, W13, W15 (the economy the judges score), W12 (achievements), W25 submission, the contract suites and the README run.
@@ -124,6 +125,7 @@ Every issue tagged `H+` (if not reached) or blank in [`waves/`](./waves/), plus 
 - **Air layer:** Aero Hangar, Anti-Air, Air Recon, Fighter, Gunship, Bomber, Drifter fauna.
 - **Truces** and the Oathbreaker mark (TA-14.6 diplomacy part).
 - Matchmaking queue UI, warm pool, **party tickets**, 2 h seat refill (TA-05.x).
+- **Planet types** `desert` and `ocean` (D-33, W05-17) next to the demo's `temperate`; **resource tiers** beyond the demo's scenario-seeded T2: T3, Bio tiers (Petroleum Well, gene-stock) and the tier-unlock indicator (D-34; W03-30, W05-35, W05-36).
 - **Notifications:** Web Push + Telegram (TA-08.7, TA-11.10).
 - Full **hard offline mode** UX: away budget HUD, LLM away story (TA-08.6, TA-08.3).
 - **Mobile** landscape fullscreen gameplay (TA-11.9); **live landing diorama** (TA-12.3).
@@ -140,7 +142,7 @@ Every issue tagged `H+` (if not reached) or blank in [`waves/`](./waves/), plus 
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Scope:** the `H` set is ≈ 294 units against 13 build days | Waves late in the value order miss the window | Measured pace from D2 (§3), the drop order in §3, review only where it matters; every wave that lands is still a working app, and the D10 gate allows shipping on mocks |
+| **Scope:** the `H` set is ≈ 293 units against 13 build days | Waves late in the value order miss the window | Measured pace from D2 (§3), the drop order in §3, review only where it matters; every wave that lands is still a working app, and the D10 gate allows shipping on mocks |
 | **Judges want real NEAR usage** | All-mock looks weaker for track 09 | Phase 2 swaps F5 → F1 → F2. The README and the description state the mock/real table honestly. The contract suites show the swap is real, not a stub |
 | **NEAR Intents is mainnet-only** (no testnet) | Real funds while debugging | Mocks in phase 1. In phase 2: `dry: true` and `simulate_intents` first, then a single tiny trade between our own dev colonies |
 | **Social-login provider** not chosen | Real F5 (after the D10 gate) stalls | The mock `IdentityPort` carries phase 1. The owner picks a provider before D10 (HOT is a listed partner). **Fallback:** server-created named sub-accounts with custodial keys |

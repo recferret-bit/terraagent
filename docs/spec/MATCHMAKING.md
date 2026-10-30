@@ -88,7 +88,7 @@ Planet health is orthogonal to lifecycle: `health ∈ {OK, FAILING_OVER, FAULTED
 
 ## 4. Picker listing ("available planets")
 
-`GET /v1/planets?type=<temperate|desert>&limit=<≤20>` (auth: any player incl. guest).
+`GET /v1/planets?type=<desert|ocean|temperate>&limit=<≤20>` (auth: any player incl. guest).
 
 | ID | Rule |
 |---|---|
@@ -101,7 +101,7 @@ Planet health is orthogonal to lifecycle: `health ∈ {OK, FAILING_OVER, FAULTED
 ```ts
 type PlanetSummaryV1 = {
   id: string; name: string;            // generated, e.g. "Kepler-7c Dunes"
-  type: 'temperate' | 'desert';
+  type: 'desert' | 'ocean' | 'temperate';   // PlanetType, D-33
   seatsTaken: number; capacity: number;
   firstColonyAt: string | null;        // ISO
   admissionClosesAt: string | null;    // firstColonyAt + window
@@ -153,7 +153,7 @@ stateDiagram-v2
 | `MM-31` | **Returning players bypass the queue.** If the player has a `FOUNDING`/`ALIVE` colony, enqueue MUST return `409 already_has_colony` + `home`. A partial unique index `core.colony(player_id) WHERE state IN ('FOUNDING','ALIVE')` enforces it in the DB as well. |
 | `MM-32` | **New players only go to young or new planets.** Assignment targets MUST be `RECRUITING` planets (MM-02) or a planet created/taken from the warm pool for this ticket. A `SEALED` planet is never a target, even if it has free seats (MM-05). |
 | `MM-33` | Seat reservation MUST run in one transaction: `SELECT … FROM core.planet WHERE id=$1 AND state='RECRUITING' FOR UPDATE`; check `seatsTaken + activeReservations < capacity`; set ticket `RESERVED`, `reservedPlanetId`, `reservationExpiresAt = now + MATCH_SEAT_TTL_S`; insert `core.colony(id=ticket.colonyId, state='FOUNDING')`. Tickets are claimed with `SELECT … FOR UPDATE SKIP LOCKED`. |
-| `MM-34` | Target selection per mode: **`JOIN_PLANET`** → the requested planet; if it is no longer eligible, **fall back to `AUTO` of the same type** and set `fallbackFromPlanetId` (client shows "That planet just filled — you've been placed on …"). **`AUTO {type?}`** → eligible `RECRUITING` planet with the most seats taken (fill first), tie → oldest `firstColonyAt`; if none, empty warm-pool planet; if none, create one. **`NEW_PLANET {type}`** → empty warm-pool planet of that type, else create. **`TRANSFER`** (rocket, TA-06.10) → like `NEW_PLANET`, `priority = 10`. The `JOIN_PLANET` fallback to `AUTO` of the same type is owner-confirmed. |
+| `MM-34` | Target selection per mode: **`JOIN_PLANET`** → the requested planet; if it is no longer eligible, **fall back to `AUTO` of the same type** and set `fallbackFromPlanetId` (client shows "That planet just filled — you've been placed on …"). **`AUTO {type?}`** (`type` ∈ `desert | ocean | temperate`, D-33; without a type, any type in `PLANET_TYPES_ENABLED`) → eligible `RECRUITING` planet with the most seats taken (fill first), tie → oldest `firstColonyAt`; if none, empty warm-pool planet; if none, create one. **`NEW_PLANET {type}`** → empty warm-pool planet of that type, else create. **`TRANSFER`** (rocket, TA-06.10) → like `NEW_PLANET`, `priority = 10`. The `JOIN_PLANET` fallback to `AUTO` of the same type is owner-confirmed. |
 | `MM-55` | **Party tickets (needed for launch, D-22).** A party of 2–5 players (`core.party`, leader + members who accepted an invite code) enqueues **one** ticket with `partySize`. Seat reservation (MM-33) reserves `partySize` seats atomically, on a planet with `capacity − seatsTaken − activeReservations ≥ partySize`. Spawns run per member with separate `colonyId`s; partial spawn failure releases only that member's seat. A party never splits across planets. *Follow-up design needed:* invite flow, party UI, leader leaves or disconnects, how parties interact with the fill-first sort (MM-34), and spawn-slot adjacency for party members. |
 | `MM-35` | Spawning: the `lobby` module calls `game.spawnColony { colonyId, playerId, ticketId, displayName, carryOver? }` (timeout 5 s). The game module posts `system.spawnColony` to the planet's sim thread (idempotent by `colonyId`: a second spawn of the same colony is a no-op) and replies `{ colonyId, appliedAtTick, spawnTile }` once applied. |
 | `MM-36` | On success, in one transaction: colony `FOUNDING → ALIVE` (`foundedAt`), planet `seatsTaken++`, set `firstColonyAt` if null, ticket `ASSIGNED`, seal if full (MM-03). Then emit `mm.changed` on the event bus and push `match.assigned { home }` to the player's sockets. |

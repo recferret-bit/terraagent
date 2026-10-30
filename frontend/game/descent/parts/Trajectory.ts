@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { PlanetSurface } from '@shared/engine/planets/surface/types';
+import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import { smoother, smoothstep } from '../math';
 import { altCurve } from '../timeline';
 import { R, Y0 } from '../constants';

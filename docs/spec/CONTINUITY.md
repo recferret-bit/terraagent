@@ -130,7 +130,8 @@ Autonomy is the design (the colony is always run by the rule engine following pl
 ```ts
 type AwayDigestV1 = {
   colonyId: string; awayFrom: string; awayTo: string; durationS: number;
-  resources: Record<'metals'|'minerals'|'petroleum'|'water'|'energy', { before: number; after: number }>;
+  resources: Record<ResourceKey, { before: number; after: number }>;   // D-34: the 10 sub-resource keys (SIMULATION §5)
+  energy: { before: number; after: number };                        // net grid power, E/s (not a stored resource)
   built: { kind: string; tier: number; count: number }[];
   lost: { kind: string; tier: number; count: number; cause: 'fauna'|'raid'|'lightning'|'meteor'|'other' }[];
   robots: { before: number; after: number; produced: number; lost: number };

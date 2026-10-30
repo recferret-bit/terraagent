@@ -1,10 +1,10 @@
 // Landing hero: the game's own orbit-menu stage (globe shaders, sun + flare, nebula/stars/parallax, asteroids, moons,
 // artificial satellites, carrier), via the same ColonyViewport (28° FOV, ACES, bloom). The world morphs every 10 s.
-import { createColonyViewport, type ColonyViewport } from '@shared/engine/core/createColonyViewport';
-import { StageHost, prefersReducedMotion } from '@shared/engine/core/StageHost';
-import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@shared/engine/planets/PlanetSpec';
-import { createOrbitalStage } from '@shared/engine/orbit/OrbitalStage';
-import '@shared/engine/kitbash';
+import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { StageHost, prefersReducedMotion } from '@terra/render/core/StageHost';
+import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { createOrbitalStage } from '@terra/render/orbit/OrbitalStage';
+import '@terra/render/kitbash';
 
 // One world's cycle (seconds), c = 0 when its terraform starts:
 //   0 → 8 terraform (4 steps) · 8 → 10 admire it · 10 → 11.5 collapse (terraform plays in reverse, so no city, border or

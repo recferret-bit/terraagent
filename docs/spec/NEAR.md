@@ -62,7 +62,7 @@ flowchart LR
 |---|---|---|---|---|
 | `IdentityPort` | F5 | `loginSocial`, `createNamedAccount`, `claimAccount` | Fake OAuth screen; account `name.terraagent.mock` | Social-login provider (to be chosen) + account creation |
 | `RelayerPort` | F5 | `submitMetaTx` | Instant, deterministic `mock:` hash | NEP-366 relayer |
-| `CargoTokenPort` | F1 | `mint`, `burn`, `balanceOf`, `transfer` | Postgres ledger (NEP-245 semantics, token ids `metals` …) | NEP-245 contract `res.terraagent.near` |
+| `CargoTokenPort` | F1 | `mint`, `burn`, `balanceOf`, `transfer` | Postgres ledger (NEP-245 semantics, token ids = `ResourceKey`: `metals.t1` …) | NEP-245 contract `res.terraagent.near` |
 | `IntentsPort` | F2, F4 | `deposit`, `signTokenDiff`, `simulate`, `execute`, `withdraw` | Diffs checked to sum to zero, then applied atomically to the mock ledger | `intents.near` (`execute_intents`, `simulate_intents`) |
 | `AgentWalletPort` | F3, F4 | `createSubAccount`, `addLimitedKey(allowance)`, `revokeKey` | Mock keys with allowance accounting | Sub-accounts + function-call keys |
 | `DeedNftPort` / `BadgeNftPort` | F6, achievements | `mint`, `updateMetadata`, `ownerOf` | Postgres NFTs with a metadata JSON history | NEP-171 contract |
@@ -112,12 +112,12 @@ The flow is unchanged in substance. The app issues a challenge `{nonce (32 B), r
 
 | ID | Rule |
 |---|---|
-| `NEAR-50` | One NEP-245 multi-token contract, `res.terraagent.near`. Token ids `metals`, `minerals`, `petroleum`, `water` (18 decimals). `mt_mint` and `mt_burn` are callable only by `minter.*`. Transfers are **unrestricted in beta** (D-26). |
+| `NEAR-50` | One NEP-245 multi-token contract, `res.terraagent.near`. **One token id per tradable sub-resource (D-34)**, equal to the sim's `ResourceKey`: `metals.t1`, `metals.t2`, `metals.t3`, `minerals.t1`, `minerals.t2`, `minerals.t3`, `bio.water`, `bio.biomass`, `bio.t2`, `bio.t3` (18 decimals; energy is not a token). T1 tokens trade from day one; T2/T3 tokens can be bought by a colony that cannot mine them yet. `mt_mint` and `mt_burn` are callable only by `minter.*`. Transfers are **unrestricted in beta** (D-26). |
 | `NEAR-51` | **Export.** `cargo.export {resource, amount}` (SIMULATION `SIM-C-05`): the sim removes the stock and records `pendingMint`. The `near` module writes a `chain.cargo_tx` row and calls `mt_mint` to the colony account; on final it answers `cargo.settled {ok: true}`. On failure (after retries) it answers `{ok: false}` and the sim refunds. |
 | `NEAR-52` | **Import.** `cargo.import`: the module burns tokens from the colony account (colony key, via the relayer). On final, the sim credits the stock, capped by storage, with any overflow kept in orbit. |
-| `NEAR-53` | **Mint caps (economic pacing).** Per colony: export ≤ Trade Hub throughput (250 / 900 / 3 500 units per min by tier) and ≤ `CARGO_MINT_CAP_PER_DAY`. Proposed default: 20 000 units per resource per day. Over the cap → `mint_cap`. |
+| `NEAR-53` | **Mint caps (economic pacing).** Per colony: export ≤ Trade Hub throughput (250 / 900 / 3 500 units per min by tier) and ≤ `CARGO_MINT_CAP_PER_DAY`. Proposed default: 20 000 units per sub-resource per day. Over the cap → `mint_cap`. |
 | `NEAR-54` | **Rocket carry-over.** Cargo stays in the colony account and follows the player. The new colony can import it (`system.arrive` lists the balance). |
-| `NEAR-55` | **Deposit path into `intents.near`.** Cargo must be deposited into the verifier to trade there (`mt_transfer_call` to `intents.near`, credited as an `nep245:res.terraagent.near:<id>` balance). **Verify the exact deposit method and token-id format in the Intents docs.** If NEP-245 deposits are not supported, fall back to four NEP-141 tokens. |
+| `NEAR-55` | **Deposit path into `intents.near`.** Cargo must be deposited into the verifier to trade there (`mt_transfer_call` to `intents.near`, credited as an `nep245:res.terraagent.near:<id>` balance). **Verify the exact deposit method and token-id format in the Intents docs.** If NEP-245 deposits are not supported, fall back to one NEP-141 token per sub-resource (10). |
 
 ---
 
@@ -128,8 +128,8 @@ sequenceDiagram
   participant P as Player / director (colony key)
   participant A as app near module (message bus)
   participant I as intents.near
-  P->>A: market.placeOrder {sell 300 water, want 120 metals, hub H}
-  A->>A: sim reserves 300 water in orbit (market.reserve) · store signed token_diff
+  P->>A: market.placeOrder {sell 300 bio.water, want 120 metals.t1, hub H}
+  A->>A: sim reserves 300 bio.water in orbit (market.reserve) · store signed token_diff
   Note over A: another colony / Guild NPC places the mirror order
   A->>A: match: maker + taker + hub-owner fee leg (sum to zero per token)
   A->>I: execute_intents([maker, taker, feeLeg])  (via relayer)
@@ -140,7 +140,7 @@ sequenceDiagram
 | ID | Rule |
 |---|---|
 | `NEAR-60` | An order is a **signed `token_diff` intent** (NEP-413 payload) from the maker's colony account. It covers in-orbit cargo (or NEAR / USDC balances in the verifier) and has a deadline equal to the order TTL. The app stores it in `chain.market_order`. |
-| `NEAR-61` | **Matching.** The `near` module is the **message bus**. Each planet has one order book per resource pair, with price-time priority. A match builds the batch `[maker, taker, feeLeg]`. The fee leg pays `fee_bp` (0–3 %, set by the Trade Hub owner with `market.setHubFee`) to the hub owner's colony account. Per token, the batch must sum to zero, or `execute_intents` rejects the whole batch. |
+| `NEAR-61` | **Matching.** The `near` module is the **message bus**. Each planet has one order book per token pair (sub-resource × sub-resource, or sub-resource × NEAR / USDC), with price-time priority. A match builds the batch `[maker, taker, feeLeg]`. The fee leg pays `fee_bp` (0–3 %, set by the Trade Hub owner with `market.setHubFee`) to the hub owner's colony account. Per token, the batch must sum to zero, or `execute_intents` rejects the whole batch. |
 | `NEAR-62` | **Settlement.** The batch is submitted through the relayer. When it is final, the app writes `chain.intent_trade` and sends `market.settled` to both sims (they release reservations, and trade history feeds the price board). On failure, orders go back to the book or expire and reservations are released. |
 | `NEAR-63` | **Scope.** Same-planet order books only (D-19). Cross-planet flow comes only from Guild NPCs (F3). A Trade Hub T1 is required to place orders; truces are not. |
 | `NEAR-64` | **Dev and test.** `intents.near` is **mainnet only, with no testnet**. Development uses dedicated mainnet dev accounts with tiny amounts plus `simulate_intents` / `dry: true` quotes. CI stubs the verifier. |
@@ -209,7 +209,7 @@ sequenceDiagram
 | `NEAR_RPC_URL` / `NEAR_RPC_FALLBACK_URL` | **FastNEAR** / a second provider | D-23 |
 | `NEAR_ACCOUNT_ROOT` | `terraagent.near` | |
 | `NEAR_STAKING_POOLS` | whitelist of validator pools | NEAR-92 |
-| `CARGO_MINT_CAP_PER_DAY` | 20 000 per resource per colony (proposed) | NEAR-53 |
+| `CARGO_MINT_CAP_PER_DAY` | 20 000 per sub-resource per colony (proposed) | NEAR-53 |
 | `MARKET_FEE_BP_MAX` / `TREASURY_FEE_SHARE_BP` | 300 / 2 000 | NEAR-61, NEAR-101 |
 | `NEAR_MIN_RELAYER_BALANCE` | 5 NEAR | alert below |
 

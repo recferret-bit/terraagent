@@ -14,13 +14,63 @@
 >
 > If they are missing, the demo ships on mocks (`NEAR_ALLOW_MOCK_IN_PROD=true`) and the README says so.
 
-- [ ] **Public GitHub repo + LICENSE.** `TerraAgent/` is not a git repository yet. Create a public repo (judges cannot open private ones) and add a LICENSE file. Commit the current state **before 11-01** so the pre-window baseline (`src/` prototype, docs) is clearly separated from hackathon work.
+- [ ] **Public GitHub repo + LICENSE.** The repo exists (`github.com/recferret-bit/terraagent`, `main` pushed 2026-10-30). Make sure it is **public** (judges cannot open private ones) and add a `LICENSE` file before 11-01, so the pre-window baseline (the `frontend/` prototype) is on record.
 - [ ] **Mainnet dev accounts + a small NEAR balance** for NEAR Intents testing (`intents.near` has no testnet): e.g. `dev-a.terraagent.near` and `dev-b.terraagent.near`, plus the server port account for minting (`res.terraagent.near` deployer). A few NEAR is enough; mainnet costs are not reimbursed.
 - [ ] **1Click partner JWT** (optional): register at `partners.near-intents.org` to avoid the 0.2 % fee without a JWT.
 - [ ] **Pick a social-login provider** for F5 (HOT is a listed hackathon partner; check the others for NEAR named-account support). Fallback: guest + server-created custodial sub-accounts.
 - [ ] **Prize payout wallet:** a **mainnet** NEAR account owned by you (the submission form asks for it).
 - [ ] **X account** for the required demo post ("built at NEAR HACKATHON" + video).
 - [ ] **4 vCPU / 8 GB host + Cloudflare** ready by **11-13** for the hosted demo (a local-only demo is allowed as a fallback).
+
+## Plan review 2026-10-30 — questions for the owner
+
+The wave plan was reviewed against the specs and the existing `frontend/` prototype (layout decision D-32). Agents follow the **proposed default** until you answer; change it here and in the named issue.
+
+**Blocking the hackathon path (`H` rows)**
+
+| # | Question | Proposed default | Where |
+|---|---|---|---|
+| R1 | Planet types vs client looks | **Answered 2026-10-30 → D-33:** three types as on the landing page: Desert (`dune`), Ocean (`oceanForest`), Temperate (`forestRock`) | W01 header, W05-17, W11-01 |
+| R2 | Resource names | **Answered 2026-10-30 → D-34:** Metals, Minerals, Bio with T1/T2/T3 sub-resources (T2/T3 after terraforming: colony threshold and terraformed deposit ground); Energy is grid power | W02-26 and every cost row |
+| R3 | Existing models fail the validator (`robot.hero` ≈ 12.7 k tris, `building.commandHub` ≈ 11.5 k, `mine` 24 errors, `pylon` 16, `wind` 6, `rocket` 10.5 k). Fix inside the binding rows (sized M) or accept them for the demo and move the clean-up to `H+`? | Fix inside the binding rows (as planned). Only W01-24 and W01-25 are `H` (2 units); the rest are already `H+` or later | W01-24, W01-25, W02-18, W03-21..23, W21-20 |
+| R4 | The existing descent cinematic lasts ≈ 35 s; the sim's pod phase is 6 s (`podDescentS`) | 6 s in the sim; the cinematic sync is W01-23 (`H+`); until then the HQ appears while the pod still falls on screen | W01-09, W01-23 |
+| R5 | Look of the hex terrain | Smooth relief from the sim's tiles + thin hex edge lines (CLIENT §8 decides the source, not the look) | W00-28, W01-20 |
+| R6 | Trade Hub is the only new archetype on the `H` path. Keep it `H`, or a placeholder at `H` and the model at `H+`? | Keep `H` | W10-16 |
+| R7 | Guild ship moved `H` → `H+` and reuses `ship.carrier` | Accept | W15-14 |
+| R8 | `powerOverload` debounce: SIMULATION §7.4 says 600 ticks (120 s), §9 says 60 s | 600 ticks (§7.4); fix §9 when confirmed | W03-06 |
+| R9 | Petroleum Well unlocks at S2 but yields only `bio.t2`, which needs Terraform ≥ 30 % + a terraformed ring (D-34) | Move its unlock to S5 with the other T2 items (W03-30 is `H+`) | units spec stage table, W03-30 |
+| R10 | Hub T2 (the S5 trigger) now costs T2 sub-resources, so S5 needs Terraform ≥ 30 % or market purchases; the §6.4 pacing table is stale | Accept (it is the tier link of D-34); re-run pacing in playtests | units spec §6.4, W17 |
+| R11 | Starting kit: SIMULATION says 400/250/150/150, units spec says pod cargo 600/350/200/200; 600 Metals exceeds the Hub T1 cap of 500 | SIMULATION's 400/250/150/150 (fits the cap) | SIMULATION §7.3, units spec, W01-09 |
+| R12 | Temperate/Desert terrain mixes differ between SIMULATION §10 and units spec §4.5 | SIMULATION §10 wins; units spec cites it | W01-06, W05-17 |
+
+**Balance numbers missing from the game specs** — **answered 2026-10-30: use the defaults below; the owner tunes them in playtests** (D-35: data tables + runtime `tune` overrides). `(H)` = on the hackathon path.
+
+| # | Missing number or rule | Proposed default (agents use it until you answer) | Where |
+|---|---|---|---|
+| B1 | Terraforming Processor conversion rate (tiles/s); the spec only gives +0.15 %/s planet score | 0.5 tiles/s | W17 |
+| B2 | View radii of Hub, Beacon T1 and other buildings for the shared view (`H`) | footprint radius + 4 tiles (Hub, Beacon T1: + 6) | W07-08 |
+| B3 | When Hub T3 can be ordered (a dwell like S4's 8 min?) | 10 min dwell in S7, mirroring S4 | W19 |
+| B4 | Do Recon, Tank and HQ weapons hit air? (§5.5 implies no) | No: only Autocannon and Laser Tower hit air | W19 |
+| B5 | Unlock stages of the T2 rows not in the S5 list (Wind, Thermal, Hydro, Capacitor, Pylon, Laser, Hazard, Trade Hub, Nuclear T1/T2); is "Turret T2" the Autocannon only? | The stage of the T1 row + 1 (min S5); "Turret T2" = Autocannon only | W17 |
+| B6 | T2/T3 special effects under battle v1 (Plasma Arc chain, Shield dome, Railgun AP, Depot T3 raid protection, Beacon T3 +15 % turret range, DCA T2/T3, Hazard Shield T2) | None in battle v1: plain stat bumps only | W17, W19 |
+| B7 | Laser Tower T1: built in W07 at S3, but the stage table puts it at S7 (`H`) | S3, as W07 builds it; fix the stage table | W07-01 |
+| B8 | Factory / DCA footprints: models 4×3 / 2×2, data 3×3 / 1×1 — refit models or change data? (`H`) | Data-table footprints (3×3 / 1×1); refit the models | W07-24 |
+| B9 | Hunt-stance search radius (plan: 15 tiles) and Defend-area leash (`H`) | Hunt radius 15 tiles; Defend leash 8 tiles | W07 |
+| B10 | Autocannon ammo (−0.2 M/s firing) and Laser +12 E/s spike: in battle v1? (`H`) | Neither in battle v1 | W07 |
+| B11 | Fauna bite damage per hit and rate (spec gives DPS only) (`H`) | One bite per second; damage = spec DPS × 1 s | W07 |
+| B12 | Wall Gate "in a wall line" rule (plan: ≥ 2 wall neighbours) (`H`) | ≥ 2 neighbouring wall tiles (hex) | W14 |
+| B13 | Do storms raise the wind factor? No spec says so | No | W05-14 |
+
+**Naming, routing and spec gaps**
+
+| # | Question | Proposed default | Where |
+|---|---|---|---|
+| N1 | One domain or `game.` + root (D-24 one app vs CLIENT/ARCHITECTURE §4 two static sites)? | Two static sites on one app, as ARCHITECTURE §4 | W25-28 |
+| N2 | Who adds production rewrites for `/me`, `/planets`, `/c/{id}` and `frontend/me.html` to `vite.config.ts`? | W25 (rewrites), W12 lead pre-step (`me.html`) | W12, W25 |
+| N3 | Ports gain methods `NEAR.md` does not list (`keyStatus`, Deed `get`, Staking `listPools`/`withdraw`/`position`, Treasury `addMember`/`removeMember`/`get`, Escrow `get`) | Add them to NEAR.md's port table | W06, W20, W22 |
+| N4 | Hackathon rule ids Q-002…Q-017 are cited but defined nowhere in the repo | Copy the hackathon rules into `HACKATHON_CUT.md` | W00-48, W25 |
+| N6 | HUD technology | **Answered 2026-10-30 → D-36:** vanilla DOM + design-system CSS; ARCHITECTURE §12 and tech-stack-spec amended | W02-26, W01-29 |
+| N5 | `colony eliminate` dev command: owned by W09-31, but W11-29 registers it itself when W09 is off | Keep both (flag-safe fallback) | W09-31, W11-29 |
 
 ## Before W0 — decisions to grill (post-hackathon plan)
 
