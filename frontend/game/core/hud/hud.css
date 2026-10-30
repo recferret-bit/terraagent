@@ -1,0 +1,9 @@
+.ta-hud { position: fixed; inset: 0; pointer-events: none; z-index: 20; font-family: var(--ta-font-body, 'IBM Plex Sans', sans-serif); color: var(--ta-text); }
+.ta-hud__slot { position: absolute; display: flex; flex-direction: column; gap: 8px; padding: 16px; max-width: 50%; }
+.ta-hud__slot[data-slot='top-left'] { top: 0; left: 0; align-items: flex-start; }
+.ta-hud__slot[data-slot='top-right'] { top: 0; right: 0; align-items: flex-end; }
+.ta-hud__slot[data-slot='top-center'] { top: 0; left: 50%; transform: translateX(-50%); align-items: center; }
+.ta-hud__slot[data-slot='bottom-left'] { bottom: 56px; left: 0; align-items: flex-start; justify-content: flex-end; }
+.ta-hud__slot[data-slot='bottom-right'] { bottom: 0; right: 0; align-items: flex-end; justify-content: flex-end; }
+.ta-hud__panel { pointer-events: auto; }
+.ta-hud__tag { padding: 8px 14px; background: var(--ta-plate); border: 1px solid var(--ta-seam-2); color: var(--ta-orange); font: 600 12px/1 'Chakra Petch', sans-serif; letter-spacing: 0.12em; text-transform: uppercase; }

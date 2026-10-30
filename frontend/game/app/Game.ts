@@ -12,6 +12,8 @@ import { warmupScene } from './warmup';
 import { Gameplay } from './Gameplay';
 import { MainMenu, type MenuSettings } from '../ui/menu';
 import { DescentHud, GameHud } from '../ui/hud';
+import { HudRoot } from '../core/hud/HudRoot';
+import { loadFeatures } from '../core/registry';
 import '@terra/render/kitbash';
 import '../../design/css/tokens.css';
 import '../../design/css/base.css';
@@ -28,6 +30,7 @@ interface Prepared {
 export class Game {
   readonly viewport: ColonyViewport;
   private root: HTMLElement;
+  private featureHud: HudRoot | null = null;
   private fade = document.createElement('div');
   private phase: Phase = 'menu';
   private menu!: MainMenu;
@@ -216,6 +219,7 @@ export class Game {
     this.viewport.camera.fov = 28; this.viewport.camera.updateProjectionMatrix();
     this.play = new Gameplay(this.viewport.scene, this.viewport.camera, this.viewport.renderer.domElement, this.surface, this.spec, hero, this.gHud!, { position: pose.position.clone(), target: pose.target.clone() });
     this.gHud!.show();
+    this.mountFeatureHud();
     this.gHud!.setResources({ energy: 120, metal: 60, water: 40, bio: 10 });
     const d = this.descent; this.descent = null;
     setTimeout(() => { try { d.dispose(); } catch (e) { console.warn(e); } this.dHud?.dispose(); this.dHud = null; }, 900);
@@ -229,7 +233,15 @@ export class Game {
   }
   private setPaused(p: boolean) { this.gHud?.setPaused(p); if (this.play) { this.play.paused = p; this.play.cam.enabled = !p; } }
 
+  /** Feature registry HUD; all waves on and host 'server' until the online flow lands. */
+  private mountFeatureHud() {
+    const flags = new Set(Array.from({ length: 26 }, (_, i) => `W${String(i).padStart(2, '0')}`));
+    const ctx = { flags, host: 'server' as const, services: {} };
+    this.featureHud = new HudRoot(this.root, loadFeatures({ flags, host: 'server' }), ctx);
+  }
+
   private teardownSession() {
+    this.featureHud?.dispose(); this.featureHud = null;
     this.play?.dispose(); this.play = null;
     try { this.descent?.dispose(); } catch (e) { console.warn(e); } this.descent = null;
     this.dHud?.dispose(); this.dHud = null; this.gHud?.dispose(); this.gHud = null;
