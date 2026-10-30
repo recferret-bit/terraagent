@@ -28,5 +28,6 @@ export * from './systems/economy/construction';
 export * from './systems/environment';
 export * from './systems/power-core';
 export * from './systems/production';
+export * from './systems/factories-hub';
 export * from './data';
 export * from './host';
