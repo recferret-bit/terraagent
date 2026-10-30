@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { encodeWire, decodeWire, newId } from '@terra/contracts';
 import { WsTransport, type SocketLike, type WsTransportDeps } from './WsTransport';
 import { backoffDelay } from './backoff';
-import { bannerText } from './ConnectionBanner';
+import { bannerText } from './bannerText';
 import type { ServerMessage } from '@terra/contracts';
 
 class FakeSocket implements SocketLike {
