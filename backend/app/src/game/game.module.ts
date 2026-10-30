@@ -19,6 +19,7 @@ import { devPlanetIds } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
 import { SnapshotService } from './persistence/snapshot.service';
 import { SnapshotStore } from './persistence/snapshot-store';
+import { ProgressionEventForwarder } from './progression-events.service';
 import { SimThreadPool } from './sim-thread-pool';
 
 export const env = defineEnv('game', {
@@ -47,8 +48,9 @@ const POOL = Symbol('SIM_THREAD_POOL');
     { provide: GamePlanets, inject: [POOL, APP_ENV], useFactory: (pool: SimThreadPool, e: AppEnv) => new GamePlanets(pool, Number(e.DELTA_HZ)) },
     SnapshotStore,
     SnapshotService,
+    ProgressionEventForwarder,
   ],
-  exports: [GamePlanets],
+  exports: [GamePlanets, ProgressionEventForwarder],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubHomeSeat: (() => void) | undefined;
@@ -61,14 +63,18 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly metrics: MetricsRegistry,
     private readonly readiness: ReadinessRegistry,
     private readonly bus: EventBus,
+    private readonly progressionForwarder: ProgressionEventForwarder,
     @Optional() private readonly homeService?: HomeService,
   ) {}
 
   async onApplicationBootstrap(): Promise<void> {
     await this.pool.start();
-    bridgePlanetEvents(this.planets, this.bus);
+    bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder);
     if (this.homeService) {
-      this.unsubHomeSeat = this.homeService.onColonySeated((assignment) => this.seatColony(assignment));
+      this.unsubHomeSeat = this.homeService.onColonySeated((assignment) => {
+        this.progressionForwarder.registerColony(assignment.colony.id, assignment.colony.playerId);
+        return this.seatColony(assignment);
+      });
     }
     const pool = this.pool;
     const reg = this.metrics.registry;

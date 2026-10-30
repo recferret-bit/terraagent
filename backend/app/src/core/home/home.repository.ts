@@ -250,6 +250,10 @@ export class HomeRepository {
     return this.coloniesById.get(id) ?? null;
   }
 
+  findMemColonyById(id: string): ColonyRecord | null {
+    return this.coloniesById.get(id) ?? null;
+  }
+
   async listColoniesByPlanetId(planetId: string): Promise<ColonyRecord[]> {
     if (this.dbEnabled && this.prisma) {
       try {

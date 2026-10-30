@@ -12,8 +12,17 @@ export interface GameView {}
  * Services a feature may use. Empty on purpose: later issues add members via declaration merging
  * (`declare module '.../registry/types' { interface FeatureServices { ... } }`) so existing features keep compiling.
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface FeatureServices {}
+export interface FeatureServices {
+  store?: {
+    latest?: any;
+    latestTiles?: any;
+    onView?: (cb: (v: any) => void) => any;
+    sendCommand?: (...args: any[]) => any;
+    [k: string]: any;
+  };
+  pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
+  [key: string]: unknown;
+}
 
 export interface FeatureContext {
   readonly flags: ReadonlySet<string>;

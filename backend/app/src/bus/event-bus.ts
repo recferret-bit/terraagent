@@ -37,6 +37,11 @@ export class EventBus {
     }
   }
 
+  /** Alias for `emit` to support publish/subscribe terminology. */
+  publish<C extends BusChannel>(channel: C, payload: BusChannels[C]): void {
+    this.emit(channel, payload);
+  }
+
   on<C extends BusChannel>(channel: C, handler: (payload: BusChannels[C]) => unknown, options: SubscribeOptions<C>): Unsubscribe {
     const sub: Sub = { module: options.module, handler: handler as Sub['handler'], filter: options.filter as Sub['filter'] };
     this.subs.set(channel, [...(this.subs.get(channel) ?? []), sub]);

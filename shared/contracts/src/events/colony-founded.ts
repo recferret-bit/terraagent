@@ -12,6 +12,7 @@ export const event = defineEvent({
     hubId: z.number().int().optional(),
     q: z.number().int().optional(),
     r: z.number().int().optional(),
+    achievement: z.string().optional(),
   }),
   summary: 'Emitted when a colony completes its Command Hub T1 and claims its initial territory (W01-17, W01-31).',
 });
