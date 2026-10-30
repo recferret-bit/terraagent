@@ -5,11 +5,11 @@ import { hexDistance, hexIndex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
-import { setBlob, touchTile, type PlanetState } from '../../kernel/state';
+import { setBlob, touchTile, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 
-export type SimState = PlanetState;
+export type { SimState };
 
 export type HqJob = 'idle' | 'moving' | 'working' | 'constructing';
 
@@ -105,6 +105,60 @@ export function resolveHqRow(state: PlanetState, hqSlotOrId: number): number {
   return byId;
 }
 
+interface TerraformJobPreview {
+  progress: number;
+  baseTimeS: number;
+  totalEnergyE: number;
+}
+
+interface TerraformOrderPreview {
+  colonyId: number;
+  jobs: TerraformJobPreview[];
+}
+
+function readColonyTerraformOrders(state: PlanetState, owner: number): TerraformOrderPreview[] {
+  const raw = state.blobs.terraformTasks;
+  if (!raw) return [];
+  const val = (raw.value ?? raw) as {
+    byColony?: Record<number, TerraformOrderPreview[]>;
+    orders?: TerraformOrderPreview[];
+    [k: number]: TerraformOrderPreview[];
+  };
+  if (Array.isArray(val.byColony?.[owner])) {
+    return val.byColony[owner].filter((o) => Array.isArray(o.jobs) && o.jobs.length > 0);
+  }
+  if (Array.isArray(val[owner])) {
+    return val[owner].filter((o) => Array.isArray(o.jobs) && o.jobs.length > 0);
+  }
+  if (Array.isArray(val.orders)) {
+    return val.orders.filter((o) => o.colonyId === owner && Array.isArray(o.jobs) && o.jobs.length > 0);
+  }
+  return [];
+}
+
+function resolveHqQueueCount(state: PlanetState, owner: number, currentJob: HqJob): number {
+  const tfOrders = readColonyTerraformOrders(state, owner);
+  if (tfOrders.length > 0) return tfOrders.length;
+  return currentJob === 'idle' ? 0 : 1;
+}
+
+function hasStoredCellForActiveTerraformJob(state: PlanetState, slot: number, dtTicks: number): boolean {
+  const cols = state.entities.cols;
+  if (cols.state[slot] === ENTITY_STATE.descending) return false;
+  const owner = cols.owner[slot];
+  const orders = readColonyTerraformOrders(state, owner);
+  const job = orders[0]?.jobs[0];
+  if (!job) return false;
+  const workRate = cols.workRate[slot] > 0 ? cols.workRate[slot] : Number(resolveHqT1Row().workRate);
+  const nominalDurationS = job.baseTimeS / workRate;
+  if (nominalDurationS <= 0) return false;
+  const dtS = (TICK_MS / 1000) * dtTicks;
+  const remaining = Math.max(0, 1 - (job.progress ?? 0));
+  const desiredProgress = Math.min(dtS / nominalDurationS, remaining);
+  const neededE = job.totalEnergyE * desiredProgress;
+  return cols.cell[slot] >= neededE - 1e-5 && neededE > 0;
+}
+
 /** Updates `state.blobs.hq` and colony HQ panel fields for row `row`. */
 export function syncHqView(
   state: PlanetState,
@@ -127,7 +181,7 @@ export function syncHqView(
   const hqRow = resolveHqT1Row(data);
   const owner = cols.owner[targetRow];
   const currentJob = hqJobFromState(cols.state[targetRow]);
-  const queueCount = currentJob === 'idle' ? 0 : 1;
+  const queueCount = resolveHqQueueCount(state, owner, currentJob);
   const unitView: HqUnitView = {
     entityId: cols.id[targetRow],
     owner,
@@ -166,10 +220,11 @@ export function getHqView(state: PlanetState, owner?: number): HqUnitView | null
     if (cols.kind[row] !== ENTITY_KIND.hq) continue;
     if (owner !== undefined && cols.owner[row] !== owner) continue;
     const hqRow = resolveHqT1Row();
+    const rowOwner = cols.owner[row];
     const currentJob = hqJobFromState(cols.state[row]);
     return {
       entityId: cols.id[row],
-      owner: cols.owner[row],
+      owner: rowOwner,
       tier: cols.tier[row],
       q: cols.q[row],
       r: cols.r[row],
@@ -184,7 +239,7 @@ export function getHqView(state: PlanetState, owner?: number): HqUnitView | null
       targetQ: cols.targetQ[row],
       targetR: cols.targetR[row],
       currentJob,
-      queueCount: currentJob === 'idle' ? 0 : 1,
+      queueCount: resolveHqQueueCount(state, rowOwner, currentJob),
     };
   }
   return null;
@@ -284,6 +339,9 @@ export interface StepTerraformWorkOpts {
   baseTimeS: number;
   totalEnergyE: number;
   dtS?: number;
+  remainingProgress?: number;
+  remainingEnergyE?: number;
+  tick?: number;
 }
 
 export interface StepTerraformWorkResult {
@@ -305,23 +363,34 @@ export function stepTerraformWorkWithCell(
   if (row < 0) return { progressDelta: 0, energyDrawnE: 0 };
   const cols = state.entities.cols;
   const dtS = opts.dtS ?? TICK_MS / 1000;
+  const stampTick = opts.tick ?? state.meta.tick;
   const workRate = cols.workRate[row] > 0 ? cols.workRate[row] : Number(resolveHqT1Row().workRate);
   const nominalDurationS = opts.baseTimeS / workRate;
   if (nominalDurationS <= 0) return { progressDelta: 1, energyDrawnE: 0 };
-  const desiredProgress = dtS / nominalDurationS;
-  const neededE = opts.totalEnergyE * desiredProgress;
+  const rawDesiredProgress = dtS / nominalDurationS;
+  const isFinishingStep =
+    opts.remainingProgress !== undefined && opts.remainingProgress <= rawDesiredProgress + 1e-6;
+  const desiredProgress =
+    opts.remainingProgress !== undefined
+      ? Math.min(rawDesiredProgress, Math.max(0, opts.remainingProgress))
+      : rawDesiredProgress;
+  const neededE =
+    isFinishingStep && opts.remainingEnergyE !== undefined
+      ? Math.max(0, opts.remainingEnergyE)
+      : opts.totalEnergyE * desiredProgress;
   if (neededE <= 0) return { progressDelta: desiredProgress, energyDrawnE: 0 };
 
   const availE = Math.max(0, cols.cell[row]);
-  if (availE >= neededE) {
-    const nextCell = Math.fround(availE - neededE);
-    setField(state.entities, row, 'cell', nextCell, state.meta.tick);
-    syncHqView(state, row, state.meta.tick);
-    return { progressDelta: desiredProgress, energyDrawnE: neededE };
+  if (availE >= neededE - 1e-6) {
+    const nextCell = Math.fround(Math.max(0, availE - neededE));
+    const actualDrawn = availE - nextCell;
+    setField(state.entities, row, 'cell', nextCell, stampTick);
+    syncHqView(state, row, stampTick);
+    return { progressDelta: desiredProgress, energyDrawnE: actualDrawn };
   }
 
-  setField(state.entities, row, 'cell', 0, state.meta.tick);
-  syncHqView(state, row, state.meta.tick);
+  setField(state.entities, row, 'cell', 0, stampTick);
+  syncHqView(state, row, stampTick);
   const progressDelta = desiredProgress * (availE / neededE);
   return { progressDelta, energyDrawnE: availE };
 }
@@ -338,6 +407,10 @@ export function stepHq(state: PlanetState, ctx?: Partial<StepContext>): void {
   for (let slot = 0; slot < e.count; slot++) {
     if (cols.kind[slot] !== ENTITY_KIND.hq) continue;
     if (cols.hpMax[slot] > 0 && cols.hp[slot] <= 0) continue;
+    if (hasStoredCellForActiveTerraformJob(state, slot, dtTicks)) {
+      syncHqView(state, slot, tick, data);
+      continue;
+    }
     const rateEPerS = getHqRechargeRateEPerS(state, slot, data);
     const deltaE = Math.fround(rateEPerS * (TICK_MS / 1000) * dtTicks);
     const maxE = cols.cellMax[slot] > 0 ? cols.cellMax[slot] : defaultCap;

@@ -24,5 +24,6 @@ export * from './systems/define';
 export * from './systems/registry';
 export * from './systems/hq';
 export * from './systems/movement';
+export * from './systems/terraform-basic';
 export * from './data';
 export * from './host';

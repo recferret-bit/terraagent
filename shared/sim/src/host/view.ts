@@ -38,6 +38,9 @@ export function view(state: PlanetState): SimView {
   }
   const blobs: Record<string, unknown> = {};
   for (const [k, b] of Object.entries(state.blobs)) blobs[k] = b.value;
+  const stockBlob =
+    (state.blobs.colonyStock?.value as Record<string | number, Record<string, number>> | undefined) ??
+    (state.blobs.colonyStock as unknown as Record<string | number, Record<string, number>> | undefined);
   return {
     tick: state.meta.tick,
     planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius },
@@ -51,7 +54,14 @@ export function view(state: PlanetState): SimView {
       explored: L.explored as Uint8Array,
     },
     entities,
-    colonies: state.colonies.map((k) => ({ ...k })),
+    colonies: state.colonies.map((k) => {
+      const fromBlob = stockBlob?.[k.id] ?? stockBlob?.[k.index];
+      const existing = k.stock as Record<string, number> | undefined;
+      const mergedStock = fromBlob ? { ...(existing ?? {}), ...fromBlob } : existing;
+      return mergedStock !== undefined ? { ...k, stock: { ...mergedStock } } : { ...k };
+    }),
     blobs,
   };
 }
+
+export const buildView = view;

@@ -4,5 +4,6 @@ import mod_dev from './dev/index';
 import mod_finalize from './finalize/index';
 import mod_hq from './hq/index';
 import mod_movement from './movement/index';
+import mod_terraform_basic from './terraform-basic/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_finalize, mod_hq, mod_movement];
+export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_finalize, mod_hq, mod_movement, mod_terraform_basic];
