@@ -1,4 +1,4 @@
-import { newId } from '@terra/contracts';
+import { newId, type ServerMessage } from '@terra/contracts';
 import type { Transport } from './types';
 
 /** Outcome of one sim command: acked at a tick, or rejected (`code` is a `RejectCode`, `timeout`, `not_connected` or `host_unavailable`). */
@@ -26,12 +26,20 @@ export class CommandBus {
     private readonly timeoutMs = COMMAND_TIMEOUT_MS,
     private readonly onSent?: (id: string, kind: string, args: unknown) => void,
   ) {
-    this.off = transport.onMessage((m) => {
-      if (m.t !== 'cmd.ack' && m.t !== 'cmd.reject') return;
-      const p = this.pending.get(m.d.id);
-      if (!p) return;
-      this.settle(m.d.id, p, m.t === 'cmd.ack' ? { ok: true, appliedAtTick: m.d.appliedAtTick } : { ok: false, code: m.d.code, ...(m.d.detail ? { detail: m.d.detail } : {}) });
-    });
+    this.off = transport.onMessage((m) => this.handleMessage(m));
+  }
+
+  handleMessage(m: ServerMessage): void {
+    if (m.t !== 'cmd.ack' && m.t !== 'cmd.reject') return;
+    const p = this.pending.get(m.d.id);
+    if (!p) return;
+    this.settle(
+      m.d.id,
+      p,
+      m.t === 'cmd.ack'
+        ? { ok: true, appliedAtTick: m.d.appliedAtTick }
+        : { ok: false, code: m.d.code, ...(m.d.detail ? { detail: m.d.detail } : {}) },
+    );
   }
 
   /** Bound for use as `FeatureServices.sendCommand`. */

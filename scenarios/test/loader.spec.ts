@@ -26,4 +26,20 @@ describe('scenario loader', () => {
     const { host } = createScenarioPlanet('w00', { flags: ['W00', 'W01'] });
     expect([...host.pipeline.config.flags]).toEqual(['W00']);
   });
+
+  it('discovers w01-landfall and seeds a temperate planet at the drop moment with cargo 600/350/200/200', () => {
+    expect(listScenarios().map((s) => s.id)).toContain('w01');
+    expect(getScenario('w01')).toBeDefined();
+    expect(getScenario('w01-landfall')).toBe(getScenario('w01'));
+    const { host } = createScenarioPlanet('w01', { planetId: 'pl_W01' });
+    expect([...host.pipeline.config.flags]).toEqual(['W00', 'W01']);
+    expect(host.state.colonies).toHaveLength(1);
+    expect(host.state.colonies[0]?.stock).toEqual({
+      'metals.t1': 600,
+      'minerals.t1': 350,
+      'bio.biomass': 200,
+      'bio.water': 200,
+    });
+    expect(host.state.entities.count).toBe(1);
+  });
 });

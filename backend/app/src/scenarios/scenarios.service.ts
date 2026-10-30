@@ -26,10 +26,10 @@ export class ScenariosService {
     const planetId = newId('pl');
     const { host } = createScenarioPlanet(def.id, { planetId, flags: this.flags.list });
     const tick = host.tick;
-    if (host.state.colonies?.some((c) => c.active)) {
+    if (host.state.colonies?.some((c) => c.status !== 'eliminated')) {
       this.planets.markScenarioColonyPlanet(planetId);
     }
-    await this.planets.load(planetId, { snapshot: snapshot(host.state), flags: [...host.pipeline.config.flags] });
+    await this.planets.load(planetId, { snapshot: snapshot(host.state) });
     return { planetId, scenario: def.id, tick };
   }
 }

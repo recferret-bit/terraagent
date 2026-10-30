@@ -118,6 +118,8 @@ export class MinimalHud {
   private readonly bioEl: HTMLElement;
   private readonly bioVal: HTMLElement;
   private readonly bioSub: HTMLElement;
+  private readonly supplyEl: HTMLElement;
+  private readonly supplyVal: HTMLElement;
   private readonly cellEl: HTMLElement;
   private readonly cellVal: HTMLElement;
   private readonly cellFill: HTMLElement;
@@ -134,7 +136,7 @@ export class MinimalHud {
     this.colonyEl = colonyEl;
     this.clockEl = clockEl;
 
-    const { stocks, metalsEl, metalsVal, mineralsEl, mineralsVal, bioEl, bioVal, bioSub } =
+    const { stocks, metalsEl, metalsVal, mineralsEl, mineralsVal, bioEl, bioVal, bioSub, supplyEl, supplyVal } =
       this.createStocks();
     this.metalsEl = metalsEl;
     this.metalsVal = metalsVal;
@@ -143,6 +145,8 @@ export class MinimalHud {
     this.bioEl = bioEl;
     this.bioVal = bioVal;
     this.bioSub = bioSub;
+    this.supplyEl = supplyEl;
+    this.supplyVal = supplyVal;
 
     const { cellEl, cellVal, cellFill } = this.createCell();
     this.cellEl = cellEl;
@@ -184,6 +188,8 @@ export class MinimalHud {
     bioEl: HTMLElement;
     bioVal: HTMLElement;
     bioSub: HTMLElement;
+    supplyEl: HTMLElement;
+    supplyVal: HTMLElement;
   } {
     const stocks = document.createElement('div');
     stocks.className = 'ta-hud-min__stocks';
@@ -223,9 +229,21 @@ export class MinimalHud {
     bioSub.className = 'ta-hud-min__stock-sub';
     bioSub.textContent = '(Biomass 0 · Water 0)';
     bioEl.append(bioLbl, bioVal, bioSub);
-    stocks.append(metalsEl, mineralsEl, bioEl);
 
-    return { stocks, metalsEl, metalsVal, mineralsEl, mineralsVal, bioEl, bioVal, bioSub };
+    const supplyEl = document.createElement('div');
+    supplyEl.className = 'ta-hud-min__stock ta-hud-min__stock--supply';
+    supplyEl.dataset.testid = 'hud-supply';
+    const supplyLbl = document.createElement('span');
+    supplyLbl.className = 'ta-hud-min__stock-label';
+    supplyLbl.textContent = 'Supply ';
+    const supplyVal = document.createElement('span');
+    supplyVal.className = 'ta-hud-min__stock-val';
+    supplyVal.textContent = '0 / 0';
+    supplyEl.append(supplyLbl, supplyVal);
+
+    stocks.append(metalsEl, mineralsEl, bioEl, supplyEl);
+
+    return { stocks, metalsEl, metalsVal, mineralsEl, mineralsVal, bioEl, bioVal, bioSub, supplyEl, supplyVal };
   }
 
   private createCell(): { cellEl: HTMLElement; cellVal: HTMLElement; cellFill: HTMLElement } {
@@ -312,6 +330,11 @@ export class MinimalHud {
     this.bioVal.textContent = `${bioTotal} / ${capBio} `;
     this.bioSub.textContent = `(Biomass ${biomass} · Water ${water})`;
     this.bioEl.title = `Biomass: ${biomass} · Water: ${water} · Cap: ${capBio}`;
+
+    const supplyUsed = (col as { supplyUsed?: number } | undefined)?.supplyUsed ?? 0;
+    const supplyCap = (col as { supplyCap?: number } | undefined)?.supplyCap ?? 0;
+    this.supplyVal.textContent = `${supplyUsed} / ${supplyCap}`;
+    this.supplyEl.title = `Supply: ${supplyUsed} / ${supplyCap}`;
 
     const { cell, cellMax } = extractHqCell(view, colonyIdx);
     this.cellVal.textContent = `${Math.round(cell)} / ${Math.round(cellMax)} E`;

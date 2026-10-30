@@ -150,7 +150,7 @@ export class Predictor {
     const host = this.confirmed.simHost.clone();
     const first = host.tick + 1;
     const byTick = new Map<number, SimCommandV1[]>();
-    const hasColony = Boolean(host.state.colonies?.[0]?.active);
+    const hasColony = Boolean(host.state.colonies?.length && host.state.colonies[0]?.status !== 'eliminated');
     for (const p of this.pend) {
       const due = Math.max(p.appliedAtTick ?? first, first);
       const list = byTick.get(due) ?? [];
