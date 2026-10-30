@@ -174,3 +174,156 @@
   padding: 2px var(--ta-s1);
   clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
 }
+
+/* Placement ghost HUD banner */
+.ta-placement-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+  box-sizing: border-box;
+}
+
+.ta-placement-ghost[data-color='green'] {
+  border-color: var(--ta-terra);
+}
+
+.ta-placement-ghost[data-color='red'] {
+  border-color: var(--ta-fault);
+}
+
+.ta-placement-ghost__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.ta-placement-ghost__title {
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-small);
+  color: var(--ta-text);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+}
+
+.ta-placement-ghost__footprint {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  color: var(--ta-blue-hi);
+  background: var(--ta-blue-deep);
+  padding: 2px var(--ta-s1);
+  border: 1px solid var(--ta-blue);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-placement-ghost__deposit {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  padding: 2px var(--ta-s1);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-placement-ghost__deposit[data-covered='true'] {
+  color: var(--ta-terra);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-terra);
+}
+
+.ta-placement-ghost__deposit[data-covered='false'] {
+  color: var(--ta-fault-text);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-fault);
+}
+
+.ta-placement-ghost__prep {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-steel);
+}
+
+.ta-placement-ghost__reason {
+  align-self: flex-start;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  padding: 2px var(--ta-s1);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-placement-ghost[data-color='green'] .ta-placement-ghost__reason {
+  color: var(--ta-terra);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-terra);
+}
+
+.ta-placement-ghost[data-color='red'] .ta-placement-ghost__reason {
+  color: var(--ta-fault-text);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-fault);
+}
+
+.ta-placement-ghost__actions {
+  display: flex;
+  gap: var(--ta-s1);
+  margin-top: var(--ta-s1);
+}
+
+.ta-placement-ghost__confirm {
+  all: unset;
+  cursor: pointer;
+  box-sizing: border-box;
+  text-align: center;
+  flex: 1;
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  padding: var(--ta-s1) var(--ta-s2);
+  color: var(--ta-void);
+  background: var(--ta-orange);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-placement-ghost__confirm[disabled] {
+  cursor: not-allowed;
+  opacity: 0.45;
+  background: var(--ta-dim);
+  color: var(--ta-text-3);
+}
+
+.ta-placement-ghost__confirm:not([disabled]):hover {
+  background: var(--ta-orange-hi);
+}
+
+.ta-placement-ghost__cancel {
+  all: unset;
+  cursor: pointer;
+  box-sizing: border-box;
+  text-align: center;
+  font-family: var(--ta-font-display);
+  font-weight: 600;
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  padding: var(--ta-s1) var(--ta-s2);
+  color: var(--ta-text-2);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-seam);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-placement-ghost__cancel:hover {
+  border-color: var(--ta-seam-3);
+  color: var(--ta-text);
+}
+
