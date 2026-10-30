@@ -36,6 +36,7 @@ export interface HexTileLayers {
   prep?: ArrayLike<number>;
   height: ArrayLike<number>;
   deposit?: ArrayLike<number>;
+  owner?: ArrayLike<number>;
   /** Optional per-tile timestamp (s) when a tile transitioned to Prepared; defaults to -10 (already complete). */
   prepStartTime?: ArrayLike<number>;
 }

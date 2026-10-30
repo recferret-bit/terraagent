@@ -16,6 +16,11 @@ import { addHexEdges } from './hexEdges';
 import { planetExtent, rayGround, tileAt } from './hexMath';
 import { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
 import { makeHeightSampler } from './heightSampler';
+import {
+  buildTerritoryBorderGeometry,
+  createTerritoryBorderMaterial,
+  type TerritoryBorderStats,
+} from './territoryBorder';
 
 /** Tile layers the terrain reads (apps pass plain arrays; the sim's `ClientTiles` fits). */
 export interface HexTiles extends HexTileLayers {
@@ -23,6 +28,7 @@ export interface HexTiles extends HexTileLayers {
   height: ArrayLike<number>;
   prep?: ArrayLike<number>;
   deposit?: ArrayLike<number>;
+  owner?: ArrayLike<number>;
 }
 
 export interface HexPick { q: number; r: number; i: number }
@@ -34,18 +40,25 @@ export interface HexTerrain {
   readonly uniforms: Record<string, THREE.IUniform>;
   readonly water: HexWater;
   readonly props: HexPropScatter;
+  readonly borderMesh: THREE.Mesh;
   readonly radius: number;
   /** Half-extent (m) of the largest square inside the planet: a camera clamped to it never leaves the ground. */
   readonly halfSize: number;
   heightAt(x: number, z: number): number;
   /** Ray (or NDC point + camera) → tile under it, or null when it misses the planet. */
   pick(ray: THREE.Raycaster | THREE.Vector2, camera?: THREE.Camera): HexPick | null;
-  /** New tile layers; rebuilds only the chunks around `changed` tile indices (all when omitted). */
-  updateTiles(tiles: HexTiles, changed?: ArrayLike<number>): void;
+  /** New tile layers (or changed tile indices when `tiles` was mutated in-place); rebuilds dirty chunks and borders. */
+  updateTiles(tilesOrChanged?: HexTiles | ArrayLike<number>, changed?: ArrayLike<number>): void;
   /** Advances shader time (`uTime`) for the 0.4 s Wild -> Prepared pad transition and water ripples. */
   tick(dt: number): void;
   /** Returns the current [0..1] Prepared pad blend factor for tile `(q, r)`. */
   getTilePrepBlend(q: number, r: number): number;
+  /** Returns current territory border geometry statistics. */
+  getTerritoryBorderStats(): TerritoryBorderStats;
+  /** Enables or disables the colour-blind hatch pattern along territory borders. */
+  setColorBlindMode(enabled: boolean): void;
+  /** Overrides colony border colours (`ownerIndex -> hexColor`). */
+  setColonyColors(colors: Record<number, number>): void;
   dispose(): void;
 }
 
@@ -57,9 +70,30 @@ export interface HexTerrainOptions {
   look: PlanetSpec;
   /** Strength of the thin hex edge lines, 0..1 (default 0.55). */
   edges?: number;
+  /** Initial colour-blind hatch pattern mode for territory borders. */
+  colorBlindMode?: boolean;
+  /** Optional custom colony border colour overrides (`owner -> 0xrrggbb`). */
+  colonyColors?: Record<number, number>;
 }
 
 const WIND: [number, number] = [0.8, 0.6];
+const activeTerrains = new Set<HexTerrain>();
+let globalColorBlindMode = false;
+
+export function getActiveHexTerrains(): ReadonlySet<HexTerrain> {
+  return activeTerrains;
+}
+
+export function getGlobalTerritoryColorBlindMode(): boolean {
+  return globalColorBlindMode;
+}
+
+export function setGlobalTerritoryColorBlindMode(enabled: boolean): void {
+  globalColorBlindMode = Boolean(enabled);
+  for (const t of activeTerrains) {
+    t.setColorBlindMode(globalColorBlindMode);
+  }
+}
 
 function buildChunkMesh(
   radius: number,
@@ -117,6 +151,76 @@ function collectDirtyChunks(
   return dirty;
 }
 
+interface BorderController {
+  readonly mesh: THREE.Mesh;
+  rebuild(tiles: HexTileLayers, effHeights: ArrayLike<number>): void;
+  getStats(): TerritoryBorderStats;
+  setColorBlindMode(enabled: boolean, tiles: HexTileLayers, effHeights: ArrayLike<number>): void;
+  setColonyColors(colors: Record<number, number>, tiles: HexTileLayers, effHeights: ArrayLike<number>): void;
+  dispose(): void;
+}
+
+function createBorderController(
+  radius: number,
+  initialTiles: HexTileLayers,
+  initialEffHeights: ArrayLike<number>,
+  initialColorBlind: boolean,
+  initialColonyColors?: Record<number, number>,
+): BorderController {
+  let colorBlindMode = initialColorBlind;
+  let colonyColors: Record<number, number> = { ...(initialColonyColors ?? {}) };
+  const mat = createTerritoryBorderMaterial();
+  const mesh = new THREE.Mesh(new THREE.BufferGeometry(), mat);
+  mesh.name = 'territory-border';
+  mesh.renderOrder = 2;
+  let stats: TerritoryBorderStats = {
+    ownedTileCount: 0,
+    boundaryEdgeCount: 0,
+    frozenEdgeCount: 0,
+    hatchSegmentCount: 0,
+    colorBlindMode,
+  };
+
+  const rebuild = (tiles: HexTileLayers, effHeights: ArrayLike<number>) => {
+    const res = buildTerritoryBorderGeometry(radius, tiles, { effHeights, colorBlindMode, colonyColors });
+    mesh.geometry.dispose();
+    mesh.geometry = res.geometry;
+    mesh.visible = res.stats.boundaryEdgeCount > 0;
+    stats = res.stats;
+  };
+
+  rebuild(initialTiles, initialEffHeights);
+
+  return {
+    mesh,
+    rebuild,
+    getStats: () => ({ ...stats }),
+    setColorBlindMode(enabled, tiles, effHeights) {
+      colorBlindMode = Boolean(enabled);
+      rebuild(tiles, effHeights);
+    },
+    setColonyColors(colors, tiles, effHeights) {
+      colonyColors = { ...colors };
+      rebuild(tiles, effHeights);
+    },
+    dispose() {
+      mesh.geometry.dispose();
+      mat.dispose();
+      mesh.removeFromParent();
+    },
+  };
+}
+
+function resolveTilesAndChanged(
+  current: HexTiles,
+  nextOrChanged?: HexTiles | ArrayLike<number>,
+  maybeChanged?: ArrayLike<number>,
+): { tiles: HexTiles; changed?: ArrayLike<number> } {
+  if (!nextOrChanged) return { tiles: current, changed: maybeChanged };
+  if ('height' in nextOrChanged) return { tiles: nextOrChanged, changed: maybeChanged };
+  return { tiles: current, changed: nextOrChanged };
+}
+
 /** Hex terrain from the sim tile grid: 32x32-tile chunks, class relief, hydro water plane, and per-tile prop scatter. */
 export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const { radius, look } = opts;
@@ -139,6 +243,7 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const heightAt = makeHeightSampler(radius, () => effHeights);
   const water = createHexWater(radius, look, tiles);
   const props = createHexPropScatter(look);
+  const borders = createBorderController(radius, tiles, effHeights, opts.colorBlindMode ?? globalColorBlindMode, opts.colonyColors);
 
   const place = (def: ChunkDef) => {
     const k = `${def.cq},${def.cr}`, old = meshes.get(k);
@@ -151,20 +256,12 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
 
   defs.forEach(place);
   props.rebuildMeshes();
-  group.add(water.mesh);
-  group.add(props.group);
+  group.add(water.mesh, props.group, borders.mesh);
   const byKey = new Map(defs.map((d) => [`${d.cq},${d.cr}`, d]));
   const ray = new THREE.Raycaster();
 
-  return {
-    group,
-    material,
-    uniforms,
-    water,
-    props,
-    radius,
-    halfSize: ext.z,
-    heightAt,
+  const handle: HexTerrain = {
+    group, material, uniforms, water, props, borderMesh: borders.mesh, radius, halfSize: ext.z, heightAt,
     get chunks() { return [...meshes.values()]; },
     pick(input, camera) {
       let r = input as THREE.Raycaster;
@@ -172,17 +269,16 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       const hit = rayGround(r.ray.origin, r.ray.direction, heightAt);
       return hit ? tileAt(radius, hit.x, hit.z) : null;
     },
-    updateTiles(next, changed) {
-      syncPrepTransitionTimes(prevPrep, prepStartTimes, next.prep, elapsedTime);
-      tiles = next;
+    updateTiles(nextOrChanged, maybeChanged) {
+      const resolved = resolveTilesAndChanged(tiles, nextOrChanged, maybeChanged);
+      tiles = resolved.tiles;
+      syncPrepTransitionTimes(prevPrep, prepStartTimes, tiles.prep, elapsedTime);
       effHeights = computeEffectiveHeights(radius, tiles);
-      if (!changed) {
-        defs.forEach(place);
-      } else {
-        for (const k of collectDirtyChunks(hx, changed, byKey)) place(byKey.get(k)!);
-      }
+      if (!resolved.changed) defs.forEach(place);
+      else for (const k of collectDirtyChunks(hx, resolved.changed, byKey)) place(byKey.get(k)!);
       props.rebuildMeshes();
       water.update(tiles);
+      borders.rebuild(tiles, effHeights);
     },
     tick(dt) {
       elapsedTime += Math.max(0, dt);
@@ -195,13 +291,17 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       const start = prepStartTimes[i] ?? INITIAL_PREP_START_TIME;
       return Math.min(1, Math.max(0, (elapsedTime - start) / PREP_BLEND_DURATION_S));
     },
+    getTerritoryBorderStats: () => borders.getStats(),
+    setColorBlindMode: (enabled) => borders.setColorBlindMode(enabled, tiles, effHeights),
+    setColonyColors: (colors) => borders.setColonyColors(colors, tiles, effHeights),
     dispose() {
+      activeTerrains.delete(handle);
       for (const m of meshes.values()) m.geometry.dispose();
       meshes.clear();
-      water.dispose();
-      props.dispose();
-      material.dispose();
+      water.dispose(); props.dispose(); borders.dispose(); material.dispose();
       group.removeFromParent();
     },
   };
+  activeTerrains.add(handle);
+  return handle;
 }
