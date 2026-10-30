@@ -7,6 +7,9 @@ import { setBlob, type PlanetState, type PlanetType } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { getEnvironment } from '../environment';
+import { applyBrownoutShedding, type ShedCandidate } from './shedding';
+
+export * from './shedding';
 
 export interface BuildingFootprintTile {
   q: number;
@@ -30,6 +33,8 @@ export interface ColonyPowerSummary {
   shedGroupsActive: number[];
   shedEntityIds: number[];
   unpoweredEntityIds: number[];
+  hqFastRechargeShed: boolean;
+  offlineReasons: Record<number, string>;
   daylight: number;
   phase: 'day' | 'night';
   clockText: string;
@@ -130,7 +135,7 @@ function isRowAttachedToPylons(state: PlanetState, row: number, defaultW: number
   return false;
 }
 
-/** Evaluates single-component colony power (W02-05). */
+/** Evaluates single-component colony power and applies brownout shedding (W02-05, W02-06). */
 export function evaluateColonyPower(
   state: PlanetState,
   colonyIndex: number,
@@ -150,9 +155,9 @@ export function evaluateColonyPower(
   const hubDrainPerS = netInfo.hasHub ? Number(hubRow.powerDrainPerS ?? 5) * netInfo.hubCount : 0;
 
   let solarGrossPerS = 0, solarInternalDrainPerS = 0, solarNetPerS = 0, onlineGen = 0;
-  let buildingDemand = hubDrainPerS, rawBuildingDemand = hubDrainPerS, unitDemand = 0;
+  let rawBuildingDemand = hubDrainPerS, unitDemand = 0;
   const unpoweredEntityIds: number[] = [];
-  const shedEntityIds: number[] = [];
+  const shedCandidates: ShedCandidate[] = [];
   const e = state.entities, cols = e.cols;
 
   for (let row = 0; row < e.count; row++) {
@@ -168,7 +173,7 @@ export function evaluateColonyPower(
       if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
       const out = computeSolarOutputPerS(env.daylight, state.meta.planetType, data);
       solarGrossPerS += out.gross; solarInternalDrainPerS += out.internalDrain; solarNetPerS += out.net;
-      if (out.net >= 0) onlineGen += out.net; else rawBuildingDemand += Math.abs(out.net);
+      if (out.net >= 0) onlineGen += out.net;
     } else if (kind === ENTITY_KIND.metalsExtractor && st !== ENTITY_STATE.constructing) {
       const drain = Number(extractorRow.powerDrainPerS ?? 6);
       if (!isRowAttachedToPylons(state, row, Number(extractorRow.footprintW ?? 2), Number(extractorRow.footprintD ?? 2), netInfo)) {
@@ -176,12 +181,10 @@ export function evaluateColonyPower(
         if (st !== ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.offlineUnpowered, tick);
         continue;
       }
+      if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
       rawBuildingDemand += drain;
-      if (st === ENTITY_STATE.offlineBrownout) shedEntityIds.push(cols.id[row]);
-      else {
-        if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
-        buildingDemand += drain;
-      }
+      const group = cols.shedGroup?.[row] || Number(extractorRow.shedGroup ?? 3);
+      shedCandidates.push({ entityId: cols.id[row], row, group, drainPerS: drain, kind });
     } else if (kind === ENTITY_KIND.harvester) {
       const fullDrain = Number(harvesterRow.powerDrainPerS ?? 1.5);
       const isIdle = st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout;
@@ -190,21 +193,31 @@ export function evaluateColonyPower(
   }
 
   const supply = Number((founderCorePerS + onlineGen).toFixed(4));
-  const demand = Number((buildingDemand + unitDemand).toFixed(4));
   const rawDemand = Number((rawBuildingDemand + unitDemand).toFixed(4));
-  const net = Number((supply - demand + Math.min(0, solarNetPerS)).toFixed(4));
+  const effectiveSupply = Math.max(0, Number((supply + Math.min(0, solarNetPerS)).toFixed(4)));
+
+  const shed = applyBrownoutShedding(
+    state, colonyIndex, effectiveSupply, rawDemand, shedCandidates, netInfo.hubAnchors, tick, data,
+  );
+  for (const id of unpoweredEntityIds) shed.offlineReasons[id] = 'offline: unpowered';
+
+  const demand = shed.remainingDemand;
+  const buildingDemand = Math.max(0, Number((demand - unitDemand).toFixed(4)));
+  const net = Number((effectiveSupply - demand).toFixed(4));
 
   return {
     colonyIndex, hasHub: netInfo.hasHub, founderCorePerS,
     solarGrossPerS: Number(solarGrossPerS.toFixed(4)),
     solarInternalDrainPerS: Number(solarInternalDrainPerS.toFixed(4)),
     solarNetPerS: Number(solarNetPerS.toFixed(4)),
-    supply, demand, rawDemand,
-    buildingDemand: Number(buildingDemand.toFixed(4)),
+    supply, demand, rawDemand, buildingDemand,
     unitDemand: Number(unitDemand.toFixed(4)),
-    net, brownout: rawDemand > supply + 1e-6 || shedEntityIds.length > 0,
-    shedGroupsActive: shedEntityIds.length > 0 ? [3] : [],
-    shedEntityIds, unpoweredEntityIds,
+    net, brownout: shed.shedEntityIds.length > 0 || rawDemand > effectiveSupply + 1e-6,
+    shedGroupsActive: shed.shedGroupsActive,
+    shedEntityIds: shed.shedEntityIds,
+    unpoweredEntityIds,
+    hqFastRechargeShed: shed.hqFastRechargeShed,
+    offlineReasons: shed.offlineReasons,
     daylight: env.daylight, phase: env.phase, clockText: env.clockText,
   };
 }
