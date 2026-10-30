@@ -8,6 +8,8 @@ import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { getEnvironment } from '../environment';
 
+export * from './solar';
+
 export interface BuildingFootprintTile {
   q: number;
   r: number;
