@@ -15,6 +15,10 @@ import { MainMenu, type MenuSettings } from '../ui/menu';
 import { DescentHud, GameHud } from '../ui/hud';
 import { HudRoot } from '../core/hud/HudRoot';
 import { loadFeatures } from '../core/registry';
+import { mountDevConsole } from '../dev/console';
+import { notConnectedSend } from '../net/commandBus';
+import { httpDevServer } from '../net/devServer';
+import '../net/services';
 import { createClientFlagsStore, type ClientFlagsStore } from '../core/flags';
 import '@terra/render/kitbash';
 import '../../design/css/tokens.css';
@@ -33,6 +37,7 @@ export class Game {
   readonly viewport: ColonyViewport;
   private root: HTMLElement;
   private featureHud: HudRoot | null = null;
+  private devConsole: { dispose(): void } | null = null;
   private flagsStore: ClientFlagsStore | null = null;
   private offFlags: (() => void) | null = null;
   private fade = document.createElement('div');
@@ -241,11 +246,14 @@ export class Game {
   private mountFeatureHud() {
     const store = this.flagsStore ??= createClientFlagsStore();
     const mount = () => {
-      this.featureHud?.dispose();
+      this.featureHud?.dispose(); this.devConsole?.dispose();
       const { flags, source } = store.current;
       const set = store.set;
-      const ctx = { flags: set, host: 'server' as const, services: { track, flagsSource: source } };
-      this.featureHud = new HudRoot(document.body, loadFeatures({ flags: set, host: 'server' }), ctx);
+      // The prototype has no transport: sim commands report "not connected"; server dev commands go over the Vite /v1 proxy.
+      const ctx = { flags: set, host: 'server' as const, services: { track, flagsSource: source, sendCommand: notConnectedSend, devServer: httpDevServer() } };
+      const features = loadFeatures({ flags: set, host: 'server' });
+      this.featureHud = new HudRoot(document.body, features, ctx);
+      this.devConsole = mountDevConsole({ parent: document.body, features, ctx });
     };
     this.offFlags?.(); this.offFlags = store.onChange(mount);
     mount();
@@ -254,6 +262,7 @@ export class Game {
   private teardownSession() {
     this.offFlags?.(); this.offFlags = null;
     this.featureHud?.dispose(); this.featureHud = null;
+    this.devConsole?.dispose(); this.devConsole = null;
     this.play?.dispose(); this.play = null;
     try { this.descent?.dispose(); } catch (e) { console.warn(e); } this.descent = null;
     this.dHud?.dispose(); this.dHud = null; this.gHud?.dispose(); this.gHud = null;
