@@ -11,6 +11,8 @@ import type { Transport } from '../../net/types';
 import { WorldStore } from '../../store/WorldStore';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import { createClientFlagsStore, resolveClientFlags, type ClientFlagsStore } from '../../core/flags';
+import { NetStatsBoard } from '../../net/netStats';
+import type { Scene3dService } from '../../features/entities/services';
 import { RTSCamera } from '../RTSCamera';
 import { FeatureHud } from './featureHud';
 import { hexSurface } from './hexSurface';
@@ -40,6 +42,9 @@ export class OnlineSession {
   terrain: HexTerrain | null = null;
   cam: RTSCamera | null = null;
   lastPick: HexPick | null = null;
+  readonly netStats = new NetStatsBoard();
+  private biomeKey = 'dune';
+  private lastHudMs = 0;
   private readonly banner: ConnectionBanner;
   private readonly hud: FeatureHud;
   private tiles: ClientTiles | null = null;
@@ -54,7 +59,13 @@ export class OnlineSession {
     this.banner = new ConnectionBanner(document.body, this.transport, () => this.transport.start());
     this.store = new WorldStore(this.transport);
     this.commands = new CommandBus(this.transport, undefined, (id, kind, args) => this.store.notifySent(id, kind, args));
-    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer() });
+    const scene3d: Scene3dService = {
+      scene: this.viewport.scene,
+      tileToWorld: (x, y) => { const [wx, wz] = tileXZ(x, y); return { x: wx, y: this.terrain?.heightAt(wx, wz) ?? 0, z: wz }; },
+      biomeKey: () => this.biomeKey,
+    };
+    this.hud = new FeatureHud(document.body, this.flags, { sendCommand: this.commands.send, devServer: httpDevServer(), scene3d, netStats: this.netStats });
+    this.cleanups.push(this.store.onCommandRejected(() => this.netStats.recordRollback()));
     this.cleanups.push(this.transport.onMessage((m) => {
       if (m.t === 'welcome') this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: location.search, dev: import.meta.env.DEV }));
     }));
@@ -67,13 +78,14 @@ export class OnlineSession {
 
   private onView(v: ClientView): void {
     if (v.tiles) this.onTiles(v, v.tiles);
-    this.hud.update({ tick: v.tick });
+    this.hud.update({ tick: v.tick, net: this.netStats.view(this.store.predictionInfo) });
   }
 
   private onTiles(v: ClientView, tiles: ClientTiles): void {
     if (!this.terrain || this.terrain.radius !== v.planet.radius) {
       this.terrain?.dispose();
       const look = specForPlanetType(v.planet.type);
+      this.biomeKey = look.biomeKey;
       applyPlanetLook(this.viewport, look);
       const terrain = createHexTerrain({ radius: v.planet.radius, tiles: tiles as HexTiles, look });
       this.terrain = terrain;
@@ -107,6 +119,12 @@ export class OnlineSession {
     return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
   }
 
+  /** Debug/E2E: the entity meshes as drawn right now (world metres). */
+  entityMeshes(): Array<{ id: number; x: number; y: number; z: number }> {
+    const g = this.viewport.scene.getObjectByName('entities');
+    return (g?.children ?? []).map((m) => ({ id: Number(m.userData.entityId), x: m.position.x, y: m.position.y, z: m.position.z }));
+  }
+
   private bindPicking(): void {
     const dom = this.viewport.renderer.domElement;
     let down = { x: 0, y: 0 };
@@ -121,10 +139,19 @@ export class OnlineSession {
     const dt = Math.min((now - this.last) / 1000, 0.05); this.last = now;
     try {
       if (this.cam) { this.cam.update(dt); this.viewport.followShadow(this.cam.target); }
+      this.frameHud(now, dt);
       this.viewport.render();
     } catch (e) { console.error('frame error', e); }
     this.raf = requestAnimationFrame(this.loop);
   };
+
+  /** Ticks the 3D renderers with the newest view; refreshes the dev overlay numbers a few times a second. */
+  private frameHud(now: number, dt: number): void {
+    const v = this.store.latest;
+    if (!v) return;
+    this.hud.frame({ sim: { view: v, serverTick: this.store.serverTickF(), predicting: this.store.predictionMode === 'on' } }, dt);
+    if (now - this.lastHudMs > 250) { this.lastHudMs = now; this.hud.update({ tick: v.tick, net: this.netStats.view(this.store.predictionInfo) }); }
+  }
 
   dispose(): void {
     cancelAnimationFrame(this.raf);
