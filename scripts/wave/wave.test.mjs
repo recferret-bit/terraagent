@@ -144,13 +144,13 @@ test('status counts only commit subjects that start with the issue id', () => {
   assert.match(line, /OPEN \(1\//);
 });
 
-test('wave:check prints the demo steps and the worktree URL (dry run)', () => {
+test('wave:check prints the owner check guide (or the demo story) and the worktree URL (dry run)', () => {
   const sb = makeSandbox();
   openWaveBranch(sb, '00');
   sb.run(['open', '00']);
   const r = sb.run(['check', '00', '--dry-run']);
   assert.equal(r.status, 0, r.out);
-  assert.match(r.out, /Demo story/);
+  assert.match(r.out, /W00 — Platform Skeleton: owner check|Demo story/);
   assert.match(r.out, /http:\/\/127\.0\.0\.1:5273\/play\.html\?scenario=w00/);
   assert.ok(readFileSync(join(sb.wt('w00'), '.env.worktree'), 'utf8').includes('4100'));
 });

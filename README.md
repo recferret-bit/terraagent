@@ -173,8 +173,8 @@ Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/p
 **Your loop:**
 
 1. Run `npm run wave` and let the wave lead session build its issues.
-2. When it finishes and prints the demo URL, play the demo story from the wave file.
-3. Run `npm run wave` again: it sees all in-scope issues (`done/total`) merged on the wave branch, automatically merges into `main`, tags `wave-NN`, pushes, cleans up the worktree and branch, and opens the next ready wave.
+2. When it finishes, it hands you an **owner check guide**, `docs/plan/checks/wNN-check.md` (also printed by `npm run wave:check -- NN`): the exact URLs with this worktree's ports, where to type (the in-game dev console is the `` ` `` key), what to see, step by step. Follow it on the running dev stack. Example: [`docs/plan/checks/w00-check.md`](./docs/plan/checks/w00-check.md).
+3. All good → land it: **`npm run wave -- land NN`** (e.g. `npm run wave -- land 00`) re-runs the gates, merges into `main`, tags `wave-NN`, pushes, and removes the worktree and branch. Plain `npm run wave` does the same for every completed wave whose dependencies are in `main`, then opens the next ready wave. Something wrong → tell the wave lead which step and what you saw.
 
 **Plan files:** the hackathon cut and drop order are in [`HACKATHON_CUT.md`](./docs/plan/HACKATHON_CUT.md), the generated start order in [`HACKATHON_SCHEDULE.md`](./docs/plan/HACKATHON_SCHEDULE.md), your to-dos and open decisions in [`OWNER_TASKS.md`](./docs/plan/OWNER_TASKS.md). After editing a wave file, run `python3 scripts/plan/index_waves.py` (must print `problems 0`) and `--write` to regenerate the index and schedule.
 
