@@ -12,6 +12,8 @@ const BASE: FieldDef[] = [
   { name: 'height', dtype: 'f32', wave: 'W00' }, // metres above the build plane
   { name: 'owner', dtype: 'i8', wave: 'W00' }, // colony index, -1 = none
   { name: 'explored', dtype: 'u8', wave: 'W00' }, // bitmask per colony, client-side fog (D-25)
+  { name: 'anchors', dtype: 'u8', wave: 'W01' }, // count of friendly anchor buildings claiming this tile (W01-17)
+  { name: 'graceUntil', dtype: 'f64', wave: 'W01' }, // tick when zero-anchor tile reverts to unclaimed
   { name: 'changedAt', dtype: 'u32', wave: 'W00' },
 ];
 
@@ -29,5 +31,32 @@ export function defineTileLayer(name: string, dtype: DType, wave: WaveId): void 
 export const tileLayers = (): readonly FieldDef[] => layers;
 
 /** Enum values of the base layers (tables later waves extend by appending values, never renumbering). */
-export const TERRAIN = { flat: 0 } as const;
-export const PREP = { wild: 0 } as const;
+export const TERRAIN = {
+  flat: 0,
+  forest: 1,
+  rock: 2,
+  slope: 3,
+  hole: 4,
+  shallow: 5,
+  deep: 6,
+} as const;
+export type TerrainCode = (typeof TERRAIN)[keyof typeof TERRAIN];
+
+export const PREP = {
+  wild: 0,
+  flat: 1,
+  prepared: 2,
+  irrigated: 3,
+  living: 4,
+  ridge: 5,
+  moat: 6,
+} as const;
+export type PrepCode = (typeof PREP)[keyof typeof PREP];
+
+export const DEPOSIT = {
+  none: 0,
+  metals: 1,
+  minerals: 2,
+  oil: 3,
+} as const;
+export type DepositCode = (typeof DEPOSIT)[keyof typeof DEPOSIT];
