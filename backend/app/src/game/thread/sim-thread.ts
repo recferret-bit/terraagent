@@ -37,6 +37,7 @@ const host = new PlanetHost(init.thread, init.flags, post, {
   recentPasses: () => [...ring],
 }, {
   deltaHz: init.deltaHz,
+  overrides: init.overrides,
   modules: await Promise.all((init.simModules ?? []).map(async (u) => ((await import(u)) as { default: SimModule }).default)),
 });
 if (init.autoStep) scheduler.start();

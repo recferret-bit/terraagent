@@ -1,7 +1,7 @@
 import { track } from '../../core/analytics';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
-import type { Disposable, FeatureServices, GameView } from '../../core/registry/types';
+import type { Disposable, FeatureServices, GameView, RendererInstance } from '../../core/registry/types';
 import type { ClientFlagsStore } from '../../core/flags';
 import { mountDevConsole } from '../../dev/console';
 
@@ -12,6 +12,7 @@ import { mountDevConsole } from '../../dev/console';
 export class FeatureHud {
   private root: HudRoot | null = null;
   private devConsole: Disposable | null = null;
+  private renderers: RendererInstance[] = [];
   private last: GameView = {};
   private readonly off: () => void;
 
@@ -25,7 +26,13 @@ export class FeatureHud {
     this.root?.update(view);
   }
 
+  /** Per-frame tick of the features' 3D renderers with the newest view. */
+  frame(view: GameView, dt: number): void {
+    for (const r of this.renderers) r.update(view, dt);
+  }
+
   private mount(): void {
+    this.disposeRenderers();
     this.root?.dispose();
     this.devConsole?.dispose();
     const { source } = this.flags.current;
@@ -34,11 +41,20 @@ export class FeatureHud {
     const ctx = { flags: set, host: 'server' as const, services: { ...this.services, track, flagsSource: source } };
     this.root = new HudRoot(this.parent, features, ctx);
     this.devConsole = mountDevConsole({ parent: this.parent, features, ctx });
+    this.renderers = features.flatMap((f) => f.renderers ?? []).flatMap((r) => {
+      try { return [r.mount(ctx)]; } catch (e) { console.warn(`renderer ${r.id} failed`, e); return []; }
+    });
     this.root.update(this.last);
+  }
+
+  private disposeRenderers(): void {
+    for (const r of this.renderers) { try { r.dispose(); } catch (e) { console.warn(e); } }
+    this.renderers = [];
   }
 
   dispose(): void {
     this.off();
+    this.disposeRenderers();
     this.root?.dispose();
     this.devConsole?.dispose();
     this.root = null;

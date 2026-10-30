@@ -1,5 +1,5 @@
 import { flagsFromList } from '@terra/contracts';
-import { allModules, DiffGapError, SIM_VERSION, SimHost, type PlanetState, type SimModule, type SimView } from '@terra/sim';
+import { allModules, DiffGapError, type BalanceOverrides, SIM_VERSION, SimHost, type PlanetState, type SimModule, type SimView } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
 
 /** What the server's `welcome` carries for the replica (engine bytes plus the identity of the engine that made them). */
@@ -9,6 +9,8 @@ export interface WelcomeInput {
   flags: readonly string[];
   dataHash: string;
   simVersion: number;
+  /** Balance overrides the server compiled its data with (`welcome.overrides`, D-35). */
+  overrides?: BalanceOverrides;
 }
 export interface DeltaInput { fromTick: number; toTick: number; diff: Uint8Array }
 
@@ -57,7 +59,7 @@ export class ReplicaCore {
   welcome(w: WelcomeInput): WelcomeResult {
     this.host = null;
     if (w.simVersion !== SIM_VERSION) return this.fail('simVersion', `server sim ${w.simVersion}, client ${SIM_VERSION}`);
-    const data = clientDataFor(flagsFromList(w.flags));
+    const data = clientDataFor(flagsFromList(w.flags), w.overrides);
     if (data.hash !== w.dataHash) return this.fail('dataHash', `server data ${w.dataHash}, client ${data.hash}`);
     const host = new SimHost({ flags: w.flags, data, modules: this.opts.modules ?? allModules() });
     try { host.load(w.state); } catch (e) { return this.fail('badSnapshot', (e as Error).message); }
