@@ -4,6 +4,7 @@ import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import { nextInt, nextU32, seedStream } from '../kernel/rng';
 import { createState, type PlanetState, type PlanetType } from '../kernel/state';
 import { registerGenerator, type PlanetParams } from './generators';
+import { DEFAULT_SPAWN_CAPACITY, generateSpawnSlots } from './spawnSlots';
 
 const SQRT3_HALF = 0.8660254;
 const DEPOSIT_CYCLE = [DEPOSIT.metals, DEPOSIT.minerals, DEPOSIT.oil] as const;
@@ -253,10 +254,17 @@ function assignTemperateDeposits(s: PlanetState): void {
   }
 }
 
-export function generateTemperate({ seed, planetId, planetType, radius }: Required<Omit<PlanetParams, 'type' | 'id'>>): PlanetState {
+export function generateTemperate({
+  seed,
+  planetId,
+  planetType,
+  radius,
+  capacity = DEFAULT_SPAWN_CAPACITY,
+}: Required<Omit<PlanetParams, 'type' | 'id' | 'capacity'>> & { capacity?: number }): PlanetState {
   const s = createState({ planetId, planetType, seed, radius });
   assignTemperateTerrain(s);
   assignTemperateDeposits(s);
+  generateSpawnSlots(s, capacity);
   return s;
 }
 

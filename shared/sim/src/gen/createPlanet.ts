@@ -17,5 +17,6 @@ export function createPlanet(p: PlanetParams): PlanetState {
     planetId: p.planetId ?? p.id ?? 'pl_dev',
     planetType: p.planetType ?? 'temperate',
     radius: p.radius ?? DEV_PLANET_RADIUS,
+    capacity: p.capacity,
   });
 }
