@@ -9,6 +9,7 @@ import { MetricsRegistry } from '../core/metrics.registry';
 import { ReadinessRegistry } from '../core/readiness.registry';
 import { APP_ENV, type AppEnv } from '../core/tokens';
 import { bridgePlanetEvents } from './bus-bridge';
+import { DevPlanetsController } from './dev-planets.controller';
 import { devPlanetIds } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
 import { SnapshotService } from './persistence/snapshot.service';
@@ -31,6 +32,7 @@ export const env = defineEnv('game', {
 const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
+  controllers: [DevPlanetsController],
   providers: [
     {
       provide: POOL,
