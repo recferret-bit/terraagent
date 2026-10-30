@@ -412,6 +412,26 @@
       "summary": "Cancels a queued or in-progress order (refunds 75 % if in progress and cancels linked prep, UO-Q-02 / UO-TF-03).",
       "wave": "W01"
     },
+    "demolish": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entityId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Demolishes an owned finished structure and refunds 50 % of its cost while keeping tiles Prepared (UO-Q-02, W02-09).",
+      "wave": "W02"
+    },
     "dev.cell": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -432,6 +452,50 @@
       "origin": "client",
       "summary": "Dev console: sets the colony HQ power cell energy to `energy` (clamped to cell capacity).",
       "wave": "W01"
+    },
+    "dev.fill": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "resource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "metals",
+                  "minerals",
+                  "bio"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: fills a resource (or family / all T1 resources) up to its colony family storage cap (W02-30).",
+      "wave": "W02"
     },
     "dev.grant": {
       "args": {
@@ -539,6 +603,18 @@
       "summary": "No-op command that round-trips through the sim; acked with the tick it was applied at.",
       "wave": "W00"
     },
+    "dev.power": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: dumps the colony power grid component balance and shed states (W02-30).",
+      "wave": "W02"
+    },
     "dev.reveal": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -571,6 +647,18 @@
       "origin": "client",
       "summary": "Dev console: regenerates the dev planet terrain with the given seed.",
       "wave": "W01"
+    },
+    "dev.skipnight": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: advances the planet clock to sunrise if currently in night (W02-30).",
+      "wave": "W02"
     },
     "dev.spawn": {
       "args": {
@@ -632,62 +720,168 @@
       "summary": "Sets a test entity position directly to tile (q, r).",
       "wave": "W00"
     },
-    "enqueueTask": {
+    "dev.time": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
-          "terraform": {
-            "additionalProperties": false,
-            "properties": {
-              "op": {
-                "enum": [
-                  "grade",
-                  "clear",
-                  "break"
-                ],
-                "type": "string"
-              },
-              "tiles": {
-                "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "q": {
-                      "maximum": 32767,
-                      "minimum": -32768,
-                      "type": "integer"
-                    },
-                    "r": {
-                      "maximum": 32767,
-                      "minimum": -32768,
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "q",
-                    "r"
-                  ],
-                  "type": "object"
-                },
-                "maxItems": 256,
-                "minItems": 1,
-                "type": "array"
-              }
-            },
-            "required": [
-              "op",
-              "tiles"
-            ],
-            "type": "object"
+          "target": {
+            "maxLength": 16,
+            "minLength": 1,
+            "type": "string"
           }
         },
         "required": [
-          "terraform"
+          "target"
         ],
         "type": "object"
       },
+      "dev": true,
       "origin": "client",
-      "summary": "Enqueues a terraform order (grade | clear | break) over one or more tiles in the colony queue.",
+      "summary": "Dev console: sets the planet day/night clock to `day`, `night`, or `hh:mm` (W02-30).",
+      "wave": "W02"
+    },
+    "enqueueTask": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "terraform": {
+                "additionalProperties": false,
+                "properties": {
+                  "op": {
+                    "enum": [
+                      "grade",
+                      "clear",
+                      "break"
+                    ],
+                    "type": "string"
+                  },
+                  "tiles": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "q": {
+                          "maximum": 32767,
+                          "minimum": -32768,
+                          "type": "integer"
+                        },
+                        "r": {
+                          "maximum": 32767,
+                          "minimum": -32768,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "q",
+                        "r"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "op",
+                  "tiles"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "terraform"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "build": {
+                "additionalProperties": false,
+                "properties": {
+                  "building": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "q": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "r": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "rotation": {
+                    "maximum": 5,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "maximum": 3,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "building",
+                  "q",
+                  "r"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "build"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "buildUnit": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "maximum": 100,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "producerId": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "repeat": {
+                    "type": "boolean"
+                  },
+                  "unit": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "unit"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "buildUnit"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Enqueues a terraform order (W01), a building construction order (W02), or a unit production order (W02) in the colony queue.",
       "wave": "W01"
     },
     "moveUnit": {
@@ -759,6 +953,101 @@
       "summary": "Queues construction of a structure at (q, r) and auto-links any missing site preparation ops (UO-TF-03).",
       "wave": "W01"
     },
+    "reorderTask": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "lane": {
+            "enum": [
+              "construction",
+              "units",
+              "terraform"
+            ],
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "toIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "taskId",
+          "toIndex"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Reorders a player-queued entry within its lane (UO-P §4.4, W02-13).",
+      "wave": "W02"
+    },
+    "setHarvestWeights": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "bio": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "metals": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "minerals": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "weights": {
+                "additionalProperties": false,
+                "properties": {
+                  "bio": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "metals": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "minerals": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "weights"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Immediately updates the per-family harvest weights for standing Harvester jobs (UO-L-01, W02-12).",
+      "wave": "W02"
+    },
     "system.spawnColony": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -810,6 +1099,39 @@
     }
   },
   "events": {
+    "brownout": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "deficitPerS": {
+            "type": "number"
+          },
+          "group": {
+            "maximum": 4,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "shedCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "group"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted (debounced) when a colony power deficit causes brownout load shedding in `group` (W02-06, W02-17).",
+      "wave": "W02"
+    },
     "buildingCompleted": {
       "audience": "player",
       "data": {
@@ -826,6 +1148,12 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
           },
           "q": {
             "maximum": 9007199254740991,
@@ -854,7 +1182,7 @@
         "type": "object"
       },
       "severity": "info",
-      "summary": "Emitted when construction of a structure reaches 100 % completion (W01-16).",
+      "summary": "Emitted when construction of a structure reaches 100 % completion (W01-16, W02-17, W02-28).",
       "wave": "W01"
     },
     "colonyFounded": {
@@ -910,6 +1238,37 @@
       "severity": "info",
       "summary": "Emitted by the sim when a dev.ping command is applied.",
       "wave": "W00"
+    },
+    "energyCollapse": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "deficitSeconds": {
+            "type": "number"
+          },
+          "demandPerS": {
+            "type": "number"
+          },
+          "supplyPerS": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "colonyId",
+          "deficitSeconds",
+          "supplyPerS",
+          "demandPerS"
+        ],
+        "type": "object"
+      },
+      "severity": "critical",
+      "summary": "Emitted when a colony remains in brownout for >= 30 s continuously (SIM §9, W02-06, W02-17).",
+      "wave": "W02"
     },
     "hqLanded": {
       "audience": "player",
@@ -999,6 +1358,105 @@
       "summary": "Emitted when a Forest or Rock obstacle is removed via Clear or Break (Stone Mason progression, W01-13, W01-31).",
       "wave": "W01"
     },
+    "resourceProduced": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "res": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "res",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Aggregated per-60 s resource production batch emitted onto the event bus for Stockpile progression (W02-28).",
+      "wave": "W02"
+    },
+    "resourceShortage": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "cap": {
+            "type": "number"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "family": {
+            "enum": [
+              "metals",
+              "minerals",
+              "bio"
+            ],
+            "type": "string"
+          },
+          "netPerS": {
+            "type": "number"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "stock": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "colonyId",
+          "resource",
+          "family",
+          "stock",
+          "cap",
+          "netPerS"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a resource drops below 5 % of its family cap with negative net flow over 60 s (SIM §9, W02-17).",
+      "wave": "W02"
+    },
     "tilePrepared": {
       "audience": "player",
       "data": {
@@ -1036,6 +1494,52 @@
       "severity": "info",
       "summary": "Emitted when one or more tiles reach the Prepared state via Grade (Groundbreaker progression, W01-13, W01-31).",
       "wave": "W01"
+    },
+    "unitProduced": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "producerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "entityId",
+          "unit",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a worker or combat unit completes production and spawns at its producer edge (W02-10, W02-17).",
+      "wave": "W02"
     }
   },
   "serverMessages": {
