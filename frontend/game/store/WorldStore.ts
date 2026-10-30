@@ -282,9 +282,10 @@ export class LocalHost {
   send(m: Outgoing): void {
     this.sent.push(m);
     if (m.t === 'cmd') {
+      const isDev = m.d.kind.startsWith('dev.') || m.d.kind.startsWith('system.');
       const cmd: SimCommand = {
         colonyIndex: this.colonyIndex,
-        source: 'player',
+        source: isDev ? 'dev' : 'player',
         commandId: m.id,
         kind: m.d.kind,
         args: m.d.args,
@@ -345,6 +346,6 @@ export class LocalHost {
         d: { fromTick: from, toTick: this.sim.tick, diff: this.sim.diffSince(from) },
       } as ServerMessage);
     }
-    return this.sync(false);
+    return this.sync(true);
   }
 }

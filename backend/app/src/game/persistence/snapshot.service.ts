@@ -1,4 +1,5 @@
 import { Inject, Injectable, type BeforeApplicationShutdown } from '@nestjs/common';
+import { restore } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge, Histogram } from 'prom-client';
 import { MetricsRegistry } from '../../core/metrics.registry';
@@ -58,6 +59,9 @@ export class SnapshotService implements BeforeApplicationShutdown {
       try {
         const snap = await this.store.latest(id, (tick) => this.log.warn({ planetId: id, tick: Number(tick) }, 'corrupt snapshot skipped'));
         if (!snap) continue;
+        if (id !== 'pl_dev' && !id.startsWith('pl_dev_') && restore(snap.raw).colonies?.some((c) => c.status !== 'eliminated')) {
+          this.planets.markScenarioColonyPlanet(id);
+        }
         const tick = await this.planets.load(id, { snapshot: snap.raw });
         this.log.info({ planetId: id, tick, savedAt: snap.savedAt }, `restored ${id} at tick ${tick}`);
         restored.push(id);

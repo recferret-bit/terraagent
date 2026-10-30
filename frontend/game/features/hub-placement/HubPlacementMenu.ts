@@ -11,6 +11,7 @@ import { ensureDom, makeBtn, makeDiv, setDataAttr } from './dom';
 import {
   evaluateHubGhost,
   extractColonyConstructionOrders,
+  findValidHubSiteNearHq,
   type GhostSource,
   type HubGhostBill,
   type HubGhostState,
@@ -240,6 +241,13 @@ export class HubPlacementMenu {
     if (typeof q === 'number' && typeof r === 'number') {
       this.hoveredQ = Math.trunc(q);
       this.hoveredR = Math.trunc(r);
+    } else if (!this.evaluateCurrent(true).valid) {
+      const fallback = this.cachedTiles ?? this.sink.store?.latestTiles ?? null;
+      const near = findValidHubSiteNearHq(this.resolveSource(), this.sink.colonyId ?? 0, fallback);
+      if (near) {
+        this.hoveredQ = near.q;
+        this.hoveredR = near.r;
+      }
     }
     this.ghostState = this.evaluateCurrent(true);
     this.render();

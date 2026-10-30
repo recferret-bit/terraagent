@@ -42,7 +42,7 @@ export async function runServerParity(c: ParityCase): Promise<ServerParityRun> {
     pool.sendToPlanet(planetId, { t: 'load', planetId, snapshot: bytes, flags }, [bytes.buffer as ArrayBuffer]);
     await loaded;
     const fset = flagsFromList(flags);
-    const hasColony = Boolean(host.state.colonies?.[0]?.active);
+    const hasColony = Boolean(host.state.colonies?.length && host.state.colonies[0]?.status !== 'eliminated');
     for (let i = 0; i < c.ticks; i++) {
       c.log.forEach((x, n) => {
         if (x.atTick !== i) return;

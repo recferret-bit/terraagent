@@ -457,3 +457,32 @@ export function extractColonyConstructionOrders(
   const world = extractWorld(source);
   return world.orders.filter((o) => o.colonyId === colonyId && o.status !== 'cancelled');
 }
+
+/** Finds a valid 3×3 Hub site near `colonyId`'s HQ (preferring sites with Forest/Rock yields when available). */
+export function findValidHubSiteNearHq(
+  source: GhostSource,
+  colonyId = 0,
+  fallbackTiles?: ClientTiles | null,
+): { q: number; r: number } | null {
+  const world = extractWorld(source, fallbackTiles);
+  const hq = world.entities.find(
+    (e) => e.owner === colonyId && (e.kind === ENTITY_KIND.hq || e.kind === ENTITY_KIND.pod),
+  );
+  const baseQ = hq?.q ?? 0;
+  const baseR = hq?.r ?? 0;
+  let firstValid: { q: number; r: number } | null = null;
+  for (let rad = 0; rad <= 5; rad++) {
+    for (let dq = -rad; dq <= rad; dq++) {
+      for (let dr = -rad; dr <= rad; dr++) {
+        if (Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr)) !== rad) continue;
+        const q = baseQ + dq;
+        const r = baseR + dr;
+        const g = evaluateHubGhost(source, { colonyId, q, r, fallbackTiles });
+        if (!g.valid) continue;
+        if (!firstValid) firstValid = { q, r };
+        if (g.bill.yields['metals.t1'] > 0 || g.bill.yields['bio.biomass'] > 0) return { q, r };
+      }
+    }
+  }
+  return firstValid;
+}

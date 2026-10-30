@@ -53,7 +53,13 @@ export interface OnlineSessionOptions {
 function changedTiles(a: ClientTiles, b: ClientTiles): number[] {
   const out: number[] = [];
   for (let i = 0; i < b.count; i++) {
-    if (a.height[i] !== b.height[i] || a.terrain[i] !== b.terrain[i] || a.prep[i] !== b.prep[i] || a.deposit?.[i] !== b.deposit?.[i]) {
+    if (
+      a.height[i] !== b.height[i] ||
+      a.terrain[i] !== b.terrain[i] ||
+      a.prep[i] !== b.prep[i] ||
+      a.deposit?.[i] !== b.deposit?.[i] ||
+      a.owner?.[i] !== b.owner?.[i]
+    ) {
       out.push(i);
     }
   }
@@ -190,8 +196,17 @@ export class OnlineSession {
       tileToWorld: (x, y) => { const [wx, wz] = tileXZ(x, y); return { x: wx, y: this.terrain?.heightAt(wx, wz) ?? 0, z: wz }; },
       biomeKey: () => this.biomeKey,
     };
+    const baseDev = local ? local.devServer : httpDevServer();
+    const devServer = async (name: string, args?: unknown) => {
+      if (this.localHost && name === 'warp') {
+        const k = Number((args as { k?: number } | undefined)?.k ?? 1);
+        this.setWarp(k);
+        return { planetId: this.planetId || 'pl_dev', effective: k };
+      }
+      return baseDev(name, args);
+    };
     return new FeatureHud(uiParent, this.flags, local ? 'local' : 'server', {
-      sendCommand: this.commandBus.send, devServer: local ? local.devServer : httpDevServer(),
+      sendCommand: this.commandBus.send, devServer,
       session: { planetId: () => this.store.currentPlanetId() || this.planetId || null },
       scene3d, netStats: this.netStats, transport: this.transport, store: this.store,
       landfall: this.landfall, pickTile: (cx, cy) => this.pickAt(cx, cy), canvas: this.viewport.renderer.domElement,
@@ -298,8 +313,11 @@ export class OnlineSession {
   private attachLocalHost(lh: LocalHost, autoStep: boolean): void {
     this.localHost = lh;
     lh.bindStore(this.store);
+    this.cleanups.push(lh.onMessage((m) => this.commandBus.handleMessage(m)));
+    const origSend = this.transport.send.bind(this.transport);
+    this.transport.send = (m) => (this.localHost ? this.localHost.send(m) : origSend(m));
     if (autoStep && !this.localTimer) {
-      this.localTimer = setInterval(() => this.localHost?.step(1), TICK_MS);
+      this.localTimer = setInterval(() => this.localHost?.step(this.warp), TICK_MS);
     }
   }
 

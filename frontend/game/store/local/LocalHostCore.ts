@@ -200,7 +200,7 @@ export class LocalHostCore {
 
   private command(id: string, kind: string, args: unknown): void {
     const flags = flagsFromList(this.tuning.flags);
-    const hasColony = Boolean(this.host.state.colonies?.[0]?.active);
+    const hasColony = Boolean(this.host.state.colonies?.length && this.host.state.colonies[0]?.status !== 'eliminated');
     const pre = precheckClientCommand(kind, args, { gate: (k) => commandGate(k, flags), production: false, hasColony });
     if (!pre.ok) return this.server({ v: 1, t: 'cmd.reject', d: { id, code: pre.code, ...(pre.detail ? { detail: pre.detail } : {}) } });
     this.queue.push({ colonyIndex: hasColony ? 0 : null, source: pre.dev ? 'dev' : 'player', commandId: id, kind, args: pre.args });

@@ -65,6 +65,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly planets: GamePlanets,
     private readonly snapshots: SnapshotService,
     @Inject(APP_ENV) private readonly env: AppEnv,
+    private readonly flags: FlagsService,
     private readonly metrics: MetricsRegistry,
     private readonly readiness: ReadinessRegistry,
     private readonly bus: EventBus,
@@ -120,7 +121,10 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     await this.snapshots.restoreAll();
     const have = new Set(this.planets.loadedIds());
     const ids = devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size).filter((id) => !have.has(id));
-    await Promise.all(ids.map((id) => this.planets.load(id)));
+    const devOpts = this.flags.has('W01')
+      ? { params: { type: 'temperate' as const, planetType: 'temperate' as const, seed: 'golden-1', radius: 56, capacity: 5 } }
+      : {};
+    await Promise.all(ids.map((id) => this.planets.load(id, devOpts)));
   }
 
   async onApplicationShutdown(): Promise<void> {
