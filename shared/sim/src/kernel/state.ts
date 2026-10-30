@@ -52,6 +52,8 @@ export interface PlanetState {
   blobs: Record<string, Blob>;
 }
 
+export type SimState = PlanetState;
+
 export interface NewStateParams {
   planetId: string;
   planetType: PlanetType;

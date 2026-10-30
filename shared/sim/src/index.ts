@@ -17,6 +17,7 @@ export * from './gen/generators';
 export { createPlanet } from './gen/createPlanet';
 export { DEV_PLANET_RADIUS } from './gen/flat';
 export { generateTemperate, getDepositRichnessBp } from './gen/temperate';
+export * from './gen/spawnSlots';
 export * from './codec';
 export * from './systems/define';
 export * from './systems/registry';

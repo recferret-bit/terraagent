@@ -10,9 +10,10 @@ export interface PlanetParams {
   id?: string;
   planetType?: PlanetType;
   radius?: number;
+  capacity?: number;
 }
 
-export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id'>>) => PlanetState;
+export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'capacity'>> & { capacity?: number }) => PlanetState;
 
 const generators = new Map<string, PlanetGenerator>();
 
