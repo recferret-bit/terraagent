@@ -1,11 +1,11 @@
 import { Worker } from 'node:worker_threads';
 import { threadOf } from './thread/assign';
-import type { FromThread, PlanetStats, ThreadInit, ToThread } from './thread/protocol';
+import type { FromThread, PassStat, PlanetStats, ThreadInit, ToThread } from './thread/protocol';
 
 export interface SimThreadPoolOptions {
   readonly threads: number;
   readonly flags: readonly string[];
-  /** Run the placeholder interval stepper inside each thread (default true). */
+  /** Run the scheduler loop inside each thread (default true). */
   readonly autoStep?: boolean;
   /** Thread entry; default `./thread/sim-thread.ts` next to this file. */
   readonly entry?: URL;
@@ -15,6 +15,9 @@ export interface ThreadStats {
   readonly thread: number;
   readonly planets: PlanetStats[];
   readonly steps: number;
+  /** Max scheduler lag (steps behind) over the thread's planets. */
+  readonly maxLag: number;
+  readonly recentPasses: PassStat[];
 }
 
 type Listener = (thread: number, msg: FromThread) => void;
@@ -64,7 +67,7 @@ export class SimThreadPool {
     return new Promise<void>((resolve, reject) => {
       w.on('message', (msg: FromThread) => {
         if (msg.t === 'ready') return resolve();
-        if (msg.t === 'stats') this.statWaiters.get(msg.reqId)?.({ thread: msg.thread, planets: msg.planets, steps: msg.steps });
+        if (msg.t === 'stats') this.statWaiters.get(msg.reqId)?.({ thread: msg.thread, planets: msg.planets, steps: msg.steps, maxLag: msg.maxLag, recentPasses: msg.recentPasses });
         for (const l of this.listeners) l(thread, msg);
       });
       w.on('error', (e: Error) => {
@@ -99,14 +102,14 @@ export class SimThreadPool {
 
   /** Asks every live thread for its planet table (`ctl stats`). Dead or silent threads are reported with no planets. */
   async stats(timeoutMs = 1500): Promise<ThreadStats[]> {
-    return Promise.all(this.workers.map((w, thread) => (w ? this.statsOf(thread, timeoutMs) : { thread, planets: [], steps: 0 })));
+    return Promise.all(this.workers.map((w, thread) => (w ? this.statsOf(thread, timeoutMs) : { thread, planets: [], steps: 0, maxLag: 0, recentPasses: [] })));
   }
 
   private statsOf(thread: number, timeoutMs: number): Promise<ThreadStats> {
     const reqId = this.nextReq++;
     return new Promise<ThreadStats>((resolve) => {
       const done = (s: ThreadStats) => { clearTimeout(timer); this.statWaiters.delete(reqId); resolve(s); };
-      const timer = setTimeout(() => done({ thread, planets: [], steps: 0 }), timeoutMs);
+      const timer = setTimeout(() => done({ thread, planets: [], steps: 0, maxLag: 0, recentPasses: [] }), timeoutMs);
       this.statWaiters.set(reqId, done);
       this.send(thread, { t: 'ctl', op: 'stats', reqId });
     });

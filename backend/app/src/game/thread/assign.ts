@@ -4,6 +4,3 @@ import { hashString } from '@terra/sim';
 export function threadOf(planetId: string, threads: number): number {
   return hashString(planetId) % threads;
 }
-
-/** Wave flags on until the flags issue lands: W00..W20. */
-export const ALL_WAVES: readonly string[] = Array.from({ length: 21 }, (_, i) => `W${String(i).padStart(2, '0')}`);
