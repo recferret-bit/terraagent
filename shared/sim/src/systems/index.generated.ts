@@ -10,5 +10,6 @@ import mod_hq from './hq/index';
 import mod_movement from './movement/index';
 import mod_power_core from './power-core/index';
 import mod_production from './production/index';
+import mod_queue from './queue/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_economy, mod_environment, mod_factories_hub, mod_finalize, mod_harvest, mod_hq, mod_movement, mod_power_core, mod_production];
+export const SIM_MODULES: readonly SimModule[] = [mod_dev, mod_economy, mod_environment, mod_factories_hub, mod_finalize, mod_harvest, mod_hq, mod_movement, mod_power_core, mod_production, mod_queue];
