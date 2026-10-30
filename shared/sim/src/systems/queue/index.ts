@@ -415,7 +415,7 @@ export const queueSystem = defineSystem({
         if (entry.colonyIndex !== colIdx || entry.state !== 'in_progress') continue;
         if (entry.task.kind === 'build' && entry.entityId !== undefined) {
           const eRow = rowOf(state.entities, entry.entityId);
-          if (eRow < 0 || state.entities.cols.state[eRow] === ENTITY_STATE.active) {
+          if (eRow < 0 || state.entities.cols.state[eRow] !== ENTITY_STATE.constructing || state.entities.cols.progress[eRow] >= 1) {
             entry.progress = 1;
             entry.state = 'done';
           } else {

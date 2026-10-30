@@ -46,6 +46,9 @@ export function hexIndex(radius: number): HexIndex {
   return idx;
 }
 
+/** Convenience helper: tile index of `(q, r)` on a planet of `radius`, or `-1` outside the planet. */
+export const indexOf = (radius: number, q: number, r: number): number => hexIndex(radius).indexOf(q, r);
+
 /** Axial (q, r) → planar centre in tile units with pointy-top hexes of circumradius 1/√3 (unit spacing). */
 export function axialToPlane(q: number, r: number): [number, number] {
   return [q + r / 2, (r * Math.sqrt(3)) / 2];
