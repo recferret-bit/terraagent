@@ -21,7 +21,8 @@ export interface EnvironmentState {
 const DEFAULT_DAY_LENGTH_TICKS = 6000; // 20 min at 5 TPS
 
 export function getNightShare(planetType: PlanetType, data?: CompiledDataLike): number {
-  const row = data?.tables?.economyT1Basic?.dayCycle as
+  const table = data?.tables?.economyT1Basic as Record<string, unknown> | undefined;
+  const row = table?.dayCycle as
     | { defaultNightShare?: number; nightShareByPlanetType?: Record<string, number> }
     | undefined;
   const byType = row?.nightShareByPlanetType?.[planetType];
@@ -31,7 +32,8 @@ export function getNightShare(planetType: PlanetType, data?: CompiledDataLike): 
 }
 
 export function getDayLengthTicks(data?: CompiledDataLike): number {
-  const row = data?.tables?.economyT1Basic?.dayCycle as { dayLengthS?: number } | undefined;
+  const table = data?.tables?.economyT1Basic as Record<string, unknown> | undefined;
+  const row = table?.dayCycle as { dayLengthS?: number } | undefined;
   return typeof row?.dayLengthS === 'number' && row.dayLengthS > 0 ? row.dayLengthS : DEFAULT_DAY_LENGTH_TICKS;
 }
 
@@ -167,7 +169,10 @@ const environmentSystem = defineSystem({
     dataRow(ctx.data, 'economyT1Basic', 'dayCycle');
     const prev = state.blobs.environment?.value as Partial<EnvironmentState> | undefined;
     const stormActive = prev?.stormActive === true;
-    const baseCycleTick = typeof prev?.cycleTick === 'number' ? prev.cycleTick + ctx.dt : ctx.tick;
+    const changedAtThisTick = state.blobs.environment?.changedAt === ctx.tick;
+    const baseCycleTick = typeof prev?.cycleTick === 'number'
+      ? (changedAtThisTick ? prev.cycleTick : prev.cycleTick + ctx.dt)
+      : ctx.tick;
     const env = computeEnvironmentAtCycleTick(state.meta.planetType, baseCycleTick, ctx.data, stormActive);
     applyEnvironmentState(state, env, ctx.tick);
   },

@@ -70,7 +70,7 @@ describe('W02-09 Generic T1 construction & demolish refund', () => {
     // Demolish via command -> 50% cost refunded (30 / 37.5 / 5 / 2.5) and footprint stays prepared
     const demStep = step(
       state,
-      [{ commandId: 'c-dem', colonyIndex: 0, kind: 'demolish', args: { entityId: started.entityId } }],
+      [{ commandId: 'c-dem', colonyIndex: 0, source: 'player' as const, kind: 'demolish', args: { entityId: started.entityId } }],
       1,
       pipeline,
     );

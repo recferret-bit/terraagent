@@ -233,6 +233,28 @@ export function getColonyPower(state: PlanetState, colonyIndex = 0, data?: Compi
   return evaluateColonyPower(state, colonyIndex, data, state.meta.tick);
 }
 
+export function recomputeAllColonyPower(
+  state: PlanetState,
+  data?: CompiledDataLike,
+  tick: number = state.meta.tick,
+): Record<number, ColonyPowerSummary> {
+  const prevTrackers = (state.blobs.power?.value as { trackers?: Record<number, PowerEventTracker> } | undefined)?.trackers ?? {};
+  const byColony: Record<number, ColonyPowerSummary> = {};
+  const colonyIndices = new Set<number>();
+  for (const c of state.colonies) colonyIndices.add(c.index);
+  for (let row = 0; row < state.entities.count; row++) colonyIndices.add(state.entities.cols.owner[row]);
+  if (colonyIndices.size === 0) colonyIndices.add(0);
+
+  for (const idx of colonyIndices) {
+    const summary = evaluateColonyPower(state, idx, data, tick);
+    byColony[idx] = summary;
+    const col = state.colonies[idx];
+    if (col) { col.power = summary; col.changedAt = tick; }
+  }
+  setBlob(state, 'power', { byColony, trackers: prevTrackers }, tick);
+  return byColony;
+}
+
 const powerCoreSystem = defineSystem({
   id: 'power.core',
   slot: 7,

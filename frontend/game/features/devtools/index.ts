@@ -1,8 +1,36 @@
-import { defineFeature, type DevCommandDef, type FeatureContext } from '../../core/registry/types';
+import { defineFeature, type DevCommandDef, type FeatureContext, type GameView } from '../../core/registry/types';
 import { DevServerError } from '../../net/devServer';
 import { numArg } from '../../dev/console/parse';
 import type { CommandResult } from '../../net/commandBus';
 import '../../net/services';
+
+export interface PowerSummaryView {
+  supply?: number;
+  demand?: number;
+  net?: number;
+  founderCorePerS?: number;
+  solarGrossPerS?: number;
+  solarInternalDrainPerS?: number;
+  solarNetPerS?: number;
+  rawDemand?: number;
+  buildingDemand?: number;
+  unitDemand?: number;
+  brownout?: boolean;
+  shedGroupsActive?: number[];
+  shedEntityIds?: number[];
+  daylight?: number;
+  phase?: string;
+  clockText?: string;
+  [key: string]: unknown;
+}
+
+declare module '../../core/registry/types' {
+  interface FeatureServices {
+    /** Sim view access for dev commands (e.g. `power`). */
+    view?: GameView | (() => GameView | undefined);
+    getView?: () => GameView | undefined;
+  }
+}
 
 /** Dev console commands that talk to the game: sim `dev.*` commands over the transport, server dev commands over HTTP. */
 
@@ -32,6 +60,63 @@ const chainPing: DevCommandDef = {
   },
 };
 
+const fill: DevCommandDef = {
+  name: 'fill',
+  help: 'fill [res] [amount]  Fill colony stock to cap (all, family, or ResourceKey)',
+  async run(a, ctx) {
+    const res = a[0] ?? 'all';
+    const amount = a[1] !== undefined ? Number(a[1]) : undefined;
+    const r = await sim(ctx, 'dev.fill', { res, ...(amount !== undefined ? { amount } : {}) });
+    return ackText('dev.fill', r);
+  },
+};
+
+const time: DevCommandDef = {
+  name: 'time',
+  help: 'time <day|night|hh:mm>  Set planetary time of day (e.g. time 18:00)',
+  async run(a, ctx) {
+    const target = a[0] ?? 'day';
+    const r = await sim(ctx, 'dev.time', { target });
+    return ackText('dev.time', r);
+  },
+};
+
+const skipnight: DevCommandDef = {
+  name: 'skipnight',
+  help: 'skipnight  Skip to next sunrise (06:00)',
+  async run(_a, ctx) {
+    const r = await sim(ctx, 'dev.skipnight', {});
+    return ackText('dev.skipnight', r);
+  },
+};
+
+const power: DevCommandDef = {
+  name: 'power',
+  help: 'power [colonyIndex]  Dump power grid component supply/demand/shedding',
+  async run(a, ctx) {
+    const colonyIndex = a[0] !== undefined ? Number(a[0]) : 0;
+    const r = await sim(ctx, 'dev.power', a[0] !== undefined ? { colonyIndex } : {});
+    const ack = ackText('dev.power', r);
+    const v = typeof ctx.services.getView === 'function'
+      ? ctx.services.getView()
+      : typeof ctx.services.view === 'function'
+        ? (ctx.services.view as () => GameView | undefined)()
+        : ctx.services.view;
+    const colony = v?.colonies?.[colonyIndex] as { power?: PowerSummaryView } | undefined;
+    const p = colony?.power;
+    if (!p) return ack;
+    const lines = [
+      `colony ${colonyIndex} power: ${p.net !== undefined && p.net >= 0 ? '+' : ''}${p.net ?? 0} E/s (${p.brownout ? 'BROWNOUT' : 'OK'})`,
+      `  supply: ${p.supply ?? 0} E/s (core: ${p.founderCorePerS ?? 0}, solar: ${p.solarNetPerS ?? 0} [gross ${p.solarGrossPerS ?? 0}, drain ${p.solarInternalDrainPerS ?? 0}])`,
+      `  demand: ${p.demand ?? 0} E/s (raw: ${p.rawDemand ?? 0}, buildings: ${p.buildingDemand ?? 0}, units: ${p.unitDemand ?? 0})`,
+      `  daylight: ${p.daylight ?? 0} (${p.phase ?? 'day'} ${p.clockText ?? ''})`,
+    ];
+    if (p.shedGroupsActive?.length) lines.push(`  shed groups: ${p.shedGroupsActive.join(', ')}`);
+    if (p.shedEntityIds?.length) lines.push(`  shed entities: ${p.shedEntityIds.join(', ')}`);
+    return lines.join('\n');
+  },
+};
+
 export default defineFeature({
   id: 'devtools',
   wave: 'W00',
@@ -45,5 +130,9 @@ export default defineFeature({
       return { id: numArg(a, 0, 'id'), ...(dq !== undefined ? { dq } : {}), ...(dr !== undefined ? { dr } : {}) };
     }),
     simCommand('teleport', 'teleport <id> <q> <r>  Set a test entity position', (a) => ({ id: numArg(a, 0, 'id'), q: numArg(a, 1, 'q'), r: numArg(a, 2, 'r') })),
+    fill,
+    time,
+    skipnight,
+    power,
   ],
 });
