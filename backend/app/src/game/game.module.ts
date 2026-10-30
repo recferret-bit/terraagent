@@ -20,6 +20,8 @@ export const env = defineEnv('game', {
   SIM_THREADS: z.coerce.number().int().positive().default(Math.max(1, availableParallelism() - 1)),
   /** Seconds between periodic snapshots per planet (SIM-H-06); fractional allowed. */
   SNAPSHOT_EVERY_S: z.coerce.number().positive().default(60),
+  /** Snapshot persistence on/off; unset = on, except NODE_ENV=test (unit tests must not read the dev database). */
+  SNAPSHOTS: z.enum(['on', 'off']).optional(),
   /** Deltas per second per subscribed planet (D-31). */
   DELTA_HZ: z.coerce.number().positive().max(20).default(5),
   /** Number of flat dev planets loaded at boot, spread evenly over the threads. */

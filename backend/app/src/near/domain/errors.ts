@@ -14,6 +14,7 @@ export const NEAR_ERROR_CODES = {
   NEAR_ACCOUNT_NOT_FOUND: { status: 404, description: 'The account id does not exist on chain.' },
   NEAR_NFT_EXISTS: { status: 409, description: 'An NFT with this collection and token id already exists.' },
   NEAR_NFT_NOT_FOUND: { status: 404, description: 'No NFT with this collection and token id.' },
+  NEAR_NFT_INVALID: { status: 400, description: 'The NFT input is invalid: metadata is not plain JSON, is too large, or names another collection.' },
   NEAR_NOT_OWNER: { status: 403, description: 'The caller does not own the asset.' },
   NEAR_ESCROW_NOT_FOUND: { status: 404, description: 'No escrow with this id.' },
   NEAR_ESCROW_STATE: { status: 409, description: 'The escrow is not in a state that allows this action.' },

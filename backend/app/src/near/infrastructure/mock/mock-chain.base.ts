@@ -8,6 +8,8 @@ import { parseMockChainConfig, seededRandom, type MockChainConfig } from './mock
 import { mockTxHashFor, randomMockTxHash } from './tx-hash';
 
 export const MOCK_CHAIN_CONFIG = Symbol('MOCK_CHAIN_CONFIG');
+/** Optional DI token for the sleep/now seams (tests); unbound in the app, so the real runtime is used. */
+export const MOCK_CHAIN_RUNTIME = Symbol('MOCK_CHAIN_RUNTIME');
 
 /** Thrown for failures the mock injects on purpose (`MOCK_FAIL_RATE`) and for mock-specific states. */
 export class NearMockException extends NearException {}
@@ -36,7 +38,7 @@ export abstract class MockChainBase {
   constructor(
     @Inject(PRISMA) protected readonly prisma: PrismaClient,
     @Optional() @Inject(MOCK_CHAIN_CONFIG) config?: MockChainConfig,
-    runtime?: Partial<MockChainRuntime>,
+    @Optional() @Inject(MOCK_CHAIN_RUNTIME) runtime?: Partial<MockChainRuntime>,
   ) {
     this.config = config ?? parseMockChainConfig();
     this.runtime = { ...realRuntime, ...runtime };
