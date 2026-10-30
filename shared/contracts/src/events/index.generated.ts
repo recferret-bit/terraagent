@@ -2,8 +2,9 @@
 
 import { z } from 'zod';
 import { event as event_devPong } from './dev-pong';
+import { event as event_devWarp } from './dev-warp';
 
-export const EVENTS = [event_devPong] as const;
+export const EVENTS = [event_devPong, event_devWarp] as const;
 
 export type EventKind = (typeof EVENTS)[number]['kind'];
 export const EVENT_KINDS = [...EVENTS.map((d) => d.kind)] as unknown as readonly [EventKind, ...EventKind[]];

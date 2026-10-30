@@ -20,6 +20,8 @@ export interface FullState {
   readonly simVersion: number;
   readonly dataHash: string;
   readonly planetType: string;
+  /** Effective dev time warp of the planet (1 = none). */
+  readonly warp: number;
 }
 
 /** Global tap on every sim event leaving a thread (each exactly once: from a delta or from a bare `event`). */
@@ -44,6 +46,8 @@ export class GamePlanets {
   private readonly unloadedListeners: ((planetId: string) => void)[] = [];
   private readonly snapshotListeners: ((planetId: string, s: { tick: number; bytes: Uint8Array }) => void)[] = [];
   private readonly shutdownHooks: (() => void | Promise<void>)[] = [];
+  private readonly warps = new Map<string, number>();
+  private readonly warpListeners = new Set<(planetId: string, k: number) => void>();
   private readonly eventListeners = new Set<PlanetEventsListener>();
   private readonly unlisten: () => void;
 
@@ -77,6 +81,7 @@ export class GamePlanets {
 
   unload(planetId: string): void {
     this.loaded.delete(planetId);
+    this.warps.delete(planetId);
     for (const fn of this.unloadedListeners) fn(planetId);
     this.pool.sendToPlanet(planetId, { t: 'unload', planetId });
   }
@@ -105,6 +110,27 @@ export class GamePlanets {
       if (!s?.delete(sub)) return;
       if (s.size === 0) { this.subs.delete(planetId); this.pool.sendToPlanet(planetId, { t: 'unsubscribe', planetId }); }
     };
+  }
+
+  /** Dev time warp: asks the planet's thread to run `k` (1..100) steps per due slot. The thread answers with the effective value (see `onWarp`). */
+  setWarp(planetId: string, k: number): boolean {
+    return this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'ctl', op: 'warp', planetId, k });
+  }
+
+  /** Effective warp of a planet (1 when never warped). */
+  warpOf(planetId: string): number {
+    return this.warps.get(planetId) ?? 1;
+  }
+
+  /** Every planet with warp above 1 and its effective value (metrics). */
+  warped(): [string, number][] {
+    return [...this.warps].filter(([, k]) => k > 1);
+  }
+
+  /** Called whenever a planet's effective warp changes (a request or a thread budget cap). Returns unsubscribe. */
+  onWarp(fn: (planetId: string, k: number) => void): () => void {
+    this.warpListeners.add(fn);
+    return () => this.warpListeners.delete(fn);
   }
 
   /** Registers a tap on all planet events (the bus bridge). Returns unsubscribe. */
@@ -173,7 +199,14 @@ export class GamePlanets {
       case 'event':
         this.tap(msg.planetId, msg.events);
         return this.each(msg.planetId, (s) => s.onEvent?.(msg.events));
+      case 'warp': {
+        const changed = this.warpOf(msg.planetId) !== msg.k;
+        this.warps.set(msg.planetId, msg.k);
+        if (changed) for (const fn of this.warpListeners) fn(msg.planetId, msg.k);
+        return;
+      }
       case 'fullState': {
+        this.warps.set(msg.planetId, msg.warp);
         const w = this.fullWaiters.get(msg.reqId);
         this.fullWaiters.delete(msg.reqId);
         return w?.resolve(msg);

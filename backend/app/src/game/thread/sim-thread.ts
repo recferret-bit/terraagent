@@ -30,6 +30,8 @@ scheduler.onPass = (r) => {
   if (ring.length > RING) ring.shift();
 };
 
+scheduler.onWarp = (planetId, k, requested) => post({ t: 'warp', planetId, k, requested });
+
 const host = new PlanetHost(init.thread, init.flags, post, {
   info: (id) => scheduler.info(id),
   get maxLag() { return scheduler.maxLag; },
@@ -45,6 +47,10 @@ port.on('message', (msg: ToThread) => {
     scheduler.stop();
     post({ t: 'stopped', thread: init.thread });
     port.close();
+    return;
+  }
+  if (msg.t === 'ctl' && msg.op === 'warp') {
+    if (host.planets.has(msg.planetId)) scheduler.setWarp(msg.planetId, msg.k);
     return;
   }
   host.handle(msg);

@@ -197,7 +197,7 @@ export class PlanetHost {
     if (p.subscribed) this.sendDelta(planetId, p);
     const bytes = owned(snapshot(p.state));
     this.post({
-      t: 'fullState', planetId, reqId, tick: p.state.meta.tick, bytes, simVersion: p.state.meta.simVersion,
+      t: 'fullState', planetId, reqId, tick: p.state.meta.tick, warp: this.sched?.info(planetId)?.warp ?? 1, bytes, simVersion: p.state.meta.simVersion,
       dataHash: p.pipeline.config.data.hash, planetType: p.state.meta.planetType,
     }, [bytes.buffer as ArrayBuffer]);
   }
@@ -209,6 +209,7 @@ export class PlanetHost {
         planetId, tick: p.state.meta.tick, entities: p.state.entities.count, pendingCmds: p.pending.length, subscribed: p.subscribed,
         deltaMs: p.deltaMs, deltaBytes: p.deltaBytes,
         lagSteps: s?.lagSteps ?? 0, mode: s?.mode ?? 'active', nextDueMs: s?.nextDueMs ?? 0, stepsLastPass: s?.stepsLastPass ?? 0,
+        warp: s?.warp ?? 1, warpRequested: s?.warpRequested ?? 1,
       };
     });
   }
@@ -223,7 +224,7 @@ export class PlanetHost {
       if (process.env.NODE_ENV === 'production') return;
       const end = performance.now() + msg.ms;
       while (performance.now() < end) { /* busy-wait: simulates a stalled thread */ }
-    } else if (msg.op === 'warp') for (let i = 0; i < Math.min(msg.ticks, 100_000); i++) this.stepPlanet(msg.planetId, 1);
-    // 'stop' is handled by the thread entry (it owns the port and the timer).
+    }
+    // 'warp' and 'stop' are handled by the thread entry (it owns the port and the timer).
   }
 }
