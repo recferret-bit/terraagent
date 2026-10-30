@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { ENTITY_KIND, ENTITY_STATE, rowOf, setField, setHqCellEnergy, spawnColonyLanding, spawnHqUnit } from '@terra/sim';
+import { createArchetypeMesh, setArchetypeBuildProgress } from '@terra/render/kitbash';
+import { validateArchetype } from '@terra/render/kitbash/validate';
+import { ENTITY_KIND, ENTITY_STATE, insertRow, rowOf, setField, setHqCellEnergy, spawnColonyLanding, spawnHqUnit } from '@terra/sim';
 import { EntityMeshes, archetypeForKind } from '../../app/online/EntityMeshes';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
@@ -272,6 +274,67 @@ describe('W01-26: EntityMeshes 3D rendering and interpolation', () => {
     const rec = meshes.getRecord(hqId)!;
     expect(rec.mesh.position.x).toBeGreaterThan(0);
     expect(rec.walk).toBeGreaterThan(0);
+
+    meshes.dispose();
+  });
+});
+
+describe('W01-25: building.commandHub geometry validation and 0/33/66/100% scaffold stages', () => {
+  it('validates building.commandHub with 0 errors, 0 warnings, <3500 tris, minY 0.000 and steps scaffold stages 0/33/66/100%', () => {
+    const report = validateArchetype('building.commandHub');
+    expect(report.pass).toBe(true);
+    expect(report.errors).toBe(0);
+    expect(report.warnings).toBe(0);
+    expect(report.triCount).toBeLessThan(3500);
+    expect(Math.abs(report.minY)).toBeLessThan(0.001);
+
+    const hubMesh = createArchetypeMesh('building.commandHub', 'forestRock');
+    expect(hubMesh.userData.uniforms.uBuildProgress.value).toBe(1);
+    expect(setArchetypeBuildProgress(hubMesh, 0)).toBe(0);
+    expect(hubMesh.userData.uniforms.uBuildProgress.value).toBe(0);
+    expect(setArchetypeBuildProgress(hubMesh, 0.4)).toBe(0.33);
+    expect(hubMesh.userData.uniforms.uBuildStage.value).toBe(0.33);
+    expect(setArchetypeBuildProgress(hubMesh, 0.75)).toBe(0.66);
+    expect(hubMesh.userData.uniforms.uBuildStage.value).toBe(0.66);
+    expect(setArchetypeBuildProgress(hubMesh, 1.0)).toBe(1);
+    expect(hubMesh.userData.uniforms.uBuildProgress.value).toBe(1);
+
+    const scene = new THREE.Scene();
+    const meshes = new EntityMeshes(scene);
+    const host = new LocalHost({ flags: ['W00', 'W01'], radius: 16 });
+    const hubId = 99;
+    const hubRow = insertRow(host.state.entities, hubId, host.tick);
+    setField(host.state.entities, hubRow, 'kind', ENTITY_KIND.commandHub, host.tick);
+    setField(host.state.entities, hubRow, 'owner', 0, host.tick);
+    setField(host.state.entities, hubRow, 'q', 2, host.tick);
+    setField(host.state.entities, hubRow, 'r', 2, host.tick);
+    setField(host.state.entities, hubRow, 'x', 2, host.tick);
+    setField(host.state.entities, hubRow, 'y', 2, host.tick);
+    setField(host.state.entities, hubRow, 'hp', 1500, host.tick);
+    setField(host.state.entities, hubRow, 'hpMax', 1500, host.tick);
+    setField(host.state.entities, hubRow, 'state', ENTITY_STATE.waiting, host.tick);
+    setField(host.state.entities, hubRow, 'progress', 0, host.tick);
+
+    meshes.syncView(host.sync(true), null);
+    expect(meshes.getRecord(hubId)!.buildStage).toBe(0);
+
+    setField(host.state.entities, hubRow, 'state', ENTITY_STATE.constructing, host.tick);
+    setField(host.state.entities, hubRow, 'progress', 0.1, host.tick);
+    meshes.syncView(host.sync(false), null);
+    expect(meshes.getRecord(hubId)!.buildStage).toBe(0);
+
+    setField(host.state.entities, hubRow, 'progress', 0.4, host.tick);
+    meshes.syncView(host.sync(false), null);
+    expect(meshes.getRecord(hubId)!.buildStage).toBe(0.33);
+
+    setField(host.state.entities, hubRow, 'progress', 0.75, host.tick);
+    meshes.syncView(host.sync(false), null);
+    expect(meshes.getRecord(hubId)!.buildStage).toBe(0.66);
+
+    setField(host.state.entities, hubRow, 'state', ENTITY_STATE.idle, host.tick);
+    setField(host.state.entities, hubRow, 'progress', 1.0, host.tick);
+    meshes.syncView(host.sync(false), null);
+    expect(meshes.getRecord(hubId)!.buildStage).toBe(1);
 
     meshes.dispose();
   });

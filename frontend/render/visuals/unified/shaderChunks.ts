@@ -184,6 +184,8 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
         varying vec3 vObjectNormal;
         varying vec2 vSurfacePBR;
         uniform float uTime;
+        uniform float uBuildProgress;
+        uniform float uBuildStage;
         uniform vec3 uBiomeDustColor;
         uniform vec3 uRimTint;
         uniform float uWeatheringHeight;
@@ -206,7 +208,21 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
           return gx * b.x + gy * b.y + gz * b.z;
         }`;
 
-/** Triplanar grain, ground-up weathering, top-down gradient; `pluginChunk` is appended (plugin colour chunks). */
+/** Quantized construction scaffold stages (0 / 33 / 66 / 100 %) with amber/cyan holo-lattice above the stage cutoff. */
+export const FRAG_BUILD_SCAFFOLD = /* glsl */ `
+        if (uBuildProgress < 0.999) {
+          float stage = uBuildProgress >= 0.999 ? 1.0 : (uBuildProgress >= 0.66 ? 0.66 : (uBuildProgress >= 0.33 ? 0.33 : 0.0));
+          float cutY = stage < 0.16 ? 0.25 : (stage < 0.50 ? 1.65 : 3.85);
+          float aboveCut = smoothstep(cutY - 0.06, cutY + 0.06, vLocalPos.y);
+          float laserBand = exp(-abs(vLocalPos.y - cutY) * 16.0);
+          vec3 gCell = abs(fract(vLocalPos * 3.5) - 0.5);
+          float lattice = step(min(gCell.x, min(gCell.y, gCell.z)), 0.09);
+          vec3 scaffoldColor = mix(vec3(0.08, 0.22, 0.32), vec3(3.4, 1.55, 0.25), lattice);
+          diffuseColor.rgb = mix(diffuseColor.rgb, scaffoldColor, aboveCut * 0.88);
+          diffuseColor.rgb += vec3(3.8, 1.8, 0.3) * laserBand;
+        }`;
+
+/** Triplanar grain, ground-up weathering, top-down gradient, construction scaffold; `pluginChunk` is appended. */
 export const fragColor = (pluginChunk: string) => /* glsl */ `#include <color_fragment>
         float grain = triplanarGrain(vLocalPos, vObjectNormal, uTriplanarScale);
         // Subtle micro-surface variation
@@ -221,6 +237,7 @@ export const fragColor = (pluginChunk: string) => /* glsl */ `#include <color_fr
         // Top-Down Hemisphere Gradient for RTS readability
         float topGrad = mix(0.78, 1.08, clamp(vLocalPos.y * 0.6, 0.0, 1.0));
         diffuseColor.rgb *= mix(topGrad, 1.0, isEmissive);
+        ${FRAG_BUILD_SCAFFOLD}
         ${pluginChunk}
         `;
 

@@ -70,3 +70,22 @@ export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight
   if (walkWeight !== undefined && u?.uWalkWeight) u.uWalkWeight.value = walkWeight;
   if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
 }
+
+/** Quantizes a normalized construction progress (0..1) into one of the 4 scaffold stages (0, 0.33, 0.66, 1). */
+export function quantizeBuildStage(progress: number): 0 | 0.33 | 0.66 | 1 {
+  const p = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0));
+  if (p >= 0.999) return 1;
+  if (p >= 0.66) return 0.66;
+  if (p >= 0.33) return 0.33;
+  return 0;
+}
+
+/** Updates the construction scaffold shader uniforms (0 / 33 / 66 / 100 %) on an archetype mesh and returns the quantized stage. */
+export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number): 0 | 0.33 | 0.66 | 1 {
+  const stage = quantizeBuildStage(progress);
+  const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
+  if (u?.uBuildProgress) u.uBuildProgress.value = stage;
+  if (u?.uBuildStage) u.uBuildStage.value = stage;
+  if (mesh.userData) (mesh.userData as any).buildStage = stage;
+  return stage;
+}
