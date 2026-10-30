@@ -56,7 +56,8 @@ function checkLayer(rel, spec, line) {
     if (NOT_FROM_SHARED.test(spec) || /^(frontend|backend)\//.test(target)) problems.push(`layer shared imports app code '${spec}'  ${rel}:${line}`);
     return;
   }
-  if (areaOf(rel) === 'render' && /^@terra\/sim(\/|$)/.test(spec)) problems.push(`layer render imports '${spec}' (apps pass sim views in)  ${rel}:${line}`);
+  // render may use the presentation-safe hex math (CLIENT §7), nothing else of the engine
+  if (areaOf(rel) === 'render' && /^@terra\/sim(\/|$)/.test(spec) && spec !== '@terra/sim/grid/hex') problems.push(`layer render imports '${spec}' (apps pass sim views in)  ${rel}:${line}`);
   const from = areaOf(rel);
   if (!from || !spec.startsWith('.')) return;
   const to = areaOf(relative(ROOT, resolve(ROOT, dirname(rel), spec)));

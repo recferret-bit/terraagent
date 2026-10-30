@@ -4,5 +4,8 @@
   "private": true,
   "type": "module",
   "description": "3D render engine shared by the apps (viewport, kitbash, terrain, planets, orbit, descent rig, lighting, CRT). Deep imports resolve into the folder: @terra/render/core/createColonyViewport.",
-  "dependencies": { "three": "^0.174.0" }
+  "dependencies": {
+    "three": "^0.174.0",
+    "@terra/sim": "0.1.0"
+  }
 }
