@@ -9,20 +9,23 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 | URL | What |
 |---|---|
 | `/` | Hub linking to everything (incl. a "Dev tools" card) |
-| `/play.html?scenario=w00` | **Online play flow:** fresh planet from a scenario, hex terrain, HUD, dev console |
-| `/play.html?host=local&scenario=w00` | Same, with the engine running in the browser alone (no app, no Postgres) |
-| `/play.html?planet=dune&skip=1` | The pre-wave **prototype** (orbit menu → descent → decorative colony); unchanged |
+| `/play.html` | **Default online play flow (W01+):** orbital boot splash (`POST /v1/auth/guest` + `GET /v1/me/home`), drop-pod descent, colony view on `pl_dev` |
+| `/play.html?scenario=w01` | **Online scenario flow:** fresh temperate planet (`w01-landfall`) with landed colony + HQ drone at spawn slot 0, HUD, Terraform & Construction menus, dev console |
+| `/play.html?scenario=w00` | **W00 scenario:** flat radius-56 planet + test entity id 1 at tile 0,0 |
+| `/play.html?host=local&scenario=w01` | Same (`w00` or `w01`), with the engine running in the browser alone (no app, no Postgres) |
+| `/play.html?planet=dune&skip=1` | The pre-wave **prototype** (`?planet=` selects it: orbit menu → descent → decorative colony); unchanged |
 | `/dev/chain/` | **Mock chain explorer:** receipts, balances, NFTs, DAO, escrow, outbox; account filter; 1 s auto-refresh; `CHAIN.PING` button |
 | `/dev/parity/` | Engine parity page used by `npm run test:parity` (`window.__parity.run(id)`) |
 | `/playground.html`, `/landing.html`, `/design/` | 3D model storybook, landing site, design system (see the main README) |
 
 ## URL parameters of `/play.html`
 
-**Online flow** (any of `scenario` / `host` switches the page to it):
+**Online flow** (default on `/play.html` in W01+, or any of `scenario` / `host` / `join`):
 
 | Parameter | Effect |
 |---|---|
-| `?scenario=<id>` | `POST /v1/dev/scenarios/<id>` creates a **fresh** planet from `scenarios/<id>.ts` (`w00` = flat radius-56 planet + test entity id 1 at tile 0,0) and joins it. Each page load creates a new planet; reconnects in the same page rejoin it |
+| *(none)* | Guest boot flow (W01+): orbital splash → `POST /v1/auth/guest` → `GET /v1/me/home` (seats on `pl_dev` or `pl_dev_2` when full) → joins planet → conditional drop-pod descent → colony view |
+| `?scenario=<id>` | `POST /v1/dev/scenarios/<id>` creates a **fresh** planet from `scenarios/<id>.ts` (`w00` = flat radius-56 planet + test entity id 1 at tile 0,0; `w01` / `w01-landfall` = temperate radius-56 planet with colony 0 landed at spawn slot 0, stock 600/350/200/200, HQ at 800/800 E) and joins it. Each page load creates a new planet; reconnects in the same page rejoin it |
 | `?host=local` | Browser local host: the authoritative engine runs in a Web Worker at 5 TPS; snapshots in IndexedDB (resumed on reload); server-only commands answer `host_unavailable`. Without `scenario`, uses `w00` |
 | `?join=<planetId>` | Join an **existing** planet instead of creating one — how a second player (another browser profile, with `&as=b`) joins the first player's scenario planet. The dev console `planet [name]` prints the ready link |
 | `&waves=..NN` / `&waves=00,03` | Dev: narrow the enabled waves (never wider than the server's `TA_WAVES`); the flag panel shows the result |
@@ -55,13 +58,24 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 | `scenario <id>` | Create a fresh planet from a scenario and print its id (local host: restart the local planet from it) | both |
 | `chain.ping` | Write a ping receipt through the mock chain; prints its `mock:` hash (shows in `/dev/chain/`) | server |
 | `local.reset` | Start a fresh local planet (drops the IndexedDB snapshot) | local |
+| `grant <resource> <n>` | Add `<n>` to colony stock (`metals`/`metals.t1`, `minerals`/`minerals.t1`, `biomass`/`bio.biomass`, `water`/`bio.water`, bypasses storage cap) (W01) | both |
+| `cell <n>` | Set the colony's HQ power cell to `<n>` E (clamped `0..800`) (W01) | both |
+| `reveal` | Mark every hex tile on the planet explored for the colony (W01) | both |
+| `seed <s\|n>` | Regenerate the current planet from seed `<s>` with the temperate generator (W01) | both |
+| `tp <q> <r>` | Teleport the colony's HQ drone to tile `(q, r)` (W01) | both |
+| `land` | Skip drop-pod descent immediately, landing the HQ drone and depositing pod cargo (W01) | both |
+| `border-hatch [on\|off]` | Toggle colour-blind hatch pattern on territory borders (W01) | both |
 
 **Adding a command:** a client feature (`frontend/game/features/<id>/index.ts`) lists it in `devCommands` (`{ name, help, run(args, ctx) }`); it can send sim commands (`ctx.services.sendCommand(kind, args)`) or server dev commands (`ctx.services.devServer(name, args)`). A server dev command registers in `DevCommandRegistry` (`backend/app/src/dev/`) with `defineDevCommand({ name, help, args: zod, run })`. The game rule itself goes in `shared/sim` (D-31).
 
 ## HUD and overlays (online flow)
 
 - `TICK` chip (top left), `×k` warp badge under it.
-- **WAVES** flag panel (top right): one chip per wave, on/off, and the flag source; collapsible.
+- **Minimal HUD** (top centre, W01): colony name, `MM:SS` game clock, family stock & caps (`Metals`, `Minerals`, `Bio` with `Water` + `Biomass` tooltip, `Supply`), HQ power cell bar (`800 / 800 E`), and command reject toasts.
+- **HQ Status Panel** (top left, W01): HQ T1 Commander Drone hull HP (`900 / 900`), power cell bar, current job (`idle`, `moving`, `grading`, `clearing`, `breaking`, `building`), and queue count; left-click selects HQ, right-click orders `moveUnit`.
+- **Terraform Menu v1** (bottom left, W01): `GRADE [G]`, `CLEAR [C]`, `BREAK [B]`, single (`1×1`) vs area (`3×3`, max 9 tiles) brush toggle, skipped-tile toast, and tile-state overlay (`OVERLAY: ON/OFF [V]`, Wild / Flat / Prepared counts).
+- **Construction Menu v0** (bottom right, W01): `Command Hub [H]` button, 3×3 placement ghost with green/red validity tint and live prep bill (tiles to prepare, Grade/Clear/Break breakdown, time at HQ `1.5×`, E cost, lump yields), `CONFIRM` / `CANCEL [ESC]`, and `CANCEL ORDER` (75% refund if already in progress).
+- **WAVES** flag panel (top right): one chip per wave, on/off, and the flag source; collapsible. Below it: `BORDER: SOLID / HATCH` toggle (W01).
 - **Net stats** overlay (bottom right, dev only): prediction mode (on / off / auto-off), pending commands, rollbacks, last correction in tiles, worker step p95.
 - "Connecting…" / "Reconnecting…" / "still trying" banner (top centre) while the socket is down.
 - Left click on a tile logs its `q, r` (`window.__online.lastPick`).
@@ -75,11 +89,13 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 - **Explorer:** `/dev/chain/`. Contract tests: `npm run test:contract` (mocks), `npm run contract:real -- --port X` (real adapters, from W23).
 - **Selection:** `NEAR_ADAPTER_<PORT>=mock|testnet|mainnet` (anything but the exact strings `testnet`/`mainnet` means mock), `AI_PROVIDER`, `NOTIFY_ADAPTER`. Production refuses mocks unless the matching `*_ALLOW_MOCK_IN_PROD=true` is set, and boot names every mocked port.
 
-## Dev REST routes (404 in production)
+## REST routes (auth, home & dev; `/v1/dev/*` 404 in production)
 
 | Route | What |
 |---|---|
 | `GET /v1/healthz`, `/v1/readyz`, `/v1/metrics` | Health, readiness (`{db, simThreads}`), Prometheus metrics (not dev-only) |
+| `POST /v1/auth/guest`, `/v1/auth/refresh`, `/v1/auth/logout` | Guest device-secret auth, refresh token rotation (`httpOnly` cookie), session logout (W01, not dev-only) |
+| `GET /v1/me/home` | Player home state (`NEW` auto-seats on `pl_dev` or `pl_dev_2` when `W01` is on and `W11` is off → returns `ACTIVE` with `planet` and `colony`) (W01, not dev-only) |
 | `GET /v1/dev/planets` | Loaded planet ids |
 | `GET /v1/dev/scenarios`, `POST /v1/dev/scenarios/:id` | List scenarios / create a fresh planet → `{ planetId, scenario, tick }` |
 | `GET /v1/dev/commands`, `POST /v1/dev/commands/:name` | List / run server dev commands (`warp`, `tune`, `scenario`, `chain.ping`) |
