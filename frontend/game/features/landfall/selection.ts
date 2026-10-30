@@ -1,6 +1,6 @@
 import { ENTITY_KIND, ENTITY_STATE, hexDistance, type HqJob, type ViewColony, type ViewEntity } from '@terra/sim';
 import type { SendCommand } from '../../net/commandBus';
-import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
+import { ENTITY_STRIDE, type ClientTiles, type ClientView } from '../../store/replica/viewCodec';
 
 export interface HqStatusView {
   entityId: number;
@@ -22,11 +22,12 @@ export interface HqStatusView {
 
 export interface StoreLike {
   readonly latest?: ClientView | null;
+  readonly latestTiles?: ClientTiles | null;
   onView?(fn: (v: ClientView) => void): () => void;
-  sendCommand?(cmd: { type: 'moveUnit'; entityId: number; q: number; r: number }): unknown;
+  sendCommand?(cmd: { type: 'moveUnit'; entityId: number; q: number; r: number } | unknown, args?: unknown): unknown;
 }
 
-export type TilePicker = (clientX: number, clientY: number) => { q: number; r: number } | null;
+export type TilePicker = (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
 
 export interface LandfallControllerOptions {
   store?: StoreLike;

@@ -1,4 +1,4 @@
-import type { PlanetState } from '@terra/sim';
+import type { PlanetState, ViewColony } from '@terra/sim';
 import {
   defineFeature,
   type FeatureContext,
@@ -6,6 +6,7 @@ import {
   type HudPanelInstance,
 } from '../../core/registry/types';
 import '../../net/services';
+import type { StoreLike, TilePicker } from '../landfall/selection';
 import {
   BrushController,
   computeBoxTiles,
@@ -95,6 +96,7 @@ export interface TerraformFeatureHandle extends HudPanelInstance {
 
 declare module '../../core/registry/types' {
   interface GameView {
+    tick?: number;
     colonyId?: number;
     planet?: { id: string; type: string; radius: number };
     tiles?: {
@@ -106,19 +108,15 @@ declare module '../../core/registry/types' {
       deposit?: Uint8Array;
       explored?: Uint8Array;
     };
-    colonies?: Array<{ index: number; id: string; name: string; [k: string]: unknown }>;
+    colonies?: ViewColony[];
     blobs?: Record<string, unknown>;
   }
 
   interface FeatureServices {
     colonyId?: number;
     surface?: HTMLElement | null;
-    pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => TileCoord | null;
-    store?: {
-      latest?: GameView | null;
-      latestTiles?: GameView['tiles'] | null;
-      sendCommand?: (cmdOrKind: unknown, args?: unknown) => unknown;
-    };
+    pickTile?: TilePicker;
+    store?: StoreLike;
     host?: SimHostLike;
     state?: PlanetState;
     terraform?: TerraformFeatureHandle;
