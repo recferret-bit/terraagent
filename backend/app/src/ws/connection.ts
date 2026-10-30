@@ -1,10 +1,11 @@
 import type { Logger } from 'pino';
-import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type ClientMessageOf, type CloseCode } from '@terra/contracts';
+import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type ClientMessageOf, type CloseCode, type HomeResponse } from '@terra/contracts';
 import type { RawData, WebSocket } from 'ws';
 import type { FullState, GamePlanets } from '../game/game-planets.service';
 import type { CommandIngress } from './command-ingress';
+import { DEFAULT_HOME, type HomeProvider } from './home-provider';
 import type { PlanetRooms, RoomMember } from './rooms';
-import type { SessionVerifier } from './session-verifier';
+import { BadHelloTokenError, type SessionVerifier, type VerifiedSession } from './session-verifier';
 
 export const TICK_MS = 200;
 export const PROTO_VERSION = 1;
@@ -14,6 +15,7 @@ export interface ConnectionDeps {
   readonly planets: GamePlanets;
   readonly rooms: PlanetRooms;
   readonly ingress: CommandIngress;
+  readonly home?: HomeProvider;
   readonly flags: readonly string[];
   readonly log: Logger;
   readonly helloTimeoutMs: number;
@@ -40,6 +42,7 @@ const rawToFrame = (data: RawData, isBinary: boolean): string | Uint8Array => {
  */
 export class Connection implements RoomMember {
   state: State = 'new';
+  session: VerifiedSession | undefined;
   playerId: string | undefined;
   planetId: string | undefined;
   welcomeTick: number | undefined;
@@ -48,6 +51,7 @@ export class Connection implements RoomMember {
   private chain: Promise<void> = Promise.resolve();
   private helloTimer: NodeJS.Timeout | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
+  private expTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly ws: WebSocket, private readonly d: ConnectionDeps) {
     this.helloTimer = setTimeout(() => this.bye(CLOSE_CODES.bad_hello, 'hello_timeout'), d.helloTimeoutMs);
@@ -116,8 +120,30 @@ export class Connection implements RoomMember {
     this.state = 'closed';
     clearTimeout(this.helloTimer);
     clearTimeout(this.idleTimer);
+    clearTimeout(this.expTimer);
     this.leaveRoom();
     this.d.onClosed(this);
+  }
+
+  private armExpTimer(expSec: number | undefined): void {
+    clearTimeout(this.expTimer);
+    this.expTimer = undefined;
+    if (typeof expSec !== 'number') return;
+    const delayMs = Math.min(Math.max(0, expSec * 1000 - Date.now()), 2_147_483_647);
+    this.expTimer = setTimeout(() => {
+      if (this.state === 'closed') return;
+      this.bye(CLOSE_CODES.forbidden, 'forbidden');
+    }, delayMs);
+    this.expTimer.unref?.();
+  }
+
+  private async resolveHome(playerId: string): Promise<HomeResponse> {
+    if (!this.d.home) return DEFAULT_HOME;
+    try {
+      return await this.d.home.getHome(playerId);
+    } catch {
+      return DEFAULT_HOME;
+    }
   }
 
   private leaveRoom(): void {
@@ -148,6 +174,7 @@ export class Connection implements RoomMember {
     switch (msg.t) {
       case 'ping':
         return this.sendMsg({ v: 1, t: 'pong', d: { clientTimeMs: msg.d.clientTimeMs, serverTimeMs: Date.now() } });
+      case 'reauth': return this.onReauth(msg);
       case 'join': return this.onJoin(msg);
       case 'leave': return this.onLeave();
       case 'cmd': return this.onCmd(msg);
@@ -157,15 +184,40 @@ export class Connection implements RoomMember {
 
   private async onHello(msg: ClientMessageOf<'hello'>): Promise<void> {
     if (!msg.d.proto.includes(PROTO_VERSION)) return this.bye(CLOSE_CODES.bad_hello, 'unsupported_proto');
+    let session: VerifiedSession | null;
     try {
-      this.playerId = (await this.d.verifier.verify(msg.d.accessToken)).playerId;
-    } catch {
-      return this.bye(CLOSE_CODES.bad_hello, 'bad_token');
+      session = await this.d.verifier.verify(msg.d.accessToken);
+    } catch (err) {
+      if (err instanceof BadHelloTokenError) return this.bye(CLOSE_CODES.bad_hello, 'bad_token');
+      return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     }
+    if (!session?.playerId) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     if (this.state !== 'new') return; // closed while verifying
+    this.session = session;
+    this.playerId = session.playerId;
+    const home = await this.resolveHome(session.playerId);
+    if (this.state !== 'new') return;
     clearTimeout(this.helloTimer);
     this.state = 'lobby';
-    this.sendMsg({ v: 1, t: 'ready', d: { playerId: this.playerId, flags: this.d.flags } });
+    this.armExpTimer(session.exp);
+    this.sendMsg({ v: 1, t: 'ready', d: { playerId: this.playerId, home, flags: this.d.flags } });
+  }
+
+  private async onReauth(msg: ClientMessageOf<'reauth'>): Promise<void> {
+    let session: VerifiedSession | null;
+    try {
+      session = await this.d.verifier.verify(msg.d.accessToken);
+    } catch {
+      return this.bye(CLOSE_CODES.forbidden, 'forbidden');
+    }
+    if (!session?.playerId || session.playerId !== this.playerId) {
+      return this.bye(CLOSE_CODES.forbidden, 'forbidden');
+    }
+    const home = await this.resolveHome(session.playerId);
+    if (this.state === 'closed') return;
+    this.session = session;
+    this.armExpTimer(session.exp);
+    this.sendMsg({ v: 1, t: 'ready', d: { playerId: session.playerId, home, flags: this.d.flags } });
   }
 
   private onLeave(): void {
