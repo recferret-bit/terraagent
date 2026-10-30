@@ -83,11 +83,27 @@ html,body{margin:0;height:100%;background:var(--ta-void);overflow:hidden;font-fa
 .chip h4{margin:0;font-family:var(--ta-font-display);font-weight:700;font-size:15px;letter-spacing:.12em;color:var(--ta-text)}
 .chip small{font-family:var(--ta-font-mono);font-size:11px;letter-spacing:.06em;color:var(--ta-steel)}
 .res{display:flex;padding-left:0;padding-right:0}
-.res div{display:flex;flex-direction:column;align-items:flex-start;min-width:84px;padding:0 16px;border-right:1px solid var(--ta-seam)}
-.res div:last-child{border-right:0}
+.res > div{display:flex;flex-direction:column;align-items:flex-start;min-width:84px;padding:0 16px;border-right:1px solid var(--ta-seam);position:relative}
+.res > div:last-child{border-right:0}
 .res b{font-family:var(--ta-font-display);font-size:20px;line-height:1.1;color:var(--ta-text)}
 .res span{font-family:var(--ta-font-mono);font-size:10px;color:var(--ta-steel);letter-spacing:var(--ta-track-label)}
 .res div:first-child b{color:var(--ta-energy)}
+.res .ta-res-chip{pointer-events:auto;cursor:pointer}
+.res .ta-res-chip[data-capped="true"] b,
+.res .ta-res-chip.ta-res-chip--capped b{color:var(--ta-fault-text)}
+.res .ta-res-chip[data-capped="true"] span,
+.res .ta-res-chip.ta-res-chip--capped span{color:var(--ta-fault)}
+.res .ta-res-chip__rate{font-family:var(--ta-font-mono);font-size:10px;color:var(--ta-steel);margin-top:2px}
+.res .ta-res-chip__breakdown{
+  display:none;position:absolute;top:calc(100% + 4px);left:0;min-width:160px;
+  background:var(--ta-plate-3);border:1px solid var(--ta-seam-3);padding:8px 12px;
+  flex-direction:column;gap:4px;z-index:50;pointer-events:none;
+}
+.res .ta-res-chip:hover .ta-res-chip__breakdown,
+.res .ta-res-chip:focus-within .ta-res-chip__breakdown{display:flex}
+.res .ta-res-breakdown__row{display:flex;align-items:center;justify-content:space-between;gap:8px;font-family:var(--ta-font-mono);font-size:11px;color:var(--ta-text-2)}
+.res .ta-res-breakdown__row[data-locked="true"],
+.res .ta-res-tier--locked{color:var(--ta-dim);opacity:0.6}
 .hud-hint{position:absolute;bottom:12px;left:50%;transform:translateX(-50%);font-family:var(--ta-font-mono);font-size:11px;letter-spacing:.06em;color:var(--ta-text-2);background:rgba(7,8,10,.8);padding:7px 16px;border:1px solid var(--ta-seam-2);white-space:nowrap}
 #pause{position:fixed;inset:0;background:rgba(7,8,10,.72);backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;pointer-events:auto;z-index:40}
 #pause.on{display:flex}
