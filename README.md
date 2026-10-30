@@ -1,6 +1,6 @@
 # TerraAgent
 
-Autonomous colony builder in the browser: drop one robot on a live planet, set priorities, and the colony keeps mining, building and defending while you are away. Web client is **Vite + TypeScript + Three.js**. The online backend (NEAR, planet workers, AI Director) is specified in [`docs/`](./docs/) and not implemented yet.
+Autonomous colony builder in the browser: drop one robot on a live planet, set priorities, and the colony keeps mining, building and defending while you are away. Web client is **Vite + TypeScript + Three.js**. The online backend (NEAR, server simulation, AI Director) is specified in [`docs/`](./docs/) and built wave by wave (see "Building the game: waves").
 
 ## Quick start
 
@@ -8,7 +8,9 @@ Autonomous colony builder in the browser: drop one robot on a live planet, set p
 npm install
 npm run dev        # http://127.0.0.1:5173/
 npm run typecheck  # tsc --noEmit
-npm run build      # typecheck + vite build → dist/
+npm run build      # typecheck + check:structure + vite build → dist/
+npm run check:structure  # ≤ 500-line files, ≤ 100-line functions, layers point inward
+npm run wave       # work on the next wave of the build plan (see "Building the game: waves")
 npm run validate:models -- <id|--category robot|--all>   # geometry + colour + detail check of kitbash models (see "Adding a 3D model")
 npm run test:models                                    # self-test of the geometry validator
 ```
@@ -70,10 +72,40 @@ frontend/                 One Vite app (root of vite.config.ts); URLs mirror the
   playground/             3D playground: PlaygroundApp + stage/, content/, camera/, panels/
   render/                 3D render engine used by 2+ apps (alias @terra/render/*): core, kitbash (+validate/),
                           visuals, planets, orbit, descent (drop rig), lighting, ui (CRT overlay)
-scripts/                  check-structure.mjs (500-line / 100-line limits)
+scripts/                  check-structure.mjs (size + layer limits), wave/ (`npm run wave`), plan/ (plan index + schedule)
 .agents/skills/           Agent skills for 3D work (see AGENTS.md)
 docs/                     game design (game/), online architecture (spec/), build plan (plan/), 3D rules (visuals/)
 ```
+
+## Building the game: waves
+
+The online game is built in **26 product waves** ([`docs/plan/PRODUCT_WAVES.md`](./docs/plan/PRODUCT_WAVES.md), one file per wave in [`docs/plan/waves/`](./docs/plan/waves/)). Every wave ends in a working, tested app and lands in `main` only after you have played its demo. The waves build on the existing 3D renderer in `frontend/render` and the prototype views in `frontend/game`; they extend them, never replace them (PRODUCT_WAVES §4 "One renderer").
+
+**One command:**
+
+```bash
+npm run wave
+```
+
+It resumes the open wave, or opens the next ready one (hackathon priority order; dependencies landed, or still open and stacked). It creates the wave's worktree `../TerraAgent-wt/wNN` on branch `wave/wNN-<slug>`, runs `npm ci` there and starts **Claude Code** in it as the wave lead. Claude builds the wave's `H` issues in dependency order (one branch per issue, up to 4 in parallel), keeps `npm run build` green, never touches `main`, and ends with the demo steps and a URL for your check.
+
+**Your loop:**
+
+1. `npm run wave`, and let the session work.
+2. When it says the wave is ready: open the URL and play the demo story from the wave file.
+3. `npm run wave -- land`: merges into `main`, tags `wave-NN`, pushes, removes the worktree and branch. It refuses when a wave it depends on is not in `main` yet, the worktree has uncommitted changes, or the merge would touch uncommitted files in your checkout.
+4. `npm run wave` again for the next one.
+
+| Command | What it does |
+|---|---|
+| `npm run wave -- status` | Every wave: landed, open, ready or blocked (and by what) |
+| `npm run wave -- next 06` | Open or resume a specific wave |
+| `npm run wave -- next --new` | Open another wave in parallel while one is open |
+| `--tags H,H+` | Which rows to build (default `H` = hackathon must; every row for post-hackathon waves) |
+| `--parallel 6` | Issue subagents at once (default 4) |
+| `--dry-run` · `--no-launch` | Show what it would do · print the prompt instead of starting Claude |
+
+**Plan files:** the hackathon cut and drop order are in [`HACKATHON_CUT.md`](./docs/plan/HACKATHON_CUT.md), the generated start order in [`HACKATHON_SCHEDULE.md`](./docs/plan/HACKATHON_SCHEDULE.md), your to-dos and open decisions in [`OWNER_TASKS.md`](./docs/plan/OWNER_TASKS.md). After editing a wave file, run `python3 scripts/plan/index_waves.py` (must print `problems 0`) and `--write` to regenerate the index and schedule.
 
 ## Adding a 3D model
 

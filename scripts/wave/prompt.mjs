@@ -16,7 +16,7 @@ For each issue:
 3. Keep the gates green: \`npm run build\` (typecheck + check:structure), plus any unit, contract or e2e suites that exist by then.
 4. Merge it into \`${w.branch}\` with \`git merge --no-ff\` and the commit message \`${w.id}-XX: <title>\`, then delete the issue branch and its worktree.
 
-Rules: one engine (game rules only in \`shared/sim\`, D-31), registries instead of edits to shared files, balance numbers only in data tables (D-35), the layout of D-32 and the size/layer limits of AGENTS.md §6. Touch another wave's owned paths only where the wave file says so. Never push, never touch \`main\`.
+Rules: build on the existing 3D renderer in \`frontend/render\` and the prototype views in \`frontend/game\` (PRODUCT_WAVES §4 "One renderer": extend and register, never replace or duplicate; keep its approved look and run the model validator + playground 4-view check for any model change); one engine (game rules only in \`shared/sim\`, D-31), registries instead of edits to shared files, balance numbers only in data tables (D-35), the layout of D-32 and the size/layer limits of AGENTS.md §6. Touch another wave's owned paths only where the wave file says so. Never push, never touch \`main\`.
 
 When every in-scope issue has landed: merge the latest \`main\` into \`${w.branch}\`, run the wave e2e and every earlier wave's e2e (once the harness exists), start the dev stack, and finish with the wave's demo steps and the URL for the owner's manual check. The owner lands it afterwards with \`npm run wave -- land\`.`;
 }
