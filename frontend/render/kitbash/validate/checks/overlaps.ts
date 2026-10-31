@@ -1,6 +1,6 @@
-// Stage 3: overlaps between parts (buried, z-fight, cutting through) and cables that clip mid-span.
+// Stage 3: overlaps between parts (buried, z-fight, cutting through) and cables that clip mid-span or float at an end.
 import { boxGap, pointInsideMesh } from '../math';
-import { embed } from '../relation';
+import { embed, prepare, relate } from '../relation';
 import { at, fmt, type CheckStage } from '../context';
 import type { P } from '../types';
 
@@ -37,18 +37,39 @@ export const overlapStage: CheckStage = (ctx) => {
   }
 };
 
+function isPlinthPart(Y: P, totalParts: number, minParts: number, grounded: boolean): boolean {
+  if (!grounded || totalParts < minParts) return false;
+  return /plinth|foundation/i.test(Y.def.name) || (Y.def.index === 0 && Y.box[1] < -0.02);
+}
+
 export const cableStage: CheckStage = (ctx) => {
-  const { parts: P_, add, R } = ctx;
+  const { parts: P_, o, add, R } = ctx;
+  const plinthY = o.grounded ? (P_.length >= o.minParts && P_[0] && P_[0].box[1] < -0.02 ? P_[0].box[4] : 0) : -Infinity;
   for (const T of P_) {
     if (T.def.kind !== 'TubeGeometry') continue;
+    const cap = Math.max(6, Math.floor(T.n * 0.14));
+    const sCap = prepare(T.def, T.tris.subarray(0, cap * 9));
+    const eCap = prepare(T.def, T.tris.subarray((T.n - cap) * 9));
+    const inOrTouch = (end: P, Y: P) => relate(end, Y, o.contactTol + 0.01).dist <= o.contactTol || (Y.closed && (pointInsideMesh(end.tris[0], end.tris[1], end.tris[2], Y.tris) || pointInsideMesh(end.tris[end.tris.length - 3], end.tris[end.tris.length - 2], end.tris[end.tris.length - 1], Y.tris)));
+    const anchors = (end: P) => P_.filter((Y) => Y !== T && Y.def.kind !== 'TubeGeometry' && !isPlinthPart(Y, P_.length, o.minParts, o.grounded) && boxGap(end.box, Y.box) <= o.contactTol && inOrTouch(end, Y));
+    const sA = anchors(sCap), eA = anchors(eCap);
     for (const Y of P_) {
       if (Y === T || !Y.closed || !R(T.def.index, Y.def.index).crossing) continue;
+      const isAnchor = sA.includes(Y) || eA.includes(Y);
+      const lo = Math.floor(T.n * (isAnchor ? 0.28 : 0.15)), hi = Math.ceil(T.n * (isAnchor ? 0.72 : 0.85));
       let mid = 0;
-      for (let i = Math.floor(T.n * 0.15); i < Math.ceil(T.n * 0.85); i += 2) {
+      for (let i = lo; i < hi; i += 2) {
         const o9 = i * 9;
         if (pointInsideMesh((T.tris[o9] + T.tris[o9 + 3] + T.tris[o9 + 6]) / 3, (T.tris[o9 + 1] + T.tris[o9 + 4] + T.tris[o9 + 7]) / 3, (T.tris[o9 + 2] + T.tris[o9 + 5] + T.tris[o9 + 8]) / 3, Y.tris)) mid++;
       }
       if (mid >= 3) add('warn', 'CABLE_CLIPS', `${T.label} passes through ${Y.label} mid-span instead of ending on it.`, [T.def.index, Y.def.index], R(T.def.index, Y.def.index).at, 'Reduce the sag or re-route the cable so it clears the part, and let it end exactly on its two anchors.');
+    }
+    if (/antenna|tendril|whip/i.test(T.def.name)) continue;
+    if (!sA.length || !eA.length) {
+      add('error', 'CABLE_FLOAT', `${T.label} has an unanchored ${!sA.length && !eA.length ? 'start and end' : !sA.length ? 'start' : 'end'} (a cable must connect two solid parts, never float in mid-air or plunge into the ground/plinth).`, [T.def.index], at(!sA.length ? sCap.box : eCap.box), 'Anchor both ends of the cable ≥ 1 cm inside solid structural parts (hull, post, junction box), not in mid-air or bare ground.');
+    }
+    if (T.box[1] < plinthY + 0.005) {
+      add('warn', 'CABLE_CLIPS', `${T.label} sags into the ground or foundation plinth (lowest y = ${T.box[1].toFixed(2)} m).`, [T.def.index], at(T.box), 'Reduce the cable slack or raise its anchors so it hangs cleanly above the floor.');
     }
   }
 };

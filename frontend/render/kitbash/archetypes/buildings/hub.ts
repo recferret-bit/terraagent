@@ -96,7 +96,7 @@ function addHubAntennaAndRadar(b: KitbashBuilder) {
   hubCable(b, [1.28, 5.5, -1.68], [-0.4, 2.01, -1.96], 0.15, 0.025, 'antenna guy cable L');
   // Rotating radar tower (left-front top)
   box(b, 'hullSecondary', [0.9, 0.36, 0.9], [-1.4, 1.99, 0.7], { r: 0.05, seg: 1, name: 'radar pedestal' });
-  cyl(b, 'frameGunmetal', 0.12, 0.2, 1.48, [-1.4, 2.3, 0.7], { seg: 8, name: 'radar mast' });
+  cyl(b, 'frameGunmetal', 0.12, 0.2, 1.92, [-1.4, 2.3, 0.7], { seg: 8, name: 'radar mast' });
   const R = 0.85, n = 4, k = 0.55 / R, th = 0.04;
   const pts: THREE.Vector2[] = [];
   for (let i = 0; i <= n; i++) {
@@ -109,14 +109,14 @@ function addHubAntennaAndRadar(b: KitbashBuilder) {
   }
   b.addPart(new THREE.LatheGeometry(pts, 10), 'hullPrimary', {
     name: 'radar dish',
-    position: [-1.4, 3.75, 0.7],
+    position: [-1.4, 4.19, 0.7],
     rotation: [-0.55, 0, 0],
     ...spin(-1.4, 0.7),
   });
-  cyl(b, 'frameGunmetal', 0.05, 0.05, 0.5, [-1.4, 3.65, 0.7], { seg: 6, name: 'radar feed rod', ...spin(-1.4, 0.7) });
+  cyl(b, 'frameGunmetal', 0.05, 0.05, 0.5, [-1.4, 4.09, 0.7], { seg: 6, name: 'radar feed rod', ...spin(-1.4, 0.7) });
   b.addPart(new THREE.BoxGeometry(0.1, 0.1, 0.1), 'energyCyan', {
     name: 'radar feed light',
-    position: [-1.4, 4.13, 0.7],
+    position: [-1.4, 4.57, 0.7],
     ...spin(-1.4, 0.7),
   });
 }
@@ -134,20 +134,24 @@ export function commandHub() {
 export function claimBeacon() {
   const b = new KitbashBuilder();
   plinth(b, 2, 2);
-  cyl(b, 'hullPrimary', 0.5, 0.75, 0.5, [0, 0.2, 0], { seg: 8 });
-  ring(b, 'hullSecondary', 0.62, 0.05, [0, 0.62, 0], { seg: 8 });
-  cyl(b, 'frameGunmetal', 0.22, 0.34, 1.6, [0, 0.7, 0], { seg: 8 });
+  cyl(b, 'hullPrimary', 0.5, 0.75, 0.52, [0, 0.18, 0], { seg: 8, name: 'obelisk pedestal' });
+  ring(b, 'hullSecondary', 0.62, 0.05, [0, 0.62, 0], { seg: 8, name: 'pedestal collar' });
+  cyl(b, 'frameGunmetal', 0.22, 0.34, 1.62, [0, 0.68, 0], { seg: 8, name: 'obelisk column' });
   for (const a of [0, 1, 2]) {
     const an = a * 2.094 + 0.4;
-    strut(b, 'hullSecondary', [Math.cos(an) * 0.55, 0.65, Math.sin(an) * 0.55], [Math.cos(an) * 0.18, 2.1, Math.sin(an) * 0.18], 0.06);
+    strut(b, 'hullSecondary', [Math.cos(an) * 0.55, 0.62, Math.sin(an) * 0.55], [Math.cos(an) * 0.2, 2.1, Math.sin(an) * 0.2], 0.06, { name: `column buttress ${a + 1}` });
   }
-  b.addPart(new THREE.OctahedronGeometry(0.38, 0), 'energyCyan', { position: [0, 2.7, 0], scale: [0.8, 1.5, 0.8], emissiveIntensity: 4.0, ...spin(0, 0) });
-  ring(b, 'energyCyan', 0.62, 0.035, [0, 2.7, 0], { seg: 28, animType: 2, rotation: [PI / 2 + 0.3, 0, 0] });
-  ring(b, 'warningAmber', 0.5, 0.03, [0, 2.2, 0], { seg: 24, animType: 2, rotation: [PI / 2 - 0.25, 0.5, 0] });
+  const A = spin(0, 0);
+  cyl(b, 'frameGunmetal', 0.07, 0.09, 0.65, [0, 2.22, 0], { seg: 8, name: 'emitter spindle', ...A });
+  b.addPart(new THREE.OctahedronGeometry(0.36, 0), 'energyCyan', { name: 'beacon crystal light', position: [0, 2.75, 0], scale: [0.8, 1.45, 0.8], emissiveIntensity: 4.0, ...A });
+  strut(b, 'frameGunmetal', [-0.62, 2.75, 0], [0.62, 2.75, 0], 0.025, { name: 'upper ring spoke', ...A });
+  ring(b, 'energyCyan', 0.62, 0.035, [0, 2.75, 0], { seg: 14, name: 'upper gyro ring light', rotation: [PI / 2 + 0.3, 0, 0], ...A });
+  strut(b, 'frameGunmetal', [-0.5, 2.38, 0], [0.5, 2.38, 0], 0.025, { name: 'lower ring spoke', ...A });
+  ring(b, 'warningAmber', 0.5, 0.03, [0, 2.38, 0], { seg: 14, name: 'lower gyro ring light', rotation: [PI / 2 - 0.25, 0, 0], ...A });
   // banner flag
-  strut(b, 'frameGunmetal', [0.75, 0.2, -0.7], [0.75, 2.4, -0.7], 0.04);
-  box(b, 'hullSecondary', [0.04, 0.55, 0.7], [0.75, 1.75, -0.35], { r: 0.015, seg: 1 });
-  lamp(b, 'warningAmber', 0.07, [0.75, 2.45, -0.7]);
-  cable(b, [0.75, 2.3, -0.7], [0.15, 1.7, 0.1], 0.25, 0.02);
+  strut(b, 'frameGunmetal', [0.75, 0.18, -0.7], [0.75, 2.42, -0.7], 0.04, { name: 'banner mast' });
+  box(b, 'hullSecondary', [0.04, 0.55, 0.72], [0.75, 1.75, -0.36], { r: 0.015, seg: 1, name: 'faction banner' });
+  lamp(b, 'warningAmber', 0.07, [0.75, 2.44, -0.7], { name: 'banner mast light' });
+  cable(b, [0.75, 2.32, -0.7], [0.18, 1.65, -0.18], 0.22, 0.02, 'frameGunmetal', { name: 'banner guy cable' });
   return b.build();
 }

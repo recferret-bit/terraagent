@@ -56,7 +56,7 @@ npm run validate:models -- --all --quiet            # the whole catalog, one lin
 npm run validate:models -- robot.builder --json     # machine-readable (for agents and CI)
 npm run validate:models -- robot.builder --pairs    # every touching/crossing pair with its numbers (calibration)
 npm run validate:models -- robot.builder --geometry-only   # skip the colour / material / detail checks
-npm run test:models                                 # self-test of the validator itself (35 known-good/bad fixtures, geometry and appearance)
+npm run test:models                                 # self-test of the validator itself (43 known-good/bad fixtures, geometry and appearance)
 ```
 Exit code is `1` when any model has an **error** (`--strict` also fails on warnings).
 
@@ -92,7 +92,8 @@ with a visibly wrong model means a check is missing: add a fixture and a check (
 | `NEAR_COPLANAR` | warn | Faces cross at a grazing angle within 3 mm of the same plane: the edge shimmers | Offset one part ≥ 3 mm or tilt it more |
 | `CUTS_THROUGH` | warn | Two similar-size parts each sit ≥ 15 % inside the other, > 4 cm deep: the crossing line shows | Separate them to a joint-sized overlap or merge them |
 | `BURIED_PART` | warn | A part is ≥ 92 % inside another: invisible, costs triangles | Delete it or pull it out so it shows |
-| `CABLE_CLIPS` | warn | A `TubeGeometry` cable passes through a solid mid-span | Re-anchor under the joints, reduce sag, let it end on its two anchors |
+| `CABLE_FLOAT` | error | A `TubeGeometry` cable has an unanchored start or end (floating in mid-air or plunging into the ground/foundation plinth instead of a structural part) | Anchor both ends of the cable ≥ 1 cm inside solid structural parts (hull, post, junction box) |
+| `CABLE_CLIPS` | warn | A `TubeGeometry` cable passes through a solid mid-span, or sags into the ground/foundation plinth | Re-anchor under the joints, reduce sag, let it end on its two anchors |
 | `ANIM_DETACH` | warn/info | A bobbing/recoiling part lifts > 3 cm off its mount (warn for bob, info for recoil) | Overlap it deeper, or accept for hover glows |
 | `ANIM_DEEPENS_OVERLAP` | warn/info | A spinner sinks deeper into its mount while moving (info for recoil, which slides into a housing by design) | Re-centre the pivot on the part's axis |
 | `ANIM_BELOW_GROUND` | warn | A bob dips > 2 cm below y = 0 | Raise the part |

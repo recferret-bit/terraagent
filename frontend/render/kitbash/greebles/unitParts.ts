@@ -7,10 +7,10 @@ export type V3 = [number, number, number];
 export type Zone = MaterialZoneId;
 
 /** Rounded box. `seg` = bevel segments: 2 for hero hulls (smooth highlights), 1 for small or thin parts (a chamfer: 3x fewer triangles). */
-export const rbox = (w: number, h: number, d: number, r = 0.04, seg = 2) =>
+export const rbox = (w: number, h: number, d: number, r = 0.04, seg = 1) =>
   new RoundedBoxGeometry(w, h, d, seg, Math.min(r, w / 2 - 1e-3, h / 2 - 1e-3, d / 2 - 1e-3));
-export const cyl = (rt: number, rb: number, h: number, seg = 12) => new THREE.CylinderGeometry(rt, rb, h, seg);
-export const sph = (r: number, ws = 14, hs = 10) => new THREE.SphereGeometry(r, ws, hs);
+export const cyl = (rt: number, rb: number, h: number, seg = 10) => new THREE.CylinderGeometry(rt, rb, h, seg);
+export const sph = (r: number, ws = 10, hs = 8) => new THREE.SphereGeometry(r, ws, hs);
 
 /** Mulberry32 seeded rng. */
 export function rng(seed: number) {
@@ -39,7 +39,7 @@ export function strut(b: KitbashBuilder, a: V3, c: V3, r: number, zone: Zone, op
 /** Tube through points (CatmullRom). */
 export function cable(b: KitbashBuilder, pts: V3[], r = 0.02, zone: Zone = 'frameGunmetal', opts: PartOptions = {}) {
   const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p)));
-  b.addPart(new THREE.TubeGeometry(curve, 14, r, 6, false), zone, opts);
+  b.addPart(new THREE.TubeGeometry(curve, 10, r, 5, false), zone, { name: 'power cable', ...opts });
 }
 
 /** Sagging cable between two points. */
@@ -100,8 +100,8 @@ export function rockGeo(radius: number, seed: number, squash = 1, detail = 1) {
 }
 
 /** Lathe from [radius, y] profile. */
-export function lathe(profile: [number, number][], seg = 20, phiStart = 0, phiLen = Math.PI * 2) {
-  return new THREE.LatheGeometry(profile.map(([x, y]) => new THREE.Vector2(x, y)), seg, phiStart, phiLen);
+export function lathe(profile: [number, number][], seg = 14, phiStart = 0, phiLen = Math.PI * 2) {
+  return new THREE.LatheGeometry(profile.map(([x, y]) => new THREE.Vector2(Math.max(0.004, x), y)), seg, phiStart, phiLen);
 }
 
 // ---- Registered greebles (reusable by other agents) ----
