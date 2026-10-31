@@ -248,10 +248,11 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const place = (def: ChunkDef) => {
     const k = `${def.cq},${def.cr}`, old = meshes.get(k);
     if (old) { group.remove(old); old.geometry.dispose(); }
-    const m = buildChunkMesh(radius, def, { ...tiles, prepStartTime: prepStartTimes }, material);
+    const chunkLayers: HexTileLayers = { ...tiles, prepStartTime: prepStartTimes, kind: look.kind };
+    const m = buildChunkMesh(radius, def, chunkLayers, material);
     meshes.set(k, m);
     group.add(m);
-    props.setChunk(k, scatterChunkProps(radius, def.tiles, tiles, heightAt));
+    props.setChunk(k, scatterChunkProps(radius, def.tiles, chunkLayers, heightAt));
   };
 
   defs.forEach(place);

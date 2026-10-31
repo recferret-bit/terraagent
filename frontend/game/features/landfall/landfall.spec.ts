@@ -277,6 +277,115 @@ describe('W01-26: EntityMeshes 3D rendering and interpolation', () => {
 
     meshes.dispose();
   });
+
+  it('plays pod touchdown descent with retro-thruster flames and engine stop animation when playPodTouchdown is enabled', () => {
+    const scene = new THREE.Scene();
+    const meshes = new EntityMeshes(
+      scene,
+      (id) => {
+        const g = new THREE.Group();
+        g.name = id;
+        g.userData = { archetypeId: id, uniforms: { uTime: { value: 0 }, uWalkWeight: { value: 0 }, uWorkWeight: { value: 0 } } };
+        return g;
+      },
+      true,
+    );
+
+    const host = new LocalHost({ flags: ['W00', 'W01'], radius: 16 });
+    const { podEntityId } = spawnColonyLanding(host.state, { colonyId: 0, q: 0, r: 0 });
+    host.step(35); // sim is landed (pod + hq present)
+    const view = host.sync(true);
+
+    meshes.syncView(view, null, 'desert');
+    const podRec = meshes.getRecord(podEntityId)!;
+    expect(podRec.mesh.position.y).toBeGreaterThan(20);
+
+    // Mid retro-burn descent (t = 0.5 s)
+    meshes.update(0.5, null);
+    expect(meshes.podTouchdown.computeState(false, 1).phase).toBe('descending');
+    expect(podRec.mesh.position.y).toBeGreaterThan(5);
+    expect(podRec.mesh.getObjectByName('pod-retro-flames')?.visible).toBe(true);
+    expect(meshes.podTouchdown.thrLight.intensity).toBeGreaterThan(1);
+
+    // Advance to touchdown + engine stop phase (t = 1.95 s, within [1.75, 2.35])
+    meshes.update(1.45, null);
+    const engineStopState = meshes.podTouchdown.computeState(false, 1);
+    expect(engineStopState.phase).toBe('engine-stop');
+    expect(engineStopState.podLift).toBe(0);
+    expect(engineStopState.thrust).toBeGreaterThan(0);
+    expect(engineStopState.thrust).toBeLessThan(1);
+    expect(engineStopState.hqVisible).toBe(true);
+
+    // Advance past engine stop completion (t = 2.8 s)
+    meshes.update(0.85, null);
+    const settledState = meshes.podTouchdown.computeState(false, 1);
+    expect(settledState.phase).toBe('settled');
+    expect(settledState.thrust).toBe(0);
+    expect(meshes.podTouchdown.thrLight.intensity).toBe(0);
+    expect(podRec.mesh.getObjectByName('pod-retro-flames')?.visible).toBe(false);
+
+    meshes.dispose();
+  });
+});
+
+describe('W01-26: PodTouchdownFx dev.land transition and colony isolation', () => {
+  it('completes touchdown + engine-stop without freezing mid-air when sim transitions descending -> idle (dev.land) and isolates owned colony', () => {
+    const scene = new THREE.Scene();
+    const meshes = new EntityMeshes(
+      scene,
+      (id) => {
+        const g = new THREE.Group();
+        g.name = id;
+        g.userData = { archetypeId: id, uniforms: { uTime: { value: 0 }, uWalkWeight: { value: 0 }, uWorkWeight: { value: 0 } } };
+        return g;
+      },
+      true,
+    );
+    meshes.setOwnerColonyIndex(1);
+
+    const host = new LocalHost({ flags: ['W00', 'W01'], radius: 16 });
+    const col0 = spawnColonyLanding(host.state, { colonyId: 0, q: 0, r: 0 });
+    host.step(35); // Colony 0 is already landed and idle
+    const col1 = spawnColonyLanding(host.state, { colonyId: 1, q: 6, r: 0 });
+    host.step(1); // Colony 1 is descending on initial snapshot
+
+    meshes.syncView(host.sync(true), null, 'desert');
+    meshes.update(0.05, null);
+    // Colony 0 pod must stay on the ground (y = 0) and its HQ must remain visible
+    const col0Pod = meshes.getRecord(col0.podEntityId)!;
+    expect(col0Pod.mesh.position.y).toBe(0);
+
+    // Fast-start dev.land completes Colony 1's sim descent 50ms later (simDescending: true -> false)
+    host.step(35);
+    meshes.syncView(host.sync(false), null, 'desert');
+
+    // Step past 0.7s (where the old simStopTimer bug froze elapsed at 0.05s and lifted pod to ~23.5m forever)
+    meshes.update(0.7, null);
+    const col1Pod = meshes.getRecord(col1.podEntityId)!;
+    expect(col1Pod.mesh.position.y).toBeGreaterThan(2);
+    expect(col1Pod.mesh.position.y).toBeLessThan(20);
+
+    // Step into engine-stop window (t = 1.95s)
+    meshes.update(1.2, null);
+    const engineStop = meshes.podTouchdown.computeState(false, 1);
+    expect(engineStop.phase).toBe('engine-stop');
+    expect(col1Pod.mesh.position.y).toBe(0);
+
+    // Step past total completion (t = 2.8s)
+    meshes.update(0.85, null);
+    const settled = meshes.podTouchdown.computeState(false, 1);
+    expect(settled.phase).toBe('settled');
+    expect(col1Pod.mesh.position.y).toBe(0);
+    expect(settled.hqVisible).toBe(true);
+    for (const kind of [ENTITY_KIND.hq]) {
+      for (let i = 1; i <= 10; i++) {
+        const rec = meshes.getRecord(i);
+        if (rec && rec.kind === kind) expect(rec.mesh.visible).toBe(true);
+      }
+    }
+
+    meshes.dispose();
+  });
 });
 
 describe('W01-25: building.commandHub geometry validation and 0/33/66/100% scaffold stages', () => {

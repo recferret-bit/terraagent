@@ -208,7 +208,12 @@ export class Game {
     if (!this.useOnlineGameplay) {
       this.gHud = new GameHud(document.body, this.spec.name, this.spec.seed, { onResume: () => this.setPaused(false), onReturn: () => this.returnToOrbit() });
     }
-    this.descent.onTelemetry((t) => this.dHud?.update(t));
+    this.descent.onTelemetry((t) => {
+      this.dHud?.update(t);
+      if (this.useOnlineGameplay && (t.phase === 'retro' || t.phase === 'touchdown')) {
+        this.skipDescent();
+      }
+    });
     this.descent.onComplete((hero) => this.startGameplay(hero));
     this.dHud.update(this.descent.handoff.tel);
 
@@ -261,6 +266,7 @@ export class Game {
     const dh = this.dHud; this.dHud = null;
 
     if (this.useOnlineGameplay) {
+      hero.removeFromParent();
       try { d.dispose(); } catch (e) { console.warn(e); }
       dh?.dispose();
       if (this.surface) {
@@ -277,7 +283,7 @@ export class Game {
       this.online = new OnlineSession(this.root, 'boot', {
         viewport: this.viewport,
         planetKind: this.spec.kind,
-        skipDescent: true,
+        skipDescent: this.settings.skipCinematic,
         preBoot: this.preBoot ?? undefined,
         search: '',
         onReturnToOrbit: () => { void this.returnToOrbit(); },

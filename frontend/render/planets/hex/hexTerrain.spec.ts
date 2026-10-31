@@ -264,6 +264,36 @@ describe('W01-20: Water plane and per-tile prop scatter reactivity', () => {
   });
 });
 
+describe('W01-20: Selected planet biome look sync on HexTerrain', () => {
+  it('syncs hex terrain visuals to selected planet kind: dune has zero water and zero pine trees with sandy colours', () => {
+    const tiles = buildGolden1TemperateTiles(12);
+    const duneLook = specForPlanetType('desert');
+    expect(duneLook.kind).toBe('dune');
+    const duneTerrain = createHexTerrain({ radius: 12, tiles, look: duneLook });
+
+    expect(duneTerrain.water.mesh.visible).toBe(false);
+    expect(duneTerrain.water.waterTileCount).toBe(0);
+    expect(duneTerrain.water.waterTriangleCount).toBe(0);
+    expect(duneTerrain.props.counts().pine).toBe(0);
+    expect(duneTerrain.props.counts().boulder).toBeGreaterThan(0);
+
+    const flatStyle = tileStyle(0, 0, HEX_TERRAIN.flat, HEX_PREP.flat, HEX_DEPOSIT.none, 'dune');
+    expect(flatStyle.r).toBeGreaterThan(flatStyle.g);
+    expect(flatStyle.g).toBeGreaterThan(flatStyle.b);
+    const basinStyle = tileStyle(0, 0, HEX_TERRAIN.deep, HEX_PREP.wild, HEX_DEPOSIT.none, 'dune');
+    expect(basinStyle.r).toBeGreaterThan(basinStyle.b);
+    duneTerrain.dispose();
+
+    const oceanLook = specForPlanetType('ocean');
+    expect(oceanLook.kind).toBe('oceanForest');
+    const oceanTerrain = createHexTerrain({ radius: 12, tiles, look: oceanLook });
+    expect(oceanTerrain.water.mesh.visible).toBe(true);
+    expect(oceanTerrain.water.waterTileCount).toBeGreaterThan(0);
+    expect(oceanTerrain.props.counts().pine).toBeGreaterThan(0);
+    oceanTerrain.dispose();
+  });
+});
+
 describe('W01-21: Prepared-ground pad material and 0.4s shader blend', () => {
   it('synthesizes foundationHexPad PBR textures in ProceduralTextureRegistry and extends the single terrain shader', () => {
     const bundle = ProceduralTextureRegistry.get('foundationHexPad');

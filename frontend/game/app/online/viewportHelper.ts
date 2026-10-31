@@ -32,8 +32,12 @@ export function isEscapeBlockedByHudOverlay(): boolean {
 
 export function readStoredPlanetKind(): PlanetKind | null {
   try {
-    if (typeof sessionStorage !== 'undefined') {
+    if (typeof sessionStorage !== 'undefined' && typeof sessionStorage.getItem === 'function') {
       const v = sessionStorage.getItem(PLANET_KIND_SESSION_KEY);
+      if (v && PLANET_KINDS.includes(v as PlanetKind)) return v as PlanetKind;
+    }
+    if (typeof localStorage !== 'undefined' && typeof localStorage.getItem === 'function') {
+      const v = localStorage.getItem(PLANET_KIND_SESSION_KEY);
       if (v && PLANET_KINDS.includes(v as PlanetKind)) return v as PlanetKind;
     }
   } catch {
@@ -44,8 +48,11 @@ export function readStoredPlanetKind(): PlanetKind | null {
 
 export function writeStoredPlanetKind(kind: PlanetKind): void {
   try {
-    if (typeof sessionStorage !== 'undefined') {
+    if (typeof sessionStorage !== 'undefined' && typeof sessionStorage.setItem === 'function') {
       sessionStorage.setItem(PLANET_KIND_SESSION_KEY, kind);
+    }
+    if (typeof localStorage !== 'undefined' && typeof localStorage.setItem === 'function') {
+      localStorage.setItem(PLANET_KIND_SESSION_KEY, kind);
     }
   } catch {
     // ignore storage errors

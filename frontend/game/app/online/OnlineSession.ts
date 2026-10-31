@@ -124,8 +124,11 @@ export class OnlineSession {
     this.skipDescent = Boolean(opts.skipDescent || q.get('skip') === '1');
     this.fastStartLand = Boolean(this.skipDescent || (!opts.wsDeps && !opts.localHost && !scenarioParam(this.search)));
     this.onReturnToOrbit = opts.onReturnToOrbit;
-    this.planetKind = opts.planetKind ?? readStoredPlanetKind();
-    if (opts.planetKind) writeStoredPlanetKind(opts.planetKind);
+    const rawUrlPlanet = q.get('planet');
+    const urlPlanet: PlanetKind | null =
+      rawUrlPlanet === 'dune' || rawUrlPlanet === 'oceanForest' || rawUrlPlanet === 'forestRock' ? rawUrlPlanet : null;
+    this.planetKind = opts.planetKind ?? urlPlanet ?? readStoredPlanetKind();
+    if (opts.planetKind ?? urlPlanet) writeStoredPlanetKind((opts.planetKind ?? urlPlanet)!);
 
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
@@ -151,7 +154,7 @@ export class OnlineSession {
     this.store = opts.store ?? new WorldStore(this.transport);
     this.commandBus = new CommandBus(this.transport, undefined, (id, kind, args) => this.store.notifySent(id, kind, args));
     this.commands = this.commandBus;
-    this.entities = new EntityMeshes(this.viewport.scene, opts.makeMesh);
+    this.entities = new EntityMeshes(this.viewport.scene, opts.makeMesh, !this.skipDescent);
     this.landfall = new LandfallController({
       store: this.store, sendCommand: this.commandBus.send,
       pickTile: (cx, cy) => this.pickAt(cx, cy), canvas: this.viewport.renderer.domElement,
@@ -170,11 +173,11 @@ export class OnlineSession {
     const predict = q.get('predict') !== '0';
     if (useGuestBoot) {
       this.bootOverlay = new BootOverlay(uiParent);
-      if (this.skipDescent) this.bootOverlay.showColony('pl_dev');
+      if (this.skipDescent || opts.preBoot) this.bootOverlay.showColony('pl_dev');
       this.whenBooted = this.startBootSequence(opts, predict);
     } else {
       this.bootOverlay = this.flags.set.has('W01') && mode === 'boot' ? new BootOverlay(uiParent) : null;
-      if (this.bootOverlay && this.skipDescent) this.bootOverlay.showColony('pl_dev');
+      if (this.bootOverlay && (this.skipDescent || opts.preBoot)) this.bootOverlay.showColony('pl_dev');
       this.whenBooted = Promise.resolve(null);
       this.cleanups.push(this.store.onView((v) => this.onView(v)));
       this.store.start([...this.flags.set], { predict });
@@ -305,6 +308,7 @@ export class OnlineSession {
     this.colonyIndex = boot.colony.colonyIndex;
     this.spawn = boot.colony.spawn;
     this.cameraTargetTile = { q: boot.colony.spawn.q, r: boot.colony.spawn.r };
+    this.entities.setOwnerColonyIndex(this.colonyIndex);
     this.landfall.setOwnerColonyIndex(this.colonyIndex);
     this.bootOverlay?.setColonyMeta(this.planetId, this.colonyId, this.colonyIndex);
     if (!this.skipDescent) this.bootOverlay?.setSplashStatus('Deploying drop pod…');
@@ -436,10 +440,12 @@ export class OnlineSession {
 
   private loop = () => {
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
-    const dt = Math.min((now - this.last) / 1000, 0.05);
+    const rawDt = Math.max(0, (now - this.last) / 1000);
+    const dt = Math.min(rawDt, 0.05);
+    const animDt = Math.min(rawDt, 0.25) * Math.max(1, this.warp);
     this.last = now;
     try {
-      this.entities.update(dt, this.terrain);
+      this.entities.update(animDt, this.terrain);
       if (this.cam) {
         this.cam.update(dt);
         this.viewport.followShadow(this.cam.target);

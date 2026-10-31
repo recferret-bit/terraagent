@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { hexIndex } from '@terra/sim/grid/hex';
-import type { PlanetSpec } from '../PlanetSpec';
+import type { PlanetKind, PlanetSpec } from '../PlanetSpec';
 import {
   buildInstanced,
   createFoliageMaterial,
   createRockMaterial,
   makeBoulderGeo,
+  makeBroadleafGeo,
   makePineGeo,
   makeSpireGeo,
   type InstOpts,
@@ -102,6 +103,7 @@ export function scatterTileProps(
   prep = 0,
   deposit = 0,
   heightAt: (x: number, z: number) => number = () => 0,
+  kind: PlanetKind = 'forestRock',
 ): TilePropInstance[] {
   const out: TilePropInstance[] = [];
   const [cx, cz] = tileXZ(q, r);
@@ -110,15 +112,22 @@ export function scatterTileProps(
 
   if (!cleared) {
     if (terrain === HEX_TERRAIN.forest) {
-      const count = 2 + (tileHashU32(q, r, 101) % 3); // 2..4 pines
-      for (let k = 0; k < count; k++) {
-        out.push(makeInstance('pine', q, r, tileIndex, cx, cy, cz, k, count, 200, 0.26, 0.48));
+      if (kind === 'dune') {
+        const count = 1 + (tileHashU32(q, r, 101) % 2); // 1..2 desert boulders instead of trees
+        for (let k = 0; k < count; k++) {
+          out.push(makeInstance('boulder', q, r, tileIndex, cx, cy, cz, k, count, 200, 0.26, 0.44));
+        }
+      } else {
+        const count = 2 + (tileHashU32(q, r, 101) % 3); // 2..4 trees
+        for (let k = 0; k < count; k++) {
+          out.push(makeInstance('pine', q, r, tileIndex, cx, cy, cz, k, count, 200, 0.26, 0.48));
+        }
       }
     } else if (terrain === HEX_TERRAIN.rock) {
       const count = 2 + (tileHashU32(q, r, 303) % 2); // 2..3 boulders/spires
       for (let k = 0; k < count; k++) {
-        const kind: PropKind = k === count - 1 ? 'spire' : 'boulder';
-        out.push(makeInstance(kind, q, r, tileIndex, cx, cy, cz, k, count, 400, 0.24, 0.44));
+        const propKind: PropKind = k === count - 1 ? 'spire' : 'boulder';
+        out.push(makeInstance(propKind, q, r, tileIndex, cx, cy, cz, k, count, 400, 0.24, 0.44));
       }
     }
   }
@@ -155,11 +164,12 @@ export function scatterChunkProps(
   if (!terrain) return buckets;
   const prep = layers.prep;
   const deposit = layers.deposit;
+  const kind = layers.kind ?? 'forestRock';
 
   for (let n = 0; n < chunkTiles.length; n++) {
     const i = chunkTiles[n]!;
     const q = hx.q[i]!, r = hx.r[i]!;
-    const props = scatterTileProps(q, r, i, terrain[i] ?? 0, prep?.[i] ?? 0, deposit?.[i] ?? 0, heightAt);
+    const props = scatterTileProps(q, r, i, terrain[i] ?? 0, prep?.[i] ?? 0, deposit?.[i] ?? 0, heightAt, kind);
     for (const p of props) {
       buckets[p.kind].push(p);
       buckets.total++;
@@ -190,8 +200,12 @@ export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
 
   const rockTint = new THREE.Color(look.palette.rock);
   const darkTint = new THREE.Color(look.palette.rockDark);
+  const treeGeo =
+    look.kind === 'oceanForest'
+      ? makeBroadleafGeo(new THREE.Color(look.palette.groundLow), new THREE.Color(look.palette.groundHigh), look.seed)
+      : makePineGeo(new THREE.Color(0x2f6a3c), new THREE.Color(0x3f7a43));
   const geos: Record<PropKind, THREE.BufferGeometry> = {
-    pine: makePineGeo(new THREE.Color(0x2f6a3c), new THREE.Color(0x3f7a43)),
+    pine: treeGeo,
     boulder: makeBoulderGeo(11 + (look.seed % 7), rockTint),
     spire: makeSpireGeo(7 + (look.seed % 5), rockTint.clone().lerp(darkTint, 0.25)),
     metals: makeBoulderGeo(29, new THREE.Color(0xc86d28)),

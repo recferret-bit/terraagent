@@ -3,6 +3,7 @@ import { checkBuildingAffordability } from '@terra/sim';
 import type { CommandResult, SendCommand } from '../../net/commandBus';
 import type { Transport } from '../../net/types';
 import type { GameView } from '../../core/registry/types';
+import { createHudIcon } from './hudIcons';
 
 export interface StoreLike {
   readonly latest?: unknown;
@@ -104,8 +105,8 @@ function extractHqCell(view: GameView, colonyIndex = 0): { cell: number; cellMax
 }
 
 /**
- * Minimal HUD bar: colony name, game clock, Metals/Minerals/Bio stock + family caps,
- * HQ power cell bar, and reject/resource waiting toasts.
+ * Compact top HUD header: icon-only Metals/Minerals/Bio/Supply stocks, inline HQ power cell bar,
+ * game clock, and reject/resource waiting toasts.
  */
 export class MinimalHud {
   readonly el: HTMLElement;
@@ -130,7 +131,7 @@ export class MinimalHud {
 
   constructor(parent: HTMLElement, private readonly opts: MinimalHudOptions = {}) {
     this.el = document.createElement('div');
-    this.el.className = 'plate ta-hud-min';
+    this.el.className = 'plate-sm ta-hud-min';
     this.el.dataset.testid = 'hud-min';
 
     const { brand, colonyEl, clockEl } = this.createBrand();
@@ -158,7 +159,7 @@ export class MinimalHud {
     this.toastContainer.className = 'ta-hud-toasts';
     this.toastContainer.dataset.testid = 'hud-toast-container';
 
-    this.el.append(brand, stocks, this.cellEl, this.toastContainer);
+    this.el.append(stocks, this.cellEl, brand, this.toastContainer);
     parent.appendChild(this.el);
 
     this.initListeners();
@@ -168,7 +169,7 @@ export class MinimalHud {
     const brand = document.createElement('div');
     brand.className = 'ta-hud-min__brand';
     const colonyEl = document.createElement('span');
-    colonyEl.className = 'ta-hud-min__colony';
+    colonyEl.className = 'ta-hud-min__colony ta-hud-min__sr-only';
     colonyEl.dataset.testid = 'hud-colony-name';
     colonyEl.textContent = 'Colony 0';
 
@@ -176,7 +177,7 @@ export class MinimalHud {
     clockEl.className = 'ta-hud-min__clock';
     clockEl.dataset.testid = 'hud-clock';
     clockEl.textContent = '00:00';
-    brand.append(colonyEl, clockEl);
+    brand.append(colonyEl, createHudIcon('clock'), clockEl);
     return { brand, colonyEl, clockEl };
   }
 
@@ -198,49 +199,41 @@ export class MinimalHud {
     const metalsEl = document.createElement('div');
     metalsEl.className = 'ta-hud-min__stock ta-hud-min__stock--metals';
     metalsEl.dataset.testid = 'hud-stock-metals';
-    const metalsLbl = document.createElement('span');
-    metalsLbl.className = 'ta-hud-min__stock-label';
-    metalsLbl.textContent = 'Metals ';
+    metalsEl.title = 'Metals';
     const metalsVal = document.createElement('span');
     metalsVal.className = 'ta-hud-min__stock-val';
     metalsVal.textContent = '0 / 500';
-    metalsEl.append(metalsLbl, metalsVal);
+    metalsEl.append(createHudIcon('metals'), metalsVal);
 
     const mineralsEl = document.createElement('div');
     mineralsEl.className = 'ta-hud-min__stock ta-hud-min__stock--minerals';
     mineralsEl.dataset.testid = 'hud-stock-minerals';
-    const minLbl = document.createElement('span');
-    minLbl.className = 'ta-hud-min__stock-label';
-    minLbl.textContent = 'Minerals ';
+    mineralsEl.title = 'Minerals';
     const mineralsVal = document.createElement('span');
     mineralsVal.className = 'ta-hud-min__stock-val';
     mineralsVal.textContent = '0 / 500';
-    mineralsEl.append(minLbl, mineralsVal);
+    mineralsEl.append(createHudIcon('minerals'), mineralsVal);
 
     const bioEl = document.createElement('div');
     bioEl.className = 'ta-hud-min__stock ta-hud-min__stock--bio';
     bioEl.dataset.testid = 'hud-stock-bio';
-    const bioLbl = document.createElement('span');
-    bioLbl.className = 'ta-hud-min__stock-label';
-    bioLbl.textContent = 'Bio ';
+    bioEl.title = 'Bio (Biomass + Water)';
     const bioVal = document.createElement('span');
     bioVal.className = 'ta-hud-min__stock-val';
     bioVal.textContent = '0 / 500 ';
     const bioSub = document.createElement('span');
-    bioSub.className = 'ta-hud-min__stock-sub';
+    bioSub.className = 'ta-hud-min__stock-sub ta-hud-min__sr-only';
     bioSub.textContent = '(Biomass 0 · Water 0)';
-    bioEl.append(bioLbl, bioVal, bioSub);
+    bioEl.append(createHudIcon('bio'), bioVal, bioSub);
 
     const supplyEl = document.createElement('div');
     supplyEl.className = 'ta-hud-min__stock ta-hud-min__stock--supply';
     supplyEl.dataset.testid = 'hud-supply';
-    const supplyLbl = document.createElement('span');
-    supplyLbl.className = 'ta-hud-min__stock-label';
-    supplyLbl.textContent = 'Supply ';
+    supplyEl.title = 'Supply';
     const supplyVal = document.createElement('span');
     supplyVal.className = 'ta-hud-min__stock-val';
     supplyVal.textContent = '0 / 0';
-    supplyEl.append(supplyLbl, supplyVal);
+    supplyEl.append(createHudIcon('supply'), supplyVal);
 
     stocks.append(metalsEl, mineralsEl, bioEl, supplyEl);
 
@@ -251,16 +244,7 @@ export class MinimalHud {
     const cellEl = document.createElement('div');
     cellEl.className = 'ta-hud-min__cell';
     cellEl.dataset.testid = 'hud-hq-cell';
-
-    const cellHead = document.createElement('div');
-    cellHead.className = 'ta-hud-min__cell-head';
-    const cellLbl = document.createElement('span');
-    cellLbl.className = 'ta-hud-min__cell-label';
-    cellLbl.textContent = 'HQ CELL ';
-    const cellVal = document.createElement('span');
-    cellVal.className = 'ta-hud-min__cell-val';
-    cellVal.textContent = '800 / 800 E';
-    cellHead.append(cellLbl, cellVal);
+    cellEl.title = 'HQ Power Cell';
 
     const cellBar = document.createElement('div');
     cellBar.className = 'ta-hud-min__cell-bar';
@@ -269,7 +253,11 @@ export class MinimalHud {
     cellFill.dataset.testid = 'hud-hq-cell-bar';
     cellFill.style.width = '100%';
     cellBar.appendChild(cellFill);
-    cellEl.append(cellHead, cellBar);
+
+    const cellVal = document.createElement('span');
+    cellVal.className = 'ta-hud-min__cell-val';
+    cellVal.textContent = '800 / 800 E';
+    cellEl.append(createHudIcon('cell'), cellBar, cellVal);
 
     return { cellEl, cellVal, cellFill };
   }

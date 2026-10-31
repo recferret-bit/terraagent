@@ -50,7 +50,8 @@ const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 {
   float baseLum = max(0.08, dot(uLow, vec3(0.3333)));
   float detail = clamp(dot(diffuseColor.rgb, vec3(0.3333)) / baseLum, 0.65, 1.35);
-  diffuseColor.rgb = mix(diffuseColor.rgb, vTileColor * detail, 0.72);
+  vec3 tileLinear = pow(max(vTileColor, vec3(0.0)), vec3(2.2));
+  diffuseColor.rgb = mix(diffuseColor.rgb, tileLinear * detail, 0.72);
   vec2 tp = vLP.xz / 2.0;                          // tile units
   float hr = tp.y * 1.1547005;                     // 2/sqrt(3)
   vec2 ax = vec2(tp.x - hr * 0.5, hr);             // fractional axial (q, r)

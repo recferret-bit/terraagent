@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { createArchetypeMesh, setArchetypeBuildProgress, tickArchetypeMesh } from '@terra/render/kitbash';
+import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
+import { PodTouchdownFx } from './PodTouchdownFx';
 
 export interface EntityMeshRecord {
   id: number;
@@ -40,6 +42,12 @@ function hubBuildProgressForState(state: number, progress: number): number {
   return 1;
 }
 
+function planetKindForBiome(biomeKey: string): PlanetKind {
+  if (biomeKey === 'desert' || biomeKey === 'dune') return 'dune';
+  if (biomeKey === 'ocean' || biomeKey === 'oceanForest') return 'oceanForest';
+  return 'forestRock';
+}
+
 function disposeObject3D(obj: THREE.Object3D): void {
   obj.traverse((child) => {
     const mesh = child as THREE.Mesh;
@@ -54,14 +62,18 @@ function disposeObject3D(obj: THREE.Object3D): void {
 
 /**
  * Renders sim entities (`devProbe`, `pod`, `hq`, `commandHub`) in the online 3D scene, interpolating continuous axial
- * coordinates `(x, y)` smoothly and driving `aPartAnim` walk/work weights plus selection & move-target ground rings.
+ * coordinates `(x, y)` smoothly and driving `aPartAnim` walk/work weights, selection & move-target ground rings, and
+ * the drop-pod touchdown + retro-engine stop animation.
  */
 export class EntityMeshes {
   readonly group = new THREE.Group();
   readonly selectionRing: THREE.Mesh;
   readonly targetMarker: THREE.Mesh;
+  readonly podTouchdown: PodTouchdownFx;
   private readonly entries = new Map<number, EntityMeshRecord>();
   private selectedEntityId: number | null = null;
+  private ownerColonyIndex = 0;
+  private initialSyncDone = false;
   private markerT = 99;
   private markerTile: { q: number; r: number } | null = null;
   private time = 0;
@@ -70,9 +82,11 @@ export class EntityMeshes {
   constructor(
     private readonly scene: THREE.Scene,
     private readonly makeMesh: MeshFactory = (id, biome) => createArchetypeMesh(id, biome),
+    playPodTouchdown = false,
   ) {
     this.group.name = 'online-entities';
     this.scene.add(this.group);
+    this.podTouchdown = new PodTouchdownFx(this.scene, playPodTouchdown);
 
     this.selectionRing = new THREE.Mesh(
       new THREE.RingGeometry(0.75, 0.95, 32).rotateX(-Math.PI / 2),
@@ -111,6 +125,10 @@ export class EntityMeshes {
     return this.entries.get(entityId);
   }
 
+  setOwnerColonyIndex(colonyIndex: number): void {
+    this.ownerColonyIndex = colonyIndex;
+  }
+
   setSelectedEntityId(entityId: number | null): void {
     this.selectedEntityId = entityId;
     this.updateSelectionRing();
@@ -135,80 +153,26 @@ export class EntityMeshes {
     this.biomeKey = biomeKey;
     const seen = new Set<number>();
     const buf = view.entities;
-
     const hasEntityLayer = Boolean(this.scene.getObjectByName('entities'));
+
+    if (!this.initialSyncDone && view.count > 0) {
+      this.initialSyncDone = true;
+      for (let i = 0; i < view.count; i++) {
+        const o = i * ENTITY_STRIDE;
+        if (buf[o + 1] === ENTITY_KIND.commandHub && buf[o + 2] === this.ownerColonyIndex) {
+          this.podTouchdown.setEnabled(false);
+          break;
+        }
+      }
+    }
+
     for (let i = 0; i < view.count; i++) {
       const o = i * ENTITY_STRIDE;
       const id = buf[o];
       const kind = buf[o + 1];
       if (hasEntityLayer && kind === ENTITY_KIND.devProbe) continue;
-      const owner = buf[o + 2];
-      const q = buf[o + 3];
-      const r = buf[o + 4];
-      const x = buf[o + 5];
-      const y = buf[o + 6];
-      const rot = buf[o + 7];
-      const hp = buf[o + 8];
-      const hpMax = buf[o + 9];
-      const state = buf[o + 10];
-      const progress = buf[o + 11];
       seen.add(id);
-
-      const [wx, wz] = tileXZ(x, y);
-      const baseWy = terrain ? terrain.heightAt(wx, wz) : 0;
-      const podLift =
-        kind === ENTITY_KIND.pod && state === ENTITY_STATE.descending
-          ? Math.max(0, 1 - Math.min(1, Math.max(0, progress))) * 36
-          : 0;
-      const wy = baseWy + podLift;
-      const yaw = Math.PI / 2 - rot;
-      const buildProg = kind === ENTITY_KIND.commandHub ? hubBuildProgressForState(state, progress) : 1;
-      let rec = this.entries.get(id);
-      if (!rec) {
-        const mesh = this.makeMesh(archetypeForKind(kind), this.biomeKey);
-        mesh.position.set(wx, wy, wz);
-        mesh.rotation.y = yaw;
-        const buildStage = setArchetypeBuildProgress(mesh, buildProg);
-        this.group.add(mesh);
-        rec = {
-          id,
-          kind,
-          owner,
-          q,
-          r,
-          x,
-          y,
-          rot,
-          hp,
-          hpMax,
-          state,
-          progress,
-          buildStage,
-          mesh,
-          targetPos: new THREE.Vector3(wx, wy, wz),
-          targetYaw: yaw,
-          walk: state === ENTITY_STATE.moving ? 1 : 0,
-          work: state === ENTITY_STATE.working || state === ENTITY_STATE.constructing ? 1 : 0,
-        };
-        this.entries.set(id, rec);
-      } else {
-        const dx = wx - rec.mesh.position.x;
-        const dz = wz - rec.mesh.position.z;
-        rec.targetYaw = Math.hypot(dx, dz) > 0.01 ? Math.atan2(dx, dz) : yaw;
-        rec.kind = kind;
-        rec.owner = owner;
-        rec.q = q;
-        rec.r = r;
-        rec.x = x;
-        rec.y = y;
-        rec.rot = rot;
-        rec.hp = hp;
-        rec.hpMax = hpMax;
-        rec.state = state;
-        rec.progress = progress;
-        rec.buildStage = setArchetypeBuildProgress(rec.mesh, buildProg);
-        rec.targetPos.set(wx, wy, wz);
-      }
+      this.upsertEntity(buf, o, terrain);
     }
 
     for (const [id, rec] of [...this.entries]) {
@@ -221,20 +185,115 @@ export class EntityMeshes {
     this.updateSelectionRing();
   }
 
+  private upsertEntity(buf: ArrayLike<number>, o: number, terrain: HexTerrain | null): void {
+    const id = buf[o]!;
+    const kind = buf[o + 1]!;
+    const owner = buf[o + 2]!;
+    const q = buf[o + 3]!;
+    const r = buf[o + 4]!;
+    const x = buf[o + 5]!;
+    const y = buf[o + 6]!;
+    const rot = buf[o + 7]!;
+    const hp = buf[o + 8]!;
+    const hpMax = buf[o + 9]!;
+    const state = buf[o + 10]!;
+    const progress = buf[o + 11]!;
+
+    const [wx, wz] = tileXZ(x, y);
+    const baseWy = terrain ? terrain.heightAt(wx, wz) : 0;
+    const isOwnedPod = kind === ENTITY_KIND.pod && owner === this.ownerColonyIndex;
+    const isOwnedHq = kind === ENTITY_KIND.hq && owner === this.ownerColonyIndex;
+    const tdState = this.podTouchdown.computeState(isOwnedPod && state === ENTITY_STATE.descending, progress);
+    const podLift = isOwnedPod ? tdState.podLift : 0;
+    const wy = baseWy + podLift;
+    const yaw = Math.PI / 2 - rot;
+    const buildProg = kind === ENTITY_KIND.commandHub ? hubBuildProgressForState(state, progress) : 1;
+    let rec = this.entries.get(id);
+    if (!rec) {
+      const mesh = this.makeMesh(archetypeForKind(kind), this.biomeKey);
+      mesh.position.set(wx, wy, wz);
+      mesh.rotation.y = yaw;
+      if (kind === ENTITY_KIND.hq) {
+        mesh.visible =
+          !isOwnedHq ||
+          tdState.hqVisible ||
+          state === ENTITY_STATE.moving ||
+          state === ENTITY_STATE.working ||
+          state === ENTITY_STATE.constructing;
+      }
+      const buildStage = setArchetypeBuildProgress(mesh, buildProg);
+      this.group.add(mesh);
+      rec = {
+        id, kind, owner, q, r, x, y, rot, hp, hpMax, state, progress, buildStage, mesh,
+        targetPos: new THREE.Vector3(wx, wy, wz),
+        targetYaw: yaw,
+        walk: state === ENTITY_STATE.moving ? 1 : 0,
+        work: state === ENTITY_STATE.working || state === ENTITY_STATE.constructing ? 1 : 0,
+      };
+      this.entries.set(id, rec);
+    } else {
+      const dx = wx - rec.mesh.position.x;
+      const dz = wz - rec.mesh.position.z;
+      rec.targetYaw = Math.hypot(dx, dz) > 0.01 ? Math.atan2(dx, dz) : yaw;
+      rec.kind = kind;
+      rec.owner = owner;
+      rec.q = q;
+      rec.r = r;
+      rec.x = x;
+      rec.y = y;
+      rec.rot = rot;
+      rec.hp = hp;
+      rec.hpMax = hpMax;
+      rec.state = state;
+      rec.progress = progress;
+      rec.buildStage = setArchetypeBuildProgress(rec.mesh, buildProg);
+      rec.targetPos.set(wx, wy, wz);
+    }
+  }
+
   update(dt: number, terrain: HexTerrain | null = null): void {
     this.time += dt;
     const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
     const rotLerp = Math.min(1, 1 - Math.exp(-dt * 10));
 
+    let podRec: EntityMeshRecord | undefined;
+    for (const rec of this.entries.values()) {
+      if (rec.kind === ENTITY_KIND.pod && rec.owner === this.ownerColonyIndex) {
+        podRec = rec;
+        break;
+      }
+    }
+    const podGroundY = podRec && terrain ? terrain.heightAt(podRec.targetPos.x, podRec.targetPos.z) : 0;
+    const tdState = this.podTouchdown.update(
+      dt,
+      podRec?.mesh ?? null,
+      podGroundY,
+      podRec?.state === ENTITY_STATE.descending,
+      podRec?.progress ?? 1,
+      planetKindForBiome(this.biomeKey),
+    );
+
     for (const rec of this.entries.values()) {
       const baseWy = terrain ? terrain.heightAt(rec.targetPos.x, rec.targetPos.z) : 0;
-      const podLift =
-        rec.kind === ENTITY_KIND.pod && rec.state === ENTITY_STATE.descending
-          ? Math.max(0, 1 - Math.min(1, Math.max(0, rec.progress))) * 36
-          : 0;
+      const isOwnedPod = rec.kind === ENTITY_KIND.pod && rec.owner === this.ownerColonyIndex;
+      const isOwnedHq = rec.kind === ENTITY_KIND.hq && rec.owner === this.ownerColonyIndex;
+      const podLift = isOwnedPod ? tdState.podLift : 0;
       rec.targetPos.y = baseWy + podLift;
       rec.mesh.position.lerp(rec.targetPos, posLerp);
-      let diff = ((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
+      if (isOwnedPod && (tdState.phase === 'descending' || tdState.phase === 'engine-stop')) {
+        rec.mesh.position.y = rec.targetPos.y;
+      }
+      if (rec.kind === ENTITY_KIND.hq) {
+        const nearPod = podRec ? Math.hypot(rec.x - podRec.x, rec.y - podRec.y) <= 2.5 : false;
+        rec.mesh.visible =
+          !isOwnedHq ||
+          !nearPod ||
+          tdState.hqVisible ||
+          rec.state === ENTITY_STATE.moving ||
+          rec.state === ENTITY_STATE.working ||
+          rec.state === ENTITY_STATE.constructing;
+      }
+      const diff = ((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       rec.mesh.rotation.y += diff * rotLerp;
 
       const wantWalk = rec.state === ENTITY_STATE.moving ? 1 : 0;
@@ -272,6 +331,7 @@ export class EntityMeshes {
   }
 
   dispose(): void {
+    this.podTouchdown.dispose();
     for (const rec of this.entries.values()) {
       this.group.remove(rec.mesh);
       disposeObject3D(rec.mesh);

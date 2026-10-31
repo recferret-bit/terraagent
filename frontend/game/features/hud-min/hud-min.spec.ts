@@ -209,6 +209,15 @@ describe('W01-29: Minimal HUD clock & view rendering', () => {
     expect(cellEl.textContent).toContain('800 / 800 E');
     expect(cellBar.style.width).toBe('100.0%');
 
+    expect(hud.el.className).toContain('plate-sm');
+    expect(parent.querySelector('.ta-hud-min__stock-label')).toBeNull();
+    expect(parent.querySelector('.ta-hud-min__icon--metals')).not.toBeNull();
+    expect(parent.querySelector('.ta-hud-min__icon--minerals')).not.toBeNull();
+    expect(parent.querySelector('.ta-hud-min__icon--bio')).not.toBeNull();
+    expect(parent.querySelector('.ta-hud-min__icon--supply')).not.toBeNull();
+    expect(parent.querySelector('.ta-hud-min__icon--cell')).not.toBeNull();
+    expect(parent.querySelector('.ta-hud-min__icon--clock')).not.toBeNull();
+
     hud.dispose();
   });
 });

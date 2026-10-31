@@ -121,10 +121,17 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
   liquid.mesh.name = 'hexWater';
   liquid.mesh.position.y = HEX_WATER_LEVEL;
 
+  const hasWater = look.kind !== 'dune';
   let waterTileCount = 0;
   let waterTriangleCount = 0;
 
   const syncGeometry = (layers: HexTileLayers) => {
+    if (!hasWater) {
+      liquid.mesh.visible = false;
+      waterTileCount = 0;
+      waterTriangleCount = 0;
+      return;
+    }
     const { geo, waterTiles, waterTris } = buildWaterSurfaceGeometry(radius, layers);
     liquid.mesh.geometry.dispose();
     liquid.mesh.geometry = geo;
@@ -149,6 +156,10 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
       return waterTriangleCount;
     },
     update(layers) {
+      if (!hasWater) {
+        syncGeometry(layers);
+        return;
+      }
       const nextTex = buildHeightTexture(sampleWaterBed(radius, layers, span), TEX_RES);
       heightTex.dispose();
       heightTex = nextTex;

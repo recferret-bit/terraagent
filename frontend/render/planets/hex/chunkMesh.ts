@@ -1,4 +1,5 @@
 import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
+import type { PlanetKind } from '../PlanetSpec';
 import { tileXZ } from './hexMath';
 
 export const HEX_TERRAIN = {
@@ -39,6 +40,8 @@ export interface HexTileLayers {
   owner?: ArrayLike<number>;
   /** Optional per-tile timestamp (s) when a tile transitioned to Prepared; defaults to -10 (already complete). */
   prepStartTime?: ArrayLike<number>;
+  /** Optional planet look kind ('dune' | 'oceanForest' | 'forestRock'); defaults to 'forestRock'. */
+  kind?: PlanetKind;
 }
 
 /** Plain buffers of one chunk's surface (vertices = tile centres, y = effective height, color = class/deposit RGB). */
@@ -68,17 +71,38 @@ export function tileHash01(q: number, r: number, salt = 0): number {
 
 type StyleSpec = readonly [number, number, number, number]; // [hexA, hexB, ao, rock]
 
-const CLASS_STYLE: Record<number, StyleSpec> = {
-  [HEX_TERRAIN.flat]: [0x567d46, 0x648c51, 1.0, 0.0],
-  [HEX_TERRAIN.forest]: [0x2d4c2b, 0x365934, 0.86, 0.0],
-  [HEX_TERRAIN.rock]: [0x6b7078, 0x555a63, 0.74, 1.0],
-  [HEX_TERRAIN.slope]: [0x8a795d, 0x78684e, 0.84, 0.48],
-  [HEX_TERRAIN.hole]: [0x3d352e, 0x2b241f, 0.42, 0.35],
-  [HEX_TERRAIN.shallow]: [0x2b6e78, 0x38858f, 0.88, 0.0],
-  [HEX_TERRAIN.deep]: [0x10344a, 0x164663, 0.62, 0.0],
+const CLASS_STYLES: Record<PlanetKind, Record<number, StyleSpec>> = {
+  forestRock: {
+    [HEX_TERRAIN.flat]: [0x567d46, 0x648c51, 1.0, 0.0],
+    [HEX_TERRAIN.forest]: [0x2d4c2b, 0x365934, 0.86, 0.0],
+    [HEX_TERRAIN.rock]: [0x6b7078, 0x555a63, 0.74, 1.0],
+    [HEX_TERRAIN.slope]: [0x8a795d, 0x78684e, 0.84, 0.48],
+    [HEX_TERRAIN.hole]: [0x3d352e, 0x2b241f, 0.42, 0.35],
+    [HEX_TERRAIN.shallow]: [0x2b6e78, 0x38858f, 0.88, 0.0],
+    [HEX_TERRAIN.deep]: [0x10344a, 0x164663, 0.62, 0.0],
+  },
+  dune: {
+    [HEX_TERRAIN.flat]: [0xc98a4b, 0xe8c07a, 1.0, 0.0],
+    [HEX_TERRAIN.forest]: [0xb87a40, 0xd8a35d, 0.9, 0.22],
+    [HEX_TERRAIN.rock]: [0x8a5a3c, 0x5e3b26, 0.74, 1.0],
+    [HEX_TERRAIN.slope]: [0xa86f44, 0x915d38, 0.84, 0.48],
+    [HEX_TERRAIN.hole]: [0x5c3b28, 0x432a1c, 0.42, 0.35],
+    [HEX_TERRAIN.shallow]: [0xbd8449, 0xd6a668, 0.9, 0.14],
+    [HEX_TERRAIN.deep]: [0x7d4f2d, 0x633c20, 0.65, 0.4],
+  },
+  oceanForest: {
+    [HEX_TERRAIN.flat]: [0x4f8a3c, 0x78ab4e, 1.0, 0.0],
+    [HEX_TERRAIN.forest]: [0x2b6329, 0x3b7a35, 0.86, 0.0],
+    [HEX_TERRAIN.rock]: [0x7a7f86, 0x5c6168, 0.74, 1.0],
+    [HEX_TERRAIN.slope]: [0xb8a574, 0x9e8b5c, 0.86, 0.38],
+    [HEX_TERRAIN.hole]: [0x363b30, 0x262b22, 0.42, 0.35],
+    [HEX_TERRAIN.shallow]: [0x1f9fb8, 0x2cb5cf, 0.88, 0.0],
+    [HEX_TERRAIN.deep]: [0x0b3f66, 0x114f7d, 0.62, 0.0],
+  },
 };
 
 const PREP_PAD_STYLE: StyleSpec = [0x7d8478, 0x8a9185, 0.96, 0.25];
+const DUNE_PREP_PAD_STYLE: StyleSpec = [0x9c8268, 0xad9378, 0.96, 0.25];
 
 function unpackRgb(hex: number): [number, number, number] {
   return [((hex >> 16) & 0xff) / 255, ((hex >> 8) & 0xff) / 255, (hex & 0xff) / 255];
@@ -90,8 +114,11 @@ export function tileStyle(
   terrain: number,
   prep = 0,
   deposit = 0,
+  kind: PlanetKind = 'forestRock',
 ): { r: number; g: number; b: number; ao: number; rock: number } {
-  const spec = prep === HEX_PREP.prepared ? PREP_PAD_STYLE : (CLASS_STYLE[terrain] ?? CLASS_STYLE[HEX_TERRAIN.flat]!);
+  const table = CLASS_STYLES[kind] ?? CLASS_STYLES.forestRock;
+  const padStyle = kind === 'dune' ? DUNE_PREP_PAD_STYLE : PREP_PAD_STYLE;
+  const spec = prep === HEX_PREP.prepared ? padStyle : (table[terrain] ?? table[HEX_TERRAIN.flat]!);
   const t = tileHash01(q, r, 31);
   const [r0, g0, b0] = unpackRgb(spec[0]);
   const [r1, g1, b1] = unpackRgb(spec[1]);
@@ -242,18 +269,19 @@ export function buildChunk(
     aPrepStartTime[v] = startT;
     if (hasTerrain) {
       const stylePrep = isPrep && startT >= 0 ? HEX_PREP.flat : prepVal;
-      const st = tileStyle(q, r, layers.terrain![i] ?? 0, stylePrep, layers.deposit?.[i] ?? 0);
+      const st = tileStyle(q, r, layers.terrain![i] ?? 0, stylePrep, layers.deposit?.[i] ?? 0, layers.kind ?? 'forestRock');
       aAO[v] = st.ao;
       aRock[v] = st.rock;
       color[v * 3] = st.r;
       color[v * 3 + 1] = st.g;
       color[v * 3 + 2] = st.b;
     } else {
+      const st = tileStyle(q, r, HEX_TERRAIN.flat, 0, 0, layers.kind ?? 'forestRock');
       aAO[v] = 1;
       aRock[v] = -1;
-      color[v * 3] = 0.34;
-      color[v * 3 + 1] = 0.49;
-      color[v * 3 + 2] = 0.27;
+      color[v * 3] = st.r;
+      color[v * 3 + 1] = st.g;
+      color[v * 3 + 2] = st.b;
     }
   }
   return {
