@@ -69,8 +69,8 @@
   font-size: var(--ta-fs-label);
   letter-spacing: var(--ta-track-label);
   z-index: 25;
-  pointer-events: auto;
-  display: flex;
+  pointer-events: none;
+  display: none;
   flex-direction: column;
   gap: var(--ta-s2);
 }

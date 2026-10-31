@@ -6,6 +6,7 @@ export interface DescentTelemetryUpdate {
   progress: number;
   q: number;
   r: number;
+  landed?: boolean;
 }
 
 /**
@@ -161,8 +162,9 @@ export class BootOverlay {
     this.currentPhase = 'descent';
     this.splashEl.hidden = true;
     this.splashEl.dataset.active = 'false';
-    this.descentEl.hidden = false;
-    this.descentEl.dataset.active = 'true';
+    const hideBox = Boolean(update.landed);
+    this.descentEl.hidden = hideBox;
+    this.descentEl.dataset.active = hideBox ? 'false' : 'true';
     this.colonyEl.hidden = true;
     this.colonyEl.dataset.active = 'false';
     this.updateDescent(update);

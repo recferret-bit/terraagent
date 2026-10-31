@@ -18,6 +18,7 @@ export class FeatureHud {
   private devConsole: Disposable | null = null;
   private renderers: RendererInstance[] = [];
   private last: GameView = {};
+  private visible = true;
   private readonly off: () => void;
   private readonly host: HostKind;
   private readonly services: Partial<FeatureServices>;
@@ -37,6 +38,11 @@ export class FeatureHud {
     }
     this.off = flags.onChange(() => this.mount());
     this.mount();
+  }
+
+  setVisible(visible: boolean): void {
+    this.visible = visible;
+    this.root?.setVisible(visible);
   }
 
   update(view: GameView): void {
@@ -67,6 +73,7 @@ export class FeatureHud {
       },
     };
     this.root = new HudRoot(this.parent, features, ctx);
+    this.root.setVisible(this.visible);
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof location !== 'undefined') {
       this.devConsole = mountDevConsole({ parent: this.parent, features, ctx });
     }

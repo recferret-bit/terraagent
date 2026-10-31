@@ -4,6 +4,8 @@ import { createArchetypeMesh, setArchetypeBuildProgress } from '@terra/render/ki
 import { validateArchetype } from '@terra/render/kitbash/validate';
 import { ENTITY_KIND, ENTITY_STATE, insertRow, rowOf, setField, setHqCellEnergy, spawnColonyLanding, spawnHqUnit } from '@terra/sim';
 import { EntityMeshes, archetypeForKind } from '../../app/online/EntityMeshes';
+import { POD_FULL_STATE_ORDER, POD_SHORT_STATE_ORDER } from '../../app/online/PodTouchdownFx';
+import { phaseOf } from '../../descent/timeline';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
 import { LocalHost } from '../../store/WorldStore';
@@ -277,140 +279,120 @@ describe('W01-26: EntityMeshes 3D rendering and interpolation', () => {
 
     meshes.dispose();
   });
+});
 
-  it('plays pod touchdown descent with retro-thruster flames and engine stop animation when playPodTouchdown is enabled', () => {
+describe('W01-26: PodTouchdownFx strict landing state machine', () => {
+  it('runs full/short state machine (retro -> 2s impact_wait -> egress -> done) with radial petals, crater FX, and hero rollout', () => {
+    expect([phaseOf(27), phaseOf(30.5), phaseOf(33)]).toEqual(['chute', 'approach', 'retro']);
+    expect(POD_FULL_STATE_ORDER).toEqual(['orbit', 'release', 'freefall', 'reentry', 'chute', 'approach', 'retro', 'impact_wait', 'egress', 'done']);
+    expect(POD_SHORT_STATE_ORDER).toEqual(['retro', 'impact_wait', 'egress', 'done']);
+
     const scene = new THREE.Scene();
-    const meshes = new EntityMeshes(
-      scene,
-      (id) => {
-        const g = new THREE.Group();
-        g.name = id;
-        g.userData = { archetypeId: id, uniforms: { uTime: { value: 0 }, uWalkWeight: { value: 0 }, uWorkWeight: { value: 0 } } };
-        return g;
-      },
-      true,
-    );
+    const makeStub = (id: string) => {
+      const g = new THREE.Group();
+      g.name = id;
+      g.userData = { archetypeId: id, uniforms: { uTime: { value: 0 }, uWalkWeight: { value: 0 }, uWorkWeight: { value: 0 } } };
+      return g;
+    };
+    const meshes = new EntityMeshes(scene, makeStub, true);
+    meshes.podTouchdown.setMode('full');
+    meshes.podTouchdown.setSpacePhase('approach');
+    expect([meshes.podTouchdown.computeState(true, 0.5).state, meshes.hasPodTouchedDown(), meshes.isHqDeployed()]).toEqual(['approach', false, false]);
+    meshes.podTouchdown.setSpacePhase(null);
 
     const host = new LocalHost({ flags: ['W00', 'W01'], radius: 16 });
     const { podEntityId } = spawnColonyLanding(host.state, { colonyId: 0, q: 0, r: 0 });
-    host.step(35); // sim is landed (pod + hq present)
-    const view = host.sync(true);
-
-    meshes.syncView(view, null, 'desert');
+    host.step(35);
+    meshes.syncView(host.sync(true), null, 'desert');
     const podRec = meshes.getRecord(podEntityId)!;
     expect(podRec.mesh.position.y).toBeGreaterThan(20);
+    expect(podRec.mesh.visible).toBe(true);
 
-    // Mid retro-burn descent (t = 0.5 s)
     meshes.update(0.5, null);
-    expect(meshes.podTouchdown.computeState(false, 1).phase).toBe('descending');
-    expect(podRec.mesh.position.y).toBeGreaterThan(5);
+    const retroState = meshes.podTouchdown.computeState(false, 1);
+    expect([retroState.state, retroState.phase]).toEqual(['retro', 'descending']);
     expect(podRec.mesh.getObjectByName('pod-retro-flames')?.visible).toBe(true);
-    expect(meshes.podTouchdown.thrLight.intensity).toBeGreaterThan(1);
+    expect([retroState.craterVisible, retroState.hqVisible, retroState.uiVisible]).toEqual([false, false, false]);
 
-    // Advance to touchdown + engine stop phase (t = 1.95 s, within [1.75, 2.35])
     meshes.update(1.45, null);
     const engineStopState = meshes.podTouchdown.computeState(false, 1);
-    expect(engineStopState.phase).toBe('engine-stop');
-    expect(engineStopState.podLift).toBe(0);
+    expect([engineStopState.state, engineStopState.phase, engineStopState.podLift]).toEqual(['impact_wait', 'engine-stop', 0]);
     expect(engineStopState.thrust).toBeGreaterThan(0);
-    expect(engineStopState.thrust).toBeLessThan(1);
-    expect(engineStopState.hqVisible).toBe(true);
+    expect([meshes.podTouchdown.impactRig.craterGroup.visible, meshes.podTouchdown.impactRig.waveGroup.visible]).toEqual([true, true]);
+    expect([engineStopState.podVisible, engineStopState.hqVisible, engineStopState.uiVisible]).toEqual([true, false, false]);
 
-    // Advance past engine stop completion (t = 2.8 s)
-    meshes.update(0.85, null);
+    meshes.update(1.25, null);
+    const waitState = meshes.podTouchdown.computeState(false, 1);
+    expect([waitState.state, waitState.phase, waitState.thrust]).toEqual(['impact_wait', 'impact-wait', 0]);
+    expect([waitState.podVisible, waitState.hqVisible, waitState.uiVisible]).toEqual([true, false, false]);
+
+    meshes.update(1.1, null);
+    const egressState = meshes.podTouchdown.computeState(false, 1);
+    expect([egressState.state, egressState.phase]).toEqual(['egress', 'opening']);
+    expect([podRec.mesh.visible, meshes.podTouchdown.impactRig.egressGroup.visible]).toEqual([false, true]);
+    const orders = [0, 1, 2, 3].map((i) => meshes.podTouchdown.impactRig.egressGroup.getObjectByName(`pod-petal-pivot-${i}`)?.rotation.order);
+    expect(orders).toEqual(['YXZ', 'YXZ', 'YXZ', 'YXZ']);
+    expect(egressState.podOpenProgress).toBeGreaterThan(0.5);
+    expect([egressState.hqVisible, egressState.uiVisible]).toEqual([true, false]);
+
+    meshes.update(0.9, null);
     const settledState = meshes.podTouchdown.computeState(false, 1);
-    expect(settledState.phase).toBe('settled');
-    expect(settledState.thrust).toBe(0);
-    expect(meshes.podTouchdown.thrLight.intensity).toBe(0);
-    expect(podRec.mesh.getObjectByName('pod-retro-flames')?.visible).toBe(false);
-
+    expect([settledState.state, settledState.phase]).toEqual(['done', 'settled']);
+    expect([podRec.mesh.visible, meshes.podTouchdown.impactRig.egressGroup.visible, meshes.podTouchdown.impactRig.craterGroup.visible]).toEqual([false, false, true]);
+    expect([settledState.hqVisible, settledState.uiVisible]).toEqual([true, true]);
+    expect(Math.hypot(podRec.targetPos.x, podRec.targetPos.z)).toBeGreaterThan(1.2);
     meshes.dispose();
   });
 });
 
 describe('W01-26: PodTouchdownFx dev.land transition and colony isolation', () => {
-  it('hides HQ robot and selection until pod lands, and isolates owned colony touchdown', () => {
+  it('hides HQ robot and selection during descent + 2s impact wait, opens pod for hero egress, and isolates owned colony', () => {
     const scene = new THREE.Scene();
-    const meshes = new EntityMeshes(
-      scene,
-      (id) => {
-        const g = new THREE.Group();
-        g.name = id;
-        g.userData = { archetypeId: id, uniforms: { uTime: { value: 0 }, uWalkWeight: { value: 0 }, uWorkWeight: { value: 0 } } };
-        return g;
-      },
-      true,
-    );
+    const makeStub = (id: string) => {
+      const g = new THREE.Group();
+      g.name = id;
+      g.userData = { archetypeId: id, uniforms: { uTime: { value: 0 }, uWalkWeight: { value: 0 }, uWorkWeight: { value: 0 } } };
+      return g;
+    };
+    const meshes = new EntityMeshes(scene, makeStub, true);
     meshes.setOwnerColonyIndex(1);
 
     const host = new LocalHost({ flags: ['W00', 'W01'], radius: 16 });
     const col0 = spawnColonyLanding(host.state, { colonyId: 0, q: 0, r: 0 });
-    host.step(35); // Colony 0 is already landed and idle
+    host.step(35);
     const col1 = spawnColonyLanding(host.state, { colonyId: 1, q: 6, r: 0 });
-    host.step(1); // Colony 1 is descending on initial snapshot
+    host.step(1);
 
-    const ctl = new LandfallController({
-      ownerColonyIndex: 1,
-      isHqDeployed: () => meshes.isHqDeployed(),
-    });
+    const ctl = new LandfallController({ ownerColonyIndex: 1, isHqDeployed: () => meshes.isHqDeployed() });
     ctl.onChange(({ selectedEntityId }) => meshes.setSelectedEntityId(selectedEntityId));
 
-    const initialView = host.sync(true);
-    meshes.syncView(initialView, null, 'desert');
-    meshes.syncView(initialView, null, 'desert');
-    expect(meshes.hasPodTouchedDown()).toBe(false);
-    expect(meshes.isHqDeployed()).toBe(false);
+    meshes.syncView(host.sync(true), null, 'desert');
     meshes.update(0.05, null);
-    expect(meshes.hasPodTouchedDown()).toBe(false);
-    expect(meshes.isHqDeployed()).toBe(false);
-    // Colony 0 pod must stay on the ground (y = 0) and its HQ must remain visible
-    const col0Pod = meshes.getRecord(col0.podEntityId)!;
-    expect(col0Pod.mesh.position.y).toBe(0);
+    expect([meshes.hasPodTouchedDown(), meshes.isHqDeployed()]).toEqual([false, false]);
+    expect(meshes.getRecord(col0.podEntityId)!.mesh.visible).toBe(false);
 
-    // Fast-start dev.land completes Colony 1's sim descent while pod is still descending in 3D
     host.step(35);
     const landedView = host.sync(false);
     meshes.syncView(landedView, null, 'desert');
     ctl.onView(landedView);
 
-    // Before pod touchdown (t = 0.75s): HQ robot, selection ring, and controller selection must be hidden/null
     meshes.update(0.7, null);
     const col1Pod = meshes.getRecord(col1.podEntityId)!;
     expect(col1Pod.mesh.position.y).toBeGreaterThan(2);
-    expect(col1Pod.mesh.position.y).toBeLessThan(20);
-    expect(meshes.hasPodTouchedDown()).toBe(false);
-    expect(meshes.isHqDeployed()).toBe(false);
+    expect([col1Pod.mesh.visible, meshes.hasPodTouchedDown(), meshes.isHqDeployed()]).toEqual([true, false, false]);
     expect(ctl.getSelectedEntityId()).toBeNull();
-    expect(meshes.selectionRing.visible).toBe(false);
-    for (let i = 1; i <= 10; i++) {
-      const rec = meshes.getRecord(i);
-      if (rec && rec.kind === ENTITY_KIND.hq && rec.owner === 1) {
-        expect(rec.mesh.visible).toBe(false);
-      }
-    }
 
-    // Step into engine-stop window (t = 1.95s, after pod touchdown at 1.75s + 0.15s deploy)
-    meshes.update(1.2, null);
-    const engineStop = meshes.podTouchdown.computeState(false, 1);
-    expect(engineStop.phase).toBe('engine-stop');
-    expect(col1Pod.mesh.position.y).toBe(0);
-    expect(meshes.hasPodTouchedDown()).toBe(true);
-    expect(meshes.isHqDeployed()).toBe(true);
+    meshes.update(1.75, null);
+    expect([col1Pod.mesh.position.y, meshes.hasPodTouchedDown(), meshes.isHqDeployed()]).toEqual([0, true, false]);
+    ctl.onView(landedView);
+    expect([ctl.getSelectedEntityId(), meshes.selectionRing.visible]).toEqual([null, false]);
+
+    meshes.update(2.6, null);
+    expect(meshes.podTouchdown.computeState(false, 1).state).toBe('done');
+    expect([col1Pod.mesh.visible, meshes.isHqDeployed()]).toEqual([false, true]);
     ctl.onView(landedView);
     expect(ctl.getSelectedEntityId()).not.toBeNull();
     expect(meshes.selectionRing.visible).toBe(true);
-
-    // Step past total completion (t = 2.8s)
-    meshes.update(0.85, null);
-    const settled = meshes.podTouchdown.computeState(false, 1);
-    expect(settled.phase).toBe('settled');
-    expect(col1Pod.mesh.position.y).toBe(0);
-    expect(settled.hqVisible).toBe(true);
-    for (let i = 1; i <= 10; i++) {
-      const rec = meshes.getRecord(i);
-      if (rec && rec.kind === ENTITY_KIND.hq) expect(rec.mesh.visible).toBe(true);
-    }
-
     ctl.dispose();
     meshes.dispose();
   });

@@ -11,7 +11,7 @@ import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createDescentSequence } from '../descent/createDescent';
 import { warmupScene } from './warmup';
 import { Gameplay } from './Gameplay';
-import { resetDeviceSecret, type BootAuthResult } from './online/bootOnline';
+import { resetDeviceSecret } from './online/bootOnline';
 import { OnlineSession } from './online/OnlineSession';
 import { writeStoredPlanetKind } from './online/viewportHelper';
 import { track } from '../core/analytics';
@@ -55,7 +55,7 @@ export class Game {
   private descent: DescentSequence | null = null; private dHud: DescentHud | null = null;
   private gHud: GameHud | null = null; private play: Gameplay | null = null;
   private online: OnlineSession | null = null;
-  private preBoot: Promise<BootAuthResult> | null = null;
+  private skipOnlineLanding = false;
   private useOnlineGameplay = true;
   private fastForward = 0; private time = 0; private last = performance.now(); private raf = 0;
   private escListener = (e: KeyboardEvent) => this.onKey(e);
@@ -191,10 +191,6 @@ export class Game {
     if (this.phase !== 'menu') return;
     clearTimeout(this.prepTimer);
     writeStoredPlanetKind(kind);
-    if (this.useOnlineGameplay) {
-      resetDeviceSecret();
-      this.preBoot = null;
-    }
     let p: Prepared;
     try { p = this.prepare(kind, seed); }
     catch (err) {
@@ -205,14 +201,32 @@ export class Game {
     }
     this.prepared = null; this.deploySession = p;
     this.spec = p.spec; this.surface = p.surface; this.descent = p.descent;
+    this.skipOnlineLanding = false;
+    if (this.useOnlineGameplay) {
+      resetDeviceSecret();
+      if (!this.settings.skipCinematic) {
+        this.online = new OnlineSession(this.root, 'boot', {
+          viewport: this.viewport,
+          planetKind: this.spec.kind,
+          skipDescent: false,
+          fromSpaceDescent: true,
+          search: '',
+          onReturnToOrbit: () => { void this.returnToOrbit(); },
+        });
+        (window as unknown as { __online?: OnlineSession }).__online = this.online;
+      }
+    }
     this.dHud = new DescentHud(document.body);
     if (!this.useOnlineGameplay) {
       this.gHud = new GameHud(document.body, this.spec.name, this.spec.seed, { onResume: () => this.setPaused(false), onReturn: () => this.returnToOrbit() });
     }
     this.descent.onTelemetry((t) => {
       this.dHud?.update(t);
-      if (this.useOnlineGameplay && (t.phase === 'retro' || t.phase === 'touchdown')) {
-        this.skipDescent();
+      if (!this.useOnlineGameplay) return;
+      if (t.phase === 'retro' || t.phase === 'touchdown') {
+        this.handoffDescent(false);
+      } else if (this.online?.setSpacePhase(t.phase, this.surface?.group.visible ?? false) && this.surface) {
+        this.surface.group.visible = false;
       }
     });
     this.descent.onComplete((hero) => this.startGameplay(hero));
@@ -253,10 +267,15 @@ export class Game {
     try { applyPlanetLook(vp, spec); } catch (e) { console.warn('applyPlanetLook failed', e); }
   }
 
-  private skipDescent() {
+  private handoffDescent(skipToColony: boolean) {
     if (!this.descent || this.phase !== 'descent') return;
+    this.skipOnlineLanding = skipToColony;
     this.descent.skip();
     if (this.phase === 'descent') this.descent.update(0);
+  }
+
+  private skipDescent() {
+    this.handoffDescent(true);
   }
 
   private startGameplay(hero: THREE.Object3D) {
@@ -275,21 +294,26 @@ export class Game {
         this.surface.dispose();
         this.surface = null;
       }
-      this.resetScene();
       this.viewport.camera.fov = 28;
       this.viewport.camera.updateProjectionMatrix();
       if (typeof history !== 'undefined' && typeof location !== 'undefined') {
         history.replaceState(null, '', location.pathname);
       }
-      this.online = new OnlineSession(this.root, 'boot', {
-        viewport: this.viewport,
-        planetKind: this.spec.kind,
-        skipDescent: this.settings.skipCinematic,
-        preBoot: this.preBoot ?? undefined,
-        search: '',
-        onReturnToOrbit: () => { void this.returnToOrbit(); },
-      });
-      (window as unknown as { __online?: OnlineSession }).__online = this.online;
+      if (this.online) {
+        if (this.skipOnlineLanding || this.settings.skipCinematic) this.online.skipLanding();
+        else this.online.setSpacePhase(null);
+      } else {
+        this.resetScene();
+        this.online = new OnlineSession(this.root, 'boot', {
+          viewport: this.viewport,
+          planetKind: this.spec.kind,
+          skipDescent: true,
+          fromSpaceDescent: false,
+          search: '',
+          onReturnToOrbit: () => { void this.returnToOrbit(); },
+        });
+        (window as unknown as { __online?: OnlineSession }).__online = this.online;
+      }
       return;
     }
 
@@ -334,7 +358,6 @@ export class Game {
     this.featureHud?.dispose(); this.featureHud = null;
     this.devConsole?.dispose(); this.devConsole = null;
     this.online?.dispose(); this.online = null;
-    this.preBoot = null;
     this.play?.dispose(); this.play = null;
     try { this.descent?.dispose(); } catch (e) { console.warn(e); } this.descent = null;
     this.dHud?.dispose(); this.dHud = null; this.gHud?.dispose(); this.gHud = null;
@@ -372,7 +395,11 @@ export class Game {
     if (this.phase === 'menu') this.stage?.update(dt, this.time);
     else if (this.phase === 'deploying') {
       this.stage?.update(dt, this.time);
-      if (this.stage && this.descent) this.dHud?.update(this.descent.handoff.telAt(this.stage.deployTn()));
+      if (this.stage && this.descent) {
+        const tel = this.descent.handoff.telAt(this.stage.deployTn());
+        this.dHud?.update(tel);
+        this.online?.setSpacePhase(tel.phase === 'touchdown' ? 'retro' : tel.phase, false);
+      }
       if (this.stage && this.stage.deployProgress() >= 1 && (this.deploySession?.ready || forceReady)) this.cutToDescent();
     } else if (this.phase === 'descent') {
       this.descent?.update(dt); this.surface?.update(dt, this.time);

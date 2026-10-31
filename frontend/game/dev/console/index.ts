@@ -7,7 +7,7 @@ export { parseLine, numArg } from './parse';
 
 /** Dev builds always; `?dev=1` also in non-dev builds of another mode (staging). A `production`-mode build never mounts it. */
 export const devConsoleEnabled = (
-  search: string = location.search,
+  search: string = typeof location !== 'undefined' ? location.search : '',
   dev: boolean = import.meta.env.DEV,
   mode: string = import.meta.env.MODE,
 ): boolean => dev || (mode !== 'production' && new URLSearchParams(search).get('dev') === '1');

@@ -4,6 +4,7 @@ import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
+import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 
 export interface EntityMeshRecord {
@@ -135,9 +136,9 @@ export class EntityMeshes {
   setOwnerColonyIndex(colonyIndex: number): void {
     if (this.ownerColonyIndex === colonyIndex) return;
     this.ownerColonyIndex = colonyIndex;
-    const hqVisible = this.podTouchdown.isHqDeployed();
+    const tdState = this.podTouchdown.computeState(false, 1);
     for (const rec of this.entries.values()) {
-      rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, hqVisible);
+      rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState);
     }
     this.updateSelectionRing();
   }
@@ -162,13 +163,17 @@ export class EntityMeshes {
     this.markerT = 0;
   }
 
-  private computeMeshVisible(kind: number, owner: number, state: number, hqVisible: boolean): boolean {
+  private computeMeshVisible(kind: number, owner: number, state: number, tdState: PodTouchdownState): boolean {
+    if (kind === ENTITY_KIND.pod) {
+      if (owner === this.ownerColonyIndex) return tdState.podVisible;
+      return state === ENTITY_STATE.descending;
+    }
     if (kind === ENTITY_KIND.hq) {
       if (state === ENTITY_STATE.descending) return false;
-      if (owner === this.ownerColonyIndex) return hqVisible;
+      if (owner === this.ownerColonyIndex) return tdState.hqVisible;
       return true;
     }
-    if (kind === ENTITY_KIND.commandHub && owner === this.ownerColonyIndex && !hqVisible) {
+    if (kind === ENTITY_KIND.commandHub && owner === this.ownerColonyIndex && !tdState.uiVisible) {
       return false;
     }
     return true;
@@ -230,14 +235,16 @@ export class EntityMeshes {
     const state = buf[o + 10]!;
     const progress = buf[o + 11]!;
 
-    const [wx, wz] = tileXZ(x, y);
-    const baseWy = terrain ? terrain.heightAt(wx, wz) : 0;
+    const [tileWx, tileWz] = tileXZ(x, y);
     const isOwnedPod = kind === ENTITY_KIND.pod && owner === this.ownerColonyIndex;
+    const wx = isOwnedPod ? tileWx - POD_EGRESS_DIR.x * POD_LAND_OFFSET_M : tileWx;
+    const wz = isOwnedPod ? tileWz - POD_EGRESS_DIR.z * POD_LAND_OFFSET_M : tileWz;
+    const baseWy = terrain ? terrain.heightAt(wx, wz) : 0;
     const podLift = isOwnedPod ? tdState.podLift : 0;
     const wy = baseWy + podLift;
-    const yaw = Math.PI / 2 - rot;
+    const yaw = isOwnedPod ? POD_EGRESS_YAW : Math.PI / 2 - rot;
     const buildProg = kind === ENTITY_KIND.commandHub ? hubBuildProgressForState(state, progress) : 1;
-    const visible = this.computeMeshVisible(kind, owner, state, tdState.hqVisible);
+    const visible = this.computeMeshVisible(kind, owner, state, tdState);
     let rec = this.entries.get(id);
     if (!rec) {
       const mesh = this.makeMesh(archetypeForKind(kind), this.biomeKey);
@@ -257,7 +264,7 @@ export class EntityMeshes {
     } else {
       const dx = wx - rec.mesh.position.x;
       const dz = wz - rec.mesh.position.z;
-      rec.targetYaw = Math.hypot(dx, dz) > 0.01 ? Math.atan2(dx, dz) : yaw;
+      rec.targetYaw = !isOwnedPod && Math.hypot(dx, dz) > 0.01 ? Math.atan2(dx, dz) : yaw;
       rec.kind = kind;
       rec.owner = owner;
       rec.q = q;
@@ -287,6 +294,20 @@ export class EntityMeshes {
         break;
       }
     }
+    let hubCoversCrater = false;
+    if (podRec) {
+      for (const rec of this.entries.values()) {
+        if (
+          rec.kind === ENTITY_KIND.commandHub &&
+          rec.owner === this.ownerColonyIndex &&
+          rec.state !== ENTITY_STATE.waiting &&
+          Math.hypot(rec.q - podRec.q, rec.r - podRec.r) <= 3
+        ) {
+          hubCoversCrater = true;
+          break;
+        }
+      }
+    }
     const podGroundY = podRec && terrain ? terrain.heightAt(podRec.targetPos.x, podRec.targetPos.z) : 0;
     const tdState = this.podTouchdown.update(
       dt,
@@ -296,17 +317,38 @@ export class EntityMeshes {
       podRec?.progress ?? 1,
       planetKindForBiome(this.biomeKey),
     );
+    if (hubCoversCrater && tdState.state === 'done') {
+      this.podTouchdown.impactRig.craterGroup.visible = false;
+    }
 
     for (const rec of this.entries.values()) {
       const baseWy = terrain ? terrain.heightAt(rec.targetPos.x, rec.targetPos.z) : 0;
       const isOwnedPod = rec.kind === ENTITY_KIND.pod && rec.owner === this.ownerColonyIndex;
+      const isOwnedHq = rec.kind === ENTITY_KIND.hq && rec.owner === this.ownerColonyIndex;
       const podLift = isOwnedPod ? tdState.podLift : 0;
       rec.targetPos.y = baseWy + podLift;
       rec.mesh.position.lerp(rec.targetPos, posLerp);
-      if (isOwnedPod && (tdState.phase === 'descending' || tdState.phase === 'engine-stop')) {
+      if (isOwnedPod && tdState.state !== 'done') {
         rec.mesh.position.y = rec.targetPos.y;
+      } else if (!isOwnedPod) {
+        rec.mesh.position.y = terrain ? terrain.heightAt(rec.mesh.position.x, rec.mesh.position.z) : baseWy;
       }
-      rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState.hqVisible);
+      rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState);
+
+      if (isOwnedHq && tdState.state === 'egress') {
+        const roll = tdState.heroEgressProgress;
+        const back = (1 - roll) * POD_LAND_OFFSET_M;
+        rec.mesh.position.set(
+          rec.targetPos.x - POD_EGRESS_DIR.x * back,
+          baseWy + (1 - roll) * 0.38,
+          rec.targetPos.z - POD_EGRESS_DIR.z * back,
+        );
+        rec.mesh.rotation.y = POD_EGRESS_YAW;
+        rec.walk = roll < 0.98 ? 1 : 0;
+        tickArchetypeMesh(rec.mesh, this.time, rec.walk, 0);
+        continue;
+      }
+
       const diff = ((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       rec.mesh.rotation.y += diff * rotLerp;
 

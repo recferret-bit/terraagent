@@ -29,7 +29,7 @@ export class Trajectory {
 
   /** Pod base position (altitude curve + terrain once close). */
   pos(tn: number, out: THREE.Vector3) {
-    const s = smoother(4, 34, tn);
+    const s = smoother(4, 32, tn);
     const yRel = altCurve(tn);
     const x = this.podLand.x + this.lat0.x * (1 - s), z = this.podLand.z + this.lat0.y * (1 - s);
     const g = this.surface.heightAt(x, z) * smoothstep(80, 0, yRel);
@@ -39,7 +39,7 @@ export class Trajectory {
   /** Pod attitude: tumble after release, slow sway under the chute. */
   podRot(tn: number, out: THREE.Euler) {
     const tum = smoothstep(4, 4.6, tn) * (1 - smoothstep(8, 13, tn));
-    const sway = 0.07 * Math.sin(tn * 1.1) * smoothstep(24, 26, tn) * (1 - smoothstep(30, 33, tn));
+    const sway = 0.07 * Math.sin(tn * 1.1) * smoothstep(24, 26, tn) * (1 - smoothstep(29, 32, tn));
     return out.set(0.35 * Math.sin(1.3 * (tn - 4)) * tum + sway * 0.5, 2.4 * smoother(4, 12, tn), 0.5 * Math.sin(0.9 * (tn - 4) + 1) * tum + sway, 'YXZ');
   }
 }

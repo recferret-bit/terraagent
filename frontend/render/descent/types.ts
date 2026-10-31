@@ -3,7 +3,7 @@ import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { PlanetSurface } from '../planets/surface/types';
 import type { ColonyViewport } from '../core/createColonyViewport';
 
-export type DescentPhase = 'orbit' | 'release' | 'freefall' | 'reentry' | 'chute' | 'retro' | 'touchdown';
+export type DescentPhase = 'orbit' | 'release' | 'freefall' | 'reentry' | 'chute' | 'approach' | 'retro' | 'touchdown';
 
 export interface DescentTelemetry {
   /** Seconds since start (0..duration). */

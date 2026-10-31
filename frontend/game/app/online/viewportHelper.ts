@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
-import { specForPlanetType, type SimPlanetType } from '@terra/render/planets/hex';
+import { specForPlanetType, tileXZ, type HexPick, type HexTerrain, type SimPlanetType } from '@terra/render/planets/hex';
 import type { LocalTransport } from '../../net/LocalTransport';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 
@@ -57,6 +57,55 @@ export function writeStoredPlanetKind(kind: PlanetKind): void {
   } catch {
     // ignore storage errors
   }
+}
+
+export function resolveSessionPlanetKind(q: URLSearchParams, explicit?: PlanetKind): PlanetKind | null {
+  const raw = q.get('planet');
+  const urlKind: PlanetKind | null =
+    raw === 'dune' || raw === 'oceanForest' || raw === 'forestRock' ? raw : null;
+  const resolved = explicit ?? urlKind ?? readStoredPlanetKind();
+  if (explicit ?? urlKind) writeStoredPlanetKind((explicit ?? urlKind)!);
+  return resolved;
+}
+
+export function pickTerrainAt(terrain: HexTerrain | null, vp: ColonyViewport, clientX: number, clientY: number): HexPick | null {
+  if (!terrain) return null;
+  const r = vp.renderer.domElement.getBoundingClientRect();
+  const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
+  const pick = terrain.pick(ndc, vp.camera);
+  console.log('[pick]', pick ? `q=${pick.q} r=${pick.r} i=${pick.i}` : 'off-planet');
+  return pick;
+}
+
+export function projectTileToScreen(terrain: HexTerrain | null, vp: ColonyViewport, q: number, r: number): { x: number; y: number } | null {
+  if (!terrain) return null;
+  const [x, z] = tileXZ(q, r);
+  const p = new THREE.Vector3(x, terrain.heightAt(x, z), z).project(vp.camera);
+  const rect = vp.renderer.domElement.getBoundingClientRect();
+  return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
+}
+
+export function syncSpaceTerrainOffset(
+  terrain: HexTerrain | null,
+  inSpace: boolean,
+  showTerrain: boolean,
+  targetTile: { q: number; r: number },
+): void {
+  if (!terrain) return;
+  if (inSpace) {
+    const [tx, tz] = tileXZ(targetTile.q, targetTile.r);
+    const ty = terrain.heightAt(tx, tz);
+    terrain.group.position.set(-tx, -ty, -tz);
+    terrain.group.visible = showTerrain;
+  } else {
+    terrain.group.position.set(0, 0, 0);
+    terrain.group.visible = true;
+  }
+}
+
+export function listSceneEntities(scene: THREE.Scene): Array<{ id: number; x: number; y: number; z: number }> {
+  const g = scene.getObjectByName('entities');
+  return (g?.children ?? []).map((m) => ({ id: Number(m.userData.entityId), x: m.position.x, y: m.position.y, z: m.position.z }));
 }
 
 export function resolveOnlinePlanetLook(planetType: SimPlanetType | string, preferredKind?: PlanetKind | null): PlanetSpec {
