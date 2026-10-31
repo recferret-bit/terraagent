@@ -200,7 +200,7 @@ export class HubPlacementMenu {
       if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT')) return;
       const key = e.key ?? '';
       if (key === 'Escape' && this.active) this.cancelPlacement();
-      else if (key.toLowerCase() === 'h') this.startPlacement();
+      else if (key.toLowerCase() === 'h' && !this.el.hidden) this.startPlacement();
     };
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('keydown', onKey);

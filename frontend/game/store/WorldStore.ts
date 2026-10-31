@@ -176,7 +176,7 @@ export class WorldStore {
       this.offsetMs = m.d.serverTimeMs - this.now();
       this.baseTick = m.d.tick; this.baseLocalMs = this.now();
       const state = ownBytes(m.d.state);
-      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
+      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, colonyId: m.d.colonyId, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
     } else if (m.t === 'delta') {
       this.baseTick = m.d.toTick; this.baseLocalMs = this.now();
       const diff = ownBytes(m.d.diff);
@@ -246,7 +246,7 @@ export class LocalHost {
   readonly sent: Outgoing[] = [];
   readonly connectionState: ConnectionState = { phase: 'streaming', attempt: 0, downSinceMs: null };
   private readonly flagsList: string[];
-  private readonly colonyIndex: number;
+  private colonyIndex: number;
   private boundStores = new Set<WorldStore>();
   private welcomed = false;
 
@@ -258,6 +258,10 @@ export class LocalHost {
     this.sim.load(planet);
     this.store = new WorldStore(this, () => ({ postMessage() {}, onmessage: null, terminate() {} }));
     this.sync(true);
+  }
+
+  setColonyIndex(colonyIndex: number): void {
+    this.colonyIndex = colonyIndex;
   }
 
   get state(): PlanetState {

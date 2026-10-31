@@ -38,6 +38,7 @@ export interface LandfallControllerOptions {
   canvas?: HTMLElement | null;
   ownerColonyIndex?: number;
   autoSelect?: boolean;
+  isHqDeployed?: () => boolean;
   onTargetMove?: (q: number, r: number) => void;
 }
 
@@ -76,6 +77,7 @@ function findHqInEntities(view: { entities?: Float32Array | ViewEntity[]; count?
       const o = i * ENTITY_STRIDE;
       if (ents[o + 1] !== ENTITY_KIND.hq) continue;
       if (owner !== undefined && ents[o + 2] !== owner) continue;
+      if (ents[o + 10] === ENTITY_STATE.descending) continue;
       return {
         id: ents[o],
         owner: ents[o + 2],
@@ -94,6 +96,7 @@ function findHqInEntities(view: { entities?: Float32Array | ViewEntity[]; count?
     for (const e of ents) {
       if (e.kind !== ENTITY_KIND.hq) continue;
       if (owner !== undefined && e.owner !== owner) continue;
+      if (e.state === ENTITY_STATE.descending) continue;
       return {
         id: e.id,
         owner: e.owner,
@@ -237,6 +240,12 @@ export class LandfallController {
   }
 
   onView(view: unknown): void {
+    if (this.opts.isHqDeployed && !this.opts.isHqDeployed()) {
+      this.latestHq = null;
+      this.selectedEntityId = null;
+      this.emit();
+      return;
+    }
     const hq = extractHqFromView(view, this.ownerColonyIndex);
     if (!hq && view && typeof view === 'object' && !('entities' in view) && !('colonies' in view)) {
       return;
@@ -253,6 +262,11 @@ export class LandfallController {
   }
 
   selectHq(): number | null {
+    if (this.opts.isHqDeployed && !this.opts.isHqDeployed()) {
+      this.selectedEntityId = null;
+      this.emit();
+      return null;
+    }
     this.autoSelect = true;
     if (this.latestHq) {
       this.selectedEntityId = this.latestHq.entityId;

@@ -7,7 +7,7 @@ import { EntityMeshes, archetypeForKind } from '../../app/online/EntityMeshes';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
 import { LocalHost } from '../../store/WorldStore';
-import landfallFeature, { extractHqFromView, mountLandfall } from './index';
+import landfallFeature, { LandfallController, extractHqFromView, mountLandfall } from './index';
 
 class FakeElement {
   tagName: string;
@@ -329,7 +329,7 @@ describe('W01-26: EntityMeshes 3D rendering and interpolation', () => {
 });
 
 describe('W01-26: PodTouchdownFx dev.land transition and colony isolation', () => {
-  it('completes touchdown + engine-stop without freezing mid-air when sim transitions descending -> idle (dev.land) and isolates owned colony', () => {
+  it('hides HQ robot and selection until pod lands, and isolates owned colony touchdown', () => {
     const scene = new THREE.Scene();
     const meshes = new EntityMeshes(
       scene,
@@ -349,27 +349,56 @@ describe('W01-26: PodTouchdownFx dev.land transition and colony isolation', () =
     const col1 = spawnColonyLanding(host.state, { colonyId: 1, q: 6, r: 0 });
     host.step(1); // Colony 1 is descending on initial snapshot
 
-    meshes.syncView(host.sync(true), null, 'desert');
+    const ctl = new LandfallController({
+      ownerColonyIndex: 1,
+      isHqDeployed: () => meshes.isHqDeployed(),
+    });
+    ctl.onChange(({ selectedEntityId }) => meshes.setSelectedEntityId(selectedEntityId));
+
+    const initialView = host.sync(true);
+    meshes.syncView(initialView, null, 'desert');
+    meshes.syncView(initialView, null, 'desert');
+    expect(meshes.hasPodTouchedDown()).toBe(false);
+    expect(meshes.isHqDeployed()).toBe(false);
     meshes.update(0.05, null);
+    expect(meshes.hasPodTouchedDown()).toBe(false);
+    expect(meshes.isHqDeployed()).toBe(false);
     // Colony 0 pod must stay on the ground (y = 0) and its HQ must remain visible
     const col0Pod = meshes.getRecord(col0.podEntityId)!;
     expect(col0Pod.mesh.position.y).toBe(0);
 
-    // Fast-start dev.land completes Colony 1's sim descent 50ms later (simDescending: true -> false)
+    // Fast-start dev.land completes Colony 1's sim descent while pod is still descending in 3D
     host.step(35);
-    meshes.syncView(host.sync(false), null, 'desert');
+    const landedView = host.sync(false);
+    meshes.syncView(landedView, null, 'desert');
+    ctl.onView(landedView);
 
-    // Step past 0.7s (where the old simStopTimer bug froze elapsed at 0.05s and lifted pod to ~23.5m forever)
+    // Before pod touchdown (t = 0.75s): HQ robot, selection ring, and controller selection must be hidden/null
     meshes.update(0.7, null);
     const col1Pod = meshes.getRecord(col1.podEntityId)!;
     expect(col1Pod.mesh.position.y).toBeGreaterThan(2);
     expect(col1Pod.mesh.position.y).toBeLessThan(20);
+    expect(meshes.hasPodTouchedDown()).toBe(false);
+    expect(meshes.isHqDeployed()).toBe(false);
+    expect(ctl.getSelectedEntityId()).toBeNull();
+    expect(meshes.selectionRing.visible).toBe(false);
+    for (let i = 1; i <= 10; i++) {
+      const rec = meshes.getRecord(i);
+      if (rec && rec.kind === ENTITY_KIND.hq && rec.owner === 1) {
+        expect(rec.mesh.visible).toBe(false);
+      }
+    }
 
-    // Step into engine-stop window (t = 1.95s)
+    // Step into engine-stop window (t = 1.95s, after pod touchdown at 1.75s + 0.15s deploy)
     meshes.update(1.2, null);
     const engineStop = meshes.podTouchdown.computeState(false, 1);
     expect(engineStop.phase).toBe('engine-stop');
     expect(col1Pod.mesh.position.y).toBe(0);
+    expect(meshes.hasPodTouchedDown()).toBe(true);
+    expect(meshes.isHqDeployed()).toBe(true);
+    ctl.onView(landedView);
+    expect(ctl.getSelectedEntityId()).not.toBeNull();
+    expect(meshes.selectionRing.visible).toBe(true);
 
     // Step past total completion (t = 2.8s)
     meshes.update(0.85, null);
@@ -377,13 +406,12 @@ describe('W01-26: PodTouchdownFx dev.land transition and colony isolation', () =
     expect(settled.phase).toBe('settled');
     expect(col1Pod.mesh.position.y).toBe(0);
     expect(settled.hqVisible).toBe(true);
-    for (const kind of [ENTITY_KIND.hq]) {
-      for (let i = 1; i <= 10; i++) {
-        const rec = meshes.getRecord(i);
-        if (rec && rec.kind === kind) expect(rec.mesh.visible).toBe(true);
-      }
+    for (let i = 1; i <= 10; i++) {
+      const rec = meshes.getRecord(i);
+      if (rec && rec.kind === ENTITY_KIND.hq) expect(rec.mesh.visible).toBe(true);
     }
 
+    ctl.dispose();
     meshes.dispose();
   });
 });

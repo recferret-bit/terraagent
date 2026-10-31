@@ -39,6 +39,7 @@ export class Predictor {
   private cache: { version: number; target: number; host: SimHost } | null = null;
   private epochServerMs: number | null = null;
   private offsetMs = 0;
+  private colonyId: string | null = null;
   private lastRejected: { cmd: PendingCommand; code: string } | null = null;
   enabled: boolean;
   /** Rebuild times (clone + steps) of the predicted host. */
@@ -63,8 +64,9 @@ export class Predictor {
   get confirmedTick(): number { return this.confirmed.tick; }
 
   /** Loads the welcome. Commands that are still pending stay (a re-join does not forget what the player did). */
-  welcome(w: WelcomeInput & { serverTimeMs?: number }): WelcomeResult {
+  welcome(w: WelcomeInput & { serverTimeMs?: number; colonyId?: string | null }): WelcomeResult {
     const r = this.confirmed.welcome(w);
+    if (w.colonyId !== undefined) this.colonyId = w.colonyId;
     if (w.serverTimeMs !== undefined) {
       this.epochServerMs = w.serverTimeMs - w.tick * TICK_MS;
       this.offsetMs = w.serverTimeMs - this.now();
@@ -150,12 +152,15 @@ export class Predictor {
     const host = this.confirmed.simHost.clone();
     const first = host.tick + 1;
     const byTick = new Map<number, SimCommandV1[]>();
-    const hasColony = Boolean(host.state.colonies?.length && host.state.colonies[0]?.status !== 'eliminated');
+    const colonies = host.state.colonies ?? [];
+    const matchedCol = this.colonyId ? colonies.find((c) => c.id === this.colonyId) : colonies[0];
+    const col = matchedCol ?? colonies[0];
+    const colonyIndex = col && col.status !== 'eliminated' ? col.index : null;
     for (const p of this.pend) {
       const due = Math.max(p.appliedAtTick ?? first, first);
       const list = byTick.get(due) ?? [];
       const isDev = p.kind.startsWith('dev.');
-      list.push({ colonyIndex: hasColony ? 0 : null, source: isDev ? 'dev' : 'player', commandId: p.id, kind: p.kind, args: p.args });
+      list.push({ colonyIndex, source: isDev ? 'dev' : 'player', commandId: p.id, kind: p.kind, args: p.args });
       byTick.set(due, list);
     }
     for (let tick = first; tick <= target; tick++) {

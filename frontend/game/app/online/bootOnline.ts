@@ -101,6 +101,17 @@ function generateHexSecret(byteLen = 16): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
+/** Generates and persists a fresh 32-char hex `ta_device_secret` in `localStorage`. */
+export function resetDeviceSecret(storage: StorageLike = defaultStorage()): string {
+  const secret = generateHexSecret(16);
+  try {
+    storage.setItem(DEVICE_SECRET_KEY, secret);
+  } catch {
+    // Ignore storage write failure
+  }
+  return secret;
+}
+
 /** Reads `ta_device_secret` (`>= 16` chars) from `localStorage` or generates and persists a 32-char hex secret. */
 export function getOrCreateDeviceSecret(storage: StorageLike = defaultStorage()): string {
   try {
@@ -111,13 +122,7 @@ export function getOrCreateDeviceSecret(storage: StorageLike = defaultStorage())
   } catch {
     // Ignore storage read failure
   }
-  const secret = generateHexSecret(16);
-  try {
-    storage.setItem(DEVICE_SECRET_KEY, secret);
-  } catch {
-    // Ignore storage write failure
-  }
-  return secret;
+  return resetDeviceSecret(storage);
 }
 
 /** Calls `POST /v1/auth/refresh` with `credentials: 'include'`. Returns the `AuthResponse` or `null` on failure. */

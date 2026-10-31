@@ -76,6 +76,14 @@ export class PodTouchdownFx {
     this.elapsed = 0;
   }
 
+  hasTouchedDown(): boolean {
+    return !this.enabled || this.elapsed >= POD_TOUCHDOWN_DESCENT_S;
+  }
+
+  isHqDeployed(): boolean {
+    return !this.enabled || this.elapsed >= POD_TOUCHDOWN_DESCENT_S + 0.15;
+  }
+
   private ensureFlames(podMesh: THREE.Object3D): Flames {
     if (this.flames && this.attachedPodMesh === podMesh) return this.flames;
     if (this.flames && this.attachedPodMesh) {
@@ -118,7 +126,11 @@ export class PodTouchdownFx {
     this.thrLight.intensity = 0;
   }
 
-  computeState(_simDescending: boolean, _simProgress: number): PodTouchdownState {
+  computeState(simDescending: boolean, _simProgress: number): PodTouchdownState {
+    if (this.wasSimDescending && !simDescending && this.elapsed === 0) {
+      this.elapsed = POD_TOUCHDOWN_DESCENT_S + 0.15;
+    }
+    this.wasSimDescending = simDescending;
     if (!this.enabled || this.elapsed >= POD_TOUCHDOWN_TOTAL_S) {
       return { phase: 'settled', elapsed: this.elapsed, podLift: 0, thrust: 0, dustIntensity: 0, hqVisible: true };
     }
@@ -162,12 +174,8 @@ export class PodTouchdownFx {
   ): PodTouchdownState {
     const step = Math.max(0, dt);
     this.time += step;
-    this.wasSimDescending = simDescending;
     if (this.enabled && podMesh && this.elapsed < POD_TOUCHDOWN_TOTAL_S) {
       this.elapsed += step;
-      if (simDescending && this.elapsed >= POD_TOUCHDOWN_DESCENT_S) {
-        this.elapsed = POD_TOUCHDOWN_DESCENT_S - 0.01;
-      }
     }
 
     const state = this.computeState(simDescending, simProgress);

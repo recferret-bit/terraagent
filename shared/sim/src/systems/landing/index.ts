@@ -408,6 +408,13 @@ export const devLand = defineCommandHandler({
     const pods = getLandingPods(state);
     const matching = pods.filter((p) => !p.deployed && (targetColony === null || p.colonyId === targetColony));
     if (matching.length === 0) {
+      if (
+        args.q === undefined &&
+        args.r === undefined &&
+        pods.some((p) => p.deployed && (targetColony === null || p.colonyId === targetColony))
+      ) {
+        return;
+      }
       const colIdx = targetColony ?? 0;
       spawnColonyLanding(state, { colonyId: colIdx, q: args.q, r: args.r, tick: ctx.tick, data: ctx.data }, ctx);
       const updatedPods = getLandingPods(state);

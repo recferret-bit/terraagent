@@ -149,6 +149,12 @@ export function mountHubPlacement(
     menu.bindSurface(surface, pickTile);
   }
 
+  const offLandfall = services.landfall
+    ? services.landfall.onChange(({ hq }) => {
+        menu.el.hidden = !hq;
+        if (!hq && menu.isPlacementActive()) menu.cancelPlacement();
+      })
+    : null;
   const offStoreView = store?.onView ? store.onView((v) => menu.setView(v)) : null;
   const offHostEvents = simHost?.onEvents ? simHost.onEvents(() => menu.setView(simHost.view())) : null;
   if (store?.latest) {
@@ -171,6 +177,7 @@ export function mountHubPlacement(
     bindSurface: (surf, pick) => menu.bindSurface(surf, pick),
     update: (view) => menu.setView(view),
     dispose: () => {
+      offLandfall?.();
       offStoreView?.();
       offHostEvents?.();
       menu.dispose();

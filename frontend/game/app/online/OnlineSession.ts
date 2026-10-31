@@ -111,6 +111,7 @@ export class OnlineSession {
   private localTimer: ReturnType<typeof setInterval> | null = null;
   private cameraCentered = false;
   private landSent = false;
+  private hqDeployedSynced = false;
   private tiles: ClientTiles | null = null;
   private warp = 1;
   private raf = 0;
@@ -158,14 +159,12 @@ export class OnlineSession {
     this.landfall = new LandfallController({
       store: this.store, sendCommand: this.commandBus.send,
       pickTile: (cx, cy) => this.pickAt(cx, cy), canvas: this.viewport.renderer.domElement,
+      isHqDeployed: () => this.entities.isHqDeployed(),
       onTargetMove: (q, r) => this.entities.flashTarget(q, r, this.terrain),
     });
     this.cleanups.push(this.landfall.onChange(({ selectedEntityId }) => this.entities.setSelectedEntityId(selectedEntityId)));
     this.hud = this.createHud(uiParent, local);
-    this.pauseOverlay = new PauseOverlay(uiParent, {
-      onResume: () => this.setPaused(false),
-      onReturnToOrbit: () => this.returnToOrbit(),
-    });
+    this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
     if (local) this.cleanups.push(bindLocalSaveListeners(local));
     this.bindTransportListeners();
     this.bindKeys();
@@ -173,11 +172,11 @@ export class OnlineSession {
     const predict = q.get('predict') !== '0';
     if (useGuestBoot) {
       this.bootOverlay = new BootOverlay(uiParent);
-      if (this.skipDescent || opts.preBoot) this.bootOverlay.showColony('pl_dev');
+      if (this.skipDescent) this.bootOverlay.showColony('pl_dev');
       this.whenBooted = this.startBootSequence(opts, predict);
     } else {
       this.bootOverlay = this.flags.set.has('W01') && mode === 'boot' ? new BootOverlay(uiParent) : null;
-      if (this.bootOverlay && (this.skipDescent || opts.preBoot)) this.bootOverlay.showColony('pl_dev');
+      if (this.bootOverlay && this.skipDescent) this.bootOverlay.showColony('pl_dev');
       this.whenBooted = Promise.resolve(null);
       this.cleanups.push(this.store.onView((v) => this.onView(v)));
       this.store.start([...this.flags.set], { predict });
@@ -236,13 +235,8 @@ export class OnlineSession {
   returnToOrbit(): void {
     const kind: PlanetKind = this.planetKind ?? 'forestRock';
     writeStoredPlanetKind(kind);
-    if (this.onReturnToOrbit) {
-      this.onReturnToOrbit(kind);
-      return;
-    }
-    if (typeof location !== 'undefined') {
-      location.href = `/play.html?planet=${kind}`;
-    }
+    if (this.onReturnToOrbit) { this.onReturnToOrbit(kind); return; }
+    if (typeof location !== 'undefined') location.href = `/play.html?planet=${kind}`;
   }
 
   selectHq(): number | null { return this.landfall.selectHq(); }
@@ -259,30 +253,22 @@ export class OnlineSession {
 
   private async startBootSequence(opts: OnlineSessionOptions, predict = true): Promise<BootAuthResult> {
     this.store.start([...this.flags.set], { predict });
-    const boot = opts.preBoot
-      ? await opts.preBoot
-      : await bootAuthAndHome({
-          fetch: opts.fetch,
-          storage: opts.storage,
-          search: this.search,
-          onStatus: (s) => this.bootOverlay?.setSplashStatus(s),
-        });
+    const boot = await (opts.preBoot ?? bootAuthAndHome({
+      fetch: opts.fetch, storage: opts.storage, search: this.search,
+      onStatus: (s) => this.bootOverlay?.setSplashStatus(s),
+    }));
     this.applyBootResult(boot);
     this.cleanups.push(this.store.onView((v) => this.onView(v)));
 
-    if (opts.localHost) {
-      this.attachLocalHost(opts.localHost, false);
-    } else if (boot.mode === 'local' && boot.localHost) {
-      this.attachLocalHost(boot.localHost, typeof window !== 'undefined');
-    } else {
-      this.cleanups.push(
-        this.transport.onState((s) => {
-          if (s.phase === 'terminal' && !this.store.latest && !this.localHost) {
-            const fb = createLocalBootFallback(boot.deviceSecret, undefined, this.spawn);
-            if (fb.localHost) this.attachLocalHost(fb.localHost, typeof window !== 'undefined');
-          }
-        }),
-      );
+    if (opts.localHost) this.attachLocalHost(opts.localHost, false);
+    else if (boot.mode === 'local' && boot.localHost) this.attachLocalHost(boot.localHost, typeof window !== 'undefined');
+    else {
+      this.cleanups.push(this.transport.onState((s) => {
+        if (s.phase === 'terminal' && !this.store.latest && !this.localHost) {
+          const fb = createLocalBootFallback(boot.deviceSecret, undefined, this.spawn);
+          if (fb.localHost) this.attachLocalHost(fb.localHost, typeof window !== 'undefined');
+        }
+      }));
       this.transport.start();
       if (this.store.latest) this.onView(this.store.latest);
     }
@@ -310,12 +296,14 @@ export class OnlineSession {
     this.cameraTargetTile = { q: boot.colony.spawn.q, r: boot.colony.spawn.r };
     this.entities.setOwnerColonyIndex(this.colonyIndex);
     this.landfall.setOwnerColonyIndex(this.colonyIndex);
+    this.localHost?.setColonyIndex(this.colonyIndex);
     this.bootOverlay?.setColonyMeta(this.planetId, this.colonyId, this.colonyIndex);
     if (!this.skipDescent) this.bootOverlay?.setSplashStatus('Deploying drop pod…');
   }
 
   private attachLocalHost(lh: LocalHost, autoStep: boolean): void {
     this.localHost = lh;
+    lh.setColonyIndex(this.colonyIndex);
     lh.bindStore(this.store);
     this.cleanups.push(lh.onMessage((m) => this.commandBus.handleMessage(m)));
     const origSend = this.transport.send.bind(this.transport);
@@ -330,9 +318,10 @@ export class OnlineSession {
     const onKey = (e: KeyboardEvent) => {
       if ((e.key === 'Escape' || e.key === ' ') && this.bootOverlay?.phase === 'descent') {
         e.preventDefault();
+        this.entities.podTouchdown.setEnabled(false);
         if (!this.landSent) {
           this.landSent = true;
-          void this.commandBus.send('dev.land', { colonyId: this.colonyIndex }, { predict: false });
+          void this.commandBus.send('dev.land', {}, { predict: false });
         }
         this.bootOverlay.showColony(this.planetId || 'pl_dev');
         return;
@@ -349,21 +338,26 @@ export class OnlineSession {
     if (v.tiles) this.onTiles(v, v.tiles);
     const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);
     this.biomeKey = look.biomeKey;
+    const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
+    if (!this.cameraCentered && !status.descending && status.hqLanded && !this.fastStartLand) {
+      this.entities.podTouchdown.setEnabled(false);
+    }
     this.entities.syncView(v, this.terrain, this.biomeKey);
+    const hqReady = this.entities.isHqDeployed();
+    this.hqDeployedSynced = hqReady;
     this.landfall.onView(v);
     this.hud.update({ ...v, tick: v.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
 
     if (this.bootOverlay) {
-      const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
-      if (status.descending && this.fastStartLand && !this.landSent) {
+      if (status.descending && this.fastStartLand && !this.landSent && (this.skipDescent || this.entities.hasPodTouchedDown())) {
         this.landSent = true;
-        void this.commandBus.send('dev.land', { colonyId: this.colonyIndex }, { predict: false });
+        void this.commandBus.send('dev.land', {}, { predict: false });
       }
       if (!this.cameraCentered || status.descending) {
         this.focusTile(status.q, status.r, true);
         this.cameraCentered = true;
       }
-      if (status.descending && !this.skipDescent && !this.fastStartLand) {
+      if ((status.descending || !hqReady) && !this.skipDescent) {
         this.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r });
       } else {
         this.bootOverlay.showColony(v.planet.id || this.planetId || 'pl_dev');
@@ -371,7 +365,6 @@ export class OnlineSession {
         this.landfall.selectHq();
       }
     } else if (!this.cameraCentered && this.flags.set.has('W01')) {
-      const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
       if (status.q !== 0 || status.r !== 0 || status.hqLanded || status.descending) {
         this.focusTile(status.q, status.r, true);
         this.cameraCentered = true;
@@ -402,13 +395,7 @@ export class OnlineSession {
       const [tx, tz] = tileXZ(this.cameraTargetTile.q, this.cameraTargetTile.r);
       const ty = terrain.heightAt(tx, tz);
       const target = new THREE.Vector3(tx, ty, tz);
-      this.cam = new RTSCamera(
-        this.viewport.camera,
-        this.viewport.renderer.domElement,
-        surface,
-        new THREE.Vector3(tx + 42, ty + 46, tz + 42),
-        target,
-      );
+      this.cam = new RTSCamera(this.viewport.camera, this.viewport.renderer.domElement, surface, new THREE.Vector3(tx + 42, ty + 46, tz + 42), target);
     } else if (this.tiles) {
       const changed = changedTiles(this.tiles, tiles);
       if (changed.length) this.terrain.updateTiles(tiles as HexTiles, changed);
@@ -464,6 +451,17 @@ export class OnlineSession {
   private frameHud(now: number, dt: number): void {
     const v = this.store.latest;
     if (!v) return;
+    if (this.fastStartLand && !this.landSent && this.entities.hasPodTouchedDown()) {
+      const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
+      if (status.descending) {
+        this.landSent = true;
+        void this.commandBus.send('dev.land', {}, { predict: false });
+      }
+    }
+    if (!this.hqDeployedSynced && this.entities.isHqDeployed()) {
+      this.hqDeployedSynced = true;
+      this.onView(v);
+    }
     this.hud.frame({ ...v, sim: { view: v, serverTick: this.store.serverTickF(), predicting: this.store.predictionMode === 'on' } }, dt);
     if (now - this.lastHudMs > 250) {
       this.lastHudMs = now;

@@ -11,7 +11,7 @@ import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createDescentSequence } from '../descent/createDescent';
 import { warmupScene } from './warmup';
 import { Gameplay } from './Gameplay';
-import { bootAuthAndHome, type BootAuthResult } from './online/bootOnline';
+import { resetDeviceSecret, type BootAuthResult } from './online/bootOnline';
 import { OnlineSession } from './online/OnlineSession';
 import { writeStoredPlanetKind } from './online/viewportHelper';
 import { track } from '../core/analytics';
@@ -192,7 +192,8 @@ export class Game {
     clearTimeout(this.prepTimer);
     writeStoredPlanetKind(kind);
     if (this.useOnlineGameplay) {
-      this.preBoot = bootAuthAndHome({ search: '' });
+      resetDeviceSecret();
+      this.preBoot = null;
     }
     let p: Prepared;
     try { p = this.prepare(kind, seed); }

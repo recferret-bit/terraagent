@@ -4,7 +4,7 @@ import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
-import { PodTouchdownFx } from './PodTouchdownFx';
+import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 
 export interface EntityMeshRecord {
   id: number;
@@ -73,7 +73,6 @@ export class EntityMeshes {
   private readonly entries = new Map<number, EntityMeshRecord>();
   private selectedEntityId: number | null = null;
   private ownerColonyIndex = 0;
-  private initialSyncDone = false;
   private markerT = 99;
   private markerTile: { q: number; r: number } | null = null;
   private time = 0;
@@ -125,8 +124,22 @@ export class EntityMeshes {
     return this.entries.get(entityId);
   }
 
+  hasPodTouchedDown(): boolean {
+    return this.podTouchdown.hasTouchedDown();
+  }
+
+  isHqDeployed(): boolean {
+    return this.podTouchdown.isHqDeployed();
+  }
+
   setOwnerColonyIndex(colonyIndex: number): void {
+    if (this.ownerColonyIndex === colonyIndex) return;
     this.ownerColonyIndex = colonyIndex;
+    const hqVisible = this.podTouchdown.isHqDeployed();
+    for (const rec of this.entries.values()) {
+      rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, hqVisible);
+    }
+    this.updateSelectionRing();
   }
 
   setSelectedEntityId(entityId: number | null): void {
@@ -149,22 +162,35 @@ export class EntityMeshes {
     this.markerT = 0;
   }
 
+  private computeMeshVisible(kind: number, owner: number, state: number, hqVisible: boolean): boolean {
+    if (kind === ENTITY_KIND.hq) {
+      if (state === ENTITY_STATE.descending) return false;
+      if (owner === this.ownerColonyIndex) return hqVisible;
+      return true;
+    }
+    if (kind === ENTITY_KIND.commandHub && owner === this.ownerColonyIndex && !hqVisible) {
+      return false;
+    }
+    return true;
+  }
+
   syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey): void {
     this.biomeKey = biomeKey;
     const seen = new Set<number>();
     const buf = view.entities;
     const hasEntityLayer = Boolean(this.scene.getObjectByName('entities'));
 
-    if (!this.initialSyncDone && view.count > 0) {
-      this.initialSyncDone = true;
-      for (let i = 0; i < view.count; i++) {
-        const o = i * ENTITY_STRIDE;
-        if (buf[o + 1] === ENTITY_KIND.commandHub && buf[o + 2] === this.ownerColonyIndex) {
-          this.podTouchdown.setEnabled(false);
-          break;
-        }
+    let ownedPodDescending = false;
+    let ownedPodProgress = 1;
+    for (let i = 0; i < view.count; i++) {
+      const o = i * ENTITY_STRIDE;
+      if (buf[o + 1] === ENTITY_KIND.pod && buf[o + 2] === this.ownerColonyIndex) {
+        ownedPodDescending = buf[o + 10] === ENTITY_STATE.descending;
+        ownedPodProgress = buf[o + 11] ?? 1;
+        break;
       }
     }
+    const tdState = this.podTouchdown.computeState(ownedPodDescending, ownedPodProgress);
 
     for (let i = 0; i < view.count; i++) {
       const o = i * ENTITY_STRIDE;
@@ -172,7 +198,7 @@ export class EntityMeshes {
       const kind = buf[o + 1];
       if (hasEntityLayer && kind === ENTITY_KIND.devProbe) continue;
       seen.add(id);
-      this.upsertEntity(buf, o, terrain);
+      this.upsertEntity(buf, o, terrain, tdState);
     }
 
     for (const [id, rec] of [...this.entries]) {
@@ -185,7 +211,12 @@ export class EntityMeshes {
     this.updateSelectionRing();
   }
 
-  private upsertEntity(buf: ArrayLike<number>, o: number, terrain: HexTerrain | null): void {
+  private upsertEntity(
+    buf: ArrayLike<number>,
+    o: number,
+    terrain: HexTerrain | null,
+    tdState: PodTouchdownState,
+  ): void {
     const id = buf[o]!;
     const kind = buf[o + 1]!;
     const owner = buf[o + 2]!;
@@ -202,25 +233,17 @@ export class EntityMeshes {
     const [wx, wz] = tileXZ(x, y);
     const baseWy = terrain ? terrain.heightAt(wx, wz) : 0;
     const isOwnedPod = kind === ENTITY_KIND.pod && owner === this.ownerColonyIndex;
-    const isOwnedHq = kind === ENTITY_KIND.hq && owner === this.ownerColonyIndex;
-    const tdState = this.podTouchdown.computeState(isOwnedPod && state === ENTITY_STATE.descending, progress);
     const podLift = isOwnedPod ? tdState.podLift : 0;
     const wy = baseWy + podLift;
     const yaw = Math.PI / 2 - rot;
     const buildProg = kind === ENTITY_KIND.commandHub ? hubBuildProgressForState(state, progress) : 1;
+    const visible = this.computeMeshVisible(kind, owner, state, tdState.hqVisible);
     let rec = this.entries.get(id);
     if (!rec) {
       const mesh = this.makeMesh(archetypeForKind(kind), this.biomeKey);
       mesh.position.set(wx, wy, wz);
       mesh.rotation.y = yaw;
-      if (kind === ENTITY_KIND.hq) {
-        mesh.visible =
-          !isOwnedHq ||
-          tdState.hqVisible ||
-          state === ENTITY_STATE.moving ||
-          state === ENTITY_STATE.working ||
-          state === ENTITY_STATE.constructing;
-      }
+      mesh.visible = visible;
       const buildStage = setArchetypeBuildProgress(mesh, buildProg);
       this.group.add(mesh);
       rec = {
@@ -247,6 +270,7 @@ export class EntityMeshes {
       rec.state = state;
       rec.progress = progress;
       rec.buildStage = setArchetypeBuildProgress(rec.mesh, buildProg);
+      rec.mesh.visible = visible;
       rec.targetPos.set(wx, wy, wz);
     }
   }
@@ -276,23 +300,13 @@ export class EntityMeshes {
     for (const rec of this.entries.values()) {
       const baseWy = terrain ? terrain.heightAt(rec.targetPos.x, rec.targetPos.z) : 0;
       const isOwnedPod = rec.kind === ENTITY_KIND.pod && rec.owner === this.ownerColonyIndex;
-      const isOwnedHq = rec.kind === ENTITY_KIND.hq && rec.owner === this.ownerColonyIndex;
       const podLift = isOwnedPod ? tdState.podLift : 0;
       rec.targetPos.y = baseWy + podLift;
       rec.mesh.position.lerp(rec.targetPos, posLerp);
       if (isOwnedPod && (tdState.phase === 'descending' || tdState.phase === 'engine-stop')) {
         rec.mesh.position.y = rec.targetPos.y;
       }
-      if (rec.kind === ENTITY_KIND.hq) {
-        const nearPod = podRec ? Math.hypot(rec.x - podRec.x, rec.y - podRec.y) <= 2.5 : false;
-        rec.mesh.visible =
-          !isOwnedHq ||
-          !nearPod ||
-          tdState.hqVisible ||
-          rec.state === ENTITY_STATE.moving ||
-          rec.state === ENTITY_STATE.working ||
-          rec.state === ENTITY_STATE.constructing;
-      }
+      rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState.hqVisible);
       const diff = ((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       rec.mesh.rotation.y += diff * rotLerp;
 
@@ -322,7 +336,7 @@ export class EntityMeshes {
 
   private updateSelectionRing(): void {
     const sel = this.selectedEntityId !== null ? this.entries.get(this.selectedEntityId) : undefined;
-    if (!sel) {
+    if (!sel || !sel.mesh.visible) {
       this.selectionRing.visible = false;
       return;
     }
