@@ -139,6 +139,7 @@ export function mountHubPlacement(
     host: simHost,
     state,
     colonyId,
+    getColonyId: () => opts?.colonyId ?? services.landfall?.getOwnerColonyIndex() ?? services.colonyId ?? 0,
     requireHq: opts?.requireHq,
   });
 

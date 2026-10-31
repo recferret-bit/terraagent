@@ -225,6 +225,10 @@ export class LandfallController {
     for (const fn of this.listeners) fn(snap);
   }
 
+  getOwnerColonyIndex(): number | undefined {
+    return this.ownerColonyIndex;
+  }
+
   setOwnerColonyIndex(colonyIndex: number | undefined): void {
     this.ownerColonyIndex = colonyIndex;
     if (this.opts.store?.latest) {

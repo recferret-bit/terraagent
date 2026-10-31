@@ -148,7 +148,8 @@ export function mountTerritoryBorder(
         colorBlindMode: isTerritoryColorBlindMode(),
       },
     update: (view) => {
-      syncTerritoryBordersFromView(view, opts.terrain ?? opts.services?.hexTerrain ?? null);
+      const explicit = opts.terrain ?? opts.services?.hexTerrain ?? null;
+      if (explicit) syncTerritoryBordersFromView(view, explicit);
       renderLabel();
     },
     dispose: () => {

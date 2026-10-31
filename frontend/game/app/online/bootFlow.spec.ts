@@ -456,3 +456,38 @@ describe('W01-38: returning profile & local fallback', () => {
     expect(boot.localHost!.state.entities.cols.kind[0]).toBe(ENTITY_KIND.pod);
   });
 });
+
+describe('W01-38: 3D pod descent handoff & return to orbit', () => {
+  it('4. hand-off from 3D pod descent (skipDescent: true, planetKind) starts immediately in colony view and returnToOrbit restores planetKind', async () => {
+    const { body, app } = setupFakeDom();
+    const storage = createMemoryStorage();
+    const { fetch: mockFetch } = createMockAuthFetch('jwt_handoff_token');
+    const { serverSim } = createServerSimWithColony(0);
+    const { wsDeps } = createMockWsHarness(serverSim);
+    let returnedKind: string | null = null;
+
+    const session = new OnlineSession(app as unknown as HTMLElement, 'boot', {
+      uiParent: body as unknown as HTMLElement,
+      fetch: mockFetch,
+      storage,
+      search: '',
+      planetKind: 'oceanForest',
+      skipDescent: true,
+      makeMesh: stubMeshFactory,
+      wsDeps,
+      onReturnToOrbit: (k) => {
+        returnedKind = k;
+      },
+    });
+
+    await session.whenBooted;
+    await flush(6);
+
+    expect(session.bootPhase).toBe('colony');
+    expect(session.planetKind).toBe('oceanForest');
+    session.returnToOrbit();
+    expect(returnedKind).toBe('oceanForest');
+
+    session.dispose();
+  });
+});

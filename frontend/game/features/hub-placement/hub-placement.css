@@ -41,6 +41,10 @@
   color: var(--ta-text);
 }
 
+.ta-hub-ghost[hidden] {
+  display: none;
+}
+
 .ta-hub-ghost.ghost-valid,
 .ta-hub-ghost[data-tint='valid'] {
   border-color: var(--ta-terra);

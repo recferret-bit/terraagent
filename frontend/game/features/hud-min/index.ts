@@ -56,6 +56,7 @@ export function mountMinimalHud(ctx: MountMinimalHudCtx): MountedMinimalHud {
     store: ctx.store ?? ctx.services?.store,
     transport: ctx.transport ?? ctx.services?.transport,
     ownerColonyIndex: ctx.ownerColonyIndex,
+    getOwnerColonyIndex: () => ctx.ownerColonyIndex ?? ctx.services?.landfall?.getOwnerColonyIndex(),
   });
   if (ctx.services && !ctx.services.hudMin) {
     ctx.services.hudMin = hud;

@@ -37,6 +37,7 @@ export interface HubPlacementCommandSink {
   };
   state?: PlanetState;
   colonyId?: number;
+  getColonyId?: () => number | undefined;
   requireHq?: boolean;
   onChange?: () => void;
 }
@@ -216,9 +217,13 @@ export class HubPlacementMenu {
     return null;
   }
 
+  private resolveColonyId(): number {
+    return this.sink.getColonyId?.() ?? this.sink.colonyId ?? 0;
+  }
+
   private evaluateCurrent(active = this.active): HubGhostState {
     return evaluateHubGhost(this.resolveSource(), {
-      colonyId: this.sink.colonyId ?? 0,
+      colonyId: this.resolveColonyId(),
       q: this.hoveredQ,
       r: this.hoveredR,
       active,
@@ -232,7 +237,9 @@ export class HubPlacementMenu {
       this.cachedTiles = view.tiles as ClientTiles;
     }
     this.currentView = view;
-    this.ghostState = this.evaluateCurrent(this.active);
+    if (this.active) {
+      this.ghostState = this.evaluateCurrent(true);
+    }
     this.render();
   }
 
@@ -241,9 +248,9 @@ export class HubPlacementMenu {
     if (typeof q === 'number' && typeof r === 'number') {
       this.hoveredQ = Math.trunc(q);
       this.hoveredR = Math.trunc(r);
-    } else if (!this.evaluateCurrent(true).valid) {
+    } else {
       const fallback = this.cachedTiles ?? this.sink.store?.latestTiles ?? null;
-      const near = findValidHubSiteNearHq(this.resolveSource(), this.sink.colonyId ?? 0, fallback);
+      const near = findValidHubSiteNearHq(this.resolveSource(), this.resolveColonyId(), fallback);
       if (near) {
         this.hoveredQ = near.q;
         this.hoveredR = near.r;
@@ -277,7 +284,7 @@ export class HubPlacementMenu {
 
     const targetQ = this.ghostState.q;
     const targetR = this.ghostState.r;
-    const colonyId = this.sink.colonyId ?? 0;
+    const colonyId = this.resolveColonyId();
     const commandId = `hub_order_${++orderSeq}`;
     const cmdArgs = { building: 'commandHub', q: targetQ, r: targetR };
 
@@ -323,7 +330,7 @@ export class HubPlacementMenu {
   }
 
   cancelOrder(taskId?: string): void {
-    const colonyId = this.sink.colonyId ?? 0;
+    const colonyId = this.resolveColonyId();
     const orders = extractColonyConstructionOrders(this.resolveSource(), colonyId);
     const resolvedId = taskId ?? orders[0]?.orderId ?? this.lastOrderId ?? 'current';
     const cmdArgs = { taskId: resolvedId };
@@ -438,7 +445,9 @@ export class HubPlacementMenu {
     if (g.reasonCode) setDataAttr(this.reasonEl, 'reason-code', g.reasonCode);
     else this.reasonEl.removeAttribute?.('data-reason-code');
 
-    this.renderFootprintGrid(g);
+    if (this.active || this.gridEl.childElementCount === 0) {
+      this.renderFootprintGrid(g);
+    }
 
     setDataAttr(this.billTilesEl, 'tiles-to-prepare', String(bill.tilesToPrepare));
     setDataAttr(this.billTilesEl, 'total-tiles', String(bill.totalTiles));
@@ -458,7 +467,7 @@ export class HubPlacementMenu {
 
     this.confirmBtn.disabled = !g.valid;
 
-    const colonyId = this.sink.colonyId ?? 0;
+    const colonyId = this.resolveColonyId();
     const orders: ConstructionOrder[] = extractColonyConstructionOrders(this.resolveSource(), colonyId);
     const activeOrder = orders[0];
     this.orderStatusEl.textContent = activeOrder

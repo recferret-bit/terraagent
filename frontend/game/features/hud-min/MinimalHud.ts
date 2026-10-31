@@ -15,6 +15,7 @@ export interface MinimalHudOptions {
   store?: StoreLike;
   transport?: Pick<Transport, 'onMessage'>;
   ownerColonyIndex?: number;
+  getOwnerColonyIndex?: () => number | undefined;
 }
 
 export function formatClock(tick: number): string {
@@ -303,7 +304,7 @@ export class MinimalHud {
     this.latestTick = tick;
     this.clockEl.textContent = formatClock(tick);
 
-    const colonyIdx = this.opts.ownerColonyIndex ?? 0;
+    const colonyIdx = this.opts.getOwnerColonyIndex?.() ?? this.opts.ownerColonyIndex ?? 0;
     const col = v.colonies?.find((c) => c.index === colonyIdx) ?? v.colonies?.[colonyIdx];
     this.colonyEl.textContent = col?.name ?? `Colony ${colonyIdx}`;
 
@@ -412,7 +413,7 @@ export class MinimalHud {
       colonies?: ViewColony[];
       blobs?: Record<string, unknown>;
     } | null;
-    const idx = this.opts.ownerColonyIndex ?? 0;
+    const idx = this.opts.getOwnerColonyIndex?.() ?? this.opts.ownerColonyIndex ?? 0;
     const col = view?.colonies?.find((c) => c.index === idx) ?? view?.colonies?.[idx];
     const fromCol = col?.stock as Record<string, number> | undefined;
     const rawBlob = view?.blobs?.colonyStock;

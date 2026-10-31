@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import type { ColonyViewport } from '@terra/render/core/createColonyViewport';
+import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
-import { createHexTerrain, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles } from '@terra/render/planets/hex';
+import { createHexTerrain, tileXZ, type HexPick, type HexTerrain, type HexTiles } from '@terra/render/planets/hex';
 import { TICK_MS } from '@terra/sim';
 import { CommandBus } from '../../net/commandBus';
 import { ConnectionBanner } from '../../net/ConnectionBanner';
@@ -32,7 +33,17 @@ import { FeatureHud } from './featureHud';
 import { hexSurface } from './hexSurface';
 import { localHostOptions } from './localHost';
 import type { OnlineMode } from './onlineMode';
+import { PauseOverlay } from './PauseOverlay';
 import { createSessionTarget, joinParam, scenarioParam } from './sessionTarget';
+import {
+  bindLocalSaveListeners,
+  changedTiles,
+  createSafeViewport,
+  isEscapeBlockedByHudOverlay,
+  readStoredPlanetKind,
+  resolveOnlinePlanetLook,
+  writeStoredPlanetKind,
+} from './viewportHelper';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
 
@@ -47,53 +58,18 @@ export interface OnlineSessionOptions {
   uiParent?: HTMLElement;
   makeMesh?: MeshFactory;
   wsDeps?: WsTransportDeps;
-}
-
-/** Tile indices whose height, terrain, prep or deposit differs between two tile snapshots. */
-function changedTiles(a: ClientTiles, b: ClientTiles): number[] {
-  const out: number[] = [];
-  for (let i = 0; i < b.count; i++) {
-    if (
-      a.height[i] !== b.height[i] ||
-      a.terrain[i] !== b.terrain[i] ||
-      a.prep[i] !== b.prep[i] ||
-      a.deposit?.[i] !== b.deposit?.[i] ||
-      a.owner?.[i] !== b.owner?.[i]
-    ) {
-      out.push(i);
-    }
-  }
-  return out;
-}
-
-function createSafeViewport(root: HTMLElement, provided?: ColonyViewport): ColonyViewport {
-  if (provided) return provided;
-  if (typeof WebGLRenderingContext !== 'undefined') {
-    try { return createColonyViewport(root); } catch { /* Headless fallback */ }
-  }
-  const domElement = document.createElement('canvas');
-  root.appendChild(domElement);
-  const noop = () => {};
-  return {
-    scene: new THREE.Scene(), camera: new THREE.PerspectiveCamera(28, 16 / 9, 0.1, 1000),
-    renderer: { domElement, setPixelRatio: noop } as unknown as THREE.WebGLRenderer,
-    composer: {} as unknown as ColonyViewport['composer'],
-    bloom: { enabled: true, strength: 0.45 } as unknown as ColonyViewport['bloom'],
-    pixelArt: { enabled: false } as unknown as ColonyViewport['pixelArt'],
-    sun: new THREE.DirectionalLight(), hemi: new THREE.HemisphereLight(), environment: new THREE.Texture(),
-    setView: noop, applySky: noop, followShadow: noop, setResolution: noop, resize: noop, render: noop,
-    dispose() { domElement.remove(); },
-  };
+  planetKind?: PlanetKind;
+  skipDescent?: boolean;
+  preBoot?: Promise<BootAuthResult>;
+  onReturnToOrbit?: (kind: PlanetKind) => void;
 }
 
 /**
  * The online play flow (`/play.html` default in W01, or `?scenario=` / `?join=` / `?host=`):
- * - In `'boot'` mode without `?scenario=` / `?join=` (W01-38): shows the Faction Plate orbital splash ("Contacting orbit…")
- *   while guest auth + `/v1/me/home` run, joins `pl_dev` with the returned `accessToken`, conditionally plays the drop-pod
- *   descent overlay while the colony's pod is descending, centers the camera on `(spawn.q, spawn.r)` and transitions to the
- *   interactive colony view once the HQ lands (or immediately if the HQ has already landed).
- * - With `?scenario=` / `?join=` / `?host=local`: connects via `LocalTransport` (browser worker + IndexedDB snapshots) or
- *   `createSessionTarget` (`POST /v1/dev/scenarios/<id>`).
+ * - Direct `/play.html`: fast-starts straight into the active colony on the planet (skips the 3D orbital selector and
+ *   35s atmospheric falling animation).
+ * - Reached after the 3D pod-falling animation from `/play.html?planet=<kind>`: reuses the warm `ColonyViewport` and
+ *   renders the hex planet with the selected `planetKind` look (`dune`, `oceanForest`, or `forestRock`).
  */
 export class OnlineSession {
   readonly viewport: ColonyViewport;
@@ -106,6 +82,7 @@ export class OnlineSession {
   readonly flags: ClientFlagsStore;
   readonly netStats = new NetStatsBoard();
   readonly bootOverlay: BootOverlay | null;
+  readonly pauseOverlay: PauseOverlay;
   readonly whenBooted: Promise<BootAuthResult | null>;
 
   terrain: HexTerrain | null = null;
@@ -118,17 +95,22 @@ export class OnlineSession {
   cameraTargetTile: { q: number; r: number } = { q: 0, r: 0 };
   accessToken = '';
   bootResult: BootAuthResult | null = null;
+  planetKind: PlanetKind | null;
 
   private biomeKey = 'forestRock';
   private lastHudMs = 0;
+  private readonly ownsViewport: boolean;
   private readonly search: string;
   private readonly skipDescent: boolean;
+  private readonly fastStartLand: boolean;
+  private readonly onReturnToOrbit?: (kind: PlanetKind) => void;
   private readonly banner: ConnectionBanner | null;
   private readonly hud: FeatureHud;
   private readonly bootTarget: SessionTarget;
   private localHost: LocalHost | null = null;
   private localTimer: ReturnType<typeof setInterval> | null = null;
   private cameraCentered = false;
+  private landSent = false;
   private tiles: ClientTiles | null = null;
   private warp = 1;
   private raf = 0;
@@ -136,8 +118,15 @@ export class OnlineSession {
   private cleanups: Array<() => void> = [];
 
   constructor(root: HTMLElement, readonly mode: OnlineMode = 'boot', opts: OnlineSessionOptions = {}) {
+    this.ownsViewport = !opts.viewport;
     this.search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
-    this.skipDescent = new URLSearchParams(this.search).get('skip') === '1';
+    const q = new URLSearchParams(this.search);
+    this.skipDescent = Boolean(opts.skipDescent || q.get('skip') === '1');
+    this.fastStartLand = Boolean(this.skipDescent || (!opts.wsDeps && !opts.localHost && !scenarioParam(this.search)));
+    this.onReturnToOrbit = opts.onReturnToOrbit;
+    this.planetKind = opts.planetKind ?? readStoredPlanetKind();
+    if (opts.planetKind) writeStoredPlanetKind(opts.planetKind);
+
     this.flags = createClientFlagsStore(this.search);
     const uiParent = opts.uiParent ?? (typeof document !== 'undefined' ? document.body : root);
 
@@ -170,17 +159,22 @@ export class OnlineSession {
     });
     this.cleanups.push(this.landfall.onChange(({ selectedEntityId }) => this.entities.setSelectedEntityId(selectedEntityId)));
     this.hud = this.createHud(uiParent, local);
-    if (local) this.keepLocalSaved(local);
+    this.pauseOverlay = new PauseOverlay(uiParent, {
+      onResume: () => this.setPaused(false),
+      onReturnToOrbit: () => this.returnToOrbit(),
+    });
+    if (local) this.cleanups.push(bindLocalSaveListeners(local));
     this.bindTransportListeners();
+    this.bindKeys();
 
-    const predict = new URLSearchParams(this.search).get('predict') !== '0';
+    const predict = q.get('predict') !== '0';
     if (useGuestBoot) {
       this.bootOverlay = new BootOverlay(uiParent);
-      this.bindBootSkipKey();
+      if (this.skipDescent) this.bootOverlay.showColony('pl_dev');
       this.whenBooted = this.startBootSequence(opts, predict);
     } else {
       this.bootOverlay = this.flags.set.has('W01') && mode === 'boot' ? new BootOverlay(uiParent) : null;
-      if (this.bootOverlay) this.bindBootSkipKey();
+      if (this.bootOverlay && this.skipDescent) this.bootOverlay.showColony('pl_dev');
       this.whenBooted = Promise.resolve(null);
       this.cleanups.push(this.store.onView((v) => this.onView(v)));
       this.store.start([...this.flags.set], { predict });
@@ -231,17 +225,26 @@ export class OnlineSession {
     return this.bootOverlay?.phase ?? 'colony';
   }
 
-  selectHq(): number | null {
-    return this.landfall.selectHq();
+  setPaused(p: boolean): void {
+    this.pauseOverlay.setPaused(p);
+    if (this.cam) this.cam.enabled = !p;
   }
 
-  orderMove(q: number, r: number): boolean {
-    return this.landfall.orderMove(q, r);
+  returnToOrbit(): void {
+    const kind: PlanetKind = this.planetKind ?? 'forestRock';
+    writeStoredPlanetKind(kind);
+    if (this.onReturnToOrbit) {
+      this.onReturnToOrbit(kind);
+      return;
+    }
+    if (typeof location !== 'undefined') {
+      location.href = `/play.html?planet=${kind}`;
+    }
   }
 
-  getSelectedEntityId(): number | null {
-    return this.landfall.getSelectedEntityId();
-  }
+  selectHq(): number | null { return this.landfall.selectHq(); }
+  orderMove(q: number, r: number): boolean { return this.landfall.orderMove(q, r); }
+  getSelectedEntityId(): number | null { return this.landfall.getSelectedEntityId(); }
 
   /** Centers the RTS camera on axial tile `(q, r)`. */
   focusTile(q: number, r: number, instant = true): void {
@@ -253,12 +256,14 @@ export class OnlineSession {
 
   private async startBootSequence(opts: OnlineSessionOptions, predict = true): Promise<BootAuthResult> {
     this.store.start([...this.flags.set], { predict });
-    const boot = await bootAuthAndHome({
-      fetch: opts.fetch,
-      storage: opts.storage,
-      search: this.search,
-      onStatus: (s) => this.bootOverlay?.setSplashStatus(s),
-    });
+    const boot = opts.preBoot
+      ? await opts.preBoot
+      : await bootAuthAndHome({
+          fetch: opts.fetch,
+          storage: opts.storage,
+          search: this.search,
+          onStatus: (s) => this.bootOverlay?.setSplashStatus(s),
+        });
     this.applyBootResult(boot);
     this.cleanups.push(this.store.onView((v) => this.onView(v)));
 
@@ -282,14 +287,9 @@ export class OnlineSession {
   }
 
   private async resolveBootTarget(opts: OnlineSessionOptions): Promise<{ planetId: string }> {
-    if (this.bootResult && this.planetId) {
-      return { planetId: this.planetId };
-    }
+    if (this.bootResult && this.planetId) return { planetId: this.planetId };
     const boot = await bootAuthAndHome({
-      fetch: opts.fetch,
-      storage: opts.storage,
-      search: this.search,
-      tryRefresh: true,
+      fetch: opts.fetch, storage: opts.storage, search: this.search, tryRefresh: true,
       onStatus: (s) => this.bootOverlay?.setSplashStatus(s),
     });
     this.applyBootResult(boot);
@@ -307,7 +307,7 @@ export class OnlineSession {
     this.cameraTargetTile = { q: boot.colony.spawn.q, r: boot.colony.spawn.r };
     this.landfall.setOwnerColonyIndex(this.colonyIndex);
     this.bootOverlay?.setColonyMeta(this.planetId, this.colonyId, this.colonyIndex);
-    this.bootOverlay?.setSplashStatus('Deploying drop pod…');
+    if (!this.skipDescent) this.bootOverlay?.setSplashStatus('Deploying drop pod…');
   }
 
   private attachLocalHost(lh: LocalHost, autoStep: boolean): void {
@@ -321,27 +321,20 @@ export class OnlineSession {
     }
   }
 
-  /** The local planet is written to IndexedDB every 10 s by the host; also when the page hides or unloads. */
-  private keepLocalSaved(local: LocalTransport): void {
-    if (typeof window === 'undefined' || typeof document === 'undefined') return;
-    const save = () => local.saveNow();
-    const onVis = () => {
-      if (document.visibilityState === 'hidden') save();
-    };
-    window.addEventListener('pagehide', save);
-    document.addEventListener('visibilitychange', onVis);
-    this.cleanups.push(() => {
-      window.removeEventListener('pagehide', save);
-      document.removeEventListener('visibilitychange', onVis);
-    });
-  }
-
-  private bindBootSkipKey(): void {
+  private bindKeys(): void {
     if (typeof window === 'undefined' || typeof window.addEventListener !== 'function') return;
     const onKey = (e: KeyboardEvent) => {
       if ((e.key === 'Escape' || e.key === ' ') && this.bootOverlay?.phase === 'descent') {
         e.preventDefault();
+        if (!this.landSent) {
+          this.landSent = true;
+          void this.commandBus.send('dev.land', { colonyId: this.colonyIndex }, { predict: false });
+        }
         this.bootOverlay.showColony(this.planetId || 'pl_dev');
+        return;
+      }
+      if (e.key === 'Escape' && !isEscapeBlockedByHudOverlay()) {
+        this.setPaused(!this.pauseOverlay.paused);
       }
     };
     window.addEventListener('keydown', onKey);
@@ -350,19 +343,23 @@ export class OnlineSession {
 
   private onView(v: ClientView): void {
     if (v.tiles) this.onTiles(v, v.tiles);
-    const biomeKey = specForPlanetType(v.planet.type).biomeKey;
-    this.biomeKey = biomeKey;
-    this.entities.syncView(v, this.terrain, biomeKey);
+    const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);
+    this.biomeKey = look.biomeKey;
+    this.entities.syncView(v, this.terrain, this.biomeKey);
     this.landfall.onView(v);
     this.hud.update({ ...v, tick: v.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
 
     if (this.bootOverlay) {
       const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
+      if (status.descending && this.fastStartLand && !this.landSent) {
+        this.landSent = true;
+        void this.commandBus.send('dev.land', { colonyId: this.colonyIndex }, { predict: false });
+      }
       if (!this.cameraCentered || status.descending) {
         this.focusTile(status.q, status.r, true);
         this.cameraCentered = true;
       }
-      if (status.descending && !this.skipDescent) {
+      if (status.descending && !this.skipDescent && !this.fastStartLand) {
         this.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r });
       } else {
         this.bootOverlay.showColony(v.planet.id || this.planetId || 'pl_dev');
@@ -381,19 +378,18 @@ export class OnlineSession {
   private setWarp(k: number): void {
     this.warp = k;
     const latest = this.store.latest;
-    this.hud.update({ ...(latest ?? {}), tick: latest?.tick, warp: k, net: this.netStats.view(this.store.predictionInfo) });
+    this.hud.update({ ...(latest ?? {}), tiles: undefined, tick: latest?.tick, warp: k, net: this.netStats.view(this.store.predictionInfo) });
   }
 
   private onTiles(v: ClientView, tiles: ClientTiles): void {
     if (!this.terrain || this.terrain.radius !== v.planet.radius) {
-      this.terrain?.dispose();
-      const look = specForPlanetType(v.planet.type);
-      this.biomeKey = look.biomeKey;
-      try {
-        applyPlanetLook(this.viewport, look);
-      } catch {
-        // Ignore in headless tests
+      if (this.terrain) {
+        this.viewport.scene.remove(this.terrain.group);
+        this.terrain.dispose();
       }
+      const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);
+      this.biomeKey = look.biomeKey;
+      try { applyPlanetLook(this.viewport, look); } catch { /* Ignore in headless tests */ }
       const terrain = createHexTerrain({ radius: v.planet.radius, tiles: tiles as HexTiles, look });
       this.terrain = terrain;
       this.viewport.scene.add(terrain.group);
@@ -416,7 +412,6 @@ export class OnlineSession {
     this.tiles = tiles;
   }
 
-  /** Tile under a client-space point, or null (also logged; the state inspector arrives later). */
   pickAt(clientX: number, clientY: number): HexPick | null {
     if (!this.terrain) return null;
     const r = this.viewport.renderer.domElement.getBoundingClientRect();
@@ -426,7 +421,6 @@ export class OnlineSession {
     return this.lastPick;
   }
 
-  /** Client-space pixel of a tile centre (debug/E2E: `clickTile`), or null before the terrain exists. */
   tileToScreen(q: number, r: number): { x: number; y: number } | null {
     if (!this.terrain) return null;
     const [x, z] = tileXZ(q, r);
@@ -435,7 +429,6 @@ export class OnlineSession {
     return { x: rect.left + ((p.x + 1) / 2) * rect.width, y: rect.top + ((1 - p.y) / 2) * rect.height };
   }
 
-  /** Debug/E2E: the entity meshes as drawn right now (world metres). */
   entityMeshes(): Array<{ id: number; x: number; y: number; z: number }> {
     const g = this.viewport.scene.getObjectByName('entities');
     return (g?.children ?? []).map((m) => ({ id: Number(m.userData.entityId), x: m.position.x, y: m.position.y, z: m.position.z }));
@@ -453,7 +446,7 @@ export class OnlineSession {
       }
       this.terrain?.tick(dt);
       this.frameHud(now, dt);
-      this.viewport.render();
+      if (this.ownsViewport) this.viewport.render();
     } catch (e) {
       console.error('frame error', e);
     }
@@ -462,14 +455,13 @@ export class OnlineSession {
     }
   };
 
-  /** Ticks the 3D renderers with the newest view; refreshes the dev overlay numbers a few times a second. */
   private frameHud(now: number, dt: number): void {
     const v = this.store.latest;
     if (!v) return;
     this.hud.frame({ ...v, sim: { view: v, serverTick: this.store.serverTickF(), predicting: this.store.predictionMode === 'on' } }, dt);
     if (now - this.lastHudMs > 250) {
       this.lastHudMs = now;
-      this.hud.update({ ...v, tick: v.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
+      this.hud.update({ ...v, tiles: undefined, tick: v.tick, warp: this.warp, net: this.netStats.view(this.store.predictionInfo) });
     }
   }
 
@@ -480,6 +472,7 @@ export class OnlineSession {
       this.localTimer = null;
     }
     this.cleanups.forEach((f) => f());
+    this.pauseOverlay.dispose();
     this.bootOverlay?.dispose();
     this.landfall.dispose();
     this.entities.dispose();
@@ -489,7 +482,11 @@ export class OnlineSession {
     this.transport.stop();
     this.hud.dispose();
     this.banner?.dispose();
-    this.terrain?.dispose();
-    this.viewport.dispose();
+    if (this.terrain) {
+      this.viewport.scene.remove(this.terrain.group);
+      this.terrain.dispose();
+      this.terrain = null;
+    }
+    if (this.ownsViewport) this.viewport.dispose();
   }
 }

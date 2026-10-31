@@ -48,6 +48,10 @@
   overflow-y: auto;
 }
 
+.ta-tf-overlay[hidden] {
+  display: none;
+}
+
 .ta-tf-overlay__summary {
   color: var(--ta-orange);
 }

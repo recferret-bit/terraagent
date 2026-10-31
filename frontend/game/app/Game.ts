@@ -11,6 +11,9 @@ import { applyPlanetLook } from '@terra/render/planets/applyPlanetLook';
 import { createDescentSequence } from '../descent/createDescent';
 import { warmupScene } from './warmup';
 import { Gameplay } from './Gameplay';
+import { bootAuthAndHome, type BootAuthResult } from './online/bootOnline';
+import { OnlineSession } from './online/OnlineSession';
+import { writeStoredPlanetKind } from './online/viewportHelper';
 import { track } from '../core/analytics';
 import { MainMenu, type MenuSettings } from '../ui/menu';
 import { DescentHud, GameHud } from '../ui/hud';
@@ -51,6 +54,9 @@ export class Game {
   private spec!: PlanetSpec; private surface: PlanetSurface | null = null;
   private descent: DescentSequence | null = null; private dHud: DescentHud | null = null;
   private gHud: GameHud | null = null; private play: Gameplay | null = null;
+  private online: OnlineSession | null = null;
+  private preBoot: Promise<BootAuthResult> | null = null;
+  private useOnlineGameplay = true;
   private fastForward = 0; private time = 0; private last = performance.now(); private raf = 0;
   private escListener = (e: KeyboardEvent) => this.onKey(e);
   private prepared: Prepared | null = null; private prepTimer = 0;
@@ -65,10 +71,20 @@ export class Game {
     window.addEventListener('keydown', this.escListener);
     const q = new URLSearchParams(location.search);
     const kind = (PLANET_KINDS.includes(q.get('planet') as PlanetKind) ? q.get('planet') : 'dune') as PlanetKind;
-    if (q.has('menutime')) this.time = parseFloat(q.get('menutime')!) || 0; // QA: start the menu clock late to test long-run stability
+    writeStoredPlanetKind(kind);
+    if (q.has('menutime')) this.time = parseFloat(q.get('menutime')!) || 0;
     const seed = q.get('seed') ? parseInt(q.get('seed')!, 10) : undefined;
+    const store = this.flagsStore ??= createClientFlagsStore();
+    const isLegacyQa = q.has('autodeploy') || q.has('qat') || q.has('t') || (q.has('seed') && q.get('skip') === '1');
+    this.useOnlineGameplay = store.set.has('W01') && !isLegacyQa;
+
     this.menu = new MainMenu(document.body, {
-      onPlanet: (k) => { this.stage?.setPlanet(this.makeSpec(k, PLANET_SPECS[k].seed)); this.schedulePrepare(); },
+      onPlanet: (k) => {
+        writeStoredPlanetKind(k);
+        this.stage?.setPlanet(this.makeSpec(k, PLANET_SPECS[k].seed));
+        this.syncOrbitUrl();
+        this.schedulePrepare();
+      },
       onSeed: () => this.schedulePrepare(),
       onDeploy: (k, s, st) => { this.settings = st; this.deploy(k, s); },
       onSettings: (st) => { this.settings = st; this.applySettings(); this.schedulePrepare(); },
@@ -82,13 +98,24 @@ export class Game {
       this.fastForward = Math.max(0, parseFloat(q.get('t') ?? '0') || 0);
       setTimeout(() => this.deploy(kind, this.menu.seed, true), 50);
     } else {
+      this.syncOrbitUrl();
       this.schedulePrepare(900);
-      // QA: ?autodeploy=<ms> clicks DEPLOY after that delay (cinematic path), for headless frame captures
       if (q.has('autodeploy')) setTimeout(() => {
         this.deploy(this.menu.kind, this.menu.seed);
-        if (q.has('qat')) this.qaAdvance(parseFloat(q.get('qat')!) || 0); // ?qat=<s>: jump the deploy/descent clock
+        if (q.has('qat')) this.qaAdvance(parseFloat(q.get('qat')!) || 0);
       }, parseInt(q.get('autodeploy')!, 10) || 1500);
     }
+  }
+
+  /** Keeps `?planet=<kind>` in the URL while the orbital planet selector is open so F5 refreshes back to orbit. */
+  private syncOrbitUrl() {
+    if (typeof history === 'undefined' || typeof location === 'undefined') return;
+    const q = new URLSearchParams(location.search);
+    q.set('planet', this.menu.kind);
+    q.delete('skip');
+    q.delete('deploy');
+    q.delete('t');
+    history.replaceState(null, '', `${location.pathname}?${q.toString()}`);
   }
 
   private makeSpec(kind: PlanetKind, seed: number): PlanetSpec { return { ...PLANET_SPECS[kind], seed }; }
@@ -113,7 +140,6 @@ export class Game {
   }
 
   // ------------------------------------------------------------------ session pre-build (no loading gap on DEPLOY)
-  /** Renderer-global values the menu stage owns; building a session must not disturb them. */
   private withMenuGlobals<T>(fn: () => T): T {
     const vp = this.viewport, exp = vp.renderer.toneMappingExposure, bloom = vp.bloom.strength;
     try { return fn(); } finally { vp.renderer.toneMappingExposure = exp; vp.bloom.strength = bloom; }
@@ -164,6 +190,10 @@ export class Game {
   private deploy(kind: PlanetKind, seed: number, instant = false) {
     if (this.phase !== 'menu') return;
     clearTimeout(this.prepTimer);
+    writeStoredPlanetKind(kind);
+    if (this.useOnlineGameplay) {
+      this.preBoot = bootAuthAndHome({ search: '' });
+    }
     let p: Prepared;
     try { p = this.prepare(kind, seed); }
     catch (err) {
@@ -172,11 +202,12 @@ export class Game {
       this.menu.setError('Deploy failed: ' + (err as Error).message);
       return;
     }
-    // the prepared session becomes the live one
     this.prepared = null; this.deploySession = p;
     this.spec = p.spec; this.surface = p.surface; this.descent = p.descent;
     this.dHud = new DescentHud(document.body);
-    this.gHud = new GameHud(document.body, this.spec.name, this.spec.seed, { onResume: () => this.setPaused(false), onReturn: () => this.returnToOrbit() });
+    if (!this.useOnlineGameplay) {
+      this.gHud = new GameHud(document.body, this.spec.name, this.spec.seed, { onResume: () => this.setPaused(false), onReturn: () => this.returnToOrbit() });
+    }
     this.descent.onTelemetry((t) => this.dHud?.update(t));
     this.descent.onComplete((hero) => this.startGameplay(hero));
     this.dHud.update(this.descent.handoff.tel);
@@ -187,13 +218,11 @@ export class Game {
       this.dHud.show();
       if (this.settings.skipCinematic) this.skipDescent();
       else if (this.fastForward > 0) {
-        const steps = Math.floor(Math.max(0, this.fastForward - this.descent.handoff.startAt) * 30); // ?t= is the authored second
+        const steps = Math.floor(Math.max(0, this.fastForward - this.descent.handoff.startAt) * 30);
         for (let i = 0; i < steps && (this.phase as Phase) === 'descent'; i++) this.descent!.update(1 / 30);
       }
       return;
     }
-    // cinematic hand-off: UI tweens away, the orbital camera dollies into the carrier while the pod lowers into the
-    // bay; the cut to the descent happens on an identical carrier-local frame once the dolly lands and shaders are warm.
     this.phase = 'deploying';
     this.menu.hide();
     window.setTimeout(() => this.dHud?.show(), 450);
@@ -228,32 +257,62 @@ export class Game {
     if (this.phase === 'gameplay' || !this.surface || !this.descent) return;
     this.phase = 'gameplay';
     this.dHud?.hide();
-    const pose = this.descent.finalPose;
+    const d = this.descent; this.descent = null;
+    const dh = this.dHud; this.dHud = null;
+
+    if (this.useOnlineGameplay) {
+      try { d.dispose(); } catch (e) { console.warn(e); }
+      dh?.dispose();
+      if (this.surface) {
+        this.viewport.scene.remove(this.surface.group);
+        this.surface.dispose();
+        this.surface = null;
+      }
+      this.resetScene();
+      this.viewport.camera.fov = 28;
+      this.viewport.camera.updateProjectionMatrix();
+      if (typeof history !== 'undefined' && typeof location !== 'undefined') {
+        history.replaceState(null, '', location.pathname);
+      }
+      this.online = new OnlineSession(this.root, 'boot', {
+        viewport: this.viewport,
+        planetKind: this.spec.kind,
+        skipDescent: true,
+        preBoot: this.preBoot ?? undefined,
+        search: '',
+        onReturnToOrbit: () => { void this.returnToOrbit(); },
+      });
+      (window as unknown as { __online?: OnlineSession }).__online = this.online;
+      return;
+    }
+
+    const pose = d.finalPose;
     this.viewport.camera.fov = 28; this.viewport.camera.updateProjectionMatrix();
     this.play = new Gameplay(this.viewport.scene, this.viewport.camera, this.viewport.renderer.domElement, this.surface, this.spec, hero, this.gHud!, { position: pose.position.clone(), target: pose.target.clone() });
     this.gHud!.show();
     this.mountFeatureHud();
     this.gHud!.setResources({ energy: 120, metal: 60, water: 40, bio: 10 });
-    const d = this.descent; this.descent = null;
-    setTimeout(() => { try { d.dispose(); } catch (e) { console.warn(e); } this.dHud?.dispose(); this.dHud = null; }, 900);
+    setTimeout(() => { try { d.dispose(); } catch (e) { console.warn(e); } dh?.dispose(); }, 900);
   }
 
   // ------------------------------------------------------------------ states
   private onKey(e: KeyboardEvent) {
     if (this.phase === 'deploying' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.cutToDescent(false); this.skipDescent(); }
     else if (this.phase === 'descent' && (e.key === 'Escape' || e.key === ' ')) { e.preventDefault(); this.skipDescent(); }
-    else if (this.phase === 'gameplay' && e.key === 'Escape') this.setPaused(!(this.gHud?.paused));
+    else if (this.phase === 'gameplay' && !this.online && e.key === 'Escape') this.setPaused(!(this.gHud?.paused));
   }
-  private setPaused(p: boolean) { this.gHud?.setPaused(p); if (this.play) { this.play.paused = p; this.play.cam.enabled = !p; } }
+  private setPaused(p: boolean) {
+    if (this.online) { this.online.setPaused(p); return; }
+    this.gHud?.setPaused(p);
+    if (this.play) { this.play.paused = p; this.play.cam.enabled = !p; }
+  }
 
-  /** Feature registry HUD: flags from `?waves=` (dev) or `all` until the server welcome lands; re-mounts on change. On body: #app is a stacking context below the prototype #hud (z 10). */
   private mountFeatureHud() {
     const store = this.flagsStore ??= createClientFlagsStore();
     const mount = () => {
       this.featureHud?.dispose(); this.devConsole?.dispose();
-      const { flags, source } = store.current;
+      const { source } = store.current;
       const set = store.set;
-      // The prototype has no transport: sim commands report "not connected"; server dev commands go over the Vite /v1 proxy.
       const ctx = { flags: set, host: 'server' as const, services: { track, flagsSource: source, sendCommand: notConnectedSend, devServer: httpDevServer() } };
       const features = loadFeatures({ flags: set, host: 'server' });
       this.featureHud = new HudRoot(document.body, features, ctx);
@@ -267,6 +326,8 @@ export class Game {
     this.offFlags?.(); this.offFlags = null;
     this.featureHud?.dispose(); this.featureHud = null;
     this.devConsole?.dispose(); this.devConsole = null;
+    this.online?.dispose(); this.online = null;
+    this.preBoot = null;
     this.play?.dispose(); this.play = null;
     try { this.descent?.dispose(); } catch (e) { console.warn(e); } this.descent = null;
     this.dHud?.dispose(); this.dHud = null; this.gHud?.dispose(); this.gHud = null;
@@ -282,9 +343,10 @@ export class Game {
     const kind = this.spec.kind, seed = this.spec.seed;
     this.teardownSession();
     this.mountStage(this.makeSpec(kind, seed));
+    this.menu.select(kind, false);
     this.menu.show();
+    this.syncOrbitUrl();
     this.schedulePrepare(1200);
-    history.replaceState(null, '', location.pathname);
     this.fade.classList.remove('on');
     this.phase = 'menu';
   }
@@ -308,7 +370,7 @@ export class Game {
     } else if (this.phase === 'descent') {
       this.descent?.update(dt); this.surface?.update(dt, this.time);
       if (this.cutFlash > 0) { vp.bloom.strength += 0.55 * this.cutFlash * this.cutFlash; this.cutFlash = Math.max(0, this.cutFlash - dt / 0.5); }
-    } else if (this.phase === 'gameplay') {
+    } else if (this.phase === 'gameplay' && !this.online) {
       this.play?.update(dt);
       this.surface?.update(dt, this.time);
       if (this.play) vp.followShadow(this.play.cam.target);
@@ -325,5 +387,5 @@ export class Game {
     this.teardownSession(); this.stage?.dispose(); this.menu.dispose(); this.fade.remove(); this.viewport.dispose();
   }
   /** QA */
-  get debug() { return { phase: this.phase, play: this.play, surface: this.surface, descent: this.descent, stage: this.stage, skip: () => this.skipDescent() }; }
+  get debug() { return { phase: this.phase, play: this.play, online: this.online, surface: this.surface, descent: this.descent, stage: this.stage, skip: () => this.skipDescent() }; }
 }

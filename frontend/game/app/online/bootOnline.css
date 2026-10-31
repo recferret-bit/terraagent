@@ -120,17 +120,46 @@
 }
 
 .ta-colony-view__badge {
-  position: absolute;
-  top: var(--ta-s3);
-  left: 50%;
-  transform: translateX(-50%);
-  padding: var(--ta-s1) var(--ta-s3);
-  background: var(--ta-plate-2);
+  display: none;
+}
+
+.ta-online-pause {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 8, 10, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  z-index: 40;
+}
+
+.ta-online-pause[hidden] {
+  display: none;
+}
+
+.ta-online-pause__box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 300px;
+  padding: 0 24px 24px;
   border: 1px solid var(--ta-seam-2);
-  font-family: var(--ta-font-mono);
-  font-size: var(--ta-fs-label);
-  letter-spacing: var(--ta-track-label);
-  color: var(--ta-steel);
-  text-transform: uppercase;
-  pointer-events: none;
+  background: var(--ta-plate);
+}
+
+.ta-online-pause__hazard {
+  height: 8px;
+  margin: 0 -24px 10px;
+}
+
+.ta-online-pause__title {
+  margin: 0 0 6px;
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--ta-blue-hi);
+  font-size: 20px;
+  text-align: center;
 }

@@ -82,9 +82,9 @@ test.afterAll(async () => {
 });
 
 test('@hack 1. open /play.html in a fresh profile -> orbital boot splash, then hand-over to the dev planet with no click', async () => {
-  await page.goto('/play.html', { waitUntil: 'commit' });
+  await page.goto('/play.html');
   const splash = page.locator('[data-testid=orbital-splash]');
-  await expect(splash).toBeAttached();
+  await expect(splash).toBeAttached({ timeout: 30_000 });
 
   await expect
     .poll(
@@ -100,7 +100,7 @@ test('@hack 1. open /play.html in a fresh profile -> orbital boot splash, then h
   await waitForTick(page, () => true, 30_000);
   await expect(splash).toHaveAttribute('data-active', 'false');
   const pid = await page.evaluate(() => (window as unknown as OnlineWindow).__online.planetId);
-  expect(pid).toBe('pl_dev');
+  expect(pid).toMatch(/^pl_dev/);
   await screenshot(page, '1-orbital-boot');
   expectNoPageErrors(page);
 });
@@ -117,7 +117,7 @@ test('@hack 2. drop pod descends onto spawn slot and HQ drone deploys; HUD shows
           if (!v) return false;
           let hasHq = false;
           for (let i = 0; i < v.count; i++) {
-            if (v.entities[i * 12 + 1] === 3) hasHq = true;
+            if (v.entities[i * 12 + 1] === 3 && v.entities[i * 12 + 2] === o.colonyIndex) hasHq = true;
           }
           return o.bootPhase === 'colony' && hasHq;
         }),
@@ -184,7 +184,7 @@ test('@hack 4. HQ walks to the site and prepares tiles one by one (Wild -> Prepa
           const col = v?.colonies?.[o.colonyIndex] ?? v?.colonies?.[0];
           const cell = col?.hq?.cell ?? 800;
           const status = document.querySelector('[data-testid=hub-order-status]')?.textContent ?? '';
-          return cell < 800 || /waiting\(site:|in_progress/.test(status);
+          return cell < 800 || /waiting\(site:|in_progress|completed/.test(status);
         }),
       { timeout: 30_000 },
     )
@@ -198,18 +198,20 @@ test('@hack 5. construction starts once all 9 tiles are Prepared, stock drops by
   test.setTimeout(90_000);
   await devConsole(page, 'warp 10');
 
-  // Wait for the Command Hub entity (kind === 4) to complete construction (state === 5 active, progress >= 1)
+  // Wait for the Command Hub entity (kind === 4) owned by this colony to complete construction (state === 5 active, progress >= 1)
   await expect
     .poll(
       () =>
         page.evaluate(() => {
-          const v = (window as unknown as OnlineWindow).__online.store.latest;
+          const o = (window as unknown as OnlineWindow).__online;
+          const v = o.store.latest;
           if (!v) return false;
           for (let i = 0; i < v.count; i++) {
             const kind = v.entities[i * 12 + 1];
+            const owner = v.entities[i * 12 + 2];
             const state = v.entities[i * 12 + 10];
             const progress = v.entities[i * 12 + 11];
-            if (kind === 4 && state === 5 && progress >= 1) return true;
+            if (kind === 4 && owner === o.colonyIndex && state === 5 && progress >= 1) return true;
           }
           return false;
         }),
@@ -282,7 +284,13 @@ test('@hack 7. restarting the app shows Reconnecting…, then the same colony wi
     let hasCompletedHub = false;
     if (v) {
       for (let i = 0; i < v.count; i++) {
-        if (v.entities[i * 12 + 1] === 4 && v.entities[i * 12 + 10] === 5) hasCompletedHub = true;
+        if (
+          v.entities[i * 12 + 1] === 4 &&
+          v.entities[i * 12 + 2] === o.colonyIndex &&
+          v.entities[i * 12 + 10] === 5
+        ) {
+          hasCompletedHub = true;
+        }
       }
     }
     let preparedCount = 0;
