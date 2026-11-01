@@ -15,6 +15,7 @@ export * from './grid/hex';
 export * from './grid/layers';
 export * from './grid/tileModel';
 export * from './grid/path';
+export * from './grid/geo';
 export * from './gen/generators';
 export { createPlanet } from './gen/createPlanet';
 export { DEV_PLANET_RADIUS } from './gen/flat';

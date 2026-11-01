@@ -1,5 +1,6 @@
 import { hexDistance, hexIndex } from '../grid/hex';
-import { PREP, TERRAIN } from '../grid/layers';
+import { geoBuildBlock } from '../grid/geo';
+import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import type { SimState } from '../kernel/state';
 
 /** Hub footprint is 3×3 (centre + ring 1); mirrors `getHubFootprintTiles`. */
@@ -23,14 +24,11 @@ function footprintIdx(state: SimState, q: number, r: number): number[] | null {
   return out;
 }
 
+/** Same geo rule the Command Hub placement check applies (Flat, no trees / rock / water / deposit), plus ownership. */
 function siteReady(state: SimState, tiles: number[], colonyId: number): boolean {
-  const { terrain, prep, owner } = state.grid.layers;
+  const { terrain, prep, owner, deposit } = state.grid.layers;
   return tiles.every(
-    (i) =>
-      terrain[i] === TERRAIN.flat &&
-      prep[i] !== PREP.ridge &&
-      prep[i] !== PREP.moat &&
-      (owner[i] < 0 || owner[i] === colonyId),
+    (i) => geoBuildBlock(terrain[i], prep[i], deposit ? deposit[i] : DEPOSIT.none, 'forbid') === null && (owner[i] < 0 || owner[i] === colonyId),
   );
 }
 
@@ -58,9 +56,11 @@ export function ensureStarterHubSpace(state: SimState, q: number, r: number, col
     if (!tiles) continue;
     const L = state.grid.layers;
     const terrain = L.terrain as Uint8Array, prep = L.prep as Uint8Array, owner = L.owner as Int8Array, height = L.height as Float32Array;
+    const deposit = L.deposit as Uint8Array | undefined;
     for (const i of tiles) {
       terrain[i] = TERRAIN.flat;
       prep[i] = PREP.flat;
+      if (deposit) deposit[i] = DEPOSIT.none;
       if (owner[i] >= 0 && owner[i] !== colonyId) owner[i] = -1;
       if (height[i] < 0.05 || height[i] > 0.18) height[i] = Math.fround(0.08 + ((i * 17) % 9) * 0.01);
     }

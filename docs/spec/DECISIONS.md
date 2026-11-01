@@ -41,6 +41,7 @@
 | D-34 | Resources: three stored families Metals, Minerals, Bio, each with T1/T2/T3 sub-resources; T2/T3 unlock by terraforming (colony threshold **and** terraformed deposit ground); Energy stays grid power | Accepted (2026-10-30) |
 | D-35 | Every balance number lives in data tables and can be tuned at runtime in playtests (overrides file + dev console), without a rebuild | Accepted (2026-10-30) |
 | D-36 | HUD and menus are vanilla DOM + Faction Plate CSS (no React/Zustand), built on the prototype's `frontend/game/ui/` | Accepted (2026-10-30) |
+| D-37 | One shared placement function (`evaluatePlacement`) for the server handler, the browser-local host and the client ghost; buildings cannot be placed on trees, rock, water or deposits (terraform first) | Accepted (2026-11-01, owner) |
 
 ---
 
@@ -431,3 +432,12 @@ The sim owns the type; the client picks the look from it (`planetType → Planet
 **Decision.** No React/Zustand. HUD panels are small TypeScript view classes (one per panel) registered by features, rendering into the design-system classes (`--ta-*` tokens, `.plate`, `.btn`), fed by the sim `view()`; state flows one way (sim view → panel). The AGENTS.md §6 rules apply (orchestrator + parts, ≤ 500 / ≤ 100 lines).
 
 **Alternatives.** React + Zustand (bigger bundle, a second UI idiom next to the existing code).
+
+## D-37 — One placement rule set; terraform before you build
+
+**Context.** W01 had two hand-copied placement rule sets (`construction/validate.ts` in the sim, `GhostEvaluator.ts` in the client) that already disagreed (hub-exists check, reason codes, prep-bill constants, deposits ignored by both). Per `UO-TF-03` a Hub could be placed on forest / rock and the linked prep order auto-cleared them; the owner rejected that in the W01 check ("I can place it on trees, on obstacles, on resources").
+
+**Decision.** Placement is one pure function, `evaluatePlacement(world, opts)` in `shared/sim/src/systems/construction/placement.ts`, over a read-only `PlacementWorld` (tile layers + entities). The `placeBuilding` handler builds the world from `SimState` (`placementWorldFromState`): it runs on the server and in the `?host=local` Worker alike, so the authoritative check is identical in multiplayer and single player. The client ghost builds the world from its replica view (`ghostPlacementWorld`) and calls the same function; a parity spec checks both agree on every tile of generated planets. Tile meaning lives in `grid/geo.ts` (`geoBuildBlock`, `isGroundObstacle`), also used by movement and the starter-site guarantee. A footprint tile must be inside the map, owned (or unclaimed for the Hub), free of other buildings, Flat (wild / flat / prepared) and, for the Hub, without a deposit; trees and rock must be cleared / broken by the player first (`terrain_unbuildable`). Linked prep for the Hub is therefore Grade only; Clear / Break stay player terraform ops (and the planner keeps them for W05's linked prep on other terrain classes). The client never mutates world state: confirm sends one `placeBuilding`; a host rejection reopens the ghost red with the host's reason.
+
+**Alternatives.** Keep `UO-TF-03` auto-clearing (owner rejected); keep two rule sets with a parity test only (they drift again).
+

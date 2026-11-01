@@ -7,7 +7,6 @@ import {
   createPlanet,
   enqueueTerraformOrder,
   ENTITY_STATE,
-  getColonyStock,
   getColonyTerraformOrders,
   getConstructionOrders,
   getHubFootprintTiles,
@@ -55,7 +54,7 @@ function stepToFullPrep(host: SimHost): { seenCounts: number[]; seenTexts: strin
 }
 
 describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF-03, UO-Q-04)', () => {
-  it('acceptance: placing Command Hub on 6 Flat + 3 Rock creates one linked order with 6 Grade + 3 Break + 3 Grade sub-jobs and climbs 0/9 -> 9/9', () => {
+  it('acceptance: Hub on 3 Rock is rejected until the rock is broken; then one linked order with 9 Grade climbs 0/9 -> 9/9', () => {
     const host = createW01Host();
     const state = host.state;
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
@@ -77,6 +76,13 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     expect(bill.totalEnergyE).toBe(360);
     expect(bill.yields).toEqual({ 'bio.biomass': 0, 'metals.t1': 30 });
 
+    // Rock (and trees) must be terraformed by the player first: the server rejects the placement.
+    host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0, 'place_on_rock'));
+    expect(host.step(1).outcomes[0]?.code).toBe('terrain_unbuildable');
+    for (const pos of [footprint[2], footprint[5], footprint[8]]) {
+      setTileTerrain(state.grid, idx.indexOf(pos.q, pos.r), TERRAIN.flat);
+    }
+
     host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0, 'place_hub'));
     expect(host.step(1).outcomes[0]?.code).toBeUndefined();
 
@@ -86,9 +92,8 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     expect(linkedOrder.isLinkedPrep).toBe(true);
     expect(linkedOrder.countsTowardLaneLimit).toBe(false);
     expect(getManualTerraformLaneCount(state, 0)).toBe(0);
-    expect(linkedOrder.jobs).toHaveLength(12);
-    expect(linkedOrder.jobs.filter((j) => j.op === 'grade')).toHaveLength(9);
-    expect(linkedOrder.jobs.filter((j) => j.op === 'break')).toHaveLength(3);
+    expect(linkedOrder.jobs).toHaveLength(9);
+    expect(linkedOrder.jobs.every((j) => j.op === 'grade')).toBe(true);
 
     const buildOrder = getConstructionOrders(state, 0)[0]!;
     expect(buildOrder.linkedPrepOrderId).toBe(linkedOrder.orderId);
@@ -112,8 +117,7 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     expect(finalOrder.status).toBe('in_progress');
     expect(state.entities.cols.state[hubRow]).toBe(ENTITY_STATE.constructing);
     expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
-    expect(getColonyStock(state, 0)['metals.t1']).toBe(30);
-    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(800 - 360, 3);
+    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(800 - 9 * 20, 3);
   });
 });
 

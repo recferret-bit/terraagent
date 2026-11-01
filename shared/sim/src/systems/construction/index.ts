@@ -25,11 +25,9 @@ import {
   resolveHubCost,
 } from './build';
 import { buildLinkedPrepJobs } from './prep';
+import { getBuildingFootprintTiles, isHubBuildingKind, resolveHubT1Row } from './placement';
 import {
   checkBuildingAffordability,
-  getBuildingFootprintTiles,
-  isHubBuildingKind,
-  resolveHubT1Row,
   validateBuildingPlacement,
   type ValidateHubPlacementOpts,
   type ValidateHubPlacementResult,
@@ -38,6 +36,8 @@ import {
 export { getManualTerraformLaneCount };
 export * from './build';
 export * from './prep';
+export * from './placement';
+export * from './placementWorld';
 export * from './validate';
 
 export interface ConstructionOrder {

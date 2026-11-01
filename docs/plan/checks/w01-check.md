@@ -25,16 +25,14 @@
    - Open `http://127.0.0.1:5373/play.html` directly (or `http://127.0.0.1:5373/play.html?scenario=w01` for a fresh scenario planet) → it runs the `short` state machine (`retro` → `impact_wait` 2s with no UI → `egress` 4-petal pod open + Hero Explorer rollout → `done`). Neither the Command Hub nor the Hero Explorer is pre-placed before the pod lands and opens.
    - Once `done` (`5.0 s`), the **compact icon resource header** at the top-centre shows crisp SVG icons + numbers (hover any pill for its tooltip): **Metals `600/500`**, **Minerals `350/500`**, **Bio `400/500`**, **Supply `0/0`**, and **HQ Cell `800/800 E`**.
    - The top-left **HQ Status Panel** shows **HULL HP `900 / 900`**, **POWER CELL `800 / 800 E`**, and task `idle`. Left-clicking the Hero Explorer (or clicking `SELECT HQ`) selects it; right-clicking any passable hex tile orders `moveUnit` and moves it along the hex A\* path.
-3. **Construction menu & 3×3 Hub ghost bill.** In the bottom-right **CONSTRUCTION** panel, only **`Command Hub [H] · 200 Metals · 100 Minerals · 50 Biomass · 50 Water`** is listed. Click it (or press **`H`**) → the 3×3 **Hub placement ghost** card opens on a valid 3×3 site near the HQ (`Valid site (3×3)`, green tint) and displays the live prep bill:
-   - `N/9 tiles to prepare`
-   - `Grade … · Clear … · Break …`
-   - `…s (HQ 1.5×)` and `… E`
-   - lump yields (`+5 bio.biomass` per forest tile, `+10 metals.t1` per rock tile)
-   Hovering other tiles on the terrain updates the 3×3 footprint and bill live (water or out-of-range tiles turn red with the rejection reason). Click **CONFIRM** on a valid 3×3 site.
-4. **Linked site preparation (Grade / Clear / Break).** Watch the HQ walk to the 3×3 footprint and prepare each un-prepared tile one by one (`Wild → Flat → Prepared`). As each tile finishes:
+3. **Construction menu, 3×3 Hub ghost and placement rules.** In the bottom-right **CONSTRUCTION** panel, only **`Command Hub [H] · 200 Metals · 100 Minerals · 50 Biomass · 50 Water`** is listed. Click it (or press **`H`**) → the 3×3 **Hub placement ghost** opens on the nearest valid site to the HQ (`Valid site (3×3)`, green 3D footprint + translucent Hub) with the live prep bill (`N/9 tiles to prepare`, `Grade N · Clear 0 · Break 0`, `…s (HQ 1.5×)`, `… E`).
+   - Move the mouse over **trees** → the footprint turns red on the forest tiles and the card reads `trees: clear them first`; over **rock** → `rock: break it first`; over **water** → `water`; over a **resource deposit** (metal / crystal / oil props) → `resource deposit`; over another colony's land → `not your territory`. **CONFIRM** is disabled on every red site.
+   - Server check (the client cannot bypass it): open the **browser DevTools** console (not the in-game one) and run `__online.commands.send('placeBuilding', { building: 'commandHub', q: <forest q>, r: <forest r> })` for a forest tile → it resolves `{ ok: false, code: 'terrain_unbuildable' }`. Same result with `?host=local&scenario=w01` (single player, Worker host).
+   - Terraform first: select **CLEAR [C]** in **TERRAFORM OPS**, clear a tree tile at the edge of a site, wait until it is Flat → hovering that site turns green.
+   - Click **CONFIRM** on a valid site.
+4. **Linked site preparation (Grade only).** Watch the HQ walk to the 3×3 footprint and Grade each un-prepared tile one by one (`Wild → Prepared`). As each tile finishes:
    - The hex tile blends smoothly (0.4 s shader transition) into the **Prepared** foundation hex-plate pad material.
-   - The **HQ CELL** bar drains (`20 E` per Grade, `30 E` per Clear, `50 E` per Break; tip: type `warp 10` in the dev console and press **`` ` ``** to close the console so you can watch at 10× speed).
-   - Clearing forest tiles adds `+5 bio.biomass` and breaking rock tiles adds `+10 metals.t1` to colony stock.
+   - The **HQ CELL** bar drains `20 E` per Grade (tip: type `warp 10` in the dev console and press **`` ` ``** to close the console so you can watch at 10× speed).
    - While tiles are being prepared, the **CONSTRUCTION** order row reads `waiting(site: n/9)`.
 5. **Command Hub construction & scaffold stages.** As soon as all 9 footprint tiles are `Prepared` (`9/9`), construction starts automatically:
    - Nothing is deducted up front: colony stock drains **gradually over the build** (total **200 Metals, 100 Minerals, 50 Biomass, 50 Water**, spent in proportion to progress). If the HQ is further than 3 tiles from the site it first drives to the site; progress only advances while it is there. If stock runs short the order shows `waiting(resources: …)` and resumes when stock arrives. Cancelling refunds 75 % of what was spent so far.

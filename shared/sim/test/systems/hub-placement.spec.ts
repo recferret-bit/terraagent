@@ -59,16 +59,13 @@ describe('W01-14: Command Hub 3x3 placement validation & UO-TF-05 unclaimed exce
     expect(hasColonyHub(state, 0)).toBe(false);
   });
 
-  it('allows Command Hub placement on unclaimed (owner === -1) Flat/Forest/Rock tiles (UO-TF-05), while rejecting non-Hub buildings on unclaimed tiles with not_own_territory', () => {
+  it('allows Command Hub placement on unclaimed (owner === -1) Flat tiles (UO-TF-05), while rejecting non-Hub buildings on unclaimed tiles with not_own_territory', () => {
     const host = createW01Host();
     const state = host.state;
     spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
     const idx = hexIndex(state.grid.radius);
 
-    // Mix of Flat, Forest, and Rock on unclaimed 3x3 centered at (3, 0)
-    setTileTerrain(state.grid, idx.indexOf(2, 0), TERRAIN.forest);
-    setTileTerrain(state.grid, idx.indexOf(4, 0), TERRAIN.rock);
-
+    // Unclaimed Flat 3x3 centered at (3, 0)
     const footprint = getHubFootprintTiles(3, 0);
     expect(footprint).toHaveLength(9);
     for (const pos of footprint) {
@@ -115,7 +112,7 @@ describe('W01-14: Command Hub 3x3 placement validation & UO-TF-05 unclaimed exce
 });
 
 describe('W01-14: Command Hub map bounds, Deep Water, maxPerColony, and HQ-only rules', () => {
-  it('rejects with site_blocked when any tile of the 3x3 footprint is outside the map or on Deep Water', () => {
+  it('rejects outside the map (site_blocked) and on Deep Water (terrain_unbuildable)', () => {
     const host = createW01Host(6);
     const state = host.state;
     spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
@@ -135,10 +132,11 @@ describe('W01-14: Command Hub map bounds, Deep Water, maxPerColony, and HQ-only 
 
     const deepCheck = validateHubPlacement(state, { colonyId: 0, q: 2, r: 0 });
     expect(deepCheck.ok).toBe(false);
-    expect(deepCheck.reason).toBe('site_blocked');
+    expect(deepCheck.reason).toBe('terrain_unbuildable');
+    expect(deepCheck.block).toBe('water');
 
     host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 2, r: 0 }, 0));
-    expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
+    expect(host.step(1).outcomes[0]?.code).toBe('terrain_unbuildable');
   });
 
   it('enforces maxPerColony: 1 (only one Hub per colony) and HQ-only placement (UO-L-03)', () => {

@@ -1,10 +1,4 @@
-import {
-  cancelConstructionOrder,
-  placeBuildingOrder,
-  spawnHqUnit,
-  type ConstructionOrder,
-  type PlanetState,
-} from '@terra/sim';
+import type { ConstructionOrder, PlanetState, SimCommand } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { ensureDom, makeBtn, makeDiv, setDataAttr } from './dom';
@@ -34,7 +28,11 @@ export interface HubPlacementCommandSink {
     readonly state: PlanetState;
     readonly pending: number;
     view(): GameView;
+    /** Authoritative in-process host (tests / tools): commands go through the same sim handler as on the server. */
+    submit?(cmd: SimCommand): void;
   };
+  /** Called when the authoritative host rejects a placement the ghost accepted (stale view, race with another player). */
+  onReject?: (code: string, detail?: string) => void;
   state?: PlanetState;
   colonyId?: number;
   getColonyId?: () => number | undefined;
@@ -57,6 +55,12 @@ export function formatGhostOps(ops: HubGhostBill['ops']): string {
 
 let orderSeq = 0;
 
+interface CommandOutcome {
+  ok: boolean;
+  code?: string;
+  detail?: string;
+}
+
 export class HubPlacementMenu {
   readonly el: HTMLElement;
   readonly ghostEl: HTMLElement;
@@ -78,6 +82,7 @@ export class HubPlacementMenu {
   private hoveredQ = 0;
   private hoveredR = 0;
   private lastOrderId: string | null = null;
+  private serverReject: { q: number; r: number; code: string; text: string } | null = null;
   private currentView: GhostSource = null;
   private cachedTiles: ClientTiles | null = null;
   private ghostState: HubGhostState;
@@ -222,7 +227,7 @@ export class HubPlacementMenu {
   }
 
   private evaluateCurrent(active = this.active): HubGhostState {
-    return evaluateHubGhost(this.resolveSource(), {
+    const g = evaluateHubGhost(this.resolveSource(), {
       colonyId: this.resolveColonyId(),
       q: this.hoveredQ,
       r: this.hoveredR,
@@ -230,6 +235,9 @@ export class HubPlacementMenu {
       requireHq: this.sink.requireHq,
       fallbackTiles: this.cachedTiles ?? this.sink.store?.latestTiles ?? null,
     });
+    const rej = this.serverReject;
+    if (!g.valid || !rej || rej.q !== g.q || rej.r !== g.r) return g;
+    return { ...g, valid: false, tint: 'invalid', reasonCode: rej.code, reasonText: rej.text };
   }
 
   setView(view: GhostSource): void {
@@ -282,48 +290,52 @@ export class HubPlacementMenu {
       return false;
     }
 
-    const targetQ = this.ghostState.q;
-    const targetR = this.ghostState.r;
-    const colonyId = this.resolveColonyId();
-    const commandId = `hub_order_${++orderSeq}`;
-    const cmdArgs = { building: 'commandHub', q: targetQ, r: targetR };
-
-    const pendingBefore = this.sink.host?.pending ?? 0;
-    if (this.sink.sendCommand) void this.sink.sendCommand('placeBuilding', cmdArgs);
-    if (this.sink.store?.sendCommand && this.sink.store.sendCommand !== this.sink.sendCommand) {
-      this.sink.store.sendCommand(
-        { type: 'placeBuilding', kind: 'placeBuilding', commandId, ...cmdArgs, args: cmdArgs },
-        cmdArgs,
-      );
-    }
-
-    const targetState = this.sink.state ?? this.sink.host?.state;
-    const pendingAfter = this.sink.host?.pending ?? 0;
-    if (targetState && pendingAfter === pendingBefore) {
-      if (targetState.entities.count === 0 && this.sink.requireHq !== true) {
-        spawnHqUnit(targetState, { owner: colonyId, q: 0, r: 0 });
-      }
-      const res = placeBuildingOrder(targetState, {
-        colonyId,
-        q: targetQ,
-        r: targetR,
-        buildingKind: 'commandHub',
-        orderId: commandId,
-      });
-      if (res.order) this.lastOrderId = res.order.orderId;
-    } else {
-      this.lastOrderId = commandId;
-    }
+    const { q: siteQ, r: siteR } = this.ghostState;
+    const pending = this.dispatch('placeBuilding', { building: 'commandHub', q: siteQ, r: siteR });
+    this.lastOrderId = pending.commandId;
+    void pending.result.then((res) => {
+      if (res && res.ok === false) this.onServerReject(siteQ, siteR, res.code ?? 'site_blocked', res.detail);
+    });
 
     this.active = false;
+    this.serverReject = null;
     this.ghostState = this.evaluateCurrent(false);
     this.render();
     this.sink.onChange?.();
     return true;
   }
 
+  /**
+   * Sends one command through exactly one channel (the client never mutates world state itself): the session command
+   * bus (server or browser-local Worker host, both run the shared sim handler), else the store, else an in-process host.
+   */
+  private dispatch(kind: string, args: Record<string, unknown>): { commandId: string; result: Promise<CommandOutcome | undefined> } {
+    const commandId = `${kind}_${++orderSeq}`;
+    let out: unknown;
+    if (this.sink.sendCommand) out = this.sink.sendCommand(kind, args);
+    else if (this.sink.store?.sendCommand) out = this.sink.store.sendCommand({ kind, commandId, args }, args);
+    else if (this.sink.host?.submit) {
+      this.sink.host.submit({ colonyIndex: this.resolveColonyId(), source: 'player', commandId, kind, args });
+    }
+    const result = out && typeof (out as Promise<unknown>).then === 'function' ? (out as Promise<CommandOutcome>) : Promise.resolve(undefined);
+    return { commandId, result: result.catch(() => undefined) };
+  }
+
+  /** The host disagreed with the ghost (its view was newer): reopen the ghost on that site with the host's reason. */
+  private onServerReject(q: number, r: number, code: string, detail?: string): void {
+    this.serverReject = { q, r, code, text: detail ?? code.replace(/_/g, ' ') };
+    this.active = true;
+    this.hoveredQ = q;
+    this.hoveredR = r;
+    this.ghostState = this.evaluateCurrent(true);
+    this.render();
+    this.sink.onReject?.(code, detail);
+    this.sink.onChange?.();
+  }
+
   cancelPlacement(): void {
     this.active = false;
+    this.serverReject = null;
     this.ghostState = this.evaluateCurrent(false);
     this.render();
     this.sink.onChange?.();
@@ -333,18 +345,7 @@ export class HubPlacementMenu {
     const colonyId = this.resolveColonyId();
     const orders = extractColonyConstructionOrders(this.resolveSource(), colonyId);
     const resolvedId = taskId ?? orders[0]?.orderId ?? this.lastOrderId ?? 'current';
-    const cmdArgs = { taskId: resolvedId };
-
-    const pendingBefore = this.sink.host?.pending ?? 0;
-    if (this.sink.sendCommand) void this.sink.sendCommand('cancelTask', cmdArgs);
-    if (this.sink.store?.sendCommand && this.sink.store.sendCommand !== this.sink.sendCommand) {
-      this.sink.store.sendCommand({ type: 'cancelTask', kind: 'cancelTask', taskId: resolvedId, args: cmdArgs }, cmdArgs);
-    }
-    const targetState = this.sink.state ?? this.sink.host?.state;
-    const pendingAfter = this.sink.host?.pending ?? 0;
-    if (targetState && pendingAfter === pendingBefore) {
-      cancelConstructionOrder(targetState, colonyId, taskId ?? orders[0]?.orderId ?? this.lastOrderId);
-    }
+    this.dispatch('cancelTask', { taskId: resolvedId });
     this.lastOrderId = null;
     this.ghostState = this.evaluateCurrent(this.active);
     this.render();

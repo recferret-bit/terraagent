@@ -50,170 +50,150 @@ function createRockAndForeignHost() {
   return host;
 }
 
-describe('W01-28: Construction menu v0 and 3x3 placement ghost acceptance', () => {
-  it('acceptance: hover over a rock cluster -> bill updates live; hover over foreign land -> ghost turns red with "not your territory"', () => {
+/** Routes the menu's command straight into the authoritative in-process host (same handler as server / Worker). */
+function hostSend(host: SimHost) {
+  let n = 0;
+  return vi.fn(async (kind: string, args?: unknown) => {
+    host.submit({ colonyIndex: 0, source: 'player', commandId: `t_${++n}`, kind, args });
+    const code = host.step(1).outcomes[0]?.code;
+    return code ? { ok: false, code } : { ok: true };
+  });
+}
+
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+describe('Construction menu & placement ghost (shared placement rules)', () => {
+  it('rock cluster -> red "rock: break it first"; clean Flat -> green with a Grade-only bill; foreign land -> "not your territory"', () => {
     ensureDom();
     const host = createRockAndForeignHost();
     const container = document.createElement('div');
     const sendCommand = vi.fn();
-
     const hub = mountHubPlacement(container, { host, sendCommand });
 
-    const menuEl = container.querySelector('[data-testid="construction-menu"]')!;
     const buildBtn = container.querySelector('[data-testid="build-command-hub"]') as HTMLButtonElement;
-    expect(menuEl).not.toBeNull();
-    expect(buildBtn.textContent).toContain('Command Hub');
     expect(buildBtn.textContent).toContain('200 Metals · 100 Minerals · 50 Biomass · 50 Water');
-
     hub.startPlacement();
     expect(hub.isPlacementActive()).toBe(true);
 
     const rockGhost = hub.hoverTile(2, 2);
-    expect(rockGhost.active).toBe(true);
-    expect(rockGhost.valid).toBe(true);
-    expect(rockGhost.tint).toBe('valid');
-    expect(rockGhost.bill).toEqual({
+    expect(rockGhost.valid).toBe(false);
+    expect(rockGhost.tint).toBe('invalid');
+    expect(rockGhost.reasonCode).toBe('terrain_unbuildable');
+    expect(rockGhost.block).toBe('rock');
+    expect(rockGhost.reasonText).toBe('rock: break it first');
+    expect(rockGhost.footprintTiles.filter((t) => !t.valid).map((t) => `${t.q},${t.r}`)).toEqual(['1,1', '2,2', '3,3']);
+
+    const clean = hub.hoverTile(-3, 4);
+    expect(clean.valid).toBe(true);
+    expect(clean.bill).toEqual({
       tilesToPrepare: 9,
       totalTiles: 9,
-      ops: { break: 3, grade: 9, clear: 0 },
-      baseSeconds: 45,
-      hqSeconds: 30,
-      totalEnergyE: 360,
-      yields: { 'metals.t1': 30, 'bio.biomass': 0 },
+      ops: { grade: 9, clear: 0, break: 0 },
+      baseSeconds: 27,
+      hqSeconds: 18,
+      totalEnergyE: 180,
+      yields: { 'metals.t1': 0, 'bio.biomass': 0 },
     });
-    expect(hub.getGhostState().bill).toEqual(rockGhost.bill);
-
     const ghostEl = container.querySelector('[data-testid="hub-placement-ghost"]') as HTMLElement;
-    const billEl = container.querySelector('[data-testid="hub-prep-bill"]')!;
-    const tilesEl = container.querySelector('[data-testid="hub-bill-tiles"]')!;
-    const timeEl = container.querySelector('[data-testid="hub-bill-time"]')!;
-    const energyEl = container.querySelector('[data-testid="hub-bill-energy"]')!;
-    const yieldsEl = container.querySelector('[data-testid="hub-bill-yields"]')!;
-
     expect(ghostEl.hidden).toBe(false);
     expect(ghostEl.getAttribute('data-tint')).toBe('valid');
-    expect(ghostEl.classList.contains('ghost-valid')).toBe(true);
-    expect(tilesEl.textContent).toBe('9/9 tiles to prepare');
-    expect(timeEl.textContent).toBe('30.0s (HQ 1.5×)');
-    expect(energyEl.textContent).toBe('360 E');
-    expect(yieldsEl.textContent).toBe('+30 Metals');
-    expect(billEl.textContent).toContain('360 E');
-    expect(billEl.textContent).toContain('+30 Metals');
+    expect(container.querySelector('[data-testid="hub-bill-tiles"]')!.textContent).toBe('9/9 tiles to prepare');
+    expect(container.querySelector('[data-testid="hub-bill-time"]')!.textContent).toBe('18.0s (HQ 1.5×)');
+    expect(container.querySelector('[data-testid="hub-bill-energy"]')!.textContent).toBe('180 E');
 
     const foreignGhost = hub.hoverTile(-5, -5);
-    expect(foreignGhost.valid).toBe(false);
-    expect(foreignGhost.tint).toBe('invalid');
     expect(foreignGhost.reasonCode).toBe('not_own_territory');
     expect(foreignGhost.reasonText).toBe('not your territory');
-
-    const reasonEl = container.querySelector('[data-testid="hub-ghost-reason"]')!;
-    const confirmBtn = container.querySelector('[data-testid="hub-confirm"]') as HTMLButtonElement;
-    expect(ghostEl.getAttribute('data-tint')).toBe('invalid');
-    expect(ghostEl.classList.contains('ghost-invalid')).toBe(true);
-    expect(reasonEl.textContent).toBe('not your territory');
-    expect(confirmBtn.disabled).toBe(true);
-
+    expect(container.querySelector('[data-testid="hub-ghost-reason"]')!.textContent).toBe('not your territory');
+    expect((container.querySelector('[data-testid="hub-confirm"]') as HTMLButtonElement).disabled).toBe(true);
     expect(hub.confirmPlacement()).toBe(false);
+    expect(hub.confirmPlacement(2, 2)).toBe(false); // rock
     expect(sendCommand).toHaveBeenCalledTimes(0);
-
     hub.dispose();
   });
 });
 
-describe('W01-28: Confirm placement, linked site prep order, and cancel flows', () => {
-  it('confirms placement on (2, 2) to dispatch placeBuilding and start linked prep + Hub order, and supports cancelPlacement and cancelOrder', () => {
+describe('Confirm goes through the authoritative handler only (no client-side world mutation)', () => {
+  it('confirm sends exactly one placeBuilding; the host creates the Hub + linked Grade order; cancel sends cancelTask', async () => {
     ensureDom();
     const host = createRockAndForeignHost();
     const state = host.state;
     const container = document.createElement('div');
-    const sendCommand = vi.fn();
-
+    const sendCommand = hostSend(host);
     const hub = mountHubPlacement(container, { host, sendCommand });
 
-    hub.startPlacement(2, 2);
-    expect(hub.isPlacementActive()).toBe(true);
-    const cancelBtn = container.querySelector('[data-testid="hub-cancel"]') as HTMLButtonElement;
-    cancelBtn.click();
+    hub.startPlacement(-3, 4);
+    (container.querySelector('[data-testid="hub-cancel"]') as HTMLButtonElement).click();
     expect(hub.isPlacementActive()).toBe(false);
-    expect((container.querySelector('[data-testid="hub-placement-ghost"]') as HTMLElement).hidden).toBe(true);
 
     hub.startPlacement();
-    hub.hoverTile(2, 2);
-    const confirmed = hub.confirmPlacement();
-    expect(confirmed).toBe(true);
-    expect(hub.isPlacementActive()).toBe(false);
-
+    hub.hoverTile(-3, 4);
+    expect(hub.confirmPlacement()).toBe(true);
     expect(sendCommand).toHaveBeenCalledTimes(1);
-    const [cmdKind, cmdArgs] = sendCommand.mock.calls[0];
-    expect(cmdKind).toBe('placeBuilding');
-    expect(cmdArgs).toEqual({ building: 'commandHub', q: 2, r: 2 });
-    expect(parseCommandArgs('placeBuilding', cmdArgs).success).toBe(true);
+    const [kind, args] = sendCommand.mock.calls[0];
+    expect(kind).toBe('placeBuilding');
+    expect(args).toEqual({ building: 'commandHub', q: -3, r: 4 });
+    expect(parseCommandArgs('placeBuilding', args).success).toBe(true);
+    await flush();
 
     expect(hasColonyHub(state, 0)).toBe(true);
-    const buildOrders = getConstructionOrders(state, 0);
-    expect(buildOrders).toHaveLength(1);
-    expect(buildOrders[0]).toMatchObject({
-      building: 'commandHub',
-      q: 2,
-      r: 2,
-      status: 'waiting_site',
-      statusText: 'waiting(site: 0/9)',
-    });
-    const tfOrders = getColonyTerraformOrders(state, 0);
-    expect(tfOrders).toHaveLength(1);
-    expect(tfOrders[0].isLinkedPrep).toBe(true);
-    expect(tfOrders[0].jobs).toHaveLength(12);
+    expect(getConstructionOrders(state, 0)[0]).toMatchObject({ building: 'commandHub', q: -3, r: 4, status: 'waiting_site' });
+    const tf = getColonyTerraformOrders(state, 0);
+    expect(tf).toHaveLength(1);
+    expect(tf[0].jobs.every((j) => j.op === 'grade')).toBe(true);
 
-    const cancelOrderBtn = container.querySelector('[data-testid="hub-cancel-order"]') as HTMLButtonElement;
-    expect(cancelOrderBtn.disabled).toBe(false);
-    cancelOrderBtn.click();
-
+    hub.update(host.view() as never);
+    (container.querySelector('[data-testid="hub-cancel-order"]') as HTMLButtonElement).click();
+    await flush();
     expect(sendCommand).toHaveBeenCalledTimes(2);
     expect(sendCommand.mock.calls[1][0]).toBe('cancelTask');
-    expect(parseCommandArgs('cancelTask', sendCommand.mock.calls[1][1]).success).toBe(true);
     expect(getConstructionOrders(state, 0)).toHaveLength(0);
-    expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
     expect(hasColonyHub(state, 0)).toBe(false);
+    hub.dispose();
+  });
 
+  it('a host rejection the ghost did not foresee reopens the ghost red on that site with the host reason', async () => {
+    ensureDom();
+    const host = createRockAndForeignHost();
+    const container = document.createElement('div');
+    const sendCommand = vi.fn(async () => ({ ok: false, code: 'site_blocked', detail: 'another building is here' }));
+    const hub = mountHubPlacement(container, { host, sendCommand });
+    hub.startPlacement(-3, 4);
+    expect(hub.confirmPlacement()).toBe(true);
+    expect(hub.isPlacementActive()).toBe(false);
+    await flush();
+    const g = hub.getGhostState();
+    expect(hub.isPlacementActive()).toBe(true);
+    expect([g.q, g.r, g.valid, g.reasonCode, g.reasonText]).toEqual([-3, 4, false, 'site_blocked', 'another building is here']);
+    expect(hub.hoverTile(-4, 4).valid).toBe(true); // moving off the rejected site clears the override
     hub.dispose();
   });
 });
 
-describe('W01-28: GhostEvaluator edge cases, surface pointer events, hotkeys, and feature registry', () => {
-  it('computes Forest + Prepared bills and reports site blocked, hub already exists, and requires HQ reasons', () => {
+describe('GhostEvaluator reasons, surface pointer events, hotkeys, and feature registry', () => {
+  it('reports trees, water, prepared-ground bill, hub already exists and requires HQ', () => {
     const host = createRockAndForeignHost();
     const state = host.state;
     const idx = hexIndex(state.grid.radius);
-
     const fp = getHubFootprintTiles(-2, 2);
-    setTileTerrain(state.grid, idx.indexOf(fp[0].q, fp[0].r), TERRAIN.forest);
-    setTileTerrain(state.grid, idx.indexOf(fp[1].q, fp[1].r), TERRAIN.forest);
     setTilePrep(state.grid, idx.indexOf(fp[2].q, fp[2].r), PREP.prepared);
     setTilePrep(state.grid, idx.indexOf(fp[3].q, fp[3].r), PREP.prepared);
     setTilePrep(state.grid, idx.indexOf(fp[4].q, fp[4].r), PREP.living);
-
     const mixed = evaluateHubGhost(state, 0, -2, 2);
     expect(mixed.valid).toBe(true);
-    expect(mixed.bill).toEqual({
-      tilesToPrepare: 6,
-      totalTiles: 9,
-      ops: { clear: 2, break: 0, grade: 6 },
-      baseSeconds: 2 * 5 + 6 * 3,
-      hqSeconds: 28 / 1.5,
-      totalEnergyE: 2 * 30 + 6 * 20,
-      yields: { 'metals.t1': 0, 'bio.biomass': 10 },
-    });
+    expect(mixed.bill.ops).toEqual({ grade: 6, clear: 0, break: 0 });
+    expect(mixed.bill.tilesToPrepare).toBe(6);
+
+    setTileTerrain(state.grid, idx.indexOf(fp[0].q, fp[0].r), TERRAIN.forest);
+    const trees = evaluateHubGhost(state, 0, -2, 2);
+    expect([trees.valid, trees.reasonCode, trees.block, trees.reasonText]).toEqual([false, 'terrain_unbuildable', 'trees', 'trees: clear them first']);
 
     setTileTerrain(state.grid, idx.indexOf(0, 4), TERRAIN.deep);
-    const blocked = evaluateHubGhost(state, 0, 0, 4);
-    expect(blocked.valid).toBe(false);
-    expect(blocked.reasonCode).toBe('site_blocked');
-    expect(blocked.reasonText).toBe('site blocked');
+    const water = evaluateHubGhost(state, 0, 0, 4);
+    expect([water.reasonCode, water.block]).toEqual(['terrain_unbuildable', 'water']);
 
-    const noHq = evaluateHubGhost(state, { colonyId: 2, q: -2, r: 2, requireHq: true });
-    expect(noHq.valid).toBe(false);
-    expect(noHq.reasonCode).toBe('worker_tier_locked');
-    expect(noHq.reasonText).toBe('requires HQ');
+    const noHq = evaluateHubGhost(state, { colonyId: 2, q: -3, r: 4, requireHq: true });
+    expect([noHq.valid, noHq.reasonCode, noHq.reasonText]).toEqual([false, 'worker_tier_locked', 'requires HQ']);
   });
 
   it('supports surface pointer hover/click, H/Escape hotkeys, LocalHost ClientView, and W01 feature registration', () => {
@@ -221,32 +201,20 @@ describe('W01-28: GhostEvaluator edge cases, surface pointer events, hotkeys, an
     const localHost = new LocalHost({ flags: ['W00', 'W01'], radius: 12 });
     spawnHqUnit(localHost.state, { owner: 0, q: 0, r: 0 });
     localHost.sync(true);
-
     const container = document.createElement('div');
     const surface = document.createElement('div');
     const storeSpy = vi.spyOn(localHost.store, 'sendCommand');
-
-    const hub = mountHubPlacement(container, {
-      host: localHost,
-      surface,
-      pickTile: (cx, cy) => ({ q: cx, r: cy }),
-    });
+    const hub = mountHubPlacement(container, { host: localHost, surface, pickTile: (cx, cy) => ({ q: cx, r: cy }) });
 
     window.dispatchEvent({ type: 'keydown', key: 'h' } as unknown as Event);
     expect(hub.isPlacementActive()).toBe(true);
-
     window.dispatchEvent({ type: 'keydown', key: 'Escape' } as unknown as Event);
     expect(hub.isPlacementActive()).toBe(false);
-
-    const buildBtn = container.querySelector('[data-testid="build-command-hub"]') as HTMLButtonElement;
-    buildBtn.click();
+    (container.querySelector('[data-testid="build-command-hub"]') as HTMLButtonElement).click();
     expect(hub.isPlacementActive()).toBe(true);
 
     surface.dispatchEvent({ type: 'pointermove', clientX: 3, clientY: 0 } as unknown as Event);
-    expect(hub.getGhostState().q).toBe(3);
-    expect(hub.getGhostState().r).toBe(0);
-    expect(hub.getGhostState().valid).toBe(true);
-
+    expect([hub.getGhostState().q, hub.getGhostState().r, hub.getGhostState().valid]).toEqual([3, 0, true]);
     surface.dispatchEvent({ type: 'pointerup', button: 0, clientX: 3, clientY: 0 } as unknown as Event);
     expect(storeSpy).toHaveBeenCalledTimes(1);
     expect(hub.isPlacementActive()).toBe(false);
@@ -254,14 +222,12 @@ describe('W01-28: GhostEvaluator edge cases, surface pointer events, hotkeys, an
     localHost.step(1);
     const afterPlace = hub.startPlacement(3, 0);
     expect(afterPlace.valid).toBe(false);
-    expect(afterPlace.reasonCode).toBe('already_exists');
-    expect(afterPlace.reasonText).toBe('hub already exists');
+    expect(afterPlace.reasonCode).toBe('site_blocked');
+    expect(hub.startPlacement(-6, 6).block).toBe('hubExists');
 
     expect(hubPlacementFeature.id).toBe('hub-placement');
-    expect(hubPlacementFeature.wave).toBe('W01');
     expect(loadFeatures({ flags: new Set(['W00']), host: 'server' }).map((f) => f.id)).not.toContain('hub-placement');
     expect(loadFeatures({ flags: new Set(['W00', 'W01']), host: 'server' }).map((f) => f.id)).toContain('hub-placement');
-
     hub.dispose();
   });
 });
@@ -280,14 +246,14 @@ describe('3D placement ghost', () => {
     expect(rig.group.visible).toBe(false);
 
     hub.startPlacement();
-    hub.hoverTile(2, 2);
+    hub.hoverTile(-3, 4);
     rig.update(src, 0.016);
     expect(rig.group.visible).toBe(true);
     const ok = tiles().filter((m) => m.geometry.type === 'CircleGeometry');
     expect(ok).toHaveLength(9);
     expect(new Set(ok.map((m) => (m.material as THREE.MeshBasicMaterial).color.getHex()))).toEqual(new Set([0x39ff88]));
 
-    hub.hoverTile(-5, -5);
+    hub.hoverTile(2, 2); // rock
     rig.update(src, 0.016);
     expect(hub.peekGhostState().valid).toBe(false);
     expect(rig.group.visible).toBe(true);

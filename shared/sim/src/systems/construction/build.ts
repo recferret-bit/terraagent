@@ -11,7 +11,7 @@ import { addColonyStock, getColonyStock, resolveStartingKitRow, setColonyStock }
 import { getColonyTerraformOrders } from '../terraform-basic/queue';
 import { applyHubCompletionEffects } from '../territory-claim';
 import type { ConstructionOrder } from './index';
-import { isHubBuildingKind, resolveHubT1Row } from './validate';
+import { isHubBuildingKind, resolveHubT1Row } from './placement';
 
 export interface CostCheckResult {
   ok: boolean;
@@ -141,9 +141,10 @@ export function spendConstructionSlice(
   const stock = getColonyStock(state, order.colonyId);
   const slice: Record<string, number> = {};
   for (const [k, total] of Object.entries(cost)) {
-    const owed = targetProgress >= 1 - 1e-9 ? total : total * targetProgress;
+    // Whole units only: float slices would leave stock at e.g. 250.00000000000006 after the build.
+    const owed = targetProgress >= 1 - 1e-9 ? total : Math.floor(total * targetProgress);
     const amt = Math.max(0, owed - (paid[k] ?? 0));
-    if (amt <= 1e-9) continue;
+    if (amt <= 0) continue;
     const have = stock[k] ?? 0;
     if (have + 1e-6 < amt) {
       return { ok: false, missingKey: k, have, need: amt, waitingReason: `waiting(resources: ${k} ${Math.floor(have)}/${Math.ceil(amt)})` };

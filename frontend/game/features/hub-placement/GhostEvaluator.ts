@@ -1,12 +1,16 @@
 import {
   ENTITY_KIND,
-  ENTITY_STATE,
-  getBuildingFootprintTiles,
-  getHubFootprintTiles,
-  hexIndex,
+  evaluatePlacement,
+  findPlacementSite,
+  placementBlockText,
+  placementRejectCode,
   PREP,
   TERRAIN,
   type ConstructionOrder,
+  type PlacementBill,
+  type PlacementBlock,
+  type PlacementTile,
+  type PlacementWorld,
   type PlanetState,
   type SimView,
   type ViewColony,
@@ -17,22 +21,8 @@ import { ENTITY_STRIDE, type ClientTiles, type ClientView } from '../../store/re
 
 export type GhostSource = PlanetState | ClientView | SimView | GameView | null | undefined;
 
-export interface HubGhostBill {
-  tilesToPrepare: number;
-  totalTiles: number;
-  baseSeconds: number;
-  hqSeconds: number;
-  totalEnergyE: number;
-  yields: {
-    'metals.t1': number;
-    'bio.biomass': number;
-  };
-  ops: {
-    grade: number;
-    clear: number;
-    break: number;
-  };
-}
+/** Same shape as the sim's `PlacementBill` (one planner for client and server). */
+export type HubGhostBill = PlacementBill;
 
 export interface HubFootprintTileState {
   q: number;
@@ -40,6 +30,7 @@ export interface HubFootprintTileState {
   valid: boolean;
   reasonCode?: string;
   reasonText?: string;
+  block?: PlacementBlock;
   terrain: number;
   prep: number;
   owner?: number;
@@ -53,6 +44,8 @@ export interface HubGhostState {
   tint: 'valid' | 'invalid';
   reasonCode?: string;
   reasonText?: string;
+  /** Machine cause (`trees`, `rock`, `deposit`, `water`, `foreign`, `occupied`, `hubExists`, …). */
+  block?: PlacementBlock;
   footprintTiles: HubFootprintTileState[];
   bill: HubGhostBill;
 }
@@ -82,20 +75,11 @@ interface ExtractedWorld {
   tileCount: number;
   terrain: Uint8Array | null;
   prep: Uint8Array | null;
+  deposit: Uint8Array | null;
   owner: Int8Array | null;
   entities: ExtractedEntity[];
   orders: ConstructionOrder[];
 }
-
-const GRADE_TIME_S = 3;
-const CLEAR_TIME_S = 5;
-const BREAK_TIME_S = 6;
-const GRADE_ENERGY_E = 20;
-const CLEAR_ENERGY_E = 30;
-const BREAK_ENERGY_E = 60;
-const BREAK_METALS_YIELD = 10;
-const CLEAR_BIOMASS_YIELD = 5;
-const HQ_WORK_RATE = 1.5;
 
 function isPlanetState(src: unknown): src is PlanetState {
   return Boolean(
@@ -191,6 +175,7 @@ function extractWorld(source: GhostSource, fallbackTiles?: ClientTiles | null): 
       tileCount: source.grid.count,
       terrain: source.grid.layers.terrain as Uint8Array,
       prep: source.grid.layers.prep as Uint8Array,
+      deposit: (source.grid.layers.deposit as Uint8Array | undefined) ?? null,
       owner: source.grid.layers.owner as Int8Array,
       entities,
       orders: extractOrdersFromBlobs(source.blobs as unknown as Record<string, unknown>),
@@ -211,185 +196,53 @@ function extractWorld(source: GhostSource, fallbackTiles?: ClientTiles | null): 
     tileCount: tiles?.count ?? 0,
     terrain: tiles?.terrain ?? null,
     prep: tiles?.prep ?? null,
+    deposit: tiles?.deposit ?? null,
     owner: tiles?.owner ?? null,
     entities: extractEntitiesFromView(v.entities, v.count),
     orders: extractOrdersFromBlobs(v.blobs),
   };
 }
 
-function isTilePreparableInW01(terrain: number, prep: number): { valid: boolean; prepared: boolean } {
-  if (terrain === TERRAIN.deep || prep === PREP.ridge || prep === PREP.moat) {
-    return { valid: false, prepared: false };
-  }
-  if (prep === PREP.prepared || prep === PREP.living) {
-    return { valid: true, prepared: true };
-  }
-  if (terrain === TERRAIN.flat || terrain === TERRAIN.forest || terrain === TERRAIN.rock) {
-    return { valid: true, prepared: false };
-  }
-  return { valid: false, prepared: false };
+/** Adapts any ghost source (authoritative state, replica view, local host view) into the shared `PlacementWorld`. */
+export function ghostPlacementWorld(source: GhostSource, fallbackTiles?: ClientTiles | null): PlacementWorld {
+  const w = extractWorld(source, fallbackTiles);
+  const n = w.tileCount;
+  return {
+    radius: w.radius,
+    tileCount: w.terrain && w.prep && w.owner ? n : 0,
+    terrain: w.terrain ?? new Uint8Array(0),
+    prep: w.prep ?? new Uint8Array(0),
+    deposit: w.deposit,
+    owner: w.owner ?? new Int8Array(0),
+    entities: w.entities,
+  };
 }
 
-function collectOccupiedTileSet(world: ExtractedWorld): Set<number> {
-  const occupied = new Set<number>();
-  const idx = hexIndex(world.radius);
-  for (const e of world.entities) {
-    if (e.kind < ENTITY_KIND.hub) continue;
-    if (e.hpMax > 0 && e.hp <= 0) continue;
-    const fp = e.kind === ENTITY_KIND.hub ? 3 : 1;
-    for (const pos of getBuildingFootprintTiles(e.q, e.r, fp)) {
-      const tIdx = idx.indexOf(pos.q, pos.r);
-      if (tIdx >= 0) occupied.add(tIdx);
-    }
-  }
-  return occupied;
+/** Old semantics of `requireHq`: unset → require a landed HQ only once the colony has any entity on the map. */
+function resolveRequireBuilder(world: PlacementWorld, colonyId: number, requireHq?: boolean): boolean {
+  if (requireHq !== undefined) return requireHq;
+  return world.entities.some((e) => e.owner === colonyId);
 }
 
-function checkColonyHasHub(world: ExtractedWorld, colonyId: number): boolean {
-  for (const e of world.entities) {
-    if (e.kind !== ENTITY_KIND.hub || e.owner !== colonyId) continue;
-    if (e.hpMax > 0 && e.hp <= 0) continue;
-    return true;
-  }
-  for (const o of world.orders) {
-    if (o.colonyId === colonyId && o.status !== 'cancelled') return true;
-  }
-  return false;
-}
+const toGhostTile = (t: PlacementTile): HubFootprintTileState => ({
+  q: t.q,
+  r: t.r,
+  valid: t.ok,
+  ...(t.block ? { reasonCode: placementRejectCode(t.block), reasonText: placementBlockText(t.block), block: t.block } : {}),
+  terrain: t.block === 'outOfMap' ? TERRAIN.deep : t.terrain,
+  prep: t.block === 'outOfMap' ? PREP.wild : t.prep,
+  ...(t.block === 'outOfMap' ? {} : { owner: t.owner }),
+});
 
-function checkColonyHasHq(world: ExtractedWorld, colonyId: number, requireHq?: boolean): boolean {
-  let colonyEntities = 0;
-  for (const e of world.entities) {
-    if (e.owner !== colonyId) continue;
-    colonyEntities++;
-    if (e.kind !== ENTITY_KIND.hq) continue;
-    if (e.hpMax > 0 && e.hp <= 0) continue;
-    if (e.state === ENTITY_STATE.descending) continue;
-    return true;
-  }
-  if (requireHq === true) return false;
-  if (requireHq === false) return true;
-  return colonyEntities === 0;
+/** Site preparation bill for the 3×3 Command Hub footprint at `(q, r)` (shared planner: same numbers the sim uses). */
+export function computeGhostPrepBill(source: GhostSource, q: number, r: number, fallbackTiles?: ClientTiles | null): HubGhostBill {
+  const world = ghostPlacementWorld(source, fallbackTiles);
+  return evaluatePlacement(world, { colonyId: 0, q: Math.trunc(q), r: Math.trunc(r), requireBuilder: false }).bill;
 }
 
 /**
- * Computes the site preparation bill across the 9 tiles of a 3×3 Command Hub footprint at `(q, r)`.
- */
-export function computeGhostPrepBill(
-  source: GhostSource,
-  q: number,
-  r: number,
-  fallbackTiles?: ClientTiles | null,
-): HubGhostBill {
-  const world = extractWorld(source, fallbackTiles);
-  const coords = getHubFootprintTiles(Math.trunc(q), Math.trunc(r));
-  const idx = hexIndex(world.radius);
-  const ops = { grade: 0, clear: 0, break: 0 };
-  let tilesToPrepare = 0;
-
-  for (const pos of coords) {
-    const tIdx = idx.indexOf(pos.q, pos.r);
-    if (!world.terrain || !world.prep || tIdx < 0 || tIdx >= world.tileCount) {
-      tilesToPrepare++;
-      continue;
-    }
-    const terrain = world.terrain[tIdx];
-    const prep = world.prep[tIdx];
-    if (prep === PREP.prepared || prep === PREP.living) continue;
-
-    tilesToPrepare++;
-    if (terrain === TERRAIN.forest) {
-      ops.clear++;
-      ops.grade++;
-    } else if (terrain === TERRAIN.rock) {
-      ops.break++;
-      ops.grade++;
-    } else if (terrain === TERRAIN.flat) {
-      ops.grade++;
-    }
-  }
-
-  const baseSeconds = ops.grade * GRADE_TIME_S + ops.clear * CLEAR_TIME_S + ops.break * BREAK_TIME_S;
-  const hqSeconds = baseSeconds / HQ_WORK_RATE;
-  const totalEnergyE = ops.grade * GRADE_ENERGY_E + ops.clear * CLEAR_ENERGY_E + ops.break * BREAK_ENERGY_E;
-  const yields = {
-    'metals.t1': ops.break * BREAK_METALS_YIELD,
-    'bio.biomass': ops.clear * CLEAR_BIOMASS_YIELD,
-  };
-
-  return {
-    tilesToPrepare,
-    totalTiles: coords.length,
-    baseSeconds,
-    hqSeconds,
-    totalEnergyE,
-    yields,
-    ops,
-  };
-}
-
-function evaluateSingleFootprintTile(
-  world: ExtractedWorld,
-  idx: ReturnType<typeof hexIndex>,
-  occupied: Set<number>,
-  colonyId: number,
-  pos: { q: number; r: number },
-): HubFootprintTileState {
-  const tIdx = idx.indexOf(pos.q, pos.r);
-  if (!world.terrain || !world.prep || !world.owner || tIdx < 0 || tIdx >= world.tileCount) {
-    return {
-      q: pos.q,
-      r: pos.r,
-      valid: false,
-      reasonCode: 'site_blocked',
-      reasonText: 'site blocked',
-      terrain: TERRAIN.deep,
-      prep: PREP.wild,
-    };
-  }
-
-  const terrain = world.terrain[tIdx];
-  const prep = world.prep[tIdx];
-  const owner = world.owner[tIdx];
-  const check = isTilePreparableInW01(terrain, prep);
-
-  if (owner >= 0 && owner !== colonyId) {
-    return {
-      q: pos.q,
-      r: pos.r,
-      valid: false,
-      reasonCode: 'not_own_territory',
-      reasonText: 'not your territory',
-      terrain,
-      prep,
-      owner,
-    };
-  }
-  if (!check.valid || occupied.has(tIdx)) {
-    return {
-      q: pos.q,
-      r: pos.r,
-      valid: false,
-      reasonCode: 'site_blocked',
-      reasonText: 'site blocked',
-      terrain,
-      prep,
-      owner,
-    };
-  }
-  return {
-    q: pos.q,
-    r: pos.r,
-    valid: true,
-    terrain,
-    prep,
-    owner,
-  };
-}
-
-/**
- * Evaluates the 3×3 Command Hub placement ghost at `(q, r)` for `colonyId`, returning
- * footprint validity, tint (`'valid' | 'invalid'`), human-readable reason, and live site prep bill.
+ * Evaluates the Command Hub placement ghost at `(q, r)` for `colonyId` with the shared `evaluatePlacement` (the same
+ * function the `placeBuilding` handler runs on the server and in the browser-local host): validity, tint, reason, bill.
  */
 export function evaluateHubGhost(
   source: GhostSource,
@@ -399,53 +252,27 @@ export function evaluateHubGhost(
   extraOpts?: EvaluateHubGhostOptions,
 ): HubGhostState {
   const opts: EvaluateHubGhostOptions =
-    typeof colonyIdOrOpts === 'number'
-      ? { colonyId: colonyIdOrOpts, q: qArg, r: rArg, ...extraOpts }
-      : colonyIdOrOpts;
+    typeof colonyIdOrOpts === 'number' ? { colonyId: colonyIdOrOpts, q: qArg, r: rArg, ...extraOpts } : colonyIdOrOpts;
   const colonyId = opts.colonyId ?? 0;
   const q = Math.trunc(opts.q ?? 0);
   const r = Math.trunc(opts.r ?? 0);
-  const active = opts.active ?? true;
-
-  const world = extractWorld(source, opts.fallbackTiles);
-  const idx = hexIndex(world.radius);
-  const coords = getHubFootprintTiles(q, r);
-  const occupied = collectOccupiedTileSet(world);
-  const footprintTiles = coords.map((pos) =>
-    evaluateSingleFootprintTile(world, idx, occupied, colonyId, pos),
-  );
-
-  let reasonCode: string | undefined;
-  let reasonText: string | undefined;
-  const foreignTile = footprintTiles.find((t) => t.reasonCode === 'not_own_territory');
-  const blockedTile = footprintTiles.find((t) => !t.valid);
-
-  if (foreignTile) {
-    reasonCode = 'not_own_territory';
-    reasonText = 'not your territory';
-  } else if (checkColonyHasHub(world, colonyId)) {
-    reasonCode = 'already_exists';
-    reasonText = 'hub already exists';
-  } else if (blockedTile) {
-    reasonCode = 'site_blocked';
-    reasonText = 'site blocked';
-  } else if (!checkColonyHasHq(world, colonyId, opts.requireHq)) {
-    reasonCode = 'worker_tier_locked';
-    reasonText = 'requires HQ';
-  }
-
-  const valid = reasonCode === undefined;
-  const bill = computeGhostPrepBill(source, q, r, opts.fallbackTiles);
-
-  return {
-    active,
+  const world = ghostPlacementWorld(source, opts.fallbackTiles);
+  const res = evaluatePlacement(world, {
+    colonyId,
     q,
     r,
-    valid,
-    tint: valid ? 'valid' : 'invalid',
-    ...(reasonCode ? { reasonCode, reasonText } : {}),
-    footprintTiles,
-    bill,
+    building: 'commandHub',
+    requireBuilder: resolveRequireBuilder(world, colonyId, opts.requireHq),
+  });
+  return {
+    active: opts.active ?? true,
+    q,
+    r,
+    valid: res.ok,
+    tint: res.ok ? 'valid' : 'invalid',
+    ...(res.block ? { reasonCode: res.code, reasonText: res.text, block: res.block } : {}),
+    footprintTiles: res.tiles.map(toGhostTile),
+    bill: res.bill,
   };
 }
 
@@ -458,31 +285,17 @@ export function extractColonyConstructionOrders(
   return world.orders.filter((o) => o.colonyId === colonyId && o.status !== 'cancelled');
 }
 
-/** Finds a valid 3×3 Hub site near `colonyId`'s HQ (preferring sites with Forest/Rock yields when available). */
+/** Nearest valid 3×3 Hub site to `colonyId`'s HQ (or pod), searched with the shared placement rules. */
 export function findValidHubSiteNearHq(
   source: GhostSource,
   colonyId = 0,
   fallbackTiles?: ClientTiles | null,
 ): { q: number; r: number } | null {
-  const world = extractWorld(source, fallbackTiles);
-  const hq = world.entities.find(
-    (e) => e.owner === colonyId && (e.kind === ENTITY_KIND.hq || e.kind === ENTITY_KIND.pod),
+  const world = ghostPlacementWorld(source, fallbackTiles);
+  const hq = world.entities.find((e) => e.owner === colonyId && (e.kind === ENTITY_KIND.hq || e.kind === ENTITY_KIND.pod));
+  return findPlacementSite(
+    world,
+    { colonyId, q: hq?.q ?? 0, r: hq?.r ?? 0, building: 'commandHub', requireBuilder: resolveRequireBuilder(world, colonyId) },
+    5,
   );
-  const baseQ = hq?.q ?? 0;
-  const baseR = hq?.r ?? 0;
-  let firstValid: { q: number; r: number } | null = null;
-  for (let rad = 0; rad <= 5; rad++) {
-    for (let dq = -rad; dq <= rad; dq++) {
-      for (let dr = -rad; dr <= rad; dr++) {
-        if (Math.max(Math.abs(dq), Math.abs(dr), Math.abs(dq + dr)) !== rad) continue;
-        const q = baseQ + dq;
-        const r = baseR + dr;
-        const g = evaluateHubGhost(source, { colonyId, q, r, fallbackTiles });
-        if (!g.valid) continue;
-        if (!firstValid) firstValid = { q, r };
-        if (g.bill.yields['metals.t1'] > 0 || g.bill.yields['bio.biomass'] > 0) return { q, r };
-      }
-    }
-  }
-  return firstValid;
 }

@@ -1,4 +1,4 @@
-import type { PlanetState } from '@terra/sim';
+import type { PlanetState, SimCommand } from '@terra/sim';
 import {
   defineFeature,
   type Feature,
@@ -53,6 +53,7 @@ export interface SimHostLike {
   readonly tick?: number;
   readonly pending: number;
   view(): GameView;
+  submit?(cmd: SimCommand): void;
   onEvents?: (cb: () => void) => () => void;
 }
 
@@ -143,6 +144,7 @@ export function mountHubPlacement(
     colonyId,
     getColonyId: () => opts?.colonyId ?? services.landfall?.getOwnerColonyIndex() ?? services.colonyId ?? 0,
     requireHq: opts?.requireHq,
+    onReject: (code, detail) => services.hudMin?.handleReject(code, detail, { kind: 'placeBuilding' }),
   });
 
   const surface = opts?.surface ?? opts?.canvas ?? services.surface ?? services.canvas;

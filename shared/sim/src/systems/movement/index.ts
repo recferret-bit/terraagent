@@ -2,6 +2,7 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { axialToPlane, hexDistance, hexIndex, hexRound } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
+import { isGroundObstacle } from '../../grid/geo';
 import { findHexPath, PATH_EXPANSION_BUDGET_PER_STEP, stepPathQueue, type AxialCoord } from '../../grid/path';
 import { defineCommandHandler } from '../../kernel/commands';
 import { defineSystem } from '../../kernel/system';
@@ -54,7 +55,7 @@ function pathsOf(state: SimState): Map<number, AxialCoord[]> {
 /** Untouched trees and rock block ground units until terraformed (Clear / Break turn them into Flat). */
 function hqObstacle(state: SimState): (tileIdx: number) => boolean {
   const terrain = state.grid.layers.terrain;
-  return (i) => terrain[i] === TERRAIN.forest || terrain[i] === TERRAIN.rock;
+  return (i) => isGroundObstacle(terrain[i]);
 }
 
 /** A* route over open ground from the unit's current tile to `(q, r)`; waypoints exclude the start tile. */
@@ -103,7 +104,7 @@ export const moveUnit = defineCommandHandler({
     if (terrain === TERRAIN.deep || prep === PREP.ridge || prep === PREP.moat) {
       return 'site_blocked';
     }
-    if (terrain === TERRAIN.forest || terrain === TERRAIN.rock) return 'site_blocked'; // terraform it first
+    if (isGroundObstacle(terrain)) return 'site_blocked'; // terraform it first
     const route = planRoute(state, { q: cols.q[row], r: cols.r[row] }, targetQ, targetR, ctx.data);
     if (!route) return 'site_blocked'; // walled in by trees / rock / water
     pathsOf(state).set(row, route);

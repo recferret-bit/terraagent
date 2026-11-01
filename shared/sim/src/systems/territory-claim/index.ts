@@ -4,7 +4,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { touchTile, type ColonyState, type PlanetState } from '../../kernel/state';
 import type { ConstructionOrder } from '../construction';
-import { resolveHubT1Row } from '../construction/validate';
+import { resolveHubT1Row } from '../construction/placement';
 import { defineSimModule } from '../define';
 import type { ColonyCaps } from '../landing';
 

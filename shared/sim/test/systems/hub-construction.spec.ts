@@ -135,12 +135,12 @@ describe('W01-16: Command Hub 20.0 s construction progress & buildingCompleted e
       const res = host.step(1);
       if (t === 1) {
         expect(res.outcomes[0]?.code).toBeUndefined();
-        // 1% progress -> 1% of 200/100/50/50 spent
+        // 1% progress -> floor(1% of 200/100/50/50) whole units spent
         expect(getColonyStock(state, 0)).toEqual({
           'metals.t1': 598,
           'minerals.t1': 349,
-          'bio.biomass': 199.5,
-          'bio.water': 199.5,
+          'bio.biomass': 200,
+          'bio.water': 200,
         });
       }
       allEvents.push(...res.events);
@@ -279,6 +279,6 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
     expect(activeOrder.progress).toBeCloseTo(0.01, 5);
     // Only the first 1% slice was spent; the rest is paid as the build advances
     expect(getColonyStock(state, 0)['metals.t1']).toBeCloseTo(198, 5);
-    expect(getColonyStock(state, 0)['bio.water']).toBeCloseTo(49.5, 5);
+    expect(getColonyStock(state, 0)['bio.water']).toBe(50); // floor(0.5) = 0 spent so far
   });
 });

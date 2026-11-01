@@ -5,7 +5,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
 import { resolveHqT1Row } from '../hq';
 import { getTerraformOpSpec, type TerraformJob } from '../terraform-basic/queue';
-import { getBuildingFootprintTiles } from './validate';
+import { getBuildingFootprintTiles } from './placement';
 
 export interface SitePrepBill {
   unpreparedTiles: number;
@@ -40,70 +40,59 @@ export function buildLinkedPrepJobs(
   data?: CompiledDataLike,
 ): TerraformJob[] {
   const hex = hexIndex(state.grid.radius);
-  const gradeSpec = getTerraformOpSpec('grade', data);
-  const clearSpec = getTerraformOpSpec('clear', data);
-  const breakSpec = getTerraformOpSpec('break', data);
-  const jobs: TerraformJob[] = [];
-
+  const tiles: PrepTileInput[] = [];
   for (const tile of footprintTiles) {
     const tileIdx = hex.indexOf(tile.q, tile.r);
     if (tileIdx < 0 || !isValidTileIndex(state.grid, tileIdx)) continue;
-    const terrain = state.grid.layers.terrain[tileIdx];
-    const prep = state.grid.layers.prep[tileIdx];
-    if (prep === PREP.prepared || prep === PREP.living) continue;
-
-    if (terrain === TERRAIN.forest) {
-      jobs.push({
-        q: tile.q,
-        r: tile.r,
-        op: 'clear',
-        progress: 0,
-        baseTimeS: clearSpec.baseTimeS,
-        totalEnergyE: clearSpec.energyCostE,
-        energyDrawnE: 0,
-      });
-      jobs.push({
-        q: tile.q,
-        r: tile.r,
-        op: 'grade',
-        progress: 0,
-        baseTimeS: gradeSpec.baseTimeS,
-        totalEnergyE: gradeSpec.energyCostE,
-        energyDrawnE: 0,
-      });
-    } else if (terrain === TERRAIN.rock) {
-      jobs.push({
-        q: tile.q,
-        r: tile.r,
-        op: 'break',
-        progress: 0,
-        baseTimeS: breakSpec.baseTimeS,
-        totalEnergyE: breakSpec.energyCostE,
-        energyDrawnE: 0,
-      });
-      jobs.push({
-        q: tile.q,
-        r: tile.r,
-        op: 'grade',
-        progress: 0,
-        baseTimeS: gradeSpec.baseTimeS,
-        totalEnergyE: gradeSpec.energyCostE,
-        energyDrawnE: 0,
-      });
-    } else if (terrain === TERRAIN.flat) {
-      jobs.push({
-        q: tile.q,
-        r: tile.r,
-        op: 'grade',
-        progress: 0,
-        baseTimeS: gradeSpec.baseTimeS,
-        totalEnergyE: gradeSpec.energyCostE,
-        energyDrawnE: 0,
-      });
-    }
+    tiles.push({ q: tile.q, r: tile.r, terrain: state.grid.layers.terrain[tileIdx], prep: state.grid.layers.prep[tileIdx] });
   }
+  return planPrepJobs(tiles, data);
+}
 
+/** One footprint tile as the prep planner sees it (shared by the sim and the client ghost). */
+export interface PrepTileInput {
+  q: number;
+  r: number;
+  terrain: number;
+  prep: number;
+}
+
+/** Pure planner behind `buildLinkedPrepJobs`: the ordered S0 ops that turn each tile into Prepared ground. */
+export function planPrepJobs(tiles: ReadonlyArray<PrepTileInput>, data?: CompiledDataLike): TerraformJob[] {
+  const job = (q: number, r: number, op: 'grade' | 'clear' | 'break'): TerraformJob => {
+    const spec = getTerraformOpSpec(op, data);
+    return { q, r, op, progress: 0, baseTimeS: spec.baseTimeS, totalEnergyE: spec.energyCostE, energyDrawnE: 0 };
+  };
+  const jobs: TerraformJob[] = [];
+  for (const t of tiles) {
+    if (t.prep === PREP.prepared || t.prep === PREP.living) continue;
+    if (t.terrain === TERRAIN.forest) jobs.push(job(t.q, t.r, 'clear'), job(t.q, t.r, 'grade'));
+    else if (t.terrain === TERRAIN.rock) jobs.push(job(t.q, t.r, 'break'), job(t.q, t.r, 'grade'));
+    else if (t.terrain === TERRAIN.flat) jobs.push(job(t.q, t.r, 'grade'));
+  }
   return jobs;
+}
+
+/** Sums a prep job list into time / energy / lump yields (`hqWorkRate` divides the time for the HQ worker). */
+export function summarizePrepJobs(
+  jobs: ReadonlyArray<TerraformJob>,
+  data?: CompiledDataLike,
+): Pick<SitePrepBill, 'baseSeconds' | 'hqSeconds' | 'totalEnergyE' | 'yields' | 'countsByOp'> {
+  const clearSpec = getTerraformOpSpec('clear', data);
+  const breakSpec = getTerraformOpSpec('break', data);
+  const hqWorkRate = Number(resolveHqT1Row(data).workRate || 1.5);
+  let baseSeconds = 0;
+  let totalEnergyE = 0;
+  const yields = { 'bio.biomass': 0, 'metals.t1': 0 };
+  const countsByOp = { grade: 0, clear: 0, break: 0 };
+  for (const job of jobs) {
+    baseSeconds += job.baseTimeS;
+    totalEnergyE += job.totalEnergyE;
+    countsByOp[job.op as keyof typeof countsByOp]++;
+    if (job.op === 'clear' && clearSpec.yieldResource === 'bio.biomass') yields['bio.biomass'] += clearSpec.yieldAmount;
+    else if (job.op === 'break' && breakSpec.yieldResource === 'metals.t1') yields['metals.t1'] += breakSpec.yieldAmount;
+  }
+  return { baseSeconds, hqSeconds: hqWorkRate > 0 ? baseSeconds / hqWorkRate : baseSeconds, totalEnergyE, yields, countsByOp };
 }
 
 /**
@@ -128,34 +117,12 @@ export function computeSitePrepBill(
   }
 
   const subJobs = buildLinkedPrepJobs(state, coords, data);
-  const clearSpec = getTerraformOpSpec('clear', data);
-  const breakSpec = getTerraformOpSpec('break', data);
-  const hqWorkRate = Number(resolveHqT1Row(data).workRate || 1.5);
-
-  let baseSeconds = 0;
-  let totalEnergyE = 0;
-  const yields = { 'bio.biomass': 0, 'metals.t1': 0 };
-  const countsByOp = { grade: 0, clear: 0, break: 0 };
-
-  for (const job of subJobs) {
-    baseSeconds += job.baseTimeS;
-    totalEnergyE += job.totalEnergyE;
-    countsByOp[job.op]++;
-    if (job.op === 'clear' && clearSpec.yieldResource === 'bio.biomass') {
-      yields['bio.biomass'] += clearSpec.yieldAmount;
-    } else if (job.op === 'break' && breakSpec.yieldResource === 'metals.t1') {
-      yields['metals.t1'] += breakSpec.yieldAmount;
-    }
-  }
+  const sum = summarizePrepJobs(subJobs, data);
 
   return {
     unpreparedTiles,
     totalTiles: coords.length,
     subJobs,
-    baseSeconds,
-    hqSeconds: hqWorkRate > 0 ? baseSeconds / hqWorkRate : baseSeconds,
-    totalEnergyE,
-    yields,
-    countsByOp,
+    ...sum,
   };
 }
