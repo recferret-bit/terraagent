@@ -1,172 +1,180 @@
 # TerraAgent — Deployment Specification
 
-> **Status:** v0.2 (2026-10-30). One app container plus Postgres plus nginx behind Cloudflare, on one 4 vCPU / 8 GB host (D-23, D-24). No NATS, no planet workers, no drain. · **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §3, §4, §5, §14 · **Plan:** [`TA-02`](../plan/issues/TA-02-infra-nats-postgres-nginx.md), [`TA-13.7`](../plan/issues/TA-13-qa-observability-and-load.md)
-> **Reference:** `../freightchain/infra/deploy`, which provides a one-command deploy: plan → confirm → backup → migrate → swap → smoke → auto-rollback.
+> **Status:** v0.3 (2026-11-01). One host, HTTP on port 80, four compose stacks, SSH deploy. No Cloudflare, no certbot, no R2 (D-37). The 4 vCPU / 8 GB host size stays (D-23). One app (D-24). · **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §4 · **Decision:** [`DECISIONS.md`](./DECISIONS.md) D-37 · **Plan:** [`W26`](../plan/waves/W26-sites.md) builds this. [`W25`](../plan/waves/W25-launch-ops.md) adds hardening, backups, monitoring and the submission on top.
 
 ---
 
-## 1. Topology (single host)
+## 1. Topology
 
-One Linux host (Ubuntu 22.04+ / Debian 12, Docker + compose plugin) runs everything. The compose project is `terraagent-prod`.
+One Linux host (Ubuntu 22.04+ / Debian 12, Docker + the compose plugin) runs the public sites. The laptop runs the same compose files. The dev Postgres in `infra/docker-compose.yml` (host port **15434**, `npm run db:up`) stays the worktree database and is not part of this stack.
 
 ```mermaid
 flowchart TB
-  CF["Cloudflare (proxied DNS, WS on)"] --> NGX
-  subgraph host["host: terraagent-prod (4 vCPU / 8 GB)"]
-    NGX["nginx :80/:443<br/>static landing + game<br/>api.* → app"]
-    subgraph edge["network: edge + egress"]
-      APP["app :3000<br/>main thread + 3 sim threads"]
+  browser["browser or curl"] --> NGX
+  subgraph host["one host, HTTP :80"]
+    NGX["infra: nginx"]
+    subgraph edge["network terra_edge"]
+      FE["frontend: static dist"]
+      APP["backend: app :3000"]
     end
-    subgraph internal["network: internal (internal: true)"]
+    subgraph internal["network terra_internal, server profile only"]
       PG[("postgres:16")]
     end
   end
+  NGX --> FE
   NGX --> APP
   APP --> PG
-  APP --> ZAI[(api.z.ai)]
-  APP --> RPC[(NEAR RPC / intents.near)]
-  APP --> PUSH[(Web Push / Telegram)]
 ```
 
-| Service | Image | Networks | Published | Replicas |
-|---|---|---|---|---|
-| `nginx` | `terraagent-nginx:${RELEASE}` (nginx 1.27-alpine + both static `dist/`) | edge | `80`, `443` | 1 |
-| `app` | `terraagent-app:${RELEASE}` (`SIM_THREADS` = cores − 1) | edge, internal, egress | — | 1 |
-| `postgres` | `postgres:16-alpine` | internal | — | 1, volume `pgdata` |
-| `migrate` | `terraagent-app:${RELEASE}` running `prisma migrate deploy` (profile `ops`) | internal | — | one-off |
+| Compose file | Project | What it runs | Published ports |
+|---|---|---|---|
+| `infra/compose/infra.yml` | `terra-infra` | nginx 1.27-alpine, networks `terra_edge` and `terra_internal`, Postgres **only** with profile `server` | `80` (nginx). Postgres has none |
+| `infra/compose/frontend.yml` | `terra-frontend` | static image built from the Vite `dist/` | none |
+| `infra/compose/backend.yml` | `terra-backend` | the NestJS app (D-24), `SIM_THREADS` = cores − 1 | none |
+| `infra/compose/chain.yml` | `terra-chain` | nothing of its own beyond the `devchain` vhost mounted into nginx. The mock ledger stays in the app | none |
 
-- `internal: true` blocks egress for Postgres. The app joins `egress` for Z.ai, NEAR RPC, push and Telegram.
-- Containers run as the non-root `node` user, with `read_only: true` + `tmpfs: /tmp`, `no-new-privileges`, a `/readyz` healthcheck, `restart: unless-stopped`, and json-file logging with rotation (10 MB × 5).
+- Local `stack:local` does **not** enable profile `server`. The app uses the dev Postgres on `host.docker.internal:15434`.
+- Remote `deploy:infra` enables profile `server`. That Postgres has no published port and is not reachable from the internet.
+- Containers restart `unless-stopped`. json-file logs rotate at 10 MB × 5.
+- Only nginx publishes a port (`DEP-01`).
 
 ---
 
-## 2. Domains & nginx
+## 2. Hosts
 
-| Host | Behaviour |
-|---|---|
-| `terraagent.com` | static `/srv/www/landing`; `/assets/*` immutable for a year; `index.html` `no-cache` |
-| `www.terraagent.com` | `301 https://terraagent.com$request_uri` |
-| `game.terraagent.com` | static `/srv/www/game`; SPA fallback `try_files $uri /index.html` |
-| `api.terraagent.com` | `/v1/` → `app:3000`; `/ws` → `app:3000` (upgrade); everything else `404` |
+Catalog: `infra/hosts/catalog.json` (W26-01). Each public name has one file `infra/nginx/hosts/<name>.conf`, included with `include /etc/nginx/hosts/*.conf`. A stack adds its own file and does not edit `nginx.conf`.
 
-```nginx
-map $http_upgrade $connection_upgrade { default upgrade; '' close; }
-include /etc/nginx/generated/cf-ips.conf;   # set_real_ip_from … (Cloudflare)
-real_ip_header CF-Connecting-IP;
+All six site vhosts and `devchain` use one document root, the Vite `dist/`, so absolute paths such as `/design/css/tokens.css` keep working. nginx only changes the index and, where needed, a proxy.
 
-server {
-  listen 443 ssl; http2 on; server_name api.${TA_DOMAIN};
-  include /etc/nginx/snippets/tls.conf;
-  include /etc/nginx/snippets/security-headers.conf;
-  client_max_body_size 256k;
-  location /v1/  { proxy_pass http://app:3000; include /etc/nginx/snippets/proxy.conf; }
-  location = /ws { proxy_pass http://app:3000; include /etc/nginx/snippets/ws.conf; }
-  location / { return 404; }
-}
-# snippets/ws.conf: HTTP/1.1, Upgrade/Connection headers, proxy_read_timeout 75s, proxy_buffering off
-```
+| Host | Index | Also |
+|---|---|---|
+| `terraagent.fun` | `/landing.html` | hashed assets long-cache; the HTML `no-cache`. The dev hub (`frontend/index.html`) is not this host |
+| `pitchdeck.terraagent.fun` | `/pitchdeck/index.html` | static page, Faction Plate |
+| `whitepaper.terraagent.fun` | `/whitepaper/index.html` | built from `docs/hackathon/public/whitepaper.md` |
+| `design.terraagent.fun` | `/design/index.html` | `/foundations.html`, `/storybook.html`, `/motion.html` stay on the dist paths under `/design/` |
+| `play.terraagent.fun` | `/play.html` | `try_files` falls back to `/play.html`. `/v1/` and `/ws` proxy to `app:3000` |
+| `playground.terraagent.fun` | `/playground.html` | same fallback rule |
+| `devchain.terraagent.fun` | `/dev/chain/index.html` | `/v1/dev/chain/` proxies to `app:3000`. The HTML returns 200 even when the app is down |
+| `api.terraagent.fun` | — | `/v1/` and `/ws` proxy to `app:3000`. Anything else is 404 |
 
-- **No `limit_req` / `limit_conn` zones** (D-25: no anti-abuse machinery). Cloudflare's default DDoS shield stays on.
-- **Security headers:** `Strict-Transport-Security: max-age=31536000; includeSubDomains` (no `preload` at launch), `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`.
-- **CSP (game):** `connect-src 'self' https://api.${TA_DOMAIN} wss://api.${TA_DOMAIN} ${CSP_CONNECT_EXTRA}`, where `CSP_CONNECT_EXTRA` holds the NEAR RPC and social-login origins (NEAR.md). The landing page adds `'wasm-unsafe-eval'` for the live diorama's decoders (D-22).
-- CORS is handled by the app (allow-list of the two web origins, credentials on).
+`/ws` uses HTTP/1.1, the upgrade headers, `proxy_read_timeout 75s` and `proxy_buffering off`. The client pings every 20 s.
+
+- No `limit_req` and no `limit_conn` (D-25).
+- Security headers on every vhost: `X-Content-Type-Options`, `Referrer-Policy`, `Permissions-Policy`. No HSTS while TLS is off.
+- CSP on `play`: `connect-src 'self'`. The game is same-origin on `play`. `CSP_CONNECT_EXTRA` is added when a later wave names extra origins (NEAR RPC, social login).
+- CORS is the app's allow-list, built from the host catalog, credentials on.
+- An unknown `Host` or an unknown path on `api` returns 404.
 
 ---
 
 ## 3. TLS
 
-**Cloudflare proxied + Origin CA** (owner decision, D-23). DNS records `@`, `www`, `game` and `api` are proxied with SSL mode **Full (strict)**. A 15-year Origin CA certificate for `terraagent.com, *.terraagent.com` is mounted as file secrets. Port 443 is reachable only from Cloudflare ranges. `TLS_MODE=certbot` remains as a fallback.
+Off. nginx listens on port 80 only. `TLS_MODE` is not a setting in this phase.
+
+Cloudflare, Origin CA and certbot are not installed and not configured. A later wave can terminate TLS on this same nginx without renaming a host.
 
 ---
 
-## 4. Secrets & env
+## 4. Env and SSH
 
-| File (server, outside git) | Content |
+Operator machine, in `.env` (never committed; the example is `infra/hosts/.env.example`):
+
+| Var | Value |
 |---|---|
-| `/srv/terraagent/.env` (chmod 600) | all non-file env (`infra/deploy/.env.example`); `CHANGE_ME…` placeholders are refused |
-| `secrets/jwt.key` | access/refresh JWT secret |
-| `secrets/zai_api_key` | Z.ai key |
-| `secrets/near-*.json`, `near-kek` | NEAR keys: relayer, cargo mint authority, Guild NPC accounts, colony key KEK |
-| `secrets/vapid.json`, `secrets/telegram_bot_token` | notifications |
-| `secrets/tls/origin.pem`, `origin.key` | TLS |
-| `secrets/pg_password` | DB |
+| `TA_DOMAIN` | `terraagent.fun` |
+| `DEPLOY_HOST` | the server's public IP |
+| `DEPLOY_USER` | the SSH user on that host. Default `deploy` |
 
-- `npm run deploy:init` generates the JWT secret, KEK, VAPID keys and PG password. It never overwrites existing files.
-- `validate-env.mjs` gate: no `CHANGE_ME`; `AI_PROVIDER=zai` in prod; `NEAR_NETWORK=mainnet` only with `NEAR_ALLOW_MAINNET=1` (cargo and Intents need mainnet, NEAR.md).
+`npm run deploy` and every `deploy:*` read these on the operator machine. An empty `DEPLOY_HOST` or `DEPLOY_USER` exits non-zero and names the variable. The server has its own `/srv/terraagent/.env` (chmod 600) for the app (database URL, JWT, mock flags). It does not need `DEPLOY_HOST`.
 
----
+SSH:
 
-## 5. Backup & restore
+- The owner copies a key to `DEPLOY_USER@$DEPLOY_HOST` once (`OWNER_TASKS.md`). The scripts do not do this.
+- Commands are `ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new` and `rsync -e ssh`. No `-i`, no `ssh-copy-id`, no key material in the repo, the image or the logs.
+- A missing key fails the ssh step immediately with ssh's own error.
 
-| What | How | When | Kept |
-|---|---|---|---|
-| Postgres (includes planet snapshots) | `pg_dump -Fc` → `/srv/terraagent/backups/db-<ts>.dump` | before every deploy, plus daily 04:00 UTC | 14 daily + 5 pre-deploy |
-| Off-site | `rclone copy backups/ r2:terraagent-backups` (**Cloudflare R2**, D-23) | after each backup | 30 days |
-
-- **App crash:** at most 60 s of player actions lost (snapshot interval, CONTINUITY `CT-50`).
-- **Host loss:** RPO ≤ 24 h. On-chain state (cargo, deeds, trades) is unaffected and is reconciled on restore by the `near` module.
-- **Restore:** stop the app → `pg_restore --clean` → start the app. Planets fast-run from their snapshots (CONTINUITY `CT-51`).
+`validate-env` for this phase checks the three variables above and refuses a `CHANGE_ME` placeholder. The mainnet and mock-in-prod guards stay in W25-06.
 
 ---
 
-## 6. Deploy & rollback
+## 5. Local stack
 
-`npm run deploy`: **checks → plan → confirm → upload `git archive HEAD` → build image on server → backup → migrate → restart app → swap nginx static → smoke → done | auto-rollback.**
-
-- **Restart app:** `SIGTERM` → the app stops intake, snapshots all planets (budget 30 s) and exits → the new container starts and fast-runs the gap. Downtime is about 10–30 s. Clients get `4012 server_restarting` and reconnect. There is no drain or lease handover (D-24).
-- **Migrations are expand-only within a release.** Rollback (`npm run deploy:rollback`) restarts the previous image with no down-migration. Restoring a backup (`deploy:restore`) is manual.
-- **Server layout:** `/srv/terraagent/{.env, secrets/, releases/<tag>/, backups/, state/{current,previous,releases.log}}`.
-
----
-
-## 7. Local prod-like stack
-
-- `npm run stack:local` brings up the prod compose plus a local override, with `TA_DOMAIN=terraagent.localhost`, `TLS_MODE=selfsigned`, `AI_PROVIDER=mock` and `NEAR_NETWORK=testnet` (Intents and cargo stubbed).
-- `npm run stack:local:smoke` checks:
-  - landing returns 200 with a CSP header; game returns 200 with the SPA fallback;
-  - `/v1/healthz` returns 200;
-  - `/ws` upgrades, and a bad `hello` closes with `4000`;
-  - guest login → `/me/home` = `NEW`;
-  - a restart resumes planets from snapshot.
-
----
-
-## 8. Rules
-
-| ID | Rule |
+| Command | What comes up |
 |---|---|
-| `DEP-01` | Only nginx publishes ports. Postgres is on an `internal: true` network. |
-| `DEP-02` | Every public host serves HSTS + security headers. Game and landing serve their CSP. |
-| `DEP-03` | Unknown hosts and paths return 404. |
-| `DEP-04` | Secrets are files under `/srv/terraagent/secrets` (600) or the `.env` (600), never in images, git or logs. |
-| `DEP-05` | Every deploy takes a Postgres backup before migrating. |
-| `DEP-06` | Migrations within a release are expand-only. |
-| `DEP-07` | The app is stopped with `SIGTERM` and given ≥ 30 s to snapshot all planets before `SIGKILL`. |
-| `DEP-08` | `validate-env` must pass before anything is uploaded. |
-| `DEP-09` | Images are built from `git archive HEAD`. |
+| `npm run stack:local:infra` | nginx on `127.0.0.1:80`, both networks, no Postgres |
+| `npm run stack:local:frontend` | the static image, vhosts for the six sites |
+| `npm run stack:local:backend` | the app, joined to `terra_edge`, database = dev Postgres on 15434 |
+| `npm run stack:local:chain` | the `devchain` vhost |
+| `npm run stack:local` | all four, in that order |
+| `npm run stack:local:down` | all four down. Does not stop the dev Postgres |
+| `npm run stack:local:smoke` | the checks below |
 
-## 9. Test matrix
+Smoke uses `curl --resolve <host>:80:127.0.0.1`, so it does not need `/etc/hosts`.
+
+Checks:
+
+- each of the eight hosts returns 200 on its index (api: `/v1/healthz`);
+- `design.terraagent.fun/design/css/tokens.css` returns 200;
+- `play.terraagent.fun/v1/healthz` returns 200 and `/ws` accepts the upgrade;
+- `api.terraagent.fun/` returns 404 and `/v1/healthz` returns 200;
+- `devchain.terraagent.fun/dev/chain/` returns 200 while the app is stopped, and `/v1/dev/chain/receipts` returns JSON while it is up;
+- `http://not-a-host/` against the same port returns 404;
+- the whitepaper page's `h1` equals the `h1` of `docs/hackathon/public/whitepaper.md`;
+- the pitch deck page contains the landing brief's hero line, "Drop one robot. Get a colony that never sleeps."
+
+`infra/hosts/local.hosts` maps `127.0.0.1` to all eight names. Installing it is an owner step so a browser can open them. Smoke does not require it.
+
+---
+
+## 6. Deploy
+
+`npm run deploy` and `npm run deploy:{infra,frontend,backend,chain}` do the same steps for one stack or for all four:
+
+1. Read `DEPLOY_HOST` and `DEPLOY_USER`. Refuse if either is empty.
+2. `ssh` `echo ok` with `BatchMode`. Refuse if that fails.
+3. `rsync` that stack's compose file, its nginx vhost files and its build context to `/srv/terraagent/`.
+4. On the server, `docker compose up -d --build` for that file. Infra enables profile `server`.
+5. Backend only: `prisma migrate deploy` after the new container is healthy.
+6. From the server, curl each host of that stack through `http://127.0.0.1` with the right `Host` header.
+
+`npm run deploy -- --dry-run` prints those steps and the ssh target, and does not connect.
+
+There is no confirm prompt, no image swap, no pre-deploy backup and no auto-rollback in this phase. Those are W25-07 and W25-09, and they wrap these commands rather than replacing them. A stack can be deployed while the other three keep running.
+
+Server layout: `/srv/terraagent/{.env, compose/, nginx/hosts/, www/}`.
+
+---
+
+## 7. Rules
+
+| ID | Rule | Phase |
+|---|---|---|
+| `DEP-01` | Only nginx publishes a port. Postgres, the app and the static image publish none. | W26 |
+| `DEP-02` | Every public host sends the security headers in §2. No HSTS while TLS is off. | W26, CSP details W25-03 |
+| `DEP-03` | An unknown host, and any path on `api` other than `/v1/` and `/ws`, returns 404. | W26 |
+| `DEP-04` | Secrets stay in the server `.env` (600) or in files under `/srv/terraagent/secrets` (600). Never in images, git or logs. | W25-06 |
+| `DEP-05` | A Postgres backup is taken before a migration. | W25-09, not this phase's `deploy` |
+| `DEP-08` | `validate-env` passes before a deploy uploads anything. | W26 for `DEPLOY_*` and `TA_DOMAIN`; W25-06 for the rest |
+| `DEP-10` | Local and remote use the same nginx config and the same four compose files. | W26 |
+| `DEP-11` | Deploy uses the operator's existing SSH key. It never creates, copies or selects a key file. | W26 |
+
+`DEP-06`, `DEP-07` and `DEP-09` (expand-only migrations, SIGTERM snapshot budget, build from `git archive`) stay in W25-07. This phase's deploy rsyncs the working tree and restarts the one stack.
+
+## 8. Test matrix
 
 | Rule | Test |
 |---|---|
-| DEP-01 | `infra/deploy/test/compose-config.test.mjs` (only nginx has `ports`) |
-| DEP-02, 03 | `npm run nginx:test` |
-| DEP-04, 08 | `validate-env.test.mjs` |
-| DEP-05, 06, 07, 09 | `deploy:dry-run` plan assertions + `stack:local:smoke` restart step |
+| DEP-01 | `infra/compose/test/ports.test.mjs`: across the four files, only nginx has `ports` |
+| DEP-02, DEP-03, DEP-10 | `npm run stack:local:smoke` |
+| DEP-08, DEP-11 | `deploy -- --dry-run` with an empty `DEPLOY_HOST` fails and names it; the dry-run plan contains no `ssh-copy-id` and no `-i` |
+| DEP-05, DEP-06, DEP-07, DEP-09 | W25, when those rows land |
 
-## 10. Owner decisions (2026-10-29 / 2026-10-30)
+## 9. What is later
 
-| # | Question | Decision | Ref | Consequence for this spec |
-|---|---|---|---|---|
-| 1 | TLS | **Cloudflare proxy** + Origin CA | D-23 | §3 |
-| 2 | Launch host size | **4 vCPU / 8 GB**, single region | D-23 | Sizing note below |
-| 3 | Off-site backups | **Cloudflare R2** | D-23 | §5 |
-| 4 | HSTS preload | **Not at launch** | D-23 | §2 |
-| 5 | One app, no NATS, no workers | **Yes** | D-24 | §1, §6 rewritten; no worker map, no `ws.` host, no JetStream backups |
-| 6 | Anti-abuse | **None** | D-25 | No nginx rate-limit zones |
-
-**Sizing note for 4 vCPU / 8 GB (proposed, verify with the load test):**
-- **Memory:** Postgres ~1.5 GB (`shared_buffers` 512 MB), nginx/OS ~0.6 GB, app main thread ~0.6 GB. That leaves about **5 GB** for the 3 sim threads.
-- **Planets:** at ≤ 40 MB per planet, plus thread overhead, that supports `MAX_ACTIVE_PLANETS = 60` with headroom. Coarse stepping of empty planets keeps CPU low.
-- **Restart fast-run:** after a long outage, fast-running up to 24 h × 60 planets can keep the 3 sim threads busy for several minutes. Planets resume one by one as each finishes.
-- **Disk:** 80 GB is enough (snapshots only). 160 GB if available.
+| Item | Where | Not now, because |
+|---|---|---|
+| Cloudflare proxy, Origin CA, R2 | was D-23 | D-37 |
+| certbot / any TLS | a later ops row | HTTP is enough for this phase |
+| non-root read-only app image | W25-02 | the simple image only has to serve `/readyz` |
+| pre-deploy backup, SIGTERM snapshot, auto-rollback | W25-07, W25-08, W25-09 | `deploy:*` restarts one stack |
+| monitoring, analytics, load, submission | W25 | separate from bringing the hosts up |

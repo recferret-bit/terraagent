@@ -164,7 +164,7 @@ def longest(nodes, g):
 
 
 # Hackathon value order: when time runs out, waves late in this list are the ones left unfinished.
-VALUE_ORDER = ['W00', 'W01', 'W02', 'W06', 'W10', 'W13', 'W03', 'W07', 'W05', 'W15', 'W12', 'W08',
+VALUE_ORDER = ['W00', 'W26', 'W01', 'W02', 'W06', 'W10', 'W13', 'W03', 'W07', 'W05', 'W15', 'W12', 'W08',
                'W04', 'W09', 'W20', 'W22', 'W14', 'W11', 'W25']
 VALUE_WEIGHT = 1.0  # one rank step = one unit of remaining path
 BUILD_DAYS = 13

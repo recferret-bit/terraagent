@@ -168,7 +168,7 @@ npm run wave:land -- 07              # refuses unless every depended-on wave is 
 
 Every worktree these scripts create gets a gitignored `.env.worktree` with its own `TA_PORT_BASE` (4100, 4200, …) and `TA_DB_NAME=terra_<branch>`.
 
-Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/prompt.mjs) that automatically selects the runner (`agy` or `claude`), worker + advisor (`agy:argon` with `flash` subagents, `claude:sonnet+opus` for standard waves, or `claude:opus+fable` for complex waves via `--advisor`, using each model's default effort), execution mode (`auto`), parallel subagent factor (`2`–`6`), serial plan gate (`serial-spine` or `contract-first`), and domain skills.
+Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/prompt.mjs) that automatically selects the runner (`agy`, `claude`, or `grok`), worker + advisor (`agy:argon` with `flash` subagents, `claude:sonnet+opus` for standard waves, or `claude:opus+fable` for complex waves via `--advisor`, using each model's default effort), execution mode (`auto`), parallel subagent factor (`2`–`6`), serial plan gate (`serial-spine` or `contract-first`), and domain skills. Override the runner with `--runner agy|claude|grok`. `--runner grok` maps an opus/fable/argon preset to `grok-4.7` and a sonnet/flash preset to `grok-4.7-build-fast`; pass `--model grok-4.6` (or any id from `grok models`) to pick one yourself. Grok has no advisor flag.
 
 **Your loop:**
 
@@ -215,6 +215,6 @@ Everything that is not code is in [`docs/`](./docs) (index: [`docs/README.md`](.
 - [`AGENTS.md`](./AGENTS.md): rules for AI agents (visual pillars, skill routing, pages). [`CLAUDE.md`](./CLAUDE.md): Claude Code entry point.
 - [`docs/game/`](./docs/game): game design, economy, units and the NEAR features.
 - [`docs/spec/`](./docs/spec): online architecture; start with `DECISIONS.md`. Built wave by wave.
-- [`docs/plan/`](./docs/plan): the hackathon cut and the wave plan (26 waves).
+- [`docs/plan/`](./docs/plan): the hackathon cut and the wave plan (27 waves).
 - [`docs/visuals/`](./docs/visuals): 3D coding rules, the AI-mesh pipeline, procedural textures, shaders and lighting.
 - [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md): dev tools reference — URL parameters, dev console, dev pages and routes, mock blockchain, env variables, debug handles, test commands.

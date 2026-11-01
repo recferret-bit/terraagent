@@ -2,13 +2,13 @@
 
 Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What already exists is a client-only prototype in `frontend/` (landing, orbit menu, descent, colony diorama, 3D playground, kitbash archetypes; see the inventory in [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) §2 "Reuse, don't rebuild"). The waves reuse it instead of rebuilding it. Layout: D-32.
 
-**Start with [`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md)** (2026-10-30). It is the plan: **26 product waves, 861 issues (≈ 611 agent-days)**, listed in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md), with one file per wave in [`waves/`](./waves/).
+**Start with [`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md)** (2026-11-01). It is the plan: **27 product waves, 871 issues (≈ 619 agent-days)**, listed in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md), with one file per wave in [`waves/`](./waves/).
 - **Every wave ships a working app.** Each wave has a flag, a git tag, a seed scenario and its own e2e suite, so it can be tested on its own and you can go back and forward.
 - **Waves run in parallel** on five tracks after the spine (W00–W02).
 - **Each wave has its own branch and worktree** and reaches `main` only after the owner's manual check; then the worktree and branch are deleted and `main` is pushed ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7).
 - **The old layer-based plan** (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`) is superseded and kept only for traceability.
 
-**Hackathon (2026-11-01 → 11-14):** option B: the `H` column in each wave file tags the must set (387 issues, ≈ 293 units). [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) has what ships, the pace check and the drop order; [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) has the generated critical path and start order. Decisions D-24..D-30 apply:
+**Hackathon (2026-11-01 → 11-14):** option B: the `H` column in each wave file tags the must set (395 issues, ≈ 299.5 units). [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) has what ships, the pace check and the drop order; [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) has the generated critical path and start order. Decisions D-24..D-30 apply, plus D-37 (hosting on `terraagent.fun`, no Cloudflare):
 - one NestJS app + Postgres, a simplified server sim, no anti-cheat or anti-bot;
 - NEAR features F1–F8, **all on mock adapters behind real ports in phase 1** (D-30), with real adapters swapped in phase 2 (F5 → F1 → F2);
 - battle v1 (D-28);
@@ -24,6 +24,7 @@ Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What
 | File | Purpose |
 |---|---|
 | [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) | **14-day solo hackathon plan:** scope, day-by-day deliverables with "done when" checks, D10 hard gate, submission checklist, post-hackathon list, risks |
+| [`../hackathon/`](../hackathon/README.md) | **Hackathon strategy pack (proposals):** master-plan review, balance simulation, grand-prize pivot, Nov 1–18 launch playbook, whitepaper, landing copy, media plan |
 | [`EXECUTION_ORCHESTRATOR.md`](./EXECUTION_ORCHESTRATOR.md) | **Post-hackathon root orchestration:** coordination protocol, wave board, lane ownership, per-wave lane task lists, barrier commands, how to run with Claude Code subagents |
 | [`STATUS.md`](./STATUS.md) | Status board: per-epic counters, per-wave counts, one row per task |
 | [`OWNER_TASKS.md`](./OWNER_TASKS.md) | What only the owner can do: domains/DNS, TLS, servers, NEAR accounts, Z.ai key, decisions to confirm |
@@ -54,7 +55,7 @@ Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What
 | File | Purpose |
 |---|---|
 | [`ARCHITECTURE.md`](../spec/ARCHITECTURE.md) | **Source of truth for cross-service contracts:** apps, domains, ports, NATS subjects/KV, resume path, lifecycle summary, tunables |
-| [`DECISIONS.md`](../spec/DECISIONS.md) | D-01..D-32 with alternatives (D-16 Accepted; D-17..D-23 = owner answers of 2026-10-29; D-24..D-27 = one app / no anti-cheat / NEAR features / hackathon; D-28..D-30 = battle v1 / player page & maps / ports & mocks; D-31 = one engine, three hosts; D-32 = frontend layout) |
+| [`DECISIONS.md`](../spec/DECISIONS.md) | D-01..D-37 with alternatives (D-16 Accepted; D-17..D-23 = owner answers of 2026-10-29; D-24..D-27 = one app / no anti-cheat / NEAR features / hackathon; D-28..D-30 = battle v1 / player page & maps / ports & mocks; D-31 = one engine, three hosts; D-32 = frontend layout; D-37 = `terraagent.fun` hosting, no Cloudflare) |
 | [`PROTOCOL.md`](../spec/PROTOCOL.md) | WebSocket (worker + lobby) and NATS message contracts |
 | [`DATA_MODEL.md`](../spec/DATA_MODEL.md) | Prisma model, invariants, retention |
 | [`MATCHMAKING.md`](../spec/MATCHMAKING.md) | Planet lifecycle, picker, managed queue |
@@ -63,6 +64,6 @@ Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What
 | [`AI_ORCHESTRATOR.md`](../spec/AI_ORCHESTRATOR.md) | Triggers, budgets, prompts, `DirectiveV1`, cost model |
 | [`NEAR.md`](../spec/NEAR.md) | Sign-in, invisible accounts, registry contract, trades |
 | [`CLIENT.md`](../spec/CLIENT.md) | Game client flows, WS state machine, rendering, product analytics |
-| [`DEPLOYMENT.md`](../spec/DEPLOYMENT.md) | nginx/subdomains, TLS, prod compose, backups, deploy with worker drain |
+| [`DEPLOYMENT.md`](../spec/DEPLOYMENT.md) | `terraagent.fun` hosts, four compose files, HTTP on port 80, SSH deploy from `DEPLOY_HOST` (D-37) |
 
 Gameplay design lives in [`docs/game/`](../game) ([`autonomous-colony-spec.md`](../game/autonomous-colony-spec.md), [`colony-economy-and-buildings-spec.md`](../game/colony-economy-and-buildings-spec.md), [`units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md), [`near-economy-features-spec.md`](../game/near-economy-features-spec.md), [`player-profile-and-achievements-spec.md`](../game/player-profile-and-achievements-spec.md)); 3D visual rules stay in [`AGENTS.md`](../../AGENTS.md) and `.agents/skills/`.

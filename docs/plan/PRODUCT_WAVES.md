@@ -1,8 +1,8 @@
 # TerraAgent — Product Waves (master plan)
 
 > **Status:** v1 (2026-10-30). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
-> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-32; D-32 = frontend layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
-> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**861 issues in 26 waves, ≈ 611 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
+> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-37; D-32 = frontend layout; D-37 = hosting on `terraagent.fun`) · [`../game/`](../game/) · [`../spec/`](../spec/)
+> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**871 issues in 27 waves, ≈ 619 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
 
 ## 1. The rule
 
@@ -41,7 +41,8 @@
 | **W22** | Treasury & Bounties (F7, F8, mock) | Economy/NEAR | Planet treasury DAO (fees in, proposals, votes, projects), bounty escrow, mercenary NPCs | W06, W07, W10, W11, W13 (W18 optional) |
 | **W23** | Real NEAR (phase 2) | Economy/NEAR | Each port switches to its real adapter after its contract suite passes: Identity, Relayer → Cargo → Intents → Agent wallet → Deed / Staking → DAO → Escrow | per port: W00, W06, W10, W12, W13, W15, W20, W21, W22; ops: W25 |
 | **W24** | Mobile, PWA & Landing | Client | Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls, live landing diorama | W02, W04 |
-| **W25** | Launch Ops & Submission | Ops | Docker, Cloudflare, R2 backups, monitoring, first-party analytics, load test, balance harness + reference bot, README / LICENSE / video / X post / form | W00 (grows with each wave) |
+| **W25** | Launch Ops & Submission | Ops | Monitoring, backups, rollback deploy, first-party analytics, load test, balance harness + reference bot, README / LICENSE / video / X post / form. Hosting is W26 | W00 (grows with each wave; hosting issues name W26 ids) |
+| **W26** | Sites | Ops | `terraagent.fun` and its subdomains on one nginx, four compose stacks, local and on `DEPLOY_HOST` over SSH. No Cloudflare | W00 |
 
 ```mermaid
 flowchart LR
@@ -67,6 +68,7 @@ flowchart LR
   W06 & W07 & W10 & W11 & W13 --> W22
   W00 & W06 & W10 & W12 & W13 & W15 & W20 & W21 & W22 & W25 --> W23
   W00 --> W25
+  W00 --> W26
 ```
 
 The **spine** is W00 → W01 → W02. Everything after W02 can run on up to **five parallel tracks**.
@@ -98,7 +100,7 @@ Each wave file lists its soft dependencies in its header.
 
 | Rule | Detail |
 |---|---|
-| **Tracks own paths** | Spine/lead: kernel, contracts core, app shell. **Gameplay (G):** `shared/sim/src/systems/<feature>/`, `shared/sim/src/data/<feature>.ts`, `frontend/game/features/<feature>/`, kitbash archetypes (`frontend/render/kitbash/archetypes/`). **Economy/NEAR (E):** `backend/app/src/near/**`, `backend/app/src/market/**`, sim `systems/{trade,treasury,bounty,mercenary}/`, client `features/{cargo,market,deed,treasury,bounty,identity}/`. **Autonomy (P):** sim `systems/{progression,goals,rule-engine}/`, `backend/app/src/{ai,notify}/`, client `features/{goals,stages,away,notify}/`. **Meta (M):** `backend/app/src/{lobby,profile,progression}/`, client `pages/{me,lobby}/`. **Client (C):** `frontend/game/{core,net,store,camera,maps,mobile}/`, `frontend/render/**`, `frontend/landing/**`. **Ops (O):** `infra/`, `.github/`, `scripts/`, `e2e/harness/` |
+| **Tracks own paths** | Spine/lead: kernel, contracts core, app shell. **Gameplay (G):** `shared/sim/src/systems/<feature>/`, `shared/sim/src/data/<feature>.ts`, `frontend/game/features/<feature>/`, kitbash archetypes (`frontend/render/kitbash/archetypes/`). **Economy/NEAR (E):** `backend/app/src/near/**`, `backend/app/src/market/**`, sim `systems/{trade,treasury,bounty,mercenary}/`, client `features/{cargo,market,deed,treasury,bounty,identity}/`. **Autonomy (P):** sim `systems/{progression,goals,rule-engine}/`, `backend/app/src/{ai,notify}/`, client `features/{goals,stages,away,notify}/`. **Meta (M):** `backend/app/src/{lobby,profile,progression}/`, client `pages/{me,lobby}/`. **Client (C):** `frontend/game/{core,net,store,camera,maps,mobile}/`, `frontend/render/**`, `frontend/landing/**`. **Ops (O):** `infra/`, `.github/`, `scripts/`, `e2e/harness/`. W26 splits that into four stacks built at the same time after its nginx skeleton (infra, frontend, backend, chain); W25 does not own `infra/compose`, `infra/nginx` or `infra/hosts` |
 | **One engine** | Every game rule lives in `@terra/sim` (D-31). The server sim thread, client-side prediction and the local host run that same code, so a wave never puts a game rule in a server module or a client feature. A wave that adds state registers its synced fields (no delta code) and adds its scenario to the engine parity test (W00-58) |
 | **One renderer: build on `frontend/render`** | The 3D look is done and approved; waves extend it, never replace it or start a parallel renderer. Viewport, tone mapping, bloom, IBL → `render/core/createColonyViewport.ts` · models → `render/kitbash` (`KitbashRegistry`, greebles, `npm run validate:models`, playground 4-view check) · materials → `render/visuals/UnifiedColonyMaterial.ts` (biome weathering, rim) and `unified/registries.ts` · terrain, water, scatter, landforms, particles → `render/visuals/terrain/*` (the hex grid is drawn with this terrain shader, W00-28) · textures → `ProceduralTextureRegistry` · space, sun, parallax → `render/visuals/space/*` · planet globe + terraform stages + territories → `render/planets/globe/*` · orbit stage + deploy → `render/orbit/*` · descent cinematic and its FX (flames, plasma, streaks, ground FX, drop rig) → `frontend/game/descent`, `render/descent` · day/night, lightning → `render/lighting/*` · CRT → `render/ui/crt.ts` · RTS camera, ground pick → `frontend/game/app/`. A wave adds a module next to these or registers into their registries; changing their look needs the owner's OK and the 4-view check (AGENTS.md pillars) |
 | **Registries, not edits** | Shared lists are assembled by **auto-discovery**, so a new feature adds a file instead of editing a shared one: sim systems `systems/*/index.ts` (each declares its pipeline order), contracts `shared/contracts/src/commands/*.ts` and `events/*.ts`, data `data/*.ts`, client features via `import.meta.glob('./features/*/index.ts')` in `frontend/game` (a feature never imports another feature or app; AGENTS.md §6) (each registers menus, HUD panels, renderers), server modules via a module list built from `modules/*/`. This follows the registry pattern in `AGENTS.md` (`KitbashRegistry` etc.) |
@@ -127,7 +129,7 @@ Every wave file has: goal, demo story (the e2e script in words), dependencies, t
 
 ## 6. Hackathon (Nov 1–14, solo + AI agents)
 
-Decision B (2026-10-30): every hackathon wave ships its **core slice**, tagged `H` per issue, so each still ends in a working, tested app. Waves in the cut: W00–W15 (W16 not in the cut), W20 (deed only), W22 (treasury + nest bounties), W25 (deploy + submission); W23's F5/F1/F2 swap is tagged `H2` and runs only after the D10 gate. Everything else is post-hackathon.
+Decision B (2026-10-30): every hackathon wave ships its **core slice**, tagged `H` per issue, so each still ends in a working, tested app. Waves in the cut: W00–W15 (W16 not in the cut), W20 (deed only), W22 (treasury + nest bounties), W25 (submission; hosting moved to W26), W26 (sites on `terraagent.fun`); W23's F5/F1/F2 swap is tagged `H2` and runs only after the D10 gate. Everything else is post-hackathon.
 
 - Numbers, calibration rule, checkpoints and the drop order: [`HACKATHON_CUT.md`](./HACKATHON_CUT.md).
 - Generated critical path and start order: [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) (`python3 scripts/plan/index_waves.py --write`).
@@ -158,7 +160,7 @@ Every wave is built in its **own branch and its own git worktree**. Nothing is c
 | 6 | **Manual check**: follow the owner check guide step by step (the `@hack` steps in the hackathon) in the worktree's dev stack. Not OK → note what is wrong; agents fix it with new issue branches (steps 3–5) and ask again | **owner** | open the URL from step 5 |
 | 7 | **Land the wave**: on the owner's go — merge into `main`, tag, push, delete the worktree and the branch, and tell every open wave to merge the new `main` | owner runs it (or agent on the owner's explicit go) | `npm run wave -- land NN` (e.g. `npm run wave -- land 00`), or in the main checkout: `git pull --ff-only` · `git merge --no-ff wave/w07-first-contact -m "W07 First Contact"` · `git tag wave-07` · `git push origin main --tags` · `git worktree remove ../TerraAgent-wt/w07` · `git branch -d wave/w07-first-contact` → `npm run wave:land -- 07` |
 
-**One command.** `npm run wave` first lands every completed wave whose dependencies are in `main` (in dependency order), then resumes the open wave or opens the next ready one (hackathon value order, **every dependency landed in `main`**), runs `npm ci` in its worktree and starts Claude Code there as the wave lead, with instructions to build the wave's `H` rows issue by issue and stop at the owner check. After your check, `npm run wave -- land` merges, tags, pushes and removes the worktree and branch. Also: `npm run wave -- status`, `npm run wave -- next 06`, `--new` (open a second wave in parallel), `--tags H,H+`, `--dry-run`, `--no-launch`.
+**One command.** `npm run wave` first lands every completed wave whose dependencies are in `main` (in dependency order), then resumes the open wave or opens the next ready one (hackathon value order, **every dependency landed in `main`**), runs `npm ci` in its worktree and starts the wave's runner there as the lead (`claude`, `agy`, or `grok`; `--runner` overrides the preset), with instructions to build the wave's `H` rows issue by issue and stop at the owner check. After your check, `npm run wave -- land` merges, tags, pushes and removes the worktree and branch. Also: `npm run wave -- status`, `npm run wave -- next 06`, `--new` (open a second wave in parallel), `--tags H,H+`, `--dry-run`, `--no-launch`.
 
 **Rules**
 - **Opening and landing follow dependencies.** A wave opens only after every wave it depends on (header **Depends on**) is in `main`, and therefore lands after them too; `wave:open` / `npm run wave` / `wave:land` refuse otherwise. The owner's check of a wave gates the waves that depend on it, so check and land waves promptly. (Waves opened before this rule — W01 and W02, stacked on W00 — keep working and still land only after their dependencies.)

@@ -5,6 +5,57 @@ import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { makeSandbox, openWaveBranch, git } from './testkit.mjs';
 import { dbNameFor, readWorktreeEnv } from './isolation.mjs';
+import { resolvePreset, buildRunnerCommand, wavePrompt } from './prompt.mjs';
+
+const wave = (id) => ({ id, tags: { H: 1 }, file: 'docs/plan/waves/x.md', branch: `wave/${id}` });
+
+test('--runner grok launches grok with a mapped model, permission mode and the prompt verbatim', () => {
+  const sonnet = resolvePreset(wave('W08'), { runner: 'grok' });
+  assert.equal(sonnet.runner, 'grok');
+  assert.equal(sonnet.model, 'grok-4.7-build-fast');
+  assert.equal(sonnet.advisor, null);
+  assert.equal(sonnet.label, 'grok:grok-4.7-build-fast');
+  const opus = resolvePreset(wave('W06'), { runner: 'grok', effort: 'high' });
+  assert.equal(opus.model, 'grok-4.7');
+  const explicit = resolvePreset(wave('W08'), { runner: 'grok', model: 'grok-4.6' });
+  assert.equal(explicit.cliModel, 'grok-4.6');
+  const cmd = buildRunnerCommand(explicit, 'You are the lead for wave W08', ['/tmp/wt', '/tmp/root']);
+  assert.equal(cmd.cmd, 'grok');
+  assert.deepEqual(cmd.args.slice(0, 8), ['--add-dir', '/tmp/wt', '--add-dir', '/tmp/root', '--model', 'grok-4.6', '--permission-mode', 'auto']);
+  assert.ok(cmd.args.includes('--verbatim'));
+  assert.equal(cmd.args.at(-1), 'You are the lead for wave W08');
+  assert.equal(cmd.args.includes('--advisor'), false);
+  const prompted = wavePrompt(wave('W08'), 'Goals', { preset: sonnet, progress: { done: [], total: ['W08-01'], remaining: ['W08-01'] } });
+  assert.match(prompted, /Grok `grok-4\.7-build-fast` lead/);
+  assert.doesNotMatch(prompted, /advisor=`null`/);
+});
+
+test('W26 preset starts grok-4.7 with no advisor', () => {
+  const preset = resolvePreset(wave('W26'), {});
+  assert.equal(preset.label, 'grok:grok-4.7');
+  assert.equal(preset.advisor, null);
+  assert.equal(preset.parallel, 4);
+  const cmd = buildRunnerCommand(preset, 'You are the lead for wave W26', []);
+  assert.equal(cmd.cmd, 'grok');
+  assert.ok(cmd.args.includes('--model') && cmd.args.includes('grok-4.7'));
+});
+
+test('claude and agy commands stay on their own flags', () => {
+  const claude = resolvePreset(wave('W08'), {});
+  assert.equal(claude.label, 'claude:sonnet+opus');
+  const claudeCmd = buildRunnerCommand(claude, 'prompt', []);
+  assert.equal(claudeCmd.cmd, 'claude');
+  assert.ok(claudeCmd.args.includes('--advisor') && claudeCmd.args.includes('opus'));
+  assert.ok(claudeCmd.args.includes('--permission-mode'));
+  const agy = resolvePreset(wave('W01'), {});
+  assert.equal(agy.label, 'agy:argon');
+  const agyCmd = buildRunnerCommand({ ...agy, mode: 'acceptEdits', effort: 'low' }, 'prompt', []);
+  assert.equal(agyCmd.cmd, 'agy');
+  assert.ok(agyCmd.args.includes('--mode') && agyCmd.args.includes('accept-edits'));
+  assert.ok(agyCmd.args.includes('-i'));
+  assert.equal(agyCmd.args.includes('--permission-mode'), false);
+  assert.throws(() => buildRunnerCommand({ ...claude, runner: 'nope' }, 'prompt', []), /unknown runner/);
+});
 
 test('wave:land -- 07 refuses while W03 is not in main and names W03', () => {
   const sb = makeSandbox();

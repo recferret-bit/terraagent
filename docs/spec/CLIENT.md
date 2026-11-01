@@ -9,7 +9,7 @@
 
 ## 1. Purpose
 
-This spec defines how `frontend/game` (`game.terraagent.com`) and `frontend/landing` (`terraagent.com`) behave: boot and routing, the picker and queue, dive-in and resume, the planet WebSocket client, the world store and interpolation, the render architecture, UI commands, performance budgets, accessibility, product analytics and privacy.
+This spec defines how `frontend/game` (`play.terraagent.fun`) and `frontend/landing` (`terraagent.fun`) behave. Older sentences below that say `game.terraagent.com` or `terraagent.com` mean those two hosts (D-37). Cookie `Domain` and `https://` wait until TLS is on: boot and routing, the picker and queue, dive-in and resume, the planet WebSocket client, the world store and interpolation, the render architecture, UI commands, performance budgets, accessibility, product analytics and privacy.
 
 The client is a **view and an intent emitter** that runs the **same engine as the server** (`@terra/sim`, D-31) in a Web Worker: as an exact replica of the server state, to **predict** the player's own commands, and, with `?host=local`, as a single-player local host for testing. The server simulation owns the outcomes online (D-24); the client's predictions are provisional and are corrected by every delta.
 

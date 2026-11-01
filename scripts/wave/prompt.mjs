@@ -11,10 +11,25 @@ const AGY_MODELS = {
   sonnet: 'claude-sonnet-5-5-high',
 };
 
+// Short preset names → Grok model ids. Opus/fable/argon lead on grok-4.7; sonnet/flash on the fast build model.
+const GROK_MODELS = {
+  opus: 'grok-4.7',
+  fable: 'grok-4.7',
+  argon: 'grok-4.7',
+  'argon-medium': 'grok-4.7',
+  sonnet: 'grok-4.7-build-fast',
+  flash: 'grok-4.7-build-fast',
+  'flash-medium': 'grok-4.7-build-fast',
+  'flash-low': 'grok-4.7-build-fast',
+  'argon-low': 'grok-4.7-build-fast',
+};
+
 // Every wave has a preset so `npm run wave` sets runner, model (+ advisor for Claude), subagents, mode, parallel factor, tags & skills automatically.
+// Runners: `claude`, `agy`, `grok` (`--runner` overrides the preset).
 // Capability hierarchy: sonnet < opus < fable.
 // - Standard Claude waves: worker = `sonnet`, advisor = `opus` (`claude:sonnet+opus`)
 // - Complex Claude waves:  worker = `opus`,   advisor = `fable` (`claude:opus+fable`)
+// - `--runner grok` maps opus/fable/argon → `grok-4.7` and sonnet/flash → `grok-4.7-build-fast`. Pass `--model grok-4.6` (or another id from `grok models`) to override. Grok has no advisor flag.
 export const WAVE_PRESETS = {
   W00: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet (M) + flash (S)', mode: 'auto', parallel: 6, tags: ['H'], plan: 'serial-spine', skills: ['diorama-viewport-auditor'], track: 'Spine' },
   W01: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 5, tags: ['H'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'model-geometry-validator', 'diorama-viewport-auditor'], track: 'Spine/3D' },
@@ -42,6 +57,7 @@ export const WAVE_PRESETS = {
   W23: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'opus (H2 real NEAR)', mode: 'auto', parallel: 2, tags: ['H2'], plan: 'port-swap-plan', skills: [], track: 'NEAR/Real' },
   W24: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H', 'H+', '-'], plan: 'contract-first', skills: ['diorama-viewport-auditor'], track: 'Client/Mobile' },
   W25: { runner: 'claude', model: 'sonnet', advisor: 'opus', subagents: 'sonnet + argon (e2e)', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: ['diorama-viewport-auditor'], track: 'Ops/Launch' },
+  W26: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'Ops/Sites' },
 };
 
 const CLAUDE_PAIR = {
@@ -57,8 +73,12 @@ export function resolvePreset(wave, overrides = {}) {
   const [mOverride, advFromModel] = (overrides.model ?? '').includes('+') ? overrides.model.split('+') : [overrides.model, null];
   const runner = overrides.runner ?? base.runner;
   const pair = runner === 'claude' && mOverride && !overrides.advisor && !advFromModel ? CLAUDE_PAIR[mOverride] : null;
-  const model = pair ? pair.model : (mOverride || base.model);
-  const advisor = runner === 'claude' ? (overrides.advisor ?? advFromModel ?? pair?.advisor ?? base.advisor ?? 'opus') : null;
+  let model = pair ? pair.model : (mOverride || base.model);
+  let advisor = runner === 'claude' ? (overrides.advisor ?? advFromModel ?? pair?.advisor ?? base.advisor ?? 'opus') : null;
+  if (runner === 'grok') {
+    model = GROK_MODELS[model] ?? model;
+    advisor = null;
+  }
   const cliModel = runner === 'agy' ? (AGY_MODELS[model] ?? model) : model;
   const label = `${runner}:${model}${advisor ? `+${advisor}` : ''}`;
   const tags = overrides.tags ?? (wave.tags?.H ? ['H'] : base.tags);
@@ -83,19 +103,44 @@ export function buildRunnerCommand(preset, prompt, dirs = []) {
     const agyMode = preset.mode === 'acceptEdits' ? 'accept-edits' : preset.mode;
     return { cmd: 'agy', args: [...dirArgs, '--model', preset.cliModel, '--mode', agyMode, ...effortArgs, '-i', prompt] };
   }
-  const claudeMode = preset.mode === 'accept-edits' ? 'acceptEdits' : preset.mode;
+  const permissionMode = preset.mode === 'accept-edits' ? 'acceptEdits' : preset.mode;
+  if (preset.runner === 'grok') {
+    return { cmd: 'grok', args: [...dirArgs, '--model', preset.cliModel, '--permission-mode', permissionMode, ...effortArgs, '--verbatim', prompt] };
+  }
+  if (preset.runner !== 'claude') throw new Error(`unknown runner "${preset.runner}" (use claude, agy or grok)`);
   const advisorArgs = preset.advisor ? ['--advisor', preset.advisor] : [];
-  return { cmd: 'claude', args: [...dirArgs, '--model', preset.cliModel, ...advisorArgs, '--permission-mode', claudeMode, ...effortArgs, prompt] };
+  return { cmd: 'claude', args: [...dirArgs, '--model', preset.cliModel, ...advisorArgs, '--permission-mode', permissionMode, ...effortArgs, prompt] };
 }
 
 function planGateText(w, preset) {
+  const consult = preset.advisor ? `Consult your \`${preset.advisor}\` advisor to map` : 'Map';
   if (preset.plan === 'serial-spine') {
-    return `1. **Phase 1 — Serial Spine Bootstrap (no subagents yet):** Consult your \`${preset.advisor}\` advisor to map the wave dependency graph, then build and merge \`W00-02\` (workspaces) → \`W00-04\` (frontend workspaces) → \`W00-05\` (\`@terra/config\`) → \`W00-01\` (contracts core) → \`W00-14\` (\`@terra/sim\` kernel) SERIALLY into \`${w.branch}\`. Only after those 5 root blockers are green on \`${w.branch}\`, fan out to parallel subagents.`;
+    return `1. **Phase 1 — Serial Spine Bootstrap (no subagents yet):** ${consult} the wave dependency graph, then build and merge \`W00-02\` (workspaces) → \`W00-04\` (frontend workspaces) → \`W00-05\` (\`@terra/config\`) → \`W00-01\` (contracts core) → \`W00-14\` (\`@terra/sim\` kernel) SERIALLY into \`${w.branch}\`. Only after those 5 root blockers are green on \`${w.branch}\`, fan out to parallel subagents.`;
   }
   if (preset.plan === 'port-swap-plan') {
-    return `1. **Phase 1 — Port Contract Gate:** With your \`${preset.advisor}\` advisor, verify each port's contract test suite against the mock first, then swap one port at a time (\`IdentityPort\`/\`RelayerPort\` → \`CargoTokenPort\` → \`IntentsPort\` with \`dry: true\` first).`;
+    const withAdvisor = preset.advisor ? `With your \`${preset.advisor}\` advisor, verify` : 'Verify';
+    return `1. **Phase 1 — Port Contract Gate:** ${withAdvisor} each port's contract test suite against the mock first, then swap one port at a time (\`IdentityPort\`/\`RelayerPort\` → \`CargoTokenPort\` → \`IntentsPort\` with \`dry: true\` first).`;
   }
   return `1. **Phase 1 — Plan & Contract-First Gate (serial):** Map out the dependency tiers for ${w.id}, then build and merge \`${w.id}-01\` (contracts, schemas, data rows, wave flag) SERIALLY into \`${w.branch}\` first before spawning any parallel subagents.`;
+}
+
+function runtimeStrategy(w, preset) {
+  if (preset.runner === 'agy') {
+    return `2. **Phase 2 — Parallel Subagent Execution (AGY \`${preset.model}\` lead, mode=\`${preset.mode}\`, parallel=\`${preset.parallel}\`):**
+   - Handle \`${w.id}-01\`, cross-file architecture, \`@terra/sim\` rules, and 3D kitbash/shader work directly on Argon or \`Model: 'inherit'\` subagents.
+   - Dispatch independent \`Size S\` leaf issues (data tables, vanilla DOM Faction Plate HUDs, seed scenarios, unit tests) via \`invoke_subagent\` with \`Model: 'flash'\` (at most ${preset.parallel} concurrent subagents in isolated \`../TerraAgent-wt/${w.id}-XX\` worktrees).
+   - Run 4-view visual QA in \`/playground.html?inspect=<id>&validate=1\` (for any model change) and verify \`/play.html?scenario=${w.id.toLowerCase()}\` before concluding.`;
+  }
+  if (preset.runner === 'grok') {
+    return `2. **Phase 2 — Parallel Subagent Execution (Grok \`${preset.model}\` lead, mode=\`${preset.mode}\`, parallel=\`${preset.parallel}\`):**
+   - Build \`${w.id}-01\`, cross-file architecture, \`@terra/sim\` rules, and 3D kitbash/shader work in this session.
+   - Dispatch independent issues with the subagent tool, at most ${preset.parallel} at a time, each in its own worktree \`../TerraAgent-wt/${w.id}-XX\`.
+   - Run 4-view visual QA in \`/playground.html?inspect=<id>&validate=1\` (for any model change) and verify \`/play.html?scenario=${w.id.toLowerCase()}\` before concluding.`;
+  }
+  return `2. **Phase 2 — Parallel Subagent Execution (Claude worker=\`${preset.model}\` + advisor=\`${preset.advisor}\`, subagents=\`${preset.subagents}\`, mode=\`${preset.mode}\`, parallel=\`${preset.parallel}\`):**
+   - Consult your \`${preset.advisor}\` advisor for \`${w.id}-01\` contract schemas, port/outbox/matcher invariants, and architectural decisions while driving implementation on \`${preset.model}\`.
+   - Spawn up to ${preset.parallel} concurrent \`sonnet\` subagents in isolated \`../TerraAgent-wt/${w.id}-XX\` worktrees for independent \`Size S\` and \`Size M\` implementation and test issues.
+   - If an issue touches a 3D kitbash archetype (e.g. \`W10-16\`), follow \`procedural-kitbash-3d\` and require \`npm run validate:models -- <id>\` with 0 errors and 0 warnings.`;
 }
 
 export function wavePrompt(w, title, { preset, progress }) {
@@ -107,16 +152,6 @@ export function wavePrompt(w, title, { preset, progress }) {
     ? `\nProgress on \`${w.branch}\`: ${progress.done.length}/${progress.total.length} issues already merged (${progress.done.join(', ')}).\nRemaining in-scope issues to build (${progress.remaining.length}): ${progress.remaining.join(', ')}.`
     : `\nIn-scope issues (${progress.total.length}, tags: ${preset.tags.join(', ')}): ${progress.total.join(', ')}.`;
 
-  const runtimeStrategy = preset.runner === 'agy'
-    ? `2. **Phase 2 — Parallel Subagent Execution (AGY \`${preset.model}\` lead, mode=\`${preset.mode}\`, parallel=\`${preset.parallel}\`):**
-   - Handle \`${w.id}-01\`, cross-file architecture, \`@terra/sim\` rules, and 3D kitbash/shader work directly on Argon or \`Model: 'inherit'\` subagents.
-   - Dispatch independent \`Size S\` leaf issues (data tables, vanilla DOM Faction Plate HUDs, seed scenarios, unit tests) via \`invoke_subagent\` with \`Model: 'flash'\` (at most ${preset.parallel} concurrent subagents in isolated \`../TerraAgent-wt/${w.id}-XX\` worktrees).
-   - Run 4-view visual QA in \`/playground.html?inspect=<id>&validate=1\` (for any model change) and verify \`/play.html?scenario=${w.id.toLowerCase()}\` before concluding.`
-    : `2. **Phase 2 — Parallel Subagent Execution (Claude worker=\`${preset.model}\` + advisor=\`${preset.advisor}\`, subagents=\`${preset.subagents}\`, mode=\`${preset.mode}\`, parallel=\`${preset.parallel}\`):**
-   - Consult your \`${preset.advisor}\` advisor for \`${w.id}-01\` contract schemas, port/outbox/matcher invariants, and architectural decisions while driving implementation on \`${preset.model}\`.
-   - Spawn up to ${preset.parallel} concurrent \`sonnet\` subagents in isolated \`../TerraAgent-wt/${w.id}-XX\` worktrees for independent \`Size S\` and \`Size M\` implementation and test issues.
-   - If an issue touches a 3D kitbash archetype (e.g. \`W10-16\`), follow \`procedural-kitbash-3d\` and require \`npm run validate:models -- <id>\` with 0 errors and 0 warnings.`;
-
   return `You are the lead for wave ${w.id} — ${title} — of TerraAgent. You work in this git worktree on branch \`${w.branch}\`.${stack}
 
 Read first: CLAUDE.md, AGENTS.md (§6 architecture rules), docs/plan/PRODUCT_WAVES.md §3–§7, the wave file \`${w.file}\`, every spec section it cites, and docs/plan/OWNER_TASKS.md (owner decisions; where a question is open, use its proposed default and say so in the commit).${skillsLine}
@@ -124,7 +159,7 @@ ${progressBlock}
 
 ## Execution Protocol (Preset: \`${preset.label}\` · parallel=\`${preset.parallel}\`)
 ${planGateText(w, preset)}
-${runtimeStrategy}
+${runtimeStrategy(w, preset)}
 
 For each issue:
 1. Build it on its own branch \`issue/${w.id}-XX\` cut from \`${w.branch}\` in worktree \`../TerraAgent-wt/${w.id}-XX\`. Run independent issues in parallel, at most ${preset.parallel} at a time.

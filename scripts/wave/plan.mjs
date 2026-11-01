@@ -43,7 +43,7 @@ export function ordered(plan) {
 const branches = (root) => new Set(out('git', ['branch', '--format=%(refname:short)'], { cwd: root }).split('\n').filter(Boolean));
 const tags = (root) => new Set(out('git', ['tag', '--list', 'wave-*'], { cwd: root }).split('\n').filter(Boolean));
 
-/** Waves whose lead session is running (a `claude`/`agy` process launched with the wave prompt). Not checked against a `--root`/`TA_WAVE_ROOT` sandbox: its waves are not the ones running here. */
+/** Waves whose lead session is running (a `claude`/`agy`/`grok` process launched with the wave prompt). Not checked against a `--root`/`TA_WAVE_ROOT` sandbox: its waves are not the ones running here. */
 function runningWaves() {
   if (process.argv.includes('--root') || process.env.TA_WAVE_ROOT) return new Set();
   const ps = tryOut('ps', ['-ax', '-o', 'pid=,command=']) ?? '';
@@ -53,7 +53,7 @@ function runningWaves() {
     if (!m) continue;
     const pid = Number(m[1]), cmd = m[2];
     if (pid === process.pid || pid === process.ppid) continue;
-    if (!/\b(claude|agy)\b/.test(cmd)) continue;
+    if (!/\b(claude|agy|grok)\b/.test(cmd)) continue;
     const waveMatch = cmd.match(/You are the lead for wave (W\d{2})\b/);
     if (waveMatch) active.add(waveMatch[1]);
   }

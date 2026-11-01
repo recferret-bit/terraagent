@@ -9,7 +9,7 @@ npm run dev        # http://127.0.0.1:5173/  (hub page; links to everything)
 npm run typecheck  # tsc --noEmit
 npm run build      # typecheck + check:structure + vite build → dist/ (must stay warning-free apart from chunk size)
 npm run check:structure  # fails on any file > 500 lines or function > 100 lines (frontend/, scripts/)
-npm run wave       # open/resume the next ready wave in its worktree and start Claude Code there; `-- status`, `-- land` after your check
+npm run wave       # open/resume the next ready wave in its worktree and start its runner there (claude, agy, or grok; `--runner` overrides); `-- status`, `-- land` after your check
 npm run validate:models -- <id|--category robot|--all>   # geometry validator for kitbash models
 npm run test:models                                    # self-test of that validator
 ```
