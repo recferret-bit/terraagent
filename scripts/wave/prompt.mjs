@@ -12,6 +12,8 @@ const AGY_MODELS = {
 };
 
 // Short preset names → Grok model ids. Opus/fable/argon lead on grok-4.7; sonnet/flash on the fast build model.
+// Grok 1.0.70 has no --context-window flag. Session spawn reads this and uses it instead of the 256k default.
+export const GROK_CONTEXT_WINDOW = '500000';
 const GROK_MODELS = {
   opus: 'grok-4.7',
   fable: 'grok-4.7',
@@ -37,26 +39,26 @@ export const WAVE_PRESETS = {
   W03: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'planetary-lighting-and-lightning'], track: 'Gameplay/Grid' },
   W04: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: ['diorama-viewport-auditor', 'shader-texture-tuning'], track: 'Client/Maps' },
   W05: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: ['shader-texture-tuning', 'planetary-lighting-and-lightning', 'diorama-viewport-auditor'], track: 'Gameplay/Terra' },
-  W06: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/Auth' },
+  W06: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/Auth' },
   W07: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 5, tags: ['H'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'model-geometry-validator', 'shader-texture-tuning'], track: 'Gameplay/Combat' },
-  W08: { runner: 'claude', model: 'sonnet', advisor: 'opus', subagents: 'sonnet', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'Autonomy/Goals' },
-  W09: { runner: 'claude', model: 'sonnet', advisor: 'opus', subagents: 'sonnet', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: [], track: 'Autonomy/Away' },
-  W10: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet (+ argon on W10-16)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'model-geometry-validator'], track: 'NEAR/Cargo' },
-  W11: { runner: 'claude', model: 'sonnet', advisor: 'opus', subagents: 'sonnet', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: [], track: 'Meta/Lobby' },
-  W12: { runner: 'claude', model: 'sonnet', advisor: 'opus', subagents: 'sonnet', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'Meta/Profile' },
+  W08: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'Autonomy/Goals' },
+  W09: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: [], track: 'Autonomy/Away' },
+  W10: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'model-geometry-validator', 'diorama-viewport-auditor'], track: 'NEAR/Cargo' },
+  W11: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: ['diorama-viewport-auditor'], track: 'Meta/Lobby' },
+  W12: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'Meta/Profile' },
   W13: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet', mode: 'auto', parallel: 5, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/Markets' },
   W14: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: ['shader-texture-tuning', 'diorama-viewport-auditor'], track: 'Gameplay/Walls' },
-  W15: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/Agents' },
-  W16: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet', mode: 'auto', parallel: 4, tags: ['H', 'H+', '-'], plan: 'contract-first', skills: [], track: 'Autonomy/LLM' },
+  W15: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/Agents' },
+  W16: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 4, tags: ['H', 'H+', '-'], plan: 'contract-first', skills: [], track: 'Autonomy/LLM' },
   W17: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H', 'H+', '-'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'model-geometry-validator'], track: 'Gameplay/T2' },
   W18: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H', 'H+', '-'], plan: 'contract-first', skills: [], track: 'Gameplay/PvP' },
   W19: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H', 'H+', '-'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'model-geometry-validator'], track: 'Gameplay/Air' },
-  W20: { runner: 'claude', model: 'sonnet', advisor: 'opus', subagents: 'sonnet', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/Deed' },
+  W20: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/Deed' },
   W21: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H', 'H+', '-'], plan: 'contract-first', skills: ['procedural-kitbash-3d', 'model-geometry-validator'], track: 'Gameplay/Rocket' },
-  W22: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'sonnet', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/DAO' },
+  W22: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'NEAR/DAO' },
   W23: { runner: 'claude', model: 'opus', advisor: 'fable', subagents: 'opus (H2 real NEAR)', mode: 'auto', parallel: 2, tags: ['H2'], plan: 'port-swap-plan', skills: [], track: 'NEAR/Real' },
   W24: { runner: 'agy', model: 'argon', advisor: null, subagents: 'flash (S) + inherit (M)', mode: 'auto', parallel: 4, tags: ['H', 'H+', '-'], plan: 'contract-first', skills: ['diorama-viewport-auditor'], track: 'Client/Mobile' },
-  W25: { runner: 'claude', model: 'sonnet', advisor: 'opus', subagents: 'sonnet + argon (e2e)', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: ['diorama-viewport-auditor'], track: 'Ops/Launch' },
+  W25: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 3, tags: ['H'], plan: 'contract-first', skills: ['diorama-viewport-auditor'], track: 'Ops/Launch' },
   W26: { runner: 'grok', model: 'grok-4.7', advisor: null, subagents: 'subagents', mode: 'auto', parallel: 4, tags: ['H'], plan: 'contract-first', skills: [], track: 'Ops/Sites' },
 };
 
@@ -104,8 +106,13 @@ export function buildRunnerCommand(preset, prompt, dirs = []) {
     return { cmd: 'agy', args: [...dirArgs, '--model', preset.cliModel, '--mode', agyMode, ...effortArgs, '-i', prompt] };
   }
   const permissionMode = preset.mode === 'accept-edits' ? 'acceptEdits' : preset.mode;
+  // Grok rejects additionalDirectories: the session cwd is the wave worktree, set by the spawn.
   if (preset.runner === 'grok') {
-    return { cmd: 'grok', args: [...dirArgs, '--model', preset.cliModel, '--permission-mode', permissionMode, ...effortArgs, '--verbatim', prompt] };
+    return {
+      cmd: 'grok',
+      args: ['--model', preset.cliModel, '--permission-mode', permissionMode, ...effortArgs, '--verbatim', prompt],
+      env: { GROK_DEBUG_CONTEXT_WINDOW: GROK_CONTEXT_WINDOW },
+    };
   }
   if (preset.runner !== 'claude') throw new Error(`unknown runner "${preset.runner}" (use claude, agy or grok)`);
   const advisorArgs = preset.advisor ? ['--advisor', preset.advisor] : [];

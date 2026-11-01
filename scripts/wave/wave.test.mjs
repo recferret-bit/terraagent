@@ -10,19 +10,21 @@ import { resolvePreset, buildRunnerCommand, wavePrompt } from './prompt.mjs';
 const wave = (id) => ({ id, tags: { H: 1 }, file: 'docs/plan/waves/x.md', branch: `wave/${id}` });
 
 test('--runner grok launches grok with a mapped model, permission mode and the prompt verbatim', () => {
-  const sonnet = resolvePreset(wave('W08'), { runner: 'grok' });
+  const sonnet = resolvePreset(wave('W08'), { runner: 'grok', model: 'sonnet' });
   assert.equal(sonnet.runner, 'grok');
   assert.equal(sonnet.model, 'grok-4.7-build-fast');
   assert.equal(sonnet.advisor, null);
   assert.equal(sonnet.label, 'grok:grok-4.7-build-fast');
-  const opus = resolvePreset(wave('W06'), { runner: 'grok', effort: 'high' });
+  const opus = resolvePreset(wave('W13'), { runner: 'grok', effort: 'high' });
   assert.equal(opus.model, 'grok-4.7');
   const explicit = resolvePreset(wave('W08'), { runner: 'grok', model: 'grok-4.6' });
   assert.equal(explicit.cliModel, 'grok-4.6');
   const cmd = buildRunnerCommand(explicit, 'You are the lead for wave W08', ['/tmp/wt', '/tmp/root']);
   assert.equal(cmd.cmd, 'grok');
-  assert.deepEqual(cmd.args.slice(0, 8), ['--add-dir', '/tmp/wt', '--add-dir', '/tmp/root', '--model', 'grok-4.6', '--permission-mode', 'auto']);
+  assert.deepEqual(cmd.args.slice(0, 4), ['--model', 'grok-4.6', '--permission-mode', 'auto']);
+  assert.equal(cmd.args.includes('--add-dir'), false);
   assert.ok(cmd.args.includes('--verbatim'));
+  assert.deepEqual(cmd.env, { GROK_DEBUG_CONTEXT_WINDOW: '500000' });
   assert.equal(cmd.args.at(-1), 'You are the lead for wave W08');
   assert.equal(cmd.args.includes('--advisor'), false);
   const prompted = wavePrompt(wave('W08'), 'Goals', { preset: sonnet, progress: { done: [], total: ['W08-01'], remaining: ['W08-01'] } });
@@ -41,11 +43,11 @@ test('W26 preset starts grok-4.7 with no advisor', () => {
 });
 
 test('claude and agy commands stay on their own flags', () => {
-  const claude = resolvePreset(wave('W08'), {});
-  assert.equal(claude.label, 'claude:sonnet+opus');
+  const claude = resolvePreset(wave('W13'), {});
+  assert.equal(claude.label, 'claude:opus+fable');
   const claudeCmd = buildRunnerCommand(claude, 'prompt', []);
   assert.equal(claudeCmd.cmd, 'claude');
-  assert.ok(claudeCmd.args.includes('--advisor') && claudeCmd.args.includes('opus'));
+  assert.ok(claudeCmd.args.includes('--advisor') && claudeCmd.args.includes('fable'));
   assert.ok(claudeCmd.args.includes('--permission-mode'));
   const agy = resolvePreset(wave('W01'), {});
   assert.equal(agy.label, 'agy:argon');
