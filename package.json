@@ -40,7 +40,19 @@
     "test:contract": "vitest run --config vitest.contract.config.ts",
     "contract:real": "node scripts/dev/contract-real.mjs",
     "db:seed": "npm run db:seed -w @terra/db --silent",
-    "build:strict": "node scripts/ci/build-warnings.mjs"
+    "build:strict": "node scripts/ci/build-warnings.mjs",
+    "stack:local": "node scripts/sites/stack.mjs",
+    "stack:local:infra": "node scripts/sites/stack.mjs infra",
+    "stack:local:frontend": "node scripts/sites/stack.mjs frontend",
+    "stack:local:backend": "node scripts/sites/stack.mjs backend",
+    "stack:local:chain": "node scripts/sites/stack.mjs chain",
+    "stack:local:down": "node scripts/sites/stack.mjs down",
+    "stack:local:smoke": "node scripts/sites/stack.mjs smoke",
+    "deploy": "node scripts/sites/deploy.mjs",
+    "deploy:infra": "node scripts/sites/deploy.mjs infra",
+    "deploy:frontend": "node scripts/sites/deploy.mjs frontend",
+    "deploy:backend": "node scripts/sites/deploy.mjs backend",
+    "deploy:chain": "node scripts/sites/deploy.mjs chain"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
