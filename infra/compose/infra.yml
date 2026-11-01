@@ -1,0 +1,58 @@
+# Infra stack (DEP-01, DEPLOYMENT §1). Only nginx publishes a port.
+# Postgres exists for the remote host under profile `server` and has no published port.
+# Local `stack:local` does not enable that profile; the app keeps the dev Postgres on 15434.
+name: terra-infra
+
+x-logging: &json-log
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+networks:
+  terra_edge:
+    name: terra_edge
+  terra_internal:
+    name: terra_internal
+
+volumes:
+  terra_www:
+    name: terra_www
+  terra_pg:
+    name: terra_sites_pg
+
+services:
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: terra-nginx
+    restart: unless-stopped
+    logging: *json-log
+    ports:
+      - "80:80"
+    networks:
+      - terra_edge
+    volumes:
+      - ../nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+      - ../nginx/snippets:/etc/nginx/snippets:ro
+      - ../nginx/hosts:/etc/nginx/hosts:ro
+      - terra_www:/usr/share/nginx/html:ro
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: terra-sites-pg
+    profiles: ["server"]
+    restart: unless-stopped
+    logging: *json-log
+    networks:
+      - terra_internal
+    environment:
+      POSTGRES_USER: terra
+      POSTGRES_PASSWORD: terra
+      POSTGRES_DB: terraagent
+    volumes:
+      - terra_pg:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U terra -d terraagent"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
