@@ -39,8 +39,11 @@ export function minLandingSeparation(data?: CompiledDataLike): number {
 }
 
 /** Points a new landing must keep its distance from (for `colony`): history + other colonies' live presence. */
-function blockers(s: SimState, colony: number): Array<{ q: number; r: number }> {
-  const out: Array<{ q: number; r: number }> = getLandingHistory(s).map((h) => ({ q: h.q, r: h.r }));
+function blockers(s: SimState, colony: number, relocate = false): Array<{ q: number; r: number }> {
+  const hist = getLandingHistory(s);
+  // A relocating colony's own latest landing is the one that moves; every earlier landing still blocks.
+  const own = relocate ? hist.map((h, i) => (h.colony === colony ? i : -1)).filter((i) => i >= 0).pop() : undefined;
+  const out: Array<{ q: number; r: number }> = hist.filter((_, i) => i !== own).map((h) => ({ q: h.q, r: h.r }));
   for (const p of colonyPresence(s)) {
     if (p.colony === colony) continue;
     for (const e of [...p.pods, ...p.structures, ...(p.hq ? [p.hq] : [])]) out.push({ q: e.q, r: e.r });
@@ -51,8 +54,16 @@ function blockers(s: SimState, colony: number): Array<{ q: number; r: number }> 
 const isWater = (t: number) => t === TERRAIN.shallow || t === TERRAIN.deep;
 
 /** Why (q, r) cannot take `colony`'s landing, or null when it can. The "never twice" rule lives here. */
-export function landingBlock(s: SimState, colony: number, q: number, r: number, data?: CompiledDataLike): LandingBlock | null {
-  if (getLandingHistory(s).some((h) => h.colony === colony)) return 'already_landed';
+export function landingBlock(
+  s: SimState,
+  colony: number,
+  q: number,
+  r: number,
+  data?: CompiledDataLike,
+  opts: { relocate?: boolean } = {},
+): LandingBlock | null {
+  // `relocate`: the colony's own pod is still descending and moves (dev.land): its own landing does not count.
+  if (!opts.relocate && getLandingHistory(s).some((h) => h.colony === colony)) return 'already_landed';
   if (!Number.isInteger(q) || !Number.isInteger(r) || !inHex(q, r, s.grid.radius)) return 'invalid_args';
   const i = hexIndex(s.grid.radius).indexOf(q, r);
   if (isWater(s.grid.layers.terrain[i])) return 'landing_site_taken';
@@ -61,7 +72,7 @@ export function landingBlock(s: SimState, colony: number, q: number, r: number, 
   const slot = getSpawnSlots(s).find((sl) => sl.q === q && sl.r === r);
   if (slot && slot.claimedBy !== undefined && slot.claimedBy !== colony) return 'landing_site_taken';
   const sep = minLandingSeparation(data);
-  if (blockers(s, colony).some((b) => hexDistance(b.q, b.r, q, r) < sep)) return 'landing_site_taken';
+  if (blockers(s, colony, opts.relocate).some((b) => hexDistance(b.q, b.r, q, r) < sep)) return 'landing_site_taken';
   return null;
 }
 

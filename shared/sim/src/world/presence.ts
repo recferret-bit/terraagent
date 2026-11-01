@@ -86,6 +86,17 @@ export function getLandingHistory(state: SimState): LandingRecord[] {
   return Array.isArray(raw) ? (raw as LandingRecord[]) : [];
 }
 
+/** A pod that has not touched down moved (dev.land): its colony's latest landing record follows it. */
+export function relocateLanding(state: SimState, colony: number, q: number, r: number, tick: number): void {
+  const hist = [...getLandingHistory(state)];
+  for (let i = hist.length - 1; i >= 0; i--) {
+    if (hist[i].colony !== colony) continue;
+    hist[i] = { ...hist[i], q, r, tick };
+    setBlob(state, LANDING_HISTORY_BLOB, hist, tick);
+    return;
+  }
+}
+
 /** Appends a landing to the history (the only writer; the landing system calls it once per landing). */
 export function recordLanding(state: SimState, rec: LandingRecord, tick: number): void {
   setBlob(state, LANDING_HISTORY_BLOB, [...getLandingHistory(state), rec], tick);

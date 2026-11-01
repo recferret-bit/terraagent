@@ -207,8 +207,10 @@ function colonyBlock(world: PlacementWorld, rule: PlacementRule, opts: EvaluateP
 }
 
 function billFor(tiles: readonly PlacementTile[], data?: CompiledDataLike): PlacementBill {
-  const inMap = tiles.filter((t) => t.block !== 'outOfMap');
-  const sum = summarizePrepJobs(planPrepJobs(inMap, data), data);
+  // Only the prep the linked order would really do: buildable tiles (Grade). Blocked tiles (trees, rock, …) are the
+  // player's own terraform ops, so an invalid site never advertises Break / Clear work or their yields (D-37).
+  const buildable = tiles.filter((t) => t.ok);
+  const sum = summarizePrepJobs(planPrepJobs(buildable, data), data);
   return {
     tilesToPrepare: tiles.filter((t) => !t.prepared).length,
     totalTiles: tiles.length,

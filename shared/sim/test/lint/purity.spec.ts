@@ -17,11 +17,13 @@ const sys = (body: string, imports = '') =>
 
 describe('sim purity lint (SIM-D-06)', () => {
   it('passes a clean system', async () => {
-    expect(await lint(sys('const n = Math.floor(1.5); void n;'))).toEqual([]);
+    expect(await lint(sys('const n = Math.floor(1.5) + Math.sqrt(2) + Math.fround(0.1); void n;'))).toEqual([]);
   });
 
   const cases: Array<[string, string, string?, string?]> = [
     ['Math.random', 'Math.random();', undefined, 'no-restricted-properties'],
+    ['Math.sin (engine-dependent, D-38)', 'Math.sin(1);', undefined, 'no-restricted-properties'],
+    ['Math.hypot (engine-dependent, D-38)', 'Math.hypot(3, 4);', undefined, 'no-restricted-properties'],
     ['Date.now', 'Date.now();', undefined, 'no-restricted-globals'],
     ['setTimeout', 'setTimeout(() => undefined, 1);', undefined, 'no-restricted-globals'],
     ['process', 'process.exit();', undefined, 'no-restricted-globals'],

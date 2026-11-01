@@ -20,12 +20,17 @@ const ASYNC_SYNTAX = [
   { selector: 'AwaitExpression, ForOfStatement[await=true]', message: asyncMsg },
 ];
 
+// ECMAScript leaves these to the engine (V8, JavaScriptCore and SpiderMonkey may differ by an ulp), so a client
+// predicting with them can disagree with the server (D-38). +, -, *, /, Math.sqrt, Math.fround, floor/round are exact.
+const ENGINE_MATH = ['sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sinh', 'cosh', 'tanh', 'exp', 'expm1', 'log', 'log1p', 'log2', 'log10', 'pow', 'hypot', 'cbrt']
+  .map((property) => ({ object: 'Math', property, message: `${WHY}: Math.${property} is engine-dependent. Use sqrt / tables / integer math, or justify a cosmetic use with an eslint-disable comment.` }));
+
 const purity = (files, allowed) => [
   {
     files,
     rules: {
       'no-restricted-globals': ['error', ...GLOBALS],
-      'no-restricted-properties': ['error', { object: 'Math', property: 'random', message: `${WHY}. Use ctx.rng(stream).` }],
+      'no-restricted-properties': ['error', { object: 'Math', property: 'random', message: `${WHY}. Use ctx.rng(stream).` }, ...ENGINE_MATH],
       'no-restricted-imports': ['error', {
         patterns: [
           { group: NODE_MODULES, message: `${WHY}. No Node or I/O modules.` },

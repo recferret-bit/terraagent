@@ -28,6 +28,7 @@ export function faceTowards(state: PlanetState, row: number, q: number, r: numbe
   const cols = state.entities.cols;
   if (hexDistance(cols.x[row], cols.y[row], q, r) <= ARRIVAL_EPS) return;
   const [px, py] = axialToPlane(q - cols.x[row], r - cols.y[row]);
+  // eslint-disable-next-line no-restricted-properties -- `rot` is a render facing only; an ulp of drift is invisible.
   const rot = Math.fround(Math.atan2(py, px));
   if (cols.rot[row] !== rot) setField(state.entities, row, 'rot', rot, tick);
 }
@@ -69,6 +70,7 @@ export function advanceAlongRoute(
     const dist = hexDistance(x, y, tx, ty);
     if (dist > 0) {
       const [px, py] = axialToPlane(tx - x, ty - y);
+      // eslint-disable-next-line no-restricted-properties -- `rot` is a render facing only (see above).
       setField(e, row, 'rot', Math.fround(Math.atan2(py, px)), ctx.tick);
     }
     if (dist <= budget + ARRIVAL_EPS) {

@@ -238,8 +238,10 @@ export const terraformBasicFeature = defineFeature({
   hud: [
     {
       id: 'terraform-menu',
-      slot: 'bottom-right',
-      order: 10,
+      // Left column, above the HQ panel: the right column holds construction (+ its placement card) and dev panels,
+      // which together would grow into the top-right stack on a 720 p screen.
+      slot: 'bottom-left',
+      order: 5,
       mount(el, ctx) {
         return mountTerraformBasic(el, { flags: ctx.flags, services: ctx.services });
       },

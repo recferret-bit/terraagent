@@ -3,6 +3,8 @@ import { rowOf } from '../../ecs/store';
 import { defineCommandHandler } from '../../kernel/commands';
 import { setBlob } from '../../kernel/state';
 import { hexDistance, inHex } from '../../grid/hex';
+import { landingBlock } from '../../world/landingPlanner';
+import { relocateLanding } from '../../world/presence';
 import { deployPod, getLandingPods, resolveMinLandingSeparation, spawnColonyLanding } from '../landing';
 
 /** `dev.land` (admin): lands the colony pod now, optionally at `(q, r)` (skips the descent timer). */
@@ -48,12 +50,16 @@ export const devLand = defineCommandHandler({
         const { q, r } = args;
         if (!inHex(q, r, state.grid.radius)) return 'invalid_args';
         if (pods.some((o) => o.colonyId !== pod.colonyId && hexDistance(o.q, o.r, q, r) < minSep)) return 'landing_site_taken';
+        // Same rule as every landing (D-39): never onto / near an earlier landing, water or foreign land.
+        const why = landingBlock(state, pod.colonyId, q, r, ctx.data, { relocate: true });
+        if (why) return why;
       }
     }
     for (const pod of matching) {
       if (typeof args.q === 'number' && typeof args.r === 'number') {
         pod.q = args.q;
         pod.r = args.r;
+        relocateLanding(state, pod.colonyId, args.q, args.r, ctx.tick);
         const row = rowOf(state.entities, pod.podEntityId);
         if (row >= 0) adminRelocateEntity(state.entities, row, Math.fround(args.q), Math.fround(args.r), ctx.tick);
       }

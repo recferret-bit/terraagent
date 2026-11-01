@@ -135,3 +135,24 @@ describe('landing planner: next landing site, never the same position twice (D-3
     expect(nextLandingSite(s, 0, { q: hx.q[land], r: hx.r[land] })).toEqual({ ok: false, code: 'landing_site_taken' });
   });
 });
+
+describe('dev.land relocation obeys the landing rule (D-39)', () => {
+  it('a descending pod cannot be moved onto an earlier landing; a valid move updates the history', async () => {
+    const { parseWaves } = await import('@terra/contracts');
+    const { SimHost } = await import('../../src');
+    const host = new SimHost({ flags: parseWaves('..01') });
+    host.load(planet('desert'));
+    const cmd = (kind: string, colonyIndex: number, args: unknown) => ({ colonyIndex, source: 'system' as const, commandId: `c${Math.random()}`, kind, args });
+    host.submit(cmd('system.spawnColony', 0, { colonyId: 'col_0', colonyIndex: 0 }));
+    host.submit(cmd('system.spawnColony', 1, { colonyId: 'col_1', colonyIndex: 1 }));
+    host.step(1);
+    const [a, b] = getLandingHistory(host.state);
+    expect(a.colony).toBe(0);
+    host.submit({ ...cmd('dev.land', 1, { q: a.q, r: a.r }), source: 'dev' });
+    expect(host.step(1).outcomes[0]?.code).toBe('landing_site_taken'); // onto colony 0's landing: never
+    const near = { q: b.q + 1, r: b.r };
+    host.submit({ ...cmd('dev.land', 1, near), source: 'dev' });
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
+    expect(getLandingHistory(host.state).find((h) => h.colony === 1)).toMatchObject(near);
+  });
+});

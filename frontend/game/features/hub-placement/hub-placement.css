@@ -123,3 +123,51 @@
   letter-spacing: var(--ta-track-label);
   color: var(--ta-text-3);
 }
+
+/* Compact placement card: the mini 3x3 footprint sits beside the reason and a one-line bill, so the card stays low
+   and does not cover the ghost site around the HQ (the tiles keep their coordinates as text for tests / a11y). */
+.ta-hub-ghost {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'grid reason'
+    'grid bill'
+    'actions actions';
+  column-gap: var(--ta-s3);
+  row-gap: var(--ta-s1);
+  padding: var(--ta-s2) var(--ta-s3);
+}
+
+.ta-hub-ghost__reason { grid-area: reason; align-self: end; }
+
+.ta-hub-ghost__grid {
+  grid-area: grid;
+  grid-template-columns: repeat(3, 14px);
+  gap: 2px;
+  align-content: center;
+}
+
+.ta-hub-ghost__tile {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
+}
+
+.ta-hub-ghost__tile.is-valid { background: var(--ta-terra); }
+.ta-hub-ghost__tile.is-invalid { background: var(--ta-fault); }
+
+.ta-hub-bill {
+  grid-area: bill;
+  flex-direction: row;
+  flex-wrap: wrap;
+  column-gap: var(--ta-s3);
+  row-gap: 2px;
+  padding: 0;
+  background: none;
+  border: 0;
+}
+
+.ta-hub-ghost__actions { grid-area: actions; }

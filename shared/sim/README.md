@@ -136,5 +136,6 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
   `spawnColonyLanding` appends the landing to the history (`recordLanding`); no position is ever landed on twice.
 - **Presence** (`world/presence.ts`): `colonyPresence`, `faunaPositions`, `entitiesNear`, `nearestEntity`,
   `presenceView` (plain data for an AI orchestrator). New entity kinds register a role with `registerPresenceRole`.
-- `dev.land` deploys an undeployed pod now; relocating it to `(q, r)` within the separation of another colony's pod is
-  `landing_site_taken`, off the map `invalid_args` (pod untouched).
+- `dev.land` deploys an undeployed pod now; relocating it to `(q, r)` goes through the same `landingBlock` rule
+  (never onto / near an earlier landing or another colony, never on water): `landing_site_taken`, off the map
+  `invalid_args` (pod untouched); a valid move updates that colony's landing record.
