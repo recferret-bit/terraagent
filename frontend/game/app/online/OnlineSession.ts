@@ -349,7 +349,7 @@ export class OnlineSession {
     if (!this.cameraCentered && !this.landSent && !this.fromSpaceDescent && !status.descending && status.hqLanded) {
       this.entities.podTouchdown.setEnabled(false);
     }
-    this.entities.syncView(v, this.terrain, this.biomeKey, this.store.predictionInfo.pending > 0);
+    this.entities.syncView(v, this.terrain, this.biomeKey, this.store.confirmedTick);
     const hqReady = this.entities.isHqDeployed();
     this.hqDeployedSynced = hqReady;
     this.landfall.onView(v);

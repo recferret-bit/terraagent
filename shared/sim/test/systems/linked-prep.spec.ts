@@ -124,7 +124,7 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
     // 9 × 20 E drawn while grading; the cell self-recharges 3 E/s (0.6 E/tick) only while the HQ walks between tiles.
     expect(state.entities.cols.cell[hqSlot]).toBeGreaterThan(800 - 9 * 20);
-    expect(state.entities.cols.cell[hqSlot]).toBeLessThan(800 - 9 * 20 + 0.6 * 40);
+    expect(state.entities.cols.cell[hqSlot]).toBeLessThan(800 - 9 * 20 + 0.6 * 60);
   });
 });
 

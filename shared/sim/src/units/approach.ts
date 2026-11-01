@@ -1,6 +1,7 @@
 import { ENTITY_STATE } from '../ecs/columns';
 import { setField } from '../ecs/store';
-import { hexDistance } from '../grid/hex';
+import { hexDistance, hexIndex } from '../grid/hex';
+import { pathBlockedFor } from '../grid/pathProfiles';
 import { notifyUnitChanged } from './mobility';
 import { getMotion, requestMove, sameGoal, type MoveGoal } from './movement/orchestrator';
 import type { UnitCtx } from './types';
@@ -26,11 +27,14 @@ export function setUnitActivity(u: UnitCtx, state: number, targetQ: number, targ
   if (changed) notifyUnitChanged(u.state, u.row, tick, u.ctx.data);
 }
 
+/** Standing on a tile centre within the band, on a tile the unit may stand on (not inside a building footprint). */
 function inBand(u: UnitCtx, goal: MoveGoal): boolean {
   const cols = u.state.entities.cols;
   const atCentre = cols.x[u.row] === cols.q[u.row] && cols.y[u.row] === cols.r[u.row];
   const d = hexDistance(cols.q[u.row], cols.r[u.row], goal.q, goal.r);
-  return atCentre && d >= goal.minDist && d <= goal.maxDist;
+  if (!atCentre || d < goal.minDist || d > goal.maxDist) return false;
+  const here = hexIndex(u.state.grid.radius).indexOf(cols.q[u.row], cols.r[u.row]);
+  return !(pathBlockedFor(u.state, u.stats.profile)?.(here) ?? false);
 }
 
 /**

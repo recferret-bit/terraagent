@@ -124,6 +124,8 @@ export class WorldStore {
   /** `on`, `off` (`?predict=0`) or `auto-off` (the worker step p95 went over 4 ms). */
   get predictionMode(): PredictionMode { return this.mode; }
   get predictionInfo(): PredictionInfo { return { mode: this.mode, ...this.info }; }
+  /** The newest server-confirmed tick (welcome / delta), independent of the client's prediction running ahead. */
+  get confirmedTick(): number { return this.baseTick; }
   /** Estimated server tick with its fraction (interpolation render time). */
   serverTickF(): number { return this.baseTick + (this.now() - this.baseLocalMs) / TICK_MS; }
 
@@ -145,6 +147,8 @@ export class WorldStore {
   /** Directly publishes a `ClientView` (used by `LocalHost` in-process mode). */
   pushView(view: ClientView): void {
     if (view.tiles) this.tiles = view.tiles;
+    this.baseTick = view.tick; // an in-process host only pushes confirmed states
+    this.baseLocalMs = this.now();
     this.latestView = view;
     this.views.emit(view);
   }

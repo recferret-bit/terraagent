@@ -33,7 +33,6 @@ interface MoveUnitArgs extends UnitArgs {
   q?: number;
   r?: number;
   to?: { q: number; r: number };
-  queue?: boolean;
 }
 
 export const moveUnit = defineCommandHandler({
@@ -55,7 +54,7 @@ export const moveUnit = defineCommandHandler({
     const prep = state.grid.layers.prep[tileIdx];
     if (terrain === TERRAIN.deep || prep === PREP.ridge || prep === PREP.moat) return 'site_blocked';
     if (pathBlockedFor(state, stats.profile)?.(tileIdx)) return 'site_blocked'; // uncleared forest / rock: terraform it first
-    return issueUnitCommand(state, row, { kind: 'move', source: 'player', q, r }, ctx, { queue: args.queue === true });
+    return issueUnitCommand(state, row, { kind: 'move', source: 'player', q, r }, ctx);
   },
 });
 

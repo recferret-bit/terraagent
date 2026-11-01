@@ -25,6 +25,11 @@ export interface PlanetMeta {
    * deposits from the public seed. Stripped from every client-bound snapshot and diff (`forClient`).
    */
   worldSalt?: string;
+  /**
+   * Bumped whenever ground passability may have changed (terrain, prep, deposit, a building placed or removed). A path
+   * search paused across steps restarts when it changed, so every host resolves the same path (`grid/pathQueue.ts`).
+   */
+  pathEpoch?: number;
 }
 
 export interface Grid {

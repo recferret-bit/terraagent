@@ -2,7 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   ENTITY_KIND,
   ENTITY_STATE,
+  enqueuePathRequest,
   getConstructionOrders,
+  getHubFootprintTiles,
+  restore,
+  snapshot,
+  stepPathQueue,
   insertRow,
   getPathStats,
   getUnitCommand,
@@ -237,5 +242,54 @@ describe('review fixes', () => {
     const before = fixed();
     host.step(150);
     expect(fixed()).toBe(before);
+  });
+});
+
+describe('buildings block ground movement', () => {
+  it('the HQ prepares a site from outside its footprint and walks out if it stood on it when the Hub was placed', () => {
+    const host = w01Host();
+    const state = host.state;
+    setColonyStock(state, 0, resolveStartingCargo());
+    const hqId = spawnHqUnit(state, { owner: 0, q: 3, r: 0 }); // on the future footprint (centre)
+    const row = rowOf(state.entities, hqId);
+    const cols = state.entities.cols;
+    host.submit(cmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }));
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
+    const footprint = new Set(getHubFootprintTiles(3, 0).map((t) => `${t.q},${t.r}`));
+    let worked = 0;
+    for (let t = 0; t < 400 && (getConstructionOrders(state, 0)[0]?.status ?? 'completed') !== 'completed'; t++) {
+      host.step(1);
+      if (cols.state[row] === ENTITY_STATE.working || cols.state[row] === ENTITY_STATE.constructing) {
+        worked++;
+        expect(footprint.has(`${cols.q[row]},${cols.r[row]}`), `tick ${host.tick}`).toBe(false);
+      }
+    }
+    expect(worked).toBeGreaterThan(100);
+    expect(getConstructionOrders(state, 0)[0]?.status).toBe('completed');
+    host.submit(cmd('moveUnit', { entityId: hqId, q: 3, r: 0 })); // the finished Hub is not walkable
+    expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
+  });
+
+  it('a paused long search restarts when the ground changes, identically on a restored copy', () => {
+    const host = w01Host(40);
+    const state = host.state;
+    const idx = hexIndex(state.grid.radius);
+    for (let i = 0; i < idx.count; i++) {
+      if (hexDistance(idx.q[i], idx.r[i], 0, 0) === 25 && !(idx.q[i] === 0 && idx.r[i] === 25)) setTileTerrain(state.grid, i, TERRAIN.rock);
+    }
+    enqueuePathRequest(state, { id: 'long', from: { q: 0, r: -20 }, to: { q: 0, r: -30 }, radius: 40, profile: 'ground' }, 1);
+    expect(stepPathQueue(state, 700).resolvedCount).toBe(0);
+    const copy = restore(snapshot(state));
+    // a gap opens on the near side while the search is paused, on both hosts
+    for (const s of [state, copy]) setTileTerrain(s.grid, hexIndex(40).indexOf(0, -25), TERRAIN.flat);
+    let a = stepPathQueue(state, 700);
+    let b = stepPathQueue(copy, 700);
+    for (let n = 0; n < 40 && a.resolvedCount === 0; n++) {
+      expect(b.expansionsUsed).toBe(a.expansionsUsed);
+      a = stepPathQueue(state, 700);
+      b = stepPathQueue(copy, 700);
+    }
+    expect(b.resolved[0]).toEqual(a.resolved[0]);
+    expect(a.resolved[0].path.length).toBeLessThan(15); // took the new short way out
   });
 });

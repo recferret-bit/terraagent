@@ -3,7 +3,7 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, removeRow, rowOf, setField } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
-import { isBuildablePrepared } from '../../grid/tileModel';
+import { bumpPathEpoch, isBuildablePrepared } from '../../grid/tileModel';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
@@ -25,6 +25,7 @@ import {
   resolveHubBuildTimeS,
   resolveHubCost,
 } from './build';
+import './occupancy';
 import { buildLinkedPrepJobs } from './prep';
 import { getBuildingFootprintTiles, isHubBuildingKind, resolveHubT1Row } from './placement';
 import {
@@ -156,6 +157,7 @@ function spawnPendingHubRow(
   tick: number,
 ): number {
   const row = insertRow(state.entities, entityId, tick);
+  bumpPathEpoch(state.meta); // a new footprint blocks ground movement (./occupancy.ts)
   const cols = state.entities.cols;
   cols.kind[row] = ENTITY_KIND.hub;
   cols.owner[row] = opts.colonyId;
@@ -320,6 +322,7 @@ export function cancelConstructionOrder(
   cancelTerraformOrder(state, colonyId, target.entityId, tick, data);
 
   removeRow(state.entities, target.entityId, tick);
+  bumpPathEpoch(state.meta);
 
   const hqSlot = findColonyHqSlot(state, colonyId);
   if (hqSlot >= 0) {

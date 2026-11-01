@@ -1,5 +1,6 @@
 import type { CompiledDataLike } from '../kernel/config';
 import { setBlob, type Blob, type PlanetState } from '../kernel/state';
+import { hexIndex } from './hex';
 import { pathBlockedFor, type PathProfileId } from './pathProfiles';
 import {
   continueAStarSearch,
@@ -17,9 +18,9 @@ import {
  * Requests are plain data, so the queue survives snapshot, restore and the prediction clone. The live search objects
  * are a cache next to the state; when the cache misses (a restored or cloned state), the search is rebuilt by
  * replaying the `expansionsUsed` it had already spent, which reaches the identical search state (see
- * `continueAStarSearch`). The planet therefore resolves the same path on the same tick either way. Known limit: if a
- * tile's passability changes while a search is paused, a resumed search keeps what it already explored and a replayed
- * one sees the new tile; the follower re-plans when its next waypoint turns out to be blocked.
+ * `continueAStarSearch`). The planet therefore resolves the same path on the same tick either way. When the ground
+ * changes while a search is paused (`meta.pathEpoch`), the search restarts from scratch on every host alike, so a
+ * resumed and a replayed search never see different ground.
  */
 
 /** Maximum A* node expansions allowed per planet per simulation step (`SIM-T-02`, 200 ms tick). */
@@ -47,6 +48,8 @@ export interface PathQueueEntry {
   band?: PathGoalBand;
   enqueuedAtTick: number;
   expansionsUsed: number;
+  /** `meta.pathEpoch` the search has explored under; a change restarts it (identically on every host). */
+  epoch?: number;
 }
 
 export interface PathQueueResult extends HexPathResult {
@@ -119,6 +122,7 @@ export function enqueuePathRequest(state: PlanetState, req: PathRequestInput, ti
     ...(req.band !== undefined ? { band: { minDist: req.band.minDist, maxDist: req.band.maxDist } } : {}),
     enqueuedAtTick: state.meta.tick,
     expansionsUsed: 0,
+    epoch: state.meta.pathEpoch ?? 0,
   };
   queue.push(entry);
   writeQueue(state, queue, { ...prevStats, queueLength: queue.length }, stamp);
@@ -143,7 +147,8 @@ function searchFor(state: PlanetState, entry: PathQueueEntry, data?: CompiledDat
     search = createAStarSearch(state, entry.from, entry.to, {
       radius: entry.radius,
       data,
-      blocked: pathBlockedFor(state, entry.profile),
+      blocked: pathBlockedFor(state, entry.profile, hexIndex(entry.radius ?? state.grid.radius).indexOf(entry.from.q, entry.from.r)),
+      goalBlocked: pathBlockedFor(state, entry.profile),
       band: entry.band,
     });
     // Cache miss on a half-done search (restored / cloned state): replay the expansions already paid for.
@@ -180,6 +185,13 @@ export function stepPathQueue(
 
   while (pending.length > 0 && expansionsUsed < budget) {
     const entry = pending[0];
+    const epoch = state.meta.pathEpoch ?? 0;
+    if ((entry.epoch ?? 0) !== epoch) {
+      // the ground changed while this search was paused: start over on the new ground (deterministic on every host)
+      cacheOf(state).delete(entry.id);
+      entry.expansionsUsed = 0;
+      entry.epoch = epoch;
+    }
     const search = searchFor(state, entry, data);
     const stepRes = continueAStarSearch(search, budget - expansionsUsed);
     expansionsUsed += stepRes.used;

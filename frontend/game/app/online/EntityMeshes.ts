@@ -212,10 +212,13 @@ export class EntityMeshes {
     if (code === undefined || UNPREDICTABLE_REJECTS.has(code)) this.dropPredictedFuture = true;
   }
 
-  /** `predicted`: the view is the client's prediction (ahead of the server), not a confirmed state. */
-  syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey, predicted = false): void {
+  /**
+   * `confirmedTick`: the newest server-confirmed tick. The render clock follows it, not the view's tick (which runs
+   * ahead while a command is predicted), so walking speed never changes with prediction. Defaults to the view's tick.
+   */
+  syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey, confirmedTick = view.tick): void {
     this.biomeKey = biomeKey;
-    this.clock.observe(view.tick, predicted);
+    this.clock.observe(Math.min(confirmedTick, view.tick));
     const seen = new Set<number>();
     const buf = view.entities;
     const hasEntityLayer = Boolean(this.scene.getObjectByName('entities'));

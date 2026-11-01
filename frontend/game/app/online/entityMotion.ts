@@ -92,11 +92,8 @@ export class RenderClock {
   /** How far behind the newest tick the clock runs: 1.5 ticks at 1×, the same 0.3 s of real time under warp. */
   private delay(): number { return RENDER_DELAY_TICKS * Math.max(1, this.rate * this.tickSeconds); }
 
-  /**
-   * A view at `tick` arrived. A `predicted` view (the client running ahead of the server after an order) moves the
-   * newest tick but not the measured rate, so a click does not make the clock think the sim sped up.
-   */
-  observe(tick: number, predicted = false): void {
+  /** The newest server-confirmed tick is `tick` (callers pass confirmed ticks only, never predicted ones). */
+  observe(tick: number): void {
     if (Number.isNaN(this.t) || tick < this.newest - RESYNC_TICKS * Math.max(1, this.rate * this.tickSeconds)) {
       this.newest = tick;
       this.t = tick - this.delay();
@@ -105,7 +102,6 @@ export class RenderClock {
     }
     if (tick <= this.newest) return;
     this.newest = tick;
-    if (predicted) return;
     const span = this.elapsed - this.rateAt.time;
     if (span >= 0.4) { // measure over at least two 5 Hz deltas
       const sample = (tick - this.rateAt.tick) / span;

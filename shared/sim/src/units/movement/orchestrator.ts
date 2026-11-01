@@ -165,7 +165,8 @@ export function runMovement(state: PlanetState, ctx: StepContext): number[] {
     const stats = mobileStats(state.entities.cols.kind[row], ctx.data);
     if (!stats) continue;
     const before = m.next;
-    const res = advanceAlongRoute(state, row, m, stats, ctx, pathBlockedFor(state, stats.profile));
+    const here = hexIndex(state.grid.radius).indexOf(state.entities.cols.q[row], state.entities.cols.r[row]);
+    const res = advanceAlongRoute(state, row, m, stats, ctx, pathBlockedFor(state, stats.profile, here));
     if (m.next !== before) changed = true;
     if (res === 'arrived') {
       m.status = 'arrived';

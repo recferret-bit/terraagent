@@ -43,6 +43,8 @@ export interface FindHexPathOptions {
    * the tile you terraform"). `to` may then be impassable. Omitted = exact goal.
    */
   band?: PathGoalBand;
+  /** Tiles a band goal may not end on although they can be crossed (the footprint the unit is leaving). Default `blocked`. */
+  goalBlocked?: (tileIdx: number) => boolean;
 }
 
 export interface HexPathResult {
@@ -58,6 +60,7 @@ export interface AStarSearchState {
   readonly idx: HexIndex;
   readonly data?: CompiledDataLike;
   readonly blocked?: (tileIdx: number) => boolean;
+  readonly goalBlocked?: (tileIdx: number) => boolean;
   readonly from: AxialCoord;
   readonly to: AxialCoord;
   readonly band: PathGoalBand | null;
@@ -190,6 +193,7 @@ function reconstructPath(s: AStarSearchState, endIdx: number): AxialCoord[] {
 
 function isGoalTile(s: AStarSearchState, tileIdx: number): boolean {
   if (!s.band) return tileIdx === s.goalIdx;
+  if (s.goalBlocked?.(tileIdx) ?? false) return false; // never "arrive" on a tile the unit may not stand on
   const d = hexDistance(s.idx.q[tileIdx], s.idx.r[tileIdx], s.to.q, s.to.r);
   return d >= s.band.minDist && d <= s.band.maxDist;
 }
@@ -235,6 +239,7 @@ export function createAStarSearch(grid: GridLike, from: AxialCoord, to: AxialCoo
     idx,
     data: opts?.data,
     blocked: opts?.blocked,
+    goalBlocked: opts?.goalBlocked ?? opts?.blocked,
     from: { q: from.q, r: from.r },
     to: { q: to.q, r: to.r },
     band,

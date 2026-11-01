@@ -223,10 +223,11 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
       'bio.water': 200,
     }));
 
-    // Finish the site prep -> 9/9 prepared, cost paid on start. Walking adds well under 2 s to the 18 s of work.
+    // Finish the site prep -> 9/9 prepared, cost paid on start. The HQ works every tile from outside the footprint
+    // (buildings block ground movement), so walking around the site adds a few seconds to the 18 s of work.
     for (; ticks < 200 && prepared() < 9; ticks++) host.step(1);
     expect(ticks).toBeGreaterThanOrEqual(90);
-    expect(ticks).toBeLessThanOrEqual(110);
+    expect(ticks).toBeLessThanOrEqual(135);
     const startedOrder = getConstructionOrders(state, 0)[0]!;
     expect(startedOrder.preparedCount).toBe(9);
     expect(startedOrder.status).toBe('in_progress');

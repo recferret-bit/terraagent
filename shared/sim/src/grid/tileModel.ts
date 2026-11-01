@@ -255,6 +255,11 @@ export function isTileUnclaimed(grid: GridLike, tileIdx: number): boolean {
   return (layers.owner?.[tileIdx] ?? -1) === -1;
 }
 
+/** Ground passability may have changed (see `PlanetMeta.pathEpoch`). */
+export function bumpPathEpoch(meta: PlanetMeta | undefined): void {
+  if (meta) meta.pathEpoch = (meta.pathEpoch ?? 0) + 1;
+}
+
 function stampTile(layers: TileLayersLike, meta: PlanetMeta | undefined, tileIdx: number, tick?: number): void {
   if (!layers.changedAt) return;
   if (tick !== undefined) {
@@ -272,6 +277,7 @@ function stampTile(layers: TileLayersLike, meta: PlanetMeta | undefined, tileIdx
 export function setTilePrep(grid: GridLike, tileIdx: number, prep: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
   const { layers, meta } = resolveLayers(grid);
+  if (layers.prep[tileIdx] !== prep) bumpPathEpoch(meta);
   layers.prep[tileIdx] = prep;
   stampTile(layers, meta, tileIdx, tick);
 }
@@ -280,6 +286,7 @@ export function setTilePrep(grid: GridLike, tileIdx: number, prep: number, tick?
 export function setTileTerrain(grid: GridLike, tileIdx: number, terrain: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
   const { layers, meta } = resolveLayers(grid);
+  if (layers.terrain[tileIdx] !== terrain) bumpPathEpoch(meta);
   layers.terrain[tileIdx] = terrain;
   stampTile(layers, meta, tileIdx, tick);
 }
@@ -296,6 +303,7 @@ export function setTileOwner(grid: GridLike, tileIdx: number, owner: number, tic
 export function setTileDeposit(grid: GridLike, tileIdx: number, deposit: number, richness?: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
   const { layers, meta } = resolveLayers(grid);
+  if (layers.deposit && layers.deposit[tileIdx] !== deposit) bumpPathEpoch(meta);
   if (layers.deposit) layers.deposit[tileIdx] = deposit;
   if (richness !== undefined && layers.richness) layers.richness[tileIdx] = richness;
   stampTile(layers, meta, tileIdx, tick);

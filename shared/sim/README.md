@@ -49,11 +49,17 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 | Locomotion | `units/movement/locomotion.ts` | Moves at the data speed along waypoints; nothing else may move a live entity |
 
 - **What blocks a ground unit:** `grid/geo.ts` `isGroundMoveBlocked`: uncleared trees and rock, and every resource
-  deposit (the ore / crystal / oil nodes stand on the tile); Deep water, ridges and moats by terrain. A target on such a
-  tile is rejected `site_blocked`; a target that cannot be reached fails the command (`lastFailure`, toasted once by the client).
+  deposit (the ore / crystal / oil nodes stand on the tile); Deep water, ridges and moats by terrain; and building
+  footprints (`defineGroundOccupancy`, registered by `systems/construction/occupancy.ts`). A unit standing inside a
+  footprint (the HQ when a Hub is placed on it) may only walk out of it, and never works from inside one. A target on
+  a blocked tile is rejected `site_blocked`; a target that cannot be reached fails the command (`lastFailure`, player
+  commands only, toasted once by the client).
+- **Ground changes restart paused searches:** terrain / prep / deposit writes and placing or removing a building bump
+  `meta.pathEpoch`; a search paused across steps restarts from scratch on every host when it changed.
 - **Client rendering (sync):** the client predicts with this same code; units are drawn from tick-keyed poses at a
-  monotonic render clock (`frontend/game/app/online/entityMotion.ts`), so prediction handing over to the confirmed
-  state never draws a step back. `test/units/sync.spec.ts` checks replica and prediction match the authority each tick.
+  monotonic render clock that follows the newest *confirmed* tick at the measured sim rate
+  (`frontend/game/app/online/entityMotion.ts`), so walking speed is constant and the prediction handing over to the
+  confirmed state never draws a step back (a walk starts ~0.3 s after the click; panel and target ring react at once). `test/units/sync.spec.ts` checks replica and prediction match the authority each tick.
 - **Never write an entity's position** (`setField(…, 'x'|'y'|'q'|'r')`, `cols.x[row] = …`) outside locomotion. Spawn with
   `placeSpawnedEntity` (`ecs/placement.ts`, throws for an existing row); admin moves (`dev.teleport`, `dev.nudge`, `dev.land`)
   call `adminRelocateEntity`, allowed only in `systems/dev/`. The sim lint enforces this (rule message `SIM-M-01`,

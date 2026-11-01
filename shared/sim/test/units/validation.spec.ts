@@ -36,6 +36,8 @@ describe('unit command input validation (contract precheck on every host, then t
     const hubRow = insertRow(state.entities, hubId, state.meta.tick);
     state.entities.cols.kind[hubRow] = ENTITY_KIND.hub;
     state.entities.cols.owner[hubRow] = 0;
+    state.entities.cols.q[hubRow] = 12; // well away from the HQ (its footprint blocks movement)
+    state.entities.cols.r[hubRow] = -12;
     const send = (kind: string, args: unknown) => {
       host.submit(cmd(kind, args));
       return host.step(1).outcomes[0]?.code;
