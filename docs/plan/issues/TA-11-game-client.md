@@ -559,7 +559,7 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 
 #### Architecture
 - `BuildMenu` lists the MVP catalog by category (Command & Territory, Power, Extraction, Supply, Production, Defense) with cost (M/Min/Pet/W), footprint, build time, `−E/s`, tier, and affordability vs the current resources.
-- `GhostPreview` is a translucent instanced ghost following `hex-picking`. Colour shows validity: owned + free + affordable; reasons are listed otherwise.
+- `GhostPreview` is a translucent instanced ghost following `hex-picking`. Colour shows validity: owned + free + affordable; reasons are listed otherwise. Validity and reasons come from the shared `evaluatePlacement` (`@terra/sim`, D-37), never from a client copy; the client sends one `placeBuilding` and a host rejection reopens the ghost red with the host's reason.
 - Rotation (R) only where the footprint is asymmetric.
 - Click sends `placeBuilding {archetype, q, r, rot}`. The pending ghost stays until `cmd.ack`; the delta then adds the real entity (scaffold).
 - `SelectionPanel` shows HP, power state, production and "Upgrade to T2" with the Δ cost (`Cost_{T2} − Cost_{T1}`). Upgrade is disabled with a reason if the +1 ring is not free/owned, otherwise it sends `upgradeBuilding {entityId}`.

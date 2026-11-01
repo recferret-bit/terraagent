@@ -342,7 +342,7 @@ This epic adds sim systems and data on top of TA-06, and the client surfaces on 
 - [ ] `AC-07`: every waiting entry shows a reason and an ETA.
 - [ ] Truce offer/accept/cancel shows the notice countdown.
 - [ ] Away-budget sliders send `setAutopilot` (D-17).
-- [ ] E2E `@w4-orders`: place on forest → linked prep → building completes.
+- [ ] E2E `@w4-orders`: place on forest → rejected `terrain_unbuildable` (D-37); Clear it, place → linked Grade prep → building completes.
 - [ ] Status synced (§1.6).
 
 ---
