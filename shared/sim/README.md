@@ -91,6 +91,8 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 
 ## Economy: one door, whole units, postings for the host ledger (`src/economy/`)
 
+Known limitations and open questions of the economy, the host journals and seating: [`docs/questions-and-limitations/economy-ledger.md`](../../docs/questions-and-limitations/economy-ledger.md).
+
 - **One door.** Every change to a colony's resources goes through `treasury(state, ctx).add({...})` or
   `.withdraw({...})` with `colony`, `amounts`, a `reason`, an `actor` and usually a `ref`
   (e.g. `{ reason: 'construction.spend', actor: colonyActor(state, i), ref: 'order:42' }`). Never write `col.stock`.

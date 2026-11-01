@@ -88,6 +88,15 @@ Everything that is not code goes in `docs/` (index: [docs/README.md](./docs/READ
 | `docs/plan/` | Build plans, status boards, owner tasks |
 | `docs/visuals/` | 3D coding rules, AI-mesh pipeline, procedural textures, shaders, lighting |
 | `docs/dev/` | Developer tooling reference ([`DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md)): URL params, dev console, dev pages/routes, mock chain, env vars, debug handles |
+| `docs/questions-and-limitations/` | Known limitations, deliberate trade-offs and open questions, one file per area ([format](./docs/questions-and-limitations/README.md)) |
+
+**Record what you leave behind (mandatory).** Whenever you finish a task with something knowingly undone or traded
+off, decide not to fix a review finding, go ahead with a default on a question only the owner can answer, or see
+intended-but-surprising behaviour, add or update an entry in `docs/questions-and-limitations/<area>.md` in the same
+change (format and numbering in its [README](./docs/questions-and-limitations/README.md)). Read the area's file
+before working there. Fixed entries are marked `Resolved (<commit>)`, never deleted. A lead that delegates to
+subagents tells them to report such items and writes the entries itself (or has them do it); the final report to the
+owner names the entries added.
 
 When you move or rename a document, update every link to it (`grep -r <name> --include='*.md'`), and keep relative links working.
 
