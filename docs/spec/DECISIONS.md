@@ -42,6 +42,7 @@
 | D-35 | Every balance number lives in data tables and can be tuned at runtime in playtests (overrides file + dev console), without a rebuild | Accepted (2026-10-30) |
 | D-36 | HUD and menus are vanilla DOM + Faction Plate CSS (no React/Zustand), built on the prototype's `frontend/game/ui/` | Accepted (2026-10-30) |
 | D-37 | One shared placement function (`evaluatePlacement`) for the server handler, the browser-local host and the client ghost; buildings cannot be placed on trees, rock, water or deposits (terraform first) | Accepted (2026-11-01, owner) |
+| D-38 | World generation orchestrator (profile stages per planet type), heights in metres as the ground truth, hidden subsurface redacted from clients, planet sectors + quadtree; the dev planet is a desert | Accepted (2026-11-01, owner) |
 
 ---
 
@@ -442,4 +443,20 @@ The sim owns the type; the client picks the look from it (`planetType → Planet
 **Consequences.** Departs from `UO-TF-03` for W01. W05-09 (linked Level / Fill on slope and hole) and W17-03 (auto-linked ring prep) must be re-read against this when W05 / W17 open: either they add slope / hole as "linked-prep-able" in `geoBuildBlock`'s rule, or they become player ops like Clear / Break.
 
 **Alternatives.** Keep `UO-TF-03` auto-clearing (owner rejected); keep two rule sets with a parity test only (they drift again).
+
+## D-38 — World generation orchestrator, metre heights, hidden ground, sectors
+
+**Context.** The "dune" planet was the temperate dev planet with a sand look painted on: the sim only had one quota-based generator whose heights were sub-metre, and the renderer flattened them further, so the ground was mostly flat. The owner (2026-11-01) wants real dunes, desert plains and mountains, a terraformed-looking landing site, ground that hides things to discover by terraforming, and a structure that stays fast on big planets, shared by client and server.
+
+**Decision.**
+- **Orchestrator.** `shared/sim/src/gen/world/` builds every planet: `generateWorld` runs the stage list of the planet type's profile row (`data/worldgen.ts`, D-35): `desert` = `reliefDesert → classifyDesert → deposits → subsurface → landing`; `temperate` / `ocean` = `temperateTerrain` (the W01 quota classifier, ocean with water-rich shares) `→ deposits → subsurface → landing`. Stages are small parts in `stages/`, registered by id (`registerWorldStage`); a new landform or biome is a new stage plus a profile row, not an edit of a generator. `createPlanet` stamps `meta.genVersion = GEN_VERSION` (`gen/generators.ts`). The generator ids `temperate`, `desert`, `ocean` all reach the orchestrator, so hosts that pass `type: planet.type` get the right profile.
+- **Heights are metres and the sim is the ground truth.** The `height` layer holds metres (desert: dunes up to ~4.5 m, mesas 4.5–11 m, ranges up to ~13 m). The renderer (`render/planets/hex/chunkMesh.ts`) draws that height and only adds cosmetic class detail and keeps water under the water plane; Flat and Prepared tiles sit at their own level. Placement adds a footprint spread rule (`MAX_FOOTPRINT_SPREAD_M` = 0.6 m, reason `uneven` → `terrain_unbuildable`), shared through `evaluatePlacement` (D-37).
+- **Landing zones.** Every spawn slot gets a round, levelled zone (desert: radius 7 tiles, Flat, one height, easing back into the relief over 5 tiles; temperate / ocean: radius 4, heights only) plus the starter Hub guarantee (`ensureStarterHubSpace`, same geo + spread rule).
+- **Hidden subsurface.** Server-only tile layers `subDeposit` / `subRichness` (`FieldDef.hidden`) hold buried deposits (veins under rock, dunes, forest roots, plains). `snapshot(s, { forClient: true })` and `diffSince(s, t, { forClient: true })` drop hidden layers; every client-bound path uses them (planet-host welcome + deltas, the local-host worker, the in-process dev hook); persisted snapshots keep them. Clear / Break call `revealSubsurface`, which moves the buried deposit into the public layers and emits `groundRevealed`.
+- **Sectors.** `grid/sectors.ts`: 8×8 axial sectors in a quadtree (cached per radius). Generation stages walk sectors with per-sector seeds; every tile stamp keeps a per-sector max `changedAt`, so `diffSince` only scans sectors changed after `fromTick`; render chunks (32×32) are whole blocks of sectors.
+- **Dev planet.** `DEV_PLANET_TYPE = 'desert'` (`@terra/sim`, used by the backend and the no-server local fallback). Dev planets (`pl_dev*`) whose snapshot has another `genVersion` (or an unrestorable sim version) are wiped on boot (snapshots, colonies, planet row) and recreated; local-host saves with another `genVersion` start fresh (owner: "wipe and recreate").
+
+**Consequences.** Brings the `desert` / `ocean` planet types forward from W05 (D-33 hackathon note superseded for generation; W05 keeps Level / Fill / Reclaim and the remaining biome features). Anything that writes `layers.changedAt` must go through `touchTile` / `stampTile` (or call `noteTileStamp` / `forgetTileStamps`). The render layer may import `@terra/sim/grid/sectors` (pure geometry), like `grid/hex`.
+
+**Alternatives.** Keep the cosmetic sand look on a temperate sim (owner rejected); generate relief only in the renderer (client/server disagree on heights, placement and pathing); a global quadtree of tiles (sectors give the same pruning with flat arrays and cheaper updates).
 

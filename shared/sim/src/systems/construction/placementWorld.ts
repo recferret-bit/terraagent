@@ -17,6 +17,7 @@ export function placementWorldFromState(state: SimState): PlacementWorld {
     prep: L.prep as ArrayLike<number>,
     deposit: (L.deposit as ArrayLike<number> | undefined) ?? null,
     owner: L.owner as ArrayLike<number>,
+    height: (L.height as ArrayLike<number> | undefined) ?? null,
     valid: (L as { valid?: ArrayLike<number> }).valid ?? null,
     entities,
   };

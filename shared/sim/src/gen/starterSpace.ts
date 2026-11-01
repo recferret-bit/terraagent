@@ -1,7 +1,8 @@
 import { hexDistance, hexIndex } from '../grid/hex';
-import { geoBuildBlock } from '../grid/geo';
+import { geoBuildBlock, MAX_FOOTPRINT_SPREAD_M } from '../grid/geo';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import type { SimState } from '../kernel/state';
+import { setTileHeight } from '../grid/tileModel';
 
 /** Hub footprint is 3×3 (centre + ring 1); mirrors `getHubFootprintTiles`. */
 const HUB_OFFSETS: ReadonlyArray<readonly [number, number]> = (() => {
@@ -26,8 +27,10 @@ function footprintIdx(state: SimState, q: number, r: number): number[] | null {
 
 /** Same geo rule the Command Hub placement check applies (Flat, no trees / rock / water / deposit), plus ownership. */
 function siteReady(state: SimState, tiles: number[], colonyId: number): boolean {
-  const { terrain, prep, owner, deposit } = state.grid.layers;
-  return tiles.every(
+  const { terrain, prep, owner, deposit, height } = state.grid.layers;
+  let lo = Infinity, hi = -Infinity;
+  for (const i of tiles) { lo = Math.min(lo, height[i]); hi = Math.max(hi, height[i]); }
+  return hi - lo <= MAX_FOOTPRINT_SPREAD_M && tiles.every(
     (i) => geoBuildBlock(terrain[i], prep[i], deposit ? deposit[i] : DEPOSIT.none, 'forbid') === null && (owner[i] < 0 || owner[i] === colonyId),
   );
 }
@@ -57,12 +60,14 @@ export function ensureStarterHubSpace(state: SimState, q: number, r: number, col
     const L = state.grid.layers;
     const terrain = L.terrain as Uint8Array, prep = L.prep as Uint8Array, owner = L.owner as Int8Array, height = L.height as Float32Array;
     const deposit = L.deposit as Uint8Array | undefined;
+    const level = Math.fround(tiles.map((i) => height[i]).sort((a, b) => a - b)[tiles.length >> 1]);
     for (const i of tiles) {
       terrain[i] = TERRAIN.flat;
       prep[i] = PREP.flat;
       if (deposit) deposit[i] = DEPOSIT.none;
       if (owner[i] >= 0 && owner[i] !== colonyId) owner[i] = -1;
-      if (height[i] < 0.05 || height[i] > 0.18) height[i] = Math.fround(0.08 + ((i * 17) % 9) * 0.01);
+      // One level so the footprint passes the spread rule (D-38); the setter stamps the tile for the next delta.
+      setTileHeight(state.grid, i, level);
     }
     return { q: c.q, r: c.r };
   }

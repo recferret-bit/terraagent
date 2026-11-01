@@ -79,4 +79,18 @@ export class SnapshotStore extends RepositoryBase {
     if (ids.length === 0) return 0;
     return (await this.prisma.planetSnapshot.deleteMany({ where: { id: { in: ids } } })).count;
   }
+
+  /**
+   * Wipes a dev planet whose ground came from an older world generator (D-38, owner 2026-11-01: "wipe and recreate"):
+   * its snapshots, its colonies and the planet row go, so the next boot / `/me/home` recreates it with the current
+   * dev planet type and generator. Only ever called for `pl_dev*` ids.
+   */
+  async wipeDevPlanet(planetId: string): Promise<void> {
+    if (planetId !== 'pl_dev' && !planetId.startsWith('pl_dev_')) throw new Error(`wipeDevPlanet: ${planetId} is not a dev planet`);
+    await this.prisma.$transaction([
+      this.prisma.planetSnapshot.deleteMany({ where: { planetId } }),
+      this.prisma.colony.deleteMany({ where: { planetId } }),
+      this.prisma.planet.deleteMany({ where: { id: planetId } }),
+    ]);
+  }
 }

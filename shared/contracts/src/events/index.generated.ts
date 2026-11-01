@@ -6,11 +6,12 @@ import { event as event_colonyFounded } from './colony-founded';
 import { event as event_devPong } from './dev-pong';
 import { event as event_devTuned } from './dev-tuned';
 import { event as event_devWarp } from './dev-warp';
+import { event as event_groundRevealed } from './ground-revealed';
 import { event as event_hqLanded } from './hq-landed';
 import { event as event_obstacleRemoved } from './obstacle-removed';
 import { event as event_tilePrepared } from './tile-prepared';
 
-export const EVENTS = [event_buildingCompleted, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_hqLanded, event_obstacleRemoved, event_tilePrepared] as const;
+export const EVENTS = [event_buildingCompleted, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_groundRevealed, event_hqLanded, event_obstacleRemoved, event_tilePrepared] as const;
 
 export type EventKind = (typeof EVENTS)[number]['kind'];
 export const EVENT_KINDS = [...EVENTS.map((d) => d.kind)] as unknown as readonly [EventKind, ...EventKind[]];

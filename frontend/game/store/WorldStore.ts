@@ -318,7 +318,7 @@ export class LocalHost {
           reason: 'join',
           colonyId: null,
           planet: { id: this.sim.state.meta.planetId, type: this.sim.state.meta.planetType, name: 'local' },
-          state: this.sim.snapshot(),
+          state: this.sim.snapshot({ forClient: true }),
           simVersion: SIM_VERSION,
           dataHash: compileData(flagsFromList(this.flagsList)).hash,
           tick: this.sim.tick,
@@ -347,7 +347,7 @@ export class LocalHost {
       this.msgs.emit({
         v: 1,
         t: 'delta',
-        d: { fromTick: from, toTick: this.sim.tick, diff: this.sim.diffSince(from) },
+        d: { fromTick: from, toTick: this.sim.tick, diff: this.sim.diffSince(from, { forClient: true }) },
       } as ServerMessage);
     }
     return this.sync(true);

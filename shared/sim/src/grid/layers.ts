@@ -15,18 +15,24 @@ const BASE: FieldDef[] = [
   { name: 'anchors', dtype: 'u8', wave: 'W01' }, // count of friendly anchor buildings claiming this tile (W01-17)
   { name: 'graceUntil', dtype: 'f64', wave: 'W01' }, // tick when zero-anchor tile reverts to unclaimed
   { name: 'changedAt', dtype: 'u32', wave: 'W00' },
+  // Hidden subsurface (D-38): what Clear / Break uncovers. Server-only, redacted from client snapshots and diffs.
+  { name: 'subDeposit', dtype: 'u8', wave: 'W01', hidden: true }, // DEPOSIT code buried under the tile, 0 = none
+  { name: 'subRichness', dtype: 'f32', wave: 'W01', hidden: true }, // its richness (bp), copied to `richness` on reveal
 ];
 
 const layers: FieldDef[] = [...BASE];
 
-export function defineTileLayer(name: string, dtype: DType, wave: WaveId): void {
+export function defineTileLayer(name: string, dtype: DType, wave: WaveId, opts: { hidden?: boolean } = {}): void {
   const prev = layers.find((l) => l.name === name);
   if (prev) {
     if (prev.dtype !== dtype) throw new Error(`tile layer ${name} already defined as ${prev.dtype}`);
     return;
   }
-  layers.push({ name, dtype, wave });
+  layers.push({ name, dtype, wave, ...(opts.hidden ? { hidden: true } : {}) });
 }
+
+/** Layers a client may see (everything but `hidden` ones). */
+export const clientTileLayers = (): readonly FieldDef[] => layers.filter((l) => !l.hidden);
 
 export const tileLayers = (): readonly FieldDef[] => layers;
 

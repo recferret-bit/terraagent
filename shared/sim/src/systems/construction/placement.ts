@@ -1,7 +1,7 @@
 import type { RejectCode } from '@terra/contracts';
 import { dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, type DepositRule, type GeoBlock } from '../../grid/geo';
+import { GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { defaultW01Data } from '../hq';
@@ -33,6 +33,8 @@ export interface PlacementWorld {
   prep: ArrayLike<number>;
   deposit: ArrayLike<number> | null;
   owner: ArrayLike<number>;
+  /** Ground height (m). With relief (D-38) a footprint must be level: see `MAX_FOOTPRINT_SPREAD_M`. */
+  height?: ArrayLike<number> | null;
   valid?: ArrayLike<number> | null;
   entities: readonly PlacementEntity[];
 }
@@ -49,7 +51,7 @@ export interface PlacementRule {
 }
 
 /** Why a placement fails; maps 1:1 to a protocol `RejectCode` and a UI text. */
-export type PlacementBlock = GeoBlock | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'hubExists' | 'noBuilder' | 'builderBusy' | 'tierLocked' | 'badArgs';
+export type PlacementBlock = GeoBlock | 'uneven' | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'hubExists' | 'noBuilder' | 'builderBusy' | 'tierLocked' | 'badArgs';
 
 export interface PlacementTile {
   q: number;
@@ -99,7 +101,7 @@ export interface EvaluatePlacementOpts {
 
 const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
   water: 'terrain_unbuildable', trees: 'terrain_unbuildable', rock: 'terrain_unbuildable', slope: 'terrain_unbuildable',
-  hole: 'terrain_unbuildable', ridge: 'terrain_unbuildable', deposit: 'terrain_unbuildable', noDeposit: 'terrain_unbuildable',
+  hole: 'terrain_unbuildable', ridge: 'terrain_unbuildable', uneven: 'terrain_unbuildable', deposit: 'terrain_unbuildable', noDeposit: 'terrain_unbuildable',
   outOfMap: 'site_blocked', occupied: 'site_blocked', hubExists: 'site_blocked',
   foreign: 'not_own_territory', unclaimed: 'not_own_territory',
   noBuilder: 'worker_tier_locked', builderBusy: 'worker_tier_locked', tierLocked: 'tier_locked', badArgs: 'invalid_args',
@@ -107,7 +109,7 @@ const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
 
 const BLOCK_TEXT: Readonly<Record<PlacementBlock, string>> = {
   ...GEO_BLOCK_TEXT,
-  outOfMap: 'outside the map', foreign: 'not your territory', unclaimed: 'not your territory',
+  uneven: 'uneven ground', outOfMap: 'outside the map', foreign: 'not your territory', unclaimed: 'not your territory',
   occupied: 'another building is here', hubExists: 'hub already exists', noBuilder: 'requires HQ',
   builderBusy: 'builder unavailable', tierLocked: 'tier locked', badArgs: 'invalid site',
 };
@@ -218,6 +220,17 @@ function billFor(tiles: readonly PlacementTile[], data?: CompiledDataLike): Plac
   };
 }
 
+function footprintSpread(world: PlacementWorld, tiles: readonly PlacementTile[]): number {
+  if (!world.height) return 0;
+  let lo = Infinity, hi = -Infinity;
+  for (const t of tiles) {
+    const h = world.height[t.tileIdx];
+    if (h < lo) lo = h;
+    if (h > hi) hi = h;
+  }
+  return tiles.length ? hi - lo : 0;
+}
+
 const fail = (block: PlacementBlock, tiles: PlacementTile[], bill: PlacementBill): PlacementResult => {
   const prepared = tiles.filter((t) => t.prepared).length;
   return { ok: false, code: BLOCK_CODE[block], block, text: BLOCK_TEXT[block], tiles, preparedCount: prepared, unpreparedCount: tiles.length - prepared, bill };
@@ -241,6 +254,7 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   const tiles = getBuildingFootprintTiles(q, r, rule.footprint).map((p) => evaluateTile(world, rule, colonyId, occupied, p.q, p.r, idx.indexOf(p.q, p.r)));
   const bill = billFor(tiles, opts.data);
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
+  if (footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
   const cb = colonyBlock(world, rule, opts);
   if (cb) return fail(cb, tiles, bill);
   const prepared = tiles.filter((t) => t.prepared).length;

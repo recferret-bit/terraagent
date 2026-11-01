@@ -1,6 +1,7 @@
 import terrainTable from '../data/terrain';
 import { decodeValue } from '../codec/values';
 import type { EngineDiff } from '../host/diff';
+import { noteTileStamp } from './sectors';
 import type { CompiledDataLike } from '../kernel/config';
 import type { Grid, PlanetMeta, PlanetState } from '../kernel/state';
 import type { TypedArray } from '../kernel/types';
@@ -258,11 +259,13 @@ function stampTile(layers: TileLayersLike, meta: PlanetMeta | undefined, tileIdx
   if (!layers.changedAt) return;
   if (tick !== undefined) {
     layers.changedAt[tileIdx] = tick;
+    noteTileStamp(layers.changedAt, tileIdx, tick);
     return;
   }
   const baseTick = meta ? meta.tick + 1 : 1;
   const nextStamp = Math.max(baseTick, (layers.changedAt[tileIdx] ?? 0) + 1);
   layers.changedAt[tileIdx] = nextStamp;
+  noteTileStamp(layers.changedAt, tileIdx, nextStamp);
 }
 
 /** Sets a tile's `prep` state (`PREP.*`) and stamps `changedAt` so the next delta carries the change. */

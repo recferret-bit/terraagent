@@ -437,7 +437,7 @@ describe('W01-38: returning profile & local fallback', () => {
 
     expect(boot.mode).toBe('local');
     expect(boot.planet.id).toBe('pl_dev');
-    expect(boot.planet.type).toBe('temperate');
+    expect(boot.planet.type).toBe('desert'); // DEV_PLANET_TYPE (D-38)
     expect(boot.planet.radius).toBe(56);
     expect(boot.localHost).toBeDefined();
     expect(statuses).toContain('Contacting orbit…');

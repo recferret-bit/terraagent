@@ -1,6 +1,7 @@
 import { createStore, type EntityStore } from '../ecs/store';
 import { hexCount } from '../grid/hex';
 import { tileLayers } from '../grid/layers';
+import { noteTileStamp } from '../grid/sectors';
 import { linkGridMeta } from '../grid/tileModel';
 import { SIM_VERSION } from './constants';
 import { seedRng, type RngState } from './rng';
@@ -17,6 +18,8 @@ export interface PlanetMeta {
   tick: number;
   nextEntityId: number;
   ended: boolean;
+  /** World generator version that built the ground (`GEN_VERSION`, D-38); absent on planets built before it. */
+  genVersion?: number;
 }
 
 export interface Grid {
@@ -92,7 +95,10 @@ export function createState(p: NewStateParams): PlanetState {
 }
 
 /** Marks a tile changed at `tick` (call after writing any layer of tile `i`). */
-export const touchTile = (s: PlanetState, i: number, tick: number) => { s.grid.layers.changedAt[i] = tick; };
+export const touchTile = (s: PlanetState, i: number, tick: number) => {
+  s.grid.layers.changedAt[i] = tick;
+  noteTileStamp(s.grid.layers.changedAt, i, tick);
+};
 
 /** Writes a blob and stamps it. */
 export function setBlob(s: PlanetState, name: string, value: unknown, tick: number): void {

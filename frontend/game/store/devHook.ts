@@ -24,12 +24,12 @@ export function installWorldDevHook(): void {
   const feed = (n = 1) => {
     if (!welcomed) {
       welcomed = true;
-      msgs.emit({ v: 1, t: 'welcome', d: { reason: 'join', colonyId: null, planet: { id: 'pl_dev', type: 'temperate', name: 'dev' }, state: auth.snapshot(), simVersion: SIM_VERSION, dataHash: compileData(flagsFromList(flags)).hash, tick: auth.tick, serverTimeMs: Date.now(), tickMs: 200, deltaHz: 5, flags } } as ServerMessage);
+      msgs.emit({ v: 1, t: 'welcome', d: { reason: 'join', colonyId: null, planet: { id: 'pl_dev', type: 'temperate', name: 'dev' }, state: auth.snapshot({ forClient: true }), simVersion: SIM_VERSION, dataHash: compileData(flagsFromList(flags)).hash, tick: auth.tick, serverTimeMs: Date.now(), tickMs: 200, deltaHz: 5, flags } } as ServerMessage);
     }
     for (let i = 0; i < n; i++) {
       const from = auth.tick;
       auth.step(1);
-      msgs.emit({ v: 1, t: 'delta', d: { fromTick: from, toTick: auth.tick, diff: auth.diffSince(from) } } as ServerMessage);
+      msgs.emit({ v: 1, t: 'delta', d: { fromTick: from, toTick: auth.tick, diff: auth.diffSince(from, { forClient: true }) } } as ServerMessage);
     }
   };
   store.start(flags);

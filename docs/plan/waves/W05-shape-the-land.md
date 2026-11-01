@@ -40,7 +40,7 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 
 - **The hackathon e2e covers demo steps:** 1–5, 11, 13. `W05-33` tags these steps `@hack`; `npm run e2e -- --hack` runs only them, and the other steps run once their rows land.
 - **Resource tiers in the demo (D-34):** T1 everywhere, plus one T2 unlock on the Metals Extractor in the seeded `w05-tiers` scenario (step 13, W05-34). Reaching 30 % Terraform by hand takes too long for a live demo, so the scenario seeds it. T3, Bio tiers (W03-30, W05-35) and the tier-unlock indicator (W05-36) are stretch or later.
-- **Deferred:** Territory Beacon and border reverts (steps 6–8), storms, lightning and meteors (steps 9–10), the `desert` and `ocean` planet types (step 12; D-27 / D-33: the demo is `temperate` only), Hydro, Deep Reclaim, the Terraformer archetype (an existing robot stands in), op VFX.
+- **Deferred:** Territory Beacon and border reverts (steps 6–8), storms, lightning and meteors (steps 9–10), the `desert` and `ocean` planet types (step 12; D-27 / D-33: the demo is `temperate` only; **since D-38 their ground generation already exists in W01** — W05 adds the type-specific gameplay: storms, Water Extractor ×0.5, richness tuning, ops that level dunes), Hydro, Deep Reclaim, the Terraformer archetype (an existing robot stands in), op VFX.
 - **Still true:** with `TA_WAVES` below this wave the app behaves exactly as the previous wave's tag.
 
 ## Features covered

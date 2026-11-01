@@ -15,6 +15,12 @@ export interface PlanetParams {
 
 export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'capacity'>> & { capacity?: number }) => PlanetState;
 
+/**
+ * Bumped when generation output changes; `createPlanet` stamps it into `meta.genVersion` so hosts can tell planets
+ * built by an older generator apart (D-38: dev planets are wiped, local saves start fresh).
+ */
+export const GEN_VERSION = 2;
+
 const generators = new Map<string, PlanetGenerator>();
 
 /** Registers a generator under an id (a later wave adds its file, it does not edit `createPlanet`). */

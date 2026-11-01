@@ -1,5 +1,5 @@
 import { Inject, Injectable, type BeforeApplicationShutdown } from '@nestjs/common';
-import { restore } from '@terra/sim';
+import { GEN_VERSION, restore } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge, Histogram } from 'prom-client';
 import { MetricsRegistry } from '../../core/metrics.registry';
@@ -59,7 +59,16 @@ export class SnapshotService implements BeforeApplicationShutdown {
       try {
         const snap = await this.store.latest(id, (tick) => this.log.warn({ planetId: id, tick: Number(tick) }, 'corrupt snapshot skipped'));
         if (!snap) continue;
-        if (id !== 'pl_dev' && !id.startsWith('pl_dev_') && restore(snap.raw).colonies?.some((c) => c.status !== 'eliminated')) {
+        const isDev = id === 'pl_dev' || id.startsWith('pl_dev_');
+        let state: ReturnType<typeof restore> | null = null;
+        try { state = restore(snap.raw); } catch (e) { if (!isDev) throw e; }
+        if (isDev && (!state || state.meta.genVersion !== GEN_VERSION)) {
+          // Old ground (flat, pre-D-38) or an unrestorable old sim version: wipe, boot recreates the dev planet fresh.
+          await this.store.wipeDevPlanet(id);
+          this.log.warn({ planetId: id, genVersion: state?.meta.genVersion ?? null, now: GEN_VERSION }, `wiped ${id}: built by an older world generator / sim`);
+          continue;
+        }
+        if (!isDev && state?.colonies?.some((c) => c.status !== 'eliminated')) {
           this.planets.markScenarioColonyPlanet(id);
         }
         const tick = await this.planets.load(id, { snapshot: snap.raw });

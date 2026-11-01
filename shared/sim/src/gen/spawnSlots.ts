@@ -338,7 +338,11 @@ function rebalanceGlobalTerrainMix(
  * Generates `capacity` spawn slots on the radius-32 ring (±3 jitter), enforces all `UO-TF-09`
  * terrain and deposit guarantees around every slot, and stores the slots in `state.blobs.spawnSlots`.
  */
-export function generateSpawnSlots(state: SimState, capacity = DEFAULT_SPAWN_CAPACITY): SpawnSlot[] {
+export function generateSpawnSlots(
+  state: SimState,
+  capacity = DEFAULT_SPAWN_CAPACITY,
+  opts: { rebalance?: boolean } = {},
+): SpawnSlot[] {
   const hex = hexIndex(state.grid.radius);
   const slots = pickRingSlots(state, capacity);
   const convertedCounts = new Map<number, number>();
@@ -363,7 +367,8 @@ export function generateSpawnSlots(state: SimState, capacity = DEFAULT_SPAWN_CAP
     enforceR12AllDeposits(state, hex, slot, convertedCounts, reservedTiles);
   }
 
-  rebalanceGlobalTerrainMix(state, convertedCounts, slotZoneTiles);
+  // Quota planets (temperate / ocean) give back converted tiles elsewhere; relief planets keep their natural mix.
+  if (opts.rebalance !== false) rebalanceGlobalTerrainMix(state, convertedCounts, slotZoneTiles);
   setBlob(state, 'spawnSlots', slots, state.meta.tick);
   return slots;
 }

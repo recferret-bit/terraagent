@@ -2,13 +2,15 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { PlanetType } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
+import { DEV_PLANET_SEED as SIM_DEV_PLANET_SEED, DEV_PLANET_TYPE as SIM_DEV_PLANET_TYPE } from '@terra/sim';
 import { PRISMA } from '../../db/db.module';
 import { APP_ENV, type AppEnv } from '../tokens';
 
 export const DEV_PLANET_CAPACITY = 5;
 export const DEV_PLANET_RADIUS = 56;
-export const DEV_PLANET_SEED = 'golden-1';
-export const DEV_PLANET_TYPE: PlanetType = 'temperate';
+/** Shared with the client's local fallback (`@terra/sim`): one source for the dev planet's type and seed (D-38). */
+export const DEV_PLANET_SEED: string = SIM_DEV_PLANET_SEED;
+export const DEV_PLANET_TYPE: PlanetType = SIM_DEV_PLANET_TYPE;
 
 export interface PlanetRecord {
   readonly id: string;

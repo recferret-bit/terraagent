@@ -2,9 +2,8 @@ import terrainTable from '../data/terrain';
 import { hexDistance, hexIndex } from '../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import { nextInt, nextU32, seedStream } from '../kernel/rng';
-import { createState, type PlanetState, type PlanetType } from '../kernel/state';
-import { registerGenerator, type PlanetParams } from './generators';
-import { DEFAULT_SPAWN_CAPACITY, generateSpawnSlots } from './spawnSlots';
+import type { PlanetState, PlanetType } from '../kernel/state';
+import { fbm2d, hash2d } from './world/noise';
 
 const SQRT3_HALF = 0.8660254;
 const DEPOSIT_CYCLE = [DEPOSIT.metals, DEPOSIT.minerals, DEPOSIT.oil] as const;
@@ -19,7 +18,10 @@ function readTemperateNum(field: string, fallback: number): number {
   return typeof row?.[field] === 'number' ? (row[field] as number) : fallback;
 }
 
-const SHARE_BP = {
+/** Terrain class shares in basis points (the temperate classifier fills exactly these quotas). */
+export interface TerrainShares { flat: number; forest: number; rock: number; slope: number; hole: number; shallow: number; deep: number }
+
+export const TEMPERATE_SHARES: TerrainShares = {
   flat: readShareBp('flat', 4500),
   forest: readShareBp('forest', 2500),
   rock: readShareBp('rock', 800),
@@ -69,42 +71,8 @@ export function getDepositRichnessBp(
   return Math.round((baseBp * modBp) / 10000);
 }
 
-/** Pure 32-bit integer lattice hash in [0, 1). */
-function hash2d(ix: number, iy: number, seed: number): number {
-  let h = (seed ^ Math.imul(ix, 0x9e3779b1) ^ Math.imul(iy, 0x85ebca6b)) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
-  h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-/** Smoothstep 2D value noise in [0, 1). */
-function valueNoise2d(x: number, y: number, scale: number, seed: number): number {
-  const sx = x * scale;
-  const sy = y * scale;
-  const x0 = Math.floor(sx);
-  const y0 = Math.floor(sy);
-  const fx = sx - x0;
-  const fy = sy - y0;
-  const ux = fx * fx * (3 - 2 * fx);
-  const uy = fy * fy * (3 - 2 * fy);
-  const v00 = hash2d(x0, y0, seed);
-  const v10 = hash2d(x0 + 1, y0, seed);
-  const v01 = hash2d(x0, y0 + 1, seed);
-  const v11 = hash2d(x0 + 1, y0 + 1, seed);
-  const a = v00 + (v10 - v00) * ux;
-  const b = v01 + (v11 - v01) * ux;
-  return Math.fround(a + (b - a) * uy);
-}
-
-/** 3-octave fractal value noise in [0, 1). */
-function fbm2d(x: number, y: number, baseScale: number, seed: number): number {
-  const o1 = valueNoise2d(x, y, baseScale, seed);
-  const o2 = valueNoise2d(x + 17.3, y - 9.1, baseScale * 2, (seed + 0x9e3779b9) >>> 0);
-  const o3 = valueNoise2d(x - 31.7, y + 23.5, baseScale * 4, (seed + 0x3c6ef372) >>> 0);
-  return Math.fround(o1 * 0.57 + o2 * 0.29 + o3 * 0.14);
-}
-
-function assignTemperateTerrain(s: PlanetState): void {
+/** Temperate relief + classification by quota (rank of elevation / basin / moisture fields), heights in metres. */
+export function assignTemperateTerrain(s: PlanetState, SHARE_BP: TerrainShares = TEMPERATE_SHARES): void {
   const { radius, count, layers } = s.grid;
   const terrain = layers.terrain as Uint8Array;
   const prep = layers.prep as Uint8Array;
@@ -195,7 +163,8 @@ function assignTemperateTerrain(s: PlanetState): void {
   }
 }
 
-function assignTemperateDeposits(s: PlanetState): void {
+/** Visible deposits: ~4 % of land tiles, spaced ≥ 2 apart, cycling metals / minerals / oil. */
+export function assignTemperateDeposits(s: PlanetState): void {
   const { radius, count, layers } = s.grid;
   const terrain = layers.terrain as Uint8Array;
   const deposit = layers.deposit as Uint8Array;
@@ -253,19 +222,3 @@ function assignTemperateDeposits(s: PlanetState): void {
     richness[i] = getDepositRichnessBp(seed, i, kind, planetType);
   }
 }
-
-export function generateTemperate({
-  seed,
-  planetId,
-  planetType,
-  radius,
-  capacity = DEFAULT_SPAWN_CAPACITY,
-}: Required<Omit<PlanetParams, 'type' | 'id' | 'capacity'>> & { capacity?: number }): PlanetState {
-  const s = createState({ planetId, planetType, seed, radius });
-  assignTemperateTerrain(s);
-  assignTemperateDeposits(s);
-  generateSpawnSlots(s, capacity);
-  return s;
-}
-
-registerGenerator('temperate', generateTemperate);

@@ -3,6 +3,7 @@ import { ENTITY_KIND } from '../../ecs/columns';
 import { insertRow, rowOf, setField } from '../../ecs/store';
 import { createPlanet } from '../../gen/createPlanet';
 import { hasGenerator } from '../../gen/generators';
+import { forgetTileStamps } from '../../grid/sectors';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { seedRng } from '../../kernel/rng';
@@ -154,7 +155,7 @@ const seed = defineCommandHandler({
     });
     s.meta.seed = nextSeed;
     s.rng = seedRng(nextSeed);
-    const copyLayers = ['terrain', 'prep', 'deposit', 'richness', 'height'] as const;
+    const copyLayers = ['terrain', 'prep', 'deposit', 'richness', 'height', 'subDeposit', 'subRichness'] as const;
     for (const layer of copyLayers) {
       if (temp.grid.layers[layer] && s.grid.layers[layer]) {
         s.grid.layers[layer].set(temp.grid.layers[layer]);
@@ -163,6 +164,8 @@ const seed = defineCommandHandler({
     if (temp.blobs.spawnSlots) {
       setBlob(s, 'spawnSlots', temp.blobs.spawnSlots.value, ctx.tick);
     }
+    forgetTileStamps(s.grid.layers.changedAt); // bulk write: sector stamps are rebuilt on the next diff
+    if (temp.meta.genVersion !== undefined) s.meta.genVersion = temp.meta.genVersion;
     s.grid.layers.changedAt.fill(ctx.tick);
   },
 });

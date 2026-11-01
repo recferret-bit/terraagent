@@ -14,6 +14,17 @@ export function isGroundObstacle(terrain: number): boolean {
   return terrain === TERRAIN.forest || terrain === TERRAIN.rock;
 }
 
+/**
+ * Ground movement: untouched trees and rock (until Clear / Break) and resource deposits (their ore, crystal and oil
+ * nodes stand on the tile) cannot be entered. Deep water, ridges and moats are impassable by terrain (`isGroundPassable`).
+ */
+export function isGroundMoveBlocked(terrain: number, deposit: number): boolean {
+  return isGroundObstacle(terrain) || deposit !== DEPOSIT.none;
+}
+
+/** Max height difference (m) inside one building footprint: Grade prepares a tile, it does not move dunes (Level is W05). */
+export const MAX_FOOTPRINT_SPREAD_M = 0.6;
+
 /** Ground is ready for a foundation (Prepared or Living). */
 export function isPreparedGround(prep: number): boolean {
   return prep === PREP.prepared || prep === PREP.living;

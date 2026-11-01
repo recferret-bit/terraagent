@@ -136,7 +136,7 @@ describe('GET /v1/me/home (W01-04)', () => {
     expect(typeof body.colony.spawnR).toBe('number');
 
     expect(body.planet.id).toBe('pl_dev');
-    expect(body.planet.type).toBe('temperate');
+    expect(body.planet.type).toBe('desert'); // DEV_PLANET_TYPE (D-38)
     expect(body.planet.seats).toEqual({ taken: 1, capacity: 5 });
     expect(seatedIds).toEqual([body.colony.id]);
   });
@@ -278,7 +278,7 @@ describe('Dev planet seat assignment & system.spawnColony (W01-05)', () => {
 
     const plDevState = restore((await gamePlanets.fullState('pl_dev')).bytes);
     expect(plDevState.meta.planetId).toBe('pl_dev');
-    expect(plDevState.meta.planetType).toBe('temperate');
+    expect(plDevState.meta.planetType).toBe('desert'); // DEV_PLANET_TYPE (D-38)
     expect(plDevState.grid.radius).toBe(56);
     expect(plDevState.colonies).toHaveLength(5);
 

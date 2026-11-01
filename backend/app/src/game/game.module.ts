@@ -1,6 +1,7 @@
 import { availableParallelism } from 'node:os';
 import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 import { defineEnv } from '@terra/config';
+import { DEV_PLANET_SEED, DEV_PLANET_TYPE } from '@terra/sim';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
@@ -122,7 +123,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     const have = new Set(this.planets.loadedIds());
     const ids = devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size).filter((id) => !have.has(id));
     const devOpts = this.flags.has('W01')
-      ? { params: { type: 'temperate' as const, planetType: 'temperate' as const, seed: 'golden-1', radius: 56, capacity: 5 } }
+      ? { params: { type: DEV_PLANET_TYPE, planetType: DEV_PLANET_TYPE, seed: DEV_PLANET_SEED, radius: 56, capacity: 5 } }
       : {};
     await Promise.all(ids.map((id) => this.planets.load(id, devOpts)));
   }

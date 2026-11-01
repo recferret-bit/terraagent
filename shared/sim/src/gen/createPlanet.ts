@@ -1,8 +1,8 @@
 import type { PlanetState } from '../kernel/state';
 import { DEV_PLANET_RADIUS } from './flat';
-import { getGenerator, type PlanetParams } from './generators';
+import { GEN_VERSION, getGenerator, type PlanetParams } from './generators';
 import './flat';
-import './temperate';
+import './world';
 
 /**
  * Creates a planet with the generator named by `type` (SIM-GEN). Pure: the same params give the same planet.
@@ -12,11 +12,13 @@ export function createPlanet(p: PlanetParams): PlanetState {
   const type = p.type ?? 'temperate';
   const gen = getGenerator(type);
   if (!gen) throw new Error(`unknown planet generator "${type}"`);
-  return gen({
+  const state = gen({
     seed: p.seed,
     planetId: p.planetId ?? p.id ?? 'pl_dev',
     planetType: p.planetType ?? 'temperate',
     radius: p.radius ?? DEV_PLANET_RADIUS,
     capacity: p.capacity,
   });
+  state.meta.genVersion = GEN_VERSION;
+  return state;
 }

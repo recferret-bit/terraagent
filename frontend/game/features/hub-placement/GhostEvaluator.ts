@@ -77,6 +77,7 @@ interface ExtractedWorld {
   prep: Uint8Array | null;
   deposit: Uint8Array | null;
   owner: Int8Array | null;
+  height: Float32Array | null;
   entities: ExtractedEntity[];
   orders: ConstructionOrder[];
 }
@@ -176,6 +177,7 @@ function extractWorld(source: GhostSource, fallbackTiles?: ClientTiles | null): 
       terrain: source.grid.layers.terrain as Uint8Array,
       prep: source.grid.layers.prep as Uint8Array,
       deposit: (source.grid.layers.deposit as Uint8Array | undefined) ?? null,
+      height: (source.grid.layers.height as Float32Array | undefined) ?? null,
       owner: source.grid.layers.owner as Int8Array,
       entities,
       orders: extractOrdersFromBlobs(source.blobs as unknown as Record<string, unknown>),
@@ -197,6 +199,7 @@ function extractWorld(source: GhostSource, fallbackTiles?: ClientTiles | null): 
     terrain: tiles?.terrain ?? null,
     prep: tiles?.prep ?? null,
     deposit: tiles?.deposit ?? null,
+    height: tiles?.height ?? null,
     owner: tiles?.owner ?? null,
     entities: extractEntitiesFromView(v.entities, v.count),
     orders: extractOrdersFromBlobs(v.blobs),
@@ -214,6 +217,7 @@ export function ghostPlacementWorld(source: GhostSource, fallbackTiles?: ClientT
     prep: w.prep ?? new Uint8Array(0),
     deposit: w.deposit,
     owner: w.owner ?? new Int8Array(0),
+    height: w.height,
     entities: w.entities,
   };
 }

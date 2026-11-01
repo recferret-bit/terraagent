@@ -17,9 +17,17 @@ import { decodeValue, encodeValue } from './values';
  */
 export interface SnapshotHeader { simVersion: number; codec: 'msgpack'; tick: number; planetId: string; [k: string]: unknown }
 
-export function snapshot(state: PlanetState): Uint8Array {
+export interface SnapshotOpts {
+  /** Client-bound (welcome / local-host join): omit `hidden` tile layers; `restore` zero-fills them (D-38). */
+  forClient?: boolean;
+}
+
+export function snapshot(state: PlanetState, opts: SnapshotOpts = {}): Uint8Array {
   const header: SnapshotHeader = { simVersion: SIM_VERSION, codec: 'msgpack', tick: state.meta.tick, planetId: state.meta.planetId };
-  return encodeValue({ header, state });
+  if (!opts.forClient) return encodeValue({ header, state });
+  const layers: Record<string, TypedArray> = {};
+  for (const l of tileLayers()) if (!l.hidden && state.grid.layers[l.name]) layers[l.name] = state.grid.layers[l.name];
+  return encodeValue({ header, state: { ...state, grid: { ...state.grid, layers } } });
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

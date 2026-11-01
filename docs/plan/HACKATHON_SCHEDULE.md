@@ -37,10 +37,10 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 | 6 | [W00-24](waves/W00-platform-skeleton.md) | M | 5.5 | Delta builder in the sim thread: every 200 ms one engine diff per planet (`diffSince(tick)`: changed entity ro |
 | 7 | [W01-08](waves/W01-landfall.md) | S | 6.0 | Tile model in sim: `grid.terrain`, `grid.prep` (`wild/flat/prepared/irrigated/living/ridge/moat`), `grid.owner |
 | 8 | [W01-13](waves/W01-landfall.md) | M | 7.0 | Ops Grade/Clear/Break: per-tile time (3/5/6 s at 1.0×), energy (20/30/60 E) drawn evenly over the work, lump y |
-| 9 | [W01-14](waves/W01-landfall.md) | S | 7.5 | Command Hub placement validation: 3×3 footprint, inside the map, not foreign-owned, no Deep Water; unclaimed t |
-| 10 | [W01-15](waves/W01-landfall.md) | M | 8.5 | Linked prep: placing on unprepared tiles creates one linked terraform order covering every missing op; constru |
-| 11 | [W01-16](waves/W01-landfall.md) | S | 9.0 | Hub construction: paid on start (`200/100/50/50`), progress `buildTime / Σrate` (30 s at 1.0× → 20 s with the  |
-| 12 | [W02-09](waves/W02-first-light.md) | M | 10.0 | Generic T1 construction: any data row with a footprint uses the W01 placement, linked prep and paid-on-start b |
+| 9 | [W01-14](waves/W01-landfall.md) | S | 7.5 | Command Hub placement validation through the one shared `evaluatePlacement` (D-37; same function in the `place |
+| 10 | [W01-15](waves/W01-landfall.md) | M | 8.5 | Linked prep: placing on unprepared Flat tiles creates one linked terraform order covering the missing Grade op |
+| 11 | [W01-16](waves/W01-landfall.md) | S | 9.0 | Hub construction: full cost `200/100/50/50` must be affordable to start, then spent in whole units as it is bu |
+| 12 | [W02-09](waves/W02-first-light.md) | M | 10.0 | Generic T1 construction: any data row with a footprint uses the W01 shared `evaluatePlacement` (D-37, per-buil |
 | 13 | [W02-10](waves/W02-first-light.md) | M | 11.0 | Hub worker production: Units lane at the Hub (5-slot buffer, 1.0×), paid on start, `supply_cap` check (supply  |
 | 14 | [W02-13](waves/W02-first-light.md) | M | 12.0 | Queue v1, part 1: Construction and Units lanes; entry lifecycle `queued → waiting(reason) → in_progress → done |
 | 15 | [W02-14](waves/W02-first-light.md) | M | 13.0 | Queue v1, part 2: wait reasons `resources` (with the missing amounts), `storage` (cost > cap, never earmarks), |

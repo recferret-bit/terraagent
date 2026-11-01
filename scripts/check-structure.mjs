@@ -7,6 +7,8 @@ import ts from 'typescript';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
+// Pure grid geometry render may share with the sim (no state, no rules): hex coordinates and the sector index (D-38).
+const RENDER_SIM_GEOMETRY = new Set(['@terra/sim/grid/hex', '@terra/sim/grid/sectors']);
 const ROOT = resolve(import.meta.dirname, '..');
 const MAX_FILE = 500, MAX_FUNC = 100;
 const SKIP = new Set(['node_modules', 'dist', 'generated', 'test-results', 'playwright-report', '.out']);
@@ -57,7 +59,7 @@ function checkLayer(rel, spec, line) {
     return;
   }
   // render may use the presentation-safe hex math (CLIENT §7), nothing else of the engine
-  if (areaOf(rel) === 'render' && /^@terra\/sim(\/|$)/.test(spec) && spec !== '@terra/sim/grid/hex') problems.push(`layer render imports '${spec}' (apps pass sim views in)  ${rel}:${line}`);
+  if (areaOf(rel) === 'render' && /^@terra\/sim(\/|$)/.test(spec) && !RENDER_SIM_GEOMETRY.has(spec)) problems.push(`layer render imports '${spec}' (apps pass sim views in)  ${rel}:${line}`);
   const from = areaOf(rel);
   if (!from || !spec.startsWith('.')) return;
   const to = areaOf(relative(ROOT, resolve(ROOT, dirname(rel), spec)));

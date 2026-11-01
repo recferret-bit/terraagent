@@ -2,6 +2,7 @@ import { ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
+import { revealSubsurface } from '../../grid/subsurface';
 import { setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import { defineCommandHandler } from '../../kernel/commands';
 import { TICK_MS } from '../../kernel/constants';
@@ -185,6 +186,16 @@ function completeTerraformJob(
 
   setTileTerrain(state.grid, tileIdx, TERRAIN.flat, tick);
   setTilePrep(state.grid, tileIdx, PREP.flat, tick);
+  // Removing the obstacle uncovers what world generation buried under it (D-38, `grid/subsurface.ts`).
+  const found = revealSubsurface(state, tileIdx, tick);
+  if (found) {
+    ctx?.emit?.({
+      kind: 'groundRevealed',
+      severity: 'info',
+      colonyIds: [colonyIdStr],
+      data: { colonyId: colonyIdStr, ...(playerId ? { playerId } : {}), q: job.q, r: job.r, ...found },
+    });
+  }
   if (spec.yieldResource && spec.yieldAmount > 0) {
     addColonyResource(state, colonyId, spec.yieldResource, spec.yieldAmount, tick);
   }

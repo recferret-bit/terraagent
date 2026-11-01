@@ -172,7 +172,7 @@ export class PlanetHost {
     const toTick = p.state.meta.tick;
     if (toTick <= p.lastDeltaTick) return;
     const t0 = performance.now();
-    const diff = diffSince(p.state, p.lastDeltaTick);
+    const diff = diffSince(p.state, p.lastDeltaTick, { forClient: true }); // hidden ground never leaves the server (D-38)
     p.deltaMs = performance.now() - t0;
     p.deltaBytes = diff.byteLength;
     const buf = owned(diff);
@@ -205,7 +205,7 @@ export class PlanetHost {
     // The welcome at tick T must be followed by a delta starting at T: close the open window first. Message order on the
     // port guarantees main sees this delta (toTick T, ignored by the joining socket) before the snapshot at T.
     if (p.subscribed) this.sendDelta(planetId, p);
-    const bytes = owned(snapshot(p.state));
+    const bytes = owned(snapshot(p.state, { forClient: true })); // welcome: no hidden layers (D-38)
     this.post({
       t: 'fullState', planetId, reqId, tick: p.state.meta.tick, warp: this.sched?.info(planetId)?.warp ?? 1, bytes, simVersion: p.state.meta.simVersion,
       dataHash: p.pipeline.config.data.hash, planetType: p.state.meta.planetType, overrides: effectiveOverrides(p.tuning),

@@ -150,12 +150,24 @@ export function tileStyle(
   return { r: cr, g: cg, b: cb, ao, rock };
 }
 
+/** Sub-0.15 m noise on flat ground renders perfectly level; from 0.35 m up the sim height is used as is (no step). */
+function levelled(raw: number): number {
+  const a = Math.abs(raw);
+  const t = Math.min(1, Math.max(0, (a - 0.15) / 0.2));
+  return raw * t * t * (3 - 2 * t);
+}
+
+/**
+ * Rendered height of one tile. The sim `height` layer is the ground truth in metres (D-38: dunes, mesas, mountain
+ * ranges); classes only add cosmetic detail on top and keep water below the water plane. Flat and Prepared ground sit
+ * at their own level, so a pad on a raised plateau stays on the plateau.
+ */
 function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number): number {
-  if (prep === HEX_PREP.prepared || prep === HEX_PREP.irrigated || prep === HEX_PREP.living) return 0;
+  if (prep === HEX_PREP.prepared || prep === HEX_PREP.irrigated || prep === HEX_PREP.living) return levelled(raw);
   const h = tileHash01(q, r, 17);
   switch (terrain) {
     case HEX_TERRAIN.flat:
-      return Math.abs(raw) > 0.25 ? raw : 0;
+      return levelled(raw);
     case HEX_TERRAIN.forest:
       return (raw > 0.01 ? raw : 0.12) + 0.06 * h;
     case HEX_TERRAIN.rock: {
@@ -177,8 +189,8 @@ function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep
 
 /**
  * Computes the rendered vertex height for every tile on the planet. When `layers.terrain` is absent, returns `layers.height`
- * directly; when `terrain` is provided, applies class relief (`flat`/`prepared` = 0, `hole` <= -0.35, `rock` elevated,
- * `slope` ramped between neighbour heights, `shallow`/`deep` submerged).
+ * directly; when `terrain` is provided, the sim height (metres) plus class detail (`flat`/`prepared` levelled at their own
+ * height, `hole` <= -0.35, `rock` crags, `slope` eased towards neighbour heights, `shallow`/`deep` submerged).
  */
 export function computeEffectiveHeights(radius: number, layers: HexTileLayers): Float32Array {
   const hx = hexIndex(radius);
@@ -207,7 +219,8 @@ export function computeEffectiveHeights(radius: number, layers: HexTileLayers): 
       if (j >= 0) { sum += base[j]!; n++; }
     }
     const avg = n > 0 ? sum / n : base[i]!;
-    out[i] = Math.min(0.72, Math.max(0.18, 0.65 * base[i]! + 0.35 * avg));
+    // Ease slopes towards their neighbours; never clamp: real relief is metres high (D-38).
+    out[i] = 0.65 * base[i]! + 0.35 * avg;
   }
   return out;
 }

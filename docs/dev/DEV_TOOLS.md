@@ -25,7 +25,7 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 
 | Parameter | Effect |
 |---|---|
-| *(none)* | Fast-start guest boot flow (W01+): orbital splash → `POST /v1/auth/guest` → `GET /v1/me/home` (seats on `pl_dev` or `pl_dev_2` when full) → joins planet → auto-lands immediately into colony view (`Esc → Return to orbit` returns to `/play.html?planet=<kind>`) |
+| *(none)* | Fast-start guest boot flow (W01+): orbital splash → `POST /v1/auth/guest` → `GET /v1/me/home` (seats on `pl_dev` or `pl_dev_2` when full; dev planets are **desert** planets, `DEV_PLANET_TYPE`, D-38; a dev planet saved by an older world generator is wiped and recreated on app start) → joins planet → auto-lands immediately into colony view (`Esc → Return to orbit` returns to `/play.html?planet=<kind>`) |
 | `?planet=dune\|oceanForest\|forestRock` | Opens the **3D Orbital Planet Selector** on that biome (`&deploy=1` launches the 3D atmospheric drop-pod descent immediately). While the pod falls through atmosphere, auth/home pre-warms in the background; at touchdown the browser URL switches to `/play.html` and the live online game mounts on that planet's biome |
 | `?scenario=<id>` | `POST /v1/dev/scenarios/<id>` creates a **fresh** planet from `scenarios/<id>.ts` (`w00` = flat radius-56 planet + test entity id 1 at tile 0,0; `w01` / `w01-landfall` = temperate radius-56 planet with colony 0 landed at spawn slot 0, stock 600/350/200/200, HQ at 800/800 E) and joins it. Each page load creates a new planet; reconnects in the same page rejoin it |
 | `?host=local` | Browser local host: the authoritative engine runs in a Web Worker at 5 TPS; snapshots in IndexedDB (resumed on reload); server-only commands answer `host_unavailable`. Without `scenario`, uses `w00` |
@@ -63,7 +63,7 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 | `grant <resource> <n>` | Add `<n>` to colony stock (`metals`/`metals.t1`, `minerals`/`minerals.t1`, `biomass`/`bio.biomass`, `water`/`bio.water`, bypasses storage cap) (W01) | both |
 | `cell <n>` | Set the colony's HQ power cell to `<n>` E (clamped `0..800`) (W01) | both |
 | `reveal` | Mark every hex tile on the planet explored for the colony (W01) | both |
-| `seed <s\|n>` | Regenerate the current planet from seed `<s>` with the temperate generator (W01) | both |
+| `seed <s\|n>` | Regenerate the current planet's ground (terrain, heights, deposits, hidden subsurface) from seed `<s>` with the planet type's world-generation profile (D-38); colonies and entities stay (W01) | both |
 | `tp <q> <r>` | Teleport the colony's HQ drone to tile `(q, r)` (W01) | both |
 | `land` | Skip drop-pod descent immediately, landing the HQ drone and depositing pod cargo (W01) | both |
 | `border-hatch [on\|off]` | Toggle colour-blind hatch pattern on territory borders (W01) | both |

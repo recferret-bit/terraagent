@@ -71,8 +71,10 @@ export class SimHost {
     return () => { this.outcomeListeners.delete(cb); };
   }
 
-  snapshot(): Uint8Array { return snapshot(this.state); }
-  diffSince(tick: number): Uint8Array { return diffSince(this.state, tick); }
+  /** `forClient` drops hidden (server-only) tile layers: use it for every welcome / join (D-38). */
+  snapshot(opts: { forClient?: boolean } = {}): Uint8Array { return snapshot(this.state, opts); }
+  /** `forClient` drops hidden tile layers: use it for every delta sent to a client (D-38). */
+  diffSince(tick: number, opts: { forClient?: boolean } = {}): Uint8Array { return diffSince(this.state, tick, opts); }
   /** Throws `DiffGapError` when this host is not at the diff's `fromTick`. */
   applyDiff(bytes: Uint8Array): void { applyDiff(this.state, bytes); }
   view(): SimView { return view(this.state); }

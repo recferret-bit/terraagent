@@ -24,7 +24,21 @@ no clock, no `Math.random`, no I/O. The `tsconfig.json` has no DOM or Node types
 - **New state registers, it does not edit the codec or the diff:** `defineEntityColumn`, `defineTileLayer`, or a
   named blob. Codec, diff and clone iterate those tables.
 - **Iteration order is fixed:** entities by ascending id, colonies by index. Randomness only from `ctx.rng(stream)`.
+- **One rule function per previewable rule (D-37):** building placement is `evaluatePlacement(world, opts)` in `systems/construction/placement.ts` over a read-only `PlacementWorld` (`placementWorldFromState` adapts `SimState`; the client adapts its replica view). Tile meaning (`geoBuildBlock`, `isGroundObstacle`) lives in `grid/geo.ts` and is shared with movement and the starter-site guarantee. The `placeBuilding` handler is the authority on the server and in the local host; the client only previews with the same function.
 - **Balance numbers live in `src/data/*.ts` rows** (D-35), never in system code.
+
+## World generation, sectors and hidden ground (D-38, `src/gen/world/`, `src/grid/sectors.ts`)
+
+- `createPlanet` → `generateWorld`: the planet type's profile row (`data/worldgen.ts`) lists stage ids; each stage is a
+  small part in `gen/world/stages/` (`reliefDesert`, `classifyDesert`, `temperateTerrain`, `deposits`, `subsurface`,
+  `landing`). Add a landform / biome as a new stage (`registerWorldStage`) + profile row, never by editing a stage.
+  Stages seed per sector (`ctx.seed(stage, sectorId)`), never from another sector. Bump `GEN_VERSION` when output changes.
+- `height` is **metres** (the renderer draws it as is). Every spawn slot gets a levelled landing zone and a Hub site.
+- Hidden layers (`FieldDef.hidden`: `subDeposit`, `subRichness`) are server-only: client snapshots / diffs use
+  `{ forClient: true }`. `revealSubsurface` (Clear / Break) moves a buried deposit into the public layers.
+- Sectors: 8×8 axial blocks in a quadtree. Every tile stamp (`touchTile`, `stampTile`, `applyDiff`) keeps the per-sector
+  max `changedAt`, which `diffSince` uses to skip untouched sectors. A bulk write to `changedAt` calls `forgetTileStamps`.
+
 
 ## System registry and purity lint (SIM-T-01, SIM-D-06)
 

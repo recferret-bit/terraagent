@@ -1,5 +1,5 @@
 import type { AuthResponse, PlanetType } from '@terra/contracts';
-import { createPlanet, ENTITY_KIND, ENTITY_STATE, getSpawnSlots, type LandingPodState, type ViewEntity } from '@terra/sim';
+import { createPlanet, DEV_PLANET_SEED, DEV_PLANET_TYPE, ENTITY_KIND, ENTITY_STATE, getSpawnSlots, type LandingPodState, type ViewEntity } from '@terra/sim';
 import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
 import { LocalHost } from '../../store/WorldStore';
 
@@ -219,7 +219,7 @@ function normalizeHomePayload(home: Record<string, unknown>): {
 
 /**
  * Graceful local fallback when no backend server is running (or `?host=local&scenario=w01`):
- * creates a `SimHost` on `pl_dev` (`temperate`, `golden-1`, radius `56`) and dispatches `system.spawnColony`.
+ * creates a `SimHost` on `pl_dev` (`DEV_PLANET_TYPE` = desert, `golden-1`, radius `56`) and dispatches `system.spawnColony`.
  */
 export function createLocalBootFallback(
   deviceSecret: string,
@@ -230,9 +230,9 @@ export function createLocalBootFallback(
   const planetState = createPlanet({
     id: 'pl_dev',
     planetId: 'pl_dev',
-    type: 'temperate',
-    planetType: 'temperate',
-    seed: 'golden-1',
+    type: DEV_PLANET_TYPE,
+    planetType: DEV_PLANET_TYPE,
+    seed: DEV_PLANET_SEED,
     radius: 56,
     capacity: 5,
   });
@@ -269,8 +269,8 @@ export function createLocalBootFallback(
     planet: {
       id: 'pl_dev',
       name: 'Dev Planet',
-      type: 'temperate',
-      seed: 'golden-1',
+      type: DEV_PLANET_TYPE,
+      seed: DEV_PLANET_SEED,
       radius: 56,
       state: 'ACTIVE',
     },

@@ -997,6 +997,55 @@
       "summary": "Dev time warp changed: the planet now steps `k` engine steps per tick slot (effective value after the thread budget cap).",
       "wave": "W00"
     },
+    "groundRevealed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "deposit": {
+            "enum": [
+              "metals",
+              "minerals",
+              "oil"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "richnessBp": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "q",
+          "r",
+          "deposit",
+          "richnessBp"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a Clear / Break uncovers a buried deposit from the hidden subsurface (D-38).",
+      "wave": "W01"
+    },
     "hqLanded": {
       "audience": "player",
       "data": {

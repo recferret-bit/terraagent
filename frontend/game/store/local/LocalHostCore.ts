@@ -1,7 +1,7 @@
 import { commandGate, flagsFromList, newId, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, type RejectCode, type ServerMessage } from '@terra/contracts';
 import { createScenarioPlanet } from '@terra/scenarios';
 import {
-  buildPipeline, effectiveOverrides, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS, tune,
+  buildPipeline, effectiveOverrides, GEN_VERSION, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS, tune,
   type BalanceOverrides, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent, type TuneRequest,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
@@ -97,6 +97,7 @@ export class LocalHostCore {
       if (!compatible(snap, { simVersion: SIM_VERSION, dataHash: pipeline.config.data.hash, flags })) return null;
       const host = new SimHost(pipeline);
       host.load(snap.bytes);
+      if (host.state.meta.genVersion !== GEN_VERSION) return null; // ground from an older world generator: start fresh (D-38)
       return { host, live };
     } catch { return null; }
   }
@@ -152,7 +153,7 @@ export class LocalHostCore {
   private flushDelta(): void {
     const toTick = this.host.tick;
     if (!this.joined || toTick <= this.lastDeltaTick) return;
-    const diff = ownBytes(this.host.diffSince(this.lastDeltaTick));
+    const diff = ownBytes(this.host.diffSince(this.lastDeltaTick, { forClient: true }));
     this.server({ v: 1, t: 'delta', tick: toTick, d: { fromTick: this.lastDeltaTick, toTick, diff, events: this.window.splice(0) } });
     this.lastDeltaTick = toTick;
   }
@@ -177,7 +178,7 @@ export class LocalHostCore {
       v: 1, t: 'welcome', tick: meta.tick,
       d: {
         reason, colonyId: null, planet: { id: meta.planetId, type: type.success ? type.data : 'temperate', name: `local ${this.scenario}` },
-        state: ownBytes(this.host.snapshot()), simVersion: meta.simVersion, dataHash: this.host.pipeline.config.data.hash, tick: meta.tick,
+        state: ownBytes(this.host.snapshot({ forClient: true })), simVersion: meta.simVersion, dataHash: this.host.pipeline.config.data.hash, tick: meta.tick,
         serverTimeMs: Math.round(this.deps.wallMs()), tickMs: TICK_MS, deltaHz: 5, flags: [...this.tuning.flags],
         overrides: effectiveOverrides(this.tuning) as Record<string, unknown>, ...(warp > 1 ? { warp } : {}),
       },
