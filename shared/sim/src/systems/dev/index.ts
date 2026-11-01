@@ -8,6 +8,7 @@ import { insertRow, rowOf } from '../../ecs/store';
 import { createPlanet } from '../../gen/createPlanet';
 import { hasGenerator } from '../../gen/generators';
 import { forgetTileStamps } from '../../grid/sectors';
+import { bumpPathEpoch } from '../../grid/tileModel';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { seedRng } from '../../kernel/rng';
@@ -178,6 +179,7 @@ const seed = defineCommandHandler({
     }
     s.grid.layers.changedAt.fill(ctx.tick);
     forgetTileStamps(s.grid.layers.changedAt); // bulk write: sector stamps are rebuilt on the next diff
+    bumpPathEpoch(s.meta); // new ground: paused path searches restart
     if (temp.meta.genVersion !== undefined) s.meta.genVersion = temp.meta.genVersion;
   },
 });
