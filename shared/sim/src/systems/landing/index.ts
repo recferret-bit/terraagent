@@ -1,7 +1,7 @@
 import { dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { insertRow, rowOf, setField } from '../../ecs/store';
-import { getSpawnSlots } from '../../gen/spawnSlots';
+import { ensureStarterHubSpace, getSpawnSlots } from '../../gen/spawnSlots';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
@@ -249,6 +249,7 @@ export function spawnColonyLanding(
   });
 
   const { q, r } = resolveSpawnCoords(state, colonyId, opts, tick);
+  ensureStarterHubSpace(state, q, r, colonyId);
   const kit = resolveStartingKitRow(data);
   const totalTicks = resolveDescentTicks(kit);
   const rawCargo = (kit.cargo ?? {

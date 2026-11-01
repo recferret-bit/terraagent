@@ -2,7 +2,7 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { axialToPlane, hexDistance, hexIndex, hexRound } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
-import { PATH_EXPANSION_BUDGET_PER_STEP, stepPathQueue } from '../../grid/path';
+import { findHexPath, PATH_EXPANSION_BUDGET_PER_STEP, stepPathQueue, type AxialCoord } from '../../grid/path';
 import { defineCommandHandler } from '../../kernel/commands';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
@@ -41,6 +41,28 @@ interface MoveUnitArgs {
 }
 
 const ARRIVAL_EPS = 1e-5;
+
+/** Remaining waypoints per entity row (transient; recomputed lazily if missing, e.g. after a snapshot restore). */
+const waypoints = new WeakMap<object, Map<number, AxialCoord[]>>();
+
+function pathsOf(state: SimState): Map<number, AxialCoord[]> {
+  let m = waypoints.get(state.entities);
+  if (!m) waypoints.set(state.entities, (m = new Map()));
+  return m;
+}
+
+/** Untouched trees and rock block ground units until terraformed (Clear / Break turn them into Flat). */
+function hqObstacle(state: SimState): (tileIdx: number) => boolean {
+  const terrain = state.grid.layers.terrain;
+  return (i) => terrain[i] === TERRAIN.forest || terrain[i] === TERRAIN.rock;
+}
+
+/** A* route over open ground from the unit's current tile to `(q, r)`; waypoints exclude the start tile. */
+function planRoute(state: SimState, from: AxialCoord, q: number, r: number, data: SimCtxData): AxialCoord[] | null {
+  const res = findHexPath(state.grid as never, from, { q, r }, { radius: state.grid.radius, data, blocked: hqObstacle(state) });
+  return res.ok ? res.path.slice(1) : null;
+}
+type SimCtxData = Parameters<typeof syncHqView>[3];
 
 export const moveUnit = defineCommandHandler({
   kind: 'moveUnit',
@@ -81,6 +103,10 @@ export const moveUnit = defineCommandHandler({
     if (terrain === TERRAIN.deep || prep === PREP.ridge || prep === PREP.moat) {
       return 'site_blocked';
     }
+    if (terrain === TERRAIN.forest || terrain === TERRAIN.rock) return 'site_blocked'; // terraform it first
+    const route = planRoute(state, { q: cols.q[row], r: cols.r[row] }, targetQ, targetR, ctx.data);
+    if (!route) return 'site_blocked'; // walled in by trees / rock / water
+    pathsOf(state).set(row, route);
 
     setField(state.entities, row, 'targetQ', targetQ, ctx.tick);
     setField(state.entities, row, 'targetR', targetR, ctx.tick);
@@ -109,44 +135,52 @@ export const movement = defineSystem({
       if (cols.state[row] !== ENTITY_STATE.moving) continue;
       if (cols.hp[row] <= 0) continue;
 
-      const x = cols.x[row];
-      const y = cols.y[row];
-      const tx = cols.targetQ[row];
-      const ty = cols.targetR[row];
-      const dq = tx - x;
-      const dr = ty - y;
-      const dist = hexDistance(x, y, tx, ty);
-
-      if (dist > 0) {
-        const [px, py] = axialToPlane(dq, dr);
-        setField(e, row, 'rot', Math.fround(Math.atan2(py, px)), ctx.tick);
+      const finalQ = cols.targetQ[row];
+      const finalR = cols.targetR[row];
+      const route = pathsOf(state);
+      let wps = route.get(row);
+      if (!wps) {
+        wps = planRoute(state, { q: cols.q[row], r: cols.r[row] }, finalQ, finalR, ctx.data) ?? [{ q: finalQ, r: finalR }];
+        route.set(row, wps);
       }
-
       const prevQ = cols.q[row];
       const prevR = cols.r[row];
-
-      if (dist <= stepDist + ARRIVAL_EPS) {
-        setField(e, row, 'x', Math.fround(tx), ctx.tick);
-        setField(e, row, 'y', Math.fround(ty), ctx.tick);
-        setField(e, row, 'q', tx, ctx.tick);
-        setField(e, row, 'r', ty, ctx.tick);
+      let x = cols.x[row];
+      let y = cols.y[row];
+      let budget = stepDist;
+      // Consume the step budget across waypoints so speed is independent of path corners.
+      while (wps.length > 0) {
+        const tx = wps[0].q;
+        const ty = wps[0].r;
+        const dist = hexDistance(x, y, tx, ty);
+        if (dist > 0) {
+          const [px, py] = axialToPlane(tx - x, ty - y);
+          setField(e, row, 'rot', Math.fround(Math.atan2(py, px)), ctx.tick);
+        }
+        if (dist <= budget + ARRIVAL_EPS) {
+          x = tx;
+          y = ty;
+          budget = Math.max(0, budget - dist);
+          wps.shift();
+        } else {
+          const ratio = budget / dist;
+          x = Math.fround(x + (tx - x) * ratio);
+          y = Math.fround(y + (ty - y) * ratio);
+          break;
+        }
+      }
+      const [nq, nr] = wps.length === 0 ? [finalQ, finalR] : hexRound(x, y);
+      setField(e, row, 'x', Math.fround(x), ctx.tick);
+      setField(e, row, 'y', Math.fround(y), ctx.tick);
+      setField(e, row, 'q', nq, ctx.tick);
+      setField(e, row, 'r', nr, ctx.tick);
+      if (wps.length === 0) {
+        route.delete(row);
         setField(e, row, 'state', ENTITY_STATE.idle, ctx.tick);
         setField(e, row, 'progress', 0, ctx.tick);
-        if (tx !== prevQ || ty !== prevR) {
-          revealVision(state, cols.owner[row], tx, ty, viewRadius, ctx.tick);
-        }
-      } else {
-        const ratio = stepDist / dist;
-        const nx = Math.fround(x + dq * ratio);
-        const ny = Math.fround(y + dr * ratio);
-        const [nq, nr] = hexRound(nx, ny);
-        setField(e, row, 'x', nx, ctx.tick);
-        setField(e, row, 'y', ny, ctx.tick);
-        setField(e, row, 'q', nq, ctx.tick);
-        setField(e, row, 'r', nr, ctx.tick);
-        if (nq !== prevQ || nr !== prevR) {
-          revealVision(state, cols.owner[row], nq, nr, viewRadius, ctx.tick);
-        }
+      }
+      if (nq !== prevQ || nr !== prevR) {
+        revealVision(state, cols.owner[row], nq, nr, viewRadius, ctx.tick);
       }
 
       if (cols.kind[row] === ENTITY_KIND.hq) {

@@ -43,7 +43,7 @@ function prepareHubSite(host: SimHost, centerQ: number, centerR: number): Array<
 }
 
 describe('W01-16: Command Hub construction payment & 75% cancel refund', () => {
-  it('acceptance: cancelling Hub construction at 50% progress refunds 75% of the paid cost and keeps all 9 prepared tiles', () => {
+  it('acceptance: cancelling Hub construction at 50% progress refunds 75% of the cost spent so far and keeps all 9 prepared tiles', () => {
     const host = createW01Host();
     const state = host.state;
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
@@ -56,17 +56,18 @@ describe('W01-16: Command Hub construction payment & 75% cancel refund', () => {
     });
     const footprint = prepareHubSite(host, 3, 0);
 
-    // Start Hub construction on prepared 3x3 site -> pays 200/100/50/50 on start
+    // Start Hub construction on prepared 3x3 site -> nothing is deducted up front; cost is spent over build time
     const placeRes = placeBuildingOrder(state, { colonyId: 0, q: 3, r: 0, buildingKind: 'commandHub' });
     expect(placeRes.ok).toBe(true);
     expect(placeRes.order?.status).toBe('in_progress');
     expect(placeRes.order?.costPaid).toBe(true);
     expect(getColonyStock(state, 0)).toEqual({
-      'metals.t1': 400,
-      'minerals.t1': 250,
-      'bio.biomass': 150,
-      'bio.water': 150,
+      'metals.t1': 600,
+      'minerals.t1': 350,
+      'bio.biomass': 200,
+      'bio.water': 200,
     });
+    expect(placeRes.order?.paidAmounts).toEqual({});
 
     // Step 50 ticks (10.0 s at 1.5x HQ work rate vs 30 s nominal build time) -> 50% progress
     host.step(50);
@@ -81,8 +82,15 @@ describe('W01-16: Command Hub construction payment & 75% cancel refund', () => {
     expect(state.entities.cols.progress[hubRow]).toBeCloseTo(0.5, 5);
     expect(state.entities.cols.state[hqSlot]).toBe(ENTITY_STATE.constructing);
     expect(getHqView(state, 0)?.currentJob).toBe('constructing');
+    // Half the build -> half the cost spent (100/50/25/25)
+    expect(getColonyStock(state, 0)).toEqual({
+      'metals.t1': 500,
+      'minerals.t1': 300,
+      'bio.biomass': 175,
+      'bio.water': 175,
+    });
 
-    // Cancel at 50% via cancelTask command -> 75% refunded (150 / 75 / 37.5 / 37.5) and prepared tiles kept
+    // Cancel at 50% via cancelTask command -> 75% of the spent half refunded and prepared tiles kept
     host.submit(mkCmd('cancelTask', { taskId: midOrder.orderId }, 0, 'cancel_50'));
     const cancelStep = host.step(1);
     expect(cancelStep.outcomes[0]?.code).toBeUndefined();
@@ -94,10 +102,10 @@ describe('W01-16: Command Hub construction payment & 75% cancel refund', () => {
     expect(state.entities.cols.progress[hqSlot]).toBe(0);
 
     const stockAfterCancel = getColonyStock(state, 0);
-    expect(stockAfterCancel['metals.t1']).toBeCloseTo(550, 5);
-    expect(stockAfterCancel['minerals.t1']).toBeCloseTo(325, 5);
-    expect(stockAfterCancel['bio.biomass']).toBeCloseTo(187.5, 5);
-    expect(stockAfterCancel['bio.water']).toBeCloseTo(187.5, 5);
+    expect(stockAfterCancel['metals.t1']).toBeCloseTo(575, 5);
+    expect(stockAfterCancel['minerals.t1']).toBeCloseTo(337.5, 5);
+    expect(stockAfterCancel['bio.biomass']).toBeCloseTo(193.75, 5);
+    expect(stockAfterCancel['bio.water']).toBeCloseTo(193.75, 5);
 
     const idx = hexIndex(state.grid.radius);
     for (const pos of footprint) {
@@ -127,11 +135,12 @@ describe('W01-16: Command Hub 20.0 s construction progress & buildingCompleted e
       const res = host.step(1);
       if (t === 1) {
         expect(res.outcomes[0]?.code).toBeUndefined();
+        // 1% progress -> 1% of 200/100/50/50 spent
         expect(getColonyStock(state, 0)).toEqual({
-          'metals.t1': 400,
-          'minerals.t1': 250,
-          'bio.biomass': 150,
-          'bio.water': 150,
+          'metals.t1': 598,
+          'minerals.t1': 349,
+          'bio.biomass': 199.5,
+          'bio.water': 199.5,
         });
       }
       allEvents.push(...res.events);
@@ -142,6 +151,7 @@ describe('W01-16: Command Hub 20.0 s construction progress & buildingCompleted e
     expect(order99.status).toBe('in_progress');
     expect(order99.progress).toBeCloseTo(0.99, 5);
     expect(allEvents.filter((e) => e.kind === 'buildingCompleted')).toHaveLength(0);
+    expect(getColonyStock(state, 0)['metals.t1']).toBeCloseTo(402, 5);
 
     const step100 = host.step(1);
     allEvents.push(...step100.events);
@@ -152,6 +162,12 @@ describe('W01-16: Command Hub 20.0 s construction progress & buildingCompleted e
     expect(order100.status).toBe('completed');
     expect(order100.progress).toBe(1);
     expect(order100.buildProgress).toBe(1);
+    // Fully paid exactly at completion
+    const finalStock = getColonyStock(state, 0);
+    expect(finalStock['metals.t1']).toBeCloseTo(400, 6);
+    expect(finalStock['minerals.t1']).toBeCloseTo(250, 6);
+    expect(finalStock['bio.biomass']).toBeCloseTo(150, 6);
+    expect(finalStock['bio.water']).toBeCloseTo(150, 6);
 
     const hubRow = rowOf(state.entities, order100.entityId);
     expect(state.entities.cols.state[hubRow]).toBe(ENTITY_STATE.active);
@@ -181,7 +197,7 @@ describe('W01-16: Command Hub 20.0 s construction progress & buildingCompleted e
 });
 
 describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (UO-Q-01..03)', () => {
-  it('pays nothing while waiting_site during linked prep, then deducts 200/100/50/50 when 9/9 tiles are prepared and builds in 20 s', () => {
+  it('pays nothing while waiting_site during linked prep, then spends 200/100/50/50 gradually once 9/9 tiles are prepared and builds in 20 s', () => {
     const host = createW01Host();
     const state = host.state;
     spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
@@ -214,12 +230,7 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
     expect(startedOrder.preparedCount).toBe(9);
     expect(startedOrder.status).toBe('in_progress');
     expect(startedOrder.costPaid).toBe(true);
-    expect(getColonyStock(state, 0)).toEqual({
-      'metals.t1': 400,
-      'minerals.t1': 250,
-      'bio.biomass': 150,
-      'bio.water': 150,
-    });
+    expect(getColonyStock(state, 0)['metals.t1']).toBeGreaterThan(590);
 
     // Next 100 ticks (20.0 s) completes the Hub
     const buildEvents = [];
@@ -252,7 +263,7 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
     const hubRow = rowOf(state.entities, waitingOrder.entityId);
     expect(state.entities.cols.state[hubRow]).toBe(ENTITY_STATE.waiting);
 
-    // Grant the missing 80 metals.t1 -> pays 200/100/50/50 and starts construction on next step
+    // Grant the missing 80 metals.t1 -> starts construction on next step
     host.submit({
       colonyIndex: 0,
       source: 'dev',
@@ -266,11 +277,8 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
     expect(activeOrder.status).toBe('in_progress');
     expect(activeOrder.costPaid).toBe(true);
     expect(activeOrder.progress).toBeCloseTo(0.01, 5);
-    expect(getColonyStock(state, 0)).toEqual({
-      'metals.t1': 0,
-      'minerals.t1': 0,
-      'bio.biomass': 0,
-      'bio.water': 0,
-    });
+    // Only the first 1% slice was spent; the rest is paid as the build advances
+    expect(getColonyStock(state, 0)['metals.t1']).toBeCloseTo(198, 5);
+    expect(getColonyStock(state, 0)['bio.water']).toBeCloseTo(49.5, 5);
   });
 });

@@ -478,3 +478,4 @@ export function validateSpawnSlotGuarantee(
 
   return { ok: reasons.length === 0, reasons };
 }
+export { ensureStarterHubSpace, STARTER_HUB_SEARCH_RADIUS } from './starterSpace';

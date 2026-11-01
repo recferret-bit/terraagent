@@ -37,7 +37,7 @@
    - Clearing forest tiles adds `+5 bio.biomass` and breaking rock tiles adds `+10 metals.t1` to colony stock.
    - While tiles are being prepared, the **CONSTRUCTION** order row reads `waiting(site: n/9)`.
 5. **Command Hub construction & scaffold stages.** As soon as all 9 footprint tiles are `Prepared` (`9/9`), construction starts automatically:
-   - Colony stock drops by **200 Metals, 100 Minerals, 50 Biomass, 50 Water** (paid on start, `UO-Q-01`).
+   - Nothing is deducted up front: colony stock drains **gradually over the build** (total **200 Metals, 100 Minerals, 50 Biomass, 50 Water**, spent in proportion to progress). If the HQ is further than 3 tiles from the site it first drives to the site; progress only advances while it is there. If stock runs short the order shows `waiting(resources: …)` and resumes when stock arrives. Cancelling refunds 75 % of what was spent so far.
    - The order status changes to `in_progress` and the `building.commandHub` mesh rises through its 4 vertical shader construction stages (`0%` foundation → `33%` skeleton → `66%` hull → `100%` active spire + beacon).
    - After 20 s of HQ build time (`30 s` base at HQ `1.5×`, ~2 s under `warp 10`), the **Command Hub** completes (`buildingCompleted` + `colonyFounded`).
 6. **Territory ring (R 10) & Hub caps.** When the Command Hub completes:

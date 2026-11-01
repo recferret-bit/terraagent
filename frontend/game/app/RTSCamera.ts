@@ -11,6 +11,9 @@ export class RTSCamera {
   private keys = new Set<string>();
   private mouse = { x: -1, y: -1, inside: false, drag: false, lx: 0, ly: 0 };
   followTarget: THREE.Object3D | null = null;
+  /** True while the camera trails `followTarget`; any manual pan clears it, F/Home/`follow()` re-arms it. */
+  following = false;
+  private readonly tmp = new THREE.Vector3();
   minDist = 20; maxDist = 95; halfSize = 60; enabled = true;
   private cleanups: Array<() => void> = [];
 
@@ -34,7 +37,7 @@ export class RTSCamera {
       if (!this.enabled) return;
       if (k === 'q') this.yawGoal += Math.PI / 2;
       if (k === 'e') this.yawGoal -= Math.PI / 2;
-      if (k === 'home' && this.followTarget) { this.goal.copy(this.followTarget.position); }
+      if ((k === 'home' || k === 'f') && this.followTarget) this.following = true;
     });
     on(win, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase()));
     on(win, 'blur', () => this.keys.clear());
@@ -72,8 +75,13 @@ export class RTSCamera {
         if (m.x < edge) mx -= 1; else if (m.x > W - edge) mx += 1;
         if (m.y < edge) mz -= 1; else if (m.y > H - edge) mz += 1;
       }
-      if (mx || mz) this.pan(mx * sp, mz * sp);
-      if (this.followTarget && !mx && !mz && !m.drag && this.keys.has('f')) this.goal.copy(this.followTarget.position);
+      if (mx || mz) { this.following = false; this.pan(mx * sp, mz * sp); }
+      if (m.drag) this.following = false;
+      if (this.following && this.followTarget) {
+        // Trail the target: exponential lag leaves a natural gap that grows with its speed.
+        this.followTarget.getWorldPosition(this.tmp);
+        this.goal.lerp(this.tmp, 1 - Math.exp(-dt * 2.5));
+      }
     }
     const lim = this.halfSize - 2;
     this.goal.x = THREE.MathUtils.clamp(this.goal.x, -lim, lim);
@@ -85,6 +93,9 @@ export class RTSCamera {
     this.dist += (this.distGoal - this.dist) * (1 - Math.exp(-dt * 8));
     this.apply();
   }
+
+  /** Starts trailing `obj` (defaults to the current follow target). */
+  follow(obj: THREE.Object3D | null = this.followTarget) { this.followTarget = obj; this.following = obj !== null; }
 
   focus(p: THREE.Vector3, instant = false) {
     this.goal.copy(p);

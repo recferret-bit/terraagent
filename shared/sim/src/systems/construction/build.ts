@@ -1,5 +1,6 @@
 import type { CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { hexDistance, hexRound } from '../../grid/hex';
 import { setField } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
@@ -97,8 +98,10 @@ function seedDefaultStartingStock(state: SimState, colonyId: number, data?: Comp
 }
 
 /**
- * Pays the lump-sum construction cost when work starts (`UO-Q-01`, `W01-16`).
- * Deducts `cost` from the colony's stock and records `order.costPaid = true` and `order.paidAmounts`.
+ * Starts paying for a construction order (`UO-Q-01`, `W01-16`). The cost is NOT deducted up front: this is the start
+ * gate (full cost must be affordable, or the colony has no explicit stock yet and is seeded with the starting kit) and
+ * marks `order.costPaid = true` (payment started) with an empty `order.paidAmounts`. The cost is then spent gradually
+ * by {@link spendConstructionSlice} in proportion to build progress.
  */
 export function payConstructionCost(
   state: SimState,
@@ -110,33 +113,49 @@ export function payConstructionCost(
   order.cost = { ...cost };
 
   const initialCheck = checkBuildingCost(state, order.colonyId, cost);
-  if (initialCheck.ok) {
-    const deduction: Record<string, number> = {};
-    for (const [k, v] of Object.entries(cost)) {
-      deduction[k] = -v;
+  if (!initialCheck.ok) {
+    if (hasExplicitColonyStock(state, order.colonyId)) return initialCheck;
+    const currentStock = getColonyStock(state, order.colonyId);
+    if (!Object.values(currentStock).some((v) => typeof v === 'number' && v > 0)) {
+      seedDefaultStartingStock(state, order.colonyId, data);
     }
-    addColonyStock(state, order.colonyId, deduction, false);
-    order.costPaid = true;
-    order.paidAmounts = { ...cost };
-    return { ok: true };
-  }
-
-  if (hasExplicitColonyStock(state, order.colonyId)) {
-    return initialCheck;
-  }
-
-  const currentStock = getColonyStock(state, order.colonyId);
-  const hasAnyYieldOnlyStock = Object.values(currentStock).some((v) => typeof v === 'number' && v > 0);
-  if (!hasAnyYieldOnlyStock) {
-    seedDefaultStartingStock(state, order.colonyId, data);
-    const deduction: Record<string, number> = {};
-    for (const [k, v] of Object.entries(cost)) {
-      deduction[k] = -v;
-    }
-    addColonyStock(state, order.colonyId, deduction, false);
   }
   order.costPaid = true;
-  order.paidAmounts = { ...cost };
+  order.paidAmounts = {};
+  return { ok: true };
+}
+
+/**
+ * Spends the part of `order.cost` that corresponds to build progress `targetProgress` (cumulative, 0..1) and has not
+ * been paid yet. All-or-nothing per slice: when the colony lacks any resource the build pauses (returns the
+ * `waiting(resources: …)` reason) and nothing is deducted. At `1.0` the paid total equals the cost exactly.
+ */
+export function spendConstructionSlice(
+  state: SimState,
+  order: ConstructionOrder,
+  targetProgress: number,
+  data?: CompiledDataLike,
+): CostCheckResult {
+  const cost = order.cost ?? resolveHubCost(data);
+  const paid = (order.paidAmounts ??= {});
+  const stock = getColonyStock(state, order.colonyId);
+  const slice: Record<string, number> = {};
+  for (const [k, total] of Object.entries(cost)) {
+    const owed = targetProgress >= 1 - 1e-9 ? total : total * targetProgress;
+    const amt = Math.max(0, owed - (paid[k] ?? 0));
+    if (amt <= 1e-9) continue;
+    const have = stock[k] ?? 0;
+    if (have + 1e-6 < amt) {
+      return { ok: false, missingKey: k, have, need: amt, waitingReason: `waiting(resources: ${k} ${Math.floor(have)}/${Math.ceil(amt)})` };
+    }
+    slice[k] = amt;
+  }
+  const deduction: Record<string, number> = {};
+  for (const [k, amt] of Object.entries(slice)) {
+    deduction[k] = -amt;
+    paid[k] = (paid[k] ?? 0) + amt;
+  }
+  if (Object.keys(deduction).length > 0) addColonyStock(state, order.colonyId, deduction, false);
   return { ok: true };
 }
 
@@ -182,6 +201,23 @@ export function findAvailableHqBuilderSlot(state: PlanetState, colonyId: number)
   return -1;
 }
 
+/** Hex distance within which the HQ can work on a building footprint (Hub radius 1 + 2 tiles reach). */
+export const BUILD_REACH_TILES = 3;
+
+/** Sends the builder HQ to a stand-off tile 2 tiles from the site centre (unless it is already moving). */
+function sendBuilderToSite(state: PlanetState, hqSlot: number, order: ConstructionOrder, tick: number, data?: CompiledDataLike): void {
+  const cols = state.entities.cols;
+  if (cols.state[hqSlot] === ENTITY_STATE.moving) return;
+  const dx = cols.x[hqSlot] - order.q;
+  const dy = cols.y[hqSlot] - order.r;
+  const d = hexDistance(cols.x[hqSlot], cols.y[hqSlot], order.q, order.r) || 1;
+  const [tq, tr] = hexRound(order.q + (dx * 2) / d, order.r + (dy * 2) / d);
+  setField(state.entities, hqSlot, 'targetQ', tq, tick);
+  setField(state.entities, hqSlot, 'targetR', tr, tick);
+  setField(state.entities, hqSlot, 'state', ENTITY_STATE.moving, tick);
+  syncHqView(state, hqSlot, tick, data);
+}
+
 /** Advances an in-progress construction order by `dtTicks` using the assigned builder work rate (`UO-L-05`, `W01-16`). */
 export function advanceConstructionProgress(
   state: PlanetState,
@@ -194,7 +230,13 @@ export function advanceConstructionProgress(
   if (hqSlot < 0) return false;
 
   const data = ctx?.data;
+  const cols0 = state.entities.cols;
   const dtTicks = ctx?.dt ?? 1;
+  if (hexDistance(cols0.x[hqSlot], cols0.y[hqSlot], order.q, order.r) > BUILD_REACH_TILES + 1e-6) {
+    sendBuilderToSite(state, hqSlot, order, tick, data);
+    order.statusText = 'waiting(builder: HQ en route)';
+    return true;
+  }
   const dtS = (TICK_MS / 1000) * dtTicks;
   const cols = state.entities.cols;
   const hqRate =
@@ -204,6 +246,15 @@ export function advanceConstructionProgress(
   const buildTimeS = order.buildTimeS > 0 ? order.buildTimeS : resolveHubBuildTimeS(data);
   const delta = buildTimeS > 0 ? (dtS * hqRate) / buildTimeS : 1;
   const nextProgress = Math.min(1, (order.progress ?? 0) + delta);
+
+  const spend = spendConstructionSlice(state, order, nextProgress, data);
+  if (!spend.ok) {
+    order.waitingReason = spend.waitingReason ?? 'waiting(resources)';
+    order.statusText = order.waitingReason;
+    setField(state.entities, hqSlot, 'state', ENTITY_STATE.idle, tick);
+    syncHqView(state, hqSlot, tick, data);
+    return true;
+  }
 
   setField(state.entities, hqSlot, 'state', ENTITY_STATE.constructing, tick);
   setField(state.entities, hqSlot, 'targetQ', order.q, tick);
@@ -254,6 +305,7 @@ export function advanceConstructionProgress(
   order.buildProgress = nextProgress;
   order.status = 'in_progress';
   delete order.waitingReason;
+  order.statusText = 'in_progress';
 
   if (entityRow >= 0) {
     setField(state.entities, entityRow, 'state', ENTITY_STATE.constructing, tick);

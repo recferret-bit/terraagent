@@ -121,6 +121,12 @@ export class EntityMeshes {
     return this.entries.size;
   }
 
+  /** Rendered (interpolated) mesh of the owned HQ, for camera following. */
+  ownHqObject(): THREE.Object3D | null {
+    for (const r of this.entries.values()) if (r.kind === ENTITY_KIND.hq && r.owner === this.ownerColonyIndex) return r.mesh;
+    return null;
+  }
+
   getRecord(entityId: number): EntityMeshRecord | undefined {
     return this.entries.get(entityId);
   }

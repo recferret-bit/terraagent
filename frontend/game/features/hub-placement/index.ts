@@ -27,6 +27,7 @@ import {
   type HubPlacementCommandSink,
   type TilePickerFn,
 } from './HubPlacementMenu';
+import { GhostRig3D } from './GhostRig3D';
 import './hub-placement.css';
 
 export {
@@ -66,6 +67,7 @@ export interface HubPlacementFeatureHandle extends HudPanelInstance {
   cancelOrder(taskId?: string): void;
   isPlacementActive(): boolean;
   getGhostState(): HubGhostState;
+  peekGhostState(): HubGhostState;
   bindSurface(surface: HTMLElement, pickTile?: TilePickerFn): () => void;
   update(view: GhostSource): void;
 }
@@ -174,6 +176,7 @@ export function mountHubPlacement(
     cancelOrder: (taskId) => menu.cancelOrder(taskId),
     isPlacementActive: () => menu.isPlacementActive(),
     getGhostState: () => menu.getGhostState(),
+    peekGhostState: () => menu.peekGhostState(),
     bindSurface: (surf, pick) => menu.bindSurface(surf, pick),
     update: (view) => menu.setView(view),
     dispose: () => {
@@ -203,6 +206,35 @@ export const hubPlacementFeature: Feature & {
         order: 20,
         mount(el, ctx) {
           return mountHubPlacement(el, { flags: ctx.flags, services: ctx.services });
+        },
+      },
+    ],
+    renderers: [
+      {
+        id: 'hub-ghost-3d',
+        mount(ctx) {
+          const s3 = ctx.services.scene3d;
+          if (!s3) return { update() {}, dispose() {} };
+          const rig = new GhostRig3D(s3);
+          const canvas = (ctx.services.canvas ?? ctx.services.surface) as HTMLElement | undefined;
+          let last: { x: number; y: number; over: boolean } | null = null;
+          const onMove = (e: PointerEvent) => { last = { x: e.clientX, y: e.clientY, over: !canvas || e.target === canvas }; };
+          window.addEventListener('pointermove', onMove);
+          let lastTile = '';
+          const idle = { isPlacementActive: () => false, getGhostState: () => null as never };
+          return {
+            update(_view, dt) {
+              const hp = ctx.services.hubPlacement;
+              if (!hp) { rig.update(idle, dt); return; }
+              if (hp.isPlacementActive() && last?.over && ctx.services.pickTile) {
+                const t = ctx.services.pickTile(last.x, last.y, canvas);
+                const key = t ? `${t.q},${t.r}` : '';
+                if (t && key !== lastTile) { lastTile = key; hp.hoverTile(t.q, t.r); }
+              } else if (!hp.isPlacementActive()) lastTile = '';
+              rig.update({ isPlacementActive: () => hp.isPlacementActive(), getGhostState: () => hp.peekGhostState() }, dt);
+            },
+            dispose() { window.removeEventListener('pointermove', onMove); rig.dispose(); },
+          };
         },
       },
     ],

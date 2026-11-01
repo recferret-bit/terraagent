@@ -14,6 +14,7 @@ import {
   spawnHqUnit,
   TERRAIN,
 } from '@terra/sim';
+import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { loadFeatures } from '../../core/registry';
 import { LocalHost } from '../../store/WorldStore';
@@ -23,6 +24,7 @@ import {
   hubPlacementFeature,
   mountHubPlacement,
 } from './index';
+import { GhostRig3D } from './GhostRig3D';
 
 function createRockAndForeignHost() {
   const host = new SimHost({ flags: parseWaves('..01') });
@@ -261,5 +263,44 @@ describe('W01-28: GhostEvaluator edge cases, surface pointer events, hotkeys, an
     expect(loadFeatures({ flags: new Set(['W00', 'W01']), host: 'server' }).map((f) => f.id)).toContain('hub-placement');
 
     hub.dispose();
+  });
+});
+
+describe('3D placement ghost', () => {
+  it('shows a tinted 3D footprint while hovering valid and invalid sites, and hides when not placing', () => {
+    ensureDom();
+    const host = createRockAndForeignHost();
+    const hub = mountHubPlacement(document.createElement('div'), { host, sendCommand: vi.fn() });
+    const scene = new THREE.Scene();
+    const rig = new GhostRig3D({ scene, tileToWorld: (q, r) => ({ x: q * 2, y: 1, z: r * 2 }), biomeKey: () => 'dune' });
+    const src = { isPlacementActive: () => hub.isPlacementActive(), getGhostState: () => hub.peekGhostState() };
+    const tiles = () => rig.group.children.filter((c) => (c as THREE.Mesh).geometry && c.visible) as THREE.Mesh[];
+
+    rig.update(src, 0.016);
+    expect(rig.group.visible).toBe(false);
+
+    hub.startPlacement();
+    hub.hoverTile(2, 2);
+    rig.update(src, 0.016);
+    expect(rig.group.visible).toBe(true);
+    const ok = tiles().filter((m) => m.geometry.type === 'CircleGeometry');
+    expect(ok).toHaveLength(9);
+    expect(new Set(ok.map((m) => (m.material as THREE.MeshBasicMaterial).color.getHex()))).toEqual(new Set([0x39ff88]));
+
+    hub.hoverTile(-5, -5);
+    rig.update(src, 0.016);
+    expect(hub.peekGhostState().valid).toBe(false);
+    expect(rig.group.visible).toBe(true);
+    const bad = tiles().filter((m) => m.geometry.type === 'CircleGeometry');
+    expect(bad.some((m) => (m.material as THREE.MeshBasicMaterial).color.getHex() === 0xff3b3b)).toBe(true);
+
+    hub.cancelPlacement();
+    rig.update(src, 0.016);
+    expect(rig.group.visible).toBe(false);
+    rig.dispose();
+  });
+
+  it('registers the hub-ghost-3d renderer', () => {
+    expect(hubPlacementFeature.renderers?.map((r) => r.id)).toContain('hub-ghost-3d');
   });
 });

@@ -278,3 +278,50 @@ describe('W01-11: HQ power cell recharge and terraform energy draw', () => {
     expect(trickleTicks * 0.2).toBeCloseTo(6.8, 5);
   });
 });
+
+describe('HQ movement vs. obstacles (trees / rock)', () => {
+  function setup() {
+    const host = createW01Host();
+    const state = host.state;
+    const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    return { host, state, hqId, idx: hexIndex(state.grid.radius), terrain: state.grid.layers.terrain };
+  }
+
+  it('rejects a move onto an uncleared forest / rock tile', () => {
+    const { host, hqId, idx, terrain } = setup();
+    terrain[idx.indexOf(3, 0)] = TERRAIN.forest;
+    terrain[idx.indexOf(0, 3)] = TERRAIN.rock;
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 3, r: 0 }));
+    expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 0, r: 3 }));
+    expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
+  });
+
+  it('walks around a forest wall and never enters a blocked tile; passes once cleared', () => {
+    const { host, state, hqId, idx, terrain } = setup();
+    const cols = state.entities.cols;
+    const row = rowOf(state.entities, hqId);
+    const wall = [-2, -1, 0, 1, 2].map((r) => idx.indexOf(2, r));
+    for (const i of wall) terrain[i] = TERRAIN.forest;
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 5, r: 0 }));
+    for (let t = 0; t < 120 && (t === 0 || cols.state[row] === ENTITY_STATE.moving); t++) {
+      host.step(1);
+      expect(terrain[idx.indexOf(cols.q[row], cols.r[row])]).not.toBe(TERRAIN.forest);
+    }
+    expect([cols.q[row], cols.r[row]]).toEqual([5, 0]);
+    expect(host.tick).toBeGreaterThan(Math.ceil(5 / 0.32)); // detour is longer than the straight line
+
+    for (const i of wall) terrain[i] = TERRAIN.flat; // "Clear" turns forest into flat
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 0, r: 0 }));
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
+  });
+
+  it('rejects a target sealed off by obstacles', () => {
+    const { host, hqId, idx, terrain } = setup();
+    for (const [q, r] of [[6, 0], [4, 0], [5, 1], [5, -1], [4, 1], [6, -1]]) {
+      terrain[idx.indexOf(q, r)] = TERRAIN.rock;
+    }
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 5, r: 0 }));
+    expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
+  });
+});

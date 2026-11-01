@@ -338,10 +338,7 @@ export class HubPlacementMenu {
     const pendingBefore = this.sink.host?.pending ?? 0;
     if (this.sink.sendCommand) void this.sink.sendCommand('cancelTask', cmdArgs);
     if (this.sink.store?.sendCommand && this.sink.store.sendCommand !== this.sink.sendCommand) {
-      this.sink.store.sendCommand(
-        { type: 'cancelTask', kind: 'cancelTask', taskId: resolvedId, args: cmdArgs },
-        cmdArgs,
-      );
+      this.sink.store.sendCommand({ type: 'cancelTask', kind: 'cancelTask', taskId: resolvedId, args: cmdArgs }, cmdArgs);
     }
     const targetState = this.sink.state ?? this.sink.host?.state;
     const pendingAfter = this.sink.host?.pending ?? 0;
@@ -354,9 +351,10 @@ export class HubPlacementMenu {
     this.sink.onChange?.();
   }
 
-  isPlacementActive(): boolean {
-    return this.active;
-  }
+  isPlacementActive(): boolean { return this.active; }
+
+  /** Cached ghost state (no re-evaluation or DOM work): safe per frame. */
+  peekGhostState(): HubGhostState { return this.ghostState; }
 
   getGhostState(): HubGhostState {
     this.ghostState = this.evaluateCurrent(this.active);

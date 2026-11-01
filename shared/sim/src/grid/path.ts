@@ -29,6 +29,8 @@ export interface FindHexPathOptions {
   radius?: number;
   maxExpansions?: number;
   data?: CompiledDataLike;
+  /** Extra impassable tiles (e.g. obstacles a unit cannot cross). The start tile is exempt; a blocked goal fails. */
+  blocked?: (tileIdx: number) => boolean;
 }
 
 export interface HexPathResult {
@@ -82,6 +84,7 @@ interface AStarSearchState {
   readonly grid: GridLike;
   readonly idx: HexIndex;
   readonly data?: CompiledDataLike;
+  readonly blocked?: (tileIdx: number) => boolean;
   readonly from: AxialCoord;
   readonly to: AxialCoord;
   readonly startIdx: number;
@@ -222,7 +225,7 @@ function checkSealedGoalPocket(s: AStarSearchState, maxNodes: number): number {
       const nIdx = s.idx.indexOf(cq + HEX_DIRS[d][0], cr + HEX_DIRS[d][1]);
       if (nIdx < 0 || visited.has(nIdx)) continue;
       if (nIdx === s.startIdx || s.closed[nIdx] === 1 || s.heapPos[nIdx] >= 0) return 0;
-      if (!isGroundPassable(s.grid, nIdx, s.data)) continue;
+      if (!isGroundPassable(s.grid, nIdx, s.data) || s.blocked?.(nIdx)) continue;
       visited.add(nIdx);
       if (visited.size > limit) return 0;
       queue.push(nIdx);
@@ -241,6 +244,7 @@ function createAStarSearch(grid: GridLike, from: AxialCoord, to: AxialCoord, opt
     grid,
     idx,
     data: opts?.data,
+    blocked: opts?.blocked,
     from: { q: from.q, r: from.r },
     to: { q: to.q, r: to.r },
     startIdx,
@@ -263,7 +267,8 @@ function createAStarSearch(grid: GridLike, from: AxialCoord, to: AxialCoord, opt
     startIdx < 0 ||
     goalIdx < 0 ||
     !isGroundPassable(grid, startIdx, opts?.data) ||
-    !isGroundPassable(grid, goalIdx, opts?.data)
+    !isGroundPassable(grid, goalIdx, opts?.data) ||
+    (opts?.blocked?.(goalIdx) ?? false)
   ) {
     s.done = true;
     s.result = { ok: false, path: [], expansions: 0, totalCostBp: 0 };
@@ -299,7 +304,7 @@ function expandNeighbors(s: AStarSearchState, currIdx: number): void {
     const nIdx = s.idx.indexOf(nq, nr);
     if (nIdx < 0 || s.closed[nIdx] === 1) continue;
     const stepCost = tileStepCostBp(s.grid, nIdx, s.data);
-    if (stepCost <= 0) continue;
+    if (stepCost <= 0 || s.blocked?.(nIdx)) continue;
     const tentativeG = baseG + stepCost;
     if (tentativeG < s.gScore[nIdx]) {
       s.cameFrom[nIdx] = currIdx;

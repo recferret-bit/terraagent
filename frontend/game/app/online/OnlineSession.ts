@@ -65,6 +65,7 @@ export class OnlineSession {
 
   terrain: HexTerrain | null = null;
   cam: RTSCamera | null = null;
+  private colonyFramed = false;
   lastPick: HexPick | null = null;
   planetId = '';
   colonyId: string | null = null;
@@ -377,8 +378,12 @@ export class OnlineSession {
       } else {
         this.bootOverlay.showColony(v.planet.id || this.planetId || 'pl_dev');
         this.hud.setVisible(true);
-        this.focusTile(status.q, status.r, true);
-        this.landfall.selectHq();
+        if (!this.colonyFramed && this.cam && this.entities.ownHqObject()) {
+          this.colonyFramed = true;
+          this.focusTile(status.q, status.r, true);
+          this.landfall.selectHq();
+          this.cam?.follow(this.entities.ownHqObject());
+        }
       }
     } else if (!this.cameraCentered && this.flags.set.has('W01')) {
       if (status.q !== 0 || status.r !== 0 || status.hqLanded || status.descending) {
@@ -405,6 +410,7 @@ export class OnlineSession {
       this.terrain = terrain;
       this.viewport.scene.add(terrain.group);
       this.cam?.dispose();
+      this.colonyFramed = false;
       const [tx, tz] = tileXZ(this.cameraTargetTile.q, this.cameraTargetTile.r);
       const ty = terrain.heightAt(tx, tz);
       const savedPos = this.viewport.camera.position.clone();

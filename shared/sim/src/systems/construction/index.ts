@@ -449,7 +449,7 @@ export function stepConstruction(state: PlanetState, ctx?: Partial<StepContext>)
       }
     }
 
-    if (order.status !== 'in_progress' || order.waitingReason !== undefined) {
+    if (order.status !== 'in_progress') {
       order.status = 'in_progress';
       delete order.waitingReason;
       changed = true;
