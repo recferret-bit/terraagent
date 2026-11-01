@@ -92,6 +92,15 @@ describe('CORS', () => {
     expect((await get(url, 'http://localhost:5173')).headers.get('access-control-allow-origin')).toBeNull();
     expect((await get(url, 'https://example.com')).headers.get('access-control-allow-origin')).toBe('https://example.com');
   });
+
+  it('allows catalog origins in production and denies others', async () => {
+    const { url } = await boot({ NODE_ENV: 'production' });
+    const play = await get(url, 'http://play.terraagent.fun');
+    expect(play.headers.get('access-control-allow-origin')).toBe('http://play.terraagent.fun');
+    expect(play.headers.get('access-control-allow-credentials')).toBe('true');
+    expect((await get(url, 'http://api.terraagent.fun')).headers.get('access-control-allow-origin')).toBe('http://api.terraagent.fun');
+    expect((await get(url, 'https://evil.example')).headers.get('access-control-allow-origin')).toBeNull();
+  });
 });
 
 describe('module discovery and env', () => {

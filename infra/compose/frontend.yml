@@ -1,0 +1,33 @@
+# Frontend stack (DEP-01, DEPLOYMENT §1–2). The static image publishes no port.
+# It fills the external terra_www volume; infra nginx is the only publisher of :80.
+name: terra-frontend
+
+x-logging: &json-log
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+networks:
+  terra_edge:
+    name: terra_edge
+    external: true
+
+volumes:
+  terra_www:
+    name: terra_www
+    external: true
+
+services:
+  static:
+    image: terra-frontend:local
+    container_name: terra-static
+    restart: unless-stopped
+    logging: *json-log
+    build:
+      context: ../..
+      dockerfile: infra/docker/Dockerfile.frontend
+    networks:
+      - terra_edge
+    volumes:
+      - terra_www:/www

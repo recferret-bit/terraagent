@@ -33,8 +33,8 @@ flowchart TB
 | `infra/compose/backend.yml` | `terra-backend` | the NestJS app (D-24), `SIM_THREADS` = cores − 1 | none |
 | `infra/compose/chain.yml` | `terra-chain` | nothing of its own beyond the `devchain` vhost mounted into nginx. The mock ledger stays in the app | none |
 
-- Local `stack:local` does **not** enable profile `server`. The app uses the dev Postgres on `host.docker.internal:15434`.
-- Remote `deploy:infra` enables profile `server`. That Postgres has no published port and is not reachable from the internet.
+- Local `stack:local` does **not** enable profile `server`. The app uses the dev Postgres on `host.docker.internal:15434`. It still joins `terra_internal`. A holder container (`terra-internal-net`) keeps that network up while Postgres is off, because Compose creates a network only when a started service uses it.
+- Remote `deploy:infra` enables profile `server`. That Postgres has no published port, answers on `terra_internal` as `postgres`, and is not reachable from the internet. The server file `/srv/terraagent/.env` sets `DATABASE_URL` to that host and `NODE_ENV=production`. The laptop default stays `development`.
 - Containers restart `unless-stopped`. json-file logs rotate at 10 MB × 5.
 - Only nginx publishes a port (`DEP-01`).
 
@@ -101,9 +101,9 @@ SSH:
 
 | Command | What comes up |
 |---|---|
-| `npm run stack:local:infra` | nginx on `127.0.0.1:80`, both networks, no Postgres |
+| `npm run stack:local:infra` | nginx on `127.0.0.1:80`, both networks, no Postgres. `terra-internal-net` holds `terra_internal` |
 | `npm run stack:local:frontend` | the static image, vhosts for the six sites |
-| `npm run stack:local:backend` | the app, joined to `terra_edge`, database = dev Postgres on 15434 |
+| `npm run stack:local:backend` | the app, on `terra_edge` and `terra_internal`, database = dev Postgres on 15434. `NODE_ENV` stays `development` |
 | `npm run stack:local:chain` | the `devchain` vhost |
 | `npm run stack:local` | all four, in that order |
 | `npm run stack:local:down` | all four down. Does not stop the dev Postgres |
@@ -133,9 +133,11 @@ Checks:
 1. Read `DEPLOY_HOST` and `DEPLOY_USER`. Refuse if either is empty.
 2. `ssh` `echo ok` with `BatchMode`. Refuse if that fails.
 3. `rsync` that stack's compose file, its nginx vhost files and its build context to `/srv/terraagent/`.
-4. On the server, `docker compose up -d --build` for that file. Infra enables profile `server`.
-5. Backend only: `prisma migrate deploy` after the new container is healthy.
-6. From the server, curl each host of that stack through `http://127.0.0.1` with the right `Host` header.
+4. Ensure `/srv/terraagent/.env` exists and is mode `600`. If `DATABASE_URL` is absent, set `postgresql://terra:terra@postgres:5432/terraagent`. If `NODE_ENV` is absent, set `production`. Do not overwrite a key that is already set, and do not upload the operator `.env`.
+5. On the server, `docker compose --env-file /srv/terraagent/.env up -d --build` for that file. Infra enables profile `server`.
+6. `docker exec terra-nginx nginx -s reload`, so vhosts copied after nginx first started are loaded.
+7. Backend only: `prisma migrate deploy` after the new container is healthy.
+8. From the server, curl each host of that stack through `http://127.0.0.1` with the right `Host` header.
 
 `npm run deploy -- --dry-run` prints those steps and the ssh target, and does not connect.
 
