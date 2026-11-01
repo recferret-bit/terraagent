@@ -1,4 +1,4 @@
-import type { ConstructionOrder, PlanetState, SimCommand } from '@terra/sim';
+import type { CompiledDataLike, ConstructionOrder, PlanetState, SimCommand } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { ensureDom, makeBtn, makeDiv, setDataAttr } from './dom';
@@ -23,6 +23,7 @@ export interface HubPlacementCommandSink {
     latest?: GameView | null;
     latestTiles?: ClientTiles | null;
     sendCommand?: (cmdOrKind: unknown, args?: unknown) => unknown;
+    simData?(): CompiledDataLike | null; // the host's live balance data (WorldStore), so the ghost uses the same numbers
   };
   host?: {
     readonly state: PlanetState;
@@ -231,8 +232,7 @@ export class HubPlacementMenu {
       colonyId: this.resolveColonyId(),
       q: this.hoveredQ,
       r: this.hoveredR,
-      active,
-      requireHq: this.sink.requireHq,
+      active, requireHq: this.sink.requireHq, data: this.sink.store?.simData?.() ?? undefined,
       fallbackTiles: this.cachedTiles ?? this.sink.store?.latestTiles ?? null,
     });
     const rej = this.serverReject;
@@ -258,7 +258,7 @@ export class HubPlacementMenu {
       this.hoveredR = Math.trunc(r);
     } else {
       const fallback = this.cachedTiles ?? this.sink.store?.latestTiles ?? null;
-      const near = findValidHubSiteNearHq(this.resolveSource(), this.resolveColonyId(), fallback);
+      const near = findValidHubSiteNearHq(this.resolveSource(), this.resolveColonyId(), fallback, this.sink.store?.simData?.() ?? undefined);
       if (near) {
         this.hoveredQ = near.q;
         this.hoveredR = near.r;

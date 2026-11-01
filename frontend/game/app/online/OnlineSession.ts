@@ -21,7 +21,7 @@ import { LandfallController } from '../../features/landfall';
 import { RTSCamera } from '../RTSCamera';
 import { BootOverlay, type BootPhase } from './BootOverlay';
 import {
-  bootAuthAndHome, createLocalBootFallback, extractPodDescentStatus,
+  bootAuthAndHome, createLocalBootFallback, devPlanetTypeOfKind, extractPodDescentStatus,
   type BootAuthResult, type FetchLike, type StorageLike,
 } from './bootOnline';
 import { EntityMeshes, type MeshFactory } from './EntityMeshes';
@@ -268,7 +268,7 @@ export class OnlineSession {
   private async startBootSequence(opts: OnlineSessionOptions, predict = true): Promise<BootAuthResult> {
     this.store.start([...this.flags.set], { predict });
     const boot = await (opts.preBoot ?? bootAuthAndHome({
-      fetch: opts.fetch, storage: opts.storage, search: this.search,
+      fetch: opts.fetch, storage: opts.storage, search: this.search, planetType: devPlanetTypeOfKind(this.planetKind),
       onStatus: (s) => this.bootOverlay?.setSplashStatus(s),
     }));
     this.applyBootResult(boot);
@@ -279,7 +279,7 @@ export class OnlineSession {
     else {
       this.cleanups.push(this.transport.onState((s) => {
         if (s.phase === 'terminal' && !this.store.latest && !this.localHost) {
-          const fb = createLocalBootFallback(boot.deviceSecret, undefined, this.spawn);
+          const fb = createLocalBootFallback(boot.deviceSecret, undefined, this.spawn, devPlanetTypeOfKind(this.planetKind));
           if (fb.localHost) this.attachLocalHost(fb.localHost, typeof window !== 'undefined');
         }
       }));
@@ -292,7 +292,7 @@ export class OnlineSession {
   private async resolveBootTarget(opts: OnlineSessionOptions): Promise<{ planetId: string }> {
     if (this.bootResult && this.planetId) return { planetId: this.planetId };
     const boot = await bootAuthAndHome({
-      fetch: opts.fetch, storage: opts.storage, search: this.search, tryRefresh: true,
+      fetch: opts.fetch, storage: opts.storage, search: this.search, tryRefresh: true, planetType: devPlanetTypeOfKind(this.planetKind),
       onStatus: (s) => this.bootOverlay?.setSplashStatus(s),
     });
     this.applyBootResult(boot);
@@ -318,10 +318,11 @@ export class OnlineSession {
   private attachLocalHost(lh: LocalHost, autoStep: boolean): void {
     this.localHost = lh;
     lh.setColonyIndex(this.colonyIndex);
-    lh.bindStore(this.store);
+    // Route commands to the local host before bindStore: its first view may send `dev.land` synchronously.
     this.cleanups.push(lh.onMessage((m) => this.commandBus.handleMessage(m)));
     const origSend = this.transport.send.bind(this.transport);
     this.transport.send = (m) => (this.localHost ? this.localHost.send(m) : origSend(m));
+    lh.bindStore(this.store);
     if (autoStep && !this.localTimer) this.localTimer = setInterval(() => this.localHost?.step(this.warp), TICK_MS);
   }
 

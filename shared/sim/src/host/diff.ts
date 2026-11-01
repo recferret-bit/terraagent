@@ -5,6 +5,7 @@ import { clientTileLayers, tileLayers } from '../grid/layers';
 import type { Blob, ColonyState, PlanetMeta, PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
 import { changedTileIndices, noteTilesStamped } from '../grid/sectors';
+import { clientMeta } from '../codec/snapshot';
 
 /** Engine diff wire format version (inside the MessagePack map). */
 export const DIFF_FORMAT = 1;
@@ -62,7 +63,7 @@ export function diffSince(state: PlanetState, fromTick: number, opts: { forClien
     v: DIFF_FORMAT,
     fromTick,
     toTick: state.meta.tick,
-    meta: state.meta,
+    meta: opts.forClient ? clientMeta(state.meta) : state.meta,
     rng: state.rng,
     tiles: { idx: tileIdx, cols: gather(opts.forClient ? clientTileLayers() : tileLayers(), state.grid.layers, tileIdx) },
     entities: {

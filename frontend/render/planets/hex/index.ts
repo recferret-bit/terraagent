@@ -49,5 +49,5 @@ export {
   type TerritoryBorderOptions,
   type TerritoryBorderStats,
 } from './territoryBorder';
-export { kindForPlanetType, specForPlanetType, type SimPlanetType } from './planetKind';
+export { kindForPlanetType, planetTypeForKind, specForPlanetType, type SimPlanetType } from './planetKind';
 export { CHUNK_TILES, TILE_M, tileXZ, tileAt, planetExtent } from './hexMath';

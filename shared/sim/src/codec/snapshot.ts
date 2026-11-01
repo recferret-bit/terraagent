@@ -22,12 +22,19 @@ export interface SnapshotOpts {
   forClient?: boolean;
 }
 
+/** Planet meta as a client may see it: without the hidden-ground secret (`worldSalt`, D-38). */
+export function clientMeta(meta: PlanetState['meta']): PlanetState['meta'] {
+  if (meta.worldSalt === undefined) return meta;
+  const { worldSalt: _secret, ...rest } = meta;
+  return rest;
+}
+
 export function snapshot(state: PlanetState, opts: SnapshotOpts = {}): Uint8Array {
   const header: SnapshotHeader = { simVersion: SIM_VERSION, codec: 'msgpack', tick: state.meta.tick, planetId: state.meta.planetId };
   if (!opts.forClient) return encodeValue({ header, state });
   const layers: Record<string, TypedArray> = {};
   for (const l of tileLayers()) if (!l.hidden && state.grid.layers[l.name]) layers[l.name] = state.grid.layers[l.name];
-  return encodeValue({ header, state: { ...state, grid: { ...state.grid, layers } } });
+  return encodeValue({ header, state: { ...state, meta: clientMeta(state.meta), grid: { ...state.grid, layers } } });
 }
 
 const isObj = (v: unknown): v is Record<string, unknown> => typeof v === 'object' && v !== null && !Array.isArray(v);

@@ -18,6 +18,7 @@ export function createPlanet(p: PlanetParams): PlanetState {
     planetType: p.planetType ?? 'temperate',
     radius: p.radius ?? DEV_PLANET_RADIUS,
     capacity: p.capacity,
+    ...(p.worldSalt ? { worldSalt: p.worldSalt } : {}),
   });
   state.meta.genVersion = GEN_VERSION;
   return state;

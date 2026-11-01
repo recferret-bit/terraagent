@@ -3,7 +3,8 @@ import { defineTable } from './_define';
 /**
  * World generation profiles (D-38), one row per planet type. The orchestrator (`gen/world/`) runs the listed stages
  * in order; the numbers shape relief (metres), the starter landing zone and the hidden subsurface. Heights are metres
- * above the build plane (tile centres are 2 m apart).
+ * above the build plane (tile centres are 2 m apart). Changing any number here changes generated planets: bump
+ * `GEN_VERSION` (`gen/generators.ts`) in the same commit.
  */
 export default defineTable({
   name: 'worldgen',

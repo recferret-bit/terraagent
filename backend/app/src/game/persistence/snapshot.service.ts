@@ -1,5 +1,5 @@
 import { Inject, Injectable, type BeforeApplicationShutdown } from '@nestjs/common';
-import { GEN_VERSION, restore } from '@terra/sim';
+import { devPlanetTypeOf, GEN_VERSION, restore } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge, Histogram } from 'prom-client';
 import { MetricsRegistry } from '../../core/metrics.registry';
@@ -8,6 +8,7 @@ import { APP_ENV, LOGGER, type AppEnv } from '../../core/tokens';
 import { GamePlanets } from '../game-planets.service';
 import { SnapshotScheduler } from './snapshot-scheduler';
 import { SnapshotStore } from './snapshot-store';
+import { devSnapshotVerdict } from './dev-planet-verdict';
 
 /** SIM-H-06 budget for the SIGTERM snapshot of every loaded planet. */
 export const SHUTDOWN_BUDGET_MS = 30_000;
@@ -59,15 +60,20 @@ export class SnapshotService implements BeforeApplicationShutdown {
       try {
         const snap = await this.store.latest(id, (tick) => this.log.warn({ planetId: id, tick: Number(tick) }, 'corrupt snapshot skipped'));
         if (!snap) continue;
-        const isDev = id === 'pl_dev' || id.startsWith('pl_dev_');
-        let state: ReturnType<typeof restore> | null = null;
-        try { state = restore(snap.raw); } catch (e) { if (!isDev) throw e; }
-        if (isDev && (!state || state.meta.genVersion !== GEN_VERSION)) {
-          // Old ground (flat, pre-D-38) or an unrestorable old sim version: wipe, boot recreates the dev planet fresh.
-          await this.store.wipeDevPlanet(id);
-          this.log.warn({ planetId: id, genVersion: state?.meta.genVersion ?? null, now: GEN_VERSION }, `wiped ${id}: built by an older world generator / sim`);
+        const verdict = devSnapshotVerdict(id, snap.raw);
+        if (verdict.kind === 'newer') {
+          // Written by a newer build: never delete it; leave it unloaded until that build runs again.
+          this.log.warn({ planetId: id, reason: verdict.reason }, `skipped ${id}: snapshot from a newer build`);
           continue;
         }
+        if (verdict.kind === 'wipe') {
+          // Old ground (pre-D-38), an older sim, or not the type its family names: wipe, boot recreates it fresh.
+          await this.store.wipeDevPlanet(id);
+          this.log.warn({ planetId: id, reason: verdict.reason, now: GEN_VERSION }, `wiped ${id}: ${verdict.reason}`);
+          continue;
+        }
+        const isDev = devPlanetTypeOf(id) !== null;
+        const state = verdict.state ?? (isDev ? null : restore(snap.raw));
         if (!isDev && state?.colonies?.some((c) => c.status !== 'eliminated')) {
           this.planets.markScenarioColonyPlanet(id);
         }

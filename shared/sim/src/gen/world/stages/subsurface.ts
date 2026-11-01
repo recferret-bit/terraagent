@@ -27,10 +27,10 @@ export const subsurface: WorldStage = {
       [TERRAIN.flat]: [DEPOSIT.oil],
     };
     const boost = ctx.num('subRichnessBoostBp', 12500);
-    const veinSeed = ctx.seed('vein');
+    const veinSeed = ctx.secretSeed('vein');
     const { seed, planetType } = ctx.state.meta;
     for (const s of ctx.sectors.sectors) {
-      const sSeed = ctx.seed('subsurface', s.id);
+      const sSeed = ctx.secretSeed('subsurface', s.id);
       for (const i of s.tiles) {
         const p = chance[terrain[i]];
         if (!p || deposit[i] !== DEPOSIT.none) continue;
@@ -40,7 +40,7 @@ export const subsurface: WorldStage = {
         const ks = kinds[terrain[i]];
         const kind = ks[Math.floor(hash2d(ctx.hex.q[i], ctx.hex.r[i], sSeed) * ks.length)];
         sub[i] = kind;
-        subRich[i] = Math.round((getDepositRichnessBp(seed, i, kind, planetType) * boost) / 10000);
+        subRich[i] = Math.round((getDepositRichnessBp(`${seed}|${ctx.state.meta.worldSalt ?? ''}`, i, kind, planetType) * boost) / 10000);
       }
     }
   },

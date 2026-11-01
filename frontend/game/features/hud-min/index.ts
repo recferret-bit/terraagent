@@ -45,7 +45,6 @@ export interface MountedMinimalHud extends HudPanelInstance {
   readonly hud: MinimalHud;
   update(view: GameView): void;
   showToast(message: string, severity?: 'warning' | 'error' | 'info'): HTMLElement;
-  checkOrSendPlaceBuilding(building: string, q: number, r: number): Promise<unknown>;
   dispose(): void;
 }
 
@@ -65,7 +64,6 @@ export function mountMinimalHud(ctx: MountMinimalHudCtx): MountedMinimalHud {
     hud,
     update: (view) => hud.update(view),
     showToast: (msg, sev) => hud.showToast(msg, sev),
-    checkOrSendPlaceBuilding: (b, q, r) => hud.checkOrSendPlaceBuilding(b, q, r),
     dispose: () => hud.dispose(),
   };
 }

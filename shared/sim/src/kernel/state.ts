@@ -20,6 +20,11 @@ export interface PlanetMeta {
   ended: boolean;
   /** World generator version that built the ground (`GEN_VERSION`, D-38); absent on planets built before it. */
   genVersion?: number;
+  /**
+   * Server-only secret mixed into the hidden-subsurface seeds (D-38): without it a client could regenerate the buried
+   * deposits from the public seed. Stripped from every client-bound snapshot and diff (`forClient`).
+   */
+  worldSalt?: string;
 }
 
 export interface Grid {

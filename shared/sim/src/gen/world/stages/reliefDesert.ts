@@ -1,6 +1,14 @@
 import { TILE_M, type WorldGenContext, type WorldStage } from '../context';
 import { fbm2d, hash2d, ridged2d, smoothstep } from '../noise';
 
+/** 16 wind directions over a half turn (dunes are symmetric under a 180° flip), pre-rounded to float32. */
+const WIND_DIRS: ReadonlyArray<readonly [number, number]> = [
+  [1, 0], [0.98078528, 0.19509032], [0.92387953, 0.38268343], [0.83146961, 0.55557023],
+  [0.70710678, 0.70710678], [0.55557023, 0.83146961], [0.38268343, 0.92387953], [0.19509032, 0.98078528],
+  [0, 1], [-0.19509032, 0.98078528], [-0.38268343, 0.92387953], [-0.55557023, 0.83146961],
+  [-0.70710678, 0.70710678], [-0.83146961, 0.55557023], [-0.92387953, 0.38268343], [-0.98078528, 0.19509032],
+].map(([x, y]) => [Math.fround(x), Math.fround(y)] as const);
+
 /** A rock landform stamped onto the relief (mesa = flat top + cliffs, butte = small and tall, dome = rounded). */
 interface Landform {
   x: number; // centre, metres
@@ -31,7 +39,8 @@ function placeLandforms(ctx: WorldGenContext): Landform[] {
 }
 
 function landformHeight(f: Landform, mx: number, my: number): number {
-  const d = Math.hypot(mx - f.x, my - f.y) / TILE_M; // round footprints, in tiles
+  const dx = mx - f.x, dy = my - f.y;
+  const d = Math.sqrt(dx * dx + dy * dy) / TILE_M; // round footprints, in tiles (sqrt: correctly rounded everywhere)
   const wobble = 0.8 * (fbm2d(mx, my, 0.09, f.seed) - 0.5);
   const t = (d + wobble) / f.radius;
   if (t >= 1.25) return 0;
@@ -53,8 +62,8 @@ export const reliefDesert: WorldStage = {
     const rockiness = ctx.field('rockiness');
     const seedErg = ctx.seed('erg'), seedDune = ctx.seed('dune'), seedWarp = ctx.seed('warp');
     const seedRange = ctx.seed('range'), seedRidge = ctx.seed('ridge'), seedPlain = ctx.seed('plain');
-    const ang = hash2d(11, 13, ctx.seed('wind')) * Math.PI;
-    const wx = Math.cos(ang), wy = Math.sin(ang);
+    // Wind from a fixed table of unit vectors (no sin/cos: those may differ by an ulp between JS engines).
+    const [wx, wy] = WIND_DIRS[Math.floor(hash2d(11, 13, ctx.seed('wind')) * WIND_DIRS.length)];
     const ergScale = ctx.num('ergScale', 0.006), duneH = ctx.num('duneHeightM', 4.2);
     const waveM = ctx.num('duneWavelengthM', 16), crossS = ctx.num('duneCrossScale', 0.018);
     const rangeS = ctx.num('rangeScale', 0.0045), rangeT = ctx.num('rangeThreshold', 0.6), rangeH = ctx.num('rangeHeightM', 16);

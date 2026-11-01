@@ -1,7 +1,9 @@
 import type { AuthResponse, PlanetType } from '@terra/contracts';
-import { createPlanet, DEV_PLANET_SEED, DEV_PLANET_TYPE, ENTITY_KIND, ENTITY_STATE, getSpawnSlots, type LandingPodState, type ViewEntity } from '@terra/sim';
+import { createPlanet, DEV_PLANET_SEED, DEV_PLANET_TYPE, devPlanetIdFor, type DevPlanetType, ENTITY_KIND, ENTITY_STATE, getSpawnSlots, type LandingPodState, type ViewEntity } from '@terra/sim';
 import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
 import { LocalHost } from '../../store/WorldStore';
+import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
+import { planetTypeForKind } from '@terra/render/planets/hex/planetKind';
 
 export const DEVICE_SECRET_KEY = 'ta_device_secret';
 
@@ -58,6 +60,8 @@ export interface BootAuthOptions {
   cachedAccessToken?: string | null;
   tryRefresh?: boolean;
   onStatus?: (status: string) => void;
+  /** Planet type for a NEW colony (the orbit pick): `GET /v1/me/home?type=`, and the type of the local fallback. */
+  planetType?: DevPlanetType;
 }
 
 export interface PodDescentStatus {
@@ -151,9 +155,11 @@ async function fetchHomeWithRetry(
   initialToken: string,
   deviceSecret: string,
   doFetch: FetchLike,
+  planetType?: DevPlanetType,
 ): Promise<{ accessToken: string; home: Record<string, unknown> }> {
   let token = initialToken;
-  let res = await doFetch('/v1/me/home', {
+  const url = planetType ? `/v1/me/home?type=${planetType}` : '/v1/me/home';
+  let res = await doFetch(url, {
     method: 'GET',
     headers: { Authorization: `Bearer ${token}` },
     credentials: 'include',
@@ -161,7 +167,7 @@ async function fetchHomeWithRetry(
   if (res.status === 401) {
     const refreshed = (await refreshAccessToken(doFetch)) ?? (await guestLogin(deviceSecret, doFetch));
     token = refreshed.accessToken;
-    res = await doFetch('/v1/me/home', {
+    res = await doFetch(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${token}` },
       credentials: 'include',
@@ -225,13 +231,15 @@ export function createLocalBootFallback(
   deviceSecret: string,
   onStatus?: (status: string) => void,
   spawnOverride?: { q: number; r: number },
+  planetType: DevPlanetType = DEV_PLANET_TYPE,
 ): BootAuthResult {
-  onStatus?.('Entering orbit: pl_dev…');
+  const planetId = devPlanetIdFor(planetType, 1); // same dev planet family as the server (pl_dev = desert)
+  onStatus?.(`Entering orbit: ${planetId}…`);
   const planetState = createPlanet({
-    id: 'pl_dev',
-    planetId: 'pl_dev',
-    type: DEV_PLANET_TYPE,
-    planetType: DEV_PLANET_TYPE,
+    id: planetId,
+    planetId,
+    type: planetType,
+    planetType,
     seed: DEV_PLANET_SEED,
     radius: 56,
     capacity: 5,
@@ -267,9 +275,9 @@ export function createLocalBootFallback(
     handle: 'Colonist',
     state: 'ACTIVE',
     planet: {
-      id: 'pl_dev',
+      id: planetId,
       name: 'Dev Planet',
-      type: DEV_PLANET_TYPE,
+      type: planetType,
       seed: DEV_PLANET_SEED,
       radius: 56,
       state: 'ACTIVE',
@@ -288,6 +296,9 @@ export function createLocalBootFallback(
   };
 }
 
+/** The orbit pick as a dev planet type (seats a NEW colony on that family); no pick → `undefined` (server default). */
+export const devPlanetTypeOfKind = (kind: PlanetKind | null | undefined): DevPlanetType | undefined => (kind ? planetTypeForKind(kind) : undefined);
+
 /**
  * Runs W01 guest authentication (`POST /v1/auth/guest` / `POST /v1/auth/refresh`) and `GET /v1/me/home` (`CL-01`),
  * falling back cleanly to a local `SimHost` on `pl_dev` if the backend server is unreachable.
@@ -301,7 +312,7 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
   const deviceSecret = getOrCreateDeviceSecret(storage);
 
   if (new URLSearchParams(search).get('host') === 'local') {
-    return createLocalBootFallback(deviceSecret, opts.onStatus);
+    return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType);
   }
 
   try {
@@ -319,7 +330,7 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
       auth = await guestLogin(deviceSecret, doFetch);
     }
 
-    const { accessToken, home } = await fetchHomeWithRetry(auth.accessToken, deviceSecret, doFetch);
+    const { accessToken, home } = await fetchHomeWithRetry(auth.accessToken, deviceSecret, doFetch, opts.planetType);
     const { state, planet, colony } = normalizeHomePayload(home);
     opts.onStatus?.(`Entering orbit: ${planet.id}…`);
 
@@ -334,7 +345,7 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
       colony,
     };
   } catch {
-    return createLocalBootFallback(deviceSecret, opts.onStatus);
+    return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType);
   }
 }
 

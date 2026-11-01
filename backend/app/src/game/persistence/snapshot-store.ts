@@ -2,7 +2,7 @@ import { crc32, gunzip, gzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import { Inject, Injectable } from '@nestjs/common';
 import { RepositoryBase, type PrismaClient } from '@terra/db';
-import { SIM_VERSION } from '@terra/sim';
+import { devPlanetTypeOf, SIM_VERSION } from '@terra/sim';
 import { PRISMA } from '../../db/db.module';
 import { prunableIds } from './retention';
 
@@ -86,7 +86,7 @@ export class SnapshotStore extends RepositoryBase {
    * dev planet type and generator. Only ever called for `pl_dev*` ids.
    */
   async wipeDevPlanet(planetId: string): Promise<void> {
-    if (planetId !== 'pl_dev' && !planetId.startsWith('pl_dev_')) throw new Error(`wipeDevPlanet: ${planetId} is not a dev planet`);
+    if (devPlanetTypeOf(planetId) === null) throw new Error(`wipeDevPlanet: ${planetId} is not a dev planet`);
     await this.prisma.$transaction([
       this.prisma.planetSnapshot.deleteMany({ where: { planetId } }),
       this.prisma.colony.deleteMany({ where: { planetId } }),

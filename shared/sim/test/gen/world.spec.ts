@@ -95,3 +95,14 @@ describe('world generation orchestrator (D-38)', () => {
     }
   });
 });
+
+describe('generator fingerprint (bump GEN_VERSION when this changes)', () => {
+  it('golden-1 desert: pinned summary of the generated ground for GEN_VERSION', () => {
+    const s = createPlanet({ id: 'p', seed: 'golden-1', type: 'temperate', planetType: 'desert', radius: 56 });
+    let h = 0x811c9dc5;
+    const mix = (v: number) => { h = Math.imul(h ^ (v | 0), 0x01000193) >>> 0; };
+    for (let i = 0; i < s.grid.count; i++) { mix(s.grid.layers.terrain[i]); mix(Math.round(s.grid.layers.height[i] * 100)); mix(s.grid.layers.deposit[i]); }
+    // If this fails after a deliberate generator change: bump GEN_VERSION in gen/generators.ts, then update both values.
+    expect({ genVersion: GEN_VERSION, fingerprint: h.toString(16) }).toEqual({ genVersion: 3, fingerprint: '45686546' });
+  });
+});

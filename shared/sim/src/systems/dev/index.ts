@@ -150,6 +150,7 @@ const seed = defineCommandHandler({
       type: hasGenerator(s.meta.planetType) ? s.meta.planetType : 'temperate',
       seed: nextSeed,
       radius: s.grid.radius,
+      ...(s.meta.worldSalt ? { worldSalt: s.meta.worldSalt } : {}),
       planetId: s.meta.planetId,
       planetType: s.meta.planetType,
     });

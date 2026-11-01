@@ -163,6 +163,18 @@ export class WorldStore {
     this.worker = null;
   }
 
+  /** Flags + balance overrides of the last welcome: the server compiled its data with them (D-35). */
+  private welcomeData: { flags: string[]; overrides?: BalanceOverrides; data?: ReturnType<typeof compileData> } | null = null;
+  /**
+   * The compiled balance data the server runs with (welcome flags + live overrides, e.g. dev `tune`), so client-side
+   * rule previews (the placement ghost, D-37) evaluate with the same numbers; null before the first welcome.
+   */
+  simData(): ReturnType<typeof compileData> | null {
+    const w = this.welcomeData;
+    if (!w) return null;
+    return (w.data ??= compileData(flagsFromList(w.flags), w.overrides));
+  }
+
   /** Estimated server time now (ms), from the last welcome / pong. */
   serverTimeMs(): number { return this.now() + this.offsetMs; }
   /** Estimated current server tick: the last applied tick plus the time since it arrived (not clamped by data). */
@@ -173,6 +185,7 @@ export class WorldStore {
     if (!w) return;
     if (m.t === 'welcome') {
       this.planetId = m.d.planet.id;
+      this.welcomeData = { flags: [...m.d.flags], overrides: m.d.overrides as BalanceOverrides | undefined };
       this.offsetMs = m.d.serverTimeMs - this.now();
       this.baseTick = m.d.tick; this.baseLocalMs = this.now();
       const state = ownBytes(m.d.state);

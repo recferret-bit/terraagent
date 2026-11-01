@@ -2,7 +2,7 @@ import { hexDistance, hexIndex } from '../grid/hex';
 import { geoBuildBlock, MAX_FOOTPRINT_SPREAD_M } from '../grid/geo';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import type { SimState } from '../kernel/state';
-import { setTileHeight } from '../grid/tileModel';
+import { setTileDeposit, setTileHeight, setTileOwner, setTilePrep, setTileTerrain } from '../grid/tileModel';
 
 /** Hub footprint is 3×3 (centre + ring 1); mirrors `getHubFootprintTiles`. */
 const HUB_OFFSETS: ReadonlyArray<readonly [number, number]> = (() => {
@@ -54,20 +54,26 @@ export function ensureStarterHubSpace(state: SimState, q: number, r: number, col
     const tiles = footprintIdx(state, c.q, c.r);
     if (tiles && siteReady(state, tiles, colonyId)) return { q: c.q, r: c.r };
   }
-  for (const c of cands) {
-    const tiles = footprintIdx(state, c.q, c.r);
-    if (!tiles) continue;
-    const L = state.grid.layers;
-    const terrain = L.terrain as Uint8Array, prep = L.prep as Uint8Array, owner = L.owner as Int8Array, height = L.height as Float32Array;
-    const deposit = L.deposit as Uint8Array | undefined;
-    const level = Math.fround(tiles.map((i) => height[i]).sort((a, b) => a - b)[tiles.length >> 1]);
+  // Fallback: level the nearest footprint, preferring one that destroys no visible deposit (they carry guarantees).
+  const L = state.grid.layers;
+  const deposit = L.deposit as Uint8Array | undefined;
+  const lossOf = (tiles: number[]) => (deposit ? tiles.filter((i) => deposit[i] !== DEPOSIT.none).length : 0);
+  const fallback = cands
+    .map((c) => ({ c, tiles: footprintIdx(state, c.q, c.r) }))
+    .filter((x): x is { c: (typeof cands)[number]; tiles: number[] } => x.tiles !== null)
+    .sort((a, b) => lossOf(a.tiles) - lossOf(b.tiles) || a.c.d - b.c.d || a.c.r - b.c.r || a.c.q - b.c.q)[0];
+  if (fallback) {
+    const { c, tiles } = fallback;
+    const height = L.height as Float32Array, owner = L.owner as Int8Array;
+    const level = Math.fround(tiles.map((i) => height[i]).sort((x, y) => x - y)[tiles.length >> 1]);
     for (const i of tiles) {
-      terrain[i] = TERRAIN.flat;
-      prep[i] = PREP.flat;
-      if (deposit) deposit[i] = DEPOSIT.none;
-      if (owner[i] >= 0 && owner[i] !== colonyId) owner[i] = -1;
-      // One level so the footprint passes the spread rule (D-38); the setter stamps the tile for the next delta.
-      setTileHeight(state.grid, i, level);
+      // Setters stamp each layer write, so the next delta carries the levelled site (D-38: runtime landing path).
+      setTileTerrain(state.grid, i, TERRAIN.flat);
+      setTilePrep(state.grid, i, PREP.flat);
+      if (deposit && deposit[i] !== DEPOSIT.none) setTileDeposit(state.grid, i, DEPOSIT.none, 0);
+      if (owner[i] >= 0 && owner[i] !== colonyId) setTileOwner(state.grid, i, -1);
+      if (L.subDeposit) { (L.subDeposit as Uint8Array)[i] = DEPOSIT.none; (L.subRichness as Float32Array)[i] = 0; }
+      setTileHeight(state.grid, i, level); // one level: the footprint must pass the spread rule
     }
     return { q: c.q, r: c.r };
   }

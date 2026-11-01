@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type { SimCommandV1 } from '@terra/contracts';
 import {
   allModules, buildPipeline, createPlanet, diffSince, effectiveOverrides, mergeOverrides, restore, snapshot, step, tune,
@@ -106,6 +107,7 @@ export class PlanetHost {
           seed: msg.params?.seed ?? msg.planetId,
           planetId: msg.planetId,
           radius: msg.params?.radius,
+          worldSalt: randomUUID(), // hidden-ground secret: never leaves the server (D-38)
           capacity: msg.params?.capacity,
         });
     const modules = this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined;

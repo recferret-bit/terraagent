@@ -11,15 +11,20 @@ export interface PlanetParams {
   planetType?: PlanetType;
   radius?: number;
   capacity?: number;
+  /** Host secret for the hidden subsurface (`meta.worldSalt`, never sent to clients). */
+  worldSalt?: string;
 }
 
-export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'capacity'>> & { capacity?: number }) => PlanetState;
+export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'capacity' | 'worldSalt'>> & { capacity?: number; worldSalt?: string }) => PlanetState;
 
 /**
  * Bumped when generation output changes; `createPlanet` stamps it into `meta.genVersion` so hosts can tell planets
  * built by an older generator apart (D-38: dev planets are wiped, local saves start fresh).
+ * **Bump rule:** any change that alters generated output (a `data/worldgen.ts` number, a stage, noise, spawn slots,
+ * landing zones) bumps this in the same commit; `test/gen/world.spec.ts` pins a fingerprint so a forgotten bump fails.
+ * 3: hidden-ground salt, falloff-ring reclassification, wind-direction table.
  */
-export const GEN_VERSION = 2;
+export const GEN_VERSION = 3;
 
 const generators = new Map<string, PlanetGenerator>();
 

@@ -250,27 +250,12 @@ describe('W01-29: Minimal HUD acceptance check', () => {
     // Initial view syncs stock (0 metals)
     mounted.update(host.sync(false));
 
-    // Attempt to place Command Hub through checkOrSendPlaceBuilding
-    const checkRes = await mounted.hud.checkOrSendPlaceBuilding('commandHub', 3, 0);
-    expect(checkRes.ok).toBe(false);
-    if (!checkRes.ok) {
-      expect(checkRes.code).toBe('insufficient_resources');
-    }
-
-    let toastEl = parent.querySelector('[data-testid="hud-toast"]');
-    expect(toastEl).not.toBeNull();
-    expect(toastEl?.textContent).toBe('Waiting: Metals 0/200');
-
-    // Dismiss existing toast
-    toastEl?.click();
-    expect(parent.querySelector('[data-testid="hud-toast"]')).toBeNull();
-
-    // Also verify when command is submitted to sim host and stepped via host.step(1),
-    // cmd.reject is emitted over transport and automatically triggers the toast
+    // The placement goes through the authoritative handler only (D-37: no client-side affordability copy):
+    // the host rejects it, cmd.reject reaches the HUD over the transport and triggers the toast.
     host.sim.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0));
     host.step(1);
 
-    toastEl = parent.querySelector('[data-testid="hud-toast"]');
+    const toastEl = parent.querySelector('[data-testid="hud-toast"]');
     expect(toastEl).not.toBeNull();
     expect(toastEl?.textContent).toBe('Waiting: Metals 0/200');
 

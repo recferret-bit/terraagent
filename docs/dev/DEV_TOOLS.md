@@ -25,7 +25,7 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 
 | Parameter | Effect |
 |---|---|
-| *(none)* | Fast-start guest boot flow (W01+): orbital splash → `POST /v1/auth/guest` → `GET /v1/me/home` (seats on `pl_dev` or `pl_dev_2` when full; dev planets are **desert** planets, `DEV_PLANET_TYPE`, D-38; a dev planet saved by an older world generator is wiped and recreated on app start) → joins planet → auto-lands immediately into colony view (`Esc → Return to orbit` returns to `/play.html?planet=<kind>`) |
+| *(none)* | Fast-start guest boot flow (W01+): orbital splash → `POST /v1/auth/guest` → `GET /v1/me/home` (seats a **new** colony on the dev planet family of the orbit pick, sent as `GET /v1/me/home?type=desert|ocean|temperate`: desert `pl_dev`, `pl_dev_2`, …; ocean `pl_dev_ocean`, `pl_dev_ocean_2`, …; temperate `pl_dev_temperate`, …; no pick → desert; an existing colony keeps its planet, use a fresh guest `?as=<x>` to try another type; a dev planet saved by an older world generator, or of another type than its family, is wiped and recreated on app start, D-38) → joins planet → auto-lands immediately into colony view (`Esc → Return to orbit` returns to `/play.html?planet=<kind>`) |
 | `?planet=dune\|oceanForest\|forestRock` | Opens the **3D Orbital Planet Selector** on that biome (`&deploy=1` launches the 3D atmospheric drop-pod descent immediately). While the pod falls through atmosphere, auth/home pre-warms in the background; at touchdown the browser URL switches to `/play.html` and the live online game mounts on that planet's biome |
 | `?scenario=<id>` | `POST /v1/dev/scenarios/<id>` creates a **fresh** planet from `scenarios/<id>.ts` (`w00` = flat radius-56 planet + test entity id 1 at tile 0,0; `w01` / `w01-landfall` = temperate radius-56 planet with colony 0 landed at spawn slot 0, stock 600/350/200/200, HQ at 800/800 E) and joins it. Each page load creates a new planet; reconnects in the same page rejoin it |
 | `?host=local` | Browser local host: the authoritative engine runs in a Web Worker at 5 TPS; snapshots in IndexedDB (resumed on reload); server-only commands answer `host_unavailable`. Without `scenario`, uses `w00` |
@@ -97,7 +97,7 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 |---|---|
 | `GET /v1/healthz`, `/v1/readyz`, `/v1/metrics` | Health, readiness (`{db, simThreads}`), Prometheus metrics (not dev-only) |
 | `POST /v1/auth/guest`, `/v1/auth/refresh`, `/v1/auth/logout` | Guest device-secret auth, refresh token rotation (`httpOnly` cookie), session logout (W01, not dev-only) |
-| `GET /v1/me/home` | Player home state (`NEW` auto-seats on `pl_dev` or `pl_dev_2` when `W01` is on and `W11` is off → returns `ACTIVE` with `planet` and `colony`) (W01, not dev-only) |
+| `GET /v1/me/home[?type=desert\|ocean\|temperate]` | Player home state (`NEW` auto-seats on the first dev planet with a free seat of the asked type, default desert: `pl_dev`, `pl_dev_2` … / `pl_dev_ocean` … / `pl_dev_temperate` …, when `W01` is on and `W11` is off → returns `ACTIVE` with `planet` and `colony`; `type` is ignored once the player has a colony) (W01, not dev-only) |
 | `GET /v1/dev/planets` | Loaded planet ids |
 | `GET /v1/dev/scenarios`, `POST /v1/dev/scenarios/:id` | List scenarios / create a fresh planet → `{ planetId, scenario, tick }` |
 | `GET /v1/dev/commands`, `POST /v1/dev/commands/:name` | List / run server dev commands (`warp`, `tune`, `scenario`, `chain.ping`) |

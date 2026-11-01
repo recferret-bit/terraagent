@@ -376,26 +376,6 @@ export class MinimalHud {
     }
   }
 
-  async checkOrSendPlaceBuilding(building: string, q: number, r: number): Promise<CommandResult> {
-    const isHub = building.toLowerCase().includes('hub');
-    const cost = isHub ? DEFAULT_HUB_COST : {};
-    const stock = this.getColonyStock();
-    const afford = checkBuildingAffordability(cost, stock);
-    if (!afford.ok) {
-      const msg = formatRejectToast('insufficient_resources', undefined, stock, cost);
-      this.showToast(msg, 'warning');
-      return { ok: false, code: 'insufficient_resources', detail: msg };
-    }
-    if (this.opts.sendCommand) {
-      const res = await this.opts.sendCommand('placeBuilding', { building, q, r });
-      if (!res.ok) {
-        this.handleReject(res.code, res.detail, { kind: 'placeBuilding', args: { building, q, r } });
-      }
-      return res;
-    }
-    return { ok: true, appliedAtTick: this.latestTick };
-  }
-
   getColonyStock(): Record<string, number> {
     const view = this.latestView as {
       colonies?: ViewColony[];

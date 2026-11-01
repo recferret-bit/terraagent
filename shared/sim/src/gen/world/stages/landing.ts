@@ -1,4 +1,4 @@
-import { hexDistance } from '../../../grid/hex';
+import { HEX_DIRS, hexDistance } from '../../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../../grid/layers';
 import { generateSpawnSlots, type SpawnSlot } from '../../spawnSlots';
 import { ensureStarterHubSpace } from '../../starterSpace';
@@ -27,11 +27,14 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, radius: number, fallof
   const tiles: Array<{ i: number; d: number }> = [];
   const c0 = ctx.hex.indexOf(slot.q, slot.r);
   const cx = ctx.mx[c0], cy = ctx.my[c0];
-  for (const sid of ctx.sectors.near(slot.q, slot.r, outer)) {
+  // A Euclidean disc of `outer` tiles reaches up to outer·2/√3 in hex distance: bound the sector walk by that.
+  const hexBound = Math.ceil((outer * 2) / Math.sqrt(3)) + 1;
+  for (const sid of ctx.sectors.near(slot.q, slot.r, hexBound)) {
     for (const i of ctx.sectors.sectors[sid].tiles) {
-      // Round disc (metres / tile spacing), not a hexagon; the hex distance bounds the sector walk.
-      if (hexDistance(slot.q, slot.r, ctx.hex.q[i], ctx.hex.r[i]) > outer + 1) continue;
-      const d = Math.hypot(ctx.mx[i] - cx, ctx.my[i] - cy) / TILE_M;
+      // Round disc (metres / tile spacing), not a hexagon.
+      if (hexDistance(slot.q, slot.r, ctx.hex.q[i], ctx.hex.r[i]) > hexBound) continue;
+      const dx = ctx.mx[i] - cx, dy = ctx.my[i] - cy;
+      const d = Math.sqrt(dx * dx + dy * dy) / TILE_M; // sqrt is correctly rounded on every engine; hypot is not
       if (d <= outer) tiles.push({ i, d });
     }
   }
@@ -43,12 +46,35 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, radius: number, fallof
       if (clearZone && terrain[i] !== TERRAIN.flat) {
         terrain[i] = TERRAIN.flat;
         prep[i] = PREP.flat;
+        // Ground that was levelled away can no longer be uncovered by Clear / Break: nothing stays buried under it.
+        (L.subDeposit as Uint8Array)[i] = DEPOSIT.none;
+        (L.subRichness as Float32Array)[i] = 0;
       }
       continue;
     }
     const t = smoothstep(radius, outer, d);
     height[i] = Math.fround(level + (height[i] - level) * t);
     if (clearZone && t < 0.45 && terrain[i] === TERRAIN.rock && deposit[i] === DEPOSIT.none) terrain[i] = TERRAIN.slope;
+  }
+  if (clearZone) reclassifyRing(ctx, tiles.filter((t) => t.d > radius).map((t) => t.i));
+}
+
+/** The falloff ring's heights changed after classification: dune faces there follow the new gradient (relief planets). */
+function reclassifyRing(ctx: WorldGenContext, ring: number[]): void {
+  const L = ctx.state.grid.layers;
+  const terrain = L.terrain as Uint8Array, prep = L.prep as Uint8Array, height = L.height as Float32Array;
+  const slopeG = ctx.num('slopeGradientM', 0.85);
+  for (const i of ring) {
+    if (terrain[i] !== TERRAIN.flat && terrain[i] !== TERRAIN.slope) continue;
+    let grad = 0;
+    for (const [dq, dr] of HEX_DIRS) {
+      const j = ctx.hex.indexOf(ctx.hex.q[i] + dq, ctx.hex.r[i] + dr);
+      if (j >= 0) grad = Math.max(grad, Math.abs(height[j] - height[i]));
+    }
+    const next = grad > slopeG ? TERRAIN.slope : TERRAIN.flat;
+    if (next === terrain[i]) continue;
+    terrain[i] = next;
+    prep[i] = next === TERRAIN.flat ? PREP.flat : PREP.wild;
   }
 }
 

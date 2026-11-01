@@ -52,7 +52,7 @@ describe('starter Hub space at landing', () => {
       for (let dr = -4; dr <= 4; dr++) for (let dq = -4; dq <= 4; dq++) {
         const i = hex.indexOf(3 + dq, 3 + dr);
         if (i >= 0 && hexDistance(0, 0, dq, dr) <= 4) {
-          s.grid.layers.terrain[i] = TERRAIN.deep;
+          s.grid.layers.terrain[i] = TERRAIN.rock; // hostile but land: pods never land on water (D-39)
           s.grid.layers.prep[i] = PREP.wild;
         }
       }

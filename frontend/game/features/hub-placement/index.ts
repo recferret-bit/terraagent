@@ -1,4 +1,4 @@
-import type { PlanetState, SimCommand } from '@terra/sim';
+import type { CompiledDataLike, PlanetState, SimCommand } from '@terra/sim';
 import {
   defineFeature,
   type Feature,
@@ -82,6 +82,8 @@ declare module '../../core/registry/types' {
 export interface HubStoreLike {
   readonly latest?: GameView | null;
   readonly latestTiles?: ClientTiles | null;
+  /** The host's live compiled balance data (`WorldStore.simData`): the ghost evaluates with the same numbers. */
+  simData?(): CompiledDataLike | null;
   onView?(fn: (v: GameView) => void): () => void;
   sendCommand?(cmdOrKind: unknown, args?: unknown): unknown;
 }

@@ -29,6 +29,7 @@ for (const st of [temperateTerrain, deposits, reliefDesert, classifyDesert, subs
  */
 export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: string) => void): PlanetState {
   const state = createState({ planetId: p.planetId, planetType: p.planetType, seed: p.seed, radius: p.radius });
+  if (p.worldSalt) state.meta.worldSalt = p.worldSalt;
   const ctx = createContext(state, p.capacity ?? DEFAULT_SPAWN_CAPACITY);
   for (const id of ctx.profile.stages) {
     const stage = STAGES.get(id);

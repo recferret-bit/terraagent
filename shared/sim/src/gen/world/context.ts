@@ -34,6 +34,8 @@ export interface WorldGenContext {
   num(field: string, fallback: number): number;
   /** Stable 32-bit seed for `(stage, sector?)`: independent of stage order and of other sectors. */
   seed(stage: string, sector?: number): number;
+  /** Like `seed`, mixed with the host secret `meta.worldSalt`: for hidden ground a client must not regenerate. */
+  secretSeed(stage: string, sector?: number): number;
   field(name: string): Float32Array;
 }
 
@@ -52,6 +54,7 @@ export function createContext(state: PlanetState, capacity: number): WorldGenCon
     state, hex, sectors: sectorIndex(state.grid.radius), profile, capacity, mx, my, fields,
     num: (f, fallback) => (typeof profile[f] === 'number' ? (profile[f] as number) : fallback),
     seed: (stage, sector) => seedOf(`${base}|gen:${stage}${sector === undefined ? '' : `:${sector}`}`),
+    secretSeed: (stage, sector) => seedOf(`${base}|${state.meta.worldSalt ?? ''}|gen:${stage}${sector === undefined ? '' : `:${sector}`}`),
     field(name) {
       let f = fields.get(name);
       if (!f) fields.set(name, (f = new Float32Array(hex.count)));

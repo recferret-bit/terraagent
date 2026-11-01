@@ -6,6 +6,7 @@ import {
   placementRejectCode,
   PREP,
   TERRAIN,
+  type CompiledDataLike,
   type ConstructionOrder,
   type PlacementBill,
   type PlacementBlock,
@@ -57,6 +58,8 @@ export interface EvaluateHubGhostOptions {
   active?: boolean;
   requireHq?: boolean;
   fallbackTiles?: ClientTiles | null;
+  /** The compiled balance data the host runs with (welcome flags + live overrides); defaults when absent (D-37). */
+  data?: CompiledDataLike;
 }
 
 interface ExtractedEntity {
@@ -239,9 +242,9 @@ const toGhostTile = (t: PlacementTile): HubFootprintTileState => ({
 });
 
 /** Site preparation bill for the 3×3 Command Hub footprint at `(q, r)` (shared planner: same numbers the sim uses). */
-export function computeGhostPrepBill(source: GhostSource, q: number, r: number, fallbackTiles?: ClientTiles | null): HubGhostBill {
+export function computeGhostPrepBill(source: GhostSource, q: number, r: number, fallbackTiles?: ClientTiles | null, data?: CompiledDataLike): HubGhostBill {
   const world = ghostPlacementWorld(source, fallbackTiles);
-  return evaluatePlacement(world, { colonyId: 0, q: Math.trunc(q), r: Math.trunc(r), requireBuilder: false }).bill;
+  return evaluatePlacement(world, { colonyId: 0, q: Math.trunc(q), r: Math.trunc(r), requireBuilder: false, data }).bill;
 }
 
 /**
@@ -267,6 +270,7 @@ export function evaluateHubGhost(
     r,
     building: 'commandHub',
     requireBuilder: resolveRequireBuilder(world, colonyId, opts.requireHq),
+    data: opts.data,
   });
   return {
     active: opts.active ?? true,
@@ -294,12 +298,13 @@ export function findValidHubSiteNearHq(
   source: GhostSource,
   colonyId = 0,
   fallbackTiles?: ClientTiles | null,
+  data?: CompiledDataLike,
 ): { q: number; r: number } | null {
   const world = ghostPlacementWorld(source, fallbackTiles);
   const hq = world.entities.find((e) => e.owner === colonyId && (e.kind === ENTITY_KIND.hq || e.kind === ENTITY_KIND.pod));
   return findPlacementSite(
     world,
-    { colonyId, q: hq?.q ?? 0, r: hq?.r ?? 0, building: 'commandHub', requireBuilder: resolveRequireBuilder(world, colonyId) },
+    { colonyId, q: hq?.q ?? 0, r: hq?.r ?? 0, building: 'commandHub', requireBuilder: resolveRequireBuilder(world, colonyId), data },
     5,
   );
 }

@@ -1,6 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { newId, type ColonySummary, type HomeResponse, type PlanetSummary, type SimCommandV1 } from '@terra/contracts';
-import { createPlanet, getSpawnSlots, type SpawnSlot } from '@terra/sim';
+import { createPlanet, getSpawnSlots, type DevPlanetType, type SpawnSlot } from '@terra/sim';
 import {
   type ColonyRecord,
   DEV_PLANET_CAPACITY,
@@ -117,7 +117,11 @@ export class HomeService {
     return this.buildHomeResponse(colony, planet);
   }
 
-  async getOrAssignHome(player: { id: string; handle?: string }): Promise<HomeResponse> {
+  /**
+   * The player's home; a NEW colony is seated on a dev planet of `preferredType` (the orbit pick, one dev planet
+   * family per type) or `DEV_PLANET_TYPE`. An existing colony keeps its planet whatever the preference.
+   */
+  async getOrAssignHome(player: { id: string; handle?: string }, preferredType?: DevPlanetType): Promise<HomeResponse> {
     const existing = await this.getExistingHome(player.id);
     if (existing) return existing;
 
@@ -126,7 +130,7 @@ export class HomeService {
       if (recheck) return recheck;
 
       const handle = player.handle?.trim() || `Colonist-${player.id.slice(-4)}`;
-      const { planet: openPlanet, colonyIndex } = await this.repo.findOrCreateOpenDevPlanet();
+      const { planet: openPlanet, colonyIndex } = await this.repo.findOrCreateOpenDevPlanet(preferredType ?? DEV_PLANET_TYPE);
       const slots = this.getSpawnSlotsForPlanet(openPlanet);
       const existingColonies = await this.repo.listColoniesByPlanetId(openPlanet.id);
       const takenCoords = new Set(existingColonies.map((c) => `${c.spawnQ},${c.spawnR}`));
@@ -206,7 +210,7 @@ export class HomeService {
   }
 
   private getSpawnSlotsForPlanet(planet: PlanetRecord): SpawnSlot[] {
-    const key = `${planet.id}:${planet.seed}:${planet.radius}:${planet.capacity}`;
+    const key = `${planet.id}:${planet.type}:${planet.seed}:${planet.radius}:${planet.capacity}`; // type: a retyped dev row
     const cached = this.slotCache.get(key);
     if (cached) return cached;
 

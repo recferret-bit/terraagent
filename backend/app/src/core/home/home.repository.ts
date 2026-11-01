@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { PlanetType } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
-import { DEV_PLANET_SEED as SIM_DEV_PLANET_SEED, DEV_PLANET_TYPE as SIM_DEV_PLANET_TYPE } from '@terra/sim';
+import { DEV_PLANET_SEED as SIM_DEV_PLANET_SEED, DEV_PLANET_TYPE as SIM_DEV_PLANET_TYPE, devPlanetIdFor, devPlanetTypeOf, type DevPlanetType } from '@terra/sim';
 import { PRISMA } from '../../db/db.module';
 import { APP_ENV, type AppEnv } from '../tokens';
 
@@ -69,12 +69,9 @@ function normalizePlanetType(type: string | undefined): PlanetType {
   return DEV_PLANET_TYPE;
 }
 
-function devPlanetId(index: number): string {
-  return index <= 1 ? 'pl_dev' : `pl_dev_${index}`;
-}
-
-function devPlanetName(index: number): string {
-  return index <= 1 ? 'Dev Planet' : `Dev Planet ${index}`;
+function devPlanetName(type: DevPlanetType, index: number): string {
+  const base = type === DEV_PLANET_TYPE ? 'Dev Planet' : `Dev Planet (${type})`;
+  return index <= 1 ? base : `${base} ${index}`;
 }
 
 function generateColonyId(): string {
@@ -109,12 +106,27 @@ export class HomeRepository {
     return this.planetsById.get(id) ?? null;
   }
 
+  /**
+   * A dev planet row created before its id named a type (pre-D-38 `pl_dev` = temperate) is retyped when nobody lives
+   * on it, so the planet is regenerated with the right profile; with colonies the snapshot wipe (D-38) handles it.
+   */
+  private async fixDevPlanetType(planet: PlanetRecord): Promise<PlanetRecord> {
+    const want = devPlanetTypeOf(planet.id);
+    if (!want || planet.type === want) return planet;
+    if ((await this.listColoniesByPlanetId(planet.id)).length > 0) return planet;
+    if (this.dbEnabled && this.prisma) {
+      const row = await this.prisma.planet.update({ where: { id: planet.id }, data: { type: want } }).catch(() => null);
+      if (row) return this.saveMemPlanet(this.fromDbPlanet(row, planet.radius));
+    }
+    return this.saveMemPlanet({ ...planet, type: want });
+  }
+
   async upsertDevPlanet(id: string, input: Partial<CreatePlanetInput> = {}): Promise<PlanetRecord> {
     const existing = await this.findPlanetById(id);
-    if (existing) return existing;
+    if (existing) return this.fixDevPlanetType(existing);
 
     const name = input.name ?? (id === 'pl_dev' ? 'Dev Planet' : id);
-    const type = input.type ?? DEV_PLANET_TYPE;
+    const type = input.type ?? devPlanetTypeOf(id) ?? DEV_PLANET_TYPE; // the id names its family's type
     const seed = input.seed ?? DEV_PLANET_SEED;
     const radius = input.radius ?? DEV_PLANET_RADIUS;
     const state = input.state ?? 'ACTIVE';
@@ -148,12 +160,13 @@ export class HomeRepository {
     return this.saveMemPlanet(record);
   }
 
-  async findOrCreateOpenDevPlanet(): Promise<{ planet: PlanetRecord; colonyIndex: number }> {
+  /** The first dev planet of `type` (one family per type: `devPlanetIdFor`) with a free seat; creates it when needed. */
+  async findOrCreateOpenDevPlanet(type: DevPlanetType = DEV_PLANET_TYPE): Promise<{ planet: PlanetRecord; colonyIndex: number }> {
     for (let index = 1; index <= 1000; index++) {
-      const id = devPlanetId(index);
+      const id = devPlanetIdFor(type, index);
       const planet = await this.upsertDevPlanet(id, {
-        name: devPlanetName(index),
-        type: DEV_PLANET_TYPE,
+        name: devPlanetName(type, index),
+        type,
         seed: DEV_PLANET_SEED,
         radius: DEV_PLANET_RADIUS,
         capacity: DEV_PLANET_CAPACITY,
@@ -330,6 +343,7 @@ export class HomeRepository {
     });
     return { colony, planet };
   }
+
 
   async setColonyStatus(colonyId: string, status: string): Promise<ColonyRecord | null> {
     if (this.dbEnabled && this.prisma) {
