@@ -1,5 +1,6 @@
 import type { RejectCode } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, removeRow, rowOf, setField } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
 import { isBuildablePrepared } from '../../grid/tileModel';
@@ -18,7 +19,6 @@ import {
   type TerraformOrder,
 } from '../terraform-basic/queue';
 import {
-  advanceConstructionProgress,
   payConstructionCost,
   refundCancelledConstruction,
   resolveHubBuildTimeS,
@@ -96,7 +96,7 @@ function parsePlaceBuildingArgs(raw: unknown): {
   return { buildingKind, q, r, tier, builderEntityId };
 }
 
-function readConstructionOrders(state: SimState): ConstructionOrder[] {
+export function readConstructionOrders(state: SimState): ConstructionOrder[] {
   const raw = state.blobs.constructionQueue?.value ?? state.blobs.constructionQueue;
   if (Array.isArray(raw)) return (raw as ConstructionOrder[]).map((o) => ({ ...o }));
   if (raw && typeof raw === 'object' && Array.isArray((raw as { orders?: unknown }).orders)) {
@@ -105,7 +105,7 @@ function readConstructionOrders(state: SimState): ConstructionOrder[] {
   return [];
 }
 
-function writeConstructionOrders(state: SimState, orders: ConstructionOrder[], tick: number): void {
+export function writeConstructionOrders(state: SimState, orders: ConstructionOrder[], tick: number): void {
   const byColony: Record<number, ConstructionOrder[]> = {};
   for (const o of orders) {
     const list = byColony[o.colonyId] ?? (byColony[o.colonyId] = []);
@@ -160,17 +160,12 @@ function spawnPendingHubRow(
   cols.kind[row] = ENTITY_KIND.hub;
   cols.owner[row] = opts.colonyId;
   cols.tier[row] = opts.tier ?? 1;
-  cols.q[row] = opts.q;
-  cols.r[row] = opts.r;
-  cols.x[row] = Math.fround(opts.q);
-  cols.y[row] = Math.fround(opts.r);
+  placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   cols.rot[row] = 0;
   cols.hp[row] = hp;
   cols.hpMax[row] = hp;
   cols.state[row] = initialState;
   cols.progress[row] = 0;
-  cols.targetQ[row] = opts.q;
-  cols.targetR[row] = opts.r;
   cols.createdAt[row] = tick;
   cols.changedAt[row] = tick;
   return row;
@@ -464,9 +459,7 @@ export function stepConstruction(state: PlanetState, ctx?: Partial<StepContext>)
       continue;
     }
 
-    if (advanceConstructionProgress(state, order, entityRow, tick, ctx)) {
-      changed = true;
-    }
+    // In progress: the `build` unit command walks a builder into reach and advances the order (./work.ts).
   }
 
   if (changed) {
@@ -474,9 +467,10 @@ export function stepConstruction(state: PlanetState, ctx?: Partial<StepContext>)
   }
 }
 
+/** Slot 4: site / payment state runs before the units slot (5), whose `build` command does the work the same step. */
 export const construction = defineSystem({
   id: 'construction',
-  slot: 12,
+  slot: 4,
   wave: 'W01',
   run(state, ctx) {
     stepConstruction(state, ctx);

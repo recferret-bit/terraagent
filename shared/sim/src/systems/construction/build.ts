@@ -1,6 +1,5 @@
 import type { CompiledRow } from '../../data';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { hexDistance, hexRound } from '../../grid/hex';
+import { ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
@@ -8,7 +7,6 @@ import type { StepContext } from '../../kernel/context';
 import type { PlanetState, SimState } from '../../kernel/state';
 import { defaultW01Data, resolveHqT1Row, syncHqView } from '../hq';
 import { addColonyStock, getColonyStock, resolveStartingKitRow, setColonyStock } from '../landing';
-import { getColonyTerraformOrders } from '../terraform-basic/queue';
 import { applyHubCompletionEffects } from '../territory-claim';
 import type { ConstructionOrder } from './index';
 import { isHubBuildingKind, resolveHubT1Row } from './placement';
@@ -185,59 +183,20 @@ export function refundCancelledConstruction(
   return refund;
 }
 
-/** Finds an alive, landed HQ unit for `colonyId` that is not currently busy with an active S0 terraform job. */
-export function findAvailableHqBuilderSlot(state: PlanetState, colonyId: number): number {
-  const tfOrders = getColonyTerraformOrders(state, colonyId);
-  if (tfOrders.some((o) => o.jobs.length > 0)) return -1;
-
-  const e = state.entities;
-  const cols = e.cols;
-  for (let row = 0; row < e.count; row++) {
-    if (cols.kind[row] !== ENTITY_KIND.hq) continue;
-    if (cols.owner[row] !== colonyId) continue;
-    if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
-    if (cols.state[row] === ENTITY_STATE.descending) continue;
-    return row;
-  }
-  return -1;
-}
-
-/** Hex distance within which the HQ can work on a building footprint (Hub radius 1 + 2 tiles reach). */
-export const BUILD_REACH_TILES = 3;
-
-/** Sends the builder HQ to a stand-off tile 2 tiles from the site centre (unless it is already moving). */
-function sendBuilderToSite(state: PlanetState, hqSlot: number, order: ConstructionOrder, tick: number, data?: CompiledDataLike): void {
-  const cols = state.entities.cols;
-  if (cols.state[hqSlot] === ENTITY_STATE.moving) return;
-  const dx = cols.x[hqSlot] - order.q;
-  const dy = cols.y[hqSlot] - order.r;
-  const d = hexDistance(cols.x[hqSlot], cols.y[hqSlot], order.q, order.r) || 1;
-  const [tq, tr] = hexRound(order.q + (dx * 2) / d, order.r + (dy * 2) / d);
-  setField(state.entities, hqSlot, 'targetQ', tq, tick);
-  setField(state.entities, hqSlot, 'targetR', tr, tick);
-  setField(state.entities, hqSlot, 'state', ENTITY_STATE.moving, tick);
-  syncHqView(state, hqSlot, tick, data);
-}
-
-/** Advances an in-progress construction order by `dtTicks` using the assigned builder work rate (`UO-L-05`, `W01-16`). */
+/**
+ * Advances an in-progress construction order by one step of work from builder unit `hqSlot`, which the `build` unit
+ * command has already walked into reach (`UO-L-05`, `W01-16`, `UO-Q-01`).
+ */
 export function advanceConstructionProgress(
   state: PlanetState,
   order: ConstructionOrder,
   entityRow: number,
+  hqSlot: number,
   tick: number,
   ctx?: Partial<StepContext>,
 ): boolean {
-  const hqSlot = findAvailableHqBuilderSlot(state, order.colonyId);
-  if (hqSlot < 0) return false;
-
   const data = ctx?.data;
-  const cols0 = state.entities.cols;
   const dtTicks = ctx?.dt ?? 1;
-  if (hexDistance(cols0.x[hqSlot], cols0.y[hqSlot], order.q, order.r) > BUILD_REACH_TILES + 1e-6) {
-    sendBuilderToSite(state, hqSlot, order, tick, data);
-    order.statusText = 'waiting(builder: HQ en route)';
-    return true;
-  }
   const dtS = (TICK_MS / 1000) * dtTicks;
   const cols = state.entities.cols;
   const hqRate =

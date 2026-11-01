@@ -107,7 +107,9 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
 
     const { seenCounts, seenTexts } = stepToFullPrep(host);
     expect(seenCounts).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
-    expect(seenTexts).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => `waiting(site: ${n}/9)`));
+    expect(seenTexts.slice(0, 9)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => `waiting(site: ${n}/9)`));
+    // 9/9: the build starts the same step; the HQ, which graded from inside the footprint, first walks out of it.
+    expect(['waiting(site: 9/9)', 'waiting(builder: HQ en route)', 'in_progress']).toContain(seenTexts[9]);
 
     for (const pos of footprint) {
       expect(isBuildablePrepared(state.grid, idx.indexOf(pos.q, pos.r))).toBe(true);
@@ -117,7 +119,9 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     expect(finalOrder.status).toBe('in_progress');
     expect(state.entities.cols.state[hubRow]).toBe(ENTITY_STATE.constructing);
     expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
-    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(800 - 9 * 20, 3);
+    // 9 × 20 E drawn while grading; the cell self-recharges 3 E/s (0.6 E/tick) only while the HQ walks between tiles.
+    expect(state.entities.cols.cell[hqSlot]).toBeGreaterThan(800 - 9 * 20);
+    expect(state.entities.cols.cell[hqSlot]).toBeLessThan(800 - 9 * 20 + 0.6 * 40);
   });
 });
 
@@ -155,10 +159,8 @@ describe('W01-15: Forest/Rock prep planning & cancel propagation (UO-TF-03, UO-Q
     const footprint = getHubFootprintTiles(3, 0);
 
     host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0, 'cancel_hub'));
-    host.step(1);
-    for (let t = 0; t < 29; t++) {
-      host.step(1);
-    }
+    // The HQ walks between footprint tiles (no teleport), so step until 3 of 9 tiles are graded.
+    for (let t = 0; t < 60 && (getConstructionOrders(state, 0)[0]?.preparedCount ?? 0) < 3; t++) host.step(1);
 
     const midOrder = getConstructionOrders(state, 0)[0]!;
     expect(midOrder.preparedCount).toBe(3);

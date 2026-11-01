@@ -64,7 +64,7 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 | `cell <n>` | Set the colony's HQ power cell to `<n>` E (clamped `0..800`) (W01) | both |
 | `reveal` | Mark every hex tile on the planet explored for the colony (W01) | both |
 | `seed <s\|n>` | Regenerate the current planet's ground (terrain, heights, deposits, hidden subsurface) from seed `<s>` with the planet type's world-generation profile (D-38); colonies and entities stay (W01) | both |
-| `tp <q> <r>` | Teleport the colony's HQ drone to tile `(q, r)` (W01) | both |
+| `tp <q> <r>` | Teleport the colony's HQ drone to tile `(q, r)` (W01). Admin only: `dev.teleport` / `dev.nudge` / `dev.land` are the only commands that may set a position directly (SIM-M-01); the HQ drops its current route and re-plans from the new tile | both |
 | `land` | Skip drop-pod descent immediately, landing the HQ drone and depositing pod cargo (W01) | both |
 | `border-hatch [on\|off]` | Toggle colour-blind hatch pattern on territory borders (W01) | both |
 
@@ -74,7 +74,7 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 
 - `TICK` chip (top left), `×k` warp badge under it.
 - **Minimal HUD** (top centre, W01): colony name, `MM:SS` game clock, family stock & caps (`Metals`, `Minerals`, `Bio` with `Water` + `Biomass` tooltip, `Supply`), HQ power cell bar (`800 / 800 E`), and command reject toasts.
-- **HQ Status Panel** (top left, W01): HQ T1 Commander Drone hull HP (`900 / 900`), power cell bar, current job (`idle`, `moving`, `grading`, `clearing`, `breaking`, `building`), and queue count; left-click selects HQ, right-click orders `moveUnit`.
+- **HQ Status Panel** (top left, W01): HQ T1 Commander Drone hull HP (`900 / 900`), power cell bar, current job (`idle`, `moving`, `grading`, `clearing`, `breaking`, `building`), and queue count; left-click selects HQ, right-click orders `moveUnit`, **X** stops the selected HQ (`stopUnit`). A move to a walled-in tile ends with one `No path` toast. Server ingress: more than 20 commands/s (bursts of 40) per player are rejected `rate_limited`.
 - **Terraform Menu v1** (bottom left, W01): `GRADE [G]`, `CLEAR [C]`, `BREAK [B]`, single (`1×1`) vs area (`3×3`, max 9 tiles) brush toggle, skipped-tile toast, and tile-state overlay (`OVERLAY: ON/OFF [V]`, Wild / Flat / Prepared counts).
 - **Construction Menu v0** (bottom right, W01): `Command Hub [H]` button, 3×3 placement ghost with green/red validity tint and live prep bill (tiles to prepare, Grade/Clear/Break breakdown, time at HQ `1.5×`, E cost, lump yields), `CONFIRM` / `CANCEL [ESC]`, a translucent 3D ghost in the scene (9 footprint hexes tinted per tile + a Command Hub proxy, green valid / red invalid, following the pointer every frame; renderer `hub-ghost-3d`), and `CANCEL ORDER` (75% refund if already in progress). Validity comes from the shared `evaluatePlacement` (same function as the `placeBuilding` handler, D-37): trees, rock, water, slopes and deposits are red with the reason; to test the server check directly, run `__online.commands.send('placeBuilding', { building: 'commandHub', q, r })` in the browser DevTools console.
 - **WAVES** flag panel (top right): one chip per wave, on/off, and the flag source; collapsible. Below it: `BORDER: SOLID / HATCH` toggle (W01).

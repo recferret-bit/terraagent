@@ -27,6 +27,44 @@ no clock, no `Math.random`, no I/O. The `tsconfig.json` has no DOM or Node types
 - **One rule function per previewable rule (D-37):** building placement is `evaluatePlacement(world, opts)` in `systems/construction/placement.ts` over a read-only `PlacementWorld` (`placementWorldFromState` adapts `SimState`; the client adapts its replica view). Tile meaning (`geoBuildBlock`, `isGroundObstacle`) lives in `grid/geo.ts` and is shared with movement and the starter-site guarantee. The `placeBuilding` handler is the authority on the server and in the local host; the client only previews with the same function.
 - **Balance numbers live in `src/data/*.ts` rows** (D-35), never in system code.
 
+## Units: commands, one movement path, no teleports (SIM-M, `src/units/`)
+
+Every unit (today the HQ; any kind registered in `units/mobility.ts`) is driven the same way:
+
+```
+input ──► unit command ──► units runner (slot 5) ──► movement orchestrator ──► pathfinding service ──► locomotion
+ player handler (moveUnit, stopUnit)   execute()     requestMove(goal band)   grid/pathQueue.ts + A*     the ONLY writer
+ work provider (terraform, build)      per step      one live request/unit    2 000 expansions/step       of x, y, q, r
+ runner itself (die at 0 HP)                         routes in blobs.unitMotion  (SIM-T-02)
+```
+
+| Piece | File | Notes |
+|---|---|---|
+| Command kinds | `units/types.ts`, `units/commands/*`, `systems/*/work.ts` | `move`, `stop` (immediate), `die` (immediate), `attack`, `build`, `terraform`; plain data in `blobs.units` (`current`, `queue`, `holdUntil`, `skip`) |
+| Registry + entry point | `systems/units/registry.ts` | `UNIT_REGISTRY` (commands + work providers in priority order); `issueUnitCommand(state, row, cmd, ctx, { queue })` |
+| Runner | `units/runner.ts` | think (die / ask providers / execute) → move → settle (a command whose route ended this step runs once more) |
+| Approach | `units/approach.ts` | "walk until within `[minDist, maxDist]` of a tile": shared first phase of move, build, terraform, attack |
+| Orchestrator | `units/movement/orchestrator.ts` | `requestMove` / `cancelMove` / `runMovement`; failed path = failed command, never a straight line; re-plans if the next waypoint becomes blocked |
+| Pathfinding service | `grid/pathQueue.ts`, `grid/pathSearch.ts`, `grid/pathProfiles.ts` | FIFO of plain-data requests (profile `ground`, goal band); resumable A*; a restored state replays the paid expansions, so it resolves on the same step |
+| Locomotion | `units/movement/locomotion.ts` | Moves at the data speed along waypoints; nothing else may move a live entity |
+
+- **What blocks a ground unit:** `grid/geo.ts` `isGroundMoveBlocked`: uncleared trees and rock, and every resource
+  deposit (the ore / crystal / oil nodes stand on the tile); Deep water, ridges and moats by terrain. A target on such a
+  tile is rejected `site_blocked`; a target that cannot be reached fails the command (`lastFailure`, toasted once by the client).
+- **Client rendering (sync):** the client predicts with this same code; units are drawn from tick-keyed poses at a
+  monotonic render clock (`frontend/game/app/online/entityMotion.ts`), so prediction handing over to the confirmed
+  state never draws a step back. `test/units/sync.spec.ts` checks replica and prediction match the authority each tick.
+- **Never write an entity's position** (`setField(…, 'x'|'y'|'q'|'r')`, `cols.x[row] = …`) outside locomotion. Spawn with
+  `placeSpawnedEntity` (`ecs/placement.ts`, throws for an existing row); admin moves (`dev.teleport`, `dev.nudge`, `dev.land`)
+  call `adminRelocateEntity`, allowed only in `systems/dev/`. The sim lint enforces this (rule message `SIM-M-01`,
+  proven by `test/lint/position-writes.spec.ts`); `test/units/no-teleport.spec.ts` checks no unit ever steps faster than its speed.
+- **Systems do not task or move units.** They queue work (a terraform order, a construction order) and a work provider
+  turns it into an `auto` command; or they call `issueUnitCommand`. A `player` command replaces auto work; auto work
+  resumes when the unit is idle (after `stop`: after `hq.t1.stopHoldS`). Work reach is data (`terraformReach*`, `buildReach*`).
+- **A new command kind:** one `defineUnitCommand` file + one entry in `UNIT_REGISTRY`; a new unit kind: one entry in
+  `MOBILE_KINDS` with its data row.
+
+
 ## World generation, sectors and hidden ground (D-38, `src/gen/world/`, `src/grid/sectors.ts`)
 
 - `createPlanet` → `generateWorld`: the planet type's profile row (`data/worldgen.ts`) lists stage ids; each stage is a

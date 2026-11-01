@@ -60,7 +60,8 @@ The sim must be **reproducible in tests**: same seed + same commands at the same
 | 14 | `finalize` | `tick += dt`; mark changed entities for the next delta. |
 
 - `SIM-T-01` Systems not yet implemented are registered as no-ops, so the order stays fixed.
-- `SIM-T-02` Per-step budget: A\* node expansions ≤ 2 000 per planet per step. Overflow requests wait in a FIFO (`state.pathQueue`).
+- `SIM-T-02` Per-step budget: A\* node expansions ≤ 2 000 per planet per step. Overflow requests wait in a FIFO (`state.pathQueue`). The movement orchestrator (slot 5, `units`) is the only client of that queue: units ask it for a move, it keeps one live request per unit, hands requests to the pathfinding service in FIFO order and gives each solved path to the unit as its route. A half-done search in a restored snapshot is rebuilt by replaying its paid expansions, so it resolves on the same step.
+- `SIM-M-01` **Units never teleport.** All unit input is a unit command (`move`, `stop`, `die`, `attack`, `build`, `terraform`) executed in slot 5; a live entity's position changes only by locomotion along an orchestrated route, at its data speed. Work happens only within the unit's reach of the target (data rows). Spawning sets the first position; admin `dev.*` commands are the only other writers. Ground units cannot enter uncleared trees or rock or any resource-deposit tile (`isGroundMoveBlocked`). A re-plan mid-step continues forward, never back to the tile being left. Enforced by the sim lint and tests (`shared/sim/README.md` → Units).
 
 ---
 

@@ -299,6 +299,7 @@ Error envelope (all non-2xx): `{ error: { code, message, details? }, requestId }
 |---|---|
 | App restarts while a client is connected | `bye 4012` if graceful; otherwise the socket drops. The client reconnects with backoff, then `hello` → `join` → `welcome`. Commands applied after the last snapshot are lost. |
 | Client sends a command for another colony | `cmd.reject not_own_colony`. The colony is always derived from the token. |
+| Client floods commands | Each player has a token bucket at the ingress (20 commands/s, bursts of 40): extra commands get `cmd.reject rate_limited` before validation or any planet work. The local host (`?host=local`) has no limit. |
 | Cargo mint fails on chain | `cargo.settled {ok: false}` refunds the stock to the colony; push `cargo.status`. |
 | Market settlement fails (`execute_intents` batch rejected) | Both orders return to the book (or expire). Reserved sim stock is released with `market.release`. |
 | `intents.near` or RPC unreachable | Market and cargo commands are rejected with `market_unavailable`. Gameplay continues. |

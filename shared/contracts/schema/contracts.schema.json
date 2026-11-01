@@ -771,6 +771,26 @@
       "summary": "Queues construction of a structure at (q, r) and auto-links any missing site preparation ops (UO-TF-03).",
       "wave": "W01"
     },
+    "stopUnit": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entityId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Stops an owned unit: drops its current and queued commands and its route; queued auto work resumes after a short hold.",
+      "wave": "W01"
+    },
     "system.spawnColony": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1334,7 +1354,8 @@
                 "planet_ended",
                 "wave_disabled",
                 "host_unavailable",
-                "internal"
+                "internal",
+                "rate_limited"
               ],
               "type": "string"
             },

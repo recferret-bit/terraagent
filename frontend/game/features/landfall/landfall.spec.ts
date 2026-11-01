@@ -271,7 +271,7 @@ describe('W01-26: EntityMeshes 3D rendering and interpolation', () => {
 
     view = host.step(2);
     meshes.syncView(view, null);
-    meshes.update(0.1, null);
+    for (let i = 0; i < 6; i++) meshes.update(0.1, null); // drawn ~1.5 ticks behind the newest view (smooth render clock)
 
     const rec = meshes.getRecord(hqId)!;
     expect(rec.mesh.position.x).toBeGreaterThan(0);

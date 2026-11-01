@@ -92,6 +92,7 @@ export class HqPanel {
     this.jobText.className = 'ta-hq-panel__job';
     this.jobText.dataset.testid = 'hq-job';
     this.jobText.textContent = 'idle';
+    this.jobText.title = 'Right-click a tile: move · X: stop';
     this.queueText = document.createElement('span');
     this.queueText.className = 'ta-hq-panel__queue';
     this.queueText.dataset.testid = 'hq-queue';

@@ -1,5 +1,6 @@
 import { dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf, setField } from '../../ecs/store';
 import { ensureStarterHubSpace, getSpawnSlots } from '../../gen/spawnSlots';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
@@ -199,7 +200,8 @@ export function addColonyStock(
   setColonyStock(state, colonyId, stock);
 }
 
-function getLandingPods(state: SimState): LandingPodState[] {
+/** The colony landing pods (`state.blobs.landingPods`). */
+export function getLandingPods(state: SimState): LandingPodState[] {
   const raw = state.blobs.landingPods?.value;
   return Array.isArray(raw) ? (raw as LandingPodState[]) : [];
 }
@@ -272,17 +274,12 @@ export function spawnColonyLanding(
   cols.kind[row] = ENTITY_KIND.pod;
   cols.owner[row] = colonyId;
   cols.tier[row] = 1;
-  cols.q[row] = q;
-  cols.r[row] = r;
-  cols.x[row] = Math.fround(q);
-  cols.y[row] = Math.fround(r);
+  placeSpawnedEntity(state.entities, row, q, r, tick);
   cols.rot[row] = 0;
   cols.hp[row] = 500;
   cols.hpMax[row] = 500;
   cols.state[row] = ENTITY_STATE.descending;
   cols.progress[row] = 0;
-  cols.targetQ[row] = q;
-  cols.targetR[row] = r;
   cols.createdAt[row] = tick;
   cols.changedAt[row] = tick;
 
@@ -304,7 +301,8 @@ export function spawnColonyLanding(
   return { podEntityId, q, r };
 }
 
-function deployPod(state: PlanetState, pod: LandingPodState, ctx: StepContext): number {
+/** Opens a landed pod: spawns the colony HQ next to it and emits `hqLanded`. */
+export function deployPod(state: PlanetState, pod: LandingPodState, ctx: StepContext): number {
   pod.ticksRemaining = 0;
   pod.deployed = true;
   const podRow = rowOf(state.entities, pod.podEntityId);
@@ -391,59 +389,6 @@ export const spawnColony = defineCommandHandler({
   },
 });
 
-export const devLand = defineCommandHandler({
-  kind: 'dev.land',
-  wave: 'W01',
-  handle(state, cmd, ctx) {
-    const args = (cmd.args ?? {}) as { q?: number; r?: number; colonyId?: number };
-    const legacyColony = (cmd as { colony?: unknown }).colony;
-    const targetColony =
-      typeof cmd.colonyIndex === 'number'
-        ? cmd.colonyIndex
-        : typeof legacyColony === 'number'
-          ? legacyColony
-          : typeof args.colonyId === 'number'
-            ? args.colonyId
-            : null;
-
-    const pods = getLandingPods(state);
-    const matching = pods.filter((p) => !p.deployed && (targetColony === null || p.colonyId === targetColony));
-    if (matching.length === 0) {
-      if (
-        args.q === undefined &&
-        args.r === undefined &&
-        pods.some((p) => p.deployed && (targetColony === null || p.colonyId === targetColony))
-      ) {
-        return;
-      }
-      const colIdx = targetColony ?? 0;
-      spawnColonyLanding(state, { colonyId: colIdx, q: args.q, r: args.r, tick: ctx.tick, data: ctx.data }, ctx);
-      const updatedPods = getLandingPods(state);
-      for (const pod of updatedPods) {
-        if (!pod.deployed && pod.colonyId === colIdx) deployPod(state, pod, ctx);
-      }
-      setBlob(state, 'landingPods', updatedPods, ctx.tick);
-      return;
-    }
-
-    for (const pod of matching) {
-      if (typeof args.q === 'number' && typeof args.r === 'number') {
-        pod.q = args.q;
-        pod.r = args.r;
-        const row = rowOf(state.entities, pod.podEntityId);
-        if (row >= 0) {
-          setField(state.entities, row, 'q', args.q, ctx.tick);
-          setField(state.entities, row, 'r', args.r, ctx.tick);
-          setField(state.entities, row, 'x', Math.fround(args.q), ctx.tick);
-          setField(state.entities, row, 'y', Math.fround(args.r), ctx.tick);
-        }
-      }
-      deployPod(state, pod, ctx);
-    }
-    setBlob(state, 'landingPods', pods, ctx.tick);
-  },
-});
-
 export const landing = defineSystem({
   id: 'landing',
   slot: 2,
@@ -476,5 +421,5 @@ export default defineSimModule({
   id: 'landing',
   wave: 'W01',
   systems: [landing],
-  handlers: [spawnColony, devLand],
+  handlers: [spawnColony],
 });

@@ -1,6 +1,7 @@
 import { dataRow } from '../../data';
 import { ENTITY_KIND } from '../../ecs/columns';
-import { insertRow, rowOf, setField } from '../../ecs/store';
+import { adminRelocateEntity, placeSpawnedEntity } from '../../ecs/placement';
+import { insertRow, rowOf } from '../../ecs/store';
 import { createPlanet } from '../../gen/createPlanet';
 import { hasGenerator } from '../../gen/generators';
 import { forgetTileStamps } from '../../grid/sectors';
@@ -10,7 +11,9 @@ import { seedRng } from '../../kernel/rng';
 import { setBlob, touchTile, type PlanetState } from '../../kernel/state';
 import { defineSimModule } from '../define';
 import { resolveHqRow, revealVision, setHqCellEnergy, syncHqView } from '../hq';
+import { cancelMove } from '../../units/movement/orchestrator';
 import { addColonyStock } from '../landing';
+import { devLand } from './land';
 
 /** `kind` of the W00 test entity spawned by `dev.spawn` (no gameplay meaning). */
 export const DEV_ENTITY_KIND = 1;
@@ -48,18 +51,16 @@ function findHqRow(state: PlanetState, colonyIndex: number, reqId?: number): num
   return -1;
 }
 
-function place(s: PlanetState, row: number, x: number, y: number, ctx: StepContext): void {
+/** Admin placement: a new row gets its spawn tile; an existing one is relocated (its route, if any, is dropped). */
+function place(s: PlanetState, row: number, x: number, y: number, ctx: StepContext, spawned = false): void {
   const e = s.entities;
-  const q = Math.round(x);
-  const r = Math.round(y);
-  setField(e, row, 'q', q, ctx.tick);
-  setField(e, row, 'r', r, ctx.tick);
-  setField(e, row, 'x', x, ctx.tick);
-  setField(e, row, 'y', y, ctx.tick);
-  if (e.cols.targetQ) setField(e, row, 'targetQ', q, ctx.tick);
-  if (e.cols.targetR) setField(e, row, 'targetR', r, ctx.tick);
+  if (spawned) placeSpawnedEntity(e, row, Math.round(x), Math.round(y), ctx.tick);
+  else {
+    adminRelocateEntity(e, row, x, y, ctx.tick);
+    cancelMove(s, e.cols.id[row], ctx.tick);
+  }
   if (e.cols.kind[row] === ENTITY_KIND.hq) {
-    revealVision(s, e.cols.owner[row], q, r, 9, ctx.tick);
+    revealVision(s, e.cols.owner[row], e.cols.q[row], e.cols.r[row], 9, ctx.tick);
     syncHqView(s, row, ctx.tick, ctx.data);
   }
 }
@@ -78,7 +79,7 @@ const spawn = defineCommandHandler({
     const { q, r } = c.args as { q: number; r: number };
     const row = insertRow(s.entities, ctx.newEntityId(), ctx.tick);
     s.entities.cols.kind[row] = DEV_ENTITY_KIND;
-    place(s, row, q, r, ctx);
+    place(s, row, q, r, ctx, true);
   },
 });
 
@@ -174,5 +175,5 @@ const seed = defineCommandHandler({
 export default defineSimModule({
   id: 'dev',
   wave: 'W00',
-  handlers: [ping, spawn, nudge, teleport, grant, cell, reveal, seed],
+  handlers: [ping, spawn, nudge, teleport, grant, cell, reveal, seed, devLand],
 });

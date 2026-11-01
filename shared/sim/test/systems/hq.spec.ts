@@ -8,6 +8,7 @@ import {
   ENTITY_STATE,
   getHqRechargeRateEPerS,
   getHqView,
+  getUnitRecord,
   hexDistance,
   hexIndex,
   insertRow,
@@ -316,12 +317,17 @@ describe('HQ movement vs. obstacles (trees / rock)', () => {
     expect(host.step(1).outcomes[0]?.code).toBeUndefined();
   });
 
-  it('rejects a target sealed off by obstacles', () => {
-    const { host, hqId, idx, terrain } = setup();
+  it('a target sealed off by obstacles fails in the movement orchestrator: the HQ never moves (no straight-line walk)', () => {
+    const { host, state, hqId, idx, terrain } = setup();
+    const row = rowOf(state.entities, hqId);
     for (const [q, r] of [[6, 0], [4, 0], [5, 1], [5, -1], [4, 1], [6, -1]]) {
       terrain[idx.indexOf(q, r)] = TERRAIN.rock;
     }
     host.submit(mkCmd('moveUnit', { entityId: hqId, q: 5, r: 0 }));
-    expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined(); // reachability is the pathfinder's call, not the handler's
+    host.step(10);
+    const cols = state.entities.cols;
+    expect([cols.x[row], cols.y[row], cols.state[row]]).toEqual([0, 0, ENTITY_STATE.idle]);
+    expect(getUnitRecord(state, hqId)).toMatchObject({ current: null, lastFailure: { code: 'no_path', kind: 'move', source: 'player' } });
   });
 });

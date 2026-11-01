@@ -12,6 +12,8 @@ export default defineTable({
     cellFastRechargePerS: 'perSecond',
     podDescentS: 'seconds',
     autoPlaceIdleS: 'seconds',
+    stopHoldS: 'seconds',
+    retryBlockedS: 'seconds',
   },
   rows: [
     {
@@ -41,6 +43,14 @@ export default defineTable({
       selfPreservationHpRatio: 0.4,
       dps: 12,
       weaponRange: 5,
+      // Work reach (hex tiles): the HQ walks until the work tile / site centre is within [min, max] tiles, then works.
+      terraformReachMin: 1,
+      terraformReachTiles: 2,
+      buildReachMin: 2,
+      buildReachTiles: 3,
+      // After `stop` the HQ ignores queued work for this long; work it could not reach is retried after this long.
+      stopHoldS: 5,
+      retryBlockedS: 5,
       archetype: 'robot.hero',
     },
     {

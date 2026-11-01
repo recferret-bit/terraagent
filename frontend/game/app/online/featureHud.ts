@@ -22,6 +22,7 @@ export class FeatureHud {
   private readonly off: () => void;
   private readonly host: HostKind;
   private readonly services: Partial<FeatureServices>;
+  private mounted: Partial<FeatureServices> | null = null;
 
   constructor(
     private readonly parent: HTMLElement,
@@ -50,6 +51,11 @@ export class FeatureHud {
     this.root?.update(view);
   }
 
+  /** A HUD toast (top bar), when the `hud-min` feature is mounted. */
+  toast(message: string, severity: 'warning' | 'error' | 'info' = 'warning'): void {
+    this.mounted?.hudMin?.showToast(message, severity);
+  }
+
   /** Per-frame tick of the features' 3D renderers with the newest view. */
   frame(view: GameView, dt: number): void {
     for (const r of this.renderers) r.update(view, dt);
@@ -72,6 +78,7 @@ export class FeatureHud {
         flagsSource: source,
       },
     };
+    this.mounted = ctx.services;
     this.root = new HudRoot(this.parent, features, ctx);
     this.root.setVisible(this.visible);
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof location !== 'undefined') {

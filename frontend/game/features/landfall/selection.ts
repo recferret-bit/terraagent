@@ -40,6 +40,23 @@ export interface LandfallControllerOptions {
   autoSelect?: boolean;
   isHqDeployed?: () => boolean;
   onTargetMove?: (q: number, r: number) => void;
+  /** A player order of the HQ failed in the sim (e.g. no path to the target); called once per failure. */
+  onOrderFailed?: (failure: UnitFailureView) => void;
+}
+
+/** `blobs.units.byId[id].lastFailure` as the view carries it (see `@terra/sim` `UnitFailure`). */
+export interface UnitFailureView {
+  code: string;
+  tick: number;
+  kind: string;
+  source: string;
+}
+
+/** The last failed command of unit `id` in a view, or null. */
+export function unitFailureFromView(view: unknown, id: number): UnitFailureView | null {
+  const units = (view as { blobs?: { units?: { byId?: Record<string, { lastFailure?: UnitFailureView | null }> } } } | null)?.blobs?.units;
+  const f = units?.byId?.[String(id)]?.lastFailure;
+  return f && typeof f.tick === 'number' && typeof f.code === 'string' ? f : null;
 }
 
 export type LandfallListener = (snapshot: { hq: HqStatusView | null; selectedEntityId: number | null }) => void;
@@ -193,6 +210,9 @@ export function isTileNearHq(hq: HqStatusView, q: number, r: number, maxDist = 1
 /**
  * Manages HQ selection state and right-click / programmatic `moveUnit` orders.
  */
+/** A second right-click order on the same tile within this window is the same click reported twice. */
+export const RIGHT_CLICK_DEDUPE_MS = 400;
+
 export class LandfallController {
   private selectedEntityId: number | null = null;
   private autoSelect: boolean;
@@ -201,6 +221,8 @@ export class LandfallController {
   private readonly listeners = new Set<LandfallListener>();
   private readonly cleanups: Array<() => void> = [];
   private pickTile?: TilePicker;
+  /** Tick of the newest failure already reported (failures at or before it are old news, e.g. after a reload). */
+  private seenFailureTick: number | null = null;
 
   constructor(private readonly opts: LandfallControllerOptions = {}) {
     this.autoSelect = opts.autoSelect !== false;
@@ -258,7 +280,19 @@ export class LandfallController {
     } else if (!hq && this.selectedEntityId !== null) {
       this.selectedEntityId = null;
     }
+    this.reportFailure(view, hq);
     this.emit();
+  }
+
+  /** The predicted and the confirmed view both carry the same failure (same tick): it is reported once. */
+  private reportFailure(view: unknown, hq: HqStatusView | null): void {
+    if (!hq) return;
+    const f = unitFailureFromView(view, hq.entityId);
+    const tick = f?.tick ?? -1;
+    if (this.seenFailureTick === null) { this.seenFailureTick = tick; return; }
+    if (!f || tick <= this.seenFailureTick) return;
+    this.seenFailureTick = tick;
+    if (f.source === 'player') this.opts.onOrderFailed?.(f);
   }
 
   selectHq(): number | null {
@@ -315,6 +349,16 @@ export class LandfallController {
     return true;
   }
 
+  /** `stopUnit` for the selected HQ (it halts where it is; queued work resumes after a short hold). */
+  stopSelected(): boolean {
+    const hq = this.latestHq;
+    if (!hq || this.selectedEntityId !== hq.entityId) return false;
+    if (this.opts.store?.sendCommand) this.opts.store.sendCommand({ type: 'stopUnit', entityId: hq.entityId });
+    else if (this.opts.sendCommand) void this.opts.sendCommand('stopUnit', { entityId: hq.entityId });
+    else return false;
+    return true;
+  }
+
   handleLeftClick(q: number, r: number, shiftKey = false): boolean {
     if (shiftKey && this.isSelected()) {
       return this.orderMove(q, r);
@@ -333,7 +377,15 @@ export class LandfallController {
   bindCanvas(canvas: HTMLElement, pickTile: TilePicker | undefined = this.pickTile): () => void {
     if (pickTile) this.pickTile = pickTile;
     let down = { x: 0, y: 0, button: -1 };
-    let lastRightOrderAt = -1000;
+    let lastRight = { at: -1000, q: NaN, r: NaN };
+    // One right-click is one order. Browsers fire `contextmenu` on mouse-down (macOS) or mouse-up (Windows) next to
+    // `pointerup`, so both handlers route here and the second of the pair is dropped.
+    const orderRight = (q: number, r: number) => {
+      const now = Date.now();
+      if (now - lastRight.at < RIGHT_CLICK_DEDUPE_MS && lastRight.q === q && lastRight.r === r) return;
+      lastRight = { at: now, q, r };
+      this.handleRightClick(q, r);
+    };
 
     const resolveTile = (e: { clientX?: number; clientY?: number; detail?: unknown }): { q: number; r: number } | null => {
       const det = e.detail as { q?: number; r?: number } | undefined;
@@ -355,16 +407,14 @@ export class LandfallController {
       if (e.button === 0) {
         this.handleLeftClick(pick.q, pick.r, Boolean(e.shiftKey));
       } else if (e.button === 2) {
-        lastRightOrderAt = Date.now();
-        this.handleRightClick(pick.q, pick.r);
+        orderRight(pick.q, pick.r);
       }
     };
 
     const onContext = (e: MouseEvent) => {
       e.preventDefault?.();
-      if (Date.now() - lastRightOrderAt < 50) return;
       const pick = resolveTile(e);
-      if (pick) this.handleRightClick(pick.q, pick.r);
+      if (pick) orderRight(pick.q, pick.r);
     };
 
     canvas.addEventListener('pointerdown', onDown as EventListener);

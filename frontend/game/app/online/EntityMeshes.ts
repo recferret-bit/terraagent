@@ -2,8 +2,9 @@ import * as THREE from 'three';
 import { createArchetypeMesh, setArchetypeBuildProgress, tickArchetypeMesh } from '@terra/render/kitbash';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
-import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, TICK_MS } from '@terra/sim';
 import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
+import { MotionTrack, RenderClock } from './entityMotion';
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 
@@ -26,7 +27,23 @@ export interface EntityMeshRecord {
   targetYaw: number;
   walk: number;
   work: number;
+  /** Poses by tick, drawn at the shared render clock (smooth constant-speed walking, see `entityMotion.ts`). */
+  track: MotionTrack;
+  /** The drawn pose moved during the last half tick (drives the walk animation, in step with what is drawn). */
+  trackMoving: boolean;
 }
+
+/**
+ * How fast the drawn mesh follows its interpolated pose (1/s). Ordinary walking is followed within ~50 ms; a correction
+ * (a rejected prediction, a late ack, an admin teleport) becomes a short glide instead of a snap.
+ */
+const FOLLOW_PER_S = 20;
+
+/** Rejections the client's own sim cannot predict (decided by the host or the network): the predicted walk was wrong. */
+const UNPREDICTABLE_REJECTS: ReadonlySet<string> = new Set([
+  'rate_limited', 'timeout', 'not_connected', 'host_unavailable', 'internal', 'unknown_kind', 'wave_disabled',
+  'colony_inactive', 'planet_ended', 'not_own_colony',
+]);
 
 export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
 
@@ -78,6 +95,8 @@ export class EntityMeshes {
   private markerTile: { q: number; r: number } | null = null;
   private time = 0;
   private biomeKey = 'forestRock';
+  private readonly clock = new RenderClock(TICK_MS / 1000);
+  private dropPredictedFuture = false;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -185,8 +204,18 @@ export class EntityMeshes {
     return true;
   }
 
-  syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey): void {
+  /**
+   * A command was rejected. If the client's sim could not have known (`UNPREDICTABLE_REJECTS`), the poses it predicted
+   * past the next view's tick are wrong and are dropped then; otherwise the prediction already rejected it too.
+   */
+  discardPrediction(code?: string): void {
+    if (code === undefined || UNPREDICTABLE_REJECTS.has(code)) this.dropPredictedFuture = true;
+  }
+
+  /** `predicted`: the view is the client's prediction (ahead of the server), not a confirmed state. */
+  syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey, predicted = false): void {
     this.biomeKey = biomeKey;
+    this.clock.observe(view.tick, predicted);
     const seen = new Set<number>();
     const buf = view.entities;
     const hasEntityLayer = Boolean(this.scene.getObjectByName('entities'));
@@ -209,7 +238,7 @@ export class EntityMeshes {
       const kind = buf[o + 1];
       if (hasEntityLayer && kind === ENTITY_KIND.devProbe) continue;
       seen.add(id);
-      this.upsertEntity(buf, o, terrain, tdState);
+      this.upsertEntity(buf, o, terrain, tdState, view.tick);
     }
 
     for (const [id, rec] of [...this.entries]) {
@@ -219,6 +248,10 @@ export class EntityMeshes {
         this.entries.delete(id);
       }
     }
+    if (this.dropPredictedFuture) {
+      this.dropPredictedFuture = false;
+      for (const rec of this.entries.values()) rec.track.dropAfter(view.tick);
+    }
     this.updateSelectionRing();
   }
 
@@ -227,6 +260,7 @@ export class EntityMeshes {
     o: number,
     terrain: HexTerrain | null,
     tdState: PodTouchdownState,
+    tick: number,
   ): void {
     const id = buf[o]!;
     const kind = buf[o + 1]!;
@@ -263,6 +297,8 @@ export class EntityMeshes {
         id, kind, owner, q, r, x, y, rot, hp, hpMax, state, progress, buildStage, mesh,
         targetPos: new THREE.Vector3(wx, wy, wz),
         targetYaw: yaw,
+        track: new MotionTrack(),
+        trackMoving: false,
         walk: state === ENTITY_STATE.moving ? 1 : 0,
         work: state === ENTITY_STATE.working || state === ENTITY_STATE.constructing ? 1 : 0,
       };
@@ -286,10 +322,13 @@ export class EntityMeshes {
       rec.mesh.visible = visible;
       rec.targetPos.set(wx, wy, wz);
     }
+    rec.track.push({ tick, x, y, rot });
   }
 
-  update(dt: number, terrain: HexTerrain | null = null): void {
+  /** `dt`: animation time (warp-scaled); `realDt`: wall-clock seconds for the render clock (defaults to `dt`). */
+  update(dt: number, terrain: HexTerrain | null = null, realDt = dt): void {
     this.time += dt;
+    const renderTick = this.clock.advance(realDt);
     const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
     const rotLerp = Math.min(1, 1 - Math.exp(-dt * 10));
 
@@ -333,7 +372,8 @@ export class EntityMeshes {
       const isOwnedHq = rec.kind === ENTITY_KIND.hq && rec.owner === this.ownerColonyIndex;
       const podLift = isOwnedPod ? tdState.podLift : 0;
       rec.targetPos.y = baseWy + podLift;
-      rec.mesh.position.lerp(rec.targetPos, posLerp);
+      if (rec.kind === ENTITY_KIND.pod) rec.mesh.position.lerp(rec.targetPos, posLerp);
+      else this.placeOnTrack(rec, renderTick, 1 - Math.exp(-realDt * FOLLOW_PER_S));
       if (isOwnedPod && tdState.state !== 'done') {
         rec.mesh.position.y = rec.targetPos.y;
       } else if (!isOwnedPod) {
@@ -358,7 +398,7 @@ export class EntityMeshes {
       const diff = ((rec.targetYaw - rec.mesh.rotation.y + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
       rec.mesh.rotation.y += diff * rotLerp;
 
-      const wantWalk = rec.state === ENTITY_STATE.moving ? 1 : 0;
+      const wantWalk = rec.kind === ENTITY_KIND.hq ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
       const wantWork = rec.state === ENTITY_STATE.working || rec.state === ENTITY_STATE.constructing ? 1 : 0;
       rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);
       rec.work += (wantWork - rec.work) * Math.min(1, dt * 10);
@@ -380,6 +420,19 @@ export class EntityMeshes {
         this.targetMarker.position.set(wx, terrain.heightAt(wx, wz) + 0.08, wz);
       }
     }
+  }
+
+  /** Draws a unit / building at its interpolated pose for `t`, facing where it walks (or its sim heading at rest). */
+  private placeOnTrack(rec: EntityMeshRecord, t: number, follow: number): void {
+    const pose = rec.track.at(t) ?? { x: rec.x, y: rec.y, rot: rec.rot };
+    const [wx, wz] = tileXZ(pose.x, pose.y);
+    const p = rec.mesh.position;
+    p.x += (wx - p.x) * follow;
+    p.z += (wz - p.z) * follow;
+    const before = rec.track.at(t - 0.5);
+    const [bx, bz] = before ? tileXZ(before.x, before.y) : [wx, wz];
+    rec.trackMoving = Math.hypot(wx - bx, wz - bz) > 0.02;
+    rec.targetYaw = rec.trackMoving ? Math.atan2(wx - bx, wz - bz) : Math.PI / 2 - pose.rot;
   }
 
   private updateSelectionRing(): void {

@@ -1,5 +1,6 @@
 import { compileData, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf, setField } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -106,6 +107,8 @@ export function resolveHqRow(state: PlanetState, hqSlotOrId: number): number {
 }
 
 interface TerraformJobPreview {
+  q: number;
+  r: number;
   progress: number;
   baseTimeS: number;
   totalEnergyE: number;
@@ -145,9 +148,12 @@ function resolveHqQueueCount(state: PlanetState, owner: number, currentJob: HqJo
 function hasStoredCellForActiveTerraformJob(state: PlanetState, slot: number, dtTicks: number): boolean {
   const cols = state.entities.cols;
   if (cols.state[slot] === ENTITY_STATE.descending) return false;
+  // Only while the HQ is actually working a terraform tile (it walks, waits or does other work without drawing).
+  if (cols.state[slot] !== ENTITY_STATE.working) return false;
   const owner = cols.owner[slot];
-  const orders = readColonyTerraformOrders(state, owner);
-  const job = orders[0]?.jobs[0];
+  const job = readColonyTerraformOrders(state, owner)
+    .map((o) => o.jobs[0])
+    .find((j) => j && j.q === cols.targetQ[slot] && j.r === cols.targetR[slot]);
   if (!job) return false;
   const workRate = cols.workRate[slot] > 0 ? cols.workRate[slot] : Number(resolveHqT1Row().workRate);
   const nominalDurationS = job.baseTimeS / workRate;
@@ -260,10 +266,7 @@ export function spawnHqUnit(state: PlanetState, opts: SpawnHqOpts, ctx?: StepCon
   cols.kind[row] = ENTITY_KIND.hq;
   cols.owner[row] = opts.owner;
   cols.tier[row] = Number(hqRow.tier);
-  cols.q[row] = opts.q;
-  cols.r[row] = opts.r;
-  cols.x[row] = Math.fround(opts.q);
-  cols.y[row] = Math.fround(opts.r);
+  placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   cols.rot[row] = 0;
   cols.hp[row] = Math.fround(Number(hqRow.hp));
   cols.hpMax[row] = Math.fround(Number(hqRow.hp));
@@ -271,8 +274,6 @@ export function spawnHqUnit(state: PlanetState, opts: SpawnHqOpts, ctx?: StepCon
   cols.progress[row] = 0;
   cols.cell[row] = Math.fround(Number(hqRow.cellCapacity));
   cols.cellMax[row] = Math.fround(Number(hqRow.cellCapacity));
-  cols.targetQ[row] = opts.q;
-  cols.targetR[row] = opts.r;
   cols.workRate[row] = Math.fround(Number(hqRow.workRate));
   cols.createdAt[row] = tick;
   cols.changedAt[row] = tick;
@@ -420,9 +421,10 @@ export function stepHq(state: PlanetState, ctx?: Partial<StepContext>): void {
   }
 }
 
+/** Slot 4: recharge runs before the units slot (5) so a unit's work this step sees the cell as it was. */
 export const hq = defineSystem({
   id: 'hq',
-  slot: 6,
+  slot: 4,
   wave: 'W01',
   run(state, ctx) {
     stepHq(state, ctx);

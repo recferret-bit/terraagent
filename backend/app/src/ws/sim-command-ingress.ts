@@ -4,6 +4,7 @@ import type { ColonyRecord } from '../core/home/home.repository';
 import type { FlagsService, CommandWaveLookup } from '../flags/flags.service';
 import type { GamePlanets } from '../game/game-planets.service';
 import type { CommandContext, CommandIngress } from './command-ingress';
+import { CommandRateLimiter, type CommandRateLimitOptions } from './command-rate-limit';
 
 const isRejectCode = (c: string): c is RejectCode => (REJECT_CODES as readonly string[]).includes(c);
 
@@ -21,10 +22,12 @@ export interface SimCommandIngressOptions {
   readonly registry: Registry;
   readonly production: boolean;
   readonly homeRepo?: ColonyLookup;
+  /** Per-player token bucket (default 20 commands/s, bursts of 40); over it a command is rejected `rate_limited`. */
+  readonly rateLimit?: CommandRateLimitOptions;
 }
 
 /**
- * The command pipeline of PROTOCOL §4.2 / SIM-C-01: flag gate, strict args, origin/dev rules, colony from the session,
+ * The command pipeline of PROTOCOL §4.2 / SIM-C-01: per-player rate limit, flag gate, strict args, origin/dev rules, colony from the session,
  * then `GamePlanets.submit` to the owning thread. The reply is sent when the engine applied the command (WS-21), so
  * the handler does not block the socket's frame queue: several commands may be in flight and are answered in step order.
  *
@@ -37,13 +40,16 @@ export class SimCommandIngress implements CommandIngress {
   waveOf: CommandWaveLookup | undefined;
   private readonly acked: Counter<'kind'>;
   private readonly rejected: Counter<'kind' | 'code'>;
+  private readonly limiter: CommandRateLimiter;
 
   constructor(private readonly o: SimCommandIngressOptions) {
     this.acked = new Counter({ name: 'ta_planet_cmd_acked_total', help: 'Commands applied by the engine', labelNames: ['kind'], registers: [o.registry] });
+    this.limiter = new CommandRateLimiter(o.rateLimit);
     this.rejected = new Counter({ name: 'ta_planet_cmd_rejected_total', help: 'Commands rejected', labelNames: ['kind', 'code'], registers: [o.registry] });
   }
 
   handle(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>): void {
+    if (!this.limiter.take(ctx.playerId)) return this.reject(ctx, cmd, 'rate_limited');
     const resolved = this.resolveColony(ctx.playerId, ctx.planetId);
     if (resolved instanceof Promise) {
       resolved.then(

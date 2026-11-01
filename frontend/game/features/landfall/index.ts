@@ -11,6 +11,8 @@ import {
   type LandfallControllerOptions,
   type StoreLike,
   type TilePicker,
+  type UnitFailureView,
+  unitFailureFromView,
 } from './selection';
 import './landfall.css';
 
@@ -24,6 +26,8 @@ export {
   type LandfallControllerOptions,
   type StoreLike,
   type TilePicker,
+  type UnitFailureView,
+  unitFailureFromView,
 };
 
 declare module '../../core/registry/types' {

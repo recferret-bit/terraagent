@@ -49,7 +49,12 @@ export {
   type StepTerraformWorkOpts,
   type StepTerraformWorkResult,
 } from './systems/hq';
-export { moveUnit, movement } from './systems/movement';
+export { issueUnitCommand, moveUnit, stopUnit, UNIT_REGISTRY, units } from './systems/units';
+export * from './units/types';
+export { getUnitCommand, getUnitRecord, type UnitRecord } from './units/book';
+export { isUnitKind, mobileStats, type MobileStats } from './units/mobility';
+export { getMotion, type MoveGoal, type MotionStatus, type UnitMotion } from './units/movement/orchestrator';
+export type { IssueOpts } from './units/runner';
 export * from './systems/landing';
 export * from './systems/terraform-basic';
 export * from './systems/construction';

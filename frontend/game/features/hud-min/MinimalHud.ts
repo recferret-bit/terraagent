@@ -71,6 +71,7 @@ export function formatRejectToast(
     no_trade_hub: 'Rejected: Requires Trade Hub',
     truce_active: 'Rejected: Truce active',
     wave_disabled: 'Rejected: Wave disabled',
+    rate_limited: 'Slow down: too many orders',
     timeout: 'Not confirmed: Timeout',
     not_connected: 'Not connected',
   };
@@ -111,6 +112,7 @@ function extractHqCell(view: GameView, colonyIndex = 0): { cell: number; cellMax
 export class MinimalHud {
   readonly el: HTMLElement;
   readonly toastContainer: HTMLElement;
+  private readonly toastedRejects = new Set<string>();
   private readonly colonyEl: HTMLElement;
   private readonly clockEl: HTMLElement;
   private readonly metalsEl: HTMLElement;
@@ -266,14 +268,14 @@ export class MinimalHud {
     if (this.opts.store?.onCommandRejected) {
       this.cleanups.push(
         this.opts.store.onCommandRejected((rej) => {
-          this.handleReject(rej.code, undefined, { kind: rej.kind });
+          if (this.firstRejectOf(rej.id)) this.handleReject(rej.code, undefined, { kind: rej.kind });
         }),
       );
     }
     if (this.opts.transport?.onMessage) {
       this.cleanups.push(
         this.opts.transport.onMessage((m) => {
-          if (m.t === 'cmd.reject') {
+          if (m.t === 'cmd.reject' && this.firstRejectOf(m.d.id)) {
             this.handleReject(m.d.code, m.d.detail);
           }
         }),
@@ -331,19 +333,35 @@ export class MinimalHud {
     this.cellFill.style.width = `${pct.toFixed(1)}%`;
   }
 
+  /** One reject reaches the HUD twice (the transport's `cmd.reject` and the store's rollback): toast it once. */
+  private firstRejectOf(id: string | undefined): boolean {
+    if (!id) return true;
+    if (this.toastedRejects.has(id)) return false;
+    this.toastedRejects.add(id);
+    if (this.toastedRejects.size > 64) this.toastedRejects.delete(this.toastedRejects.values().next().value as string);
+    return true;
+  }
+
+  /** Shows `message`; if the same message is already on screen, that toast stays (timer restarted) instead of stacking. */
   showToast(message: string, severity: 'warning' | 'error' | 'info' = 'warning', durationMs = 4000): HTMLElement {
+    const same = [...this.toastContainer.children].find(
+      (el) => el instanceof HTMLElement && el.textContent === message && el.dataset.severity === severity,
+    ) as HTMLElement | undefined;
+    if (same) {
+      clearTimeout(Number(same.dataset.timer));
+      same.dataset.timer = String(setTimeout(() => same.remove(), durationMs));
+      return same;
+    }
     const toast = document.createElement('div');
     toast.className = `plate-sm ta-hud-toast ta-hud-toast--${severity}`;
     toast.dataset.testid = 'hud-toast';
     toast.dataset.severity = severity;
     toast.textContent = message;
 
-    const timer = setTimeout(() => {
-      toast.remove();
-    }, durationMs);
+    toast.dataset.timer = String(setTimeout(() => toast.remove(), durationMs));
 
     toast.onclick = () => {
-      clearTimeout(timer);
+      clearTimeout(Number(toast.dataset.timer));
       toast.remove();
     };
 

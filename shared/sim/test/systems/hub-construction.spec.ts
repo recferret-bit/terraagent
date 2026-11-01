@@ -208,9 +208,12 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
       'bio.water': 200,
     });
 
-    // Place on 9 unprepared Flat tiles -> 9 Grade jobs * 10 ticks = 90 ticks (18.0 s) of site prep
+    // Place on 9 unprepared Flat tiles -> 9 Grade jobs * 10 ticks = 90 ticks (18.0 s) of work, plus the HQ's walks
+    // between tiles (it is never teleported onto a tile).
     host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0, 'prep_then_pay'));
-    for (let t = 0; t < 40; t++) host.step(1);
+    const prepared = () => getConstructionOrders(state, 0)[0]?.preparedCount ?? 0;
+    let ticks = 0;
+    for (; ticks < 80 && prepared() < 4; ticks++) host.step(1);
 
     const waitingOrder = getConstructionOrders(state, 0)[0]!;
     expect(waitingOrder.status).toBe('waiting_site');
@@ -224,17 +227,19 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
       'bio.water': 200,
     });
 
-    // Finish remaining 50 ticks of site prep (total 90 ticks) -> 9/9 prepared, cost paid on start
-    for (let t = 0; t < 50; t++) host.step(1);
+    // Finish the site prep -> 9/9 prepared, cost paid on start. Walking adds well under 2 s to the 18 s of work.
+    for (; ticks < 200 && prepared() < 9; ticks++) host.step(1);
+    expect(ticks).toBeGreaterThanOrEqual(90);
+    expect(ticks).toBeLessThanOrEqual(110);
     const startedOrder = getConstructionOrders(state, 0)[0]!;
     expect(startedOrder.preparedCount).toBe(9);
     expect(startedOrder.status).toBe('in_progress');
     expect(startedOrder.costPaid).toBe(true);
     expect(getColonyStock(state, 0)['metals.t1']).toBeGreaterThan(590);
 
-    // Next 100 ticks (20.0 s) completes the Hub
+    // 20.0 s (100 ticks) of building completes the Hub, after a short walk out of the footprint
     const buildEvents = [];
-    for (let t = 0; t < 100; t++) {
+    for (let t = 0; t < 110 && getConstructionOrders(state, 0)[0]?.status !== 'completed'; t++) {
       buildEvents.push(...host.step(1).events);
     }
     expect(getConstructionOrders(state, 0)[0]?.status).toBe('completed');

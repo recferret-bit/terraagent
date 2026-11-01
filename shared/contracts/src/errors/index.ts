@@ -6,6 +6,8 @@ export const REJECT_CODES = [
   'terrain_unbuildable', 'insufficient_resources', 'supply_cap', 'unknown_entity', 'tier_locked', 'worker_tier_locked', 'stage_locked',
   'no_trade_hub', 'raid_protected', 'truce_active', 'would_isolate', 'launch_gate', 'mint_cap', 'market_unavailable',
   'planet_ended', 'wave_disabled', 'host_unavailable', 'internal',
+  // too many commands from one player (server ingress token bucket, PROTOCOL §4.2)
+  'rate_limited',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

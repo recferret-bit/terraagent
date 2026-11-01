@@ -17,7 +17,7 @@ import { LocalHost, WorldStore } from '../../store/WorldStore';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import { createClientFlagsStore, resolveClientFlags, type ClientFlagsStore } from '../../core/flags';
 import type { Scene3dService } from '../../features/entities/services';
-import { LandfallController } from '../../features/landfall';
+import type { LandfallController } from '../../features/landfall';
 import { RTSCamera } from '../RTSCamera';
 import { BootOverlay, type BootPhase } from './BootOverlay';
 import {
@@ -30,6 +30,7 @@ import { hexSurface } from './hexSurface';
 import { localHostOptions } from './localHost';
 import type { OnlineMode } from './onlineMode';
 import { PauseOverlay } from './PauseOverlay';
+import { createUnitControl } from './unitControl';
 import type { PodLandingStateName } from './PodTouchdownFx';
 import { createSessionTarget, joinParam, scenarioParam } from './sessionTarget';
 import {
@@ -138,13 +139,12 @@ export class OnlineSession {
       this.entities.group.visible = false;
       if (this.banner) this.banner.el.style.display = 'none';
     }
-    this.landfall = new LandfallController({
-      store: this.store, sendCommand: this.commandBus.send,
-      pickTile: (cx, cy) => this.pickAt(cx, cy), canvas: this.viewport.renderer.domElement,
-      isHqDeployed: () => this.entities.isHqDeployed(),
-      onTargetMove: (q, r) => this.entities.flashTarget(q, r, this.terrain),
+    const control = createUnitControl({
+      store: this.store, commandBus: this.commandBus, canvas: this.viewport.renderer.domElement, entities: this.entities,
+      pickAt: (cx, cy) => this.pickAt(cx, cy), terrain: () => this.terrain, toast: (m) => this.hud?.toast(m), onRollback: () => this.netStats.recordRollback(),
     });
-    this.cleanups.push(this.landfall.onChange(({ selectedEntityId }) => this.entities.setSelectedEntityId(selectedEntityId)));
+    this.landfall = control.landfall;
+    this.cleanups.push(control.dispose);
     this.hud = this.createHud(uiParent, local);
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
     if (local) this.cleanups.push(bindLocalSaveListeners(local));
@@ -193,7 +193,6 @@ export class OnlineSession {
   }
 
   private bindTransportListeners(): void {
-    this.cleanups.push(this.store.onCommandRejected(() => this.netStats.recordRollback()));
     this.cleanups.push(
       this.transport.onMessage((m) => {
         const k = warpOfMessage(m);
@@ -349,7 +348,7 @@ export class OnlineSession {
     if (!this.cameraCentered && !this.landSent && !this.fromSpaceDescent && !status.descending && status.hqLanded) {
       this.entities.podTouchdown.setEnabled(false);
     }
-    this.entities.syncView(v, this.terrain, this.biomeKey);
+    this.entities.syncView(v, this.terrain, this.biomeKey, this.store.predictionInfo.pending > 0);
     const hqReady = this.entities.isHqDeployed();
     this.hqDeployedSynced = hqReady;
     this.landfall.onView(v);
@@ -450,7 +449,7 @@ export class OnlineSession {
     this.last = now;
     try {
       if (!this.entities.podTouchdown.isSpacePhaseActive()) {
-        this.entities.update(animDt, this.terrain);
+        this.entities.update(animDt, this.terrain, Math.min(rawDt, 0.4));
         if (this.cam) { this.cam.update(dt); this.viewport.followShadow(this.cam.target); }
         this.terrain?.tick(dt);
         this.frameHud(now, dt);
