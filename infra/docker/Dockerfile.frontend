@@ -1,0 +1,82 @@
+# syntax=docker/dockerfile:1
+# Static Vite dist for terra_www (DEPLOYMENT §2). Do not set NODE_ENV=production
+# before npm ci: vite is a devDependency and npm would skip it.
+
+FROM node:24-bookworm AS build
+WORKDIR /src
+COPY . .
+RUN npm ci
+RUN npx vite build
+RUN node --input-type=module <<'EOF'
+import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
+import { dirname, join, normalize } from 'node:path';
+
+const dist = '/src/dist';
+const frontend = '/src/frontend';
+
+function place(rel) {
+  const from = join(frontend, rel);
+  const to = join(dist, rel);
+  if (!existsSync(from)) throw new Error(`missing frontend/${rel}`);
+  mkdirSync(dirname(to), { recursive: true });
+  cpSync(from, to, { recursive: true });
+  console.log(`placed ${rel}`);
+}
+
+// Vite fingerprints <link rel="stylesheet"> into /assets/. These paths must stay stable.
+place('design/css');
+place('design/js');
+
+const pages = ['landing.html', 'play.html', 'playground.html', 'design/index.html'];
+const expect = {
+  'landing.html': 'Drop one robot',
+  'play.html': 'TerraAgent — Play',
+  'playground.html': 'TerraAgent — Playground',
+  'design/index.html': 'Faction Plate',
+};
+
+function refsIn(html) {
+  const found = new Set();
+  for (const tag of html.matchAll(/<script\b[^>]*>/gi)) {
+    const src = tag[0].match(/\bsrc=["']([^"']+)["']/i);
+    if (src) found.add(src[1]);
+  }
+  for (const tag of html.matchAll(/<link\b[^>]*>/gi)) {
+    if (!/\brel=["']stylesheet["']/i.test(tag[0])) continue;
+    const href = tag[0].match(/\bhref=["']([^"']+)["']/i);
+    if (href) found.add(href[1]);
+  }
+  return found;
+}
+
+function copyRef(page, url) {
+  if (!url || url.startsWith('#') || url.includes(':')) return;
+  const pathOnly = url.split(/[?#]/)[0];
+  if (!pathOnly || pathOnly.startsWith('/assets/')) return;
+  const base = dirname(page);
+  const rel = normalize(pathOnly.startsWith('/') ? pathOnly.slice(1) : join(base, pathOnly));
+  if (rel.startsWith('..') || rel.includes('/../')) return;
+  const dest = join(dist, rel);
+  if (existsSync(dest)) return;
+  const src = join(frontend, rel);
+  if (!existsSync(src)) throw new Error(`${page} references ${url} but ${rel} is not in dist or frontend`);
+  mkdirSync(dirname(dest), { recursive: true });
+  cpSync(src, dest, { recursive: true });
+  console.log(`copied ${rel} for ${page}`);
+}
+
+for (const page of pages) {
+  const htmlPath = join(dist, page);
+  if (!existsSync(htmlPath)) throw new Error(`missing built page ${page}`);
+  const html = readFileSync(htmlPath, 'utf8');
+  if (!html.includes(expect[page])) throw new Error(`${page} is missing ${expect[page]}`);
+  for (const url of refsIn(html)) copyRef(page, url);
+}
+
+const tokens = readFileSync(join(dist, 'design/css/tokens.css'), 'utf8');
+if (!tokens.includes('--ta-void')) throw new Error('dist/design/css/tokens.css missing --ta-void');
+EOF
+
+FROM alpine:3.20
+COPY --from=build /src/dist /dist
+CMD ["sh", "-c", "cp -a /dist/. /www/ && exec sleep infinity"]
