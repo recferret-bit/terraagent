@@ -1,0 +1,13 @@
+# Chain stack (D-37, D-24, DEPLOYMENT §1). The mock ledger stays in the Nest app.
+# This file only mounts the devchain vhost and exits. It does not start nginx or a chain process.
+# network_mode: none so `up` does not require the terra_edge network. No published ports.
+name: terra-chain
+
+services:
+  vhost:
+    image: busybox:1.36
+    restart: "no"
+    network_mode: none
+    command: ["true"]
+    volumes:
+      - ../nginx/hosts/devchain.conf:/vhost/devchain.conf:ro

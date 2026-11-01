@@ -20,7 +20,7 @@
 - [ ] **Pick a social-login provider** for F5 (HOT is a listed hackathon partner; check the others for NEAR named-account support). Fallback: guest + server-created custodial sub-accounts.
 - [ ] **Prize payout wallet:** a **mainnet** NEAR account owned by you (the submission form asks for it).
 - [ ] **X account** for the required demo post ("built at NEAR HACKATHON" + video).
-- [ ] **4 vCPU / 8 GB host + Cloudflare** ready by **11-13** for the hosted demo (a local-only demo is allowed as a fallback).
+- [ ] **4 vCPU / 8 GB host** ready for the hosted demo. DNS and the SSH key are the "Before W3" list below (D-37). A local-only demo is the fallback. Cloudflare is not required.
 
 ## Plan review 2026-10-30 — questions for the owner
 
@@ -98,23 +98,29 @@ The wave plan was reviewed against the specs and the existing `frontend/` protot
 
 ## Before W4 — notifications, NEAR Intents, staking
 
-- [ ] **Telegram bot** (D-17): create it with @BotFather and put the token in the core secrets as `TELEGRAM_BOT_TOKEN`; set the webhook domain to `api.terraagent.com`.
+- [ ] **Telegram bot** (D-17): create it with @BotFather and put the token in the core secrets as `TELEGRAM_BOT_TOKEN`; set the webhook domain to `api.terraagent.fun`.
 - [ ] **Web Push VAPID keys** (D-17): generate a key pair; the public key goes to the game config and the private key to the core secrets.
 - [ ] **NEAR Intents** (D-19, D-26): `intents.near` is **mainnet-only** (no testnet). Approve the mainnet cargo-token contract account `res.terraagent.near` (NEP-245) and fund the dev accounts above. ~~Testnet Intents/solver endpoint~~: obsolete, there is none.
 - [ ] **Staking validator whitelist** (D-18): pick the validator pools players may stake to through their colony account (testnet first, then mainnet).
 
-## Before W3 — production infrastructure
+## Before W26 — the public hosts (D-37)
 
-- [ ] **Domain** `terraagent.com` registered; DNS records:
-  - `terraagent.com` A/AAAA → server
-  - `www.terraagent.com` CNAME → `terraagent.com`
-  - `game.terraagent.com` A/AAAA → server
-  - `api.terraagent.com` A/AAAA → server
-  - `ws.terraagent.com` A/AAAA → server
-- [x] **TLS choice: Cloudflare proxied** (D-23).
-- [ ] **Cloudflare zone** for `terraagent.com`, proxied, with WebSockets on and SSL mode "Full (strict)"; create the origin certificate for the deploy secrets. **No HSTS preload** at launch.
-- [ ] **Server** (D-23): one VPS in a single region, **4 vCPU / 8 GB RAM** (the owner's choice; raise it if the W5 load test says so), ≥ 80 GB SSD, SSH access for deploy, Docker + compose installed.
-- [ ] **Backups** (D-23): a **Cloudflare R2** bucket + access key for nightly `pg_dump` (planet snapshots live in Postgres). ~~JetStream snapshots~~: **obsolete under D-24**.
+- [x] **Domain** `terraagent.fun` registered.
+- [ ] **DNS, plain A records, not proxied.** Every name points at the server IP that will go in `DEPLOY_HOST`:
+  - `terraagent.fun` (landing)
+  - `pitchdeck.terraagent.fun`
+  - `whitepaper.terraagent.fun`
+  - `design.terraagent.fun` (the pages now at `/design/`)
+  - `play.terraagent.fun`
+  - `playground.terraagent.fun`
+  - `devchain.terraagent.fun` (mock chain explorer)
+  - `api.terraagent.fun`
+- [ ] **SSH key.** Create a user on the server (the `DEPLOY_USER` in `.env`, default `deploy`) and copy your key to it (`ssh-copy-id` is fine; the deploy scripts will not do this). Docker and the compose plugin are installed. The user can run them.
+- [ ] **`.env` on the operator machine:** `TA_DOMAIN=terraagent.fun`, `DEPLOY_HOST=<that IP>`, `DEPLOY_USER=<that user>`.
+- [ ] **Laptop hosts file (optional):** install `infra/hosts/local.hosts` when W26 lands it, so a browser opens the same names against local nginx. Smoke tests do not need it.
+- [ ] **Server** (D-23 size, D-37 front door): one VPS in a single region, **4 vCPU / 8 GB RAM**, ≥ 80 GB SSD.
+- [ ] **TLS:** none for this phase. No Cloudflare zone, no origin certificate.
+- [ ] **Backups:** local `pg_dump` only (W25-09). No R2 bucket until a later row. ~~JetStream snapshots~~: obsolete under D-24. ~~Cloudflare R2 in D-23~~: not this phase (D-37).
 - [ ] Admin credentials policy for the ops API (TA-04.7): admin API key(s) or an allow-list of NEAR accounts.
 
 ## Before W5 — launch
@@ -145,7 +151,7 @@ The wave plan was reviewed against the specs and the existing `frontend/` protot
 | Q14 | Spectating | Not in v1 | D-22 |
 | Q15 | Claim colony account; cross-planet trades | Claimable at launch; same planet only | D-18, D-19 |
 | Q16 | Raw AI prompts logged | Raw, 14-day retention; rationale shown in the HUD | D-09 |
-| Q17 | TLS, HSTS preload, host | Cloudflare; no preload; 4 vCPU / 8 GB; R2 backups | D-23 |
+| Q17 | TLS, HSTS preload, host | Was Cloudflare and R2 (D-23). **Now HTTP on `terraagent.fun`, no Cloudflare, no R2, until a later wave (D-37).** Host size stays 4 vCPU / 8 GB | D-23, D-37 |
 | Q18 | Display names; rejoin | Generated names + optional rename; no rejoin | — |
 | — | Per-pylon max load | Enforced in MVP | D-21, TA-06.12 |
 | — | NEAR Intents | **In MVP** (same-planet trades) | D-19, TA-10.6 |

@@ -35,6 +35,8 @@ export default defineConfig({
         designFoundations: resolve(frontend, 'design/foundations.html'),
         designStorybook: resolve(frontend, 'design/storybook.html'),
         designMotion: resolve(frontend, 'design/motion.html'),
+        pitchdeck: resolve(frontend, 'pitchdeck/index.html'),
+        whitepaper: resolve(frontend, 'whitepaper/index.html'),
       },
     },
   },

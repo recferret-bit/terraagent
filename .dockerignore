@@ -1,0 +1,17 @@
+# Docker build context is the repo root. Keep host node_modules out of the image (wrong OS, and npm ci rebuilds them).
+node_modules
+**/node_modules
+dist
+.git
+.agents
+e2e/.out
+playwright-report
+test-results
+.dev
+coverage
+*.log
+.env
+.env.*
+**/.env
+**/.env.*
+!.env.example

@@ -27,7 +27,7 @@
 | D-20 | Failover fast-forwards downtime by deterministic catch-up ticking | Superseded by D-24 (snapshot resume + coarse fast-run) |
 | D-21 | Per-pylon max load enforced in MVP | Accepted (2026-10-29) |
 | D-22 | Launch client scope: full phone gameplay (landscape fullscreen), live landing diorama, party tickets, WebGL2, no spectators | Accepted (2026-10-29) |
-| D-23 | Launch infra: single region, 4 vCPU / 8 GB host, Cloudflare TLS, R2 backups, FastNEAR, no HSTS preload | Accepted (2026-10-29); one app per D-24 |
+| D-23 | Launch infra: single region, 4 vCPU / 8 GB host, Cloudflare TLS, R2 backups, FastNEAR, no HSTS preload | Accepted (2026-10-29); one app per D-24. **Hosting amended by D-40** (no Cloudflare, no R2, until the simple host is up) |
 | D-24 | Simplified server simulation in **one Node app + Postgres** (no NATS, no leases, no bit-exact replay; coarse ticking for empty planets) | Accepted (2026-10-30) |
 | D-25 | No anti-cheat and no anti-bot machinery | Accepted (2026-10-30) |
 | D-26 | NEAR economy features F1–F8; cargo tokens open (swappable for NEAR/USDC) in beta | Accepted (2026-10-30) |
@@ -36,7 +36,7 @@
 | D-29 | Player page, 20 × 3-tier achievements, XP and levels, minimap + global planet map | Proposed (2026-10-30) |
 | D-30 | Ports & adapters; all NEAR features mocked in phase 1 (galaxyqube patterns + shared contract tests) | Proposed (2026-10-30) |
 | D-31 | One shared game engine (`@terra/sim`) in three hosts: server simulation, browser single-player local host (testing), client-side prediction; state synced as engine snapshots and diffs | Accepted (2026-10-30) |
-| D-32 | Frontend layout: apps `frontend/{game,landing,playground,design}`, 3D render engine `frontend/render` (`@terra/render`), cross-tier packages `shared/{contracts,config,db,sim}`, `backend/app`; enforced layering and size limits | Accepted (2026-10-30) |
+| D-32 | Frontend layout: apps `frontend/{game,landing,playground,design}`, 3D render engine `frontend/render` (`@terra/render`), cross-tier packages `shared/{contracts,config,db,ledger,sim}`, `backend/app`; enforced layering and size limits; amended by D-41 (root cleanliness and `tests/`) | Accepted (2026-10-30) |
 | D-33 | Three planet types, as on the landing page: Desert (Kharon Dunes, `dune`), Ocean (Thalassa Verde, `oceanForest`), Temperate (Granite Hollow, `forestRock`) | Accepted (2026-10-30) |
 | D-34 | Resources: three stored families Metals, Minerals, Bio, each with T1/T2/T3 sub-resources; T2/T3 unlock by terraforming (colony threshold **and** terraformed deposit ground); Energy stays grid power | Accepted (2026-10-30) |
 | D-35 | Every balance number lives in data tables and can be tuned at runtime in playtests (overrides file + dev console), without a rebuild | Accepted (2026-10-30) |
@@ -44,6 +44,8 @@
 | D-37 | One shared placement function (`evaluatePlacement`) for the server handler, the browser-local host and the client ghost; buildings cannot be placed on trees, rock, water or deposits (terraform first) | Accepted (2026-11-01, owner) |
 | D-38 | World generation orchestrator (profile stages per planet type), heights in metres as the ground truth, hidden subsurface redacted from clients, planet sectors + quadtree; the dev planet is a desert | Accepted (2026-11-01, owner) |
 | D-39 | Planet presence read model + landing planner: every colony / fauna position and every landing ever made in one queryable model; `nextLandingSite` picks the next landing; no landing ever reuses (or crowds) a position | Accepted (2026-11-01, owner) |
+| D-40 | Public host `terraagent.fun` on one nginx, four compose stacks (infra, frontend, backend, chain), SSH deploy from `DEPLOY_HOST` in `infra/.env`. No Cloudflare and no R2 in this phase | Accepted (2026-11-01) |
+| D-41 | Clean root folder modelled on `../freightchain`: root holds only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, root `package.json` (`package-lock.json`), and the 7 domain folders (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`) | Accepted (2026-11-01, owner) |
 
 ---
 
@@ -241,6 +243,8 @@ MVP ships stages S0–S6 with 8 unit types: HQ, Harvester, Builder, Terraformer,
 - The owner registers `terraagent.testnet` and `terraagent.near` now.
 - Tick markers kept; JSON deltas in v1; snapshots in Postgres; first-party analytics.
 
+*Amended by D-37 (2026-11-01):* the Cloudflare proxy, Origin CA and R2 bucket are not part of the current host. Domain, TLS and backups for this phase are D-37. Host size, single region and FastNEAR stay.
+
 ## D-24 — Simplified server simulation in one app
 
 **Context.** The owner briefly considered a client-hosted relay, then chose server simulation ("I 100 % need it"), **simplified and more efficient**. The setting is a 14-day solo hackathon build on a 4 vCPU / 8 GB host. The planet must keep running when nobody is connected.
@@ -311,6 +315,8 @@ PROTOCOL WS-16) and a per-IP throttle of guest sign-up and `/me/home` seating (`
 - **Post-hackathon:** every issue not tagged `H`/`H2` in [`docs/plan/waves/`](../plan/waves/).
 
 **Amendment (2026-10-30, option B).** The cut is expressed per issue: column `H` in every wave file (`H` must, `H+` stretch, `H2` real NEAR after the D10 gate). Every hackathon wave keeps its contracts, core slice and e2e (`@hack` steps), so each still ends in a working app. The `H` set is 387 issues, ≈ 293 units, with a 21.0-unit critical path (after the 2026-10-30 review); it fits 13 build days only at ≥ 2.2 units per agent per day with 12 agents. Waves land in the value order W00 W01 W02 W06 W10 W13 W03 W07 W05 W15 W12 W08 W04 W09 W20 W22 W14 W11 W25, and the drop order in HACKATHON_CUT §3 applies when behind. This replaces the F-number cut line above: F6–F8 sit late in the value order and are dropped first.
+
+*Amendment (2026-11-01, D-37).* W26 (sites) is in the H set: 10 issues, 9 units, value order places it just after W00. W25-02 and W25-07 left the H set (image hardening and the rollback deploy). The H set is 395 issues, ≈ 299.5 units, critical path still 21.0. With 12 agents the wall-clock is 29.5 units.
 
 ## D-28 — Battle system v1
 
@@ -478,6 +484,59 @@ The sim owns the type; the client picks the look from it (`planetType → Planet
 **Consequences.** Planets with spawn slots still seat exactly their slots (capacity, D-12) unless a caller passes `beyondSlots`. Pods never land on water. Fauna archetypes register their presence role when they enter the sim (W03+); the AI orchestrator reads `presenceView` host-side (it contains no hidden ground).
 
 **Alternatives.** Keep per-feature scans of the entity columns (each consumer re-implements "who is where"); a persistent per-tile occupancy layer (more state to sync for data the entity store already has).
+
+## D-40 — Simple hosting on terraagent.fun
+
+**Context.** D-23 put the public site behind Cloudflare (proxied DNS, Origin CA, R2 off-site backups) on `terraagent.com`, `game.`, `api.` and `www.`. The owner has the domain `terraagent.fun` and wants every current page, plus a pitch deck and a whitepaper, on its own subdomain. The same nginx and the same compose files must run on a laptop and on one remote host. SSH keys are copied by the owner. Cloudflare, certbot and R2 wait.
+
+**Decision.**
+
+- **Names.** One public suffix, `terraagent.fun`. HTTP on port 80. No Cloudflare, no Origin CA, no certbot, no HSTS and no R2 in this phase.
+- **Hosts.** One Vite `frontend/dist/`. nginx chooses the page from `Host`. Unknown hosts return 404.
+
+| Host | Stack | Serves |
+|---|---|---|
+| `terraagent.fun` | frontend | Landing (`frontend/landing.html`) |
+| `pitchdeck.terraagent.fun` | frontend | Pitch deck (new static page) |
+| `whitepaper.terraagent.fun` | frontend | Whitepaper rendered from `docs/hackathon/public/whitepaper.md` |
+| `design.terraagent.fun` | frontend | Design system, the pages now at `/design/` (`index`, `foundations`, `storybook`, `motion`) |
+| `play.terraagent.fun` | frontend | Game (`frontend/play.html`). `/v1` and `/ws` are proxied to the app so the client stays same-origin |
+| `playground.terraagent.fun` | frontend | Playground (`frontend/playground.html`) |
+| `devchain.terraagent.fun` | chain | Mock-chain explorer (`frontend/dev/chain/`). `/v1/dev/chain` is proxied to the app |
+| `api.terraagent.fun` | backend | `/v1/` and `/ws` only. Every other path is 404 |
+
+- **Four compose files**, one project each, brought up together or alone. Infra publishes port 80 and is the only stack that publishes a port. Backend, frontend and chain attach to its network and add a vhost file under `infra/nginx/hosts/`. They do not publish ports.
+  - **infra** — nginx and the docker networks. Postgres for the server runs here with profile `server`, on an internal network, with no published port. The laptop keeps today's dev Postgres (`npm run db:up`, host port 15434); the site stack does not start a second database locally.
+  - **frontend** — the static image (the Vite `frontend/dist/`) and the vhosts for the six site names above.
+  - **backend** — the one NestJS app image (D-24). No extra public service.
+  - **chain** — the `devchain` vhost. The mock ledger stays in the app (D-24). This stack does not run a second chain process.
+- **Env.** `TA_DOMAIN=terraagent.fun`, `DEPLOY_HOST` (the server's IP) and `DEPLOY_USER` live in `infra/.env` (or `.env`). Deploy reads them on the operator machine. An empty `DEPLOY_HOST` refuses the deploy.
+- **SSH.** Deploy runs `ssh` and `rsync` as `DEPLOY_USER@$DEPLOY_HOST` with `BatchMode` (fail if the key is missing). The scripts never generate a key, never copy a key, and never take a `-i` path. The owner copies the key once.
+- **Commands.** `npm run stack:local` and `npm run stack:local:{infra,frontend,backend,chain}` on the laptop. `npm run deploy` and `npm run deploy:{infra,frontend,backend,chain}` on the server. `npm run deploy -- --dry-run` prints the plan and does not connect.
+- **Local names.** Smoke tests call curl with `--resolve` to `127.0.0.1`, so CI needs no hosts file. `infra/hosts/local.hosts` is the snippet the owner installs so a browser can open the same names.
+
+**Alternatives.** (a) Keep D-23's Cloudflare proxy — rejected for this phase; it can front the same nginx later without renaming hosts. (b) One compose file for everything — rejected: the four stacks must deploy and restart on their own. (c) A separate mock-chain process — rejected for now: it would split the ledger the app already owns. (d) `*.terraagent.localhost` instead of the real names — rejected: local and remote must use one nginx config.
+
+**Consequences.** W26 builds this and can run beside the gameplay waves after W00. W25 keeps monitoring, analytics, load, the README and the submission. Its Cloudflare row, R2 row, image hardening and rollback deploy stay later, on top of W26. ARCHITECTURE §4 and DEPLOYMENT.md follow this table. Cookie `Domain` and `https://` URLs in CLIENT.md stay as they are until the wave that turns TLS on.
+
+## D-41 — Clean root folder and 7-domain layout
+
+**Context.** Loose configuration files (`vite.config.ts`, `tsconfig.json`, `tsconfig.base.json`, `eslint.config.js`, `.prettierrc.json`, `.prettierignore`, `.env.example`, `.env.worktree`, `.dockerignore`, `vitest*.config.ts`), build/test output folders (`dist/`, `coverage/`, `test-results/`, `.dev/`), and top-level test directories (`e2e/`, `scenarios/`) cluttered the repository root. The owner (2026-11-01) directed a clean root modelled on `../freightchain`: the root folder must hold only agentic files, `README.md`, git files, `LICENSE`, root `package.json`, and the domain directories.
+
+**Decision.**
+- **Root files:** `.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md` (agentic); `README.md`; `.git`, `.github/`, `.gitignore` (git); `LICENSE`; `package.json` and `package-lock.json` (plus `node_modules/`). No other loose files or runtime output directories live in the root.
+- **Seven domain directories:**
+  - `backend/` — `backend/app/` (`@terra/app`, the one NestJS server, D-24).
+  - `docs/` — all documentation (`game/`, `spec/`, `plan/`, `visuals/`, `dev/`, `hackathon/`, `questions-and-limitations/`, `coverage/`).
+  - `frontend/` — `frontend/vite.config.ts` (builds into `frontend/dist/`), `frontend/tsconfig.json`, HTML entries, `game/`, `render/`, `landing/`, `playground/`, `design/`, `pitchdeck/`, `whitepaper/`, `dev/`.
+  - `infra/` — `infra/docker-compose.yml` (dev Postgres), `infra/.env.example`, `infra/.env.worktree` (gitignored per-worktree isolation), `infra/compose/`, `infra/docker/` (with BuildKit `Dockerfile.app.dockerignore` and `Dockerfile.frontend.dockerignore`), `infra/hosts/`, `infra/nginx/`.
+  - `scripts/` — `check-structure.mjs`, `ci/`, `dev/` (runtime pid in gitignored `scripts/dev/.out/`), `gen/`, `plan/`, `sites/`, `wave/`.
+  - `shared/` — `shared/tsconfig.base.json`, `shared/config/` (`@terra/config`, plus monorepo `eslint.config.js`, `.prettierrc.json`, `.prettierignore`), `shared/contracts/`, `shared/db/`, `shared/ledger/`, `shared/sim/`.
+  - `tests/` — `tests/vitest.config.ts`, `tests/vitest.integration.config.ts`, `tests/vitest.contract.config.ts` (coverage output in `tests/.out/coverage/`), `tests/e2e/` (Playwright wave suites, harness, engine parity runner, output in `tests/e2e/.out/`), `tests/scenarios/` (`@terra/scenarios` seed scenarios and parity cases).
+
+**Consequences.** Every script, CI workflow, doc, wave plan and spec references the domain paths (`tests/e2e/`, `tests/scenarios/`, `frontend/vite.config.ts`, `frontend/tsconfig.json`, `shared/tsconfig.base.json`, `shared/config/eslint.config.js`, `tests/vitest*.config.ts`, `infra/.env.example`, `infra/.env.worktree`). `readEnvSource` and the dev/test env loaders check `infra/.env` and `infra/.env.worktree` first with fallback to root `.env` / `.env.worktree`.
+
+**Alternatives.** Keep tool configs in the repo root (rejected by owner: root must stay clean like `../freightchain`).
 
 
 ## Amendments — as built, review-fix round 2026-11-01

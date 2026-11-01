@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TerraAgent — Pitch</title>
+<meta name="description" content="Drop one robot. Get a colony that never sleeps.">
+<link rel="stylesheet" href="../design/css/tokens.css">
+<link rel="stylesheet" href="../design/css/base.css">
+<style>
+  .pitch { min-height: 100vh; display: flex; flex-direction: column; }
+  .pitch-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding-top: var(--ta-s5); padding-bottom: var(--ta-s4);
+  }
+  .pitch-mark {
+    color: var(--ta-text); text-decoration: none;
+    font-size: var(--ta-fs-h3); letter-spacing: var(--ta-track-button);
+  }
+  .pitch-mark b { color: var(--ta-orange); font-weight: 700; }
+  .pitch-hero { padding-top: var(--ta-s8); padding-bottom: var(--ta-s8); }
+  .pitch-hero h1 {
+    max-width: 16ch;
+    font-size: var(--ta-fs-display-xl);
+    text-transform: none;
+  }
+  .pitch-lede { max-width: 42rem; margin-top: var(--ta-s5); }
+  .pitch-actions { display: flex; flex-wrap: wrap; gap: var(--ta-s4); margin-top: var(--ta-s6); }
+  .pitch-kicker { margin-bottom: var(--ta-s3); }
+  .pitch-plate p { margin: var(--ta-s3) 0 0; }
+  .pitch-foot {
+    margin-top: auto;
+    border-top: 1px solid var(--ta-seam);
+    padding-top: var(--ta-s5); padding-bottom: var(--ta-s5);
+  }
+  .pitch-strip { height: var(--ta-s2); }
+</style>
+</head>
+<body>
+<div class="pitch">
+  <header class="pitch-bar container">
+    <a class="pitch-mark display" href="http://terraagent.fun">TERRA<b>AGENT</b></a>
+    <span class="label">PITCH</span>
+  </header>
+
+  <main>
+    <section class="container pitch-hero">
+      <p class="eyebrow">NEAR HACKATHON</p>
+      <h1 class="display h1">Drop one robot. Get a colony that never sleeps.</h1>
+      <p class="lede pitch-lede">A strategy game where the colony mines, builds, defends, terraforms and trades around the clock, on NEAR, without ever showing you a wallet.</p>
+      <div class="pitch-actions">
+        <a class="btn btn-primary" href="http://play.terraagent.fun">Play</a>
+        <a class="btn btn-ghost" href="http://whitepaper.terraagent.fun">Whitepaper</a>
+      </div>
+    </section>
+
+    <div class="hazard pitch-strip" aria-hidden="true"></div>
+
+    <section class="container section">
+      <div class="grid-auto">
+        <article class="card plate pitch-plate" id="drop">
+          <p class="eyebrow pitch-kicker">01 · DROP</p>
+          <h2 class="h3">One founder</h2>
+          <p class="muted">Land a single robot with a Command Hub. It claims ground, and you set the priorities once.</p>
+        </article>
+        <article class="card plate pitch-plate" id="colony">
+          <p class="eyebrow pitch-kicker">02 · COLONY</p>
+          <h2 class="h3">It keeps working</h2>
+          <p class="muted">Miners, builders and combat bots run every server tick. Close the tab. The colony is still at work.</p>
+        </article>
+        <article class="card plate pitch-plate" id="economy">
+          <p class="eyebrow pitch-kicker">03 · ECONOMY</p>
+          <h2 class="h3">Nothing is free</h2>
+          <p class="muted">Metals, minerals, fuel, water and power. Trade with neighbours on NEAR. No wallet on screen.</p>
+        </article>
+      </div>
+    </section>
+  </main>
+
+  <footer class="pitch-foot">
+    <div class="container">
+      <p class="label">terraagent.fun</p>
+    </div>
+  </footer>
+</div>
+</body>
+</html>

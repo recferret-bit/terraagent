@@ -18,7 +18,7 @@ import { ensureWorktreeEnv } from './isolation.mjs';
 import { openIssue, landIssue } from './issue.mjs';
 import { checkWave } from './check.mjs';
 import { runGates } from './gates.mjs';
-import { wavePrompt, resolvePreset, buildRunnerCommand } from './prompt.mjs';
+import { wavePrompt, resolvePreset, buildRunnerCommand, GROK_CONTEXT_WINDOW } from './prompt.mjs';
 
 const args = process.argv.slice(2);
 const VALUE_OPTS = ['--tags', '--parallel', '--runner', '--model', '--advisor', '--mode', '--effort', '--root'];
@@ -168,22 +168,23 @@ function next() {
     if (!w.open && !r.ready) return console.log(`${w.id} waits for ${r.unlanded.map((d) => d.id).join(', ')} to land in main`);
     console.log(
       `would ${w.open ? 'resume' : 'open'} ${w.id} ${w.slug} (${progress.done.length}/${progress.total.length} issues done) in ${w.worktree} ` +
-      `with preset ${preset.label} (cli=${preset.cliModel}${preset.advisor ? `, advisor=${preset.advisor}` : ''}, mode=${preset.mode}, parallel=${preset.parallel}, plan=${preset.plan})`,
+      `with preset ${preset.label} (cli=${preset.cliModel}${preset.advisor ? `, advisor=${preset.advisor}` : ''}${preset.runner === 'grok' ? `, context=${GROK_CONTEXT_WINDOW}` : ''}, mode=${preset.mode}, parallel=${preset.parallel}, plan=${preset.plan})`,
     );
     return;
   }
   openWave(w);
   const prompt = wavePrompt(w, waveTitle(root, w), { preset, progress });
-  const { cmd, args: cmdArgs } = buildRunnerCommand(preset, prompt, [dirname(w.worktree), root]);
+  const { cmd, args: cmdArgs, env: extraEnv } = buildRunnerCommand(preset, prompt, [dirname(w.worktree), root]);
+  const envPrefix = extraEnv ? `${Object.entries(extraEnv).map(([k, v]) => `${k}=${v}`).join(' ')} ` : '';
   console.log(
     `\n▶ ${w.id} ${w.slug} (${progress.done.length}/${progress.total.length} done) — ${w.worktree}` +
-    ` — preset ${preset.label} (parallel=${preset.parallel}, mode=${preset.mode})`,
+    ` — preset ${preset.label} (parallel=${preset.parallel}, mode=${preset.mode}${preset.runner === 'grok' ? `, context=${GROK_CONTEXT_WINDOW}` : ''})`,
   );
   if (flag('--no-launch')) {
-    console.log(`\ncd ${w.worktree} && ${cmd} ${cmdArgs.slice(0, -1).join(' ')} "<prompt below>"\n\n${prompt}`);
+    console.log(`\ncd ${w.worktree} && ${envPrefix}${cmd} ${cmdArgs.slice(0, -1).join(' ')} "<prompt below>"\n\n${prompt}`);
     return;
   }
-  const res = spawnSync(cmd, cmdArgs, { cwd: w.worktree, stdio: 'inherit' });
+  const res = spawnSync(cmd, cmdArgs, { cwd: w.worktree, stdio: 'inherit', env: extraEnv ? { ...process.env, ...extraEnv } : undefined });
   if (res.error) fail(`could not start \`${cmd}\` (${res.error.message}); run with --no-launch and start it yourself`);
 }
 

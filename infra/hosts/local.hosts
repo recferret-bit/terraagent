@@ -1,0 +1,9 @@
+# 127.0.0.1 names for the W26 catalog. Installing this file into /etc/hosts is an owner step.
+127.0.0.1 terraagent.fun
+127.0.0.1 pitchdeck.terraagent.fun
+127.0.0.1 whitepaper.terraagent.fun
+127.0.0.1 design.terraagent.fun
+127.0.0.1 play.terraagent.fun
+127.0.0.1 playground.terraagent.fun
+127.0.0.1 devchain.terraagent.fun
+127.0.0.1 api.terraagent.fun

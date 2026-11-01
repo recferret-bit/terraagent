@@ -22,7 +22,7 @@ This document is the **single source of truth for topology and tunables**: modul
 | G8 | Swap mock ↔ real integrations without touching game code | **Ports and adapters (D-30).** Abstract-class ports are the DI tokens, bound in one infrastructure module per integration, and chosen per port by a fail-closed env flag (`NEAR_ADAPTER_<PORT>`, `LLM_ADAPTER`, `NOTIFY_ADAPTER`). **Phase 1 = all NEAR ports mocked**, each with a Postgres-backed mock and a contract suite shared by mock and real ([`NEAR.md`](./NEAR.md) §1a). |
 | G8 | AI orchestration on Z.ai GLM | `ai` module, model `glm-5.3` (D-09). |
 | G9 | Simple, efficient, cheap to run | **One NestJS app + Postgres** on a 4 vCPU / 8 GB host. No NATS, no leases, no anti-cheat machinery (D-24, D-25). |
-| G10 | Landing + game apps, subdomains | `terraagent.com`, `game.terraagent.com`, `api.terraagent.com` (§4). |
+| G10 | One nginx, a host per page | `terraagent.fun` plus `play`, `design`, `playground`, `pitchdeck`, `whitepaper`, `devchain`, `api` (§4, D-37). |
 
 ---
 
@@ -31,11 +31,11 @@ This document is the **single source of truth for topology and tunables**: modul
 ```mermaid
 flowchart LR
   subgraph Browser
-    LAND["Landing<br/>terraagent.com"]
-    GAME["Game SPA<br/>game.terraagent.com"]
+    LAND["Landing<br/>terraagent.fun"]
+    GAME["Game<br/>play.terraagent.fun"]
   end
 
-  subgraph Edge["Cloudflare → nginx (TLS)"]
+  subgraph Edge["nginx :80 (D-37, no Cloudflare)"]
     NGX["nginx"]
   end
 
@@ -56,7 +56,7 @@ flowchart LR
 
   LAND --> NGX
   GAME --> NGX
-  NGX -->|api.terraagent.com| MAIN
+  NGX -->|api.terraagent.fun| MAIN
   MAIN --> PG
   MAIN --> ZAI
   MAIN --> CHAIN
@@ -87,8 +87,8 @@ TerraAgent/
 │   ├── app/                     # @terra/app — the one NestJS app: modules api, lobby, game, ai, near, notify
 │   └── near-contracts/          # Rust near-sdk: cargo (NEP-245), deed (NEP-171), bounty escrow, registry
 ├── frontend/                    # D-32; one Vite root today, workspaces from W00
-│   ├── landing/                 # @terra/landing  Vite — terraagent.com (live mini-diorama, D-22)
-│   ├── game/                    # @terra/game     Vite + TS + Three.js + vanilla-DOM HUD (D-36) — game.terraagent.com
+│   ├── landing/                 # @terra/landing  Vite — terraagent.fun (live mini-diorama, D-22)
+│   ├── game/                    # @terra/game     Vite + TS + Three.js + vanilla-DOM HUD (D-36) — play.terraagent.fun
 │   ├── render/                  # @terra/render   3D render engine shared by the apps (kitbash, terrain, planets, orbit, lighting)
 │   ├── playground/              # 3D model storybook / visual QA (dev only)
 │   └── design/                  # Faction Plate tokens + design-system docs
@@ -115,14 +115,20 @@ The app exposes `GET /healthz`, `GET /readyz` (Postgres reachable, sim threads a
 
 ## 4. Domains & routing
 
+Public hosts are D-37 and [`DEPLOYMENT.md`](./DEPLOYMENT.md). One Vite `dist/`, HTTP on port 80, no Cloudflare in this phase. The names this file used to give (`terraagent.com`, `www.`, `game.`) are replaced by the table below.
+
 | Host | Target | Notes |
 |---|---|---|
-| `terraagent.com` | static `frontend/landing/dist` | Long cache for hashed assets; `index.html` no-cache. |
-| `www.terraagent.com` | `301 → https://terraagent.com$request_uri` | |
-| `game.terraagent.com` | static `frontend/game/dist` | SPA fallback `try_files $uri /index.html`. |
-| `api.terraagent.com` | `app:3000` | `/v1/*` REST and `/ws` WebSocket (lobby + planet). CORS allow-list: the two web origins. WS idle timeout `75 s` (client pings every `20 s`). |
+| `terraagent.fun` | `/landing.html` | Landing. Hashed assets long-cache; the HTML `no-cache`. |
+| `pitchdeck.terraagent.fun` | `/pitchdeck/index.html` | Pitch deck. |
+| `whitepaper.terraagent.fun` | `/whitepaper/index.html` | Rendered from `docs/hackathon/public/whitepaper.md`. |
+| `design.terraagent.fun` | `/design/index.html` | The design system pages. |
+| `play.terraagent.fun` | `/play.html` | Game. `/v1/` and `/ws` proxy to the app (same-origin). |
+| `playground.terraagent.fun` | `/playground.html` | Model playground. |
+| `devchain.terraagent.fun` | `/dev/chain/` | Mock-chain explorer. `/v1/dev/chain/` proxies to the app. |
+| `api.terraagent.fun` | `app:3000` | `/v1/` and `/ws` only. WS idle timeout `75 s` (client pings every `20 s`). |
 
-TLS: Cloudflare proxy (D-23), origin certificate on nginx, no HSTS preload at launch. CSP `connect-src https://api.terraagent.com wss://api.terraagent.com` plus the NEAR RPC and social-login origins.
+TLS is off (D-37). CSP on `play` is `connect-src 'self'`. CORS allow-list comes from the host catalog.
 
 ---
 

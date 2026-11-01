@@ -1,0 +1,15 @@
+{
+  "wave": "W26",
+  "domain": "terraagent.fun",
+  "stacks": ["infra", "frontend", "backend", "chain"],
+  "hosts": [
+    { "id": "apex", "host": "terraagent.fun", "stack": "frontend", "vhost": "apex.conf", "index": "/landing.html" },
+    { "id": "pitchdeck", "host": "pitchdeck.terraagent.fun", "stack": "frontend", "vhost": "pitchdeck.conf", "index": "/pitchdeck/index.html" },
+    { "id": "whitepaper", "host": "whitepaper.terraagent.fun", "stack": "frontend", "vhost": "whitepaper.conf", "index": "/whitepaper/index.html" },
+    { "id": "design", "host": "design.terraagent.fun", "stack": "frontend", "vhost": "design.conf", "index": "/design/index.html" },
+    { "id": "play", "host": "play.terraagent.fun", "stack": "frontend", "vhost": "play.conf", "index": "/play.html" },
+    { "id": "playground", "host": "playground.terraagent.fun", "stack": "frontend", "vhost": "playground.conf", "index": "/playground.html" },
+    { "id": "devchain", "host": "devchain.terraagent.fun", "stack": "chain", "vhost": "devchain.conf", "index": "/dev/chain/index.html" },
+    { "id": "api", "host": "api.terraagent.fun", "stack": "backend", "vhost": "api.conf", "index": null, "health": "/v1/healthz" }
+  ]
+}

@@ -3,7 +3,8 @@
 > **Track:** Ops (O) · **Flag:** `W25` (ops-only; no gameplay toggles) · **Tag:** `wave-25` · **Scenario:** `scenarios/w25-demo.ts` (hosted demo planet) · **Depends on:** W00. Optional: the demo video W25-29 and the stage funnel W25-23 read the output of W05, W07, W08, W10, W12, W13, W14, W15. The wave grows with every other wave: its checks run against whatever waves are enabled.
 >
 > **Specs:**
-> - [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) §1–§9 (`DEP-01..09`)
+> - [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) v0.3. Hosting, nginx and the four compose files are **W26** (D-37). This wave adds what W26 left for later: image hardening, CSP, backups, the rollback deploy, monitoring, analytics, load and the submission
+> - [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) §9 (`DEP-04..07`, `DEP-09`)
 > - [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §4, §15
 > - [`CLIENT.md`](../../spec/CLIENT.md) §10 (analytics, consent, funnel, KPIs)
 > - [`SIMULATION.md`](../../spec/SIMULATION.md) §12 (`SIM-P`)
@@ -12,25 +13,19 @@
 > - D-23, D-24, D-25, D-27, D-30
 > - Hackathon rules: Q-002, Q-005, Q-012, Q-014, Q-016, Q-017, the submission form
 >
-> **Owned paths:** `infra/**`, `.github/workflows/{deploy,nightly,load,security,readme}.yml` (new files only; W00-46 owns the CI workflow), `scripts/{deploy,backup,load,bot}/**`, `tests/load/**`, `backend/app/src/modules/analytics/**` (dashboards), `frontend/game/pages/admin/**` (`/admin/analytics`), `README.md` (final; W00-48 writes the skeleton), `docs/submission/**`. The duel harness `shared/sim/test/duels.spec.ts` is W07-26's; W25-20 only schedules and publishes it.
+> **Owned paths:** `.github/workflows/{deploy,nightly,load,security,readme}.yml` (new files only; W00-46 owns the CI workflow), `scripts/{deploy,backup,load,bot}/**` (the later rollback pipeline; W26 owns `scripts/sites/**` and the simple `deploy:*` commands), `tests/load/**`, `backend/app/src/modules/analytics/**` (dashboards), `frontend/game/pages/admin/**` (`/admin/analytics`), `README.md` (final; W00-48 writes the skeleton), `docs/submission/**`. W26 owns `infra/compose/**`, `infra/nginx/**` and `infra/hosts/**`. The duel harness `shared/sim/test/duels.spec.ts` is W07-26's; W25-20 only schedules and publishes it.
 >
 > **Overlap with W00 (checked 2026-10-30):** none of these rows rebuilds W00 work. W25 extends W00-09 (`/v1/metrics`), W00-10 (logging), W00-44 (`track()` + consent stub), W00-46 (CI: new workflow files only), W00-48 (README skeleton) and uses the W00-45 e2e harness. There is no Docker/nginx/compose in W00 (W00-03's `npm run dev` only).
 
 ## Goal
 
-Take the app from "works on my machine" to a hosted, monitored, backed-up public demo that a judge (human or Claude Code/Codex) can reproduce from the README, and submit it. Infra issues can start right after W00 and run in parallel with every gameplay wave. Submission issues run last.
+Take the hosts W26 already serves and add monitoring, backups, a rollback deploy, the README and the submission. W26 is the hackathon hosting path (D-37): HTTP on `terraagent.fun`, four compose files, SSH to `DEPLOY_HOST`. This wave does not rebuild that stack and does not add Cloudflare. Submission issues run last.
 
 ## Demo story (`e2e/w25.spec.ts`, run against the local prod-like stack)
 
-1. Run `npm run stack:local` → **see** nginx, the app and Postgres start with `TLS_MODE=selfsigned`.
-2. Run `npm run stack:local:smoke` → **see** all checks pass:
-   - the landing page returns 200 with CSP;
-   - the game returns 200 with the SPA fallback;
-   - `/v1/healthz` returns 200;
-   - a bad `hello` closes with `4000`;
-   - guest → `/me/home`;
-   - a restart resumes the planet from its snapshot.
-3. Run `npm run deploy -- --dry-run` → **see** the plan: checks, upload, build, backup, migrate, restart (SIGTERM snapshot), static swap, smoke, with rollback armed.
+1. Run `npm run stack:local` (W26) → **see** the eight `terraagent.fun` hosts answer on port 80. This wave does not bring that stack up.
+2. Run `npm run stack:local:smoke` (W26) → **see** the host checks pass. The restart-resume check is W25-11 and lands with that row.
+3. Run `npm run deploy -- --dry-run` (W26-09) → **see** an SSH plan to `DEPLOY_USER@DEPLOY_HOST` for the four compose files, with no Cloudflare. The later plan (backup, SIGTERM snapshot, auto-rollback) is W25-07 and is not in the hackathon slice.
 4. Run `npm run backup && npm run backup:verify` → **see** the dump restored into a scratch DB with the planet count matching.
 5. Open `/admin/analytics` (after a few runs of `npm run e2e`) → **see** the funnel from `landing_view` to `return_visit` with counts from the e2e runs.
 6. Run `npm run e2e:readme` → **see** a fresh clone follow the README's "do X → see Y" steps headless and pass.
@@ -40,8 +35,8 @@ Take the app from "works on my machine" to a hosted, monitored, backed-up public
 
 > Column `H`: **H** must for Nov 1–14 · **H+** stretch · **H2** real NEAR after the D10 gate · blank = after the hackathon. Plan and calendar: [`HACKATHON_CUT.md`](../HACKATHON_CUT.md), [`HACKATHON_SCHEDULE.md`](../HACKATHON_SCHEDULE.md).
 
-- **The hackathon e2e covers demo steps:** 3, 4 (only `npm run backup`; `backup:verify` lands with W25-10, post-hackathon), 7 (the e2e runs the smoke against the hosted demo instead of `stack:local`). `W25-33` tags these steps `@hack`; `npm run e2e -- --hack` runs only them, and the other steps run once their rows land.
-- **Deferred:** `stack:local` (steps 1–2), analytics consent and the admin page (step 5), the README verification job (step 6, stretch), dashboards, load test, soak, off-site backups.
+- **The hackathon e2e covers demo steps:** 4 (only `npm run backup`; `backup:verify` lands with W25-10, post-hackathon) and 7 (the hosted names from W26, over HTTP). Step 3's dry-run is W26's e2e. `W25-33` tags steps 4 and 7 `@hack`.
+- **Deferred:** analytics consent and the admin page (step 5), the README verification job (step 6, stretch), dashboards, load test, soak, off-site backups, TLS, Cloudflare, the rollback deploy (W25-07). Hosting itself is W26, not deferred.
 - **Still true:** with `TA_WAVES` below this wave the app behaves exactly as the previous wave's tag.
 
 ## Features covered
@@ -49,14 +44,14 @@ Take the app from "works on my machine" to a hosted, monitored, backed-up public
 | # | Feature (spec) | Issues |
 |---|---|---|
 | 1 | Ops env schema, metric names, analytics event registry (contract-first) | W25-01 |
-| 2 | App image: multi-stage, non-root, read-only, healthcheck, `SIM_THREADS = cores − 1` | W25-02 |
-| 3 | nginx image: static landing + game, `api.*` proxy, WS upgrade, headers, CSP, 404 default, no rate limits (D-25) | W25-03 |
-| 4 | Prod compose (nginx, app, postgres internal, migrate profile) + compose test (DEP-01) | W25-04 |
-| 5 | Cloudflare proxied DNS, Full (strict), Origin CA, CF real-IP list (D-23, DEPLOYMENT §3) | W25-05 |
+| 2 | Harden the W26 app image: non-root, read-only, `tmpfs /tmp` (post-hackathon) | W25-02 |
+| 3 | CSP on the W26 nginx for every public host. Hosts and proxies are W26 | W25-03 |
+| 4 | Compose test over the four W26 files: only nginx publishes a port (DEP-01) | W25-04 |
+| 5 | DNS: each D-37 name is an A record to `DEPLOY_HOST`. No Cloudflare proxy | W25-05 |
 | 6 | Secrets & env: `deploy:init`, `validate-env` (no `CHANGE_ME`, mainnet guard, mock-in-prod guard) (DEP-04, DEP-08) | W25-06 |
-| 7 | Deploy pipeline with SIGTERM snapshot, static swap, smoke, auto-rollback (DEPLOYMENT §6, DEP-05..07, DEP-09) | W25-07, W25-08 |
-| 8 | Backups: pre-deploy + daily `pg_dump`, retention, R2 off-site via rclone, restore drill (DEPLOYMENT §5) | W25-09, W25-10 |
-| 9 | Local prod-like stack + smoke (DEPLOYMENT §7) | W25-11 |
+| 7 | Later deploy pipeline on top of W26's `deploy`: backup, SIGTERM snapshot, auto-rollback (DEP-05..07, DEP-09). Not the hackathon path | W25-07, W25-08 |
+| 8 | Backups: pre-deploy + daily `pg_dump`, retention. R2 off-site is post-hackathon (D-37) | W25-09, W25-10 |
+| 9 | Restart-resume smoke on the W26 stack | W25-11 |
 | 10 | Monitoring: Prometheus `/metrics` coverage, dashboards, alert rules, alert destination | W25-12, W25-13 |
 | 11 | Log correlation (request / planet / colony ids) and retention | W25-14 |
 | 12 | Analytics: consent, funnel queries, KPI dashboard, server counters (CLIENT §10) | W25-15, W25-16 |
@@ -77,17 +72,17 @@ Take the app from "works on my machine" to a hosted, monitored, backed-up public
 
 | ID | Title | Type | Size | H | Deps | Acceptance (do X → see Y) | Spec | Replaces |
 |---|---|---|---|---|---|---|---|---|
-| W25-01 | Contracts & data: ops env schema (`TA_DOMAIN`, `TLS_MODE`, `RELEASE`, backup and R2 vars, alert vars), metric name registry, analytics event registry with props schemas | contract | S | H | W00-05, W00-44 | Run `validate-env` on `.env.example` → see every documented var accepted and unknown ones flagged | DEPLOYMENT §4, CLIENT §10.3 | TA-01.6 |
-| W25-02 | App Dockerfile: multi-stage build of the workspaces, non-root `node`, `read_only` + `tmpfs /tmp`, `/readyz` healthcheck, `SIM_THREADS` from cores | ops | M | H | W00-09 | Run `docker run --read-only terraagent-app` → see `/readyz` healthy with 3 sim threads on a 4-core box | DEPLOYMENT §1 | TA-02.3 |
-| W25-03 | nginx image: the static build output (landing + game pages; one Vite `dist/` today, per-app outputs once W00 splits the workspaces), hosts `@ www game api`, `/v1` + `/ws` proxy (75 s read timeout), security headers, CSP with `CSP_CONNECT_EXTRA`, default 404, no `limit_req` | ops | M | H | W25-02 | Run `npm run nginx:test` → see WS upgrade work, an unknown host return 404 and the headers present | DEPLOYMENT §2, DEP-02/03 | TA-02.4 |
-| W25-04 | Prod compose: nginx (only published ports), app, postgres on an `internal: true` network, `migrate` profile, log rotation; `compose-config.test.mjs` | ops | S | H | W25-02, W25-03 | Run the compose test → see only nginx with `ports` | DEP-01 | TA-02.5 |
-| W25-05 | Cloudflare setup script/doc: proxied `@ www game api`, SSL Full (strict), Origin CA cert as file secrets, generated `cf-ips.conf` real-IP list, port 443 restricted to CF ranges | ops | S | H | W25-03 | Request the origin IP directly → see the connection refused; through CF → see 200 | DEPLOYMENT §3, D-23 | TA-02.5 |
+| W25-01 | Contracts & data: ops env schema for this wave (`RELEASE`, backup vars, alert vars). `TA_DOMAIN`, `DEPLOY_HOST` and `DEPLOY_USER` belong to W26-01 and are not redefined here. Metric name registry, analytics event registry with props schemas | contract | S | H | W00-05, W00-44 | Run `validate-env` on this wave's example → see every documented var accepted and unknown ones flagged | CLIENT §10.3, DEP-04 | TA-01.6 |
+| W25-02 | Harden the W26 app image: non-root `node`, `read_only` + `tmpfs /tmp`, keep `/readyz`. The image and the healthcheck already exist (W26-06) | ops | M |  | W26-06 | Run the app image with a read-only root → see `/readyz` still healthy | DEPLOYMENT §9 | TA-02.3 |
+| W25-03 | CSP on the W26 nginx: `connect-src 'self'` on `play`, the §2 security headers on every catalog host, `CSP_CONNECT_EXTRA` when it is set. No new hosts and no Cloudflare | ops | S | H | W26-02 | Run the header check → see CSP on `play` and the security headers on all eight hosts | DEP-02 | TA-02.4 |
+| W25-04 | Compose-port test over the four W26 files (`infra/compose/test/ports.test.mjs`): the only `ports:` key is nginx `80` | ops | S | H | W26-02, W26-03, W26-06, W26-07 | Run the test → see a failure if any other service publishes a port | DEP-01 | TA-02.5 |
+| W25-05 | DNS check: `npm run dns:check` compares each D-37 name to `DEPLOY_HOST`. Records are plain A records, not proxied. The live records are an owner task; the script is tested against a stub resolver | ops | S | H | W26-09 | Run `dns:check` against a stub that returns `DEPLOY_HOST` for every name → see exit 0. Change one name's answer → see that name in the error | D-37, OWNER_TASKS | TA-02.5 |
 | W25-06 | Secrets & env: `npm run deploy:init` (JWT secret, KEK, VAPID, PG password; never overwrites), `validate-env.mjs` gate (no `CHANGE_ME`, `NEAR_NETWORK=mainnet` only with `NEAR_ALLOW_MAINNET=1`, mock ports in prod only with `NEAR_ALLOW_MOCK_IN_PROD=true`) + tests | ops | S | H | W25-01, W00-31 | Run `validate-env` with a `CHANGE_ME` value → see a non-zero exit naming the var | DEP-04, DEP-08, NEAR §1a rule 3 | TA-02.5 |
-| W25-07 | Deploy script: checks → plan → confirm → upload `git archive HEAD` → build on server → backup → `migrate deploy` → `SIGTERM` app (30 s snapshot budget) → start new → swap static → smoke | ops | M | H | W25-04, W25-06, W25-09 | Run `npm run deploy -- --dry-run` → see the full plan (checks, upload, build, backup, migrate, SIGTERM snapshot, start, static swap, smoke) with rollback armed | DEPLOYMENT §6, DEP-05..07, DEP-09 | TA-02.5 |
+| W25-07 | Later deploy pipeline wrapped around W26's `deploy`: backup, then `migrate deploy`, then `SIGTERM` (30 s snapshot budget), then smoke, with rollback armed. Does not replace `npm run deploy` | ops | M |  | W25-04, W25-06, W25-09, W26-09 | Run `npm run deploy:release -- --dry-run` → see backup, SIGTERM snapshot and rollback in the plan, and see `npm run deploy` still the W26 command | DEP-05, DEP-06, DEP-07, DEP-09 | TA-02.5 |
 | W25-08 | Auto-rollback + `deploy:rollback` (previous image, no down-migration) + `deploy:restore` (manual) + `releases.log` | ops | S |  | W25-07 | Break the smoke check on purpose → see the previous release restored automatically | DEPLOYMENT §6 | TA-02.5 |
 | W25-09 | Backups: `pg_dump -Fc` pre-deploy + daily 04:00 UTC; keep 14 daily + 5 pre-deploy | ops | S | H | W25-04 | Run `npm run backup` → see a timestamped dump and old ones pruned per policy | DEPLOYMENT §5 | TA-02.5 |
-| W25-10 | Off-site to Cloudflare R2 (`rclone copy`, 30-day lifecycle) + restore drill `backup:verify` into a scratch DB | ops | S |  | W25-09 | Run `backup:verify` → see the dump downloaded from R2, restored, and planet/colony counts matching | DEPLOYMENT §5, D-23 | TA-02.5 |
-| W25-11 | Local prod-like stack (`stack:local`, `terraagent.localhost`, self-signed TLS, mock AI/NEAR) + `stack:local:smoke` (DEPLOYMENT §7 checks) | ops | M |  | W25-04 | Run the smoke → see all checks pass, including the restart-resume step | DEPLOYMENT §7 | TA-02.6 |
+| W25-10 | Off-site backup to an object store the owner names later (R2 was D-23; D-37 leaves it out) + restore drill `backup:verify` into a scratch DB | ops | S |  | W25-09 | Run `backup:verify` → see the dump restored and planet/colony counts matching | DEP-05 | TA-02.5 |
+| W25-11 | Restart-resume smoke on the W26 stack: restart the app container and see the planet come back from its snapshot. Host checks stay in W26-08 | test | S |  | W26-08, W00-29 | Restart the app during `stack:local` → see the planet resume from the snapshot tick | DEP-07 | TA-02.6 |
 | W25-12 | Metrics coverage test against W25-01's metric registry: every registered series is exported (producers own theirs: W00-19 tick lag, W06-24 NEAR tx, W09-29 presence/notify, W16-23 AI); this issue adds only the unowned ones (`ta_game_step_ms`, planets per thread, sockets, delta bytes/s, snapshot ms/KB, outbox backlog per port, DB pool) | server | S |  | W00-09, W25-01 | Scrape `/v1/metrics` under load → see every series in the registry present | ARCH §15, SIM-P | TA-07.8, TA-13.2 |
 | W25-13 | Dashboards + alerts: Grafana (or lightweight equivalent) panels; alerts for tick lag, a faulted planet, readyz down, backup failed; outbox-stuck, relayer-balance and AI-budget alerts reuse the producers' rules and thresholds (W23-07, W16-23 at 0.8 / 1.0); destination is an owner choice (Telegram admin chat proposed) | ops | M |  | W25-12 | Kill a sim thread in staging → see an alert delivered within 2 min | ARCH §15, SIM-P | TA-13.2 |
 | W25-14 | Log correlation: request id, player, planet, colony on every log line; json-file rotation 10 MB × 5; log retention doc | server | S |  | W00-10 | Follow one command through the logs → see the same `requestId` from WS ingress to sim ack | DEPLOYMENT §1 | TA-13.2 |
@@ -104,12 +99,12 @@ Take the app from "works on my machine" to a hosted, monitored, backed-up public
 | W25-25 | README final, part 1: product summary, problem, the "do X → see Y" quickstart per wave demo, scenario links, controls | docs | M | H | W00-48 | A reviewer follows the quickstart → see every listed result | Q-017 | TA-13.7 |
 | W25-26 | README final, part 2: ports mock/real table generated from the running env (`npm run ports:table`), libraries list, AI-generated code statement, **pre-window baseline disclosure** (the `frontend/` prototype before 2026-11-01), LICENSE check | docs | S | H | W25-25 | Run `npm run ports:table` → see the table match `/v1/readyz` adapters | Q-002, Q-005, Q-014, D-30 | — |
 | W25-27 | README verification job (`.github/workflows/readme.yml`): fresh clone in CI runs the README steps headless (`e2e:readme`) | test | S | H+ | W25-25, W00-45 | Break a README command → see the job fail on that step | Q-017 | — |
-| W25-28 | Hosted demo: deploy to the launch host, seed `w25-demo` (a planet with all enabled waves showcased), `NEAR_ALLOW_MOCK_IN_PROD=true`, real adapters only for ports that passed real contract suites | ops | M | H | W25-07, W25-05 | Open `https://game.terraagent.com` from a phone and a desktop → see the demo planet playable | Q-012, D-30 | TA-13.7 |
+| W25-28 | Hosted demo: `npm run deploy` to `DEPLOY_HOST`, seed `w25-demo` (a planet with all enabled waves showcased), `NEAR_ALLOW_MOCK_IN_PROD=true`, real adapters only for ports that passed real contract suites | ops | M | H | W26-09, W25-05, W25-06 | Open `http://play.terraagent.fun` and `http://terraagent.fun` from a phone and a desktop → see the demo planet playable and the landing up | Q-012, D-30, D-37 | TA-13.7 |
 | W25-29 | Demo video: a 2–3 min script covering landfall → economy → terraform → combat → walls → cargo → market → Guild → profile; record and cut | docs | M | H | W25-28, W05-33, W07-32, W10-30, W12-32, W13-35, W14-28, W15-34 | Watch the video → see every scripted beat shown once | Form, Q-012 | — |
 | W25-30 | X post: "built at NEAR HACKATHON", video, link to the repo and demo | docs | S | H | W25-29 | Open the post → see the video play and both links resolve | Submission rules | — |
 | W25-31 | Submission form: name, team lead, email, team size solo, tracks (09 + 07 + 05, + 10/12 if F6/F7 qualify), mainnet prize wallet, repo link, post link, description (20–2 000 chars), website; the human confirms the payload | docs | S | H | W25-30, W25-26 | Submit → see the confirmation before 2026-11-14 20:00 UTC | Form fields, Q-016 | — |
 | W25-32 | Launch checklist + production smoke (`npm run smoke:prod`): DNS/TLS, `/readyz`, guest → play, WS, a snapshot taken, a backup present, alerts armed, analytics flowing | ops | S |  | W25-28, W25-13, W25-10 | Run `smoke:prod` → see every checklist line green | DEPLOYMENT §7, §9 | TA-13.7 |
-| W25-33 | Wave e2e `e2e/w25.spec.ts` (demo steps 1–6 against `stack:local`; the hackathon `@hack` run is steps 3, 4 and 7 against the hosted demo) + scenario `w25-demo` + tag `wave-25` | test | S | H | all above | Run `npm run e2e -- --waves ..25` → see all enabled wave suites plus W25 pass; then tag `wave-25` | PRODUCT_WAVES §3 | TA-13.3 |
+| W25-33 | Wave e2e `e2e/w25.spec.ts` (demo steps 4–6; the hackathon `@hack` run is steps 4 and 7 against the W26 hosts) + scenario `w25-demo` + tag `wave-25` | test | S | H | all above | Run `npm run e2e -- --waves ..25` → see all enabled wave suites plus W25 pass; then tag `wave-25` | PRODUCT_WAVES §3 | TA-13.3 |
 
 ## Wave DoD
 
