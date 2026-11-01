@@ -1,4 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test';
+import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim/ecs/columns';
+import { E, ENTITY_STRIDE } from '../frontend/game/store/replica/viewCodec';
 import {
   devConsole,
   expect,
@@ -19,6 +21,8 @@ import {
 test.describe.configure({ mode: 'serial' });
 
 const local = hostMode() === 'local';
+/** Entity view layout and codes, passed into `page.evaluate` (it cannot import): one source with the client (XC-06). */
+const VIEW = { E, S: ENTITY_STRIDE, K: { hq: ENTITY_KIND.hq, hub: ENTITY_KIND.hub }, ST: { active: ENTITY_STATE.active } };
 const serverOnly = () => test.skip(local, 'needs the app (server host)');
 
 interface OnlineWindow {
@@ -111,16 +115,16 @@ test('@hack 2. drop pod descends onto spawn slot and HQ drone deploys; HUD shows
   await expect
     .poll(
       () =>
-        page.evaluate(() => {
+        page.evaluate(({ E, S, K }) => {
           const o = (window as unknown as OnlineWindow).__online;
           const v = o.store.latest;
           if (!v) return false;
           let hasHq = false;
           for (let i = 0; i < v.count; i++) {
-            if (v.entities[i * 12 + 1] === 3 && v.entities[i * 12 + 2] === o.colonyIndex) hasHq = true;
+            if (v.entities[i * S + E.kind] === K.hq && v.entities[i * S + E.owner] === o.colonyIndex) hasHq = true;
           }
           return o.bootPhase === 'colony' && hasHq;
-        }),
+        }, VIEW),
       { timeout: 30_000 },
     )
     .toBe(true);
@@ -198,23 +202,23 @@ test('@hack 5. construction starts once all 9 tiles are Prepared, stock drops by
   test.setTimeout(90_000);
   await devConsole(page, 'warp 10');
 
-  // Wait for the Command Hub entity (kind === 4) owned by this colony to complete construction (state === 5 active, progress >= 1)
+  // Wait for the Command Hub entity owned by this colony to complete construction (state active, progress >= 1)
   await expect
     .poll(
       () =>
-        page.evaluate(() => {
+        page.evaluate(({ E, S, K, ST }) => {
           const o = (window as unknown as OnlineWindow).__online;
           const v = o.store.latest;
           if (!v) return false;
           for (let i = 0; i < v.count; i++) {
-            const kind = v.entities[i * 12 + 1];
-            const owner = v.entities[i * 12 + 2];
-            const state = v.entities[i * 12 + 10];
-            const progress = v.entities[i * 12 + 11];
-            if (kind === 4 && owner === o.colonyIndex && state === 5 && progress >= 1) return true;
+            const kind = v.entities[i * S + E.kind];
+            const owner = v.entities[i * S + E.owner];
+            const state = v.entities[i * S + E.state];
+            const progress = v.entities[i * S + E.progress];
+            if (kind === K.hub && owner === o.colonyIndex && state === ST.active && progress >= 1) return true;
           }
           return false;
-        }),
+        }, VIEW),
       { timeout: 60_000 },
     )
     .toBe(true);
@@ -226,13 +230,14 @@ test('@hack 5. construction starts once all 9 tiles are Prepared, stock drops by
   await expect(page.locator('[data-testid=hud-stock-minerals]')).toContainText('250 / 500');
   await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('Water 150');
   const expectedMetals = 600 + chosenSite.metalsYield - 200;
-  await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText(`${expectedMetals} / 500`);
+  // the Hub never lowers a cap (GP-11): metals keep the landing cap 600, the other families rise to the Hub's 500
+  await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText(`${expectedMetals} / 600`);
 
   await screenshot(page, '5-hub-completed');
   expectNoPageErrors(page);
 });
 
-test('@hack 6. territory ring (R 10) appears in colony colour and HUD shows storage cap 500 per family and supply 0/10', async () => {
+test('@hack 6. territory ring (R 10) appears in colony colour and HUD shows storage caps 600/500/500 (metals keep the landing cap) and supply 0/10', async () => {
   await expect
     .poll(
       () =>
@@ -244,7 +249,7 @@ test('@hack 6. territory ring (R 10) appears in colony colour and HUD shows stor
     )
     .toBe(true);
 
-  await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText('/ 500');
+  await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText('/ 600');
   await expect(page.locator('[data-testid=hud-stock-minerals]')).toContainText('/ 500');
   await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('/ 500');
   await expect(page.locator('[data-testid=hud-supply]')).toContainText('0 / 10');
@@ -277,7 +282,7 @@ test('@hack 7. restarting the app shows Reconnecting…, then the same colony wi
   const after = await waitForTick(page, (t) => t >= before, 30_000);
   expect(after).toBeGreaterThanOrEqual(before);
 
-  const restored = await page.evaluate(() => {
+  const restored = await page.evaluate(({ E, S, K, ST }) => {
     const o = (window as unknown as OnlineWindow).__online;
     const v = o.store.latest;
     const tiles = o.store.latestTiles;
@@ -285,9 +290,9 @@ test('@hack 7. restarting the app shows Reconnecting…, then the same colony wi
     if (v) {
       for (let i = 0; i < v.count; i++) {
         if (
-          v.entities[i * 12 + 1] === 4 &&
-          v.entities[i * 12 + 2] === o.colonyIndex &&
-          v.entities[i * 12 + 10] === 5
+          v.entities[i * S + E.kind] === K.hub &&
+          v.entities[i * S + E.owner] === o.colonyIndex &&
+          v.entities[i * S + E.state] === ST.active
         ) {
           hasCompletedHub = true;
         }
@@ -305,7 +310,7 @@ test('@hack 7. restarting the app shows Reconnecting…, then the same colony wi
       preparedCount,
       ownedTileCount: stats?.ownedTileCount ?? 0,
     };
-  });
+  }, VIEW);
 
   expect(restored.hasCompletedHub).toBe(true);
   expect(restored.preparedCount).toBeGreaterThanOrEqual(9);

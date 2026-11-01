@@ -35,6 +35,9 @@ export class SimWorkerController {
       case 'ack': this.predictor.onAck(msg.id, msg.appliedAtTick); this.emitIfReady(); break;
       case 'reject': this.onReject(msg); break;
       case 'clock': this.predictor.setServerOffset(msg.serverNowMs - this.now()); break;
+      case 'tune':
+        if (!this.predictor.retune(msg.tune)) this.post({ t: 'resync', reason: `tune ${msg.tune.op} ${msg.tune.path ?? ''}: needs a fresh welcome` }, []);
+        break;
       case 'stop': this.stopped = true; break;
     }
   }

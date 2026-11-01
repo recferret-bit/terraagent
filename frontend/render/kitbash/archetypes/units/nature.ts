@@ -28,7 +28,7 @@ register({
         strut(b, hip, knee, 0.02, 'frameGunmetal');
         strut(b, knee, foot, 0.014, 'hullSecondary', {}, 0.02);
       });
-      cable(b, [[0.05 * s, 0.33, 0.33], [0.2 * s, 0.55, 0.5], [0.3 * s, 0.5, 0.7]] as V3[], 0.008, 'frameGunmetal', { name: 'whip antenna' });
+      cable(b, [[0.05 * s, 0.33, 0.33], [0.2 * s, 0.55, 0.5], [0.3 * s, 0.5, 0.7]] as V3[], 0.008, 'frameGunmetal', { name: 'whip antenna', role: 'whip' });
     });
     b.addPart(sph(0.07), 'terraformEmerald', { position: [0, 0.34, -0.37], emissiveIntensity: 3.4 });
   },
@@ -76,7 +76,7 @@ register({
         [[x, 1.22, z], [x * 1.25 + r() * 0.08, 0.75, z * 1.25], [x * 1.55, 0.4, z * 1.55 + 0.08], [x * 1.75, 0.14, z * 1.75]] as V3[],
         0.025,
         i % 2 ? 'terraformEmerald' : 'frameGunmetal',
-        { name: 'drifter tendril', ...(i % 2 ? { emissiveIntensity: 3.2 } : {}), ...bob },
+        { name: 'drifter tendril', role: 'whip', ...(i % 2 ? { emissiveIntensity: 3.2 } : {}), ...bob },
       );
     }
   },

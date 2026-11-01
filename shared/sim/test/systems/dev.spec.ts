@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { createPlanet, rowOf, SimHost, type SimCommand } from '../../src';
+import {
+  createPlanet,
+  enqueueTerraformOrder,
+  getColonyTerraformOrders,
+  getConstructionOrders,
+  hexIndex,
+  markTileExplored,
+  rowOf,
+  setTileOwner,
+  SimHost,
+  type SimCommand,
+} from '../../src';
 import { ensureColonyRecord } from '../../src/kernel/colonies';
 import { DEV_ENTITY_KIND } from '../../src/systems/dev';
 import { spawnHqUnit, stepTerraformWorkWithCell } from '../../src/systems/hq';
 import { getColonyStock } from '../../src/economy';
+import { w01Host as sharedW01Host } from '../helpers/host';
 
 let n = 0;
 const cmd = (kind: string, args: unknown, colonyIndex: number | null = 0): SimCommand => ({
@@ -21,10 +33,8 @@ function host(flags: string[] = ['W00']): SimHost {
 }
 
 function w01Host(): SimHost {
-  const h = new SimHost({ flags: ['W00', 'W01'] });
-  const planet = createPlanet({ type: 'temperate', seed: 'w01-dev', radius: 10 });
-  ensureColonyRecord(planet, 0, 0);
-  h.load(planet);
+  const h = sharedW01Host({ type: 'temperate', seed: 'w01-dev', radius: 10 });
+  ensureColonyRecord(h.state, 0, 0);
   return h;
 }
 
@@ -131,22 +141,36 @@ describe('dev commands (W01)', () => {
     expect(send(h, cmd('dev.seed', { seed: 's' })).code).toBe('wave_disabled');
   });
 
-  it('dev.grant adds stock with full resource key or shorthand', () => {
+  it('dev.grant adds stock by full resource key; shorthands are the console\'s job (the contract takes a ResourceKey)', () => {
     const h = w01Host();
     send(h, cmd('dev.grant', { resource: 'metals.t1', amount: 500 }));
     expect(getColonyStock(h.state, 0)['metals.t1']).toBe(500);
-
-    send(h, cmd('dev.grant', { resource: 'metals', amount: 250 }));
-    expect(getColonyStock(h.state, 0)['metals.t1']).toBe(750);
-
-    send(h, cmd('dev.grant', { resource: 'minerals', amount: 300 }));
-    expect(getColonyStock(h.state, 0)['minerals.t1']).toBe(300);
-
-    send(h, cmd('dev.grant', { resource: 'biomass', amount: 150 }));
-    expect(getColonyStock(h.state, 0)['bio.biomass']).toBe(150);
-
-    send(h, cmd('dev.grant', { resource: 'water', amount: 75 }));
+    send(h, cmd('dev.grant', { resource: 'bio.water', amount: 75 }));
     expect(getColonyStock(h.state, 0)['bio.water']).toBe(75);
+    expect(send(h, cmd('dev.grant', { resource: 'metals', amount: 250 })).code).toBe('invalid_args');
+    expect(getColonyStock(h.state, 0)['metals.t1']).toBe(500);
+  });
+
+});
+
+describe('dev commands (W01): colony scope, owner checks, seed', () => {
+  it('GP-18: colony-scoped dev commands without a colony are refused not_own_colony', () => {
+    const h = w01Host();
+    for (const c of [cmd('dev.grant', { resource: 'metals.t1', amount: 5 }, null), cmd('dev.cell', { energy: 0 }, null), cmd('dev.reveal', {}, null), cmd('dev.land', {}, null)]) {
+      expect(send(h, c).code).toBe('not_own_colony');
+    }
+    expect(getColonyStock(h.state, 0)['metals.t1']).toBe(0);
+  });
+
+  it('GP-27: tp / cell never fall back to another colony\'s HQ; teleport by id refuses another colony\'s unit', () => {
+    const h = w01Host();
+    const other = spawnHqUnit(h.state, { owner: 1, q: 2, r: 0 });
+    const row = rowOf(h.state.entities, other);
+    expect(send(h, cmd('dev.cell', { energy: 0 })).code).toBe('unknown_entity');
+    expect(send(h, cmd('dev.teleport', { q: 4, r: -3 })).code).toBe('unknown_entity');
+    expect(send(h, cmd('dev.teleport', { id: other, q: 4, r: -3 })).code).toBe('not_own_colony');
+    expect(h.state.entities.cols.cell[row]).toBe(800);
+    expect([h.state.entities.cols.q[row], h.state.entities.cols.r[row]]).toEqual([2, 0]);
   });
 
   it('dev.grant withdraws a negative amount clamped to the balance and rejects fractions or unknown keys', () => {
@@ -180,6 +204,9 @@ describe('dev commands (W01)', () => {
     }
   });
 
+});
+
+describe('dev commands (W01): seed, teleport, land', () => {
   it('dev.seed regenerates planet terrain with new seed', () => {
     const h = w01Host();
     expect(h.state.meta.seed).toBe('w01-dev');
@@ -187,6 +214,25 @@ describe('dev commands (W01)', () => {
     const outcome = send(h, cmd('dev.seed', { seed: 'new-seed-123' }));
     expect(outcome.code).toBeUndefined();
     expect(h.state.meta.seed).toBe('new-seed-123');
+  });
+
+  it('GP-27 / GP-33: dev.seed drops every order and resets territory, anchors and fog to the new ground (HQ vision again)', () => {
+    const h = w01Host();
+    const hqId = spawnHqUnit(h.state, { owner: 0, q: 0, r: 0 });
+    const layers = h.state.grid.layers;
+    const far = hexIndex(h.state.grid.radius).indexOf(10, 0); // outside the HQ's vision (9)
+    expect(enqueueTerraformOrder(h.state, { colonyId: 0, op: 'auto', tiles: [{ q: 1, r: 0 }, { q: 0, r: 1 }, { q: -1, r: 0 }, { q: 0, r: -1 }] }).ok).toBe(true);
+    setTileOwner(h.state.grid, far, 0);
+    (layers.anchors as Uint8Array)[far] = 2;
+    markTileExplored(h.state.grid, far, 0);
+    expect(getColonyTerraformOrders(h.state, 0)).toHaveLength(1);
+
+    expect(send(h, cmd('dev.seed', { seed: 'reseed' })).code).toBeUndefined();
+    expect(getColonyTerraformOrders(h.state, 0)).toEqual([]);
+    expect(getConstructionOrders(h.state)).toEqual([]);
+    expect([layers.owner[far], layers.anchors[far], layers.explored[far] & 1]).toEqual([-1, 0, 0]);
+    expect(layers.explored[hexIndex(h.state.grid.radius).indexOf(1, 0)] & 1).toBe(1); // the HQ sees its surroundings again
+    expect(rowOf(h.state.entities, hqId)).toBeGreaterThanOrEqual(0);
   });
 
   it('dev.teleport with entityId <= 0 teleports colony HQ and updates target coords', () => {

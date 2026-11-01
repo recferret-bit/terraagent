@@ -10,6 +10,9 @@ export const REJECT_CODES = [
   'rate_limited',
   // W01 landing: a colony lands once; no two colonies share a slot or land too close (`hq.startingKit.minLandingSeparation`)
   'already_landed', 'landing_site_taken',
+  // W01 sim: the colony's terraform lane is full (`hq.t1.terraformMaxOrders` / `terraformMaxJobs`); the planet has no
+  // room for another colony (8 per planet: one `explored` bit each)
+  'queue_full', 'planet_full',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;
@@ -38,5 +41,7 @@ export const REST_ERROR_CODES = [
   'planet_not_recruiting', 'queue_full', 'near_unavailable', 'internal',
   // W01 `/me/home`: the new colony's landing was refused (409, `errorCode: COLONY_SEAT_REJECTED`, the reject code in `details.code`)
   'seat_rejected',
+  // generic fallbacks by status when the domain code has no REST code of its own (BE-17): 409, 503, 413, 429
+  'conflict', 'unavailable', 'payload_too_large', 'rate_limited',
 ] as const;
 export const RestErrorCode = z.enum(REST_ERROR_CODES);

@@ -72,9 +72,7 @@ export function pickTerrainAt(terrain: HexTerrain | null, vp: ColonyViewport, cl
   if (!terrain) return null;
   const r = vp.renderer.domElement.getBoundingClientRect();
   const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
-  const pick = terrain.pick(ndc, vp.camera);
-  console.log('[pick]', pick ? `q=${pick.q} r=${pick.r} i=${pick.i}` : 'off-planet');
-  return pick;
+  return terrain.pick(ndc, vp.camera); // the session keeps the last one as `__online.lastPick` (no per-move console line)
 }
 
 export function projectTileToScreen(terrain: HexTerrain | null, vp: ColonyViewport, q: number, r: number): { x: number; y: number } | null {
@@ -104,8 +102,10 @@ export function syncSpaceTerrainOffset(
 }
 
 export function listSceneEntities(scene: THREE.Scene): Array<{ id: number; x: number; y: number; z: number }> {
-  const g = scene.getObjectByName('entities');
-  return (g?.children ?? []).map((m) => ({ id: Number(m.userData.entityId), x: m.position.x, y: m.position.y, z: m.position.z }));
+  const g = scene.getObjectByName('online-entities'); // EntityMeshes (XC-07: the only entity renderer)
+  return (g?.children ?? [])
+    .filter((m) => typeof m.userData.entityId === 'number')
+    .map((m) => ({ id: Number(m.userData.entityId), x: m.position.x, y: m.position.y, z: m.position.z }));
 }
 
 /**

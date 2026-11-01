@@ -1,9 +1,5 @@
+import { clampPct } from '../shared/dom';
 import type { HqStatusView, LandfallController } from './selection';
-
-function clampPct(value: number, max: number): number {
-  if (max <= 0) return 0;
-  return Math.max(0, Math.min(100, (value / max) * 100));
-}
 
 /**
  * Faction Plate HQ status panel (`data-testid="hq-panel"`).
@@ -41,6 +37,7 @@ export class HqPanel {
     this.selectBtn.className = 'ta-hq-panel__badge plate-sm';
     this.selectBtn.dataset.testid = 'hq-select-btn';
     this.selectBtn.textContent = 'SELECT HQ';
+    this.selectBtn.setAttribute('aria-pressed', 'false');
     this.selectBtn.onclick = () => {
       this.controller.toggleSelectHq();
     };
@@ -56,7 +53,7 @@ export class HqPanel {
     this.hpText = document.createElement('span');
     this.hpText.className = 'ta-hq-panel__val';
     this.hpText.dataset.testid = 'hq-hp';
-    this.hpText.textContent = '900 / 900';
+    this.hpText.textContent = '— / —'; // filled from the first view (the panel is hidden until then)
     hpRow.append(hpKey, this.hpText);
     const hpBar = document.createElement('div');
     hpBar.className = 'ta-hq-panel__bar';
@@ -76,7 +73,7 @@ export class HqPanel {
     this.cellText = document.createElement('span');
     this.cellText.className = 'ta-hq-panel__val';
     this.cellText.dataset.testid = 'hq-cell';
-    this.cellText.textContent = '800 / 800 E';
+    this.cellText.textContent = '— / — E';
     cellRow.append(cellKey, this.cellText);
     const cellBar = document.createElement('div');
     cellBar.className = 'ta-hq-panel__bar';
@@ -116,6 +113,7 @@ export class HqPanel {
     this.el.hidden = false;
     this.el.dataset.selected = String(selected);
     this.selectBtn.textContent = selected ? 'SELECTED' : 'SELECT HQ';
+    this.selectBtn.setAttribute('aria-pressed', String(selected));
     this.titleEl.textContent = `HQ T${hq.tier} · COMMANDER DRONE`;
     this.hpText.textContent = `${Math.round(hq.hp)} / ${Math.round(hq.hpMax)}`;
     this.hpFill.style.width = `${clampPct(hq.hp, hq.hpMax).toFixed(1)}%`;

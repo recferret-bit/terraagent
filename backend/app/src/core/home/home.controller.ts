@@ -7,10 +7,11 @@ import {
   BearerAuthGuard,
   CurrentPlayer,
 } from '../auth/bearer-auth.guard';
+import { IpThrottleGuard } from '../ip-throttle.guard';
 import { HomeService } from './home.service';
 
-@Controller(['me', 'v1/me'])
-@UseGuards(BearerAuthGuard)
+@Controller('me')
+@UseGuards(IpThrottleGuard, BearerAuthGuard)
 export class HomeController {
   constructor(private readonly homeService: HomeService) {}
 

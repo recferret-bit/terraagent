@@ -30,22 +30,22 @@ The sim must be **reproducible in tests**: same seed + same commands at the same
 | `SIM-D-01` | Same `(initial params, seed, command list per step)` on the same Node version gives the same state. This is used by unit tests, scenarios and the balance duel harness. |
 | `SIM-D-02` | **Floats are allowed** in state. Use plain numbers with design units: resources in units, energy in E, HP in HP, time in seconds. |
 | `SIM-D-03` | **Time.** One sim **tick** = `TICK_MS` = 200 ms of game time (5 TPS). `step(state, commands, dt)` advances `dt` ticks at once: `dt = 1` on active planets, `dt = 5` on empty planets (coarse, §11). Every rate in the data tables is per second. `compileData()` converts table durations and rates. Durations in §7–§10 written as "N ticks" come from the 100 ms draft: read them as **N × 0.1 s of game time**, and `compileData()` converts them. |
-| `SIM-D-04` | **Randomness** comes only from the planet PRNG: xoshiro128\*\* seeded per stream (`gen`, `weather`, `hazard`, `fauna`, `ai`, `combat`). Stream states are part of the snapshot. `Math.random` is banned in `shared/sim/src/**`. |
+| `SIM-D-04` | **Randomness** comes only from the planet PRNG: xoshiro128\*\* seeded per stream (`gen`, `weather`, `hazard`, `fauna`, `ai`, `combat`, `misc`; `RNG_STREAMS` in `kernel/rng.ts`). Stream states are part of the snapshot. `Math.random` is banned in `shared/sim/src/**`. |
 | `SIM-D-05` | **Iteration order** is fixed: entities in ascending `entityId`, colonies in ascending `colonyIndex`. Entity ids are monotonic. |
-| `SIM-D-06` | **Purity.** The sim reads no wall clock, network or presence. Presence enters as a command (`system.presence`). Banned in `shared/sim/src/**`: `Date`, `performance`, `setTimeout`, `process`, `fs`, DOM globals, `async`. Lint rule `@terra/eslint-config/sim`. |
-| `SIM-D-07` | **Versioning.** `SIM_VERSION` is stored in snapshots. Restoring an older snapshot needs a registered migration (`src/codec/migrations/`), or the planet is restored best-effort with a warning. |
+| `SIM-D-06` | **Purity.** The sim reads no wall clock, network or presence. Presence enters as a command (`system.presence`). Banned in `shared/sim/src/**`: `Date`, `performance`, `setTimeout`, `process`, `fs`, DOM globals, `async`. Lint rules `simPurity` (`shared/sim/eslint.rules.js`, loaded by the root `eslint.config.js`). |
+| `SIM-D-07` | **Versioning.** `SIM_VERSION` is stored in snapshots. Restoring an older snapshot needs a registered migration chain (`src/codec/migrations/`); without one, or for a snapshot newer than the engine, `restore` throws (the host holds the planet). |
 
 ---
 
 ## 3. Step pipeline (`SIM-T`)
 
-`step(state, commands, dt)` applies the commands, then advances `dt` ticks of game time through the systems in a fixed order. It mutates `state` and returns `events` and `stats`.
+`step(state, commands, dt, pipeline)` applies the commands, then advances `dt` ticks of game time through the systems in a fixed order. It mutates `state` and returns `{ events, postings, outcomes, stats }` (`kernel/step.ts`). A handler or system that throws raises `StepError` carrying the outcomes, postings and events produced so far; `meta.tick` is not advanced and the host answers those outcomes, journals those postings and stops (or restores) the planet (LED-09, BE-12).
 
 | # | System | Notes |
 |---|---|---|
-| 0 | `commands` | Apply this step's commands in arrival order. Game-rule validation here; failures emit `cmd.rejected {commandId, code}` (§4). |
+| 0 | `commands` | Apply this step's commands in arrival order. Game-rule validation here; a handler returns a reject code or `{ code, detail }`, collected in `StepResult.outcomes` (§4); hosts answer `cmd.reject {id, code, detail?}`. |
 | 1 | `environment` | Day/night, weather, storms (advance by `dt`). |
-| 2 | `hazards` | Lightning and meteors. Probability per step scales with `dt`. |
+| 2 | `hazards` | Lightning and meteors. Probability per step scales with `dt`. In W01 the `landing` system (pod descent) runs here. |
 | 3 | `fauna` | Nest spawns, aggro, movement. |
 | 4 | `ruleEngine` | Each colony is evaluated once per second of game time, staggered by colony index. On coarse steps (`dt = 5`) every colony runs once. |
 | 5 | `units` | Dispatch from order lanes, path requests (budgeted A\*), movement × `dt`. |
@@ -57,10 +57,10 @@ The sim must be **reproducible in tests**: same seed + same commands at the same
 | 11 | `territory` | Claims, anchor removal, grace reverts. |
 | 12 | `progression` | Stages, launch gate, rocket, score. |
 | 13 | `lifecycle` | Elimination, settlement, planet end flags. |
-| 14 | `finalize` | `tick += dt`; mark changed entities for the next delta. |
+| 14 | `finalize` | No-op in W01: `step()` itself advances `tick += dt` and prunes removals; change stamps are written as state changes. |
 
 - `SIM-T-01` Systems not yet implemented are registered as no-ops, so the order stays fixed.
-- `SIM-T-02` Per-step budget: A\* node expansions ≤ 2 000 per planet per step. Overflow requests wait in a FIFO (`state.pathQueue`). The movement orchestrator (slot 5, `units`) is the only client of that queue: units ask it for a move, it keeps one live request per unit, hands requests to the pathfinding service in FIFO order and gives each solved path to the unit as its route. A half-done search in a restored snapshot is rebuilt by replaying its paid expansions, so it resolves on the same step.
+- `SIM-T-02` Per-step budget: A\* node expansions ≤ 2 000 per planet per step. Overflow requests wait in a FIFO (`state.blobs.pathQueue`, `grid/pathQueue.ts`). The movement orchestrator (slot 5, `units`) is the only client of that queue: units ask it for a move, it keeps one live request per unit, hands requests to the pathfinding service in FIFO order and gives each solved path to the unit as its route. A half-done search in a restored snapshot is rebuilt by replaying its paid expansions, so it resolves on the same step.
 - `SIM-M-01` **Units never teleport.** All unit input is a unit command (`move`, `stop`, `die`, `attack`, `build`, `terraform`). Commands decide and move in slot 5 (`units`); their effects run in the slot that owns them: build / terraform progress in 6 (`construction`, before the site/payment state), damage in 10 (`combat`); a live entity's position changes only by locomotion along an orchestrated route, at its data speed. Work happens only within the unit's reach of the target (data rows). Spawning sets the first position; admin `dev.*` commands are the only other writers. Ground units cannot enter uncleared trees or rock, any resource-deposit tile (`isGroundMoveBlocked`) or a building footprint (a unit inside one may only leave it); `meta.pathEpoch` restarts paused searches when the ground changes. A re-plan mid-step continues forward, never back to the tile being left. Enforced by the sim lint and tests (`shared/sim/README.md` → Units).
 
 ---
@@ -68,12 +68,12 @@ The sim must be **reproducible in tests**: same seed + same commands at the same
 ## 4. Command model (`SIM-C`)
 
 ```ts
-// shared/contracts/src/sim/commands.ts
+// shared/contracts/src/ws/sim.ts
 type SimCommandV1 = {
   colonyIndex: number | null;   // null = planet-level (system/admin)
-  source: 'player' | 'ai' | 'near' | 'admin' | 'system';
+  source: 'player' | 'ai' | 'near' | 'admin' | 'system' | 'dev';
   commandId: string;            // client or module id, echoed in ack/reject
-  kind: SimCommandKind;         // authoritative list: PROTOCOL.md CommandKind
+  kind: string;                 // validated against COMMAND_KINDS (generated); PROTOCOL.md CommandKind
   args: unknown;                // zod-validated per kind on the main thread
 };
 ```
@@ -91,9 +91,9 @@ Command kinds (summary; arguments in PROTOCOL.md):
 - `SIM-C-01` **Validation (D-25).** Exactly three checks:
   - the zod schema, on the main thread;
   - **the command controls only the sender's own colony** (`colonyIndex` is derived from the authenticated player, never taken from the client);
-  - game rules in the `commands` system (territory, prepared ground, resources, tier, stage, supply, newcomer shield, truce).
+  - game rules in the `commands` system (territory, footprint ground, tier, stage, supply, newcomer shield, truce). As built in W01, a Hub may be placed on unprepared Flat ground (a linked Grade order prepares it, `waiting_site`) and without the resources (`waiting_resources`, GP-30): prepared ground and stock gate the start of work, not placement (D-37).
   There are no rate limits, plausibility checks or anti-cheat checks.
-- `SIM-C-02` Rejections never throw. They emit `cmd.rejected {commandId, code}`. Codes: `invalid_args`, `colony_inactive`, `not_own_territory`, `site_blocked`, `terrain_unbuildable`, `insufficient_resources`, `tier_locked`, `worker_tier_locked`, `stage_locked`, `supply_cap`, `unknown_entity`, `no_trade_hub`, `raid_protected`, `truce_active`, `would_isolate`, `launch_gate`, `mint_cap`, `planet_ended`.
+- `SIM-C-02` Rejections never throw. A handler returns a code (or `{ code, detail }`); it lands in `StepResult.outcomes` and the host answers `cmd.reject {id, code, detail?}` (detail ≤ 200 characters). Codes: `REJECT_CODES` in `shared/contracts/src/errors/index.ts` (game rules such as `invalid_args`, `colony_inactive`, `not_own_territory`, `site_blocked`, `terrain_unbuildable`, `insufficient_resources`, `tier_locked`, `worker_tier_locked`, `stage_locked`, `supply_cap`, `unknown_entity`, `no_trade_hub`, `raid_protected`, `truce_active`, `would_isolate`, `launch_gate`, `mint_cap`, `planet_ended`, the W01 `already_landed`, `landing_site_taken`, `queue_full`, `planet_full`, and host codes `unknown_kind`, `not_own_colony`, `wave_disabled`, `host_unavailable`, `rate_limited`, `internal`).
 - `SIM-C-03` **Payment.** Orders are paid when work starts (units spec `UO-Q-01`). Cancelling in progress refunds 75 %; demolish refunds 50 %. In-place upgrades cost the Δ.
 - `SIM-C-04` Queue precedence and limits follow units spec §4.4.
 - `SIM-C-05` **Cargo export** is the only path from sim stock to the chain. The sim removes the stock and records a `pendingMint`. The `near` module mints and answers with `cargo.settled`; a failed mint refunds the stock. Exports obey `CARGO_MINT_CAP_PER_DAY` and the Trade Hub throughput (`mint_cap`) as **economic pacing** (D-26).
@@ -103,6 +103,8 @@ Command kinds (summary; arguments in PROTOCOL.md):
 ## 5. State layout (`SIM-S`)
 
 A structure-of-arrays entity store (`shared/sim/src/ecs/store.ts`) with no id recycling.
+
+> **As built (W01):** the block below is the target layout. The code's `PlanetState` (`kernel/state.ts`) is `{ meta, rng, grid, colonies, entities, blobs }`: `rng` is top-level; `meta` also holds `genVersion`, `worldSalt` (server-only) and `pathEpoch`; tile layers add `height` and the hidden `subDeposit` / `subRichness`; entity columns add `rot`, `cell`, `cellMax`, `targetQ`, `targetR`, `workRate`, `createdAt`; `caps` is `{ metals, minerals, energy, bio, item }`. The later-wave fields (`power`, `lanes`, `goals`, `hazards`, `fauna`, `truces`, `pendingCargo`) do not exist yet; W01 state lives in `blobs` (`landingPods`, `landingHistory`, `spawnSlots`, `constructionQueue`, `terraformTasks`, `orderSeq`, `units`, `unitMotion`, `pathQueue`, `pathStats`, `hq`).
 
 ```ts
 type PlanetType = 'desert' | 'ocean' | 'temperate';             // D-33; client look: desert→dune, ocean→oceanForest, temperate→forestRock
@@ -132,7 +134,7 @@ interface PlanetState {
 
 - `SIM-S-01` `snapshot(state) → Uint8Array`: MessagePack of the state (typed arrays as binary), gzip-compressed by the host. `restore(bytes)` round-trips (property test: `restore(snapshot(s))` deep-equals `s`). Target ≤ 512 KB compressed.
 - `SIM-S-02` No state hash (D-24).
-- `SIM-S-03` **Colony resources go through a ledger; the journal lives on the host (W01).** `ColonyState.stock` is the balance, zero-filled over the 10 keys, in **whole units** (no fractions), synced to clients like any other state (read with `getColonyStock`). It changes only through `ColonyTreasury.add` / `withdraw` (`shared/sim/src/economy/`), which validate the change and record one balanced double-entry posting `{at: tick, reason, actor, ref?, legs: [{account, asset, delta}]}` (`PostingInput` of `@terra/ledger`, `shared/ledger/`) against a system account (`sys:construction`, `sys:world`, `sys:dev`, …) with a reason from the closed `LEDGER_REASONS` catalog. Postings leave the engine only through `StepResult.postings` / `SimHost.onPostings`, never in state, events or deltas: the host keeps the journal (`{seq, at, reason, actor, ref?, legs}`). Every host (game server, `?host=local` worker, in-process fallback) runs the same class, `PlanetJournal` (`shared/sim/src/host/journal.ts`: `record`, `view`, `reconcile`, `verify`, `toState`); only persistence differs — the server writes Postgres rows (`DATA_MODEL.md`, ledger entries) and restores with `fromBalances` from SQL-summed balances, the browser keeps a bounded in-memory tail (`HOST_JOURNAL_LIMIT`) and saves `toState()` inside its IndexedDB snapshot, captured at the same tick as the planet bytes. A fresh scenario planet's journal starts with its setup postings on both hosts. A resumed local snapshot continues its saved journal (`fromState`) when it reconciles with `col.stock`; a journal that starts on an existing planet with no usable history (a save without a journal or one that does not reconcile, an adopted planet) opens each colony with one `ledger.opening` entry from `sys:opening` (`PlanetJournal.open`). Clients get `col.stock` only; the dev console reads the journal from the host (`GET /v1/dev/planets/:planetId/ledger`). Tests and seeding use `setColonyStock` (`admin.correction`). `ledger.opening` is host-only (`hostOnly` in the catalog): the sim treasury refuses it (`invalid_reason`), only `PlanetJournal` posts it. **Amounts are whole units at every door:** the treasury rejects fractions, negatives and unknown keys; the data compiler rejects them in every field a table lists in `amounts` (`hq.startingKit.cargo`, `hub.t1.cost`, `hub.t1.storageCapPerFamily`, `opsBasic.*.yieldAmount`), so a balance override or a dev `tune` with a fractional amount fails with the field and value named. A system whose expected credit is refused (a terraform yield, a construction refund, a non-shortage construction spend) emits a `treasuryRejected` warn event instead of silently changing nothing; a build whose cost is corrupt shows `blocked(<code>: <resource>)`, not a resource wait. **Storage caps:** `terraform.yield` (and `production.tick` when production exists) credits with `clampToCap: true`: only what fits under the family cap (`col.caps`, else `INITIAL_CAPS`: metals 600, minerals 500, bio 500) is credited and posted, the rest is **lost** and reported (`AddOk.overflow`, `obstacleRemoved.data.overflow`). Landing cargo, construction refunds (they return part of what was paid, which already fitted) and dev grants (a dev tool) are uncapped. **Landing:** a colony lands once (`already_landed`; its cargo is credited once by `landing.cargo`; a cargo the treasury would refuse is checked first and lands nothing, `invalid_args`). Where it lands is decided by the landing planner (`world/landingPlanner.ts`, D-39): never on water, another colony's tile or claimed spawn slot, and never within `hq.startingKit.minLandingSeparation` hexes of **any landing ever made** (the landing history keeps the sites of gone colonies too, so no site is reused) or of another colony's pod, HQ or structures (`landing_site_taken`; off the map `invalid_args`); both `system.spawnColony` and `dev.land` are checked.
+- `SIM-S-03` **Colony resources go through a ledger; the journal lives on the host (W01).** `ColonyState.stock` is the balance, zero-filled over the 10 keys, in **whole units** (no fractions), synced to clients like any other state (read with `getColonyStock`). It changes only through `ColonyTreasury.add` / `withdraw` (`shared/sim/src/economy/`), which validate the change and record one balanced double-entry posting `{at: tick, reason, actor, ref?, legs: [{account, asset, delta}]}` (`PostingInput` of `@terra/ledger`, `shared/ledger/`) against a system account (`sys:construction`, `sys:world`, `sys:dev`, …) with a reason from the closed `LEDGER_REASONS` catalog. Postings leave the engine only through `StepResult.postings` / `SimHost.onPostings`, never in state, events or deltas: the host keeps the journal (`{seq, at, reason, actor, ref?, legs}`). Every host (game server, `?host=local` worker, in-process fallback) runs the same class, `PlanetJournal` (`shared/sim/src/host/journal.ts`: `record`, `view`, `reconcile`, `verify`, `toState`); only persistence differs — the server writes Postgres rows (`DATA_MODEL.md`, ledger entries) and restores with `fromBalances` from SQL-summed balances, the browser keeps a bounded in-memory tail (`HOST_JOURNAL_LIMIT`) and saves `toState()` inside its IndexedDB snapshot, captured at the same tick as the planet bytes. A fresh scenario planet's journal starts with its setup postings on both hosts. A resumed local snapshot continues its saved journal (`fromState`) when it reconciles with `col.stock`; a journal that starts on an existing planet with no usable history (a save without a journal or one that does not reconcile, an adopted planet) opens each colony with one `ledger.opening` entry from `sys:opening` (`PlanetJournal.open`). Clients get `col.stock` only; the dev console reads the journal from the host (`GET /v1/dev/planets/:planetId/ledger`). Tests and seeding use `setColonyStock` (`admin.correction`). `ledger.opening` is host-only (`hostOnly` in the catalog): the sim treasury refuses it (`invalid_reason`), only `PlanetJournal` posts it. **Amounts are whole units at every door:** the treasury rejects fractions, negatives and unknown keys; the data compiler rejects them in every field a table lists in `amounts` (`hq.startingKit.cargo`, `hub.t1.cost`, `hub.t1.storageCapPerFamily`, `opsBasic.*.yieldAmount`), so a balance override or a dev `tune` with a fractional amount fails with the field and value named. A system whose expected credit is refused (a terraform yield, a construction refund, a non-shortage construction spend) emits a `treasuryRejected` warn event instead of silently changing nothing; a build whose cost is corrupt shows `blocked(<code>: <resource>)`, not a resource wait. **Storage caps:** `terraform.yield` (and `production.tick` when production exists) credits with `clampToCap: true`: only what fits under the family cap (`col.caps`, else `initialCaps(data)` from `hq.startingKit.storageCaps`: metals 600, minerals 500, bio 500) is credited and posted, the rest is posted to `sys:overflow` (lost to the colony) and reported (`AddOk.overflow`, `obstacleRemoved.data.overflow`). Landing cargo, construction refunds (they return part of what was paid, which already fitted) and dev grants (a dev tool) are uncapped. **Landing:** a colony lands once (`already_landed`; its cargo is credited once by `landing.cargo`; a cargo the treasury would refuse is checked first and lands nothing, `invalid_args`). Where it lands is decided by the landing planner (`world/landingPlanner.ts`, D-39): never on water, another colony's tile or claimed spawn slot, and never within `hq.startingKit.minLandingSeparation` hexes of **any landing ever made** (the landing history keeps the sites of gone colonies too, so no site is reused) or of another colony's pod, HQ or structures (`landing_site_taken`; off the map `invalid_args`); both `system.spawnColony` and `dev.land` are checked.
 
 ---
 
@@ -142,7 +144,8 @@ interface PlanetState {
 - `SIM-V-02` **Deltas are engine diffs.** Every `1 / DELTA_HZ` s the host emits one delta per planet: `{fromTick, toTick, diff: diffSince(fromTick), events}`. The diff holds changed entity rows (from `changedAt`), created and removed entities, tile changes, colony records, order lanes and goals, and PRNG stream states. It is **the same for every socket on that planet** (built once, broadcast as one binary frame).
 - `SIM-V-03` `applyDiff(diff)` on a replica at `fromTick` gives a state deep-equal to the server's at `toTick`. Views for rendering and the HUD come from the engine's `view()` on the client, not from the wire.
 - `SIM-V-04` Delta cost is O(changed entities). There are no per-socket diffs.
-- `SIM-V-05` A wave that adds state registers which fields are synced; it does not write delta code. Server-private fields do not exist (D-25).
+- `SIM-V-05` A wave that adds state registers which fields are synced; it does not write delta code. Server-private state is limited to the hidden ground layers (`subDeposit`, `subRichness`, D-38) and `meta.worldSalt`: snapshots and diffs for clients (`forClient`) strip them; everything else syncs (D-25).
+- `SIM-V-06` **Order and unit blobs are not per colony (W01, 2026-11-01, GP-36).** Every client receives every colony's blobs whole: construction and terraform queues (`constructionQueue`, `terraformTasks`), unit commands and routes (`units`, `unitMotion`, `pathQueue`) and HQ views (`hq`), so a client can see another colony's plans. Only hidden tile layers are stripped (`forClient`, D-38). Accepted until fog of war is built; that wave adds a per-colony blob filter in `forClient(colony)` and then breaks the "same delta for every socket" rule of `SIM-V-02` for those blobs.
 
 ## 6a. One engine, three hosts (`SIM-X`) — D-31
 
@@ -175,7 +178,7 @@ All numbers from `docs/game/colony-economy-and-buildings-spec.md` unless marked 
 
 | Building | Tier | Size | Build | Cost M/Min/Pet/W | Drain E/s | HP | Effect |
 |---|---|---|---|---|---|---|---|
-| Command Hub | T1 | 3×3 | 30 s (0 s at spawn) | 200/100/50/50 | −5 | 1 500 | Claim R 10; storage +500 per family; supply +10; **Founder Core +8 E/s (proposed)**; acts as a pylon (span 6) |
+| Command Hub | T1 | 3×3 | 30 s (0 s at spawn) | 200/100/50/50 | −5 | 1 500 | Claim R 10; each family cap becomes `max(current, 500)` (metals keep the landing 600, GP-11); supply +10; **Founder Core +8 E/s (proposed)**; acts as a pylon (span 6) |
 | Command Hub | T2 | 4×4 | 75 s | 600/350/200/150 | −14 | 3 800 | Claim R 15; storage +1 500 per family; supply +25 |
 | Territory Claim Beacon | T1 | 1×1 | 18 s | 80/40/0/10 | −4 | 400 | Claim R 8 |
 | Territory Claim Beacon | T2 | 2×2 | 42 s | 220/140/40/30 | −11 | 1 100 | Claim R 14; vision R 20 |
@@ -213,6 +216,8 @@ Logistics are abstract in MVP: harvested/extracted resources are credited direct
 ### 7.3 Starting kit **(proposed)**
 
 Command Hub T1 (instant), 1 Builder (the founder robot), 1 Miner; stock `metals.t1 400 / minerals.t1 250 / bio.biomass 150 / bio.water 150`, every T2/T3 key 0 (base storage 500 per family from the Hub). Founder Pod arrivals get stock × 1.25 (spec §3.6). Raid protection for `72 000` ticks (2 h) after founding.
+
+**As built (W01, `hq.startingKit` / `hq.t1` / `hub.t1` in `shared/sim/src/data/`):** one drop pod (descent `podDescentS` 6 s) lands with cargo `metals.t1 600 / minerals.t1 350 / bio.biomass 200 / bio.water 200` and deploys one HQ T1 drone when it opens; the colony has no Hub yet, its pre-Hub caps are `storageCaps` 600 / 500 / 500, and the HQ builds the Command Hub (30 s) on prepared ground.
 
 ### 7.4 Power grid rules (`SIM-G-PWR`)
 
@@ -278,7 +283,7 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 
 | Event | Severity | Trigger / debounce |
 |---|---|---|
-| `colonyFounded` | info | `spawnColony` applied |
+| `colonyFounded` | info | the colony's Command Hub completed (`territory-claim`); a landing emits `hqLanded` when the pod opens |
 | `underAttack` | critical | hostile damage to a colony entity; debounce 60 s per colony |
 | `buildingDestroyed` | warn | any own building destroyed |
 | `powerSevered` / `powerOverload` | warn | component split / pylon over max load (`powerOverload` debounced to 600 ticks, as §7.4) |
@@ -290,16 +295,16 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 | `rocketReady` / `rocketLaunched` / `colonySettled` | info | silo complete / launch / settled |
 | `colonyCritical` / `colonyEliminated` | critical | units spec `UO-HQ-04` |
 | `cargoExportRequested` / `marketOrderMatched` / `truceSigned` / `bountyCompleted` | info | inputs for the `near` module (D-26) |
-| `cmd.rejected` | — | routed to the issuing socket or module only |
+| (no event) | — | rejections are command outcomes (`StepResult.outcomes` → `cmd.reject` to the issuing socket or module only), not events |
 
 ---
 
 ## 10. Planet generation (`SIM-GEN`)
 
 `createPlanet({planetId, type, seed, capacity})` — hex radius 56 **(proposed)**; `capacity` spawn slots on a ring of radius 32 at equal angles + `gen`-stream jitter ±3 tiles; each slot guaranteed within 12 tiles: ≥ 1 metals, 1 minerals, 1 oil deposit (richness 9 000–12 000 bp) and buildable 7×7 area. Terrain from value-noise on the `gen` stream. Mix per type (D-33, **proposed**):
-- `temperate`: forest 20 %, water 6 %, rock 8 %; Minerals deposits richness +15 %.
+- `temperate`: forest 25 %, water 10 % (shallow 6 %, deep 4 %), rock 8 % (as built: `data/worldgen.ts` share rows); Minerals deposits richness +15 %.
 - `desert`: slope 30 % (dunes, drawn as sand), rock 12 %, water 1 %; Metals and Minerals deposits richness +15 %; Water Extractor ×0.5.
-- `ocean`: water 35 % (shallow 20 %, deep 15 %), forest 30 %, rock 5 %; Bio (oil) deposits richness +20 %; Metals −15 %; storms ×1.5 frequency (§7.6).
+- `ocean`: water 28 % (shallow 13 %, deep 15 %), forest 23 %, rock 6 % (as built: `data/worldgen.ts`); Bio (oil) deposits richness +20 %; Metals −15 %; storms ×1.5 frequency (§7.6).
 
 Hackathon (D-27): only `temperate` is generated; `desert` and `ocean` are post-hackathon (W05). **Superseded by D-38 (2026-11-01):** all three types are generated by the world orchestrator (`gen/world/`, profile rows in `data/worldgen.ts`), heights are metres, every spawn slot gets a levelled landing zone, a hidden subsurface (`subDeposit` / `subRichness`, never sent to clients) is revealed by Clear / Break, and stages run per sector (`grid/sectors.ts`). The dev planet `pl_dev` is a desert. Same `(type, seed)` ⇒ identical planet (golden test).
 
@@ -315,20 +320,20 @@ Terrain classes, spawn guarantee and terrain mix follow units spec §4.5 (`UO-TF
 
 ### 11.2 Active and coarse stepping
 - `SIM-H-03` **Active planet** (≥ 1 connected player socket): step `dt = 1` every `TICK_MS` (200 ms). Deltas go out at `DELTA_HZ` (5 Hz).
-- `SIM-H-04` **Empty planet**: step `dt = COARSE_DT` (5) every `COARSE_STEP_MS` (1 s). No deltas are built. Events still go to the bus (notifications, AI, digest). A join switches the planet to active at its next step. The last leave switches it to coarse after `AWAY_AFTER_S`.
+- `SIM-H-04` **Empty planet** (not built yet: W09): step `dt = COARSE_DT` (5) every `COARSE_STEP_MS` (1 s). No deltas are built. Events still go to the bus (notifications, AI, digest). A join switches the planet to active at its next step. The last leave switches it to coarse after `AWAY_AFTER_S`.
 - `SIM-H-05` A planet more than 5 steps behind its due time steps at most 5 times per pass and raises `ta_game_tick_lag_steps`.
 
 ### 11.3 Snapshots
 - `SIM-H-06` Every `SNAPSHOT_EVERY_S` (60 s) per planet, staggered. Also on seal, end and graceful shutdown. Encoding happens on the sim thread; compression and the Postgres write happen async on the main thread. At most one in-flight write per planet; a newer snapshot replaces a queued one.
 
 ### 11.4 Restart and fast-run
-- `SIM-H-07` On app start, every live planet:
+- `SIM-H-07` (not built yet: W09) On app start, every live planet:
   1. loads its latest snapshot;
   2. computes the missed wall-clock time `gap = now − snapshot.savedAt`;
   3. **fast-runs** `min(gap, RESTART_FASTRUN_MAX_H)` of game time in coarse steps (`dt = 5`), as fast as the thread allows and yielding between planets;
   4. resumes normal stepping.
   Any gap beyond the cap is not simulated. Player actions after the last snapshot are lost (≤ 60 s), which is accepted (D-24).
-- `SIM-H-08` **Fault quarantine.** An exception in `step()` for planet P: stop P, log, emit `planetFaulted`, keep the other planets running. One automatic retry from the latest snapshot. If it faults again it stays `FAULTED` until an admin acts.
+- `SIM-H-08` **Fault quarantine.** An exception in `step()` for planet P (`StepError`): the thread journals the failed step's postings, answers its commands (their outcomes so far, `internal` for the rest), drops P and posts `planetFailed`; the other planets keep running. Main closes P's sockets (`bye 4012 planet_down`) and restores P from its latest snapshot, at most 3 times per 10 minutes; after that P is held unloaded until an admin acts (`planet.wipe` can delete a held planet).
 
 ---
 
@@ -352,6 +357,8 @@ MVP scale per planet: 5 colonies, ≤ 300 units, ≤ 400 buildings, ≤ 60 fauna
 ---
 
 ## 13. Test matrix
+
+The planned test per rule (task plan). Files marked by a later wave's task do not exist yet; several W00–W01 rules are covered under other names (e.g. `shared/sim/test/kernel/step.spec.ts`, `test/data/generation-data.spec.ts`, `backend/app/test/game/planet-down.spec.ts` for `SIM-H-08`, `backend/app/test/game/delta.spec.ts`).
 
 | Rule | Test | Task |
 |---|---|---|

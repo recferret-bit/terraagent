@@ -21,22 +21,35 @@ export interface SeatHost {
   onLateLanding?(assignment: ColonySeatAssignment, appliedAtTick: number): void;
 }
 
-/** The game's seat host: new planets through `SnapshotService.loadNew`, a late landing logged as an error. */
-export function gameSeatHost(snapshots: Pick<SnapshotService, 'loadNew'>, planets: Pick<GamePlanets, 'submit'>, log: Pick<Logger, 'error'>): SeatHost {
+/**
+ * The game's seat host: new planets through `SnapshotService.loadNew`; a landing acked after its seat timed out is
+ * handed to `adoptLateLanding` (LED-15: the row is written again, or the colony index marked landed), and logged.
+ */
+export function gameSeatHost(
+  snapshots: Pick<SnapshotService, 'loadNew'>, planets: Pick<GamePlanets, 'submit'>, log: Pick<Logger, 'error' | 'warn'>,
+  adoptLateLanding?: (assignment: ColonySeatAssignment) => Promise<boolean>,
+): SeatHost {
   return {
     ensureLoaded: (planetId, opts) => snapshots.loadNew(planetId, opts),
     submit: (planetId, cmd) => planets.submit(planetId, cmd),
-    onLateLanding: ({ planet, colony }, appliedAtTick) => log.error(
-      { planetId: planet.id, colonyId: colony.id, appliedAtTick },
-      `colony ${colony.id} landed on ${planet.id} after its seat timed out and was rolled back: the sim has a colony without a row`,
-    ),
+    onLateLanding: (assignment, appliedAtTick) => {
+      const { planet, colony } = assignment;
+      const ctx = { planetId: planet.id, colonyId: colony.id, appliedAtTick };
+      if (!adoptLateLanding) return log.error(ctx, `colony ${colony.id} landed on ${planet.id} after its seat timed out and was rolled back: the sim has a colony without a row`);
+      adoptLateLanding(assignment).then(
+        (restored) => log.warn(ctx, restored
+          ? `colony ${colony.id} landed on ${planet.id} after its seat timed out: its row was written again`
+          : `colony ${colony.id} landed on ${planet.id} after its seat timed out; its player has another colony, so the index stays unused`),
+        (e: unknown) => log.error({ ...ctx, err: errText(e) }, `colony ${colony.id} landed late on ${planet.id} and its row could not be written again`),
+      );
+    },
   };
 }
 
-const TIMED_OUT = Symbol('timed out');
+export const TIMED_OUT = Symbol('timed out');
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
-async function beforeTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
+export async function beforeTimeout<T>(p: Promise<T>, ms: number): Promise<T | typeof TIMED_OUT> {
   let timer: ReturnType<typeof setTimeout> | undefined;
   const timeout = new Promise<typeof TIMED_OUT>((r) => { timer = setTimeout(() => r(TIMED_OUT), ms); });
   try {

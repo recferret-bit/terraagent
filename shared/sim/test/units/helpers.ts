@@ -1,6 +1,4 @@
-import { parseWaves } from '@terra/contracts';
 import {
-  createPlanet,
   ENTITY_KIND,
   getHubFootprintTiles,
   hexDistance,
@@ -11,17 +9,14 @@ import {
   type PlanetState,
   type SimCommand,
 } from '../../src';
+import { w01Host as sharedW01Host } from '../helpers/host';
 
 let seq = 0;
 export function cmd(kind: string, args: unknown, colonyIndex: number | null = 0): SimCommand {
   return { colonyIndex, source: 'player', commandId: `units_${++seq}`, kind, args };
 }
 
-export function w01Host(radius = 20, seed = 'units-test'): SimHost {
-  const host = new SimHost({ flags: parseWaves('..01') });
-  host.load(createPlanet({ type: 'flat', seed, radius }));
-  return host;
-}
+export const w01Host = (radius = 20, seed = 'units-test'): SimHost => sharedW01Host({ seed, radius });
 
 /** HQ T1 speed in tiles per tick (1.6 t/s × 0.2 s). */
 export const HQ_SPEED_PER_TICK = 0.32;

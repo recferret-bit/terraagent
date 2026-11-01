@@ -1,33 +1,20 @@
+import { DEPOSIT_CODES, PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
 import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
 import type { PlanetKind } from '../PlanetSpec';
 import { tileXZ } from './hexMath';
 
-export const HEX_TERRAIN = {
-  flat: 0,
-  forest: 1,
-  rock: 2,
-  slope: 3,
-  hole: 4,
-  shallow: 5,
-  deep: 6,
-} as const;
+/** Sim tile codes (shared with the sim through `@terra/contracts`, parity-tested there): terrain class, prep, deposit. */
+export const HEX_TERRAIN = TERRAIN_CODES;
+export const HEX_PREP = PREP_CODES;
+export const HEX_DEPOSIT = DEPOSIT_CODES;
 
-export const HEX_PREP = {
-  wild: 0,
-  flat: 1,
-  prepared: 2,
-  irrigated: 3,
-  living: 4,
-  ridge: 5,
-  moat: 6,
-} as const;
-
-export const HEX_DEPOSIT = {
-  none: 0,
-  metals: 1,
-  minerals: 2,
-  oil: 3,
-} as const;
+/**
+ * Cleared, levelled ground: the one rule height, water and props share (RN-05). A tile in one of these prep states is
+ * levelled at its own height (no class detail, no slope easing), carries no water surface and no wild props.
+ */
+export function isClearedPrep(prep: number): boolean {
+  return prep === HEX_PREP.prepared || prep === HEX_PREP.irrigated || prep === HEX_PREP.living;
+}
 
 export const PREP_BLEND_DURATION_S = 0.4;
 export const INITIAL_PREP_START_TIME = -10.0;
@@ -163,7 +150,7 @@ function levelled(raw: number): number {
  * at their own level, so a pad on a raised plateau stays on the plateau.
  */
 function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number): number {
-  if (prep === HEX_PREP.prepared || prep === HEX_PREP.irrigated || prep === HEX_PREP.living) return levelled(raw);
+  if (isClearedPrep(prep)) return levelled(raw);
   const h = tileHash01(q, r, 17);
   switch (terrain) {
     case HEX_TERRAIN.flat:
@@ -208,7 +195,7 @@ export function computeEffectiveHeights(radius: number, layers: HexTileLayers): 
   for (let i = 0; i < hx.count; i++) {
     const t = terrain[i] ?? 0;
     const p = prep?.[i] ?? 0;
-    if (t !== HEX_TERRAIN.slope || p === HEX_PREP.prepared) {
+    if (t !== HEX_TERRAIN.slope || isClearedPrep(p)) {
       out[i] = base[i]!;
       continue;
     }
@@ -235,13 +222,15 @@ export function buildChunk(
   tiles: ArrayLike<number>,
   heightOrLayers: ArrayLike<number> | HexTileLayers,
   layersArg?: Omit<HexTileLayers, 'height'> & { height?: ArrayLike<number> },
+  /** The planet's `computeEffectiveHeights(radius, layers)`, when the caller already has it (one pass per update). */
+  effHeights?: ArrayLike<number>,
 ): ChunkBuffers {
   const hx = hexIndex(radius);
   const layers: HexTileLayers =
     'height' in heightOrLayers
       ? heightOrLayers
       : { ...layersArg, height: heightOrLayers };
-  const effHeight = layers.terrain ? computeEffectiveHeights(radius, layers) : layers.height;
+  const effHeight = effHeights ?? (layers.terrain ? computeEffectiveHeights(radius, layers) : layers.height);
 
   const local = new Map<number, number>();
   const order: number[] = [];
@@ -327,7 +316,7 @@ export function fanNormal(radius: number, i: number, height: ArrayLike<number>, 
     if (!a || !b) continue;
     nx += a[1] * b[2] - a[2] * b[1]; ny += a[2] * b[0] - a[0] * b[2]; nz += a[0] * b[1] - a[1] * b[0];
   }
-  if (ny < 0) { nx = -nx; ny = -ny; nz = -ny; }
+  if (ny < 0) { nx = -nx; ny = -ny; nz = -nz; }
   const l = Math.hypot(nx, ny, nz);
   if (l < 1e-9) { out[o] = 0; out[o + 1] = 1; out[o + 2] = 0; return; }
   out[o] = nx / l; out[o + 1] = ny / l; out[o + 2] = nz / l;

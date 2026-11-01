@@ -1,5 +1,7 @@
 import { RESOURCE_KEYS, type ResourceKey, type Stock } from '@terra/contracts';
 import { isMajor, transferLegs, type Leg } from '@terra/ledger';
+import { ensureColonyRecord } from '../kernel/colonies';
+import type { CompiledDataLike } from '../kernel/config';
 import type { LedgerPosting } from '../kernel/context';
 import type { EmitInput } from '../kernel/events';
 import type { PlanetState } from '../kernel/state';
@@ -21,6 +23,8 @@ export type ColonyPosting = LedgerPosting & { reason: LedgerReason };
  */
 export interface TreasuryCtx {
   readonly tick: number;
+  /** Compiled data (a step ctx has it): caps before a Hub come from `hq.startingKit.storageCaps`. */
+  readonly data?: CompiledDataLike;
   record(p: LedgerPosting): void;
   /** The step's event sink, for reporting a rejected change (`reportTreasuryReject`). */
   emit?(e: EmitInput): void;
@@ -32,10 +36,10 @@ export interface TreasuryCtx {
  */
 export function treasuryCtx(
   tick: number,
-  ctx?: { record?: (p: LedgerPosting) => void; emit?: (e: EmitInput) => void },
+  ctx?: { record?: (p: LedgerPosting) => void; emit?: (e: EmitInput) => void; data?: CompiledDataLike },
 ): TreasuryCtx {
   const base = ctx?.record ? { tick, record: ctx.record } : unrecorded(tick);
-  return ctx?.emit ? { ...base, emit: ctx.emit } : base;
+  return { ...base, ...(ctx?.emit ? { emit: ctx.emit } : {}), ...(ctx?.data ? { data: ctx.data } : {}) };
 }
 
 /** A ctx that DISCARDS postings: the change happens in state but never reaches a ledger. Tests and seeding only. */
@@ -54,9 +58,15 @@ export interface MoveRequest {
 }
 
 export interface AddRequest extends MoveRequest {
-  /** Credit only what fits under the colony's family caps; the rest is reported as `overflow`. */
+  /**
+   * Credit only what fits under the colony's family caps. The rest is reported as `overflow` and posted in the same
+   * entry from the reason's counter account to {@link OVERFLOW_ACCOUNT}, so the journal shows the loss (LED-11).
+   */
   clampToCap?: boolean;
 }
+
+/** Where capped-off value goes: the journal's record of what storage caps destroyed. */
+export const OVERFLOW_ACCOUNT = 'sys:overflow';
 
 export type TreasuryRejectCode = 'invalid_resource' | 'invalid_reason' | 'invalid_amount' | 'insufficient_funds';
 
@@ -89,8 +99,9 @@ export type SetStockResult = { ok: true } | TreasuryReject;
 
 /**
  * The one door through which a colony's resources change. `add` and `withdraw` validate the request (whole units,
- * known resource, reason allowed in that direction, no negative balance), update `col.stock`, and record one balanced
- * double-entry posting (colony ↔ the reason's `sys:*` counter account) with the actor and ref for the host's ledger.
+ * known resource, reason allowed in that direction, an existing colony record (GP-24), no negative balance), update
+ * `col.stock`, and record one balanced double-entry posting (colony ↔ the reason's `sys:*` counter account) with the
+ * actor and ref for the host's ledger.
  */
 export class ColonyTreasury {
   constructor(
@@ -105,9 +116,10 @@ export class ColonyTreasury {
   add(req: AddRequest): AddResult {
     const bad = checkMove(req, 'add');
     if (bad) return bad;
+    if (!this.state.colonies[req.colony]) return { ok: false, code: 'invalid_amount', detail: 'unknown colony' };
     const stock = this.stock(req.colony);
     const credited = req.clampToCap
-      ? clampToCaps(stock, getColonyCaps(this.state, req.colony), req.amounts).credited
+      ? clampToCaps(stock, getColonyCaps(this.state, req.colony, this.ctx.data), req.amounts).credited
       : positive(req.amounts);
     for (const [key, v] of entriesOf(credited)) {
       if (!isMajor(stock[key] + v)) return { ok: false, code: 'invalid_amount', resource: key, detail: 'balance overflow' };
@@ -115,7 +127,9 @@ export class ColonyTreasury {
     }
     const overflow: Amounts = {};
     for (const [key, v] of entriesOf(req.amounts)) if (v - (credited[key] ?? 0) > 0) overflow[key] = v - (credited[key] ?? 0);
-    const posting = this.apply(req, stock, LEDGER_REASONS[req.reason].counter, colonyAccount(req.colony), credited);
+    const counter = LEDGER_REASONS[req.reason].counter;
+    const lost = transferLegs(counter, OVERFLOW_ACCOUNT, overflow as Record<string, number>) as Leg[];
+    const posting = this.apply(req, stock, counter, colonyAccount(req.colony), credited, lost);
     return posting ? { ok: true, credited, overflow, posting } : { ok: true, credited, overflow };
   }
 
@@ -123,6 +137,7 @@ export class ColonyTreasury {
   withdraw(req: MoveRequest): WithdrawResult {
     const bad = checkMove(req, 'withdraw');
     if (bad) return bad;
+    if (!this.state.colonies[req.colony]) return { ok: false, code: 'invalid_amount', detail: 'unknown colony' };
     const stock = this.stock(req.colony);
     const short = findShortfall(stock, req.amounts);
     if (short) return { ok: false, code: 'insufficient_funds', ...short };
@@ -136,6 +151,7 @@ export class ColonyTreasury {
   setStock(colony: number, target: Amounts, actor: string, ref?: string): SetStockResult {
     const bad = checkMove({ colony, amounts: target, reason: 'admin.correction', actor }, 'add');
     if (bad) return bad;
+    ensureColonyRecord(this.state, colony, this.ctx.tick); // seeding may name a colony before its record exists
     const cur = this.stock(colony);
     const up: Amounts = {};
     const down: Amounts = {};
@@ -151,14 +167,17 @@ export class ColonyTreasury {
     return { ok: true };
   }
 
-  /** Writes the new stock and records the posting; nothing (and no posting) when there is nothing to move. */
-  private apply(req: MoveRequest, stock: Stock, from: string, to: string, amounts: Amounts): ColonyPosting | undefined {
-    if (Object.keys(amounts).length === 0) return undefined;
+  /**
+   * Writes the new stock and records the posting (plus `extra` legs, e.g. capped overflow); nothing (and no posting)
+   * when there is nothing to move.
+   */
+  private apply(req: MoveRequest, stock: Stock, from: string, to: string, amounts: Amounts, extra: Leg[] = []): ColonyPosting | undefined {
+    if (Object.keys(amounts).length === 0 && extra.length === 0) return undefined;
     // `amounts` passed validate() and holds only positive whole units, so transferLegs never returns null here.
-    const legs = transferLegs(from, to, amounts as Record<string, number>) as Leg[];
+    const legs = [...(transferLegs(from, to, amounts as Record<string, number>) as Leg[]), ...extra];
     const posting: ColonyPosting = { at: this.ctx.tick, reason: req.reason, actor: req.actor, legs };
     if (req.ref !== undefined) posting.ref = req.ref;
-    writeColonyStock(this.state, req.colony, stock, this.ctx.tick);
+    if (Object.keys(amounts).length > 0) writeColonyStock(this.state, req.colony, stock, this.ctx.tick);
     this.ctx.record(posting);
     return posting;
   }

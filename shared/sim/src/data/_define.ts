@@ -29,6 +29,12 @@ export interface TableDef<R extends Row = Row> {
    * balance override / `tune` reject anything else (`_amounts.ts`).
    */
   readonly amounts?: readonly Exclude<keyof R & string, 'id' | 'wave'>[];
+  /**
+   * Fields `tune` and balance overrides must not change, and why (`'*'` = every field of the table). For numbers the
+   * running sim never reads from compiled data, e.g. world generation inputs (a planet is generated once, from the
+   * file rows) or identifiers; overriding them would be accepted and change nothing (WE-19).
+   */
+  readonly fixed?: { readonly fields: '*' | readonly Exclude<keyof R & string, 'id' | 'wave'>[]; readonly why: string };
   readonly rows: readonly R[];
 }
 

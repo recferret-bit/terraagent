@@ -1,133 +1,30 @@
-import { describe, expect, it } from 'vitest';
-import { parseWaves } from '@terra/contracts';
+// @vitest-environment jsdom
+import { describe, expect, it, vi } from 'vitest';
+import { REJECT_CODES } from '@terra/contracts';
 import {
+  getHubFootprintTiles,
+  initialCaps,
+  hexIndex,
+  PREP,
   setColonyStock,
+  setTilePrep,
   spawnColonyLanding,
   spawnHqUnit,
-  type SimCommand,
   type ViewColony,
 } from '@terra/sim';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
-import { LocalHost } from '../../store/WorldStore';
+import { CommandBus } from '../../net/commandBus';
+import { LocalHost } from '../../store/local/LocalHost';
+import { mountHubPlacement } from '../hub-placement';
 import type { ClientView } from '../../store/replica/viewCodec';
 import { formatClock, formatRejectToast, mountMinimalHud, MinimalHud, wholeStock } from './index';
+import { REJECT_TEXT } from './rejectText';
 
-class FakeElement {
-  tagName: string;
-  className = '';
-  private _textContent = '';
-  hidden = false;
-  type = '';
-  title = '';
-  dataset: Record<string, string> = {};
-  style: Record<string, string> = {};
-  children: FakeElement[] = [];
-  parentElement: FakeElement | null = null;
-  onclick: (() => void) | null = null;
-  private attrs = new Map<string, string>();
-
-  constructor(tag: string) {
-    this.tagName = tag.toUpperCase();
-  }
-
-  get textContent(): string {
-    if (this.children.length === 0) return this._textContent;
-    return this.children.map((c) => c.textContent).join('');
-  }
-
-  set textContent(v: string) {
-    this._textContent = v;
-    this.children = [];
-  }
-
-  appendChild<T extends FakeElement>(child: T): T {
-    child.remove();
-    child.parentElement = this;
-    this.children.push(child);
-    return child;
-  }
-
-  append(...nodes: Array<FakeElement | string>): void {
-    for (const n of nodes) {
-      if (typeof n === 'string') {
-        const span = new FakeElement('#text');
-        span.textContent = n;
-        this.appendChild(span);
-      } else {
-        this.appendChild(n);
-      }
-    }
-  }
-
-  replaceChildren(...nodes: Array<FakeElement | string>): void {
-    for (const c of [...this.children]) c.parentElement = null;
-    this.children = [];
-    this.append(...nodes);
-  }
-
-  remove(): void {
-    if (!this.parentElement) return;
-    const idx = this.parentElement.children.indexOf(this);
-    if (idx >= 0) this.parentElement.children.splice(idx, 1);
-    this.parentElement = null;
-  }
-
-  setAttribute(k: string, v: string): void {
-    this.attrs.set(k, v);
-    if (k.startsWith('data-')) this.dataset[k.slice(5)] = v;
-  }
-
-  getAttribute(k: string): string | null {
-    if (k.startsWith('data-') && this.dataset[k.slice(5)] !== undefined) return this.dataset[k.slice(5)];
-    return this.attrs.get(k) ?? null;
-  }
-
-  click(): void {
-    this.onclick?.();
-  }
-
-  matches(selector: string): boolean {
-    const s = selector.trim();
-    const testIdMatch = /^\[data-testid=["']?([^"'[\]]+)["']?\]$/.exec(s);
-    if (testIdMatch) return this.dataset.testid === testIdMatch[1];
-    const slotMatch = /^\[data-slot=["']?([^"'[\]]+)["']?\]$/.exec(s);
-    if (slotMatch) return this.dataset.slot === slotMatch[1];
-    if (s.startsWith('.')) return this.className.split(/\s+/).includes(s.slice(1));
-    return this.tagName.toLowerCase() === s.toLowerCase();
-  }
-
-  querySelector(selector: string): FakeElement | null {
-    for (const c of this.children) {
-      if (c.matches(selector)) return c;
-      const found = c.querySelector(selector);
-      if (found) return found;
-    }
-    return null;
-  }
-
-  querySelectorAll(selector: string): FakeElement[] {
-    const out: FakeElement[] = [];
-    for (const c of this.children) {
-      if (c.matches(selector)) out.push(c);
-      out.push(...c.querySelectorAll(selector));
-    }
-    return out;
-  }
-}
-
-function ensureDom(): FakeElement {
-  const body = new FakeElement('body');
-  (globalThis as unknown as { document: unknown }).document = {
-    body,
-    createElement: (tag: string) => new FakeElement(tag),
-  };
-  return body;
-}
-
-let cmdSeq = 0;
-function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0): SimCommand {
-  return { colonyIndex, source: 'player', commandId: `hud_cmd_${++cmdSeq}`, kind, args };
+/** A clean `document.body` for each test (jsdom). */
+function freshBody(): HTMLElement {
+  document.body.replaceChildren();
+  return document.body;
 }
 
 describe('W01-29: Minimal HUD clock & view rendering', () => {
@@ -139,8 +36,8 @@ describe('W01-29: Minimal HUD clock & view rendering', () => {
     expect(formatClock(3600)).toBe('12:00');
   });
 
-  it('renders colony name, game clock, Metals/Minerals/Bio stock, family caps (500), and HQ cell bar (800 / 800 E) from ClientView', () => {
-    const parent = ensureDom();
+  it('renders colony name, game clock, Metals/Minerals/Bio stock, the sim family caps, and HQ cell bar (800 / 800 E) from ClientView', () => {
+    const parent = freshBody();
     const hud = new MinimalHud(parent as unknown as HTMLElement);
 
     const colony: ViewColony = {
@@ -155,11 +52,7 @@ describe('W01-29: Minimal HUD clock & view rendering', () => {
         'bio.biomass': 200,
         'bio.water': 200,
       },
-      caps: {
-        metals: 500,
-        minerals: 500,
-        bio: 500,
-      },
+      caps: { ...initialCaps() }, // what a landed colony really carries (sim data), not a hand-written fixture (XC-19)
       hq: {
         entityId: 1,
         owner: 0,
@@ -197,17 +90,17 @@ describe('W01-29: Minimal HUD clock & view rendering', () => {
     const mineralsEl = parent.querySelector('[data-testid="hud-stock-minerals"]')!;
     const bioEl = parent.querySelector('[data-testid="hud-stock-bio"]')!;
     const cellEl = parent.querySelector('[data-testid="hud-hq-cell"]')!;
-    const cellBar = parent.querySelector('[data-testid="hud-hq-cell-bar"]')!;
+    const cellBar = parent.querySelector<HTMLElement>('[data-testid="hud-hq-cell-bar"]')!;
 
     expect(colonyEl.textContent).toBe("Colonist's Colony");
     expect(clockEl.textContent).toBe('00:25');
-    expect(metalsEl.textContent).toContain('600 / 500');
-    expect(mineralsEl.textContent).toContain('350 / 500');
-    expect(bioEl.textContent).toContain('400 / 500');
+    expect(metalsEl.textContent).toContain(`600 / ${initialCaps().metals}`);
+    expect(mineralsEl.textContent).toContain(`350 / ${initialCaps().minerals}`);
+    expect(bioEl.textContent).toContain(`400 / ${initialCaps().bio}`);
     expect(bioEl.textContent).toContain('Biomass 200');
     expect(bioEl.textContent).toContain('Water 200');
     expect(cellEl.textContent).toContain('800 / 800 E');
-    expect(cellBar.style.width).toBe('100.0%');
+    expect(cellBar.style.width).toBe('100%'); // the browser (and jsdom) normalises '100.0%'
 
     expect(hud.el.className).toContain('plate-sm');
     expect(parent.querySelector('.ta-hud-min__stock-label')).toBeNull();
@@ -223,66 +116,55 @@ describe('W01-29: Minimal HUD clock & view rendering', () => {
 });
 
 describe('W01-29: Minimal HUD acceptance check', () => {
-  it('acceptance: place Hub without enough resources → see toast "Waiting: Metals 0/200"', async () => {
-    const parent = ensureDom();
+  it('acceptance: a Hub placed without enough resources is accepted and waits (GP-30): no reject toast, the order says what it waits for', async () => {
+    const parent = freshBody();
     const host = new LocalHost({ flags: ['W00', 'W01'], radius: 16 });
 
     // Spawn colony landing cargo and an alive HQ drone at (0, 0)
     spawnColonyLanding(host.state, { colonyId: 0, q: 0, r: 0 });
     spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
-
-    // Explicitly zero out metals stock (acceptance scenario)
-    setColonyStock(host.state, 0, {
-      'metals.t1': 0,
-      'minerals.t1': 350,
-      'bio.biomass': 200,
-      'bio.water': 200,
-    });
+    setColonyStock(host.state, 0, { 'metals.t1': 0, 'minerals.t1': 350, 'bio.biomass': 200, 'bio.water': 200 });
+    const idx = hexIndex(host.state.grid.radius);
+    for (const t of getHubFootprintTiles(3, 0)) setTilePrep(host.state.grid, idx.indexOf(t.q, t.r), PREP.prepared); // site ready: only resources missing
     host.sync(true);
 
-    const mounted = mountMinimalHud({
-      hudRoot: parent as unknown as HTMLElement,
-      store: host.store,
-      transport: host,
-      ownerColonyIndex: 0,
-    });
-
-    // Initial view syncs stock (0 metals)
+    // The command goes through the real host: it acks the placement (the sim never rejects a Hub for its cost) and
+    // the open order carries the waiting reason the Hub panel shows.
+    const services: Record<string, unknown> = {};
+    const mounted = mountMinimalHud({ hudRoot: parent, store: host.store, transport: host, ownerColonyIndex: 0, services: services as never });
     mounted.update(host.sync(false));
-
-    // The placement goes through the authoritative handler only (D-37: no client-side affordability copy):
-    // the host rejects it, cmd.reject reaches the HUD over the transport and triggers the toast.
-    host.sim.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0));
+    const bus = new CommandBus(host);
+    const panel = document.createElement('div');
+    const hub = mountHubPlacement(panel, { host, sendCommand: bus.send, services: services as never });
+    expect(hub.confirmPlacement(3, 0)).toBe(true);
     host.step(1);
+    await new Promise((r) => setTimeout(r, 0));
 
-    const toastEl = parent.querySelector('[data-testid="hud-toast"]');
-    expect(toastEl).not.toBeNull();
-    expect(toastEl?.textContent).toBe('Waiting: Metals 0/200');
-
+    expect(parent.querySelectorAll('[data-testid="hud-toast"]')).toHaveLength(0);
+    expect(panel.querySelector('[data-testid="hub-order-status"]')!.textContent).toBe('commandHub: waiting(resources: metals.t1 0/200)');
+    hub.dispose();
+    bus.dispose();
     mounted.dispose();
   });
 });
 
 describe('W01-29: Minimal HUD toasts and mounting', () => {
-  it('formats rejections for minerals deficit, other cmd.reject codes, and allows click dismiss', () => {
-    const parent = ensureDom();
+  it('formats cmd.reject codes (no shortfall numbers: nothing is rejected for cost, GP-30), and allows click dismiss', () => {
+    const parent = freshBody();
     const hud = new MinimalHud(parent as unknown as HTMLElement);
 
-    // Format minerals shortage
-    const mineralsShort = formatRejectToast('insufficient_resources', undefined, {
-      'metals.t1': 200,
-      'minerals.t1': 30,
-      'bio.biomass': 50,
-      'bio.water': 50,
-    });
-    expect(mineralsShort).toBe('Waiting: Minerals 30/100');
-    // Same order as the sim's waiting reason (findShortfall): biomass before water.
-    expect(formatRejectToast('insufficient_resources', undefined, { 'metals.t1': 200, 'minerals.t1': 100 })).toBe('Waiting: Biomass 0/50');
+    // The code's text, whatever the stock: the old Hub-shortfall line ("Waiting: Metals 0/200") cannot happen any more
+    expect(formatRejectToast('insufficient_resources')).toBe('Waiting: Insufficient resources');
+    expect(formatRejectToast('insufficient_resources', undefined, 'placeBuilding')).toBe('Waiting: Insufficient resources');
 
     // Format common reject codes
     expect(formatRejectToast('not_own_territory')).toBe('Rejected: Not your territory');
     expect(formatRejectToast('site_blocked')).toBe('Rejected: Site blocked');
-    expect(formatRejectToast('worker_tier_locked')).toBe('Rejected: Requires HQ');
+    expect(formatRejectToast('worker_tier_locked')).toBe('Rejected: No worker available');
+    expect(formatRejectToast('worker_tier_locked', undefined, 'placeBuilding')).toBe('Rejected: Requires a free HQ');
+    expect(formatRejectToast('invalid_args', 'bad', 'moveUnit')).toBe('Rejected: Invalid move order');
+    expect(formatRejectToast('invalid_args', undefined, 'placeBuilding')).toBe('Rejected: Invalid placement');
+    expect(formatRejectToast('some_new_code', 'host detail')).toBe('Rejected: host detail');
     expect(formatRejectToast('unknown_entity')).toBe('Rejected: Unknown entity');
     expect(formatRejectToast('already_landed')).toBe('Rejected: Colony already landed');
     expect(formatRejectToast('landing_site_taken')).toBe('Rejected: Landing site taken or too close to another colony');
@@ -297,7 +179,7 @@ describe('W01-29: Minimal HUD toasts and mounting', () => {
   });
 
   it('mounts automatically in HudRoot when wave W01 is enabled', () => {
-    const parent = ensureDom();
+    const parent = freshBody();
     const flags = new Set(['W00', 'W01']);
     const features = loadFeatures({ flags, host: 'server' });
 
@@ -325,7 +207,7 @@ describe('HUD shows whole resource units only', () => {
     });
     expect(wholeStock(undefined)).toEqual({});
 
-    const parent = ensureDom();
+    const parent = freshBody();
     const hud = new MinimalHud(parent as unknown as HTMLElement);
     const colony: ViewColony = {
       index: 0,
@@ -340,8 +222,60 @@ describe('HUD shows whole resource units only', () => {
     expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('199 / 600');
     expect(parent.querySelector('[data-testid="hud-stock-minerals"]')!.textContent).toContain('100 / 500');
     expect(parent.querySelector('[data-testid="hud-stock-bio"]')!.textContent).toContain('100 / 500');
-    expect(hud.getColonyStock()['metals.t1']).toBe(199);
-    expect(hud.handleReject('insufficient_resources').textContent).toBe('Waiting: Metals 199/200');
     hud.dispose();
+  });
+});
+
+describe('Reject toasts per command kind, live costs, accessibility, placeholders (FF-12, FF-22..FF-25)', () => {
+  it('every RejectCode has its own text', () => {
+    for (const code of REJECT_CODES) expect(REJECT_TEXT[code]).toMatch(/\S/);
+  });
+
+  it('a reject toast uses the wording of the command it belongs to; one toast per reject cause', () => {
+    const parent = freshBody();
+    const hud = new MinimalHud(parent);
+    hud.update({ tick: 0, colonies: [{ index: 0, id: 'c', name: 'c', color: 0, status: 'active', stock: { 'metals.t1': 120 } }] } as never);
+    expect(hud.handleReject('queue_full', undefined, { kind: 'enqueueTask' }).textContent).toBe('Rejected: Terraform queue full');
+    expect(hud.handleReject('queue_full', undefined, { kind: 'placeBuilding' }).textContent).toBe('Rejected: Queue full');
+    expect(parent.querySelectorAll('[data-testid="hud-toast"]')).toHaveLength(1); // one toast per reject cause
+    hud.dispose();
+  });
+
+  it('shows placeholders until the first view, then the view numbers; no invented 800 E cell', () => {
+    const parent = freshBody();
+    const hud = new MinimalHud(parent);
+    expect(parent.querySelector('[data-testid="hud-hq-cell"]')!.textContent).toContain('— E');
+    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('—');
+    hud.update({ tick: 0, colonies: [{ index: 0, id: 'c', name: 'c', color: 0, status: 'active', stock: {} }] } as never);
+    expect(parent.querySelector('[data-testid="hud-hq-cell"]')!.textContent).toContain('— E'); // no HQ in the view
+    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('0 / 600');
+    hud.dispose();
+  });
+
+  it('announces toasts politely, names every stock for screen readers, dismisses with the keyboard', () => {
+    const parent = freshBody();
+    const hud = new MinimalHud(parent);
+    expect(hud.toastContainer.getAttribute('role')).toBe('status');
+    expect(hud.toastContainer.getAttribute('aria-live')).toBe('polite');
+    for (const [id, name] of [['hud-stock-metals', 'Metals'], ['hud-stock-minerals', 'Minerals'], ['hud-stock-bio', 'Bio'], ['hud-supply', 'Supply']]) {
+      expect(parent.querySelector(`[data-testid="${id}"] .ta-hud-min__sr-only`)!.textContent).toContain(name);
+    }
+    const toast = hud.showToast('hello');
+    expect(toast.tagName).toBe('BUTTON');
+    hud.dispose();
+  });
+
+  it('dispose clears pending toast timers', () => {
+    vi.useFakeTimers();
+    try {
+      const hud = new MinimalHud(freshBody());
+      hud.showToast('a');
+      hud.showToast('b', 'error');
+      expect(vi.getTimerCount()).toBe(2);
+      hud.dispose();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

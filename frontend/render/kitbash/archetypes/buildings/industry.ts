@@ -1,7 +1,7 @@
 // Extraction & storage: mine, water pump, supply depot.
 import * as THREE from 'three';
 import { KitbashBuilder } from '../../KitbashRegistry';
-import { box, cyl, ball, ring, strut, cable, lamp, glow, plinth, lattice, type V3, spin } from './kit';
+import { box, cyl, ball, ring, strut, cable, lamp, glow, plinth, lattice, spin } from './kit';
 
 const PI = Math.PI;
 

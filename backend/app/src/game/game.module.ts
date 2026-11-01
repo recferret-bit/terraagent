@@ -2,7 +2,7 @@ import { availableParallelism } from 'node:os';
 import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
-import { DEV_PLANET_SEED, DEV_PLANET_TYPE } from '@terra/sim';
+import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
@@ -19,17 +19,20 @@ import { bridgePlanetEvents } from './bus-bridge';
 import { DevPlanetsController } from './dev-planets.controller';
 import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
+import { gameLandingHost } from './home-landing-host';
 import { DevLedgerController } from './ledger/dev-ledger.controller';
 import { InMemoryLedgerStore } from './ledger/in-memory-ledger-store';
 import { LedgerStorePort } from './ledger/ledger-store.port';
 import { PlanetLedgerService } from './ledger/planet-ledger.service';
 import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
-import { persistenceEnabled } from './persistence/persistence-enabled';
+import { persistenceEnabled } from '../core/persistence';
 import { PlanetHeldError, SnapshotService } from './persistence/snapshot.service';
 import { SnapshotStore } from './persistence/snapshot-store';
 import { ProgressionEventForwarder } from './progression-events.service';
+import { wirePlanetRecovery } from './planet-recovery';
 import { gameSeatHost, seatAndRegisterColony } from './seat-colony';
 import { SimThreadPool } from './sim-thread-pool';
+import { W00_PLANET_TYPE } from './thread/protocol';
 
 export const env = defineEnv('game', {
   /** Sim worker threads (SIM-H-01); default: cores - 1, at least 1. */
@@ -40,11 +43,11 @@ export const env = defineEnv('game', {
   SNAPSHOTS: z.enum(['on', 'off']).optional(),
   /** Deltas per second per subscribed planet (D-31). */
   DELTA_HZ: z.coerce.number().positive().max(20).default(5),
-  /** Number of flat dev planets loaded at boot, spread evenly over the threads. */
   /** Path to `balance.overrides.json` (D-35): design-unit overrides merged over the data rows at compile time; unset = none. */
   TA_BALANCE_OVERRIDES: z.string().optional().superRefine((path, ctx) => {
     try { loadBalanceOverrides(path, []); } catch (e) { ctx.addIssue({ code: 'custom', message: e instanceof Error ? e.message : String(e) }); }
   }),
+  /** Number of dev planets loaded at boot, spread evenly over the threads (desert with W01, the flat W00 planet without). */
   GAME_DEV_PLANETS: z.coerce.number().int().min(0).default(0),
 });
 
@@ -70,10 +73,11 @@ const POOL = Symbol('SIM_THREAD_POOL');
     SnapshotService,
     ProgressionEventForwarder,
   ],
-  exports: [GamePlanets, ProgressionEventForwarder],
+  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubHomeSeat: (() => void) | undefined;
+  private unsubRecovery: (() => void) | undefined;
   private readonly log: Logger;
 
   constructor(
@@ -94,11 +98,14 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
 
   async onApplicationBootstrap(): Promise<void> {
     await this.pool.start();
-    bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder);
-    if (this.homeService) {
-      const host = gameSeatHost(this.snapshots, this.planets, this.log);
-      this.unsubHomeSeat = this.homeService.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, host, assignment));
+    bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
+    const home = this.homeService;
+    if (home) {
+      const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
+      this.unsubHomeSeat = home.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, host, assignment));
+      home.setLandingHost(gameLandingHost(this.snapshots, this.planets, host));
     }
+    this.unsubRecovery = wirePlanetRecovery(this.planets, this.pool, this.snapshots, this.log);
     const pool = this.pool;
     const reg = this.metrics.registry;
     new Gauge({ name: 'ta_game_threads', help: 'Live sim threads', registers: [reg], collect() { this.set(pool.live); } });
@@ -132,14 +139,14 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       },
     });
     this.readiness.register('simThreads', () => {
-      if (pool.live === 0) throw new Error('no live sim threads');
+      if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
       return pool.live;
     });
     const restored = await this.snapshots.restoreAll();
     const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size), this.planets.loadedIds(), restored);
     const devOpts = this.flags.has('W01')
-      ? { params: { type: DEV_PLANET_TYPE, planetType: DEV_PLANET_TYPE, seed: DEV_PLANET_SEED, radius: 56, capacity: 5 } }
-      : {};
+      ? { params: { type: DEV_PLANET_TYPE, seed: DEV_PLANET_SEED, radius: DEV_PLANET_RADIUS, capacity: DEV_PLANET_CAPACITY } }
+      : { params: { type: W00_PLANET_TYPE } };
     // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
     await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
   }
@@ -147,6 +154,8 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   async onApplicationShutdown(): Promise<void> {
     this.unsubHomeSeat?.();
     this.unsubHomeSeat = undefined;
+    this.unsubRecovery?.();
+    this.homeService?.setLandingHost(undefined);
     this.readiness.unregister('simThreads');
     await this.planets.shutdown();
   }

@@ -128,16 +128,8 @@
           "additionalProperties": false,
           "properties": {
             "planetId": {
-              "anyOf": [
-                {
-                  "pattern": "^pl_[0-9A-HJKMNP-TV-Z]{26}$",
-                  "type": "string"
-                },
-                {
-                  "pattern": "^pl_[A-Za-z0-9_-]+$",
-                  "type": "string"
-                }
-              ]
+              "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
             }
           },
           "required": [
@@ -704,6 +696,17 @@
       "summary": "Enqueues a terraform order (grade | clear | break) over one or more tiles in the colony queue.",
       "wave": "W01"
     },
+    "landPod": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Opens the caller colony's descending pod as soon as it has descended `hq.startingKit.podLandMinS` (the client's touchdown animation); `already_landed` once it is open.",
+      "wave": "W01"
+    },
     "moveUnit": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -805,7 +808,7 @@
                 "type": "string"
               },
               {
-                "pattern": "^col?_[A-Za-z0-9_-]+$",
+                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
                 "type": "string"
               }
             ]
@@ -1424,7 +1427,9 @@
                 "internal",
                 "rate_limited",
                 "already_landed",
-                "landing_site_taken"
+                "landing_site_taken",
+                "queue_full",
+                "planet_full"
               ],
               "type": "string"
             },
@@ -1757,7 +1762,7 @@
                       "type": "string"
                     },
                     {
-                      "pattern": "^col?_[A-Za-z0-9_-]+$",
+                      "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
                       "type": "string"
                     }
                   ]
@@ -1796,16 +1801,8 @@
                   "type": "integer"
                 },
                 "id": {
-                  "anyOf": [
-                    {
-                      "pattern": "^pl_[0-9A-HJKMNP-TV-Z]{26}$",
-                      "type": "string"
-                    },
-                    {
-                      "pattern": "^pl_[A-Za-z0-9_-]+$",
-                      "type": "string"
-                    }
-                  ]
+                  "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
+                  "type": "string"
                 },
                 "name": {
                   "type": "string"

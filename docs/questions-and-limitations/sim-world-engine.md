@@ -9,7 +9,7 @@ Format: [README](./README.md).
 
 ### WE-01 · `SIM_VERSION` went 1 → 2 without a migration: v1 snapshots of non-dev planets cannot be restored
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/kernel/constants.ts:7`, `shared/sim/src/codec/migrations/index.ts` (registry "ships
@@ -26,10 +26,11 @@ Format: [README](./README.md).
   old ledger blob into `col.stock`, drop the blobs). If no, write that down next to `SIM_VERSION` ("pre-W01 saves are
   discarded"). Recommendation: write it down. The migration code path then stays untested until the first real one.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** applied the recommendation: the rule is written next to `SIM_VERSION` (`shared/sim/src/kernel/constants.ts`): no non-dev planet was saved at v1, pre-W01 saves are discarded, and from the first real planet on every bump registers a migration. No behaviour change, no test.
 
 ### WE-02 · The `GEN_VERSION` fingerprint pins only the desert profile and three layers
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/test/gen/world.spec.ts:99-107`, `shared/sim/src/gen/generators.ts:20-27` (bump rule)
@@ -44,6 +45,7 @@ Format: [README](./README.md).
 - **To resolve:** fingerprint all three profiles (one seed each) over `terrain`, `prep`, `height`, `deposit`,
   `richness`, `subDeposit` / `subRichness` (with a fixed test salt) and the spawn slot coordinates.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** the fingerprint covers one planet per profile (desert `golden-1`, temperate `golden-2`, ocean `golden-3`) over `terrain`, `prep`, `height`, `deposit`, `richness`, `subDeposit`, `subRichness` (fixed test salt) and the spawn slot coordinates. `shared/sim/test/gen/world.spec.ts` › "one planet per profile: pinned summary …".
 
 ### WE-03 · The `desert` and `ocean` generator ids override the caller's `planetType`
 
@@ -77,7 +79,7 @@ Format: [README](./README.md).
 
 ### WE-05 · Every client gets every rng stream state, so future random draws are predictable
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/host/diff.ts:67` (`rng: state.rng` also with `forClient`), `shared/sim/src/codec/snapshot.ts:37`, `shared/sim/src/kernel/rng.ts:6`
@@ -91,6 +93,7 @@ Format: [README](./README.md).
   lands, give it a server-only stream (seeded with `meta.worldSalt`, stripped like the hidden layers) and accept that
   the client does not predict that system's outcome.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** applied the recommendation as a rule in `shared/sim/src/kernel/rng.ts`: the first system whose draws must stay hidden gets a server-only stream seeded with `meta.worldSalt`, stripped from client payloads like the hidden layers, and the client does not predict it. W01 draws only `gen`, so nothing changes now.
 
 ### WE-06 · Fog of war is not a security boundary; `explored` covers only colonies 0–7, `owner` only up to 127
 
@@ -112,7 +115,7 @@ Format: [README](./README.md).
 
 ### WE-07 · Scenario planets have no `worldSalt`: their buried deposits can be regenerated from the public seed
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `scenarios/_loader.ts:51-55` (`createPlanet` without `worldSalt`),
@@ -129,6 +132,8 @@ Format: [README](./README.md).
 - **To resolve:** let `createScenarioPlanet` accept `worldSalt` and pass `randomUUID()` from `scenarios.service.ts`;
   add a test that a server-loaded scenario planet has `meta.worldSalt`.
 - **Found:** 2026-11-01, world/engine review
+- **Fix (sim side):** `createScenarioPlanet(id, { worldSalt })` (`scenarios/_loader.ts`) passes the salt to `createPlanet`; test `scenarios/test/world-salt.spec.ts` (salt stored in `meta`, only the hidden layers differ).
+- **Fix (server side):** `ScenariosService.create` passes `worldSalt: randomUUID()` to `createScenarioPlanet` (`backend/app/src/scenarios/scenarios.service.ts`); test `backend/app/test/scenarios/scenarios.spec.ts` › "a scenario planet loaded on the server has its own worldSalt, never sent to clients (WE-07)".
 
 ### WE-08 · Client-bound paths are all stripped; hosts that run in the browser keep the subsurface by design
 
@@ -149,7 +154,7 @@ Format: [README](./README.md).
 
 ### WE-09 · Most buried deposits can never be uncovered in W01
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/gen/world/stages/subsurface.ts:17-28`, `shared/sim/src/systems/terraform-basic/queue.ts:118-136`,
@@ -166,6 +171,7 @@ Format: [README](./README.md).
   `subDeposit` wherever generation changes a tile's class after the subsurface stage (as `levelZone` already does for
   the landing disc), or run `subsurface` after `landing`.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** kept the slope / flat subsurface for the later Level op (recommendation) and moved the `subsurface` stage after `landing` in every profile (`shared/sim/src/data/worldgen.ts`), so no later generation step changes a tile's class over a buried deposit; the per-tile clearing in `levelZone` is gone. Side effect: Flat tiles of a landing zone can now carry buried oil like any other Flat tile (still unreachable in W01). `GEN_VERSION` 3 → 4 (only the hidden layers change for temperate / ocean). Pinned by the WE-02 fingerprint.
 
 ## Change tracking and sectors
 
@@ -209,7 +215,7 @@ Format: [README](./README.md).
 
 ### WE-12 · The A* heuristic is not admissible past 6 tiles: about half of the long paths are not the cheapest
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/grid/pathSearch.ts:15-19,83-87`
@@ -224,10 +230,11 @@ Format: [README](./README.md).
   routes (keep it, fix the comment and state the bound, e.g. "weighted A*, ≤ 1.6× optimal"). Recommendation: keep
   the speed, document it, and add a test that pins the bound.
 - **Found:** 2026-11-01, world/engine review (probe: Dijkstra comparison in a scratch script)
+- **Fix:** applied the recommendation (keep the speed): the comment now says weighted A*, not admissible, with the bound `FAR_HEURISTIC_WEIGHT_BP / 909` ≈ 1.6× (`shared/sim/src/grid/pathSearch.ts`). `shared/sim/test/grid/path-bound.spec.ts` compares `findHexPath` with Dijkstra on 120 pairs over three temperate planets: every ratio ≤ the bound, and it pins the measured result (54 suboptimal, worst 1.1679×).
 
 ### WE-13 · `findHexPath` with `maxExpansions` between 33 and 95 gives up after 32 expansions
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/grid/path.ts:23-29`, `shared/sim/src/grid/pathSearch.ts:317-319`
@@ -240,10 +247,11 @@ Format: [README](./README.md).
 - **To resolve:** in `findHexPath`, call `continueAStarSearch` with `replay = true` (no deferral), or loop until
   `maxExp` is spent.
 - **Found:** 2026-11-01, world/engine review (probe)
+- **Fix:** `findHexPath` runs the search with `replay = true` (no deferral), so the whole `maxExpansions` is spent; `HexPathResult.expansions` documents that a goal proven sealed may report up to `MAX_POCKET_NODES` more. Test `shared/sim/test/grid/path-queue.spec.ts` › "a maxExpansions between 33 and 95 is spent in full".
 
 ### WE-14 · Default path request ids collide after a cancel
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/grid/pathQueue.ts:110-130` (`seq = totalResolved + queue.length + 1`), `:77` (search
@@ -254,10 +262,11 @@ Format: [README](./README.md).
   so gameplay is not affected; only tools and tests use the default.
 - **To resolve:** keep a `nextSeq` counter in `pathStats` (or require `id`).
 - **Found:** 2026-11-01, world/engine review (probe)
+- **Fix:** `pathStats.lastSeq` only grows (old snapshots fall back to `totalResolved + queueLength`); default ids come from it. Test `path-queue.spec.ts` › "default ids never repeat after a cancel".
 
 ### WE-15 · The `pathEpoch` restart and `cancelPathRequest` have no test
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/grid/pathQueue.ts:186-194`, `shared/sim/src/grid/tileModel.ts:258-261,280,289,306`,
@@ -273,10 +282,11 @@ Format: [README](./README.md).
 - **To resolve:** add that test (pause with a small budget, place a building or `setTileTerrain` across the route,
   compare live vs `restore(snapshot(...))`), plus one for `cancelPathRequest` while the head search is paused.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** tests in `shared/sim/test/grid/path-queue.spec.ts`: a search paused, then a Deep wall (`setTileTerrain`) or a Ridge line (`setTilePrep`) across the route, live vs `restore(snapshot())` taken right after the change and after the next paused step, all equal a fresh search on the new ground; cancelling the paused head and re-enqueuing the same id searches afresh (live and restored).
 
 ### WE-16 · A live search keeps the step-cost data it started with; a replay uses the current data
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** PLAUSIBLE
 - **Area / code:** `shared/sim/src/grid/pathQueue.ts:143-159` (`data` and the `blocked` sets captured at creation),
@@ -288,10 +298,11 @@ Format: [README](./README.md).
 - **Why it is like this:** tunes are a dev tool; the epoch only tracks ground writes.
 - **To resolve:** bump `meta.pathEpoch` (or clear the search cache) when the pipeline's `dataHash` changes.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** a queue entry records the compiled data hash it explored under (`PathQueueEntry.dataHash`); `stepPathQueue` restarts a paused search when the hash differs, on every host alike (`shared/sim/src/grid/pathQueue.ts`). No host change needed. Test `path-queue.spec.ts` › "a new data hash restarts the search on every host alike". Note: a client predicts with the same restart only if its pipeline is recompiled after a live `tune` (reported to FRONTEND-APP).
 
 ### WE-17 · Every path search allocates and fills planet-sized arrays; tile lookups re-resolve the grid four times
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** PLAUSIBLE
 - **Area / code:** `shared/sim/src/grid/pathSearch.ts:248-273`, `:111-116` (`tileStepCostBp`),
@@ -307,12 +318,13 @@ Format: [README](./README.md).
 - **To resolve:** reuse scratch arrays per radius with a generation counter instead of `fill`, resolve layers once per
   search, and build the occupancy set once per step.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** each search resolves the layers and a (terrain, prep) step-cost table once (`searchStepCost`, the table cached per compiled data), drops the four `fill` passes (`mark` byte per tile, `heapPos` stored + 1), and builds the footprint set once per search instead of twice (`pathBlockersFor`). Identical results (before / after compare of 360 one-shot and queued searches; full sim suite green). Still per search, not per step: the orchestrator's per-unit `pathBlockedFor` (`units/movement/orchestrator.ts:169`) is SIM-GAMEPLAY's. The planet-sized arrays stay per search on purpose: WE-29.
 
 ## World generation and spawn slots
 
 ### WE-18 · Desert landing zones can undo the UO-TF-09 metals guarantee (about 0.7 % of slots)
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/gen/world/stages/landing.ts:57,63-79,88-92`, `shared/sim/src/gen/spawnSlots.ts:226-262`;
@@ -328,10 +340,11 @@ Format: [README](./README.md).
   the rock → slope pass, or re-run the deposit guarantees after levelling; run the UO-TF-09 check on all three
   profiles in the spec.
 - **Found:** 2026-11-01, world/engine review (probe)
+- **Fix:** `generateSpawnSlots` reports the metals 2×2 footprint tiles (`footprintsOut`); the landing stage keeps them out of `reclassifyRing` and the rock → slope pass (`shared/sim/src/gen/world/stages/landing.ts`). Test `shared/sim/test/gen/spawnSlots.spec.ts` › "keeps the UO-TF-09 guarantees on every profile …" (60 desert, 15 temperate, 15 ocean seeds; failed before on desert `g-18` slot 1). `GEN_VERSION` 4; the dev planet's visible ground is unchanged.
 
 ### WE-19 · World generation reads its tables raw: `tune worldgen.*` and the spawn / richness rows change nothing
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/gen/world/context.ts:13-16`, `shared/sim/src/gen/spawnSlots.ts:22-35`,
@@ -347,10 +360,11 @@ Format: [README](./README.md).
   fields non-tunable (reject them in `applyOverrides` with a clear message) and move the spawn / richness fields from
   `terrain.temperate` into the `worldgen` profile rows.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** applied the recommendation: generation numbers are not tunable. `TableDef.fixed` (`shared/sim/src/data/_define.ts`, checked in `applyOverrides`) rejects `worldgen.*` and `terrain.*.code` with "cannot be tuned: …". The spawn slot and richness fields moved from `terrain.temperate` to a `worldgen.shared` row, the temperate class shares to `worldgen.temperate` (`shareFlat` …), read through `shared/sim/src/gen/profile.ts` (profile row, else `shared`). `terrain` keeps only runtime numbers (`moveMult`, `passable`, `livingMoveMult`). Same values, same planets. Tests `shared/sim/test/data/generation-data.spec.ts`.
 
 ### WE-20 · Desert and ocean deposit richness modifiers are numbers in code
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/gen/temperate.ts:42-54` (`richnessModBp`)
@@ -362,10 +376,11 @@ Format: [README](./README.md).
 - **To resolve:** add `metalsRichnessModBp` / `mineralsRichnessModBp` / `oilRichnessModBp` to each `worldgen` profile
   row and read them there (bump `GEN_VERSION` only if values change).
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** `metalsRichnessModBp` / `mineralsRichnessModBp` / `oilRichnessModBp` are `worldgen` fields (shared 10000, desert metals / minerals 11500, temperate minerals 11500, ocean oil 12000 / metals 8500), read by `getDepositRichnessBp`. Same values. Test `generation-data.spec.ts` › "desert metals / minerals +15 % …".
 
 ### WE-21 · The generation-time performance test uses wall-clock budgets
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** PLAUSIBLE
 - **Area / code:** `shared/sim/test/gen/world.spec.ts:90-97` (radius 56 < 250 ms, radius 120 < 1.5 s), also
@@ -375,12 +390,13 @@ Format: [README](./README.md).
 - **Why it is like this:** the budgets document the D-38 performance target next to the code.
 - **To resolve:** move timing checks to a benchmark script, or widen the budgets and run them only with an env flag.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** the wall-clock generation test runs only with `SIM_PERF=1` (`shared/sim/test/gen/world.spec.ts`, documented in `docs/dev/DEV_TOOLS.md`); `sim-host.spec.ts` "size and speed" only logs timings and asserts sizes, so it stays.
 
 ## Landing planner and presence
 
 ### WE-22 · The presence index misses changes made in the same tick as its newest stamp
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/world/presence.ts:112-147` (`storeStamp` = `count:maxChangedAt:removed.length`)
@@ -394,10 +410,11 @@ Format: [README](./README.md).
 - **To resolve:** key the cache on `meta.tick` too and rebuild whenever the store's newest stamp equals the current
   tick, or keep a write counter on the entity store and compare that.
 - **Found:** 2026-11-01, world/engine review (probe)
+- **Fix:** the spatial index keeps a copy of the ten columns it reads and is reused only while they are value-for-value identical (`shared/sim/src/world/presence.ts`), so a death or move in the newest stamp's tick, or a write that skips the stamp, rebuilds it. Test `shared/sim/test/world/presence.spec.ts` › "sees changes made in the same tick as the newest stamp" (failed before).
 
 ### WE-23 · The runtime Hub-site fallback can take tiles from another colony's territory
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** PLAUSIBLE
 - **Area / code:** `shared/sim/src/gen/starterSpace.ts:57-79` (line 74), `shared/sim/src/world/landingPlanner.ts:69-75`,
@@ -413,12 +430,13 @@ Format: [README](./README.md).
   `landing_site_taken` if none is left), or make `landingBlock` require the 3×3 search area to be free of foreign
   territory. Add a test with a foreign Hub nearby.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** `ensureStarterHubSpace` never levels a footprint that touches another colony's territory and no longer clears foreign ownership; `landingBlock` refuses (`landing_site_taken`) a landing whose every starter Hub footprint touches foreign territory (`starterHubSiteBlocked`, `shared/sim/src/gen/starterSpace.ts`, `world/landingPlanner.ts`), so `spawnColonyLanding` always finds a site. Edge: a landing at the rim where no 3×3 fits the grid is now refused too. Tests `shared/sim/test/gen/starterSpace.spec.ts` › "starter Hub space next to foreign territory". The fallback still flattens trees / rock without yield (by design: it guarantees the Hub site).
 
 ## Data tables and tuning
 
 ### WE-24 · Alias fields in `hq`, `hub` and `opsBasic`: unit conversion and `tune` hit fields nobody reads
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/data/hq.ts`, `shared/sim/src/data/hub.ts`, `shared/sim/src/data/ops-basic.ts`;
@@ -446,12 +464,14 @@ Format: [README](./README.md).
   comparisons, and add a test that every non-`id`/`wave` field of every table is read somewhere (or listed as
   reserved for a later wave).
 - **Found:** 2026-11-01, world/engine review
+- **Fix (engine side):** `TableDef.fixed` lets a table reject fields nobody may tune (WE-19); `shared/sim/test/data/generation-data.spec.ts` › "every field of the engine-owned tables is read" checks that every field of `dev`, `terrain` and `worldgen` is named in sim code or listed as reserved (negative control: a bogus field fails it).
+- **Fix (gameplay side, SIM-GAMEPLAY):** the aliases are gone (one field per value, read through `systems/rows.ts`, compiled units converted back only for display; see XC-01 / GP-25), and `hq`, `hub`, `opsBasic` are in `CHECKED_TABLES` with the later-wave fields listed in `RESERVED`.
 
 ## Lint, dead code and docs
 
 ### WE-25 · The purity lint misses `**` and locale-dependent APIs
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/eslint.rules.js:23-26` (`ENGINE_MATH`), `:6-12` (`GLOBALS`)
@@ -463,10 +483,11 @@ Format: [README](./README.md).
   `AssignmentExpression[operator='**=']`, `Intl` to the globals, and `localeCompare` / `toLocaleString` to the
   restricted properties; extend `test/lint/purity.spec.ts`.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** `shared/sim/eslint.rules.js` bans `**` / `**=` (shared `PURE_SYNTAX`, repeated in every sim `no-restricted-syntax` config), the `Intl` global and `localeCompare` / `toLocale*`. Tests in `shared/sim/test/lint/purity.spec.ts` (five new cases).
 
 ### WE-26 · `grid/tileModel.ts` exports an API only tests use
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/grid/tileModel.ts` (`blocksDirectFire`, `terrainMoveMultiplier`,
@@ -479,10 +500,11 @@ Format: [README](./README.md).
   before the systems that would call it.
 - **To resolve:** delete what no wave plans to use, or mark the rest as the presentation-safe API for the client.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** deleted `terrainMoveMultiplier`, `groundMoveMultiplier`, `isTileOwnedBy`, `isTileUnclaimed`, the `HexGrid` alias and the never-set `valid` mask (`shared/sim/src/grid/tileModel.ts`, tests updated). Kept and documented: `blocksDirectFire` (UO-W-02, combat wave), the key ↔ code converters (terraform ops use them; labels for tools), `markTileExplored` / `isTileExplored` (now used by `revealVision`), `extractTileChanges` (diff inspection for tests and tools). `buildView` (`host/view.ts`) stays while `test/systems/landing.spec.ts` (SIM-GAMEPLAY) imports it; it is an alias of `view` and can go once that spec switches.
 
 ### WE-27 · `shared/sim/README.md` lags the code in three places
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/README.md:13,79,90`
@@ -494,3 +516,36 @@ Format: [README](./README.md).
 - **Why it is like this:** the README sections were written with W00 / early W01 and not revisited.
 - **To resolve:** update the three lines.
 - **Found:** 2026-11-01, world/engine review
+- **Fix:** `shared/sim/README.md`: the tile-layer row lists `anchors`, `graceUntil` and the hidden `subDeposit` / `subRichness`; the generation section says which stages seed per sector and which rank the whole planet with the `gen` stream (and that reads cross sector borders); the lint line names `@terra/contracts` and `@terra/ledger`, `**` and the locale APIs.
+
+## Found during the review-fix round
+
+### WE-28 · A path-queue step budget below 64 never lets a search past 32 expansions
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/grid/pathSearch.ts` (`continueAStarSearch`, `MAX_POCKET_NODES`), `shared/sim/src/grid/pathQueue.ts` (`stepPathQueue`)
+- **What happens:** the sealed-goal-pocket check after expansion 32 needs `MAX_POCKET_NODES` (64) of budget left in
+  one call and is deferred otherwise. `stepPathQueue(state, budget)` with a budget below 64 therefore defers it every
+  step: the head search never gets past 32 expansions and the queue stalls (probe: budget 8 on a 20-tile route).
+- **Why it is like this:** deferring (not skipping) keeps a resumed and a replayed search identical; the game always
+  passes `PATH_EXPANSION_BUDGET_PER_STEP` (2 000), so the head search always gets a full budget at the start of a step.
+- **Workaround / mitigation:** documented on `stepPathQueue`; tests use budgets ≥ 96 (`test/grid/path-queue.spec.ts`).
+- **To resolve:** nothing unless a caller needs tiny budgets; then clamp the budget to `MAX_POCKET_NODES`.
+- **Found:** 2026-11-01, review-fix round (writing the WE-15 tests)
+
+### WE-29 · Every path search still allocates planet-sized arrays
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/grid/pathSearch.ts` (`createAStarSearch`)
+- **What happens:** each search allocates seven typed arrays of `count` entries (≈ 300 KB at radius 56), even for a
+  3-tile walk. The WE-17 fix removed the fills and the repeated layer / footprint lookups, not the allocation.
+- **Why it is like this:** a paused head-of-queue search owns its arrays across steps, and one sim thread runs many
+  planets plus one-shot `findHexPath` calls in between, so a shared scratch buffer would corrupt a paused search.
+- **Workaround / mitigation:** typed-array allocation is zero-filled by the engine; no fill pass remains.
+- **To resolve:** if profiling shows it matters, pool arrays per radius and hand them back when a search finishes
+  (never while it is paused), or size the arrays to a bounding box of the search.
+- **Found:** 2026-11-01, review-fix round (WE-17)

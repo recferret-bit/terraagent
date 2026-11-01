@@ -34,6 +34,8 @@ export type Listener<T> = (value: T) => void;
 export interface Transport {
   start(): void;
   stop(): void;
+  /** Releases the transport for good (sockets, workers, timers); `start()` afterwards does nothing. Falls back to `stop()`. */
+  dispose?(): void;
   send(msg: Outgoing): void;
   onMessage(fn: Listener<ServerMessage>): () => void;
   onState(fn: Listener<ConnectionState>): () => void;
@@ -44,5 +46,12 @@ export interface Transport {
 export interface SessionTarget {
   url: string;
   accessToken: string;
+  /** When `accessToken` expires (ms, the transport clock); undefined for tokens that do not expire (dev tokens). */
+  tokenExpiresAtMs?: number;
   resolve(): Promise<{ planetId: string }>;
+  /**
+   * Renews `accessToken` (and `tokenExpiresAtMs`); true when a fresh token is in place. The transport calls it before
+   * the expiry (then sends `reauth`) and before a reconnect after `4000` / `4003` (CLIENT §6.3).
+   */
+  refresh?(): Promise<boolean>;
 }

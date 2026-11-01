@@ -265,7 +265,8 @@ describe('buildings block ground movement', () => {
       }
     }
     expect(worked).toBeGreaterThan(100);
-    expect(getConstructionOrders(state, 0)[0]?.status).toBe('completed');
+    expect(getConstructionOrders(state, 0)).toEqual([]); // completed: the order left the queue (GP-10)
+    expect(state.entities.cols.state[rowOf(state.entities, hqId + 1)]).toBe(ENTITY_STATE.active);
     host.submit(cmd('moveUnit', { entityId: hqId, q: 3, r: 0 })); // the finished Hub is not walkable
     expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
   });

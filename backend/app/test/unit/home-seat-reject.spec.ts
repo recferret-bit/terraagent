@@ -1,8 +1,9 @@
 import 'reflect-metadata';
+import { DEV_PLANET_CAPACITY, MAX_COLONIES_PER_PLANET } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
 import type { CoreException } from '../../src/core/errors';
 import { HomeRepository, HomeService, type ColonySeatAssignment } from '../../src/core/home';
-import { pickSpawnSlot, SEAT_ATTEMPTS, SEAT_PLANETS, siteKey } from '../../src/core/home/home.service';
+import { type HomeLandingHost, type HomeLandingSite, SEAT_PLANETS } from '../../src/core/home/home.service';
 import { seatAndRegisterColony, seatColonyOnPlanet } from '../../src/game/seat-colony';
 
 const assignment = {
@@ -35,13 +36,33 @@ describe('seatColonyOnPlanet: a sim reject of system.spawnColony is not a seat',
   });
 });
 
+/** A landing host whose sim answers `site(planetId, colonyIndex)` (default: a site per index), recording the questions. */
+function landingHost(site: (planetId: string, colonyIndex: number) => HomeLandingSite = (_p, i) => ({ ok: true, q: 10 + i, r: -i, slotIndex: i })) {
+  const asked: string[] = [];
+  const loaded: string[] = [];
+  const host: HomeLandingHost = {
+    landingSite: async (planet, colonyIndex) => { asked.push(`${planet.id}#${colonyIndex}`); return site(planet.id, colonyIndex); },
+    ensureHomeLoaded: async (planet) => { loaded.push(planet.id); },
+  };
+  return { host, asked, loaded };
+}
+
+function homeService(site?: Parameters<typeof landingHost>[0]) {
+  const repo = new HomeRepository(); // in-memory
+  const home = new HomeService(repo);
+  const lh = landingHost(site);
+  home.setLandingHost(lh.host);
+  const landed: ColonySeatAssignment[] = [];
+  home.onColonySeated((a) => { landed.push(a); });
+  return { repo, home, landed, ...lh };
+}
+
 describe('HomeService.getOrAssignHome when the landing is rejected', () => {
   it('surfaces the error, rolls the colony back, and seats normally on the next call', async () => {
-    const repo = new HomeRepository(); // in-memory
-    const home = new HomeService(repo);
+    const { repo, home } = homeService();
     let reject = true;
     home.onColonySeated(async (a) => {
-      if (reject) await seatColonyOnPlanet(fakePlanets({ ok: false, commandId: 'cm', code: 'already_landed' }), a);
+      if (reject) await seatColonyOnPlanet(fakePlanets({ ok: false, commandId: 'cm', code: 'invalid_args' }), a);
     });
     const err = (await home.getOrAssignHome({ id: 'p_rej', handle: 'Rej' }).catch((e: unknown) => e)) as CoreException;
     expect(err.errorCode).toBe('COLONY_SEAT_REJECTED');
@@ -55,73 +76,126 @@ describe('HomeService.getOrAssignHome when the landing is rejected', () => {
   });
 });
 
-describe('HomeService.getOrAssignHome retries another slot on landing_site_taken', () => {
-  /** A home service whose sim answers each landing with the next code of `codes` (then accepts). */
-  function seatWith(codes: string[]) {
-    const repo = new HomeRepository();
-    const home = new HomeService(repo);
-    const tried: ColonySeatAssignment[] = [];
-    home.onColonySeated(async (a) => {
-      tried.push(a);
-      const code = codes.shift();
-      await seatColonyOnPlanet(fakePlanets(code ? { ok: false, commandId: 'cm', code } : { ok: true, commandId: 'cm', appliedAtTick: 1 }), a);
-    });
-    return { repo, home, tried };
-  }
-
-  it('seats on the next free slot when the sim refuses the first site', async () => {
-    const { repo, home, tried } = seatWith(['landing_site_taken']);
-    const ok = await home.getOrAssignHome({ id: 'p_retry', handle: 'Re' });
-    expect(ok.state).toBe('ACTIVE');
-    expect(tried).toHaveLength(2);
-    const [first, second] = tried.map((a) => a.slot);
-    expect([second!.q, second!.r]).not.toEqual([first!.q, first!.r]);
-    expect(ok).toMatchObject({ colony: { spawnQ: second!.q, spawnR: second!.r } });
-    expect(tried[0]!.colony.colonyIndex).toBe(tried[1]!.colony.colonyIndex);
-    expect(await repo.findColonyById(tried[0]!.colony.id)).toBeNull(); // the refused row was rolled back
-    expect((await repo.findPlanetById('pl_dev'))?.seatsTaken).toBe(1);
+describe('HomeService seats where the planet\'s sim says (LED-14)', () => {
+  it('writes the colony row at the site the sim answered and lands it there', async () => {
+    const { home, asked, landed } = homeService();
+    const ok = await home.getOrAssignHome({ id: 'p_site', handle: 'Site' });
+    expect(asked).toEqual(['pl_dev#0']);
+    expect(ok).toMatchObject({ state: 'ACTIVE', colony: { colonyIndex: 0, spawnQ: 10, spawnR: -0 } });
+    expect(landed.map((a) => a.slot)).toEqual([{ index: 0, q: 10, r: -0 }]);
   });
 
-  it('tries each candidate site once, marks a planet without one left and moves on; 409 once SEAT_PLANETS are exhausted', async () => {
-    const { repo, home, tried } = seatWith(Array(100).fill('landing_site_taken'));
+  it('a planet whose sim has no site left is marked and never asked again; 409 once SEAT_PLANETS are exhausted', async () => {
+    const { home, asked } = homeService(() => ({ ok: false, code: 'landing_site_taken' }));
     const err = (await home.getOrAssignHome({ id: 'p_full', handle: 'Full' }).catch((e: unknown) => e)) as CoreException;
     expect(err).toMatchObject({ status: 409, errorCode: 'COLONY_SEAT_REJECTED', details: { code: 'landing_site_taken', planetIds: ['pl_dev', 'pl_dev_2'] } });
     expect(err.message).toMatch(/no landing site left on pl_dev, pl_dev_2/);
-    const perPlanet = (id: string) => tried.filter((a) => a.planet.id === id).map((a) => `${a.slot.q},${a.slot.r}`);
-    for (const id of ['pl_dev', 'pl_dev_2']) {
-      expect(perPlanet(id).length).toBeGreaterThan(1);
-      expect(perPlanet(id).length).toBeLessThanOrEqual(SEAT_ATTEMPTS);
-      expect(new Set(perPlanet(id)).size).toBe(perPlanet(id).length); // never the same site twice
-    }
-    expect(tried).toHaveLength(perPlanet('pl_dev').length + perPlanet('pl_dev_2').length);
-    expect(await repo.findLatestColonyByPlayerId('p_full')).toBeNull();
-    expect((await repo.findPlanetById('pl_dev'))?.seatsTaken).toBe(0);
+    expect(asked).toEqual(['pl_dev#0', 'pl_dev_2#0']);
     expect(SEAT_PLANETS).toBe(2);
+    await home.getOrAssignHome({ id: 'p_full', handle: 'Full' }).catch(() => undefined);
+    expect(asked.slice(2)).toEqual(['pl_dev_3#0', 'pl_dev_4#0']);
   });
 
-  it('remembers refused sites: a later request never offers them again, and skips an exhausted planet', async () => {
-    const { home, tried } = seatWith(['landing_site_taken', 'invalid_args']);
-    await home.getOrAssignHome({ id: 'p_a', handle: 'A' }).catch(() => undefined);
-    const [refused, failed] = tried.map((a) => `${a.slot.q},${a.slot.r}`);
-    const ok = await home.getOrAssignHome({ id: 'p_a', handle: 'A' });
-    expect(ok.state).toBe('ACTIVE');
-    expect(tried).toHaveLength(3);
-    expect(`${tried[2]!.slot.q},${tried[2]!.slot.r}`).toBe(failed); // the refused site is skipped; the other is not refused
-    expect(refused).not.toBe(failed);
-
-    const full = seatWith(Array(100).fill('landing_site_taken'));
-    await full.home.getOrAssignHome({ id: 'p_b', handle: 'B' }).catch(() => undefined);
-    const before = full.tried.length;
-    await full.home.getOrAssignHome({ id: 'p_b', handle: 'B' }).catch(() => undefined);
-    expect(full.tried.slice(before).every((a) => a.planet.id !== 'pl_dev' && a.planet.id !== 'pl_dev_2')).toBe(true);
-    expect(full.tried.slice(before)[0]!.planet.id).toBe('pl_dev_3');
+  it('skips a colony index the sim already landed (a late landing, LED-15) and seats the next one', async () => {
+    const { home, asked } = homeService((_p, i) => (i === 0 ? { ok: false, code: 'already_landed' } : { ok: true, q: 3, r: 4 }));
+    const ok = await home.getOrAssignHome({ id: 'p_idx', handle: 'Idx' });
+    expect(ok).toMatchObject({ state: 'ACTIVE', colony: { colonyIndex: 1, spawnQ: 3, spawnR: 4 } });
+    expect(asked).toEqual(['pl_dev#0', 'pl_dev#1']);
+    await home.getOrAssignHome({ id: 'p_idx2', handle: 'Idx2' });
+    expect(asked.slice(2)).toEqual(['pl_dev#2']); // index 0 is remembered as landed
   });
 
-  it.each(['already_landed', 'invalid_args'])('does not retry %s', async (code) => {
-    const { home, tried } = seatWith([code]);
-    const err = (await home.getOrAssignHome({ id: `p_${code}`, handle: 'No' }).catch((e: unknown) => e)) as CoreException;
-    expect(err.details).toMatchObject({ code });
-    expect(tried).toHaveLength(1);
+  it('a sim refusal of the landing itself retries with a new question; other rejects propagate unretried', async () => {
+    const codes = ['landing_site_taken'];
+    const { home, asked } = homeService();
+    home.onColonySeated(async (a) => {
+      const code = codes.shift();
+      await seatColonyOnPlanet(fakePlanets(code ? { ok: false, commandId: 'cm', code } : { ok: true, commandId: 'cm', appliedAtTick: 1 }), a);
+    });
+    expect((await home.getOrAssignHome({ id: 'p_race', handle: 'Race' })).state).toBe('ACTIVE');
+    expect(asked).toEqual(['pl_dev#0', 'pl_dev#0']);
+    codes.push('invalid_args');
+    const err = (await home.getOrAssignHome({ id: 'p_bad', handle: 'Bad' }).catch((e: unknown) => e)) as CoreException;
+    expect(err.details).toMatchObject({ code: 'invalid_args' });
+  });
+
+  it('a planet the sim calls planet_full (8 colonies) is marked like one without a site, and the next one is seated', async () => {
+    const { repo, home, asked } = homeService((p, i) => (p === 'pl_dev' ? { ok: false, code: 'planet_full' } : { ok: true, q: 1, r: i }));
+    const ok = await home.getOrAssignHome({ id: 'p_pf', handle: 'Pf' });
+    expect(ok).toMatchObject({ state: 'ACTIVE', planet: { id: 'pl_dev_2' }, colony: { colonyIndex: 0, spawnQ: 1, spawnR: 0 } });
+    expect(asked).toEqual(['pl_dev#0', 'pl_dev_2#0']);
+    expect(await repo.listColoniesByPlanetId('pl_dev')).toEqual([]);
+    await home.getOrAssignHome({ id: 'p_pf2', handle: 'Pf2' });
+    expect(asked.slice(2)).toEqual(['pl_dev_2#1']); // pl_dev is never offered again
+  });
+
+  it('a landing the sim refuses planet_full rolls the row back and seats on the next planet', async () => {
+    const { repo, home, asked } = homeService();
+    home.onColonySeated(async (a) => {
+      const out = a.planet.id === 'pl_dev' ? { ok: false as const, commandId: 'cm', code: 'planet_full' } : { ok: true as const, commandId: 'cm', appliedAtTick: 1 };
+      await seatColonyOnPlanet(fakePlanets(out), a);
+    });
+    const ok = await home.getOrAssignHome({ id: 'p_pl', handle: 'Pl' });
+    expect(ok).toMatchObject({ state: 'ACTIVE', planet: { id: 'pl_dev_2' }, colony: { colonyIndex: 0 } });
+    expect(asked).toEqual(['pl_dev#0', 'pl_dev_2#0']);
+    expect((await repo.findPlanetById('pl_dev'))?.seatsTaken).toBe(0);
+  });
+
+  it('without a game host no colony is seated (host_unavailable), and nothing is written', async () => {
+    const repo = new HomeRepository();
+    const home = new HomeService(repo);
+    const err = (await home.getOrAssignHome({ id: 'p_nohost', handle: 'No' }).catch((e: unknown) => e)) as CoreException;
+    expect(err).toMatchObject({ status: 409, details: { code: 'host_unavailable' } });
+    expect(await repo.findLatestColonyByPlayerId('p_nohost')).toBeNull();
+  });
+});
+
+describe('HomeRepository.findOrCreateOpenDevPlanet (BE-05)', () => {
+  it('reads the family\'s seat counts and creates the first missing index (a wiped pl_dev comes back)', async () => {
+    const repo = new HomeRepository();
+    await repo.upsertDevPlanet('pl_dev_2', { capacity: 1 });
+    await repo.createColony({ playerId: 'p_x', planetId: 'pl_dev_2', colonyIndex: 0, name: 'X', spawnQ: 0, spawnR: 0 });
+    expect(await repo.findOrCreateOpenDevPlanet('desert')).toMatchObject({ planet: { id: 'pl_dev' }, colonyIndex: 0 });
+    expect(await repo.findOrCreateOpenDevPlanet('desert', new Set(['pl_dev']))).toMatchObject({ planet: { id: 'pl_dev_3' }, colonyIndex: 0 });
+    expect(await repo.findOrCreateOpenDevPlanet('ocean')).toMatchObject({ planet: { id: 'pl_dev_ocean', type: 'ocean' } });
+  });
+
+  it('never offers more colony indices than the sim lands (MAX_COLONIES_PER_PLANET), whatever the planet capacity', async () => {
+    const repo = new HomeRepository();
+    await repo.upsertDevPlanet('pl_dev', { capacity: 12 });
+    for (let i = 0; i < MAX_COLONIES_PER_PLANET; i++) {
+      expect(await repo.findOrCreateOpenDevPlanet('desert')).toMatchObject({ planet: { id: 'pl_dev' }, colonyIndex: i });
+      await repo.createColony({ playerId: `p_${i}`, planetId: 'pl_dev', colonyIndex: i, name: `C${i}`, spawnQ: 0, spawnR: i });
+    }
+    expect(await repo.findOrCreateOpenDevPlanet('desert')).toMatchObject({ planet: { id: 'pl_dev_2', capacity: DEV_PLANET_CAPACITY }, colonyIndex: 0 });
+  });
+});
+
+describe('HomeService answers an existing home only once its planet is loaded (BE-14)', () => {
+  it('loads the ACTIVE home planet first, and answers 503 HOME_UNAVAILABLE when it cannot be loaded', async () => {
+    const { home, loaded, host } = homeService();
+    await home.getOrAssignHome({ id: 'p_home', handle: 'H' });
+    expect(loaded).toEqual([]);
+    await home.getOrAssignHome({ id: 'p_home', handle: 'H' });
+    expect(loaded).toEqual(['pl_dev']);
+    home.setLandingHost({ ...host, ensureHomeLoaded: async () => { throw new Error('held'); } });
+    const err = (await home.getOrAssignHome({ id: 'p_home', handle: 'H' }).catch((e: unknown) => e)) as CoreException;
+    expect(err).toMatchObject({ status: 503, errorCode: 'HOME_UNAVAILABLE', details: { planetId: 'pl_dev' } });
+    expect(err.message).toMatch(/held/);
+  });
+});
+
+describe('HomeService.adoptLateLanding (LED-15)', () => {
+  it('writes the rolled-back row again when the player has no colony; else marks the index landed', async () => {
+    const { repo, home, asked } = homeService();
+    const colony = { id: 'col_late', playerId: 'p_late', planetId: 'pl_dev', colonyIndex: 0, name: 'Late', color: 0, status: 'ACTIVE', state: 'ACTIVE', spawnQ: 5, spawnR: 6, spawn: { q: 5, r: 6 }, createdAt: new Date() };
+    const planet = await repo.upsertDevPlanet('pl_dev');
+    const a = { player: { id: 'p_late', handle: 'Late' }, colony, planet, slot: { index: 0, q: 5, r: 6 } };
+    expect(await home.adoptLateLanding(a)).toBe(true);
+    expect(await home.getExistingHome('p_late')).toMatchObject({ state: 'ACTIVE', colony: { id: 'col_late', spawnQ: 5, spawnR: 6 } });
+    expect(await home.adoptLateLanding({ ...a, colony: { ...colony, id: 'col_late2', colonyIndex: 1 } })).toBe(false);
+    await home.getOrAssignHome({ id: 'p_next', handle: 'Next' });
+    expect(asked).toEqual(['pl_dev#2']); // 0 has a row again, 1 is marked landed
   });
 });
 
@@ -143,19 +217,6 @@ describe('seatAndRegisterColony (the game module\'s seat listener)', () => {
     const err = (await seatAndRegisterColony(f, fakePlanets({ ok: false, commandId: 'cm', code: 'landing_site_taken' }), seated).catch((e: unknown) => e)) as CoreException;
     expect(err.errorCode).toBe('COLONY_SEAT_REJECTED');
     expect(f.map.size).toBe(0);
-  });
-});
-
-describe('pickSpawnSlot with refused sites', () => {
-  const slots = [{ index: 0, q: 10, r: 0 }, { index: 1, q: -10, r: 0 }, { index: 2, q: 0, r: 10 }];
-  it('skips a refused site even when it is the preferred one, and its fallback never offers one', () => {
-    const refused = new Set([siteKey(slots[1]!)]);
-    expect(pickSpawnSlot(slots, 1, [], false, refused)).toBe(slots[0]);
-    const all = new Set(slots.map(siteKey));
-    expect(pickSpawnSlot(slots, 1, [], true, all)).toBeUndefined();
-    // every slot too close to a landing: the fallback still offers the first site the sim has not refused
-    const landed = slots.map((s) => ({ q: s.q, r: s.r }));
-    expect(pickSpawnSlot(slots, 0, landed, true, new Set([siteKey(slots[0]!)]))).toBe(slots[1]);
   });
 });
 
@@ -198,6 +259,7 @@ describe('seatColonyOnPlanet: a host that cannot land the colony (M4)', () => {
   it('HomeService rolls a timed-out seat back and does not retry it', async () => {
     const repo = new HomeRepository();
     const home = new HomeService(repo);
+    home.setLandingHost(landingHost().host);
     let tries = 0;
     home.onColonySeated(async (a) => { tries++; await seatColonyOnPlanet(hanging().host, a, 20); });
     const err = (await home.getOrAssignHome({ id: 'p_slow', handle: 'Slow' }).catch((e: unknown) => e)) as CoreException;

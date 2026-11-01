@@ -1,11 +1,40 @@
-import type { AuthResponse, PlanetType } from '@terra/contracts';
-import { createPlanet, DEV_PLANET_SEED, DEV_PLANET_TYPE, devPlanetIdFor, type DevPlanetType, ENTITY_KIND, ENTITY_STATE, getSpawnSlots, type LandingPodState, type ViewEntity } from '@terra/sim';
-import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
-import { LocalHost } from '../../store/WorldStore';
+import { HomeResponse, type AuthResponse, type PlanetType } from '@terra/contracts';
+import { createPlanet, DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, devPlanetIdFor, type DevPlanetType, getSpawnSlots, type PlanetState } from '@terra/sim';
+import { backoffDelay } from '../../net/backoff';
+import { LocalHost } from '../../store/local/LocalHost';
+import { builtPlanetSource } from '../../store/local/planetSource';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { planetTypeForKind } from '@terra/render/planets/hex/planetKind';
 
 export const DEVICE_SECRET_KEY = 'ta_device_secret';
+
+/**
+ * The `localStorage` key of the guest's device secret. Dev builds give every `?as=<name>` its own key
+ * (`ta_device_secret:<name>`), so `?as=b`, `?as=c` are fresh guests in the same browser profile; otherwise one key.
+ */
+export function deviceSecretKey(search: string, dev: boolean = import.meta.env.DEV): string {
+  const as = dev ? new URLSearchParams(search).get('as')?.toLowerCase().replace(/[^a-z0-9_-]/g, '').slice(0, 32) : '';
+  return as ? `${DEVICE_SECRET_KEY}:${as}` : DEVICE_SECRET_KEY;
+}
+
+/**
+ * An HTTP boot step failed: `status` is the HTTP status (null when no answer came: network error), `code` the server's
+ * `errorCode` when it answered with its error envelope (`HOME_UNAVAILABLE`, `TOO_MANY_REQUESTS`, …).
+ */
+export class BootError extends Error {
+  constructor(message: string, readonly status: number | null, readonly code?: string) { super(message); this.name = 'BootError'; }
+}
+
+/**
+ * No game server behind the page: no answer at all, or a 5xx that is not the server's own error envelope (the Vite dev
+ * proxy answers 500 when the app is down). Only then may a dev build fall back to a browser-local host (FA-06); 4xx, a
+ * server-named 5xx (`503 HOME_UNAVAILABLE`) and bad payloads are real errors.
+ */
+export const backendUnreachable = (e: unknown): boolean =>
+  e instanceof BootError && (e.status === null || (e.status >= 500 && e.code === undefined));
+
+/** `GET /v1/me/home` tries this many times while the server answers `503 HOME_UNAVAILABLE` or `429`. */
+export const HOME_ATTEMPTS = 5;
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -36,14 +65,16 @@ export interface BootPlanetSummary {
   id: string;
   name: string;
   type: PlanetType;
-  seed: string;
-  radius: number;
+  seed?: string;
+  radius?: number;
   state: string;
 }
 
 export interface BootAuthResult {
   mode: 'online' | 'local';
   accessToken: string;
+  /** Lifetime of `accessToken` from the auth response (s); absent for local tokens, which do not expire. */
+  tokenExpiresInS?: number;
   deviceSecret: string;
   playerId: string;
   handle: string;
@@ -57,23 +88,19 @@ export interface BootAuthOptions {
   fetch?: FetchLike;
   storage?: StorageLike;
   search?: string;
-  cachedAccessToken?: string | null;
   tryRefresh?: boolean;
+  /**
+   * May an unreachable server (`backendUnreachable`) fall back to a browser-local host? Default: dev builds only.
+   * Any other failure, and every failure in production, throws a `BootError` for the caller's error splash.
+   */
+  allowLocalFallback?: boolean;
   onStatus?: (status: string) => void;
   /** Planet type for a NEW colony (the orbit pick): `GET /v1/me/home?type=`, and the type of the local fallback. */
   planetType?: DevPlanetType;
-}
-
-export interface PodDescentStatus {
-  descending: boolean;
-  hqLanded: boolean;
-  progress: number;
-  q: number;
-  r: number;
-  podEntityId: number | null;
-  hqEntityId: number | null;
-  ticksRemaining?: number;
-  totalTicks?: number;
+  /** Waits `ms` between `/me/home` retries (default `setTimeout`; tests pass a fake). */
+  wait?: (ms: number) => Promise<void>;
+  /** Jitter source of the retry backoff (default `Math.random`). */
+  random?: () => number;
 }
 
 const memStorageMap = new Map<string, string>();
@@ -105,29 +132,33 @@ function generateHexSecret(byteLen = 16): string {
   return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-/** Generates and persists a fresh 32-char hex `ta_device_secret` in `localStorage`. */
-export function resetDeviceSecret(storage: StorageLike = defaultStorage()): string {
+/** Generates and persists a fresh 32-char hex device secret under `key` (default `ta_device_secret`) in `localStorage`. */
+export function resetDeviceSecret(storage: StorageLike = defaultStorage(), key = DEVICE_SECRET_KEY): string {
   const secret = generateHexSecret(16);
   try {
-    storage.setItem(DEVICE_SECRET_KEY, secret);
+    storage.setItem(key, secret);
   } catch {
     // Ignore storage write failure
   }
   return secret;
 }
 
-/** Reads `ta_device_secret` (`>= 16` chars) from `localStorage` or generates and persists a 32-char hex secret. */
-export function getOrCreateDeviceSecret(storage: StorageLike = defaultStorage()): string {
+/** Reads the device secret (`>= 16` chars) under `key` from `localStorage` or generates and persists a 32-char hex one. */
+export function getOrCreateDeviceSecret(storage: StorageLike = defaultStorage(), key = DEVICE_SECRET_KEY): string {
   try {
-    const existing = storage.getItem(DEVICE_SECRET_KEY);
+    const existing = storage.getItem(key);
     if (typeof existing === 'string' && existing.trim().length >= 16) {
       return existing.trim();
     }
   } catch {
     // Ignore storage read failure
   }
-  return resetDeviceSecret(storage);
+  return resetDeviceSecret(storage, key);
 }
+
+/** `fetch` whose network failure is a `BootError` with status null (see `backendUnreachable`). */
+const reachable = (doFetch: FetchLike): FetchLike => (u, i) =>
+  doFetch(u, i).catch((e: unknown) => { throw new BootError(`${u}: ${e instanceof Error ? e.message : String(e)}`, null); });
 
 /** Calls `POST /v1/auth/refresh` with `credentials: 'include'`. Returns the `AuthResponse` or `null` on failure. */
 export async function refreshAccessToken(doFetch: FetchLike = (u, i) => fetch(u, i)): Promise<AuthResponse | null> {
@@ -147,85 +178,104 @@ async function guestLogin(deviceSecret: string, doFetch: FetchLike): Promise<Aut
     credentials: 'include',
     body: JSON.stringify({ deviceSecret }),
   });
-  if (!res.ok) throw new Error(`POST /v1/auth/guest: ${res.status}`);
+  if (!res.ok) throw new BootError(`POST /v1/auth/guest: ${res.status}`, res.status);
   return (await res.json()) as AuthResponse;
 }
 
-async function fetchHomeWithRetry(
-  initialToken: string,
-  deviceSecret: string,
-  doFetch: FetchLike,
-  planetType?: DevPlanetType,
-): Promise<{ accessToken: string; home: Record<string, unknown> }> {
-  let token = initialToken;
-  const url = planetType ? `/v1/me/home?type=${planetType}` : '/v1/me/home';
-  let res = await doFetch(url, {
-    method: 'GET',
-    headers: { Authorization: `Bearer ${token}` },
-    credentials: 'include',
-  });
-  if (res.status === 401) {
-    const refreshed = (await refreshAccessToken(doFetch)) ?? (await guestLogin(deviceSecret, doFetch));
-    token = refreshed.accessToken;
-    res = await doFetch(url, {
-      method: 'GET',
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: 'include',
-    });
-  }
-  if (!res.ok) throw new Error(`GET /v1/me/home: ${res.status}`);
-  const home = (await res.json()) as Record<string, unknown>;
-  return { accessToken: token, home };
+/** A fresh access token: `POST /v1/auth/refresh` (cookie), else a guest login with the device secret. */
+async function refreshOrGuest(deviceSecret: string, doFetch: FetchLike): Promise<AuthResponse> {
+  return (await refreshAccessToken(doFetch)) ?? (await guestLogin(deviceSecret, doFetch));
 }
 
-function normalizeHomePayload(home: Record<string, unknown>): {
-  state: string;
-  planet: BootPlanetSummary;
-  colony: BootColonySummary;
-} {
-  const rawPlanet = (home.planet ?? {}) as Record<string, unknown>;
-  const rawColony = (home.colony ?? {}) as Record<string, unknown>;
-  const rawSpawn = (rawColony.spawn ?? {}) as { q?: unknown; r?: unknown };
+/** Renews a guest's access token for a long-lived socket (FA-01); null when neither refresh nor guest login worked. */
+export async function renewAccessToken(deviceSecret: string, doFetch: FetchLike = (u, i) => fetch(u, i)): Promise<AuthResponse | null> {
+  try { return await refreshOrGuest(deviceSecret, doFetch); } catch { return null; }
+}
 
-  const spawnQ =
-    typeof rawSpawn.q === 'number' ? rawSpawn.q : typeof rawColony.spawnQ === 'number' ? rawColony.spawnQ : 0;
-  const spawnR =
-    typeof rawSpawn.r === 'number' ? rawSpawn.r : typeof rawColony.spawnR === 'number' ? rawColony.spawnR : 0;
+/** The server's `errorCode` from its error envelope (`{ errorCode, error: { code, … } }`), if the body is one. */
+async function errorCodeOf(res: { json(): Promise<unknown> }): Promise<string | undefined> {
+  try {
+    const body = (await res.json()) as { errorCode?: unknown } | null;
+    return typeof body?.errorCode === 'string' ? body.errorCode : undefined;
+  } catch { return undefined; }
+}
 
-  const rawType = rawPlanet.type;
-  const planetType: PlanetType =
-    rawType === 'desert' || rawType === 'ocean' || rawType === 'temperate' ? rawType : 'temperate';
+/** The home planet is still loading (`503 HOME_UNAVAILABLE`) or the address is throttled (`429`): try again later. */
+const retryableHome = (status: number, code: string | undefined): boolean => status === 429 || (status === 503 && code === 'HOME_UNAVAILABLE');
 
-  const planet: BootPlanetSummary = {
-    id: typeof rawPlanet.id === 'string' && rawPlanet.id.length > 0 ? rawPlanet.id : 'pl_dev',
-    name: typeof rawPlanet.name === 'string' && rawPlanet.name.length > 0 ? rawPlanet.name : 'Dev Planet',
-    type: planetType,
-    seed: typeof rawPlanet.seed === 'string' && rawPlanet.seed.length > 0 ? rawPlanet.seed : 'golden-1',
-    radius: typeof rawPlanet.radius === 'number' ? rawPlanet.radius : 56,
-    state: typeof rawPlanet.state === 'string' ? rawPlanet.state : 'ACTIVE',
-  };
+const realWait = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
 
-  const colony: BootColonySummary = {
-    id: typeof rawColony.id === 'string' && rawColony.id.length > 0 ? rawColony.id : 'col_0',
-    colonyIndex: typeof rawColony.colonyIndex === 'number' ? rawColony.colonyIndex : 0,
-    name: typeof rawColony.name === 'string' && rawColony.name.length > 0 ? rawColony.name : "Colonist's Colony",
-    color: typeof rawColony.color === 'number' ? rawColony.color : 0,
-    state: typeof rawColony.state === 'string' ? rawColony.state : 'ACTIVE',
-    spawnQ,
-    spawnR,
-    spawn: { q: spawnQ, r: spawnR },
-  };
+interface HomeRequest {
+  deviceSecret: string;
+  doFetch: FetchLike;
+  planetType?: DevPlanetType;
+  wait?: (ms: number) => Promise<void>;
+  random?: () => number;
+  onStatus?: (status: string) => void;
+}
 
+/**
+ * `GET /v1/me/home`: a `401` renews the token once; `503 HOME_UNAVAILABLE` and `429 rate_limited` are retried with the
+ * reconnect backoff (0.5 s, 1, 2, 4 s) up to `HOME_ATTEMPTS` tries; anything else that is not OK is a `BootError`.
+ */
+async function fetchHomeWithRetry(initialToken: string, o: HomeRequest): Promise<{ accessToken: string; expiresIn?: number; home: unknown }> {
+  let token = initialToken;
+  let expiresIn: number | undefined;
+  let renewed = false;
+  const url = o.planetType ? `/v1/me/home?type=${o.planetType}` : '/v1/me/home';
+  for (let attempt = 1; ; attempt++) {
+    const res = await o.doFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
+    if (res.ok) return { accessToken: token, expiresIn, home: await res.json() };
+    if (res.status === 401 && !renewed) {
+      renewed = true;
+      const refreshed = await refreshOrGuest(o.deviceSecret, o.doFetch);
+      token = refreshed.accessToken;
+      expiresIn = refreshed.expiresIn;
+      continue;
+    }
+    const code = await errorCodeOf(res);
+    if (!retryableHome(res.status, code) || attempt >= HOME_ATTEMPTS) {
+      throw new BootError(`GET /v1/me/home: ${res.status}${code ? ` ${code}` : ''}`, res.status, code);
+    }
+    o.onStatus?.(res.status === 429 ? `Orbit is busy, retrying (${attempt}/${HOME_ATTEMPTS - 1})…` : `Home planet is starting, retrying (${attempt}/${HOME_ATTEMPTS - 1})…`);
+    await (o.wait ?? realWait)(backoffDelay(attempt, o.random ?? Math.random));
+  }
+}
+
+const HOME_STATE_TEXT: Record<string, string> = {
+  NEW: 'No colony was seated for this player',
+  QUEUED: 'Waiting in the planet queue',
+  ELIMINATED: 'Your colony was eliminated',
+  PLANET_ENDED: 'This planet has ended',
+};
+
+/**
+ * The `/me/home` answer, checked against the contract (`HomeResponse`). Only an `ACTIVE` home boots a colony; any other
+ * state (`NEW` with its `newPlanetTypes`, `QUEUED`, `ELIMINATED`, `PLANET_ENDED`) is a `BootError` naming it, never a
+ * made-up colony on a default planet.
+ */
+function normalizeHomePayload(raw: unknown): { state: string; planet: BootPlanetSummary; colony: BootColonySummary } {
+  const parsed = HomeResponse.safeParse(raw);
+  if (!parsed.success) throw new BootError('GET /v1/me/home: unexpected answer', 200, 'BAD_HOME');
+  const home = parsed.data;
+  if (home.state !== 'ACTIVE') {
+    const types = 'newPlanetTypes' in home ? ` (new colonies: ${home.newPlanetTypes.join(', ')})` : '';
+    throw new BootError(`${HOME_STATE_TEXT[home.state]}${types}`, 200, `HOME_${home.state}`);
+  }
+  const { planet: p, colony: c } = home;
+  const spawn = { q: c.spawnQ ?? 0, r: c.spawnR ?? 0 };
   return {
-    state: typeof home.state === 'string' ? home.state : 'ACTIVE',
-    planet,
-    colony,
+    state: home.state,
+    planet: { id: p.id, name: p.name, type: p.type, seed: p.seed, radius: p.radius, state: p.state },
+    colony: { id: c.id, colonyIndex: c.colonyIndex ?? 0, name: c.name, color: c.color, state: c.state, spawnQ: spawn.q, spawnR: spawn.r, spawn },
   };
 }
 
 /**
- * Graceful local fallback when no backend server is running (or `?host=local&scenario=w01`):
- * creates a `SimHost` on `pl_dev` (`DEV_PLANET_TYPE` = desert, `golden-1`, radius `56`) and dispatches `system.spawnColony`.
+ * Graceful local fallback when no backend server is running (dev builds, FA-06): an in-process `LocalHost` (the
+ * `LocalHostCore` of `?host=local`, run on the page) on `pl_dev` (`DEV_PLANET_TYPE` = desert, `DEV_PLANET_SEED`,
+ * `DEV_PLANET_RADIUS`) with colony 0 seated at the first spawn slot by `system.spawnColony` (a `local.reset` or a
+ * restore after a failed step seats it again).
  */
 export function createLocalBootFallback(
   deviceSecret: string,
@@ -235,37 +285,30 @@ export function createLocalBootFallback(
 ): BootAuthResult {
   const planetId = devPlanetIdFor(planetType, 1); // same dev planet family as the server (pl_dev = desert)
   onStatus?.(`Entering orbit: ${planetId}…`);
-  const planetState = createPlanet({
+  const make = () => createPlanet({
     id: planetId,
     planetId,
     type: planetType,
     planetType,
     seed: DEV_PLANET_SEED,
-    radius: 56,
-    capacity: 5,
+    radius: DEV_PLANET_RADIUS,
+    capacity: DEV_PLANET_CAPACITY,
   });
-  const slots = getSpawnSlots(planetState);
-  const slot = spawnOverride ?? slots[0] ?? { q: 0, r: 0 };
-
-  const localHost = new LocalHost({
-    flags: ['W00', 'W01'],
-    planet: planetState,
-    colonyIndex: 0,
-  });
-  localHost.sim.submit({
-    colonyIndex: 0,
-    source: 'system',
-    commandId: 'cm_boot_spawn',
-    kind: 'system.spawnColony',
-    args: {
-      colonyId: 'col_0',
+  let first: PlanetState | null = make(); // generated once for the slot pick and the first seed
+  const slot = spawnOverride ?? getSpawnSlots(first)[0] ?? { q: 0, r: 0 };
+  const flags = ['W00', 'W01'];
+  const fresh = (): PlanetState => { const p = first ?? make(); first = null; return p; };
+  const source = builtPlanetSource(planetId, flags, fresh, (host) => {
+    host.submit({
       colonyIndex: 0,
-      name: "Colonist's Colony",
-      q: slot.q,
-      r: slot.r,
-    },
+      source: 'system',
+      commandId: 'cm_boot_spawn',
+      kind: 'system.spawnColony',
+      args: { colonyId: 'col_0', colonyIndex: 0, name: "Colonist's Colony", q: slot.q, r: slot.r },
+    });
+    host.step(1);
   });
-  localHost.step(1);
+  const localHost = new LocalHost({ flags, source });
 
   return {
     mode: 'local',
@@ -279,7 +322,7 @@ export function createLocalBootFallback(
       name: 'Dev Planet',
       type: planetType,
       seed: DEV_PLANET_SEED,
-      radius: 56,
+      radius: DEV_PLANET_RADIUS,
       state: 'ACTIVE',
     },
     colony: {
@@ -300,43 +343,34 @@ export function createLocalBootFallback(
 export const devPlanetTypeOfKind = (kind: PlanetKind | null | undefined): DevPlanetType | undefined => (kind ? planetTypeForKind(kind) : undefined);
 
 /**
- * Runs W01 guest authentication (`POST /v1/auth/guest` / `POST /v1/auth/refresh`) and `GET /v1/me/home` (`CL-01`),
- * falling back cleanly to a local `SimHost` on `pl_dev` if the backend server is unreachable.
+ * Runs W01 guest authentication (`POST /v1/auth/guest` / `POST /v1/auth/refresh`) and `GET /v1/me/home` (`CL-01`).
+ * `?host=local` always runs a local `SimHost` on `pl_dev`; an unreachable server does so only where
+ * `allowLocalFallback` (dev builds); every other failure throws (`BootError` for HTTP and network failures).
  */
 export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootAuthResult> {
   const storage = opts.storage ?? defaultStorage();
-  const doFetch: FetchLike = opts.fetch ?? ((u, i) => fetch(u, i));
+  const doFetch = reachable(opts.fetch ?? ((u, i) => fetch(u, i)));
   const search = opts.search ?? (typeof location !== 'undefined' ? location.search : '');
 
   opts.onStatus?.('Contacting orbit…');
-  const deviceSecret = getOrCreateDeviceSecret(storage);
+  const deviceSecret = getOrCreateDeviceSecret(storage, deviceSecretKey(search));
 
   if (new URLSearchParams(search).get('host') === 'local') {
     return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType);
   }
 
   try {
-    let auth: AuthResponse | null = null;
-    if (opts.cachedAccessToken) {
-      auth = {
-        accessToken: opts.cachedAccessToken,
-        expiresIn: 900,
-        player: { id: 'pr_cached' as AuthResponse['player']['id'], handle: 'Colonist', isGuest: true },
-      };
-    } else if (opts.tryRefresh) {
-      auth = await refreshAccessToken(doFetch);
-    }
-    if (!auth) {
-      auth = await guestLogin(deviceSecret, doFetch);
-    }
-
-    const { accessToken, home } = await fetchHomeWithRetry(auth.accessToken, deviceSecret, doFetch, opts.planetType);
+    const auth = opts.tryRefresh ? await refreshOrGuest(deviceSecret, doFetch) : await guestLogin(deviceSecret, doFetch);
+    const { accessToken, expiresIn, home } = await fetchHomeWithRetry(auth.accessToken, {
+      deviceSecret, doFetch, planetType: opts.planetType, wait: opts.wait, random: opts.random, onStatus: opts.onStatus,
+    });
     const { state, planet, colony } = normalizeHomePayload(home);
     opts.onStatus?.(`Entering orbit: ${planet.id}…`);
 
     return {
       mode: 'online',
       accessToken,
+      tokenExpiresInS: expiresIn ?? auth.expiresIn,
       deviceSecret,
       playerId: auth.player?.id ?? 'pr_guest',
       handle: auth.player?.handle ?? 'Colonist',
@@ -344,150 +378,10 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
       planet,
       colony,
     };
-  } catch {
-    return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType);
-  }
-}
-
-interface ScannedPodHq {
-  podEntityId: number | null;
-  podState: number;
-  podProgress: number;
-  podQ: number;
-  podR: number;
-  hqEntityId: number | null;
-  hqQ: number;
-  hqR: number;
-}
-
-function scanPodAndHqInEntities(
-  ents: Float32Array | ViewEntity[] | undefined,
-  count: number | undefined,
-  colonyIndex: number,
-  defQ: number,
-  defR: number,
-): ScannedPodHq {
-  const res: ScannedPodHq = {
-    podEntityId: null,
-    podState: -1,
-    podProgress: 0,
-    podQ: defQ,
-    podR: defR,
-    hqEntityId: null,
-    hqQ: defQ,
-    hqR: defR,
-  };
-  if (ents instanceof Float32Array) {
-    const n = count ?? Math.floor(ents.length / ENTITY_STRIDE);
-    for (let i = 0; i < n; i++) {
-      const o = i * ENTITY_STRIDE;
-      if (ents[o + 2] !== colonyIndex) continue;
-      if (ents[o + 1] === ENTITY_KIND.hq) {
-        res.hqEntityId = ents[o];
-        res.hqQ = ents[o + 3];
-        res.hqR = ents[o + 4];
-      } else if (ents[o + 1] === ENTITY_KIND.pod) {
-        res.podEntityId = ents[o];
-        res.podQ = ents[o + 3];
-        res.podR = ents[o + 4];
-        res.podState = ents[o + 10];
-        res.podProgress = ents[o + 11];
-      }
+  } catch (e) {
+    if ((opts.allowLocalFallback ?? import.meta.env.DEV) && backendUnreachable(e)) {
+      return createLocalBootFallback(deviceSecret, opts.onStatus, undefined, opts.planetType);
     }
-  } else if (Array.isArray(ents)) {
-    for (const e of ents) {
-      if (e.owner !== colonyIndex) continue;
-      if (e.kind === ENTITY_KIND.hq) {
-        res.hqEntityId = e.id;
-        res.hqQ = e.q;
-        res.hqR = e.r;
-      } else if (e.kind === ENTITY_KIND.pod) {
-        res.podEntityId = e.id;
-        res.podQ = e.q;
-        res.podR = e.r;
-        res.podState = e.state;
-        res.podProgress = e.progress;
-      }
-    }
+    throw e;
   }
-  return res;
-}
-
-/**
- * Inspects a `ClientView` or `SimView` to determine if the colony's drop pod is currently descending (`state === descending`
- * or `blobs.landingPods` undeployed) or if the HQ has already landed (`kind === ENTITY_KIND.hq` or pod deployed).
- */
-export function extractPodDescentStatus(
-  rawView: unknown,
-  colonyIndex = 0,
-  fallbackSpawn?: { q: number; r: number },
-): PodDescentStatus {
-  const defQ = fallbackSpawn?.q ?? 0;
-  const defR = fallbackSpawn?.r ?? 0;
-  if (!rawView || typeof rawView !== 'object') {
-    return { descending: false, hqLanded: false, progress: 0, q: defQ, r: defR, podEntityId: null, hqEntityId: null };
-  }
-  const view = rawView as {
-    entities?: Float32Array | ViewEntity[];
-    count?: number;
-    blobs?: Record<string, unknown>;
-  };
-
-  const { podEntityId, podState, podProgress, podQ, podR, hqEntityId, hqQ, hqR } = scanPodAndHqInEntities(
-    view.entities,
-    view.count,
-    colonyIndex,
-    defQ,
-    defR,
-  );
-
-  const podsBlob = Array.isArray(view.blobs?.landingPods)
-    ? (view.blobs.landingPods as LandingPodState[]).find((p) => p.colonyId === colonyIndex)
-    : undefined;
-
-  const q = hqEntityId !== null ? hqQ : podEntityId !== null ? podQ : (podsBlob?.q ?? defQ);
-  const r = hqEntityId !== null ? hqR : podEntityId !== null ? podR : (podsBlob?.r ?? defR);
-
-  if (
-    hqEntityId !== null ||
-    podsBlob?.deployed === true ||
-    (podEntityId !== null && podState !== ENTITY_STATE.descending)
-  ) {
-    return {
-      descending: false,
-      hqLanded: true,
-      progress: 1,
-      q,
-      r,
-      podEntityId: podEntityId ?? podsBlob?.podEntityId ?? null,
-      hqEntityId,
-      ticksRemaining: 0,
-      totalTicks: podsBlob?.totalTicks,
-    };
-  }
-
-  if (
-    (podEntityId !== null && podState === ENTITY_STATE.descending) ||
-    (podsBlob !== undefined && !podsBlob.deployed && podsBlob.ticksRemaining > 0)
-  ) {
-    const progress =
-      podEntityId !== null && Number.isFinite(podProgress) && podProgress > 0
-        ? Math.min(1, Math.max(0, podProgress))
-        : podsBlob && podsBlob.totalTicks > 0
-          ? Math.min(1, Math.max(0, (podsBlob.totalTicks - podsBlob.ticksRemaining) / podsBlob.totalTicks))
-          : 0;
-    return {
-      descending: true,
-      hqLanded: false,
-      progress,
-      q,
-      r,
-      podEntityId: podEntityId ?? podsBlob?.podEntityId ?? null,
-      hqEntityId: null,
-      ticksRemaining: podsBlob?.ticksRemaining,
-      totalTicks: podsBlob?.totalTicks,
-    };
-  }
-
-  return { descending: false, hqLanded: false, progress: 1, q, r, podEntityId: null, hqEntityId: null };
 }

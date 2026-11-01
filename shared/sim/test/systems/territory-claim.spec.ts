@@ -1,9 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { eventDef, parseWaves } from '@terra/contracts';
+import { eventDef } from '@terra/contracts';
 import {
   applyDiff,
   claimTerritoryRadius,
-  createPlanet,
   extractTileChanges,
   getColonyCaps,
   getColonyStock,
@@ -23,18 +22,16 @@ import {
   unrecorded,
   type PlanetState,
   type SimCommand,
+  type ConstructionOrder,
 } from '../../src';
+import { w01Host } from '../helpers/host';
 
 let cmdSeq = 0;
 function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0, prefix = 'tc'): SimCommand {
   return { colonyIndex, source: 'player', commandId: `${prefix}_${++cmdSeq}`, kind, args };
 }
 
-function createW01Host(radius = 20): SimHost {
-  const host = new SimHost({ flags: parseWaves('..01') });
-  host.load(createPlanet({ type: 'flat', seed: 'territory-claim-test', radius }));
-  return host;
-}
+const createW01Host = (radius = 20): SimHost => w01Host({ seed: 'territory-claim-test', radius });
 
 function prepareHubSite(host: SimHost, centerQ: number, centerR: number): void {
   const state = host.state;
@@ -115,7 +112,7 @@ describe('W01-17: Territory claim R 10 & immutable border collision (SIM-G-TER)'
 
     // 100 ticks (20.0 s at 1.5x HQ workRate) completes the Hub
     host.step(100);
-    expect(getConstructionOrders(state, 0)[0]?.status).toBe('completed');
+    expect(getConstructionOrders(state, 0)).toEqual([]); // completed: the order left the queue (GP-10)
 
     // 3. Verify territory ownership across the entire grid
     const { overlapFrozenCount, colony0OwnedCount } = verifyOverlappingDisks(state, 1);
@@ -138,7 +135,7 @@ describe('W01-17: Territory claim R 10 & immutable border collision (SIM-G-TER)'
 });
 
 describe('W01-17: Colony stats (storage cap 500, supply cap 10, Founder Core +8 E/s) & colonyFounded event', () => {
-  it('updates colony caps, supplyCap, founderCoreEPerS, status, and emits schema-valid colonyFounded on Hub completion', () => {
+  it('updates colony caps (never lowered), supplyCap, founderCoreGenPerS, status, and emits schema-valid colonyFounded on Hub completion', () => {
     const host = createW01Host(20);
     const state = host.state;
 
@@ -161,22 +158,25 @@ describe('W01-17: Colony stats (storage cap 500, supply cap 10, Founder Core +8 
     const tickBeforeComplete = host.tick + 99;
     const replica = host.clone();
 
+    let order: ConstructionOrder | undefined;
     for (let i = 0; i < 100; i++) {
       if (host.tick === tickBeforeComplete) replica.load(host.snapshot());
       allEvents.push(...host.step(1).events);
+      order ??= getConstructionOrders(state, 0)[0];
     }
-
-    const order = getConstructionOrders(state, 0)[0]!;
-    expect(order.status).toBe('completed');
+    expect(order).toBeDefined();
+    expect(getConstructionOrders(state, 0)).toEqual([]); // completed: the order left the queue (GP-10)
 
     const col = state.colonies[0]!;
     expect(col.status).toBe('active');
-    expect(col.caps).toEqual({ metals: 500, minerals: 500, energy: 0, bio: 500, item: 0 });
-    expect(getColonyCaps(state, 0)).toEqual({ metals: 500, minerals: 500, energy: 0, bio: 500, item: 0 });
+    // GP-11: a cap never goes down: metals keep the pod's 600, the others rise to the Hub's 500.
+    expect(col.caps).toEqual({ metals: 600, minerals: 500, energy: 0, bio: 500, item: 0 });
+    expect(getColonyCaps(state, 0)).toEqual({ metals: 600, minerals: 500, energy: 0, bio: 500, item: 0 });
     expect(col.supplyCap).toBe(10);
-    expect(col.founderCoreEPerS).toBe(8);
-    expect(col.powerGenEPerS).toBe(8);
-    expect(col.hubEntityId).toBe(order.entityId);
+    expect(col.founderCoreGenPerS).toBe(8); // one colony field (XC-01)
+    expect(col).not.toHaveProperty('founderCoreEPerS');
+    expect(col).not.toHaveProperty('powerGenEPerS');
+    expect(col.hubEntityId).toBe(order!.entityId);
 
     const capped = treasury(state, unrecorded(state.meta.tick)).add({
       colony: 0,
@@ -185,9 +185,9 @@ describe('W01-17: Colony stats (storage cap 500, supply cap 10, Founder Core +8 
       actor: systemActor('admin'),
       clampToCap: true,
     });
-    expect(capped.ok && capped.overflow).toEqual({ 'metals.t1': 400, 'minerals.t1': 250, 'bio.biomass': 300 });
+    expect(capped.ok && capped.overflow).toEqual({ 'metals.t1': 300, 'minerals.t1': 250, 'bio.biomass': 300 });
     const cappedStock = getColonyStock(state, 0);
-    expect(cappedStock['metals.t1']).toBe(500);
+    expect(cappedStock['metals.t1']).toBe(600);
     expect(cappedStock['minerals.t1']).toBe(500);
     expect(cappedStock['bio.biomass'] + cappedStock['bio.water']).toBe(500);
 
@@ -197,7 +197,7 @@ describe('W01-17: Colony stats (storage cap 500, supply cap 10, Founder Core +8 
     expect(foundedEvents[0].data).toEqual({
       colonyId: 'col_0',
       playerId: 'plr_founder_1',
-      hubId: order.entityId,
+      hubId: order!.entityId,
       q: 3,
       r: 0,
     });

@@ -87,12 +87,17 @@ function breakRig(d: CompiledData = data) {
 }
 
 describe('M2: terraform yields respect the storage caps', () => {
-  it('a Break at full metals (600/600) credits nothing and reports the lost 10 as overflow', () => {
+  it('a Break at full metals (600/600) credits nothing, posts the lost 10 to sys:overflow and reports it as overflow', () => {
     const { h, run } = breakRig();
     setColonyStock(h.state, 0, { 'metals.t1': 600 });
     const { removed, postings } = run();
     expect(getColonyStock(h.state, 0)['metals.t1']).toBe(600);
-    expect(postings.filter((p) => p.reason === 'terraform.yield')).toEqual([]);
+    expect(postings.filter((p) => p.reason === 'terraform.yield').map((p) => p.legs)).toEqual([
+      [
+        { account: 'sys:world', asset: 'metals.t1', delta: -10 },
+        { account: 'sys:overflow', asset: 'metals.t1', delta: 10 },
+      ],
+    ]);
     expect(removed).toHaveLength(1);
     expect(removed[0].data).toMatchObject({ op: 'break', overflow: { 'metals.t1': 10 } });
     expect(eventDef('obstacleRemoved').data.safeParse(removed[0].data).success).toBe(true);
@@ -139,13 +144,13 @@ describe('construction: refused spends and refunds are visible', () => {
     setColonyStock(state, 0, { 'metals.t1': 100 });
     const { events, ctx } = sink();
     const o = order({ cost: { 'metals.t1': 10, gold: 10 }, paidAmounts: {} });
-    const res = spendConstructionSlice(state, o, 0.5, data, ctx);
+    const res = spendConstructionSlice(state, o, 0.5, ctx);
     expect(res).toEqual({ ok: false, waitingReason: 'blocked(invalid_resource)' });
     o.waitingReason = res.waitingReason;
-    spendConstructionSlice(state, o, 0.6, data, ctx);
+    spendConstructionSlice(state, o, 0.6, ctx);
     expect(events).toMatchObject([{ kind: 'treasuryRejected', data: { reason: 'construction.spend', code: 'invalid_resource', detail: 'gold', ref: 'order:42' } }]);
     expect(getColonyStock(state, 0)['metals.t1']).toBe(100);
-    const short = spendConstructionSlice(state, order({ cost: { 'minerals.t1': 10 }, paidAmounts: {} }), 1, data, ctx);
+    const short = spendConstructionSlice(state, order({ cost: { 'minerals.t1': 10 }, paidAmounts: {} }), 1, ctx);
     expect(short.waitingReason).toBe('waiting(resources: minerals.t1 0/10)');
     expect(events).toHaveLength(1);
   });
@@ -154,7 +159,7 @@ describe('construction: refused spends and refunds are visible', () => {
     const state = createPlanet({ type: 'flat', seed: 'guards-c', radius: 6 });
     setColonyStock(state, 0, { 'metals.t1': 100 });
     const { ctx } = sink();
-    const res = spendConstructionSlice(state, order({ cost: { 'metals.t1': 10.5 }, paidAmounts: {} }), 1, data, ctx);
+    const res = spendConstructionSlice(state, order({ cost: { 'metals.t1': 10.5 }, paidAmounts: {} }), 1, ctx);
     expect(res.waitingReason).toBe('blocked(invalid_amount: metals.t1)');
   });
 

@@ -34,9 +34,12 @@ export interface LoadMsg {
   readonly planetId: string;
   /** Restore from this snapshot (buffer is transferred); otherwise a new planet is generated. */
   readonly snapshot?: Uint8Array;
-  /** New-planet params; `seed` defaults to the planet id. */
+  /**
+   * New-planet params; `seed` defaults to the planet id. `type` is required (BE-25): every caller names its generator.
+   * A load with neither `snapshot` nor `params` builds the W00 flat planet ({@link W00_PLANET_TYPE}).
+   */
   readonly params?: {
-    readonly type?: string;
+    readonly type: string;
     readonly seed?: string;
     readonly radius?: number;
     readonly capacity?: number;
@@ -51,6 +54,14 @@ export interface LoadMsg {
    */
   readonly genesis?: boolean;
 }
+
+/** Generator of a load without `params` or `snapshot`: the W00 empty flat planet (tests, `GAME_DEV_PLANETS` without W01). */
+export const W00_PLANET_TYPE = 'flat';
+
+/** Where the planet's sim would land a colony next (`nextLandingSite` on the live state, LED-14), or why it cannot. */
+export type LandingSiteAnswer =
+  | { readonly ok: true; readonly q: number; readonly r: number; readonly slotIndex?: number }
+  | { readonly ok: false; readonly code: string };
 
 /** What the server ledger needs from a `loaded` planet (restore consistency, see `PlanetLedgerService`). */
 export interface LoadedInfo {
@@ -84,6 +95,8 @@ export type ToThread =
   | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number }
   /** Dev `tune` (D-35): set a field live / drop live tunes / export the merged overrides. Answered with `tuned`. */
   | { readonly t: 'tune'; readonly planetId: string; readonly reqId: number; readonly req: TuneRequest }
+  /** Seating (LED-14): where colony `colony` would land now. Answered with `landingSite`. */
+  | { readonly t: 'landingSite'; readonly planetId: string; readonly reqId: number; readonly colony: number }
   | ({ readonly t: 'ctl' } & CtlOp);
 
 export interface PlanetStats {
@@ -121,12 +134,21 @@ export type FromThread =
   | { readonly t: 'delta'; readonly planetId: string; readonly fromTick: number; readonly toTick: number; readonly diff: Uint8Array; readonly events: SimEvent[] }
   | { readonly t: 'event'; readonly planetId: string; readonly events: SimEvent[] }
   | { readonly t: 'ack'; readonly planetId: string; readonly commandId: string; readonly appliedAtTick: number }
-  | { readonly t: 'reject'; readonly planetId: string; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number }
+  /** `detail`: the sim's cause of the rejection when the handler gave one (GP-31), passed on in `cmd.reject.detail`. */
+  | { readonly t: 'reject'; readonly planetId: string; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number; readonly detail?: string }
   | { readonly t: 'snapshot'; readonly planetId: string; readonly tick: number; readonly bytes: Uint8Array }
   | { readonly t: 'warp'; readonly planetId: string; /** effective warp */ readonly k: number; readonly requested: number }
   | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number; readonly tick: number; readonly warp: number; readonly bytes: Uint8Array; readonly simVersion: number; readonly dataHash: string; readonly planetType: string; readonly overrides?: BalanceOverrides }
   | { readonly t: 'tuned'; readonly planetId: string; readonly reqId: number; readonly ok: boolean; readonly dataHash: string; readonly overrides: BalanceOverrides; readonly text?: string; readonly error?: string }
   | { readonly t: 'stats'; readonly thread: number; readonly reqId: number; readonly planets: PlanetStats[]; readonly steps: number; readonly maxLag: number; readonly recentPasses: PassStat[] }
+  | { readonly t: 'landingSite'; readonly planetId: string; readonly reqId: number; readonly answer: LandingSiteAnswer }
+  /**
+   * A step of the planet threw (BE-12). Before this message the thread posted the failed step's postings (`ledger`) and
+   * answered its commands: the outcomes the step had produced (`StepError`), `internal` for the rest. The planet was
+   * dropped from the thread (its state may be half-changed); the main thread treats it as down and may restore its
+   * last snapshot.
+   */
+  | { readonly t: 'planetFailed'; readonly planetId: string; readonly message: string }
   | { readonly t: 'error'; readonly thread: number; readonly planetId?: string; readonly commandId?: string; readonly message: string }
   | { readonly t: 'stopped'; readonly thread: number };
 

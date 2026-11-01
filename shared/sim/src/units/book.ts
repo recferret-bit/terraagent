@@ -11,6 +11,8 @@ export interface UnitRecord {
   holdUntil: number;
   /** Auto work whose route failed, by command key → tick until which it is skipped. */
   skip: Record<string, number>;
+  /** Consecutive failures per auto command key: each one doubles the skip (back-off, GP-21); cleared on success. */
+  fails?: Record<string, number>;
   /** The last player command that failed (e.g. its target was unreachable), or `null`. Clients toast it once per `tick`. */
   lastFailure: UnitFailure | null;
 }

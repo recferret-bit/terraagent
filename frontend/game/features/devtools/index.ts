@@ -46,6 +46,20 @@ const scenarioCommand: DevCommandDef = {
   },
 };
 
+/** `planet.wipe <planetId>`: the server dev command (LED-06) for a held planet that cannot load. */
+const planetWipe: DevCommandDef = {
+  name: 'planet.wipe',
+  help: 'planet.wipe <planetId>  Server: delete a held (unloaded) planet with its snapshots, ledger and colony rows (a loaded planet is refused)',
+  async run(a, ctx) {
+    const planetId = a[0];
+    if (!planetId) throw new Error('usage: planet.wipe <planetId>');
+    const server = ctx.services.devServer;
+    if (!server) throw new DevServerError('host_unavailable', 'planet.wipe needs the game server; not available on this host');
+    await server('planet.wipe', { planetId });
+    return `wiped ${planetId}: the next seat or boot starts it fresh`;
+  },
+};
+
 /** `planet`: the current planet id and a ready-to-open link for a second player (`&join=<id>&as=<name>`). */
 const planet: DevCommandDef = {
   name: 'planet',
@@ -65,6 +79,7 @@ export default defineFeature({
   devCommands: [
     chainPing,
     scenarioCommand,
+    planetWipe,
     planet,
     simCommand('ping', 'Round-trip a no-op sim command; prints the ack tick', () => ({})),
     simCommand('spawn', 'spawn [q r]  Insert a test entity at tile (default 0 0)', (a) => ({ q: numArg(a, 0, 'q', 0), r: numArg(a, 1, 'r', 0) })),

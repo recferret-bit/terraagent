@@ -1,6 +1,7 @@
 /** GLSL for the terrain material: composed from named chunks, injected by `applyTerrainShader`. */
 import type * as THREE from 'three';
 import { NOISE_GLSL } from './glsl';
+import { injectAll } from '../shaderInject';
 
 const VERT_COMMON = /* glsl */ `#include <common>
 attribute float aAO; attribute float aRock; varying vec3 vLP; varying vec3 vLN; varying float vAO; varying float vRock;`;
@@ -9,53 +10,9 @@ vLP = position; vLN = normal; vAO = aAO; vRock = aRock;`;
 
 const FRAG_DECLS = /* glsl */ `uniform float uTime, uKind, uLevel, uExt;
 uniform vec3 uLow, uHigh, uRock, uRockDark, uAccent; uniform vec2 uWind;
-uniform sampler2D uPadMap, uPadNormal, uPadRough;
 varying vec3 vLP; varying vec3 vLN; varying float vAO; varying float vRock;
 vec3 gBump; vec3 gEmis; float gRough;
 `;
-
-/** Engineered hex-plate foundation pad evaluator for Prepared ground (samples ProceduralTextureRegistry + hex geometry). */
-export const FOUNDATION_PAD_GLSL = /* glsl */ `vec3 evalFoundationPad(vec2 worldXZ, vec2 hexOff, float edgeMeters, out vec3 padBump, out float padRough) {
-  vec2 padUv = worldXZ * 0.5;
-  vec3 texCol = texture2D(uPadMap, padUv).rgb;
-  vec3 texN = texture2D(uPadNormal, padUv).xyz * 2.0 - 1.0;
-  float texR = texture2D(uPadRough, padUv).r;
-
-  float rib0 = abs(hexOff.x);
-  float rib1 = abs(dot(hexOff, vec2(0.8660254, 0.5)));
-  float rib2 = abs(dot(hexOff, vec2(-0.8660254, 0.5)));
-  float minRib = min(rib0, min(rib1, rib2));
-  float hexRadius = 0.5 - edgeMeters * 0.5;
-  float innerRing = abs(hexRadius - 0.24);
-  float seamMask = 1.0 - smoothstep(0.014, 0.032, min(minRib, innerRing));
-  float outerSeam = 1.0 - smoothstep(0.04, 0.09, edgeMeters);
-  float outerBevel = smoothstep(0.05, 0.09, edgeMeters) * (1.0 - smoothstep(0.11, 0.17, edgeMeters));
-
-  float c0 = length(hexOff - vec2(0.0, 0.38));
-  float c1 = length(hexOff - vec2(0.0, -0.38));
-  float c2 = length(hexOff - vec2(0.329, 0.19));
-  float c3 = length(hexOff - vec2(-0.329, 0.19));
-  float c4 = length(hexOff - vec2(0.329, -0.19));
-  float c5 = length(hexOff - vec2(-0.329, -0.19));
-  float anchorDist = min(min(c0, c1), min(min(c2, c3), min(c4, c5)));
-  float anchorHead = 1.0 - smoothstep(0.022, 0.038, anchorDist);
-  float anchorCollar = smoothstep(0.024, 0.038, anchorDist) * (1.0 - smoothstep(0.048, 0.068, anchorDist));
-
-  vec3 plateBase = mix(vec3(0.47, 0.51, 0.46), texCol, 0.65);
-  vec3 seamCol = vec3(0.16, 0.19, 0.22);
-  vec3 bevelCol = vec3(0.62, 0.66, 0.60);
-  vec3 anchorAmber = vec3(0.86, 0.58, 0.22);
-  vec3 col = mix(plateBase, bevelCol, outerBevel * 0.55);
-  col = mix(col, seamCol, max(seamMask * 0.75, outerSeam * 0.85));
-  col = mix(col, seamCol * 0.85, anchorCollar * 0.8);
-  col = mix(col, anchorAmber, anchorHead * 0.88);
-
-  vec2 bevelGrad = normalize(hexOff + vec2(1e-5)) * (outerBevel - outerSeam) * 0.35;
-  padBump = vec3(texN.x * 0.28 + bevelGrad.x, 0.0, texN.y * 0.28 + bevelGrad.y);
-  padRough = mix(clamp(texR, 0.38, 0.54), 0.84, max(seamMask, outerSeam));
-  padRough = mix(padRough, 0.32, anchorHead);
-  return col;
-}`;
 
 const STRATA_ROCK = /* glsl */ `// Rock surface = three rock "materials" blended by soft alpha masks (no hard bands):
 //   base sandstone (palette rock) · pale bleached sandstone · dark desert varnish.
@@ -158,8 +115,7 @@ const COLOR_POST = /* glsl */ `  col *= 0.9 + 0.2*n2;
 const FRAG_COMMON = `#include <common>
 ${FRAG_DECLS}${NOISE_GLSL}
 float hash1(float n){ return fract(sin(n * 127.1) * 43758.5453); }
-${STRATA_ROCK}
-${FOUNDATION_PAD_GLSL}`;
+${STRATA_ROCK}`;
 
 const FRAG_COLOR = `#include <color_fragment>
 ${COLOR_PRE}  if (uKind < 0.5) {
@@ -175,14 +131,16 @@ const FRAG_FOG = /* glsl */ `#include <fog_fragment>
 
 export function applyTerrainShader(sh: THREE.WebGLProgramParametersWithUniforms, uniforms: Record<string, THREE.IUniform>) {
   Object.assign(sh.uniforms, uniforms);
-  sh.vertexShader = sh.vertexShader
-    .replace('#include <common>', VERT_COMMON)
-    .replace('#include <begin_vertex>', VERT_BEGIN);
-  sh.fragmentShader = sh.fragmentShader
-    .replace('#include <common>', FRAG_COMMON)
-    .replace('#include <color_fragment>', FRAG_COLOR)
-    .replace('#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = gRough;`)
-    .replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>\nnormal = normalize(normal + (viewMatrix*vec4(gBump,0.0)).xyz);`)
-    .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += gEmis;`)
-    .replace('#include <fog_fragment>', FRAG_FOG);
+  sh.vertexShader = injectAll(sh.vertexShader, [
+    ['#include <common>', VERT_COMMON],
+    ['#include <begin_vertex>', VERT_BEGIN],
+  ], 'terrain vertex');
+  sh.fragmentShader = injectAll(sh.fragmentShader, [
+    ['#include <common>', FRAG_COMMON],
+    ['#include <color_fragment>', FRAG_COLOR],
+    ['#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = gRough;`],
+    ['#include <normal_fragment_maps>', `#include <normal_fragment_maps>\nnormal = normalize(normal + (viewMatrix*vec4(gBump,0.0)).xyz);`],
+    ['#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += gEmis;`],
+    ['#include <fog_fragment>', FRAG_FOG],
+  ], 'terrain fragment');
 }

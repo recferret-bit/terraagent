@@ -5,7 +5,7 @@ import type { CommandOutcome, SimCommand } from '../kernel/commands';
 import type { LedgerPosting } from '../kernel/context';
 import type { SimEvent } from '../kernel/events';
 import type { PlanetState } from '../kernel/state';
-import { createPipeline, step, type Pipeline, type StepResult } from '../kernel/step';
+import { createPipeline, step, StepError, type Pipeline, type StepResult } from '../kernel/step';
 import { createEngineConfig, type EngineConfigInput } from '../systems/registry';
 import { clone } from './clone';
 import { applyDiff, diffSince } from './diff';
@@ -51,8 +51,18 @@ export class SimHost {
   /** Advances `dt` ticks, draining the queue, then notifies listeners. */
   step(dt: number): StepResult {
     const cmds = this.queue;
-    const res = step(this.state, cmds, dt, this.pipeline);
-    this.queue = [];
+    this.queue = []; // applied (or lost with a failed step): never re-applied
+    let res: StepResult;
+    try {
+      res = step(this.state, cmds, dt, this.pipeline);
+    } catch (err) {
+      // LED-09: what the failed step already did to `col.stock` still reaches the journal, its commands get answered.
+      if (err instanceof StepError) {
+        if (err.outcomes.length > 0) for (const cb of this.outcomeListeners) cb(err.outcomes, err.tick);
+        if (err.postings.length > 0) for (const cb of this.postingListeners) cb(err.postings, err.tick);
+      }
+      throw err;
+    }
     this.last = res;
     for (const cb of this.eventListeners) cb(res.events, res.stats.tick);
     for (const cb of this.outcomeListeners) cb(res.outcomes, res.stats.tick);

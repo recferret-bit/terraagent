@@ -120,6 +120,15 @@ Folder convention (mirrors `../freightchain/backend/server/src`): `backend/core/
 - **Alternatives rejected:** long-lived access JWT (freightchain SEC-10 lesson: logout must revoke); storing refresh token in `localStorage` (XSS-exposed).
 - **Telemetry (proves it works):** `auth_guest_created_total` (counter); `auth_refresh_total{result=ok|expired|reused|revoked}` (counter); `auth_logout_total` (counter); log event `auth.refresh_reuse_detected` (security).
 
+> **As built in W01 (2026-11-01, BE-06):** the build serves the client and the API from one origin, so `ta_rt` is
+> `HttpOnly; Path=/v1/auth; SameSite=Lax` (`Secure` in production only, no `Domain`), there is no `Authorization:
+> Refresh` fallback, the access JWT claims are `{sub, handle, iat, exp}` (no `sid`: a logout ends the refresh session,
+> live access tokens and sockets run out at `exp`, 15 min), and the TTLs are constants (`ACCESS_TOKEN_TTL_S` 900,
+> `REFRESH_TOKEN_TTL_S` 30 days in `backend/app/src/core/auth/`), not env vars. Refresh rotation is atomic and a
+> rotated or logged-out token presented again revokes every session of the player. Guest sign-up and `/me/home` are
+> throttled per IP (`AUTH_RATE_PER_MIN`, default 30/min each). The cross-origin cookie, `sid` and env TTLs come with the
+> split domains.
+
 #### Architecture
 - `POST /v1/auth/guest` → creates `core.player` (generated `displayName` "Colonist-7F3A"), `core.auth_identity{kind:'GUEST'}`, `core.auth_session{familyId, tokenHash(sha256), expiresAt, revokedAt}` → sets `ta_rt` cookie, returns `{accessToken, player}`. If a valid `ta_rt` already exists, it behaves like refresh (no duplicate players on double boot).
 - `POST /v1/auth/refresh` → rotate: mark old token used, issue new in same family; reuse of a used token ⇒ revoke family, `401 refresh_reused`.

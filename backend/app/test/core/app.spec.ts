@@ -3,6 +3,7 @@ import type { INestApplication } from '@nestjs/common';
 import { EnvError } from '@terra/config';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp, type CreateAppOptions } from '../../src/app';
+import { DEV_JWT_SECRET } from '../../src/core/auth/auth-token.service';
 import { ReadinessRegistry } from '../../src/core/readiness.registry';
 import { MetricsRegistry } from '../../src/core/metrics.registry';
 
@@ -88,9 +89,29 @@ describe('CORS', () => {
   });
 
   it('denies loopback in production', async () => {
-    const { url } = await boot({ NODE_ENV: 'production', CORS_ORIGINS: 'https://example.com' });
+    const { url } = await boot({ NODE_ENV: 'production', CORS_ORIGINS: 'https://example.com', JWT_ACCESS_SECRET: PROD_JWT });
     expect((await get(url, 'http://localhost:5173')).headers.get('access-control-allow-origin')).toBeNull();
     expect((await get(url, 'https://example.com')).headers.get('access-control-allow-origin')).toBe('https://example.com');
+  });
+});
+
+const PROD_JWT = 'prod-test-jwt-secret-0123456789';
+
+describe('JWT secret in production (BE-01)', () => {
+  it('refuses to boot without JWT_ACCESS_SECRET or with the public dev default', async () => {
+    for (const source of [{ NODE_ENV: 'production' }, { NODE_ENV: 'production', JWT_ACCESS_SECRET: DEV_JWT_SECRET }]) {
+      const err = await createApp({ source, modulesDirs: [srcDir] }).catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(EnvError);
+      expect((err as EnvError).issues).toContainEqual({ key: 'JWT_ACCESS_SECRET', section: 'core-app', message: 'production requires its own JWT_ACCESS_SECRET (absent or the public dev default)' });
+    }
+  });
+
+  it('boots in production with its own secret, and outside production with the dev default', async () => {
+    const prod = await boot({ NODE_ENV: 'production', JWT_ACCESS_SECRET: PROD_JWT });
+    expect(prod.env.JWT_ACCESS_SECRET).toBe(PROD_JWT);
+    await prod.app.close();
+    const dev = await boot({ NODE_ENV: 'development' });
+    expect(dev.env.JWT_ACCESS_SECRET).toBe(DEV_JWT_SECRET);
   });
 });
 

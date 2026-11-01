@@ -1,11 +1,13 @@
 import type { RejectCode } from '@terra/contracts';
-import { dataRow, type CompiledRow } from '../../data';
+import type { CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
-import { defaultW01Data } from '../hq';
+import { resolveHubT1Row, resolveStartingKitRow, rowNum } from '../rows';
 import { planPrepJobs, summarizePrepJobs } from './prep';
+
+export { resolveHubT1Row } from '../rows';
 
 /**
  * Building placement rules, one pure function for every caller: the authoritative `placeBuilding` handler (server and
@@ -51,7 +53,9 @@ export interface PlacementRule {
 }
 
 /** Why a placement fails; maps 1:1 to a protocol `RejectCode` and a UI text. */
-export type PlacementBlock = GeoBlock | 'uneven' | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'hubExists' | 'noBuilder' | 'builderBusy' | 'tierLocked' | 'badArgs';
+export type PlacementBlock =
+  | GeoBlock | 'uneven' | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'hubExists' | 'noBuilder' | 'builderBusy'
+  | 'tierLocked' | 'badArgs' | 'unknownBuilding' | 'farFromLanding' | 'nearOtherColony';
 
 export interface PlacementTile {
   q: number;
@@ -105,13 +109,15 @@ const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
   outOfMap: 'site_blocked', occupied: 'site_blocked', hubExists: 'site_blocked',
   foreign: 'not_own_territory', unclaimed: 'not_own_territory',
   noBuilder: 'worker_tier_locked', builderBusy: 'worker_tier_locked', tierLocked: 'tier_locked', badArgs: 'invalid_args',
+  unknownBuilding: 'invalid_args', farFromLanding: 'site_blocked', nearOtherColony: 'site_blocked',
 };
 
 const BLOCK_TEXT: Readonly<Record<PlacementBlock, string>> = {
   ...GEO_BLOCK_TEXT,
   uneven: 'uneven ground', outOfMap: 'outside the map', foreign: 'not your territory', unclaimed: 'not your territory',
   occupied: 'another building is here', hubExists: 'hub already exists', noBuilder: 'requires HQ',
-  builderBusy: 'builder unavailable', tierLocked: 'tier locked', badArgs: 'invalid site',
+  builderBusy: 'builder unavailable', tierLocked: 'tier locked', badArgs: 'invalid site', unknownBuilding: 'unknown building',
+  farFromLanding: 'too far from your landing', nearOtherColony: 'closer to another colony',
 };
 
 /** Tile-level failures, most important first: the footprint's reason is the highest-ranked one among its tiles. */
@@ -120,35 +126,37 @@ const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclai
 export const placementRejectCode = (b: PlacementBlock): RejectCode => BLOCK_CODE[b];
 export const placementBlockText = (b: PlacementBlock): string => BLOCK_TEXT[b];
 
-/** Returns `true` when `building` names the Command Hub (`'commandHub' | 'hub' | 'hub.t1' | 'building.commandHub'`). */
-export function isHubBuildingKind(building?: string): boolean {
-  if (!building) return true;
-  const n = building.trim().toLowerCase();
-  return n === 'hub' || n === 'commandhub' || n === 'command_hub' || n === 'hub.t1' || n === 'building.commandhub';
+/** The building a W01 Hub row stands for: its `building` name and its `archetype` both name it. */
+function hubRowNames(row: CompiledRow): string[] {
+  return [row.building, row.archetype].filter((v): v is string => typeof v === 'string');
 }
 
-/** Looks up the Command Hub T1 balance row (`hub.t1`). */
-export function resolveHubT1Row(data?: CompiledDataLike): CompiledRow {
-  const table = data?.tables.hub as Record<string, CompiledRow> | undefined;
-  if (table?.t1) return table.t1;
-  return dataRow(defaultW01Data(), 'hub', 't1');
+/** Returns `true` when `building` names the Command Hub (`hub.t1.building` / `archetype`; omitted = the Hub). */
+export function isHubBuildingKind(building?: string, data?: CompiledDataLike): boolean {
+  return building === undefined || hubRowNames(resolveHubT1Row(data)).includes(building);
 }
 
-/** The placement rule for `building` (W01 knows the Command Hub; other kinds get a 1×1 owned-ground default). */
-export function resolvePlacementRule(building?: string, data?: CompiledDataLike): PlacementRule {
-  if (isHubBuildingKind(building)) {
-    const row = resolveHubT1Row(data);
-    return {
-      building: 'commandHub',
-      isHub: true,
-      footprint: Number(row.footprintW ?? row.footprint ?? 3),
-      allowUnclaimed: Boolean(row.allowUnclaimedPlacement ?? true),
-      hqOnly: Boolean(row.hqOnly ?? true),
-      maxPerColony: Number(row.maxPerColony ?? 1),
-      deposit: 'forbid',
-    };
-  }
-  return { building: building ?? 'structure', isHub: false, footprint: 1, allowUnclaimed: false, hqOnly: false, maxPerColony: Infinity, deposit: 'forbid' };
+/**
+ * The balance row of `building` (W01 knows one building, the Command Hub `hub.t1`), or `null` for a kind the data
+ * does not know (GP-05: such a placement is refused `invalid_args`, never built as a stand-in Hub).
+ */
+export function resolveBuildingRow(building: string | undefined, data?: CompiledDataLike): CompiledRow | null {
+  return isHubBuildingKind(building, data) ? resolveHubT1Row(data) : null;
+}
+
+/** The placement rule of `building` from its row, or `null` when the building is unknown. */
+export function resolvePlacementRule(building?: string, data?: CompiledDataLike): PlacementRule | null {
+  const row = resolveBuildingRow(building, data);
+  if (!row) return null;
+  return {
+    building: String(row.building),
+    isHub: true,
+    footprint: rowNum(row, 'footprint'),
+    allowUnclaimed: row.allowUnclaimedPlacement === true,
+    hqOnly: row.hqOnly === true,
+    maxPerColony: rowNum(row, 'maxPerColony'),
+    deposit: 'forbid',
+  };
 }
 
 /** Axial coordinates of an `N × N` footprint anchored at `(q, r)` (3 → the 9 tiles `(q+dq, r+dr)`, `dq, dr ∈ [-1, 1]`). */
@@ -160,16 +168,24 @@ export function getBuildingFootprintTiles(q: number, r: number, footprint = 3): 
   return out;
 }
 
-/** Footprint size of an existing building entity (only kinds ≥ hub occupy ground). */
-const entityFootprint = (kind: number): number => (kind === ENTITY_KIND.hub ? 3 : 1);
+/** Whether an entity occupies ground with its footprint: an alive building (GP-23: one rule for placement and paths). */
+export function occupiesGround(e: { kind: number; hp: number; hpMax: number }): boolean {
+  return e.kind === ENTITY_KIND.hub && !(e.hpMax > 0 && e.hp <= 0);
+}
+
+/** Footprint size of an existing building entity of `kind` (its row's `footprint`). */
+export function entityFootprint(kind: number, data?: CompiledDataLike): number {
+  return kind === ENTITY_KIND.hub ? rowNum(resolveHubT1Row(data), 'footprint') : 1;
+}
+
 const isAlive = (e: PlacementEntity): boolean => !(e.hpMax > 0 && e.hp <= 0);
 
-function occupiedTiles(world: PlacementWorld): Set<number> {
+function occupiedTiles(world: PlacementWorld, data?: CompiledDataLike): Set<number> {
   const idx = hexIndex(world.radius);
   const out = new Set<number>();
   for (const e of world.entities) {
-    if (e.kind < ENTITY_KIND.hub || !isAlive(e)) continue;
-    for (const p of getBuildingFootprintTiles(e.q, e.r, entityFootprint(e.kind))) {
+    if (!occupiesGround(e)) continue;
+    for (const p of getBuildingFootprintTiles(e.q, e.r, entityFootprint(e.kind, data))) {
       const i = idx.indexOf(p.q, p.r);
       if (i >= 0) out.add(i);
     }
@@ -192,9 +208,27 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, colonyId: numb
   return tile;
 }
 
+/**
+ * Where a Hub may stand relative to the landings (GP-06): within `hq.startingKit.hubMaxDistFromLanding` of the colony's
+ * own pod, and not closer to another colony's pod or Hub than to its own pod. Without an own pod (no landing yet, tests)
+ * there is no distance rule.
+ */
+function landingBlock(world: PlacementWorld, opts: EvaluatePlacementOpts): PlacementBlock | null {
+  const pod = world.entities.find((e) => e.kind === ENTITY_KIND.pod && e.owner === opts.colonyId);
+  if (!pod) return null;
+  const own = hexDistance(opts.q, opts.r, pod.q, pod.r);
+  if (own > rowNum(resolveStartingKitRow(opts.data), 'hubMaxDistFromLanding')) return 'farFromLanding';
+  const others = world.entities.filter((e) => (e.kind === ENTITY_KIND.pod || e.kind === ENTITY_KIND.hub) && e.owner >= 0 && e.owner !== opts.colonyId && isAlive(e));
+  return others.some((e) => hexDistance(opts.q, opts.r, e.q, e.r) < own) ? 'nearOtherColony' : null;
+}
+
 function colonyBlock(world: PlacementWorld, rule: PlacementRule, opts: EvaluatePlacementOpts): PlacementBlock | null {
   const own = world.entities.filter((e) => e.owner === opts.colonyId && isAlive(e));
   if (rule.isHub && own.filter((e) => e.kind === ENTITY_KIND.hub).length >= rule.maxPerColony) return 'hubExists';
+  if (rule.isHub) {
+    const far = landingBlock(world, opts);
+    if (far) return far;
+  }
   if (opts.builderEntityId !== undefined) {
     const b = world.entities.find((e) => e.id === opts.builderEntityId);
     if (!b || !isAlive(b)) return 'noBuilder';
@@ -247,12 +281,13 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   const rule = resolvePlacementRule(opts.building, opts.data);
   const { colonyId, q, r, tier } = opts;
   const empty: PlacementBill = { tilesToPrepare: 0, totalTiles: 0, baseSeconds: 0, hqSeconds: 0, totalEnergyE: 0, yields: { 'metals.t1': 0, 'bio.biomass': 0 }, ops: { grade: 0, clear: 0, break: 0 } };
+  if (!rule) return fail('unknownBuilding', [], empty);
   if (!Number.isInteger(colonyId) || colonyId < 0 || !Number.isInteger(q) || !Number.isInteger(r)) return fail('badArgs', [], empty);
   if (tier !== undefined && (!Number.isInteger(tier) || tier < 1 || tier > 3)) return fail('badArgs', [], empty);
   if (tier !== undefined && tier > 1) return fail('tierLocked', [], empty);
 
   const idx = hexIndex(world.radius);
-  const occupied = occupiedTiles(world);
+  const occupied = occupiedTiles(world, opts.data);
   const tiles = getBuildingFootprintTiles(q, r, rule.footprint).map((p) => evaluateTile(world, rule, colonyId, occupied, p.q, p.r, idx.indexOf(p.q, p.r)));
   const bill = billFor(tiles, opts.data);
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);

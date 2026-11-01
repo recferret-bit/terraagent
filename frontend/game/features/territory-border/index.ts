@@ -3,7 +3,6 @@ import {
   getGlobalTerritoryColorBlindMode,
   setGlobalTerritoryColorBlindMode,
   type HexTerrain,
-  type HexTiles,
   type TerritoryBorderStats,
 } from '@terra/render/planets/hex';
 import {
@@ -16,6 +15,7 @@ import {
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
+    /** The session's current hex terrain (a live getter: replaced when a planet of another radius loads). */
     hexTerrain?: HexTerrain | null;
     territoryBorder?: TerritoryBorderFeatureHandle;
   }
@@ -39,9 +39,31 @@ export interface MountTerritoryBorderOptions {
   services?: Partial<FeatureContext['services']>;
 }
 
+/** Per-browser memory of the player's border pattern choice (`localStorage`). */
+export const BORDER_HATCH_STORAGE_KEY = 'terra.borderHatch';
+
+export function readStoredColorBlindMode(): boolean | null {
+  try {
+    const v = globalThis.localStorage?.getItem(BORDER_HATCH_STORAGE_KEY);
+    return v === '1' ? true : v === '0' ? false : null;
+  } catch {
+    return null;
+  }
+}
+
+function storeColorBlindMode(enabled: boolean): void {
+  try {
+    globalThis.localStorage?.setItem(BORDER_HATCH_STORAGE_KEY, enabled ? '1' : '0');
+  } catch {
+    // storage blocked: the choice lasts for this page only
+  }
+}
+
+/** Sets the hatch pattern for every terrain (render-module default) and remembers the choice for this browser. */
 export function setTerritoryColorBlindMode(enabled: boolean): boolean {
   const next = Boolean(enabled);
   setGlobalTerritoryColorBlindMode(next);
+  storeColorBlindMode(next);
   return next;
 }
 
@@ -60,29 +82,11 @@ export function setTerritoryColonyColors(colors: Record<number, number>): void {
   }
 }
 
-function resolveTerrains(explicit?: HexTerrain | null): HexTerrain[] {
-  if (explicit) return [explicit];
-  return [...getActiveHexTerrains()];
-}
-
-export function syncTerritoryBordersFromView(
-  view?: GameView | null,
-  explicitTerrain?: HexTerrain | null,
-): void {
-  const tiles = view?.tiles;
-  if (!tiles) return;
-  const hexTiles: HexTiles = {
-    terrain: tiles.terrain,
-    prep: tiles.prep,
-    height: tiles.height ?? new Float32Array(tiles.count),
-    deposit: tiles.deposit,
-    owner: tiles.owner,
-  };
-  for (const t of resolveTerrains(explicitTerrain)) {
-    t.updateTiles(hexTiles, []);
-  }
-}
-
+/**
+ * Mounts the border pattern toggle. Territory borders themselves are drawn by the session's hex terrain from the
+ * view's owner layer (the session updates the terrain); this feature only switches solid / hatch borders and keeps
+ * the choice per browser (FF-28).
+ */
 export function mountTerritoryBorder(
   opts: MountTerritoryBorderOptions = {},
 ): TerritoryBorderFeatureHandle {
@@ -95,9 +99,8 @@ export function mountTerritoryBorder(
     root.dataset.testid = 'territory-border-hatch-toggle';
   }
 
-  if (opts.colorBlindMode !== undefined) {
-    setTerritoryColorBlindMode(opts.colorBlindMode);
-  }
+  const initial = opts.colorBlindMode ?? readStoredColorBlindMode();
+  if (initial !== null) setTerritoryColorBlindMode(initial);
   if (opts.colonyColors) {
     setTerritoryColonyColors(opts.colonyColors);
   }
@@ -147,9 +150,9 @@ export function mountTerritoryBorder(
         hatchSegmentCount: 0,
         colorBlindMode: isTerritoryColorBlindMode(),
       },
-    update: (view) => {
-      const explicit = opts.terrain ?? opts.services?.hexTerrain ?? null;
-      if (explicit) syncTerritoryBordersFromView(view, explicit);
+    update: () => {
+      const t = getTargetTerrain();
+      if (t && t.getTerritoryBorderStats().colorBlindMode !== isTerritoryColorBlindMode()) t.setColorBlindMode(isTerritoryColorBlindMode());
       renderLabel();
     },
     dispose: () => {

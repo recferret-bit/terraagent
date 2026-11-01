@@ -36,12 +36,12 @@ export {
 } from './chunkPropScatter';
 export { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
 export {
+  BORDER_VERTS_PER_EDGE,
   BORDER_Y_OFFSET,
   buildTerritoryBorderGeometry,
   createTerritoryBorderMaterial,
   DEFAULT_COLONY_COLORS,
   FROZEN_BORDER_WIDTH,
-  GLOBE_PLAYER_COLORS,
   NORMAL_BORDER_WIDTH,
   resolveColonyColorHex,
   resolveColonyColorRgb,

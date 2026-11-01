@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { E, ENTITY_STRIDE } from '../frontend/game/store/replica/viewCodec';
 import {
   CONSOLE, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, readTick, screenshot, stack, test,
   ticksPerSecond, urls, waitForTick,
@@ -17,13 +18,13 @@ const serverOnly = () => test.skip(local, 'needs the app (server host)');
 
 interface Debug { __online: { store: { latest: { tick: number; count: number; entities: Float32Array; planet: { id: string } } | null }; terrain: unknown } }
 const planetId = (page: Page) => page.evaluate(() => (window as unknown as Debug).__online.store.latest?.planet.id ?? null);
-/** x of the first entity with the given id in the rendered view (stride 12: id, kind, owner, q, r, x, y, …). */
-const entityX = (page: Page, id: number) => page.evaluate((eid) => {
+/** x of the first entity with the given id in the rendered view (layout `E` / `ENTITY_STRIDE` of the client's view codec). */
+const entityX = (page: Page, id: number) => page.evaluate(({ eid, E, S }) => {
   const v = (window as unknown as Debug).__online.store.latest;
   if (!v) return null;
-  for (let i = 0; i < v.count; i++) if (v.entities[i * 12] === eid) return v.entities[i * 12 + 5];
+  for (let i = 0; i < v.count; i++) if (v.entities[i * S + E.id] === eid) return v.entities[i * S + E.x];
   return null;
-}, id);
+}, { eid: id, E, S: ENTITY_STRIDE });
 
 /** Waits until the console output contains `pattern` (commands with mock-chain latency print late). */
 async function consoleShows(page: Page, pattern: RegExp, timeout = 10_000): Promise<string> {
@@ -152,9 +153,9 @@ test('@hack 10. ?lag=300: nudge moves the test entity on the next frame; after t
   const x0 = (await entityX(page, 1)) as number;
   await page.keyboard.press('Backquote');
   await page.locator(CONSOLE.input).fill('nudge 1');
-  const movedAfterMs = await page.evaluate(async ([x]) => {
+  const movedAfterMs = await page.evaluate(async ([x, E, S]) => {
     const view = () => (window as unknown as Debug).__online.store.latest;
-    const xOf = () => { const v = view(); if (!v) return x; for (let i = 0; i < v.count; i++) if (v.entities[i * 12] === 1) return v.entities[i * 12 + 5]; return x; };
+    const xOf = () => { const v = view(); if (!v) return x; for (let i = 0; i < v.count; i++) if (v.entities[i * S + E.id] === 1) return v.entities[i * S + E.x]; return x; };
     const input = document.querySelector<HTMLInputElement>('[data-testid=dev-console] input')!;
     const t0 = performance.now();
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
@@ -163,7 +164,7 @@ test('@hack 10. ?lag=300: nudge moves the test entity on the next frame; after t
       await new Promise((r) => requestAnimationFrame(r));
     }
     return -1;
-  }, [x0] as const);
+  }, [x0, E, ENTITY_STRIDE] as const);
   console.log(`[w00] predicted nudge visible after ${movedAfterMs.toFixed(1)} ms (lag 300 ms each way)`);
   expect(movedAfterMs, 'predicted move visible').toBeGreaterThanOrEqual(0);
   expect(movedAfterMs, 'within a few frames, not after the ~600 ms round trip').toBeLessThan(200);

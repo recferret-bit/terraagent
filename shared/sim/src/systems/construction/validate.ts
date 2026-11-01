@@ -1,9 +1,9 @@
 import type { RejectCode } from '@terra/contracts';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { findShortfall, getColonyStock } from '../../economy';
+import { ENTITY_KIND } from '../../ecs/columns';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { SimState } from '../../kernel/state';
-import { evaluatePlacement, resolveHubT1Row, type PlacementBlock, type PlacementResult } from './placement';
+import { findColonyEntityRow } from '../find';
+import { entityFootprint, evaluatePlacement, getBuildingFootprintTiles, type PlacementBlock, type PlacementResult } from './placement';
 import { placementWorldFromState } from './placementWorld';
 
 export interface FootprintTileInfo {
@@ -24,7 +24,6 @@ export interface ValidateHubPlacementOpts {
   buildingKind?: string;
   tier?: number;
   data?: CompiledDataLike;
-  checkResources?: boolean;
 }
 
 export interface ValidateHubPlacementResult {
@@ -38,43 +37,19 @@ export interface ValidateHubPlacementResult {
   placement: PlacementResult;
 }
 
-/** Convenience helper returning the 3×3 Command Hub footprint centered at `(q, r)`. */
-export function getHubFootprintTiles(q: number, r: number): Array<{ q: number; r: number }> {
-  const out: Array<{ q: number; r: number }> = [];
-  for (let dr = -1; dr <= 1; dr++) for (let dq = -1; dq <= 1; dq++) out.push({ q: q + dq, r: r + dr });
-  return out;
+/** The Command Hub footprint centred at `(q, r)` (`getBuildingFootprintTiles` with the Hub row's footprint). */
+export function getHubFootprintTiles(q: number, r: number, data?: CompiledDataLike): Array<{ q: number; r: number }> {
+  return getBuildingFootprintTiles(q, r, entityFootprint(ENTITY_KIND.hub, data));
 }
 
 /** Returns `true` if `colonyId` already has an alive or pending Command Hub entity (`maxPerColony: 1`). */
 export function hasColonyHub(state: SimState, colonyId: number): boolean {
-  const e = state.entities;
-  const cols = e.cols;
-  for (let row = 0; row < e.count; row++) {
-    if (cols.kind[row] !== ENTITY_KIND.hub) continue;
-    if (cols.owner[row] !== colonyId) continue;
-    if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
-    return true;
-  }
-  return false;
-}
-
-/** Returns the row index of an alive, landed HQ unit belonging to `colonyId`, or `-1` if none exists. */
-export function findAliveColonyHqRow(state: SimState, colonyId: number): number {
-  const e = state.entities;
-  const cols = e.cols;
-  for (let row = 0; row < e.count; row++) {
-    if (cols.kind[row] !== ENTITY_KIND.hq) continue;
-    if (cols.owner[row] !== colonyId) continue;
-    if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
-    if (cols.state[row] === ENTITY_STATE.descending) continue;
-    return row;
-  }
-  return -1;
+  return findColonyEntityRow(state, colonyId, ENTITY_KIND.hub) >= 0;
 }
 
 /**
  * Authoritative placement check used by the `placeBuilding` handler: adapts `state` into a `PlacementWorld` and runs the
- * shared `evaluatePlacement` (the very function the client ghost runs on its replica), plus the optional stock check.
+ * shared `evaluatePlacement` (the very function the client ghost runs on its replica).
  */
 export function validateBuildingPlacement(state: SimState, opts: ValidateHubPlacementOpts): ValidateHubPlacementResult {
   const placement = evaluatePlacement(placementWorldFromState(state), {
@@ -90,28 +65,5 @@ export function validateBuildingPlacement(state: SimState, opts: ValidateHubPlac
     .filter((t) => t.block !== 'outOfMap')
     .map((t) => ({ q: t.q, r: t.r, tileIdx: t.tileIdx, terrain: t.terrain, prep: t.prep, owner: t.owner, prepared: t.prepared }));
   const base = { tiles, unpreparedCount: placement.unpreparedCount, preparedCount: placement.preparedCount, placement };
-  if (!placement.ok) return { ok: false, reason: placement.code, block: placement.block, ...base };
-  if (opts.checkResources) {
-    const cost = resolveHubT1Row(opts.data).cost as Record<string, number> | undefined;
-    if (cost && findShortfall(getColonyStock(state, opts.colonyId), cost)) {
-      return { ok: false, reason: 'insufficient_resources', ...base };
-    }
-  }
-  return { ok: true, ...base };
-}
-
-/**
- * Validates Command Hub 3×3 placement at `(q, r)` (`UO-TF-05`, `UO-L-03`, `W01-14`).
- * Supports both `validateHubPlacement(state, { colonyId, q, r, ... })` and `validateHubPlacement(state, colonyId, q, r, extraOpts)`.
- */
-export function validateHubPlacement(
-  state: SimState,
-  optsOrColonyId: ValidateHubPlacementOpts | number,
-  qArg?: number,
-  rArg?: number,
-  extraOpts?: Omit<ValidateHubPlacementOpts, 'colonyId' | 'q' | 'r'>,
-): ValidateHubPlacementResult {
-  const opts: ValidateHubPlacementOpts =
-    typeof optsOrColonyId === 'number' ? { colonyId: optsOrColonyId, q: qArg ?? NaN, r: rArg ?? NaN, ...extraOpts } : optsOrColonyId;
-  return validateBuildingPlacement(state, { ...opts, buildingKind: opts.buildingKind ?? 'commandHub' });
+  return placement.ok ? { ok: true, ...base } : { ok: false, reason: placement.code, block: placement.block, ...base };
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DEV_PLANET_TYPE, DEV_PLANET_TYPES, devPlanetIdFor, devPlanetTypeOf, isDevPlanetType } from '../../src';
+import { DEV_PLANET_CAPACITY, DEV_PLANET_TYPE, DEV_PLANET_TYPES, devPlanetIdFor, devPlanetTypeOf, isDevPlanetType, MAX_COLONIES_PER_PLANET } from '../../src';
 
 describe('dev planet families, one per planet type (owner 2026-11-01)', () => {
   it('desert keeps pl_dev, pl_dev_2…; ocean / temperate get their own families', () => {
@@ -17,5 +17,10 @@ describe('dev planet families, one per planet type (owner 2026-11-01)', () => {
     expect(isDevPlanetType('ocean')).toBe(true);
     expect(isDevPlanetType('lava')).toBe(false);
     expect(isDevPlanetType(undefined)).toBe(false);
+  });
+
+  it('a dev planet seats DEV_PLANET_CAPACITY colonies, within the sim colony limit (XC-03, D-12)', () => {
+    expect(DEV_PLANET_CAPACITY).toBe(5);
+    expect(DEV_PLANET_CAPACITY).toBeLessThanOrEqual(MAX_COLONIES_PER_PLANET);
   });
 });

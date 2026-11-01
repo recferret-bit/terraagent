@@ -1,10 +1,15 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { KitbashBuilder, type MaterialZoneId, type PartOptions } from '../../KitbashRegistry';
+import { tubeThrough } from '../../greebles/tube';
 
 export type V3 = [number, number, number];
 export type Z = MaterialZoneId;
-export type Opt = PartOptions & { seg?: number; r?: number };
+/**
+ * Part options plus geometry budgets: `seg` = the helper's main segment count (radial, lathe, tube length), `r` = bevel
+ * radius, `hSeg` = sphere height segments, `tubeSeg` = torus tube segments, `points` = cable control points (3 or 5).
+ */
+export type Opt = PartOptions & { seg?: number; r?: number; hSeg?: number; tubeSeg?: number; points?: 3 | 5 };
 
 const _q = new THREE.Quaternion();
 const Y = new THREE.Vector3(0, 1, 0);
@@ -22,12 +27,16 @@ export function cyl(b: KitbashBuilder, z: Z, rt: number, rb: number, h: number, 
 export function ball(b: KitbashBuilder, z: Z, r: number, p: V3, o: Opt = {}) {
   b.addPart(new THREE.SphereGeometry(r, o.seg ?? 10, 8), z, { ...o, position: p });
 }
-export function capsule(b: KitbashBuilder, z: Z, r: number, len: number, p: V3, o: Opt = {}) {
+/**
+ * Silo tank: a straight cylinder (no hemispherical caps, to save triangles) filling about the space a capsule of radius
+ * `r` and body length `len` based at `p` would, from y = p.y + 0.2 r to p.y + len + 1.8 r.
+ */
+export function roundedTank(b: KitbashBuilder, z: Z, r: number, len: number, p: V3, o: Opt = {}) {
   b.addPart(new THREE.CylinderGeometry(r, r, len + r * 1.6, o.seg ?? 10, 1), z, { ...o, position: [p[0], p[1] + len / 2 + r, p[2]] });
 }
 /** Torus centred at p; flat (axis Y) by default. */
 export function ring(b: KitbashBuilder, z: Z, R: number, t: number, p: V3, o: Opt = {}) {
-  b.addPart(new THREE.TorusGeometry(R, t, 5, Math.min(o.seg ?? 14, 16)), z, { rotation: [Math.PI / 2, 0, 0], ...o, position: p });
+  b.addPart(new THREE.TorusGeometry(R, t, o.tubeSeg ?? 5, Math.min(o.seg ?? 14, 16)), z, { rotation: [Math.PI / 2, 0, 0], ...o, position: p });
 }
 /** Cylinder strut between two points. */
 export function strut(b: KitbashBuilder, z: Z, a: V3, c: V3, r = 0.05, o: Opt = {}) {
@@ -38,18 +47,22 @@ export function strut(b: KitbashBuilder, z: Z, a: V3, c: V3, r = 0.05, o: Opt = 
   const m = va.add(vc).multiplyScalar(0.5);
   b.addPart(new THREE.CylinderGeometry(r, r, len, o.seg ?? 6, 1), z, { ...o, position: [m.x, m.y, m.z], rotation: [e.x, e.y, e.z] });
 }
-/** Sagging CatmullRom cable (silhouette breaker). */
+/** Tube along a CatmullRom curve through `pts` (`o.seg` segments along it, default 10; 4 around): the shared `tubeThrough`. */
+export function tube(b: KitbashBuilder, pts: readonly THREE.Vector3[], r: number, z: Z = 'frameGunmetal', o: Opt = {}) {
+  tubeThrough(b, pts, r, z, { along: o.seg ?? 10, radial: 4 }, o);
+}
+/** Sagging CatmullRom cable (silhouette breaker); `o.points: 3` uses only the sag point between the two ends. */
 export function cable(b: KitbashBuilder, a: V3, c: V3, slack = 0.4, r = 0.04, z: Z = 'frameGunmetal', o: Opt = {}) {
   const va = new THREE.Vector3(...a), vc = new THREE.Vector3(...c);
   const m = va.clone().add(vc).multiplyScalar(0.5); m.y -= slack;
+  if (o.points === 3) { tube(b, [va, m, vc], r, z, o); return; }
   const q1 = va.clone().lerp(m, 0.5); q1.y -= slack * 0.15;
   const q2 = m.clone().lerp(vc, 0.5); q2.y -= slack * 0.15;
-  const curve = new THREE.CatmullRomCurve3([va, q1, m, q2, vc]);
-  b.addPart(new THREE.TubeGeometry(curve, 10, r, 4, false), z, { name: 'power cable', ...o });
+  tube(b, [va, q1, m, q2, vc], r, z, o);
 }
 /** Emissive lamp (HDR, >=3). */
 export function lamp(b: KitbashBuilder, z: 'energyCyan' | 'warningAmber' | 'dangerCrimson' | 'terraformEmerald', r: number, p: V3, o: Opt = {}) {
-  b.addPart(new THREE.SphereGeometry(r, o.seg ?? 6, 5), z, { name: 'status light', ...o, position: p });
+  b.addPart(new THREE.SphereGeometry(r, o.seg ?? 6, o.hSeg ?? 5), z, { name: 'status light', ...o, position: p });
 }
 /** Emissive slab strip; p = [x,bottomY,z]. */
 export function glow(b: KitbashBuilder, z: 'energyCyan' | 'warningAmber' | 'dangerCrimson', s: V3, p: V3, o: Opt = {}) {
@@ -61,19 +74,19 @@ export function dish(b: KitbashBuilder, R: number, p: V3, tilt: number, o: Opt =
   const n = 4, k = 0.55 / R, th = 0.04;
   for (let i = 0; i <= n; i++) { const r = Math.max(0.02, (R * i) / n); pts.push(new THREE.Vector2(r, k * r * r)); }
   for (let i = n; i >= 0; i--) { const r = Math.max(0.02, (R * i) / n); pts.push(new THREE.Vector2(r, k * r * r - th)); }
-  const g = new THREE.LatheGeometry(pts, 12);
+  const g = new THREE.LatheGeometry(pts, o.seg ?? 12);
   b.addPart(g, 'hullPrimary', { name: 'radar dish', ...o, position: p, rotation: [tilt, 0, 0] });
 }
 /** Octagonal foundation plinth (-0.1..0.2) with amber hazard trim and corner lamps. Returns top Y. */
 export function plinth(b: KitbashBuilder, w: number, d: number, accent = true): number {
-  box(b, 'frameGunmetal', [w, 0.3, d], [0, -0.1, 0], { name: 'foundation plinth', r: 0.1, seg: 1 });
+  box(b, 'frameGunmetal', [w, 0.3, d], [0, -0.1, 0], { name: 'foundation plinth', role: 'plinth', r: 0.1, seg: 1 });
   if (accent) {
-    const iw = w - 0.3, id = d - 0.3;
+    const iw = w - 0.3, id = d - 0.3, role = 'plinthDetail' as const;
     for (const s of [-1, 1]) {
-      box(b, 'hullSecondary', [iw, 0.04, 0.1], [0, 0.18, s * id / 2], { name: 'plinth trim Z', r: 0.015, seg: 1 });
-      box(b, 'hullSecondary', [0.1, 0.044, id - 0.1], [s * iw / 2, 0.182, 0], { name: 'plinth trim X', r: 0.015, seg: 1 });
+      box(b, 'hullSecondary', [iw, 0.04, 0.1], [0, 0.18, s * id / 2], { name: 'plinth trim Z', role, r: 0.015, seg: 1 });
+      box(b, 'hullSecondary', [0.1, 0.044, id - 0.1], [s * iw / 2, 0.182, 0], { name: 'plinth trim X', role, r: 0.015, seg: 1 });
     }
-    for (const sx of [-1, 1]) for (const sz of [-1, 1]) lamp(b, 'warningAmber', 0.07, [sx * (w / 2 - 0.12), 0.22, sz * (d / 2 - 0.12)], { name: 'plinth corner light' });
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) lamp(b, 'warningAmber', 0.07, [sx * (w / 2 - 0.12), 0.22, sz * (d / 2 - 0.12)], { name: 'plinth corner light', role });
   }
   return 0.2;
 }

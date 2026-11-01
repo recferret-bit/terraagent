@@ -4,8 +4,12 @@ import type { PlanetState, SimCommand, SimHost } from '@terra/sim';
 export interface ScenarioApi {
   /** The freshly created planet (read it; change it only through commands). */
   readonly planet: PlanetState;
-  /** Queues a command (planet-level, source `dev`) and steps one tick so it is applied; throws if the engine rejected it. */
-  command(kind: string, args: unknown): void;
+  /**
+   * Checks `args` against the command's contract (the same check every client command passes, GP-37), queues it (source
+   * `dev`, for `colonyIndex`, default planet-level `null`) and steps one tick so it is applied; throws if the contract
+   * or the engine rejected it.
+   */
+  command(kind: string, args: unknown, colonyIndex?: number | null): void;
   /** Steps `ticks` more ticks. */
   settle(ticks: number): void;
 }

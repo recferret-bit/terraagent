@@ -1,4 +1,4 @@
-import { lerpAngle, type Pose } from '../../features/entities/blend';
+import { lerpAngle, type Pose } from '../../features/shared/scene3d';
 
 /**
  * Smooth unit motion for the online scene. The sim moves a unit a fixed distance per tick along its route; views reach
@@ -31,15 +31,23 @@ export class MotionTrack {
   get length(): number { return this.s.length; }
   get newestTick(): number { return this.s.length ? this.s[this.s.length - 1].tick : -Infinity; }
 
-  /** Adds the pose at `tick`: replaces a sample at the same tick, inserts an older one in order, appends a newer one. */
-  push(p: TickPose): void {
+  /**
+   * Adds the pose at `tick`: replaces a sample at the same tick, inserts an older one in order, appends a newer one.
+   * Returns the correction in tiles: how far a replaced sample (a predicted guess the confirmed view now overrides)
+   * moved; 0 when nothing was replaced.
+   */
+  push(p: TickPose): number {
     const s = this.s;
     if (s.length && p.tick < this.newestTick - RESYNC_TICKS) s.length = 0;
     let i = s.length;
     while (i > 0 && s[i - 1].tick > p.tick) i--;
-    if (i > 0 && s[i - 1].tick === p.tick) s[i - 1] = { ...p };
-    else s.splice(i, 0, { ...p });
+    let moved = 0;
+    if (i > 0 && s[i - 1].tick === p.tick) {
+      moved = Math.hypot(p.x - s[i - 1].x, p.y - s[i - 1].y);
+      s[i - 1] = { ...p };
+    } else s.splice(i, 0, { ...p });
     if (s.length > CAPACITY) s.splice(0, s.length - CAPACITY);
+    return moved;
   }
 
   /** Drops samples after `tick` (a predicted future that a rejected command made wrong). */

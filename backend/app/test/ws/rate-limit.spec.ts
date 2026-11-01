@@ -22,13 +22,14 @@ describe('per-player command rate limit (ingress)', () => {
     const planets = { submit: async (_p: string, c: unknown) => { submitted.push(c); return { ok: true, commandId: 'x', appliedAtTick: 1 }; } };
     const ingress = new SimCommandIngress({ planets: planets as never, flags: { gate: () => null }, registry: new Registry(), production: false, rateLimit: { perSecond: 1, burst: 3, now: () => 0 } });
     const codes: Array<string | undefined> = [];
+    const handled: Promise<void>[] = [];
     for (let i = 0; i < 5; i++) {
-      ingress.handle(
+      handled.push(ingress.handle(
         { playerId: 'p', planetId: 'pl', reply: (m) => codes.push((m as { t: string; d: { code?: string } }).d.code ?? (m as { t: string }).t) },
         { v: 1, t: 'cmd', id: `cm_${i}`, d: { kind: 'dev.ping', args: {} } } as never,
-      );
+      ));
     }
-    await new Promise((r) => setTimeout(r, 5));
+    await Promise.all(handled); // each command was rejected or handed to its planet (BE-23: no fixed wait)
     expect(submitted).toHaveLength(3);
     expect(codes.filter((c) => c === 'rate_limited')).toHaveLength(2);
   });

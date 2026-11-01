@@ -4,6 +4,8 @@ import { BiomeMaterialRegistry, ShaderPluginRegistry, type ShaderModifierPlugin 
 import {
   VERT_COMMON, vertBeginVertex, FRAG_COMMON, fragColor, FRAG_ROUGHNESS, FRAG_METALNESS, FRAG_RIM,
 } from './unified/shaderChunks';
+import { injectAll } from './shaderInject';
+import './unified/buildScaffold';
 
 export { BiomeMaterialRegistry, ShaderPluginRegistry };
 export type { BiomeWeatheringPreset, ShaderModifierPlugin } from './unified/registries';
@@ -19,14 +21,13 @@ export interface UnifiedColonyMaterialUniforms {
   uTime: THREE.IUniform<number>;
   uWalkWeight: THREE.IUniform<number>;
   uWorkWeight: THREE.IUniform<number>;
-  uBuildProgress: THREE.IUniform<number>;
-  uBuildStage: THREE.IUniform<number>;
   uBiomeDustColor: THREE.IUniform<THREE.Color>;
   uRimTint: THREE.IUniform<THREE.Color>;
   uWeatheringHeight: THREE.IUniform<number>;
   uWeatheringIntensity: THREE.IUniform<number>;
   uTriplanarScale: THREE.IUniform<number>;
   uRimStrength: THREE.IUniform<number>;
+  /** Plugin uniforms, e.g. `uBuildStage` / `uBuildHeight` of the `buildScaffold` modifier. */
   [key: string]: THREE.IUniform<any>;
 }
 
@@ -43,8 +44,6 @@ export function createUnifiedColonyMaterial(
     uTime: { value: 0 },
     uWalkWeight: { value: 1.0 },
     uWorkWeight: { value: 0.0 },
-    uBuildProgress: { value: 1.0 },
-    uBuildStage: { value: 1.0 },
     uBiomeDustColor: { value: new THREE.Color(biome.dustColor) },
     uRimTint: { value: new THREE.Color(biome.rimTint) },
     uWeatheringHeight: { value: biome.weatheringHeight },
@@ -58,9 +57,8 @@ export function createUnifiedColonyMaterial(
     .filter((p): p is ShaderModifierPlugin => Boolean(p));
 
   for (const plugin of activePlugins) {
-    if (plugin.uniforms) {
-      Object.assign(uniforms, plugin.uniforms);
-    }
+    if (plugin.uniforms) Object.assign(uniforms, plugin.uniforms);
+    if (plugin.createUniforms) Object.assign(uniforms, plugin.createUniforms());
   }
 
   const material = new THREE.MeshStandardMaterial({
@@ -73,15 +71,17 @@ export function createUnifiedColonyMaterial(
 
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
-    shader.vertexShader = shader.vertexShader
-      .replace('#include <common>', VERT_COMMON)
-      .replace('#include <begin_vertex>', vertBeginVertex(joinPlugins((p) => p.vertexTransformChunk)));
-    shader.fragmentShader = shader.fragmentShader
-      .replace('#include <common>', FRAG_COMMON)
-      .replace('#include <color_fragment>', fragColor(joinPlugins((p) => p.fragmentColorChunk)))
-      .replace('#include <roughnessmap_fragment>', FRAG_ROUGHNESS)
-      .replace('#include <metalnessmap_fragment>', FRAG_METALNESS)
-      .replace('#include <opaque_fragment>', FRAG_RIM);
+    shader.vertexShader = injectAll(shader.vertexShader, [
+      ['#include <common>', VERT_COMMON],
+      ['#include <begin_vertex>', vertBeginVertex(joinPlugins((p) => p.vertexTransformChunk))],
+    ], 'unified colony vertex');
+    shader.fragmentShader = injectAll(shader.fragmentShader, [
+      ['#include <common>', `${FRAG_COMMON}\n${joinPlugins((p) => p.fragmentDeclarations)}`],
+      ['#include <color_fragment>', fragColor(joinPlugins((p) => p.fragmentColorChunk))],
+      ['#include <roughnessmap_fragment>', FRAG_ROUGHNESS],
+      ['#include <metalnessmap_fragment>', FRAG_METALNESS],
+      ['#include <opaque_fragment>', FRAG_RIM],
+    ], 'unified colony fragment');
   };
 
   return { material, uniforms };

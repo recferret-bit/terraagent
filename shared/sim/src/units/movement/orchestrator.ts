@@ -113,7 +113,7 @@ function routeFrom(state: PlanetState, row: number, path: readonly { q: number; 
   const atStart = x === path[0].q && y === path[0].r;
   const towardSecond = path.length > 1 && hexDistance(x, y, path[1].q, path[1].r) < 1 - 1e-6;
   const startIdx = hexIndex(state.grid.radius).indexOf(path[0].q, path[0].r);
-  const startBlocked = path.length > 1 && (pathBlockedFor(state, mobileStats(cols.kind[row], ctx.data)?.profile)?.(startIdx) ?? false);
+  const startBlocked = path.length > 1 && (pathBlockedFor(state, mobileStats(cols.kind[row], ctx.data)?.profile, -1, ctx.data)?.(startIdx) ?? false);
   return atStart || towardSecond || startBlocked ? path.slice(1) : path.slice();
 }
 
@@ -166,7 +166,7 @@ export function runMovement(state: PlanetState, ctx: StepContext): number[] {
     if (!stats) continue;
     const before = m.next;
     const here = hexIndex(state.grid.radius).indexOf(state.entities.cols.q[row], state.entities.cols.r[row]);
-    const res = advanceAlongRoute(state, row, m, stats, ctx, pathBlockedFor(state, stats.profile, here));
+    const res = advanceAlongRoute(state, row, m, stats, ctx, pathBlockedFor(state, stats.profile, here, ctx.data));
     if (m.next !== before) changed = true;
     if (res === 'arrived') {
       m.status = 'arrived';

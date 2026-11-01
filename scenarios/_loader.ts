@@ -1,4 +1,4 @@
-import { parseWaves } from '@terra/contracts';
+import { parseCommandArgs, parseWaves } from '@terra/contracts';
 import { createPlanet, SimHost, type LedgerPosting, type PlanetState } from '@terra/sim';
 import type { ScenarioApi, ScenarioDef } from './_define';
 import { SCENARIOS } from './index.generated';
@@ -17,6 +17,11 @@ export interface CreateScenarioOptions {
   readonly planetId?: string;
   /** Wave flags the host runs with; intersected with the scenario's waves (default: the scenario's waves). */
   readonly flags?: Iterable<string>;
+  /**
+   * Hidden-ground secret (D-38, WE-07). The server passes a fresh `randomUUID()` so clients cannot rebuild the buried
+   * layers from the public seed; browser and CLI hosts leave it out.
+   */
+  readonly worldSalt?: string;
 }
 
 export interface ScenarioPlanet {
@@ -26,13 +31,16 @@ export interface ScenarioPlanet {
   readonly setupPostings: readonly LedgerPosting[];
 }
 
-function apiFor(host: SimHost): ScenarioApi {
+/** The `api` a scenario's `build` gets for `host` (exported for tests). */
+export function apiFor(host: SimHost): ScenarioApi {
   let n = 0;
   return {
     get planet(): PlanetState { return host.state; },
-    command(kind, args) {
+    command(kind, args, colonyIndex = null) {
+      const parsed = parseCommandArgs(kind, args);
+      if (!parsed.success) throw new Error(`scenario command ${kind} has invalid args: ${parsed.error.message}`);
       const commandId = `scn-${++n}`;
-      host.submit({ colonyIndex: null, source: 'dev', commandId, kind, args });
+      host.submit({ colonyIndex, source: 'dev', commandId, kind, args: parsed.data });
       const res = host.step(1);
       const o = res.outcomes.find((x) => x.commandId === commandId);
       if (!o || o.code) throw new Error(`scenario command ${kind} rejected: ${o?.code ?? 'not applied'}`);
@@ -52,6 +60,7 @@ export function createScenarioPlanet(id: string, opts: CreateScenarioOptions = {
     type: scenario.planet.type, seed: scenario.seed, planetId: opts.planetId,
     ...(scenario.planet.planetType ? { planetType: scenario.planet.planetType } : {}),
     ...(scenario.planet.radius ? { radius: scenario.planet.radius } : {}),
+    ...(opts.worldSalt ? { worldSalt: opts.worldSalt } : {}),
   });
   const host = new SimHost({ flags });
   host.load(state);

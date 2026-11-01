@@ -19,7 +19,7 @@ export class ResourceViewer3D {
   private mesh: ArchetypeMesh | null = null;
   private born = 0; private time = 0; private first = true;
 
-  constructor(private readonly stageEl: HTMLElement, private readonly tagEl: HTMLElement | null) {
+  constructor(stageEl: HTMLElement, private readonly tagEl: HTMLElement | null) {
     const vp = this.vp = createColonyViewport(stageEl);
     const { scene, camera } = vp;
     camera.near = 2; camera.far = 150; camera.updateProjectionMatrix(); // tight depth range: no z-fighting on the pedestal

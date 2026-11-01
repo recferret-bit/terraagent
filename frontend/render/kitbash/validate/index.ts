@@ -3,6 +3,7 @@ export type { ModelInput, PartDef, Report, Issue, Severity, PartStat, PairStat, 
 export { checkAppearance, labOfHex, deltaE, roleOf } from './appearance';
 export { extractArchetype } from './extract';
 export { formatReport } from './format';
+export { groundContact, type GroundContact } from './groundContact';
 
 import { extractArchetype } from './extract';
 import { validateModel, type ValidatorOptions } from './ModelValidator';

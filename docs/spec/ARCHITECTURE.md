@@ -287,7 +287,7 @@ JSON in v1; MessagePack if the load test shows more than 30 KB/s per socket. Clo
 | `PICKER_HIDE_BEFORE_CLOSE_MIN` | `15` | lobby |
 | `PLANET_TYPES_ENABLED` | `desert,ocean,temperate` (D-33; hackathon: `temperate`) | lobby |
 | `TA_BALANCE_OVERRIDES` | unset (path to `balance.overrides.json`, merged over the data tables at `compileData`; D-35) | game / sim host |
-| `ACCESS_JWT_TTL_M` / `REFRESH_TTL_D` | `15` / `30` | api |
+| `ACCESS_JWT_TTL_M` / `REFRESH_TTL_D` | `15` / `30` (W01: constants in `core/auth`, not env vars yet) | api |
 | `AWAY_AFTER_S` | `60` | game |
 | `SIM_THREADS` | `cores − 1` | game |
 | `TICK_MS` | `200` (5 TPS active) | game / sim |

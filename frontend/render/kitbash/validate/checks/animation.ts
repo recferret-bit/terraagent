@@ -12,10 +12,12 @@ const samePivot = (a: [number, number, number], b: [number, number, number]) =>
   Math.abs(a[0] - b[0]) < 1e-4 && Math.abs(a[1] - b[1]) < 1e-4 && Math.abs(a[2] - b[2]) < 1e-4;
 const sameSpinAxis = (a: [number, number, number], b: [number, number, number]) =>
   Math.abs(a[0] - b[0]) < 1e-4 && Math.abs(a[2] - b[2]) < 1e-4;
+// Bob (2) and recoil (3) phases both depend on pivot.x (shader: sin(t + pivot.x * k)), so equal pivot.x = one rig.
+const phaseByPivotX = (t: number) => t % 10 === 2 || t % 10 === 3;
 const sameRig = (a: P, b: P) =>
   a.def.animType === b.def.animType &&
-  (a.def.animType === 3 || a.def.animType === 8 || a.def.animType === 9 ||
-    (a.def.animType % 10 === 2 ? Math.abs(a.def.pivot[0] - b.def.pivot[0]) < 1e-4 :
+  (a.def.animType === 8 || a.def.animType === 9 ||
+    (phaseByPivotX(a.def.animType) ? Math.abs(a.def.pivot[0] - b.def.pivot[0]) < 1e-4 :
       a.def.animType % 10 === 1 ? sameSpinAxis(a.def.pivot, b.def.pivot) : samePivot(a.def.pivot, b.def.pivot)));
 const isGait = (t: number) => { const b = t % 10; return (b >= 4 && b <= 6) || b === 8 || b === 9; };
 const inSync = (a: P, b: P) =>
@@ -36,7 +38,7 @@ function coupledPair(ta: number, tb: number, pa: [number, number, number], pb: [
 
 function validMount(a: P, b: P, tol: number): boolean {
   if (sameRig(a, b)) return true;
-  if (b.def.kind === 'TubeGeometry' && b.def.animType !== a.def.animType && !/tendril/i.test(b.def.name)) return false;
+  if (b.def.kind === 'TubeGeometry' && b.def.animType !== a.def.animType && b.def.role !== 'whip') return false;
   if (b.def.animType > 0) return coupledPair(a.def.animType, b.def.animType, a.def.pivot, b.def.pivot);
   if (a.def.animType === 1) {
     const [px, , pz] = a.def.pivot;

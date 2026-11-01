@@ -1,10 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import type { SimCommandV1 } from '@terra/contracts';
 import {
-  allModules, buildPipeline, createPlanet, diffSince, effectiveOverrides, getColonyStock, mergeOverrides, restore, snapshot, step, tune,
-  type BalanceOverrides, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent, type SimModule, type TuneRequest,
+  allModules, buildPipeline, createPlanet, diffSince, effectiveOverrides, getColonyStock, mergeOverrides, nextLandingSite, restore, snapshot, step,
+  StepError, tune,
+  type BalanceOverrides, type CommandOutcome, type LedgerPosting, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent,
+  type SimModule, type TuneRequest,
 } from '@terra/sim';
-import type { LoadMsg, PassStat, Post, PlanetStats, ToThread } from './protocol';
+import { type LoadMsg, type PassStat, type Post, type PlanetStats, type ToThread, W00_PLANET_TYPE } from './protocol';
 
 /** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
 export interface SchedulerView {
@@ -95,6 +97,7 @@ export class PlanetHost {
       case 'snapshotNow': return this.snapshotNow(msg.planetId);
       case 'fullState': return this.fullState(msg.planetId, msg.reqId);
       case 'tune': return this.tune(msg.planetId, msg.reqId, msg.req);
+      case 'landingSite': return this.landingSite(msg.planetId, msg.reqId, msg.colony);
       case 'ctl': return this.ctl(msg);
     }
   }
@@ -103,7 +106,7 @@ export class PlanetHost {
     const state = msg.snapshot
       ? restore(msg.snapshot)
       : createPlanet({
-          type: msg.params?.type ?? 'flat',
+          type: msg.params?.type ?? W00_PLANET_TYPE,
           seed: msg.params?.seed ?? msg.planetId,
           planetId: msg.planetId,
           radius: msg.params?.radius,
@@ -127,20 +130,64 @@ export class PlanetHost {
     p.pending.push(cmd);
   }
 
-  /** Steps one planet by `dt` ticks: applies queued commands, answers them, publishes events and the delta. */
-  stepPlanet(planetId: string, dt: number): void {
+  /**
+   * Steps one planet by `dt` ticks: applies queued commands, answers them, publishes events and the delta. A step that
+   * throws (a handler or system bug) leaves the state half-changed. Like `SimHost.step` (LED-09), what the failed step
+   * already did still leaves the thread: its postings (`ledger`, so the journal explains `col.stock`) and the outcomes
+   * it had produced (`StepError`); its other commands, and those still queued, are rejected `internal`. Then the planet
+   * is dropped from this thread and `planetFailed` tells the main thread, which may restore its last snapshot (BE-12).
+   * Every command gets exactly one answer. Returns false when the planet failed.
+   */
+  stepPlanet(planetId: string, dt: number): boolean {
     const p = this.planets.get(planetId);
-    if (!p) return;
+    if (!p) return true;
     const cmds = p.pending.splice(0);
-    const r = step(p.state, cmds, dt, p.pipeline);
+    let r: ReturnType<typeof step>;
+    try {
+      r = step(p.state, cmds, dt, p.pipeline);
+    } catch (e) {
+      this.fail(planetId, p, cmds, e);
+      return false;
+    }
     this.steps++;
     // Every step's postings leave right away (subscribed or not): the server journal must never miss one (D-34).
-    if (r.postings.length) this.post({ t: 'ledger', planetId, tick: r.stats.tick, postings: r.postings });
-    for (const o of r.outcomes) {
-      if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick });
+    this.answer(planetId, r.stats.tick, r.postings, r.outcomes);
+    this.publish(planetId, p, r.events);
+    return true;
+  }
+
+  /** Posts a step's postings (`ledger`), then one `ack` / `reject` (with the sim's `detail`, GP-31) per outcome. */
+  private answer(planetId: string, tick: number, postings: readonly LedgerPosting[], outcomes: readonly CommandOutcome[]): void {
+    if (postings.length) this.post({ t: 'ledger', planetId, tick, postings });
+    for (const o of outcomes) {
+      if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick, ...(o.detail ? { detail: o.detail } : {}) });
       else this.post({ t: 'ack', planetId, commandId: o.commandId, appliedAtTick: o.appliedAtTick });
     }
-    this.publish(planetId, p, r.events);
+  }
+
+  private fail(planetId: string, p: Planet, cmds: readonly SimCommandV1[], e: unknown): void {
+    this.planets.delete(planetId);
+    const answered = new Set<string>();
+    if (e instanceof StepError) {
+      // The ledger message must precede `planetFailed`: main drops the planet's journal when it hears the planet is down.
+      this.answer(planetId, e.tick, e.postings, e.outcomes);
+      for (const o of e.outcomes) answered.add(o.commandId);
+    }
+    for (const c of [...cmds, ...p.pending]) {
+      if (!answered.has(c.commandId)) this.post({ t: 'reject', planetId, commandId: c.commandId, code: 'internal' });
+    }
+    this.post({ t: 'planetFailed', planetId, message: e instanceof Error ? e.message : String(e) });
+  }
+
+  /** Reply to `landingSite`: the landing planner on the live state, with the planet's compiled data (LED-14). */
+  private landingSite(planetId: string, reqId: number, colony: number): void {
+    const p = this.planets.get(planetId);
+    if (!p) return this.post({ t: 'landingSite', planetId, reqId, answer: { ok: false, code: 'planet_not_loaded' } });
+    const next = nextLandingSite(p.state, colony, { slotIndex: colony, data: p.pipeline.config.data });
+    const answer = next.ok
+      ? { ok: true as const, q: next.site.q, r: next.site.r, ...(next.site.slot ? { slotIndex: next.site.slot.index } : {}) }
+      : { ok: false as const, code: next.code };
+    this.post({ t: 'landingSite', planetId, reqId, answer });
   }
 
   private setSubscribed(planetId: string, p: Planet, on: boolean): void {
@@ -187,11 +234,7 @@ export class PlanetHost {
 
   /** Steps every loaded planet once (tests/tools); the thread's `PlanetScheduler` does the timing. */
   stepAll(dt = 1): void {
-    for (const id of [...this.planets.keys()]) {
-      try { this.stepPlanet(id, dt); } catch (e) {
-        this.post({ t: 'error', thread: this.thread, planetId: id, message: e instanceof Error ? e.message : String(e) });
-      }
-    }
+    for (const id of [...this.planets.keys()]) this.stepPlanet(id, dt);
   }
 
   private snapshotNow(planetId?: string): void {

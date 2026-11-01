@@ -3,7 +3,7 @@ import { createArchetypeMesh, setArchetypeBuildProgress, tickArchetypeMesh } fro
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import { ENTITY_KIND, ENTITY_STATE, TICK_MS } from '@terra/sim';
-import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
+import { forEachEntity, type ClientView, type EntityRow } from '../../store/replica/viewCodec';
 import { MotionTrack, RenderClock } from './entityMotion';
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
@@ -51,7 +51,8 @@ export function archetypeForKind(kind: number): string {
   if (kind === ENTITY_KIND.hq) return 'robot.hero';
   if (kind === ENTITY_KIND.pod) return 'ship.dropPod';
   if (kind === ENTITY_KIND.commandHub) return 'building.commandHub';
-  return 'robot.scout';
+  // devProbe (W00 test entity) and any kind without its own model: a registered unit archetype (XC-25)
+  return 'robot.builder';
 }
 
 function hubBuildProgressForState(state: number, progress: number): number {
@@ -97,6 +98,8 @@ export class EntityMeshes {
   private biomeKey = 'forestRock';
   private readonly clock = new RenderClock(TICK_MS / 1000);
   private dropPredictedFuture = false;
+  /** Called with the largest pose correction (tiles) of a view that moved an already drawn sample (dev net stats). */
+  onCorrection: ((tiles: number) => void) | null = null;
 
   constructor(
     private readonly scene: THREE.Scene,
@@ -220,29 +223,23 @@ export class EntityMeshes {
     this.biomeKey = biomeKey;
     this.clock.observe(Math.min(confirmedTick, view.tick));
     const seen = new Set<number>();
-    const buf = view.entities;
-    const hasEntityLayer = Boolean(this.scene.getObjectByName('entities'));
 
     let ownedPodDescending = false;
     let ownedPodProgress = 1;
-    for (let i = 0; i < view.count; i++) {
-      const o = i * ENTITY_STRIDE;
-      if (buf[o + 1] === ENTITY_KIND.pod && buf[o + 2] === this.ownerColonyIndex) {
-        ownedPodDescending = buf[o + 10] === ENTITY_STATE.descending;
-        ownedPodProgress = buf[o + 11] ?? 1;
-        break;
-      }
-    }
+    forEachEntity(view.entities, view.count, (e) => {
+      if (e.kind !== ENTITY_KIND.pod || e.owner !== this.ownerColonyIndex) return;
+      ownedPodDescending = e.state === ENTITY_STATE.descending;
+      ownedPodProgress = e.progress;
+      return false;
+    });
     const tdState = this.podTouchdown.computeState(ownedPodDescending, ownedPodProgress);
 
-    for (let i = 0; i < view.count; i++) {
-      const o = i * ENTITY_STRIDE;
-      const id = buf[o];
-      const kind = buf[o + 1];
-      if (hasEntityLayer && kind === ENTITY_KIND.devProbe) continue;
-      seen.add(id);
-      this.upsertEntity(buf, o, terrain, tdState, view.tick);
-    }
+    let correction = 0;
+    forEachEntity(view.entities, view.count, (e) => {
+      seen.add(e.id);
+      correction = Math.max(correction, this.upsertEntity(e, terrain, tdState, view.tick));
+    });
+    if (correction > 0) this.onCorrection?.(correction);
 
     for (const [id, rec] of [...this.entries]) {
       if (!seen.has(id)) {
@@ -258,26 +255,9 @@ export class EntityMeshes {
     this.updateSelectionRing();
   }
 
-  private upsertEntity(
-    buf: ArrayLike<number>,
-    o: number,
-    terrain: HexTerrain | null,
-    tdState: PodTouchdownState,
-    tick: number,
-  ): void {
-    const id = buf[o]!;
-    const kind = buf[o + 1]!;
-    const owner = buf[o + 2]!;
-    const q = buf[o + 3]!;
-    const r = buf[o + 4]!;
-    const x = buf[o + 5]!;
-    const y = buf[o + 6]!;
-    const rot = buf[o + 7]!;
-    const hp = buf[o + 8]!;
-    const hpMax = buf[o + 9]!;
-    const state = buf[o + 10]!;
-    const progress = buf[o + 11]!;
-
+  /** Returns how far (tiles) this view moved the entity's sample at `tick` (0: a new sample). */
+  private upsertEntity(e: EntityRow, terrain: HexTerrain | null, tdState: PodTouchdownState, tick: number): number {
+    const { id, kind, owner, q, r, x, y, rot, hp, hpMax, state, progress } = e;
     const [tileWx, tileWz] = tileXZ(x, y);
     const isOwnedPod = kind === ENTITY_KIND.pod && owner === this.ownerColonyIndex;
     const wx = isOwnedPod ? tileWx - POD_EGRESS_DIR.x * POD_LAND_OFFSET_M : tileWx;
@@ -291,6 +271,7 @@ export class EntityMeshes {
     let rec = this.entries.get(id);
     if (!rec) {
       const mesh = this.makeMesh(archetypeForKind(kind), this.biomeKey);
+      mesh.userData.entityId = id; // `__online.entityMeshes()` (listSceneEntities)
       mesh.position.set(wx, wy, wz);
       mesh.rotation.y = yaw;
       mesh.visible = visible;
@@ -325,7 +306,7 @@ export class EntityMeshes {
       rec.mesh.visible = visible;
       rec.targetPos.set(wx, wy, wz);
     }
-    rec.track.push({ tick, x, y, rot });
+    return rec.track.push({ tick, x, y, rot });
   }
 
   /** `dt`: animation time (warp-scaled); `realDt`: wall-clock seconds for the render clock (defaults to `dt`). */

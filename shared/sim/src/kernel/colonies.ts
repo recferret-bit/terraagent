@@ -1,7 +1,8 @@
+import { DEFAULT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import type { ColonyState, PlanetState } from './state';
 
-/** Colors given to colony records created without one, by colony index. */
-export const DEFAULT_COLONY_COLORS = [0xff6a2a, 0x2ec4b6, 0xe71d36, 0xff9f1c, 0x8338ec, 0x3a86ff] as const;
+/** Colors given to colony records created without one, by colony index: the one palette in `@terra/contracts` (GP-28). */
+export { DEFAULT_COLONY_COLORS };
 
 /**
  * The colony record at `index`, creating it (and any missing lower indices) as a `founding` colony stamped at `tick`.

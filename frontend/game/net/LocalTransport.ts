@@ -18,6 +18,9 @@ export function workerLink(worker: Pick<Worker, 'postMessage' | 'terminate'> & {
   return { post: (m) => worker.postMessage(m), onMessage: (fn) => fns.on(fn), dispose: () => worker.terminate() };
 }
 
+/** How long `dispose()` waits for the host's final save before terminating the worker. */
+export const DISPOSE_GRACE_MS = 2000;
+
 /**
  * `?host=local` transport (D-31, SIM-X-06): speaks the same protocol as `WsTransport` (`ready`, `welcome`, `delta`, `event`,
  * `cmd.ack`, `cmd.reject`, `pong`) with the authoritative engine on the other end of `link`, so `WorldStore`, prediction,
@@ -30,6 +33,7 @@ export class LocalTransport implements Transport {
   private current: ConnectionState = { phase: 'idle', attempt: 0, downSinceMs: null };
   private off: (() => void) | null = null;
   private nextReq = 1;
+  private disposed = false;
   private readonly devPending = new Map<number, { ok(v: unknown): void; fail(e: Error): void }>();
 
   constructor(private readonly link: LocalLink, private readonly opts: LocalHostOptions) {}
@@ -39,7 +43,7 @@ export class LocalTransport implements Transport {
   onState(fn: Listener<ConnectionState>): () => void { return this.states.on(fn); }
 
   start(): void {
-    if (this.off) return;
+    if (this.off || this.disposed) return;
     this.off = this.link.onMessage((m) => this.fromHost(m));
     this.setState({ phase: 'connecting' });
     this.link.post({ t: 'init', opts: this.opts });
@@ -54,8 +58,19 @@ export class LocalTransport implements Transport {
     this.setState({ phase: 'idle' });
   }
 
-  /** Releases the line (terminates the worker). */
-  dispose(): void { this.stop(); this.link.dispose(); }
+  /**
+   * Stops the host and releases the line (terminates the worker) once the host answered `stopped`, i.e. its final
+   * snapshot save settled; a host that does not answer within `DISPOSE_GRACE_MS` is terminated anyway.
+   */
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const release = () => { if (timer === null) return; clearTimeout(timer); timer = null; offStopped(); this.link.dispose(); };
+    const offStopped = this.link.onMessage((m) => { if (m.t === 'stopped') release(); });
+    timer = setTimeout(release, DISPOSE_GRACE_MS);
+    this.stop();
+  }
 
   send(msg: Outgoing): void {
     if (this.current.phase !== 'welcomed' && this.current.phase !== 'streaming') throw new Error(`cannot send ${msg.t} while ${this.current.phase}`);
@@ -85,7 +100,7 @@ export class LocalTransport implements Transport {
       if (p) m.ok ? p.ok(m.result) : p.fail(new DevServerError(m.code, m.message));
     } else if (m.t === 'error') {
       console.warn('[local host]', m.message);
-    } else this.onServer(m.msg);
+    } else if (m.t === 'server') this.onServer(m.msg);
   }
 
   private onServer(m: ServerMessage): void {

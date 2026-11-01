@@ -1,3 +1,4 @@
+import { DEPOSIT_CODES, PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
 import type { DType, FieldDef, WaveId } from '../kernel/types';
 
 /**
@@ -36,93 +37,27 @@ export const clientTileLayers = (): readonly FieldDef[] => layers.filter((l) => 
 
 export const tileLayers = (): readonly FieldDef[] => layers;
 
-/** Enum values of the base layers (tables later waves extend by appending values, never renumbering). */
-const TERRAIN_BASE = {
-  flat: 0,
-  forest: 1,
-  rock: 2,
-  slope: 3,
-  hole: 4,
-  shallow: 5,
-  deep: 6,
-} as const;
-export type TerrainKey = keyof typeof TERRAIN_BASE;
-export type TerrainCode = (typeof TERRAIN_BASE)[TerrainKey];
+/**
+ * Enum values of the base layers: the tables of `@terra/contracts/tiles/codes` (one copy, shared with the render engine,
+ * RN-06). Later waves extend them by appending values, never renumbering. Each table also answers its PascalCase keys
+ * (`TERRAIN.Flat === TERRAIN.flat`), non-enumerable so spreads and key lists see only the canonical keys.
+ */
+type PascalAliases<T> = { readonly [K in keyof T as Capitalize<K & string>]: T[K] };
 
-export const TERRAIN = Object.defineProperties(
-  { ...TERRAIN_BASE },
-  {
-    Flat: { value: 0 },
-    Forest: { value: 1 },
-    Rock: { value: 2 },
-    Slope: { value: 3 },
-    Hole: { value: 4 },
-    Shallow: { value: 5 },
-    Deep: { value: 6 },
-  },
-) as typeof TERRAIN_BASE & {
-  readonly Flat: 0;
-  readonly Forest: 1;
-  readonly Rock: 2;
-  readonly Slope: 3;
-  readonly Hole: 4;
-  readonly Shallow: 5;
-  readonly Deep: 6;
-};
+function withPascalAliases<T extends Record<string, number>>(table: T): T & PascalAliases<T> {
+  const out = { ...table };
+  for (const [key, value] of Object.entries(table)) Object.defineProperty(out, key[0].toUpperCase() + key.slice(1), { value });
+  return out as T & PascalAliases<T>;
+}
 
-const PREP_BASE = {
-  wild: 0,
-  flat: 1,
-  prepared: 2,
-  irrigated: 3,
-  living: 4,
-  ridge: 5,
-  moat: 6,
-} as const;
-export type PrepKey = keyof typeof PREP_BASE;
-export type PrepCode = (typeof PREP_BASE)[PrepKey];
+export type TerrainKey = keyof typeof TERRAIN_CODES;
+export type TerrainCode = (typeof TERRAIN_CODES)[TerrainKey];
+export const TERRAIN = withPascalAliases(TERRAIN_CODES);
 
-export const PREP = Object.defineProperties(
-  { ...PREP_BASE },
-  {
-    Wild: { value: 0 },
-    Flat: { value: 1 },
-    Prepared: { value: 2 },
-    Irrigated: { value: 3 },
-    Living: { value: 4 },
-    Ridge: { value: 5 },
-    Moat: { value: 6 },
-  },
-) as typeof PREP_BASE & {
-  readonly Wild: 0;
-  readonly Flat: 1;
-  readonly Prepared: 2;
-  readonly Irrigated: 3;
-  readonly Living: 4;
-  readonly Ridge: 5;
-  readonly Moat: 6;
-};
+export type PrepKey = keyof typeof PREP_CODES;
+export type PrepCode = (typeof PREP_CODES)[PrepKey];
+export const PREP = withPascalAliases(PREP_CODES);
 
-const DEPOSIT_BASE = {
-  none: 0,
-  metals: 1,
-  minerals: 2,
-  oil: 3,
-} as const;
-export type DepositKey = keyof typeof DEPOSIT_BASE;
-export type DepositCode = (typeof DEPOSIT_BASE)[DepositKey];
-
-export const DEPOSIT = Object.defineProperties(
-  { ...DEPOSIT_BASE },
-  {
-    None: { value: 0 },
-    Metals: { value: 1 },
-    Minerals: { value: 2 },
-    Oil: { value: 3 },
-  },
-) as typeof DEPOSIT_BASE & {
-  readonly None: 0;
-  readonly Metals: 1;
-  readonly Minerals: 2;
-  readonly Oil: 3;
-};
+export type DepositKey = keyof typeof DEPOSIT_CODES;
+export type DepositCode = (typeof DEPOSIT_CODES)[DepositKey];
+export const DEPOSIT = withPascalAliases(DEPOSIT_CODES);

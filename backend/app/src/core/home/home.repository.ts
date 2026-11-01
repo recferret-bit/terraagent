@@ -1,44 +1,16 @@
-import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import type { PlanetType } from '@terra/contracts';
+import { newId, type PlanetType } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
-import { DEV_PLANET_SEED as SIM_DEV_PLANET_SEED, DEV_PLANET_TYPE as SIM_DEV_PLANET_TYPE, devPlanetIdFor, devPlanetTypeOf, type DevPlanetType } from '@terra/sim';
+import {
+  DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, devPlanetIdFor, devPlanetTypeOf, MAX_COLONIES_PER_PLANET, type DevPlanetType,
+} from '@terra/sim';
 import { PRISMA } from '../../db/db.module';
+import { persistenceEnabled } from '../persistence';
 import { APP_ENV, type AppEnv } from '../tokens';
+import { type ColonyRecord, type HomeStore, MemoryHomeStore, type PlanetRecord } from './home.store';
+import { PrismaHomeStore } from './prisma-home.store';
 
-export const DEV_PLANET_CAPACITY = 5;
-export const DEV_PLANET_RADIUS = 56;
-/** Shared with the client's local fallback (`@terra/sim`): one source for the dev planet's type and seed (D-38). */
-export const DEV_PLANET_SEED: string = SIM_DEV_PLANET_SEED;
-export const DEV_PLANET_TYPE: PlanetType = SIM_DEV_PLANET_TYPE;
-
-export interface PlanetRecord {
-  readonly id: string;
-  readonly name: string;
-  readonly type: PlanetType;
-  readonly seed: string;
-  readonly radius: number;
-  readonly state: string;
-  readonly status: string;
-  readonly capacity: number;
-  readonly seatsTaken: number;
-  readonly createdAt: Date;
-}
-
-export interface ColonyRecord {
-  readonly id: string;
-  readonly playerId: string;
-  readonly planetId: string;
-  readonly colonyIndex: number;
-  readonly name: string;
-  readonly color: number;
-  readonly status: string;
-  readonly state: string;
-  readonly spawnQ: number;
-  readonly spawnR: number;
-  readonly spawn: { readonly q: number; readonly r: number };
-  readonly createdAt: Date;
-}
+export type { ColonyRecord, PlanetRecord } from './home.store';
 
 export interface CreatePlanetInput {
   readonly id: string;
@@ -62,48 +34,43 @@ export interface CreateColonyInput {
   readonly spawnR: number;
 }
 
-function normalizePlanetType(type: string | undefined): PlanetType {
-  if (type === 'desert' || type === 'ocean' || type === 'temperate') {
-    return type;
-  }
-  return DEV_PLANET_TYPE;
-}
-
 function devPlanetName(type: DevPlanetType, index: number): string {
   const base = type === DEV_PLANET_TYPE ? 'Dev Planet' : `Dev Planet (${type})`;
   return index <= 1 ? base : `${base} ${index}`;
 }
 
-function generateColonyId(): string {
-  return `col_${Date.now().toString(36)}_${randomBytes(6).toString('hex')}`;
+/** Index of a dev planet id in its type's family (`devPlanetIdFor`'s inverse), or 0 when it is not one of them. */
+export function devPlanetIndexOf(type: DevPlanetType, id: string): number {
+  const base = devPlanetIdFor(type, 1);
+  if (id === base) return 1;
+  const rest = id.startsWith(`${base}_`) ? id.slice(base.length + 1) : '';
+  return /^\d+$/.test(rest) ? Number(rest) : 0;
 }
 
+const isEnded = (p: PlanetRecord) => p.status === 'ENDED' || p.status === 'PLANET_ENDED';
+/** Colony indices a planet can seat: its capacity, never more than the sim lands (`MAX_COLONIES_PER_PLANET`, else `planet_full`). */
+const seatsOf = (p: PlanetRecord) => Math.min(p.capacity, MAX_COLONIES_PER_PLANET);
+
+/**
+ * Planet and colony rows. The store is chosen once: Postgres when persistence is on (`persistenceEnabled`: colony rows
+ * persist together with the planet snapshots, BE-14), else memory. Database errors propagate (BE-03). Colonies read or
+ * written through here are also kept in a cache for the synchronous lookups of the WS ingress and the progression
+ * forwarder; the cache is never consulted when the store answered.
+ */
 @Injectable()
 export class HomeRepository {
-  private readonly planetsById = new Map<string, PlanetRecord>();
-  private readonly coloniesById = new Map<string, ColonyRecord>();
-  readonly dbEnabled: boolean;
+  private readonly store: HomeStore;
+  private readonly cache = new Map<string, ColonyRecord>();
 
   constructor(
-    @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
+    @Optional() @Inject(PRISMA) prisma?: PrismaClient,
     @Optional() @Inject(APP_ENV) env?: AppEnv,
   ) {
-    this.dbEnabled = Boolean(prisma) && (!env || env.NODE_ENV !== 'test' || Boolean(env.DATABASE_URL));
+    this.store = prisma && env && persistenceEnabled(env) ? new PrismaHomeStore(prisma) : new MemoryHomeStore();
   }
 
-  async findPlanetById(id: string): Promise<PlanetRecord | null> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.planet.findUnique({ where: { id } });
-        if (row) {
-          return this.saveMemPlanet(this.fromDbPlanet(row));
-        }
-        return null;
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    return this.planetsById.get(id) ?? null;
+  findPlanetById(id: string): Promise<PlanetRecord | null> {
+    return this.store.findPlanet(id);
   }
 
   /**
@@ -113,374 +80,120 @@ export class HomeRepository {
   private async fixDevPlanetType(planet: PlanetRecord): Promise<PlanetRecord> {
     const want = devPlanetTypeOf(planet.id);
     if (!want || planet.type === want) return planet;
-    if ((await this.listColoniesByPlanetId(planet.id)).length > 0) return planet;
-    if (this.dbEnabled && this.prisma) {
-      const row = await this.prisma.planet.update({ where: { id: planet.id }, data: { type: want } }).catch(() => null);
-      if (row) return this.saveMemPlanet(this.fromDbPlanet(row, planet.radius));
-    }
-    return this.saveMemPlanet({ ...planet, type: want });
+    if ((await this.store.listColonies(planet.id)).length > 0) return planet;
+    return (await this.store.setPlanetType(planet.id, want)) ?? planet;
   }
 
   async upsertDevPlanet(id: string, input: Partial<CreatePlanetInput> = {}): Promise<PlanetRecord> {
-    const existing = await this.findPlanetById(id);
+    const existing = await this.store.findPlanet(id);
     if (existing) return this.fixDevPlanetType(existing);
-
-    const name = input.name ?? (id === 'pl_dev' ? 'Dev Planet' : id);
-    const type = input.type ?? devPlanetTypeOf(id) ?? DEV_PLANET_TYPE; // the id names its family's type
-    const seed = input.seed ?? DEV_PLANET_SEED;
-    const radius = input.radius ?? DEV_PLANET_RADIUS;
-    const state = input.state ?? 'ACTIVE';
-    const capacity = input.capacity ?? DEV_PLANET_CAPACITY;
-
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.planet.upsert({
-          where: { id },
-          update: {},
-          create: { id, name, type, seed, state, capacity, seatsTaken: 0 },
-        });
-        return this.saveMemPlanet(this.fromDbPlanet(row, radius));
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-
-    const record: PlanetRecord = {
+    return this.store.upsertPlanet({
       id,
-      name,
-      type,
-      seed,
-      radius,
-      state,
-      status: state,
-      capacity,
-      seatsTaken: 0,
-      createdAt: new Date(),
-    };
-    return this.saveMemPlanet(record);
+      name: input.name ?? (id === 'pl_dev' ? 'Dev Planet' : id),
+      type: input.type ?? devPlanetTypeOf(id) ?? DEV_PLANET_TYPE, // the id names its family's type
+      seed: input.seed ?? DEV_PLANET_SEED,
+      radius: input.radius ?? DEV_PLANET_RADIUS,
+      state: input.state ?? 'ACTIVE',
+      capacity: input.capacity ?? DEV_PLANET_CAPACITY,
+    });
   }
 
-  /** The first dev planet of `type` (one family per type: `devPlanetIdFor`) with a free seat, not in `skip`; creates it when needed. */
-  async findOrCreateOpenDevPlanet(type: DevPlanetType = DEV_PLANET_TYPE, skip?: ReadonlySet<string>): Promise<{ planet: PlanetRecord; colonyIndex: number }> {
-    for (let index = 1; index <= 1000; index++) {
-      const id = devPlanetIdFor(type, index);
-      if (skip?.has(id)) continue; // no landing site left (`HomeService`)
-      const planet = await this.upsertDevPlanet(id, {
-        name: devPlanetName(type, index),
-        type,
-        seed: DEV_PLANET_SEED,
-        radius: DEV_PLANET_RADIUS,
-        capacity: DEV_PLANET_CAPACITY,
-        state: 'ACTIVE',
-      });
-      if (planet.status === 'ENDED' || planet.status === 'PLANET_ENDED') {
-        continue;
-      }
-      const colonies = await this.listColoniesByPlanetId(planet.id);
-      const takenIndices = new Set(colonies.map((c) => c.colonyIndex));
-      for (let slot = 0; slot < planet.capacity; slot++) {
-        if (!takenIndices.has(slot)) {
-          return { planet, colonyIndex: slot };
-        }
-      }
+  /**
+   * The first dev planet of `type` (one family per type: `devPlanetIdFor`) with a free seat, not in `skip`, from one
+   * query over the family's seat counts (BE-05); the next index of the family is created when every one is full.
+   * `skipIndices` (per planet id) are colony indices that cannot land there (the sim already landed them).
+   */
+  async findOrCreateOpenDevPlanet(
+    type: DevPlanetType = DEV_PLANET_TYPE, skip?: ReadonlySet<string>, skipIndices?: ReadonlyMap<string, ReadonlySet<number>>,
+  ): Promise<{ planet: PlanetRecord; colonyIndex: number }> {
+    const family = (await this.store.listPlanets())
+      .map((p) => ({ p, index: devPlanetIndexOf(type, p.id) }))
+      .filter((f) => f.index > 0)
+      .sort((a, b) => a.index - b.index);
+    for (const { p } of family) {
+      if (skip?.has(p.id) || isEnded(p) || p.seatsTaken >= seatsOf(p)) continue;
+      const planet = await this.fixDevPlanetType(p);
+      const slot = await this.freeColonyIndex(planet, skipIndices?.get(planet.id));
+      if (slot !== undefined) return { planet, colonyIndex: slot };
     }
-    throw new Error('Unable to allocate dev planet seat');
+    const used = new Set(family.map((f) => f.index));
+    let next = 1;
+    while (used.has(next)) next++; // the first missing index: a wiped planet's id is reused
+    const planet = await this.upsertDevPlanet(devPlanetIdFor(type, next), { name: devPlanetName(type, next), type, state: 'ACTIVE' });
+    return { planet, colonyIndex: (await this.freeColonyIndex(planet, skipIndices?.get(planet.id))) ?? 0 };
+  }
+
+  private async freeColonyIndex(planet: PlanetRecord, skip?: ReadonlySet<number>): Promise<number | undefined> {
+    const taken = new Set((await this.store.listColonies(planet.id)).map((c) => c.colonyIndex));
+    for (let slot = 0; slot < seatsOf(planet); slot++) if (!taken.has(slot) && !skip?.has(slot)) return slot;
+    return undefined;
   }
 
   async findLatestColonyByPlayerId(playerId: string): Promise<ColonyRecord | null> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.colony.findFirst({
-          where: { playerId },
-          orderBy: { createdAt: 'desc' },
-        });
-        if (row) {
-          return this.saveMemColony(this.fromDbColony(row));
-        }
-        return null;
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    let latest: ColonyRecord | null = null;
-    for (const colony of this.coloniesById.values()) {
-      if (colony.playerId !== playerId) continue;
-      if (!latest || colony.createdAt.getTime() >= latest.createdAt.getTime()) {
-        latest = colony;
-      }
-    }
-    return latest;
+    return this.remember(await this.store.findLatestColony(playerId));
   }
 
-  async findColonyByPlayerId(playerId: string): Promise<ColonyRecord | null> {
-    return this.findLatestColonyByPlayerId(playerId);
-  }
-
-  async findColonyByPlayer(playerId: string): Promise<ColonyRecord | null> {
-    return this.findLatestColonyByPlayerId(playerId);
-  }
-
-  findMemColonyByPlayerAndPlanet(playerId: string, planetId: string): ColonyRecord | null {
-    let latest: ColonyRecord | null = null;
-    for (const colony of this.coloniesById.values()) {
-      if (colony.playerId !== playerId || colony.planetId !== planetId) continue;
-      if (!latest || colony.createdAt.getTime() >= latest.createdAt.getTime()) {
-        latest = colony;
-      }
-    }
-    return latest;
-  }
-
+  /** The player's colony on the planet: the cached one when known (WS ingress, every command), else from the store. */
   async findColonyByPlayerAndPlanet(playerId: string, planetId: string): Promise<ColonyRecord | null> {
-    const inMem = this.findMemColonyByPlayerAndPlanet(playerId, planetId);
-    if (inMem && !this.dbEnabled) return inMem;
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.colony.findFirst({
-          where: { playerId, planetId },
-          orderBy: { createdAt: 'desc' },
-        });
-        if (row) {
-          return this.saveMemColony(this.fromDbColony(row));
-        }
-        return null;
-      } catch {
-        // Fall through to in-memory store
-      }
+    let latest: ColonyRecord | null = null;
+    for (const c of this.cache.values()) {
+      if (c.playerId === playerId && c.planetId === planetId && (!latest || c.createdAt.getTime() >= latest.createdAt.getTime())) latest = c;
     }
-    return inMem;
+    return latest ?? this.remember(await this.store.findLatestColony(playerId, planetId));
   }
 
   async findColonyById(id: string): Promise<ColonyRecord | null> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.colony.findUnique({ where: { id } });
-        if (row) {
-          return this.saveMemColony(this.fromDbColony(row));
-        }
-        return null;
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    return this.coloniesById.get(id) ?? null;
+    return this.remember(await this.store.findColony(id));
   }
 
-  findMemColonyById(id: string): ColonyRecord | null {
-    return this.coloniesById.get(id) ?? null;
+  /** Synchronous cache lookup (progression forwarder): only colonies this process read or wrote. */
+  findCachedColonyById(id: string): ColonyRecord | null {
+    return this.cache.get(id) ?? null;
   }
 
   async listColoniesByPlanetId(planetId: string): Promise<ColonyRecord[]> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const rows = await this.prisma.colony.findMany({
-          where: { planetId },
-          orderBy: { colonyIndex: 'asc' },
-        });
-        return rows.map((r) => this.saveMemColony(this.fromDbColony(r)));
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    return [...this.coloniesById.values()]
-      .filter((c) => c.planetId === planetId)
-      .sort((a, b) => a.colonyIndex - b.colonyIndex);
+    return (await this.store.listColonies(planetId)).map((c) => this.remember(c));
   }
 
   async createColony(input: CreateColonyInput): Promise<{ colony: ColonyRecord; planet: PlanetRecord }> {
-    const id = input.id ?? generateColonyId();
-    const color = input.color ?? input.colonyIndex;
-    const status = input.status ?? 'ACTIVE';
     const basePlanet = await this.upsertDevPlanet(input.planetId);
-
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const created = await this.prisma.colony.create({
-          data: {
-            id,
-            playerId: input.playerId,
-            planetId: input.planetId,
-            colonyIndex: input.colonyIndex,
-            name: input.name,
-            color,
-            status,
-            spawnQ: input.spawnQ,
-            spawnR: input.spawnR,
-          },
-        });
-        const count = await this.prisma.colony.count({ where: { planetId: input.planetId } });
-        const updatedPlanet = await this.prisma.planet.update({
-          where: { id: input.planetId },
-          data: { seatsTaken: count },
-        });
-        return {
-          colony: this.saveMemColony(this.fromDbColony(created)),
-          planet: this.saveMemPlanet(this.fromDbPlanet(updatedPlanet, basePlanet.radius)),
-        };
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-
-    const colony: ColonyRecord = {
-      id,
-      playerId: input.playerId,
-      planetId: input.planetId,
-      colonyIndex: input.colonyIndex,
-      name: input.name,
-      color,
-      status,
-      state: status,
-      spawnQ: input.spawnQ,
-      spawnR: input.spawnR,
-      spawn: { q: input.spawnQ, r: input.spawnR },
-      createdAt: new Date(),
-    };
-    this.saveMemColony(colony);
-    const coloniesOnPlanet = [...this.coloniesById.values()].filter((c) => c.planetId === input.planetId).length;
-    const planet = this.saveMemPlanet({
-      ...basePlanet,
-      seatsTaken: coloniesOnPlanet,
+    const { colony, planet } = await this.store.createColony({
+      id: input.id ?? newId('co'), playerId: input.playerId, planetId: input.planetId, colonyIndex: input.colonyIndex,
+      name: input.name, color: input.color ?? input.colonyIndex, status: input.status ?? 'ACTIVE', spawnQ: input.spawnQ, spawnR: input.spawnR,
     });
-    return { colony, planet };
+    return { colony: this.remember(colony), planet: planet ?? basePlanet };
   }
 
   /** Removes a colony whose landing failed (seat rollback) and recounts its planet's seats. */
   async deleteColony(colonyId: string): Promise<void> {
-    const colony = this.coloniesById.get(colonyId);
-    this.coloniesById.delete(colonyId);
-    if (this.dbEnabled && this.prisma) {
-      const row = await this.prisma.colony.delete({ where: { id: colonyId } }).catch(() => null);
-      const planetId = row?.planetId ?? colony?.planetId;
-      if (planetId) {
-        const seatsTaken = await this.prisma.colony.count({ where: { planetId } });
-        await this.prisma.planet.update({ where: { id: planetId }, data: { seatsTaken } }).catch(() => null);
-      }
-    }
-    const planet = colony && this.planetsById.get(colony.planetId);
-    if (planet) this.saveMemPlanet({ ...planet, seatsTaken: Math.max(0, planet.seatsTaken - 1) });
+    this.cache.delete(colonyId);
+    await this.store.deleteColony(colonyId);
+  }
+
+  /** Dev wipe of a planet: deletes its colony rows (and their cache entries); returns how many. */
+  async deleteColoniesOfPlanet(planetId: string): Promise<number> {
+    for (const [id, c] of this.cache) if (c.planetId === planetId) this.cache.delete(id);
+    return this.store.deleteColoniesOfPlanet(planetId);
   }
 
   async setColonyStatus(colonyId: string, status: string): Promise<ColonyRecord | null> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const updated = await this.prisma.colony.update({
-          where: { id: colonyId },
-          data: { status },
-        });
-        return this.saveMemColony(this.fromDbColony(updated));
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    const existing = this.coloniesById.get(colonyId);
-    if (!existing) return null;
-    return this.saveMemColony({ ...existing, status, state: status });
+    return this.remember(await this.store.setColonyStatus(colonyId, status));
   }
 
-  async setPlanetStatus(planetId: string, status: string): Promise<PlanetRecord | null> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const updated = await this.prisma.planet.update({
-          where: { id: planetId },
-          data: { state: status },
-        });
-        return this.saveMemPlanet(this.fromDbPlanet(updated));
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    const existing = this.planetsById.get(planetId);
-    if (!existing) return null;
-    return this.saveMemPlanet({ ...existing, state: status, status });
+  setPlanetStatus(planetId: string, status: string): Promise<PlanetRecord | null> {
+    return this.store.setPlanetState(planetId, status);
   }
 
-  async listPlanets(): Promise<PlanetRecord[]> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const rows = await this.prisma.planet.findMany();
-        return rows.map((r) => this.saveMemPlanet(this.fromDbPlanet(r)));
-      } catch {
-        // Fall through
-      }
-    }
-    return [...this.planetsById.values()];
+  listPlanets(): Promise<PlanetRecord[]> {
+    return this.store.listPlanets();
   }
 
   async listColonies(): Promise<ColonyRecord[]> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const rows = await this.prisma.colony.findMany();
-        return rows.map((r) => this.saveMemColony(this.fromDbColony(r)));
-      } catch {
-        // Fall through
-      }
-    }
-    return [...this.coloniesById.values()];
+    return (await this.store.listColonies()).map((c) => this.remember(c));
   }
 
-  private fromDbPlanet(
-    row: {
-      id: string;
-      name: string;
-      type: string;
-      seed: string;
-      state: string;
-      capacity: number;
-      seatsTaken: number;
-      createdAt: Date;
-    },
-    radius = DEV_PLANET_RADIUS,
-  ): PlanetRecord {
-    return {
-      id: row.id,
-      name: row.name,
-      type: normalizePlanetType(row.type),
-      seed: row.seed,
-      radius,
-      state: row.state,
-      status: row.state,
-      capacity: row.capacity,
-      seatsTaken: row.seatsTaken,
-      createdAt: row.createdAt,
-    };
-  }
-
-  private fromDbColony(row: {
-    id: string;
-    playerId: string;
-    planetId: string;
-    colonyIndex: number;
-    name: string;
-    color: number;
-    status: string;
-    spawnQ: number;
-    spawnR: number;
-    createdAt: Date;
-  }): ColonyRecord {
-    return {
-      id: row.id,
-      playerId: row.playerId,
-      planetId: row.planetId,
-      colonyIndex: row.colonyIndex,
-      name: row.name,
-      color: row.color,
-      status: row.status,
-      state: row.status,
-      spawnQ: row.spawnQ,
-      spawnR: row.spawnR,
-      spawn: { q: row.spawnQ, r: row.spawnR },
-      createdAt: row.createdAt,
-    };
-  }
-
-  private saveMemPlanet(planet: PlanetRecord): PlanetRecord {
-    this.planetsById.set(planet.id, planet);
-    return planet;
-  }
-
-  private saveMemColony(colony: ColonyRecord): ColonyRecord {
-    this.coloniesById.set(colony.id, colony);
+  private remember<T extends ColonyRecord | null>(colony: T): T {
+    if (colony) this.cache.set(colony.id, colony);
     return colony;
   }
 }

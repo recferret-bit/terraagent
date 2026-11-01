@@ -2,204 +2,95 @@ import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import { PRISMA } from '../../db/db.module';
+import { databaseEnabled } from '../persistence';
 import { APP_ENV, type AppEnv } from '../tokens';
+import { type AuthSessionRecord, type AuthStore, MemoryAuthStore, type PlayerRecord, UniqueViolation } from './auth.store';
+import { PrismaAuthStore } from './prisma-auth.store';
 
-export interface PlayerRecord {
-  readonly id: string;
-  readonly handle: string;
-  readonly deviceSecretHash: string | null;
-  readonly createdAt: Date;
-  readonly updatedAt: Date;
-}
+export type { AuthSessionRecord, PlayerRecord } from './auth.store';
 
-export interface AuthSessionRecord {
-  readonly id: string;
-  readonly playerId: string;
-  readonly refreshTokenHash: string;
-  readonly expiresAt: Date;
-  readonly revokedAt: Date | null;
-  readonly createdAt: Date;
-}
+/** Handles tried per new player: the asked one, then suffixed variants (`Name-1A2B`) checked against the store. */
+export const HANDLE_ATTEMPTS = 8;
 
+const suffixed = (desired: string) => `${desired.slice(0, 27)}-${randomBytes(2).toString('hex').toUpperCase()}`;
+
+/**
+ * Players and refresh sessions. The store is chosen once (`databaseEnabled`): Postgres, or memory for unit tests. A
+ * database error is never hidden behind memory (BE-03): it propagates to the caller (`map-error.ts`: 500 / 409).
+ */
 @Injectable()
 export class AuthRepository {
-  private readonly playersById = new Map<string, PlayerRecord>();
-  private readonly playersBySecret = new Map<string, PlayerRecord>();
-  private readonly handles = new Set<string>();
-  private readonly sessionsById = new Map<string, AuthSessionRecord>();
-  private readonly sessionsByHash = new Map<string, AuthSessionRecord>();
-  private readonly dbEnabled: boolean;
+  private readonly store: AuthStore;
 
   constructor(
-    @Optional() @Inject(PRISMA) private readonly prisma?: PrismaClient,
+    @Optional() @Inject(PRISMA) prisma?: PrismaClient,
     @Optional() @Inject(APP_ENV) env?: AppEnv,
   ) {
-    this.dbEnabled = Boolean(prisma) && (!env || env.NODE_ENV !== 'test' || Boolean(env.DATABASE_URL));
+    this.store = prisma && databaseEnabled(env) ? new PrismaAuthStore(prisma) : new MemoryAuthStore();
   }
 
-  async findPlayerByDeviceSecretHash(deviceSecretHash: string): Promise<PlayerRecord | null> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.player.findUnique({ where: { deviceSecretHash } });
-        if (row) {
-          this.saveMemPlayer(row);
-          return row;
-        }
-        return null;
-      } catch {
-        // Fall through to in-memory store if database is unreachable
-      }
-    }
-    return this.playersBySecret.get(deviceSecretHash) ?? null;
+  findPlayerByDeviceSecretHash(deviceSecretHash: string): Promise<PlayerRecord | null> {
+    return this.store.findPlayerByDeviceSecretHash(deviceSecretHash);
   }
 
-  async findPlayerById(id: string): Promise<PlayerRecord | null> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.player.findUnique({ where: { id } });
-        if (row) {
-          this.saveMemPlayer(row);
-          return row;
-        }
-        return null;
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    return this.playersById.get(id) ?? null;
+  findPlayerById(id: string): Promise<PlayerRecord | null> {
+    return this.store.findPlayerById(id);
   }
 
+  /**
+   * Creates a player; a taken handle is retried with a suffix (at most {@link HANDLE_ATTEMPTS} tries, against the
+   * store, so it holds after a restart and across processes). A device secret registered meanwhile (two first logins
+   * at once) returns that player.
+   */
   async createPlayer(input: { id: string; handle: string; deviceSecretHash: string | null }): Promise<PlayerRecord> {
-    const handle = this.uniqueHandle(input.handle);
-    if (this.dbEnabled && this.prisma) {
+    let handle = input.handle;
+    for (let attempt = 1; ; attempt++) {
       try {
-        const row = await this.prisma.player.create({
-          data: { id: input.id, handle, deviceSecretHash: input.deviceSecretHash },
-        });
-        this.saveMemPlayer(row);
-        return row;
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    const now = new Date();
-    const record: PlayerRecord = {
-      id: input.id,
-      handle,
-      deviceSecretHash: input.deviceSecretHash,
-      createdAt: now,
-      updatedAt: now,
-    };
-    this.saveMemPlayer(record);
-    return record;
-  }
-
-  async createSession(input: { id: string; playerId: string; refreshTokenHash: string; expiresAt: Date }): Promise<AuthSessionRecord> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.authSession.create({
-          data: {
-            id: input.id,
-            playerId: input.playerId,
-            refreshTokenHash: input.refreshTokenHash,
-            expiresAt: input.expiresAt,
-          },
-        });
-        this.saveMemSession(row);
-        return row;
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    const record: AuthSessionRecord = {
-      id: input.id,
-      playerId: input.playerId,
-      refreshTokenHash: input.refreshTokenHash,
-      expiresAt: input.expiresAt,
-      revokedAt: null,
-      createdAt: new Date(),
-    };
-    this.saveMemSession(record);
-    return record;
-  }
-
-  async findSessionByTokenHash(refreshTokenHash: string): Promise<AuthSessionRecord | null> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const row = await this.prisma.authSession.findUnique({ where: { refreshTokenHash } });
-        if (row) {
-          this.saveMemSession(row);
-          return row;
+        return await this.store.createPlayer({ ...input, handle });
+      } catch (e) {
+        if (e instanceof UniqueViolation && e.field === 'deviceSecretHash' && input.deviceSecretHash) {
+          const existing = await this.store.findPlayerByDeviceSecretHash(input.deviceSecretHash);
+          if (existing) return existing;
         }
-        return null;
-      } catch {
-        // Fall through to in-memory store
+        if (!(e instanceof UniqueViolation) || e.field !== 'handle' || attempt >= HANDLE_ATTEMPTS) throw e;
+        handle = suffixed(input.handle);
       }
     }
-    return this.sessionsByHash.get(refreshTokenHash) ?? null;
   }
 
-  async revokeSessionById(id: string, revokedAt = new Date()): Promise<void> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        const updated = await this.prisma.authSession.update({ where: { id }, data: { revokedAt } });
-        this.saveMemSession(updated);
-        return;
-      } catch {
-        // Fall through to in-memory store
-      }
-    }
-    const existing = this.sessionsById.get(id);
-    if (existing) {
-      this.saveMemSession({ ...existing, revokedAt });
-    }
+  createSession(input: { id: string; playerId: string; refreshTokenHash: string; expiresAt: Date }): Promise<AuthSessionRecord> {
+    return this.store.createSession(input);
+  }
+
+  findSessionByTokenHash(refreshTokenHash: string): Promise<AuthSessionRecord | null> {
+    return this.store.findSessionByTokenHash(refreshTokenHash);
+  }
+
+  /** Revokes the session if it is still active; true when this call revoked it (refresh rotation is atomic, BE-04). */
+  revokeSessionIfActive(id: string, revokedAt = new Date()): Promise<boolean> {
+    return this.store.revokeSessionIfActive(id, revokedAt);
+  }
+
+  revokeAllSessionsOfPlayer(playerId: string, revokedAt = new Date()): Promise<number> {
+    return this.store.revokeAllSessionsOfPlayer(playerId, revokedAt);
   }
 
   async revokeSessionByTokenHash(refreshTokenHash: string, revokedAt = new Date()): Promise<boolean> {
-    const session = await this.findSessionByTokenHash(refreshTokenHash);
+    const session = await this.store.findSessionByTokenHash(refreshTokenHash);
     if (!session) return false;
-    await this.revokeSessionById(session.id, revokedAt);
+    await this.store.revokeSessionIfActive(session.id, revokedAt);
     return true;
   }
 
-  async listPlayers(): Promise<PlayerRecord[]> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        return await this.prisma.player.findMany();
-      } catch {
-        // Fall through
-      }
-    }
-    return [...this.playersById.values()];
+  deleteExpiredSessions(now = new Date()): Promise<number> {
+    return this.store.deleteExpiredSessions(now);
   }
 
-  async listSessions(): Promise<AuthSessionRecord[]> {
-    if (this.dbEnabled && this.prisma) {
-      try {
-        return await this.prisma.authSession.findMany();
-      } catch {
-        // Fall through
-      }
-    }
-    return [...this.sessionsById.values()];
+  listPlayers(): Promise<PlayerRecord[]> {
+    return this.store.listPlayers();
   }
 
-  private uniqueHandle(desired: string): string {
-    if (!this.handles.has(desired)) return desired;
-    const suffix = randomBytes(2).toString('hex').toUpperCase();
-    return `${desired.slice(0, 27)}-${suffix}`;
-  }
-
-  private saveMemPlayer(player: PlayerRecord): void {
-    this.playersById.set(player.id, player);
-    this.handles.add(player.handle);
-    if (player.deviceSecretHash) {
-      this.playersBySecret.set(player.deviceSecretHash, player);
-    }
-  }
-
-  private saveMemSession(session: AuthSessionRecord): void {
-    this.sessionsById.set(session.id, session);
-    this.sessionsByHash.set(session.refreshTokenHash, session);
+  listSessions(): Promise<AuthSessionRecord[]> {
+    return this.store.listSessions();
   }
 }

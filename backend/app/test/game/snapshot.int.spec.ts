@@ -60,18 +60,19 @@ describe('SnapshotStore', () => {
     expect(await store.hasSnapshots('pl_hasnt')).toBe(false);
   });
 
-  it('wipeDevPlanet deletes the dev planet\'s snapshots, ledger rows, colonies and row, and nothing of other planets', async () => {
+  it('wipePlanet deletes the planet\'s snapshots, ledger rows, colonies and row, and nothing of other planets', async () => {
     const id = 'pl_dev_9';
     await db.prisma.planet.create({ data: { id, name: 'Dev 9', type: 'desert', seed: 's', state: 'ACTIVE', capacity: 5, seatsTaken: 0 } });
     await store.save(id, 3, 'PERIODIC', snapshot(state('w')));
     const legs = [{ account: 'sys:landing', asset: 'metals.t1', delta: -1 }, { account: 'colony:0', asset: 'metals.t1', delta: 1 }];
     await db.prisma.ledgerEntry.createMany({ data: [id, 'pl_keep'].map((planetId) => ({ planetId, tick: 1n, idx: 0, reason: 'landing.cargo', actor: 'system:landing', legs })) });
-    await store.wipeDevPlanet(id);
+    await db.prisma.colony.create({ data: { id: 'col_w9', playerId: 'pr_w9', planetId: id, colonyIndex: 0, name: 'W9' } });
+    await store.wipePlanet(id);
     expect(await db.prisma.planetSnapshot.count({ where: { planetId: id } })).toBe(0);
+    expect(await db.prisma.colony.count({ where: { planetId: id } })).toBe(0);
     expect(await db.prisma.ledgerEntry.count({ where: { planetId: id } })).toBe(0);
     expect(await db.prisma.planet.count({ where: { id } })).toBe(0);
     expect(await db.prisma.ledgerEntry.count({ where: { planetId: 'pl_keep' } })).toBe(1);
-    await expect(store.wipeDevPlanet('pl_keep')).rejects.toThrow(/not a dev planet/);
   });
 
   it('prune keeps last 10 + first of each hour for 48 h (+ END / last SEAL)', async () => {

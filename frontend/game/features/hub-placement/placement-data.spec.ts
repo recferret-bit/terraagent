@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { flagsFromList, parseWaves, type ServerMessage } from '@terra/contracts';
 import {
   buildPipeline,
@@ -15,7 +16,7 @@ import { Emitter } from '../../net/emitter';
 import type { ConnectionState, Outgoing, Transport } from '../../net/types';
 import { WorldStore, type WorkerLike } from '../../store/WorldStore';
 import { evaluateHubGhost } from './GhostEvaluator';
-import { ensureDom, mountHubPlacement } from './index';
+import { mountHubPlacement } from './index';
 
 /** `hub.t1` tuned so unclaimed ground no longer takes a Hub: the default rule says yes, the live data says no. */
 const OVERRIDES: BalanceOverrides = { hub: { t1: { allowUnclaimedPlacement: false } } };
@@ -45,7 +46,6 @@ describe('ghost evaluates with the host live balance data (D-37 / D-35)', () => 
   });
 
   it('the hub-placement feature reads the data from the store (simData) and agrees with the host', () => {
-    ensureDom();
     const host = tunedHost();
     const store = { latest: null, latestTiles: null, simData: () => host.pipeline.config.data };
     const sendCommand = vi.fn();

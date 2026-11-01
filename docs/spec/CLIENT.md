@@ -189,7 +189,7 @@ stateDiagram-v2
 |---|---|---|
 | `4000 bad_hello` | Malformed `hello` or expired token | Refresh the token and re-resolve once immediately. A second `4000` within 30 s → terminal "Couldn't join colony", with a Retry button. |
 | `4001 replaced` | Newer socket for the same colony | Terminal overlay, "Play here" (§5.2). No auto-reconnect, to avoid ping-pong between devices. |
-| `4003 forbidden` | Token invalid, or `join` for a planet that is not the player's | Refresh the token, then re-resolve. On repeat → terminal and back to `/`. |
+| `4003 forbidden` | Token invalid, or `join` for a planet that is not the player's | Reason `not_your_planet`: terminal at once ("Not your colony's planet"). Reason `forbidden` / `planet_unavailable`: refresh the token, then re-resolve once; on repeat → terminal and back to `/`. |
 | `4010 planet_ended` | Planet ended | Terminal → `/recap/ended`. |
 | `4011 colony_eliminated` | Colony destroyed | Terminal → `/recap/eliminated`. |
 | `4012 server_restarting` | Deploy or restart | Backoff reconnect (the app needs 10–30 s to come back). |

@@ -44,7 +44,7 @@ State of the mock NEAR adapters lives in Postgres (`chain.mock_chain_*`: account
 | `MOCK_FAIL_RATE` | 0 | Probability 0..1 of throwing `NEAR_MOCK_INJECTED_FAILURE` (503) with no state change and no receipt |
 | `MOCK_SEED` | unset | Seeds latency, failure and hash randomness for reproducible tests |
 
-Tests build the base with `new FixtureMock(prisma, config, { sleep })` (fake sleep, no real waits); see `backend/app/test/near/`. The binding module provides `MOCK_CHAIN_CONFIG` (optional; defaults to `parseMockChainConfig()`).
+Tests build the base with `new FixtureMock(prisma, config, { sleep })` (fake sleep, no real waits); see `backend/app/test/near/`. `MOCK_CHAIN_CONFIG` is an optional injection: no module provides it today, so the mocks fall back to `parseMockChainConfig()`.
 
 ## Chain outbox
 

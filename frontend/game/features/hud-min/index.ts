@@ -6,7 +6,6 @@ import {
   type GameView,
   type HudPanelInstance,
 } from '../../core/registry/types';
-import type { SendCommand } from '../../net/commandBus';
 import type { Transport } from '../../net/types';
 import {
   formatClock,
@@ -36,7 +35,6 @@ export interface MountMinimalHudCtx {
   el?: HTMLElement;
   hudRoot?: HTMLElement;
   services?: FeatureContext['services'];
-  sendCommand?: SendCommand;
   store?: StoreLike;
   transport?: Pick<Transport, 'onMessage'>;
   ownerColonyIndex?: number;
@@ -52,7 +50,6 @@ export interface MountedMinimalHud extends HudPanelInstance {
 export function mountMinimalHud(ctx: MountMinimalHudCtx): MountedMinimalHud {
   const hostEl = ctx.el ?? ctx.hudRoot ?? document.body;
   const hud = new MinimalHud(hostEl, {
-    sendCommand: ctx.sendCommand ?? ctx.services?.sendCommand,
     store: ctx.store ?? ctx.services?.store,
     transport: ctx.transport ?? ctx.services?.transport,
     ownerColonyIndex: ctx.ownerColonyIndex,

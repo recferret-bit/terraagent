@@ -24,7 +24,7 @@ for (const st of [temperateTerrain, deposits, reliefDesert, classifyDesert, subs
 
 /**
  * World generation orchestrator (D-38): builds an empty planet, then runs the planet type's profile stages in order —
- * relief → classes → visible deposits → hidden subsurface → spawn slots + levelled landing zones. Every stage is a
+ * relief → classes → visible deposits → spawn slots + levelled landing zones → hidden subsurface. Every stage is a
  * small part in `stages/`; per-sector seeds keep sectors independent. Pure: the same params give the same planet.
  */
 export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: string) => void): PlanetState {

@@ -25,7 +25,7 @@ class Explorer {
   private pingBtn!: HTMLButtonElement;
   private pauseBtn!: HTMLButtonElement;
 
-  constructor(private readonly root: HTMLElement) {
+  constructor(root: HTMLElement) {
     root.append(this.header(), this.bar(), this.tabs(), this.panel, this.stamp);
     void this.refresh();
     setInterval(() => { if (!this.paused && !document.hidden) void this.refresh(); }, REFRESH_MS);

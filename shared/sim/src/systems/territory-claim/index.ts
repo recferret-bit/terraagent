@@ -2,11 +2,11 @@ import { hexDistance, hexIndex } from '../../grid/hex';
 import { isValidTileIndex, setTileOwner } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
-import type { ColonyCaps } from '../../economy';
+import { getColonyCaps, type ColonyCaps } from '../../economy';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import { touchTile, type ColonyState, type PlanetState } from '../../kernel/state';
-import type { ConstructionOrder } from '../construction';
-import { resolveHubT1Row } from '../construction/placement';
+import type { ConstructionOrder } from '../construction/orders';
+import { resolveHubT1Row, rowNum } from '../rows';
 import { defineSimModule } from '../define';
 
 export interface ClaimedTileInfo {
@@ -35,46 +35,16 @@ export interface HubCompletionResult extends ClaimTerritoryResult {
   colony: ColonyState;
 }
 
-function normalizeClaimOpts(
-  optsOrColonyId: ClaimTerritoryOpts | number,
-  qArg?: number,
-  rArg?: number,
-  radiusArg?: number,
-  tickArg?: number,
-  dataArg?: CompiledDataLike,
-): ClaimTerritoryOpts {
-  if (typeof optsOrColonyId === 'number') {
-    return {
-      colonyId: optsOrColonyId,
-      q: qArg ?? 0,
-      r: rArg ?? 0,
-      radius: radiusArg,
-      tick: tickArg,
-      data: dataArg,
-    };
-  }
-  return optsOrColonyId;
-}
-
 /**
- * Claims territory in hex disc radius `radius` (defaults to `hub.t1.claimRadius = 10`) around `(q, r)` for `colonyId`
+ * Claims territory in hex disc radius `radius` (defaults to `hub.t1.claimRadius`) around `(q, r)` for `colonyId`
  * (`colony-economy-and-buildings-spec.md` §2.1, `SIM-G-TER`, `W01-17`):
  * - Unclaimed (`owner === -1`) -> `owner = colonyId`, `anchors += 1`.
  * - Same owner (`owner === colonyId`) -> `anchors += 1` (redundant anchor reinforcement).
  * - Foreign owner (`owner >= 0 && owner !== colonyId`) -> immutable collision: `owner` and `anchors` remain untouched (frozen border).
  */
-export function claimTerritoryRadius(
-  state: PlanetState,
-  optsOrColonyId: ClaimTerritoryOpts | number,
-  qArg?: number,
-  rArg?: number,
-  radiusArg?: number,
-  tickArg?: number,
-  dataArg?: CompiledDataLike,
-): ClaimTerritoryResult {
-  const opts = normalizeClaimOpts(optsOrColonyId, qArg, rArg, radiusArg, tickArg, dataArg);
-  const hubRow = resolveHubT1Row(opts.data);
-  const radius = Math.max(0, Math.floor(opts.radius ?? Number(hubRow.claimRadius ?? 10)));
+export function claimTerritoryRadius(state: PlanetState, opts: ClaimTerritoryOpts): ClaimTerritoryResult {
+  const radius = Math.max(0, Math.floor(opts.radius ?? rowNum(resolveHubT1Row(opts.data), 'claimRadius')));
+  const tick = opts.tick ?? state.meta.tick;
   const hex = hexIndex(state.grid.radius);
   const ownerLayer = state.grid.layers.owner as Int8Array;
   const anchorsLayer = state.grid.layers.anchors as Uint8Array;
@@ -96,17 +66,13 @@ export function claimTerritoryRadius(
 
       const curOwner = ownerLayer[tileIdx] ?? -1;
       if (curOwner === -1) {
-        setTileOwner(state.grid, tileIdx, opts.colonyId, opts.tick);
+        setTileOwner(state.grid, tileIdx, opts.colonyId, tick);
         anchorsLayer[tileIdx] = (anchorsLayer[tileIdx] ?? 0) + 1;
         claimedCount++;
         claimedTiles.push({ q: tq, r: tr, tileIdx });
       } else if (curOwner === opts.colonyId) {
         anchorsLayer[tileIdx] = (anchorsLayer[tileIdx] ?? 0) + 1;
-        if (opts.tick !== undefined) {
-          touchTile(state, tileIdx, opts.tick);
-        } else {
-          setTileOwner(state.grid, tileIdx, opts.colonyId);
-        }
+        touchTile(state, tileIdx, tick);
         anchoredCount++;
       } else {
         frozenCount++;
@@ -119,9 +85,9 @@ export function claimTerritoryRadius(
 
 /**
  * Applies Command Hub T1 completion effects (`colony-economy-and-buildings-spec.md` §2.1, §3.1, `W01-17`):
- * - Claims `R = 10` territory around `(order.q, order.r)` respecting immutable foreign borders.
- * - Sets colony `status = 'active'`, per-family storage cap `500` (`metals`, `minerals`, `bio`),
- *   `supplyCap = 10`, and Founder Core `+8 E/s` (`founderCoreEPerS`, `powerGenEPerS`).
+ * - Claims `hub.t1.claimRadius` territory around `(order.q, order.r)` respecting immutable foreign borders.
+ * - Sets colony `status = 'active'`, raises each family's storage cap to `hub.t1.storageCapPerFamily` (a cap never goes
+ *   down, GP-11), `supplyCap` and the Founder Core generation `founderCoreGenPerS` (one colony field, XC-01).
  * - Emits `colonyFounded`.
  */
 export function applyHubCompletionEffects(
@@ -132,38 +98,30 @@ export function applyHubCompletionEffects(
 ): HubCompletionResult {
   const data = ctx?.data;
   const hubRow = resolveHubT1Row(data);
-  const claimRadius = Number(hubRow.claimRadius ?? 10);
-  const storageCap = Number(hubRow.storageCapPerFamily ?? 500);
-  const supplyCap = Number(hubRow.supplyCap ?? 10);
-  const founderCoreEPerS = Number(
-    hubRow.founderCoreEPerS ?? hubRow.founderCoreGenPerS ?? hubRow.powerGen ?? 8,
-  );
+  const storageCap = rowNum(hubRow, 'storageCapPerFamily');
 
   const claim = claimTerritoryRadius(state, {
     colonyId: order.colonyId,
     q: order.q,
     r: order.r,
-    radius: claimRadius,
     tick,
     data,
   });
 
   const col = ensureColonyRecord(state, order.colonyId, tick);
+  const prev = getColonyCaps(state, order.colonyId, data);
   const caps: ColonyCaps = {
-    metals: storageCap,
-    minerals: storageCap,
-    energy: 0,
-    bio: storageCap,
-    item: 0,
+    metals: Math.max(prev.metals, storageCap),
+    minerals: Math.max(prev.minerals, storageCap),
+    energy: prev.energy,
+    bio: Math.max(prev.bio, storageCap),
+    item: prev.item,
   };
   col.status = 'active';
   col.caps = caps;
-  col.supplyCap = supplyCap;
-  col.powerGenEPerS = founderCoreEPerS;
-  col.founderCoreEPerS = founderCoreEPerS;
-  col.founderCoreGenPerS = founderCoreEPerS;
+  col.supplyCap = rowNum(hubRow, 'supplyCap');
+  col.founderCoreGenPerS = rowNum(hubRow, 'founderCoreGenPerS');
   col.hubEntityId = order.entityId;
-  col.hubId = order.entityId;
   col.changedAt = tick;
 
   const colonyIdStr = col.id || `col_${order.colonyId}`;

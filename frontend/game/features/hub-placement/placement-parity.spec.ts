@@ -3,6 +3,7 @@ import {
   buildPipeline,
   createPlanet,
   evaluatePlacement,
+  findPlacementSite,
   placementWorldFromState,
   restore,
   SimHost,
@@ -73,5 +74,37 @@ describe('placement parity: authoritative state vs client replica view', () => {
   it('with balance overrides on both sides (tuned hub.t1): still agrees on every tile', () => {
     const { blocks } = checkEveryTile('temperate', 14, { hub: { t1: { allowUnclaimedPlacement: false } } });
     expect(blocks.has('unclaimed')).toBe(true);
+  });
+});
+
+describe('placement parity: second colony, an existing Hub, a colony without HQ (FF-14)', () => {
+  it('client and host agree on every tile for the Hub owner and for a colony with no HQ', () => {
+    const host = new SimHost(buildPipeline(parseWaves('..01').list, {}));
+    host.load(createPlanet({ id: 'pl', seed: 'parity-two', type: 'temperate', planetType: 'temperate', radius: 14 }));
+    spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
+    const data: CompiledDataLike = host.pipeline.config.data;
+    const site = findPlacementSite(placementWorldFromState(host.state), { colonyId: 0, q: 0, r: 0, building: 'commandHub', data }, 6);
+    expect(site).not.toBeNull();
+    host.submit({ colonyIndex: 0, source: 'player', commandId: 'hub', kind: 'placeBuilding', args: { building: 'commandHub', ...site } });
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
+
+    const { view: wire } = packView(view(restore(snapshot(host.state, { forClient: true }))), true);
+    const clientWorld = ghostPlacementWorld(unpackView(wire));
+    const serverWorld = placementWorldFromState(host.state);
+    const blocks = new Set<string>();
+    const R = host.state.grid.radius;
+    for (const colonyId of [0, 1]) {
+      for (let r = -R; r <= R; r++) {
+        for (let q = -R; q <= R; q++) {
+          if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) > R) continue;
+          const s = evaluatePlacement(serverWorld, { colonyId, q, r, building: 'commandHub', data });
+          const c = evaluatePlacement(clientWorld, { colonyId, q, r, building: 'commandHub', data });
+          expect([colonyId, q, r, c.ok, c.code, c.block]).toEqual([colonyId, q, r, s.ok, s.code, s.block]);
+          if (s.block) blocks.add(s.block);
+        }
+      }
+    }
+    expect(blocks.has('hubExists')).toBe(true);
+    expect(blocks.has('noBuilder')).toBe(true);
   });
 });

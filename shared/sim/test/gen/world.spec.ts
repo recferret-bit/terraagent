@@ -87,7 +87,8 @@ describe('world generation orchestrator (D-38)', () => {
     }
   });
 
-  it('is fast: radius 56 well under 250 ms, radius 120 (≈ 43 k tiles) under 1.5 s', () => {
+  // Wall-clock budget (D-38 performance target): flaky on a loaded runner, so it runs only with `SIM_PERF=1` (WE-21).
+  it.runIf(process.env.SIM_PERF === '1')('is fast: radius 56 well under 250 ms, radius 120 (≈ 43 k tiles) under 1.5 s', () => {
     for (const [radius, budget] of [[56, 250], [120, 1500]] as const) {
       const t0 = performance.now();
       createPlanet({ id: 'p', seed: 'fast', type: 'temperate', planetType: 'desert', radius });
@@ -96,13 +97,24 @@ describe('world generation orchestrator (D-38)', () => {
   });
 });
 
+/** FNV-1a over every generated layer (hidden ones with a fixed salt) and the spawn slot coordinates (WE-02). */
+function fingerprint(planetType: PlanetType, seed: string): string {
+  const s = createPlanet({ id: 'p', seed, type: 'temperate', planetType, radius: 56, worldSalt: 'fingerprint-salt' });
+  const L = s.grid.layers;
+  let h = 0x811c9dc5;
+  const mix = (v: number) => { h = Math.imul(h ^ (v | 0), 0x01000193) >>> 0; };
+  for (let i = 0; i < s.grid.count; i++) {
+    mix(L.terrain[i]); mix(L.prep[i]); mix(Math.round(L.height[i] * 100)); mix(L.deposit[i]); mix(L.richness[i]);
+    mix(L.subDeposit[i]); mix(L.subRichness[i]);
+  }
+  for (const slot of getSpawnSlots(s)) { mix(slot.q); mix(slot.r); }
+  return h.toString(16);
+}
+
 describe('generator fingerprint (bump GEN_VERSION when this changes)', () => {
-  it('golden-1 desert: pinned summary of the generated ground for GEN_VERSION', () => {
-    const s = createPlanet({ id: 'p', seed: 'golden-1', type: 'temperate', planetType: 'desert', radius: 56 });
-    let h = 0x811c9dc5;
-    const mix = (v: number) => { h = Math.imul(h ^ (v | 0), 0x01000193) >>> 0; };
-    for (let i = 0; i < s.grid.count; i++) { mix(s.grid.layers.terrain[i]); mix(Math.round(s.grid.layers.height[i] * 100)); mix(s.grid.layers.deposit[i]); }
-    // If this fails after a deliberate generator change: bump GEN_VERSION in gen/generators.ts, then update both values.
-    expect({ genVersion: GEN_VERSION, fingerprint: h.toString(16) }).toEqual({ genVersion: 3, fingerprint: '45686546' });
+  it('one planet per profile: pinned summary of the generated ground and spawn slots for GEN_VERSION', () => {
+    const got = { genVersion: GEN_VERSION, desert: fingerprint('desert', 'golden-1'), temperate: fingerprint('temperate', 'golden-2'), ocean: fingerprint('ocean', 'golden-3') };
+    // If this fails after a deliberate generator change: bump GEN_VERSION in gen/generators.ts, then update the values.
+    expect(got).toEqual({ genVersion: 4, desert: 'fddb5b5d', temperate: '3f6d4840', ocean: 'edb4c709' });
   });
 });

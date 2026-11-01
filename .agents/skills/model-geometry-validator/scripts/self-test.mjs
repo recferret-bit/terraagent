@@ -12,13 +12,13 @@ const { validateModel } = await vite.ssrLoadModule('/render/kitbash/validate/ind
 
 let idx = 0;
 /** A part from a three.js geometry, placed in world space. */
-function part(geo, pos, { rot = [0, 0, 0], anim = 0, pivot, zone = 'hullPrimary', name } = {}) {
+function part(geo, pos, { rot = [0, 0, 0], anim = 0, pivot, zone = 'hullPrimary', name, role } = {}) {
   const g = geo.index ? geo.toNonIndexed() : geo.clone();
   g.applyMatrix4(new THREE.Matrix4().compose(new THREE.Vector3(...pos), new THREE.Quaternion().setFromEuler(new THREE.Euler(...rot)), new THREE.Vector3(1, 1, 1)));
   const p = g.attributes.position, t = new Float32Array(p.count * 3);
   for (let i = 0; i < p.count; i++) { t[i * 3] = p.getX(i); t[i * 3 + 1] = p.getY(i); t[i * 3 + 2] = p.getZ(i); }
   const i = idx++;
-  return { index: i, name: name ?? `${geo.type.replace('Geometry', '')}#${i}`, zone, kind: geo.type, animType: anim, pivot: pivot ?? pos, emissive: 0, tris: t };
+  return { index: i, name: name ?? `${geo.type.replace('Geometry', '')}#${i}`, zone, kind: geo.type, ...(role ? { role } : {}), animType: anim, pivot: pivot ?? pos, emissive: 0, tris: t };
 }
 const box = (w, h, d) => new THREE.BoxGeometry(w, h, d);
 const model = (parts) => { idx = 0; return validateModel({ id: 't', label: 't', source: 'builder', parts: parts() }, { minParts: 1, appearance: false }); };
@@ -40,7 +40,7 @@ t('two similar blocks interpenetrating by 10 cm each way → CUTS_THROUGH', () =
 t('block held only by a cable draped over it is not supported', () => [ground(), part(box(0.3, 0.3, 0.3), [0, 0.5, 0], { name: 'held' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.4, 0.2, 0), new THREE.Vector3(0, 0.68, 0), new THREE.Vector3(0.4, 0.2, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).some((c) => c === 'HAIRLINE_GAP' || c === 'FLOATING_PART'));
 t('cable that ends on two parts and clears the third → clean', () => [ground(), part(box(0.2, 0.4, 0.2), [-0.4, 0.4, 0], { name: 'post A' }), part(box(0.2, 0.4, 0.2), [0.4, 0.4, 0], { name: 'post B' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.4, 0.5, 0), new THREE.Vector3(0, 0.38, 0), new THREE.Vector3(0.4, 0.5, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).length === 0);
 t('cable with an unanchored end floating in mid-air → CABLE_FLOAT', () => [ground(), part(box(0.2, 0.4, 0.2), [-0.4, 0.4, 0], { name: 'post A' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.4, 0.5, 0), new THREE.Vector3(0, 0.4, 0), new THREE.Vector3(0.4, 0.5, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).includes('CABLE_FLOAT'));
-t('cable plunging into foundation plinth instead of a structural part → CABLE_FLOAT', () => [part(box(1, 0.28, 1), [0, 0.04, 0], { name: 'foundation plinth' }), part(box(0.2, 0.4, 0.2), [-0.3, 0.36, 0], { name: 'post A' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.3, 0.45, 0), new THREE.Vector3(0, 0.3, 0), new THREE.Vector3(0.3, 0.1, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).includes('CABLE_FLOAT'));
+t('cable plunging into foundation plinth instead of a structural part → CABLE_FLOAT', () => [part(box(1, 0.28, 1), [0, 0.04, 0], { name: 'foundation plinth', role: 'plinth' }), part(box(0.2, 0.4, 0.2), [-0.3, 0.36, 0], { name: 'post A' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.3, 0.45, 0), new THREE.Vector3(0, 0.3, 0), new THREE.Vector3(0.3, 0.1, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).includes('CABLE_FLOAT'));
 t('cable passing through a block → CABLE_CLIPS', () => [ground(), part(box(0.3, 0.4, 0.3), [0, 0.4, 0], { name: 'block' }), part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.5, 0.2, 0), new THREE.Vector3(0, 0.4, 0), new THREE.Vector3(0.5, 0.2, 0)]), 16, 0.02, 6), [0, 0, 0], { name: 'cable' })], (r) => codes(r).includes('CABLE_CLIPS'));
 // a mast with a spinning arm; at rest the arm clears the wall (it lies along x, the wall is to its side), the sweep decides
 const spinner = (wallZ) => () => [ground(), part(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 10), [0, 0.4, 0], { name: 'mast' }), part(box(0.54, 0.04, 0.06), [0, 0.7, 0], { name: 'arm', anim: 1, pivot: [0, 0.7, 0] }), part(box(0.8, 0.8, 0.1), [0, 0.5, wallZ], { name: 'wall' })];
@@ -62,6 +62,16 @@ const biped = (armX) => () => [
 ];
 t('biped arm (anim 5) and leg (anim 4) on moving biped body (anim 8) colliding → ANIM_COLLISION', biped(0.18), (r) => codes(r).includes('ANIM_COLLISION'));
 t('biped arm (anim 5) and leg (anim 4) on moving biped body (anim 8) with clearance → clean', biped(0.28), (r) => !codes(r).includes('ANIM_COLLISION'));
+// Roles, not names or part order, decide the cable checks (RN-21).
+const tubeTo = (end, name, role) => part(new THREE.TubeGeometry(new THREE.CatmullRomCurve3([new THREE.Vector3(-0.3, 0.45, 0), new THREE.Vector3(0, 0.5, 0), new THREE.Vector3(...end)]), 16, 0.02, 6), [0, 0, 0], { name, role });
+const post = () => part(box(0.2, 0.4, 0.2), [-0.3, 0.36, 0], { name: 'post A' });
+t('a tube named "antenna lead" with a free end is still a floating cable → CABLE_FLOAT', () => [ground(), post(), tubeTo([0.3, 0.7, 0], 'antenna lead')], (r) => codes(r).includes('CABLE_FLOAT'));
+t('a tube with role whip may end in mid-air → clean', () => [ground(), post(), tubeTo([0.3, 0.7, 0], 'lead', 'whip')], (r) => !codes(r).includes('CABLE_FLOAT'));
+t('a sunk part #0 without the plinth role is an ordinary anchor → no CABLE_FLOAT', () => [part(box(1, 0.28, 1), [0, 0.04, 0], { name: 'base slab' }), post(), tubeTo([0.3, 0.12, 0], 'cable')], (r) => !codes(r).includes('CABLE_FLOAT'));
+// Recoil phase depends on pivot.x (RN-22): a barrel and its muzzle on different pivots pull apart while firing.
+const gun = (muzzleX) => () => [ground(), part(box(0.3, 0.3, 0.3), [0, 0.35, 0], { name: 'mantlet' }), part(new THREE.CylinderGeometry(0.04, 0.04, 0.6, 10), [0, 0.35, 0.4], { rot: [Math.PI / 2, 0, 0], name: 'barrel', anim: 3, pivot: [0, 0.35, 0.4] }), part(new THREE.CylinderGeometry(0.06, 0.06, 0.12, 10), [0, 0.35, 0.72], { rot: [Math.PI / 2, 0, 0], name: 'muzzle brake', anim: 3, pivot: [muzzleX, 0.35, 0.72] })];
+t('recoiling barrel and muzzle with different pivot.x (different phase) → ANIM_COLLISION', gun(0.5), (r) => codes(r).includes('ANIM_COLLISION'));
+t('recoiling barrel and muzzle sharing pivot.x move as one → clean', gun(0), (r) => !codes(r).includes('ANIM_COLLISION'));
 t('foundation sunk 10 cm below ground is allowed', () => [part(box(1, 0.4, 1), [0, 0.1, 0])], (r) => !codes(r).includes('GROUND_CONTACT'));
 t('foundation sunk 30 cm below ground → GROUND_CONTACT', () => [part(box(1, 0.4, 1), [0, -0.1, 0])], (r) => codes(r).includes('GROUND_CONTACT'));
 t('lowest point 12 cm above the ground → GROUND_CONTACT', () => [part(box(1, 0.2, 1), [0, 0.22, 0])], (r) => codes(r).includes('GROUND_CONTACT'));

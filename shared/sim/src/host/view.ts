@@ -72,5 +72,3 @@ export function view(state: PlanetState): SimView {
     blobs,
   };
 }
-
-export const buildView = view;

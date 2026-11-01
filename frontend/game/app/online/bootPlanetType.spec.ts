@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bootAuthAndHome, createLocalBootFallback, devPlanetTypeOfKind, type FetchLike, type StorageLike } from './bootOnline';
+import { activeHome } from './homeFixture';
 
 const memory = (): StorageLike => {
   const m = new Map<string, string>();
@@ -20,7 +21,7 @@ describe('orbit pick → dev planet of that type (one dev planet per type)', () 
       urls.push(String(url));
       const json = String(url).includes('/auth/guest')
         ? { accessToken: 'jwt', expiresIn: 900, player: { id: 'pr_x', handle: 'X', isGuest: true } }
-        : { state: 'ACTIVE', planet: { id: 'pl_dev_ocean', type: 'ocean' }, colony: { id: 'col_1', colonyIndex: 0, spawn: { q: 1, r: 2 } } };
+        : activeHome({ planetId: 'pl_dev_ocean', type: 'ocean', spawnQ: 1, spawnR: 2 });
       return { ok: true, status: 200, json: async () => json } as unknown as Response;
     };
     const boot = await bootAuthAndHome({ fetch, storage: memory(), search: '', planetType: 'ocean' });

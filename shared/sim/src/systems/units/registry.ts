@@ -7,15 +7,16 @@ import { stopCommand } from '../../units/commands/stop';
 import { issueUnitCommand as issueWith, stepUnitWork as workWith, stepUnits as stepWith, type IssueOpts } from '../../units/runner';
 import { createUnitRegistry, type UnitCommand, type UnitWorkPhase } from '../../units/types';
 import { buildCommand, buildProvider } from '../construction/work';
-import { terraformCommand, terraformProvider } from '../terraform-basic/work';
+import { linkedPrepProvider, terraformCommand, terraformProvider } from '../terraform-basic/work';
 
 /**
  * Every unit command kind and work provider. Add a command: one `defineUnitCommand` file + one entry here.
- * Providers are asked in this order (terraform first: a site must be prepared before it can be built on).
+ * Providers are asked in this order (GP-04): a Hub's linked site prep (a site is prepared before it is built on), then
+ * construction, then the player's manual terraform orders.
  */
 export const UNIT_REGISTRY = createUnitRegistry(
   [moveCommand, stopCommand, dieCommand, attackCommand, buildCommand, terraformCommand],
-  [terraformProvider, buildProvider],
+  [linkedPrepProvider, buildProvider, terraformProvider],
 );
 
 /**

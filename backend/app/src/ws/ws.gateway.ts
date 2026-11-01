@@ -38,6 +38,7 @@ export class WsGateway {
   private readonly welcomes: Counter;
   private detach: (() => void) | undefined;
   private readonly unwarp: () => void;
+  private readonly undown: () => void;
 
   constructor(private readonly o: GatewayOptions) {
     this.rooms = new PlanetRooms(o.planets);
@@ -45,6 +46,10 @@ export class WsGateway {
     this.unwarp = o.planets.onWarp((planetId, k) => this.rooms.broadcast(planetId, encodeWire({
       v: 1, t: 'event', tick: 0, d: { kind: 'dev.warp', severity: 'info', atTick: 0, colonyIds: [], data: { k } },
     })));
+    // BE-11/BE-12: a planet whose thread died or whose step threw gets no more deltas; its sockets reconnect and rejoin.
+    this.undown = o.planets.onPlanetDown((planetId) => {
+      for (const c of [...this.conns]) if (c.planetId === planetId) c.bye(CLOSE_CODES.server_restarting, 'planet_down');
+    });
     const conns = this.conns;
     new Gauge({ name: 'ta_ws_connections', help: 'Open WebSocket connections', registers: [o.registry], collect() { this.set(conns.size); } });
     this.welcomes = new Counter({ name: 'ta_planet_ws_welcome_total', help: 'welcome messages sent', registers: [o.registry] });
@@ -95,6 +100,7 @@ export class WsGateway {
   async closeAll(graceMs = 1000): Promise<void> {
     this.detach?.();
     this.unwarp();
+    this.undown();
     const all = [...this.conns];
     for (const c of all) c.bye(CLOSE_CODES.server_restarting, 'server_restarting');
     await new Promise<void>((resolve) => {

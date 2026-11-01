@@ -82,7 +82,11 @@ export class ProceduralTextureRegistry {
 
   public static register(name: string, fn: ProceduralTextureGeneratorFn): void {
     this.generators.set(name, fn);
-    this.cache.delete(name);
+    // Cache keys are `${name}_${size}`: drop every size of this preset so the new generator is used.
+    const prefix = `${name}_`;
+    for (const key of [...this.cache.keys()]) {
+      if (key.startsWith(prefix) && /^\d+$/.test(key.slice(prefix.length))) this.cache.delete(key);
+    }
   }
 
   public static get(name: string, size = 512): ProceduralPBRBundle {

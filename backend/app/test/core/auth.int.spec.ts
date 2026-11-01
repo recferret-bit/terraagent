@@ -79,4 +79,25 @@ describe('Guest auth Postgres persistence (W01-02)', () => {
     });
     expect(activeSessions).toHaveLength(0);
   });
+
+  it('a handle already in the database (fresh process) gets a suffix and a real row, never a memory-only player (BE-02)', async () => {
+    await db.prisma.player.create({ data: { id: 'pr_taken_handle_owner', handle: 'Taken', deviceSecretHash: null } });
+    const res = await fetch(`${url}/v1/auth/guest`, {
+      method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deviceSecret: 'postgres-device-secret-0002', handle: 'Taken' }),
+    });
+    expect(res.status).toBe(200);
+    const body = AuthResponseSchema.parse(await res.json());
+    expect(body.player.handle).toMatch(/^Taken-[0-9A-F]{4}$/);
+    expect(await db.prisma.player.findUnique({ where: { id: body.player.id } })).toMatchObject({ handle: body.player.handle });
+    expect(await db.prisma.authSession.count({ where: { playerId: body.player.id } })).toBe(1);
+  });
+
+  it('a rotated refresh token presented again revokes every session of the player in the database (BE-04)', async () => {
+    const login = await fetch(`${url}/v1/auth/guest`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ deviceSecret: 'postgres-device-secret-0003' }) });
+    const playerId = AuthResponseSchema.parse(await login.json()).player.id;
+    const rt1 = /^ta_rt=([^;]*)/.exec(login.headers.get('set-cookie')!)![1]!;
+    expect((await fetch(`${url}/v1/auth/refresh`, { method: 'POST', headers: { cookie: `ta_rt=${rt1}` } })).status).toBe(200);
+    expect((await fetch(`${url}/v1/auth/refresh`, { method: 'POST', headers: { cookie: `ta_rt=${rt1}` } })).status).toBe(401);
+    expect(await db.prisma.authSession.count({ where: { playerId, revokedAt: null } })).toBe(0);
+  });
 });

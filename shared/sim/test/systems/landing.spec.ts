@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { eventDef, parseWaves } from '@terra/contracts';
+import { eventDef } from '@terra/contracts';
 import {
-  buildView,
-  createPlanet,
+  view,
   ENTITY_KIND,
   ENTITY_STATE,
   getColonyCaps,
@@ -21,6 +20,7 @@ import {
   unrecorded,
   type SimCommand,
 } from '../../src';
+import { w01Host } from '../helpers/host';
 import { fullStock } from '../economy/helpers';
 
 let seq = 0;
@@ -28,11 +28,7 @@ function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0): Sim
   return { colonyIndex, source: 'system', commandId: `land_${++seq}`, kind, args };
 }
 
-function createW01Host(type: 'flat' | 'temperate' = 'temperate', radius = 28): SimHost {
-  const host = new SimHost({ flags: parseWaves('..01') });
-  host.load(createPlanet({ type, seed: 'landing-test', radius }));
-  return host;
-}
+const createW01Host = (type: 'flat' | 'temperate' = 'temperate', radius = 28): SimHost => w01Host({ type, seed: 'landing-test', radius });
 
 describe('W01-09: Drop pod landing and HQ deployment', () => {
   it('spawns a colony at tick 0 -> pod descending with 600/350/200/200 stock; after 30 ticks (6.0 s) deploys HQ and emits hqLanded', () => {
@@ -75,7 +71,7 @@ describe('W01-09: Drop pod landing and HQ deployment', () => {
       'bio.water': 200,
     });
     expect(getColonyStock(state, 0)).toEqual(expectedStock);
-    expect(buildView(state).colonies[0].stock).toEqual(expectedStock);
+    expect(view(state).colonies[0].stock).toEqual(expectedStock);
 
     const hex = hexIndex(state.grid.radius);
     const explored = state.grid.layers.explored as Uint8Array;
@@ -172,7 +168,7 @@ describe('W01-09: dev.land and colony stock helpers', () => {
     expect(getColonyStock(state, 0)['minerals.t1']).toBe(500);
 
     setColonyStock(state, 0, { 'metals.t1': 120, 'minerals.t1': 80, 'bio.biomass': 50, 'bio.water': 50 });
-    expect(buildView(state).colonies[0].stock).toEqual(
+    expect(view(state).colonies[0].stock).toEqual(
       fullStock({ 'metals.t1': 120, 'minerals.t1': 80, 'bio.biomass': 50, 'bio.water': 50 }),
     );
   });

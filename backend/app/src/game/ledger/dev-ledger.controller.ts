@@ -1,8 +1,7 @@
-import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Query, UseGuards } from '@nestjs/common';
 import type { LedgerView } from '@terra/sim';
+import { DevOnlyGuard } from '../../core/dev-only.guard';
 import { CoreException } from '../../core/errors';
-import { APP_ENV, type AppEnv } from '../../core/tokens';
-import { assertDevOnly } from '../dev-planets.controller';
 import { PlanetLedgerService } from './planet-ledger.service';
 
 export const DEFAULT_LEDGER_ACCOUNT = 'colony:0';
@@ -17,12 +16,12 @@ const ACCOUNT_RE = /^[a-z]+:[A-Za-z0-9_.-]{1,64}$/;
  * database is down: the restore is retried) or after it was abandoned at shutdown.
  */
 @Controller('dev')
+@UseGuards(DevOnlyGuard)
 export class DevLedgerController {
-  constructor(private readonly ledger: PlanetLedgerService, @Inject(APP_ENV) private readonly env: AppEnv) {}
+  constructor(private readonly ledger: PlanetLedgerService) {}
 
   @Get('planets/:planetId/ledger')
   async get(@Param('planetId') planetId: string, @Query('account') account?: string, @Query('limit') limit?: string): Promise<LedgerView> {
-    assertDevOnly(this.env);
     const acc = account ?? DEFAULT_LEDGER_ACCOUNT;
     if (!ACCOUNT_RE.test(acc)) throw new CoreException('BAD_REQUEST', { status: 400, message: `bad account "${acc}" (e.g. colony:0, sys:construction)` });
     const view = await this.ledger.view(planetId, acc, parseLimit(limit));

@@ -74,7 +74,7 @@ function startHubBuild(seed = 'ledger-hub'): Run {
   host.onPostings((ps) => run.heard.push(...ps));
 
   host.submit(cmd('land_spawn', 'system.spawnColony', { q: 0, r: 0 }));
-  host.submit(cmd('land_now', 'dev.land', { colonyId: 0 }));
+  host.submit(cmd('land_now', 'dev.land', {}));
   const landed = stepChecked(run);
   expect(landed.outcomes.map((o) => o.code)).toEqual([undefined, undefined]);
   expect(getColonyStock(host.state, 0)).toEqual(fullStock(CARGO));
@@ -107,10 +107,9 @@ describe('Hub T1 build: StepResult.postings feed a host ledger that matches col.
 
   it('a full build leaves exactly cargo − cost in stock, cost in sys:construction and −cargo in sys:cargo', () => {
     const run = startHubBuild();
-    stepUntil(run, (o) => o?.status === 'completed');
+    const order = getConstructionOrders(run.host.state, 0)[0];
+    stepUntil(run, (o) => o === undefined); // a completed order leaves the queue (GP-10)
     const state = run.host.state;
-    const order = getConstructionOrders(state, 0)[0];
-    expect(order.paidAmounts).toEqual(COST);
     expect(getColonyStock(state, 0)).toEqual(fullStock(minus(CARGO, COST)));
     expect(run.ledger.balances('sys:construction')).toEqual(COST);
     expect(run.ledger.balances('sys:cargo')).toEqual(negate(CARGO));
@@ -176,7 +175,7 @@ describe('Hub T1 build: StepResult.postings feed a host ledger that matches col.
   it('is deterministic: two identical runs produce identical postings', () => {
     const go = (): LedgerPosting[] => {
       const run = startHubBuild('ledger-determinism');
-      stepUntil(run, (o) => o?.status === 'completed');
+      stepUntil(run, (o) => o === undefined); // a completed order leaves the queue (GP-10)
       return run.postings;
     };
     const a = go();

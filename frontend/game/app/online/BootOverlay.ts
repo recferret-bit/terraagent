@@ -26,6 +26,10 @@ export class BootOverlay {
   readonly descentBarFillEl: HTMLElement;
   readonly colonyEl: HTMLElement;
   readonly colonyBadgeEl: HTMLElement;
+  /** `[data-testid="offline-badge"]`: the session runs on a browser-local fallback host, not the game server. */
+  readonly offlineEl: HTMLElement;
+  private retryEl: HTMLButtonElement | null = null;
+  private settleRetry: ((retry: boolean) => void) | null = null;
 
   private currentPhase: BootPhase = 'splash';
   private descentCount = 0;
@@ -117,9 +121,53 @@ export class BootOverlay {
     this.colonyBadgeEl.textContent = 'COLONY VIEW · pl_dev';
     this.colonyEl.appendChild(this.colonyBadgeEl);
 
+    this.offlineEl = document.createElement('div');
+    this.offlineEl.className = 'ta-offline-badge plate-sm';
+    this.offlineEl.setAttribute('data-testid', 'offline-badge');
+    this.offlineEl.dataset.testid = 'offline-badge';
+    this.offlineEl.textContent = 'OFFLINE · LOCAL';
+    this.offlineEl.title = 'No game server: this colony runs in your browser and is lost on reload';
+    this.offlineEl.hidden = true;
+
     parent.appendChild(this.splashEl);
     parent.appendChild(this.descentEl);
     parent.appendChild(this.colonyEl);
+    parent.appendChild(this.offlineEl);
+  }
+
+  /** Shows or hides the "OFFLINE · LOCAL" badge (a dev-build local fallback host is attached, FA-06). */
+  setOffline(offline: boolean): void {
+    this.offlineEl.hidden = !offline;
+  }
+
+  /**
+   * Boot failed (HTTP error, or the server is unreachable where no local fallback is allowed): the splash shows the
+   * message with a Retry button; resolves true when the player clicks Retry (the splash then says "Contacting
+   * orbit…"), false when the overlay is disposed first (the session went away: stop booting).
+   */
+  showError(message: string): Promise<boolean> {
+    this.showSplash(message);
+    this.splashEl.dataset.error = 'true';
+    this.settleRetry?.(false);
+    this.retryEl?.remove();
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'btn btn-sm ta-orbital-splash__retry';
+    btn.setAttribute('data-testid', 'orbital-splash-retry');
+    btn.dataset.testid = 'orbital-splash-retry';
+    btn.textContent = 'Retry';
+    this.retryEl = btn;
+    this.splashEl.appendChild(btn);
+    return new Promise((ok) => {
+      this.settleRetry = (retry) => { this.settleRetry = null; ok(retry); };
+      btn.onclick = () => {
+        btn.remove();
+        this.retryEl = null;
+        this.splashEl.dataset.error = 'false';
+        this.setSplashStatus('Contacting orbit…');
+        this.settleRetry?.(true);
+      };
+    });
   }
 
   get phase(): BootPhase {
@@ -200,8 +248,10 @@ export class BootOverlay {
   }
 
   dispose(): void {
+    this.settleRetry?.(false);
     this.splashEl.remove();
     this.descentEl.remove();
     this.colonyEl.remove();
+    this.offlineEl.remove();
   }
 }

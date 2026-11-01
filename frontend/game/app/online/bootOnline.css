@@ -123,6 +123,29 @@
   display: none;
 }
 
+.ta-orbital-splash__retry {
+  margin-top: var(--ta-s3);
+}
+
+/* Dev-build local fallback host (no game server): always visible, above the HUD, never interactive. */
+.ta-offline-badge {
+  position: fixed;
+  left: 50%;
+  bottom: var(--ta-s4);
+  transform: translateX(-50%);
+  z-index: 35;
+  pointer-events: none;
+  padding: var(--ta-s1) var(--ta-s3);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  letter-spacing: 0.12em;
+  color: var(--ta-fault-text);
+}
+
+.ta-offline-badge[hidden] {
+  display: none;
+}
+
 .ta-online-pause {
   position: fixed;
   inset: 0;

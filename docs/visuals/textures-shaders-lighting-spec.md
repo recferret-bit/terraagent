@@ -74,6 +74,9 @@ Every colony structure, robot, and terrain tile draws from 5 core procedural PBR
   1. **Dual-Scrolling Procedural Normals:** Two octaves of procedural wave normals scrolling at opposing angles (`vec2(1.0, 0.4)` and `vec2(-0.6, 0.8)`) create shimmering specular sun reflections.
   2. **Depth & Shoreline Foam:** Compares fragment height against terrain height (`waterY - terrainY`); shallow edges (`< 0.18m`) render crisp animated white shoreline foam and higher transparency.
 
+### 3.3 Game-flow terrain and construction terms (W01)
+- **Hex terrain** (`frontend/render/planets/hex/`): the sim's tile classes tint the shared terrain shader per tile (`vTileColor`); hex edge lines are a shader term (`hexEdges.ts`, no line geometry). A tile that becomes **Prepared** plays a 0.4 s pad wave (`PREP_BLEND_DURATION_S`, built into the GLSL from the TS constant) that blends in the engineered hex-plate pad (`foundationHexPad` bundle, 128², bound only on the hex material). **Territory borders** are ribbons whose every vertex sits 3.5 cm above the interpolated terrain surface (normal 8 cm, frozen 18 cm wide), with per-colony angled hatch ribs in colour-blind mode. **Construction scaffold** is the `buildScaffold` shader modifier (`ShaderPluginRegistry`, `visuals/unified/buildScaffold.ts`, on for every `createArchetypeMesh`): the CPU quantizes progress to 0 / 33 / 66 / 100 % (`uBuildStage`), and the amber/cyan holo-lattice starts above a laser cut at 3.8 % / 25 % / 58 % of the model's own height (`uBuildHeight`; on the Command Hub 0.25 / 1.65 / 3.85 m). The biped **work pose** (`uWorkWeight` 0..1) tilts the arms forward on top of the gait. All of these can be checked in `/playground.html?hexterrain=1&hatch=1&build=33&work=1` (toolbar: `hex terrain`, `border hatch`, `work pose`, `build`).
+
 ---
 
 ## 4. Dynamic Planetary Lighting System (`planetary-lighting-and-lightning`)

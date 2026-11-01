@@ -14,7 +14,7 @@ import {
   type LedgerPosting,
   type LedgerReason,
 } from '../../src';
-import { collector, emptyPlanet, fullStock } from './helpers';
+import { collector, colonyPlanet, emptyPlanet, fullStock } from './helpers';
 
 const admin = systemActor('admin');
 
@@ -27,7 +27,7 @@ describe('treasury ctx', () => {
     const empty = treasuryCtx(7, {});
     expect([bare.tick, empty.tick]).toEqual([6, 7]);
 
-    const state = emptyPlanet();
+    const state = colonyPlanet();
     for (const ctx of [bare, empty, withStep]) {
       treasury(state, ctx).add({ colony: 0, amounts: { 'metals.t1': 1 }, reason: 'trade', actor: admin });
     }
@@ -37,7 +37,7 @@ describe('treasury ctx', () => {
   });
 
   it('unrecorded changes state but drops the posting, stamping its tick', () => {
-    const state = emptyPlanet();
+    const state = colonyPlanet();
     const res = treasury(state, unrecorded(9)).add({ colony: 0, amounts: { 'bio.water': 4 }, reason: 'dev.grant', actor: DEV_ACTOR });
     expect(res.ok && res.posting?.at).toBe(9);
     expect(getColonyStock(state, 0)['bio.water']).toBe(4);
@@ -47,7 +47,7 @@ describe('treasury ctx', () => {
 
 describe('ColonyTreasury.add', () => {
   it('credits whole units and records exactly one posting: counter → colony legs, reason, actor, ref, at', () => {
-    const state = emptyPlanet();
+    const state = colonyPlanet();
     const ctx = collector(7);
     const res = treasury(state, ctx).add({
       colony: 0,
@@ -74,8 +74,8 @@ describe('ColonyTreasury.add', () => {
     expect(getColonyStock(state, 0)).toEqual(fullStock({ 'metals.t1': 600, 'bio.water': 200 }));
   });
 
-  it('writes col.stock and col.resources, creating the colony record when missing; no ref → no ref key', () => {
-    const state = emptyPlanet();
+  it('writes col.stock and col.resources of an existing colony; no ref → no ref key', () => {
+    const state = colonyPlanet(2);
     const ctx = collector(3);
     treasury(state, ctx).add({
       colony: 1,
@@ -93,20 +93,30 @@ describe('ColonyTreasury.add', () => {
     expect(ctx.postings[0]).not.toHaveProperty('ref');
   });
 
+  it('GP-24: a colony index without a record is refused and creates no placeholder colonies', () => {
+    const state = colonyPlanet(1);
+    const ctx = collector(3);
+    const t = treasury(state, ctx);
+    expect(t.add({ colony: 5, amounts: { 'metals.t1': 5 }, reason: 'trade', actor: admin })).toEqual({ ok: false, code: 'invalid_amount', detail: 'unknown colony' });
+    expect(t.withdraw({ colony: 1, amounts: { 'metals.t1': 1 }, reason: 'trade', actor: admin })).toEqual({ ok: false, code: 'invalid_amount', detail: 'unknown colony' });
+    expect(state.colonies).toHaveLength(1);
+    expect(ctx.postings).toEqual([]);
+  });
+
   it('moves nothing and records nothing when every amount is zero', () => {
-    const state = emptyPlanet();
+    const state = colonyPlanet();
     const ctx = collector(1);
     const res = treasury(state, ctx).add({ colony: 0, amounts: { 'metals.t1': 0 }, reason: 'dev.grant', actor: DEV_ACTOR });
     expect(res).toEqual({ ok: true, credited: {}, overflow: {} });
     expect(ctx.postings).toEqual([]);
-    expect(state.colonies).toHaveLength(0);
+    expect(state.colonies[0].stock).toBeUndefined();
   });
 
 });
 
 describe('ColonyTreasury.add: caps and overflow', () => {
-  it('clampToCap credits what fits under the family caps, reports the overflow and posts only the credit', () => {
-    const state = emptyPlanet();
+  it('clampToCap credits what fits under the family caps, reports the overflow and posts it to sys:overflow (LED-11)', () => {
+    const state = colonyPlanet();
     const ctx = collector(2);
     const t = treasury(state, ctx);
     t.add({ colony: 0, amounts: { 'metals.t1': 550, 'bio.water': 450 }, reason: 'admin.correction', actor: admin });
@@ -118,7 +128,7 @@ describe('ColonyTreasury.add: caps and overflow', () => {
       clampToCap: true,
       ref: 'tile:1,0',
     });
-    // INITIAL_CAPS: metals 600 (room 50), bio 500 shared by biomass + water (room 50, filled in key order)
+    // hq.startingKit.storageCaps: metals 600 (room 50), bio 500 shared by biomass + water (room 50, filled in key order)
     expect(res).toMatchObject({
       ok: true,
       credited: { 'metals.t1': 50, 'bio.biomass': 30, 'bio.water': 20, 'minerals.t1': 20 },
@@ -140,18 +150,32 @@ describe('ColonyTreasury.add: caps and overflow', () => {
         { account: 'colony:0', asset: 'metals.t1', delta: 50 },
         { account: 'sys:world', asset: 'minerals.t1', delta: -20 },
         { account: 'colony:0', asset: 'minerals.t1', delta: 20 },
+        { account: 'sys:world', asset: 'bio.water', delta: -20 },
+        { account: 'sys:overflow', asset: 'bio.water', delta: 20 },
+        { account: 'sys:world', asset: 'metals.t1', delta: -50 },
+        { account: 'sys:overflow', asset: 'metals.t1', delta: 50 },
       ],
     });
   });
 
-  it('a fully capped clampToCap credit moves nothing and records nothing', () => {
+  it('a fully capped clampToCap credit moves nothing into the colony; the journal still records the loss (LED-11)', () => {
     const state = emptyPlanet();
     state.colonies.push({ index: 0, id: 'col_0', name: 'A', color: 0, status: 'active', changedAt: 0, caps: { metals: 0 } });
     const ctx = collector();
     const res = treasury(state, ctx).add({ colony: 0, amounts: { 'metals.t1': 10 }, reason: 'production.tick', actor: admin, clampToCap: true });
-    expect(res).toEqual({ ok: true, credited: {}, overflow: { 'metals.t1': 10 } });
-    expect(ctx.postings).toEqual([]);
+    const posting = {
+      at: 0,
+      reason: 'production.tick',
+      actor: admin,
+      legs: [
+        { account: 'sys:world', asset: 'metals.t1', delta: -10 },
+        { account: 'sys:overflow', asset: 'metals.t1', delta: 10 },
+      ],
+    };
+    expect(res).toEqual({ ok: true, credited: {}, overflow: { 'metals.t1': 10 }, posting });
+    expect(ctx.postings).toEqual([posting]);
     expect(state.colonies[0].stock).toBeUndefined();
+    expect(state.colonies[0].changedAt).toBe(0);
   });
 
   it('rejects a credit that would leave the safe-integer range, changing nothing (all keys)', () => {
@@ -212,7 +236,7 @@ describe('ColonyTreasury.withdraw', () => {
   });
 
   it('withdrawing nothing succeeds without a posting', () => {
-    const state = emptyPlanet();
+    const state = colonyPlanet();
     const ctx = collector();
     expect(treasury(state, ctx).withdraw({ colony: 0, amounts: {}, reason: 'trade', actor: admin })).toEqual({ ok: true, debited: {} });
     expect(ctx.postings).toEqual([]);

@@ -3,7 +3,8 @@ import { ENTITY_KIND } from '../ecs/columns';
 import type { PathProfileId } from '../grid/pathProfiles';
 import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
-import { resolveHqT1Row, syncHqView } from '../systems/hq';
+import { syncHqView } from '../systems/hq/view';
+import { resolveHqT1Row, rowNum } from '../systems/rows';
 
 /**
  * Which entity kinds are units (take commands and move) and their stats from the data rows. Every unit moves the
@@ -22,6 +23,8 @@ export interface MobileStats {
   dps: number;
   stopHoldTicks: number;
   retryTicks: number;
+  /** Longest back-off of failed auto work (`retryBlockedMaxS`). */
+  retryMaxTicks: number;
 }
 
 interface MobileKindDef {
@@ -30,22 +33,18 @@ interface MobileKindDef {
   onChanged?(state: PlanetState, row: number, tick: number, data: CompiledDataLike): void;
 }
 
-const num = (row: CompiledRow, key: string, fallback: number): number => {
-  const v = row[key];
-  return typeof v === 'number' && Number.isFinite(v) ? v : fallback;
-};
-
 function statsFromRow(row: CompiledRow): MobileStats {
   return {
-    speedPerTick: Math.fround(num(row, 'speedTilesPerS', 0)),
-    viewRadius: num(row, 'viewRadius', 0),
+    speedPerTick: Math.fround(rowNum(row, 'speedTilesPerS')),
+    viewRadius: rowNum(row, 'viewRadius'),
     profile: 'ground',
-    terraformReach: [num(row, 'terraformReachMin', 1), num(row, 'terraformReachTiles', 2)],
-    buildReach: [num(row, 'buildReachMin', 2), num(row, 'buildReachTiles', 3)],
-    weaponRange: num(row, 'weaponRange', 0),
-    dps: num(row, 'dps', 0),
-    stopHoldTicks: num(row, 'stopHoldS', 25),
-    retryTicks: Math.max(1, num(row, 'retryBlockedS', 25)),
+    terraformReach: [rowNum(row, 'terraformReachMin'), rowNum(row, 'terraformReachTiles')],
+    buildReach: [rowNum(row, 'buildReachMin'), rowNum(row, 'buildReachTiles')],
+    weaponRange: rowNum(row, 'weaponRange'),
+    dps: rowNum(row, 'dps'),
+    stopHoldTicks: rowNum(row, 'stopHoldS'),
+    retryTicks: Math.max(1, rowNum(row, 'retryBlockedS')),
+    retryMaxTicks: Math.max(1, rowNum(row, 'retryBlockedMaxS')),
   };
 }
 

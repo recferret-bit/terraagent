@@ -37,7 +37,7 @@ Before writing any 3D, shader, or asset-pipeline code, read the `SKILL.md` for t
    - Apply `createUnifiedColonyMaterial()` so both procedural meshes and imported `.glb` models share **Triplanar surface grain** (bypassing bad AI UVs), **Vertical Ground-Up Biome Weathering** (blending desert dust, ice frost, or temperate moss onto the bottom `0m–1.1m`), and **Fresnel silhouette rim lighting**.
 4. **Pillar 4 — Tabletop Diorama Viewport & Visual QA (`diorama-viewport-auditor`):**
    - Render with a `28°` FOV telephoto isometric camera, `ACESFilmicToneMapping`, `RoomEnvironment` PMREM IBL, and selective `UnrealBloomPass` (`threshold: 1.1`).
-   - Always visually inspect newly created 3D models or shaders across the 4 diagnostic views (`iso`, `front`, `side`, `top`) to verify ground contact (`minY == 0`) and part connectivity.
+   - Always visually inspect newly created 3D models or shaders across the 4 diagnostic views (`iso`, `front`, `side`, `top`) to verify ground contact (`minY == 0`, or `-0.1` for a building's sunk foundation-plinth skirt) and part connectivity.
 
 ---
 
@@ -62,7 +62,7 @@ One Vite app, several HTML entries (`vite.config.ts` → `rollupOptions.input`, 
 | `/` (`frontend/index.html`) | **Hub**: links to every page below. Static HTML + CSS. | `frontend/index.html` |
 | `/landing.html` | **Landing** (terraagent.com). Planet cards deep-link to `/play.html?planet=<kind>`. | `frontend/landing.html`, `frontend/landing/` (`main.ts`, `sections/`, `landing.css`) |
 | `/play.html` | **Game**: orbit menu → descent → colony diorama. Params: `?planet=dune\|oceanForest\|forestRock&seed=<n>&skip=1\|deploy=1\|t=<s>`. | `frontend/game/app/`, `frontend/game/ui/`, `frontend/game/descent/` |
-| `/playground.html` | **3D playground**, the model storybook: every `ArchetypeCatalog` entry with 4 diagnostic views, biome switch, tri budget and `minY` checks. Params: `?inspect=<id>&biome=<kind>&view=iso\|front\|side\|top&turntable=1&surface=1`. | `frontend/playground/` |
+| `/playground.html` | **3D playground**, the model storybook: every `ArchetypeCatalog` entry with 4 diagnostic views, biome switch, tri budget and `minY` checks. Params: `?inspect=<id>&biome=<kind>&view=iso\|front\|side\|top&turntable=1&surface=1&hexterrain=1&build=0\|33\|66&work=1`. | `frontend/playground/` |
 | `/design/` | **Faction Plate** design system docs (foundations, UI storybook, motion). |  `frontend/design/` |
 
 **Page and UI rules:**
@@ -73,7 +73,7 @@ One Vite app, several HTML entries (`vite.config.ts` → `rollupOptions.input`, 
 - **Wave owner check:** a wave lead ends every wave by playing its demo story on the running stack and writing the step-by-step **owner check guide** [`docs/plan/checks/wNN-check.md`](./docs/plan/checks/README.md) (exact URLs with the worktree's ports, where to type — the in-game dev console is the `` ` `` key —, what to see; example [`w00-check.md`](./docs/plan/checks/w00-check.md)), committed on the wave branch and pasted as the final message. The owner lands it with **`npm run wave -- land NN`** (e.g. `npm run wave -- land 00`). Waves open only after every dependency is in `main` (`docs/plan/PRODUCT_WAVES.md` §7).
 - **Dev tools reference: [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md)** — online play URL parameters (`?scenario=`, `?host=local`, `&waves=`, `&lag=`, `&predict=0`, `&as=`), the in-game dev console (`` ` ``; `warp`, `spawn`, `nudge`, `teleport`, `tune`, `scenario`, `chain.ping`, …), dev pages (`/dev/chain/`, `/dev/parity/`) and `/v1/dev/*` routes, the mock blockchain, env variables, debug handles and test commands. Keep it current: a change that adds or renames one of these updates that file in the same commit.
 
-**Visual QA for 3D work (Pillar 4):** first run `npm run validate:models -- <id>` (numeric geometry check), then open the playground with `&validate=1` (or press `V`) to see offending parts outlined and numbered. The playground *is* the diagnostic turntable. After creating or changing an archetype or shader, open `/playground.html?inspect=<id>` and check `iso`, `front`, `side` and `top` (or press `4-VIEW SHEET`). The info panel must show `ground contact ✔ minY 0.000` and a triangle count under 3.5k. Check all three biomes for weathering. For game-flow changes, use `/play.html?planet=<kind>&skip=1` to land directly in gameplay.
+**Visual QA for 3D work (Pillar 4):** first run `npm run validate:models -- <id>` (numeric geometry check), then open the playground with `&validate=1` (or press `V`) to see offending parts outlined and numbered. The playground *is* the diagnostic turntable. After creating or changing an archetype or shader, open `/playground.html?inspect=<id>` and check `iso`, `front`, `side` and `top` (or press `4-VIEW SHEET`). The info panel must show `ground contact ✔` (`minY 0.000`, or `minY -0.100 (−0.1 m plinth skirt)` for a building whose only sunk part is its `role: 'plinth'` foundation) and a triangle count under 3.5k. Check all three biomes for weathering. For game-flow changes, use `/play.html?planet=<kind>&skip=1` to land directly in gameplay.
 
 ---
 

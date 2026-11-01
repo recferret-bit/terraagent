@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { eventDef, parseWaves } from '@terra/contracts';
+import { eventDef } from '@terra/contracts';
 import {
   cancelConstructionOrder,
-  createPlanet,
   ENTITY_STATE,
   getColonyStock,
   getConstructionOrders,
@@ -20,6 +19,7 @@ import {
   spawnHqUnit,
   type SimCommand,
 } from '../../src';
+import { w01Host } from '../helpers/host';
 import { fullStock } from '../economy/helpers';
 
 let cmdSeq = 0;
@@ -27,11 +27,7 @@ function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0, pref
   return { colonyIndex, source: 'player', commandId: `${prefix}_${++cmdSeq}`, kind, args };
 }
 
-function createW01Host(radius = 12): SimHost {
-  const host = new SimHost({ flags: parseWaves('..01') });
-  host.load(createPlanet({ type: 'flat', seed: 'hub-construction-test', radius }));
-  return host;
-}
+const createW01Host = (radius = 12): SimHost => w01Host({ seed: 'hub-construction-test', radius });
 
 function prepareHubSite(host: SimHost, centerQ: number, centerR: number): Array<{ q: number; r: number }> {
   const state = host.state;
@@ -76,7 +72,6 @@ describe('W01-16: Command Hub construction payment & 75% cancel refund', () => {
     const midOrder = getConstructionOrders(state, 0)[0]!;
     expect(midOrder.status).toBe('in_progress');
     expect(midOrder.progress).toBeCloseTo(0.5, 5);
-    expect(midOrder.buildProgress).toBeCloseTo(0.5, 5);
 
     const hubRow = rowOf(state.entities, midOrder.entityId);
     expect(state.entities.cols.state[hubRow]).toBe(ENTITY_STATE.constructing);
@@ -157,10 +152,9 @@ describe('W01-16: Command Hub 20.0 s construction progress & buildingCompleted e
     expect(host.tick).toBe(100);
     expect(host.tick * 0.2).toBeCloseTo(20.0, 5);
 
-    const order100 = getConstructionOrders(state, 0)[0]!;
-    expect(order100.status).toBe('completed');
-    expect(order100.progress).toBe(1);
-    expect(order100.buildProgress).toBe(1);
+    // A completed order leaves the queue (GP-10); its result is the active Hub
+    expect(getConstructionOrders(state, 0)).toEqual([]);
+    const order100 = order99;
     // Fully paid exactly at completion
     const finalStock = getColonyStock(state, 0);
     expect(finalStock).toEqual(fullStock({ 'metals.t1': 400, 'minerals.t1': 250, 'bio.biomass': 150, 'bio.water': 150 }));
@@ -236,10 +230,10 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
 
     // 20.0 s (100 ticks) of building completes the Hub, after a short walk out of the footprint
     const buildEvents = [];
-    for (let t = 0; t < 110 && getConstructionOrders(state, 0)[0]?.status !== 'completed'; t++) {
+    for (let t = 0; t < 110 && getConstructionOrders(state, 0).length > 0; t++) {
       buildEvents.push(...host.step(1).events);
     }
-    expect(getConstructionOrders(state, 0)[0]?.status).toBe('completed');
+    expect(getConstructionOrders(state, 0)).toEqual([]); // completed orders leave the queue (GP-10)
     expect(buildEvents.some((e) => e.kind === 'buildingCompleted')).toBe(true);
   });
 

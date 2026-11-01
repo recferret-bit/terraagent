@@ -2,16 +2,11 @@ import type { DevCommandDef, FeatureContext } from '../../core/registry/types';
 import { intArg, numArg } from '../../dev/console/parse';
 import type { CommandResult } from '../../net/commandBus';
 import '../../net/services';
+import { RESOURCE_ALIASES } from '../shared/resources';
 import { ledgerCommand } from './ledger';
 
 export { ledgerCommand };
 
-const RESOURCE_ALIASES: Record<string, string> = {
-  metals: 'metals.t1',
-  minerals: 'minerals.t1',
-  biomass: 'bio.biomass',
-  water: 'bio.water',
-};
 
 async function sim(ctx: FeatureContext, kind: string, args: unknown): Promise<CommandResult> {
   const send = ctx.services.sendCommand;
@@ -64,29 +59,26 @@ export const seedCommand: DevCommandDef = {
 
 export const tpCommand: DevCommandDef = {
   name: 'tp',
-  help: 'tp [id] <q> <r>  Teleport entity (default: colony HQ) to tile (q, r)',
+  help: 'tp [id] <q> <r>  Teleport entity id (default: the colony HQ) to tile (q, r); whole numbers only',
   async run(a, ctx) {
     if (a.length >= 3) {
-      const entityId = numArg(a, 0, 'id');
-      const q = numArg(a, 1, 'q');
-      const r = numArg(a, 2, 'r');
+      const entityId = intArg(a, 0, 'id');
+      const q = intArg(a, 1, 'q');
+      const r = intArg(a, 2, 'r');
       return ackText('dev.teleport', await sim(ctx, 'dev.teleport', { entityId, q, r }));
     }
-    const q = numArg(a, 0, 'q');
-    const r = numArg(a, 1, 'r');
+    const q = intArg(a, 0, 'q');
+    const r = intArg(a, 1, 'r');
     return ackText('dev.teleport', await sim(ctx, 'dev.teleport', { entityId: 0, q, r }));
   },
 };
 
 export const landCommand: DevCommandDef = {
   name: 'land',
-  help: 'land [q r]  Respawn or land colony drop pod and HQ',
+  help: 'land [q r]  Land the colony drop pod and HQ now (at tile (q, r) when given: both or none)',
   async run(a, ctx) {
-    const args: { q?: number; r?: number } = {};
-    if (a[0] !== undefined && a[1] !== undefined) {
-      args.q = numArg(a, 0, 'q');
-      args.r = numArg(a, 1, 'r');
-    }
+    if (a.length === 1 || a.length > 2) throw new Error('land takes no coordinates or both <q> <r>');
+    const args = a.length === 2 ? { q: intArg(a, 0, 'q'), r: intArg(a, 1, 'r') } : {};
     return ackText('dev.land', await sim(ctx, 'dev.land', args));
   },
 };

@@ -17,7 +17,7 @@ export class RTSCamera {
   minDist = 20; maxDist = 95; halfSize = 60; enabled = true;
   private cleanups: Array<() => void> = [];
 
-  constructor(private camera: THREE.PerspectiveCamera, private dom: HTMLElement, private surface: PlanetSurface, pos: THREE.Vector3, target: THREE.Vector3) {
+  constructor(private camera: THREE.PerspectiveCamera, dom: HTMLElement, private surface: PlanetSurface, pos: THREE.Vector3, target: THREE.Vector3) {
     this.target.copy(target); this.goal.copy(target);
     const off = pos.clone().sub(target);
     this.dist = this.distGoal = THREE.MathUtils.clamp(off.length(), this.minDist, this.maxDist);

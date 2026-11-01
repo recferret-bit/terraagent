@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { hexCount, hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import {
+  BORDER_VERTS_PER_EDGE,
   BORDER_Y_OFFSET,
   buildTerritoryBorderGeometry,
   createHexTerrain,
@@ -57,8 +58,8 @@ describe('W01-30: Territory border acceptance (R 10 Hub claim)', () => {
 
     const posAttr = terrain.borderMesh.geometry.getAttribute('position');
     const colAttr = terrain.borderMesh.geometry.getAttribute('color');
-    expect(posAttr.count).toBe(after.boundaryEdgeCount * 4);
-    expect(colAttr.count).toBe(after.boundaryEdgeCount * 4);
+    expect(posAttr.count).toBe(after.boundaryEdgeCount * BORDER_VERTS_PER_EDGE);
+    expect(colAttr.count).toBe(after.boundaryEdgeCount * BORDER_VERTS_PER_EDGE);
 
     const [er, eg, eb] = resolveColonyColorRgb(0);
     expect(DEFAULT_COLONY_COLORS[0]).toBe(0xff6a2a);
@@ -105,7 +106,7 @@ describe('W01-30: Frozen (contested) border thickness', () => {
     let frozenQuads = 0;
 
     for (let qIdx = 0; qIdx < stats.boundaryEdgeCount; qIdx++) {
-      const v0 = qIdx * 4;
+      const v0 = qIdx * BORDER_VERTS_PER_EDGE;
       const v3 = v0 + 3;
       const measuredWidth = Math.hypot(
         posAttr.getX(v0) - posAttr.getX(v3),
@@ -149,14 +150,14 @@ describe('W01-30: Colour-blind hatch pattern and colony colour overrides', () =>
     expect(solidStats.colorBlindMode).toBe(false);
     expect(solidStats.hatchSegmentCount).toBe(0);
     const solidVerts = terrain.borderMesh.geometry.getAttribute('position').count;
-    expect(solidVerts).toBe(solidStats.boundaryEdgeCount * 4);
+    expect(solidVerts).toBe(solidStats.boundaryEdgeCount * BORDER_VERTS_PER_EDGE);
 
     terrain.setColorBlindMode(true);
     const hatchStats = terrain.getTerritoryBorderStats();
     expect(hatchStats.colorBlindMode).toBe(true);
     expect(hatchStats.hatchSegmentCount).toBeGreaterThan(solidStats.boundaryEdgeCount * 2);
     const hatchVerts = terrain.borderMesh.geometry.getAttribute('position').count;
-    expect(hatchVerts).toBe((hatchStats.boundaryEdgeCount + hatchStats.hatchSegmentCount) * 4);
+    expect(hatchVerts).toBe(hatchStats.boundaryEdgeCount * BORDER_VERTS_PER_EDGE + hatchStats.hatchSegmentCount * 4);
 
     terrain.setColonyColors({ 0: 0x11ddaa });
     const colAttr = terrain.borderMesh.geometry.getAttribute('color');

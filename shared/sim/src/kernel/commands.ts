@@ -8,11 +8,17 @@ export type SimCommand = SimCommandV1;
 /** Game-rule rejection code returned by a handler (SIM-C-02: rejections never throw). */
 export type RejectCodeOf = string;
 
+/** A rejection with a human-readable cause (e.g. the placement block text), passed on in `cmd.reject.detail` (GP-31). */
+export interface CommandReject {
+  code: RejectCodeOf;
+  detail?: string;
+}
+
 /**
- * Handles one command kind inside the `commands` system (slot 0). Returns nothing on success or a reject code.
- * Arguments were zod-checked on the host; the handler checks game rules only (SIM-C-01).
+ * Handles one command kind inside the `commands` system (slot 0). Returns nothing on success, or a reject code (or a
+ * code with a detail). Arguments were zod-checked on the host; the handler checks game rules only (SIM-C-01).
  */
-export type CommandHandler = (state: PlanetState, cmd: SimCommand, ctx: StepContext) => RejectCodeOf | void;
+export type CommandHandler = (state: PlanetState, cmd: SimCommand, ctx: StepContext) => RejectCodeOf | CommandReject | void;
 
 export interface CommandHandlerDef {
   readonly kind: string;
@@ -28,4 +34,5 @@ export interface CommandOutcome {
   kind: string;
   appliedAtTick: number;
   code?: string; // set when rejected
+  detail?: string; // optional cause of a rejection (hosts pass it in `cmd.reject.detail`)
 }

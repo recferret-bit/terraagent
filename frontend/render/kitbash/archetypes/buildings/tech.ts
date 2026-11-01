@@ -1,8 +1,7 @@
 // Tech & defense: drone array, robotics factory, turret.
 import * as THREE from 'three';
 import { KitbashBuilder } from '../../KitbashRegistry';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { box, cyl, capsule, ring, strut, cable, lamp, glow, dish, plinth, type V3, spin } from './kit';
+import { box, cyl, roundedTank, ring, strut, cable, lamp, glow, dish, plinth, type V3, spin } from './kit';
 
 const PI = Math.PI;
 
@@ -100,7 +99,7 @@ export function roboticsFactory() {
     cyl(b, 'frameGunmetal', 0.18, 0.22, h - 0.3, [x, 0.3, -2.7], { seg: 8, name: 'foundry exhaust stack' });
     ring(b, 'warningAmber', 0.19, 0.03, [x, h - 0.1, -2.7], { seg: 8, name: 'stack beacon ring light' });
   }
-  capsule(b, 'hullSecondary', 0.55, 1.4, [2.75, 0.18, -1.6], { seg: 10, name: 'coolant silo tank' });
+  roundedTank(b, 'hullSecondary', 0.55, 1.4, [2.75, 0.18, -1.6], { seg: 10, name: 'coolant silo tank' });
   ring(b, 'energyCyan', 0.56, 0.035, [2.75, 1.0, -1.6], { seg: 12, name: 'silo gauge ring light' });
   strut(b, 'frameGunmetal', [2.75, 2.35, -1.6], [2.2, 2.1, -1.2], 0.07, { name: 'silo manifold pipe' });
   // antenna (mounted on -X left wall so left face carries detail) + transformer + anchored cables

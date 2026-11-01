@@ -1,9 +1,10 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { Inject, Injectable, Optional, UnauthorizedException } from '@nestjs/common';
+import { Inject, Injectable, UnauthorizedException } from '@nestjs/common';
 import { APP_ENV, type AppEnv } from '../tokens';
 
 export const ACCESS_TOKEN_TTL_S = 900;
-const DEFAULT_JWT_SECRET = 'terra-dev-jwt-secret-change-in-prod';
+/** The public dev secret: the env default outside production only (`core.module.ts` refuses it in production). */
+export const DEV_JWT_SECRET = 'terra-dev-jwt-secret-change-in-prod';
 
 export interface AccessTokenClaims {
   readonly sub: string;
@@ -37,14 +38,11 @@ function b64urlDecodeJson(part: string): Record<string, unknown> {
 export class AuthTokenService {
   private readonly secret: string;
 
-  constructor(@Optional() @Inject(APP_ENV) envOrSecret?: AppEnv | string) {
-    if (typeof envOrSecret === 'string') {
-      this.secret = envOrSecret;
-    } else if (envOrSecret && typeof envOrSecret.JWT_ACCESS_SECRET === 'string') {
-      this.secret = envOrSecret.JWT_ACCESS_SECRET;
-    } else {
-      this.secret = process.env.JWT_ACCESS_SECRET ?? DEFAULT_JWT_SECRET;
-    }
+  /** `envOrSecret`: the app env (its parsed `JWT_ACCESS_SECRET`) or the secret itself (tests). */
+  constructor(@Inject(APP_ENV) envOrSecret: AppEnv | string) {
+    const secret = typeof envOrSecret === 'string' ? envOrSecret : envOrSecret.JWT_ACCESS_SECRET;
+    if (typeof secret !== 'string' || secret.length === 0) throw new Error('AuthTokenService needs JWT_ACCESS_SECRET');
+    this.secret = secret;
   }
 
   signAccessToken(payload: AccessTokenClaims, ttlSec = ACCESS_TOKEN_TTL_S): string {

@@ -54,7 +54,7 @@ describe('SnapshotService.restoreAll with old / foreign / newer dev planets', ()
     const store = {
       livePlanetIds: async () => Object.keys(snaps),
       latest: async (id: string) => ({ raw: snaps[id], savedAt: new Date(0) }),
-      wipeDevPlanet: async (id: string) => { wiped.push(id); },
+      wipePlanet: async (id: string) => { wiped.push(id); },
     } as unknown as SnapshotStore;
     const planets = {
       onPlanetLoaded: () => () => {}, onPlanetUnloaded: () => () => {}, onPlanetSnapshot: () => () => {},

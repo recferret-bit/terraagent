@@ -14,18 +14,15 @@ const status = async (p: Promise<unknown>) => p.then(() => 200, (e: unknown) => 
 
 describe('DevLedgerController GET /v1/dev/planets/:planetId/ledger', () => {
   it('returns { planetId, account, balances, entries } with account default colony:0 and limit default 10', async () => {
-    const c = new DevLedgerController(ledger, { NODE_ENV: 'development' } as never);
+    const c = new DevLedgerController(ledger);
     expect(await c.get('pl_A')).toEqual(view);
     expect(await c.get('pl_A', 'sys:construction', '3')).toEqual(view);
     expect(calls).toEqual([['pl_A', 'colony:0', 10], ['pl_A', 'sys:construction', 3]]);
   });
-  it('404 for a planet that is not loaded, 400 for a bad account, 404 in production', async () => {
-    const dev = new DevLedgerController(ledger, { NODE_ENV: 'development' } as never);
+  it('404 for a planet that is not loaded, 400 for a bad account (production: DevOnlyGuard)', async () => {
+    const dev = new DevLedgerController(ledger);
     expect(await status(dev.get('pl_B'))).toBe(404);
     expect(await status(dev.get('pl_A', '__proto__'))).toBe(400);
-    const prod = new DevLedgerController(ledger, { NODE_ENV: 'production' } as never);
-    await expect(prod.get('pl_A')).rejects.toThrow(CoreException);
-    expect(await status(prod.get('pl_A'))).toBe(404);
   });
   it('clamps limit to 1..1000', () => {
     expect([parseLimit(undefined), parseLimit('x'), parseLimit('0'), parseLimit('50'), parseLimit('99999')]).toEqual([10, 10, 1, 50, 1000]);

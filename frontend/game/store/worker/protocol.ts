@@ -2,6 +2,7 @@ import type { BalanceOverrides } from '@terra/sim';
 import type { SimEventWire } from '@terra/contracts';
 import type { WireView } from '../replica/viewCodec';
 import type { ReplicaStatus } from '../replica/ReplicaCore';
+import type { TunedData } from '../replica/tuneEvent';
 
 /** Main thread → sim worker. `state` / `diff` are transferred (their buffers move, the sender must not reuse them). */
 export type ToWorker =
@@ -14,6 +15,8 @@ export type ToWorker =
   | { t: 'reject'; id: string; code: string }
   /** Server time estimate now (ms), from welcome / pong. The worker keeps the offset to its own clock. */
   | { t: 'clock'; serverNowMs: number }
+  /** A `dev.tuned` event (live `tune`): rebuild the replica's data; a resync is requested when it cannot. */
+  | { t: 'tune'; tune: TunedData }
   | { t: 'stop' };
 
 /**

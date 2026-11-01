@@ -1,5 +1,6 @@
 import { dataRow } from '../data';
 import { getSpawnSlots, type SpawnSlot } from '../gen/spawnSlots';
+import { starterHubSiteBlocked } from '../gen/starterSpace';
 import { HEX_DIRS, hexDistance, hexIndex, inHex } from '../grid/hex';
 import { DEPOSIT, TERRAIN } from '../grid/layers';
 import { sectorIndex } from '../grid/sectors';
@@ -13,9 +14,9 @@ import { colonyPresence, getLandingHistory } from './presence';
  * position is never used twice. Both read the presence model (landing history + live entities), so the server seat
  * flow, the local host, dev tools and a future AI orchestrator all get the same answer for the same state.
  *
- * A site is free when it is on land inside the map, no other colony owns the tile, and it keeps
- * `hq.startingKit.minLandingSeparation` (hex distance) from every landing ever made (any colony, alive or gone),
- * every live pod, HQ and structure of another colony.
+ * A site is free when it is on land inside the map, no other colony owns the tile or every starter Hub site around
+ * it, and it keeps `hq.startingKit.minLandingSeparation` (hex distance) from every landing ever made (any colony,
+ * alive or gone), every live pod, HQ and structure of another colony.
  */
 
 export type LandingSource = 'explicit' | 'slot' | 'search';
@@ -73,6 +74,8 @@ export function landingBlock(
   if (slot && slot.claimedBy !== undefined && slot.claimedBy !== colony) return 'landing_site_taken';
   const sep = minLandingSeparation(data);
   if (blockers(s, colony, opts.relocate).some((b) => hexDistance(b.q, b.r, q, r) < sep)) return 'landing_site_taken';
+  // The starter Hub site must not take another colony's territory (WE-23).
+  if (starterHubSiteBlocked(s, q, r, colony)) return 'landing_site_taken';
   return null;
 }
 

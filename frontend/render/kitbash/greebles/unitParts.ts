@@ -2,11 +2,15 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { KitbashBuilder, KitbashRegistry } from '../KitbashRegistry';
 import type { MaterialZoneId, PartOptions } from '../KitbashRegistry';
+import { tubeThrough } from './tube';
 
 export type V3 = [number, number, number];
 export type Zone = MaterialZoneId;
 
-/** Rounded box. `seg` = bevel segments: 2 for hero hulls (smooth highlights), 1 for small or thin parts (a chamfer: 3x fewer triangles). */
+/**
+ * Rounded box. `seg` = bevel segments; the default 1 gives a single chamfer (3x fewer triangles than 2). Pass `seg = 2`
+ * explicitly for a hero hull that needs smooth rounded highlights and has triangle budget left.
+ */
 export const rbox = (w: number, h: number, d: number, r = 0.04, seg = 1) =>
   new RoundedBoxGeometry(w, h, d, seg, Math.min(r, w / 2 - 1e-3, h / 2 - 1e-3, d / 2 - 1e-3));
 export const cyl = (rt: number, rb: number, h: number, seg = 10) => new THREE.CylinderGeometry(rt, rb, h, seg);
@@ -36,10 +40,9 @@ export function strut(b: KitbashBuilder, a: V3, c: V3, r: number, zone: Zone, op
   b.addPart(cyl(rEnd, r, len, 8), zone, { ...opts, position: mid.toArray() as V3, rotation: [e.x, e.y, e.z] });
 }
 
-/** Tube through points (CatmullRom). */
+/** Tube through points (CatmullRom, 5 radial segments; the shared `tubeThrough`). */
 export function cable(b: KitbashBuilder, pts: V3[], r = 0.02, zone: Zone = 'frameGunmetal', opts: PartOptions = {}) {
-  const curve = new THREE.CatmullRomCurve3(pts.map((p) => new THREE.Vector3(...p)));
-  b.addPart(new THREE.TubeGeometry(curve, 10, r, 5, false), zone, { name: 'power cable', ...opts });
+  tubeThrough(b, pts.map((p) => new THREE.Vector3(...p)), r, zone, { along: 10, radial: 5 }, opts);
 }
 
 /** Sagging cable between two points. */

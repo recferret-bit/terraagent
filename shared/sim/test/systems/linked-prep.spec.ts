@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { parseWaves } from '@terra/contracts';
 import {
   buildLinkedPrepJobs,
   cancelConstructionOrder,
-  computeSitePrepBill,
-  createPlanet,
   enqueueTerraformOrder,
   ENTITY_STATE,
   getColonyTerraformOrders,
@@ -24,17 +21,25 @@ import {
   type SimCommand,
   setColonyStock,
   resolveStartingCargo,
+  summarizePrepJobs,
+  type PlanetState,
 } from '../../src';
+import { w01Host } from '../helpers/host';
 
 let cmdSeq = 0;
 function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0, idPrefix = 'lp'): SimCommand {
   return { colonyIndex, source: 'player', commandId: `${idPrefix}_${++cmdSeq}`, kind, args };
 }
 
-function createW01Host(radius = 12): SimHost {
-  const host = new SimHost({ flags: parseWaves('..01') });
-  host.load(createPlanet({ type: 'flat', seed: 'linked-prep-test', radius }));
-  return host;
+const createW01Host = (radius = 12): SimHost => w01Host({ seed: 'linked-prep-test', radius });
+
+/** The full prep bill of the 3×3 footprint at `(q, r)`: tiles still to prepare, the planned jobs and their totals. */
+function prepBill(state: PlanetState, q: number, r: number) {
+  const idx = hexIndex(state.grid.radius);
+  const tiles = getHubFootprintTiles(q, r);
+  const subJobs = buildLinkedPrepJobs(state, tiles);
+  const unpreparedTiles = tiles.filter((t) => !isBuildablePrepared(state.grid, idx.indexOf(t.q, t.r))).length;
+  return { unpreparedTiles, totalTiles: tiles.length, subJobs, ...summarizePrepJobs(subJobs) };
 }
 
 function stepToFullPrep(host: SimHost): { seenCounts: number[]; seenTexts: string[] } {
@@ -69,7 +74,7 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
       setTileTerrain(state.grid, idx.indexOf(pos.q, pos.r), TERRAIN.rock);
     }
 
-    const bill = computeSitePrepBill(state, 3, 0, 3);
+    const bill = prepBill(state, 3, 0);
     expect(bill.unpreparedTiles).toBe(9);
     expect(bill.totalTiles).toBe(9);
     expect(bill.subJobs).toHaveLength(12);
@@ -93,7 +98,6 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     expect(tfOrders).toHaveLength(1);
     const linkedOrder = tfOrders[0]!;
     expect(linkedOrder.isLinkedPrep).toBe(true);
-    expect(linkedOrder.countsTowardLaneLimit).toBe(false);
     expect(getManualTerraformLaneCount(state, 0)).toBe(0);
     expect(linkedOrder.jobs).toHaveLength(9);
     expect(linkedOrder.jobs.every((j) => j.op === 'grade')).toBe(true);
@@ -112,7 +116,7 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     expect(seenCounts).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
     expect(seenTexts.slice(0, 9)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8].map((n) => `waiting(site: ${n}/9)`));
     // 9/9: the build starts the same step; the HQ, which graded from inside the footprint, first walks out of it.
-    expect(['waiting(site: 9/9)', 'waiting(builder: HQ en route)', 'in_progress']).toContain(seenTexts[9]);
+    expect(['waiting(builder: HQ en route)', 'in_progress']).toContain(seenTexts[9]); // GP-12: never `waiting(site: 9/9)`
 
     for (const pos of footprint) {
       expect(isBuildablePrepared(state.grid, idx.indexOf(pos.q, pos.r))).toBe(true);
@@ -147,7 +151,7 @@ describe('W01-15: Forest/Rock prep planning & cancel propagation (UO-TF-03, UO-Q
     expect(jobs.filter((j) => j.op === 'break')).toHaveLength(1);
     expect(jobs.filter((j) => j.op === 'grade')).toHaveLength(7);
 
-    const bill = computeSitePrepBill(state, 3, 0, 3);
+    const bill = prepBill(state, 3, 0);
     expect(bill.unpreparedTiles).toBe(7);
     expect(bill.totalTiles).toBe(9);
     expect(bill.yields).toEqual({ 'bio.biomass': 10, 'metals.t1': 10 });
@@ -184,7 +188,7 @@ describe('W01-15: Forest/Rock prep planning & cancel propagation (UO-TF-03, UO-Q
     );
     expect(preparedAfterCancel).toHaveLength(3);
 
-    enqueueTerraformOrder(state, { colonyId: 0, op: 'grade', tiles: [{ q: -2, r: 0 }] });
+    expect(enqueueTerraformOrder(state, { colonyId: 0, op: 'grade', tiles: [{ q: -2, r: 0 }] }).ok).toBe(true);
     host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0, 're_place_hub'));
     host.step(1);
 
@@ -192,7 +196,7 @@ describe('W01-15: Forest/Rock prep planning & cancel propagation (UO-TF-03, UO-Q
     expect(getManualTerraformLaneCount(state, 0)).toBe(1);
 
     const secondOrder = getConstructionOrders(state, 0)[0]!;
-    expect(cancelConstructionOrder(state, 0, secondOrder.entityId, state.meta.tick)).toBe(true);
+    expect(cancelConstructionOrder(state, 0, String(secondOrder.entityId), state.meta.tick)).toBe(true);
     expect(getConstructionOrders(state, 0)).toHaveLength(0);
     expect(getColonyTerraformOrders(state, 0)).toHaveLength(1);
     expect(getManualTerraformLaneCount(state, 0)).toBe(1);

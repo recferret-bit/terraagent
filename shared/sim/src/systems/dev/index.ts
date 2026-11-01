@@ -1,57 +1,54 @@
-import type { ResourceKey } from '@terra/contracts';
 import { isMajor } from '@terra/ledger';
 import { dataRow } from '../../data';
 import { DEV_ACTOR, treasury } from '../../economy';
-import { ENTITY_KIND } from '../../ecs/columns';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { adminRelocateEntity, placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
 import { createPlanet } from '../../gen/createPlanet';
 import { hasGenerator } from '../../gen/generators';
 import { forgetTileStamps } from '../../grid/sectors';
-import { bumpPathEpoch } from '../../grid/tileModel';
+import { bumpPathEpoch, isTileExplored, markTileExplored } from '../../grid/tileModel';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { seedRng } from '../../kernel/rng';
-import { setBlob, touchTile, type PlanetState } from '../../kernel/state';
+import { setBlob, type PlanetState } from '../../kernel/state';
+import { commandColony, parseArgs } from '../command';
+import { cancelConstructionOrder, getConstructionOrders } from '../construction';
 import { defineSimModule } from '../define';
-import { resolveHqRow, revealVision, setHqCellEnergy, syncHqView } from '../hq';
+import { findColonyHqRow } from '../find';
+import { hqViewRadius, revealVision, setHqCellEnergy, syncHqView } from '../hq';
+import { MAX_COLONIES_PER_PLANET } from '../landing';
+import { writeOrdersByColony } from '../terraform-basic/orders';
+import { claimTerritoryRadius } from '../territory-claim';
 import { cancelMove } from '../../units/movement/orchestrator';
 import { devLand } from './land';
 
 /** `kind` of the W00 test entity spawned by `dev.spawn` (no gameplay meaning). */
 export const DEV_ENTITY_KIND = 1;
 
-const RESOURCE_ALIASES: Record<string, string> = {
-  metals: 'metals.t1',
-  minerals: 'minerals.t1',
-  biomass: 'bio.biomass',
-  water: 'bio.water',
-};
+/** The caller's colony for a colony-scoped dev command (`cmd.colonyIndex`), or `not_own_colony` (GP-18). */
+const devColony = (cmd: SimCommand): number | 'not_own_colony' => commandColony(cmd);
 
-function resolveColonyIndex(cmd: SimCommand): number {
-  if (typeof cmd.colonyIndex === 'number' && cmd.colonyIndex >= 0) return cmd.colonyIndex;
-  const legacy = (cmd as { colony?: unknown }).colony;
-  if (typeof legacy === 'number' && legacy >= 0) return legacy;
-  return 0;
+/** Layers `dev.seed` takes from the regenerated planet: the ground, and the per-colony layers on top of it. */
+const SEED_LAYERS = ['terrain', 'prep', 'deposit', 'richness', 'height', 'subDeposit', 'subRichness', 'owner', 'explored', 'anchors', 'graceUntil'] as const;
+
+/** `dev.seed`: no order survives onto new ground (GP-27): construction is cancelled (refund rules), terraform dropped. */
+function dropAllOrders(s: PlanetState, ctx: StepContext): void {
+  for (const o of getConstructionOrders(s)) cancelConstructionOrder(s, o.colonyId, o.orderId, ctx.tick, ctx.data, ctx);
+  writeOrdersByColony(s, {}, ctx.tick);
 }
 
-function findHqRow(state: PlanetState, colonyIndex: number, reqId?: number): number {
-  if (typeof reqId === 'number' && reqId > 0) {
-    return resolveHqRow(state, reqId);
-  }
-  const e = state.entities;
-  const cols = e.cols;
-  for (let i = 0; i < e.count; i++) {
-    if (cols.kind[i] === ENTITY_KIND.hq && cols.owner[i] === colonyIndex) {
-      return i;
+/** After `dev.seed`: active Hubs claim their territory again, and every HQ and pod sees its surroundings again. */
+function reclaimAndReveal(s: PlanetState, ctx: StepContext): void {
+  const cols = s.entities.cols;
+  for (let row = 0; row < s.entities.count; row++) {
+    const owner = cols.owner[row];
+    if (owner < 0) continue;
+    if (cols.kind[row] === ENTITY_KIND.hub && cols.state[row] === ENTITY_STATE.active) {
+      claimTerritoryRadius(s, { colonyId: owner, q: cols.q[row], r: cols.r[row], tick: ctx.tick, data: ctx.data });
     }
+    if (cols.kind[row] === ENTITY_KIND.hq || cols.kind[row] === ENTITY_KIND.pod) revealVision(s, owner, cols.q[row], cols.r[row], hqViewRadius(ctx.data), ctx.tick);
   }
-  for (let i = 0; i < e.count; i++) {
-    if (cols.kind[i] === ENTITY_KIND.hq) {
-      return i;
-    }
-  }
-  return -1;
 }
 
 /** Admin placement: a new row gets its spawn tile; an existing one is relocated (its route, if any, is dropped). */
@@ -63,7 +60,7 @@ function place(s: PlanetState, row: number, x: number, y: number, ctx: StepConte
     cancelMove(s, e.cols.id[row], ctx.tick);
   }
   if (e.cols.kind[row] === ENTITY_KIND.hq) {
-    revealVision(s, e.cols.owner[row], e.cols.q[row], e.cols.r[row], 9, ctx.tick);
+    revealVision(s, e.cols.owner[row], e.cols.q[row], e.cols.r[row], hqViewRadius(ctx.data), ctx.tick);
     syncHqView(s, row, ctx.tick, ctx.data);
   }
 }
@@ -100,13 +97,21 @@ const nudge = defineCommandHandler({
 
 const teleport = defineCommandHandler({
   kind: 'dev.teleport', wave: 'W00',
+  // With an id: that entity (when the caller has a colony, only its own or an unowned one). Without: the caller's HQ.
   handle(s, c, ctx) {
-    const { q, r } = c.args as { q: number; r: number };
-    const reqId = (c.args as { id?: number; entityId?: number }).id ?? (c.args as { id?: number; entityId?: number }).entityId;
-    const row =
-      typeof reqId === 'number' && reqId > 0
-        ? rowOf(s.entities, reqId)
-        : findHqRow(s, resolveColonyIndex(c));
+    const { q, r, id, entityId } = c.args as { q: number; r: number; id?: number; entityId?: number };
+    const reqId = id ?? entityId;
+    const colony = devColony(c);
+    if (typeof reqId === 'number' && reqId > 0) {
+      const row = rowOf(s.entities, reqId);
+      if (row < 0) return 'unknown_entity';
+      const owner = s.entities.cols.owner[row];
+      if (typeof colony === 'number' && owner >= 0 && owner !== colony) return 'not_own_colony';
+      place(s, row, q, r, ctx);
+      return;
+    }
+    if (typeof colony === 'string') return colony;
+    const row = findColonyHqRow(s, colony);
     if (row < 0) return 'unknown_entity';
     place(s, row, q, r, ctx);
   },
@@ -117,13 +122,14 @@ const grant = defineCommandHandler({
   // Whole units only; a negative amount withdraws at most the balance (clamped to >= 0). Uncapped (a dev tool), and
   // only for an existing colony: a grant never creates a colony record.
   handle(s, c, ctx) {
-    const args = c.args as { resource: string; amount: number };
-    if (!isMajor(args.amount)) return 'invalid_args';
-    const res = (RESOURCE_ALIASES[args.resource] ?? args.resource) as ResourceKey;
-    const colony = resolveColonyIndex(c);
+    const colony = devColony(c);
+    if (typeof colony === 'string') return colony;
+    const args = parseArgs('dev.grant', c.args);
+    if (!args || !isMajor(args.amount)) return 'invalid_args';
     if (!s.colonies[colony]) return 'invalid_args';
     const t = treasury(s, ctx);
     const req = { colony, reason: 'dev.grant' as const, actor: DEV_ACTOR };
+    const res = args.resource;
     const out =
       args.amount >= 0
         ? t.add({ ...req, amounts: { [res]: args.amount } })
@@ -135,10 +141,12 @@ const grant = defineCommandHandler({
 const cell = defineCommandHandler({
   kind: 'dev.cell', wave: 'W01',
   handle(s, c, ctx) {
-    const args = c.args as { energy: number; entityId?: number; id?: number };
-    const reqId = args.entityId ?? args.id;
-    const hqRow = findHqRow(s, resolveColonyIndex(c), reqId);
-    if (hqRow < 0) return 'no_hq';
+    const colony = devColony(c);
+    if (typeof colony === 'string') return colony;
+    const args = parseArgs('dev.cell', c.args);
+    if (!args) return 'invalid_args';
+    const hqRow = findColonyHqRow(s, colony);
+    if (hqRow < 0) return 'unknown_entity';
     setHqCellEnergy(s, hqRow, args.energy, ctx.tick, ctx.data);
   },
 });
@@ -146,13 +154,10 @@ const cell = defineCommandHandler({
 const reveal = defineCommandHandler({
   kind: 'dev.reveal', wave: 'W01',
   handle(s, c, ctx) {
-    const col = resolveColonyIndex(c);
-    const mask = 1 << Math.max(0, Math.min(7, col));
-    const explored = s.grid.layers.explored as Uint8Array;
-    for (let i = 0; i < s.grid.count; i++) {
-      explored[i] |= mask;
-      touchTile(s, i, ctx.tick);
-    }
+    const colony = devColony(c);
+    if (typeof colony === 'string') return colony;
+    if (colony >= MAX_COLONIES_PER_PLANET) return 'invalid_args';
+    for (let i = 0; i < s.grid.count; i++) if (!isTileExplored(s.grid, i, colony)) markTileExplored(s.grid, i, colony, ctx.tick);
   },
 });
 
@@ -168,13 +173,12 @@ const seed = defineCommandHandler({
       planetId: s.meta.planetId,
       planetType: s.meta.planetType,
     });
+    dropAllOrders(s, ctx);
     s.meta.seed = nextSeed;
     s.rng = seedRng(nextSeed);
-    const copyLayers = ['terrain', 'prep', 'deposit', 'richness', 'height', 'subDeposit', 'subRichness'] as const;
-    for (const layer of copyLayers) {
-      if (temp.grid.layers[layer] && s.grid.layers[layer]) {
-        s.grid.layers[layer].set(temp.grid.layers[layer]);
-      }
+    // New ground: every ground layer comes from the new planet, and so do territory, anchors, grace and fog (GP-33).
+    for (const layer of SEED_LAYERS) {
+      if (temp.grid.layers[layer] && s.grid.layers[layer]) s.grid.layers[layer].set(temp.grid.layers[layer]);
     }
     if (temp.blobs.spawnSlots) {
       setBlob(s, 'spawnSlots', temp.blobs.spawnSlots.value, ctx.tick);
@@ -183,6 +187,7 @@ const seed = defineCommandHandler({
     forgetTileStamps(s.grid.layers.changedAt); // bulk write: sector stamps are rebuilt on the next diff
     bumpPathEpoch(s.meta); // new ground: paused path searches restart
     if (temp.meta.genVersion !== undefined) s.meta.genVersion = temp.meta.genVersion;
+    reclaimAndReveal(s, ctx);
   },
 });
 

@@ -22,6 +22,25 @@ export interface StepResult {
   stats: StepStats;
 }
 
+/**
+ * A system threw inside `step` (LED-09). The state is changed up to that point (commands applied, earlier systems
+ * run; `meta.tick` not advanced), so the host must not keep stepping it blindly. `outcomes` and `postings` are what
+ * the step had produced: the treasury already changed `col.stock` for those postings, so the host journals them (and
+ * answers the commands) before it decides what to do with the planet.
+ */
+export class StepError extends Error {
+  constructor(
+    readonly cause: unknown,
+    readonly tick: number,
+    readonly outcomes: readonly CommandOutcome[],
+    readonly postings: readonly LedgerPosting[],
+    readonly events: readonly SimEvent[],
+  ) {
+    super(`step to tick ${tick} failed: ${cause instanceof Error ? cause.message : String(cause)}`);
+    this.name = 'StepError';
+  }
+}
+
 /** A prepared engine: ordered systems and a handler table, built once per config. */
 export interface Pipeline {
   readonly config: EngineConfig;
@@ -54,11 +73,12 @@ function applyCommands(state: PlanetState, cmds: readonly SimCommand[], ctx: Ste
   const out: CommandOutcome[] = [];
   for (const cmd of cmds) {
     const h = p.handlers.get(cmd.kind);
-    let code: string | undefined;
-    if (!h) code = 'unknown_kind';
-    else if (!ctx.flags.has(h.wave)) code = 'wave_disabled';
-    else code = h.handle(state, cmd, ctx) ?? undefined;
-    out.push({ commandId: cmd.commandId, kind: cmd.kind, appliedAtTick: ctx.tick, ...(code ? { code } : {}) });
+    let res: string | { code: string; detail?: string } | undefined;
+    if (!h) res = 'unknown_kind';
+    else if (!ctx.flags.has(h.wave)) res = 'wave_disabled';
+    else res = h.handle(state, cmd, ctx) ?? undefined;
+    const rej = typeof res === 'string' ? { code: res } : res;
+    out.push({ commandId: cmd.commandId, kind: cmd.kind, appliedAtTick: ctx.tick, ...(rej?.code ? { code: rej.code } : {}), ...(rej?.code && rej.detail ? { detail: rej.detail } : {}) });
   }
   return out;
 }
@@ -72,8 +92,13 @@ export function step(state: PlanetState, cmds: readonly SimCommand[], dt: number
   const events: SimEvent[] = [];
   const postings: LedgerPosting[] = [];
   const ctx = makeContext(state, dt, p, events, postings);
-  const outcomes = applyCommands(state, cmds, ctx, p);
-  for (const s of p.systems) if (ctx.flags.has(s.wave)) s.run(state, ctx);
+  let outcomes: CommandOutcome[] = [];
+  try {
+    outcomes = applyCommands(state, cmds, ctx, p);
+    for (const s of p.systems) if (ctx.flags.has(s.wave)) s.run(state, ctx);
+  } catch (err) {
+    throw new StepError(err, ctx.tick, outcomes, postings, events);
+  }
   state.meta.tick = ctx.tick;
   pruneRemovals(state.entities, ctx.tick);
   const rejected = outcomes.filter((o) => o.code).length;

@@ -12,17 +12,20 @@ import { defineUnitCommand, type AttackCommand } from '../types';
  * `attack`: close to weapon range of the target (re-planning when it drifts more than a tile), then deal the unit's
  * DPS each step until the target's HP reaches 0. A unit target then dies through its own `die` command (runner); a
  * building target turns `inert`.
+ *
+ * Not exposed in W01 (no command handler issues it; the combat slot runs it for tests and later waves). Before a player
+ * command issues it, add the protection rules (raid protection, truce, own-territory buildings: `raid_protected`,
+ * `truce_active`). Rejections use registered codes only (GP-20): a unit without a weapon or a bad target is `invalid_args`.
  */
 export const attackCommand = defineUnitCommand<AttackCommand>({
   kind: 'attack',
   key: (c) => `attack:${c.targetId}`,
   validate(u, c) {
-    if (u.stats.dps <= 0 || u.stats.weaponRange <= 0) return 'cannot_attack';
+    if (u.stats.dps <= 0 || u.stats.weaponRange <= 0) return 'invalid_args';
     const t = rowOf(u.state.entities, c.targetId);
     if (t < 0) return 'unknown_entity';
     const cols = u.state.entities.cols;
-    if (t === u.row || cols.owner[t] === u.owner) return 'invalid_target';
-    if (cols.hp[t] <= 0) return 'invalid_target';
+    if (t === u.row || cols.owner[t] === u.owner || cols.hp[t] <= 0) return 'invalid_args';
   },
   phase: 'combat',
   /** Units slot: close to weapon range (the shooting happens in the combat slot). */

@@ -15,13 +15,15 @@ export interface MappedError {
   readonly details?: unknown;
 }
 
-const REST_BY_STATUS: Readonly<Record<number, string>> = {
+const REST_BY_STATUS: Readonly<Record<number, (typeof REST_ERROR_CODES)[number]>> = {
   400: 'validation_error',
   401: 'unauthorized',
   403: 'forbidden',
   404: 'not_found',
-  409: 'already_queued',
-  503: 'near_unavailable',
+  409: 'conflict',
+  413: 'payload_too_large',
+  429: 'rate_limited',
+  503: 'unavailable',
 };
 
 /** Domain codes with a REST code of their own (else the status decides). */
@@ -30,12 +32,15 @@ const REST_BY_ERROR_CODE: Readonly<Record<string, (typeof REST_ERROR_CODES)[numb
 };
 
 /**
- * REST code of an error: its domain code's own (`COLONY_SEAT_REJECTED` → `seat_rejected`), else by status. 409 maps
- * to `already_queued` only as the closest PROTOCOL §8 code; other 4xx fall back to `validation_error`, 5xx to `internal`.
+ * REST code of an error (PROTOCOL §8): its domain code's own (`COLONY_SEAT_REJECTED` → `seat_rejected`; a NEAR code
+ * with 503 → `near_unavailable`), else a generic one by status (`conflict`, `unavailable`, …; BE-17); other 4xx fall
+ * back to `validation_error`, 5xx to `internal`.
  */
 export function restCodeFor(status: number, errorCode?: string): string {
   const own = errorCode === undefined ? undefined : REST_BY_ERROR_CODE[errorCode];
-  return own ?? REST_BY_STATUS[status] ?? (status >= 500 ? 'internal' : 'validation_error');
+  if (own) return own;
+  if (status === 503 && errorCode?.startsWith('NEAR_')) return 'near_unavailable';
+  return REST_BY_STATUS[status] ?? (status >= 500 ? 'internal' : 'validation_error');
 }
 
 const HTTP_NAME_CODES: Readonly<Record<number, string>> = {

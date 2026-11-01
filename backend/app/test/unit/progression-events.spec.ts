@@ -1,6 +1,5 @@
-import { parseWaves, type SimCommandV1 } from '@terra/contracts';
+import type { SimCommandV1 } from '@terra/contracts';
 import {
-  createPlanet,
   hexIndex,
   isBuildablePrepared,
   placeBuildingOrder,
@@ -14,6 +13,7 @@ import {
   type SimEvent,
 } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
+import { w01Host } from '../../../../shared/sim/test/helpers/host';
 import type {
   BatchedColonyFoundedEvent,
   BatchedObstacleRemovedEvent,
@@ -24,19 +24,29 @@ import { HomeRepository } from '../../src/core/home/home.repository';
 import {
   batchProgressionEventsForStep,
   ProgressionEventForwarder,
-  wireProgressionEvents,
 } from '../../src/game/progression-events.service';
+
+/** Collects the batched `kind` events the forwarder publishes on `planet.event`. */
+function collect<T>(bus: EventBus, kind: 'tilePrepared' | 'obstacleRemoved' | 'colonyFounded'): T[] {
+  const seen: T[] = [];
+  bus.onPlanetEvent(kind, (e) => seen.push(e as unknown as T), { module: 'test' });
+  return seen;
+}
+
+/** Forwards every step's events of `host` (the bus bridge does the same for server planets). */
+function forwardHost(host: SimHost, bus: EventBus, planetId = 'pl_test'): ProgressionEventForwarder {
+  const forwarder = new ProgressionEventForwarder(bus);
+  host.onEvents((events) => { forwarder.forwardStep(planetId, events); });
+  return forwarder;
+}
 
 let cmdSeq = 0;
 function mkCmd(kind: string, args: unknown, colonyIndex = 0): SimCommandV1 {
   return { colonyIndex, source: 'player', commandId: `cmd_${++cmdSeq}`, kind, args } as SimCommandV1;
 }
 
-function createW01Host(radius = 12): SimHost {
-  const host = new SimHost({ flags: parseWaves('..01') });
-  host.load(createPlanet({ type: 'flat', seed: 'progression-events-test', radius }));
-  return host;
-}
+/** The sim's shared W01 test host (XC-12), on this spec's seed. */
+const createW01Host = (radius = 12): SimHost => w01Host({ seed: 'progression-events-test', radius });
 
 describe('W01-31: Groundbreaker tilePrepared acceptance', () => {
   it('acceptance: prepares 9 tiles on SimHost -> sees total count of 9 across tilePrepared events on EventBus with playerId', () => {
@@ -55,15 +65,11 @@ describe('W01-31: Groundbreaker tilePrepared acceptance', () => {
     };
     spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
 
-    const seenPlanetEvents: BatchedTilePreparedEvent[] = [];
-    const seenDirectEvents: BatchedTilePreparedEvent[] = [];
-    const seenProgressionEvents: BatchedTilePreparedEvent[] = [];
+    const seenPlanetEvents = collect<BatchedTilePreparedEvent>(bus, 'tilePrepared');
+    const allPlanetEvents: unknown[] = [];
+    bus.on('planet.event', (e) => allPlanetEvents.push(e), { module: 'test' });
 
-    bus.onPlanetEvent('tilePrepared', (e) => seenPlanetEvents.push(e as unknown as BatchedTilePreparedEvent), { module: 'test' });
-    bus.on('tilePrepared', (e) => seenDirectEvents.push(e), { module: 'test' });
-    bus.on('progression.tilePrepared', (e) => seenProgressionEvents.push(e), { module: 'test' });
-
-    wireProgressionEvents(host, bus);
+    forwardHost(host, bus);
 
     const tiles = [
       { q: 0, r: 0 }, { q: 1, r: 0 }, { q: -1, r: 0 },
@@ -85,8 +91,7 @@ describe('W01-31: Groundbreaker tilePrepared acceptance', () => {
     }
 
     expect(seenPlanetEvents.length).toBeGreaterThanOrEqual(1);
-    expect(seenDirectEvents.length).toBe(seenPlanetEvents.length);
-    expect(seenProgressionEvents.length).toBe(seenPlanetEvents.length);
+    expect(allPlanetEvents).toHaveLength(seenPlanetEvents.length); // each batch is published once, on planet.event only
 
     let totalCount = 0;
     for (const ev of seenPlanetEvents) {
@@ -110,11 +115,10 @@ describe('W01-31: Per-step batching of progression events', () => {
     const bus = new EventBus();
     const forwarder = new ProgressionEventForwarder(bus);
 
-    const receivedPrepared: BatchedTilePreparedEvent[] = [];
-    const receivedObstacles: BatchedObstacleRemovedEvent[] = [];
-
-    bus.on('tilePrepared', (e) => receivedPrepared.push(e), { module: 'test' });
-    bus.on('obstacleRemoved', (e) => receivedObstacles.push(e), { module: 'test' });
+    const receivedPrepared = collect<BatchedTilePreparedEvent>(bus, 'tilePrepared');
+    const receivedObstacles = collect<BatchedObstacleRemovedEvent>(bus, 'obstacleRemoved');
+    const emits: unknown[] = [];
+    bus.on('planet.event', (e) => emits.push(e), { module: 'test' });
 
     const stepEvents: SimEvent[] = [
       { atTick: 50, kind: 'tilePrepared', severity: 'info', colonyIds: ['col_A'], data: { colonyId: 'col_A', playerId: 'p_A', count: 1, q: 0, r: 0 } },
@@ -134,6 +138,19 @@ describe('W01-31: Per-step batching of progression events', () => {
 
     expect(result.tilePrepared).toHaveLength(2);
     expect(result.obstacleRemoved).toHaveLength(2);
+    expect(emits).toHaveLength(4); // one planet.event per batch, nothing else
+
+    // one aggregator, both kinds: the same shape, the obstacle key adds `op`
+    expect(result.obstacleRemoved.find((e) => e.op === 'clear')).toEqual({
+      planetId: 'pl_dev', tick: 50, kind: 'obstacleRemoved', severity: 'info', colonyIds: ['col_A'],
+      colonyId: 'col_A', playerId: 'p_A', op: 'clear', count: 2, q: 1, r: 1, achievement: 'Stone Mason',
+      data: { colonyId: 'col_A', playerId: 'p_A', op: 'clear', count: 2, q: 1, r: 1, achievement: 'Stone Mason' },
+    });
+    expect(result.tilePrepared.find((e) => e.colonyId === 'col_A')).toEqual({
+      planetId: 'pl_dev', tick: 50, kind: 'tilePrepared', severity: 'info', colonyIds: ['col_A'],
+      colonyId: 'col_A', playerId: 'p_A', count: 3, q: 2, r: 0, achievement: 'Groundbreaker',
+      data: { colonyId: 'col_A', playerId: 'p_A', count: 3, q: 2, r: 0, achievement: 'Groundbreaker' },
+    });
 
     expect(receivedPrepared).toHaveLength(2);
     const colAPrep = receivedPrepared.find((e) => e.colonyId === 'col_A')!;
@@ -165,11 +182,7 @@ describe('W01-31: Landfall & Stone Mason forwarding and player resolution', () =
     const bus = new EventBus();
     const forwarder = new ProgressionEventForwarder(bus);
 
-    const receivedFounded: BatchedColonyFoundedEvent[] = [];
-    bus.on('colonyFounded', (e) => receivedFounded.push(e), { module: 'test' });
-    bus.onPlanetEvent('colonyFounded', (e) => {
-      expect(e.data.achievement).toBe('Landfall');
-    }, { module: 'test' });
+    const receivedFounded = collect<BatchedColonyFoundedEvent>(bus, 'colonyFounded');
 
     const foundedSimEvents: SimEvent[] = [
       {
@@ -210,8 +223,7 @@ describe('W01-31: Landfall & Stone Mason forwarding and player resolution', () =
     });
 
     const forwarder = new ProgressionEventForwarder(bus, homeRepo);
-    const seen: BatchedTilePreparedEvent[] = [];
-    bus.on('progression.tilePrepared', (e) => seen.push(e), { module: 'test' });
+    const seen = collect<BatchedTilePreparedEvent>(bus, 'tilePrepared');
 
     const rawEvent: SimEvent = {
       atTick: 10,
@@ -226,6 +238,29 @@ describe('W01-31: Landfall & Stone Mason forwarding and player resolution', () =
     expect(seen).toHaveLength(1);
     expect(seen[0].playerId).toBe('pr_from_db');
     expect(seen[0].data.playerId).toBe('pr_from_db');
+  });
+
+  it('skips (with a warning) an event whose player cannot be resolved, never guessing it from the colony id', () => {
+    const bus = new EventBus();
+    const warnings: unknown[] = [];
+    const forwarder = new ProgressionEventForwarder(bus, undefined, { warn: (o: unknown) => { warnings.push(o); } } as never);
+    const seen: unknown[] = [];
+    bus.on('planet.event', (e) => seen.push(e), { module: 'test' });
+
+    const orphan: SimEvent[] = [
+      { atTick: 7, kind: 'tilePrepared', severity: 'info', colonyIds: ['col_unknown'], data: { colonyId: 'col_unknown', count: 1, q: 0, r: 0 } },
+      { atTick: 7, kind: 'colonyFounded', severity: 'info', colonyIds: [], data: { q: 1, r: 1 } },
+    ];
+    const batched = forwarder.forwardStep('pl_test', orphan);
+    expect([...batched]).toEqual([]);
+    expect(seen).toEqual([]);
+    expect(warnings).toEqual([
+      { planetId: 'pl_test', kind: 'tilePrepared', colonyIds: ['col_unknown'], tick: 7 },
+      { planetId: 'pl_test', kind: 'colonyFounded', colonyIds: [], tick: 7 },
+    ]);
+
+    forwarder.registerColony('col_unknown', 'pr_seated'); // registered at seating: now it resolves
+    expect(forwarder.forwardStep('pl_test', [orphan[0]!]).tilePrepared.map((e) => e.playerId)).toEqual(['pr_seated']);
   });
 });
 
@@ -252,13 +287,10 @@ describe('W01-31: Live SimHost gameplay progression events', () => {
       'bio.water': 200,
     });
 
-    const foundedEvents: BatchedColonyFoundedEvent[] = [];
-    const obstacleEvents: BatchedObstacleRemovedEvent[] = [];
+    const foundedEvents = collect<BatchedColonyFoundedEvent>(bus, 'colonyFounded');
+    const obstacleEvents = collect<BatchedObstacleRemovedEvent>(bus, 'obstacleRemoved');
 
-    bus.on('colonyFounded', (e) => foundedEvents.push(e), { module: 'test' });
-    bus.on('obstacleRemoved', (e) => obstacleEvents.push(e), { module: 'test' });
-
-    wireProgressionEvents(host, bus);
+    forwardHost(host, bus);
 
     const tileIdx = hexIndex(state.grid.radius).indexOf(1, 0);
     setTileTerrain(state.grid, tileIdx, TERRAIN.forest);

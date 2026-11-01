@@ -87,7 +87,7 @@ describe('unit commands (command pattern)', () => {
     const ra = rowOf(state.entities, a);
     const rb = rowOf(state.entities, b);
     const ctx = ctxOf(host);
-    expect(issueUnitCommand(state, ra, { kind: 'attack', source: 'player', targetId: a }, ctx)).toBe('invalid_target');
+    expect(issueUnitCommand(state, ra, { kind: 'attack', source: 'player', targetId: a }, ctx)).toBe('invalid_args'); // own unit: registered codes only (GP-20)
     expect(issueUnitCommand(state, ra, { kind: 'attack', source: 'player', targetId: b }, ctx)).toBeUndefined();
     host.step(1);
     const cols = state.entities.cols;

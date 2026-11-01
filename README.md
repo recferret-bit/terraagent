@@ -115,7 +115,7 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.confi
 | Play | `&skip=1` | Deploy and skip the descent, straight into gameplay. |
 | Play | `&t=<seconds>` | Deploy and fast-forward the descent by `t` seconds. |
 | Play (online) | `?scenario=<id>` | Online flow: create a fresh planet from `scenarios/<id>` (e.g. `w00`) and join it; skips the prototype menu and descent. |
-| Play (online) | `?host=local` | Run the engine in the browser alone (no app or Postgres); snapshots in IndexedDB. Combine with `&scenario=`. |
+| Play (online) | `?host=local` | Run the engine in the browser alone (no app or Postgres); snapshots in IndexedDB. Needs `&scenario=w00\|w01`: `?host=local` alone opens the prototype world picker. |
 | Play (online) | `&waves=..NN` / `&waves=00,03` | Dev: narrow the enabled waves (never wider than the server's set). |
 | Play (online) | `&lag=<ms>` | Dev: delay the connection both ways (prediction testing). |
 | Play (online) | `&predict=0` | Turn client-side prediction off (interpolate 400 ms behind). |
@@ -125,6 +125,8 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.confi
 | Playground | `&biome=dune\|oceanForest\|forestRock` | Pedestal / sky / weathering biome. |
 | Playground | `&view=iso\|front\|side\|top` | Camera view. |
 | Playground | `&turntable=1`, `&surface=1`, `&pixel=1` | Auto-rotate; real planet surface instead of the pedestal; pixel-art shader. |
+| Playground | `&hexterrain=1`, `&hatch=1` | Hex terrain sample scene instead of the pedestal (every tile class, deposits, a Prepared pad whose wave replays every 3 s, two colonies' borders); colour-blind border hatch. |
+| Playground | `&build=0\|33\|66`, `&work=1` | Construction scaffold stage of the shown models (toolbar `build` cycles it); biped work pose (`uWorkWeight` 1). |
 | All 3D pages | `?pixel=1\|0` | Enable or disable the experimental pixel-art post-processing shader. |
 
 ### Controls
@@ -182,7 +184,7 @@ Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/p
 
 1. Register an archetype in `frontend/render/kitbash/archetypes/…` (via `ArchetypeCatalog.register`) following the `procedural-kitbash-3d` skill.
 2. Open `/playground.html?inspect=<your.id>`. It appears in the sidebar automatically.
-3. Run `npm run validate:models -- <your.id>`: it must report 0 errors and 0 warnings (floating parts, gaps, z-fighting, parts cutting through each other, animated parts hitting something, wheels/chassis/arm in one colour, a solar panel that is a flat slab, blank faces). Name your parts; roles come from names. Add `&validate=1` to the playground URL (or press `V`) to see offending parts outlined and numbered.
+3. Run `npm run validate:models -- <your.id>`: it must report 0 errors and 0 warnings (floating parts, gaps, z-fighting, parts cutting through each other, animated parts hitting something, wheels/chassis/arm in one colour, a solar panel that is a flat slab, blank faces). Name your parts; colour roles come from names, and a foundation slab or free-ended whip/tendril also needs `role: 'plinth' | 'plinthDetail' | 'whip'` in its part options. Add `&validate=1` to the playground URL (or press `V`) to see offending parts outlined and numbered.
 4. Check all four views, ground contact (`minY 0.000` ✔) and the triangle count against the 3.5k budget. Export a 4-view sheet if needed.
 
 ## Pre-window baseline (hackathon disclosure)

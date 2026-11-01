@@ -38,6 +38,9 @@ export class SimThreadPool {
   private readonly statWaiters = new Map<number, (s: ThreadStats) => void>();
   private nextReq = 1;
   private started = false;
+  private stopping = false;
+  private entry: URL | undefined;
+  private execArgv: string[] | undefined;
 
   constructor(private readonly opts: SimThreadPoolOptions) {
     if (!Number.isInteger(opts.threads) || opts.threads < 1) throw new Error(`SIM_THREADS must be a positive integer, got ${opts.threads}`);
@@ -60,14 +63,20 @@ export class SimThreadPool {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
-    const entry = this.opts.entry ?? new URL('./thread/sim-thread.ts', import.meta.url);
-    const execArgv = process.execArgv.some((a) => a.includes(SWC_LOADER)) ? undefined : [...process.execArgv, '--import', SWC_LOADER];
-    await Promise.all(
-      Array.from({ length: this.opts.threads }, (_, thread) => this.spawn(thread, entry, execArgv)),
-    );
+    this.entry = this.opts.entry ?? new URL('./thread/sim-thread.ts', import.meta.url);
+    this.execArgv = process.execArgv.some((a) => a.includes(SWC_LOADER)) ? undefined : [...process.execArgv, '--import', SWC_LOADER];
+    await Promise.all(Array.from({ length: this.opts.threads }, (_, thread) => this.spawn(thread)));
   }
 
-  private spawn(thread: number, entry: URL, execArgv: string[] | undefined): Promise<void> {
+  /** Spawns a thread that died again (BE-11), with no planets; resolves once it is ready. No-op while it lives or after `shutdown`. */
+  async restart(thread: number): Promise<void> {
+    if (!this.started || this.stopping || this.workers[thread]) return;
+    await this.spawn(thread);
+  }
+
+  private spawn(thread: number): Promise<void> {
+    const entry = this.entry as URL;
+    const execArgv = this.execArgv;
     const init: ThreadInit = { thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true, deltaHz: this.opts.deltaHz, simModules: this.opts.simModules, overrides: this.opts.overrides };
     const w = new Worker(entry, { workerData: init, ...(execArgv ? { execArgv } : {}) });
     this.workers[thread] = w;
@@ -124,6 +133,7 @@ export class SimThreadPool {
 
   /** Stops every thread and waits for it to exit. */
   async shutdown(): Promise<void> {
+    this.stopping = true;
     const ws = this.workers.filter((w): w is Worker => !!w);
     const exited = ws.map((w) => new Promise<void>((r) => w.once('exit', () => r())));
     ws.forEach((w) => w.postMessage({ t: 'ctl', op: 'stop' } satisfies ToThread));

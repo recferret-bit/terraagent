@@ -2,7 +2,7 @@ import { crc32, gunzip, gzip } from 'node:zlib';
 import { promisify } from 'node:util';
 import { Inject, Injectable } from '@nestjs/common';
 import { RepositoryBase, type PrismaClient } from '@terra/db';
-import { devPlanetTypeOf, SIM_VERSION } from '@terra/sim';
+import { SIM_VERSION } from '@terra/sim';
 import { PRISMA } from '../../db/db.module';
 import { prunableIds } from './retention';
 
@@ -90,8 +90,11 @@ export class SnapshotStore extends RepositoryBase {
    * its snapshots, its colonies and the planet row go, so the next boot / `/me/home` recreates it with the current
    * dev planet type and generator. Only ever called for `pl_dev*` ids.
    */
-  async wipeDevPlanet(planetId: string): Promise<void> {
-    if (devPlanetTypeOf(planetId) === null) throw new Error(`wipeDevPlanet: ${planetId} is not a dev planet`);
+  /**
+   * Deletes a planet and everything stored under its id in one transaction: snapshots, ledger rows, colony rows and the
+   * planet row. Boot wipes old dev planets with it; the dev `planet.wipe` command any held planet (LED-06).
+   */
+  async wipePlanet(planetId: string): Promise<void> {
     await this.prisma.$transaction([
       this.prisma.planetSnapshot.deleteMany({ where: { planetId } }),
       this.prisma.ledgerEntry.deleteMany({ where: { planetId } }), // the old planet's resource journal goes with it

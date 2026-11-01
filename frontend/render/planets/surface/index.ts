@@ -6,12 +6,6 @@ import { BIOME_BUILDERS } from './biomes';
 export { applyPlanetLook } from '../applyPlanetLook';
 export type { PlanetSurface, CreatePlanetSurface } from './types';
 
-/** Brightness/hue jitter relative to the geometry's baked vertex colours. */
-const jitter = (amt: number, hueShift = 0) => (r: number, c: THREE.Color) => {
-  const k = 1 + (r - 0.5) * 2 * amt;
-  c.setRGB(k * (1 + (r - 0.5) * hueShift), k, k * (1 - (r - 0.5) * hueShift));
-};
-
 export const createPlanetSurface: CreatePlanetSurface = (spec, opts) => {
   const ctx = new SurfaceContext(spec, opts);
   BIOME_BUILDERS[spec.kind](ctx);

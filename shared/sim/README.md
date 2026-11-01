@@ -10,11 +10,11 @@ no clock, no `Math.random`, no I/O. The `tsconfig.json` has no DOM or Node types
 |---|---|---|
 | `PlanetState` | `src/kernel/state.ts` | `meta`, `rng` (named xoshiro128** streams), `grid` (tile layers), `colonies`, `entities` (SoA store), `blobs` |
 | Entity store | `src/ecs/store.ts`, `columns.ts` | Rows in ascending id order; `insertRow`, `removeRow`, `rowOf`, `setField` (stamps `changedAt`) |
-| Tile layers | `src/grid/layers.ts` | `terrain`, `prep`, `deposit`, `richness`, `height`, `owner`, `explored`, `changedAt`; `touchTile` after writes |
+| Tile layers | `src/grid/layers.ts` | `terrain`, `prep`, `deposit`, `richness`, `height`, `owner`, `explored`, `anchors`, `graceUntil`, `changedAt`, and the hidden (server-only) `subDeposit` / `subRichness`; `touchTile` after writes |
 | Hex math | `src/grid/hex.ts` | Axial coords, `hexIndex(R)` tables, distance, plane ↔ axial (also safe on the client main thread) |
 | `step(state, cmds, dt, pipeline)` | `src/kernel/step.ts` | Slot 0 applies commands through handlers, then systems in slot order (0–14), then `tick += dt` |
 | Systems | `src/kernel/system.ts` | `defineSystem({ id, slot, wave, run })`; a disabled wave's system does not run |
-| Command handlers | `src/kernel/commands.ts` | `defineCommandHandler({ kind, wave, handle })`; return a reject code, never throw |
+| Command handlers | `src/kernel/commands.ts` | `defineCommandHandler({ kind, wave, handle })`; return a reject code or `{ code, detail }` (hosts pass `detail` in `cmd.reject.detail`, GP-31), never throw |
 
 ## Rules for code in this package
 
@@ -55,7 +55,9 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
   a blocked tile is rejected `site_blocked`; a target that cannot be reached fails the command (`lastFailure`, player
   commands only, toasted once by the client).
 - **Ground changes restart paused searches:** terrain / prep / deposit writes and placing or removing a building bump
-  `meta.pathEpoch`; a search paused across steps restarts from scratch on every host when it changed.
+  `meta.pathEpoch`; a search paused across steps restarts from scratch on every host when it changed, and so does one
+  whose compiled data hash changed (a dev `tune` of the step costs). The A* is weighted past 6 tiles: a path costs at
+  most ≈ 1.6× the cheapest (measured worst 1.17×, `test/grid/path-bound.spec.ts`).
 - **Client rendering (sync):** the client predicts with this same code; units are drawn from tick-keyed poses at a
   monotonic render clock that follows the newest *confirmed* tick at the measured sim rate
   (`frontend/game/app/online/entityMotion.ts`), so walking speed is constant and the prediction handing over to the
@@ -74,9 +76,16 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 ## World generation, sectors and hidden ground (D-38, `src/gen/world/`, `src/grid/sectors.ts`)
 
 - `createPlanet` → `generateWorld`: the planet type's profile row (`data/worldgen.ts`) lists stage ids; each stage is a
-  small part in `gen/world/stages/` (`reliefDesert`, `classifyDesert`, `temperateTerrain`, `deposits`, `subsurface`,
-  `landing`). Add a landform / biome as a new stage (`registerWorldStage`) + profile row, never by editing a stage.
-  Stages seed per sector (`ctx.seed(stage, sectorId)`), never from another sector. Bump `GEN_VERSION` when output changes.
+  small part in `gen/world/stages/` (`reliefDesert`, `classifyDesert`, `temperateTerrain`, `deposits`, `landing`,
+  `subsurface` — the hidden subsurface runs last, on the final classes). Add a landform / biome as a new stage
+  (`registerWorldStage`) + profile row, never by editing a stage. Random draws of the per-sector stages (relief, desert
+  classes, subsurface) seed per sector (`ctx.seed(stage, sectorId)` / `ctx.secretSeed`); their reads may cross sector
+  borders (neighbour gradients, landform fields). `temperateTerrain`, `deposits` and the spawn slots rank the whole
+  planet with the `gen` rng stream. Bump `GEN_VERSION` when output changes (`test/gen/world.spec.ts` pins a fingerprint
+  of every profile).
+- Every generation number (relief, class shares, deposit richness, spawn slot guarantees, landing zone, subsurface) is a
+  `data/worldgen.ts` row (a profile row, else `shared`, via `gen/profile.ts`). Generation reads the file rows once, so
+  the table is `fixed`: `tune worldgen.*` is rejected (WE-19). The `terrain` table holds only runtime numbers.
 - `height` is **metres** (the renderer draws it as is). Every spawn slot gets a levelled landing zone and a Hub site.
 - Hidden layers (`FieldDef.hidden`: `subDeposit`, `subRichness`) are server-only: client snapshots / diffs use
   `{ forClient: true }`. `revealSubsurface` (Clear / Break) moves a buried deposit into the public layers.
@@ -87,7 +96,7 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 
 - A sim module is a folder `src/systems/<name>/index.ts` whose default export is `defineSimModule({ id, wave, systems?, handlers? })`. `npm run gen` (scripts/gen/sim-systems.gen.mjs) lists them into `src/systems/index.generated.ts` (`SIM_MODULES`); folders starting with `_` are ignored. Commit the generated file.
 - `createEngineConfig({ flags, data })` / `createRegistryPipeline(...)` build the default engine from the registry. Slots (0-14) with no system are no-ops; the tick always advances.
-- `eslint.rules.js` bans clocks, `Math.random`, timers, I/O, host globals, `node:*`, async/await and non-contracts `@terra/*` imports in `src/**`. `test/lint/purity.spec.ts` proves it against `test/lint/banned-apis.fixture.ts` (excluded from `npm run lint`).
+- `eslint.rules.js` bans clocks, `Math.random`, engine-dependent `Math` and `**`, locale-dependent APIs (`Intl`, `localeCompare`, `toLocale*`), timers, I/O, host globals, `node:*`, async/await and every `@terra/*` import but `@terra/contracts` and `@terra/ledger` in `src/**`. `test/lint/purity.spec.ts` proves it against `test/lint/banned-apis.fixture.ts` (excluded from `npm run lint`).
 
 ## Economy: one door, whole units, postings for the host ledger (`src/economy/`)
 
@@ -97,8 +106,11 @@ Known limitations and open questions of the economy, the host journals and seati
   `.withdraw({...})` with `colony`, `amounts`, a `reason`, an `actor` and usually a `ref`
   (e.g. `{ reason: 'construction.spend', actor: colonyActor(state, i), ref: 'order:42' }`). Never write `col.stock`.
   Each change that moves something records exactly one balanced posting (`LedgerPosting`: colony ↔ the reason's
-  `sys:*` counter, with `reason`, `actor`, `ref` and `at` = `ctx.tick`); a change that moves nothing (all zeros, fully
-  capped) records none. Results carry the `posting` when there is one.
+  `sys:*` counter, with `reason`, `actor`, `ref` and `at` = `ctx.tick`; capped overflow adds counter → `sys:overflow`
+  legs to it); a change that moves nothing (all zeros) records none. Results carry the `posting` when there is one.
+  The colony must have a record (`state.colonies[i]`): an unknown index is `invalid_amount` (`detail: 'unknown
+  colony'`), so a credit never creates placeholder colonies (GP-24). Records come from landing, `spawnHqUnit` and
+  `setColonyStock` (seeding).
 - **`TreasuryCtx` rule.** `treasury(state, ctx)` takes a `TreasuryCtx` (`{ tick, record(p) }`). Inside `step()` pass
   the step's `StepContext` (it is one), so the change is stamped with the tick the step produces and its posting
   reaches the host. Code that takes an optional step ctx uses `treasuryCtx(tick, ctx)` (records into the ctx when it
@@ -120,14 +132,16 @@ Known limitations and open questions of the economy, the host journals and seati
   and `storageCapPerFamily`, `opsBasic` `yieldAmount`); `compileData`, every balance override and every dev `tune`
   throw on a fraction, a negative or an unknown resource key there (`data/_amounts.ts`), naming the field and value.
 - **One affordability check.** `findShortfall(stock, cost)` names the first missing resource in `SHORTFALL_ORDER`
-  (metals, minerals, biomass, water, then the higher bio tiers); the build waiting reason, the placement
-  `insufficient_resources` check, `insufficient_funds` and the HUD toast all use it.
+  (metals, minerals, biomass, water, then the higher bio tiers); the build waiting reason and
+  `insufficient_funds` use it (placement never rejects for cost: an unaffordable building is accepted and waits, GP-30).
 - **Refused credits are visible.** A system whose expected change is refused (terraform yield, construction refund,
   a construction spend refused for anything but `insufficient_funds`) calls `reportTreasuryReject(ctx, …)`: a
   `treasuryRejected` warn event (`TreasuryCtx.emit`, passed through by `treasuryCtx(tick, stepCtx)`).
 - **Storage caps.** `add({ clampToCap: true })` credits what fits under the family caps (`getColonyCaps`; `capsOf` for
-  a view record; `INITIAL_CAPS` metals 600 / minerals 500 / bio 500 before a Hub) and returns the rest as `overflow`,
-  which is lost (no posting for it). `terraform.yield` is capped and reports the overflow in `obstacleRemoved.data.overflow`;
+  a view record; before a Hub `initialCaps(data)` = `hq.startingKit.storageCaps`, metals 600 / minerals 500 / bio 500)
+  and returns the rest as `overflow`, which the colony loses: the same posting moves it from the counter account to
+  `sys:overflow` (`OVERFLOW_ACCOUNT`), so the journal shows every capped loss (LED-11). A completed Hub raises each cap
+  to `hub.t1.storageCapPerFamily` and never lowers one (GP-11). `terraform.yield` is capped and reports the overflow in `obstacleRemoved.data.overflow`;
   `production.tick` must be capped too when it exists. Landing cargo, `construction.refund` (returns part of what was
   paid, which already fitted) and `dev.grant` (dev tool, existing colonies only) are uncapped.
 - **Reasons catalog.** `LEDGER_REASONS` (`reasons.ts`) is closed: each reason names its allowed directions and its
@@ -143,6 +157,10 @@ Known limitations and open questions of the economy, the host journals and seati
   tail and saves the journal inside its IndexedDB snapshot (same tick as the planet bytes). A `@terra/ledger`
   `Ledger` (negative policy `isSystemAccount`) fed with every posting has `colony:<i>` balances equal to `col.stock`
   at every tick (`test/economy/hub-build.ledger.spec.ts`).
+- **A step that throws** (LED-09). `step()` wraps a system exception in a `StepError` carrying the step's `outcomes`,
+  `postings` and `events` so far; `SimHost.step` hands those outcomes and postings to its listeners (the treasury
+  already changed `col.stock` for them) and rethrows. The planet is then half-stepped (`meta.tick` not advanced): the
+  host decides whether to stop it (BE-12).
 - **Reads and seeding.** `getColonyStock(state, i)` is the one reader (zero-filled `Stock`). `setColonyStock(state, i,
   target, ctx?)` moves a colony to an exact stock with at most one withdraw and one add `admin.correction` posting by
   `system:admin` (scenarios, tests); gameplay never uses it.
@@ -151,8 +169,9 @@ Known limitations and open questions of the economy, the host journals and seati
 
 - `checkColonyLanding` validates, `spawnColonyLanding` validates first and changes **nothing** when rejected; it
   returns `{ ok: true, podEntityId, q, r }` or `{ ok: false, code }`. `system.spawnColony` and `dev.land` return the code.
-- A colony lands once (`already_landed`, also for `dev.land` with `(q, r)` on a colony that has a pod), so its
-  `landing.cargo` is credited once. The cargo is validated with `checkMove` before anything changes: a cargo the
+- A colony lands once (`already_landed`), so its `landing.cargo` is credited once (when the pod is created, not when it
+  opens). A planet takes `MAX_COLONIES_PER_PLANET` (8) colonies, one `explored` bit each: index 8 or more is
+  `planet_full` (GP-17). The cargo is validated with `checkMove` before anything changes: a cargo the
   treasury would refuse (bad data) is `invalid_args` and lands nothing (no pod, no colony record, no landing record).
 - **Where a colony lands is decided by the landing planner** (`world/landingPlanner.ts`, D-39):
   `nextLandingSite(state, colony, { slotIndex?, q?, r?, beyondSlots? })`. Explicit `(q, r)` is checked by
@@ -164,6 +183,45 @@ Known limitations and open questions of the economy, the host journals and seati
   `spawnColonyLanding` appends the landing to the history (`recordLanding`); no position is ever landed on twice.
 - **Presence** (`world/presence.ts`): `colonyPresence`, `faunaPositions`, `entitiesNear`, `nearestEntity`,
   `presenceView` (plain data for an AI orchestrator). New entity kinds register a role with `registerPresenceRole`.
-- `dev.land` deploys an undeployed pod now; relocating it to `(q, r)` goes through the same `landingBlock` rule
-  (never onto / near an earlier landing or another colony, never on water): `landing_site_taken`, off the map
-  `invalid_args` (pod untouched); a valid move updates that colony's landing record.
+- `dev.land` acts for the caller's colony only (`colonyIndex`; none → `not_own_colony`): a colony without a pod lands
+  and opens at once; a descending pod opens now, moved to `(q, r)` first through the same `landingBlock` rule (never
+  onto / near an earlier landing or another colony, never on water): `landing_site_taken`, off the map `invalid_args`
+  (pod untouched); a valid move updates that colony's landing record. An opened pod is `already_landed` (GP-26).
+- `landPod` (player, FA-08): opens the caller's descending pod once it has descended `hq.startingKit.podLandMinS` (5 s,
+  the client's touchdown animation) instead of the full `podDescentS` (6 s); asked earlier it opens at that minimum,
+  later at once. `already_landed` when open, `unknown_entity` without a pod.
+
+## Gameplay rules (`systems/terraform-basic`, `systems/construction`, `systems/hq`)
+
+Known limitations and open questions: [`docs/questions-and-limitations/sim-gameplay.md`](../../docs/questions-and-limitations/sim-gameplay.md).
+
+- **Data rows** (`systems/rows.ts`, XC-01 / XC-02): one field per value, read with `w01Row` / `rowNum`, which throw on a
+  missing row or field (no literal fallbacks). Fields in a table's `units` are compiled (ticks, per tick):
+  `ticksToSeconds` / `perTickToPerSecond` convert back only where seconds are shown (order `buildTimeS`, job
+  `baseTimeS`, prep bills). The op → terrain rule is the `opsBasic` rows' `fromTerrain` / `toTerrain` / `toPrep`.
+- **Commands** (`systems/command.ts`, GP-18 / GP-19): handlers parse `args` with the contract schema (`parseArgs`); a
+  colony-scoped command (player or dev) acts for `cmd.colonyIndex` and is `not_own_colony` without one. A handler may
+  reject with `{ code, detail }` (`placeBuilding` passes the placement block text, GP-31).
+- **Terraform rule** (`terraform-basic/rules.ts`, GP-32): `evaluateTerraform(world, opts)` / `evaluateTerraformTile`
+  over a read-only `TerraformWorld` (`terraformWorldFrom(placementWorld, colony, data)`; the client builds it from its
+  ghost world). Own tiles; before the colony owns territory, unclaimed tiles within
+  `hq.startingKit.preHubTerraformRadius` of its pod (GP-03); linked Hub prep any unclaimed tile. Each `(op, q, r)` is
+  queued once per colony (duplicates in a request and already-queued jobs are skipped, GP-01), and a job is checked
+  again when picked and before it completes: a tile that changed is dropped with no yield. Lane limits
+  `hq.t1.terraformMaxOrders` / `terraformMaxJobs` → `queue_full` (GP-02).
+- **Orders** (GP-08 / GP-09 / GP-10): `blobs.terraformTasks = { byColony }`, `blobs.constructionQueue = { orders }`,
+  written with `setBlob` (readers `terraformOrdersOf` / `constructionOrdersOf` work on view blobs too). Order ids are
+  sim-made (`tf#<n>`, `build#<n>`, prep `build#<n>/prep`; counter `blobs.orderSeq`); `taskId` keeps the client's
+  command id, which may name only one open order (`invalid_args` when reused). `cancelTask { taskId }` cancels in
+  its own lane: an order id, a task id or a building's entity id; `'active'` = the first manual terraform order,
+  `'current'` = the open construction order; a Hub's linked prep cancels the Hub; no match → `unknown_entity`.
+  Completed orders leave the queue. Unknown building kinds are `invalid_args` (GP-05).
+- **Placement** (GP-06, GP-23, GP-30): a Hub stands within `hq.startingKit.hubMaxDistFromLanding` of its pod and not
+  closer to another colony's pod or Hub (`farFromLanding` / `nearOtherColony` → `site_blocked`); an unaffordable Hub is
+  accepted and waits. `occupiesGround` (alive buildings) is the one footprint rule for placement and ground paths.
+- **Work** (GP-04, GP-12, GP-16, GP-21): providers are asked linked prep → construction → manual terraform. A build
+  short of stock mid-way is `waiting_resources` and resumes once stock covers the slice; `statusTextOf` derives the
+  text. Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
+  `retryBlockedS`, doubling per consecutive failure up to `retryBlockedMaxS`.
+- **Sync** (GP-07, GP-15): queues, `blobs.hq` (`{ byColony }`) and colony records are stamped only when they change,
+  so an idle planet sends no gameplay blobs. Blob state is not filtered per colony (SIMULATION §6, GP-36).

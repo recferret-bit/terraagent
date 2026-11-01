@@ -8,7 +8,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 
 ### RN-01 · Territory border ribbon is flat at the tile-centre height and floats or sinks on relief
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/territoryBorder.ts:200` (`y = effHeights[i] + BORDER_Y_OFFSET`), `:230` (`pushQuad` with one `y`); `heightSampler.ts` (surface interpolated between tile centres)
@@ -24,10 +24,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
   draw the border as a decal or shader term in the terrain material (as the hex edge lines are). Add a spec with a
   stepped height field.
 - **Found:** 2026-11-01, render review
+- **Fix:** Every ribbon and hatch vertex now sits `BORDER_Y_OFFSET` above `heightAt(x, z)` (the same lattice sampler the chunks and picking use), and each boundary edge is two quads that meet at the edge midpoint, where the terrain kinks (`BORDER_VERTS_PER_EDGE = 8`). `frontend/render/planets/hex/territoryBorder.ts`; test `hexUpdates.spec.ts` › "every ribbon and hatch vertex sits a fixed lift above the surface under it" (1.2 m step and 0.4 m drop); `territoryBorder.spec.ts` vertex counts updated to 8 per edge.
 
 ### RN-02 · Props on a tile all use the tile-centre height, although they sit up to ~0.7 m from the centre
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/chunkPropScatter.ts:110` (`cy = heightAt(cx, cz)`), `:76-86` (`makeInstance` offsets x/z but keeps `y: cy`)
@@ -39,10 +40,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Workaround / mitigation:** hardly visible on flat ground.
 - **To resolve:** call `heightAt(x, z)` per instance inside `makeInstance`. The result is still deterministic.
 - **Found:** 2026-11-01, render review
+- **Fix:** `makeInstance` sets `y = heightAt(x, z)` at the prop's own spot (still deterministic). `chunkPropScatter.ts`; test `hexUpdates.spec.ts` › "every instance takes the height at its own (x, z)"; `hexTerrain.spec.ts` neighbour check now asserts unchanged placement and `y = heightAt(x, z)` (the neighbour's props follow the re-levelled ground).
 
 ### RN-03 · Every `updateTiles` rebuilds planet-wide props, water and borders, and each dirty chunk recomputes all heights
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/createHexTerrain.ts:273-283` (`updateTiles`), `:251-255` (`place`); `chunkMesh.ts:244` (`buildChunk` calls `computeEffectiveHeights` for the whole planet); `chunkPropScatter.ts:195,227-244` (`rebuildMeshes`); `hexWater.ts:158-168`; callers `frontend/game/app/online/OnlineSession.ts:427`, `frontend/game/features/territory-border/index.ts:82`
@@ -63,10 +65,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
   chunks (one `InstancedMesh` per chunk, or a slice update). Rebuild water only when a water-relevant tile changed.
   Add a borders-only refresh (`refreshBorders()`) so callers do not need `updateTiles([])`.
 - **Found:** 2026-11-01, render review
+- **Fix:** One `computeEffectiveHeights` per update, passed to `buildChunk` (new optional `effHeights` argument). Chunk handling moved to `chunkSet.ts`; `setChunk` diffs each kind's instances and `rebuildMeshes` rebuilds only the kinds that changed (still one `InstancedMesh` per kind, so the draw-call count is unchanged; per-chunk instancing was not done because it multiplies draw calls). `water.update(tiles, changed)` rebuilds only when a changed tile gains, loses or changes its water (dry/shallow/deep). `updateTiles(tiles, [])` now rebuilds only the borders, and `HexTerrain.refreshBorders(tiles?)` was added (`territory-border/index.ts:82` can switch to it: FRONTEND-FEATURES). The `chunkPropScatter.ts` doc comment was corrected. Files `createHexTerrain.ts`, `chunkSet.ts`, `borderController.ts` (extracted), `chunkMesh.ts`, `chunkPropScatter.ts`, `hexWater.ts`; tests `hexUpdates.spec.ts` › "a borders-only update rebuilds neither chunks, props nor water", "a delta on dry ground keeps the water and the untouched prop kinds", "buildChunk with the precomputed planet heights equals …".
 
 ### RN-04 · Hex prop foliage never sways: its time uniform is never advanced
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/chunkPropScatter.ts:199,216` (`timeU` → `createFoliageMaterial`); `createHexTerrain.ts:284-288` (`tick` updates only the terrain and water `uTime`)
@@ -76,10 +79,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Workaround / mitigation:** none.
 - **To resolve:** in `tick`, add `props.timeU.value = elapsedTime`.
 - **Found:** 2026-11-01, render review
+- **Fix:** `tick` sets `props.timeU.value = elapsedTime`. `createHexTerrain.ts`; test `hexUpdates.spec.ts` › "tick advances the prop foliage time uniform".
 
 ### RN-05 · Three different "cleared ground" rules for height, water and props
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED (divergence); PLAUSIBLE (that the sim produces the cases)
 - **Area / code:** `frontend/render/planets/hex/chunkMesh.ts:166` (`baseTileHeight` levels prepared | irrigated | living), `:211` (slope easing exempts only `prepared`); `hexWater.ts:24` (no water for prepared | **flat** | living | irrigated); `chunkPropScatter.ts:111` (`cleared` = prepared | irrigated | living)
@@ -93,10 +97,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** add one `isClearedPrep(p)` helper (and, if needed, `isLevelledPrep`) in `chunkMesh.ts`, and use it
   in all three files. Ask the sim owner which prep values are allowed on water tiles.
 - **Found:** 2026-11-01, render review
+- **Fix:** One `isClearedPrep(p)` (prepared | irrigated | living) in `chunkMesh.ts`, used by `baseTileHeight`, the slope-easing exemption, `hexWater.isWaterTile` (which no longer treats `flat` as cleared: a Shallow/Deep tile with prep `flat` keeps its water over its submerged bed) and the prop scatter. Tests `hexUpdates.spec.ts` › "a Shallow tile with prep `flat` keeps its water", "an irrigated or living Slope tile stays level". Today the sim sets prep `flat` only together with terrain `flat` (clear/break, landing zone, spawn slots, starter hub site), and 15 generated worlds (3 planet types × 5 seeds, radius 56) have 0 water tiles with a prep other than `wild`, so no current world looks different; which prep values a water tile may carry is still a question for SIM-GAMEPLAY.
 
 ### RN-06 · Sim enum codes and colony colours are copied into render with no parity test
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/chunkMesh.ts:5-30` (`HEX_TERRAIN`, `HEX_PREP`, `HEX_DEPOSIT`) vs `shared/sim/src/grid/layers.ts:40-110` (`TERRAIN`, `PREP`, `DEPOSIT`); `territoryBorder.ts:18-25` (`DEFAULT_COLONY_COLORS`) vs `shared/sim/src/kernel/colonies.ts:4`; `territoryBorder.ts:14-16,27-28` (`GLOBE_PLAYER_COLORS`)
@@ -111,10 +116,12 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
   palette (or move them to `shared/contracts`) and delete the copies. Otherwise add a parity spec that imports both.
   Remove `GLOBE_PLAYER_COLORS` and fix the comment.
 - **Found:** 2026-11-01, render review
+- **Fix:** The tables moved to `shared/contracts/src/tiles/codes.ts` (`TERRAIN_CODES`, `PREP_CODES`, `DEPOSIT_CODES`, `DEFAULT_COLONY_COLORS`); render's `HEX_TERRAIN` / `HEX_PREP` / `HEX_DEPOSIT` and `DEFAULT_COLONY_COLORS` are now those objects (`@terra/contracts/tiles/codes`; `@terra/contracts` added to `frontend/render/package.json` and its lock entry). Parity test `shared/contracts/test/tile-codes.spec.ts` compares them with the sim's `TERRAIN` / `PREP` / `DEPOSIT` and `kernel/colonies.ts` `DEFAULT_COLONY_COLORS`. `GLOBE_PLAYER_COLORS` and its misleading comment were removed. Follow-up for SIM-ENGINE: make `grid/layers.ts` `*_BASE` and `kernel/colonies.ts` import the contracts tables so only one copy remains (the parity test guards until then).
+- **Follow-up done (final pass 2026-11-01):** `shared/sim/src/grid/layers.ts` builds `TERRAIN` / `PREP` / `DEPOSIT` from `TERRAIN_CODES` / `PREP_CODES` / `DEPOSIT_CODES` (`withPascalAliases` adds the non-enumerable `Flat` / `Wild` / … aliases), and `kernel/colonies.ts` re-exports the contracts palette: no second copy. The parity spec moved out of contracts (it imported `@terra/sim`, a wrong-way dependency) to `shared/sim/test/grid/tile-codes.spec.ts`, which asserts the sim tables are the contracts tables.
 
 ### RN-07 · Dirty-chunk ring may miss normal changes on chunk seams
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** PLAUSIBLE
 - **Area / code:** `frontend/render/planets/hex/createHexTerrain.ts:138-152` (`collectDirtyChunks`, ±2 axial box); `chunkMesh.ts:211-224` (slope easing reads neighbours), `:277` (`fanNormal` reads neighbours), `:254-260` (a chunk holds border vertices of neighbour tiles)
@@ -127,10 +134,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** use hex distance 3 (or mark chunks whose vertex set includes any tile within distance 2 of a
   changed tile). Add a spec: incremental `updateTiles` must give the same buffers as a full rebuild.
 - **Found:** 2026-11-01, render review
+- **Fix:** The dirty box is now hex distance 3 (`DIRTY_REACH` in `chunkSet.ts`, an axial box that covers every tile within 3 steps). Test `hexUpdates.spec.ts` › "an incremental update gives the same chunk buffers as a full rebuild, also across a chunk seam" (fails with the old ±2 box).
 
 ### RN-08 · `fanNormal` flip branch has a typo (`nz = -ny`)
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/chunkMesh.ts:330`
@@ -141,10 +149,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Workaround / mitigation:** currently unreachable.
 - **To resolve:** change it to `nz = -nz`, or delete the branch.
 - **Found:** 2026-11-01, render review
+- **Fix:** `nz = -nz` in `fanNormal` (`chunkMesh.ts`). The branch is still unreachable with `HEX_DIRS`' order, so no test can exercise it; all chunk buffers are unchanged.
 
 ### RN-09 · A tile prepared during play looks different after a reload
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** PLAUSIBLE
 - **Area / code:** `frontend/render/planets/hex/chunkMesh.ts:280-285` (`stylePrep = isPrep && startT >= 0 ? HEX_PREP.flat : prepVal`)
@@ -158,10 +167,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** once the blend has finished, rebuild the tile with pad style, or blend `aAO` and `aRock` in the
   shader.
 - **Found:** 2026-11-01, render review
+- **Fix:** `PrepTransitions` (`prepTransitions.ts`) keeps the tiles still blending; once a tile's 0.4 s blend is over, `tick` resets its start time to the sentinel and rebuilds its chunks, so it gets the same pad style (`aAO` 0.96, `aRock` 0.25) a reload gives. Test `hexUpdates.spec.ts` › "rebuilds the tile with the pad style after the 0.4 s blend" (buffers equal a terrain built with the tile already Prepared).
 
 ### RN-10 · Shader constants copied from TypeScript (`0.4` s blend, `TILE_M = 2`)
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/hexEdges.ts:16` (`/ 0.4`) vs `chunkMesh.ts:32` (`PREP_BLEND_DURATION_S`); `hexEdges.ts:55` (`vLP.xz / 2.0`) vs `hexMath.ts:4` (`TILE_M`); `hexEdges.ts:74-79` (`String.replace` on `'vLP = position;'` and `'#include <alphatest_fragment>'`)
@@ -174,6 +184,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** pass the values as uniforms or `#define`s built from the TS constants. Assert that each
   `replace` matched (throw on no-op).
 - **Found:** 2026-11-01, render review
+- **Fix:** The hex GLSL takes `PREP_BLEND_DURATION_S` and `TILE_M` as literals built from the TS constants (`glslFloat`), and every `onBeforeCompile` patch of the terrain, hex and unified colony materials goes through `injectAll` / `replaceOrThrow` (`frontend/render/visuals/shaderInject.ts`), which throws when a marker is missing. Tests `visuals/shaderInject.spec.ts`; `hexUpdates.spec.ts` › "patches three's real standard shader with literals built from the TS constants", "throws instead of compiling a half-patched shader" (both run on `THREE.ShaderLib.standard`, the real sources).
 
 ### RN-11 · The renderer overrides sim heights on several classes
 
@@ -190,12 +201,13 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** owner decision. Recommendation: limit render to additive detail capped at about 0.2 m. Drop the
   `max` and `min` clamps now that `shared/sim/src/gen/world/` generates class-consistent heights.
 - **Found:** 2026-11-01, render review
+- **Note:** Not changed (review-fix round 2026-11-01): measured on `createPlanet` worlds (radius 56, seeds world-1 / golden-1 / x-7), the clamps still fire a lot, so dropping them would visibly move the ground: temperate/ocean holes are all clamped (sim height up to +0.09 m, moved down by up to 0.44 m), 20–27 % of rock tiles (up to 0.54 m), about 60 % of deep tiles (up to 0.18 m) and 7–14 % of slopes (up to 0.21 m); desert slopes 3–18 %. The class-consistent heights the recommendation assumes are not generated yet. Needs the owner (and SIM-ENGINE for the generator) to decide which side moves.
 
 ## Terrain material and procedural textures (`frontend/render/visuals/`)
 
 ### RN-12 · Foundation pad textures are generated at 512² instead of 128², and for every terrain
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/visuals/terrain/terrainMaterial.ts:12` (`ProceduralTextureRegistry.get('foundationHexPad')`); `ProceduralTextureRegistry.ts:88` (`get(name, size = 512)`), `:255` (generator default `size = 128`); `terrainShader.ts:18,162` (`FOUNDATION_PAD_GLSL` in the shared `FRAG_COMMON`)
@@ -210,10 +222,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** call `get('foundationHexPad', 128)` (or give the generator an explicit size). Add the pad uniforms
   and `FOUNDATION_PAD_GLSL` only in the hex material (`addHexEdges`). Un-export the chunk.
 - **Found:** 2026-11-01, render review
+- **Fix:** The pad bundle is requested at 128² (`FOUNDATION_PAD_TEX_SIZE`), and the pad uniforms, sampler declarations and `evalFoundationPad` GLSL moved from the shared terrain shader into the hex material only (`hexEdges.ts` `foundationPadUniforms()`, merged in `createHexTerrain`); `FOUNDATION_PAD_GLSL` is no longer exported. Tests `hexTerrain.spec.ts` (bundle width 128), `hexUpdates.spec.ts` › "only the hex material carries the pad textures and GLSL". Visible effect: the pad's texture detail is 128² per 2 m tile instead of 512².
 
 ### RN-13 · `ProceduralTextureRegistry.register` never invalidates the cache
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED (older than this branch)
 - **Area / code:** `frontend/render/visuals/ProceduralTextureRegistry.ts:83-86` (`cache.delete(name)`) vs `:88-89` (keys are `${name}_${size}`)
@@ -223,12 +236,13 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Workaround / mitigation:** nothing re-registers at runtime today.
 - **To resolve:** delete every key that starts with `${name}_`.
 - **Found:** 2026-11-01, render review
+- **Fix:** `register` deletes every cached `${name}_<size>` key (not other presets that share a prefix). `ProceduralTextureRegistry.ts`; test `visuals/ProceduralTextureRegistry.spec.ts`.
 
 ## Unified material and kitbash runtime (`frontend/render/kitbash/catalog.ts`, `visuals/unified/`)
 
 ### RN-14 · Construction scaffold cut heights are tuned to the Command Hub only; `uBuildStage` is never read
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/visuals/unified/shaderChunks.ts:212-223` (`FRAG_BUILD_SCAFFOLD`), `:187-188`; `frontend/render/kitbash/catalog.ts:75-89` (`quantizeBuildStage`, `setArchetypeBuildProgress`); `UnifiedColonyMaterial.ts:23,47`; only caller `frontend/game/app/online/EntityMeshes.ts:289` (commandHub)
@@ -246,10 +260,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
   normalise `vLocalPos.y`). Quantize only on the CPU and drop `uBuildStage` or the shader ladder. Add a
   playground toggle (RN-15).
 - **Found:** 2026-11-01, render review
+- **Fix:** The scaffold cuts at fixed fractions of the model's own height (`SCAFFOLD_CUT_FRACTIONS` = 0.25 / 1.65 / 3.85 m over the hub's 6.59 m, so the hub looks as before; `uBuildHeight` is set from the geometry bounding box in `createArchetypeMesh`). Progress is quantized only on the CPU; the shader reads `uBuildStage` and its duplicate ladder (with the dead arm) is gone. `uBuildProgress` still mirrors the stage because `frontend/game/features/landfall/landfall.spec.ts` asserts it (see RN-24). Files `visuals/unified/buildScaffold.ts`, `UnifiedColonyMaterial.ts`, `shaderChunks.ts`, `kitbash/catalog.ts`; test `kitbash/buildScaffold.spec.ts`.
 
 ### RN-15 · New render features have no playground or docs surface
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/playground/` (no reference to `setArchetypeBuildProgress`, `uWorkWeight`, `createHexTerrain`, territory borders or `foundationHexPad`); `docs/visuals/*`, `.agents/skills/shader-texture-tuning`
@@ -265,12 +280,13 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** add a playground control for build stage and work weight, plus a hex terrain sample scene. Move
   the scaffold into a registered shader modifier. Add one paragraph to `docs/visuals/textures-shaders-lighting-spec.md`.
 - **Found:** 2026-11-01, render review
+- **Fix:** Playground: `hex terrain` toggle / `&hexterrain=1` (sample scene with every class, deposits, a Prepared pad whose wave replays every 3 s, normal and frozen borders; `content/HexSampleHost.ts`), `border hatch` / `&hatch=1`, `work pose` / `&work=1` (`uWorkWeight` 1) and a `build` button / `&build=0|33|66` / `__pg.setBuild()`. The scaffold is now the registered `buildScaffold` shader modifier (`ShaderPluginRegistry`, which gained per-material `createUniforms` and `fragmentDeclarations`). Docs: `docs/visuals/textures-shaders-lighting-spec.md` §3.3, README URL parameters, `docs/dev/DEV_TOOLS.md` (`__pg`). The work pose stays in the core biped arm chunk (it is part of that gait). Checked in headless Chrome: `/playground.html?inspect=building.turret&hexterrain=1&hatch=1&build=66&biome=forestRock` and `?inspect=building.commandHub&hexterrain=1&build=33`, no console errors.
 
 ## Kitbash archetypes (`frontend/render/kitbash/archetypes/`, `greebles/`)
 
 ### RN-16 · Command Hub copies the kit helpers it already imports
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/kitbash/archetypes/buildings/hub.ts:8-22` (`hubLamp`, `hubRing`, `hubCable`), `:100-115` (inline radar-dish lathe) vs `buildings/kit.ts:42-66` (`cable`, `lamp`, `ring`, `dish`, all imported on `hub.ts:4`); `hub.ts:76-82` (hand-built `TubeGeometry` cable)
@@ -282,6 +298,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** give `lamp`, `ring`, `cable` and `dish` optional segment and curve-point parameters in `kit.ts`, and
   delete the hub copies.
 - **Found:** 2026-11-01, render review
+- **Fix:** `kit.ts` helpers take the budgets the hub needed (`lamp` `hSeg`, `ring` `tubeSeg`, `cable` `points: 3` and `seg`, `dish` `seg`) plus a new `tube()` (curve through given points, which `cable` now uses); the hub's `hubLamp` / `hubRing` / `hubCable` copies and the pasted dish lathe are gone, and its pad power cable uses `tube()`. Pure refactor: the geometry of all 29 archetypes is byte-identical (attribute hash before/after) and `validate:models -- --all` reports the same issues.
 
 ### RN-17 · Global segment and bevel defaults were lowered: every model's look changed
 
@@ -303,6 +320,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
   where the budget allows. Rename `capsule` to `roundedTank` (or restore a low-segment capsule). Fix the `rbox`
   comment.
 - **Found:** 2026-11-01, render review
+- **Note:** Partly applied (review-fix round 2026-11-01): `capsule` was renamed `roundedTank` with a doc comment saying it is a straight cylinder, and the `rbox` comment now says the default 1 is a single chamfer and `seg = 2` must be passed for a hero hull. No hull got `seg: 2`: it changes the look and six models have < 1 % triangle headroom, so which hulls are "hero" hulls is left to the owner. Geometry of all 29 models unchanged.
 
 ### RN-18 · Ground-contact rule disagrees between the docs, the playground and the validator
 
@@ -322,10 +340,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
   named `foundation plinth` part (or accept `-0.1 ≤ minY ≤ 0`). Update AGENTS §2/§4 and CLAUDE.md to say "minY 0, or
   −0.1 for a building skirt". Sink the hub plinth like the others.
 - **Found:** 2026-11-01, render review
+- **Note:** Partly applied (review-fix round 2026-11-01): the −0.1 m skirt is kept. One rule in `frontend/render/kitbash/validate/groundContact.ts` (flush within 2 cm, or a skirt: only `role: 'plinth'` parts below −2 cm, at most 10.5 cm deep); the playground panel uses it and shows `✔ minY -0.100 (−0.1 m plinth skirt)` for the 13 kit buildings, and "orbital, no ground rule" for ships and props. AGENTS §2/§4, CLAUDE.md and `docs/visuals/agent-3d-coding-rules.md` now say "minY 0, or −0.1 for a building's plinth skirt". Test `kitbash/validate/groundContact.spec.ts`. Not done: sinking the Command Hub plinth, because `frontend/game/features/landfall/landfall.spec.ts` (FRONTEND-FEATURES) pins the hub's `|minY| < 0.001`; the owner decides, then that spec changes with the model.
 
 ### RN-19 · Leftover unused imports in rewritten archetypes; stale CLAUDE.md budget note
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/kitbash/archetypes/buildings/rocket.ts:4-5` (`RoundedBoxGeometry`, `box`, `ring`, all unused since this branch); `buildings/tech.ts:4` (`RoundedBoxGeometry`, unused since this branch); `buildings/industry.ts:4` (`V3`, older than this branch); CLAUDE.md "several existing archetypes currently exceed this"
@@ -336,6 +355,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** remove the imports. Reword the CLAUDE.md note to "all archetypes are under 3.5k; several have
   < 1 % headroom".
 - **Found:** 2026-11-01, render review
+- **Fix:** Removed the unused imports in `rocket.ts`, `tech.ts`, `industry.ts` (plus the unused `jitter` in `planets/surface/index.ts` and the unread `viewport` field in `orbit/OrbitalStage.ts`); `tsc --noUnusedLocals` reports nothing in `frontend/render`, `frontend/playground`, `frontend/design`. CLAUDE.md now says all archetypes are under 3.5k with several under 1 % headroom.
 
 ### RN-20 · `animType 3` is recoil, not a beacon pulse
 
@@ -356,7 +376,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 
 ### RN-21 · Validator verdicts depend on part names and part order
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/kitbash/validate/checks/overlaps.ts:40-43` (`isPlinthPart`: name `/plinth|foundation/` or part #0 below −2 cm), `:67` (skips `CABLE_FLOAT` for `/antenna|tendril|whip/`); `checks/animation.ts:39` (`/tendril/`); `appearance/colorChecks.ts:84-86`; `buildings/hub.ts:95-96` (`'antenna guy cable R'`, `'antenna guy cable L'`)
@@ -372,10 +392,11 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** add explicit part roles to `PartOptions` (`role: 'whip' | 'plinth' | …`) and use them in the
   checks instead of regexes. Until then, rename the hub's wires to "guy cable" so they get the anchor check.
 - **Found:** 2026-11-01, render review
+- **Fix:** `PartOptions.role` / `PartMeta.role` (`'plinth' | 'plinthDetail' | 'whip'`, carried by `extract.ts`) replace the name regexes and the part-#0 rule in the geometry checks: plinth parts are not cable anchors and cables must clear the `plinth` slab's top; only `whip` tubes skip `CABLE_FLOAT` and may ride another animation (`animation.ts`). Roles set in `kit.plinth()`, the hub plinth, the skitter's whip antennas and the drifter's tendrils. The hub's guy wires were renamed "guy cable R/L" and now pass the anchor check. All 29 models report the same issues as before. Appearance checks (colour groups, `ROLE_ZONE`, `ROLE_DETAIL`) still read names, as documented in the skill. Self-test fixtures added: a tube named "antenna lead" with a free end → `CABLE_FLOAT`; a `whip` → clean; a sunk part #0 without the role is an ordinary anchor (`npm run test:models` 48/48).
 
 ### RN-22 · All recoil parts are treated as one rig, although their phase depends on `pivot.x`
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/kitbash/validate/checks/animation.ts:15-19` (`sameRig`: `animType === 3` always true); `shaderChunks.ts:70` (`sin(g + pivot.x * 2.3)`)
@@ -387,15 +408,44 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Workaround / mitigation:** current models use a shared pivot per gun.
 - **To resolve:** use the bob rule (`pivot.x` equal) for type 3, and add a self-test fixture.
 - **Found:** 2026-11-01, render review
+- **Fix:** `sameRig` applies the bob rule (equal `pivot.x`) to recoil too (`validate/checks/animation.ts`). No model changes verdict. Self-test fixtures: barrel and muzzle brake on different `pivot.x` → `ANIM_COLLISION`; on the same `pivot.x` → clean.
 
 ## Cross-area findings (added by the lead)
 
 ### RN-23 · Rotation block repeated in the unified shader chunks
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** PLAUSIBLE
 - **Area / code:** `frontend/render/visuals/unified/shaderChunks.ts:19-27` and `:40-48` (changed on this branch)
 - **What happens:** the same rotation code appears twice in two chunk constants; a fix to one will miss the other.
 - **To resolve:** extract one named chunk and compose it into both (AGENTS.md: GLSL is split into named chunks composed by a builder).
 - **Found:** 2026-11-01, lead (cross-area finding from the world/engine, gameplay, features and cross-cutting reviews)
+- **Fix:** One `rotateRollPitchYaw` GLSL function in `VERT_COMMON`, used by `bipedBodyTransform` and `spiderBodyTransform` (`visuals/unified/shaderChunks.ts`); same math and evaluation order.
+
+### RN-24 · `uBuildProgress` only mirrors `uBuildStage`
+
+- **Status:** Resolved (review-fix round 2026-11-01)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/visuals/unified/buildScaffold.ts` (`createUniforms`), `frontend/render/kitbash/catalog.ts` (`setArchetypeBuildProgress`); asserted in `frontend/game/features/landfall/landfall.spec.ts`
+- **What happens:** after RN-14 the scaffold shader reads only `uBuildStage`. `uBuildProgress` is still created and set to the same quantized stage, but no GLSL reads it.
+- **Why it is like this:** `landfall.spec.ts` (FRONTEND-FEATURES) asserts `uniforms.uBuildProgress.value`; removing the uniform would break that spec.
+- **Workaround / mitigation:** documented on `ArchetypeUniforms` ("mirrors `uBuildStage`; not read by the shader").
+- **To resolve:** switch the spec's assertions to `uBuildStage`, then drop `uBuildProgress` from the plugin and `setArchetypeBuildProgress`.
+- **Found:** 2026-11-01, render review-fix round
+- **Fix:** the `uBuildProgress` mirror uniform is removed (`buildScaffold.ts`, `catalog.ts` type and setter, `UnifiedColonyMaterial.ts` doc); the shader and callers use `uBuildStage` only; `buildScaffold.spec.ts` asserts the mirror is gone.
+
+
+### RN-25 · Two "tube through points" helpers: `kit.tube` and `unitParts.cable`
+
+- **Status:** Resolved (review-fix round 2026-11-01)
+- **Severity:** low
+- **Confidence:** CONFIRMED (older than the review-fix round)
+- **Area / code:** `frontend/render/kitbash/archetypes/buildings/kit.ts` (`tube`, `cable`), `frontend/render/kitbash/greebles/unitParts.ts` (`cable`, `sag`)
+- **What happens:** the building kit and the unit kit each build a `TubeGeometry` along a CatmullRom curve through given points, with different defaults (4 vs 5 radial segments, 10 tubular). A fix to one (naming, budgets, roles) misses the other.
+- **Why it is like this:** the two kits grew separately; merging them changes the unit models' tube segment count, so it is not a pure refactor.
+- **Workaround / mitigation:** none needed for correctness.
+- **To resolve:** give one shared helper a radial-segment option and have both kits call it with their current defaults (geometry must stay byte-identical; check with an attribute hash of all archetypes).
+- **Found:** 2026-11-01, render review-fix round
+- **Fix:** one helper `tubeThrough(b, pts, r, zone, { along, radial }, opts)` in `frontend/render/kitbash/greebles/tube.ts` (CatmullRom `TubeGeometry`, named `power cable` unless `opts.name` says otherwise); `kit.tube` (and so `kit.cable`) calls it with `{ along: o.seg ?? 10, radial: 4 }` and the same option bag, `unitParts.cable` (and `sag`) with `{ along: 10, radial: 5 }`, and the third copy found on the way, the `saggingCable` greeble in `KitbashRegistry.ts` (used by no archetype), with `{ along: 12, radial: 6 }` (its part is now named `power cable`). Geometry byte-identical: a scratch SHA-256 over every archetype's merged attributes + index and its extracted part list (name, zone, kind, role, anim, pivot, emissive) is unchanged for all 29 archetypes; `npm run validate:models -- --all` 29 pass, 0 errors, 0 warnings before and after; `npm run test:models` 48/48.

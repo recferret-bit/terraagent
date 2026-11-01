@@ -5,12 +5,18 @@ import { Counter, Gauge, Histogram } from 'prom-client';
 import { MetricsRegistry } from '../../core/metrics.registry';
 import { layerLogger } from '../../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../../core/tokens';
+import { HomeRepository } from '../../core/home/home.repository';
 import { GamePlanets, type LoadOptions } from '../game-planets.service';
+import { hasLiveColony } from '../live-colony';
 import { PlanetLedgerService } from '../ledger/planet-ledger.service';
-import { persistenceEnabled } from './persistence-enabled';
+import { persistenceEnabled } from '../../core/persistence';
 import { SnapshotScheduler } from './snapshot-scheduler';
 import { SnapshotStore } from './snapshot-store';
 import { devSnapshotVerdict } from './dev-planet-verdict';
+
+/** A planet that went down is restored from its snapshot at most this many times per {@link RECOVER_WINDOW_MS}, then held. */
+export const RECOVER_LIMIT = 3;
+export const RECOVER_WINDOW_MS = 10 * 60_000;
 
 /** SIM-H-06 budget for the SIGTERM snapshot of every loaded planet. */
 export const SHUTDOWN_BUDGET_MS = 30_000;
@@ -42,6 +48,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
   private readonly bytes: Gauge;
   private readonly seconds: Histogram;
   private readonly total: Counter<'kind'>;
+  /** Recent recovery times per planet (BE-11/BE-12), to stop restoring a planet that keeps failing. */
+  private readonly recoveries = new Map<string, number[]>();
   /** `SNAPSHOTS=on|off`; unset → on, except under NODE_ENV=test so unit tests never touch the dev database. */
   readonly enabled: boolean;
 
@@ -53,6 +61,8 @@ export class SnapshotService implements BeforeApplicationShutdown {
     @Inject(LOGGER) root: Logger,
     /** Each snapshot write waits for the planet's queued journal writes, so a saved snapshot at T has its rows ≤ T. */
     @Optional() private readonly ledger?: PlanetLedgerService,
+    /** Colony rows: a restored planet with rows is never marked as a scenario planet (BE-07). */
+    @Optional() private readonly homes?: HomeRepository,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
     this.enabled = persistenceEnabled(env);
@@ -85,7 +95,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
       return { ...report, dbUnavailable: true };
     }
     for (const id of ids) {
-      const outcome = await this.restoreOne(id);
+      const outcome = await this.restore(id);
       if (outcome === 'restored') report.restored.push(id);
       else if (outcome === 'held') report.held.push(id);
     }
@@ -111,8 +121,58 @@ export class SnapshotService implements BeforeApplicationShutdown {
     await this.planets.ensureLoaded(planetId, { ...opts, noSnapshots: true });
   }
 
+  /**
+   * Loads a planet that is not loaded: restored from its latest snapshot when it has one, else generated fresh (BE-14:
+   * an existing home whose planet was not restored at boot). Throws {@link PlanetHeldError} when it has snapshots that
+   * cannot be restored.
+   */
+  async loadHome(planetId: string, opts: LoadOptions): Promise<'loaded' | 'restored' | 'generated'> {
+    if (this.planets.isLoaded(planetId)) return 'loaded';
+    if (this.enabled && (await this.store.hasSnapshots(planetId))) {
+      const outcome = await this.restore(planetId);
+      if (outcome !== 'restored') throw new PlanetHeldError(planetId, outcome === 'held' ? 'its snapshots cannot be restored' : 'it was wiped as an old dev planet');
+      return 'restored';
+    }
+    await this.loadNew(planetId, opts);
+    return 'generated';
+  }
+
+  /**
+   * Planets that went down (their thread died, or a step threw: BE-11/BE-12) are restored from their latest snapshot,
+   * at most {@link RECOVER_LIMIT} times per planet per {@link RECOVER_WINDOW_MS} (a planet that keeps failing is held).
+   * Without persistence, or without snapshots, they stay unloaded. Returns the planets restored.
+   */
+  async recover(planetIds: readonly string[], now = Date.now()): Promise<string[]> {
+    const restored: string[] = [];
+    for (const id of planetIds) {
+      const recent = (this.recoveries.get(id) ?? []).filter((t) => now - t < RECOVER_WINDOW_MS);
+      if (recent.length >= RECOVER_LIMIT) {
+        this.log.error({ planetId: id, recoveries: recent.length }, `held ${id}: it went down ${recent.length} times in ${RECOVER_WINDOW_MS / 60_000} min`);
+        continue;
+      }
+      this.recoveries.set(id, [...recent, now]);
+      if (!this.enabled || this.planets.isLoaded(id)) continue;
+      const has = await this.store.hasSnapshots(id).catch(() => false);
+      if (has && (await this.restore(id)) === 'restored') restored.push(id);
+      else this.log.error({ planetId: id }, `${id} stays unloaded after going down: no snapshot restored`);
+    }
+    return restored;
+  }
+
+  /**
+   * Dev `planet.wipe` (LED-06): deletes a planet that is not loaded (a held one) with its snapshots, journal and colony
+   * rows, so it can start fresh. Refuses a loaded planet.
+   */
+  async wipe(planetId: string): Promise<void> {
+    if (this.planets.isLoaded(planetId)) throw new Error(`planet ${planetId} is loaded: only an unloaded (held) planet can be wiped`);
+    if (this.enabled) await this.store.wipePlanet(planetId);
+    await this.homes?.deleteColoniesOfPlanet(planetId); // drops the colony cache (the rows are already gone)
+    this.recoveries.delete(planetId);
+    this.log.warn({ planetId }, `wiped ${planetId} (dev planet.wipe)`);
+  }
+
   /** One live planet: restored, held (snapshots kept, not loaded) or wiped (an old dev planet: generated fresh later). */
-  private async restoreOne(id: string): Promise<'restored' | 'held' | 'wiped'> {
+  async restore(id: string): Promise<'restored' | 'held' | 'wiped'> {
     try {
       const snap = await this.store.latest(id, (tick) => this.log.warn({ planetId: id, tick: Number(tick) }, 'corrupt snapshot skipped'));
       if (!snap) {
@@ -127,13 +187,14 @@ export class SnapshotService implements BeforeApplicationShutdown {
       }
       if (verdict.kind === 'wipe') {
         // Old ground (pre-D-38), an older sim, or not the type its family names: wipe, boot recreates it fresh.
-        await this.store.wipeDevPlanet(id);
+        await this.store.wipePlanet(id); // the verdict only ever wipes dev planets
         this.log.warn({ planetId: id, reason: verdict.reason, now: GEN_VERSION }, `wiped ${id}: ${verdict.reason}`);
         return 'wiped';
       }
+      // A scenario planet (no colony rows: its colonies are the scenario's) stays playable as colony 0 by dev sessions.
+      // A planet with colony rows is never marked: its colonies belong to their players (BE-07).
       const isDev = devPlanetTypeOf(id) !== null;
-      const state = verdict.state ?? (isDev ? null : restore(snap.raw));
-      if (!isDev && state?.colonies?.some((c) => c.status !== 'eliminated')) {
+      if (!isDev && hasLiveColony(verdict.state ?? restore(snap.raw)) && !(await this.homes?.listColoniesByPlanetId(id))?.length) {
         this.planets.markScenarioColonyPlanet(id);
       }
       const tick = await this.planets.load(id, { snapshot: snap.raw });

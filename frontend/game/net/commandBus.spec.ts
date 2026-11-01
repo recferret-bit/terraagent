@@ -71,4 +71,24 @@ describe('CommandBus', () => {
     expect(seen).toEqual(['dev.teleport']);
     bus.dispose();
   });
+
+  it('a transport that cannot send (reconnecting) resolves not_connected, nothing stays pending or predicted (FA-14)', async () => {
+    const seen: string[] = [];
+    const t = { send: () => { throw new Error('cannot send cmd while reconnecting'); }, onMessage: () => () => undefined };
+    const bus = new CommandBus(t, undefined, (_id, kind) => seen.push(kind));
+    const r = await bus.send('hq.move', { q: 1, r: 0 });
+    expect(r).toEqual({ ok: false, code: 'not_connected', detail: 'cannot send cmd while reconnecting' });
+    expect(seen).toEqual([]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('a timed-out command is reported to onTimedOut (the prediction drops it, FA-16)', async () => {
+    const f = fakeTransport();
+    const expired: string[] = [];
+    const bus = new CommandBus(f.t, 5000, undefined, (id) => expired.push(id));
+    const p = bus.send('hq.move', { q: 1, r: 0 });
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(await p).toMatchObject({ ok: false, code: 'timeout' });
+    expect(expired).toEqual([idOf(f.sent[0])]);
+  });
 });

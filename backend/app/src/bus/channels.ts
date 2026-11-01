@@ -88,12 +88,7 @@ export interface BatchedColonyFoundedEvent {
  * (the module specifier is the path of this file as seen from the augmenting file, or `'@terra/bus'`-style alias if one is added).
  */
 export interface BusChannels {
+  /** Every sim event of every planet; progression kinds arrive batched per step (`ProgressionEventForwarder`). */
   'planet.event': PlanetEventV1;
-  'tilePrepared': BatchedTilePreparedEvent;
-  'progression.tilePrepared': BatchedTilePreparedEvent;
-  'obstacleRemoved': BatchedObstacleRemovedEvent;
-  'progression.obstacleRemoved': BatchedObstacleRemovedEvent;
-  'colonyFounded': BatchedColonyFoundedEvent;
-  'progression.colonyFounded': BatchedColonyFoundedEvent;
 }
 export type BusChannel = keyof BusChannels;

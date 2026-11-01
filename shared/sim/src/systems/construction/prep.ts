@@ -1,16 +1,14 @@
+import { W01_TERRAFORM_OPS } from '@terra/contracts';
 import { hexIndex } from '../../grid/hex';
-import { PREP, TERRAIN } from '../../grid/layers';
-import { isBuildablePrepared, isValidTileIndex } from '../../grid/tileModel';
+import { PREP } from '../../grid/layers';
+import { isValidTileIndex } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
-import { resolveHqT1Row } from '../hq';
-import { getTerraformOpSpec, type TerraformJob } from '../terraform-basic/queue';
-import { getBuildingFootprintTiles } from './placement';
+import { resolveHqT1Row, rowNum } from '../rows';
+import { getTerraformOpSpec, opForTerrain } from '../terraform-basic/ops';
+import type { TerraformJob } from '../terraform-basic/orders';
 
 export interface SitePrepBill {
-  unpreparedTiles: number;
-  totalTiles: number;
-  subJobs: TerraformJob[];
   baseSeconds: number;
   hqSeconds: number;
   totalEnergyE: number;
@@ -29,10 +27,8 @@ export interface SitePrepBill {
  * Plans the missing S0 terraform sub-jobs (`clear`, `break`, `grade`) needed to make every tile in
  * `footprintTiles` buildable (`PREP.prepared` / `PREP.living`) (`UO-TF-03`, `W01-15`).
  *
- * For each unprepared tile `(q, r)`:
- * - `TERRAIN.forest` -> `clear` (`5 s`, `30 E`) followed by `grade` (`3 s`, `20 E`)
- * - `TERRAIN.rock` -> `break` (`6 s`, `60 E`) followed by `grade` (`3 s`, `20 E`)
- * - `TERRAIN.flat` -> `grade` (`3 s`, `20 E`)
+ * For each unprepared tile `(q, r)`: forest -> `clear` then `grade`, rock -> `break` then `grade`, flat -> `grade`
+ * (times and energy from `opsBasic`). Placement (D-37) only accepts flat footprints, so a Hub's prep is Grade only.
  */
 export function buildLinkedPrepJobs(
   state: PlanetState,
@@ -66,9 +62,16 @@ export function planPrepJobs(tiles: ReadonlyArray<PrepTileInput>, data?: Compile
   const jobs: TerraformJob[] = [];
   for (const t of tiles) {
     if (t.prep === PREP.prepared || t.prep === PREP.living) continue;
-    if (t.terrain === TERRAIN.forest) jobs.push(job(t.q, t.r, 'clear'), job(t.q, t.r, 'grade'));
-    else if (t.terrain === TERRAIN.rock) jobs.push(job(t.q, t.r, 'break'), job(t.q, t.r, 'grade'));
-    else if (t.terrain === TERRAIN.flat) jobs.push(job(t.q, t.r, 'grade'));
+    // The ops the data rows chain from this terrain to flat ground, ending with the terrain-keeping op (Grade).
+    let terrain = t.terrain;
+    for (let n = 0; n < W01_TERRAFORM_OPS.length; n++) {
+      const op = opForTerrain(terrain, data);
+      if (!op) break;
+      jobs.push(job(t.q, t.r, op));
+      const spec = getTerraformOpSpec(op, data);
+      if (spec.toTerrain === spec.fromTerrain) break;
+      terrain = spec.toTerrain;
+    }
   }
   return jobs;
 }
@@ -77,10 +80,8 @@ export function planPrepJobs(tiles: ReadonlyArray<PrepTileInput>, data?: Compile
 export function summarizePrepJobs(
   jobs: ReadonlyArray<TerraformJob>,
   data?: CompiledDataLike,
-): Pick<SitePrepBill, 'baseSeconds' | 'hqSeconds' | 'totalEnergyE' | 'yields' | 'countsByOp'> {
-  const clearSpec = getTerraformOpSpec('clear', data);
-  const breakSpec = getTerraformOpSpec('break', data);
-  const hqWorkRate = Number(resolveHqT1Row(data).workRate || 1.5);
+): SitePrepBill {
+  const hqWorkRate = rowNum(resolveHqT1Row(data), 'workRate');
   let baseSeconds = 0;
   let totalEnergyE = 0;
   const yields = { 'bio.biomass': 0, 'metals.t1': 0 };
@@ -88,41 +89,9 @@ export function summarizePrepJobs(
   for (const job of jobs) {
     baseSeconds += job.baseTimeS;
     totalEnergyE += job.totalEnergyE;
-    countsByOp[job.op as keyof typeof countsByOp]++;
-    if (job.op === 'clear' && clearSpec.yieldResource === 'bio.biomass') yields['bio.biomass'] += clearSpec.yieldAmount;
-    else if (job.op === 'break' && breakSpec.yieldResource === 'metals.t1') yields['metals.t1'] += breakSpec.yieldAmount;
+    countsByOp[job.op]++;
+    const spec = getTerraformOpSpec(job.op, data);
+    if (spec.yieldResource && spec.yieldResource in yields) yields[spec.yieldResource as keyof typeof yields] += spec.yieldAmount;
   }
   return { baseSeconds, hqSeconds: hqWorkRate > 0 ? baseSeconds / hqWorkRate : baseSeconds, totalEnergyE, yields, countsByOp };
-}
-
-/**
- * Computes the full site preparation bill (`unpreparedTiles`, `subJobs`, `baseSeconds`, `hqSeconds`,
- * `totalEnergyE`, and lump `yields`) for an `N × N` footprint centered at `(q, r)` (`UO-TF-03`, `W01-15`, `W01-28`).
- */
-export function computeSitePrepBill(
-  state: PlanetState,
-  q: number,
-  r: number,
-  footprint = 3,
-  data?: CompiledDataLike,
-): SitePrepBill {
-  const coords = getBuildingFootprintTiles(q, r, footprint);
-  const hex = hexIndex(state.grid.radius);
-  let unpreparedTiles = 0;
-  for (const pos of coords) {
-    const tileIdx = hex.indexOf(pos.q, pos.r);
-    if (tileIdx < 0 || !isBuildablePrepared(state.grid, tileIdx)) {
-      unpreparedTiles++;
-    }
-  }
-
-  const subJobs = buildLinkedPrepJobs(state, coords, data);
-  const sum = summarizePrepJobs(subJobs, data);
-
-  return {
-    unpreparedTiles,
-    totalTiles: coords.length,
-    subJobs,
-    ...sum,
-  };
 }

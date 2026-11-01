@@ -1,6 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
-import { owedAt, ratioToBp, shareBp } from '@terra/ledger';
-import type { CompiledRow } from '../../data';
+import { owedAt, shareBp } from '@terra/ledger';
 import {
   colonyActor,
   findShortfall,
@@ -19,10 +18,10 @@ import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState, SimState } from '../../kernel/state';
-import { defaultW01Data, resolveHqT1Row, syncHqView } from '../hq';
+import { resolveHqT1Row, resolveHubT1Row, rowNum, ticksToSeconds } from '../rows';
 import { applyHubCompletionEffects } from '../territory-claim';
-import type { ConstructionOrder } from './index';
-import { isHubBuildingKind, resolveHubT1Row } from './placement';
+import { setOrderStatus, type ConstructionOrder } from './orders';
+import { isHubBuildingKind, resolveBuildingRow } from './placement';
 
 export interface CostCheckResult {
   ok: boolean;
@@ -32,42 +31,23 @@ export interface CostCheckResult {
   waitingReason?: string;
 }
 
-/** Resolves the resource cost map for Command Hub T1 (`hub.t1.cost`: `200/100/50/50`). */
+/** The resource cost of the Command Hub (`hub.t1.cost`, zero entries dropped). Throws when the row has no cost map. */
 export function resolveHubCost(data?: CompiledDataLike): Record<string, number> {
-  const hubRow = resolveHubT1Row(data);
-  const raw = hubRow.cost as Record<string, number> | undefined;
-  if (raw && typeof raw === 'object') {
-    const out: Record<string, number> = {};
-    for (const [k, v] of Object.entries(raw)) {
-      if (typeof v === 'number' && v > 0) out[k] = v;
-    }
-    if (Object.keys(out).length > 0) return out;
-  }
-  return {
-    'metals.t1': 200,
-    'minerals.t1': 100,
-    'bio.biomass': 50,
-    'bio.water': 50,
-  };
+  const raw = resolveHubT1Row(data).cost;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('data row hub.t1.cost is not a resource map');
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'number' && v > 0) out[k] = v;
+  return out;
 }
 
-/** Resolves the nominal 1.0x construction duration in seconds for Command Hub T1 (`30 s`). */
+/** The Command Hub's nominal build time in seconds at work rate 1.0 (`hub.t1.buildS`, compiled ticks converted back). */
 export function resolveHubBuildTimeS(data?: CompiledDataLike): number {
-  const hubRow: CompiledRow = resolveHubT1Row(data);
-  if (typeof hubRow.buildTimeS === 'number' && hubRow.buildTimeS !== 30) return hubRow.buildTimeS;
-  if (typeof hubRow.designBuildS === 'number' && hubRow.designBuildS !== 30) return hubRow.designBuildS;
-  if (typeof hubRow.buildS === 'number' && hubRow.buildS !== 150) {
-    return hubRow.buildS * (TICK_MS / 1000);
-  }
-  return Number(hubRow.buildTimeS ?? hubRow.designBuildS ?? 30);
+  return ticksToSeconds(rowNum(resolveHubT1Row(data), 'buildS'));
 }
 
 /** Share of the paid cost refunded when an in-progress build is cancelled, in basis points (`hub.t1.cancelRefundBp`). */
 export function resolveHubCancelRefundBp(data?: CompiledDataLike): number {
-  const hubRow = resolveHubT1Row(data);
-  if (typeof hubRow.cancelRefundBp === 'number') return hubRow.cancelRefundBp;
-  if (typeof hubRow.cancelRefundRatio === 'number') return ratioToBp(hubRow.cancelRefundRatio);
-  return 7500;
+  return rowNum(resolveHubT1Row(data), 'cancelRefundBp');
 }
 
 function waitingFor(resource: string, have: number, need: number): CostCheckResult {
@@ -81,21 +61,14 @@ export function checkBuildingCost(state: SimState, colonyId: number, cost: Recor
 }
 
 /**
- * Starts paying for a construction order (`UO-Q-01`, `W01-16`). The cost is NOT deducted up front: this is the start
- * gate (the full cost must be affordable; a colony only gets resources by landing, never here) and marks `order.costPaid = true` (payment started) with an empty `order.paidAmounts`. The cost is then spent gradually
- * by {@link spendConstructionSlice} in proportion to build progress.
+ * The start gate of a construction order (`UO-Q-01`, `W01-16`): the full cost must be affordable when work starts.
+ * Nothing is deducted here; it marks `order.costPaid = true` (payment started) with an empty `paidAmounts`, and the
+ * cost is then spent gradually by {@link spendConstructionSlice} in proportion to build progress.
  */
-export function payConstructionCost(
-  state: SimState,
-  order: ConstructionOrder,
-  data?: CompiledDataLike,
-): CostCheckResult {
+export function payConstructionCost(state: SimState, order: ConstructionOrder): CostCheckResult {
   if (order.costPaid) return { ok: true };
-  const cost = order.cost ?? resolveHubCost(data);
-  order.cost = { ...cost };
-
-  const initialCheck = checkBuildingCost(state, order.colonyId, cost);
-  if (!initialCheck.ok) return initialCheck;
+  const check = checkBuildingCost(state, order.colonyId, order.cost);
+  if (!check.ok) return check;
   order.costPaid = true;
   order.paidAmounts = {};
   return { ok: true };
@@ -111,10 +84,9 @@ export function spendConstructionSlice(
   state: SimState,
   order: ConstructionOrder,
   targetProgress: number,
-  data: CompiledDataLike | undefined,
   ledger: TreasuryCtx,
 ): CostCheckResult {
-  const cost = order.cost ?? resolveHubCost(data);
+  const cost = order.cost;
   const paid = (order.paidAmounts ??= {});
   const slice: Amounts = {};
   for (const [k, total] of Object.entries(cost)) {
@@ -151,9 +123,7 @@ export function refundCancelledConstruction(
   data: CompiledDataLike | undefined,
   ledger: TreasuryCtx,
 ): Record<string, number> {
-  if (!order.costPaid || !order.paidAmounts || order.status === 'completed') {
-    return {};
-  }
+  if (!order.costPaid || !order.paidAmounts || order.status === 'completed') return {};
   const bp = resolveHubCancelRefundBp(data);
   const refund: Record<string, number> = {};
   for (const [k, paid] of Object.entries(order.paidAmounts)) {
@@ -176,97 +146,70 @@ export function refundCancelledConstruction(
   return refund;
 }
 
+/** What one step of build work did: progress made, the build paused (shortage / blocked cost), or it completed. */
+export type BuildStepResult = 'running' | 'paused' | 'completed';
+
 /**
- * Advances an in-progress construction order by one step of work from builder unit `hqSlot`, which the `build` unit
- * command has already walked into reach (`UO-L-05`, `W01-16`, `UO-Q-01`).
+ * Advances an in-progress construction order by one step of work from builder `builderRow`, which the `build` unit
+ * command has walked into reach (`UO-L-05`, `W01-16`, `UO-Q-01`), and spends the matching slice of the cost. A
+ * shortage pauses the order (`waiting_resources` until stock covers the slice, GP-12); the builder's own state is the
+ * unit command's business (GP-16), this only reports progress.
  */
 export function advanceConstructionProgress(
   state: PlanetState,
   order: ConstructionOrder,
   entityRow: number,
-  hqSlot: number,
+  builderRow: number,
   tick: number,
   ctx?: Partial<StepContext>,
-): boolean {
+): BuildStepResult {
   const data = ctx?.data;
-  const dtTicks = ctx?.dt ?? 1;
-  const dtS = (TICK_MS / 1000) * dtTicks;
+  const dtS = (TICK_MS / 1000) * (ctx?.dt ?? 1);
   const cols = state.entities.cols;
-  const hqRate =
-    cols.workRate[hqSlot] > 0
-      ? cols.workRate[hqSlot]
-      : Number(resolveHqT1Row(data ?? defaultW01Data()).workRate || 1.5);
-  const buildTimeS = order.buildTimeS > 0 ? order.buildTimeS : resolveHubBuildTimeS(data);
-  const delta = buildTimeS > 0 ? (dtS * hqRate) / buildTimeS : 1;
-  const rawProgress = Math.min(1, (order.progress ?? 0) + delta);
+  const rate = cols.workRate[builderRow] > 0 ? cols.workRate[builderRow] : rowNum(resolveHqT1Row(data), 'workRate');
+  const delta = order.buildTimeS > 0 ? (dtS * rate) / order.buildTimeS : 1;
+  const rawProgress = Math.min(1, order.progress + delta);
   // Snap float drift (0.9999999…) to 1 so the last slice settles the cost exactly and the order completes.
   const nextProgress = rawProgress >= 1 - 1e-6 ? 1 : rawProgress;
 
-  const spend = spendConstructionSlice(state, order, nextProgress, data, treasuryCtx(tick, ctx));
+  const spend = spendConstructionSlice(state, order, nextProgress, treasuryCtx(tick, ctx));
   if (!spend.ok) {
-    order.waitingReason = spend.waitingReason ?? 'waiting(resources)';
-    order.statusText = order.waitingReason;
-    setField(state.entities, hqSlot, 'state', ENTITY_STATE.idle, tick);
-    syncHqView(state, hqSlot, tick, data);
-    return true;
+    setOrderStatus(order, 'waiting_resources', spend.waitingReason ?? 'waiting(resources)');
+    if (spend.missingKey !== undefined) order.waitingFor = { resource: spend.missingKey, need: spend.need ?? 0 };
+    return 'paused';
   }
-
-  setField(state.entities, hqSlot, 'state', ENTITY_STATE.constructing, tick);
-  setField(state.entities, hqSlot, 'targetQ', order.q, tick);
-  setField(state.entities, hqSlot, 'targetR', order.r, tick);
-
-  if (nextProgress >= 1 - 1e-6) {
-    order.progress = 1;
-    order.buildProgress = 1;
-    order.status = 'completed';
-    order.statusText = 'completed';
-    delete order.waitingReason;
-
-    if (entityRow >= 0) {
-      const hubRow = resolveHubT1Row(data ?? defaultW01Data());
-      const hp = Math.fround(Number(hubRow.hp ?? 1500));
-      setField(state.entities, entityRow, 'state', ENTITY_STATE.active, tick);
-      setField(state.entities, entityRow, 'progress', 1, tick);
-      setField(state.entities, entityRow, 'hp', hp, tick);
-      setField(state.entities, entityRow, 'hpMax', hp, tick);
-    }
-
-    setField(state.entities, hqSlot, 'state', ENTITY_STATE.idle, tick);
-    setField(state.entities, hqSlot, 'progress', 0, tick);
-    syncHqView(state, hqSlot, tick, data);
-
-    const col = state.colonies[order.colonyId];
-    const colonyIdStr = col?.id ?? `col_${order.colonyId}`;
-    ctx?.emit?.({
-      kind: 'buildingCompleted',
-      severity: 'info',
-      colonyIds: [colonyIdStr],
-      data: {
-        colonyId: colonyIdStr,
-        entityId: order.entityId,
-        building: order.building,
-        tier: order.tier,
-        q: order.q,
-        r: order.r,
-      },
-    });
-    if (isHubBuildingKind(order.building)) {
-      applyHubCompletionEffects(state, order, tick, ctx);
-    }
-    return true;
-  }
-
   order.progress = nextProgress;
-  order.buildProgress = nextProgress;
-  order.status = 'in_progress';
-  delete order.waitingReason;
-  order.statusText = 'in_progress';
-
+  setField(state.entities, builderRow, 'progress', nextProgress >= 1 ? 0 : Math.fround(nextProgress), tick);
+  if (nextProgress >= 1) {
+    completeConstruction(state, order, entityRow, tick, ctx);
+    return 'completed';
+  }
+  setOrderStatus(order, 'in_progress');
   if (entityRow >= 0) {
     setField(state.entities, entityRow, 'state', ENTITY_STATE.constructing, tick);
     setField(state.entities, entityRow, 'progress', Math.fround(nextProgress), tick);
   }
-  setField(state.entities, hqSlot, 'progress', Math.fround(nextProgress), tick);
-  syncHqView(state, hqSlot, tick, data);
-  return true;
+  return 'running';
+}
+
+/** A finished order: the building becomes active with its row's HP, `buildingCompleted` is emitted, Hub effects apply. */
+function completeConstruction(state: PlanetState, order: ConstructionOrder, entityRow: number, tick: number, ctx?: Partial<StepContext>): void {
+  const row = resolveBuildingRow(order.building, ctx?.data);
+  setOrderStatus(order, 'completed');
+  if (entityRow >= 0 && row) {
+    const hp = Math.fround(rowNum(row, 'hp'));
+    setField(state.entities, entityRow, 'state', ENTITY_STATE.active, tick);
+    setField(state.entities, entityRow, 'progress', 1, tick);
+    setField(state.entities, entityRow, 'hp', hp, tick);
+    setField(state.entities, entityRow, 'hpMax', hp, tick);
+  }
+  const col = state.colonies[order.colonyId];
+  const colonyIdStr = col?.id ?? `col_${order.colonyId}`;
+  ctx?.emit?.({
+    kind: 'buildingCompleted',
+    severity: 'info',
+    colonyIds: [colonyIdStr],
+    data: { colonyId: colonyIdStr, entityId: order.entityId, building: order.building, tier: order.tier, q: order.q, r: order.r },
+  });
+  if (isHubBuildingKind(order.building, ctx?.data)) applyHubCompletionEffects(state, order, tick, ctx);
 }

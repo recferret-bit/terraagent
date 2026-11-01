@@ -1,4 +1,3 @@
-import type { PlanetState } from '@terra/sim';
 import {
   defineFeature,
   type FeatureContext,
@@ -6,19 +5,18 @@ import {
   type HudPanelInstance,
 } from '../../core/registry/types';
 import '../../net/services';
+import { ownColonyIndex } from '../shared/colony';
+import type { InProcessHost } from '../shared/commandDispatch';
+import type { TilePickerFn } from '../shared/pointer';
 import {
   BrushController,
-  computeBoxTiles,
-  planBrushStroke,
   type BrushCommandSink,
   type BrushMode,
-  type BrushOpSelection,
   type BrushStrokeOptions,
   type BrushStrokeSummary,
-  type PlannedTileJob,
   type TileCoord,
 } from './BrushController';
-import { ensureDom } from './dom';
+import { computeBoxTiles, planBrushStroke, type BrushOpSelection, type PlannedTileJob } from './planner';
 import { TerraformMenu } from './TerraformMenu';
 import {
   computeOverlayState,
@@ -36,7 +34,6 @@ export {
   BrushController,
   computeBoxTiles,
   computeOverlayState,
-  ensureDom,
   extractColonyOrders,
   planBrushStroke,
   TerraformMenu,
@@ -55,21 +52,6 @@ export {
   type TilePrepStateName,
 };
 
-export interface SimHostLike {
-  readonly state: PlanetState;
-  readonly tick?: number;
-  readonly pending: number;
-  submit(cmd: {
-    colonyIndex: number | null;
-    source: 'player';
-    commandId: string;
-    kind: string;
-    args: unknown;
-  }): void;
-  view(): GameView;
-  onEvents?: (cb: () => void) => () => void;
-}
-
 export interface TerraformFeatureHandle extends HudPanelInstance {
   readonly el: HTMLElement;
   readonly overlayEl: HTMLElement;
@@ -82,14 +64,14 @@ export interface TerraformFeatureHandle extends HudPanelInstance {
   getBrushMode(): BrushMode;
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
   strokeArea(from: TileCoord, to: TileCoord, opts?: BrushStrokeOptions): BrushStrokeSummary;
-  cancelOrder(taskId?: string): void;
+  /** Cancels the host order `orderId` (default: the active order in the view); false when there is none. */
+  cancelOrder(orderId?: string): boolean;
+  disarm(): void;
+  isArmed(): boolean;
   toggleOverlay(on?: boolean): boolean;
   getOverlayState(): TileOverlayState;
   getLastStroke(): BrushStrokeSummary | null;
-  bindSurface(
-    surface: HTMLElement,
-    pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => TileCoord | null,
-  ): () => void;
+  bindSurface(surface: HTMLElement, pickTile?: TilePickerFn): () => void;
   update(view: GameView): void;
 }
 
@@ -111,47 +93,36 @@ declare module '../../core/registry/types' {
 
   interface FeatureServices {
     colonyId?: number;
+    /** The map element pointer input is read from (the WebGL canvas when absent). */
     surface?: HTMLElement | null;
-    host?: SimHostLike;
-    state?: PlanetState;
+    /** An in-process authoritative host (tests / tools); the online session talks through `sendCommand`. */
+    host?: InProcessHost;
     terraform?: TerraformFeatureHandle;
   }
 }
 
 export interface MountTerraformOptions {
   flags?: ReadonlySet<string>;
-  host?: SimHostLike | 'server' | 'local';
-  simHost?: SimHostLike;
-  state?: PlanetState;
+  /** In-process authoritative host: commands are submitted to it, views read from it. */
+  host?: InProcessHost;
   colonyId?: number;
   sendCommand?: (kind: string, args?: unknown) => unknown;
-  store?: FeatureContext['services']['store'];
+  store?: BrushCommandSink['store'];
   surface?: HTMLElement | null;
-  pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => TileCoord | null;
+  pickTile?: TilePickerFn;
   services?: Partial<FeatureContext['services']>;
 }
 
-function resolveSimHost(opts?: MountTerraformOptions): SimHostLike | undefined {
-  if (opts?.simHost) return opts.simHost;
-  if (opts?.host && typeof opts.host === 'object' && 'state' in opts.host) return opts.host;
-  return opts?.services?.host;
-}
-
 /** Mounts the `terraform-basic` menu, brush controller, and tile-state overlay into `el`. */
-export function mountTerraformBasic(
-  el?: HTMLElement,
-  opts?: MountTerraformOptions,
-): TerraformFeatureHandle {
-  ensureDom();
+export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptions): TerraformFeatureHandle {
   const container = el ?? document.body;
   const services = opts?.services ?? {};
-  const simHost = resolveSimHost(opts);
-  const colonyId = opts?.colonyId ?? services.colonyId ?? 0;
-  const sendCommand = opts?.sendCommand ?? services.sendCommand;
+  const simHost = opts?.host ?? services.host;
   const store = opts?.store ?? services.store;
-  const state = opts?.state ?? services.state ?? simHost?.state;
+  const getColonyId = () => ownColonyIndex(services, opts?.colonyId);
+  const isBlocked = () => services.hubPlacement?.isPlacementActive() === true;
 
-  const overlay = new TileOverlay(container, colonyId);
+  const overlay = new TileOverlay(container, getColonyId);
   let menu: TerraformMenu | null = null;
   let lastSyncedTick = -1;
 
@@ -166,21 +137,20 @@ export function mountTerraformBasic(
   };
 
   const brush = new BrushController({
-    sendCommand,
+    sendCommand: opts?.sendCommand ?? services.sendCommand,
     store,
     host: simHost,
-    state,
-    colonyId,
+    getColonyId,
+    isBlocked,
+    simData: () => store?.simData?.(),
     onChange: () => syncView(),
   });
 
-  menu = new TerraformMenu(container, brush, overlay);
+  menu = new TerraformMenu(container, brush, overlay, { isBlocked });
 
-  const surface = opts?.surface ?? services.surface;
+  const surface = opts?.surface ?? services.surface ?? services.canvas;
   const pickTile = opts?.pickTile ?? services.pickTile;
-  if (surface) {
-    brush.bindSurface(surface, pickTile);
-  }
+  if (surface) brush.bindSurface(surface, pickTile);
 
   const offHostEvents = simHost?.onEvents ? simHost.onEvents(() => syncView(simHost.view())) : null;
   syncView();
@@ -203,7 +173,9 @@ export function mountTerraformBasic(
     getBrushMode: () => brush.getBrushMode(),
     strokeTile: (q, r, strokeOpts) => brush.strokeTile(q, r, strokeOpts),
     strokeArea: (from, to, strokeOpts) => brush.strokeArea(from, to, strokeOpts),
-    cancelOrder: (taskId) => brush.cancelOrder(taskId),
+    cancelOrder: (orderId) => brush.cancelOrder(orderId ?? overlay.getActiveOrder()?.orderId),
+    disarm: () => brush.disarm(),
+    isArmed: () => brush.isArmed(),
     toggleOverlay: (on) => {
       const next = overlay.setVisible(on);
       menu?.render();

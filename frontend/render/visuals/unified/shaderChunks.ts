@@ -10,12 +10,8 @@ export const VERT_COMMON = /* glsl */ `#include <common>
         uniform float uWalkWeight;
         uniform float uWorkWeight;
 
-        vec3 bipedBodyTransform(vec3 p, float g, float w) {
-          vec3 c = vec3(0.0, 0.92, 0.0);
-          vec3 r = p - c;
-          float roll = -cos(g) * 0.055 * w;
-          float pitch = sin(g * 2.0 - 0.4) * 0.048 * w;
-          float yaw = -sin(g) * 0.075 * w;
+        // Body sway shared by the biped and spider carriers: roll about Z, then pitch about X, then yaw about Y.
+        vec3 rotateRollPitchYaw(vec3 r, float roll, float pitch, float yaw) {
           float cr = cos(roll), sr = sin(roll);
           float rx1 = r.x * cr - r.y * sr;
           float ry1 = r.x * sr + r.y * cr;
@@ -25,10 +21,19 @@ export const VERT_COMMON = /* glsl */ `#include <common>
           float cy = cos(yaw), sy = sin(yaw);
           float rx3 = rx1 * cy - rz2 * sy;
           float rz3 = rx1 * sy + rz2 * cy;
+          return vec3(rx3, ry2, rz3);
+        }
+
+        vec3 bipedBodyTransform(vec3 p, float g, float w) {
+          vec3 c = vec3(0.0, 0.92, 0.0);
+          vec3 r = p - c;
+          float roll = -cos(g) * 0.055 * w;
+          float pitch = sin(g * 2.0 - 0.4) * 0.048 * w;
+          float yaw = -sin(g) * 0.075 * w;
           float heaveY = (-cos(g * 2.0) * 0.022 - sin(g * 2.0) * 0.012) * w;
           float swayX = -cos(g) * 0.036 * w;
           float surgeZ = sin(g * 2.0) * 0.025 * w;
-          return c + vec3(rx3 + swayX, ry2 + heaveY, rz3 + surgeZ);
+          return c + (rotateRollPitchYaw(r, roll, pitch, yaw) + vec3(swayX, heaveY, surgeZ));
         }
 
         vec3 spiderBodyTransform(vec3 p, float g, float w) {
@@ -37,19 +42,10 @@ export const VERT_COMMON = /* glsl */ `#include <common>
           float roll = sin(g - 0.25) * 0.065 * w;
           float pitch = sin(g * 2.0 - 0.45) * 0.048 * w;
           float yaw = cos(g) * 0.050 * w;
-          float cr = cos(roll), sr = sin(roll);
-          float rx1 = r.x * cr - r.y * sr;
-          float ry1 = r.x * sr + r.y * cr;
-          float cp = cos(pitch), sp = sin(pitch);
-          float ry2 = ry1 * cp - r.z * sp;
-          float rz2 = ry1 * sp + r.z * cp;
-          float cy = cos(yaw), sy = sin(yaw);
-          float rx3 = rx1 * cy - rz2 * sy;
-          float rz3 = rx1 * sy + rz2 * cy;
           float heaveY = (-cos(g * 2.0) * 0.032 - sin(g * 2.0) * 0.018) * w;
           float swayX = cos(g) * 0.030 * w;
           float surgeZ = sin(g * 2.0) * 0.024 * w;
-          return c + vec3(rx3 + swayX, ry2 + heaveY, rz3 + surgeZ);
+          return c + (rotateRollPitchYaw(r, roll, pitch, yaw) + vec3(swayX, heaveY, surgeZ));
         }`;
 
 const VERT_SUB_ANIM = /* glsl */ `
@@ -184,8 +180,6 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
         varying vec3 vObjectNormal;
         varying vec2 vSurfacePBR;
         uniform float uTime;
-        uniform float uBuildProgress;
-        uniform float uBuildStage;
         uniform vec3 uBiomeDustColor;
         uniform vec3 uRimTint;
         uniform float uWeatheringHeight;
@@ -208,21 +202,7 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
           return gx * b.x + gy * b.y + gz * b.z;
         }`;
 
-/** Quantized construction scaffold stages (0 / 33 / 66 / 100 %) with amber/cyan holo-lattice above the stage cutoff. */
-export const FRAG_BUILD_SCAFFOLD = /* glsl */ `
-        if (uBuildProgress < 0.999) {
-          float stage = uBuildProgress >= 0.999 ? 1.0 : (uBuildProgress >= 0.66 ? 0.66 : (uBuildProgress >= 0.33 ? 0.33 : 0.0));
-          float cutY = stage < 0.16 ? 0.25 : (stage < 0.50 ? 1.65 : 3.85);
-          float aboveCut = smoothstep(cutY - 0.06, cutY + 0.06, vLocalPos.y);
-          float laserBand = exp(-abs(vLocalPos.y - cutY) * 16.0);
-          vec3 gCell = abs(fract(vLocalPos * 3.5) - 0.5);
-          float lattice = step(min(gCell.x, min(gCell.y, gCell.z)), 0.09);
-          vec3 scaffoldColor = mix(vec3(0.08, 0.22, 0.32), vec3(3.4, 1.55, 0.25), lattice);
-          diffuseColor.rgb = mix(diffuseColor.rgb, scaffoldColor, aboveCut * 0.88);
-          diffuseColor.rgb += vec3(3.8, 1.8, 0.3) * laserBand;
-        }`;
-
-/** Triplanar grain, ground-up weathering, top-down gradient, construction scaffold; `pluginChunk` is appended. */
+/** Triplanar grain, ground-up weathering, top-down gradient; `pluginChunk` (e.g. the build scaffold) is appended. */
 export const fragColor = (pluginChunk: string) => /* glsl */ `#include <color_fragment>
         float grain = triplanarGrain(vLocalPos, vObjectNormal, uTriplanarScale);
         // Subtle micro-surface variation
@@ -237,7 +217,6 @@ export const fragColor = (pluginChunk: string) => /* glsl */ `#include <color_fr
         // Top-Down Hemisphere Gradient for RTS readability
         float topGrad = mix(0.78, 1.08, clamp(vLocalPos.y * 0.6, 0.0, 1.0));
         diffuseColor.rgb *= mix(topGrad, 1.0, isEmissive);
-        ${FRAG_BUILD_SCAFFOLD}
         ${pluginChunk}
         `;
 

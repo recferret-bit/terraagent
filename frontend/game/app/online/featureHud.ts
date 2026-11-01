@@ -1,7 +1,7 @@
 import { track } from '../../core/analytics';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
-import type { Disposable, FeatureServices, GameView, HostKind, RendererInstance } from '../../core/registry/types';
+import type { Disposable, FeatureContext, FeatureServices, GameView, HostKind, RendererInstance } from '../../core/registry/types';
 import type { ClientFlagsStore } from '../../core/flags';
 import { mountDevConsole } from '../../dev/console';
 import { httpDevServer } from '../../net/devServer';
@@ -10,8 +10,11 @@ import { httpDevServer } from '../../net/devServer';
 const noTrack: typeof track = () => undefined;
 
 /**
- * Feature-registry HUD + dev console for the online flow: re-mounts both when the flags change (so only enabled
- * waves' panels and commands exist) and replays the last view into the new panels.
+ * Feature-registry HUD + dev console for the online flow. Features are mounted once per session (FA-29): a flags
+ * update (the first `welcome`, a reconnect's `welcome`) only refreshes the live `ctx.flags` set and `flagsSource`;
+ * everything is re-mounted only when the set of enabled features itself changes (a wave switched on or off), and the
+ * last view is replayed into the new panels then. `services` getters (live values such as the own colony index or
+ * the current terrain) are kept as getters, not read once at mount.
  */
 export class FeatureHud {
   private root: HudRoot | null = null;
@@ -19,25 +22,20 @@ export class FeatureHud {
   private renderers: RendererInstance[] = [];
   private last: GameView = {};
   private visible = true;
+  private mountedIds: string | null = null;
+  private ctx: FeatureContext | null = null;
+  private readonly liveFlags = new Set<string>();
   private readonly off: () => void;
-  private readonly host: HostKind;
-  private readonly services: Partial<FeatureServices>;
-  private mounted: Partial<FeatureServices> | null = null;
+  /** How many times the features were mounted (1 for the whole session unless the enabled waves changed). */
+  mounts = 0;
 
   constructor(
     private readonly parent: HTMLElement,
     private readonly flags: ClientFlagsStore,
-    hostOrServices: HostKind | Partial<FeatureServices> = 'server',
-    maybeServices: Partial<FeatureServices> = {},
+    private readonly host: HostKind,
+    private readonly services: Partial<FeatureServices>,
   ) {
-    if (typeof hostOrServices === 'string') {
-      this.host = hostOrServices;
-      this.services = maybeServices;
-    } else {
-      this.host = 'server';
-      this.services = hostOrServices;
-    }
-    this.off = flags.onChange(() => this.mount());
+    this.off = flags.onChange(() => this.onFlags());
     this.mount();
   }
 
@@ -53,7 +51,7 @@ export class FeatureHud {
 
   /** A HUD toast (top bar), when the `hud-min` feature is mounted. */
   toast(message: string, severity: 'warning' | 'error' | 'info' = 'warning'): void {
-    this.mounted?.hudMin?.showToast(message, severity);
+    this.ctx?.services.hudMin?.showToast(message, severity);
   }
 
   /** Per-frame tick of the features' 3D renderers with the newest view. */
@@ -61,24 +59,40 @@ export class FeatureHud {
     for (const r of this.renderers) r.update(view, dt);
   }
 
+  private enabledIds(): string {
+    return loadFeatures({ flags: this.flags.set, host: this.host }).map((f) => f.id).join();
+  }
+
+  private onFlags(): void {
+    if (this.enabledIds() === this.mountedIds) this.syncFlags();
+    else this.mount();
+  }
+
+  private syncFlags(): void {
+    this.liveFlags.clear();
+    for (const w of this.flags.set) this.liveFlags.add(w);
+  }
+
+  /** The session's services as one object, getters included (a spread would read them once). */
+  private buildServices(): FeatureServices {
+    const flags = this.flags;
+    const out = Object.defineProperties({}, {
+      ...Object.getOwnPropertyDescriptors({ devServer: httpDevServer() }),
+      ...Object.getOwnPropertyDescriptors(this.services),
+    }) as FeatureServices;
+    out.track = this.host === 'local' ? noTrack : track;
+    Object.defineProperty(out, 'flagsSource', { get: () => flags.current.source, enumerable: true, configurable: true });
+    return out;
+  }
+
   private mount(): void {
-    this.disposeRenderers();
-    this.root?.dispose();
-    this.devConsole?.dispose();
-    const { source } = this.flags.current;
-    const set = this.flags.set;
-    const features = loadFeatures({ flags: set, host: this.host });
-    const ctx = {
-      flags: set,
-      host: this.host,
-      services: {
-        devServer: httpDevServer(),
-        ...this.services,
-        track: this.host === 'local' ? noTrack : track,
-        flagsSource: source,
-      },
-    };
-    this.mounted = ctx.services;
+    this.disposeMounted();
+    this.syncFlags();
+    const features = loadFeatures({ flags: this.liveFlags, host: this.host });
+    this.mountedIds = features.map((f) => f.id).join();
+    this.mounts++;
+    const ctx: FeatureContext = { flags: this.liveFlags, host: this.host, services: this.buildServices() };
+    this.ctx = ctx;
     this.root = new HudRoot(this.parent, features, ctx);
     this.root.setVisible(this.visible);
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function' && typeof location !== 'undefined') {
@@ -90,17 +104,17 @@ export class FeatureHud {
     this.root.update(this.last);
   }
 
-  private disposeRenderers(): void {
+  private disposeMounted(): void {
     for (const r of this.renderers) { try { r.dispose(); } catch (e) { console.warn(e); } }
     this.renderers = [];
-  }
-
-  dispose(): void {
-    this.off();
-    this.disposeRenderers();
     this.root?.dispose();
     this.devConsole?.dispose();
     this.root = null;
     this.devConsole = null;
+  }
+
+  dispose(): void {
+    this.off();
+    this.disposeMounted();
   }
 }

@@ -21,7 +21,7 @@ const envModule = (env: Record<string, string>) => {
   @Global() @Module({ providers: [{ provide: APP_ENV, useValue: env }], exports: [APP_ENV] }) class EnvModule {}
   return EnvModule;
 };
-const prod = { ...base, NODE_ENV: 'production' };
+const prod = { ...base, NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789' };
 
 describe('selection truth table', () => {
   it('derives env keys', () => {

@@ -20,11 +20,8 @@ import {
 
 export { DEPOSIT, PREP, TERRAIN, type DepositCode, type DepositKey, type PrepCode, type PrepKey, type TerrainCode, type TerrainKey };
 
-export type HexGrid = Grid;
-
 export interface TileLayersLike {
   count?: number;
-  valid?: Uint8Array | ArrayLike<number>;
   terrain: Uint8Array;
   prep: Uint8Array;
   deposit?: Uint8Array;
@@ -40,9 +37,48 @@ export interface TileLayersLike {
 
 export type GridLike = PlanetState | Grid | TileLayersLike;
 
-export const TERRAIN_KEYS: readonly TerrainKey[] = ['flat', 'forest', 'rock', 'slope', 'hole', 'shallow', 'deep'];
-export const PREP_KEYS: readonly PrepKey[] = ['wild', 'flat', 'prepared', 'irrigated', 'living', 'ridge', 'moat'];
-export const DEPOSIT_KEYS: readonly DepositKey[] = ['none', 'metals', 'minerals', 'oil'];
+/**
+ * Key ↔ code converters of one enum table (XC-13): `keys[code]` is the canonical key, `idFromKey` is case-insensitive and
+ * throws on an unknown key, `keyFromId` throws `RangeError` on a code outside the table. Public API for clients and
+ * tools that label or parse a layer value (data keys, dev commands).
+ */
+function keyCodec<K extends string, C extends number>(what: string, table: Readonly<Record<K, C>>) {
+  const keys = (Object.keys(table) as K[]).sort((a, b) => table[a] - table[b]);
+  keys.forEach((k, i) => { if (table[k] !== i) throw new Error(`${what} codes must be 0..${keys.length - 1}`); });
+  return {
+    keys: keys as readonly K[],
+    idFromKey(key: K | string): C {
+      const idx = keys.indexOf(key.toLowerCase() as K);
+      if (idx < 0) throw new Error(`unknown ${what} key "${key}"`);
+      return idx as C;
+    },
+    keyFromId(id: number): K {
+      if (!Number.isInteger(id) || id < 0 || id >= keys.length) throw new RangeError(`invalid ${what} id ${String(id)}`);
+      return keys[id];
+    },
+  };
+}
+
+const terrainCodec = keyCodec<TerrainKey, TerrainCode>('terrain', TERRAIN);
+const prepCodec = keyCodec<PrepKey, PrepCode>('prep', PREP);
+const depositCodec = keyCodec<DepositKey, DepositCode>('deposit', DEPOSIT);
+
+export const TERRAIN_KEYS: readonly TerrainKey[] = terrainCodec.keys;
+export const PREP_KEYS: readonly PrepKey[] = prepCodec.keys;
+export const DEPOSIT_KEYS: readonly DepositKey[] = depositCodec.keys;
+
+/** Terrain key (`'flat' | 'forest' | ...`, case-insensitive) → `TERRAIN` code; throws on an unknown key. */
+export const terrainIdFromKey = terrainCodec.idFromKey;
+/** `TERRAIN` code → canonical key; `RangeError` outside the table. */
+export const terrainKeyFromId = terrainCodec.keyFromId;
+/** Prep key (`'wild' | 'flat' | 'prepared' | ...`, case-insensitive) → `PREP` code; throws on an unknown key. */
+export const prepIdFromKey = prepCodec.idFromKey;
+/** `PREP` code → canonical key; `RangeError` outside the table. */
+export const prepKeyFromId = prepCodec.keyFromId;
+/** Deposit key (`'none' | 'metals' | 'minerals' | 'oil'`, case-insensitive) → `DEPOSIT` code; throws on an unknown key. */
+export const depositIdFromKey = depositCodec.idFromKey;
+/** `DEPOSIT` code → canonical key; `RangeError` outside the table. */
+export const depositKeyFromId = depositCodec.keyFromId;
 
 interface TerrainClassDefaults {
   readonly code: TerrainCode;
@@ -86,55 +122,8 @@ export function linkGridMeta(grid: Grid, meta: PlanetMeta): void {
   }
 }
 
-/** Converts a terrain key (`'flat' | 'forest' | ...`, case-insensitive) to its `TERRAIN` code (`0..6`). */
-export function terrainIdFromKey(key: TerrainKey | string): TerrainCode {
-  const normalized = key.toLowerCase() as TerrainKey;
-  const idx = TERRAIN_KEYS.indexOf(normalized);
-  if (idx < 0) throw new Error(`unknown terrain key "${key}"`);
-  return idx as TerrainCode;
-}
-
-/** Converts a `TERRAIN` numeric code (`0..6`) to its canonical key (`'flat' | 'forest' | ...`). */
-export function terrainKeyFromId(id: number): TerrainKey {
-  if (!Number.isInteger(id) || id < 0 || id >= TERRAIN_KEYS.length) {
-    throw new RangeError(`invalid terrain id ${String(id)}`);
-  }
-  return TERRAIN_KEYS[id];
-}
-
-/** Converts a prep state key (`'wild' | 'flat' | 'prepared' | ...`, case-insensitive) to its `PREP` code (`0..6`). */
-export function prepIdFromKey(key: PrepKey | string): PrepCode {
-  const normalized = key.toLowerCase() as PrepKey;
-  const idx = PREP_KEYS.indexOf(normalized);
-  if (idx < 0) throw new Error(`unknown prep key "${key}"`);
-  return idx as PrepCode;
-}
-
-/** Converts a `PREP` numeric code (`0..6`) to its canonical key (`'wild' | 'flat' | 'prepared' | ...`). */
-export function prepKeyFromId(id: number): PrepKey {
-  if (!Number.isInteger(id) || id < 0 || id >= PREP_KEYS.length) {
-    throw new RangeError(`invalid prep id ${String(id)}`);
-  }
-  return PREP_KEYS[id];
-}
-
-/** Converts a deposit key (`'none' | 'metals' | 'minerals' | 'oil'`, case-insensitive) to its `DEPOSIT` code (`0..3`). */
-export function depositIdFromKey(key: DepositKey | string): DepositCode {
-  const normalized = key.toLowerCase() as DepositKey;
-  const idx = DEPOSIT_KEYS.indexOf(normalized);
-  if (idx < 0) throw new Error(`unknown deposit key "${key}"`);
-  return idx as DepositCode;
-}
-
-/** Converts a `DEPOSIT` numeric code (`0..3`) to its canonical key (`'none' | 'metals' | 'minerals' | 'oil'`). */
-export function depositKeyFromId(id: number): DepositKey {
-  if (!Number.isInteger(id) || id < 0 || id >= DEPOSIT_KEYS.length) {
-    throw new RangeError(`invalid deposit id ${String(id)}`);
-  }
-  return DEPOSIT_KEYS[id];
-}
-
-function resolveLayers(src: GridLike): { layers: TileLayersLike; count: number; meta?: PlanetMeta } {
+/** The layers, tile count and (if linked) planet meta behind any grid shape. */
+export function resolveTileLayers(src: GridLike): { layers: TileLayersLike; count: number; meta?: PlanetMeta } {
   if ('grid' in src && 'meta' in src) {
     const state = src as PlanetState;
     return { layers: state.grid.layers as unknown as TileLayersLike, count: state.grid.count, meta: state.meta };
@@ -152,13 +141,10 @@ function resolveLayers(src: GridLike): { layers: TileLayersLike; count: number; 
   return { layers: direct, count, meta: gridMetaMap.get(direct) };
 }
 
-/** Returns `true` when `tileIdx` is within `[0, count)` and (if a `valid` mask exists) marked valid. */
+/** Returns `true` when `tileIdx` is an integer within `[0, count)`. */
 export function isValidTileIndex(grid: GridLike, tileIdx: number): boolean {
   if (!Number.isInteger(tileIdx) || tileIdx < 0) return false;
-  const { layers, count } = resolveLayers(grid);
-  if (tileIdx >= count) return false;
-  if (layers.valid && layers.valid[tileIdx] === 0) return false;
-  return true;
+  return tileIdx < resolveTileLayers(grid).count;
 }
 
 function lookupTerrainConfig(terrainCode: number, data?: CompiledDataLike): { passable: boolean; moveMultBp: number } {
@@ -192,18 +178,13 @@ export function terrainMoveMultiplierBp(terrainCode: number, prepCode: number = 
   return cfg.moveMultBp;
 }
 
-/** Pure movement multiplier (`1.0 = 100%`) for a `(terrainCode, prepCode)` pair. */
-export function terrainMoveMultiplier(terrainCode: number, prepCode: number = PREP.wild, data?: CompiledDataLike): number {
-  return terrainMoveMultiplierBp(terrainCode, prepCode, data) / 10000;
-}
-
 /**
  * Returns `true` if ground units and ground fauna can enter `tileIdx` (§4.8 `UO-W`).
  * Deep water (`TERRAIN.deep`), raised walls (`PREP.ridge`), and dug moats (`PREP.moat`) are impassable.
  */
 export function isGroundPassable(grid: GridLike, tileIdx: number, data?: CompiledDataLike): boolean {
   if (!isValidTileIndex(grid, tileIdx)) return false;
-  const { layers } = resolveLayers(grid);
+  const { layers } = resolveTileLayers(grid);
   return terrainMoveMultiplierBp(layers.terrain[tileIdx], layers.prep[tileIdx], data) > 0;
 }
 
@@ -212,21 +193,14 @@ export function isGroundPassable(grid: GridLike, tileIdx: number, data?: Compile
  */
 export function groundMoveMultiplierBp(grid: GridLike, tileIdx: number, data?: CompiledDataLike): number {
   if (!isValidTileIndex(grid, tileIdx)) return 0;
-  const { layers } = resolveLayers(grid);
+  const { layers } = resolveTileLayers(grid);
   return terrainMoveMultiplierBp(layers.terrain[tileIdx], layers.prep[tileIdx], data);
 }
 
-/**
- * Ground movement speed multiplier as a scalar (`1.0` on Flat/Prepared, `1.1` on Living, `0` if impassable).
- */
-export function groundMoveMultiplier(grid: GridLike, tileIdx: number, data?: CompiledDataLike): number {
-  return groundMoveMultiplierBp(grid, tileIdx, data) / 10000;
-}
-
-/** Returns `true` if `tileIdx` is a raised Ridge wall that blocks direct ground fire (`UO-W-02`). */
+/** Returns `true` if `tileIdx` is a raised Ridge wall that blocks direct ground fire (`UO-W-02`; kept for the combat wave). */
 export function blocksDirectFire(grid: GridLike, tileIdx: number): boolean {
   if (!isValidTileIndex(grid, tileIdx)) return false;
-  const { layers } = resolveLayers(grid);
+  const { layers } = resolveTileLayers(grid);
   return layers.prep[tileIdx] === PREP.ridge;
 }
 
@@ -235,24 +209,10 @@ export function blocksDirectFire(grid: GridLike, tileIdx: number): boolean {
  */
 export function isBuildablePrepared(grid: GridLike, tileIdx: number): boolean {
   if (!isValidTileIndex(grid, tileIdx)) return false;
-  const { layers } = resolveLayers(grid);
+  const { layers } = resolveTileLayers(grid);
   if (layers.terrain[tileIdx] === TERRAIN.deep) return false;
   const prep = layers.prep[tileIdx];
   return prep === PREP.prepared || prep === PREP.living;
-}
-
-/** Returns `true` when `tileIdx` is owned by `colonyIdx`. */
-export function isTileOwnedBy(grid: GridLike, tileIdx: number, colonyIdx: number): boolean {
-  if (!isValidTileIndex(grid, tileIdx)) return false;
-  const { layers } = resolveLayers(grid);
-  return (layers.owner?.[tileIdx] ?? -1) === colonyIdx;
-}
-
-/** Returns `true` when `tileIdx` is unclaimed (`owner === -1`). */
-export function isTileUnclaimed(grid: GridLike, tileIdx: number): boolean {
-  if (!isValidTileIndex(grid, tileIdx)) return false;
-  const { layers } = resolveLayers(grid);
-  return (layers.owner?.[tileIdx] ?? -1) === -1;
 }
 
 /** Ground passability may have changed (see `PlanetMeta.pathEpoch`). */
@@ -276,7 +236,7 @@ function stampTile(layers: TileLayersLike, meta: PlanetMeta | undefined, tileIdx
 /** Sets a tile's `prep` state (`PREP.*`) and stamps `changedAt` so the next delta carries the change. */
 export function setTilePrep(grid: GridLike, tileIdx: number, prep: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
-  const { layers, meta } = resolveLayers(grid);
+  const { layers, meta } = resolveTileLayers(grid);
   if (layers.prep[tileIdx] !== prep) bumpPathEpoch(meta);
   layers.prep[tileIdx] = prep;
   stampTile(layers, meta, tileIdx, tick);
@@ -285,7 +245,7 @@ export function setTilePrep(grid: GridLike, tileIdx: number, prep: number, tick?
 /** Sets a tile's `terrain` class (`TERRAIN.*`) and stamps `changedAt` so the next delta carries the change. */
 export function setTileTerrain(grid: GridLike, tileIdx: number, terrain: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
-  const { layers, meta } = resolveLayers(grid);
+  const { layers, meta } = resolveTileLayers(grid);
   if (layers.terrain[tileIdx] !== terrain) bumpPathEpoch(meta);
   layers.terrain[tileIdx] = terrain;
   stampTile(layers, meta, tileIdx, tick);
@@ -294,7 +254,7 @@ export function setTileTerrain(grid: GridLike, tileIdx: number, terrain: number,
 /** Sets a tile's `owner` colony index (`-1` for unclaimed) and stamps `changedAt`. */
 export function setTileOwner(grid: GridLike, tileIdx: number, owner: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
-  const { layers, meta } = resolveLayers(grid);
+  const { layers, meta } = resolveTileLayers(grid);
   if (layers.owner) layers.owner[tileIdx] = owner;
   stampTile(layers, meta, tileIdx, tick);
 }
@@ -302,7 +262,7 @@ export function setTileOwner(grid: GridLike, tileIdx: number, owner: number, tic
 /** Sets a tile's `deposit` kind (`DEPOSIT.*`) and optional `richness`, stamping `changedAt`. */
 export function setTileDeposit(grid: GridLike, tileIdx: number, deposit: number, richness?: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
-  const { layers, meta } = resolveLayers(grid);
+  const { layers, meta } = resolveTileLayers(grid);
   if (layers.deposit && layers.deposit[tileIdx] !== deposit) bumpPathEpoch(meta);
   if (layers.deposit) layers.deposit[tileIdx] = deposit;
   if (richness !== undefined && layers.richness) layers.richness[tileIdx] = richness;
@@ -312,7 +272,7 @@ export function setTileDeposit(grid: GridLike, tileIdx: number, deposit: number,
 /** Sets a tile's `height` (metres above the build plane) and stamps `changedAt`. */
 export function setTileHeight(grid: GridLike, tileIdx: number, height: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
-  const { layers, meta } = resolveLayers(grid);
+  const { layers, meta } = resolveTileLayers(grid);
   if (layers.height) layers.height[tileIdx] = height;
   stampTile(layers, meta, tileIdx, tick);
 }
@@ -320,7 +280,7 @@ export function setTileHeight(grid: GridLike, tileIdx: number, height: number, t
 /** Marks `tileIdx` as explored by `colonyIdx` (sets bit `1 << colonyIdx` on `explored`) and stamps `changedAt`. */
 export function markTileExplored(grid: GridLike, tileIdx: number, colonyIdx: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx) || colonyIdx < 0 || colonyIdx >= 8) return;
-  const { layers, meta } = resolveLayers(grid);
+  const { layers, meta } = resolveTileLayers(grid);
   if (layers.explored) layers.explored[tileIdx] |= 1 << colonyIdx;
   stampTile(layers, meta, tileIdx, tick);
 }
@@ -328,7 +288,7 @@ export function markTileExplored(grid: GridLike, tileIdx: number, colonyIdx: num
 /** Returns `true` if `colonyIdx` has explored `tileIdx` (`(explored & (1 << colonyIdx)) !== 0`). */
 export function isTileExplored(grid: GridLike, tileIdx: number, colonyIdx: number): boolean {
   if (!isValidTileIndex(grid, tileIdx) || colonyIdx < 0 || colonyIdx >= 8) return false;
-  const { layers } = resolveLayers(grid);
+  const { layers } = resolveTileLayers(grid);
   return ((layers.explored?.[tileIdx] ?? 0) & (1 << colonyIdx)) !== 0;
 }
 
@@ -347,7 +307,10 @@ export interface TileChangeOp {
   changedAt: number;
 }
 
-/** Extracts the list of tile change (`t`) operations from an encoded diff (`Uint8Array`) or decoded `EngineDiff`. */
+/**
+ * Extracts the list of tile change (`t`) operations from an encoded diff (`Uint8Array`) or decoded `EngineDiff`.
+ * A diff inspection helper for tests and tools; the hosts apply diffs with `applyDiff`.
+ */
 export function extractTileChanges(diff: Uint8Array | EngineDiff): TileChangeOp[] {
   const d = diff instanceof Uint8Array ? (decodeValue(diff) as EngineDiff) : diff;
   const { idx, cols } = d.tiles;

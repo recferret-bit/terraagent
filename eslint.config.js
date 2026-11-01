@@ -19,10 +19,12 @@ export default tseslint.config(
   {
     files: ['frontend/**/*.{ts,js}'],
     languageOptions: { globals: { ...globals.browser } },
-    // the prototype predates the linter; keep it green without rewriting it (new code should not need these)
+    // the prototype predates the linter; keep it green without rewriting it (new code should not need these).
+    // Unused code is an error here too (XC-14): `_`-prefixed names are the deliberate exceptions.
     rules: {
       '@typescript-eslint/no-explicit-any': 'off', 'no-empty': 'off', 'prefer-const': 'off',
-      '@typescript-eslint/no-unused-vars': 'off', '@typescript-eslint/no-unused-expressions': 'off',
+      '@typescript-eslint/no-unused-expressions': 'off',
+      '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_', caughtErrors: 'none' }],
     },
   },
   {

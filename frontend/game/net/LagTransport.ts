@@ -64,7 +64,12 @@ export class LagTransport implements Transport {
   send(msg: Outgoing): void { this.out.push(() => { try { this.inner.send(msg); } catch (e) { console.warn('[lag] delayed send failed', e); } }); }
   onMessage(fn: Listener<ServerMessage>): () => void { return this.msgs.on(fn); }
   onState(fn: Listener<ConnectionState>): () => void { return this.inner.onState(fn); }
-  dispose(): void { this.off?.(); this.off = null; this.stop(); }
+  /** Unsubscribes from the inner transport and disposes it (a local host's worker is terminated). */
+  dispose(): void {
+    this.off?.(); this.off = null;
+    this.out.clear(); this.inn.clear();
+    if (this.inner.dispose) this.inner.dispose(); else this.inner.stop();
+  }
 }
 
 /** `?lag=<ms>` from a query string, or 0 (absent, not a positive number, or above 10 s). */

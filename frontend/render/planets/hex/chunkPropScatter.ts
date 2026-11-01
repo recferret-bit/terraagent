@@ -14,8 +14,8 @@ import {
 } from '../../visuals/terrain/Scatter';
 import {
   HEX_DEPOSIT,
-  HEX_PREP,
   HEX_TERRAIN,
+  isClearedPrep,
   tileHash01,
   tileHashU32,
   type HexTileLayers,
@@ -47,7 +47,9 @@ export interface HexPropScatter {
   readonly group: THREE.Group;
   readonly meshes: Record<PropKind, THREE.InstancedMesh>;
   readonly timeU: THREE.IUniform<number>;
+  /** Stores a chunk's props; a kind whose instances did not change keeps its mesh at the next `rebuildMeshes`. */
   setChunk(key: string, buckets: ChunkPropBuckets): void;
+  /** Rebuilds the instanced mesh of every kind a `setChunk` changed since the last call (no-op when none did). */
   rebuildMeshes(): void;
   counts(): Record<PropKind, number>;
   instancesForTile(tileIndex: number): TilePropInstance[];
@@ -60,8 +62,8 @@ function makeInstance(
   r: number,
   tileIndex: number,
   cx: number,
-  cy: number,
   cz: number,
+  heightAt: (x: number, z: number) => number,
   k: number,
   count: number,
   saltBase: number,
@@ -83,7 +85,7 @@ function makeInstance(
     tileR: r,
     tileIndex,
     x,
-    y: cy,
+    y: heightAt(x, z), // the prop's own spot on the surface, not the tile centre (RN-02)
     z,
     rot: h3 * Math.PI * 2,
     s: 0.25 + 0.7 * h4,
@@ -107,27 +109,25 @@ export function scatterTileProps(
 ): TilePropInstance[] {
   const out: TilePropInstance[] = [];
   const [cx, cz] = tileXZ(q, r);
-  const cy = heightAt(cx, cz);
-  const cleared = prep === HEX_PREP.prepared || prep === HEX_PREP.irrigated || prep === HEX_PREP.living;
 
-  if (!cleared) {
+  if (!isClearedPrep(prep)) {
     if (terrain === HEX_TERRAIN.forest) {
       if (kind === 'dune') {
         const count = 1 + (tileHashU32(q, r, 101) % 2); // 1..2 desert boulders instead of trees
         for (let k = 0; k < count; k++) {
-          out.push(makeInstance('boulder', q, r, tileIndex, cx, cy, cz, k, count, 200, 0.26, 0.44));
+          out.push(makeInstance('boulder', q, r, tileIndex, cx, cz, heightAt, k, count, 200, 0.26, 0.44));
         }
       } else {
         const count = 2 + (tileHashU32(q, r, 101) % 3); // 2..4 trees
         for (let k = 0; k < count; k++) {
-          out.push(makeInstance('pine', q, r, tileIndex, cx, cy, cz, k, count, 200, 0.26, 0.48));
+          out.push(makeInstance('pine', q, r, tileIndex, cx, cz, heightAt, k, count, 200, 0.26, 0.48));
         }
       }
     } else if (terrain === HEX_TERRAIN.rock) {
       const count = 2 + (tileHashU32(q, r, 303) % 2); // 2..3 boulders/spires
       for (let k = 0; k < count; k++) {
         const propKind: PropKind = k === count - 1 ? 'spire' : 'boulder';
-        out.push(makeInstance(propKind, q, r, tileIndex, cx, cy, cz, k, count, 400, 0.24, 0.44));
+        out.push(makeInstance(propKind, q, r, tileIndex, cx, cz, heightAt, k, count, 400, 0.24, 0.44));
       }
     }
   }
@@ -137,7 +137,7 @@ export function scatterTileProps(
       deposit === HEX_DEPOSIT.metals ? 'metals' : deposit === HEX_DEPOSIT.minerals ? 'minerals' : 'oil';
     const depCount = 2 + (tileHashU32(q, r, 707) % 2); // 2..3 deposit nodes
     for (let k = 0; k < depCount; k++) {
-      out.push(makeInstance(depKind, q, r, tileIndex, cx, cy, cz, k, depCount, 800, 0.2, 0.36));
+      out.push(makeInstance(depKind, q, r, tileIndex, cx, cz, heightAt, k, depCount, 800, 0.2, 0.36));
     }
   }
   return out;
@@ -192,7 +192,20 @@ const INST_OPTS: Record<PropKind, InstOpts> = {
   oil: { sx: [0.3, 0.5], sy: [0.1, 0.2], sink: 0.06, tilt: 0.1, tint: jitterTint(0.12) },
 };
 
-/** Manages instanced prop meshes across all hex chunks; rebuilding a chunk updates only that chunk's slice. */
+const sameInstance = (a: TilePropInstance, b: TilePropInstance) =>
+  a.kind === b.kind && a.tileIndex === b.tileIndex && a.x === b.x && a.y === b.y && a.z === b.z && a.rot === b.rot && a.s === b.s && a.r === b.r;
+
+/** True when two instance lists are the same (scatter is deterministic, so an untouched tile re-scatters equal). */
+function sameInstances(a: readonly TilePropInstance[] | undefined, b: readonly TilePropInstance[]): boolean {
+  if (!a || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (!sameInstance(a[i]!, b[i]!)) return false;
+  return true;
+}
+
+/**
+ * Manages one instanced mesh per prop kind across all hex chunks. `setChunk` marks only the kinds whose instances
+ * changed, and `rebuildMeshes` rebuilds only those meshes, so a delta that touches no props rebuilds nothing.
+ */
 export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
   const group = new THREE.Group();
   group.name = 'hexProps';
@@ -223,9 +236,11 @@ export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
 
   const byChunk = new Map<string, ChunkPropBuckets>();
   const meshes = {} as Record<PropKind, THREE.InstancedMesh>;
+  const dirty = new Set<PropKind>(PROP_KINDS);
 
   const rebuildMeshes = () => {
     for (const kind of PROP_KINDS) {
+      if (!dirty.has(kind)) continue;
       const old = meshes[kind];
       if (old) {
         group.remove(old);
@@ -241,6 +256,7 @@ export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
       meshes[kind] = im;
       group.add(im);
     }
+    dirty.clear();
   };
 
   rebuildMeshes();
@@ -250,6 +266,8 @@ export function createHexPropScatter(look: PlanetSpec): HexPropScatter {
     meshes,
     timeU,
     setChunk(key, buckets) {
+      const prev = byChunk.get(key);
+      for (const k of PROP_KINDS) if (!sameInstances(prev?.[k], buckets[k])) dirty.add(k);
       byChunk.set(key, buckets);
     },
     rebuildMeshes,

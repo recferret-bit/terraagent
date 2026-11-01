@@ -1,10 +1,11 @@
 # @terra/ledger — double-entry ledger in whole units
 
 Every resource amount in the game (a colony's metals, the water a pump yields, a construction site's spend) is an
-integer number of **major units** held in a double-entry ledger. The sim calls it inside `step()`, the browser and the
-server use the same code, so it is pure and isomorphic like `@terra/sim` (SIM-D-06): no clock, no randomness, no
+integer number of **major units** held in a double-entry ledger. The sim uses its helpers inside `step()` (`isMajor`, `transferLegs`, …) and every host keeps the
+`Ledger` itself in a `PlanetJournal` (`shared/sim/src/host/journal.ts`); the browser and the server use the same code, so it is pure and isomorphic like `@terra/sim` (SIM-D-06): no clock, no randomness, no
 timers, no I/O, no host globals, no async, and no other `@terra/*` import. `shared/sim/eslint.rules.js` enforces it.
-State is plain data (MessagePack-able), so a ledger lives inside sim state, a snapshot or a database row.
+State is plain data (MessagePack-able), so a ledger can live in a snapshot or a database row (not in sim state: the sim
+keeps only `col.stock`).
 
 ## Model
 

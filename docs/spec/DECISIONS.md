@@ -278,6 +278,11 @@ MVP ships stages S0–S6 with 8 unit types: HQ, Harvester, Builder, Terraformer,
 
 NPC traders (F3) and the test reference bot are game and test features, not "bots" in this sense, and stay.
 
+**Amended 2026-11-01 (review fix BE-05/BE-08).** Two limits exist as crash and load protection, not anti-cheat: a
+per-player command token bucket at the WebSocket ingress (20 commands/s, bursts of 40, `cmd.reject rate_limited`,
+PROTOCOL WS-16) and a per-IP throttle of guest sign-up and `/me/home` seating (`AUTH_RATE_PER_MIN`, 429
+`rate_limited`), because each new guest can make the server generate another planet.
+
 ## D-26 — NEAR economy features
 
 **Decision.** Build the features in [`docs/game/near-economy-features-spec.md`](../game/near-economy-features-spec.md):
@@ -450,7 +455,7 @@ The sim owns the type; the client picks the look from it (`planetType → Planet
 **Context.** The "dune" planet was the temperate dev planet with a sand look painted on: the sim only had one quota-based generator whose heights were sub-metre, and the renderer flattened them further, so the ground was mostly flat. The owner (2026-11-01) wants real dunes, desert plains and mountains, a terraformed-looking landing site, ground that hides things to discover by terraforming, and a structure that stays fast on big planets, shared by client and server.
 
 **Decision.**
-- **Orchestrator.** `shared/sim/src/gen/world/` builds every planet: `generateWorld` runs the stage list of the planet type's profile row (`data/worldgen.ts`, D-35): `desert` = `reliefDesert → classifyDesert → deposits → subsurface → landing`; `temperate` / `ocean` = `temperateTerrain` (the W01 quota classifier, ocean with water-rich shares) `→ deposits → subsurface → landing`. Stages are small parts in `stages/`, registered by id (`registerWorldStage`); a new landform or biome is a new stage plus a profile row, not an edit of a generator. `createPlanet` stamps `meta.genVersion = GEN_VERSION` (`gen/generators.ts`). The generator ids `temperate`, `desert`, `ocean` all reach the orchestrator, so hosts that pass `type: planet.type` get the right profile.
+- **Orchestrator.** `shared/sim/src/gen/world/` builds every planet: `generateWorld` runs the stage list of the planet type's profile row (`data/worldgen.ts`, D-35): `desert` = `reliefDesert → classifyDesert → deposits → landing → subsurface`; `temperate` / `ocean` = `temperateTerrain` (the W01 quota classifier, ocean with water-rich shares) `→ deposits → landing → subsurface` (the hidden subsurface runs last so it sees the final classes). Stages are small parts in `stages/`, registered by id (`registerWorldStage`); a new landform or biome is a new stage plus a profile row, not an edit of a generator. `createPlanet` stamps `meta.genVersion = GEN_VERSION` (`gen/generators.ts`). The generator ids `temperate`, `desert`, `ocean` all reach the orchestrator, so hosts that pass `type: planet.type` get the right profile.
 - **Heights are metres and the sim is the ground truth.** The `height` layer holds metres (desert: dunes up to ~4.5 m, mesas 4.5–11 m, ranges up to ~13 m). The renderer (`render/planets/hex/chunkMesh.ts`) draws that height and only adds cosmetic class detail and keeps water under the water plane; Flat and Prepared tiles sit at their own level. Placement adds a footprint spread rule (`MAX_FOOTPRINT_SPREAD_M` = 0.6 m, reason `uneven` → `terrain_unbuildable`), shared through `evaluatePlacement` (D-37).
 - **Landing zones.** Every spawn slot gets a round, levelled zone (desert: radius 7 tiles, Flat, one height, easing back into the relief over 5 tiles; temperate / ocean: radius 4, heights only) plus the starter Hub guarantee (`ensureStarterHubSpace`, same geo + spread rule).
 - **Hidden subsurface.** Server-only tile layers `subDeposit` / `subRichness` (`FieldDef.hidden`) hold buried deposits (veins under rock, dunes, forest roots, plains). `snapshot(s, { forClient: true })` and `diffSince(s, t, { forClient: true })` drop hidden layers; every client-bound path uses them (planet-host welcome + deltas, the local-host worker, the in-process dev hook); persisted snapshots keep them. Clear / Break call `revealSubsurface`, which moves the buried deposit into the public layers and emits `groundRevealed`. The subsurface seeds mix a server-only secret `meta.worldSalt` (random per planet on the server, stripped from client snapshots and diffs like the hidden layers), so a client that knows the public seed still cannot regenerate the buried ground; public ground and spawn slots do not depend on it.
@@ -474,3 +479,13 @@ The sim owns the type; the client picks the look from it (`planetType → Planet
 
 **Alternatives.** Keep per-feature scans of the entity columns (each consumer re-implements "who is where"); a persistent per-tile occupancy layer (more state to sync for data the entity store already has).
 
+
+## Amendments — as built, review-fix round 2026-11-01
+
+The log stays append-only; these notes record where the code built in W00–W01 departs from or refines the decisions above.
+
+- **D-02 (fault quarantine).** There is no `FAULTED` state. A step that throws (`StepError`) on the server: the thread journals the step's postings, answers its commands (their outcomes so far, `internal` for the rest), drops the planet and posts `planetFailed`; main closes its sockets (`bye 4012 planet_down`) and restores the latest snapshot, at most 3 times per 10 minutes (`RECOVER_LIMIT`), then holds the planet unloaded (BE-12, SIMULATION `SIM-H-08`).
+- **D-23 / D-24 (JSON deltas in v1).** Superseded by D-31: `welcome` and `delta` carry engine snapshot / diff bytes in one MessagePack binary frame; every other message is a JSON text frame (`shared/contracts/src/ws/wire.ts`). Coarse stepping of empty planets and the restart fast-run (D-24) are not built yet (W09).
+- **D-37 (placement).** Besides the footprint rules, `evaluatePlacement` blocks a Hub farther than `hq.startingKit.hubMaxDistFromLanding` from the colony's own pod (`farFromLanding`) and a Hub site closer to another colony's pod or Hub than to its own pod (`nearOtherColony`), both `site_blocked` (GP-06). Placement never rejects for cost: an unaffordable building is accepted and its order waits (`waiting_resources`, GP-30).
+- **D-38 (tile stamps).** `stampTile` is private to `grid/tileModel.ts`; callers change tiles through the exported setters (`setTilePrep`, `setTileTerrain`, …) or `touchTile`.
+- **D-39 (landing history).** `landingHistory` is append-only except for one dev path: `dev.land` moving a pod that has not opened rewrites that colony's latest record (`relocateLanding`). The planner also refuses a site whose starter Hub site would take another colony's territory (`starterHubSiteBlocked`, WE-23).

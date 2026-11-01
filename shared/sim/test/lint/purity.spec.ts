@@ -31,6 +31,11 @@ describe('sim purity lint (SIM-D-06)', () => {
     ['node:fs import', 'void readFileSync;', "import { readFileSync } from 'node:fs';", 'no-restricted-imports'],
     ['path import', 'void join;', "import { join } from 'path';", 'no-restricted-imports'],
     ['@terra/render import', 'void x;', "import { x } from '@terra/render/foo';", 'no-restricted-imports'],
+    ['** (engine-dependent like Math.pow)', 'const n = 2 ** 0.5; void n;', undefined, 'no-restricted-syntax'],
+    ['**=', 'let n = 2; n **= 3; void n;', undefined, 'no-restricted-syntax'],
+    ['Intl (locale-dependent)', 'void new Intl.NumberFormat();', undefined, 'no-restricted-globals'],
+    ['localeCompare (locale-dependent)', "void 'a'.localeCompare('b');", undefined, 'no-restricted-properties'],
+    ['toLocaleString (locale-dependent)', 'void (1.5).toLocaleString();', undefined, 'no-restricted-properties'],
     ['async function', '(async () => 1)();', undefined, 'no-restricted-syntax'],
     ['await', 'void 0;', undefined, 'no-restricted-syntax'],
   ];

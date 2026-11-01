@@ -1,11 +1,12 @@
 import * as THREE from 'three';
 import { createArchetypeMesh } from '@terra/render/kitbash';
-import type { Scene3dService } from '../entities/services';
+import { TILE_M } from '@terra/render/planets/hex';
+import type { Scene3dService } from '../shared/scene3d';
 import type { HubGhostState } from './GhostEvaluator';
 
 const VALID = 0x39ff88;
 const INVALID = 0xff3b3b;
-const HEX_R = 2 / Math.sqrt(3); // TILE_M / √3 (pointy-top circumradius)
+const HEX_R = TILE_M / Math.sqrt(3); // pointy-top circumradius
 const FOOTPRINT = 'building.commandHub';
 
 /** What the rig needs from the placement controller. */
@@ -30,6 +31,8 @@ export class GhostRig3D {
   private readonly bodyMats = { ok: this.mat(VALID, 0.45), bad: this.mat(INVALID, 0.5) };
   private body: THREE.Object3D | null = null;
   private bodyBiome = '';
+  /** Validity the body is tinted for (`null`: not tinted yet). */
+  private bodyTint: boolean | null = null;
   private pulse = 0;
 
   constructor(private readonly s3: Scene3dService) {
@@ -47,6 +50,7 @@ export class GhostRig3D {
     if (this.body && this.bodyBiome === biome) return;
     if (this.body) this.group.remove(this.body);
     this.bodyBiome = biome;
+    this.bodyTint = null;
     try {
       this.body = createArchetypeMesh(FOOTPRINT, biome);
       this.body.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
@@ -54,8 +58,26 @@ export class GhostRig3D {
     } catch { this.body = null; }
   }
 
-  private tint(root: THREE.Object3D, m: THREE.Material): void {
-    root.traverse((o) => { if ((o as THREE.Mesh).isMesh) (o as THREE.Mesh).material = m; });
+  /**
+   * Swaps the body's materials for the ghost material when the validity changes. The archetype's own material (one
+   * per `createArchetypeMesh` call) is disposed when first replaced; the geometry is the catalog's shared cache and
+   * is never disposed here (FF-16).
+   */
+  private tint(valid: boolean): void {
+    if (!this.body || this.bodyTint === valid) return;
+    const m = valid ? this.bodyMats.ok : this.bodyMats.bad;
+    const ghostMats = new Set<THREE.Material>([this.bodyMats.ok, this.bodyMats.bad]);
+    const replaced = new Set<THREE.Material>();
+    this.body.traverse((o) => {
+      const mesh = o as THREE.Mesh;
+      if (!mesh.isMesh) return;
+      for (const old of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
+        if (!ghostMats.has(old)) replaced.add(old);
+      }
+      mesh.material = m;
+    });
+    for (const old of replaced) old.dispose();
+    this.bodyTint = valid;
   }
 
   update(src: GhostRigSource, dt: number): void {
@@ -83,7 +105,7 @@ export class GhostRig3D {
     if (this.body) {
       const c = this.s3.tileToWorld(g.q, g.r);
       this.body.position.set(c.x, c.y, c.z);
-      this.tint(this.body, g.valid ? this.bodyMats.ok : this.bodyMats.bad);
+      this.tint(g.valid);
     }
   }
 

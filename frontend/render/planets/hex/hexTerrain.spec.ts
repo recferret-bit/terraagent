@@ -17,6 +17,7 @@ import {
   tileStyle,
   tileXZ,
   type HexTiles,
+  type TilePropInstance,
 } from './index';
 import { chunkLayout } from './chunks';
 
@@ -256,8 +257,13 @@ describe('W01-20: Water plane and per-tile prop scatter reactivity', () => {
     expect(hexTerrain.props.instancesForTile(rk1)).toHaveLength(0);
     expect(hexTerrain.heightAt(...tileXZ(0, 0))).toBeCloseTo(0, 5);
     expect(hexTerrain.heightAt(...tileXZ(0, 1))).toBeCloseTo(0, 5);
-    expect(hexTerrain.props.instancesForTile(f2)).toEqual(f2Before);
-    expect(hexTerrain.props.instancesForTile(rk2)).toEqual(rk2Before);
+    // Neighbours keep their placement; their height follows the ground under each prop (RN-02).
+    const placement = (list: TilePropInstance[]) => list.map(({ y: _y, ...rest }) => rest);
+    for (const [tile, before] of [[f2, f2Before], [rk2, rk2Before]] as const) {
+      const after = hexTerrain.props.instancesForTile(tile);
+      expect(placement(after)).toEqual(placement(before));
+      for (const inst of after) expect(inst.y).toBe(hexTerrain.heightAt(inst.x, inst.z));
+    }
     expect(hexTerrain.props.instancesForTile(depTile).length).toBeGreaterThanOrEqual(2);
     expect(scatterTileProps(2, -1, depTile, HEX_TERRAIN.flat, HEX_PREP.prepared, HEX_DEPOSIT.minerals)[0]?.kind).toBe('minerals');
     hexTerrain.dispose();
@@ -296,7 +302,7 @@ describe('W01-20: Selected planet biome look sync on HexTerrain', () => {
 
 describe('W01-21: Prepared-ground pad material and 0.4s shader blend', () => {
   it('synthesizes foundationHexPad PBR textures in ProceduralTextureRegistry and extends the single terrain shader', () => {
-    const bundle = ProceduralTextureRegistry.get('foundationHexPad');
+    const bundle = ProceduralTextureRegistry.get('foundationHexPad', 128);
     expect(bundle.map).toBeDefined();
     expect(bundle.normalMap).toBeDefined();
     expect(bundle.roughnessMap).toBeDefined();
@@ -304,7 +310,8 @@ describe('W01-21: Prepared-ground pad material and 0.4s shader blend', () => {
     expect(bundle.map!.colorSpace).toBe(THREE.SRGBColorSpace);
     expect(bundle.normalMap!.colorSpace).toBe(THREE.NoColorSpace);
     expect(bundle.roughnessMap!.colorSpace).toBe(THREE.NoColorSpace);
-    expect(ProceduralTextureRegistry.get('foundationHexPad')).toBe(bundle);
+    expect(ProceduralTextureRegistry.get('foundationHexPad', 128)).toBe(bundle);
+    expect((bundle.map!.image as { width: number }).width).toBe(128); // the generator's size, not the registry's 512 (RN-12)
 
     const r = 6;
     const count = hexCount(r);

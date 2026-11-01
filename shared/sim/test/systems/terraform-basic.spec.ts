@@ -1,8 +1,7 @@
 import { describe, expect, it } from 'vitest';
-import { eventDef, parseWaves } from '@terra/contracts';
+import { eventDef } from '@terra/contracts';
 import {
   canRunTerraformOpOnTile,
-  createPlanet,
   DEPOSIT,
   enqueueTerraformOrder,
   ENTITY_KIND,
@@ -23,17 +22,14 @@ import {
   TERRAIN,
   type SimCommand,
 } from '../../src';
+import { w01Host } from '../helpers/host';
 
 let cmdSeq = 0;
 function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0): SimCommand {
   return { colonyIndex, source: 'player', commandId: `tf_${++cmdSeq}`, kind, args };
 }
 
-function createW01Host(radius = 12): SimHost {
-  const host = new SimHost({ flags: parseWaves('..01') });
-  host.load(createPlanet({ type: 'flat', seed: 'terraform-basic-test', radius }));
-  return host;
-}
+const createW01Host = (radius = 12): SimHost => w01Host({ seed: 'terraform-basic-test', radius });
 
 describe('W01-13: Grade, Clear, and Break operations', () => {
   it('acceptance: Grade 1 Flat tile with the HQ (1.5x) -> 2.0 s (10 ticks) of work, 20 E drawn from the cell, tile becomes prepared, tilePrepared emitted', () => {
@@ -86,7 +82,7 @@ describe('W01-13: Grade, Clear, and Break operations', () => {
     const tileIdx = hexIndex(state.grid.radius).indexOf(2, -1);
 
     setTileTerrain(state.grid, tileIdx, TERRAIN.forest);
-    host.submit(mkCmd('enqueueTask', { op: 'clear', q: 2, r: -1 }, 0));
+    host.submit(mkCmd('enqueueTask', { terraform: { op: 'clear', tiles: [{ q: 2, r: -1 }] } }, 0));
 
     const events = [];
     for (let t = 1; t <= 16; t++) {

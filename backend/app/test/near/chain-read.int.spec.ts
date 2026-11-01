@@ -59,7 +59,7 @@ describe('dev chain routes', () => {
   });
 
   it('is 404 in production (mock allowed there explicitly)', async () => {
-    const prod = await boot({ NODE_ENV: 'production', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
+    const prod = await boot({ NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
     try {
       expect((await fetch(`${prod.url}/v1/dev/chain/ping`, { method: 'POST' })).status).toBe(404);
       expect((await fetch(`${prod.url}/v1/dev/chain/receipts`)).status).toBe(404);

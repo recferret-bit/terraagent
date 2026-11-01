@@ -2,6 +2,7 @@ import type { SimCommandV1, SimEventWire } from '@terra/contracts';
 import { TICK_MS, type SimHost, type SimView } from '@terra/sim';
 import { PREDICT_P95_LIMIT_MS, StepTimes } from './stepTimes';
 import type { DeltaInput, DeltaResult, ReplicaCore, WelcomeInput, WelcomeResult } from '../replica/ReplicaCore';
+import type { TunedData } from '../replica/tuneEvent';
 
 /** A command the player sent that the confirmed state does not include yet. */
 export interface PendingCommand {
@@ -79,6 +80,13 @@ export class Predictor {
     this.bump();
     if (r.ok) this.dropApplied();
     return r;
+  }
+
+  /** A live `tune` on the host: the confirmed replica switches data; the prediction is rebuilt with it. */
+  retune(t: TunedData): boolean {
+    const ok = this.confirmed.retune(t);
+    this.bump();
+    return ok;
   }
 
   /** Server time minus local time (ms), refreshed from pongs. */

@@ -47,7 +47,20 @@ function propose(reg: UnitRegistry, u: UnitCtx, book: UnitBook): UnitCommand | n
     const cmd = p.propose(u);
     if (cmd) return cmd;
   }
+  // Nothing to do and nothing on hold: the failure history is over.
+  if (u.record.fails && Object.keys(u.record.skip).length === 0) {
+    delete u.record.fails;
+    book.touch();
+  }
   return null;
+}
+
+/** Skips a failed auto command, twice as long per consecutive failure, up to `retryMaxTicks` (GP-21). */
+function backOff(reg: UnitRegistry, u: UnitCtx, cmd: UnitCommand): void {
+  const key = commandKey(reg, cmd);
+  const fails = (u.record.fails ??= {});
+  const n = (fails[key] = (fails[key] ?? 0) + 1);
+  u.record.skip[key] = u.ctx.tick + Math.min(u.stats.retryTicks * (1 << Math.min(n - 1, 20)), Math.max(u.stats.retryTicks, u.stats.retryMaxTicks));
 }
 
 /** Ends the current command and lines up the next one (queue first, then auto work) without executing it yet. */
@@ -55,8 +68,10 @@ function finish(reg: UnitRegistry, u: UnitCtx, book: UnitBook, status: Exclude<U
   const rec = u.record;
   const cur = rec.current;
   if (cur && status === 'failed') {
-    if (cur.source === 'auto') rec.skip[commandKey(reg, cur)] = u.ctx.tick + u.stats.retryTicks;
+    if (cur.source === 'auto') backOff(reg, u, cur);
     else rec.lastFailure = { code: 'no_path', tick: u.ctx.tick, kind: cur.kind, source: cur.source };
+  } else if (cur && rec.fails) {
+    delete rec.fails[commandKey(reg, cur)];
   }
   rec.current = null; // before proposing: a provider must not hand back the command that just ended
   rec.current = rec.queue.shift() ?? propose(reg, u, book);

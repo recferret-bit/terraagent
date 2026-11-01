@@ -14,12 +14,16 @@ function quantile(values: number[], p: number): number {
   return v[Math.min(v.length - 1, Math.floor(v.length * p))];
 }
 
+interface ZoneOpts { radius: number; falloff: number; clearZone: boolean; keep: ReadonlySet<number> }
+
 /**
  * Levels one landing zone (D-38): a terraformed-looking flat disc of `radius` tiles at one height (the zone's median
  * ground level), easing back into the natural relief over `falloff` tiles so there is no cliff at its edge. On relief
  * planets (`clearZone`) every land tile of the disc becomes Flat (deposits kept); quota planets only level heights.
+ * Tiles in `keep` (the spawn guarantee's metals footprints) never change class in the falloff ring.
  */
-function levelZone(ctx: WorldGenContext, slot: SpawnSlot, radius: number, falloff: number, clearZone: boolean): void {
+function levelZone(ctx: WorldGenContext, slot: SpawnSlot, zone: ZoneOpts): void {
+  const { radius, falloff, clearZone, keep } = zone;
   const L = ctx.state.grid.layers;
   const terrain = L.terrain as Uint8Array, prep = L.prep as Uint8Array, height = L.height as Float32Array;
   const deposit = L.deposit as Uint8Array;
@@ -46,17 +50,15 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, radius: number, fallof
       if (clearZone && terrain[i] !== TERRAIN.flat) {
         terrain[i] = TERRAIN.flat;
         prep[i] = PREP.flat;
-        // Ground that was levelled away can no longer be uncovered by Clear / Break: nothing stays buried under it.
-        (L.subDeposit as Uint8Array)[i] = DEPOSIT.none;
-        (L.subRichness as Float32Array)[i] = 0;
       }
       continue;
     }
     const t = smoothstep(radius, outer, d);
     height[i] = Math.fround(level + (height[i] - level) * t);
-    if (clearZone && t < 0.45 && terrain[i] === TERRAIN.rock && deposit[i] === DEPOSIT.none) terrain[i] = TERRAIN.slope;
+    if (clearZone && t < 0.45 && terrain[i] === TERRAIN.rock && deposit[i] === DEPOSIT.none && !keep.has(i)) terrain[i] = TERRAIN.slope;
   }
-  if (clearZone) reclassifyRing(ctx, tiles.filter((t) => t.d > radius).map((t) => t.i));
+  // The metals guarantee's 2×2 Flat footprint (up to 8 tiles out, so in the ring) keeps its class (WE-18).
+  if (clearZone) reclassifyRing(ctx, tiles.filter((t) => t.d > radius && !keep.has(t.i)).map((t) => t.i));
 }
 
 /** The falloff ring's heights changed after classification: dune faces there follow the new gradient (relief planets). */
@@ -88,11 +90,12 @@ export const landing: WorldStage = {
     const clearZone = ctx.profile.clearLandingZone === true;
     const height = ctx.state.grid.layers.height as Float32Array;
     const natural = clearZone ? height.slice() : null;
-    const slots = generateSpawnSlots(ctx.state, ctx.capacity, { rebalance: !clearZone });
+    const keep = new Set<number>();
+    const slots = generateSpawnSlots(ctx.state, ctx.capacity, { rebalance: !clearZone, footprintsOut: keep });
     if (natural) height.set(natural);
-    const radius = ctx.num('landingRadius', 4), falloff = ctx.num('landingFalloff', 3);
+    const zone: ZoneOpts = { radius: ctx.num('landingRadius', 4), falloff: ctx.num('landingFalloff', 3), clearZone, keep };
     for (const slot of slots) {
-      levelZone(ctx, slot, radius, falloff, clearZone);
+      levelZone(ctx, slot, zone);
       // The Hub guarantee (same geo + spread rule as placement): a buildable 3×3 within reach of every slot.
       ensureStarterHubSpace(ctx.state, slot.q, slot.r, slot.index);
     }

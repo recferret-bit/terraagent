@@ -1,7 +1,7 @@
 import { RESOURCE_KEYS } from '@terra/contracts';
 import { getColonyStock, getHqView, getLandingPods, getSpawnSlots } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
-import { createScenarioPlanet, getScenario, listScenarios } from '../_loader';
+import { apiFor, createScenarioPlanet, getScenario, listScenarios } from '../_loader';
 
 describe('scenario loader', () => {
   it('discovers w00 and looks it up by id or file name', () => {
@@ -49,11 +49,11 @@ describe('scenario loader', () => {
   it('w01 then dev.land (the auto-place flow) deploys the HQ at slot 0 and credits the cargo once', () => {
     const { host } = createScenarioPlanet('w01', { planetId: 'pl_W01A' });
     const land = (commandId: string, args: object): string | undefined => {
-      host.submit({ colonyIndex: null, source: 'dev', commandId, kind: 'dev.land', args });
+      host.submit({ colonyIndex: 0, source: 'dev', commandId, kind: 'dev.land', args });
       return host.step(1).outcomes[0]?.code;
     };
-    expect(land('land_1', { colonyId: 0 })).toBeUndefined();
-    expect(land('land_2', { colonyId: 0, q: 0, r: 0 })).toBe('already_landed');
+    expect(land('land_1', {})).toBeUndefined();
+    expect(land('land_2', { q: 0, r: 0 })).toBe('already_landed');
     const pods = getLandingPods(host.state);
     expect(pods).toHaveLength(1);
     expect(pods[0]).toMatchObject({ colonyId: 0, q: getSpawnSlots(host.state)[0].q, r: getSpawnSlots(host.state)[0].r, deployed: true });
@@ -66,5 +66,15 @@ describe('scenario loader', () => {
       'bio.biomass': 200,
       'bio.water': 200,
     });
+  });
+
+  it('GP-37: the scenario api checks args against the command contract before the engine sees them', () => {
+    const { host } = createScenarioPlanet('w01', { planetId: 'pl_W01C' });
+    const api = apiFor(host);
+    const tick = host.tick;
+    expect(() => api.command('dev.land', { colonyId: 0 }, 0)).toThrow(/invalid args/);
+    expect(host.tick).toBe(tick); // refused before submit: nothing stepped
+    api.command('dev.land', {}, 0);
+    expect(getLandingPods(host.state)[0].deployed).toBe(true);
   });
 });

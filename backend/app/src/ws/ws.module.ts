@@ -1,7 +1,6 @@
 import { Module, type BeforeApplicationShutdown, type OnApplicationBootstrap } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
 import { defineEnv } from '@terra/config';
-import type { PrismaClient } from '@terra/db';
 import type { Server } from 'node:http';
 import { z } from 'zod';
 import { AuthTokenService } from '../core/auth/auth-token.service';
@@ -11,7 +10,6 @@ import { HomeService } from '../core/home/home.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv, type RootLogger } from '../core/tokens';
-import { PRISMA } from '../db/db.module';
 import { FlagsService } from '../flags/flags.service';
 import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
@@ -40,9 +38,8 @@ export const env = defineEnv('ws', {
     },
     {
       provide: HOME_PROVIDER,
-      inject: [APP_ENV, { token: PRISMA, optional: true }, { token: HomeService, optional: true }],
-      useFactory: (e: AppEnv, prisma?: PrismaClient, homeService?: HomeService): HomeProvider =>
-        new DbHomeProvider(prisma, e, homeService),
+      inject: [{ token: HomeService, optional: true }],
+      useFactory: (homeService?: HomeService): HomeProvider => new DbHomeProvider(homeService),
     },
     {
       provide: COMMAND_INGRESS,

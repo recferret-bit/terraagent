@@ -8,7 +8,7 @@ import { setBlob, type PlanetState, type SimState } from '../kernel/state';
  * positions — the landing planner, the future AI orchestrator, dev tools — so none of them re-scans entity columns
  * with its own rules. Positions of live entities come from the entity store (persisted with every snapshot); the
  * landing history (`blobs.landingHistory`) remembers every landing ever made, also after a colony is gone.
- * Pure reads; the spatial index is rebuilt lazily when the entity store changed (cheap: O(entities)).
+ * Pure reads; the spatial index is rebuilt lazily when an entity column it reads changed (cheap: O(entities)).
  */
 
 /** What an entity is for presence queries. A new kind registers its role (fauna kinds do when they land in the sim). */
@@ -109,25 +109,43 @@ function posOf(s: SimState, row: number): EntityPos {
   return { id: c.id[row], kind: c.kind[row], role: presenceRoleOf(c.kind[row]), owner: c.owner[row], q: c.q[row], r: c.r[row], x: c.x[row], y: c.y[row], hp: c.hp[row], state: c.state[row] };
 }
 
-/** Sector buckets of live entities, keyed on the entity store; rebuilt when its count or max `changedAt` moves. */
+/** Entity columns a presence answer depends on (`posOf` + `alive`). */
+const KEY_COLS = ['id', 'kind', 'owner', 'q', 'r', 'x', 'y', 'hp', 'hpMax', 'state'] as const;
+type KeyCol = (typeof KEY_COLS)[number];
+
+/**
+ * Sector buckets of live entities, keyed on the entity store, plus a copy of the columns they were built from. The
+ * index is reused only while those columns are value-for-value identical (WE-22): a write in the same tick as the
+ * newest `changedAt` (a move, a death) or one that skips the stamp still triggers a rebuild. The compare is
+ * O(entities × 10), far cheaper than the rebuild.
+ */
 interface SpatialIndex {
-  stamp: string;
+  count: number;
+  seen: Record<KeyCol, ArrayLike<number>>;
   bySector: Map<number, EntityPos[]>;
   all: EntityPos[];
 }
 const indexes = new WeakMap<object, SpatialIndex>();
 
-function storeStamp(s: SimState): string {
+function unchanged(idx: SpatialIndex, s: SimState): boolean {
+  const n = s.entities.count;
+  if (idx.count !== n) return false;
   const c = s.entities.cols;
-  let max = 0;
-  for (let i = 0; i < s.entities.count; i++) if (c.changedAt[i] > max) max = c.changedAt[i];
-  return `${s.entities.count}:${max}:${s.entities.removed.length}`;
+  for (const k of KEY_COLS) {
+    const a = idx.seen[k], b = c[k];
+    for (let i = 0; i < n; i++) if (a[i] !== b[i]) return false;
+  }
+  return true;
+}
+
+function copyKeyCols(s: SimState): Record<KeyCol, ArrayLike<number>> {
+  const n = s.entities.count, c = s.entities.cols;
+  return Object.fromEntries(KEY_COLS.map((k) => [k, c[k].slice(0, n)])) as unknown as Record<KeyCol, ArrayLike<number>>;
 }
 
 function spatial(s: SimState): SpatialIndex {
-  const stamp = storeStamp(s);
   const hit = indexes.get(s.entities);
-  if (hit && hit.stamp === stamp) return hit;
+  if (hit && unchanged(hit, s)) return hit;
   const hex = hexIndex(s.grid.radius), sec = sectorIndex(s.grid.radius);
   const bySector = new Map<number, EntityPos[]>();
   const all: EntityPos[] = [];
@@ -141,7 +159,7 @@ function spatial(s: SimState): SpatialIndex {
     const list = bySector.get(id);
     if (list) list.push(p); else bySector.set(id, [p]);
   }
-  const idx = { stamp, bySector, all };
+  const idx: SpatialIndex = { count: s.entities.count, seen: copyKeyCols(s), bySector, all };
   indexes.set(s.entities, idx);
   return idx;
 }

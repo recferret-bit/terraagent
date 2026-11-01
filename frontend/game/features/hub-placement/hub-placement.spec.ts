@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import { parseCommandArgs, parseWaves } from '@terra/contracts';
 import {
   createPlanet,
@@ -17,9 +18,8 @@ import {
 import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { loadFeatures } from '../../core/registry';
-import { LocalHost } from '../../store/WorldStore';
+import { LocalHost } from '../../store/local/LocalHost';
 import {
-  ensureDom,
   evaluateHubGhost,
   hubPlacementFeature,
   mountHubPlacement,
@@ -64,7 +64,6 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 
 describe('Construction menu & placement ghost (shared placement rules)', () => {
   it('rock cluster -> red "rock: break it first"; clean Flat -> green with a Grade-only bill; foreign land -> "not your territory"', () => {
-    ensureDom();
     const host = createRockAndForeignHost();
     const container = document.createElement('div');
     const sendCommand = vi.fn();
@@ -115,7 +114,6 @@ describe('Construction menu & placement ghost (shared placement rules)', () => {
 
 describe('Confirm goes through the authoritative handler only (no client-side world mutation)', () => {
   it('confirm sends exactly one placeBuilding; the host creates the Hub + linked Grade order; cancel sends cancelTask', async () => {
-    ensureDom();
     const host = createRockAndForeignHost();
     const state = host.state;
     const container = document.createElement('div');
@@ -153,7 +151,6 @@ describe('Confirm goes through the authoritative handler only (no client-side wo
   });
 
   it('a host rejection the ghost did not foresee reopens the ghost red on that site with the host reason', async () => {
-    ensureDom();
     const host = createRockAndForeignHost();
     const container = document.createElement('div');
     const sendCommand = vi.fn(async () => ({ ok: false, code: 'site_blocked', detail: 'another building is here' }));
@@ -196,8 +193,7 @@ describe('GhostEvaluator reasons, surface pointer events, hotkeys, and feature r
     expect([noHq.valid, noHq.reasonCode, noHq.reasonText]).toEqual([false, 'worker_tier_locked', 'requires HQ']);
   });
 
-  it('supports surface pointer hover/click, H/Escape hotkeys, LocalHost ClientView, and W01 feature registration', () => {
-    ensureDom();
+  it('supports surface clicks, H/Escape hotkeys, LocalHost ClientView, and W01 feature registration', () => {
     const localHost = new LocalHost({ flags: ['W00', 'W01'], radius: 12 });
     spawnHqUnit(localHost.state, { owner: 0, q: 0, r: 0 });
     localHost.sync(true);
@@ -206,17 +202,17 @@ describe('GhostEvaluator reasons, surface pointer events, hotkeys, and feature r
     const storeSpy = vi.spyOn(localHost.store, 'sendCommand');
     const hub = mountHubPlacement(container, { host: localHost, surface, pickTile: (cx, cy) => ({ q: cx, r: cy }) });
 
-    window.dispatchEvent({ type: 'keydown', key: 'h' } as unknown as Event);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'h' }));
     expect(hub.isPlacementActive()).toBe(true);
-    window.dispatchEvent({ type: 'keydown', key: 'Escape' } as unknown as Event);
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     expect(hub.isPlacementActive()).toBe(false);
     (container.querySelector('[data-testid="build-command-hub"]') as HTMLButtonElement).click();
     expect(hub.isPlacementActive()).toBe(true);
 
-    surface.dispatchEvent({ type: 'pointermove', clientX: 3, clientY: 0 } as unknown as Event);
-    expect([hub.getGhostState().q, hub.getGhostState().r, hub.getGhostState().valid]).toEqual([3, 0, true]);
-    surface.dispatchEvent({ type: 'pointerup', button: 0, clientX: 3, clientY: 0 } as unknown as Event);
+    // A left click confirms on the clicked tile (the hover itself comes from the 3D renderer's pick).
+    surface.dispatchEvent(new MouseEvent('pointerup', { button: 0, clientX: 3, clientY: 0, bubbles: true }));
     expect(storeSpy).toHaveBeenCalledTimes(1);
+    expect(storeSpy).toHaveBeenCalledWith('placeBuilding', { building: 'commandHub', q: 3, r: 0 });
     expect(hub.isPlacementActive()).toBe(false);
 
     localHost.step(1);
@@ -234,7 +230,6 @@ describe('GhostEvaluator reasons, surface pointer events, hotkeys, and feature r
 
 describe('3D placement ghost', () => {
   it('shows a tinted 3D footprint while hovering valid and invalid sites, and hides when not placing', () => {
-    ensureDom();
     const host = createRockAndForeignHost();
     const hub = mountHubPlacement(document.createElement('div'), { host, sendCommand: vi.fn() });
     const scene = new THREE.Scene();

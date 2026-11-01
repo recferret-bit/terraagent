@@ -1,25 +1,11 @@
-import { ENTITY_KIND, ENTITY_STATE, hexDistance, type HqJob, type ViewColony, type ViewEntity } from '@terra/sim';
+import { hexDistance, type CompiledDataLike } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
-import { ENTITY_STRIDE, type ClientView } from '../../store/replica/viewCodec';
+import type { ClientView } from '../../store/replica/viewCodec';
+import { extractHqFromView, type HqStatusView } from '../shared/hqView';
+import { resolvePointerTile, type TilePickerFn } from '../shared/pointer';
 
-export interface HqStatusView {
-  entityId: number;
-  owner: number;
-  tier: number;
-  q: number;
-  r: number;
-  x: number;
-  y: number;
-  hp: number;
-  hpMax: number;
-  cell: number;
-  cellMax: number;
-  targetQ: number;
-  targetR: number;
-  currentJob: HqJob;
-  queueCount: number;
-}
+export { extractHqFromView, hqJobFromStateCode, type HqPanelJob, type HqStatusView } from '../shared/hqView';
 
 export interface StoreLike {
   readonly latest?: ClientView | GameView | null;
@@ -27,9 +13,11 @@ export interface StoreLike {
   onView?(fn: (v: ClientView) => void): () => void;
   onCommandRejected?(fn: (r: { id: string; kind: string; code: string }) => void): () => void;
   sendCommand?(cmdOrKind: unknown, args?: unknown): unknown;
+  /** The host's live balance data (HQ maxima the view does not carry). */
+  simData?(): CompiledDataLike | null;
 }
 
-export type TilePicker = (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
+export type TilePicker = TilePickerFn;
 
 export interface LandfallControllerOptions {
   store?: StoreLike;
@@ -60,145 +48,6 @@ export function unitFailureFromView(view: unknown, id: number): UnitFailureView 
 }
 
 export type LandfallListener = (snapshot: { hq: HqStatusView | null; selectedEntityId: number | null }) => void;
-
-export function hqJobFromStateCode(stateCode: number): HqJob {
-  if (stateCode === ENTITY_STATE.moving) return 'moving';
-  if (stateCode === ENTITY_STATE.working) return 'working';
-  if (stateCode === 3 || stateCode === ENTITY_STATE.constructing) return 'constructing';
-  return 'idle';
-}
-
-interface RawHqCandidate {
-  id: number;
-  owner: number;
-  tier?: number;
-  q: number;
-  r: number;
-  x: number;
-  y: number;
-  hp: number;
-  hpMax: number;
-  state: number;
-  cell?: number;
-  cellMax?: number;
-  targetQ?: number;
-  targetR?: number;
-}
-
-function findHqInEntities(view: { entities?: Float32Array | ViewEntity[]; count?: number }, owner?: number): RawHqCandidate | null {
-  const ents = view.entities;
-  if (!ents) return null;
-  if (ents instanceof Float32Array) {
-    const count = view.count ?? Math.floor(ents.length / ENTITY_STRIDE);
-    for (let i = 0; i < count; i++) {
-      const o = i * ENTITY_STRIDE;
-      if (ents[o + 1] !== ENTITY_KIND.hq) continue;
-      if (owner !== undefined && ents[o + 2] !== owner) continue;
-      if (ents[o + 10] === ENTITY_STATE.descending) continue;
-      return {
-        id: ents[o],
-        owner: ents[o + 2],
-        q: ents[o + 3],
-        r: ents[o + 4],
-        x: ents[o + 5],
-        y: ents[o + 6],
-        hp: ents[o + 8],
-        hpMax: ents[o + 9],
-        state: ents[o + 10],
-      };
-    }
-    return null;
-  }
-  if (Array.isArray(ents)) {
-    for (const e of ents) {
-      if (e.kind !== ENTITY_KIND.hq) continue;
-      if (owner !== undefined && e.owner !== owner) continue;
-      if (e.state === ENTITY_STATE.descending) continue;
-      return {
-        id: e.id,
-        owner: e.owner,
-        tier: e.tier,
-        q: e.q,
-        r: e.r,
-        x: e.x,
-        y: e.y,
-        hp: e.hp,
-        hpMax: e.hpMax,
-        state: e.state,
-        cell: e.cell,
-        cellMax: e.cellMax,
-        targetQ: e.targetQ,
-        targetR: e.targetR,
-      };
-    }
-  }
-  return null;
-}
-
-/** Extracts the HQ status view from a `ClientView` or `SimView`. */
-export function extractHqFromView(rawView: unknown, ownerColonyIndex?: number): HqStatusView | null {
-  if (!rawView || typeof rawView !== 'object') return null;
-  const view = rawView as {
-    entities?: Float32Array | ViewEntity[];
-    count?: number;
-    colonies?: ViewColony[];
-    blobs?: Record<string, unknown>;
-  };
-
-  const entityHq = findHqInEntities(view, ownerColonyIndex);
-  const owner = entityHq?.owner ?? ownerColonyIndex ?? 0;
-  const col = view.colonies?.find((c) => c.index === owner) ?? view.colonies?.[owner];
-  const colHq = col?.hq as Partial<HqStatusView> | undefined;
-  const rawBlob = view.blobs?.hq as (Partial<HqStatusView> & { byColony?: Record<number, Partial<HqStatusView>> }) | undefined;
-  const blobHq = rawBlob?.byColony?.[owner] ?? (rawBlob?.entityId !== undefined ? rawBlob : undefined);
-  const meta = colHq ?? blobHq;
-
-  if (!entityHq && !meta) return null;
-
-  const stateJob = entityHq ? hqJobFromStateCode(entityHq.state) : undefined;
-  const currentJob: HqJob =
-    stateJob ??
-    (colHq?.currentJob as HqJob | undefined) ??
-    (col?.currentJob as HqJob | undefined) ??
-    (blobHq?.currentJob as HqJob | undefined) ??
-    'idle';
-
-  const queueCount =
-    typeof colHq?.queueCount === 'number'
-      ? colHq.queueCount
-      : typeof col?.queueCount === 'number'
-        ? col.queueCount
-        : typeof blobHq?.queueCount === 'number'
-          ? blobHq.queueCount
-          : currentJob === 'idle'
-            ? 0
-            : 1;
-
-  const q = entityHq?.q ?? meta?.q ?? 0;
-  const r = entityHq?.r ?? meta?.r ?? 0;
-  const hpMax = entityHq?.hpMax ?? meta?.hpMax ?? 900;
-  const hp = entityHq?.hp ?? meta?.hp ?? hpMax;
-  const cellMax = entityHq?.cellMax ?? meta?.cellMax ?? 800;
-  const cell = entityHq?.cell ?? meta?.cell ?? cellMax;
-
-  return {
-    entityId: entityHq?.id ?? meta?.entityId ?? 1,
-    owner,
-    tier: entityHq?.tier ?? meta?.tier ?? 1,
-    q,
-    r,
-    x: entityHq?.x ?? meta?.x ?? q,
-    y: entityHq?.y ?? meta?.y ?? r,
-    hp,
-    hpMax,
-    cell,
-    cellMax,
-    targetQ: entityHq?.targetQ ?? meta?.targetQ ?? q,
-    targetR: entityHq?.targetR ?? meta?.targetR ?? r,
-    currentJob,
-    queueCount,
-  };
-}
 
 export function isTileNearHq(hq: HqStatusView, q: number, r: number, maxDist = 1): boolean {
   return (
@@ -268,7 +117,7 @@ export class LandfallController {
       this.emit();
       return;
     }
-    const hq = extractHqFromView(view, this.ownerColonyIndex);
+    const hq = extractHqFromView(view, this.ownerColonyIndex, this.opts.store?.simData?.() ?? undefined);
     if (!hq && view && typeof view === 'object' && !('entities' in view) && !('colonies' in view)) {
       return;
     }
@@ -387,13 +236,7 @@ export class LandfallController {
       this.handleRightClick(q, r);
     };
 
-    const resolveTile = (e: { clientX?: number; clientY?: number; detail?: unknown }): { q: number; r: number } | null => {
-      const det = e.detail as { q?: number; r?: number } | undefined;
-      if (det && typeof det.q === 'number' && typeof det.r === 'number') {
-        return { q: det.q, r: det.r };
-      }
-      return this.pickTile ? this.pickTile(e.clientX ?? 0, e.clientY ?? 0) : null;
-    };
+    const resolveTile = (e: MouseEvent) => resolvePointerTile(e, this.pickTile);
 
     const onDown = (e: PointerEvent) => {
       down = { x: e.clientX ?? 0, y: e.clientY ?? 0, button: e.button ?? 0 };

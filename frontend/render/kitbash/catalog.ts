@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import '../visuals/biomes';
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
+import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
 
 export type ArchetypeCategory = 'robot' | 'building' | 'ship' | 'resource' | 'fauna' | 'prop';
 
@@ -48,14 +49,28 @@ export const ArchetypeCatalog = {
   has: (id: string) => entries.has(id),
 };
 
+/** Uniforms of an archetype mesh: the unified material plus the `buildScaffold` modifier's per-mesh state. */
+export type ArchetypeUniforms = ReturnType<typeof createUnifiedColonyMaterial>['uniforms'] & {
+  /** Quantized stage the scaffold shader reads (0, 0.33, 0.66, 1). */
+  uBuildStage: THREE.IUniform<number>;
+  /** Model height (m) the scaffold cut fractions refer to. */
+  uBuildHeight: THREE.IUniform<number>;
+};
+
 export interface ArchetypeMesh extends THREE.Mesh {
-  userData: { archetypeId: string; uniforms: ReturnType<typeof createUnifiedColonyMaterial>['uniforms'] };
+  userData: { archetypeId: string; uniforms: ArchetypeUniforms };
 }
 
 /** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind). */
 export function createArchetypeMesh(id: string, biomeKey = 'dune'): ArchetypeMesh {
-  const { material, uniforms } = createUnifiedColonyMaterial({ biome: biomeKey });
-  const mesh = new THREE.Mesh(ArchetypeCatalog.getGeometry(id), material) as unknown as ArchetypeMesh;
+  const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD] });
+  const { material } = made;
+  const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
+  const geometry = ArchetypeCatalog.getGeometry(id);
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  // Scaffold cut heights are fractions of the model's own height (RN-14).
+  uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);
+  const mesh = new THREE.Mesh(geometry, material) as unknown as ArchetypeMesh;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = id;
@@ -80,11 +95,13 @@ export function quantizeBuildStage(progress: number): 0 | 0.33 | 0.66 | 1 {
   return 0;
 }
 
-/** Updates the construction scaffold shader uniforms (0 / 33 / 66 / 100 %) on an archetype mesh and returns the quantized stage. */
+/**
+ * Updates the construction scaffold (0 / 33 / 66 / 100 %) on an archetype mesh and returns the quantized stage. The
+ * shader reads only `uBuildStage` (quantized here, once).
+ */
 export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number): 0 | 0.33 | 0.66 | 1 {
   const stage = quantizeBuildStage(progress);
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
-  if (u?.uBuildProgress) u.uBuildProgress.value = stage;
   if (u?.uBuildStage) u.uBuildStage.value = stage;
   if (mesh.userData) (mesh.userData as any).buildStage = stage;
   return stage;

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
   ENTITY_KIND,
+  MAX_COLONIES_PER_PLANET,
   SimHost,
   checkColonyLanding,
   createPlanet,
@@ -75,16 +76,16 @@ describe('landing rules: a colony lands once', () => {
     expect(getSpawnSlots(h.state)[2].claimedBy).toBeUndefined();
   });
 
-  it('dev.land with (q, r) for a deployed colony is already_landed; without (q, r) it is a no-op', () => {
+  it('dev.land with (q, r) for a deployed colony is already_landed, without (q, r) too (GP-26)', () => {
     const h = host();
     expect(run(h, 'system.spawnColony', { colonyIndex: 0 }).code).toBeUndefined();
-    expect(run(h, 'dev.land', { colonyId: 0 }).code).toBeUndefined();
+    expect(run(h, 'dev.land', {}, 0).code).toBeUndefined();
     expect(getLandingPods(h.state)[0].deployed).toBe(true);
     const entities = h.state.entities.count;
 
     const slot2 = getSpawnSlots(h.state)[2];
-    expect(run(h, 'dev.land', { colonyId: 0, q: slot2.q, r: slot2.r })).toEqual({ code: 'already_landed', reasons: [] });
-    expect(run(h, 'dev.land', { colonyId: 0 })).toEqual({ code: undefined, reasons: [] });
+    expect(run(h, 'dev.land', { q: slot2.q, r: slot2.r }, 0)).toEqual({ code: 'already_landed', reasons: [] });
+    expect(run(h, 'dev.land', {}, 0)).toEqual({ code: 'already_landed', reasons: [] }); // GP-26: nothing left to land
     expect(getColonyStock(h.state, 0)).toEqual(CARGO);
     expect(h.state.entities.count).toBe(entities);
     expect(getLandingPods(h.state)).toHaveLength(1);
@@ -139,14 +140,14 @@ describe('landing rules: landing_site_taken', () => {
     const home1 = { q: p1.q, r: p1.r };
     const entities = h.state.entities.count;
 
-    expect(run(h, 'dev.land', { colonyId: 1, q: p0.q + SEP - 1, r: p0.r }).code).toBe('landing_site_taken');
+    expect(run(h, 'dev.land', { q: p0.q + SEP - 1, r: p0.r }, 1).code).toBe('landing_site_taken');
     const after = getLandingPods(h.state)[1];
     expect(after).toMatchObject({ ...home1, deployed: false });
     const row = rowOf(h.state.entities, p1.podEntityId);
     expect([h.state.entities.cols.q[row], h.state.entities.cols.r[row]]).toEqual([home1.q, home1.r]);
     expect(h.state.entities.count).toBe(entities);
 
-    expect(run(h, 'dev.land', { colonyId: 1, q: p0.q + SEP, r: p0.r }).code).toBeUndefined();
+    expect(run(h, 'dev.land', { q: p0.q + SEP, r: p0.r }, 1).code).toBeUndefined();
     expect(getLandingPods(h.state)[1]).toMatchObject({ q: p0.q + SEP, r: p0.r, deployed: true });
     expect(getColonyStock(h.state, 1)).toEqual(CARGO);
   });
@@ -190,7 +191,7 @@ describe('landing rules: invalid_args', () => {
     const off = { q: h.state.grid.radius + 5, r: 0 };
     expectRejectedUnchanged(h.state, () => spawnColonyLanding(h.state, { colonyId: 0, ...off }), 'invalid_args');
     expect(run(h, 'system.spawnColony', { colonyIndex: 0, ...off })).toEqual({ code: 'invalid_args', reasons: [] });
-    expect(run(h, 'dev.land', { colonyId: 0, ...off })).toEqual({ code: 'invalid_args', reasons: [] });
+    expect(run(h, 'dev.land', { ...off }, 0)).toEqual({ code: 'invalid_args', reasons: [] });
     expect(getLandingPods(h.state)).toEqual([]);
     expect(h.state.entities.count).toBe(0);
     expect(getColonyStock(h.state, 0)).toEqual(fullStock());
@@ -201,7 +202,7 @@ describe('landing rules: invalid_args', () => {
     expect(run(h, 'system.spawnColony', { colonyIndex: 0 }).code).toBeUndefined();
     const pod = { ...getLandingPods(h.state)[0] };
     const entities = h.state.entities.count;
-    expect(run(h, 'dev.land', { colonyId: 0, q: h.state.grid.radius + 12, r: 0 }).code).toBe('invalid_args');
+    expect(run(h, 'dev.land', { q: h.state.grid.radius + 12, r: 0 }, 0).code).toBe('invalid_args');
     expect(getLandingPods(h.state)[0]).toMatchObject({ q: pod.q, r: pod.r, deployed: false });
     expect(h.state.entities.count).toBe(entities);
   });
@@ -209,9 +210,46 @@ describe('landing rules: invalid_args', () => {
   it('dev.land without a pod lands and deploys at once at a free spot', () => {
     const h = host();
     const slot0 = getSpawnSlots(h.state)[0];
-    expect(run(h, 'dev.land', { colonyId: 0 })).toEqual({ code: undefined, reasons: ['landing.cargo'] });
+    expect(run(h, 'dev.land', {}, 0)).toEqual({ code: undefined, reasons: ['landing.cargo'] });
     expect(getLandingPods(h.state)[0]).toMatchObject({ colonyId: 0, q: slot0.q, r: slot0.r, deployed: true });
     const cols = h.state.entities.cols;
     expect([...cols.kind.slice(0, h.state.entities.count)].sort()).toEqual([ENTITY_KIND.pod, ENTITY_KIND.hq].sort());
+  });
+});
+
+describe('landing rules: planet capacity and the player landPod command', () => {
+  it('GP-17: a ninth colony (index 8) is refused planet_full: explored has one bit per colony', () => {
+    const h = host('flat', 12);
+    expect(spawnColonyLanding(h.state, { colonyId: MAX_COLONIES_PER_PLANET })).toEqual({ ok: false, code: 'planet_full' });
+    expect(run(h, 'system.spawnColony', { colonyIndex: 8 }).code).toBe('planet_full');
+    expect(h.state.colonies).toEqual([]);
+  });
+
+  it('FA-08: landPod opens the pod at hq.startingKit.podLandMinS (25 ticks) instead of podDescentS (30); then already_landed', () => {
+    const h = host('flat', 12);
+    expect(run(h, 'landPod', {}, 0).code).toBe('unknown_entity');
+    expect(run(h, 'system.spawnColony', { colonyIndex: 0 }).code).toBeUndefined();
+    const created = h.tick;
+    expect(run(h, 'landPod', {}, null).code).toBe('not_own_colony');
+    expect(run(h, 'landPod', {}, 0).code).toBeUndefined();
+    while (!getLandingPods(h.state)[0].deployed && h.tick < 100) h.step(1);
+    expect(h.tick - created + 1).toBe(25);
+    expect(run(h, 'landPod', {}, 0).code).toBe('already_landed');
+  });
+
+  it('FA-08: landPod after the minimum opens the pod in the same step', () => {
+    const h = host('flat', 12);
+    expect(run(h, 'system.spawnColony', { colonyIndex: 0 }).code).toBeUndefined();
+    h.step(26);
+    expect(getLandingPods(h.state)[0].deployed).toBe(false);
+    expect(run(h, 'landPod', {}, 0).code).toBeUndefined();
+    expect(getLandingPods(h.state)[0].deployed).toBe(true);
+  });
+
+  it('GP-29: system.spawnColony with colonyId col_<n> lands colony n', () => {
+    const h = host('flat', 12);
+    expect(run(h, 'system.spawnColony', { colonyId: 'col_3', name: 'Three' }).code).toBeUndefined();
+    expect(getLandingPods(h.state).map((p) => p.colonyId)).toEqual([3]);
+    expect(h.state.colonies[3]).toMatchObject({ index: 3, id: 'col_3', name: 'Three' });
   });
 });

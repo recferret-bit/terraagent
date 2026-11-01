@@ -4,6 +4,8 @@ import type { INestApplication } from '@nestjs/common';
 import { AuthResponseSchema, HomeResponseSchema, type HomeResponse } from '@terra/contracts';
 import { afterEach, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
+import { HomeService } from '../../src/core/home';
+import { freeLandingHost } from './fixtures/landing-host';
 
 const coreOnlyDir = fileURLToPath(new URL('../core/fixtures/base/', import.meta.url));
 let currentApp: INestApplication | undefined;
@@ -13,6 +15,7 @@ async function boot() {
     source: { NODE_ENV: 'test', JWT_ACCESS_SECRET: 'test-home-type-jwt-secret-0123456789ab' },
     modulesDirs: [coreOnlyDir],
   });
+  created.app.get(HomeService).setLandingHost(freeLandingHost); // core only: no sim to ask for landing sites
   await created.app.listen(0, '127.0.0.1');
   currentApp = created.app;
   return (await created.app.getUrl()).replace('[::1]', '127.0.0.1');

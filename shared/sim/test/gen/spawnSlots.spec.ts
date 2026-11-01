@@ -11,6 +11,7 @@ import {
   snapshot,
   TERRAIN,
   validateSpawnSlotGuarantee,
+  type PlanetType,
 } from '../../src';
 
 describe('Spawn slots and UO-TF-09 guarantee (W01-07)', () => {
@@ -44,6 +45,19 @@ describe('Spawn slots and UO-TF-09 guarantee (W01-07)', () => {
 
         const check = validateSpawnSlotGuarantee(state, slot);
         expect(check).toEqual({ ok: true, reasons: [] });
+      }
+    }
+  });
+
+  it('keeps the UO-TF-09 guarantees on every profile after the landing zones are levelled (WE-18)', () => {
+    // e.g. desert g-18 slot 1 used to lose its metals 2x2 Flat footprint to the falloff-ring reclassification
+    const runs: Array<[PlanetType, number]> = [['desert', 60], ['temperate', 15], ['ocean', 15]];
+    for (const [planetType, seeds] of runs) {
+      for (let i = 0; i < seeds; i++) {
+        const state = createPlanet({ id: 'p', seed: `g-${i}`, type: 'temperate', planetType, radius: 56 });
+        for (const slot of getSpawnSlots(state)) {
+          expect(validateSpawnSlotGuarantee(state, slot), `${planetType} g-${i} slot ${slot.index}`).toEqual({ ok: true, reasons: [] });
+        }
       }
     }
   });

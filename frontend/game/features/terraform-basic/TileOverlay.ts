@@ -1,7 +1,7 @@
-import { hexIndex, PREP, TERRAIN, type TerraformOpKind, type TerraformOrder } from '@terra/sim';
+import { hexIndex, PREP, TERRAIN, terraformOrdersOf, type TerraformOpKind, type TerraformOrder } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
-import type { TileCoord } from './BrushController';
-import { ensureDom } from './dom';
+import { makeDiv } from '../shared/dom';
+import type { TileCoord } from '../shared/pointer';
 
 export type TilePrepStateName = 'wild' | 'flat' | 'prepared' | 'irrigated' | 'living' | 'ridge' | 'moat';
 
@@ -74,24 +74,9 @@ function terrainCodeToName(code: number): string {
   return 'flat';
 }
 
-export function extractColonyOrders(view: GameView | null | undefined, colonyId: number): TerraformOrder[] {
-  const raw = view?.blobs?.terraformTasks as Record<string, unknown> | undefined;
-  if (!raw || typeof raw !== 'object') return [];
-  const inner = (typeof raw.value === 'object' && raw.value !== null ? raw.value : raw) as {
-    byColony?: Record<number, TerraformOrder[]>;
-    orders?: TerraformOrder[];
-    [k: number]: TerraformOrder[];
-  };
-  if (Array.isArray(inner.byColony?.[colonyId])) {
-    return inner.byColony[colonyId].filter((o) => Array.isArray(o.jobs) && o.jobs.length > 0);
-  }
-  if (Array.isArray(inner[colonyId])) {
-    return inner[colonyId].filter((o) => Array.isArray(o.jobs) && o.jobs.length > 0);
-  }
-  if (Array.isArray(inner.orders)) {
-    return inner.orders.filter((o) => o.colonyId === colonyId && Array.isArray(o.jobs) && o.jobs.length > 0);
-  }
-  return [];
+/** `colonyId`'s queued terraform orders in the view (`blobs.terraformTasks` is `{ byColony }`; the sim's own reader). */
+export function extractColonyOrders(view: GameView | null | undefined, colonyId: number): readonly TerraformOrder[] {
+  return terraformOrdersOf(view?.blobs?.terraformTasks, colonyId);
 }
 
 function buildOrderProgress(order: TerraformOrder): {
@@ -221,49 +206,47 @@ export function computeOverlayState(
   };
 }
 
+/** The colony's first order with work left (what CANCEL and the status line act on). */
+export function activeOrderOf(view: GameView | null | undefined, colonyId: number): OverlayOrderProgress | null {
+  const first = extractColonyOrders(view, colonyId)[0];
+  return first ? buildOrderProgress(first).summary : null;
+}
+
+const MAX_CHIPS = 32;
+
+/**
+ * Tile-state overlay. The full state (tile counts, chips) is computed only while the overlay is shown or when asked
+ * for; while hidden a view only refreshes the active order (FF-08). Chips are reused between renders.
+ */
 export class TileOverlay {
   readonly el: HTMLElement;
   private readonly summaryEl: HTMLElement;
   private readonly progressEl: HTMLElement;
   private readonly jobsEl: HTMLElement;
+  private readonly chips: HTMLElement[] = [];
   private visible = false;
   private lastView: GameView | null = null;
   private trackedTiles: readonly TileCoord[] = [];
-  private state: TileOverlayState;
+  private state: TileOverlayState | null = null;
+  private activeOrder: OverlayOrderProgress | null = null;
 
-  constructor(parent: HTMLElement, private readonly colonyId = 0) {
-    ensureDom();
-    this.el = document.createElement('div');
-    this.el.className = 'ta-tf-overlay plate-sm';
-    this.el.dataset.testid = 'tf-tile-overlay';
+  constructor(parent: HTMLElement, private readonly getColonyId: () => number = () => 0) {
+    this.el = makeDiv('ta-tf-overlay plate-sm', 'tf-tile-overlay');
     this.el.dataset.visible = 'false';
     this.el.hidden = true;
-
-    this.summaryEl = document.createElement('div');
-    this.summaryEl.className = 'ta-tf-overlay__summary label';
-    this.summaryEl.dataset.testid = 'tf-overlay-summary';
-
-    this.progressEl = document.createElement('div');
-    this.progressEl.className = 'ta-tf-overlay__progress mono';
-    this.progressEl.dataset.testid = 'tf-overlay-progress';
-
-    this.jobsEl = document.createElement('div');
-    this.jobsEl.className = 'ta-tf-overlay__jobs';
-    this.jobsEl.dataset.testid = 'tf-overlay-jobs';
-
+    this.summaryEl = makeDiv('ta-tf-overlay__summary label', 'tf-overlay-summary');
+    this.progressEl = makeDiv('ta-tf-overlay__progress mono', 'tf-overlay-progress');
+    this.jobsEl = makeDiv('ta-tf-overlay__jobs', 'tf-overlay-jobs');
     this.el.append(this.summaryEl, this.progressEl, this.jobsEl);
     parent.appendChild(this.el);
-
-    this.state = computeOverlayState(null, false, this.colonyId, []);
-    this.render();
   }
 
   setVisible(on?: boolean): boolean {
     this.visible = on ?? !this.visible;
     this.el.hidden = !this.visible;
     this.el.dataset.visible = String(this.visible);
-    this.state = computeOverlayState(this.lastView, this.visible, this.colonyId, this.trackedTiles);
-    this.render();
+    this.state = null;
+    if (this.visible) this.render(this.getState());
     return this.visible;
   }
 
@@ -271,8 +254,18 @@ export class TileOverlay {
     return this.visible;
   }
 
+  /** Full overlay state for the newest view (computed on demand). */
   getState(): TileOverlayState {
+    if (!this.state) {
+      this.state = computeOverlayState(this.lastView, this.visible, this.getColonyId(), this.trackedTiles);
+      this.activeOrder = this.state.activeOrder;
+    }
     return this.state;
+  }
+
+  /** The colony's active order in the newest view; cheap, used by the menu on every view. */
+  getActiveOrder(): OverlayOrderProgress | null {
+    return this.state ? this.state.activeOrder : this.activeOrder;
   }
 
   update(view: GameView | null, trackedTiles?: readonly TileCoord[]): void {
@@ -284,51 +277,61 @@ export class TileOverlay {
           : view;
     }
     if (trackedTiles) this.trackedTiles = trackedTiles;
-    this.state = computeOverlayState(this.lastView, this.visible, this.colonyId, this.trackedTiles);
-    this.render();
+    this.state = null;
+    if (this.visible) this.render(this.getState());
+    else this.activeOrder = activeOrderOf(this.lastView, this.getColonyId());
   }
 
-  private render(): void {
-    const { counts, activeOrder, tiles } = this.state;
+  private render(state: TileOverlayState): void {
+    const { counts, activeOrder, tiles } = state;
     this.summaryEl.dataset.wild = String(counts.wild);
     this.summaryEl.dataset.flat = String(counts.flat);
     this.summaryEl.dataset.prepared = String(counts.prepared);
     this.summaryEl.dataset.living = String(counts.living);
     this.summaryEl.textContent = `WILD ${counts.wild} · FLAT ${counts.flat} · PREPARED ${counts.prepared}`;
+    this.renderProgress(activeOrder);
+    this.renderChips(tiles.slice(0, MAX_CHIPS));
+  }
 
-    if (activeOrder) {
-      const cur = activeOrder.currentJob;
-      const curPct = cur ? cur.percent : activeOrder.overallPercent;
-      const curLabel = cur ? `${cur.op.toUpperCase()} (${cur.q},${cur.r}) ${cur.percent}%` : 'DONE';
-      this.progressEl.dataset.orderId = activeOrder.orderId;
-      this.progressEl.dataset.completedJobs = String(activeOrder.completedJobs);
-      this.progressEl.dataset.totalJobs = String(activeOrder.totalJobs);
-      this.progressEl.dataset.remainingJobs = String(activeOrder.remainingJobs);
-      this.progressEl.dataset.skippedCount = String(activeOrder.skippedCount);
-      this.progressEl.dataset.currentPercent = String(curPct);
-      this.progressEl.dataset.overallPercent = String(activeOrder.overallPercent);
-      this.progressEl.textContent = `${activeOrder.completedJobs}/${activeOrder.totalJobs} JOBS · ${curLabel} · OVERALL ${activeOrder.overallPercent}%`;
-    } else {
-      this.progressEl.dataset.currentPercent = '0';
-      this.progressEl.dataset.overallPercent = '0';
+  private renderProgress(activeOrder: OverlayOrderProgress | null): void {
+    const d = this.progressEl.dataset;
+    if (!activeOrder) {
+      d.currentPercent = '0';
+      d.overallPercent = '0';
       this.progressEl.textContent = 'IDLE · NO ACTIVE TERRAFORM JOBS';
+      return;
     }
+    const cur = activeOrder.currentJob;
+    d.orderId = activeOrder.orderId;
+    d.completedJobs = String(activeOrder.completedJobs);
+    d.totalJobs = String(activeOrder.totalJobs);
+    d.remainingJobs = String(activeOrder.remainingJobs);
+    d.skippedCount = String(activeOrder.skippedCount);
+    d.currentPercent = String(cur ? cur.percent : activeOrder.overallPercent);
+    d.overallPercent = String(activeOrder.overallPercent);
+    const curLabel = cur ? `${cur.op.toUpperCase()} (${cur.q},${cur.r}) ${cur.percent}% · ` : '';
+    this.progressEl.textContent = `${activeOrder.completedJobs}/${activeOrder.totalJobs} JOBS · ${curLabel}OVERALL ${activeOrder.overallPercent}%`;
+  }
 
-    this.jobsEl.replaceChildren();
-    for (const item of tiles.slice(0, 32)) {
-      const chip = document.createElement('div');
-      chip.className = 'ta-tf-overlay__tile mono';
-      chip.dataset.testid = 'tf-overlay-tile';
+  private renderChips(items: readonly OverlayTileEntry[]): void {
+    while (this.chips.length > items.length) this.chips.pop()?.remove();
+    items.forEach((item, i) => {
+      let chip = this.chips[i];
+      if (!chip) {
+        chip = makeDiv('ta-tf-overlay__tile mono', 'tf-overlay-tile');
+        this.chips.push(chip);
+        this.jobsEl.appendChild(chip);
+      }
       chip.dataset.q = String(item.q);
       chip.dataset.r = String(item.r);
       chip.dataset.state = item.state;
       chip.dataset.progress = String(item.percent);
       if (item.op) chip.dataset.op = item.op;
+      else delete chip.dataset.op;
       chip.textContent = item.op
         ? `(${item.q},${item.r}) ${item.state.toUpperCase()} · ${item.op.toUpperCase()} ${item.percent}%`
         : `(${item.q},${item.r}) ${item.state.toUpperCase()}`;
-      this.jobsEl.appendChild(chip);
-    }
+    });
   }
 
   dispose(): void {

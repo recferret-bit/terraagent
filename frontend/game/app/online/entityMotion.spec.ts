@@ -28,6 +28,14 @@ describe('online unit motion: tick-keyed track + monotonic render clock', () => 
     expect(t.at(13)?.x).toBeCloseTo(0.32 + 0.5 * 0.32, 6);
   });
 
+  it('push reports how far a same-tick sample was corrected (FF-32), 0 for a new sample or an identical one', () => {
+    const t = new MotionTrack();
+    expect(t.push(pose(10, 0))).toBe(0);
+    expect(t.push({ tick: 12, x: 0.64, y: 0, rot: 0 })).toBe(0); // predicted
+    expect(t.push({ tick: 12, x: 0.34, y: 0.4, rot: 0 })).toBeCloseTo(0.5, 6); // the confirmed view moved it 0.3 / 0.4
+    expect(t.push({ tick: 12, x: 0.34, y: 0.4, rot: 0 })).toBe(0); // the same view again
+  });
+
   it('the clock follows the sim rate behind the newest tick and never runs backwards when views step back', () => {
     const c = new RenderClock(TICK_S);
     c.observe(100);

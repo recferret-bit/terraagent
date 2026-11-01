@@ -1,10 +1,10 @@
 import { ServerMessage, type ServerMessageOf } from '@terra/contracts';
-import { getColonyStock, snapshot, type BalanceOverrides } from '@terra/sim';
-import { describe, expect, it } from 'vitest';
+import { getColonyStock, snapshot, StepError, type BalanceOverrides, type SimHost } from '@terra/sim';
+import { describe, expect, it, vi } from 'vitest';
 import type { LedgerReply } from '../../net/devServer';
 import { ReplicaCore } from '../replica/ReplicaCore';
 import { LocalHostController } from './LocalHostController';
-import { LocalDevError, LocalHostCore, type LocalHostDeps } from './LocalHostCore';
+import { LocalDevError, LocalHostCore, MAX_STEP_RESTORES, type LocalHostDeps } from './LocalHostCore';
 import type { FromLocalHost, LocalHostOptions } from './protocol';
 import { memorySnapshotStore } from './snapshotStore';
 
@@ -145,6 +145,81 @@ describe('LocalHostCore dev server', () => {
     const w = r.servers().filter((m): m is ServerMessageOf<'welcome'> => m.t === 'welcome').pop()!;
     expect(w.d.overrides).toEqual({ dev: { probe: { nudgeTiles: 3 } } });
     again.stop();
+  });
+});
+
+describe('LocalHostCore reject details and failing steps (GP-31, BE-12)', () => {
+  const settle = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+  /** The next `step` of `host` really runs (its outcomes go to the listeners), then throws like a system bug would. */
+  const throwOnNextStep = (host: SimHost) => {
+    const real = host.step.bind(host);
+    vi.spyOn(host, 'step').mockImplementationOnce((dt: number) => {
+      const res = real(dt);
+      throw new StepError(new Error('boom'), res.stats.tick, res.outcomes, [], []);
+    });
+  };
+
+  it("a handler's { code, detail } reaches the client's cmd.reject", async () => {
+    const r = rig(memorySnapshotStore(), { scenario: 'w01' });
+    const core = await r.create();
+    core.handle(join);
+    core.handle(cmd('cm_land', 'dev.land'));
+    r.advance(400);
+    core.handle(cmd('cm_hub', 'placeBuilding', { building: 'commandHub', q: 500, r: 0 }));
+    r.advance(200);
+    const rej = r.servers().find((m): m is ServerMessageOf<'cmd.reject'> => m.t === 'cmd.reject' && m.d.id === 'cm_hub');
+    expect(rej?.d.code).toBe('site_blocked');
+    expect(rej?.d.detail).toMatch(/\S/);
+    expect(ServerMessage.safeParse(rej).success).toBe(true);
+    core.stop();
+  });
+
+  it('a step that throws rejects its commands internal (no ack), restores the last snapshot and re-welcomes', async () => {
+    const r = rig();
+    const core = await r.create();
+    core.handle(join);
+    r.advance(1);
+    await core.save();
+    const savedTick = core.tick;
+    const broken = core.simHost;
+    r.advance(400);
+    throwOnNextStep(broken);
+    core.handle(cmd('cm_x', 'dev.ping'));
+    r.advance(200);
+    core.handle(cmd('cm_y', 'dev.ping')); // while the planet is down
+    await settle();
+    const msgs = r.servers();
+    const answers = msgs.flatMap((m) => (m.t === 'cmd.ack' ? [[m.d.id, 'ack']] : m.t === 'cmd.reject' ? [[m.d.id, m.d.code]] : []));
+    expect(answers).toEqual([['cm_x', 'internal'], ['cm_y', 'host_unavailable']]);
+    expect(r.out.flatMap((m) => (m.t === 'error' ? [m.message] : []))).toEqual(['step failed: step to tick ' + (savedTick + 3) + ' failed: boom; restoring the last snapshot']);
+    expect(core.simHost).not.toBe(broken);
+    expect(core.tick).toBe(savedTick);
+    expect(msgs.filter((m): m is ServerMessageOf<'welcome'> => m.t === 'welcome').map((m) => m.d.reason)).toEqual(['join', 'resync']);
+    r.advance(1000);
+    expect(core.tick).toBe(savedTick + 6); // stepping again: a slot due at once, then 5 per second
+    core.stop();
+  });
+
+  it(`after ${MAX_STEP_RESTORES} restores a failing planet stays down; saves never persist it`, async () => {
+    const store = memorySnapshotStore();
+    const r = rig(store);
+    const core = await r.create();
+    core.handle(join);
+    r.advance(1);
+    await core.save();
+    const saved = store.map.get('terra-local:w00')!.tick;
+    for (let i = 0; i <= MAX_STEP_RESTORES; i++) {
+      throwOnNextStep(core.simHost);
+      r.advance(200);
+      await settle();
+    }
+    const down = core.tick;
+    expect(r.out.flatMap((m) => (m.t === 'error' ? [m.message] : [])).at(-1)).toMatch(new RegExp(`planet down \\(restored ${MAX_STEP_RESTORES}×\\)$`));
+    r.advance(1000);
+    expect(core.tick).toBe(down);
+    expect(down).toBeGreaterThan(saved); // the broken planet ran past the snapshot before it failed for good
+    await core.stop();
+    expect(store.map.get('terra-local:w00')?.tick).toBe(saved);
   });
 });
 

@@ -203,7 +203,9 @@ export class Game {
     this.spec = p.spec; this.surface = p.surface; this.descent = p.descent;
     this.skipOnlineLanding = false;
     if (this.useOnlineGameplay) {
-      resetDeviceSecret();
+      // dev builds: every DEPLOY is a fresh guest, so the pick lands on a planet of that type; production keeps the
+      // guest and its colony (FA-09: no abandoned colonies piling up on real planets)
+      if (import.meta.env.DEV) resetDeviceSecret();
       if (!this.settings.skipCinematic) {
         this.online = new OnlineSession(this.root, 'boot', {
           viewport: this.viewport,

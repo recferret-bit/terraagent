@@ -1,4 +1,4 @@
-import type { CompiledDataLike, PlanetState, SimCommand } from '@terra/sim';
+import type { CompiledDataLike, PlanetState } from '@terra/sim';
 import {
   defineFeature,
   type Feature,
@@ -8,7 +8,8 @@ import {
 } from '../../core/registry/types';
 import '../../net/services';
 import type { ClientTiles } from '../../store/replica/viewCodec';
-import { ensureDom } from './dom';
+import { ownColonyIndex } from '../shared/colony';
+import type { InProcessHost } from '../shared/commandDispatch';
 import {
   computeGhostPrepBill,
   evaluateHubGhost,
@@ -27,12 +28,11 @@ import {
   type HubPlacementCommandSink,
   type TilePickerFn,
 } from './HubPlacementMenu';
-import { GhostRig3D } from './GhostRig3D';
+import { createHubGhostRenderer } from './ghostRenderer';
 import './hub-placement.css';
 
 export {
   computeGhostPrepBill,
-  ensureDom,
   evaluateHubGhost,
   extractColonyConstructionOrders,
   findValidHubSiteNearHq,
@@ -48,15 +48,6 @@ export {
   type TilePickerFn,
 };
 
-export interface SimHostLike {
-  readonly state: PlanetState;
-  readonly tick?: number;
-  readonly pending: number;
-  view(): GameView;
-  submit?(cmd: SimCommand): void;
-  onEvents?: (cb: () => void) => () => void;
-}
-
 export interface HubPlacementFeatureHandle extends HudPanelInstance {
   readonly el: HTMLElement;
   readonly ghostEl: HTMLElement;
@@ -65,7 +56,8 @@ export interface HubPlacementFeatureHandle extends HudPanelInstance {
   hoverTile(q: number, r: number): HubGhostState;
   confirmPlacement(q?: number, r?: number): boolean;
   cancelPlacement(): void;
-  cancelOrder(taskId?: string): void;
+  /** Cancels the host order `orderId` (default: the open Hub order); false when there is none. */
+  cancelOrder(orderId?: string): boolean;
   isPlacementActive(): boolean;
   getGhostState(): HubGhostState;
   peekGhostState(): HubGhostState;
@@ -92,9 +84,8 @@ export interface MountHubPlacementOptions {
   el?: HTMLElement;
   hudRoot?: HTMLElement;
   flags?: ReadonlySet<string>;
-  host?: SimHostLike | { readonly sim: SimHostLike; readonly store?: HubStoreLike; readonly state: PlanetState } | 'server' | 'local';
-  simHost?: SimHostLike;
-  state?: PlanetState;
+  /** An in-process authoritative host, or a browser `LocalHost` (`{ sim, store }`). */
+  host?: InProcessHost | { readonly sim: InProcessHost; readonly store?: HubStoreLike; readonly state: PlanetState };
   colonyId?: number;
   requireHq?: boolean;
   sendCommand?: (kind: string, args?: unknown) => unknown;
@@ -109,12 +100,10 @@ function isElementLike(v: unknown): v is HTMLElement {
   return Boolean(v && typeof v === 'object' && 'appendChild' in v && 'tagName' in v);
 }
 
-function resolveSimHost(opts?: MountHubPlacementOptions): SimHostLike | undefined {
-  if (opts?.simHost) return opts.simHost;
-  if (opts?.host && typeof opts.host === 'object') {
-    if ('sim' in opts.host && opts.host.sim) return opts.host.sim;
-    if ('state' in opts.host && 'view' in opts.host) return opts.host as SimHostLike;
-  }
+function resolveSimHost(opts?: MountHubPlacementOptions): InProcessHost | undefined {
+  const h = opts?.host;
+  if (h && 'sim' in h && h.sim) return h.sim;
+  if (h && 'state' in h && 'view' in h) return h as InProcessHost;
   return opts?.services?.host;
 }
 
@@ -123,7 +112,6 @@ export function mountHubPlacement(
   elOrOpts?: HTMLElement | MountHubPlacementOptions,
   maybeOpts?: MountHubPlacementOptions,
 ): HubPlacementFeatureHandle {
-  ensureDom();
   const opts: MountHubPlacementOptions | undefined = isElementLike(elOrOpts) ? maybeOpts : elOrOpts;
   const container: HTMLElement = isElementLike(elOrOpts)
     ? elOrOpts
@@ -131,29 +119,21 @@ export function mountHubPlacement(
 
   const services = opts?.services ?? {};
   const simHost = resolveSimHost(opts);
-  const hostStore =
-    opts?.host && typeof opts.host === 'object' && 'store' in opts.host ? opts.host.store : undefined;
-  const colonyId = opts?.colonyId ?? services.colonyId ?? 0;
-  const sendCommand = opts?.sendCommand ?? services.sendCommand;
+  const hostStore = opts?.host && 'store' in opts.host ? opts.host.store : undefined;
   const store = opts?.store ?? hostStore ?? services.store;
-  const state = opts?.state ?? services.state ?? simHost?.state;
 
   const menu = new HubPlacementMenu(container, {
-    sendCommand,
+    sendCommand: opts?.sendCommand ?? services.sendCommand,
     store,
     host: simHost,
-    state,
-    colonyId,
-    getColonyId: () => opts?.colonyId ?? services.landfall?.getOwnerColonyIndex() ?? services.colonyId ?? 0,
+    getColonyId: () => ownColonyIndex(services, opts?.colonyId),
     requireHq: opts?.requireHq,
     onReject: (code, detail) => services.hudMin?.handleReject(code, detail, { kind: 'placeBuilding' }),
   });
 
   const surface = opts?.surface ?? opts?.canvas ?? services.surface ?? services.canvas;
   const pickTile = opts?.pickTile ?? services.pickTile;
-  if (surface) {
-    menu.bindSurface(surface, pickTile);
-  }
+  if (surface) menu.bindSurface(surface, pickTile);
 
   const offLandfall = services.landfall
     ? services.landfall.onChange(({ hq }) => {
@@ -177,7 +157,7 @@ export function mountHubPlacement(
     hoverTile: (q, r) => menu.hoverTile(q, r),
     confirmPlacement: (q, r) => menu.confirmPlacement(q, r),
     cancelPlacement: () => menu.cancelPlacement(),
-    cancelOrder: (taskId) => menu.cancelOrder(taskId),
+    cancelOrder: (orderId) => menu.cancelOrder(orderId),
     isPlacementActive: () => menu.isPlacementActive(),
     getGhostState: () => menu.getGhostState(),
     peekGhostState: () => menu.peekGhostState(),
@@ -213,35 +193,7 @@ export const hubPlacementFeature: Feature & {
         },
       },
     ],
-    renderers: [
-      {
-        id: 'hub-ghost-3d',
-        mount(ctx) {
-          const s3 = ctx.services.scene3d;
-          if (!s3) return { update() {}, dispose() {} };
-          const rig = new GhostRig3D(s3);
-          const canvas = (ctx.services.canvas ?? ctx.services.surface) as HTMLElement | undefined;
-          let last: { x: number; y: number; over: boolean } | null = null;
-          const onMove = (e: PointerEvent) => { last = { x: e.clientX, y: e.clientY, over: !canvas || e.target === canvas }; };
-          window.addEventListener('pointermove', onMove);
-          let lastTile = '';
-          const idle = { isPlacementActive: () => false, getGhostState: () => null as never };
-          return {
-            update(_view, dt) {
-              const hp = ctx.services.hubPlacement;
-              if (!hp) { rig.update(idle, dt); return; }
-              if (hp.isPlacementActive() && last?.over && ctx.services.pickTile) {
-                const t = ctx.services.pickTile(last.x, last.y, canvas);
-                const key = t ? `${t.q},${t.r}` : '';
-                if (t && key !== lastTile) { lastTile = key; hp.hoverTile(t.q, t.r); }
-              } else if (!hp.isPlacementActive()) lastTile = '';
-              rig.update({ isPlacementActive: () => hp.isPlacementActive(), getGhostState: () => hp.peekGhostState() }, dt);
-            },
-            dispose() { window.removeEventListener('pointermove', onMove); rig.dispose(); },
-          };
-        },
-      },
-    ],
+    renderers: [{ id: 'hub-ghost-3d', mount: createHubGhostRenderer }],
     menus: [
       {
         id: 'construction',

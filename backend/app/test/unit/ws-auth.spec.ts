@@ -147,7 +147,7 @@ describe('WS ready {playerId, home} payload (W01-03)', () => {
     expect(HomeResponse.parse(rawReady.d.home)).toEqual({
       state: 'NEW',
       planets: [],
-      newPlanetTypes: ['temperate'],
+      newPlanetTypes: ['desert'], // DEV_PLANET_TYPE, as /me/home (BE-10)
     });
 
     // End-to-end with POST /v1/auth/guest ULID player
@@ -165,7 +165,7 @@ describe('WS ready {playerId, home} payload (W01-03)', () => {
     expect(HomeResponse.parse(ready.d.home)).toEqual({
       state: 'NEW',
       planets: [],
-      newPlanetTypes: ['temperate'],
+      newPlanetTypes: ['desert'], // DEV_PLANET_TYPE, as /me/home (BE-10)
     });
 
     // Backward-compatible W00 dev:<name> shortcut

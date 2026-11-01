@@ -34,7 +34,7 @@ function inBand(u: UnitCtx, goal: MoveGoal): boolean {
   const d = hexDistance(cols.q[u.row], cols.r[u.row], goal.q, goal.r);
   if (!atCentre || d < goal.minDist || d > goal.maxDist) return false;
   const here = hexIndex(u.state.grid.radius).indexOf(cols.q[u.row], cols.r[u.row]);
-  return !(pathBlockedFor(u.state, u.stats.profile)?.(here) ?? false);
+  return !(pathBlockedFor(u.state, u.stats.profile, -1, u.ctx.data)?.(here) ?? false);
 }
 
 /** Without moving anything: is the unit where `approach(goal)` would answer `arrived`? (For `work` phases.) */

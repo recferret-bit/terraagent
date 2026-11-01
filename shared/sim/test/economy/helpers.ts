@@ -1,6 +1,7 @@
 import { RESOURCE_KEYS, type ResourceKey, type Stock } from '@terra/contracts';
 import { Ledger, createLedgerState } from '@terra/ledger';
 import { createState, isSystemAccount, type LedgerPosting, type PlanetState, type TreasuryCtx } from '../../src';
+import { ensureColonyRecord } from '../../src/kernel/colonies';
 
 /** A zero-filled stock with `partial` on top: what `getColonyStock` returns. */
 export function fullStock(partial: Partial<Record<ResourceKey, number>> = {}): Stock {
@@ -19,6 +20,13 @@ export function nonZero(stock: Partial<Record<string, number>>): Record<string, 
 /** A tiny empty planet for economy unit tests. */
 export function emptyPlanet(): PlanetState {
   return createState({ planetId: 'pl_econ', planetType: 'temperate', seed: 'econ', radius: 2 });
+}
+
+/** {@link emptyPlanet} with colony records 0..n-1 (the treasury only moves resources of an existing colony, GP-24). */
+export function colonyPlanet(n = 1): PlanetState {
+  const state = emptyPlanet();
+  for (let i = 0; i < n; i++) ensureColonyRecord(state, i, 0);
+  return state;
 }
 
 /** A treasury ctx that collects every posting (what a step's ctx does). */

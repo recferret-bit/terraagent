@@ -1,5 +1,7 @@
 import { RESOURCE_FAMILY_OF, type ResourceKey, type Stock } from '@terra/contracts';
+import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
+import { resolveStartingKitRow } from '../systems/rows';
 
 export interface ColonyCaps {
   metals: number;
@@ -9,24 +11,32 @@ export interface ColonyCaps {
   item: number;
 }
 
-/** Caps before a Hub is built (the landing pod's hold). */
-export const INITIAL_CAPS: Readonly<ColonyCaps> = { metals: 600, minerals: 500, energy: 0, bio: 500, item: 0 };
-
-/** The colony's storage cap per family (`col.caps`, falling back to {@link INITIAL_CAPS}). */
-export function getColonyCaps(state: PlanetState, colonyIndex: number): ColonyCaps {
-  return capsOf(state.colonies[colonyIndex]?.caps);
+/**
+ * Caps before a Hub is built: the landing pod's hold (`hq.startingKit.storageCaps`, GP-11). A family the row does not
+ * name has cap 0.
+ */
+export function initialCaps(data?: CompiledDataLike): ColonyCaps {
+  const raw = resolveStartingKitRow(data).storageCaps as Partial<Record<keyof ColonyCaps, unknown>> | undefined;
+  const pick = (k: keyof ColonyCaps): number => (typeof raw?.[k] === 'number' ? (raw[k] as number) : 0);
+  return { metals: pick('metals'), minerals: pick('minerals'), energy: pick('energy'), bio: pick('bio'), item: pick('item') };
 }
 
-/** Caps from a colony record's `caps` (sim state or a client view), each missing family at {@link INITIAL_CAPS}. */
-export function capsOf(caps: unknown): ColonyCaps {
+/** The colony's storage cap per family (`col.caps`, each missing family at {@link initialCaps}). */
+export function getColonyCaps(state: PlanetState, colonyIndex: number, data?: CompiledDataLike): ColonyCaps {
+  return capsOf(state.colonies[colonyIndex]?.caps, data);
+}
+
+/** Caps from a colony record's `caps` (sim state or a client view), each missing family at {@link initialCaps}. */
+export function capsOf(caps: unknown, data?: CompiledDataLike): ColonyCaps {
   const raw = caps as Partial<Record<keyof ColonyCaps, unknown>> | null | undefined;
-  const pick = (k: keyof ColonyCaps): number => (typeof raw?.[k] === 'number' ? (raw[k] as number) : INITIAL_CAPS[k]);
+  const base = initialCaps(data);
+  const pick = (k: keyof ColonyCaps): number => (typeof raw?.[k] === 'number' ? (raw[k] as number) : base[k]);
   return { metals: pick('metals'), minerals: pick('minerals'), energy: pick('energy'), bio: pick('bio'), item: pick('item') };
 }
 
 /**
  * Splits a credit into what fits under the family caps and the overflow (`add({ clampToCap: true })`: the overflow is
- * not credited anywhere, it is lost and reported in the result). Families are shared by their tiers, so
+ * not credited to the colony; the treasury posts it to `sys:overflow`, LED-11, and reports it in the result). Families are shared by their tiers, so
  * credits of one family fill the remaining room in key order. Whole units in, whole units out.
  */
 export function clampToCaps(

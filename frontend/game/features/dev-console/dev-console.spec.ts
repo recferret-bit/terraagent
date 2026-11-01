@@ -101,6 +101,10 @@ describe('dev-console reveal, seed, tp, land commands', () => {
     expect(sendCommand).toHaveBeenLastCalledWith('dev.teleport', { entityId: 12, q: 5, r: -1 });
 
     expect(await run('tp 4', { sendCommand })).toBe('error: missing <r>');
+    // Tiles and ids are whole numbers: the console says so instead of sending a command the host rejects (FF-30)
+    expect(await run('tp 1.5 2', { sendCommand })).toBe('error: <q> must be a whole number, got "1.5"');
+    expect(await run('tp 1.5 2 3', { sendCommand })).toBe('error: <id> must be a whole number, got "1.5"');
+    expect(sendCommand).toHaveBeenCalledTimes(2);
   });
 
   it('land sends dev.land with or without coords', async () => {
@@ -111,6 +115,18 @@ describe('dev-console reveal, seed, tp, land commands', () => {
 
     await run('land 2 -4', { sendCommand });
     expect(sendCommand).toHaveBeenLastCalledWith('dev.land', { q: 2, r: -4 });
+    // One coordinate used to land silently on the default slot (FF-30)
+    expect(await run('land 5', { sendCommand })).toBe('error: land takes no coordinates or both <q> <r>');
+    expect(await run('land 1 2.5', { sendCommand })).toBe('error: <r> must be a whole number, got "2.5"');
+    expect(sendCommand).toHaveBeenCalledTimes(2);
+  });
+
+  it('grant accepts the one resource alias table (lower-cased one-word labels, FF-29)', async () => {
+    const sendCommand = acking();
+    for (const [alias, key] of [['metals', 'metals.t1'], ['minerals', 'minerals.t1'], ['biomass', 'bio.biomass'], ['water', 'bio.water']]) {
+      await run(`grant ${alias} 5`, { sendCommand });
+      expect(sendCommand).toHaveBeenLastCalledWith('dev.grant', { resource: key, amount: 5 });
+    }
   });
 
   it('handles rejections and disconnected state', async () => {

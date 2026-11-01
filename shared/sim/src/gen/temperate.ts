@@ -1,62 +1,36 @@
-import terrainTable from '../data/terrain';
 import { hexDistance, hexIndex } from '../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import { nextInt, nextU32, seedStream } from '../kernel/rng';
 import type { PlanetState, PlanetType } from '../kernel/state';
+import { profileNum, profileNumber, worldProfile, type ProfileRow } from './profile';
 import { fbm2d, hash2d } from './world/noise';
 
 const SQRT3_HALF = 0.8660254;
 const DEPOSIT_CYCLE = [DEPOSIT.metals, DEPOSIT.minerals, DEPOSIT.oil] as const;
 
-function readShareBp(id: string, fallback: number): number {
-  const row = terrainTable.rows.find((r) => r.id === id) as Record<string, unknown> | undefined;
-  return typeof row?.temperateShareBp === 'number' ? row.temperateShareBp : fallback;
-}
-
-function readTemperateNum(field: string, fallback: number): number {
-  const row = terrainTable.rows.find((r) => r.id === 'temperate') as Record<string, unknown> | undefined;
-  return typeof row?.[field] === 'number' ? (row[field] as number) : fallback;
-}
-
 /** Terrain class shares in basis points (the temperate classifier fills exactly these quotas). */
 export interface TerrainShares { flat: number; forest: number; rock: number; slope: number; hole: number; shallow: number; deep: number }
 
-export const TEMPERATE_SHARES: TerrainShares = {
-  flat: readShareBp('flat', 4500),
-  forest: readShareBp('forest', 2500),
-  rock: readShareBp('rock', 800),
-  slope: readShareBp('slope', 1000),
-  hole: readShareBp('hole', 200),
-  shallow: readShareBp('shallow', 600),
-  deep: readShareBp('deep', 400),
-} as const;
-
-const RICHNESS_CFG = {
-  minBp: readTemperateNum('richnessMinBp', 9000),
-  maxBp: readTemperateNum('richnessMaxBp', 12000),
-  metalsModBp: readTemperateNum('metalsRichnessModBp', 10000),
-  mineralsModBp: readTemperateNum('mineralsRichnessModBp', 11500),
-  oilModBp: readTemperateNum('oilRichnessModBp', 10000),
-} as const;
-
-function richnessModBp(kind: number, planetType: PlanetType): number {
-  if (planetType === 'desert') {
-    return kind === DEPOSIT.metals || kind === DEPOSIT.minerals ? 11500 : 10000;
-  }
-  if (planetType === 'ocean') {
-    if (kind === DEPOSIT.oil) return 12000;
-    if (kind === DEPOSIT.metals) return 8500;
-    return 10000;
-  }
-  if (kind === DEPOSIT.minerals) return RICHNESS_CFG.mineralsModBp;
-  if (kind === DEPOSIT.metals) return RICHNESS_CFG.metalsModBp;
-  return RICHNESS_CFG.oilModBp;
+/** The class shares of a quota profile (`share<Class>` fields of its `data/worldgen.ts` row, else temperate's). */
+export function profileShares(profile: ProfileRow): TerrainShares {
+  const temperate = worldProfile('temperate');
+  const n = (field: string) => profileNumber(profile, field, profileNumber(temperate, field, 0));
+  return {
+    flat: n('shareFlat'), forest: n('shareForest'), rock: n('shareRock'), slope: n('shareSlope'),
+    hole: n('shareHole'), shallow: n('shareShallow'), deep: n('shareDeep'),
+  };
 }
+
+const RICHNESS_MOD_FIELD: Readonly<Record<number, string>> = {
+  [DEPOSIT.metals]: 'metalsRichnessModBp',
+  [DEPOSIT.minerals]: 'mineralsRichnessModBp',
+  [DEPOSIT.oil]: 'oilRichnessModBp',
+};
 
 /**
  * Deterministic deposit richness in basis points for `(seed, tileIdx, kind, planetType)`.
- * Base richness is drawn in `[9000, 12000]` bp and scaled by the planet's per-resource modifier
- * (`temperate` Minerals +15% -> `10350..13800` bp, D-33).
+ * Base richness is drawn in `[richnessMinBp, richnessMaxBp]` (9000..12000) and scaled by the planet's per-resource
+ * modifier from its `data/worldgen.ts` row (`temperate` Minerals +15% -> `10350..13800` bp, D-33).
  */
 export function getDepositRichnessBp(
   seed: string,
@@ -66,13 +40,13 @@ export function getDepositRichnessBp(
 ): number {
   if (kind === DEPOSIT.none) return 0;
   const rng = seedStream(seed, `gen:richness:${tileIdx}`);
-  const baseBp = nextInt(rng, RICHNESS_CFG.minBp, RICHNESS_CFG.maxBp);
-  const modBp = richnessModBp(kind, planetType);
+  const baseBp = nextInt(rng, profileNum(planetType, 'richnessMinBp', 9000), profileNum(planetType, 'richnessMaxBp', 12000));
+  const modBp = profileNum(planetType, RICHNESS_MOD_FIELD[kind] ?? '', 10000);
   return Math.round((baseBp * modBp) / 10000);
 }
 
 /** Temperate relief + classification by quota (rank of elevation / basin / moisture fields), heights in metres. */
-export function assignTemperateTerrain(s: PlanetState, SHARE_BP: TerrainShares = TEMPERATE_SHARES): void {
+export function assignTemperateTerrain(s: PlanetState, SHARE_BP: TerrainShares = profileShares(worldProfile(s.meta.planetType))): void {
   const { radius, count, layers } = s.grid;
   const terrain = layers.terrain as Uint8Array;
   const prep = layers.prep as Uint8Array;

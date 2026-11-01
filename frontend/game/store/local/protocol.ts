@@ -27,7 +27,9 @@ export type FromLocalHost =
   | { t: 'server'; msg: ServerMessage }
   | { t: 'devResult'; reqId: number; ok: true; result: unknown }
   | { t: 'devResult'; reqId: number; ok: false; code: string; message: string }
-  | { t: 'error'; message: string };
+  | { t: 'error'; message: string }
+  /** Answer to `stop`: stepping ended and the final snapshot save settled, the worker may be terminated now. */
+  | { t: 'stopped' };
 
 /** Posts a message to the page; `transfer` lists the byte buffers that move with it. */
 export type LocalPost = (msg: FromLocalHost, transfer: ArrayBuffer[]) => void;

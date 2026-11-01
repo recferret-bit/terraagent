@@ -20,7 +20,7 @@
    - **30% Exposed Mechanical Frame & Greebles:** Dark gunmetal (`0x1e2229`, `roughness: 0.6`, `metalness: 0.75`) for joints, vents, undercarriages, treads, pipes, and sagging `TubeGeometry` cables.
    - **10% High-Contrast Accent & HDR Emissive:** Safety amber/ stripes + glowing cyan/amber status LEDs, plasma coils, or sensor visors (`emissiveIntensity: 3.5` to trigger selective bloom).
 2. **Add Silhouette Breakers:** Every building and robot must have asymmetric or silhouette-breaking details (an angled solar wing, a communication antenna with a glowing tip, an external fluid tank connected by a curved pipe, or rotating radar vanes).
-3. **Include a Ground Plinth / Skirt:** Every building must start with a slightly wider dark octagonal or chamfered base pad extending `-0.1m` below `Y = 0` so it never appears to float on uneven hex tiles.
+3. **Include a Ground Plinth / Skirt:** Every building must start with a slightly wider dark octagonal or chamfered base pad extending `-0.1m` below `Y = 0` so it never appears to float on uneven hex tiles. Give that slab `role: 'plinth'` and its trim/lamps `role: 'plinthDetail'` (`plinth()` in `buildings/kit.ts` does): the validator's cable checks and the playground's ground-contact rule (`minY -0.100` = skirt ✔) read the role, never the part name.
 
 ---
 

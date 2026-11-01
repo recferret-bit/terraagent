@@ -1,17 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { RESOURCE_KEYS } from '@terra/contracts';
+import { parseWaves, RESOURCE_KEYS } from '@terra/contracts';
 import {
   DEV_ACTOR,
-  INITIAL_CAPS,
   LEDGER_REASONS,
   capsOf,
   clampToCaps,
   colonyAccount,
   colonyActor,
   colonyIndexOfAccount,
+  compileData,
   emptyStock,
   getColonyCaps,
   getColonyStock,
+  initialCaps,
   isHostOnlyReason,
   isLedgerReason,
   isSystemAccount,
@@ -68,17 +69,27 @@ describe('reason catalog', () => {
 });
 
 describe('caps', () => {
-  it('getColonyCaps falls back to INITIAL_CAPS per field', () => {
+  it('initialCaps reads the pod hold from hq.startingKit.storageCaps (data, not a code constant, GP-11)', () => {
+    const INITIAL = { metals: 600, minerals: 500, energy: 0, bio: 500, item: 0 };
+    expect(initialCaps()).toEqual(INITIAL);
+    const tuned = compileData(parseWaves('..01'), { hq: { startingKit: { storageCaps: { metals: 700, minerals: 10, bio: 20 } } } });
+    expect(initialCaps(tuned)).toEqual({ metals: 700, minerals: 10, energy: 0, bio: 20, item: 0 });
+    expect(capsOf(undefined, tuned)).toEqual({ metals: 700, minerals: 10, energy: 0, bio: 20, item: 0 });
+  });
+
+  it('getColonyCaps falls back to the initial caps per field', () => {
     const state = emptyPlanet();
-    expect(getColonyCaps(state, 0)).toEqual(INITIAL_CAPS);
+    const INITIAL = initialCaps();
+    expect(getColonyCaps(state, 0)).toEqual(INITIAL);
     state.colonies.push({ index: 0, id: 'col_0', name: 'A', color: 0, status: 'active', changedAt: 0, caps: { metals: 500, bio: 'x' } });
-    expect(getColonyCaps(state, 0)).toEqual({ ...INITIAL_CAPS, metals: 500 });
+    expect(getColonyCaps(state, 0)).toEqual({ ...INITIAL, metals: 500 });
   });
 
   it('capsOf reads a view colony record the same way (missing, null or partial caps)', () => {
-    expect(capsOf(undefined)).toEqual(INITIAL_CAPS);
-    expect(capsOf(null)).toEqual(INITIAL_CAPS);
-    expect(capsOf({ minerals: 900 })).toEqual({ ...INITIAL_CAPS, minerals: 900 });
+    const INITIAL = initialCaps();
+    expect(capsOf(undefined)).toEqual(INITIAL);
+    expect(capsOf(null)).toEqual(INITIAL);
+    expect(capsOf({ minerals: 900 })).toEqual({ ...INITIAL, minerals: 900 });
   });
 
   it('clampToCaps fills shared family room in key order and never credits negatives', () => {

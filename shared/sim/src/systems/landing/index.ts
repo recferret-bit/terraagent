@@ -1,5 +1,4 @@
-import { dataRow, type CompiledRow } from '../../data';
-import { INITIAL_CAPS, checkMove, systemActor, treasury, treasuryCtx, type Amounts, type AddRequest } from '../../economy';
+import { checkMove, initialCaps, systemActor, treasury, treasuryCtx, type Amounts, type AddRequest } from '../../economy';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf, setField } from '../../ecs/store';
@@ -7,14 +6,23 @@ import { ensureStarterHubSpace, getSpawnSlots, type SpawnSlot } from '../../gen/
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
 import { ensureColonyRecord } from '../../kernel/colonies';
-import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type ColonyState, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { minLandingSeparation, nextLandingSite } from '../../world/landingPlanner';
 import { recordLanding } from '../../world/presence';
+import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
-import { defaultW01Data, resolveHqT1Row, revealVision, spawnHqUnit } from '../hq';
+import { hqViewRadius, revealVision, spawnHqUnit } from '../hq';
+import { resolveStartingKitRow, rowNum } from '../rows';
+
+export { resolveStartingKitRow } from '../rows';
+
+/**
+ * Colonies per planet: `grid.explored` is a `u8` bit mask (one bit per colony), so a planet takes 8 colonies (GP-17).
+ * A ninth landing is refused `planet_full`; widen the layer before raising this.
+ */
+export const MAX_COLONIES_PER_PLANET = 8;
 
 export type SystemCtx = StepContext;
 
@@ -42,22 +50,16 @@ export interface SpawnColonyLandingOpts {
   data?: CompiledDataLike;
 }
 
-export function resolveStartingKitRow(data?: CompiledDataLike): CompiledRow {
-  const table = data?.tables.hq as Record<string, CompiledRow> | undefined;
-  if (table?.startingKit) return table.startingKit;
-  return dataRow(defaultW01Data(), 'hq', 'startingKit');
-}
-
 /**
  * The landing pod's cargo (`hq.startingKit.cargo`, zero entries dropped): what a new colony starts with. Anything that
  * is not a whole amount (a fraction, a negative, a non-number) is kept, so the landing check refuses it instead of
  * landing a colony without its cargo.
  */
 export function resolveStartingCargo(data?: CompiledDataLike): Amounts {
-  const kit = resolveStartingKitRow(data);
-  const raw = (kit.cargo ?? { 'metals.t1': 600, 'minerals.t1': 350, 'bio.biomass': 200, 'bio.water': 200 }) as Amounts;
+  const raw = resolveStartingKitRow(data).cargo;
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('data row hq.startingKit.cargo is not a resource map');
   const out: Amounts = {};
-  for (const [k, v] of Object.entries(raw)) if (v !== 0) out[k as keyof Amounts] = v;
+  for (const [k, v] of Object.entries(raw as Amounts)) if (v !== 0) out[k as keyof Amounts] = v;
   return out;
 }
 
@@ -66,13 +68,9 @@ function cargoCredit(colonyId: number, data?: CompiledDataLike): AddRequest {
   return { colony: colonyId, amounts: resolveStartingCargo(data), reason: 'landing.cargo', actor: systemActor('landing'), ref: `colony:${colonyId}` };
 }
 
-function resolveDescentTicks(kit: CompiledRow): number {
-  const raw = Number(kit.podDescentS ?? 30);
-  const design = typeof kit.designPodDescentS === 'number' ? kit.designPodDescentS : undefined;
-  if (design !== undefined && raw !== design) {
-    return Math.max(1, Math.round(raw));
-  }
-  return Math.max(1, Math.round(raw * TICKS_PER_SECOND));
+/** The pod's descent in ticks (`hq.startingKit.podDescentS`, compiled to ticks; at least one tick). */
+export function resolveDescentTicks(data?: CompiledDataLike): number {
+  return Math.max(1, Math.round(rowNum(resolveStartingKitRow(data), 'podDescentS')));
 }
 
 function ensureColony(
@@ -101,7 +99,7 @@ export function getLandingPods(state: SimState): LandingPodState[] {
  * Why a colony may not land: it already has a pod, the spot is another colony's (its slot, or too close to its pod),
  * the spot is off the map, or the pod's cargo is not whole resource amounts (`invalid_args`).
  */
-export type LandingRejectCode = 'already_landed' | 'landing_site_taken' | 'invalid_args';
+export type LandingRejectCode = 'already_landed' | 'landing_site_taken' | 'invalid_args' | 'planet_full';
 
 export type SpawnColonyLandingResult =
   | { ok: true; podEntityId: number; q: number; r: number }
@@ -128,6 +126,8 @@ export function checkColonyLanding(
   state: SimState,
   opts: Pick<SpawnColonyLandingOpts, 'colonyId' | 'slotIndex' | 'q' | 'r' | 'data'>,
 ): { ok: true; plan: SpawnPlan } | { ok: false; code: LandingRejectCode } {
+  if (!Number.isInteger(opts.colonyId) || opts.colonyId < 0) return { ok: false, code: 'invalid_args' };
+  if (opts.colonyId >= MAX_COLONIES_PER_PLANET) return { ok: false, code: 'planet_full' };
   // Planets saved before the landing history existed still know their pods.
   if (getLandingPods(state).some((p) => p.colonyId === opts.colonyId)) return { ok: false, code: 'already_landed' };
   // The cargo is credited after the landing changed the world, so it is checked first: a refused cargo lands nothing.
@@ -172,9 +172,8 @@ export function spawnColonyLanding(
   // Remembered forever: the planner never lands anyone here (or within the separation) again (D-39).
   recordLanding(state, { colony: colonyId, ...(col.id ? { colonyId: col.id } : {}), ...(opts.playerId ? { playerId: opts.playerId } : {}), q, r, tick, ...(slot ? { slot: slot.index } : {}) }, tick);
   ensureStarterHubSpace(state, q, r, colonyId);
-  const kit = resolveStartingKitRow(data);
-  const totalTicks = resolveDescentTicks(kit);
-  col.caps = { ...INITIAL_CAPS };
+  const totalTicks = resolveDescentTicks(data);
+  col.caps = initialCaps(data);
   // Validated by checkColonyLanding; uncapped (the pod's hold is what the colony starts with).
   treasury(state, treasuryCtx(tick, ctx)).add(cargoCredit(colonyId, data));
   col.changedAt = tick;
@@ -187,15 +186,15 @@ export function spawnColonyLanding(
   cols.tier[row] = 1;
   placeSpawnedEntity(state.entities, row, q, r, tick);
   cols.rot[row] = 0;
-  cols.hp[row] = 500;
-  cols.hpMax[row] = 500;
+  const podHp = Math.fround(rowNum(resolveStartingKitRow(data), 'podHp'));
+  cols.hp[row] = podHp;
+  cols.hpMax[row] = podHp;
   cols.state[row] = ENTITY_STATE.descending;
   cols.progress[row] = 0;
   cols.createdAt[row] = tick;
   cols.changedAt[row] = tick;
 
-  const viewRadius = Number(resolveHqT1Row(data).viewRadius ?? 9);
-  revealVision(state, colonyId, q, r, viewRadius, tick);
+  revealVision(state, colonyId, q, r, hqViewRadius(data), tick);
 
   const pods = [...getLandingPods(state)];
   pods.push({
@@ -246,7 +245,7 @@ export function deployPod(state: PlanetState, pod: LandingPodState, ctx: StepCon
 }
 
 interface SpawnColonyCommandArgs {
-  colonyId?: string | number;
+  colonyId?: string;
   colonyIndex?: number;
   playerId?: string;
   handle?: string;
@@ -258,12 +257,13 @@ interface SpawnColonyCommandArgs {
   r?: number;
 }
 
+/**
+ * The colony a `system.spawnColony` lands (system commands name it explicitly, GP-18): `cmd.colonyIndex`, else
+ * `args.colonyIndex`, else an existing record with id `args.colonyId`, else `col_<n>`, else the next free index.
+ */
 function resolveCommandColonyIndex(state: PlanetState, cmd: SimCommand, args: SpawnColonyCommandArgs): number {
-  const legacyColony = (cmd as { colony?: unknown }).colony;
   if (typeof cmd.colonyIndex === 'number' && cmd.colonyIndex >= 0) return cmd.colonyIndex;
-  if (typeof legacyColony === 'number' && legacyColony >= 0) return legacyColony;
   if (typeof args.colonyIndex === 'number' && args.colonyIndex >= 0) return args.colonyIndex;
-  if (typeof args.colonyId === 'number' && args.colonyId >= 0) return args.colonyId;
   if (typeof args.colonyId === 'string') {
     const existing = state.colonies.find((c) => c.id === args.colonyId);
     if (existing) return existing.index;
@@ -301,6 +301,29 @@ export const spawnColony = defineCommandHandler({
   },
 });
 
+/**
+ * `landPod` (player, FA-08): the caller asks its descending pod to open as soon as it has descended
+ * `hq.startingKit.podLandMinS` (the client's touchdown animation) instead of the full `podDescentS`. Asked earlier, the
+ * pod opens when that minimum is reached; asked later, at once. `already_landed` once open, `unknown_entity` without a pod.
+ */
+export const landPod = defineCommandHandler({
+  kind: 'landPod',
+  wave: 'W01',
+  handle(state, cmd, ctx) {
+    const colony = commandColony(cmd);
+    if (typeof colony === 'string') return colony;
+    if (!parseArgs('landPod', cmd.args)) return 'invalid_args';
+    const pods = getLandingPods(state);
+    const pod = pods.find((p) => p.colonyId === colony);
+    if (!pod) return 'unknown_entity';
+    if (pod.deployed) return 'already_landed';
+    const minTicks = Math.max(0, Math.round(rowNum(resolveStartingKitRow(ctx.data), 'podLandMinS')));
+    pod.ticksRemaining = Math.min(pod.ticksRemaining, Math.max(0, minTicks - (pod.totalTicks - pod.ticksRemaining)));
+    if (pod.ticksRemaining <= 0) deployPod(state, pod, ctx);
+    setBlob(state, 'landingPods', pods, ctx.tick);
+  },
+});
+
 export const landing = defineSystem({
   id: 'landing',
   slot: 2,
@@ -333,5 +356,5 @@ export default defineSimModule({
   id: 'landing',
   wave: 'W01',
   systems: [landing],
-  handlers: [spawnColony],
+  handlers: [spawnColony, landPod],
 });

@@ -3,7 +3,7 @@ import { hexIndex } from '@terra/sim/grid/hex';
 import type { PlanetSpec } from '../PlanetSpec';
 import { createWater, type LiquidResult } from '../../visuals/terrain/Liquids';
 import { buildHeightTexture } from '../../visuals/terrain/TerrainGrid';
-import { HEX_PREP, HEX_TERRAIN, type HexTileLayers } from './chunkMesh';
+import { HEX_TERRAIN, isClearedPrep, type HexTileLayers } from './chunkMesh';
 import { planetExtent, tileAt, tileXZ } from './hexMath';
 
 export const HEX_WATER_LEVEL = 0.0;
@@ -14,18 +14,25 @@ export interface HexWater {
   readonly uniforms: Record<string, THREE.IUniform>;
   readonly waterTileCount: number;
   readonly waterTriangleCount: number;
-  update(layers: HexTileLayers): void;
+  /**
+   * Re-reads the water tiles. With `changed` (tile indices), nothing is rebuilt unless one of them gained, lost or
+   * changed its water (shallow / deep); without it, the bed texture and surface are always rebuilt.
+   */
+  update(layers: HexTileLayers, changed?: ArrayLike<number>): void;
   dispose(): void;
 }
 
 function isWaterTile(layers: HexTileLayers, i: number): boolean {
   if (!layers.terrain || i < 0) return false;
-  const p = layers.prep?.[i] ?? 0;
-  if (p === HEX_PREP.prepared || p === HEX_PREP.flat || p === HEX_PREP.living || p === HEX_PREP.irrigated) {
-    return false;
-  }
+  if (isClearedPrep(layers.prep?.[i] ?? 0)) return false;
   const t = layers.terrain[i] ?? 0;
   return t === HEX_TERRAIN.shallow || t === HEX_TERRAIN.deep;
+}
+
+/** 0 = dry, 1 = shallow water, 2 = deep water: everything the bed texture and the surface read from a tile. */
+function waterCode(layers: HexTileLayers, i: number): number {
+  if (!isWaterTile(layers, i)) return 0;
+  return layers.terrain![i] === HEX_TERRAIN.deep ? 2 : 1;
 }
 
 function sampleWaterBed(radius: number, layers: HexTileLayers, span: number): Float32Array {
@@ -124,6 +131,15 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
   const hasWater = look.kind !== 'dune';
   let waterTileCount = 0;
   let waterTriangleCount = 0;
+  const codes = new Uint8Array(hexIndex(radius).count);
+  const recordCodes = (layers: HexTileLayers) => { for (let i = 0; i < codes.length; i++) codes[i] = waterCode(layers, i); };
+  const waterChanged = (layers: HexTileLayers, changed: ArrayLike<number>) => {
+    for (let n = 0; n < changed.length; n++) {
+      const i = changed[n]!;
+      if (i >= 0 && i < codes.length && codes[i] !== waterCode(layers, i)) return true;
+    }
+    return false;
+  };
 
   const syncGeometry = (layers: HexTileLayers) => {
     if (!hasWater) {
@@ -141,6 +157,7 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
   };
 
   syncGeometry(initialLayers);
+  recordCodes(initialLayers);
 
   return {
     get mesh() {
@@ -155,11 +172,13 @@ export function createHexWater(radius: number, look: PlanetSpec, initialLayers: 
     get waterTriangleCount() {
       return waterTriangleCount;
     },
-    update(layers) {
+    update(layers, changed) {
       if (!hasWater) {
         syncGeometry(layers);
         return;
       }
+      if (changed && !waterChanged(layers, changed)) return;
+      recordCodes(layers);
       const nextTex = buildHeightTexture(sampleWaterBed(radius, layers, span), TEX_RES);
       heightTex.dispose();
       heightTex = nextTex;

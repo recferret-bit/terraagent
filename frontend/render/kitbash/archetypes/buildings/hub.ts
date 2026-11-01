@@ -1,43 +1,27 @@
 // Command hub + claim beacon.
 import * as THREE from 'three';
 import { KitbashBuilder } from '../../KitbashRegistry';
-import { box, cyl, ring, strut, cable, lamp, plinth, type V3, spin, type Z, type Opt } from './kit';
+import { box, cyl, ring, strut, cable, tube, lamp, dish, plinth, type V3, spin } from './kit';
 
 const PI = Math.PI;
 
-function hubLamp(b: KitbashBuilder, z: Z, r: number, p: V3, o: Opt = {}) {
-  b.addPart(new THREE.SphereGeometry(r, 6, 4), z, { ...o, position: p });
-}
-
-function hubRing(b: KitbashBuilder, z: Z, R: number, t: number, p: V3, seg = 12, o: Opt = {}) {
-  b.addPart(new THREE.TorusGeometry(R, t, 4, seg), z, { rotation: [PI / 2, 0, 0], ...o, position: p });
-}
-
-function hubCable(b: KitbashBuilder, a: V3, c: V3, slack: number, r: number, name: string) {
-  const va = new THREE.Vector3(...a), vc = new THREE.Vector3(...c);
-  const m = va.clone().add(vc).multiplyScalar(0.5);
-  m.y -= slack;
-  const curve = new THREE.CatmullRomCurve3([va, m, vc]);
-  b.addPart(new THREE.TubeGeometry(curve, 8, r, 4, false), 'frameGunmetal', { name });
-}
-
 function addHubFoundationAndHull(b: KitbashBuilder) {
   // Grounded octagonal plinth flush at Y = 0.000
-  box(b, 'frameGunmetal', [6, 0.2, 6], [0, 1e-5, 0], { r: 0.08, seg: 1, name: 'foundation plinth' });
-  const iw = 5.7, id = 5.7;
+  box(b, 'frameGunmetal', [6, 0.2, 6], [0, 1e-5, 0], { r: 0.08, seg: 1, name: 'foundation plinth', role: 'plinth' });
+  const iw = 5.7, id = 5.7, role = 'plinthDetail' as const;
   for (const s of [-1, 1]) {
-    b.addPart(new THREE.BoxGeometry(iw, 0.04, 0.1), 'hullSecondary', { name: 'plinth border Z', position: [0, 0.2, s * id / 2] });
-    b.addPart(new THREE.BoxGeometry(0.1, 0.044, id - 0.04), 'hullSecondary', { name: 'plinth border X', position: [s * iw / 2, 0.202, 0] });
+    b.addPart(new THREE.BoxGeometry(iw, 0.04, 0.1), 'hullSecondary', { name: 'plinth border Z', role, position: [0, 0.2, s * id / 2] });
+    b.addPart(new THREE.BoxGeometry(0.1, 0.044, id - 0.04), 'hullSecondary', { name: 'plinth border X', role, position: [s * iw / 2, 0.202, 0] });
   }
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
-    hubLamp(b, 'warningAmber', 0.07, [sx * 2.88, 0.22, sz * 2.88], { name: 'plinth corner light' });
+    lamp(b, 'warningAmber', 0.07, [sx * 2.88, 0.22, sz * 2.88], { hSeg: 4, name: 'plinth corner light', role });
   }
   // Main hull + waist band + upper hull + dome drum + dome + ribs
   box(b, 'hullPrimary', [4.4, 1.34, 4.2], [-0.2, 0.16, -0.2], { r: 0.16, seg: 1, name: 'command lower hull' });
   box(b, 'frameGunmetal', [4.5, 0.18, 4.3], [-0.2, 1.1, -0.2], { r: 0.04, seg: 1, name: 'hull waist band' });
   box(b, 'hullPrimary', [3.8, 0.65, 3.6], [-0.2, 1.4, -0.2], { r: 0.14, seg: 1, name: 'command upper hull' });
   cyl(b, 'hullPrimary', 1.5, 1.7, 0.77, [-0.2, 1.96, -0.2], { seg: 14, name: 'dome drum' });
-  hubRing(b, 'energyCyan', 1.52, 0.06, [-0.2, 2.72, -0.2], 14, { name: 'dome collar light' });
+  ring(b, 'energyCyan', 1.52, 0.06, [-0.2, 2.72, -0.2], { seg: 14, tubeSeg: 4, name: 'dome collar light' });
   b.addPart(new THREE.SphereGeometry(1.38, 12, 6, 0, PI * 2, 0, PI / 2), 'glassVisor', { name: 'dome canopy glass', position: [-0.2, 2.68, -0.2] });
   for (let i = 0; i < 4; i++) {
     b.addPart(new THREE.TorusGeometry(1.39, 0.035, 4, 10, PI), 'frameGunmetal', {
@@ -49,7 +33,7 @@ function addHubFoundationAndHull(b: KitbashBuilder) {
   // 4 corner columns + beacons
   for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
     cyl(b, 'frameGunmetal', 0.2, 0.26, 1.56, [-0.2 + sx * 2.2, 0.14, -0.2 + sz * 2.1], { seg: 8, name: 'corner column' });
-    hubLamp(b, 'warningAmber', 0.1, [-0.2 + sx * 2.2, 1.74, -0.2 + sz * 2.1], { name: 'column beacon light' });
+    lamp(b, 'warningAmber', 0.1, [-0.2 + sx * 2.2, 1.74, -0.2 + sz * 2.1], { hSeg: 4, name: 'column beacon light' });
   }
   // Front entry airlock
   box(b, 'frameGunmetal', [1.6, 1.02, 0.34], [-0.2, 0.18, 1.92], { r: 0.06, seg: 1, name: 'entry airlock' });
@@ -62,7 +46,7 @@ function addHubPadAndTanks(b: KitbashBuilder) {
   // Landing pad wing (+x, +z)
   box(b, 'frameGunmetal', [2.1, 0.3, 2.1], [2.35, 0.15, 1.7], { r: 0.08, seg: 1, name: 'landing pad base' });
   cyl(b, 'hullPrimary', 1.0, 1.0, 0.14, [2.35, 0.43, 1.7], { seg: 14, name: 'landing pad deck' });
-  hubRing(b, 'warningAmber', 0.85, 0.04, [2.35, 0.57, 1.7], 14, { name: 'pad ring light' });
+  ring(b, 'warningAmber', 0.85, 0.04, [2.35, 0.57, 1.7], { seg: 14, tubeSeg: 4, name: 'pad ring light' });
   b.addPart(new THREE.BoxGeometry(0.12, 0.04, 0.8), 'warningAmber', { name: 'pad H light L', position: [2.1, 0.57, 1.7] });
   b.addPart(new THREE.BoxGeometry(0.12, 0.04, 0.8), 'warningAmber', { name: 'pad H light R', position: [2.6, 0.57, 1.7] });
   b.addPart(new THREE.BoxGeometry(0.42, 0.044, 0.1), 'warningAmber', { name: 'pad H light cross', position: [2.35, 0.572, 1.7] });
@@ -74,12 +58,8 @@ function addHubPadAndTanks(b: KitbashBuilder) {
   }
   box(b, 'frameGunmetal', [1.85, 0.14, 0.36], [-1.42, 1.05, -2.35], { r: 0.03, seg: 1, name: 'tank manifold' });
   // Power cable routed outside solid hulls from lower hull (+X wall) to landing pad (-Z edge)
-  const pCurve = new THREE.CatmullRomCurve3([
-    new THREE.Vector3(1.98, 0.85, 0.32),
-    new THREE.Vector3(2.2, 0.62, 0.52),
-    new THREE.Vector3(2.35, 0.42, 0.68),
-  ]);
-  b.addPart(new THREE.TubeGeometry(pCurve, 8, 0.045, 4, false), 'frameGunmetal', { name: 'pad power cable' });
+  const padCable = [new THREE.Vector3(1.98, 0.85, 0.32), new THREE.Vector3(2.2, 0.62, 0.52), new THREE.Vector3(2.35, 0.42, 0.68)];
+  tube(b, padCable, 0.045, 'frameGunmetal', { seg: 8, name: 'pad power cable' });
 }
 
 function addHubAntennaAndRadar(b: KitbashBuilder) {
@@ -89,30 +69,16 @@ function addHubAntennaAndRadar(b: KitbashBuilder) {
   for (const h of [3.4, 4.6]) {
     const t = (h - 1.9) / 4.5;
     const pos: V3 = [1.0 + 0.35 * t, h, -1.4 - 0.35 * t];
-    hubRing(b, 'hullSecondary', 0.09, 0.045, pos, 8, { name: 'antenna collar' });
+    ring(b, 'hullSecondary', 0.09, 0.045, pos, { seg: 8, tubeSeg: 4, name: 'antenna collar' });
   }
-  hubLamp(b, 'dangerCrimson', 0.13, [1.35, 6.46, -1.75], { emissiveIntensity: 4.2, name: 'antenna beacon light' });
-  hubCable(b, [1.31, 5.9, -1.71], [2.0, 1.68, -2.28], 0.15, 0.025, 'antenna guy cable R');
-  hubCable(b, [1.28, 5.5, -1.68], [-0.4, 2.01, -1.96], 0.15, 0.025, 'antenna guy cable L');
+  lamp(b, 'dangerCrimson', 0.13, [1.35, 6.46, -1.75], { hSeg: 4, emissiveIntensity: 4.2, name: 'antenna beacon light' });
+  const guy = { points: 3, seg: 8 } as const;
+  cable(b, [1.31, 5.9, -1.71], [2.0, 1.68, -2.28], 0.15, 0.025, 'frameGunmetal', { ...guy, name: 'guy cable R' });
+  cable(b, [1.28, 5.5, -1.68], [-0.4, 2.01, -1.96], 0.15, 0.025, 'frameGunmetal', { ...guy, name: 'guy cable L' });
   // Rotating radar tower (left-front top)
   box(b, 'hullSecondary', [0.9, 0.36, 0.9], [-1.4, 1.99, 0.7], { r: 0.05, seg: 1, name: 'radar pedestal' });
   cyl(b, 'frameGunmetal', 0.12, 0.2, 1.92, [-1.4, 2.3, 0.7], { seg: 8, name: 'radar mast' });
-  const R = 0.85, n = 4, k = 0.55 / R, th = 0.04;
-  const pts: THREE.Vector2[] = [];
-  for (let i = 0; i <= n; i++) {
-    const r = Math.max(0.02, (R * i) / n);
-    pts.push(new THREE.Vector2(r, k * r * r));
-  }
-  for (let i = n; i >= 0; i--) {
-    const r = Math.max(0.02, (R * i) / n);
-    pts.push(new THREE.Vector2(r, k * r * r - th));
-  }
-  b.addPart(new THREE.LatheGeometry(pts, 10), 'hullPrimary', {
-    name: 'radar dish',
-    position: [-1.4, 4.19, 0.7],
-    rotation: [-0.55, 0, 0],
-    ...spin(-1.4, 0.7),
-  });
+  dish(b, 0.85, [-1.4, 4.19, 0.7], -0.55, { seg: 10, ...spin(-1.4, 0.7) });
   cyl(b, 'frameGunmetal', 0.05, 0.05, 0.5, [-1.4, 4.09, 0.7], { seg: 6, name: 'radar feed rod', ...spin(-1.4, 0.7) });
   b.addPart(new THREE.BoxGeometry(0.1, 0.1, 0.1), 'energyCyan', {
     name: 'radar feed light',

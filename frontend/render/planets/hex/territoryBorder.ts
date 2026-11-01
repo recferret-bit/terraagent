@@ -1,31 +1,21 @@
 import * as THREE from 'three';
 import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
-import { PLAYER_COLORS } from '../globe/terraform';
+import { DEFAULT_COLONY_COLORS as CONTRACT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import { computeEffectiveHeights, type HexTileLayers } from './chunkMesh';
+import { makeHeightSampler } from './heightSampler';
 import { tileXZ } from './hexMath';
 
 /** Normal territory boundary ribbon width in metres (unclaimed neighbour). */
 export const NORMAL_BORDER_WIDTH = 0.08;
 /** Frozen (contested) territory boundary ribbon width in metres (foreign-owned neighbour, §13.1). */
 export const FROZEN_BORDER_WIDTH = 0.18;
-/** Vertical offset (m) lifting the territory border ribbon above the tile surface to prevent z-fighting. */
+/** Vertices per boundary edge: two quads that meet at the edge midpoint, so the ribbon follows the terrain kink there. */
+export const BORDER_VERTS_PER_EDGE = 8;
+/** Vertical offset (m) lifting every territory border vertex above the terrain surface under it (no z-fighting). */
 export const BORDER_Y_OFFSET = 0.035;
 
-/**
- * Default colony border colour palette (6-colony distinct hex colours, aligned with `PLAYER_COLORS` from `globe/terraform.ts`
- * starting with ignition orange `0xff6a2a`).
- */
-export const DEFAULT_COLONY_COLORS: readonly number[] = [
-  0xff6a2a,
-  0x2ec4b6,
-  0xe71d36,
-  0xff9f1c,
-  0x8338ec,
-  0x3a86ff,
-];
-
-/** Globe player colours reference (`render/planets/globe/terraform.ts`). */
-export const GLOBE_PLAYER_COLORS = PLAYER_COLORS;
+/** Default colony border colours by colony index: the sim's colony palette (`@terra/contracts`, parity-tested there). */
+export const DEFAULT_COLONY_COLORS: readonly number[] = CONTRACT_COLONY_COLORS;
 
 const INV_SQRT3 = 1 / Math.sqrt(3);
 const HATCH_LENGTH = 0.14;
@@ -90,8 +80,12 @@ interface BorderAccum {
   edgeWidths: number[];
 }
 
+type SurfaceY = (x: number, z: number) => number;
+
+/** One flat-shaded quad whose four corners each sit `lift` above the terrain surface under them (RN-01). */
 function pushQuad(
   acc: BorderAccum,
+  yAt: SurfaceY,
   x0: number,
   z0: number,
   x1: number,
@@ -100,12 +94,17 @@ function pushQuad(
   z2: number,
   x3: number,
   z3: number,
-  y: number,
+  lift: number,
   rgb: readonly [number, number, number],
   widthAttr: number,
 ): void {
   const base = acc.positions.length / 3;
-  acc.positions.push(x0, y, z0, x1, y, z1, x2, y, z2, x3, y, z3);
+  acc.positions.push(
+    x0, yAt(x0, z0) + lift, z0,
+    x1, yAt(x1, z1) + lift, z1,
+    x2, yAt(x2, z2) + lift, z2,
+    x3, yAt(x3, z3) + lift, z3,
+  );
   acc.normals.push(0, 1, 0, 0, 1, 0, 0, 1, 0, 0, 1, 0);
   acc.colors.push(
     rgb[0], rgb[1], rgb[2],
@@ -119,11 +118,11 @@ function pushQuad(
 
 function emitEdgeHatchSegments(
   acc: BorderAccum,
+  yAt: SurfaceY,
   cx: number,
   cz: number,
   ux: number,
   uz: number,
-  y: number,
   width: number,
   owner: number,
   rgb: readonly [number, number, number],
@@ -135,7 +134,7 @@ function emitEdgeHatchSegments(
   const inx = -ux;
   const inz = -uz;
   const innerDist = 1 - width;
-  const hy = y + HATCH_Y_LIFT;
+  const lift = BORDER_Y_OFFSET + HATCH_Y_LIFT;
   for (const t of pat.offsets) {
     const bx = cx + ux * innerDist + etx * t;
     const bz = cz + uz * innerDist + etz * t;
@@ -143,6 +142,7 @@ function emitEdgeHatchSegments(
     const pz = bz + inz * HATCH_LENGTH + etz * pat.skew;
     pushQuad(
       acc,
+      yAt,
       bx - etx * HATCH_HALF_THICK,
       bz - etz * HATCH_HALF_THICK,
       bx + etx * HATCH_HALF_THICK,
@@ -151,7 +151,7 @@ function emitEdgeHatchSegments(
       pz + etz * HATCH_HALF_THICK,
       px - etx * HATCH_HALF_THICK,
       pz - etz * HATCH_HALF_THICK,
-      hy,
+      lift,
       rgb,
       width,
     );
@@ -172,6 +172,7 @@ export function buildTerritoryBorderGeometry(
 ): TerritoryBorderBuildResult {
   const hx = hexIndex(radius);
   const effHeights = opts.effHeights ?? computeEffectiveHeights(radius, tiles);
+  const yAt = makeHeightSampler(radius, () => effHeights);
   const colorBlindMode = Boolean(opts.colorBlindMode);
   const ownerArr = tiles.owner;
 
@@ -197,7 +198,6 @@ export function buildTerritoryBorderGeometry(
       const q = hx.q[i]!;
       const r = hx.r[i]!;
       const [cx, cz] = tileXZ(q, r);
-      const y = (effHeights[i] ?? 0) + BORDER_Y_OFFSET;
       const rgb = resolveColonyColorRgb(owner, opts.colonyColors);
 
       for (let dir = 0; dir < 6; dir++) {
@@ -227,9 +227,12 @@ export function buildTerritoryBorderGeometry(
         const i1x = c1x - ux * width;
         const i1z = c1z - uz * width;
 
-        pushQuad(acc, c0x, c0z, c1x, c1z, i1x, i1z, i0x, i0z, y, rgb, width);
+        // Two halves meeting at the edge midpoint: the terrain kinks there (it is triangulated between tile centres).
+        const mx = cx + ux, mz = cz + uz, mix = mx - ux * width, miz = mz - uz * width;
+        pushQuad(acc, yAt, c0x, c0z, mx, mz, mix, miz, i0x, i0z, BORDER_Y_OFFSET, rgb, width);
+        pushQuad(acc, yAt, mx, mz, c1x, c1z, i1x, i1z, mix, miz, BORDER_Y_OFFSET, rgb, width);
         if (colorBlindMode) {
-          hatchSegmentCount += emitEdgeHatchSegments(acc, cx, cz, ux, uz, y, width, owner, rgb);
+          hatchSegmentCount += emitEdgeHatchSegments(acc, yAt, cx, cz, ux, uz, width, owner, rgb);
         }
       }
     }

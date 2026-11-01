@@ -23,8 +23,10 @@ export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'c
  * **Bump rule:** any change that alters generated output (a `data/worldgen.ts` number, a stage, noise, spawn slots,
  * landing zones) bumps this in the same commit; `test/gen/world.spec.ts` pins a fingerprint so a forgotten bump fails.
  * 3: hidden-ground salt, falloff-ring reclassification, wind-direction table.
+ * 4: the hidden subsurface is generated after the landing zones (WE-09); a desert falloff ring keeps the metals 2×2
+ *    Flat footprint (WE-18); generation numbers moved to `data/worldgen.ts` (WE-19 / WE-20, same values).
  */
-export const GEN_VERSION = 3;
+export const GEN_VERSION = 4;
 
 const generators = new Map<string, PlanetGenerator>();
 

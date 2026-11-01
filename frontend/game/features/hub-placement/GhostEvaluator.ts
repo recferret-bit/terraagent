@@ -1,4 +1,5 @@
 import {
+  constructionOrdersOf,
   ENTITY_KIND,
   evaluatePlacement,
   findPlacementSite,
@@ -12,15 +13,14 @@ import {
   type PlacementBlock,
   type PlacementTile,
   type PlacementWorld,
-  type PlanetState,
-  type SimView,
-  type ViewColony,
-  type ViewEntity,
 } from '@terra/sim';
-import type { GameView } from '../../core/registry/types';
-import { ENTITY_STRIDE, type ClientTiles, type ClientView } from '../../store/replica/viewCodec';
+import type { ClientTiles } from '../../store/replica/viewCodec';
+import { isPlanetState, viewPlacementWorld, type WorldSource } from '../shared/placementWorld';
 
-export type GhostSource = PlanetState | ClientView | SimView | GameView | null | undefined;
+export type GhostSource = WorldSource;
+
+/** Adapts any ghost source into the shared `PlacementWorld` (see `viewPlacementWorld`). */
+export const ghostPlacementWorld = viewPlacementWorld;
 
 /** Same shape as the sim's `PlacementBill` (one planner for client and server). */
 export type HubGhostBill = PlacementBill;
@@ -62,167 +62,10 @@ export interface EvaluateHubGhostOptions {
   data?: CompiledDataLike;
 }
 
-interface ExtractedEntity {
-  id: number;
-  kind: number;
-  owner: number;
-  q: number;
-  r: number;
-  hp: number;
-  hpMax: number;
-  state: number;
-}
-
-interface ExtractedWorld {
-  radius: number;
-  tileCount: number;
-  terrain: Uint8Array | null;
-  prep: Uint8Array | null;
-  deposit: Uint8Array | null;
-  owner: Int8Array | null;
-  height: Float32Array | null;
-  entities: ExtractedEntity[];
-  orders: ConstructionOrder[];
-}
-
-function isPlanetState(src: unknown): src is PlanetState {
-  return Boolean(
-    src &&
-      typeof src === 'object' &&
-      'grid' in src &&
-      typeof (src as PlanetState).grid?.radius === 'number' &&
-      (src as PlanetState).grid?.layers,
-  );
-}
-
-function extractOrdersFromBlobs(blobs?: Record<string, unknown>, colonyId?: number): ConstructionOrder[] {
-  const raw = blobs?.constructionQueue as
-    | { value?: unknown; orders?: ConstructionOrder[]; byColony?: Record<number, ConstructionOrder[]> }
-    | ConstructionOrder[]
-    | undefined;
-  if (!raw) return [];
-  const inner = (
-    typeof raw === 'object' && !Array.isArray(raw) && 'value' in raw ? raw.value : raw
-  ) as { orders?: ConstructionOrder[]; byColony?: Record<number, ConstructionOrder[]> } | ConstructionOrder[];
-  let list: ConstructionOrder[] = [];
-  if (Array.isArray(inner)) {
-    list = inner;
-  } else if (inner && typeof inner === 'object') {
-    if (colonyId !== undefined && Array.isArray(inner.byColony?.[colonyId])) {
-      list = inner.byColony[colonyId];
-    } else if (Array.isArray(inner.orders)) {
-      list = inner.orders;
-    }
-  }
-  return colonyId === undefined ? list : list.filter((o) => o.colonyId === colonyId);
-}
-
-function extractEntitiesFromView(
-  rawEntities: Float32Array | ViewEntity[] | undefined,
-  rawCount?: number,
-): ExtractedEntity[] {
-  if (!rawEntities) return [];
-  const out: ExtractedEntity[] = [];
-  if (rawEntities instanceof Float32Array) {
-    const count = rawCount ?? Math.floor(rawEntities.length / ENTITY_STRIDE);
-    for (let i = 0; i < count; i++) {
-      const o = i * ENTITY_STRIDE;
-      out.push({
-        id: rawEntities[o],
-        kind: rawEntities[o + 1],
-        owner: rawEntities[o + 2],
-        q: rawEntities[o + 3],
-        r: rawEntities[o + 4],
-        hp: rawEntities[o + 8],
-        hpMax: rawEntities[o + 9],
-        state: rawEntities[o + 10],
-      });
-    }
-    return out;
-  }
-  if (Array.isArray(rawEntities)) {
-    for (const e of rawEntities) {
-      out.push({
-        id: e.id,
-        kind: e.kind,
-        owner: e.owner,
-        q: e.q,
-        r: e.r,
-        hp: e.hp,
-        hpMax: e.hpMax,
-        state: e.state,
-      });
-    }
-  }
-  return out;
-}
-
-function extractWorld(source: GhostSource, fallbackTiles?: ClientTiles | null): ExtractedWorld {
-  if (isPlanetState(source)) {
-    const e = source.entities;
-    const c = e.cols;
-    const entities: ExtractedEntity[] = [];
-    for (let i = 0; i < e.count; i++) {
-      entities.push({
-        id: c.id[i],
-        kind: c.kind[i],
-        owner: c.owner[i],
-        q: c.q[i],
-        r: c.r[i],
-        hp: c.hp[i],
-        hpMax: c.hpMax[i],
-        state: c.state[i],
-      });
-    }
-    return {
-      radius: source.grid.radius,
-      tileCount: source.grid.count,
-      terrain: source.grid.layers.terrain as Uint8Array,
-      prep: source.grid.layers.prep as Uint8Array,
-      deposit: (source.grid.layers.deposit as Uint8Array | undefined) ?? null,
-      height: (source.grid.layers.height as Float32Array | undefined) ?? null,
-      owner: source.grid.layers.owner as Int8Array,
-      entities,
-      orders: extractOrdersFromBlobs(source.blobs as unknown as Record<string, unknown>),
-    };
-  }
-
-  const v = (source ?? {}) as {
-    planet?: { radius?: number };
-    tiles?: ClientTiles;
-    entities?: Float32Array | ViewEntity[];
-    count?: number;
-    colonies?: ViewColony[];
-    blobs?: Record<string, unknown>;
-  };
-  const tiles = v.tiles ?? fallbackTiles ?? null;
-  return {
-    radius: typeof v.planet?.radius === 'number' ? v.planet.radius : 12,
-    tileCount: tiles?.count ?? 0,
-    terrain: tiles?.terrain ?? null,
-    prep: tiles?.prep ?? null,
-    deposit: tiles?.deposit ?? null,
-    height: tiles?.height ?? null,
-    owner: tiles?.owner ?? null,
-    entities: extractEntitiesFromView(v.entities, v.count),
-    orders: extractOrdersFromBlobs(v.blobs),
-  };
-}
-
-/** Adapts any ghost source (authoritative state, replica view, local host view) into the shared `PlacementWorld`. */
-export function ghostPlacementWorld(source: GhostSource, fallbackTiles?: ClientTiles | null): PlacementWorld {
-  const w = extractWorld(source, fallbackTiles);
-  const n = w.tileCount;
-  return {
-    radius: w.radius,
-    tileCount: w.terrain && w.prep && w.owner ? n : 0,
-    terrain: w.terrain ?? new Uint8Array(0),
-    prep: w.prep ?? new Uint8Array(0),
-    deposit: w.deposit,
-    owner: w.owner ?? new Int8Array(0),
-    height: w.height,
-    entities: w.entities,
-  };
+/** The `constructionQueue` blob value (`{ orders }`) of a sim state (`{ value, changedAt }` blobs) or a view (values). */
+function constructionQueueOf(source: GhostSource): unknown {
+  if (isPlanetState(source)) return source.blobs.constructionQueue?.value;
+  return (source as { blobs?: Record<string, unknown> } | null | undefined)?.blobs?.constructionQueue;
 }
 
 /** Old semantics of `requireHq`: unset → require a landed HQ only once the colony has any entity on the map. */
@@ -284,14 +127,16 @@ export function evaluateHubGhost(
   };
 }
 
-/** Extracts active/pending construction orders for `colonyId` from a `GhostSource`. */
+/** Open construction orders of `colonyId` in a `GhostSource` (completed and cancelled orders are left out). */
 export function extractColonyConstructionOrders(
   source: GhostSource,
   colonyId = 0,
 ): ConstructionOrder[] {
-  const world = extractWorld(source);
-  return world.orders.filter((o) => o.colonyId === colonyId && o.status !== 'cancelled');
+  return constructionOrdersOf(constructionQueueOf(source), colonyId).filter((o) => o.status !== 'cancelled' && o.status !== 'completed');
 }
+
+/** How far (hex tiles) from the HQ the H key looks for a valid Hub site. */
+export const HUB_SITE_SEARCH_RADIUS = 5;
 
 /** Nearest valid 3×3 Hub site to `colonyId`'s HQ (or pod), searched with the shared placement rules. */
 export function findValidHubSiteNearHq(
@@ -305,6 +150,6 @@ export function findValidHubSiteNearHq(
   return findPlacementSite(
     world,
     { colonyId, q: hq?.q ?? 0, r: hq?.r ?? 0, building: 'commandHub', requireBuilder: resolveRequireBuilder(world, colonyId), data },
-    5,
+    HUB_SITE_SEARCH_RADIUS,
   );
 }

@@ -7,6 +7,8 @@ export const DEV_PLANET_RADIUS = 56;
 /** The guest dev planets `pl_dev*` (server and the no-backend local fallback): a desert since D-38, owner 2026-11-01. */
 export const DEV_PLANET_TYPE = 'desert' as const;
 export const DEV_PLANET_SEED = 'golden-1';
+/** Seats (colonies) per dev planet (D-12); at most `MAX_COLONIES_PER_PLANET` (8), the sim's colony limit. */
+export const DEV_PLANET_CAPACITY = 5;
 
 /** Dev planet types a guest can pick in orbit (dune → desert, oceanForest → ocean, forestRock → temperate). */
 export const DEV_PLANET_TYPES = ['desert', 'ocean', 'temperate'] as const;

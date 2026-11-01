@@ -1,267 +1,61 @@
-import type { RejectCode, ResourceKey } from '@terra/contracts';
-import { dataRow } from '../../data';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { setField } from '../../ecs/store';
-import { hexIndex } from '../../grid/hex';
-import { PREP, TERRAIN } from '../../grid/layers';
-import { isValidTileIndex } from '../../grid/tileModel';
+import type { RejectCode } from '@terra/contracts';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState, SimState } from '../../kernel/state';
-import { defaultW01Data, syncHqView } from '../hq';
+import { placementWorldFromState } from '../construction/placementWorld';
+import { findColonyHqRow } from '../find';
+import { syncHqView } from '../hq/view';
+import { resolveHqT1Row, rowNum } from '../rows';
+import { getTerraformOpSpec, isTerraformOpKind, type TerraformOpKind } from './ops';
+import {
+  colonyTerraformOrders,
+  getColonyTerraformJobCount,
+  getManualTerraformLaneCount,
+  nextOrderId,
+  readOrdersByColony,
+  writeOrdersByColony,
+  type TerraformJob,
+  type TerraformOrder,
+} from './orders';
+import {
+  evaluateTerraform,
+  evaluateTerraformTile,
+  terraformJobKey,
+  terraformWorldFromState,
+  worldHasTerritory,
+} from './rules';
 
-export type TerraformOpKind = 'grade' | 'clear' | 'break';
-
-export interface TerraformOpSpec {
-  op: TerraformOpKind;
-  baseTimeS: number;
-  energyCostE: number;
-  yieldResource: ResourceKey | null;
-  yieldAmount: number;
-}
-
-export interface TerraformJob {
-  q: number;
-  r: number;
-  op: TerraformOpKind;
-  progress: number;
-  baseTimeS: number;
-  totalEnergyE: number;
-  energyDrawnE: number;
-}
-
-export interface TerraformOrder {
-  orderId: string;
-  taskId: string;
-  colonyId: number;
-  op: TerraformOpKind;
-  jobs: TerraformJob[];
-  skippedCount: number;
-  totalJobs?: number;
-  completedJobs?: number;
-  linkedBuildingId?: number | string;
-  linkedOrderId?: string;
-  linkedBuildingEntityId?: number;
-  isLinkedPrep?: boolean;
-  countsTowardLaneLimit?: boolean;
-  allowUnclaimed?: boolean;
-}
-
-export interface TerraformTasksBlobValue {
-  orders: TerraformOrder[];
-  byColony: Record<number, TerraformOrder[]>;
-  [colonyId: number]: TerraformOrder[];
-}
-
-const VALID_OPS: ReadonlySet<string> = new Set(['grade', 'clear', 'break']);
-
-export function isTerraformOpKind(op: unknown): op is TerraformOpKind {
-  return typeof op === 'string' && VALID_OPS.has(op);
-}
-
-/** Looks up the balance row for `grade | clear | break` from `opsBasic`. */
-export function getTerraformOpSpec(op: TerraformOpKind, data?: CompiledDataLike): TerraformOpSpec {
-  const src = data?.tables.opsBasic ? data : defaultW01Data();
-  const row = dataRow(src, 'opsBasic', op);
-  const baseTimeS = Number(row.baseTimeS ?? row.designSeconds ?? 3);
-  const energyCostE = Number(row.energyCostE ?? row.energy ?? 20);
-  const yieldResource = typeof row.yieldResource === 'string' ? (row.yieldResource as ResourceKey) : null;
-  const yieldAmount = typeof row.yieldAmount === 'number' ? row.yieldAmount : 0;
-  return { op, baseTimeS, energyCostE, yieldResource, yieldAmount };
-}
-
-/**
- * Returns `true` if `colonyId` has already claimed territory (either has an active Command Hub or owns at least one tile).
- */
+/** Whether `colonyId` owns territory (an active own Hub, or at least one own tile). */
 export function hasColonyClaimedTerritory(state: SimState, colonyId: number): boolean {
-  const e = state.entities;
-  const cols = e.cols;
-  for (let row = 0; row < e.count; row++) {
-    if (cols.kind[row] !== ENTITY_KIND.hub) continue;
-    if (cols.owner[row] !== colonyId) continue;
-    if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
-    if (cols.state[row] === ENTITY_STATE.active) return true;
-  }
-  const owners = state.grid.layers.owner as Int8Array;
-  for (let i = 0; i < state.grid.count; i++) {
-    if (owners[i] === colonyId) return true;
-  }
-  return false;
+  return worldHasTerritory(placementWorldFromState(state), colonyId);
 }
 
-/**
- * Validates whether `colonyId` can run `op` (`'grade' | 'clear' | 'break'`) on tile `(q, r)` (`UO-TF-05`, §4.5).
- */
+/** {@link evaluateTerraformTile} on authoritative state. */
 export function canRunTerraformOpOnTile(
   state: SimState,
   colonyId: number,
   op: TerraformOpKind,
   q: number,
   r: number,
-  opts?: { allowUnclaimed?: boolean },
+  opts?: { allowUnclaimed?: boolean; data?: CompiledDataLike },
 ): { ok: boolean; reason?: RejectCode } {
-  if (!isTerraformOpKind(op) || !Number.isInteger(q) || !Number.isInteger(r)) {
-    return { ok: false, reason: 'invalid_args' };
-  }
-  const tileIdx = hexIndex(state.grid.radius).indexOf(q, r);
-  if (tileIdx < 0 || !isValidTileIndex(state.grid, tileIdx)) {
-    return { ok: false, reason: 'invalid_args' };
-  }
-
-  const owner = state.grid.layers.owner[tileIdx];
-  if (owner >= 0 && owner !== colonyId) {
-    return { ok: false, reason: 'not_own_territory' };
-  }
-  if (owner === -1 && !opts?.allowUnclaimed && hasColonyClaimedTerritory(state, colonyId)) {
-    return { ok: false, reason: 'not_own_territory' };
-  }
-
-  const terrain = state.grid.layers.terrain[tileIdx];
-  const prep = state.grid.layers.prep[tileIdx];
-  if (op === 'grade') {
-    if (
-      terrain !== TERRAIN.flat ||
-      prep === PREP.prepared ||
-      prep === PREP.living ||
-      prep === PREP.ridge ||
-      prep === PREP.moat
-    ) {
-      return { ok: false, reason: 'site_blocked' };
-    }
-    return { ok: true };
-  }
-  if (op === 'clear') {
-    return terrain === TERRAIN.forest ? { ok: true } : { ok: false, reason: 'site_blocked' };
-  }
-  if (op === 'break') {
-    return terrain === TERRAIN.rock ? { ok: true } : { ok: false, reason: 'site_blocked' };
-  }
-  return { ok: false, reason: 'invalid_args' };
-}
-
-/**
- * Resolves which S0 terraform operation (`'grade' | 'clear' | 'break'`) is needed for tile `(q, r)`,
- * or returns `{ ok: false, reason }` if no S0 op is valid on that tile.
- */
-export function resolveTerraformOpForTile(
-  state: SimState,
-  colonyId: number,
-  q: number,
-  r: number,
-  opts?: { allowUnclaimed?: boolean },
-): { ok: true; op: TerraformOpKind } | { ok: false; reason: RejectCode } {
-  if (!Number.isInteger(q) || !Number.isInteger(r)) {
-    return { ok: false, reason: 'invalid_args' };
-  }
-  const tileIdx = hexIndex(state.grid.radius).indexOf(q, r);
-  if (tileIdx < 0 || !isValidTileIndex(state.grid, tileIdx)) {
-    return { ok: false, reason: 'invalid_args' };
-  }
-  const terrain = state.grid.layers.terrain[tileIdx];
-  const candidateOp: TerraformOpKind | null =
-    terrain === TERRAIN.flat
-      ? 'grade'
-      : terrain === TERRAIN.forest
-        ? 'clear'
-        : terrain === TERRAIN.rock
-          ? 'break'
-          : null;
-  if (!candidateOp) {
-    return { ok: false, reason: 'site_blocked' };
-  }
-  const check = canRunTerraformOpOnTile(state, colonyId, candidateOp, q, r, opts);
-  if (!check.ok) {
-    return { ok: false, reason: check.reason ?? 'site_blocked' };
-  }
-  return { ok: true, op: candidateOp };
-}
-
-export function readOrdersByColony(state: PlanetState): Record<number, TerraformOrder[]> {
-  const blob = state.blobs.terraformTasks;
-  if (!blob) return {};
-  const val = (blob.value ?? blob) as Partial<TerraformTasksBlobValue>;
-  const out: Record<number, TerraformOrder[]> = {};
-  if (val.byColony && typeof val.byColony === 'object') {
-    for (const [k, list] of Object.entries(val.byColony)) {
-      const colIdx = Number(k);
-      if (Number.isInteger(colIdx) && Array.isArray(list)) {
-        out[colIdx] = list.map((o) => ({ ...o, jobs: o.jobs.map((j) => ({ ...j })) }));
-      }
-    }
-    return out;
-  }
-  if (Array.isArray(val.orders)) {
-    for (const order of val.orders) {
-      const list = out[order.colonyId] ?? (out[order.colonyId] = []);
-      list.push({ ...order, jobs: order.jobs.map((j) => ({ ...j })) });
-    }
-  }
-  return out;
-}
-
-export function writeOrdersByColony(
-  state: PlanetState,
-  byColony: Record<number, TerraformOrder[]>,
-  tick: number,
-): void {
-  const cleanByColony: Record<number, TerraformOrder[]> = {};
-  const allOrders: TerraformOrder[] = [];
-  for (const [k, list] of Object.entries(byColony)) {
-    const colIdx = Number(k);
-    const nonEmpty = list.filter((o) => o.jobs.length > 0);
-    if (nonEmpty.length > 0) {
-      cleanByColony[colIdx] = nonEmpty;
-      allOrders.push(...nonEmpty);
-    }
-  }
-  const value: TerraformTasksBlobValue = {
-    orders: allOrders,
-    byColony: cleanByColony,
-    ...cleanByColony,
-  };
-  state.blobs.terraformTasks = {
-    changedAt: tick,
-    value,
-    ...value,
-  } as unknown as PlanetState['blobs'][string];
-}
-
-export function findColonyHqSlot(state: PlanetState, colonyId: number): number {
-  const e = state.entities;
-  const cols = e.cols;
-  for (let row = 0; row < e.count; row++) {
-    if (cols.kind[row] !== ENTITY_KIND.hq) continue;
-    if (cols.owner[row] !== colonyId) continue;
-    if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
-    return row;
-  }
-  return -1;
-}
-
-/** Returns the queued terraform orders for `colonyId`. */
-export function getColonyTerraformOrders(state: SimState, colonyId: number): TerraformOrder[] {
-  return readOrdersByColony(state)[colonyId] ?? [];
-}
-
-/** Returns the count of manual (non-linked-prep) terraform orders in `colonyId`'s Terraform lane (`UO-TF-03`). */
-export function getManualTerraformLaneCount(state: SimState, colonyId: number): number {
-  return getColonyTerraformOrders(state, colonyId).filter(
-    (o) => !o.isLinkedPrep && o.countsTowardLaneLimit !== false,
-  ).length;
+  return evaluateTerraformTile(terraformWorldFromState(state, colonyId, opts?.data), colonyId, op, q, r, opts);
 }
 
 export interface EnqueueTerraformOrderOpts {
   colonyId: number;
   op?: TerraformOpKind | 'auto';
+  /** Each tile gets the op its terrain needs (also implied by `op: 'auto'`). */
   autoPrepare?: boolean;
-  tiles?: ReadonlyArray<{ q: number; r: number; op?: TerraformOpKind }>;
-  jobs?: ReadonlyArray<{ q: number; r: number; op: TerraformOpKind; baseTimeS?: number; totalEnergyE?: number }>;
+  tiles?: ReadonlyArray<{ q: number; r: number }>;
+  /** Pre-planned jobs (a Hub's linked prep): queued as given, re-checked when worked. */
+  jobs?: ReadonlyArray<{ q: number; r: number; op: TerraformOpKind }>;
+  /** The order id when the caller makes it (linked prep: `<constructionOrderId>/prep`); else the sim makes one. */
   orderId?: string;
+  /** The client's id for the order (its command id). */
   taskId?: string;
-  linkedBuildingId?: number | string;
   linkedOrderId?: string;
   linkedBuildingEntityId?: number;
   isLinkedPrep?: boolean;
-  countsTowardLaneLimit?: boolean;
   allowUnclaimed?: boolean;
   tick?: number;
   data?: CompiledDataLike;
@@ -274,179 +68,110 @@ export interface EnqueueTerraformOrderResult {
   skippedCount: number;
 }
 
-function buildJobsFromTiles(
-  state: SimState,
-  opts: EnqueueTerraformOrderOpts,
-): { jobs: TerraformJob[]; skippedCount: number; firstReject?: RejectCode; invalidArgs?: boolean } {
-  const jobs: TerraformJob[] = [];
-  let skippedCount = 0;
-  let firstReject: RejectCode | undefined;
-  const colonyId = opts.colonyId;
-  const defaultOp = opts.op;
-  const useAuto = Boolean(opts.autoPrepare) || defaultOp === 'auto';
+const newJob = (q: number, r: number, op: TerraformOpKind, data?: CompiledDataLike): TerraformJob => {
+  const spec = getTerraformOpSpec(op, data);
+  return { q, r, op, progress: 0, baseTimeS: spec.baseTimeS, totalEnergyE: spec.energyCostE, energyDrawnE: 0 };
+};
 
-  for (const tile of opts.tiles ?? []) {
-    let tileOp: TerraformOpKind | undefined = tile.op;
-    if (!tileOp) {
-      if (useAuto) {
-        const resolved = resolveTerraformOpForTile(state, colonyId, tile.q, tile.r, {
-          allowUnclaimed: opts.allowUnclaimed,
-        });
-        if (!resolved.ok) {
-          skippedCount++;
-          if (!firstReject) firstReject = resolved.reason ?? 'site_blocked';
-          continue;
-        }
-        tileOp = resolved.op;
-      } else if (defaultOp && isTerraformOpKind(defaultOp)) {
-        tileOp = defaultOp;
-      }
-    }
-    if (!tileOp || !isTerraformOpKind(tileOp)) {
-      return { jobs, skippedCount, invalidArgs: true };
-    }
-    const check = canRunTerraformOpOnTile(state, colonyId, tileOp, tile.q, tile.r, {
-      allowUnclaimed: opts.allowUnclaimed,
-    });
-    if (!check.ok) {
-      skippedCount++;
-      if (!firstReject) firstReject = check.reason ?? 'site_blocked';
-      continue;
-    }
-    const spec = getTerraformOpSpec(tileOp, opts.data);
-    jobs.push({
-      q: tile.q,
-      r: tile.r,
-      op: tileOp,
-      progress: 0,
-      baseTimeS: spec.baseTimeS,
-      totalEnergyE: spec.energyCostE,
-      energyDrawnE: 0,
-    });
-  }
-  return { jobs, skippedCount, firstReject };
+/** Every `op:q,r` the colony already has queued (a tile is never queued twice for one op, GP-01). */
+function pendingJobKeys(state: PlanetState, colonyId: number): Set<string> {
+  const out = new Set<string>();
+  for (const o of colonyTerraformOrders(state, colonyId)) for (const j of o.jobs) out.add(terraformJobKey(j.op, j.q, j.r));
+  return out;
 }
 
-/** Enqueues a single-tile, brush, or linked multi-step terraform order for `opts.colonyId`. */
-export function enqueueTerraformOrder(
-  state: SimState,
-  opts: EnqueueTerraformOrderOpts,
-): EnqueueTerraformOrderResult {
+/** The manual-order lane limits (`hq.t1.terraformMaxOrders`, `terraformMaxJobs`, GP-02): a reject code or null. */
+function laneFull(state: PlanetState, colonyId: number, newJobs: number, data?: CompiledDataLike): RejectCode | null {
+  const hq = resolveHqT1Row(data);
+  if (getManualTerraformLaneCount(state, colonyId) >= rowNum(hq, 'terraformMaxOrders')) return 'queue_full';
+  return getColonyTerraformJobCount(state, colonyId) + newJobs > rowNum(hq, 'terraformMaxJobs') ? 'queue_full' : null;
+}
+
+function planJobs(state: SimState, opts: EnqueueTerraformOrderOpts): { jobs: TerraformJob[]; skippedCount: number; reject?: RejectCode } {
+  if (Array.isArray(opts.jobs) && opts.jobs.length > 0) {
+    if (opts.jobs.some((j) => !isTerraformOpKind(j.op))) return { jobs: [], skippedCount: 0, reject: 'invalid_args' };
+    return { jobs: opts.jobs.map((j) => newJob(j.q, j.r, j.op, opts.data)), skippedCount: 0 };
+  }
+  const auto = Boolean(opts.autoPrepare) || opts.op === 'auto';
+  if (!Array.isArray(opts.tiles) || opts.tiles.length === 0 || (!auto && !isTerraformOpKind(opts.op))) {
+    return { jobs: [], skippedCount: 0, reject: 'invalid_args' };
+  }
+  const plan = evaluateTerraform(terraformWorldFromState(state, opts.colonyId, opts.data), {
+    colonyId: opts.colonyId,
+    op: isTerraformOpKind(opts.op) ? opts.op : 'grade',
+    tiles: opts.tiles,
+    auto,
+    allowUnclaimed: opts.allowUnclaimed,
+    pending: pendingJobKeys(state, opts.colonyId),
+    data: opts.data,
+  });
+  const jobs = plan.jobs.map((j) => newJob(j.q, j.r, j.op, opts.data));
+  return { jobs, skippedCount: plan.skipped.length, ...(jobs.length === 0 ? { reject: plan.firstReject ?? 'site_blocked' } : {}) };
+}
+
+/** Enqueues a single-tile, brush, or linked terraform order for `opts.colonyId`. */
+export function enqueueTerraformOrder(state: SimState, opts: EnqueueTerraformOrderOpts): EnqueueTerraformOrderResult {
   const tick = opts.tick ?? state.meta.tick;
   const colonyId = opts.colonyId;
-  const jobs: TerraformJob[] = [];
-  let skippedCount = 0;
-  let firstReject: RejectCode | undefined;
-
-  if (Array.isArray(opts.jobs) && opts.jobs.length > 0) {
-    for (const item of opts.jobs) {
-      if (!isTerraformOpKind(item.op)) {
-        return { ok: false, reason: 'invalid_args', skippedCount };
-      }
-      const spec = getTerraformOpSpec(item.op, opts.data);
-      jobs.push({
-        q: item.q,
-        r: item.r,
-        op: item.op,
-        progress: 0,
-        baseTimeS: item.baseTimeS ?? spec.baseTimeS,
-        totalEnergyE: item.totalEnergyE ?? spec.energyCostE,
-        energyDrawnE: 0,
-      });
-    }
-  } else if (Array.isArray(opts.tiles) && opts.tiles.length > 0) {
-    const built = buildJobsFromTiles(state, opts);
-    if (built.invalidArgs) {
-      return { ok: false, reason: 'invalid_args', skippedCount: built.skippedCount };
-    }
-    jobs.push(...built.jobs);
-    skippedCount = built.skippedCount;
-    firstReject = built.firstReject;
-  } else {
-    return { ok: false, reason: 'invalid_args', skippedCount: 0 };
-  }
-
-  if (jobs.length === 0) {
-    return { ok: false, reason: firstReject ?? 'site_blocked', skippedCount };
-  }
-
-  const byColony = readOrdersByColony(state);
-  const existing = byColony[colonyId] ?? [];
-  const resolvedId = opts.orderId ?? opts.taskId ?? `tf_${colonyId}_${tick}_${existing.length + 1}`;
-  const orderOp: TerraformOpKind = isTerraformOpKind(opts.op) ? opts.op : jobs[0].op;
+  const planned = planJobs(state, opts);
+  if (planned.reject) return { ok: false, reason: planned.reject, skippedCount: planned.skippedCount };
   const isLinkedPrep = Boolean(opts.isLinkedPrep);
-  const countsTowardLaneLimit = opts.countsTowardLaneLimit ?? !isLinkedPrep;
-  const linkedBuildingEntityId =
-    opts.linkedBuildingEntityId ??
-    (typeof opts.linkedBuildingId === 'number' ? opts.linkedBuildingId : undefined);
-  const linkedBuildingId = opts.linkedBuildingId ?? linkedBuildingEntityId;
+  if (!isLinkedPrep) {
+    const full = laneFull(state, colonyId, planned.jobs.length, opts.data);
+    if (full) return { ok: false, reason: full, skippedCount: planned.skippedCount };
+  }
+  const orderId = opts.orderId ?? nextOrderId(state, 'tf#', tick);
   const order: TerraformOrder = {
-    orderId: resolvedId,
-    taskId: resolvedId,
+    orderId,
+    taskId: opts.taskId ?? orderId,
     colonyId,
-    op: orderOp,
-    jobs,
-    skippedCount,
-    totalJobs: jobs.length,
+    op: isTerraformOpKind(opts.op) ? opts.op : planned.jobs[0].op,
+    jobs: planned.jobs,
+    skippedCount: planned.skippedCount,
+    totalJobs: planned.jobs.length,
     completedJobs: 0,
     isLinkedPrep,
-    countsTowardLaneLimit,
     ...(opts.linkedOrderId !== undefined ? { linkedOrderId: opts.linkedOrderId } : {}),
-    ...(linkedBuildingId !== undefined ? { linkedBuildingId } : {}),
-    ...(linkedBuildingEntityId !== undefined ? { linkedBuildingEntityId } : {}),
+    ...(opts.linkedBuildingEntityId !== undefined ? { linkedBuildingEntityId: opts.linkedBuildingEntityId } : {}),
     ...(opts.allowUnclaimed ? { allowUnclaimed: true } : {}),
   };
-  byColony[colonyId] = [...existing, order];
+  const byColony = readOrdersByColony(state);
+  byColony[colonyId] = [...(byColony[colonyId] ?? []), order];
   writeOrdersByColony(state, byColony, tick);
-
-  const hqSlot = findColonyHqSlot(state, colonyId);
-  if (hqSlot >= 0) {
-    syncHqView(state, hqSlot, tick, opts.data);
-  }
-  return { ok: true, order, skippedCount };
+  const hqRow = findColonyHqRow(state, colonyId);
+  if (hqRow >= 0) syncHqView(state, hqRow, tick, opts.data);
+  return { ok: true, order, skippedCount: planned.skippedCount };
 }
 
-/** Cancels a queued or active terraform order for `colonyId` and resets HQ state if idle. */
-export function cancelTerraformOrder(
-  state: SimState,
-  colonyId: number,
-  orderId?: string | number,
-  tick: number = state.meta.tick,
-  data?: CompiledDataLike,
-): boolean {
+/** The colony's terraform order named `id` (its order id, else the client's task id), or undefined. */
+export function findTerraformOrder(state: PlanetState, colonyId: number, id: string): TerraformOrder | undefined {
+  const list = colonyTerraformOrders(state, colonyId);
+  return list.find((o) => o.orderId === id) ?? list.find((o) => o.taskId === id);
+}
+
+/**
+ * Removes the colony's terraform order `orderId` (any kind, linked prep included: construction cancels its prep
+ * through this). A unit working on it notices in its next step and goes idle (the units runner owns unit state,
+ * GP-16). Returns whether an order was removed.
+ */
+export function removeTerraformOrder(state: SimState, colonyId: number, orderId: string, tick: number = state.meta.tick, data?: CompiledDataLike): boolean {
   const byColony = readOrdersByColony(state);
-  const list = byColony[colonyId];
-  if (!list || list.length === 0) return false;
-
-  let removeIdx: number;
-  if (orderId === undefined || orderId === '' || orderId === 'current' || orderId === 'active') {
-    removeIdx = 0;
-  } else {
-    const target = String(orderId);
-    removeIdx = list.findIndex(
-      (o) =>
-        o.orderId === target ||
-        o.taskId === target ||
-        (o.linkedOrderId !== undefined && o.linkedOrderId === target) ||
-        (o.linkedBuildingId !== undefined && String(o.linkedBuildingId) === target) ||
-        (o.linkedBuildingEntityId !== undefined && String(o.linkedBuildingEntityId) === target),
-    );
-  }
-  if (removeIdx < 0) return false;
-
-  list.splice(removeIdx, 1);
-  byColony[colonyId] = list;
+  const list = byColony[colonyId] ?? [];
+  const at = list.findIndex((o) => o.orderId === orderId);
+  if (at < 0) return false;
+  list.splice(at, 1);
   writeOrdersByColony(state, byColony, tick);
-
-  const hqSlot = findColonyHqSlot(state, colonyId);
-  if (hqSlot >= 0) {
-    if (removeIdx === 0 || list.length === 0) {
-      if (state.entities.cols.state[hqSlot] === ENTITY_STATE.working) {
-        setField(state.entities, hqSlot, 'state', ENTITY_STATE.idle, tick);
-      }
-      setField(state.entities, hqSlot, 'progress', 0, tick);
-    }
-    syncHqView(state, hqSlot, tick, data);
-  }
+  const hqRow = findColonyHqRow(state, colonyId);
+  if (hqRow >= 0) syncHqView(state, hqRow, tick, data);
   return true;
+}
+
+/**
+ * Cancels the colony's manual terraform order `id` (order id or task id; `'active'` = its first manual order). A Hub's
+ * linked prep is never cancelled on its own (cancel the construction order). Returns whether an order was removed.
+ */
+export function cancelTerraformOrder(state: SimState, colonyId: number, id: string, tick: number = state.meta.tick, data?: CompiledDataLike): boolean {
+  const order = id === 'active' ? colonyTerraformOrders(state, colonyId).find((o) => !o.isLinkedPrep) : findTerraformOrder(state, colonyId, id);
+  if (!order || order.isLinkedPrep) return false;
+  return removeTerraformOrder(state, colonyId, order.orderId, tick, data);
 }

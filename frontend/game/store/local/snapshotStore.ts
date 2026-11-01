@@ -63,8 +63,8 @@ export function idbSnapshotStore(factory: IDBFactory = indexedDB): SnapshotStore
   const run = async <T>(mode: IDBTransactionMode, f: (s: IDBObjectStore) => IDBRequest<T>): Promise<T> => {
     const tx = (await open()).transaction(STORE, mode);
     const done = new Promise<void>((ok, fail) => { tx.oncomplete = () => ok(); tx.onerror = () => fail(tx.error ?? new Error('indexedDB tx failed')); tx.onabort = () => fail(tx.error ?? new Error('indexedDB tx aborted')); });
-    const r = await asPromise(f(tx.objectStore(STORE)));
-    await done;
+    // both are awaited together: a failed request also fails the transaction, and that rejection must be observed too
+    const [r] = await Promise.all([asPromise(f(tx.objectStore(STORE))), done]);
     return r;
   };
   return {

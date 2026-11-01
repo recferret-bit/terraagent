@@ -17,6 +17,8 @@ import {
   recordLanding,
   registerPresenceRole,
   restore,
+  rowOf,
+  setField,
   snapshot,
   spawnHqUnit,
   TERRAIN,
@@ -60,6 +62,22 @@ describe('planet presence (D-39)', () => {
     s.entities.cols.q[row] = 20; s.entities.cols.changedAt[row] = 5;
     expect(entitiesNear(s, 0, 0, 1)).toEqual([]);
     expect(entitiesNear(s, 20, 0, 1).map((e) => e.id)).toEqual([id]);
+  });
+
+  it('sees changes made in the same tick as the newest stamp (WE-22): a death and a move at tick 10', () => {
+    const s = planet();
+    s.meta.tick = 10;
+    const hq = spawnHqUnit(s, { owner: 0, q: 3, r: 0, tick: 10 });
+    const f = addFauna(s, 6, 0);
+    const fRow = s.entities.count - 1;
+    s.entities.cols.changedAt[fRow] = 10;
+    expect(entitiesNear(s, 4, 0, 3).map((e) => e.id)).toEqual([hq, f].sort((a, b) => a - b));
+    expect(colonyPresence(s)[0].hq?.id).toBe(hq);
+    setField(s.entities, rowOf(s.entities, hq), 'hp', 0, 10);
+    setField(s.entities, fRow, 'q', 30, 10);
+    expect(entitiesNear(s, 4, 0, 3)).toEqual([]);
+    expect(colonyPresence(s)[0]?.hq).toBeUndefined();
+    expect(entitiesNear(s, 30, 0, 1).map((e) => e.id)).toEqual([f]);
   });
 
   it('presenceView is plain data and survives snapshot/restore (landing history is state)', () => {

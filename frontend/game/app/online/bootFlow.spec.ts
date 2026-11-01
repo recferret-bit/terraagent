@@ -1,133 +1,32 @@
+// @vitest-environment jsdom
 import * as THREE from 'three';
-import { describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { decodeWire, encodeWire, flagsFromList } from '@terra/contracts';
-import { compileData, createPlanet, ENTITY_KIND, ENTITY_STATE, SIM_VERSION, SimHost, spawnColonyLanding } from '@terra/sim';
+import { compileData, createPlanet, ENTITY_KIND, SIM_VERSION, SimHost, spawnColonyLanding } from '@terra/sim';
 import type { SocketLike, WsTransportDeps } from '../../net/WsTransport';
-import { DEVICE_SECRET_KEY, bootAuthAndHome, extractPodDescentStatus, type FetchLike, type StorageLike } from './bootOnline';
+import { DEVICE_SECRET_KEY, bootAuthAndHome, type FetchLike, type StorageLike } from './bootOnline';
+import { activeHome, TEST_COLONY_ID } from './homeFixture';
+import { extractPodDescentStatus } from './podStatus';
 import { onlineMode } from './onlineMode';
 import { OnlineSession } from './OnlineSession';
 
 const TEST_PLAYER_ID = 'pr_01ARZ3NDEKTSV4RRFFQ69G5FAV';
 
-class FakeElement {
-  tagName: string;
-  className = '';
-  textContent = '';
-  hidden = false;
-  type = '';
-  title = '';
-  dataset: Record<string, string> = {};
-  style: Record<string, string> = {};
-  children: FakeElement[] = [];
-  parentElement: FakeElement | null = null;
-  onclick: (() => void) | null = null;
-  private attrs = new Map<string, string>();
-  private listeners = new Map<string, Set<(e: unknown) => void>>();
-
-  constructor(tag: string) {
-    this.tagName = tag.toUpperCase();
-  }
-
-  appendChild<T extends FakeElement>(child: T): T {
-    child.remove();
-    child.parentElement = this;
-    this.children.push(child);
-    return child;
-  }
-
-  append(...nodes: Array<FakeElement | string>): void {
-    for (const n of nodes) {
-      if (typeof n === 'string') {
-        const span = new FakeElement('#text');
-        span.textContent = n;
-        this.appendChild(span);
-      } else {
-        this.appendChild(n);
-      }
-    }
-  }
-
-  replaceChildren(...nodes: Array<FakeElement | string>): void {
-    for (const c of [...this.children]) c.parentElement = null;
-    this.children = [];
-    this.append(...nodes);
-  }
-
-  remove(): void {
-    if (!this.parentElement) return;
-    const idx = this.parentElement.children.indexOf(this);
-    if (idx >= 0) this.parentElement.children.splice(idx, 1);
-    this.parentElement = null;
-  }
-
-  setAttribute(k: string, v: string): void {
-    this.attrs.set(k, v);
-    if (k.startsWith('data-')) {
-      const camel = k
-        .slice(5)
-        .replace(/-([a-z])/g, (_, ch: string) => ch.toUpperCase());
-      this.dataset[camel] = v;
-      this.dataset[k.slice(5)] = v;
-    }
-  }
-
-  getAttribute(k: string): string | null {
-    if (k.startsWith('data-') && this.dataset[k.slice(5)] !== undefined) return this.dataset[k.slice(5)];
-    return this.attrs.get(k) ?? null;
-  }
-
-  addEventListener(type: string, fn: (e: unknown) => void): void {
-    let set = this.listeners.get(type);
-    if (!set) {
-      set = new Set();
-      this.listeners.set(type, set);
-    }
-    set.add(fn);
-  }
-
-  removeEventListener(type: string, fn: (e: unknown) => void): void {
-    this.listeners.get(type)?.delete(fn);
-  }
-
-  getBoundingClientRect(): { left: number; top: number; width: number; height: number } {
-    return { left: 0, top: 0, width: 1280, height: 720 };
-  }
-
-  matches(selector: string): boolean {
-    const testIdMatch = /^\[data-testid=["']?([^"'[\]]+)["']?\]$/.exec(selector.trim());
-    if (testIdMatch) return this.dataset.testid === testIdMatch[1];
-    const slotMatch = /^\[data-slot=["']?([^"'[\]]+)["']?\]$/.exec(selector.trim());
-    if (slotMatch) return this.dataset.slot === slotMatch[1];
-    if (selector.startsWith('.')) return this.className.split(/\s+/).includes(selector.slice(1));
-    return this.tagName.toLowerCase() === selector.toLowerCase();
-  }
-
-  querySelector(selector: string): FakeElement | null {
-    for (const c of this.children) {
-      if (c.matches(selector)) return c;
-      const found = c.querySelector(selector);
-      if (found) return found;
-    }
-    return null;
-  }
+/** A fresh jsdom page: the session's root `app` inside `body` (the overlays mount on `body`). */
+function setupDom(): { body: HTMLElement; app: HTMLElement } {
+  const app = document.createElement('div');
+  document.body.replaceChildren(app);
+  return { body: document.body, app };
 }
 
-function setupFakeDom(): { body: FakeElement; app: FakeElement } {
-  const body = new FakeElement('body');
-  const app = new FakeElement('div');
-  body.appendChild(app);
-  (globalThis as unknown as { document: unknown }).document = {
-    body,
-    documentElement: body,
-    cookie: '',
-    createElement: (tag: string) => new FakeElement(tag),
-  };
-  (globalThis as unknown as { window: unknown }).window = {
-    addEventListener: () => {},
-    removeEventListener: () => {},
-  };
-  return { body, app };
-}
+beforeAll(() => {
+  // jsdom has no canvas backend: the viewport and the touchdown dust ask for contexts; null keeps them off without noise
+  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+  // no frame loop: these specs drive the sim, not the seconds-long touchdown animation (PodTouchdownFx then shows the
+  // HQ as soon as the sim lands it)
+  vi.stubGlobal('requestAnimationFrame', undefined);
+});
+afterAll(() => { vi.unstubAllGlobals(); });
 
 function createMemoryStorage(initial: Record<string, string> = {}): StorageLike & { store: Map<string, string> } {
   const store = new Map<string, string>(Object.entries(initial));
@@ -180,40 +79,14 @@ function createMockAuthFetch(accessToken: string, expectedSecret?: string): {
         },
       };
     }
-    if (url === '/v1/me/home') {
+    if (url.split('?')[0] === '/v1/me/home') { // `?type=` from the orbit pick
       const headers = (init?.headers ?? {}) as Record<string, string>;
       expect(headers.Authorization).toBe(`Bearer ${accessToken}`);
       return {
         ok: true,
         status: 200,
         async json() {
-          return {
-            state: 'ACTIVE',
-            colony: {
-              id: 'col_fresh_01',
-              playerId: TEST_PLAYER_ID,
-              planetId: 'pl_dev',
-              colonyIndex: 0,
-              name: "Colonist-0001's Colony",
-              color: 0,
-              state: 'ACTIVE',
-              status: 'ACTIVE',
-              spawnQ: 4,
-              spawnR: -2,
-            },
-            planet: {
-              id: 'pl_dev',
-              name: 'Dev Planet',
-              type: 'temperate',
-              seed: 'golden-1',
-              radius: 16,
-              state: 'ACTIVE',
-              status: 'ACTIVE',
-              capacity: 5,
-              seatsTaken: 1,
-              seats: { taken: 1, capacity: 5 },
-            },
-          };
+          return activeHome({ type: 'temperate', radius: 16 });
         },
       };
     }
@@ -227,7 +100,7 @@ function createServerSimWithColony(initialSteps = 0): { serverSim: SimHost; podE
   const planetState = createPlanet({ id: 'pl_dev', type: 'temperate', seed: 'golden-1', radius: 16 });
   const landed = spawnColonyLanding(planetState, {
     colonyId: 0,
-    colonyIdStr: 'col_fresh_01',
+    colonyIdStr: TEST_COLONY_ID,
     name: "Colonist-0001's Colony",
     q: 4,
     r: -2,
@@ -267,6 +140,9 @@ function createMockWsHarness(serverSim: SimHost): {
                 }),
               });
             });
+          } else if (msg.t === 'cmd') {
+            const d = msg.d as { kind: string; args: unknown };
+            serverSim.submit({ colonyIndex: 0, source: 'player', commandId: (msg as unknown as { id: string }).id, kind: d.kind, args: d.args });
           } else if (msg.t === 'join') {
             queueMicrotask(() => {
               sock.onmessage?.({
@@ -275,7 +151,7 @@ function createMockWsHarness(serverSim: SimHost): {
                   t: 'welcome',
                   d: {
                     reason: 'join',
-                    colonyId: 'col_fresh_01',
+                    colonyId: TEST_COLONY_ID,
                     planet: { id: 'pl_dev', type: 'temperate', name: 'Dev Planet' },
                     state: serverSim.snapshot(),
                     simVersion: SIM_VERSION,
@@ -317,7 +193,7 @@ function createMockWsHarness(serverSim: SimHost): {
 
 describe('W01-38: /play.html fresh profile boot flow & conditional descent', () => {
   it('1. fresh profile calls POST /v1/auth/guest and GET /v1/me/home, shows "Contacting orbit…" splash, joins pl_dev, shows descent while pod descends, and transitions to colony view when HQ lands with zero clicks', async () => {
-    const { body, app } = setupFakeDom();
+    const { body, app } = setupDom();
     const storage = createMemoryStorage();
     expect(storage.getItem(DEVICE_SECRET_KEY)).toBeNull();
 
@@ -325,8 +201,8 @@ describe('W01-38: /play.html fresh profile boot flow & conditional descent', () 
     const { serverSim, podEntityId } = createServerSimWithColony(0);
     const { wsDeps, wsFramesSent, stepServer } = createMockWsHarness(serverSim);
 
-    const session = new OnlineSession(app as unknown as HTMLElement, 'boot', {
-      uiParent: body as unknown as HTMLElement,
+    const session = new OnlineSession(app, 'boot', {
+      uiParent: body,
       fetch: mockFetch,
       storage,
       search: '',
@@ -334,10 +210,10 @@ describe('W01-38: /play.html fresh profile boot flow & conditional descent', () 
       wsDeps,
     });
 
-    const splashEl = body.querySelector('[data-testid="orbital-splash"]')!;
-    const splashStatusEl = body.querySelector('[data-testid="orbital-splash-status"]')!;
-    const descentEl = body.querySelector('[data-testid="descent-phase"]')!;
-    const colonyEl = body.querySelector('[data-testid="colony-view"]')!;
+    const splashEl = body.querySelector<HTMLElement>('[data-testid="orbital-splash"]')!;
+    const splashStatusEl = body.querySelector<HTMLElement>('[data-testid="orbital-splash-status"]')!;
+    const descentEl = body.querySelector<HTMLElement>('[data-testid="descent-phase"]')!;
+    const colonyEl = body.querySelector<HTMLElement>('[data-testid="colony-view"]')!;
 
     expect(splashEl.hidden).toBe(false);
     expect(splashStatusEl.textContent).toBe('Contacting orbit…');
@@ -377,7 +253,7 @@ describe('W01-38: /play.html fresh profile boot flow & conditional descent', () 
 
 describe('W01-38: returning profile & local fallback', () => {
   it('2. re-opening when HQ has already landed skips descent and goes straight to the colony view on pl_dev', async () => {
-    const { body, app } = setupFakeDom();
+    const { body, app } = setupDom();
     const existingSecret = '0123456789abcdef0123456789abcdef';
     const storage = createMemoryStorage({ [DEVICE_SECRET_KEY]: existingSecret });
 
@@ -388,8 +264,8 @@ describe('W01-38: returning profile & local fallback', () => {
     expect(statusBefore.hqLanded).toBe(true);
 
     const { wsDeps } = createMockWsHarness(serverSim);
-    const session = new OnlineSession(app as unknown as HTMLElement, 'boot', {
-      uiParent: body as unknown as HTMLElement,
+    const session = new OnlineSession(app, 'boot', {
+      uiParent: body,
       fetch: mockFetch,
       storage,
       search: '',
@@ -400,9 +276,9 @@ describe('W01-38: returning profile & local fallback', () => {
     await session.whenBooted;
     await flush(6);
 
-    const splashEl = body.querySelector('[data-testid="orbital-splash"]')!;
-    const descentEl = body.querySelector('[data-testid="descent-phase"]')!;
-    const colonyEl = body.querySelector('[data-testid="colony-view"]')!;
+    const splashEl = body.querySelector<HTMLElement>('[data-testid="orbital-splash"]')!;
+    const descentEl = body.querySelector<HTMLElement>('[data-testid="descent-phase"]')!;
+    const colonyEl = body.querySelector<HTMLElement>('[data-testid="colony-view"]')!;
 
     expect(session.bootOverlay?.descentShownCount).toBe(0);
     expect(session.bootPhase).toBe('colony');
@@ -461,15 +337,15 @@ describe('W01-38: returning profile & local fallback', () => {
 
 describe('W01-38: 3D pod descent handoff & return to orbit', () => {
   it('4. hand-off from 3D pod descent (skipDescent: true, planetKind) starts immediately in colony view and returnToOrbit restores planetKind', async () => {
-    const { body, app } = setupFakeDom();
+    const { body, app } = setupDom();
     const storage = createMemoryStorage();
     const { fetch: mockFetch } = createMockAuthFetch('jwt_handoff_token');
     const { serverSim } = createServerSimWithColony(0);
-    const { wsDeps } = createMockWsHarness(serverSim);
+    const { wsDeps, wsFramesSent, stepServer } = createMockWsHarness(serverSim);
     let returnedKind: string | null = null;
 
-    const session = new OnlineSession(app as unknown as HTMLElement, 'boot', {
-      uiParent: body as unknown as HTMLElement,
+    const session = new OnlineSession(app, 'boot', {
+      uiParent: body,
       fetch: mockFetch,
       storage,
       search: '',
@@ -487,6 +363,10 @@ describe('W01-38: 3D pod descent handoff & return to orbit', () => {
 
     expect(session.bootPhase).toBe('colony');
     expect(session.planetKind).toBe('oceanForest');
+    // fast start (FA-08): the player command `landPod`, allowed in production, not the admin `dev.land`
+    expect(wsFramesSent.filter((m) => m.t === 'cmd').map((m) => m.d)).toEqual([{ kind: 'landPod', args: {} }]);
+    stepServer(25); // hq.startingKit.podLandMinS = 5 s: the pod opens then, before its 6 s descent ends
+    expect(extractPodDescentStatus(serverSim.view(), 0)).toMatchObject({ descending: false, hqLanded: true });
     session.returnToOrbit();
     expect(returnedKind).toBe('oceanForest');
 

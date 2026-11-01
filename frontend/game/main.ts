@@ -1,4 +1,5 @@
 import { initCrt } from '@terra/render/ui/crt';
+import { lazyStart } from './app/lazyStart';
 import { onlineMode, type OnlineMode } from './app/online/onlineMode';
 
 const app = document.getElementById('app')!;
@@ -20,27 +21,23 @@ if (import.meta.hot) {
 }
 
 function startOnline(el: HTMLElement, m: OnlineMode): () => void {
-  let session: { dispose(): void } | null = null;
-  void import('./app/online/OnlineSession').then(({ OnlineSession }) => {
+  return lazyStart(() => import('./app/online/OnlineSession'), ({ OnlineSession }) => {
     const s = new OnlineSession(el, m, {
       onReturnToOrbit: (kind) => {
         history.replaceState(null, '', `${location.pathname}?planet=${kind}`);
         mountFromCurrentUrl();
       },
     });
-    session = s;
     (window as unknown as { __online?: unknown; __game?: unknown }).__online = s;
     (window as unknown as { __online?: unknown; __game?: unknown }).__game = s;
+    return s;
   });
-  return () => session?.dispose();
 }
 
 function startPrototype(el: HTMLElement): () => void {
-  let game: { dispose(): void } | null = null;
-  void import('./app/Game').then(({ Game }) => {
+  return lazyStart(() => import('./app/Game'), ({ Game }) => {
     const g = new Game(el);
-    game = g;
     (window as unknown as { __game?: unknown }).__game = g;
+    return g;
   });
-  return () => game?.dispose();
 }

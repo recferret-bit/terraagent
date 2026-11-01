@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createApp } from '../../src/app';
 import { defineDevCommand, DevCommandRegistry } from '../../src/dev/dev-command.registry';
 
-const PROD = { NODE_ENV: 'production', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' };
+const PROD = { NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' };
 const echo = defineDevCommand({ name: 'test.echo', help: 'Echo n doubled', args: z.object({ n: z.number().int() }), run: ({ n }) => ({ doubled: n * 2 }) });
 
 const apps: INestApplication[] = [];
@@ -31,6 +31,16 @@ describe('dev module (development)', () => {
     expect(await ok.json()).toEqual({ doubled: 42 });
     expect((await post(url, 'test.echo', { n: 'x' })).status).toBe(400);
     expect((await post(url, 'nope', {})).status).toBe(404);
+  });
+
+  it('planet.wipe (LED-06): 409 for a loaded planet, wipes an unloaded one, 400 for a bad id', async () => {
+    const { url } = await boot({ NODE_ENV: 'test', GAME_DEV_PLANETS: '1' });
+    const [loaded] = ((await (await fetch(`${url}/v1/dev/planets`)).json()) as { planets: { id: string }[] }).planets;
+    const refused = await post(url, 'planet.wipe', { planetId: loaded!.id });
+    expect([refused.status, ((await refused.json()) as { errorCode: string }).errorCode]).toEqual([409, 'PLANET_LOADED']);
+    const ok = await post(url, 'planet.wipe', { planetId: 'pl_held_one' });
+    expect([ok.status, await ok.json()]).toEqual([200, { planetId: 'pl_held_one', wiped: true }]);
+    expect((await post(url, 'planet.wipe', { planetId: 'nope' })).status).toBe(400);
   });
 
   it('refuses a duplicate name', async () => {

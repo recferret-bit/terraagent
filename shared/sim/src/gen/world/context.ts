@@ -1,19 +1,13 @@
-import worldgenTable from '../../data/worldgen';
 import { axialToPlane, hexIndex, type HexIndex } from '../../grid/hex';
 import { sectorIndex, type SectorIndex } from '../../grid/sectors';
-import type { PlanetState, PlanetType } from '../../kernel/state';
+import type { PlanetState } from '../../kernel/state';
+import { profileNumber, worldProfile, type ProfileRow } from '../profile';
 import { seedOf } from './noise';
+
+export { worldProfile, type ProfileRow };
 
 /** Tile centre spacing in metres (CLIENT §8); relief noise is evaluated in metres. */
 export const TILE_M = 2;
-
-export type ProfileRow = Readonly<Record<string, unknown>> & { readonly id: string; readonly stages: readonly string[] };
-
-/** The world-generation profile row for `planetType` (`data/worldgen.ts`), temperate as fallback. */
-export function worldProfile(planetType: PlanetType): ProfileRow {
-  const rows = worldgenTable.rows as unknown as readonly ProfileRow[];
-  return rows.find((r) => r.id === planetType) ?? rows.find((r) => r.id === 'temperate')!;
-}
 
 /**
  * Everything a stage reads and writes: the planet state being built, cached grid / sector geometry, per-tile metre
@@ -30,7 +24,7 @@ export interface WorldGenContext {
   readonly mx: Float32Array;
   readonly my: Float32Array;
   readonly fields: Map<string, Float32Array>;
-  /** A number from the profile row (`fallback` when the row has none). */
+  /** A number from the profile row, else the `shared` row (`fallback` when neither has it). */
   num(field: string, fallback: number): number;
   /** Stable 32-bit seed for `(stage, sector?)`: independent of stage order and of other sectors. */
   seed(stage: string, sector?: number): number;
@@ -52,7 +46,7 @@ export function createContext(state: PlanetState, capacity: number): WorldGenCon
   const base = state.meta.seed;
   return {
     state, hex, sectors: sectorIndex(state.grid.radius), profile, capacity, mx, my, fields,
-    num: (f, fallback) => (typeof profile[f] === 'number' ? (profile[f] as number) : fallback),
+    num: (f, fallback) => profileNumber(profile, f, fallback),
     seed: (stage, sector) => seedOf(`${base}|gen:${stage}${sector === undefined ? '' : `:${sector}`}`),
     secretSeed: (stage, sector) => seedOf(`${base}|${state.meta.worldSalt ?? ''}|gen:${stage}${sector === undefined ? '' : `:${sector}`}`),
     field(name) {

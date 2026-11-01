@@ -37,14 +37,22 @@ export const overlapStage: CheckStage = (ctx) => {
   }
 };
 
+/** The foundation slab and what is mounted on it (by `role`, never by name or part order): not a cable anchor. */
 function isPlinthPart(Y: P, totalParts: number, minParts: number, grounded: boolean): boolean {
   if (!grounded || totalParts < minParts) return false;
-  return /plinth|foundation/i.test(Y.def.name) || (Y.def.index === 0 && Y.box[1] < -0.02);
+  return Y.def.role === 'plinth' || Y.def.role === 'plinthDetail';
+}
+
+/** Height a cable must stay above: the top of the `plinth` slab(s) of a grounded model, else the ground. */
+function floorY(P_: P[], grounded: boolean, minParts: number): number {
+  if (!grounded) return -Infinity;
+  if (P_.length < minParts) return 0;
+  return P_.reduce((y, p) => (p.def.role === 'plinth' ? Math.max(y, p.box[4]) : y), 0);
 }
 
 export const cableStage: CheckStage = (ctx) => {
   const { parts: P_, o, add, R } = ctx;
-  const plinthY = o.grounded ? (P_.length >= o.minParts && P_[0] && P_[0].box[1] < -0.02 ? P_[0].box[4] : 0) : -Infinity;
+  const plinthY = floorY(P_, o.grounded, o.minParts);
   for (const T of P_) {
     if (T.def.kind !== 'TubeGeometry') continue;
     const cap = Math.max(6, Math.floor(T.n * 0.14));
@@ -64,7 +72,7 @@ export const cableStage: CheckStage = (ctx) => {
       }
       if (mid >= 3) add('warn', 'CABLE_CLIPS', `${T.label} passes through ${Y.label} mid-span instead of ending on it.`, [T.def.index, Y.def.index], R(T.def.index, Y.def.index).at, 'Reduce the sag or re-route the cable so it clears the part, and let it end exactly on its two anchors.');
     }
-    if (/antenna|tendril|whip/i.test(T.def.name)) continue;
+    if (T.def.role === 'whip') continue; // a free end is the point of a whip or tendril
     if (!sA.length || !eA.length) {
       add('error', 'CABLE_FLOAT', `${T.label} has an unanchored ${!sA.length && !eA.length ? 'start and end' : !sA.length ? 'start' : 'end'} (a cable must connect two solid parts, never float in mid-air or plunge into the ground/plinth).`, [T.def.index], at(!sA.length ? sCap.box : eCap.box), 'Anchor both ends of the cable ≥ 1 cm inside solid structural parts (hull, post, junction box), not in mid-air or bare ground.');
     }

@@ -343,16 +343,9 @@ describe('W01-34: AC-09 property test — no structure ever starts construction 
       inProgressOrderChecks: 0,
       totalCommandsSubmitted: 0,
     };
-    const t0 = performance.now();
-
     for (let run = 0; run < 500; run++) {
       runCommandLogIteration(run, pipeline, radius, violations, stats);
     }
-
-    const elapsedMs = Math.round(performance.now() - t0);
-    console.log(
-      `Completed 500 random command logs in ${elapsedMs} ms (${stats.totalCommandsSubmitted} commands, ${stats.constructingEntityChecks} constructing checks, ${stats.inProgressOrderChecks} in-progress order checks)`,
-    );
 
     expect(stats.constructingEntityChecks).toBeGreaterThan(500);
     expect(stats.inProgressOrderChecks).toBeGreaterThan(500);

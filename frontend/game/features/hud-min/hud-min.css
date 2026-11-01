@@ -30,13 +30,15 @@
   background: color-mix(in srgb, var(--ta-plate) 76%, transparent);
   backdrop-filter: blur(8px);
   border: 1px solid var(--ta-seam-2);
+  /* The design system's .plate-sm chamfer, on the backdrop only: a clip-path on the bar would also clip the toasts
+     hanging below it. */
   clip-path: polygon(
-    0 0,
-    calc(100% - var(--ta-cut-sm)) 0,
-    100% var(--ta-cut-sm),
-    100% 100%,
-    var(--ta-cut-sm) 100%,
-    0 calc(100% - var(--ta-cut-sm))
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
   );
   pointer-events: none;
   z-index: -1;
@@ -46,7 +48,7 @@
   .ta-hud-min {
     gap: var(--ta-s2);
     padding: 0 var(--ta-s2);
-    font-size: var(--ta-fs-micro);
+    font-size: var(--ta-fs-label);
   }
   .ta-hud-min__stocks {
     gap: var(--ta-s2);
@@ -189,6 +191,9 @@
 }
 
 .ta-hud-toast {
+  /* a <button>: click or Enter dismisses */
+  appearance: none;
+  text-align: center;
   pointer-events: auto;
   padding: var(--ta-s2) var(--ta-s4);
   font-family: var(--ta-font-mono);
@@ -199,7 +204,6 @@
   background: var(--ta-plate-3);
   border: 1.5px solid var(--ta-seam-3);
   color: var(--ta-text);
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
   animation: ta-toast-in var(--ta-dur-quick) var(--ta-ease-servo);
 }
 

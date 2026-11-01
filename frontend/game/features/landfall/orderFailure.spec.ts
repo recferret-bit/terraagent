@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { hexIndex, setTileTerrain, spawnHqUnit, TERRAIN } from '@terra/sim';
-import { LocalHost } from '../../store/WorldStore';
+import { LocalHost } from '../../store/local/LocalHost';
 import { LandfallController } from './index';
 
 describe('order feedback: an unreachable move is reported once', () => {

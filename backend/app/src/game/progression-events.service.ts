@@ -1,5 +1,6 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { SimEvent } from '@terra/sim';
+import type { Logger } from 'pino';
 import type {
   BatchedColonyFoundedEvent,
   BatchedObstacleRemovedEvent,
@@ -8,8 +9,10 @@ import type {
 } from '../bus/channels';
 import { EventBus } from '../bus/event-bus';
 import { HomeRepository } from '../core/home/home.repository';
+import { LOGGER } from '../core/tokens';
+import { isProgressionEventKind, PROGRESSION_ACHIEVEMENTS, type ProgressionKind } from './progression-achievements';
 
-export const PROGRESSION_PLAYER_RESOLVER = Symbol('PROGRESSION_PLAYER_RESOLVER');
+export { isProgressionEventKind } from './progression-achievements';
 
 export type ProgressionEvent =
   | BatchedTilePreparedEvent
@@ -25,248 +28,126 @@ export interface BatchedProgressionEventsList extends Array<ProgressionEvent> {
 
 export type PlayerIdResolver = (colonyId: string) => string | undefined;
 
-/** Checks whether `kind` is one of the three Landfall progression event kinds. */
-export function isProgressionEventKind(kind: string): boolean {
-  return kind === 'tilePrepared' || kind === 'obstacleRemoved' || kind === 'colonyFounded';
+/** Called for a progression event whose colony or player cannot be resolved: it is skipped, never guessed (BE-22). */
+export type UnresolvedHandler = (event: SimEvent) => void;
+
+interface Who { readonly colonyId: string; readonly playerId: string }
+type Fields = Record<string, unknown>;
+
+const num = (v: unknown): number | undefined => (typeof v === 'number' ? v : undefined);
+const nonEmpty = (v: unknown): string | undefined => (typeof v === 'string' && v.length > 0 ? v : undefined);
+/** Drops undefined fields so optional ones stay absent. */
+const defined = (f: Fields): Fields => Object.fromEntries(Object.entries(f).filter(([, v]) => v !== undefined));
+
+/** The event's colony and player: `data.playerId`, else the resolver; null when either is unknown. */
+function resolveWho(e: SimEvent, resolvePlayerId?: PlayerIdResolver): Who | null {
+  const data = (e.data ?? {}) as Fields;
+  const colonyId = nonEmpty(data.colonyId) ?? nonEmpty(e.colonyIds?.[0]);
+  if (!colonyId) return null;
+  const playerId = nonEmpty(data.playerId) ?? resolvePlayerId?.(colonyId);
+  return playerId ? { colonyId, playerId } : null;
 }
 
-function resolvePlayer(
-  rawColonyId: unknown,
-  rawPlayerId: unknown,
-  resolvePlayerId?: PlayerIdResolver,
-): { colonyId: string; playerId: string } {
-  const colonyId = typeof rawColonyId === 'string' && rawColonyId.length > 0 ? rawColonyId : 'col_0';
-  const resolved =
-    (typeof rawPlayerId === 'string' && rawPlayerId.length > 0 ? rawPlayerId : undefined) ??
-    resolvePlayerId?.(colonyId) ??
-    colonyId;
-  return { colonyId, playerId: resolved };
+/** A batched progression event: `fields` both at the top level and in `data`, plus the kind's achievement. */
+function toEvent(kind: ProgressionKind, planetId: string, tick: number, who: Who, fields: Fields): ProgressionEvent {
+  const payload = { ...who, ...defined(fields), achievement: PROGRESSION_ACHIEVEMENTS[kind] };
+  return { planetId, tick, kind, severity: 'info', colonyIds: [who.colonyId], ...payload, data: payload } as unknown as ProgressionEvent;
 }
 
-interface TileAccumulator {
-  planetId: string;
-  tick: number;
-  colonyId: string;
-  playerId: string;
-  count: number;
-  q?: number;
-  r?: number;
-}
+/** How a counted kind groups its events: extra key fields (e.g. `op`) beyond (colony, player). */
+const COUNT_KEYS: Readonly<Record<'tilePrepared' | 'obstacleRemoved', (data: Fields) => Fields>> = {
+  tilePrepared: () => ({}),
+  obstacleRemoved: (data) => ({ op: data.op === 'break' ? 'break' : 'clear' }),
+};
 
-interface ObstacleAccumulator {
-  planetId: string;
-  tick: number;
-  colonyId: string;
-  playerId: string;
-  op: 'clear' | 'break';
-  count: number;
-  q?: number;
-  r?: number;
-}
-
-function aggregateTileEvents(
-  planetId: string,
-  tickEvents: readonly SimEvent[],
-  resolvePlayerId?: PlayerIdResolver,
-): BatchedTilePreparedEvent[] {
-  const map = new Map<string, TileAccumulator>();
-  for (const e of tickEvents) {
-    if (e.kind !== 'tilePrepared') continue;
-    const rawData = (e.data ?? {}) as Record<string, unknown>;
-    const { colonyId, playerId } = resolvePlayer(rawData.colonyId ?? e.colonyIds?.[0], rawData.playerId, resolvePlayerId);
-    const key = `${colonyId}\0${playerId}`;
-    const rawCount = typeof rawData.count === 'number' && rawData.count > 0 ? Math.floor(rawData.count) : 1;
-    const acc = map.get(key) ?? {
-      planetId,
-      tick: e.atTick ?? 0,
-      colonyId,
-      playerId,
-      count: 0,
-      q: typeof rawData.q === 'number' ? rawData.q : undefined,
-      r: typeof rawData.r === 'number' ? rawData.r : undefined,
-    };
-    acc.count += rawCount;
-    if (typeof rawData.q === 'number') acc.q = rawData.q;
-    if (typeof rawData.r === 'number') acc.r = rawData.r;
-    map.set(key, acc);
+/**
+ * One step's events of a counted kind summed per (colony, player, key fields): `count` adds up (default 1 per event),
+ * `q`/`r` are the last tile's (XC-09: one aggregator for every counted kind).
+ */
+function aggregateCounts(
+  kind: 'tilePrepared' | 'obstacleRemoved', planetId: string, events: readonly SimEvent[], resolvePlayerId?: PlayerIdResolver, onUnresolved?: UnresolvedHandler,
+): ProgressionEvent[] {
+  const acc = new Map<string, { tick: number; who: Who; key: Fields; count: number; q?: number; r?: number }>();
+  for (const e of events) {
+    if (e.kind !== kind) continue;
+    const who = resolveWho(e, resolvePlayerId);
+    if (!who) { onUnresolved?.(e); continue; }
+    const data = (e.data ?? {}) as Fields;
+    const key = COUNT_KEYS[kind](data);
+    const id = JSON.stringify([who.colonyId, who.playerId, key]);
+    const a = acc.get(id) ?? { tick: e.atTick ?? 0, who, key, count: 0 };
+    a.count += typeof data.count === 'number' && data.count > 0 ? Math.floor(data.count) : 1;
+    a.q = num(data.q) ?? a.q;
+    a.r = num(data.r) ?? a.r;
+    acc.set(id, a);
   }
-
-  return [...map.values()].map((acc) => ({
-    planetId: acc.planetId,
-    tick: acc.tick,
-    kind: 'tilePrepared' as const,
-    severity: 'info' as const,
-    colonyIds: [acc.colonyId],
-    colonyId: acc.colonyId,
-    playerId: acc.playerId,
-    count: acc.count,
-    ...(acc.q !== undefined ? { q: acc.q } : {}),
-    ...(acc.r !== undefined ? { r: acc.r } : {}),
-    achievement: 'Groundbreaker',
-    data: {
-      colonyId: acc.colonyId,
-      playerId: acc.playerId,
-      count: acc.count,
-      ...(acc.q !== undefined ? { q: acc.q } : {}),
-      ...(acc.r !== undefined ? { r: acc.r } : {}),
-      achievement: 'Groundbreaker',
-    },
-  }));
+  return [...acc.values()].map((a) => toEvent(kind, planetId, a.tick, a.who, { ...a.key, count: a.count, q: a.q, r: a.r }));
 }
 
-function aggregateObstacleEvents(
-  planetId: string,
-  tickEvents: readonly SimEvent[],
-  resolvePlayerId?: PlayerIdResolver,
-): BatchedObstacleRemovedEvent[] {
-  const map = new Map<string, ObstacleAccumulator>();
-  for (const e of tickEvents) {
-    if (e.kind !== 'obstacleRemoved') continue;
-    const rawData = (e.data ?? {}) as Record<string, unknown>;
-    const { colonyId, playerId } = resolvePlayer(rawData.colonyId ?? e.colonyIds?.[0], rawData.playerId, resolvePlayerId);
-    const op: 'clear' | 'break' = rawData.op === 'break' ? 'break' : 'clear';
-    const key = `${colonyId}\0${playerId}\0${op}`;
-    const rawCount = typeof rawData.count === 'number' && rawData.count > 0 ? Math.floor(rawData.count) : 1;
-    const acc = map.get(key) ?? {
-      planetId,
-      tick: e.atTick ?? 0,
-      colonyId,
-      playerId,
-      op,
-      count: 0,
-      q: typeof rawData.q === 'number' ? rawData.q : undefined,
-      r: typeof rawData.r === 'number' ? rawData.r : undefined,
-    };
-    acc.count += rawCount;
-    if (typeof rawData.q === 'number') acc.q = rawData.q;
-    if (typeof rawData.r === 'number') acc.r = rawData.r;
-    map.set(key, acc);
-  }
-
-  return [...map.values()].map((acc) => ({
-    planetId: acc.planetId,
-    tick: acc.tick,
-    kind: 'obstacleRemoved' as const,
-    severity: 'info' as const,
-    colonyIds: [acc.colonyId],
-    colonyId: acc.colonyId,
-    playerId: acc.playerId,
-    op: acc.op,
-    count: acc.count,
-    ...(acc.q !== undefined ? { q: acc.q } : {}),
-    ...(acc.r !== undefined ? { r: acc.r } : {}),
-    achievement: 'Stone Mason',
-    data: {
-      colonyId: acc.colonyId,
-      playerId: acc.playerId,
-      op: acc.op,
-      count: acc.count,
-      ...(acc.q !== undefined ? { q: acc.q } : {}),
-      ...(acc.r !== undefined ? { r: acc.r } : {}),
-      achievement: 'Stone Mason',
-    },
-  }));
-}
-
-function forwardColonyFoundedEvents(
-  planetId: string,
-  tickEvents: readonly SimEvent[],
-  resolvePlayerId?: PlayerIdResolver,
-): BatchedColonyFoundedEvent[] {
-  const result: BatchedColonyFoundedEvent[] = [];
-  for (const e of tickEvents) {
+/** `colonyFounded` events are forwarded one by one (they are not counted). */
+function forwardFoundings(planetId: string, events: readonly SimEvent[], resolvePlayerId?: PlayerIdResolver, onUnresolved?: UnresolvedHandler): ProgressionEvent[] {
+  const out: ProgressionEvent[] = [];
+  for (const e of events) {
     if (e.kind !== 'colonyFounded') continue;
-    const rawData = (e.data ?? {}) as Record<string, unknown>;
-    const { colonyId, playerId } = resolvePlayer(rawData.colonyId ?? e.colonyIds?.[0], rawData.playerId, resolvePlayerId);
-    const hubId = typeof rawData.hubId === 'number' ? rawData.hubId : undefined;
-    const q = typeof rawData.q === 'number' ? rawData.q : undefined;
-    const r = typeof rawData.r === 'number' ? rawData.r : undefined;
-    result.push({
-      planetId,
-      tick: e.atTick ?? 0,
-      kind: 'colonyFounded' as const,
-      severity: 'info' as const,
-      colonyIds: [colonyId],
-      colonyId,
-      playerId,
-      ...(hubId !== undefined ? { hubId } : {}),
-      ...(q !== undefined ? { q } : {}),
-      ...(r !== undefined ? { r } : {}),
-      achievement: 'Landfall',
-      data: {
-        colonyId,
-        playerId,
-        ...(hubId !== undefined ? { hubId } : {}),
-        ...(q !== undefined ? { q } : {}),
-        ...(r !== undefined ? { r } : {}),
-        achievement: 'Landfall',
-      },
-    });
+    const who = resolveWho(e, resolvePlayerId);
+    if (!who) { onUnresolved?.(e); continue; }
+    const data = (e.data ?? {}) as Fields;
+    out.push(toEvent('colonyFounded', planetId, e.atTick ?? 0, who, { hubId: num(data.hubId), q: num(data.q), r: num(data.r) }));
   }
-  return result;
+  return out;
 }
 
 /**
  * Batches progression events within each simulation step (by tick) for a planet:
- *  - `tilePrepared`: aggregated by (colonyId, playerId) with summed `count` (Groundbreaker)
- *  - `obstacleRemoved`: aggregated by (colonyId, playerId, op) with summed `count` (Stone Mason)
- *  - `colonyFounded`: forwarded carrying playerId, colonyId, planetId, q, r, achievement: 'Landfall'
+ *  - `tilePrepared`: summed per (colonyId, playerId) (Groundbreaker)
+ *  - `obstacleRemoved`: summed per (colonyId, playerId, op) (Stone Mason)
+ *  - `colonyFounded`: forwarded with hubId, q, r (Landfall)
+ * An event whose colony or player cannot be resolved is skipped (`onUnresolved`).
  */
 export function batchProgressionEventsForStep(
   planetId: string,
   events: readonly SimEvent[],
   resolvePlayerId?: PlayerIdResolver,
+  onUnresolved?: UnresolvedHandler,
 ): BatchedProgressionEventsList {
-  const ticksMap = new Map<number, SimEvent[]>();
+  const byTick = new Map<number, SimEvent[]>();
   for (const e of events) {
     if (!isProgressionEventKind(e.kind)) continue;
     const tick = e.atTick ?? 0;
-    const list = ticksMap.get(tick) ?? [];
-    list.push(e);
-    ticksMap.set(tick, list);
+    byTick.set(tick, [...(byTick.get(tick) ?? []), e]);
   }
-
-  const allPrepared: BatchedTilePreparedEvent[] = [];
-  const allObstacles: BatchedObstacleRemovedEvent[] = [];
-  const allFoundings: BatchedColonyFoundedEvent[] = [];
-
-  const sortedTicks = [...ticksMap.keys()].sort((a, b) => a - b);
-  for (const t of sortedTicks) {
-    const list = ticksMap.get(t) ?? [];
-    allPrepared.push(...aggregateTileEvents(planetId, list, resolvePlayerId));
-    allObstacles.push(...aggregateObstacleEvents(planetId, list, resolvePlayerId));
-    allFoundings.push(...forwardColonyFoundedEvents(planetId, list, resolvePlayerId));
+  const prepared: ProgressionEvent[] = [];
+  const obstacles: ProgressionEvent[] = [];
+  const foundings: ProgressionEvent[] = [];
+  for (const t of [...byTick.keys()].sort((a, b) => a - b)) {
+    const list = byTick.get(t) ?? [];
+    prepared.push(...aggregateCounts('tilePrepared', planetId, list, resolvePlayerId, onUnresolved));
+    obstacles.push(...aggregateCounts('obstacleRemoved', planetId, list, resolvePlayerId, onUnresolved));
+    foundings.push(...forwardFoundings(planetId, list, resolvePlayerId, onUnresolved));
   }
-
-  const allCombined: ProgressionEvent[] = [...allPrepared, ...allObstacles, ...allFoundings];
-  return Object.assign(allCombined, {
-    tilePrepared: allPrepared,
-    obstacleRemoved: allObstacles,
-    colonyFounded: allFoundings,
-    all: allCombined,
+  const all: ProgressionEvent[] = [...prepared, ...obstacles, ...foundings];
+  return Object.assign(all, {
+    tilePrepared: prepared as BatchedTilePreparedEvent[],
+    obstacleRemoved: obstacles as BatchedObstacleRemovedEvent[],
+    colonyFounded: foundings as BatchedColonyFoundedEvent[],
+    all,
   });
 }
 
 /**
- * Service that batches per-step simulation progression events and forwards them onto the EventBus.
+ * Batches per-step simulation progression events and publishes each batch once on the bus as `planet.event`. The player
+ * comes from the event, a colony registered at seating, or the colony cache of `HomeRepository`; an event without one is
+ * skipped with a warning.
  */
 @Injectable()
 export class ProgressionEventForwarder {
   private readonly colonyPlayerMap = new Map<string, string>();
-  private customResolver?: PlayerIdResolver;
 
   constructor(
     private readonly bus: EventBus,
     @Optional() private readonly homeRepo?: HomeRepository,
-    @Optional() @Inject(PROGRESSION_PLAYER_RESOLVER) resolver?: PlayerIdResolver,
-  ) {
-    this.customResolver = resolver;
-  }
-
-  setCustomResolver(resolver: PlayerIdResolver): this {
-    this.customResolver = resolver;
-    return this;
-  }
+    @Optional() @Inject(LOGGER) private readonly log?: Pick<Logger, 'warn'>,
+  ) {}
 
   registerColony(colonyId: string, playerId: string): void {
     this.colonyPlayerMap.set(colonyId, playerId);
@@ -278,86 +159,18 @@ export class ProgressionEventForwarder {
   }
 
   resolvePlayerId(colonyId: string): string | undefined {
-    if (this.customResolver) {
-      const custom = this.customResolver(colonyId);
-      if (custom) return custom;
-    }
-    const cached = this.colonyPlayerMap.get(colonyId);
-    if (cached) return cached;
-    if (this.homeRepo) {
-      const col = this.homeRepo.findMemColonyById(colonyId);
-      if (col?.playerId) return col.playerId;
-    }
-    return undefined;
+    return this.colonyPlayerMap.get(colonyId) ?? this.homeRepo?.findCachedColonyById(colonyId)?.playerId;
   }
 
-  forwardStep(
-    planetId: string,
-    events: readonly SimEvent[],
-    resolvePlayerId?: PlayerIdResolver,
-  ): BatchedProgressionEventsList {
-    const resolver: PlayerIdResolver = (colonyId: string) =>
-      resolvePlayerId?.(colonyId) ?? this.resolvePlayerId(colonyId);
-    const batched = batchProgressionEventsForStep(planetId, events, resolver);
-    for (const ev of batched) {
-      this.publish(ev);
-    }
+  forwardStep(planetId: string, events: readonly SimEvent[]): BatchedProgressionEventsList {
+    const batched = batchProgressionEventsForStep(planetId, events, (c) => this.resolvePlayerId(c), (e) => {
+      this.log?.warn({ planetId, kind: e.kind, colonyIds: e.colonyIds, tick: e.atTick }, `progression event ${e.kind} skipped: its player is unknown`);
+    });
+    for (const ev of batched) this.publish(ev);
     return batched;
   }
 
   publish(event: ProgressionEvent): void {
-    this.bus.emit(event.kind, event as never);
-    this.bus.emit(`progression.${event.kind}` as never, event as never);
-    this.bus.emit('planet.event', {
-      planetId: event.planetId,
-      tick: event.tick,
-      kind: event.kind,
-      severity: event.severity,
-      colonyIds: event.colonyIds,
-      colonyId: event.colonyId,
-      playerId: event.playerId,
-      achievement: event.achievement,
-      ...('count' in event ? { count: event.count } : {}),
-      ...('op' in event ? { op: event.op } : {}),
-      ...('hubId' in event && event.hubId !== undefined ? { hubId: event.hubId } : {}),
-      ...('q' in event && event.q !== undefined ? { q: event.q } : {}),
-      ...('r' in event && event.r !== undefined ? { r: event.r } : {}),
-      data: event.data,
-    } as unknown as PlanetEventV1);
+    this.bus.emit('planet.event', event as unknown as PlanetEventV1);
   }
-
-  wireSimHost(
-    host: {
-      onEvents: (cb: (events: readonly SimEvent[], tick: number) => void) => () => void;
-      state?: { meta?: { planetId?: string }; colonies?: Array<{ id?: string; index?: number; playerId?: string }> };
-    },
-    planetId?: string,
-  ): () => void {
-    const pid = planetId ?? host.state?.meta?.planetId ?? 'pl_dev';
-    return host.onEvents((events) => {
-      this.forwardStep(pid, events, (colId) => {
-        const col = host.state?.colonies?.find((c) => c.id === colId || `col_${c.index}` === colId);
-        return (typeof col?.playerId === 'string' ? col.playerId : undefined) ?? this.resolvePlayerId(colId);
-      });
-    });
-  }
-
-  wireGamePlanets(planets: { onEvents: (l: (planetId: string, events: readonly SimEvent[]) => void) => () => void }): () => void {
-    return planets.onEvents((planetId, events) => {
-      this.forwardStep(planetId, events);
-    });
-  }
-}
-
-/** Convenience helper to wire a SimHost to an EventBus via a ProgressionEventForwarder. */
-export function wireProgressionEvents(
-  host: {
-    onEvents: (cb: (events: readonly SimEvent[], tick: number) => void) => () => void;
-    state?: { meta?: { planetId?: string }; colonies?: Array<{ id?: string; index?: number; playerId?: string }> };
-  },
-  bus: EventBus,
-  resolvePlayerId?: PlayerIdResolver,
-): () => void {
-  const forwarder = new ProgressionEventForwarder(bus, undefined, resolvePlayerId);
-  return forwarder.wireSimHost(host);
 }

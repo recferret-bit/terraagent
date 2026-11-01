@@ -9,7 +9,9 @@ import {
   STARTER_HUB_SEARCH_RADIUS,
   TERRAIN,
   getHubFootprintTiles,
+  landingBlock,
   spawnColonyLanding,
+  starterHubSiteBlocked,
   type PlanetType,
 } from '../../src';
 
@@ -62,5 +64,36 @@ describe('starter Hub space at landing', () => {
     expect(hasReadySite(a, 3, 3)).toBe(true);
     expect(Array.from(a.grid.layers.terrain)).toEqual(Array.from(b.grid.layers.terrain));
     expect(ensureStarterHubSpace(a, 3, 3, 0)).not.toBeNull();
+  });
+});
+
+describe('starter Hub space next to foreign territory (WE-23)', () => {
+  /** Rough ground (Rock) around (0, 0); colony 1 owns every tile matching `foreign` within 5 of the centre. */
+  function rough(foreign: (q: number, r: number) => boolean): ReturnType<typeof createPlanet> {
+    const s = createPlanet({ id: 'pl', seed: 'foreign-hub', type: 'temperate', radius: 56 });
+    const hex = hexIndex(s.grid.radius);
+    for (let i = 0; i < hex.count; i++) {
+      const d = hexDistance(0, 0, hex.q[i], hex.r[i]);
+      if (d <= 5) { s.grid.layers.terrain[i] = TERRAIN.rock; s.grid.layers.prep[i] = PREP.wild; }
+      s.grid.layers.owner[i] = d <= 5 && foreign(hex.q[i], hex.r[i]) ? 1 : -1;
+    }
+    return s;
+  }
+  const owned = (s: ReturnType<typeof createPlanet>) => Array.from(s.grid.layers.owner).filter((o) => o === 1).length;
+
+  it("levels a footprint outside the other colony's land and leaves its tiles owned", () => {
+    const s = rough((q) => q >= 1);
+    const before = owned(s);
+    expect(landingBlock(s, 0, 0, 0)).toBeNull();
+    expect(spawnColonyLanding(s, { colonyId: 0, q: 0, r: 0 }).ok).toBe(true);
+    expect(owned(s)).toBe(before);
+    expect(hasReadySite(s, 0, 0)).toBe(true);
+  });
+
+  it('refuses a landing whose every starter Hub site touches foreign territory', () => {
+    const s = rough((q, r) => q !== 0 || r !== 0);
+    expect(starterHubSiteBlocked(s, 0, 0, 0)).toBe(true);
+    expect(ensureStarterHubSpace(s, 0, 0, 0)).toBeNull();
+    expect(landingBlock(s, 0, 0, 0)).toBe('landing_site_taken');
   });
 });

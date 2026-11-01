@@ -71,7 +71,7 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 
 ### LED-06 · Planets whose snapshots are all corrupt, or written by a newer build, stay unloaded ("held")
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Area / code:** `snapshot.service.ts` (`restoreAll`, `restoreOne`, `loadNew`)
 - **What happens:** such a planet is never regenerated or wiped automatically (that would delete its history); it
   stays unloaded, and seating a player there answers 409 `seat_rejected` / `host_unavailable`. Only dev planets
@@ -83,6 +83,7 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **To resolve:** decide whether old non-dev planets should be wiped automatically on a sim-version bump, or get a
   dev route/console command to wipe one held planet. Recommendation: a dev-only `planet.wipe <id>` command.
 - **Found:** 2026-11-01, review fix (H1, M5)
+- **Fix:** recommendation applied: dev command `planet.wipe {planetId}` (`POST /v1/dev/commands/planet.wipe`, `backend/app/src/dev/planet-wipe.command.ts`) deletes a held (unloaded) planet with its snapshots, ledger rows and colony rows (`SnapshotStore.wipePlanet`, any id; boot still wipes only old dev planets) and drops the colony cache; 409 `PLANET_LOADED` for a loaded planet. Documented in `DEV_TOOLS.md`. Tests `backend/app/test/dev/dev.spec.ts` › "planet.wipe (LED-06)…", `test/game/seat-recovery.spec.ts` › "wipe deletes an unloaded planet…". A dev-console alias is a frontend-features item.
 
 ### LED-07 · In-memory journal store keeps at most 20 000 rows per planet
 
@@ -107,7 +108,7 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 
 ### LED-09 · A step that throws half-way leaves stock changed but its postings unpublished
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Area / code:** `shared/sim/src/kernel/step.ts`; hosts publish `StepResult.postings` only after a completed step
   (`backend/app/src/game/thread/planet-host.ts`, `frontend/game/store/local/LocalHostCore.ts`)
 - **What happens:** an exception inside a system after a treasury change mutates `col.stock` but the step's postings
@@ -116,6 +117,9 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
   step. Note: the server host does **not** stop a planet whose step threw — it keeps stepping the half-changed state
   and that step's commands are never answered (see [BE-12](./backend-contracts.md)); fix both together.
 - **Found:** 2026-11-01, independent review (L3); corrected 2026-11-01 by the backend review
+- **Fix (server host, review-fix round 2026-11-01):** the server no longer keeps stepping a planet whose step threw: `PlanetHost.stepPlanet` rejects the step's commands `internal`, drops the planet and posts `planetFailed`; main treats it as down and restores its last snapshot (state and journal roll back together, so the lost postings do not matter there). The status stays with the sim side (SIM-GAMEPLAY: postings of a failed step on the browser host). See BE-12.
+- **Fix (sim side):** `step()` wraps a system exception in `StepError` (`kernel/step.ts`) carrying the step's `outcomes`, `postings` and `events` so far; `SimHost.step` clears its queue (applied commands are never re-applied), hands the outcomes and postings to its `onOutcomes` / `onPostings` listeners and rethrows. A host that journals through `onPostings` therefore records what already changed `col.stock`. Host side (BACKEND, BE-12; FRONTEND-APP for `LocalHostCore`): hosts that read `StepResult.postings` instead of the listeners must catch `StepError` and journal `err.postings`, answer `err.outcomes`, then stop or reload the planet. Test `shared/sim/test/economy/failed-step.spec.ts`.
+- **Fix (server host, final pass 2026-11-01):** `PlanetHost` journals and answers a `StepError` like `SimHost.step` (postings first, then the outcomes, `internal` for the rest, then `planetFailed`); see BE-12.
 
 ### LED-10 · `unrecorded` / `treasuryCtx` without a step ctx silently discard postings
 
@@ -129,7 +133,7 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 
 ### LED-11 · Capped overflow is lost, and only terraform yields are capped
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Area / code:** `shared/sim/src/economy/caps.ts`, `systems/terraform-basic/work.ts`
 - **What happens:** a terraform yield over the family cap is credited only up to the cap; the rest disappears (no
   posting, reported as `obstacleRemoved.data.overflow`). Landing cargo, construction refunds and dev grants are not
@@ -138,16 +142,18 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **To resolve:** decide with W02-02 (`production.capped` stat): keep losing overflow, or post it to a `sys:overflow`
   account so the journal shows it. Recommendation: post it, it costs one leg and makes the loss auditable.
 - **Found:** 2026-11-01, review fix (M2)
+- **Fix:** recommendation applied: the capped part of a credit is posted in the same entry from the reason's counter account to `sys:overflow` (`OVERFLOW_ACCOUNT`, `economy/treasury.ts`), also when nothing fits (a posting with only the overflow legs, `col.stock` untouched); `obstacleRemoved.data.overflow` still reports it. Tests `treasury.spec.ts` › clampToCap (LED-11), `gameplay-guards.spec.ts` › "a Break at full metals …".
 
 ### LED-12 · Refused credits are only visible in server logs
 
-- **Status:** Question for the owner
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Area / code:** `shared/contracts/src/events/treasury-rejected.ts`, `shared/sim/src/economy/report.ts`
 - **What happens:** a refused terraform yield or construction refund emits a `treasuryRejected` warn event with a
   server audience; players are not told.
 - **To resolve:** decide whether players should see it (toast) or only operators. Recommendation: operators only;
   it can only happen with broken data, which is now rejected at compile/tune time.
 - **Found:** 2026-11-01, review fix (M1)
+- **Fix:** recommendation applied: refused credits stay operator-only (`treasuryRejected`, server audience); they can only come from broken data, which compile / tune now reject. No player toast.
 
 ### LED-13 · Orders saved before integer validation can stay `blocked(...)`
 
@@ -157,12 +163,13 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
   whole-unit validation) shows `blocked(invalid_amount…)` and never completes; nothing repairs it.
 - **Workaround / mitigation:** SIM_VERSION 2 and the DB reset wiped such saves; cancel the order to recover.
 - **Found:** 2026-11-01, review fix
+- **Note (review-fix round 2026-11-01):** such an order now goes `waiting_resources` with `waitingReason` `blocked(…)` and frees the builder (GP-12) instead of keeping the HQ retrying it every step; it still never completes (cancel to recover).
 
 ## Seating and landing
 
 ### LED-14 · Refused landing sites are remembered only until the server restarts
 
-- **Status:** Accepted
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Area / code:** `backend/app/src/core/home/home.service.ts` (refused sites, exhausted planets)
 - **What happens:** after a restart the first seats may retry sites the sim already refused (the sim's landing
   history refuses them again, so no harm, just extra round-trips). Worst case per `/me/home` request:
@@ -170,13 +177,15 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **To resolve:** let the server ask the sim for the next landing site (`nextLandingSite` on the live state) instead
   of guessing from DB rows.
 - **Found:** 2026-11-01, review fix (M3)
+- **Fix:** recommendation applied: the server asks the planet's sim for the next landing site (`landingSite` thread request → `nextLandingSite` on the live state) instead of guessing from DB rows; nothing is remembered per process, so a restart retries nothing. A planet whose sim answers `landing_site_taken` is marked full; a colony index the sim already landed (`already_landed`) is skipped. Files: `backend/app/src/core/home/home.service.ts`, `backend/app/src/game/home-landing-host.ts`, `backend/app/src/game/thread/{protocol,planet-host}.ts`; tests `test/unit/home-seat-reject.spec.ts` › "HomeService seats where the planet's sim says (LED-14)", `test/game/seat-recovery.spec.ts` › "PlanetHost answers landingSite from the live sim (LED-14)".
 
 ### LED-15 · A landing acked after the 15 s seat timeout leaves a sim colony without a DB row
 
-- **Status:** Open
+- **Status:** Resolved (review-fix round 2026-11-01)
 - **Area / code:** `backend/app/src/game/seat-colony.ts` (`SEAT_LANDING_TIMEOUT_MS`), `game.module.ts`
 - **What happens:** the seat is rolled back as `host_unavailable`, but if the sim applies the landing afterwards the
   colony exists in the sim with no player row; it is only logged as an error. That colony index is then reported
   `already_landed` to the next seat on that planet.
 - **To resolve:** on a late ack, remove the colony in the sim (an admin `colony.remove` command) or re-create the row.
 - **Found:** 2026-11-01, review fix (M4)
+- **Fix:** a late ack goes to `HomeService.adoptLateLanding`: when the player still has no colony the rolled-back row is written again (same id, index and site), so the next `/me/home` answers that colony; otherwise its colony index is marked landed and never offered again (later seats also skip an index the sim reports `already_landed`). Files: `backend/app/src/game/seat-colony.ts` (`gameSeatHost`), `core/home/home.service.ts`; test `test/unit/home-seat-reject.spec.ts` › "HomeService.adoptLateLanding (LED-15)".

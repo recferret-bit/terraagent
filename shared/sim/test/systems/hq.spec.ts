@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
   compileData,
-  createPlanet,
   dataRow,
   ENTITY_KIND,
   ENTITY_STATE,
@@ -21,17 +20,14 @@ import {
   TERRAIN,
   type SimCommand,
 } from '../../src';
+import { w01Host } from '../helpers/host';
 
 let seq = 0;
 function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0): SimCommand {
   return { colonyIndex, source: 'player', commandId: `hq_${++seq}`, kind, args };
 }
 
-function createW01Host(radius = 28): SimHost {
-  const host = new SimHost({ flags: parseWaves('..01') });
-  host.load(createPlanet({ type: 'flat', seed: 'hq-test', radius }));
-  return host;
-}
+const createW01Host = (radius = 28): SimHost => w01Host({ seed: 'hq-test', radius });
 
 describe('W01-10: HQ T1 unit stats and view fields', () => {
   it('spawns HQ T1 at (0, 0) with §3.2 stats and reveals viewRadius 9 on grid.explored', () => {
@@ -62,7 +58,7 @@ describe('W01-10: HQ T1 unit stats and view fields', () => {
     expect(hqData.viewRadius).toBe(9);
     expect(hqData.supply).toBe(0);
     expect(hqData.gridDrawPerS).toBe(0);
-    expect(hqData.designSpeedTilesPerS).toBe(1.6);
+    expect(hqData.speedTilesPerS).toBeCloseTo(0.32, 10); // one field per value (XC-01): 1.6 t/s compiled per tick
 
     const idx = hexIndex(state.grid.radius);
     const explored = state.grid.layers.explored as Uint8Array;
@@ -145,7 +141,7 @@ describe('W01-10: HQ T1 movement order and validation', () => {
     expect(state.grid.layers.explored[idx.indexOf(25, 0)] & 1).toBe(1);
   });
 
-  it('supports unitId/to payload shape and validates ownership, bounds and passability', () => {
+  it('validates ownership, bounds and passability; aliases outside the contract are invalid_args (GP-19)', () => {
     const host = createW01Host();
     const state = host.state;
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
@@ -169,6 +165,11 @@ describe('W01-10: HQ T1 movement order and validation', () => {
     expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
 
     host.submit(mkCmd('moveUnit', { unitId: hqId, to: { q: 8, r: 8 } }, 0));
+    expect(host.step(1).outcomes[0]?.code).toBe('invalid_args');
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 8, r: 8 }, null));
+    expect(host.step(1).outcomes[0]?.code).toBe('not_own_colony'); // GP-18: a unit command needs a colony
+
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 8, r: 8 }, 0));
     for (let i = 0; i < 49; i++) host.step(1);
     const row = rowOf(state.entities, hqId);
     expect(state.entities.cols.state[row]).toBe(ENTITY_STATE.moving);

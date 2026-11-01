@@ -16,6 +16,7 @@ import WebSocket from 'ws';
 import { createApp } from '../../src/app';
 import { HomeRepository, HomeService } from '../../src/core/home';
 import { GamePlanets } from '../../src/game/game-planets.service';
+import { freeLandingHost } from './fixtures/landing-host';
 
 const coreOnlyDir = fileURLToPath(new URL('../core/fixtures/base/', import.meta.url));
 const openSockets: WebSocket[] = [];
@@ -35,6 +36,7 @@ async function bootHomeApp() {
     source: { NODE_ENV: 'test', JWT_ACCESS_SECRET: 'test-home-jwt-secret-0123456789abcdef' },
     modulesDirs: [coreOnlyDir],
   });
+  created.app.get(HomeService).setLandingHost(freeLandingHost); // core only: no sim to ask for landing sites
   await created.app.listen(0, '127.0.0.1');
   currentApp = created.app;
   const url = (await created.app.getUrl()).replace('[::1]', '127.0.0.1');
@@ -137,7 +139,7 @@ describe('GET /v1/me/home (W01-04)', () => {
     expect(body.state).toBe('ACTIVE');
     if (body.state !== 'ACTIVE') throw new Error('expected ACTIVE home state');
 
-    expect(body.colony.id).toMatch(/^col_/);
+    expect(body.colony.id).toMatch(/^co_[0-9A-HJKMNP-TV-Z]{26}$/); // ULID colony ids (BE-21)
     expect(body.colony.planetId).toBe('pl_dev');
     expect(body.colony.colonyIndex).toBe(0);
     expect(body.colony.playerId).toBe(guest.player.id);
@@ -362,6 +364,7 @@ describe('Dev planet WebSocket colonyIndex resolution (W01-05)', () => {
     });
     expect((await c2.nextAny(['cmd.ack', 'cmd.reject'])).t).toBe('cmd.ack');
 
+    // WS-12 (BE-07): a guest without a colony on pl_dev may not join it
     const cOutsider = await WsSeatClient.open(wsUrl);
     cOutsider.send({
       t: 'hello',
@@ -369,15 +372,21 @@ describe('Dev planet WebSocket colonyIndex resolution (W01-05)', () => {
     });
     await cOutsider.nextAny(['ready']);
     cOutsider.send({ t: 'join', d: { planetId: 'pl_dev' } });
-    await cOutsider.nextAny(['welcome']);
+    expect(await cOutsider.nextAny(['welcome', 'bye'])).toEqual({ v: 1, t: 'bye', d: { code: 4003, reason: 'not_your_planet' } });
 
+    // a dev session may join it, but without a colony row (pl_dev is no scenario planet) it commands nothing
+    const cDev = await WsSeatClient.open(wsUrl);
+    cDev.send({ t: 'hello', d: { accessToken: 'dev:outsider', proto: [1], client: { app: 'game', version: '0.1.0' } } });
+    await cDev.nextAny(['ready']);
+    cDev.send({ t: 'join', d: { planetId: 'pl_dev' } });
+    expect(Welcome.parse(await cDev.nextAny(['welcome'])).d.colonyId).toBeNull();
     const badMoveId = newId('cm');
-    cOutsider.send({
+    cDev.send({
       t: 'cmd',
       id: badMoveId,
       d: { kind: 'moveUnit', args: { entityId: hqEntityId, q: 0, r: 0 } },
     });
-    const badReply = await cOutsider.nextAny(['cmd.ack', 'cmd.reject']);
+    const badReply = await cDev.nextAny(['cmd.ack', 'cmd.reject']);
     expect(badReply.t).toBe('cmd.reject');
     expect(badReply.d.code).toBe('not_own_colony');
   }, 15_000);

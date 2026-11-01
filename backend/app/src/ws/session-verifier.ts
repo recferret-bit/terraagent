@@ -6,6 +6,8 @@ export interface VerifiedSession {
   readonly playerId: string;
   readonly handle?: string;
   readonly exp?: number;
+  /** A `dev:<name>` session (never in production): may join any loaded planet and play a scenario's colony 0 (BE-07). */
+  readonly dev?: boolean;
 }
 
 /** Verifies the access token of a `hello` or `reauth` (WS-10, LB-02). */
@@ -44,7 +46,7 @@ export class DevSessionVerifier implements SessionVerifier {
     if (accessToken === 'dev:expired') throw new Error('dev session token expired');
     const m = DEV_TOKEN.exec(accessToken);
     if (!m) throw new BadHelloTokenError('malformed dev session token');
-    return { playerId: devPlayerId(m[1]!) };
+    return { playerId: devPlayerId(m[1]!), dev: true };
   }
 }
 

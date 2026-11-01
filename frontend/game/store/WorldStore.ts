@@ -1,13 +1,13 @@
 import { flagsFromList, newId, type ServerMessage, type SimEventWire } from '@terra/contracts';
-import { compileData, createPlanet, PlanetJournal, SIM_VERSION, SimHost, TICK_MS, type BalanceOverrides, type PlanetState, type SimCommand } from '@terra/sim';
+import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { ownBytes } from './bytes';
-import { describeJournalProblem } from './local/hostJournal';
 import { Emitter } from '../net/emitter';
-import type { ConnectionState, Outgoing, Transport } from '../net/types';
+import type { Transport } from '../net/types';
 import type { FromWorker, ToWorker } from './worker/protocol';
 import { SimWorkerController } from './worker/SimWorkerController';
-import { packView, unpackView, type ClientTiles, type ClientView } from './replica/viewCodec';
+import { unpackView, type ClientTiles, type ClientView } from './replica/viewCodec';
 import type { ReplicaStatus } from './replica/ReplicaCore';
+import { applyTuned, tunedEvents } from './replica/tuneEvent';
 import type { PredictionInfo, PredictionMode } from '../net/netStats';
 
 export type CommandInput =
@@ -76,8 +76,9 @@ export class WorldStore {
   /** Flags + balance overrides of the last welcome: the server compiled its data with them (D-35). */
   private welcomeData: { flags: string[]; overrides?: BalanceOverrides; data?: ReturnType<typeof compileData> } | null = null;
   /**
-   * The compiled balance data the server runs with (welcome flags + live overrides, e.g. dev `tune`), so client-side
-   * rule previews (the placement ghost, D-37) evaluate with the same numbers; null before the first welcome.
+   * The compiled balance data the host runs with: the last welcome's flags + overrides, with later live `tune set`s
+   * (`dev.tuned` events) applied on top, so client-side rule previews (the placement ghost, D-37) evaluate with the
+   * host's numbers; null before the first welcome. A `tune reset` asks for a fresh welcome, which carries them (D-35).
    */
   simData(): ReturnType<typeof compileData> | null {
     const w = this.welcomeData;
@@ -144,7 +145,7 @@ export class WorldStore {
     return id;
   }
 
-  /** Directly publishes a `ClientView` (used by `LocalHost` in-process mode). */
+  /** Directly publishes a confirmed `ClientView` (the in-process `LocalHost`, `store/local/LocalHost.ts`). */
   pushView(view: ClientView): void {
     if (view.tiles) this.tiles = view.tiles;
     this.baseTick = view.tick; // an in-process host only pushes confirmed states
@@ -159,6 +160,14 @@ export class WorldStore {
    */
   notifySent(id: string, kind: string, args: unknown): void {
     this.worker?.postMessage({ t: 'cmdSent', id, kind, args, sentAtMs: this.now() }, []);
+  }
+
+  /**
+   * The CommandBus gave up on a command (no ack / reject in time): the prediction rolls it back as a `timeout` reject,
+   * so a command lost with a dropped socket is not predicted forever (`onCommandRejected` fires as for a reject).
+   */
+  notifyTimedOut(id: string): void {
+    this.worker?.postMessage({ t: 'reject', id, code: 'timeout' }, []);
   }
 
   /** `predict: false` is `?predict=0`: views are the confirmed state only. */
@@ -196,10 +205,12 @@ export class WorldStore {
       w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, colonyId: m.d.colonyId, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
     } else if (m.t === 'delta') {
       this.baseTick = m.d.toTick; this.baseLocalMs = this.now();
+      if (m.d.events?.length) this.retune(m.d.events);
       const diff = ownBytes(m.d.diff);
       w.postMessage({ t: 'delta', fromTick: m.d.fromTick, toTick: m.d.toTick, diff }, [diff.buffer]);
       if (m.d.events?.length) this.serverEvents.emit(m.d.events);
     } else if (m.t === 'event') {
+      this.retune([m.d]);
       this.serverEvents.emit([m.d]);
     } else if (m.t === 'pong') {
       const rtt = this.now() - m.d.clientTimeMs;
@@ -238,139 +249,19 @@ export class WorldStore {
     }
   }
 
+  /** Live tunes (`dev.tuned`): the worker rebuilds its data (prediction), and `simData()` follows a `set`. */
+  private retune(events: readonly SimEventWire[]): void {
+    for (const t of tunedEvents(events)) {
+      this.worker?.postMessage({ t: 'tune', tune: t }, []);
+      const w = this.welcomeData;
+      const next = w && applyTuned(w.overrides, t);
+      if (w && next) this.welcomeData = { flags: w.flags, overrides: next };
+    }
+  }
+
   /** A diff did not fit: ask for a fresh welcome by joining again (the transport must be connected). */
   private requestResync(): void {
     if (!this.planetId) return;
     try { this.transport.send({ t: 'join', d: { planetId: this.planetId } }); } catch (e) { console.warn('[world] resync join failed', e); }
-  }
-}
-
-export interface LocalHostOpts {
-  flags?: readonly string[];
-  planet?: PlanetState;
-  radius?: number;
-  seed?: string;
-  colonyIndex?: number;
-}
-
-/**
- * In-process local host (`SimHost` + `Transport` + `WorldStore`) for single-player `?host=local` and deterministic unit tests.
- */
-export class LocalHost {
-  readonly sim: SimHost;
-  readonly store: WorldStore;
-  readonly msgs = new Emitter<ServerMessage>();
-  readonly sent: Outgoing[] = [];
-  readonly connectionState: ConnectionState = { phase: 'streaming', attempt: 0, downSinceMs: null };
-  /** Host-side resource journal (dev console `ledger`); the bound stores only get `col.stock`. */
-  readonly ledger: PlanetJournal;
-  private readonly flagsList: string[];
-  private colonyIndex: number;
-  private boundStores = new Set<WorldStore>();
-  private welcomed = false;
-
-  constructor(opts: LocalHostOpts = {}) {
-    this.flagsList = [...(opts.flags ?? ['W00', 'W01'])];
-    this.colonyIndex = opts.colonyIndex ?? 0;
-    this.sim = new SimHost({ flags: flagsFromList(this.flagsList) });
-    const planet = opts.planet ?? createPlanet({ type: 'flat', seed: opts.seed ?? 'local-host', radius: opts.radius ?? 16 });
-    this.sim.load(planet);
-    this.ledger = PlanetJournal.open(planet, 'system:seed');
-    this.sim.onPostings((postings) => { for (const p of this.ledger.record(postings)) console.warn('[local host]', describeJournalProblem(p)); });
-    this.store = new WorldStore(this, () => ({ postMessage() {}, onmessage: null, terminate() {} }));
-    this.sync(true);
-  }
-
-  setColonyIndex(colonyIndex: number): void {
-    this.colonyIndex = colonyIndex;
-  }
-
-  get state(): PlanetState {
-    return this.sim.state;
-  }
-
-  get tick(): number {
-    return this.sim.tick;
-  }
-
-  bindStore(store: WorldStore): void {
-    this.boundStores.add(store);
-    if (this.sim.loaded) {
-      const { view } = packView(this.sim.view(), true);
-      store.pushView(unpackView(view, Date.now()));
-    }
-  }
-
-  start(): void {}
-  stop(): void {}
-
-  send(m: Outgoing): void {
-    this.sent.push(m);
-    if (m.t === 'cmd') {
-      const isDev = m.d.kind.startsWith('dev.') || m.d.kind.startsWith('system.');
-      const cmd: SimCommand = {
-        colonyIndex: this.colonyIndex,
-        source: isDev ? 'dev' : 'player',
-        commandId: m.id,
-        kind: m.d.kind,
-        args: m.d.args,
-      };
-      this.sim.submit(cmd);
-    }
-  }
-
-  onMessage(fn: (m: ServerMessage) => void): () => void {
-    return this.msgs.on(fn);
-  }
-
-  onState(): () => void {
-    return () => {};
-  }
-
-  /** Syncs the current `SimHost` state to all bound `WorldStore` instances. */
-  sync(withTiles = false): ClientView {
-    if (!this.welcomed) {
-      this.welcomed = true;
-      withTiles = true;
-      this.msgs.emit({
-        v: 1,
-        t: 'welcome',
-        d: {
-          reason: 'join',
-          colonyId: null,
-          planet: { id: this.sim.state.meta.planetId, type: this.sim.state.meta.planetType, name: 'local' },
-          state: this.sim.snapshot({ forClient: true }),
-          simVersion: SIM_VERSION,
-          dataHash: compileData(flagsFromList(this.flagsList)).hash,
-          tick: this.sim.tick,
-          serverTimeMs: Date.now(),
-          tickMs: 200,
-          deltaHz: 5,
-          flags: this.flagsList,
-        },
-      } as ServerMessage);
-    }
-    const { view } = packView(this.sim.view(), withTiles);
-    const unpacked = unpackView(view, Date.now());
-    for (const s of this.boundStores) s.pushView(unpacked);
-    return unpacked;
-  }
-
-  /** Steps the `SimHost` by `dt` ticks and publishes the resulting `ClientView` + delta. */
-  step(dt = 1): ClientView {
-    for (let i = 0; i < dt; i++) {
-      const from = this.sim.tick;
-      const res = this.sim.step(1);
-      for (const o of res.outcomes) {
-        if (o.code) this.msgs.emit({ v: 1, t: 'cmd.reject', d: { id: o.commandId, code: o.code } } as ServerMessage);
-        else this.msgs.emit({ v: 1, t: 'cmd.ack', d: { id: o.commandId, appliedAtTick: o.appliedAtTick } } as ServerMessage);
-      }
-      this.msgs.emit({
-        v: 1,
-        t: 'delta',
-        d: { fromTick: from, toTick: this.sim.tick, diff: this.sim.diffSince(from, { forClient: true }) },
-      } as ServerMessage);
-    }
-    return this.sync(true);
   }
 }

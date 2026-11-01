@@ -1,8 +1,7 @@
 // Rocket on gantry.
 import * as THREE from 'three';
 import { KitbashBuilder } from '../../KitbashRegistry';
-import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { box, cyl, ball, ring, strut, cable, lamp, glow, plinth, lattice } from './kit';
+import { cyl, ball, strut, cable, lamp, glow, plinth, lattice } from './kit';
 
 const PI = Math.PI;
 
