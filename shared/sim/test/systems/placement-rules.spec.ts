@@ -19,7 +19,7 @@ import {
 } from '../../src';
 
 let seq = 0;
-const mkCmd = (args: unknown): SimCommand => ({ colonyIndex: 0, source: 'player', commandId: `pr_${++seq}`, kind: 'placeBuilding', args });
+const mkCmd = (args: unknown, kind = 'placeBuilding'): SimCommand => ({ colonyIndex: 0, source: 'player', commandId: `pr_${++seq}`, kind, args });
 
 function host(): SimHost {
   const h = new SimHost({ flags: parseWaves('..01') });
@@ -84,6 +84,29 @@ describe('shared placement rules: one function for server handler and client gho
     expect(evaluatePlacement(placementWorldFromState(h.state), { colonyId: 0, q: 3, r: 0 }).block).toBe('trees');
     setTileTerrain(h.state.grid, i, TERRAIN.flat);
     expect(evaluatePlacement(placementWorldFromState(h.state), { colonyId: 0, q: 3, r: 0 }).ok).toBe(true);
+  });
+
+  it('real loop, before any territory: Clear the trees + Break the rock via enqueueTask, then the same site is accepted', () => {
+    const h = host();
+    const idx = hexIndex(h.state.grid.radius);
+    const fp = getHubFootprintTiles(3, 0);
+    const tree = fp[1], rock = fp[7];
+    setTileTerrain(h.state.grid, idx.indexOf(tree.q, tree.r), TERRAIN.forest);
+    setTileTerrain(h.state.grid, idx.indexOf(rock.q, rock.r), TERRAIN.rock);
+    h.submit(mkCmd({ building: 'commandHub', q: 3, r: 0 }));
+    expect(h.step(1).outcomes[0]?.code).toBe('terrain_unbuildable');
+
+    h.submit(mkCmd({ terraform: { op: 'clear', tiles: [tree] } }, 'enqueueTask'));
+    expect(h.step(1).outcomes[0]?.code).toBeUndefined();
+    h.submit(mkCmd({ terraform: { op: 'break', tiles: [rock] } }, 'enqueueTask'));
+    expect(h.step(1).outcomes[0]?.code).toBeUndefined();
+    for (let t = 0; t < 400 && h.state.grid.layers.terrain[idx.indexOf(rock.q, rock.r)] !== TERRAIN.flat; t++) h.step(1);
+    expect(h.state.grid.layers.terrain[idx.indexOf(tree.q, tree.r)]).toBe(TERRAIN.flat);
+    expect(h.state.grid.layers.terrain[idx.indexOf(rock.q, rock.r)]).toBe(TERRAIN.flat);
+
+    h.submit(mkCmd({ building: 'commandHub', q: 3, r: 0 }));
+    expect(h.step(1).outcomes[0]?.code).toBeUndefined();
+    expect(hasColonyHub(h.state, 0)).toBe(true);
   });
 
   it('rejects overlapping an existing building footprint as site_blocked (occupied)', () => {

@@ -294,7 +294,8 @@ export class HubPlacementMenu {
     const pending = this.dispatch('placeBuilding', { building: 'commandHub', q: siteQ, r: siteR });
     this.lastOrderId = pending.commandId;
     void pending.result.then((res) => {
-      if (res && res.ok === false) this.onServerReject(siteQ, siteR, res.code ?? 'site_blocked', res.detail);
+      // No verdict on timeout / disconnect (the order may have landed): don't paint a red ghost over it.
+      if (res && res.ok === false && res.code !== 'timeout' && res.code !== 'not_connected') this.onServerReject(siteQ, siteR, res.code ?? 'site_blocked', res.detail);
     });
 
     this.active = false;
@@ -344,7 +345,7 @@ export class HubPlacementMenu {
   cancelOrder(taskId?: string): void {
     const colonyId = this.resolveColonyId();
     const orders = extractColonyConstructionOrders(this.resolveSource(), colonyId);
-    const resolvedId = taskId ?? orders[0]?.orderId ?? this.lastOrderId ?? 'current';
+    const resolvedId = taskId ?? orders[0]?.orderId ?? 'current'; // host order ids ≠ local command ids
     this.dispatch('cancelTask', { taskId: resolvedId });
     this.lastOrderId = null;
     this.ghostState = this.evaluateCurrent(this.active);
