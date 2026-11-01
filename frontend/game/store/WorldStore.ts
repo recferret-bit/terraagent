@@ -1,6 +1,7 @@
 import { flagsFromList, newId, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, createPlanet, SIM_VERSION, SimHost, TICK_MS, type BalanceOverrides, type PlanetState, type SimCommand } from '@terra/sim';
 import { ownBytes } from './bytes';
+import { HostLedger } from './local/hostLedger';
 import { Emitter } from '../net/emitter';
 import type { ConnectionState, Outgoing, Transport } from '../net/types';
 import type { FromWorker, ToWorker } from './worker/protocol';
@@ -72,6 +73,17 @@ export class WorldStore {
   private planetId = '';
   /** The planet of the last welcome, or null before it. */
   currentPlanetId(): string | null { return this.planetId || null; }
+  /** Flags + balance overrides of the last welcome: the server compiled its data with them (D-35). */
+  private welcomeData: { flags: string[]; overrides?: BalanceOverrides; data?: ReturnType<typeof compileData> } | null = null;
+  /**
+   * The compiled balance data the server runs with (welcome flags + live overrides, e.g. dev `tune`), so client-side
+   * rule previews (the placement ghost, D-37) evaluate with the same numbers; null before the first welcome.
+   */
+  simData(): ReturnType<typeof compileData> | null {
+    const w = this.welcomeData;
+    if (!w) return null;
+    return (w.data ??= compileData(flagsFromList(w.flags), w.overrides));
+  }
   private latestView: ClientView | null = null;
   private currentStatus: WorldStatus = { status: 'idle' };
   private tiles: ClientTiles | null = null;
@@ -163,18 +175,6 @@ export class WorldStore {
     this.worker = null;
   }
 
-  /** Flags + balance overrides of the last welcome: the server compiled its data with them (D-35). */
-  private welcomeData: { flags: string[]; overrides?: BalanceOverrides; data?: ReturnType<typeof compileData> } | null = null;
-  /**
-   * The compiled balance data the server runs with (welcome flags + live overrides, e.g. dev `tune`), so client-side
-   * rule previews (the placement ghost, D-37) evaluate with the same numbers; null before the first welcome.
-   */
-  simData(): ReturnType<typeof compileData> | null {
-    const w = this.welcomeData;
-    if (!w) return null;
-    return (w.data ??= compileData(flagsFromList(w.flags), w.overrides));
-  }
-
   /** Estimated server time now (ms), from the last welcome / pong. */
   serverTimeMs(): number { return this.now() + this.offsetMs; }
   /** Estimated current server tick: the last applied tick plus the time since it arrived (not clamped by data). */
@@ -258,6 +258,8 @@ export class LocalHost {
   readonly msgs = new Emitter<ServerMessage>();
   readonly sent: Outgoing[] = [];
   readonly connectionState: ConnectionState = { phase: 'streaming', attempt: 0, downSinceMs: null };
+  /** Host-side resource journal (dev console `ledger`); the bound stores only get `col.stock`. */
+  readonly ledger: HostLedger;
   private readonly flagsList: string[];
   private colonyIndex: number;
   private boundStores = new Set<WorldStore>();
@@ -269,6 +271,8 @@ export class LocalHost {
     this.sim = new SimHost({ flags: flagsFromList(this.flagsList) });
     const planet = opts.planet ?? createPlanet({ type: 'flat', seed: opts.seed ?? 'local-host', radius: opts.radius ?? 16 });
     this.sim.load(planet);
+    this.ledger = HostLedger.open(planet, 'system:seed');
+    this.sim.onPostings((postings) => { for (const problem of this.ledger.record(postings)) console.warn('[local host]', problem); });
     this.store = new WorldStore(this, () => ({ postMessage() {}, onmessage: null, terminate() {} }));
     this.sync(true);
   }

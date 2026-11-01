@@ -2,13 +2,12 @@ import { hexDistance, hexIndex } from '../../grid/hex';
 import { isValidTileIndex, setTileOwner } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
+import type { ColonyCaps } from '../../economy';
+import { ensureColonyRecord } from '../../kernel/colonies';
 import { touchTile, type ColonyState, type PlanetState } from '../../kernel/state';
 import type { ConstructionOrder } from '../construction';
 import { resolveHubT1Row } from '../construction/placement';
 import { defineSimModule } from '../define';
-import type { ColonyCaps } from '../landing';
-
-const DEFAULT_COLONY_COLORS = [0xff6a2a, 0x2ec4b6, 0xe71d36, 0xff9f1c, 0x8338ec, 0x3a86ff] as const;
 
 export interface ClaimedTileInfo {
   q: number;
@@ -55,21 +54,6 @@ function normalizeClaimOpts(
     };
   }
   return optsOrColonyId;
-}
-
-function ensureColonyRecord(state: PlanetState, colonyId: number, tick: number): ColonyState {
-  while (state.colonies.length <= colonyId) {
-    const idx = state.colonies.length;
-    state.colonies.push({
-      index: idx,
-      id: `col_${idx}`,
-      name: `Colony ${idx + 1}`,
-      color: DEFAULT_COLONY_COLORS[idx % DEFAULT_COLONY_COLORS.length],
-      status: 'founding',
-      changedAt: tick,
-    });
-  }
-  return state.colonies[colonyId];
 }
 
 /**

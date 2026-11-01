@@ -1,7 +1,10 @@
 import type { DevCommandDef, FeatureContext } from '../../core/registry/types';
-import { numArg } from '../../dev/console/parse';
+import { intArg, numArg } from '../../dev/console/parse';
 import type { CommandResult } from '../../net/commandBus';
 import '../../net/services';
+import { ledgerCommand } from './ledger';
+
+export { ledgerCommand };
 
 const RESOURCE_ALIASES: Record<string, string> = {
   metals: 'metals.t1',
@@ -22,12 +25,12 @@ function ackText(kind: string, r: CommandResult): string {
 
 export const grantCommand: DevCommandDef = {
   name: 'grant',
-  help: 'grant <res> <n>  Add or subtract resources on colony (e.g. metals.t1, minerals, bio.water)',
+  help: 'grant <res> <n>  Add (n > 0) or withdraw (n < 0, clamped to the balance) whole units on colony (e.g. metals.t1, minerals, bio.water)',
   async run(a, ctx) {
     const rawRes = a[0];
     if (!rawRes) throw new Error('missing <res>');
     const resource = RESOURCE_ALIASES[rawRes] ?? rawRes;
-    const amount = numArg(a, 1, 'n');
+    const amount = intArg(a, 1, 'n');
     return ackText('dev.grant', await sim(ctx, 'dev.grant', { resource, amount }));
   },
 };
@@ -95,4 +98,5 @@ export const w01DevCommands: DevCommandDef[] = [
   seedCommand,
   tpCommand,
   landCommand,
+  ledgerCommand,
 ];

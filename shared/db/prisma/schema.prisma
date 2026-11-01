@@ -282,3 +282,25 @@ model PlanetSnapshot {
   @@schema("world")
   @@map("planet_snapshot")
 }
+
+/// Server-only double-entry journal of a planet's colony resources (D-34): one row per sim posting. Clients only get
+/// balances (`col.stock`); this table is the full history. Identity = (planet, tick, index of the posting in that tick).
+model LedgerEntry {
+  planetId  String   @map("planet_id")
+  tick      BigInt
+  /// index of the posting within its tick (deterministic: the sim's posting order)
+  idx       Int
+  /// closed reason code from the sim's catalog (`construction.spend`, …)
+  reason    String
+  /// who caused it (`player:p_123`, `system:landing`, `dev:console`)
+  actor     String
+  /// what it relates to (`order:42`)
+  ref       String?
+  /// `[{ account, asset, delta }]`, per asset the deltas sum to zero
+  legs      Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@id([planetId, tick, idx])
+  @@schema("world")
+  @@map("ledger_entry")
+}

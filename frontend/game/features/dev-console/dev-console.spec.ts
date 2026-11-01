@@ -1,9 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
+import type { JournalEntry } from '@terra/ledger';
 import { createPlanet, rowOf, SimHost, spawnHqUnit, stepTerraformWorkWithCell } from '@terra/sim';
 import type { FeatureContext } from '../../core/registry';
 import { CommandRunner } from '../../dev/console/runner';
 import type { CommandResult } from '../../net/commandBus';
+import { DevServerError, type LedgerReply } from '../../net/devServer';
 import devConsole from './index';
+import { formatEntry } from './ledger';
 
 const run = async (
   line: string,
@@ -47,6 +50,14 @@ describe('dev-console grant and cell commands', () => {
     expect(await run('grant', { sendCommand })).toBe('error: missing <res>');
     expect(await run('grant metals', { sendCommand })).toBe('error: missing <n>');
     expect(await run('grant metals abc', { sendCommand })).toContain('must be a number');
+    expect(await run('grant metals 2.5', { sendCommand })).toBe('error: <n> must be a whole number, got "2.5"');
+    expect(sendCommand).not.toHaveBeenCalled();
+  });
+
+  it('grant passes negative whole amounts through (withdraw)', async () => {
+    const sendCommand = acking();
+    await run('grant water -30', { sendCommand });
+    expect(sendCommand).toHaveBeenCalledWith('dev.grant', { resource: 'bio.water', amount: -30 });
   });
 
   it('cell sends dev.cell with energy', async () => {
@@ -107,6 +118,95 @@ describe('dev-console reveal, seed, tp, land commands', () => {
     expect(await run('cell 0', { sendCommand })).toBe('error: dev.cell rejected: no_hq (HQ not spawned)');
 
     expect(await run('reveal', {})).toContain('not_connected');
+  });
+});
+
+const ledgerEntry = (seq: number, at: number, reason: string, actor: string, legs: JournalEntry['legs'], ref?: string): JournalEntry => ({
+  seq,
+  at,
+  reason,
+  actor,
+  ...(ref ? { ref } : {}),
+  legs,
+});
+
+/** What the host holds (server Postgres / browser host memory); the command only sees `LedgerReply`s for one account. */
+const SAMPLE_BALANCES: Record<string, Record<string, number>> = {
+  'colony:0': { 'metals.t1': 598, 'minerals.t1': 350, 'bio.t2': 0 },
+  'colony:1': { 'metals.t1': 10 },
+  'sys:cargo': { 'metals.t1': -600, 'minerals.t1': -350 },
+  'sys:construction': { 'metals.t1': 2 },
+  'sys:dev': { 'metals.t1': -10 },
+};
+const SAMPLE_JOURNAL: JournalEntry[] = [
+  ledgerEntry(11, 0, 'landing.cargo', 'system:landing', [
+    { account: 'colony:0', asset: 'metals.t1', delta: 600 },
+    { account: 'sys:cargo', asset: 'metals.t1', delta: -600 },
+    { account: 'colony:0', asset: 'minerals.t1', delta: 350 },
+    { account: 'sys:cargo', asset: 'minerals.t1', delta: -350 },
+  ]),
+  ledgerEntry(12, 340, 'construction.spend', 'player:p1', [
+    { account: 'colony:0', asset: 'metals.t1', delta: -2 },
+    { account: 'sys:construction', asset: 'metals.t1', delta: 2 },
+  ], 'order:7'),
+  ledgerEntry(13, 345, 'dev.grant', 'dev:console', [
+    { account: 'colony:1', asset: 'metals.t1', delta: 10 },
+    { account: 'sys:dev', asset: 'metals.t1', delta: -10 },
+  ]),
+];
+
+/** A host answering like `GET /v1/dev/planets/:planetId/ledger?account=&limit=` (last `limit` entries, oldest first). */
+const hostQuery = () =>
+  vi.fn(async (account: string, limit: number): Promise<LedgerReply> => ({
+    planetId: 'pl_1',
+    account,
+    balances: { ...(SAMPLE_BALANCES[account] ?? {}) },
+    entries: SAMPLE_JOURNAL.filter((e) => e.legs.some((l) => l.account === account)).slice(-limit),
+  }));
+
+describe('dev-console ledger command', () => {
+  const owner = (i: number) => ({ getOwnerColonyIndex: () => i }) as unknown as FeatureContext['services']['landfall'];
+
+  it('formats one entry per line with seq, tick, reason, actor, ref and signed legs', () => {
+    expect(formatEntry(SAMPLE_JOURNAL[1]!)).toBe(
+      '#12 t=340 construction.spend player:p1 order:7  colony:0 metals.t1 -2 · sys:construction metals.t1 +2',
+    );
+  });
+
+  it("asks the host for the player's colony account and prints its non-zero balance", async () => {
+    const ledgerQuery = hostQuery();
+    const out = await run('ledger', { ledgerQuery });
+    expect(ledgerQuery).toHaveBeenCalledWith('colony:0', 10);
+    expect(out.split('\n')).toEqual([
+      '#11 t=0 landing.cargo system:landing  colony:0 metals.t1 +600 · sys:cargo metals.t1 -600 · colony:0 minerals.t1 +350 · sys:cargo minerals.t1 -350',
+      '#12 t=340 construction.spend player:p1 order:7  colony:0 metals.t1 -2 · sys:construction metals.t1 +2',
+      'balance colony:0: metals.t1 598 · minerals.t1 350',
+    ]);
+    const other = await run('ledger', { ledgerQuery, landfall: owner(1) });
+    expect(ledgerQuery).toHaveBeenLastCalledWith('colony:1', 10);
+    expect(other).toBe('#13 t=345 dev.grant dev:console  colony:1 metals.t1 +10 · sys:dev metals.t1 -10\nbalance colony:1: metals.t1 10');
+  });
+
+  it('takes a count and an account, or the account alone', async () => {
+    const ledgerQuery = hostQuery();
+    expect((await run('ledger 1', { ledgerQuery })).split('\n')[0]).toMatch(/^#12 /);
+    expect(ledgerQuery).toHaveBeenLastCalledWith('colony:0', 1);
+    expect(await run('ledger 5 sys:construction', { ledgerQuery })).toBe(
+      '#12 t=340 construction.spend player:p1 order:7  colony:0 metals.t1 -2 · sys:construction metals.t1 +2\nbalance sys:construction: metals.t1 2',
+    );
+    expect(ledgerQuery).toHaveBeenLastCalledWith('sys:construction', 5);
+    expect(await run('ledger sys:dev', { ledgerQuery })).toMatch(/^#13 .*\nbalance sys:dev: metals.t1 -10$/);
+    expect(await run('ledger 3 colony:9', { ledgerQuery })).toBe("no entries for colony:9 in the host's journal\nbalance colony:9: (empty)");
+  });
+
+  it('rejects a bad count, a page without a host ledger and a failing host', async () => {
+    const ledgerQuery = hostQuery();
+    expect(await run('ledger 1.5', { ledgerQuery })).toBe('error: <n> must be a whole number, got "1.5"');
+    expect(await run('ledger 0', { ledgerQuery })).toBe('error: <n> must be at least 1');
+    expect(ledgerQuery).not.toHaveBeenCalled();
+    expect(await run('ledger', {})).toContain('host_unavailable');
+    const down = vi.fn(async () => { throw new DevServerError('not_found', '404 no such planet'); });
+    expect(await run('ledger', { ledgerQuery: down })).toContain('not_found');
   });
 });
 

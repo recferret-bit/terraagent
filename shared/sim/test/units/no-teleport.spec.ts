@@ -15,7 +15,7 @@ import {
   setTileDeposit,
   setTileTerrain,
   spawnHqUnit,
-  TERRAIN,
+  TERRAIN, setColonyStock, resolveStartingCargo,
 } from '../../src';
 import { cmd, HQ_SPEED_PER_TICK, MotionWatch, prepareFootprint, w01Host } from './helpers';
 
@@ -26,6 +26,7 @@ describe('units never teleport: work makes the HQ walk there (SIM-M-01)', () => 
     const host = w01Host();
     const state = host.state;
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    setColonyStock(state, 0, resolveStartingCargo()); // the colony landed with its cargo (no free stock otherwise)
     const row = rowOf(state.entities, hqId);
     const cols = state.entities.cols;
     prepareFootprint(state, 10, 0);

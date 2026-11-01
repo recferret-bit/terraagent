@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { defineFeature, selectFeatures, type DevCommandDef, type Feature, type FeatureContext } from '../../core/registry';
-import { numArg, parseLine } from './parse';
+import { intArg, numArg, parseLine } from './parse';
 import { CommandRunner } from './runner';
 
 const cmd = (name: string, run: DevCommandDef['run'] = () => `${name} ran`): DevCommandDef => ({ name, help: `help for ${name}`, run });
@@ -68,5 +68,11 @@ describe('arg parsing', () => {
     expect(numArg([], 0, 'q', 7)).toBe(7);
     expect(() => numArg([], 0, 'id')).toThrow('missing <id>');
     expect(() => numArg(['x'], 0, 'q')).toThrow('<q> must be a number, got "x"');
+  });
+  it('intArg accepts whole numbers only', () => {
+    expect(intArg(['-30'], 0, 'n')).toBe(-30);
+    expect(intArg([], 0, 'n', 10)).toBe(10);
+    expect(() => intArg(['2.5'], 0, 'n')).toThrow('<n> must be a whole number, got "2.5"');
+    expect(() => intArg(['x'], 0, 'n')).toThrow('<n> must be a number, got "x"');
   });
 });

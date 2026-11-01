@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { SimCommandV1 } from '@terra/contracts';
 import {
-  allModules, buildPipeline, createPlanet, diffSince, effectiveOverrides, mergeOverrides, restore, snapshot, step, tune,
+  allModules, buildPipeline, createPlanet, diffSince, effectiveOverrides, getColonyStock, mergeOverrides, restore, snapshot, step, tune,
   type BalanceOverrides, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent, type SimModule, type TuneRequest,
 } from '@terra/sim';
 import type { LoadMsg, PassStat, Post, PlanetStats, ToThread } from './protocol';
@@ -107,8 +107,8 @@ export class PlanetHost {
           seed: msg.params?.seed ?? msg.planetId,
           planetId: msg.planetId,
           radius: msg.params?.radius,
-          worldSalt: randomUUID(), // hidden-ground secret: never leaves the server (D-38)
           capacity: msg.params?.capacity,
+          worldSalt: randomUUID(), // hidden-ground secret: never leaves the server (D-38)
         });
     const modules = this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined;
     const flags = msg.flags ?? this.flags;
@@ -117,7 +117,8 @@ export class PlanetHost {
     this.planets.set(msg.planetId, {
       state, pipeline, tuning: { flags, base, live: {} }, pending: [], subscribed: false, lastDeltaTick: state.meta.tick, nextDeltaMs: 0, windowEvents: [], deltaMs: 0, deltaBytes: 0,
     });
-    this.post({ t: 'loaded', planetId: msg.planetId, tick: state.meta.tick });
+    const stocks = Array.from({ length: state.colonies?.length ?? 0 }, (_, i) => getColonyStock(state, i));
+    this.post({ t: 'loaded', planetId: msg.planetId, tick: state.meta.tick, restored: !!msg.snapshot, genesis: !!msg.genesis, stocks });
   }
 
   private enqueue(planetId: string, cmd: SimCommandV1): void {
@@ -133,6 +134,8 @@ export class PlanetHost {
     const cmds = p.pending.splice(0);
     const r = step(p.state, cmds, dt, p.pipeline);
     this.steps++;
+    // Every step's postings leave right away (subscribed or not): the server journal must never miss one (D-34).
+    if (r.postings.length) this.post({ t: 'ledger', planetId, tick: r.stats.tick, postings: r.postings });
     for (const o of r.outcomes) {
       if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick });
       else this.post({ t: 'ack', planetId, commandId: o.commandId, appliedAtTick: o.appliedAtTick });

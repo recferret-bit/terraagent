@@ -1,6 +1,7 @@
 import { ServerMessage, type ServerMessageOf } from '@terra/contracts';
-import { snapshot, type BalanceOverrides } from '@terra/sim';
+import { getColonyStock, snapshot, type BalanceOverrides } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
+import type { LedgerReply } from '../../net/devServer';
 import { ReplicaCore } from '../replica/ReplicaCore';
 import { LocalHostController } from './LocalHostController';
 import { LocalDevError, LocalHostCore, type LocalHostDeps } from './LocalHostCore';
@@ -144,6 +145,39 @@ describe('LocalHostCore dev server', () => {
     const w = r.servers().filter((m): m is ServerMessageOf<'welcome'> => m.t === 'welcome').pop()!;
     expect(w.d.overrides).toEqual({ dev: { probe: { nudgeTiles: 3 } } });
     again.stop();
+  });
+});
+
+describe('host-side resource ledger', () => {
+  const nonZero = (stock: Record<string, number>) => Object.fromEntries(Object.entries(stock).filter(([, v]) => v !== 0));
+
+  it('journals every posting in the worker, answers `ledger` like the server route, re-opens balances on resume', async () => {
+    const store = memorySnapshotStore();
+    const r = rig(store, { scenario: 'w01' });
+    const core = await r.create();
+    core.handle(join);
+    core.handle(cmd('cm_land', 'dev.land'));
+    r.advance(400);
+    core.handle(cmd('cm_grant', 'dev.grant', { resource: 'metals.t1', amount: 50 }));
+    r.advance(400);
+    const stock = nonZero(getColonyStock(core.simHost.state, 0));
+    const live = (await core.devCommand('ledger', { account: 'colony:0', limit: 100 })) as LedgerReply;
+    expect(live).toMatchObject({ planetId: core.planetId, account: 'colony:0' });
+    expect(live.balances).toEqual(stock);
+    expect(stock['metals.t1']).toBeGreaterThanOrEqual(50);
+    // a fresh scenario replays its setup postings: the journal starts with the real landing cargo, not an opening
+    expect(live.entries[0]).toMatchObject({ seq: 1, reason: 'landing.cargo', actor: 'system:landing' });
+    expect(live.entries.at(-1)).toMatchObject({ reason: 'dev.grant', actor: 'dev:console' });
+    expect((await core.devCommand('ledger', { account: 'colony:0', limit: 1 }) as LedgerReply).entries).toHaveLength(1);
+    core.stop();
+    await Promise.resolve();
+
+    const resumed = await rig(store, { scenario: 'w01' }).create();
+    const opened = (await resumed.devCommand('ledger', { account: 'colony:0', limit: 100 })) as LedgerReply;
+    expect(opened.balances).toEqual(nonZero(getColonyStock(resumed.simHost.state, 0)));
+    expect(opened.entries).toHaveLength(1);
+    expect(opened.entries[0]).toMatchObject({ reason: 'ledger.opening', actor: 'system:resume' });
+    resumed.stop();
   });
 });
 

@@ -1,5 +1,5 @@
 import type { ViewColony } from '@terra/sim';
-import { checkBuildingAffordability } from '@terra/sim';
+import { checkBuildingAffordability, resolveHubCost } from '@terra/sim';
 import type { CommandResult, SendCommand } from '../../net/commandBus';
 import type { Transport } from '../../net/types';
 import type { GameView } from '../../core/registry/types';
@@ -28,18 +28,23 @@ export function formatClock(tick: number): string {
   return `${mm}:${ss}`;
 }
 
-const DEFAULT_HUB_COST: Record<string, number> = {
-  'metals.t1': 200,
-  'minerals.t1': 100,
-  'bio.biomass': 50,
-  'bio.water': 50,
-};
+/**
+ * Colony resources are whole units (the sim ledger); flooring at this one read boundary guarantees the HUD and its
+ * toasts never show a fraction even if a stale or malformed view carries one.
+ */
+export function wholeStock(stock: Record<string, number> | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, v] of Object.entries(stock ?? {})) {
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = Math.floor(v);
+  }
+  return out;
+}
 
 export function formatRejectToast(
   code: string,
   detail?: string,
   stock?: Record<string, number>,
-  buildingCost: Record<string, number> = DEFAULT_HUB_COST,
+  buildingCost: Record<string, number> = resolveHubCost(),
 ): string {
   if (code === 'insufficient_resources') {
     if (stock) {
@@ -74,6 +79,8 @@ export function formatRejectToast(
     rate_limited: 'Slow down: too many orders',
     timeout: 'Not confirmed: Timeout',
     not_connected: 'Not connected',
+    already_landed: 'Rejected: Colony already landed',
+    landing_site_taken: 'Rejected: Landing site taken or too close to another colony',
   };
 
   if (KNOWN[code]) return KNOWN[code];
@@ -372,7 +379,7 @@ export class MinimalHud {
   handleReject(code: string, detail?: string, cmd?: { kind: string; args?: unknown }): HTMLElement {
     const stock = this.getColonyStock();
     const isHub = cmd?.kind === 'placeBuilding' || !cmd;
-    const cost = isHub ? DEFAULT_HUB_COST : undefined;
+    const cost = isHub ? resolveHubCost() : undefined;
     const msg = formatRejectToast(code, detail, stock, cost);
     return this.showToast(msg, 'warning');
   }
@@ -395,21 +402,10 @@ export class MinimalHud {
   }
 
   getColonyStock(): Record<string, number> {
-    const view = this.latestView as {
-      colonies?: ViewColony[];
-      blobs?: Record<string, unknown>;
-    } | null;
+    const view = this.latestView as { colonies?: ViewColony[] } | null;
     const idx = this.opts.getOwnerColonyIndex?.() ?? this.opts.ownerColonyIndex ?? 0;
     const col = view?.colonies?.find((c) => c.index === idx) ?? view?.colonies?.[idx];
-    const fromCol = col?.stock as Record<string, number> | undefined;
-    const rawBlob = view?.blobs?.colonyStock;
-    const blobStock = (
-      rawBlob && typeof rawBlob === 'object' && 'value' in rawBlob
-        ? (rawBlob as { value: unknown }).value
-        : rawBlob
-    ) as Record<string | number, Record<string, number>> | undefined;
-    const fromBlob = blobStock?.[idx] ?? blobStock?.[String(idx)];
-    return { ...(fromCol ?? {}), ...(fromBlob ?? {}) };
+    return wholeStock(col?.stock);
   }
 
   dispose(): void {

@@ -1,4 +1,4 @@
-import { Inject, Injectable, type BeforeApplicationShutdown } from '@nestjs/common';
+import { Inject, Injectable, Optional, type BeforeApplicationShutdown } from '@nestjs/common';
 import { devPlanetTypeOf, GEN_VERSION, restore } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge, Histogram } from 'prom-client';
@@ -6,6 +6,8 @@ import { MetricsRegistry } from '../../core/metrics.registry';
 import { layerLogger } from '../../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../../core/tokens';
 import { GamePlanets } from '../game-planets.service';
+import { PlanetLedgerService } from '../ledger/planet-ledger.service';
+import { persistenceEnabled } from './persistence-enabled';
 import { SnapshotScheduler } from './snapshot-scheduler';
 import { SnapshotStore } from './snapshot-store';
 import { devSnapshotVerdict } from './dev-planet-verdict';
@@ -30,9 +32,11 @@ export class SnapshotService implements BeforeApplicationShutdown {
     metrics: MetricsRegistry,
     @Inject(APP_ENV) env: AppEnv,
     @Inject(LOGGER) root: Logger,
+    /** Each snapshot write waits for the planet's queued journal writes, so a saved snapshot at T has its rows ≤ T. */
+    @Optional() private readonly ledger?: PlanetLedgerService,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
-    this.enabled = env.SNAPSHOTS === 'on' || (env.SNAPSHOTS !== 'off' && env.NODE_ENV !== 'test');
+    this.enabled = persistenceEnabled(env);
     const registers = [metrics.registry];
     this.bytes = new Gauge({ name: 'ta_game_snapshot_bytes', help: 'Compressed size of the last saved snapshot', registers });
     this.seconds = new Histogram({ name: 'ta_game_snapshot_save_seconds', help: 'Snapshot compress + write time', buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5], registers });
@@ -95,6 +99,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
   }
 
   private async write(planetId: string, s: { tick: number; bytes: Uint8Array; kind: Parameters<SnapshotStore['save']>[2]; savedAt: Date }): Promise<void> {
+    await this.ledger?.settled(planetId); // the `ledger` messages of ticks ≤ s.tick arrived before this snapshot
     const end = this.seconds.startTimer();
     const saved = await this.store.save(planetId, s.tick, s.kind, s.bytes, s.savedAt);
     end();

@@ -22,6 +22,8 @@ import {
   spawnHqUnit,
   TERRAIN,
   type SimCommand,
+  setColonyStock,
+  resolveStartingCargo,
 } from '../../src';
 
 let cmdSeq = 0;
@@ -58,6 +60,7 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     const host = createW01Host();
     const state = host.state;
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    setColonyStock(state, 0, resolveStartingCargo()); // the colony landed with its cargo (no free stock otherwise)
     const hqSlot = rowOf(state.entities, hqId);
     const idx = hexIndex(state.grid.radius);
     const footprint = getHubFootprintTiles(3, 0);
@@ -154,6 +157,7 @@ describe('W01-15: Forest/Rock prep planning & cancel propagation (UO-TF-03, UO-Q
     const host = createW01Host();
     const state = host.state;
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    setColonyStock(state, 0, resolveStartingCargo()); // the colony landed with its cargo (no free stock otherwise)
     const hqSlot = rowOf(state.entities, hqId);
     const idx = hexIndex(state.grid.radius);
     const footprint = getHubFootprintTiles(3, 0);

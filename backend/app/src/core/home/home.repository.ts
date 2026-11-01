@@ -344,6 +344,21 @@ export class HomeRepository {
     return { colony, planet };
   }
 
+  /** Removes a colony whose landing failed (seat rollback) and recounts its planet's seats. */
+  async deleteColony(colonyId: string): Promise<void> {
+    const colony = this.coloniesById.get(colonyId);
+    this.coloniesById.delete(colonyId);
+    if (this.dbEnabled && this.prisma) {
+      const row = await this.prisma.colony.delete({ where: { id: colonyId } }).catch(() => null);
+      const planetId = row?.planetId ?? colony?.planetId;
+      if (planetId) {
+        const seatsTaken = await this.prisma.colony.count({ where: { planetId } });
+        await this.prisma.planet.update({ where: { id: planetId }, data: { seatsTaken } }).catch(() => null);
+      }
+    }
+    const planet = colony && this.planetsById.get(colony.planetId);
+    if (planet) this.saveMemPlanet({ ...planet, seatsTaken: Math.max(0, planet.seatsTaken - 1) });
+  }
 
   async setColonyStatus(colonyId: string, status: string): Promise<ColonyRecord | null> {
     if (this.dbEnabled && this.prisma) {

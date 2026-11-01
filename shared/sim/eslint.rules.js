@@ -1,5 +1,5 @@
 // Sim purity rules (SIM-D-06): the sim is isomorphic and deterministic, so shared/sim/src may not touch clocks,
-// randomness, timers, I/O, host globals, async code or any package but @terra/contracts. Spread into the root config.
+// randomness, timers, I/O, host globals, async code or any package but @terra/contracts and @terra/ledger. Spread into the root config.
 const WHY = 'SIM-D-06: the sim must be pure and deterministic';
 const banned = (names, hint) => names.map((name) => ({ name, message: `${WHY}. ${hint}` }));
 
@@ -29,7 +29,7 @@ const purity = (files, allowed) => [
       'no-restricted-imports': ['error', {
         patterns: [
           { group: NODE_MODULES, message: `${WHY}. No Node or I/O modules.` },
-          { group: ['@terra/*', ...allowed.flatMap((n) => [`!@terra/${n}`, `!@terra/${n}/*`])], message: `${WHY}. Only ${allowed.map((n) => `@terra/${n}`).join(', ')} may be imported.` },
+          { group: ['@terra/*', ...allowed.flatMap((n) => [`!@terra/${n}`, `!@terra/${n}/*`])], message: allowed.length ? `${WHY}. Only ${allowed.map((n) => `@terra/${n}`).join(', ')} may be imported.` : `${WHY}. No @terra/* package may be imported.` },
         ],
       }],
       'no-restricted-syntax': ['error', ...ASYNC_SYNTAX],
@@ -64,8 +64,10 @@ const simMovement = [
 ];
 
 export const simPurity = [
-  ...purity(['shared/sim/src/**/*.ts'], ['contracts']),
+  ...purity(['shared/sim/src/**/*.ts'], ['contracts', 'ledger']),
+  // the ledger runs inside step(): same purity, and it imports no other @terra package
+  ...purity(['shared/ledger/src/**/*.ts'], []),
   // seed scenarios run on every host (server thread, browser local host, CLI): same purity, plus the engine API itself
-  ...purity(['scenarios/*.ts'], ['contracts', 'sim']),
+  ...purity(['scenarios/*.ts'], ['contracts', 'ledger', 'sim']),
   ...simMovement,
 ];

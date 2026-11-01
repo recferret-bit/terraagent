@@ -44,16 +44,10 @@ export function view(state: PlanetState): SimView {
   }
   const blobs: Record<string, unknown> = {};
   for (const [k, b] of Object.entries(state.blobs)) blobs[k] = b.value;
-  const stockBlob =
-    (state.blobs.colonyStock?.value as Record<string | number, Record<string, number>> | undefined) ??
-    (state.blobs.colonyStock as unknown as Record<string | number, Record<string, number>> | undefined);
   const hqBlob = state.blobs.hq?.value as (HqUnitView & { byColony?: Record<number, HqUnitView> }) | undefined;
   const colonies: ViewColony[] = state.colonies.map((k) => {
-    const fromBlob = stockBlob?.[k.index] ?? stockBlob?.[k.id];
-    const existing = k.stock as Record<string, number> | undefined;
     const hq = (k.hq as HqUnitView | undefined) ?? hqBlob?.byColony?.[k.index];
     const out: ViewColony = { ...k };
-    if (fromBlob || existing) out.stock = { ...(existing ?? {}), ...(fromBlob ?? {}) };
     if (hq) {
       out.hq = hq;
       out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;

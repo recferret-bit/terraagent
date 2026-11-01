@@ -6,6 +6,7 @@ import {
   decodeWire,
   HomeResponseSchema,
   newId,
+  RESOURCE_KEYS,
   Welcome,
   type HomeResponse,
 } from '@terra/contracts';
@@ -18,6 +19,14 @@ import { GamePlanets } from '../../src/game/game-planets.service';
 
 const coreOnlyDir = fileURLToPath(new URL('../core/fixtures/base/', import.meta.url));
 const openSockets: WebSocket[] = [];
+/** Landing cargo as a zero-filled stock over every resource key (whole units). */
+const LANDING_STOCK = {
+  ...Object.fromEntries(RESOURCE_KEYS.map((k) => [k, 0])),
+  'metals.t1': 600,
+  'minerals.t1': 350,
+  'bio.biomass': 200,
+  'bio.water': 200,
+};
 
 let currentApp: INestApplication | undefined;
 
@@ -289,12 +298,7 @@ describe('Dev planet seat assignment & system.spawnColony (W01-05)', () => {
       const col = plDevState.colonies[i]!;
       expect(col.id).toBe(home.colony.id);
       expect(col.playerId).toBe(playerId);
-      expect(getColonyStock(plDevState, i)).toEqual({
-        'metals.t1': 600,
-        'minerals.t1': 350,
-        'bio.biomass': 200,
-        'bio.water': 200,
-      });
+      expect(getColonyStock(plDevState, i)).toEqual(LANDING_STOCK);
       expect(plDevSlots[i]?.claimedBy).toBe(i);
       const podRow = [...Array(plDevState.entities.count).keys()].find(
         (r) => plDevState.entities.cols.kind[r] === ENTITY_KIND.pod && plDevState.entities.cols.owner[r] === i,
@@ -308,12 +312,7 @@ describe('Dev planet seat assignment & system.spawnColony (W01-05)', () => {
     expect(plDev2State.meta.planetId).toBe('pl_dev_2');
     expect(plDev2State.colonies).toHaveLength(1);
     expect(plDev2State.colonies[0]?.id).toBe(sixth.colony.id);
-    expect(getColonyStock(plDev2State, 0)).toEqual({
-      'metals.t1': 600,
-      'minerals.t1': 350,
-      'bio.biomass': 200,
-      'bio.water': 200,
-    });
+    expect(getColonyStock(plDev2State, 0)).toEqual(LANDING_STOCK);
   }, 15_000);
 });
 

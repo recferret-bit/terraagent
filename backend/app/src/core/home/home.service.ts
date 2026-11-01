@@ -160,15 +160,24 @@ export class HomeService {
         planet,
         slot,
       };
-      if (this.notifier) {
-        await this.notifier.onColonySeated(assignment);
-      }
-      for (const listener of this.seatListeners) {
-        await listener(assignment);
-      }
-
+      await this.notifySeated(assignment);
       return this.buildHomeResponse(colony, planet);
     });
+  }
+
+  /**
+   * Tells the notifier and listeners (the game module lands the colony in the sim). If one fails (the sim rejected the
+   * landing: `COLONY_SEAT_REJECTED`), the colony row is rolled back so the player is not left with a colony that never
+   * landed, and the error propagates (`/me/home` answers it instead of ACTIVE; the next call seats again).
+   */
+  private async notifySeated(assignment: ColonySeatAssignment): Promise<void> {
+    try {
+      if (this.notifier) await this.notifier.onColonySeated(assignment);
+      for (const listener of this.seatListeners) await listener(assignment);
+    } catch (e) {
+      await this.repo.deleteColony(assignment.colony.id).catch(() => undefined); // best effort: keep the sim's error
+      throw e;
+    }
   }
 
   private buildHomeResponse(colony: ColonyRecord, planet: PlanetRecord): HomeResponse {

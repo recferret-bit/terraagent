@@ -49,6 +49,7 @@
     "@swc/core": "^1.16.20",
     "@types/node": "^26.6.6",
     "@types/three": "^0.174.0",
+    "@vitest/coverage-v8": "^5.0.5",
     "concurrently": "^10.0.6",
     "eslint": "^10.13.0",
     "globals": "^17.13.0",
@@ -63,6 +64,7 @@
   "workspaces": [
     "shared/contracts",
     "shared/config",
+    "shared/ledger",
     "shared/db",
     "shared/sim",
     "scenarios",

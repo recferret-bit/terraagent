@@ -14,10 +14,11 @@ import {
   MinimalHud,
   type MinimalHudOptions,
   type StoreLike,
+  wholeStock,
 } from './MinimalHud';
 import './hud-min.css';
 
-export { formatClock, formatRejectToast, MinimalHud, type MinimalHudOptions, type StoreLike };
+export { formatClock, formatRejectToast, MinimalHud, type MinimalHudOptions, type StoreLike, wholeStock };
 
 declare module '../../core/registry/types' {
   interface GameView {

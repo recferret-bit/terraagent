@@ -1,7 +1,7 @@
 import { pruneRemovals } from '../ecs/store';
 import type { CommandHandlerDef, CommandOutcome, SimCommand } from './commands';
 import type { EngineConfig } from './config';
-import type { StepContext } from './context';
+import type { LedgerPosting, StepContext } from './context';
 import type { SimEvent } from './events';
 import type { PlanetState } from './state';
 import { orderSystems, type SimSystem } from './system';
@@ -16,6 +16,8 @@ export interface StepStats {
 
 export interface StepResult {
   events: SimEvent[];
+  /** Ledger postings of this step, in order (host-only: persist them, never send them to clients). */
+  postings: LedgerPosting[];
   outcomes: CommandOutcome[];
   stats: StepStats;
 }
@@ -36,10 +38,11 @@ export function createPipeline(config: EngineConfig): Pipeline {
   return { config, systems: orderSystems(config.systems), handlers };
 }
 
-function makeContext(state: PlanetState, dt: number, p: Pipeline, events: SimEvent[]): StepContext {
+function makeContext(state: PlanetState, dt: number, p: Pipeline, events: SimEvent[], postings: LedgerPosting[]): StepContext {
   const tick = state.meta.tick + dt;
   return {
-    dt, tick, flags: p.config.flags, data: p.config.data, events,
+    dt, tick, flags: p.config.flags, data: p.config.data, events, postings,
+    record: (posting) => { postings.push(posting); },
     rng: (stream) => state.rng[stream],
     newEntityId: () => state.meta.nextEntityId++,
     emit: (e) => { events.push({ severity: 'info', colonyIds: [], data: {}, ...e, atTick: tick }); },
@@ -67,11 +70,12 @@ function applyCommands(state: PlanetState, cmds: readonly SimCommand[], ctx: Ste
 export function step(state: PlanetState, cmds: readonly SimCommand[], dt: number, p: Pipeline): StepResult {
   if (!Number.isInteger(dt) || dt < 1) throw new Error(`step: dt must be a positive integer, got ${dt}`);
   const events: SimEvent[] = [];
-  const ctx = makeContext(state, dt, p, events);
+  const postings: LedgerPosting[] = [];
+  const ctx = makeContext(state, dt, p, events, postings);
   const outcomes = applyCommands(state, cmds, ctx, p);
   for (const s of p.systems) if (ctx.flags.has(s.wave)) s.run(state, ctx);
   state.meta.tick = ctx.tick;
   pruneRemovals(state.entities, ctx.tick);
   const rejected = outcomes.filter((o) => o.code).length;
-  return { events, outcomes, stats: { dt, tick: ctx.tick, commands: cmds.length, rejected, entities: state.entities.count } };
+  return { events, postings, outcomes, stats: { dt, tick: ctx.tick, commands: cmds.length, rejected, entities: state.entities.count } };
 }

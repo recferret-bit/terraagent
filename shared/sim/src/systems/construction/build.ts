@@ -1,4 +1,15 @@
+import type { ResourceKey } from '@terra/contracts';
+import { owedAt, ratioToBp, shareBp } from '@terra/ledger';
 import type { CompiledRow } from '../../data';
+import {
+  colonyActor,
+  findShortfall,
+  getColonyStock,
+  treasury,
+  treasuryCtx,
+  type Amounts,
+  type TreasuryCtx,
+} from '../../economy';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -6,7 +17,6 @@ import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState, SimState } from '../../kernel/state';
 import { defaultW01Data, resolveHqT1Row, syncHqView } from '../hq';
-import { addColonyStock, getColonyStock, resolveStartingKitRow, setColonyStock } from '../landing';
 import { applyHubCompletionEffects } from '../territory-claim';
 import type { ConstructionOrder } from './index';
 import { isHubBuildingKind, resolveHubT1Row } from './placement';
@@ -49,56 +59,27 @@ export function resolveHubBuildTimeS(data?: CompiledDataLike): number {
   return Number(hubRow.buildTimeS ?? hubRow.designBuildS ?? 30);
 }
 
-/** Resolves the in-progress cancellation refund ratio (`0.75` = 75 % for `hub.t1`). */
-export function resolveHubCancelRefundRatio(data?: CompiledDataLike): number {
+/** Share of the paid cost refunded when an in-progress build is cancelled, in basis points (`hub.t1.cancelRefundBp`). */
+export function resolveHubCancelRefundBp(data?: CompiledDataLike): number {
   const hubRow = resolveHubT1Row(data);
-  if (typeof hubRow.cancelRefundRatio === 'number') return hubRow.cancelRefundRatio;
-  if (typeof hubRow.cancelRefundBp === 'number') return hubRow.cancelRefundBp / 10000;
-  return 0.75;
+  if (typeof hubRow.cancelRefundBp === 'number') return hubRow.cancelRefundBp;
+  if (typeof hubRow.cancelRefundRatio === 'number') return ratioToBp(hubRow.cancelRefundRatio);
+  return 7500;
 }
 
-/** Checks whether `colonyId` currently has enough stock to pay `cost` (`UO-Q-01`, `UO-Q-03`). */
-export function checkBuildingCost(
-  state: SimState,
-  colonyId: number,
-  cost: Record<string, number>,
-): CostCheckResult {
-  const stock = getColonyStock(state, colonyId);
-  for (const [key, need] of Object.entries(cost)) {
-    if (typeof need !== 'number' || need <= 0) continue;
-    const have = stock[key] ?? 0;
-    if (have + 1e-6 < need) {
-      const waitingReason = `waiting(resources: ${key} ${Math.floor(have)}/${need})`;
-      return { ok: false, missingKey: key, have, need, waitingReason };
-    }
-  }
-  return { ok: true };
+function waitingFor(resource: string, have: number, need: number): CostCheckResult {
+  return { ok: false, missingKey: resource, have, need, waitingReason: `waiting(resources: ${resource} ${have}/${need})` };
 }
 
-function hasExplicitColonyStock(state: SimState, colonyId: number): boolean {
-  const col = state.colonies[colonyId];
-  return Boolean(col && col.resources !== undefined);
-}
-
-function seedDefaultStartingStock(state: SimState, colonyId: number, data?: CompiledDataLike): void {
-  const kit = resolveStartingKitRow(data ?? defaultW01Data());
-  const rawCargo = (kit.cargo ?? {
-    'metals.t1': 600,
-    'minerals.t1': 350,
-    'bio.biomass': 200,
-    'bio.water': 200,
-  }) as Record<string, number>;
-  const initialStock: Record<string, number> = {};
-  for (const [k, v] of Object.entries(rawCargo)) {
-    if (typeof v === 'number' && v > 0) initialStock[k] = v;
-  }
-  setColonyStock(state, colonyId, initialStock);
+/** Checks whether `colonyId` currently has enough stock to pay `cost` (`UO-Q-01`, `UO-Q-03`). Whole units. */
+export function checkBuildingCost(state: SimState, colonyId: number, cost: Record<string, number>): CostCheckResult {
+  const short = findShortfall(getColonyStock(state, colonyId), cost as Amounts);
+  return short ? waitingFor(short.resource, short.have, short.need) : { ok: true };
 }
 
 /**
  * Starts paying for a construction order (`UO-Q-01`, `W01-16`). The cost is NOT deducted up front: this is the start
- * gate (full cost must be affordable, or the colony has no explicit stock yet and is seeded with the starting kit) and
- * marks `order.costPaid = true` (payment started) with an empty `order.paidAmounts`. The cost is then spent gradually
+ * gate (the full cost must be affordable; a colony only gets resources by landing, never here) and marks `order.costPaid = true` (payment started) with an empty `order.paidAmounts`. The cost is then spent gradually
  * by {@link spendConstructionSlice} in proportion to build progress.
  */
 export function payConstructionCost(
@@ -111,75 +92,71 @@ export function payConstructionCost(
   order.cost = { ...cost };
 
   const initialCheck = checkBuildingCost(state, order.colonyId, cost);
-  if (!initialCheck.ok) {
-    if (hasExplicitColonyStock(state, order.colonyId)) return initialCheck;
-    const currentStock = getColonyStock(state, order.colonyId);
-    if (!Object.values(currentStock).some((v) => typeof v === 'number' && v > 0)) {
-      seedDefaultStartingStock(state, order.colonyId, data);
-    }
-  }
+  if (!initialCheck.ok) return initialCheck;
   order.costPaid = true;
   order.paidAmounts = {};
   return { ok: true };
 }
 
 /**
- * Spends the part of `order.cost` that corresponds to build progress `targetProgress` (cumulative, 0..1) and has not
- * been paid yet. All-or-nothing per slice: when the colony lacks any resource the build pauses (returns the
- * `waiting(resources: …)` reason) and nothing is deducted. At `1.0` the paid total equals the cost exactly.
+ * Spends the part of `order.cost` owed at build progress `targetProgress` (cumulative, 0..1) and not paid yet:
+ * `owedAt(cost, progress) - paid` whole units per resource, as one `construction.spend` withdrawal. All-or-nothing:
+ * when the colony lacks any resource the build pauses (returns the `waiting(resources: …)` reason) and nothing is
+ * deducted. At `1.0` the paid total equals the cost exactly.
  */
 export function spendConstructionSlice(
   state: SimState,
   order: ConstructionOrder,
   targetProgress: number,
-  data?: CompiledDataLike,
+  data: CompiledDataLike | undefined,
+  ledger: TreasuryCtx,
 ): CostCheckResult {
   const cost = order.cost ?? resolveHubCost(data);
   const paid = (order.paidAmounts ??= {});
-  const stock = getColonyStock(state, order.colonyId);
-  const slice: Record<string, number> = {};
+  const slice: Amounts = {};
   for (const [k, total] of Object.entries(cost)) {
-    // Whole units only: float slices would leave stock at e.g. 250.00000000000006 after the build.
-    const owed = targetProgress >= 1 - 1e-9 ? total : Math.floor(total * targetProgress);
-    const amt = Math.max(0, owed - (paid[k] ?? 0));
-    if (amt <= 0) continue;
-    const have = stock[k] ?? 0;
-    if (have + 1e-6 < amt) {
-      return { ok: false, missingKey: k, have, need: amt, waitingReason: `waiting(resources: ${k} ${Math.floor(have)}/${Math.ceil(amt)})` };
-    }
-    slice[k] = amt;
+    const amt = owedAt(total, targetProgress) - (paid[k] ?? 0);
+    if (amt > 0) slice[k as ResourceKey] = amt;
   }
-  const deduction: Record<string, number> = {};
-  for (const [k, amt] of Object.entries(slice)) {
-    deduction[k] = -amt;
-    paid[k] = (paid[k] ?? 0) + amt;
-  }
-  if (Object.keys(deduction).length > 0) addColonyStock(state, order.colonyId, deduction, false);
+  const res = treasury(state, ledger).withdraw({
+    colony: order.colonyId,
+    amounts: slice,
+    reason: 'construction.spend',
+    actor: colonyActor(state, order.colonyId),
+    ref: `order:${order.entityId}`,
+  });
+  if (!res.ok) return waitingFor(res.resource ?? res.code, res.have ?? 0, res.need ?? 0);
+  for (const [k, amt] of Object.entries(res.debited)) paid[k] = (paid[k] ?? 0) + amt;
   return { ok: true };
 }
 
 /**
- * Refunds `75 %` (`cancelRefundRatio`) of `order.paidAmounts` when an in-progress construction order is cancelled
- * (`UO-Q-02`, `W01-16`). Returns the refunded resource map (empty if nothing was paid).
+ * Refunds `floor(paid × cancelRefundBp / 10000)` (75 % for `hub.t1`) of each resource in `order.paidAmounts` as one
+ * `construction.refund` credit when an in-progress construction order is cancelled (`UO-Q-02`, `W01-16`). Returns
+ * the refunded resource map (empty if nothing was paid).
  */
 export function refundCancelledConstruction(
   state: SimState,
   order: ConstructionOrder,
-  data?: CompiledDataLike,
+  data: CompiledDataLike | undefined,
+  ledger: TreasuryCtx,
 ): Record<string, number> {
   if (!order.costPaid || !order.paidAmounts || order.status === 'completed') {
     return {};
   }
-  const ratio = resolveHubCancelRefundRatio(data);
+  const bp = resolveHubCancelRefundBp(data);
   const refund: Record<string, number> = {};
   for (const [k, paid] of Object.entries(order.paidAmounts)) {
-    if (typeof paid === 'number' && paid > 0) {
-      refund[k] = paid * ratio;
-    }
+    const share = shareBp(paid, bp);
+    if (share > 0) refund[k] = share;
   }
-  if (Object.keys(refund).length > 0) {
-    addColonyStock(state, order.colonyId, refund, false);
-  }
+  treasury(state, ledger).add({
+    colony: order.colonyId,
+    amounts: refund as Amounts,
+    reason: 'construction.refund',
+    actor: colonyActor(state, order.colonyId),
+    ref: `order:${order.entityId}`,
+  });
   return refund;
 }
 
@@ -205,9 +182,11 @@ export function advanceConstructionProgress(
       : Number(resolveHqT1Row(data ?? defaultW01Data()).workRate || 1.5);
   const buildTimeS = order.buildTimeS > 0 ? order.buildTimeS : resolveHubBuildTimeS(data);
   const delta = buildTimeS > 0 ? (dtS * hqRate) / buildTimeS : 1;
-  const nextProgress = Math.min(1, (order.progress ?? 0) + delta);
+  const rawProgress = Math.min(1, (order.progress ?? 0) + delta);
+  // Snap float drift (0.9999999…) to 1 so the last slice settles the cost exactly and the order completes.
+  const nextProgress = rawProgress >= 1 - 1e-6 ? 1 : rawProgress;
 
-  const spend = spendConstructionSlice(state, order, nextProgress, data);
+  const spend = spendConstructionSlice(state, order, nextProgress, data, treasuryCtx(tick, ctx));
   if (!spend.ok) {
     order.waitingReason = spend.waitingReason ?? 'waiting(resources)';
     order.statusText = order.waitingReason;

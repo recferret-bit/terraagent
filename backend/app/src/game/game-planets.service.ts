@@ -1,7 +1,7 @@
 import type { SimCommandV1 } from '@terra/contracts';
-import type { BalanceOverrides, SimEvent } from '@terra/sim';
+import type { BalanceOverrides, LedgerPosting, SimEvent } from '@terra/sim';
 import type { SimThreadPool } from './sim-thread-pool';
-import type { FromThread, LoadMsg } from './thread/protocol';
+import type { FromThread, LoadedInfo, LoadMsg } from './thread/protocol';
 import type { TuneRequest } from '@terra/sim';
 
 export type CommandOutcomeMsg =
@@ -40,7 +40,13 @@ export interface TuneResult {
 /** Global tap on every sim event leaving a thread (each exactly once: from a delta or from a bare `event`). */
 export type PlanetEventsListener = (planetId: string, events: readonly SimEvent[]) => void;
 
-export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'>;
+export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'> & {
+  /** Genesis: postings made while building the planet (scenario setup); handed to `onPlanetLoaded`, not sent to the thread. */
+  readonly setupPostings?: readonly LedgerPosting[];
+};
+
+/** Ledger postings of one step leaving a thread (host-side only, see `PlanetLedgerService`). */
+export type PlanetLedgerListener = (planetId: string, tick: number, postings: readonly LedgerPosting[]) => void;
 
 interface Waiter<T> { resolve(v: T): void; reject(e: Error): void }
 
@@ -57,7 +63,10 @@ export class GamePlanets {
   private readonly tuneWaiters = new Map<number, Waiter<TuneResult>>();
   private nextReq = 1;
   private readonly subs = new Map<string, Set<PlanetSubscriber>>();
-  private readonly loadedListeners: ((planetId: string, tick: number) => void)[] = [];
+  private readonly loadedListeners: ((planetId: string, tick: number, info: LoadedInfo) => void)[] = [];
+  private readonly ledgerListeners: PlanetLedgerListener[] = [];
+  /** Setup postings of genesis loads in flight, until their `loaded` arrives. */
+  private readonly setupPostings = new Map<string, readonly LedgerPosting[]>();
   private readonly unloadedListeners: ((planetId: string) => void)[] = [];
   private readonly snapshotListeners: ((planetId: string, s: { tick: number; bytes: Uint8Array }) => void)[] = [];
   private readonly shutdownHooks: (() => void | Promise<void>)[] = [];
@@ -89,8 +98,10 @@ export class GamePlanets {
       const list = existing ?? [];
       list.push({ resolve, reject });
       this.loading.set(planetId, list);
-      const transfer = opts.snapshot ? [opts.snapshot.buffer as ArrayBuffer] : [];
-      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...opts }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
+      const { setupPostings, ...msg } = opts;
+      if (setupPostings) this.setupPostings.set(planetId, setupPostings);
+      const transfer = msg.snapshot ? [msg.snapshot.buffer as ArrayBuffer] : [];
+      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...msg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
     });
   }
 
@@ -101,7 +112,9 @@ export class GamePlanets {
   }
 
   /** Global listeners (persistence): a planet finished loading / was unloaded / a snapshot arrived (subscribed or not). */
-  onPlanetLoaded(fn: (planetId: string, tick: number) => void): void { this.loadedListeners.push(fn); }
+  onPlanetLoaded(fn: (planetId: string, tick: number, info: LoadedInfo) => void): void { this.loadedListeners.push(fn); }
+  /** Every step's ledger postings of every planet, in order, subscribed or not. */
+  onPlanetLedger(fn: PlanetLedgerListener): void { this.ledgerListeners.push(fn); }
   onPlanetUnloaded(fn: (planetId: string) => void): void { this.unloadedListeners.push(fn); }
   onPlanetSnapshot(fn: (planetId: string, s: { tick: number; bytes: Uint8Array }) => void): void { this.snapshotListeners.push(fn); }
 
@@ -237,7 +250,15 @@ export class GamePlanets {
         this.loaded.add(msg.planetId);
         for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
         this.loading.delete(msg.planetId);
-        for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick);
+        {
+          const setupPostings = this.setupPostings.get(msg.planetId);
+          this.setupPostings.delete(msg.planetId);
+          const info = { restored: msg.restored ?? false, genesis: msg.genesis ?? false, stocks: msg.stocks ?? [], ...(setupPostings ? { setupPostings } : {}) };
+          for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick, info);
+        }
+        return;
+      case 'ledger':
+        for (const fn of this.ledgerListeners) fn(msg.planetId, msg.tick, msg.postings);
         return;
       case 'ack': return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: true, commandId: msg.commandId, appliedAtTick: msg.appliedAtTick });
       case 'reject':
@@ -271,8 +292,12 @@ export class GamePlanets {
       case 'error':
         if (msg.planetId && this.loading.has(msg.planetId)) this.failLoad(msg.planetId, new Error(msg.message));
         return;
-      case 'stopped': // a thread died: its planets are gone
-        for (const id of [...this.loaded]) if (this.threadOf(id) === thread) this.loaded.delete(id);
+      case 'stopped': // a thread died: its planets are gone (listeners drop their per-planet state, e.g. ledgers)
+        for (const id of [...this.loaded]) {
+          if (this.threadOf(id) !== thread) continue;
+          this.loaded.delete(id);
+          for (const fn of this.unloadedListeners) fn(id);
+        }
         return;
       default: return;
     }

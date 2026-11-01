@@ -20,7 +20,7 @@ import {
   TERRAIN,
   validateBuildingPlacement,
   validateHubPlacement,
-  type SimCommand,
+  type SimCommand, setColonyStock, resolveStartingCargo,
 } from '../../src';
 
 let cmdSeq = 0;
@@ -189,6 +189,7 @@ describe('W01-14: Command Hub map bounds, Deep Water, maxPerColony, and HQ-only 
     const host = createW01Host();
     const state = host.state;
     spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    setColonyStock(state, 0, resolveStartingCargo()); // the colony landed with its cargo (no free stock otherwise)
     const idx = hexIndex(state.grid.radius);
 
     for (const pos of getBuildingFootprintTiles(3, 0, 3)) {

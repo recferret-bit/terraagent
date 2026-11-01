@@ -60,6 +60,8 @@ export default defineTable({
       designPodDescentS: 6,
       autoPlaceIdleS: 60,
       designAutoPlaceIdleS: 60,
+      // Min hex distance between two colonies' landing pods; also: one landing per colony (`already_landed`).
+      minLandingSeparation: 6,
       cargo: {
         'metals.t1': 600,
         'metals.t2': 0,

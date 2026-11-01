@@ -1,5 +1,5 @@
 import { parseWaves } from '@terra/contracts';
-import { createPlanet, SimHost, type PlanetState } from '@terra/sim';
+import { createPlanet, SimHost, type LedgerPosting, type PlanetState } from '@terra/sim';
 import type { ScenarioApi, ScenarioDef } from './_define';
 import { SCENARIOS } from './index.generated';
 
@@ -19,7 +19,12 @@ export interface CreateScenarioOptions {
   readonly flags?: Iterable<string>;
 }
 
-export interface ScenarioPlanet { readonly host: SimHost; readonly scenario: ScenarioDef }
+export interface ScenarioPlanet {
+  readonly host: SimHost;
+  readonly scenario: ScenarioDef;
+  /** Ledger postings made while `build` ran (e.g. the landing cargo): the host seeds its journal with them. */
+  readonly setupPostings: readonly LedgerPosting[];
+}
 
 function apiFor(host: SimHost): ScenarioApi {
   let n = 0;
@@ -50,6 +55,9 @@ export function createScenarioPlanet(id: string, opts: CreateScenarioOptions = {
   });
   const host = new SimHost({ flags });
   host.load(state);
+  const setupPostings: LedgerPosting[] = [];
+  const off = host.onPostings((p) => { setupPostings.push(...p); });
   scenario.build(host, apiFor(host));
-  return { host, scenario };
+  off();
+  return { host, scenario, setupPostings };
 }

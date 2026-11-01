@@ -6,7 +6,7 @@ import { createHexTerrain, tileXZ, type HexPick, type HexTerrain, type HexTiles 
 import { TICK_MS } from '@terra/sim';
 import { CommandBus } from '../../net/commandBus';
 import { ConnectionBanner } from '../../net/ConnectionBanner';
-import { httpDevServer } from '../../net/devServer';
+import { httpDevServer, sessionLedgerQuery } from '../../net/devServer';
 import { withDevLag } from '../../net/LagTransport';
 import { createLocalWorker, LocalTransport, workerLink } from '../../net/LocalTransport';
 import { NetStatsBoard } from '../../net/netStats';
@@ -186,6 +186,7 @@ export class OnlineSession {
     };
     return new FeatureHud(uiParent, this.flags, local ? 'local' : 'server', {
       sendCommand: this.commandBus.send, devServer,
+      ledgerQuery: sessionLedgerQuery(() => this.localHost, local ? local.devServer : null, () => this.store.currentPlanetId() || this.planetId || null),
       session: { planetId: () => this.store.currentPlanetId() || this.planetId || null },
       scene3d, netStats: this.netStats, transport: this.transport, store: this.store,
       landfall: this.landfall, pickTile: (cx, cy) => this.pickAt(cx, cy), canvas: this.viewport.renderer.domElement,

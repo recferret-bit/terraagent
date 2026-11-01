@@ -89,6 +89,7 @@ export class SnapshotStore extends RepositoryBase {
     if (devPlanetTypeOf(planetId) === null) throw new Error(`wipeDevPlanet: ${planetId} is not a dev planet`);
     await this.prisma.$transaction([
       this.prisma.planetSnapshot.deleteMany({ where: { planetId } }),
+      this.prisma.ledgerEntry.deleteMany({ where: { planetId } }), // the old planet's resource journal goes with it
       this.prisma.colony.deleteMany({ where: { planetId } }),
       this.prisma.planet.deleteMany({ where: { id: planetId } }),
     ]);

@@ -225,13 +225,15 @@ function createMockAuthFetch(accessToken: string, expectedSecret?: string): {
 function createServerSimWithColony(initialSteps = 0): { serverSim: SimHost; podEntityId: number } {
   const serverSim = new SimHost({ flags: flagsFromList(['W00', 'W01']) });
   const planetState = createPlanet({ id: 'pl_dev', type: 'temperate', seed: 'golden-1', radius: 16 });
-  const { podEntityId } = spawnColonyLanding(planetState, {
+  const landed = spawnColonyLanding(planetState, {
     colonyId: 0,
     colonyIdStr: 'col_fresh_01',
     name: "Colonist-0001's Colony",
     q: 4,
     r: -2,
   });
+  if (!landed.ok) throw new Error(`landing rejected: ${landed.code}`);
+  const { podEntityId } = landed;
   serverSim.load(planetState);
   if (initialSteps > 0) serverSim.step(initialSteps);
   return { serverSim, podEntityId };

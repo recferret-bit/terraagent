@@ -8,6 +8,8 @@ export const REJECT_CODES = [
   'planet_ended', 'wave_disabled', 'host_unavailable', 'internal',
   // too many commands from one player (server ingress token bucket, PROTOCOL §4.2)
   'rate_limited',
+  // W01 landing: a colony lands once; no two colonies share a slot or land too close (`hq.startingKit.minLandingSeparation`)
+  'already_landed', 'landing_site_taken',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

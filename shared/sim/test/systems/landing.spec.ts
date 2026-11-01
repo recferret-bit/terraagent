@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { eventDef, parseWaves } from '@terra/contracts';
 import {
-  addColonyStock,
   buildView,
   createPlanet,
   ENTITY_KIND,
@@ -17,8 +16,12 @@ import {
   SimHost,
   spawnColony,
   spawnColonyLanding,
+  systemActor,
+  treasury,
+  unrecorded,
   type SimCommand,
 } from '../../src';
+import { fullStock } from '../economy/helpers';
 
 let seq = 0;
 function mkCmd(kind: string, args: unknown, colonyIndex: number | null = 0): SimCommand {
@@ -48,6 +51,8 @@ describe('W01-09: Drop pod landing and HQ deployment', () => {
       rng: (stream) => state.rng[stream],
       newEntityId: () => state.meta.nextEntityId++,
       emit: () => undefined,
+      record: () => undefined,
+      postings: [],
     });
 
     expect(host.tick).toBe(0);
@@ -63,12 +68,12 @@ describe('W01-09: Drop pod landing and HQ deployment', () => {
     expect(getSpawnSlots(state)[0].claimedBy).toBe(0);
     expect(getHqView(state, 0)).toBeNull();
 
-    const expectedStock = {
+    const expectedStock = fullStock({
       'metals.t1': 600,
       'minerals.t1': 350,
       'bio.biomass': 200,
       'bio.water': 200,
-    };
+    });
     expect(getColonyStock(state, 0)).toEqual(expectedStock);
     expect(buildView(state).colonies[0].stock).toEqual(expectedStock);
 
@@ -120,7 +125,9 @@ describe('W01-09: dev.land and colony stock helpers', () => {
   it('deploys the HQ immediately on the next step when dev.land is submitted', () => {
     const host = createW01Host('flat', 28);
     const state = host.state;
-    const { podEntityId } = spawnColonyLanding(state, { colonyId: 0, q: 3, r: -2 });
+    const landed = spawnColonyLanding(state, { colonyId: 0, q: 3, r: -2 });
+    if (!landed.ok) throw new Error(landed.code);
+    const { podEntityId } = landed;
     const podRow = rowOf(state.entities, podEntityId);
     expect(state.entities.cols.state[podRow]).toBe(ENTITY_STATE.descending);
     expect(state.entities.count).toBe(1);
@@ -140,7 +147,7 @@ describe('W01-09: dev.land and colony stock helpers', () => {
     expect(res.events[0].kind).toBe('hqLanded');
   });
 
-  it('supports getColonyStock, setColonyStock, addColonyStock, and getColonyCaps', () => {
+  it('supports getColonyStock, setColonyStock, treasury add/withdraw (clampToCap), and getColonyCaps', () => {
     const host = createW01Host('flat', 16);
     const state = host.state;
     spawnColonyLanding(state, { colonyId: 0, q: 0, r: 0 });
@@ -153,23 +160,20 @@ describe('W01-09: dev.land and colony stock helpers', () => {
       item: 0,
     });
 
-    addColonyStock(state, 0, { 'metals.t1': -200, 'minerals.t1': 100 }, true);
-    expect(getColonyStock(state, 0)).toEqual({
-      'metals.t1': 400,
-      'minerals.t1': 450,
-      'bio.biomass': 200,
-      'bio.water': 200,
-    });
+    const t = treasury(state, unrecorded(state.meta.tick));
+    const actor = systemActor('admin');
+    expect(t.withdraw({ colony: 0, amounts: { 'metals.t1': 200 }, reason: 'admin.correction', actor }).ok).toBe(true);
+    expect(t.add({ colony: 0, amounts: { 'minerals.t1': 100 }, reason: 'admin.correction', actor, clampToCap: true }).ok).toBe(true);
+    expect(getColonyStock(state, 0)).toEqual(
+      fullStock({ 'metals.t1': 400, 'minerals.t1': 450, 'bio.biomass': 200, 'bio.water': 200 }),
+    );
 
-    addColonyStock(state, 0, { 'minerals.t1': 200 }, true);
+    t.add({ colony: 0, amounts: { 'minerals.t1': 200 }, reason: 'admin.correction', actor, clampToCap: true });
     expect(getColonyStock(state, 0)['minerals.t1']).toBe(500);
 
     setColonyStock(state, 0, { 'metals.t1': 120, 'minerals.t1': 80, 'bio.biomass': 50, 'bio.water': 50 });
-    expect(buildView(state).colonies[0].stock).toEqual({
-      'metals.t1': 120,
-      'minerals.t1': 80,
-      'bio.biomass': 50,
-      'bio.water': 50,
-    });
+    expect(buildView(state).colonies[0].stock).toEqual(
+      fullStock({ 'metals.t1': 120, 'minerals.t1': 80, 'bio.biomass': 50, 'bio.water': 50 }),
+    );
   });
 });

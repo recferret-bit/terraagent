@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { eventDef, parseWaves } from '@terra/contracts';
 import {
-  addColonyStock,
   applyDiff,
   claimTerritoryRadius,
   createPlanet,
@@ -19,6 +18,9 @@ import {
   SimHost,
   spawnColonyLanding,
   spawnHqUnit,
+  systemActor,
+  treasury,
+  unrecorded,
   type PlanetState,
   type SimCommand,
 } from '../../src';
@@ -176,7 +178,14 @@ describe('W01-17: Colony stats (storage cap 500, supply cap 10, Founder Core +8 
     expect(col.powerGenEPerS).toBe(8);
     expect(col.hubEntityId).toBe(order.entityId);
 
-    addColonyStock(state, 0, { 'metals.t1': 500, 'minerals.t1': 500, 'bio.biomass': 500 }, true);
+    const capped = treasury(state, unrecorded(state.meta.tick)).add({
+      colony: 0,
+      amounts: { 'metals.t1': 500, 'minerals.t1': 500, 'bio.biomass': 500 },
+      reason: 'admin.correction',
+      actor: systemActor('admin'),
+      clampToCap: true,
+    });
+    expect(capped.ok && capped.overflow).toEqual({ 'metals.t1': 400, 'minerals.t1': 250, 'bio.biomass': 300 });
     const cappedStock = getColonyStock(state, 0);
     expect(cappedStock['metals.t1']).toBe(500);
     expect(cappedStock['minerals.t1']).toBe(500);

@@ -447,7 +447,9 @@
         "additionalProperties": false,
         "properties": {
           "amount": {
-            "type": "number"
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "resource": {
             "enum": [
@@ -473,7 +475,7 @@
       },
       "dev": true,
       "origin": "client",
-      "summary": "Dev console: adds or subtracts `amount` of `resource` on the caller colony (clamped to >= 0).",
+      "summary": "Dev console: adds (positive) or withdraws (negative) `amount` whole units of `resource` on the caller colony via the ledger (`dev.grant`); a withdrawal is clamped to the balance so stock stays >= 0.",
       "wave": "W01"
     },
     "dev.land": {
@@ -1355,7 +1357,9 @@
                 "wave_disabled",
                 "host_unavailable",
                 "internal",
-                "rate_limited"
+                "rate_limited",
+                "already_landed",
+                "landing_site_taken"
               ],
               "type": "string"
             },

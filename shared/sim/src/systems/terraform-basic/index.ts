@@ -20,12 +20,9 @@ import {
   type TerraformTasksBlobValue,
 } from './queue';
 
-import { addColonyResource } from './stock';
-
 export { terraformCommand, terraformProvider } from './work';
 
 export {
-  addColonyResource,
   cancelTerraformOrder,
   canRunTerraformOpOnTile,
   enqueueTerraformOrder,
@@ -125,7 +122,7 @@ export const cancelTask = defineCommandHandler({
     if (id !== undefined && typeof id !== 'string' && typeof id !== 'number') {
       return 'invalid_args';
     }
-    if (id !== undefined && cancelConstructionOrder(state, colonyId, id, ctx.tick, ctx.data)) {
+    if (id !== undefined && cancelConstructionOrder(state, colonyId, id, ctx.tick, ctx.data, ctx)) {
       return;
     }
     const cancelledTf = cancelTerraformOrder(
@@ -136,7 +133,7 @@ export const cancelTask = defineCommandHandler({
       ctx.data,
     );
     if (!cancelledTf && id === undefined) {
-      cancelConstructionOrder(state, colonyId, undefined, ctx.tick, ctx.data);
+      cancelConstructionOrder(state, colonyId, undefined, ctx.tick, ctx.data, ctx);
     }
   },
 });

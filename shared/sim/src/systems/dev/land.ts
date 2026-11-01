@@ -2,7 +2,8 @@ import { adminRelocateEntity } from '../../ecs/placement';
 import { rowOf } from '../../ecs/store';
 import { defineCommandHandler } from '../../kernel/commands';
 import { setBlob } from '../../kernel/state';
-import { deployPod, getLandingPods, spawnColonyLanding } from '../landing';
+import { hexDistance, inHex } from '../../grid/hex';
+import { deployPod, getLandingPods, resolveMinLandingSeparation, spawnColonyLanding } from '../landing';
 
 /** `dev.land` (admin): lands the colony pod now, optionally at `(q, r)` (skips the descent timer). */
 export const devLand = defineCommandHandler({
@@ -31,7 +32,8 @@ export const devLand = defineCommandHandler({
         return;
       }
       const colIdx = targetColony ?? 0;
-      spawnColonyLanding(state, { colonyId: colIdx, q: args.q, r: args.r, tick: ctx.tick, data: ctx.data }, ctx);
+      const landed = spawnColonyLanding(state, { colonyId: colIdx, q: args.q, r: args.r, tick: ctx.tick, data: ctx.data }, ctx);
+      if (!landed.ok) return landed.code;
       const updatedPods = getLandingPods(state);
       for (const pod of updatedPods) {
         if (!pod.deployed && pod.colonyId === colIdx) deployPod(state, pod, ctx);
@@ -40,6 +42,14 @@ export const devLand = defineCommandHandler({
       return;
     }
 
+    const minSep = resolveMinLandingSeparation(ctx.data);
+    for (const pod of matching) {
+      if (typeof args.q === 'number' && typeof args.r === 'number') {
+        const { q, r } = args;
+        if (!inHex(q, r, state.grid.radius)) return 'invalid_args';
+        if (pods.some((o) => o.colonyId !== pod.colonyId && hexDistance(o.q, o.r, q, r) < minSep)) return 'landing_site_taken';
+      }
+    }
     for (const pod of matching) {
       if (typeof args.q === 'number' && typeof args.r === 'number') {
         pod.q = args.q;

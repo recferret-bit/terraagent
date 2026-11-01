@@ -37,7 +37,7 @@ export default defineTable({
       supplyCap: 10,
       pylonSpan: 6,
       pylonMaxLoad: 150,
-      cancelRefundRatio: 0.75,
+      cancelRefundBp: 7500,
       hqOnly: true,
       maxPerColony: 1,
       allowUnclaimedPlacement: true,

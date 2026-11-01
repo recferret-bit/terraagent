@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createPlanet, rowOf, SimHost, type SimCommand } from '../../src';
 import { DEV_ENTITY_KIND } from '../../src/systems/dev';
 import { spawnHqUnit, stepTerraformWorkWithCell } from '../../src/systems/hq';
-import { getColonyStock } from '../../src/systems/landing';
+import { getColonyStock } from '../../src/economy';
 
 let n = 0;
 const cmd = (kind: string, args: unknown, colonyIndex: number | null = 0): SimCommand => ({
@@ -144,6 +144,18 @@ describe('dev commands (W01)', () => {
 
     send(h, cmd('dev.grant', { resource: 'water', amount: 75 }));
     expect(getColonyStock(h.state, 0)['bio.water']).toBe(75);
+  });
+
+  it('dev.grant withdraws a negative amount clamped to the balance and rejects fractions or unknown keys', () => {
+    const h = w01Host();
+    send(h, cmd('dev.grant', { resource: 'metals.t1', amount: 100 }));
+    expect(send(h, cmd('dev.grant', { resource: 'metals.t1', amount: -30 })).code).toBeUndefined();
+    expect(getColonyStock(h.state, 0)['metals.t1']).toBe(70);
+    expect(send(h, cmd('dev.grant', { resource: 'metals.t1', amount: -500 })).code).toBeUndefined();
+    expect(getColonyStock(h.state, 0)['metals.t1']).toBe(0);
+    expect(send(h, cmd('dev.grant', { resource: 'metals.t1', amount: 2.5 })).code).toBe('invalid_args');
+    expect(send(h, cmd('dev.grant', { resource: 'unobtainium', amount: 5 })).code).toBe('invalid_args');
+    expect(getColonyStock(h.state, 0)['metals.t1']).toBe(0);
   });
 
   it('dev.reveal marks all tiles explored for colony', () => {

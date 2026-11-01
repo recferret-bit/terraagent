@@ -4,6 +4,6 @@ export const TICKS_PER_SECOND = 1000 / TICK_MS;
 /** Coarse stepping of empty planets: one step per second advancing `COARSE_DT` ticks (D-24). */
 export const COARSE_DT = 5;
 /** Engine version stored in snapshots and sent in `welcome` (SIM-D-07, SIM-X-08). Bump on any state layout change. */
-export const SIM_VERSION = 1;
+export const SIM_VERSION = 2; // 2: colony stock is `col.stock` in whole units, the ledger journal is host-side (no `ledger`/`colonyStock` blobs)
 /** Number of pipeline slots (SIMULATION §3): 0 commands … 14 finalize. */
 export const PIPELINE_SLOTS = 15;

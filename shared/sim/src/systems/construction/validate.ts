@@ -1,5 +1,6 @@
 import type { RejectCode } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { getColonyStock } from '../../economy';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { SimState } from '../../kernel/state';
 import { evaluatePlacement, resolveHubT1Row, type PlacementBlock, type PlacementResult } from './placement';
@@ -105,13 +106,6 @@ export function findAliveColonyHqRow(state: SimState, colonyId: number): number 
   return -1;
 }
 
-function colonyStock(state: SimState, colonyId: number): Record<string, number> | undefined {
-  return (state.colonies[colonyId]?.stock ??
-    (state.blobs.colonyStock?.value as Record<number | string, Record<string, number>> | undefined)?.[colonyId]) as
-    | Record<string, number>
-    | undefined;
-}
-
 /**
  * Authoritative placement check used by the `placeBuilding` handler: adapts `state` into a `PlacementWorld` and runs the
  * shared `evaluatePlacement` (the very function the client ghost runs on its replica), plus the optional stock check.
@@ -133,7 +127,7 @@ export function validateBuildingPlacement(state: SimState, opts: ValidateHubPlac
   if (!placement.ok) return { ok: false, reason: placement.code, block: placement.block, ...base };
   if (opts.checkResources) {
     const cost = resolveHubT1Row(opts.data).cost as Record<string, number> | undefined;
-    if (cost && !checkBuildingAffordability(cost, colonyStock(state, opts.colonyId)).ok) {
+    if (cost && !checkBuildingAffordability(cost, getColonyStock(state, opts.colonyId)).ok) {
       return { ok: false, reason: 'insufficient_resources', ...base };
     }
   }

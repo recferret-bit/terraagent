@@ -1,4 +1,7 @@
+import type { ResourceKey } from '@terra/contracts';
+import { isMajor } from '@terra/ledger';
 import { dataRow } from '../../data';
+import { DEV_ACTOR, treasury } from '../../economy';
 import { ENTITY_KIND } from '../../ecs/columns';
 import { adminRelocateEntity, placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
@@ -12,7 +15,6 @@ import { setBlob, touchTile, type PlanetState } from '../../kernel/state';
 import { defineSimModule } from '../define';
 import { resolveHqRow, revealVision, setHqCellEnergy, syncHqView } from '../hq';
 import { cancelMove } from '../../units/movement/orchestrator';
-import { addColonyStock } from '../landing';
 import { devLand } from './land';
 
 /** `kind` of the W00 test entity spawned by `dev.spawn` (no gameplay meaning). */
@@ -111,11 +113,19 @@ const teleport = defineCommandHandler({
 
 const grant = defineCommandHandler({
   kind: 'dev.grant', wave: 'W01',
-  handle(s, c) {
+  // Whole units only; a negative amount withdraws at most the balance (clamped to >= 0).
+  handle(s, c, ctx) {
     const args = c.args as { resource: string; amount: number };
-    const resKey = RESOURCE_ALIASES[args.resource] ?? args.resource;
+    if (!isMajor(args.amount)) return 'invalid_args';
+    const res = (RESOURCE_ALIASES[args.resource] ?? args.resource) as ResourceKey;
     const colony = resolveColonyIndex(c);
-    addColonyStock(s, colony, { [resKey]: args.amount }, false);
+    const t = treasury(s, ctx);
+    const req = { colony, reason: 'dev.grant' as const, actor: DEV_ACTOR };
+    const out =
+      args.amount >= 0
+        ? t.add({ ...req, amounts: { [res]: args.amount } })
+        : t.withdraw({ ...req, amounts: { [res]: Math.min(-args.amount, t.stock(colony)[res] ?? 0) } });
+    return out.ok ? undefined : 'invalid_args';
   },
 });
 
@@ -166,9 +176,9 @@ const seed = defineCommandHandler({
     if (temp.blobs.spawnSlots) {
       setBlob(s, 'spawnSlots', temp.blobs.spawnSlots.value, ctx.tick);
     }
+    s.grid.layers.changedAt.fill(ctx.tick);
     forgetTileStamps(s.grid.layers.changedAt); // bulk write: sector stamps are rebuilt on the next diff
     if (temp.meta.genVersion !== undefined) s.meta.genVersion = temp.meta.genVersion;
-    s.grid.layers.changedAt.fill(ctx.tick);
   },
 });
 

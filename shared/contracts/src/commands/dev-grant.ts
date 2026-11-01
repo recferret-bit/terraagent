@@ -9,7 +9,7 @@ export const command = defineCommand({
   dev: true,
   args: z.strictObject({
     resource: ResourceKey,
-    amount: z.number(),
+    amount: z.number().int(),
   }),
-  summary: 'Dev console: adds or subtracts `amount` of `resource` on the caller colony (clamped to >= 0).',
+  summary: 'Dev console: adds (positive) or withdraws (negative) `amount` whole units of `resource` on the caller colony via the ledger (`dev.grant`); a withdrawal is clamped to the balance so stock stays >= 0.',
 });

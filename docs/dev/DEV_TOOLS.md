@@ -28,7 +28,7 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 | *(none)* | Fast-start guest boot flow (W01+): orbital splash → `POST /v1/auth/guest` → `GET /v1/me/home` (seats a **new** colony on the dev planet family of the orbit pick, sent as `GET /v1/me/home?type=desert|ocean|temperate`: desert `pl_dev`, `pl_dev_2`, …; ocean `pl_dev_ocean`, `pl_dev_ocean_2`, …; temperate `pl_dev_temperate`, …; no pick → desert; an existing colony keeps its planet, use a fresh guest `?as=<x>` to try another type; a dev planet saved by an older world generator, or of another type than its family, is wiped and recreated on app start, D-38) → joins planet → auto-lands immediately into colony view (`Esc → Return to orbit` returns to `/play.html?planet=<kind>`) |
 | `?planet=dune\|oceanForest\|forestRock` | Opens the **3D Orbital Planet Selector** on that biome (`&deploy=1` launches the 3D atmospheric drop-pod descent immediately). While the pod falls through atmosphere, auth/home pre-warms in the background; at touchdown the browser URL switches to `/play.html` and the live online game mounts on that planet's biome |
 | `?scenario=<id>` | `POST /v1/dev/scenarios/<id>` creates a **fresh** planet from `scenarios/<id>.ts` (`w00` = flat radius-56 planet + test entity id 1 at tile 0,0; `w01` / `w01-landfall` = temperate radius-56 planet with colony 0 landed at spawn slot 0, stock 600/350/200/200, HQ at 800/800 E) and joins it. Each page load creates a new planet; reconnects in the same page rejoin it |
-| `?host=local` | Browser local host: the authoritative engine runs in a Web Worker at 5 TPS; snapshots in IndexedDB (resumed on reload); server-only commands answer `host_unavailable`. Without `scenario`, uses `w00` |
+| `?host=local` | Browser local host: the authoritative engine runs in a Web Worker at 5 TPS; snapshots in IndexedDB (resumed on reload); the worker also keeps the resource ledger journal in memory (console `ledger`; never sent to the page's store); server-only commands answer `host_unavailable`. Without `scenario`, uses `w00` |
 | `?join=<planetId>` | Join an **existing** planet instead of creating one — how a second player (another browser profile, with `&as=b`) joins the first player's scenario planet. The dev console `planet [name]` prints the ready link |
 | `&waves=..NN` / `&waves=00,03` | Dev: narrow the enabled waves (never wider than the server's `TA_WAVES`); the flag panel shows the result |
 | `&lag=<ms>` | Dev: delay the connection by `ms` each way (tests client-side prediction) |
@@ -60,15 +60,16 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 | `scenario <id>` | Create a fresh planet from a scenario and print its id (local host: restart the local planet from it) | both |
 | `chain.ping` | Write a ping receipt through the mock chain; prints its `mock:` hash (shows in `/dev/chain/`) | server |
 | `local.reset` | Start a fresh local planet (drops the IndexedDB snapshot) | local |
-| `grant <resource> <n>` | Add `<n>` to colony stock (`metals`/`metals.t1`, `minerals`/`minerals.t1`, `biomass`/`bio.biomass`, `water`/`bio.water`, bypasses storage cap) (W01) | both |
+| `grant <resource> <n>` | Add `<n>` whole units to colony stock (`metals`/`metals.t1`, `minerals`/`minerals.t1`, `biomass`/`bio.biomass`, `water`/`bio.water`, bypasses storage cap); a negative `<n>` withdraws, clamped to the balance. `<n>` must be an integer (the console rejects `2.5`). Posts a `dev.grant` ledger entry (W01) | both |
+| `ledger [n] [account]` | Print the last `n` (default 10) resource-ledger journal entries touching `account` (default your `colony:<i>`; e.g. `sys:construction`, `sys:dev`), one per line (`#seq t=tick reason actor ref  account asset ±delta · …`), then that account's balance; `ledger colony:1` works too. The journal lives on the host only (clients get `col.stock`, never postings), so the command asks it: online `GET /v1/dev/planets/:planetId/ledger`; `?host=local` the worker's in-memory ledger (dev message `ledger`, last 1024 entries, reset on a new planet); the no-server fallback its in-process one. A fresh scenario planet's journal starts with its setup postings (the real `landing.cargo`, on both hosts). A browser host that resumes an IndexedDB snapshot (or the no-server fallback adopting a planet) has no history: it opens each colony's stock with one `ledger.opening` entry (`sys:opening` → `colony:<i>`, by `system:resume` / `system:seed`), so `sys:*` totals count only what happened since (W01) | both |
 | `cell <n>` | Set the colony's HQ power cell to `<n>` E (clamped `0..800`) (W01) | both |
 | `reveal` | Mark every hex tile on the planet explored for the colony (W01) | both |
 | `seed <s\|n>` | Regenerate the current planet's ground (terrain, heights, deposits, hidden subsurface) from seed `<s>` with the planet type's world-generation profile (D-38); colonies and entities stay (W01) | both |
 | `tp <q> <r>` | Teleport the colony's HQ drone to tile `(q, r)` (W01). Admin only: `dev.teleport` / `dev.nudge` / `dev.land` are the only commands that may set a position directly (SIM-M-01); the HQ drops its current route and re-plans from the new tile | both |
-| `land` | Skip drop-pod descent immediately, landing the HQ drone and depositing pod cargo (W01) | both |
+| `land` | Skip drop-pod descent immediately, landing the HQ drone and depositing pod cargo (W01). `dev.land` / `system.spawnColony` reject `already_landed` (the colony has landed) and `landing_site_taken` (slot used, or closer than `hq.startingKit.minLandingSeparation` to another colony); the HUD toasts them | both |
 | `border-hatch [on\|off]` | Toggle colour-blind hatch pattern on territory borders (W01) | both |
 
-**Adding a command:** a client feature (`frontend/game/features/<id>/index.ts`) lists it in `devCommands` (`{ name, help, run(args, ctx) }`); it can send sim commands (`ctx.services.sendCommand(kind, args)`) or server dev commands (`ctx.services.devServer(name, args)`). A server dev command registers in `DevCommandRegistry` (`backend/app/src/dev/`) with `defineDevCommand({ name, help, args: zod, run })`. The game rule itself goes in `shared/sim` (D-31).
+**Adding a command:** a client feature (`frontend/game/features/<id>/index.ts`) lists it in `devCommands` (`{ name, help, run(args, ctx) }`); it can send sim commands (`ctx.services.sendCommand(kind, args)`), server dev commands (`ctx.services.devServer(name, args)`) or ask the host's ledger (`ctx.services.ledgerQuery(account, limit)`). A server dev command registers in `DevCommandRegistry` (`backend/app/src/dev/`) with `defineDevCommand({ name, help, args: zod, run })`. The game rule itself goes in `shared/sim` (D-31).
 
 ## HUD and overlays (online flow)
 
@@ -101,6 +102,7 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 | `GET /v1/dev/planets` | Loaded planet ids |
 | `GET /v1/dev/scenarios`, `POST /v1/dev/scenarios/:id` | List scenarios / create a fresh planet → `{ planetId, scenario, tick }` |
 | `GET /v1/dev/commands`, `POST /v1/dev/commands/:name` | List / run server dev commands (`warp`, `tune`, `scenario`, `chain.ping`) |
+| `GET /v1/dev/planets/:planetId/ledger?account=colony:0&limit=10` | The planet's resource ledger (Postgres) for one account → `{ planetId, account, balances, entries }`: non-zero balances and the last `limit` journal entries touching it (`{ seq, at, reason, actor, ref?, legs }`, oldest first). Used by the console `ledger` (W01) |
 | `POST /v1/dev/chain/ping` | Mock chain ping → `ChainReceipt` |
 | `GET /v1/dev/chain/{receipts,balances,nfts,dao,escrow,outbox}` | Explorer data (`?account=`, `?limit=`, `?status=`, `?collection=`) |
 | `POST /v1/analytics/events` | Analytics intake (`AnalyticsBatchV1`, not dev-only) |
@@ -133,7 +135,7 @@ Real environment wins over `.env.worktree`, which wins over `.env` (template: [`
 
 | Handle | Page | What |
 |---|---|---|
-| `window.__online` | online flow | Session: `store.latest` (current view: tick, planet, entities `Float32Array` stride 12), `transport`, `commands.send(kind, args)`, `pickAt(x, y)`, `tileToScreen(q, r)`, `lastPick`, `entityMeshes()` |
+| `window.__online` | online flow (also `window.__game`) | Session: `store.latest` (current view: tick, planet, entities `Float32Array` stride 12, `colonies[i].stock` (zero-filled, whole units; the ledger journal stays on the host, see console `ledger`)), `transport`, `commands.send(kind, args)`, `pickAt(x, y)`, `tileToScreen(q, r)`, `lastPick`, `entityMeshes()` |
 | `window.__world` | dev builds / `?devworld` | Sim worker test hook (`feed(n)`, `check()`) |
 | `window.__track` | dev builds | Analytics: `setConsent(true)`, `track(name, props)`, `flush()` |
 | `window.__parity` | `/dev/parity/` | `run(caseId)` |

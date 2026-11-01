@@ -1,10 +1,13 @@
 import { dataRow, type CompiledRow } from '../../data';
+import { INITIAL_CAPS, systemActor, treasury, treasuryCtx, type Amounts } from '../../economy';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf, setField } from '../../ecs/store';
-import { ensureStarterHubSpace, getSpawnSlots } from '../../gen/spawnSlots';
+import { ensureStarterHubSpace, getSpawnSlots, type SpawnSlot } from '../../gen/spawnSlots';
+import { hexDistance, inHex } from '../../grid/hex';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
+import { ensureColonyRecord } from '../../kernel/colonies';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type ColonyState, type PlanetState, type SimState } from '../../kernel/state';
@@ -13,14 +16,6 @@ import { defineSimModule } from '../define';
 import { defaultW01Data, resolveHqT1Row, revealVision, spawnHqUnit } from '../hq';
 
 export type SystemCtx = StepContext;
-
-export interface ColonyCaps {
-  metals: number;
-  minerals: number;
-  energy: number;
-  bio: number;
-  item: number;
-}
 
 export interface LandingPodState {
   podEntityId: number;
@@ -46,20 +41,19 @@ export interface SpawnColonyLandingOpts {
   data?: CompiledDataLike;
 }
 
-const DEFAULT_COLONY_COLORS = [0xff6a2a, 0x2ec4b6, 0xe71d36, 0xff9f1c, 0x8338ec, 0x3a86ff] as const;
-
-const INITIAL_CAPS: ColonyCaps = {
-  metals: 600,
-  minerals: 500,
-  energy: 0,
-  bio: 500,
-  item: 0,
-};
-
 export function resolveStartingKitRow(data?: CompiledDataLike): CompiledRow {
   const table = data?.tables.hq as Record<string, CompiledRow> | undefined;
   if (table?.startingKit) return table.startingKit;
   return dataRow(defaultW01Data(), 'hq', 'startingKit');
+}
+
+/** The landing pod's cargo (`hq.startingKit.cargo`, positive entries only): what a new colony starts with. */
+export function resolveStartingCargo(data?: CompiledDataLike): Amounts {
+  const kit = resolveStartingKitRow(data);
+  const raw = (kit.cargo ?? { 'metals.t1': 600, 'minerals.t1': 350, 'bio.biomass': 200, 'bio.water': 200 }) as Amounts;
+  const out: Amounts = {};
+  for (const [k, v] of Object.entries(raw)) if (typeof v === 'number' && v > 0) out[k as keyof Amounts] = v;
+  return out;
 }
 
 function resolveDescentTicks(kit: CompiledRow): number {
@@ -77,18 +71,7 @@ function ensureColony(
   tick: number,
   meta?: { id?: string; playerId?: string; handle?: string; name?: string; color?: number },
 ): ColonyState {
-  while (state.colonies.length <= colonyId) {
-    const idx = state.colonies.length;
-    state.colonies.push({
-      index: idx,
-      id: `col_${idx}`,
-      name: `Colony ${idx + 1}`,
-      color: DEFAULT_COLONY_COLORS[idx % DEFAULT_COLONY_COLORS.length],
-      status: 'founding',
-      changedAt: tick,
-    });
-  }
-  const col = state.colonies[colonyId];
+  const col = ensureColonyRecord(state, colonyId, tick);
   if (meta?.id) col.id = meta.id;
   if (meta?.name) col.name = meta.name;
   if (meta?.playerId !== undefined) col.playerId = meta.playerId;
@@ -98,150 +81,86 @@ function ensureColony(
   return col;
 }
 
-function summarizeResources(stock: Record<string, number>): {
-  metals: number;
-  minerals: number;
-  biomass: number;
-  water: number;
-} {
-  return {
-    metals: (stock['metals.t1'] ?? 0) + (stock['metals.t2'] ?? 0) + (stock['metals.t3'] ?? 0),
-    minerals: (stock['minerals.t1'] ?? 0) + (stock['minerals.t2'] ?? 0) + (stock['minerals.t3'] ?? 0),
-    biomass: stock['bio.biomass'] ?? 0,
-    water: stock['bio.water'] ?? 0,
-  };
-}
-
-function readStockBlob(state: SimState): Record<number, Record<string, number>> {
-  const raw = state.blobs.colonyStock?.value;
-  if (raw && typeof raw === 'object' && !Array.isArray(raw)) {
-    return raw as Record<number, Record<string, number>>;
-  }
-  return {};
-}
-
-export function getColonyStock(state: SimState, colonyId: number): Record<string, number> {
-  const blobMap = readStockBlob(state);
-  const colStock = state.colonies[colonyId]?.stock;
-  const fromCol =
-    colStock && typeof colStock === 'object' && !Array.isArray(colStock)
-      ? (colStock as Record<string, number>)
-      : {};
-  const fromBlob = blobMap[colonyId] ?? {};
-  return { ...fromCol, ...fromBlob };
-}
-
-export function setColonyStock(state: SimState, colonyId: number, stock: Record<string, number>): void {
-  const tick = state.meta.tick;
-  const col = ensureColony(state, colonyId, tick);
-  const next = { ...stock };
-  col.stock = next;
-  col.resources = summarizeResources(next);
-  col.changedAt = tick;
-  const blobMap = { ...readStockBlob(state), [colonyId]: next };
-  setBlob(state, 'colonyStock', blobMap, tick);
-}
-
-export function getColonyCaps(state: SimState, colonyId: number): ColonyCaps {
-  const col = state.colonies[colonyId];
-  const raw = col?.caps as Partial<ColonyCaps> | undefined;
-  return {
-    metals: typeof raw?.metals === 'number' ? raw.metals : INITIAL_CAPS.metals,
-    minerals: typeof raw?.minerals === 'number' ? raw.minerals : INITIAL_CAPS.minerals,
-    energy: typeof raw?.energy === 'number' ? raw.energy : INITIAL_CAPS.energy,
-    bio: typeof raw?.bio === 'number' ? raw.bio : INITIAL_CAPS.bio,
-    item: typeof raw?.item === 'number' ? raw.item : INITIAL_CAPS.item,
-  };
-}
-
-function familyTotalOf(stock: Record<string, number>, family: 'metals' | 'minerals' | 'bio'): number {
-  const prefix = `${family}.`;
-  let sum = 0;
-  for (const [k, v] of Object.entries(stock)) {
-    if (k.startsWith(prefix) && typeof v === 'number') sum += v;
-  }
-  return sum;
-}
-
-export function addColonyStock(
-  state: SimState,
-  colonyId: number,
-  delta: Record<string, number>,
-  enforceCap = false,
-): void {
-  const stock = getColonyStock(state, colonyId);
-  const caps = getColonyCaps(state, colonyId);
-  for (const [key, amount] of Object.entries(delta)) {
-    if (typeof amount !== 'number' || !Number.isFinite(amount) || amount === 0) continue;
-    const cur = stock[key] ?? 0;
-    if (amount < 0) {
-      stock[key] = Math.max(0, cur + amount);
-      continue;
-    }
-    if (!enforceCap) {
-      stock[key] = cur + amount;
-      continue;
-    }
-    const family = key.startsWith('metals.')
-      ? 'metals'
-      : key.startsWith('minerals.')
-        ? 'minerals'
-        : key.startsWith('bio.')
-          ? 'bio'
-          : null;
-    if (!family) {
-      stock[key] = cur + amount;
-      continue;
-    }
-    const total = familyTotalOf(stock, family);
-    const room = Math.max(0, caps[family] - total);
-    stock[key] = cur + Math.min(amount, room);
-  }
-  setColonyStock(state, colonyId, stock);
-}
-
 /** The colony landing pods (`state.blobs.landingPods`). */
 export function getLandingPods(state: SimState): LandingPodState[] {
   const raw = state.blobs.landingPods?.value;
   return Array.isArray(raw) ? (raw as LandingPodState[]) : [];
 }
 
-function resolveSpawnCoords(
-  state: SimState,
-  colonyId: number,
-  opts: { slotIndex?: number; q?: number; r?: number },
-  tick: number,
-): { q: number; r: number } {
-  const slots = getSpawnSlots(state);
-  if (typeof opts.q === 'number' && typeof opts.r === 'number' && Number.isInteger(opts.q) && Number.isInteger(opts.r)) {
-    const match = slots.find((s) => s.q === opts.q && s.r === opts.r);
-    if (match) {
-      match.claimedBy = colonyId;
-      setBlob(state, 'spawnSlots', slots, tick);
-    }
-    return { q: opts.q, r: opts.r };
-  }
-  if (slots.length > 0) {
-    const idx = opts.slotIndex ?? colonyId;
-    const slot =
-      slots[idx] ??
-      slots.find((s) => s.claimedBy === undefined || s.claimedBy === colonyId) ??
-      slots[idx % slots.length];
-    slot.claimedBy = colonyId;
-    setBlob(state, 'spawnSlots', slots, tick);
-    return { q: slot.q, r: slot.r };
-  }
-  return { q: 0, r: 0 };
+/**
+ * Why a colony may not land: it already has a pod, the spot is another colony's (its slot, or too close to its pod),
+ * or the spot is off the map.
+ */
+export type LandingRejectCode = 'already_landed' | 'landing_site_taken' | 'invalid_args';
+
+export type SpawnColonyLandingResult =
+  | { ok: true; podEntityId: number; q: number; r: number }
+  | { ok: false; code: LandingRejectCode };
+
+interface SpawnPlan {
+  q: number;
+  r: number;
+  slot?: SpawnSlot;
 }
 
+/** Minimum hex distance between two colonies' landing pods (`hq.startingKit.minLandingSeparation`). */
+export function resolveMinLandingSeparation(data?: CompiledDataLike): number {
+  const v = Number(resolveStartingKitRow(data).minLandingSeparation);
+  return Number.isFinite(v) && v >= 0 ? v : 6;
+}
+
+const freeFor = (slot: SpawnSlot, colonyId: number) => slot.claimedBy === undefined || slot.claimedBy === colonyId;
+
+/**
+ * Where `colonyId` would land, without changing anything: explicit `(q, r)` (taken if that slot belongs to another
+ * colony), else its preferred slot (`slotIndex ?? colonyId`) when free, else the first free slot. Null = no free spot.
+ */
+function planSpawnCoords(state: SimState, colonyId: number, opts: { slotIndex?: number; q?: number; r?: number }): SpawnPlan | null {
+  const slots = getSpawnSlots(state);
+  if (Number.isInteger(opts.q) && Number.isInteger(opts.r)) {
+    const q = opts.q as number;
+    const r = opts.r as number;
+    const slot = slots.find((s) => s.q === q && s.r === r);
+    return slot && !freeFor(slot, colonyId) ? null : { q, r, slot };
+  }
+  if (slots.length === 0) return { q: 0, r: 0 };
+  const preferred = slots[opts.slotIndex ?? colonyId];
+  const slot = preferred && freeFor(preferred, colonyId) ? preferred : slots.find((s) => freeFor(s, colonyId));
+  return slot ? { q: slot.q, r: slot.r, slot } : null;
+}
+
+/**
+ * Validates a landing and returns where it would happen, or the reject code. A colony lands once (its cargo is
+ * credited once); no two colonies share a slot or land within `minLandingSeparation` of each other's pod.
+ */
+export function checkColonyLanding(
+  state: SimState,
+  opts: Pick<SpawnColonyLandingOpts, 'colonyId' | 'slotIndex' | 'q' | 'r' | 'data'>,
+): { ok: true; plan: SpawnPlan } | { ok: false; code: LandingRejectCode } {
+  const pods = getLandingPods(state);
+  if (pods.some((p) => p.colonyId === opts.colonyId)) return { ok: false, code: 'already_landed' };
+  const plan = planSpawnCoords(state, opts.colonyId, opts);
+  if (!plan) return { ok: false, code: 'landing_site_taken' };
+  if (!inHex(plan.q, plan.r, state.grid.radius)) return { ok: false, code: 'invalid_args' };
+  const minSep = resolveMinLandingSeparation(opts.data);
+  if (pods.some((p) => hexDistance(p.q, p.r, plan.q, plan.r) < minSep)) return { ok: false, code: 'landing_site_taken' };
+  return { ok: true, plan };
+}
+
+/**
+ * Lands a colony: validates first ({@link checkColonyLanding}) and changes nothing when rejected; otherwise claims
+ * the slot, clears the starter Hub space, credits the starting cargo (`landing.cargo`) and drops the pod.
+ */
 export function spawnColonyLanding(
   state: SimState,
   opts: SpawnColonyLandingOpts,
   ctx?: SystemCtx,
-): { podEntityId: number; q: number; r: number } {
+): SpawnColonyLandingResult {
   const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const data = opts.data ?? ctx?.data;
   const colonyId = opts.colonyId;
+  const check = checkColonyLanding(state, { ...opts, data });
+  if (!check.ok) return check;
   const col = ensureColony(state, colonyId, tick, {
     id: opts.colonyIdStr,
     playerId: opts.playerId,
@@ -250,22 +169,22 @@ export function spawnColonyLanding(
     color: opts.color,
   });
 
-  const { q, r } = resolveSpawnCoords(state, colonyId, opts, tick);
+  const { q, r, slot } = check.plan;
+  if (slot) {
+    slot.claimedBy = colonyId;
+    setBlob(state, 'spawnSlots', getSpawnSlots(state), tick);
+  }
   ensureStarterHubSpace(state, q, r, colonyId);
   const kit = resolveStartingKitRow(data);
   const totalTicks = resolveDescentTicks(kit);
-  const rawCargo = (kit.cargo ?? {
-    'metals.t1': 600,
-    'minerals.t1': 350,
-    'bio.biomass': 200,
-    'bio.water': 200,
-  }) as Record<string, number>;
-  const initialStock: Record<string, number> = {};
-  for (const [k, v] of Object.entries(rawCargo)) {
-    if (typeof v === 'number' && v > 0) initialStock[k] = v;
-  }
   col.caps = { ...INITIAL_CAPS };
-  setColonyStock(state, colonyId, initialStock);
+  treasury(state, treasuryCtx(tick, ctx)).add({
+    colony: colonyId,
+    amounts: resolveStartingCargo(data),
+    reason: 'landing.cargo',
+    actor: systemActor('landing'),
+    ref: `colony:${colonyId}`,
+  });
   col.changedAt = tick;
 
   const podEntityId = ctx ? ctx.newEntityId() : state.meta.nextEntityId++;
@@ -298,7 +217,7 @@ export function spawnColonyLanding(
   });
   setBlob(state, 'landingPods', pods, tick);
 
-  return { podEntityId, q, r };
+  return { ok: true, podEntityId, q, r };
 }
 
 /** Opens a landed pod: spawns the colony HQ next to it and emits `hqLanded`. */
@@ -369,7 +288,7 @@ export const spawnColony = defineCommandHandler({
     const args = (cmd.args ?? {}) as SpawnColonyCommandArgs;
     const colonyId = resolveCommandColonyIndex(state, cmd, args);
     const colonyIdStr = typeof args.colonyId === 'string' ? args.colonyId : undefined;
-    spawnColonyLanding(
+    const res = spawnColonyLanding(
       state,
       {
         colonyId,
@@ -386,6 +305,7 @@ export const spawnColony = defineCommandHandler({
       },
       ctx,
     );
+    return res.ok ? undefined : res.code;
   },
 });
 

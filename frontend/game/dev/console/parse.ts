@@ -29,3 +29,10 @@ export function numArg(args: readonly string[], i: number, name: string, fallbac
   if (raw.trim() === '' || !Number.isFinite(n)) throw new Error(`<${name}> must be a number, got "${raw}"`);
   return n;
 }
+
+/** Reads `args[i]` as a whole number (see {@link numArg}); an error naming the argument when it has a fraction. */
+export function intArg(args: readonly string[], i: number, name: string, fallback?: number): number {
+  const n = numArg(args, i, name, fallback);
+  if (!Number.isInteger(n)) throw new Error(`<${name}> must be a whole number, got "${args[i]}"`);
+  return n;
+}

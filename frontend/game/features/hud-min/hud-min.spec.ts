@@ -11,7 +11,7 @@ import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
 import { LocalHost } from '../../store/WorldStore';
 import type { ClientView } from '../../store/replica/viewCodec';
-import { formatClock, formatRejectToast, mountMinimalHud, MinimalHud } from './index';
+import { formatClock, formatRejectToast, mountMinimalHud, MinimalHud, wholeStock } from './index';
 
 class FakeElement {
   tagName: string;
@@ -282,6 +282,8 @@ describe('W01-29: Minimal HUD toasts and mounting', () => {
     expect(formatRejectToast('site_blocked')).toBe('Rejected: Site blocked');
     expect(formatRejectToast('worker_tier_locked')).toBe('Rejected: Requires HQ');
     expect(formatRejectToast('unknown_entity')).toBe('Rejected: Unknown entity');
+    expect(formatRejectToast('already_landed')).toBe('Rejected: Colony already landed');
+    expect(formatRejectToast('landing_site_taken')).toBe('Rejected: Landing site taken or too close to another colony');
 
     // Show toast and test click dismiss
     const toast = hud.showToast('Test Toast Notification', 'warning', 10000);
@@ -310,5 +312,33 @@ describe('W01-29: Minimal HUD toasts and mounting', () => {
 
     root.dispose();
     expect(parent.querySelector('[data-testid="hud-min"]')).toBeNull();
+  });
+});
+
+describe('HUD shows whole resource units only', () => {
+  it('floors any fractional stock at the read boundary (stock and toasts)', () => {
+    expect(wholeStock({ 'metals.t1': 250.0000000000006, 'bio.water': 49.9, bad: Number.NaN })).toEqual({
+      'metals.t1': 250,
+      'bio.water': 49,
+    });
+    expect(wholeStock(undefined)).toEqual({});
+
+    const parent = ensureDom();
+    const hud = new MinimalHud(parent as unknown as HTMLElement);
+    const colony: ViewColony = {
+      index: 0,
+      id: 'col_0',
+      name: 'Fractions',
+      color: 0xff8800,
+      status: 'active',
+      stock: { 'metals.t1': 199.99, 'minerals.t1': 100.5, 'bio.biomass': 50.0000000001, 'bio.water': 50 },
+    };
+    hud.update({ tick: 0, colonies: [colony] } as unknown as ClientView);
+    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('199 / 500');
+    expect(parent.querySelector('[data-testid="hud-stock-minerals"]')!.textContent).toContain('100 / 500');
+    expect(parent.querySelector('[data-testid="hud-stock-bio"]')!.textContent).toContain('100 / 500');
+    expect(hud.getColonyStock()['metals.t1']).toBe(199);
+    expect(hud.handleReject('insufficient_resources').textContent).toBe('Waiting: Metals 199/200');
+    hud.dispose();
   });
 });

@@ -64,7 +64,6 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 - **A new command kind:** one `defineUnitCommand` file + one entry in `UNIT_REGISTRY`; a new unit kind: one entry in
   `MOBILE_KINDS` with its data row.
 
-
 ## World generation, sectors and hidden ground (D-38, `src/gen/world/`, `src/grid/sectors.ts`)
 
 - `createPlanet` → `generateWorld`: the planet type's profile row (`data/worldgen.ts`) lists stage ids; each stage is a
@@ -77,9 +76,59 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 - Sectors: 8×8 axial blocks in a quadtree. Every tile stamp (`touchTile`, `stampTile`, `applyDiff`) keeps the per-sector
   max `changedAt`, which `diffSince` uses to skip untouched sectors. A bulk write to `changedAt` calls `forgetTileStamps`.
 
-
 ## System registry and purity lint (SIM-T-01, SIM-D-06)
 
 - A sim module is a folder `src/systems/<name>/index.ts` whose default export is `defineSimModule({ id, wave, systems?, handlers? })`. `npm run gen` (scripts/gen/sim-systems.gen.mjs) lists them into `src/systems/index.generated.ts` (`SIM_MODULES`); folders starting with `_` are ignored. Commit the generated file.
 - `createEngineConfig({ flags, data })` / `createRegistryPipeline(...)` build the default engine from the registry. Slots (0-14) with no system are no-ops; the tick always advances.
 - `eslint.rules.js` bans clocks, `Math.random`, timers, I/O, host globals, `node:*`, async/await and non-contracts `@terra/*` imports in `src/**`. `test/lint/purity.spec.ts` proves it against `test/lint/banned-apis.fixture.ts` (excluded from `npm run lint`).
+
+## Economy: one door, whole units, postings for the host ledger (`src/economy/`)
+
+- **One door.** Every change to a colony's resources goes through `treasury(state, ctx).add({...})` or
+  `.withdraw({...})` with `colony`, `amounts`, a `reason`, an `actor` and usually a `ref`
+  (e.g. `{ reason: 'construction.spend', actor: colonyActor(state, i), ref: 'order:42' }`). Never write `col.stock`.
+  Each change that moves something records exactly one balanced posting (`LedgerPosting`: colony ↔ the reason's
+  `sys:*` counter, with `reason`, `actor`, `ref` and `at` = `ctx.tick`); a change that moves nothing (all zeros, fully
+  capped) records none. Results carry the `posting` when there is one.
+- **`TreasuryCtx` rule.** `treasury(state, ctx)` takes a `TreasuryCtx` (`{ tick, record(p) }`). Inside `step()` pass
+  the step's `StepContext` (it is one), so the change is stamped with the tick the step produces and its posting
+  reaches the host. Code that takes an optional step ctx uses `treasuryCtx(tick, ctx)` (records into the ctx when it
+  has `record`, else discards). `unrecorded(tick)` discards postings: only for tests and seeding a planet before it
+  runs (`setColonyStock(state, i, target, ctx = unrecorded(state.meta.tick))`), never in gameplay. Construction money
+  that moves stock (`spendConstructionSlice`, `refundCancelledConstruction`) takes a `TreasuryCtx`; `payConstructionCost`
+  is only the affordability gate. Resources enter a colony only through postings (landing cargo, yields, grants, …):
+  tests that spawn an HQ without landing seed the cargo with `setColonyStock(state, i, resolveStartingCargo())`.
+- **Whole major units.** Amounts are safe integers; fractions, negatives, unknown keys, bad colony indices and
+  disallowed reasons are rejected with a code (`invalid_amount`, `invalid_resource`, `invalid_reason`), never thrown;
+  a credit that would leave the safe-integer range is `invalid_amount` (`detail: 'balance overflow'`). `withdraw` is
+  all-or-nothing (`insufficient_funds` with the first short resource). A reject changes nothing and records nothing.
+  Shares go through `@terra/ledger` helpers: `owedAt(total, progress)` for gradual payments (settles exactly at 1.0),
+  `shareBp(amount, bp)` for refunds (floor). `add({ clampToCap: true })` credits what fits under the family caps
+  (`getColonyCaps`, `INITIAL_CAPS`) and reports `overflow`.
+- **Reasons catalog.** `LEDGER_REASONS` (`reasons.ts`) is closed: each reason names its allowed directions and its
+  counter account (`landing.cargo` ↔ `sys:cargo`, `terraform.yield` ↔ `sys:world`, `construction.spend`/`.refund` ↔
+  `sys:construction`, `dev.grant` ↔ `sys:dev`, `admin.correction` ↔ `sys:admin`, …). `sys:*` accounts may go
+  negative (sources/sinks, `isSystemAccount`); `colony:<i>` accounts may not. Actors: `colonyActor(state, i)`
+  (`player:<id>` or `colony:<i>`), `systemActor(name)`, `DEV_ACTOR`.
+- **State is the balance, the journal is the host's.** `col.stock` (zero-filled) is the colony's balance and, with the
+  `col.resources` family summary, all the sim keeps and syncs; there is no ledger blob in state. Postings leave the
+  step in `StepResult.postings` (`SimHost.onPostings` for listeners) and are host-only: the server persists them to
+  Postgres, the local host (`?host=local`) keeps them in memory, clients never receive them. A `@terra/ledger`
+  `Ledger` (negative policy `isSystemAccount`) fed with every posting has `colony:<i>` balances equal to `col.stock`
+  at every tick (`test/economy/hub-build.ledger.spec.ts`).
+- **Reads and seeding.** `getColonyStock(state, i)` is the one reader (zero-filled `Stock`). `setColonyStock(state, i,
+  target, ctx?)` moves a colony to an exact stock with at most one withdraw and one add `admin.correction` posting by
+  `system:admin` (scenarios, tests); gameplay never uses it.
+
+## Landing (`systems/landing/`, `systems/dev/land.ts`)
+
+- `checkColonyLanding` validates, `spawnColonyLanding` validates first and changes **nothing** when rejected; it
+  returns `{ ok: true, podEntityId, q, r }` or `{ ok: false, code }`. `system.spawnColony` and `dev.land` return the code.
+- A colony lands once (`already_landed`, also for `dev.land` with `(q, r)` on a colony that has a pod), so its
+  `landing.cargo` is credited once.
+- Explicit `(q, r)` on a slot claimed by another colony, or within `hq.startingKit.minLandingSeparation` (6) of another
+  colony's pod, is `landing_site_taken`; off the map is `invalid_args`. Without `(q, r)` the colony takes its preferred
+  slot (`slotIndex ?? colonyId`) if free, else the first free slot, else `landing_site_taken`; a planet without slots
+  lands at (0, 0).
+- `dev.land` deploys an undeployed pod now; relocating it to `(q, r)` within the separation of another colony's pod is
+  `landing_site_taken`, off the map `invalid_args` (pod untouched).

@@ -5,6 +5,7 @@ import {
   type BalanceOverrides, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent, type TuneRequest,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
+import { HostLedger } from './hostLedger';
 import type { FromLocalHost, LocalHostOptions, LocalPost, ToLocalHost } from './protocol';
 import { compatible, snapshotKey, type SnapshotStore } from './snapshotStore';
 
@@ -37,6 +38,7 @@ const isRejectCode = (c: string): c is RejectCode => (REJECT_CODES as readonly s
  */
 export class LocalHostCore {
   private host!: SimHost;
+  private ledger!: HostLedger;
   private tuning!: PlanetTuning;
   private scenario = '';
   private joined = false;
@@ -75,7 +77,7 @@ export class LocalHostCore {
 
   /** A planet from the scenario, resumed from the saved snapshot unless `fresh` or incompatible. */
   private async build(id: string, fresh: boolean): Promise<void> {
-    const { host: seed } = createScenarioPlanet(id, { planetId: newId('pl'), flags: parseWaves(this.opts.waves).list });
+    const { host: seed, setupPostings } = createScenarioPlanet(id, { planetId: newId('pl'), flags: parseWaves(this.opts.waves).list });
     const flags = [...seed.pipeline.config.flags];
     const key = snapshotKey(id);
     let host = seed;
@@ -87,6 +89,13 @@ export class LocalHostCore {
       if (resumed) ({ host, live } = resumed);
     }
     this.scenario = id;
+    // a new planet, a new journal: a fresh scenario replays its setup postings (the real `landing.cargo`); a resumed
+    // snapshot's history is gone, so its balances are opened from col.stock
+    if (host === seed) {
+      const { ledger, problems } = HostLedger.replay(setupPostings);
+      this.ledger = ledger;
+      for (const message of problems) this.post({ t: 'error', message }, []);
+    } else this.ledger = HostLedger.open(host.state, 'system:resume');
     this.install(host, { flags, base: {}, live });
   }
 
@@ -112,6 +121,8 @@ export class LocalHostCore {
     this.unlisten = [
       host.onEvents((events) => { if (this.joined) this.window.push(...events); }),
       host.onOutcomes((outcomes) => this.answer(outcomes)),
+      // the journal stays here (host-side); postings never reach the client store / replica
+      host.onPostings((postings) => { for (const message of this.ledger.record(postings)) this.post({ t: 'error', message }, []); }),
     ];
   }
 
@@ -207,9 +218,9 @@ export class LocalHostCore {
     this.queue.push({ colonyIndex: hasColony ? 0 : null, source: pre.dev ? 'dev' : 'player', commandId: id, kind, args: pre.args });
   }
 
-  // ---- dev server (warp, scenario, tune, local.reset) -------------------------------------------------------------
+  // ---- dev server (warp, scenario, tune, local.reset, ledger) -----------------------------------------------------
 
-  /** The local `DevServer`: what the game server's dev routes do, minus everything that needs a server (`host_unavailable`). */
+  /** The local `DevServer` (`warp`, `scenario`, `local.reset`, `tune`, `ledger`): what the game server's dev routes do, minus everything that needs a server (`host_unavailable`). */
   async devCommand(name: string, args: unknown): Promise<unknown> {
     const a = (args ?? {}) as Record<string, unknown>;
     switch (name) {
@@ -220,6 +231,7 @@ export class LocalHostCore {
       }
       case 'local.reset': return this.restart(this.scenario);
       case 'tune': return this.devTune(a);
+      case 'ledger': return this.ledger.view(this.planetId, String(a.account ?? 'colony:0'), Number(a.limit ?? 10) || 10);
       default: throw new LocalDevError('host_unavailable', `"${name}" needs the game server; not available on this host`);
     }
   }

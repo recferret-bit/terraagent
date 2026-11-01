@@ -13,7 +13,11 @@ export interface LocalHostOptions {
 export type ToLocalHost =
   | { t: 'init'; opts: LocalHostOptions }
   | { t: 'client'; msg: Outgoing | { t: 'hello' } }
-  /** Dev server command (`warp`, `scenario`, `tune`, `local.reset`); answered by `devResult` with the same `reqId`. */
+  /**
+   * Dev server command (`warp`, `scenario`, `tune`, `local.reset`, `ledger`); answered by `devResult` with the same `reqId`.
+   * `ledger` (`args { account, limit }`) returns the host's journal as a `LedgerReply` (`{ planetId, account, balances,
+   * entries }`, the shape of `GET /v1/dev/planets/:planetId/ledger`): the only way the journal leaves the worker.
+   */
   | { t: 'dev'; reqId: number; name: string; args: unknown }
   /** Save a snapshot now (the page is hiding). */
   | { t: 'save' }

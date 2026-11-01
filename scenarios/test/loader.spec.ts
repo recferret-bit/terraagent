@@ -1,3 +1,5 @@
+import { RESOURCE_KEYS } from '@terra/contracts';
+import { getColonyStock, getHqView, getLandingPods, getSpawnSlots } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
 import { createScenarioPlanet, getScenario, listScenarios } from '../_loader';
 
@@ -35,11 +37,34 @@ describe('scenario loader', () => {
     expect([...host.pipeline.config.flags]).toEqual(['W00', 'W01']);
     expect(host.state.colonies).toHaveLength(1);
     expect(host.state.colonies[0]?.stock).toEqual({
+      ...Object.fromEntries(RESOURCE_KEYS.map((k) => [k, 0])),
       'metals.t1': 600,
       'minerals.t1': 350,
       'bio.biomass': 200,
       'bio.water': 200,
     });
     expect(host.state.entities.count).toBe(1);
+  });
+
+  it('w01 then dev.land (the auto-place flow) deploys the HQ at slot 0 and credits the cargo once', () => {
+    const { host } = createScenarioPlanet('w01', { planetId: 'pl_W01A' });
+    const land = (commandId: string, args: object): string | undefined => {
+      host.submit({ colonyIndex: null, source: 'dev', commandId, kind: 'dev.land', args });
+      return host.step(1).outcomes[0]?.code;
+    };
+    expect(land('land_1', { colonyId: 0 })).toBeUndefined();
+    expect(land('land_2', { colonyId: 0, q: 0, r: 0 })).toBe('already_landed');
+    const pods = getLandingPods(host.state);
+    expect(pods).toHaveLength(1);
+    expect(pods[0]).toMatchObject({ colonyId: 0, q: getSpawnSlots(host.state)[0].q, r: getSpawnSlots(host.state)[0].r, deployed: true });
+    expect(getSpawnSlots(host.state)[0].claimedBy).toBe(0);
+    expect(getHqView(host.state, 0)).not.toBeNull();
+    expect(getColonyStock(host.state, 0)).toEqual({
+      ...Object.fromEntries(RESOURCE_KEYS.map((k) => [k, 0])),
+      'metals.t1': 600,
+      'minerals.t1': 350,
+      'bio.biomass': 200,
+      'bio.water': 200,
+    });
   });
 });

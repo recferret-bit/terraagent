@@ -9,6 +9,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { treasuryCtx } from '../../economy';
 import { defineSimModule } from '../define';
 import { syncHqView } from '../hq';
 import {
@@ -136,9 +137,8 @@ function shouldRejectInsufficientOnPlace(
   unpreparedCount: number,
   forceCheck?: boolean,
 ): boolean {
-  const colStock =
-    state.colonies[colonyId]?.stock ??
-    (state.blobs.colonyStock?.value as Record<number | string, Record<string, number>> | undefined)?.[colonyId];
+  // `col.stock` (the ledger projection) is undefined until the colony's first posting: no stock yet, no check.
+  const colStock = state.colonies[colonyId]?.stock;
   if (colStock === undefined && !forceCheck) return false;
   if (!cost) return false;
   const afford = checkBuildingAffordability(cost, colStock as Record<string, number> | undefined);
@@ -276,6 +276,7 @@ export function cancelConstructionOrder(
   idOrEntityId?: string | number,
   tick: number = state.meta.tick,
   data?: CompiledDataLike,
+  ctx?: Pick<StepContext, 'record'>,
 ): boolean {
   const all = readConstructionOrders(state);
   let targetIdx: number;
@@ -309,7 +310,7 @@ export function cancelConstructionOrder(
   writeConstructionOrders(state, all, tick);
 
   if (target.costPaid && target.status !== 'completed') {
-    refundCancelledConstruction(state, target, data);
+    refundCancelledConstruction(state, target, data, treasuryCtx(tick, ctx));
   }
 
   if (target.linkedPrepOrderId) {

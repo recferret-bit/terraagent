@@ -24,12 +24,13 @@ export class ScenariosService {
     const def = getScenario(id);
     if (!def) throw new CoreException('NOT_FOUND', { status: 404, message: `Unknown scenario "${id}"`, details: { known: this.list().map((s) => s.id) } });
     const planetId = newId('pl');
-    const { host } = createScenarioPlanet(def.id, { planetId, flags: this.flags.list });
+    const { host, setupPostings } = createScenarioPlanet(def.id, { planetId, flags: this.flags.list });
     const tick = host.tick;
     if (host.state.colonies?.some((c) => c.status !== 'eliminated')) {
       this.planets.markScenarioColonyPlanet(planetId);
     }
-    await this.planets.load(planetId, { snapshot: snapshot(host.state) });
+    // the journal starts with the setup postings (e.g. the real `landing.cargo`)
+    await this.planets.load(planetId, { snapshot: snapshot(host.state), genesis: true, setupPostings });
     return { planetId, scenario: def.id, tick };
   }
 }

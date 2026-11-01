@@ -1,15 +1,13 @@
 import { availableParallelism } from 'node:os';
 import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
 import { DEV_PLANET_SEED, DEV_PLANET_TYPE } from '@terra/sim';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
-import {
-  type ColonySeatAssignment,
-  createSpawnColonyCommand,
-  HomeService,
-} from '../core/home/home.service';
+import { type ColonySeatAssignment, HomeService } from '../core/home/home.service';
+import { PRISMA } from '../db/db.module';
 import { FlagsService } from '../flags/flags.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { ReadinessRegistry } from '../core/readiness.registry';
@@ -19,9 +17,16 @@ import { bridgePlanetEvents } from './bus-bridge';
 import { DevPlanetsController } from './dev-planets.controller';
 import { devPlanetIds } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
+import { DevLedgerController } from './ledger/dev-ledger.controller';
+import { InMemoryLedgerStore } from './ledger/in-memory-ledger-store';
+import { LedgerStorePort } from './ledger/ledger-store.port';
+import { PlanetLedgerService } from './ledger/planet-ledger.service';
+import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
+import { persistenceEnabled } from './persistence/persistence-enabled';
 import { SnapshotService } from './persistence/snapshot.service';
 import { SnapshotStore } from './persistence/snapshot-store';
 import { ProgressionEventForwarder } from './progression-events.service';
+import { seatColonyOnPlanet } from './seat-colony';
 import { SimThreadPool } from './sim-thread-pool';
 
 export const env = defineEnv('game', {
@@ -44,7 +49,7 @@ export const env = defineEnv('game', {
 const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
-  controllers: [DevPlanetsController],
+  controllers: [DevPlanetsController, DevLedgerController],
   providers: [
     {
       provide: POOL,
@@ -53,6 +58,13 @@ const POOL = Symbol('SIM_THREAD_POOL');
     },
     { provide: GamePlanets, inject: [POOL, APP_ENV], useFactory: (pool: SimThreadPool, e: AppEnv) => new GamePlanets(pool, Number(e.DELTA_HZ)) },
     SnapshotStore,
+    {
+      // The journal persists with the snapshots (same switch): Postgres, or in memory under NODE_ENV=test / SNAPSHOTS=off.
+      provide: LedgerStorePort,
+      inject: [APP_ENV, PRISMA],
+      useFactory: (e: AppEnv, prisma: PrismaClient) => (persistenceEnabled(e) ? new PrismaLedgerStore(prisma) : new InMemoryLedgerStore()),
+    },
+    PlanetLedgerService,
     SnapshotService,
     ProgressionEventForwarder,
   ],
@@ -135,16 +147,8 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     await this.planets.shutdown();
   }
 
-  private async seatColony(assignment: ColonySeatAssignment): Promise<void> {
-    const { planet } = assignment;
-    await this.planets.ensureLoaded(planet.id, {
-      params: {
-        type: planet.type,
-        seed: planet.seed,
-        radius: planet.radius,
-        capacity: planet.capacity,
-      },
-    });
-    await this.planets.submit(planet.id, createSpawnColonyCommand(assignment));
+  /** Throws `COLONY_SEAT_REJECTED` when the sim rejects the landing (see `seatColonyOnPlanet`). */
+  private seatColony(assignment: ColonySeatAssignment): Promise<void> {
+    return seatColonyOnPlanet(this.planets, assignment);
   }
 }

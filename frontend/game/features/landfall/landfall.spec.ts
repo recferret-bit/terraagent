@@ -301,7 +301,9 @@ describe('W01-26: PodTouchdownFx strict landing state machine', () => {
     meshes.podTouchdown.setSpacePhase(null);
 
     const host = new LocalHost({ flags: ['W00', 'W01'], radius: 16 });
-    const { podEntityId } = spawnColonyLanding(host.state, { colonyId: 0, q: 0, r: 0 });
+    const landed = spawnColonyLanding(host.state, { colonyId: 0, q: 0, r: 0 });
+    if (!landed.ok) throw new Error(`landing rejected: ${landed.code}`);
+    const { podEntityId } = landed;
     host.step(35);
     meshes.syncView(host.sync(true), null, 'desert');
     const podRec = meshes.getRecord(podEntityId)!;
@@ -362,6 +364,7 @@ describe('W01-26: PodTouchdownFx dev.land transition and colony isolation', () =
     host.step(35);
     const col1 = spawnColonyLanding(host.state, { colonyId: 1, q: 6, r: 0 });
     host.step(1);
+    if (!col0.ok || !col1.ok) throw new Error('landing rejected');
 
     const ctl = new LandfallController({ ownerColonyIndex: 1, isHqDeployed: () => meshes.isHqDeployed() });
     ctl.onChange(({ selectedEntityId }) => meshes.setSelectedEntityId(selectedEntityId));

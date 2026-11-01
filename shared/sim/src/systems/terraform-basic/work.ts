@@ -1,3 +1,4 @@
+import { colonyActor, treasury } from '../../economy';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
@@ -12,7 +13,6 @@ import { faceTowards } from '../../units/movement/locomotion';
 import { defineUnitCommand, type TerraformCommand, type UnitCtx, type UnitWorkProvider } from '../../units/types';
 import { stepTerraformWorkWithCell, syncHqView } from '../hq';
 import { getTerraformOpSpec, readOrdersByColony, writeOrdersByColony, type TerraformJob, type TerraformOrder } from './queue';
-import { addColonyResource } from './stock';
 
 /**
  * Terraform as unit work (`UO-TF`, `UO-HQ-06`). The colony's terraform queue (`state.blobs.terraformTasks`) says WHAT
@@ -44,7 +44,13 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   const found = revealSubsurface(state, tileIdx, tick);
   if (found) ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, q: job.q, r: job.r, ...found } });
   if (spec.yieldResource && spec.yieldAmount > 0) {
-    addColonyResource(state, colonyId, spec.yieldResource, spec.yieldAmount, tick);
+    treasury(state, ctx).add({
+      colony: colonyId,
+      amounts: { [spec.yieldResource]: spec.yieldAmount },
+      reason: 'terraform.yield',
+      actor: colonyActor(state, colonyId),
+      ref: `tile:${job.q},${job.r}`,
+    });
   }
   ctx.emit({
     kind: 'obstacleRemoved',

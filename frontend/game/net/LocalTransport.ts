@@ -65,7 +65,7 @@ export class LocalTransport implements Transport {
   /** Asks the host to write its snapshot now (the page is hiding). */
   saveNow(): void { this.link.post({ t: 'save' }); }
 
-  /** `services.devServer` of the local host: `warp`, `scenario`, `tune`, `local.reset`; anything else is `host_unavailable`. */
+  /** `services.devServer` of the local host: `warp`, `scenario`, `tune`, `local.reset`, `ledger`; anything else is `host_unavailable`. */
   readonly devServer: DevServer = (name, args = {}) => new Promise((ok, fail) => {
     if (!this.off) return fail(new DevServerError('not_connected', 'local host is not running'));
     const reqId = this.nextReq++;

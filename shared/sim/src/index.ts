@@ -55,6 +55,7 @@ export { getUnitCommand, getUnitRecord, type UnitRecord } from './units/book';
 export { isUnitKind, mobileStats, type MobileStats } from './units/mobility';
 export { getMotion, type MoveGoal, type MotionStatus, type UnitMotion } from './units/movement/orchestrator';
 export type { IssueOpts } from './units/runner';
+export * from './economy';
 export * from './systems/landing';
 export * from './systems/terraform-basic';
 export * from './systems/construction';

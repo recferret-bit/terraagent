@@ -1,5 +1,5 @@
 import type { SimCommandV1 } from '@terra/contracts';
-import type { BalanceOverrides, SimEvent } from '@terra/sim';
+import type { BalanceOverrides, LedgerPosting, SimEvent } from '@terra/sim';
 import type { TuneRequest } from '@terra/sim';
 
 /** In-process MessagePort protocol between the main thread and a sim thread (PROTOCOL §6). Plain structured-clone data only. */
@@ -45,6 +45,26 @@ export interface LoadMsg {
   readonly flags?: readonly string[];
   /** Scenario balance overrides (D-35), layered over the file overrides. */
   readonly overrides?: BalanceOverrides;
+  /**
+   * The snapshot is a brand-new planet (scenario), not a restore: the server ledger opens it with the colonies' stock as
+   * opening balances instead of replaying a journal. Echoed back in `loaded`.
+   */
+  readonly genesis?: boolean;
+}
+
+/** What the server ledger needs from a `loaded` planet (restore consistency, see `PlanetLedgerService`). */
+export interface LoadedInfo {
+  /** Loaded from a snapshot (false = generated fresh). */
+  readonly restored: boolean;
+  /** The snapshot was a brand-new planet (`LoadMsg.genesis`). */
+  readonly genesis: boolean;
+  /** `getColonyStock` of every colony record, by colony index (whole units per resource key). */
+  readonly stocks: readonly Readonly<Record<string, number>>[];
+  /**
+   * Genesis only: the postings made while the planet was built (a scenario's setup steps, e.g. `landing.cargo`). The
+   * journal starts with them; the main thread keeps them (`GamePlanets.load` option), they never travel to the thread.
+   */
+  readonly setupPostings?: readonly LedgerPosting[];
 }
 
 /** main → thread */
@@ -85,7 +105,12 @@ export interface PassStat { readonly steps: number; readonly maxPlanetSteps: num
 /** thread → main */
 export type FromThread =
   | { readonly t: 'ready'; readonly thread: number }
-  | { readonly t: 'loaded'; readonly planetId: string; readonly tick: number }
+  | ({ readonly t: 'loaded'; readonly planetId: string; readonly tick: number } & Partial<LoadedInfo>)
+  /**
+   * Ledger postings of one step at `tick`, in order (`idx` = array index). Host-side only: never relayed to clients, and
+   * posted whether or not the planet is subscribed, so the server journal never loses one.
+   */
+  | { readonly t: 'ledger'; readonly planetId: string; readonly tick: number; readonly postings: readonly LedgerPosting[] }
   | { readonly t: 'unloaded'; readonly planetId: string }
   | { readonly t: 'delta'; readonly planetId: string; readonly fromTick: number; readonly toTick: number; readonly diff: Uint8Array; readonly events: SimEvent[] }
   | { readonly t: 'event'; readonly planetId: string; readonly events: SimEvent[] }
