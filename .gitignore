@@ -11,3 +11,6 @@ playwright-report/
 e2e/.out/
 coverage/
 .dev/
+
+# the committed coverage reference (docs/coverage/README.md) is not a coverage output folder
+!docs/coverage/

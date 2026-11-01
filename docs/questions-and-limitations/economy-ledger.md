@@ -113,8 +113,9 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **What happens:** an exception inside a system after a treasury change mutates `col.stock` but the step's postings
   never reach the journal; the next restore logs a reconcile mismatch.
 - **To resolve:** publish postings from the step context as they are recorded, or roll the state back on a failed
-  step (hosts already treat a throwing step as fatal for that planet).
-- **Found:** 2026-11-01, independent review (L3)
+  step. Note: the server host does **not** stop a planet whose step threw — it keeps stepping the half-changed state
+  and that step's commands are never answered (see [BE-12](./backend-contracts.md)); fix both together.
+- **Found:** 2026-11-01, independent review (L3); corrected 2026-11-01 by the backend review
 
 ### LED-10 · `unrecorded` / `treasuryCtx` without a step ctx silently discard postings
 
