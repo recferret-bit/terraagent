@@ -108,12 +108,14 @@ export function listSceneEntities(scene: THREE.Scene): Array<{ id: number; x: nu
   return (g?.children ?? []).map((m) => ({ id: Number(m.userData.entityId), x: m.position.x, y: m.position.y, z: m.position.z }));
 }
 
+/**
+ * The look of the planet the session is on. The sim's real planet type wins (D-38: the ground is generated per type, a
+ * sand palette on temperate ground would lie); the orbit pick (`preferredKind`) is only used when the type is unknown.
+ */
 export function resolveOnlinePlanetLook(planetType: SimPlanetType | string, preferredKind?: PlanetKind | null): PlanetSpec {
-  if (preferredKind && PLANET_KINDS.includes(preferredKind)) {
-    return PLANET_SPECS[preferredKind];
-  }
-  const st: SimPlanetType = planetType === 'desert' || planetType === 'ocean' ? planetType : 'temperate';
-  return specForPlanetType(st);
+  if (planetType === 'desert' || planetType === 'ocean' || planetType === 'temperate') return specForPlanetType(planetType);
+  if (preferredKind && PLANET_KINDS.includes(preferredKind)) return PLANET_SPECS[preferredKind];
+  return specForPlanetType('temperate');
 }
 
 /** Tile indices whose height, terrain, prep, deposit or owner differs between two tile snapshots. */
