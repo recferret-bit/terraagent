@@ -26,3 +26,13 @@ export function devPlanetIds(count: number, threads: number): string[] {
   }
   return ids;
 }
+
+/**
+ * The dev planets boot generates fresh: the configured ids that are not loaded and not held (they have snapshots the
+ * restore left unloaded). None while the database is unavailable: which planets have snapshots is unknown then.
+ */
+export function devPlanetsToGenerate(ids: readonly string[], loaded: readonly string[], restore: { readonly held: readonly string[]; readonly dbUnavailable: boolean }): string[] {
+  if (restore.dbUnavailable) return [];
+  const skip = new Set([...loaded, ...restore.held]);
+  return ids.filter((id) => !skip.has(id));
+}

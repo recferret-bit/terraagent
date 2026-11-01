@@ -1134,6 +1134,29 @@
             ],
             "type": "string"
           },
+          "overflow": {
+            "additionalProperties": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "metals.t1",
+                "metals.t2",
+                "metals.t3",
+                "minerals.t1",
+                "minerals.t2",
+                "minerals.t3",
+                "bio.water",
+                "bio.biomass",
+                "bio.t2",
+                "bio.t3"
+              ],
+              "type": "string"
+            },
+            "type": "object"
+          },
           "playerId": {
             "type": "string"
           },
@@ -1156,7 +1179,7 @@
         "type": "object"
       },
       "severity": "info",
-      "summary": "Emitted when a Forest or Rock obstacle is removed via Clear or Break (Stone Mason progression, W01-13, W01-31).",
+      "summary": "Emitted when a Forest or Rock obstacle is removed via Clear or Break (Stone Mason progression, W01-13, W01-31); `overflow` is the capped-away yield.",
       "wave": "W01"
     },
     "tilePrepared": {
@@ -1198,6 +1221,48 @@
       },
       "severity": "info",
       "summary": "Emitted when one or more tiles reach the Prepared state via Grade (Groundbreaker progression, W01-13, W01-31).",
+      "wave": "W01"
+    },
+    "treasuryRejected": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "invalid_resource",
+              "invalid_reason",
+              "invalid_amount",
+              "insufficient_funds"
+            ],
+            "type": "string"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "reason",
+          "code"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A resource change a sim system expected to succeed (a terraform yield, a construction refund) was refused by the colony treasury (bad data); nothing moved.",
       "wave": "W01"
     }
   },

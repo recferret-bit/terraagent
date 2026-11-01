@@ -11,6 +11,8 @@ export interface ReasonSpec {
   /** The counter account: where added value comes from / withdrawn value goes to. */
   readonly counter: string;
   readonly summary: string;
+  /** Posted by the host's journal only (never through the sim treasury, which rejects it `invalid_reason`). */
+  readonly hostOnly?: boolean;
 }
 
 export const LEDGER_REASONS = {
@@ -23,15 +25,20 @@ export const LEDGER_REASONS = {
   trade: { directions: ['add', 'withdraw'], counter: 'sys:market', summary: 'Goods bought from or sold to the market.' },
   'dev.grant': { directions: ['add', 'withdraw'], counter: 'sys:dev', summary: 'Dev console grant (positive) or revoke (negative).' },
   'admin.correction': { directions: ['add', 'withdraw'], counter: 'sys:admin', summary: 'Manual correction: seeding, tests, support fixes.' },
-  // Host-only (never posted by the sim): a journal that starts after the planet did (a resumed local save) opens each
-  // colony's balance with one entry, so the ledger explains `col.stock` from that point on.
-  'ledger.opening': { directions: ['add'], counter: 'sys:opening', summary: 'Opening balance of a journal started on an existing planet.' },
+  // Host-only (the treasury rejects it): a journal that starts after the planet did (a resumed local save) opens each
+  // colony's balance with one entry, so the ledger explains `col.stock` from that point on (`PlanetJournal.open`).
+  'ledger.opening': { directions: ['add'], counter: 'sys:opening', summary: 'Opening balance of a journal started on an existing planet.', hostOnly: true },
 } as const satisfies Record<string, ReasonSpec>;
 
 export type LedgerReason = keyof typeof LEDGER_REASONS;
 
 export function isLedgerReason(r: unknown): r is LedgerReason {
   return typeof r === 'string' && Object.prototype.hasOwnProperty.call(LEDGER_REASONS, r);
+}
+
+/** Whether only the host's journal may post `reason` (the sim treasury rejects it). */
+export function isHostOnlyReason(reason: LedgerReason): boolean {
+  return (LEDGER_REASONS[reason] as ReasonSpec).hostOnly === true;
 }
 
 /** Whether `reason` may move value in `direction`. */

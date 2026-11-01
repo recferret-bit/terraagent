@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@terra/db';
 import type { Leg } from '@terra/ledger';
-import { LedgerStorePort, type LedgerCursor, type LedgerRow, type StoredLedgerRow } from './ledger-store.port';
+import { sheetOf } from './ledger-book';
+import { LedgerStorePort, type LedgerRow, type LedgerTotals, type StoredLedgerRow } from './ledger-store.port';
 
 /** Rows per `createMany` statement (Postgres caps bind parameters at 65535; 7 columns per row). */
 const INSERT_CHUNK = 2000;
@@ -45,19 +46,24 @@ export class PrismaLedgerStore extends LedgerStorePort {
     return (await this.prisma.ledgerEntry.deleteMany({ where: { planetId } })).count;
   }
 
-  async page(planetId: string, q: { throughTick: number; after?: LedgerCursor; limit: number }): Promise<LedgerRow[]> {
-    const c = q.after;
-    const rows = await this.prisma.ledgerEntry.findMany({
-      where: {
-        planetId,
-        tick: { lte: BigInt(q.throughTick) },
-        ...(c ? { OR: [{ tick: { gt: BigInt(c.tick) } }, { tick: BigInt(c.tick), idx: { gt: c.idx } }] } : {}),
-      },
-      orderBy: [{ tick: 'asc' }, { idx: 'asc' }],
-      take: q.limit,
-      select: { tick: true, idx: true, reason: true, actor: true, ref: true, legs: true },
-    });
-    return rows.map(fromDb);
+  /**
+   * One aggregate over `jsonb_array_elements(legs)`: Σ delta per (account, asset) of the rows with `tick ≤ T`, plus
+   * their count. `SUM(bigint)` is `numeric` in Postgres: cast back to `bigint` (Prisma → JS bigint). The count comes on
+   * every result row (a planet without rows still returns one row, with null cells).
+   */
+  async balancesThrough(planetId: string, tick: number): Promise<LedgerTotals> {
+    const rows = await this.prisma.$queryRaw<Array<{ count: bigint; account: string | null; asset: string | null; total: bigint | null }>>`
+      WITH e AS (
+        SELECT legs FROM world.ledger_entry WHERE planet_id = ${planetId} AND tick <= ${BigInt(tick)}
+      ), s AS (
+        SELECT leg->>'account' AS account, leg->>'asset' AS asset, SUM((leg->>'delta')::bigint)::bigint AS total
+        FROM e CROSS JOIN LATERAL jsonb_array_elements(e.legs) AS leg
+        GROUP BY 1, 2
+      )
+      SELECT c.count, s.account, s.asset, s.total
+      FROM (SELECT COUNT(*)::bigint AS count FROM e) c LEFT JOIN s ON TRUE`;
+    const cells = rows.flatMap((r) => (r.account === null || r.asset === null || r.total === null ? [] : [{ account: r.account, asset: r.asset, total: Number(r.total) }]));
+    return { balances: sheetOf(cells), count: Number(rows[0]?.count ?? 0n) };
   }
 
   async recent(planetId: string, q: { account: string; limit: number }): Promise<StoredLedgerRow[]> {

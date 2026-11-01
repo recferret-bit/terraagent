@@ -272,6 +272,11 @@ export class ProgressionEventForwarder {
     this.colonyPlayerMap.set(colonyId, playerId);
   }
 
+  /** Forgets a colony registered by {@link registerColony} (its seat was rolled back: the landing was rejected). */
+  unregisterColony(colonyId: string): void {
+    this.colonyPlayerMap.delete(colonyId);
+  }
+
   resolvePlayerId(colonyId: string): string | undefined {
     if (this.customResolver) {
       const custom = this.customResolver(colonyId);

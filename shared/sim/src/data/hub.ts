@@ -7,6 +7,7 @@ export default defineTable({
   name: 'hub',
   summary: 'Colony Command Hub T1 balance row (footprint, cost, build time, territory claim, storage, supply, Founder Core).',
   units: { buildS: 'seconds' },
+  amounts: ['cost', 'storageCapPerFamily'],
   rows: [
     {
       id: 't1',

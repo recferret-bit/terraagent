@@ -65,6 +65,12 @@ export interface LoadedInfo {
    * journal starts with them; the main thread keeps them (`GamePlanets.load` option), they never travel to the thread.
    */
   readonly setupPostings?: readonly LedgerPosting[];
+  /**
+   * Fresh (generated) load only: the loader checked that the planet has no snapshot rows (`SnapshotService.loadNew`),
+   * so journal rows under its id belong to an older planet and are deleted. Main thread only, like `setupPostings`.
+   * A fresh load without it keeps the rows (a planet with snapshots must never lose its journal).
+   */
+  readonly noSnapshots?: boolean;
 }
 
 /** main → thread */

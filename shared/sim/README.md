@@ -106,12 +106,28 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
   is only the affordability gate. Resources enter a colony only through postings (landing cargo, yields, grants, …):
   tests that spawn an HQ without landing seed the cargo with `setColonyStock(state, i, resolveStartingCargo())`.
 - **Whole major units.** Amounts are safe integers; fractions, negatives, unknown keys, bad colony indices and
-  disallowed reasons are rejected with a code (`invalid_amount`, `invalid_resource`, `invalid_reason`), never thrown;
-  a credit that would leave the safe-integer range is `invalid_amount` (`detail: 'balance overflow'`). `withdraw` is
-  all-or-nothing (`insufficient_funds` with the first short resource). A reject changes nothing and records nothing.
+  disallowed reasons (outside the catalog, wrong direction, or host-only like `ledger.opening`) are rejected with a
+  code (`invalid_amount`, `invalid_resource`, `invalid_reason`), never thrown; a credit that would leave the
+  safe-integer range is `invalid_amount` (`detail: 'balance overflow'`). `withdraw` is all-or-nothing
+  (`insufficient_funds` with the first short resource). A reject changes nothing and records nothing. `checkMove(req,
+  direction)` runs the same validation without moving anything (landing checks its cargo with it before it lands).
   Shares go through `@terra/ledger` helpers: `owedAt(total, progress)` for gradual payments (settles exactly at 1.0),
-  `shareBp(amount, bp)` for refunds (floor). `add({ clampToCap: true })` credits what fits under the family caps
-  (`getColonyCaps`, `INITIAL_CAPS`) and reports `overflow`.
+  `shareBp(amount, bp)` for refunds (floor).
+- **One amount rule, also for data** (`economy/amounts.ts`): `isWholeAmount` / `amountsProblem` are used by the
+  treasury and by the data compiler. A table lists its resource-amount fields in `amounts` (`hq` `cargo`, `hub` `cost`
+  and `storageCapPerFamily`, `opsBasic` `yieldAmount`); `compileData`, every balance override and every dev `tune`
+  throw on a fraction, a negative or an unknown resource key there (`data/_amounts.ts`), naming the field and value.
+- **One affordability check.** `findShortfall(stock, cost)` names the first missing resource in `SHORTFALL_ORDER`
+  (metals, minerals, biomass, water, then the higher bio tiers); the build waiting reason, the placement
+  `insufficient_resources` check, `insufficient_funds` and the HUD toast all use it.
+- **Refused credits are visible.** A system whose expected change is refused (terraform yield, construction refund,
+  a construction spend refused for anything but `insufficient_funds`) calls `reportTreasuryReject(ctx, …)`: a
+  `treasuryRejected` warn event (`TreasuryCtx.emit`, passed through by `treasuryCtx(tick, stepCtx)`).
+- **Storage caps.** `add({ clampToCap: true })` credits what fits under the family caps (`getColonyCaps`; `capsOf` for
+  a view record; `INITIAL_CAPS` metals 600 / minerals 500 / bio 500 before a Hub) and returns the rest as `overflow`,
+  which is lost (no posting for it). `terraform.yield` is capped and reports the overflow in `obstacleRemoved.data.overflow`;
+  `production.tick` must be capped too when it exists. Landing cargo, `construction.refund` (returns part of what was
+  paid, which already fitted) and `dev.grant` (dev tool, existing colonies only) are uncapped.
 - **Reasons catalog.** `LEDGER_REASONS` (`reasons.ts`) is closed: each reason names its allowed directions and its
   counter account (`landing.cargo` ↔ `sys:cargo`, `terraform.yield` ↔ `sys:world`, `construction.spend`/`.refund` ↔
   `sys:construction`, `dev.grant` ↔ `sys:dev`, `admin.correction` ↔ `sys:admin`, …). `sys:*` accounts may go
@@ -119,8 +135,10 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
   (`player:<id>` or `colony:<i>`), `systemActor(name)`, `DEV_ACTOR`.
 - **State is the balance, the journal is the host's.** `col.stock` (zero-filled) is the colony's balance and, with the
   `col.resources` family summary, all the sim keeps and syncs; there is no ledger blob in state. Postings leave the
-  step in `StepResult.postings` (`SimHost.onPostings` for listeners) and are host-only: the server persists them to
-  Postgres, the local host (`?host=local`) keeps them in memory, clients never receive them. A `@terra/ledger`
+  step in `StepResult.postings` (`SimHost.onPostings` for listeners) and are host-only, clients never receive them.
+  Every host journals them with the same class, `PlanetJournal` (`host/journal.ts`); only persistence differs: the
+  server writes Postgres rows and restores from SQL-summed balances, the local host (`?host=local`) keeps a bounded
+  tail and saves the journal inside its IndexedDB snapshot (same tick as the planet bytes). A `@terra/ledger`
   `Ledger` (negative policy `isSystemAccount`) fed with every posting has `colony:<i>` balances equal to `col.stock`
   at every tick (`test/economy/hub-build.ledger.spec.ts`).
 - **Reads and seeding.** `getColonyStock(state, i)` is the one reader (zero-filled `Stock`). `setColonyStock(state, i,
@@ -132,7 +150,8 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 - `checkColonyLanding` validates, `spawnColonyLanding` validates first and changes **nothing** when rejected; it
   returns `{ ok: true, podEntityId, q, r }` or `{ ok: false, code }`. `system.spawnColony` and `dev.land` return the code.
 - A colony lands once (`already_landed`, also for `dev.land` with `(q, r)` on a colony that has a pod), so its
-  `landing.cargo` is credited once.
+  `landing.cargo` is credited once. The cargo is validated with `checkMove` before anything changes: a cargo the
+  treasury would refuse (bad data) is `invalid_args` and lands nothing (no pod, no colony record, no landing record).
 - **Where a colony lands is decided by the landing planner** (`world/landingPlanner.ts`, D-39):
   `nextLandingSite(state, colony, { slotIndex?, q?, r?, beyondSlots? })`. Explicit `(q, r)` is checked by
   `landingBlock`: off the map `invalid_args`; water, another colony's tile or slot, or within

@@ -1,3 +1,4 @@
+import { checkAmountField } from './_amounts';
 import type { Row, RowValue, TableDef } from './_define';
 
 /**
@@ -73,7 +74,10 @@ export function parseOverrides(input: unknown, label = 'overrides'): BalanceOver
 
 const kindOf = (v: unknown): string => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
 
-/** Returns the rows of `tables` with the overrides laid over them. Unknown table/row/field or a value of another type throws. */
+/**
+ * Returns the rows of `tables` with the overrides laid over them. Unknown table/row/field, a value of another type or a
+ * resource amount that is not whole units (`TableDef.amounts`) throws.
+ */
 export function applyOverrides(tables: readonly TableDef[], overrides: BalanceOverrides): readonly TableDef[] {
   const byName = new Map(tables.map((t) => [t.name, t]));
   for (const [tn, rows] of Object.entries(overrides)) {
@@ -90,6 +94,7 @@ export function applyOverrides(tables: readonly TableDef[], overrides: BalanceOv
         if (was !== null && kindOf(was) !== kindOf(v)) {
           throw new Error(`balance override: ${tn}.${rn}.${fn} is a ${kindOf(was)}, got ${kindOf(v)} ${JSON.stringify(v)}`);
         }
+        checkAmountField(t, rn, fn, v, 'balance override');
       }
     }
   }

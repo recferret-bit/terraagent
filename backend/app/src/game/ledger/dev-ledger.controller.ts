@@ -1,8 +1,9 @@
 import { Controller, Get, Inject, Param, Query } from '@nestjs/common';
+import type { LedgerView } from '@terra/sim';
 import { CoreException } from '../../core/errors';
 import { APP_ENV, type AppEnv } from '../../core/tokens';
 import { assertDevOnly } from '../dev-planets.controller';
-import { PlanetLedgerService, type LedgerView } from './planet-ledger.service';
+import { PlanetLedgerService } from './planet-ledger.service';
 
 export const DEFAULT_LEDGER_ACCOUNT = 'colony:0';
 export const DEFAULT_LEDGER_LIMIT = 10;
@@ -12,7 +13,8 @@ const ACCOUNT_RE = /^[a-z]+:[A-Za-z0-9_.-]{1,64}$/;
 /**
  * Dev-only: a loaded planet's server ledger (D-34), `GET /v1/dev/planets/:planetId/ledger?account=colony:0&limit=10`
  * → `{ planetId, account, balances, entries }` (entries newest last). Clients never get the journal otherwise. 404 in
- * production and for a planet that is not loaded.
+ * production and for a planet that is not loaded; 503 `LEDGER_UNAVAILABLE` while its restore is still pending (the
+ * database is down: the restore is retried) or after it was abandoned at shutdown.
  */
 @Controller('dev')
 export class DevLedgerController {

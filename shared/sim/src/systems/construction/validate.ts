@@ -1,6 +1,6 @@
 import type { RejectCode } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { getColonyStock } from '../../economy';
+import { findShortfall, getColonyStock } from '../../economy';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { SimState } from '../../kernel/state';
 import { evaluatePlacement, resolveHubT1Row, type PlacementBlock, type PlacementResult } from './placement';
@@ -25,40 +25,6 @@ export interface ValidateHubPlacementOpts {
   tier?: number;
   data?: CompiledDataLike;
   checkResources?: boolean;
-}
-
-export interface BuildingAffordabilityResult {
-  ok: boolean;
-  shortResource?: string;
-  have: number;
-  need: number;
-}
-
-/**
- * Checks whether `stock` meets the required `cost`.
- * Prioritizes metals -> minerals -> biomass -> water -> others.
- */
-export function checkBuildingAffordability(
-  cost: Record<string, number>,
-  stock: Record<string, number> | undefined,
-): BuildingAffordabilityResult {
-  const stockMap = stock ?? {};
-  const orderRank = (k: string): number => {
-    if (k.startsWith('metals')) return 0;
-    if (k.startsWith('minerals')) return 1;
-    if (k.includes('biomass')) return 2;
-    if (k.includes('water')) return 3;
-    return 4;
-  };
-  const keys = Object.keys(cost).sort((a, b) => orderRank(a) - orderRank(b));
-  for (const key of keys) {
-    const need = cost[key] ?? 0;
-    const have = stockMap[key] ?? 0;
-    if (have < need) {
-      return { ok: false, shortResource: key, have, need };
-    }
-  }
-  return { ok: true, have: 0, need: 0 };
 }
 
 export interface ValidateHubPlacementResult {
@@ -127,7 +93,7 @@ export function validateBuildingPlacement(state: SimState, opts: ValidateHubPlac
   if (!placement.ok) return { ok: false, reason: placement.code, block: placement.block, ...base };
   if (opts.checkResources) {
     const cost = resolveHubT1Row(opts.data).cost as Record<string, number> | undefined;
-    if (cost && !checkBuildingAffordability(cost, getColonyStock(state, opts.colonyId)).ok) {
+    if (cost && findShortfall(getColonyStock(state, opts.colonyId), cost)) {
       return { ok: false, reason: 'insufficient_resources', ...base };
     }
   }

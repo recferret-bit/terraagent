@@ -1,4 +1,4 @@
-import type { JournalEntry } from '@terra/ledger';
+import type { LedgerView } from '@terra/sim';
 
 /** Server dev command by name (`POST /v1/dev/commands/:name`); resolves with the JSON result, rejects with a `DevServerError`. */
 export type DevServer = (name: string, args?: unknown) => Promise<unknown>;
@@ -29,16 +29,12 @@ export const httpDevServer = (base = '', fetchImpl: typeof fetch = (...a) => fet
   }));
 
 /**
- * Host-side resource ledger of one account (`GET /v1/dev/planets/:planetId/ledger?account=&limit=`, or the local host's
- * in-memory ledger): its non-zero balances and the last `limit` journal entries touching it, oldest first. Clients never
- * receive the journal through the sim stream; this dev query is the only way to look at it.
+ * Host-side resource ledger of one account (`GET /v1/dev/planets/:planetId/ledger?account=&limit=`, or a browser host's
+ * `PlanetJournal.view`): its non-zero balances and the last `limit` journal entries touching it, oldest first. The
+ * shared `LedgerView`, so server and browser hosts answer with one shape. Clients never receive the journal through the
+ * sim stream; this dev query is the only way to look at it.
  */
-export interface LedgerReply {
-  planetId: string;
-  account: string;
-  balances: Record<string, number>;
-  entries: JournalEntry[];
-}
+export type LedgerReply = LedgerView;
 
 /** Asks the host for an account's ledger (`services.ledgerQuery`). */
 export type LedgerQuery = (account: string, limit: number) => Promise<LedgerReply>;

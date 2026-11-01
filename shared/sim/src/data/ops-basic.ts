@@ -8,6 +8,7 @@ export default defineTable({
   name: 'opsBasic',
   summary: 'S0 ground preparation operations Grade, Clear, and Break (UO-TF §4.5).',
   units: { timeS: 'seconds' },
+  amounts: ['yieldAmount'],
   rows: [
     {
       id: 'grade',

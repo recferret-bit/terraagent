@@ -4,6 +4,7 @@ import {
   DEV_ACTOR,
   INITIAL_CAPS,
   LEDGER_REASONS,
+  capsOf,
   clampToCaps,
   colonyAccount,
   colonyActor,
@@ -11,6 +12,7 @@ import {
   emptyStock,
   getColonyCaps,
   getColonyStock,
+  isHostOnlyReason,
   isLedgerReason,
   isSystemAccount,
   reasonAllows,
@@ -58,6 +60,11 @@ describe('reason catalog', () => {
     expect(reasonAllows('landing.cargo', 'withdraw')).toBe(false);
     expect(reasonAllows('trade', 'withdraw')).toBe(true);
   });
+
+  it('only ledger.opening is host-only', () => {
+    const hostOnly = Object.keys(LEDGER_REASONS).filter((r) => isHostOnlyReason(r as keyof typeof LEDGER_REASONS));
+    expect(hostOnly).toEqual(['ledger.opening']);
+  });
 });
 
 describe('caps', () => {
@@ -66,6 +73,12 @@ describe('caps', () => {
     expect(getColonyCaps(state, 0)).toEqual(INITIAL_CAPS);
     state.colonies.push({ index: 0, id: 'col_0', name: 'A', color: 0, status: 'active', changedAt: 0, caps: { metals: 500, bio: 'x' } });
     expect(getColonyCaps(state, 0)).toEqual({ ...INITIAL_CAPS, metals: 500 });
+  });
+
+  it('capsOf reads a view colony record the same way (missing, null or partial caps)', () => {
+    expect(capsOf(undefined)).toEqual(INITIAL_CAPS);
+    expect(capsOf(null)).toEqual(INITIAL_CAPS);
+    expect(capsOf({ minerals: 900 })).toEqual({ ...INITIAL_CAPS, minerals: 900 });
   });
 
   it('clampToCaps fills shared family room in key order and never credits negatives', () => {

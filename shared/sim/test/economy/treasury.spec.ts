@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   ColonyTreasury,
   DEV_ACTOR,
+  checkMove,
   colonyActor,
   findShortfall,
   getColonyStock,
@@ -204,7 +205,8 @@ describe('ColonyTreasury.withdraw', () => {
       reason: 'construction.spend',
       actor: admin,
     });
-    expect(res).toEqual({ ok: false, code: 'insufficient_funds', resource: 'bio.water', have: 1, need: 5 });
+    // Shortfalls are named in the player-facing order (metals, minerals, biomass, water): minerals before water.
+    expect(res).toEqual({ ok: false, code: 'insufficient_funds', resource: 'minerals.t1', have: 0, need: 3 });
     expect(state.colonies[0]).toEqual(before);
     expect(ctx.postings).toEqual([]);
   });
@@ -228,6 +230,16 @@ describe('treasury rejects', () => {
     expect(t.withdraw({ ...base, reason: 'landing.cargo' })).toEqual({ ok: false, code: 'invalid_reason', detail: 'landing.cargo cannot withdraw' });
     expect(t.add({ ...base, reason: 'toString' as LedgerReason })).toMatchObject({ ok: false, code: 'invalid_reason' });
     expect(t.add({ ...base, reason: 'nope' as LedgerReason })).toMatchObject({ ok: false, code: 'invalid_reason' });
+  });
+
+  it('host-only reasons (ledger.opening) are refused by the sim treasury and by checkMove', () => {
+    expect(t.add({ ...base, reason: 'ledger.opening' })).toEqual({ ok: false, code: 'invalid_reason', detail: 'ledger.opening cannot add' });
+    expect(checkMove({ ...base, reason: 'ledger.opening' }, 'add')).toMatchObject({ code: 'invalid_reason' });
+    expect(checkMove({ ...base, reason: 'trade' }, 'add')).toBeNull();
+    expect(checkMove({ ...base, amounts: { 'metals.t1': 600.5 }, reason: 'landing.cargo' }, 'add')).toEqual({
+      ok: false, code: 'invalid_amount', resource: 'metals.t1', detail: '600.5',
+    });
+    expect(state.colonies[0]?.stock).toBeUndefined();
   });
 
   it('bad colony indices, unknown resources, fractions and negatives', () => {
@@ -312,14 +324,20 @@ describe('setStock / setColonyStock / reads', () => {
     expect(ctx.postings).toEqual([]);
   });
 
-  it('canAfford and findShortfall compare whole units in sorted key order', () => {
+  it('findShortfall compares whole units in the player order: metals, minerals, biomass, water, then the rest', () => {
     const state = emptyPlanet();
     const t = treasury(state, unrecorded(0));
     setColonyStock(state, 0, { 'metals.t1': 200, 'bio.water': 10 });
     expect(t.stock(0)).toEqual(fullStock({ 'metals.t1': 200, 'bio.water': 10 }));
-    expect(t.canAfford(0, { 'metals.t1': 200 })).toBe(true);
-    expect(t.canAfford(0, { 'metals.t1': 201 })).toBe(false);
-    expect(findShortfall(t.stock(0), { 'minerals.t1': 1, 'bio.water': 50, 'metals.t1': 0 })).toEqual({ resource: 'bio.water', have: 10, need: 50 });
+    expect(findShortfall(t.stock(0), { 'metals.t1': 200 })).toBeNull();
+    expect(findShortfall(t.stock(0), { 'metals.t1': 201 })).toEqual({ resource: 'metals.t1', have: 200, need: 201 });
+    expect(findShortfall(t.stock(0), { 'minerals.t1': 1, 'bio.water': 50, 'metals.t1': 0 })).toEqual({ resource: 'minerals.t1', have: 0, need: 1 });
+    expect(findShortfall(t.stock(0), { 'bio.water': 50, 'bio.biomass': 1 })).toEqual({ resource: 'bio.biomass', have: 0, need: 1 });
+    // Keys outside the catalog come last, by name (a stale view's stock is a plain record).
+    expect(findShortfall({}, { zz: 1, aa: 2, 'bio.t3': 1 })).toEqual({ resource: 'bio.t3', have: 0, need: 1 });
+    expect(findShortfall({}, { zz: 1, aa: 2 })).toEqual({ resource: 'aa', have: 0, need: 2 });
+    expect(findShortfall({}, { aa: 1, zz: 2 })).toEqual({ resource: 'aa', have: 0, need: 1 });
+    expect(findShortfall({}, { aa: 1, ab: 2, aa2: 0 })).toEqual({ resource: 'aa', have: 0, need: 1 });
     expect(findShortfall({} as never, { 'metals.t1': 1 })).toEqual({ resource: 'metals.t1', have: 0, need: 1 });
     expect(findShortfall(t.stock(0), {})).toBeNull();
     expect(findShortfall(t.stock(0), { 'metals.t1': undefined })).toBeNull();

@@ -5,7 +5,9 @@
  * `StepResult.postings`; the host keeps the full journal (`@terra/ledger`), clients never receive it.
  */
 export * from './accounts';
+export * from './amounts';
 export * from './caps';
 export * from './reasons';
+export * from './report';
 export { emptyStock, getColonyStock } from './store';
 export * from './treasury';

@@ -1,6 +1,7 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { newId, type ColonySummary, type HomeResponse, type PlanetSummary, type SimCommandV1 } from '@terra/contracts';
-import { createPlanet, getSpawnSlots, type DevPlanetType, type SpawnSlot } from '@terra/sim';
+import { createPlanet, getSpawnSlots, hexDistance, minLandingSeparation, type DevPlanetType, type SpawnSlot } from '@terra/sim';
+import { CoreConflict, CoreException } from '../errors';
 import {
   type ColonyRecord,
   DEV_PLANET_CAPACITY,
@@ -80,9 +81,60 @@ export function toPlanetSummary(planet: PlanetRecord): PlanetSummary {
   };
 }
 
+/** Landing attempts per planet per `getOrAssignHome`, each on another candidate slot (fewer when fewer are left). */
+export const SEAT_ATTEMPTS = 8;
+/** Planets tried per `getOrAssignHome`: one found without a landing site left is marked and the next of its family tried. */
+export const SEAT_PLANETS = 2;
+
+let separation: number | undefined;
+/** The sim planner's `minLandingSeparation` (hex distance between landings), read once. */
+const landingSeparation = () => (separation ??= minLandingSeparation());
+
+/** Key of a landing site in a refused set. */
+export const siteKey = (s: { readonly q: number; readonly r: number }) => `${s.q},${s.r}`;
+
+/**
+ * The spawn slot for a new colony: its preferred slot (`slots[colonyIndex]`) when free, else the first free one. A slot
+ * is free when the sim did not refuse it before (`refused`, by {@link siteKey}) and it keeps the landing planner's
+ * separation from every colony already on the planet (`landed`): a cheap subset of `landingBlock`, from the colony
+ * rows (the sim still decides). With `fallback`, a planet without a free slot still gets a site the sim has not
+ * refused (the preferred, the first, or the centre) and the sim answers; without it, or with every site refused,
+ * `undefined`.
+ */
+export function pickSpawnSlot(
+  slots: readonly SpawnSlot[], colonyIndex: number, landed: readonly { q: number; r: number }[], fallback: boolean, refused: ReadonlySet<string> = new Set(),
+): SpawnSlot | undefined {
+  const sep = Math.max(1, landingSeparation()); // ≥ 1: never the very tile of another landing
+  const open = (s: SpawnSlot | undefined): s is SpawnSlot => s !== undefined && !refused.has(siteKey(s));
+  const free = (s: SpawnSlot) => open(s) && landed.every((l) => hexDistance(l.q, l.r, s.q, s.r) >= sep);
+  const preferred = slots[colonyIndex];
+  const pick = (preferred && free(preferred) ? preferred : undefined) ?? slots.find(free);
+  if (pick || !fallback) return pick;
+  const centre: SpawnSlot = { index: colonyIndex, q: 0, r: 0 };
+  return [preferred, ...slots, ...(slots.length === 0 ? [centre] : [])].find(open);
+}
+
+/** The sim refused the landing site (`COLONY_SEAT_REJECTED` with `details.code === 'landing_site_taken'`). */
+function isLandingSiteTaken(e: unknown): boolean {
+  if (!(e instanceof CoreException) || e.errorCode !== 'COLONY_SEAT_REJECTED') return false;
+  return (e.details as { code?: unknown } | undefined)?.code === 'landing_site_taken';
+}
+
+/** No landing site left on the planets tried (each refused by the sim, or too close to a colony). */
+function noLandingSite(planetIds: readonly string[]): CoreConflict {
+  return new CoreConflict('COLONY_SEAT_REJECTED', {
+    message: `no landing site left on ${planetIds.join(', ')}: every candidate slot was refused by the sim or is too close to a colony`,
+    details: { code: 'landing_site_taken', planetIds },
+  });
+}
+
 @Injectable()
 export class HomeService {
   private readonly slotCache = new Map<string, SpawnSlot[]>();
+  /** Sites the sim refused (`landing_site_taken`), per planet. In memory: the sim's landing history makes them permanent. */
+  private readonly refused = new Map<string, Set<string>>();
+  /** Planets without a landing site left: `findOrCreateOpenDevPlanet` moves on to the next of the family. */
+  private readonly exhausted = new Set<string>();
   private readonly seatListeners = new Set<ColonySeatListener>();
   private seatChain: Promise<void> = Promise.resolve();
 
@@ -129,40 +181,58 @@ export class HomeService {
       const recheck = await this.getExistingHome(player.id);
       if (recheck) return recheck;
 
-      const handle = player.handle?.trim() || `Colonist-${player.id.slice(-4)}`;
-      const { planet: openPlanet, colonyIndex } = await this.repo.findOrCreateOpenDevPlanet(preferredType ?? DEV_PLANET_TYPE);
-      const slots = this.getSpawnSlotsForPlanet(openPlanet);
-      const existingColonies = await this.repo.listColoniesByPlanetId(openPlanet.id);
-      const takenCoords = new Set(existingColonies.map((c) => `${c.spawnQ},${c.spawnR}`));
-      const preferred = slots[colonyIndex];
-      const slot =
-        (preferred && !takenCoords.has(`${preferred.q},${preferred.r}`) ? preferred : undefined) ??
-        slots.find((s) => !takenCoords.has(`${s.q},${s.r}`)) ??
-        preferred ??
-        slots[0] ??
-        { index: colonyIndex, q: 0, r: 0 };
-      const colonyName = `${handle.slice(0, 22)}'s Colony`;
+      const seated = { id: player.id, handle: player.handle?.trim() || `Colonist-${player.id.slice(-4)}` };
+      const type = preferredType ?? DEV_PLANET_TYPE;
+      const tried: string[] = [];
+      for (let n = 0; n < SEAT_PLANETS; n++) {
+        const { planet, colonyIndex } = await this.repo.findOrCreateOpenDevPlanet(type, this.exhausted);
+        tried.push(planet.id);
+        const home = await this.seatOnPlanet(seated, planet, colonyIndex);
+        if (home) return home;
+        this.exhausted.add(planet.id); // landing history makes the refusals permanent: never offer this planet again
+      }
+      throw noLandingSite(tried);
+    });
+  }
 
+  /**
+   * Seats `player` on `planet`: tries candidate slots (at most {@link SEAT_ATTEMPTS}) until the sim accepts one; a
+   * slot the sim refuses (`landing_site_taken`: it knows more than the colony rows — landing history, other colonies'
+   * structures, terrain) is remembered for the planet and never offered again. Undefined when no candidate is left;
+   * any other reject (and the last refusal once the attempts are used up) propagates.
+   */
+  private async seatOnPlanet(player: { id: string; handle: string }, openPlanet: PlanetRecord, colonyIndex: number): Promise<HomeResponse | undefined> {
+    const slots = this.getSpawnSlotsForPlanet(openPlanet);
+    const landed = (await this.repo.listColoniesByPlanetId(openPlanet.id)).map((c) => ({ q: c.spawnQ, r: c.spawnR }));
+    const refused = this.refusedSites(openPlanet.id);
+    for (let attempt = 1; ; attempt++) {
+      const slot = pickSpawnSlot(slots, colonyIndex, landed, attempt === 1, refused);
+      if (!slot) return undefined;
       const { colony, planet } = await this.repo.createColony({
         playerId: player.id,
         planetId: openPlanet.id,
         colonyIndex,
-        name: colonyName,
+        name: `${player.handle.slice(0, 22)}'s Colony`,
         color: colonyIndex,
         status: 'ACTIVE',
         spawnQ: slot.q,
         spawnR: slot.r,
       });
+      try {
+        await this.notifySeated({ player, colony, planet, slot });
+        return this.buildHomeResponse(colony, planet);
+      } catch (e) {
+        if (!isLandingSiteTaken(e)) throw e; // the row is rolled back
+        refused.add(siteKey(slot));
+        if (attempt >= SEAT_ATTEMPTS) throw e;
+      }
+    }
+  }
 
-      const assignment: ColonySeatAssignment = {
-        player: { id: player.id, handle },
-        colony,
-        planet,
-        slot,
-      };
-      await this.notifySeated(assignment);
-      return this.buildHomeResponse(colony, planet);
-    });
+  private refusedSites(planetId: string): Set<string> {
+    let set = this.refused.get(planetId);
+    if (!set) this.refused.set(planetId, (set = new Set()));
+    return set;
   }
 
   /**

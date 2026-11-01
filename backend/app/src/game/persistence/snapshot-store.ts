@@ -63,6 +63,11 @@ export class SnapshotStore extends RepositoryBase {
     }
   }
 
+  /** True when the planet has any snapshot row (any kind, intact or not): it must never be generated fresh. */
+  async hasSnapshots(planetId: string): Promise<boolean> {
+    return (await this.prisma.planetSnapshot.findFirst({ where: { planetId }, select: { id: true } })) !== null;
+  }
+
   /** W00 rule: every planet whose newest snapshot is not `END`. */
   async livePlanetIds(): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<{ planet_id: string }[]>`

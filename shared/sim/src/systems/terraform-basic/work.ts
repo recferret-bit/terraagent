@@ -1,4 +1,4 @@
-import { colonyActor, treasury } from '../../economy';
+import { colonyActor, reportTreasuryReject, treasury, type AddRequest, type Amounts } from '../../economy';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
@@ -31,7 +31,6 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   const colonyIdStr = col?.id ?? `col_${colonyId}`;
   const playerId = typeof col?.playerId === 'string' ? col.playerId : undefined;
   const who = { colonyId: colonyIdStr, ...(playerId ? { playerId } : {}) };
-  const spec = getTerraformOpSpec(job.op, ctx.data);
 
   if (job.op === 'grade') {
     setTilePrep(state.grid, tileIdx, PREP.prepared, tick);
@@ -43,21 +42,36 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   // Removing the obstacle uncovers what world generation buried under it (D-38, `grid/subsurface.ts`).
   const found = revealSubsurface(state, tileIdx, tick);
   if (found) ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, q: job.q, r: job.r, ...found } });
-  if (spec.yieldResource && spec.yieldAmount > 0) {
-    treasury(state, ctx).add({
-      colony: colonyId,
-      amounts: { [spec.yieldResource]: spec.yieldAmount },
-      reason: 'terraform.yield',
-      actor: colonyActor(state, colonyId),
-      ref: `tile:${job.q},${job.r}`,
-    });
-  }
+  const overflow = creditYield(state, colonyId, job, ctx);
   ctx.emit({
     kind: 'obstacleRemoved',
     severity: 'info',
     colonyIds: [colonyIdStr],
-    data: { ...who, op: job.op, count: 1, q: job.q, r: job.r },
+    data: { ...who, op: job.op, count: 1, q: job.q, r: job.r, ...(overflow ? { overflow } : {}) },
   });
+}
+
+/**
+ * Credits the op's yield (`terraform.yield`) up to the colony's storage caps. What does not fit is lost and returned
+ * (reported in `obstacleRemoved.overflow`); a rejected yield (bad data) is reported as a `treasuryRejected` warning.
+ */
+function creditYield(state: PlanetState, colonyId: number, job: TerraformJob, ctx: StepContext): Amounts | undefined {
+  const spec = getTerraformOpSpec(job.op, ctx.data);
+  if (!spec.yieldResource || spec.yieldAmount === 0) return undefined;
+  const req: AddRequest = {
+    colony: colonyId,
+    amounts: { [spec.yieldResource]: spec.yieldAmount },
+    reason: 'terraform.yield',
+    actor: colonyActor(state, colonyId),
+    ref: `tile:${job.q},${job.r}`,
+    clampToCap: true,
+  };
+  const res = treasury(state, ctx).add(req);
+  if (!res.ok) {
+    reportTreasuryReject(ctx, state, req, res);
+    return undefined;
+  }
+  return Object.keys(res.overflow).length > 0 ? res.overflow : undefined;
 }
 
 /** One step of work by unit `row` on the first job of `order`; returns `true` when the job completed. */

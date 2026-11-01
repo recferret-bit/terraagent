@@ -28,7 +28,7 @@ describe('server ledger end to end (real sim thread, in-memory journal)', () => 
     expect(body.balances['metals.t1']).toBeGreaterThan(0);
     expect(body.entries.length).toBeGreaterThan(0);
     expect(body.entries.every((e) => e.at > 0 && e.legs.length >= 2)).toBe(true);
-    expect(app.get(PlanetLedgerService).ledgerOf(home.planet.id)!.verify()).toEqual({ ok: true });
+    expect(app.get(PlanetLedgerService).journalOf(home.planet.id)!.verify()).toEqual({ ok: true });
     expect((await fetch(`${url}/v1/dev/planets/pl_nope/ledger`)).status).toBe(404);
   }, 20_000);
 });

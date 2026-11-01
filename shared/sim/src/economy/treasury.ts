@@ -1,10 +1,12 @@
 import { RESOURCE_KEYS, type ResourceKey, type Stock } from '@terra/contracts';
 import { isMajor, transferLegs, type Leg } from '@terra/ledger';
 import type { LedgerPosting } from '../kernel/context';
+import type { EmitInput } from '../kernel/events';
 import type { PlanetState } from '../kernel/state';
 import { colonyAccount, systemActor } from './accounts';
+import { amountsProblem, findShortfall } from './amounts';
 import { clampToCaps, getColonyCaps } from './caps';
-import { LEDGER_REASONS, isLedgerReason, reasonAllows, type LedgerReason, type MoveDirection } from './reasons';
+import { LEDGER_REASONS, isHostOnlyReason, isLedgerReason, reasonAllows, type LedgerReason, type MoveDirection } from './reasons';
 import { getColonyStock, writeColonyStock } from './store';
 
 /** Whole-unit amounts per resource key. */
@@ -20,14 +22,20 @@ export type ColonyPosting = LedgerPosting & { reason: LedgerReason };
 export interface TreasuryCtx {
   readonly tick: number;
   record(p: LedgerPosting): void;
+  /** The step's event sink, for reporting a rejected change (`reportTreasuryReject`). */
+  emit?(e: EmitInput): void;
 }
 
 /**
- * The treasury ctx for code that takes an optional step ctx: records into the step when there is one, otherwise
- * discards (only tests call systems without a ctx; every step passes one).
+ * The treasury ctx for code that takes an optional step ctx: records (and emits) into the step when there is one,
+ * otherwise discards (only tests call systems without a ctx; every step passes one).
  */
-export function treasuryCtx(tick: number, ctx?: { record?: (p: LedgerPosting) => void }): TreasuryCtx {
-  return ctx?.record ? { tick, record: ctx.record } : unrecorded(tick);
+export function treasuryCtx(
+  tick: number,
+  ctx?: { record?: (p: LedgerPosting) => void; emit?: (e: EmitInput) => void },
+): TreasuryCtx {
+  const base = ctx?.record ? { tick, record: ctx.record } : unrecorded(tick);
+  return ctx?.emit ? { ...base, emit: ctx.emit } : base;
 }
 
 /** A ctx that DISCARDS postings: the change happens in state but never reaches a ledger. Tests and seeding only. */
@@ -79,15 +87,6 @@ export type AddResult = AddOk | TreasuryReject;
 export type WithdrawResult = WithdrawOk | TreasuryReject;
 export type SetStockResult = { ok: true } | TreasuryReject;
 
-/** First shortfall of `stock` against `cost` (keys in sorted order), or null when it covers everything. */
-export function findShortfall(stock: Stock, cost: Amounts): { resource: ResourceKey; have: number; need: number } | null {
-  for (const key of Object.keys(cost).sort() as ResourceKey[]) {
-    const need = cost[key] ?? 0;
-    if (need > 0 && (stock[key] ?? 0) < need) return { resource: key, have: stock[key] ?? 0, need };
-  }
-  return null;
-}
-
 /**
  * The one door through which a colony's resources change. `add` and `withdraw` validate the request (whole units,
  * known resource, reason allowed in that direction, no negative balance), update `col.stock`, and record one balanced
@@ -103,12 +102,8 @@ export class ColonyTreasury {
     return getColonyStock(this.state, colony);
   }
 
-  canAfford(colony: number, cost: Amounts): boolean {
-    return findShortfall(this.stock(colony), cost) === null;
-  }
-
   add(req: AddRequest): AddResult {
-    const bad = validate(req, 'add');
+    const bad = checkMove(req, 'add');
     if (bad) return bad;
     const stock = this.stock(req.colony);
     const credited = req.clampToCap
@@ -124,9 +119,9 @@ export class ColonyTreasury {
     return posting ? { ok: true, credited, overflow, posting } : { ok: true, credited, overflow };
   }
 
-  /** All-or-nothing: rejects `insufficient_funds` (with the first short resource, sorted) and moves nothing. */
+  /** All-or-nothing: rejects `insufficient_funds` (with the first short resource, `SHORTFALL_ORDER`) and moves nothing. */
   withdraw(req: MoveRequest): WithdrawResult {
-    const bad = validate(req, 'withdraw');
+    const bad = checkMove(req, 'withdraw');
     if (bad) return bad;
     const stock = this.stock(req.colony);
     const short = findShortfall(stock, req.amounts);
@@ -139,7 +134,7 @@ export class ColonyTreasury {
 
   /** Moves the colony to exactly `target` (missing keys = 0) with `admin.correction` postings. For seeding and tests. */
   setStock(colony: number, target: Amounts, actor: string, ref?: string): SetStockResult {
-    const bad = validate({ colony, amounts: target, reason: 'admin.correction', actor }, 'add');
+    const bad = checkMove({ colony, amounts: target, reason: 'admin.correction', actor }, 'add');
     if (bad) return bad;
     const cur = this.stock(colony);
     const up: Amounts = {};
@@ -187,16 +182,22 @@ export function setColonyStock(
   return treasury(state, ctx).setStock(colonyIndex, target, systemActor('admin'));
 }
 
-function validate(req: MoveRequest, direction: MoveDirection): TreasuryReject | null {
-  if (!isLedgerReason(req.reason) || !reasonAllows(req.reason, direction)) {
+/**
+ * Validates a change without making it (what `add` / `withdraw` check first): the reason exists, may move value in
+ * `direction` and is not host-only (`invalid_reason`); the colony index and every amount are whole units
+ * (`invalid_amount`); every key is a resource (`invalid_resource`). Balances are not checked. Validate-first callers
+ * (landing) use it to refuse before they change anything else.
+ */
+export function checkMove(req: MoveRequest, direction: MoveDirection): TreasuryReject | null {
+  if (!isLedgerReason(req.reason) || isHostOnlyReason(req.reason) || !reasonAllows(req.reason, direction)) {
     return { ok: false, code: 'invalid_reason', detail: `${String(req.reason)} cannot ${direction}` };
   }
   if (!isMajor(req.colony) || req.colony < 0) return { ok: false, code: 'invalid_amount', detail: 'bad colony index' };
-  for (const [key, v] of Object.entries(req.amounts)) {
-    if (!(RESOURCE_KEYS as readonly string[]).includes(key)) return { ok: false, code: 'invalid_resource', detail: key };
-    if (!isMajor(v) || v < 0) return { ok: false, code: 'invalid_amount', resource: key as ResourceKey, detail: String(v) };
-  }
-  return null;
+  const bad = amountsProblem(req.amounts);
+  if (!bad) return null;
+  return bad.resource === undefined
+    ? { ok: false, code: bad.code, detail: bad.detail }
+    : { ok: false, code: bad.code, resource: bad.resource as ResourceKey, detail: bad.detail };
 }
 
 function entriesOf(amounts: Amounts): [ResourceKey, number][] {

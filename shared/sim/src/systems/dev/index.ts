@@ -114,12 +114,14 @@ const teleport = defineCommandHandler({
 
 const grant = defineCommandHandler({
   kind: 'dev.grant', wave: 'W01',
-  // Whole units only; a negative amount withdraws at most the balance (clamped to >= 0).
+  // Whole units only; a negative amount withdraws at most the balance (clamped to >= 0). Uncapped (a dev tool), and
+  // only for an existing colony: a grant never creates a colony record.
   handle(s, c, ctx) {
     const args = c.args as { resource: string; amount: number };
     if (!isMajor(args.amount)) return 'invalid_args';
     const res = (RESOURCE_ALIASES[args.resource] ?? args.resource) as ResourceKey;
     const colony = resolveColonyIndex(c);
+    if (!s.colonies[colony]) return 'invalid_args';
     const t = treasury(s, ctx);
     const req = { colony, reason: 'dev.grant' as const, actor: DEV_ACTOR };
     const out =

@@ -151,7 +151,24 @@ describe('LocalHostCore dev server', () => {
 describe('host-side resource ledger', () => {
   const nonZero = (stock: Record<string, number>) => Object.fromEntries(Object.entries(stock).filter(([, v]) => v !== 0));
 
-  it('journals every posting in the worker, answers `ledger` like the server route, re-opens balances on resume', async () => {
+  /** A `w01` planet with landing cargo and a 50-metal grant, saved and stopped; `r.store` holds its snapshot. */
+  async function grantedPlanet() {
+    const r = rig(memorySnapshotStore(), { scenario: 'w01' });
+    const core = await r.create();
+    core.handle(join);
+    core.handle(cmd('cm_land', 'dev.land'));
+    r.advance(400);
+    core.handle(cmd('cm_grant', 'dev.grant', { resource: 'metals.t1', amount: 50 }));
+    r.advance(400);
+    const before = (await core.devCommand('ledger', { account: 'colony:0', limit: 100 })) as LedgerReply;
+    core.stop();
+    await Promise.resolve();
+    return { r, before };
+  }
+  const ledgerOf = async (core: LocalHostCore) => (await core.devCommand('ledger', { account: 'colony:0', limit: 100 })) as LedgerReply;
+  const errors = (out: FromLocalHost[]) => out.flatMap((m) => (m.t === 'error' ? [m.message] : []));
+
+  it('journals every posting in the worker, answers `ledger` like the server route', async () => {
     const store = memorySnapshotStore();
     const r = rig(store, { scenario: 'w01' });
     const core = await r.create();
@@ -171,13 +188,61 @@ describe('host-side resource ledger', () => {
     expect((await core.devCommand('ledger', { account: 'colony:0', limit: 1 }) as LedgerReply).entries).toHaveLength(1);
     core.stop();
     await Promise.resolve();
+    // the journal is saved with the snapshot, captured at the same tick
+    const saved = store.map.get('terra-local:w01')!;
+    expect(saved.journal?.seq).toBe(live.entries.at(-1)!.seq);
+  });
 
-    const resumed = await rig(store, { scenario: 'w01' }).create();
-    const opened = (await resumed.devCommand('ledger', { account: 'colony:0', limit: 100 })) as LedgerReply;
-    expect(opened.balances).toEqual(nonZero(getColonyStock(resumed.simHost.state, 0)));
-    expect(opened.entries).toHaveLength(1);
-    expect(opened.entries[0]).toMatchObject({ reason: 'ledger.opening', actor: 'system:resume' });
+  it('a resumed snapshot continues its saved journal: history survives the reload and seq goes on', async () => {
+    const { r, before } = await grantedPlanet();
+    const resumed = await r.create();
+    const after = await ledgerOf(resumed);
+    expect(after.entries).toEqual(before.entries);
+    expect(after.entries[0]).toMatchObject({ reason: 'landing.cargo', actor: 'system:landing' });
+    expect(after.balances).toEqual(nonZero(getColonyStock(resumed.simHost.state, 0)));
+    resumed.handle(join);
+    resumed.handle(cmd('cm_more', 'dev.grant', { resource: 'metals.t1', amount: 5 }));
+    r.advance(400);
+    expect((await ledgerOf(resumed)).entries.at(-1)).toMatchObject({ seq: before.entries.at(-1)!.seq + 1, reason: 'dev.grant' });
+    expect(errors(r.out)).toEqual([]);
     resumed.stop();
+  });
+
+  it('a snapshot without a journal opens its balances by system:resume, quietly', async () => {
+    const { r } = await grantedPlanet();
+    const { journal: _dropped, ...older } = r.store.map.get('terra-local:w01')!;
+    r.store.map.set('terra-local:w01', older);
+    const resumed = await r.create();
+    const opened = await ledgerOf(resumed);
+    expect(opened.balances).toEqual(nonZero(getColonyStock(resumed.simHost.state, 0)));
+    expect(opened.entries).toEqual([expect.objectContaining({ seq: 1, reason: 'ledger.opening', actor: 'system:resume' })]);
+    expect(errors(r.out)).toEqual([]);
+    resumed.stop();
+  });
+
+  it('a saved journal that does not reconcile (or is malformed) falls back to opening and reports why', async () => {
+    const { r } = await grantedPlanet();
+    const snap = r.store.map.get('terra-local:w01')!;
+    // one metal moved from sys:dev to colony:0 in balances and opening alike: internally consistent, but not col.stock
+    const tampered = structuredClone(snap.journal!);
+    const shift = (sheet: Record<string, Record<string, number>>, account: string, d: number) => {
+      sheet[account] = { ...sheet[account], 'metals.t1': (sheet[account]?.['metals.t1'] ?? 0) + d };
+    };
+    for (const sheet of [tampered.balances, tampered.opening]) { shift(sheet, 'colony:0', 1); shift(sheet, 'sys:dev', -1); }
+    r.store.map.set('terra-local:w01', { ...snap, journal: tampered });
+    const resumed = await r.create();
+    const opened = await ledgerOf(resumed);
+    expect(opened.entries).toEqual([expect.objectContaining({ reason: 'ledger.opening', actor: 'system:resume' })]);
+    expect(opened.balances).toEqual(nonZero(getColonyStock(resumed.simHost.state, 0)));
+    expect(errors(r.out)).toEqual([expect.stringMatching(/saved ledger journal does not match.*colony:0 metals\.t1: journal \d+, stock \d+/)]);
+    resumed.stop();
+    // a structurally broken journal is refused the same way (the planet itself still resumes)
+    r.store.map.set('terra-local:w01', { ...snap, journal: { ...snap.journal!, journal: [{ seq: 99 }] } as never });
+    const broken = await r.create();
+    expect(broken.planetId).toBe(resumed.planetId);
+    expect((await ledgerOf(broken)).entries[0]).toMatchObject({ reason: 'ledger.opening', actor: 'system:resume' });
+    expect(errors(r.out)).toHaveLength(2);
+    broken.stop();
   });
 });
 

@@ -1,5 +1,5 @@
 import type { ViewColony } from '@terra/sim';
-import { checkBuildingAffordability, resolveHubCost } from '@terra/sim';
+import { capsOf, findShortfall, resolveHubCost } from '@terra/sim';
 import type { CommandResult, SendCommand } from '../../net/commandBus';
 import type { Transport } from '../../net/types';
 import type { GameView } from '../../core/registry/types';
@@ -48,11 +48,11 @@ export function formatRejectToast(
 ): string {
   if (code === 'insufficient_resources') {
     if (stock) {
-      const afford = checkBuildingAffordability(buildingCost, stock);
-      if (!afford.ok && afford.shortResource) {
-        const res = afford.shortResource;
-        const have = Math.floor(afford.have);
-        const need = Math.floor(afford.need);
+      const short = findShortfall(stock, buildingCost);
+      if (short) {
+        const res = short.resource;
+        const have = Math.floor(short.have);
+        const need = Math.floor(short.need);
         if (res.startsWith('metals')) return `Waiting: Metals ${have}/${need}`;
         if (res.startsWith('minerals')) return `Waiting: Minerals ${have}/${need}`;
         if (res.includes('biomass')) return `Waiting: Biomass ${have}/${need}`;
@@ -306,10 +306,10 @@ export class MinimalHud {
     this.colonyEl.textContent = col?.name ?? `Colony ${colonyIdx}`;
 
     const stock = this.getColonyStock();
-    const caps = (col?.caps ?? {}) as Record<string, number>;
-    const capMetals = caps.metals ?? 500;
-    const capMinerals = caps.minerals ?? 500;
-    const capBio = caps.bio ?? 500;
+    const caps = capsOf(col?.caps); // the sim's caps, INITIAL_CAPS for a family the view does not carry
+    const capMetals = caps.metals;
+    const capMinerals = caps.minerals;
+    const capBio = caps.bio;
 
     const metalsT1 = stock['metals.t1'] ?? 0;
     const metalsTotal = metalsT1 + (stock['metals.t2'] ?? 0) + (stock['metals.t3'] ?? 0);

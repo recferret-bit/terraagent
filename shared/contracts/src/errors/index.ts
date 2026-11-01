@@ -36,5 +36,7 @@ export const TERMINAL_CLOSE_CODES: readonly number[] = [CLOSE_CODES.replaced, CL
 export const REST_ERROR_CODES = [
   'validation_error', 'unauthorized', 'forbidden', 'not_found', 'already_queued', 'has_live_colony',
   'planet_not_recruiting', 'queue_full', 'near_unavailable', 'internal',
+  // W01 `/me/home`: the new colony's landing was refused (409, `errorCode: COLONY_SEAT_REJECTED`, the reject code in `details.code`)
+  'seat_rejected',
 ] as const;
 export const RestErrorCode = z.enum(REST_ERROR_CODES);

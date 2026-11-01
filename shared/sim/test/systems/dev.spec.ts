@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createPlanet, rowOf, SimHost, type SimCommand } from '../../src';
+import { ensureColonyRecord } from '../../src/kernel/colonies';
 import { DEV_ENTITY_KIND } from '../../src/systems/dev';
 import { spawnHqUnit, stepTerraformWorkWithCell } from '../../src/systems/hq';
 import { getColonyStock } from '../../src/economy';
@@ -21,7 +22,9 @@ function host(flags: string[] = ['W00']): SimHost {
 
 function w01Host(): SimHost {
   const h = new SimHost({ flags: ['W00', 'W01'] });
-  h.load(createPlanet({ type: 'temperate', seed: 'w01-dev', radius: 10 }));
+  const planet = createPlanet({ type: 'temperate', seed: 'w01-dev', radius: 10 });
+  ensureColonyRecord(planet, 0, 0);
+  h.load(planet);
   return h;
 }
 
@@ -156,6 +159,13 @@ describe('dev commands (W01)', () => {
     expect(send(h, cmd('dev.grant', { resource: 'metals.t1', amount: 2.5 })).code).toBe('invalid_args');
     expect(send(h, cmd('dev.grant', { resource: 'unobtainium', amount: 5 })).code).toBe('invalid_args');
     expect(getColonyStock(h.state, 0)['metals.t1']).toBe(0);
+  });
+
+  it('dev.grant rejects a colony that does not exist and creates no colony record', () => {
+    const h = w01Host();
+    expect(send(h, cmd('dev.grant', { resource: 'metals.t1', amount: 10 }, 5)).code).toBe('invalid_args');
+    expect(h.state.colonies).toHaveLength(1);
+    expect(send(h, cmd('dev.grant', { resource: 'metals.t1', amount: 10 }, 0)).code).toBeUndefined();
   });
 
   it('dev.reveal marks all tiles explored for colony', () => {

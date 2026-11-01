@@ -1,3 +1,5 @@
+import type { LedgerState } from '@terra/ledger';
+
 /** One saved local planet (`terra-local:<scenario>`). */
 export interface LocalSnapshot {
   readonly bytes: Uint8Array;
@@ -9,6 +11,12 @@ export interface LocalSnapshot {
   readonly flags: readonly string[];
   /** Live balance overrides (dev `tune`), so a resumed planet keeps its numbers. */
   readonly overrides?: Record<string, unknown>;
+  /**
+   * The host's resource journal (`PlanetJournal.toState()`, tail bounded at `HOST_JOURNAL_LIMIT` entries), captured at
+   * the same tick as `bytes`. A resume continues it when it reconciles with the planet's `col.stock`; older snapshots
+   * have none and open their balances instead.
+   */
+  readonly journal?: LedgerState;
 }
 
 /** Where local planets are persisted. `idbSnapshotStore` in the browser, a Map in tests. */

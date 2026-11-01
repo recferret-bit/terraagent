@@ -276,6 +276,8 @@ describe('W01-29: Minimal HUD toasts and mounting', () => {
       'bio.water': 50,
     });
     expect(mineralsShort).toBe('Waiting: Minerals 30/100');
+    // Same order as the sim's waiting reason (findShortfall): biomass before water.
+    expect(formatRejectToast('insufficient_resources', undefined, { 'metals.t1': 200, 'minerals.t1': 100 })).toBe('Waiting: Biomass 0/50');
 
     // Format common reject codes
     expect(formatRejectToast('not_own_territory')).toBe('Rejected: Not your territory');
@@ -334,7 +336,8 @@ describe('HUD shows whole resource units only', () => {
       stock: { 'metals.t1': 199.99, 'minerals.t1': 100.5, 'bio.biomass': 50.0000000001, 'bio.water': 50 },
     };
     hud.update({ tick: 0, colonies: [colony] } as unknown as ClientView);
-    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('199 / 500');
+    // No caps in the view: the sim's INITIAL_CAPS (metals 600, minerals 500, bio 500), not a HUD constant.
+    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('199 / 600');
     expect(parent.querySelector('[data-testid="hud-stock-minerals"]')!.textContent).toContain('100 / 500');
     expect(parent.querySelector('[data-testid="hud-stock-bio"]')!.textContent).toContain('100 / 500');
     expect(hud.getColonyStock()['metals.t1']).toBe(199);

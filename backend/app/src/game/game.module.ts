@@ -3,19 +3,21 @@ import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicati
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
 import { DEV_PLANET_SEED, DEV_PLANET_TYPE } from '@terra/sim';
+import type { Logger } from 'pino';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
-import { type ColonySeatAssignment, HomeService } from '../core/home/home.service';
+import { HomeService } from '../core/home/home.service';
 import { PRISMA } from '../db/db.module';
 import { FlagsService } from '../flags/flags.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { ReadinessRegistry } from '../core/readiness.registry';
-import { APP_ENV, type AppEnv } from '../core/tokens';
+import { layerLogger } from '../core/logging/logger';
+import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
 import { DevPlanetsController } from './dev-planets.controller';
-import { devPlanetIds } from './dev-planets';
+import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
 import { DevLedgerController } from './ledger/dev-ledger.controller';
 import { InMemoryLedgerStore } from './ledger/in-memory-ledger-store';
@@ -23,10 +25,10 @@ import { LedgerStorePort } from './ledger/ledger-store.port';
 import { PlanetLedgerService } from './ledger/planet-ledger.service';
 import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
 import { persistenceEnabled } from './persistence/persistence-enabled';
-import { SnapshotService } from './persistence/snapshot.service';
+import { PlanetHeldError, SnapshotService } from './persistence/snapshot.service';
 import { SnapshotStore } from './persistence/snapshot-store';
 import { ProgressionEventForwarder } from './progression-events.service';
-import { seatColonyOnPlanet } from './seat-colony';
+import { gameSeatHost, seatAndRegisterColony } from './seat-colony';
 import { SimThreadPool } from './sim-thread-pool';
 
 export const env = defineEnv('game', {
@@ -72,6 +74,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
   private unsubHomeSeat: (() => void) | undefined;
+  private readonly log: Logger;
 
   constructor(
     @Inject(POOL) private readonly pool: SimThreadPool,
@@ -83,17 +86,18 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     private readonly readiness: ReadinessRegistry,
     private readonly bus: EventBus,
     private readonly progressionForwarder: ProgressionEventForwarder,
+    @Inject(LOGGER) root: Logger,
     @Optional() private readonly homeService?: HomeService,
-  ) {}
+  ) {
+    this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     await this.pool.start();
     bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder);
     if (this.homeService) {
-      this.unsubHomeSeat = this.homeService.onColonySeated((assignment) => {
-        this.progressionForwarder.registerColony(assignment.colony.id, assignment.colony.playerId);
-        return this.seatColony(assignment);
-      });
+      const host = gameSeatHost(this.snapshots, this.planets, this.log);
+      this.unsubHomeSeat = this.homeService.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, host, assignment));
     }
     const pool = this.pool;
     const reg = this.metrics.registry;
@@ -131,13 +135,13 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       if (pool.live === 0) throw new Error('no live sim threads');
       return pool.live;
     });
-    await this.snapshots.restoreAll();
-    const have = new Set(this.planets.loadedIds());
-    const ids = devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size).filter((id) => !have.has(id));
+    const restored = await this.snapshots.restoreAll();
+    const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size), this.planets.loadedIds(), restored);
     const devOpts = this.flags.has('W01')
       ? { params: { type: DEV_PLANET_TYPE, planetType: DEV_PLANET_TYPE, seed: DEV_PLANET_SEED, radius: 56, capacity: 5 } }
       : {};
-    await Promise.all(ids.map((id) => this.planets.load(id, devOpts)));
+    // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
+    await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
   }
 
   async onApplicationShutdown(): Promise<void> {
@@ -145,10 +149,5 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
     this.unsubHomeSeat = undefined;
     this.readiness.unregister('simThreads');
     await this.planets.shutdown();
-  }
-
-  /** Throws `COLONY_SEAT_REJECTED` when the sim rejects the landing (see `seatColonyOnPlanet`). */
-  private seatColony(assignment: ColonySeatAssignment): Promise<void> {
-    return seatColonyOnPlanet(this.planets, assignment);
   }
 }

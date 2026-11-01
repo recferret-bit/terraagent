@@ -121,3 +121,19 @@ describe('balance queries', () => {
     expect(trialBalance(broken)).toEqual({ y: 3, z: -1 });
   });
 });
+
+describe('addToSheet with prototype keys (hand-tampered state)', () => {
+  it('writes `__proto__` / `constructor` as own cells and never touches Object.prototype', async () => {
+    const { addToSheet, readSheet } = await import('../src/balances');
+    const sheet: Record<string, Record<string, number>> = {};
+    addToSheet(sheet, '__proto__', 'x', 5);
+    addToSheet(sheet, 'a', '__proto__', 3);
+    expect(Object.hasOwn(sheet, '__proto__')).toBe(true);
+    expect(readSheet(sheet, '__proto__', 'x')).toBe(5);
+    expect(readSheet(sheet, 'a', '__proto__')).toBe(3);
+    expect(({} as Record<string, unknown>).x).toBeUndefined();
+    expect(Object.getPrototypeOf(sheet)).toBe(Object.prototype);
+    addToSheet(sheet, '__proto__', 'x', -5);
+    expect(Object.hasOwn(sheet, '__proto__')).toBe(false);
+  });
+});

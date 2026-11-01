@@ -1,11 +1,12 @@
 import { HttpException } from '@nestjs/common';
+import type { REST_ERROR_CODES } from '@terra/contracts';
 import { z } from 'zod';
 import { CoreException } from './core-exception';
 
 /**
  * Error mapping. Response body: `{ errorCode, error: { code, message, details? }, requestId }`.
  *  - `errorCode`: stable UPPER_SNAKE domain code (`TEST_CODE`, `VALIDATION_ERROR`, `NOT_FOUND`, `INTERNAL`).
- *  - `error.code`: lowercase REST code of PROTOCOL §8, derived from the status (see `restCodeFor`).
+ *  - `error.code`: lowercase REST code of PROTOCOL §8, from the domain code when it has its own, else the status (see `restCodeFor`).
  */
 export interface MappedError {
   readonly status: number;
@@ -23,9 +24,18 @@ const REST_BY_STATUS: Readonly<Record<number, string>> = {
   503: 'near_unavailable',
 };
 
-/** Status to REST code. 409 maps to `already_queued` only as the closest PROTOCOL §8 code; other 4xx fall back to `validation_error`, 5xx to `internal`. */
-export function restCodeFor(status: number): string {
-  return REST_BY_STATUS[status] ?? (status >= 500 ? 'internal' : 'validation_error');
+/** Domain codes with a REST code of their own (else the status decides). */
+const REST_BY_ERROR_CODE: Readonly<Record<string, (typeof REST_ERROR_CODES)[number]>> = {
+  COLONY_SEAT_REJECTED: 'seat_rejected',
+};
+
+/**
+ * REST code of an error: its domain code's own (`COLONY_SEAT_REJECTED` → `seat_rejected`), else by status. 409 maps
+ * to `already_queued` only as the closest PROTOCOL §8 code; other 4xx fall back to `validation_error`, 5xx to `internal`.
+ */
+export function restCodeFor(status: number, errorCode?: string): string {
+  const own = errorCode === undefined ? undefined : REST_BY_ERROR_CODE[errorCode];
+  return own ?? REST_BY_STATUS[status] ?? (status >= 500 ? 'internal' : 'validation_error');
 }
 
 const HTTP_NAME_CODES: Readonly<Record<number, string>> = {

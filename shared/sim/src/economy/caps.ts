@@ -14,13 +14,19 @@ export const INITIAL_CAPS: Readonly<ColonyCaps> = { metals: 600, minerals: 500, 
 
 /** The colony's storage cap per family (`col.caps`, falling back to {@link INITIAL_CAPS}). */
 export function getColonyCaps(state: PlanetState, colonyIndex: number): ColonyCaps {
-  const raw = state.colonies[colonyIndex]?.caps as Partial<ColonyCaps> | undefined;
+  return capsOf(state.colonies[colonyIndex]?.caps);
+}
+
+/** Caps from a colony record's `caps` (sim state or a client view), each missing family at {@link INITIAL_CAPS}. */
+export function capsOf(caps: unknown): ColonyCaps {
+  const raw = caps as Partial<Record<keyof ColonyCaps, unknown>> | null | undefined;
   const pick = (k: keyof ColonyCaps): number => (typeof raw?.[k] === 'number' ? (raw[k] as number) : INITIAL_CAPS[k]);
   return { metals: pick('metals'), minerals: pick('minerals'), energy: pick('energy'), bio: pick('bio'), item: pick('item') };
 }
 
 /**
- * Splits a credit into what fits under the family caps and the overflow. Families are shared by their tiers, so
+ * Splits a credit into what fits under the family caps and the overflow (`add({ clampToCap: true })`: the overflow is
+ * not credited anywhere, it is lost and reported in the result). Families are shared by their tiers, so
  * credits of one family fill the remaining room in key order. Whole units in, whole units out.
  */
 export function clampToCaps(

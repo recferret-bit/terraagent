@@ -8,6 +8,13 @@ export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
   | { readonly ok: false; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number };
 
+/**
+ * Reject codes of `submit` that come from the host, not the sim: the planet's thread is down (`thread_down`) or the
+ * planet is not loaded on it (`planet_not_loaded`). Not `REJECT_CODES`: WS ingress sends them as `internal` + detail,
+ * the seat path as `host_unavailable`.
+ */
+export const HOST_DOWN_CODES: readonly string[] = ['thread_down', 'planet_not_loaded'];
+
 export interface PlanetSubscriber {
   onDelta?(d: { fromTick: number; toTick: number; diff: Uint8Array; events: SimEvent[] }): void;
   onEvent?(events: SimEvent[]): void;
@@ -40,10 +47,10 @@ export interface TuneResult {
 /** Global tap on every sim event leaving a thread (each exactly once: from a delta or from a bare `event`). */
 export type PlanetEventsListener = (planetId: string, events: readonly SimEvent[]) => void;
 
-export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'> & {
-  /** Genesis: postings made while building the planet (scenario setup); handed to `onPlanetLoaded`, not sent to the thread. */
-  readonly setupPostings?: readonly LedgerPosting[];
-};
+/** Main-thread facts about a load, handed to `onPlanetLoaded` with the thread's `loaded` (never sent to the thread). */
+type HostLoadInfo = Pick<LoadedInfo, 'setupPostings' | 'noSnapshots'>;
+
+export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'> & HostLoadInfo;
 
 /** Ledger postings of one step leaving a thread (host-side only, see `PlanetLedgerService`). */
 export type PlanetLedgerListener = (planetId: string, tick: number, postings: readonly LedgerPosting[]) => void;
@@ -65,8 +72,8 @@ export class GamePlanets {
   private readonly subs = new Map<string, Set<PlanetSubscriber>>();
   private readonly loadedListeners: ((planetId: string, tick: number, info: LoadedInfo) => void)[] = [];
   private readonly ledgerListeners: PlanetLedgerListener[] = [];
-  /** Setup postings of genesis loads in flight, until their `loaded` arrives. */
-  private readonly setupPostings = new Map<string, readonly LedgerPosting[]>();
+  /** Main-thread load facts (genesis setup postings, the no-snapshot check) of loads in flight, until `loaded` arrives. */
+  private readonly hostInfo = new Map<string, HostLoadInfo>();
   private readonly unloadedListeners: ((planetId: string) => void)[] = [];
   private readonly snapshotListeners: ((planetId: string, s: { tick: number; bytes: Uint8Array }) => void)[] = [];
   private readonly shutdownHooks: (() => void | Promise<void>)[] = [];
@@ -98,14 +105,17 @@ export class GamePlanets {
       const list = existing ?? [];
       list.push({ resolve, reject });
       this.loading.set(planetId, list);
-      const { setupPostings, ...msg } = opts;
-      if (setupPostings) this.setupPostings.set(planetId, setupPostings);
+      const { setupPostings, noSnapshots, ...msg } = opts;
+      this.hostInfo.set(planetId, { ...(setupPostings ? { setupPostings } : {}), ...(noSnapshots ? { noSnapshots } : {}) });
       const transfer = msg.snapshot ? [msg.snapshot.buffer as ArrayBuffer] : [];
       if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...msg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
     });
   }
 
-  /** Ensures `planetId` is loaded on its thread, loading it with `opts` if not yet loaded. */
+  /**
+   * Ensures `planetId` is loaded on its thread, loading it with `opts` if not yet loaded. A fresh (generated) load of a
+   * planet that may have snapshots goes through `SnapshotService.loadNew` instead, which checks first.
+   */
   async ensureLoaded(planetId: string, opts: LoadOptions = {}): Promise<number> {
     if (this.loaded.has(planetId)) return 0;
     return this.load(planetId, opts);
@@ -251,9 +261,9 @@ export class GamePlanets {
         for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
         this.loading.delete(msg.planetId);
         {
-          const setupPostings = this.setupPostings.get(msg.planetId);
-          this.setupPostings.delete(msg.planetId);
-          const info = { restored: msg.restored ?? false, genesis: msg.genesis ?? false, stocks: msg.stocks ?? [], ...(setupPostings ? { setupPostings } : {}) };
+          const host = this.hostInfo.get(msg.planetId);
+          this.hostInfo.delete(msg.planetId);
+          const info: LoadedInfo = { restored: msg.restored ?? false, genesis: msg.genesis ?? false, stocks: msg.stocks ?? [], ...host };
           for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick, info);
         }
         return;
@@ -317,5 +327,6 @@ export class GamePlanets {
   private failLoad(planetId: string, e: Error): void {
     for (const w of this.loading.get(planetId) ?? []) w.reject(e);
     this.loading.delete(planetId);
+    this.hostInfo.delete(planetId);
   }
 }

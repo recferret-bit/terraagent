@@ -9,7 +9,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
-import { treasuryCtx } from '../../economy';
+import { findShortfall, treasuryCtx } from '../../economy';
 import { defineSimModule } from '../define';
 import { syncHqView } from '../hq';
 import {
@@ -29,7 +29,6 @@ import './occupancy';
 import { buildLinkedPrepJobs } from './prep';
 import { getBuildingFootprintTiles, isHubBuildingKind, resolveHubT1Row } from './placement';
 import {
-  checkBuildingAffordability,
   validateBuildingPlacement,
   type ValidateHubPlacementOpts,
   type ValidateHubPlacementResult,
@@ -142,8 +141,7 @@ function shouldRejectInsufficientOnPlace(
   const colStock = state.colonies[colonyId]?.stock;
   if (colStock === undefined && !forceCheck) return false;
   if (!cost) return false;
-  const afford = checkBuildingAffordability(cost, colStock as Record<string, number> | undefined);
-  if (afford.ok) return false;
+  if (!findShortfall((colStock ?? {}) as Record<string, number>, cost)) return false;
   if (forceCheck) return true;
   return unpreparedCount > 0 && ((colStock as Record<string, number>)['metals.t1'] ?? 0) === 0;
 }
@@ -278,7 +276,7 @@ export function cancelConstructionOrder(
   idOrEntityId?: string | number,
   tick: number = state.meta.tick,
   data?: CompiledDataLike,
-  ctx?: Pick<StepContext, 'record'>,
+  ctx?: Pick<StepContext, 'record'> & Partial<Pick<StepContext, 'emit'>>,
 ): boolean {
   const all = readConstructionOrders(state);
   let targetIdx: number;

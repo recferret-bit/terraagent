@@ -1,6 +1,9 @@
-import type { INestApplication } from '@nestjs/common';
+import type { ArgumentsHost, INestApplication } from '@nestjs/common';
+import { REST_ERROR_CODES } from '@terra/contracts';
+import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
-import { CoreException, CoreNotFound } from '../../src/core/errors/core-exception';
+import { AllExceptionsFilter } from '../../src/core/errors/all-exceptions.filter';
+import { CoreConflict, CoreException, CoreNotFound } from '../../src/core/errors/core-exception';
 import { restCodeFor } from '../../src/core/errors/map-error';
 import { bootCapturing } from './logging-helpers';
 
@@ -24,6 +27,21 @@ describe('CoreException', () => {
   });
   it('maps status to REST code', () => {
     expect([restCodeFor(400), restCodeFor(404), restCodeFor(418), restCodeFor(500)]).toEqual(['validation_error', 'not_found', 'validation_error', 'internal']);
+  });
+  it('a domain code with its own REST code wins over the status: COLONY_SEAT_REJECTED → seat_rejected', () => {
+    expect([restCodeFor(409, 'COLONY_SEAT_REJECTED'), restCodeFor(409, 'CONFLICT'), restCodeFor(409)]).toEqual(['seat_rejected', 'already_queued', 'already_queued']);
+    expect(REST_ERROR_CODES).toContain('seat_rejected');
+  });
+  it('the filter answers a rejected seat with error.code seat_rejected and the sim code in details.code', () => {
+    let sent: { status?: number; body?: unknown } = {};
+    const res = { status: (status: number) => { sent = { ...sent, status }; return res; }, json: (body: unknown) => { sent = { ...sent, body }; } };
+    const host = { getType: () => 'http', switchToHttp: () => ({ getRequest: () => ({ id: 'r1', method: 'GET', originalUrl: '/v1/me/home' }), getResponse: () => res }) };
+    const seat = new CoreConflict('COLONY_SEAT_REJECTED', { message: 'refused', details: { code: 'landing_site_taken', planetId: 'pl_dev' } });
+    new AllExceptionsFilter(pino({ level: 'silent' }), true).catch(seat, host as unknown as ArgumentsHost);
+    expect(sent).toEqual({
+      status: 409,
+      body: { errorCode: 'COLONY_SEAT_REJECTED', error: { code: 'seat_rejected', message: 'refused', details: { code: 'landing_site_taken', planetId: 'pl_dev' } }, requestId: 'r1' },
+    });
   });
 });
 

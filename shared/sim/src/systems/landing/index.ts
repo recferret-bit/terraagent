@@ -1,5 +1,5 @@
 import { dataRow, type CompiledRow } from '../../data';
-import { INITIAL_CAPS, systemActor, treasury, treasuryCtx, type Amounts } from '../../economy';
+import { INITIAL_CAPS, checkMove, systemActor, treasury, treasuryCtx, type Amounts, type AddRequest } from '../../economy';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf, setField } from '../../ecs/store';
@@ -48,13 +48,22 @@ export function resolveStartingKitRow(data?: CompiledDataLike): CompiledRow {
   return dataRow(defaultW01Data(), 'hq', 'startingKit');
 }
 
-/** The landing pod's cargo (`hq.startingKit.cargo`, positive entries only): what a new colony starts with. */
+/**
+ * The landing pod's cargo (`hq.startingKit.cargo`, zero entries dropped): what a new colony starts with. Anything that
+ * is not a whole amount (a fraction, a negative, a non-number) is kept, so the landing check refuses it instead of
+ * landing a colony without its cargo.
+ */
 export function resolveStartingCargo(data?: CompiledDataLike): Amounts {
   const kit = resolveStartingKitRow(data);
   const raw = (kit.cargo ?? { 'metals.t1': 600, 'minerals.t1': 350, 'bio.biomass': 200, 'bio.water': 200 }) as Amounts;
   const out: Amounts = {};
-  for (const [k, v] of Object.entries(raw)) if (typeof v === 'number' && v > 0) out[k as keyof Amounts] = v;
+  for (const [k, v] of Object.entries(raw)) if (v !== 0) out[k as keyof Amounts] = v;
   return out;
+}
+
+/** The `landing.cargo` credit of colony `colonyId`'s pod. */
+function cargoCredit(colonyId: number, data?: CompiledDataLike): AddRequest {
+  return { colony: colonyId, amounts: resolveStartingCargo(data), reason: 'landing.cargo', actor: systemActor('landing'), ref: `colony:${colonyId}` };
 }
 
 function resolveDescentTicks(kit: CompiledRow): number {
@@ -90,7 +99,7 @@ export function getLandingPods(state: SimState): LandingPodState[] {
 
 /**
  * Why a colony may not land: it already has a pod, the spot is another colony's (its slot, or too close to its pod),
- * or the spot is off the map.
+ * the spot is off the map, or the pod's cargo is not whole resource amounts (`invalid_args`).
  */
 export type LandingRejectCode = 'already_landed' | 'landing_site_taken' | 'invalid_args';
 
@@ -121,6 +130,8 @@ export function checkColonyLanding(
 ): { ok: true; plan: SpawnPlan } | { ok: false; code: LandingRejectCode } {
   // Planets saved before the landing history existed still know their pods.
   if (getLandingPods(state).some((p) => p.colonyId === opts.colonyId)) return { ok: false, code: 'already_landed' };
+  // The cargo is credited after the landing changed the world, so it is checked first: a refused cargo lands nothing.
+  if (checkMove(cargoCredit(opts.colonyId, opts.data), 'add')) return { ok: false, code: 'invalid_args' };
   const explicit = Number.isInteger(opts.q) && Number.isInteger(opts.r);
   const next = nextLandingSite(state, opts.colonyId, {
     slotIndex: opts.slotIndex,
@@ -164,13 +175,8 @@ export function spawnColonyLanding(
   const kit = resolveStartingKitRow(data);
   const totalTicks = resolveDescentTicks(kit);
   col.caps = { ...INITIAL_CAPS };
-  treasury(state, treasuryCtx(tick, ctx)).add({
-    colony: colonyId,
-    amounts: resolveStartingCargo(data),
-    reason: 'landing.cargo',
-    actor: systemActor('landing'),
-    ref: `colony:${colonyId}`,
-  });
+  // Validated by checkColonyLanding; uncapped (the pod's hold is what the colony starts with).
+  treasury(state, treasuryCtx(tick, ctx)).add(cargoCredit(colonyId, data));
   col.changedAt = tick;
 
   const podEntityId = ctx ? ctx.newEntityId() : state.meta.nextEntityId++;

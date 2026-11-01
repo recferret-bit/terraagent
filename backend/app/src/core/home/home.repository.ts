@@ -160,10 +160,11 @@ export class HomeRepository {
     return this.saveMemPlanet(record);
   }
 
-  /** The first dev planet of `type` (one family per type: `devPlanetIdFor`) with a free seat; creates it when needed. */
-  async findOrCreateOpenDevPlanet(type: DevPlanetType = DEV_PLANET_TYPE): Promise<{ planet: PlanetRecord; colonyIndex: number }> {
+  /** The first dev planet of `type` (one family per type: `devPlanetIdFor`) with a free seat, not in `skip`; creates it when needed. */
+  async findOrCreateOpenDevPlanet(type: DevPlanetType = DEV_PLANET_TYPE, skip?: ReadonlySet<string>): Promise<{ planet: PlanetRecord; colonyIndex: number }> {
     for (let index = 1; index <= 1000; index++) {
       const id = devPlanetIdFor(type, index);
+      if (skip?.has(id)) continue; // no landing site left (`HomeService`)
       const planet = await this.upsertDevPlanet(id, {
         name: devPlanetName(type, index),
         type,

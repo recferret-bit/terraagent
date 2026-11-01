@@ -16,12 +16,22 @@ export function readSheet(sheet: BalanceSheet, account: AccountId, asset: AssetI
   return row !== undefined && Object.hasOwn(row, asset) ? row[asset] : 0;
 }
 
-/** Adds `delta` to `sheet[account][asset]`, dropping the cell when it returns to zero so the sheet stays canonical. */
+/** Sets an own enumerable property, safe for any key (`__proto__` included: never touches the prototype). */
+function setOwn<T>(o: Record<string, T>, key: string, value: T): T {
+  Object.defineProperty(o, key, { value, writable: true, enumerable: true, configurable: true });
+  return value;
+}
+
+/**
+ * Adds `delta` to `sheet[account][asset]`, dropping the cell when it returns to zero so the sheet stays canonical.
+ * Keys are written as own properties, so even a hand-tampered state with an id like `__proto__` cannot reach
+ * `Object.prototype` when it is replayed (`post` already refuses such ids).
+ */
 export function addToSheet(sheet: BalanceSheet, account: AccountId, asset: AssetId, delta: number): void {
-  const row = Object.hasOwn(sheet, account) ? sheet[account] : (sheet[account] = {});
+  const row = Object.hasOwn(sheet, account) ? sheet[account] : setOwn<Record<AssetId, number>>(sheet, account, {});
   const next = (Object.hasOwn(row, asset) ? row[asset] : 0) + delta;
   if (next === 0) delete row[asset];
-  else row[asset] = next;
+  else setOwn(row, asset, next);
   if (Object.keys(row).length === 0) delete sheet[account];
 }
 

@@ -276,7 +276,7 @@ export const HomeResponse = z.discriminatedUnion("state", [
 ]);
 ```
 
-Error envelope (all non-2xx): `{ error: { code, message, details? }, requestId }`. Codes: `validation_error` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `already_queued` (409), `has_live_colony` (409), `planet_not_recruiting` (409), `queue_full` (503), `near_unavailable` (503), `internal` (500). There is no `rate_limited` code (D-25).
+Error envelope (all non-2xx): `{ error: { code, message, details? }, requestId }`. Codes: `validation_error` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `already_queued` (409), `has_live_colony` (409), `seat_rejected` (409: the sim refused to land the new colony, sim code in `details.code`, e.g. `landing_site_taken` after every candidate site, `host_unavailable`), `planet_not_recruiting` (409), `queue_full` (503), `near_unavailable` (503), `internal` (500). There is no `rate_limited` code (D-25).
 
 ---
 

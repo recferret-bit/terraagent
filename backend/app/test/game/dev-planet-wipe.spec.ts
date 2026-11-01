@@ -63,9 +63,12 @@ describe('SnapshotService.restoreAll with old / foreign / newer dev planets', ()
     } as unknown as GamePlanets;
     const env = { SNAPSHOTS: 'on', SNAPSHOT_EVERY_S: 60, NODE_ENV: 'test' } as unknown as AppEnv;
     const svc = new SnapshotService(planets, store, new MetricsRegistry(), env, pino({ level: 'silent' }));
-    const restored = await svc.restoreAll();
+    const report = await svc.restoreAll();
     expect(wiped.sort()).toEqual(['pl_dev', 'pl_dev_2']);
     expect(loaded.sort()).toEqual(['pl_dev_ocean', 'pl_scn']);
-    expect(restored.sort()).toEqual(['pl_dev_ocean', 'pl_scn']);
+    expect([...report.restored].sort()).toEqual(['pl_dev_ocean', 'pl_scn']);
+    // newer builds' planets keep their snapshots and stay unloaded: never generated fresh; wiped ones may be
+    expect([...report.held].sort()).toEqual(['pl_dev_3', 'pl_dev_4']);
+    expect(report.dbUnavailable).toBe(false);
   });
 });

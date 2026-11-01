@@ -6,6 +6,7 @@
  *   - `seconds`   → ticks (`round(s × 1000 / TICK_MS)`), e.g. a 30 s build → 150 ticks
  *   - `perSecond` → per tick (`v × TICK_MS / 1000`)
  * Every row carries `wave`; rows of disabled waves are dropped at compile time ("no flag, no feature").
+ * `amounts` names the fields that hold resource amounts; they must be whole, non-negative units (no fractions).
  */
 export type Unit = 'seconds' | 'perSecond';
 
@@ -22,6 +23,12 @@ export interface TableDef<R extends Row = Row> {
   readonly name: string;
   readonly summary: string;
   readonly units?: Readonly<Partial<Record<Exclude<keyof R, 'id' | 'wave'>, Unit>>>;
+  /**
+   * Fields holding resource amounts (a cost, a cargo, a yield, a storage cap): a number, or a map of resource key →
+   * number. Every value must be a whole, non-negative number of units (`isWholeAmount`); `compileData` and every
+   * balance override / `tune` reject anything else (`_amounts.ts`).
+   */
+  readonly amounts?: readonly Exclude<keyof R & string, 'id' | 'wave'>[];
   readonly rows: readonly R[];
 }
 

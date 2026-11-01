@@ -15,6 +15,7 @@ export default defineTable({
     stopHoldS: 'seconds',
     retryBlockedS: 'seconds',
   },
+  amounts: ['cargo'],
   rows: [
     {
       id: 't1',

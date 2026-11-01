@@ -5,9 +5,12 @@ import {
   colonyActor,
   findShortfall,
   getColonyStock,
+  reportTreasuryReject,
   treasury,
   treasuryCtx,
+  type AddRequest,
   type Amounts,
+  type MoveRequest,
   type TreasuryCtx,
 } from '../../economy';
 import { ENTITY_STATE } from '../../ecs/columns';
@@ -118,14 +121,21 @@ export function spendConstructionSlice(
     const amt = owedAt(total, targetProgress) - (paid[k] ?? 0);
     if (amt > 0) slice[k as ResourceKey] = amt;
   }
-  const res = treasury(state, ledger).withdraw({
+  const req: MoveRequest = {
     colony: order.colonyId,
     amounts: slice,
     reason: 'construction.spend',
     actor: colonyActor(state, order.colonyId),
     ref: `order:${order.entityId}`,
-  });
-  if (!res.ok) return waitingFor(res.resource ?? res.code, res.have ?? 0, res.need ?? 0);
+  };
+  const res = treasury(state, ledger).withdraw(req);
+  if (!res.ok && res.code === 'insufficient_funds') return waitingFor(res.resource ?? res.code, res.have ?? 0, res.need ?? 0);
+  if (!res.ok) {
+    // Not a shortage (a corrupt cost): the build is blocked; warn once, when it first stops on it.
+    const blocked = `blocked(${res.code}${res.resource ? `: ${res.resource}` : ''})`;
+    if (order.waitingReason !== blocked) reportTreasuryReject(ledger, state, req, res);
+    return { ok: false, waitingReason: blocked };
+  }
   for (const [k, amt] of Object.entries(res.debited)) paid[k] = (paid[k] ?? 0) + amt;
   return { ok: true };
 }
@@ -150,13 +160,19 @@ export function refundCancelledConstruction(
     const share = shareBp(paid, bp);
     if (share > 0) refund[k] = share;
   }
-  treasury(state, ledger).add({
+  // Uncapped: a refund returns part of what the colony paid, which already fitted in its storage.
+  const req: AddRequest = {
     colony: order.colonyId,
     amounts: refund as Amounts,
     reason: 'construction.refund',
     actor: colonyActor(state, order.colonyId),
     ref: `order:${order.entityId}`,
-  });
+  };
+  const res = treasury(state, ledger).add(req);
+  if (!res.ok) {
+    reportTreasuryReject(ledger, state, req, res);
+    return {};
+  }
   return refund;
 }
 

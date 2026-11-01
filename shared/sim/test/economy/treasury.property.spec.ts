@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { T1_RESOURCE_KEYS, parseWaves } from '@terra/contracts';
 import { SimHost, createPlanet, getColonyStock, restore, snapshot, systemActor, treasury, type SimCommand } from '../../src';
+import { ensureColonyRecord } from '../../src/kernel/colonies';
 import { collector, emptyPlanet, hostLedger, nonZero, postAll } from './helpers';
 
 const COLONIES = 3;
@@ -54,7 +55,9 @@ describe('treasury invariants (property)', () => {
   });
 
   it('dev.grant command sequences through step(): StepResult.postings rebuild col.stock every tick', () => {
-    const base = snapshot(createPlanet({ type: 'flat', seed: 'grant-prop', radius: 6 }));
+    const planet = createPlanet({ type: 'flat', seed: 'grant-prop', radius: 6 });
+    ensureColonyRecord(planet, COLONIES - 1, 0); // dev.grant only grants to an existing colony
+    const base = snapshot(planet);
     fc.assert(
       fc.property(fc.array(fc.array(grantOp, { maxLength: 4 }), { maxLength: 25 }), (steps) => {
         const host = new SimHost({ flags: parseWaves('..01') });

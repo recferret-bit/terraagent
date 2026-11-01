@@ -1,13 +1,13 @@
 import { commandGate, flagsFromList, newId, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, type RejectCode, type ServerMessage } from '@terra/contracts';
 import { createScenarioPlanet } from '@terra/scenarios';
 import {
-  buildPipeline, effectiveOverrides, GEN_VERSION, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS, tune,
-  type BalanceOverrides, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent, type TuneRequest,
+  buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS, tune,
+  type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent, type TuneRequest,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
-import { HostLedger } from './hostLedger';
+import { describeJournalProblem, resumeJournal } from './hostJournal';
 import type { FromLocalHost, LocalHostOptions, LocalPost, ToLocalHost } from './protocol';
-import { compatible, snapshotKey, type SnapshotStore } from './snapshotStore';
+import { compatible, snapshotKey, type LocalSnapshot, type SnapshotStore } from './snapshotStore';
 
 export interface LocalHostDeps {
   /** Monotonic ms (the scheduler's clock). */
@@ -38,7 +38,7 @@ const isRejectCode = (c: string): c is RejectCode => (REJECT_CODES as readonly s
  */
 export class LocalHostCore {
   private host!: SimHost;
-  private ledger!: HostLedger;
+  private ledger!: PlanetJournal;
   private tuning!: PlanetTuning;
   private scenario = '';
   private joined = false;
@@ -82,24 +82,33 @@ export class LocalHostCore {
     const key = snapshotKey(id);
     let host = seed;
     let live: BalanceOverrides = {};
+    let saved: LocalSnapshot | null = null;
     if (fresh) await this.deps.store.remove(key).catch(() => undefined);
     else {
-      const snap = await this.deps.store.load(key).catch(() => null);
-      const resumed = snap && this.tryResume(snap, flags);
+      saved = await this.deps.store.load(key).catch(() => null);
+      const resumed = saved && this.tryResume(saved, flags);
       if (resumed) ({ host, live } = resumed);
     }
     this.scenario = id;
-    // a new planet, a new journal: a fresh scenario replays its setup postings (the real `landing.cargo`); a resumed
-    // snapshot's history is gone, so its balances are opened from col.stock
+    // a fresh scenario's journal replays its setup postings (the real `landing.cargo`); a resumed snapshot continues the
+    // journal saved with it, or opens its balances from col.stock when that journal is missing or does not match
     if (host === seed) {
-      const { ledger, problems } = HostLedger.replay(setupPostings);
-      this.ledger = ledger;
-      for (const message of problems) this.post({ t: 'error', message }, []);
-    } else this.ledger = HostLedger.open(host.state, 'system:resume');
+      this.ledger = PlanetJournal.empty();
+      this.report(this.ledger.record(setupPostings));
+    } else {
+      const { journal, problem } = resumeJournal(saved?.journal, host.state);
+      this.ledger = journal;
+      if (problem) this.post({ t: 'error', message: problem }, []);
+    }
     this.install(host, { flags, base: {}, live });
   }
 
-  private tryResume(snap: NonNullable<Awaited<ReturnType<SnapshotStore['load']>>>, flags: readonly string[]): { host: SimHost; live: BalanceOverrides } | null {
+  /** Journal problems go out as host errors (the journal and the sim's `col.stock` disagree). */
+  private report(problems: readonly JournalProblem[]): void {
+    for (const p of problems) this.post({ t: 'error', message: describeJournalProblem(p) }, []);
+  }
+
+  private tryResume(snap: LocalSnapshot, flags: readonly string[]): { host: SimHost; live: BalanceOverrides } | null {
     try {
       const live = (snap.overrides ?? {}) as BalanceOverrides;
       const pipeline = buildPipeline(flags, live);
@@ -122,7 +131,7 @@ export class LocalHostCore {
       host.onEvents((events) => { if (this.joined) this.window.push(...events); }),
       host.onOutcomes((outcomes) => this.answer(outcomes)),
       // the journal stays here (host-side); postings never reach the client store / replica
-      host.onPostings((postings) => { for (const message of this.ledger.record(postings)) this.post({ t: 'error', message }, []); }),
+      host.onPostings((postings) => this.report(this.ledger.record(postings))),
     ];
   }
 
@@ -258,12 +267,16 @@ export class LocalHostCore {
 
   // ---- persistence ------------------------------------------------------------------------------------------------
 
-  /** Writes the planet to the snapshot store (fire and forget; a failure is reported, never thrown into the step loop). */
+  /**
+   * Writes the planet and its journal (captured together, same tick) to the snapshot store (fire and forget; a failure
+   * is reported, never thrown into the step loop).
+   */
   save(): void {
     const live = this.tuning.live;
     void this.deps.store.save(snapshotKey(this.scenario), {
       bytes: this.host.snapshot(), tick: this.host.tick, savedAt: this.deps.wallMs(), dataHash: this.host.pipeline.config.data.hash,
       simVersion: this.host.state.meta.simVersion, flags: [...this.tuning.flags], overrides: live as Record<string, unknown>,
+      journal: this.ledger.toState(),
     }).catch((e: unknown) => this.post({ t: 'error', message: `snapshot save failed: ${e instanceof Error ? e.message : String(e)}` }, []));
   }
 

@@ -18,7 +18,7 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const fields = { errorCode: m.errorCode, status: m.status, requestId, method: req.method, path: req.originalUrl.split('?')[0] };
     if (m.status >= 500) this.log.error({ ...fields, err: exception }, m.message);
     else this.log.warn(fields, m.message);
-    const error = { code: restCodeFor(m.status), message: m.message, ...(m.details === undefined ? {} : { details: m.details }) };
+    const error = { code: restCodeFor(m.status, m.errorCode), message: m.message, ...(m.details === undefined ? {} : { details: m.details }) };
     res.status(m.status).json({ errorCode: m.errorCode, error, requestId });
   }
 }
