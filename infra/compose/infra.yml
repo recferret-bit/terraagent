@@ -37,6 +37,17 @@ services:
       - ../nginx/hosts:/etc/nginx/hosts:ro
       - terra_www:/usr/share/nginx/html:ro
 
+  # Profile `server` is off on the laptop, and Compose creates a network only when a
+  # started service uses it. This process keeps terra_internal so the app can attach.
+  net:
+    image: busybox:1.36
+    container_name: terra-internal-net
+    restart: unless-stopped
+    logging: *json-log
+    command: ["sleep", "infinity"]
+    networks:
+      - terra_internal
+
   postgres:
     image: postgres:16-alpine
     container_name: terra-sites-pg
@@ -44,7 +55,9 @@ services:
     restart: unless-stopped
     logging: *json-log
     networks:
-      - terra_internal
+      terra_internal:
+        aliases:
+          - postgres
     environment:
       POSTGRES_USER: terra
       POSTGRES_PASSWORD: terra

@@ -39,6 +39,15 @@ function run(extraEnv = {}, args = ['--dry-run']) {
   return { ...result, called, out: `${result.stdout ?? ''}${result.stderr ?? ''}` };
 }
 
+function stackSections(stdout) {
+  return Object.fromEntries(
+    stdout
+      .split('\nstack ')
+      .slice(1)
+      .map((part) => [part.slice(0, part.indexOf('\n')), part]),
+  );
+}
+
 function refused(extraEnv) {
   const result = run(extraEnv);
   assert.notEqual(result.status, 0);
@@ -89,15 +98,30 @@ test('infra enables profile server and frontend does not', () => {
   assert.equal(frontend.stdout.includes('prisma migrate deploy'), false);
 });
 
+test('each stack reloads nginx after its vhosts and the server env points at postgres', () => {
+  const full = run();
+  assert.equal(full.status, 0, full.out);
+  assert.match(full.stdout, /--env-file \/srv\/terraagent\/\.env/);
+  assert.match(full.stdout, /DATABASE_URL=postgresql:\/\/terra:terra@postgres:5432\/terraagent/);
+  assert.match(full.stdout, /NODE_ENV=production/);
+  assert.match(full.stdout, /chmod 600 \/srv\/terraagent\/\.env/);
+  const sections = stackSections(full.stdout);
+  for (const name of ['frontend', 'backend', 'chain']) {
+    const text = sections[name];
+    const vhostAt = text.search(/nginx\/hosts\/.+\.conf/);
+    const reloadAt = text.indexOf('nginx -s reload');
+    const curlAt = text.indexOf('curl -fsS');
+    assert.ok(vhostAt >= 0 && vhostAt < reloadAt, `${name} reloads after its vhost`);
+    assert.ok(curlAt > reloadAt, `${name} curls after reload`);
+  }
+  assert.equal(sections.infra.includes('--profile server'), true);
+  assert.equal(sections.frontend.includes('--profile server'), false);
+});
+
 test('prisma migrate deploy is only on the backend step', () => {
   const full = run();
   assert.equal(full.status, 0, full.out);
-  const sections = Object.fromEntries(
-    full.stdout
-      .split('\nstack ')
-      .slice(1)
-      .map((part) => [part.slice(0, part.indexOf('\n')), part]),
-  );
+  const sections = stackSections(full.stdout);
   assert.match(sections.backend, /prisma migrate deploy/);
   for (const name of ['infra', 'frontend', 'chain'])
     assert.equal(sections[name].includes('prisma migrate deploy'), false);

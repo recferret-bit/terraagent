@@ -85,10 +85,20 @@ export function upFrontend(env) {
   run('docker', upArgv.frontend, env);
 }
 
+/** Laptop compose env. The shell DATABASE_URL is 127.0.0.1, which is the container itself. */
+export function backendComposeEnv(env) {
+  const name = env.TA_DB_NAME || 'terraagent';
+  return {
+    ...env,
+    NODE_ENV: 'development',
+    DATABASE_URL: `postgresql://terra:terra@host.docker.internal:15434/${name}`,
+  };
+}
+
 export function upBackend(env) {
   run('docker', upArgv.devPostgres, env);
   run('npm', ['run', 'db:migrate'], env);
-  run('docker', upArgv.backend, env);
+  run('docker', upArgv.backend, backendComposeEnv(env));
 }
 
 function chainState(env) {

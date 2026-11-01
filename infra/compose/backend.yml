@@ -1,5 +1,5 @@
-# Backend stack (DEP-01, DEPLOYMENT §1). The app joins terra_edge and publishes no port.
-# Local database is the dev Postgres on host port 15434, not a database in this file.
+# Backend stack (DEP-01, DEPLOYMENT §1). The app joins both networks and publishes no port.
+# Laptop default is the dev Postgres. The server .env points DATABASE_URL at postgres:5432.
 name: terra-backend
 
 x-logging: &json-log
@@ -12,6 +12,9 @@ networks:
   terra_edge:
     external: true
     name: terra_edge
+  terra_internal:
+    external: true
+    name: terra_internal
 
 services:
   app:
@@ -27,15 +30,16 @@ services:
     environment:
       TA_HOST: 0.0.0.0
       PORT: "3000"
-      # development: /v1/dev/chain/receipts is 404 when NODE_ENV=production, and the W26 demo needs that JSON.
-      NODE_ENV: development
-      # Host env TA_DB_NAME, default terraagent. SIM_THREADS stays unset (cores − 1).
+      # Laptop default. /srv/terraagent/.env sets production so dev routes stay off there.
+      NODE_ENV: ${NODE_ENV:-development}
+      # SIM_THREADS stays unset (cores − 1). A set DATABASE_URL replaces the laptop default.
       TA_DB_NAME: ${TA_DB_NAME:-terraagent}
-      DATABASE_URL: postgresql://terra:terra@host.docker.internal:15434/${TA_DB_NAME:-terraagent}
+      DATABASE_URL: ${DATABASE_URL:-postgresql://terra:terra@host.docker.internal:15434/${TA_DB_NAME:-terraagent}}
     networks:
       terra_edge:
         aliases:
           - app
+      terra_internal: {}
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/v1/readyz').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
       start_period: 30s

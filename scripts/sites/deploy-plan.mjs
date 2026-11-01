@@ -22,7 +22,7 @@ export function rewriteCompose(text) {
 
 export function buildPlan({ env, stacks, catalog, root }) {
   const target = `${env.DEPLOY_USER}@${env.DEPLOY_HOST}`;
-  const steps = [ssh(target, 'echo ok'), ssh(target, mkdirRemote())];
+  const steps = [ssh(target, 'echo ok'), ssh(target, mkdirRemote()), ssh(target, ensureServerEnv())];
   for (const stack of stacks) steps.push(...stackPlan(stack, target, catalog, root));
   return assertSafe(steps);
 }
@@ -39,8 +39,27 @@ function stackPlan(stack, target, catalog, root) {
     ...nginxRsyncs(stack, target, catalog),
     contextRsync(target),
     ssh(target, composeUp(stack, remoteFile)),
+    ssh(target, nginxReload()),
     ...afterUp(stack, target, catalog),
   ];
+}
+
+const SERVER_ENV = '/srv/terraagent/.env';
+const SERVER_DATABASE_URL = 'postgresql://terra:terra@postgres:5432/terraagent';
+
+/** Create the server env if needed. Never overwrite a key the operator already set. */
+function ensureServerEnv() {
+  const urlLine = `DATABASE_URL=${SERVER_DATABASE_URL}`;
+  return [
+    `touch ${SERVER_ENV}`,
+    `chmod 600 ${SERVER_ENV}`,
+    `grep -q '^DATABASE_URL=' ${SERVER_ENV} || echo '${urlLine}' >> ${SERVER_ENV}`,
+    `grep -q '^NODE_ENV=' ${SERVER_ENV} || echo 'NODE_ENV=production' >> ${SERVER_ENV}`,
+  ].join(' && ');
+}
+
+function nginxReload() {
+  return 'n=0; until docker exec terra-nginx nginx -s reload; do n=$((n+1)); [ "$n" -gt 30 ] && exit 1; sleep 1; done';
 }
 
 function mkdirRemote() {
@@ -56,7 +75,7 @@ function rewriteNotes(remoteFile, text) {
 
 function composeUp(stack, remoteFile) {
   const profile = stack === 'infra' ? '--profile server ' : '';
-  return `docker compose ${profile}-f ${remoteFile} up -d --build`;
+  return `docker compose --env-file ${SERVER_ENV} ${profile}-f ${remoteFile} up -d --build`;
 }
 
 function afterUp(stack, target, catalog) {

@@ -11,11 +11,11 @@
 - **Names:** the checks below use `curl --resolve`, so they work without editing `/etc/hosts`. To open the names in a browser, from the worktree run `grep -q pitchdeck.terraagent.fun /etc/hosts || sudo sh -c 'cat infra/hosts/local.hosts >> /etc/hosts'` (the lines are in [`infra/hosts/local.hosts`](../../../infra/hosts/local.hosts)). That file is the owner step. Do not install it twice.
 - **Dev console:** in a game page press **`` ` ``** (the key under Esc). A dark panel opens at the bottom; type there and press Enter. It is **not** the browser's DevTools console. None of the steps below use it. Tools: [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).
 
-There is no second Postgres. `terra-sites-pg` stays off on the laptop. The app container uses `terra-pg` on port 15434. It runs with `NODE_ENV=development` so the mock-chain receipts route returns JSON (owner default, recorded on W26-06). A production process would 404 that route.
+There is no second Postgres. `terra-sites-pg` stays off on the laptop. `terra-internal-net` is only there so the `terra_internal` network exists; it publishes no port. The app container uses `terra-pg` on port 15434. It runs with `NODE_ENV=development` so the mock-chain receipts route returns JSON (owner default, recorded on W26-06). A production process would 404 that route. Remote deploy does not use this laptop default: `/srv/terraagent/.env` sets `NODE_ENV=production` when that key is missing, and points `DATABASE_URL` at the profile-`server` Postgres (`postgres:5432`). It does not overwrite keys already in that file.
 
 ## Steps
 
-1. **Site stack is up, and the dev Postgres is the only database.** In the worktree: `docker ps --filter name=terra-`. **See** `terra-nginx` with `0.0.0.0:80->80`, `terra-static`, `terra-app` (healthy), and `terra-pg` (healthy, port 15434). **See** no `terra-sites-pg`.
+1. **Site stack is up, and the dev Postgres is the only database.** In the worktree: `docker ps --filter name=terra-`. **See** `terra-nginx` with `0.0.0.0:80->80`, `terra-static`, `terra-app` (healthy), `terra-internal-net` (no published port), and `terra-pg` (healthy, port 15434). **See** no `terra-sites-pg`.
 2. **Each public name answers.** Still in the worktree, one curl per host (`--resolve` sends it to 127.0.0.1:80):
    ```
    curl -sS -D - --resolve terraagent.fun:80:127.0.0.1 http://terraagent.fun/ -o /dev/null
@@ -59,7 +59,7 @@ An unknown name on the same port is 404: `curl -sS -D - --resolve not-a-host:80:
 
 ## Automated checks (already green on the branch)
 
-`npm run build` (typecheck, structure, vite) · `npm test` (66 files, 375 tests) · `node --test` for the host catalog, compose port checks, vhost files, deploy dry-run and the whitepaper renderer (24 passed) · `npm run e2e -- --waves ..26` → **14 passed, 1 skipped** (W00 step 4 is still the later state inspector). W00's flag panel still shows 26 chips (W00–W25). W26 adds no flag chip.
+`npm run build` (typecheck, structure, vite) · `npm test` (66 files, 375 tests) · `node --test` for the host catalog, compose port checks, vhost files, deploy dry-run and the whitepaper renderer (27 passed) · `npm run e2e -- --waves ..26` → **14 passed, 1 skipped** (W00 step 4 is still the later state inspector). W00's flag panel still shows 26 chips (W00–W25). W26 adds no flag chip.
 
 ## When you're done
 

@@ -24,6 +24,9 @@ test('nginx publishes 80 and postgres has no ports', () => {
   assert.ok(published(nginx).some((p) => p === '80' || p === 80), `nginx ports ${JSON.stringify(nginx.ports)}`);
   assert.deepEqual(published(pg), [], `postgres must not publish a port, got ${JSON.stringify(pg.ports)}`);
   assert.ok((pg.profiles ?? []).includes('server'), 'postgres is profile server only');
+  assert.ok((pg.networks?.terra_internal?.aliases ?? []).includes('postgres'), 'postgres alias');
+  assert.equal(services.net?.container_name, 'terra-internal-net');
+  assert.deepEqual(published(services.net), [], 'network holder publishes nothing');
 });
 
 test('nginx config has no rate limit and no Cloudflare real-ip', () => {
