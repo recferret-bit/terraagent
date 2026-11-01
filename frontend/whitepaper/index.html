@@ -3,13 +3,104 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Whitepaper</title>
-<link rel="stylesheet" href="/design/css/tokens.css">
-<link rel="stylesheet" href="/design/css/base.css">
+<title>TerraAgent — Whitepaper (draft v0.1, 2026-10-31)</title>
+<link rel="stylesheet" href="../design/css/tokens.css">
+<link rel="stylesheet" href="../design/css/base.css">
+<style>
+.doc { padding-top: var(--ta-s8); padding-bottom: var(--ta-s9); }
+.doc article { display: flex; flex-direction: column; gap: var(--ta-s5); }
+.doc h1, .doc h2, .doc h3 { font-family: var(--ta-font-display); font-weight: 700; line-height: 1.15; margin: 0; }
+.doc h1 { font-size: var(--ta-fs-h1); }
+.doc h2 { font-size: var(--ta-fs-h3); margin-top: var(--ta-s3); }
+.doc h3 { font-size: var(--ta-fs-body-l); }
+.doc p { margin: 0; }
+.doc ul, .doc ol { margin: 0; padding-left: var(--ta-s6); }
+.doc li + li { margin-top: var(--ta-s3); }
+.doc blockquote { margin: 0; padding: var(--ta-s4) var(--ta-s5); background: var(--ta-plate); border-left: 3px solid var(--ta-orange); }
+.doc blockquote p { color: var(--ta-text-2); }
+.doc code { font-family: var(--ta-font-mono); font-size: 0.92em; color: var(--ta-energy); }
+.doc table { width: 100%; border-collapse: collapse; }
+.doc th, .doc td { text-align: left; vertical-align: top; padding: var(--ta-s3) var(--ta-s4); border-bottom: 1px solid var(--ta-seam); }
+.doc th { font-family: var(--ta-font-mono); font-size: var(--ta-fs-label); letter-spacing: var(--ta-track-label); color: var(--ta-orange); font-weight: 600; }
+.doc td { color: var(--ta-text-2); }
+.table-wrap { overflow-x: auto; }
+.doc hr { border: 0; height: 1px; background: var(--ta-seam); margin: 0; }
+</style>
 </head>
 <body>
-<main>
-  <h1 class="display">Whitepaper</h1>
+<main class="container doc">
+<article>
+<h1>TerraAgent — Whitepaper (draft v0.1, 2026-10-31)</h1>
+<blockquote><p>Outward-facing. It must agree with <code>docs/spec/DECISIONS.md</code>, the game specs and the mock/real table in the README. Numbers marked <em>(proposed)</em> are tunable defaults from <a href="../economy-balance-simulation.md"><code>../economy-balance-simulation.md</code></a>. This document describes mechanics; it makes no promise about the value of any token.</p></blockquote>
+<h2>1. The problem</h2>
+<p>Online strategy games stop when you close the tab, and their economies are spreadsheets the studio patches. Blockchain games have mostly inverted the problem: the token is the game and the loop is an afterthought. TerraAgent is a colony builder where <strong>the economy is the gameplay</strong>: the colony keeps mining, trading and terraforming while you are away, prices move because players and agents trade, and the chain is where ownership and settlement live, invisibly.</p>
+<h2>2. The game in one screen</h2>
+<p>You drop one robot on a planet. It prepares the ground, builds a Command Hub, and the colony grows: extractors, power, storage, drones, turrets, a Trade Hub. Every building draws power, every tile must be terraformed before it can be built on, and Living ground unlocks higher-tier resources. Five colonies share a planet for fourteen days; they trade on the planet market, deal with Orbital Guild traders, vote in the planet treasury, and launch a rocket when their land is fully alive.</p>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Cadence</th><th>What the player does</th><th>What the economy does</th></tr></thead>
+<tbody>
+<tr><td>Every 30 s</td><td>one order: a building, a drone, a terraform brush; accept or ignore a Guild offer</td><td>storage fills in minutes, so every decision is <em>spend, export, or lose it</em></td></tr>
+<tr><td>Every 5 min</td><td>a stage beat: the first night, a raid, a Guild docking, a terraform threshold, a vote</td><td>night sheds production unless the grid is sized for it; a docking re-prices every pair</td></tr>
+<tr><td>Every session</td><td>the next tier or terraform gate; the away budget and auto-trade limits; &quot;while you were away&quot;</td><td>new tiers change what the colony mines and sells; the director trades overnight within its allowance</td></tr>
+</tbody>
+</table>
+</div>
+<h2>3. Agents are citizens</h2>
+<p>This section is the design; §7 says what is live on Nov 14. Every actor that holds value in TerraAgent is an account on NEAR with its own key:</p>
+<ul>
+<li><strong>Players</strong> get <code>name.terraagent.near</code> from a social login (NEAR Auth); they never see a seed phrase, a wallet popup or a gas prompt.</li>
+<li><strong>Colonies</strong> are sub-accounts <code>colony.name.terraagent.near</code> that hold cargo, sign orders and own the colony deed.</li>
+<li><strong>The director</strong> of each colony signs trades with a restricted key whose allowance is the player's away budget. One tap revokes it.</li>
+<li><strong>Orbital Guild traders</strong> (Kestrel, Osprey) are NPC agents with their own sub-accounts, inventories and a published pricing rule.</li>
+<li><strong>Any external agent</strong> can be a player through the Colony Agent API / MCP: it founds a colony, reads a 1 200-character brief, queues orders, trades under an allowance, votes, and gets one receipt per contract.</li>
+</ul>
+<p>What an agent <strong>cannot</strong> do without a human: spend beyond its allowance, move the player's own NEAR, claim the account, or stake. The allowance, the revoke and the limits are enforced by the key, not by a prompt.</p>
+<h2>4. The economy's one-way doors</h2>
+<p><strong>Three resource families, three tiers.</strong> Metals (iron → light alloys → titanium), Minerals (silica → rare earths → exotic crystal), Bio (water and biomass → petroleum → gene-stock). Tier 1 is mined from landing; tiers 2 and 3 only on terraformed ground. Energy is grid power, not a resource.</p>
+<p><strong>Sources.</strong> Extractors on deposits, harvesters on forest and Living ground, terrain work that yields what it digs up.</p>
+<p><strong>Sinks.</strong> Construction and units, upkeep, terraforming (water and energy), treasury projects (burned), and the Guild's off-planet sales <em>(proposed)</em>.</p>
+<p><strong>Caps.</strong> Storage per sub-resource <em>(proposed)</em>, Trade Hub throughput, a daily export cap per colony, Guild inventory caps. The caps pace the economy; they are not security.</p>
+<p><strong>Why trade exists.</strong> A colony reaches the second tier either by terraforming 100 of its tiles to Living <em>(proposed)</em> or by buying tier-2 cargo on the market. Water binds terraforming, biomass binds fuel, and night binds everything, so every colony has something to sell and something it lacks.</p>
+<h2>5. What is on-chain, and why</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Layer</th><th>Holds</th><th>Truth</th></tr></thead>
+<tbody>
+<tr><td>NEAR</td><td>accounts, cargo balances (NEP-245 multi-token), settled trades (NEAR Intents <code>token_diff</code> batches), colony deeds (NEP-171), the planet treasury (SputnikDAO-style), bounties</td><td>the chain</td></tr>
+<tr><td>Server simulation</td><td>production, stock, combat, terraform %, the export amounts that get minted</td><td>the game server</td></tr>
+<tr><td>Client</td><td>rendering and input</td><td>nothing</td></tr>
+</tbody>
+</table>
+</div>
+<p><strong>The Trade Hub is the only door.</strong> Exporting cargo mints tokens from simulated stock; importing burns them. Markets match orders off-chain and settle each fill as one batch of intents that must sum to zero per token, with a fee leg to the stall owner, a treasury leg, and a protocol-fee leg <em>(proposed)</em>. Gameplay never waits for the chain; only a trade's own settlement does.</p>
+<h2>6. Fair merchants</h2>
+<p>The Guild's price for every pair is one readable rule: <code>mid = reference × (target inventory ÷ inventory)^k</code>, reference = the planet's 24-hour volume-weighted price, spread 4 % widening to 15 % where stock is thin, clamped so that no dump can zero a pair. Every offer shows its reason: &quot;inventory 2.1× target, 24 h VWAP 0.92 → bid −48 %&quot;. The Guild's hourly strategy (what to stockpile, where to fly) is computed by a model running in a trusted execution environment on NEAR AI Cloud; <strong>our goal is to verify its signature in the app and show the attested reason next to the quote. Until that check runs, treat &quot;verified&quot; as a goal, not a claim.</strong></p>
+<h2>7. What runs on real NEAR on Nov 14</h2>
+<div class="table-wrap">
+<table>
+<thead><tr><th>Feature</th><th>Real</th><th>Mock</th></tr></thead>
+<tbody>
+<tr><td>Social login, named accounts, gasless actions</td><td>planned real (NEAR Auth, NEP-366 relayer)</td><td>fallback: server-created custodial accounts</td></tr>
+<tr><td>Cargo tokens (NEP-245)</td><td>planned real</td><td>mock ledger with real-shaped receipts</td></tr>
+<tr><td>Markets on NEAR Intents</td><td>planned real for one small trade, dry-run first; NEAR-priced pairs bounded by a 10 NEAR Guild float <em>(proposed)</em></td><td>mock verifier</td></tr>
+<tr><td>Guild wallets, director key</td><td>mock</td><td>mock</td></tr>
+<tr><td>Colony Agent API / MCP (external agents as players)</td><td>planned (server-side, no chain adapter needed); agents sign through the colony's custodial key under its allowance</td><td>—</td></tr>
+<tr><td>Deed, treasury, bounties</td><td>mock</td><td>mock</td></tr>
+</tbody>
+</table>
+</div>
+<p>The README's mock/real table is authoritative; if they differ, the README wins.</p>
+<h2>8. Fourteen-day planet, what happens after</h2>
+<p>Planets admit colonies for 24 hours and live 14 days (the matchmaking design; during the hackathon the sector uses the simpler dev-seat flow, which fills five seats per planet and opens the next planet, with no admission window). A colony that launches its rocket becomes Settled: inert, invulnerable, still counted. The player lands on the next planet with part of the cargo. Cross-planet trade happens only through the Guild. Post-hackathon: desert and ocean planets, the air layer, walls, PvP raids, the full treasury project list, mercenary agents, staking of the player's own NEAR on a Settled colony's deed (no in-game power), and the real adapters for every remaining port.</p>
+<h2>9. Risks we accept and state</h2>
+<ul>
+<li>No anti-cheat and no anti-bot in beta; mint caps pace supply but do not secure it; the Guild float is the loss limit for NEAR-priced pairs.</li>
+<li><code>intents.near</code> is mainnet-only; we test with tiny amounts and dry runs.</li>
+<li>Balance numbers are proposed defaults, tuned live in playtests; the simulation that produced them is in the repo.</li>
+<li>The 3D client predates the hackathon window and is disclosed as baseline.</li>
+</ul>
+</article>
 </main>
 </body>
 </html>

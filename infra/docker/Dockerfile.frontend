@@ -6,6 +6,7 @@ FROM node:24-bookworm AS build
 WORKDIR /src
 COPY . .
 RUN npm ci
+RUN node frontend/whitepaper/render.mjs
 RUN npx vite build
 RUN node --input-type=module <<'EOF'
 import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
