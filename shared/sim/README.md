@@ -126,9 +126,15 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
   returns `{ ok: true, podEntityId, q, r }` or `{ ok: false, code }`. `system.spawnColony` and `dev.land` return the code.
 - A colony lands once (`already_landed`, also for `dev.land` with `(q, r)` on a colony that has a pod), so its
   `landing.cargo` is credited once.
-- Explicit `(q, r)` on a slot claimed by another colony, or within `hq.startingKit.minLandingSeparation` (6) of another
-  colony's pod, is `landing_site_taken`; off the map is `invalid_args`. Without `(q, r)` the colony takes its preferred
-  slot (`slotIndex ?? colonyId`) if free, else the first free slot, else `landing_site_taken`; a planet without slots
-  lands at (0, 0).
+- **Where a colony lands is decided by the landing planner** (`world/landingPlanner.ts`, D-39):
+  `nextLandingSite(state, colony, { slotIndex?, q?, r?, beyondSlots? })`. Explicit `(q, r)` is checked by
+  `landingBlock`: off the map `invalid_args`; water, another colony's tile or slot, or within
+  `hq.startingKit.minLandingSeparation` (6) of **any landing ever made** (`blobs.landingHistory`, kept after a colony
+  is gone) or of another colony's pod / HQ / structure: `landing_site_taken`. Without `(q, r)` the colony takes its
+  preferred slot (`slotIndex ?? colonyId`) if free, else the first free slot; a planet with slots then answers
+  `landing_site_taken` (capacity) unless `beyondSlots`, a slotless planet searches the map (planet centre first).
+  `spawnColonyLanding` appends the landing to the history (`recordLanding`); no position is ever landed on twice.
+- **Presence** (`world/presence.ts`): `colonyPresence`, `faunaPositions`, `entitiesNear`, `nearestEntity`,
+  `presenceView` (plain data for an AI orchestrator). New entity kinds register a role with `registerPresenceRole`.
 - `dev.land` deploys an undeployed pod now; relocating it to `(q, r)` within the separation of another colony's pod is
   `landing_site_taken`, off the map `invalid_args` (pod untouched).

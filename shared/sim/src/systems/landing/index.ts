@@ -4,7 +4,6 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf, setField } from '../../ecs/store';
 import { ensureStarterHubSpace, getSpawnSlots, type SpawnSlot } from '../../gen/spawnSlots';
-import { hexDistance, inHex } from '../../grid/hex';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
 import { ensureColonyRecord } from '../../kernel/colonies';
@@ -12,6 +11,8 @@ import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type ColonyState, type PlanetState, type SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { minLandingSeparation, nextLandingSite } from '../../world/landingPlanner';
+import { recordLanding } from '../../world/presence';
 import { defineSimModule } from '../define';
 import { defaultW01Data, resolveHqT1Row, revealVision, spawnHqUnit } from '../hq';
 
@@ -103,48 +104,31 @@ interface SpawnPlan {
   slot?: SpawnSlot;
 }
 
-/** Minimum hex distance between two colonies' landing pods (`hq.startingKit.minLandingSeparation`). */
+/** Minimum hex distance between two landings (`hq.startingKit.minLandingSeparation`); see `world/landingPlanner.ts`. */
 export function resolveMinLandingSeparation(data?: CompiledDataLike): number {
-  const v = Number(resolveStartingKitRow(data).minLandingSeparation);
-  return Number.isFinite(v) && v >= 0 ? v : 6;
-}
-
-const freeFor = (slot: SpawnSlot, colonyId: number) => slot.claimedBy === undefined || slot.claimedBy === colonyId;
-
-/**
- * Where `colonyId` would land, without changing anything: explicit `(q, r)` (taken if that slot belongs to another
- * colony), else its preferred slot (`slotIndex ?? colonyId`) when free, else the first free slot. Null = no free spot.
- */
-function planSpawnCoords(state: SimState, colonyId: number, opts: { slotIndex?: number; q?: number; r?: number }): SpawnPlan | null {
-  const slots = getSpawnSlots(state);
-  if (Number.isInteger(opts.q) && Number.isInteger(opts.r)) {
-    const q = opts.q as number;
-    const r = opts.r as number;
-    const slot = slots.find((s) => s.q === q && s.r === r);
-    return slot && !freeFor(slot, colonyId) ? null : { q, r, slot };
-  }
-  if (slots.length === 0) return { q: 0, r: 0 };
-  const preferred = slots[opts.slotIndex ?? colonyId];
-  const slot = preferred && freeFor(preferred, colonyId) ? preferred : slots.find((s) => freeFor(s, colonyId));
-  return slot ? { q: slot.q, r: slot.r, slot } : null;
+  return minLandingSeparation(data);
 }
 
 /**
- * Validates a landing and returns where it would happen, or the reject code. A colony lands once (its cargo is
- * credited once); no two colonies share a slot or land within `minLandingSeparation` of each other's pod.
+ * Validates a landing and returns where it would happen, or the reject code. The site comes from the landing planner
+ * (`nextLandingSite`, D-39): explicit `(q, r)` checked against the rules, else the preferred / first free spawn slot,
+ * else the best free site on the planet. A colony lands once, and no landing ever comes within
+ * `minLandingSeparation` of an earlier landing (any colony, alive or gone) or of another colony's pod / HQ / buildings.
  */
 export function checkColonyLanding(
   state: SimState,
   opts: Pick<SpawnColonyLandingOpts, 'colonyId' | 'slotIndex' | 'q' | 'r' | 'data'>,
 ): { ok: true; plan: SpawnPlan } | { ok: false; code: LandingRejectCode } {
-  const pods = getLandingPods(state);
-  if (pods.some((p) => p.colonyId === opts.colonyId)) return { ok: false, code: 'already_landed' };
-  const plan = planSpawnCoords(state, opts.colonyId, opts);
-  if (!plan) return { ok: false, code: 'landing_site_taken' };
-  if (!inHex(plan.q, plan.r, state.grid.radius)) return { ok: false, code: 'invalid_args' };
-  const minSep = resolveMinLandingSeparation(opts.data);
-  if (pods.some((p) => hexDistance(p.q, p.r, plan.q, plan.r) < minSep)) return { ok: false, code: 'landing_site_taken' };
-  return { ok: true, plan };
+  // Planets saved before the landing history existed still know their pods.
+  if (getLandingPods(state).some((p) => p.colonyId === opts.colonyId)) return { ok: false, code: 'already_landed' };
+  const explicit = Number.isInteger(opts.q) && Number.isInteger(opts.r);
+  const next = nextLandingSite(state, opts.colonyId, {
+    slotIndex: opts.slotIndex,
+    ...(explicit ? { q: opts.q, r: opts.r } : {}),
+    data: opts.data,
+  });
+  if (!next.ok) return next;
+  return { ok: true, plan: { q: next.site.q, r: next.site.r, ...(next.site.slot ? { slot: next.site.slot } : {}) } };
 }
 
 /**
@@ -174,6 +158,8 @@ export function spawnColonyLanding(
     slot.claimedBy = colonyId;
     setBlob(state, 'spawnSlots', getSpawnSlots(state), tick);
   }
+  // Remembered forever: the planner never lands anyone here (or within the separation) again (D-39).
+  recordLanding(state, { colony: colonyId, ...(col.id ? { colonyId: col.id } : {}), ...(opts.playerId ? { playerId: opts.playerId } : {}), q, r, tick, ...(slot ? { slot: slot.index } : {}) }, tick);
   ensureStarterHubSpace(state, q, r, colonyId);
   const kit = resolveStartingKitRow(data);
   const totalTicks = resolveDescentTicks(kit);
