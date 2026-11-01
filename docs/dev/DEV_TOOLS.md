@@ -16,6 +16,21 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 | `/dev/parity/` | Engine parity page used by `npm run test:parity` (`window.__parity.run(id)`) |
 | `/playground.html`, `/landing.html`, `/design/` | 3D model storybook, landing site, design system (see the main README) |
 
+## Public hosts (W26)
+
+`npm run stack:local` serves the eight `terraagent.fun` names from nginx on port 80. That is separate from `npm run dev` (the Vite client and the Nest app on `TA_PORT_BASE`). Curl with `--resolve <host>:80:127.0.0.1`, or install [`infra/hosts/local.hosts`](../../infra/hosts/local.hosts) so a browser can open the names. Only nginx publishes a port. The app container uses the dev Postgres on 15434. `npm run stack:local:down` does not stop that Postgres.
+
+| Host | What |
+|---|---|
+| `http://terraagent.fun/` | Landing (`/landing.html`) |
+| `http://pitchdeck.terraagent.fun/` | Pitch deck |
+| `http://whitepaper.terraagent.fun/` | Whitepaper, rendered from `docs/hackathon/public/whitepaper.md` |
+| `http://design.terraagent.fun/design/` | Faction Plate index. Tokens: `/design/css/tokens.css` |
+| `http://play.terraagent.fun/` | Play page. `/v1/` and `/ws` proxy to the app |
+| `http://playground.terraagent.fun/` | Playground |
+| `http://devchain.terraagent.fun/dev/chain/` | Mock chain explorer HTML (still 200 if the app is stopped). `/v1/dev/chain/` proxies to the app |
+| `http://api.terraagent.fun/v1/healthz` | API only. Any other path, including `/`, is 404 |
+
 ## URL parameters of `/play.html`
 
 **Online flow** (any of `scenario` / `host` switches the page to it):
@@ -110,6 +125,9 @@ Real environment wins over `.env.worktree`, which wins over `.env` (template: [`
 | `NEAR_ALLOW_MOCK_IN_PROD`, `AI_ALLOW_MOCK_IN_PROD`, `NOTIFY_ALLOW_MOCK_IN_PROD` | — | Allow mocks in production |
 | `ANALYTICS_DISABLED` | — | `true` drops analytics intake |
 | `TA_DB_POOL_SIZE` | 20 | Prisma connection pool |
+| `TA_DOMAIN` | `terraagent.fun` | Public site domain. `npm run deploy` refuses any other value. Operator `.env`, not the app env schema |
+| `DEPLOY_HOST` | empty | SSH host for `npm run deploy`. Empty refuses the deploy and names the variable |
+| `DEPLOY_USER` | `deploy` | SSH user. Empty refuses the deploy and names the variable. The script uses the operator's existing key: no `ssh-copy-id`, no `-i` |
 
 ## Debug handles (browser DevTools console)
 
@@ -135,3 +153,7 @@ Real environment wins over `.env.worktree`, which wins over `.env` (template: [`
 | `npm run gen` / `gen:check` | Regenerate registries (command/event kinds, sim systems, data tables, scenarios, Prisma schema) |
 | `npm run db:up`, `db:migrate`, `db:reset`, `db:gen -- --name x`, `db:seed` | Database |
 | `npm run wave`, `npm run wave -- status`, `npm run wave -- land NN` | Wave pipeline: open/resume the next wave and start its runner (`claude`, `agy`, or `grok`; `--runner` overrides, `--model` picks the id); the board; land a checked wave (e.g. `npm run wave -- land 00`). Single steps `wave:open`, `wave:issue`, `wave:issue:land`, `wave:check` (prints the owner check guide `docs/plan/checks/wNN-check.md`), `wave:land` — see the main README |
+| `npm run stack:local`, `stack:local:{infra,frontend,backend,chain}` | terraagent.fun on port 80: nginx, static image, app, devchain vhost. No second Postgres |
+| `npm run stack:local:down` | Stop those four compose projects. Leaves the dev Postgres (`terra-pg`, port 15434) running |
+| `npm run stack:local:smoke` | DEPLOYMENT §5 curls (`--resolve` to 127.0.0.1), including the explorer page while the app is stopped |
+| `npm run deploy`, `deploy:{infra,frontend,backend,chain}` | SSH the stack to `DEPLOY_USER@DEPLOY_HOST`. `--dry-run` prints the plan and does not connect. An empty `DEPLOY_HOST` or `DEPLOY_USER` exits non-zero and names the variable |
