@@ -4,8 +4,8 @@ import { attackCommand } from '../../units/commands/attack';
 import { dieCommand } from '../../units/commands/die';
 import { moveCommand } from '../../units/commands/move';
 import { stopCommand } from '../../units/commands/stop';
-import { issueUnitCommand as issueWith, stepUnits as stepWith, type IssueOpts } from '../../units/runner';
-import { createUnitRegistry, type UnitCommand } from '../../units/types';
+import { issueUnitCommand as issueWith, stepUnitWork as workWith, stepUnits as stepWith, type IssueOpts } from '../../units/runner';
+import { createUnitRegistry, type UnitCommand, type UnitWorkPhase } from '../../units/types';
 import { buildCommand, buildProvider } from '../construction/work';
 import { terraformCommand, terraformProvider } from '../terraform-basic/work';
 
@@ -24,6 +24,11 @@ export const UNIT_REGISTRY = createUnitRegistry(
  */
 export function issueUnitCommand(state: PlanetState, row: number, cmd: UnitCommand, ctx: StepContext, opts?: IssueOpts): string | void {
   return issueWith(UNIT_REGISTRY, state, row, cmd, ctx, opts);
+}
+
+/** The `work` of commands acting in `phase` (construction slot 6, combat slot 10). */
+export function stepUnitWork(phase: UnitWorkPhase, state: PlanetState, ctx: StepContext): void {
+  workWith(UNIT_REGISTRY, phase, state, ctx);
 }
 
 /** One step of the units runner with the full registry. */

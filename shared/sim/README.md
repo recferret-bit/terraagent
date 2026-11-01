@@ -42,7 +42,7 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
 |---|---|---|
 | Command kinds | `units/types.ts`, `units/commands/*`, `systems/*/work.ts` | `move`, `stop` (immediate), `die` (immediate), `attack`, `build`, `terraform`; plain data in `blobs.units` (`current`, `queue`, `holdUntil`, `skip`) |
 | Registry + entry point | `systems/units/registry.ts` | `UNIT_REGISTRY` (commands + work providers in priority order); `issueUnitCommand(state, row, cmd, ctx, { queue })` |
-| Runner | `units/runner.ts` | think (die / ask providers / execute) → move → settle (a command whose route ended this step runs once more) |
+| Runner | `units/runner.ts` | slot 5: think (die / ask providers / `execute`) → move → settle (a command whose route ended this step runs once more); `stepUnitWork` runs each command's `work` in its `phase` slot: build / terraform progress in 6 (`constructionProgress`, before `constructionSite`), damage in 10 (`combat`). HQ cell recharge is in 7 (power) |
 | Approach | `units/approach.ts` | "walk until within `[minDist, maxDist]` of a tile": shared first phase of move, build, terraform, attack |
 | Orchestrator | `units/movement/orchestrator.ts` | `requestMove` / `cancelMove` / `runMovement`; failed path = failed command, never a straight line; re-plans if the next waypoint becomes blocked |
 | Pathfinding service | `grid/pathQueue.ts`, `grid/pathSearch.ts`, `grid/pathProfiles.ts` | FIFO of plain-data requests (profile `ground`, goal band); resumable A*; a restored state replays the paid expansions, so it resolves on the same step |
@@ -60,6 +60,7 @@ input ──► unit command ──► units runner (slot 5) ──► movement 
   monotonic render clock that follows the newest *confirmed* tick at the measured sim rate
   (`frontend/game/app/online/entityMotion.ts`), so walking speed is constant and the prediction handing over to the
   confirmed state never draws a step back (a walk starts ~0.3 s after the click; panel and target ring react at once). `test/units/sync.spec.ts` checks replica and prediction match the authority each tick.
+- **No engine-dependent `Math`** (`sin`, `atan2`, `exp`, …; lint `ENGINE_MATH`): use `kernel/detMath.ts` (`atan2Det`, + − × ÷ only).
 - **Never write an entity's position** (`setField(…, 'x'|'y'|'q'|'r')`, `cols.x[row] = …`) outside locomotion. Spawn with
   `placeSpawnedEntity` (`ecs/placement.ts`, throws for an existing row); admin moves (`dev.teleport`, `dev.nudge`, `dev.land`)
   call `adminRelocateEntity`, allowed only in `systems/dev/`. The sim lint enforces this (rule message `SIM-M-01`,

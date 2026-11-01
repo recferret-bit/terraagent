@@ -6,14 +6,16 @@ import { setUnitActivity } from './approach';
 import { UnitBook } from './book';
 import { mobileStats } from './mobility';
 import { cancelMove, runMovement } from './movement/orchestrator';
-import { commandKey, type UnitCommand, type UnitCommandStatus, type UnitCtx, type UnitRegistry } from './types';
+import { commandKey, type UnitCommand, type UnitCommandStatus, type UnitCtx, type UnitRegistry, type UnitWorkPhase } from './types';
 
 /**
- * The units runner: one step of every unit's command processing (units slot).
+ * The units runner. `stepUnits` is one step of every unit's command processing (units slot 5):
  *  1. think: a dead unit gets `die`; an idle or auto-driven unit asks the work providers for work; the current
  *     command executes (most commands start by asking the movement orchestrator for a route);
  *  2. move: the orchestrator solves queued paths within the budget and advances units along their routes;
  *  3. settle: commands of units whose route ended this step execute once more, so a `move` ends on its arrival step.
+ * `stepUnitWork` then runs, in a later slot, the `work` of commands of that `phase` (build / terraform progress in the
+ * construction slot 6, damage in the combat slot 10).
  */
 
 export interface IssueOpts {
@@ -119,6 +121,24 @@ export function stepUnits(reg: UnitRegistry, state: PlanetState, ctx: StepContex
   }
 
   for (const id of book.ids()) if (rowOf(e, id) < 0) book.remove(id);
+  book.flush(ctx.tick);
+}
+
+/** The `work` of every unit whose current command acts in `phase` (construction slot 6, combat slot 10). */
+export function stepUnitWork(reg: UnitRegistry, phase: UnitWorkPhase, state: PlanetState, ctx: StepContext): void {
+  const book = new UnitBook(state);
+  const e = state.entities;
+  for (let row = 0; row < e.count; row++) {
+    if (isOut(state, row) || e.cols.hp[row] <= 0) continue;
+    const id = e.cols.id[row];
+    const cur = book.peek(id)?.current;
+    const def = cur ? reg.commands.get(cur.kind) : undefined;
+    if (!cur || !def?.work || def.phase !== phase) continue;
+    const u = unitCtx(state, ctx, book, row);
+    if (!u) continue;
+    const status = def.work(u, cur);
+    if (status !== 'running') finish(reg, u, book, status);
+  }
   book.flush(ctx.tick);
 }
 

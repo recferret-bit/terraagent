@@ -1,7 +1,7 @@
 import { rowOf } from '../../ecs/store';
-import { approach } from '../../units/approach';
+import { approach, atGoal } from '../../units/approach';
 import { faceTowards } from '../../units/movement/locomotion';
-import { defineUnitCommand, type BuildCommand, type UnitWorkProvider } from '../../units/types';
+import { defineUnitCommand, type BuildCommand, type UnitCtx, type UnitWorkProvider } from '../../units/types';
 import { advanceConstructionProgress } from './build';
 import { readConstructionOrders, writeConstructionOrders } from './index';
 
@@ -14,15 +14,24 @@ import { readConstructionOrders, writeConstructionOrders } from './index';
 
 const EN_ROUTE = 'waiting(builder: HQ en route)';
 
+const reachOf = (u: UnitCtx, order: { q: number; r: number }) => ({ q: order.q, r: order.r, minDist: u.stats.buildReach[0], maxDist: u.stats.buildReach[1] });
+
+function readyOrder(u: UnitCtx, c: BuildCommand) {
+  const orders = readConstructionOrders(u.state);
+  const order = orders.find((o) => o.orderId === c.orderId && o.colonyId === u.owner);
+  return order && order.status === 'in_progress' ? { orders, order } : null;
+}
+
 export const buildCommand = defineUnitCommand<BuildCommand>({
   kind: 'build',
+  phase: 'construction',
   key: (c) => `build:${c.orderId}`,
+  /** Units slot: walk to a tile within build reach of the site (outside its footprint) and face it. */
   execute(u, c) {
-    const orders = readConstructionOrders(u.state);
-    const order = orders.find((o) => o.orderId === c.orderId && o.colonyId === u.owner);
-    if (!order || order.status !== 'in_progress') return 'done';
-    const [minDist, maxDist] = u.stats.buildReach;
-    const status = approach(u, { q: order.q, r: order.r, minDist, maxDist });
+    const found = readyOrder(u, c);
+    if (!found) return 'done';
+    const { orders, order } = found;
+    const status = approach(u, reachOf(u, order));
     if (status !== 'arrived') {
       if (order.statusText !== EN_ROUTE) {
         order.statusText = EN_ROUTE;
@@ -31,6 +40,14 @@ export const buildCommand = defineUnitCommand<BuildCommand>({
       return status === 'failed' ? 'failed' : 'running';
     }
     faceTowards(u.state, u.row, order.q, order.r, u.ctx.tick);
+    return 'running';
+  },
+  /** Construction slot: one step of build progress (and the matching slice of the cost). */
+  work(u, c) {
+    const found = readyOrder(u, c);
+    if (!found) return 'done';
+    const { orders, order } = found;
+    if (!atGoal(u, reachOf(u, order))) return 'running';
     advanceConstructionProgress(u.state, order, rowOf(u.state.entities, order.entityId), u.row, u.ctx.tick, u.ctx);
     writeConstructionOrders(u.state, orders, u.ctx.tick);
     return (order.status as string) === 'completed' ? 'done' : 'running'; // advanced above (TS narrowed the type)

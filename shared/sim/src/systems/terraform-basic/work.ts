@@ -8,7 +8,7 @@ import { setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
-import { approach, setUnitActivity } from '../../units/approach';
+import { approach, atGoal, setUnitActivity } from '../../units/approach';
 import { faceTowards } from '../../units/movement/locomotion';
 import { defineUnitCommand, type TerraformCommand, type UnitCtx, type UnitWorkProvider } from '../../units/types';
 import { stepTerraformWorkWithCell, syncHqView } from '../hq';
@@ -86,20 +86,36 @@ function workJob(state: PlanetState, order: TerraformOrder, row: number, ctx: St
   return true;
 }
 
+/** The terraform order and its first job, when that job is still the tile `c` works on. */
+function currentJob(u: UnitCtx, c: TerraformCommand) {
+  const byColony = readOrdersByColony(u.state);
+  const order = (byColony[u.owner] ?? []).find((o) => o.orderId === c.orderId);
+  const job = order?.jobs[0];
+  return order && job && job.q === c.q && job.r === c.r ? { byColony, order } : null;
+}
+
+const reachOf = (u: UnitCtx, c: TerraformCommand) => ({ q: c.q, r: c.r, minDist: u.stats.terraformReach[0], maxDist: u.stats.terraformReach[1] });
+
 export const terraformCommand = defineUnitCommand<TerraformCommand>({
   kind: 'terraform',
+  phase: 'construction',
   key: (c) => jobKey(c.orderId, c.q, c.r),
+  /** Units slot: walk into reach of the tile, then face it (the work itself happens in the construction slot). */
   execute(u, c) {
-    const byColony = readOrdersByColony(u.state);
-    const order = (byColony[u.owner] ?? []).find((o) => o.orderId === c.orderId);
-    const job = order?.jobs[0];
-    if (!order || !job || job.q !== c.q || job.r !== c.r) return 'done';
-    const [minDist, maxDist] = u.stats.terraformReach;
-    const status = approach(u, { q: c.q, r: c.r, minDist, maxDist });
+    if (!currentJob(u, c)) return 'done';
+    const status = approach(u, reachOf(u, c));
     if (status !== 'arrived') return status === 'failed' ? 'failed' : 'running';
-
     setUnitActivity(u, ENTITY_STATE.working, c.q, c.r);
     faceTowards(u.state, u.row, c.q, c.r, u.ctx.tick);
+    return 'running';
+  },
+  /** Construction slot: one step of work on the tile, energy from the unit's cell. */
+  work(u, c) {
+    const found = currentJob(u, c);
+    if (!found) return 'done';
+    if (!atGoal(u, reachOf(u, c))) return 'running';
+    const { byColony, order } = found;
+    setUnitActivity(u, ENTITY_STATE.working, c.q, c.r);
     const completed = workJob(u.state, order, u.row, u.ctx);
     writeOrdersByColony(u.state, byColony, u.ctx.tick);
     syncHqView(u.state, u.row, u.ctx.tick, u.ctx.data);

@@ -37,6 +37,13 @@ function inBand(u: UnitCtx, goal: MoveGoal): boolean {
   return !(pathBlockedFor(u.state, u.stats.profile)?.(here) ?? false);
 }
 
+/** Without moving anything: is the unit where `approach(goal)` would answer `arrived`? (For `work` phases.) */
+export function atGoal(u: UnitCtx, goal: MoveGoal): boolean {
+  const motion = getMotion(u.state, u.id);
+  if (motion && sameGoal(motion.goal, goal)) return motion.status === 'arrived';
+  return inBand(u, goal);
+}
+
 /**
  * Shared "go there first" phase of every command: `arrived` once the unit stands on a tile within the goal band,
  * `moving` while the movement orchestrator routes it there (the unit's state shows `moving`, its target the goal

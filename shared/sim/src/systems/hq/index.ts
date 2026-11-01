@@ -421,10 +421,10 @@ export function stepHq(state: PlanetState, ctx?: Partial<StepContext>): void {
   }
 }
 
-/** Slot 4: recharge runs before the units slot (5) so a unit's work this step sees the cell as it was. */
+/** Power slot (7): HQ cell recharge, after the construction slot's work drew from the cell this step. */
 export const hq = defineSystem({
   id: 'hq',
-  slot: 4,
+  slot: 7,
   wave: 'W01',
   run(state, ctx) {
     stepHq(state, ctx);

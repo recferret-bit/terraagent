@@ -37,11 +37,16 @@ export interface UnitCtx {
   readonly record: UnitRecord;
 }
 
+/** Pipeline stage a command's `work` runs in (SIMULATION §3): `construction` = slot 6, `combat` = slot 10. */
+export type UnitWorkPhase = 'construction' | 'combat';
+
 /**
  * One command kind. `immediate` kinds (stop, die) run once when issued and are never queued. The others become the
- * unit's current command and `execute` runs once per step (and once more on the step its route ends) until it returns
- * `done` or `failed`. `key` identifies the command's target, so an auto provider re-proposing the same work keeps the
- * running command instead of restarting it.
+ * unit's current command and `execute` runs once per step in the units slot (and once more on the step its route
+ * ends) until it returns `done` or `failed`: it decides and moves (approach), it does not change the world. Commands
+ * that act on the world (build / terraform progress, damage) do it in `work`, which the runner calls in `phase`'s
+ * pipeline slot, after every unit has moved. `key` identifies the command's target, so an auto provider re-proposing
+ * the same work keeps the running command instead of restarting it.
  */
 export interface UnitCommandDef<C extends UnitCommand = UnitCommand> {
   readonly kind: C['kind'];
@@ -49,6 +54,10 @@ export interface UnitCommandDef<C extends UnitCommand = UnitCommand> {
   /** Game-rule check when the command is issued; returns a reject code. */
   validate?(u: UnitCtx, cmd: C): string | void;
   execute(u: UnitCtx, cmd: C): UnitCommandStatus;
+  /** The stage `work` runs in (required with `work`). */
+  readonly phase?: UnitWorkPhase;
+  /** One step of effect on the world for a unit that `execute` brought into reach; `running` until it is done. */
+  work?(u: UnitCtx, cmd: C): UnitCommandStatus;
   key?(cmd: C): string;
 }
 

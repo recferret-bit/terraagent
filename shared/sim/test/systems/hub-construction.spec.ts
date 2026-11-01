@@ -265,7 +265,8 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
     const hubRow = rowOf(state.entities, waitingOrder.entityId);
     expect(state.entities.cols.state[hubRow]).toBe(ENTITY_STATE.waiting);
 
-    // Grant the missing 80 metals.t1 -> starts construction on next step
+    // Grant the missing 80 metals.t1 -> the site pays and goes in_progress (construction slot), the builder takes it
+    // up in the next step's units slot and works it in that step's construction slot
     host.submit({
       colonyIndex: 0,
       source: 'dev',
@@ -273,6 +274,8 @@ describe('W01-16: Pay-on-start after linked prep & waiting_resources behavior (U
       kind: 'dev.grant',
       args: { resource: 'metals.t1', amount: 80 },
     });
+    host.step(1);
+    expect(getConstructionOrders(state, 0)[0]!.progress).toBe(0);
     host.step(1);
 
     const activeOrder = getConstructionOrders(state, 0)[0]!;

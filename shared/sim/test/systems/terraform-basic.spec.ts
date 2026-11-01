@@ -66,7 +66,8 @@ describe('W01-13: Grade, Clear, and Break operations', () => {
 
     expect(host.tick).toBe(10);
     expect(host.tick * 0.2).toBeCloseTo(2.0, 5);
-    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(780, 4);
+    // the job ends in the construction slot; the idle HQ's cell then recharges 0.6 E in the power slot of that step
+    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(780.6, 4);
     expect(state.grid.layers.prep[tileIdx]).toBe(PREP.prepared);
     expect(state.entities.cols.state[hqSlot]).toBe(ENTITY_STATE.idle);
     expect(getHqView(state, 0)?.queueCount).toBe(0);
@@ -99,7 +100,8 @@ describe('W01-13: Grade, Clear, and Break operations', () => {
     events.push(...res17.events);
 
     expect(host.tick).toBe(17);
-    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(770, 4);
+    // the job ends in the construction slot; the idle HQ's cell then recharges 0.6 E in the power slot of that step
+    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(770.6, 4);
     expect(state.grid.layers.terrain[tileIdx]).toBe(TERRAIN.flat);
     expect(state.grid.layers.prep[tileIdx]).toBe(PREP.flat);
     expect(getColonyStock(state, 0)['bio.biomass']).toBe(5);
@@ -136,7 +138,8 @@ describe('W01-13: Break, deposit preservation, territory rules, and queue manage
 
     expect(host.tick).toBe(20);
     expect(host.tick * 0.2).toBeCloseTo(4.0, 5);
-    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(740, 4);
+    // the job ends in the construction slot; the idle HQ's cell then recharges 0.6 E in the power slot of that step
+    expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(740.6, 4);
     expect(state.grid.layers.terrain[tileIdx]).toBe(TERRAIN.flat);
     expect(state.grid.layers.prep[tileIdx]).toBe(PREP.flat);
     expect(getColonyStock(state, 0)['metals.t1']).toBe(10);

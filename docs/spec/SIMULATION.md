@@ -50,7 +50,7 @@ The sim must be **reproducible in tests**: same seed + same commands at the same
 | 4 | `ruleEngine` | Each colony is evaluated once per second of game time, staggered by colony index. On coarse steps (`dt = 5`) every colony runs once. |
 | 5 | `units` | Dispatch from order lanes, path requests (budgeted A\*), movement × `dt`. |
 | 6 | `construction` | Build, upgrade, repair and terraform progress × `dt`. |
-| 7 | `power` | Rebuild the grid graph if dirty; per-component balance; pylon flow and overload (§7.4); brownout shedding. |
+| 7 | `power` | HQ power-cell recharge (W01). Rebuild the grid graph if dirty; per-component balance; pylon flow and overload (§7.4); brownout shedding. |
 | 8 | `production` | Extractors, fuel upkeep, storage caps × `dt`. |
 | 9 | `factories` | Unit production queues, supply cap. |
 | 10 | `combat` | Damage = DPS × multiplier × `dt × TICK_MS`. On coarse steps, fights resolve in larger chunks; accepted (D-24). |
@@ -61,7 +61,7 @@ The sim must be **reproducible in tests**: same seed + same commands at the same
 
 - `SIM-T-01` Systems not yet implemented are registered as no-ops, so the order stays fixed.
 - `SIM-T-02` Per-step budget: A\* node expansions ≤ 2 000 per planet per step. Overflow requests wait in a FIFO (`state.pathQueue`). The movement orchestrator (slot 5, `units`) is the only client of that queue: units ask it for a move, it keeps one live request per unit, hands requests to the pathfinding service in FIFO order and gives each solved path to the unit as its route. A half-done search in a restored snapshot is rebuilt by replaying its paid expansions, so it resolves on the same step.
-- `SIM-M-01` **Units never teleport.** All unit input is a unit command (`move`, `stop`, `die`, `attack`, `build`, `terraform`) executed in slot 5; a live entity's position changes only by locomotion along an orchestrated route, at its data speed. Work happens only within the unit's reach of the target (data rows). Spawning sets the first position; admin `dev.*` commands are the only other writers. Ground units cannot enter uncleared trees or rock, any resource-deposit tile (`isGroundMoveBlocked`) or a building footprint (a unit inside one may only leave it); `meta.pathEpoch` restarts paused searches when the ground changes. A re-plan mid-step continues forward, never back to the tile being left. Enforced by the sim lint and tests (`shared/sim/README.md` → Units).
+- `SIM-M-01` **Units never teleport.** All unit input is a unit command (`move`, `stop`, `die`, `attack`, `build`, `terraform`). Commands decide and move in slot 5 (`units`); their effects run in the slot that owns them: build / terraform progress in 6 (`construction`, before the site/payment state), damage in 10 (`combat`); a live entity's position changes only by locomotion along an orchestrated route, at its data speed. Work happens only within the unit's reach of the target (data rows). Spawning sets the first position; admin `dev.*` commands are the only other writers. Ground units cannot enter uncleared trees or rock, any resource-deposit tile (`isGroundMoveBlocked`) or a building footprint (a unit inside one may only leave it); `meta.pathEpoch` restarts paused searches when the ground changes. A re-plan mid-step continues forward, never back to the tile being left. Enforced by the sim lint and tests (`shared/sim/README.md` → Units).
 
 ---
 

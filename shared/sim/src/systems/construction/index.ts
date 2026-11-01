@@ -471,10 +471,13 @@ export function stepConstruction(state: PlanetState, ctx?: Partial<StepContext>)
   }
 }
 
-/** Slot 4: site / payment state runs before the units slot (5), whose `build` command does the work the same step. */
+/**
+ * Construction slot (6), after `constructionProgress` (same slot, id order): site / payment state. A site finished this
+ * step goes `in_progress` now and a builder takes it up from the next step's units slot.
+ */
 export const construction = defineSystem({
-  id: 'construction',
-  slot: 4,
+  id: 'constructionSite',
+  slot: 6,
   wave: 'W01',
   run(state, ctx) {
     stepConstruction(state, ctx);
