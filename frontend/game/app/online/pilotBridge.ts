@@ -19,6 +19,8 @@ export interface PilotBridgeDeps {
   fetch?: FetchLike;
   /** The guest boot target whose `accessToken` the socket sends. Null on scenario flows with no guest. */
   target(): GuestBootTarget | null;
+  /** Scenario flows have no guest target. Their dev token is the bearer until social login stores a JWT. */
+  sessionToken?(): string;
 }
 
 const GUEST: PilotState = { isGuest: true, handle: 'Guest', accountId: null, accessToken: '' };
@@ -58,7 +60,7 @@ export class PilotBridge {
   }
 
   async loginSocial(provider: 'google' | 'x', token: string): Promise<void> {
-    const accessToken = this.view().accessToken;
+    const accessToken = this.view().accessToken || this.deps.sessionToken?.() || '';
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
     const doFetch: FetchLike = this.deps.fetch ?? ((input, init) => fetch(input, init));

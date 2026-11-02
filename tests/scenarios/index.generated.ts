@@ -2,8 +2,10 @@
 import type { ScenarioDef } from './_define';
 import scn_w00_empty from './w00-empty';
 import scn_w01_landfall from './w01-landfall';
+import scn_w06_invisible_chain from './w06-invisible-chain';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
   { file: 'w00-empty', def: scn_w00_empty },
   { file: 'w01-landfall', def: scn_w01_landfall },
+  { file: 'w06-invisible-chain', def: scn_w06_invisible_chain },
 ];

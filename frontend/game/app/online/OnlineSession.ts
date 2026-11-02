@@ -109,7 +109,7 @@ export class OnlineSession {
       })
       : null;
     this.bootTarget = this.guest ?? createSessionTarget(loc);
-    this.pilot = new PilotBridge({ fetch: opts.fetch, target: () => this.guest });
+    this.pilot = new PilotBridge({ fetch: opts.fetch, target: () => this.guest, sessionToken: () => this.bootTarget.accessToken });
 
     const localOpts = !useGuestBoot && !opts.transport && !opts.localHost ? localHostOptions(this.search) : null;
     const local = localOpts ? new LocalTransport(workerLink(createLocalWorker()), localOpts) : null;

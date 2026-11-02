@@ -595,3 +595,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** the pilot bearer poll, and Retry, which polls again. The client stops polling once it sees `failed`, so a deposit the relay then settles on its own backoff stays on the toast until Retry. A reload polls once and shows the chip or the toast only when that deposit is still pending or failed.
 - **To resolve:** when a non-sim player push exists, publish `relay.settled` / `relay.failed` on that path and drop the poll. Do not put them on `planet.event`.
 - **Found:** 2026-11-02, W06-20
+
+### BE-40 · A dev scenario player gets a database colony so Save progress can attach a deposit
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/dev-scenario-seat.ts` (`seatDevScenarioPlayer`), `backend/app/src/ws/connection.ts` (`seatScenario`), `frontend/game/app/online/pilotBridge.ts` (`sessionToken`)
+- **What happens:** `?scenario=` joins with a `dev:` token and plays colony 0 with no `core.colony` row (BE-07). Social login only enqueues the colony deposit for rows of that player, so the join writes a player and a colony at index 0 on that planet. The row id is a new `co_` id, not the sim colony id `col_0`. Save progress sends the `dev:` token as the bearer (non-production only) so the upgrade is that same player. A real guest session (JWT, home seating) is unchanged.
+- **Why it is like this:** the W06 demo starts from the W01 landfall scenario. Without the row, the pilot id appears and no relayer deposit is enqueued.
+- **Workaround / mitigation:** one colony row per dev player per scenario planet. A unique clash on index 0 leaves the existing row.
+- **To resolve:** when scenario join seats through the same home path as a guest, drop this extra write and keep using that colony id.
+- **Found:** 2026-11-02, W06-28
