@@ -1,7 +1,7 @@
-import { commandGate, flagsFromList, newId, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
+import { commandGate, flagsFromList, newId, parseCommandArgs, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
 import {
-  buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, SIM_VERSION, SimHost, TICK_MS, tune,
-  type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTuning, type SimCommand, type SimEvent, type TuneRequest,
+  buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, previewPlanetTimePatch, SIM_VERSION, SimHost, TICK_MS, tune,
+  type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTimePatch, type PlanetTuning, type SimCommand, type SimEvent, type TuneRequest,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
 import { describeJournalProblem, resumeJournal } from './hostJournal';
@@ -327,9 +327,34 @@ export class LocalHostCore {
       }
       case 'local.reset': return this.restart(this.source);
       case 'tune': return this.devTune(a);
+      case 'time': return this.devTime(a);
       case 'ledger': return this.ledger.view(this.planetId, String(a.account ?? 'colony:0'), Number(a.limit ?? 10) || 10);
       default: throw new LocalDevError('host_unavailable', `"${name}" needs the game server; not available on this host`);
     }
+  }
+
+  private devTime(a: Record<string, unknown>): Record<string, unknown> {
+    const { planetId: _ignored, ...rest } = a;
+    const parsed = parseCommandArgs('dev.time', rest);
+    if (!parsed.success) throw new LocalDevError('invalid_args', parsed.error.issues[0]?.message ?? 'invalid time args');
+    const patch = parsed.data as PlanetTimePatch;
+    if (patch.timeOfDay !== undefined || patch.realHoursPerDay !== undefined || patch.timeScale !== undefined) {
+      this.queue.push({ colonyIndex: null, source: 'dev', commandId: newId('cm'), kind: 'dev.time', args: patch });
+    }
+    const pt = previewPlanetTimePatch(this.host.state, patch, this.host.tick, this.host.pipeline.config.data);
+    return {
+      planetId: this.planetId,
+      tick: this.host.tick,
+      hour: pt.hour,
+      timeOfDay: pt.timeOfDay,
+      phase: pt.phase,
+      cyclePhase: pt.cyclePhase,
+      day: pt.day,
+      daylight: pt.daylight,
+      isNight: pt.isNight,
+      realHoursPerDay: pt.realHoursPerDay,
+      timeScale: pt.timeScale,
+    };
   }
 
   private devWarp(a: Record<string, unknown>): { planetId: string; k: number } {

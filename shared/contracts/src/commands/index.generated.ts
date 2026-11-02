@@ -11,14 +11,16 @@ import { command as command_devReveal } from './dev-reveal';
 import { command as command_devSeed } from './dev-seed';
 import { command as command_devSpawn } from './dev-spawn';
 import { command as command_devTeleport } from './dev-teleport';
+import { command as command_devTime } from './dev-time';
 import { command as command_enqueueTask } from './enqueue-task';
 import { command as command_landPod } from './land-pod';
 import { command as command_moveUnit } from './move-unit';
 import { command as command_placeBuilding } from './place-building';
+import { command as command_setPlanetTime } from './set-planet-time';
 import { command as command_stopUnit } from './stop-unit';
 import { command as command_systemSpawnColony } from './system-spawn-colony';
 
-export const COMMANDS = [command_cancelTask, command_devCell, command_devGrant, command_devLand, command_devNudge, command_devPing, command_devReveal, command_devSeed, command_devSpawn, command_devTeleport, command_enqueueTask, command_landPod, command_moveUnit, command_placeBuilding, command_stopUnit, command_systemSpawnColony] as const;
+export const COMMANDS = [command_cancelTask, command_devCell, command_devGrant, command_devLand, command_devNudge, command_devPing, command_devReveal, command_devSeed, command_devSpawn, command_devTeleport, command_devTime, command_enqueueTask, command_landPod, command_moveUnit, command_placeBuilding, command_setPlanetTime, command_stopUnit, command_systemSpawnColony] as const;
 
 export type CommandKind = (typeof COMMANDS)[number]['kind'];
 export const COMMAND_KINDS = [...COMMANDS.map((d) => d.kind)] as unknown as readonly [CommandKind, ...CommandKind[]];

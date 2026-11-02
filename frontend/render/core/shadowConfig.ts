@@ -1,5 +1,15 @@
 import * as THREE from 'three';
 import type { ColonyViewport } from './createColonyViewport';
+import {
+  applyDayNightAtmosphere,
+  computeSolarState,
+  getDayNightParams,
+  hasViewportPlanetSurface,
+  isDayNightOn,
+  isViewportInDescent,
+  onDayNightChange,
+  stepStandaloneDayNight,
+} from './dayNightConfig';
 
 const KEY = 'terraagent.shadow';
 const PARAMS_KEY = 'terraagent.shadow.params.v7';
@@ -68,6 +78,7 @@ function readInitialShadowParams(): ShadowParams {
 
 let on = readInitialShadowOn();
 let params: ShadowParams = readInitialShadowParams();
+let manualSunAngles = false;
 const listeners = new Set<(on: boolean, params: ShadowParams) => void>();
 const colonyUniformListeners = new Set<(weatheringMul: number, rimStrength: number) => void>();
 
@@ -173,9 +184,14 @@ export function installShadowShaderPatch(): void {
   }
 }
 
-export function computeSunOffset(out = new THREE.Vector3(), p: Readonly<ShadowParams> = params): THREE.Vector3 {
-  const elev = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(p.sunElevation, 5, 88));
-  const azim = THREE.MathUtils.degToRad(p.sunAzimuth);
+export function computeSunOffset(out = new THREE.Vector3(), p?: Readonly<ShadowParams>): THREE.Vector3 {
+  const sp = p ?? params;
+  const useDayNight = p === undefined && isDayNightOn() && !manualSunAngles && sp.sunOrbitSpeed <= 0.01;
+  const solar = useDayNight ? computeSolarState(getDayNightParams(), sp.sunAzimuth, sp.sunElevation) : null;
+  const elevDeg = solar ? solar.sunElevation : sp.sunElevation;
+  const azimDeg = solar ? solar.sunAzimuth : sp.sunAzimuth;
+  const elev = THREE.MathUtils.degToRad(THREE.MathUtils.clamp(elevDeg, 5, 88));
+  const azim = THREE.MathUtils.degToRad(azimDeg);
   const horiz = Math.cos(elev) * SUN_DIST;
   return out.set(Math.cos(azim) * horiz, Math.sin(elev) * SUN_DIST, Math.sin(azim) * horiz);
 }
@@ -191,7 +207,7 @@ const warmTint = new THREE.Color(0xff8e47);
 export function followShadowTarget(vp: ColonyViewport, target: THREE.Vector3): void {
   const rec = viewports.get(vp);
   if (rec) rec.lastTarget.copy(target);
-  computeSunOffset(tmpOffset, params);
+  computeSunOffset(tmpOffset);
   tmpDir.copy(tmpOffset).normalize();
   tmpRight.crossVectors(worldUp, tmpDir);
   if (tmpRight.lengthSq() < 1e-5) tmpRight.set(1, 0, 0);
@@ -221,12 +237,11 @@ export function followShadowTarget(vp: ColonyViewport, target: THREE.Vector3): v
 export function syncViewportShadow(vp: ColonyViewport, baseSunColor?: number): void {
   const rec = viewports.get(vp);
   if (rec && baseSunColor !== undefined) rec.baseSunColor.setHex(baseSunColor);
+  if (isViewportInDescent(vp)) return;
   const sun = vp.sun;
   const mapSz = snapMapSize(params.mapSize);
   vp.renderer.shadowMap.enabled = on;
   sun.castShadow = on;
-  sun.shadow.intensity = on ? params.shadowIntensity : 0;
-  sun.shadow.radius = params.shadowSoftness;
   sun.shadow.normalBias = params.normalBias;
   sun.shadow.bias = params.shadowBias;
 
@@ -250,16 +265,30 @@ export function syncViewportShadow(vp: ColonyViewport, baseSunColor?: number): v
     cam.updateProjectionMatrix();
   }
 
-  const elevFactor = THREE.MathUtils.smoothstep(params.sunElevation, 8, 34);
-  if (rec) {
-    sun.color.copy(rec.baseSunColor).lerp(warmTint, (1 - elevFactor) * 0.55);
-  }
-  sun.intensity = params.sunIntensity * (0.72 + 0.28 * elevFactor);
-  vp.hemi.intensity = params.ambientIntensity;
-  vp.scene.environmentIntensity = params.ambientIntensity * 1.15;
-  vp.bloom.strength = params.bloomStrength;
-
   followShadowTarget(vp, rec ? rec.lastTarget : sun.target.position);
+
+  if (isDayNightOn()) {
+    const solar = applyDayNightAtmosphere(vp, params.sunAzimuth, params.sunElevation);
+    sun.color.copy(solar.sunColor);
+    sun.intensity = params.sunIntensity * solar.sunIntensityMult;
+    vp.hemi.intensity = params.ambientIntensity * (solar.hemiIntensity / 0.56);
+    vp.scene.environmentIntensity = params.ambientIntensity * 1.15 * solar.envIntensity;
+    vp.bloom.strength = params.bloomStrength + (1 - solar.daylight) * 0.12;
+    sun.shadow.intensity = on ? THREE.MathUtils.clamp(params.shadowIntensity * solar.shadowIntensityMult, 0, 1.6) : 0;
+    sun.shadow.radius = params.shadowSoftness * solar.shadowSoftnessMult;
+  } else {
+    applyDayNightAtmosphere(vp, params.sunAzimuth, params.sunElevation);
+    const elevFactor = THREE.MathUtils.smoothstep(params.sunElevation, 8, 34);
+    if (rec) {
+      sun.color.copy(rec.baseSunColor).lerp(warmTint, (1 - elevFactor) * 0.55);
+    }
+    sun.intensity = params.sunIntensity * (0.72 + 0.28 * elevFactor);
+    vp.hemi.intensity = params.ambientIntensity;
+    vp.scene.environmentIntensity = params.ambientIntensity * 1.15;
+    vp.bloom.strength = params.bloomStrength;
+    sun.shadow.intensity = on ? params.shadowIntensity : 0;
+    sun.shadow.radius = params.shadowSoftness;
+  }
 }
 
 export function registerShadowViewport(vp: ColonyViewport): () => void {
@@ -280,6 +309,9 @@ export function stepSunOrbit(vp: ColonyViewport): void {
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const dt = Math.min(0.1, Math.max(0, (now - rec.lastTickMs) / 1000));
   rec.lastTickMs = now;
+  if (hasViewportPlanetSurface(vp) && !isViewportInDescent(vp)) {
+    stepStandaloneDayNight(dt);
+  }
   if (params.sunOrbitSpeed > 0.01 && dt > 0) {
     params = { ...params, sunAzimuth: (params.sunAzimuth + dt * params.sunOrbitSpeed) % 360 };
     followShadowTarget(vp, rec.lastTarget);
@@ -301,6 +333,19 @@ function notifyAll(): void {
   }
   listeners.forEach((l) => l(on, params));
 }
+
+onDayNightChange((_on, _p, source) => {
+  if (source === 'user') {
+    manualSunAngles = false;
+    notifyAll();
+    return;
+  }
+  for (const { vp } of viewports.values()) {
+    if (hasViewportPlanetSurface(vp) && !isViewportInDescent(vp)) {
+      syncViewportShadow(vp);
+    }
+  }
+});
 
 export const isShadowOn = (): boolean => on;
 export const getShadowParams = (): Readonly<ShadowParams> => params;
@@ -325,6 +370,9 @@ export function setShadow(v: boolean): boolean {
 export const toggleShadow = (): boolean => setShadow(!on);
 
 export function setShadowParams(next: Partial<ShadowParams>): ShadowParams {
+  if (next.sunAzimuth !== undefined || next.sunElevation !== undefined) {
+    manualSunAngles = true;
+  }
   const merged = { ...params, ...next };
   if (next.mapSize !== undefined) merged.mapSize = snapMapSize(next.mapSize);
   params = merged;
@@ -333,4 +381,8 @@ export function setShadowParams(next: Partial<ShadowParams>): ShadowParams {
   return params;
 }
 
-export const resetShadowParams = (): ShadowParams => setShadowParams({ ...DEFAULT_SHADOW_PARAMS });
+export const resetShadowParams = (): ShadowParams => {
+  const res = setShadowParams({ ...DEFAULT_SHADOW_PARAMS });
+  manualSunAngles = false;
+  return res;
+};

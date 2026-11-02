@@ -466,3 +466,16 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Why it is like this:** the client's touchdown animation lasts 5 s and production refuses `dev.land`; the minimum keeps the server authoritative over the descent.
 - **To resolve:** if the owner wants one descent time, set `podDescentS` = `podLandMinS` (or drop `landPod`).
 - **Found:** 2026-11-01, review-fix round (SIM-GAMEPLAY, for FA-08)
+
+### GP-40 · `setPlanetTime` is open to any seated colony on a shared planet
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/time/index.ts` (`setPlanetTime`), `shared/contracts/src/commands/set-planet-time.ts`, `frontend/game/app/online/dayNightSync.ts`
+- **What happens:** any seated player on a planet can adjust `timeOfDay`, `realHoursPerDay` or `timeScale` in the `F8` `DAY/NIGHT` tab, which dispatches `setPlanetTime` and updates the authoritative planet solar clock (`state.blobs.planetTime`) for all players on that planet.
+- **Why it is like this:** the task specifies that the `F8` shader dialog's day/night parameters (`timeOfDay`, `realHoursPerDay`, `timeScale`) stay synchronized between client and server across both singleplayer and multiplayer.
+- **Workaround / mitigation:** unseated clients use `dev.time` (gated by `dev: true`, refused in production); command rate is throttled (`<= 8 Hz`) on the client.
+- **To resolve:** when competitive multiplayer waves land, gate `setPlanetTime` behind planet owner/admin privileges or move it to `dev: true`.
+- **Found:** 2026-11-02, day/night review round (SIM-GAMEPLAY)
+

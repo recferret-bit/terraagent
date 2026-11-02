@@ -34,10 +34,10 @@ import type { PodLandingStateName } from './PodTouchdownFx';
 import { extractPodDescentStatus } from './podStatus';
 import { createSessionHud } from './sessionHud';
 import { createSessionTarget, joinParam, scenarioParam } from './sessionTarget';
+import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
 import {
-  bindLocalSaveListeners, changedTiles, createSafeViewport, isEscapeBlockedByHudOverlay,
-  listSceneEntities, pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook,
-  resolveSessionPlanetKind, syncSpaceTerrainOffset, writeStoredPlanetKind,
+  bindLocalSaveListeners, changedTiles, createSafeViewport, isEscapeBlockedByHudOverlay, listSceneEntities,
+  pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind, syncSpaceTerrainOffset, writeStoredPlanetKind,
 } from './viewportHelper';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
@@ -46,61 +46,35 @@ export interface OnlineSessionOptions {
   viewport?: ColonyViewport; transport?: Transport; store?: WorldStore; localHost?: LocalHost;
   fetch?: FetchLike; storage?: StorageLike; search?: string; uiParent?: HTMLElement;
   makeMesh?: MeshFactory; wsDeps?: WsTransportDeps; planetKind?: PlanetKind;
-  skipDescent?: boolean; fromSpaceDescent?: boolean;
-  onReturnToOrbit?: (kind: PlanetKind) => void;
+  skipDescent?: boolean; fromSpaceDescent?: boolean; onReturnToOrbit?: (kind: PlanetKind) => void;
   /** May an unreachable game server fall back to a browser-local host (FA-06)? Default: dev builds only. */
   allowLocalFallback?: boolean;
 }
 
 /** Online play flow (`/play.html` short landing or `/play.html?planet=<kind>` full space-to-surface landing). */
 export class OnlineSession {
-  readonly viewport: ColonyViewport;
-  readonly transport: Transport;
-  readonly store: WorldStore;
-  readonly commandBus: CommandBus;
-  readonly commands: CommandBus;
-  readonly entities: EntityMeshes;
-  readonly landfall: LandfallController;
-  readonly flags: ClientFlagsStore;
-  readonly netStats = new NetStatsBoard();
-  readonly bootOverlay: BootOverlay | null;
-  readonly pauseOverlay: PauseOverlay;
+  readonly viewport: ColonyViewport; readonly transport: Transport; readonly store: WorldStore;
+  readonly commandBus: CommandBus; readonly commands: CommandBus; readonly entities: EntityMeshes;
+  readonly landfall: LandfallController; readonly flags: ClientFlagsStore; readonly netStats = new NetStatsBoard();
+  readonly bootOverlay: BootOverlay | null; readonly pauseOverlay: PauseOverlay;
   readonly whenBooted: Promise<BootAuthResult | null>;
 
-  terrain: HexTerrain | null = null;
-  cam: RTSCamera | null = null;
+  terrain: HexTerrain | null = null; cam: RTSCamera | null = null; lastPick: HexPick | null = null;
   private colonyFramed = false;
-  lastPick: HexPick | null = null;
-  planetId = '';
-  colonyId: string | null = null;
-  colonyIndex = 0;
-  spawn: { q: number; r: number } = { q: 0, r: 0 };
-  cameraTargetTile: { q: number; r: number } = { q: 0, r: 0 };
-  bootResult: BootAuthResult | null = null;
-  planetKind: PlanetKind | null;
+  planetId = ''; colonyId: string | null = null; colonyIndex = 0;
+  spawn = { q: 0, r: 0 }; cameraTargetTile = { q: 0, r: 0 };
+  bootResult: BootAuthResult | null = null; planetKind: PlanetKind | null;
 
-  private biomeKey = 'forestRock';
-  private lastHudMs = 0;
-  private readonly ownsViewport: boolean;
-  private readonly search: string;
-  private readonly skipDescent: boolean;
-  private readonly fromSpaceDescent: boolean;
-  private readonly fastStartLand: boolean;
-  private readonly onReturnToOrbit?: (kind: PlanetKind) => void;
-  private readonly allowLocalFallback: boolean;
-  private banner: ConnectionBanner | null;
-  private readonly hud: FeatureHud;
-  private readonly bootTarget: SessionTarget;
-  private readonly guest: GuestBootTarget | null;
-  private disposed = false;
-  private localHost: LocalHost | null = null;
-  private showSpaceTerrain = false;
-  private cameraCentered = false;
-  private landSent = false;
-  private hqDeployedSynced = false;
-  private tiles: ClientTiles | null = null;
-  private warp = 1;
-  private raf = 0;
+  private biomeKey = 'forestRock'; private lastHudMs = 0;
+  private readonly ownsViewport: boolean; private readonly search: string;
+  private readonly skipDescent: boolean; private readonly fromSpaceDescent: boolean; private readonly fastStartLand: boolean;
+  private readonly onReturnToOrbit?: (kind: PlanetKind) => void; private readonly allowLocalFallback: boolean;
+  private banner: ConnectionBanner | null; private readonly hud: FeatureHud;
+  private readonly bootTarget: SessionTarget; private readonly guest: GuestBootTarget | null;
+  private disposed = false; private localHost: LocalHost | null = null;
+  private showSpaceTerrain = false; private cameraCentered = false; private landSent = false; private hqDeployedSynced = false;
+  private tiles: ClientTiles | null = null; private warp = 1; private raf = 0;
+  private dayNightSync: OnlineDayNightSync | null = null;
   private last = typeof performance !== 'undefined' ? performance.now() : Date.now();
   private cleanups: Array<() => void> = [];
 
@@ -189,6 +163,8 @@ export class OnlineSession {
 
   private bindTransportListeners(): void {
     this.cleanups.push(this.transport.onMessage((m) => this.onHostMessage(m)));
+    this.dayNightSync = bindOnlineDayNightSync({ store: this.store, commandBus: this.commandBus, hasColony: () => Boolean(this.colonyId) });
+    this.cleanups.push(() => this.dayNightSync?.dispose());
   }
 
   /** Warp and welcome bookkeeping, for the transport and for an attached in-process host alike. */
@@ -345,6 +321,7 @@ export class OnlineSession {
 
   private onView(v: ClientView): void {
     if (v.tiles) this.onTiles(v, v.tiles);
+    if (!this.entities.podTouchdown.isSpacePhaseActive()) this.dayNightSync?.syncFrame();
     const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);
     this.biomeKey = look.biomeKey;
     const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
@@ -462,6 +439,7 @@ export class OnlineSession {
   private frameHud(now: number, dt: number): void {
     const v = this.store.latest;
     if (!v || this.entities.podTouchdown.isSpacePhaseActive()) return;
+    this.dayNightSync?.syncFrame();
     if (this.bootOverlay?.phase === 'descent' && this.entities.hasPodTouchedDown() && !this.bootOverlay.descentEl.hidden) {
       const status = extractPodDescentStatus(v, this.colonyIndex, this.spawn);
       this.bootOverlay.showDescent({ progress: status.progress, q: status.q, r: status.r, landed: true });

@@ -5,6 +5,10 @@ import { createArchetypeMesh, tickArchetypeMesh } from '../kitbash';
 import { buildInstanced, createFoliageMaterial, makePineGeo } from '../visuals/terrain/Scatter';
 import { getPixelArtParams, resetPixelArtParams } from './pixelArtPass';
 import {
+  computeSolarState, DEFAULT_DAY_NIGHT_PARAMS, getDayNightParams, isDayNightOn,
+  resetDayNightParams, setDayNight, setDayNightParams,
+} from './dayNightConfig';
+import {
   computeSunOffset, DEFAULT_SHADOW_PARAMS, followShadowTarget, getShadowParams,
   installShadowShaderPatch, isShadowOn, resetShadowParams, setShadow, setShadowParams,
   syncViewportShadow,
@@ -12,7 +16,7 @@ import {
 import type { ColonyViewport } from './createColonyViewport';
 import { disposeCrt, getCrtParams, initCrt, resetCrtParams } from '../ui/crt';
 import { selectVisualTab, togglePixelDialog } from '../ui/pixelDialog';
-import { CRT_SLIDERS, PIXEL_SLIDERS, SHADOW_SLIDERS } from '../ui/visualLabSpecs';
+import { CRT_SLIDERS, DAY_NIGHT_SLIDERS, PIXEL_SLIDERS, SHADOW_SLIDERS } from '../ui/visualLabSpecs';
 
 function makeMockViewport(): ColonyViewport {
   const scene = new THREE.Scene();
@@ -22,7 +26,12 @@ function makeMockViewport(): ColonyViewport {
   const hemi = new THREE.HemisphereLight(0x9ccfff, 0x4a5a3a, 0.85);
   scene.add(hemi);
   const domeMat = new THREE.ShaderMaterial({
-    uniforms: { uSun: { value: new THREE.Vector3(0, 1, 0) } },
+    uniforms: {
+      uSun: { value: new THREE.Vector3(0, 1, 0) },
+      uTop: { value: new THREE.Color(0x1a2736) },
+      uHorizon: { value: new THREE.Color(0x3b4d63) },
+      uSunCol: { value: new THREE.Color(0xfff1d6) },
+    },
   });
   const dome = new THREE.Mesh(new THREE.SphereGeometry(10, 4, 4), domeMat);
   dome.name = 'planetSkyDome';
@@ -48,8 +57,10 @@ function makeMockViewport(): ColonyViewport {
   };
 }
 
-describe('Dynamic shadows & sun position (shadowConfig)', () => {
+describe('Dynamic shadows & sun position (shadowConfig & dayNightConfig)', () => {
   beforeEach(() => {
+    resetDayNightParams('sync');
+    setDayNight(true);
     resetShadowParams();
     setShadow(true);
   });
@@ -103,7 +114,92 @@ describe('Dynamic shadows & sun position (shadowConfig)', () => {
     expect(vp.sun.shadow.bias).toBeCloseTo(-0.0008, 5);
     expect(vp.bloom.strength).toBeCloseTo(0.75, 5);
   });
+});
 
+describe('Day/night cycle sun color and shadow modulation (dayNightConfig)', () => {
+  beforeEach(() => {
+    resetDayNightParams('sync');
+    setDayNight(true);
+    resetShadowParams();
+    setShadow(true);
+  });
+
+  it('changes sun color, sky dome, and shadow intensity/softness dynamically across dawn, noon, dusk, and night', () => {
+    const vp = makeMockViewport();
+    setShadowParams({ shadowIntensity: 1.2, shadowSoftness: 1.0 });
+
+    // Dawn (06:15): warm amber/coral sun, low elevation, softer & lighter shadows
+    setDayNightParams({ timeOfDay: 6.25, sunWarmth: 1.2 });
+    syncViewportShadow(vp, 0xfff5e4);
+    const dawnState = computeSolarState(getDayNightParams());
+    expect(dawnState.period).toBe('DAWN');
+    expect(vp.sun.color.r).toBeGreaterThan(vp.sun.color.b * 1.45);
+    const dawnShadowIntensity = vp.sun.shadow.intensity;
+    const dawnShadowRadius = vp.sun.shadow.radius;
+    const dawnSunPos = vp.sun.position.clone();
+
+    // Noon (12:00): high elevation, bright daylight sun, crisp full-strength shadows
+    setDayNightParams({ timeOfDay: 12.0, noonTempK: 5800 });
+    syncViewportShadow(vp, 0xfff5e4);
+    const noonState = computeSolarState(getDayNightParams());
+    expect(noonState.period).toBe('DAY');
+    expect(noonState.sunElevation).toBeGreaterThan(dawnState.sunElevation + 20);
+    expect(vp.sun.color.b).toBeGreaterThan(dawnState.sunColor.b);
+    expect(vp.sun.shadow.intensity).toBeGreaterThan(dawnShadowIntensity);
+    expect(vp.sun.shadow.radius).toBeLessThan(dawnShadowRadius);
+    expect(vp.sun.position.distanceTo(dawnSunPos)).toBeGreaterThan(15);
+
+    // Dusk (17:45): warm crimson/amber sunset
+    setDayNightParams({ timeOfDay: 17.75, sunWarmth: 1.3 });
+    syncViewportShadow(vp, 0xfff5e4);
+    const duskState = computeSolarState(getDayNightParams());
+    expect(duskState.period).toBe('DUSK');
+    expect(vp.sun.color.r).toBeGreaterThan(vp.sun.color.b * 1.5);
+
+    // Night (00:00): cool orbital blue moonlight, attenuated night shadow intensity & wider penumbra
+    setDayNightParams({ timeOfDay: 0.0, nightBrightness: 0.35 });
+    syncViewportShadow(vp, 0xfff5e4);
+    const nightState = computeSolarState(getDayNightParams());
+    expect(nightState.period).toBe('NIGHT');
+    expect(vp.sun.color.b).toBeGreaterThan(vp.sun.color.r);
+    expect(vp.sun.shadow.intensity).toBeLessThan(1.2);
+    expect(vp.sun.shadow.radius).toBeGreaterThan(1.2);
+  });
+
+  it('preserves manual sun angles across automatic sync/step ticks, avoids extra composer.render on frame ticks, and skips descent/non-planet viewports', () => {
+    const vp = makeMockViewport();
+    let renderCalls = 0;
+    vp.composer.render = () => { renderCalls++; };
+    setShadowParams({ sunAzimuth: 90, sunElevation: 45 });
+    const manualOff = computeSunOffset().clone();
+
+    renderCalls = 0;
+    setDayNightParams({ timeOfDay: 14.0 }, 'sync');
+    setDayNightParams({ timeOfDay: 15.0 }, 'step');
+    expect(renderCalls).toBe(0);
+    expect(computeSunOffset().distanceTo(manualOff)).toBeLessThan(1e-4);
+
+    setDayNightParams({ timeOfDay: 6.25 }, 'user');
+    expect(computeSunOffset().distanceTo(manualOff)).toBeGreaterThan(5);
+
+    const darkVp = makeMockViewport();
+    const dome = darkVp.scene.getObjectByName('planetSkyDome')!;
+    darkVp.scene.remove(dome);
+    darkVp.scene.background = new THREE.Color(0x0b0d11);
+    syncViewportShadow(darkVp);
+    expect((darkVp.scene.background as THREE.Color).getHex()).toBe(0x0b0d11);
+
+    const descRoot = new THREE.Group();
+    descRoot.name = 'descent:root';
+    vp.scene.add(descRoot);
+    vp.sun.color.setHex(0x123456);
+    syncViewportShadow(vp, 0xfff5e4);
+    expect(vp.sun.color.getHex()).toBe(0x123456);
+    vp.scene.remove(descRoot);
+  });
+});
+
+describe('Colony depth shader and uniform live-tuning', () => {
   it('attaches GPU-animated customDepthMaterial to bots and buildings and live-tunes colony uniforms', () => {
     const hero = createArchetypeMesh('robot.hero', 'dune');
     expect(hero.castShadow).toBe(true);
@@ -177,11 +273,13 @@ describe('Bottom-left switches bar and F8 tabbed visual settings dialog', () => 
     document.body.innerHTML = '<div id="app"><canvas></canvas></div>';
     resetCrtParams();
     resetPixelArtParams();
+    resetDayNightParams('sync');
+    setDayNight(true);
     resetShadowParams();
     setShadow(true);
   });
 
-  it('mounts CRT, PIXEL, SHADOW switches and F8 button in #fx-bar with matching PIXEL/F8 size and no RGB/GAMEBOY modes', () => {
+  it('mounts CRT, PIXEL, SHADOW switches and F8 button in #fx-bar and renders all 4 tabs (CRT, PIXEL, SHADOW, DAY/NIGHT)', () => {
     const host = document.getElementById('app')!;
     initCrt([host]);
 
@@ -203,9 +301,9 @@ describe('Bottom-left switches bar and F8 tabbed visual settings dialog', () => 
     expect(dlg.textContent).not.toContain('FULL RGB');
 
     const tabs = [...dlg.querySelectorAll<HTMLElement>('.pd-tab')].map((t) => t.dataset.tab);
-    expect(tabs).toEqual(['crt', 'pixel', 'shadow']);
+    expect(tabs).toEqual(['crt', 'pixel', 'shadow', 'daynight']);
 
-    // Switch through all 3 tabs and verify every parameter slider is rendered and interactive
+    // Switch through all 4 tabs and verify every parameter slider is rendered and interactive
     selectVisualTab('crt');
     expect(dlg.querySelectorAll('#pd-sliders input[type=range]').length).toBe(CRT_SLIDERS.length);
     const scanInp = dlg.querySelector<HTMLInputElement>('input[data-key="scanlineIntensity"]')!;
@@ -235,11 +333,34 @@ describe('Bottom-left switches bar and F8 tabbed visual settings dialog', () => 
     expect(getShadowParams().sunAzimuth).toBe(210);
     expect(isShadowOn()).toBe(true);
 
+    selectVisualTab('daynight');
+    expect(dlg.querySelectorAll('#pd-sliders input[type=range]').length).toBe(DAY_NIGHT_SLIDERS.length);
+    expect(dlg.querySelector('#pd-cycle-clock')).not.toBeNull();
+    expect(dlg.querySelector('#pd-sun-swatch')).not.toBeNull();
+
+    const nightPreset = dlg.querySelector<HTMLButtonElement>('[data-time-preset="0"]')!;
+    nightPreset.click();
+    expect(getDayNightParams().timeOfDay).toBe(0);
+    expect(dlg.querySelector('#pd-cycle-clock')?.textContent).toContain('NIGHT');
+
+    const dayLenInp = dlg.querySelector<HTMLInputElement>('input[data-key="dayLengthHours"]')!;
+    dayLenInp.value = '1.5';
+    dayLenInp.dispatchEvent(new Event('input'));
+    expect(getDayNightParams().dayLengthHours).toBeCloseTo(1.5, 3);
+
+    const scaleInp = dlg.querySelector<HTMLInputElement>('input[data-key="timeScale"]')!;
+    scaleInp.value = '4';
+    scaleInp.dispatchEvent(new Event('input'));
+    expect(getDayNightParams().timeScale).toBeCloseTo(4, 3);
+    expect(isDayNightOn()).toBe(true);
+
     togglePixelDialog(false);
     expect(dlg.classList.contains('open')).toBe(false);
     disposeCrt();
     expect(getShadowParams().sunAzimuth).toBe(210);
     resetShadowParams();
     expect(getShadowParams().sunAzimuth).toBe(DEFAULT_SHADOW_PARAMS.sunAzimuth);
+    resetDayNightParams('sync');
+    expect(getDayNightParams().timeOfDay).toBe(DEFAULT_DAY_NIGHT_PARAMS.timeOfDay);
   });
 });

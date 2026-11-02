@@ -49,6 +49,10 @@ export const env = defineEnv('game', {
   }),
   /** Number of dev planets loaded at boot, spread evenly over the threads (desert with W01, the flat W00 planet without). */
   GAME_DEV_PLANETS: z.coerce.number().int().min(0).default(0),
+  /** Default real-world hours for 1 full planetary day (24 solar hours); unset = data table default (0.25 h). */
+  PLANET_DAY_HOURS: z.coerce.number().min(0.005).max(168).optional(),
+  /** Default planetary time-scale multiplier; unset = data table default (1). */
+  PLANET_TIME_SCALE: z.coerce.number().min(0).max(1000).optional(),
 });
 
 const POOL = Symbol('SIM_THREAD_POOL');
@@ -99,6 +103,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   async onApplicationBootstrap(): Promise<void> {
     await this.pool.start();
     bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
+    this.wireDefaultPlanetTime();
     const home = this.homeService;
     if (home) {
       const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
@@ -149,6 +154,25 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       : { params: { type: W00_PLANET_TYPE } };
     // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
     await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
+  }
+
+  private wireDefaultPlanetTime(): void {
+    const realHoursPerDay = this.env.PLANET_DAY_HOURS as number | undefined;
+    const timeScale = this.env.PLANET_TIME_SCALE as number | undefined;
+    if (realHoursPerDay === undefined && timeScale === undefined) return;
+    this.planets.onPlanetLoaded((planetId, _tick, info) => {
+      if (info.restored) return;
+      void this.planets.submit(planetId, {
+        colonyIndex: null,
+        source: 'dev',
+        commandId: `init_time_${planetId}`,
+        kind: 'dev.time',
+        args: {
+          ...(realHoursPerDay !== undefined ? { realHoursPerDay } : {}),
+          ...(timeScale !== undefined ? { timeScale } : {}),
+        },
+      });
+    });
   }
 
   async onApplicationShutdown(): Promise<void> {

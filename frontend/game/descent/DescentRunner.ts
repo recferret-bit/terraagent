@@ -178,9 +178,9 @@ export class DescentRunner implements DescentSequence {
   /** Restore camera + lights/sky, remove every temporary object. */
   private restoreAndCleanup() {
     this.ctx.surface.group.visible = true;
+    this.ctx.root.removeFromParent();
     this.cam.restore();
     this.sky.restore();
-    this.ctx.root.removeFromParent();
     for (const p of this.disposeOrder) p.dispose?.();
   }
 }

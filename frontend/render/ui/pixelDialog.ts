@@ -1,6 +1,10 @@
 /* Floating Faction-Plate dialog to live-tune CRT, Pixel-Art, and Dynamic Shadow / Sun shader parameters.
    Toggle open/closed with F8 (or Shift+P), or via the F8 gear button beside the bottom-left switches. Draggable by its header. */
 import {
+  computeSolarState, getDayNightParams, isDayNightOn, onDayNightChange, resetDayNightParams,
+  setDayNight, setDayNightParams, toggleDayNight, type DayNightParams,
+} from '../core/dayNightConfig';
+import {
   getPixelArtParams, isPixelArtOn, onPixelArtChange, resetPixelArtParams,
   setPixelArt, setPixelArtParams, togglePixelArt, type PixelArtParams,
 } from '../core/pixelArtPass';
@@ -17,7 +21,7 @@ import { SLIDERS_BY_TAB, VISUAL_TABS, type VisualTabId } from './visualLabSpecs'
 const TAB_KEY = 'terraagent.visual.tab';
 
 const DIALOG_CSS = `
-#pixel-dlg{position:fixed;left:12px;bottom:52px;z-index:70;width:324px;display:none;flex-direction:column;
+#pixel-dlg{position:fixed;left:12px;bottom:52px;z-index:70;width:336px;display:none;flex-direction:column;
   font:500 11px/1.35 ui-monospace,SFMono-Regular,Menlo,monospace;color:#f2f4f7;
   background:rgba(11,13,17,.94);border:1px solid #2a3140;border-top:3px solid #ff6a13;
   backdrop-filter:blur(10px);box-shadow:0 16px 40px rgba(0,0,0,.65);user-select:none;
@@ -31,9 +35,9 @@ const DIALOG_CSS = `
 #pixel-dlg .pd-close{background:none;border:1px solid transparent;color:#8a93a6;cursor:pointer;font:inherit;padding:2px 6px}
 #pixel-dlg .pd-close:hover{color:#f2f4f7;border-color:#ff6a13}
 #pixel-dlg .pd-body{padding:12px;display:flex;flex-direction:column;gap:9px}
-#pixel-dlg .pd-tabs{display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
-#pixel-dlg .pd-tab{background:#141820;border:1px solid #262c3a;color:#8a93a6;padding:6px 4px;font:600 10px/1 inherit;
-  letter-spacing:.12em;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;text-transform:uppercase}
+#pixel-dlg .pd-tabs{display:grid;grid-template-columns:repeat(4,1fr);gap:4px}
+#pixel-dlg .pd-tab{background:#141820;border:1px solid #262c3a;color:#8a93a6;padding:6px 3px;font:600 9px/1 inherit;
+  letter-spacing:.08em;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:4px;text-transform:uppercase}
 #pixel-dlg .pd-tab:hover{border-color:#ff6a13;color:#f2f4f7}
 #pixel-dlg .pd-tab.on{background:rgba(255,106,19,.16);border-color:#ff6a13;color:#ff8a3d}
 #pixel-dlg .pd-dot{width:5px;height:5px;border-radius:50%;background:#3a4152;display:inline-block}
@@ -75,7 +79,7 @@ let cleanups: Array<() => void> = [];
 function readInitialTab(): VisualTabId {
   try {
     const saved = localStorage.getItem(TAB_KEY) as VisualTabId | null;
-    if (saved === 'crt' || saved === 'pixel' || saved === 'shadow') return saved;
+    if (saved === 'crt' || saved === 'pixel' || saved === 'shadow' || saved === 'daynight') return saved;
   } catch { /* ignore */ }
   return 'shadow';
 }
@@ -83,24 +87,28 @@ function readInitialTab(): VisualTabId {
 function isTabEffectOn(tab: VisualTabId): boolean {
   if (tab === 'crt') return isCrtOn();
   if (tab === 'pixel') return isPixelArtOn();
+  if (tab === 'daynight') return isDayNightOn();
   return isShadowOn();
 }
 
 function getTabParams(tab: VisualTabId): Record<string, number> {
   if (tab === 'crt') return getCrtParams() as unknown as Record<string, number>;
   if (tab === 'pixel') return getPixelArtParams() as unknown as Record<string, number>;
+  if (tab === 'daynight') return getDayNightParams() as unknown as Record<string, number>;
   return getShadowParams() as unknown as Record<string, number>;
 }
 
 function toggleActiveTabEffect(): void {
   if (activeTab === 'crt') toggleCrt();
   else if (activeTab === 'pixel') togglePixelArt();
+  else if (activeTab === 'daynight') toggleDayNight();
   else toggleShadow();
 }
 
 function resetActiveTabParams(): void {
   if (activeTab === 'crt') resetCrtParams();
   else if (activeTab === 'pixel') resetPixelArtParams();
+  else if (activeTab === 'daynight') resetDayNightParams('user');
   else resetShadowParams();
 }
 
@@ -111,6 +119,9 @@ function applyTabParam(tab: VisualTabId, key: string, val: number): void {
   } else if (tab === 'pixel') {
     if (!isPixelArtOn()) setPixelArt(true);
     setPixelArtParams({ [key as keyof PixelArtParams]: val });
+  } else if (tab === 'daynight') {
+    if (!isDayNightOn()) setDayNight(true);
+    setDayNightParams({ [key as keyof DayNightParams]: val }, 'user');
   } else {
     if (!isShadowOn()) setShadow(true);
     setShadowParams({ [key as keyof ShadowParams]: val });
@@ -139,8 +150,24 @@ function buildSunPositionHtml(): string {
     </div>`;
 }
 
+function buildDayNightCycleHtml(): string {
+  return `
+    <div class="pd-sun-box" id="pd-cycle-box">
+      <span class="pd-lbl"><span>SOLAR CLOCK &amp; SUN COLOR</span><b id="pd-cycle-clock"></b></span>
+      <div class="pd-sun-row">
+        <div id="pd-sun-swatch" title="Active sun color based on time of day" style="width:36px;height:36px;border:1px solid #2f384a;flex-shrink:0"></div>
+        <div class="pd-sun-presets" style="grid-template-columns:repeat(4,1fr)">
+          <button type="button" class="pd-sun-btn" data-time-preset="6">DAWN</button>
+          <button type="button" class="pd-sun-btn" data-time-preset="12">NOON</button>
+          <button type="button" class="pd-sun-btn" data-time-preset="18">DUSK</button>
+          <button type="button" class="pd-sun-btn" data-time-preset="0">NIGHT</button>
+        </div>
+      </div>
+    </div>`;
+}
+
 function buildSlidersHtml(tab: VisualTabId): string {
-  const head = tab === 'shadow' ? buildSunPositionHtml() : '';
+  const head = tab === 'shadow' ? buildSunPositionHtml() : tab === 'daynight' ? buildDayNightCycleHtml() : '';
   return head + SLIDERS_BY_TAB[tab].map((s) => `
     <label class="pd-row">
       <span class="pd-lbl"><span>${s.label}</span><b data-val="${s.key}"></b></span>
@@ -225,6 +252,13 @@ function bindSunPadEvents(box: HTMLElement) {
     const cur = getShadowParams().sunOrbitSpeed;
     setShadowParams({ sunOrbitSpeed: cur > 0.1 ? 0 : 12 });
   });
+  box.querySelectorAll<HTMLButtonElement>('[data-time-preset]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const hour = Number(btn.dataset.timePreset ?? 12);
+      if (!isDayNightOn()) setDayNight(true);
+      setDayNightParams({ timeOfDay: hour }, 'user');
+    });
+  });
 }
 
 function bindSliderEvents(box: HTMLElement) {
@@ -238,6 +272,19 @@ function bindSliderEvents(box: HTMLElement) {
 }
 
 function syncSunWidget(box: HTMLElement) {
+  if (activeTab === 'daynight') {
+    const dp = getDayNightParams();
+    const sp = getShadowParams();
+    const solar = computeSolarState(dp, sp.sunAzimuth, sp.sunElevation);
+    const clk = box.querySelector<HTMLElement>('#pd-cycle-clock');
+    if (clk) clk.textContent = `${solar.clockText} · ${solar.period} · ${solar.sunColorHex.toUpperCase()}`;
+    const sw = box.querySelector<HTMLElement>('#pd-sun-swatch');
+    if (sw) {
+      sw.style.background = solar.sunColorHex;
+      sw.style.boxShadow = `0 0 10px ${solar.sunColorHex}`;
+    }
+    return;
+  }
   if (activeTab !== 'shadow') return;
   const sp = getShadowParams();
   const off = computeSunOffset(undefined, sp);
@@ -278,7 +325,9 @@ function syncDialog(box: HTMLElement) {
     const inp = box.querySelector<HTMLInputElement>(`input[data-key="${s.key}"]`);
     const val = box.querySelector<HTMLElement>(`[data-val="${s.key}"]`);
     const v = p[s.key] ?? 0;
-    if (inp) inp.value = String(v);
+    if (inp && !(s.key === 'timeOfDay' && v === 0 && Number(inp.value) === 24 && document.activeElement === inp)) {
+      inp.value = String(v);
+    }
     if (val) val.textContent = s.fmt(v);
   }
   syncSunWidget(box);
@@ -301,6 +350,7 @@ export function togglePixelDialog(force?: boolean): boolean {
   if (!dlg) return false;
   const open = force ?? !dlg.classList.contains('open');
   dlg.classList.toggle('open', open);
+  if (open) syncDialog(dlg);
   document.getElementById('pixel-tune')?.setAttribute('aria-expanded', String(open));
   return open;
 }
@@ -340,6 +390,9 @@ export function initPixelDialog() {
     onCrtChange(() => syncDialog(box)),
     onPixelArtChange(() => syncDialog(box)),
     onShadowChange(() => syncDialog(box)),
+    onDayNightChange((_on, _p, source) => {
+      if (source === 'user' || box.classList.contains('open')) syncDialog(box);
+    }),
   );
   syncDialog(box);
   if (new URLSearchParams(location.search).get('pixelDialog') === '1') togglePixelDialog(true);

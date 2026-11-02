@@ -1,8 +1,9 @@
+import { formatSolarClock, type DayNightParams } from '../core/dayNightConfig';
 import type { PixelArtParams } from '../core/pixelArtPass';
 import type { ShadowParams } from '../core/shadowConfig';
 import type { CrtParams } from './crt';
 
-export type VisualTabId = 'crt' | 'pixel' | 'shadow';
+export type VisualTabId = 'crt' | 'pixel' | 'shadow' | 'daynight';
 
 export interface SliderSpec<K extends string = string> {
   key: K;
@@ -17,6 +18,7 @@ export const VISUAL_TABS: readonly { id: VisualTabId; label: string; statusTitle
   { id: 'crt', label: 'CRT', statusTitle: 'CRT OVERLAY STATUS (F9)' },
   { id: 'pixel', label: 'PIXEL', statusTitle: 'PIXEL SHADER STATUS (F10)' },
   { id: 'shadow', label: 'SHADOW', statusTitle: 'SUN & SHADOW STATUS (F7)' },
+  { id: 'daynight', label: 'DAY/NIGHT', statusTitle: 'PLANETARY SOLAR CYCLE' },
 ];
 
 export const CRT_SLIDERS: readonly SliderSpec<keyof CrtParams>[] = [
@@ -60,8 +62,26 @@ export const SHADOW_SLIDERS: readonly SliderSpec<keyof ShadowParams>[] = [
   { key: 'rimStrength', label: 'FRESNEL RIM', min: 0, max: 0.8, step: 0.02, fmt: (v) => `${Math.round(v * 100)}%` },
 ];
 
+export const DAY_NIGHT_SLIDERS: readonly SliderSpec<keyof DayNightParams>[] = [
+  { key: 'timeOfDay', label: 'TIME OF DAY', min: 0, max: 24, step: 0.1, fmt: (v) => formatSolarClock(v) },
+  {
+    key: 'dayLengthHours',
+    label: 'DAY LENGTH (REAL)',
+    min: 0.02,
+    max: 24,
+    step: 0.02,
+    fmt: (v) => (v < 1 ? `${Math.round(v * 60)}m (${v.toFixed(2)}h)` : `${v.toFixed(2)} h`),
+  },
+  { key: 'timeScale', label: 'TIME SCALE', min: 0, max: 100, step: 0.5, fmt: (v) => `${v.toFixed(1)}×` },
+  { key: 'sunWarmth', label: 'DAWN/DUSK WARMTH', min: 0, max: 2.0, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'noonTempK', label: 'NOON SUN TEMP', min: 3500, max: 8500, step: 100, fmt: (v) => `${Math.round(v)} K` },
+  { key: 'nightBrightness', label: 'NIGHT MOONLIGHT', min: 0, max: 1.0, step: 0.02, fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'shadowDayFactor', label: 'DAY/NIGHT SHADOW', min: 0, max: 1.5, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` },
+];
+
 export const SLIDERS_BY_TAB: Record<VisualTabId, readonly SliderSpec[]> = {
   crt: CRT_SLIDERS,
   pixel: PIXEL_SLIDERS,
   shadow: SHADOW_SLIDERS,
+  daynight: DAY_NIGHT_SLIDERS,
 };

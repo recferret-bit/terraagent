@@ -58,4 +58,33 @@ describe('warp command', () => {
     expect(await run('warp 5', {})).toContain('host_unavailable');
     expect(devServer).not.toHaveBeenCalled();
   });
+
+  it('supports querying and configuring planet time, realHoursPerDay, and timeScale', async () => {
+    const devServer = vi.fn(async (_cmd: string, rawBody?: unknown) => {
+      const body = (rawBody ?? {}) as Record<string, unknown>;
+      return {
+        timeOfDay: (body.timeOfDay as number | undefined) ?? 12.5,
+        realHoursPerDay: (body.realHoursPerDay as number | undefined) ?? 0.5,
+        timeScale: (body.timeScale as number | undefined) ?? 2,
+        phase: 'day',
+      };
+    });
+    const session = { planetId: () => 'pl_1' };
+    expect(await run('time', { devServer, session })).toContain('12.50h (day), day=0.5h real, scale=×2');
+    expect(devServer).toHaveBeenLastCalledWith('time', { planetId: 'pl_1' });
+
+    await run('time 6.5', { devServer, session });
+    expect(devServer).toHaveBeenLastCalledWith('time', { planetId: 'pl_1', timeOfDay: 6.5 });
+
+    await run('time day 1.5', { devServer, session });
+    expect(devServer).toHaveBeenLastCalledWith('time', { planetId: 'pl_1', realHoursPerDay: 1.5 });
+
+    await run('time scale 500', { devServer, session });
+    expect(devServer).toHaveBeenLastCalledWith('time', { planetId: 'pl_1', timeScale: 500 });
+
+    expect(await run('time 30', { devServer, session })).toContain('usage');
+    expect(await run('time day 0', { devServer, session })).toContain('usage');
+    expect(await run('time scale -1', { devServer, session })).toContain('usage');
+    expect(await run('time scale 1001', { devServer, session })).toContain('usage');
+  });
 });

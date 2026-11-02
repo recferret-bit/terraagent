@@ -7,6 +7,7 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import { createPixelArtPass, onPixelArtChange, setPixelArtSize } from './pixelArtPass';
+import { recordViewportPlanetBase } from './dayNightConfig';
 import {
   followShadowTarget, installShadowShaderPatch, isShadowOn,
   registerShadowViewport, stepSunOrbit, syncViewportShadow,
@@ -133,6 +134,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
     },
     applySky(spec) {
       applySkyToScene(scene, sun, hemi, renderer, spec);
+      recordViewportPlanetBase(vp, spec);
       syncViewportShadow(vp, spec.sky.sunColor);
     },
     followShadow(t) {

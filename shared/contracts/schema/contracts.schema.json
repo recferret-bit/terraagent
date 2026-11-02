@@ -638,6 +638,34 @@
       "summary": "Sets a test entity position directly to tile (q, r).",
       "wave": "W00"
     },
+    "dev.time": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "realHoursPerDay": {
+            "maximum": 168,
+            "minimum": 0.005,
+            "type": "number"
+          },
+          "timeOfDay": {
+            "maximum": 24,
+            "minimum": 0,
+            "type": "number"
+          },
+          "timeScale": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev command to configure the planet time of day (0..24h), real hours per day, and time scale without requiring a seated colony.",
+      "wave": "W00"
+    },
     "enqueueTask": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -775,6 +803,33 @@
       "origin": "client",
       "summary": "Queues construction of a structure at (q, r) and auto-links any missing site preparation ops (UO-TF-03).",
       "wave": "W01"
+    },
+    "setPlanetTime": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "realHoursPerDay": {
+            "maximum": 168,
+            "minimum": 0.005,
+            "type": "number"
+          },
+          "timeOfDay": {
+            "maximum": 24,
+            "minimum": 0,
+            "type": "number"
+          },
+          "timeScale": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Configures the authoritative planetary solar time of day (0..24h), day length in real hours, and time scale multiplier.",
+      "wave": "W00"
     },
     "stopUnit": {
       "args": {

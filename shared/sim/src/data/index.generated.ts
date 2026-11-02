@@ -5,6 +5,7 @@ import table_hq from './hq';
 import table_hub from './hub';
 import table_ops_basic from './ops-basic';
 import table_terrain from './terrain';
+import table_time from './time';
 import table_worldgen from './worldgen';
 
-export const DATA_TABLES: readonly TableDef[] = [table_dev, table_hq, table_hub, table_ops_basic, table_terrain, table_worldgen];
+export const DATA_TABLES: readonly TableDef[] = [table_dev, table_hq, table_hub, table_ops_basic, table_terrain, table_time, table_worldgen];
