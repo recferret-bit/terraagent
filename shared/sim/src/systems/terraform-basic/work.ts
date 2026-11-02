@@ -1,9 +1,11 @@
 import { colonyActor, reportTreasuryReject, treasury, type AddRequest, type Amounts } from '../../economy';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
-import { hexDistance, hexIndex } from '../../grid/hex';
+import { isTileUneven } from '../../grid/geo';
+import { HEX_DIRS, hexDistance, hexIndex } from '../../grid/hex';
+import { TERRAIN } from '../../grid/layers';
 import { revealSubsurface } from '../../grid/subsurface';
-import { setTilePrep, setTileTerrain } from '../../grid/tileModel';
+import { setTileHeight, setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
@@ -48,6 +50,31 @@ function dropJob(order: TerraformOrder, at: number): void {
   order.skippedCount++;
 }
 
+/** Levels a newly cleared/broken flat tile to match adjacent level flat ground so it becomes passable and buildable. */
+function levelToAdjacentFlat(state: PlanetState, tileIdx: number, tick: number): void {
+  const hx = hexIndex(state.grid.radius);
+  const q = hx.q[tileIdx]!, r = hx.r[tileIdx]!;
+  const { terrain, height } = state.grid.layers;
+  const peers: number[] = [];
+  for (const [dq, dr] of HEX_DIRS) {
+    const j = hx.indexOf(q + dq, r + dr);
+    if (j >= 0 && terrain[j] === TERRAIN.flat && !isTileUneven(state.grid.radius, j, terrain, height)) {
+      peers.push(height[j]);
+    }
+  }
+  if (peers.length > 0) {
+    let bestH = peers[0]!;
+    let bestCount = 0;
+    for (const h of peers) {
+      const c = peers.filter((p) => Math.abs(p - h) < 1e-3).length;
+      if (c > bestCount) { bestCount = c; bestH = h; }
+    }
+    if (height[tileIdx] !== bestH) setTileHeight(state.grid, tileIdx, bestH, tick);
+  } else if (Math.abs(height[tileIdx]) > 0.15) {
+    setTileHeight(state.grid, tileIdx, 0, tick);
+  }
+}
+
 function completeTerraformJob(state: PlanetState, colonyId: number, job: TerraformJob, ctx: StepContext): void {
   const tick = ctx.tick;
   const tileIdx = hexIndex(state.grid.radius).indexOf(job.q, job.r);
@@ -61,6 +88,7 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   }
   setTileTerrain(state.grid, tileIdx, spec.toTerrain, tick);
   setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
+  if (spec.toTerrain === TERRAIN.flat) levelToAdjacentFlat(state, tileIdx, tick);
   // Removing the obstacle uncovers what world generation buried under it (D-38, `grid/subsurface.ts`).
   const found = revealSubsurface(state, tileIdx, tick);
   if (found) ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, q: job.q, r: job.r, ...found } });

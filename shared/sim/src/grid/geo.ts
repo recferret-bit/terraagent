@@ -1,4 +1,7 @@
+import { isTileUneven, levelledFlatHeight } from './hex';
 import { DEPOSIT, PREP, TERRAIN } from './layers';
+
+export { isTileUneven, levelledFlatHeight };
 
 /**
  * Geo rules: what a tile's terrain / prep / deposit codes mean for movement and construction. Every system (movement,
@@ -9,14 +12,14 @@ import { DEPOSIT, PREP, TERRAIN } from './layers';
 /** Why a tile cannot take a building (UI text in `GEO_BLOCK_TEXT`, reject code via `placementRejectCode`). */
 export type GeoBlock = 'water' | 'trees' | 'rock' | 'slope' | 'hole' | 'ridge' | 'deposit' | 'noDeposit';
 
-/** Untouched trees and rock: ground units cannot enter until a Clear / Break turns the tile Flat. */
+/** Non-Flat ground (mountains/rock, dunes/slopes, trees/forest, sinkholes, water): ground units cannot enter until terraformed Flat. */
 export function isGroundObstacle(terrain: number): boolean {
-  return terrain === TERRAIN.forest || terrain === TERRAIN.rock;
+  return terrain !== TERRAIN.flat;
 }
 
 /**
- * Ground movement: untouched trees and rock (until Clear / Break) and resource deposits (their ore, crystal and oil
- * nodes stand on the tile) cannot be entered. Deep water, ridges and moats are impassable by terrain (`isGroundPassable`).
+ * Ground movement: only terraformed Flat ground free of resource deposits (ore, crystal and oil nodes stand on the tile)
+ * can be entered by ground units. Deep water, ridges and moats are also impassable by terrain (`isGroundPassable`).
  */
 export function isGroundMoveBlocked(terrain: number, deposit: number): boolean {
   return isGroundObstacle(terrain) || deposit !== DEPOSIT.none;

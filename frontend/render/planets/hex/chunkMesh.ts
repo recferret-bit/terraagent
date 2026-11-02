@@ -1,5 +1,5 @@
 import { DEPOSIT_CODES, PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
-import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
+import { HEX_DIRS, hexIndex, isTileUneven, levelledFlatHeight } from '@terra/sim/grid/hex';
 import type { PlanetKind } from '../PlanetSpec';
 import { tileXZ } from './hexMath';
 
@@ -37,6 +37,7 @@ export interface ChunkBuffers {
   normal: Float32Array;
   aAO: Float32Array;
   aRock: Float32Array;
+  aHexFlat: Float32Array;
   color: Float32Array;
   aPrepTarget: Float32Array;
   aPrepStartTime: Float32Array;
@@ -138,24 +139,17 @@ export function tileStyle(
   return { r: cr, g: cg, b: cb, ao, rock };
 }
 
-/** Sub-0.15 m noise on flat ground renders perfectly level; from 0.35 m up the sim height is used as is (no step). */
-function levelled(raw: number): number {
-  const a = Math.abs(raw);
-  const t = Math.min(1, Math.max(0, (a - 0.15) / 0.2));
-  return raw * t * t * (3 - 2 * t);
-}
-
 /**
  * Rendered height of one tile. The sim `height` layer is the ground truth in metres (D-38: dunes, mesas, mountain
  * ranges); classes only add cosmetic detail on top and keep water below the water plane. Flat and Prepared ground sit
  * at their own level, so a pad on a raised plateau stays on the plateau.
  */
 function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number, kind?: PlanetKind): number {
-  if (isClearedPrep(prep)) return levelled(raw);
+  if (isClearedPrep(prep)) return levelledFlatHeight(raw);
   const h = tileHash01(q, r, 17);
   switch (terrain) {
     case HEX_TERRAIN.flat:
-      return levelled(raw);
+      return levelledFlatHeight(raw);
     case HEX_TERRAIN.forest:
       return (raw > 0.01 ? raw : 0.12) + 0.06 * h;
     case HEX_TERRAIN.rock: {
@@ -271,6 +265,7 @@ export function buildChunk(
   const normal = new Float32Array(V * 3);
   const aAO = new Float32Array(V);
   const aRock = new Float32Array(V);
+  const aHexFlat = new Float32Array(V);
   const color = new Float32Array(V * 3);
   const aPrepTarget = new Float32Array(V);
   const aPrepStartTime = new Float32Array(V);
@@ -289,10 +284,17 @@ export function buildChunk(
     aPrepTarget[v] = isPrep ? 1.0 : 0.0;
     aPrepStartTime[v] = startT;
     if (hasTerrain) {
+      const tVal = layers.terrain![i] ?? 0;
       const stylePrep = isPrep && startT >= 0 ? HEX_PREP.flat : prepVal;
-      const st = tileStyle(q, r, layers.terrain![i] ?? 0, stylePrep, layers.deposit?.[i] ?? 0, layers.kind ?? 'forestRock');
+      const st = tileStyle(q, r, tVal, stylePrep, layers.deposit?.[i] ?? 0, layers.kind ?? 'forestRock');
+      const isFlatBuildable =
+        tVal === HEX_TERRAIN.flat &&
+        prepVal !== HEX_PREP.ridge &&
+        prepVal !== HEX_PREP.moat &&
+        !isTileUneven(radius, i, layers.terrain!, layers.height);
       aAO[v] = st.ao * horizonAO(hx, i, effHeight);
       aRock[v] = st.rock;
+      aHexFlat[v] = isFlatBuildable ? 1.0 : 0.0;
       color[v * 3] = st.r;
       color[v * 3 + 1] = st.g;
       color[v * 3 + 2] = st.b;
@@ -300,6 +302,7 @@ export function buildChunk(
       const st = tileStyle(q, r, HEX_TERRAIN.flat, 0, 0, layers.kind ?? 'forestRock');
       aAO[v] = 1;
       aRock[v] = -1;
+      aHexFlat[v] = 1.0;
       color[v * 3] = st.r;
       color[v * 3 + 1] = st.g;
       color[v * 3 + 2] = st.b;
@@ -310,6 +313,7 @@ export function buildChunk(
     normal,
     aAO,
     aRock,
+    aHexFlat,
     color,
     aPrepTarget,
     aPrepStartTime,

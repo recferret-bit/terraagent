@@ -273,6 +273,7 @@ export function setTileDeposit(grid: GridLike, tileIdx: number, deposit: number,
 export function setTileHeight(grid: GridLike, tileIdx: number, height: number, tick?: number): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
   const { layers, meta } = resolveTileLayers(grid);
+  if (layers.height && layers.height[tileIdx] !== height) bumpPathEpoch(meta);
   if (layers.height) layers.height[tileIdx] = height;
   stampTile(layers, meta, tileIdx, tick);
 }

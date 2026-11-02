@@ -1,6 +1,6 @@
 import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
-import { isGroundMoveBlocked } from './geo';
+import { isGroundMoveBlocked, isTileUneven } from './geo';
 
 /**
  * Footprints (tile index lists) ground units cannot walk through (buildings). Registered by the module that owns the
@@ -39,11 +39,13 @@ export type PathProfileId = 'none' | 'ground';
 
 const PROFILES: Record<PathProfileId, ((state: PlanetState, fromIdx: number, data?: CompiledDataLike) => Blockers) | null> = {
   none: null,
-  /** Ground units: untouched forest and rock (until Clear / Break), resource deposits and building footprints block. */
+  /** Ground units: non-flat terrain (forest, rock, dunes/slope, holes, water), uneven tiles, deposits and footprints block. */
   ground: (state, fromIdx, data) => {
-    const { terrain, deposit } = state.grid.layers;
+    const { terrain, deposit, height } = state.grid.layers;
     const { own, others } = occupiedTiles(state, fromIdx, data);
-    const blocked: Predicate = (i) => isGroundMoveBlocked(terrain[i], deposit[i]) || others.has(i);
+    const blocked: Predicate = (i) =>
+      (i !== fromIdx && (isGroundMoveBlocked(terrain[i], deposit[i]) || isTileUneven(state.grid.radius, i, terrain, height))) ||
+      others.has(i);
     return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) };
   },
 };

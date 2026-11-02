@@ -396,3 +396,71 @@ describe('W01-21: Prepared-ground pad material and 0.4s shader blend', () => {
     hexTerrain.dispose();
   });
 });
+
+describe('Hexagon edge visibility on terraformed flat ground', () => {
+  it('draws hexagons strictly on flat, level, buildable tiles (aHexFlat = 1) and removes them on mountains, dunes, water, and uneven borders', () => {
+    const r = 6;
+    const count = hexCount(r);
+    const hx = hexIndex(r);
+    const terrain = new Uint8Array(count).fill(HEX_TERRAIN.flat);
+    const prep = new Uint8Array(count).fill(HEX_PREP.flat);
+    const height = new Float32Array(count);
+
+    const rockIdx = hx.indexOf(2, 0);
+    const duneIdx = hx.indexOf(-2, 0);
+    const forestIdx = hx.indexOf(0, 2);
+    const holeIdx = hx.indexOf(0, -2);
+    const shallowIdx = hx.indexOf(2, -2);
+    const deepIdx = hx.indexOf(-2, 2);
+    const ridgeIdx = hx.indexOf(1, -2);
+    const unevenRampIdx = hx.indexOf(3, 0);
+    const mesaRimIdx = hx.indexOf(3, -1);
+
+    terrain[rockIdx] = HEX_TERRAIN.rock;
+    height[rockIdx] = 1.4;
+    terrain[duneIdx] = HEX_TERRAIN.slope;
+    height[duneIdx] = 0.7;
+    terrain[forestIdx] = HEX_TERRAIN.forest;
+    terrain[holeIdx] = HEX_TERRAIN.hole;
+    terrain[shallowIdx] = HEX_TERRAIN.shallow;
+    terrain[deepIdx] = HEX_TERRAIN.deep;
+    prep[ridgeIdx] = HEX_PREP.ridge;
+    // Sloped ramp tile marked flat in terrain but with raw height > 0.15 m
+    height[unevenRampIdx] = 0.45;
+    // Raised mesa rim tile (height 1.1 m) bordering a steep cliff drop to 0.0 m
+    height[mesaRimIdx] = 1.1;
+    height[hx.indexOf(3, -2)] = 1.1;
+
+    const allTiles = Array.from({ length: count }, (_, i) => i);
+    const chunk = buildChunk(r, allTiles, { terrain, prep, height, kind: 'dune' });
+    const flatByTile = new Map<number, number>();
+    for (let v = 0; v < chunk.vertexTile.length; v++) {
+      flatByTile.set(chunk.vertexTile[v]!, chunk.aHexFlat[v]!);
+    }
+
+    expect(flatByTile.get(hx.indexOf(0, 0))).toBe(1.0);
+    expect(flatByTile.get(rockIdx)).toBe(0.0);
+    expect(flatByTile.get(duneIdx)).toBe(0.0);
+    expect(flatByTile.get(forestIdx)).toBe(0.0);
+    expect(flatByTile.get(holeIdx)).toBe(0.0);
+    expect(flatByTile.get(shallowIdx)).toBe(0.0);
+    expect(flatByTile.get(deepIdx)).toBe(0.0);
+    expect(flatByTile.get(ridgeIdx)).toBe(0.0);
+    expect(flatByTile.get(unevenRampIdx)).toBe(0.0);
+    expect(flatByTile.get(mesaRimIdx)).toBe(0.0);
+
+    const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType('desert') });
+    const mockShader: THREE.WebGLProgramParametersWithUniforms = {
+      uniforms: {},
+      vertexShader: '#include <common>\nvoid main() {\n#include <begin_vertex>\n}',
+      fragmentShader:
+        '#include <common>\nvoid main() {\n#include <color_fragment>\n#include <alphatest_fragment>\n#include <roughnessmap_fragment>\n#include <normal_fragment_maps>\n#include <emissivemap_fragment>\n#include <fog_fragment>\n}',
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    hexTerrain.material.onBeforeCompile(mockShader, null as unknown as THREE.WebGLRenderer);
+    expect(mockShader.vertexShader).toContain('attribute float aHexFlat;');
+    expect(mockShader.vertexShader).toContain('vFlatPos = aHexFlat *');
+    expect(mockShader.fragmentShader).toContain('hexFlatMask');
+    expect(mockShader.fragmentShader).not.toContain('duneSlopeFade');
+    hexTerrain.dispose();
+  });
+});

@@ -289,14 +289,63 @@ describe('HQ movement vs. obstacles (trees / rock)', () => {
     return { host, state, hqId, idx: hexIndex(state.grid.radius), terrain: state.grid.layers.terrain };
   }
 
-  it('rejects a move onto an uncleared forest / rock tile', () => {
-    const { host, hqId, idx, terrain } = setup();
+  it('rejects a move onto an uncleared forest, rock, dune (slope), hole, shallow water, or uneven ramp tile', () => {
+    const { host, state, hqId, idx, terrain } = setup();
     terrain[idx.indexOf(3, 0)] = TERRAIN.forest;
     terrain[idx.indexOf(0, 3)] = TERRAIN.rock;
-    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 3, r: 0 }));
+    terrain[idx.indexOf(-3, 0)] = TERRAIN.slope;
+    terrain[idx.indexOf(0, -3)] = TERRAIN.hole;
+    terrain[idx.indexOf(2, 2)] = TERRAIN.shallow;
+    state.grid.layers.height[idx.indexOf(-2, -2)] = 0.45; // uneven ramp tile with TERRAIN.flat
+
+    for (const [q, r] of [[3, 0], [0, 3], [-3, 0], [0, -3], [2, 2], [-2, -2]] as const) {
+      host.submit(mkCmd('moveUnit', { entityId: hqId, q, r }));
+      expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
+    }
+  });
+
+  it('walks around a dune (slope) wall and never enters a non-flat tile', () => {
+    const { host, state, hqId, idx, terrain } = setup();
+    const cols = state.entities.cols;
+    const row = rowOf(state.entities, hqId);
+    const duneWall = [-2, -1, 0, 1, 2].map((r) => idx.indexOf(2, r));
+    for (const i of duneWall) terrain[i] = TERRAIN.slope;
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 5, r: 0 }));
+    for (let t = 0; t < 120 && (t === 0 || cols.state[row] === ENTITY_STATE.moving); t++) {
+      host.step(1);
+      expect(terrain[idx.indexOf(cols.q[row], cols.r[row])]).toBe(TERRAIN.flat);
+    }
+    expect([cols.q[row], cols.r[row]]).toEqual([5, 0]);
+  });
+
+  it('breaking a rock tile adjacent to a raised landing plateau levels it into passable ground and rejects grading uneven ramps', () => {
+    const { host, state, hqId, idx, terrain } = setup();
+    const { height, owner } = state.grid.layers;
+    for (let i = 0; i < idx.count; i++) {
+      height[i] = 0.8;
+      owner[i] = 0;
+    }
+    const rockTile = idx.indexOf(2, 0);
+    terrain[rockTile] = TERRAIN.rock;
+    height[rockTile] = 1.9;
+    for (const [dq, dr] of [[1, 0], [1, -1], [0, 1], [0, -1]] as const) {
+      const j = idx.indexOf(2 + dq, dr);
+      terrain[j] = TERRAIN.slope;
+      height[j] = 1.6;
+    }
+    const rampTile = idx.indexOf(-3, 0);
+    height[rampTile] = 0.45;
+    host.submit(mkCmd('enqueueTask', { terraform: { op: 'grade', tiles: [{ q: -3, r: 0 }] } }));
     expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
-    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 0, r: 3 }));
-    expect(host.step(1).outcomes[0]?.code).toBe('site_blocked');
+
+    host.submit(mkCmd('enqueueTask', { terraform: { op: 'break', tiles: [{ q: 2, r: 0 }] } }));
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
+    for (let t = 0; t < 200 && terrain[rockTile] === TERRAIN.rock; t++) host.step(1);
+    expect(terrain[rockTile]).toBe(TERRAIN.flat);
+    expect(height[rockTile]).toBeCloseTo(0.8, 5);
+
+    host.submit(mkCmd('moveUnit', { entityId: hqId, q: 2, r: 0 }));
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
   });
 
   it('walks around a forest wall and never enters a blocked tile; passes once cleared', () => {

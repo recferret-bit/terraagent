@@ -1,7 +1,7 @@
 import { ENTITY_STATE } from '../ecs/columns';
 import { setField } from '../ecs/store';
 import { hexDistance, hexIndex } from '../grid/hex';
-import { pathBlockedFor } from '../grid/pathProfiles';
+import { pathBlockersFor } from '../grid/pathProfiles';
 import { notifyUnitChanged } from './mobility';
 import { getMotion, requestMove, sameGoal, type MoveGoal } from './movement/orchestrator';
 import type { UnitCtx } from './types';
@@ -34,7 +34,7 @@ function inBand(u: UnitCtx, goal: MoveGoal): boolean {
   const d = hexDistance(cols.q[u.row], cols.r[u.row], goal.q, goal.r);
   if (!atCentre || d < goal.minDist || d > goal.maxDist) return false;
   const here = hexIndex(u.state.grid.radius).indexOf(cols.q[u.row], cols.r[u.row]);
-  return !(pathBlockedFor(u.state, u.stats.profile, -1, u.ctx.data)?.(here) ?? false);
+  return !(pathBlockersFor(u.state, u.stats.profile, here, u.ctx.data)?.goalBlocked(here) ?? false);
 }
 
 /** Without moving anything: is the unit where `approach(goal)` would answer `arrived`? (For `work` phases.) */

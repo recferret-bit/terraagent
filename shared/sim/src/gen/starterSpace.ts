@@ -1,5 +1,5 @@
 import { hexDistance, hexIndex } from '../grid/hex';
-import { geoBuildBlock, MAX_FOOTPRINT_SPREAD_M } from '../grid/geo';
+import { geoBuildBlock, isTileUneven, MAX_FOOTPRINT_SPREAD_M } from '../grid/geo';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import type { SimState } from '../kernel/state';
 import { setTileDeposit, setTileHeight, setTilePrep, setTileTerrain } from '../grid/tileModel';
@@ -25,13 +25,16 @@ function footprintIdx(state: SimState, q: number, r: number): number[] | null {
   return out;
 }
 
-/** Same geo rule the Command Hub placement check applies (Flat, no trees / rock / water / deposit), plus ownership. */
+/** Same geo rule the Command Hub placement check applies (Flat, level, no trees / rock / water / deposit), plus ownership. */
 function siteReady(state: SimState, tiles: number[], colonyId: number): boolean {
   const { terrain, prep, owner, deposit, height } = state.grid.layers;
   let lo = Infinity, hi = -Infinity;
   for (const i of tiles) { lo = Math.min(lo, height[i]); hi = Math.max(hi, height[i]); }
   return hi - lo <= MAX_FOOTPRINT_SPREAD_M && tiles.every(
-    (i) => geoBuildBlock(terrain[i], prep[i], deposit ? deposit[i] : DEPOSIT.none, 'forbid') === null && (owner[i] < 0 || owner[i] === colonyId),
+    (i) =>
+      geoBuildBlock(terrain[i], prep[i], deposit ? deposit[i] : DEPOSIT.none, 'forbid') === null &&
+      !isTileUneven(state.grid.radius, i, terrain, height) &&
+      (owner[i] < 0 || owner[i] === colonyId),
   );
 }
 

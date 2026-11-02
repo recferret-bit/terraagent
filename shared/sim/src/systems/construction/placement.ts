@@ -1,7 +1,7 @@
 import type { RejectCode } from '@terra/contracts';
 import type { CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock } from '../../grid/geo';
+import { GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { resolveHubT1Row, resolveStartingKitRow, rowNum } from '../rows';
@@ -121,7 +121,7 @@ const BLOCK_TEXT: Readonly<Record<PlacementBlock, string>> = {
 };
 
 /** Tile-level failures, most important first: the footprint's reason is the highest-ranked one among its tiles. */
-const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclaimed', 'occupied', 'water', 'ridge', 'trees', 'rock', 'slope', 'hole', 'deposit', 'noDeposit'];
+const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclaimed', 'occupied', 'water', 'ridge', 'trees', 'rock', 'slope', 'hole', 'uneven', 'deposit', 'noDeposit'];
 
 export const placementRejectCode = (b: PlacementBlock): RejectCode => BLOCK_CODE[b];
 export const placementBlockText = (b: PlacementBlock): string => BLOCK_TEXT[b];
@@ -204,6 +204,7 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, colonyId: numb
   else if (owner < 0 && !rule.allowUnclaimed) block = 'unclaimed';
   else if (occupied.has(tileIdx)) block = 'occupied';
   else block = geoBuildBlock(terrain, prep, deposit, rule.deposit);
+  if (!block && isTileUneven(world.radius, tileIdx, world.terrain, world.height)) block = 'uneven';
   if (block) { tile.ok = false; tile.block = block; }
   return tile;
 }

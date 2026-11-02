@@ -14,15 +14,20 @@ const HEX_VERT_COMMON = /* glsl */ `#include <common>
 #ifndef USE_COLOR
 attribute vec3 color;
 #endif
+attribute float aHexFlat;
 attribute float aPrepTarget;
 attribute float aPrepStartTime;
 uniform float uTime;
 varying vec3 vTileColor;
+varying float vHexFlat;
+varying vec2 vFlatPos;
 varying float vPrepTarget;
 varying float vPrepBlend;`;
 
 const HEX_VERT_BEGIN = /* glsl */ `vLP = position;
 vTileColor = color;
+vHexFlat = aHexFlat;
+vFlatPos = aHexFlat * (position.xz / ${TILE});
 float prepBlend = aPrepTarget * clamp((uTime - aPrepStartTime) / ${BLEND_S}, 0.0, 1.0);
 vPrepTarget = aPrepTarget;
 vPrepBlend = prepBlend;`;
@@ -74,6 +79,8 @@ const HEX_FRAG_COMMON = /* glsl */ `#include <common>
 uniform sampler2D uPadMap, uPadNormal, uPadRough;
 uniform float uEdge;
 varying vec3 vTileColor;
+varying float vHexFlat;
+varying vec2 vFlatPos;
 varying float vPrepTarget;
 varying float vPrepBlend;
 ${FOUNDATION_PAD_GLSL}`;
@@ -100,6 +107,7 @@ const HEX_PAD_BLEND_GLSL = /* glsl */ `  float prepFootprint = smoothstep(0.36, 
 /**
  * Per-tile terrain class colour tint (`vTileColor`), 0.4 s Wild -> Prepared foundation hex-plate pad blend,
  * and thin hex edge lines as a shader term (no line geometry: nothing to z-fight, antialiased by `fwidth`).
+ * Hexagons are drawn strictly on terraformed, level, buildable flat tiles (`hexFlatMask` = 0 or 1, never faded).
  */
 const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 {
@@ -124,8 +132,8 @@ const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 ${HEX_PAD_BLEND_GLSL}
   float w = max(0.025, fwidth(em) * 0.75);
   float line = 1.0 - smoothstep(w, w * 2.2, em);
-  float duneSlopeFade = mix(1.0, mix(1.0 - smoothstep(0.008, 0.04, 1.0 - normalize(vLN).y) * 0.72, 1.0, prepFootprint), isDune);
-  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.62, line * uEdge * duneSlopeFade);
+  float hexFlatMask = step(0.1, vHexFlat) * step(length(cen - vFlatPos / max(vHexFlat, 1e-4)), 0.72);
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.62, line * uEdge * hexFlatMask);
 }`;
 
 /** Uniforms of the Prepared pad (only the hex terrain draws it, so only its material pays for the textures). */

@@ -10,6 +10,7 @@ import {
   PREP,
   placementWorldFromState,
   setTileDeposit,
+  setTileHeight,
   setTilePrep,
   setTileTerrain,
   SimHost,
@@ -39,6 +40,7 @@ const CASES: Array<{ name: string; mutate: (h: SimHost, i: number) => void; code
   { name: 'ridge', mutate: (h, i) => setTilePrep(h.state.grid, i, PREP.ridge), code: 'terrain_unbuildable', block: 'ridge' },
   { name: 'metals deposit', mutate: (h, i) => setTileDeposit(h.state.grid, i, DEPOSIT.metals, 1), code: 'terrain_unbuildable', block: 'deposit' },
   { name: 'oil deposit', mutate: (h, i) => setTileDeposit(h.state.grid, i, DEPOSIT.oil, 1), code: 'terrain_unbuildable', block: 'deposit' },
+  { name: 'uneven ramp', mutate: (h, i) => setTileHeight(h.state.grid, i, 0.32), code: 'terrain_unbuildable', block: 'uneven' },
 ];
 
 describe('shared placement rules: one function for server handler and client ghost', () => {

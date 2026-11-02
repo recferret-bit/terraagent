@@ -1,5 +1,6 @@
 import type { RejectCode } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { isTileUneven } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { PREP } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -26,6 +27,7 @@ export interface TerraformWorld {
   terrain: ArrayLike<number>;
   prep: ArrayLike<number>;
   owner: ArrayLike<number>;
+  height?: ArrayLike<number> | null;
   valid?: ArrayLike<number> | null;
   /** The colony owns territory (a tile, or an active Hub): from then on only its own tiles. */
   hasTerritory: boolean;
@@ -54,6 +56,7 @@ export function terraformWorldFrom(world: PlacementWorld, colonyId: number, data
     terrain: world.terrain,
     prep: world.prep,
     owner: world.owner,
+    height: world.height ?? null,
     valid: world.valid ?? null,
     hasTerritory: worldHasTerritory(world, colonyId),
     preHubCenter: pod ? { q: pod.q, r: pod.r } : null,
@@ -87,6 +90,7 @@ function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data
   const terrain = world.terrain[i], prep = world.prep[i];
   if (terrain !== spec.fromTerrain) return 'site_blocked';
   if (spec.toTerrain !== spec.fromTerrain) return null;
+  if (isTileUneven(world.radius, i, world.terrain, world.height)) return 'site_blocked';
   return prep === spec.toPrep || prep === PREP.living || prep === PREP.ridge || prep === PREP.moat ? 'site_blocked' : null;
 }
 
