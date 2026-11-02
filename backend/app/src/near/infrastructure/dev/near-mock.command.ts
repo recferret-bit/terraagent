@@ -5,6 +5,7 @@ import { AuthRepository } from '../../../core/auth/auth.repository.js';
 import { CoreException } from '../../../core/errors/index.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { defineDevCommand, type DevCommand, DevCommandRegistry } from '../../../dev/dev-command.registry.js';
+import { NearException, type NearErrorCode } from '../../domain/errors.js';
 import { mockOauthSecret, signMockToken } from '../../identity/mock-token.js';
 import { SocialAuthService } from '../../identity/social-auth.service.js';
 import { mockChainControls } from '../mock/mock-controls.js';
@@ -22,8 +23,22 @@ const upgradeArgs = z.object({
   provider: z.enum(['google', 'x']),
   subject: z.string().min(1).max(64),
 }).strict();
+const errorArgs = z.object({ code: z.string().min(1) }).strict();
 
-/** Dev console: per-port mock fail/latency, plus account reset and mock social upgrade. */
+/** The four player-facing codes `near.error` may force. Anything else is 400 `VALIDATION_ERROR`. */
+const PLAYER_NEAR_CODES = [
+  'NEAR_PROVIDER_REJECTED',
+  'NEAR_NAME_TAKEN',
+  'NEAR_RELAY_FAILED',
+  'NEAR_RELAY_RECEIVER_NOT_ALLOWED',
+] as const satisfies readonly NearErrorCode[];
+
+function playerNearCode(code: string): (typeof PLAYER_NEAR_CODES)[number] | undefined {
+  for (const known of PLAYER_NEAR_CODES) if (known === code) return known;
+  return undefined;
+}
+
+/** Dev console: per-port mock fail/latency, account reset and mock social upgrade, plus `near.error`. */
 @Injectable()
 export class NearMockCommand implements OnModuleInit {
   constructor(
@@ -38,6 +53,7 @@ export class NearMockCommand implements OnModuleInit {
     this.registry.register(this.latencyCommand());
     this.registry.register(this.resetCommand());
     this.registry.register(this.upgradeCommand());
+    this.registry.register(this.errorCommand());
   }
 
   private failCommand(): DevCommand<typeof failArgs> {
@@ -77,6 +93,21 @@ export class NearMockCommand implements OnModuleInit {
         const sessionsRevoked = await this.authRepo.revokeAllSessionsOfPlayer(found.id);
         const socialIdentities = await this.deleteSocialIdentities(found.id);
         return { playerId: found.id, handle: found.handle, sessionsRevoked, socialIdentities };
+      },
+    });
+  }
+
+  private errorCommand(): DevCommand<typeof errorArgs> {
+    return defineDevCommand({
+      name: 'near.error',
+      help: 'Throw NEAR_PROVIDER_REJECTED, NEAR_NAME_TAKEN, NEAR_RELAY_FAILED, or NEAR_RELAY_RECEIVER_NOT_ALLOWED.',
+      args: errorArgs,
+      run: ({ code }) => {
+        const known = playerNearCode(code);
+        if (!known) {
+          throw new CoreException('VALIDATION_ERROR', { status: 400, message: `Unknown NEAR error code "${code}"` });
+        }
+        throw new NearException(known);
       },
     });
   }

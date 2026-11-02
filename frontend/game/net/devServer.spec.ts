@@ -1,7 +1,43 @@
 import { describe, expect, it, vi } from 'vitest';
-import { httpLedgerQuery, sessionLedgerQuery, type LedgerReply } from './devServer';
+import { httpDevServer, httpLedgerQuery, sessionLedgerQuery, type LedgerReply } from './devServer';
 
 const reply = (planetId: string, account: string): LedgerReply => ({ planetId, account, balances: { 'metals.t1': 5 }, entries: [] });
+
+describe('dev server errors', () => {
+  it('keeps errorCode and uses error.message; a 2xx body and a flat message are unchanged', async () => {
+    const json = (status: number, body: unknown) =>
+      (async () => new Response(JSON.stringify(body), { status })) as unknown as typeof fetch;
+    const fail = httpDevServer(
+      '',
+      json(409, {
+        errorCode: 'NEAR_NAME_TAKEN',
+        error: { code: 'conflict', message: 'That Pilot ID is already in use.' },
+        requestId: 'rq',
+      }),
+    );
+    await expect(fail('near.error', { code: 'NEAR_NAME_TAKEN' })).rejects.toMatchObject({
+      name: 'DevServerError',
+      code: 'http_409',
+      errorCode: 'NEAR_NAME_TAKEN',
+      message: 'http_409: 409 That Pilot ID is already in use.',
+    });
+
+    const ok = httpDevServer('', json(200, { port: 'relayer', rate: 0 }));
+    expect(await ok('near.mock.fail', {})).toEqual({ port: 'relayer', rate: 0 });
+
+    const flat = httpDevServer(
+      '',
+      (async () => new Response('{"message":"no planet"}', { status: 404 })) as unknown as typeof fetch,
+    );
+    const err = (await flat('nope').then(
+      () => null,
+      (e: unknown) => e,
+    )) as { code?: string; errorCode?: string; message?: string };
+    expect(err.code).toBe('not_found');
+    expect(err.errorCode).toBeUndefined();
+    expect(err.message).toBe('not_found: 404 no planet');
+  });
+});
 
 describe('ledger query', () => {
   it('online: GET /v1/dev/planets/:planetId/ledger with account and limit; errors and no planet are DevServerErrors', async () => {
