@@ -545,3 +545,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** restart the app to clear overrides and the subject map. Tests call `mockChainControls.reset()` in `afterEach`. `account.reset` revokes the sessions `account.upgrade` created.
 - **To resolve:** W06-06 persists the subject. Clearing the in-memory map inside `account.reset` can wait until that table is the source of truth.
 - **Found:** 2026-11-02, W06-25
+
+### BE-35 · Relayer replay reads the caller opId from the payload
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/relayer/mock-relayer.adapter.ts` (`startRelay`, `inflight`), `backend/app/src/near/infrastructure/mock/mock-chain.base.ts` (`findReceiptByPayload`)
+- **What happens:** The receipt row's unique `op_id` stays `relayTxHash:nonce`, so a new nonce is a new row. The caller's `opId` is only in the JSON payload. `submitMetaTx` loads that field and returns the row before `runRelayed`, so a repeat in this process does not take another nonce. Two overlapping calls in one process share one in-flight promise. Two processes can both miss the row and each take a nonce; both inserts succeed because the unique column includes the nonce. The dev explorer's `opId` is that hash:nonce key. The payload still has the caller opId.
+- **Why it is like this:** W06-22 says a repeated caller `opId` returns the stored receipt before the lane (the lane hands out a nonce before the attempt) and that a distinct `opId` still takes a nonce. Keeping the nonce in the unique key is what makes those two rows different.
+- **Workaround / mitigation:** one Nest process. A failed attempt writes nothing, so a retry of that `opId` still goes through the lane.
+- **To resolve:** put the caller `opId` in the unique column only if a second process double-submits in practice. The retry must then still be a new row when the first attempt did not commit.
+- **Found:** 2026-11-02, W06-22

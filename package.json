@@ -37,7 +37,7 @@
     "db:migrate": "npm run db:migrate -w @terra/db --silent",
     "db:reset": "npm run db:reset -w @terra/db --silent",
     "test:integration": "vitest run --config tests/vitest.integration.config.ts",
-    "test:contract": "vitest run --config tests/vitest.contract.config.ts",
+    "test:contract": "node scripts/dev/test-contract.mjs",
     "contracts:check": "npm run gen:check && npm test -w @terra/contracts --silent && npm run typecheck -w @terra/contracts --silent",
     "contract:real": "node scripts/dev/contract-real.mjs",
     "db:seed": "npm run db:seed -w @terra/db --silent",

@@ -84,6 +84,17 @@ export abstract class MockChainBase {
     });
   }
 
+  /**
+   * A receipt already stored for this port method, matched on one JSON payload field.
+   * Does not sleep and does not roll `MOCK_FAIL_RATE` (a finished opId must replay even when failures are forced).
+   */
+  protected async findReceiptByPayload(port: string, method: string, field: string, value: string): Promise<ChainReceipt | null> {
+    const row = await this.prisma.mockChainReceipt.findFirst({
+      where: { port, method, payload: { path: [field], equals: value } },
+    });
+    return row ? toReceipt(row) : null;
+  }
+
   /** Creates the account row when missing (kind `named` by default). */
   protected async ensureAccount(tx: DbClient, accountId: string, kind = 'named'): Promise<void> {
     await tx.mockChainAccount.upsert({ where: { accountId }, create: { accountId, kind }, update: {} });
