@@ -1,6 +1,6 @@
 # 05 — Colony Deed, badges, Settled staking, planet treasury, bounties
 
-> **Status:** 2026-10-31. Grooming reference (legend and template: [`README.md`](./README.md)). Covers F6 (deed, own-NEAR staking), soulbound badges, Settled colonies, F7 (planet treasury DAO), F8 (bounties, mercenaries). Fee legs: [`03-markets-trading-rules.md`](./03-markets-trading-rules.md). Account claim and keys: [`01-accounts-keys-relayer.md`](./01-accounts-keys-relayer.md). Mint / burn authority: [`02-mining-cargo-mint-authority.md`](./02-mining-cargo-mint-authority.md). Real adapters and SputnikDAO vs Trezu: [`06-near-tools-and-adapters.md`](./06-near-tools-and-adapters.md).
+> **Status:** 2026-10-31; pass 4 (2026-11-02): landed port and mock facts, SputnikDAO v2 / Trezu fit, NEP-393 soulbound standard, staking-pool methods and the official track 07 / 10 / 12 hints added as rows R05-75..79 and Q-05-24..26. Grooming reference (legend and template: [`README.md`](./README.md)). Covers F6 (deed, own-NEAR staking), soulbound badges, Settled colonies, F7 (planet treasury DAO), F8 (bounties, mercenaries). Fee legs: [`03-markets-trading-rules.md`](./03-markets-trading-rules.md). Account claim and keys: [`01-accounts-keys-relayer.md`](./01-accounts-keys-relayer.md). Mint / burn authority: [`02-mining-cargo-mint-authority.md`](./02-mining-cargo-mint-authority.md). Real adapters and SputnikDAO vs Trezu: [`06-near-tools-and-adapters.md`](./06-near-tools-and-adapters.md).
 >
 > **Abbreviations:** as in the README (MP, Review, Pivot, Balance, NEF, units, profile, OWNER_TASKS = `docs/plan/OWNER_TASKS.md`). "W21 demo n" = step n of a wave's demo story. Each fact has one owning file; the treasury leg is owned by 03, the claim by 01, burn authority by 02.
 
@@ -53,7 +53,7 @@
 | R05-14 | 20 families × 3 tiers; XP cosmetic only, idempotent per `(source, sourceId)` (rests on D-29, still Proposed) | Planned | W12-01 (H), W12-05 (H); profile §2–§3 |
 | R05-15 | An earned tier may be minted as a soulbound badge via `BadgeNftPort`, outbox `planned → sent → minted / failed / skipped`, 1 h delay; the deterministic `opId` is stated only in W12-25 | Planned | W12-25 (—); profile §3, §5 (D-29, D-30 Proposed) |
 | R05-16 | Card back: "Recorded (mock)"; explorer link only with a real adapter | Planned | W12-26 (—); PA-05 |
-| R05-17 | Badges non-transferable on chain (transfer panics "soulbound") | Planned | W23-29 (—) |
+| R05-17 | Badges non-transferable on chain (transfer panics "soulbound"). The landed `BadgeNftPort` has no transfer method, so the mock holds the rule by construction; NEAR's soulbound standard is a different interface (R05-76) | Planned | W23-29 (—) · code: `backend/app/src/near/application/ports/badge-nft.port.ts` (W00-30) |
 | R05-18 | Achievement list per MP §8 (Terraformer, Den Hunter 1/3/5, Councilor) differs from profile §3 (Green Thumb, Nest Breaker 1/10/50, no Councilor); Review §6 says the lists match, which is wrong | Proposed | MP §8 vs profile §3 vs Review §6; Q-05-7 |
 | R05-19 | Badge NFTs are Stretch (MP §8); Review §5 recommends against them for the hackathon | Proposed | MP §8, Review §5 |
 
@@ -68,24 +68,24 @@
 | R05-24 | Settled colony stays a DAO member without the right to propose | Planned | W22-06 (H) |
 | R05-25 | Settled Deed: `updateMetadata` with `settled: true`, `opId = deed-settle:{colonyId}`, gold frame | Decided | NEAR-92, W20-15 (—), W20-11 (H+) |
 | R05-26 | Staking needs a settled deed **and** a claimed account (`DEED_NOT_SETTLED`, `ACCOUNT_NOT_CLAIMED`) | Decided | NEAR-92, D-18, NEAR §16 #3; W20-18 (—) |
-| R05-27 | Player sends own NEAR to the colony account, which calls `deposit_and_stake` on a whitelisted pool; wallet-signed by the claimed account | Decided | NEAR-92, W23-32 (—) |
+| R05-27 | Player sends own NEAR to the colony account, which calls `deposit_and_stake` on a whitelisted pool; wallet-signed by the claimed account. W23-32's pool calls (`deposit_and_stake` with an attached deposit, `unstake`, `withdraw`, `get_account_staked_balance {account_id}`, 4-epoch unbonding before withdraw) match docs.near.org/protocol/network/staking (fetched 2026-11-02) | Decided | NEAR-92, W23-32 (—) |
 | R05-28 | Rewards come from the validator; the game never pays NEAR and never holds the player's funds | Decided | D-18, NEAR-92, UO-R-03 |
 | R05-29 | No in-game effect from the staked amount; property test 0 … 10⁶ NEAR → deep-equal sim | Decided | NEAR-93, UO-R-03, W20-23 (—) |
 | R05-30 | Copy "Real NEAR from your wallet — not game currency, no in-game bonus" visible before signing | Planned | W20-21 (—) |
 | R05-31 | Whitelist governance (who adds / removes pools, how often) and legal review of staking copy | Planned | W23-34 (—); NEAR §9 follow-up |
 | R05-32 | Testnet → mainnet pool list (an owner task, no decision) | Gap | OWNER_TASKS "Staking validator whitelist"; Q-05-4 |
-| R05-33 | `StakingPort` methods: NEAR §1a lists `stake`, `unstake`, `rewards`; W20-01 adds `listPools`, `withdraw`, `position`; NEAR.md not updated | Planned | W20-01 (H) · spec gap (NEAR §1a; OWNER_TASKS N3) |
+| R05-33 | `StakingPort` methods: NEAR §1a lists `stake`, `unstake`, `rewards`; W20-01 adds `listPools`, `withdraw`, `position`; NEAR.md not updated. The landed port has the three NEAR §1a methods only | Planned | W20-01 (H) · spec gap (NEAR §1a; OWNER_TASKS N3) · code: `backend/app/src/near/application/ports/staking.port.ts` (W00-30) |
 | R05-34 | "Deed can later become staking vehicle — Later, no in-game power" (consistent with D-18) | Proposed | MP §8, MP §3 |
 
 **F7 Planet Treasury & Council**
 
 | # | Rule | Status | Source |
 |---|---|---|---|
-| R05-35 | One DAO per planet, created on planet creation (`opId = dao-create:{planetId}`); SputnikDAO-like or Trezu multisig | Decided | NEAR-100, NEF F7; W22-05 (H), W23-35 (—) |
+| R05-35 | One DAO per planet, created on planet creation (`opId = dao-create:{planetId}`). NEAR-100 names a SputnikDAO instance `{planet}.sputnik-dao.near`; "or Trezu multisig" is only in NEF F7 and the NEAR §1a adapter column; the mock is "SputnikDAO-like" (W22-03). Platform fit: R05-75 | Decided | NEAR-100, NEF F7; W22-05 (H), W23-35 (—) |
 | R05-36 | Lazy-create on first Council open for planets that predate W22 | Planned | W22-05 (H) |
 | R05-37 | Members are the colony accounts on the planet (sync details: R05-63) | Decided | NEAR-100 |
-| R05-38 | 1 colony = 1 vote; pass at > 50 % of members | Planned | W22-03 (H) · spec gap (NEAR-100..102 state no vote rule) |
-| R05-39 | W22-03 also passes at "≥ 2 yes votes with no no votes before the deadline" (40 % on a 5-colony planet) | Planned | W22-03 (H) · spec gap; Q-05-9 |
+| R05-38 | 1 colony = 1 vote; pass at > 50 % of members (a SputnikDAO v2 `RoleWeight` policy with ratio `[1, 2]` passes at ⌊n/2⌋ + 1 votes, i.e. the same rule: R05-75) | Planned | W22-03 (H) · spec gap (NEAR-100..102 state no vote rule) |
+| R05-39 | W22-03 also passes at "≥ 2 yes votes with no no votes before the deadline" (40 % on a 5-colony planet). A SputnikDAO v2 policy has no "no no votes" condition (R05-75), so the real adapter cannot reproduce this clause | Planned | W22-03 (H) · spec gap; Q-05-9 |
 | R05-40 | Proposals close after 6 h real time (`TREASURY_PROPOSAL_TTL_H`), auto-finalised; below quorum → `Expired`, no funds move | Planned | W22-09 (H) |
 | R05-41 | Max 1 open proposal per colony; cost checked against balance (`TREASURY_INSUFFICIENT`) | Planned | W22-08 (H) |
 | R05-42 | Away colonies abstain; the AI director does not vote in MVP | Planned | W22-16 (—) |
@@ -122,7 +122,7 @@
 | R05-63 | [F7] Member sync: add on `colonyFounded`, remove on elimination (open votes ignored at finalize), Settled stay without propose rights | Planned | W22-06 (H) |
 | R05-64 | [F8] Hire = `defend_area` bounty with the mercenary as reserved claimer; escrow = duration × price; cancel refunds the unused part; early wipe → pro-rata pay, rest refunded | Planned | W22-28 (—), W22-30 (—) |
 | R05-65 | [Badges] Card string W12-26 "Recorded (mock)" vs W20-10 "Recorded on NEAR (mock)"; W12-32 (H) asserts PA-05 mock mint but W12-25 / W12-26 are untagged | Conflict | W12-26 vs W20-10; W12-32 (H) → Q-05-23 |
-| R05-66 | [Tests] `deed` contract tests and `deed-metadata.spec.ts` (NEAR-90..93); DAO proposal → sim effect and bounty escrow release in `near-workspaces` (NEAR-100..112) | Decided | NEAR §15 |
+| R05-66 | [Tests] `deed` contract tests and `deed-metadata.spec.ts` (NEAR-90..93); DAO proposal → sim effect and bounty escrow release in `near-workspaces` (NEAR-100..112). The organisers' `near-smart-contracts` skill (github.com/near/agent-skills, fetched 2026-11-02) tests on near-sandbox with near-api-rs, which replaces near-workspaces-rs (tooling owner 06). The badge suite `badge-nft.contract.ts` is landed (W00-38) | Decided | NEAR §15 · code: `backend/app/src/near/__contract__/badge-nft.contract.ts` |
 | R05-67 | [Staking] The game pays no yield: rewards come from validators only; game-treasury rewards were the rejected alternative | Decided | D-18 (Alternatives), NEAR-92 |
 | R05-68 | [Staking] No other staking is defined: no cargo staking, no NEAR or cargo yield, no stake-weighted vote (votes are 1 colony = 1, W22-03), no stall bond. Nothing forbids them either | Gap | Q-05-18 |
 | R05-69 | [F7] The project "never pays out real NEAR from treasury" | Proposed | MP §7 core principle |
@@ -131,6 +131,16 @@
 | R05-72 | [F6/F7] Tracks 10 and 12 are entered only if the deed card and the vote ran on the live planet; W25-31 lists "+ 10/12 if F6/F7 qualify" | Proposed | Pivot §5 (D14, "only if live"), NEF §4; W25-31 (H) → Q-05-22 |
 | R05-73 | [F6] The only `rank` producer is W11-05 (`planet_result` ranks, deed metadata hook at `ARCHIVED`); the pivot drops W11, so `rank` has no producer in the hackathon | Planned | W11-05 (—); Pivot §3 |
 | R05-74 | [Settled] Launch path around the gate: in-app confirm modal (AI never launches), 30 s countdown with cancel, `TRANSFER` ticket and Founder Pod ×1.25 stock, `/me` claim panel, Prepare Rocket goal (no auto-launch), `rocket_ready` notification | Planned | W21-07, W21-08, W21-12, W21-13, W21-16, W21-17, W21-19 (all —); AW-12, SIM §7.7 |
+
+**Added in pass 4 (2026-11-02; in id order)**
+
+| # | Rule | Status | Source |
+|---|---|---|---|
+| R05-75 | [F7] Real-DAO fit. SputnikDAO v2: `sputnik-dao.near` and `sputnikv2.testnet` have contract code (RPC `view_account` 2026-11-02; factory role not checked, the README examples use `sputnik-v2.testnet`); roles with permissions (e.g. `*:VoteApprove`, `*:AddProposal`), so "member without propose right" (R05-24) is a second role; vote policy `RoleWeight` or `TokenWeight` with a ratio or fixed-weight threshold (ratio `[1, 2]` = ⌊n/2⌋ + 1) and a quorum; a proposal executes on the vote that reaches the threshold (`Finalize` settles one later, e.g. an expired one, returning the bond); `proposal_period` in ns (default 7 d) would carry W22-09's 6 h; `add_proposal` requires an attached deposit equal to `proposal_bond` (default 1 NEAR); `Transfer` proposals move NEAR or NEP-141 only, and the contract has no NEP-141 / NEP-245 transfer-call receiver, so cargo would move by `FunctionCall` proposals on `res.terraagent.near` (inference). Vote values in the landed `TreasuryDaoPort` (`approve` / `reject` / `remove`) match `act_proposal`'s `VoteApprove` / `VoteReject` / `VoteRemove`. Trezu: multisig treasury contracts on NEAR that import existing SputnikDAO DAOs; thresholds are approval counts per role group (Governance, Finance), one voting duration for all proposals | Gap | github.com/near-daos/sputnik-dao-contract (README, `sputnikdao2/src/{policy,proposals}.rs`), github.com/NEAR-DevHub/trezu-docs (`what-is.mdx`, `governance/voting-settings.mdx`), fetched 2026-11-02; code: `backend/app/src/near/application/ports/treasury-dao.port.ts` · platform choice R06-33 · → Q-05-24 |
+| R05-76 | [Badges] W23-29 makes badges a collection inside one NEP-171 contract whose `nft_transfer` panics. NEAR's soulbound standard is NEP-393 (Final): a registry interface derived from NEP-171 with `u64` token ids, no transfer, `sbt_mint` / `sbt_revoke` / `sbt_recover`. One NEP-171 contract also has one token namespace and one contract-level metadata record (name, symbol; NEP-177 not re-fetched), so `deed` and `badge` would share them; the mock separates them by `collection` and token-id prefix (`badge-…`) | Gap | github.com/near/NEPs `neps/nep-0393.md` (fetched 2026-11-02); code: `backend/app/src/near/infrastructure/mock/nep171.base.ts` (W00-35) · → Q-05-25 |
+| R05-77 | [F8] The landed `EscrowOpenInput` requires a `beneficiary` at `open`, but a posted bounty has no claimer until completion (R05-51, R05-52); only mercenary hires (R05-64) know the payee at open | Planned | code: `backend/app/src/near/application/ports/escrow.port.ts` (W00-30); W22-02 (H) extends the port · → Q-05-26 |
+| R05-78 | [F6/F7] Official hints: track 10 `nfts` "NFTs as accounts (assets that own money, earn royalties, hold inventory)" · DYNAMIC NFTS, NEP-171, SUB-ACCOUNTS; track 12 `social` "shared budgets, programmable rewards, collective ownership and reputation-based access" on Sputnik DAO and Trezu · SPUTNIK DAO, TREZU, NAMED ACCOUNTS. Here the colony sub-account owns the deed, not the reverse, and the hackathon DAO is a mock on `{planet}.dao.mock` | Gap | nearhackathon.com/HACKATHON.md (fetched 2026-11-02); W22-05 (H) · → Q-05-22 |
+| R05-79 | [F8] Mercenaries are the only in-game "agent hires agent" path (NEF F8 maps F8 to track 07); every mercenary row is untagged. Agent Market and the track 07 text: owner 04 | Proposed | NEF F8; W22-27..31 (—) · → Q-04-27 |
 
 ## 4. Flows
 
@@ -208,6 +218,10 @@
 | R05-67, 68 | W20-23 (—) covers no-perk only | no rule excludes other staking |
 | R05-71, 72 | W22-05 (H), W25-31 (H) | no issue checks five lazy DAOs or the 10/12 criteria |
 | R05-73 | W11-05 (—) | no rank in the hackathon |
+| R05-75 | W23-35, W23-36 (—); mock W22-03 (H) | bond, period, "no no votes" clause, cargo holdings, claimed-account vote key (Q-05-24) |
+| R05-76 | W23-29 (—); mock W00-35 (H, landed) | NEP-171 collection vs NEP-393 (Q-05-25) |
+| R05-77 | W22-02 (H), W22-17 (H) | `beneficiary` at open (Q-05-26) |
+| R05-78, 79 | W25-31 (H); W22-27..31 (—) | hints vs mock deed / DAO (Q-05-22); hiring → Q-04-27 |
 
 ## 8. Open questions
 
@@ -224,23 +238,26 @@
 | Q-05-9 | Pass rule: > 50 % of members only, or also W22-03's "≥ 2 yes, no no"? Do Settled colonies (never voting) count in the denominator? | > 50 % of members (W22-03 first clause) |
 | Q-05-10 | Closed → Q-03-1 (owner 03) | — |
 | Q-05-11 | Closed → Q-02-3 (burn signer and the DAO burn path; the W22-09 "burn or only debit" part moved there) | — |
-| Q-05-12 | Which token(s) does the treasury hold (fee legs arrive in each traded token), and how is "1 000 cargo-equivalent" priced? | none |
+| Q-05-12 | Which token(s) does the treasury hold (fee legs arrive in each traded token), and how is "1 000 cargo-equivalent" priced? The landed `DaoDepositInput` carries one `tokenId` per deposit (code: `treasury-dao.port.ts`), so the port is per token. On a real SputnikDAO, `Transfer` covers NEAR and NEP-141 only (R05-75); a fee leg settled inside `intents.near` (R03-29) would sit as the DAO's Intents balance, movable only by a `FunctionCall` proposal (inference, not checked) | none |
 | Q-05-13 | Are effect durations (12 h / 6 h, `untilTick`) game time or real time? The 6 h TTL is real time (W22-09): does `warp` advance it? If not, no vote passes on camera and the Pivot kill switch "vote in progress" applies | none |
 | Q-05-14 | Adopt Balance costs 300 / 450 / 250 and the 0.2 % Guild-fill leg in W22-13 / W22-07? | Proposed (Balance §8, Review C3 change 8) |
 | Q-05-15 | Mercenary away spend: a separate cap (W22-31) or uncapped defense spending (AW-20)? | none |
 | Q-05-16 | Lazy-create (W22-05) is the only path in the pivot's sector (planets auto-created by W01-05, no W11). Is it covered by the `@hack` e2e? | check in W22-36; five DAOs in the Pivot season (R05-71) |
 | Q-05-17 | Can bounty rewards be NEAR in the hackathon, or cargo only? | cargo (demo "200 metals") |
 | Q-05-18 | Is own-NEAR staking on a Settled Deed the only staking? Rule out cargo staking, game-paid yield, stake-weighted votes and stall bonds in a spec? | yes (D-18 rejects game rewards) |
-| Q-05-19 | Deed transferability: a deed is a NEP-171 token on the colony account; after claim the player can transfer it. Does staking follow the deed or stay with the colony account? Can a transferred deed still receive operator updates? | none |
+| Q-05-19 | Deed transferability: a deed is a NEP-171 token on the colony account; after claim the player can transfer it. Does staking follow the deed or stay with the colony account? Can a transferred deed still receive operator updates? Pool stakes are keyed by the staking account (`get_account_staked_balance {account_id}`, docs.near.org/protocol/network/staking, fetched 2026-11-02), so a transferred deed does not move the stake | none |
 | Q-05-20 | What happens to a staked position and the deed when the planet ends and archives (W11-04/05 deed hook)? Does the colony account outlive the planet? | none |
 | Q-05-21 | Add a `fauna_shield` kind (MP §6 C), or fold it into `meteor_shield`? Absorbs Q-04-25 | Drop, or widen `meteor_shield` to fauna (default from closed Q-04-25) |
-| Q-05-22 | What counts as "qualify" for tracks 10 / 12 (W25-31): mock deed and mock DAO on the live planet, or real NEP-171 / SputnikDAO? | Pivot §5: "only if live" |
+| Q-05-22 | What counts as "qualify" for tracks 10 / 12 (W25-31): mock deed and mock DAO on the live planet, or real NEP-171 / SputnikDAO? The official hints (R05-78) name NEP-171, sub-accounts, Sputnik DAO, Trezu and named accounts, none of which is real in the H cut | Pivot §5: "only if live" |
 | Q-05-23 | Card string: "Recorded (mock)" (W12-26) or "Recorded on NEAR (mock)" (W20-10)? Tag W12-25/26 H or drop PA-05 from W12-32 (H)? | none |
+| Q-05-24 | Real DAO fit (R05-75), for W23-35: (a) who pays the `add_proposal` bond, or is it set to 0 (a function-call key cannot attach a deposit, R06-64)? (b) 6 h `proposal_period`, and execute on the deciding vote vs W22-09's finalize at the deadline; (c) drop R05-39's "no no votes" clause (no policy equivalent); (d) Settled colonies as a second role without `AddProposal`; (e) cargo held and spent through `FunctionCall` on `res` (burn → Q-02-3); (f) after claim the app's key is scoped to `intents.near` and `res.*` (NEAR §2), so it cannot vote on the DAO for a claimed colony (→ Q-01-11, Q-04-21); (g) Trezu's count thresholds need a policy change on every member add / remove | none; inputs for the W23-35 decision note |
+| Q-05-25 | Badges (R05-76): a NEP-171 collection with a panicking transfer inside `deed.*` (W23-29), a separate badge contract, or a NEP-393 issuer? | none (W12-25/26 and W23-29 are all —) |
+| Q-05-26 | Escrow `open` needs a `beneficiary` (R05-77): open to an operator-held placeholder and name the claimer at `claim`, or make `beneficiary` optional in W22-02's port extension? | none |
 
 ## 9. Grill questions per wave
 
 - **W20:** Which issue adds dens/nests to `DeedMetadataV1` (MP §8)? Who emits `rank`? Does the S4 scenario have W05/W08 on so steps 1–2 show terraform and stage? Is the "(mock)" label on the card enough for the README mock/real table? Is W20-11's gold frame needed in H when settlement is post-hackathon?
 - **W21:** Which denominator does W21-04 count (Q-05-2), and why does the demo show 325? W21-27's acceptance already asserts the Settled Deed of W20-15: how, with both untagged and in different waves? Which account does W21-15 claim, and does an FC key stay (Q-01-11)? Who emits `rank` once W11 is dropped (R05-73)?
-- **W12:** Are W12-25/26 out of the H slice for good (Review §5), and then how does W12-32 (H) assert PA-05 (Q-05-23)? Badge owner (Q-05-6). Is a Councilor family wanted, given ids are frozen?
-- **W22:** Pass rule (Q-05-9); carved vs additive leg (Q-03-1); burn mechanism and token (Q-05-11, Q-05-12); can a 1 000-unit boost pass in a demo without `treasury.fund` (W22-35 is not H) — where does the seeded balance come from? Does W22-20's refund work without W22-24? The 6 h TTL is real time: does `warp` advance it, or can no vote pass on camera (Q-05-13; Pivot kill switch "vote in progress")? Five lazy DAOs in the season (R05-71)? Fauna shield (Q-05-21)? Pivot: external agents vote as colonies; W22-16 says the director never votes. Is that consistent?
-- **W23:** SputnikDAO vs Trezu (W23-35) fit for "1 colony = 1 vote" and burn; who signs staking on the claimed account (W23-32 depends on W23-14); pool whitelist owner (W23-34); deed / DAO / escrow migration order (W23-41).
+- **W12:** Are W12-25/26 out of the H slice for good (Review §5), and then how does W12-32 (H) assert PA-05 (Q-05-23)? Badge owner (Q-05-6). Is a Councilor family wanted, given ids are frozen? NEP-171 collection or NEP-393 for soulbound badges (Q-05-25)?
+- **W22:** Pass rule (Q-05-9); carved vs additive leg (Q-03-1); burn mechanism and token (Q-05-11, Q-05-12); can a 1 000-unit boost pass in a demo without `treasury.fund` (W22-35 is not H) — where does the seeded balance come from? Does W22-20's refund work without W22-24? The 6 h TTL is real time: does `warp` advance it, or can no vote pass on camera (Q-05-13; Pivot kill switch "vote in progress")? Five lazy DAOs in the season (R05-71)? Fauna shield (Q-05-21)? Pivot: external agents vote as colonies; W22-16 says the director never votes. Is that consistent? Who is the escrow `beneficiary` when a bounty is posted (Q-05-26)?
+- **W23:** SputnikDAO vs Trezu (W23-35) fit for "1 colony = 1 vote" and burn, plus bond, period, roles and the claimed-account vote key (Q-05-24); who signs staking on the claimed account (W23-32 depends on W23-14, whose "real wallet selector" is near-connect for new integrations per the organisers' near-kit skill; connector owner 01, Q-01-21); W23-30 still says image URLs "served by the app (or R2)", but D-37 drops R2, so the app on `terraagent.fun` serves them; pool whitelist owner (W23-34); deed / DAO / escrow migration order (W23-41).

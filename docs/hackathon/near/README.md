@@ -1,6 +1,6 @@
 # docs/hackathon/near — on-chain and NEAR feature reference (grooming pack)
 
-> **Status:** 2026-10-31. A grooming reference, not a spec: it gathers every on-chain and NEAR rule from the specs, the wave files, the master plan ([`../../terraagent-master-plan-final.md`](../../terraagent-master-plan-final.md)) and the hackathon proposals ([`../GRAND_PRIZE_PIVOT.md`](../GRAND_PRIZE_PIVOT.md), [`../economy-balance-simulation.md`](../economy-balance-simulation.md)), labels each with its status and source, and lists the gaps and the questions to grill each wave with. When it disagrees with `docs/spec/DECISIONS.md` or a spec, the spec wins and the disagreement is a gap.
+> **Status:** 2026-10-31, pass 4 on 2026-11-02 (log: [07 §12](./07-gaps-and-grooming.md#12-review-log); external sources `[X1]`–`[X23]` are listed in [06](./06-near-tools-and-adapters.md)). A grooming reference, not a spec: it gathers every on-chain and NEAR rule from the specs, the wave files, the master plan ([`../../terraagent-master-plan-final.md`](../../terraagent-master-plan-final.md)) and the hackathon proposals ([`../GRAND_PRIZE_PIVOT.md`](../GRAND_PRIZE_PIVOT.md), [`../economy-balance-simulation.md`](../economy-balance-simulation.md)), labels each with its status and source, and lists the gaps and the questions to grill each wave with. When it disagrees with `docs/spec/DECISIONS.md` or a spec, the spec wins and the disagreement is a gap.
 
 ## Files
 
@@ -12,8 +12,9 @@
 | 04 | [`04-agents-and-communication.md`](./04-agents-and-communication.md) | F3 Guild NPCs, F4 director and autoTrade, how colonies, robots and agents communicate (negotiation, truces, pushes), the proposed Agent API / MCP |
 | 05 | [`05-deed-staking-treasury-bounties.md`](./05-deed-staking-treasury-bounties.md) | F6 deed and badges, Settled colonies and own-NEAR staking, F7 planet treasury DAO, F8 bounties and mercenaries |
 | 06 | [`06-near-tools-and-adapters.md`](./06-near-tools-and-adapters.md) | NEAR Intents, NEAR AI Cloud, NEAR Auth, NEPs used, SputnikDAO, RPC, agent skills; ports, mock/real adapters, contract suites, network, funding, costs |
-| 07 | [`07-gaps-and-grooming.md`](./07-gaps-and-grooming.md) | Cross-cutting view: coverage of the owner's six topics, master-plan §0–§10 matrix, outward-claims matrix, end-to-end swimlane, accounts and supply pointers, track map, owner-decision list for D-37 / D-38, numbers sheet, canonical open questions, glossary, review log of the three passes |
+| 07 | [`07-gaps-and-grooming.md`](./07-gaps-and-grooming.md) | Cross-cutting view: coverage of the owner's six topics, master-plan §0–§10 matrix, outward-claims matrix, end-to-end swimlane, accounts and supply pointers, track map, owner-decision list for D-MP / D-PIVOT, numbers sheet, canonical open questions, glossary, review log of the three passes |
 | 08 | [`08-wave-grill-checklist.md`](./08-wave-grill-checklist.md) | Wave-by-wave grooming agendas (W00, W06, W09, W10, W11, W12, W13, W15, W16, W18, W20, W21, W22, W23, W24, W25): pre-reads, decisions, numbers, issues to grill, proposed new rows, demo-beat map |
+| 09 | [`09-parallel-near-lane.md`](./09-parallel-near-lane.md) | **Proposal (2026-11-02):** start NEAR now, next to W02: split the port rows into W27 Chain Ports (mocks + suites) and W28 Chain Lab (real adapters, Rust contracts, near-sandbox, lab sites); new abstractions (signer port, network profiles, `sandbox` kind, signed-tx journal, runtime config); mock / sandbox / testnet / mainnet-dev / prod profiles; temporary hosts and probes; NEAR best practices; owner decisions L1–L8 |
 
 ## Status legend (every rule carries exactly one)
 

@@ -1,6 +1,6 @@
 # 03 — Markets and trading rules (F2)
 
-> **Status:** 2026-10-31, grooming reference, pass 2 (legend, precedence rules and abbreviations: [`README.md`](./README.md)). **Sources:** [`NEAR.md`](../../spec/NEAR.md) §1, §6, §12, §15 · [`W13-markets.md`](../../plan/waves/W13-markets.md) · W15-08/11, W22-07, W23-21..25, W11-04/05, W04-18 · [`PROTOCOL.md`](../../spec/PROTOCOL.md) §7, §8, §10 · [`DATA_MODEL.md`](../../spec/DATA_MODEL.md) §4.4.1 · NEF F2 · D-19, D-25, D-26, D-30 · MP §0, §1, §3, §7 · Review §2, §4 · Balance §7, §10 · Pivot §2, §6 · [`media-plan.md`](../public/media-plan.md).
+> **Status:** 2026-10-31, grooming reference, pass 2; pass 4 (2026-11-02) (legend, precedence rules and abbreviations: [`README.md`](./README.md)). **Sources:** [`NEAR.md`](../../spec/NEAR.md) §1, §6, §12, §15 · [`W13-markets.md`](../../plan/waves/W13-markets.md) · W15-08/11, W22-07, W23-21..25, W11-04/05, W04-18 · [`PROTOCOL.md`](../../spec/PROTOCOL.md) §7, §8, §10 · [`DATA_MODEL.md`](../../spec/DATA_MODEL.md) §4.4.1 · NEF F2 · D-19, D-25, D-26, D-30 · MP §0, §1, §3, §7 · Review §2, §4 · Balance §7, §10 · Pivot §2, §6 · [`media-plan.md`](../public/media-plan.md).
 > **Owned here:** the treasury-leg split (Q-03-1), the protocol fee (Q-03-7), NEAR pairs in the demo (Q-03-15). **W13 header note:** partial fills, taker pays the fee, and no self-trade are implemented by H issues but are in no spec, so they are **Planned · spec gap** until W13-02 writes them into NEAR.md (the note's fourth item, the over-cap mint refund, is in [02](./02-mining-cargo-mint-authority.md)).
 
 ## 1. Purpose
@@ -21,7 +21,7 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 | Planet DAO | `{planet}.sputnik-dao.near` (mock `{planet}.dao.mock`, W22-05) | receives the treasury leg (W22-07) | Q-03-19 → [05](./05-deed-staking-treasury-bounties.md) |
 | Project account | not named anywhere | receives the protocol fee (MP §7, Proposed) | Q-03-7 |
 | Guild NPC | `guild-N.npc.terraagent.near` | market maker on the books of the planet it is docked at (W15-08) | its own NPC key (NEAR-70) → [04](./04-agents-and-communication.md) R04-1 |
-| Director / external agent | director key on the colony account; Agent API colony (Pivot Bet A) | an ordinary maker or taker (R03-50, R03-62) | → [04](./04-agents-and-communication.md) R04-25, R04-58 |
+| Director / external agent | director key on the colony account; Agent API colony (Pivot Bet A) | an ordinary maker or taker (R03-50, R03-62); an Agent Connect agent cannot be one (swaps only, R03-66) | → [04](./04-agents-and-communication.md) R04-25, R04-58 |
 | Market module | `near` module of the one app | message bus, matcher, batch builder (NEAR-61, D-26) | submits batches; does not sign legs |
 | Relayer | `relayer.*` | submits `execute_intents`, pays the gas (NEAR §4, NEAR-62) | relayer key |
 | Verifier | `intents.near` (mock: `MockIntentsAdapter`, W13-04) | holds deposits, checks that each token sums to zero, applies the batch atomically | — |
@@ -37,12 +37,12 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 | R03-5 | The stall is any online Trade Hub on the planet. Default: the maker's own. | Planned | W13-09 (H) |
 | R03-6 | Each of the 10 `ResourceKey`s is its own pair against each quote token. T1 trades from day one. Energy is not tradable. | Decided | D-34, NEAR-50 |
 | R03-7 | Order fields: `side`, `resource`, `amount`, `price {token, amount}`, `ttlS`, `stallId`. PROTOCOL §4.2 uses `price.resource` and has no `stallId` (Q-03-11). | Planned | W13-01 (H) |
-| R03-8 | An order is a signed NEP-413 `token_diff` from the maker's colony account, with deadline = TTL. It covers in-orbit cargo or NEAR/USDC held in the verifier. | Decided | NEAR-60 |
+| R03-8 | An order is a signed NEP-413 `token_diff` from the maker's colony account, with deadline = TTL. It covers in-orbit cargo or NEAR/USDC held in the verifier. Verifier detail (external fact, not in the spec): the NEP-413 `message` carries `signer_id`, `deadline`, `intents`; `recipient` is `intents.near`; the 32-byte nonce starts with a 4-byte salt that must be valid on the contract (fetch `current_salt` first; the salt registry can hold several valid salts and rotates), and the signing key must be registered on the verifier (R03-65) (https://docs.near-intents.org/integration/verifier-contract/signing-intents.md, intent-types-and-execution.md, fetched 2026-11-02; https://near.github.io/intents/defuse/index.html) | Decided | NEAR-60 |
 | R03-9 | TTL options: 15 min, 1 h, 6 h, 24 h. | Planned | W13-03 (H) |
 | R03-10 | Minimum order: 10 units (`order_too_small`). | Planned | W13-03 (H) |
 | R03-11 | Price tick: 0.001. No reject code exists for an off-tick price (Q-03-11). | Planned | W13-03 (H) |
 | R03-12 | At most 20 open orders per colony (`order_limit`). | Planned | W13-03 (H) |
-| R03-13 | Placing an order auto-deposits the side the maker gives into the verifier through the outbox (`opId = market-deposit:{orderId}`). Mock token id `nep245:res.terraagent.mock:<ResourceKey>` (W13-04) matches the verified real format (R06-7, [X3]). | Planned | W13-09, W13-04 (H) |
+| R03-13 | Placing an order auto-deposits the side the maker gives into the verifier through the outbox (`opId = market-deposit:{orderId}`). Mock token id `nep245:res.terraagent.mock:<ResourceKey>` (W13-04) matches the verified real format (R06-7, [X3]). The landed mock ledger keys balances as `NEAR`, `USDC` or a bare `ResourceKey` (`mock_chain_balance`), and a `mock_chain_intent` table exists; W13-04 must map or migrate (same drift as 02 Q-02-22). | Planned | W13-09, W13-04 (H); code: `shared/db/prisma/mock-chain.prisma` |
 | R03-14 | The sim mirrors reservations as `reservedInOrbit` (`market.reserve` / `release` / `settled`). Sim stock does not change. | Planned | W13-10 (H), SIMULATION §4 |
 | R03-15 | `fee_bp` is snapshotted onto the order when it is placed. | Planned | W13-08 (H) |
 | R03-16 | A fill executes at the maker's price. | Planned | W13-11 (H) |
@@ -64,12 +64,12 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 | R03-32 | Failure after retries: the trade is FAILED, both orders go back to the book (EXPIRED if past their TTL), `market.release` is sent, and the toast says "Contract failed, order returned". | Decided | NEAR-62, PROTOCOL §10 · W13-14 (H) |
 | R03-33 | If NEAR or the verifier is unreachable, market and cargo commands are rejected with `market_unavailable` and the planet keeps running. Landed code also has `NEAR_UNAVAILABLE` (503). Detection before accept: Q-02-6. | Decided | NEAR §1 p4, PROTOCOL §10; code: `backend/app/src/near/domain/errors.ts` |
 | R03-34 | An order can be cancelled (by its owner only) or expire (TTL sweep every 30 s). Its deposit stays in the verifier as free in-orbit cargo. | Planned | W13-15 (H) |
-| R03-35 | In-orbit cargo = cargo account + free verifier balance. Import auto-withdraws from the verifier first (`opId = market-withdraw:{importSeq}`). | Planned | W13-16 (H) → [02](./02-mining-cargo-mint-authority.md) R02-29 |
-| R03-36 | `intents.near` is mainnet only. Dev uses `simulate_intents` / `dry: true`; CI stubs the verifier. | Decided | NEAR-64 → [06](./06-near-tools-and-adapters.md) R06-2 |
+| R03-35 | In-orbit cargo = cargo account + free verifier balance. Import auto-withdraws from the verifier first (`opId = market-withdraw:{importSeq}`). On the real verifier this is `mt_withdraw` or a signed withdraw intent (owner 06: R06-79, [X21]). | Planned | W13-16 (H) → [02](./02-mining-cargo-mint-authority.md) R02-29 |
+| R03-36 | `intents.near` is mainnet only. Dev uses `simulate_intents` / `dry: true`; CI stubs the verifier. `simulate_intents` takes the same input as `execute_intents` and returns `intents_executed`, `logs`, `min_deadline`, `state.fee` (pips) and `state.current_salt` without changing state (https://docs.near-intents.org/integration/verifier-contract/simulating-intents.md, fetched 2026-11-02). | Decided | NEAR-64 → [06](./06-near-tools-and-adapters.md) R06-2 |
 | R03-37 | Orders may be priced in NEAR or USDC (open in beta). | Decided | NEAR-65, D-26 · W13-17 (H+) |
 | R03-38 | No NEAR/USDC pairs in the demo: resource-for-resource only, and the Guild float is not used for trading. MP §0 calls this "locked". | Proposed | MP §0 ("safest"), §3 "Later"; Review C7 |
 | R03-39 | One NEAR pair per T1 family (`metals.t1/NEAR`, `minerals.t1/NEAR`, `bio.water/NEAR`). The Guild float is the loss limit, numbers in [04](./04-agents-and-communication.md) R04-50..52. The protocol fee shows as a NEAR line. Kill switch at D11, falling back to resource-only. | Proposed | Pivot Bet B, §6 |
-| R03-40 | The 1Click API "may be used" for external swaps; 0.2 % fee without a JWT; "verify the API details". | Decided | NEAR-65 · W23-25 (—) |
+| R03-40 | The 1Click API "may be used" for external swaps; 0.2 % fee without a JWT; "verify the API details". The fees page today says +0.25 % without an API key and 0.20 % with one, and names an API key, not a JWT; HACKATHON.md Q-006 says 0.2 % without (owner 06: R06-10, [X22], [X9]). | Decided | NEAR-65 · W23-25 (—) |
 | R03-41 | Settled trade history feeds the planet price board. | Decided | NEAR-62 |
 | R03-42 | The Guild `refPrice` is the board's 24 h VWAP (NEAR-71 only says "the planet's last 24 h of settled trades"). | Planned | W15-06 (H) |
 | R03-43 | Progress events: `merchant` +1 per settled trade per colony; `portAuthority` + fee units earned by the stall owner. Thresholds come from the W12 catalogue. | Planned | W13-27, W12-01 (H); profile rows 16, 17 |
@@ -93,6 +93,9 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 | R03-61 | Season: five dev planets, each with its own books. The Guild is the only bridge, but cross-planet carry (W15-10) is post-hackathon, so the five economies do not connect (Q-03-31). | Proposed | Pivot §2 "living season"; NEAR-63, NEAR-72 |
 | R03-62 | Agent ↔ agent trading: external-agent colonies (Bet A `placeOrder` / `acceptGuildOffer` / `counterOffer`) and director orders enter the matcher as ordinary makers and takers under R03-1..R03-60. | Proposed | Pivot Bet A → [04](./04-agents-and-communication.md) R04-58 |
 | R03-63 | Video beat: "Contract signed: 300 iron for 0.012 NEAR at Vega Port · fee 0.00003 NEAR", and `execute_intents` "with three legs summing to zero" (Q-03-30). | Proposed | media-plan.md l.15, l.38 |
+| R03-64 | `intents.near` charges its own protocol fee, 1 pip (0.0001 %) per transaction (fact owned by 06, §5 numbers, [X22]); `simulate_intents` reports it as `state.fee` in pips (100 pips = 0.01 %). Trading consequence owned here: no spec, wave or mock (W13-05) accounts for it, so a batch that sums to zero before fees (R03-29) may not settle as built, and the W23-24 1-unit smoke trade is exposed. Which leg bears it is not stated in the docs read (a release note says only the given side, "negative deltas", is charged; unconfirmed). | Gap | [X22]; https://docs.near-intents.org/integration/verifier-contract/simulating-intents.md (fetched 2026-11-02) · Q-03-32 |
+| R03-65 | Every account that signs intents (colony accounts, Guild NPCs, a separate director key) must first register its key on `intents.near` with `add_public_key` (owner 06: R06-66, [X21]). No W06 / W13 / W15 / W23 issue does this, and W13-05's mock checks signatures without a registry. Key removal on claim: [01](./01-accounts-keys-relayer.md) R01-62. | Gap | R06-66; PROTOCOL §7 (F4 "`add_public_key` intent") → Q-06-17 |
+| R03-66 | Agent Connect (NEAR Intents Agent API) trades only by 1Click-quoted swaps, plus transfer, withdraw and deposit, on assets listed by `GET /v1/tokens` (others are refused `unsupported_token`); it has no `token_diff` or order-book path, so it cannot settle the colony books' batches (R03-29); at most it could hold a NEAR / USDC float or make external swaps. Facts owned by 06 (R06-83, R06-84) and 04 (R04-62). | Gap | https://api.agentsonintents.com/llms.txt (fetched 2026-11-02), [X11] → Q-06-21 |
 
 ## 4. Flows
 
@@ -163,7 +166,8 @@ This batch has five legs; the video beat claims three (Q-03-30).
 | Gas per intent batch ≈ 0.0005–0.002 NEAR, paid by the relayer | NEAR §12 (estimate; W23-16 measures) | Decided (value proposed) |
 | Guild: 2 NPCs, 6 curated offers; NEAR float cap "5 NEAR", scope unstated | W15-02, W15-11 (H) → [04](./04-agents-and-communication.md) R04-2, R04-50 | Planned |
 | Guild float 5 NEAR per NPC, 10 NEAR total | Pivot Bet B → [04](./04-agents-and-communication.md) R04-51 | Proposed |
-| 1Click surcharge 0.2 % without a JWT | NEAR-65 · W23-25 (—) | Decided |
+| 1Click surcharge 0.2 % without a JWT (docs today: +0.25 % without an API key, 0.20 % with one; R03-40) | NEAR-65 · W23-25 (—) | Decided |
+| `intents.near` protocol fee 0.0001 % (1 pip) per transaction | [X22], owner 06 (R03-64) · Q-03-32 | Gap |
 | Merchant 5 / 50 / 500 trades; Port Authority 100 / 1 000 / 10 000 fee units | W12-01 (H); profile rows 16, 17 | Planned |
 | Per planet-week (Model B, §8 set): protocol ≈ 2 474, stall fees 2 376, treasury 594 units | Balance §7.2, §7.3 | Proposed |
 | `chain.market_order` rows in a terminal state kept 30 d; `chain.intent_trade` kept forever | DATA_MODEL §6 | Decided |
@@ -203,8 +207,8 @@ This batch has five legs; the video beat claims three (Q-03-30).
 | W13-01 | H | R03-7, reject codes | PROTOCOL shape drift (Q-03-11); does not own the server `setHubFee` handler (Q-03-26) |
 | W13-02 | H | R03-17, R03-18, R03-19, R03-22 | writes the W13 note into NEAR.md |
 | W13-03 | H | R03-9..R03-12, R03-21 | no default `fee_bp`, no off-tick code |
-| W13-04, W13-05, W13-06 | H | R03-13, R03-29 | acceptance text `nep245:…:water` should read `bio.water` (Q-03-28) |
-| W13-07 | H | R03-30 | NEP-413 payload reused by W23-22 |
+| W13-04, W13-05, W13-06 | H | R03-13, R03-29, R03-64, R03-65 | acceptance text `nep245:…:water` should read `bio.water` (Q-03-28); token ids vs the landed mock ledger (R03-13); the mock has no verifier fee and no key registry (Q-03-32, Q-06-17) |
+| W13-07 | H | R03-8, R03-30 | NEP-413 payload reused by W23-22; real nonces carry the verifier salt (R03-8); W13-07 writes `signTokenDiff(colonyAccount, diff, deadline, nonce)`, landed `SignTokenDiffInput {accountId, deltas, deadlineMs}` takes no nonce (the adapter returns it in `SignedIntent`; `intents.port.ts`) |
 | W13-08 | H | R03-2, R03-15, R03-59 | states differ from DATA_MODEL (Q-03-10) |
 | W13-09 | H | R03-5, R03-13, R03-53, R03-59 | |
 | W13-10 | H | R03-14 | |
@@ -231,17 +235,17 @@ This batch has five legs; the video beat claims three (Q-03-30).
 | W15-12 | H+ | float cap enforcement | Pivot Bet B wants it at H → [04](./04-agents-and-communication.md) R04-14, Q-04-7 |
 | W22-07 | H | R03-24, R03-54 | carved out vs added on top (Q-03-1) |
 | W23-21 | H2 | R03-13, R03-56 | deposit method → Q-06-1; "4 tokens" vs 10 ids → Q-06-4 |
-| W23-22, W23-23, W23-24 | H2 | R03-29..R03-31, R03-36 | 1-unit smoke trade fee floors to 0 (Q-03-2); Guild and director orders cannot settle while AgentWallet stays mock → [06](./06-near-tools-and-adapters.md) R06-68, Q-06-18 |
-| W23-25 | — | R03-40 | |
+| W23-22, W23-23, W23-24 | H2 | R03-29..R03-31, R03-36, R03-64, R03-65 | 1-unit smoke trade fee floors to 0 (Q-03-2); verifier fee and `add_public_key` not in any acceptance (Q-03-32, Q-06-17); Guild and director orders cannot settle while AgentWallet stays mock → [06](./06-near-tools-and-adapters.md) R06-68, Q-06-18 |
+| W23-25 | — | R03-40 | `ONECLICK_JWT` / "0.2 % fee" text vs today's fees page (API key; 0.25 % without) |
 | W11-04, W11-05 | — | none | planet end and archive have no market step (Q-03-13) |
-| **no issue** | — | R03-25..R03-28, R03-38, R03-39, R03-55, R03-61..R03-63 | protocol leg, Guild-fill treasury leg, NEAR pair and fee line, season, agent API, video beat, default fee |
+| **no issue** | — | R03-25..R03-28, R03-38, R03-39, R03-55, R03-61..R03-66 | protocol leg, Guild-fill treasury leg, NEAR pair and fee line, season, agent API, video beat, default fee, verifier fee, verifier key registration, Agent Connect |
 
 ## 8. Open questions
 
 | ID | Question | Proposed default / note |
 |---|---|---|
 | Q-03-1 | Is the treasury leg carved out of the stall fee (W22-07: 2.4 + 0.6 = 3) or added on top (MP §7: stall +10, treasury +2)? Balance §7.2 Model B also carves it out: stall fees 2 376 + treasury 594 = 2 970 = 1 % of 297 000 player-to-player volume. | Carve out (NEAR-101 "share of every fee leg", W22-07, Balance §7.2). Closes Q-05-10. |
-| Q-03-2 | Unit precision: W13-31 floors to whole units (1 % of 7 → 0), W22-07 expects 0.6, NEAR-50 says 18 decimals. Under the floor, W23-24's 1-unit trade has a fee leg of 0. What does "remainder to maker" mean? | none |
+| Q-03-2 | Unit precision: W13-31 floors to whole units (1 % of 7 → 0), W22-07 expects 0.6, NEAR-50 says 18 decimals. Under the floor, W23-24's 1-unit trade has a fee leg of 0. What does "remainder to maker" mean? Note: landed `TokenAmount` is an integer base-unit string (02 Q-02-14), so with 18 decimals 0.6 water is representable on chain; the floor is a game-unit choice, not a chain limit. | none |
 | Q-03-3 | After a failed settlement, W13-14 and PROTOCOL §10 release the reservation although the orders are back on the book (demo step 8: "reservations stay correct"). What stops the same pair re-matching and failing in a loop? | none |
 | Q-03-4 | Self-trade: if the incoming order "rests" (W13 note) after skipping a same-colony order, the book can be crossed. Rest, skip and continue, or cancel? | none |
 | Q-03-5 | Pair identity: is "sell water for metals" the same book as "buy metals for water"? Which token is the base? Is `price.amount` per unit (board 0.4, tick 0.001) or a total ("for 120 metals")? | none |
@@ -254,7 +258,7 @@ This batch has five legs; the video beat claims three (Q-03-30).
 | Q-03-12 | Resting orders when the maker's hub or the stall hub goes offline (brownout group 2, W10-04) or is destroyed: keep matching, pause, or cancel? Does an offline stall still earn its fee? | none |
 | Q-03-13 | What happens to open orders and verifier balances when a colony is eliminated or Settled, or when the planet ends? W11-04 (14 d end, extinct / all-settled end) and W11-05 (ENDED → ARCHIVED, `planet_result`, deed hook) have no market step, and both are untagged. Do verifier balances follow the player as cargo does (NEAR-54)? | none |
 | Q-03-14 | NEAR-pair tick and decimals: the 0.001 tick vs Balance §7.3's illustrative 0.0001 NEAR per unit and the video's 0.00004; the 2-decimal display (W13-17); USDC decimals. | none |
-| Q-03-15 | NEAR pairs in the demo? MP §0 locks the "safest" float (no NEAR/USDC pairs, float not used for trading); Pivot Bet B proposes 3 pairs with a capped float; W13-17 (H+) covers NEAR and USDC; W13's own slice defers only quote tokens "beyond NEAR". | Owner decision (D-38 per Pivot §8). Fallback: Pivot §6 kill switch at D11 → resource-only. |
+| Q-03-15 | NEAR pairs in the demo? MP §0 locks the "safest" float (no NEAR/USDC pairs, float not used for trading); Pivot Bet B proposes 3 pairs with a capped float; W13-17 (H+) covers NEAR and USDC; W13's own slice defers only quote tokens "beyond NEAR". | Owner decision (D-PIVOT per Pivot §8). Fallback: Pivot §6 kill switch at D11 → resource-only. |
 | Q-03-16 | Fee slider: MP calls it a Must, W13-22 is H+. | Review C3: promote to H |
 | Q-03-17 | Wash trading under D-25: at a 0 % fee and 10 units, the trader pays nothing and the relayer pays the gas. Wash volume moves the VWAP and therefore the Guild `refPrice` (W15-06), and farms Merchant, Port Authority and deed volume. The only brakes in the repo: the 0.25×–4× clamp (Balance §7.2), the float cap (W15-12, H+) and mint caps. Under Bet B this is a path to the NEAR float. | Accepted risk (D-25); record it explicitly |
 | Q-03-18 | An incoming order that sweeps several price levels makes one batch per fill. If one fill fails mid-sweep, what happens to the rest? | none |
@@ -266,11 +270,14 @@ This batch has five legs; the video beat claims three (Q-03-30).
 | Q-03-24 | Toast example mismatch: NEF F2 says "120 light alloys" (`metals.t2`), W13 says "120 metals" (`metals.t1`). | Use W13 |
 | Q-03-25 | While the verifier is unreachable, do resting orders still match and queue, or does matching pause? | none |
 | Q-03-26 | The @hack e2e skips step 2 yet asserts a 1 % fee in step 4, but no default `fee_bp` is set (W13-03 sets only the max). Which H issue owns the server `market.setHubFee` handler and the per-hub fee storage (W13-01 is the contract only, W13-22 is the H+ client)? | Add `defaultFeeBp = 100` to W13-03; give the handler and storage to one H issue (W13-09 or W13-12) |
-| Q-03-27 | The NEAR leg is wNEAR `nep141:wrap.near` on the real verifier (R06-9, Q-06-2), but the W13-04 mock uses `native:near`. Who wraps, and when? | Rename the mock id to `nep141:wrap.near`; only if Bet B |
+| Q-03-27 | The NEAR leg is wNEAR `nep141:wrap.near` on the real verifier (R06-9, Q-06-2; [X2] re-read 2026-11-02: the verifier "does not accept native NEAR", wrap first), but the W13-04 mock uses `native:near` and the landed mock ledger uses `NEAR` (R03-13). Who wraps, and when? | Rename the mock id to `nep141:wrap.near`; only if Bet B |
 | Q-03-28 | W13 text fixes: step 6 refers to "A's order of 200", but step 4 fills A's 300 ask completely, so the scenario needs a fresh 200 ask; W13-04's acceptance writes `nep245:…:water` instead of `bio.water`. | Fix in W13 grooming |
 | Q-03-29 | Stall competition: in H the form has no stall field and `/stalls` and the map layer are untagged, so makers cannot compare stalls. Does a taker's `stallId` mean anything? Can a maker list at a 0 % foreign stall? | H: own stall only; picker after the hackathon |
 | Q-03-30 | Video beat (R03-63): 0.012 NEAR / 300 = 0.00004 per unit, below the 0.001 tick; 0.00003 is 0.25 % of 0.012, so only a protocol fee is shown, with no stall fee; a NEAR pair with stall, treasury and protocol legs has 5 legs, not 3; with the Guild as counterparty the stall fee is open (Q-03-6). | Rewrite the beat once Q-03-14 / Q-03-15 are settled |
 | Q-03-31 | Season: do the five planets' books stay disconnected (no carry, W15-10 —)? Does the sector dashboard aggregate the five boards, and from which endpoint? | none |
+| Q-03-32 | Verifier protocol fee (R03-64): which leg pays the 1 pip, does W13-12's zero-sum assertion leave room for it, does W13-05's mock charge it, and does the toast or the fee legs show it? Check with `simulate_intents` (`state.fee`) in W23-23 before W23-24. | none |
+| Q-03-33 | Closed → Q-06-17 (who calls `add_public_key` for each named signer and who pays). 03 adds: at colony creation (W06-08) or before the first order (W13-09)? Should W13-05's mock refuse an unregistered signer (08 W13-04 / W13-07 row)? | — |
+| Q-03-34 | Closed → Q-06-21 (Agent Connect: NEP-245 listing, host, use for the director / Guild). 03 adds: it has no path to settle book batches (R03-66), so the question is only the Bet B NEAR float or external swaps. | — |
 
 ## 9. Grill questions
 
@@ -278,7 +285,7 @@ This batch has five legs; the video beat claims three (Q-03-30).
 - **W13 e2e:** step 8 asserts "reservations stay correct". Correct in which sense: released or kept? Step 6 needs a fresh ask (Q-03-28).
 - **W15:** Where are Guild quotes listed (`stallId`), who earns the fee on them, and does `acceptGuildOffer` need a Trade Hub? Float numbers → [04](./04-agents-and-communication.md) R04-50..52, Q-04-24.
 - **W22:** Can W22-07's 2.4 / 0.6 coexist with W13-31's floor? Does the 0.2 % Guild-fill leg get an issue?
-- **W23:** What does W23-24's 1-unit trade put in the fee leg? W23-21: the docs name `mt_batch_transfer_call` (Q-06-1), dropping the NEP-141 fallback is Proposed (R06-8), and the token count is Q-06-4. Does the mock id format already match (R03-13)? With Intents real and AgentWallet mock, Guild and director orders cannot settle ([06](./06-near-tools-and-adapters.md) R06-68, Q-06-18).
+- **W23:** What does W23-24's 1-unit trade put in the fee leg? W23-21: the docs name `mt_batch_transfer_call` (Q-06-1), dropping the NEP-141 fallback is Proposed (R06-8), and the token count is Q-06-4. Does the mock id format already match (R03-13)? With Intents real and AgentWallet mock, Guild and director orders cannot settle ([06](./06-near-tools-and-adapters.md) R06-68, Q-06-18). Who registers each signing key on `intents.near` (R03-65 → Q-06-17), and what does `simulate_intents` report as `state.fee` for the smoke batch (Q-03-32)?
 - **W11 / season:** What happens to orders and verifier balances at planet end, elimination and Settled (Q-03-13)? Five disconnected books (Q-03-31)?
 - **W08 / Negotiate:** order book or direct offers (Q-03-20)? Is W13-26 still post-hackathon?
 - **W12 / W20:** Do wash trades count toward Merchant, Port Authority and deed volume, and is that accepted (Q-03-17)?

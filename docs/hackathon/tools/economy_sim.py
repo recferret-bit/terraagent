@@ -6,11 +6,18 @@ Model A: one colony, 1 s steps, scripted build order, ECONOMY_RATE_SCALE 0.25,
 terraform drones + optional Terraforming Processor, D-34 tier gates, Trade Hub
 export caps and a Guild counterparty for the "trader" path.
 
-Model B: one planet, 1-min steps, 7 days, 5 colonies, Guild inventory pricing,
-mint caps, fee / treasury / protocol legs.
+Model B: one planet, 30-min slots (48 a day), 7 days, 5 colonies, Guild
+inventory pricing, mint caps, fee / treasury / protocol legs.
 
 All numbers come from docs/game/*.md and docs/spec/SIMULATION.md unless marked
 PROPOSED (then they are assumptions this calculator makes explicit).
+
+Modes: hex | terraform | matrix | colony | raids | planet | current | all
+(`current` reruns the key Model A scenarios with the inputs that moved after
+2026-10-31: W01 pod cargo 600/350/200/200, units spec §4.5 terrain mix, HQ cell
+800 E, HQ 1.5x, Recon row of units spec §5.2. The other modes keep the
+2026-10-31 baseline inputs so the tables in economy-balance-simulation.md
+stay reproducible.)
 """
 import math, sys, json
 from collections import defaultdict
@@ -35,7 +42,7 @@ def beacon_gain(hub_r=10, beacon_r=8, d=10):
 # ---------- data rows (T1 unless noted) ----------
 # name: (M, Min, Pet, W, build_s, drain, footprint, extra)
 B = {
- 'hub':        (200,100, 50, 50, 20, 5, 9, {}),
+ 'hub':        (200,100, 50, 50, 20, 5, 9, {}),   # spec 30 s at 1.0x = 20 s at the HQ's 1.5x; the baseline HQ works at 1.0x
  'solar':      ( 60, 75, 10,  5, 18, 1, 4, {'solar': 21}),
  'wind':       ( 70, 35,  5,  0, 14, 1, 4, {'wind': 16}),
  'thermal':    ( 80, 20, 20, 10, 15, 3, 4, {'gen': 28, 'fuel': 1.5*SCALE}),
@@ -63,7 +70,7 @@ U = {  # name: (M, Min, Pet, W, build_s, drain, supply)
  'harvester':  (40, 15,  5,  0, 10, 1.5, 1),
  'builder':    (45, 25, 10,  0, 12, 2.0, 1),
  'terraformer':(50, 30,  5, 10, 14, 2.5, 1),
- 'recon':      (60, 30, 10,  0, 12, 2.0, 1),   # PROPOSED (units spec §5.2 not loaded here)
+ 'recon':      (60, 30, 10,  0, 12, 2.0, 1),   # 2026-10-31 baseline placeholder; units spec §5.2 row is RECON_SPEC (used by `current`)
  'multitask2': (130,90, 30, 15, 26, 5.0, 2),
 }
 # Terraform ops to Living from each terrain class: (seconds @1.0x, energy, M, Min, water)
@@ -71,8 +78,13 @@ U = {  # name: (M, Min, Pet, W, build_s, drain, supply)
 PREP = {'flat':(3,20,0,0,0), 'forest':(8,50,0,0,0), 'rock':(9,80,-10,0,0), 'slope':(11,80,0,2,0),
         'hole':(13,120,10,5,0), 'shallow':(17,220,20,10,0)}
 LIVING_EXTRA = (25, 170, 0, 5, 25)
-# temperate land mix near a colony (SIMULATION §10 wins over the units spec, R12) PROPOSED split
+# temperate land mix near a colony: 2026-10-31 baseline (PROPOSED split, read from SIMULATION §10 under R12)
 MIX = {'flat':0.56, 'forest':0.20, 'rock':0.08, 'slope':0.08, 'hole':0.02, 'shallow':0.04, 'deep':0.02}
+# moved inputs (2026-11-02), used by `current`:
+MIX_SPEC = {'flat':0.45, 'forest':0.25, 'rock':0.08, 'slope':0.10, 'hole':0.02, 'shallow':0.06, 'deep':0.04}  # units spec §4.5; W01 worldgen.ts; SIMULATION §10 last line defers to it
+RECON_SPEC = (55, 30, 15, 0, 14, 2.5, 1)   # units spec §5.2
+KIT_POD = (600, 350, 200, 200)             # units spec §6.4 S0 pod cargo, W01-09, W01 hq.ts startingKit (pod hold caps 600/500/500)
+HQ_CELL = 1000                             # baseline PROPOSED; units spec UO-HQ-06 and W01 hq.ts: 800 E (used by `current`)
 
 def living_cost(terrain):
     t,e,m,mi,w = PREP[terrain]; t2,e2,m2,mi2,w2 = LIVING_EXTRA
@@ -82,8 +94,12 @@ def living_cost(terrain):
 class Colony:
     def __init__(self, name='A', terraformers=1, processor_rate=0.5, guild_ratio=None,
                  export=False, hub_r=10, proc_scaled=False, log=None, living_biomass=0.0, clear_yield=5.0, cap_mode='family',
-                 kit=(400,250,150,150), cap_store=1500, gate_mode='pct', t2_share=0.4):
+                 kit=(400,250,150,150), cap_store=1500, gate_mode='pct', t2_share=0.4,
+                 mix=None, hq_cell=HQ_CELL, hq_rate=1.0):
         self.name = name
+        self.mix = mix or MIX          # terrain shares among owned tiles
+        self.hq_cell = hq_cell         # HQ power cell (E); stands in for the pre-grid store
+        self.hq_rate = hq_rate         # HQ work rate on the construction and terraform lanes (spec 1.5x; baseline 1.0x)
         self.cap_store = cap_store     # Capacitor T1 storage (spec 1 500; proposed 6 000)
         self.gate_mode = gate_mode     # 'pct' (D-34: 30/70 % of owned) or 'count' (PROPOSED: 100/230 Living tiles)
         self.t2_share = t2_share       # share of M and Min a T2 item pays in T2 (D-34: 0.4; proposed 0.25)
@@ -98,10 +114,10 @@ class Colony:
         self.buildings = defaultdict(int)
         self.units = defaultdict(int)
         self.supply_cap = 10
-        self.energy_store = 1000.0   # HQ power cell (PROPOSED 1 000 E, recharged by the Founder Core +8 E/s)
+        self.energy_store = float(hq_cell)   # HQ power cell (baseline 1 000 E; spec 800 E), recharged by the Founder Core +8 E/s
         self.surplus = 0.0
         self.owned = HEX(hub_r)
-        self.tiles = {k: self.owned*v for k,v in MIX.items()}   # terrain classes among owned
+        self.tiles = {k: self.owned*v for k,v in self.mix.items()}   # terrain classes among owned
         self.footprint = 0
         self.living = 0.0
         self.prepared_pool = 0.0  # Prepared tiles not under a footprint (Processor feed)
@@ -190,7 +206,7 @@ class Colony:
         gen, dr = self.gen(), self.drain()
         prod_drain = sum(B[b][5]*self.buildings[b] for b in ('extractor','extractor_t2','quarry','quarry_t2','water','petro','depot','factory','factory_t2','tradehub'))
         net = gen - dr
-        store_cap = 1000 + self.buildings['capacitor']*self.cap_store
+        store_cap = self.hq_cell + self.buildings['capacitor']*self.cap_store
         disch = 8 + self.buildings['capacitor']*30
         shed = False
         if net >= 0:
@@ -270,14 +286,14 @@ class Colony:
                     self.cur_prep -= 1
                     self.terra_energy += 6.7
                 return
-            rate = 1.0 + self.units['builder']   # the HQ Commander builds at 1.0x; Builders add 1.0x each
+            rate = self.hq_rate + self.units['builder']   # the HQ Commander builds at hq_rate; Builders add 1.0x each
             self.cur_left -= rate
             if self.cur_left <= 0:
                 self.buildings[name] += 1; self.cur.done = True
                 ex = row[7]
                 if 'cap' in ex: self.cap += ex['cap']
                 if 'supply' in ex: self.supply_cap += ex['supply']
-                if name == 'beacon': self.owned += beacon_gain(); self.tiles = {k: self.owned*v for k,v in MIX.items()}
+                if name == 'beacon': self.owned += beacon_gain(); self.tiles = {k: self.owned*v for k,v in self.mix.items()}
                 if name == 'hub': self.supply_cap = 10
                 self.events.append((self.t, 'built', name))
                 self.cur = None
@@ -308,7 +324,7 @@ class Colony:
         """Drones: terrain -> Prepared (prep op) then Prepared -> Living (Irrigate+Seed).
         With a Processor, drones only prep and the Processor converts Prepared -> Living."""
         if self.stage < 4: return
-        workers = self.terraformers + self.units['multitask2']*2.0
+        workers = self.terraformers + (self.hq_rate - 1.0) + self.units['multitask2']*2.0   # terraformers includes the HQ at 1.0x
         if self.cur is not None and self.cur_prep > 0: workers -= 1  # one drone is on site prep
         if workers <= 0: return
         proc = self.buildings['processor'] > 0
@@ -364,7 +380,8 @@ class Colony:
                     self.stock[key] -= amt; self.orbit[key] += amt; self.exported[key] += amt; self.export_min[minute] += amt
         # buy T2 with orbit T1 at ratio R (Guild ask incl. spread)
         if self.guild_ratio and self.stage >= 4:
-            need = {'metals.t2':160,'minerals.t2':100,'bio.t2':150}
+            hub2 = self.cost_of(B['hub_t2'], True)   # the Hub T2 bill at this colony's T2 share (D-34: 160 / 100 / 150)
+            need = {k: hub2[k] for k in ('metals.t2','minerals.t2','bio.t2')}
             for k,v in need.items():
                 short = v - self.stock[k] - self.bought_t2.get(k+'_pending',0)
                 if short > 0:
@@ -395,7 +412,7 @@ def plan_reference(trader=False, processor=False, beacons=2, extra_terraformers=
 
 def run_colony(minutes=120, **kw):
     plan, uplan = plan_reference(**{k:v for k,v in kw.items() if k in ('trader','processor','beacons','extra_terraformers')})
-    c = Colony(**{k:v for k,v in kw.items() if k in ('terraformers','processor_rate','guild_ratio','export','proc_scaled','living_biomass','clear_yield','cap_mode','kit','cap_store','gate_mode','t2_share')})
+    c = Colony(**{k:v for k,v in kw.items() if k in ('terraformers','processor_rate','guild_ratio','export','proc_scaled','living_biomass','clear_yield','cap_mode','kit','cap_store','gate_mode','t2_share','mix','hq_cell','hq_rate')})
     c.terraformers = 1  # the HQ drone works the terraform lane from landing
     c.plan = plan; c.uplan = uplan; c.unit_queue = uplan
     snaps = {}
@@ -415,15 +432,16 @@ def snapshot(c):
                 exported=int(sum(c.exported.values())), wasted=int(sum(c.wasted.values())))
 
 # ---------- Terraform arithmetic (closed form) ----------
-def terraform_table():
+def terraform_table(mix=None):
+    MIX_ = mix or MIX
     rows = []
-    owned = HEX(10); deep = owned*MIX['deep']; denom = owned - deep
+    owned = HEX(10); deep = owned*MIX_['deep']; denom = owned - deep
     fp = 70  # typical S5 footprint tiles (hub 9 + ~12 buildings x4 + factory 9 + ~6 x1)
     for target in (30, 50, 70, 100):
         need = math.ceil(target/100*denom)
         # cheapest tiles first
         order = ['flat','forest','rock','slope','hole','shallow']
-        pool = {k: owned*MIX[k] for k in order}; pool['flat'] -= fp
+        pool = {k: owned*MIX_[k] for k in order}; pool['flat'] -= fp
         left = need; secs=E=W=Mi=M=0; got=0
         for k in order:
             n = min(left, max(0,pool[k]))
@@ -475,7 +493,7 @@ def planet_week(k=1.0, guild_drain=0.0, mint_cap=20000, colonies=5, fee_bp=100, 
                 price[r] = min(4*ref[r], max(0.25*ref[r], ref[r]*(guild_target*npcs/max(1,inv[r]))**k))
                 # off-planet sale on docked slots only
                 if docked: inv[r] *= (1-guild_drain)
-            # T2 demand: each colony past day 1 buys ~200 T2 per slot when it can
+            # T2 demand: each colony from day 1 on buys 120 of each T2 sub-resource per day (600/day for five), spread over the slots
             for r in inv_t2:
                 want = colonies*(0 if day==0 else 120)/48
                 got = min(want, inv_t2[r]); inv_t2[r] -= got; burned_t2 += got
@@ -497,7 +515,7 @@ def stamp(sec):
     return '-' if sec is None else f'{sec//60}:{sec%60:02d}'
 
 # ---------- Raid arithmetic (battle v1: plain HP / DPS, one bite per second, focus fire) ----------
-DEF = {'autocannon':(55,450,18), 'laser':(50,400,24), 'recon':(60,240,14)}   # metals cost, HP, DPS
+DEF = {'autocannon':(55,450,18), 'laser':(50,400,24), 'recon':(55,240,14)}   # metals cost, HP, DPS (economy spec §3.7, units spec §5.2)
 def raid_race(defenders, n_skitter, hp=120, dps=8, dt=0.1):
     order = [d for d,k in defenders.items() for _ in range(k)]
     dh = [DEF[d][1] for d in order]; sk = [hp]*n_skitter; t = 0.0
@@ -526,6 +544,55 @@ def fmt_table(rows, cols):
     for r in rows: out.append('| ' + ' | '.join(str(r.get(c,'')) for c in cols) + ' |')
     return '\n'.join(out)
 
+R8KW = dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, beacons=1)
+MATRIX = [('A1 spec defaults (clear 5, family cap, 2 drones)', dict()),
+     ('A2 clear 25', dict(clear_yield=25)),
+     ('A3 clear 25 + per-sub caps', dict(clear_yield=25, cap_mode='sub')),
+     ('A4 A3 + 4 drones', dict(clear_yield=25, cap_mode='sub', extra_terraformers=3)),
+     ('A5 A3 + Processor 0.5/s (B1)', dict(clear_yield=25, cap_mode='sub', processor=True)),
+     ('A6 A3 + Processor 0.1/s', dict(clear_yield=25, cap_mode='sub', processor=True, processor_rate=0.1)),
+     ('A7 A3 + Processor 0.05/s', dict(clear_yield=25, cap_mode='sub', processor=True, processor_rate=0.05)),
+     ('A8 trader, Guild T2 = 4x T1', dict(clear_yield=25, cap_mode='sub', trader=True, export=True, guild_ratio=4.0)),
+     ('A9 trader, Guild T2 = 8x T1', dict(clear_yield=25, cap_mode='sub', trader=True, export=True, guild_ratio=8.0)),
+     ('A10 A3, no beacons', dict(clear_yield=25, cap_mode='sub', beacons=0)),
+     ('A11 A3, 1 beacon', dict(clear_yield=25, cap_mode='sub', beacons=1)),
+     ('R1 recommended set, solo (kit 400/300/200/150, caps per sub, capacitor 6k, gate 100/230 Living, Hub T2 25 % T2, Processor 0.2, 1 beacon)', dict(R8KW, processor=True, processor_rate=0.2)),
+     ('R2 recommended set, Processor 0.2, 2 beacons', dict(R8KW, processor=True, processor_rate=0.2, beacons=2)),
+     ('R3 recommended set, Processor 0.2 + trader (T2 = 4x T1)', dict(R8KW, processor=True, processor_rate=0.2, trader=True, export=True, guild_ratio=4.0)),
+     ('R4 recommended set, Processor 0.5 (B1)', dict(R8KW, processor=True, processor_rate=0.5)),
+     ('R5 recommended set, Processor 0.1', dict(R8KW, processor=True, processor_rate=0.1)),
+     ('R6 R8 + 4 drones (3 extra), no Processor', dict(R8KW, extra_terraformers=3)),
+     ('R7 recommended set, Processor 0.3', dict(R8KW, processor=True, processor_rate=0.3)),
+     ('R8 recommended set, no Processor', dict(R8KW)),
+     ('R9 R7 with 2 beacons', dict(R8KW, processor=True, processor_rate=0.3, beacons=2)),
+     ('R10 R7 + trader (T2 = 4x T1)', dict(R8KW, processor=True, processor_rate=0.3, trader=True, export=True, guild_ratio=4.0))]
+
+# §7.2 rows of economy-balance-simulation.md (Model B)
+S8 = dict(mint_cap=10000, guild_drain=0.1, guild_cap=10000, guild_target=3000, visits_per_day=48)
+PLANET = [('spec: cap 20k, Guild cap 5k / target 2.5k, no sink', dict()),
+          ('+ sink 10 % per visit', dict(guild_drain=0.1)),
+          ('cap 10k + sink 10 %', dict(mint_cap=10000, guild_drain=0.1)),
+          ('cap 10k + sink 10 % + Guild 10k / 3k', dict(mint_cap=10000, guild_drain=0.1, guild_cap=10000, guild_target=3000)),
+          ('cap 10k + Guild 10k / 3k + sink 25 %', dict(mint_cap=10000, guild_drain=0.25, guild_cap=10000, guild_target=3000)),
+          ('§8 set: cap 10k + Guild 10k / 3k + sink 10 % + 48 visits/day', dict(S8)),
+          ('§8 set, k = 0.5', dict(S8, k=0.5)),
+          ('cap 5k + Guild 10k / 3k + sink 10 %', dict(mint_cap=5000, guild_drain=0.1, guild_cap=10000, guild_target=3000)),
+          ('§8 set, fee 2 %, half of exports peer-to-peer', dict(S8, fee_bp=200, p2p_share=0.5)),
+          ('ceiling case: cap 10k + Guild 10k / 8k + sink 25 %', dict(mint_cap=10000, guild_drain=0.25, guild_cap=10000, guild_target=8000))]
+
+def planet_row(label, kw):
+    r = planet_week(**kw); h = r['hist']
+    p = lambda d, sl: next(x for x in h if x['day'] == d and x['slot'] == sl)
+    return dict(scenario=label, minted=r['minted'], guild_volume=r['guild_volume'], p2p=r['p2p_volume'],
+                price_h6_h36_d3_d6=f"{p(0,12)['p_m']} -> {p(1,24)['p_m']} -> {p(3,0)['p_m']} -> {p(6,0)['p_m']}",
+                guild_stock_d6=p(6,0)['inv_m'], treasury=r['treasury'], stall_fees=r['stall_fees'], protocol=r['protocol'])
+
+def use_current_inputs():
+    """Inputs that moved after 2026-10-31 (sources in the constants above)."""
+    U['recon'] = RECON_SPEC
+    B['hub'] = B['hub'][:4] + (30,) + B['hub'][5:]   # 30 s at 1.0x; the HQ builds it at 1.5x
+    return dict(kit=KIT_POD, mix=MIX_SPEC, hq_cell=800, hq_rate=1.5)
+
 if __name__ == '__main__':
     what = sys.argv[1] if len(sys.argv) > 1 else 'all'
     if what in ('hex','all'):
@@ -536,49 +603,29 @@ if __name__ == '__main__':
         print(fmt_table(rows, ['target','need','reachable','max_pct','drone1_min','drone3_min','E','W','Mi','M']))
     if what in ('matrix','all'):
         rows = []
-        M = [('A1 spec defaults (clear 5, family cap, 2 drones)', dict()),
-             ('A2 clear 25', dict(clear_yield=25)),
-             ('A3 clear 25 + per-sub caps', dict(clear_yield=25, cap_mode='sub')),
-             ('A4 A3 + 4 drones', dict(clear_yield=25, cap_mode='sub', extra_terraformers=3)),
-             ('A5 A3 + Processor 0.5/s (B1)', dict(clear_yield=25, cap_mode='sub', processor=True)),
-             ('A6 A3 + Processor 0.1/s', dict(clear_yield=25, cap_mode='sub', processor=True, processor_rate=0.1)),
-             ('A7 A3 + Processor 0.05/s', dict(clear_yield=25, cap_mode='sub', processor=True, processor_rate=0.05)),
-             ('A8 trader, Guild T2 = 4x T1', dict(clear_yield=25, cap_mode='sub', trader=True, export=True, guild_ratio=4.0)),
-             ('A9 trader, Guild T2 = 8x T1', dict(clear_yield=25, cap_mode='sub', trader=True, export=True, guild_ratio=8.0)),
-             ('A10 A3, no beacons', dict(clear_yield=25, cap_mode='sub', beacons=0)),
-             ('A11 A3, 1 beacon', dict(clear_yield=25, cap_mode='sub', beacons=1)),
-             ('R1 recommended set, solo (kit 400/300/200/150, caps per sub, capacitor 6k, gate 100/230 Living, Hub T2 25 % T2, Processor 0.2, 1 beacon)',
-              dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, processor=True, processor_rate=0.2, beacons=1)),
-             ('R2 recommended set, 2 beacons', dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, processor=True, processor_rate=0.2, beacons=2)),
-             ('R3 recommended set + trader (T2 = 4x T1)', dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, processor=True, processor_rate=0.2, beacons=1, trader=True, export=True, guild_ratio=4.0)),
-             ('R4 recommended set, Processor 0.5 (B1)', dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, processor=True, processor_rate=0.5, beacons=1)),
-             ('R5 recommended set, Processor 0.1', dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, processor=True, processor_rate=0.1, beacons=1)),
-             ('R7 recommended set, Processor 0.3', dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, processor=True, processor_rate=0.3, beacons=1)),
-             ('R8 recommended set, no Processor', dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, beacons=1)),
-             ('R6 recommended set, 4 drones (3 extra)', dict(clear_yield=25, cap_mode='sub', kit=(400,300,200,150), cap_store=6000, gate_mode='count', t2_share=0.25, processor=True, processor_rate=0.2, beacons=1, extra_terraformers=3))]
-        for label, kw in M:
+        for label, kw in MATRIX:
             c, _ = run_colony(minutes=150, **kw); rows.append(summary(label, c))
         print(fmt_table(rows, list(rows[0].keys())))
     if what in ('colony',):
-        for label, kw in [('A1 spec defaults (clear 5, family cap)', dict()),
-                          ('A2 clear 25', dict(clear_yield=25)),
-                          ('A3 clear 25 + sub caps', dict(clear_yield=25, cap_mode='sub')),
-                          ('A4 clear 25 + sub caps + 2 extra drones', dict(clear_yield=25, cap_mode='sub', extra_terraformers=3)),
-                          ('A5 A3 + processor 0.5/s (B1)', dict(clear_yield=25, cap_mode='sub', processor=True)),
-                          ('A6 A3 + processor 0.05/s', dict(clear_yield=25, cap_mode='sub', processor=True, processor_rate=0.05)),
-                          ('A7 trader R=4 (A3)', dict(clear_yield=25, cap_mode='sub', trader=True, export=True, guild_ratio=4.0)),
-                          ('A8 trader R=8 (A3)', dict(clear_yield=25, cap_mode='sub', trader=True, export=True, guild_ratio=8.0))]:
-            c, snaps = run_colony(minutes=120, **kw)
+        # A11 is the §3.1 reference run; the others print the same snapshot columns
+        for label, kw in [m for m in MATRIX if m[0].split()[0] in ('A11','A1','A3','A4','A5','A6','A8','A9','R8')]:
+            c, snaps = run_colony(minutes=150, **kw)
             print('\n##', label)
             print('stages:', {k: f'{v//60}:{v%60:02d}' for k,v in c.stage_t.items()})
-            print(fmt_table([snaps[m] for m in sorted(snaps) if m % 10 == 0], ['t','stage','tf','living','M','Mi','W','Bio','M2','Mi2','B2','gen','drain','supply','scap','cap','brown','paused','tE','tW','exported','wasted']))
-            print('events:', [(f'{e[0]//60}:{e[0]%60:02d}',)+tuple(e[1:]) for e in c.events if e[1]=='bought' or e[2] in ('hub','factory','beacon','hub_t2','processor','factory_t2','tradehub','petro')])
-            print('terraform 30% at', c.tf30 if hasattr(c,'tf30') else None, '50% at', getattr(c,'tf50',None), '70% at', getattr(c,'tf70',None), 'exported', dict((k,int(v)) for k,v in c.exported.items()), 'orbit', dict((k,int(v)) for k,v in c.orbit.items()))
+            print(fmt_table([snaps[m] for m in sorted(snaps) if m % 10 == 0], ['t','stage','tf','living','owned','M','Mi','W','Bio','M2','Mi2','B2','gen','drain','supply','scap','cap','brown','paused','tE','tW','exported','wasted']))
+            print('events:', [(f'{e[0]//60}:{e[0]%60:02d}',)+tuple(e[1:]) for e in c.events if e[1]=='bought' or e[2] in ('hub','depot','factory','beacon','hub_t2','processor','factory_t2','tradehub','petro')])
+            print('terraform 30% at', getattr(c,'tf30',None), '50% at', getattr(c,'tf50',None), '70% at', getattr(c,'tf70',None), 'exported', dict((k,int(v)) for k,v in c.exported.items()), 'orbit', dict((k,int(v)) for k,v in c.orbit.items()))
     if what in ('raids','all'):
         r = raid_table(); print(fmt_table(r, list(r[0].keys())))
     if what in ('planet','all'):
-        for label, kw in [('k=1, no drain', dict(k=1.0)), ('k=1, drain 25%/visit', dict(k=1.0, guild_drain=0.25)),
-                          ('k=0.5, drain 25%', dict(k=0.5, guild_drain=0.25)), ('k=1, drain 25%, cap 20k, fee 2%', dict(k=1.0, guild_drain=0.25, fee_bp=200))]:
-            r = planet_week(**kw)
-            print('\n##', label, {k:v for k,v in r.items() if k!='hist'})
-            print(fmt_table([h for h in r['hist'] if h['slot'] in (0,24)], ['day','slot','p_m','inv_m','p_t2','inv_t2']))
+        rows = [planet_row(label, kw) for label, kw in PLANET]
+        print(fmt_table(rows, list(rows[0].keys())))
+    if what in ('current',):
+        cur = use_current_inputs()
+        owned, denom, fp, rows = terraform_table(mix=MIX_SPEC)
+        print(f'terraform, units spec mix: owned {owned}, denom {denom:.0f}, footprint {fp}')
+        print(fmt_table(rows, ['target','need','reachable','max_pct','drone1_min','drone3_min','E','W','Mi','M']))
+        rows = []
+        for label, kw in [m for m in MATRIX if m[0].split()[0] in ('A1','A3','A8','A10','A11','R4','R7','R8')]:
+            c, _ = run_colony(minutes=150, **dict(kw, **cur)); rows.append(summary(label.split()[0] + ' (current inputs)', c))
+        print(fmt_table(rows, list(rows[0].keys())))

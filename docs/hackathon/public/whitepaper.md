@@ -1,6 +1,6 @@
 # TerraAgent — Whitepaper (draft v0.1, 2026-10-31)
 
-> Outward-facing. It must agree with `docs/spec/DECISIONS.md`, the game specs and the mock/real table in the README. Numbers marked *(proposed)* are tunable defaults from [`../economy-balance-simulation.md`](../economy-balance-simulation.md). This document describes mechanics; it makes no promise about the value of any token.
+> Outward-facing; last checked 2026-11-02. It must agree with `docs/spec/DECISIONS.md`, the game specs and the mock/real table in the README. Numbers marked *(proposed)* are tunable defaults from [`../economy-balance-simulation.md`](../economy-balance-simulation.md); features marked *(proposed)* are designed but not yet in the build plan. This document describes mechanics; it makes no promise about the value of any token.
 
 ## 1. The problem
 
@@ -13,20 +13,20 @@ You drop one robot on a planet. It prepares the ground, builds a Command Hub, an
 | Cadence | What the player does | What the economy does |
 |---|---|---|
 | Every 30 s | one order: a building, a drone, a terraform brush; accept or ignore a Guild offer | storage fills in minutes, so every decision is *spend, export, or lose it* |
-| Every 5 min | a stage beat: the first night, a raid, a Guild docking, a terraform threshold, a vote | night sheds production unless the grid is sized for it; a docking re-prices every pair |
+| Every 5 min | a stage beat: the first night, a raid, a terraform threshold, a vote; a Guild ship docks every 20–40 min | night sheds production unless the grid is sized for it; a docking re-prices every pair |
 | Every session | the next tier or terraform gate; the away budget and auto-trade limits; "while you were away" | new tiers change what the colony mines and sells; the director trades overnight within its allowance |
 
 ## 3. Agents are citizens
 
 This section is the design; §7 says what is live on Nov 14. Every actor that holds value in TerraAgent is an account on NEAR with its own key:
 
-- **Players** get `name.terraagent.near` from a social login (NEAR Auth); they never see a seed phrase, a wallet popup or a gas prompt.
+- **Players** get `name.terraagent.near` from a social login (NEAR Auth *(proposed)*); they never see a seed phrase, a wallet popup or a gas prompt.
 - **Colonies** are sub-accounts `colony.name.terraagent.near` that hold cargo, sign orders and own the colony deed.
-- **The director** of each colony signs trades with a restricted key whose allowance is the player's away budget. One tap revokes it.
+- **The director** of each colony signs trades with its own restricted key; the game server caps its trades at the player's away budget. One tap revokes the key.
 - **Orbital Guild traders** (Kestrel, Osprey) are NPC agents with their own sub-accounts, inventories and a published pricing rule.
-- **Any external agent** can be a player through the Colony Agent API / MCP: it founds a colony, reads a 1 200-character brief, queues orders, trades under an allowance, votes, and gets one receipt per contract.
+- **Any external agent** can be a player through the Colony Agent API / MCP *(proposed)*: it founds a colony, reads a 1 200-character brief, queues orders, trades under an allowance, votes, and gets one receipt per contract.
 
-What an agent **cannot** do without a human: spend beyond its allowance, move the player's own NEAR, claim the account, or stake. The allowance, the revoke and the limits are enforced by the key, not by a prompt.
+What an agent **cannot** do without a human: spend beyond its allowance, move the player's own NEAR, claim the account, or stake *(proposed)*. The game server checks the allowance and these limits on every order; a prompt cannot change them. The NEAR key adds a narrower guard: a function-call key can call only one contract, cannot transfer NEAR, and its allowance pays only gas, so it cannot count cargo or prices. The spending limit is a server rule, not a property of the key.
 
 ## 4. The economy's one-way doors
 
@@ -34,7 +34,7 @@ What an agent **cannot** do without a human: spend beyond its allowance, move th
 
 **Sources.** Extractors on deposits, harvesters on forest and Living ground, terrain work that yields what it digs up.
 
-**Sinks.** Construction and units, upkeep, terraforming (water and energy), treasury projects (burned), and the Guild's off-planet sales *(proposed)*.
+**Sinks.** Construction and units, upkeep, terraforming (water and energy), treasury projects (burned *(proposed)*), and the Guild's off-planet sales *(proposed)*.
 
 **Caps.** Storage per sub-resource *(proposed)*, Trade Hub throughput, a daily export cap per colony, Guild inventory caps. The caps pace the economy; they are not security.
 
@@ -52,28 +52,33 @@ What an agent **cannot** do without a human: spend beyond its allowance, move th
 
 ## 6. Fair merchants
 
-The Guild's price for every pair is one readable rule: `mid = reference × (target inventory ÷ inventory)^k`, reference = the planet's 24-hour volume-weighted price, spread 4 % widening to 15 % where stock is thin, clamped so that no dump can zero a pair. Every offer shows its reason: "inventory 2.1× target, 24 h VWAP 0.92 → bid −48 %". The Guild's hourly strategy (what to stockpile, where to fly) is computed by a model running in a trusted execution environment on NEAR AI Cloud; **our goal is to verify its signature in the app and show the attested reason next to the quote. Until that check runs, treat "verified" as a goal, not a claim.**
+The Guild's price for every pair is one readable rule: `mid = reference × (target inventory ÷ inventory)^k`, reference = the planet's 24-hour volume-weighted price, spread 4 % widening to 15 % where stock is thin, clamped so that no dump can zero a pair. Every offer shows its reason *(proposed)*: "inventory 2.1× target, 24 h VWAP 0.92 → bid −48 %". The Guild's hourly strategy (what to stockpile, where to fly) is to be computed by a model running in a trusted execution environment on NEAR AI Cloud *(proposed)*; **our goal is to verify its signature in the app and show the attested reason next to the quote. Until that check runs, treat "verified" as a goal, not a claim.**
 
 ## 7. What runs on real NEAR on Nov 14
 
+Every NEAR feature is built first on mock adapters with real-shaped receipts, visible in the dev chain explorer. Only three may switch to real NEAR, one at a time and in this order: login and accounts, then cargo tokens, then markets. The switch starts only if the core waves pass a check on Nov 10; if they do not, the demo ships on mocks and says so. Everything else stays mock for the hackathon.
+
 | Feature | Real | Mock |
 |---|---|---|
-| Social login, named accounts, gasless actions | planned real (NEAR Auth, NEP-366 relayer) | fallback: server-created custodial accounts |
-| Cargo tokens (NEP-245) | planned real | mock ledger with real-shaped receipts |
-| Markets on NEAR Intents | planned real for one small trade, dry-run first; NEAR-priced pairs bounded by a 10 NEAR Guild float *(proposed)* | mock verifier |
-| Guild wallets, director key | mock | mock |
-| Colony Agent API / MCP (external agents as players) | planned (server-side, no chain adapter needed); agents sign through the colony's custodial key under its allowance | — |
-| Deed, treasury, bounties | mock | mock |
+| Social login, named accounts, gasless actions | real only after the Nov 10 check (NEAR Auth *(proposed)*, NEP-366 relayer) | mock login and accounts until then; fallback: server-created custodial accounts |
+| Cargo tokens (NEP-245) | real only after the Nov 10 check, after login | mock ledger with real-shaped receipts |
+| Markets on NEAR Intents | real only after the Nov 10 check: one tiny mainnet trade between our own dev colonies, dry-run first; NEAR-priced pairs bounded by a 10 NEAR Guild float *(proposed)* | mock verifier |
+| Guild wallets, director key | no | mock |
+| Guild strategy on NEAR AI Cloud | *(proposed)*; attestation not yet verified | the deterministic pricing rule and reason strings |
+| Colony Agent API / MCP (external agents as players) | *(proposed)*, not yet in the build plan (server-side, no chain adapter needed); agents act through the colony's custodial key and the server enforces the allowance | — |
+| Deed, treasury, bounties | no | mock |
 
-The README's mock/real table is authoritative; if they differ, the README wins.
+The README's mock/real table (written for the submission) is authoritative; if they differ, the README wins.
 
 ## 8. Fourteen-day planet, what happens after
 
-Planets admit colonies for 24 hours and live 14 days (the matchmaking design; during the hackathon the sector uses the simpler dev-seat flow, which fills five seats per planet and opens the next planet, with no admission window). A colony that launches its rocket becomes Settled: inert, invulnerable, still counted. The player lands on the next planet with part of the cargo. Cross-planet trade happens only through the Guild. Post-hackathon: desert and ocean planets, the air layer, walls, PvP raids, the full treasury project list, mercenary agents, staking of the player's own NEAR on a Settled colony's deed (no in-game power), and the real adapters for every remaining port.
+Planets admit colonies for 24 hours and live 14 days (the matchmaking design; during the hackathon the sector uses the simpler dev-seat flow, which fills five seats per planet and opens the next planet, with no admission window). A colony that launches its rocket becomes Settled: inert, invulnerable, still counted. The player lands on the next planet with the cargo the colony account holds. Cross-planet trade happens only through the Guild. Post-hackathon: the rocket and Settled colonies, stages past S4, tier 3 and the Bio tiers, desert and ocean planets, the air layer, PvP raids, an LLM-driven director, the full treasury project list, mercenary agents, staking of the player's own NEAR on a Settled colony's deed (no in-game power), and the real adapters for every remaining port.
 
 ## 9. Risks we accept and state
 
 - No anti-cheat and no anti-bot in beta; mint caps pace supply but do not secure it; the Guild float is the loss limit for NEAR-priced pairs.
+- Agent and director limits are server rules (§3), not chain rules.
 - `intents.near` is mainnet-only; we test with tiny amounts and dry runs.
+- If the Nov 10 check fails, every NEAR feature in the demo is a mock, and the README says so.
 - Balance numbers are proposed defaults, tuned live in playtests; the simulation that produced them is in the repo.
-- The 3D client predates the hackathon window and is disclosed as baseline.
+- The 3D client, the landing page, the design system and the server skeleton with mock chain ports were built before the Nov 1 build start (first commit 2026-10-29) and are disclosed as baseline.
