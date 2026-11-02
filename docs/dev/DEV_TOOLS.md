@@ -272,3 +272,19 @@ Creating a colony sub-account enqueues one NEP-145 `storage_deposit` in `chain.c
 | payload `signedDelegate` | JSON string `{"action":"storage_deposit","account_id":"<colony account id>"}` |
 
 The relay calls `RelayerPort.submitMetaTx`. The mock receipt `txHash` starts with `mock:`. Its payload signer is the relayer and its receiver is `res.terraagent.mock`. When `signedDelegate` is that JSON, the receipt payload also has `action: "storage_deposit"` and `account_id` set to the colony account id. A non-JSON delegate does not add those fields. Submitting the same caller `opId` again (a relay retry, or a process restart after the receipt committed) does not write a second receipt. `/dev/chain/tx/<hash>` shows that payload (`GET /v1/dev/chain/tx?hash=` because `mock:` contains a colon).
+
+## W06-20
+
+After **Save progress** links a pilot, the identity HUD (same top-left slot) shows `Saving to orbit…` (`data-testid="orbit-save"`) while a colony deposit is still in flight. The client polls `GET /v1/near/relay` with `Authorization: Bearer <access token>` about every 400 ms. The socket does not carry `relay.settled` or `relay.failed` (BE-39). A reload of an already linked pilot polls once and shows the chip or the toast only when the deposit is still pending or failed. Both routes below are 404 when wave `W06` is off, including with no bearer. They are not dev routes.
+
+| `state` | What the HUD does |
+|---|---|
+| `pending` | `orbit-save` stays, text exactly `Saving to orbit…` |
+| `settled` or `none` | `orbit-save` is removed |
+| `failed` | `orbit-save` is removed. `data-testid="orbit-toast"` includes `Couldn't save to orbit, retrying` and a button `data-testid="orbit-retry"` labelled `Retry` |
+
+`GET /v1/near/relay` looks up that player's colony `near_colony_account` rows (not the `player` slot) and their `storage-deposit:{accountId}` outbox rows. `pending` if any row is `PENDING` or `RUNNING` (this wins over a failed row). `failed` if any row is `FAILED` or `DEAD` and none are in flight. `settled` if every existing deposit row is `DONE`. `none` if there are no deposit rows. Body is `{ state, opId? }`.
+
+`POST /v1/near/relay/retry` with the same bearer sets that player's `FAILED` deposit rows back to `PENDING` with `nextAttemptAt` now, leaves `RUNNING` leases alone, and answers `{ "state": "pending" }`. The chip shows again and polling resumes.
+
+`near.mock.latency relayer 1500 1500` makes the chip stay about 1.5 s. `near.mock.fail relayer 1` then a new social login ends in the Retry toast. `near.mock.fail relayer 0` then Retry settles.

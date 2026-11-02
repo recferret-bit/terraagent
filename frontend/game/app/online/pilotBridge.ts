@@ -1,12 +1,18 @@
 import { SocialAuthResponseSchema } from '@terra/contracts';
 import type { BootAuthResult, FetchLike } from './bootOnline';
 import type { GuestBootTarget } from './guestBoot';
+import { createRelayWatch, type RelayWatch } from './relayWatch';
 
-export interface PilotView {
+interface PilotState {
   isGuest: boolean;
   handle: string;
   accountId: string | null;
   accessToken: string;
+}
+
+export interface PilotView extends PilotState {
+  /** Bumps only when `loginSocial` links a pilot. The orbit chip starts a poll on the increase. */
+  saveEpoch: number;
 }
 
 export interface PilotBridgeDeps {
@@ -15,7 +21,7 @@ export interface PilotBridgeDeps {
   target(): GuestBootTarget | null;
 }
 
-const GUEST: PilotView = { isGuest: true, handle: 'Guest', accountId: null, accessToken: '' };
+const GUEST: PilotState = { isGuest: true, handle: 'Guest', accountId: null, accessToken: '' };
 
 /**
  * Pilot state for the identity chip. `loginSocial` posts `/v1/auth/social` and writes the new access token onto the
@@ -23,15 +29,16 @@ const GUEST: PilotView = { isGuest: true, handle: 'Guest', accountId: null, acce
  * transport's own renewal; an upgrade is the same player).
  */
 export class PilotBridge {
-  private state: PilotView = { ...GUEST };
+  private state: PilotState = { ...GUEST };
   private readonly listeners = new Set<() => void>();
+  private saveEpoch = 0;
 
   constructor(private readonly deps: PilotBridgeDeps) {}
 
   /** Live access token: the target wins once a boot or a refresh has stored one. */
   view(): PilotView {
     const live = this.deps.target()?.accessToken ?? '';
-    return { ...this.state, accessToken: live || this.state.accessToken };
+    return { ...this.state, accessToken: live || this.state.accessToken, saveEpoch: this.saveEpoch };
   }
 
   subscribe(fn: () => void): () => void {
@@ -65,7 +72,7 @@ export class PilotBridge {
     const parsed = SocialAuthResponseSchema.safeParse(await res.json());
     if (!parsed.success) throw new Error('POST /v1/auth/social: unexpected answer');
     const body = parsed.data;
-    const next: PilotView = {
+    const next: PilotState = {
       isGuest: body.player.isGuest,
       handle: body.player.handle,
       accountId: body.accountId,
@@ -80,7 +87,14 @@ export class PilotBridge {
       playerId: body.player.id,
     });
     this.state = next;
+    this.saveEpoch += 1;
     this.emit();
+  }
+
+  /** Deposit poll and retry. Uses the same `fetch` as social login so a spec can fake both. */
+  watchRelay(): RelayWatch {
+    const doFetch: FetchLike = this.deps.fetch ?? ((input, init) => fetch(input, init));
+    return createRelayWatch(doFetch, () => this.view().accessToken);
   }
 
   private emit(): void {

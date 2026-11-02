@@ -1,5 +1,6 @@
-import { defineFeature } from '../../core/registry/types';
+import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
 import type { TextClipboard } from './copyText';
+import { mountOrbitStatus } from './orbitStatus';
 import { mountPilotChip } from './PilotChip';
 import './identity.css';
 
@@ -10,13 +11,24 @@ declare module '../../core/registry/types' {
      * The chip reads this; the online session supplies it.
      */
     pilot?: {
-      view(): { isGuest: boolean; handle: string; accountId: string | null; accessToken: string };
+      view(): { isGuest: boolean; handle: string; accountId: string | null; accessToken: string; saveEpoch?: number };
       subscribe(fn: () => void): () => void;
       loginSocial(provider: 'google' | 'x', token: string): Promise<void>;
+      /** Colony deposit poll. Absent in specs that only cover the guest chip. */
+      watchRelay?(): {
+        poll(): Promise<{ state: 'none' | 'pending' | 'settled' | 'failed'; opId?: string }>;
+        retry(): Promise<{ state: 'pending' }>;
+      };
     };
     /** When set, the pilot chip copies through this writer instead of `navigator.clipboard`. */
     clipboard?: TextClipboard;
   }
+}
+
+function mountIdentity(el: HTMLElement, ctx: FeatureContext): HudPanelInstance {
+  const pilot = mountPilotChip(el, ctx);
+  const orbit = mountOrbitStatus(el, ctx);
+  return { dispose() { pilot.dispose(); orbit.dispose(); } };
 }
 
 /** Guest-first pilot chip. Hidden when W06 is off and on `?host=local` (`hostOnly: 'server'`). */
@@ -24,5 +36,5 @@ export default defineFeature({
   id: 'identity',
   wave: 'W06',
   hostOnly: 'server',
-  hud: [{ id: 'pilot', slot: 'top-left', order: 20, mount: mountPilotChip }],
+  hud: [{ id: 'pilot', slot: 'top-left', order: 20, mount: mountIdentity }],
 });
