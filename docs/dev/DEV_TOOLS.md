@@ -204,3 +204,26 @@ Account list and receipt detail for the mock chain explorer (`/dev/chain/`). Sam
 | `GET /v1/dev/chain/accounts` | Player and colony accounts from `chain.mock_chain_account` and `chain.near_colony_account`, one row per account id. Shape `{ accountId, kind, publicKey, ownerAccountId }`. `kind` is the mock row's kind when that row exists (`named` is the player account, `colony` is a colony sub-account). A `near_colony_account` row with `slot` `player` is `named`; any other slot is `colony`, and `ownerAccountId` is that table's owner (null when only the mock row exists). `?account=` is an exact account id. `?limit=` is 1–200, default 50 |
 | `GET /v1/dev/chain/tx?hash=` | One receipt. The hash is a query parameter because `mock:` contains a colon. 404 `NOT_FOUND` when no row has that hash. Body: `txHash`, `status` (stored value), `statusLabel` (`FINAL` when stored status is `success`, otherwise the stored status), `signerId`, `receiverId` (payload keys, null when absent), `opId`, `port`, `method`, `blockHeight`, `payload`. Stored status stays `pending`, `success` or `failure` |
 | `/dev/chain/tx/<hash>` | Receipt page (`frontend/dev/chain/tx.html`). The hash is URL-encoded (`mock:` → `mock%3A…`). `?hash=` on `/dev/chain/tx` also works. Shows signer, receiver, the `mock:` hash and status `FINAL`. Back link is `/dev/chain/`. Vite dev and preview rewrite `/dev/chain/tx` and `/dev/chain/tx/*` to that page and do not rewrite `/v1` |
+
+## W06-25
+
+Dev console commands for mock-port failure and latency, and for resetting or upgrading a player. They are not player-facing. The client feature is `frontend/game/features/near-dev` (wave `W06`, both hosts). A host with no game server answers `host_unavailable`. The server registers them on `DevCommandRegistry` (`POST /v1/dev/commands/:name`, 404 in production). Port names are case-insensitive (`relayer` matches `Relayer`). An unset port keeps the boot config (`MOCK_FAIL_RATE`, `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`).
+
+| Command | What |
+|---|---|
+| `near.mock.fail <port> <rate>` | Set the injected fail rate (`0..1`) for one mock port. `1` fails the next call; `0` forces success even when `MOCK_FAIL_RATE` is `1`. |
+| `near.mock.latency <port> <minMs> <maxMs>` | Set the sleep range for one mock port. Both bounds are integers ≥ 0, and `maxMs` must be ≥ `minMs` (otherwise 400 `VALIDATION_ERROR`). |
+| `account.reset <player>` | Revoke every session of the player (id or handle) and delete that player's `social_identity` rows. The player and their colonies stay. Unknown player: 404 `NOT_FOUND`. |
+| `account.upgrade <provider> <subject>` | `provider` is `google` or `x`, `subject` is 1–64 characters. Signs a short-lived mock token and runs social login. Returns `{ playerId, accountId, accessToken }`. The subject map is in memory (BE-31); this does not write `social_identity` (W06-06). |
+
+`POST /v1/dev/commands/near.mock.fail` body:
+
+```json
+{ "port": "relayer", "rate": 1 }
+```
+
+`port` is a non-empty string. `rate` is a number from 0 to 1. `near.mock.fail relayer 0` sends `{ "port": "relayer", "rate": 0 }` and restores success.
+
+A relayer fail rate of 1 throws `NEAR_MOCK_INJECTED_FAILURE` once. The relayer retries once, then the action ends as `NEAR_RELAY_FAILED`. That counts as the action failing.
+
+`POST /v1/dev/commands/near.mock.latency` body is `{ "port": "relayer", "minMs": 0, "maxMs": 0 }`. `account.reset` body is `{ "player": "<id or handle>" }`. `account.upgrade` body is `{ "provider": "google", "subject": "<subject>" }`.
