@@ -1,3 +1,4 @@
+import { deliverMintedToken } from './deliverToken';
 import './mock-oauth.css';
 
 const FALLBACK = '/play.html';
@@ -59,8 +60,7 @@ async function pick(subject: string): Promise<void> {
       say('That sign-in could not be confirmed.');
       return;
     }
-    const dest = new URL(back, window.location.origin);
-    window.location.assign(`${dest.pathname}${dest.search}#mock_token=${encodeURIComponent(body.token)}`);
+    deliverMintedToken(window, provider, body.token, back);
   } catch {
     say('That sign-in could not be confirmed.');
   } finally {
