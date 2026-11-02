@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { FeatureContext } from '../../core/registry/types';
 import { loadFeatures } from '../../core/registry';
+import type { TextClipboard } from './copyText';
 import identity from './index';
 import { readMockToken } from './mockToken';
 
@@ -28,11 +29,11 @@ function fakePilot(): PilotDouble {
   };
 }
 
-function mount(pilot?: PilotDouble) {
+function mount(pilot?: PilotDouble, clipboard?: TextClipboard) {
   document.body.replaceChildren();
   const el = document.createElement('div');
   document.body.appendChild(el);
-  const services = pilot ? { pilot } : {};
+  const services = { ...(pilot ? { pilot } : {}), ...(clipboard ? { clipboard } : {}) };
   const ctx = { flags: new Set(['W06']), host: 'server', services } as unknown as FeatureContext;
   const panel = identity.hud![0]!.mount(el, ctx);
   return { el, panel };
@@ -55,6 +56,9 @@ describe('identity pilot chip (W06-15)', () => {
     const { el, panel } = mount(pilot);
     expect(el.querySelector('.ta-pilot__label')!.textContent).toBe('Guest pilot');
     expect(el.querySelector('[data-testid="save-progress"]')!.textContent).toBe('Save progress');
+    expect(el.querySelector('[data-testid="pilot-chip"]')!.textContent).toContain('Guest pilot');
+    expect(el.querySelector('[data-testid="pilot-chip"]')!.textContent).toContain('·');
+    expect(el.querySelector('[data-testid="pilot-chip"]')!.textContent).toContain('Save progress');
     expect(el.querySelector('[data-testid="pilot-id"]')).toBeNull();
     expect(el.querySelector('[data-testid="continue-google"]')).toBeNull();
 
@@ -105,5 +109,33 @@ describe('identity pilot chip (W06-15)', () => {
     expect(readMockToken({ origin: 'http://play.test', source: {}, data: good }, popup, 'http://play.test')).toBeNull();
     expect(readMockToken({ origin: 'http://play.test', source: popup, data: { type: 'other', provider: 'x', token: 't' } }, popup, 'http://play.test')).toBeNull();
     expect(readMockToken({ origin: 'http://play.test', source: popup, data: good }, popup, 'http://play.test')).toEqual({ provider: 'x', token: 't' });
+  });
+
+  it('copies only the account id and marks the button ok', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    const pilot = fakePilot();
+    const { el, panel } = mount(pilot, { writeText });
+    await pilot.loginSocial('google', 'unused-by-the-chip');
+    expect(el.textContent).toContain('Pilot ID test-pilot.terraagent.mock');
+    const copy = el.querySelector('[data-testid="pilot-copy"]') as HTMLButtonElement;
+    expect(copy.textContent).toBe('Copy');
+    expect(copy.className).toContain('btn-ghost');
+    copy.click();
+    await vi.waitFor(() => expect(copy.getAttribute('data-copied')).toBe('ok'));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    expect(writeText).toHaveBeenCalledWith('test-pilot.terraagent.mock');
+    panel.dispose();
+  });
+
+  it('marks the copy button fail when the clipboard rejects and does not throw', async () => {
+    const writeText = vi.fn().mockRejectedValue(new Error('denied'));
+    const pilot = fakePilot();
+    const { el, panel } = mount(pilot, { writeText });
+    await pilot.loginSocial('google', 'unused-by-the-chip');
+    const copy = el.querySelector('[data-testid="pilot-copy"]') as HTMLButtonElement;
+    expect(() => copy.click()).not.toThrow();
+    await vi.waitFor(() => expect(copy.getAttribute('data-copied')).toBe('fail'));
+    expect(writeText).toHaveBeenCalledWith('test-pilot.terraagent.mock');
+    panel.dispose();
   });
 });
