@@ -7,7 +7,7 @@
 - **Where it runs:** branch `wave/w06-invisible-chain`, worktree `../TerraAgent-wt/w06`. Your main checkout is untouched.
 - **Ports:** this worktree's `infra/.env.worktree` sets `TA_PORT_BASE=4200` → app **4201**, client **5373** (`TA_DB_NAME=terra_wave_w06_invisible_chain`). Below, `<client>` = `http://127.0.0.1:5373`, `<app>` = `http://127.0.0.1:4201`.
 - **Start the stack** (if it isn't already up): `cd ../TerraAgent-wt/w06 && npm run dev` (Docker must be running for Postgres). Stop it with Ctrl-C, or `kill $(cat scripts/dev/.out/runner.pid)` if it was started in the background. Restart the app only with `npm run dev:restart` (Vite keeps running).
-- **Dev console:** in the game page press **`** (the key under Esc). A dark panel opens at the bottom; type commands there and press Enter. It is **not** the browser's DevTools console. Click the game first if DevTools has focus.
+- **Dev console:** in the game page press **`` ` ``** (the key under Esc). A dark panel opens at the bottom; type commands there and press Enter. It is **not** the browser's DevTools console. Click the game first if DevTools has focus.
 - **Mock login:** Save progress opens a popup. If the browser blocks popups, allow them for `127.0.0.1:5373`.
 - Every tool used below is described in [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).
 
