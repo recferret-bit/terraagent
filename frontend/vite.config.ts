@@ -17,14 +17,26 @@ const env = { ...fileEnv('.env'), ...fileEnv('.env.worktree'), ...process.env };
 const appPort = Number(env.PORT ?? Number(env.TA_PORT_BASE ?? 4000) + 1);
 const app = `http://127.0.0.1:${appPort}`;
 
+function splitUrl(raw: string): { path: string; search: string } {
+  const qAt = raw.indexOf('?');
+  return qAt === -1 ? { path: raw, search: '' } : { path: raw.slice(0, qAt), search: raw.slice(qAt) };
+}
+
 /** `/dev/chain/tx` and `/dev/chain/tx/*` serve the receipt page. Leaves `/v1` for the app proxy. */
 function rewriteChainTx(req: { url?: string }): void {
-  const raw = req.url ?? '';
-  const qAt = raw.indexOf('?');
-  const path = qAt === -1 ? raw : raw.slice(0, qAt);
+  const { path, search } = splitUrl(req.url ?? '');
   if (path !== '/dev/chain/tx' && !path.startsWith('/dev/chain/tx/')) return;
-  const search = qAt === -1 ? '' : raw.slice(qAt);
   req.url = `/dev/chain/tx.html${search}`;
+}
+
+/**
+ * `/dev/mock-oauth` (no slash) is the mock login page. Without this, Vite's SPA fallback serves the hub,
+ * so the Save progress popup has no `#mo-preset`.
+ */
+function rewriteMockOauth(req: { url?: string }): void {
+  const { path, search } = splitUrl(req.url ?? '');
+  if (path !== '/dev/mock-oauth') return;
+  req.url = `/dev/mock-oauth/index.html${search}`;
 }
 
 const chainTxPage: Plugin = {
@@ -32,12 +44,14 @@ const chainTxPage: Plugin = {
   configureServer(server) {
     server.middlewares.use((req, _res, next) => {
       rewriteChainTx(req);
+      rewriteMockOauth(req);
       next();
     });
   },
   configurePreviewServer(server) {
     server.middlewares.use((req, _res, next) => {
       rewriteChainTx(req);
+      rewriteMockOauth(req);
       next();
     });
   },

@@ -46,8 +46,15 @@ export class DevSessionVerifier implements SessionVerifier {
     if (accessToken === 'dev:expired') throw new Error('dev session token expired');
     const m = DEV_TOKEN.exec(accessToken);
     if (!m) throw new BadHelloTokenError('malformed dev session token');
-    return { playerId: devPlayerId(m[1]!), dev: true };
+    return { playerId: devPlayerId(m[1]!), handle: m[1], dev: true };
   }
+}
+
+/** A non-production `dev:<name>` bearer. Null when the token is not that shape. */
+export function devBearerPlayer(token: string): { id: string; handle: string } | null {
+  const m = DEV_TOKEN.exec(token);
+  if (!m?.[1]) return null;
+  return { id: devPlayerId(m[1]), handle: m[1] };
 }
 
 /**

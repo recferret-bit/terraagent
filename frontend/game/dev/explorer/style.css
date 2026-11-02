@@ -1,4 +1,5 @@
 body { min-height: 100vh; padding: 32px 0 64px; }
+.xoff { display: grid; gap: 8px; padding: 20px 28px; background: var(--ta-plate-2); border: 1px solid var(--ta-seam); }
 .xhead { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; justify-content: space-between; padding: 20px 28px; background: var(--ta-plate-2); border: 1px solid var(--ta-seam); }
 .xhead h1 { margin: 0; }
 .xbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin: 20px 0 0; }

@@ -12,10 +12,11 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 | `/play.html?planet=dune\|oceanForest\|forestRock` | **3D Planet Selection & Atmospheric Drop-Pod Descent:** 3D orbital planet selector → atmospheric pod-falling animation → seamless touchdown into the live online colony on the selected biome; sets URL to `/play.html` on touchdown (`Esc → Return to orbit` sets URL back to `/play.html?planet=<kind>`) |
 | `/play.html` | **Fast-start online play flow (W01+):** skips the 3D orbital planet selector and atmospheric drop animation (`POST /v1/auth/guest` + `GET /v1/me/home` + instant landing into colony view; a new colony is seated on the dev planet family of the remembered orbit pick, sent as `?type=` (desert `pl_dev` when there is none); an existing colony keeps its planet) |
 | `/play.html?scenario=w01` | **Online scenario flow:** fresh temperate planet (`w01-landfall`) with colony 0's pod descending at spawn slot 0 (cargo credited at once; the HQ drone deploys when the pod opens), HUD, Terraform & Construction menus, dev console |
+| `/play.html?scenario=w06` | **W06 scenario:** the same guest colony as W01 landfall (`w06-invisible-chain`). `&waves=..05` hides the pilot chip; the tick still moves |
 | `/play.html?scenario=w00` | **W00 scenario:** flat radius-56 planet + test entity id 1 at tile 0,0 |
 | `/play.html?host=local&scenario=w01` | Same (`w00` or `w01`), with the engine running in the browser alone (no app, no Postgres) |
 | `/play.html?planet=dune&seed=1&skip=1` | The pre-wave **decorative prototype** (used for visual QA when `seed` + `skip=1` or `qat`/`t` is set) |
-| `/dev/chain/` | **Mock chain explorer:** receipts, balances, NFTs, DAO, escrow, outbox; account filter; 1 s auto-refresh; `CHAIN.PING` button |
+| `/dev/chain/` | **Mock chain explorer:** receipts, balances, NFTs, DAO, escrow, outbox; account filter; 1 s auto-refresh; `CHAIN.PING` button. `?waves=..05` (or a list without `06` / `W06`), or `GET /v1/near/health` 404, shows Off instead of the receipt table |
 | `/dev/mock-oauth?provider=google\|x&return=<path>` | **Mock login:** plate titled "Google (mock)" or "X (mock)" (anything but `x` is Google). Pick `test-pilot` or type a name (1–64) → `POST /v1/dev/mock-oauth/token` → redirect to `return` with `#mock_token=…` (`encodeURIComponent`). `return` must be a same-origin path (one leading `/`, no `//`, no `://`, no backslash), else `/play.html`. 404 unless the Identity adapter is `mock` and wave `W06` is on |
 | `/dev/parity/` | Engine parity page used by `npm run test:parity` (`window.__parity.run(id)`) |
 | `/playground.html`, `/landing.html`, `/design/` | 3D model storybook, landing site, design system (see the main README) |
@@ -288,3 +289,13 @@ After **Save progress** links a pilot, the identity HUD (same top-left slot) sho
 `POST /v1/near/relay/retry` with the same bearer sets that player's `FAILED` deposit rows back to `PENDING` with `nextAttemptAt` now, leaves `RUNNING` leases alone, and answers `{ "state": "pending" }`. The chip shows again and polling resumes.
 
 `near.mock.latency relayer 1500 1500` makes the chip stay about 1.5 s. `near.mock.fail relayer 1` then a new social login ends in the Retry toast. `near.mock.fail relayer 0` then Retry settles.
+
+## W06-28
+
+Scenario id `w06` (`tests/scenarios/w06-invisible-chain.ts`, seed `w06-invisible-chain`, waves `..06`): a temperate guest colony in the W01 landfall state (`system.spawnColony`, same cargo and slot as `w01`). Open `/play.html?scenario=w06`. The e2e is `tests/e2e/w06.spec.ts` (`npm run e2e -- --waves 06 --hack`).
+
+`/dev/chain/?waves=..05` shows a plate whose text includes `Off`. A ceiling or list that does not include `06` / `W06` does the same, and so does `GET /v1/near/health` returning 404 (wave `W06` off on the server). That plate does not render the receipt table or the heading `MOCK CHAIN EXPLORER`. With health 200 and waves unrestricted (no `waves` param, or `all`), the explorer is unchanged, including `chain.ping` from `/play.html?scenario=w00`.
+
+Vite rewrites `/dev/mock-oauth` (no trailing slash) to `dev/mock-oauth/index.html`, keeping the query. Without that, the SPA fallback serves the hub and the Save progress popup has no preset button. `/dev/mock-oauth/` already serves that page.
+
+A `dev:` session on a scenario planet (`?as=`) gets a `core.colony` row at index 0 when it joins, and Save progress sends that `dev:` token as the bearer so the upgrade keeps the player and enqueues the colony deposit. The colony row id is not the sim id `col_0` (BE-40). Production does not accept a `dev:` bearer.

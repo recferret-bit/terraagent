@@ -5,6 +5,7 @@ import { AuthTokenService, extractBearerPlayer, formatRefreshCookie } from '../.
 import { ZodPipe } from '../../core/errors/zod.pipe.js';
 import { IpThrottleGuard } from '../../core/ip-throttle.guard.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
+import { devBearerPlayer } from '../../ws/session-verifier.js';
 import { SocialAuthService } from './social-auth.service.js';
 
 interface ReplyLike extends Partial<ServerResponse> {
@@ -19,8 +20,22 @@ function setSetCookie(res: ReplyLike, cookie: string): void {
   }
 }
 
-function optionalBearer(req: IncomingMessage, tokens: AuthTokenService): { id: string; handle: string } | undefined {
+const BEARER_RE = /^Bearer\s+(\S+)$/i;
+
+/** No header → a new player. A non-production `dev:` token is the scenario session (not a JWT). */
+function optionalBearer(
+  req: IncomingMessage,
+  tokens: AuthTokenService,
+  allowDev: boolean,
+): { id: string; handle: string } | undefined {
   if (req.headers.authorization === undefined) return undefined;
+  const raw = req.headers.authorization;
+  const header = Array.isArray(raw) ? raw[0] : raw;
+  const token = typeof header === 'string' ? BEARER_RE.exec(header.trim())?.[1] : undefined;
+  if (allowDev && token) {
+    const dev = devBearerPlayer(token);
+    if (dev) return dev;
+  }
   return extractBearerPlayer(req, tokens);
 }
 
@@ -45,7 +60,7 @@ export class SocialAuthController {
     @Req() req: IncomingMessage,
     @Res({ passthrough: true }) res: ReplyLike,
   ): Promise<SocialAuthResponse> {
-    const { response, refreshToken } = await this.social.login(body, optionalBearer(req, this.tokens));
+    const { response, refreshToken } = await this.social.login(body, optionalBearer(req, this.tokens, !this.isProduction));
     setSetCookie(res, formatRefreshCookie(refreshToken, this.isProduction));
     return response;
   }

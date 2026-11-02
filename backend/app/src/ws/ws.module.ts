@@ -1,4 +1,5 @@
 import { Module, type BeforeApplicationShutdown, type OnApplicationBootstrap } from '@nestjs/common';
+import type { PrismaClient } from '@terra/db';
 import { HttpAdapterHost } from '@nestjs/core';
 import { defineEnv } from '@terra/config';
 import type { Server } from 'node:http';
@@ -9,7 +10,10 @@ import { HomeRepository } from '../core/home/home.repository';
 import { HomeService } from '../core/home/home.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { layerLogger } from '../core/logging/logger';
+import { databaseEnabled } from '../core/persistence';
 import { APP_ENV, LOGGER, type AppEnv, type RootLogger } from '../core/tokens';
+import { PRISMA } from '../db/db.module';
+import { seatDevScenarioPlayer } from '../near/identity/dev-scenario-seat';
 import { FlagsService } from '../flags/flags.service';
 import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
@@ -61,7 +65,7 @@ export const env = defineEnv('ws', {
     },
     {
       provide: WsGateway,
-      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS, HOME_PROVIDER],
+      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS, HOME_PROVIDER, { token: PRISMA, optional: true }],
       useFactory: (
         e: AppEnv,
         root: RootLogger,
@@ -71,11 +75,13 @@ export const env = defineEnv('ws', {
         verifier: SessionVerifier,
         ingress: CommandIngress,
         home: HomeProvider,
+        prisma?: PrismaClient,
       ) =>
         new WsGateway({
           env: e, planets, verifier, ingress, home, flags: flags.list, registry: m.registry,
           log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
           helloTimeoutMs: Number(e.WS_HELLO_TIMEOUT_MS), idleTimeoutMs: Number(e.WS_IDLE_TIMEOUT_MS),
+          seatDevScenario: prisma && databaseEnabled(e) ? (input) => seatDevScenarioPlayer(prisma, input) : undefined,
         }),
     },
   ],
