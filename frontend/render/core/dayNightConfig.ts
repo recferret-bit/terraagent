@@ -254,10 +254,10 @@ export function recordViewportPlanetBase(vp: ColonyViewport, look?: PlanetSpec):
   const base: ViewportPlanetBaseline = {
     sunColor: s ? s.sunColor : vp.sun.color.getHex(),
     sunIntensity: s ? s.sunIntensity : (vp.sun.intensity || 3.2),
-    hemiSky: s ? s.skyColor : vp.hemi.color.getHex(),
-    hemiGround: s ? s.hemiGround : vp.hemi.groundColor.getHex(),
+    hemiSky: s ? (s.ambientSky ?? s.skyColor) : vp.hemi.color.getHex(),
+    hemiGround: s ? (s.ambientGround ?? s.hemiGround) : vp.hemi.groundColor.getHex(),
     skyTop: s ? s.skyColor : (sky?.material?.uniforms?.uTop?.value?.getHex?.() ?? 0x1a2736),
-    skyHorizon: s ? s.horizonColor : (sky?.material?.uniforms?.uHorizon?.value?.getHex?.() ?? 0x3b4d63),
+    skyHorizon: s ? s.fogColor : (sky?.material?.uniforms?.uHorizon?.value?.getHex?.() ?? 0x3b4d63),
     fogColor: s ? s.fogColor : (fog?.color?.getHex?.() ?? 0x3b4d63),
     fogDensity: s ? s.fogDensity : (fog?.density ?? 0.0025),
     bloomStrength: vp.bloom?.strength ?? 0.45,

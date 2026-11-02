@@ -145,6 +145,9 @@ export function getPlanetTimeAnchor(
       timeScale: cfg.timeScale,
     };
   }
+  if (!data) {
+    return raw;
+  }
   return {
     ...raw,
     realHoursPerDay: raw.customDayHours ? raw.realHoursPerDay : cfg.realHoursPerDay,

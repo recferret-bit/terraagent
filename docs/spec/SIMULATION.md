@@ -244,7 +244,7 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 
 | Item | Temperate (`forestRock`) | Desert (`dune`) | Ocean (`oceanForest`) |
 |---|---|---|---|
-| Day length | 12 000 ticks (20 min): **55 % day, 45 % night** (cold nights, D-33); daylight curve from `sinTable` | 12 000 ticks: 60 % day, 40 % night | as Desert |
+| Day length | W01 `time.cycle` default: `realHoursPerDay = 0.25` (15 min / 4 500 ticks at `timeScale = 1`, tunable via `PLANET_DAY_HOURS`, `setPlanetTime`, `dev.time`); W10 weather/solar split: 12 000 ticks (20 min), **55 % day, 45 % night** (cold nights, D-33); daylight curve from `sinTable` | W10: 12 000 ticks, 60 % day, 40 % night | as Desert |
 | Wind factor | resampled every 1 200 ticks, smoothed, 5 000–14 000 bp; **storms do not change it** (B13, proposed, tunable D-35) | same | same |
 | Storms | mean interval 27 000 ticks (45 min), duration 1 800 ticks | sandstorm mean 54 000 ticks; solar −50 % during storm | **×1.5 as frequent** (D-33): mean 18 000 ticks, duration 1 800 ticks |
 | Lightning (storms only) | strike every 200 ticks ± jitter on a random tile within any colony territory, tall-structure weight ×4 for pylons; 300 HP damage | same | same |

@@ -21,6 +21,7 @@ export interface OnlineDayNightSyncOptions {
   store: WorldStore;
   commandBus: Pick<CommandBus, 'send'>;
   hasColony: () => boolean;
+  warp?: () => number;
 }
 
 /**
@@ -38,6 +39,7 @@ export function bindOnlineDayNightSync(
   const store = 'commandBus' in storeOrOpts ? storeOrOpts.store : storeOrOpts;
   const commands = 'commandBus' in storeOrOpts ? storeOrOpts.commandBus : maybeCommands!;
   const hasSeatedColony = 'commandBus' in storeOrOpts ? storeOrOpts.hasColony : (maybeHasColony ?? (() => false));
+  const getWarp = 'commandBus' in storeOrOpts && storeOrOpts.warp ? storeOrOpts.warp : () => 1;
   setDayNightExternalSync(true);
 
   let pending: { timeOfDay?: number; realHoursPerDay?: number; timeScale?: number } | null = null;
@@ -47,28 +49,19 @@ export function bindOnlineDayNightSync(
   let minSyncTick = -1;
 
   const flush = () => {
-    if (timer !== null) {
-      clearTimeout(timer);
-      timer = null;
-    }
+    if (timer !== null) { clearTimeout(timer); timer = null; }
     if (!pending) return;
+    if (!store.latest) { timer = setTimeout(flush, THROTTLE_MS); return; }
     const args = pending;
     pending = null;
-    if (!store.latest) return;
     lastSentMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const kind = hasSeatedColony() ? 'setPlanetTime' : 'dev.time';
     inFlight++;
     void commands
       .send(kind, args)
-      .then((res) => {
-        if (res.ok) minSyncTick = Math.max(minSyncTick, res.appliedAtTick);
-      })
-      .catch(() => {
-        /* ignore transient socket/reject during slider scrub */
-      })
-      .finally(() => {
-        inFlight = Math.max(0, inFlight - 1);
-      });
+      .then((res) => { if (res.ok) minSyncTick = Math.max(minSyncTick, res.appliedAtTick); })
+      .catch(() => { /* ignore transient socket/reject during slider scrub */ })
+      .finally(() => { inFlight = Math.max(0, inFlight - 1); });
   };
 
   const queueSend = (patch: Partial<DayNightParams>) => {
@@ -81,11 +74,8 @@ export function bindOnlineDayNightSync(
     };
     const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const elapsed = now - lastSentMs;
-    if (elapsed >= THROTTLE_MS) {
-      flush();
-    } else if (timer === null) {
-      timer = setTimeout(flush, Math.max(16, THROTTLE_MS - elapsed));
-    }
+    if (elapsed >= THROTTLE_MS) flush();
+    else if (timer === null) timer = setTimeout(flush, Math.max(16, THROTTLE_MS - elapsed));
   };
 
   const offEdit = onDayNightUserEdit((patch) => queueSend(patch));
@@ -96,7 +86,8 @@ export function bindOnlineDayNightSync(
       if (!v) return null;
       const data = store.simData() ?? undefined;
       const anchor = getPlanetTimeAnchor(v.blobs, data);
-      const pt = computePlanetTimeAtTick(anchor, store.serverTickF(), data);
+      const tickF = v.tick + Math.max(0, store.serverTickF() - store.confirmedTick) * Math.max(1, getWarp());
+      const pt = computePlanetTimeAtTick(anchor, tickF, data);
       const awaitingAck = (inFlight > 0 || v.tick < minSyncTick) && nowMs - lastSentMs < 1500;
       if (!isUserScrubbingDayNight(nowMs) && timer === null && !awaitingAck) {
         const cur = getDayNightParams();
@@ -104,23 +95,13 @@ export function bindOnlineDayNightSync(
         const dayLenDiff = Math.abs(cur.dayLengthHours - pt.realHoursPerDay);
         const scaleDiff = Math.abs(cur.timeScale - pt.timeScale);
         if (hourDiff > 1e-3 || dayLenDiff > 1e-4 || scaleDiff > 1e-4) {
-          setDayNightParams(
-            {
-              timeOfDay: pt.hour,
-              dayLengthHours: pt.realHoursPerDay,
-              timeScale: pt.timeScale,
-            },
-            'sync',
-          );
+          setDayNightParams({ timeOfDay: pt.hour, dayLengthHours: pt.realHoursPerDay, timeScale: pt.timeScale }, 'sync');
         }
       }
       return pt;
     },
     dispose() {
-      if (timer !== null) {
-        clearTimeout(timer);
-        timer = null;
-      }
+      if (timer !== null) { clearTimeout(timer); timer = null; }
       pending = null;
       offEdit();
       setDayNightExternalSync(false);

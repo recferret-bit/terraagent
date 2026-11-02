@@ -1,9 +1,8 @@
 import { availableParallelism } from 'node:os';
 import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
-import { newId } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
-import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE } from '@terra/sim';
+import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, mergeOverrides, type BalanceOverrides } from '@terra/sim';
 import type { Logger } from 'pino';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
@@ -64,7 +63,16 @@ const POOL = Symbol('SIM_THREAD_POOL');
     {
       provide: POOL,
       inject: [APP_ENV, FlagsService],
-      useFactory: (e: AppEnv, f: FlagsService) => new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: f.list, deltaHz: Number(e.DELTA_HZ), overrides: loadBalanceOverrides(e.TA_BALANCE_OVERRIDES as string | undefined, f.list) }),
+      useFactory: (e: AppEnv, f: FlagsService) => {
+        const base = loadBalanceOverrides(e.TA_BALANCE_OVERRIDES as string | undefined, f.list);
+        const realHoursPerDay = e.PLANET_DAY_HOURS as number | undefined;
+        const timeScale = e.PLANET_TIME_SCALE as number | undefined;
+        const envTime: BalanceOverrides =
+          realHoursPerDay !== undefined || timeScale !== undefined
+            ? { time: { cycle: { ...(realHoursPerDay !== undefined ? { realHoursPerDay } : {}), ...(timeScale !== undefined ? { timeScale } : {}) } } }
+            : {};
+        return new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: f.list, deltaHz: Number(e.DELTA_HZ), overrides: mergeOverrides(base, envTime) });
+      },
     },
     { provide: GamePlanets, inject: [POOL, APP_ENV], useFactory: (pool: SimThreadPool, e: AppEnv) => new GamePlanets(pool, Number(e.DELTA_HZ)) },
     SnapshotStore,
@@ -104,7 +112,6 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   async onApplicationBootstrap(): Promise<void> {
     await this.pool.start();
     bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
-    this.wireDefaultPlanetTime();
     const home = this.homeService;
     if (home) {
       const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
@@ -155,25 +162,6 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       : { params: { type: W00_PLANET_TYPE } };
     // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
     await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
-  }
-
-  private wireDefaultPlanetTime(): void {
-    const realHoursPerDay = this.env.PLANET_DAY_HOURS as number | undefined;
-    const timeScale = this.env.PLANET_TIME_SCALE as number | undefined;
-    if (realHoursPerDay === undefined && timeScale === undefined) return;
-    this.planets.onPlanetLoaded((planetId, _tick, info) => {
-      if (info.restored) return;
-      void this.planets.submit(planetId, {
-        colonyIndex: null,
-        source: 'dev',
-        commandId: newId('cm'),
-        kind: 'dev.time',
-        args: {
-          ...(realHoursPerDay !== undefined ? { realHoursPerDay } : {}),
-          ...(timeScale !== undefined ? { timeScale } : {}),
-        },
-      });
-    });
   }
 
   async onApplicationShutdown(): Promise<void> {

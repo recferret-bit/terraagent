@@ -130,6 +130,7 @@ describe('planet time commands, replication, and balance overrides', () => {
     tunedHost.step(1);
     const afterTune = getPlanetTime(tunedHost.state, tunedData);
     expect(afterTune.realHoursPerDay).toBe(2);
+    expect(getPlanetTime(tunedHost.state).realHoursPerDay).toBe(2);
     // Should not jump backwards to 9:00; should continue smoothly from beforeTune.timeOfDay
     const expectedStep = 24 / (2 * 3600 * TICKS_PER_SECOND);
     expect(afterTune.timeOfDay).toBeCloseTo(beforeTune.timeOfDay + expectedStep, 3);

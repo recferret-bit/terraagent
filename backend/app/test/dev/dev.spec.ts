@@ -46,6 +46,13 @@ describe('dev module (development)', () => {
   it('time: initializes from PLANET_DAY_HOURS / PLANET_TIME_SCALE, updates planet solar clock, and 404s unloaded planet', async () => {
     const { url } = await boot({ NODE_ENV: 'test', GAME_DEV_PLANETS: '1', PLANET_DAY_HOURS: '0.5', PLANET_TIME_SCALE: '2' });
     const [loaded] = ((await (await fetch(`${url}/v1/dev/planets`)).json()) as { planets: { id: string }[] }).planets;
+    const initial = await post(url, 'time', { planetId: loaded!.id });
+    expect(initial.status).toBe(200);
+    const initialBody = (await initial.json()) as { planetId: string; realHoursPerDay: number; timeScale: number };
+    expect(initialBody.planetId).toBe(loaded!.id);
+    expect(initialBody.realHoursPerDay).toBeCloseTo(0.5, 4);
+    expect(initialBody.timeScale).toBeCloseTo(2, 4);
+
     const updated = await post(url, 'time', { planetId: loaded!.id, timeOfDay: 18, realHoursPerDay: 1.5, timeScale: 3 });
     expect(updated.status).toBe(200);
     const body = (await updated.json()) as { planetId: string; realHoursPerDay: number; timeScale: number; phase: string };

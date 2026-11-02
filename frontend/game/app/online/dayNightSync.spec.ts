@@ -110,10 +110,12 @@ describe('Online Day/Night Synchronization (dayNightSync)', () => {
     expect(getPlanetTime(auth.state).realHoursPerDay).toBe(1.0);
     expect(getPlanetTime(auth.state).timeScale).toBe(3);
 
-    // High-latency link (?lag=300 -> 600ms RTT > 450ms USER_SCRUB_HOLD_MS): in-flight command prevents snap-back
+    // High-latency link (?lag=300 -> 600ms RTT > 450ms USER_SCRUB_HOLD_MS): in-flight dev.time command prevents snap-back
     hasColony = false;
     t.sent.length = 0;
     setDayNightParams({ timeOfDay: 22.0 }, 'user');
+    await new Promise((r) => setTimeout(r, 140));
+    expect(t.sent).toEqual([expect.objectContaining({ t: 'cmd', d: { kind: 'dev.time', args: { timeOfDay: 22 } } })]);
     sync.syncFrame(performance.now() + 600);
     expect(getDayNightParams().timeOfDay).toBeCloseTo(22.0, 3);
 

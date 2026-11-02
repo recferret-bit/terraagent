@@ -6,7 +6,7 @@ import { buildInstanced, createFoliageMaterial, makePineGeo } from '../visuals/t
 import { getPixelArtParams, resetPixelArtParams } from './pixelArtPass';
 import {
   computeSolarState, DEFAULT_DAY_NIGHT_PARAMS, getDayNightParams, isDayNightOn,
-  resetDayNightParams, setDayNight, setDayNightParams,
+  recordViewportPlanetBase, resetDayNightParams, setDayNight, setDayNightParams,
 } from './dayNightConfig';
 import {
   computeSunOffset, DEFAULT_SHADOW_PARAMS, followShadowTarget, getShadowParams,
@@ -200,6 +200,23 @@ describe('Day/night cycle sun color and shadow modulation (dayNightConfig)', () 
     syncViewportShadow(vp, 0xfff5e4);
     expect(vp.sun.color.getHex()).toBe(0x123456);
     vp.scene.remove(descRoot);
+
+    const base = recordViewportPlanetBase(vp, {
+      sky: {
+        skyColor: 0xc27b4b,
+        horizonColor: 0xe6ac7c,
+        fogColor: 0xe9c394,
+        fogDensity: 0.0019,
+        sunColor: 0xffe4be,
+        sunIntensity: 3.1,
+        hemiGround: 0x3b2416,
+        ambientSky: 0x93a6cf,
+        ambientGround: 0xc99062,
+      },
+    } as never);
+    expect(base.hemiSky).toBe(0x93a6cf);
+    expect(base.hemiGround).toBe(0xc99062);
+    expect(base.skyHorizon).toBe(0xe9c394);
   });
 });
 

@@ -314,9 +314,9 @@ export class LocalHostCore {
     this.queue.push({ colonyIndex: hasColony ? 0 : null, source: pre.dev ? 'dev' : 'player', commandId: id, kind, args: pre.args });
   }
 
-  // ---- dev server (warp, scenario, tune, local.reset, ledger) -----------------------------------------------------
+  // ---- dev server (warp, time, scenario, tune, local.reset, ledger) -----------------------------------------------
 
-  /** The local `DevServer` (`warp`, `scenario`, `local.reset`, `tune`, `ledger`): what the game server's dev routes do, minus everything that needs a server (`host_unavailable`). */
+  /** The local `DevServer` (`warp`, `time`, `scenario`, `local.reset`, `tune`, `ledger`): what the game server's dev routes do, minus everything that needs a server (`host_unavailable`). */
   async devCommand(name: string, args: unknown): Promise<unknown> {
     const a = (args ?? {}) as Record<string, unknown>;
     switch (name) {

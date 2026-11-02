@@ -167,6 +167,7 @@ export class OnlineSession {
       store: this.store,
       commandBus: this.commandBus,
       hasColony: () => Boolean(this.colonyId && this.store.latest?.colonies[this.colonyIndex]?.status !== 'eliminated'),
+      warp: () => this.warp,
     });
     this.cleanups.push(() => this.dayNightSync?.dispose());
   }
