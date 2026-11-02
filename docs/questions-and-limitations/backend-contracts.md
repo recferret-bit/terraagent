@@ -585,3 +585,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** one outbox row and one mock receipt per colony account. A second submit of the same caller opId returns the stored receipt.
 - **To resolve:** when the real relayer lands (W23), replace the JSON stub with a signed delegate and whatever deposit `res.*` requires. Keep the opId `storage-deposit:{colonyAccountId}`.
 - **Found:** 2026-11-02, W06-12
+
+### BE-39 · Relay outcome is polled, not pushed on the socket
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/relay-status.controller.ts` (`GET /v1/near/relay`), `frontend/game/features/identity/orbitStatus.ts`, `backend/app/src/ws/rooms.ts` (`onEvent`)
+- **What happens:** After social login the client shows `Saving to orbit…` and polls `GET /v1/near/relay` about every 400 ms until the deposit is `settled` or `failed`. The socket still only forwards sim events and `dev.warp` (BE-35). `relay.settled` and `relay.failed` are not delivered to the browser. The outbox relay does not publish those payloads. `POST /v1/near/relay/retry` sets that player's `FAILED` rows back to `PENDING` with `nextAttemptAt` now. A `RUNNING` row keeps its lease. A `DEAD` row is `failed` in the poll and is not requeued.
+- **Why it is like this:** W06-20 says not to invent a second websocket. The outbox may `bus.publish` the same payloads later, when a non-sim player push exists. Until then the HUD learns the state from the authenticated poll.
+- **Workaround / mitigation:** the pilot bearer poll, and Retry, which polls again. The client stops polling once it sees `failed`, so a deposit the relay then settles on its own backoff stays on the toast until Retry. A reload polls once and shows the chip or the toast only when that deposit is still pending or failed.
+- **To resolve:** when a non-sim player push exists, publish `relay.settled` / `relay.failed` on that path and drop the poll. Do not put them on `planet.event`.
+- **Found:** 2026-11-02, W06-20

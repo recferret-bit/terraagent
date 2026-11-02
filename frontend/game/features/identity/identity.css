@@ -45,3 +45,30 @@
   color: var(--ta-fault-text);
   font: 500 11px/1.3 var(--ta-font-mono);
 }
+.ta-orbit {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+.ta-orbit-save {
+  margin: 0;
+  padding: 6px 10px;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text-2);
+  font: 600 11px/1.3 var(--ta-font-display);
+  letter-spacing: var(--ta-track-label);
+}
+.ta-orbit-toast {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 8px 10px;
+  background: var(--ta-plate-2);
+  border: 1.5px solid var(--ta-fault);
+  color: var(--ta-fault-text);
+  font: 600 12px/1.35 var(--ta-font-mono);
+}
