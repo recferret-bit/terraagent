@@ -194,3 +194,13 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `npm run stack:local:down` | Stop those four compose projects. Leaves the dev Postgres (`terra-pg`, port 15434) running |
 | `npm run stack:local:smoke` | DEPLOYMENT §5 curls (`--resolve` to 127.0.0.1), including the explorer page while the app is stopped |
 | `npm run deploy`, `deploy:{infra,frontend,backend,chain}` | SSH the stack to `DEPLOY_USER@DEPLOY_HOST`. Compose uses `--env-file /srv/terraagent/.env`. A missing `NODE_ENV` there becomes `production`, and a missing `DATABASE_URL` points at `postgres:5432` on `terra_internal`. Existing keys are left as they are. The operator `.env` is not uploaded. Each stack reloads nginx after its vhosts, then curls. `--dry-run` prints the plan and does not connect. An empty `DEPLOY_HOST` or `DEPLOY_USER` exits non-zero and names the variable |
+
+## W06-14
+
+Account list and receipt detail for the mock chain explorer (`/dev/chain/`). Same guard as the other explorer routes: 404 in production (`DevOnlyGuard`), including when `NEAR_ALLOW_MOCK_IN_PROD=true`, and 404 when ChainRead is not the mock adapter. The Accounts tab lists account id, kind and owner. Balances stay on the Balances tab and are empty until cargo rows exist. The Receipts hash cell links to the receipt page.
+
+| Route or URL | What |
+|---|---|
+| `GET /v1/dev/chain/accounts` | Player and colony accounts from `chain.mock_chain_account` and `chain.near_colony_account`, one row per account id. Shape `{ accountId, kind, publicKey, ownerAccountId }`. `kind` is the mock row's kind when that row exists (`named` is the player account, `colony` is a colony sub-account). A `near_colony_account` row with `slot` `player` is `named`; any other slot is `colony`, and `ownerAccountId` is that table's owner (null when only the mock row exists). `?account=` is an exact account id. `?limit=` is 1–200, default 50 |
+| `GET /v1/dev/chain/tx?hash=` | One receipt. The hash is a query parameter because `mock:` contains a colon. 404 `NOT_FOUND` when no row has that hash. Body: `txHash`, `status` (stored value), `statusLabel` (`FINAL` when stored status is `success`, otherwise the stored status), `signerId`, `receiverId` (payload keys, null when absent), `opId`, `port`, `method`, `blockHeight`, `payload`. Stored status stays `pending`, `success` or `failure` |
+| `/dev/chain/tx/<hash>` | Receipt page (`frontend/dev/chain/tx.html`). The hash is URL-encoded (`mock:` → `mock%3A…`). `?hash=` on `/dev/chain/tx` also works. Shows signer, receiver, the `mock:` hash and status `FINAL`. Back link is `/dev/chain/`. Vite dev and preview rewrite `/dev/chain/tx` and `/dev/chain/tx/*` to that page and do not rewrite `/v1` |

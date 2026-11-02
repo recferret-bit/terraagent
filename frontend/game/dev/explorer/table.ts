@@ -22,8 +22,14 @@ export function renderTable(tab: TabDef, rows: Row[], seen: Set<string> | null):
     for (const [i, c] of tab.columns.entries()) {
       const td = tr.insertCell();
       td.className = c.cls ?? '';
-      td.textContent = c.cell(r);
-      if (i === status) td.dataset.status = c.cell(r).toLowerCase();
+      const text = c.cell(r);
+      const href = c.href?.(r);
+      if (href) {
+        const a = el('a', 'hash-link', text);
+        a.href = href;
+        td.append(a);
+      } else td.textContent = text;
+      if (i === status) td.dataset.status = text.toLowerCase();
     }
   }
   return table;

@@ -515,3 +515,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** one process, one login, is enough for the W06-03 spec. Later issues replace the map with `core.social_identity`.
 - **To resolve:** W06-05 writes the named account; W06-06 persists the subject on the guest player and rotates the refresh token.
 - **Found:** 2026-11-02, W06-03
+
+### BE-32 · Receipt detail URL is rewritten only by Vite
+
+- **Status:** Open
+- **Area / code:** `frontend/vite.config.ts` (`rewriteChainTx`), `infra/nginx/hosts/devchain.conf` (`try_files` → `/dev/chain/index.html`), `backend/app/src/core/dev-only.guard.ts`
+- **What happens:** `/dev/chain/tx/<hash>` serves the receipt page under Vite dev and preview. On `devchain.terraagent.fun` that path is the explorer list (`/dev/chain/index.html`), so the hash link does not open the receipt. `GET /v1/dev/chain/accounts` and `GET /v1/dev/chain/tx` also stay 404 in production when `NEAR_ALLOW_MOCK_IN_PROD=true`, because `DevOnlyGuard` hides every `/v1/dev/*` route (`backend/app/test/core/dev-routes.spec.ts` boots with that flag and expects 404).
+- **Why it is like this:** W06-14 asked for the Vite rewrite and the same guard as the other explorer routes. The nginx vhost and the production 404 test were left unchanged.
+- **Workaround / mitigation:** open the receipt from the Vite app (`http://127.0.0.1:5173/dev/chain/`). The API is available when `NODE_ENV` is not `production`.
+- **To resolve:** add an nginx location that serves `/dev/chain/tx.html` for `/dev/chain/tx` and `/dev/chain/tx/*`, and leave `/v1` on the app proxy. Do not weaken `DevOnlyGuard` unless that production test is changed on purpose.
+- **Found:** 2026-11-02, W06-14
