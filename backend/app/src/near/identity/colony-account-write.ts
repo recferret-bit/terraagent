@@ -1,8 +1,10 @@
+import { MOCK_CARGO_CONTRACT, MOCK_RELAYER_ACCOUNT, storageDepositOpId } from '@terra/contracts';
 import type { PrismaClient, TransactionClient } from '@terra/db';
 import { withTransaction } from '@terra/db';
+import { ChainOutboxRepository } from '../application/outbox/chain-outbox.repository.js';
+import type { ColonyKeyRow, KeyStore } from '../keystore/keys.js';
 import { deriveAccountName } from './account-name.js';
 import { colonyAccountCandidates } from './colony-account-id.js';
-import type { ColonyKeyRow, KeyStore } from '../keystore/keys.js';
 
 /** Extra attempts after a unique clash (two logins, or login racing `colonyFounded`). */
 const RACE_RETRIES = 4;
@@ -20,15 +22,17 @@ export interface EnsureColonyAccountsInput {
 /**
  * Idempotent player row (`slot: 'player'`) plus one row per colony (`slot` = colony id).
  * A row that already exists keeps its account id and its key. The ed25519 seed is never written.
+ * Each colony row enqueues one relayer-paid `storage_deposit` in the same transaction. The player row does not.
  */
 export async function ensureColonyAccounts(
   prisma: PrismaClient,
   keys: KeyStore,
   input: EnsureColonyAccountsInput,
 ): Promise<void> {
+  const outbox = new ChainOutboxRepository(prisma);
   for (let attempt = 0; ; attempt += 1) {
     try {
-      await withTransaction(prisma, (tx) => writeAccounts(tx, keys, input));
+      await withTransaction(prisma, (tx) => writeAccounts(tx, keys, input, outbox));
       return;
     } catch (e) {
       if (!isUnique(e) || attempt >= RACE_RETRIES) {
@@ -39,7 +43,12 @@ export async function ensureColonyAccounts(
   }
 }
 
-async function writeAccounts(tx: TransactionClient, keys: KeyStore, input: EnsureColonyAccountsInput): Promise<void> {
+async function writeAccounts(
+  tx: TransactionClient,
+  keys: KeyStore,
+  input: EnsureColonyAccountsInput,
+  outbox: ChainOutboxRepository,
+): Promise<void> {
   const ownerAccountId = await ensurePlayerRow(tx, keys, input.playerId, input.ownerAccountId);
   const colonyIds = input.colonyIds ?? (await idsOf(tx, input.playerId));
   const playerName = deriveAccountName(input.subject);
@@ -47,7 +56,7 @@ async function writeAccounts(tx: TransactionClient, keys: KeyStore, input: Ensur
   for (const colonyId of colonyIds) {
     if (seen.has(colonyId)) continue;
     seen.add(colonyId);
-    await ensureColonyRow(tx, keys, { playerId: input.playerId, colonyId, playerName, ownerAccountId });
+    await ensureColonyRow(tx, keys, { playerId: input.playerId, colonyId, playerName, ownerAccountId }, outbox);
   }
 }
 
@@ -85,6 +94,7 @@ async function ensureColonyRow(
   tx: TransactionClient,
   keys: KeyStore,
   input: { playerId: string; colonyId: string; playerName: string; ownerAccountId: string },
+  outbox: ChainOutboxRepository,
 ): Promise<void> {
   const existing = await tx.nearColonyAccount.findUnique({
     where: { playerId_slot: { playerId: input.playerId, slot: input.colonyId } },
@@ -92,6 +102,7 @@ async function ensureColonyRow(
   });
   if (existing) {
     await upsertMock(tx, existing.accountId, 'colony', null);
+    await enqueueStorageDeposit(outbox, tx, existing.accountId);
     return;
   }
   const accountId = await freeColonyAccountId(tx, input.colonyId, input.playerName);
@@ -107,6 +118,21 @@ async function ensureColonyRow(
     },
   });
   await upsertMock(tx, accountId, 'colony', sealed.publicKey);
+  await enqueueStorageDeposit(outbox, tx, accountId);
+}
+
+/** One NEP-145 deposit per colony account. Insert-or-ignore on the opId, so a replay still enqueues when the outbox row is missing. */
+async function enqueueStorageDeposit(outbox: ChainOutboxRepository, tx: TransactionClient, accountId: string): Promise<void> {
+  await outbox.enqueue({
+    opId: storageDepositOpId(accountId),
+    port: 'Relayer',
+    method: 'submitMetaTx',
+    payload: {
+      signerId: MOCK_RELAYER_ACCOUNT,
+      receiverId: MOCK_CARGO_CONTRACT,
+      signedDelegate: JSON.stringify({ action: 'storage_deposit', account_id: accountId }),
+    },
+  }, tx);
 }
 
 async function freeColonyAccountId(tx: TransactionClient, colonyId: string, playerName: string): Promise<string> {
