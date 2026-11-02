@@ -449,3 +449,14 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** give one shared helper a radial-segment option and have both kits call it with their current defaults (geometry must stay byte-identical; check with an attribute hash of all archetypes).
 - **Found:** 2026-11-01, render review-fix round
 - **Fix:** one helper `tubeThrough(b, pts, r, zone, { along, radial }, opts)` in `frontend/render/kitbash/greebles/tube.ts` (CatmullRom `TubeGeometry`, named `power cable` unless `opts.name` says otherwise); `kit.tube` (and so `kit.cable`) calls it with `{ along: o.seg ?? 10, radial: 4 }` and the same option bag, `unitParts.cable` (and `sag`) with `{ along: 10, radial: 5 }`, and the third copy found on the way, the `saggingCable` greeble in `KitbashRegistry.ts` (used by no archetype), with `{ along: 12, radial: 6 }` (its part is now named `power cable`). Geometry byte-identical: a scratch SHA-256 over every archetype's merged attributes + index and its extracted part list (name, zone, kind, role, anim, pivot, emissive) is unchanged for all 29 archetypes; `npm run validate:models -- --all` 29 pass, 0 errors, 0 warnings before and after; `npm run test:models` 48/48.
+
+### RN-26 · Shadow depth pass failed to compile (`objectNormal` undeclared)
+
+- **Status:** Resolved (W06, 2026-11-02)
+- **Area / code:** `frontend/render/visuals/unified/shaderChunks.ts` (`vertBeginVertex`)
+- **What happens:** the unified vertex chunk wrote `vTaWorldNormal` from Three's `objectNormal`. `MeshDepthMaterial` (the shadow pass) does not declare that name, so Chrome logged `THREE.WebGLProgram: Shader Error` and `tests/e2e/w01.spec.ts` step 1 failed on `expectNoPageErrors`. The colour pass still drew.
+- **Why it is like this:** `objectNormal` comes from `<beginnormal_vertex>`, which the depth material does not include before this chunk.
+- **Workaround / mitigation:** none; the depth shader did not compile.
+- **To resolve:** build the same vector `beginnormal_vertex` would (`normal`, times `instanceMatrix` when instancing) inside the chunk.
+- **Found:** 2026-11-02, W06 e2e (`npm run e2e -- --waves 01 --hack`)
+- **Fix:** `vertBeginVertex` no longer reads `objectNormal`.

@@ -177,7 +177,12 @@ export const vertBeginVertex = (pluginChunk: string) => /* glsl */ `#include <be
         ${VERT_GAIT_ANIM}
         ${pluginChunk}
         vTaWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
-        vTaWorldNormal = normalize(mat3(modelMatrix) * objectNormal);
+        // MeshDepthMaterial (shadow pass) does not declare Three's objectNormal. Match beginnormal_vertex.
+        vec3 taObjectNormal = normal;
+        #ifdef USE_INSTANCING
+          taObjectNormal = mat3(instanceMatrix) * taObjectNormal;
+        #endif
+        vTaWorldNormal = normalize(mat3(modelMatrix) * taObjectNormal);
         `;
 
 export const FRAG_COMMON = /* glsl */ `#include <common>
