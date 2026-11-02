@@ -1,12 +1,12 @@
 # 08 — Wave grill checklist (on-chain and NEAR)
 
-> **Status:** 2026-10-31, grooming reference (legend: [`README.md`](./README.md)). One agenda per wave, in grooming order. Ids: rules and questions in [01](./01-accounts-keys-relayer.md)–[06](./06-near-tools-and-adapters.md); owner decisions `OD-nn`, numbers `N-nn` and the deduplicated question table in [`07`](./07-gaps-and-grooming.md) §7, §8, §9. **H set** = issues · units tagged `H` (HACKATHON_CUT §2); **finish** = wave e2e finish unit with 10 agents (HACKATHON_SCHEDULE §4; u ≈ 2.6 × day). Deps from the wave header. Uncited issues from the pass-2 coverage review are marked ★.
+> **Status:** 2026-10-31, grooming reference, pass 4 (2026-11-02) (legend: [`README.md`](./README.md)). One agenda per wave, in grooming order. Ids: rules and questions in [01](./01-accounts-keys-relayer.md)–[06](./06-near-tools-and-adapters.md); owner decisions `OD-nn`, numbers `N-nn` and the deduplicated question table in [`07`](./07-gaps-and-grooming.md) §7, §8, §9. **H set** = issues · units tagged `H` (HACKATHON_CUT §2; whole set 395 issues ≈ 299.5 units, critical path 21.0); **finish** = wave e2e finish unit with 10 agents (HACKATHON_SCHEDULE §4, the only per-wave column; u ≈ 2.6 × day). The cut itself now plans 12 agents: 29.5 units wall-clock, ≥ 2.3 units/agent/day (HACKATHON_CUT header). Deps from the wave header. Uncited issues from the pass-2 coverage review are marked ★.
 
 ## W00 — Platform skeleton (landed, `d2970e8`)
 
 - **H set · deps:** 51 · 41.0 · finish u10.0 · deps none.
 - **@hack:** steps 1–3, 5–10 (step 7 `chain.ping` → `mock:` receipt in `/dev/chain`; step 9 `?host=local`).
-- **Pre-reads:** R06-39..R06-48, R06-12, R06-62, R06-76, R02-25, R01-31; 06 §7 W00 card.
+- **Pre-reads:** R06-39..R06-48, R06-12, R06-62, R06-71, R06-76, R02-25, R01-31; 06 §7 W00 card.
 - **Owner decisions:** OD-17 (allow flags), OD-19 (Bet A step 1).
 - **Numbers:** — (W00-59 is the vehicle for every OD-20 number).
 
@@ -14,7 +14,8 @@
 |---|---|---|
 | W00-30 ports | NEAR §1a lists `stake`, `unstake`, `rewards`; W20-01 adds `listPools`, `withdraw`, `position`. Who updates NEAR §1a (OWNER_TASKS N3)? | R05-33, Q-06-15 |
 | W00-31 adapter selection | Waves write `NEAR_ADAPTER_CARGO`, `_DEED`, `_TREASURY`; code reads `_CARGO_TOKEN`, `_DEED_NFT`, `_TREASURY_DAO`. A typo silently selects mock: rename the waves or alias in code? | R06-41, R06-42, Q-06-11 |
-| W00-31 / W25-06 | Prod needs three allow flags; `AI_PROVIDER=zai` aborts boot with no Z.ai adapter in the cut | R06-71, R06-73, Q-06-6 |
+| W00-31 / W25-06 | Prod needs three allow flags; `AI_PROVIDER=zai` aborts boot because no LLM adapter of any kind exists on `main` (none in the cut) | R06-71, R06-73, Q-06-6 |
+| W00-31 mainnet guard | `NEAR_ALLOW_MAINNET` is not in the code yet; W25-06 writes a global `NEAR_NETWORK=mainnet`, the code selects per port: which name does W23-01 / W25-06 use? | R06-44, Q-06-11 |
 | ★ W00-33 mock ChainRead | ChainRead stays mock per the cut, yet W23-05/06 are H2: which? | R06-51, Q-06-12 |
 | W00-35 NEP-171 base | Deed and Badge share one contract (`deed` / `badge` collections): does the base already model soulbound badges? | R06-29, R05-17 |
 | W00-37 outbox | Code `chain.chain_outbox` vs three spec names: fix NEAR §13 and DATA_MODEL | R06-62, Q-06-15 |
@@ -24,11 +25,27 @@
 
 **Proposed rows:** `contract-real.mjs` `--dry` + comma lists (W23-01 subtask, Q-06-11); a key alias table if waves keep their names.
 
+## W26 — Sites (landed, `6073ee9`)
+
+- **H set · deps:** 10 · 9.0 · finish u16.5 · deps W00.
+- **@hack:** steps 1–6 (W26-10).
+- **Pre-reads:** R06-55, R06-73, R06-90; Q-06-6, Q-06-24, Q-06-25; DEPLOYMENT §2–4; `docs/plan/checks/w26-check.md`.
+- **Owner decisions:** OD-17 (allow flags), OD-03 (real F5 on the hosted demo).
+- **Numbers:** —.
+
+| Issue | Ask | Pack id |
+|---|---|---|
+| W26-07 chain stack | `devchain.terraagent.fun` serves the explorer HTML, but `/v1/dev/chain/*` 404s with `NODE_ENV=production` (the remote default): show mock receipts on the hosted demo or not? | R06-55, Q-06-25 |
+| W26-06 / W26-09 server `.env` | Who writes `NEAR_ALLOW_MOCK_IN_PROD`, `AI_ALLOW_MOCK_IN_PROD`, `NOTIFY_ALLOW_MOCK_IN_PROD` into `/srv/terraagent/.env` (`deploy` leaves existing keys)? | R06-73, Q-06-6 |
+| DEPLOYMENT §2–3 | HTTP only and `play` CSP `connect-src 'self'`: real NEAR Auth on the hosted demo needs a secure context and `CSP_CONNECT_EXTRA` | R06-90, Q-06-24 |
+
+**Proposed rows:** none in W26 (landed); the explorer flag or TLS row would be W25 rows (Q-06-25, Q-06-24).
+
 ## W06 — Invisible chain (F5, mock)
 
-- **H set · deps:** 20 · 12.5 · finish u13.5 · deps W00, W01 (W01-02 guest login, W01-31 `colonyFounded`).
+- **H set · deps:** 20 · 12.5 · finish u14.0 · deps W00, W01 (W01-02 guest login, W01-31 `colonyFounded`).
 - **@hack:** steps 1, 2, 4, 6, 7. DoD also needs W06-21 copy lint, which is not H.
-- **Pre-reads:** R01-1..R01-35, R01-43..R01-56; R06-20..R06-26; Q-01-1, Q-01-2 · Q-06-7 (closed → Q-01-2), Q-01-5, Q-01-7, Q-01-16.
+- **Pre-reads:** R01-1..R01-35, R01-43..R01-56; R06-20..R06-26, R06-66, R06-90; Q-01-1, Q-01-2 · Q-06-7 (closed → Q-01-2), Q-01-5, Q-01-7, Q-01-16.
 - **Owner decisions:** OD-01, OD-03.
 - **Numbers:** — (name length, 01 §5 / Q-01-8).
 
@@ -39,6 +56,7 @@
 | W06-06 / 09 key store | `core.social_identity` and `chain.near_colony_account` are not in the merged schema; where does the player key live? | R01-55, Q-01-7 |
 | W06-08 colony account | What string is `{colony}`; 32-char name on `.testnet`; "guest with 2 colonies" vs DM-10 | Q-01-8, Q-01-14 |
 | W06-10 relayer | Account-key actions (`add_key`, `create_account`) are not on the allow-list: who relays them? | R01-29, Q-01-5 |
+| W06-10 / W06-08 | Each named colony account must call `add_public_key` on `intents.near` once before its intents count: on the allow-list, and who pays? | R06-66, Q-06-17 |
 | W06-12 `storage_deposit` | Can a guest colony reach the Trade Hub before login? | Q-01-13 |
 | W06-17 claim stub | `409 not_available_yet` is not in PROTOCOL §8 | Q-01-16 |
 | W06-18 NEP-413 | Implement PROTOCOL `/auth/near/challenge` + `/verify` | R01-54, R01-24 |
@@ -51,7 +69,7 @@
 
 ## W09 — Offline and notifications
 
-- **H set · deps:** 14 · 12.0 · finish u25.0 · deps W02; W15 needs W09-13.
+- **H set · deps:** 14 · 12.0 · finish u25.5 · deps W02; W15 needs W09-13.
 - **@hack:** steps 3, 4, 5, 6, 8.
 - **Pre-reads:** R04-25, R04-30..R04-35, R04-60; Q-04-1, Q-04-12, Q-04-19.
 - **Owner decisions:** OD-09, OD-21.
@@ -59,7 +77,7 @@
 
 | Issue | Ask | Pack id |
 |---|---|---|
-| W09-13 `withinAutoTrade` (H) | Issue order is fine (W09-13 u21, W15-19 u22), but W15 opens only after W09 lands in `main` (W09 e2e u25) while W15-01 is scheduled at u17: pre-step or reorder? | Q-04-19, OD-21 |
+| W09-13 `withinAutoTrade` (H) | Issue order is fine (W09-13 and W15-19 both start in u22, W15-19 after W09-13), but W15 opens only after W09 lands in `main` (W09 e2e u25.5) while W15-01 is scheduled at u18: pre-step or reorder? | Q-04-19, OD-21 |
 | W09-09 (H) vs W09-10 / 11 / 12 / 14 (—) | Deny table, budget accounting, rejection log, panel all untagged though D-17 makes them MVP. Say so in the README? | R04-30, R04-32, Q-04-12 |
 | W09-11 (—) | NEAR-80 makes the director allowance "the away budget", which nothing enforces in H | R04-24, Q-04-1 |
 | W09-01 contracts | `setAutopilot {mode, awayRaids, awayBudget}` vs PROTOCOL `{aiDirector, awayRaids}` + `setAwayBudget` | Q-04-12 |
@@ -69,7 +87,7 @@
 
 ## W10 — Cargo and Trade Hub (F1, mock)
 
-- **H set · deps:** 21 · 14.0 · finish u15.5 · deps W02, W06, W00 outbox + harness. W10-16 starts in u1.
+- **H set · deps:** 21 · 14.0 · finish u16.0 · deps W02, W06, W00 outbox + harness. W10-16 starts in u1.
 - **@hack:** steps 1–9 (no shuttle VFX).
 - **Pre-reads:** 02 R02-1..R02-53 and §6 supply ledger; R01-50; Q-02-1..Q-02-22 (open ones in 07 §9).
 - **Owner decisions:** OD-14 (burn), OD-20 (mint cap, kit), OD-12 (deposit method shapes the mock).
@@ -83,7 +101,7 @@
 | W10-06 caps | UTC-day counter in a sim with no wall clock; 20 000 or 10 000; clamp or reject | R02-23, Q-02-4, Q-02-8, N-01 |
 | W10-08 outbox | Snapshot rollback restores stock while the outbox mints; `exportSeq` can repeat | Q-02-1 |
 | W10-10 mock adapter | `mock_chain_mt_*` vs landed `mock_chain_balance` / `mock_chain_receipt`; env `NEAR_ADAPTER_CARGO` | R02-51, Q-02-22, R02-50 |
-| W10-11 suite | 10 ids and `opId` idempotency as the real `res` enforces; deposit by `mt_batch_transfer_call`? | R06-27, Q-06-1 |
+| W10-11 suite | 10 ids and `opId` idempotency as the real `res` enforces; deposit by `mt_batch_transfer_call`? The organisers' contract skill has no NEP-245 template | R06-27, Q-06-1, R06-89, Q-06-23 |
 | W10-12 / 13 import | Burn by `minter` (NEAR-50, NEF F1) or colony key (NEAR-52)? Pending import when the hub is shed? | R02-53, Q-02-3 · Q-05-11 (closed → Q-02-3), Q-02-10 |
 | W10-26 dev console | `cargo.grant` against a real adapter must refuse | R02-32, Q-02-2 |
 | W10-03 unlock | Default of `TRADE_HUB_AT_S2` | Q-02-12 |
@@ -94,7 +112,7 @@
 
 ## W11 — Lobby and planets (dropped by the Pivot; drop #2 in the cut)
 
-- **H set · deps:** 12 · 11.5 · finish u31.5 · deps W01. Pivot §3 drops W11; the W01-05 dev-seat flow carries the sector.
+- **H set · deps:** 12 · 11.5 · finish u32.0 · deps W01. Pivot §3 drops W11; the W01-05 dev-seat flow carries the sector.
 - **@hack:** steps 1, 2, 7, 8.
 - **Pre-reads:** R05-71, R05-73, R03-61; Q-03-13, Q-05-1, Q-05-20.
 - **Owner decisions:** OD-16 (season).
@@ -111,7 +129,7 @@
 
 ## W12 — Player page and achievements
 
-- **H set · deps:** 18 · 14.5 · finish u25.0 · deps W01. W12-01 starts in u3. Pivot trims W12 (no flip-card art, titles, XP levels).
+- **H set · deps:** 18 · 14.5 · finish u25.5 · deps W01. W12-01 starts in u3. Pivot trims W12 (no flip-card art, titles, XP levels).
 - **@hack:** steps 1, 2, 3, 6, 7, 9, 10 (step 8 "Recorded (mock)" is not `@hack`).
 - **Pre-reads:** R03-43, R05-14..R05-19, R05-65; Q-05-6, Q-05-7, Q-05-23, Q-03-17, Q-03-22.
 - **Owner decisions:** OD-11.
@@ -128,9 +146,9 @@
 
 ## W13 — Markets (F2, mock)
 
-- **H set · deps:** 25 · 18.5 · finish u18.0 · deps W10 (via W06); hooks W08 (Negotiate), W04 (map layer). W13-02 starts in u1: every rule it writes is a Nov 1 decision.
-- **@hack:** steps 1, 3–9 (step 2 uses the default fee, which no issue sets).
-- **Pre-reads:** 03 R03-1..R03-63; R02-29; R06-1..R06-9; Q-03-1, Q-03-2, Q-03-5, Q-03-7, Q-03-26, Q-06-1.
+- **H set · deps:** 25 · 18.5 · finish u18.5 · deps W10 (via W06); hooks W08 (Negotiate), W04 (map layer). W13-02 starts in u1: every rule it writes is a Nov 1 decision.
+- **@hack:** steps 1, 3–9 (step 2 uses the default fee from `data/market.ts`, for which W13-03 sets no value).
+- **Pre-reads:** 03 R03-1..R03-63; R02-29; R06-1..R06-10, R06-66, R06-79; Q-03-1, Q-03-2, Q-03-5, Q-03-7, Q-03-26, Q-06-1.
 - **Owner decisions:** OD-04, OD-05, OD-06, OD-07, OD-12, OD-02.
 - **Numbers:** N-06, N-07, N-08, N-10, N-11, N-12.
 
@@ -140,6 +158,7 @@
 | W13-03 config | No default `fee_bp`; no off-tick reject code | Q-03-26, Q-03-11, N-07 |
 | W13-04 mock verifier | Deposit semantics `mt_transfer_call` → `mt_batch_transfer_call`; NEAR leg `native:near` vs `nep141:wrap.near`; acceptance id `water` → `bio.water`; mock table name | R03-13, Q-06-1, Q-03-27, Q-03-28 |
 | W13-07 signing | What is stored in `signed_intent` when the fill diff is signed at match time? | Q-03-9 |
+| W13-04 / W13-07 registration | Real `intents.near` accepts a named account's intents only after `add_public_key`: should the mock refuse unregistered signers? Mock `withdraw` shaped as `mt_withdraw` / `MtWithdraw` | R06-66, R06-79, Q-06-17, Q-06-3 |
 | W13-08 book | DATA_MODEL `market_order` states / columns differ; `intent_trade` has no amount or price | Q-03-10 |
 | W13-09 place | Taker or Guild acceptor needs a Trade Hub? Owner of the `setHubFee` handler and fee storage | Q-03-21, Q-03-26 |
 | W13-11 matcher | Self-trade "rest" crosses the book; mid-sweep failure; orders when a hub is shed; verifier down | Q-03-4, Q-03-18, Q-03-12, Q-03-25 |
@@ -156,9 +175,9 @@
 
 ## W15 — Guild and agents (F3, F4, mock)
 
-- **H set · deps:** 20 · 15.0 · finish u26.0 · deps W13, W09 (W09-13); through W13 also W10, W06.
+- **H set · deps:** 20 · 15.0 · finish u26.5 · deps W13, W09 (W09-13); through W13 also W10, W06.
 - **@hack:** steps 1, 2 (toast + tab, no ship VFX), 3, 5–8, 9 (quotes vanish, no carry), 10. Step 4 (price reaction, W15-07 H+) is not `@hack`.
-- **Pre-reads:** 04 R04-1..R04-60; R03-47, R03-48, R03-50; R01-36..R01-39, R01-51, R01-52; R06-63..R06-69.
+- **Pre-reads:** 04 R04-1..R04-60; R03-47, R03-48, R03-50; R01-36..R01-39, R01-51, R01-52; R06-63..R06-69, R06-83, R06-84.
 - **Owner decisions:** OD-09, OD-08, OD-02, OD-06, OD-19, OD-21, OD-20.
 - **Numbers:** N-13..N-21.
 
@@ -168,6 +187,7 @@
 | W15-03 / 18 key | Allowance basis (away budget vs autoTrade caps), unit (per token vs NEAR), single `allowance numeric` | R04-24, Q-04-1, OD-09 |
 | W15-03 / 21 decrement | On sign (W15-03) and on settle (W15-21) → double count | R04-60, Q-04-20 |
 | W15-04 suite | Per-token allowance cases cannot run on a real FC key (gas-only, one receiver) | R06-64, R06-65, Q-06-17 |
+| W15-03 / W15-18 custody | Agent Connect policies (per-asset limits, USD budget, destinations, freeze, revocable `ngt_` grants) give what an FC key cannot: candidate for the real director key and Guild wallets? NEP-245 assets unknown; mainnet only | R06-83, R06-84, Q-06-21 |
 | W15-05 seed | Seed amounts and any cap; the seed is a mint without stock | R02-31, Q-02-13 |
 | W15-06 pricing | `refPrice` from a VWAP that wash trades move | R04-9, Q-03-17 |
 | W15-08 maker loop | Guild owns no stall: who earns the fee on its quotes? | Q-03-6 |
@@ -181,23 +201,24 @@
 | W15-32 (—) README | "How the Guild prices" is the track-09 readable file; untagged | Q-04-5 |
 | W15-09 schedule | 2 NPCs for 5 season planets; offset schedule | Q-04-23 |
 
-**Proposed rows (none exist yet):** `reason` field on every offer in W15-01 (Q-04-5); pricing page / economy fast-forward `/dev/market/fastforward?days=7` (M, H; Balance §9.3, R04-57); Guild off-planet sink and T2 restock (2 × S, H; Q-04-4); counteroffer after W15-07 (Q-04-6); Guild LLM row H+ with a minimal budget gate + decision row (Q-04-8); agent deny list as a server check (Q-04-16, R04-47); Bet A API module + MCP package + `RULES.md` + two scripted agents (Pivot Bet A, ≈ 9 units); Bet B float guard = W15-12 → H (Q-04-7); migration for `mock_chain_access_key` (R01-55).
+**Proposed rows (none exist yet):** `reason` field on every offer in W15-01 (Q-04-5); pricing page / economy fast-forward `/dev/market/fastforward?days=7` (M, H; Balance §9.3, R04-57); Guild off-planet sink and T2 restock (2 × S, H; Q-04-4); counteroffer after W15-07 (Q-04-6); Guild LLM row H+ with a minimal budget gate + decision row (Q-04-8); agent deny list as a server check (Q-04-16, R04-47); Bet A API module + MCP package + `RULES.md` + two scripted agents (Pivot Bet A, ≈ 9 units; an Agent Market listing of that agent only if OD-19, R06-86, Q-06-22; other partners no fit, R06-87); Bet B float guard = W15-12 → H (Q-04-7); migration for `mock_chain_access_key` (R01-55); Agent Connect probe, no build (09 L6, Q-06-21).
 
 ## W16 — AI director (not in the cut)
 
 - **H set · deps:** 0 (all 26 rows —) · deps W08; optional W09, W15 (W15-13 slot).
 - **@hack:** none.
-- **Pre-reads:** R04-20..R04-22, R04-41..R04-43; R06-11..R06-19, R06-71, R06-72; Q-04-8, Q-04-14, Q-04-15, Q-06-5, Q-06-6.
+- **Pre-reads:** R04-20..R04-22, R04-41..R04-43; R06-11..R06-19, R06-71, R06-72, R06-82, R06-85; Q-04-8, Q-04-14, Q-04-15, Q-06-5, Q-06-6, Q-06-22.
 - **Owner decisions:** OD-08, OD-10, OD-17.
 - **Numbers:** N-20.
 
 | Issue | Ask | Pack id |
 |---|---|---|
 | W16-21 Guild strategy hook | The only LLM path the Review keeps: move it to a W15 row, or keep W16 out entirely? | Q-04-8 |
-| W16-03 Z.ai adapter | Untagged, yet `validate-env` requires `AI_PROVIDER=zai` in prod | R06-71, Q-06-6 |
+| W16-03 Z.ai adapter | Untagged, yet AI_ORCHESTRATOR requires `AI_PROVIDER=zai` in prod (the rule left DEPLOYMENT in the W26 rewrite); no LLM adapter exists on `main` | R06-71, Q-06-6 |
 | W16-04 | `AI_LIVE_REQUIRED` vs the code's mock fallback | R06-72, Q-06-6 |
 | W16-07 / 08 / 15 | Budget gate and `ai_decision` row untagged: an H+ Guild call has neither | Q-04-8 |
 | W16-01 `DirectiveV1` | MP §4.2 wild directives match no action | R04-42, Q-04-14 |
+| NEAR AI Cloud (no row) | Endpoints and signature format now documented, key claimed: one manual signed call checked with `nearai-cloud-verifier` before any row? OutLayer as a fallback attestation path? | R06-18, R06-82, Q-06-5, Q-06-22 |
 
 **Proposed rows:** NEAR AI Cloud adapter + signature check + attestation chip (Bet C, ≈ 4 units, R06-16) only if OD-08 keeps Bet C.
 
@@ -218,7 +239,7 @@
 
 ## W20 — Colony Deed (F6, mock)
 
-- **H set · deps:** 10 · 8.5 · finish u29.5 · deps W06, W01, W00; fields from W05, W08, W13, W14, W18, W21 when on.
+- **H set · deps:** 10 · 8.5 · finish u30.0 · deps W06, W01, W00; fields from W05, W08, W13, W14, W18, W21 when on.
 - **@hack:** steps 1, 2, 7. Staking steps 4–6 are —.
 - **Pre-reads:** R05-1..R05-13, R05-25..R05-34, R05-66..R05-68, R05-72, R05-73; R06-29, R06-34.
 - **Owner decisions:** OD-22 (track 10), OD-11.
@@ -255,7 +276,7 @@
 
 ## W22 — Treasury and bounties (F7, F8, mock)
 
-- **H set · deps:** 19 · 15.5 · finish u32.5 · deps W13, W10, W07, W06, W11 (optional W18). Pivot drops W11; drop #4 in the cut.
+- **H set · deps:** 19 · 15.5 · finish u33.0 · deps W13, W10, W07, W06, W11 (optional W18). Pivot drops W11; drop #4 in the cut.
 - **@hack:** steps 1, 2, 3 (terraform boost instead of meteor shield), 4, 5, 8.
 - **Pre-reads:** R05-35..R05-64, R05-69..R05-71; R03-24, R03-25, R03-54; R02-53.
 - **Owner decisions:** OD-05, OD-14, OD-16, OD-20, OD-22.
@@ -280,33 +301,35 @@
 
 - **H set · deps:** H2 21 · 15.0 (all other 26 rows —) · deps per port group: W00 (infra, ChainRead), W06 (identity, relayer), W10 (cargo), W13 (intents), W15, W20, W12, W22, W21 for the rest. Start: D10 gate (cut) or D6 (Pivot), OD-03.
 - **H2 covers demo steps 1–3** (identity, cargo, intents); W23 has no `@hack` tag. Steps 4–6 need W23-43/46, W23-42, W23-47 (all —).
-- **Pre-reads:** 06 R06-1..R06-80; R01-14..R01-17, R01-27..R01-35; R02-26, R02-34, R02-37; R03-36, R03-56; 07 §4 swimlane, §10.
+- **Pre-reads:** 06 R06-1..R06-90; R01-14..R01-17, R01-27..R01-35; R02-26, R02-34, R02-37; R03-36, R03-56; 07 §4 swimlane, §10.
 - **Owner decisions:** OD-01, OD-02, OD-03, OD-12, OD-13, OD-18.
 - **Numbers:** N-26, N-27.
 
 | Issue | Ask | Pack id |
 |---|---|---|
-| W23-01 env | Acceptance uses `NEAR_ADAPTER_CARGO`; `NEAR_NETWORK_<PORT>` override | R06-42, R06-44, Q-06-11 |
+| W23-01 env | Acceptance uses `NEAR_ADAPTER_CARGO`; `NEAR_NETWORK_<PORT>` override vs W25-06's global `NEAR_NETWORK` | R06-42, R06-44, Q-06-11 |
+| W23-01 SDK | near-api-js v7 or near-kit for every real adapter (09 L3 proposes near-api-js v7 + near-kit for sandbox tests); install `near/agent-skills`? | R06-88, Q-06-10 |
 | W23-02 network matrix | Testnet Pilot ID with mainnet cargo: which account holds cargo? | R06-53, Q-01-19 |
 | W23-04 accounts | Who signs `create_account` for `{name}.*`; `npc.*` key holder | Q-01-1 |
 | W23-05 / 06 ChainRead | H2 here, mock in the cut | R06-51, Q-06-12 |
 | W23-07 / 08 (—) | Real relayer runs without alert or spend cap | R01-32, R01-33, Q-01-17 · Q-06-14 (closed → Q-01-17) |
-| W23-09 provider | Already decided by MP §0? Record D-37 with the fallback trigger date | R01-3, Q-01-3 |
+| W23-09 provider | Already decided by MP §0? Record D-MP with the fallback trigger date | R01-3, Q-01-3 |
 | W23-10 identity | NEAR Auth derives the player key: does W06-09's key store still apply? | R06-25, Q-01-2 · Q-06-7 (closed → Q-01-2) |
-| W23-11 client login | CSP for `login.*.fast-auth.com` | Q-06-8 |
-| W23-14 (—) claim | Residual FC key; wallet connector | Q-01-11, Q-01-21 |
-| W23-17 `res` | Issue text says `mt_transfer_call`; docs need `mt_batch_transfer_call` | R06-6, Q-06-1 |
+| W23-11 client login | CSP for `login.*.fast-auth.com` (`CSP_CONNECT_EXTRA`); hosted demo is HTTP only, no secure context | Q-06-8, R06-90, Q-06-24 |
+| W23-14 (—) claim | Residual FC key; "real wallet selector" names a superseded library (near-connect / HOT Connect) | Q-01-11, R06-77, Q-01-21 |
+| W23-17 `res` | Issue text says `mt_transfer_call`; docs need `mt_batch_transfer_call`. Contract path (`backend/near-contracts/` "to be confirmed"), `cargo near`, near-sandbox vs NEAR §15's near-workspaces | R06-6, Q-06-1, R06-89, Q-06-23 |
 | W23-18 deploy | "`mt_metadata` returns the 4 tokens" vs 10 ids | R06-28, Q-06-4 |
-| W23-21 deposit | A tested 1-unit mainnet deposit; drop 21a/b; storage cost, withdraw names | R06-8, Q-06-3, Q-06-4 |
-| W23-22 intents | Guild / director legs cannot sign on real Intents while AgentWallet is mock | R06-68, Q-06-18 |
+| W23-21 deposit | A tested 1-unit mainnet deposit (not run on Nov 1); drop 21a/b; storage cost; withdraw by `mt_withdraw` (names now known) | R06-8, R06-79, Q-06-3, Q-06-4 |
+| W23-22 intents | Guild / director legs cannot sign on real Intents while AgentWallet is mock; every named signer needs `add_public_key` first | R06-68, Q-06-18, R06-66 |
 | W23-24 smoke trade | 1-unit trade at 1 % → fee leg 0 under floor rounding | Q-03-2 |
-| W23-25 (—) 1Click | Bet B needs it by D11 | Q-06-13, R06-10 |
-| W23-26 / 27 (—) agent wallet | `addLimitedKey(allowance, receivers: intents.near + res.*)` is two receivers and a token allowance | R06-63..R06-66, Q-06-17 |
+| W23-25 (—) 1Click | Bet B needs it by D11; fee without a key 0.2 % (HACKATHON.md) or 0.25 % (fees.md) | Q-06-13, R06-10 |
+| W23-26 / 27 (—) agent wallet | `addLimitedKey(allowance, receivers: intents.near + res.*)` is two receivers and a token allowance; Agent Connect as the alternative | R06-63..R06-66, Q-06-17, Q-06-21 |
 | W23-28 (—) funding | Funds 3 NPCs vs W15-02's 2 | R04-52, Q-04-24 |
 | W23-38 (—) escrow | `open` uses `mt_transfer_call` | R06-6, Q-06-1 |
 | W23-41 (—) migration | Re-mint of mock balances: order with deed / DAO / escrow | R02-33 |
+| W23-45 (—) nightly | "Every port's suite" through `contract:real`, which runs one port per call | R06-42, Q-06-11 |
 
-**Proposed rows:** rename env keys / add `--dry` (Q-06-11); W23-07/08 → H2 or a manual check runbook (OD-18); W23-26/28 → H2 if OD-02 (Q-06-18); `add_public_key` registration check on `intents.near` (R06-66); wNEAR wrap path (Q-06-2, only with OD-02).
+**Proposed rows:** rename env keys / add `--dry` (Q-06-11); W23-07/08 → H2 or a manual check runbook (OD-18); W23-26/28 → H2 if OD-02 (Q-06-18); `add_public_key` registration step on `intents.near` (R06-66, now documented); wNEAR wrap path (Q-06-2, only with OD-02); Agent Connect probe (Q-06-21); install `near/agent-skills` (Q-06-10).
 
 ## W24 — Mobile and landing
 
@@ -325,21 +348,21 @@
 
 ## W25 — Launch and ops
 
-- **H set · deps:** 15 · 10.5 · finish u34.0 (critical path W25-29 → W25-30 → W25-31 → W25-33) · deps W00; W25-29 reads W05, W07, W10, W12, W13, W14, W15.
-- **@hack:** steps 3, 4 (backup only), 7 (smoke against the hosted demo).
-- **Pre-reads:** R06-43, R06-54, R06-71..R06-73, R05-72, R03-28; 01 §2 payout-wallet row; 07 §3, §6.
+- **H set · deps:** 13 · 8.0 (W25-02, W25-07 left H with the D-37 amendment) · finish u34.0 (critical path W25-29 → W25-30 → W25-31 → W25-33) · deps W00; W25-28 needs W26-09; W25-29 reads W05, W07, W08, W10, W12, W13, W14, W15.
+- **@hack:** steps 4 (backup only) and 7 (the W26 hosted names, over HTTP); step 3's dry-run is W26's e2e.
+- **Pre-reads:** R06-43, R06-44, R06-54, R06-71..R06-73, R06-81, R06-90, R05-72, R03-28; 01 §2 payout-wallet row; 07 §3, §6.
 - **Owner decisions:** OD-16, OD-17, OD-18, OD-22, OD-03.
 - **Numbers:** N-26, N-27, N-29.
 
 | Issue | Ask | Pack id |
 |---|---|---|
-| W25-06 `validate-env` | Three allow flags; `zai` rule with no Z.ai adapter | R06-71, Q-06-6 |
+| W25-06 `validate-env` | Three allow flags; `zai` rule (now only in AI_ORCHESTRATOR) with no LLM adapter; global `NEAR_NETWORK=mainnet` vs per-port selection | R06-71, R06-44, Q-06-6, Q-06-11 |
 | ★ W25-13 (—) alerts | Relayer-balance and outbox-stuck alerts reuse W23-07 (—) while real NEAR runs to Nov 25 | R06-58, Q-01-17 · Q-06-14 (closed → Q-01-17) |
 | W25-26 README | `ports:table` network column; monetization honesty (fee in cargo); paper loop; mock / real wording | R06-54, R03-28 |
-| ★ W25-28 hosted demo | `NEAR_ALLOW_MOCK_IN_PROD=true` only; AI / NOTIFY flags unset; real only for green ports | R06-73, Q-06-6 |
+| ★ W25-28 hosted demo | `NEAR_ALLOW_MOCK_IN_PROD=true` only; AI / NOTIFY flags unset; real only for green ports; on `play.terraagent.fun` over HTTP (real login, Q-06-24); hosted explorer empty in production (Q-06-25); keep it up through Nov 18, ideally Nov 25 | R06-73, R06-81, Q-06-6, Q-06-24, Q-06-25 |
 | ★ W25-29 video | Script "… walls …" depends on W14-28 (Pivot drops W14) and differs from Pivot §5 and media-plan Video A / B: one script | demo-beat map |
 | ★ W25-30 X post | Claims must match the mock / real table | 07 §3 |
-| ★ W25-31 submission | Tracks 10 / 12 "qualify"; payout wallet apart from `relayer` / `minter` | Q-05-22, OD-22, 01 §2 |
+| ★ W25-31 submission | Tracks 10 / 12 "qualify"; payout wallet apart from `relayer` / `minter`; HACKATHON.md: form or `POST /api/applications` (never a `website` field; no edits after submit), README discloses pre-existing code and AI-generated code (Q-002–005); no integration is mandatory (Q-011) | Q-05-22, OD-22, 01 §2, R06-81 |
 
 **Proposed rows:** README "do X → see Y" for Bet A steps 1 / 2 (R04-46, OD-19); `RULES.md`; season dashboard + seed and ops (Pivot ≈ 5 units, OD-16).
 

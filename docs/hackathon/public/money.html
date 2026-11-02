@@ -1,0 +1,322 @@
+<title>TerraAgent Money Flows</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a plain-words ledger. Three short answers up top, then one picture per question (one trade, owner in/out, a planet-week, player options), then the tool list. Single dark theme by brand choice (TerraAgent Faction Plate tokens). */
+:root {
+  --bg: #07080A;
+  --deep: #0B0D11;
+  --plate: #111318;
+  --plate-3: #15181F;
+  --seam: #222631;
+  --text: #F2F4F7;
+  --text-2: #C9CFDA;
+  --text-3: #A9B1C1;
+  --steel: #8A93A6;
+  --dim: #6B7385;
+  --orange: #FF6A13;
+  --orange-hi: #FF8A3D;
+  --blue-hi: #5B8CFF;
+  --energy: #39D0FF;
+  --terra: #3DDC84;
+  --fault: #FF6B6B;
+  --f-display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --chamfer: 16px;
+  --chamfer-s: 8px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text-2); font-family: var(--f-body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1140px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 72px; }
+code { font-family: var(--f-mono); font-size: 0.92em; color: var(--text-2); }
+input:focus-visible { outline: 2px solid var(--orange-hi); outline-offset: 2px; }
+
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--orange-hi); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 600; font-size: clamp(36px, 5.4vw, 64px); line-height: 1.02; color: var(--text); margin: 10px 0 14px; text-wrap: balance; }
+.lead { font-size: 18px; margin: 0; max-width: 62ch; }
+
+.answers { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 28px; }
+.answers div { background: var(--deep); padding: 18px 18px 16px; display: grid; gap: 8px; align-content: start; clip-path: polygon(var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)), calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer)); border-top: 3px solid var(--c, var(--orange)); }
+.answers .who { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c, var(--orange-hi)); }
+.answers b { font-family: var(--f-display); font-size: 21px; line-height: 1.15; color: var(--text); font-weight: 600; }
+.answers p { margin: 0; font-size: 14.5px; color: var(--text-3); }
+@media (max-width: 820px) { .answers { grid-template-columns: minmax(0, 1fr); } }
+
+section { padding-block: 52px 4px; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: clamp(25px, 3vw, 34px); line-height: 1.1; color: var(--text); margin: 6px 0 8px; text-wrap: balance; }
+.tag { font-family: var(--f-mono); font-size: 12px; color: var(--dim); letter-spacing: 0.08em; }
+.why { margin: 0; max-width: 66ch; }
+
+figure { margin: 20px 0 0; background: var(--deep); padding: 18px 18px 16px; clip-path: polygon(var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)), calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer)); }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.scroll svg { display: block; width: 100%; min-width: 760px; height: auto; }
+figcaption { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 8px 28px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--seam); }
+figcaption > * { min-width: 0; }
+figcaption p { margin: 0; font-size: 14.5px; color: var(--text-3); }
+figcaption code { font-size: 12px; color: var(--dim); line-height: 1.6; }
+@media (max-width: 820px) { figcaption { grid-template-columns: minmax(0, 1fr); } }
+
+.calc { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 24px; margin-top: 14px; padding: 16px; background: var(--plate); }
+.calc > * { min-width: 0; }
+.calc label { font-family: var(--f-mono); font-size: 12px; color: var(--text-3); display: flex; justify-content: space-between; gap: 8px; }
+.calc label output { color: var(--text); }
+.calc input[type=range] { width: 100%; accent-color: var(--orange); margin-top: 6px; }
+.result { grid-column: 1 / -1; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+.result div { background: var(--bg); padding: 12px 14px; display: grid; gap: 2px; }
+.result span { font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--dim); }
+.result b { font-family: var(--f-display); font-size: 28px; font-weight: 600; color: var(--text); font-variant-numeric: tabular-nums; }
+.result .proj b { color: var(--terra); }
+.result .stall b { color: var(--orange-hi); }
+.calc .note { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--fault); }
+@media (max-width: 640px) { .calc, .result { grid-template-columns: minmax(0, 1fr); } }
+
+.chip { display: inline-flex; font-family: var(--f-mono); font-size: 10.5px; letter-spacing: 0.12em; text-transform: uppercase; padding: 2px 8px; border: 1px solid currentColor; white-space: nowrap; width: max-content; }
+.s-built { color: var(--terra); } .s-real { color: var(--energy); } .s-mock { color: var(--blue-hi); } .s-later { color: var(--steel); } .s-prop { color: var(--text-3); border-style: dashed; } .s-open { color: var(--fault); }
+
+.tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 20px; }
+.tools > div { background: var(--deep); padding: 18px; clip-path: polygon(var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)), calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer)); min-width: 0; }
+.tools h3 { font-family: var(--f-display); font-size: 20px; font-weight: 600; color: var(--text); margin: 0 0 12px; }
+.tools ul { list-style: none; margin: 0; padding: 0; display: grid; gap: 0; }
+.tools li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 4px 12px; padding: 10px 0; border-top: 1px solid var(--seam); align-items: start; }
+.tools li b { color: var(--text); font-weight: 500; font-size: 15px; }
+.tools li p { margin: 2px 0 0; font-size: 13.5px; color: var(--text-3); grid-column: 1; }
+.tools li .chip { grid-column: 2; grid-row: 1; }
+@media (max-width: 820px) { .tools { grid-template-columns: minmax(0, 1fr); } }
+
+.rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; margin-top: 20px; }
+.rules div { background: var(--plate); padding: 14px 16px; border-left: 3px solid var(--c, var(--steel)); }
+.rules p { margin: 0; font-size: 14px; color: var(--text-2); }
+
+footer { margin-top: 60px; padding-top: 18px; border-top: 1px solid var(--seam); }
+footer p { margin: 0 0 6px; font-size: 13px; color: var(--dim); max-width: 90ch; }
+</style>
+
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">TerraAgent · money in plain words · draft, 2026-11-02</p>
+  <h1>Who earns what, and when</h1>
+  <p class="lead">The project takes a small cut of every trade. Players earn by trading well, running a market stall and taking bounties. During the hackathon all of it is paid in cargo, which has no NEAR price yet.</p>
+  <div class="answers">
+    <div style="--c: var(--terra)"><span class="who">The owner</span><b>Earns 0.25 % of every trade, plus premium items later</b><p>Pays everyone's gas and account costs. Needs many trades before the cut adds up.</p></div>
+    <div style="--c: var(--orange-hi)"><span class="who">The players</span><b>Earn stall fees, trading profit and bounty rewards</b><p>Real money only where NEAR or USDC is on the other side of a trade.</p></div>
+    <div style="--c: var(--blue-hi)"><span class="who">Today (Nov 2026)</span><b>All earnings are in cargo, worth no NEAR</b><p>The fee mechanism is shown in the demo. NEAR-priced markets are proposed, not built.</p></div>
+  </div>
+</header>
+
+<!-- ============ ONE TRADE ============ -->
+<section>
+  <span class="tag">01 · one trade</span>
+  <h2>Where the money in one trade goes</h2>
+  <p class="why">A buyer pays 2 wNEAR (wrapped NEAR) for 1 000 water at a stall with a 1 % fee. Almost everything goes to the seller; the fee is split three ways.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 290" role="img" aria-label="Of a 2 wNEAR trade, the seller receives 1.975. The 0.025 in fees splits into 0.016 for the stall owner, 0.004 for the planet treasury and 0.005 for the project." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#A9B1C1">
+      <text x="40" y="26" font-size="12" fill="#F2F4F7">Buyer pays 2.000 wNEAR (example, NEAR-priced pair)</text>
+      <text x="1060" y="26" text-anchor="end" fill="#FF8A3D">fees 0.025</text>
+      <rect x="40" y="36" width="1007.25" height="38" fill="#5B8CFF"/>
+      <rect x="1047.25" y="36" width="12.75" height="38" fill="#FF6A13"/>
+      <text x="58" y="60" font-size="13" fill="#07080A">Seller receives 1.975 wNEAR · 98.75 %</text>
+      <g stroke="#8A93A6" stroke-width="1.2" stroke-dasharray="4 3" fill="none"><line x1="1047.25" y1="74" x2="250" y2="138"/><line x1="1060" y1="74" x2="850" y2="138"/></g>
+      <rect x="250" y="140" width="384" height="44" fill="#FF8A3D"/>
+      <rect x="634" y="140" width="96" height="44" fill="#5B8CFF"/>
+      <rect x="730" y="140" width="120" height="44" fill="#3DDC84"/>
+      <g font-size="12" fill="#07080A"><text x="442" y="167" text-anchor="middle">stall owner 0.016</text><text x="682" y="167" text-anchor="middle">DAO 0.004</text><text x="790" y="167" text-anchor="middle">project 0.005</text></g>
+      <g font-size="10.5"><text x="442" y="206" text-anchor="middle" fill="#F2F4F7">a player who owns the Trade Hub</text><text x="682" y="206" text-anchor="middle" fill="#F2F4F7">planet treasury</text><text x="738" y="206" fill="#F2F4F7">the owner</text></g>
+      <g font-size="10"><text x="442" y="224" text-anchor="middle">0.8 % of the trade</text><text x="682" y="224" text-anchor="middle">20 % of stall fee</text><text x="738" y="224">0.25 % of the trade</text></g>
+      <text x="40" y="270" font-size="12.5" fill="#F2F4F7">The owner's cut on this trade: 0.005 wNEAR. It only adds up when thousands of trades happen.</text>
+    </svg>
+    </div>
+    <figcaption><p>Illustrative and proposed: NEAR-priced pairs and the protocol fee are not in the build plan yet. In the hackathon the same split happens in cargo (for example water for metals), so the fees carry no NEAR value.</p><code>near/03 §4 worked example 2 · MP §7 variant 1 · Pivot Bet B · Balance §10 Q6</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ OWNER ============ -->
+<section>
+  <span class="tag">02 · the owner</span>
+  <h2>The owner: money in, money out</h2>
+  <p class="why">The rule from the master plan: the project earns from activity and never pays real NEAR out of a treasury. Costs start before income does.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 390" role="img" aria-label="Owner income: hackathon prize, 0.25 percent protocol fee, premium items, cosmetics, sponsored gas, an optional cut of treasury projects. Owner costs: gas for every chain write, new accounts, the Guild's NEAR float, AI calls, the server, the relayer safety balance." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <g font-family="Chakra Petch, sans-serif" font-size="15" font-weight="600" letter-spacing="1.5"><text x="20" y="24" fill="#3DDC84">MONEY IN</text><text x="570" y="24" fill="#FF6B6B">MONEY OUT</text></g>
+      <g fill="#111318" stroke-width="1.5">
+        <rect x="20" y="40" width="510" height="50" stroke="#39D0FF"/>
+        <rect x="20" y="98" width="510" height="50" stroke="#A9B1C1" stroke-dasharray="5 4"/>
+        <rect x="20" y="156" width="510" height="50" stroke="#8A93A6"/>
+        <rect x="20" y="214" width="510" height="50" stroke="#8A93A6"/>
+        <rect x="20" y="272" width="510" height="50" stroke="#8A93A6"/>
+        <rect x="20" y="330" width="510" height="50" stroke="#A9B1C1" stroke-dasharray="5 4"/>
+        <rect x="570" y="40" width="510" height="50" stroke="#39D0FF"/>
+        <rect x="570" y="98" width="510" height="50" stroke="#39D0FF"/>
+        <rect x="570" y="156" width="510" height="50" stroke="#A9B1C1" stroke-dasharray="5 4"/>
+        <rect x="570" y="214" width="510" height="50" stroke="#A9B1C1" stroke-dasharray="5 4"/>
+        <rect x="570" y="272" width="510" height="50" stroke="#3DDC84"/>
+        <rect x="570" y="330" width="510" height="50" stroke="#39D0FF"/>
+      </g>
+      <g font-size="12" fill="#F2F4F7">
+        <text x="36" y="61">Hackathon prize</text><text x="36" y="119">Protocol fee · 0.25 % of every trade</text><text x="36" y="177">Premium</text><text x="36" y="235">Cosmetics</text><text x="36" y="293">Sponsored gas, relayer tips</text><text x="36" y="351">Cut of treasury projects · 15 %</text>
+        <text x="586" y="61">Gas for every chain write</text><text x="586" y="119">New accounts</text><text x="586" y="177">Guild NEAR float</text><text x="586" y="235">AI calls</text><text x="586" y="293">Server</text><text x="586" y="351">Relayer safety balance</text>
+      </g>
+      <g>
+        <text x="36" y="79">$55 K grand prize; $10 K / 3 K / 2 K per track; judged Nov 16–18</text><text x="36" y="137">paid in cargo until a NEAR or USDC pair exists</text><text x="36" y="195">extra order slots, priority Guild visits, robot skins</text><text x="36" y="253">deed and badge upgrades</text><text x="36" y="311">listed in the master plan; no design yet</text><text x="36" y="369">master plan variant 3, instead of a higher fee</text>
+        <text x="586" y="79">≈ 0.0005–0.002 NEAR each; the relayer pays for every player</text><text x="586" y="137">≈ 0.01 NEAR each; one season ≈ 25 colonies plus their players</text><text x="586" y="195">up to 10 NEAR the Guild can pay players for cargo (the loss limit)</text><text x="586" y="253">NEAR AI Cloud after the $10 free credits</text><text x="586" y="311">one host for terraagent.fun: sites, app, database</text><text x="586" y="369">kept above 5 NEAR; an alert fires below it</text>
+      </g>
+      <g text-anchor="end" font-size="10">
+        <text x="518" y="61" fill="#39D0FF">possible · odds low</text><text x="518" y="119">proposed</text><text x="518" y="177" fill="#8A93A6">later</text><text x="518" y="235" fill="#8A93A6">later</text><text x="518" y="293" fill="#8A93A6">later</text><text x="518" y="351">proposed</text>
+        <text x="1068" y="61" fill="#39D0FF">from Nov 10</text><text x="1068" y="119" fill="#39D0FF">from Nov 10</text><text x="1068" y="177">proposed</text><text x="1068" y="235">proposed</text><text x="1068" y="293" fill="#3DDC84">running now</text><text x="1068" y="351" fill="#39D0FF">from Nov 10</text>
+      </g>
+    </svg>
+    </div>
+    <figcaption><p>Gas and account costs are estimates from the NEAR spec; a W23 task measures them. Real NEAR spending starts only if the core game passes the Nov 10 check. The 0.25 % fee is variant 1 of the master plan (variant 2 is 0.40 %).</p><code>MP §7 · near/03 §5 monetization · near/01 §5 · Pivot Bet B · MASTER_PLAN_REVIEW §1, §4.3</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ PLANET WEEK ============ -->
+<section>
+  <span class="tag">03 · one planet, one week</span>
+  <h2>How much one planet produces in fees</h2>
+  <p class="why">The balance model plays five colonies on one planet for a week. Fees are counted in cargo units. Turning them into NEAR needs a price for cargo, and nothing in the repo sets one.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 190" role="img" aria-label="Per planet per week in cargo units: about 2 500 to the project, about 2 400 to stall owners, about 600 to the planet treasury." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#A9B1C1">
+      <text x="20" y="20" fill="#6B7385">PER PLANET PER WEEK · CARGO UNITS · BALANCE MODEL B, DAILY MINT CAP 10 000</text>
+      <g stroke="#222631"><line x1="300" y1="34" x2="300" y2="172"/><line x1="450" y1="34" x2="450" y2="172"/><line x1="600" y1="34" x2="600" y2="172"/><line x1="750" y1="34" x2="750" y2="172"/><line x1="900" y1="34" x2="900" y2="172"/><line x1="1050" y1="34" x2="1050" y2="172"/></g>
+      <g font-size="12" fill="#F2F4F7"><text x="20" y="60">Project · protocol fee</text><text x="20" y="108">Stall owners · 1 % fee</text><text x="20" y="156">Planet treasury</text></g>
+      <g font-size="10"><text x="20" y="75">0.25 % of all trades</text><text x="20" y="123">players who own stalls</text><text x="20" y="171">20 % of stall fees</text></g>
+      <rect x="300" y="44" width="750" height="30" fill="#3DDC84"/>
+      <rect x="300" y="92" width="720" height="30" fill="#FF8A3D"/>
+      <rect x="300" y="140" width="180" height="30" fill="#5B8CFF"/>
+      <g font-size="13" fill="#07080A"><text x="1040" y="64" text-anchor="end">≈ 2 500</text><text x="1010" y="112" text-anchor="end">≈ 2 400</text></g>
+      <text x="490" y="160" font-size="13" fill="#F2F4F7">≈ 600</text>
+      <g text-anchor="middle" font-size="10" fill="#6B7385"><text x="300" y="186">0</text><text x="450" y="186">500</text><text x="600" y="186">1 000</text><text x="750" y="186">1 500</text><text x="900" y="186">2 000</text><text x="1050" y="186">2 500</text></g>
+    </svg>
+    </div>
+    <div class="calc">
+      <label for="planets">Planets running <output id="planets-out">200</output></label>
+      <label for="price">Assumed cargo price, NEAR per unit <output id="price-out">0.0001</output></label>
+      <input id="planets" type="range" min="1" max="500" step="1" value="200" aria-label="Planets running">
+      <input id="price" type="range" min="-5" max="-3" step="0.05" value="-4" aria-label="Assumed cargo price">
+      <div class="result">
+        <div class="proj"><span>Owner · per week</span><b id="r-proj">60 NEAR</b></div>
+        <div class="stall"><span>All stall owners · per week</span><b id="r-stall">84 NEAR</b></div>
+      </div>
+      <p class="note">The price is an assumption for this calculator only. Cargo has no NEAR price until players trade it for NEAR.</p>
+    </div>
+    <figcaption><p>The calculator uses the balance doc's larger case (daily cap 20 000): about 3 000 units a week for the project and 4 200 for stall owners per planet. At 200 planets and 0.0001 NEAR per unit, the project makes about 60 NEAR a week. The balance doc calls premium slots, priority Guild visits and skins the lasting income.</p><code>economy-balance-simulation §7.3 · MASTER_PLAN_REVIEW §4.3</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ PLAYERS ============ -->
+<section>
+  <span class="tag">04 · the players</span>
+  <h2>The players: six ways to earn</h2>
+  <p class="why">The first three pay in cargo and work in the hackathon on the mock chain. The last three involve real NEAR and come later or are still proposed.</p>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 480" role="img" aria-label="Player earnings ordered from in-game value to real money: trade well, run a market stall and take bounties pay in cargo; selling cargo to the Guild for NEAR is capped at 10 NEAR in total; selling to other players for NEAR or USDC comes after the hackathon; staking your own NEAR earns staking rewards." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs>
+        <linearGradient id="g-axis" gradientUnits="userSpaceOnUse" x1="340" x2="1072" y1="40" y2="40"><stop offset="0" stop-color="#5B8CFF"/><stop offset="1" stop-color="#3DDC84"/></linearGradient>
+        <marker id="mk-ax" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3DDC84"/></marker>
+      </defs>
+      <text x="340" y="28" fill="#5B8CFF">in-game value</text>
+      <text x="1075" y="28" text-anchor="end" fill="#3DDC84">real money</text>
+      <line x1="340" y1="40" x2="1072" y2="40" stroke="url(#g-axis)" stroke-width="3" marker-end="url(#mk-ax)"/>
+      <g stroke="#222631"><line x1="20" y1="128" x2="1080" y2="128"/><line x1="20" y1="196" x2="1080" y2="196"/><line x1="20" y1="264" x2="1080" y2="264"/><line x1="20" y1="332" x2="1080" y2="332"/><line x1="20" y1="400" x2="1080" y2="400"/></g>
+      <line x1="640" y1="56" x2="640" y2="466" stroke="#3A4150" stroke-dasharray="4 4"/>
+      <text x="648" y="62" font-size="10" fill="#6B7385">real NEAR from here</text>
+      <g font-size="12.5" fill="#F2F4F7"><text x="20" y="80">Trade well</text><text x="20" y="148">Run a market stall</text><text x="20" y="216">Take bounties</text><text x="20" y="284">Sell cargo to the Guild for NEAR</text><text x="20" y="352">Sell to players for NEAR or USDC</text><text x="20" y="420">Stake your own NEAR</text></g>
+      <g><text x="20" y="98">buy cheap, sell dear</text><text x="20" y="166">0–3 % of trades at your Trade Hub</text><text x="20" y="234">escrowed rewards for nests, defence</text><text x="20" y="302">capped by the Guild's 10 NEAR float</text><text x="20" y="370">open in beta; not in the hackathon demo</text><text x="20" y="438">on a Settled colony's deed; no game power</text></g>
+      <g font-size="10"><text x="20" y="116" fill="#5B8CFF">MOCK ON NOV 14</text><text x="20" y="184" fill="#5B8CFF">MOCK ON NOV 14</text><text x="20" y="252" fill="#5B8CFF">MOCK ON NOV 14</text><text x="20" y="320">PROPOSED</text><text x="20" y="388" fill="#8A93A6">AFTER THE HACKATHON</text><text x="20" y="456" fill="#8A93A6">AFTER THE HACKATHON</text></g>
+      <g fill="#5B8CFF" fill-opacity="0.2" stroke="#5B8CFF" stroke-width="1.5"><rect x="345" y="78" width="150" height="30"/><rect x="345" y="146" width="150" height="30"/><rect x="345" y="214" width="150" height="30"/></g>
+      <rect x="725" y="282" width="150" height="30" fill="#111318" stroke="#A9B1C1" stroke-width="1.5" stroke-dasharray="5 4"/>
+      <g fill="#3DDC84" fill-opacity="0.18" stroke="#3DDC84" stroke-width="1.5"><rect x="845" y="350" width="150" height="30"/><rect x="920" y="418" width="150" height="30"/></g>
+      <g text-anchor="middle" font-size="11.5" fill="#F2F4F7"><text x="420" y="98">cargo</text><text x="420" y="166">cargo</text><text x="420" y="234">cargo</text><text x="800" y="302">NEAR, ≤ 10 total</text><text x="920" y="370">NEAR or USDC</text><text x="995" y="438">staking rewards</text></g>
+    </svg>
+    </div>
+    <figcaption><p>Real money for a player always comes from someone else: another player paying NEAR, the Guild's small float, or a staking pool. The game itself never prints NEAR. Staking rewards come from the NEAR staking pool, not from TerraAgent, and give no in-game power.</p><code>near/03 R03-1, R03-37, R03-38 · near/04 R04-51 · near/05 §1, D-18, NEAR-92/93 · W22-17</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ TOOLS ============ -->
+<section>
+  <span class="tag">05 · what is needed</span>
+  <h2>Tools needed</h2>
+  <p class="why">What has to exist for each money line to work.</p>
+  <div class="tools">
+    <div>
+      <h3>For the owner</h3>
+      <ul>
+        <li><b>A fee account on NEAR</b><span class="chip s-open">open</span><p>Receives the 0.25 % protocol leg. Not named yet (Q-03-7).</p></li>
+        <li><b>Fee legs in every trade batch</b><span class="chip s-mock">mock on Nov 14</span><p>The matcher adds stall, treasury and protocol legs to each NEAR Intents batch (W13, W22).</p></li>
+        <li><b>NEAR Intents with wNEAR and USDC</b><span class="chip s-prop">proposed</span><p>Needed before any fee or sale is worth real money. Mainnet only.</p></li>
+        <li><b>A funded relayer account</b><span class="chip s-real">from Nov 10</span><p>Pays gas and account storage for every player; alert below 5 NEAR.</p></li>
+        <li><b>Guild float accounts</b><span class="chip s-prop">proposed</span><p>5 NEAR per Guild trader, 10 NEAR in total; the most the Guild can lose.</p></li>
+        <li><b>Payment check for premium items</b><span class="chip s-later">later</span><p>Accept NEAR or cargo for order slots, Guild visits and skins. No task exists yet.</p></li>
+        <li><b>Prize payout wallet</b><span class="chip s-mock">planned · W25-31</span><p>A mainnet account for the submission form, kept apart from the relayer and minter keys.</p></li>
+      </ul>
+    </div>
+    <div>
+      <h3>For the players</h3>
+      <ul>
+        <li><b>A Pilot ID</b><span class="chip s-real">from Nov 10</span><p>Social login creates a NEAR account; no wallet or gas needed (NEAR Auth proposed, custodial fallback).</p></li>
+        <li><b>A Trade Hub in the colony</b><span class="chip s-mock">mock on Nov 14</span><p>The building that exports cargo and makes the colony a stall that earns fees.</p></li>
+        <li><b>Cargo on the colony account</b><span class="chip s-real">from Nov 10</span><p>NEP-245 tokens, created only by exporting stock through the Trade Hub.</p></li>
+        <li><b>A claimed account and a NEAR wallet</b><span class="chip s-later">later</span><p>To hold NEAR, take it out of the game and stake it. A wallet through near-connect.</p></li>
+        <li><b>A staking pool</b><span class="chip s-later">later</span><p>Any normal NEAR pool, used only after a colony is Settled.</p></li>
+        <li><b>For an AI agent: the Colony Agent API</b><span class="chip s-prop">proposed</span><p>An agent plays a colony and earns the same ways, inside a limit the server enforces.</p></li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ RULES ============ -->
+<section>
+  <span class="tag">06 · what we promise and what we don't</span>
+  <h2>Ground rules</h2>
+  <div class="rules">
+    <div style="--c: var(--orange-hi)"><p>No promise about the value of cargo or any token.</p></div>
+    <div style="--c: var(--blue-hi)"><p>In the hackathon, every fee is paid in cargo and has no NEAR value. The README says so.</p></div>
+    <div style="--c: var(--terra)"><p>The planet treasury spends on in-game projects and never pays out NEAR.</p></div>
+    <div style="--c: var(--steel)"><p>Bots can farm cargo in the beta. That is an accepted risk (R02-35).</p></div>
+    <div style="--c: var(--fault)"><p>Open: check the law where players live before NEAR or USDC trading opens to the public. The pack does not cover this.</p></div>
+  </div>
+</section>
+
+<footer>
+  <p>Drawn from <code>docs/hackathon/near/01–05</code>, <code>economy-balance-simulation.md</code> §7.3, <code>MASTER_PLAN_REVIEW.md</code> §4.3 and the master plan §7. Every money line here is proposed unless its chip says otherwise. Of the fees, only the stall and treasury legs have build tasks (W13, W22); the protocol fee and premium items have none yet.</p>
+  <p>Companion page: <code>public/near-features.html</code> shows how each NEAR feature works.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  var planets = document.getElementById('planets');
+  var price = document.getElementById('price');
+  var pOut = document.getElementById('planets-out');
+  var prOut = document.getElementById('price-out');
+  var rProj = document.getElementById('r-proj');
+  var rStall = document.getElementById('r-stall');
+  // Balance doc §7.3, daily cap 20 000: ≈ 3 000 units/week protocol fee, ≈ 4 200 stall fees, per planet.
+  function fmt(n) {
+    if (n >= 10) return Math.round(n).toLocaleString('en-US') + ' NEAR';
+    if (n >= 1) return n.toFixed(1) + ' NEAR';
+    return n.toFixed(3) + ' NEAR';
+  }
+  function update() {
+    var n = parseInt(planets.value, 10);
+    var p = Math.pow(10, parseFloat(price.value));
+    pOut.textContent = String(n);
+    prOut.textContent = p < 0.0001 ? p.toFixed(6).replace(/0+$/, '') : p.toFixed(4).replace(/0+$/, '').replace(/\.$/, '');
+    rProj.textContent = fmt(n * 3000 * p);
+    rStall.textContent = fmt(n * 4200 * p);
+  }
+  planets.addEventListener('input', update);
+  price.addEventListener('input', update);
+  update();
+})();
+</script>

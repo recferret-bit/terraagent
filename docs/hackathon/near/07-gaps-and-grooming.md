@@ -1,6 +1,6 @@
 # 07 — Gaps and grooming (cross-cutting view)
 
-> **Status:** 2026-10-31, grooming reference (legend, precedence, abbreviations: [`README.md`](./README.md)). This file restates no rule: every cell points to a rule (`R0x-n`), a question (`Q-0x-n`), an owner decision (`OD-nn`, §7) or a number (`N-nn`, §8) in files [01](./01-accounts-keys-relayer.md)–[06](./06-near-tools-and-adapters.md). Wave agendas that use these ids: [`08-wave-grill-checklist.md`](./08-wave-grill-checklist.md). Spec wins over this file.
+> **Status:** 2026-10-31, grooming reference, pass 4 (2026-11-02; log §12) (legend, precedence, abbreviations: [`README.md`](./README.md)). This file restates no rule: every cell points to a rule (`R0x-n`), a question (`Q-0x-n`), an owner decision (`OD-nn`, §7) or a number (`N-nn`, §8) in files [01](./01-accounts-keys-relayer.md)–[06](./06-near-tools-and-adapters.md). Wave agendas that use these ids: [`08-wave-grill-checklist.md`](./08-wave-grill-checklist.md). Spec wins over this file.
 
 ## 1. Coverage of the owner's six topics
 
@@ -70,11 +70,11 @@ Every item of [`MP`](../../terraagent-master-plan-final.md) maps to a pack locat
 | "Land now (Google login)" (landing `hero`); human logs in with Google (Pivot §5 1:55) | R01-4 (Google offered), W23-11 (H2) | Gap · Planned | OD-03 keeps F5 mock (then "Google (mock)") |
 | Colonies are sub-accounts that hold cargo, sign orders, own the deed (WP §3) | 01 §2, R03-8, R05-1 | Decided | — |
 | Director signs with a restricted key whose allowance is the away budget; one tap revokes (WP §3, landing `drop`, `director`) | R04-23, R04-24 | Decided / Conflict | Q-04-1 picks W15-18 basis (allowance = autoTrade caps) |
-| "Enforced by the key, not by a prompt"; "can never spend more than you allowed" (WP §3, landing `director`) | R04-47, R06-67, R06-64, R06-65 | Proposed / Gap | Q-06-17 confirms gas-only FC allowance → "enforced by the server" |
+| "Enforced by the key, not by a prompt"; "can never spend more than you allowed" (landing `director` only; **WP §3 reworded in pass 4** to "the spending limit is a server rule, not a property of the key") | R04-47, R06-67, R06-64, R06-65 | Proposed / Gap | landing copy still says it (landing-brief "still in the code"); Q-06-17 |
 | Agent cannot spend beyond allowance, move NEAR, claim, stake (WP §3, media diagram 3, T3 thread) | R04-47 | Proposed | Q-04-16 |
-| Agent's allowance covers votes (media diagram 3) | R04-55 | Conflict | Q-04-21 default → votes outside the allowance |
+| Agent's allowance covers votes (media diagram 3: **votes moved outside the allowance in pass 4**) | R04-55 | Conflict | Q-04-21 |
 | Guild traders have own sub-accounts, inventories, published rule (WP §3, landing `chain`, Playbook T1 post 4) | R04-1, R04-53, R04-16 | Decided / Planned / Proposed | wallets stay mock (R06-50, R06-68): say "mock" |
-| Every offer shows its reason (WP §6, landing `market`, media Video A 35–55 s, GIF 4) | R04-16 | Proposed, no issue | Q-04-5 not added → drop the claim |
+| Every offer shows its reason (WP §6 marked *(proposed)* in pass 4; landing-brief `market` row dropped it; media Video A 35–55 s, GIF 4) | R04-16 | Proposed, no issue | Q-04-5 not added → drop the claim |
 | Guild price formula, 24 h VWAP reference, spread 4 → 15 %, clamped (WP §6) | R04-53, R04-9, R04-10 | Planned | Q-04-3 (clamp numbers Gap) |
 | Strategy in a TEE on NEAR AI Cloud; "verified" is a goal (WP §6, Pivot Bet C, T3 thread "attested reasoning") | R04-22, R06-15..R06-19 | Proposed / Gap | OD-08 drops Bet C → remove "attested" (Pivot §6 kill switch) |
 | External agents found colonies, trade under allowance, vote, get receipts (WP §3, §7; landing `faq`; Pivot §1; Playbook T2, T3) | R04-44..R04-46, R01-41 | Proposed, no issue | OD-19 not taken → Pivot §6 "agents can observe and trade" |
@@ -82,7 +82,7 @@ Every item of [`MP`](../../terraagent-master-plan-final.md) maps to a pack locat
 | NEAR holds accounts, NEP-245 cargo, settled trades, NEP-171 deeds, SputnikDAO-style treasury, bounties (WP §5) | R02-12, R03-31, R05-1, R05-35, R05-50; real only F5/F1/F2 (R06-50) | Decided | WP §7 table already says mock |
 | Trade Hub is the only door; export mints, import burns (WP §5, media diagram 1) | R02-45, R02-27 | Decided | Q-02-3 (burn signer) does not change copy |
 | Fee leg to stall, treasury leg, protocol-fee leg (WP §5) | R03-1, R03-54, R03-26 | Decided / Planned / Proposed | OD-04 drops the protocol leg |
-| "Set a 0–3 % fee, every trade through your stall pays you" (landing `market`) | R03-21, R03-22 | Decided (client H+) | OD-06 keeps W13-22 H+ → fee fixed at default (Q-03-26) |
+| "Set a 0–3 % fee, every trade through your stall pays you" (live landing `market`; the landing-brief dropped "0–3 %" in pass 4) | R03-21, R03-22 | Decided (client H+) | OD-06 keeps W13-22 H+ → fee fixed at default (Q-03-26) |
 | Sinks: treasury projects burned, Guild off-planet sales (proposed) (WP §4, media diagram 2) | R05-46, R04-17 | Proposed | OD-14 burn infeasible; Q-04-4 no sink row |
 | Storage per sub-resource, T2 by 100 Living tiles (proposed) (WP §4) | R02-39, R02-40 | Proposed | N-03, N-04 stay at spec |
 | Cargo mintable only from simulated stock (landing `faq`) | R02-1; exceptions R02-31..R02-33 | Decided | add "except Guild seed" if Q-02-13 sets no cap |
@@ -91,7 +91,7 @@ Every item of [`MP`](../../terraagent-master-plan-final.md) maps to a pack locat
 | `execute_intents` with three legs summing to zero (media §4 screenshot) | R03-29, R03-63 | Decided / Proposed | treasury leg on (W22) or protocol leg (OD-04) → 4–5 legs |
 | Real named account from Google on D6; real mint D9; real Intents trade with fee line D11 (Playbook §2) | R06-52, R02-37, W23-24 | Proposed / Decided / Planned | OD-03 = D10 gate; Q-03-2 (1-unit trade fee 0) |
 | "300 iron left the planet; here is the NEP-245 transfer" (Playbook D9) | R02-37 (mainnet smoke 1 unit), Q-02-18 | Decided / Conflict | the smoke mints 1 unit, not 300 |
-| Player lands on the next planet with "part of the cargo" (WP §8) | R02-48 | Conflict | Q-02-21 default → "all in-orbit cargo" |
+| Player lands on the next planet with "the cargo the colony account holds" (WP §8, reworded in pass 4 to NEAR-54) | R02-48 | Conflict | Q-02-21 |
 | Own-NEAR staking on a Settled Deed, no in-game power, post-hackathon (WP §8, landing `roadmap`) | R05-26..R05-29 | Decided | — |
 | Planet DAO funded by fees; vote passes and globe greens (Pivot §5 1:20, media GIF 6, Video B) | R05-43, R05-61 | Decided / Planned | Q-05-13 (6 h real-time TTL) → "vote in progress" |
 | Each planet has its own market, treasury and Guild schedule (landing `planets`) | R03-2, R05-35, R04-6 | Decided / Planned | Q-04-23 (2 NPCs over 5 planets) |
@@ -99,7 +99,10 @@ Every item of [`MP`](../../terraagent-master-plan-final.md) maps to a pack locat
 | Achievement list "matches the profile spec's 20 families" (Review §6) | R05-18 | Proposed (Review is wrong) | OD-11 |
 | "No anti-cheat / anti-bot; Guild float is the loss limit" (WP §9) | R03-51, R04-51 | Decided / Proposed | Q-03-17 records wash trading |
 | `intents.near` mainnet only; tiny amounts and dry runs (WP §9) | R03-36, R06-2 | Decided | — |
-| Apply to NEAR Protocol Rewards (Playbook Nov 18) | R06-80 | Proposed | — |
+| Apply to NEAR Protocol Rewards (Playbook Nov 18) | R06-80 | Proposed | not on nearhackathon.com (pass 4): verify the programme exists |
+| Tracks 06 `security` / 03 `privacy` entered (Pivot §5, Review §3.2a, all Proposed) | R04-61, R06-81 | Proposed | Q-04-29: 06 only with a visible refused over-limit order; 03 only if Bet C is green |
+| "NEAR Auth / Google login" on the hosted demo (`http://play.terraagent.fun`) | R06-90, R01-61 | Gap | Q-06-24: HTTP is not a secure context → show real login on `localhost` or add TLS |
+| Mock receipts on the hosted `devchain.terraagent.fun` | R06-55 | Planned | Q-06-25: `/v1/dev/chain/*` is 404 in production |
 
 ## 4. End-to-end swimlane
 
@@ -158,35 +161,47 @@ Requirements: track 09 and 07 / 05 from Review §3.1, §3.2; tracks 10 / 12 from
 | 05 | A live page | R03-58 (price board); season dashboard (Pivot §2) | Planned / Proposed | Q-03-31 |
 | 10 | NFT that does something: deed updates on milestones; Settled Deed opens staking | R05-1..R05-12, R05-25, R05-26 | Decided / Planned (mock; staking —) | Q-05-22, R05-72 |
 | 12 | Planet DAO funded by fees, votes change the sim | R05-35..R05-45, R05-61 | Decided / Planned (mock) | Q-05-22, Q-05-13 |
+| 10 / 12 | Official hints (NFTs as accounts; Sputnik DAO / Trezu, named accounts) vs mock deed and DAO | R05-78, R05-75 | Gap | Q-05-22, Q-05-24 |
+| 06 | Spending limits, policy engines, sandboxed wallets; hints FUNCTION CALL KEYS, TEE ATTESTATION | R04-61, R04-47, R06-64 | Proposed (no issue; W25-31 lists neither) | Q-04-29 |
+| 03 | Private AI, TEE, NEAR AI Cloud | R04-61, R04-22, R06-17, R06-18 | Proposed (rests on Bet C) | Q-04-29, OD-08 |
 
-## 7. Owner-decision list (D-37 / D-38)
+## 7. Owner-decision list (D-MP / D-PIVOT)
 
-Deadline "Nov 1" = Pivot §8 checklist, D-37 / D-38, or an issue that starts in schedule units 1–5 (HACKATHON_SCHEDULE §3). "Before W.." = before that wave's first affected issue starts.
+**Pass 4 (2026-11-02):** every "Nov 1" deadline below has passed with the decision not recorded; read it as "now". The proposed decision ids are labels (**D-MP** master-plan decisions, **D-PIVOT** the pivot, **D-LANE** the parallel NEAR lane in [09](./09-parallel-near-lane.md)): `main` has D-37 = hosting, and the unlanded W01 branch already uses D-37..D-41, so a number is assigned only when the owner records each one.
+
+Deadline "Nov 1" = Pivot §8 checklist, D-MP / D-PIVOT, or an issue that starts in schedule units 1–5 (HACKATHON_SCHEDULE §3). "Before W.." = before that wave's first affected issue starts.
 
 | OD | Decision | Options | Pack default (source) | Closes | Changes waves / issues | Deadline |
 |---|---|---|---|---|---|---|
 | OD-01 | Login provider and custody | NEAR Auth · HOT / other · custodial named accounts | NEAR Auth with custodial fallback (MP §0, Review C6, R01-5) | Q-01-3, Q-01-2 / Q-06-7, Q-06-8, Q-01-1, Q-01-4 | W23-09..12 (H2); W06-02 mock "X"; D-18 claim if MPC | Nov 1 (mainnet application) |
-| OD-02 | NEAR pairs in the demo (Bet B) | none (MP §0) · 3 T1/NEAR pairs + 10 NEAR float (Pivot Bet B) | none until owner records D-38 (MP §0, Review C7); kill switch D11 | Q-03-15, Q-03-14, Q-03-27, Q-06-2, Q-04-7 | W13-17 tag, W15-12 → H, W23-25, W23-26/28, toast fee line | Nov 1 |
-| OD-03 | Real-NEAR start | D10 gate (D-27, cut §3) · D6 (Pivot §4, Review change 2) | D10 gate (Decided) unless D-38 | Q-06-13 | W23 H2 rows; staffing (two extra agents) | Nov 1 |
+| OD-02 | NEAR pairs in the demo (Bet B) | none (MP §0) · 3 T1/NEAR pairs + 10 NEAR float (Pivot Bet B) | none until owner records D-PIVOT (MP §0, Review C7); kill switch D11 | Q-03-15, Q-03-14, Q-03-27, Q-06-2, Q-04-7 | W13-17 tag, W15-12 → H, W23-25, W23-26/28, toast fee line | Nov 1 |
+| OD-03 | Real-NEAR start | D10 gate (D-27, cut §3) · D6 (Pivot §4, Review change 2) | D10 gate (Decided) unless D-PIVOT | Q-06-13 | W23 H2 rows; staffing (two extra agents) | Nov 1 |
 | OD-04 | Protocol fee: payer, recipient account, issue | taker from received token · both sides; new S issue in W13 · none | taker (Balance §10 Q6); one S issue in W13 (Review C4); account Gap | Q-03-7, R03-26, R03-28 | W13-12, W13-24, README (W25-26), 01 §2 registry | before W13-12 (u12) |
 | OD-05 | Treasury leg | carve-out of stall fee · additive | carve-out (NEAR-101, W22-07, Balance §7.2) | Q-03-1, Q-03-2 (rounding) | W13-02 note (u1), W13-31, W22-07 | Nov 1 (W13-02) |
 | OD-06 | Tags W13-22 (fee slider) and W15-12 (float guard) | H+ · H | W13-22 → H (Review C3); W15-12 → H only with OD-02 | Q-03-16, Q-04-7 | regenerate HACKATHON_SCHEDULE | Nov 1 |
 | OD-07 | Default stall fee and `setHubFee` owner | 100 bp in W13-03 · other | `defaultFeeBp = 100`; handler in W13-09 or W13-12 (Q-03-26 default) | Q-03-26, N-07 | W13-03, W13-09/12, W13-35 | before W13-03 (u13) |
-| OD-08 | NEAR AI Cloud: provider and home of the Guild LLM call | Z.ai (D-09) · NEAR AI Cloud (Review C1); W16-21 (—) · new W15 row | new W15 row H+, minimal budget gate + decision row, NEAR AI Cloud behind `LlmProviderPort`, Z.ai fallback (Q-04-8) | Q-04-8, Q-06-5, R06-15..R06-19 | W15 new row, W16-07/08/15/21, D-37 | Nov 1 (key) / before W15 (u17) |
+| OD-08 | NEAR AI Cloud: provider and home of the Guild LLM call | Z.ai (D-09) · NEAR AI Cloud (Review C1); W16-21 (—) · new W15 row | new W15 row H+, minimal budget gate + decision row, NEAR AI Cloud behind `LlmProviderPort`, Z.ai fallback (Q-04-8) | Q-04-8, Q-06-5, R06-15..R06-19 | W15 new row, W16-07/08/15/21, D-MP | Nov 1 (key) / before W15 (u17) |
 | OD-09 | Director allowance: basis, unit, enforcement | away budget (NEAR-80) · autoTrade caps (W15-18); per token · NEAR; key · server | W15-18 basis, per-token per resource, server-enforced (Q-04-1, Q-06-17) | Q-04-1, Q-04-20, Q-06-17, R04-54 | W15-03/04/18/21, W23-26/27, DATA_MODEL `chain.director_key`, WP §3, landing `drop`/`director` | before W15-03 (u19) |
-| OD-10 | Drop MP Must #5 (orchestrator) | keep · drop for rules + nest rows | drop; nest rows as data (Review C1, C2; Q-04-14, Q-04-15) | Q-04-14, Q-04-15 | MP §3 list, D-37 | Nov 1 |
+| OD-10 | Drop MP Must #5 (orchestrator) | keep · drop for rules + nest rows | drop; nest rows as data (Review C1, C2; Q-04-14, Q-04-15) | Q-04-14, Q-04-15 | MP §3 list, D-MP | Nov 1 |
 | OD-11 | Achievement list | MP §8 · profile §3 | profile §3 frozen ids (D-29) (Q-05-7) | Q-05-7, R05-18 | W12-01 catalogue, MP §8 | before W12-01 (u3) |
 | OD-12 | Deposit method and token count | `mt_batch_transfer_call` · `mt_transfer_call`; 10 ids · "4 tokens" | `mt_batch_transfer_call`, 10 ids, drop W23-21a/b, still run a 1-unit mainnet deposit (Q-06-1, Q-06-4) | Q-06-1, Q-06-4, R02-34, R02-44 | NEAR-55, W13-04 mock semantics, W23-17/18/21/38 | Nov 1 |
 | OD-13 | ChainRead in the hackathon | real (W23-05/06 H2) · mock (cut §1) | owner picks (Q-06-12) | Q-06-12, R06-51 | W23-05/06 tags or cut §1 | H2 start |
 | OD-14 | Burn mechanism | minter-only (transfer to `minter`, then `mt_burn`) · holder burns on `res` · DAO action | none in repo (Q-02-3, Q-05-11) | Q-02-3 / Q-05-11, R02-53 | W10-13 (u11), W22-09, W23-17, Guild sink | before W10-13 (u11) |
 | OD-15 | Claim residual key | keep one FC key (NEAR §2, W23-14) · none (D-18, W21-15) | NEAR §2 until decided (Q-01-11) | Q-01-11, Q-01-12 | W21-15, W23-14, D-18 wording, 05 §2 | before WP / landing copy freeze (D12) |
-| OD-16 | Season scope | five 5-colony planets from Nov 10 (Pivot §2) · 48 h on one planet from D12 (Pivot §6) · none | none recorded (Pivot is Proposed) | Q-06-19, Q-04-23, Q-03-31, Q-05-16, R05-71 | W22-05 e2e, W25-28, W23-07/08, season dashboard (no issue) | Nov 1 (D-38) / D10 |
+| OD-16 | Season scope | five 5-colony planets from Nov 10 (Pivot §2) · 48 h on one planet from D12 (Pivot §6) · none | none recorded (Pivot is Proposed) | Q-06-19, Q-04-23, Q-03-31, Q-05-16, R05-71 | W22-05 e2e, W25-28, W23-07/08, season dashboard (no issue) | Nov 1 (D-PIVOT) / D10 |
 | OD-17 | Mock-in-prod and AI config | tag W16-03 · relax `validate-env`; set three allow flags | W25-06 / W25-28 set `NEAR_` / `AI_` / `NOTIFY_ALLOW_MOCK_IN_PROD` (Q-06-6) | Q-06-6, R06-71..R06-73 | W25-06 (u29), W25-28 (u31), W16-03/04, DEPLOYMENT §4 | before W25-06 |
 | OD-18 | Relayer guardrails while real NEAR runs | tag W23-07/08 H2 · manual daily check | fresh DB, manual daily balance check (Q-06-14) | Q-01-17 / Q-06-14, N-26 | W23-07/08, W25-13 | H2 start |
-| OD-19 | Bet A (Agent API / MCP) | add rows (Pivot §8) · none | none recorded (Pivot is Proposed) | Q-04-16, Q-04-17, Q-04-22, R04-44..R04-49 | new rows in W13 / W15 / W25; README steps | Nov 1 (D-38) |
+| OD-19 | Bet A (Agent API / MCP) | add rows (Pivot §8) · none | none recorded (Pivot is Proposed) | Q-04-16, Q-04-17, Q-04-22, R04-44..R04-49 | new rows in W13 / W15 / W25; README steps | Nov 1 (D-PIVOT) |
 | OD-20 | Balance rows (mint cap, kit, Guild numbers, project costs) | spec · Balance §8 | spec values until the owner adopts Balance §8 via W00-59 overrides | Q-02-19, Q-04-3, Q-05-14, N-01..N-04, N-15..N-19, N-23 | W00-59 overrides; W10-06, W15-02, W22-13 data | before W10-06 (u7) |
 | OD-21 | Wave order W09 vs W15 | W09-13 as a W15 pre-step · move W09 before W15 | W09-13 as pre-step (Q-04-19) | Q-04-19 | W15 deps, schedule | before W15 (u17) |
 | OD-22 | Tracks 10 / 12 entry | mock deed / DAO on the live planet · real only | "only if live" (Pivot §5) | Q-05-22, R05-72 | W25-31 | before W25-31 (u34) |
+| OD-23 | Tracks 06 / 03 entry | none · 06 · 03 · both | 06 only with a visible refused over-limit order; 03 only if Bet C is green at D10 (Q-04-29) | Q-04-29, R04-61 | W25-31 track list | before W25-31 (u34) |
+| OD-24 | Agent Connect (NEAR Intents Agent API) | none · probe · director / Guild policy layer · Bet A / Bet B pay leg | probe only: partner key, `getTokens()`, one `dry: true` swap (09 L6) | Q-06-21, Q-04-26, Q-01-25, Q-03-34 | none until the probe; W15-03 / W23-26 if adopted | before W15-03 (u19) |
+| OD-25 | Parallel NEAR lane (09): split port rows into W27 (mocks + suites) and W28 (real adapters, contracts, sandbox, lab sites) from D2 | accept · keep W06 → W23 order | accept (09 L1–L8) | Q-06-10, Q-06-13, Q-06-23, Q-01-22 | W06/10/13/15/20/22 port rows → W27; W23 H2 rows → W28; deps | now (D2) |
+| OD-26 | HTTPS for NEAR Auth on the hosted demo | plain HTTP (D-37) · one TLS vhost · real login only on `localhost` | localhost first; TLS vhost if real F5 is shown on the host (Q-06-24, 09 L8) | Q-06-24, R06-90, R01-61 | D-37 amendment, W25 | before real F5 on the host |
+| OD-27 | Hosted explorer data | dev-routes flag on the demo host · local only | owner (Q-06-25) | Q-06-25, R06-55 | new S row in W25 | before D10 |
+| OD-28 | NEP-413 recipient | `terraagent.com` (NEAR §3) · a D-37 host · `terraagent.near` | none (Q-01-23) | Q-01-23, R01-60 | W06-18 test vectors | before W06-18 |
+| OD-29 | Hackathon baseline disclosure | nothing is baseline · the prototype is baseline · tags `pre-hackathon` / `hackathon-submission` + a README section linking the diff (Q-003) | HACKATHON.md Q-001 (re-fetched 2026-11-02): "from the announcement on 2026-10-19 … Earlier commits are baseline". The repo's first commit is 2026-10-29, so all of it is window work unless the prototype was written elsewhere before Oct 19; HACKATHON_CUT §2 "predates the window" is then wrong. Owner states the prototype's real date | Review §3.3, Playbook §6, HACKATHON_CUT §2 | README disclosure, W25-31 | before submission |
 
 ## 8. Numbers sheet
 
@@ -230,10 +245,10 @@ Deduplicated across 01–06; closed ids are omitted (Q-01-6, Q-01-18, Q-02-9, Q-
 
 | Id | Question | Decider | Default (source) | Blocks (H) | Deadline | Sev |
 |---|---|---|---|---|---|---|
-| Q-03-15 | NEAR pairs in the demo? | owner | D-38; kill switch D11 (Pivot §6) | W13-17 (H+), W15-12 (H+) | Nov 1 | B |
-| Q-06-13 | D10 gate or D6 start? | owner | D-38 (06) | W23 H2 rows | Nov 1 | B |
+| Q-03-15 | NEAR pairs in the demo? | owner | D-PIVOT; kill switch D11 (Pivot §6) | W13-17 (H+), W15-12 (H+) | Nov 1 | B |
+| Q-06-13 | D10 gate or D6 start? | owner | D-PIVOT (06) | W23 H2 rows | Nov 1 | B |
 | Q-06-1 | Deposit method: `mt_batch_transfer_call` vs `mt_transfer_call` | verify + spec | `mt_batch_transfer_call`; fix NEAR-55; W23-17 implements it (06) | W13-04 (H), W23-17 (H2) | Nov 1 | B |
-| Q-01-3 | Record the login provider | owner | D-37 (Review C9) | W23-09 (H2) | Nov 1 | B |
+| Q-01-3 | Record the login provider | owner | D-MP (Review C9) | W23-09 (H2) | Nov 1 | B |
 | Q-06-8 | NEAR Auth name format, gas sponsor, mainnet lead time | verify | apply Nov 1; custodial fallback (06) | W23-10 (H2) | Nov 1 | B |
 | Q-03-1 | Treasury leg carved out or additive? | owner | carve-out (03) | W13-02 (H), W22-07 (H) | Nov 1 | B |
 | Q-03-2 | Unit precision: floor vs 0.6 vs 18 decimals | spec | — | W13-02 (H), W22-07 (H), W23-24 (H2) | Nov 1 | B |
@@ -252,7 +267,7 @@ Deduplicated across 01–06; closed ids are omitted (Q-01-6, Q-01-18, Q-02-9, Q-
 | Q-02-19 | Which starting kit ships | owner | SIM §7.3 (02) | W01-09 (H) | Nov 1 | M |
 | Q-05-7 | MP §8 vs profile §3 achievements | owner | profile §3 (05) | W12-01 (H) | Nov 1 | M |
 | Q-04-14 | Wild directives | owner | drop (04) | none | Nov 1 | m |
-| Q-06-9 | Chain Signatures, HOT, NEAR AI beyond Cloud | owner | "not used directly" in D-37 (06) | none | Nov 1 | m |
+| Q-06-9 | Chain Signatures, HOT, NEAR AI beyond Cloud | owner | "not used directly" in D-MP (06) | none | Nov 1 | m |
 | Q-01-7 | Key storage table; player key location; missing tables | spec | W06 migration (01) | W06-09 (H) | u6 | B |
 | Q-02-4 | Where the daily cap counter lives; game vs wall time | spec | — | W10-06 (H) | u7 | B |
 | Q-02-1 | Snapshot rollback vs outbox; `exportSeq` monotonic | spec | keep seq outside the sim (02) | W10-05, W10-08 (H) | u8 | B |
@@ -359,28 +374,46 @@ Deduplicated across 01–06; closed ids are omitted (Q-01-6, Q-01-18, Q-02-9, Q-
 | Q-05-18 | Rule out other staking in a spec | spec | yes (05) | W20-23 (—) | post | m |
 | Q-05-19 | Deed transfer vs staking and operator updates | spec | — | W20-18 (—) | post | m |
 | Q-05-20 | Staked position and deed at planet archive | spec | — | W11-05 (—) | post | m |
+| Q-01-22 | Landed `IdentityPort` shapes vs W06-01/03/05 | wave | — | W06-03, W06-05 (H) | before W06-03 (now if OD-25) | B |
+| Q-01-23 | NEP-413 recipient: `terraagent.com` vs a D-37 host vs `terraagent.near` (OD-28) | owner | — | W06-18 test vectors | before W06-18 | M |
+| Q-03-32 | Verifier 1-pip protocol fee vs the zero-sum batch, mock and toast | verify | check `simulate_intents` `state.fee` in W23-23 (03) | W13-05, W13-12 (H); W23-24 (H2) | before W13-12 | M |
+| Q-04-26 | Agent Connect: use for nothing, Bet A pay leg, Bet B NEAR side, or director policy (folds Q-01-25, Q-03-34 → Q-06-21) | owner | probe only (06 Q-06-21, 09 L6) | none until adopted | before W15-03 | M |
+| Q-04-27 | Agent Market listing of the Bet A agent; is track 07 "hire other agents" answered in H | owner | no listing before Bet A's D8 kill switch; hiring is post-hackathon (04) | none | D8 | m |
+| Q-04-28 | OutLayer for the deterministic pricing core | owner | no; post-hackathon path (04) | none | post | m |
+| Q-04-29 | Enter tracks 06 / 03 (OD-23) | owner | 06 with a refused over-limit order; 03 only if Bet C green (04) | W25-31 (H) | before W25-31 | M |
+| Q-05-24 | Real DAO fit: bond, period, dropped clause, Settled role, cargo via `FunctionCall`, vote key | wave | — | W23-35/36 (—) | post | m |
+| Q-05-25 | Soulbound badges: NEP-171 collection, separate contract or NEP-393 | spec | — | W12-25/26, W23-29 (—) | post | m |
+| Q-05-26 | Escrow `beneficiary` required at `open` for a posted bounty | wave | — | W22-02, W22-17 (H) | before W22-02 | M |
+| Q-06-21 | Agent Connect probe: NEP-245 assets, host, replaces the FC-key design? (OD-24) | verify | probe only (09 L6) | none; informs W15-03 | before W15-03 | M |
+| Q-06-22 | OutLayer, Agent Market, other partners | owner | no build (06) | none | — | m |
+| Q-06-23 | Rust contracts: location, NEP-245 implementation, near-sandbox vs near-workspaces | wave | `cargo near new` per contract, near-sdk 5.x + near-sdk-contract-tools, near-sandbox (06, 09 §6) | W23-17 (H2) | H2 (D4 if OD-25) | B |
+| Q-06-24 | Real NEAR Auth on the HTTP-only hosted demo (OD-26) | verify | test before D10; else TLS row or localhost only (06) | W23-11 (H2) | before real F5 on the host | B |
+| Q-06-25 | Hosted explorer is empty in production (OD-27) | owner | dev-routes flag or local only (06) | W25-28 (H) demo | before D10 | M |
 
 ## 10. NEAR facts still to verify
 
 | Fact | Pack row | Page to check | State |
 |---|---|---|---|
-| NEP-245 deposit by `mt_batch_transfer_call`; is single `mt_transfer_call` accepted | R06-6, Q-06-1 | [X2] docs.near-intents.org/integration/verifier-contract/deposits-and-withdrawals/deposits.md + a real 1-unit call | docs read 2026-10-31; no call yet |
+| NEP-245 deposit by `mt_batch_transfer_call`; is single `mt_transfer_call` accepted | R06-6, Q-06-1 | [X2] docs.near-intents.org/integration/verifier-contract/deposits-and-withdrawals/deposits.md + a real 1-unit call | docs re-read 2026-11-02 ([X2]); no call yet; a self-deployed verifier on sandbox / testnet could answer it free first (09 §4) |
 | Balance id `nep245:<contract>:<token_id>`, `mt_balance_of` on `intents.near` | R06-7 | [X3] …/balances.md | docs read; untested |
 | Native NEAR must be wrapped to wNEAR | R06-9, Q-06-2 | [X2] | docs read |
 | 1 yoctoNEAR on `mt_batch_transfer_call` / `ft_transfer_call`; simple deposit 100 TGas | R06-65, 06 §5 | [X2] | docs read |
-| Withdraw method names; verifier fees | R06-79, Q-06-3 | withdrawals page listed in [X1] llms.txt | not read |
-| Signer key registration on `intents.near` (`add_public_key`) | R06-66 | "Account Abstraction" page listed in [X1] | not read |
-| FC key: one `receiver_id`, gas-only allowance, no deposit; allowance under NEP-366 | R06-64, R06-65, Q-06-17 | [X6] docs.near.org/protocol/access-keys; NEP-366 spec | fetched once; NEP-366 part not read |
+| Withdraw method names; verifier fees | R06-79, Q-06-3, R03-64 | [X21] withdrawals.md, [X22] fees.md | read 2026-11-02: `ft_withdraw` / `mt_withdraw` / `MtWithdraw` intent; 1-pip verifier fee (→ Q-03-32); exact `mt_withdraw` args and registration cost still open |
+| Signer key registration on `intents.near` (`add_public_key`) | R06-66, R03-65, R01-62 | [X21] / account-abstraction.md | read 2026-11-02: needed for named accounts; `remove_public_key` on claim (R01-62) |
+| FC key: one `receiver_id`, gas-only allowance, no deposit; allowance under NEP-366 | R06-64, R06-65, Q-06-17 | [X6] docs.near.org/protocol/access-keys; NEP-366 spec | [X6] re-fetched 2026-11-02; meta-tx page read: the FC allowance is not checked under a meta-tx (R01-59) |
 | NEAR Auth providers (no X), mainnet whitelist, testnet setup | R06-22, R06-24 | [X4] docs.auth.near.org, [X5] …/resources/testnet.md | re-verified |
 | NEAR Auth account naming, gas sponsor, MPC key derivation | R06-25, R06-26, Q-06-7 | [X4], [X5], github.com/peersyst/fast-auth | inferred, not stated |
 | NEAR Auth mainnet approval lead time | Q-06-8 | docs.auth.near.org `home/apply.md` | not read |
 | CSP origins `login.*.fast-auth.com` | 06 §9 W23 | [X5] | not checked |
-| NEAR AI Cloud base URL, signing in TEE, verifier repos | R06-17 | docs.near.ai/cloud/verification | per session research, not re-fetched |
-| `GET /v1/attestation/report`, `GET /v1/signature/{chat_id}` | R06-18, Q-06-5 | docs.near.ai/cloud/verification | [T1] third-party claim |
+| NEAR AI Cloud base URL, signing in TEE, verifier repos | R06-17 | [X10], [X15], [X16] | verified 2026-11-02 (base URL `https://cloud-api.near.ai/v1`; Intel TDX + NVIDIA TEE GPUs) |
+| `GET /v1/attestation/report`, `GET /v1/signature/{chat_id}` | R06-18, Q-06-5 | [X17] response-signatures.md | verified 2026-11-02; no end-to-end call yet (credits claimed, R06-82) |
 | NEAR AI Cloud price per token | 06 §5 | NEAR AI Cloud pricing page | not read |
-| 1Click 0.2 % without partner JWT; registration | R06-10, R03-40 | partners.near-intents.org, [X1] | not read |
+| 1Click fee without a partner key; registration | R06-10, R03-40 | [X9] HACKATHON.md Q-006, [X22] fees.md | sources disagree: 0.2 % (HACKATHON.md) vs +0.25 % without / 0.20 % with a key (fees.md) |
 | SputnikDAO: a DAO holding verifier balances, signing receive-only legs, 1 colony = 1 vote policy | Q-03-19, R06-33 | SputnikDAO v2 docs; Trezu | not read |
-| `docs.near.org/llms.txt` and `near/agent-skills` | R06-38, Q-06-10 | docs.near.org/llms.txt; github.com/near/agent-skills | not fetched |
+| `docs.near.org/llms.txt` and `near/agent-skills` | R06-38, Q-06-10, R06-88, R06-89 | github.com/near/agent-skills ([X18]–[X20]) | skills read 2026-11-02 (near-api-js v7, near-kit, near-smart-contracts); docs.near.org/llms.txt still not fetched |
+| Agent Connect: NEP-245 assets in `getTokens()`, demo vs mainnet host | R06-83, R06-84, Q-06-21 | [X11], [X12], `api.agentsonintents.com/llms.txt` | docs read; `nep245:` ids appear in the concepts page, our token unlisted; needs the probe |
+| Secure context for NEAR Auth on `http://` | R06-90, Q-06-24 | [X23] MDN secure contexts | WebAuthn / Web Crypto need HTTPS or localhost; NEAR Auth on the HTTP host untested |
+| Self-deployable verifier (`near/intents`, `contracts/defuse`) for sandbox / testnet | 09 §4 | github.com/near/intents (fetched 2026-11-02) | source and `make` build exist; no testnet deployment listed; untested |
 
 ## 11. Glossary
 
@@ -416,7 +449,7 @@ Deduplicated across 01–06; closed ids are omitted (Q-01-6, Q-01-18, Q-02-9, Q-
 | D-35 data row | a tunable balance value; "Decided (value proposed)" in the status cell |
 | W00-59 overrides | runtime balance overrides file + `tune` (D-35) |
 | Q10 | Pivot's open question "NEP-245 into the verifier?"; answered by docs (R06-8) |
-| D-37 / D-38 | proposed decision rows: master plan decisions / the pivot (Review C9, Pivot §8) |
+| D-MP / D-PIVOT | proposed decision rows: master plan decisions / the pivot (Review C9, Pivot §8) |
 | UO- / AW- / CT- / SIM- / MM- / PA- / DM- / NEAR- / AI- ids | rule ids of the units, away (CONTINUITY), continuity, simulation, matchmaking, profile, data-model, NEAR and AI_ORCHESTRATOR specs |
 | R0x-n / Q-0x-n / OD-nn / N-nn | pack rule / question / owner decision (§7) / number (§8) |
 
@@ -490,6 +523,30 @@ The pass-3 auditor read README, the canonical rulings and files 01–06 in full,
 | `docs/hackathon/README.md` lists the `near/` pack | entry point |
 
 Checks run after the final edits: every relative link in the pack resolves; every table row has its header's column count; every `R0x-n` and `Q-0x-n` cited in 01–08 is defined; every rule-row status cell is one of the six legal values.
+
+### Pass 4 (2026-11-02): audit after D2
+
+Six auditors, one file group each (01–03, 04–05, 06 + 08, Review / Pivot / Playbook, balance doc + calculator, `public/`); the lead reconciled 07, both READMEs and wrote [09](./09-parallel-near-lane.md). External sources fetched on 2026-11-01 / 02 are `[X8]`–`[X23]` in 06. No existing id was renumbered; new ids continue each file's namespace (R01-57..63, R03-64..66, R04-61..66, R05-75..79, R06-81..90; Q-01-22..25, Q-03-32..34, Q-04-26..29, Q-05-24..26, Q-06-21..25; OD-23..29). A script re-checked every `W`/`R`/`Q` id and every relative link after the edits.
+
+| Area | Change | Why |
+|---|---|---|
+| Decision ids | the pack's proposed D-37 / D-38 → labels **D-MP**, **D-PIVOT** (and **D-LANE** for 09) | D-37 was accepted on `main` on 2026-11-01 (hosting); the W01 branch already uses D-37..D-41 |
+| Cut numbers | ≈ 293 units → H = 395 issues, ≈ 299.5 units, 12 agents, ≥ 2.3 units/agent/day; Pivot ledger recomputed (W07 trim 2.0, not 2.5) | D-37 amendment (W26 in H; W25-02, W25-07 out) |
+| Hosting | Cloudflare / R2 wording → the W26 `terraagent.fun` hosts, plain HTTP; HTTP blocks secure-context login (R06-90, Q-06-24); hosted explorer empty in production (R06-55, Q-06-25) | D-37, DEPLOYMENT, code `chain-explorer.controller.ts` |
+| Official rules | judges named; tracks 06 / 03 added as options (R04-61, OD-23); multiple tracks on one submission; repo public + MIT LICENSE done; baseline rule is Q-001 / Q-003, window from 2026-10-19 (OD-29); `website` field is a spam trap; posting needs the owner | [X8], [X9] |
+| Owner Nov 1 checklist | NEAR AI Cloud key done (US$10 credits, nearbuilders dashboard); nearbuilders listing exists; repo public and LICENSE done; real Q10 deposit not done; NEAR Auth application, funded accounts, 1Click key, X account: unknown | dashboard (2026-11-01), `gh repo view`, git |
+| Partner tools | Agent Connect (R06-83/84, R04-62/63, R03-66, OD-24), OutLayer (R06-85, R04-65), Agent Market (R06-86, R04-64), no-fit list (R06-87), near-connect replaces Wallet Selector (R01-56, R06-77) | [X10]–[X14], [X19] |
+| NEAR facts | NEAR AI Cloud endpoints verified (R06-17/18); withdraw methods and the 1-pip verifier fee (R06-79, R03-64, Q-03-32); `add_public_key` for named signers (R06-66); meta-tx allowance not checked (R01-59); 1Click fee sources disagree (R06-10); account-id and storage-staking facts (R01-57, 01 §5) | [X15]–[X22], docs.near.org |
+| Code drift | `IdentityPort` shapes (R01-58, Q-01-22), single `receiverId` (R04-3), one-number allowance (R04-24), `LlmResponse` without completion id (R04-66), required escrow `beneficiary` (R05-77), no LLM adapter on `main`, no `NEAR_ALLOW_MAINNET` in code (R06-44); R01-55 Conflict → Decided (DATA_MODEL §4 reconciliation note) | code `backend/app/src/near/application/ports/`, `src/ports/` |
+| Public copy | WP: "enforced by the key" → "the spending limit is a server rule"; unbuilt features marked *(proposed)*; §7 says only F5 / F1 / F2 may go real after the D10 check. Landing-brief lists the stale claims still live in `frontend/landing/`. Media-plan days moved to the cut checkpoints | R06-64/65, HACKATHON_CUT §1 |
+| Balance doc | inputs moved: the W01 code and W01-09 start at 600 / 350 / 200 / 200 with the units-spec terrain mix, so the §3.2 dead-ends disappear and S5 ≈ 45–48 min (new `current` mode, §5.1); calculator bugs fixed (Recon 55, Hub T2 bill, R6 meaning, `planet` mode rows); §7 "floor" → the full-Guild price 0.5 from hour 9, treasury ≈ 1 400 / week, protocol fee ≈ 60 NEAR projection; two NPCs dock ≈ 49 % of the time; HQ cell 800 E is specified (UO-HQ-06); new open item: does `ECONOMY_RATE_SCALE` scale terraform water (Balance §10 Q3); kit choice stays Q-02-19 (Balance Q7). Review, Pivot, Playbook, media-plan and 04 Q-04-4 updated to the new numbers | `economy_sim.py` rerun on every mode; W01 / W02 worktree data |
+
+**Legend ruling (pass 4):** a rule written in a spec section (NEAR §1a, §3, …) stays **Decided** even when that section implements a decision still marked Proposed (D-10, D-30); only a row that rests on the Proposed decision alone is Planned. About six rows in 01 / 02 (R01-1, R01-24, R01-25, R01-47, R02-36, …) were kept Decided under this reading.
+
+**Outside the pack, for the owner (not edited: `docs/plan`, `docs/spec`, code):**
+- **W25-31** lists a `website` field (a spam trap) and only tracks 09 / 07 / 05 / 10 / 12; **HACKATHON_CUT** §3's D14 checklist and **OWNER_TASKS** line 17 are stale, and HACKATHON_CUT cites "Q-002" for the baseline (Q-001 / Q-003 apply).
+- **W23-14** "real wallet selector" → near-connect; **W23-26** "receivers" vs one `receiverId`; **W23-30** "(or R2)"; **W23-45** assumes `contract:real` runs several ports; **W25-06** uses one global `NEAR_NETWORK` while the code selects per port; **NEAR §15** still names near-workspaces; **AI_ORCHESTRATOR** AI-13 vs the code's allow flag; **HACKATHON_SCHEDULE** §4 is a 10-agent table while the cut plans 12; DATA_MODEL cites "NEAR.md §10" (now §13).
+- `frontend/whitepaper/index.html` is generated only in `infra/docker/Dockerfile.frontend`, so the committed copy is now older than `public/whitepaper.md`; the page also shows the file's status blockquote and a relative link to `../economy-balance-simulation.md` that is dead on `whitepaper.terraagent.fun` (pinned by `render.test.mjs`). `frontend/pitchdeck/index.html` still says "metals, minerals, fuel, water and power". The live landing keeps every stale claim the landing-brief lists.
 
 ## Appendix A — canonical rulings C1–C19 (pass 2)
 
