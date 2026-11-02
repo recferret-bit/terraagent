@@ -1,5 +1,6 @@
 import { availableParallelism } from 'node:os';
 import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import { newId } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
 import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE } from '@terra/sim';
@@ -165,7 +166,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       void this.planets.submit(planetId, {
         colonyIndex: null,
         source: 'dev',
-        commandId: `init_time_${planetId}`,
+        commandId: newId('cm'),
         kind: 'dev.time',
         args: {
           ...(realHoursPerDay !== undefined ? { realHoursPerDay } : {}),

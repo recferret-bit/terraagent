@@ -163,7 +163,11 @@ export class OnlineSession {
 
   private bindTransportListeners(): void {
     this.cleanups.push(this.transport.onMessage((m) => this.onHostMessage(m)));
-    this.dayNightSync = bindOnlineDayNightSync({ store: this.store, commandBus: this.commandBus, hasColony: () => Boolean(this.colonyId) });
+    this.dayNightSync = bindOnlineDayNightSync({
+      store: this.store,
+      commandBus: this.commandBus,
+      hasColony: () => Boolean(this.colonyId && this.store.latest?.colonies[this.colonyIndex]?.status !== 'eliminated'),
+    });
     this.cleanups.push(() => this.dayNightSync?.dispose());
   }
 
@@ -173,6 +177,7 @@ export class OnlineSession {
     if (k !== undefined) this.setWarp(k);
     if (m.t === 'welcome') {
       this.planetId = m.d.planet.id;
+      if (m.d.colonyId && !this.colonyId) this.colonyId = m.d.colonyId;
       this.flags.update(resolveClientFlags({ welcomeFlags: m.d.flags, search: this.search, dev: import.meta.env.DEV }));
     }
   }

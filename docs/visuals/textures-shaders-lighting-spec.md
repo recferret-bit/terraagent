@@ -83,19 +83,25 @@ Every colony structure, robot, and terrain tile draws from 5 core procedural PBR
 
 In `docs/game/autonomous-colony-spec.md`, **Solar Energy depends on time of day and weather**, and **Night / Storms** create tactical vulnerability. The lighting system links simulation state directly to Three.js rendering:
 
-### 4.1 Orbital Solar Cycle (Day $\rightarrow$ Golden Hour $\rightarrow$ Night)
-- Controlled by `solarElevation` (`-0.3` to `+1.0`):
-  - **Midday (`elevation > 0.35`):** Crisp high-angle shadows, warm white sun (`intensity: 3.2`), 100% Solar Station output.
-  - **Dusk / Dawn (`0.0` to `0.35`):** Sun angle drops to `15°`, `sunLight.color` shifts to deep amber-coral (`0xff7b47`), long dramatic shadows across the colony, 40% Solar output.
-  - **Night (`elevation < 0.0`):** Key light transitions to cool orbital moonlight (`0x4cc9f0`, `intensity: 0.65`), while **colony building emissives and pooled point lights automatically ramp up by `1.5x`**, making energy grids and robot headlights glow dramatically under `UnrealBloomPass`.
+### 4.1 Orbital Solar Cycle, Sun Color & Shadow Modulation (`dayNightConfig.ts` + `@terra/sim`)
+- Controlled by 24-hour planetary solar time `timeOfDay` (`0..24h`, orbital phase $\text{phase} = ((\text{hour} - 6) / 24) \bmod 1$, `solarElevation = sin(phase * 2π)` in `frontend/render/core/dayNightConfig.ts`):
+  - **Midday (`10:00 – 14:00`, `elevation > 0.35`):** Crisp high-angle shadows (`shadowIntensityMult: 1.0`, `shadowSoftnessMult: 0.95`), Planckian blackbody noon sun color (`noonTempK`: `3500K–8500K`, default `5800K` $\approx$ `0xfff5e4`, `sunIntensityMult: 1.05`), 100% Solar Station output.
+  - **Dawn / Dusk Golden Hour (`05:30 – 08:00`, `16:00 – 18:30`, `elevation` `0.0` to `0.55`):** Sun angle drops toward `9°–25°`, `sun.color` shifts to warm golden-amber at dawn (`0xff8a3d`) and deep crimson-coral at dusk (`0xff5e2b`, scaled by `sunWarmth`), casting long, softer penumbra shadows (`shadowIntensityMult: 0.75`, `shadowSoftnessMult: 1.35`), 35%–80% Solar output.
+  - **Night (`19:00 – 05:00`, `elevation < 0.0`):** Key light transitions to cool orbital moonlight (`0x6498e8`, scaled by `nightBrightness`), shadow contrast softens into diffused night penumbras (`shadowIntensityMult: 0.22–0.38`, `shadowSoftnessMult: 1.75`), sky dome and exponential fog shift to deep nocturnal indigo, and `UnrealBloomPass` strength boosts (`+0.12`) so colony emissives and headlights pop.
+- **Interactive Tuning (`F8` Visual Shader Lab — 4th `DAY/NIGHT` Tab):**
+  - Alongside `CRT`, `PIXEL`, and `SHADOW`, the `DAY/NIGHT` tab (`frontend/render/ui/pixelDialog.ts`, `visualLabSpecs.ts`) exposes live sliders for `timeOfDay` (`0..24h` + `DAWN`/`DAY`/`DUSK`/`NIGHT` readout), `dayLengthHours` (`0.02..24h`), `timeScale` (`0..20×` in UI, up to `1000×` via console), `noonTempK` (`3500..8500K`), `sunWarmth` (`0..2`), and `nightBrightness` (`0.05..1`).
+- **Authoritative Server + Client Time Sync (`@terra/sim` + `dayNightSync.ts`):**
+  - Each planet maintains an authoritative solar clock in `blobs.planetTime` (`shared/sim/src/systems/time/index.ts`, `shared/sim/src/data/time.ts`, default `realHoursPerDay = 0.25`, `timeScale = 1`, `initialTimeOfDay = 9.0`, overridable on server boot via `PLANET_DAY_HOURS` / `PLANET_TIME_SCALE`).
+  - `bindOnlineDayNightSync` (`frontend/game/app/online/dayNightSync.ts`) interpolates `computePlanetTimeAtTick` against `store.serverTickF()` every frame across both singleplayer (`?host=local`) and multiplayer (`PlanetHost`), and dispatches throttled (`<= 8 Hz`) `setPlanetTime` / `dev.time` commands when the player scrubs time sliders in `F8` or runs `time` in the `` ` `` dev console.
 
 ### 4.2 Zero-Stutter Pooled Dynamic Point Lights (`LightPool`)
 - **Problem:** Adding or removing `THREE.PointLight` objects at runtime forces Three.js to recompile every PBR shader in the scene, causing a `100ms–400ms` frame freeze!
 - **Best Practice Solution:** Pre-allocate a fixed pool of **8 `THREE.PointLight` instances** at scene init with `intensity = 0` and `distance = 12`.
 - Whenever a mining laser fires, a lightning bolt strikes, a turret shoots, or a rocket ignites, lease a light from `LightPool`, tween its intensity/position, and return it to `intensity = 0` when finished—**zero shader recompilations ever**.
 
-### 4.3 Target-Following Shadow Frustum
-- Every frame, snap `sunLight.target.position` to the camera's ground intersection point (quantized to `1.0m` texel increments to prevent shadow-edge shimmering when panning the camera).
+### 4.3 Target-Following Shadow Frustum & Contact-Hardening Soft Shadows
+- Every frame, `followShadowTarget` (`frontend/render/core/shadowConfig.ts`) snaps `sun.target.position` and `sun.position` in light-space texel increments (`2 × texelWorld`) so panning the RTS camera never causes shadow-edge swimming.
+- `installShadowShaderPatch` replaces Three.js's harsh hardware step shadow lookup with a smooth 9-tap cubic-bilinear contact-hardening filter (`taSampleShadowSoft`) and attenuates indirect hemisphere/IBL irradiance (`taAmbOcc`) inside shadowed regions.
 
 ---
 

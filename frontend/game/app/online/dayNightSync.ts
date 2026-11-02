@@ -44,6 +44,7 @@ export function bindOnlineDayNightSync(
   let timer: ReturnType<typeof setTimeout> | null = null;
   let lastSentMs = -Infinity;
   let inFlight = 0;
+  let minSyncTick = -1;
 
   const flush = () => {
     if (timer !== null) {
@@ -57,11 +58,17 @@ export function bindOnlineDayNightSync(
     lastSentMs = typeof performance !== 'undefined' ? performance.now() : Date.now();
     const kind = hasSeatedColony() ? 'setPlanetTime' : 'dev.time';
     inFlight++;
-    void commands.send(kind, args).catch(() => {
-      /* ignore transient socket/reject during slider scrub */
-    }).finally(() => {
-      inFlight = Math.max(0, inFlight - 1);
-    });
+    void commands
+      .send(kind, args)
+      .then((res) => {
+        if (res.ok) minSyncTick = Math.max(minSyncTick, res.appliedAtTick);
+      })
+      .catch(() => {
+        /* ignore transient socket/reject during slider scrub */
+      })
+      .finally(() => {
+        inFlight = Math.max(0, inFlight - 1);
+      });
   };
 
   const queueSend = (patch: Partial<DayNightParams>) => {
@@ -90,7 +97,7 @@ export function bindOnlineDayNightSync(
       const data = store.simData() ?? undefined;
       const anchor = getPlanetTimeAnchor(v.blobs, data);
       const pt = computePlanetTimeAtTick(anchor, store.serverTickF(), data);
-      const awaitingAck = inFlight > 0 && nowMs - lastSentMs < 1500;
+      const awaitingAck = (inFlight > 0 || v.tick < minSyncTick) && nowMs - lastSentMs < 1500;
       if (!isUserScrubbingDayNight(nowMs) && timer === null && !awaitingAck) {
         const cur = getDayNightParams();
         const hourDiff = Math.abs(cur.timeOfDay - pt.hour);

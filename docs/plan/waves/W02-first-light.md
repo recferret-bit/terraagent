@@ -33,7 +33,7 @@
 > - anims/validator fixes on the **existing** archetypes `building.mine` (= Metals Extractor T1), `building.solar`, `robot.miner` (= Harvester) in `frontend/render/kitbash/archetypes/`; day/night wiring of the existing `frontend/render/lighting/PlanetaryLightingSystem.ts`
 > - `tests/scenarios/w02-first-light.ts`
 >
-> **Already exists (prototype, client-only):** the archetypes above, `PlanetaryLightingSystem` (not wired), and a static resource bar (energy/metal/water/biomass with a fake tick). Under D-31 the numbers and the day cycle come from `shared/sim`; the client only draws them.
+> **Already exists:** the archetypes above, `PlanetaryLightingSystem`, the authoritative planetary solar clock (`shared/sim/src/systems/time/`, `blobs.planetTime`, `setPlanetTime`, `dev.time`, console `time`, `dayNightSync.ts`), and viewport day/night sun color & shadow modulation (`frontend/render/core/dayNightConfig.ts`, `F8` `DAY/NIGHT` tab) from W01, plus the prototype's static resource bar (energy/metal/water/biomass with a fake tick). Under D-31 the numbers and the day cycle come from `shared/sim`; the client only draws them.
 
 ## Goal
 

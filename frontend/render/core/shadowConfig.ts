@@ -207,7 +207,7 @@ const warmTint = new THREE.Color(0xff8e47);
 export function followShadowTarget(vp: ColonyViewport, target: THREE.Vector3): void {
   const rec = viewports.get(vp);
   if (rec) rec.lastTarget.copy(target);
-  computeSunOffset(tmpOffset);
+  computeSunOffset(tmpOffset, hasViewportPlanetSurface(vp) ? undefined : params);
   tmpDir.copy(tmpOffset).normalize();
   tmpRight.crossVectors(worldUp, tmpDir);
   if (tmpRight.lengthSq() < 1e-5) tmpRight.set(1, 0, 0);
@@ -266,8 +266,9 @@ export function syncViewportShadow(vp: ColonyViewport, baseSunColor?: number): v
   }
 
   followShadowTarget(vp, rec ? rec.lastTarget : sun.target.position);
+  const hasPlanetSurface = hasViewportPlanetSurface(vp);
 
-  if (isDayNightOn()) {
+  if (isDayNightOn() && hasPlanetSurface) {
     const solar = applyDayNightAtmosphere(vp, params.sunAzimuth, params.sunElevation);
     sun.color.copy(solar.sunColor);
     sun.intensity = params.sunIntensity * solar.sunIntensityMult;
@@ -277,7 +278,7 @@ export function syncViewportShadow(vp: ColonyViewport, baseSunColor?: number): v
     sun.shadow.intensity = on ? THREE.MathUtils.clamp(params.shadowIntensity * solar.shadowIntensityMult, 0, 1.6) : 0;
     sun.shadow.radius = params.shadowSoftness * solar.shadowSoftnessMult;
   } else {
-    applyDayNightAtmosphere(vp, params.sunAzimuth, params.sunElevation);
+    if (hasPlanetSurface) applyDayNightAtmosphere(vp, params.sunAzimuth, params.sunElevation);
     const elevFactor = THREE.MathUtils.smoothstep(params.sunElevation, 8, 34);
     if (rec) {
       sun.color.copy(rec.baseSunColor).lerp(warmTint, (1 - elevFactor) * 0.55);

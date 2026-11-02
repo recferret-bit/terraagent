@@ -43,6 +43,19 @@ describe('dev module (development)', () => {
     expect((await post(url, 'planet.wipe', { planetId: 'nope' })).status).toBe(400);
   });
 
+  it('time: initializes from PLANET_DAY_HOURS / PLANET_TIME_SCALE, updates planet solar clock, and 404s unloaded planet', async () => {
+    const { url } = await boot({ NODE_ENV: 'test', GAME_DEV_PLANETS: '1', PLANET_DAY_HOURS: '0.5', PLANET_TIME_SCALE: '2' });
+    const [loaded] = ((await (await fetch(`${url}/v1/dev/planets`)).json()) as { planets: { id: string }[] }).planets;
+    const updated = await post(url, 'time', { planetId: loaded!.id, timeOfDay: 18, realHoursPerDay: 1.5, timeScale: 3 });
+    expect(updated.status).toBe(200);
+    const body = (await updated.json()) as { planetId: string; realHoursPerDay: number; timeScale: number; phase: string };
+    expect(body.planetId).toBe(loaded!.id);
+    expect(body.realHoursPerDay).toBeCloseTo(1.5, 4);
+    expect(body.timeScale).toBeCloseTo(3, 4);
+    expect(body.phase).toBe('dusk');
+    expect((await post(url, 'time', { planetId: 'pl_unloaded' })).status).toBe(404);
+  });
+
   it('refuses a duplicate name', async () => {
     const { app } = await boot({ NODE_ENV: 'test' });
     const reg = app.get(DevCommandRegistry);

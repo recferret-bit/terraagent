@@ -186,8 +186,12 @@ describe('Day/night cycle sun color and shadow modulation (dayNightConfig)', () 
     const dome = darkVp.scene.getObjectByName('planetSkyDome')!;
     darkVp.scene.remove(dome);
     darkVp.scene.background = new THREE.Color(0x0b0d11);
-    syncViewportShadow(darkVp);
+    darkVp.sun.color.setHex(0xfff1d6);
+    setDayNightParams({ timeOfDay: 0.0 }, 'user');
+    syncViewportShadow(darkVp, 0xfff1d6);
     expect((darkVp.scene.background as THREE.Color).getHex()).toBe(0x0b0d11);
+    expect(darkVp.sun.color.r).toBeGreaterThan(darkVp.sun.color.b);
+    expect(darkVp.sun.intensity).toBeCloseTo(DEFAULT_SHADOW_PARAMS.sunIntensity, 3);
 
     const descRoot = new THREE.Group();
     descRoot.name = 'descent:root';

@@ -47,6 +47,14 @@
    - The top-centre HUD shows storage caps **`Metals … / 600`** (the pod's hold: a Hub never lowers a cap), **`Minerals … / 500`**, **`Bio … / 500`** and **`Supply 0 / 10`**.
 7. **Survives a server restart.** Keep the browser tab open after the Command Hub is built. In a terminal inside `../TerraAgent-wt/w01`, run `npm run dev:restart` → the page shows the **"Reconnecting…"** banner for a few seconds, then reconnects and restores the exact same colony with its completed Command Hub, prepared 3×3 pad tiles, territory border ring, and `Supply 0 / 10`.
 8. **Auto-placement after 60 s idle (`UO-LC-07`)** — *not in this landing* (`W01-18` is stretch `H+`). Skip.
+9. **Dynamic Day/Night Cycle, Sun Color, Shadows & Authoritative Time Sync (`F8` Visual Shader Lab + `time` console command).**
+   - Press **`F8`** in-game (or click the bottom-left shader lab button) to open the **4-tab Visual Shader Lab** (`CRT`, `PIXEL`, `SHADOW`, `DAY/NIGHT`) and select the **`DAY/NIGHT`** tab:
+     - Scrub **`Time of Day (0-24h)`** across **Dawn (`06:15 [DAWN]`)**, **Solar Noon (`12:00 [DAY]`)**, **Dusk (`17:45 [DUSK]`)**, and **Night (`00:00 [NIGHT]`)**: watch the sun orbit across the sky, shifting from warm golden-amber dawn (`#ff8a3d`) → bright Planckian noon (`5800K`) → deep crimson sunset (`#ff5e2b`) → cool orbital moonlight (`#6498e8`), while directional shadows (`F7`) stretch, soften their penumbra radius at low sun angles, and attenuate cleanly at night.
+     - Adjust **`Noon Temp (K)`**, **`Dawn/Dusk Warmth`**, and **`Night Brightness`** in `DAY/NIGHT`, or switch to the **`SHADOW`** tab to tune shadow map size, softness, and intensity.
+   - Open the in-game dev console (**`` ` ``**) and run:
+     - `time` → prints the planet's authoritative solar clock (`hour`, `phase`, `day`, `daylight`, `realHoursPerDay`, `timeScale`).
+     - `time 18` → jumps the planet to dusk (`18:00`); `time day 0.5` → sets 1 planetary day = `0.5` real hours (`30 min`); `time scale 4` → accelerates solar time to `4×`.
+     - Open a second player tab on the same planet (or test in solo mode `<client>/play.html?host=local&scenario=w01`) → both the `F8` `DAY/NIGHT` sliders and the `time` console command stay in lockstep across server and clients.
 
 ## 3D Kitbash & Playground QA (Pillar 1 & Pillar 4)
 

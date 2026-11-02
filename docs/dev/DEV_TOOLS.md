@@ -55,7 +55,7 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 | `&t=<s>` | With `?planet=`: deploy at once and fast-forward the prototype's descent by `s` seconds (visual QA captures; runs the prototype gameplay, not the online engine) |
 | `?autodeploy=<ms>` | Prototype QA: open the orbit picker and press DEPLOY after `ms` (default 1500); `&qat=<s>` then advances the prototype `s` seconds. Runs the prototype gameplay, not the online engine |
 | `?menutime=<s>` | Prototype QA: start the orbit picker's animation clock at `s` seconds (for repeatable screenshots) |
-| `?pixel=1\|0`, `?shadow=1\|0`, `?crt=1\|0`, `?daynight=1\|0` | Post-processing / dynamic sun shadow / planetary day-night cycle switches on/off (all 3D pages; bottom-left switches `CRT` [`F9`], `PIXEL` [`Shift+F9`], `SHADOW` [`F7`], and `F8` Visual Shader Lab with `'crt'`, `'pixel'`, `'shadow'`, `'daynight'` tabs) |
+| `?pixel=1\|0`, `?shadow=1\|0`, `?crt=1\|0`, `?daynight=1\|0` | Post-processing / dynamic sun shadow / planetary day-night cycle switches on/off (all 3D pages; bottom-left switches `CRT` [`F9`], `PIXEL` [`F10`], `SHADOW` [`F7`], and `F8` Visual Shader Lab with `'crt'`, `'pixel'`, `'shadow'`, `'daynight'` tabs) |
 
 **Prototype flow:** `?planet=dune|oceanForest|forestRock`, `&seed=<n>`, `&deploy=1`, `&skip=1`, `&t=<s>` (see the main README).
 
@@ -73,7 +73,7 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 | `teleport <id> <q> <r>` | Set a test entity's tile; predicted | both |
 | `teleport! <id> <q> <r>` | Same, but **not** predicted: the client sees it only in the next delta and blends over 150 ms | both |
 | `warp <k>` | Time warp ×1…×100 for this planet (`×k` HUD badge; the server lowers it if the sim thread can't keep up) | both |
-| `time [<hour> \| day <realHours> \| scale <k>]` | Query or configure this planet's authoritative solar clock (`timeOfDay` 0..24h, `realHoursPerDay` 0.005..168h, `timeScale` 0..240×); synced across server and all connected clients | both |
+| `time [<hour> \| day <realHours> \| scale <k>]` | Query or configure this planet's authoritative solar clock (`timeOfDay` 0..24h, `realHoursPerDay` 0.005..168h, `timeScale` 0..1000×); synced across server and all connected clients (`setPlanetTime` for a seated colony, `dev.time` without one or via `/v1/dev/commands/time`) | both |
 | `tune <table>.<row>.<field> <value>` | Live balance override (design units, D-35), e.g. `tune dev.probe.nudgeTiles 3` or `tune time.cycle.realHoursPerDay 0.5`; prints the new data hash. Resource amounts (`hq.startingKit.cargo`, `hub.t1.cost`, `hub.t1.storageCapPerFamily`, `opsBasic.<op>.yieldAmount`) must be whole, non-negative units with known resource keys: `tune opsBasic.break.yieldAmount 10.5` is rejected with the field and value named, and the planet keeps its data. Generation numbers are not tunable: `tune worldgen.*` (and `terrain.<class>.code`) is rejected with "cannot be tuned" (a planet is generated once from `data/worldgen.ts`) | both |
 | `tune reset` / `tune export` | Drop live overrides / print them as `balance.overrides.json`. Every client of the planet follows a `tune` from its `dev.tuned` event: a `set` rebuilds the prediction's data in place (and the placement ghost's `simData`), a `reset` makes the client re-join for a fresh welcome | both |
 | `planet [name]` | Print this planet's id and a link that joins it as another player (`?join=<id>&as=<name>`, default `b`); open it in a second browser profile | server |

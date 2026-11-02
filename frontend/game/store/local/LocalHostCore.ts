@@ -341,7 +341,13 @@ export class LocalHostCore {
     if (patch.timeOfDay !== undefined || patch.realHoursPerDay !== undefined || patch.timeScale !== undefined) {
       this.queue.push({ colonyIndex: null, source: 'dev', commandId: newId('cm'), kind: 'dev.time', args: patch });
     }
-    const pt = previewPlanetTimePatch(this.host.state, patch, this.host.tick, this.host.pipeline.config.data);
+    const mergedPatch: PlanetTimePatch = {};
+    for (const c of this.queue) {
+      if (c.kind === 'dev.time' || c.kind === 'setPlanetTime') {
+        Object.assign(mergedPatch, c.args as PlanetTimePatch);
+      }
+    }
+    const pt = previewPlanetTimePatch(this.host.state, mergedPatch, this.host.tick, this.host.pipeline.config.data);
     return {
       planetId: this.planetId,
       tick: this.host.tick,

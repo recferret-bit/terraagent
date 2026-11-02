@@ -3,6 +3,7 @@ import { newId } from '@terra/contracts';
 import { compileData, getPlanetTime, restore } from '@terra/sim';
 import { z } from 'zod';
 import { CoreException } from '../core/errors/index.js';
+import { FlagsService } from '../flags/flags.service.js';
 import { GamePlanets } from '../game/game-planets.service.js';
 import { defineDevCommand, DevCommandRegistry } from './dev-command.registry.js';
 
@@ -21,6 +22,7 @@ export class TimeCommand implements OnModuleInit {
   constructor(
     private readonly registry: DevCommandRegistry,
     private readonly planets: GamePlanets,
+    private readonly flags: FlagsService,
   ) {}
 
   onModuleInit(): void {
@@ -30,7 +32,7 @@ export class TimeCommand implements OnModuleInit {
         help: 'Server: query or configure planet solar time (timeOfDay 0..24h, realHoursPerDay, timeScale)',
         args: timeArgsSchema,
         run: async ({ planetId, timeOfDay, realHoursPerDay, timeScale }) => {
-          if (!this.planets.loadedIds().includes(planetId)) {
+          if (!this.planets.isLoaded(planetId)) {
             throw new CoreException('NOT_FOUND', { status: 404, message: `Planet "${planetId}" is not loaded` });
           }
           if (timeOfDay !== undefined || realHoursPerDay !== undefined || timeScale !== undefined) {
@@ -46,11 +48,11 @@ export class TimeCommand implements OnModuleInit {
               },
             });
             if (!out.ok) {
-              throw new CoreException('VALIDATION_FAILED', { status: 400, message: out.detail ?? out.code });
+              throw new CoreException('VALIDATION_ERROR', { status: 400, message: out.detail ?? out.code });
             }
           }
           const full = await this.planets.fullState(planetId);
-          const data = full.overrides ? compileData(new Set(['W00', 'W01']), full.overrides) : undefined;
+          const data = full.overrides ? compileData(new Set(this.flags.list), full.overrides) : undefined;
           const pt = getPlanetTime(restore(full.bytes), data);
           return {
             planetId,

@@ -98,7 +98,12 @@ describe('Online Day/Night Synchronization (dayNightSync)', () => {
       const from = auth.tick;
       auth.submit({ colonyIndex: 0, source: 'player', commandId: cmdMsg.id, kind: cmdMsg.d.kind, args: cmdMsg.d.args });
       auth.step(1);
-      t.msgs.emit({ v: 1, t: 'cmd.ack', id: cmdMsg.id, d: { id: cmdMsg.id, tick: auth.tick } } as never);
+      t.msgs.emit({ v: 1, t: 'cmd.ack', d: { id: cmdMsg.id, appliedAtTick: auth.tick } } as never);
+      await flush();
+      // Even after cmd.ack resolves (inFlight == 0) and scrub hold expires, syncFrame waits until delta reaches appliedAtTick
+      sync.syncFrame(performance.now() + 600);
+      expect(getDayNightParams().timeOfDay).toBeCloseTo(6.25, 3);
+
       t.msgs.emit({ v: 1, t: 'delta', d: { fromTick: from, toTick: auth.tick, diff: auth.diffSince(from) } } as never);
     }
     await flush();
@@ -149,14 +154,23 @@ describe('Singleplayer LocalHostCore time dev command', () => {
     expect(r1.timeScale).toBeCloseTo(4, 4);
     expect(r1.phase).toBe('night');
 
+    // Consecutive read-only query before next 200ms step preserves queued dev.time patches
+    const rRead = (await core.devCommand('time', {})) as {
+      timeOfDay: number; realHoursPerDay: number; timeScale: number;
+    };
+    expect(rRead.timeOfDay).toBeCloseTo(19.5, 4);
+    expect(rRead.realHoursPerDay).toBeCloseTo(0.75, 4);
+    expect(rRead.timeScale).toBeCloseTo(4, 4);
+
     // Wrapping timeOfDay=24 -> 0h with daylight=0 via @terra/sim previewPlanetTimePatch (D-37)
     const r2 = (await core.devCommand('time', { timeOfDay: 24 })) as {
-      hour: number; cyclePhase: number; daylight: number; phase: string;
+      hour: number; cyclePhase: number; daylight: number; phase: string; realHoursPerDay: number;
     };
     expect(r2.hour).toBe(0);
     expect(r2.cyclePhase).toBe(0);
     expect(r2.daylight).toBe(0);
     expect(r2.phase).toBe('night');
+    expect(r2.realHoursPerDay).toBeCloseTo(0.75, 4);
 
     for (const t of timers.splice(0)) if (t.live) { now = t.at; t.fn(); }
     const deltas = out.filter((m) => m.t === 'server' && m.msg.t === 'delta');

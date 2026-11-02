@@ -44,7 +44,7 @@ The sim must be **reproducible in tests**: same seed + same commands at the same
 | # | System | Notes |
 |---|---|---|
 | 0 | `commands` | Apply this step's commands in arrival order. Game-rule validation here; a handler returns a reject code or `{ code, detail }`, collected in `StepResult.outcomes` (§4); hosts answer `cmd.reject {id, code, detail?}`. |
-| 1 | `environment` | Day/night, weather, storms (advance by `dt`). |
+| 1 | `environment` | Day/night, weather, storms (advance by `dt`). In W00/W01 the authoritative planetary solar clock `time.cycle` (`systems/time/`, `blobs.planetTime`) runs here. |
 | 2 | `hazards` | Lightning and meteors. Probability per step scales with `dt`. In W01 the `landing` system (pod descent) runs here. |
 | 3 | `fauna` | Nest spawns, aggro, movement. |
 | 4 | `ruleEngine` | Each colony is evaluated once per second of game time, staggered by colony index. On coarse steps (`dt = 5`) every colony runs once. |
@@ -82,7 +82,7 @@ Command kinds (summary; arguments in PROTOCOL.md):
 
 | Group | Kinds | Source |
 |---|---|---|
-| Colony control | `setPriorities`, `enqueueTask` (build / upgrade / repair / terraform / buildUnit / queueGoal / raid / launchRocket), `cancelTask`, `placeBuilding`, `upgradeBuilding`, `demolish`, `setAutopilot`, `setAwayBudget`, `setHarvestWeights`, `setStance`, `attackMove`, `setRally` | player, ai |
+| Colony control | `setPriorities`, `enqueueTask` (build / upgrade / repair / terraform / buildUnit / queueGoal / raid / launchRocket), `cancelTask`, `placeBuilding`, `upgradeBuilding`, `demolish`, `setAutopilot`, `setAwayBudget`, `setHarvestWeights`, `setStance`, `attackMove`, `setRally`, `setPlanetTime` | player, ai |
 | AI | `ai.directive` (DirectiveV1/v2) | ai |
 | Cargo & market (D-26) | `cargo.export {resource, amount}` (moves stock to "in orbit" pending mint), `cargo.import {resource, amount}` (credited after the burn confirms), `cargo.settled {ref, ok}`, `market.reserve` / `market.release` / `market.settled {tradeId, deltas}` | player, ai, near |
 | Diplomacy & bounties | `diplomacy.proposeTruce` / `respondTruce` / `cancelTruce`, `bounty.post` / `bounty.claim` / `bounty.paid` | player, ai, near |
@@ -104,7 +104,7 @@ Command kinds (summary; arguments in PROTOCOL.md):
 
 A structure-of-arrays entity store (`shared/sim/src/ecs/store.ts`) with no id recycling.
 
-> **As built (W01):** the block below is the target layout. The code's `PlanetState` (`kernel/state.ts`) is `{ meta, rng, grid, colonies, entities, blobs }`: `rng` is top-level; `meta` also holds `genVersion`, `worldSalt` (server-only) and `pathEpoch`; tile layers add `height` and the hidden `subDeposit` / `subRichness`; entity columns add `rot`, `cell`, `cellMax`, `targetQ`, `targetR`, `workRate`, `createdAt`; `caps` is `{ metals, minerals, energy, bio, item }`. The later-wave fields (`power`, `lanes`, `goals`, `hazards`, `fauna`, `truces`, `pendingCargo`) do not exist yet; W01 state lives in `blobs` (`landingPods`, `landingHistory`, `spawnSlots`, `constructionQueue`, `terraformTasks`, `orderSeq`, `units`, `unitMotion`, `pathQueue`, `pathStats`, `hq`).
+> **As built (W01):** the block below is the target layout. The code's `PlanetState` (`kernel/state.ts`) is `{ meta, rng, grid, colonies, entities, blobs }`: `rng` is top-level; `meta` also holds `genVersion`, `worldSalt` (server-only) and `pathEpoch`; tile layers add `height` and the hidden `subDeposit` / `subRichness`; entity columns add `rot`, `cell`, `cellMax`, `targetQ`, `targetR`, `workRate`, `createdAt`; `caps` is `{ metals, minerals, energy, bio, item }`. The later-wave fields (`power`, `lanes`, `goals`, `hazards`, `fauna`, `truces`, `pendingCargo`) do not exist yet; W01 state lives in `blobs` (`planetTime`, `landingPods`, `landingHistory`, `spawnSlots`, `constructionQueue`, `terraformTasks`, `orderSeq`, `units`, `unitMotion`, `pathQueue`, `pathStats`, `hq`).
 
 ```ts
 type PlanetType = 'desert' | 'ocean' | 'temperate';             // D-33; client look: desert→dune, ocean→oceanForest, temperate→forestRock

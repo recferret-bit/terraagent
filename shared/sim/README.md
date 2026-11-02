@@ -225,3 +225,9 @@ Known limitations and open questions: [`docs/questions-and-limitations/sim-gamep
   `retryBlockedS`, doubling per consecutive failure up to `retryBlockedMaxS`.
 - **Sync** (GP-07, GP-15): queues, `blobs.hq` (`{ byColony }`) and colony records are stamped only when they change,
   so an idle planet sends no gameplay blobs. Blob state is not filtered per colony (SIMULATION §6, GP-36).
+- **Planetary solar clock** (`systems/time/index.ts`, `data/time.ts`, GP-40): `time.cycle` (slot 1, wave `W00`) maintains
+  `blobs.planetTime` (`{ basePhase, anchorTick, realHoursPerDay, timeScale, timeOfDay, day, daylight }`). Rather than
+  broadcasting a blob diff every 200 ms tick, `setBlob(state, 'planetTime', ...)` is stamped only on initialization,
+  when `setPlanetTime` / `dev.time` mutates the clock, or when live `tune time.cycle.*` overrides change the defaults;
+  clients and read-only queries interpolate continuously between anchor updates via `getPlanetTimeAnchor` +
+  `computePlanetTimeAtTick` (and `previewPlanetTimePatch` for unstepped previews, D-37).
