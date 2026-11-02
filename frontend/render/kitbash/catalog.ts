@@ -1,6 +1,10 @@
 import * as THREE from 'three';
 import '../visuals/biomes';
+import { getDayNightParams } from '../core/dayNightConfig';
+import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
+import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
+import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
 
 export type ArchetypeCategory = 'robot' | 'building' | 'ship' | 'resource' | 'fauna' | 'prop';
 
@@ -48,24 +52,67 @@ export const ArchetypeCatalog = {
   has: (id: string) => entries.has(id),
 };
 
+/** Uniforms of an archetype mesh: the unified material plus the `buildScaffold` modifier's per-mesh state. */
+export type ArchetypeUniforms = ReturnType<typeof createUnifiedColonyMaterial>['uniforms'] & {
+  /** Quantized stage the scaffold shader reads (0, 0.33, 0.66, 1). */
+  uBuildStage: THREE.IUniform<number>;
+  /** Model height (m) the scaffold cut fractions refer to. */
+  uBuildHeight: THREE.IUniform<number>;
+};
+
 export interface ArchetypeMesh extends THREE.Mesh {
-  userData: { archetypeId: string; uniforms: ReturnType<typeof createUnifiedColonyMaterial>['uniforms'] };
+  userData: { archetypeId: string; uniforms: ArchetypeUniforms };
 }
 
 /** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind). */
 export function createArchetypeMesh(id: string, biomeKey = 'dune'): ArchetypeMesh {
-  const { material, uniforms } = createUnifiedColonyMaterial({ biome: biomeKey });
-  const mesh = new THREE.Mesh(ArchetypeCatalog.getGeometry(id), material) as unknown as ArchetypeMesh;
+  const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD] });
+  const { material, depthMaterial } = made;
+  const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
+  const geometry = ArchetypeCatalog.getGeometry(id);
+  if (!geometry.boundingBox) geometry.computeBoundingBox();
+  // Scaffold cut heights are fractions of the model's own height (RN-14).
+  uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);
+  const mesh = new THREE.Mesh(geometry, material) as unknown as ArchetypeMesh;
+  mesh.customDepthMaterial = depthMaterial;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = id;
   mesh.userData = { archetypeId: id, uniforms };
+  attachEntityProjectorRig(mesh, id);
   return mesh;
 }
 
-/** Call once per frame with elapsed seconds (and optional 0..1 walkWeight) so aPartAnim GPU animation advances. */
-export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight?: number) {
+/** Call once per frame with elapsed seconds (and optional 0..1 walkWeight / workWeight) so aPartAnim GPU animation advances. */
+export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight?: number, workWeight?: number) {
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
   if (u?.uTime) u.uTime.value = time;
   if (walkWeight !== undefined && u?.uWalkWeight) u.uWalkWeight.value = walkWeight;
+  if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
+  const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;
+  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
+}
+
+/** Quantizes a normalized construction progress (0..1) into one of the 4 scaffold stages (0, 0.33, 0.66, 1). */
+export function quantizeBuildStage(progress: number): 0 | 0.33 | 0.66 | 1 {
+  const p = Math.max(0, Math.min(1, Number.isFinite(progress) ? progress : 0));
+  if (p >= 0.999) return 1;
+  if (p >= 0.66) return 0.66;
+  if (p >= 0.33) return 0.33;
+  return 0;
+}
+
+/**
+ * Updates the construction scaffold (0 / 33 / 66 / 100 %) on an archetype mesh and returns the quantized stage. The
+ * shader reads only `uBuildStage` (quantized here, once).
+ */
+export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number): 0 | 0.33 | 0.66 | 1 {
+  const stage = quantizeBuildStage(progress);
+  const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
+  if (u?.uBuildStage) u.uBuildStage.value = stage;
+  if (mesh.userData) (mesh.userData as any).buildStage = stage;
+  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
+  return stage;
 }

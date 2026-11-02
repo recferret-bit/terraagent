@@ -1,6 +1,6 @@
 # W21 — Rocket & Settlement
 
-> **Track:** Gameplay (G), with lobby hooks on Meta · **Flag:** `W21` · **Tag:** `wave-21` · **Scenario:** `scenarios/w21-rocket-settlement.ts` (planet with 3 colonies; colony A at Hub T2, 96 % Living, stock 6 000 each, Terraformer ×3, Processor T1) · **E2E:** `e2e/w21.spec.ts`
+> **Track:** Gameplay (G), with lobby hooks on Meta · **Flag:** `W21` · **Tag:** `wave-21` · **Scenario:** `tests/scenarios/w21-rocket-settlement.ts` (planet with 3 colonies; colony A at Hub T2, 96 % Living, stock 6 000 each, Terraformer ×3, Processor T1) · **E2E:** `tests/e2e/w21.spec.ts`
 > **Depends on waves:** W05 (Living tiles, Terraform %), W11 (`TRANSFER` tickets, planet end), W17 (Hub T2, so the Silo T2 can be built), W20 (Deed, Settled Deed hook W20-15, mock wallet modal), W06 (the claim route of W06-01, also reached through W20). Optional: W08 (Prepare Rocket goal stub W08-20, inherited `unlockStage` W08-07), W09 (`rocket_ready` notification, AW-12 away rule), W12 (Settler achievement, Planets cards), W13 / W18 (open market orders and truces are closed on settle; those hooks run only when the wave is on), W24 (touch), W04 (global-map layer registry for the Rocket panel, W21-06).
 > **Specs:** [units spec](../../game/units-orders-and-progression-spec.md) `UO-R-01..04`, `UO-Q-05`, `UO-LC-06/07`, §4.6, AC-17 · [economy spec](../../game/colony-economy-and-buildings-spec.md) §3.6 · [SIMULATION](../../spec/SIMULATION.md) §7.7 · [MATCHMAKING](../../spec/MATCHMAKING.md) `MM-07`, `MM-35`, `MM-47` (`TRANSFER`) · [CONTINUITY](../../spec/CONTINUITY.md) `AW-12` · [NEAR](../../spec/NEAR.md) §2 (claim) · D-18, D-31
 > **Owned paths:** `shared/sim/src/systems/{rocket,settlement}/`, `shared/sim/src/data/rocket.ts`, `shared/contracts/src/{commands,events}/rocket.ts`, `frontend/game/features/{rocket,settlement}/`, `backend/app/src/lobby/transfer/`, the existing archetype `frontend/render/kitbash/archetypes/buildings/rocket.ts` (`building.rocket`), the settled mode of `frontend/render/visuals/UnifiedColonyMaterial.ts` (W18 adds the ruin mode)
@@ -75,11 +75,11 @@ The colony's endgame works end to end. The player terraforms all owned land to L
 | W21-24 | Dev console `setLiving <pct>`, `settle <colony>`, `launch` | client | S |  | W00-40 | `setLiving 100` → gate chip shows full and Launch enabled | PRODUCT_WAVES §3 | — |
 | W21-25 | Touch: launch confirm and overlay in landscape | client | S |  | W24-11 | On 844×390, tap Launch → confirm → countdown works | D-22 | — |
 | W21-26 | Test: AC-17 — launch rejected below 100 %, settled colony takes no damage and runs no systems | test | M |  | W21-04, W21-09 | `npm run test -w @terra/sim -- settlement` passes | AC-17 | TA-14.7 |
-| W21-27 | Wave e2e `e2e/w21.spec.ts` + scenario `w21-rocket-settlement` + tag `wave-21` | test | M |  | all W21 | `npm run e2e -- --waves ..21` → the demo story passes (incl. the Settled Deed of W20-15), and every earlier suite passes | PRODUCT_WAVES §3 | — |
+| W21-27 | Wave e2e `tests/e2e/w21.spec.ts` + scenario `w21-rocket-settlement` + tag `wave-21` | test | M |  | all W21 | `npm run e2e -- --waves ..21` → the demo story passes (incl. the Settled Deed of W20-15), and every earlier suite passes | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
 
-- `e2e/w21.spec.ts` and all earlier suites pass.
+- `tests/e2e/w21.spec.ts` and all earlier suites pass.
 - The scenario loads.
 - With the flag off: no silo, no launch, no settled state.
 - AC-17 passes.

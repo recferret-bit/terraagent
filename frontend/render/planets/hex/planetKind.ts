@@ -8,5 +8,9 @@ const KIND_OF: Record<SimPlanetType, PlanetKind> = { desert: 'dune', ocean: 'oce
 /** Sim planet type → the render look (D-33: desert→dune, ocean→oceanForest, temperate→forestRock). */
 export const kindForPlanetType = (type: SimPlanetType): PlanetKind => KIND_OF[type];
 
+/** Orbit pick → the sim planet type of its dev planet family (dune→desert, oceanForest→ocean, forestRock→temperate). */
+export const planetTypeForKind = (kind: PlanetKind): SimPlanetType =>
+  (Object.keys(KIND_OF) as SimPlanetType[]).find((t) => KIND_OF[t] === kind) ?? 'desert';
+
 /** The planet look for a sim planet; the seed only matters for noise terrains, so the hex terrain keeps the spec's own. */
 export const specForPlanetType = (type: SimPlanetType): PlanetSpec => PLANET_SPECS[kindForPlanetType(type)];

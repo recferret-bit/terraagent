@@ -2,7 +2,8 @@ import { z } from 'zod';
 import { ServerEnvelope } from '../envelope';
 import { CloseCode, RejectCode } from '../errors';
 import { WaveId } from '../flags';
-import { ColonyId, PlanetId, PlayerId } from '../ids';
+import { PlayerId } from '../ids';
+import { HomeColonyId, HomePlanetId } from '../rest/home';
 import { PlanetType, SimDiffFrame, SimEventWire, SimSnapshotFrame } from './sim';
 
 /** App → client messages (PROTOCOL §4.3). Parsed permissively by clients (PR-01). */
@@ -13,7 +14,7 @@ export const Ready = ServerEnvelope('ready', z.object({
 }));
 
 export const WelcomePlanet = z.object({
-  id: PlanetId,
+  id: HomePlanetId,
   type: PlanetType,
   name: z.string(),
   // lifecycle fields are filled by the lobby; a W00 dev planet leaves them out
@@ -24,7 +25,7 @@ export const WelcomePlanet = z.object({
 
 export const Welcome = ServerEnvelope('welcome', z.object({
   reason: z.enum(['join', 'resync']),
-  colonyId: ColonyId.nullable(), // null = dev session without a colony (W00)
+  colonyId: HomeColonyId.nullable(), // null = dev session without a colony (W00)
   planet: WelcomePlanet,
   state: SimSnapshotFrame, // engine snapshot (D-31), everything on the planet (D-25)
   simVersion: z.number().int(),
@@ -47,7 +48,9 @@ export const Delta = ServerEnvelope('delta', z.object({
 
 export const Event = ServerEnvelope('event', SimEventWire);
 export const CmdAck = ServerEnvelope('cmd.ack', z.object({ id: z.string(), appliedAtTick: z.number().int().nonnegative() }));
-export const CmdReject = ServerEnvelope('cmd.reject', z.object({ id: z.string(), code: RejectCode, detail: z.string().max(200).optional() }));
+/** Longest `cmd.reject.detail` (characters); hosts cut a longer cause (e.g. a placement block text) to it. */
+export const REJECT_DETAIL_MAX = 200;
+export const CmdReject = ServerEnvelope('cmd.reject', z.object({ id: z.string(), code: RejectCode, detail: z.string().max(REJECT_DETAIL_MAX).optional() }));
 export const Pong = ServerEnvelope('pong', z.object({ clientTimeMs: z.number().int(), serverTimeMs: z.number().int(), tick: z.number().int().optional() }));
 export const Bye = ServerEnvelope('bye', z.object({ code: CloseCode, reason: z.string().max(120) }));
 

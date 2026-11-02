@@ -11,7 +11,7 @@ register({
   label: 'Hero Explorer',
   category: 'robot',
   footprint: [1, 1],
-  notes: 'Bipedal explorer: animType 4 stride legs, animType 5 counter-swing arms, visor, rotating backpack dish, thruster pack. ~1.8m.',
+  notes: 'Bipedal explorer: animType 4/14/24 stride legs, animType 5 counter-swing + work-pose arms, animType 8 step-reaction torso, visor, rotating backpack dish, thruster pack. ~1.8m.',
   build: (b) => {
     const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
     mirror((s) => {
@@ -27,9 +27,9 @@ register({
       b.addPart(sph(0.095, 8, 6), 'frameGunmetal', { name: 'leg knee', position: [x, 0.71, 0], ...shinAnim });
       b.addPart(rbox(0.18, 0.4, 0.18, 0.035, 1), 'rubberDark', { name: 'leg shin', position: [x, 0.45, 0], ...shinAnim });
       b.addPart(box(0.14, 0.12, 0.03), 'hullSecondary', { name: 'leg shin plate', position: [x, 0.45, 0.09], ...shinAnim });
-      b.addPart(cyl(0.06, 0.07, 0.2, 8), 'frameGunmetal', { name: 'leg ankle', position: [x, 0.2, 0], ...shinAnim });
+      b.addPart(cyl(0.05, 0.045, 0.2, 8), 'frameGunmetal', { name: 'leg ankle', position: [x, 0.2, 0], ...shinAnim });
       b.addPart(rbox(0.24, 0.12, 0.42, 0.035, 1), 'rubberDark', { name: 'leg foot', position: [x, 0.06, 0.04], ...footAnim });
-      b.addPart(box(0.18, 0.06, 0.16), 'hullSecondary', { name: 'leg toe cap', position: [x, 0.12, 0.15], ...footAnim });
+      b.addPart(box(0.18, 0.06, 0.14), 'hullSecondary', { name: 'leg toe cap', position: [x, 0.12, 0.17], ...footAnim });
 
       // Counter-Swinging Biped Arm (animType 5):shoulder bracket on BipedBody (8) -> animated shoulder ball-joint + arm chain
       b.addPart(box(0.1, 0.1, 0.12), 'frameGunmetal', { name: 'shoulder mount', position: [0.35 * s, 1.5, 0], animType: 8 });
@@ -60,7 +60,7 @@ register({
     b.addPart(box(0.08, 0.16, 0.18), 'hullSecondary', { name: 'ear pod R', position: [-0.21, 1.89, 0], ...bodyAnim });
     // Angled antenna (silhouette breaker, sunk into ear pod R)
     strut(b, [-0.21, 1.94, -0.04], [-0.33, 2.38, -0.14], 0.012, 'frameGunmetal', { name: 'antenna mast', ...bodyAnim });
-    b.addPart(sph(0.032, 8, 6), 'warningAmber', { name: 'antenna beacon light', position: [-0.33, 2.39, -0.14], emissiveIntensity: 4.0, animType: 38, animPivot: [-0.33, 2.39, -0.14] });
+    b.addPart(sph(0.032, 8, 6), 'warningAmber', { name: 'antenna beacon light', position: [-0.33, 2.39, -0.14], emissiveIntensity: 4.0, ...bodyAnim });
 
     // Backpack + thrusters + rotating radar dish (riding on BipedBody)
     b.addPart(rbox(0.46, 0.52, 0.24, 0.06, 1), 'frameGunmetal', { name: 'backpack frame', position: [0, 1.4, -0.3], ...bodyAnim });
@@ -68,22 +68,22 @@ register({
     mirror((s) => {
       b.addPart(cyl(0.07, 0.07, 0.34, 10), 'hullPrimary', { name: 'pack tank', position: [0.27 * s, 1.44, -0.31], ...bodyAnim });
       b.addPart(cyl(0.06, 0.095, 0.16, 10), 'frameGunmetal', { name: 'thruster bell', position: [0.27 * s, 1.21, -0.31], ...bodyAnim });
-      b.addPart(cyl(0.048, 0.032, 0.12, 10), 'energyCyan', {
+      b.addPart(cyl(0.038, 0.026, 0.12, 10), 'energyCyan', {
         name: 'thruster core light', position: [0.27 * s, 1.13, -0.31], emissiveIntensity: 4.2, animType: 28, animPivot: [0.27 * s, 1.13, -0.31],
       });
     });
     // Rotating radar dish on pack (animType 18 = SpinY on BipedBody)
     b.addPart(cyl(0.025, 0.03, 0.18, 8), 'frameGunmetal', { name: 'radar mast', position: [0, 1.74, -0.36], ...bodyAnim });
     b.addPart(
-      lathe([[0.0, 0.0], [0.07, 0.015], [0.14, 0.07], [0.0, 0.025]], 12),
+      lathe([[0.004, 0.0], [0.07, 0.015], [0.14, 0.07], [0.004, 0.025]], 12),
       'hullPrimary',
       { name: 'radar dish', position: [0.0, 1.82, -0.36], rotation: [-0.45, 0, 0], animType: 18, animPivot: [0, 1.82, -0.36] }
     );
     b.addPart(sph(0.026, 8, 6), 'energyCyan', { name: 'radar feed light', position: [0, 1.86, -0.33], emissiveIntensity: 4.0, animType: 18, animPivot: [0, 1.82, -0.36] });
 
-    // External power cables (anchored from backpack cap to shoulder mount tops, riding on BipedBody)
-    cable(b, [[0.16, 1.69, -0.3], [0.32, 1.74, -0.16], [0.35, 1.52, -0.02]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable L', ...bodyAnim });
-    cable(b, [[-0.16, 1.69, -0.3], [-0.32, 1.74, -0.16], [-0.35, 1.52, -0.02]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable R', ...bodyAnim });
+    // External power cables (anchored from backpack cap to upper torso roof, clear of swinging shoulder joints)
+    cable(b, [[0.16, 1.7, -0.28], [0.21, 1.75, -0.21], [0.22, 1.68, -0.14]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable L', ...bodyAnim });
+    cable(b, [[-0.16, 1.7, -0.28], [-0.21, 1.75, -0.21], [-0.22, 1.68, -0.14]] as V3[], 0.014, 'frameGunmetal', { name: 'pack cable R', ...bodyAnim });
   },
 });
 
@@ -113,12 +113,12 @@ register({
     b.addPart(rbox(0.2, 0.12, 0.16, 0.03, 1), 'hullSecondary', { name: 'drill head mount', position: [0, 0.54, 0.8] });
     b.addPart(cyl(0.03, 0.03, 0.2, 8), 'frameGunmetal', { name: 'drill shaft', position: [0, 0.4, 0.84] });
     b.addPart(new THREE.ConeGeometry(0.17, 0.34, 10), 'warningAmber', {
-      name: 'drill auger light', position: [0, 0.2, 0.84], rotation: [Math.PI, 0, 0], emissiveIntensity: 3.2, animType: 1, animPivot: [0, 0.2, 0.84],
+      name: 'drill auger light', position: [0, 0.2, 0.84], rotation: [Math.PI, 0, 0], emissiveIntensity: 3.2, animType: 1, animPivot: [0, 0.36, 0.84],
     });
     b.addPart(cyl(0.18, 0.18, 0.03, 12), 'frameGunmetal', { name: 'drill collar', position: [0, 0.36, 0.84], animType: 1, animPivot: [0, 0.36, 0.84] });
-    // Antenna mast + pulsing beacon (sunk into cabin roof)
+    // Antenna mast + beacon (sunk into cabin roof)
     b.addPart(cyl(0.02, 0.02, 0.3, 6), 'frameGunmetal', { name: 'antenna mast', position: [0.2, 1.03, 0.12] });
-    b.addPart(sph(0.045, 10, 8), 'warningAmber', { name: 'beacon light', position: [0.2, 1.19, 0.12], emissiveIntensity: 4, animType: 3, animPivot: [0.2, 1.19, 0.12] });
+    b.addPart(sph(0.045, 10, 8), 'warningAmber', { name: 'beacon light', position: [0.2, 1.19, 0.12], emissiveIntensity: 4 });
     // External hydraulic hoses (clear of hull and hopper walls)
     cable(b, [[-0.22, 0.86, 0.1], [-0.36, 0.88, -0.12], [-0.3, 0.88, -0.3]] as V3[], 0.02, 'frameGunmetal', { name: 'hopper hose' });
     cable(b, [[0.22, 0.78, 0.36], [0.24, 0.68, 0.58], [0.08, 0.56, 0.78]] as V3[], 0.018, 'energyCyan', { name: 'drill hose' });
@@ -171,7 +171,7 @@ register({
     solarPanel(b, { position: [-0.38, 0.93, -0.2], rotation: [0, 0, 0.5], height: 0.5, width: 0.6, name: 'solar' });
     // Radar: the mast is sunk into the cabin roof, the dish sits over the mast tip and spins about it
     b.addPart(cyl(0.015, 0.015, 0.2, 6), 'frameGunmetal', { name: 'radar mast', position: [0.18, 1.11, 0.15] });
-    b.addPart(lathe([[0, 0], [0.06, 0.01], [0.12, 0.05], [0, 0.02]], 12), 'hullPrimary', {
+    b.addPart(lathe([[0.004, 0], [0.06, 0.01], [0.12, 0.05], [0.004, 0.02]], 12), 'hullPrimary', {
       name: 'radar dish', position: [0.18, 1.2, 0.15], rotation: [-0.5, 0, 0], animType: 1, animPivot: [0.18, 1.2, 0.15],
     });
   },
@@ -227,14 +227,15 @@ register({
     b.addPart(rbox(0.46, 0.22, 0.44, 0.07, 1), 'hullSecondary', { name: 'turret housing', position: [0, 1.14, 0.08], ...spiderBody });
     mirror((s) => {
       const bPivot: V3 = [0.13 * s, 1.14, 0.3];
-      b.addPart(cyl(0.035, 0.04, 0.66, 8), 'frameGunmetal', { name: 'cannon barrel', position: [0.13 * s, 1.14, 0.56], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
+      b.addPart(cyl(0.052, 0.058, 0.14, 8), 'frameGunmetal', { name: 'cannon mantlet', position: [0.13 * s, 1.14, 0.34], rotation: [Math.PI / 2, 0, 0], ...spiderBody });
+      b.addPart(cyl(0.035, 0.038, 0.5, 8), 'frameGunmetal', { name: 'cannon barrel', position: [0.13 * s, 1.14, 0.63], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
       b.addPart(cyl(0.055, 0.055, 0.1, 8), 'hullPrimary', { name: 'cannon muzzle', position: [0.13 * s, 1.14, 0.9], rotation: [Math.PI / 2, 0, 0], animType: 39, animPivot: bPivot });
       b.addPart(cyl(0.03, 0.03, 0.03, 8), 'dangerCrimson', { name: 'cannon laser', position: [0.13 * s, 1.14, 0.955], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.5, animType: 39, animPivot: bPivot });
     });
     // Sensor head + radar (animType 19 = SpinY on SpiderBody) + antenna
     b.addPart(sph(0.065, 10, 8), 'dangerCrimson', { name: 'turret sensor light', position: [0, 1.28, 0.2], emissiveIntensity: 4.5, ...spiderBody });
     b.addPart(cyl(0.02, 0.02, 0.16, 6), 'frameGunmetal', { name: 'radar mast', position: [-0.15, 1.31, -0.06], ...spiderBody });
-    b.addPart(lathe([[0, 0], [0.07, 0.01], [0.14, 0.06], [0, 0.02]], 12), 'hullPrimary', {
+    b.addPart(lathe([[0.004, 0], [0.07, 0.01], [0.14, 0.06], [0.004, 0.02]], 12), 'hullPrimary', {
       name: 'radar dish', position: [-0.15, 1.38, -0.06], rotation: [-0.5, 0, 0], animType: 19, animPivot: [-0.15, 1.38, -0.06],
     });
     strut(b, [0.22, 1.0, -0.22], [0.38, 1.52, -0.32], 0.012, 'frameGunmetal', { name: 'antenna mast', ...spiderBody });

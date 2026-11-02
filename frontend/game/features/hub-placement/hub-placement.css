@@ -1,0 +1,142 @@
+.ta-hub-menu {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s3) var(--ta-s4);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  min-width: 280px;
+}
+
+.ta-hub-menu__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding-bottom: var(--ta-s1);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-hub-menu__build-btn {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  width: 100%;
+}
+
+.ta-hub-menu__build-cost {
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+}
+
+/* Compact placement card: the mini 3x3 footprint sits beside the reason and a one-line bill, so the card stays low
+   and does not cover the ghost site around the HQ (the tiles keep their coordinates as text for tests / a11y). */
+.ta-hub-ghost {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  grid-template-areas:
+    'grid reason'
+    'grid bill'
+    'actions actions';
+  column-gap: var(--ta-s3);
+  row-gap: var(--ta-s1);
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate-2);
+  border: 1.5px solid var(--ta-seam-3);
+  color: var(--ta-text);
+}
+
+.ta-hub-ghost[hidden] {
+  display: none;
+}
+
+.ta-hub-ghost.ghost-valid,
+.ta-hub-ghost[data-tint='valid'] {
+  border-color: var(--ta-terra);
+  box-shadow: var(--ta-glow-2);
+}
+
+.ta-hub-ghost.ghost-invalid,
+.ta-hub-ghost[data-tint='invalid'] {
+  border-color: var(--ta-fault);
+}
+
+.ta-hub-ghost__reason {
+  grid-area: reason;
+  align-self: end;
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+.ta-hub-ghost.ghost-valid .ta-hub-ghost__reason {
+  color: var(--ta-terra);
+}
+
+.ta-hub-ghost.ghost-invalid .ta-hub-ghost__reason {
+  color: var(--ta-fault-text);
+}
+
+.ta-hub-ghost__grid {
+  grid-area: grid;
+  display: grid;
+  grid-template-columns: repeat(3, 14px);
+  gap: 2px;
+  align-content: center;
+}
+
+.ta-hub-ghost__tile {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+  font-size: 0;
+  line-height: 0;
+  overflow: hidden;
+}
+
+.ta-hub-ghost__tile.is-valid {
+  background: var(--ta-terra);
+  border-color: var(--ta-terra);
+}
+
+.ta-hub-ghost__tile.is-invalid {
+  background: var(--ta-fault);
+  border-color: var(--ta-fault);
+}
+
+.ta-hub-bill {
+  grid-area: bill;
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: var(--ta-s3);
+  row-gap: 2px;
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-hub-bill__row {
+  color: var(--ta-text-2);
+}
+
+.ta-hub-ghost__actions,
+.ta-hub-menu__order-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ta-s2);
+}
+
+.ta-hub-ghost__actions {
+  grid-area: actions;
+}
+
+.ta-hub-menu__order-status {
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-text-3);
+}

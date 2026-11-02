@@ -3,10 +3,10 @@ import { $, setBtn } from '../dom';
 import { PLANET_LABEL, TOGGLES, VIEWS, type PgState, type ToggleKey, type View } from '../state';
 
 export interface ToolbarHandlers {
-  onView(v: View): void; onPlanet(k: PlanetKind): void; onToggle(k: ToggleKey): void; onShot(): void; onSheet(): void;
+  onView(v: View): void; onPlanet(k: PlanetKind): void; onToggle(k: ToggleKey): void; onShot(): void; onSheet(): void; onBuild(): void;
 }
 
-const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', row: 'spawn row', validate: 'validate parts', hex: 'hex grid', human: '1.8m human' };
+const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', hexTerrain: 'hex terrain', hatch: 'border hatch', work: 'work pose', row: 'spawn row', validate: 'validate parts', hex: 'hex grid', human: '1.8m human' };
 
 /** Bottom toolbar (views, planets, toggles, capture) and the info/tip/toast overlay shell. */
 export class Toolbar {
@@ -23,6 +23,7 @@ export class Toolbar {
     <div id="planet-btns" class="planet">${PLANET_KINDS.map((k) => `<button class="pg-btn" data-v="${k}">${PLANET_LABEL[k]}</button>`).join('')}</div>
     <span class="sep"></span>
     ${TOGGLES.map((k) => `<button class="pg-btn tog" data-k="${k}">${TOGGLE_LABEL[k] ?? k}</button>`).join('')}
+    <button class="pg-btn" id="build" title="construction scaffold stage">build</button>
     <span class="sep"></span>
     <button class="pg-btn" id="shot">PNG</button><button class="pg-btn" id="sheet">4-view sheet</button>
   </div><div id="toast"></div>`;
@@ -31,6 +32,7 @@ export class Toolbar {
     ov.querySelectorAll<HTMLElement>('.tog').forEach((b) => (b.onclick = () => this.on.onToggle(b.dataset.k as ToggleKey)));
     $('#shot').onclick = () => this.on.onShot();
     $('#sheet').onclick = () => this.on.onSheet();
+    $('#build').onclick = () => this.on.onBuild();
     this.syncToggles();
   }
 
@@ -39,6 +41,8 @@ export class Toolbar {
       const k = b.dataset.k as ToggleKey;
       b.classList.toggle('on', k === 'row' ? !!this.state.row : !!this.state[k]);
     });
+    const build = document.querySelector<HTMLElement>('#build');
+    if (build) { build.textContent = `build ${Math.round(this.state.build * 100)}%`; build.classList.toggle('on', this.state.build !== 1); }
   }
   setView(v: View) { setBtn('#views', v); }
   setPlanet(k: PlanetKind) { setBtn('#planet-btns', k); }

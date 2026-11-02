@@ -1,12 +1,20 @@
 import type { SimCommandV1 } from '@terra/contracts';
-import type { BalanceOverrides, SimEvent } from '@terra/sim';
-import type { SimThreadPool } from './sim-thread-pool';
-import type { FromThread, LoadMsg } from './thread/protocol';
+import type { BalanceOverrides, LedgerPosting, SimEvent } from '@terra/sim';
 import type { TuneRequest } from '@terra/sim';
+import type { SimThreadPool } from './sim-thread-pool';
+import { ThreadRequests } from './thread-requests';
+import type { FromThread, LandingSiteAnswer, LoadedInfo, LoadMsg } from './thread/protocol';
 
 export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
-  | { readonly ok: false; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number };
+  | { readonly ok: false; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number; readonly detail?: string };
+
+/**
+ * Reject codes of `submit` that come from the host, not the sim: the planet's thread is down (`thread_down`) or the
+ * planet is not loaded on it (`planet_not_loaded`). Not `REJECT_CODES`: WS ingress sends them as `internal` + detail,
+ * the seat path as `host_unavailable`.
+ */
+export const HOST_DOWN_CODES: readonly string[] = ['thread_down', 'planet_not_loaded'];
 
 export interface PlanetSubscriber {
   onDelta?(d: { fromTick: number; toTick: number; diff: Uint8Array; events: SimEvent[] }): void;
@@ -37,10 +45,23 @@ export interface TuneResult {
   readonly error?: string;
 }
 
+/**
+ * Why a planet went down (BE-11/BE-12): its thread died (`thread_down`) or one of its steps threw (`step_failed`).
+ * Either way its pending commands were answered, its loads failed and it is no longer loaded.
+ */
+export type PlanetDownReason = 'thread_down' | 'step_failed';
+export type PlanetDownListener = (planetId: string, reason: PlanetDownReason, detail: string) => void;
+
 /** Global tap on every sim event leaving a thread (each exactly once: from a delta or from a bare `event`). */
 export type PlanetEventsListener = (planetId: string, events: readonly SimEvent[]) => void;
 
-export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'>;
+/** Main-thread facts about a load, handed to `onPlanetLoaded` with the thread's `loaded` (never sent to the thread). */
+type HostLoadInfo = Pick<LoadedInfo, 'setupPostings' | 'noSnapshots'>;
+
+export type LoadOptions = Omit<LoadMsg, 't' | 'planetId'> & HostLoadInfo;
+
+/** Ledger postings of one step leaving a thread (host-side only, see `PlanetLedgerService`). */
+export type PlanetLedgerListener = (planetId: string, tick: number, postings: readonly LedgerPosting[]) => void;
 
 interface Waiter<T> { resolve(v: T): void; reject(e: Error): void }
 
@@ -51,18 +72,24 @@ interface Waiter<T> { resolve(v: T): void; reject(e: Error): void }
 export class GamePlanets {
   private readonly loading = new Map<string, Waiter<number>[]>();
   private readonly loaded = new Set<string>();
+  private readonly scenarioColonyPlanets = new Set<string>();
   private readonly cmdWaiters = new Map<string, Waiter<CommandOutcomeMsg>[]>();
-  private readonly fullWaiters = new Map<number, Waiter<FullState>>();
-  private readonly tuneWaiters = new Map<number, Waiter<TuneResult>>();
-  private nextReq = 1;
+  private readonly requests = new ThreadRequests();
   private readonly subs = new Map<string, Set<PlanetSubscriber>>();
-  private readonly loadedListeners: ((planetId: string, tick: number) => void)[] = [];
+  private readonly loadedListeners: ((planetId: string, tick: number, info: LoadedInfo) => void)[] = [];
+  private readonly ledgerListeners: PlanetLedgerListener[] = [];
+  /** Main-thread load facts (genesis setup postings, the no-snapshot check) of loads in flight, until `loaded` arrives. */
+  private readonly hostInfo = new Map<string, HostLoadInfo>();
   private readonly unloadedListeners: ((planetId: string) => void)[] = [];
   private readonly snapshotListeners: ((planetId: string, s: { tick: number; bytes: Uint8Array }) => void)[] = [];
   private readonly shutdownHooks: (() => void | Promise<void>)[] = [];
   private readonly warps = new Map<string, number>();
   private readonly warpListeners = new Set<(planetId: string, k: number) => void>();
   private readonly eventListeners = new Set<PlanetEventsListener>();
+  private readonly downListeners = new Set<PlanetDownListener>();
+  private readonly threadDownListeners = new Set<(thread: number, planetIds: readonly string[]) => void>();
+  /** Set by `shutdown`: threads stopping on purpose are not "down". */
+  private stopping = false;
   private readonly unlisten: () => void;
 
   constructor(readonly pool: SimThreadPool, readonly deltaHz = 5) {
@@ -77,28 +104,45 @@ export class GamePlanets {
     return [...this.loaded];
   }
 
-  /** Loads (or restores from `opts.snapshot`) a planet on its thread; resolves with its tick. */
+  /**
+   * Loads (or restores from `opts.snapshot`) a planet on its thread; resolves with its tick. A second generating load of
+   * a planet that is loading joins the first; any other second load (a restore while loading, or a load of a planet
+   * already loaded) is refused (BE-16), so the load listeners (ledger restore) never run twice for one load.
+   */
   load(planetId: string, opts: LoadOptions = {}): Promise<number> {
     return new Promise<number>((resolve, reject) => {
-      const list = this.loading.get(planetId) ?? [];
-      list.push({ resolve, reject });
-      this.loading.set(planetId, list);
-      const transfer = opts.snapshot ? [opts.snapshot.buffer as ArrayBuffer] : [];
-      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...opts }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
+      const existing = this.loading.get(planetId);
+      if (existing && !opts.snapshot) {
+        existing.push({ resolve, reject });
+        return;
+      }
+      if (existing || this.loaded.has(planetId)) {
+        reject(new Error(`planet ${planetId} is already ${existing ? 'loading' : 'loaded'}`));
+        return;
+      }
+      this.loading.set(planetId, [{ resolve, reject }]);
+      const { setupPostings, noSnapshots, ...msg } = opts;
+      this.hostInfo.set(planetId, { ...(setupPostings ? { setupPostings } : {}), ...(noSnapshots ? { noSnapshots } : {}) });
+      const transfer = msg.snapshot ? [msg.snapshot.buffer as ArrayBuffer] : [];
+      if (!this.pool.sendToPlanet(planetId, { t: 'load', planetId, ...msg }, transfer)) this.failLoad(planetId, new Error('sim thread is not running'));
     });
   }
 
+  /**
+   * Ensures `planetId` is loaded on its thread, loading it with `opts` if not yet loaded. A fresh (generated) load of a
+   * planet that may have snapshots goes through `SnapshotService.loadNew` instead, which checks first.
+   */
+  async ensureLoaded(planetId: string, opts: LoadOptions = {}): Promise<number> {
+    if (this.loaded.has(planetId)) return 0;
+    return this.load(planetId, opts);
+  }
+
   /** Global listeners (persistence): a planet finished loading / was unloaded / a snapshot arrived (subscribed or not). */
-  onPlanetLoaded(fn: (planetId: string, tick: number) => void): void { this.loadedListeners.push(fn); }
+  onPlanetLoaded(fn: (planetId: string, tick: number, info: LoadedInfo) => void): void { this.loadedListeners.push(fn); }
+  /** Every step's ledger postings of every planet, in order, subscribed or not. */
+  onPlanetLedger(fn: PlanetLedgerListener): void { this.ledgerListeners.push(fn); }
   onPlanetUnloaded(fn: (planetId: string) => void): void { this.unloadedListeners.push(fn); }
   onPlanetSnapshot(fn: (planetId: string, s: { tick: number; bytes: Uint8Array }) => void): void { this.snapshotListeners.push(fn); }
-
-  unload(planetId: string): void {
-    this.loaded.delete(planetId);
-    this.warps.delete(planetId);
-    for (const fn of this.unloadedListeners) fn(planetId);
-    this.pool.sendToPlanet(planetId, { t: 'unload', planetId });
-  }
 
   /** Queues a command for the planet's next step; resolves with the ack/reject outcome. */
   submit(planetId: string, cmd: SimCommandV1): Promise<CommandOutcomeMsg> {
@@ -147,6 +191,18 @@ export class GamePlanets {
     return () => this.warpListeners.delete(fn);
   }
 
+  /** A planet went down (thread death or a throwing step): the gateway closes its room. Returns unsubscribe. */
+  onPlanetDown(fn: PlanetDownListener): () => void {
+    this.downListeners.add(fn);
+    return () => this.downListeners.delete(fn);
+  }
+
+  /** A sim thread died (not a shutdown); `planetIds` were on it and are down. Returns unsubscribe. */
+  onThreadDown(fn: (thread: number, planetIds: readonly string[]) => void): () => void {
+    this.threadDownListeners.add(fn);
+    return () => this.threadDownListeners.delete(fn);
+  }
+
   /** Registers a tap on all planet events (the bus bridge). Returns unsubscribe. */
   onEvents(l: PlanetEventsListener): () => void {
     this.eventListeners.add(l);
@@ -167,32 +223,27 @@ export class GamePlanets {
     return this.loaded.has(planetId);
   }
 
+  markScenarioColonyPlanet(planetId: string): void {
+    this.scenarioColonyPlanets.add(planetId);
+  }
+
+  isScenarioColonyPlanet(planetId: string): boolean {
+    return this.scenarioColonyPlanets.has(planetId);
+  }
+
   /** Engine snapshot + simVersion + dataHash of a loaded planet, fetched from its owning thread (welcome payload). */
   fullState(planetId: string, timeoutMs = 10_000): Promise<FullState> {
-    return new Promise<FullState>((resolve, reject) => {
-      const reqId = this.nextReq++;
-      const timer = setTimeout(() => { this.fullWaiters.delete(reqId); reject(new Error(`fullState timeout for ${planetId}`)); }, timeoutMs);
-      this.fullWaiters.set(reqId, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
-      if (!this.loaded.has(planetId) || !this.pool.sendToPlanet(planetId, { t: 'fullState', planetId, reqId })) {
-        this.fullWaiters.delete(reqId);
-        clearTimeout(timer);
-        reject(new Error(`planet ${planetId} is not loaded`));
-      }
-    });
+    return this.requests.ask(planetId, 'fullState', timeoutMs, (reqId) => this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'fullState', planetId, reqId }));
   }
 
   /** Dev `tune` (D-35) on a loaded planet; resolves with the new data hash / export text, or `ok: false` + `error` for a bad path or value. */
   tune(planetId: string, req: TuneRequest, timeoutMs = 10_000): Promise<TuneResult> {
-    return new Promise<TuneResult>((resolve, reject) => {
-      const reqId = this.nextReq++;
-      const timer = setTimeout(() => { this.tuneWaiters.delete(reqId); reject(new Error(`tune timeout for ${planetId}`)); }, timeoutMs);
-      this.tuneWaiters.set(reqId, { resolve: (v) => { clearTimeout(timer); resolve(v); }, reject: (e) => { clearTimeout(timer); reject(e); } });
-      if (!this.loaded.has(planetId) || !this.pool.sendToPlanet(planetId, { t: 'tune', planetId, reqId, req })) {
-        this.tuneWaiters.delete(reqId);
-        clearTimeout(timer);
-        reject(new Error(`planet ${planetId} is not loaded`));
-      }
-    });
+    return this.requests.ask(planetId, 'tune', timeoutMs, (reqId) => this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'tune', planetId, reqId, req }));
+  }
+
+  /** Where the loaded planet's sim would land colony `colony` now (`nextLandingSite`, LED-14). */
+  landingSite(planetId: string, colony: number, timeoutMs = 10_000): Promise<LandingSiteAnswer> {
+    return this.requests.ask(planetId, 'landingSite', timeoutMs, (reqId) => this.loaded.has(planetId) && this.pool.sendToPlanet(planetId, { t: 'landingSite', planetId, reqId, colony }));
   }
 
   /** Registers work to run before threads stop (a later issue snapshots every planet here). */
@@ -201,14 +252,40 @@ export class GamePlanets {
   }
 
   async shutdown(): Promise<void> {
+    this.stopping = true;
     for (const h of this.shutdownHooks) await h();
     await this.pool.shutdown();
     this.unlisten();
     const err = new Error('game threads stopped');
-    for (const [id, w] of [...this.fullWaiters]) { this.fullWaiters.delete(id); w.reject(err); }
-    for (const [id, w] of [...this.tuneWaiters]) { this.tuneWaiters.delete(id); w.reject(err); }
+    this.requests.failAll(err);
     for (const id of [...this.loading.keys()]) this.failLoad(id, err);
     for (const key of [...this.cmdWaiters.keys()]) this.settleCmd(key, { ok: false, commandId: key.split('\0')[1] ?? '', code: 'thread_down' });
+  }
+
+  /**
+   * A planet is gone from its thread (BE-11/BE-12): every command waiting on it is answered `thread_down`, its loads
+   * and requests fail, it leaves the loaded set (listeners drop their per-planet state, e.g. ledgers), and the down
+   * listeners run (the gateway closes the planet's room; the game module may restore it).
+   */
+  private planetDown(planetId: string, reason: PlanetDownReason, detail: string): void {
+    const err = new Error(`planet ${planetId} is down (${reason}): ${detail}`);
+    const wasLoaded = this.loaded.delete(planetId);
+    this.warps.delete(planetId);
+    for (const key of [...this.cmdWaiters.keys()]) {
+      if (key.startsWith(`${planetId}\0`)) while (this.cmdWaiters.has(key)) this.settleCmd(key, { ok: false, commandId: key.slice(planetId.length + 1), code: 'thread_down' });
+    }
+    this.failLoad(planetId, err);
+    this.requests.failAll(err, planetId);
+    if (wasLoaded) for (const fn of this.unloadedListeners) fn(planetId);
+    for (const fn of this.downListeners) fn(planetId, reason, detail);
+  }
+
+  /** Every planet the dead thread owned or was asked about: loaded, loading, or with commands in flight. */
+  private threadDown(thread: number): void {
+    const ids = new Set<string>([...this.loaded, ...this.loading.keys(), ...[...this.cmdWaiters.keys()].map((k) => k.split('\0')[0] ?? '')]);
+    const down = [...ids].filter((id) => id && this.threadOf(id) === thread);
+    for (const id of down) this.planetDown(id, 'thread_down', `sim thread ${thread} stopped`);
+    for (const fn of this.threadDownListeners) fn(thread, down);
   }
 
   private onMessage(thread: number, msg: FromThread): void {
@@ -217,11 +294,21 @@ export class GamePlanets {
         this.loaded.add(msg.planetId);
         for (const w of this.loading.get(msg.planetId) ?? []) w.resolve(msg.tick);
         this.loading.delete(msg.planetId);
-        for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick);
+        {
+          const host = this.hostInfo.get(msg.planetId);
+          this.hostInfo.delete(msg.planetId);
+          const info: LoadedInfo = { restored: msg.restored ?? false, genesis: msg.genesis ?? false, stocks: msg.stocks ?? [], ...host };
+          for (const fn of this.loadedListeners) fn(msg.planetId, msg.tick, info);
+        }
+        return;
+      case 'ledger':
+        for (const fn of this.ledgerListeners) fn(msg.planetId, msg.tick, msg.postings);
         return;
       case 'ack': return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: true, commandId: msg.commandId, appliedAtTick: msg.appliedAtTick });
       case 'reject':
-        return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick });
+        return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, {
+          ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick, ...(msg.detail ? { detail: msg.detail } : {}),
+        });
       case 'delta':
         this.tap(msg.planetId, msg.events);
         return this.each(msg.planetId, (s) => s.onDelta?.(msg));
@@ -234,25 +321,22 @@ export class GamePlanets {
         if (changed) for (const fn of this.warpListeners) fn(msg.planetId, msg.k);
         return;
       }
-      case 'fullState': {
+      case 'fullState':
         this.warps.set(msg.planetId, msg.warp);
-        const w = this.fullWaiters.get(msg.reqId);
-        this.fullWaiters.delete(msg.reqId);
-        return w?.resolve(msg);
-      }
-      case 'tuned': {
-        const w = this.tuneWaiters.get(msg.reqId);
-        this.tuneWaiters.delete(msg.reqId);
-        return w?.resolve(msg);
-      }
+        return this.requests.answer(msg.reqId, msg);
+      case 'tuned':
+      case 'landingSite':
+        return this.requests.answer(msg.reqId, msg.t === 'landingSite' ? msg.answer : msg);
+      case 'planetFailed':
+        return this.planetDown(msg.planetId, 'step_failed', msg.message);
       case 'snapshot':
         for (const fn of this.snapshotListeners) fn(msg.planetId, msg);
         return this.each(msg.planetId, (s) => s.onSnapshot?.(msg));
       case 'error':
         if (msg.planetId && this.loading.has(msg.planetId)) this.failLoad(msg.planetId, new Error(msg.message));
         return;
-      case 'stopped': // a thread died: its planets are gone
-        for (const id of [...this.loaded]) if (this.threadOf(id) === thread) this.loaded.delete(id);
+      case 'stopped': // a thread died (or stopped at shutdown): its planets are gone
+        if (!this.stopping) this.threadDown(thread);
         return;
       default: return;
     }
@@ -272,5 +356,6 @@ export class GamePlanets {
   private failLoad(planetId: string, e: Error): void {
     for (const w of this.loading.get(planetId) ?? []) w.reject(e);
     this.loading.delete(planetId);
+    this.hostInfo.delete(planetId);
   }
 }

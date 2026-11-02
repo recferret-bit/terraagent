@@ -1,5 +1,5 @@
 // `npm run dev:restart`: ask the running `npm run dev` of this worktree to restart the app process only.
-// Sends SIGUSR2 to the runner (pid in .dev/runner.pid); the runner SIGTERMs the app and starts a new one.
+// Sends SIGUSR2 to the runner (pid in scripts/dev/.out/runner.pid); the runner SIGTERMs the app and starts a new one.
 import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { devDir } from './env.mjs';

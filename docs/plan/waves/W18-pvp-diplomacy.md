@@ -1,6 +1,6 @@
 # W18 — PvP & Diplomacy
 
-> **Track:** Gameplay (G) · **Flag:** `W18` · **Tag:** `wave-18` · **Scenario:** `scenarios/w18-pvp-diplomacy.ts` (5 colonies on one planet, with the shield states and armies below) · **E2E:** `e2e/w18.spec.ts`
+> **Track:** Gameplay (G) · **Flag:** `W18` · **Tag:** `wave-18` · **Scenario:** `tests/scenarios/w18-pvp-diplomacy.ts` (5 colonies on one planet, with the shield states and armies below) · **E2E:** `tests/e2e/w18.spec.ts`
 > **Depends on waves:** W07 (battle v1, combat units, `attackMove`), W11 (planets with several colonies, seat refill), W09 (away policy, notification routing, the `colonyCritical` / `colonyEliminated` events). Optional: W04 (map layer for shields), W08 (HQ goals), W14 (gates as raid path targets), W16 (AI director accept), W24 (touch).
 > **Specs:** [units spec](../../game/units-orders-and-progression-spec.md) `UO-W-08`, `UO-T-05`, `UO-HQ-04`, `UO-TF-05`, `UO-DIP-01..06`, AC-06, AC-12, AC-13 · [SIMULATION](../../spec/SIMULATION.md) §7.7 · [CONTINUITY](../../spec/CONTINUITY.md) `AW-11`, `AW-13`, §5a · [MATCHMAKING](../../spec/MATCHMAKING.md) `MM-05` · D-17, D-28, D-31
 > **Owned paths:** `shared/sim/src/systems/{pvp,elimination,diplomacy}/`, `shared/sim/src/data/diplomacy.ts`, `shared/contracts/src/{commands,events}/{pvp,diplomacy}.ts`, `frontend/game/features/{raid,diplomacy,colony-status}/`, the ruin variant in `frontend/render/visuals/UnifiedColonyMaterial.ts`
@@ -78,11 +78,11 @@ Colonies on the same planet can fight and make peace. Players raid each other wi
 | W18-26 | Touch: truce panel and raid picker usable in phone landscape | client | S |  | W24-11 | On 844×390, accept a truce by tap → works without hover | D-22 | — |
 | W18-27 | Tests: shield property (AC-06), truce no-damage (AC-12), away never cancels (AC-13), elimination timer | test | M |  | W18-06, W18-13, W18-15 | `npm run test -w @terra/sim -- pvp` → all four specs pass | AC-06, AC-12, AC-13 | TA-13.x |
 | W18-28 | Test: raid → siphon → repel flow with deterministic seed; ruins decay | test | S |  | W18-05, W18-09 | Unit test asserts resource deltas and ruin HP after 100 s | SIM §7.7 | — |
-| W18-29 | Wave e2e `e2e/w18.spec.ts` + scenario `w18-pvp-diplomacy` + tag `wave-18` | test | M |  | all W18 | `npm run e2e -- --waves ..18` → the demo story passes (incl. the seat-refill check of step 3), and every earlier suite passes | PRODUCT_WAVES §3 | — |
+| W18-29 | Wave e2e `tests/e2e/w18.spec.ts` + scenario `w18-pvp-diplomacy` + tag `wave-18` | test | M |  | all W18 | `npm run e2e -- --waves ..18` → the demo story passes (incl. the seat-refill check of step 3), and every earlier suite passes | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
 
-- `e2e/w18.spec.ts` and all earlier suites pass.
+- `tests/e2e/w18.spec.ts` and all earlier suites pass.
 - The scenario loads.
 - With the flag off: no raid or truce commands and no shield UI. A Hub loss only makes the colony critical; there is no elimination, ruins or reprint.
 - AC-06, AC-12 and AC-13 pass.

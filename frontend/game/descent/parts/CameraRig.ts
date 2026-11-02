@@ -26,8 +26,8 @@ export class CameraRig implements FramePart {
     const k = clamp(tn, 3.6, 29), ph = camPhi(k) * D2R, ep = camEps(k) * D2R, D = Math.exp(camLnD(k));
     outPos.set(pc.x + D * Math.cos(ep) * Math.cos(ph), pc.y + D * Math.sin(ep), pc.z + D * Math.cos(ep) * Math.sin(ph));
     outTgt.set(pc.x, pc.y + camLookY(k), pc.z);
-    const e = smoother(29, 34, tn);
-    if (e > 0) { if (e >= 1) { outPos.copy(FINAL_POS); outTgt.copy(FINAL_TARGET); } else { outPos.lerp(FINAL_POS, e); outTgt.lerp(FINAL_TARGET, e); } }
+    const e = smoother(28.5, 32, tn);
+    if (e > 0) { if (e >= 1) { outPos.copy(FINAL_POS); outTgt.copy(FINAL_TARGET); } else { outPos.lerp(FINAL_POS, e); outTgt.lerp(FINAL_TARGET, Math.pow(e, 3.6)); } }
   }
 
   static fov(tn: number) { return 28 + 8 * smoothstep(13, 17, tn) * (1 - smoothstep(25, 31, tn)); }

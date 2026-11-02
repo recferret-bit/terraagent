@@ -1,11 +1,12 @@
 import { HttpException } from '@nestjs/common';
+import type { REST_ERROR_CODES } from '@terra/contracts';
 import { z } from 'zod';
 import { CoreException } from './core-exception';
 
 /**
  * Error mapping. Response body: `{ errorCode, error: { code, message, details? }, requestId }`.
  *  - `errorCode`: stable UPPER_SNAKE domain code (`TEST_CODE`, `VALIDATION_ERROR`, `NOT_FOUND`, `INTERNAL`).
- *  - `error.code`: lowercase REST code of PROTOCOL §8, derived from the status (see `restCodeFor`).
+ *  - `error.code`: lowercase REST code of PROTOCOL §8, from the domain code when it has its own, else the status (see `restCodeFor`).
  */
 export interface MappedError {
   readonly status: number;
@@ -14,17 +15,31 @@ export interface MappedError {
   readonly details?: unknown;
 }
 
-const REST_BY_STATUS: Readonly<Record<number, string>> = {
+const REST_BY_STATUS: Readonly<Record<number, (typeof REST_ERROR_CODES)[number]>> = {
   400: 'validation_error',
   401: 'unauthorized',
   403: 'forbidden',
   404: 'not_found',
-  409: 'already_queued',
-  503: 'near_unavailable',
+  409: 'conflict',
+  413: 'payload_too_large',
+  429: 'rate_limited',
+  503: 'unavailable',
 };
 
-/** Status to REST code. 409 maps to `already_queued` only as the closest PROTOCOL §8 code; other 4xx fall back to `validation_error`, 5xx to `internal`. */
-export function restCodeFor(status: number): string {
+/** Domain codes with a REST code of their own (else the status decides). */
+const REST_BY_ERROR_CODE: Readonly<Record<string, (typeof REST_ERROR_CODES)[number]>> = {
+  COLONY_SEAT_REJECTED: 'seat_rejected',
+};
+
+/**
+ * REST code of an error (PROTOCOL §8): its domain code's own (`COLONY_SEAT_REJECTED` → `seat_rejected`; a NEAR code
+ * with 503 → `near_unavailable`), else a generic one by status (`conflict`, `unavailable`, …; BE-17); other 4xx fall
+ * back to `validation_error`, 5xx to `internal`.
+ */
+export function restCodeFor(status: number, errorCode?: string): string {
+  const own = errorCode === undefined ? undefined : REST_BY_ERROR_CODE[errorCode];
+  if (own) return own;
+  if (status === 503 && errorCode?.startsWith('NEAR_')) return 'near_unavailable';
   return REST_BY_STATUS[status] ?? (status >= 500 ? 'internal' : 'validation_error');
 }
 

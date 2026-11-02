@@ -150,7 +150,7 @@ Login provider (not an account): NEAR Auth proposed (R01-3, R01-4); mock provide
 
 ## 7. Wave map
 
-- **W06** · deps: W00 (ports, mock base, outbox, contract harness, dev console), W01 (guest login W01-02, `colonyFounded` W01-31) · `@hack` e2e steps: 1, 2, 4, 6, 7 · DoD gates: `e2e/w06.spec.ts` + earlier e2e, `?scenario=w06`, `TA_WAVES=..05` flag-off, identity + relayer suites on mocks, **W06-21 copy lint green (W06-21 is not H)**, tag `wave-06`.
+- **W06** · deps: W00 (ports, mock base, outbox, contract harness, dev console), W01 (guest login W01-02, `colonyFounded` W01-31) · `@hack` e2e steps: 1, 2, 4, 6, 7 · DoD gates: `tests/e2e/w06.spec.ts` + earlier e2e, `?scenario=w06`, `TA_WAVES=..05` flag-off, identity + relayer suites on mocks, **W06-21 copy lint green (W06-21 is not H)**, tag `wave-06`.
 - **W23 (F5 slice)** · deps: W06 (identity, relayer), W00 (infra), W25-06 (deploy secrets for W23-03) · `@hack`: none; H2 rows only after the D10 gate (or D6 in the Pivot, Q-06-13) · DoD gates: suites green on real, real-mode e2e, per-port rollback, README table, **monitoring + spend breaker (W23-07 / W23-08 are untagged)**, tags `wave-23-<port>`.
 
 | Issue | H | Rules | Flag |

@@ -113,6 +113,23 @@ describe('Predictor', () => {
     expect(confirmed).toBeGreaterThan(3.1);
   });
 
+  it('learns from acks on which tick the server applies a command, so the prediction starts it there too', () => {
+    const net = new Net();
+    const id = withEntity(net);
+    const applied: number[] = [];
+    const expected: Array<number | null> = [];
+    const onAck = net.predictor.onAck.bind(net.predictor);
+    net.predictor.onAck = (cmdId, tick) => { applied.push(tick); onAck(cmdId, tick); };
+    for (let i = 0; i < 6; i++) {
+      net.send('dev.nudge', { id, dq: 1 });
+      expected.push((net.predictor as unknown as { expectedApplyTick(p: unknown): number | null }).expectedApplyTick(net.predictor.pending.at(-1)));
+      net.advance(1500);
+    }
+    // 300 ms each way: the server applies ~2 ticks after sending; after a couple of acks the guess is exact (±1)
+    expect(Math.abs((expected[5] ?? 0) - applied[5])).toBeLessThanOrEqual(1);
+    expect(Math.abs((expected[0] ?? 0) - applied[0])).toBeGreaterThanOrEqual(Math.abs((expected[5] ?? 0) - applied[5]));
+  });
+
   it('never applies a command twice while it waits for its ack and delta', () => {
     const net = new Net();
     const id = withEntity(net);
@@ -138,6 +155,9 @@ describe('Predictor', () => {
     expect(Math.abs(net.ent(net.predictor.host(), id).x - net.ent(net.auth, id).x)).toBeLessThan(0.05);
   });
 
+});
+
+describe('Predictor: rebase, modes and limits', () => {
   it('re-runs several pending commands in order on every rebase', () => {
     const net = new Net();
     const id = withEntity(net);

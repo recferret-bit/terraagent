@@ -3,7 +3,7 @@
 //   npm run wave            auto-lands any completed open wave, then opens/resumes the next wave with its built-in preset
 //   npm run wave -- status  full board: state, issue progress (done/total), preset (runner:model+advisor, effort, parallel) & track
 // Single steps of the pipeline (each is also an npm script):
-//   wave:open -- NN         open/resume the wave worktree (ports + database in .env.worktree), no agent started
+//   wave:open -- NN         open/resume the wave worktree (ports + database in infra/.env.worktree), no agent started
 //   wave:issue -- WNN-XX    create the issue worktree `issue/WNN-XX` from its wave branch
 //   wave:issue:land -- WNN-XX   merge the issue into its wave branch (gates green, `--no-ff`, subject `WNN-XX: <title>`)
 //   wave:check -- NN        merge main into the wave, run the gates, print the demo steps and URL

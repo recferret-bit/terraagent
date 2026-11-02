@@ -1,9 +1,9 @@
 # W25 — Launch Ops & Submission
 
-> **Track:** Ops (O) · **Flag:** `W25` (ops-only; no gameplay toggles) · **Tag:** `wave-25` · **Scenario:** `scenarios/w25-demo.ts` (hosted demo planet) · **Depends on:** W00. Optional: the demo video W25-29 and the stage funnel W25-23 read the output of W05, W07, W08, W10, W12, W13, W14, W15. The wave grows with every other wave: its checks run against whatever waves are enabled.
+> **Track:** Ops (O) · **Flag:** `W25` (ops-only; no gameplay toggles) · **Tag:** `wave-25` · **Scenario:** `tests/scenarios/w25-demo.ts` (hosted demo planet) · **Depends on:** W00. Optional: the demo video W25-29 and the stage funnel W25-23 read the output of W05, W07, W08, W10, W12, W13, W14, W15. The wave grows with every other wave: its checks run against whatever waves are enabled.
 >
 > **Specs:**
-> - [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) v0.3. Hosting, nginx and the four compose files are **W26** (D-37). This wave adds what W26 left for later: image hardening, CSP, backups, the rollback deploy, monitoring, analytics, load and the submission
+> - [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) v0.3. Hosting, nginx and the four compose files are **W26** (D-40). This wave adds what W26 left for later: image hardening, CSP, backups, the rollback deploy, monitoring, analytics, load and the submission
 > - [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) §9 (`DEP-04..07`, `DEP-09`)
 > - [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §4, §15
 > - [`CLIENT.md`](../../spec/CLIENT.md) §10 (analytics, consent, funnel, KPIs)
@@ -19,9 +19,9 @@
 
 ## Goal
 
-Take the hosts W26 already serves and add monitoring, backups, a rollback deploy, the README and the submission. W26 is the hackathon hosting path (D-37): HTTP on `terraagent.fun`, four compose files, SSH to `DEPLOY_HOST`. This wave does not rebuild that stack and does not add Cloudflare. Submission issues run last.
+Take the hosts W26 already serves and add monitoring, backups, a rollback deploy, the README and the submission. W26 is the hackathon hosting path (D-40): HTTP on `terraagent.fun`, four compose files, SSH to `DEPLOY_HOST`. This wave does not rebuild that stack and does not add Cloudflare. Submission issues run last.
 
-## Demo story (`e2e/w25.spec.ts`, run against the local prod-like stack)
+## Demo story (`tests/e2e/w25.spec.ts`, run against the local prod-like stack)
 
 1. Run `npm run stack:local` (W26) → **see** the eight `terraagent.fun` hosts answer on port 80. This wave does not bring that stack up.
 2. Run `npm run stack:local:smoke` (W26) → **see** the host checks pass. The restart-resume check is W25-11 and lands with that row.
@@ -47,10 +47,10 @@ Take the hosts W26 already serves and add monitoring, backups, a rollback deploy
 | 2 | Harden the W26 app image: non-root, read-only, `tmpfs /tmp` (post-hackathon) | W25-02 |
 | 3 | CSP on the W26 nginx for every public host. Hosts and proxies are W26 | W25-03 |
 | 4 | Compose test over the four W26 files: only nginx publishes a port (DEP-01) | W25-04 |
-| 5 | DNS: each D-37 name is an A record to `DEPLOY_HOST`. No Cloudflare proxy | W25-05 |
+| 5 | DNS: each D-40 name is an A record to `DEPLOY_HOST`. No Cloudflare proxy | W25-05 |
 | 6 | Secrets & env: `deploy:init`, `validate-env` (no `CHANGE_ME`, mainnet guard, mock-in-prod guard) (DEP-04, DEP-08) | W25-06 |
 | 7 | Later deploy pipeline on top of W26's `deploy`: backup, SIGTERM snapshot, auto-rollback (DEP-05..07, DEP-09). Not the hackathon path | W25-07, W25-08 |
-| 8 | Backups: pre-deploy + daily `pg_dump`, retention. R2 off-site is post-hackathon (D-37) | W25-09, W25-10 |
+| 8 | Backups: pre-deploy + daily `pg_dump`, retention. R2 off-site is post-hackathon (D-40) | W25-09, W25-10 |
 | 9 | Restart-resume smoke on the W26 stack | W25-11 |
 | 10 | Monitoring: Prometheus `/metrics` coverage, dashboards, alert rules, alert destination | W25-12, W25-13 |
 | 11 | Log correlation (request / planet / colony ids) and retention | W25-14 |
@@ -76,12 +76,12 @@ Take the hosts W26 already serves and add monitoring, backups, a rollback deploy
 | W25-02 | Harden the W26 app image: non-root `node`, `read_only` + `tmpfs /tmp`, keep `/readyz`. The image and the healthcheck already exist (W26-06) | ops | M |  | W26-06 | Run the app image with a read-only root → see `/readyz` still healthy | DEPLOYMENT §9 | TA-02.3 |
 | W25-03 | CSP on the W26 nginx: `connect-src 'self'` on `play`, the §2 security headers on every catalog host, `CSP_CONNECT_EXTRA` when it is set. No new hosts and no Cloudflare | ops | S | H | W26-02 | Run the header check → see CSP on `play` and the security headers on all eight hosts | DEP-02 | TA-02.4 |
 | W25-04 | Compose-port test over the four W26 files (`infra/compose/test/ports.test.mjs`): the only `ports:` key is nginx `80` | ops | S | H | W26-02, W26-03, W26-06, W26-07 | Run the test → see a failure if any other service publishes a port | DEP-01 | TA-02.5 |
-| W25-05 | DNS check: `npm run dns:check` compares each D-37 name to `DEPLOY_HOST`. Records are plain A records, not proxied. The live records are an owner task; the script is tested against a stub resolver | ops | S | H | W26-09 | Run `dns:check` against a stub that returns `DEPLOY_HOST` for every name → see exit 0. Change one name's answer → see that name in the error | D-37, OWNER_TASKS | TA-02.5 |
+| W25-05 | DNS check: `npm run dns:check` compares each D-40 name to `DEPLOY_HOST`. Records are plain A records, not proxied. The live records are an owner task; the script is tested against a stub resolver | ops | S | H | W26-09 | Run `dns:check` against a stub that returns `DEPLOY_HOST` for every name → see exit 0. Change one name's answer → see that name in the error | D-40, OWNER_TASKS | TA-02.5 |
 | W25-06 | Secrets & env: `npm run deploy:init` (JWT secret, KEK, VAPID, PG password; never overwrites), `validate-env.mjs` gate (no `CHANGE_ME`, `NEAR_NETWORK=mainnet` only with `NEAR_ALLOW_MAINNET=1`, mock ports in prod only with `NEAR_ALLOW_MOCK_IN_PROD=true`) + tests | ops | S | H | W25-01, W00-31 | Run `validate-env` with a `CHANGE_ME` value → see a non-zero exit naming the var | DEP-04, DEP-08, NEAR §1a rule 3 | TA-02.5 |
 | W25-07 | Later deploy pipeline wrapped around W26's `deploy`: backup, then `migrate deploy`, then `SIGTERM` (30 s snapshot budget), then smoke, with rollback armed. Does not replace `npm run deploy` | ops | M |  | W25-04, W25-06, W25-09, W26-09 | Run `npm run deploy:release -- --dry-run` → see backup, SIGTERM snapshot and rollback in the plan, and see `npm run deploy` still the W26 command | DEP-05, DEP-06, DEP-07, DEP-09 | TA-02.5 |
 | W25-08 | Auto-rollback + `deploy:rollback` (previous image, no down-migration) + `deploy:restore` (manual) + `releases.log` | ops | S |  | W25-07 | Break the smoke check on purpose → see the previous release restored automatically | DEPLOYMENT §6 | TA-02.5 |
 | W25-09 | Backups: `pg_dump -Fc` pre-deploy + daily 04:00 UTC; keep 14 daily + 5 pre-deploy | ops | S | H | W25-04 | Run `npm run backup` → see a timestamped dump and old ones pruned per policy | DEPLOYMENT §5 | TA-02.5 |
-| W25-10 | Off-site backup to an object store the owner names later (R2 was D-23; D-37 leaves it out) + restore drill `backup:verify` into a scratch DB | ops | S |  | W25-09 | Run `backup:verify` → see the dump restored and planet/colony counts matching | DEP-05 | TA-02.5 |
+| W25-10 | Off-site backup to an object store the owner names later (R2 was D-23; D-40 leaves it out) + restore drill `backup:verify` into a scratch DB | ops | S |  | W25-09 | Run `backup:verify` → see the dump restored and planet/colony counts matching | DEP-05 | TA-02.5 |
 | W25-11 | Restart-resume smoke on the W26 stack: restart the app container and see the planet come back from its snapshot. Host checks stay in W26-08 | test | S |  | W26-08, W00-29 | Restart the app during `stack:local` → see the planet resume from the snapshot tick | DEP-07 | TA-02.6 |
 | W25-12 | Metrics coverage test against W25-01's metric registry: every registered series is exported (producers own theirs: W00-19 tick lag, W06-24 NEAR tx, W09-29 presence/notify, W16-23 AI); this issue adds only the unowned ones (`ta_game_step_ms`, planets per thread, sockets, delta bytes/s, snapshot ms/KB, outbox backlog per port, DB pool) | server | S |  | W00-09, W25-01 | Scrape `/v1/metrics` under load → see every series in the registry present | ARCH §15, SIM-P | TA-07.8, TA-13.2 |
 | W25-13 | Dashboards + alerts: Grafana (or lightweight equivalent) panels; alerts for tick lag, a faulted planet, readyz down, backup failed; outbox-stuck, relayer-balance and AI-budget alerts reuse the producers' rules and thresholds (W23-07, W16-23 at 0.8 / 1.0); destination is an owner choice (Telegram admin chat proposed) | ops | M |  | W25-12 | Kill a sim thread in staging → see an alert delivered within 2 min | ARCH §15, SIM-P | TA-13.2 |
@@ -99,16 +99,16 @@ Take the hosts W26 already serves and add monitoring, backups, a rollback deploy
 | W25-25 | README final, part 1: product summary, problem, the "do X → see Y" quickstart per wave demo, scenario links, controls | docs | M | H | W00-48 | A reviewer follows the quickstart → see every listed result | Q-017 | TA-13.7 |
 | W25-26 | README final, part 2: ports mock/real table generated from the running env (`npm run ports:table`), libraries list, AI-generated code statement, **pre-window baseline disclosure** (the `frontend/` prototype before 2026-11-01), LICENSE check | docs | S | H | W25-25 | Run `npm run ports:table` → see the table match `/v1/readyz` adapters | Q-002, Q-005, Q-014, D-30 | — |
 | W25-27 | README verification job (`.github/workflows/readme.yml`): fresh clone in CI runs the README steps headless (`e2e:readme`) | test | S | H+ | W25-25, W00-45 | Break a README command → see the job fail on that step | Q-017 | — |
-| W25-28 | Hosted demo: `npm run deploy` to `DEPLOY_HOST`, seed `w25-demo` (a planet with all enabled waves showcased), `NEAR_ALLOW_MOCK_IN_PROD=true`, real adapters only for ports that passed real contract suites | ops | M | H | W26-09, W25-05, W25-06 | Open `http://play.terraagent.fun` and `http://terraagent.fun` from a phone and a desktop → see the demo planet playable and the landing up | Q-012, D-30, D-37 | TA-13.7 |
+| W25-28 | Hosted demo: `npm run deploy` to `DEPLOY_HOST`, seed `w25-demo` (a planet with all enabled waves showcased), `NEAR_ALLOW_MOCK_IN_PROD=true`, real adapters only for ports that passed real contract suites | ops | M | H | W26-09, W25-05, W25-06 | Open `http://play.terraagent.fun` and `http://terraagent.fun` from a phone and a desktop → see the demo planet playable and the landing up | Q-012, D-30, D-40 | TA-13.7 |
 | W25-29 | Demo video: a 2–3 min script covering landfall → economy → terraform → combat → walls → cargo → market → Guild → profile; record and cut | docs | M | H | W25-28, W05-33, W07-32, W10-30, W12-32, W13-35, W14-28, W15-34 | Watch the video → see every scripted beat shown once | Form, Q-012 | — |
 | W25-30 | X post: "built at NEAR HACKATHON", video, link to the repo and demo | docs | S | H | W25-29 | Open the post → see the video play and both links resolve | Submission rules | — |
 | W25-31 | Submission form: name, team lead, email, team size solo, tracks (09 + 07 + 05, + 10/12 if F6/F7 qualify), mainnet prize wallet, repo link, post link, description (20–2 000 chars), website; the human confirms the payload | docs | S | H | W25-30, W25-26 | Submit → see the confirmation before 2026-11-14 20:00 UTC | Form fields, Q-016 | — |
 | W25-32 | Launch checklist + production smoke (`npm run smoke:prod`): DNS/TLS, `/readyz`, guest → play, WS, a snapshot taken, a backup present, alerts armed, analytics flowing | ops | S |  | W25-28, W25-13, W25-10 | Run `smoke:prod` → see every checklist line green | DEPLOYMENT §7, §9 | TA-13.7 |
-| W25-33 | Wave e2e `e2e/w25.spec.ts` (demo steps 4–6; the hackathon `@hack` run is steps 4 and 7 against the W26 hosts) + scenario `w25-demo` + tag `wave-25` | test | S | H | all above | Run `npm run e2e -- --waves ..25` → see all enabled wave suites plus W25 pass; then tag `wave-25` | PRODUCT_WAVES §3 | TA-13.3 |
+| W25-33 | Wave e2e `tests/e2e/w25.spec.ts` (demo steps 4–6; the hackathon `@hack` run is steps 4 and 7 against the W26 hosts) + scenario `w25-demo` + tag `wave-25` | test | S | H | all above | Run `npm run e2e -- --waves ..25` → see all enabled wave suites plus W25 pass; then tag `wave-25` | PRODUCT_WAVES §3 | TA-13.3 |
 
 ## Wave DoD
 
-- `stack:local:smoke` and `e2e/w25.spec.ts` pass.
+- `stack:local:smoke` and `tests/e2e/w25.spec.ts` pass.
 - A deploy dry run and a backup restore drill succeed. Capacity caps are measured on the real host and recorded.
 - `duels.spec.ts` and the nightly bot are green for every enabled wave.
 - The README passes the fresh-clone job, and its mock/real table matches the running adapters.

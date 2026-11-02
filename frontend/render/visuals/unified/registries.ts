@@ -34,7 +34,12 @@ export class BiomeMaterialRegistry {
 
 export interface ShaderModifierPlugin {
   name: string;
+  /** Uniforms shared by every material that uses the plugin. */
   uniforms?: Record<string, THREE.IUniform>;
+  /** Fresh uniforms for each material (per-mesh state such as a build stage); merged after `uniforms`. */
+  createUniforms?: () => Record<string, THREE.IUniform>;
+  /** GLSL declarations (uniforms, helper functions) added to the fragment shader's common block. */
+  fragmentDeclarations?: string;
   vertexTransformChunk?: string;
   fragmentColorChunk?: string;
 }

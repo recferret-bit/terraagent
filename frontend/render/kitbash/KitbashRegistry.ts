@@ -2,6 +2,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import * as BufferGeometryUtils from 'three/addons/utils/BufferGeometryUtils.js';
+import { tubeThrough } from './greebles/tube';
 
 export type MaterialZoneId =
   | 'hullPrimary'
@@ -58,9 +59,19 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
  */
 export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18 | 19 | 24 | 28 | 29 | 38 | 39;
 
+/**
+ * What a part is for, when a geometry check must treat it specially (the validator never infers this from names):
+ * `plinth` = the ground foundation slab (cables may not end in it or sag below its top), `plinthDetail` = trim or
+ * lamps mounted on the plinth (not cable anchors either), `whip` = a tube with a free end (antenna whip, tendril:
+ * no anchor check, may move with a different animation than its mount).
+ */
+export type PartRole = 'plinth' | 'plinthDetail' | 'whip';
+
 export interface PartOptions {
   /** Human-readable label used by the model validator's reports (defaults to "<geometry type>#<index>"). */
   name?: string;
+  /** Semantic role for the model validator's geometry checks (see `PartRole`). */
+  role?: PartRole;
   position?: THREE.Vector3Tuple;
   rotation?: THREE.Vector3Tuple;
   scale?: THREE.Vector3Tuple;
@@ -76,6 +87,7 @@ export interface PartMeta {
   zone: string;
   /** three.js geometry class the part was made from (RoundedBoxGeometry, CylinderGeometry, TubeGeometry, ...). */
   kind: string;
+  role?: PartRole;
   animType: number;
   pivot: [number, number, number];
   emissive: number;
@@ -136,7 +148,7 @@ export class KitbashBuilder {
     const animType = options.animType ?? 0;
     this.meta.push({
       index: this.parts.length, name: options.name ?? `${geometry.type.replace('Geometry', '')}#${this.parts.length}`, zone: zoneId,
-      kind: geometry.type, animType, pivot: [pivot[0], pivot[1], pivot[2]], emissive: glow, color: zone.color, roughness: zone.roughness, metalness: zone.metalness, vertexCount: count,
+      kind: geometry.type, ...(options.role ? { role: options.role } : {}), animType, pivot: [pivot[0], pivot[1], pivot[2]], emissive: glow, color: zone.color, roughness: zone.roughness, metalness: zone.metalness, vertexCount: count,
     });
 
     for (let i = 0; i < count; i++) {
@@ -244,8 +256,6 @@ KitbashRegistry.registerGreeble(
     const v2 = new THREE.Vector3(...p2);
     const mid = v1.clone().add(v2).multiplyScalar(0.5);
     mid.y -= slack;
-    const curve = new THREE.CatmullRomCurve3([v1, mid, v2]);
-    const tube = new THREE.TubeGeometry(curve, 12, radius, 6, false);
-    builder.addPart(tube, 'frameGunmetal');
+    tubeThrough(builder, [v1, mid, v2], radius, 'frameGunmetal', { along: 12, radial: 6 });
   }
 );

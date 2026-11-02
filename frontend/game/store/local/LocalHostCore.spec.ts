@@ -1,9 +1,10 @@
 import { ServerMessage, type ServerMessageOf } from '@terra/contracts';
-import { snapshot, type BalanceOverrides } from '@terra/sim';
-import { describe, expect, it } from 'vitest';
+import { getColonyStock, snapshot, StepError, type BalanceOverrides, type SimHost } from '@terra/sim';
+import { describe, expect, it, vi } from 'vitest';
+import type { LedgerReply } from '../../net/devServer';
 import { ReplicaCore } from '../replica/ReplicaCore';
 import { LocalHostController } from './LocalHostController';
-import { LocalDevError, LocalHostCore, type LocalHostDeps } from './LocalHostCore';
+import { LocalDevError, LocalHostCore, MAX_STEP_RESTORES, type LocalHostDeps } from './LocalHostCore';
 import type { FromLocalHost, LocalHostOptions } from './protocol';
 import { memorySnapshotStore } from './snapshotStore';
 
@@ -144,6 +145,179 @@ describe('LocalHostCore dev server', () => {
     const w = r.servers().filter((m): m is ServerMessageOf<'welcome'> => m.t === 'welcome').pop()!;
     expect(w.d.overrides).toEqual({ dev: { probe: { nudgeTiles: 3 } } });
     again.stop();
+  });
+});
+
+describe('LocalHostCore reject details and failing steps (GP-31, BE-12)', () => {
+  const settle = async () => { for (let i = 0; i < 6; i++) await Promise.resolve(); };
+  /** The next `step` of `host` really runs (its outcomes go to the listeners), then throws like a system bug would. */
+  const throwOnNextStep = (host: SimHost) => {
+    const real = host.step.bind(host);
+    vi.spyOn(host, 'step').mockImplementationOnce((dt: number) => {
+      const res = real(dt);
+      throw new StepError(new Error('boom'), res.stats.tick, res.outcomes, [], []);
+    });
+  };
+
+  it("a handler's { code, detail } reaches the client's cmd.reject", async () => {
+    const r = rig(memorySnapshotStore(), { scenario: 'w01' });
+    const core = await r.create();
+    core.handle(join);
+    core.handle(cmd('cm_land', 'dev.land'));
+    r.advance(400);
+    core.handle(cmd('cm_hub', 'placeBuilding', { building: 'commandHub', q: 500, r: 0 }));
+    r.advance(200);
+    const rej = r.servers().find((m): m is ServerMessageOf<'cmd.reject'> => m.t === 'cmd.reject' && m.d.id === 'cm_hub');
+    expect(rej?.d.code).toBe('site_blocked');
+    expect(rej?.d.detail).toMatch(/\S/);
+    expect(ServerMessage.safeParse(rej).success).toBe(true);
+    core.stop();
+  });
+
+  it('a step that throws rejects its commands internal (no ack), restores the last snapshot and re-welcomes', async () => {
+    const r = rig();
+    const core = await r.create();
+    core.handle(join);
+    r.advance(1);
+    await core.save();
+    const savedTick = core.tick;
+    const broken = core.simHost;
+    r.advance(400);
+    throwOnNextStep(broken);
+    core.handle(cmd('cm_x', 'dev.ping'));
+    r.advance(200);
+    core.handle(cmd('cm_y', 'dev.ping')); // while the planet is down
+    await settle();
+    const msgs = r.servers();
+    const answers = msgs.flatMap((m) => (m.t === 'cmd.ack' ? [[m.d.id, 'ack']] : m.t === 'cmd.reject' ? [[m.d.id, m.d.code]] : []));
+    expect(answers).toEqual([['cm_x', 'internal'], ['cm_y', 'host_unavailable']]);
+    expect(r.out.flatMap((m) => (m.t === 'error' ? [m.message] : []))).toEqual(['step failed: step to tick ' + (savedTick + 3) + ' failed: boom; restoring the last snapshot']);
+    expect(core.simHost).not.toBe(broken);
+    expect(core.tick).toBe(savedTick);
+    expect(msgs.filter((m): m is ServerMessageOf<'welcome'> => m.t === 'welcome').map((m) => m.d.reason)).toEqual(['join', 'resync']);
+    r.advance(1000);
+    expect(core.tick).toBe(savedTick + 6); // stepping again: a slot due at once, then 5 per second
+    core.stop();
+  });
+
+  it(`after ${MAX_STEP_RESTORES} restores a failing planet stays down; saves never persist it`, async () => {
+    const store = memorySnapshotStore();
+    const r = rig(store);
+    const core = await r.create();
+    core.handle(join);
+    r.advance(1);
+    await core.save();
+    const saved = store.map.get('terra-local:w00')!.tick;
+    for (let i = 0; i <= MAX_STEP_RESTORES; i++) {
+      throwOnNextStep(core.simHost);
+      r.advance(200);
+      await settle();
+    }
+    const down = core.tick;
+    expect(r.out.flatMap((m) => (m.t === 'error' ? [m.message] : [])).at(-1)).toMatch(new RegExp(`planet down \\(restored ${MAX_STEP_RESTORES}×\\)$`));
+    r.advance(1000);
+    expect(core.tick).toBe(down);
+    expect(down).toBeGreaterThan(saved); // the broken planet ran past the snapshot before it failed for good
+    await core.stop();
+    expect(store.map.get('terra-local:w00')?.tick).toBe(saved);
+  });
+});
+
+describe('host-side resource ledger', () => {
+  const nonZero = (stock: Record<string, number>) => Object.fromEntries(Object.entries(stock).filter(([, v]) => v !== 0));
+
+  /** A `w01` planet with landing cargo and a 50-metal grant, saved and stopped; `r.store` holds its snapshot. */
+  async function grantedPlanet() {
+    const r = rig(memorySnapshotStore(), { scenario: 'w01' });
+    const core = await r.create();
+    core.handle(join);
+    core.handle(cmd('cm_land', 'dev.land'));
+    r.advance(400);
+    core.handle(cmd('cm_grant', 'dev.grant', { resource: 'metals.t1', amount: 50 }));
+    r.advance(400);
+    const before = (await core.devCommand('ledger', { account: 'colony:0', limit: 100 })) as LedgerReply;
+    core.stop();
+    await Promise.resolve();
+    return { r, before };
+  }
+  const ledgerOf = async (core: LocalHostCore) => (await core.devCommand('ledger', { account: 'colony:0', limit: 100 })) as LedgerReply;
+  const errors = (out: FromLocalHost[]) => out.flatMap((m) => (m.t === 'error' ? [m.message] : []));
+
+  it('journals every posting in the worker, answers `ledger` like the server route', async () => {
+    const store = memorySnapshotStore();
+    const r = rig(store, { scenario: 'w01' });
+    const core = await r.create();
+    core.handle(join);
+    core.handle(cmd('cm_land', 'dev.land'));
+    r.advance(400);
+    core.handle(cmd('cm_grant', 'dev.grant', { resource: 'metals.t1', amount: 50 }));
+    r.advance(400);
+    const stock = nonZero(getColonyStock(core.simHost.state, 0));
+    const live = (await core.devCommand('ledger', { account: 'colony:0', limit: 100 })) as LedgerReply;
+    expect(live).toMatchObject({ planetId: core.planetId, account: 'colony:0' });
+    expect(live.balances).toEqual(stock);
+    expect(stock['metals.t1']).toBeGreaterThanOrEqual(50);
+    // a fresh scenario replays its setup postings: the journal starts with the real landing cargo, not an opening
+    expect(live.entries[0]).toMatchObject({ seq: 1, reason: 'landing.cargo', actor: 'system:landing' });
+    expect(live.entries.at(-1)).toMatchObject({ reason: 'dev.grant', actor: 'dev:console' });
+    expect((await core.devCommand('ledger', { account: 'colony:0', limit: 1 }) as LedgerReply).entries).toHaveLength(1);
+    core.stop();
+    await Promise.resolve();
+    // the journal is saved with the snapshot, captured at the same tick
+    const saved = store.map.get('terra-local:w01')!;
+    expect(saved.journal?.seq).toBe(live.entries.at(-1)!.seq);
+  });
+
+  it('a resumed snapshot continues its saved journal: history survives the reload and seq goes on', async () => {
+    const { r, before } = await grantedPlanet();
+    const resumed = await r.create();
+    const after = await ledgerOf(resumed);
+    expect(after.entries).toEqual(before.entries);
+    expect(after.entries[0]).toMatchObject({ reason: 'landing.cargo', actor: 'system:landing' });
+    expect(after.balances).toEqual(nonZero(getColonyStock(resumed.simHost.state, 0)));
+    resumed.handle(join);
+    resumed.handle(cmd('cm_more', 'dev.grant', { resource: 'metals.t1', amount: 5 }));
+    r.advance(400);
+    expect((await ledgerOf(resumed)).entries.at(-1)).toMatchObject({ seq: before.entries.at(-1)!.seq + 1, reason: 'dev.grant' });
+    expect(errors(r.out)).toEqual([]);
+    resumed.stop();
+  });
+
+  it('a snapshot without a journal opens its balances by system:resume, quietly', async () => {
+    const { r } = await grantedPlanet();
+    const { journal: _dropped, ...older } = r.store.map.get('terra-local:w01')!;
+    r.store.map.set('terra-local:w01', older);
+    const resumed = await r.create();
+    const opened = await ledgerOf(resumed);
+    expect(opened.balances).toEqual(nonZero(getColonyStock(resumed.simHost.state, 0)));
+    expect(opened.entries).toEqual([expect.objectContaining({ seq: 1, reason: 'ledger.opening', actor: 'system:resume' })]);
+    expect(errors(r.out)).toEqual([]);
+    resumed.stop();
+  });
+
+  it('a saved journal that does not reconcile (or is malformed) falls back to opening and reports why', async () => {
+    const { r } = await grantedPlanet();
+    const snap = r.store.map.get('terra-local:w01')!;
+    // one metal moved from sys:dev to colony:0 in balances and opening alike: internally consistent, but not col.stock
+    const tampered = structuredClone(snap.journal!);
+    const shift = (sheet: Record<string, Record<string, number>>, account: string, d: number) => {
+      sheet[account] = { ...sheet[account], 'metals.t1': (sheet[account]?.['metals.t1'] ?? 0) + d };
+    };
+    for (const sheet of [tampered.balances, tampered.opening]) { shift(sheet, 'colony:0', 1); shift(sheet, 'sys:dev', -1); }
+    r.store.map.set('terra-local:w01', { ...snap, journal: tampered });
+    const resumed = await r.create();
+    const opened = await ledgerOf(resumed);
+    expect(opened.entries).toEqual([expect.objectContaining({ reason: 'ledger.opening', actor: 'system:resume' })]);
+    expect(opened.balances).toEqual(nonZero(getColonyStock(resumed.simHost.state, 0)));
+    expect(errors(r.out)).toEqual([expect.stringMatching(/saved ledger journal does not match.*colony:0 metals\.t1: journal \d+, stock \d+/)]);
+    resumed.stop();
+    // a structurally broken journal is refused the same way (the planet itself still resumes)
+    r.store.map.set('terra-local:w01', { ...snap, journal: { ...snap.journal!, journal: [{ seq: 99 }] } as never });
+    const broken = await r.create();
+    expect(broken.planetId).toBe(resumed.planetId);
+    expect((await ledgerOf(broken)).entries[0]).toMatchObject({ reason: 'ledger.opening', actor: 'system:resume' });
+    expect(errors(r.out)).toHaveLength(2);
+    broken.stop();
   });
 });
 

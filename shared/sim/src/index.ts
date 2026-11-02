@@ -13,11 +13,54 @@ export * from './ecs/columns';
 export * from './ecs/store';
 export * from './grid/hex';
 export * from './grid/layers';
+export * from './grid/tileModel';
+export * from './grid/path';
+export * from './grid/geo';
 export * from './gen/generators';
 export { createPlanet } from './gen/createPlanet';
-export { DEV_PLANET_RADIUS } from './gen/flat';
+export { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, DEV_PLANET_TYPES, devPlanetIdFor, devPlanetTypeOf, isDevPlanetType, type DevPlanetType } from './gen/flat';
+export { getDepositRichnessBp } from './gen/temperate';
+export { GEN_VERSION, generateWorld, generateWorld as generateTemperate, registerWorldStage, worldProfile, type WorldGenContext, type WorldStage } from './gen/world';
+export * from './grid/sectors';
+export * from './grid/subsurface';
+export * from './world/presence';
+export * from './world/landingPlanner';
+export * from './gen/spawnSlots';
+export * from './gen/spawnGuarantee';
 export * from './codec';
 export * from './systems/define';
 export * from './systems/registry';
+export {
+  defaultW01Data,
+  getHqRechargeRateEPerS,
+  getHqView,
+  hq,
+  hqJobFromState,
+  resolveHqRow,
+  resolveHqT1Row,
+  revealVision,
+  setHqCellEnergy,
+  spawnHqUnit,
+  stepHq,
+  stepTerraformWorkWithCell,
+  syncHqView,
+  type HqJob,
+  type HqUnitView,
+  type SpawnHqOpts,
+  type StepTerraformWorkOpts,
+  type StepTerraformWorkResult,
+} from './systems/hq';
+export { issueUnitCommand, moveUnit, stopUnit, UNIT_REGISTRY, units } from './systems/units';
+export * from './units/types';
+export { getUnitCommand, getUnitRecord, type UnitRecord } from './units/book';
+export { isUnitKind, mobileStats, type MobileStats } from './units/mobility';
+export { getMotion, type MoveGoal, type MotionStatus, type UnitMotion } from './units/movement/orchestrator';
+export type { IssueOpts } from './units/runner';
+export * from './economy';
+export * from './systems/landing';
+export * from './systems/terraform-basic';
+export * from './systems/construction';
+export * from './systems/territory-claim';
+export * from './systems/time';
 export * from './data';
 export * from './host';

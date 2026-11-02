@@ -38,8 +38,11 @@
   .art-landing { background: radial-gradient(900px 300px at 80% 50%, rgba(30,91,255,.22), transparent 60%), var(--ta-black-hole); }
   .art-landing::before { content: ""; position: absolute; right: 36px; top: 22px; width: 104px; height: 104px; border-radius: 50%; background: radial-gradient(circle at 35% 35%, #F0CF8C 0 12%, #C98A4B 34%, #3DDC84 35% 46%, #2D6B57 62%, #0E2A3A 100%); box-shadow: 0 0 0 6px rgba(91,140,255,.18), 0 0 40px rgba(91,140,255,.35); }
   .art-landing::after { content: "DROP ONE ROBOT."; position: absolute; left: 28px; bottom: 22px; font-family: var(--ta-font-display); font-weight: 700; font-size: 26px; color: var(--ta-hull); }
+  .art-orbit { background: radial-gradient(600px 240px at 50% 60%, rgba(255,106,19,.18), transparent 65%), var(--ta-black-hole); }
+  .art-orbit::before { content: ""; position: absolute; left: 50%; top: 50%; width: 92px; height: 92px; transform: translate(-50%, -50%); border-radius: 50%; background: radial-gradient(circle at 30% 30%, #f5c37a 0 18%, #d96b27 48%, #5e2208 82%, #120703 100%); box-shadow: 0 0 0 8px rgba(255,106,19,.16), 0 0 36px rgba(255,106,19,.35); }
+  .art-orbit::after { content: "ORBIT · ATMOSPHERIC DROP"; position: absolute; left: 20px; bottom: 16px; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.14em; color: var(--ta-orange-hi); }
   .art-play { background: repeating-linear-gradient(-45deg, var(--ta-orange) 0 18px, var(--ta-void) 18px 36px); }
-  .art-play::after { content: "DEPLOY"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 14px 30px 14px 38px; font-family: var(--ta-font-display); font-weight: 700; font-size: 22px; letter-spacing: 0.3em; background: var(--ta-void); color: var(--ta-orange); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
+  .art-play::after { content: "PLAY"; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); padding: 14px 30px 14px 38px; font-family: var(--ta-font-display); font-weight: 700; font-size: 22px; letter-spacing: 0.3em; background: var(--ta-void); color: var(--ta-orange); clip-path: polygon(10px 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%, 0 10px); }
   .art-pg { background:
       linear-gradient(rgba(91,140,255,.22) 1px, transparent 1px) 0 0 / 24px 24px,
       linear-gradient(90deg, rgba(91,140,255,.22) 1px, transparent 1px) 0 0 / 24px 24px,
@@ -81,20 +84,37 @@
       </div>
     </article>
 
-    <article class="door plate card-hover is-key">
-      <a class="cover" href="/play.html" aria-label="Play the game"></a>
-      <div class="door-art art-play" aria-hidden="true"></div>
+    <article class="door plate card-hover">
+      <a class="cover" href="/play.html?planet=dune" aria-label="Select a planet in orbit"></a>
+      <div class="door-art art-orbit" aria-hidden="true"></div>
       <div class="door-body">
-        <div class="door-top"><span class="label c-orange">GAME</span><span class="door-num">02</span></div>
-        <h2 class="h3">Play</h2>
-        <p>Orbit menu, drop-pod descent and the colony diorama. Jump straight to a world:</p>
+        <div class="door-top"><span class="label c-orange">ORBITAL DROP</span><span class="door-num">02</span></div>
+        <h2 class="h3">Planet Selection</h2>
+        <p>Select a world in 3D orbit, launch the drop pod through the atmosphere and land in active play:</p>
         <div class="quick">
           <a href="/play.html?planet=dune">KHARON DUNES</a>
           <a href="/play.html?planet=oceanForest">THALASSA VERDE</a>
           <a href="/play.html?planet=forestRock">GRANITE HOLLOW</a>
         </div>
+        <span class="path">/play.html?planet=dune</span>
+        <a class="btn btn-ghost btn-sm go" href="/play.html?planet=dune">SELECT PLANET <span aria-hidden="true">→</span></a>
+      </div>
+    </article>
+
+    <article class="door plate card-hover is-key">
+      <a class="cover" href="/play.html" aria-label="Play the game"></a>
+      <div class="door-art art-play" aria-hidden="true"></div>
+      <div class="door-body">
+        <div class="door-top"><span class="label c-orange">GAME</span><span class="door-num">03</span></div>
+        <h2 class="h3">Play</h2>
+        <p>Skip the orbital drop animation and start straight in your active colony on the planet:</p>
+        <div class="quick">
+          <a href="/play.html?scenario=w01">SCENARIO W01</a>
+          <a href="/play.html?host=local&amp;scenario=w01">LOCAL HOST</a>
+          <a href="/play.html?scenario=w00">SCENARIO W00</a>
+        </div>
         <span class="path">/play.html</span>
-        <a class="btn btn-primary btn-sm go" href="/play.html">PLAY <span aria-hidden="true">→</span></a>
+        <a class="btn btn-primary btn-sm go" href="/play.html">PLAY NOW <span aria-hidden="true">→</span></a>
       </div>
     </article>
 
@@ -102,7 +122,7 @@
       <a class="cover" href="/playground.html" aria-label="Open the 3D playground"></a>
       <div class="door-art art-pg" aria-hidden="true"><i></i></div>
       <div class="door-body">
-        <div class="door-top"><span class="label c-blue">3D STORYBOOK</span><span class="door-num">03</span></div>
+        <div class="door-top"><span class="label c-blue">3D STORYBOOK</span><span class="door-num">04</span></div>
         <h2 class="h3">Playground</h2>
         <p>Every kitbash archetype on a calibrated pedestal: 4 diagnostic views, biomes, triangle budget, ground contact.</p>
         <div class="quick">

@@ -145,7 +145,7 @@ Market trades, fee legs, the treasury leg and bounty escrow are transfers, not s
 
 ## 7. Wave map
 
-**W10 card.** Deps: W02 (resources, storage caps, construction), W06 (accounts, relayer, `storage_deposit`), W00 outbox + contract harness · `@hack` demo steps 1–9 (no shuttle launch/land VFX; W10-30 tags them) · DoD: `e2e/w10.spec.ts` and every earlier e2e pass; `TA_WAVES=..09` hides hub, panel and commands (`wave_disabled`); cargo contract suite passes on the mock; a restart during an export never double-mints; tag `wave-10`.
+**W10 card.** Deps: W02 (resources, storage caps, construction), W06 (accounts, relayer, `storage_deposit`), W00 outbox + contract harness · `@hack` demo steps 1–9 (no shuttle launch/land VFX; W10-30 tags them) · DoD: `tests/e2e/w10.spec.ts` and every earlier e2e pass; `TA_WAVES=..09` hides hub, panel and commands (`wave_disabled`); cargo contract suite passes on the mock; a restart during an export never double-mints; tag `wave-10`.
 **W23 F1 card.** Deps: W23-16 relayer suite green on the real chain (F5 gate), W23-04 accounts and keys · demo step 2 (export 1 metal → real NEP-245 mint, nearblocks link) · gate: the port goes real only after W23-20 is green; W23-20 is the F1 gate before any F2 swap; tag `wave-23-cargo`.
 
 | Issue | H | Rule(s) | Note |

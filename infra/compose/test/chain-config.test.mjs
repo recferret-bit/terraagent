@@ -1,4 +1,4 @@
-// Chain stack: mount devchain.conf and publish nothing (D-37, D-24, DEP-01).
+// Chain stack: mount devchain.conf and publish nothing (D-40, D-24, DEP-01).
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';

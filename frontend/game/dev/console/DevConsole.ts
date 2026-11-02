@@ -1,4 +1,5 @@
 import type { Feature, FeatureContext } from '../../core/registry/types';
+import { isTypingTarget } from '../../features/shared/hotkeys';
 import { CommandRunner } from './runner';
 import './console.css';
 
@@ -75,9 +76,7 @@ export class DevConsole {
 
   private readonly onWindowKey = (e: KeyboardEvent) => {
     if ((e.key !== '`' && e.code !== 'Backquote') || e.ctrlKey || e.metaKey || e.altKey) return;
-    const t = e.target as HTMLElement | null;
-    const typing = t && t !== this.input && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable);
-    if (typing) return;
+    if (e.target !== this.input && isTypingTarget(e)) return; // typed into another field: not the console key
     e.preventDefault();
     e.stopPropagation();
     this.setOpen(!this.open);

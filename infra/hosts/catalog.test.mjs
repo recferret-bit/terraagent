@@ -1,4 +1,4 @@
-// Load the catalog and see the eight D-37 hosts, each on its compose stack.
+// Load the catalog and see the eight D-40 hosts, each on its compose stack.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { catalogOrigins, loadCatalog, loadEnvExample, validateDeployEnv } from './load-catalog.mjs';
@@ -14,7 +14,7 @@ const EXPECTED = [
   ['api.terraagent.fun', 'backend'],
 ];
 
-test('eight hosts, tagged as in D-37', () => {
+test('eight hosts, tagged as in D-40', () => {
   const catalog = loadCatalog();
   assert.deepEqual(catalog.stacks, ['infra', 'frontend', 'backend', 'chain']);
   assert.equal(catalog.wave, 'W26');

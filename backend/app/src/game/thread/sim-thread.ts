@@ -16,11 +16,8 @@ const ring: PassStat[] = [];
 const scheduler = new PlanetScheduler({
   now: () => performance.now(),
   schedule: (fn, delayMs) => { const t = setTimeout(fn, delayMs); return () => clearTimeout(t); },
-  step: (planetId, dt) => {
-    try { host.stepPlanet(planetId, dt); } catch (e) {
-      post({ t: 'error', thread: init.thread, planetId, message: e instanceof Error ? e.message : String(e) });
-    }
-  },
+  // A throwing step drops the planet from the host (BE-12, `planetFailed`); stop scheduling it too.
+  step: (planetId, dt) => { if (!host.stepPlanet(planetId, dt)) scheduler.remove(planetId); },
 });
 scheduler.onPass = (r) => {
   host.flushDeltas();
@@ -55,7 +52,7 @@ port.on('message', (msg: ToThread) => {
   }
   host.handle(msg);
   if (msg.t === 'load' && host.planets.has(msg.planetId)) scheduler.add(msg.planetId);
-  else if (msg.t === 'unload') scheduler.remove(msg.planetId);
+  else if ('planetId' in msg && msg.planetId && !host.planets.has(msg.planetId)) scheduler.remove(msg.planetId); // unloaded or failed
 });
 
 post({ t: 'ready', thread: init.thread });

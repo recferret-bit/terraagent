@@ -40,7 +40,7 @@ flowchart LR
   VW & DF --> VIEW["src/view (fog-of-war, delta ops)"]
 ```
 
-Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events}/`, tests in `shared/sim/test/**`, scripts `shared/sim/scripts/{determinism,bench}.ts`, scenarios `shared/sim/scenarios/*.ts`.
+Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events}/`, tests in `shared/sim/test/**`, scripts `shared/sim/scripts/{determinism,bench}.ts`, scenarios `tests/scenarios/*.ts`.
 
 ## Task index
 
@@ -78,8 +78,8 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
   - `shared/sim/src/systems/commands.ts` (dispatcher + rejection codes; per-kind handlers stubbed)
   - `shared/sim/src/codec/canonical.ts`, `shared/sim/src/kernel/hash.ts` (xxHash64 via `xxhash-wasm`)
   - `shared/sim/src/impl.ts` (replaces stub behind `api.ts`)
-  - `shared/sim/eslint.config.mjs` (extends `@terra/eslint-config/sim`), `shared/sim/eslint-rules/no-float-literal.js`
-  - `shared/sim/scripts/determinism.ts`, `shared/sim/scenarios/idle.ts`
+  - `shared/config/eslint.config.js` (extends `shared/sim/eslint.rules.js`), `shared/sim/eslint.rules.js`
+  - `shared/sim/scripts/determinism.ts`, `tests/scenarios/idle.ts`
   - `shared/sim/test/{determinism.spec.ts,math/fixed.spec.ts,kernel/rng-streams.spec.ts,kernel/integer-state.spec.ts,lint/banned-apis.fixture.ts}`
 - **Verify:** `npm run test -w @terra/sim && npm run sim:determinism -w @terra/sim -- --ticks 10000 --runs 3`
 
@@ -124,7 +124,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
   - `shared/sim/src/gen/{noise.ts,planet.ts,deposits.ts,spawn-slots.ts}`
   - `shared/sim/src/data/planet-types.ts`
   - `shared/sim/test/{grid/hex.spec.ts,gen/planet-golden.spec.ts,gen/spawn-fairness.spec.ts}`
-  - `shared/sim/scenarios/founder.ts` (empty colony at slot 0, used from W2)
+  - `tests/scenarios/founder.ts` (empty colony at slot 0, used from W2)
 - **Verify:** `npm run test -w @terra/sim && npm run sim:determinism -w @terra/sim -- --ticks 10000 --runs 3`
 
 #### Analytics
@@ -281,7 +281,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
   - `shared/sim/src/pathfinding/{astar.ts,flow-field.ts,budget.ts}`
   - `shared/sim/src/tasks/{queue.ts,types.ts}`
   - `shared/sim/test/{systems/robots.spec.ts,systems/pathfinding-budget.spec.ts,systems/factories.spec.ts}`
-  - `shared/sim/scenarios/founder.ts` (extend: founder builds a Factory and 3 robots)
+  - `tests/scenarios/founder.ts` (extend: founder builds a Factory and 3 robots)
 - **Verify:** `npm run test -w @terra/sim && npm run sim:determinism -w @terra/sim -- --ticks 36000 --scenario founder`
 
 #### Analytics
@@ -321,7 +321,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
   - `shared/sim/src/systems/{power.ts,environment.ts}`
   - `shared/sim/src/power/{graph.ts,components.ts,shedding.ts,capacitors.ts}`
   - `shared/sim/test/systems/power.spec.ts`, `shared/sim/test/systems/environment.spec.ts`
-  - `shared/sim/scenarios/night-cycle.ts`
+  - `tests/scenarios/night-cycle.ts`
 - **Verify:** `npm run test -w @terra/sim && npm run sim:determinism -w @terra/sim -- --ticks 72000 --scenario night-cycle`
 
 #### Analytics
@@ -360,7 +360,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
   - `shared/sim/src/ai/{needs.ts,scoring.ts,site-selection.ts,planner.ts,directive.ts}`
   - `shared/sim/src/systems/commands/{set-priorities.ts,apply-directive.ts,set-autopilot.ts}`
   - `shared/sim/test/systems/rule-engine.spec.ts`
-  - `shared/sim/scenarios/unattended-24h-compressed.ts`
+  - `tests/scenarios/unattended-24h-compressed.ts`
 - **Verify:** `npm run test -w @terra/sim && npm run sim:determinism -w @terra/sim -- --ticks 72000 --scenario unattended-24h-compressed`
 
 #### Analytics
@@ -400,7 +400,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
   - `shared/sim/src/systems/{hazards.ts,fauna.ts,combat.ts}`
   - `shared/sim/src/gen/nests.ts`
   - `shared/sim/test/systems/{hazards.spec.ts,fauna.spec.ts,combat.spec.ts}`
-  - `shared/sim/scenarios/hostile.ts`
+  - `tests/scenarios/hostile.ts`
 - **Verify:** `npm run test -w @terra/sim && npm run sim:determinism -w @terra/sim -- --ticks 72000 --scenario hostile`
 
 #### Analytics
@@ -438,7 +438,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
   - `shared/sim/src/systems/raids.ts`
   - `shared/sim/src/systems/commands/enqueue-task-raid.ts`
   - `shared/sim/test/systems/raids.spec.ts`
-  - `shared/sim/scenarios/two-colony-raid.ts`
+  - `tests/scenarios/two-colony-raid.ts`
 - **Verify:** `npm run test -w @terra/sim && npm run sim:determinism -w @terra/sim -- --ticks 72000 --scenario two-colony-raid`
 
 #### Analytics
@@ -474,7 +474,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
   - `shared/sim/src/systems/commands/enqueue-task-launch.ts`
   - `shared/sim/src/systems/lifecycle.ts` (departed status + ruins)
   - `shared/sim/test/systems/progression.spec.ts`
-  - `shared/sim/scenarios/rocket-rush.ts`
+  - `tests/scenarios/rocket-rush.ts`
 - **Verify:** `npm run test -w @terra/sim && npm run sim:determinism -w @terra/sim -- --ticks 72000 --scenario rocket-rush`
 
 #### Analytics
@@ -508,7 +508,7 @@ Layout: `shared/sim/src/{kernel,ecs,math,grid,gen,data,systems,codec,view,events
 - **Target Files:**
   - `shared/sim/src/systems/power/{routing.ts,overload.ts}`
   - `shared/sim/test/systems/power-load.spec.ts`
-  - `shared/sim/scenarios/grid-overload.ts`
+  - `tests/scenarios/grid-overload.ts`
 - **Verify:** `npm run test -w @terra/sim -- power-load && npm run sim:determinism -w @terra/sim -- --ticks 36000 --scenario grid-overload && npm run sim:bench -w @terra/sim`
 
 #### Analytics

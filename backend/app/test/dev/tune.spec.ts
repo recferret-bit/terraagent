@@ -16,7 +16,7 @@ const file = (text: string) => {
   return f;
 };
 async function boot(source: Record<string, string>) {
-  const { app } = await createApp({ source: { NODE_ENV: 'test', SIM_THREADS: '1', GAME_DEV_PLANETS: '1', ...source } });
+  const { app } = await createApp({ source: { NODE_ENV: 'test', SIM_THREADS: '1', GAME_DEV_PLANETS: '1', TA_WAVES: '..00', ...source } });
   await app.listen(0, '127.0.0.1');
   apps.push(app);
   return (await app.getUrl()).replace('[::1]', '127.0.0.1');

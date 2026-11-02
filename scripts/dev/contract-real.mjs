@@ -14,7 +14,7 @@ if (network !== 'testnet' && network !== 'mainnet') fail(`--network must be test
 
 const key = `NEAR_ADAPTER_${port.replace(/([a-z\d])([A-Z])/g, '$1_$2').toUpperCase()}`;
 const root = fileURLToPath(new URL('../../', import.meta.url));
-const run = spawnSync(`${root}node_modules/.bin/vitest`, ['run', '--config', 'vitest.contract.config.ts'], {
+const run = spawnSync(`${root}node_modules/.bin/vitest`, ['run', '--config', 'tests/vitest.contract.config.ts'], {
   cwd: root, stdio: 'inherit', env: { ...process.env, [key]: network, CONTRACT_PORT: port },
 });
 process.exit(run.status ?? 1);

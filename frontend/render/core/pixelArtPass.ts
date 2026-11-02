@@ -134,7 +134,7 @@ function readInitialParams(): PixelArtParams {
   try {
     const raw = localStorage.getItem(PARAMS_KEY);
     if (!raw) return { ...DEFAULT_PIXEL_PARAMS };
-    return { ...DEFAULT_PIXEL_PARAMS, ...JSON.parse(raw) };
+    return { ...DEFAULT_PIXEL_PARAMS, ...JSON.parse(raw), paletteMode: 0 };
   } catch { return { ...DEFAULT_PIXEL_PARAMS }; }
 }
 

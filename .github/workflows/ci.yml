@@ -131,5 +131,5 @@ jobs:
         if: always()
         with:
           name: e2e-${{ matrix.upto }}
-          path: e2e/.out/
+          path: tests/e2e/.out/
           if-no-files-found: ignore

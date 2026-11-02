@@ -2,6 +2,7 @@ import type { SimCommandV1, SimEventWire } from '@terra/contracts';
 import { TICK_MS, type SimHost, type SimView } from '@terra/sim';
 import { PREDICT_P95_LIMIT_MS, StepTimes } from './stepTimes';
 import type { DeltaInput, DeltaResult, ReplicaCore, WelcomeInput, WelcomeResult } from '../replica/ReplicaCore';
+import type { TunedData } from '../replica/tuneEvent';
 
 /** A command the player sent that the confirmed state does not include yet. */
 export interface PendingCommand {
@@ -9,6 +10,8 @@ export interface PendingCommand {
   kind: string;
   args: unknown;
   sentAtMs: number;
+  /** When this predictor learned of the command, on its own clock (`sentAtMs` may come from another thread's clock). */
+  seenAtMs: number;
   /** Set by `cmd.ack`: the tick whose state includes the command. Until a delta reaches it, the command stays pending. */
   appliedAtTick?: number;
 }
@@ -39,7 +42,10 @@ export class Predictor {
   private cache: { version: number; target: number; host: SimHost } | null = null;
   private epochServerMs: number | null = null;
   private offsetMs = 0;
+  private colonyId: string | null = null;
   private lastRejected: { cmd: PendingCommand; code: string } | null = null;
+  /** Average ticks between a command leaving this client and the server applying it (≥ 1). */
+  private applyLagEma = 1;
   enabled: boolean;
   /** Rebuild times (clone + steps) of the predicted host. */
   readonly steps = new StepTimes();
@@ -63,8 +69,9 @@ export class Predictor {
   get confirmedTick(): number { return this.confirmed.tick; }
 
   /** Loads the welcome. Commands that are still pending stay (a re-join does not forget what the player did). */
-  welcome(w: WelcomeInput & { serverTimeMs?: number }): WelcomeResult {
+  welcome(w: WelcomeInput & { serverTimeMs?: number; colonyId?: string | null }): WelcomeResult {
     const r = this.confirmed.welcome(w);
+    if (w.colonyId !== undefined) this.colonyId = w.colonyId;
     if (w.serverTimeMs !== undefined) {
       this.epochServerMs = w.serverTimeMs - w.tick * TICK_MS;
       this.offsetMs = w.serverTimeMs - this.now();
@@ -73,6 +80,13 @@ export class Predictor {
     this.bump();
     if (r.ok) this.dropApplied();
     return r;
+  }
+
+  /** A live `tune` on the host: the confirmed replica switches data; the prediction is rebuilt with it. */
+  retune(t: TunedData): boolean {
+    const ok = this.confirmed.retune(t);
+    this.bump();
+    return ok;
   }
 
   /** Server time minus local time (ms), refreshed from pongs. */
@@ -88,7 +102,8 @@ export class Predictor {
   /** The player sent a command. The next `view()` shows its effect. */
   submit(cmd: { id: string; kind: string; args: unknown; sentAtMs?: number }): void {
     if (this.pend.some((p) => p.id === cmd.id)) return;
-    this.pend.push({ id: cmd.id, kind: cmd.kind, args: cmd.args, sentAtMs: cmd.sentAtMs ?? this.now() });
+    const seenAtMs = this.now();
+    this.pend.push({ id: cmd.id, kind: cmd.kind, args: cmd.args, sentAtMs: cmd.sentAtMs ?? seenAtMs, seenAtMs });
     this.bump();
   }
 
@@ -96,6 +111,8 @@ export class Predictor {
   onAck(id: string, appliedAtTick: number): void {
     const c = this.pend.find((p) => p.id === id);
     if (!c) return;
+    const guess = this.sentServerTick(c);
+    if (guess !== null && c.appliedAtTick === undefined) this.applyLagEma = this.applyLagEma * 0.7 + (appliedAtTick - guess) * 0.3;
     c.appliedAtTick = appliedAtTick;
     this.bump();
     this.dropApplied();
@@ -120,12 +137,34 @@ export class Predictor {
     return Math.floor((this.now() + this.offsetMs - this.epochServerMs) / TICK_MS);
   }
 
+  /**
+   * Where an un-acked command will most likely be applied: the server tick when it was sent, plus one. Predicting it at
+   * the confirmed tick instead would start the order up to a round trip early, and the ack would then pull the unit
+   * back (the visible back-and-forth after a click). The "+1" is learned from acks (`applyLagEma`): on a slow link
+   * the server applies commands two or more ticks after they were sent.
+   */
+  private expectedApplyTick(p: PendingCommand): number | null {
+    const sent = this.sentServerTick(p);
+    if (sent === null) return null;
+    return sent + Math.min(this.maxLead, Math.max(1, Math.round(this.applyLagEma)));
+  }
+
+  /** The server tick when this client saw the command leave (null before a timed welcome). */
+  private sentServerTick(p: PendingCommand): number | null {
+    if (this.epochServerMs === null) return null;
+    return Math.floor((p.seenAtMs + this.offsetMs - this.epochServerMs) / TICK_MS);
+  }
+
   /** The tick `predicted` runs to for the current pending list. */
   targetTick(): number {
     const t = this.confirmed.tick;
     const est = this.estimatedServerTick();
     let target = Math.min(Math.max(est ?? t + 1, t + 1), t + this.maxLead);
-    for (const p of this.pend) if (p.appliedAtTick !== undefined && p.appliedAtTick > target) target = p.appliedAtTick;
+    for (const p of this.pend) {
+      // run at least to the tick each pending command takes effect, so a click shows on the next frame
+      const due = p.appliedAtTick ?? Math.min(this.expectedApplyTick(p) ?? target, t + this.maxLead);
+      if (due > target) target = due;
+    }
     return target;
   }
 
@@ -150,10 +189,15 @@ export class Predictor {
     const host = this.confirmed.simHost.clone();
     const first = host.tick + 1;
     const byTick = new Map<number, SimCommandV1[]>();
+    const colonies = host.state.colonies ?? [];
+    const matchedCol = this.colonyId ? colonies.find((c) => c.id === this.colonyId) : colonies[0];
+    const col = matchedCol ?? colonies[0];
+    const colonyIndex = col && col.status !== 'eliminated' ? col.index : null;
     for (const p of this.pend) {
-      const due = Math.max(p.appliedAtTick ?? first, first);
+      const due = Math.max(p.appliedAtTick ?? this.expectedApplyTick(p) ?? first, first);
       const list = byTick.get(due) ?? [];
-      list.push({ colonyIndex: null, source: 'dev', commandId: p.id, kind: p.kind, args: p.args });
+      const isDev = p.kind.startsWith('dev.');
+      list.push({ colonyIndex, source: isDev ? 'dev' : 'player', commandId: p.id, kind: p.kind, args: p.args });
       byTick.set(due, list);
     }
     for (let tick = first; tick <= target; tick++) {

@@ -93,7 +93,7 @@ Layout: `backend/planet-worker/src/{main.ts,app.module.ts,config/,registry/,leas
 - **Depends On:** `TA-01.3`, `TA-01.6`, `TA-02.1`, `TA-03.2`
 - **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3 (ports, health), §6.2 (`{ns}_workers`), §15; [`DECISIONS.md`](../../spec/DECISIONS.md) D-14
 - **Target Files:**
-  - `backend/planet-worker/package.json`, `tsconfig.json`, `.env.example`, `nest-cli.json`
+  - `backend/planet-worker/package.json`, `backend/planet-worker/tsconfig.json`, `backend/planet-worker/.env.example`, `backend/planet-worker/nest-cli.json`
   - `backend/planet-worker/src/{main.ts,app.module.ts}`
   - `backend/planet-worker/src/config/worker.config.ts` (uses `@terra/config`)
   - `backend/planet-worker/src/nats/nats.module.ts`, `src/prisma/prisma.module.ts`

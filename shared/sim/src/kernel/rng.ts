@@ -2,6 +2,12 @@
  * PRNG (SIM-D-04): xoshiro128** with one 4-word state per named stream, seeded from the planet seed and the stream
  * name. Stream states are part of the snapshot and the delta, so a replica draws the same numbers.
  * `Math.random` is banned in the engine; every random draw goes through a stream.
+ *
+ * Every client receives every stream state (snapshot and diff, also `forClient`), so a modified client can know the
+ * next draw of any stream. W01 draws only world generation (`gen`). Rule for the first system whose draws must stay
+ * hidden (combat rolls, hazard spawns, AI choices): give it a server-only stream seeded with `meta.worldSalt` and
+ * stripped from client payloads like the hidden tile layers (D-38); the client then does not predict that system's
+ * outcome (WE-05).
  */
 export const RNG_STREAMS = ['gen', 'weather', 'hazard', 'fauna', 'ai', 'combat', 'misc'] as const;
 export type RngStream = (typeof RNG_STREAMS)[number];

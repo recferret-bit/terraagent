@@ -1,0 +1,67 @@
+import type { CompiledDataLike } from '../kernel/config';
+import type { PlanetState } from '../kernel/state';
+import { isGroundMoveBlocked, isTileUneven } from './geo';
+
+/**
+ * Footprints (tile index lists) ground units cannot walk through (buildings). Registered by the module that owns the
+ * entities (construction registers Hub footprints) at import time; the result must depend only on `state` and the
+ * step's compiled `data` (a tuned footprint size, GP-38). A unit that stands inside a footprint (e.g. the HQ when a Hub
+ * is placed on top of it) may walk out of that one.
+ */
+export type GroundOccupancy = (state: PlanetState, data?: CompiledDataLike) => Iterable<readonly number[]>;
+const occupancy: GroundOccupancy[] = [];
+
+export function defineGroundOccupancy(fn: GroundOccupancy): void {
+  if (!occupancy.includes(fn)) occupancy.push(fn);
+}
+
+/** Footprint tiles split into those of the footprints containing `fromIdx` (`own`) and all the others. */
+function occupiedTiles(state: PlanetState, fromIdx: number, data?: CompiledDataLike): { own: Set<number>; others: Set<number> } {
+  const own = new Set<number>();
+  const others = new Set<number>();
+  for (const fn of occupancy) {
+    for (const footprint of fn(state, data)) {
+      const into = footprint.includes(fromIdx) ? own : others;
+      for (const i of footprint) into.add(i);
+    }
+  }
+  return { own, others };
+}
+
+type Predicate = (tileIdx: number) => boolean;
+interface Blockers { blocked: Predicate; goalBlocked: Predicate }
+
+/**
+ * Named movement profiles for path requests. A request in the path queue is plain data (it lives in a blob), so it
+ * names its obstacle rule instead of carrying a function. `none` = terrain passability only (Deep, Ridge, Moat block).
+ */
+export type PathProfileId = 'none' | 'ground';
+
+const PROFILES: Record<PathProfileId, ((state: PlanetState, fromIdx: number, data?: CompiledDataLike) => Blockers) | null> = {
+  none: null,
+  /** Ground units: non-flat terrain (forest, rock, dunes/slope, holes, water), uneven tiles, deposits and footprints block. */
+  ground: (state, fromIdx, data) => {
+    const { terrain, deposit, height } = state.grid.layers;
+    const { own, others } = occupiedTiles(state, fromIdx, data);
+    const blocked: Predicate = (i) =>
+      (i !== fromIdx && (isGroundMoveBlocked(terrain[i], deposit[i]) || isTileUneven(state.grid.radius, i, terrain, height))) ||
+      others.has(i);
+    return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) };
+  },
+};
+
+/**
+ * The extra-obstacle predicate of `profile` on `state` (undefined for `none`) for a unit at tile `fromIdx` (the
+ * footprint it stands in, if any, does not block it). `data`: the step's compiled data (footprint sizes).
+ */
+export function pathBlockedFor(state: PlanetState, profile: PathProfileId | undefined, fromIdx = -1, data?: CompiledDataLike): Predicate | undefined {
+  return PROFILES[profile ?? 'none']?.(state, fromIdx, data).blocked;
+}
+
+/**
+ * Both predicates a path search needs, from one pass over the footprints: `blocked` (crossing; the footprint the unit
+ * stands in at `fromIdx` is exempt) and `goalBlocked` (ending; no footprint is exempt). Undefined for `none`.
+ */
+export function pathBlockersFor(state: PlanetState, profile: PathProfileId | undefined, fromIdx: number, data?: CompiledDataLike): Blockers | undefined {
+  return PROFILES[profile ?? 'none']?.(state, fromIdx, data);
+}

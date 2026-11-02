@@ -14,6 +14,12 @@ export interface FieldDef {
   readonly name: string;
   readonly dtype: DType;
   readonly wave: WaveId;
+  /**
+   * Server-only: kept in persisted snapshots, but zero-filled / omitted in everything sent to a client
+   * (`snapshot(s, { forClient: true })`, `diffSince(s, t, { forClient: true })`). Used for ground that is only
+   * discovered by terraforming (D-38), so a client cannot read it from its replica.
+   */
+  readonly hidden?: boolean;
 }
 
 export const allocate = (dtype: DType, length: number): TypedArray => new DTYPES[dtype](length);

@@ -63,6 +63,11 @@ export class SnapshotStore extends RepositoryBase {
     }
   }
 
+  /** True when the planet has any snapshot row (any kind, intact or not): it must never be generated fresh. */
+  async hasSnapshots(planetId: string): Promise<boolean> {
+    return (await this.prisma.planetSnapshot.findFirst({ where: { planetId }, select: { id: true } })) !== null;
+  }
+
   /** W00 rule: every planet whose newest snapshot is not `END`. */
   async livePlanetIds(): Promise<string[]> {
     const rows = await this.prisma.$queryRaw<{ planet_id: string }[]>`
@@ -78,5 +83,23 @@ export class SnapshotStore extends RepositoryBase {
     const ids = prunableIds(rows, now);
     if (ids.length === 0) return 0;
     return (await this.prisma.planetSnapshot.deleteMany({ where: { id: { in: ids } } })).count;
+  }
+
+  /**
+   * Wipes a dev planet whose ground came from an older world generator (D-38, owner 2026-11-01: "wipe and recreate"):
+   * its snapshots, its colonies and the planet row go, so the next boot / `/me/home` recreates it with the current
+   * dev planet type and generator. Only ever called for `pl_dev*` ids.
+   */
+  /**
+   * Deletes a planet and everything stored under its id in one transaction: snapshots, ledger rows, colony rows and the
+   * planet row. Boot wipes old dev planets with it; the dev `planet.wipe` command any held planet (LED-06).
+   */
+  async wipePlanet(planetId: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.planetSnapshot.deleteMany({ where: { planetId } }),
+      this.prisma.ledgerEntry.deleteMany({ where: { planetId } }), // the old planet's resource journal goes with it
+      this.prisma.colony.deleteMany({ where: { planetId } }),
+      this.prisma.planet.deleteMany({ where: { id: planetId } }),
+    ]);
   }
 }

@@ -1,9 +1,9 @@
 # W16 — AI Director
 
-> **Track:** Autonomy (P) · **Flag:** `W16` · **Tag:** `wave-16` · **Scenario:** `scenarios/w16-director.ts` · **E2E:** `e2e/w16.spec.ts`
+> **Track:** Autonomy (P) · **Flag:** `W16` · **Tag:** `wave-16` · **Scenario:** `tests/scenarios/w16-director.ts` · **E2E:** `tests/e2e/w16.spec.ts`
 > **Depends on waves:** W08 (goals, rule engine, priorities). Directive actions that target later waves are offered only when those waves are on: market orders (W13), Guild (W15), truces and raids (W18), Tech Up to T2 (W17). The away story serves W09. Optional: W09 (away policy W09-09, autopilot mode W09-01, digest hook W09-18), W15 (`GuildStrategyPort` slot W15-13).
 > **Specs:** [AI_ORCHESTRATOR](../../spec/AI_ORCHESTRATOR.md) §1–§15 (`AI-01..15`) · [SIMULATION](../../spec/SIMULATION.md) `SIM-R-04, 06` · [CONTINUITY](../../spec/CONTINUITY.md) `AW-06, 11, 22`, `CT-34` · units spec §7 rows 7, 16 · [NEAR](../../spec/NEAR.md) §1a (port pattern) · D-09, D-17, D-25, D-30
-> **Owned paths:** `backend/app/src/ai/**` (incl. `ai/triggers/`, which subscribes to W00-13's in-process event bus; no NATS or work queue, D-24), `prisma/ai.prisma`, `shared/contracts/src/ai/`, `shared/sim/src/systems/ai-brief/`, `shared/sim/src/systems/directive/`, `frontend/game/features/director/`
+> **Owned paths:** `backend/app/src/ai/**` (incl. `ai/triggers/`, which subscribes to W00-13's in-process event bus; no NATS or work queue, D-24), `shared/db/prisma/ai.prisma`, `shared/contracts/src/ai/`, `shared/sim/src/systems/ai-brief/`, `shared/sim/src/systems/directive/`, `frontend/game/features/director/`
 > **Builds on W00:** the `LlmProviderPort` abstract class (W00-30) and its adapter switch + production mock guard (W00-31); this wave adds the mock and Z.ai adapters.
 
 ## Goal
@@ -83,7 +83,7 @@ Add a strategic LLM director that makes the rare high-level calls, about 5–10 
 
 ## Wave DoD
 
-- `e2e/w16.spec.ts` passes (mock provider), together with all earlier suites.
+- `tests/e2e/w16.spec.ts` passes (mock provider), together with all earlier suites.
 - `?scenario=w16` loads an S4 colony.
 - `TA_WAVES=..15` disables every AI call and hides the panel; the colony runs on rules.
 - Tag `wave-16` is created.

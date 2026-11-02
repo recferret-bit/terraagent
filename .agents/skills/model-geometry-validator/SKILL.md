@@ -56,7 +56,7 @@ npm run validate:models -- --all --quiet            # the whole catalog, one lin
 npm run validate:models -- robot.builder --json     # machine-readable (for agents and CI)
 npm run validate:models -- robot.builder --pairs    # every touching/crossing pair with its numbers (calibration)
 npm run validate:models -- robot.builder --geometry-only   # skip the colour / material / detail checks
-npm run test:models                                 # self-test of the validator itself (35 known-good/bad fixtures, geometry and appearance)
+npm run test:models                                 # self-test of the validator itself (48 known-good/bad fixtures, geometry and appearance)
 ```
 Exit code is `1` when any model has an **error** (`--strict` also fails on warnings).
 
@@ -92,7 +92,8 @@ with a visibly wrong model means a check is missing: add a fixture and a check (
 | `NEAR_COPLANAR` | warn | Faces cross at a grazing angle within 3 mm of the same plane: the edge shimmers | Offset one part ≥ 3 mm or tilt it more |
 | `CUTS_THROUGH` | warn | Two similar-size parts each sit ≥ 15 % inside the other, > 4 cm deep: the crossing line shows | Separate them to a joint-sized overlap or merge them |
 | `BURIED_PART` | warn | A part is ≥ 92 % inside another: invisible, costs triangles | Delete it or pull it out so it shows |
-| `CABLE_CLIPS` | warn | A `TubeGeometry` cable passes through a solid mid-span | Re-anchor under the joints, reduce sag, let it end on its two anchors |
+| `CABLE_FLOAT` | error | A `TubeGeometry` cable has an unanchored start or end (floating in mid-air or plunging into the ground/foundation plinth instead of a structural part). Skipped only for parts with `role: 'whip'` (antenna whip, tendril); the name never exempts a cable | Anchor both ends of the cable ≥ 1 cm inside solid structural parts (hull, post, junction box) |
+| `CABLE_CLIPS` | warn | A `TubeGeometry` cable passes through a solid mid-span, or sags into the ground/foundation plinth | Re-anchor under the joints, reduce sag, let it end on its two anchors |
 | `ANIM_DETACH` | warn/info | A bobbing/recoiling part lifts > 3 cm off its mount (warn for bob, info for recoil) | Overlap it deeper, or accept for hover glows |
 | `ANIM_DEEPENS_OVERLAP` | warn/info | A spinner sinks deeper into its mount while moving (info for recoil, which slides into a housing by design) | Re-centre the pivot on the part's axis |
 | `ANIM_BELOW_GROUND` | warn | A bob dips > 2 cm below y = 0 | Raise the part |
@@ -143,6 +144,10 @@ flush opposite-facing faces (that is a clean contact), and cables as structural 
    - `animType 8` (`BipedBody`) & `animType 9` (`SpiderBody`): full-body step-reaction suspension (spring-damped $2\omega$ impact heave, roll, pitch, yaw, sway, surge). Compound codes `18, 28, 38` and `19, 29, 39` layer `SpinY (1)`, `HoverBob (2)`, or `RecoilPulse (3)` on top of the moving body carrier.
    All sub-parts of a single limb or wheel must share the exact same `animType` and `animPivot` (`sameRig`), with a ball-joint (`sph`) centered at `animPivot` sunk into the static mount and moving struts kept ≥ 1.5 cm clear of static hull walls.
 5. **Name the parts** so a report points at code.
+6. **Give special parts a `role`** (`PartOptions.role`): `plinth` for a building's foundation slab, `plinthDetail` for trim
+   and lamps mounted on it (neither is a cable anchor; cables must clear the slab's top), `whip` for a tube with a free
+   end (no `CABLE_FLOAT`; may ride a different animation than its mount). The geometry checks read roles, never names
+   or part order; the appearance checks (colour groups, `ROLE_ZONE`, `ROLE_DETAIL`) still read names.
 
 ## Limits (read before trusting a PASS)
 

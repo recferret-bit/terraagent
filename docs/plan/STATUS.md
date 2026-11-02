@@ -51,12 +51,12 @@
 
 | Task | Title | Wave | Lane | Status |
 |---|---|---|---|---|
-| [`TA-01.1`](./issues/TA-01-monorepo-and-shared-contracts.md) | npm-workspaces skeleton: root `package.json`, `tsconfig.base.json`, ESLint/Prettier, Vitest, `npm run check` | W0 | Lead | `[ ] Todo` |
+| [`TA-01.1`](./issues/TA-01-monorepo-and-shared-contracts.md) | npm-workspaces skeleton: root `package.json`, `shared/tsconfig.base.json`, ESLint/Prettier, Vitest, `npm run check` | W0 | Lead | `[ ] Todo` |
 | [`TA-01.2`](./issues/TA-01-monorepo-and-shared-contracts.md) | `@terra/contracts`: WS envelope + worker/lobby message schemas v1 | W0 | Lead | `[ ] Todo` |
 | [`TA-01.3`](./issues/TA-01-monorepo-and-shared-contracts.md) | `@terra/contracts`: NATS subjects, stream/KV definitions & payload schemas | W0 | Lead | `[ ] Todo` |
 | [`TA-01.4`](./issues/TA-01-monorepo-and-shared-contracts.md) | `@terra/contracts`: REST DTOs, error codes, planet-ticket claims | W0 | Lead | `[ ] Todo` |
 | [`TA-01.5`](./issues/TA-01-monorepo-and-shared-contracts.md) | `scripts/ci-fast.sh`, root `ci:fast`, contract drift test | W0 | Lead | `[ ] Todo` |
-| [`TA-01.6`](./issues/TA-01-monorepo-and-shared-contracts.md) | `@terra/config`: zod env loader, `TA_NS` + lane port helpers, `.env.example` convention | W0 | Lead | `[ ] Todo` |
+| [`TA-01.6`](./issues/TA-01-monorepo-and-shared-contracts.md) | `@terra/config`: zod env loader, `TA_NS` + lane port helpers, `infra/.env.example` convention | W0 | Lead | `[ ] Todo` |
 | [`TA-01.7`](./issues/TA-01-monorepo-and-shared-contracts.md) | `@terra/sim` public API facade (`api.ts`) + stub implementation | W0 | Lead | `[ ] Todo` |
 | [`TA-02.1`](./issues/TA-02-infra-nats-postgres-nginx.md) | Dev compose: Postgres 16 + NATS JetStream + nats-box, lane test DB init | W0 | Lead | `[ ] Todo` |
 | [`TA-02.2`](./issues/TA-02-infra-nats-postgres-nginx.md) | JetStream streams & KV bootstrap generated from contracts | W1 | L5 | `[ ] Todo` |

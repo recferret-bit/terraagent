@@ -3,6 +3,10 @@ import { HttpAdapterHost } from '@nestjs/core';
 import { defineEnv } from '@terra/config';
 import type { Server } from 'node:http';
 import { z } from 'zod';
+import { AuthTokenService } from '../core/auth/auth-token.service';
+import { CoreModule } from '../core/core.module';
+import { HomeRepository } from '../core/home/home.repository';
+import { HomeService } from '../core/home/home.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv, type RootLogger } from '../core/tokens';
@@ -10,8 +14,9 @@ import { FlagsService } from '../flags/flags.service';
 import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
 import { COMMAND_INGRESS, type CommandIngress } from './command-ingress';
+import { DbHomeProvider, HOME_PROVIDER, type HomeProvider } from './home-provider';
 import { SimCommandIngress } from './sim-command-ingress';
-import { DevSessionVerifier, SESSION_VERIFIER, type SessionVerifier } from './session-verifier';
+import { JwtSessionVerifier, SESSION_VERIFIER, type SessionVerifier } from './session-verifier';
 import { WsGateway } from './ws.gateway';
 
 export const env = defineEnv('ws', {
@@ -21,23 +26,54 @@ export const env = defineEnv('ws', {
   WS_IDLE_TIMEOUT_MS: z.coerce.number().int().positive().default(60_000),
 });
 
-/** WebSocket gateway on `/ws` (PROTOCOL §4). Rebind `SESSION_VERIFIER` (W01: JWT) and `COMMAND_INGRESS` (commands) from their issues. */
+/** WebSocket gateway on `/ws` (PROTOCOL §4). */
 @Module({
-  imports: [GameModule],
+  imports: [CoreModule, GameModule],
   providers: [
-    { provide: SESSION_VERIFIER, inject: [APP_ENV], useFactory: (e: AppEnv): SessionVerifier => new DevSessionVerifier(e.NODE_ENV === 'production') },
+    {
+      provide: SESSION_VERIFIER,
+      inject: [APP_ENV, AuthTokenService],
+      useFactory: (e: AppEnv, tokens: AuthTokenService): SessionVerifier =>
+        new JwtSessionVerifier(tokens, e.NODE_ENV === 'production'),
+    },
+    {
+      provide: HOME_PROVIDER,
+      inject: [{ token: HomeService, optional: true }],
+      useFactory: (homeService?: HomeService): HomeProvider => new DbHomeProvider(homeService),
+    },
     {
       provide: COMMAND_INGRESS,
-      inject: [APP_ENV, MetricsRegistry, FlagsService, GamePlanets],
-      useFactory: (e: AppEnv, m: MetricsRegistry, flags: FlagsService, planets: GamePlanets): CommandIngress =>
-        new SimCommandIngress({ planets, flags, registry: m.registry, production: e.NODE_ENV === 'production' }),
+      inject: [APP_ENV, MetricsRegistry, FlagsService, GamePlanets, { token: HomeRepository, optional: true }],
+      useFactory: (
+        e: AppEnv,
+        m: MetricsRegistry,
+        flags: FlagsService,
+        planets: GamePlanets,
+        homeRepo?: HomeRepository,
+      ): CommandIngress =>
+        new SimCommandIngress({
+          planets,
+          flags,
+          registry: m.registry,
+          production: e.NODE_ENV === 'production',
+          homeRepo,
+        }),
     },
     {
       provide: WsGateway,
-      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS],
-      useFactory: (e: AppEnv, root: RootLogger, m: MetricsRegistry, flags: FlagsService, planets: GamePlanets, verifier: SessionVerifier, ingress: CommandIngress) =>
+      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS, HOME_PROVIDER],
+      useFactory: (
+        e: AppEnv,
+        root: RootLogger,
+        m: MetricsRegistry,
+        flags: FlagsService,
+        planets: GamePlanets,
+        verifier: SessionVerifier,
+        ingress: CommandIngress,
+        home: HomeProvider,
+      ) =>
         new WsGateway({
-          env: e, planets, verifier, ingress, flags: flags.list, registry: m.registry,
+          env: e, planets, verifier, ingress, home, flags: flags.list, registry: m.registry,
           log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
           helloTimeoutMs: Number(e.WS_HELLO_TIMEOUT_MS), idleTimeoutMs: Number(e.WS_IDLE_TIMEOUT_MS),
         }),

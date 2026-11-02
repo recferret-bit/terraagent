@@ -68,7 +68,7 @@ flowchart TB
   PSOCK -->|wss://ws.terraagent.com/w/pw-n| WORKER[(planet-worker)]
 ```
 
-Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.tsx, boot/, net/, world/, render/{viewport.ts, terrain/, entities/, vfx/, inspect/}, ui/{screens/, hud/, modals/}, analytics/, i18n/, debug/}, test/}`.
+Source layout (target): `frontend/vite.config.ts`, `frontend/game/{index.html, src/{main.tsx, boot/, net/, world/, render/{viewport.ts, terrain/, entities/, vfx/, inspect/}, ui/{screens/, hud/, modals/}, analytics/, i18n/, debug/}, test/}`.
 
 ## Task index
 
@@ -96,14 +96,14 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 - **Depends On:** `TA-01.1`, `TA-01.4`, `TA-01.6`
 - **Spec:** [`CLIENT.md`](../../spec/CLIENT.md) §2 (`CL-01`, `CL-03`, `CL-11`, `CL-12`, `CL-15`), §3, §10 · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §4, §7 · D-10
 - **Target Files:**
-  - `frontend/game/package.json`, `frontend/game/vite.config.ts`, `frontend/game/tsconfig.json`, `frontend/game/index.html`, `frontend/game/.env.example`
+  - `frontend/game/package.json`, `frontend/vite.config.ts`, `frontend/game/tsconfig.json`, `frontend/game/index.html`, `frontend/game/.env.example`
   - `frontend/game/src/main.tsx`, `frontend/game/src/app/router.tsx`, `frontend/game/src/app/App.tsx`
   - `frontend/game/src/boot/boot.ts`, `frontend/game/src/boot/home-router.ts`
   - `frontend/game/src/net/api-client.ts`, `frontend/game/src/net/auth.ts`
   - `frontend/game/src/ui/screens/{BootSplash,PlanetsPlaceholder,PlayPlaceholder,Recap}.tsx`
   - `frontend/game/src/analytics/{consent.ts,batcher.ts,events.ts}`
   - `frontend/game/src/debug/terra-debug.ts`, `frontend/game/src/i18n/en.ts`
-  - `frontend/game/test/{boot.test.ts,api-client.test.ts,analytics.test.ts}`, `frontend/game/eslint.config.mjs`
+  - `frontend/game/test/{boot.test.ts,api-client.test.ts,analytics.test.ts}`, `shared/config/eslint.config.js`
 - **Verify:** `npm run test -w @terra/game && npm run build -w @terra/game && ! grep -r __terraDebug frontend/game/dist`
 
 #### Analytics
@@ -559,7 +559,7 @@ Source layout (target): `frontend/game/{index.html, vite.config.ts, src/{main.ts
 
 #### Architecture
 - `BuildMenu` lists the MVP catalog by category (Command & Territory, Power, Extraction, Supply, Production, Defense) with cost (M/Min/Pet/W), footprint, build time, `−E/s`, tier, and affordability vs the current resources.
-- `GhostPreview` is a translucent instanced ghost following `hex-picking`. Colour shows validity: owned + free + affordable; reasons are listed otherwise.
+- `GhostPreview` is a translucent instanced ghost following `hex-picking`. Colour shows validity: owned + free + affordable; reasons are listed otherwise. Validity and reasons come from the shared `evaluatePlacement` (`@terra/sim`, D-37), never from a client copy; the client sends one `placeBuilding` and a host rejection reopens the ghost red with the host's reason.
 - Rotation (R) only where the footprint is asymmetric.
 - Click sends `placeBuilding {archetype, q, r, rot}`. The pending ghost stays until `cmd.ack`; the delta then adds the real entity (scaffold).
 - `SelectionPanel` shows HP, power state, production and "Upgrade to T2" with the Δ cost (`Cost_{T2} − Cost_{T1}`). Upgrade is disabled with a reason if the +1 ring is not free/owned, otherwise it sends `upgradeBuilding {entityId}`.

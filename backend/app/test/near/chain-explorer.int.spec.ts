@@ -69,7 +69,7 @@ describe('mock chain explorer dev routes', () => {
   });
 
   it('is 404 in production, even with an invalid query', async () => {
-    const { app: prod } = await createApp({ source: { SIM_THREADS: '1', DATABASE_URL: db.url, NODE_ENV: 'production', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' } });
+    const { app: prod } = await createApp({ source: { SIM_THREADS: '1', DATABASE_URL: db.url, NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' } });
     await prod.listen(0, '127.0.0.1');
     const u = (await prod.getUrl()).replace('[::1]', '127.0.0.1');
     try {

@@ -38,7 +38,7 @@ flowchart LR
   L -. "ta_consent cookie Domain=.terraagent.com" .-> G
 ```
 
-Source layout (target): `frontend/landing/{index.html, privacy/index.html, terms/index.html, vite.config.ts, public/{og.png, poster.webp, hero.mp4, robots.txt, sitemap.xml, favicon.svg}, src/{main.ts, stats.ts, consent.ts, analytics.ts, styles.css}, test/}`.
+Source layout (target): `frontend/vite.config.ts`, `frontend/landing/{index.html, privacy/index.html, terms/index.html, public/{og.png, poster.webp, hero.mp4, robots.txt, sitemap.xml, favicon.svg}, src/{main.ts, stats.ts, consent.ts, analytics.ts, styles.css}, test/}`.
 
 ## Task index
 
@@ -59,10 +59,10 @@ Source layout (target): `frontend/landing/{index.html, privacy/index.html, terms
 - **Depends On:** `TA-01.1`
 - **Spec:** [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §4 · [`CLIENT.md`](../../spec/CLIENT.md) §9, §10.3 (`landing_view`, `play_click`) · [`docs/game/autonomous-colony-spec.md`](../../game/autonomous-colony-spec.md) §1, §5, §9, §10, §13
 - **Target Files:**
-  - `frontend/landing/package.json`, `frontend/landing/vite.config.ts`, `frontend/landing/index.html`, `frontend/landing/.env.example`
+  - `frontend/landing/package.json`, `frontend/vite.config.ts`, `frontend/landing/index.html`, `frontend/landing/.env.example`
   - `frontend/landing/src/{main.ts,stats.ts,styles.css}`
   - `frontend/landing/public/{poster.webp,hero.mp4,favicon.svg}`
-  - `frontend/landing/test/{stats.test.ts,build-budget.test.ts}`, `frontend/landing/eslint.config.mjs`
+  - `frontend/landing/test/{stats.test.ts,build-budget.test.ts}`, `shared/config/eslint.config.js`
 - **Verify:** `npm run test -w @terra/landing && npm run build -w @terra/landing`
 
 #### Analytics

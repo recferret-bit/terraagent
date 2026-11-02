@@ -23,6 +23,7 @@ export function terrainUniforms(spec: PlanetSpec, level: number, ext: number, wi
 /** The terrain material; `extend` may add shader terms after the terrain shader ran (the hex terrain adds its edge lines). */
 export function createTerrainMaterial(uniforms: Record<string, THREE.IUniform>, extend?: (sh: THREE.WebGLProgramParametersWithUniforms) => void): THREE.MeshStandardMaterial {
   const mat = new THREE.MeshStandardMaterial({ roughness: 0.92, metalness: 0.0 });
+  mat.shadowSide = THREE.DoubleSide;
   mat.onBeforeCompile = (sh) => { applyTerrainShader(sh, uniforms); extend?.(sh); };
   return mat;
 }

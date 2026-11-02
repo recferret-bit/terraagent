@@ -23,7 +23,7 @@ export function makeSandbox() {
   mkdirSync(join(base, 'TerraAgent-wt'));
   cpSync(join(repo, 'docs', 'plan'), join(root, 'docs', 'plan'), { recursive: true });
   cpSync(join(repo, 'scripts', 'plan'), join(root, 'scripts', 'plan'), { recursive: true });
-  writeFileSync(join(root, '.gitignore'), '.env.worktree\n');
+  writeFileSync(join(root, '.gitignore'), 'infra/.env.worktree\n.env.worktree\n');
   git(base, 'init', '--bare', '-b', 'main', 'origin.git');
   git(root, 'init', '-b', 'main');
   git(root, 'add', '-A');

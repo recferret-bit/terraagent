@@ -6,6 +6,13 @@ export const REJECT_CODES = [
   'terrain_unbuildable', 'insufficient_resources', 'supply_cap', 'unknown_entity', 'tier_locked', 'worker_tier_locked', 'stage_locked',
   'no_trade_hub', 'raid_protected', 'truce_active', 'would_isolate', 'launch_gate', 'mint_cap', 'market_unavailable',
   'planet_ended', 'wave_disabled', 'host_unavailable', 'internal',
+  // too many commands from one player (server ingress token bucket, PROTOCOL §4.2)
+  'rate_limited',
+  // W01 landing: a colony lands once; no two colonies share a slot or land too close (`hq.startingKit.minLandingSeparation`)
+  'already_landed', 'landing_site_taken',
+  // W01 sim: the colony's terraform lane is full (`hq.t1.terraformMaxOrders` / `terraformMaxJobs`); the planet has no
+  // room for another colony (8 per planet: one `explored` bit each)
+  'queue_full', 'planet_full',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;
@@ -32,5 +39,9 @@ export const TERMINAL_CLOSE_CODES: readonly number[] = [CLOSE_CODES.replaced, CL
 export const REST_ERROR_CODES = [
   'validation_error', 'unauthorized', 'forbidden', 'not_found', 'already_queued', 'has_live_colony',
   'planet_not_recruiting', 'queue_full', 'near_unavailable', 'internal',
+  // W01 `/me/home`: the new colony's landing was refused (409, `errorCode: COLONY_SEAT_REJECTED`, the reject code in `details.code`)
+  'seat_rejected',
+  // generic fallbacks by status when the domain code has no REST code of its own (BE-17): 409, 503, 413, 429
+  'conflict', 'unavailable', 'payload_too_large', 'rate_limited',
 ] as const;
 export const RestErrorCode = z.enum(REST_ERROR_CODES);

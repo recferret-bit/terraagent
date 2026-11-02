@@ -1,5 +1,5 @@
-// Per-worktree isolation (PRODUCT_WAVES §7): unique TA_PORT_BASE and database `terra_<branch>` in a gitignored `.env.worktree`.
-import { existsSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
+// Per-worktree isolation (PRODUCT_WAVES §7): unique TA_PORT_BASE and database `terra_<branch>` in a gitignored `infra/.env.worktree`.
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { join, resolve } from 'node:path';
 import { parseEnv } from 'node:util';
@@ -17,18 +17,20 @@ export function dbNameFor(branch) {
 }
 
 export const readWorktreeEnv = (dir) => {
+  const infraFile = join(dir, 'infra', '.env.worktree');
+  if (existsSync(infraFile)) return parseEnv(readFileSync(infraFile, 'utf8'));
   const file = join(dir, '.env.worktree');
   return existsSync(file) ? parseEnv(readFileSync(file, 'utf8')) : {};
 };
 
-/** Directories that may already hold a `.env.worktree`: the main checkout and every sibling worktree. */
+/** Directories that may already hold an `infra/.env.worktree`: the main checkout and every sibling worktree. */
 function knownWorktrees(root) {
   const wt = resolve(root, '..', 'TerraAgent-wt');
   const kids = existsSync(wt) ? readdirSync(wt, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => join(wt, d.name)) : [];
   return [root, ...kids];
 }
 
-/** Smallest `4100 + 100·k` base (and database name) not used by any other worktree's `.env.worktree`. */
+/** Smallest `4100 + 100·k` base (and database name) not used by any other worktree's `infra/.env.worktree`. */
 export function allocate(root, branch, self) {
   const others = knownWorktrees(root).filter((d) => resolve(d) !== resolve(self)).map(readWorktreeEnv);
   const usedBases = new Set(others.map((e) => Number(e.TA_PORT_BASE)).filter(Boolean));
@@ -40,12 +42,13 @@ export function allocate(root, branch, self) {
   return { TA_PORT_BASE: base, TA_DB_NAME: db };
 }
 
-/** Writes `.env.worktree` unless it already has both values (idempotent: a resumed worktree keeps its ports). Returns the effective values. */
+/** Writes `infra/.env.worktree` unless it already has both values (idempotent: a resumed worktree keeps its ports). Returns the effective values. */
 export function ensureWorktreeEnv(root, dir, branch) {
   const have = readWorktreeEnv(dir);
   if (have.TA_PORT_BASE && have.TA_DB_NAME) return { TA_PORT_BASE: Number(have.TA_PORT_BASE), TA_DB_NAME: have.TA_DB_NAME };
   const v = { ...allocate(root, branch, dir), ...(have.TA_PORT_BASE ? { TA_PORT_BASE: Number(have.TA_PORT_BASE) } : {}), ...(have.TA_DB_NAME ? { TA_DB_NAME: have.TA_DB_NAME } : {}) };
-  writeFileSync(join(dir, '.env.worktree'), `# written by scripts/wave (per-worktree ports and database; gitignored)\nTA_PORT_BASE=${v.TA_PORT_BASE}\nTA_DB_NAME=${v.TA_DB_NAME}\n`);
+  mkdirSync(join(dir, 'infra'), { recursive: true });
+  writeFileSync(join(dir, 'infra', '.env.worktree'), `# written by scripts/wave (per-worktree ports and database; gitignored)\nTA_PORT_BASE=${v.TA_PORT_BASE}\nTA_DB_NAME=${v.TA_DB_NAME}\n`);
   return v;
 }
 

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { ArchetypeCatalog } from '@terra/render/kitbash';
+import { extractArchetype, groundContact } from '@terra/render/kitbash/validate';
 
 export const ANIM_NAME: Record<number, string> = { 0: 'static', 1: 'spin', 2: 'bob', 3: 'recoil' };
 
@@ -11,7 +12,10 @@ function computeStats(id: string) {
   const anim = new Set<number>();
   const a = g.getAttribute('aPartAnim');
   if (a) for (let i = 0; i < a.count; i++) anim.add(a.getX(i));
-  const out = { tris: Math.round(tris), verts: g.attributes.position.count, size: bb.getSize(new THREE.Vector3()), minY: bb.min.y, anim: [...anim].sort(), attrs: Object.keys(g.attributes) };
+  const cat = ArchetypeCatalog.get(id).category;
+  // Ships and props float in orbit: no ground rule (same split as `validateArchetype`).
+  const contact = cat === 'ship' || cat === 'prop' ? null : groundContact(extractArchetype(id));
+  const out = { tris: Math.round(tris), verts: g.attributes.position.count, size: bb.getSize(new THREE.Vector3()), minY: bb.min.y, contact, anim: [...anim].sort(), attrs: Object.keys(g.attributes) };
   g.dispose();
   return out;
 }

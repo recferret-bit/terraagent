@@ -4,6 +4,8 @@ import { NearInfrastructureModule } from '../near/infrastructure/near-infrastruc
 import { ChainPingCommand } from './chain-ping.command.js';
 import { WarpCommand } from './warp.command.js';
 import { DevCommandRegistry } from './dev-command.registry.js';
+import { PlanetWipeCommand } from './planet-wipe.command';
+import { TimeCommand } from './time.command.js';
 import { TuneCommand } from './tune.command.js';
 import { DevController } from './dev.controller.js';
 
@@ -12,7 +14,7 @@ import { DevController } from './dev.controller.js';
 @Module({
   imports: [NearInfrastructureModule, GameModule],
   controllers: [DevController],
-  providers: [DevCommandRegistry, ChainPingCommand, WarpCommand, TuneCommand],
+  providers: [DevCommandRegistry, ChainPingCommand, WarpCommand, TuneCommand, PlanetWipeCommand, TimeCommand],
   exports: [DevCommandRegistry],
 })
 export class DevModule {}

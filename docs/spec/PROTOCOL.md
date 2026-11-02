@@ -1,8 +1,8 @@
 # TerraAgent — Wire Protocols (WebSocket, in-process messages, REST)
 
-> **Status:** v0.2 (2026-10-30). This covers the simplified one-app design (D-24) with no rate limits and no fog filtering (D-25), plus the NEAR economy messages (D-26). The NATS contract and planet tickets are summarised in §13 as Future.
+> **Status:** v0.2 (2026-10-30). This covers the simplified one-app design (D-24) with no anti-cheat and no fog filtering (D-25; only crash/load limits, WS-16), plus the NEAR economy messages (D-26). The NATS contract and planet tickets are summarised in §13 as Future.
 > **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6, §7, §13 · **Decisions:** [`DECISIONS.md`](./DECISIONS.md) D-24, D-25, D-26
-> **Code home:** `shared/contracts/src/{ws,bus,rest}/**` (`@terra/contracts`). Every shape below is a zod schema there; this document is the human-readable mirror. On conflict, ARCHITECTURE.md wins, then this file, then code (code must be fixed).
+> **Code home:** `shared/contracts/src/{envelope,ws,rest,errors,commands,events}/**` (`@terra/contracts`; the server's internal bus payloads are `backend/app/src/bus/channels.ts`). Every shape below is a zod schema there; this document is the human-readable mirror. On conflict, ARCHITECTURE.md wins, then this file, then code (code must be fixed).
 
 ---
 
@@ -24,7 +24,7 @@ One place that defines every message that crosses a boundary:
 | `PR-03` | Timestamps on the wire are integer ms since epoch (`…Ms`). Sim time is `tick` (5 TPS, `TICK_MS = 200`). |
 | `PR-04` | Resource amounts, HP and positions are plain JSON numbers in design units (resources in units, positions in tiles). Floats are allowed (D-24). **On-chain token amounts** are decimal strings in base units (`"1200000000000000000000"`). |
 | `PR-05` | Envelope field `v` = **1**. Additive changes stay in `v: 1`. Removing or renaming a field needs `v: 2`. |
-| `PR-06` | `@terra/contracts` exports a JSON-Schema snapshot that CI diffs. A diff without a matching change to this file fails CI. |
+| `PR-06` | `@terra/contracts` exports a JSON-Schema snapshot (`schema/contracts.schema.json`); `npm run gen:check` fails on a stale one. This file is kept in step by review (no automated check). |
 
 ---
 
@@ -44,10 +44,10 @@ export const Envelope = <T extends string, D extends z.ZodTypeAny>(t: T, d: D) =
 
 | ID | Rule |
 |---|---|
-| `WS-01` | Text frames, UTF-8 JSON, one envelope per frame. `permessage-deflate` on (threshold 1 KiB). |
+| `WS-01` | Text frames, UTF-8 JSON, one envelope per frame, except messages that carry engine bytes (`welcome`, `delta`, D-31): those are one binary frame holding the MessagePack of the whole envelope (`shared/contracts/src/ws/wire.ts`). `permessage-deflate` on (threshold 1 KiB). |
 | `WS-02` | Max inbound frame: **64 KiB** (crash protection only). A larger frame closes the socket with `1009`. |
 | `WS-03` | `welcome` carries the **full planet state** (≈ 1 MB before compression at MVP scale). Deltas are typically ≤ 64 KiB. |
-| `WS-04` | MessagePack (`proto: 2`) only if the load test shows > 30 KB/s per socket. Not in v1. |
+| `WS-04` | A MessagePack protocol for every message (`proto: 2`) only if the load test shows > 30 KB/s per socket. Not in v1 (only the byte-carrying `welcome` / `delta` are MessagePack, WS-01). |
 
 ---
 
@@ -78,12 +78,12 @@ sequenceDiagram
 | ID | Rule |
 |---|---|
 | `WS-10` | The first frame MUST be `hello` within **5 s**, or the socket closes `4000 bad_hello`. The access JWT is verified with the REST verifier. |
-| `WS-11` | Origin allow-list: `https://game.terraagent.com`, plus `localhost` origins in non-production. |
-| `WS-12` | `join {planetId}` is accepted only for the planet of the player's **own live colony**. Otherwise `bye 4003 forbidden`. There are no planet tickets and no worker URLs (D-24). |
-| `WS-13` | **One planet socket per colony.** A second `join` for the same colony closes the older socket with `4001 replaced`, after the new `welcome` is sent. |
+| `WS-11` | Origin allow-list from the `CORS_ORIGINS` env, plus loopback origins on any port outside production (`backend/app/src/core/cors.ts`); a request without `Origin` is accepted. |
+| `WS-12` | `join {planetId}` is accepted only for the planet of the player's **own live colony**. Otherwise `bye 4003` (reason `not_your_planet`; `forbidden` when the planet is not loaded). There are no planet tickets and no worker URLs (D-24). Dev only: a `dev:<name>` session (refused in production) may join any loaded planet, and on a scenario planet without colony rows it plays colony 0. |
+| `WS-13` | **One planet socket per player** (as built in W01; one colony per player). A second `join` for the same player closes the older socket with `4001 replaced`, after the new `welcome` is sent. |
 | `WS-14` | The client pings every **20 s**. The server closes sockets that are silent for **60 s** with `1001`. |
 | `WS-15` | If the planet ends, the colony is eliminated, or the app restarts, the server sends `bye {code}` and closes with the same code (`4010`, `4011`, `4012`). |
-| `WS-16` | **No rate limits** (D-25). A client may send commands as fast as it likes; they are applied in arrival order at the next step. |
+| `WS-16` | **Crash/load protection only** (D-25, amended 2026-11-01): each player has one token bucket at the ingress, shared by all of its sockets and planets (20 commands/s, bursts of 40); extra commands get `cmd.reject rate_limited`. A player's commands are applied in arrival order at the next step. |
 
 ### 4.2 Client → app messages
 
@@ -103,7 +103,7 @@ const Cmd       = Envelope("cmd", z.object({ kind: CommandKind, args: z.unknown(
 
 | Group | Kinds |
 |---|---|
-| Colony control | `setPriorities` · `enqueueTask` (`build`, `upgrade`, `repair`, `terraform {op, tiles}`, `buildUnit {unit, count, repeat}`, `queueGoal {goal, params}`, `raid`, `launchRocket`) · `cancelTask` · `placeBuilding` · `upgradeBuilding` · `demolish` · `setStance` · `attackMove` · `setRally` · `setHarvestWeights` |
+| Colony control | `setPriorities` · `enqueueTask` (`build`, `upgrade`, `repair`, `terraform {op, tiles}`, `buildUnit {unit, count, repeat}`, `queueGoal {goal, params}`, `raid`, `launchRocket`) · `cancelTask {taskId}` (W01: an order id, the client's own id = the command id that created it, or a building's entity id; `'active'` = the first manual terraform order, `'current'` = the open construction order, never crossing lanes; a Hub's linked prep cancels the Hub; no match → `unknown_entity`) · `landPod` (W01: open the own descending pod once it has descended `hq.startingKit.podLandMinS`) · `placeBuilding` · `upgradeBuilding` · `demolish` · `setStance` · `attackMove` · `setRally` · `setHarvestWeights` |
 | Away & autopilot | `setAutopilot {aiDirector, awayRaids}` · `setAwayBudget {perResource}` · `setAutoTrade {limits}` |
 | Cargo (F1) | `cargo.export {resource, amount}` · `cargo.import {resource, amount}` (`resource`: `ResourceKey`, any tier; T1 trades from day one, D-34) |
 | Market (F2/F3) | `market.placeOrder {side, resource: ResourceKey, amount, price: {resource: ResourceKey \| "NEAR" \| "USDC", amount}, ttlS}` · `market.cancelOrder {orderId}` · `market.setHubFee {bp}` · `market.acceptGuildOffer {offerId}` |
@@ -113,6 +113,8 @@ const Cmd       = Envelope("cmd", z.object({ kind: CommandKind, args: z.unknown(
 `Priorities = { economy, expansion, defense, power, terraform }`, each an integer 0..100 (canonical set, units spec §7 row 8).
 
 ### 4.3 App → client messages
+
+> **As built (W01):** the code (`shared/contracts/src/ws/{client,server,sim}.ts`) is the source of truth where it differs from the target sketch below: `ready {playerId, home?, flags}`; `welcome {reason, colonyId | null, planet {id, type, name, …lobby fields optional}, state (snapshot bytes), simVersion, dataHash, overrides?, tick, serverTimeMs, tickMs, deltaHz, flags, warp?}` (no `away`); `delta {fromTick, toTick, diff (bytes), events?}` (no `ops`); `planetId` is a `HomePlanetId` (`pl_…`), not a ULID; `cmd.kind` is any string of 1–64 characters, unknown kinds are rejected `unknown_kind` by `precheckClientCommand`. `CommandKind` in W01 also includes `moveUnit`, `stopUnit`, `landPod` and the `dev.*` kinds (`COMMAND_KINDS`, generated).
 
 ```ts
 const Ready   = Envelope("ready", z.object({ playerId: PlayerId, home: HomeResponse }));
@@ -148,20 +150,20 @@ const Bye       = Envelope("bye",  z.object({ code: CloseCode, reason: z.string(
 // cargo.status {colonyId, inOrbit, pending} · notify.test
 ```
 
-`RejectCode` = `invalid_args` · `unknown_kind` · `not_own_colony` · `colony_inactive` · `not_own_territory` · `site_blocked` · `terrain_unbuildable` · `insufficient_resources` · `supply_cap` · `tier_locked` · `worker_tier_locked` · `stage_locked` · `no_trade_hub` · `raid_protected` · `truce_active` · `would_isolate` · `launch_gate` · `mint_cap` · `market_unavailable` · `planet_ended` · `internal`.
+`RejectCode` = `invalid_args` · `unknown_kind` · `not_own_colony` · `colony_inactive` · `not_own_territory` · `site_blocked` · `terrain_unbuildable` · `insufficient_resources` · `supply_cap` · `tier_locked` · `worker_tier_locked` · `stage_locked` · `no_trade_hub` · `raid_protected` · `truce_active` · `would_isolate` · `launch_gate` · `mint_cap` · `market_unavailable` · `planet_ended` · `internal` · `unknown_entity` · `wave_disabled` · `host_unavailable` · `rate_limited` (the full list, with the W01 additions `already_landed`, `landing_site_taken`, `queue_full` (terraform lane full), `planet_full` (8 colonies per planet), is `REJECT_CODES` in `shared/contracts/src/errors/index.ts`). A sim rejection may carry a `detail` (e.g. the placement block text `not your territory`); hosts pass it in `cmd.reject.detail`.
 
 ### 4.4 Command semantics
 
 | ID | Rule |
 |---|---|
 | `WS-20` | **Validation (D-25):** the envelope and per-kind zod schema; the colony is the sender's own (derived server-side, `not_own_colony` otherwise); then game rules in the sim. Accepted commands are posted to the planet's sim thread and applied at the next step. |
-| `WS-21` | `cmd.ack` is sent when the command has been **applied** at a step. `cmd.reject` is sent for schema, ownership or game-rule failures. Commands are **not durable**: if the app crashes before the next snapshot, they are lost (≤ 60 s, D-24). |
+| `WS-21` | `cmd.ack` is sent when the command has been **applied** at a step. `cmd.reject` is sent for per-kind args, ownership or game-rule failures (a frame that fails the envelope schema is logged and dropped without a reply). Commands are **not durable**: if the app crashes before the next snapshot, they are lost (≤ 60 s, D-24). |
 | `WS-22` | **Resync:** if the socket's `bufferedAmount` exceeds **1 MiB**, the server stops deltas and sends `welcome {reason: "resync"}` once the buffer drains below 256 KiB. A client that sees a gap (`fromTick ≠` previous `toTick`) sends `join` again. |
-| `WS-23` | Within a socket, messages are delivered in send order. Events for ticks ≤ `toTick` are sent before the `delta` that covers them. |
+| `WS-23` | Within a socket, messages are delivered in send order. Events of a delta window travel inside that `delta` (`d.events`); a bare `event` is sent only for host notices or planets nobody subscribes to. |
 
 ### 4.5 State views
 
-> Since D-31 these shapes are **not sent on the wire**: they are what the engine's `view()` returns on the client (and in server tools). The wire carries engine snapshots and diffs (§4.3).
+> Since D-31 these shapes are **not sent on the wire**. They are the target view of later waves; what is built is the engine's `SimView` (`shared/sim/src/host/view.ts`), returned by `view()` on the client and in server tools. The wire carries engine snapshots and diffs (§4.3).
 
 ```ts
 const PlanetStateViewV1 = z.object({
@@ -200,10 +202,10 @@ const CargoView = z.object({ inOrbit: Stock, pendingMint: Stock });
 | `1009` | too big | inbound frame > 64 KiB | bug; report |
 | `4000` | `bad_hello` | missing or invalid first frame | reconnect |
 | `4001` | `replaced` | another device or tab took over | show "playing elsewhere"; no auto-reconnect |
-| `4003` | `forbidden` | bad or expired token, or `join` to a foreign planet | refresh auth, `/v1/me/home` |
+| `4003` | `forbidden` | bad or expired token, `join` to a foreign planet (reason `not_your_planet`), or the full state cannot be built on join / resync (reason `planet_unavailable`) | `not_your_planet`: terminal at once; `forbidden` / `planet_unavailable`: refresh auth, `/v1/me/home`, retry once |
 | `4010` | `planet_ended` | planet reached `ENDED` | `/v1/me/home` → `PLANET_ENDED` |
 | `4011` | `colony_eliminated` | colony destroyed | `/v1/me/home` → `ELIMINATED` |
-| `4012` | `server_restarting` | deploy or restart | reconnect with backoff |
+| `4012` | `server_restarting` | deploy or restart, or the joined planet went down (reason `planet_down`: its thread died or a step failed) | reconnect with backoff |
 
 Reconnect backoff: 0.5 s, 1 s, 2 s, 4 s, 8 s, cap 10 s, ±20 % jitter.
 
@@ -224,8 +226,8 @@ Reconnect backoff: 0.5 s, 1 s, 2 s, 4 s, 8 s, cap 10 s, ±20 % jitter.
 
 | Channel | Shape | Notes |
 |---|---|---|
-| main → sim thread | `{ t: "cmd", planetId, cmd: SimCommandV1 }` · `{ t: "subscribe" \| "unsubscribe", planetId }` · `{ t: "load", planetId, snapshot? }` · `{ t: "snapshotNow" }` | `SimCommandV1` in SIMULATION §4 |
-| sim thread → main | `{ t: "delta", planetId, delta }` · `{ t: "event", planetId, events }` · `{ t: "ack" \| "reject", planetId, commandId, … }` · `{ t: "snapshot", planetId, bytes }` · `{ t: "fullState", planetId, state }` | Deltas are built once per planet and broadcast to all its sockets |
+| main → sim thread | `{ t: "cmd", planetId, cmd: SimCommandV1 }` · `{ t: "subscribe" \| "unsubscribe", planetId }` · `{ t: "load", planetId, snapshot? \| params: { type, … } }` · `{ t: "snapshotNow" }` · `{ t: "landingSite", planetId, reqId, colony }` (seating asks the planet's sim where a colony lands) | `SimCommandV1` in SIMULATION §4. Full list: `backend/app/src/game/thread/protocol.ts` |
+| sim thread → main | `{ t: "delta", planetId, fromTick, toTick, diff, events }` · `{ t: "event", planetId, events }` · `{ t: "ledger", planetId, tick, postings }` (every step's postings, host-only) · `{ t: "ack" \| "reject", planetId, commandId, appliedAtTick, code?, detail? }` · `{ t: "snapshot", planetId, tick, bytes }` · `{ t: "fullState", planetId, reqId, tick, warp, bytes, simVersion, dataHash, planetType, overrides? }` · `{ t: "landingSite", reqId, answer }` · `{ t: "planetFailed", planetId, message }` (a step threw: the failed step's `ledger` postings and its commands' real outcomes from `StepError` are posted first, then `internal` for the commands without one; the planet is dropped) | Deltas are built once per planet and broadcast to all its sockets. A planet that goes down (its thread died or `planetFailed`) has its waiting commands answered `thread_down`, its sockets get `bye 4012 planet_down`, and it is restored from its latest snapshot (at most 3 times per 10 min) |
 | event bus | `planet.event` (`PlanetEventV1 { planetId, tick, kind, severity, colonyIds, data }`) · `near.cargo.settled` · `near.market.settled` · `near.bounty.paid` | Feeds `ai`, `notify`, `near`, `lobby`, digest. In-memory only (no durability); `near` jobs are persisted in their own tables |
 
 ---
@@ -257,7 +259,7 @@ Base `https://api.terraagent.com/v1`. JSON only. Auth: `Authorization: Bearer <a
 | `POST /auth/social` | optional bearer | `{ provider, token }` → `{ accessToken, player, accountId }` (F5; provider still to be chosen, NEAR.md) |
 | `POST /auth/refresh` · `POST /auth/logout` | cookie | rotate / revoke |
 | `POST /auth/near/challenge` · `POST /auth/near/verify` | optional bearer | NEP-413 wallet link |
-| `GET /me` · `GET /me/home` | bearer | `PlayerDto` · `HomeResponse` |
+| `GET /me/home[?type=desert\|ocean\|temperate]` | bearer | `HomeResponse` (`GET /me` is not built) |
 | `GET /planets?type=` | bearer | `{ version, planets, newPlanetTypes }` |
 | `POST /match/tickets` · `GET/DELETE /match/tickets/current` | bearer | matchmaking (MATCHMAKING) |
 | `POST /party` · `POST /party/join` · `DELETE /party` · `GET /party` | bearer | parties (MM-55) |
@@ -276,7 +278,7 @@ export const HomeResponse = z.discriminatedUnion("state", [
 ]);
 ```
 
-Error envelope (all non-2xx): `{ error: { code, message, details? }, requestId }`. Codes: `validation_error` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `already_queued` (409), `has_live_colony` (409), `planet_not_recruiting` (409), `queue_full` (503), `near_unavailable` (503), `internal` (500). There is no `rate_limited` code (D-25).
+Error envelope (all non-2xx): `{ errorCode, error: { code, message, details? }, requestId }`. `errorCode` is the stable UPPER_SNAKE domain code (`COLONY_SEAT_REJECTED`, `LEDGER_UNAVAILABLE`, `HOME_UNAVAILABLE`, `VALIDATION_ERROR`, …); `error.code` is the REST code below, from the domain code when it has its own, else generic by status. Codes: `validation_error` (400), `unauthorized` (401), `forbidden` (403), `not_found` (404), `already_queued` (409), `has_live_colony` (409), `seat_rejected` (409: the sim refused to land the new colony, sim code in `details.code`, e.g. `landing_site_taken` when the planets' sims have no site left, `host_unavailable`), `planet_not_recruiting` (409), `conflict` (any other 409), `payload_too_large` (413), `rate_limited` (429: per-IP throttle of `POST /auth/guest` and `GET /me/home`), `queue_full` (503), `near_unavailable` (503, NEAR codes only), `unavailable` (any other 503, e.g. a home planet that cannot be loaded), `internal` (500).
 
 ---
 
@@ -299,6 +301,7 @@ Error envelope (all non-2xx): `{ error: { code, message, details? }, requestId }
 |---|---|
 | App restarts while a client is connected | `bye 4012` if graceful; otherwise the socket drops. The client reconnects with backoff, then `hello` → `join` → `welcome`. Commands applied after the last snapshot are lost. |
 | Client sends a command for another colony | `cmd.reject not_own_colony`. The colony is always derived from the token. |
+| Client floods commands | Each player has a token bucket at the ingress (20 commands/s, bursts of 40): extra commands get `cmd.reject rate_limited` before validation or any planet work. The local host (`?host=local`) has no limit. |
 | Cargo mint fails on chain | `cargo.settled {ok: false}` refunds the stock to the colony; push `cargo.status`. |
 | Market settlement fails (`execute_intents` batch rejected) | Both orders return to the book (or expire). Reserved sim stock is released with `market.release`. |
 | `intents.near` or RPC unreachable | Market and cargo commands are rejected with `market_unavailable`. Gameplay continues. |
@@ -309,9 +312,9 @@ Error envelope (all non-2xx): `{ error: { code, message, details? }, requestId }
 
 | Rule | Test |
 |---|---|
-| PR-01, PR-06 | `contracts/test/schema-snapshot.spec.ts` |
+| PR-01, PR-06 | `shared/contracts/test/schema-snapshot.spec.ts` |
 | WS-10..16 | `backend/app/test/ws/handshake-join.spec.ts` |
-| WS-20..23 | `backend/app/test/ws/commands.spec.ts`, `ws/resync.spec.ts` |
+| WS-20..23 | `backend/app/test/ws/commands.spec.ts`, `backend/app/test/ws/resync.spec.ts` |
 | WS-30 | `backend/app/test/ws/full-state.spec.ts` (everything is present) |
 | LB-01..04 | `backend/app/test/lobby/lobby-topics.spec.ts` |
 | §6 | `backend/app/test/game/thread-messages.spec.ts` |
@@ -324,10 +327,10 @@ Error envelope (all non-2xx): `{ error: { code, message, details? }, requestId }
 | # | Question | Decision | Ref | Consequence for this spec |
 |---|---|---|---|---|
 | 1 | Tick markers | ~~Keep~~ → **dropped**; no durable command log | D-20 → D-24 | §13 Future |
-| 2 | Delta encoding | **JSON in v1**; MessagePack only if the load test shows > 30 KB/s per socket | — | Unchanged |
+| 2 | Delta encoding | **JSON in v1**; MessagePack only if the load test shows > 30 KB/s per socket | — | Changed by D-31: `welcome` / `delta` carry engine bytes in one MessagePack binary frame; every other message stays JSON |
 | 3 | Spectators | **Not in v1** | D-22 | `join` only for your own colony's planet |
 | 4 | One app, one WS endpoint | **Yes** | D-24 | No planet tickets, no worker routing, lobby and planet on one socket |
-| 5 | Anti-cheat / anti-bot | **None**: no rate limits, full state | D-25 | `WS-16`, `WS-30` |
+| 5 | Anti-cheat / anti-bot | **None**: full state, no abuse detection; only crash/load limits (command token bucket, per-IP guest throttle; amended 2026-11-01) | D-25 | `WS-16`, `WS-30` |
 | 6 | NEAR economy | F1–F8 messages | D-26 | §7 |
 
 ---

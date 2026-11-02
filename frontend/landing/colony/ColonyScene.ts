@@ -9,14 +9,13 @@ const BORDER_ANGLE_STEP = [0, 5, 4, 3, 2, 1]; // neighbour direction -> hex corn
 
 export class ColonyScene {
   private readonly c: Ctx;
-  private readonly tiles: Tile[];
   private readonly map: Record<string, Tile>;
   private readonly sorted: Tile[];
 
   constructor(private readonly cv: HTMLCanvasElement) {
     this.c = cv.getContext('2d')!;
     const { tiles, map } = buildMap();
-    this.tiles = tiles; this.map = map;
+    this.map = map;
     this.sorted = tiles.slice().sort((a, b) => (a.r - b.r) || (a.q - b.q));
   }
 

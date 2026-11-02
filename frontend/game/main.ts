@@ -1,22 +1,43 @@
 import { initCrt } from '@terra/render/ui/crt';
-import { onlineMode } from './app/online/onlineMode';
+import { lazyStart } from './app/lazyStart';
+import { onlineMode, type OnlineMode } from './app/online/onlineMode';
 
 const app = document.getElementById('app')!;
-const mode = onlineMode(location.search);
-// `?scenario=` / `?host=` run the online flow (no prototype menu, descent or decorative colony); otherwise the prototype game.
-const dispose = mode ? startOnline(app, mode) : startPrototype(app);
-initCrt([app]); // old-TV look over the 3D picture only; menus/HUD layers sit above #app
-if (import.meta.env.DEV || location.search.includes('devworld')) void import('./store/devHook').then((m) => m.installWorldDevHook());
-if (import.meta.hot) import.meta.hot.dispose(() => dispose());
+let activeDispose: (() => void) | null = null;
 
-function startOnline(el: HTMLElement, m: NonNullable<typeof mode>): () => void {
-  let session: { dispose(): void } | null = null;
-  void import('./app/online/OnlineSession').then(({ OnlineSession }) => { const s = new OnlineSession(el, m); session = s; (window as any).__online = s; });
-  return () => session?.dispose();
+function mountFromCurrentUrl(): void {
+  activeDispose?.();
+  const mode = onlineMode(location.search);
+  activeDispose = mode ? startOnline(app, mode) : startPrototype(app);
+}
+
+mountFromCurrentUrl();
+initCrt([app]); // old-TV look over the 3D picture only; menus/HUD layers sit above #app
+if (import.meta.env.DEV || location.search.includes('devworld')) {
+  void import('./store/devHook').then((m) => m.installWorldDevHook());
+}
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => activeDispose?.());
+}
+
+function startOnline(el: HTMLElement, m: OnlineMode): () => void {
+  return lazyStart(() => import('./app/online/OnlineSession'), ({ OnlineSession }) => {
+    const s = new OnlineSession(el, m, {
+      onReturnToOrbit: (kind) => {
+        history.replaceState(null, '', `${location.pathname}?planet=${kind}`);
+        mountFromCurrentUrl();
+      },
+    });
+    (window as unknown as { __online?: unknown; __game?: unknown }).__online = s;
+    (window as unknown as { __online?: unknown; __game?: unknown }).__game = s;
+    return s;
+  });
 }
 
 function startPrototype(el: HTMLElement): () => void {
-  let game: { dispose(): void } | null = null;
-  void import('./app/Game').then(({ Game }) => { const g = new Game(el); game = g; (window as any).__game = g; });
-  return () => game?.dispose();
+  return lazyStart(() => import('./app/Game'), ({ Game }) => {
+    const g = new Game(el);
+    (window as unknown as { __game?: unknown }).__game = g;
+    return g;
+  });
 }

@@ -67,3 +67,57 @@ export function hexRound(q: number, r: number): [number, number] {
   else if (dr > ds) rr = -rq - rs;
   return [rq + 0, rr + 0];
 }
+
+/** Sub-0.15 m noise on flat ground renders perfectly level; from 0.35 m up the sim height is used as is (no step). */
+export function levelledFlatHeight(raw: number): number {
+  const a = Math.abs(raw);
+  const t = Math.min(1, Math.max(0, (a - 0.15) / 0.2));
+  return raw * t * t * (3 - 2 * t);
+}
+
+/**
+ * Whether a Flat tile (`terrain === 0`) sits on a sloped ramp or cliff edge rather than a level plateau, so its
+ * hexagon is not drawn, buildings cannot be placed on it (`uneven`), and ground units do not walk onto it.
+ */
+export function isTileUneven(
+  radius: number,
+  tileIdx: number,
+  terrain: ArrayLike<number>,
+  height?: ArrayLike<number> | null,
+): boolean {
+  if (!height || terrain[tileIdx] !== 0) return false;
+  const raw0 = height[tileIdx] ?? 0;
+  const h0 = levelledFlatHeight(raw0);
+  const hx = hexIndex(radius);
+  const q = hx.q[tileIdx]!, r = hx.r[tileIdx]!;
+  let flatPeers = 0;
+  let levelPeers = 0;
+  let firstPeer = -1;
+  let maxFlatStep = 0;
+  for (const [dq, dr] of HEX_DIRS) {
+    const j = hx.indexOf(q + dq, r + dr);
+    if (j < 0 || terrain[j] !== 0) continue;
+    flatPeers++;
+    const rawJ = height[j] ?? 0;
+    const df = Math.abs(levelledFlatHeight(rawJ) - h0);
+    if (df > maxFlatStep) maxFlatStep = df;
+    if (Math.abs(rawJ - raw0) < 1e-3) {
+      levelPeers++;
+      if (firstPeer < 0) firstPeer = j;
+    }
+  }
+  if (Math.abs(h0) <= 0.01) return flatPeers > 0 && levelPeers === 0 && maxFlatStep > 0.05;
+  if (levelPeers >= 2) return false;
+  if (levelPeers === 1) {
+    const pq = hx.q[firstPeer]!, pr = hx.r[firstPeer]!;
+    for (const [dq, dr] of HEX_DIRS) {
+      const k = hx.indexOf(pq + dq, pr + dr);
+      if (k >= 0 && k !== tileIdx && terrain[k] === 0 && Math.abs((height[k] ?? 0) - raw0) < 1e-3) {
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
+

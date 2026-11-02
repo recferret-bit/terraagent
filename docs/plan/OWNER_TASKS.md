@@ -20,7 +20,7 @@
 - [ ] **Pick a social-login provider** for F5 (HOT is a listed hackathon partner; check the others for NEAR named-account support). Fallback: guest + server-created custodial sub-accounts.
 - [ ] **Prize payout wallet:** a **mainnet** NEAR account owned by you (the submission form asks for it).
 - [ ] **X account** for the required demo post ("built at NEAR HACKATHON" + video).
-- [ ] **4 vCPU / 8 GB host** ready for the hosted demo. DNS and the SSH key are the "Before W3" list below (D-37). A local-only demo is the fallback. Cloudflare is not required.
+- [ ] **4 vCPU / 8 GB host** ready for the hosted demo. DNS and the SSH key are the "Before W3" list below (D-40). A local-only demo is the fallback. Cloudflare is not required.
 
 ## Plan review 2026-10-30 — questions for the owner
 
@@ -66,7 +66,7 @@ The wave plan was reviewed against the specs and the existing `frontend/` protot
 | # | Question | Proposed default | Where |
 |---|---|---|---|
 | N1 | One domain or `game.` + root (D-24 one app vs CLIENT/ARCHITECTURE §4 two static sites)? | Two static sites on one app, as ARCHITECTURE §4 | W25-28 |
-| N2 | Who adds production rewrites for `/me`, `/planets`, `/c/{id}` and `frontend/me.html` to `vite.config.ts`? | W25 (rewrites), W12 lead pre-step (`me.html`) | W12, W25 |
+| N2 | Who adds production rewrites for `/me`, `/planets`, `/c/{id}` and `frontend/me.html` to `frontend/vite.config.ts`? | W25 (rewrites), W12 lead pre-step (`me.html`) | W12, W25 |
 | N3 | Ports gain methods `NEAR.md` does not list (`keyStatus`, Deed `get`, Staking `listPools`/`withdraw`/`position`, Treasury `addMember`/`removeMember`/`get`, Escrow `get`) | Add them to NEAR.md's port table | W06, W20, W22 |
 | N4 | Hackathon rule ids Q-002…Q-017 are cited but defined nowhere in the repo | Copy the hackathon rules into `HACKATHON_CUT.md` | W00-48, W25 |
 | N6 | HUD technology | **Answered 2026-10-30 → D-36:** vanilla DOM + design-system CSS; ARCHITECTURE §12 and tech-stack-spec amended | W02-26, W01-29 |
@@ -103,7 +103,7 @@ The wave plan was reviewed against the specs and the existing `frontend/` protot
 - [ ] **NEAR Intents** (D-19, D-26): `intents.near` is **mainnet-only** (no testnet). Approve the mainnet cargo-token contract account `res.terraagent.near` (NEP-245) and fund the dev accounts above. ~~Testnet Intents/solver endpoint~~: obsolete, there is none.
 - [ ] **Staking validator whitelist** (D-18): pick the validator pools players may stake to through their colony account (testnet first, then mainnet).
 
-## Before W26 — the public hosts (D-37)
+## Before W26 — the public hosts (D-40)
 
 - [x] **Domain** `terraagent.fun` registered.
 - [ ] **DNS, plain A records, not proxied.** Every name points at the server IP that will go in `DEPLOY_HOST`:
@@ -118,9 +118,9 @@ The wave plan was reviewed against the specs and the existing `frontend/` protot
 - [ ] **SSH key.** Create a user on the server (the `DEPLOY_USER` in `.env`, default `deploy`) and copy your key to it (`ssh-copy-id` is fine; the deploy scripts will not do this). Docker and the compose plugin are installed. The user can run them.
 - [ ] **`.env` on the operator machine:** `TA_DOMAIN=terraagent.fun`, `DEPLOY_HOST=<that IP>`, `DEPLOY_USER=<that user>`.
 - [ ] **Laptop hosts file (optional):** install `infra/hosts/local.hosts` when W26 lands it, so a browser opens the same names against local nginx. Smoke tests do not need it.
-- [ ] **Server** (D-23 size, D-37 front door): one VPS in a single region, **4 vCPU / 8 GB RAM**, ≥ 80 GB SSD.
+- [ ] **Server** (D-23 size, D-40 front door): one VPS in a single region, **4 vCPU / 8 GB RAM**, ≥ 80 GB SSD.
 - [ ] **TLS:** none for this phase. No Cloudflare zone, no origin certificate.
-- [ ] **Backups:** local `pg_dump` only (W25-09). No R2 bucket until a later row. ~~JetStream snapshots~~: obsolete under D-24. ~~Cloudflare R2 in D-23~~: not this phase (D-37).
+- [ ] **Backups:** local `pg_dump` only (W25-09). No R2 bucket until a later row. ~~JetStream snapshots~~: obsolete under D-24. ~~Cloudflare R2 in D-23~~: not this phase (D-40).
 - [ ] Admin credentials policy for the ops API (TA-04.7): admin API key(s) or an allow-list of NEAR accounts.
 
 ## Before W5 — launch
@@ -151,7 +151,7 @@ The wave plan was reviewed against the specs and the existing `frontend/` protot
 | Q14 | Spectating | Not in v1 | D-22 |
 | Q15 | Claim colony account; cross-planet trades | Claimable at launch; same planet only | D-18, D-19 |
 | Q16 | Raw AI prompts logged | Raw, 14-day retention; rationale shown in the HUD | D-09 |
-| Q17 | TLS, HSTS preload, host | Was Cloudflare and R2 (D-23). **Now HTTP on `terraagent.fun`, no Cloudflare, no R2, until a later wave (D-37).** Host size stays 4 vCPU / 8 GB | D-23, D-37 |
+| Q17 | TLS, HSTS preload, host | Was Cloudflare and R2 (D-23). **Now HTTP on `terraagent.fun`, no Cloudflare, no R2, until a later wave (D-40).** Host size stays 4 vCPU / 8 GB | D-23, D-40 |
 | Q18 | Display names; rejoin | Generated names + optional rename; no rejoin | — |
 | — | Per-pylon max load | Enforced in MVP | D-21, TA-06.12 |
 | — | NEAR Intents | **In MVP** (same-planet trades) | D-19, TA-10.6 |

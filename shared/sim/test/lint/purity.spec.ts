@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
 const fixturePath = resolve(repoRoot, 'shared/sim/src/systems/_fixture/index.ts');
-const eslint = new ESLint({ cwd: repoRoot });
+const eslint = new ESLint({ cwd: repoRoot, overrideConfigFile: resolve(repoRoot, 'shared/config/eslint.config.js') });
 
 async function lint(source: string) {
   const [res] = await eslint.lintText(source, { filePath: fixturePath });
@@ -17,11 +17,13 @@ const sys = (body: string, imports = '') =>
 
 describe('sim purity lint (SIM-D-06)', () => {
   it('passes a clean system', async () => {
-    expect(await lint(sys('const n = Math.floor(1.5); void n;'))).toEqual([]);
+    expect(await lint(sys('const n = Math.floor(1.5) + Math.sqrt(2) + Math.fround(0.1); void n;'))).toEqual([]);
   });
 
   const cases: Array<[string, string, string?, string?]> = [
     ['Math.random', 'Math.random();', undefined, 'no-restricted-properties'],
+    ['Math.sin (engine-dependent, D-38)', 'Math.sin(1);', undefined, 'no-restricted-properties'],
+    ['Math.hypot (engine-dependent, D-38)', 'Math.hypot(3, 4);', undefined, 'no-restricted-properties'],
     ['Date.now', 'Date.now();', undefined, 'no-restricted-globals'],
     ['setTimeout', 'setTimeout(() => undefined, 1);', undefined, 'no-restricted-globals'],
     ['process', 'process.exit();', undefined, 'no-restricted-globals'],
@@ -29,6 +31,11 @@ describe('sim purity lint (SIM-D-06)', () => {
     ['node:fs import', 'void readFileSync;', "import { readFileSync } from 'node:fs';", 'no-restricted-imports'],
     ['path import', 'void join;', "import { join } from 'path';", 'no-restricted-imports'],
     ['@terra/render import', 'void x;', "import { x } from '@terra/render/foo';", 'no-restricted-imports'],
+    ['** (engine-dependent like Math.pow)', 'const n = 2 ** 0.5; void n;', undefined, 'no-restricted-syntax'],
+    ['**=', 'let n = 2; n **= 3; void n;', undefined, 'no-restricted-syntax'],
+    ['Intl (locale-dependent)', 'void new Intl.NumberFormat();', undefined, 'no-restricted-globals'],
+    ['localeCompare (locale-dependent)', "void 'a'.localeCompare('b');", undefined, 'no-restricted-properties'],
+    ['toLocaleString (locale-dependent)', 'void (1.5).toLocaleString();', undefined, 'no-restricted-properties'],
     ['async function', '(async () => 1)();', undefined, 'no-restricted-syntax'],
     ['await', 'void 0;', undefined, 'no-restricted-syntax'],
   ];

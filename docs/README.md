@@ -1,6 +1,6 @@
 # TerraAgent docs
 
-Everything that is not code lives here. The repo root only keeps `README.md`, `AGENTS.md` and `CLAUDE.md`.
+Everything that is not code lives here. Following the D-41 root cleanliness rule, the repository root keeps ONLY agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, `package.json` (`package-lock.json`, `node_modules/`), and the 7 domain directories (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`).
 
 | Folder | What it holds | Start with |
 |---|---|---|
@@ -8,6 +8,9 @@ Everything that is not code lives here. The repo root only keeps `README.md`, `A
 | [`spec/`](./spec) | **Online architecture** for the server, protocol, client, NEAR and deployment, plus the browser tech stack. `DECISIONS.md` is the source of truth for what was decided | [`DECISIONS.md`](./spec/DECISIONS.md) |
 | [`plan/`](./plan) | **Build plan:** 27 product waves (871 issues, one file per wave), the hackathon cut (`H` tags) and its generated schedule | [`PRODUCT_WAVES.md`](./plan/PRODUCT_WAVES.md), [`HACKATHON_CUT.md`](./plan/HACKATHON_CUT.md) |
 | [`hackathon/`](./hackathon) | **NEAR Hackathon strategy pack (proposals):** master-plan review, balance simulation and calculator, grand-prize pivot, Nov 1–18 launch playbook, whitepaper, landing copy, media plan, on-chain / NEAR grooming reference (`near/`) | [`hackathon/README.md`](./hackathon/README.md) |
+| [`dev/`](./dev) | **Developer tooling reference:** URL parameters, dev console, dev pages and routes, mock blockchain, env variables, debug handles, test commands | [`DEV_TOOLS.md`](./dev/DEV_TOOLS.md) |
+| [`questions-and-limitations/`](./questions-and-limitations) | **Known limitations and open questions:** what the code deliberately does not handle, trade-offs, questions for the owner. Agents add an entry whenever they leave something undone | [`README.md`](./questions-and-limitations/README.md) |
+| [`coverage/`](./coverage) | **Test coverage reference:** the per-package and per-file unit-test coverage baseline | [`README.md`](./coverage/README.md) |
 | [`visuals/`](./visuals) | **3D and rendering rules** for agents and artists: coding rules, the AI-mesh pipeline, procedural textures, shaders and lighting | [`agent-3d-coding-rules.md`](./visuals/agent-3d-coding-rules.md) |
 
 ## Game design (`game/`)

@@ -1,0 +1,15 @@
+{
+  "name": "@terra/ledger",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./*": "./src/*.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit -p . && tsc --noEmit -p tsconfig.test.json",
+    "test": "vitest run --passWithNoTests",
+    "coverage": "vitest run --coverage"
+  }
+}

@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { ArchetypeCatalog, createArchetypeMesh, tickArchetypeMesh, type ArchetypeCategory, type ArchetypeMesh } from '@terra/render/kitbash';
+import { ArchetypeCatalog, createArchetypeMesh, setArchetypeBuildProgress, tickArchetypeMesh, type ArchetypeCategory, type ArchetypeMesh } from '@terra/render/kitbash';
 
 export interface Spawn { id: string; mesh: ArchetypeMesh; box: THREE.Box3; }
 const footprint = (b: THREE.Box3) => Math.max(b.max.x - b.min.x, b.max.z - b.min.z, 1);
@@ -46,6 +46,9 @@ export class SpawnSet {
 
   applyWire(wire: boolean) { for (const s of this.spawns) (s.mesh.material as THREE.MeshStandardMaterial).wireframe = wire; }
 
+  /** Construction scaffold stage of every shown archetype (1 = complete). */
+  applyBuild(stage: number) { for (const s of this.spawns) setArchetypeBuildProgress(s.mesh, stage); }
+
   find(id: string) { return this.spawns.find((s) => s.id === id); }
 
   updateRing(id: string, row: ArchetypeCategory | null) {
@@ -65,8 +68,9 @@ export class SpawnSet {
     return box;
   }
 
-  tick(time: number, dt: number, turntable: boolean, row: boolean) {
+  /** `work` = biped work-pose weight (`uWorkWeight`, 0..1). */
+  tick(time: number, dt: number, turntable: boolean, row: boolean, work = 0) {
     if (turntable) this.content.rotation.y = row ? 0 : this.content.rotation.y + dt * 0.5; // rotate object(s), grid stays calibrated; rows stay readable
-    for (const s of this.spawns) tickArchetypeMesh(s.mesh, time);
+    for (const s of this.spawns) tickArchetypeMesh(s.mesh, time, undefined, work);
   }
 }

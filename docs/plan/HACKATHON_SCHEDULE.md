@@ -30,17 +30,17 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 | # | Issue | Size | Finishes at | Title |
 |---|---|---|---|---|
 | 1 | [W00-02](waves/W00-platform-skeleton.md) | M | 1.0 | npm-workspaces root: new packages `shared/{contracts,config,db,sim}` (`@terra/contracts`, `@terra/config`, `@t |
-| 2 | [W00-05](waves/W00-platform-skeleton.md) | S | 1.5 | `@terra/config`: zod env loader merged per module, `.env.example`, `envFlagTrue()` (only the exact string `tru |
+| 2 | [W00-05](waves/W00-platform-skeleton.md) | S | 1.5 | `@terra/config`: zod env loader merged per module, `infra/.env.example`, `envFlagTrue()` (only the exact strin |
 | 3 | [W00-09](waves/W00-platform-skeleton.md) | M | 2.5 | NestJS app skeleton: `main.ts`, module list auto-built from `modules/*/`, CORS allow-list, `/v1/healthz`, `/v1 |
 | 4 | [W00-18](waves/W00-platform-skeleton.md) | M | 3.5 | `game` module thread pool: `SIM_THREADS = cores − 1`, planet → thread by `hash(planetId) % n`, MessagePort pro |
 | 5 | [W00-22](waves/W00-platform-skeleton.md) | M | 4.5 | WS gateway: `/ws` upgrade, origin allow-list, `hello` within 5 s using a **dev session token** (JWT in W01), ` |
 | 6 | [W00-24](waves/W00-platform-skeleton.md) | M | 5.5 | Delta builder in the sim thread: every 200 ms one engine diff per planet (`diffSince(tick)`: changed entity ro |
 | 7 | [W01-08](waves/W01-landfall.md) | S | 6.0 | Tile model in sim: `grid.terrain`, `grid.prep` (`wild/flat/prepared/irrigated/living/ridge/moat`), `grid.owner |
 | 8 | [W01-13](waves/W01-landfall.md) | M | 7.0 | Ops Grade/Clear/Break: per-tile time (3/5/6 s at 1.0×), energy (20/30/60 E) drawn evenly over the work, lump y |
-| 9 | [W01-14](waves/W01-landfall.md) | S | 7.5 | Command Hub placement validation: 3×3 footprint, inside the map, not foreign-owned, no Deep Water; unclaimed t |
-| 10 | [W01-15](waves/W01-landfall.md) | M | 8.5 | Linked prep: placing on unprepared tiles creates one linked terraform order covering every missing op; constru |
-| 11 | [W01-16](waves/W01-landfall.md) | S | 9.0 | Hub construction: paid on start (`200/100/50/50`), progress `buildTime / Σrate` (30 s at 1.0× → 20 s with the  |
-| 12 | [W02-09](waves/W02-first-light.md) | M | 10.0 | Generic T1 construction: any data row with a footprint uses the W01 placement, linked prep and paid-on-start b |
+| 9 | [W01-14](waves/W01-landfall.md) | S | 7.5 | Command Hub placement validation through the one shared `evaluatePlacement` (D-37; same function in the `place |
+| 10 | [W01-15](waves/W01-landfall.md) | M | 8.5 | Linked prep: placing on unprepared Flat tiles creates one linked terraform order covering the missing Grade op |
+| 11 | [W01-16](waves/W01-landfall.md) | S | 9.0 | Hub construction: full cost `200/100/50/50` must be affordable to start, then spent in whole units as it is bu |
+| 12 | [W02-09](waves/W02-first-light.md) | M | 10.0 | Generic T1 construction: any data row with a footprint uses the W01 shared `evaluatePlacement` (D-37, per-buil |
 | 13 | [W02-10](waves/W02-first-light.md) | M | 11.0 | Hub worker production: Units lane at the Hub (5-slot buffer, 1.0×), paid on start, `supply_cap` check (supply  |
 | 14 | [W02-13](waves/W02-first-light.md) | M | 12.0 | Queue v1, part 1: Construction and Units lanes; entry lifecycle `queued → waiting(reason) → in_progress → done |
 | 15 | [W02-14](waves/W02-first-light.md) | M | 13.0 | Queue v1, part 2: wait reasons `resources` (with the missing amounts), `storage` (cost > cap, never earmarks), |
@@ -53,7 +53,7 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 | 22 | [W25-29](waves/W25-launch-ops.md) | M | 19.5 | Demo video: a 2–3 min script covering landfall → economy → terraform → combat → walls → cargo → market → Guild |
 | 23 | [W25-30](waves/W25-launch-ops.md) | S | 20.0 | X post: "built at NEAR HACKATHON", video, link to the repo and demo |
 | 24 | [W25-31](waves/W25-launch-ops.md) | S | 20.5 | Submission form: name, team lead, email, team size solo, tracks (09 + 07 + 05, + 10/12 if F6/F7 qualify), main |
-| 25 | [W25-33](waves/W25-launch-ops.md) | S | 21.0 | Wave e2e `e2e/w25.spec.ts` (demo steps 4–6; the hackathon `@hack` run is steps 4 and 7 against the W26 hosts)  |
+| 25 | [W25-33](waves/W25-launch-ops.md) | S | 21.0 | Wave e2e `tests/e2e/w25.spec.ts` (demo steps 4–6; the hackathon `@hack` run is steps 4 and 7 against the W26 h |
 
 ## 3. Start order with 10 agents (H)
 

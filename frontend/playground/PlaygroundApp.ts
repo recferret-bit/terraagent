@@ -1,15 +1,17 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
+import { onShadowChange, setShadow } from '@terra/render/core/shadowConfig';
 import { initPixelDialog } from '@terra/render/ui/pixelDialog';
 import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { ArchetypeCatalog, type ArchetypeCategory } from '@terra/render/kitbash';
 import { validateArchetype } from '@terra/render/kitbash/validate';
 import { $ } from './dom';
-import { createState, syncURL, type PgState, type ToggleKey, type View } from './state';
+import { BUILD_STAGES, createState, syncURL, type BuildStage, type PgState, type ToggleKey, type View } from './state';
 import { StageRig } from './stage/StageRig';
 import { SpawnSet } from './content/SpawnSet';
 import { SurfaceHost } from './content/SurfaceHost';
+import { HexSampleHost } from './content/HexSampleHost';
 import { ValidationOverlay } from './content/Validation';
 import { CameraRig, type ViewOpts } from './camera/CameraRig';
 import { bindPicking } from './camera/Picking';
@@ -28,6 +30,7 @@ export class PlaygroundApp {
   private rig: StageRig;
   private spawns = new SpawnSet();
   private surface: SurfaceHost;
+  private hexSample: HexSampleHost;
   private validation = new ValidationOverlay();
   private cam: CameraRig;
   private sidebar: Sidebar;
@@ -40,6 +43,7 @@ export class PlaygroundApp {
     this.state = createState(params);
     const vp = this.viewport = createColonyViewport($('#viewport'));
     this.surface = new SurfaceHost(vp.scene);
+    this.hexSample = new HexSampleHost(vp.scene);
     this.rig = new StageRig(() => this.spawns.minX());
     this.cam = new CameraRig(vp.camera, vp.renderer.domElement, () => this.bounds(), () => !!this.state.row);
     vp.scene.add(this.rig.group, this.spawns.content, this.spawns.ring);
@@ -50,6 +54,7 @@ export class PlaygroundApp {
       onToggle: (k) => this.toggle(k),
       onShot: () => { screenshot(vp, this.cam, this.state); toast('Screenshot saved'); },
       onSheet: () => this.contactSheet(),
+      onBuild: () => this.setBuild(BUILD_STAGES[(BUILD_STAGES.indexOf(this.state.build) + 1) % BUILD_STAGES.length]!),
     });
     bindPicking(vp.renderer.domElement, vp.camera, {
       spawns: () => this.spawns.spawns, isRow: () => !!this.state.row, selectedId: () => this.state.id,
@@ -73,6 +78,7 @@ export class PlaygroundApp {
     this.toolbar.syncToggles();
     initPixelDialog();
     onPixelArtChange((on) => { this.state.pixel = on; this.toolbar.syncToggles(); syncURL(this.state); });
+    onShadowChange((on) => { this.state.shadows = on; this.toolbar.syncToggles(); syncURL(this.state); });
     this.setView(state.view, { instant: true });
     this.frame();
   }
@@ -83,7 +89,7 @@ export class PlaygroundApp {
     return {
       state: this.state, select: (id: string) => this.select(id), validate: (id = this.state.id) => validateArchetype(id), setView: (v: View) => this.setView(v),
       setPlanet: (k: PlanetKind) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k: ToggleKey) => this.toggle(k), contactSheet: () => this.contactSheet(),
-      viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns,
+      viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns, setBuild: (s: BuildStage) => this.setBuild(s),
     };
   }
 
@@ -102,12 +108,22 @@ export class PlaygroundApp {
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
-    if (this.surface.sync(this.state.kind, this.state.surface)) this.rig.hidePedestal();
+    const { kind, surface, hexTerrain, hatch } = this.state;
+    const onSurface = this.surface.sync(kind, surface); // both always run: each disposes what it showed before
+    const onHex = this.hexSample.sync(kind, hexTerrain, hatch);
+    if (onSurface || onHex) this.rig.hidePedestal();
+  }
+
+  private setBuild(stage: BuildStage) {
+    this.state.build = stage;
+    this.spawns.applyBuild(stage);
+    this.toolbar.syncToggles(); syncURL(this.state);
   }
 
   private rebuildContent() {
     const { state, spawns } = this;
     spawns.rebuild(spawns.idsFor(state.row, state.id), PLANET_SPECS[state.kind].biomeKey, state.wire);
+    spawns.applyBuild(state.build);
     spawns.updateRing(state.id, state.row);
     this.rig.placeHuman();
     this.applyValidation();
@@ -178,16 +194,16 @@ export class PlaygroundApp {
       case 'human': this.rig.human.visible = state.human; break;
       case 'shadows': this.applyShadows(); break;
       case 'hex': { this.buildStage(); if (state.surface) this.syncSurface(); break; }
-      case 'surface': this.syncSurface(); break;
+      case 'surface': if (state.surface) state.hexTerrain = false; this.buildStage(); this.syncSurface(); break;
+      case 'hexTerrain': if (state.hexTerrain) state.surface = false; this.buildStage(); this.syncSurface(); break;
+      case 'hatch': this.hexSample.setHatch(state.hatch); break;
       case 'validate': this.applyValidation(); this.refreshInfo(); break;
     }
     this.toolbar.syncToggles(); syncURL(state);
   }
 
   private applyShadows() {
-    const vp = this.viewport, on = this.state.shadows;
-    vp.sun.castShadow = on; vp.renderer.shadowMap.enabled = on;
-    vp.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) m.needsUpdate = true; });
+    setShadow(this.state.shadows);
   }
 
   private contactSheet(): string {
@@ -201,9 +217,10 @@ export class PlaygroundApp {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.time += dt;
     this.cam.step(dt);
-    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row);
+    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0);
     this.cam.controls.update();
     this.surface.update(dt, this.time);
+    this.hexSample.update(dt);
     this.viewport.followShadow(this.cam.controls.target);
     this.viewport.render();
     requestAnimationFrame(this.frame);
