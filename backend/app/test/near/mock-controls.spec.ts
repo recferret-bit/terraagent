@@ -2,6 +2,7 @@ import type { PrismaClient } from '@terra/db';
 import { afterEach, describe, expect, it } from 'vitest';
 import { CoreException } from '../../src/core/errors';
 import type { DevCommand } from '../../src/dev/dev-command.registry';
+import { NearException } from '../../src/near/domain/errors';
 import { NearMockCommand } from '../../src/near/infrastructure/dev/near-mock.command';
 import type { MockChainConfig } from '../../src/near/infrastructure/mock/mock-chain.config';
 import { mockChainControls } from '../../src/near/infrastructure/mock/mock-controls';
@@ -80,5 +81,38 @@ describe('near mock dev commands', () => {
     expect(err).toBeInstanceOf(CoreException);
     expect(err).toMatchObject({ errorCode: 'VALIDATION_ERROR', status: 400 });
     expect(mockChainControls.overlay('relayer', base(0)).latencyMinMs).toBe(300);
+  });
+
+  it('near.error throws the four player codes and rejects anything else with 400', async () => {
+    const table = commands();
+    const cases = [
+      ['NEAR_PROVIDER_REJECTED', 401],
+      ['NEAR_NAME_TAKEN', 409],
+      ['NEAR_RELAY_FAILED', 503],
+      ['NEAR_RELAY_RECEIVER_NOT_ALLOWED', 403],
+    ] as const;
+    for (const [code, status] of cases) {
+      let err: unknown;
+      try {
+        await table.get('near.error')!.run({ code });
+      } catch (e) {
+        err = e;
+      }
+      expect(err).toBeInstanceOf(NearException);
+      expect(err).toMatchObject({ errorCode: code, status });
+    }
+    let bad: unknown;
+    try {
+      await table.get('near.error')!.run({ code: 'NEAR_UNAVAILABLE' });
+    } catch (e) {
+      bad = e;
+    }
+    expect(bad).toBeInstanceOf(CoreException);
+    expect(bad).not.toBeInstanceOf(NearException);
+    expect(bad).toMatchObject({ errorCode: 'VALIDATION_ERROR', status: 400 });
+    expect(table.has('near.mock.fail')).toBe(true);
+    expect(table.has('near.mock.latency')).toBe(true);
+    expect(table.has('account.reset')).toBe(true);
+    expect(table.has('account.upgrade')).toBe(true);
   });
 });

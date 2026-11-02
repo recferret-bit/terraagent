@@ -1,0 +1,17 @@
+.ta-near-toast {
+  appearance: none;
+  display: block;
+  max-width: min(360px, 70vw);
+  margin: 0;
+  padding: var(--ta-s2) var(--ta-s4);
+  background: var(--ta-plate-2);
+  border: 1.5px solid var(--ta-fault);
+  color: var(--ta-fault-text);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  line-height: 1.35;
+  text-align: left;
+  cursor: pointer;
+}

@@ -4,7 +4,18 @@ import type { LedgerView } from '@terra/sim';
 export type DevServer = (name: string, args?: unknown) => Promise<unknown>;
 
 export class DevServerError extends Error {
-  constructor(readonly code: string, message: string) { super(`${code}: ${message}`); this.name = 'DevServerError'; }
+  /**
+   * Stable domain code when the body is `{ errorCode, error: { message } }`.
+   * Absent for older `{ message }` bodies and for client-side failures.
+   */
+  constructor(
+    readonly code: string,
+    message: string,
+    readonly errorCode?: string,
+  ) {
+    super(`${code}: ${message}`);
+    this.name = 'DevServerError';
+  }
 }
 
 /** Service for hosts with no server (`?host=local`): every server-only command reports `host_unavailable`. */
@@ -12,14 +23,35 @@ export const hostUnavailableDevServer: DevServer = async (name) => {
   throw new DevServerError('host_unavailable', `"${name}" needs the game server; not available on this host`);
 };
 
+/** `error.message` of an envelope, when it is a string. */
+function envelopeMessage(error: unknown): string | undefined {
+  if (typeof error !== 'object' || error === null || !('message' in error)) return undefined;
+  const message = (error as { message: unknown }).message;
+  return typeof message === 'string' ? message : undefined;
+}
+
+/**
+ * Text and optional `errorCode` of a failed dev body. `{ errorCode, error: { message } }` keeps the code and uses
+ * `error.message`. A body with only a top-level `message` (older routes) is unchanged.
+ */
+function failedReply(body: unknown, rawText: string): { message: string; errorCode?: string } {
+  if (typeof body !== 'object' || body === null) return { message: rawText.slice(0, 200) };
+  const nested = envelopeMessage((body as { error?: unknown }).error);
+  const flat = 'message' in body ? String((body as { message: unknown }).message) : undefined;
+  const message = nested ?? flat ?? rawText.slice(0, 200);
+  const errorCode = (body as { errorCode?: unknown }).errorCode;
+  return typeof errorCode === 'string' ? { message, errorCode } : { message };
+}
+
 /** JSON body of a dev route; a non-2xx status becomes a `DevServerError` (`not_found` for 404, else `http_<status>`). */
 async function readDevReply(res: Response): Promise<unknown> {
   const text = await res.text();
   let body: unknown = text;
   try { body = text ? JSON.parse(text) : null; } catch { /* keep text */ }
   if (res.ok) return body;
-  const msg = typeof body === 'object' && body !== null && 'message' in body ? String((body as { message: unknown }).message) : text.slice(0, 200);
-  throw new DevServerError(res.status === 404 ? 'not_found' : `http_${res.status}`, `${res.status} ${msg}`.trim());
+  const fields = failedReply(body, text);
+  const code = res.status === 404 ? 'not_found' : `http_${res.status}`;
+  throw new DevServerError(code, `${res.status} ${fields.message}`.trim(), fields.errorCode);
 }
 
 /** Default online implementation; `fetchImpl` and `base` are injectable (the local host and tests swap them). */
