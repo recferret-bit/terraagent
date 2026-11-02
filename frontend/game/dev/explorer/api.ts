@@ -1,10 +1,12 @@
 /** Read-only dev routes of the mock chain (`/v1/dev/chain/*`, 404 in production). */
-export type TabId = 'receipts' | 'balances' | 'nfts' | 'dao' | 'escrow' | 'outbox';
+export type TabId = 'accounts' | 'receipts' | 'balances' | 'nfts' | 'dao' | 'escrow' | 'outbox';
 export type Row = Record<string, unknown>;
 
 export interface Query { account: string }
 
-const PATH: Record<TabId, string> = { receipts: 'receipts', balances: 'balances', nfts: 'nfts', dao: 'dao', escrow: 'escrow', outbox: 'outbox' };
+const PATH: Record<TabId, string> = {
+  accounts: 'accounts', receipts: 'receipts', balances: 'balances', nfts: 'nfts', dao: 'dao', escrow: 'escrow', outbox: 'outbox',
+};
 
 export async function fetchRows(tab: TabId, q: Query, signal?: AbortSignal): Promise<Row[]> {
   const params = new URLSearchParams({ limit: '100' });

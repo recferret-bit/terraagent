@@ -11,6 +11,16 @@ body { min-height: 100vh; padding: 32px 0 64px; }
 .xt td { padding: 7px 12px; border-bottom: 1px solid var(--ta-seam); color: var(--ta-text-2); white-space: nowrap; }
 .xt .num { text-align: right; }
 .xt .hash { color: var(--ta-blue-hi); }
+.xt a.hash-link { color: var(--ta-blue-hi); text-decoration: underline; text-underline-offset: 2px; }
+.xt a.hash-link:hover { color: var(--ta-orange-hi); }
+.xdetail { margin-top: 20px; padding: 8px 0 16px; background: var(--ta-plate-2); border: 1px solid var(--ta-seam); }
+.xdetail dl { display: grid; grid-template-columns: 120px minmax(0, 1fr); gap: 12px 16px; margin: 0; padding: 20px 28px; }
+.xdetail dt { margin: 0; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.12em; color: var(--ta-steel); }
+.xdetail dd { margin: 0; font-family: var(--ta-font-mono); font-size: 13px; color: var(--ta-text); overflow-wrap: anywhere; }
+.xdetail dd.hash { color: var(--ta-blue-hi); }
+.xdetail dd[data-status="final"] { color: var(--ta-terra); }
+.xdetail dd[data-status="failure"], .xdetail dd[data-status="failed"] { color: var(--ta-fault-text); }
+.xpayload { margin: 0 28px 20px; padding: 12px 16px; background: var(--ta-void); border: 1px solid var(--ta-seam); color: var(--ta-text-2); font-family: var(--ta-font-mono); font-size: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .xt [data-status="success"], .xt [data-status="done"], .xt [data-status="open"] { color: var(--ta-terra); }
 .xt [data-status="failure"], .xt [data-status="dead"], .xt [data-status="failed"] { color: var(--ta-fault-text); }
 .xt tr.is-new td { animation: xnew 2.4s var(--ta-ease-servo) both; }
