@@ -1,6 +1,7 @@
 // .agents/skills/shader-texture-tuning/examples/UnifiedColonyMaterial.ts
 import * as THREE from 'three';
 import { onColonyShaderTune } from '../core/shadowConfig';
+import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
 import { BiomeMaterialRegistry, ShaderPluginRegistry, type ShaderModifierPlugin } from './unified/registries';
 import {
   VERT_COMMON, vertBeginVertex, FRAG_COMMON, fragColor, FRAG_ROUGHNESS, FRAG_METALNESS, FRAG_RIM,
@@ -96,7 +97,7 @@ export function createUnifiedColonyMaterial(
   const hasScaffold = activePlugins.some((p) => p.name === 'buildScaffold');
 
   material.onBeforeCompile = (shader) => {
-    Object.assign(shader.uniforms, uniforms);
+    Object.assign(shader.uniforms, getColonyVisionUniforms(), uniforms);
     shader.vertexShader = injectAll(shader.vertexShader, [
       ['#include <common>', VERT_COMMON],
       ['#include <begin_vertex>', vertBeginVertex(vertPluginChunk)],

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { ColonyViewport } from './createColonyViewport';
 
@@ -13,10 +14,14 @@ export interface DayNightParams {
   sunWarmth: number;
   /** Color temperature of the midday sun in Kelvin (3500..8500, default 5600). */
   noonTempK: number;
-  /** Orbital moonlight and night ambient fill brightness at night (0..1, default 0.35). */
+  /** Orbital moonlight and night ambient fill brightness at night (0..1, default 0.12). */
   nightBrightness: number;
   /** How strongly day/night elevation & moonlight modulate shadow intensity & softness (0..1.5, default 1). */
   shadowDayFactor: number;
+  /** Intensity multiplier for unit and building projector lights (0..2, default 1). */
+  projectorIntensity: number;
+  /** Darkness of the Field-of-View shroud outside of units and user base (0..1, default 0.85). */
+  fovDim: number;
 }
 
 export type DayPeriod = 'DAWN' | 'DAY' | 'DUSK' | 'NIGHT';
@@ -61,8 +66,10 @@ export const DEFAULT_DAY_NIGHT_PARAMS: Readonly<DayNightParams> = {
   timeScale: 1,
   sunWarmth: 1.0,
   noonTempK: 5600,
-  nightBrightness: 0.35,
+  nightBrightness: 0.12,
   shadowDayFactor: 1.0,
+  projectorIntensity: 1.0,
+  fovDim: 0.85,
 };
 
 const clamp = (v: number, lo: number, hi: number): number => Math.max(lo, Math.min(hi, v));
@@ -100,6 +107,8 @@ function sanitizeDayNightParams(raw: Partial<DayNightParams>): DayNightParams {
     noonTempK: Math.round(clamp(num(raw.noonTempK, DEFAULT_DAY_NIGHT_PARAMS.noonTempK), 3500, 8500)),
     nightBrightness: clamp(num(raw.nightBrightness, DEFAULT_DAY_NIGHT_PARAMS.nightBrightness), 0, 1),
     shadowDayFactor: clamp(num(raw.shadowDayFactor, DEFAULT_DAY_NIGHT_PARAMS.shadowDayFactor), 0, 1.5),
+    projectorIntensity: clamp(num(raw.projectorIntensity, DEFAULT_DAY_NIGHT_PARAMS.projectorIntensity), 0, 2),
+    fovDim: clamp(num(raw.fovDim, DEFAULT_DAY_NIGHT_PARAMS.fovDim), 0, 1),
   };
 }
 
@@ -213,7 +222,7 @@ export function computeSolarState(
     sunColor.copy(_cNight);
   }
 
-  const nightKey = 0.14 + 0.34 * p.nightBrightness;
+  const nightKey = 0.015 + 0.22 * Math.pow(p.nightBrightness, 1.35);
   const sunIntensityMult = rawSin >= 0
     ? 0.42 + 0.58 * smoothstep(0.0, 0.65, rawSin)
     : nightKey + (0.42 - nightKey) * smoothstep(-0.22, 0.0, rawSin);
@@ -221,12 +230,14 @@ export function computeSolarState(
   // Shadows respond to solar elevation & time of day:
   const rawShadowDay = rawSin >= 0
     ? 0.38 + 0.62 * smoothstep(0.0, 0.55, rawSin)
-    : (0.16 + 0.32 * p.nightBrightness) * smoothstep(-0.02, -0.25, rawSin) + 0.25 * smoothstep(-0.25, 0.0, rawSin);
+    : (0.06 + 0.26 * p.nightBrightness) * smoothstep(-0.02, -0.25, rawSin) + 0.25 * smoothstep(-0.25, 0.0, rawSin);
   const shadowIntensityMult = clamp(1 + (rawShadowDay - 1) * p.shadowDayFactor, 0.05, 1.35);
   const shadowSoftnessMult = clamp(1 + (1 - daylight) * 0.85 * p.shadowDayFactor, 0.75, 2.5);
 
-  const hemiIntensity = (0.14 + 0.22 * p.nightBrightness) + (0.56 - (0.14 + 0.22 * p.nightBrightness)) * daylight;
-  const envIntensity = (0.24 + 0.32 * p.nightBrightness) + (1.0 - (0.24 + 0.32 * p.nightBrightness)) * daylight;
+  const nightHemi = 0.015 + 0.14 * Math.pow(p.nightBrightness, 1.25);
+  const hemiIntensity = nightHemi + (0.56 - nightHemi) * daylight;
+  const nightEnv = 0.008 + 0.10 * Math.pow(p.nightBrightness, 1.3);
+  const envIntensity = nightEnv + (1.0 - nightEnv) * daylight;
 
   return {
     hour,
@@ -287,7 +298,10 @@ export function applyDayNightAtmosphere(vp: ColonyViewport, baseAzimuth = 318, b
   const sky = vp.scene.getObjectByName('planetSkyDome') as THREE.Mesh<THREE.BufferGeometry, THREE.ShaderMaterial> | undefined;
   const fog = vp.scene.fog as THREE.FogExp2 | null;
 
+  const visionUniforms = getColonyVisionUniforms();
+  visionUniforms.uFovDim.value = params.fovDim;
   if (!enabled) {
+    visionUniforms.uNightFactor.value = 0.0;
     vp.sun.color.setHex(base.sunColor);
     vp.sun.intensity = base.sunIntensity;
     vp.hemi.color.setHex(base.hemiSky);
@@ -309,32 +323,33 @@ export function applyDayNightAtmosphere(vp: ColonyViewport, baseAzimuth = 318, b
   vp.sun.intensity = base.sunIntensity * solar.sunIntensityMult;
 
   const nightFactor = 1 - solar.daylight;
+  visionUniforms.uNightFactor.value = nightFactor;
   _cHemiSky.setHex(base.hemiSky)
     .lerp(_cHorizon.setHex(0xff8e53), solar.twilight * 0.48 * params.sunWarmth)
-    .lerp(_cTwilight.setHex(0x18294a), nightFactor * (0.88 - 0.25 * params.nightBrightness));
-  _cHemiGnd.setHex(base.hemiGround).lerp(_cTwilight.setHex(0x070b12), nightFactor * 0.82);
+    .lerp(_cTwilight.setHex(0x050b18), nightFactor * (0.96 - 0.16 * params.nightBrightness));
+  _cHemiGnd.setHex(base.hemiGround).lerp(_cTwilight.setHex(0x010205), nightFactor * 0.96);
   vp.hemi.color.copy(_cHemiSky);
   vp.hemi.groundColor.copy(_cHemiGnd);
   vp.hemi.intensity = solar.hemiIntensity;
   vp.scene.environmentIntensity = solar.envIntensity;
 
   _cSkyTop.setHex(base.skyTop)
-    .lerp(_cTwilight.setHex(0x221b3a), solar.twilight * 0.45)
-    .lerp(_cHemiGnd.setHex(0x040711), nightFactor * (0.92 - 0.2 * params.nightBrightness));
+    .lerp(_cTwilight.setHex(0x161128), solar.twilight * 0.45)
+    .lerp(_cHemiGnd.setHex(0x010308), nightFactor * (0.97 - 0.14 * params.nightBrightness));
   _cSkyHor.setHex(base.skyHorizon)
     .lerp(_cHorizon.setHex(0xd4623b), solar.twilight * 0.55 * params.sunWarmth)
-    .lerp(_cHemiGnd.setHex(0x0b1426), nightFactor * (0.88 - 0.22 * params.nightBrightness));
+    .lerp(_cHemiGnd.setHex(0x030712), nightFactor * (0.96 - 0.14 * params.nightBrightness));
 
   if (vp.scene.background instanceof THREE.Color) vp.scene.background.copy(_cSkyHor);
   if (fog?.color) fog.color.copy(_cSkyHor);
   if (sky?.material?.uniforms) {
     sky.material.uniforms.uTop?.value?.copy?.(_cSkyTop);
     sky.material.uniforms.uHorizon?.value?.copy?.(_cSkyHor);
-    sky.material.uniforms.uSunCol?.value?.copy?.(solar.sunColor).multiplyScalar?.(0.25 + 0.45 * solar.daylight);
+    sky.material.uniforms.uSunCol?.value?.copy?.(solar.sunColor).multiplyScalar?.(0.06 + 0.64 * solar.daylight);
     sky.material.uniforms.uSun?.value?.copy?.(_vSunDir.copy(vp.sun.position).sub(vp.sun.target.position));
   }
   if (vp.bloom) {
-    vp.bloom.strength = base.bloomStrength + nightFactor * 0.12;
+    vp.bloom.strength = base.bloomStrength + nightFactor * 0.16;
   }
   return solar;
 }

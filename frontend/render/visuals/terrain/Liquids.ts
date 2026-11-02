@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
 import { createHydroWaterMaterial } from '../TerrainAndWaterShaders';
 import { NOISE_GLSL } from './glsl';
 
@@ -26,14 +27,15 @@ export function createWater(c: Common, shallow: number, deep: number, sky: numbe
   const orig = material.onBeforeCompile;
   material.onBeforeCompile = (sh, r) => {
     orig.call(material, sh, r);
-    Object.assign(sh.uniforms, extra);
+    Object.assign(sh.uniforms, getColonyVisionUniforms(), extra);
     sh.vertexShader = sh.vertexShader.replace('transformed.y += wave1 + wave2;',
       'transformed.y += wave1 * 1.2 + wave2 + sin(wp.x*0.7 + wp.z*0.9 + uTime*1.1) * 0.05;');
     sh.fragmentShader = sh.fragmentShader
       .replace('varying vec3 vWaterWorldPos;', `varying vec3 vWaterWorldPos;
 uniform sampler2D uHeightTex; uniform float uSpan, uLevelW; uniform vec3 uSky;
 float gFresnelK;
-${NOISE_GLSL}`)
+${NOISE_GLSL}
+${COLONY_VISION_AND_LIGHTS_GLSL}`)
       .replace('diffuseColor.rgb = mix(waterCol, uFoamColor, foamCrest * 0.45);', `{
   vec2 p = vWaterWorldPos.xz;
   float th = texture2D(uHeightTex, p/uSpan + 0.5).r;
@@ -57,9 +59,12 @@ ${NOISE_GLSL}`)
 #ifdef USE_FOG
   { float eg = smoothstep(0.5, 0.93, length(vWaterWorldPos.xz) / (uSpan * 0.5)); // same radial fade as the terrain edge
     gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, eg); gl_FragColor.a = mix(gl_FragColor.a, 1.0, eg); }
-#endif`)
+#endif
+gl_FragColor.rgb = applyColonyFovShroud(vWaterWorldPos, gl_FragColor.rgb);`)
       .replace('#include <emissivemap_fragment>', `#include <emissivemap_fragment>
-{ float fr = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 3.0); totalEmissiveRadiance += uSky*fr*0.55; }`);
+{ float fr = pow(1.0 - saturate(dot(normalize(normal), normalize(vViewPosition))), 3.0);
+  vec3 taProj = evalColonyProjectorLight(vWaterWorldPos, vec3(0.0, 1.0, 0.0));
+  totalEmissiveRadiance += uSky*fr*0.55*(1.0 - clamp(uNightFactor, 0.0, 1.0) * 0.88) + diffuseColor.rgb * taProj + taProj * 0.12; }`);
   };
   const mesh = new THREE.Mesh(plane(c, 160), material);
   mesh.name = 'water'; mesh.position.y = c.level; mesh.receiveShadow = true; mesh.renderOrder = 1;

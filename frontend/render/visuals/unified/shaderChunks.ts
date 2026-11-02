@@ -1,4 +1,5 @@
 /** GLSL chunks injected into MeshStandardMaterial by the Unified Colony material (see UnifiedColonyMaterial.ts). */
+import { COLONY_VISION_AND_LIGHTS_GLSL } from '../../lighting/ColonyVisionAndLights';
 
 export const VERT_COMMON = /* glsl */ `#include <common>
         attribute vec2 aSurfacePBR;
@@ -6,6 +7,8 @@ export const VERT_COMMON = /* glsl */ `#include <common>
         varying vec3 vLocalPos;
         varying vec3 vObjectNormal;
         varying vec2 vSurfacePBR;
+        varying vec3 vTaWorldPos;
+        varying vec3 vTaWorldNormal;
         uniform float uTime;
         uniform float uWalkWeight;
         uniform float uWorkWeight;
@@ -173,12 +176,16 @@ export const vertBeginVertex = (pluginChunk: string) => /* glsl */ `#include <be
         ${VERT_SUB_ANIM}
         ${VERT_GAIT_ANIM}
         ${pluginChunk}
+        vTaWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vTaWorldNormal = normalize(mat3(modelMatrix) * objectNormal);
         `;
 
 export const FRAG_COMMON = /* glsl */ `#include <common>
         varying vec3 vLocalPos;
         varying vec3 vObjectNormal;
         varying vec2 vSurfacePBR;
+        varying vec3 vTaWorldPos;
+        varying vec3 vTaWorldNormal;
         uniform float uTime;
         uniform vec3 uBiomeDustColor;
         uniform vec3 uRimTint;
@@ -186,6 +193,7 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
         uniform float uWeatheringIntensity;
         uniform float uTriplanarScale;
         uniform float uRimStrength;
+        ${COLONY_VISION_AND_LIGHTS_GLSL}
 
         float hash31(vec3 p) {
           p = fract(p * 0.1031);
@@ -231,8 +239,11 @@ export const FRAG_METALNESS = /* glsl */ `#include <metalnessmap_fragment>
           metalnessFactor = vSurfacePBR.y;
         }`;
 
-/** Subtle Fresnel silhouette rim light before output. */
+/** Subtle Fresnel silhouette rim light + projector illumination + FoV shroud before output. */
 export const FRAG_RIM = /* glsl */ `// Add subtle Fresnel silhouette rim light before output
         float fresnel = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 3.2);
-        outgoingLight += uRimTint * fresnel * uRimStrength;
+        vec3 taProj = evalColonyProjectorLight(vTaWorldPos, normalize(vTaWorldNormal));
+        outgoingLight += diffuseColor.rgb * taProj + taProj * 0.10;
+        outgoingLight += uRimTint * fresnel * uRimStrength * (1.0 - clamp(uNightFactor, 0.0, 1.0) * 0.78);
+        outgoingLight = applyColonyFovShroud(vTaWorldPos, outgoingLight);
         #include <opaque_fragment>`;

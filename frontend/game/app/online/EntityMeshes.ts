@@ -3,8 +3,9 @@ import { createArchetypeMesh, setArchetypeBuildProgress, tickArchetypeMesh } fro
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import { ENTITY_KIND, ENTITY_STATE, TICK_MS } from '@terra/sim';
-import { forEachEntity, type ClientView, type EntityRow } from '../../store/replica/viewCodec';
+import { forEachEntity, type ClientTiles, type ClientView, type EntityRow } from '../../store/replica/viewCodec';
 import { MotionTrack, RenderClock } from './entityMotion';
+import { isWorldPointInColonyFov, resetColonyVisionAndLights, syncColonyVisionAndProjectors } from './entityVisionSync';
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 
@@ -96,6 +97,8 @@ export class EntityMeshes {
   private markerTile: { q: number; r: number } | null = null;
   private time = 0;
   private biomeKey = 'forestRock';
+  private latestTiles: ClientTiles | null = null;
+  private hasTerrain = false;
   private readonly clock = new RenderClock(TICK_MS / 1000);
   private dropPredictedFuture = false;
   /** Called with the largest pose correction (tiles) of a view that moved an already drawn sample (dev net stats). */
@@ -191,7 +194,17 @@ export class EntityMeshes {
     this.markerT = 0;
   }
 
-  private computeMeshVisible(kind: number, owner: number, state: number, tdState: PodTouchdownState): boolean {
+  private computeMeshVisible(
+    kind: number,
+    owner: number,
+    state: number,
+    tdState: PodTouchdownState,
+    wx?: number,
+    wz?: number,
+  ): boolean {
+    if (owner !== this.ownerColonyIndex && this.hasTerrain && wx !== undefined && wz !== undefined) {
+      if (!isWorldPointInColonyFov(wx, wz)) return false;
+    }
     if (kind === ENTITY_KIND.pod) {
       if (owner === this.ownerColonyIndex) return tdState.podVisible;
       return state === ENTITY_STATE.descending;
@@ -221,6 +234,8 @@ export class EntityMeshes {
    */
   syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey, confirmedTick = view.tick): void {
     this.biomeKey = biomeKey;
+    if (view.tiles) this.latestTiles = view.tiles;
+    this.hasTerrain = Boolean(terrain);
     this.clock.observe(Math.min(confirmedTick, view.tick));
     const seen = new Set<number>();
 
@@ -252,7 +267,22 @@ export class EntityMeshes {
       this.dropPredictedFuture = false;
       for (const rec of this.entries.values()) rec.track.dropAfter(view.tick);
     }
+    this.syncVisionAndForeignVisibility(terrain, tdState);
     this.updateSelectionRing();
+  }
+
+  private syncVisionAndForeignVisibility(terrain: HexTerrain | null, tdState: PodTouchdownState): void {
+    syncColonyVisionAndProjectors({
+      records: this.entries.values(),
+      ownerColonyIndex: this.ownerColonyIndex,
+      terrain,
+      tiles: this.latestTiles,
+    });
+    for (const rec of this.entries.values()) {
+      if (rec.owner !== this.ownerColonyIndex) {
+        rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState, rec.mesh.position.x, rec.mesh.position.z);
+      }
+    }
   }
 
   /** Returns how far (tiles) this view moved the entity's sample at `tick` (0: a new sample). */
@@ -309,13 +339,7 @@ export class EntityMeshes {
     return rec.track.push({ tick, x, y, rot });
   }
 
-  /** `dt`: animation time (warp-scaled); `realDt`: wall-clock seconds for the render clock (defaults to `dt`). */
-  update(dt: number, terrain: HexTerrain | null = null, realDt = dt): void {
-    this.time += dt;
-    const renderTick = this.clock.advance(realDt);
-    const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
-    const rotLerp = Math.min(1, 1 - Math.exp(-dt * 10));
-
+  private stepPodTouchdown(dt: number, terrain: HexTerrain | null): PodTouchdownState {
     let podRec: EntityMeshRecord | undefined;
     for (const rec of this.entries.values()) {
       if (rec.kind === ENTITY_KIND.pod && rec.owner === this.ownerColonyIndex) {
@@ -349,6 +373,17 @@ export class EntityMeshes {
     if (hubCoversCrater && tdState.state === 'done') {
       this.podTouchdown.impactRig.craterGroup.visible = false;
     }
+    return tdState;
+  }
+
+  /** `dt`: animation time (warp-scaled); `realDt`: wall-clock seconds for the render clock (defaults to `dt`). */
+  update(dt: number, terrain: HexTerrain | null = null, realDt = dt): void {
+    this.time += dt;
+    this.hasTerrain = Boolean(terrain);
+    const renderTick = this.clock.advance(realDt);
+    const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
+    const rotLerp = Math.min(1, 1 - Math.exp(-dt * 10));
+    const tdState = this.stepPodTouchdown(dt, terrain);
 
     for (const rec of this.entries.values()) {
       const baseWy = terrain ? terrain.heightAt(rec.targetPos.x, rec.targetPos.z) : 0;
@@ -389,6 +424,7 @@ export class EntityMeshes {
       tickArchetypeMesh(rec.mesh, this.time, rec.walk, rec.work);
     }
 
+    this.syncVisionAndForeignVisibility(terrain, tdState);
     this.updateSelectionRing();
 
     if (this.targetMarker.visible) {
@@ -430,6 +466,7 @@ export class EntityMeshes {
   }
 
   dispose(): void {
+    resetColonyVisionAndLights();
     this.podTouchdown.dispose();
     for (const rec of this.entries.values()) {
       this.group.remove(rec.mesh);

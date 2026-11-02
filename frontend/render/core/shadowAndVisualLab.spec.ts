@@ -9,6 +9,11 @@ import {
   recordViewportPlanetBase, resetDayNightParams, setDayNight, setDayNightParams,
 } from './dayNightConfig';
 import {
+  getColonyVisionUniforms, isWorldPointInColonyFov, resetColonyVisionAndLights,
+  updateColonyProjectorsAndVision, updateColonyVisionTexture,
+} from '../lighting/ColonyVisionAndLights';
+import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
+import {
   computeSunOffset, DEFAULT_SHADOW_PARAMS, followShadowTarget, getShadowParams,
   installShadowShaderPatch, isShadowOn, resetShadowParams, setShadow, setShadowParams,
   syncViewportShadow,
@@ -156,15 +161,76 @@ describe('Day/night cycle sun color and shadow modulation (dayNightConfig)', () 
     expect(duskState.period).toBe('DUSK');
     expect(vp.sun.color.r).toBeGreaterThan(vp.sun.color.b * 1.5);
 
-    // Night (00:00): cool orbital blue moonlight, attenuated night shadow intensity & wider penumbra
-    setDayNightParams({ timeOfDay: 0.0, nightBrightness: 0.35 });
+    // Night (00:00): cool orbital blue moonlight, true dark night illumination, attenuated night shadow intensity & wider penumbra
+    setDayNightParams({ timeOfDay: 0.0, nightBrightness: 0.12 });
     syncViewportShadow(vp, 0xfff5e4);
     const nightState = computeSolarState(getDayNightParams());
     expect(nightState.period).toBe('NIGHT');
     expect(vp.sun.color.b).toBeGreaterThan(vp.sun.color.r);
+    expect(nightState.sunIntensityMult).toBeLessThan(0.05);
+    expect(nightState.hemiIntensity).toBeLessThan(0.05);
+    expect(nightState.envIntensity).toBeLessThan(0.03);
     expect(vp.sun.shadow.intensity).toBeLessThan(1.2);
     expect(vp.sun.shadow.radius).toBeGreaterThan(1.2);
   });
+});
+
+describe('Entity projector lights and restricted Field of View', () => {
+  it('attaches 3D projector rigs to robots and buildings and restricts Field of View outside units and user base', () => {
+    const hero = createArchetypeMesh('robot.hero', 'dune');
+    const hub = createArchetypeMesh('building.commandHub', 'dune');
+    const heroRig = attachEntityProjectorRig(hero, 'robot.hero');
+    const hubRig = attachEntityProjectorRig(hub, 'building.commandHub');
+    expect(heroRig).not.toBeNull();
+    expect(hubRig).not.toBeNull();
+    expect(hero.getObjectByName('entity-projector-rig')).not.toBeNull();
+    expect(hub.getObjectByName('entity-projector-rig')).not.toBeNull();
+
+    updateEntityProjectorRig(hero, 1.0, 1.0);
+    expect(heroRig!.beamMat.opacity).toBeGreaterThan(0.25);
+    expect(heroRig!.poolMat.opacity).toBeGreaterThan(0.20);
+
+    updateEntityProjectorRig(hub, 1.0, 0.0);
+    const waitingOpacity = hubRig!.beamMat.opacity;
+    updateEntityProjectorRig(hub, 1.0, 1.0);
+    expect(hubRig!.beamMat.opacity).toBeGreaterThan(waitingOpacity * 2.5);
+
+    // Restrict Field of View to user base and owned units
+    updateColonyVisionTexture({
+      radius: 16,
+      colonyIndex: 0,
+      baseCenters: [{ x: 0, z: 0, innerRadius: 18, outerRadius: 24 }],
+    });
+    updateColonyProjectorsAndVision({
+      projectors: [
+        { x: 35, y: 1.5, z: 0, range: 15, dirX: 1, dirY: -0.3, dirZ: 0, cosAngle: 0.74, r: 0.6, g: 0.9, b: 1.0, intensity: 2.0 },
+      ],
+      visionSources: [
+        { x: 35, z: 0, innerRadius: 12, outerRadius: 18 },
+      ],
+      fovEnabled: true,
+      fovDim: 0.85,
+      nightFactor: 1.0,
+    });
+
+    const u = getColonyVisionUniforms();
+    expect(u.uFovEnabled.value).toBe(1.0);
+    expect(u.uProjectorCount.value).toBe(1);
+    expect(u.uVisionSourceCount.value).toBe(1);
+
+    // Inside user base (0, 0) and near owned unit (35, 0) are in FoV; distant point (85, 85) is outside FoV
+    expect(isWorldPointInColonyFov(0, 0)).toBe(true);
+    expect(isWorldPointInColonyFov(40, 0)).toBe(true);
+    expect(isWorldPointInColonyFov(85, 85)).toBe(false);
+
+    resetColonyVisionAndLights();
+    expect(isWorldPointInColonyFov(85, 85)).toBe(true);
+    (hero.material as THREE.Material).dispose();
+    (hub.material as THREE.Material).dispose();
+  });
+});
+
+describe('Day/night manual sun override and viewport guards', () => {
 
   it('preserves manual sun angles across automatic sync/step ticks, avoids extra composer.render on frame ticks, and skips descent/non-planet viewports', () => {
     const vp = makeMockViewport();

@@ -1,5 +1,6 @@
 /** GLSL for the terrain material: composed from named chunks, injected by `applyTerrainShader`. */
 import type * as THREE from 'three';
+import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
 import { NOISE_GLSL } from './glsl';
 import { injectAll } from '../shaderInject';
 
@@ -118,7 +119,8 @@ const FRAG_COMMON = `#include <common>
 #define TA_TERRAIN_SHADER 1
 ${FRAG_DECLS}${NOISE_GLSL}
 float hash1(float n){ return fract(sin(n * 127.1) * 43758.5453); }
-${STRATA_ROCK}`;
+${STRATA_ROCK}
+${COLONY_VISION_AND_LIGHTS_GLSL}`;
 
 const FRAG_COLOR = `#include <color_fragment>
 ${COLOR_PRE}  if (uKind < 0.5) {
@@ -130,10 +132,11 @@ ${COLOR_POST}`;
 const FRAG_FOG = /* glsl */ `#include <fog_fragment>
 #ifdef USE_FOG
   { float eg = smoothstep(0.5, 0.93, length(vLP.xz) / uExt); gl_FragColor.rgb = mix(gl_FragColor.rgb, fogColor, eg); } // radial, so the patch never reads as a square
-#endif`;
+#endif
+gl_FragColor.rgb = applyColonyFovShroud(vLP, gl_FragColor.rgb);`;
 
 export function applyTerrainShader(sh: THREE.WebGLProgramParametersWithUniforms, uniforms: Record<string, THREE.IUniform>) {
-  Object.assign(sh.uniforms, uniforms);
+  Object.assign(sh.uniforms, getColonyVisionUniforms(), uniforms);
   sh.vertexShader = injectAll(sh.vertexShader, [
     ['#include <common>', VERT_COMMON],
     ['#include <begin_vertex>', VERT_BEGIN],
@@ -143,7 +146,7 @@ export function applyTerrainShader(sh: THREE.WebGLProgramParametersWithUniforms,
     ['#include <color_fragment>', FRAG_COLOR],
     ['#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = gRough;`],
     ['#include <normal_fragment_maps>', `#include <normal_fragment_maps>\nnormal = normalize(normal + (viewMatrix*vec4(gBump,0.0)).xyz);`],
-    ['#include <emissivemap_fragment>', `#include <emissivemap_fragment>\ntotalEmissiveRadiance += gEmis;`],
+    ['#include <emissivemap_fragment>', `#include <emissivemap_fragment>\nvec3 taProj = evalColonyProjectorLight(vLP, normalize(vLN + gBump));\ntotalEmissiveRadiance += gEmis + diffuseColor.rgb * taProj + taProj * 0.06;`],
     ['#include <fog_fragment>', FRAG_FOG],
   ], 'terrain fragment');
 }

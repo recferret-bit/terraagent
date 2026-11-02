@@ -53,6 +53,8 @@ export class GhostRig3D {
     this.bodyTint = null;
     try {
       this.body = createArchetypeMesh(FOOTPRINT, biome);
+      const projRig = this.body.getObjectByName('entity-projector-rig');
+      if (projRig) this.body.remove(projRig);
       this.body.traverse((o) => { o.castShadow = false; o.receiveShadow = false; });
       this.group.add(this.body);
     } catch { this.body = null; }

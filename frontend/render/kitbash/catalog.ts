@@ -1,5 +1,8 @@
 import * as THREE from 'three';
 import '../visuals/biomes';
+import { getDayNightParams } from '../core/dayNightConfig';
+import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
+import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
 import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
 
@@ -76,6 +79,7 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune'): ArchetypeMes
   mesh.receiveShadow = true;
   mesh.name = id;
   mesh.userData = { archetypeId: id, uniforms };
+  attachEntityProjectorRig(mesh, id);
   return mesh;
 }
 
@@ -85,6 +89,9 @@ export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight
   if (u?.uTime) u.uTime.value = time;
   if (walkWeight !== undefined && u?.uWalkWeight) u.uWalkWeight.value = walkWeight;
   if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
+  const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;
+  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
 }
 
 /** Quantizes a normalized construction progress (0..1) into one of the 4 scaffold stages (0, 0.33, 0.66, 1). */
@@ -105,5 +112,7 @@ export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
   if (u?.uBuildStage) u.uBuildStage.value = stage;
   if (mesh.userData) (mesh.userData as any).buildStage = stage;
+  const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
   return stage;
 }

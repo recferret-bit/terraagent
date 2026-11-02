@@ -77,6 +77,8 @@ export const DAY_NIGHT_SLIDERS: readonly SliderSpec<keyof DayNightParams>[] = [
   { key: 'noonTempK', label: 'NOON SUN TEMP', min: 3500, max: 8500, step: 100, fmt: (v) => `${Math.round(v)} K` },
   { key: 'nightBrightness', label: 'NIGHT MOONLIGHT', min: 0, max: 1.0, step: 0.02, fmt: (v) => `${Math.round(v * 100)}%` },
   { key: 'shadowDayFactor', label: 'DAY/NIGHT SHADOW', min: 0, max: 1.5, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'projectorIntensity', label: 'PROJECTOR LIGHTS', min: 0, max: 2.0, step: 0.05, fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'fovDim', label: 'FOV FOG SHROUD', min: 0, max: 1.0, step: 0.02, fmt: (v) => `${Math.round(v * 100)}%` },
 ];
 
 export const SLIDERS_BY_TAB: Record<VisualTabId, readonly SliderSpec[]> = {
