@@ -11,6 +11,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, touchTile, type ColonyState, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { constructionOrdersOf } from '../construction/orders';
 import { checkCostAffordability, debitCost, ensureColonyLedger, recomputeFamilyCaps, refundCost } from './ledger';
 
 export interface BuildingJobRecord {
@@ -295,12 +296,14 @@ export const constructionSystem = defineSystem({
   wave: 'W02',
   run(state, ctx) {
     const jobs = getJobsMap(state);
+    const w01EntityIds = new Set(constructionOrdersOf(state.blobs.constructionQueue?.value).map((o) => o.entityId));
     const e = state.entities, cols = e.cols;
     let jobsChanged = false;
 
     for (let row = 0; row < e.count; row++) {
       if (cols.state[row] !== ENTITY_STATE.constructing || cols.hp[row] <= 0) continue;
       const id = cols.id[row];
+      if (w01EntityIds.has(id)) continue;
       const bName = buildingKindName(cols.kind[row]);
       const resolved = resolveBuildingRow(bName, ctx.data);
       const buildTicks = jobs[id]?.buildTicks ?? Math.max(1, Number(resolved?.row.buildS ?? 50));

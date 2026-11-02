@@ -57,6 +57,17 @@ describe('W02-02 Colony stock & family cap ledger (D-34)', () => {
     const r3 = creditResource(colony, 'metals.t3', 400, 4);
     expect(r3).toEqual({ credited: 400, capped: 0 });
     expect(familyStock(colony, 'metals')).toBe(900);
+
+    // GP-11: Hub completion never lowers a higher landing cap (e.g. metals 600 -> 600, minerals 350 -> 500)
+    const landedColony = ensureColonyLedger({
+      ...makeColony(),
+      caps: { metals: 600, minerals: 350, bio: 400 },
+    });
+    expect(recomputeFamilyCaps(landedColony, true, 0, 5)).toEqual({
+      metals: 600,
+      minerals: 500,
+      bio: 500,
+    });
   });
 
   it('supports debitCost, refundCost, storage-cap checks, and delta sync via diffSince/applyDiff', () => {

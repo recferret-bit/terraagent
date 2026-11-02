@@ -189,3 +189,16 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **To resolve:** on a late ack, remove the colony in the sim (an admin `colony.remove` command) or re-create the row.
 - **Found:** 2026-11-01, review fix (M4)
 - **Fix:** a late ack goes to `HomeService.adoptLateLanding`: when the player still has no colony the rolled-back row is written again (same id, index and site), so the next `/me/home` answers that colony; otherwise its colony index is marked landed and never offered again (later seats also skip an index the sim reports `already_landed`). Files: `backend/app/src/game/seat-colony.ts` (`gameSeatHost`), `core/home/home.service.ts`; test `test/unit/home-seat-reject.spec.ts` › "HomeService.adoptLateLanding (LED-15)".
+
+### LED-16 · W02 `economy/ledger.ts` mutates `colony.stock` directly with fractional tick increments without emitting `@terra/ledger` postings
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/economy/ledger.ts` (`creditResource`, `debitCost`, `refundCost`), `shared/sim/src/systems/production/index.ts`, `shared/sim/src/systems/harvest/`, `tests/scenarios/_loader.ts`
+- **What happens:** W01's `ColonyTreasury` (`shared/sim/src/economy/treasury.ts`) records whole-unit double-entry postings (`StepResult.postings` → `PlanetJournal`), whereas W02's `economy/ledger.ts` mutates `colony.stock` directly (including fractional per-tick Extractor production such as `0.2 metals.t1`/tick and `37.5` demolish refunds). Scenario setup (`tests/scenarios/_loader.ts`) seeds `PlanetJournal.openingPostings` when a scenario pre-populates `colony.stock` without postings, but runtime W02 `creditResource`/`debitCost`/`refundCost` calls do not emit `LedgerPosting`s, so `PlanetJournal` balances will diverge from `colony.stock` once W02 extractors, harvesters, or queues run.
+- **Why it is like this:** `@terra/ledger` enforces whole-unit integer leg amounts (`Number.isSafeInteger`), while W02 extractor output (`1.0/s` = `0.2/tick`) and 50 % / 75 % refunds operate on fractional floats in `colony.stock`.
+- **Workaround / mitigation:** `MinimalHud.wholeStock` floors stock for display; scenario loader bridges initial `colony.stock` into `setupPostings`.
+- **To resolve:** either scale `@terra/ledger` units to fixed-point (e.g. basis points / milli-units) or accumulate fractional production in a sub-unit accumulator and route whole-unit credits/debits through `ColonyTreasury`.
+- **Found:** 2026-11-02, W01→W02 merge review
+

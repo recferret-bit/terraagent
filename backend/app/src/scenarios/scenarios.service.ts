@@ -30,7 +30,7 @@ export class ScenariosService {
     const tick = host.tick;
     if (hasLiveColony(host.state)) this.planets.markScenarioColonyPlanet(planetId); // dev sessions play colony 0 (BE-07)
     // the journal starts with the setup postings (e.g. the real `landing.cargo`)
-    await this.planets.load(planetId, { snapshot: snapshot(host.state), flags: [...host.pipeline.config.flags], genesis: true, setupPostings });
+    await this.planets.load(planetId, { snapshot: snapshot(host.state), genesis: true, setupPostings });
     return { planetId, scenario: def.id, tick };
   }
 }

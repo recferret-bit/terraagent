@@ -11,7 +11,7 @@ register({
   label: 'Hero Explorer',
   category: 'robot',
   footprint: [1, 1],
-  notes: 'Bipedal explorer: animType 4 stride legs, animType 5 counter-swing arms, visor, rotating backpack dish, thruster pack. ~1.8m.',
+  notes: 'Bipedal explorer: animType 4/14/24 stride legs, animType 5 counter-swing + work-pose arms, animType 8 step-reaction torso, visor, rotating backpack dish, thruster pack. ~1.8m.',
   build: (b) => {
     const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
     mirror((s) => {
@@ -75,7 +75,7 @@ register({
     // Rotating radar dish on pack (animType 18 = SpinY on BipedBody)
     b.addPart(cyl(0.025, 0.03, 0.18, 8), 'frameGunmetal', { name: 'radar mast', position: [0, 1.74, -0.36], ...bodyAnim });
     b.addPart(
-      lathe([[0.0, 0.0], [0.07, 0.015], [0.14, 0.07], [0.0, 0.025]], 12),
+      lathe([[0.004, 0.0], [0.07, 0.015], [0.14, 0.07], [0.004, 0.025]], 12),
       'hullPrimary',
       { name: 'radar dish', position: [0.0, 1.82, -0.36], rotation: [-0.45, 0, 0], animType: 18, animPivot: [0, 1.82, -0.36] }
     );
@@ -171,7 +171,7 @@ register({
     solarPanel(b, { position: [-0.38, 0.93, -0.2], rotation: [0, 0, 0.5], height: 0.5, width: 0.6, name: 'solar' });
     // Radar: the mast is sunk into the cabin roof, the dish sits over the mast tip and spins about it
     b.addPart(cyl(0.015, 0.015, 0.2, 6), 'frameGunmetal', { name: 'radar mast', position: [0.18, 1.11, 0.15] });
-    b.addPart(lathe([[0, 0], [0.06, 0.01], [0.12, 0.05], [0, 0.02]], 12), 'hullPrimary', {
+    b.addPart(lathe([[0.004, 0], [0.06, 0.01], [0.12, 0.05], [0.004, 0.02]], 12), 'hullPrimary', {
       name: 'radar dish', position: [0.18, 1.2, 0.15], rotation: [-0.5, 0, 0], animType: 1, animPivot: [0.18, 1.2, 0.15],
     });
   },

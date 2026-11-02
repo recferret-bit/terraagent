@@ -99,8 +99,9 @@ export function recomputeFamilyCaps(
   const cap = (hasHub ? BASE_HUB_STORAGE_CAP : 0) + depotCount * DEPOT_STORAGE_CAP;
   let changed = false;
   for (const f of RESOURCE_FAMILIES) {
-    if (c.caps[f] !== cap) {
-      c.caps[f] = cap;
+    const nextCap = hasHub ? Math.max(c.caps[f] ?? 0, cap) : cap;
+    if (c.caps[f] !== nextCap) {
+      c.caps[f] = nextCap;
       changed = true;
     }
   }
