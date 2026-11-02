@@ -8,6 +8,7 @@ import { NearHealthController } from './infrastructure/dev/near-health.controlle
 import { NearInfrastructureModule, nearEnv } from './infrastructure/near-infrastructure.module.js';
 import { MockOauthController } from './identity/mock-oauth.controller.js';
 import { SocialAuthController } from './identity/social-auth.controller.js';
+import { ColonyAccounts } from './identity/colony-accounts.js';
 import { SocialAuthService } from './identity/social-auth.service.js';
 import { SocialLink } from './identity/social-link.js';
 import { NearMockCommand } from './infrastructure/dev/near-mock.command.js';
@@ -18,7 +19,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
 /** NEAR integration: port bindings, chain outbox, dev chain routes, mock OAuth, social login, and `/v1/near/health`. */
 @Module({
   controllers: [ChainDevController, ChainExplorerController, MockOauthController, NearHealthController, SocialAuthController],
-  providers: [SocialAuthService, SocialLink, NearMockCommand],
+  providers: [ColonyAccounts, SocialAuthService, SocialLink, NearMockCommand],
   imports: [NearInfrastructureModule, OutboxModule],
   exports: [NearInfrastructureModule, OutboxModule, SocialLink],
 })
