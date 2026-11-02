@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { newId, playerAccountId, type SocialAuthResponse } from '@terra/contracts';
+import { namedAccountOpId, newId, type SocialAuthResponse } from '@terra/contracts';
 import { AuthRepository, type PlayerRecord } from '../../core/auth/auth.repository.js';
 import { AuthService } from '../../core/auth/auth.service.js';
 import { CoreException } from '../../core/errors/core-exception.js';
@@ -18,7 +18,7 @@ interface SubjectAccount {
   readonly handle: string;
 }
 
-/** One subject, one player, in this process. The chain idempotency key arrives with named accounts. */
+/** One subject, one player, in this process (BE-31). The named account is idempotent on `namedAccountOpId`. */
 @Injectable()
 export class SocialAuthService {
   private readonly bySubject = new Map<string, SubjectAccount>();
@@ -37,11 +37,14 @@ export class SocialAuthService {
     if (!this.flags.has('W06')) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     const verified = await this.identity.loginSocial(input);
     const subject = verified.playerId;
+    const named = await this.identity.createNamedAccount({
+      opId: namedAccountOpId(input.provider, subject),
+      name: deriveAccountName(subject),
+    });
     const player = await this.playerFor(input.provider, subject, bearerPlayer);
-    const accountId = playerAccountId(deriveAccountName(subject));
-    this.bySubject.set(this.key(input.provider, subject), { playerId: player.id, accountId, handle: player.handle });
+    this.bySubject.set(this.key(input.provider, subject), { playerId: player.id, accountId: named.accountId, handle: player.handle });
     const issued = await this.auth.issueFor(player, false);
-    return { refreshToken: issued.refreshToken, response: { ...issued.response, accountId } };
+    return { refreshToken: issued.refreshToken, response: { ...issued.response, accountId: named.accountId } };
   }
 
   private async playerFor(

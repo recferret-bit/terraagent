@@ -31,7 +31,7 @@ a port with adapters but none of the selected kind fails when first resolved.
 
 ## Mock chain
 
-State of the mock NEAR adapters lives in Postgres (`chain.mock_chain_*`: account, balance, nft, nft_meta_history, intent, dao, dao_proposal, escrow, receipt; schema `shared/db/prisma/mock-chain.prisma`). Every `Mock*Adapter` extends `MockChainBase` (`infrastructure/mock/mock-chain.base.ts`).
+State of the mock NEAR adapters lives in Postgres (`chain.mock_chain_*`: account, balance, nft, nft_meta_history, intent, dao, dao_proposal, escrow, receipt; schema `shared/db/prisma/mock-chain.prisma`). `MockIdentityAdapter` does not extend `MockChainBase` (BE-33): named-account creation skips the mock sleep so unit tests and social login do not wait on `MOCK_LATENCY_*`. The other `Mock*Adapter` classes extend `MockChainBase` (`infrastructure/mock/mock-chain.base.ts`).
 
 - `this.call(port, method, opId | undefined, async (tx) => payload, { failCode? })` returns a `ChainReceipt` (`network: 'mock'`). It sleeps a random latency, maybe injects a failure, runs the callback and writes the `mock_chain_receipt` row in one transaction. `callWithResult` also returns the callback's value.
 - **Idempotency.** The same `opId` returns the stored receipt and never re-runs the callback. The hash is `mock:` + 44 base58 characters, derived from the `opId` (random when there is none). `blockHeight` comes from the Postgres sequence `chain.mock_chain_block_height_seq`, so it is monotonic.
