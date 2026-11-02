@@ -525,3 +525,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** open the receipt from the Vite app (`http://127.0.0.1:5173/dev/chain/`). The API is available when `NODE_ENV` is not `production`.
 - **To resolve:** add an nginx location that serves `/dev/chain/tx.html` for `/dev/chain/tx` and `/dev/chain/tx/*`, and leave `/v1` on the app proxy. Do not weaken `DevOnlyGuard` unless that production test is changed on purpose.
 - **Found:** 2026-11-02, W06-14
+
+### BE-33 · Mock fail overrides are process-wide; account.upgrade does not persist the subject
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/mock/mock-controls.ts` (`mockChainControls`), `backend/app/src/near/infrastructure/dev/near-mock.command.ts` (`account.reset`, `account.upgrade`), `backend/app/src/near/identity/social-auth.service.ts` (`bySubject`, BE-31)
+- **What happens:** `near.mock.fail` and `near.mock.latency` write one process singleton. Every mock port in that process sees the override until `reset()` or a restart. `setFail(port, 0)` forces success even when the boot `MOCK_FAIL_RATE` is 1. An unset port keeps the config the adapter was built with. `account.reset` revokes sessions and deletes `core.social_identity` rows for that player. It does not delete the player or their colonies, and it does not clear the in-memory subject map, so the same process still recognizes that subject. `account.upgrade` signs a 60-second mock token and calls `SocialAuthService.login`. That uses the in-memory map and does not write `social_identity`. The refresh token from login is dropped; only `{ playerId, accountId, accessToken }` is returned, so a refresh session row sits unused until `account.reset` or expiry.
+- **Why it is like this:** W06-25 asked for one process singleton, not a second DI graph, and forbade persisting `social_identity` (that is W06-06). A stored mock `opId` still returns before the fail roll; that was already the base behaviour.
+- **Workaround / mitigation:** restart the app to clear overrides and the subject map. Tests call `mockChainControls.reset()` in `afterEach`. `account.reset` revokes the sessions `account.upgrade` created.
+- **To resolve:** W06-06 persists the subject. Clearing the in-memory map inside `account.reset` can wait until that table is the source of truth.
+- **Found:** 2026-11-02, W06-25
