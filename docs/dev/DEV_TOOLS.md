@@ -152,7 +152,10 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `TA_BALANCE_OVERRIDES` | — | Path to `balance.overrides.json` merged over the data tables (D-35) |
 | `WS_HELLO_TIMEOUT_MS`, `WS_IDLE_TIMEOUT_MS` | 5000, 60000 | Socket timeouts |
 | `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`, `MOCK_FAIL_RATE`, `MOCK_SEED` | 300, 1500, 0, — | Mock chain behaviour |
-| `MOCK_OAUTH_SECRET` | `terra-dev-mock-oauth-secret` | HMAC secret for the dev mock OAuth token (`signMockToken` / `verifyMockToken`, `/dev/mock-oauth`). Unset or empty uses the default. Not in the Nest boot env schema, so production app tests still boot. Token TTL is 5 minutes |
+| `MOCK_OAUTH_SECRET` | `terra-dev-mock-oauth-secret` | HMAC secret for the dev mock OAuth token (`signMockToken` / `verifyMockToken`, `/dev/mock-oauth`). Unset or empty uses the default. Not in the Nest boot env schema. Token TTL is 5 minutes |
+| `NEAR_KEK` | dev 32-byte `DEV_KEK` (not in production) | Base64 of 32 bytes. Seals ed25519 seeds (AES-256-GCM). Production `loadKekRing` refuses a missing key or `DEV_KEK` |
+| `NEAR_KEK_VERSION` | 1 | Integer version stored on new key rows |
+| `NEAR_KEK_RING` | — | JSON `{"1":"<base64>",...}` of older keys so a rotated version still decrypts |
 | `OUTBOX_RELAY_ENABLED`, `OUTBOX_POLL_MS`, `OUTBOX_LEASE_MS`, `OUTBOX_MAX_ATTEMPTS` | on, 1000, 30000, 8 | Chain outbox relay |
 | `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection (see above) |
 | `NEAR_ALLOW_MOCK_IN_PROD`, `AI_ALLOW_MOCK_IN_PROD`, `NOTIFY_ALLOW_MOCK_IN_PROD` | — | Allow mocks in production |

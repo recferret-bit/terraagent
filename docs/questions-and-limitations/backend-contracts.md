@@ -485,3 +485,33 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** callers that need "the same social subject, the same account" pass that opId. A repeat with the same opId returns the stored account. A different subject with the same display name gets the `-2` suffix.
 - **To resolve:** confirm this mapping, or change `IdentityPort` (and W23's real adapter) to take `(provider, subject)` on the port itself.
 - **Found:** 2026-11-02, W06-01 (open question Q-01-22; owner default was "none", so the port stays as landed)
+
+### BE-29 · Dev KEK seals rows when NEAR_KEK is unset
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/keystore/kek.ts` (`DEV_KEK`, `loadKekRing`)
+- **What happens:** with `NEAR_KEK` unset, new key rows are sealed with the in-repo 32-byte `DEV_KEK` (`terraagent-dev-kek-do-not-ship!!`) at version 1. Anyone with the source can open those rows. `NODE_ENV=production` throws inside `loadKekRing` when the key is missing or equals `DEV_KEK`. Nest boot does not call `loadKekRing`, so a production process that never seals a key still starts. `NEAR_KEK_RING` entries are not compared to `DEV_KEK`, so a rotation can still open rows sealed under the dev key. The envelope has no AAD, and `open` does not check that the seed matches `publicKey`.
+- **Why it is like this:** unit tests and local play must run without a secret, and adding a required boot env would fail existing production boot tests (W06-09).
+- **Workaround / mitigation:** set `NEAR_KEK` (base64 of 32 bytes) before any real deployment. Production refuses the dev key at the moment a ring is loaded.
+- **To resolve:** require `NEAR_KEK` at boot when `NODE_ENV=production`, the same way as `JWT_ACCESS_SECRET` (BE-01).
+- **Found:** 2026-11-02, W06-09
+
+### BE-30 · Mock OAuth secret is a public dev default, read from process.env
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/mock-token.ts` (`MOCK_OAUTH_SECRET_DEFAULT`), `mock-oauth.controller.ts` (`nearAdapterFor('Identity', process.env)`)
+- **What happens:** unset or empty `MOCK_OAUTH_SECRET` uses `terra-dev-mock-oauth-secret`. The Identity-adapter check reads `process.env` at request time, so a test `createApp({ source })` override of `NEAR_ADAPTER_IDENTITY` does not change it. `verifyMockToken` treats `exp` equal to the current unix second as expired. There is no HTTP verify route; a bad signature throws `NEAR_PROVIDER_REJECTED` from `verifyMockToken` (W06-03 maps that to the social login response).
+- **Why it is like this:** the dev screen must sign tokens with no setup, and the route is already 404 in production (`DevOnlyGuard`).
+- **Workaround / mitigation:** set `MOCK_OAUTH_SECRET` outside local dev. The page is only linked from the hub.
+- **To resolve:** none for the hackathon mock. W23 replaces the provider.
+- **Found:** 2026-11-02, W06-02
+
+### BE-31 · Social subject → player lives in process memory until W06-06
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/social-auth.service.ts` (`bySubject`)
+- **What happens:** `POST /v1/auth/social` verifies the mock token and returns `{accessToken, player, accountId}`. The same `(provider, subject)` in this process reuses the player. A restart, or a second app process, does not. `accountId` is `deriveAccountName(subject)` plus `.terraagent.mock`. No row is written to `core.social_identity` or `chain.mock_chain_account`, and `createNamedAccount` still throws `NEAR_UNAVAILABLE`. A guest bearer is reused for a new subject; a repeat without a bearer uses the in-memory map. `isGuest` on the access response is false. It is not stored on the player row.
+- **Why it is like this:** W06-03 only proves the token and the HTTP shape (Q-01-22: the port still returns `{playerId, email, isNew}`, and the subject is mapped onto `playerId`). Named accounts are W06-05. The guest link, refresh rotation and `account.created` are W06-06.
+- **Workaround / mitigation:** one process, one login, is enough for the W06-03 spec. Later issues replace the map with `core.social_identity`.
+- **To resolve:** W06-05 writes the named account; W06-06 persists the subject on the guest player and rotates the refresh token.
+- **Found:** 2026-11-02, W06-03
