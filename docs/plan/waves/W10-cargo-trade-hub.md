@@ -1,6 +1,6 @@
 # W10 — Cargo & Trade Hub (F1, mock)
 
-> **Track:** Economy/NEAR (E) · **Flag:** `W10` · **Tag:** `wave-10` · **Scenario:** `scenarios/w10-cargo-trade-hub.ts` · **E2E:** `e2e/w10.spec.ts`
+> **Track:** Economy/NEAR (E) · **Flag:** `W10` · **Tag:** `wave-10` · **Scenario:** `tests/scenarios/w10-cargo-trade-hub.ts` · **E2E:** `tests/e2e/w10.spec.ts`
 > **Depends on waves:** W02 (resources, storage caps, construction, queue), W06 (named + colony accounts, key store, relayer, `storage_deposit`, dev chain explorer). Uses W00's outbox and contract harness.
 > **Specs:**
 > - [`NEAR.md`](../../spec/NEAR.md) §1a, §5 (`NEAR-50..55`), §12, §13, §14
@@ -20,7 +20,7 @@
 > - sim: `shared/sim/src/systems/trade/**`, `shared/sim/src/data/trade-hub.ts`, `shared/contracts/src/{commands,events}/cargo.ts`
 > - client: `frontend/game/features/cargo/**`
 > - kitbash (render engine, D-31: visuals only): `frontend/render/kitbash/archetypes/buildings/trade.ts` (new `building.tradeHub`; none of the existing `building.*` archetypes is a trade port), `frontend/render/kitbash/archetypes/units/shuttle.ts` (new `ship.cargoShuttle`)
-> - tests: `scenarios/w10-*.ts`, `e2e/w10.spec.ts`
+> - tests: `tests/scenarios/w10-*.ts`, `tests/e2e/w10.spec.ts`
 > - uses from W00 without owning: `CargoTokenPort` (W00-30), mock base (W00-32), outbox + relay (W00-37), contract harness (W00-38)
 
 ## Goal
@@ -113,11 +113,11 @@ A player builds a **Trade Hub** and **exports** colony stock to "cargo in orbit"
 | W10-28 | Perf check: the sim cost of export/import commands and the throughput meter ≤ 0.1 ms per step with 10 hubs (bench case added to `sim:bench`) | test | S |  | W10-05, W10-12 | `npm run sim:bench -- --case cargo-10-hubs` → p99 step delta ≤ 0.1 ms | SIMULATION perf budget | — |
 | W10-29 | Docs: README "mock vs real" row F1 (`CargoTokenPort` = mock); `ENVS.md` entries `NEAR_ADAPTER_CARGO`, `CARGO_MINT_CAP_PER_DAY`, `TRADE_HUB_AT_S2`; a note that the Intents deposit path (`NEAR-55`) is W13/W23 | docs | S |  | W10-11 | README lists `CargoTokenPort` as "mock", and `ENVS.md` has the three env vars with defaults | NEAR-55, D-27 | — |
 | W10-31 | Send cargo to another account (open transfers in beta, D-26): `cargo.transfer {to, resource, amount}` via `CargoTokenPort.transfer` + outbox, recipient picker (colonies on the planet + named account), receipt in history | client | S | H+ | W10-09, W10-21 | Send 50 metals to colony B → B's cargo panel shows +50 and both histories show the transfer | NEAR §5, D-26 | — |
-| W10-30 | Wave e2e `e2e/w10.spec.ts` (demo story 1–9, including the flag-off check) + seed scenario `w10-cargo-trade-hub` (logged-in colony at S2, 900 `metals.t1`, an online powered Trade Hub T1, storage room) + tag `wave-10` | test | M | H | W10-01…W10-29 | `npm run e2e -- --waves ..10` → W00–W10 suites pass | PRODUCT_WAVES §3 | — |
+| W10-30 | Wave e2e `tests/e2e/w10.spec.ts` (demo story 1–9, including the flag-off check) + seed scenario `w10-cargo-trade-hub` (logged-in colony at S2, 900 `metals.t1`, an online powered Trade Hub T1, storage room) + tag `wave-10` | test | M | H | W10-01…W10-29 | `npm run e2e -- --waves ..10` → W00–W10 suites pass | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
 
-- `e2e/w10.spec.ts` passes, and every earlier wave's e2e still passes.
+- `tests/e2e/w10.spec.ts` passes, and every earlier wave's e2e still passes.
 - `?scenario=w10` loads; `TA_WAVES=..09` hides the Trade Hub, the cargo panel and the cargo commands (`wave_disabled`). Existing hubs are inert, not deleted.
 - The cargo contract suite passes on the mock. A restart during an export never double-mints.
 - Tag `wave-10` created.

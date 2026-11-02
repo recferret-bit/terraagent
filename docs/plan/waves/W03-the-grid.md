@@ -1,6 +1,6 @@
 # W03 — The Grid
 
-> **Track:** Gameplay (G) · **Flag:** `W03` · **Scenario:** `scenarios/w03-the-grid.ts` · **Tag:** `wave-03` · **Depends on:** W02 (spine)
+> **Track:** Gameplay (G) · **Flag:** `W03` · **Scenario:** `tests/scenarios/w03-the-grid.ts` · **Tag:** `wave-03` · **Depends on:** W02 (spine)
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §3.1, §3.3, §4.1–4.4, §5.1 · [`colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §1 rules 2–4, §3.2–3.5 · [`SIMULATION.md`](../../spec/SIMULATION.md) §7.4 (`SIM-G-PWR`, D-21), §7.6, §9 · [`CLIENT.md`](../../spec/CLIENT.md) §8 · D-31, D-33, D-34, D-35
 > **Resources (D-34):** every extractor here produces its family's **T1** sub-resource (`minerals.t1`, `bio.water`); Depots add to the cap of all three families; the Petroleum Well is the Bio T2 source and yields only once W05-34's terraforming gate opens. Cost shorthand `M/Min/Pet/W` reads through the D-34 tier rule (T1: `metals.t1` / `minerals.t1` / `bio.biomass` / `bio.water`).
 > **Owned paths:** `shared/sim/src/systems/{power-grid,builder,lanes,earmarks}/`, `shared/sim/src/data/grid.ts`, `frontend/game/features/{grid,power,lanes,builder}/`, and in `frontend/render/kitbash/archetypes/` the bindings/anims of the existing `building.pylon`, `building.capacitor`, `building.wind`, `building.coalGen` (= Thermal Plant), `building.supplyDepot`, `building.waterPump` (= Water Extractor) plus two new archetypes `building.quarry` and `building.petroleumWell`. This wave **extends** W02's `power-core` (single component → graph), `queue` and `dispatch` systems; it does not re-implement them.
@@ -16,7 +16,7 @@ Turn the single-generator colony from W02 into a real **power grid with workers 
 - repair;
 - the full order-lane model (all four lanes, precedence, earmarks, limits, storage waits).
 
-## Demo story (e2e `e2e/w03.spec.ts`)
+## Demo story (e2e `tests/e2e/w03.spec.ts`)
 
 1. Open `/play.html?scenario=w03`. This is the colony at the end of W02: Hub, 1 Metals Extractor, 1 Solar, 2 Harvesters.
 2. Units menu → order 1 Builder at the Hub → the Builder appears; the queue now runs Construction on 2 workers.
@@ -98,7 +98,7 @@ Turn the single-generator colony from W02 into a real **power grid with workers 
 | W03-21 | Bind the existing `building.pylon` and `building.capacitor` archetypes as Pylon T1 / Capacitor T1: fix their validator findings (pylon 16 errors, capacitor 1 error today), add the `aPartAnim` pulse | visual | M | H+ | — | Run `npm run validate:models -- building.pylon building.capacitor` → see 0 errors and 0 warnings | AGENTS Pillar 1, `model-geometry-validator` skill | TA-14.9 |
 | W03-22 | Bind the existing `building.wind` (rotor anim tied to the wind factor), `building.coalGen` as Thermal Plant T1 (chimney smoke emitter) and `building.supplyDepot`; fix their validator findings | visual | M |  | — | Set wind to 140 % in game → see the rotor spin visibly faster than at 50 % | Pillars 1, 3 | TA-14.9 |
 | W03-23 | Bind the existing `building.waterPump` as Water Extractor T1; new archetypes `building.quarry` (Minerals Quarry T1) and `building.petroleumWell` (pump-jack anim) | visual | M | H+ | — | Run `npm run validate:models -- building.waterPump building.quarry building.petroleumWell` → see 0 errors and 0 warnings | Pillar 1 | TA-14.9 |
-| W03-24 | Power cables between pylons (sagging `CatmullRomCurve3`), overload flicker and sparks VFX, offline buildings dim their emissives — reuse the kitbash cable helper (`CatmullRomCurve3` in `frontend/render/kitbash/archetypes/buildings/kit.ts`) and `render/visuals/terrain/Particles.ts` | visual | S | H+ | W03-21 | Overload a pylon → see its cable flicker amber/red | lighting skill | TA-14.9 |
+| W03-24 | Power cables between pylons (sagging `CatmullRomCurve3`), overload flicker and sparks VFX, offline buildings dim their emissives — reuse the kitbash cable helper (`CatmullRomCurve3` in `frontend/render/kitbash/archetypes/buildings/kit.ts`) and `frontend/render/visuals/terrain/Particles.ts` | visual | S | H+ | W03-21 | Overload a pylon → see its cable flicker amber/red | lighting skill | TA-14.9 |
 | W03-25 | Progression events: `peakNetPower` (Power Broker), `nightSurvived` (Night Shift) emitted to the progression bus | sim | S |  | W03-15 | Dev-run a night → see the progression bus log `nightSurvived {colonyId}` | player-profile §3 | — |
 | W03-26 | Analytics: `first_pylon_built`, `first_brownout`, `first_night_survived`, `first_overload` via `track()` | client | S |  | W03-18 | Trigger an overload → see one `first_overload` row in the analytics table | CLIENT §10 | — |
 | W03-27 | Dev console: `setWind <pct>`, `drainFuel`, `addLoad <E/s>`, `damage <entity> <pct>` (time of day uses W02-30's `time`) | server | S | H | W00-40, W02-30 | Run `addLoad 200` → see colony demand rise by 200 E/s and shedding start | PRODUCT_WAVES §3 | — |
@@ -108,7 +108,7 @@ Turn the single-generator colony from W02 into a real **power grid with workers 
 
 ## Wave DoD
 
-- `e2e/w03.spec.ts` passes, and so do all earlier wave suites.
+- `tests/e2e/w03.spec.ts` passes, and so do all earlier wave suites.
 - `?scenario=w03` loads.
 - With `TA_WAVES=..02`, no W03 building, lane, overlay or command exists, and W02's demo still passes.
 - Tag `wave-03` is created.

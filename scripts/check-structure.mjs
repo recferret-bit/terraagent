@@ -2,7 +2,7 @@
 // Enforces the architecture limits from AGENTS.md §6: no source file over 500 lines, no function over 100 lines,
 // and layering: frontend/render imports no app and no `@terra/sim`, an app imports no other app, and `shared/*`
 // imports neither frontend nor backend code.
-//   npm run check:structure            (scans frontend/, shared/, backend/, scenarios/, e2e/ and scripts/)
+//   npm run check:structure            (scans frontend/, shared/, backend/, tests/, and scripts/)
 import ts from 'typescript';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
@@ -69,6 +69,6 @@ function checkLayer(rel, spec, line) {
   else if (APPS.includes(from) && to === 'render') problems.push(`layer use '@terra/render/…', not a relative path  ${rel}:${line}`);
 }
 
-for (const dir of ['frontend', 'shared', 'backend', 'scenarios', 'e2e', 'scripts']) if (existsSync(join(ROOT, dir))) walk(join(ROOT, dir));
+for (const dir of ['frontend', 'shared', 'backend', 'tests', 'scripts']) if (existsSync(join(ROOT, dir))) walk(join(ROOT, dir));
 if (problems.length) { console.error(problems.join('\n') + `\n\n${problems.length} structure violation(s)`); process.exit(1); }
 console.log('structure ok: every file ≤ 500 lines, every function ≤ 100 lines, layers point inward');

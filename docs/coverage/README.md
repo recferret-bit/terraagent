@@ -4,7 +4,7 @@ Unit-test coverage (vitest + v8) on branch `wave/w01-landfall`, 2026-11-01: the 
 review-fix round) and the state **after** that round. Integration (`*.int.spec.ts`, Postgres) and e2e (Playwright) suites
 are not included. Use it as a reference: compare a new run against it.
 
-Regenerate: per package `npx vitest run --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary`
+Regenerate: per package `npx vitest run --config tests/vitest.config.ts --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary`
 (exclude specs, `test/`, `*.d.ts`, `index.generated.ts`), then update this file. A new snapshot moves *after* to *baseline*.
 
 ## Totals per package (lines · branches · functions)
@@ -15,7 +15,7 @@ Regenerate: per package `npx vitest run --coverage --coverage.reporter=json-summ
 | `shared/ledger` | 100.0% (149/149) | 100.0% (149/149) | 100.0% | 100.0% | 100.0% | 100.0% | 7 |
 | `shared/contracts` | 91.7% (155/169) | 89.6% (155/173) | 53.3% | 53.3% | 90.3% | 90.3% | 44 |
 | `shared/config` | 84.0% (21/25) | 84.0% (21/25) | 69.2% | 69.2% | 83.3% | 83.3% | 5 |
-| `scenarios` | 92.1% (70/76) | 94.7% (71/75) | 77.1% | 78.7% | 90.0% | 93.1% | 9 |
+| `tests/scenarios` | 92.1% (70/76) | 94.7% (71/75) | 77.1% | 78.7% | 90.0% | 93.1% | 9 |
 | `backend/app` | 79.8% (2010/2517) | 83.6% (2166/2591) | 63.5% | 69.2% | 78.1% | 79.8% | 143 |
 | `frontend/game` | 67.3% (4156/6179) | 72.7% (4241/5835) | 58.2% | 67.7% | 55.8% | 65.9% | 145 |
 | `frontend/render` | 18.9% (903/4785) | 34.5% (1674/4847) | 15.3% | 22.9% | 13.7% | 24.9% | 139 |
@@ -221,19 +221,19 @@ Regenerate: per package `npx vitest run --coverage --coverage.reporter=json-summ
 | `shared/config/src/flag.ts` | 100.0% (2/2) | 100.0% | 100.0% |
 | `shared/config/src/index.ts` | 100.0% (0/0) | 100.0% | 100.0% |
 
-### `scenarios`
+### `tests/scenarios`
 
 | File | Lines | Branches | Functions |
 |---|---|---|---|
-| `scenarios/index.ts` | 0.0% (0/2) | 100.0% | 100.0% |
-| `scenarios/_loader.ts` | 92.6% (25/27) | 73.1% | 84.6% |
-| `scenarios/parity/compare.ts` | 100.0% (35/35) | 81.8% | 100.0% |
-| `scenarios/parity/_define.ts` | 100.0% (4/4) | 80.0% | 100.0% |
-| `scenarios/parity/index.ts` | 100.0% (3/3) | 100.0% | 100.0% |
-| `scenarios/w01-landfall.ts` | 100.0% (2/2) | 100.0% | 100.0% |
-| `scenarios/_define.ts` | 100.0% (1/1) | 100.0% | 100.0% |
-| `scenarios/w00-empty.ts` | 100.0% (1/1) | 100.0% | 100.0% |
-| `scenarios/parity/w00-empty.parity.ts` | 100.0% (0/0) | 100.0% | 100.0% |
+| `tests/scenarios/index.ts` | 0.0% (0/2) | 100.0% | 100.0% |
+| `tests/scenarios/_loader.ts` | 92.6% (25/27) | 73.1% | 84.6% |
+| `tests/scenarios/parity/compare.ts` | 100.0% (35/35) | 81.8% | 100.0% |
+| `tests/scenarios/parity/_define.ts` | 100.0% (4/4) | 80.0% | 100.0% |
+| `tests/scenarios/parity/index.ts` | 100.0% (3/3) | 100.0% | 100.0% |
+| `tests/scenarios/w01-landfall.ts` | 100.0% (2/2) | 100.0% | 100.0% |
+| `tests/scenarios/_define.ts` | 100.0% (1/1) | 100.0% | 100.0% |
+| `tests/scenarios/w00-empty.ts` | 100.0% (1/1) | 100.0% | 100.0% |
+| `tests/scenarios/parity/w00-empty.parity.ts` | 100.0% (0/0) | 100.0% | 100.0% |
 
 ### `backend/app`
 

@@ -83,6 +83,6 @@ export const simPurity = [
   // the ledger runs inside step(): same purity, and it imports no other @terra package
   ...purity(['shared/ledger/src/**/*.ts'], []),
   // seed scenarios run on every host (server thread, browser local host, CLI): same purity, plus the engine API itself
-  ...purity(['scenarios/*.ts'], ['contracts', 'ledger', 'sim']),
+  ...purity(['tests/scenarios/*.ts'], ['contracts', 'ledger', 'sim']),
   ...simMovement,
 ];

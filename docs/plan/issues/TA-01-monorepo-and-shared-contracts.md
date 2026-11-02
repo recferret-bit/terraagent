@@ -57,8 +57,8 @@ Boundary rules (enforced by dependency-cruiser in TA-01.5): `frontend/**` never 
 
 | Task | Title | Wave / Lane | Depends On |
 |---|---|---|---|
-| `TA-01.1` | npm-workspaces skeleton: root `package.json`, `tsconfig.base.json`, ESLint/Prettier, Vitest, `npm run check` | W0 / Lead | None |
-| `TA-01.6` | `@terra/config`: zod env loader, `TA_NS` + lane port helpers, `.env.example` convention | W0 / Lead | TA-01.1 |
+| `TA-01.1` | npm-workspaces skeleton: root `package.json`, `shared/tsconfig.base.json`, ESLint/Prettier, Vitest, `npm run check` | W0 / Lead | None |
+| `TA-01.6` | `@terra/config`: zod env loader, `TA_NS` + lane port helpers, `infra/.env.example` convention | W0 / Lead | TA-01.1 |
 | `TA-01.2` | `@terra/contracts`: WS envelope + worker/lobby message schemas v1 | W0 / Lead | TA-01.1 |
 | `TA-01.3` | `@terra/contracts`: NATS subjects, stream/KV definitions & payload schemas | W0 / Lead | TA-01.2 |
 | `TA-01.4` | `@terra/contracts`: REST DTOs, error codes, planet-ticket claims | W0 / Lead | TA-01.2 |
@@ -71,7 +71,7 @@ Boundary rules (enforced by dependency-cruiser in TA-01.5): `frontend/**` never 
 
 ## Tasks
 
-### `TA-01.1` — npm-workspaces skeleton: root `package.json`, `tsconfig.base.json`, ESLint/Prettier, Vitest, `npm run check`
+### `TA-01.1` — npm-workspaces skeleton: root `package.json`, `shared/tsconfig.base.json`, ESLint/Prettier, Vitest, `npm run check`
 
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W0 / Lead`
@@ -80,8 +80,8 @@ Boundary rules (enforced by dependency-cruiser in TA-01.5): `frontend/**` never 
 - **Target Files:**
   - `package.json` (workspaces: `shared/*`, `backend/*`, `frontend/*`, `tests/*`; scripts `check`, `lint`, `typecheck`, `test`, `format`, `build`)
   - `package-lock.json`, `.nvmrc` (`24`), `.npmrc` (`engine-strict=true`, `save-exact=true`)
-  - `tsconfig.base.json`, `tsconfig.json` (solution file with project references)
-  - `eslint.config.mjs` (flat config, typescript-eslint, import ordering), `.prettierrc`, `.editorconfig`
+  - `shared/tsconfig.base.json`, `tsconfig.json` (solution file with project references)
+  - `shared/config/eslint.config.js` (flat config, typescript-eslint, import ordering), `shared/config/.prettierrc.json`, `.editorconfig`
   - `vitest.workspace.ts`, `vitest.shared.ts` (SWC plugin for Nest decorators)
   - `.gitignore`, `.gitattributes`, `README.md` (dev quickstart)
   - placeholder workspaces: `backend/{core,planet-worker,ai-orchestrator,near-gateway}/package.json`, `frontend/{game,landing}/package.json`, `shared/{contracts,config,sim,db}/package.json` (name, `private`, `type: module`, empty `src/index.ts`)
@@ -116,7 +116,7 @@ Boundary rules (enforced by dependency-cruiser in TA-01.5): `frontend/**` never 
 
 ---
 
-### `TA-01.6` — `@terra/config`: zod env loader, `TA_NS` + lane port helpers, `.env.example` convention
+### `TA-01.6` — `@terra/config`: zod env loader, `TA_NS` + lane port helpers, `infra/.env.example` convention
 
 - **Status:** `[ ] Todo`
 - **Wave / Lane:** `W0 / Lead`
@@ -126,13 +126,13 @@ Boundary rules (enforced by dependency-cruiser in TA-01.5): `frontend/**` never 
   - `shared/config/src/load.ts` (`loadConfig(schema, env)`), `shared/config/src/base.ts` (`baseEnvSchema`), `shared/config/src/ports.ts` (`servicePort`, `LANE_PORTS`), `shared/config/src/ns.ts` (`ns()`, `NS()`), `shared/config/src/describe.ts` (`describeEnv()` for examples)
   - `shared/config/test/*.spec.ts`
   - `scripts/check-env-examples.mjs`
-  - `backend/*/.env.example`, `frontend/*/.env.example` (initial base keys only), `infra/deploy/.env.example` (aggregated placeholder; TA-02.5 completes it)
+  - `backend/*/.env.example`, `frontend/*/.env.example` (initial base keys only), `infra/.env.example` (aggregated placeholder; TA-02.5 completes it)
 - **Verify:** `npm run test -w @terra/config && node scripts/check-env-examples.mjs`
 
 #### Analytics
 - **Problem & goal:** four services and five lanes must agree on `TA_NS`, ports, `DATABASE_URL`, `NATS_URL` and every tunable in ARCHITECTURE §15 — with fail-fast errors instead of silent defaults in production.
 - **Constraints:** zero runtime deps beyond `zod`; works in Node and (for public `VITE_*` keys) at Vite build time; production must refuse to start with a missing required key; lanes set only `LANE=1..5` and get the right ports/namespace automatically.
-- **Risks → mitigations:** every new env key becoming a lead pre-step bottleneck → only **base** keys live in `@terra/config`; each app extends `baseEnvSchema` in its own `src/config/env.schema.ts` (lane-owned). Drift between schemas and `.env.example` → `check-env-examples.mjs` in CI.
+- **Risks → mitigations:** every new env key becoming a lead pre-step bottleneck → only **base** keys live in `@terra/config`; each app extends `baseEnvSchema` in its own `src/config/env.schema.ts` (lane-owned). Drift between schemas and `infra/.env.example` → `check-env-examples.mjs` in CI.
 - **Alternatives rejected:** `@nestjs/config` alone (not usable by frontends/sim tooling, no shared lane helpers); `dotenv-safe` (no typing).
 - **Telemetry (proves it works):** on boot each service logs one structured line `config.loaded {service, ns, lane, port, keys:<n>}` (no secret values; keys matching `/SECRET|KEY|PASSWORD|TOKEN/` are redacted); `config_info{service,ns,version}` gauge = 1 exported by apps via TA-04.1/07.1.
 
@@ -313,7 +313,7 @@ export const KV_BUCKETS = {
   - `shared/sim/src/index.ts` (re-exports `api.ts`, binds to implementation)
   - `shared/sim/src/stub/*.ts` (deterministic stub: counter state, founder entity walking a circle, echo events)
   - `shared/sim/test/api-contract.spec.ts` (contract test any implementation must pass — L2 keeps it green)
-  - `eslint.config.mjs` block for `shared/sim/**` (ban `Date`, `Math.random`, `performance`, `setTimeout`, `node:*`, DOM globals, floating-point `Math.*` except `Math.imul`/`Math.trunc`/`Math.abs`/`Math.min`/`Math.max`)
+  - `shared/config/eslint.config.js` block for `shared/sim/**` (ban `Date`, `Math.random`, `performance`, `setTimeout`, `node:*`, DOM globals, floating-point `Math.*` except `Math.imul`/`Math.trunc`/`Math.abs`/`Math.min`/`Math.max`)
 - **Verify:** `npm run test -w @terra/sim`
 
 #### Analytics
@@ -375,7 +375,7 @@ export declare const sim: Sim;
   - `shared/contracts/scripts/emit-json-schema.ts` → `shared/contracts/schema/contracts.v1.json` (committed)
   - `shared/contracts/test/schema-snapshot.spec.ts`
   - `.dependency-cruiser.cjs`
-  - `eslint.config.mjs` rule: no NATS subject string literals outside `shared/contracts/**`
+  - `shared/config/eslint.config.js` rule: no NATS subject string literals outside `shared/contracts/**`
   - `.github/workflows/ci.yml` (optional; runs `npm run ci:fast` if the owner uses GitHub — see OWNER_TASKS)
 - **Verify:** `npm run ci:fast`
 

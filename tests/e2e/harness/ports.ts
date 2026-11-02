@@ -2,12 +2,14 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 
-export const ROOT = resolve(import.meta.dirname, '../..');
-export const OUT = resolve(ROOT, 'e2e/.out');
+export const ROOT = resolve(import.meta.dirname, '../../..');
+export const OUT = resolve(ROOT, 'tests/e2e/.out');
 
 const fileEnv = (name: string): Record<string, string | undefined> => {
-  const f = resolve(ROOT, name);
-  return existsSync(f) ? parseEnv(readFileSync(f, 'utf8')) : {};
+  const infraFile = resolve(ROOT, 'infra', name);
+  if (existsSync(infraFile)) return parseEnv(readFileSync(infraFile, 'utf8'));
+  const rootFile = resolve(ROOT, name);
+  return existsSync(rootFile) ? parseEnv(readFileSync(rootFile, 'utf8')) : {};
 };
 
 /**

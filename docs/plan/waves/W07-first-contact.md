@@ -1,6 +1,6 @@
 # W07 — First Contact (battle v1)
 
-> **Track:** Gameplay (G) · **Flag:** `W07` · **Scenario:** `scenarios/w07-first-contact.ts` · **Tag:** `wave-07` · **Depends on:** W03
+> **Track:** Gameplay (G) · **Flag:** `W07` · **Scenario:** `tests/scenarios/w07-first-contact.ts` · **Tag:** `wave-07` · **Depends on:** W03
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §5.2, §5.4 (`UO-C-00..08`), §5.5, §5.6, §6.3 (`UO-T-01..04`), §3.3 (`UO-S`), §3.2 (`UO-HQ-03`) · [`colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §3.5 (DCA), §3.6 (Factory), §3.7 (turrets) · [`SIMULATION.md`](../../spec/SIMULATION.md) §7.6, §7.7, §9 · [`CLIENT.md`](../../spec/CLIENT.md) §8b · D-28, D-33, D-34, D-35 · [`OWNER_TASKS.md`](../OWNER_TASKS.md) B2, B4, B7–B11
 > **Balance (D-35):** every battle number here (HP, damage, rates, ranges, view radii, stance radii, raid timers, nest density) is a data row in `shared/sim/src/data/{weapons,combat-units,fauna}.ts`, tunable at runtime with W00-59's `tune` (e.g. `tune weapons.autocannon_t1.dmg 11`). Where the specs left a number open, the accepted OWNER_TASKS defaults B2, B4, B7–B11 are the starting rows. Building and unit costs (`M/Min/Pet/W`) read through the D-34 T1 rule (`metals.t1` / `minerals.t1` / `bio.biomass` / `bio.water`).
 > **Owned paths:** `shared/sim/src/systems/{combat,projectiles,fauna,raids,factory,supply,vision}/`, `shared/sim/src/data/{weapons,combat-units,fauna}.ts`, `shared/sim/test/duels.spec.ts`, `frontend/game/features/{combat,army,rings,projectiles}/`, archetypes in `frontend/render/kitbash/archetypes/buildings/tech.ts` (bind existing `turret`, `roboticsFactory`, `droneArray`; new Laser Tower) and `frontend/render/kitbash/archetypes/units/{robots,nature}.ts` (Recon re-skin of `robot.combat`, nest, skitter states).
@@ -21,7 +21,7 @@ Also in this wave:
 - army orders (stance, rally, attack-move);
 - range and view rings, projectile and impact visuals.
 
-## Demo story (e2e `e2e/w07.spec.ts`)
+## Demo story (e2e `tests/e2e/w07.spec.ts`)
 
 1. Open `/play.html?scenario=w07`: an S3 colony with power, a nest 30 tiles away, and the time warped to 5 min before the first raid.
 2. Construction menu → build a Robotics Factory T1 → the Units menu shows an Army section. Order 3 Recon → they roll out to the rally flag.
@@ -105,7 +105,7 @@ Also in this wave:
 | W07-19 | Army orders: click / shift-click select own combat units (extends W01-26; box select comes from W04-23 when it lands), stance buttons, `A` + click attack-move, right-click attack target, order-feedback markers (touch long-press is W24-12) | client | M | H | W07-12 | Shift-click 3 Recon, press `A`, click the nest → move markers appear and the units attack-move | CLIENT §8 | TA-11.8 |
 | W07-20 | HP bars (shown when damaged or selected, colony-coloured), under-attack alert pings on the screen edge (minimap pings come from W04-12 when W04 is on), combat event log entries | client | S | H | W07-16 | Damage a building → its HP bar appears; an off-screen attack shows an edge ping | CLIENT §8 | TA-11.7 |
 | W07-21 | Range and view rings: one instanced ring mesh with a dash shader; weapon (solid orange), min (dashed red), view (dashed white 40 %); `Alt` for all own units; enemy hover red; turret ghost range | client | M | H | W07-13 | Select the Autocannon → an 8-tile ring (16 m) and a 9-tile view ring render; `Alt` shows every unit's rings in one draw call | `UO-C-08`, CLIENT §8b | TA-14.10 |
-| W07-22 | Projectile VFX: bullet tracers, shell parabolic arcs, rocket smoke trails, laser beams held 0.1 s; impact flash + AoE ground decal; miss explosions at the aim point; the client never decides hits — pooled; reuse `render/visuals/terrain/Particles.ts`, the descent `Flames`/`Streaks` shaders for rocket trails and the existing bloom (emissive ≥ 3) | visual | M | H | W07-17 | Run the demo-artillery step → visible arcs, misses explode beside the Recon, and hits match server `projectileImpact` | CLIENT §8b | TA-14.10 |
+| W07-22 | Projectile VFX: bullet tracers, shell parabolic arcs, rocket smoke trails, laser beams held 0.1 s; impact flash + AoE ground decal; miss explosions at the aim point; the client never decides hits — pooled; reuse `frontend/render/visuals/terrain/Particles.ts`, the descent `Flames`/`Streaks` shaders for rocket trails and the existing bloom (emissive ≥ 3) | visual | M | H | W07-17 | Run the demo-artillery step → visible arcs, misses explode beside the Recon, and hits match server `projectileImpact` | CLIENT §8b | TA-14.10 |
 | W07-23 | Death and destruction VFX: unit explosion + debris, building collapse into rubble that fades to the Prepared pad, skitter death animation — reuse `Particles.ts` and the descent `GroundFX` dust ring | visual | S | H+ | W07-02 | Destroy a depot → rubble for ~3 s, then the Prepared pad | VFX | TA-14.9 |
 | W07-24 | Kitbash: bind existing `building.roboticsFactory` (Factory T1), `building.droneArray` (DCA T1) and `building.turret` (Autocannon T1: twin barrels + recoil already there) to their data rows; footprint mismatches (Factory model 4×3 vs data 3×3, DCA model 2×2 vs data 1×1) are resolved by refitting the models to the data footprints (B8 default); new `building.laserTower` T1 (emitter head, beam-origin socket) built from the turret kit | visual | M | H+ | — | `npm run validate:models -- building.laserTower building.roboticsFactory building.droneArray building.turret` → 0 errors / 0 warnings; playground 4-view audit passes, minY 0, < 3.5 k tris | Pillar 1 | TA-14.9 |
 | W07-25 | Kitbash: Recon re-skin of `robot.combat` (small, tall-legged, evasive look), Skitter nest (organic mound, spawn hole), Skitter attack/death anim states | visual | M |  | — | `?inspect=unit.recon` and `fauna.nest` pass the audit; skitter shows its attack anim in game | Pillar 1 | TA-14.9 |
@@ -119,7 +119,7 @@ Also in this wave:
 
 ## Wave DoD
 
-- `e2e/w07.spec.ts` passes, and so do all earlier wave suites.
+- `tests/e2e/w07.spec.ts` passes, and so do all earlier wave suites.
 - The duel harness is green in CI.
 - With `TA_WAVES=..06`, there is no fauna, combat UI, Factory or turret, and the colony is peaceful.
 - Tag `wave-07` is created.

@@ -1,9 +1,11 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import swc from 'unplugin-swc';
 
 // `npm run test:contract` / `npm run contract:real`: the port contract runner only. It needs Postgres (`npm run db:up`),
 // like the integration suite, but is not an `*.int.spec.ts` so neither the default run nor `test:integration` repeats it.
 export default defineConfig({
+  root: resolve(import.meta.dirname, '..'),
   plugins: [swc.vite({ module: { type: 'es6' } })],
   test: {
     name: 'contract',

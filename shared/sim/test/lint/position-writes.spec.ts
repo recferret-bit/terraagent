@@ -3,7 +3,7 @@ import { ESLint } from 'eslint';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
-const eslint = new ESLint({ cwd: repoRoot });
+const eslint = new ESLint({ cwd: repoRoot, overrideConfigFile: resolve(repoRoot, 'shared/config/eslint.config.js') });
 
 async function moveErrors(source: string, file: string) {
   const [res] = await eslint.lintText(source, { filePath: resolve(repoRoot, file) });

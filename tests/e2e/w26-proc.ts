@@ -6,7 +6,7 @@ import { resolve } from 'node:path';
 
 export const SITE_DB = 'terra_w26_e2e';
 
-const ROOT = resolve(import.meta.dirname, '..');
+const ROOT = resolve(import.meta.dirname, '../..');
 const HEALTH_FORMAT = '{{.State.Status}} {{if .State.Health}}{{.State.Health.Status}}{{else}}none{{end}}';
 
 export interface ProcResult {

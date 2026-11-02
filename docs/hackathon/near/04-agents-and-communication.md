@@ -213,7 +213,7 @@
 
 ## 7. Wave map
 
-- **W15 card.** Deps: W13 (books, matching, settlement, price board), W09 (W09-13 `withinAutoTrade`), via W13 also W10 and W06; hooks W09, W11, W16, W08. `@hack` steps: 1, 2 (toast and Guild tab, no ship or VFX), 3, 5–8, 9 (quotes vanish, no carry), 10 (W15-34). DoD gates: `e2e/w15.spec.ts` and all earlier suites pass; `?scenario=w15` loads; `TA_WAVES=..14` removes Guild ships, tab and Away autoTrade while W13 markets work and director keys stay unused in the DB; the agent-wallet contract suite passes on the mock; tag `wave-15`.
+- **W15 card.** Deps: W13 (books, matching, settlement, price board), W09 (W09-13 `withinAutoTrade`), via W13 also W10 and W06; hooks W09, W11, W16, W08. `@hack` steps: 1, 2 (toast and Guild tab, no ship or VFX), 3, 5–8, 9 (quotes vanish, no carry), 10 (W15-34). DoD gates: `tests/e2e/w15.spec.ts` and all earlier suites pass; `?scenario=w15` loads; `TA_WAVES=..14` removes Guild ships, tab and Away autoTrade while W13 markets work and director keys stay unused in the DB; the agent-wallet contract suite passes on the mock; tag `wave-15`.
 - **W15 H:** 01, 02, 03, 04, 05, 06, 08, 09, 11, 16, 17, 18, 19, 20, 21, 22, 23, 25, 28, 34 · **H+:** 07, 12, 14, 15, 30 · **—:** 10, 13, 24, 26, 27, 29, 31, 32, 33.
 - **W09 cited:** H: 01, 09, 13, 15, 16, 17, 20, 21 · H+: 19 · —: 10, 11, 12, 14, 22, 24.
 - **W02 / W03 / W08 / W10 / W13 / W01 / W00 cited:** W02-13..16, W03-12, W03-13, W08-16, 17, 21, 23..25 (H); W08-20 (—); W10-03 (H); W13-09, W13-11 (H); W13-26 (—); W01-05 (H); W00-55 (H).

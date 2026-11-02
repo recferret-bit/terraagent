@@ -1,9 +1,9 @@
 # W08 — Stages & HQ Goals
 
-> **Track:** Autonomy (P) · **Flag:** `W08` · **Tag:** `wave-08` · **Scenario:** `scenarios/w08-stages-goals.ts` · **E2E:** `e2e/w08.spec.ts`
+> **Track:** Autonomy (P) · **Flag:** `W08` · **Tag:** `wave-08` · **Scenario:** `tests/scenarios/w08-stages-goals.ts` · **E2E:** `tests/e2e/w08.spec.ts`
 > **Depends on waves:** W02 (spine). Stage rows for later stages light up as their producer waves land (W03, W05, W07, W14, W17, W19, W21). Rows whose wave flag is off are hidden. Optional: W07 (W08-18's Defend Area / Clear Nest breakdown uses W07-01's units and nests).
 > **Specs:** [units spec](../../game/units-orders-and-progression-spec.md) §4.6 (`UO-G-*`), §6 (`UO-LC-*`, stage table, `UO-T-*`), §7 row 8 · [SIMULATION](../../spec/SIMULATION.md) §8 (`SIM-R-01..06`) · [CONTINUITY](../../spec/CONTINUITY.md) `AW-06`, `AW-20` · D-16, D-27
-> **Owned paths:** `shared/sim/src/systems/{progression,goals,rule-engine}/`, `shared/sim/src/data/{stages,goals}.ts`, `shared/contracts/src/{commands,events}/{progression,goals}.ts`, `frontend/game/features/{stages,goals,priorities}/` (the stage track and goals panel plug into the existing HUD `frontend/game/ui/hud.ts` through the W00-27 feature registry), `backend/app/src/progression/stage-*` + `prisma/progression-stage.prisma` (account `maxStage` only; the rest of `progression/` is W12's)
+> **Owned paths:** `shared/sim/src/systems/{progression,goals,rule-engine}/`, `shared/sim/src/data/{stages,goals}.ts`, `shared/contracts/src/{commands,events}/{progression,goals}.ts`, `frontend/game/features/{stages,goals,priorities}/` (the stage track and goals panel plug into the existing HUD `frontend/game/ui/hud.ts` through the W00-27 feature registry), `backend/app/src/progression/stage-*` + `shared/db/prisma/progression-stage.prisma` (account `maxStage` only; the rest of `progression/` is W12's)
 
 ## Goal
 
@@ -68,7 +68,7 @@ The colony teaches itself. A data-driven **stage engine** (S0–S10) unlocks con
 | W08-04 | Sim: dwell timers, persisted in the snapshot, scaled correctly by coarse `dt` | sim | S | H | W08-03 | Restore a snapshot mid-dwell → the remaining dwell continues; with coarse `dt=5` the stage fires within 1 s of the same game time | `UO-LC-02`, `SIM-D-03` | TA-14.5 |
 | W08-05 | Sim: stage-override mechanism + the fauna override (fauna within 15 tiles → S3); the S8 air override is W19-14's | sim | S |  | W08-03 | Dev-spawn a skitter 12 tiles from the Hub at S2 → S3 starts before the dwell ends | `UO-LC-04` | TA-14.5 |
 | W08-06 | Sim: `unlockStage` on the colony, set from `spawnColony.unlockStage`, raised by `stageReached` | sim | S | H | W08-03 | Spawn with `unlockStage=5` → S0–S5 items are unlocked at once while `threatStage` stays 0 | `UO-LC-06` | TA-14.5 |
-| W08-07 | Server: per-account `maxStage` (table `player_stage` in `prisma/progression-stage.prisma`), raised from `stageReached`, passed to `spawnColony` | server | S | H+ | W08-06 | Reach S3 on planet A, start a colony on planet B → B's colony spawns with `unlockStage=3` | `UO-LC-06` | TA-14.5 |
+| W08-07 | Server: per-account `maxStage` (table `player_stage` in `shared/db/prisma/progression-stage.prisma`), raised from `stageReached`, passed to `spawnColony` | server | S | H+ | W08-06 | Reach S3 on planet A, start a colony on planet B → B's colony spawns with `unlockStage=3` | `UO-LC-06` | TA-14.5 |
 | W08-08 | Sim: `threatStage` = highest stage whose gating building the colony owns; recomputed on build and destroy | sim | S | H | W08-02 | Destroy the colony's only Factory T1 at S4 → `threatStage` drops to 2 within one step | `UO-T-06` | TA-14.5 |
 | W08-09 | Sim: threat API `threatOf(colony)` (raid start floor, size, composition table, meteor floor) for the W05/W07 schedulers | sim | S | H | W08-08 | Unit test: `threatOf` at S3 + 4 min → `raidsAllowed=false`; at S3 + 6 min → size 5; S2 + 9 min → `meteorsAllowed=false` | `UO-T-01..03, 07` | TA-14.5 |
 | W08-10 | Sim: command validator rejects items above `unlockStage` with `stage_locked` | sim | S | H | W08-06 | Send `placeBuilding robotics_factory` at S2 → `cmd.reject {code:'stage_locked', unlocksAt:'S3'}` | `SIM-C-02` | TA-14.5 |
@@ -98,7 +98,7 @@ The colony teaches itself. A data-driven **stage engine** (S0–S10) unlocks con
 
 ## Wave DoD
 
-- `e2e/w08.spec.ts` passes, and `npm run e2e -- --waves ..07` still passes.
+- `tests/e2e/w08.spec.ts` passes, and `npm run e2e -- --waves ..07` still passes.
 - `?scenario=w08` loads a fresh colony at S0 with the stage track visible.
 - `TA_WAVES=..07` hides the stage track, goals, suggestions and sliders; commands return `wave_disabled`.
 - Tag `wave-08` is created.

@@ -312,9 +312,9 @@ Error envelope (all non-2xx): `{ errorCode, error: { code, message, details? }, 
 
 | Rule | Test |
 |---|---|
-| PR-01, PR-06 | `contracts/test/schema-snapshot.spec.ts` |
+| PR-01, PR-06 | `shared/contracts/test/schema-snapshot.spec.ts` |
 | WS-10..16 | `backend/app/test/ws/handshake-join.spec.ts` |
-| WS-20..23 | `backend/app/test/ws/commands.spec.ts`, `ws/resync.spec.ts` |
+| WS-20..23 | `backend/app/test/ws/commands.spec.ts`, `backend/app/test/ws/resync.spec.ts` |
 | WS-30 | `backend/app/test/ws/full-state.spec.ts` (everything is present) |
 | LB-01..04 | `backend/app/test/lobby/lobby-topics.spec.ts` |
 | §6 | `backend/app/test/game/thread-messages.spec.ts` |

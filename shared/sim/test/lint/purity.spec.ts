@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 
 const repoRoot = resolve(import.meta.dirname, '../../../..');
 const fixturePath = resolve(repoRoot, 'shared/sim/src/systems/_fixture/index.ts');
-const eslint = new ESLint({ cwd: repoRoot });
+const eslint = new ESLint({ cwd: repoRoot, overrideConfigFile: resolve(repoRoot, 'shared/config/eslint.config.js') });
 
 async function lint(source: string) {
   const [res] = await eslint.lintText(source, { filePath: fixturePath });

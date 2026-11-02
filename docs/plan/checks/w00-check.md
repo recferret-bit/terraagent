@@ -5,8 +5,8 @@
 ## Before you start
 
 - **Where it runs:** branch `wave/w00-platform-skeleton`, worktree `../TerraAgent-wt/w00`. Your main checkout is untouched.
-- **Ports:** this worktree's `.env.worktree` sets `TA_PORT_BASE=4100` → app **4101**, client **5273** (`TA_DB_NAME=terra_wave_w00_platform_skeleton`). Below, `<client>` = `http://127.0.0.1:5273`, `<app>` = `http://127.0.0.1:4101`.
-- **Start the stack** (if it isn't running): `cd ../TerraAgent-wt/w00 && npm run dev` (Docker must be running for Postgres). Stop it with Ctrl-C, or `kill $(cat .dev/runner.pid)` if it was started in the background.
+- **Ports:** this worktree's `infra/.env.worktree` sets `TA_PORT_BASE=4100` → app **4101**, client **5273** (`TA_DB_NAME=terra_wave_w00_platform_skeleton`). Below, `<client>` = `http://127.0.0.1:5273`, `<app>` = `http://127.0.0.1:4101`.
+- **Start the stack** (if it isn't running): `cd ../TerraAgent-wt/w00 && npm run dev` (Docker must be running for Postgres). Stop it with Ctrl-C, or `kill $(cat scripts/dev/.out/runner.pid)` if it was started in the background.
 - **Dev console:** in the game page press **`` ` ``** (the key under Esc). A dark panel opens at the bottom; type commands there and press Enter. It is **not** the browser's DevTools console (typing `chain.ping` in DevTools gives `ReferenceError`). Click the game first if DevTools has focus.
 - Every tool used below is described in [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).
 
@@ -21,7 +21,7 @@
 7. **Mock blockchain receipt.** Open `<client>/dev/chain/` in a second tab (mock chain explorer). In the play tab's dev console type `chain.ping` → it prints a `mock:…` hash after about 1 s; within 1–2 s the same hash appears as a new highlighted row in the explorer. (The explorer's **CHAIN.PING** button does the same.)
 8. **CI** — nothing to click: CI has never run on GitHub (nothing is pushed). Optional: `npm run ci:fast` in the worktree ends green.
 9. **Browser-only mode (no server).**
-   1. Stop the stack: `kill $(cat .dev/runner.pid)` (or Ctrl-C in its terminal).
+   1. Stop the stack: `kill $(cat scripts/dev/.out/runner.pid)` (or Ctrl-C in its terminal).
    2. Start only the client: `npx vite --host 127.0.0.1 --port 5273 --strictPort`.
    3. Open `<client>/play.html?host=local&scenario=w00` → the same planet ticks about 5/s with no server.
    4. Dev console `warp 10` → about 50/s here too; `warp 1`.

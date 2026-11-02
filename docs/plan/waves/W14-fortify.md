@@ -1,6 +1,6 @@
 # W14 — Fortify (terrain walls)
 
-> **Track:** Gameplay (G) · **Flag:** `W14` · **Scenario:** `scenarios/w14-fortify.ts` · **Tag:** `wave-14` · **Depends on:** W05, W07
+> **Track:** Gameplay (G) · **Flag:** `W14` · **Scenario:** `tests/scenarios/w14-fortify.ts` · **Tag:** `wave-14` · **Depends on:** W05, W07
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §4.5 (Raise/Dig/Lower rows), §4.8 (`UO-W-01..09`, Wall Gate), §5.4 (`UO-C-05`), §6.3 (`UO-T-07/08`), `AC-14..16` · [`textures-shaders-lighting-spec.md`](../../visuals/textures-shaders-lighting-spec.md) · D-27 (demo unlock at S4), D-34, D-35 · [`OWNER_TASKS.md`](../OWNER_TASKS.md) B12
 > **Balance (D-35):** wall op times, energy and costs, gate HP, the gate-in-line rule (≥ 2 neighbouring wall tiles, B12 default) and the siege timer are data rows in `shared/sim/src/data/walls.ts`, tunable at runtime with W00-59's `tune` (e.g. `tune walls.raiseRidge.energy 120`). Costs `M` / `Min` read through the D-34 T1 rule (`metals.t1` / `minerals.t1`); Dig Moat yields `minerals.t1`.
 > **Owned paths:** `shared/sim/src/systems/{walls,nav,line-of-fire}/`, `shared/sim/src/data/walls.ts`, `frontend/game/features/walls/`, the Ridge/Moat terrain look in `frontend/render/visuals/terrain/` (reuses the `landform/ridge.ts` heightfield stamp), new archetype `frontend/render/kitbash/archetypes/buildings/wall-gate.ts` (`building.wallGate`).
@@ -15,7 +15,7 @@
 - Pathing is wall-aware, and fauna besiege walled colonies.
 - Meteors can breach walls.
 
-## Demo story (e2e `e2e/w14.spec.ts`)
+## Demo story (e2e `tests/e2e/w14.spec.ts`)
 
 1. Open `/play.html?scenario=w14`: an S4 colony (demo build unlock), a Terraformer, Prepared ground around the core, a nest 25 tiles away, and an Autocannon inside the planned wall line.
 2. Terraform menu → **Raise Ridge**, then drag a wall line around the core, leaving one gap → the ghost shows cost (15 M + 10 Min + 150 E per tile) and time.
@@ -103,7 +103,7 @@
 
 ## Wave DoD
 
-- `e2e/w14.spec.ts` passes, and so do all earlier wave suites.
+- `tests/e2e/w14.spec.ts` passes, and so do all earlier wave suites.
 - `AC-14` (ground half) and `AC-16` are green; `AC-15` and the indirect-fire half of `AC-14` once W14-07 lands.
 - With `TA_WAVES=..13`, no wall op, gate, line-of-fire block or siege exists, and every ridge from a saved snapshot is inert and shown as Prepared.
 - Tag `wave-14` is created.

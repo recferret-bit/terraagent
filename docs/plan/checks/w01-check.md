@@ -5,8 +5,8 @@
 ## Before you start
 
 - **Where it runs:** branch `wave/w01-landfall`, worktree `../TerraAgent-wt/w01`. Your main checkout is untouched.
-- **Ports:** this worktree's `.env.worktree` sets `TA_PORT_BASE=4200` → app **4201**, client **5373** (`TA_DB_NAME=terra_wave_w01_landfall`). Below, `<client>` = `http://127.0.0.1:5373`, `<app>` = `http://127.0.0.1:4201`.
-- **Start the stack** (if it isn't running): `cd ../TerraAgent-wt/w01 && npm run dev` (Docker must be running for Postgres). Stop it with Ctrl-C, or `kill $(cat .dev/runner.pid)` if it was started in the background.
+- **Ports:** this worktree's `infra/.env.worktree` sets `TA_PORT_BASE=4200` → app **4201**, client **5373** (`TA_DB_NAME=terra_wave_w01_landfall`). Below, `<client>` = `http://127.0.0.1:5373`, `<app>` = `http://127.0.0.1:4201`.
+- **Start the stack** (if it isn't running): `cd ../TerraAgent-wt/w01 && npm run dev` (Docker must be running for Postgres). Stop it with Ctrl-C, or `kill $(cat scripts/dev/.out/runner.pid)` if it was started in the background.
 - **Dev console:** in the game page press **`` ` ``** (the key under Esc). A dark panel opens at the bottom; type commands there and press Enter. Press **`` ` ``** or **Esc** to close it so it doesn't cover the bottom menus. It is **not** the browser's DevTools console.
 - **Second player / fresh guest profile:** open a private/incognito window, or (dev build, which `npm run dev` is) pass `?as=b`, `?as=c`, … on `/play.html`: each name keeps its own device secret (`localStorage` key `ta_device_secret:<name>`; the default guest uses `ta_device_secret`), so each is a separate guest.
 - Every tool used below is described in [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).

@@ -1,4 +1,5 @@
 import { Worker } from 'node:worker_threads';
+import { resolve } from 'node:path';
 import type { BalanceOverrides } from '@terra/sim';
 import { threadOf } from './thread/assign';
 import type { FromThread, PassStat, PlanetStats, ThreadInit, ToThread } from './thread/protocol';
@@ -63,6 +64,7 @@ export class SimThreadPool {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
+    process.env.SWC_NODE_PROJECT ??= resolve(import.meta.dirname, '../../../../shared/tsconfig.base.json');
     this.entry = this.opts.entry ?? new URL('./thread/sim-thread.ts', import.meta.url);
     this.execArgv = process.execArgv.some((a) => a.includes(SWC_LOADER)) ? undefined : [...process.execArgv, '--import', SWC_LOADER];
     await Promise.all(Array.from({ length: this.opts.threads }, (_, thread) => this.spawn(thread)));

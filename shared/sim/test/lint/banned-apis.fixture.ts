@@ -1,4 +1,4 @@
-// Lint fixture (not linted by `npm run lint`, see eslint.config.js): a sim system using every banned API.
+// Lint fixture (not linted by `npm run lint`, see shared/config/eslint.config.js): a sim system using every banned API.
 // purity.spec.ts lints this text as if it lived in shared/sim/src/systems/_fixture/index.ts.
 import { readFileSync } from 'node:fs';
 import { defineSystem } from '../../src/kernel/system';

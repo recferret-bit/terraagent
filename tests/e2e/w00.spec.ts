@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { E, ENTITY_STRIDE } from '../frontend/game/store/replica/viewCodec';
+import { E, ENTITY_STRIDE } from '../../frontend/game/store/replica/viewCodec';
 import {
   CONSOLE, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, readTick, screenshot, stack, test,
   ticksPerSecond, urls, waitForTick,

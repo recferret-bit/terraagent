@@ -110,7 +110,7 @@ Module layout (`backend/near-gateway/src`): `config/`, `chain/` (`near-rpc.clien
 - **Depends On:** `TA-10.8`
 - **Spec:** [`NEAR.md`](../../spec/NEAR.md) §2, §8 · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3, §11 · [D-14](../../spec/DECISIONS.md#d-14--all-backend-services-are-nestjs)
 - **Target Files:**
-  - `backend/near-gateway/package.json`, `tsconfig.json`, `.env.example`
+  - `backend/near-gateway/package.json`, `backend/near-gateway/tsconfig.json`, `backend/near-gateway/.env.example`
   - `backend/near-gateway/src/main.ts`, `src/app.module.ts`, `src/config/near.config.ts`
   - `backend/near-gateway/src/health/health.controller.ts`
   - `backend/near-gateway/src/chain/near-rpc.client.ts`, `key-store.ts`, `signer.ts`, `account-id.ts`

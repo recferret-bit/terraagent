@@ -1,9 +1,11 @@
+import { resolve } from 'node:path';
 import { defineConfig } from 'vitest/config';
 import swc from 'unplugin-swc';
 
 // `npm run test:integration`: only `*.int.spec.ts`, which need Postgres (`npm run db:up`). The default `npx vitest run`
 // excludes them. Files run one at a time; each creates its own throwaway database via `@terra/db/testing`.
 export default defineConfig({
+  root: resolve(import.meta.dirname, '..'),
   plugins: [swc.vite({ module: { type: 'es6' } })],
   test: {
     name: 'integration',

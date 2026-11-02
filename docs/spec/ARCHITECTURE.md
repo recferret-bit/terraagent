@@ -1,7 +1,7 @@
 # TerraAgent — Online System Architecture
 
 > **Status:** v0.2 (2026-10-30). This is the **simplified one-app architecture** (D-24, D-25, D-26). The earlier distributed design (four services, NATS, leases, deterministic replay) is summarised in §16 as **Future**.
-> **Decisions:** [`DECISIONS.md`](./DECISIONS.md) · **Plan:** [`../plan/EXECUTION_ORCHESTRATOR.md`](../plan/EXECUTION_ORCHESTRATOR.md) · **Hackathon cut:** [`../plan/HACKATHON_CUT.md`](../plan/HACKATHON_CUT.md)
+> **Decisions:** [`DECISIONS.md`](./DECISIONS.md) (including D-40, D-41) · **Plan:** [`../plan/EXECUTION_ORCHESTRATOR.md`](../plan/EXECUTION_ORCHESTRATOR.md) · **Hackathon cut:** [`../plan/HACKATHON_CUT.md`](../plan/HACKATHON_CUT.md)
 > **Game design (authoritative for gameplay):** [`docs/game/autonomous-colony-spec.md`](../game/autonomous-colony-spec.md) · [`docs/game/colony-economy-and-buildings-spec.md`](../game/colony-economy-and-buildings-spec.md) · [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md) · [`docs/game/near-economy-features-spec.md`](../game/near-economy-features-spec.md) · [`AGENTS.md`](../../AGENTS.md) (3D visual pillars)
 
 This document is the **single source of truth for topology and tunables**: modules, domains, data stores, threads, the WebSocket envelope, the resume path and every tunable number. Topic specs refine it and must not contradict it. For message-level detail (fields, kinds, codes) [`PROTOCOL.md`](./PROTOCOL.md) wins; for table-level detail [`DATA_MODEL.md`](./DATA_MODEL.md) wins.
@@ -22,7 +22,7 @@ This document is the **single source of truth for topology and tunables**: modul
 | G8 | Swap mock ↔ real integrations without touching game code | **Ports and adapters (D-30).** Abstract-class ports are the DI tokens, bound in one infrastructure module per integration, and chosen per port by a fail-closed env flag (`NEAR_ADAPTER_<PORT>`, `LLM_ADAPTER`, `NOTIFY_ADAPTER`). **Phase 1 = all NEAR ports mocked**, each with a Postgres-backed mock and a contract suite shared by mock and real ([`NEAR.md`](./NEAR.md) §1a). |
 | G8 | AI orchestration on Z.ai GLM | `ai` module, model `glm-5.3` (D-09). |
 | G9 | Simple, efficient, cheap to run | **One NestJS app + Postgres** on a 4 vCPU / 8 GB host. No NATS, no leases, no anti-cheat machinery (D-24, D-25). |
-| G10 | One nginx, a host per page | `terraagent.fun` plus `play`, `design`, `playground`, `pitchdeck`, `whitepaper`, `devchain`, `api` (§4, D-37). |
+| G10 | One nginx, a host per page | `terraagent.fun` plus `play`, `design`, `playground`, `pitchdeck`, `whitepaper`, `devchain`, `api` (§4, D-40). |
 
 ---
 
@@ -35,7 +35,7 @@ flowchart LR
     GAME["Game<br/>play.terraagent.fun"]
   end
 
-  subgraph Edge["nginx :80 (D-37, no Cloudflare)"]
+  subgraph Edge["nginx :80 (D-40, no Cloudflare)"]
     NGX["nginx"]
   end
 
@@ -72,21 +72,16 @@ Rules:
 
 ## 3. App inventory & repository layout
 
-Monorepo with **npm workspaces** (D-03).
+Monorepo with **npm workspaces** (D-03) and clean 7-domain layout (D-41).
 
 ```text
 TerraAgent/
 ├── package.json                 # npm workspaces root; scripts delegate (check, ci:fast, dev)
-├── tsconfig.base.json
-├── shared/
-│   ├── contracts/               # @terra/contracts — zod schemas: WS messages, REST DTOs, error codes
-│   ├── config/                  # @terra/config   — zod env loader
-│   ├── db/                      # @terra/db       — the ONE Prisma schema + migrations + repositories
-│   └── sim/                     # @terra/sim      — simulation (ECS, grid, territory, economy, power, units, rule engine, hazards)
 ├── backend/
 │   ├── app/                     # @terra/app — the one NestJS app: modules api, lobby, game, ai, near, notify
 │   └── near-contracts/          # Rust near-sdk: cargo (NEP-245), deed (NEP-171), bounty escrow, registry
-├── frontend/                    # D-32; one Vite root today, workspaces from W00
+├── docs/                        # spec/, plan/, hackathon/, game/, dev/, visuals/, questions-and-limitations/
+├── frontend/                    # D-32, D-41; frontend/vite.config.ts, frontend/tsconfig.json, frontend/dist/ build output
 │   ├── landing/                 # @terra/landing  Vite — terraagent.fun (live mini-diorama, D-22)
 │   ├── game/                    # @terra/game     Vite + TS + Three.js + vanilla-DOM HUD (D-36) — play.terraagent.fun
 │   ├── render/                  # @terra/render   3D render engine shared by the apps (kitbash, terrain, planets, orbit, lighting)
@@ -94,10 +89,22 @@ TerraAgent/
 │   └── design/                  # Faction Plate tokens + design-system docs
 ├── infra/
 │   ├── docker-compose.yml       # dev: postgres
-│   └── deploy/                  # prod compose, Dockerfile, nginx, deploy script
-├── tests/
-│   ├── integration/  e2e/  load/
-└── docs/  spec/ · plan/
+│   ├── infra/.env.example       # infra env template (with infra/.env.worktree)
+│   ├── compose/                 # prod compose stacks
+│   ├── docker/                  # Dockerfile.app, Dockerfile.frontend + BuildKit infra/.dockerignore templates
+│   ├── hosts/                   # host configs + env
+│   └── nginx/                   # edge reverse proxy configuration
+├── scripts/                     # dev/, ci/, test/, release/ (runs in scripts/dev/.out/)
+├── shared/
+│   ├── shared/tsconfig.base.json # monorepo base TS config
+│   ├── config/                  # @terra/config (zod env loader, monorepo shared/config/eslint.config.js + prettier)
+│   ├── contracts/               # @terra/contracts — zod schemas: WS messages, REST DTOs, error codes
+│   ├── db/                      # @terra/db       — the ONE Prisma schema + migrations + repositories
+│   └── sim/                     # @terra/sim      — simulation (ECS, grid, territory, economy, power, units, rule engine, hazards)
+└── tests/
+    ├── tests/vitest.config.ts   # unit/integration/contract test configs
+    ├── tests/e2e/               # Playwright wave suites, harness, engine parity runner
+    └── tests/scenarios/         # @terra/scenarios seed scenarios and parity cases
 ```
 
 | Module | Responsibility | Public surface | Owns DB tables (schema) |
@@ -115,7 +122,7 @@ The app exposes `GET /healthz`, `GET /readyz` (Postgres reachable, sim threads a
 
 ## 4. Domains & routing
 
-Public hosts are D-37 and [`DEPLOYMENT.md`](./DEPLOYMENT.md). One Vite `dist/`, HTTP on port 80, no Cloudflare in this phase. The names this file used to give (`terraagent.com`, `www.`, `game.`) are replaced by the table below.
+Public hosts are D-40 and [`DEPLOYMENT.md`](./DEPLOYMENT.md). One Vite `frontend/dist/`, HTTP on port 80, no Cloudflare in this phase. The names this file used to give (`terraagent.com`, `www.`, `game.`) are replaced by the table below.
 
 | Host | Target | Notes |
 |---|---|---|
@@ -128,7 +135,7 @@ Public hosts are D-37 and [`DEPLOYMENT.md`](./DEPLOYMENT.md). One Vite `dist/`, 
 | `devchain.terraagent.fun` | `/dev/chain/` | Mock-chain explorer. `/v1/dev/chain/` proxies to the app. |
 | `api.terraagent.fun` | `app:3000` | `/v1/` and `/ws` only. WS idle timeout `75 s` (client pings every `20 s`). |
 
-TLS is off (D-37). CSP on `play` is `connect-src 'self'`. CORS allow-list comes from the host catalog.
+TLS is off (D-40). CSP on `play` is `connect-src 'self'`. CORS allow-list comes from the host catalog.
 
 ---
 

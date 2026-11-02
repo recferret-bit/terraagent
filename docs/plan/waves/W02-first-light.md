@@ -1,6 +1,6 @@
 # W02 — First Light
 
-> **Track:** Spine (lead) · **Flag:** `W02` · **Tag:** `wave-02` · **Scenario:** `scenarios/w02-first-light.ts` · **Depends on:** W01
+> **Track:** Spine (lead) · **Flag:** `W02` · **Tag:** `wave-02` · **Scenario:** `tests/scenarios/w02-first-light.ts` · **Depends on:** W01
 >
 > **Specs:**
 > - [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md):
@@ -31,7 +31,7 @@
 > - `frontend/game/features/{construction-menu,units-menu,queue-panel,resources-hud,power-hud,harvest-weights}/`
 > - the prototype resource bar `frontend/game/ui/hud.ts` (`GameHud`) and its fake income tick in `frontend/game/app/Gameplay.ts` (replaced by `resources-hud`)
 > - anims/validator fixes on the **existing** archetypes `building.mine` (= Metals Extractor T1), `building.solar`, `robot.miner` (= Harvester) in `frontend/render/kitbash/archetypes/`; day/night wiring of the existing `frontend/render/lighting/PlanetaryLightingSystem.ts`
-> - `scenarios/w02-first-light.ts`
+> - `tests/scenarios/w02-first-light.ts`
 >
 > **Already exists (prototype, client-only):** the archetypes above, `PlanetaryLightingSystem` (not wired), and a static resource bar (energy/metal/water/biomass with a fake tick). Under D-31 the numbers and the day cycle come from `shared/sim`; the client only draws them.
 
@@ -45,7 +45,7 @@ Content follows stage S1, limited to what this wave owns: Harvester, Metals Extr
 
 **Resources (D-34).** Three families, Metals, Minerals and Bio, each with T1/T2/T3 sub-resources; the ledger keeps 10 stock keys (`metals.t1..t3`, `minerals.t1..t3`, `bio.water`, `bio.biomass`, `bio.t2`, `bio.t3`) and one storage cap per family. Energy is not a family: it is grid power (E/s). In this wave every extractor and harvester produces **T1 only**; the T2/T3 unlock by terraforming is W05-34. Cost shorthand `M/Min/Pet/W` (e.g. `65/20/0/10`) reads through the D-34 tier rule: a T1 item pays M → `metals.t1`, Min → `minerals.t1`, Pet → `bio.biomass`, W → `bio.water`. All numbers are data rows, tunable with W00-59 (D-35).
 
-## Demo story (`e2e/w02.spec.ts`)
+## Demo story (`tests/e2e/w02.spec.ts`)
 
 1. Open `/play.html?scenario=w02`: Hub done, stock `metals.t1 400, minerals.t1 250, bio.biomass 150, bio.water 150`, morning → **see** the resource bar (three family chips Metals / Minerals / Bio with stock / cap / income and a tier breakdown, plus Energy) and the power widget (`+8 supply / −5 demand`, sun icon).
 2. Open the Units menu → queue 1 Harvester → **see** the Units lane entry go `in_progress`. The stock drops `40/15/5/0` at start. About 10 s later a Harvester rolls out and starts harvesting the nearest surface deposit by itself.
@@ -132,11 +132,11 @@ Content follows stage S1, limited to what this wave owns: Harvester, Metals Extr
 | W02-30 | Dev console: `fill <res>`, `time day\|night\|hh:mm`, `skipnight`, `power` (component dump); `grant` is W01-35's | client | S | H | W00-40, W01-35 | Type `time 23:00` → see night and Solar at 0 | PRODUCT_WAVES §3 | — |
 | W02-32 | Pacing check: scripted reference orders for S0–S1 (§6.4 rows) as a sim test; asserts S1 purchases are affordable by about 3:00 and the night power result is −6 E/s with Solar + Extractor + 2 Harvesters | test | S |  | W02-12, W02-07 | Run `pacing-s0-s1.spec.ts` → see times and power within the table's ±20 % | §6.4 | TA-14.7 |
 | W02-33 | Perf: extend `sim:bench` with an economy-heavy planet (5 colonies, 60 buildings, 40 harvesters); step p99 ≤ 3 ms | test | S |  | W00-47 | Run `npm run sim:bench` → see step p99 ≤ 3 ms on `w02-econ` | SIM-P | TA-06.4 |
-| W02-34 | Wave e2e `e2e/w02.spec.ts` (demo steps 1–8) + scenario `w02-first-light` (Hub done, morning, stock `metals.t1 400, minerals.t1 250, bio.biomass 150, bio.water 150`) + tag `wave-02` | test | S | H | all above | Run `npm run e2e -- --waves ..02` → see W00–W02 pass; then tag `wave-02` | PRODUCT_WAVES §3 | TA-13.3 |
+| W02-34 | Wave e2e `tests/e2e/w02.spec.ts` (demo steps 1–8) + scenario `w02-first-light` (Hub done, morning, stock `metals.t1 400, minerals.t1 250, bio.biomass 150, bio.water 150`) + tag `wave-02` | test | S | H | all above | Run `npm run e2e -- --waves ..02` → see W00–W02 pass; then tag `wave-02` | PRODUCT_WAVES §3 | TA-13.3 |
 
 ## Wave DoD
 
-- `e2e/w02.spec.ts` passes, together with the W00 and W01 suites.
+- `tests/e2e/w02.spec.ts` passes, together with the W00 and W01 suites.
 - `?scenario=w02` loads in the morning.
 - `?waves=..01` hides every W02 menu item, the panels, the Harvester and the day/night lighting. The W01 demo still passes.
 - The pacing test and `sim:bench` are within budget, and the bound archetypes (`building.mine`, `building.solar`, `robot.miner`) pass `npm run validate:models` with 0 errors and 0 warnings.

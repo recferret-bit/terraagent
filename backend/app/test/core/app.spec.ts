@@ -95,7 +95,7 @@ describe('CORS', () => {
   });
 
   it('allows catalog origins in production and denies others', async () => {
-    const { url } = await boot({ NODE_ENV: 'production' });
+    const { url } = await boot({ NODE_ENV: 'production', JWT_ACCESS_SECRET: PROD_JWT });
     const play = await get(url, 'http://play.terraagent.fun');
     expect(play.headers.get('access-control-allow-origin')).toBe('http://play.terraagent.fun');
     expect(play.headers.get('access-control-allow-credentials')).toBe('true');

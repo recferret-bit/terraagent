@@ -3,10 +3,25 @@
 import js from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import globals from 'globals';
-import { simPurity } from './shared/sim/eslint.rules.js';
+import { simPurity } from '../sim/eslint.rules.js';
 
 export default tseslint.config(
-  { ignores: ['**/node_modules/**', '**/dist/**', '**/generated/**', '.agents/**', 'docs/**', 'e2e/.out/**', 'playwright-report/**', 'test-results/**', 'shared/sim/test/lint/*.fixture.ts'] },
+  {
+    ignores: [
+      '**/node_modules/**',
+      '**/dist/**',
+      'frontend/dist/**',
+      '**/generated/**',
+      '.agents/**',
+      'docs/**',
+      'tests/e2e/.out/**',
+      'tests/.out/**',
+      'scripts/dev/.out/**',
+      'playwright-report/**',
+      'test-results/**',
+      'shared/sim/test/lint/*.fixture.ts',
+    ],
+  },
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {

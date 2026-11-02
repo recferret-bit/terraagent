@@ -1,9 +1,9 @@
 # W05 — Shape the Land
 
-> **Track:** Gameplay (G) · **Flag:** `W05` · **Scenario:** `scenarios/w05-shape-the-land.ts` · **Tag:** `wave-05` · **Depends on:** W03
+> **Track:** Gameplay (G) · **Flag:** `W05` · **Scenario:** `tests/scenarios/w05-shape-the-land.ts` · **Tag:** `wave-05` · **Depends on:** W03
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §4.5 (`UO-TF-01..10`), §5.1 · [`colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §2, §3.1, §3.3 (Hydro), §3.7 (Hazard Shield) · [`SIMULATION.md`](../../spec/SIMULATION.md) §7.5 (`SIM-G-TER`), §7.6, §10 (`SIM-GEN`) · [`textures-shaders-lighting-spec.md`](../../visuals/textures-shaders-lighting-spec.md) · D-33 (three planet types), D-34 (resource tiers), D-35 (numbers are data rows, tunable with W00-59)
 > **Resources (D-34):** op costs in `M` / `Min` / `W` shorthand (e.g. Level 2 Min, Fill 10 M + 5 Min) read through the D-34 T1 rule: `metals.t1` / `minerals.t1` / `bio.water`.
-> **Owned paths:** `shared/sim/src/systems/{terraform,territory,weather,hazards}/`, `shared/sim/src/gen/terrain-mix.ts`, `shared/sim/src/data/terraform.ts`, `frontend/game/features/{terraform,territory,weather}/`, terrain look in `frontend/render/visuals/terrain/` (bind only: terrain shader mask, `Liquids.ts`), weather VFX binding of `frontend/render/lighting/LightningStrikeSystem.ts`, new archetypes `frontend/render/kitbash/archetypes/units/terraformer.ts` and `frontend/render/kitbash/archetypes/buildings/{lightning-rod,hydro}.ts`, resource tiers `shared/sim/src/systems/resource-tiers/`, `shared/sim/src/data/resource-tiers.ts`, `frontend/game/features/resource-tiers/`, `scenarios/w05-{tiers,desert,ocean}.ts`.
+> **Owned paths:** `shared/sim/src/systems/{terraform,territory,weather,hazards}/`, `shared/sim/src/gen/terrain-mix.ts`, `shared/sim/src/data/terraform.ts`, `frontend/game/features/{terraform,territory,weather}/`, terrain look in `frontend/render/visuals/terrain/` (bind only: terrain shader mask, `Liquids.ts`), weather VFX binding of `frontend/render/lighting/LightningStrikeSystem.ts`, new archetypes `frontend/render/kitbash/archetypes/units/terraformer.ts` and `frontend/render/kitbash/archetypes/buildings/{lightning-rod,hydro}.ts`, resource tiers `shared/sim/src/systems/resource-tiers/`, `shared/sim/src/data/resource-tiers.ts`, `frontend/game/features/resource-tiers/`, `tests/scenarios/w05-{tiers,desert,ocean}.ts`.
 > **Soft dependencies:** stage numbers (unlocks, meteor floor) ← W08; Deep Reclaim playable with W17's T2 workers; meteor breach consumer ← W14.
 
 ## Goal
@@ -18,7 +18,7 @@ The colony can **reshape and claim land**:
 
 All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with their terrain mix; the hackathon demo stays on `temperate`.
 
-## Demo story (e2e `e2e/w05.spec.ts`)
+## Demo story (e2e `tests/e2e/w05.spec.ts`)
 
 1. Open `/play.html?scenario=w05`: S4 colony (Reclaim / Irrigate / Seed and the Beacon unlock at S4), `temperate`, a shallow lake and a crater near the Hub.
 2. Units menu → order a Terraformer → it appears.
@@ -107,7 +107,7 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 | W05-24 | Terrain visuals per tile class: drive the existing shallow→deep tint of `Liquids.ts` `createWater` from Shallow/Deep tiles, hole/crater decals (slope shading already exists in the terrain shader) | visual | S | H+ | W01-08 | Scenario `w05` → the lake's shallow rim reads lighter than its deep centre, and crater tiles show a hole decal | shader skill | TA-14.9 |
 | W05-25 | Kitbash: Terraformer drone (≥ 7 parts, grading-blade silhouette breaker, op animation states) | visual | M | H+ | — | `?inspect=robot.terraformer` → 4-view audit passes, minY 0, < 3.5 k tris | Pillar 1 | TA-14.9 |
 | W05-26 | Kitbash: bind the existing `building.claimBeacon` (1×1 obelisk) as Territory Beacon T1; new Hazard Shield & Lightning Rod T1 (1×1) and Hydro Power Station T1 (2×3, water intake facing the lake) | visual | M | H+ | — | `?inspect=building.lightningRod` and `?inspect=building.hydro` → 4-view audit and `validate:models` pass (0/0), minY 0, < 3.5 k tris; a built beacon renders as `claimBeacon` | Pillar 1 | TA-14.9 |
-| W05-27 | Terraform op VFX for the W05 ops: level sweep, fill pour, reclaim pumping spray, irrigation mist, seeding sprouts (Grade/Break/Clear VFX come from W01-22) — built on `render/visuals/terrain/Particles.ts` and the descent `GroundFX` | visual | M |  | W05-20, W01-22 | Run each op in the scenario → each shows its own effect, and the effect stops when the op pauses | VFX | TA-14.9 |
+| W05-27 | Terraform op VFX for the W05 ops: level sweep, fill pour, reclaim pumping spray, irrigation mist, seeding sprouts (Grade/Break/Clear VFX come from W01-22) — built on `frontend/render/visuals/terrain/Particles.ts` and the descent `GroundFX` | visual | M |  | W05-20, W01-22 | Run each op in the scenario → each shows its own effect, and the effect stops when the op pauses | VFX | TA-14.9 |
 | W05-28 | Weather VFX: wire the existing `LightningStrikeSystem` (`frontend/render/lighting/`, `strikeAt` / `update`) to `lightningStrike` events; meteor streak + impact flash; storm haze / sandstorm particles via the existing `frontend/render/visuals/terrain/Particles.ts` | visual | S |  | W05-15, W05-16 | `startStorm` + `meteor` → bolts and a meteor render, with ≤ 1 ms frame cost on desktop | lighting skill | TA-14.9 |
 | W05-29 | Progression events: emit W01-31's `obstacleRemoved {op, count}` (one event kind, no `opCompleted`) for the W05 ops `level`, `fill`, `reclaim`, `deepReclaim`, `seed`; the progression publisher maps op → family (Stone Mason: clear/break/level/fill; Hydro Engineer: reclaim/deepReclaim; Green Thumb: seed → Living), so Clear/Break are counted once, by W01-31 | sim | S | H | W05-07, W01-31 | Seed 3 tiles → the progression bus logs 3 `obstacleRemoved {op: 'seed'}` | player-profile §3 | — |
 | W05-30 | Analytics: `first_terraform_op`, `first_living_tile`, `first_beacon`, `meteor_seen` | client | S |  | W05-22 | First Seed → one `first_living_tile` row | CLIENT §10 | — |
@@ -120,7 +120,7 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 
 ## Wave DoD
 
-- `e2e/w05.spec.ts` passes, and so do all earlier wave suites.
+- `tests/e2e/w05.spec.ts` passes, and so do all earlier wave suites.
 - All scenarios load (`w05-tiers`; `w05-desert` and `w05-ocean` once W05-17 lands).
 - With `TA_WAVES=..04`, the Terraformer, the new ops, beacons, weather and meteors are absent, and W01's Grade / Clear / Break still works.
 - Deep Reclaim stays locked until W17.

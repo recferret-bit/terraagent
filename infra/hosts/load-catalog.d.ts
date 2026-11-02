@@ -27,7 +27,7 @@ export interface DeployEnv {
 export function catalogPath(): string;
 export function loadCatalog(): Catalog;
 export function hostsByStack(catalog: Catalog, stack: string): CatalogHost[];
-/** `http://` origins for every catalog host. TLS is off in this phase (D-37). */
+/** `http://` origins for every catalog host. TLS is off in this phase (D-40). */
 export function catalogOrigins(catalog?: Catalog): string[];
 export function readDeployEnv(env?: Record<string, string | undefined>): DeployEnv;
 export function validateDeployEnv(env?: Record<string, string | undefined>, catalog?: Catalog): DeployEnv;

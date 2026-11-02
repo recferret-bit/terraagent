@@ -1,9 +1,9 @@
 # W06 — Invisible Chain (F5, mock)
 
-> **Track:** Economy/NEAR (E) · **Flag:** `W06` · **Tag:** `wave-06` · **Scenario:** `scenarios/w06-invisible-chain.ts` · **E2E:** `e2e/w06.spec.ts`
+> **Track:** Economy/NEAR (E) · **Flag:** `W06` · **Tag:** `wave-06` · **Scenario:** `tests/scenarios/w06-invisible-chain.ts` · **E2E:** `tests/e2e/w06.spec.ts`
 > **Depends on waves:** W00 (ports foundation, mocks, outbox, contract-test harness, dev console), W01 (guest login W01-02; the colony sub-account hook needs W01-31's `colonyFounded` event).
 > **Specs:** [`NEAR.md`](../../spec/NEAR.md) §1a, §2, §3, §4 · [`near-economy-features-spec.md`](../../game/near-economy-features-spec.md) F5 · [`PROTOCOL.md`](../../spec/PROTOCOL.md) (`POST /auth/social`, `POST /v1/near/claim`) · [`DATA_MODEL.md`](../../spec/DATA_MODEL.md) `core.social_identity`, `chain.near_colony_account` · [`CLIENT.md`](../../spec/CLIENT.md) §8a · D-10, D-18, D-25, D-26, D-30
-> **Owned paths:** `backend/app/src/near/{identity,relayer,keystore}/**`, `backend/app/src/near/infrastructure/adapters/mock/{identity,relayer}*`, `backend/app/src/near/__contract__/{identity,relayer}.contract.ts`, `frontend/game/features/identity/**` (incl. the account views it registers on W00-39's `/dev/chain` page), `scenarios/w06-*.ts`, `e2e/w06.spec.ts`. Uses from W00 without owning them: the ports (W00-30), the mock base (W00-32), `ChainReadPort` mock and its suite (W00-33, W00-38), the outbox (W00-37), the explorer page (W00-39).
+> **Owned paths:** `backend/app/src/near/{identity,relayer,keystore}/**`, `backend/app/src/near/infrastructure/adapters/mock/{identity,relayer}*`, `backend/app/src/near/__contract__/{identity,relayer}.contract.ts`, `frontend/game/features/identity/**` (incl. the account views it registers on W00-39's `/dev/chain` page), `tests/scenarios/w06-*.ts`, `tests/e2e/w06.spec.ts`. Uses from W00 without owning them: the ports (W00-30), the mock base (W00-32), `ChainReadPort` mock and its suite (W00-33, W00-38), the outbox (W00-37), the explorer page (W00-39).
 
 ## Goal
 
@@ -88,11 +88,11 @@ A player can go from **guest → social login → a named account ("Pilot ID")**
 | W06-25 | Dev console commands: `near.mock.fail <port> <rate>` and `near.mock.latency <port> <minMs> <maxMs>` for **every** mock port on the W00-32 base (later waves reuse them: `cargo`, `intents`, `deed`, `escrow`… instead of adding their own fail commands), plus `account.reset <player>`, `account.upgrade <provider> <subject>` | server | S | H | W06-11, W00-40 | Type `near.mock.fail relayer 1` in the dev console → the next relayed action fails, and `near.mock.fail relayer 0` restores success | PRODUCT_WAVES §3 dev tools | — |
 | W06-26 | Mobile acceptance: the login plate, provider popup and Settings → Account work in phone landscape (touch targets ≥ 44 px, popup becomes a full-screen sheet) | client | S |  | W06-15, W06-17 | Run the e2e at 844 × 390 with touch emulation → login and settings steps pass without horizontal scroll | D-22 | — |
 | W06-27 | Docs: README "mock vs real" table row for F5 (`IdentityPort`, `RelayerPort` = mock), env vars `NEAR_ADAPTER_IDENTITY`, `NEAR_ADAPTER_RELAYER`, `NEAR_KEK`, `MOCK_OAUTH_SECRET` | docs | S |  | W06-22 | Open README → the table lists both ports as "mock", and every env var appears in `ENVS.md` with a default | NEAR §1a swap order, D-27 README | — |
-| W06-28 | Wave e2e `e2e/w06.spec.ts` (demo story steps 1–7, including `TA_WAVES=..05` flag-off check) + seed scenario `w06-invisible-chain` (guest player with one founded colony at S1) + tag `wave-06` | test | M | H | W06-01…W06-27 | `npm run e2e -- --waves ..06` → W00–W06 suites pass; `?scenario=w06` loads a guest colony at S1 | PRODUCT_WAVES §3 | — |
+| W06-28 | Wave e2e `tests/e2e/w06.spec.ts` (demo story steps 1–7, including `TA_WAVES=..05` flag-off check) + seed scenario `w06-invisible-chain` (guest player with one founded colony at S1) + tag `wave-06` | test | M | H | W06-01…W06-27 | `npm run e2e -- --waves ..06` → W00–W06 suites pass; `?scenario=w06` loads a guest colony at S1 | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
 
-- `e2e/w06.spec.ts` passes, and every earlier wave's e2e still passes.
+- `tests/e2e/w06.spec.ts` passes, and every earlier wave's e2e still passes.
 - `?scenario=w06` loads; `TA_WAVES=..05` hides login, Pilot ID, Account settings and `/dev/chain` with no errors.
 - The `identity` and `relayer` contract suites pass against the mocks.
 - No player-facing chain wording (W06-21 green).

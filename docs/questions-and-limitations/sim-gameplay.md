@@ -1,7 +1,7 @@
 # Sim gameplay: questions and limitations
 
 W01 gameplay rules in `shared/sim`: landing, HQ, construction (placement, prep, work, occupancy), terraform-basic,
-territory claim, dev commands, the units runner / movement / commands, the economy treasury, and `scenarios/`.
+territory claim, dev commands, the units runner / movement / commands, the economy treasury, and `tests/scenarios/`.
 Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED-xx). Format: [README](./README.md).
 
 ## Terraform
@@ -320,11 +320,11 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
-- **Area / code:** `shared/sim/src/systems/dev/land.ts` 17–35, 47–68; `docs/dev/DEV_TOOLS.md` 69 (`land`); `scenarios/w01-landfall.ts` 38; `shared/contracts/src/commands/dev-land.ts`
+- **Area / code:** `shared/sim/src/systems/dev/land.ts` 17–35, 47–68; `docs/dev/DEV_TOOLS.md` 69 (`land`); `tests/scenarios/w01-landfall.ts` 38; `shared/contracts/src/commands/dev-land.ts`
 - **What happens:** with `colonyIndex: null` and `(q, r)`, every undeployed pod is validated against the others' old positions and then all are moved to the same tile. Without `(q, r)` on a colony whose pod already deployed, the command is acked with no effect, while DEV_TOOLS says `land` rejects `already_landed`. DEV_TOOLS also says `land` deposits the cargo; the cargo is credited when the pod is created (`spawnColonyLanding`). The `w01-auto-place` scenario sends `{ colonyId: 0 }`, which the strict `dev.land` contract would reject; the scenario API skips zod.
 - **To resolve:** require one colony; return `already_landed` when nothing is left to land; fix the doc line; make the scenario API validate args with the contract.
 - **Found:** 2026-11-01, review (sim-gameplay subagent)
-- **Fix:** `dev.land` acts for the caller's colony only (`not_own_colony` without one), parses its contract (`{ q?, r? }`), returns `already_landed` when the pod is open (also without `(q, r)`); DEV_TOOLS `land` line corrected (cargo is credited when the pod is created); the scenario sends `dev.land {}` for colony 0 through the validating scenario API (GP-37). Tests `landing-rules.spec.ts`, `scenarios/test/loader.spec.ts`.
+- **Fix:** `dev.land` acts for the caller's colony only (`not_own_colony` without one), parses its contract (`{ q?, r? }`), returns `already_landed` when the pod is open (also without `(q, r)`); DEV_TOOLS `land` line corrected (cargo is credited when the pod is created); the scenario sends `dev.land {}` for colony 0 through the validating scenario API (GP-37). Tests `landing-rules.spec.ts`, `tests/scenarios/test/loader.spec.ts`.
 
 ### GP-27 · Dev commands fall back to another colony's HQ, and `dev.seed` leaves orders on new ground
 
@@ -435,11 +435,11 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** low
 - **Confidence:** CONFIRMED
-- **Area / code:** `scenarios/_loader.ts` (`apiFor` submits straight to the host); `scenarios/w01-landfall.ts:38` sends `dev.land { colonyId: 0 }`
+- **Area / code:** `tests/scenarios/_loader.ts` (`apiFor` submits straight to the host); `tests/scenarios/w01-landfall.ts:38` sends `dev.land { colonyId: 0 }`
 - **What happens:** scenario commands skip the zod contract check that every real client command passes, so a scenario can rely on args the server would reject (the strict `dev.land` contract has no `colonyId`).
 - **To resolve:** validate scenario commands with the same contract parser (`shared/contracts` command schemas) and fix the args.
 - **Found:** 2026-11-01, lead (cross-area finding from the world/engine, gameplay, features and cross-cutting reviews)
-- **Fix:** the scenario API parses args with the command contract before submitting (`parseCommandArgs`) and takes an optional colony (`api.command(kind, args, colonyIndex?)`); `w01-auto-place` sends `dev.land {}` for colony 0. Test `scenarios/test/loader.spec.ts` › GP-37.
+- **Fix:** the scenario API parses args with the command contract before submitting (`parseCommandArgs`) and takes an optional colony (`api.command(kind, args, colonyIndex?)`); `w01-auto-place` sends `dev.land {}` for colony 0. Test `tests/scenarios/test/loader.spec.ts` › GP-37.
 
 ## Found in the review-fix round
 

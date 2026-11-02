@@ -2,8 +2,8 @@ import { commandGate, flagsFromList, newId, precheckClientCommand, type SimComma
 import { createScenarioPlanet } from '@terra/scenarios';
 import type { ParityCase } from '@terra/scenarios/parity';
 import { snapshot } from '@terra/sim';
-import { SimThreadPool } from '../../backend/app/src/game/sim-thread-pool';
-import type { FromThread } from '../../backend/app/src/game/thread/protocol';
+import { SimThreadPool } from '../../../backend/app/src/game/sim-thread-pool';
+import type { FromThread } from '../../../backend/app/src/game/thread/protocol';
 
 export interface ServerParityRun {
   readonly tick: number;
@@ -28,7 +28,7 @@ export async function runServerParity(c: ParityCase): Promise<ServerParityRun> {
   let errors: string[] = [];
   let onSnapshot: ((b: Uint8Array) => void) | undefined;
   let onLoaded: (() => void) | undefined;
-  pool.listen((_t, m: FromThread) => {
+  pool.listen((_t: number, m: FromThread) => {
     if (m.t === 'ack') outcomes[m.commandId] = 'ok';
     else if (m.t === 'reject') outcomes[m.commandId] = m.code;
     else if (m.t === 'error') errors = [...errors, m.message];

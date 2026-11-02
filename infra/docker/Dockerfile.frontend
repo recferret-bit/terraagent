@@ -7,12 +7,12 @@ WORKDIR /src
 COPY . .
 RUN npm ci
 RUN node frontend/whitepaper/render.mjs
-RUN npx vite build
+RUN npx vite build --config frontend/vite.config.ts
 RUN node --input-type=module <<'EOF'
 import { cpSync, existsSync, mkdirSync, readFileSync } from 'node:fs';
 import { dirname, join, normalize } from 'node:path';
 
-const dist = '/src/dist';
+const dist = '/src/frontend/dist';
 const frontend = '/src/frontend';
 
 function place(rel) {
@@ -79,5 +79,5 @@ if (!tokens.includes('--ta-void')) throw new Error('dist/design/css/tokens.css m
 EOF
 
 FROM alpine:3.20
-COPY --from=build /src/dist /dist
+COPY --from=build /src/frontend/dist /dist
 CMD ["sh", "-c", "cp -a /dist/. /www/ && exec sleep infinity"]

@@ -55,7 +55,7 @@ All seven skills are designed as open registries so you can extend the visual sy
 
 ## 4. Pages, Dev Server & Visual QA
 
-One Vite app, several HTML entries (`vite.config.ts` → `rollupOptions.input`, Vite root `frontend/`). Run `npm run dev`; it serves http://127.0.0.1:5173/. Full parameter and control reference: [README.md](./README.md#pages).
+One Vite app, several HTML entries (`frontend/vite.config.ts` → `rollupOptions.input`, Vite root `frontend/`). Run `npm run dev`; it serves http://127.0.0.1:5173/. Full parameter and control reference: [README.md](./README.md#pages).
 
 | URL | Purpose | Edit here |
 | :--- | :--- | :--- |
@@ -63,6 +63,8 @@ One Vite app, several HTML entries (`vite.config.ts` → `rollupOptions.input`, 
 | `/landing.html` | **Landing** (terraagent.com). Planet cards deep-link to `/play.html?planet=<kind>`. | `frontend/landing.html`, `frontend/landing/` (`main.ts`, `sections/`, `landing.css`) |
 | `/play.html` | **Game**: orbit menu → descent → colony diorama. Params: `?planet=dune\|oceanForest\|forestRock&seed=<n>&skip=1\|deploy=1\|t=<s>`. | `frontend/game/app/`, `frontend/game/ui/`, `frontend/game/descent/` |
 | `/playground.html` | **3D playground**, the model storybook: every `ArchetypeCatalog` entry with 4 diagnostic views, biome switch, tri budget and `minY` checks. Params: `?inspect=<id>&biome=<kind>&view=iso\|front\|side\|top&turntable=1&surface=1&hexterrain=1&build=0\|33\|66&work=1`. | `frontend/playground/` |
+| `/pitchdeck/` (`frontend/pitchdeck/index.html`) | **Pitch deck** (W26): investor / demo presentation slides. | `frontend/pitchdeck/` |
+| `/whitepaper/` (`frontend/whitepaper/index.html`) | **Whitepaper** (W26): technical & economic whitepaper. | `frontend/whitepaper/` |
 | `/design/` | **Faction Plate** design system docs (foundations, UI storybook, motion). |  `frontend/design/` |
 
 **Page and UI rules:**
@@ -79,13 +81,15 @@ One Vite app, several HTML entries (`vite.config.ts` → `rollupOptions.input`, 
 
 ## 5. Where documents live
 
-Everything that is not code goes in `docs/` (index: [docs/README.md](./docs/README.md)). Do not add loose `.md` files to the repo root: only `README.md`, `AGENTS.md` and `CLAUDE.md` belong there.
+Everything that is not code goes in `docs/` (index: [docs/README.md](./docs/README.md)). Following the clean root folder rule (D-41), the repository root holds ONLY agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, `package.json` (`package-lock.json`, `node_modules/`), and the 7 domain directories (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`). Do not add loose `.md` or config files to the repo root.
 
 | Folder | Put here |
 | :--- | :--- |
 | `docs/game/` | Game design: economy, units, NEAR features |
 | `docs/spec/` | Online architecture and decisions (`DECISIONS.md` is the source of truth) |
 | `docs/plan/` | Build plans, status boards, owner tasks |
+| `docs/hackathon/` | Hackathon strategy pack, NEAR feature analysis, rubrics, launch playbook |
+| `docs/coverage/` | Test coverage baselines and audit reports |
 | `docs/visuals/` | 3D coding rules, AI-mesh pipeline, procedural textures, shaders, lighting |
 | `docs/dev/` | Developer tooling reference ([`DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md)): URL params, dev console, dev pages/routes, mock chain, env vars, debug handles |
 | `docs/questions-and-limitations/` | Known limitations, deliberate trade-offs and open questions, one file per area ([format](./docs/questions-and-limitations/README.md)) |
@@ -106,15 +110,19 @@ When you move or rename a document, update every link to it (`grep -r <name> --i
 
 ```
 frontend/
-  index.html landing.html play.html playground.html   thin page entries (Vite root = frontend/)
+  index.html landing.html play.html playground.html pitchdeck/ whitepaper/   thin page entries (Vite root = frontend/)
   design/       Faction Plate tokens + docs pages (shared layer: any app may import its CSS)
   landing/      app: main.ts (LandingPage orchestrator) + sections/ hero/ colony/ resources/
   game/         app: main.ts, app/ (Game, Gameplay, camera), ui/, descent/ (DescentRunner + parts/ + fx/)
   playground/   app: PlaygroundApp orchestrator + stage/ content/ camera/ panels/
   render/       3D render engine used by 2+ apps (`@terra/render/*`): core (viewport, StageHost), kitbash (+validate/),
                 visuals, planets, orbit, descent (drop rig + handoff types), lighting, ui (CRT overlay)
-shared/         (from W00) code used by frontend AND backend: `contracts/`, `config/`, `db/`, `sim/` (`@terra/*`, game rules, D-31)
-backend/app/    (from W00) the one NestJS app (D-24)
+shared/         code used by frontend AND backend: `contracts/`, `config/`, `db/`, `ledger/`, `sim/` (`@terra/*`, game rules, D-31)
+backend/app/    the one NestJS app (D-24)
+tests/          test suites: `tests/e2e/`, `tests/scenarios/`, `tests/vitest.config.ts`, `tests/vitest.integration.config.ts`, `tests/vitest.contract.config.ts`
+infra/          deploy, docker, and environment configs (`infra/.env.example`, `infra/.env.worktree`, `docker/`, `hosts/`)
+scripts/        developer, build, and operational scripts (`dev/`, `ci/`, `wave/`, etc.)
+docs/           system documentation, specifications, plans, and guides
 ```
 
 `frontend/render/` draws things; `shared/sim/` decides things. A game rule never goes into `render/` or an app (D-31), and `render/` never imports `shared/sim` internals: apps pass sim views into it.

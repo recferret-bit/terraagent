@@ -3,12 +3,15 @@ import { existsSync, readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseEnv } from 'node:util';
 
-const frontend = resolve(__dirname, 'frontend');
+const frontend = import.meta.dirname;
+const root = resolve(frontend, '..');
 
 // Same precedence as @terra/config: real env > .env.worktree > .env. The app listens on TA_PORT_BASE + 1 (default 4001).
 const fileEnv = (name: string) => {
-  const file = resolve(__dirname, name);
-  return existsSync(file) ? parseEnv(readFileSync(file, 'utf8')) : {};
+  const infraFile = resolve(root, 'infra', name);
+  if (existsSync(infraFile)) return parseEnv(readFileSync(infraFile, 'utf8'));
+  const rootFile = resolve(root, name);
+  return existsSync(rootFile) ? parseEnv(readFileSync(rootFile, 'utf8')) : {};
 };
 const env = { ...fileEnv('.env'), ...fileEnv('.env.worktree'), ...process.env };
 const appPort = Number(env.PORT ?? Number(env.TA_PORT_BASE ?? 4000) + 1);
@@ -21,7 +24,7 @@ export default defineConfig({
   // The client uses same-origin /v1 (REST) and /ws (WebSocket); in dev they are proxied to the app.
   server: { proxy: { '/v1': app, '/ws': { target: app, ws: true } } },
   build: {
-    outDir: resolve(__dirname, 'dist'),
+    outDir: resolve(frontend, 'dist'),
     emptyOutDir: true,
     rollupOptions: {
       input: {

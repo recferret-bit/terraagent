@@ -1,6 +1,6 @@
 # TerraAgent docs
 
-Everything that is not code lives here. The repo root only keeps `README.md`, `AGENTS.md` and `CLAUDE.md`.
+Everything that is not code lives here. Following the D-41 root cleanliness rule, the repository root keeps ONLY agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, `package.json` (`package-lock.json`, `node_modules/`), and the 7 domain directories (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`).
 
 | Folder | What it holds | Start with |
 |---|---|---|

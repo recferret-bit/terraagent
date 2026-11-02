@@ -6,11 +6,13 @@ import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 
 export const root = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
-export const devDir = resolve(root, '.dev');
+export const devDir = resolve(root, 'scripts/dev/.out');
 
 const readFile = (name) => {
-  const file = resolve(root, name);
-  return existsSync(file) ? parseEnv(readFileSync(file, 'utf8')) : {};
+  const infraFile = resolve(root, 'infra', name);
+  if (existsSync(infraFile)) return parseEnv(readFileSync(infraFile, 'utf8'));
+  const rootFile = resolve(root, name);
+  return existsSync(rootFile) ? parseEnv(readFileSync(rootFile, 'utf8')) : {};
 };
 
 export function loadEnv() {

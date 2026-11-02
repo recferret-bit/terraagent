@@ -1,4 +1,4 @@
-// `npm run test:parity`: every case of the engine parity list (scenarios/parity/*.parity.ts) runs on the server host (the sim
+// `npm run test:parity`: every case of the engine parity list (tests/scenarios/parity/*.parity.ts) runs on the server host (the sim
 // thread, Node) and on the local host (the browser engine, headless Chrome); the final snapshots must be equal (D-31).
 // E2E_REUSE=1: use the Vite dev server already running on the client port instead of starting one.
 import { chromium } from '@playwright/test';
@@ -25,7 +25,7 @@ async function main(): Promise<number> {
 
   // Vite on base + 1175 (clear of the dev stack's 1173 and the e2e stack's 1174) unless reusing the dev client; no app needed.
   const port = u.reuse ? u.clientPort : u.base + 1175;
-  const vite = u.reuse ? null : await createServer({ configFile: 'vite.config.ts', server: { host: '127.0.0.1', port, strictPort: true }, logLevel: 'warn' });
+  const vite = u.reuse ? null : await createServer({ configFile: 'frontend/vite.config.ts', server: { host: '127.0.0.1', port, strictPort: true }, logLevel: 'warn' });
   await vite?.listen();
   const base = `http://127.0.0.1:${port}`;
   const browser = await chromium.launch({ headless: true, ...(process.env.CI ? {} : { channel: 'chrome' }) });

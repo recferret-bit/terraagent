@@ -40,7 +40,7 @@ These paths are **forbidden to every lane** during a wave. A lane that needs a c
 - `shared/db/**` (Prisma schema + migrations — see §1.4)
 - `shared/config/**`
 - `shared/sim/src/api.ts` (the public sim facade; the implementation behind it is L2's)
-- root `package.json`, `package-lock.json`, `tsconfig.base.json`, `scripts/**`, `docs/spec/**`
+- root `package.json`, `package-lock.json`, `shared/tsconfig.base.json`, `scripts/**`, `docs/spec/**`
 - `tests/integration/barrier/**` — the barrier suites (`--suite w1..w4`) are written by the lead in each wave's pre-step from the barrier description, so every lane can run them before reporting
 
 **Dependencies:** a lane may add dependencies to **its own** workspace `package.json`. `package-lock.json` is never hand-merged: the lead regenerates it (`npm install`) when merging lanes at the barrier.
@@ -75,7 +75,7 @@ If observable behaviour or a contract changed, the lead also updates the relevan
 **DoD (common):**
 - `npm run check` (lint + typecheck + unit) is green for the touched workspaces.
 - Every new handler/service/adapter has a unit test; every Postgres repository has an integration test on the lane DB; every NATS handler has a contract test against `@terra/contracts` schemas.
-- New env keys are added to the app's own `src/config/env.schema.ts` (which extends the base schema from `@terra/config`), the app's `.env.example` and `infra/deploy/.env.example`. Only **base** keys shared by all apps (`TA_NS`, `DATABASE_URL`, `NATS_URL`, `LOG_LEVEL`, …) need a lead pre-step.
+- New env keys are added to the app's own `src/config/env.schema.ts` (which extends the base schema from `@terra/config`), the app's `.env.example` and `infra/.env.example`. Only **base** keys shared by all apps (`TA_NS`, `DATABASE_URL`, `NATS_URL`, `LOG_LEVEL`, …) need a lead pre-step.
 - The task's own DoD items and **Verify** command pass; metrics/events listed under the task's **Telemetry** exist and are asserted in at least one test.
 - Metric names follow `ta_{service}_{name}_{unit}` (Prometheus base units: `_seconds`, `_bytes`, `_total`) and are registered in `shared/contracts/src/metrics.ts` (lead pre-step); dashboards/alerts (TA-13.2) may only reference registered names. **Telemetry names in the issue files are working names** written by different authors (some lack the `ta_` prefix or use `_ms`); the lead normalizes them when registering — e.g. `mm_queue_depth` → `ta_core_match_queue_depth`, `ta_worker_tick_duration_ms` → `ta_worker_tick_duration_seconds`, `ai_requests_total` → `ta_ai_requests_total`.
 - No deploy. Report "ready for barrier".
@@ -135,8 +135,8 @@ Continuity (TA-08) tasks are split by path: core-side tasks run in `L1`, worker-
 - **Status:** `[ ] Todo`
 - **Owned paths:** everything (no lanes active).
 - **Tasks (in order):**
-  - [ ] [`TA-01.1`](./issues/TA-01-monorepo-and-shared-contracts.md) — npm-workspaces skeleton: root `package.json`, `tsconfig.base.json`, ESLint/Prettier, Vitest, `npm run check`
-  - [ ] [`TA-01.6`](./issues/TA-01-monorepo-and-shared-contracts.md) — `@terra/config`: zod env loader, `TA_NS` + lane port helpers, `.env.example` convention
+  - [ ] [`TA-01.1`](./issues/TA-01-monorepo-and-shared-contracts.md) — npm-workspaces skeleton: root `package.json`, `shared/tsconfig.base.json`, ESLint/Prettier, Vitest, `npm run check`
+  - [ ] [`TA-01.6`](./issues/TA-01-monorepo-and-shared-contracts.md) — `@terra/config`: zod env loader, `TA_NS` + lane port helpers, `infra/.env.example` convention
   - [ ] [`TA-01.2`](./issues/TA-01-monorepo-and-shared-contracts.md) — `@terra/contracts`: WS envelope + worker/lobby message schemas v1
   - [ ] [`TA-01.3`](./issues/TA-01-monorepo-and-shared-contracts.md) — `@terra/contracts`: NATS subjects, stream/KV definitions & payload schemas
   - [ ] [`TA-01.4`](./issues/TA-01-monorepo-and-shared-contracts.md) — `@terra/contracts`: REST DTOs, error codes, planet-ticket claims

@@ -1,12 +1,12 @@
 # TerraAgent — Deployment Specification
 
-> **Status:** v0.3 (2026-11-01). One host, HTTP on port 80, four compose stacks, SSH deploy. No Cloudflare, no certbot, no R2 (D-37). The 4 vCPU / 8 GB host size stays (D-23). One app (D-24). · **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §4 · **Decision:** [`DECISIONS.md`](./DECISIONS.md) D-37 · **Plan:** [`W26`](../plan/waves/W26-sites.md) builds this. [`W25`](../plan/waves/W25-launch-ops.md) adds hardening, backups, monitoring and the submission on top.
+> **Status:** v0.3 (2026-11-01). One host, HTTP on port 80, four compose stacks, SSH deploy. No Cloudflare, no certbot, no R2 (D-40). Clean 7-domain layout under `infra/` (D-41). The 4 vCPU / 8 GB host size stays (D-23). One app (D-24). · **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §4 · **Decisions:** [`DECISIONS.md`](./DECISIONS.md) D-40, D-41 · **Plan:** [`W26`](../plan/waves/W26-sites.md) builds this. [`W25`](../plan/waves/W25-launch-ops.md) adds hardening, backups, monitoring and the submission on top.
 
 ---
 
 ## 1. Topology
 
-One Linux host (Ubuntu 22.04+ / Debian 12, Docker + the compose plugin) runs the public sites. The laptop runs the same compose files. The dev Postgres in `infra/docker-compose.yml` (host port **15434**, `npm run db:up`) stays the worktree database and is not part of this stack.
+One Linux host (Ubuntu 22.04+ / Debian 12, Docker + the compose plugin) runs the public sites. The laptop runs the same compose files. The dev Postgres in `infra/docker-compose.yml` (host port **15434**, `npm run db:up`) stays the worktree database and is not part of this stack. All deployment files live in the `infra/` domain directory per D-41 (`infra/compose/`, `infra/docker/`, `infra/hosts/`, `infra/nginx/`, `infra/.env.example`).
 
 ```mermaid
 flowchart TB
@@ -29,8 +29,8 @@ flowchart TB
 | Compose file | Project | What it runs | Published ports |
 |---|---|---|---|
 | `infra/compose/infra.yml` | `terra-infra` | nginx 1.27-alpine, networks `terra_edge` and `terra_internal`, Postgres **only** with profile `server` | `80` (nginx). Postgres has none |
-| `infra/compose/frontend.yml` | `terra-frontend` | static image built from the Vite `dist/` | none |
-| `infra/compose/backend.yml` | `terra-backend` | the NestJS app (D-24), `SIM_THREADS` = cores − 1 | none |
+| `infra/compose/frontend.yml` | `terra-frontend` | static image built from the Vite `frontend/dist/` (`infra/docker/Dockerfile.frontend` with BuildKit `infra/docker/Dockerfile.frontend.dockerignore`) | none |
+| `infra/compose/backend.yml` | `terra-backend` | the NestJS app (D-24), `SIM_THREADS` = cores − 1 (`infra/docker/Dockerfile.app` with BuildKit `infra/docker/Dockerfile.app.dockerignore`) | none |
 | `infra/compose/chain.yml` | `terra-chain` | nothing of its own beyond the `devchain` vhost mounted into nginx. The mock ledger stays in the app | none |
 
 - Local `stack:local` does **not** enable profile `server`. The app uses the dev Postgres on `host.docker.internal:15434`. It still joins `terra_internal`. A holder container (`terra-internal-net`) keeps that network up while Postgres is off, because Compose creates a network only when a started service uses it.
@@ -44,7 +44,7 @@ flowchart TB
 
 Catalog: `infra/hosts/catalog.json` (W26-01). Each public name has one file `infra/nginx/hosts/<name>.conf`, included with `include /etc/nginx/hosts/*.conf`. A stack adds its own file and does not edit `nginx.conf`.
 
-All six site vhosts and `devchain` use one document root, the Vite `dist/`, so absolute paths such as `/design/css/tokens.css` keep working. nginx only changes the index and, where needed, a proxy.
+All six site vhosts and `devchain` use one document root, the Vite `frontend/dist/`, so absolute paths such as `/design/css/tokens.css` keep working. nginx only changes the index and, where needed, a proxy.
 
 | Host | Index | Also |
 |---|---|---|
@@ -77,7 +77,7 @@ Cloudflare, Origin CA and certbot are not installed and not configured. A later 
 
 ## 4. Env and SSH
 
-Operator machine, in `.env` (never committed; the example is `infra/hosts/.env.example`):
+Operator machine, in `infra/.env` (with fallback `.env`, never committed; template `infra/.env.example`, host example `infra/hosts/.env.example`):
 
 | Var | Value |
 |---|---|
@@ -133,7 +133,7 @@ Checks:
 1. Read `DEPLOY_HOST` and `DEPLOY_USER`. Refuse if either is empty.
 2. `ssh` `echo ok` with `BatchMode`. Refuse if that fails.
 3. `rsync` that stack's compose file, its nginx vhost files and its build context to `/srv/terraagent/`.
-4. Ensure `/srv/terraagent/.env` exists and is mode `600`. If `DATABASE_URL` is absent, set `postgresql://terra:terra@postgres:5432/terraagent`. If `NODE_ENV` is absent, set `production`. Do not overwrite a key that is already set, and do not upload the operator `.env`.
+4. Ensure `/srv/terraagent/.env` exists and is mode `600`. If `DATABASE_URL` is absent, set `postgresql://terra:terra@postgres:5432/terraagent`. If `NODE_ENV` is absent, set `production`. Do not overwrite a key that is already set, and do not upload the operator `infra/.env` (or `.env`).
 5. On the server, `docker compose --env-file /srv/terraagent/.env up -d --build` for that file. Infra enables profile `server`.
 6. `docker exec terra-nginx nginx -s reload`, so vhosts copied after nginx first started are loaded.
 7. Backend only: `prisma migrate deploy` after the new container is healthy.
@@ -167,7 +167,7 @@ Server layout: `/srv/terraagent/{.env, compose/, nginx/hosts/, www/}`.
 | Rule | Test |
 |---|---|
 | DEP-01 | `infra/compose/test/ports.test.mjs`: across the four files, only nginx has `ports` |
-| DEP-02, DEP-03, DEP-10 | `npm run stack:local:smoke` |
+| DEP-02, DEP-03, DEP-10 | `npm run stack:local:smoke` (and `tests/e2e/w26.spec.ts`) |
 | DEP-08, DEP-11 | `deploy -- --dry-run` with an empty `DEPLOY_HOST` fails and names it; the dry-run plan contains no `ssh-copy-id` and no `-i` |
 | DEP-05, DEP-06, DEP-07, DEP-09 | W25, when those rows land |
 
@@ -175,7 +175,7 @@ Server layout: `/srv/terraagent/{.env, compose/, nginx/hosts/, www/}`.
 
 | Item | Where | Not now, because |
 |---|---|---|
-| Cloudflare proxy, Origin CA, R2 | was D-23 | D-37 |
+| Cloudflare proxy, Origin CA, R2 | was D-23 | D-40 |
 | certbot / any TLS | a later ops row | HTTP is enough for this phase |
 | non-root read-only app image | W25-02 | the simple image only has to serve `/readyz` |
 | pre-deploy backup, SIGTERM snapshot, auto-rollback | W25-07, W25-08, W25-09 | `deploy:*` restarts one stack |

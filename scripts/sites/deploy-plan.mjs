@@ -14,7 +14,7 @@ const REMOTE_COMPOSE = '/srv/terraagent/compose';
 const REMOTE_NGINX = '/srv/terraagent/nginx';
 const REMOTE_SRC = '/srv/terraagent/src';
 // Do not upload the operator .env. The server keeps /srv/terraagent/.env.
-const SRC_EXCLUDES = ['node_modules', '.git', 'dist', '.dev', 'e2e/.out', 'playwright-report', '.env', '.env.*'];
+const SRC_EXCLUDES = ['node_modules', '.git', 'dist', 'scripts/dev/.out', 'tests/e2e/.out', 'tests/.out', 'playwright-report', '.env', '.env.*'];
 
 export function rewriteCompose(text) {
   return text.replaceAll('context: ../..', 'context: /srv/terraagent/src').replaceAll('../nginx/', `${REMOTE_NGINX}/`);

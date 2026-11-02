@@ -1,6 +1,6 @@
 # W17 — Second Tier (S5–S7)
 
-> **Track:** Gameplay (G) · **Flag:** `W17` · **Scenario:** `scenarios/w17-second-tier.ts` · **Tag:** `wave-17` · **Depends on:** W05, W07, W08. Optional: W14 (walls; indirect fire over ridges), W04 (minimap radar blips, W17-17), W24 (touch chips, W17-29).
+> **Track:** Gameplay (G) · **Flag:** `W17` · **Scenario:** `tests/scenarios/w17-second-tier.ts` · **Tag:** `wave-17` · **Depends on:** W05, W07, W08. Optional: W14 (walls; indirect fire over ridges), W04 (minimap radar blips, W17-17), W24 (touch chips, W17-29).
 > **Specs:** [`units-orders-and-progression-spec.md`](../../game/units-orders-and-progression-spec.md) §3.1 (`UO-L-02/03`), §3.2 (`UO-HQ-01`), §4.3 (`UO-D-03`), §4.5 (`UO-TF-01/03/08/10`), §4.6 (`UO-G`), §5.1, §5.2, §5.4 (`UO-C-06/08`), §5.5 (`AC-04`), §5.6, §6.2, §6.3 (`UO-T-03`), §6.4 · [`colony-economy-and-buildings-spec.md`](../../game/colony-economy-and-buildings-spec.md) §3 · D-28, D-34, D-35 · [`OWNER_TASKS.md`](../OWNER_TASKS.md) B1, B5, B6, B7
 > **Costs and balance:** T2 rows pay through the D-34 tier rule: 60 % of their M and Min in `metals.t1` / `minerals.t1` and 40 % in `metals.t2` / `minerals.t2`, Pet in `bio.t2`, W in `bio.water`. A colony gets T2 sub-resources from the W05-34 terraforming gate or buys them on the market (W13). Every number here (stats, dwell, Processor rate, unlock stages) is a data row, tunable with W00-59 (D-35); the accepted OWNER_TASKS defaults B1, B5, B6 and B7 are the starting rows.
 > **Owned paths:** `shared/sim/src/systems/{tiers,radar,fauna-brute}/`, `shared/sim/src/data/{tier2,units-ground2,fauna-brute}.ts`, `frontend/game/features/{tiers,radar}/`, new archetypes `frontend/render/kitbash/archetypes/units/{tank,artillery,radar,multitask,brute}.ts`.
@@ -13,7 +13,7 @@ The colony moves past T1:
 - T2 buildings unlock;
 - the full ground rock–paper–scissors triangle (Recon / Tank / Artillery) plus Mobile Radar spotting is playable against the new Brute fauna.
 
-## Demo story (e2e `e2e/w17.spec.ts`)
+## Demo story (e2e `tests/e2e/w17.spec.ts`)
 
 1. Open `/play.html?scenario=w17`: an S4 colony with 3 min of S4 dwell, Hub T1, Factory T1, a Terraformer, Recon ×2, two Supply Depots, stock 2 000 of every T1 sub-resource plus 600 `metals.t2` / `minerals.t2` / `bio.t2` (D-34 T2 costs) and a Skitter nest at 20 tiles. Construction menu → order a Hub T2 upgrade → the order waits ("available in 5:00") because S4 dwell is under 8 min.
 2. Dev console `warp 20` (or `setDwell 4 8`) → the upgrade becomes orderable. The HQ prepares the +1 ring and upgrades the Hub. → The HQ docks for a 20 s refit and comes back as HQ T2 (multirole). Stage toast "S5 Second Tier".
@@ -82,11 +82,11 @@ The colony moves past T1:
 | W17-27 | Analytics: `hub_t2_ordered`, `first_tank`, `first_artillery_hit` (`stage_reached` for S5–S7 is W08-29's event) | client | S |  | W00-44 | Play to S6 → analytics table has the three events for the session | CLIENT §10 | — |
 | W17-28 | Dev console: `upgradeHub <tier>`, `spawnBrute <n>`, `setDwell <stage> <min>`, `spawnUnit <id> <n> enemy` | server | S |  | W00-40 | Type `upgradeHub 2` → Hub becomes T2 instantly and HQ refits | PRODUCT_WAVES §3 | — |
 | W17-29 | Touch: upgrade button + Multitask lane chips usable in phone landscape | client | S |  | W24-11 | On a 844×390 viewport, tap Hub → Upgrade → confirm works without hover | D-22 | — |
-| W17-30 | Wave e2e `e2e/w17.spec.ts` + scenario `w17-second-tier` + tag `wave-17` | test | M |  | all W17 | `npm run e2e -- --waves ..17` → demo story passes; `TA_WAVES=..16` hides every W17 item | PRODUCT_WAVES §3 | — |
+| W17-30 | Wave e2e `tests/e2e/w17.spec.ts` + scenario `w17-second-tier` + tag `wave-17` | test | M |  | all W17 | `npm run e2e -- --waves ..17` → demo story passes; `TA_WAVES=..16` hides every W17 item | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
 
-- `e2e/w17.spec.ts` passes, and so does every earlier wave suite.
+- `tests/e2e/w17.spec.ts` passes, and so does every earlier wave suite.
 - `?scenario=w17` loads.
 - `TA_WAVES=..16` hides T2 rows, the new units, Brute and stages S5–S7, while W17 entities in snapshots stay inert.
 - Duel rows pass in CI.

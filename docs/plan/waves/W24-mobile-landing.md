@@ -1,6 +1,6 @@
 # W24 — Mobile, PWA & Landing
 
-> **Track:** Client (C) · **Flag:** `W24` · **Tag:** `wave-24` · **Scenario:** `scenarios/w24-mobile.ts` · **Depends on:** W04 (camera, selection, maps), W02 (the Construction menu W02-22 that the drawer reuses). Optional: W09 (deep link W09-26, extended by W24-23), W11 (stats endpoint W11-08, bound by W24-28). It can share the service worker with W09 (push) but does not depend on it.
+> **Track:** Client (C) · **Flag:** `W24` · **Tag:** `wave-24` · **Scenario:** `tests/scenarios/w24-mobile.ts` · **Depends on:** W04 (camera, selection, maps), W02 (the Construction menu W02-22 that the drawer reuses). Optional: W09 (deep link W09-26, extended by W24-23), W11 (stats endpoint W11-08, bound by W24-28). It can share the service worker with W09 (push) but does not depend on it.
 > **Specs:** [`CLIENT.md`](../../spec/CLIENT.md) §9 (phone ≥ 30 FPS, landing bundle budgets, quality tiers), §11 (phones, touch, PWA, WCAG), §12 (edge cases) · D-22 (full phone gameplay in landscape fullscreen; live landing diorama; WebGL2) · D-23 (Cloudflare) · [`CONTINUITY.md`](../../spec/CONTINUITY.md) CT-37 (notification deep links) · [`AGENTS.md`](../../../AGENTS.md) Pillar 4 · [`CLAUDE.md`](../../../CLAUDE.md) (pages, Faction Plate) · D-34 (landing resource tabs)
 > **Owned paths:** `frontend/game/mobile/**`, `frontend/game/core/input/touch/**`, `frontend/game/render/quality/**` (plus the quality options it passes to `frontend/render/core/createColonyViewport.ts`), `frontend/public/manifest.webmanifest`, `frontend/public/icons/**` (Vite root is `frontend/`; no `public/` exists yet), the quality setting in `frontend/game/ui/menu.ts` (W24-18), `frontend/game/sw/**` (shared with W09; W24 creates the worker shell and W09 adds the push handler), and for the landing `frontend/landing.html`, `frontend/landing/**`.
 >
@@ -19,7 +19,7 @@
    - the existing PLAY CTAs become "Resume colony" for a signed-in player;
    - the existing resource tabs show the D-34 model: Metals / Minerals / Bio / Energy with their tiers (W24-36).
 
-## Demo story (`e2e/w24.spec.ts`, emulated iPhone 13 and Pixel 7 profiles)
+## Demo story (`tests/e2e/w24.spec.ts`, emulated iPhone 13 and Pixel 7 profiles)
 
 1. Open `/play.html?scenario=w24` in a phone-sized browser (DevTools device mode, portrait; or dev console `device.emulate phone`) → **see** the "Rotate your phone" prompt with the colony status card (resources, alerts, stage).
 2. Rotate to **landscape** (DevTools rotate icon) → **see** the "Tap to play fullscreen" plate. Tap it → **see** fullscreen; the orientation stays locked to landscape on Android (real device only).
@@ -109,13 +109,13 @@
 | W24-31 | Landing responsive QA: 360 px to 3840 px, no horizontal scroll, touch-friendly roadmap and resource tabs | test | S |  | W24-25 | Run the e2e viewport sweep → see no horizontal scroll at any width | CLIENT §11 | TA-12.1 |
 | W24-32 | Device QA matrix doc + e2e profiles: desktop Chrome/Edge/Firefox/Safari, iOS Safari + PWA, Android Chrome, iPad best effort; known-issues list | docs | S |  | W24-24 | Open `docs/plan/DEVICE_MATRIX.md` → see every profile with pass/fail and a date | CLIENT §11 | — |
 | W24-33 | Analytics events `rotate_prompt_shown`, `fullscreen_entered`, `pwa_installed`, `quality_tier_set`, `landing_hero_loaded`, `landing_cta_clicked` | client | S |  | W24-04, W24-29 | Install the PWA on the emulator → see `pwa_installed` in the dev analytics log | CLIENT §10 | — |
-| W24-35 | Touch-emulation e2e pass of the W01 and W02 demos with W24's gestures (W24-09 camera, W24-11 select, W24-12 long-press, W24-13 drawer, W24-14 placement confirm): Hub placement, terraform brush and a queued Solar by touch only; no separate W01/W02 touch code (replaces W01-36 and W02-31) | test | S |  | W24-09, W24-11, W24-12, W24-13, W24-14 | Run the touch variant in `e2e/w24.spec.ts` that replays the W01/W02 demo steps in 844×390 touch emulation → see the Hub placed and built and a Solar queued with touch only | D-22, CLIENT §11 | TA-11.9 |
+| W24-35 | Touch-emulation e2e pass of the W01 and W02 demos with W24's gestures (W24-09 camera, W24-11 select, W24-12 long-press, W24-13 drawer, W24-14 placement confirm): Hub placement, terraform brush and a queued Solar by touch only; no separate W01/W02 touch code (replaces W01-36 and W02-31) | test | S |  | W24-09, W24-11, W24-12, W24-13, W24-14 | Run the touch variant in `tests/e2e/w24.spec.ts` that replays the W01/W02 demo steps in 844×390 touch emulation → see the Hub placed and built and a Solar queued with touch only | D-22, CLIENT §11 | TA-11.9 |
 | W24-36 | Landing resource tabs per D-34: replace the five tabs (metals, minerals, petroleum, water, energy) in `frontend/landing/resources/data.ts` with four, Metals (Iron · Light alloys · Titanium), Minerals (Silica · Rare earths · Exotic crystal), Bio (Water + Biomass · Petroleum / organics · Gene-stock) and Energy (grid power, not stored); each family sheet lists its T1/T2/T3 sub-resources and "T2/T3 unlock after terraforming"; keep the existing 3D viewer and archetypes (`resource.metalDeposit`, `resource.crystalDeposit`, `resource.oilDeposit` for Bio) | client | S | H+ | — | Open `/landing.html` at the economy section → see four tabs Metals / Minerals / Bio / Energy, and the Bio tab lists Water and Biomass (T1), Petroleum (T2), Gene-stock (T3) | D-34 | — |
-| W24-34 | Wave e2e `e2e/w24.spec.ts` (phone + landing) + scenario `w24-mobile` (150 buildings, 250 robots, mixed queue) + tag `wave-24` | test | M |  | W24-02 … W24-33, W24-35, W24-36 | Run `npm run e2e -- --waves ..24` → see the demo story pass and every earlier suite still green | PRODUCT_WAVES §3 | — |
+| W24-34 | Wave e2e `tests/e2e/w24.spec.ts` (phone + landing) + scenario `w24-mobile` (150 buildings, 250 robots, mixed queue) + tag `wave-24` | test | M |  | W24-02 … W24-33, W24-35, W24-36 | Run `npm run e2e -- --waves ..24` → see the demo story pass and every earlier suite still green | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
 
-- `e2e/w24.spec.ts` passes on the phone profiles and the landing, and every earlier wave's e2e still passes.
+- `tests/e2e/w24.spec.ts` passes on the phone profiles and the landing, and every earlier wave's e2e still passes.
 - `?scenario=w24` loads.
 - With `TA_WAVES=..23` the game behaves as desktop-only (no rotate prompt, drawer or install prompt) and the landing hero keeps its current behaviour.
 - The phone perf probe is ≥ 30 FPS, and the landing bundle budgets are green in the build report.

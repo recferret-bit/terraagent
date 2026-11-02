@@ -1,7 +1,7 @@
 # TerraAgent — Simulation & Planet Host Specification
 
 > **Status:** v0.2 (2026-10-30). This is the **simplified server simulation** (D-24): one app, sim in `worker_threads`, reproducible but not bit-exact, snapshot + coarse fast-run on restart, full state to clients, and no anti-cheat checks (D-25). The earlier deterministic, lease-based host is summarised in §15 as Future.
-> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §9, §14, §15 · [`DECISIONS.md`](./DECISIONS.md) D-16, D-17, D-18, D-21, D-24, D-25
+> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §9, §14, §15 · [`DECISIONS.md`](./DECISIONS.md) D-16, D-17, D-18, D-21, D-24, D-25, D-31, D-37, D-38, D-41
 > **Gameplay source:** [`docs/game/colony-economy-and-buildings-spec.md`](../game/colony-economy-and-buildings-spec.md), [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md), [`docs/game/autonomous-colony-spec.md`](../game/autonomous-colony-spec.md)
 > **Implemented by:** [`TA-06`](../plan/issues/TA-06-simulation-core.md) / [`TA-14`](../plan/issues/TA-14-units-orders-progression.md) (`@terra/sim`) and [`TA-07`](../plan/issues/TA-07-planet-worker.md) (the `game` module host)
 
@@ -32,7 +32,7 @@ The sim must be **reproducible in tests**: same seed + same commands at the same
 | `SIM-D-03` | **Time.** One sim **tick** = `TICK_MS` = 200 ms of game time (5 TPS). `step(state, commands, dt)` advances `dt` ticks at once: `dt = 1` on active planets, `dt = 5` on empty planets (coarse, §11). Every rate in the data tables is per second. `compileData()` converts table durations and rates. Durations in §7–§10 written as "N ticks" come from the 100 ms draft: read them as **N × 0.1 s of game time**, and `compileData()` converts them. |
 | `SIM-D-04` | **Randomness** comes only from the planet PRNG: xoshiro128\*\* seeded per stream (`gen`, `weather`, `hazard`, `fauna`, `ai`, `combat`, `misc`; `RNG_STREAMS` in `kernel/rng.ts`). Stream states are part of the snapshot. `Math.random` is banned in `shared/sim/src/**`. |
 | `SIM-D-05` | **Iteration order** is fixed: entities in ascending `entityId`, colonies in ascending `colonyIndex`. Entity ids are monotonic. |
-| `SIM-D-06` | **Purity.** The sim reads no wall clock, network or presence. Presence enters as a command (`system.presence`). Banned in `shared/sim/src/**`: `Date`, `performance`, `setTimeout`, `process`, `fs`, DOM globals, `async`. Lint rules `simPurity` (`shared/sim/eslint.rules.js`, loaded by the root `eslint.config.js`). |
+| `SIM-D-06` | **Purity.** The sim reads no wall clock, network or presence. Presence enters as a command (`system.presence`). Banned in `shared/sim/src/**`: `Date`, `performance`, `setTimeout`, `process`, `fs`, DOM globals, `async`. Lint rules `simPurity` (`shared/sim/eslint.rules.js`, loaded by `shared/config/eslint.config.js`). |
 | `SIM-D-07` | **Versioning.** `SIM_VERSION` is stored in snapshots. Restoring an older snapshot needs a registered migration chain (`src/codec/migrations/`); without one, or for a snapshot newer than the engine, `restore` throws (the host holds the planet). |
 
 ---
@@ -358,21 +358,21 @@ MVP scale per planet: 5 colonies, ≤ 300 units, ≤ 400 buildings, ≤ 60 fauna
 
 ## 13. Test matrix
 
-The planned test per rule (task plan). Files marked by a later wave's task do not exist yet; several W00–W01 rules are covered under other names (e.g. `shared/sim/test/kernel/step.spec.ts`, `test/data/generation-data.spec.ts`, `backend/app/test/game/planet-down.spec.ts` for `SIM-H-08`, `backend/app/test/game/delta.spec.ts`).
+The planned test per rule (task plan). Files marked by a later wave's task do not exist yet; several W00–W01 rules are covered under other names (e.g. `shared/sim/test/kernel/step.spec.ts`, `shared/sim/test/data/generation-data.spec.ts`, `backend/app/test/game/planet-down.spec.ts` for `SIM-H-08`, `backend/app/test/game/delta.spec.ts`).
 
 | Rule | Test | Task |
 |---|---|---|
 | `SIM-D-01/04/05` | `shared/sim/test/reproducible.spec.ts` (same seed + commands → same state) | TA-06.1 |
-| `SIM-D-06` | lint fixture `test/lint/banned-apis.fixture.ts` must fail `eslint` | TA-06.1 |
-| `SIM-D-03`, `SIM-H-04` | `test/kernel/coarse-dt.spec.ts` (production, timers and hazards scale with `dt`; coarse vs fine within tolerance over 1 h) | TA-06.1 |
-| `SIM-GEN` | `test/gen/planet-golden.spec.ts` | TA-06.2 |
-| `SIM-S-01` | `test/codec/roundtrip.property.spec.ts` | TA-06.9 |
-| `SIM-V-01..05` | `test/view/full-state.spec.ts`, `test/view/delta.spec.ts` (replica deep-equal after `applyDiff`) | TA-06.9, W00-24 |
-| `SIM-X-01..08` | `test/host/sim-host.spec.ts`, `npm run test:parity`, client `prediction.spec.ts` | W00-54 … W00-58 |
-| `SIM-G-TER` | `test/systems/territory.spec.ts` | TA-06.3 |
-| `SIM-C-01..05`, §7.1 | `test/systems/commands.spec.ts`, `test/data/catalog.spec.ts`, `test/systems/cargo.spec.ts` | TA-06.4, TA-14 |
-| `SIM-G-PWR` | `test/systems/power.spec.ts` (severing, shedding order, capacitors, pylon overload) | TA-06.5, TA-06.12 |
-| `SIM-R-01..06` | `test/systems/rule-engine.spec.ts`, scenario `unattended` | TA-06.7 |
+| `SIM-D-06` | lint fixture `shared/sim/test/lint/banned-apis.fixture.ts` must fail `eslint` | TA-06.1 |
+| `SIM-D-03`, `SIM-H-04` | `shared/sim/test/kernel/coarse-dt.spec.ts` (production, timers and hazards scale with `dt`; coarse vs fine within tolerance over 1 h) | TA-06.1 |
+| `SIM-GEN` | `shared/sim/test/gen/planet-golden.spec.ts` | TA-06.2 |
+| `SIM-S-01` | `shared/sim/test/codec/roundtrip.property.spec.ts` | TA-06.9 |
+| `SIM-V-01..05` | `shared/sim/test/view/full-state.spec.ts`, `shared/sim/test/view/delta.spec.ts` (replica deep-equal after `applyDiff`) | TA-06.9, W00-24 |
+| `SIM-X-01..08` | `shared/sim/test/host/sim-host.spec.ts`, `npm run test:parity`, client `prediction.spec.ts` | W00-54 … W00-58 |
+| `SIM-G-TER` | `shared/sim/test/systems/territory.spec.ts` | TA-06.3 |
+| `SIM-C-01..05`, §7.1 | `shared/sim/test/systems/commands.spec.ts`, `shared/sim/test/data/catalog.spec.ts`, `shared/sim/test/systems/cargo.spec.ts` | TA-06.4, TA-14 |
+| `SIM-G-PWR` | `shared/sim/test/systems/power.spec.ts` (severing, shedding order, capacitors, pylon overload) | TA-06.5, TA-06.12 |
+| `SIM-R-01..06` | `shared/sim/test/systems/rule-engine.spec.ts`, scenario `unattended` | TA-06.7 |
 | §7.6–§7.7 | hazards, fauna, progression, raids, settlement specs | TA-06.8, 06.10, 06.11, 06.13 |
 | `SIM-H-01..08` | `backend/app/test/game/{thread-pool,coarse,snapshot,restart-fastrun,quarantine}.spec.ts` | TA-07 |
 | `SIM-P` | `npm run sim:bench`, load test | TA-13.5 |

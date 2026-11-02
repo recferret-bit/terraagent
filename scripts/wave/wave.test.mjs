@@ -205,5 +205,5 @@ test('wave:check prints the owner check guide (or the demo story) and the worktr
   assert.equal(r.status, 0, r.out);
   assert.match(r.out, /W00 — Platform Skeleton: owner check|Demo story/);
   assert.match(r.out, /http:\/\/127\.0\.0\.1:5273\/play\.html\?scenario=w00/);
-  assert.ok(readFileSync(join(sb.wt('w00'), '.env.worktree'), 'utf8').includes('4100'));
+  assert.ok(readFileSync(join(sb.wt('w00'), 'infra', '.env.worktree'), 'utf8').includes('4100'));
 });

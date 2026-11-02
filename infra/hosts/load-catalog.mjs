@@ -1,4 +1,4 @@
-// Host catalog for terraagent.fun (D-37, DEPLOYMENT §2 and §4).
+// Host catalog for terraagent.fun (D-40, DEPLOYMENT §2 and §4).
 // Later W26 issues import this module. W26 adds no gameplay toggle: LAST_WAVE stays 25
 // (the flag panel and `TA_WAVES` keep the previous wave's behaviour). Do not edit the app env schema.
 import { readFileSync } from 'node:fs';
@@ -23,7 +23,7 @@ export function loadCatalog() {
 
 export const hostsByStack = (catalog, stack) => catalog.hosts.filter((h) => h.stack === stack);
 
-/** `http://` origins for the app CORS allow-list. TLS is off in this phase (D-37). */
+/** `http://` origins for the app CORS allow-list. TLS is off in this phase (D-40). */
 export function catalogOrigins(catalog = loadCatalog()) {
   return catalog.hosts.map((h) => `http://${h.host}`);
 }

@@ -104,7 +104,7 @@ This epic adds sim systems and data on top of TA-06, and the client surfaces on 
   - `shared/sim/src/systems/construction.ts` (Prepared-ground gate; Hub exemption on unclaimed tiles `UO-TF-05`)
   - `shared/sim/src/systems/power.ts` (terraform load in shed group 1)
   - `shared/sim/test/systems/{terraform.spec.ts,walls.spec.ts,prepared-ground.property.spec.ts}`
-  - `shared/sim/scenarios/landfall.ts`
+  - `tests/scenarios/landfall.ts`
 - **Verify:** `npm run test -w @terra/sim -- terraform walls prepared-ground && npm run sim:determinism -w @terra/sim -- --ticks 6000 --scenario landfall --runs 3`
 
 #### Analytics
@@ -181,7 +181,7 @@ This epic adds sim systems and data on top of TA-06, and the client surfaces on 
 - **Target Files:**
   - `shared/sim/src/systems/progression/{stages.ts,threat.ts,shield.ts,suggestions.ts}`
   - `shared/sim/test/systems/progression-stages.spec.ts`
-  - `shared/sim/scenarios/unattended-stages.ts`
+  - `tests/scenarios/unattended-stages.ts`
 - **Verify:** `npm run test -w @terra/sim -- progression && npm run sim:determinism -w @terra/sim -- --ticks 72000 --scenario unattended-stages`
 
 #### Analytics
@@ -382,7 +382,7 @@ This epic adds sim systems and data on top of TA-06, and the client surfaces on 
 - **Spec:** units spec §5.5, §6.4, §8.3 (`AC-01`, `AC-02`, `AC-04`, `AC-08`)
 - **Target Files:**
   - `shared/sim/scripts/{duels.ts,reference-bot.ts}`
-  - `shared/sim/scenarios/reference-player.ts`
+  - `tests/scenarios/reference-player.ts`
   - `shared/sim/test/balance/{duels.spec.ts,stage-windows.spec.ts}`
 - **Verify:** `npm run sim:duels -w @terra/sim && npm run sim:reference-bot -w @terra/sim -- --seeds 5 --planet temperate,desert`
 

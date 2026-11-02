@@ -106,7 +106,7 @@ export async function devConsole(page: Page, command: string, timeout = 10_000):
   return all.slice(before).join('\n');
 }
 
-/** Saves `e2e/.out/screenshots/<suite>/<name>.png` (suite = the running spec's file name); returns the path. */
+/** Saves `tests/e2e/.out/screenshots/<suite>/<name>.png` (suite = the running spec's file name); returns the path. */
 export async function screenshot(page: Page, name: string): Promise<string> {
   const suite = basename(test.info().file).replace(/\.spec\.ts$/, '');
   const dir = resolve(OUT, 'screenshots', suite);

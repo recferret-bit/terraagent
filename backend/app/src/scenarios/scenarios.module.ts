@@ -20,7 +20,7 @@ class ScenarioDevCommand implements OnModuleInit {
   }
 }
 
-/** Seed scenarios (W00): fresh dev planets from `scenarios/*.ts` through the thread's snapshot load. */
+/** Seed scenarios (W00): fresh dev planets from `tests/scenarios/*.ts` through the thread's snapshot load. */
 @Module({
   imports: [GameModule],
   controllers: [ScenariosController],

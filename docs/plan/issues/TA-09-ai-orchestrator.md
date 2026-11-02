@@ -73,7 +73,7 @@ Module layout (`backend/ai-orchestrator/src`): `main.ts`, `app.module.ts`, `conf
 - **Depends On:** `TA-01.3`, `TA-01.6`, `TA-03.2`, `TA-13.1`
 - **Spec:** [`AI_ORCHESTRATOR.md`](../../spec/AI_ORCHESTRATOR.md) §2 (AI-13, AI-14), §4, §5.3, §11 · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3, §15 · [D-09](../../spec/DECISIONS.md#d-09--zai-glm-53), [D-14](../../spec/DECISIONS.md#d-14--all-backend-services-are-nestjs)
 - **Target Files:**
-  - `backend/ai-orchestrator/package.json`, `tsconfig.json`, `.env.example`
+  - `backend/ai-orchestrator/package.json`, `backend/ai-orchestrator/tsconfig.json`, `backend/ai-orchestrator/.env.example`
   - `backend/ai-orchestrator/src/main.ts`, `src/app.module.ts`, `src/config/ai.config.ts`
   - `backend/ai-orchestrator/src/health/health.controller.ts` (`/healthz`, `/readyz`, `/metrics`)
   - `backend/ai-orchestrator/src/provider/llm-provider.port.ts`, `zai.provider.ts`, `mock.provider.ts`, `provider.module.ts`

@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 import { clickTile, devConsole, expectNoPageErrors, hostMode, loadLocal, loadScenario, screenshot, ticksPerSecond, urls } from './index';
 
-// Harness smoke suite: proves boot, helpers and the --hack filter. Real wave suites are e2e/wNN.spec.ts.
+// Harness smoke suite: proves boot, helpers and the --hack filter. Real wave suites are tests/e2e/wNN.spec.ts.
 const serverOnly = hostMode() === 'local';
 
 test.describe('harness smoke', () => {

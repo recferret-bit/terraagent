@@ -30,7 +30,7 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 | # | Issue | Size | Finishes at | Title |
 |---|---|---|---|---|
 | 1 | [W00-02](waves/W00-platform-skeleton.md) | M | 1.0 | npm-workspaces root: new packages `shared/{contracts,config,db,sim}` (`@terra/contracts`, `@terra/config`, `@t |
-| 2 | [W00-05](waves/W00-platform-skeleton.md) | S | 1.5 | `@terra/config`: zod env loader merged per module, `.env.example`, `envFlagTrue()` (only the exact string `tru |
+| 2 | [W00-05](waves/W00-platform-skeleton.md) | S | 1.5 | `@terra/config`: zod env loader merged per module, `infra/.env.example`, `envFlagTrue()` (only the exact strin |
 | 3 | [W00-09](waves/W00-platform-skeleton.md) | M | 2.5 | NestJS app skeleton: `main.ts`, module list auto-built from `modules/*/`, CORS allow-list, `/v1/healthz`, `/v1 |
 | 4 | [W00-18](waves/W00-platform-skeleton.md) | M | 3.5 | `game` module thread pool: `SIM_THREADS = cores − 1`, planet → thread by `hash(planetId) % n`, MessagePort pro |
 | 5 | [W00-22](waves/W00-platform-skeleton.md) | M | 4.5 | WS gateway: `/ws` upgrade, origin allow-list, `hello` within 5 s using a **dev session token** (JWT in W01), ` |
@@ -53,7 +53,7 @@ The build window has **13 build days** (Nov 1–13; Nov 14 is submission). Units
 | 22 | [W25-29](waves/W25-launch-ops.md) | M | 19.5 | Demo video: a 2–3 min script covering landfall → economy → terraform → combat → walls → cargo → market → Guild |
 | 23 | [W25-30](waves/W25-launch-ops.md) | S | 20.0 | X post: "built at NEAR HACKATHON", video, link to the repo and demo |
 | 24 | [W25-31](waves/W25-launch-ops.md) | S | 20.5 | Submission form: name, team lead, email, team size solo, tracks (09 + 07 + 05, + 10/12 if F6/F7 qualify), main |
-| 25 | [W25-33](waves/W25-launch-ops.md) | S | 21.0 | Wave e2e `e2e/w25.spec.ts` (demo steps 4–6; the hackathon `@hack` run is steps 4 and 7 against the W26 hosts)  |
+| 25 | [W25-33](waves/W25-launch-ops.md) | S | 21.0 | Wave e2e `tests/e2e/w25.spec.ts` (demo steps 4–6; the hackathon `@hack` run is steps 4 and 7 against the W26 h |
 
 ## 3. Start order with 10 agents (H)
 

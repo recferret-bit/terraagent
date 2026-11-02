@@ -8,7 +8,7 @@ Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What
 - **Each wave has its own branch and worktree** and reaches `main` only after the owner's manual check; then the worktree and branch are deleted and `main` is pushed ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7).
 - **The old layer-based plan** (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`) is superseded and kept only for traceability.
 
-**Hackathon (2026-11-01 → 11-14):** option B: the `H` column in each wave file tags the must set (395 issues, ≈ 299.5 units). [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) has what ships, the pace check and the drop order; [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) has the generated critical path and start order. Decisions D-24..D-30 apply, plus D-37 (hosting on `terraagent.fun`, no Cloudflare):
+**Hackathon (2026-11-01 → 11-14):** option B: the `H` column in each wave file tags the must set (395 issues, ≈ 299.5 units). [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) has what ships, the pace check and the drop order; [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) has the generated critical path and start order. Decisions D-24..D-30 apply, plus D-40 (hosting on `terraagent.fun`, no Cloudflare):
 - one NestJS app + Postgres, a simplified server sim, no anti-cheat or anti-bot;
 - NEAR features F1–F8, **all on mock adapters behind real ports in phase 1** (D-30), with real adapters swapped in phase 2 (F5 → F1 → F2);
 - battle v1 (D-28);
@@ -55,7 +55,7 @@ Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What
 | File | Purpose |
 |---|---|
 | [`ARCHITECTURE.md`](../spec/ARCHITECTURE.md) | **Source of truth for cross-service contracts:** apps, domains, ports, NATS subjects/KV, resume path, lifecycle summary, tunables |
-| [`DECISIONS.md`](../spec/DECISIONS.md) | D-01..D-37 with alternatives (D-16 Accepted; D-17..D-23 = owner answers of 2026-10-29; D-24..D-27 = one app / no anti-cheat / NEAR features / hackathon; D-28..D-30 = battle v1 / player page & maps / ports & mocks; D-31 = one engine, three hosts; D-32 = frontend layout; D-37 = `terraagent.fun` hosting, no Cloudflare) |
+| [`DECISIONS.md`](../spec/DECISIONS.md) | D-01..D-41 with alternatives (D-16 Accepted; D-17..D-23 = owner answers of 2026-10-29; D-24..D-27 = one app / no anti-cheat / NEAR features / hackathon; D-28..D-30 = battle v1 / player page & maps / ports & mocks; D-31 = one engine, three hosts; D-32 = frontend layout; D-40 = `terraagent.fun` hosting, no Cloudflare; D-41 = 7-domain layout) |
 | [`PROTOCOL.md`](../spec/PROTOCOL.md) | WebSocket (worker + lobby) and NATS message contracts |
 | [`DATA_MODEL.md`](../spec/DATA_MODEL.md) | Prisma model, invariants, retention |
 | [`MATCHMAKING.md`](../spec/MATCHMAKING.md) | Planet lifecycle, picker, managed queue |
@@ -64,6 +64,6 @@ Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What
 | [`AI_ORCHESTRATOR.md`](../spec/AI_ORCHESTRATOR.md) | Triggers, budgets, prompts, `DirectiveV1`, cost model |
 | [`NEAR.md`](../spec/NEAR.md) | Sign-in, invisible accounts, registry contract, trades |
 | [`CLIENT.md`](../spec/CLIENT.md) | Game client flows, WS state machine, rendering, product analytics |
-| [`DEPLOYMENT.md`](../spec/DEPLOYMENT.md) | `terraagent.fun` hosts, four compose files, HTTP on port 80, SSH deploy from `DEPLOY_HOST` (D-37) |
+| [`DEPLOYMENT.md`](../spec/DEPLOYMENT.md) | `terraagent.fun` hosts, four compose files, HTTP on port 80, SSH deploy from `DEPLOY_HOST` (D-40) |
 
 Gameplay design lives in [`docs/game/`](../game) ([`autonomous-colony-spec.md`](../game/autonomous-colony-spec.md), [`colony-economy-and-buildings-spec.md`](../game/colony-economy-and-buildings-spec.md), [`units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md), [`near-economy-features-spec.md`](../game/near-economy-features-spec.md), [`player-profile-and-achievements-spec.md`](../game/player-profile-and-achievements-spec.md)); 3D visual rules stay in [`AGENTS.md`](../../AGENTS.md) and `.agents/skills/`.

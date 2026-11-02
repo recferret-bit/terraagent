@@ -1,6 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test';
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim/ecs/columns';
-import { E, ENTITY_STRIDE } from '../frontend/game/store/replica/viewCodec';
+import { E, ENTITY_STRIDE } from '../../frontend/game/store/replica/viewCodec';
 import {
   devConsole,
   expect,

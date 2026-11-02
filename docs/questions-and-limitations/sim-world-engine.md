@@ -118,7 +118,7 @@ Format: [README](./README.md).
 - **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
-- **Area / code:** `scenarios/_loader.ts:51-55` (`createPlanet` without `worldSalt`),
+- **Area / code:** `tests/scenarios/_loader.ts:51-55` (`createPlanet` without `worldSalt`),
   `backend/app/src/scenarios/scenarios.service.ts:33` (persists that state as the server planet),
   `shared/sim/src/gen/world/context.ts:57` (`secretSeed` mixes `worldSalt ?? ''`),
   `shared/sim/src/gen/world/stages/subsurface.ts:30-43`
@@ -132,7 +132,7 @@ Format: [README](./README.md).
 - **To resolve:** let `createScenarioPlanet` accept `worldSalt` and pass `randomUUID()` from `scenarios.service.ts`;
   add a test that a server-loaded scenario planet has `meta.worldSalt`.
 - **Found:** 2026-11-01, world/engine review
-- **Fix (sim side):** `createScenarioPlanet(id, { worldSalt })` (`scenarios/_loader.ts`) passes the salt to `createPlanet`; test `scenarios/test/world-salt.spec.ts` (salt stored in `meta`, only the hidden layers differ).
+- **Fix (sim side):** `createScenarioPlanet(id, { worldSalt })` (`tests/scenarios/_loader.ts`) passes the salt to `createPlanet`; test `tests/scenarios/test/world-salt.spec.ts` (salt stored in `meta`, only the hidden layers differ).
 - **Fix (server side):** `ScenariosService.create` passes `worldSalt: randomUUID()` to `createScenarioPlanet` (`backend/app/src/scenarios/scenarios.service.ts`); test `backend/app/test/scenarios/scenarios.spec.ts` › "a scenario planet loaded on the server has its own worldSalt, never sent to clients (WE-07)".
 
 ### WE-08 · Client-bound paths are all stripped; hosts that run in the browser keep the subsurface by design

@@ -166,7 +166,7 @@
 |---|---|---|---|
 | Deed token, owner, `extra`, settled flag | chain (mock: `mock_chain_nft*`) | `chain.deed` (outbox, `metadata_version`) | DATA_MODEL §4.4.1, W00-35 |
 | Deed image | app (rendered from snapshot) | cache per version | NEAR-91 |
-| Badge mint status | chain | `BadgeMint` outbox (`prisma/progression.prisma`); not in DATA_MODEL §4.4.1 | profile §5 |
+| Badge mint status | chain | `BadgeMint` outbox (`shared/db/prisma/progression.prisma`); not in DATA_MODEL §4.4.1 | profile §5 |
 | XP, achievements | app (`XpLedger`, `AchievementUnlock`) | — | profile §5 |
 | Settled status, launch gate | sim (`colonySettled`, `launchGate` view) | lobby row `SETTLED` | SIM §7.7, W21-05, W21-14 |
 | Staking position | chain (pool) | `chain.staking_position`, read model only | DATA_MODEL §4.4.1, W20-20 |

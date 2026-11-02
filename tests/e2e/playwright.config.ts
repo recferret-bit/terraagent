@@ -4,7 +4,7 @@ import { urls } from './harness/ports';
 const ci = !!process.env.CI;
 
 // Headless Chromium. Locally the system Chrome (no browser download); CI installs the bundled chromium.
-// One worker: all suites share one server + database. Output (traces, screenshots, results) under e2e/.out/.
+// One worker: all suites share one server + database. Output (traces, screenshots, results) under tests/e2e/.out/.
 export default defineConfig({
   testDir: '.',
   testMatch: /w\d\d\.spec\.ts$|harness\/smoke\.spec\.ts$/,
