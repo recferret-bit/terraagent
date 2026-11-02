@@ -125,7 +125,7 @@ export class PodImpactRig {
       this.trackGeo(new THREE.LatheGeometry(rimProfile.map(([r, y]) => new THREE.Vector2(r, y)), 24)),
       rimMat,
     );
-    rim.castShadow = true;
+    rim.castShadow = false;
     rim.receiveShadow = true;
 
     const emberRing = new THREE.Mesh(
@@ -136,6 +136,9 @@ export class PodImpactRig {
     this.craterGroup.add(pit, innerSlag, rim, emberRing);
 
     this.buildCraterRocksAndFissures(rimMat, slagMat);
+    this.craterGroup.traverse((o) => {
+      o.castShadow = false;
+    });
   }
 
   private buildCraterRocksAndFissures(
@@ -153,7 +156,7 @@ export class PodImpactRig {
       const rock = new THREE.Mesh(i % 2 === 0 ? rockGeoA : rockGeoB, i % 3 === 0 ? slagMat : rimMat);
       rock.position.set(Math.cos(a) * r, 0.12 + (i % 2) * 0.04, Math.sin(a) * r);
       rock.rotation.set(0.32 + (i % 3) * 0.08, -a + Math.PI / 2, (i % 2 === 0 ? 1 : -1) * 0.18);
-      rock.castShadow = true;
+      rock.castShadow = false;
       rock.receiveShadow = true;
       this.craterGroup.add(rock);
     }
@@ -261,14 +264,19 @@ export class PodImpactRig {
       this.trackGeo(new THREE.LatheGeometry(shieldProfile.map(([r, y]) => new THREE.Vector2(r, y)), 16)),
       gunmetal,
     );
+    shieldBase.castShadow = true;
     const collar = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(1.34, 1.34, 0.08, 16)), hullSecondary);
     collar.position.y = 0.48;
+    collar.castShadow = true;
     const deck = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(0.92, 0.92, 0.1, 16)), gunmetal);
     deck.position.y = 0.52;
+    deck.castShadow = true;
     const seatBase = new THREE.Mesh(this.trackGeo(new RoundedBoxGeometry(0.55, 0.16, 0.45, 2, 0.04)), hullSecondary);
     seatBase.position.set(0, 0.62, -0.22);
+    seatBase.castShadow = true;
     const seatBack = new THREE.Mesh(this.trackGeo(new RoundedBoxGeometry(0.68, 1.15, 0.2, 2, 0.06)), gunmetal);
     seatBack.position.set(0, 1.1, -0.5);
+    seatBack.castShadow = true;
     const coreGlow = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(0.56, 0.56, 0.06, 12)), this.coreLightMat);
     coreGlow.position.y = 0.55;
     this.egressGroup.add(shieldBase, collar, deck, seatBase, seatBack, coreGlow);
@@ -286,11 +294,13 @@ export class PodImpactRig {
     for (let i = 0; i < 3; i++) {
       const a = (i * Math.PI * 2) / 3 + Math.PI / 6;
       const leg = new THREE.Mesh(legGeo, gunmetal);
+      leg.castShadow = true;
       leg.position.set(Math.cos(a) * 1.33, 0.47, Math.sin(a) * 1.33);
       leg.rotation.order = 'YXZ';
       leg.rotation.y = Math.atan2(Math.cos(a), Math.sin(a));
       leg.rotation.x = -0.58;
       const pad = new THREE.Mesh(padGeo, hullSecondary);
+      pad.castShadow = true;
       pad.position.set(Math.cos(a) * 1.62, 0.04, Math.sin(a) * 1.62);
       this.egressGroup.add(leg, pad);
     }
@@ -321,9 +331,11 @@ export class PodImpactRig {
       const shell = new THREE.Mesh(petalGeo, i % 2 === 0 ? hullPrimary : hullSecondary);
       shell.castShadow = true;
       const rib = new THREE.Mesh(ribGeo, gunmetal);
+      rib.castShadow = true;
       rib.position.set(0, 1.15, -0.36);
       rib.rotation.x = 0.33;
       const nozzle = new THREE.Mesh(nozzleGeo, gunmetal);
+      nozzle.castShadow = true;
       nozzle.position.set(0, 0.2, 0.06);
       nozzle.rotation.x = 0.45;
 
@@ -335,6 +347,7 @@ export class PodImpactRig {
     this.rampPivot = new THREE.Group();
     this.rampPivot.position.set(0, 0.5, 0.96);
     const rampPlate = new THREE.Mesh(this.trackGeo(new RoundedBoxGeometry(0.84, 0.07, 1.32, 2, 0.02)), gunmetal);
+    rampPlate.castShadow = true;
     rampPlate.position.set(0, 0, 0.64);
     const stripGeo = this.trackGeo(new RoundedBoxGeometry(0.055, 0.035, 1.16, 1, 0.01));
     const stripL = new THREE.Mesh(stripGeo, this.coreLightMat);
