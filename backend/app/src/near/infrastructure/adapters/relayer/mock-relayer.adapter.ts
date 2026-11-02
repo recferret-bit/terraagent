@@ -44,8 +44,53 @@ export class MockRelayerAdapter extends MockChainBase implements RelayerPort {
     const n = nonce.toString();
     return this.call('Relayer', 'submitMetaTx', `${relayTxHash(parsed)}:${n}`, async (tx) => {
       await this.ensureAccount(tx, parsed.signerId);
-      return { signerId: parsed.signerId, receiverId: parsed.receiverId, opId: parsed.opId, method: 'submitMetaTx', nonce: n };
+      return receiptPayload(parsed, n);
     });
+  }
+}
+
+/** Receipt body. Nonce and the caller's opId stay as they were; a JSON delegate only adds fields. */
+function receiptPayload(parsed: RelaySubmit, nonce: string): {
+  signerId: string;
+  receiverId: string;
+  opId: string;
+  method: 'submitMetaTx';
+  nonce: string;
+  action?: string;
+  account_id?: string;
+} {
+  return {
+    signerId: parsed.signerId,
+    receiverId: parsed.receiverId,
+    ...delegateReceiptFields(parsed.signedDelegate),
+    opId: parsed.opId,
+    method: 'submitMetaTx',
+    nonce,
+  };
+}
+
+/**
+ * `action` and `account_id` when `signedDelegate` is a JSON object.
+ * A non-JSON delegate (and JSON without those strings) adds nothing.
+ */
+export function delegateReceiptFields(signedDelegate: string): { readonly action?: string; readonly account_id?: string } {
+  const parsed = parseDelegateJson(signedDelegate);
+  if (!parsed) return {};
+  const action = parsed.action;
+  const accountId = parsed.account_id;
+  return {
+    ...(typeof action === 'string' ? { action } : {}),
+    ...(typeof accountId === 'string' ? { account_id: accountId } : {}),
+  };
+}
+
+function parseDelegateJson(signedDelegate: string): Record<string, unknown> | null {
+  try {
+    const value = JSON.parse(signedDelegate) as unknown;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+    return value as Record<string, unknown>;
+  } catch {
+    return null;
   }
 }
 

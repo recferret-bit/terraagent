@@ -258,3 +258,17 @@ The plate is this feature's own HUD slot: bottom left, order 80 (there is no bot
 | `NEAR_RELAY_RECEIVER_NOT_ALLOWED` | 403 | That save is not allowed for this colony. |
 
 `near.mock.fail`, `near.mock.latency`, `account.reset`, and `account.upgrade` are unchanged (W06-25).
+
+## W06-12
+
+Creating a colony sub-account enqueues one NEP-145 `storage_deposit` in `chain.chain_outbox`, in the same database transaction as the `near_colony_account` row. The player row (`slot` `player`) does not get one. A later login enqueues only when that outbox row is missing (the same `opId` is a no-op). The relay is off when `NODE_ENV=test` unless `OUTBOX_RELAY_ENABLED=true`.
+
+| Field | Value |
+|---|---|
+| `opId` | `storage-deposit:{colonyAccountId}` from `storageDepositOpId` (for example `storage-deposit:co_….test-pilot.terraagent.mock`) |
+| `port` / `method` | `Relayer` / `submitMetaTx` |
+| payload `signerId` | `relayer.terraagent.mock` (`MOCK_RELAYER_ACCOUNT`). The relayer pays |
+| payload `receiverId` | `res.terraagent.mock` (`MOCK_CARGO_CONTRACT`) |
+| payload `signedDelegate` | JSON string `{"action":"storage_deposit","account_id":"<colony account id>"}` |
+
+The relay calls `RelayerPort.submitMetaTx`. The mock receipt `txHash` starts with `mock:`. Its payload signer is the relayer and its receiver is `res.terraagent.mock`. When `signedDelegate` is that JSON, the receipt payload also has `action: "storage_deposit"` and `account_id` set to the colony account id. A non-JSON delegate does not add those fields. Submitting the same caller `opId` again (a relay retry, or a process restart after the receipt committed) does not write a second receipt. `/dev/chain/tx/<hash>` shows that payload (`GET /v1/dev/chain/tx?hash=` because `mock:` contains a colon).

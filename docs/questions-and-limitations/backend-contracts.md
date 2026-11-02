@@ -575,3 +575,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** pilot names that fit (a `deriveAccountName` result of about 17 characters or fewer next to a `co_` ULID) are stored unchanged. `test-pilot` is one of those.
 - **To resolve:** a shorter colony label (a hash) if 64 stops being enough for the colony id plus a readable name. Do not drop the colony id to make room.
 - **Found:** 2026-11-02, W06-08
+
+### BE-38 · Colony storage_deposit delegate is a JSON stub
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/colony-account-write.ts` (`enqueueStorageDeposit`), `backend/app/src/near/infrastructure/adapters/relayer/mock-relayer.adapter.ts` (`submitAt`, `delegateReceiptFields`)
+- **What happens:** Each colony sub-account enqueues `storage-deposit:{accountId}` for `Relayer.submitMetaTx`. `signedDelegate` is the JSON text `{"action":"storage_deposit","account_id":"<colony account id>"}`, not a NEP-366 signed delegate. The mock receipt copies `action` and `account_id` onto the payload. It does not debit the relayer or credit storage on `res.terraagent.mock`. The signer is `relayer.terraagent.mock` and the receiver is `res.terraagent.mock`. The player row (`slot` `player`) is not enqueued. The receipt row's own `op_id` stays `relayTxHash:nonce` (BE-36); the caller opId is in the payload.
+- **Why it is like this:** W06-12 specifies that JSON so the mock relayer pays and `/dev/chain` can show the action. A real signature and an attached deposit are not part of this issue.
+- **Workaround / mitigation:** one outbox row and one mock receipt per colony account. A second submit of the same caller opId returns the stored receipt.
+- **To resolve:** when the real relayer lands (W23), replace the JSON stub with a signed delegate and whatever deposit `res.*` requires. Keep the opId `storage-deposit:{colonyAccountId}`.
+- **Found:** 2026-11-02, W06-12
