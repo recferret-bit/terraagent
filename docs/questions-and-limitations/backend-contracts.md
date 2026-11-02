@@ -475,3 +475,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Why it is like this:** `planet_full` was added to the sim (GP-17) after the seat flow was written.
 - **Fix:** seats per planet are `min(capacity, MAX_COLONIES_PER_PLANET)` (`seatsOf`); `planet_full` from the landing-site question or from the landing itself marks the planet like one without a site (`NO_SITE_CODES`), the row is rolled back and the next planet of the family is tried. Tests `backend/app/test/unit/home-seat-reject.spec.ts` › "a planet the sim calls planet_full (8 colonies) is marked…", "a landing the sim refuses planet_full rolls the row back…", "never offers more colony indices than the sim lands…".
 - **Found:** 2026-11-01, final cross-cutting pass (SimHost/server contract leftovers from SIM-GAMEPLAY)
+
+### BE-28 · Landed IdentityPort shapes differ from the W06 issue text (Q-01-22)
+
+- **Status:** Question for the owner
+- **Area / code:** `backend/app/src/near/application/ports/identity.port.ts`, `shared/contracts/src/rest/near-account.ts` (`namedAccountOpId`)
+- **What happens:** W06-01 says the port is used unchanged. The landed `loginSocial` returns `{playerId, email, isNew}`, and `createNamedAccount` takes `{opId, name, parent?}` with no `(provider, subject)`. The issue text for W06-03 asks the adapter to return `{provider, subject, email?}`, and W06-05 asks for idempotency per `(provider, subject)`.
+- **Why it is like this:** Q-01-22 has no proposed default. W06-01 forbids redefining the port, so this wave keeps the landed signatures. The HTTP `POST /v1/auth/social` still returns `{accessToken, player, accountId}` (PROTOCOL §8). Idempotency rides on `opId = named-account:{provider}:{subject}` (`namedAccountOpId`). Token verification (`{provider, subject, email?}`) stays inside the mock adapter, then the service maps it onto `SocialLoginResult`.
+- **Workaround / mitigation:** callers that need "the same social subject, the same account" pass that opId. A repeat with the same opId returns the stored account. A different subject with the same display name gets the `-2` suffix.
+- **To resolve:** confirm this mapping, or change `IdentityPort` (and W23's real adapter) to take `(provider, subject)` on the port itself.
+- **Found:** 2026-11-02, W06-01 (open question Q-01-22; owner default was "none", so the port stays as landed)
