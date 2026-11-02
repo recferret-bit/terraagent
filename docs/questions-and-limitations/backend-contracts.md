@@ -506,15 +506,15 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **To resolve:** none for the hackathon mock. W23 replaces the provider.
 - **Found:** 2026-11-02, W06-02
 
-### BE-31 · Social subject → player lives in process memory until W06-06
+### BE-31 · Social subject → player is `core.social_identity` on the database path, and a process map in unit tests
 
 - **Status:** Accepted (by design)
-- **Area / code:** `backend/app/src/near/identity/social-auth.service.ts` (`bySubject`)
-- **What happens:** `POST /v1/auth/social` verifies the mock token and returns `{accessToken, player, accountId}`. The same `(provider, subject)` in this process reuses the player. A restart, or a second app process, does not. `accountId` comes from `createNamedAccount` (`opId` is `namedAccountOpId(provider, subject)`, name is `deriveAccountName(subject)`). No row is written to `core.social_identity`. A guest bearer is reused for a new subject; a repeat without a bearer uses the in-memory map. `isGuest` on the access response is false. It is not stored on the player row. With the database off (unit tests), the named-account book is also in this process. With the database on, the account row and `mock:` receipt survive a restart, so the same subject gets the same account id and a new player id.
-- **Why it is like this:** W06-03 proved the token and the HTTP shape (Q-01-22: the port still returns `{playerId, email, isNew}`, and the subject is mapped onto `playerId`). W06-05 adds the named account. The guest link, refresh rotation and `account.created` are W06-06.
-- **Workaround / mitigation:** one process keeps the player and the account together. Later issues replace the map with `core.social_identity`.
-- **To resolve:** W06-06 persists the subject on the guest player and rotates the refresh token.
-- **Found:** 2026-11-02, W06-03
+- **Area / code:** `backend/app/src/near/identity/social-link.ts` (`link`, `bySubject`), `backend/app/src/near/identity/social-auth.service.ts`
+- **What happens:** When `databaseEnabled` is true, `POST /v1/auth/social` finds `core.social_identity` by `(provider, subject)`. A hit uses that player. A miss with a guest bearer links that player (colonies stay; no second player). A miss with no bearer creates a player, the same as before. The row is upserted with `playerId`, `provider`, `subject`, `accountId` from `createNamedAccount`, and the token email when it fits 254 characters. A restart finds the same player. When the database is off (`NODE_ENV=test` and no `DATABASE_URL`), the in-memory map remains and nothing is written to `core.social_identity`, so `social-auth.spec.ts` needs no Postgres. `isGuest` is still not a column. Guest login and refresh read the social row (`AuthRepository.findPilotAccount`) and, when one exists, answer `isGuest: false` plus top-level `accountId`. Every social login revokes that player's refresh sessions, then issues a new one.
+- **Why it is like this:** W06-06 persists the link. The unit spec must keep passing with the database off, so the memory path stays.
+- **Workaround / mitigation:** the database path is the one play uses. The memory path forgets the subject when the process stops; that path is tests only.
+- **To resolve:** nothing for this split. A real provider is W23. `account.created` is built but not on the socket (BE-35).
+- **Found:** 2026-11-02, W06-03; database path updated W06-06
 
 ### BE-32 · Receipt detail URL is rewritten only by Vite
 
@@ -536,12 +536,22 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **To resolve:** W06-08 reads `parent` for colony sub-accounts. Route this write through `MockChainBase` only if named-account creation should honour the mock clock.
 - **Found:** 2026-11-02, W06-05
 
-### BE-34 · Mock fail overrides are process-wide; account.upgrade does not persist the subject
+### BE-34 · Mock fail overrides are process-wide
 
 - **Status:** Accepted (by design)
-- **Area / code:** `backend/app/src/near/infrastructure/mock/mock-controls.ts` (`mockChainControls`), `backend/app/src/near/infrastructure/dev/near-mock.command.ts` (`account.reset`, `account.upgrade`), `backend/app/src/near/identity/social-auth.service.ts` (`bySubject`, BE-31)
-- **What happens:** `near.mock.fail` and `near.mock.latency` write one process singleton. Every mock port in that process sees the override until `reset()` or a restart. `setFail(port, 0)` forces success even when the boot `MOCK_FAIL_RATE` is 1. An unset port keeps the config the adapter was built with. Named-account creation does not read this singleton (BE-33). `account.reset` revokes sessions and deletes `core.social_identity` rows for that player. It does not delete the player or their colonies, and it does not clear the in-memory subject map, so the same process still recognizes that subject. `account.upgrade` signs a 60-second mock token and calls `SocialAuthService.login`. That uses the in-memory map and does not write `social_identity`. The refresh token from login is dropped; only `{ playerId, accountId, accessToken }` is returned, so a refresh session row sits unused until `account.reset` or expiry.
-- **Why it is like this:** W06-25 asked for one process singleton, not a second DI graph, and forbade persisting `social_identity` (that is W06-06). A stored mock `opId` still returns before the fail roll; that was already the base behaviour.
-- **Workaround / mitigation:** restart the app to clear overrides and the subject map. Tests call `mockChainControls.reset()` in `afterEach`. `account.reset` revokes the sessions `account.upgrade` created.
-- **To resolve:** W06-06 persists the subject. Clearing the in-memory map inside `account.reset` can wait until that table is the source of truth.
-- **Found:** 2026-11-02, W06-25
+- **Area / code:** `backend/app/src/near/infrastructure/mock/mock-controls.ts` (`mockChainControls`), `backend/app/src/near/infrastructure/dev/near-mock.command.ts` (`account.reset`, `account.upgrade`), `backend/app/src/near/identity/social-link.ts` (BE-31)
+- **What happens:** `near.mock.fail` and `near.mock.latency` write one process singleton. Every mock port in that process sees the override until `reset()` or a restart. `setFail(port, 0)` forces success even when the boot `MOCK_FAIL_RATE` is 1. An unset port keeps the config the adapter was built with. Named-account creation does not read this singleton (BE-33). `account.reset` revokes sessions and deletes `core.social_identity` rows for that player. It does not delete the player or their colonies. It also does not clear the in-memory subject map, which matters only when the database is off (unit tests). With the database on, the table is the source of truth, so after a reset the next `account.upgrade` of that subject (no guest bearer) creates a new player. `account.upgrade` signs a 60-second mock token and calls `SocialAuthService.login`, which writes `social_identity` when the database is on (W06-06). The refresh token from login is dropped; only `{ playerId, accountId, accessToken }` is returned, so a refresh session row sits unused until `account.reset` or expiry.
+- **Why it is like this:** W06-25 asked for one process singleton, not a second DI graph. A stored mock `opId` still returns before the fail roll; that was already the base behaviour. W06-06 made login persist the subject on the database path and left the memory map for unit tests.
+- **Workaround / mitigation:** restart the app to clear overrides and, when the database is off, the subject map. Tests call `mockChainControls.reset()` in `afterEach`. `account.reset` revokes the sessions `account.upgrade` created.
+- **To resolve:** nothing for the singleton. Clearing the in-memory map inside `account.reset` is unused on the database path.
+- **Found:** 2026-11-02, W06-25; social row note updated W06-06
+
+### BE-35 · `account.created` is built and not sent on the socket
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/social-link.ts` (`noteAccountCreated`), `backend/app/src/ws/rooms.ts` (`onEvent`), `shared/contracts/src/events/account-created.ts`
+- **What happens:** The first time a `(provider, subject)` is linked, `SocialLink` parses `{ playerId, accountId, provider, subject }` with `eventDef('account.created').data` and keeps that object on the service (`lastAccountCreated`). A repeat login of the same subject does not build another one. The websocket only forwards events the sim thread emits (`rooms.ts` `onEvent`, plus the `dev.warp` push). `account.created` is not a sim event, so the client never receives it.
+- **Why it is like this:** W06-06 says to write the event with the existing contract and not to invent a second protocol or fake a websocket. There is no player-audience push outside the sim path.
+- **Workaround / mitigation:** `POST /v1/auth/social` already returns `accountId`. The checked payload stays in this process until restart.
+- **To resolve:** when a non-sim player push exists, send this payload on that path. Do not put it on `planet.event`.
+- **Found:** 2026-11-02, W06-06

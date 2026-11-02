@@ -606,10 +606,11 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 
 ### FF-35 · A reload shows Guest pilot again
 
-- **Status:** Accepted (by design)
-- **Area / code:** `frontend/game/features/identity/PilotChip.ts`, `frontend/game/app/online/bootOnline.ts` (`bootAuthAndHome`), `backend/app/src/core/auth/auth.service.ts` (`guestLogin`)
-- **What happens:** linking in this page updates the chip to `Pilot ID <accountId>` with no reload. The next page load boots with `POST /v1/auth/guest`, which always answers `isGuest: true` and has no `accountId`, so the chip reads `Guest pilot` again until the pilot saves progress once more.
-- **Why it is like this:** W06-15 only required the in-page handoff. Guest login does not return the pilot id, and the chip has nowhere else to read it. Nothing is written to `localStorage`.
-- **Workaround / mitigation:** the server still has the upgraded player (same device secret). Saving progress again with the same mock identity posts the guest bearer and links that player once more.
+- **Status:** Resolved (W06-06)
+- **Area / code:** `frontend/game/features/identity/PilotChip.ts`, `frontend/game/app/online/bootOnline.ts` (`bootAuthAndHome`, `readAccountId`), `backend/app/src/core/auth/auth.service.ts` (`guestLogin`)
+- **What happens:** linking in this page updates the chip to `Pilot ID <accountId>` with no reload. The next page load boots with `POST /v1/auth/guest`. Before W06-06 that answer was always `isGuest: true` and had no `accountId`, so the chip read `Guest pilot` again until the pilot saved progress once more.
+- **Why it is like this:** W06-15 only required the in-page handoff. Guest login did not return the pilot id, and the chip has nowhere else to read it. Nothing is written to `localStorage`.
+- **Workaround / mitigation:** the server still has the upgraded player (same device secret).
 - **To resolve:** have guest/refresh return `accountId` when the player is already linked, and have the chip render `Pilot ID` from that boot field.
+- **Fix:** the guest auth response now carries `isGuest: false` and top-level `accountId` when the player has a `social_identity` row. `readAccountId` already reads that field, and `isGuest` is `player.isGuest !== false`, so a reload shows `Pilot ID …`. The chip was not rewritten. Refresh of a linked player returns the same two fields.
 - **Found:** 2026-11-02, W06-15

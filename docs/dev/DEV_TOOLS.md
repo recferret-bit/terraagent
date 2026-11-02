@@ -214,7 +214,7 @@ Dev console commands for mock-port failure and latency, and for resetting or upg
 | `near.mock.fail <port> <rate>` | Set the injected fail rate (`0..1`) for one mock port. `1` fails the next call; `0` forces success even when `MOCK_FAIL_RATE` is `1`. |
 | `near.mock.latency <port> <minMs> <maxMs>` | Set the sleep range for one mock port. Both bounds are integers ≥ 0, and `maxMs` must be ≥ `minMs` (otherwise 400 `VALIDATION_ERROR`). |
 | `account.reset <player>` | Revoke every session of the player (id or handle) and delete that player's `social_identity` rows. The player and their colonies stay. Unknown player: 404 `NOT_FOUND`. |
-| `account.upgrade <provider> <subject>` | `provider` is `google` or `x`, `subject` is 1–64 characters. Signs a short-lived mock token and runs social login. Returns `{ playerId, accountId, accessToken }`. The subject map is in memory (BE-31); this does not write `social_identity` (W06-06). |
+| `account.upgrade <provider> <subject>` | `provider` is `google` or `x`, `subject` is 1–64 characters. Signs a short-lived mock token and runs social login. Returns `{ playerId, accountId, accessToken }`. When the database is on, this writes `core.social_identity` (W06-06). With the database off, the subject map stays in memory (BE-31). The refresh token is not returned. |
 
 `POST /v1/dev/commands/near.mock.fail` body:
 

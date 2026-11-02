@@ -87,7 +87,7 @@ export class NearMockCommand implements OnModuleInit {
       help: 'Sign in a mock social subject (google or x) and return the player id.',
       args: upgradeArgs,
       run: async ({ provider, subject }) => {
-        // In-memory subject → player (BE-31). Does not write social_identity (W06-06).
+        // Persists core.social_identity when the database is on (W06-06). The refresh token is not returned.
         const exp = Math.floor(Date.now() / 1000) + 60;
         const token = signMockToken({ provider, subject, exp }, mockOauthSecret());
         const issued = await this.social.login({ provider, token });
