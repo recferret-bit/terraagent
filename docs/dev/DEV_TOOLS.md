@@ -112,7 +112,7 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 
 - **Mocks today:** `ChainReadPort` (receipts, health, `chain.ping`) and `BadgeNftPort` (NEP-171, idempotent by `opId`). Every other port's mock lands with its feature wave.
 - **Chain outbox:** every chain write is queued in `chain.chain_outbox` in the same transaction as the game change and relayed with retry/backoff; deterministic `opId`s make retries safe.
-- **Explorer:** `/dev/chain/`. Contract tests: `npm run test:contract` (mocks), `npm run contract:real -- --port X` (real adapters, from W23).
+- **Explorer:** `/dev/chain/`. Contract tests: `npm run test:contract` (mocks; `--port identity,relayer` is a case-insensitive comma list, and an empty `--port` runs every suite), `npm run contract:real -- --port X` (real adapters, from W23).
 - **Selection:** `NEAR_ADAPTER_<PORT>=mock|testnet|mainnet` (anything but the exact strings `testnet`/`mainnet` means mock), `AI_PROVIDER`, `NOTIFY_ADAPTER`. Production refuses mocks unless the matching `*_ALLOW_MOCK_IN_PROD=true` is set, and boot names every mocked port.
 
 ## REST routes (auth, home & dev; `/v1/dev/*` 404 in production)

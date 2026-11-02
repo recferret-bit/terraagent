@@ -11,12 +11,21 @@ import { discoverContracts } from './discover';
 /**
  * Contract runner (`npm run test:contract`): every `__contract__/*.contract.ts` runs against the adapter the env selects for
  * its port, resolved from the booted app. CI default is the Postgres mock on a fresh test database.
+ * `npm run test:contract -- --port identity,relayer` sets `CONTRACT_PORT` to that comma list (any case). Empty means all.
  * `npm run contract:real -- --port X` sets `NEAR_ADAPTER_<X>=testnet|mainnet` and `CONTRACT_PORT=X`.
  */
 // The mock chain reads its config from process.env (not from the app source): no latency or injected failures in contract runs.
 Object.assign(process.env, { MOCK_LATENCY_MIN_MS: '0', MOCK_LATENCY_MAX_MS: '0', MOCK_FAIL_RATE: '0' });
+
+/** Comma-separated port names, lowercased. Empty or unset means every suite. */
+function selectedPorts(raw: string | undefined): ReadonlySet<string> | null {
+  const names = (raw ?? '').split(',').map((part) => part.trim().toLowerCase()).filter((part) => part.length > 0);
+  return names.length === 0 ? null : new Set(names);
+}
+
 const only = process.env.CONTRACT_PORT;
-const found = (await discoverContracts()).filter((c) => !only || c.contract.port === only);
+const selected = selectedPorts(only);
+const found = (await discoverContracts()).filter((c) => selected === null || selected.has(c.contract.port.toLowerCase()));
 
 let db: TestDatabase;
 let app: INestApplication;
