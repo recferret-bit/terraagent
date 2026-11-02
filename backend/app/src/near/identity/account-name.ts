@@ -1,9 +1,11 @@
+import { NAMED_LABEL_FALLBACK, NAMED_LABEL_MAX, withNumericSuffix } from './account-allocate.js';
+
 // Named-account label (NEAR §2): the `{name}` segment of `{name}.terraagent.near`.
 // 2–32 chars of `[a-z0-9-]`, never leading, trailing, or doubled `-` (AccountId rejects those).
 
 const MIN_LABEL = 2;
-const MAX_LABEL = 32;
-const FALLBACK = 'pilot';
+const MAX_LABEL = NAMED_LABEL_MAX;
+const FALLBACK = NAMED_LABEL_FALLBACK;
 const MAX_SUFFIX = 20;
 const GUILD_PREFIX = 'guild-';
 
@@ -30,13 +32,6 @@ function cleanAccountLabel(raw: string): string {
   let name = raw.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
   if (name.length > MAX_LABEL) name = name.slice(0, MAX_LABEL).replace(/-+$/, '');
   return name.length < MIN_LABEL ? FALLBACK : name;
-}
-
-/** `base-n` fitted into 32 chars. A cut stem loses its trailing `-` so the join is not `--`. */
-function withNumericSuffix(base: string, n: number): string {
-  const suffix = `-${n}`;
-  const stem = base.slice(0, MAX_LABEL - suffix.length).replace(/-+$/, '');
-  return `${stem.length < 1 ? FALLBACK : stem}${suffix}`;
 }
 
 /** `base-1`, then `base-2` … `base-20`. Reserved words have no hyphen, so `-1` is free; 20 is the stop. */

@@ -510,10 +510,10 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 
 - **Status:** Accepted (by design)
 - **Area / code:** `backend/app/src/near/identity/social-auth.service.ts` (`bySubject`)
-- **What happens:** `POST /v1/auth/social` verifies the mock token and returns `{accessToken, player, accountId}`. The same `(provider, subject)` in this process reuses the player. A restart, or a second app process, does not. `accountId` is `deriveAccountName(subject)` plus `.terraagent.mock`. No row is written to `core.social_identity` or `chain.mock_chain_account`, and `createNamedAccount` still throws `NEAR_UNAVAILABLE`. A guest bearer is reused for a new subject; a repeat without a bearer uses the in-memory map. `isGuest` on the access response is false. It is not stored on the player row.
-- **Why it is like this:** W06-03 only proves the token and the HTTP shape (Q-01-22: the port still returns `{playerId, email, isNew}`, and the subject is mapped onto `playerId`). Named accounts are W06-05. The guest link, refresh rotation and `account.created` are W06-06.
-- **Workaround / mitigation:** one process, one login, is enough for the W06-03 spec. Later issues replace the map with `core.social_identity`.
-- **To resolve:** W06-05 writes the named account; W06-06 persists the subject on the guest player and rotates the refresh token.
+- **What happens:** `POST /v1/auth/social` verifies the mock token and returns `{accessToken, player, accountId}`. The same `(provider, subject)` in this process reuses the player. A restart, or a second app process, does not. `accountId` comes from `createNamedAccount` (`opId` is `namedAccountOpId(provider, subject)`, name is `deriveAccountName(subject)`). No row is written to `core.social_identity`. A guest bearer is reused for a new subject; a repeat without a bearer uses the in-memory map. `isGuest` on the access response is false. It is not stored on the player row. With the database off (unit tests), the named-account book is also in this process. With the database on, the account row and `mock:` receipt survive a restart, so the same subject gets the same account id and a new player id.
+- **Why it is like this:** W06-03 proved the token and the HTTP shape (Q-01-22: the port still returns `{playerId, email, isNew}`, and the subject is mapped onto `playerId`). W06-05 adds the named account. The guest link, refresh rotation and `account.created` are W06-06.
+- **Workaround / mitigation:** one process keeps the player and the account together. Later issues replace the map with `core.social_identity`.
+- **To resolve:** W06-06 persists the subject on the guest player and rotates the refresh token.
 - **Found:** 2026-11-02, W06-03
 
 ### BE-32 · Receipt detail URL is rewritten only by Vite
@@ -525,3 +525,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** open the receipt from the Vite app (`http://127.0.0.1:5173/dev/chain/`). The API is available when `NODE_ENV` is not `production`.
 - **To resolve:** add an nginx location that serves `/dev/chain/tx.html` for `/dev/chain/tx` and `/dev/chain/tx/*`, and leave `/v1` on the app proxy. Do not weaken `DevOnlyGuard` unless that production test is changed on purpose.
 - **Found:** 2026-11-02, W06-14
+
+### BE-33 · Named-account collisions skip `-1`, ignore `parent`, and do not sleep
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/account-allocate.ts` (`nextFreeLabel`), `backend/app/src/near/infrastructure/adapters/identity/named-account.db.ts`, `mock-identity.adapter.ts` (`createNamedAccount`)
+- **What happens:** A free label is used as-is. A taken label gets `-2`, then `-3`, never `-1` (`-1` stays the reserved-name suffix from `deriveAccountName`). The search stops after 64 candidates fitted into 32 characters; the next caller gets `NEAR_NAME_TAKEN`. `parent` is not read (colony sub-accounts are W06-08). The write does not go through `MockChainBase.call`, so `MOCK_LATENCY_*` and `MOCK_FAIL_RATE` do not apply. When `databaseEnabled` is false, nothing is inserted into `chain.mock_chain_account`. When it is true, one transaction inserts kind `named` and a `mock:` receipt; a unique clash retries the next suffix or replays the opId (at most 4 extra attempts, then `NEAR_UNAVAILABLE`).
+- **Why it is like this:** W06-05 says `-1` is only for reserved labels, `parent` may be ignored, and the unit-test path must not sleep. Social login is the caller, so a 300–1500 ms mock delay would stall `POST /v1/auth/social`.
+- **Workaround / mitigation:** the in-memory book and the database path share `nextFreeLabel`. Replaying an opId returns the stored account and does not consume a suffix.
+- **To resolve:** W06-08 reads `parent` for colony sub-accounts. W06-25 can add latency to this call if named-account creation should use the mock clock.
+- **Found:** 2026-11-02, W06-05
