@@ -25,8 +25,11 @@ export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'c
  * 3: hidden-ground salt, falloff-ring reclassification, wind-direction table.
  * 4: the hidden subsurface is generated after the landing zones (WE-09); a desert falloff ring keeps the metals 2×2
  *    Flat footprint (WE-18); generation numbers moved to `data/worldgen.ts` (WE-19 / WE-20, same values).
+ * 5: desert returns to pre-W1 continuous wind-carved dune sea + spaced rock landforms; buildable Flat ground is only
+ *    around the pod drop landing zones (wild desert sand is `slope`).
+ * 6-7: desert rockiness restricted to mountains/mesas rising above local dune relief; inner landing rim graded by slopeGradientM.
  */
-export const GEN_VERSION = 4;
+export const GEN_VERSION = 7;
 
 const generators = new Map<string, PlanetGenerator>();
 

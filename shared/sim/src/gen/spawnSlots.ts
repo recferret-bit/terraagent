@@ -225,9 +225,11 @@ function enforceR12AllDeposits(
   slot: SpawnSlot,
   convertedCounts: Map<number, number>,
   protectedTiles: Set<number>,
+  rebalance = true,
 ): void {
   const cfg = spawnCfg(state);
   const terrain = state.grid.layers.terrain as Uint8Array;
+  const prep = state.grid.layers.prep as Uint8Array;
   const deposit = state.grid.layers.deposit as Uint8Array;
   const richness = state.grid.layers.richness as Float32Array;
   const r12Tiles = collectDiskTiles(hex, slot.q, slot.r, cfg.allDepositsRadius, 1);
@@ -246,7 +248,12 @@ function enforceR12AllDeposits(
     ring6to11.sort((a, b) => (terrain[a] === TERRAIN.flat ? 0 : 1) - (terrain[b] === TERRAIN.flat ? 0 : 1) || a - b);
     const chosen = ring6to11.find((idx) => deposit[idx] === DEPOSIT.none && !protectedTiles.has(idx));
     if (chosen !== undefined) {
-      makeTileFlat(state, chosen, convertedCounts);
+      if (rebalance) {
+        makeTileFlat(state, chosen, convertedCounts);
+      } else if (terrain[chosen] !== TERRAIN.flat && terrain[chosen] !== TERRAIN.slope) {
+        terrain[chosen] = TERRAIN.slope;
+        prep[chosen] = PREP.wild;
+      }
       deposit[chosen] = kind;
       richness[chosen] = getDepositRichnessBp(state.meta.seed, chosen, kind, state.meta.planetType);
       protectedTiles.add(chosen);
@@ -322,14 +329,15 @@ export function generateSpawnSlots(
     }
   }
 
+  const doRebalance = opts.rebalance !== false;
   for (const slot of slots) {
     enforceR4Guarantee(state, hex, slot, convertedCounts);
     enforceR8MetalsAnd2x2(state, hex, slot, convertedCounts, reservedTiles, opts.footprintsOut);
-    enforceR12AllDeposits(state, hex, slot, convertedCounts, reservedTiles);
+    enforceR12AllDeposits(state, hex, slot, convertedCounts, reservedTiles, doRebalance);
   }
 
   // Quota planets (temperate / ocean) give back converted tiles elsewhere; relief planets keep their natural mix.
-  if (opts.rebalance !== false) rebalanceGlobalTerrainMix(state, convertedCounts, slotZoneTiles);
+  if (doRebalance) rebalanceGlobalTerrainMix(state, convertedCounts, slotZoneTiles);
   setBlob(state, 'spawnSlots', slots, state.meta.tick);
   return slots;
 }

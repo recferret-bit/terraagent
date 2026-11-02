@@ -63,33 +63,33 @@ const CLASS_STYLES: Record<PlanetKind, Record<number, StyleSpec>> = {
     [HEX_TERRAIN.flat]: [0x567d46, 0x648c51, 1.0, 0.0],
     [HEX_TERRAIN.forest]: [0x2d4c2b, 0x365934, 0.86, 0.0],
     [HEX_TERRAIN.rock]: [0x6b7078, 0x555a63, 0.74, 1.0],
-    [HEX_TERRAIN.slope]: [0x8a795d, 0x78684e, 0.84, 0.48],
-    [HEX_TERRAIN.hole]: [0x3d352e, 0x2b241f, 0.42, 0.35],
+    [HEX_TERRAIN.slope]: [0x8a795d, 0x78684e, 0.84, 0.0],
+    [HEX_TERRAIN.hole]: [0x3d352e, 0x2b241f, 0.42, 0.0],
     [HEX_TERRAIN.shallow]: [0x2b6e78, 0x38858f, 0.88, 0.0],
     [HEX_TERRAIN.deep]: [0x10344a, 0x164663, 0.62, 0.0],
   },
   dune: {
-    [HEX_TERRAIN.flat]: [0xc98a4b, 0xe8c07a, 1.0, 0.0],
-    [HEX_TERRAIN.forest]: [0xb87a40, 0xd8a35d, 0.9, 0.22],
-    [HEX_TERRAIN.rock]: [0x8a5a3c, 0x5e3b26, 0.74, 1.0],
-    [HEX_TERRAIN.slope]: [0xa86f44, 0x915d38, 0.84, 0.48],
-    [HEX_TERRAIN.hole]: [0x5c3b28, 0x432a1c, 0.42, 0.35],
-    [HEX_TERRAIN.shallow]: [0xbd8449, 0xd6a668, 0.9, 0.14],
-    [HEX_TERRAIN.deep]: [0x7d4f2d, 0x633c20, 0.65, 0.4],
+    [HEX_TERRAIN.flat]: [0xe2aa6c, 0xecb97a, 1.0, 0.0],
+    [HEX_TERRAIN.forest]: [0xb87a40, 0xd8a35d, 0.9, 0.0],
+    [HEX_TERRAIN.rock]: [0xb5784a, 0x8c5836, 0.88, 1.0],
+    [HEX_TERRAIN.slope]: [0xd48642, 0xe09650, 0.96, 0.0],
+    [HEX_TERRAIN.hole]: [0x5c3b28, 0x432a1c, 0.42, 0.0],
+    [HEX_TERRAIN.shallow]: [0xbd8449, 0xd6a668, 0.9, 0.0],
+    [HEX_TERRAIN.deep]: [0x7d4f2d, 0x633c20, 0.65, 0.0],
   },
   oceanForest: {
     [HEX_TERRAIN.flat]: [0x4f8a3c, 0x78ab4e, 1.0, 0.0],
     [HEX_TERRAIN.forest]: [0x2b6329, 0x3b7a35, 0.86, 0.0],
     [HEX_TERRAIN.rock]: [0x7a7f86, 0x5c6168, 0.74, 1.0],
-    [HEX_TERRAIN.slope]: [0xb8a574, 0x9e8b5c, 0.86, 0.38],
-    [HEX_TERRAIN.hole]: [0x363b30, 0x262b22, 0.42, 0.35],
+    [HEX_TERRAIN.slope]: [0xb8a574, 0x9e8b5c, 0.86, 0.0],
+    [HEX_TERRAIN.hole]: [0x363b30, 0x262b22, 0.42, 0.0],
     [HEX_TERRAIN.shallow]: [0x1f9fb8, 0x2cb5cf, 0.88, 0.0],
     [HEX_TERRAIN.deep]: [0x0b3f66, 0x114f7d, 0.62, 0.0],
   },
 };
 
-const PREP_PAD_STYLE: StyleSpec = [0x7d8478, 0x8a9185, 0.96, 0.25];
-const DUNE_PREP_PAD_STYLE: StyleSpec = [0x9c8268, 0xad9378, 0.96, 0.25];
+const PREP_PAD_STYLE: StyleSpec = [0x7d8478, 0x8a9185, 0.96, 0.0];
+const DUNE_PREP_PAD_STYLE: StyleSpec = [0x9c8268, 0xad9378, 0.96, 0.0];
 
 function unpackRgb(hex: number): [number, number, number] {
   return [((hex >> 16) & 0xff) / 255, ((hex >> 8) & 0xff) / 255, (hex & 0xff) / 255];
@@ -113,20 +113,21 @@ export function tileStyle(
   let cg = g0 + (g1 - g0) * t;
   let cb = b0 + (b1 - b0) * t;
   let ao = spec[2];
-  let rock = spec[3];
+  const rock = spec[3];
 
+  if (kind === 'dune' && terrain === HEX_TERRAIN.rock) {
+    return { r: cr, g: cg, b: cb, ao, rock };
+  }
   if (deposit === HEX_DEPOSIT.metals) {
     const [dr, dg, db] = unpackRgb(0xc46d29);
     cr = cr * 0.55 + dr * 0.45;
     cg = cg * 0.55 + dg * 0.45;
     cb = cb * 0.55 + db * 0.45;
-    rock = Math.max(rock, 0.65);
   } else if (deposit === HEX_DEPOSIT.minerals) {
     const [dr, dg, db] = unpackRgb(0x38bfd4);
     cr = cr * 0.55 + dr * 0.45;
     cg = cg * 0.55 + dg * 0.45;
     cb = cb * 0.55 + db * 0.45;
-    rock = Math.max(rock, 0.55);
   } else if (deposit === HEX_DEPOSIT.oil) {
     const [dr, dg, db] = unpackRgb(0x231c30);
     cr = cr * 0.5 + dr * 0.5;
@@ -149,7 +150,7 @@ function levelled(raw: number): number {
  * ranges); classes only add cosmetic detail on top and keep water below the water plane. Flat and Prepared ground sit
  * at their own level, so a pad on a raised plateau stays on the plateau.
  */
-function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number): number {
+function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep: number, kind?: PlanetKind): number {
   if (isClearedPrep(prep)) return levelled(raw);
   const h = tileHash01(q, r, 17);
   switch (terrain) {
@@ -158,10 +159,12 @@ function baseTileHeight(q: number, r: number, raw: number, terrain: number, prep
     case HEX_TERRAIN.forest:
       return (raw > 0.01 ? raw : 0.12) + 0.06 * h;
     case HEX_TERRAIN.rock: {
+      if (kind === 'dune' && raw > 0.8) return raw + 0.04 * h;
       const step = Math.round(h * 3) / 3;
       return Math.max(raw, 0.65) + 0.22 * (0.4 + 0.6 * step);
     }
     case HEX_TERRAIN.slope:
+      if (kind === 'dune') return raw;
       return Math.max(raw, 0.32) + 0.16 * h;
     case HEX_TERRAIN.hole:
       return Math.min(raw <= -0.25 ? raw : -0.35, -0.35) - 0.08 * h;
@@ -188,9 +191,10 @@ export function computeEffectiveHeights(radius: number, layers: HexTileLayers): 
     return out;
   }
   const prep = layers.prep;
+  const kind = layers.kind;
   const base = new Float32Array(hx.count);
   for (let i = 0; i < hx.count; i++) {
-    base[i] = baseTileHeight(hx.q[i]!, hx.r[i]!, layers.height[i] ?? 0, terrain[i] ?? 0, prep?.[i] ?? 0);
+    base[i] = baseTileHeight(hx.q[i]!, hx.r[i]!, layers.height[i] ?? 0, terrain[i] ?? 0, prep?.[i] ?? 0, kind);
   }
   for (let i = 0; i < hx.count; i++) {
     const t = terrain[i] ?? 0;
@@ -206,10 +210,25 @@ export function computeEffectiveHeights(radius: number, layers: HexTileLayers): 
       if (j >= 0) { sum += base[j]!; n++; }
     }
     const avg = n > 0 ? sum / n : base[i]!;
-    // Ease slopes towards their neighbours; never clamp: real relief is metres high (D-38).
-    out[i] = 0.65 * base[i]! + 0.35 * avg;
+    // Preserve sharp wind-carved dune crests on `dune`; ease synthetic/quota slopes.
+    const selfW = kind === 'dune' ? 0.88 : 0.65;
+    out[i] = selfW * base[i]! + (1 - selfW) * avg;
   }
   return out;
+}
+
+/** Horizon ambient occlusion from higher neighbouring tiles (mirrors pre-W1 `bakeAO` in `TerrainGrid.ts`). */
+function horizonAO(hx: ReturnType<typeof hexIndex>, i: number, height: ArrayLike<number>): number {
+  const q = hx.q[i]!, r = hx.r[i]!, h0 = height[i]!;
+  let occ = 0;
+  for (const [dq, dr] of HEX_DIRS) {
+    const j = hx.indexOf(q + dq, r + dr);
+    if (j >= 0) {
+      const dh = height[j]! - h0;
+      if (dh > 0.04) occ += Math.min(0.44, dh * 0.32);
+    }
+  }
+  return Math.max(0.44, Math.min(1, 1 - occ * 0.55));
 }
 
 /**
@@ -272,7 +291,7 @@ export function buildChunk(
     if (hasTerrain) {
       const stylePrep = isPrep && startT >= 0 ? HEX_PREP.flat : prepVal;
       const st = tileStyle(q, r, layers.terrain![i] ?? 0, stylePrep, layers.deposit?.[i] ?? 0, layers.kind ?? 'forestRock');
-      aAO[v] = st.ao;
+      aAO[v] = st.ao * horizonAO(hx, i, effHeight);
       aRock[v] = st.rock;
       color[v * 3] = st.r;
       color[v * 3 + 1] = st.g;

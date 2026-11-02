@@ -104,9 +104,12 @@ const HEX_PAD_BLEND_GLSL = /* glsl */ `  float prepFootprint = smoothstep(0.36, 
 const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 {
   float baseLum = max(0.08, dot(uLow, vec3(0.3333)));
-  float detail = clamp(dot(diffuseColor.rgb, vec3(0.3333)) / baseLum, 0.65, 1.35);
+  float detail = clamp(dot(diffuseColor.rgb, vec3(0.3333)) / baseLum, 0.52, 1.42);
   vec3 tileLinear = pow(max(vTileColor, vec3(0.0)), vec3(2.2));
-  diffuseColor.rgb = mix(diffuseColor.rgb, tileLinear * detail, 0.72);
+  float isDune = step(uKind, 0.5);
+  float depTint = clamp(abs(vTileColor.b - vTileColor.r * 0.42) * 2.8, 0.0, 1.0);
+  float tileMix = mix(0.72, mix(0.18, 0.68, depTint), isDune);
+  diffuseColor.rgb = mix(diffuseColor.rgb, tileLinear * detail, tileMix);
   vec2 tp = vLP.xz / ${TILE};                          // tile units
   float hr = tp.y * 1.1547005;                     // 2/sqrt(3)
   vec2 ax = vec2(tp.x - hr * 0.5, hr);             // fractional axial (q, r)
@@ -121,7 +124,8 @@ const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 ${HEX_PAD_BLEND_GLSL}
   float w = max(0.025, fwidth(em) * 0.75);
   float line = 1.0 - smoothstep(w, w * 2.2, em);
-  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.62, line * uEdge);
+  float duneSlopeFade = mix(1.0, mix(1.0 - smoothstep(0.008, 0.04, 1.0 - normalize(vLN).y) * 0.72, 1.0, prepFootprint), isDune);
+  diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.62, line * uEdge * duneSlopeFade);
 }`;
 
 /** Uniforms of the Prepared pad (only the hex terrain draws it, so only its material pays for the textures). */

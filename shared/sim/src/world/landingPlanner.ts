@@ -101,7 +101,7 @@ function searchSite(s: SimState, colony: number, data?: CompiledDataLike): Landi
     const q = hex.q[pick], r = hex.r[pick];
     if (hexDistance(0, 0, q, r) > Math.max(0, s.grid.radius - 6)) continue;
     if (landingBlock(s, colony, q, r, data)) continue;
-    if (terrain[pick] !== TERRAIN.flat || deposit[pick] !== DEPOSIT.none) continue;
+    if ((terrain[pick] !== TERRAIN.flat && terrain[pick] !== TERRAIN.slope) || deposit[pick] !== DEPOSIT.none) continue;
     let rough = 0;
     for (const [dq, dr] of HEX_DIRS) {
       const j = hex.indexOf(q + dq, r + dr);
@@ -109,7 +109,8 @@ function searchSite(s: SimState, colony: number, data?: CompiledDataLike): Landi
     }
     const nearest = bs.reduce((m, b) => Math.min(m, hexDistance(b.q, b.r, q, r)), sep * 4);
     // Spread colonies out (far from everything, capped), prefer level ground, then the planet centre.
-    const score = nearest * 10 - rough * 8 - hexDistance(0, 0, q, r) * 0.1;
+    const flatBonus = terrain[pick] === TERRAIN.flat ? 2 : 0;
+    const score = nearest * 10 + flatBonus - rough * 8 - hexDistance(0, 0, q, r) * 0.1;
     if (!best || score > best.score) best = { q, r, score };
   }
   return best ? { q: best.q, r: best.r, source: 'search' } : null;

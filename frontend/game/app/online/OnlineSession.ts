@@ -262,6 +262,7 @@ export class OnlineSession {
     const [wx, wz] = tileXZ(q, r);
     const wy = this.terrain ? this.terrain.heightAt(wx, wz) : 0;
     this.cam?.focus(new THREE.Vector3(wx, wy, wz), instant);
+    if (this.cam) this.viewport.followShadow(this.cam.target);
   }
 
   private async startBootSequence(guest: GuestBootTarget, opts: OnlineSessionOptions, predict: boolean): Promise<BootAuthResult | null> {

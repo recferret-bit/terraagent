@@ -29,14 +29,14 @@ export default defineTable({
       id: 'desert',
       wave: 'W01',
       stages: ['reliefDesert', 'classifyDesert', 'deposits', 'landing', 'subsurface'],
-      // Relief: dune seas (erg) vs gravel plains (reg), mountain ranges, mesas / buttes.
-      ergScale: 0.006, duneHeightM: 4.5, duneWavelengthM: 16, duneCrossScale: 0.018,
-      rangeScale: 0.004, rangeThreshold: 0.9, rangeHeightM: 13,
-      mesaChancePerSector: 0.07, mesaRadiusMin: 3, mesaRadiusMax: 7, mesaHeightMinM: 4.5, mesaHeightMaxM: 9,
-      // Classification: gradient (m per neighbour) above which sand is a dune face / scree (`slope`).
-      slopeGradientM: 0.8, rockHeightM: 2.4, holeThreshold: 0.2,
+      // Relief: continuous wind-carved dune sea (primary + oblique secondary ridges), sandstone ridges, mesas / buttes.
+      ergScale: 0.012, duneHeightM: 5.2, duneWavelengthM: 15, duneCrossScale: 0.018,
+      rangeScale: 0.0045, rangeThreshold: 0.91, rangeHeightM: 12,
+      mesaChancePerSector: 0.06, mesaRadiusMin: 3.5, mesaRadiusMax: 6.5, mesaHeightMinM: 6, mesaHeightMaxM: 11,
+      // Classification: wild sand is `slope` (dunes, unbuildable until terraformed); `flat` is only around pod drop zones.
+      slopeGradientM: 0.8, rockHeightM: 2.4, holeThreshold: 0.18,
       metalsRichnessModBp: 11500, mineralsRichnessModBp: 11500, // desert Metals / Minerals +15 %
-      landingRadius: 7, landingFalloff: 5, clearLandingZone: true,
+      landingRadius: 5.2, landingFalloff: 2.8, clearLandingZone: true,
       subRock: 0.32, subSlope: 0.1, subForest: 0.12, subFlat: 0.03, subRichnessBoostBp: 12500,
     },
     {

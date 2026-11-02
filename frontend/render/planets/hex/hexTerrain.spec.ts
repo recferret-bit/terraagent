@@ -282,10 +282,31 @@ describe('W01-20: Selected planet biome look sync on HexTerrain', () => {
     expect(duneTerrain.water.waterTriangleCount).toBe(0);
     expect(duneTerrain.props.counts().pine).toBe(0);
     expect(duneTerrain.props.counts().boulder).toBeGreaterThan(0);
+    expect(duneTerrain.props.counts().spire).toBe(0);
+    for (const chunkMesh of duneTerrain.chunks) {
+      expect(chunkMesh.castShadow).toBe(true);
+      expect(chunkMesh.receiveShadow).toBe(true);
+      expect(chunkMesh.customDepthMaterial).toBeInstanceOf(THREE.MeshDepthMaterial);
+    }
+    const firstChunk = duneTerrain.chunks[0]!;
+    expect(duneTerrain.material.shadowSide).toBe(THREE.DoubleSide);
+    const depthSh = {
+      uniforms: {},
+      vertexShader: '#include <common>\nvoid main() {\n#include <begin_vertex>\n}',
+      fragmentShader: '#include <common>\nvoid main() {\n#include <clipping_planes_fragment>\n}',
+    } as unknown as THREE.WebGLProgramParametersWithUniforms;
+    (firstChunk.customDepthMaterial as THREE.MeshDepthMaterial).onBeforeCompile(depthSh, null as unknown as THREE.WebGLRenderer);
+    expect(depthSh.vertexShader).toContain('transformed.y -= 0.08;');
+    expect(depthSh.fragmentShader).toContain('if (vRock < 0.001) discard;');
+    expect(scatterTileProps(0, 0, 0, HEX_TERRAIN.rock, HEX_PREP.wild, HEX_DEPOSIT.metals, () => 0, 'dune')).toEqual([]);
+    expect(scatterTileProps(0, 0, 0, HEX_TERRAIN.rock, HEX_PREP.wild, HEX_DEPOSIT.minerals, () => 0, 'dune')).toEqual([]);
+    expect(scatterTileProps(0, 0, 0, HEX_TERRAIN.rock, HEX_PREP.wild, HEX_DEPOSIT.oil, () => 0, 'dune')).toEqual([]);
 
     const flatStyle = tileStyle(0, 0, HEX_TERRAIN.flat, HEX_PREP.flat, HEX_DEPOSIT.none, 'dune');
     expect(flatStyle.r).toBeGreaterThan(flatStyle.g);
     expect(flatStyle.g).toBeGreaterThan(flatStyle.b);
+    const slopeStyle = tileStyle(0, 0, HEX_TERRAIN.slope, HEX_PREP.wild, HEX_DEPOSIT.none, 'dune');
+    expect(slopeStyle.rock).toBe(0);
     const basinStyle = tileStyle(0, 0, HEX_TERRAIN.deep, HEX_PREP.wild, HEX_DEPOSIT.none, 'dune');
     expect(basinStyle.r).toBeGreaterThan(basinStyle.b);
     duneTerrain.dispose();

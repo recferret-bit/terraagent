@@ -36,6 +36,7 @@ function paint(g: G, color: THREE.Color, jitter = 0, topBoost = 0, seed = 1): G 
     }
   }
   out.setAttribute('color', new THREE.BufferAttribute(col, 3));
+  out.computeVertexNormals();
   return out;
 }
 function xf(g: G, pos: [number, number, number], scale: [number, number, number] = [1, 1, 1], rot: [number, number, number] = [0, 0, 0]): G {
@@ -102,38 +103,37 @@ export function makePineGeo(a: THREE.Color, b: THREE.Color): G {
   return done(parts);
 }
 
-/** Low-poly faceted boulder. Flat bottom, noisy faceted top. */
+/** Low-poly faceted boulder. Deep base skirt below y=0 for sloped ground contact, noisy faceted top. */
 export function makeBoulderGeo(seed: number, tint = new THREE.Color(1, 1, 1)): G {
   const nz = new Noise2(seed);
   const g = blob(1, 1, nz, 0.38, seed * 1.7);
   const p = g.getAttribute('position');
-  for (let i = 0; i < p.count; i++) if (p.getY(i) < -0.35) p.setY(i, -0.35 + (p.getY(i) + 0.35) * 0.15);
+  for (let i = 0; i < p.count; i++) {
+    const y = p.getY(i);
+    if (y < -0.52) p.setY(i, -0.52 + (y + 0.52) * 0.15);
+    else if (y > 0) p.setY(i, y * 1.14);
+  }
   g.computeVertexNormals();
   return paint(g, tint, 0.1, 0.3, seed);
 }
 
-/** Tall rock spire / obsidian shard: tapered hexagonal prism with kinks. */
+/** Tall rock spire / obsidian shard: tapered hexagonal prism with kinks and underground skirt (-0.26..+1.12). */
 export function makeSpireGeo(seed: number, tint = new THREE.Color(1, 1, 1)): G {
   const nz = new Noise2(seed);
-  const g = new THREE.CylinderGeometry(0.1, 0.85, 1, 6, 5);
-  g.translate(0, 0.5, 0);
+  const g = new THREE.CylinderGeometry(0.32, 0.90, 1.38, 6, 6);
+  g.translate(0, 0.43, 0);
   const p = g.getAttribute('position');
   for (let i = 0; i < p.count; i++) {
     const y = p.getY(i);
+    const yPos = Math.max(0, y);
     const k = 1 + 0.25 * nz.n(p.getX(i) * 3 + 5, y * 3 + p.getZ(i) * 3);
-    p.setXYZ(i, p.getX(i) * k + y * y * 0.25 * nz.n(seed, 1), y, p.getZ(i) * k + y * y * 0.2 * nz.n(seed, 2));
+    p.setXYZ(i, p.getX(i) * k + yPos * yPos * 0.25 * nz.n(seed, 1), y, p.getZ(i) * k + yPos * yPos * 0.2 * nz.n(seed, 2));
   }
   g.computeVertexNormals();
   return paint(g, tint, 0.12, 0.45, seed);
 }
 
-export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubleSided = false): THREE.MeshStandardMaterial {
-  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, flatShading: true, side: doubleSided ? THREE.DoubleSide : THREE.FrontSide });
-  m.onBeforeCompile = (sh) => {
-    sh.uniforms.uTime = timeU; sh.uniforms.uSway = { value: sway };
-    sh.vertexShader = sh.vertexShader
-      .replace('#include <common>', '#include <common>\nuniform float uTime, uSway;')
-      .replace('#include <begin_vertex>', `#include <begin_vertex>
+const FOLIAGE_SWAY_BEGIN = /* glsl */ `#include <begin_vertex>
 #ifdef USE_INSTANCING
   vec3 ip = vec3(instanceMatrix[3][0], 0.0, instanceMatrix[3][2]);
 #else
@@ -141,14 +141,32 @@ export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubl
 #endif
   float swk = max(position.y, 0.0) * 0.03 * uSway;
   transformed.x += sin(uTime*1.5 + ip.x*0.7 + ip.z*0.5) * swk;
-  transformed.z += cos(uTime*1.25 + ip.z*0.6 + ip.x*0.3) * swk * 0.7;`);
+  transformed.z += cos(uTime*1.25 + ip.z*0.6 + ip.x*0.3) * swk * 0.7;`;
+
+export function createFoliageMaterial(timeU: THREE.IUniform, sway: number, doubleSided = false): THREE.MeshStandardMaterial {
+  const side = doubleSided ? THREE.DoubleSide : THREE.FrontSide;
+  const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: 0.82, metalness: 0, flatShading: true, side });
+  const swayU = { value: sway };
+  const patchSway = (sh: THREE.WebGLProgramParametersWithUniforms) => {
+    sh.uniforms.uTime = timeU; sh.uniforms.uSway = swayU;
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nuniform float uTime, uSway;')
+      .replace('#include <begin_vertex>', FOLIAGE_SWAY_BEGIN);
   };
+  m.onBeforeCompile = patchSway;
+  const depthMat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side });
+  depthMat.onBeforeCompile = patchSway;
+  m.userData.depthMaterial = depthMat;
+  const origDispose = m.dispose.bind(m);
+  m.dispose = () => { depthMat.dispose(); origDispose(); };
   return m;
 }
 
 /** Rock material: world-space grain + ground-up darkening, faceted, works with instanceColor. */
 export function createRockMaterial(opts: { rough?: number; metal?: number; flat?: boolean }): THREE.MeshStandardMaterial {
   const m = new THREE.MeshStandardMaterial({ vertexColors: true, roughness: opts.rough ?? 0.9, metalness: opts.metal ?? 0, flatShading: opts.flat ?? true });
+  m.shadowSide = THREE.DoubleSide;
+  m.userData.receiveShadow = false;
   m.onBeforeCompile = (sh) => {
     sh.vertexShader = sh.vertexShader
       .replace('#include <common>', '#include <common>\nvarying vec3 vRW;')
@@ -190,6 +208,11 @@ export function buildInstanced(geo: G, mat: THREE.Material, places: Place[], opt
   });
   im.instanceMatrix.needsUpdate = true;
   if (im.instanceColor) im.instanceColor.needsUpdate = true;
-  im.castShadow = true; im.receiveShadow = true;
+  if (mat.userData?.depthMaterial) im.customDepthMaterial = mat.userData.depthMaterial as THREE.Material;
+  if (places.length > 0) {
+    im.computeBoundingBox();
+    im.computeBoundingSphere();
+  }
+  im.castShadow = true; im.receiveShadow = (mat.userData?.receiveShadow as boolean | undefined) ?? true;
   return im;
 }

@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { PlanetSpec, PlanetKind } from './PlanetSpec';
 import type { ColonyViewport } from '../core/createColonyViewport';
+import { computeSunOffset, syncViewportShadow } from '../core/shadowConfig';
 
 /** Sun direction (towards the sun) per planet; the ColonyViewport shadow follower keeps the key light on its own offset. */
 const SUN_DIR: Record<PlanetKind, [number, number, number]> = {
@@ -49,6 +50,7 @@ export function applyPlanetLook(viewport: ColonyViewport, spec: PlanetSpec): voi
   const m = dome.material as THREE.ShaderMaterial;
   m.uniforms.uTop.value.set(spec.sky.skyColor);
   m.uniforms.uHorizon.value.set(spec.sky.fogColor);
-  m.uniforms.uSun.value.set(...sd);
+  computeSunOffset(m.uniforms.uSun.value as THREE.Vector3);
   m.uniforms.uSunCol.value.set(spec.sky.sunColor).multiplyScalar(0.6);
+  syncViewportShadow(viewport, spec.sky.sunColor);
 }

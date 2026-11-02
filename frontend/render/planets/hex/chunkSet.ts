@@ -8,7 +8,33 @@ import { scatterChunkProps, type HexPropScatter } from './chunkPropScatter';
  * hold those tiles as border vertices (3). The axial box of this half-size covers every tile within that distance. */
 const DIRTY_REACH = 3;
 
-function buildChunkMesh(radius: number, def: ChunkDef, layers: HexTileLayers, effHeights: ArrayLike<number>, material: THREE.Material): THREE.Mesh {
+function createTerrainDepthMaterial(): THREE.MeshDepthMaterial {
+  const mat = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking, side: THREE.DoubleSide });
+  mat.onBeforeCompile = (sh) => {
+    sh.vertexShader = sh.vertexShader
+      .replace('#include <common>', '#include <common>\nattribute float aRock;\nvarying float vRock;')
+      .replace(
+        '#include <begin_vertex>',
+        '#include <begin_vertex>\nvRock = aRock;\ntransformed.y -= 0.08;',
+      );
+    sh.fragmentShader = sh.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying float vRock;')
+      .replace(
+        '#include <clipping_planes_fragment>',
+        '#include <clipping_planes_fragment>\nif (vRock < 0.001) discard;',
+      );
+  };
+  return mat;
+}
+
+function buildChunkMesh(
+  radius: number,
+  def: ChunkDef,
+  layers: HexTileLayers,
+  effHeights: ArrayLike<number>,
+  material: THREE.Material,
+  depthMaterial: THREE.MeshDepthMaterial,
+): THREE.Mesh {
   const b = buildChunk(radius, def.tiles, layers, undefined, effHeights);
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(b.position, 3));
@@ -24,6 +50,8 @@ function buildChunkMesh(radius: number, def: ChunkDef, layers: HexTileLayers, ef
   const mesh = new THREE.Mesh(geo, material);
   mesh.name = `hexChunk ${def.cq},${def.cr}`;
   mesh.receiveShadow = true;
+  mesh.castShadow = true;
+  mesh.customDepthMaterial = depthMaterial;
   return mesh;
 }
 
@@ -59,11 +87,12 @@ export function createHexChunkSet(
   const defs = chunkLayout(radius);
   const byKey = new Map(defs.map((d) => [`${d.cq},${d.cr}`, d]));
   const meshes = new Map<string, THREE.Mesh>();
+  const depthMaterial = createTerrainDepthMaterial();
 
   const place = (k: string, layers: HexTileLayers, effHeights: ArrayLike<number>) => {
     const def = byKey.get(k)!, old = meshes.get(k);
     if (old) { parent.remove(old); old.geometry.dispose(); }
-    const m = buildChunkMesh(radius, def, layers, effHeights, material);
+    const m = buildChunkMesh(radius, def, layers, effHeights, material, depthMaterial);
     meshes.set(k, m);
     parent.add(m);
     props.setChunk(k, scatterChunkProps(radius, def.tiles, layers, heightAt));
@@ -79,6 +108,7 @@ export function createHexChunkSet(
     dispose() {
       for (const m of meshes.values()) { m.geometry.dispose(); m.removeFromParent(); }
       meshes.clear();
+      depthMaterial.dispose();
     },
   };
 }

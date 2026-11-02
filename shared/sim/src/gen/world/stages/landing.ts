@@ -1,4 +1,4 @@
-import { HEX_DIRS, hexDistance } from '../../../grid/hex';
+import { hexDistance } from '../../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../../grid/layers';
 import { generateSpawnSlots, type SpawnSlot } from '../../spawnSlots';
 import { ensureStarterHubSpace } from '../../starterSpace';
@@ -42,7 +42,8 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, zone: ZoneOpts): void 
       if (d <= outer) tiles.push({ i, d });
     }
   }
-  const level = Math.fround(Math.max(0.1, quantile(tiles.filter((t) => t.d <= radius && !isWater(terrain[t.i])).map((t) => height[t.i]), clearZone ? 0.2 : 0.5)));
+  const rawLevel = quantile(tiles.filter((t) => t.d <= radius && !isWater(terrain[t.i])).map((t) => height[t.i]), clearZone ? 0.2 : 0.5);
+  const level = Math.fround(clearZone ? Math.min(1.2, Math.max(0.15, rawLevel)) : Math.max(0.1, rawLevel));
   for (const { i, d } of tiles) {
     if (isWater(terrain[i])) continue;
     if (d <= radius) {
@@ -53,30 +54,48 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, zone: ZoneOpts): void 
       }
       continue;
     }
+    if (clearZone && keep.has(i)) {
+      height[i] = level;
+      terrain[i] = TERRAIN.flat;
+      prep[i] = PREP.flat;
+      continue;
+    }
     const t = smoothstep(radius, outer, d);
     height[i] = Math.fround(level + (height[i] - level) * t);
-    if (clearZone && t < 0.45 && terrain[i] === TERRAIN.rock && deposit[i] === DEPOSIT.none && !keep.has(i)) terrain[i] = TERRAIN.slope;
+    if (clearZone && t < 0.65 && terrain[i] === TERRAIN.rock && deposit[i] === DEPOSIT.none) terrain[i] = TERRAIN.slope;
   }
-  // The metals guarantee's 2×2 Flat footprint (up to 8 tiles out, so in the ring) keeps its class (WE-18).
-  if (clearZone) reclassifyRing(ctx, tiles.filter((t) => t.d > radius && !keep.has(t.i)).map((t) => t.i));
+  // Outside the levelled pod-drop disc, wild desert stays `slope` (dunes) except for `keep` and a narrow gentle rim (`slopeGradientM`).
+  if (clearZone) reclassifyRing(ctx, slot, radius, tiles.filter((t) => t.d > radius && !keep.has(t.i)));
 }
 
-/** The falloff ring's heights changed after classification: dune faces there follow the new gradient (relief planets). */
-function reclassifyRing(ctx: WorldGenContext, ring: number[]): void {
+/**
+ * Reclassifies the falloff ring around a pod-drop zone: the inner rim (`d <= radius + 1.85`, hexDistance <= 8)
+ * whose per-step gradient is under `slopeGradientM` stays `flat` (so a 3×3 straddling the rim is rejected as `uneven`
+ * by `MAX_FOOTPRINT_SPREAD_M`), while steeper and outer falloff tiles stay wild dunes (`slope`).
+ */
+function reclassifyRing(ctx: WorldGenContext, slot: SpawnSlot, radius: number, ring: Array<{ i: number; d: number }>): void {
   const L = ctx.state.grid.layers;
   const terrain = L.terrain as Uint8Array, prep = L.prep as Uint8Array, height = L.height as Float32Array;
-  const slopeG = ctx.num('slopeGradientM', 0.85);
-  for (const i of ring) {
+  const slopeG = ctx.num('slopeGradientM', 0.8);
+  const { q, r } = ctx.hex;
+  for (const { i, d } of ring) {
     if (terrain[i] !== TERRAIN.flat && terrain[i] !== TERRAIN.slope) continue;
-    let grad = 0;
-    for (const [dq, dr] of HEX_DIRS) {
-      const j = ctx.hex.indexOf(ctx.hex.q[i] + dq, ctx.hex.r[i] + dr);
-      if (j >= 0) grad = Math.max(grad, Math.abs(height[j] - height[i]));
+    const qi = q[i], ri = r[i];
+    const inInnerRim = d <= radius + 1.85 && hexDistance(slot.q, slot.r, qi, ri) <= 8;
+    if (!inInnerRim) {
+      terrain[i] = TERRAIN.slope;
+      prep[i] = PREP.wild;
+      continue;
     }
-    const next = grad > slopeG ? TERRAIN.slope : TERRAIN.flat;
-    if (next === terrain[i]) continue;
-    terrain[i] = next;
-    prep[i] = next === TERRAIN.flat ? PREP.flat : PREP.wild;
+    const h0 = height[i];
+    let grad = 0;
+    for (const [dq, dr] of [[1, 0], [-1, 0], [0, 1], [0, -1], [1, -1], [-1, 1]] as const) {
+      const j = ctx.hex.indexOf(qi + dq, ri + dr);
+      if (j >= 0) grad = Math.max(grad, Math.abs(h0 - height[j]));
+    }
+    const flat = grad <= slopeG;
+    terrain[i] = flat ? TERRAIN.flat : TERRAIN.slope;
+    prep[i] = flat ? PREP.flat : PREP.wild;
   }
 }
 

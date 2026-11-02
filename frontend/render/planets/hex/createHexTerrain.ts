@@ -109,7 +109,8 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   let tiles = opts.tiles;
   let elapsedTime = 0;
   const prep = new PrepTransitions(hx.count, tiles.prep);
-  let effHeights = computeEffectiveHeights(radius, tiles);
+  const chunkLayers = (): HexTileLayers => ({ ...tiles, prepStartTime: prep.startTimes, kind: look.kind });
+  let effHeights = computeEffectiveHeights(radius, chunkLayers());
   const ext = planetExtent(radius);
   const uniforms = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, WIND), ...foundationPadUniforms() };
   const edge: THREE.IUniform<number> = { value: opts.edges ?? 0.55 };
@@ -121,7 +122,6 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const props = createHexPropScatter(look);
   const borders = createBorderController(radius, tiles, effHeights, opts.colorBlindMode ?? globalColorBlindMode, opts.colonyColors);
   const chunks = createHexChunkSet(radius, group, material, props, heightAt);
-  const chunkLayers = (): HexTileLayers => ({ ...tiles, prepStartTime: prep.startTimes, kind: look.kind });
 
   chunks.rebuild(chunkLayers(), effHeights);
   group.add(water.mesh, props.group, borders.mesh);
@@ -142,8 +142,9 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       prep.sync(tiles.prep, elapsedTime);
       const changed = resolved.changed;
       if (!changed || changed.length > 0) {
-        effHeights = computeEffectiveHeights(radius, tiles);
-        chunks.rebuild(chunkLayers(), effHeights, changed);
+        const layers = chunkLayers();
+        effHeights = computeEffectiveHeights(radius, layers);
+        chunks.rebuild(layers, effHeights, changed);
         water.update(tiles, changed);
       }
       borders.rebuild(tiles, effHeights);

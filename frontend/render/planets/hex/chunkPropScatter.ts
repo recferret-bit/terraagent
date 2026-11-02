@@ -123,8 +123,8 @@ export function scatterTileProps(
           out.push(makeInstance('pine', q, r, tileIndex, cx, cz, heightAt, k, count, 200, 0.26, 0.48));
         }
       }
-    } else if (terrain === HEX_TERRAIN.rock) {
-      const count = 2 + (tileHashU32(q, r, 303) % 2); // 2..3 boulders/spires
+    } else if (terrain === HEX_TERRAIN.rock && kind !== 'dune') {
+      const count = 2 + (tileHashU32(q, r, 303) % 2); // 2..3 boulders/spires on non-dune rock
       for (let k = 0; k < count; k++) {
         const propKind: PropKind = k === count - 1 ? 'spire' : 'boulder';
         out.push(makeInstance(propKind, q, r, tileIndex, cx, cz, heightAt, k, count, 400, 0.24, 0.44));
@@ -133,6 +133,7 @@ export function scatterTileProps(
   }
 
   if (deposit === HEX_DEPOSIT.metals || deposit === HEX_DEPOSIT.minerals || deposit === HEX_DEPOSIT.oil) {
+    if (kind === 'dune' && terrain === HEX_TERRAIN.rock) return out;
     const depKind: PropKind =
       deposit === HEX_DEPOSIT.metals ? 'metals' : deposit === HEX_DEPOSIT.minerals ? 'minerals' : 'oil';
     const depCount = 2 + (tileHashU32(q, r, 707) % 2); // 2..3 deposit nodes
@@ -185,11 +186,11 @@ const jitterTint = (amt: number, hueShift = 0) => (rv: number, c: THREE.Color) =
 
 const INST_OPTS: Record<PropKind, InstOpts> = {
   pine: { sx: [0.32, 0.52], sy: [0.36, 0.68], sink: 0.08, tilt: 0.06, tint: jitterTint(0.18, 0.12) },
-  boulder: { sx: [0.28, 0.56], sy: [0.22, 0.44], sink: 0.1, tilt: 0.32, tint: jitterTint(0.22) },
-  spire: { sx: [0.26, 0.48], sy: [0.65, 1.35], sink: 0.04, tilt: 0.14, tint: jitterTint(0.2) },
-  metals: { sx: [0.26, 0.44], sy: [0.24, 0.42], sink: 0.08, tilt: 0.28, tint: jitterTint(0.15, 0.08) },
-  minerals: { sx: [0.22, 0.38], sy: [0.55, 1.1], sink: 0.03, tilt: 0.22, tint: jitterTint(0.15, -0.08) },
-  oil: { sx: [0.3, 0.5], sy: [0.1, 0.2], sink: 0.06, tilt: 0.1, tint: jitterTint(0.12) },
+  boulder: { sx: [0.34, 0.60], sy: [0.42, 0.68], sink: 0.06, tilt: 0.20, tint: jitterTint(0.22) },
+  spire: { sx: [0.32, 0.52], sy: [0.74, 1.38], sink: 0.10, tilt: 0.12, tint: jitterTint(0.2) },
+  metals: { sx: [0.32, 0.50], sy: [0.44, 0.68], sink: 0.06, tilt: 0.18, tint: jitterTint(0.15, 0.08) },
+  minerals: { sx: [0.32, 0.50], sy: [0.78, 1.32], sink: 0.10, tilt: 0.12, tint: jitterTint(0.15, -0.08) },
+  oil: { sx: [0.32, 0.50], sy: [0.36, 0.54], sink: 0.05, tilt: 0.12, tint: jitterTint(0.12) },
 };
 
 const sameInstance = (a: TilePropInstance, b: TilePropInstance) =>

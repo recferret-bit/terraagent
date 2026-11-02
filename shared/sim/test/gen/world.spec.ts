@@ -34,16 +34,17 @@ describe('world generation orchestrator (D-38)', () => {
     expect(snapshot(a)).toEqual(snapshot(b));
   });
 
-  it('desert: real relief in metres (dunes, mountains, mesas), no forest or water, dune faces and rock present', () => {
+  it('desert: real relief in metres (dunes, mountains, mesas), no forest or water, dunes dominate wild ground and Flat is only around pod drop zones', () => {
     for (const seed of ['golden-1', 'dune-2', 'dune-3']) {
       const s = createPlanet({ id: 'p', seed, type: 'temperate', planetType: 'desert', radius: 56 });
       const h = s.grid.layers.height as Float32Array;
       expect(Math.max(...h)).toBeGreaterThan(5);
       expect(share(s, TERRAIN.forest) + share(s, TERRAIN.shallow) + share(s, TERRAIN.deep)).toBe(0);
-      expect(share(s, TERRAIN.slope)).toBeGreaterThan(0.04);
+      expect(share(s, TERRAIN.slope)).toBeGreaterThan(0.6);
       expect(share(s, TERRAIN.rock)).toBeGreaterThan(0.03);
       expect(share(s, TERRAIN.rock)).toBeLessThan(0.45);
-      expect(share(s, TERRAIN.flat)).toBeGreaterThan(0.3);
+      expect(share(s, TERRAIN.flat)).toBeGreaterThan(0.05);
+      expect(share(s, TERRAIN.flat)).toBeLessThan(0.15);
     }
   });
 
@@ -53,20 +54,27 @@ describe('world generation orchestrator (D-38)', () => {
         const s = createPlanet({ id: 'p', seed: `zone-${planetType}-${k}`, type: 'temperate', planetType, radius: 56 });
         const hex = hexIndex(s.grid.radius);
         const world = placementWorldFromState(s);
-        for (const slot of getSpawnSlots(s)) {
+        const slots = getSpawnSlots(s);
+        for (const slot of slots) {
           const site = findPlacementSite(world, { colonyId: 0, q: slot.q, r: slot.r, building: 'commandHub', requireBuilder: false }, 3);
           expect(site, `${planetType} ${k} slot ${slot.q},${slot.r}`).not.toBeNull();
           if (planetType !== 'desert') continue;
           const zone: number[] = [];
-          // The zone is a round disc of `landingRadius` (7) tiles: check every tile within 6.5 tile spacings.
+          // The zone is a round disc of `landingRadius` (5.2) tiles: check every tile within 4.8 tile spacings.
           const [cx, cy] = axialToPlane(slot.q, slot.r);
           for (let i = 0; i < hex.count; i++) {
             const [x, y] = axialToPlane(hex.q[i], hex.r[i]);
-            if (hexDistance(slot.q, slot.r, hex.q[i], hex.r[i]) <= 8 && Math.hypot(x - cx, y - cy) <= 6.5) zone.push(i);
+            if (hexDistance(slot.q, slot.r, hex.q[i], hex.r[i]) <= 6 && Math.hypot(x - cx, y - cy) <= 4.8) zone.push(i);
           }
           const hs = zone.map((i) => s.grid.layers.height[i]);
           expect(Math.max(...hs) - Math.min(...hs)).toBeLessThan(1e-6); // one level, like terraformed ground
           expect(zone.every((i) => s.grid.layers.terrain[i] === TERRAIN.flat)).toBe(true);
+        }
+        if (planetType === 'desert') {
+          for (let i = 0; i < hex.count; i++) {
+            const farFromAllSlots = slots.every((sl) => hexDistance(sl.q, sl.r, hex.q[i], hex.r[i]) > 8);
+            if (farFromAllSlots) expect(s.grid.layers.terrain[i]).not.toBe(TERRAIN.flat);
+          }
         }
       }
     }
@@ -115,6 +123,6 @@ describe('generator fingerprint (bump GEN_VERSION when this changes)', () => {
   it('one planet per profile: pinned summary of the generated ground and spawn slots for GEN_VERSION', () => {
     const got = { genVersion: GEN_VERSION, desert: fingerprint('desert', 'golden-1'), temperate: fingerprint('temperate', 'golden-2'), ocean: fingerprint('ocean', 'golden-3') };
     // If this fails after a deliberate generator change: bump GEN_VERSION in gen/generators.ts, then update the values.
-    expect(got).toEqual({ genVersion: 4, desert: 'fddb5b5d', temperate: '3f6d4840', ocean: 'edb4c709' });
+    expect(got).toEqual({ genVersion: 7, desert: '95e1333f', temperate: '3f6d4840', ocean: 'edb4c709' });
   });
 });

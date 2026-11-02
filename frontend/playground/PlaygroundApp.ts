@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
+import { onShadowChange, setShadow } from '@terra/render/core/shadowConfig';
 import { initPixelDialog } from '@terra/render/ui/pixelDialog';
 import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { ArchetypeCatalog, type ArchetypeCategory } from '@terra/render/kitbash';
@@ -77,6 +78,7 @@ export class PlaygroundApp {
     this.toolbar.syncToggles();
     initPixelDialog();
     onPixelArtChange((on) => { this.state.pixel = on; this.toolbar.syncToggles(); syncURL(this.state); });
+    onShadowChange((on) => { this.state.shadows = on; this.toolbar.syncToggles(); syncURL(this.state); });
     this.setView(state.view, { instant: true });
     this.frame();
   }
@@ -201,9 +203,7 @@ export class PlaygroundApp {
   }
 
   private applyShadows() {
-    const vp = this.viewport, on = this.state.shadows;
-    vp.sun.castShadow = on; vp.renderer.shadowMap.enabled = on;
-    vp.scene.traverse((o) => { const m = (o as THREE.Mesh).material as THREE.Material | undefined; if (m) m.needsUpdate = true; });
+    setShadow(this.state.shadows);
   }
 
   private contactSheet(): string {

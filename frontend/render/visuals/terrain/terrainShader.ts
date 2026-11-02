@@ -36,24 +36,26 @@ vec3 strataRock(vec2 p, float y, vec3 rock, vec3 dark, vec3 light){
 
 /** Per-kind ground colouring (writes `col`, `gRough`; reads the shared locals declared in COLOR_PRE). */
 const KIND_DUNE = /* glsl */ `    // ---- dune: wind-carved sand, rippled
-    float ht = smoothstep(-0.5, 4.5, y);
-    col = mix(uLow*0.8, uHigh*1.05, clamp(ht*0.9 + 0.3*nL + 0.12*n1 - 0.1, 0.0, 1.0));
+    float ht = smoothstep(0.2, 4.8, y);
+    col = mix(uLow*0.76, uHigh*1.08, clamp(ht*0.92 + 0.28*nL + 0.12*n1 - 0.08, 0.0, 1.0));
     float ph = dot(p,uWind)*2.7 + 2.4*vnoise(p*0.25) + 1.6*nL;
     float flatF = 1.0 - smoothstep(0.12,0.45,sl);
-    gBump += -vec3(uWind.x,0.0,uWind.y)*cos(ph)*0.24*flatF;
-    col *= 1.0 + 0.06*sin(ph)*flatF;
+    gBump += -vec3(uWind.x,0.0,uWind.y)*cos(ph)*0.32*flatF;
+    col *= 1.0 + 0.09*sin(ph)*flatF;
     col = mix(col, uAccent, smoothstep(0.55,0.8,vnoise(p*0.09+3.0))*0.18);
-    float crest = smoothstep(0.1,0.3,sl)*(1.0-rockMask);
-    col = mix(col, uLow*0.85, crest*0.3);
+    float duneSlope = smoothstep(0.012, 0.085, sl) * (1.0 - smoothstep(0.08, 0.35, vRock));
+    float leeward = clamp(dot(N.xz, uWind) * 3.2, -1.0, 1.0);
+    col = mix(col, uHigh * 1.14, duneSlope * clamp(-leeward, 0.0, 1.0) * 0.32);
+    col = mix(col, uLow * 0.72, duneSlope * (0.35 + 0.65 * clamp(leeward, 0.0, 1.0)) * 0.48);
     // scree apron: gravel speckles of the cliff rock scattered over the sand below steep faces
     // bedrock only where the mesa mask says so — steep dune slip faces stay sand
     // noise-broken mask so the rock/sand boundary is ragged rather than following triangle edges
-    float rk = vRock < 0.0 ? smoothstep(0.52, 0.75, sl) : clamp(vRock + (vnoise(p * 1.7) - 0.5) * 0.35 + (vnoise(p * 5.0) - 0.5) * 0.12, 0.0, 1.0);
-    float scree = smoothstep(0.05, 0.6, rk) * (1.0 - smoothstep(0.75, 0.95, rk)) * smoothstep(0.04, 0.14, sl); // aprons only, never on flat tops
+    float rk = vRock < 0.0 ? smoothstep(0.52, 0.75, sl) : clamp(vRock + ((vnoise(p * 1.7) - 0.5) * 0.24 + (vnoise(p * 5.0) - 0.5) * 0.08) * smoothstep(0.01, 0.25, vRock), 0.0, 1.0);
+    float scree = smoothstep(0.04, 0.28, rk) * (1.0 - smoothstep(0.28, 0.52, rk)) * smoothstep(0.04, 0.14, sl); // aprons only, never on flat tops or sand dunes
     float pebble = smoothstep(0.62, 0.8, vnoise(p * 6.5) * 0.7 + vnoise(p * 17.0) * 0.45);
-    col = mix(col, mix(rockCol, uRockDark, 0.35), scree * pebble * 0.8);
+    col = mix(col, mix(rockCol, uRockDark, 0.35), scree * pebble * 0.55);
     col = mix(col, uLow * 0.92, scree * 0.25);
-    float cliff = smoothstep(0.62, 0.9, rk) * smoothstep(0.03, 0.12, sl);   // ledges stay rock too; only flat tops get the cap
+    float cliff = smoothstep(0.18, 0.42, rk) * smoothstep(0.03, 0.12, sl);   // ledges and full cliff walls stay rock; only flat tops get the cap
     col = mix(col, rockCol, cliff);
     // caprock: flat mesa tops get a darker, wind-polished crust
     float cap = (1.0 - smoothstep(0.06, 0.2, sl)) * smoothstep(0.75, 0.98, vRock); // un-noised mask → no speckle on tops
@@ -113,6 +115,7 @@ const COLOR_POST = /* glsl */ `  col *= 0.9 + 0.2*n2;
 }`;
 
 const FRAG_COMMON = `#include <common>
+#define TA_TERRAIN_SHADER 1
 ${FRAG_DECLS}${NOISE_GLSL}
 float hash1(float n){ return fract(sin(n * 127.1) * 43758.5453); }
 ${STRATA_ROCK}`;

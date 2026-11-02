@@ -7,6 +7,10 @@ import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import type { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import { createPixelArtPass, onPixelArtChange, setPixelArtSize } from './pixelArtPass';
+import {
+  followShadowTarget, installShadowShaderPatch, isShadowOn,
+  registerShadowViewport, stepSunOrbit, syncViewportShadow,
+} from './shadowConfig';
 
 export interface ColonyViewport {
   renderer: THREE.WebGLRenderer;
@@ -37,13 +41,17 @@ function createSunAndHemi(scene: THREE.Scene) {
   scene.add(hemi);
   const sun = new THREE.DirectionalLight(0xfff1d6, 3.0);
   sun.position.set(35, 55, 25);
-  sun.castShadow = true;
+  sun.castShadow = isShadowOn();
   sun.shadow.mapSize.set(2048, 2048);
-  sun.shadow.camera.near = 5;
-  sun.shadow.camera.far = 160;
-  const d = 35;
+  sun.shadow.camera.near = 4;
+  sun.shadow.camera.far = 175;
+  const d = 38;
   Object.assign(sun.shadow.camera, { left: -d, right: d, top: d, bottom: -d });
-  sun.shadow.bias = -0.0005;
+  sun.shadow.camera.updateProjectionMatrix();
+  sun.shadow.bias = -0.0004;
+  sun.shadow.normalBias = 0.025;
+  sun.shadow.radius = 1.3;
+  sun.shadow.intensity = 1.05;
   scene.add(sun, sun.target);
   return { sun, hemi };
 }
@@ -61,8 +69,26 @@ function applySkyToScene(scene: THREE.Scene, sun: THREE.DirectionalLight, hemi: 
   renderer.toneMappingExposure = k.exposure;
 }
 
+function createColonyRenderer(container: HTMLElement, width: number, height: number, maxDpr: number): THREE.WebGLRenderer {
+  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
+  renderer.setSize(width, height, false);
+  renderer.setPixelRatio(maxDpr);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.1;
+  renderer.shadowMap.enabled = isShadowOn();
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.domElement.style.display = 'block';
+  renderer.domElement.style.width = '100%';
+  renderer.domElement.style.height = '100%';
+  renderer.domElement.dataset.pixelShader = '1';
+  container.appendChild(renderer.domElement);
+  return renderer;
+}
+
 /** Pillar 4 bootstrap: 28° FOV, ACES, PMREM RoomEnvironment, warm sun + cool hemi, bloom threshold 1.1. */
 export function createColonyViewport(container: HTMLElement): ColonyViewport {
+  installShadowShaderPatch();
   const w = () => container.clientWidth || window.innerWidth;
   const h = () => container.clientHeight || window.innerHeight;
 
@@ -77,19 +103,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   let customRes: { width: number; height: number } | null = null;
   let maxDpr = Math.min(window.devicePixelRatio, 2);
 
-  const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance', preserveDrawingBuffer: true });
-  renderer.setSize(w(), h(), false);
-  renderer.setPixelRatio(maxDpr);
-  renderer.outputColorSpace = THREE.SRGBColorSpace;
-  renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.1;
-  renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
-  renderer.domElement.style.display = 'block';
-  renderer.domElement.style.width = '100%';
-  renderer.domElement.style.height = '100%';
-  renderer.domElement.dataset.pixelShader = '1';
-  container.appendChild(renderer.domElement);
+  const renderer = createColonyRenderer(container, w(), h(), maxDpr);
 
   const pmrem = new THREE.PMREMGenerator(renderer);
   const environment = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
@@ -108,8 +122,6 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   composer.addPass(pixelArt);
   const offPixel = onPixelArtChange((enabled) => { pixelArt.enabled = enabled; composer.render(); });
 
-  const sunOffset = new THREE.Vector3(35, 55, 25);
-
   const vp: ColonyViewport = {
     renderer, composer, bloom, pixelArt, scene, camera, sun, hemi, environment,
     setView(s, c) {
@@ -119,11 +131,12 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       c.aspect = w() / h();
       c.updateProjectionMatrix();
     },
-    applySky(spec) { applySkyToScene(scene, sun, hemi, renderer, spec); },
+    applySky(spec) {
+      applySkyToScene(scene, sun, hemi, renderer, spec);
+      syncViewportShadow(vp, spec.sky.sunColor);
+    },
     followShadow(t) {
-      const x = Math.round(t.x), z = Math.round(t.z);
-      sun.target.position.set(x, t.y, z);
-      sun.position.set(x + sunOffset.x, t.y + sunOffset.y, z + sunOffset.z);
+      followShadowTarget(vp, t);
     },
     setResolution(size, maxPixelRatio) {
       customRes = size;
@@ -148,14 +161,19 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       camera.aspect = cw / ch;
       camera.updateProjectionMatrix();
     },
-    render() { composer.render(); },
+    render() {
+      stepSunOrbit(vp);
+      composer.render();
+    },
     dispose() {
       window.removeEventListener('resize', onResize);
+      offShadow();
       offPixel();
       composer.dispose(); pmrem.dispose(); renderer.dispose();
       renderer.domElement.remove();
     },
   };
+  const offShadow = registerShadowViewport(vp);
   const onResize = () => vp.resize();
   window.addEventListener('resize', onResize);
   return vp;

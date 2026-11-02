@@ -98,6 +98,7 @@ export class RTSCamera {
   follow(obj: THREE.Object3D | null = this.followTarget) { this.followTarget = obj; this.following = obj !== null; }
 
   focus(p: THREE.Vector3, instant = false) {
+    this.following = false;
     this.goal.copy(p);
     if (instant) {
       this.target.copy(p);

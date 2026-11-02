@@ -64,13 +64,14 @@ export interface ArchetypeMesh extends THREE.Mesh {
 /** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind). */
 export function createArchetypeMesh(id: string, biomeKey = 'dune'): ArchetypeMesh {
   const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD] });
-  const { material } = made;
+  const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
   const geometry = ArchetypeCatalog.getGeometry(id);
   if (!geometry.boundingBox) geometry.computeBoundingBox();
   // Scaffold cut heights are fractions of the model's own height (RN-14).
   uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);
   const mesh = new THREE.Mesh(geometry, material) as unknown as ArchetypeMesh;
+  mesh.customDepthMaterial = depthMaterial;
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   mesh.name = id;
