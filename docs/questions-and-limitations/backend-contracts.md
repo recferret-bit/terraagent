@@ -505,3 +505,13 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Workaround / mitigation:** set `MOCK_OAUTH_SECRET` outside local dev. The page is only linked from the hub.
 - **To resolve:** none for the hackathon mock. W23 replaces the provider.
 - **Found:** 2026-11-02, W06-02
+
+### BE-31 · Social subject → player lives in process memory until W06-06
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/social-auth.service.ts` (`bySubject`)
+- **What happens:** `POST /v1/auth/social` verifies the mock token and returns `{accessToken, player, accountId}`. The same `(provider, subject)` in this process reuses the player. A restart, or a second app process, does not. `accountId` is `deriveAccountName(subject)` plus `.terraagent.mock`. No row is written to `core.social_identity` or `chain.mock_chain_account`, and `createNamedAccount` still throws `NEAR_UNAVAILABLE`. A guest bearer is reused for a new subject; a repeat without a bearer uses the in-memory map. `isGuest` on the access response is false. It is not stored on the player row.
+- **Why it is like this:** W06-03 only proves the token and the HTTP shape (Q-01-22: the port still returns `{playerId, email, isNew}`, and the subject is mapped onto `playerId`). Named accounts are W06-05. The guest link, refresh rotation and `account.created` are W06-06.
+- **Workaround / mitigation:** one process, one login, is enough for the W06-03 spec. Later issues replace the map with `core.social_identity`.
+- **To resolve:** W06-05 writes the named account; W06-06 persists the subject on the guest player and rotates the refresh token.
+- **Found:** 2026-11-02, W06-03
