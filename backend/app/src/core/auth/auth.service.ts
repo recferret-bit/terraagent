@@ -59,7 +59,12 @@ export class AuthService {
       const handle = input.handle ?? `Colonist-${id.slice(-4)}`;
       player = await this.repo.createPlayer({ id, handle, deviceSecretHash });
     }
-    return this.issueSession(player);
+    return this.issueFor(player, true);
+  }
+
+  /** Access token plus refresh session. Guest login passes `isGuest: true`; social login passes false. */
+  issueFor(player: PlayerRecord, isGuest: boolean): Promise<IssuedAuth> {
+    return this.issueSession(player, isGuest);
   }
 
   /**
@@ -94,7 +99,7 @@ export class AuthService {
     return { ok: true };
   }
 
-  private async issueSession(player: PlayerRecord): Promise<IssuedAuth> {
+  private async issueSession(player: PlayerRecord, isGuest = true): Promise<IssuedAuth> {
     await this.pruneExpiredSessions();
     const refreshToken = `rt_${randomBytes(16).toString('hex')}`;
     const refreshTokenHash = sha256Hex(refreshToken);
@@ -118,7 +123,7 @@ export class AuthService {
         player: {
           id: player.id,
           handle: player.handle,
-          isGuest: true,
+          isGuest,
         },
       },
     };
