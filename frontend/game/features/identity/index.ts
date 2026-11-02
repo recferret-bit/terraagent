@@ -1,4 +1,5 @@
 import { defineFeature } from '../../core/registry/types';
+import type { TextClipboard } from './copyText';
 import { mountPilotChip } from './PilotChip';
 import './identity.css';
 
@@ -13,6 +14,8 @@ declare module '../../core/registry/types' {
       subscribe(fn: () => void): () => void;
       loginSocial(provider: 'google' | 'x', token: string): Promise<void>;
     };
+    /** When set, the pilot chip copies through this writer instead of `navigator.clipboard`. */
+    clipboard?: TextClipboard;
   }
 }
 
