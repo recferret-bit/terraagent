@@ -1,6 +1,6 @@
 # Dev tools reference
 
-Everything a developer or agent uses to run, inspect and test the game locally: URL parameters, the in-game dev console, dev-only pages and REST routes, the mock blockchain, environment variables, debug handles and test commands. Dev tools are **dev-only** (not anti-cheat, D-25): a production build never mounts the console, and the `/v1/dev/*` routes answer 404 there (`DevOnlyGuard`); the dev pages (`/dev/chain/`, `/dev/parity/`) are still built, but their data routes are those `/v1/dev/*` routes.
+Everything a developer or agent uses to run, inspect and test the game locally: URL parameters, the in-game dev console, dev-only pages and REST routes, the mock blockchain, environment variables, debug handles and test commands. Dev tools are **dev-only** (not anti-cheat, D-25): a production build never mounts the console, and the `/v1/dev/*` routes answer 404 there (`DevOnlyGuard`); the dev pages (`/dev/chain/`, `/dev/parity/`, `/dev/mock-oauth`) are still built, but their data routes are those `/v1/dev/*` routes.
 
 Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come from `TA_PORT_BASE` (default 4000): app `base+1` (4001), client `base+1173` (5173). A wave or issue worktree pins its own base in a gitignored `infra/.env.worktree`, so check that file for the URL (e.g. the W00 worktree uses 4101 / 5273).
 
@@ -16,6 +16,7 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 | `/play.html?host=local&scenario=w01` | Same (`w00` or `w01`), with the engine running in the browser alone (no app, no Postgres) |
 | `/play.html?planet=dune&seed=1&skip=1` | The pre-wave **decorative prototype** (used for visual QA when `seed` + `skip=1` or `qat`/`t` is set) |
 | `/dev/chain/` | **Mock chain explorer:** receipts, balances, NFTs, DAO, escrow, outbox; account filter; 1 s auto-refresh; `CHAIN.PING` button |
+| `/dev/mock-oauth?provider=google\|x&return=<path>` | **Mock login:** plate titled "Google (mock)" or "X (mock)" (anything but `x` is Google). Pick `test-pilot` or type a name (1–64) → `POST /v1/dev/mock-oauth/token` → redirect to `return` with `#mock_token=…` (`encodeURIComponent`). `return` must be a same-origin path (one leading `/`, no `//`, no `://`, no backslash), else `/play.html`. 404 unless the Identity adapter is `mock` and wave `W06` is on |
 | `/dev/parity/` | Engine parity page used by `npm run test:parity` (`window.__parity.run(id)`) |
 | `/playground.html`, `/landing.html`, `/design/` | 3D model storybook, landing site, design system (see the main README) |
 
@@ -125,6 +126,7 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 | `GET /v1/dev/commands`, `POST /v1/dev/commands/:name` | List / run server dev commands (`warp`, `time`, `tune`, `scenario`, `chain.ping`, `planet.wipe`). `planet.wipe {planetId}` deletes a held planet (not loaded: corrupt snapshots or from a newer build) with its snapshots, ledger rows and colony rows, so the next seat or boot starts it fresh; 409 for a loaded planet (W01) |
 | `GET /v1/dev/planets/:planetId/ledger?account=colony:0&limit=10` | The planet's resource ledger (Postgres; in memory with `SNAPSHOTS=off` or under tests) for one account → `{ planetId, account, balances, entries }`: non-zero balances and the last `limit` journal entries touching it (`{ seq, at, reason, actor, ref?, legs }`, oldest first). 404 when the planet is not loaded, 400 for a bad account, 503 `LEDGER_UNAVAILABLE` while the planet's journal is still restoring (answered after at most 2 s) or its restore was abandoned. Used by the console `ledger` (W01) |
 | `POST /v1/dev/chain/ping` | Mock chain ping → `ChainReceipt` |
+| `POST /v1/dev/mock-oauth/token` | Mock OAuth: `{ provider: 'google'\|'x', subject (1–64), email? }` → `{ token }` (HMAC-SHA256, `MOCK_OAUTH_SECRET`, 5 min). 404 in production, when Identity is not the mock adapter, or when `W06` is off |
 | `GET /v1/dev/chain/{receipts,balances,nfts,dao,escrow,outbox}` | Explorer data (`?account=`, `?limit=`, `?status=`, `?collection=`) |
 | `POST /v1/analytics/events` | Analytics intake (`AnalyticsBatchV1`, not dev-only) |
 
@@ -150,6 +152,7 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `TA_BALANCE_OVERRIDES` | — | Path to `balance.overrides.json` merged over the data tables (D-35) |
 | `WS_HELLO_TIMEOUT_MS`, `WS_IDLE_TIMEOUT_MS` | 5000, 60000 | Socket timeouts |
 | `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`, `MOCK_FAIL_RATE`, `MOCK_SEED` | 300, 1500, 0, — | Mock chain behaviour |
+| `MOCK_OAUTH_SECRET` | `terra-dev-mock-oauth-secret` | HMAC secret for the dev mock OAuth token (`signMockToken` / `verifyMockToken`, `/dev/mock-oauth`). Unset or empty uses the default. Not in the Nest boot env schema, so production app tests still boot. Token TTL is 5 minutes |
 | `OUTBOX_RELAY_ENABLED`, `OUTBOX_POLL_MS`, `OUTBOX_LEASE_MS`, `OUTBOX_MAX_ATTEMPTS` | on, 1000, 30000, 8 | Chain outbox relay |
 | `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection (see above) |
 | `NEAR_ALLOW_MOCK_IN_PROD`, `AI_ALLOW_MOCK_IN_PROD`, `NOTIFY_ALLOW_MOCK_IN_PROD` | — | Allow mocks in production |

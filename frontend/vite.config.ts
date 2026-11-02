@@ -33,6 +33,7 @@ export default defineConfig({
         play: resolve(frontend, 'play.html'),
         playground: resolve(frontend, 'playground.html'),
         devChain: resolve(frontend, 'dev/chain/index.html'),
+        devMockOauth: resolve(frontend, 'dev/mock-oauth/index.html'),
         devParity: resolve(frontend, 'dev/parity/index.html'),
         design: resolve(frontend, 'design/index.html'),
         designFoundations: resolve(frontend, 'design/foundations.html'),
