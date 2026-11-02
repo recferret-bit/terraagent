@@ -9,8 +9,8 @@ Every wave ends with the owner playing its demo story by hand before the wave la
 1. **Title and one line:** `# WNN — <name>: owner check`, a link to the wave file, the rough duration.
 2. **Before you start:**
    - branch and worktree; the main checkout is untouched;
-   - the worktree's ports from its `.env.worktree` (app `base+1`, client `base+1173`) and database; define `<client>` / `<app>` once;
-   - how to start and stop the stack (`npm run dev`; `kill $(cat .dev/runner.pid)` for a background run);
+   - the worktree's ports from its `infra/.env.worktree` (app `base+1`, client `base+1173`) and database; define `<client>` / `<app>` once;
+   - how to start and stop the stack (`npm run dev`; `kill $(cat scripts/dev/.out/runner.pid)` for a background run);
    - how to reach every tool the steps use: the in-game dev console (`` ` `` key — *not* the browser DevTools console), a second player (`&as=<name>` in another browser profile or tab), the scenario (`?scenario=wNN`), dev pages;
    - a link to [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).
 3. **Steps:** one numbered step per demo-story step, **same numbers** as the wave file. Each step says:

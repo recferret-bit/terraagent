@@ -1,6 +1,6 @@
 # W22 — Treasury & Bounties (F7, F8, mock)
 
-> **Track:** Economy/NEAR (E) · **Flag:** `W22` · **Scenario:** `scenarios/w22-treasury-bounties.ts` · **Tag:** `wave-22`
+> **Track:** Economy/NEAR (E) · **Flag:** `W22` · **Scenario:** `tests/scenarios/w22-treasury-bounties.ts` · **Tag:** `wave-22`
 > **Depends on waves:**
 > - W13: market fee legs, intent batch builder, `IntentsPort` mock.
 > - W18 (optional; only mercenaries and `defend_area` need it): PvP, elimination, defend-area semantics.
@@ -31,7 +31,7 @@
 
 ## Owned paths
 
-`backend/app/src/near/{treasury,bounty,mercenary}/**`, `backend/app/src/near/infrastructure/adapters/mock/{treasury,escrow}*`, `backend/app/src/near/__contract__/{treasury,escrow}.contract.ts`, `shared/sim/src/systems/{treasury,bounty,mercenary}/` (E-track sim folders, auto-discovered), `shared/sim/src/data/{treasury,bounty,mercenary}.ts`, `frontend/game/features/{treasury,bounty}/**`, `scenarios/w22-treasury-bounties.ts`, `e2e/w22.spec.ts`, `prisma/near-treasury.prisma`.
+`backend/app/src/near/{treasury,bounty,mercenary}/**`, `backend/app/src/near/infrastructure/adapters/mock/{treasury,escrow}*`, `backend/app/src/near/__contract__/{treasury,escrow}.contract.ts`, `shared/sim/src/systems/{treasury,bounty,mercenary}/` (E-track sim folders, auto-discovered), `shared/sim/src/data/{treasury,bounty,mercenary}.ts`, `frontend/game/features/{treasury,bounty}/**`, `tests/scenarios/w22-treasury-bounties.ts`, `tests/e2e/w22.spec.ts`, `shared/db/prisma/near-treasury.prisma`.
 Uses from W00 without owning: `TreasuryDaoPort` / `EscrowPort` (W00-30), mock base (W00-32), outbox (W00-37), contract harness (W00-38).
 
 ## Hackathon slice
@@ -82,7 +82,7 @@ Uses from W00 without owning: `TreasuryDaoPort` / `EscrowPort` (W00-30), mock ba
 | W22-10 | Sim effect **meteor_shield**: `system.treasuryEffect` → meteor and lightning rates −75 % on the planet for 6 h; effect timer in planet state; `treasuryEffectEnded` at the end | sim | M |  | W22-01, W05-16 | Apply the effect via the console and time-warp 1 h → hazard counter vs a control seed shows ≥ 60 % fewer strikes | NEAR-102 | — |
 | W22-11 | Sim effect **terraform_boost**: Living-op (Irrigate, Seed) resource and energy costs −25 % for 12 h; disabled kind when W05 is off | sim | S | H | W22-01, W05-07 | With the boost active, queue a Seed → the queue entry shows the cost reduced by 25 % | NEAR-102 | — |
 | W22-12 | Sim effect **guild_subsidy**: schedule 1 extra Orbital Guild visit to this planet (W15 hook `guild.scheduleExtraVisit`); kind hidden when W15 is off | server | S | H+ | W22-01, W15-09 | Pass a guild_subsidy → a new `chain.guild_visit` row for this planet within the next schedule cycle | NEAR-102, NEAR-72 | — |
-| W22-13 | Data table of project kinds (proposed numbers): meteor_shield 6 h / −75 % / cost 1 500 cargo-equivalent; terraform_boost 12 h / −25 % / 1 000; guild_subsidy 1 visit / 800; all owner-tunable, filtered by wave flags | data | S | H | W22-01 | Change a cost in `data/treasury.ts` → the Council form shows the new cost after reload | NEAR-102 | — |
+| W22-13 | Data table of project kinds (proposed numbers): meteor_shield 6 h / −75 % / cost 1 500 cargo-equivalent; terraform_boost 12 h / −25 % / 1 000; guild_subsidy 1 visit / 800; all owner-tunable, filtered by wave flags | data | S | H | W22-01 | Change a cost in `shared/sim/src/data/treasury.ts` → the Council form shows the new cost after reload | NEAR-102 | — |
 | W22-14 | Council UI (Planet menu → Council): balance, members, active effects with timers, proposal list (state, votes, deadline), create-proposal form, vote buttons; textContent only; phone-landscape layout | client | M | H | W22-08, W22-09 | Propose and vote from two browsers → both see the vote count update live via push; works by touch in landscape | CLIENT §8a | — |
 | W22-15 | HUD effect badges + VFX: shield badge with countdown; subtle planet-wide shimmer while the meteor shield is active; teal tint on Living ops during the terraform boost | visual | S |  | W22-10, W22-11 | Activate both effects → 2 HUD badges with correct timers and visible VFX; frame time stays within the budget on the reference laptop | CLIENT §8a, §9 | — |
 | W22-16 | Away rule for votes: away colonies **abstain** (the AI director does not vote in MVP), documented as an AW policy note; notify the player about open proposals (W09) | server | S |  | W22-08 | Mark colony B away → B casts no vote automatically; a notification "Planet council: 1 open proposal" is queued if W09 is on | CONTINUITY AW-14 spirit | — |
@@ -105,13 +105,13 @@ Uses from W00 without owning: `TreasuryDaoPort` / `EscrowPort` (W00-30), mock ba
 | W22-33 | Edge cases and tests: proposal on an ended planet → rejected; double vote → `ALREADY_VOTED`; bounty on a nest already dead → `invalid_target`; escrow mock failure (fail rate 1) → bounty stays `pending` and the poster's cargo is untouched; claimer eliminated → bounty reopens | test | M |  | W22-08, W22-23 | `npm run test -- treasury-bounty-edges` → all 5 cases green | NEAR §15 | — |
 | W22-34 | Telemetry + analytics: metrics `treasury_balance{planet}`, `treasury_proposals_total{kind,result}`, `bounties_total{kind,state}`, `mercenary_contracts_total`; `track()` events `council_opened`, `proposal_created`, `vote_cast`, `bounty_posted`, `bounty_claimed`, `bounty_paid`, `mercenary_hired` | server | S |  | W22-14, W22-25 | Run the demo story → each analytics event appears once in the table | NEAR §14, CLIENT §10 | — |
 | W22-35 | Dev-console commands: `treasury.fund <planet> <amount>`, `treasury.effect <kind>`, `bounty.post …`, `bounty.complete <id>`, `merc.hire <hours>`; failure injection uses W06-25's `near.mock.fail escrow\|treasury <rate>` | client | S |  | W22-10, W22-23, W22-28, W06-25 | Run `treasury.effect meteor_shield` → the shield badge shows without a vote | PRODUCT_WAVES §3 | — |
-| W22-36 | Wave e2e + scenario + tag: `scenarios/w22-treasury-bounties.ts` (2 colonies, fee history, nest, funded cargo); `e2e/w22.spec.ts` covers the demo story with two browser contexts; all earlier e2e suites pass; flag-off check; tag `wave-22` | test | M | H | W22-01..35 | `npm run e2e -- --waves ..22` → green | PRODUCT_WAVES §3 | — |
+| W22-36 | Wave e2e + scenario + tag: `tests/scenarios/w22-treasury-bounties.ts` (2 colonies, fee history, nest, funded cargo); `tests/e2e/w22.spec.ts` covers the demo story with two browser contexts; all earlier e2e suites pass; flag-off check; tag `wave-22` | test | M | H | W22-01..35 | `npm run e2e -- --waves ..22` → green | PRODUCT_WAVES §3 | — |
 
 **Issue count: 36.**
 
 ## Wave DoD
 
-- `e2e/w22.spec.ts` and every earlier wave's e2e pass. `?scenario=w22` loads.
+- `tests/e2e/w22.spec.ts` and every earlier wave's e2e pass. `?scenario=w22` loads.
 - `TA_WAVES=..21` removes the Council, Bounties, mercenaries and the fee-share leg; W13 trades still settle zero-sum.
 - The treasury and escrow contract suites are green vs the mocks.
 - `NEAR-100..102` and `NEAR-110..112` each map to issues above. Tag `wave-22` is created.

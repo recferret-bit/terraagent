@@ -1,6 +1,6 @@
 # W20 — Colony Deed & Staking (F6, mock)
 
-> **Track:** Economy/NEAR (E) · **Flag:** `W20` · **Scenario:** `scenarios/w20-colony-deed.ts` · **Tag:** `wave-20`
+> **Track:** Economy/NEAR (E) · **Flag:** `W20` · **Scenario:** `tests/scenarios/w20-colony-deed.ts` · **Tag:** `wave-20`
 > **Depends on waves:** W06 (identity, colony accounts, `IdentityPort`/`RelayerPort` mocks, dev chain explorer), W01 (colony founding), W00 (ports foundation, `chain_outbox`, contract-suite harness). Deed fields from other waves appear only when those waves are on: W05 (terraform %), W08 (stage), W13 (trade volume), W14 (walls), W18 (truces, eliminated status), W21 (settled). Optional: W09 (deed-settled push via W09-21, W20-25).
 > **Specs:** [`NEAR.md`](../../spec/NEAR.md) §1a, §2, §9 (`NEAR-90..93`), §12–§15 · [`near-economy-features-spec.md`](../../game/near-economy-features-spec.md) F6 · [`CLIENT.md`](../../spec/CLIENT.md) §8a · [`DATA_MODEL.md`](../../spec/DATA_MODEL.md) §4.4.1 (`chain.deed`, `chain.staking_position`) · [`PROTOCOL.md`](../../spec/PROTOCOL.md) (F6 row) · D-18, D-25, D-26, D-30.
 
@@ -20,7 +20,7 @@ Every colony owns a **living Colony Deed** (dynamic NEP-171 NFT, mocked). The de
 
 ## Owned paths
 
-`backend/app/src/near/{deed,staking}/**`, `backend/app/src/near/infrastructure/adapters/mock/{deed,staking}*`, `backend/app/src/near/__contract__/{deed,staking}.contract.ts`, `frontend/game/features/deed/**`, `frontend/game/pages/deed/**` (public share page), `scenarios/w20-colony-deed.ts`, `e2e/w20.spec.ts`, `prisma/near-deed.prisma`.
+`backend/app/src/near/{deed,staking}/**`, `backend/app/src/near/infrastructure/adapters/mock/{deed,staking}*`, `backend/app/src/near/__contract__/{deed,staking}.contract.ts`, `frontend/game/features/deed/**`, `frontend/game/pages/deed/**` (public share page), `tests/scenarios/w20-colony-deed.ts`, `tests/e2e/w20.spec.ts`, `shared/db/prisma/near-deed.prisma`.
 Uses from W00 without owning: `DeedNftPort` / `StakingPort` (W00-30), the shared NEP-171 mock base (W00-35), mock base (W00-32), outbox (W00-37), contract harness (W00-38).
 
 ## Hackathon slice
@@ -87,13 +87,13 @@ Uses from W00 without owning: `DeedNftPort` / `StakingPort` (W00-30), the shared
 | W20-25 | Notifications: toast "Your Deed was updated: Terraform 40 %" on `deed.updated`; push or Telegram (via `NotifierPort`, W09) only on deed settled | client | S |  | W20-10, W09-21 (optional) | Trigger a milestone → toast shows once per update; with W09 off → toast only, no error | CONTINUITY §5a | — |
 | W20-26 | Telemetry + analytics: metrics `near_tx_total{kind=deed_mint\|deed_update\|stake}`, `deed_updates_pending`, `staking_positions`; `track()` events `deed_viewed`, `deed_shared`, `stake_started`, `stake_completed`, `stake_cancelled`, `unstake_started`, `withdraw_completed` | server | S |  | W20-10, W20-21 | View, share and stake once → the analytics table holds those 4 events with colony and planet ids | NEAR §14, CLIENT §10 | — |
 | W20-27 | Dev-console commands: `deed.show <colony>`, `deed.bump <field> <value>`, `deed.settle <colony>`, `stake.fund <account> <near>`; failure injection uses W06-25's `near.mock.fail deed <rate>` | client | S |  | W20-15, W20-16, W06-25 | Run `near.mock.fail deed 1`, then found a colony → the deed stays pending with a retry badge; set it to 0 → it is minted on the next retry | PRODUCT_WAVES §3 | — |
-| W20-28 | Wave e2e + scenario + tag: `scenarios/w20-colony-deed.ts` (S4 colony, milestones, mock-funded wallet); `e2e/w20.spec.ts` runs the demo story; all earlier e2e suites pass; flag-off check; tag `wave-20` | test | M | H | W20-01..27 | `npm run e2e -- --waves ..20` → green, including the flag-off step | PRODUCT_WAVES §3 | — |
+| W20-28 | Wave e2e + scenario + tag: `tests/scenarios/w20-colony-deed.ts` (S4 colony, milestones, mock-funded wallet); `tests/e2e/w20.spec.ts` runs the demo story; all earlier e2e suites pass; flag-off check; tag `wave-20` | test | M | H | W20-01..27 | `npm run e2e -- --waves ..20` → green, including the flag-off step | PRODUCT_WAVES §3 | — |
 
 **Issue count: 28.**
 
 ## Wave DoD
 
-- `e2e/w20.spec.ts` and every earlier wave's e2e pass. `?scenario=w20` loads the demo state.
+- `tests/e2e/w20.spec.ts` and every earlier wave's e2e pass. `?scenario=w20` loads the demo state.
 - `TA_WAVES=..19` hides the Deed menu, staking and pushes, while the `chain.deed` rows stay untouched.
 - The `DeedNftPort` and `StakingPort` contract suites are green vs the mocks.
 - Every `NEAR-90..93` rule maps to an issue above. Tag `wave-20` is created.

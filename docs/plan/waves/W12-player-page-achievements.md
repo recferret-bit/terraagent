@@ -1,10 +1,10 @@
 # W12 — Player Page & Achievements
 
-> **Track:** Meta (M) · **Flag:** `W12` · **Tag:** `wave-12` · **Scenario:** `scenarios/w12-profile.ts` · **E2E:** `e2e/w12.spec.ts`
+> **Track:** Meta (M) · **Flag:** `W12` · **Tag:** `wave-12` · **Scenario:** `tests/scenarios/w12-profile.ts` · **E2E:** `tests/e2e/w12.spec.ts`
 > **Depends on waves:** W01 (spine). The Play section reuses W11 if it is on. Achievement families light up as their producer waves land: W01, W02, W03, W05, W07, W08, W13, W14, W15, W18, W21. Families whose producer wave is off show **"coming soon"**.
 > **Specs:** [player-profile-and-achievements-spec.md](../../game/player-profile-and-achievements-spec.md) §1–§6 (`PA-01..05`) · [NEAR](../../spec/NEAR.md) §1a (`BadgeNftPort`) · freightchain references (catalogue, flip CSS, profile) · [`frontend/design/css/tokens.css`](../../../frontend/design/css/tokens.css) (Faction Plate) · D-29, D-30
-> **Owned paths:** `backend/app/src/progression/**` (except `stage-*`, W08), `backend/app/src/profile/**`, `prisma/progression.prisma`, `shared/contracts/src/{progression,profile}/`, `frontend/game/pages/me/**`, `frontend/me.html`, `frontend/game/features/{achievements,xp}/`, `frontend/design/achievements/**`, `frontend/public/img/achievements/`
-> **Where `/me` lives:** a page of the **game app** (not a new app): code in `frontend/game/pages/me/`, so it reuses the game's auth session, `net/` client and the W11 picker components (an app never imports another app). It is served by its own light entry `frontend/me.html` (URL `/me.html` locally; CLIENT's `/me` route in production) without the 3D engine bundle; the lead pre-step adds it to `rollupOptions.input` in `vite.config.ts` and links it from `frontend/index.html`. Styling uses the existing Faction Plate files `frontend/design/css/tokens.css` + `base.css` (`--ta-*` tokens, chamfered plates, no `border-radius`, void text on orange).
+> **Owned paths:** `backend/app/src/progression/**` (except `stage-*`, W08), `backend/app/src/profile/**`, `shared/db/prisma/progression.prisma`, `shared/contracts/src/{progression,profile}/`, `frontend/game/pages/me/**`, `frontend/me.html`, `frontend/game/features/{achievements,xp}/`, `frontend/design/achievements/**`, `frontend/public/img/achievements/`
+> **Where `/me` lives:** a page of the **game app** (not a new app): code in `frontend/game/pages/me/`, so it reuses the game's auth session, `net/` client and the W11 picker components (an app never imports another app). It is served by its own light entry `frontend/me.html` (URL `/me.html` locally; CLIENT's `/me` route in production) without the 3D engine bundle; the lead pre-step adds it to `rollupOptions.input` in `frontend/vite.config.ts` and links it from `frontend/index.html`. Styling uses the existing Faction Plate files `frontend/design/css/tokens.css` + `base.css` (`--ta-*` tokens, chamfered plates, no `border-radius`, void text on orange).
 
 ## Goal
 
@@ -100,7 +100,7 @@ Players have a home outside the planet. The `/me` page shows who they are (pilot
 
 ## Wave DoD
 
-- `e2e/w12.spec.ts` passes, together with all earlier suites.
+- `tests/e2e/w12.spec.ts` passes, together with all earlier suites.
 - `?scenario=w12` loads the profile pilot.
 - `TA_WAVES=..11` removes the `/me` link and the profile API (`wave_disabled`).
 - Tag `wave-12` is created.

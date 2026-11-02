@@ -1,9 +1,9 @@
-// Scenario discovery (W00 scenario loader): lists `scenarios/*.ts` into `scenarios/index.generated.ts`.
+// Scenario discovery (W00 scenario loader): lists `tests/scenarios/*.ts` into `tests/scenarios/index.generated.ts`.
 // Files starting with `_`, `index*`, and `*.config.ts` / `*.spec.ts` are not scenarios.
 import { readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
-const DIR = 'scenarios';
+const DIR = 'tests/scenarios';
 const ident = (name) => `scn_${name.replace(/[^A-Za-z0-9]/g, '_')}`;
 
 export async function generate(root) {
@@ -24,7 +24,7 @@ export async function generate(root) {
   return [{ path: `${DIR}/index.generated.ts`, content: lines.join('\n') }, parityIndex(root)];
 }
 
-/** Engine parity list (W00-58): `scenarios/parity/<id>.parity.ts` (default export `defineParityCase`) -> `scenarios/parity/index.generated.ts`. */
+/** Engine parity list (W00-58): `tests/scenarios/parity/<id>.parity.ts` (default export `defineParityCase`) -> `tests/scenarios/parity/index.generated.ts`. */
 function parityIndex(root) {
   const ids = readdirSync(join(root, DIR, 'parity')).filter((f) => f.endsWith('.parity.ts')).map((f) => f.slice(0, -'.parity.ts'.length)).sort();
   const lines = [

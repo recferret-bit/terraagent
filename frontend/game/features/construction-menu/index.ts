@@ -1,5 +1,4 @@
 import { defineFeature } from '../../core/registry/types';
-import type { ClientTiles } from '../../store/replica/viewCodec';
 import { ConstructionMenu } from './ConstructionMenu';
 import { evaluatePlacementGhost, PlacementGhostController, type PlacementGhostState, type PlacementGhostTile } from './PlacementGhost';
 import type { BuildingKind } from './catalog';
@@ -26,19 +25,6 @@ declare module '../../core/registry/types' {
   }
 
   interface GameView {
-    /** Planet parameters. */
-    planet?: { id?: string; type?: unknown; radius?: number };
-    /** Client tiles buffer. */
-    tiles?: ClientTiles;
-    /** Entity data buffer (count * ENTITY_STRIDE floats) or entity records. */
-    entities?: Float32Array | Array<{ kind?: number; [key: string]: unknown }>;
-    /** Colony status list. */
-    colonies?: Array<{
-      hubBuilt?: boolean;
-      stage?: number;
-      stock?: Record<string, number>;
-      [key: string]: unknown;
-    }>;
     /** Shorthand for colony 0 hubBuilt. */
     hubBuilt?: boolean;
     /** Shorthand for colony 0 stock. */

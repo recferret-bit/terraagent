@@ -410,6 +410,8 @@ export const reorderTaskHandler = defineCommandHandler({
   },
 });
 
+import { placeSpawnedEntity } from '../../ecs/placement';
+
 export const queueSystem = defineSystem({
   id: 'queue.manager',
   slot: 4, // ruleEngine / queue slot
@@ -443,6 +445,7 @@ export const queueSystem = defineSystem({
               state.entities.cols.hp[r] = Number(harvester.hp ?? 160);
               state.entities.cols.hpMax[r] = Number(harvester.hp ?? 160);
               state.entities.cols.state[r] = ENTITY_STATE.idle;
+              placeSpawnedEntity(state.entities, r, 0, 0, ctx.tick);
               revealVision(state, colIdx, 0, 0, Number(harvester.viewRadius ?? 7), ctx.tick);
               ctx.emit({ kind: 'unitProduced', colonyIds: [colIdx], data: { entityId: id, unit: 'harvester', q: 0, r: 0 } });
             }
@@ -462,5 +465,5 @@ export default defineSimModule({
   id: 'queue',
   wave: 'W02',
   systems: [queueSystem],
-  handlers: [enqueueTaskHandler, cancelTaskHandler, reorderTaskHandler],
+  handlers: [reorderTaskHandler],
 });

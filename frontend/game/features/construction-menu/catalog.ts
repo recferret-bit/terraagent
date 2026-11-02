@@ -1,5 +1,5 @@
 import type { FlagSet } from '@terra/contracts';
-import { ENTITY_KIND } from '@terra/sim';
+import { ENTITY_KIND, TICK_MS } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
 import type { GameView } from '../../core/registry/types';
 import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
@@ -114,10 +114,12 @@ function makeCard(row: Record<string, unknown>, view?: GameView): BuildingCardMo
   const building = String(row.building) as BuildingKind;
   const label = typeof row.label === 'string' ? row.label : (LABELS[building] ?? building);
   const tier = typeof row.tier === 'number' ? row.tier : 1;
-  const footprintW = typeof row.footprintW === 'number' ? row.footprintW : 1;
-  const footprintD = typeof row.footprintD === 'number' ? row.footprintD : 1;
+  const defaultFp = typeof row.footprint === 'number' ? row.footprint : 1;
+  const footprintW = typeof row.footprintW === 'number' ? row.footprintW : defaultFp;
+  const footprintD = typeof row.footprintD === 'number' ? row.footprintD : defaultFp;
   const footprintText = `${footprintW}×${footprintD}`;
-  const designBuildS = typeof row.designBuildS === 'number' ? row.designBuildS : Number(row.buildS ?? 0);
+  const designBuildS =
+    typeof row.designBuildS === 'number' ? row.designBuildS : (Number(row.buildS ?? 0) * TICK_MS) / 1000;
   const hqBuildS = Number((designBuildS / 1.5).toFixed(1));
   const cost = (row.cost as Record<string, number>) ?? {};
   const powerText = formatPower(row);

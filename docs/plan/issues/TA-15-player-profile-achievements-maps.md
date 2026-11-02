@@ -61,7 +61,7 @@ Achievements follow freightchain's rules: frozen ids, append-only unlocks, `prog
   - `backend/app/src/progression/infrastructure/prisma/*.repository.ts`
   - `shared/db/prisma/schema.prisma` (lead pre-step: `PlayerFacts`, `AchievementUnlock`, `XpLedger`, `PlayerXp`)
   - `backend/app/test/progression/{catalogue.spec.ts,evaluate.spec.ts,xp.spec.ts}`
-  - `shared/sim/scenarios/achievements-all.ts`
+  - `tests/scenarios/achievements-all.ts`
 - **Verify:** `npm run test -w @terra/app -- progression`
 
 #### Analytics
@@ -163,7 +163,7 @@ Achievements follow freightchain's rules: frozen ids, append-only unlocks, `prog
 - **Depends On:** `TA-15.2`, `TA-11.1`
 - **Spec:** profile spec §1, §2; CLAUDE.md UI rules (Faction Plate)
 - **Target Files:**
-  - `frontend/game/src/pages/me/{MePage.tsx,PilotSection.tsx,ProgressSection.tsx,PlanetsSection.tsx,StatsTiles.tsx,HistorySection.tsx,PlaySection.tsx}`; hackathon: `me.html` + `src/me/*.ts` (add to `vite.config.ts` inputs and link from `index.html`)
+  - `frontend/game/src/pages/me/{MePage.tsx,PilotSection.tsx,ProgressSection.tsx,PlanetsSection.tsx,StatsTiles.tsx,HistorySection.tsx,PlaySection.tsx}`; hackathon: `me.html` + `src/me/*.ts` (add to `frontend/vite.config.ts` inputs and link from `frontend/index.html`)
   - `frontend/game/src/pages/me/me.css` (`--ta-*` tokens only)
   - `frontend/game/test/pages/me/*.test.tsx`; `tests/e2e/me.spec.ts`
 - **Verify:** `npm run test -w @terra/game -- me && npm run test:e2e -- --grep @me`

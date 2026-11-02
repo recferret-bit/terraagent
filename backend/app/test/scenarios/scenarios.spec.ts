@@ -35,6 +35,21 @@ describe('scenario dev route', () => {
     expect(sa.grid.layers).toEqual(sb.grid.layers);
   });
 
+  it('a scenario planet loaded on the server has its own worldSalt, never sent to clients (WE-07)', async () => {
+    const { app, url } = await boot({});
+    const planets = app.get(GamePlanets);
+    const ids = await Promise.all([create(url, 'w01-landfall'), create(url, 'w01-landfall')].map(async (r) => ((await (await r).json()) as { planetId: string }).planetId));
+    const salts: string[] = [];
+    for (const id of ids) {
+      const full = new Promise<Uint8Array>((resolve) => planets.onPlanetSnapshot((pid, snap) => { if (pid === id) resolve(snap.bytes); }));
+      planets.requestSnapshot(id);
+      salts.push(restore(await full).meta.worldSalt ?? '');
+      expect(restore((await planets.fullState(id)).bytes).meta.worldSalt).toBeUndefined(); // the welcome strips it
+    }
+    expect(salts.every((s) => /^[0-9a-f-]{36}$/.test(s))).toBe(true);
+    expect(salts[0]).not.toBe(salts[1]);
+  });
+
   it('the dev command `scenario` and the list route work; an unknown id is a 404', async () => {
     const { url } = await boot({});
     const r = await fetch(`${url}/v1/dev/commands/scenario`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id: 'w00-empty' }) });
@@ -44,7 +59,7 @@ describe('scenario dev route', () => {
   });
 
   it('404s in production', async () => {
-    const { url } = await boot({ NODE_ENV: 'production', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
+    const { url } = await boot({ NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
     expect((await create(url, 'w00')).status).toBe(404);
   });
 });

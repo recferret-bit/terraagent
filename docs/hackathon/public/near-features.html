@@ -1,0 +1,806 @@
+<title>TerraAgent on NEAR</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a survey log of one colony's chain layer: a short header per feature, then a full-width chamfered diagram plate with its sources underneath. Single dark theme, by brand choice (TerraAgent Faction Plate tokens). */
+:root {
+  --bg: #07080A;
+  --deep: #0B0D11;
+  --plate: #111318;
+  --plate-3: #15181F;
+  --seam: #222631;
+  --seam-3: #3A4150;
+  --text: #F2F4F7;
+  --text-2: #C9CFDA;
+  --text-3: #A9B1C1;
+  --steel: #8A93A6;
+  --dim: #6B7385;
+  --orange: #FF6A13;
+  --orange-hi: #FF8A3D;
+  --blue-hi: #5B8CFF;
+  --energy: #39D0FF;
+  --terra: #3DDC84;
+  --fault: #FF6B6B;
+  --f-display: "Chakra Petch", "Arial Narrow", system-ui, sans-serif;
+  --f-body: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+  --chamfer: 16px;
+  --chamfer-s: 8px;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--text-2); font-family: var(--f-body); font-size: 16px; line-height: 1.55; }
+.wrap { max-width: 1180px; margin: 0 auto; padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 40px 72px; }
+a { color: var(--orange-hi); }
+a:focus-visible, button:focus-visible, input:focus-visible { outline: 2px solid var(--orange-hi); outline-offset: 2px; }
+
+.hero { display: grid; gap: 20px; padding-block: 24px 36px; background-image: linear-gradient(var(--seam) 1px, transparent 1px), linear-gradient(90deg, var(--seam) 1px, transparent 1px); background-size: 48px 48px; background-position: -1px -1px; mask-image: linear-gradient(to bottom, #000 40%, transparent); -webkit-mask-image: linear-gradient(to bottom, #000 40%, transparent); }
+.hero-inner { display: grid; gap: 18px; max-width: 860px; }
+.eyebrow { font-family: var(--f-mono); font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--orange-hi); margin: 0; }
+h1 { font-family: var(--f-display); font-weight: 600; font-size: clamp(34px, 5vw, 62px); line-height: 1.02; color: var(--text); margin: 0; text-wrap: balance; letter-spacing: -0.01em; }
+.lead { font-size: 18px; color: var(--text-2); margin: 0; max-width: 64ch; }
+
+.legend { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-top: 8px; }
+.legend div { display: grid; gap: 6px; background: var(--deep); padding: 12px 14px; clip-path: polygon(var(--chamfer-s) 0, 100% 0, 100% calc(100% - var(--chamfer-s)), calc(100% - var(--chamfer-s)) 100%, 0 100%, 0 var(--chamfer-s)); }
+.legend p { margin: 0; font-size: 13px; color: var(--text-3); line-height: 1.4; }
+
+.chip { display: inline-flex; align-items: center; gap: 6px; font-family: var(--f-mono); font-size: 11px; letter-spacing: 0.12em; text-transform: uppercase; padding: 3px 9px; border: 1px solid currentColor; white-space: nowrap; width: max-content; }
+.s-built { color: var(--terra); }
+.s-real { color: var(--energy); }
+.s-mock { color: var(--blue-hi); }
+.s-later { color: var(--steel); }
+.s-prop { color: var(--text-3); border-style: dashed; }
+.s-open { color: var(--fault); }
+
+nav.index { display: flex; flex-wrap: wrap; gap: 8px; padding-block: 8px 28px; border-bottom: 1px solid var(--seam); }
+nav.index a { font-family: var(--f-mono); font-size: 12px; color: var(--text-3); text-decoration: none; padding: 6px 10px; background: var(--plate); clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+nav.index a:hover { color: var(--text); background: var(--plate-3); }
+nav.index b { color: var(--orange-hi); font-weight: 500; margin-right: 6px; }
+
+section { padding-block: 52px 8px; scroll-margin-top: 16px; }
+.head { display: grid; grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.3fr); gap: 12px 40px; align-items: end; }
+.head > * { min-width: 0; }
+h2 { font-family: var(--f-display); font-weight: 600; font-size: clamp(26px, 3vw, 36px); line-height: 1.08; color: var(--text); margin: 6px 0 0; text-wrap: balance; }
+.why { margin: 0; font-size: 16px; color: var(--text-2); max-width: 64ch; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
+.tag { font-family: var(--f-mono); font-size: 12px; color: var(--dim); letter-spacing: 0.08em; }
+@media (max-width: 820px) { .head { grid-template-columns: minmax(0, 1fr); } }
+
+figure { margin: 22px 0 0; background: var(--deep); padding: 18px 18px 16px; clip-path: polygon(var(--chamfer) 0, 100% 0, 100% calc(100% - var(--chamfer)), calc(100% - var(--chamfer)) 100%, 0 100%, 0 var(--chamfer)); }
+.scroll { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.scroll svg { display: block; width: 100%; min-width: 780px; height: auto; }
+figcaption { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 8px 28px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--seam); }
+figcaption > * { min-width: 0; }
+figcaption p { margin: 0; font-size: 14.5px; color: var(--text-3); line-height: 1.5; }
+figcaption code, .src { font-family: var(--f-mono); font-size: 12px; color: var(--dim); line-height: 1.6; }
+@media (max-width: 820px) { figcaption { grid-template-columns: minmax(0, 1fr); } }
+.pair { display: grid; gap: 16px; }
+
+.tool { display: grid; gap: 12px; margin-top: 14px; padding: 14px 16px; background: var(--plate); }
+.tool label, .tool .lbl { font-family: var(--f-mono); font-size: 12px; color: var(--text-3); letter-spacing: 0.06em; }
+.tool input[type=range] { width: 100%; accent-color: var(--orange); }
+.readout { font-family: var(--f-mono); font-size: 14px; color: var(--text); font-variant-numeric: tabular-nums; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.seg button { font-family: var(--f-mono); font-size: 13px; color: var(--text-2); background: var(--plate-3); border: 0; padding: 8px 12px; cursor: pointer; clip-path: polygon(6px 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%, 0 6px); }
+.seg button[aria-pressed="true"] { background: var(--orange); color: var(--bg); }
+.check { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; }
+.check input { accent-color: var(--orange); width: 16px; height: 16px; }
+.boot { list-style: none; margin: 0; padding: 12px 14px; background: var(--bg); display: grid; gap: 6px; font-family: var(--f-mono); font-size: 13px; }
+.boot li { display: grid; grid-template-columns: 54px minmax(0, 1fr); gap: 10px; }
+.boot .k { letter-spacing: 0.1em; }
+.k-ok { color: var(--terra); } .k-warn { color: var(--orange-hi); } .k-fail { color: var(--fault); } .k-note { color: var(--steel); }
+
+.std { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 10px; margin-top: 22px; }
+.std div { background: var(--deep); padding: 14px 16px; display: grid; gap: 6px; align-content: start; clip-path: polygon(var(--chamfer-s) 0, 100% 0, 100% calc(100% - var(--chamfer-s)), calc(100% - var(--chamfer-s)) 100%, 0 100%, 0 var(--chamfer-s)); }
+.std b { font-family: var(--f-display); font-size: 17px; font-weight: 600; color: var(--text); }
+.std p { margin: 0; font-size: 13.5px; color: var(--text-3); line-height: 1.45; }
+
+footer { margin-top: 64px; padding-top: 20px; border-top: 1px solid var(--seam); display: grid; gap: 8px; }
+footer p { margin: 0; font-size: 13px; color: var(--dim); max-width: 90ch; }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+</style>
+
+<div class="wrap">
+
+<header class="hero">
+  <div class="hero-inner">
+    <p class="eyebrow">TerraAgent whitepaper · web3 part · draft, 2026-11-02</p>
+    <h1>Every actor is a NEAR account. Gameplay never waits for the chain.</h1>
+    <p class="lead">The game server simulates the colony. NEAR holds what players own and settles what they trade; only a trade's own settlement waits for a block. This page shows how each on-chain feature works, why it is built that way, and what is real on demo day.</p>
+  </div>
+  <div class="legend" aria-label="Status legend">
+    <div><span class="chip s-built">Built</span><p>On <code>main</code> today (wave W00).</p></div>
+    <div><span class="chip s-real">Real after Nov 10</span><p>Switches to real NEAR only if the core game passes the Nov 10 check.</p></div>
+    <div><span class="chip s-mock">Mock on Nov 14</span><p>In the build plan; runs on the mock chain for the hackathon.</p></div>
+    <div><span class="chip s-later">After the hackathon</span><p>Planned, outside the hackathon cut.</p></div>
+    <div><span class="chip s-prop">Proposed</span><p>Designed, not yet in the build plan. Drawn dashed.</p></div>
+    <div><span class="chip s-open">Open</span><p>An owner decision or unknown fact. Not settled here.</p></div>
+  </div>
+</header>
+
+<nav class="index" aria-label="Features">
+  <a href="#map"><b>00</b>Layers</a>
+  <a href="#accounts"><b>F5</b>Accounts</a>
+  <a href="#login"><b>F5</b>Login</a>
+  <a href="#writes"><b>F5</b>Gasless writes</a>
+  <a href="#cargo"><b>F1</b>Cargo</a>
+  <a href="#markets"><b>F2</b>Markets</a>
+  <a href="#guild"><b>F3</b>Guild</a>
+  <a href="#director"><b>F4</b>Director</a>
+  <a href="#agents"><b>API</b>Outside agents</a>
+  <a href="#deed"><b>F6</b>Deed</a>
+  <a href="#treasury"><b>F7</b>Treasury</a>
+  <a href="#bounties"><b>F8</b>Bounties</a>
+  <a href="#ports"><b>IoC</b>Ports</a>
+  <a href="#demo-day"><b>Nov 14</b>Demo day</a>
+  <a href="#standards"><b>NEP</b>Standards</a>
+</nav>
+
+<!-- ============ 00 LAYERS ============ -->
+<section id="map">
+  <div class="head">
+    <div><span class="tag">00 · overview</span><h2>Three layers, one owner of each truth</h2></div>
+    <div><p class="why">The simulation decides what happened. NEAR records who owns what. Every chain write leaves the server through one outbox and one relayer, so the client never signs and players never pay gas.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 510" role="img" aria-label="Client, server and NEAR layers. The client sends commands to the simulation. The near module matches orders, writes an outbox row in the same transaction, and the relayer sends signed transactions to six NEAR contracts." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#A9B1C1">
+      <defs><marker id="mk-map" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g fill="#0B0D11" stroke="#222631"><rect x="10" y="10" width="1080" height="90"/><rect x="10" y="115" width="1080" height="195"/><rect x="10" y="325" width="1080" height="175"/></g>
+      <g font-family="Chakra Petch, sans-serif" font-size="14" font-weight="600" fill="#F2F4F7" letter-spacing="1.5"><text x="26" y="44">CLIENT</text><text x="26" y="149">SERVER</text><text x="26" y="359">NEAR</text></g>
+      <g fill="#6B7385"><text x="26" y="62">truth: nothing</text><text x="26" y="167">truth: game</text><text x="26" y="182">state</text><text x="26" y="377">truth: who owns</text><text x="26" y="392">what, settled</text><text x="26" y="407">trades</text></g>
+      <rect x="160" y="26" width="920" height="58" fill="#111318" stroke="#3A4150"/>
+      <text x="620" y="50" text-anchor="middle" font-size="13" fill="#F2F4F7">3D client · play.html</text>
+      <text x="620" y="70" text-anchor="middle">renders the colony and sends commands; never signs, never holds a key</text>
+      <rect x="160" y="133" width="360" height="160" fill="#111318" stroke="#3A4150"/>
+      <text x="180" y="158" font-size="13" fill="#F2F4F7">Simulation (@terra/sim)</text>
+      <text x="180" y="184">production, stock, storage caps</text>
+      <text x="180" y="204">combat, terraform %, night</text>
+      <text x="180" y="224">away budget, autoTrade limits</text>
+      <text x="180" y="244">the export amounts that get minted</text>
+      <text x="180" y="264">snapshot every 60 s</text>
+      <rect x="560" y="133" width="520" height="160" fill="#111318" stroke="#3A4150"/>
+      <text x="580" y="158" font-size="13" fill="#F2F4F7">near module · one NestJS app</text>
+      <rect x="578" y="176" width="140" height="56" fill="#15181F" stroke="#5B8CFF"/>
+      <rect x="744" y="176" width="140" height="56" fill="#15181F" stroke="#3DDC84"/>
+      <rect x="910" y="176" width="152" height="56" fill="#15181F" stroke="#39D0FF"/>
+      <g text-anchor="middle"><text x="648" y="199" font-size="12" fill="#F2F4F7">Matcher</text><text x="648" y="218" font-size="10.5">batch Σ = 0</text><text x="814" y="199" font-size="12" fill="#F2F4F7">Outbox</text><text x="814" y="218" font-size="10.5">same tx as game</text><text x="986" y="199" font-size="12" fill="#F2F4F7">Relayer</text><text x="986" y="218" font-size="10.5">pays all gas</text></g>
+      <text x="820" y="272" text-anchor="middle" fill="#5B8CFF">11 ports → adapters: mock · testnet · mainnet</text>
+      <g stroke="#8A93A6" stroke-width="1.5" fill="none" marker-end="url(#mk-map)"><line x1="718" y1="204" x2="742" y2="204"/><line x1="884" y1="204" x2="908" y2="204"/><line x1="520" y1="204" x2="576" y2="204"/><line x1="300" y1="84" x2="300" y2="131"/><line x1="440" y1="133" x2="440" y2="86"/></g>
+      <text x="548" y="196" text-anchor="middle" font-size="10">events</text>
+      <text x="308" y="111" font-size="10">commands</text><text x="448" y="111" font-size="10">state push</text>
+      <g stroke="#8A93A6" stroke-width="1.5" fill="none"><line x1="986" y1="232" x2="986" y2="331"/><line x1="231.5" y1="331" x2="1007.5" y2="331"/></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-map)"><line x1="231.5" y1="331" x2="231.5" y2="342"/><line x1="386.5" y1="331" x2="386.5" y2="342"/><line x1="541.5" y1="331" x2="541.5" y2="342"/><line x1="697.5" y1="331" x2="697.5" y2="342"/><line x1="852.5" y1="331" x2="852.5" y2="342"/><line x1="1007.5" y1="331" x2="1007.5" y2="342"/></g>
+      <text x="976" y="316" text-anchor="end" font-size="10">signed transactions · relayer pays gas</text>
+      <g fill="#111318" stroke-width="1.5"><rect x="160" y="345" width="143" height="84" stroke="#39D0FF"/><rect x="315" y="345" width="143" height="84" stroke="#39D0FF"/><rect x="470" y="345" width="143" height="84" stroke="#39D0FF"/><rect x="626" y="345" width="143" height="84" stroke="#5B8CFF"/><rect x="781" y="345" width="143" height="84" stroke="#5B8CFF"/><rect x="936" y="345" width="143" height="84" stroke="#5B8CFF"/></g>
+      <g text-anchor="middle" font-size="10">
+        <text x="231.5" y="370" fill="#F2F4F7">*.terraagent.near</text><text x="231.5" y="390">accounts and keys</text><text x="231.5" y="414" fill="#39D0FF">real after Nov 10</text>
+        <text x="386.5" y="370" fill="#F2F4F7">res.terraagent.near</text><text x="386.5" y="390">NEP-245 cargo</text><text x="386.5" y="414" fill="#39D0FF">real after Nov 10</text>
+        <text x="541.5" y="370" fill="#F2F4F7">intents.near</text><text x="541.5" y="390">trade settlement</text><text x="541.5" y="414" fill="#39D0FF">real after Nov 10</text>
+        <text x="697.5" y="370" fill="#F2F4F7">deed.terraagent.near</text><text x="697.5" y="390">NEP-171 deeds</text><text x="697.5" y="414" fill="#5B8CFF">mock on Nov 14</text>
+        <text x="852.5" y="370" fill="#F2F4F7">{planet}.sputnik-dao</text><text x="852.5" y="390">planet treasury</text><text x="852.5" y="414" fill="#5B8CFF">mock on Nov 14</text>
+        <text x="1007.5" y="370" fill="#F2F4F7">bounty.terraagent.near</text><text x="1007.5" y="390">escrow</text><text x="1007.5" y="414" fill="#5B8CFF">mock on Nov 14</text>
+      </g>
+      <text x="160" y="470" font-size="10.5" fill="#6B7385">External services: NEAR Auth for social login (proposed) · NEAR AI Cloud for the Guild's strategy (proposed)</text>
+    </svg>
+    </div>
+    <figcaption><p>The outbox (green) is built. The relayer and the first three contracts switch to real NEAR only after the Nov 10 check. Deeds, treasury and escrow run on the mock chain for the hackathon.</p><code>whitepaper §5 · NEAR-61 · D-26 · R06-46 · R06-50</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ F5 ACCOUNTS ============ -->
+<section id="accounts">
+  <div class="head">
+    <div><span class="tag">F5 · accounts and keys</span><h2>One root, a named account for every actor</h2>
+      <div class="chips"><span class="chip s-real">Real after Nov 10</span></div></div>
+    <div><p class="why">Players, colonies and NPC traders each get a readable sub-account under <code>terraagent.near</code>. Players never see a seed phrase; the app holds no root key, and only the relayer and minter keys are online.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 420" role="img" aria-label="Account tree. terraagent.near is held by the owner's cold key. Under it: player named accounts with colony sub-accounts, relayer, minter, the cargo contract, the deed contract, bounty escrow and the NPC parent with Guild traders. A colony account carries a colony key, a director key and, after claim, the player's full-access key." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#A9B1C1">
+      <g stroke="#3A4150" stroke-width="1.5" fill="none"><path d="M550 72 V100 M115 100 H985 M115 100 V130 M260 100 V130 M405 100 V130 M550 100 V130 M695 100 V130 M840 100 V130 M985 100 V130 M115 196 V250 M985 196 V250 M190 283 H220"/></g>
+      <rect x="435" y="16" width="230" height="56" fill="#111318" stroke="#FF8A3D" stroke-width="1.5"/>
+      <text x="550" y="40" text-anchor="middle" font-size="13" fill="#F2F4F7">terraagent.near</text>
+      <text x="550" y="60" text-anchor="middle" font-size="10.5">owner cold key, app holds none</text>
+      <g fill="#111318" stroke-width="1.5"><rect x="50" y="130" width="130" height="66" stroke="#39D0FF"/><rect x="195" y="130" width="130" height="66" stroke="#39D0FF"/><rect x="340" y="130" width="130" height="66" stroke="#39D0FF"/><rect x="485" y="130" width="130" height="66" stroke="#39D0FF"/><rect x="630" y="130" width="130" height="66" stroke="#5B8CFF"/><rect x="775" y="130" width="130" height="66" stroke="#5B8CFF"/><rect x="920" y="130" width="130" height="66" stroke="#5B8CFF"/><rect x="40" y="250" width="150" height="66" stroke="#39D0FF"/><rect x="910" y="250" width="150" height="66" stroke="#5B8CFF"/></g>
+      <g text-anchor="middle" font-size="12" fill="#F2F4F7"><text x="115" y="152">{name}</text><text x="260" y="152">relayer</text><text x="405" y="152">minter</text><text x="550" y="152">res</text><text x="695" y="152">deed</text><text x="840" y="152">bounty</text><text x="985" y="152">npc</text><text x="115" y="272">{colony}.{name}</text><text x="985" y="272">guild-N.npc</text></g>
+      <g text-anchor="middle" font-size="10" fill="#6B7385"><text x="115" y="168">.terraagent.near</text><text x="260" y="168">.terraagent.near</text><text x="405" y="168">.terraagent.near</text><text x="550" y="168">.terraagent.near</text><text x="695" y="168">.terraagent.near</text><text x="840" y="168">.terraagent.near</text><text x="985" y="168">.terraagent.near</text><text x="115" y="288">.terraagent.near</text><text x="985" y="288">.terraagent.near</text></g>
+      <g text-anchor="middle" font-size="10.5"><text x="115" y="186">player, "Pilot ID"</text><text x="260" y="186">pays all gas</text><text x="405" y="186">only mint / burn</text><text x="550" y="186">NEP-245 cargo</text><text x="695" y="186">NEP-171 deeds</text><text x="840" y="186">bounty escrow</text><text x="985" y="186">NPC parent</text><text x="115" y="306">holds cargo, owns deed</text><text x="985" y="306">Kestrel, Osprey</text></g>
+      <rect x="220" y="236" width="400" height="110" fill="#0B0D11" stroke="#3A4150"/>
+      <text x="238" y="258" font-size="12" fill="#F2F4F7">Keys on one colony account</text>
+      <rect x="238" y="272" width="10" height="10" fill="#39D0FF"/><text x="258" y="281">colony key · held by the app, KEK-encrypted</text>
+      <rect x="238" y="294" width="10" height="10" fill="#5B8CFF"/><text x="258" y="303">director key · function-call, capped by server</text>
+      <rect x="238.5" y="316.5" width="9" height="9" fill="none" stroke="#A9B1C1" stroke-dasharray="2 2"/><text x="258" y="325" font-size="10.5">player full-access key · after claim (later)</text>
+      <text x="650" y="338" font-size="10" fill="#6B7385" letter-spacing="1">CALLED, NOT OWNED</text>
+      <g fill="#111318" stroke="#3A4150"><rect x="650" y="346" width="210" height="60"/><rect x="880" y="346" width="200" height="60"/></g>
+      <g text-anchor="middle"><text x="755" y="370" font-size="12" fill="#F2F4F7">intents.near</text><text x="755" y="390" font-size="10.5">NEAR Intents verifier, mainnet</text><text x="980" y="370" font-size="12" fill="#F2F4F7">{planet}.sputnik-dao.near</text><text x="980" y="390" font-size="10.5">planet DAO, colonies vote</text></g>
+    </svg>
+    </div>
+    <figcaption><p>Each colony is a sub-account of its player, so a player's colonies stay together and the deed belongs to the colony. A player can later claim the account and take full control; that step comes after the hackathon.</p><code>01 §2 · NEAR §2 · NEAR-50 · R01-57 · claim: W21-15, W23-13</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ F5 LOGIN ============ -->
+<section id="login">
+  <div class="head">
+    <div><span class="tag">F5 · login</span><h2>Play first, sign up when it is worth saving</h2>
+      <div class="chips"><span class="chip s-real">Real after Nov 10</span><span class="chip s-prop">NEAR Auth: proposed</span></div></div>
+    <div><p class="why">A guest founds a colony with no account. Saving progress turns a social login into a named NEAR account, and each existing colony gets its own sub-account. If NEAR Auth is not ready, the fallback is server-created custodial accounts.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 240" role="img" aria-label="Six steps from guest to Pilot ID: guest colony, save progress with social login, POST to the auth endpoint, named account created, colony accounts created with storage paid by the relayer, Pilot ID shown in the HUD. Branches: a cancelled login keeps the guest, a taken name gets a suffix, a relayer failure retries without a double deposit." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-login" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g fill="#111318" stroke-width="1.5"><rect x="5" y="30" width="160" height="76" stroke="#3A4150"/><rect x="191" y="30" width="160" height="76" stroke="#39D0FF"/><rect x="377" y="30" width="160" height="76" stroke="#39D0FF"/><rect x="563" y="30" width="160" height="76" stroke="#39D0FF"/><rect x="749" y="30" width="160" height="76" stroke="#39D0FF"/><rect x="935" y="30" width="160" height="76" stroke="#FF8A3D"/></g>
+      <g text-anchor="middle" font-size="12" fill="#F2F4F7"><text x="85" y="56">Guest colony</text><text x="271" y="56">Save progress</text><text x="457" y="56">POST /auth/social</text><text x="643" y="56">Named account</text><text x="829" y="56">Colony accounts</text><text x="1015" y="56">Pilot ID</text></g>
+      <g text-anchor="middle"><text x="85" y="76">plays at once,</text><text x="85" y="92">no account yet</text><text x="271" y="76">social login</text><text x="271" y="92">(NEAR Auth, proposed)</text><text x="457" y="76">provider token</text><text x="457" y="92">+ guest session</text><text x="643" y="76">{name}.terraagent.near</text><text x="643" y="92">suffix -2 if taken</text><text x="829" y="76">one per colony</text><text x="829" y="92">storage via relayer</text><text x="1015" y="76">HUD chip; same</text><text x="1015" y="92">colonies on any device</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-login)"><line x1="165" y1="68" x2="189" y2="68"/><line x1="351" y1="68" x2="375" y2="68"/><line x1="537" y1="68" x2="561" y2="68"/><line x1="723" y1="68" x2="747" y2="68"/><line x1="909" y1="68" x2="933" y2="68"/></g>
+      <g stroke="#6B7385" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#mk-login)"><line x1="271" y1="106" x2="271" y2="166"/><line x1="643" y1="106" x2="643" y2="166"/><line x1="829" y1="106" x2="829" y2="166"/></g>
+      <g fill="#111318" stroke-width="1.5"><rect x="191" y="168" width="160" height="56" stroke="#FF6B6B"/><rect x="563" y="168" width="160" height="56" stroke="#3A4150"/><rect x="749" y="168" width="160" height="56" stroke="#FF6B6B"/></g>
+      <g text-anchor="middle"><text x="271" y="191" font-size="12" fill="#F2F4F7">cancel or reject</text><text x="271" y="210">player stays a guest</text><text x="643" y="191" font-size="12" fill="#F2F4F7">name taken</text><text x="643" y="210">name-2, name-3 …</text><text x="829" y="191" font-size="12" fill="#F2F4F7">relayer fails</text><text x="829" y="210">Retry, no double deposit</text></g>
+    </svg>
+    </div>
+    <figcaption><p>Signing in from a second device with the same social account returns the same player and colonies. No step asks for a wallet, a seed phrase or gas.</p><code>01 §4 A–B · W06-03..16 · R01-3, R01-4 · fallback: whitepaper §7</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ F5 GASLESS WRITES ============ -->
+<section id="writes">
+  <div class="head">
+    <div><span class="tag">F5 · gasless, crash-safe writes</span><h2>A chain write is a database row first</h2>
+      <div class="chips"><span class="chip s-built">Outbox built</span><span class="chip s-real">Relayer real after Nov 10</span></div></div>
+    <div><p class="why">The game change and its chain write commit in one database transaction. If the server dies halfway, the row is claimed again and the same operation id returns the stored receipt, so nothing is minted or paid twice.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 340" role="img" aria-label="Outbox state machine: game change plus outbox row, pending, claimed with a 30 second lease, port call, done. Errors go to failed with exponential backoff and back to pending; after 8 attempts the row is dead and alerts. A relay crash lets the lease expire and the row is claimed again. Below, the real relayer path: delegate action, receiver allow-list, per-signer lock and nonce, submit and wait for final, push to the client." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-wr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g fill="#111318" stroke-width="1.5"><rect x="10" y="50" width="200" height="60" stroke="#3A4150"/><rect x="260" y="50" width="130" height="60" stroke="#3DDC84"/><rect x="440" y="50" width="140" height="60" stroke="#3DDC84"/><rect x="630" y="50" width="190" height="60" stroke="#3DDC84"/><rect x="870" y="50" width="200" height="60" stroke="#3DDC84"/><rect x="630" y="175" width="190" height="56" stroke="#FF6B6B"/></g>
+      <rect x="870" y="175" width="200" height="56" fill="#1A0F12" stroke="#FF6B6B" stroke-width="1.5"/>
+      <g text-anchor="middle" font-size="12" fill="#F2F4F7"><text x="110" y="76">Game change</text><text x="325" y="76">PENDING</text><text x="510" y="76">CLAIMED</text><text x="725" y="76">port.method()</text><text x="970" y="76">DONE</text><text x="725" y="199">FAILED</text><text x="970" y="199">DEAD · alert</text></g>
+      <g text-anchor="middle"><text x="110" y="96">+ outbox row, one DB tx</text><text x="325" y="96">deterministic opId</text><text x="510" y="96">lease 30 s</text><text x="725" y="96">adapter, idempotent by opId</text><text x="970" y="96">receipt stored</text><text x="725" y="219">backoff min(2^n s, 10 min)</text><text x="970" y="219">after 8 attempts</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" fill="none" marker-end="url(#mk-wr)"><line x1="210" y1="80" x2="258" y2="80"/><line x1="390" y1="80" x2="438" y2="80"/><line x1="580" y1="80" x2="628" y2="80"/><line x1="820" y1="80" x2="868" y2="80"/><line x1="725" y1="110" x2="725" y2="173"/><path d="M630 203 H325 V112"/><line x1="820" y1="203" x2="868" y2="203"/></g>
+      <path d="M510 50 C510 22 325 22 325 48" fill="none" stroke="#FF8A3D" stroke-width="1.5" stroke-dasharray="5 4" marker-end="url(#mk-wr)"/>
+      <text x="418" y="14" text-anchor="middle" fill="#FF8A3D">relay crash: lease expires, row is claimed again</text>
+      <g text-anchor="middle" font-size="10"><text x="414" y="72">claim</text><text x="604" y="72">call</text><text x="844" y="72">ok</text><text x="737" y="146" text-anchor="start">error</text><text x="478" y="196">retry</text></g>
+      <text x="10" y="266" font-size="10" fill="#6B7385" letter-spacing="1">REAL RELAYER PATH (W23), INSIDE THE RELAYER PORT</text>
+      <g fill="#111318" stroke="#39D0FF" stroke-width="1.5"><rect x="10" y="276" width="196" height="52"/><rect x="231" y="276" width="196" height="52"/><rect x="452" y="276" width="196" height="52"/><rect x="673" y="276" width="196" height="52"/><rect x="894" y="276" width="196" height="52"/></g>
+      <g text-anchor="middle"><text x="108" y="298" font-size="12" fill="#F2F4F7">DelegateAction</text><text x="108" y="316">NEP-366, signed by colony</text><text x="329" y="298" font-size="12" fill="#F2F4F7">receiver allow-list</text><text x="329" y="316">our contracts only</text><text x="550" y="298" font-size="12" fill="#F2F4F7">per-signer lock</text><text x="550" y="316">nonce, 1 retry on clash</text><text x="771" y="298" font-size="12" fill="#F2F4F7">submit, wait final</text><text x="771" y="316">relayer pays the gas</text><text x="992" y="298" font-size="12" fill="#F2F4F7">relay.settled</text><text x="992" y="316">push to the client</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-wr)"><line x1="206" y1="302" x2="229" y2="302"/><line x1="427" y1="302" x2="450" y2="302"/><line x1="648" y1="302" x2="671" y2="302"/><line x1="869" y1="302" x2="892" y2="302"/></g>
+    </svg>
+    </div>
+    <figcaption><p>A rolled-back game change leaves no row, so the chain never records something the game forgot. On real NEAR the colony signs a meta-transaction and the relayer wraps it and pays the gas.</p><code>06 §4 B · R06-46 · W00-37 · 01 §4 C · NEP-366</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ F1 CARGO ============ -->
+<section id="cargo">
+  <div class="head">
+    <div><span class="tag">F1 · cargo tokens</span><h2>The Trade Hub is the only door</h2>
+      <div class="chips"><span class="chip s-real">Real after Nov 10</span></div></div>
+    <div><p class="why">Cargo becomes a token only when a colony exports simulated stock through its Trade Hub, and stops being one when it comes back. Production sets supply, so there is no faucet. One NEP-245 contract holds all ten cargo types.</p></div>
+  </div>
+  <div class="pair">
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 340" role="img" aria-label="Colony stock in the simulation goes through the Trade Hub. Export removes stock and the minter mints tokens on res.terraagent.near; import burns tokens and credits stock. Tokens move to and from intents.near for trading. Caps: hub throughput and a daily mint cap." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-cg" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker><marker id="mk-cg-o" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#FF8A3D"/></marker></defs>
+      <rect x="20" y="40" width="250" height="240" fill="#111318" stroke="#3A4150" stroke-width="1.5"/>
+      <text x="40" y="66" font-size="13" fill="#F2F4F7">Colony stock</text><text x="40" y="84" fill="#6B7385">server simulation</text>
+      <g font-size="10.5"><text x="40" y="112">Metals</text><text x="40" y="162">Minerals</text><text x="40" y="212">Bio</text></g>
+      <g fill="#15181F"><rect x="40" y="118" width="210" height="16"/><rect x="40" y="168" width="210" height="16"/><rect x="40" y="218" width="210" height="16"/></g>
+      <g fill="#8A93A6"><rect x="40" y="118" width="150" height="16"/><rect x="40" y="168" width="92" height="16"/><rect x="40" y="218" width="124" height="16"/></g>
+      <text x="40" y="264" fill="#6B7385">storage cap per family</text>
+      <rect x="400" y="40" width="170" height="240" fill="#111318" stroke="#FF8A3D" stroke-width="2"/>
+      <g text-anchor="middle"><text x="485" y="66" font-size="13" fill="#F2F4F7">Trade Hub</text><text x="485" y="84" fill="#FF8A3D">the only door</text><text x="485" y="146" fill="#6B7385">units per minute</text><text x="485" y="164" fill="#F2F4F7">T1 250 · T2 900</text><text x="485" y="180" fill="#F2F4F7">T3 3 500</text><text x="485" y="252" fill="#6B7385">daily mint cap</text><text x="485" y="268" fill="#F2F4F7">20 000 / type *</text></g>
+      <rect x="700" y="40" width="180" height="240" fill="#111318" stroke="#39D0FF" stroke-width="1.5"/>
+      <g text-anchor="middle"><text x="790" y="66" font-size="12" fill="#F2F4F7">res.terraagent.near</text><text x="790" y="84">NEP-245 · 10 types</text><text x="790" y="170" fill="#F2F4F7">colony balance</text><text x="790" y="186">18 decimals</text><text x="790" y="252" fill="#6B7385">signer of every</text><text x="790" y="268" fill="#6B7385">mint: minter.*</text></g>
+      <rect x="940" y="40" width="150" height="240" fill="#111318" stroke="#39D0FF" stroke-width="1.5"/>
+      <g text-anchor="middle"><text x="1015" y="66" font-size="12" fill="#F2F4F7">intents.near</text><text x="1015" y="84">deposited</text><text x="1015" y="100">for trading</text><text x="1015" y="252" fill="#6B7385">see F2 markets</text></g>
+      <g stroke="#FF8A3D" stroke-width="2" marker-end="url(#mk-cg-o)"><line x1="270" y1="118" x2="398" y2="118"/><line x1="570" y1="118" x2="698" y2="118"/></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-cg)"><line x1="700" y1="222" x2="572" y2="222"/><line x1="400" y1="222" x2="272" y2="222"/><line x1="880" y1="150" x2="938" y2="150"/><line x1="940" y1="196" x2="882" y2="196"/></g>
+      <g text-anchor="middle" font-size="10.5"><text x="335" y="108" fill="#FF8A3D">cargo.export</text><text x="634" y="108" fill="#FF8A3D">mt_mint</text><text x="634" y="212">mt_burn</text><text x="335" y="212">cargo.import</text><text x="910" y="142" font-size="10">deposit</text><text x="910" y="188" font-size="10">withdraw</text></g>
+      <g font-size="10.5"><circle cx="26" cy="311" r="3.5" fill="#FF6B6B"/><text x="36" y="315">mint fails → stock refunded</text><circle cx="306" cy="311" r="3.5" fill="#FF6B6B"/><text x="316" y="315">over a cap → mint_cap, retry in N s</text><circle cx="636" cy="311" r="3.5" fill="#FF6B6B"/><text x="646" y="315">crash mid-mint → same opId, one mint</text></g>
+    </svg>
+    </div>
+    <figcaption><p>Gameplay keeps running if NEAR is down: exports already accepted wait in the outbox and settle later. * 20 000 per type per colony per day is a proposed value; the balance study suggests 10 000.</p><code>02 §4–5 · NEAR-50..53 · W10-06..14 · R02-49 · Q-02-8</code></figcaption>
+  </figure>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 230" role="img" aria-label="Supply ledger. Four mint paths: Trade Hub export, Guild seed stock, developer grant, mock to real migration. Three burn paths: Trade Hub import, Guild off-planet sale (proposed), treasury project cost (proposed)." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-sp" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g font-family="Chakra Petch, sans-serif" font-size="13" font-weight="600" letter-spacing="1.5" fill="#F2F4F7"><text x="20" y="13">MINT · 4 WAYS IN</text><text x="780" y="22">BURN · 3 WAYS OUT</text></g>
+      <g fill="#111318" stroke-width="1.5"><rect x="20" y="20" width="300" height="40" stroke="#39D0FF"/><rect x="20" y="72" width="300" height="40" stroke="#5B8CFF"/><rect x="20" y="124" width="300" height="40" stroke="#5B8CFF"/><rect x="20" y="176" width="300" height="40" stroke="#5B8CFF"/><rect x="780" y="30" width="300" height="40" stroke="#39D0FF"/></g>
+      <g fill="#111318" stroke="#A9B1C1" stroke-width="1.2" stroke-dasharray="5 4"><rect x="780" y="98" width="300" height="40"/><rect x="780" y="166" width="300" height="40"/></g>
+      <g font-size="12" fill="#F2F4F7"><text x="36" y="45">Trade Hub export</text><text x="36" y="97">Guild seed stock</text><text x="36" y="149">Dev cargo.grant</text><text x="36" y="201">Mock → real move</text><text x="796" y="55">Trade Hub import</text><text x="796" y="123">Guild off-planet sale</text><text x="796" y="191">Treasury project cost</text></g>
+      <g text-anchor="end" font-size="10"><text x="308" y="45" fill="#39D0FF">capped</text><text x="308" y="97" fill="#FF6B6B">no cap value yet</text><text x="308" y="149" fill="#6B7385">dev only</text><text x="308" y="201" fill="#5B8CFF">= mock balance</text><text x="1068" y="55" fill="#FF6B6B">who burns? open</text><text x="1068" y="123">proposed</text><text x="1068" y="191">proposed</text></g>
+      <rect x="430" y="88" width="240" height="76" fill="#111318" stroke="#FF8A3D" stroke-width="2"/>
+      <text x="550" y="120" text-anchor="middle" font-size="13" fill="#F2F4F7">Cargo supply</text><text x="550" y="142" text-anchor="middle">res.terraagent.near</text>
+      <g stroke="#8A93A6" stroke-width="1.5" fill="none" marker-end="url(#mk-sp)"><path d="M320 40 C380 40 370 120 428 120"/><path d="M320 92 C370 92 380 124 428 124"/><path d="M320 144 C370 144 380 128 428 128"/><path d="M320 196 C380 196 370 132 428 132"/><path d="M670 120 C730 120 720 50 778 50"/><path d="M670 126 C720 126 730 118 778 118"/><path d="M670 132 C730 132 720 186 778 186"/></g>
+    </svg>
+    </div>
+    <figcaption><p>Market trades, fee legs and bounty escrow move tokens but never create or destroy them. Only the export path is tied to production; the size of the Guild's seed stock and who signs an import burn are still open.</p><code>02 §6 supply ledger · Q-02-3 · Q-02-13 · Balance §7.2</code></figcaption>
+  </figure>
+  </div>
+</section>
+
+<!-- ============ F2 MARKETS ============ -->
+<section id="markets">
+  <div class="head">
+    <div><span class="tag">F2 · markets on NEAR Intents</span><h2>Every trade is one batch that sums to zero</h2>
+      <div class="chips"><span class="chip s-real">Real after Nov 10</span></div></div>
+    <div><p class="why">Orders are matched in the game server and settled on <code>intents.near</code>, so we deploy no exchange contract. Each fill is a batch of signed balance changes (maker, taker, fee legs). The verifier checks that every token sums to zero and applies all of it or none of it.</p></div>
+  </div>
+  <div class="pair">
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 200" role="img" aria-label="Order lifecycle: place order, deposit the given side into intents.near, sign a token_diff with NEP-413, match by price and time, build a batch whose legs sum to zero per token, simulate then execute through the relayer." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-mk" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g fill="#111318" stroke="#39D0FF" stroke-width="1.5"><rect x="10" y="30" width="160" height="80"/><rect x="194" y="30" width="160" height="80"/><rect x="378" y="30" width="160" height="80"/><rect x="562" y="30" width="160" height="80"/><rect x="746" y="30" width="160" height="80"/></g>
+      <rect x="930" y="30" width="160" height="80" fill="#111318" stroke="#FF8A3D" stroke-width="2"/>
+      <g text-anchor="middle" font-size="12" fill="#F2F4F7"><text x="90" y="56">Place order</text><text x="274" y="56">Deposit</text><text x="458" y="56">Sign token_diff</text><text x="642" y="56">Match</text><text x="826" y="56">Build batch</text><text x="1010" y="56">Settle</text></g>
+      <g text-anchor="middle"><text x="90" y="76">own hub online,</text><text x="90" y="92">≥ 10 units</text><text x="274" y="76">given side into</text><text x="274" y="92">intents.near</text><text x="458" y="76">NEP-413, colony key</text><text x="458" y="92">deadline = TTL</text><text x="642" y="76">price-time,</text><text x="642" y="92">at maker's price</text><text x="826" y="76">Σ per token = 0</text><text x="826" y="92">+ fee legs</text><text x="1010" y="76">simulate, then</text><text x="1010" y="92">execute_intents</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-mk)"><line x1="170" y1="70" x2="192" y2="70"/><line x1="354" y1="70" x2="376" y2="70"/><line x1="538" y1="70" x2="560" y2="70"/><line x1="722" y1="70" x2="744" y2="70"/><line x1="906" y1="70" x2="928" y2="70"/></g>
+      <g font-size="10.5"><circle cx="16" cy="151" r="3.5" fill="#FF6B6B"/><text x="26" y="155">NEAR down → market_unavailable; the colony keeps running</text><circle cx="606" cy="151" r="3.5" fill="#FF6B6B"/><text x="616" y="155">batch rejected → both orders back on the book</text><circle cx="16" cy="181" r="3.5" fill="#8A93A6"/><text x="26" y="185">cancel or 30 s TTL sweep → cargo stays in orbit, free to import</text><circle cx="606" cy="181" r="3.5" fill="#8A93A6"/><text x="616" y="185">first real trade: tiny, mainnet, dev colonies, dry-run first</text></g>
+    </svg>
+    </div>
+    <figcaption><p>The matcher only builds the batch; the colonies' keys sign their own legs. NEAR Intents has no testnet, so the first real trade runs on mainnet between our own dev colonies with tiny amounts.</p><code>03 §4 · NEAR-60..64 · W13-09..16 · 06 §4 D · Q-007/008</code></figcaption>
+  </figure>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 300" role="img" aria-label="Worked example: A gives 300 water and receives 120 metals; B receives 297 water and gives 120 metals; the stall owner receives a 3 water fee. Water sums to zero and metals sum to zero." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#A9B1C1">
+      <g font-family="Chakra Petch, sans-serif" font-size="14" font-weight="600" fill="#F2F4F7" text-anchor="middle"><text x="380" y="28">bio.water</text><text x="820" y="28">metals.t1</text></g>
+      <g stroke="#3A4150" stroke-dasharray="3 3"><line x1="380" y1="40" x2="380" y2="232"/><line x1="820" y1="40" x2="820" y2="232"/></g>
+      <g font-size="12" fill="#F2F4F7"><text x="20" y="80">A · maker</text><text x="20" y="140">B · taker</text><text x="20" y="200">Stall owner</text></g>
+      <g font-size="10.5" fill="#6B7385"><text x="20" y="96">sells 300 water</text><text x="20" y="156">pays the fee</text><text x="20" y="216">1 % fee leg</text></g>
+      <rect x="200" y="70" width="180" height="22" fill="#8A93A6"/><text x="194" y="86" text-anchor="end" fill="#F2F4F7">−300</text>
+      <rect x="820" y="70" width="72" height="22" fill="#5B8CFF"/><text x="900" y="86" fill="#F2F4F7">+120</text>
+      <rect x="380" y="130" width="178" height="22" fill="#5B8CFF"/><text x="566" y="146" fill="#F2F4F7">+297</text>
+      <rect x="748" y="130" width="72" height="22" fill="#8A93A6"/><text x="742" y="146" text-anchor="end" fill="#F2F4F7">−120</text>
+      <rect x="380" y="190" width="3" height="22" fill="#FF8A3D"/><text x="392" y="206" fill="#FF8A3D">+3</text>
+      <text x="828" y="206" fill="#6B7385">0</text>
+      <line x1="180" y1="236" x2="1000" y2="236" stroke="#3A4150"/>
+      <text x="20" y="262" font-size="12" fill="#F2F4F7">Sum per token</text>
+      <g font-size="13" fill="#3DDC84" text-anchor="middle"><text x="380" y="262">= 0</text><text x="820" y="262">= 0</text></g>
+      <g font-size="10.5"><rect x="600" y="281" width="10" height="10" fill="#8A93A6"/><text x="616" y="290">gives</text><rect x="680" y="281" width="10" height="10" fill="#5B8CFF"/><text x="696" y="290">receives</text><rect x="780" y="281" width="10" height="10" fill="#FF8A3D"/><text x="796" y="290">fee to the stall owner</text></g>
+    </svg>
+    </div>
+    <figcaption><p>From the W13 demo: A sells 300 water for 120 metals at its own stall with a 1 % fee, paid by the taker in the token it receives. A NEAR-priced pair adds a treasury leg and a protocol-fee leg, five legs in all (proposed).</p><code>03 §4 worked examples 1–2 · W13-12 · NEAR-61 · stall fee 0–3 %</code></figcaption>
+  </figure>
+  </div>
+</section>
+
+<!-- ============ F3 GUILD ============ -->
+<section id="guild">
+  <div class="head">
+    <div><span class="tag">F3 · Orbital Guild traders</span><h2>A merchant that is always there, with a price you can read</h2>
+      <div class="chips"><span class="chip s-mock">Mock on Nov 14</span><span class="chip s-prop">AI strategy: proposed</span></div></div>
+    <div><p class="why">Two NPC traders, Kestrel and Osprey, have their own accounts and inventories. They quote both sides of every pair from one published rule, so a quiet planet still has a market, and their prices react to what players sell.</p></div>
+  </div>
+  <div class="pair">
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 340" role="img" aria-label="Guild mid price as a multiple of the 24 hour reference, against Guild inventory divided by target, both on log scales. The price falls one for one as inventory rises, clamped between 0.25 and 4 times the reference." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#A9B1C1">
+      <rect x="90" y="30" width="161.67" height="250" fill="#FF6A13" fill-opacity="0.08"/>
+      <g stroke="#222631"><line x1="90" y1="30" x2="90" y2="280"/><line x1="251.67" y1="30" x2="251.67" y2="280"/><line x1="413.33" y1="30" x2="413.33" y2="280"/><line x1="575" y1="30" x2="575" y2="280"/><line x1="736.67" y1="30" x2="736.67" y2="280"/><line x1="898.33" y1="30" x2="898.33" y2="280"/><line x1="1060" y1="30" x2="1060" y2="280"/><line x1="90" y1="30" x2="1060" y2="30"/><line x1="90" y1="71.67" x2="1060" y2="71.67"/><line x1="90" y1="113.33" x2="1060" y2="113.33"/><line x1="90" y1="155" x2="1060" y2="155"/><line x1="90" y1="196.67" x2="1060" y2="196.67"/><line x1="90" y1="238.33" x2="1060" y2="238.33"/><line x1="90" y1="280" x2="1060" y2="280"/></g>
+      <g text-anchor="middle" fill="#6B7385"><text x="90" y="298">⅛</text><text x="251.67" y="298">¼</text><text x="413.33" y="298">½</text><text x="575" y="298">1</text><text x="736.67" y="298">2</text><text x="898.33" y="298">4</text><text x="1060" y="298">8</text></g>
+      <text x="575" y="324" text-anchor="middle">Guild inventory ÷ target (log scale)</text>
+      <g text-anchor="end" fill="#6B7385"><text x="80" y="284">0.125×</text><text x="80" y="242">0.25×</text><text x="80" y="200">0.5×</text><text x="80" y="159">1×</text><text x="80" y="117">2×</text><text x="80" y="75">4×</text><text x="80" y="34">8×</text></g>
+      <text x="16" y="155" transform="rotate(-90 16 155)" text-anchor="middle">mid ÷ 24 h reference</text>
+      <polyline points="90,71.67 251.67,71.67 898.33,238.33 1060,238.33" fill="none" stroke="#FF8A3D" stroke-width="2.5"/>
+      <circle cx="575" cy="155" r="5" fill="#3DDC84"/>
+      <text x="587" y="148" fill="#3DDC84">at target: mid = reference</text>
+      <text x="170" y="62" text-anchor="middle" fill="#F2F4F7">clamp 4×</text>
+      <text x="979" y="228" text-anchor="middle" fill="#F2F4F7">clamp 0.25×</text>
+      <text x="170" y="252" text-anchor="middle" font-size="10" fill="#FF8A3D">thin stock: spread</text>
+      <text x="170" y="267" text-anchor="middle" font-size="10" fill="#FF8A3D">widens up to 15 %</text>
+      <text x="700" y="100" fill="#F2F4F7">mid = reference × (target ÷ inventory)^k</text>
+      <circle id="gdot" cx="755.9" cy="132.3" r="7" fill="#FF6A13" stroke="#07080A" stroke-width="2"/>
+    </svg>
+    </div>
+    <div class="tool">
+      <label for="inv">Move the Guild's inventory (shown with k = 1)</label>
+      <input id="inv" type="range" min="-3" max="3" step="0.01" value="1.07">
+      <div class="readout" id="inv-out" aria-live="polite">Inventory 2.10× target → mid 0.48× reference (−52 %) · spread 4 %</div>
+    </div>
+    <figcaption><p>Selling into a full Guild pays less, and buying from a thin one costs more. The clamp stops a dump from zeroing a pair. k = 1 and the 0.25×–4× clamp are proposed values; the target inventory has no number yet.</p><code>whitepaper §6 · W15-02, W15-06 · 04 §5 · Balance §7.2, §8</code></figcaption>
+  </figure>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 170" role="img" aria-label="One Guild visit: a seeded gap of 20 to 40 minutes, a 12 minute dock with six offers, accepts settle as one contract each, quotes are cancelled at departure." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <rect x="40" y="95" width="425" height="30" fill="#15181F" stroke="#222631"/>
+      <rect x="465" y="95" width="204" height="30" fill="#FF6A13" fill-opacity="0.18" stroke="#FF8A3D" stroke-width="1.5"/>
+      <rect x="669" y="95" width="391" height="30" fill="#15181F" stroke="#222631"/>
+      <g text-anchor="middle"><text x="252" y="114">away · 20–40 min gap, seeded</text><text x="567" y="114" fill="#F2F4F7">docked 12 min</text><text x="864" y="114">away</text></g>
+      <g stroke="#8A93A6" stroke-width="1.2"><line x1="465" y1="36" x2="465" y2="95"/><line x1="499" y1="58" x2="499" y2="95"/><line x1="669" y1="36" x2="669" y2="95"/></g>
+      <g><text x="458" y="32" text-anchor="end" fill="#F2F4F7">guild.arrived · 6 offers</text><text x="506" y="62" fill="#F2F4F7">Accept → 1 contract</text><text x="676" y="32" fill="#F2F4F7">guild.departed · quotes cancelled</text></g>
+      <g fill="#6B7385"><text x="40" y="144">0</text><text x="465" y="144" text-anchor="middle">25 min</text><text x="669" y="144" text-anchor="middle">37 min</text><text x="1060" y="144" text-anchor="end">60 min</text><text x="1060" y="164" text-anchor="end">present ≈ 29 % of the time</text></g>
+    </svg>
+    </div>
+    <figcaption><p>One visit as planned for W15 (gap lengths here are one example draw). After each fill the Guild re-quotes within 1 s. The Guild is also the only route between planets; carrying cargo between planets comes after the hackathon.</p><code>04 §4–5 · W15-02, W15-07, W15-11 · NEAR-70..73</code></figcaption>
+  </figure>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 230" role="img" aria-label="Proposed attestation path. Once per boot: get the attestation report with a fresh nonce, verify the GPU and CPU quotes, keep the enclave's signing address. Every hour: the strategy call, fetch its signature, recover the signer and compare it with the signing address, then show a verified chip." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-at" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g font-size="10" fill="#6B7385" letter-spacing="1"><text x="10" y="72">ONCE PER BOOT</text><text x="10" y="167">EVERY HOUR</text></g>
+      <g fill="#111318" stroke="#A9B1C1" stroke-width="1.2" stroke-dasharray="5 4"><rect x="150" y="40" width="250" height="56"/><rect x="440" y="40" width="250" height="56"/><rect x="730" y="40" width="250" height="56"/><rect x="150" y="135" width="250" height="56"/><rect x="440" y="135" width="250" height="56"/><rect x="730" y="135" width="250" height="56"/></g>
+      <rect x="1005" y="135" width="88" height="56" fill="#111318" stroke="#3DDC84" stroke-width="1.2" stroke-dasharray="5 4"/>
+      <g text-anchor="middle" font-size="11" fill="#F2F4F7"><text x="275" y="63">GET /v1/attestation/report</text><text x="565" y="63">verify GPU + CPU quotes</text><text x="855" y="63">keep signing_address</text><text x="275" y="158">chat completion</text><text x="565" y="158">GET /v1/signature/{chat_id}</text><text x="855" y="158">recover the signer</text><text x="1049" y="158" fill="#3DDC84">verified</text></g>
+      <g text-anchor="middle"><text x="275" y="82">fresh nonce, per model</text><text x="565" y="82">NVIDIA payload, Intel quote</text><text x="855" y="82">the enclave's key</text><text x="275" y="177">Guild strategy, ≤ 1 / hour</text><text x="565" y="177">model:hash(req):hash(resp)</text><text x="855" y="177">equals signing_address?</text><text x="1049" y="177" font-size="10">on the quote</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-at)"><line x1="400" y1="68" x2="438" y2="68"/><line x1="690" y1="68" x2="728" y2="68"/><line x1="400" y1="163" x2="438" y2="163"/><line x1="690" y1="163" x2="728" y2="163"/><line x1="980" y1="163" x2="1003" y2="163"/><line x1="855" y1="96" x2="855" y2="133" stroke-dasharray="4 3"/></g>
+      <text x="865" y="120" font-size="10">compare</text>
+      <circle cx="156" cy="216" r="3.5" fill="#FF6B6B"/><text x="166" y="220">any check fails → show the rule's reason string and drop the word "verified"</text>
+    </svg>
+    </div>
+    <figcaption><p>Proposed, not built: how a Guild quote could prove that a model inside a trusted enclave on NEAR AI Cloud wrote its strategy. Until this check runs, the app must not call a quote verified.</p><code>06 §4 F · R06-18 · NEAR-71 · Pivot §6 · track 03 / 06 option: OD-23</code></figcaption>
+  </figure>
+  </div>
+</section>
+
+<!-- ============ F4 DIRECTOR ============ -->
+<section id="director">
+  <div class="head">
+    <div><span class="tag">F4 · the colony director</span><h2>The colony trades while you sleep, inside limits you set</h2>
+      <div class="chips"><span class="chip s-mock">Mock on Nov 14</span><span class="chip s-open">Allowance unit: open</span></div></div>
+    <div><p class="why">While the player is away, the director sells surplus and buys shortages with its own revocable key. The game server checks every order twice before anything is signed. The spending limit is a server rule, not a property of the key.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 300" role="img" aria-label="A director order passes three gates: simulation limits, the server allowance and away budget, then the NEAR function-call key's own narrow guard. Below, an allowance gauge at 300 of 600 metals spent and a one-tap revoke." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-dr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <rect x="10" y="60" width="150" height="70" fill="#111318" stroke="#FF8A3D" stroke-width="2"/>
+      <g text-anchor="middle"><text x="85" y="86" font-size="12" fill="#F2F4F7">Director order</text><text x="85" y="104">every 60 s</text><text x="85" y="120">while away</text></g>
+      <g fill="#111318" stroke="#5B8CFF" stroke-width="1.5"><rect x="200" y="30" width="230" height="130"/><rect x="470" y="30" width="250" height="130"/><rect x="760" y="30" width="230" height="130"/></g>
+      <g font-family="Chakra Petch, sans-serif" font-size="14" font-weight="600" fill="#F2F4F7"><text x="216" y="54">1 · Sim limits</text><text x="486" y="54">2 · Server allowance</text><text x="776" y="54">3 · NEAR key guard</text></g>
+      <g><text x="216" y="78">max 300 per trade</text><text x="216" y="96">keep ≥ 200 in stock</text><text x="216" y="114">sell only above 80 %</text><text x="486" y="78">allowance 600 metals</text><text x="486" y="96">away budget 40 % / 60 %</text><text x="486" y="114">spent counted by the app</text><text x="776" y="78">function-call key</text><text x="776" y="96">calls one contract only</text><text x="776" y="114">cannot move NEAR</text></g>
+      <g font-size="10"><text x="216" y="146" fill="#FF6B6B">blocks: autotrade_limit</text><text x="486" y="146" fill="#FF6B6B">blocks: allowance exhausted</text><text x="776" y="146" fill="#6B7385">its allowance pays gas only</text></g>
+      <rect x="1015" y="60" width="78" height="70" fill="#111318" stroke="#3DDC84" stroke-width="1.5"/>
+      <g text-anchor="middle"><text x="1054" y="90" font-size="12" fill="#F2F4F7">settles</text><text x="1054" y="108" font-size="10">digest line</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-dr)"><line x1="160" y1="95" x2="198" y2="95"/><line x1="430" y1="95" x2="468" y2="95"/><line x1="720" y1="95" x2="758" y2="95"/><line x1="990" y1="95" x2="1013" y2="95"/></g>
+      <text x="200" y="196" fill="#F2F4F7">Allowance · spent 300 / 600 metals (W15 demo values)</text>
+      <rect x="200" y="206" width="790" height="18" fill="#15181F"/><rect x="200" y="206" width="395" height="18" fill="#5B8CFF"/>
+      <text x="990" y="244" text-anchor="end" fill="#FF6B6B" font-size="10">unit: metals in the mock vs NEAR on real · open (Q-04-1)</text>
+      <rect x="200" y="252" width="170" height="38" fill="#FF6A13"/>
+      <text x="285" y="276" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="14" font-weight="600" fill="#07080A" letter-spacing="1">REVOKE · ONE TAP</text>
+      <line x1="370" y1="271" x2="398" y2="271" stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-dr)"/>
+      <text x="404" y="275">key deleted → next trade skipped: director_key_revoked</text>
+    </svg>
+    </div>
+    <figcaption><p>On real NEAR a function-call key's allowance only pays gas, so it cannot count cargo or prices, and a relayed call does not spend it at all. The away limit lives in gates 1 and 2; the key adds the narrow guard in gate 3.</p><code>04 §4 · W15-18..23 · D-17 · R01-59 · R06-65 · whitepaper §3</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ AGENT API ============ -->
+<section id="agents">
+  <div class="head">
+    <div><span class="tag">API · outside AI agents</span><h2>Agents as players: where does the limit live?</h2>
+      <div class="chips"><span class="chip s-prop">A: proposed</span><span class="chip s-open">B: open, probe first</span></div></div>
+    <div><p class="why">Any external AI agent could play a colony through the same commands a player uses. There are two ways to hold its keys and limits, and they differ in who enforces the policy.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 300" role="img" aria-label="Comparison. Option A, Colony Agent API or MCP: the agent sends commands, our server checks the allowance and limits, then the app's custodial colony key signs on NEAR. Option B, Agent Connect: the agent has its own account on NEAR Intents, our backend holds a revocable grant, and an owner-signed policy at the wallet provider enforces limits; support for our cargo token is unknown." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g fill="#0B0D11" stroke="#222631"><rect x="10" y="10" width="530" height="280"/><rect x="560" y="10" width="530" height="280"/></g>
+      <g font-family="Chakra Petch, sans-serif" font-size="14" font-weight="600" fill="#F2F4F7"><text x="30" y="38">A · Colony Agent API / MCP</text><text x="580" y="38">B · Agent Connect (NEAR Intents Agent API)</text></g>
+      <g fill="#111318" stroke="#A9B1C1" stroke-width="1.2" stroke-dasharray="5 4"><rect x="30" y="70" width="140" height="56"/><rect x="200" y="70" width="140" height="56"/><rect x="200" y="180" width="140" height="56"/><rect x="580" y="70" width="140" height="56"/><rect x="750" y="70" width="150" height="56"/><rect x="930" y="70" width="140" height="56"/><rect x="750" y="180" width="150" height="56"/></g>
+      <g fill="#111318" stroke="#FF8A3D" stroke-width="2" stroke-dasharray="5 4"><rect x="370" y="70" width="150" height="56"/><rect x="370" y="180" width="150" height="56" stroke="#3A4150" stroke-width="1.2"/><rect x="930" y="180" width="140" height="56"/></g>
+      <g text-anchor="middle" font-size="12" fill="#F2F4F7"><text x="100" y="93">AI agent</text><text x="270" y="93">MCP / API</text><text x="445" y="93">server checks</text><text x="445" y="203">colony key</text><text x="270" y="203">NEAR</text><text x="650" y="93">AI agent</text><text x="825" y="93">ngt_ grant</text><text x="1000" y="93">Agent API</text><text x="1000" y="203">owner policy</text><text x="825" y="203">intents.near</text></g>
+      <g text-anchor="middle"><text x="100" y="112">outside the game</text><text x="270" y="112">1 200-char brief</text><text x="445" y="112">allowance, limits</text><text x="445" y="222">held by the app</text><text x="270" y="222">one receipt each</text><text x="650" y="112">its own account</text><text x="825" y="112">held by our backend</text><text x="1000" y="112">partner naa_ key</text><text x="1000" y="222">limits, freeze</text><text x="825" y="222" fill="#FF6B6B">NEP-245? unknown</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-ag)"><line x1="170" y1="98" x2="198" y2="98"/><line x1="340" y1="98" x2="368" y2="98"/><line x1="445" y1="126" x2="445" y2="178"/><line x1="370" y1="208" x2="342" y2="208"/><line x1="720" y1="98" x2="748" y2="98"/><line x1="900" y1="98" x2="928" y2="98"/><line x1="1000" y1="126" x2="1000" y2="178"/><line x1="930" y1="208" x2="902" y2="208"/></g>
+      <g fill="#FF8A3D" font-size="10"><text x="378" y="150">policy lives here</text><text x="1010" y="150">policy lives here</text></g>
+      <text x="30" y="268">Limit is our server rule; works with cargo today.</text>
+      <text x="580" y="268">Limit is owner-signed; examples are NEP-141 only.</text>
+    </svg>
+    </div>
+    <figcaption><p>Option A needs no chain adapter and reuses the director's checks; it is not yet in the build plan. Option B is a partner tool listed by NEAR Builders; nobody has shown it accepts our cargo token, so the first step is a probe.</p><code>04 R04-58, R04-62 · 06 R06-83 · Pivot Bet A · Q-06-21 · OD-24</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ F6 DEED ============ -->
+<section id="deed">
+  <div class="head">
+    <div><span class="tag">F6 · colony deed, Settled, staking</span><h2>A deed that grows with the colony</h2>
+      <div class="chips"><span class="chip s-mock">Deed: mock on Nov 14</span><span class="chip s-later">Settled, staking: later</span></div></div>
+    <div><p class="why">Each colony has one dynamic NFT (NEP-171) that records its growth and can be shared as a card. At the end, a colony that launches its rocket becomes Settled, and its deed lets the player stake their own NEAR, with no in-game power.</p></div>
+  </div>
+  <div class="pair">
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 340" role="img" aria-label="An example deed card at 1200 by 630 proportions showing colony name, terraform percentage, stage and badges, next to the update pipeline: milestone, render image, 10 minute debounce, outbox metadata update, push to the client." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-dd" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <path d="M36 12 H620 V311 L604 327 H20 V28 Z" fill="#0F1116" stroke="#FF8A3D" stroke-width="1.5"/>
+      <text x="44" y="44" font-size="10" fill="#FF8A3D" letter-spacing="1.5">COLONY DEED · NEP-171</text>
+      <text x="604" y="44" text-anchor="end" font-size="10" fill="#6B7385">example values</text>
+      <text x="44" y="88" font-family="Chakra Petch, sans-serif" font-size="32" font-weight="600" fill="#F2F4F7">Vesta-7</text>
+      <text x="44" y="110">vesta-7.pilot.terraagent.near · planet day 9 of 14</text>
+      <text x="44" y="150" fill="#6B7385">TERRAFORMED</text>
+      <rect x="44" y="160" width="400" height="14" fill="#15181F"/><rect x="44" y="160" width="248" height="14" fill="#3DDC84"/>
+      <text x="456" y="172" font-size="13" fill="#F2F4F7">62 %</text>
+      <g fill="#6B7385"><text x="44" y="212">STAGE</text><text x="200" y="212">LIVING TILES</text><text x="380" y="212">TRADES</text></g>
+      <g font-family="Chakra Petch, sans-serif" font-size="22" font-weight="600" fill="#F2F4F7"><text x="44" y="240">S4</text><text x="200" y="240">204 / 325</text><text x="380" y="240">57</text></g>
+      <g fill="#15181F" stroke="#3A4150"><path d="M44 270 H170 V300 H52 L44 292 Z"/><path d="M182 270 H330 V300 H190 L182 292 Z"/></g>
+      <g font-size="10"><text x="56" y="289" fill="#F2F4F7">Merchant ★</text><text x="194" y="289" fill="#F2F4F7">Port Authority</text></g>
+      <text x="604" y="300" text-anchor="end" font-size="10" fill="#6B7385">1200 × 630 share card</text>
+      <g fill="#111318" stroke="#5B8CFF" stroke-width="1.5"><rect x="680" y="14" width="410" height="48"/><rect x="680" y="80" width="410" height="48"/><rect x="680" y="146" width="410" height="48"/><rect x="680" y="212" width="410" height="48"/><rect x="680" y="278" width="410" height="48"/></g>
+      <g font-size="12" fill="#F2F4F7"><text x="696" y="35">Milestone in the sim</text><text x="696" y="101">Render the image</text><text x="696" y="167">Debounce 10 min</text><text x="696" y="233">Outbox: deed-meta</text><text x="696" y="299">deed.updated</text></g>
+      <g><text x="696" y="52">terraform step of 10 %, stage, Settled</text><text x="696" y="118">from the snapshot, cached per version</text><text x="696" y="184">at most 1 update per colony; Settled skips it</text><text x="696" y="250">{colonyId}:{version}, idempotent</text><text x="696" y="316">push and toast; the card is shareable</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-dd)"><line x1="885" y1="62" x2="885" y2="78"/><line x1="885" y1="128" x2="885" y2="144"/><line x1="885" y1="194" x2="885" y2="210"/><line x1="885" y1="260" x2="885" y2="276"/></g>
+    </svg>
+    </div>
+    <figcaption><p>The card's numbers come from the simulation snapshot; the chain holds the token, its owner and the metadata version. Badges for earned achievement tiers are an optional second NFT; XP stays off-chain.</p><code>05 §4–6 · NEAR-90, NEAR-91 · W20-06..10 · W12-25 · card values are an example</code></figcaption>
+  </figure>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 200" role="img" aria-label="Endgame: living land, rocket launch with a 30 second countdown, Settled colony, next planet with a Founder Pod. From Settled the player can claim the account and stake their own NEAR on the deed, with no in-game effect." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-st" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g fill="#111318" stroke="#8A93A6" stroke-width="1.5"><rect x="10" y="24" width="200" height="60"/><rect x="290" y="24" width="200" height="60"/><rect x="570" y="24" width="200" height="60"/><rect x="850" y="24" width="240" height="60"/><rect x="570" y="128" width="200" height="60"/><rect x="850" y="128" width="240" height="60"/></g>
+      <g text-anchor="middle" font-size="12" fill="#F2F4F7"><text x="110" y="49">Living land</text><text x="390" y="49">Rocket launch</text><text x="670" y="49">Settled</text><text x="970" y="49">Next planet</text><text x="670" y="153">Claim the account</text><text x="970" y="153">Stake your own NEAR</text></g>
+      <g text-anchor="middle"><text x="110" y="68">launch gate met</text><text x="390" y="68">30 s, cancellable</text><text x="670" y="68">inert, invulnerable</text><text x="970" y="68">Founder Pod, stock ×1.25</text><text x="670" y="172">full-access key</text><text x="970" y="172">no in-game effect</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" marker-end="url(#mk-st)"><line x1="210" y1="54" x2="288" y2="54"/><line x1="490" y1="54" x2="568" y2="54"/><line x1="770" y1="54" x2="848" y2="54"/><line x1="670" y1="84" x2="670" y2="126"/><line x1="770" y1="158" x2="848" y2="158"/></g>
+    </svg>
+    </div>
+    <figcaption><p>Staking uses a normal NEAR staking pool; the game only shows the position. After the hackathon.</p><code>05 §4 · D-18 · NEAR-92, NEAR-93 · W21-04..16 · W20-16..22</code></figcaption>
+  </figure>
+  </div>
+</section>
+
+<!-- ============ F7 TREASURY ============ -->
+<section id="treasury">
+  <div class="head">
+    <div><span class="tag">F7 · planet treasury</span><h2>Fees fund the planet, colonies vote on the spend</h2>
+      <div class="chips"><span class="chip s-mock">Mock on Nov 14</span></div></div>
+    <div><p class="why">A fifth of every stall fee goes to the planet's DAO. Its members are the colony accounts, and they vote on projects that change the simulation for everyone, with no patch needed.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 320" role="img" aria-label="A stall fee splits 80 percent to the stall owner and 20 percent to the planet DAO. The DAO's colony members vote within 6 hours, more than half must agree, and an approved project applies one of three effects: terraform boost, meteor shield or Guild subsidy." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-tr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <text x="20" y="48" fill="#6B7385">EACH TRADE FILL</text>
+      <rect x="20" y="60" width="140" height="120" fill="#FF6A13"/>
+      <text x="90" y="116" text-anchor="middle" font-family="Chakra Petch, sans-serif" font-size="15" font-weight="600" fill="#07080A">STALL FEE</text>
+      <text x="90" y="134" text-anchor="middle" fill="#07080A">0–3 %</text>
+      <path d="M160 60 C290 60 290 40 420 40 L420 136 C290 136 290 156 160 156 Z" fill="#FF6A13" fill-opacity="0.28"/>
+      <path d="M160 156 C290 156 290 200 420 200 L420 224 C290 224 290 180 160 180 Z" fill="#5B8CFF" fill-opacity="0.45"/>
+      <rect x="420" y="40" width="180" height="96" fill="#111318" stroke="#FF8A3D" stroke-width="1.5"/>
+      <text x="510" y="84" text-anchor="middle" font-size="13" fill="#F2F4F7">Stall owner</text><text x="510" y="104" text-anchor="middle">80 %</text>
+      <rect x="420" y="190" width="180" height="44" fill="#111318" stroke="#5B8CFF" stroke-width="1.5"/>
+      <text x="510" y="210" text-anchor="middle" font-size="12" fill="#F2F4F7">Planet DAO</text><text x="510" y="226" text-anchor="middle">20 %</text>
+      <rect x="650" y="184" width="170" height="56" fill="#111318" stroke="#5B8CFF" stroke-width="1.5"/>
+      <text x="735" y="207" text-anchor="middle" font-size="12" fill="#F2F4F7">Vote · 6 h</text><text x="735" y="226" text-anchor="middle">&gt; 50 % of colonies</text>
+      <g fill="#111318" stroke="#5B8CFF" stroke-width="1.5"><rect x="870" y="112" width="220" height="52"/><rect x="870" y="186" width="220" height="52"/><rect x="870" y="260" width="220" height="52"/></g>
+      <g font-size="12" fill="#F2F4F7"><text x="884" y="133">terraform_boost · 1 000</text><text x="884" y="207">meteor_shield · 1 500</text><text x="884" y="281">guild_subsidy · 800</text></g>
+      <g><text x="884" y="152">−25 % terraform cost, 12 h</text><text x="884" y="226">−75 % meteor, lightning, 6 h</text><text x="884" y="300">+1 Guild visit</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" fill="none" marker-end="url(#mk-tr)"><line x1="600" y1="212" x2="648" y2="212"/><path d="M820 206 C845 206 845 138 868 138"/><line x1="820" y1="212" x2="868" y2="212"/><path d="M820 218 C845 218 845 286 868 286"/></g>
+      <text x="20" y="276">Stall owners set their fee (0–3 %).</text>
+      <text x="20" y="294">Proposed on top: a 0.25 % protocol fee, paid by the taker.</text>
+    </svg>
+    </div>
+    <figcaption><p>The 20 % share is a proposed value; the carve-out from the stall fee is planned in W22. Project costs here are the W22 plan; the balance study proposes 300 / 450 / 250.</p><code>05 §4–5 · NEAR-100..102 · W22-07..13 · TREASURY_FEE_SHARE_BP 2 000 · MP §7</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ F8 BOUNTIES ============ -->
+<section id="bounties">
+  <div class="head">
+    <div><span class="tag">F8 · bounties</span><h2>The reward is locked before the hunt starts</h2>
+      <div class="chips"><span class="chip s-mock">Mock on Nov 14</span></div></div>
+    <div><p class="why">A player posts a reward for a target, such as clearing a nest or defending an area. The reward moves into escrow at once, so the claimer is paid by the contract, not by the poster's goodwill.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 230" role="img" aria-label="Bounty states: posted with the reward in escrow, claimed, completed when the simulation confirms, paid to the claimer. An expired bounty or a dead poster refunds the poster; an eliminated claimer reopens the bounty." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-bn" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <g fill="#111318" stroke="#5B8CFF" stroke-width="1.5"><rect x="10" y="40" width="180" height="56"/><rect x="250" y="40" width="180" height="56"/><rect x="490" y="40" width="180" height="56"/><rect x="250" y="150" width="180" height="56"/></g>
+      <rect x="730" y="40" width="180" height="56" fill="#111318" stroke="#3DDC84" stroke-width="1.5"/>
+      <rect x="10" y="150" width="180" height="56" fill="#111318" stroke="#FF6B6B" stroke-width="1.5"/>
+      <rect x="940" y="40" width="150" height="166" fill="#0B0D11" stroke="#222631"/>
+      <g text-anchor="middle" font-size="12" fill="#F2F4F7"><text x="100" y="63">Posted</text><text x="340" y="63">Claimed</text><text x="580" y="63">Completed</text><text x="820" y="63">Paid</text><text x="100" y="173">Refunded</text><text x="340" y="173">Reopened</text></g>
+      <g text-anchor="middle"><text x="100" y="82">reward → escrow</text><text x="340" y="82">claim registered</text><text x="580" y="82">the sim confirms</text><text x="820" y="82">claimer + reward</text><text x="100" y="192">back to the poster</text><text x="340" y="192">claimer eliminated</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" fill="none" marker-end="url(#mk-bn)"><line x1="190" y1="68" x2="248" y2="68"/><line x1="430" y1="68" x2="488" y2="68"/><line x1="670" y1="68" x2="728" y2="68"/><line x1="60" y1="96" x2="60" y2="148"/><line x1="340" y1="96" x2="340" y2="148"/><path d="M250 178 H215 V118 H130 V98"/></g>
+      <g font-size="10"><text x="70" y="136">expired or poster died</text><text x="458" y="60" text-anchor="middle">done</text><text x="699" y="60" text-anchor="middle">pay</text></g>
+      <g fill="#6B7385" font-size="10" letter-spacing="1"><text x="954" y="64">LIMITS</text></g>
+      <g><text x="954" y="90">≤ 3 active</text><text x="954" y="108">per colony</text><text x="954" y="134">expires</text><text x="954" y="152">in 2–48 h</text><text x="954" y="178">claim window</text><text x="954" y="196">60 s</text></g>
+    </svg>
+    </div>
+    <figcaption><p>Rewards are on-chain cargo tokens, so only exported cargo can be offered. Mercenary NPCs that hunt bounties come after the hackathon.</p><code>05 §4–5 · NEAR-110..112 · W22-17..24 · mercenaries: W22-27</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ PORTS / IOC ============ -->
+<section id="ports">
+  <div class="head">
+    <div><span class="tag">IoC · ports and adapters</span><h2>Going real is a config change, not a rewrite</h2>
+      <div class="chips"><span class="chip s-built">Built (W00, on main)</span></div></div>
+    <div><p class="why">Every NEAR feature talks to an abstract port. One environment variable per port picks its adapter at boot, and the same contract test suite runs against the mock and the real chain. This part already exists.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 420" role="img" aria-label="Eleven ports feed one switch, NEAR_ADAPTER per port, set to mock, testnet or mainnet and read once at boot. The switch selects a mock adapter (built, Postgres mock chain) or a testnet or mainnet adapter (none landed yet). Boot guards and one shared contract suite sit on the right." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="10.5" fill="#A9B1C1">
+      <defs><marker id="mk-pt" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#8A93A6"/></marker></defs>
+      <text x="10" y="26" font-size="10" fill="#6B7385" letter-spacing="1">11 PORTS · ABSTRACT CLASSES</text>
+      <g fill="#111318" stroke-width="1.5">
+        <rect x="10" y="40" width="200" height="28" stroke="#39D0FF"/><rect x="10" y="74" width="200" height="28" stroke="#39D0FF"/><rect x="10" y="108" width="200" height="28" stroke="#39D0FF"/><rect x="10" y="142" width="200" height="28" stroke="#39D0FF"/>
+        <rect x="10" y="176" width="200" height="28" stroke="#5B8CFF"/><rect x="10" y="210" width="200" height="28" stroke="#5B8CFF"/><rect x="10" y="244" width="200" height="28" stroke="#5B8CFF"/><rect x="10" y="278" width="200" height="28" stroke="#5B8CFF"/><rect x="10" y="312" width="200" height="28" stroke="#5B8CFF"/><rect x="10" y="346" width="200" height="28" stroke="#5B8CFF"/><rect x="10" y="380" width="200" height="28" stroke="#5B8CFF"/>
+      </g>
+      <g font-size="11.5" fill="#F2F4F7"><text x="22" y="59">Identity</text><text x="22" y="93">Relayer</text><text x="22" y="127">CargoToken</text><text x="22" y="161">Intents</text><text x="22" y="195">AgentWallet</text><text x="22" y="229">ChainRead</text><text x="22" y="263">DeedNft</text><text x="22" y="297">BadgeNft</text><text x="22" y="331">Staking</text><text x="22" y="365">TreasuryDao</text><text x="22" y="399">Escrow</text></g>
+      <g text-anchor="end" font-size="10" fill="#6B7385"><text x="200" y="59">F5</text><text x="200" y="93">F5</text><text x="200" y="127">F1</text><text x="200" y="161">F2</text><text x="200" y="195">F3 / F4</text><text x="200" y="229">reads</text><text x="200" y="263">F6</text><text x="200" y="297">badges</text><text x="200" y="331">F6</text><text x="200" y="365">F7</text><text x="200" y="399">F8</text></g>
+      <g stroke="#3A4150" stroke-width="1" fill="none"><path d="M210 54 C250 54 250 200 290 200"/><path d="M210 88 C250 88 250 201 290 201"/><path d="M210 122 C250 122 250 202 290 202"/><path d="M210 156 C250 156 250 203 290 203"/><path d="M210 190 C250 190 250 204 290 204"/><path d="M210 224 C250 224 250 205 290 205"/><path d="M210 258 C250 258 250 206 290 206"/><path d="M210 292 C250 292 250 207 290 207"/><path d="M210 326 C250 326 250 208 290 208"/><path d="M210 360 C250 360 250 209 290 209"/><path d="M210 394 C250 394 250 210 290 210"/></g>
+      <rect x="290" y="148" width="260" height="116" fill="#111318" stroke="#FF8A3D" stroke-width="2"/>
+      <g text-anchor="middle"><text x="420" y="176" font-size="12" fill="#F2F4F7">NEAR_ADAPTER_&lt;PORT&gt;</text><text x="420" y="198" fill="#FF8A3D">mock | testnet | mainnet</text><text x="420" y="220">read once at boot</text><text x="420" y="242" font-size="10" fill="#6B7385">adapterOf({ port, kind })</text></g>
+      <g stroke="#8A93A6" stroke-width="1.5" fill="none" marker-end="url(#mk-pt)"><path d="M550 196 C585 196 585 90 618 90"/><line x1="550" y1="206" x2="618" y2="206"/><path d="M550 216 C585 216 585 322 618 322"/></g>
+      <rect x="620" y="40" width="230" height="100" fill="#111318" stroke="#3DDC84" stroke-width="1.5"/>
+      <g fill="#111318" stroke="#6B7385" stroke-width="1.2" stroke-dasharray="5 4"><rect x="620" y="160" width="230" height="92"/><rect x="620" y="272" width="230" height="100"/></g>
+      <g font-size="12" fill="#F2F4F7"><text x="636" y="62">mock adapter · built</text><text x="636" y="182">testnet adapter</text><text x="636" y="294">mainnet adapter</text></g>
+      <g><text x="636" y="82">Postgres chain.mock_chain_*</text><text x="636" y="99">"mock:" receipts, 300–1 500 ms</text><text x="636" y="116">MOCK_FAIL_RATE, MOCK_SEED</text><text x="636" y="202">real RPC, test accounts</text><text x="636" y="220">login and dev work</text><text x="636" y="238" fill="#6B7385">none landed yet</text><text x="636" y="314">cargo and Intents</text><text x="636" y="332">(intents.near has no testnet)</text><text x="636" y="350" fill="#6B7385">none landed yet</text></g>
+      <rect x="880" y="40" width="210" height="212" fill="#0B0D11" stroke="#222631"/>
+      <text x="894" y="62" font-family="Chakra Petch, sans-serif" font-size="14" font-weight="600" fill="#F2F4F7">Boot guards</text>
+      <g font-size="10"><text x="894" y="88" fill="#FF8A3D">typo → silently mock</text><text x="894" y="112">real kind, no adapter</text><text x="894" y="126">→ boot aborts</text><text x="894" y="150">production + any mock</text><text x="894" y="164">→ aborts unless</text><text x="894" y="178">NEAR_ALLOW_MOCK_IN_PROD</text><text x="894" y="202">mainnet + no</text><text x="894" y="216">NEAR_ALLOW_MAINNET</text><text x="894" y="230" fill="#6B7385">(planned, not in code)</text></g>
+      <rect x="880" y="272" width="210" height="100" fill="#111318" stroke="#3DDC84" stroke-width="1.5"/>
+      <g><text x="894" y="294" font-size="12" fill="#F2F4F7">One contract suite</text><text x="894" y="314">same assertions on</text><text x="894" y="330">mock (CI) and real</text><text x="894" y="354" font-size="10" fill="#3DDC84">npm run test:contract</text></g>
+    </svg>
+    </div>
+    <div class="tool" id="bootsim">
+      <span class="lbl">Try the boot check for one port: NEAR_ADAPTER_CARGO_TOKEN =</span>
+      <div class="row seg" role="group" aria-label="Adapter value">
+        <button type="button" id="v-mock" data-v="mock" aria-pressed="true">mock</button>
+        <button type="button" id="v-testnet" data-v="testnet" aria-pressed="false">testnet</button>
+        <button type="button" id="v-mainnet" data-v="mainnet" aria-pressed="false">mainnet</button>
+        <button type="button" id="v-typo" data-v="mainet" aria-pressed="false">mainet (typo)</button>
+      </div>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="c-prod"> NODE_ENV=production</label>
+        <label class="check"><input type="checkbox" id="c-allow"> NEAR_ALLOW_MOCK_IN_PROD=true</label>
+        <label class="check"><input type="checkbox" id="c-real"> real CargoToken adapter registered (after W23)</label>
+      </div>
+      <ul class="boot" id="boot-out" aria-live="polite"></ul>
+    </div>
+    <figcaption><p>The simulator shows one port; the real boot runs the same check for all eleven and logs the resulting matrix. A proposed <code>NEAR_PROFILE</code> preset (mock, sandbox, testnet, mainnet-dev, prod) would fill every per-port value at once.</p><code>06 §3.5 R06-39..47 · §4 A · code: backend/app/src/ports/adapters.ts, near/infrastructure/adapter-selection.ts · NEAR_PROFILE: 09 §4</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ DEMO DAY ============ -->
+<section id="demo-day">
+  <div class="head">
+    <div><span class="tag">Nov 14 · what is real</span><h2>One check on Nov 10 decides what is real</h2>
+      <div class="chips"><span class="chip s-real">Real after Nov 10</span><span class="chip s-mock">Mock</span></div></div>
+    <div><p class="why">If the core game passes the Nov 10 check, login, cargo and markets switch to real NEAR, one at a time and in that order. If it does not, the demo runs on mocks and says so. Everything else stays mock for the hackathon.</p></div>
+  </div>
+  <figure>
+    <div class="scroll">
+    <svg viewBox="0 0 1100 480" role="img" aria-label="Matrix of 11 ports by four moments. Today on main every port is mock. On Nov 14 if the gate passes, Identity and Relayer are real, CargoToken and Intents are real on mainnet, the rest mock. If the gate fails every port is mock. After the hackathon every port is planned to go real in swap order." font-family="IBM Plex Mono, ui-monospace, monospace" font-size="11" fill="#A9B1C1">
+      <g font-family="Chakra Petch, sans-serif" font-size="13" font-weight="600" fill="#F2F4F7" text-anchor="middle"><text x="360" y="26">Today · main</text><text x="570" y="26">Nov 14 · gate passes</text><text x="780" y="26">Nov 14 · gate fails</text><text x="990" y="26">After the hackathon</text></g>
+      <g font-size="11.5" fill="#F2F4F7"><text x="10" y="69">Identity · login</text><text x="10" y="105">Relayer · gas</text><text x="10" y="141">CargoToken · cargo</text><text x="10" y="177">Intents · markets</text><text x="10" y="213">AgentWallet · Guild, director</text><text x="10" y="249">ChainRead · reads</text><text x="10" y="285">DeedNft · deed</text><text x="10" y="321">BadgeNft · badges</text><text x="10" y="357">Staking</text><text x="10" y="393">TreasuryDao · treasury</text><text x="10" y="429">Escrow · bounties</text></g>
+      <g fill="#5B8CFF" fill-opacity="0.16" stroke="#5B8CFF">
+        <rect x="260" y="50" width="200" height="28"/><rect x="260" y="86" width="200" height="28"/><rect x="260" y="122" width="200" height="28"/><rect x="260" y="158" width="200" height="28"/><rect x="260" y="194" width="200" height="28"/><rect x="260" y="230" width="200" height="28"/><rect x="260" y="266" width="200" height="28"/><rect x="260" y="302" width="200" height="28"/><rect x="260" y="338" width="200" height="28"/><rect x="260" y="374" width="200" height="28"/><rect x="260" y="410" width="200" height="28"/>
+        <rect x="470" y="194" width="200" height="28"/><rect x="470" y="230" width="200" height="28"/><rect x="470" y="266" width="200" height="28"/><rect x="470" y="302" width="200" height="28"/><rect x="470" y="338" width="200" height="28"/><rect x="470" y="374" width="200" height="28"/><rect x="470" y="410" width="200" height="28"/>
+        <rect x="680" y="50" width="200" height="28"/><rect x="680" y="86" width="200" height="28"/><rect x="680" y="122" width="200" height="28"/><rect x="680" y="158" width="200" height="28"/><rect x="680" y="194" width="200" height="28"/><rect x="680" y="230" width="200" height="28"/><rect x="680" y="266" width="200" height="28"/><rect x="680" y="302" width="200" height="28"/><rect x="680" y="338" width="200" height="28"/><rect x="680" y="374" width="200" height="28"/><rect x="680" y="410" width="200" height="28"/>
+      </g>
+      <g fill="#39D0FF" fill-opacity="0.2" stroke="#39D0FF" stroke-width="1.5"><rect x="470" y="50" width="200" height="28"/><rect x="470" y="86" width="200" height="28"/><rect x="470" y="122" width="200" height="28"/><rect x="470" y="158" width="200" height="28"/></g>
+      <g fill="none" stroke="#6B7385" stroke-dasharray="4 3"><rect x="890" y="50" width="200" height="28"/><rect x="890" y="86" width="200" height="28"/><rect x="890" y="122" width="200" height="28"/><rect x="890" y="158" width="200" height="28"/><rect x="890" y="194" width="200" height="28"/><rect x="890" y="230" width="200" height="28"/><rect x="890" y="266" width="200" height="28"/><rect x="890" y="302" width="200" height="28"/><rect x="890" y="338" width="200" height="28"/><rect x="890" y="374" width="200" height="28"/><rect x="890" y="410" width="200" height="28"/></g>
+      <g text-anchor="middle" fill="#C9CFDA">
+        <text x="360" y="68">mock</text><text x="360" y="104">mock</text><text x="360" y="140">mock</text><text x="360" y="176">mock</text><text x="360" y="212">mock</text><text x="360" y="248">mock</text><text x="360" y="284">mock</text><text x="360" y="320">mock</text><text x="360" y="356">mock</text><text x="360" y="392">mock</text><text x="360" y="428">mock</text>
+        <text x="570" y="212">mock</text><text x="570" y="284">mock</text><text x="570" y="320">mock</text><text x="570" y="356">mock</text><text x="570" y="392">mock</text><text x="570" y="428">mock</text>
+        <text x="780" y="68">mock</text><text x="780" y="104">mock</text><text x="780" y="140">mock</text><text x="780" y="176">mock</text><text x="780" y="212">mock</text><text x="780" y="248">mock</text><text x="780" y="284">mock</text><text x="780" y="320">mock</text><text x="780" y="356">mock</text><text x="780" y="392">mock</text><text x="780" y="428">mock</text>
+      </g>
+      <g text-anchor="middle" fill="#39D0FF"><text x="570" y="68">① real</text><text x="570" y="104">① real</text><text x="570" y="140">② real · mainnet</text><text x="570" y="176">③ real · mainnet</text></g>
+      <text x="570" y="248" text-anchor="middle" fill="#FF6B6B">mock · open (Q-06-12)</text>
+      <g text-anchor="middle" fill="#8A93A6"><text x="990" y="68">real</text><text x="990" y="104">real</text><text x="990" y="140">real</text><text x="990" y="176">real</text><text x="990" y="212">real</text><text x="990" y="248">real</text><text x="990" y="284">real</text><text x="990" y="320">real</text><text x="990" y="356">real</text><text x="990" y="392">real</text><text x="990" y="428">real</text></g>
+      <text x="10" y="468" font-size="10.5">Swap order after the hackathon: F5 login → F1 cargo → F2 markets → F3/F4 agents → F6 deed → F7 treasury → F8 bounties</text>
+    </svg>
+    </div>
+    <figcaption><p>①②③ is the order of the switch on demo week. A port goes real only when its contract suite is green on real. The mainnet guard and the first mainnet trade use tiny amounts and a dry run first. The README's mock/real table, generated from the code, is the authoritative version of this board.</p><code>whitepaper §7 · HACKATHON_CUT §1 (D-27) · R06-49..54 · W23</code></figcaption>
+  </figure>
+</section>
+
+<!-- ============ STANDARDS ============ -->
+<section id="standards">
+  <div class="head">
+    <div><span class="tag">NEP · standards and NEAR tools</span><h2>Standard NEAR pieces only</h2></div>
+    <div><p class="why">Each feature uses an existing NEAR standard or service, so wallets, explorers and other agents already understand what TerraAgent puts on chain.</p></div>
+  </div>
+  <div class="std">
+    <div><span class="chip s-real">F1</span><b>NEP-245 Multi Token</b><p>All ten cargo types in one contract, <code>res.terraagent.near</code>.</p></div>
+    <div><span class="chip s-real">F2</span><b>NEAR Intents</b><p><code>intents.near</code> checks each batch sums to zero and settles it atomically.</p></div>
+    <div><span class="chip s-real">F5 · F2</span><b>NEP-413 signed messages</b><p>Wallet login challenges and the <code>token_diff</code> intents each colony signs.</p></div>
+    <div><span class="chip s-real">F5</span><b>NEP-366 meta-transactions</b><p>Colonies sign, the relayer pays the gas.</p></div>
+    <div><span class="chip s-real">F5</span><b>NEP-145 storage</b><p>The relayer pays each colony's storage deposit.</p></div>
+    <div><span class="chip s-prop">F2 · proposed</span><b>NEP-141 tokens</b><p>wNEAR and USDC legs in NEAR-priced pairs.</p></div>
+    <div><span class="chip s-mock">F6</span><b>NEP-171 NFT</b><p>The colony deed and optional achievement badges.</p></div>
+    <div><span class="chip s-mock">F7</span><b>SputnikDAO</b><p>One treasury per planet; the colony accounts are its members.</p></div>
+    <div><span class="chip s-prop">contracts · proposed</span><b>NEP-297 events</b><p>Contract events that explorers and the read model could index.</p></div>
+    <div><span class="chip s-prop">F5 · proposed</span><b>NEAR Auth</b><p>Social login to a named account, no seed phrase.</p></div>
+    <div><span class="chip s-prop">F3 · proposed</span><b>NEAR AI Cloud</b><p>OpenAI-compatible models in trusted enclaves, with signed responses.</p></div>
+    <div><span class="chip s-prop">tooling · planned</span><b>near-api-js v7 · cargo near</b><p>The official SDKs chosen for the real adapters, and near-sdk 5.x for our contracts, tested on a local sandbox. Not in the code yet.</p></div>
+  </div>
+</section>
+
+<footer>
+  <p>Drawn from <code>docs/hackathon/near/01–09</code> and <code>docs/hackathon/public/whitepaper.md</code> (review pass 4, 2026-11-02). Each figure lists the rule and issue ids it comes from. This page describes mechanics; it makes no promise about the value of any token.</p>
+  <p>Where this page and the README's mock/real table differ, the README wins.</p>
+</footer>
+
+</div>
+
+<script>
+(function () {
+  // Guild pricing curve: mid / reference = clamp((target / inventory)^k, 0.25, 4), k = 1.
+  var X = function (r) { return 90 + (Math.log2(r) + 3) / 6 * 970; };
+  var Y = function (m) { return 280 - (Math.log2(m) + 3) / 6 * 250; };
+  var inv = document.getElementById('inv');
+  var out = document.getElementById('inv-out');
+  var dot = document.getElementById('gdot');
+  function fmtPct(m) {
+    var p = Math.round((m - 1) * 100);
+    return (p > 0 ? '+' : p < 0 ? '−' : '±') + Math.abs(p) + ' %';
+  }
+  function updateGuild() {
+    var r = Math.pow(2, parseFloat(inv.value));
+    var raw = 1 / r;
+    var m = Math.min(4, Math.max(0.25, raw));
+    dot.setAttribute('cx', X(r).toFixed(1));
+    dot.setAttribute('cy', Y(m).toFixed(1));
+    var spread = r < 0.25 ? 'spread widens, up to 15 %' : 'spread 4 %';
+    out.textContent = 'Inventory ' + r.toFixed(2) + '× target → mid ' + m.toFixed(2) +
+      '× reference (' + fmtPct(m) + (m !== raw ? ', clamped' : '') + ') · ' + spread;
+  }
+  inv.addEventListener('input', updateGuild);
+  updateGuild();
+
+  // Boot check for one port, following R06-41 and R06-43 (mainnet guard is planned only).
+  var value = 'mock';
+  var buttons = document.querySelectorAll('#bootsim .seg button');
+  var prod = document.getElementById('c-prod');
+  var allow = document.getElementById('c-allow');
+  var real = document.getElementById('c-real');
+  var list = document.getElementById('boot-out');
+  function evaluate() {
+    var lines = [];
+    var kind = (value === 'testnet' || value === 'mainnet') ? value : 'mock';
+    if (value !== 'mock' && kind === 'mock') {
+      lines.push(['warn', '"' + value + '" is not testnet or mainnet, so CargoToken silently runs on the mock']);
+    }
+    if (kind !== 'mock' && !real.checked) {
+      lines.push(['fail', 'boot aborted: no ' + kind + ' adapter is registered for CargoToken yet']);
+      return lines;
+    }
+    if (kind === 'mainnet') {
+      lines.push(['note', 'planned guard: mainnet will also need NEAR_ALLOW_MAINNET=1 (W23-01, not in code yet)']);
+    }
+    if (prod.checked && kind === 'mock' && !allow.checked) {
+      lines.push(['fail', 'boot aborted: CargoToken is mocked in production; set NEAR_ALLOW_MOCK_IN_PROD=true to allow it']);
+      return lines;
+    }
+    if (prod.checked && kind === 'mock') {
+      lines.push(['note', 'production runs on a mock, allowed by the flag; the README table says so']);
+    }
+    lines.push(['ok', 'boot ok: CargoToken → ' + kind + ' adapter' +
+      (kind === 'mock' ? ' (Postgres mock chain, "mock:" receipts)' : '')]);
+    return lines;
+  }
+  function render() {
+    list.textContent = '';
+    evaluate().forEach(function (l) {
+      var li = document.createElement('li');
+      var k = document.createElement('span');
+      k.className = 'k k-' + l[0];
+      k.textContent = l[0].toUpperCase();
+      var t = document.createElement('span');
+      t.textContent = l[1];
+      li.appendChild(k); li.appendChild(t);
+      list.appendChild(li);
+    });
+  }
+  buttons.forEach(function (b) {
+    b.addEventListener('click', function () {
+      value = b.getAttribute('data-v');
+      buttons.forEach(function (o) { o.setAttribute('aria-pressed', o === b ? 'true' : 'false'); });
+      render();
+    });
+  });
+  [prod, allow, real].forEach(function (c) { c.addEventListener('change', render); });
+  render();
+})();
+</script>

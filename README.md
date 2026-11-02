@@ -4,7 +4,7 @@ Autonomous colony builder in the browser: drop one robot on a live planet, set p
 
 **Stack:** Vite + TypeScript + Three.js (WebGL2) client with a vanilla-DOM HUD · one NestJS app with sim worker threads · PostgreSQL (Prisma) · npm workspaces.
 
-> **Status:** wave W00 (platform skeleton) — the rails every later wave runs on. Gameplay arrives wave by wave ([`docs/plan/PRODUCT_WAVES.md`](./docs/plan/PRODUCT_WAVES.md)).
+> **Status:** waves W00 (platform skeleton), W01 (landfall), and W26 (public hosts) landed — the rails, first playable loop, and hosting front door. Gameplay and on-chain features arrive across 27 product waves (`W00`–`W26`) ([`docs/plan/PRODUCT_WAVES.md`](./docs/plan/PRODUCT_WAVES.md)).
 
 ## Quick start: do X → see Y
 
@@ -42,7 +42,7 @@ npm run test:contract  # NEAR port contract suites against the mocks
 npm run e2e -- --waves ..00 [--hack] [--host local]   # headless-Chrome wave suites
 npm run test:parity    # same scenario + command log on the server host and the browser host
 npm run ci:fast        # check + unit + build
-npm run build          # typecheck + check:structure + vite build → dist/
+npm run build          # typecheck + check:structure + vite build → frontend/dist/
 npm run gen            # regenerate registries (command/event kinds, sim systems, data tables, Prisma schema)
 npm run db:up | db:gen -- --name x | db:migrate | db:reset | db:seed
 npm run scenario -- w00    # run a scenario headless
@@ -54,21 +54,26 @@ Open http://127.0.0.1:5173/. That page is the **hub** and links to everything be
 
 ## Repository layout
 
+The repository root follows the clean root rule (D-41), keeping only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, `package.json` (`package-lock.json`), and the 7 domain directories:
+
 ```
 shared/        code used by frontend and backend (D-32)
   contracts/   @terra/contracts — zod schemas: WS envelope + messages, command/event kinds (one file each), REST DTOs
-  config/      @terra/config    — zod env loader merged per module, fail-closed flags
+  config/      @terra/config    — zod env loader merged per module, fail-closed flags, shared eslint/prettier configs
   db/          @terra/db        — Prisma schema per module (merged), numbered migrations, client, test-DB harness
+  ledger/      @terra/ledger    — double-entry resource accounting types and math
   sim/         @terra/sim       — the one engine (D-31): kernel, systems registry, data tables, codec, SimHost
 backend/app/   @terra/app — the one NestJS app (D-24): modules auto-discovered from src/<name>/<name>.module.ts
                core · db · flags · bus · game (sim threads, scheduler, deltas, snapshots) · ws · dev · near · ai · notify · analytics
-frontend/      one Vite app (root of vite.config.ts); URLs mirror the file layout
+frontend/      one Vite app (root of frontend/vite.config.ts); URLs mirror the file layout
   game/        @terra/game — net/ (transport) · store/ (sim worker) · core/ (registry, HUD, flags) · features/ · dev/ · app/
   render/      @terra/render — 3D render engine (viewport, kitbash, terrain, planets incl. hex/, orbit, descent, lighting)
-  landing/  playground/  design/
-scenarios/     seed scenarios (`?scenario=wNN`, `npm run scenario`)
-e2e/           headless-Chrome harness + one suite per wave
-infra/         docker-compose (dev Postgres)
+  landing/  playground/  pitchdeck/  whitepaper/  design/
+tests/         test suites and test configs
+  e2e/         Playwright headless-Chrome harness + one suite per wave (`tests/e2e/`)
+  scenarios/   seed scenarios (`tests/scenarios/`, `?scenario=wNN`, `npm run scenario`)
+  vitest*.config.ts  unit, integration, and contract test configs
+infra/         docker-compose (dev Postgres), environment templates (`infra/.env.example`, `infra/.env.worktree`), nginx hosts
 scripts/       dev runner, codegen, structure check, wave pipeline
 docs/          game design, specs (start with docs/spec/DECISIONS.md), build plan, 3D rules
 ```
@@ -94,7 +99,7 @@ W25 finalises this table for the submission.
 
 ## Pages
 
-All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.config.ts`](./vite.config.ts)) and share the **Faction Plate** design system.
+All pages are entries of one Vite app (see `rollupOptions.input` in [`frontend/vite.config.ts`](./frontend/vite.config.ts)) and share the **Faction Plate** design system.
 
 | URL | File | What it is | Code |
 |---|---|---|---|
@@ -114,8 +119,8 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.confi
 | Play | `&deploy=1` | Deploy immediately (plays the descent). |
 | Play | `&skip=1` | Deploy and skip the descent, straight into gameplay. |
 | Play | `&t=<seconds>` | Deploy and fast-forward the descent by `t` seconds. |
-| Play (online) | `?scenario=<id>` | Online flow: create a fresh planet from `scenarios/<id>` (e.g. `w00`) and join it; skips the prototype menu and descent. |
-| Play (online) | `?host=local` | Run the engine in the browser alone (no app or Postgres); snapshots in IndexedDB. Combine with `&scenario=`. |
+| Play (online) | `?scenario=<id>` | Online flow: create a fresh planet from `tests/scenarios/<id>` (e.g. `w00`) and join it; skips the prototype menu and descent. |
+| Play (online) | `?host=local` | Run the engine in the browser alone (no app or Postgres); snapshots in IndexedDB. Needs `&scenario=w00\|w01`: `?host=local` alone opens the prototype world picker. |
 | Play (online) | `&waves=..NN` / `&waves=00,03` | Dev: narrow the enabled waves (never wider than the server's set). |
 | Play (online) | `&lag=<ms>` | Dev: delay the connection both ways (prediction testing). |
 | Play (online) | `&predict=0` | Turn client-side prediction off (interpolate 400 ms behind). |
@@ -125,14 +130,16 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`vite.confi
 | Playground | `&biome=dune\|oceanForest\|forestRock` | Pedestal / sky / weathering biome. |
 | Playground | `&view=iso\|front\|side\|top` | Camera view. |
 | Playground | `&turntable=1`, `&surface=1`, `&pixel=1` | Auto-rotate; real planet surface instead of the pedestal; pixel-art shader. |
-| All 3D pages | `?pixel=1\|0` | Enable or disable the experimental pixel-art post-processing shader. |
+| Playground | `&hexterrain=1`, `&hatch=1` | Hex terrain sample scene instead of the pedestal (every tile class, deposits, a Prepared pad whose wave replays every 3 s, two colonies' borders); colour-blind border hatch. |
+| Playground | `&build=0\|33\|66`, `&work=1` | Construction scaffold stage of the shown models (toolbar `build` cycles it); biped work pose (`uWorkWeight` 1). |
+| All 3D pages | `?pixel=1\|0`, `?shadow=1\|0`, `?crt=1\|0`, `?daynight=1\|0` | Enable or disable the pixel-art post-processing shader, dynamic sun shadows, CRT scanline overlay, or orbital day/night cycle. |
 
 ### Controls
 
-- **Game (online, dev):** `` ` `` opens the dev console (`help` lists the commands of the enabled waves: `warp`, `spawn`, `nudge`, `teleport`, `tune`, `scenario`, `chain.ping`, `flags`, …). LMB on a tile logs its `q, r`.
-- **Game (prototype):** LMB move hero · WASD / edge pan · MMB drag · wheel zoom · Q/E rotate · Home focus hero · Esc pause. During the descent: Esc / Space skips.
+- **Game (online, dev):** `` ` `` opens the dev console (`help` lists the commands of the enabled waves: `warp`, `time`, `spawn`, `nudge`, `teleport`, `tune`, `scenario`, `chain.ping`, `flags`, …). LMB on a tile logs its `q, r`.
+- **Game (prototype):** LMB move hero · WASD / edge pan · MMB drag · wheel zoom · Q/E rotate · Home or F re-follows hero (any manual pan stops following) · Esc pause. Online colony: right-click moves the selected HQ · X stops it. During the descent: Esc / Space skips.
 - **Playground:** `[` `]` cycle models · `1`–`4` views · `T` turntable · `F` focus · `G` grid · `W` wireframe · `B` bloom · `P` pixel art · `R` spawn the whole category in a row · `V` validate (outline floating/overlapping parts) · `/` search · double-click to refocus.
-- **Landing and Game:** `F9` toggles the CRT overlay ([`frontend/render/ui/crt.ts`](./frontend/render/ui/crt.ts)) · `F10` toggles the Pixel-Art shader ([`frontend/render/ui/pixelArt.ts`](./frontend/render/ui/pixelArt.ts), [`frontend/render/core/pixelArtPass.ts`](./frontend/render/core/pixelArtPass.ts)) · `F8` (or `Shift+P`) opens/closes the floating Pixel Shader Lab dialog ([`frontend/render/ui/pixelDialog.ts`](./frontend/render/ui/pixelDialog.ts)).
+- **Landing, Playground and Game:** `F7` toggles dynamic sun shadows ([`frontend/render/core/shadowConfig.ts`](./frontend/render/core/shadowConfig.ts)) · `F9` toggles the CRT overlay ([`frontend/render/ui/crt.ts`](./frontend/render/ui/crt.ts)) · `F10` toggles the Pixel-Art shader ([`frontend/render/ui/pixelArt.ts`](./frontend/render/ui/pixelArt.ts), [`frontend/render/core/pixelArtPass.ts`](./frontend/render/core/pixelArtPass.ts)) · `F8` (or `Shift+P`) opens/closes the floating 4-tab Visual Shader Lab dialog (`CRT`, `PIXEL`, `SHADOW`, `DAY/NIGHT`; [`frontend/render/ui/pixelDialog.ts`](./frontend/render/ui/pixelDialog.ts), [`frontend/render/core/dayNightConfig.ts`](./frontend/render/core/dayNightConfig.ts)).
 
 ## Design system: Faction Plate
 
@@ -147,7 +154,7 @@ The in-world 3D look (models, shaders, lighting) follows the 4 visual pillars in
 
 ## Building the game: waves
 
-The online game is built in **26 product waves** ([`docs/plan/PRODUCT_WAVES.md`](./docs/plan/PRODUCT_WAVES.md), one file per wave in [`docs/plan/waves/`](./docs/plan/waves/)). Every wave ends in a working, tested app and lands in `main` only after you have played its demo. The waves build on the existing 3D renderer in `frontend/render` and the prototype views in `frontend/game`; they extend them, never replace them (PRODUCT_WAVES §4 "One renderer").
+The online game is built in **27 product waves** (`W00`–`W26`) ([`docs/plan/PRODUCT_WAVES.md`](./docs/plan/PRODUCT_WAVES.md), one file per wave in [`docs/plan/waves/`](./docs/plan/waves/)). Every wave ends in a working, tested app and lands in `main` only after you have played its demo. The waves build on the existing 3D renderer in `frontend/render` and the prototype views in `frontend/game`; they extend them, never replace them (PRODUCT_WAVES §4 "One renderer").
 
 **Two commands:**
 
@@ -166,9 +173,9 @@ npm run wave:check -- 07             # merge main in, ci:fast + e2e --waves ..07
 npm run wave:land -- 07              # refuses unless every depended-on wave is in main, gates pass and no dirty main-checkout file is touched; tags wave-07 (or wave-07.k), pushes, cleans up
 ```
 
-Every worktree these scripts create gets a gitignored `.env.worktree` with its own `TA_PORT_BASE` (4100, 4200, …) and `TA_DB_NAME=terra_<branch>`.
+Every worktree these scripts create gets a gitignored `infra/.env.worktree` with its own `TA_PORT_BASE` (4100, 4200, …) and `TA_DB_NAME=terra_<branch>`.
 
-Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/prompt.mjs) that automatically selects the runner (`agy` or `claude`), worker + advisor (`agy:argon` with `flash` subagents, `claude:sonnet+opus` for standard waves, or `claude:opus+fable` for complex waves via `--advisor`, using each model's default effort), execution mode (`auto`), parallel subagent factor (`2`–`6`), serial plan gate (`serial-spine` or `contract-first`), and domain skills.
+Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/prompt.mjs) that automatically selects the runner (`agy`, `claude`, or `grok`), worker + advisor (`agy:argon` with `flash` subagents, `claude:sonnet+opus` for standard waves, or `claude:opus+fable` for complex waves via `--advisor`, using each model's default effort), execution mode (`auto`), parallel subagent factor (`2`–`6`), serial plan gate (`serial-spine` or `contract-first`), and domain skills. Override the runner with `--runner agy|claude|grok`. `--runner grok` maps an opus/fable/argon preset to `grok-4.7` and a sonnet/flash preset to `grok-4.7-build-fast`; pass `--model grok-4.6` (or any id from `grok models`) to pick one yourself. Grok has no advisor flag, and its session starts with a 500k context window.
 
 **Your loop:**
 
@@ -182,7 +189,7 @@ Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/p
 
 1. Register an archetype in `frontend/render/kitbash/archetypes/…` (via `ArchetypeCatalog.register`) following the `procedural-kitbash-3d` skill.
 2. Open `/playground.html?inspect=<your.id>`. It appears in the sidebar automatically.
-3. Run `npm run validate:models -- <your.id>`: it must report 0 errors and 0 warnings (floating parts, gaps, z-fighting, parts cutting through each other, animated parts hitting something, wheels/chassis/arm in one colour, a solar panel that is a flat slab, blank faces). Name your parts; roles come from names. Add `&validate=1` to the playground URL (or press `V`) to see offending parts outlined and numbered.
+3. Run `npm run validate:models -- <your.id>`: it must report 0 errors and 0 warnings (floating parts, gaps, z-fighting, parts cutting through each other, animated parts hitting something, wheels/chassis/arm in one colour, a solar panel that is a flat slab, blank faces). Name your parts; colour roles come from names, and a foundation slab or free-ended whip/tendril also needs `role: 'plinth' | 'plinthDetail' | 'whip'` in its part options. Add `&validate=1` to the playground URL (or press `V`) to see offending parts outlined and numbered.
 4. Check all four views, ground contact (`minY 0.000` ✔) and the triangle count against the 3.5k budget. Export a 4-view sheet if needed.
 
 ## Pre-window baseline (hackathon disclosure)
@@ -215,6 +222,9 @@ Everything that is not code is in [`docs/`](./docs) (index: [`docs/README.md`](.
 - [`AGENTS.md`](./AGENTS.md): rules for AI agents (visual pillars, skill routing, pages). [`CLAUDE.md`](./CLAUDE.md): Claude Code entry point.
 - [`docs/game/`](./docs/game): game design, economy, units and the NEAR features.
 - [`docs/spec/`](./docs/spec): online architecture; start with `DECISIONS.md`. Built wave by wave.
-- [`docs/plan/`](./docs/plan): the hackathon cut and the wave plan (26 waves).
+- [`docs/plan/`](./docs/plan): the hackathon cut and the wave plan (27 waves).
+- [`docs/hackathon/`](./docs/hackathon): NEAR hackathon strategy pack, pitch deck, whitepaper, rubrics, launch playbook.
+- [`docs/coverage/`](./docs/coverage): unit test coverage baseline and reports.
 - [`docs/visuals/`](./docs/visuals): 3D coding rules, the AI-mesh pipeline, procedural textures, shaders and lighting.
 - [`docs/dev/DEV_TOOLS.md`](./docs/dev/DEV_TOOLS.md): dev tools reference — URL parameters, dev console, dev pages and routes, mock blockchain, env variables, debug handles, test commands.
+- [`docs/questions-and-limitations/`](./docs/questions-and-limitations): known limitations, deliberate trade-offs, and open questions per area.

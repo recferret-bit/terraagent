@@ -2,6 +2,7 @@ import type { CompiledRow } from '../data';
 import { ENTITY_KIND } from '../ecs/columns';
 import type { PlanetState, PlanetType } from '../kernel/state';
 import { resolveHarvesterRow } from '../systems/harvest/unit';
+import type { HqJob, HqUnitView } from '../systems/hq';
 
 /**
  * W00 view: a minimal read-only projection for render/HUD. Tile arrays are shared with the state (no copy; do not
@@ -27,6 +28,11 @@ export interface ViewEntity {
 }
 export interface ViewColony {
   index: number; id: string; name: string; color: number; status: string;
+  stock?: Record<string, number>;
+  caps?: Record<string, number>;
+  hq?: HqUnitView;
+  currentJob?: HqJob;
+  queueCount?: number;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -80,6 +86,17 @@ export function view(state: PlanetState): SimView {
   }
   const blobs: Record<string, unknown> = {};
   for (const [k, b] of Object.entries(state.blobs)) blobs[k] = b.value;
+  const hqBlob = state.blobs.hq?.value as (HqUnitView & { byColony?: Record<number, HqUnitView> }) | undefined;
+  const colonies: ViewColony[] = state.colonies.map((k) => {
+    const hq = (k.hq as HqUnitView | undefined) ?? hqBlob?.byColony?.[k.index];
+    const out: ViewColony = { ...k };
+    if (hq) {
+      out.hq = hq;
+      out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;
+      out.queueCount = (k.queueCount as number | undefined) ?? hq.queueCount;
+    }
+    return out;
+  });
   return {
     tick: state.meta.tick,
     planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius },
@@ -94,7 +111,7 @@ export function view(state: PlanetState): SimView {
       explored: L.explored as Uint8Array,
     },
     entities,
-    colonies: state.colonies.map((k) => ({ ...k })),
+    colonies,
     blobs,
   };
 }

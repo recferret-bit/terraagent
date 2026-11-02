@@ -73,7 +73,7 @@ function restartApp() {
 
 const vite = spawn(
   process.execPath,
-  [resolve(root, 'node_modules/vite/bin/vite.js'), '--host', '127.0.0.1', '--port', String(clientPort), '--strictPort'],
+  [resolve(root, 'node_modules/vite/bin/vite.js'), '--config', 'frontend/vite.config.ts', '--host', '127.0.0.1', '--port', String(clientPort), '--strictPort'],
   spawnOpts,
 );
 pipe('client', vite);

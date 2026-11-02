@@ -48,6 +48,12 @@ describe('devtools core commands', () => {
     expect(await run('chain.ping', { devServer: hostUnavailableDevServer }, 'local')).toContain('needs the game server');
     expect(new DevServerError('x', 'y').code).toBe('x');
   });
+  it('planet.wipe calls the server dev command with the planet id', async () => {
+    const devServer = vi.fn(async () => ({ planetId: 'pl_dev_2', wiped: true }));
+    expect(await run('planet.wipe pl_dev_2', { devServer })).toBe('wiped pl_dev_2: the next seat or boot starts it fresh');
+    expect(devServer).toHaveBeenCalledWith('planet.wipe', { planetId: 'pl_dev_2' });
+    expect(await run('planet.wipe', { devServer })).toBe('error: usage: planet.wipe <planetId>');
+  });
 });
 
 describe('devtools W02 commands', () => {

@@ -7,6 +7,8 @@ import table_hub from './hub';
 import table_ops_basic from './ops-basic';
 import table_resources from './resources';
 import table_terrain from './terrain';
+import table_time from './time';
 import table_units_workers_basic from './units-workers-basic';
+import table_worldgen from './worldgen';
 
-export const DATA_TABLES: readonly TableDef[] = [table_dev, table_economy_t1_basic, table_hq, table_hub, table_ops_basic, table_resources, table_terrain, table_units_workers_basic];
+export const DATA_TABLES: readonly TableDef[] = [table_dev, table_economy_t1_basic, table_hq, table_hub, table_ops_basic, table_resources, table_terrain, table_time, table_units_workers_basic, table_worldgen];

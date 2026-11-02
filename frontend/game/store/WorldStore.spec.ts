@@ -100,4 +100,31 @@ describe('WorldStore', () => {
     expect(rejected).toEqual(['cm_1:unknown_entity']);
     store.dispose();
   });
+
+  it('a command the CommandBus timed out is rolled back, not predicted forever (FA-16)', async () => {
+    const auth = new SimHost({ flags: ['W00'], modules: TEST_MODULES });
+    auth.load(createPlanet({ type: 'flat', seed: 'ws' }));
+    auth.submit({ colonyIndex: null, source: 'dev', commandId: 'cm_s', kind: 't.spawn', args: { q: 1, r: 1 } });
+    auth.step(1);
+    const t = new FakeTransport();
+    const store = new WorldStore(t, inProcessWorker, () => 1000);
+    store.start(['W00']);
+    t.msgs.emit({ v: 1, t: 'welcome', d: { reason: 'join', colonyId: null, planet: { id: 'pl_x', type: 'temperate', name: 'x' }, state: auth.snapshot(), simVersion: SIM_VERSION, dataHash: compileData(flagsFromList(['W00'])).hash, tick: auth.tick, serverTimeMs: 1000, tickMs: 200, deltaHz: 5, flags: ['W00'] } } as never);
+    await tick();
+    const id = auth.view().entities[0].id;
+    const x = () => store.latest!.entities[5];
+    const x0 = x();
+    const rejected: string[] = [];
+    store.onCommandRejected((r) => rejected.push(`${r.id}:${r.code}`));
+    store.notifySent('cm_lost', 't.move', { id, x: 9 });
+    await tick();
+    expect(x()).toBe(9);
+    expect(store.predictionInfo.pending).toBe(1);
+    store.notifyTimedOut('cm_lost');
+    await tick();
+    expect(x()).toBe(x0);
+    expect(store.predictionInfo.pending).toBe(0);
+    expect(rejected).toEqual(['cm_lost:timeout']);
+    store.dispose();
+  });
 });

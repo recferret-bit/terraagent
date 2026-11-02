@@ -1,9 +1,9 @@
 # W09 — Offline & Notifications
 
-> **Track:** Autonomy (P) · **Flag:** `W09` · **Tag:** `wave-09` · **Scenario:** `scenarios/w09-offline.ts` · **E2E:** `e2e/w09.spec.ts`
+> **Track:** Autonomy (P) · **Flag:** `W09` · **Tag:** `wave-09` · **Scenario:** `tests/scenarios/w09-offline.ts` · **E2E:** `tests/e2e/w09.spec.ts`
 > **Depends on waves:** W02 (spine). The away story needs W16, and the elimination causes come from W07 / W18. If those are off, the dev console triggers the events instead.
 > **Specs:** [CONTINUITY](../../spec/CONTINUITY.md) §3 (`CT-10..14`), §4 (`AW-01..23`), §5 (`CT-30..34`), §5a (`CT-35..38`), §6 (`CT-40..45`), §7 (`CT-50..54`), §8–§10 · [SIMULATION](../../spec/SIMULATION.md) `SIM-H-03..08`, `SIM-D-03` · [ARCHITECTURE](../../spec/ARCHITECTURE.md) §15 · [NEAR](../../spec/NEAR.md) §1a (port pattern for `NotifierPort`) · D-17, D-24, D-30
-> **Owned paths:** `backend/app/src/game/{presence,snapshot,restart}/` (sub-folders of W00's `game` module: presence stays in memory in the one app, D-24, no NATS or leases), `backend/app/src/notify/**`, `prisma/notify.prisma`, the `awaySummary` field of W01's `backend/app/src/home/`, `shared/sim/src/systems/away/`, `shared/contracts/src/{commands,events}/{presence,autopilot,notify}.ts`, `frontend/game/features/{away,notify}/`, `frontend/game/sw/push.ts` (push handler module for W24-07's service worker in `frontend/game/sw/`)
+> **Owned paths:** `backend/app/src/game/{presence,snapshot,restart}/` (sub-folders of W00's `game` module: presence stays in memory in the one app, D-24, no NATS or leases), `backend/app/src/notify/**`, `shared/db/prisma/notify.prisma`, the `awaySummary` field of W01's `backend/app/src/home/`, `shared/sim/src/systems/away/`, `shared/contracts/src/{commands,events}/{presence,autopilot,notify}.ts`, `frontend/game/features/{away,notify}/`, `frontend/game/sw/push.ts` (push handler module for W24-07's service worker in `frontend/game/sw/`)
 > **Builds on W00:** the scheduler's `dt` hook and lag cap (W00-19), 60 s snapshots + SIGTERM save + load on boot (W00-29), fault quarantine (W00-20), the `NotifierPort` abstract class and its adapter switch (W00-30, W00-31), `bye` codes 4000/4001/4003/4012 (W00-22, W00-25)
 
 ## Goal
@@ -106,7 +106,7 @@ Leaving is safe and honest. A colony keeps running while its player is away: the
 
 ## Wave DoD
 
-- `e2e/w09.spec.ts` passes, together with all earlier suites.
+- `tests/e2e/w09.spec.ts` passes, together with all earlier suites.
 - `?scenario=w09` loads a colony at S3 with the away panel.
 - `TA_WAVES=..08` hides the away panel, digest and notification UI; presence and coarse stepping keep running as platform behaviour.
 - Tag `wave-09` is created.

@@ -1,7 +1,8 @@
-import { Body, Controller, HttpCode, Inject, Optional, Post, Req, Res } from '@nestjs/common';
+import { Body, Controller, HttpCode, Inject, Optional, Post, Req, Res, UseGuards } from '@nestjs/common';
 import { GuestAuthRequestSchema, type AuthResponse } from '@terra/contracts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { ZodPipe } from '../errors/zod.pipe';
+import { IpThrottleGuard } from '../ip-throttle.guard';
 import { APP_ENV, type AppEnv } from '../tokens';
 import { AuthService, formatClearCookie, formatRefreshCookie, parseRefreshCookie } from './auth.service';
 
@@ -31,6 +32,7 @@ export class AuthController {
 
   @Post('guest')
   @HttpCode(200)
+  @UseGuards(IpThrottleGuard)
   async guest(
     @Body() body: unknown,
     @Res({ passthrough: true }) res: ReplyLike,

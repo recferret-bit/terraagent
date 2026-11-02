@@ -9,7 +9,7 @@
 
 ## 1. Purpose
 
-This spec defines how `frontend/game` (`game.terraagent.com`) and `frontend/landing` (`terraagent.com`) behave: boot and routing, the picker and queue, dive-in and resume, the planet WebSocket client, the world store and interpolation, the render architecture, UI commands, performance budgets, accessibility, product analytics and privacy.
+This spec defines how `frontend/game` (`play.terraagent.fun`) and `frontend/landing` (`terraagent.fun`) behave. Older sentences below that say `game.terraagent.com` or `terraagent.com` mean those two hosts (D-40). Cookie `Domain` and `https://` wait until TLS is on: boot and routing, the picker and queue, dive-in and resume, the planet WebSocket client, the world store and interpolation, the render architecture, UI commands, performance budgets, accessibility, product analytics and privacy.
 
 The client is a **view and an intent emitter** that runs the **same engine as the server** (`@terra/sim`, D-31) in a Web Worker: as an exact replica of the server state, to **predict** the player's own commands, and, with `?host=local`, as a single-player local host for testing. The server simulation owns the outcomes online (D-24); the client's predictions are provisional and are corrected by every delta.
 
@@ -189,7 +189,7 @@ stateDiagram-v2
 |---|---|---|
 | `4000 bad_hello` | Malformed `hello` or expired token | Refresh the token and re-resolve once immediately. A second `4000` within 30 s → terminal "Couldn't join colony", with a Retry button. |
 | `4001 replaced` | Newer socket for the same colony | Terminal overlay, "Play here" (§5.2). No auto-reconnect, to avoid ping-pong between devices. |
-| `4003 forbidden` | Token invalid, or `join` for a planet that is not the player's | Refresh the token, then re-resolve. On repeat → terminal and back to `/`. |
+| `4003 forbidden` | Token invalid, or `join` for a planet that is not the player's | Reason `not_your_planet`: terminal at once ("Not your colony's planet"). Reason `forbidden` / `planet_unavailable`: refresh the token, then re-resolve once; on repeat → terminal and back to `/`. |
 | `4010 planet_ended` | Planet ended | Terminal → `/recap/ended`. |
 | `4011 colony_eliminated` | Colony destroyed | Terminal → `/recap/eliminated`. |
 | `4012 server_restarting` | Deploy or restart | Backoff reconnect (the app needs 10–30 s to come back). |
@@ -395,7 +395,7 @@ Supporting events (not part of the funnel): `ws_reconnect {code}`, `resync`, `cm
 
 | Rule | Test | Task |
 |---|---|---|
-| `CL-01`, `CL-13` | `frontend/game/boot/boot.test.ts` (each home state → route); e2e `w3-leave-and-return.spec.ts` | TA-11.1, TA-11.3, TA-13.3 |
+| `CL-01`, `CL-13` | `frontend/game/boot/boot.test.ts` (each home state → route); `tests/e2e/w3-leave-and-return.spec.ts` | TA-11.1, TA-11.3, TA-13.3 |
 | `CL-02` | `planet-socket.test.ts › hello → join on every reconnect` | TA-11.4 |
 | `CL-03` | `api-client.test.ts › access token not persisted; refresh uses credentials include` | TA-11.1 |
 | `CL-04` | `decoder.test.ts › strict mode throws / warn mode drops` | TA-11.4 |
@@ -405,10 +405,10 @@ Supporting events (not part of the funnel): `ws_reconnect {code}`, `resync`, `cm
 | `CL-08`, `CL-09` | `command-bus.test.ts › ack / reject / timeout / no resend on reconnect / debounce` | TA-11.4, TA-11.8 |
 | `CL-16` | `fog.test.ts › hidden foreign entities are not rendered; own vision reveals` | TA-11.5 |
 | `CL-10` | `planet-socket.test.ts › close code table` (one case per row of §6.3) | TA-11.4, TA-11.3 |
-| `CL-11` | `analytics.test.ts › no network + no anonId before consent`; e2e `consent.spec.ts` | TA-11.1, TA-12.2 |
+| `CL-11` | `analytics.test.ts › no network + no anonId before consent`; `tests/e2e/consent.spec.ts` | TA-11.1, TA-12.2 |
 | `CL-12` | ESLint `no-restricted-globals: alert, confirm, prompt` | TA-11.1 |
 | `CL-14` | `picker.test.ts › falls back to polling when lobby WS fails` | TA-11.2 |
-| `CL-15` | Build test: `grep __terraDebug dist/` is empty for the prod build | TA-11.1 |
+| `CL-15` | Build test: `grep __terraDebug frontend/dist/` is empty for the prod build | TA-11.1 |
 
 ---
 

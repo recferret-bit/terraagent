@@ -23,12 +23,16 @@ export default defineFeature({
   hud: [{
     id: 'waves', slot: 'top-right', order: -100,
     mount(el, ctx) {
-      const on = ALL.filter((w) => ctx.flags.has(w)).length;
       let open = import.meta.env.DEV;
       const root = document.createElement('div');
       root.className = 'ta-flags plate-sm';
       el.appendChild(root);
+      /** What the panel last drew: the live flag set and its source (`ctx.flags` is updated in place, FA-29). */
+      const drawnKey = () => `${ALL.filter((w) => ctx.flags.has(w)).join()}|${ctx.services.flagsSource ?? 'default'}`;
+      let drawn = '';
       const render = () => {
+        drawn = drawnKey();
+        const on = ALL.filter((w) => ctx.flags.has(w)).length;
         root.replaceChildren();
         root.dataset.open = String(open);
         const head = document.createElement('button');
@@ -61,7 +65,11 @@ export default defineFeature({
         root.append(chips, src);
       };
       render();
-      return { dispose: () => root.remove() };
+      return {
+        // FA-30: a welcome changes the flags without a re-mount; redraw when they differ from what is shown.
+        update: () => { if (drawnKey() !== drawn) render(); },
+        dispose: () => root.remove(),
+      };
     },
   }],
   devCommands: [{ name: 'flags', help: 'Print the enabled waves and where they came from', run: (_a, ctx) => flagLines(ctx) }],

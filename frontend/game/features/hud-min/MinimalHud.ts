@@ -1,0 +1,240 @@
+import { capsOf, TICKS_PER_SECOND, type CompiledDataLike, type ViewColony } from '@terra/sim';
+import type { Transport } from '../../net/types';
+import type { GameView } from '../../core/registry/types';
+import { viewColony } from '../shared/colony';
+import { clampPct, makeDiv, makeSpan } from '../shared/dom';
+import { extractHqFromView } from '../shared/hqView';
+import { createHudIcon, type HudIconKind } from './hudIcons';
+import { formatRejectToast } from './rejectText';
+
+export { formatRejectToast };
+
+export interface StoreLike {
+  readonly latest?: unknown;
+  onView?(fn: (v: unknown) => void): () => void;
+  onCommandRejected?(fn: (r: { id: string; kind: string; code: string }) => void): () => void;
+  /** The host's live balance data (costs of a reject's shortfall line). */
+  simData?(): CompiledDataLike | null;
+}
+
+export interface MinimalHudOptions {
+  store?: StoreLike;
+  transport?: Pick<Transport, 'onMessage'>;
+  ownerColonyIndex?: number;
+  getOwnerColonyIndex?: () => number | undefined;
+}
+
+/** Shown in place of a number until the first view arrives. */
+export const NO_DATA = '—';
+
+export function formatClock(tick: number): string {
+  const totalSeconds = Math.max(0, Math.floor(tick / TICKS_PER_SECOND));
+  const mins = Math.floor(totalSeconds / 60);
+  const secs = totalSeconds % 60;
+  const mm = String(mins).padStart(2, '0');
+  const ss = String(secs).padStart(2, '0');
+  return `${mm}:${ss}`;
+}
+
+/**
+ * Colony resources are whole units (the sim ledger); flooring at this one read boundary guarantees the HUD and its
+ * toasts never show a fraction even if a stale or malformed view carries one.
+ */
+export function wholeStock(stock: Record<string, number> | undefined): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [key, v] of Object.entries(stock ?? {})) {
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = Math.floor(v);
+  }
+  return out;
+}
+
+interface StockSlot {
+  el: HTMLElement;
+  val: HTMLElement;
+}
+
+function stockSlot(kind: HudIconKind, testid: string, name: string): StockSlot {
+  const el = makeDiv(`ta-hud-min__stock ta-hud-min__stock--${kind}`, testid);
+  el.title = name;
+  const val = makeSpan('ta-hud-min__stock-val', undefined, NO_DATA);
+  el.append(createHudIcon(kind), makeSpan('ta-hud-min__sr-only', undefined, `${name}: `), val);
+  return { el, val };
+}
+
+/**
+ * Compact top HUD header: icon-only Metals/Minerals/Bio/Supply stocks, inline HQ power cell bar,
+ * game clock, and reject/resource waiting toasts.
+ */
+export class MinimalHud {
+  readonly el: HTMLElement;
+  readonly toastContainer: HTMLElement;
+  private readonly toastedRejects = new Set<string>();
+  private readonly toastTimers = new Map<HTMLElement, ReturnType<typeof setTimeout>>();
+  private readonly colonyEl: HTMLElement;
+  private readonly clockEl: HTMLElement;
+  private readonly metals: StockSlot;
+  private readonly minerals: StockSlot;
+  private readonly bio: StockSlot;
+  private readonly bioSub: HTMLElement;
+  private readonly supply: StockSlot;
+  private readonly cellVal: HTMLElement;
+  private readonly cellFill: HTMLElement;
+  private cleanups: Array<() => void> = [];
+
+  constructor(parent: HTMLElement, private readonly opts: MinimalHudOptions = {}) {
+    this.el = makeDiv('plate-sm ta-hud-min', 'hud-min');
+
+    const brand = makeDiv('ta-hud-min__brand');
+    this.colonyEl = makeSpan('ta-hud-min__colony ta-hud-min__sr-only', 'hud-colony-name', 'Colony');
+    this.clockEl = makeSpan('ta-hud-min__clock', 'hud-clock', '00:00');
+    brand.append(this.colonyEl, createHudIcon('clock'), this.clockEl);
+
+    const stocks = makeDiv('ta-hud-min__stocks');
+    this.metals = stockSlot('metals', 'hud-stock-metals', 'Metals');
+    this.minerals = stockSlot('minerals', 'hud-stock-minerals', 'Minerals');
+    this.bio = stockSlot('bio', 'hud-stock-bio', 'Bio');
+    this.bioSub = makeSpan('ta-hud-min__stock-sub ta-hud-min__sr-only');
+    this.bio.el.append(this.bioSub);
+    this.supply = stockSlot('supply', 'hud-supply', 'Supply');
+    stocks.append(this.metals.el, this.minerals.el, this.bio.el, this.supply.el);
+
+    const cellEl = makeDiv('ta-hud-min__cell', 'hud-hq-cell');
+    cellEl.title = 'HQ Power Cell';
+    const cellBar = makeDiv('ta-hud-min__cell-bar');
+    this.cellFill = makeDiv('ta-hud-min__cell-fill', 'hud-hq-cell-bar');
+    this.cellFill.style.width = '0%';
+    cellBar.appendChild(this.cellFill);
+    this.cellVal = makeSpan('ta-hud-min__cell-val', undefined, `${NO_DATA} E`);
+    cellEl.append(createHudIcon('cell'), makeSpan('ta-hud-min__sr-only', undefined, 'HQ power cell: '), cellBar, this.cellVal);
+
+    this.toastContainer = makeDiv('ta-hud-toasts', 'hud-toast-container');
+    this.toastContainer.setAttribute('role', 'status');
+    this.toastContainer.setAttribute('aria-live', 'polite');
+
+    this.el.append(stocks, cellEl, brand, this.toastContainer);
+    parent.appendChild(this.el);
+    this.initListeners();
+  }
+
+  private initListeners(): void {
+    if (this.opts.store?.onCommandRejected) {
+      this.cleanups.push(
+        this.opts.store.onCommandRejected((rej) => {
+          if (this.firstRejectOf(rej.id)) this.handleReject(rej.code, undefined, { kind: rej.kind });
+        }),
+      );
+    }
+    if (this.opts.transport?.onMessage) {
+      this.cleanups.push(
+        this.opts.transport.onMessage((m) => {
+          if (m.t === 'cmd.reject' && this.firstRejectOf(m.d.id)) {
+            this.handleReject(m.d.code, m.d.detail);
+          }
+        }),
+      );
+    }
+  }
+
+  private colonyIndex(): number {
+    return this.opts.getOwnerColonyIndex?.() ?? this.opts.ownerColonyIndex ?? 0;
+  }
+
+  update(view: GameView): void {
+    const v = view as { tick?: number };
+    this.clockEl.textContent = formatClock(v.tick ?? 0);
+
+    const colonyIdx = this.colonyIndex();
+    const col = viewColony(view, colonyIdx);
+    this.colonyEl.textContent = col?.name ?? `Colony ${colonyIdx}`;
+    this.renderStocks(col);
+
+    const hqCell = extractHqFromView(view, colonyIdx, this.opts.store?.simData?.() ?? undefined);
+    this.cellVal.textContent = hqCell ? `${Math.round(hqCell.cell)} / ${Math.round(hqCell.cellMax)} E` : `${NO_DATA} E`;
+    this.cellFill.style.width = `${(hqCell ? clampPct(hqCell.cell, hqCell.cellMax) : 0).toFixed(1)}%`;
+  }
+
+  private renderStocks(col: ViewColony | undefined): void {
+    const stock = wholeStock(col?.stock);
+    const caps = capsOf(col?.caps); // the sim's caps, INITIAL_CAPS for a family the view does not carry
+    const metalsT1 = stock['metals.t1'] ?? 0;
+    const metalsTotal = metalsT1 + (stock['metals.t2'] ?? 0) + (stock['metals.t3'] ?? 0);
+    const mineralsT1 = stock['minerals.t1'] ?? 0;
+    const mineralsTotal = mineralsT1 + (stock['minerals.t2'] ?? 0) + (stock['minerals.t3'] ?? 0);
+    const biomass = stock['bio.biomass'] ?? 0;
+    const water = stock['bio.water'] ?? 0;
+    const bioTotal = biomass + water + (stock['bio.t2'] ?? 0) + (stock['bio.t3'] ?? 0);
+
+    this.metals.val.textContent = `${metalsTotal} / ${caps.metals}`;
+    this.metals.el.title = `Iron (T1): ${metalsT1} · Cap: ${caps.metals}`;
+    this.minerals.val.textContent = `${mineralsTotal} / ${caps.minerals}`;
+    this.minerals.el.title = `Silica (T1): ${mineralsT1} · Cap: ${caps.minerals}`;
+    this.bio.val.textContent = `${bioTotal} / ${caps.bio} `;
+    this.bioSub.textContent = `(Biomass ${biomass} · Water ${water})`;
+    this.bio.el.title = `Biomass: ${biomass} · Water: ${water} · Cap: ${caps.bio}`;
+
+    const supplyUsed = (col as { supplyUsed?: number } | undefined)?.supplyUsed ?? 0;
+    const supplyCap = (col as { supplyCap?: number } | undefined)?.supplyCap ?? 0;
+    this.supply.val.textContent = `${supplyUsed} / ${supplyCap}`;
+    this.supply.el.title = `Supply: ${supplyUsed} / ${supplyCap}`;
+  }
+
+  /** One reject reaches the HUD twice (the transport's `cmd.reject` and the store's rollback): toast it once. */
+  private firstRejectOf(id: string | undefined): boolean {
+    if (!id) return true;
+    if (this.toastedRejects.has(id)) return false;
+    this.toastedRejects.add(id);
+    if (this.toastedRejects.size > 64) this.toastedRejects.delete(this.toastedRejects.values().next().value as string);
+    return true;
+  }
+
+  private armTimer(toast: HTMLElement, durationMs: number): void {
+    clearTimeout(this.toastTimers.get(toast));
+    this.toastTimers.set(toast, setTimeout(() => this.dismissToast(toast), durationMs));
+  }
+
+  private dismissToast(toast: HTMLElement): void {
+    clearTimeout(this.toastTimers.get(toast));
+    this.toastTimers.delete(toast);
+    toast.remove();
+  }
+
+  /**
+   * Shows `message`. A toast with the same `key` (e.g. one reject cause), or else the same text, already on screen is
+   * updated and its timer restarted instead of stacking a second one. Toasts are buttons: click or Enter dismisses.
+   */
+  showToast(message: string, severity: 'warning' | 'error' | 'info' = 'warning', durationMs = 4000, key?: string): HTMLElement {
+    const existing = [...this.toastContainer.children].find(
+      (el) => el instanceof HTMLElement && el.dataset.severity === severity && (key ? el.dataset.key === key : el.textContent === message),
+    ) as HTMLElement | undefined;
+    if (existing) {
+      existing.textContent = message;
+      this.armTimer(existing, durationMs);
+      return existing;
+    }
+    const toast = document.createElement('button');
+    toast.type = 'button';
+    toast.className = `plate-sm ta-hud-toast ta-hud-toast--${severity}`;
+    toast.dataset.testid = 'hud-toast';
+    toast.dataset.severity = severity;
+    if (key) toast.dataset.key = key;
+    toast.textContent = message;
+    toast.onclick = () => this.dismissToast(toast);
+    this.armTimer(toast, durationMs);
+    this.toastContainer.appendChild(toast);
+    return toast;
+  }
+
+  /** Toast for a rejected command. The shortfall line uses the command's real cost when its kind is known. */
+  handleReject(code: string, detail?: string, cmd?: { kind: string; args?: unknown }): HTMLElement {
+    const msg = formatRejectToast(code, detail, cmd?.kind);
+    return this.showToast(msg, 'warning', 4000, `reject:${code}`);
+  }
+
+  dispose(): void {
+    for (const off of this.cleanups) off();
+    this.cleanups = [];
+    for (const t of this.toastTimers.values()) clearTimeout(t);
+    this.toastTimers.clear();
+    this.el.remove();
+  }
+}

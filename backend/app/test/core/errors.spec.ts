@@ -1,6 +1,9 @@
-import type { INestApplication } from '@nestjs/common';
+import type { ArgumentsHost, INestApplication } from '@nestjs/common';
+import { REST_ERROR_CODES } from '@terra/contracts';
+import pino from 'pino';
 import { afterEach, describe, expect, it } from 'vitest';
-import { CoreException, CoreNotFound } from '../../src/core/errors/core-exception';
+import { AllExceptionsFilter } from '../../src/core/errors/all-exceptions.filter';
+import { CoreConflict, CoreException, CoreNotFound } from '../../src/core/errors/core-exception';
 import { restCodeFor } from '../../src/core/errors/map-error';
 import { bootCapturing } from './logging-helpers';
 
@@ -24,6 +27,27 @@ describe('CoreException', () => {
   });
   it('maps status to REST code', () => {
     expect([restCodeFor(400), restCodeFor(404), restCodeFor(418), restCodeFor(500)]).toEqual(['validation_error', 'not_found', 'validation_error', 'internal']);
+  });
+  it('a domain code with its own REST code wins over the status: COLONY_SEAT_REJECTED → seat_rejected', () => {
+    expect([restCodeFor(409, 'COLONY_SEAT_REJECTED'), restCodeFor(409, 'CONFLICT'), restCodeFor(409)]).toEqual(['seat_rejected', 'conflict', 'conflict']);
+    expect(REST_ERROR_CODES).toContain('seat_rejected');
+  });
+  it('generic codes by status; only NEAR codes are near_unavailable (BE-17)', () => {
+    expect([restCodeFor(503, 'LEDGER_UNAVAILABLE'), restCodeFor(503, 'HOME_UNAVAILABLE'), restCodeFor(503, 'NEAR_UNAVAILABLE'), restCodeFor(503, 'NEAR_MOCK_INJECTED_FAILURE')])
+      .toEqual(['unavailable', 'unavailable', 'near_unavailable', 'near_unavailable']);
+    expect([restCodeFor(413, 'PAYLOAD_TOO_LARGE'), restCodeFor(429, 'TOO_MANY_REQUESTS'), restCodeFor(409, 'NEAR_ESCROW_STATE')]).toEqual(['payload_too_large', 'rate_limited', 'conflict']);
+    for (const s of [400, 401, 403, 404, 409, 413, 429, 500, 503]) expect(REST_ERROR_CODES).toContain(restCodeFor(s));
+  });
+  it('the filter answers a rejected seat with error.code seat_rejected and the sim code in details.code', () => {
+    let sent: { status?: number; body?: unknown } = {};
+    const res = { status: (status: number) => { sent = { ...sent, status }; return res; }, json: (body: unknown) => { sent = { ...sent, body }; } };
+    const host = { getType: () => 'http', switchToHttp: () => ({ getRequest: () => ({ id: 'r1', method: 'GET', originalUrl: '/v1/me/home' }), getResponse: () => res }) };
+    const seat = new CoreConflict('COLONY_SEAT_REJECTED', { message: 'refused', details: { code: 'landing_site_taken', planetId: 'pl_dev' } });
+    new AllExceptionsFilter(pino({ level: 'silent' }), true).catch(seat, host as unknown as ArgumentsHost);
+    expect(sent).toEqual({
+      status: 409,
+      body: { errorCode: 'COLONY_SEAT_REJECTED', error: { code: 'seat_rejected', message: 'refused', details: { code: 'landing_site_taken', planetId: 'pl_dev' } }, requestId: 'r1' },
+    });
   });
 });
 
@@ -81,7 +105,7 @@ describe('error responses', () => {
   });
 
   it('unknown error: 500 INTERNAL hides the message in production, shows it in test; logs at error level', async () => {
-    const prod = await boot({ NODE_ENV: 'production', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
+    const prod = await boot({ NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
     const r = await fetch(`${prod.url}/v1/_test/boom`);
     const text = await r.text();
     expect(r.status).toBe(500);

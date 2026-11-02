@@ -13,7 +13,7 @@ const parse = (id) => (ISSUE_RE.test(id ?? '') ? id : fail(`expected an issue id
 /** APFS copy-on-write clone of the wave worktree's node_modules (root and workspaces); `npm ci` when that is not possible. */
 function installDeps(from, to, dryRun) {
   if (process.env.TA_WAVE_NO_INSTALL) return;
-  const dirs = ['.', ...['frontend', 'shared', 'backend'].flatMap((g) => (existsSync(join(from, g)) ? readdirSync(join(from, g)).map((d) => join(g, d)) : []))];
+  const dirs = ['.', ...['frontend', 'shared', 'backend', 'tests'].flatMap((g) => (existsSync(join(from, g)) ? readdirSync(join(from, g)).map((d) => join(g, d)) : []))];
   const have = dirs.filter((d) => existsSync(join(from, d, 'node_modules')));
   if (!have.includes('.')) return dryRun ? console.log('would run npm ci') : run('npm', ['ci'], { cwd: to });
   for (const d of have) {
@@ -29,7 +29,7 @@ export function openIssue(root, plan, id, { dryRun }) {
   if (!w.open) fail(`${w.id} has no branch ${w.branch}: run \`npm run wave:open -- ${w.id.slice(1)}\` first`);
   const dir = issueWorktree(root, id), branch = `issue/${id}`;
   const exists = tryOut('git', ['rev-parse', '--verify', '--quiet', branch], { cwd: root }) !== null;
-  if (dryRun) return console.log(`would ${existsSync(dir) ? 'resume' : 'create'} ${dir} on ${branch} from ${w.branch}, clone node_modules and write .env.worktree`);
+  if (dryRun) return console.log(`would ${existsSync(dir) ? 'resume' : 'create'} ${dir} on ${branch} from ${w.branch}, clone node_modules and write infra/.env.worktree`);
   if (!existsSync(dir)) run('git', ['worktree', 'add', dir, ...(exists ? [branch] : ['-b', branch, w.branch])], { cwd: root });
   installDeps(w.worktree, dir, false);
   const env = ensureWorktreeEnv(root, dir, branch);

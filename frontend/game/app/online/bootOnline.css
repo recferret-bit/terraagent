@@ -1,0 +1,188 @@
+/* W01-38: Orbital boot splash, conditional descent overlay, and colony view chrome on the Faction Plate design system */
+
+.ta-orbital-splash {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  min-width: 340px;
+  max-width: 90vw;
+  padding: var(--ta-s5) var(--ta-s6);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  border-left: 3px solid var(--ta-orange);
+  box-shadow: var(--ta-glow-1);
+  color: var(--ta-text);
+  font-family: var(--ta-font-body);
+  z-index: 30;
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s3);
+}
+
+.ta-orbital-splash[hidden] {
+  display: none;
+}
+
+.ta-orbital-splash__eyebrow {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-eyebrow);
+  color: var(--ta-blue-hi);
+  text-transform: uppercase;
+}
+
+.ta-orbital-splash__title {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-h3);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--ta-hull);
+  text-transform: uppercase;
+}
+
+.ta-orbital-splash__title b {
+  color: var(--ta-orange);
+}
+
+.ta-orbital-splash__status {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  letter-spacing: 0.08em;
+  color: var(--ta-energy);
+}
+
+.ta-descent-phase {
+  position: fixed;
+  top: var(--ta-s6);
+  left: 50%;
+  transform: translateX(-50%);
+  min-width: 320px;
+  padding: var(--ta-s3) var(--ta-s5);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  border-left: 3px solid var(--ta-orange);
+  color: var(--ta-text);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  z-index: 25;
+  pointer-events: none;
+  display: none;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-descent-phase[hidden] {
+  display: none;
+}
+
+.ta-descent-phase__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: var(--ta-s4);
+  color: var(--ta-blue-hi);
+  text-transform: uppercase;
+}
+
+.ta-descent-phase__metrics {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--ta-s4);
+  color: var(--ta-text-2);
+}
+
+.ta-descent-phase__bar {
+  height: 4px;
+  background: var(--ta-seam);
+  overflow: hidden;
+}
+
+.ta-descent-phase__bar-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--ta-orange);
+  transition: width var(--ta-dur-quick) linear;
+}
+
+.ta-colony-view {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.ta-colony-view[hidden] {
+  display: none;
+}
+
+.ta-colony-view__badge {
+  display: none;
+}
+
+.ta-orbital-splash__retry {
+  margin-top: var(--ta-s3);
+}
+
+/* Dev-build local fallback host (no game server): always visible, above the HUD, never interactive. */
+.ta-offline-badge {
+  position: fixed;
+  left: 50%;
+  bottom: var(--ta-s4);
+  transform: translateX(-50%);
+  z-index: 35;
+  pointer-events: none;
+  padding: var(--ta-s1) var(--ta-s3);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  letter-spacing: 0.12em;
+  color: var(--ta-fault-text);
+}
+
+.ta-offline-badge[hidden] {
+  display: none;
+}
+
+.ta-online-pause {
+  position: fixed;
+  inset: 0;
+  background: rgba(7, 8, 10, 0.72);
+  backdrop-filter: blur(6px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  z-index: 40;
+}
+
+.ta-online-pause[hidden] {
+  display: none;
+}
+
+.ta-online-pause__box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 300px;
+  padding: 0 24px 24px;
+  border: 1px solid var(--ta-seam-2);
+  background: var(--ta-plate);
+}
+
+.ta-online-pause__hazard {
+  height: 8px;
+  margin: 0 -24px 10px;
+}
+
+.ta-online-pause__title {
+  margin: 0 0 6px;
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  letter-spacing: 0.3em;
+  color: var(--ta-blue-hi);
+  font-size: 20px;
+  text-align: center;
+}

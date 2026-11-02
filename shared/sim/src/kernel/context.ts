@@ -1,6 +1,14 @@
+import type { PostingInput } from '@terra/ledger';
 import type { SimEvent, EmitInput } from './events';
 import type { RngStream } from './rng';
 import type { CompiledDataLike } from './config';
+
+/**
+ * One balanced ledger entry produced by a step (a colony resource change, see `economy/`). Postings leave the sim in
+ * `StepResult.postings`, never in state or events: the host (server, or the browser worker in `?host=local`) keeps
+ * the journal; clients only see the resulting `col.stock`.
+ */
+export type LedgerPosting = PostingInput;
 
 /** Everything a system sees besides the state, for one step. */
 export interface StepContext {
@@ -18,4 +26,7 @@ export interface StepContext {
   newEntityId(): number;
   emit(e: EmitInput): void;
   readonly events: SimEvent[];
+  /** Records a ledger posting for the host (see {@link LedgerPosting}). */
+  record(p: LedgerPosting): void;
+  readonly postings: LedgerPosting[];
 }

@@ -1,5 +1,5 @@
 // `npm run e2e -- [--waves ..NN|00,03] [--hack] [--host local] [playwright args…]`
-// Runs the Playwright suites e2e/wNN.spec.ts (+ the harness smoke suite when no wave suite is present).
+// Runs the Playwright suites tests/e2e/wNN.spec.ts (+ the harness smoke suite when no wave suite is present).
 // --waves  which wave suites (parseWaves semantics: `..03`, `00,03`, `all`); default: every suite present
 // --hack   only steps titled `@hack` (each wave's Hackathon slice)
 // --host local   sets E2E_HOST=local: suites run the sim-only variant (browser local host) and skip server-only steps
@@ -37,12 +37,12 @@ for (let i = 0; i < argv.length; i++) {
 }
 if (!['server', 'local'].includes(host)) { console.error(`e2e: --host must be "local" or "server" (got "${host}")`); process.exit(2); }
 
-const present = readdirSync(resolve(root, 'e2e')).map((f) => /^w(\d\d)\.spec\.ts$/.exec(f)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
-const files = selectWaves(waves, present).map((n) => `e2e/w${String(n).padStart(2, '0')}.spec.ts`);
-if (present.length === 0) files.push('e2e/harness/smoke.spec.ts'); // before the first wave suite exists
+const present = readdirSync(resolve(root, 'tests/e2e')).map((f) => /^w(\d\d)\.spec\.ts$/.exec(f)?.[1]).filter(Boolean).map(Number).sort((a, b) => a - b);
+const files = selectWaves(waves, present).map((n) => `tests/e2e/w${String(n).padStart(2, '0')}.spec.ts`);
+if (present.length === 0) files.push('tests/e2e/harness/smoke.spec.ts'); // before the first wave suite exists
 else if (files.length === 0) { console.error(`e2e: no suite matches --waves ${waves} (present: ${present.map((n) => `w${String(n).padStart(2, '0')}`).join(', ')})`); process.exit(2); }
 
-const args = ['playwright', 'test', '-c', 'e2e/playwright.config.ts', ...files, ...(hack ? ['--grep', '@hack'] : []), ...rest];
+const args = ['playwright', 'test', '-c', 'tests/e2e/playwright.config.ts', ...files, ...(hack ? ['--grep', '@hack'] : []), ...rest];
 console.log(`e2e: ${files.join(' ')}${hack ? '  (@hack only)' : ''}  host=${host}`);
 const r = spawnSync('npx', args, { cwd: root, stdio: 'inherit', env: { ...process.env, E2E_HOST: host, E2E_WAVES: waves ?? '', E2E_HACK: hack ? '1' : '' } });
 process.exit(r.status ?? 1);

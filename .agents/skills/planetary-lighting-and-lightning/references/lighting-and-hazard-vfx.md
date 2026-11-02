@@ -4,15 +4,19 @@
 
 ## 1. Orbital Solar Cycle Curve (Gameplay + Visual Synchronization)
 
-Let `phase` $\in [0, 1)$ represent the planetary rotation cycle (`0.0 = Dawn`, `0.25 = Solar Noon`, `0.50 = Dusk`, `0.75 = Midnight`):
+Let `phase` $\in [0, 1)$ represent the planetary rotation cycle (`0.0 = Dawn (06:00)`, `0.25 = Solar Noon (12:00)`, `0.50 = Dusk (18:00)`, `0.75 = Midnight (00:00)`), related to 24-hour solar time `hour` $\in [0, 24)$ by $\text{phase} = ((\text{hour} - 6) / 24) \bmod 1$:
 
 $$\text{elevation} = \sin(\text{phase} \cdot 2\pi)$$
 
-| Orbital Phase | `elevation` | Sun Color | Sun Intensity | Sky Hemi Intensity | Solar Station Output |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Noon (`0.15 – 0.35`)** | `+0.80` to `+1.0` | `0xfff5e4` | `3.2` | `0.85` | `100%` (`1.3x` on Desert) |
-| **Golden Hour (`0.0 – 0.15`, `0.35 – 0.50`)** | `0.0` to `+0.80` | `0xff7b47` | `1.8` | `0.60` | `35% – 80%` |
-| **Orbital Night (`0.50 – 1.00`)** | `< 0.0` | `0x4cc9f0` (Moon/Ring) | `0.65` | `0.35` | `0%` (Batteries / Wind / Nuclear active) |
+| Orbital Phase | `elevation` | Sun Color (`computeSolarState`) | Sun Intensity Mult | Shadow Intensity / Softness Mult | Sky Hemi Intensity | Solar Station Output |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+| **Noon (`10:00 – 14:00`)** | `+0.80` to `+1.0` | Kelvin (`noonTempK`, default `5800K` $\approx$ `0xfff5e4`) | `1.05×` | `1.0×` intensity, `0.95×` radius (crisp) | `0.85` | `100%` (`1.3x` on Desert) |
+| **Golden Hour (`05:30 – 08:00`, `16:00 – 18:30`)** | `0.0` to `+0.55` | Dawn `0xff8a3d` / Dusk `0xff5e2b` (`sunWarmth`) | `0.65× – 0.90×` | `0.75×` intensity, `1.35×` radius (long soft penumbra) | `0.55 – 0.70` | `35% – 80%` |
+| **Orbital Night (`19:00 – 05:00`)** | `< 0.0` | Cool orbital moonlight `0x6498e8` (`nightBrightness`) | `0.20× – 0.38×` | `0.22× – 0.38×` intensity, `1.75×` radius (diffused) | `0.25 – 0.42` | `0%` (Batteries / Wind / Nuclear active) |
+
+Authoritative planetary time (`shared/sim/src/systems/time/index.ts`, `shared/sim/src/data/time.ts`) advances by:
+$$\Delta\text{days} = \frac{\Delta\text{ticks} \cdot (\text{tickMs} / 3{,}600{,}000) \cdot \text{timeScale}}{\text{realHoursPerDay}}$$
+with default `realHoursPerDay = 0.25` (15 real minutes per planetary day), `timeScale = 1.0`, and `initialTimeOfDay = 9.0` (09:00 morning sun).
 
 ---
 

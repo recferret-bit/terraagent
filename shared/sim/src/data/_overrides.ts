@@ -1,3 +1,4 @@
+import { checkAmountField } from './_amounts';
 import type { Row, RowValue, TableDef } from './_define';
 
 /**
@@ -73,7 +74,10 @@ export function parseOverrides(input: unknown, label = 'overrides'): BalanceOver
 
 const kindOf = (v: unknown): string => (v === null ? 'null' : Array.isArray(v) ? 'array' : typeof v);
 
-/** Returns the rows of `tables` with the overrides laid over them. Unknown table/row/field or a value of another type throws. */
+/**
+ * Returns the rows of `tables` with the overrides laid over them. Unknown table/row/field, a `fixed` field
+ * (`TableDef.fixed`), a value of another type or a resource amount that is not whole units (`TableDef.amounts`) throws.
+ */
 export function applyOverrides(tables: readonly TableDef[], overrides: BalanceOverrides): readonly TableDef[] {
   const byName = new Map(tables.map((t) => [t.name, t]));
   for (const [tn, rows] of Object.entries(overrides)) {
@@ -86,10 +90,14 @@ export function applyOverrides(tables: readonly TableDef[], overrides: BalanceOv
         if (fn === 'id' || fn === 'wave' || !(fn in row)) {
           throw new Error(`balance override: unknown field "${tn}.${rn}.${fn}" (known: ${Object.keys(row).filter((k) => k !== 'id' && k !== 'wave').join(', ')})`);
         }
+        if (t.fixed && (t.fixed.fields === '*' || t.fixed.fields.includes(fn))) {
+          throw new Error(`balance override: ${tn}.${rn}.${fn} cannot be tuned: ${t.fixed.why}`);
+        }
         const was = row[fn];
         if (was !== null && kindOf(was) !== kindOf(v)) {
           throw new Error(`balance override: ${tn}.${rn}.${fn} is a ${kindOf(was)}, got ${kindOf(v)} ${JSON.stringify(v)}`);
         }
+        checkAmountField(t, rn, fn, v, 'balance override');
       }
     }
   }

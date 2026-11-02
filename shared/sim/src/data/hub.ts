@@ -7,6 +7,7 @@ export default defineTable({
   name: 'hub',
   summary: 'Colony Command Hub T1 balance row (footprint, cost, build time, territory claim, storage, supply, Founder Core).',
   units: { buildS: 'seconds' },
+  amounts: ['cost', 'storageCapPerFamily'],
   rows: [
     {
       id: 't1',
@@ -14,10 +15,8 @@ export default defineTable({
       building: 'commandHub',
       archetype: 'building.commandHub',
       tier: 1,
-      footprintW: 3,
-      footprintD: 3,
+      footprint: 3,
       buildS: 30,
-      designBuildS: 30,
       cost: {
         'metals.t1': 200,
         'minerals.t1': 100,
@@ -32,8 +31,9 @@ export default defineTable({
       supplyCap: 10,
       pylonSpan: 6,
       pylonMaxLoad: 150,
-      cancelRefundRatio: 0.75,
+      cancelRefundBp: 7500,
       hqOnly: true,
+      maxPerColony: 1,
       allowUnclaimedPlacement: true,
     },
   ],

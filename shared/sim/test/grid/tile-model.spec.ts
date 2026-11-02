@@ -9,14 +9,11 @@ import {
   depositIdFromKey,
   depositKeyFromId,
   extractTileChanges,
-  groundMoveMultiplier,
   groundMoveMultiplierBp,
   hexIndex,
   isBuildablePrepared,
   isGroundPassable,
   isTileExplored,
-  isTileOwnedBy,
-  isTileUnclaimed,
   isValidTileIndex,
   markTileExplored,
   PREP,
@@ -71,22 +68,17 @@ describe('W01-08 tile model: enum conversions and layer accessors', () => {
     expect(DEPOSIT.Metals).toBe(DEPOSIT.metals);
   });
 
-  it('validates tile indices against grid count and optional valid mask', () => {
+  it('validates tile indices against the grid count', () => {
     const state = createPlanet({ type: 'flat', seed: 'idx', radius: 2 });
     expect(isValidTileIndex(state, 0)).toBe(true);
     expect(isValidTileIndex(state.grid, state.grid.count - 1)).toBe(true);
     expect(isValidTileIndex(state.grid, -1)).toBe(false);
     expect(isValidTileIndex(state.grid, state.grid.count)).toBe(false);
 
-    const masked = {
-      count: 3,
-      valid: new Uint8Array([1, 0, 1]),
-      terrain: new Uint8Array(3),
-      prep: new Uint8Array(3),
-    };
-    expect(isValidTileIndex(masked, 0)).toBe(true);
-    expect(isValidTileIndex(masked, 1)).toBe(false);
-    expect(isGroundPassable(masked, 1)).toBe(false);
+    const bare = { count: 3, terrain: new Uint8Array(3), prep: new Uint8Array(3) };
+    expect(isValidTileIndex(bare, 2)).toBe(true);
+    expect(isValidTileIndex(bare, 1.5)).toBe(false);
+    expect(isGroundPassable(bare, 3)).toBe(false);
   });
 });
 
@@ -110,7 +102,7 @@ describe('W01-08 tile model: ground passability, movement multipliers and builda
       setTilePrep(state.grid, i, PREP.wild);
       expect(isGroundPassable(state.grid, i, data)).toBe(passable);
       expect(groundMoveMultiplierBp(state.grid, i, data)).toBe(bp);
-      expect(groundMoveMultiplier(state.grid, i, data)).toBeCloseTo(mult, 5);
+      expect(groundMoveMultiplierBp(state.grid, i, data) / 10000).toBeCloseTo(mult, 5);
       expect(isBuildablePrepared(state.grid, i)).toBe(false);
     }
 
@@ -120,7 +112,6 @@ describe('W01-08 tile model: ground passability, movement multipliers and builda
     setTilePrep(state.grid, t, PREP.prepared);
     expect(isGroundPassable(state.grid, t, data)).toBe(true);
     expect(groundMoveMultiplierBp(state.grid, t, data)).toBe(10000);
-    expect(groundMoveMultiplier(state.grid, t, data)).toBe(1.0);
     expect(isBuildablePrepared(state.grid, t)).toBe(true);
 
     setTilePrep(state.grid, t, PREP.irrigated);
@@ -131,7 +122,6 @@ describe('W01-08 tile model: ground passability, movement multipliers and builda
     setTilePrep(state.grid, t, PREP.living);
     expect(isGroundPassable(state.grid, t, data)).toBe(true);
     expect(groundMoveMultiplierBp(state.grid, t, data)).toBe(11000);
-    expect(groundMoveMultiplier(state.grid, t, data)).toBeCloseTo(1.1, 5);
     expect(isBuildablePrepared(state.grid, t)).toBe(true);
 
     // Ridge and Moat are impassable walls to ground units; only Ridge blocks direct fire (UO-W-01/02)
@@ -193,7 +183,7 @@ describe('W01-08 acceptance: tile prep, owner, deposit and explored delta sync',
 
     const tileA = 2;
     const tileB = 5;
-    expect(isTileUnclaimed(authority.state.grid, tileA)).toBe(true);
+    expect(authority.state.grid.layers.owner[tileA]).toBe(-1);
     expect(isTileExplored(authority.state.grid, tileB, 0)).toBe(false);
     expect(isTileExplored(authority.state.grid, tileB, 2)).toBe(false);
 
@@ -210,7 +200,7 @@ describe('W01-08 acceptance: tile prep, owner, deposit and explored delta sync',
     expect(ops.map((o) => o.tileIdx)).toEqual([tileA, tileB]);
 
     replica.applyDiff(deltaBytes);
-    expect(isTileOwnedBy(replica.state.grid, tileA, 1)).toBe(true);
+    expect(replica.state.grid.layers.owner[tileA]).toBe(1);
     expect(replica.state.grid.layers.deposit[tileA]).toBe(DEPOSIT.minerals);
     expect(replica.state.grid.layers.richness[tileA]).toBeCloseTo(1.15, 5);
     expect(replica.state.grid.layers.height[tileA]).toBeCloseTo(0.25, 5);

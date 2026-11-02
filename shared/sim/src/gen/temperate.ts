@@ -1,59 +1,36 @@
-import terrainTable from '../data/terrain';
 import { hexDistance, hexIndex } from '../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import { nextInt, nextU32, seedStream } from '../kernel/rng';
-import { createState, type PlanetState, type PlanetType } from '../kernel/state';
-import { registerGenerator, type PlanetParams } from './generators';
+import type { PlanetState, PlanetType } from '../kernel/state';
+import { profileNum, profileNumber, worldProfile, type ProfileRow } from './profile';
+import { fbm2d, hash2d } from './world/noise';
 
 const SQRT3_HALF = 0.8660254;
 const DEPOSIT_CYCLE = [DEPOSIT.metals, DEPOSIT.minerals, DEPOSIT.oil] as const;
 
-function readShareBp(id: string, fallback: number): number {
-  const row = terrainTable.rows.find((r) => r.id === id) as Record<string, unknown> | undefined;
-  return typeof row?.temperateShareBp === 'number' ? row.temperateShareBp : fallback;
+/** Terrain class shares in basis points (the temperate classifier fills exactly these quotas). */
+export interface TerrainShares { flat: number; forest: number; rock: number; slope: number; hole: number; shallow: number; deep: number }
+
+/** The class shares of a quota profile (`share<Class>` fields of its `data/worldgen.ts` row, else temperate's). */
+export function profileShares(profile: ProfileRow): TerrainShares {
+  const temperate = worldProfile('temperate');
+  const n = (field: string) => profileNumber(profile, field, profileNumber(temperate, field, 0));
+  return {
+    flat: n('shareFlat'), forest: n('shareForest'), rock: n('shareRock'), slope: n('shareSlope'),
+    hole: n('shareHole'), shallow: n('shareShallow'), deep: n('shareDeep'),
+  };
 }
 
-function readTemperateNum(field: string, fallback: number): number {
-  const row = terrainTable.rows.find((r) => r.id === 'temperate') as Record<string, unknown> | undefined;
-  return typeof row?.[field] === 'number' ? (row[field] as number) : fallback;
-}
-
-const SHARE_BP = {
-  flat: readShareBp('flat', 4500),
-  forest: readShareBp('forest', 2500),
-  rock: readShareBp('rock', 800),
-  slope: readShareBp('slope', 1000),
-  hole: readShareBp('hole', 200),
-  shallow: readShareBp('shallow', 600),
-  deep: readShareBp('deep', 400),
-} as const;
-
-const RICHNESS_CFG = {
-  minBp: readTemperateNum('richnessMinBp', 9000),
-  maxBp: readTemperateNum('richnessMaxBp', 12000),
-  metalsModBp: readTemperateNum('metalsRichnessModBp', 10000),
-  mineralsModBp: readTemperateNum('mineralsRichnessModBp', 11500),
-  oilModBp: readTemperateNum('oilRichnessModBp', 10000),
-} as const;
-
-function richnessModBp(kind: number, planetType: PlanetType): number {
-  if (planetType === 'desert') {
-    return kind === DEPOSIT.metals || kind === DEPOSIT.minerals ? 11500 : 10000;
-  }
-  if (planetType === 'ocean') {
-    if (kind === DEPOSIT.oil) return 12000;
-    if (kind === DEPOSIT.metals) return 8500;
-    return 10000;
-  }
-  if (kind === DEPOSIT.minerals) return RICHNESS_CFG.mineralsModBp;
-  if (kind === DEPOSIT.metals) return RICHNESS_CFG.metalsModBp;
-  return RICHNESS_CFG.oilModBp;
-}
+const RICHNESS_MOD_FIELD: Readonly<Record<number, string>> = {
+  [DEPOSIT.metals]: 'metalsRichnessModBp',
+  [DEPOSIT.minerals]: 'mineralsRichnessModBp',
+  [DEPOSIT.oil]: 'oilRichnessModBp',
+};
 
 /**
  * Deterministic deposit richness in basis points for `(seed, tileIdx, kind, planetType)`.
- * Base richness is drawn in `[9000, 12000]` bp and scaled by the planet's per-resource modifier
- * (`temperate` Minerals +15% -> `10350..13800` bp, D-33).
+ * Base richness is drawn in `[richnessMinBp, richnessMaxBp]` (9000..12000) and scaled by the planet's per-resource
+ * modifier from its `data/worldgen.ts` row (`temperate` Minerals +15% -> `10350..13800` bp, D-33).
  */
 export function getDepositRichnessBp(
   seed: string,
@@ -63,47 +40,13 @@ export function getDepositRichnessBp(
 ): number {
   if (kind === DEPOSIT.none) return 0;
   const rng = seedStream(seed, `gen:richness:${tileIdx}`);
-  const baseBp = nextInt(rng, RICHNESS_CFG.minBp, RICHNESS_CFG.maxBp);
-  const modBp = richnessModBp(kind, planetType);
+  const baseBp = nextInt(rng, profileNum(planetType, 'richnessMinBp', 9000), profileNum(planetType, 'richnessMaxBp', 12000));
+  const modBp = profileNum(planetType, RICHNESS_MOD_FIELD[kind] ?? '', 10000);
   return Math.round((baseBp * modBp) / 10000);
 }
 
-/** Pure 32-bit integer lattice hash in [0, 1). */
-function hash2d(ix: number, iy: number, seed: number): number {
-  let h = (seed ^ Math.imul(ix, 0x9e3779b1) ^ Math.imul(iy, 0x85ebca6b)) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 0x7feb352d) >>> 0;
-  h = Math.imul(h ^ (h >>> 15), 0x846ca68b) >>> 0;
-  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
-}
-
-/** Smoothstep 2D value noise in [0, 1). */
-function valueNoise2d(x: number, y: number, scale: number, seed: number): number {
-  const sx = x * scale;
-  const sy = y * scale;
-  const x0 = Math.floor(sx);
-  const y0 = Math.floor(sy);
-  const fx = sx - x0;
-  const fy = sy - y0;
-  const ux = fx * fx * (3 - 2 * fx);
-  const uy = fy * fy * (3 - 2 * fy);
-  const v00 = hash2d(x0, y0, seed);
-  const v10 = hash2d(x0 + 1, y0, seed);
-  const v01 = hash2d(x0, y0 + 1, seed);
-  const v11 = hash2d(x0 + 1, y0 + 1, seed);
-  const a = v00 + (v10 - v00) * ux;
-  const b = v01 + (v11 - v01) * ux;
-  return Math.fround(a + (b - a) * uy);
-}
-
-/** 3-octave fractal value noise in [0, 1). */
-function fbm2d(x: number, y: number, baseScale: number, seed: number): number {
-  const o1 = valueNoise2d(x, y, baseScale, seed);
-  const o2 = valueNoise2d(x + 17.3, y - 9.1, baseScale * 2, (seed + 0x9e3779b9) >>> 0);
-  const o3 = valueNoise2d(x - 31.7, y + 23.5, baseScale * 4, (seed + 0x3c6ef372) >>> 0);
-  return Math.fround(o1 * 0.57 + o2 * 0.29 + o3 * 0.14);
-}
-
-function assignTemperateTerrain(s: PlanetState): void {
+/** Temperate relief + classification by quota (rank of elevation / basin / moisture fields), heights in metres. */
+export function assignTemperateTerrain(s: PlanetState, SHARE_BP: TerrainShares = profileShares(worldProfile(s.meta.planetType))): void {
   const { radius, count, layers } = s.grid;
   const terrain = layers.terrain as Uint8Array;
   const prep = layers.prep as Uint8Array;
@@ -194,7 +137,8 @@ function assignTemperateTerrain(s: PlanetState): void {
   }
 }
 
-function assignTemperateDeposits(s: PlanetState): void {
+/** Visible deposits: ~4 % of land tiles, spaced ≥ 2 apart, cycling metals / minerals / oil. */
+export function assignTemperateDeposits(s: PlanetState): void {
   const { radius, count, layers } = s.grid;
   const terrain = layers.terrain as Uint8Array;
   const deposit = layers.deposit as Uint8Array;
@@ -252,12 +196,3 @@ function assignTemperateDeposits(s: PlanetState): void {
     richness[i] = getDepositRichnessBp(seed, i, kind, planetType);
   }
 }
-
-export function generateTemperate({ seed, planetId, planetType, radius }: Required<Omit<PlanetParams, 'type' | 'id'>>): PlanetState {
-  const s = createState({ planetId, planetType, seed, radius });
-  assignTemperateTerrain(s);
-  assignTemperateDeposits(s);
-  return s;
-}
-
-registerGenerator('temperate', generateTemperate);

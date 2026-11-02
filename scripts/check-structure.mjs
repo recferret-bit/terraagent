@@ -2,11 +2,13 @@
 // Enforces the architecture limits from AGENTS.md §6: no source file over 500 lines, no function over 100 lines,
 // and layering: frontend/render imports no app and no `@terra/sim`, an app imports no other app, and `shared/*`
 // imports neither frontend nor backend code.
-//   npm run check:structure            (scans frontend/, shared/, backend/, scenarios/, e2e/ and scripts/)
+//   npm run check:structure            (scans frontend/, shared/, backend/, tests/, and scripts/)
 import ts from 'typescript';
 import { existsSync, readdirSync, readFileSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 
+// Pure grid geometry render may share with the sim (no state, no rules): hex coordinates and the sector index (D-38).
+const RENDER_SIM_GEOMETRY = new Set(['@terra/sim/grid/hex', '@terra/sim/grid/sectors']);
 const ROOT = resolve(import.meta.dirname, '..');
 const MAX_FILE = 500, MAX_FUNC = 100;
 const SKIP = new Set(['node_modules', 'dist', 'generated', 'test-results', 'playwright-report', '.out']);
@@ -57,7 +59,7 @@ function checkLayer(rel, spec, line) {
     return;
   }
   // render may use the presentation-safe hex math (CLIENT §7), nothing else of the engine
-  if (areaOf(rel) === 'render' && /^@terra\/sim(\/|$)/.test(spec) && spec !== '@terra/sim/grid/hex') problems.push(`layer render imports '${spec}' (apps pass sim views in)  ${rel}:${line}`);
+  if (areaOf(rel) === 'render' && /^@terra\/sim(\/|$)/.test(spec) && !RENDER_SIM_GEOMETRY.has(spec)) problems.push(`layer render imports '${spec}' (apps pass sim views in)  ${rel}:${line}`);
   const from = areaOf(rel);
   if (!from || !spec.startsWith('.')) return;
   const to = areaOf(relative(ROOT, resolve(ROOT, dirname(rel), spec)));
@@ -67,6 +69,6 @@ function checkLayer(rel, spec, line) {
   else if (APPS.includes(from) && to === 'render') problems.push(`layer use '@terra/render/…', not a relative path  ${rel}:${line}`);
 }
 
-for (const dir of ['frontend', 'shared', 'backend', 'scenarios', 'e2e', 'scripts']) if (existsSync(join(ROOT, dir))) walk(join(ROOT, dir));
+for (const dir of ['frontend', 'shared', 'backend', 'tests', 'scripts']) if (existsSync(join(ROOT, dir))) walk(join(ROOT, dir));
 if (problems.length) { console.error(problems.join('\n') + `\n\n${problems.length} structure violation(s)`); process.exit(1); }
 console.log('structure ok: every file ≤ 500 lines, every function ≤ 100 lines, layers point inward');

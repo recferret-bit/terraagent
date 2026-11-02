@@ -54,6 +54,12 @@ export class PlanetaryLightingSystem {
 
   /** Current gameplay Solar Station efficiency (0.0 at night -> 1.0 at noon, scaled by weather) */
   public solarEfficiency = 1.0;
+  /** Configured real-world hours for 1 full planetary day (24 solar hours). */
+  public realHoursPerDay = 0.25;
+  /** Multiplier on planetary time progression. */
+  public timeScale = 1.0;
+  /** Normalized orbital solar phase [0..1). */
+  public currentPhase = 0.22;
 
   constructor(private readonly scene: THREE.Scene, poolSize = 8) {
     this.currentWeather = WeatherPresetRegistry.get('clear');
@@ -127,13 +133,29 @@ export class PlanetaryLightingSystem {
     this.skyFlashDuration = duration;
   }
 
+  public setDayCycleConfig(cfg: { realHoursPerDay?: number; timeScale?: number; phase?: number }): void {
+    if (cfg.realHoursPerDay !== undefined && cfg.realHoursPerDay > 0) this.realHoursPerDay = cfg.realHoursPerDay;
+    if (cfg.timeScale !== undefined && cfg.timeScale >= 0) this.timeScale = cfg.timeScale;
+    if (cfg.phase !== undefined && Number.isFinite(cfg.phase)) {
+      this.currentPhase = ((cfg.phase % 1) + 1) % 1;
+    }
+  }
+
   /**
    * Updates orbital sun position, quantized shadow frustum, weather transitions, and pooled flashes.
    * @param dt Delta time in seconds
    * @param cameraTarget World-space ground point the RTS camera is looking at
-   * @param orbitalPhase Normalized planetary time-of-day [0..1] (default: 0.22 bright morning)
+   * @param orbitalPhase Optional explicit normalized planetary time-of-day [0..1]; advances automatically when omitted
    */
-  public update(dt: number, cameraTarget: THREE.Vector3, orbitalPhase = 0.22): void {
+  public update(dt: number, cameraTarget: THREE.Vector3, orbitalPhase?: number): void {
+    if (orbitalPhase !== undefined) {
+      this.currentPhase = ((orbitalPhase % 1) + 1) % 1;
+    } else if (dt > 0 && this.realHoursPerDay > 0 && this.timeScale > 0) {
+      const deltaDays = ((dt / 3600) * this.timeScale) / this.realHoursPerDay;
+      this.currentPhase = (this.currentPhase + deltaDays) % 1;
+    }
+    const phase = this.currentPhase;
+
     // 1. Weather state interpolation
     if (this.weatherBlend < 1.0) {
       this.weatherBlend = Math.min(1.0, this.weatherBlend + dt * 0.4);
@@ -158,7 +180,7 @@ export class PlanetaryLightingSystem {
     }
 
     // 2. Orbital Solar Elevation & Color Temperature
-    const angle = orbitalPhase * Math.PI * 2;
+    const angle = phase * Math.PI * 2;
     const elevation = Math.sin(angle); // -1 (midnight) to +1 (noon)
     const daylightFactor = THREE.MathUtils.smoothstep(elevation, -0.15, 0.35);
 
@@ -175,6 +197,8 @@ export class PlanetaryLightingSystem {
     }
 
     this.sunLight.intensity = THREE.MathUtils.lerp(0.65, 3.2, daylightFactor) * sunMult;
+    this.sunLight.shadow.intensity = THREE.MathUtils.lerp(0.28, 0.9, daylightFactor);
+    this.sunLight.shadow.radius = THREE.MathUtils.lerp(2.2, 1.15, daylightFactor);
 
     // 3. Double-stroke Sky Lightning Flash
     let flashBoost = 0;

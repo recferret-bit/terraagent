@@ -77,12 +77,12 @@
 
 .ta-res-chip[data-capped='true'] .ta-res-chip__stock,
 .ta-res-chip--capped .ta-res-chip__stock {
-  color: var(--ta-fault-text, var(--ta-danger, var(--ta-fault)));
+  color: var(--ta-fault-text, var(--ta-fault));
 }
 
 .ta-res-chip[data-capped='true'] .ta-res-chip__label,
 .ta-res-chip--capped .ta-res-chip__label {
-  color: var(--ta-fault, var(--ta-alert, var(--ta-fault-text)));
+  color: var(--ta-fault, var(--ta-fault-text));
 }
 
 /* Hover breakdown tooltip / popover */

@@ -1,5 +1,6 @@
 import { compileData, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, setField } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
 import { DEPOSIT } from '../../grid/layers';
@@ -146,10 +147,7 @@ export function placeMetalsExtractor(
   cols.kind[row] = ENTITY_KIND.metalsExtractor;
   cols.owner[row] = opts.owner;
   cols.tier[row] = Number(extRow.tier ?? 1);
-  cols.q[row] = opts.q;
-  cols.r[row] = opts.r;
-  cols.x[row] = Math.fround(opts.q);
-  cols.y[row] = Math.fround(opts.r);
+  placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   cols.rot[row] = opts.rot ?? 0;
   cols.footprintW[row] = Number(extRow.footprintW ?? 2);
   cols.footprintD[row] = Number(extRow.footprintD ?? 2);

@@ -33,14 +33,15 @@ const BASE: FieldDef[] = [
 
 export const ENTITY_KIND = {
   devProbe: 1,
+  pod: 2,
   dropPod: 2,
   hq: 3,
   commandHub: 4,
+  hub: 4,
   metalsExtractor: 5,
   solar: 6,
   harvester: 7,
 } as const;
-export type EntityKindCode = (typeof ENTITY_KIND)[keyof typeof ENTITY_KIND];
 
 export const ENTITY_STATE = {
   idle: 0,
@@ -50,12 +51,12 @@ export const ENTITY_STATE = {
   constructing: 4,
   active: 5,
   inert: 6,
-  offlineBrownout: 7,
-  offlineUnpowered: 8,
-  offlineCapped: 9,
-  harvesting: 10,
+  waiting: 7,
+  offlineBrownout: 8,
+  offlineUnpowered: 9,
+  offlineCapped: 10,
+  harvesting: 11,
 } as const;
-export type EntityStateCode = (typeof ENTITY_STATE)[keyof typeof ENTITY_STATE];
 
 const columns: FieldDef[] = [...BASE];
 

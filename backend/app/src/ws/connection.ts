@@ -1,10 +1,11 @@
 import type { Logger } from 'pino';
-import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type ClientMessageOf, type CloseCode } from '@terra/contracts';
+import { ClientMessage, CLOSE_CODES, decodeWire, encodeWire, PlanetType, type ClientMessageOf, type CloseCode, type HomeResponse } from '@terra/contracts';
 import type { RawData, WebSocket } from 'ws';
 import type { FullState, GamePlanets } from '../game/game-planets.service';
 import type { CommandIngress } from './command-ingress';
+import { DEFAULT_HOME, type HomeProvider } from './home-provider';
 import type { PlanetRooms, RoomMember } from './rooms';
-import type { SessionVerifier } from './session-verifier';
+import { BadHelloTokenError, type SessionVerifier, type VerifiedSession } from './session-verifier';
 
 export const TICK_MS = 200;
 export const PROTO_VERSION = 1;
@@ -14,6 +15,7 @@ export interface ConnectionDeps {
   readonly planets: GamePlanets;
   readonly rooms: PlanetRooms;
   readonly ingress: CommandIngress;
+  readonly home?: HomeProvider;
   readonly flags: readonly string[];
   readonly log: Logger;
   readonly helloTimeoutMs: number;
@@ -40,14 +42,19 @@ const rawToFrame = (data: RawData, isBinary: boolean): string | Uint8Array => {
  */
 export class Connection implements RoomMember {
   state: State = 'new';
+  session: VerifiedSession | undefined;
   playerId: string | undefined;
   planetId: string | undefined;
+  colonyId: string | null = null;
   welcomeTick: number | undefined;
   paused = false;
   private resyncing = false;
+  /** Per-socket colony-lookup memo for the ingress (BE-09); reset when the socket leaves its planet. */
+  private readonly colonyMemo: { planetId?: string; colony?: null } = {};
   private chain: Promise<void> = Promise.resolve();
   private helloTimer: NodeJS.Timeout | undefined;
   private idleTimer: NodeJS.Timeout | undefined;
+  private expTimer: NodeJS.Timeout | undefined;
 
   constructor(private readonly ws: WebSocket, private readonly d: ConnectionDeps) {
     this.helloTimer = setTimeout(() => this.bye(CLOSE_CODES.bad_hello, 'hello_timeout'), d.helloTimeoutMs);
@@ -116,13 +123,39 @@ export class Connection implements RoomMember {
     this.state = 'closed';
     clearTimeout(this.helloTimer);
     clearTimeout(this.idleTimer);
+    clearTimeout(this.expTimer);
     this.leaveRoom();
     this.d.onClosed(this);
   }
 
+  private armExpTimer(expSec: number | undefined): void {
+    clearTimeout(this.expTimer);
+    this.expTimer = undefined;
+    if (typeof expSec !== 'number') return;
+    const delayMs = Math.min(Math.max(0, expSec * 1000 - Date.now()), 2_147_483_647);
+    this.expTimer = setTimeout(() => {
+      if (this.state === 'closed') return;
+      this.bye(CLOSE_CODES.forbidden, 'forbidden');
+    }, delayMs);
+    this.expTimer.unref?.();
+  }
+
+  private async resolveHome(playerId: string): Promise<HomeResponse> {
+    if (!this.d.home) return DEFAULT_HOME;
+    try {
+      return await this.d.home.getHome(playerId);
+    } catch (e) {
+      this.d.log.warn({ err: e, playerId }, 'home lookup failed: answered as NEW (a join is refused until it works)');
+      return DEFAULT_HOME;
+    }
+  }
+
   private leaveRoom(): void {
     if (this.planetId) this.d.rooms.leave(this.planetId, this);
+    delete this.colonyMemo.planetId;
+    delete this.colonyMemo.colony;
     this.planetId = undefined;
+    this.colonyId = null;
     this.welcomeTick = undefined;
   }
 
@@ -148,6 +181,7 @@ export class Connection implements RoomMember {
     switch (msg.t) {
       case 'ping':
         return this.sendMsg({ v: 1, t: 'pong', d: { clientTimeMs: msg.d.clientTimeMs, serverTimeMs: Date.now() } });
+      case 'reauth': return this.onReauth(msg);
       case 'join': return this.onJoin(msg);
       case 'leave': return this.onLeave();
       case 'cmd': return this.onCmd(msg);
@@ -157,15 +191,40 @@ export class Connection implements RoomMember {
 
   private async onHello(msg: ClientMessageOf<'hello'>): Promise<void> {
     if (!msg.d.proto.includes(PROTO_VERSION)) return this.bye(CLOSE_CODES.bad_hello, 'unsupported_proto');
+    let session: VerifiedSession | null;
     try {
-      this.playerId = (await this.d.verifier.verify(msg.d.accessToken)).playerId;
-    } catch {
-      return this.bye(CLOSE_CODES.bad_hello, 'bad_token');
+      session = await this.d.verifier.verify(msg.d.accessToken);
+    } catch (err) {
+      if (err instanceof BadHelloTokenError) return this.bye(CLOSE_CODES.bad_hello, 'bad_token');
+      return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     }
+    if (!session?.playerId) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     if (this.state !== 'new') return; // closed while verifying
+    this.session = session;
+    this.playerId = session.playerId;
+    const home = await this.resolveHome(session.playerId);
+    if (this.state !== 'new') return;
     clearTimeout(this.helloTimer);
     this.state = 'lobby';
-    this.sendMsg({ v: 1, t: 'ready', d: { playerId: this.playerId, flags: this.d.flags } });
+    this.armExpTimer(session.exp);
+    this.sendMsg({ v: 1, t: 'ready', d: { playerId: this.playerId, home, flags: this.d.flags } });
+  }
+
+  private async onReauth(msg: ClientMessageOf<'reauth'>): Promise<void> {
+    let session: VerifiedSession | null;
+    try {
+      session = await this.d.verifier.verify(msg.d.accessToken);
+    } catch {
+      return this.bye(CLOSE_CODES.forbidden, 'forbidden');
+    }
+    if (!session?.playerId || session.playerId !== this.playerId) {
+      return this.bye(CLOSE_CODES.forbidden, 'forbidden');
+    }
+    const home = await this.resolveHome(session.playerId);
+    if (this.state === 'closed') return;
+    this.session = session;
+    this.armExpTimer(session.exp);
+    this.sendMsg({ v: 1, t: 'ready', d: { playerId: session.playerId, home, flags: this.d.flags } });
   }
 
   private onLeave(): void {
@@ -173,13 +232,21 @@ export class Connection implements RoomMember {
     if (this.state !== 'closed') this.state = 'lobby';
   }
 
+  /**
+   * WS-12: a player joins only the planet of its own live (ACTIVE) colony, else `bye 4003`. A `dev:` session (never in
+   * production) may join any loaded planet (`?scenario=` / `?join=` dev flows, BE-07).
+   */
   private async onJoin(msg: ClientMessageOf<'join'>): Promise<void> {
     const planetId = msg.d.planetId;
     if (this.state === 'playing') this.leaveRoom();
-    // W00: any loaded planet may be joined; a later wave enforces "own live colony" (WS-12).
     if (!this.d.planets.isLoaded(planetId)) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     this.state = 'joining';
     this.planetId = planetId;
+    const home = this.playerId ? await this.resolveHome(this.playerId) : DEFAULT_HOME;
+    if (this.state !== 'joining') return; // closed or left meanwhile
+    const own = home.state === 'ACTIVE' && home.colony.planetId === planetId;
+    if (!own && !this.session?.dev) return this.bye(CLOSE_CODES.forbidden, 'not_your_planet');
+    this.colonyId = own ? home.colony.id : null;
     this.d.rooms.join(planetId, this);
     let snap;
     try {
@@ -201,7 +268,7 @@ export class Connection implements RoomMember {
     this.sendMsg({
       v: 1, t: 'welcome', tick: snap.tick,
       d: {
-        reason, colonyId: null,
+        reason, colonyId: this.colonyId,
         planet: { id: planetId, type: type.success ? type.data : 'temperate', name: planetId },
         state: snap.bytes, simVersion: snap.simVersion, dataHash: snap.dataHash, tick: snap.tick,
         ...(snap.overrides && Object.keys(snap.overrides).length ? { overrides: snap.overrides } : {}),
@@ -215,6 +282,6 @@ export class Connection implements RoomMember {
     if (this.state !== 'playing' || !this.playerId || !this.planetId) {
       return this.sendMsg({ v: 1, t: 'cmd.reject', d: { id: msg.id, code: 'internal', detail: 'not joined' } });
     }
-    await this.d.ingress.handle({ playerId: this.playerId, planetId: this.planetId, reply: (m) => this.sendMsg(m) }, msg);
+    await this.d.ingress.handle({ playerId: this.playerId, planetId: this.planetId, dev: this.session?.dev === true, memo: this.colonyMemo, reply: (m) => this.sendMsg(m) }, msg);
   }
 }

@@ -1,12 +1,39 @@
-import type { ServerMessage, SimEventWire } from '@terra/contracts';
-import { TICK_MS, type BalanceOverrides } from '@terra/sim';
+import { flagsFromList, newId, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
 import type { Transport } from '../net/types';
 import type { FromWorker, ToWorker } from './worker/protocol';
+import { SimWorkerController } from './worker/SimWorkerController';
 import { unpackView, type ClientTiles, type ClientView } from './replica/viewCodec';
 import type { ReplicaStatus } from './replica/ReplicaCore';
+import { applyTuned, tunedEvents } from './replica/tuneEvent';
 import type { PredictionInfo, PredictionMode } from '../net/netStats';
+
+export type CommandInput =
+  | string
+  | {
+      type?: string;
+      kind?: string;
+      args?: unknown;
+      [key: string]: unknown;
+    };
+
+function normalizeCommand(input: CommandInput | unknown, maybeArgs?: unknown): { kind: string; args: unknown } {
+  if (typeof input === 'string') {
+    return { kind: input, args: maybeArgs ?? {} };
+  }
+  const obj = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>;
+  const kind = String(obj.kind ?? obj.type ?? '');
+  if (obj.args !== undefined) {
+    return { kind, args: obj.args };
+  }
+  const rest: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) {
+    if (k !== 'type' && k !== 'kind') rest[k] = v;
+  }
+  return { kind, args: rest };
+}
 
 /** The bits of a `Worker` the store uses (tests pass an in-process fake). */
 export interface WorkerLike {
@@ -15,8 +42,20 @@ export interface WorkerLike {
   terminate(): void;
 }
 
-export const createSimWorker = (): WorkerLike =>
-  new Worker(new URL('./worker/sim.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
+export const createSimWorker = (): WorkerLike => {
+  if (typeof Worker === 'function') {
+    return new Worker(new URL('./worker/sim.worker.ts', import.meta.url), { type: 'module' }) as unknown as WorkerLike;
+  }
+  const w: WorkerLike = {
+    onmessage: null,
+    terminate() {},
+    postMessage(msg) {
+      queueMicrotask(() => ctl.handle(msg));
+    },
+  };
+  const ctl = new SimWorkerController((m) => queueMicrotask(() => w.onmessage?.({ data: m })));
+  return w;
+};
 
 export interface WorldStatus { status: ReplicaStatus | 'idle'; detail?: string }
 
@@ -34,6 +73,18 @@ export class WorldStore {
   private planetId = '';
   /** The planet of the last welcome, or null before it. */
   currentPlanetId(): string | null { return this.planetId || null; }
+  /** Flags + balance overrides of the last welcome: the server compiled its data with them (D-35). */
+  private welcomeData: { flags: string[]; overrides?: BalanceOverrides; data?: ReturnType<typeof compileData> } | null = null;
+  /**
+   * The compiled balance data the host runs with: the last welcome's flags + overrides, with later live `tune set`s
+   * (`dev.tuned` events) applied on top, so client-side rule previews (the placement ghost, D-37) evaluate with the
+   * host's numbers; null before the first welcome. A `tune reset` asks for a fresh welcome, which carries them (D-35).
+   */
+  simData(): ReturnType<typeof compileData> | null {
+    const w = this.welcomeData;
+    if (!w) return null;
+    return (w.data ??= compileData(flagsFromList(w.flags), w.overrides));
+  }
   private latestView: ClientView | null = null;
   private currentStatus: WorldStatus = { status: 'idle' };
   private tiles: ClientTiles | null = null;
@@ -48,7 +99,13 @@ export class WorldStore {
   private readonly serverEvents = new Emitter<readonly SimEventWire[]>();
   private readonly rejects = new Emitter<{ id: string; kind: string; code: string }>();
 
-  constructor(private readonly transport: Transport, private readonly makeWorker: () => WorkerLike = createSimWorker, private readonly now: () => number = () => Date.now()) {}
+  constructor(
+    private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
+    private readonly makeWorker: () => WorkerLike = createSimWorker,
+    private readonly now: () => number = () => Date.now(),
+  ) {
+    this.transport.bindStore?.(this);
+  }
 
   get latest(): ClientView | null { return this.latestView; }
   /** The newest tile layers (views carry `tiles` only when they changed). */
@@ -68,6 +125,8 @@ export class WorldStore {
   /** `on`, `off` (`?predict=0`) or `auto-off` (the worker step p95 went over 4 ms). */
   get predictionMode(): PredictionMode { return this.mode; }
   get predictionInfo(): PredictionInfo { return { mode: this.mode, ...this.info }; }
+  /** The newest server-confirmed tick (welcome / delta), independent of the client's prediction running ahead. */
+  get confirmedTick(): number { return this.baseTick; }
   /** Estimated server tick with its fraction (interpolation render time). */
   serverTickF(): number { return this.baseTick + (this.now() - this.baseLocalMs) / TICK_MS; }
 
@@ -75,11 +134,40 @@ export class WorldStore {
   onCommandRejected(fn: (r: { id: string; kind: string; code: string }) => void): () => void { return this.rejects.on(fn); }
 
   /**
+   * Sends a command over the transport and notifies the worker for immediate prediction.
+   * Accepts either `(kind, args)` or `({ type, ...args })`.
+   */
+  sendCommand(input: CommandInput | unknown, maybeArgs?: unknown): string {
+    const { kind, args } = normalizeCommand(input, maybeArgs);
+    const id = newId('cm');
+    this.transport.send({ t: 'cmd', id, d: { kind, args } });
+    this.notifySent(id, kind, args);
+    return id;
+  }
+
+  /** Directly publishes a confirmed `ClientView` (the in-process `LocalHost`, `store/local/LocalHost.ts`). */
+  pushView(view: ClientView): void {
+    if (view.tiles) this.tiles = view.tiles;
+    this.baseTick = view.tick; // an in-process host only pushes confirmed states
+    this.baseLocalMs = this.now();
+    this.latestView = view;
+    this.views.emit(view);
+  }
+
+  /**
    * The player sent a command (the CommandBus / online session calls this right after `transport.send`): the worker
    * predicts it from the next view on. Acks and rejects are picked up from the transport by the store itself.
    */
   notifySent(id: string, kind: string, args: unknown): void {
     this.worker?.postMessage({ t: 'cmdSent', id, kind, args, sentAtMs: this.now() }, []);
+  }
+
+  /**
+   * The CommandBus gave up on a command (no ack / reject in time): the prediction rolls it back as a `timeout` reject,
+   * so a command lost with a dropped socket is not predicted forever (`onCommandRejected` fires as for a reject).
+   */
+  notifyTimedOut(id: string): void {
+    this.worker?.postMessage({ t: 'reject', id, code: 'timeout' }, []);
   }
 
   /** `predict: false` is `?predict=0`: views are the confirmed state only. */
@@ -110,16 +198,19 @@ export class WorldStore {
     if (!w) return;
     if (m.t === 'welcome') {
       this.planetId = m.d.planet.id;
+      this.welcomeData = { flags: [...m.d.flags], overrides: m.d.overrides as BalanceOverrides | undefined };
       this.offsetMs = m.d.serverTimeMs - this.now();
       this.baseTick = m.d.tick; this.baseLocalMs = this.now();
       const state = ownBytes(m.d.state);
-      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
+      w.postMessage({ t: 'welcome', state, tick: m.d.tick, flags: [...m.d.flags], dataHash: m.d.dataHash, simVersion: m.d.simVersion, serverTimeMs: m.d.serverTimeMs, colonyId: m.d.colonyId, overrides: m.d.overrides as BalanceOverrides | undefined }, [state.buffer]);
     } else if (m.t === 'delta') {
       this.baseTick = m.d.toTick; this.baseLocalMs = this.now();
+      if (m.d.events?.length) this.retune(m.d.events);
       const diff = ownBytes(m.d.diff);
       w.postMessage({ t: 'delta', fromTick: m.d.fromTick, toTick: m.d.toTick, diff }, [diff.buffer]);
       if (m.d.events?.length) this.serverEvents.emit(m.d.events);
     } else if (m.t === 'event') {
+      this.retune([m.d]);
       this.serverEvents.emit([m.d]);
     } else if (m.t === 'pong') {
       const rtt = this.now() - m.d.clientTimeMs;
@@ -155,6 +246,16 @@ export class WorldStore {
       this.statuses.emit(this.currentStatus);
     } else {
       this.requestResync();
+    }
+  }
+
+  /** Live tunes (`dev.tuned`): the worker rebuilds its data (prediction), and `simData()` follows a `set`. */
+  private retune(events: readonly SimEventWire[]): void {
+    for (const t of tunedEvents(events)) {
+      this.worker?.postMessage({ t: 'tune', tune: t }, []);
+      const w = this.welcomeData;
+      const next = w && applyTuned(w.overrides, t);
+      if (w && next) this.welcomeData = { flags: w.flags, overrides: next };
     }
   }
 

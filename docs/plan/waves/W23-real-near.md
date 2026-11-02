@@ -1,6 +1,6 @@
 # W23 — Real NEAR (phase 2: swap mocks for real adapters)
 
-> **Track:** Economy/NEAR (E) · **Flag:** `W23` (controls the real-mode UI bits; adapter choice is per port via `NEAR_ADAPTER_<PORT>`) · **Scenario:** `scenarios/w23-real-near.ts` · **Tag:** `wave-23`, plus per-port tags `wave-23-<port>` so each swap can be checked out alone
+> **Track:** Economy/NEAR (E) · **Flag:** `W23` (controls the real-mode UI bits; adapter choice is per port via `NEAR_ADAPTER_<PORT>`) · **Scenario:** `tests/scenarios/w23-real-near.ts` · **Tag:** `wave-23`, plus per-port tags `wave-23-<port>` so each swap can be checked out alone
 > **Depends on (per port group):**
 > - Infra and `ChainReadPort`: W00
 > - Identity and Relayer: W06
@@ -31,7 +31,7 @@ Swap each NEAR port from its Postgres mock to the **real adapter**, one port at 
 
 ## Owned paths
 
-`backend/app/src/near/infrastructure/adapters/real/**`, `backend/app/src/near/infrastructure/{rpc,keys,network}/**`, `backend/near-contracts/{res,deed,bounty}/**` (Rust, near-sdk; location still to be confirmed against the frontend/shared/backend layout), `infra/near/**` (deploy scripts, account setup), `scripts/near-*.ts`, `frontend/game/features/identity/real/**`, `frontend/game/features/chain-status/**`, `docs/plan/runbooks/near-*.md`, `e2e/w23.spec.ts`, `scenarios/w23-real-near.ts`.
+`backend/app/src/near/infrastructure/adapters/real/**`, `backend/app/src/near/infrastructure/{rpc,keys,network}/**`, `backend/near-contracts/{res,deed,bounty}/**` (Rust, near-sdk; location still to be confirmed against the frontend/shared/backend layout), `infra/near/**` (deploy scripts, account setup), `scripts/near-*.ts`, `frontend/game/features/identity/real/**`, `frontend/game/features/chain-status/**`, `docs/plan/runbooks/near-*.md`, `tests/e2e/w23.spec.ts`, `tests/scenarios/w23-real-near.ts`.
 
 **Reused, not rebuilt:** the ports (W00-30), adapter selection and the prod mock guard (W00-31), the outbox (W00-37), the contract harness (W00-38) and every port's contract suite, which the mock wave defined: `chain-read`, `badge` (W00-38), `identity`, `relayer` (W06-22), `cargo` (W10-11), `intents` (W13-06), `agent-wallet` (W15-04), `deed`, `staking` (W20-04, W20-13), `treasury`, `escrow` (W22-04, W22-18). W23 adds **no** suite cases; its "suite" rows only run the existing suite with `npm run contract:real -- --port <key>` against the real adapter.
 
@@ -164,7 +164,7 @@ Swap each NEAR port from its Postgres mock to the **real adapter**, one port at 
 | W23-44 | Add a `network` (testnet / mainnet) column to W25-26's `npm run ports:table` README table for real adapters (no second generator) | docs | S | H2 | W23-02, W25-26 | Run the script → the README table matches the startup log matrix | NEAR §1a swap order | — |
 | W23-45 | Nightly job: runs every port's suite with `npm run contract:real` against testnet (and Intents dry-run on mainnet); a failure opens an alert and blocks switching that port to real | ops | S |  | W23-06..40 | Break a real adapter on purpose → the nightly job fails and names the port | NEAR §1a rule 5 | — |
 | W23-46 | Analytics + dev console: `track()` `social_login_completed`, `account_claimed`, `chain_receipt_opened`; console `near.ports`, `near.switch <port> <mode>` (dev only, restart required), `near.relayer-balance` | client | S |  | W23-43 | Run `near.ports` → prints the same matrix as the startup log | CLIENT §10 | — |
-| W23-47 | Wave e2e + scenario + tags: `e2e/w23.spec.ts` runs the real-mode demo against testnet (and Intents simulate on mainnet) behind `E2E_REAL_NEAR=1`; the default mode re-runs every earlier e2e on all mocks; tag `wave-23` plus `wave-23-<port>` at each port swap | test | M |  | W23-01..46 | `E2E_REAL_NEAR=1 npm run e2e -- w23` → green; `npm run e2e -- --waves ..23` → green on mocks | PRODUCT_WAVES §3 | — |
+| W23-47 | Wave e2e + scenario + tags: `tests/e2e/w23.spec.ts` runs the real-mode demo against testnet (and Intents simulate on mainnet) behind `E2E_REAL_NEAR=1`; the default mode re-runs every earlier e2e on all mocks; tag `wave-23` plus `wave-23-<port>` at each port swap | test | M |  | W23-01..46 | `E2E_REAL_NEAR=1 npm run e2e -- w23` → green; `npm run e2e -- --waves ..23` → green on mocks | PRODUCT_WAVES §3 | — |
 
 **Issue count: 47** (plus W23-21a/b only if the NEP-141 fallback is needed).
 

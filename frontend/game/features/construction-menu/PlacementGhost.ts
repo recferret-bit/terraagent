@@ -374,7 +374,9 @@ export class PlacementGhostController implements Disposable {
   }
 
   updateView(view: GameView): void {
-    this.view = view;
+    const prevTiles = (this.view as { tiles?: ClientTiles } | undefined)?.tiles;
+    const nextTiles = (view as { tiles?: ClientTiles } | undefined)?.tiles;
+    this.view = nextTiles || !prevTiles ? view : ({ ...view, tiles: prevTiles } as GameView);
     if (this.activeBuilding) this.evaluate();
   }
 

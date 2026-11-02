@@ -4,11 +4,11 @@
 >
 > | Set | Issues | Effort (units) | Critical path (units) |
 > |---|---|---|---|
-> | **H** must | 387 | ≈ 293 | 21.0 |
+> | **H** must | 395 | ≈ 299.5 | 21.0 |
 > | H+ stretch | 64 more | ≈ 41.5 more | — |
 > | H2 real NEAR (after the D10 gate) | 21 | ≈ 15 | — |
 >
-> One **unit** = one M issue (S = ½). The earlier "≈ 185 agent-days" for option B was a guess; tagging every issue gives **≈ 293** (after the 2026-10-30 review, which dropped duplicates and work that already exists, and the D-33..D-36 decisions, which added W00-59 balance overrides and W05-34 resource tier gate), because the issues are already fine-grained and most of each wave is its core. It fits **only if agents are fast**: with 12 parallel agents the `H` set takes 29 units of wall-clock, so each agent must close **≥ 2.2 units a day** (an M issue, reviewed and merged, in ≲ 3.5 h). At 1 unit/agent/day it does not fit at any agent count, because the critical path alone is 21.5 units. §3 has the pace check and the drop order.
+> One **unit** = one M issue (S = ½). The earlier "≈ 185 agent-days" for option B was a guess; tagging every issue gives **≈ 299.5** (293 after the 2026-10-30 review, then W26's 9 units minus the two W25 deploy rows that left the H set). It fits **only if agents are fast**: with 12 parallel agents the `H` set takes 29.5 units of wall-clock, so each agent must close **≥ 2.3 units a day**. At 1 unit/agent/day it does not fit at any agent count, because the critical path alone is 21.0 units. §3 has the pace check and the drop order.
 >
 > **Decisions:**
 > - [`D-24`](../spec/DECISIONS.md): one app + simplified server sim
@@ -61,7 +61,8 @@ The demo can run on mocks in production on purpose: `NEAR_ALLOW_MOCK_IN_PROD=tru
 | W15 Guild & Agents (F3, F4) | 20 · 15.0 | Guild NPC wallets, pricing, market making, visits, Guild tab, director key with allowance, autoTrade loop, revoke | Price reaction after fills, guardrails, cross-planet carry |
 | W20 Deed (F6) | 10 · 8.5 | Deed NFT (mock) minted on founding, metadata updates, rendered card | Share page, staking (needs W21 Settled colonies) |
 | W22 Treasury & Bounties (F7, F8) | 19 · 15.5 | Planet DAO, fee share, proposals + vote + Terraform boost, nest bounties with escrow, board | Meteor shield, mercenaries, other bounty kinds |
-| W25 Launch | 15 · 10.5 | Docker, nginx, compose, Cloudflare, secrets, deploy script, backups, README, hosted demo, video, X post, submission | stack:local, dashboards, load/soak, analytics page |
+| W25 Launch | 13 · 8.0 | Secrets, backups, README, hosted demo on the W26 hosts, video, X post, submission | dashboards, load/soak, analytics page, rollback deploy, R2, TLS |
+| W26 Sites | 10 · 9.0 | nginx + four compose files, eight `terraagent.fun` hosts, `stack:local`, `deploy` over SSH to `DEPLOY_HOST` | TLS, Cloudflare, a second chain process |
 
 Counts are as of 2026-10-30; the live per-wave numbers are in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) and change when tags move.
 
@@ -79,9 +80,9 @@ The prototype predates the window, so the README must disclose it as **pre-windo
 
 **Default setup:** 12 parallel agents. The schedule's start order (HACKATHON_SCHEDULE §3) is the queue: an idle agent takes the first ready `H` issue; when its wave has no ready `H` issue, it takes an `H+` issue of the same wave.
 
-**Pace check (D2 evening, then daily).** Pace = units merged ÷ agent-days used. Target **≥ 2.2** with 12 agents (≥ 1.8 with 16). The critical path (HACKATHON_SCHEDULE §2) runs through W00 → W01 → W02 → W03 → W05 → W14 → the video; give those issues the first agent and the first review.
+**Pace check (D2 evening, then daily).** Pace = units merged ÷ agent-days used. Target **≥ 2.3** with 12 agents (≥ 1.8 with 16). The critical path (HACKATHON_SCHEDULE §2) runs through W00 → W01 → W02 → W03 → W05 → W14 → the video; give those issues the first agent and the first review.
 
-**Checkpoints at target pace** (wave e2e green with `--hack`; units from HACKATHON_SCHEDULE §4 ÷ 2.2):
+**Checkpoints at target pace** (wave e2e green with `--hack`; units from HACKATHON_SCHEDULE §4 ÷ 2.3):
 
 | End of | Waves green |
 |---|---|
@@ -89,7 +90,7 @@ The prototype predates the window, so the README must disclose it as **pre-windo
 | D8 | W02, W10, W13, W03 |
 | D10 | W05, W07, W12, W15, W04, W08 (**D10 gate**) |
 | D12 | W09, W14, W20, W22, W11 |
-| D13 | W25 hosted demo, video; D14 submit by 20:00 UTC |
+| D13 | W26 hosts live, W25 hosted demo, video; D14 submit by 20:00 UTC |
 
 **D10 gate.** If W00–W08, W10, W12, W13 and W15 are green with `--hack`, start the `H2` rows (F5 → F1 → F2 real) on 2 extra agents. If not, skip phase 2 and ship on mocks (`NEAR_ALLOW_MOCK_IN_PROD=true`; the README says so).
 
@@ -102,9 +103,9 @@ The prototype predates the window, so the README must disclose it as **pre-windo
 6. W09 Offline (12.0): coarse stepping and restart stay in W00/W09-03.
 7. W04 Maps (8.5).
 
-Never dropped: W00–W03, W05–W07 (the playable colony and battle), W06, W10, W13, W15 (the economy the judges score), W12 (achievements), W25 submission, the contract suites and the README run.
+Never dropped: W00–W03, W05–W07 (the playable colony and battle), W06, W10, W13, W15 (the economy the judges score), W12 (achievements), W26 hosting, W25 submission, the contract suites and the README run.
 
-**Review and merge: the wave development pipeline** ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7). Each wave lives in its own branch and worktree. Issues merge into their wave branch automatically when the gates are green (typecheck, unit, contract suites, the wave's `@hack` e2e), so there is no per-issue human review. The owner does **one manual check per wave** — 19 hackathon waves, about 1.5 a day — and only then does the wave merge into `main`, get tagged, lose its worktree and branch, and `main` gets pushed. A wave opens only after every wave it depends on has landed in `main` (no stacking on unchecked waves), so each check also gates the waves that depend on it: check and land promptly to keep the critical path moving.
+**Review and merge: the wave development pipeline** ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7). Each wave lives in its own branch and worktree. Issues merge into their wave branch automatically when the gates are green (typecheck, unit, contract suites, the wave's `@hack` e2e), so there is no per-issue human review. The owner does **one manual check per wave** — 20 hackathon waves, about 1.5 a day — and only then does the wave merge into `main`, get tagged, lose its worktree and branch, and `main` gets pushed. A wave opens only after every wave it depends on has landed in `main` (no stacking on unchecked waves), so each check also gates the waves that depend on it: check and land promptly to keep the critical path moving.
 
 ### Submission form checklist (D14)
 
@@ -142,7 +143,7 @@ Every issue tagged `H+` (if not reached) or blank in [`waves/`](./waves/), plus 
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Scope:** the `H` set is ≈ 293 units against 13 build days | Waves late in the value order miss the window | Measured pace from D2 (§3), the drop order in §3, review only where it matters; every wave that lands is still a working app, and the D10 gate allows shipping on mocks |
+| **Scope:** the `H` set is ≈ 299.5 units against 13 build days | Waves late in the value order miss the window | Measured pace from D2 (§3), the drop order in §3, review only where it matters; every wave that lands is still a working app, and the D10 gate allows shipping on mocks |
 | **Judges want real NEAR usage** | All-mock looks weaker for track 09 | Phase 2 swaps F5 → F1 → F2. The README and the description state the mock/real table honestly. The contract suites show the swap is real, not a stub |
 | **NEAR Intents is mainnet-only** (no testnet) | Real funds while debugging | Mocks in phase 1. In phase 2: `dry: true` and `simulate_intents` first, then a single tiny trade between our own dev colonies |
 | **Social-login provider** not chosen | Real F5 (after the D10 gate) stalls | The mock `IdentityPort` carries phase 1. The owner picks a provider before D10 (HOT is a listed partner). **Fallback:** server-created named sub-accounts with custodial keys |

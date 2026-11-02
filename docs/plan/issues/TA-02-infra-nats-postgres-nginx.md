@@ -61,11 +61,11 @@ infra/
 │   ├── bootstrap.mjs               # TA-02.2
 │   └── test/bootstrap.test.mjs
 └── deploy/
-    ├── docker/Dockerfile.node (+ .dockerignore)   # TA-02.3 (ARG APP)
-    ├── docker/Dockerfile.nginx (+ .dockerignore)  # TA-02.3 / TA-02.4
+    ├── docker/Dockerfile.node (+ infra/docker/.dockerignore)   # TA-02.3 (ARG APP)
+    ├── docker/Dockerfile.nginx (+ infra/docker/.dockerignore)  # TA-02.3 / TA-02.4
     ├── docker/Dockerfile.migrate                  # TA-02.3
     ├── nginx/templates/*.conf.template, nginx/snippets/*.conf, nginx/generated/   # TA-02.4
-    ├── docker-compose.prod.yml, .env.example      # TA-02.5
+    ├── docker-compose.prod.yml, infra/.env.example      # TA-02.5
     ├── scripts/{deploy.sh, lib.sh, gen-workers.mjs, validate-env.mjs, backup.sh, remote/*}  # TA-02.5
     ├── local/{docker-compose.local.yml, certs/}   # TA-02.6
     └── test/*.test.mjs
@@ -213,9 +213,9 @@ CLI: `node infra/nats/bootstrap.mjs --ns <ns> [--url nats://127.0.0.1:14222] [--
 - **Depends On:** `TA-01.1`, `TA-03.2`
 - **Spec:** [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) §1, §4 · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §3 (ports)
 - **Target Files:**
-  - `infra/deploy/docker/Dockerfile.node`, `Dockerfile.node.dockerignore`
-  - `infra/deploy/docker/Dockerfile.nginx`, `Dockerfile.nginx.dockerignore`
-  - `infra/deploy/docker/Dockerfile.migrate`, `Dockerfile.migrate.dockerignore`
+  - `infra/deploy/docker/Dockerfile.node`, `infra/docker/Dockerfile.node.dockerignore`
+  - `infra/deploy/docker/Dockerfile.nginx`, `infra/docker/Dockerfile.nginx.dockerignore`
+  - `infra/deploy/docker/Dockerfile.migrate`, `infra/docker/Dockerfile.migrate.dockerignore`
   - `infra/deploy/scripts/build-images.sh`
   - `infra/deploy/test/images.test.mjs`
 - **Verify:** `npm run images:build && node --test infra/deploy/test/images.test.mjs`
@@ -228,7 +228,7 @@ CLI: `node infra/nats/bootstrap.mjs --ns <ns> [--url nats://127.0.0.1:14222] [--
   - `npm ci` with the root lockfile.
   - `npm run build -w @terra/<app>` + `npm prune --omit=dev`.
   - Shared packages compiled first.
-  - Per-Dockerfile `.dockerignore` (BuildKit) so no root `.dockerignore` is needed.
+  - Per-Dockerfile `infra/docker/*.dockerignore` (BuildKit) so no root ignore file is needed.
   - Image names `terraagent-<app>:<RELEASE>`.
 - **Risks → mitigations:**
   - Workspace hoisting copies the whole monorepo `node_modules` → `npm prune --omit=dev --workspace @terra/<app> --include-workspace-root=false` + a size budget test.
@@ -242,7 +242,7 @@ CLI: `node infra/nats/bootstrap.mjs --ns <ns> [--url nats://127.0.0.1:14222] [--
 # Dockerfile.node — ARG APP=core|planet-worker|ai-orchestrator|near-gateway
 FROM node:24-bookworm-slim AS deps
 WORKDIR /repo
-COPY package.json package-lock.json tsconfig.base.json ./
+COPY package.json package-lock.json shared/tsconfig.base.json ./
 COPY shared/*/package.json  ... (each workspace manifest)
 RUN npm ci --ignore-scripts
 FROM deps AS build
@@ -347,7 +347,7 @@ Config as sketched in [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) §2.1. The off
 - **Depends On:** `TA-02.2`, `TA-02.3`, `TA-02.4`, `TA-07.5` (worker drain), `TA-05.5` (reassignment — same wave, contract-only: the deploy script calls the drain via the admin subject and waits on KV)
 - **Spec:** [`DEPLOYMENT.md`](../../spec/DEPLOYMENT.md) §1, §3, §4, §5, §6 (DEP-01, 04..09) · [`ARCHITECTURE.md`](../../spec/ARCHITECTURE.md) §14 · freightchain `infra/deploy/README.md` (flow reference)
 - **Target Files:**
-  - `infra/deploy/docker-compose.prod.yml`, `infra/deploy/.env.example`
+  - `infra/deploy/docker-compose.prod.yml`, `infra/.env.example`
   - `infra/deploy/scripts/{deploy.sh, lib.sh, gen-workers.mjs (compose output), validate-env.mjs, init-env.mjs, backup.sh, rollback.sh, status.sh}`
   - `infra/deploy/scripts/remote/{setup.sh, release.sh, drain-workers.sh, restore.sh}`
   - `infra/deploy/systemd/{terraagent-backup.service, terraagent-backup.timer}`

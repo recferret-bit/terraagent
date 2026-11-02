@@ -32,11 +32,58 @@ const warp: DevCommandDef = {
   },
 };
 
-/** `x10` badge beside the tick chip while the dev time warp is above 1, plus the `warp <k>` dev console command. */
+const TIME_USAGE = 'time [<hour 0..24> | day [<realHours>] | night | hh:mm | scale <k>]';
+
+export const timeCommand: DevCommandDef = {
+  name: 'time',
+  help: `${TIME_USAGE}  Planet day/night clock, real hours per day, and time scale`,
+  async run(a, ctx) {
+    const first = a[0];
+    const isTargetPreset =
+      first === 'night' ||
+      first === 'morning' ||
+      first === 'noon' ||
+      first === 'dusk' ||
+      first === 'midnight' ||
+      (typeof first === 'string' && first.includes(':')) ||
+      (first === 'day' && a[1] === undefined);
+    if (isTargetPreset || (first === undefined && !ctx.services.devServer)) {
+      const target = first ?? 'day';
+      const send = ctx.services.sendCommand;
+      const r = send
+        ? await send('dev.time', { target })
+        : { ok: false as const, code: 'not_connected', detail: 'no game server connection' };
+      if (r.ok) return `dev.time ok, applied at tick ${r.appliedAtTick}`;
+      throw new Error(`dev.time rejected: ${r.code}${r.detail ? ` (${r.detail})` : ''}`);
+    }
+    const server = ctx.services.devServer;
+    if (!server) throw new DevServerError('host_unavailable', 'time needs the game server; not available on this host');
+    const planetId = ctx.services.session?.planetId();
+    if (!planetId) throw new Error('time: not connected to a planet yet');
+    let body: Record<string, unknown> = { planetId };
+    if (first === 'day') {
+      const h = Number(a[1]);
+      if (!Number.isFinite(h) || h < 0.005 || h > 168) throw new Error(`usage: ${TIME_USAGE} (realHours 0.005..168)`);
+      body = { planetId, realHoursPerDay: h };
+    } else if (first === 'scale') {
+      const s = Number(a[1]);
+      if (!Number.isFinite(s) || s < 0 || s > 1000) throw new Error(`usage: ${TIME_USAGE} (scale 0..1000)`);
+      body = { planetId, timeScale: s };
+    } else if (first !== undefined) {
+      const hr = Number(first);
+      if (!Number.isFinite(hr) || hr < 0 || hr > 24) throw new Error(`usage: ${TIME_USAGE} (hour 0..24)`);
+      body = { planetId, timeOfDay: hr };
+    }
+    const r = (await server('time', body)) as { timeOfDay: number; realHoursPerDay: number; timeScale: number; phase: string };
+    return `planet time ${r.timeOfDay.toFixed(2)}h (${r.phase}), day=${r.realHoursPerDay}h real, scale=×${r.timeScale}`;
+  },
+};
+
+/** `x10` badge beside the tick chip while the dev time warp is above 1, plus the `warp <k>` and `time` dev console commands. */
 export default defineFeature({
   id: 'warp',
   wave: 'W00',
-  devCommands: [warp],
+  devCommands: [warp, timeCommand],
   hud: [{
     id: 'warp', slot: 'top-left', order: 1,
     mount(el) {

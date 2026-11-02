@@ -1,6 +1,7 @@
 import { flagsFromList } from '@terra/contracts';
 import { allModules, DiffGapError, type BalanceOverrides, SIM_VERSION, SimHost, type PlanetState, type SimModule, type SimView } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
+import { applyTuned, type TunedData } from './tuneEvent';
 
 /** What the server's `welcome` carries for the replica (engine bytes plus the identity of the engine that made them). */
 export interface WelcomeInput {
@@ -42,6 +43,8 @@ export class ReplicaCore {
   private host: SimHost | null = null;
   private current: ReplicaStatus = 'empty';
   private lastViewTick = -1;
+  private flags: readonly string[] = [];
+  private overrides: BalanceOverrides | undefined;
   constructor(private readonly opts: ReplicaOptions = {}) {}
 
   get status(): ReplicaStatus { return this.current; }
@@ -64,10 +67,35 @@ export class ReplicaCore {
     const host = new SimHost({ flags: w.flags, data, modules: this.opts.modules ?? allModules() });
     try { host.load(w.state); } catch (e) { return this.fail('badSnapshot', (e as Error).message); }
     this.host = host;
+    this.flags = [...w.flags];
+    this.overrides = w.overrides;
     this.current = 'ready';
     this.lastViewTick = -1;
     return { ok: true };
   }
+
+  /**
+   * A live `tune` on the host (`dev.tuned`): rebuilds the replica's pipeline with the tuned data, keeping the state, so
+   * the prediction steps with the host's numbers (a stale pipeline would, e.g., restart multi-step path searches on
+   * every predicted step). False when the client cannot rebuild the same data (`reset`, a rejected path, a hash
+   * mismatch): the caller asks for a fresh welcome.
+   */
+  retune(t: TunedData): boolean {
+    const host = this.host;
+    if (!host || this.current !== 'ready') return false;
+    const overrides = applyTuned(this.overrides, t);
+    if (!overrides) return false;
+    const data = clientDataFor(flagsFromList(this.flags), overrides);
+    if (data.hash !== t.dataHash) return false;
+    const next = new SimHost({ flags: this.flags, data, modules: this.opts.modules ?? allModules() });
+    next.load(host.state);
+    this.host = next;
+    this.overrides = overrides;
+    return true;
+  }
+
+  /** The hash of the data the replica runs with (tests, diagnostics). */
+  get dataHash(): string { return this.requireHost().pipeline.config.data.hash; }
 
   private fail(reason: 'simVersion' | 'dataHash' | 'badSnapshot', detail: string): WelcomeResult {
     this.current = reason === 'badSnapshot' ? 'needsResync' : 'versionMismatch';

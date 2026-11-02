@@ -33,6 +33,9 @@ export function formatClearCookie(secure = false): string {
   return `${REFRESH_COOKIE_NAME}=; HttpOnly; Path=/v1/auth; SameSite=Lax; Max-Age=0${secure ? '; Secure' : ''}`;
 }
 
+/** Expired sessions are deleted at most this often, from a login or refresh (no timer to stop). */
+export const SESSION_PRUNE_EVERY_MS = 60 * 60 * 1000;
+
 export interface IssuedAuth {
   readonly response: AuthResponse;
   readonly refreshToken: string;
@@ -40,6 +43,8 @@ export interface IssuedAuth {
 
 @Injectable()
 export class AuthService {
+  private lastPruneMs = -Infinity;
+
   constructor(
     private readonly repo: AuthRepository,
     private readonly tokens: AuthTokenService,
@@ -57,20 +62,28 @@ export class AuthService {
     return this.issueSession(player);
   }
 
+  /**
+   * Rotates the refresh session atomically: only the request that revokes the presented session gets a new one, so two
+   * concurrent refreshes with one cookie yield one session (the other answers 401). Presenting a session that was
+   * already rotated or logged out is reuse (a stolen copy, or the real one after the thief rotated it): every session of
+   * that player is revoked (BE-04).
+   */
   async refresh(refreshToken: string | undefined): Promise<IssuedAuth> {
     if (!refreshToken) {
       throw new UnauthorizedException('Missing refresh token cookie');
     }
-    const tokenHash = sha256Hex(refreshToken);
-    const session = await this.repo.findSessionByTokenHash(tokenHash);
-    if (!session || session.revokedAt !== null || session.expiresAt.getTime() <= Date.now()) {
+    const session = await this.repo.findSessionByTokenHash(sha256Hex(refreshToken));
+    if (!session || session.expiresAt.getTime() <= Date.now()) {
       throw new UnauthorizedException('Invalid or expired refresh session');
+    }
+    if (session.revokedAt !== null || !(await this.repo.revokeSessionIfActive(session.id))) {
+      await this.repo.revokeAllSessionsOfPlayer(session.playerId);
+      throw new UnauthorizedException('Refresh token reused: every session of this player is revoked');
     }
     const player = await this.repo.findPlayerById(session.playerId);
     if (!player) {
       throw new UnauthorizedException('Player not found for session');
     }
-    await this.repo.revokeSessionById(session.id);
     return this.issueSession(player);
   }
 
@@ -82,6 +95,7 @@ export class AuthService {
   }
 
   private async issueSession(player: PlayerRecord): Promise<IssuedAuth> {
+    await this.pruneExpiredSessions();
     const refreshToken = `rt_${randomBytes(16).toString('hex')}`;
     const refreshTokenHash = sha256Hex(refreshToken);
     const sessionId = `as_${randomUUID().replace(/-/g, '').slice(0, 16)}`;
@@ -108,5 +122,12 @@ export class AuthService {
         },
       },
     };
+  }
+
+  private async pruneExpiredSessions(): Promise<void> {
+    const now = Date.now();
+    if (now - this.lastPruneMs < SESSION_PRUNE_EVERY_MS) return;
+    this.lastPruneMs = now;
+    await this.repo.deleteExpiredSessions(new Date(now));
   }
 }

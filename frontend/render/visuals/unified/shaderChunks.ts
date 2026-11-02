@@ -1,4 +1,5 @@
 /** GLSL chunks injected into MeshStandardMaterial by the Unified Colony material (see UnifiedColonyMaterial.ts). */
+import { COLONY_VISION_AND_LIGHTS_GLSL } from '../../lighting/ColonyVisionAndLights';
 
 export const VERT_COMMON = /* glsl */ `#include <common>
         attribute vec2 aSurfacePBR;
@@ -6,16 +7,14 @@ export const VERT_COMMON = /* glsl */ `#include <common>
         varying vec3 vLocalPos;
         varying vec3 vObjectNormal;
         varying vec2 vSurfacePBR;
+        varying vec3 vTaWorldPos;
+        varying vec3 vTaWorldNormal;
         uniform float uTime;
         uniform float uWalkWeight;
         uniform float uWorkWeight;
 
-        vec3 bipedBodyTransform(vec3 p, float g, float w) {
-          vec3 c = vec3(0.0, 0.92, 0.0);
-          vec3 r = p - c;
-          float roll = -cos(g) * 0.055 * w;
-          float pitch = sin(g * 2.0 - 0.4) * 0.048 * w;
-          float yaw = -sin(g) * 0.075 * w;
+        // Body sway shared by the biped and spider carriers: roll about Z, then pitch about X, then yaw about Y.
+        vec3 rotateRollPitchYaw(vec3 r, float roll, float pitch, float yaw) {
           float cr = cos(roll), sr = sin(roll);
           float rx1 = r.x * cr - r.y * sr;
           float ry1 = r.x * sr + r.y * cr;
@@ -25,10 +24,19 @@ export const VERT_COMMON = /* glsl */ `#include <common>
           float cy = cos(yaw), sy = sin(yaw);
           float rx3 = rx1 * cy - rz2 * sy;
           float rz3 = rx1 * sy + rz2 * cy;
+          return vec3(rx3, ry2, rz3);
+        }
+
+        vec3 bipedBodyTransform(vec3 p, float g, float w) {
+          vec3 c = vec3(0.0, 0.92, 0.0);
+          vec3 r = p - c;
+          float roll = -cos(g) * 0.055 * w;
+          float pitch = sin(g * 2.0 - 0.4) * 0.048 * w;
+          float yaw = -sin(g) * 0.075 * w;
           float heaveY = (-cos(g * 2.0) * 0.022 - sin(g * 2.0) * 0.012) * w;
           float swayX = -cos(g) * 0.036 * w;
           float surgeZ = sin(g * 2.0) * 0.025 * w;
-          return c + vec3(rx3 + swayX, ry2 + heaveY, rz3 + surgeZ);
+          return c + (rotateRollPitchYaw(r, roll, pitch, yaw) + vec3(swayX, heaveY, surgeZ));
         }
 
         vec3 spiderBodyTransform(vec3 p, float g, float w) {
@@ -37,19 +45,10 @@ export const VERT_COMMON = /* glsl */ `#include <common>
           float roll = sin(g - 0.25) * 0.065 * w;
           float pitch = sin(g * 2.0 - 0.45) * 0.048 * w;
           float yaw = cos(g) * 0.050 * w;
-          float cr = cos(roll), sr = sin(roll);
-          float rx1 = r.x * cr - r.y * sr;
-          float ry1 = r.x * sr + r.y * cr;
-          float cp = cos(pitch), sp = sin(pitch);
-          float ry2 = ry1 * cp - r.z * sp;
-          float rz2 = ry1 * sp + r.z * cp;
-          float cy = cos(yaw), sy = sin(yaw);
-          float rx3 = rx1 * cy - rz2 * sy;
-          float rz3 = rx1 * sy + rz2 * cy;
           float heaveY = (-cos(g * 2.0) * 0.032 - sin(g * 2.0) * 0.018) * w;
           float swayX = cos(g) * 0.030 * w;
           float surgeZ = sin(g * 2.0) * 0.024 * w;
-          return c + vec3(rx3 + swayX, ry2 + heaveY, rz3 + surgeZ);
+          return c + (rotateRollPitchYaw(r, roll, pitch, yaw) + vec3(swayX, heaveY, surgeZ));
         }`;
 
 const VERT_SUB_ANIM = /* glsl */ `
@@ -177,12 +176,16 @@ export const vertBeginVertex = (pluginChunk: string) => /* glsl */ `#include <be
         ${VERT_SUB_ANIM}
         ${VERT_GAIT_ANIM}
         ${pluginChunk}
+        vTaWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vTaWorldNormal = normalize(mat3(modelMatrix) * normal);
         `;
 
 export const FRAG_COMMON = /* glsl */ `#include <common>
         varying vec3 vLocalPos;
         varying vec3 vObjectNormal;
         varying vec2 vSurfacePBR;
+        varying vec3 vTaWorldPos;
+        varying vec3 vTaWorldNormal;
         uniform float uTime;
         uniform vec3 uBiomeDustColor;
         uniform vec3 uRimTint;
@@ -190,6 +193,7 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
         uniform float uWeatheringIntensity;
         uniform float uTriplanarScale;
         uniform float uRimStrength;
+        ${COLONY_VISION_AND_LIGHTS_GLSL}
 
         float hash31(vec3 p) {
           p = fract(p * 0.1031);
@@ -206,7 +210,7 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
           return gx * b.x + gy * b.y + gz * b.z;
         }`;
 
-/** Triplanar grain, ground-up weathering, top-down gradient; `pluginChunk` is appended (plugin colour chunks). */
+/** Triplanar grain, ground-up weathering, top-down gradient; `pluginChunk` (e.g. the build scaffold) is appended. */
 export const fragColor = (pluginChunk: string) => /* glsl */ `#include <color_fragment>
         float grain = triplanarGrain(vLocalPos, vObjectNormal, uTriplanarScale);
         // Subtle micro-surface variation
@@ -235,8 +239,11 @@ export const FRAG_METALNESS = /* glsl */ `#include <metalnessmap_fragment>
           metalnessFactor = vSurfacePBR.y;
         }`;
 
-/** Subtle Fresnel silhouette rim light before output. */
+/** Subtle Fresnel silhouette rim light + projector illumination + FoV shroud before output. */
 export const FRAG_RIM = /* glsl */ `// Add subtle Fresnel silhouette rim light before output
         float fresnel = pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 3.2);
-        outgoingLight += uRimTint * fresnel * uRimStrength;
+        vec3 taProj = evalColonyProjectorLight(vTaWorldPos, normalize(vTaWorldNormal));
+        outgoingLight += diffuseColor.rgb * taProj + taProj * 0.10;
+        outgoingLight += uRimTint * fresnel * uRimStrength * (1.0 - clamp(uNightFactor, 0.0, 1.0) * 0.78);
+        outgoingLight = applyColonyFovShroud(vTaWorldPos, outgoingLight);
         #include <opaque_fragment>`;

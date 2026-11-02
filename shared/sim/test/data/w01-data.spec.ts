@@ -16,7 +16,8 @@ describe('W01-01 data rows: terrain, opsBasic, hq, hub', () => {
     expect(Object.keys(compiled.tables.terrain)).toEqual(
       expect.arrayContaining(['flat', 'forest', 'rock', 'slope', 'hole', 'shallow', 'deep', 'temperate']),
     );
-    expect(dataRow(compiled, 'terrain', 'temperate').mineralsRichnessModBp).toBe(11500);
+    expect(dataRow(compiled, 'terrain', 'temperate').livingMoveMult).toBe(1.1);
+    expect(dataRow(compiled, 'worldgen', 'temperate').mineralsRichnessModBp).toBe(11500);
 
     // Grade: 3s -> 15 ticks (at 200ms/tick), Clear: 5s -> 25 ticks, Break: 6s -> 30 ticks
     expect(dataRow(compiled, 'opsBasic', 'grade').timeS).toBe(15);

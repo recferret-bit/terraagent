@@ -1,3 +1,5 @@
+import type { WorldStore } from '../../store/WorldStore';
+
 /** Client feature registry: the public, stable API a feature folder codes against. */
 
 export type HostKind = 'server' | 'local';
@@ -9,11 +11,19 @@ export const HUD_SLOTS: readonly HudSlot[] = ['top-left', 'top-center', 'top-rig
 export interface GameView {}
 
 /**
- * Services a feature may use. Empty on purpose: later issues add members via declaration merging
- * (`declare module '.../registry/types' { interface FeatureServices { ... } }`) so existing features keep compiling.
+ * Services a feature may use. Every member is declared, here or by declaration merging from the feature or net module
+ * that owns it (`declare module '.../registry/types' { interface FeatureServices { ... } }`), so a misspelt service is
+ * a compile error (no index signature, FA-25).
  */
-// eslint-disable-next-line @typescript-eslint/no-empty-object-type
-export interface FeatureServices {}
+export interface FeatureServices {
+  /** The session's world replica (`WorldStore`); features read views through it. */
+  store?: FeatureStore;
+  /** Axial tile under a pointer position (the online session's terrain pick), or null off the planet. */
+  pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
+}
+
+/** The part of `WorldStore` features use; optional members, so a spec can pass a stand-in with only what it needs. */
+export type FeatureStore = Partial<Pick<WorldStore, 'latest' | 'latestTiles' | 'onView' | 'onCommandRejected' | 'sendCommand' | 'simData' | 'currentPlanetId'>>;
 
 export interface FeatureContext {
   readonly flags: ReadonlySet<string>;

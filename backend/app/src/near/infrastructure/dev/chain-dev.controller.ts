@@ -1,5 +1,5 @@
-import { Controller, HttpCode, Inject, Post } from '@nestjs/common';
-import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
+import { Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import { DevOnlyGuard } from '../../../core/dev-only.guard.js';
 import { ChainReadPort } from '../../application/ports/chain-read.port.js';
 import { requireMockChainRead } from './mock-chain-read.js';
 
@@ -8,11 +8,12 @@ import { requireMockChainRead } from './mock-chain-read.js';
  * 404 in production and when ChainRead is not the mock adapter.
  */
 @Controller('dev/chain')
+@UseGuards(DevOnlyGuard)
 export class ChainDevController {
-  constructor(@Inject(APP_ENV) private readonly env: AppEnv, private readonly chainRead: ChainReadPort) {}
+  constructor(private readonly chainRead: ChainReadPort) {}
 
   private mock() {
-    return requireMockChainRead(this.env, this.chainRead);
+    return requireMockChainRead(this.chainRead);
   }
 
   @Post('ping')

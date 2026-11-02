@@ -5,17 +5,6 @@ import './power-hud.css';
 declare module '../../core/registry/types' {
   interface GameView {
     selectedEntityId?: number;
-    blobs?: {
-      power?: {
-        byColony?: Record<number, unknown>;
-      };
-      environment?: {
-        daylight?: number;
-        phase?: 'day' | 'night';
-        clockText?: string;
-      };
-      [key: string]: unknown;
-    };
   }
 }
 

@@ -30,6 +30,10 @@ export class HudRoot {
     parent.appendChild(this.el);
   }
 
+  setVisible(visible: boolean) {
+    this.el.hidden = !visible;
+  }
+
   update(view: GameView) {
     for (const p of this.panels) p.update?.(view);
   }

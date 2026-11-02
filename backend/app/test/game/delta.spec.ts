@@ -54,7 +54,11 @@ describe('delta builder (real sim thread)', () => {
     expect(replica.entities.cols.x[row]).toBe(42.5);
     expect(replica.entities.cols.y[row]).toBe(-7);
 
-    expect(deltas[0]!.fromTick).toBe(welcome.tick);
+    // A step between `subscribe` and `fullState` makes the welcome close a delta ending at its tick first; the joining
+    // socket ignores it (planet-host `fullState`). The chain the client applies starts at the welcome tick.
+    const live = deltas.filter((d) => d.toTick > welcome.tick);
+    expect(deltas.length - live.length).toBeLessThanOrEqual(1);
+    expect(live[0]!.fromTick).toBe(welcome.tick);
     for (let i = 1; i < deltas.length; i++) expect(deltas[i]!.fromTick).toBe(deltas[i - 1]!.toTick);
     const span = deltas[deltas.length - 1]!.at - deltas[0]!.at;
     const rate = ((deltas.length - 1) / span) * 1000;

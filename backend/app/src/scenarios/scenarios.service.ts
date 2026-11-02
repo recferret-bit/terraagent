@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { newId } from '@terra/contracts';
 import { createScenarioPlanet, getScenario, listScenarios } from '@terra/scenarios';
@@ -5,6 +6,7 @@ import { snapshot } from '@terra/sim';
 import { CoreException } from '../core/errors';
 import { FlagsService } from '../flags/flags.service';
 import { GamePlanets } from '../game/game-planets.service';
+import { hasLiveColony } from '../game/live-colony';
 
 export interface CreatedScenario { readonly planetId: string; readonly scenario: string; readonly tick: number }
 
@@ -24,9 +26,11 @@ export class ScenariosService {
     const def = getScenario(id);
     if (!def) throw new CoreException('NOT_FOUND', { status: 404, message: `Unknown scenario "${id}"`, details: { known: this.list().map((s) => s.id) } });
     const planetId = newId('pl');
-    const { host } = createScenarioPlanet(def.id, { planetId, flags: this.flags.list });
+    const { host, setupPostings } = createScenarioPlanet(def.id, { planetId, flags: this.flags.list, worldSalt: randomUUID() }) // hidden-ground secret (WE-07, D-38);
     const tick = host.tick;
-    await this.planets.load(planetId, { snapshot: snapshot(host.state), flags: this.flags.list });
+    if (hasLiveColony(host.state)) this.planets.markScenarioColonyPlanet(planetId); // dev sessions play colony 0 (BE-07)
+    // the journal starts with the setup postings (e.g. the real `landing.cargo`)
+    await this.planets.load(planetId, { snapshot: snapshot(host.state), flags: [...host.pipeline.config.flags], genesis: true, setupPostings });
     return { planetId, scenario: def.id, tick };
   }
 }

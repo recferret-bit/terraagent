@@ -1,5 +1,6 @@
 import { compileData, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
@@ -153,10 +154,7 @@ export function spawnHarvesterUnit(
   cols.kind[row] = ENTITY_KIND.harvester;
   cols.owner[row] = opts.owner;
   cols.tier[row] = Number(rowDef.tier ?? 1);
-  cols.q[row] = opts.q;
-  cols.r[row] = opts.r;
-  cols.x[row] = Math.fround(opts.q);
-  cols.y[row] = Math.fround(opts.r);
+  placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   cols.rot[row] = 0;
   cols.hp[row] = Math.fround(Number(rowDef.hp ?? 160));
   cols.hpMax[row] = Math.fround(Number(rowDef.hp ?? 160));

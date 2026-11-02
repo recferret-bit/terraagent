@@ -1,6 +1,7 @@
 import type { ResourceKey } from '@terra/contracts';
 import { compileData, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, removeRow, rowOf, setField } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
@@ -202,10 +203,7 @@ export function startBuildingConstruction(
   cols.kind[eRow] = entityKind;
   cols.owner[eRow] = opts.owner;
   cols.tier[eRow] = Number(row.tier ?? 1);
-  cols.q[eRow] = opts.q;
-  cols.r[eRow] = opts.r;
-  cols.x[eRow] = Math.fround(opts.q);
-  cols.y[eRow] = Math.fround(opts.r);
+  placeSpawnedEntity(state.entities, eRow, opts.q, opts.r, tick);
   cols.rot[eRow] = opts.rot ?? 0;
   cols.footprintW[eRow] = w;
   cols.footprintD[eRow] = d;

@@ -2,11 +2,12 @@ import type { BalanceOverrides } from '@terra/sim';
 import type { SimEventWire } from '@terra/contracts';
 import type { WireView } from '../replica/viewCodec';
 import type { ReplicaStatus } from '../replica/ReplicaCore';
+import type { TunedData } from '../replica/tuneEvent';
 
 /** Main thread → sim worker. `state` / `diff` are transferred (their buffers move, the sender must not reuse them). */
 export type ToWorker =
   | { t: 'init'; flags: string[]; /** false: no prediction (`?predict=0`), views are the confirmed state. Default true. */ predict?: boolean }
-  | { t: 'welcome'; state: Uint8Array; tick: number; flags: string[]; dataHash: string; simVersion: number; serverTimeMs?: number; overrides?: BalanceOverrides }
+  | { t: 'welcome'; state: Uint8Array; tick: number; flags: string[]; dataHash: string; simVersion: number; serverTimeMs?: number; colonyId?: string | null; overrides?: BalanceOverrides }
   | { t: 'delta'; fromTick: number; toTick: number; diff: Uint8Array }
   /** The player sent a command (`cm_` id): it is predicted until its ack is covered by a delta. */
   | { t: 'cmdSent'; id: string; kind: string; args: unknown; sentAtMs: number }
@@ -14,6 +15,8 @@ export type ToWorker =
   | { t: 'reject'; id: string; code: string }
   /** Server time estimate now (ms), from welcome / pong. The worker keeps the offset to its own clock. */
   | { t: 'clock'; serverNowMs: number }
+  /** A `dev.tuned` event (live `tune`): rebuild the replica's data; a resync is requested when it cannot. */
+  | { t: 'tune'; tune: TunedData }
   | { t: 'stop' };
 
 /**

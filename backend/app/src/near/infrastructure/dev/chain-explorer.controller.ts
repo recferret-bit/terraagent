@@ -1,8 +1,8 @@
-import { Controller, Get, Inject, Query } from '@nestjs/common';
+import { Controller, Get, Inject, Query, UseGuards } from '@nestjs/common';
 import type { PrismaClient } from '@terra/db';
 import { z } from 'zod';
 import { CoreException, ZodPipe } from '../../../core/errors/index.js';
-import { APP_ENV, type AppEnv } from '../../../core/tokens.js';
+import { DevOnlyGuard } from '../../../core/dev-only.guard.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { ChainReadPort } from '../../application/ports/chain-read.port.js';
 import { MockChainReadAdapter } from '../adapters/chain-read/mock-chain-read.adapter.js';
@@ -36,21 +36,21 @@ interface OutboxRowRaw { id: bigint; op_id: string; port: string; method: string
  * Balances, NFTs and escrow filter by their own account columns (escrow: opener or beneficiary). The DAO list is unfiltered.
  */
 @Controller('dev/chain')
+@UseGuards(DevOnlyGuard)
 export class ChainExplorerController {
   constructor(
-    @Inject(APP_ENV) private readonly env: AppEnv,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly chainRead: ChainReadPort,
   ) {}
 
-  /** 404 first (production / non-mock), then zod validation of the query (400 on failure). */
+  /** 404 first (production: `DevOnlyGuard`; ChainRead not the mock), then zod validation of the query (400 on failure). */
   private query<S extends z.ZodType>(schema: S, raw: unknown): z.output<S> {
     this.guard();
     return new ZodPipe(schema).transform(raw);
   }
 
   private guard(): void {
-    if (this.env.NODE_ENV === 'production' || !(this.chainRead instanceof MockChainReadAdapter)) {
+    if (!(this.chainRead instanceof MockChainReadAdapter)) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
   }

@@ -17,7 +17,7 @@ export function commandGate(kind: string, flags: FlagSet, waveOf: CommandWaveLoo
   return flags.has(wave) ? null : 'wave_disabled';
 }
 
-export type CommandPrecheck = { ok: true; args: unknown } | { ok: false; code: RejectCode; detail?: string };
+export type CommandPrecheck = { ok: true; args: unknown; dev: boolean } | { ok: false; code: RejectCode; detail?: string };
 
 /**
  * What every host does before a client `cmd` reaches the engine (PROTOCOL §4.2): flag gate, client origin, dev kinds only
@@ -39,6 +39,6 @@ export function precheckClientCommand(
     const i = parsed.error.issues[0];
     return { ok: false, code: 'invalid_args', ...(i ? { detail: `${i.path.join('.') || 'args'}: ${i.message}`.slice(0, 200) } : {}) };
   }
-  if (!def.dev && o.hasColony === false) return { ok: false, code: 'not_own_colony' };
-  return { ok: true, args: parsed.data };
+  if (!def.dev && !o.hasColony) return { ok: false, code: 'not_own_colony' };
+  return { ok: true, args: parsed.data, dev: Boolean(def.dev) };
 }

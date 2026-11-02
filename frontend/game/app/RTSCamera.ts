@@ -11,31 +11,40 @@ export class RTSCamera {
   private keys = new Set<string>();
   private mouse = { x: -1, y: -1, inside: false, drag: false, lx: 0, ly: 0 };
   followTarget: THREE.Object3D | null = null;
+  /** True while the camera trails `followTarget`; any manual pan clears it, F/Home/`follow()` re-arms it. */
+  following = false;
+  private readonly tmp = new THREE.Vector3();
   minDist = 20; maxDist = 95; halfSize = 60; enabled = true;
   private cleanups: Array<() => void> = [];
 
-  constructor(private camera: THREE.PerspectiveCamera, private dom: HTMLElement, private surface: PlanetSurface, pos: THREE.Vector3, target: THREE.Vector3) {
+  constructor(private camera: THREE.PerspectiveCamera, dom: HTMLElement, private surface: PlanetSurface, pos: THREE.Vector3, target: THREE.Vector3) {
     this.target.copy(target); this.goal.copy(target);
     const off = pos.clone().sub(target);
     this.dist = this.distGoal = THREE.MathUtils.clamp(off.length(), this.minDist, this.maxDist);
     this.yaw = this.yawGoal = Math.atan2(off.x, off.z);
     this.halfSize = surface.halfSize;
     this.apply();
-    const on = <K extends keyof WindowEventMap>(t: Window | HTMLElement, ev: string, fn: (e: any) => void, opts?: any) => { t.addEventListener(ev, fn, opts); this.cleanups.push(() => t.removeEventListener(ev, fn, opts)); };
-    on(window, 'keydown', (e: KeyboardEvent) => {
+    const on = <K extends keyof WindowEventMap>(t: { addEventListener?: any; removeEventListener?: any } | null | undefined, ev: K | string, fn: (e: any) => void, opts?: any) => {
+      if (!t || typeof t.addEventListener !== 'function') return;
+      t.addEventListener(ev, fn, opts);
+      this.cleanups.push(() => t.removeEventListener?.(ev, fn, opts));
+    };
+    const win = typeof window !== 'undefined' ? window : null;
+    const docEl = typeof document !== 'undefined' ? document.documentElement : null;
+    on(win, 'keydown', (e: KeyboardEvent) => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return;
       const k = e.key.toLowerCase(); this.keys.add(k);
       if (!this.enabled) return;
       if (k === 'q') this.yawGoal += Math.PI / 2;
       if (k === 'e') this.yawGoal -= Math.PI / 2;
-      if (k === 'home' && this.followTarget) { this.goal.copy(this.followTarget.position); }
+      if ((k === 'home' || k === 'f') && this.followTarget) this.following = true;
     });
-    on(window, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase()));
-    on(window, 'blur', () => this.keys.clear());
+    on(win, 'keyup', (e: KeyboardEvent) => this.keys.delete(e.key.toLowerCase()));
+    on(win, 'blur', () => this.keys.clear());
     on(dom, 'wheel', (e: WheelEvent) => { e.preventDefault(); this.distGoal = THREE.MathUtils.clamp(this.distGoal * Math.exp(e.deltaY * 0.0012), this.minDist, this.maxDist); }, { passive: false });
     on(dom, 'pointerdown', (e: PointerEvent) => { if (e.button === 1) { e.preventDefault(); this.mouse.drag = true; this.mouse.lx = e.clientX; this.mouse.ly = e.clientY; } });
-    on(window, 'pointerup', (e: PointerEvent) => { if (e.button === 1) this.mouse.drag = false; });
-    on(window, 'pointermove', (e: PointerEvent) => {
+    on(win, 'pointerup', (e: PointerEvent) => { if (e.button === 1) this.mouse.drag = false; });
+    on(win, 'pointermove', (e: PointerEvent) => {
       this.mouse.x = e.clientX; this.mouse.y = e.clientY; this.mouse.inside = true;
       if (this.mouse.drag && this.enabled) {
         const k = this.dist * 0.0021;
@@ -43,7 +52,7 @@ export class RTSCamera {
         this.mouse.lx = e.clientX; this.mouse.ly = e.clientY;
       }
     });
-    on(document.documentElement, 'mouseleave', () => (this.mouse.inside = false));
+    on(docEl, 'mouseleave', () => (this.mouse.inside = false));
   }
 
   /** dx = screen-right metres, dz = screen-down (toward camera) metres, in yaw-relative ground axes. */
@@ -61,13 +70,18 @@ export class RTSCamera {
       if (this.keys.has('s') || this.keys.has('arrowdown')) mz += 1;
       if (this.keys.has('a') || this.keys.has('arrowleft')) mx -= 1;
       if (this.keys.has('d') || this.keys.has('arrowright')) mx += 1;
-      const m = this.mouse, W = window.innerWidth, H = window.innerHeight, edge = 8;
+      const m = this.mouse, W = typeof window !== 'undefined' ? window.innerWidth : 1280, H = typeof window !== 'undefined' ? window.innerHeight : 720, edge = 8;
       if (m.inside && !m.drag && m.x >= 0) {
         if (m.x < edge) mx -= 1; else if (m.x > W - edge) mx += 1;
         if (m.y < edge) mz -= 1; else if (m.y > H - edge) mz += 1;
       }
-      if (mx || mz) this.pan(mx * sp, mz * sp);
-      if (this.followTarget && !mx && !mz && !m.drag && this.keys.has('f')) this.goal.copy(this.followTarget.position);
+      if (mx || mz) { this.following = false; this.pan(mx * sp, mz * sp); }
+      if (m.drag) this.following = false;
+      if (this.following && this.followTarget) {
+        // Trail the target: exponential lag leaves a natural gap that grows with its speed.
+        this.followTarget.getWorldPosition(this.tmp);
+        this.goal.lerp(this.tmp, 1 - Math.exp(-dt * 2.5));
+      }
     }
     const lim = this.halfSize - 2;
     this.goal.x = THREE.MathUtils.clamp(this.goal.x, -lim, lim);
@@ -80,7 +94,17 @@ export class RTSCamera {
     this.apply();
   }
 
-  focus(p: THREE.Vector3) { this.goal.copy(p); }
+  /** Starts trailing `obj` (defaults to the current follow target). */
+  follow(obj: THREE.Object3D | null = this.followTarget) { this.followTarget = obj; this.following = obj !== null; }
+
+  focus(p: THREE.Vector3, instant = false) {
+    this.following = false;
+    this.goal.copy(p);
+    if (instant) {
+      this.target.copy(p);
+      this.apply();
+    }
+  }
   private apply() {
     const h = Math.sin(this.elev) * this.dist, r = Math.cos(this.elev) * this.dist;
     this.camera.position.set(this.target.x + Math.sin(this.yaw) * r, this.target.y + h, this.target.z + Math.cos(this.yaw) * r);

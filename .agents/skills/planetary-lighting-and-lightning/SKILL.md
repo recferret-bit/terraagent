@@ -20,9 +20,11 @@ This skill governs both **Dynamic Planetary Lighting** (linking Solar Energy eff
    - Adding or removing `THREE.PointLight` or `THREE.SpotLight` at runtime forces Three.js to recompile every PBR shader in the scene, causing a `100ms–400ms` frame freeze.
    - Always pre-allocate a fixed pool of `8` dynamic `THREE.PointLight` nodes at startup (`intensity = 0`) using `PlanetaryLightingSystem` in [PlanetaryLightingSystem.ts](./examples/PlanetaryLightingSystem.ts). Lease lights from the pool for laser bursts, explosions, rocket launches, and lightning impacts.
 2. **Texel-Quantized Shadow Frustum Tracking:**
-   - As the player pans the RTS camera across the planet, move `sunLight.target.position` and `sunLight.position` with the camera ground target, **snapped to `1.0m` world grid steps** (`Math.round(x)`). Quantizing prevents shadow map shimmering ("shadow swimming") on static buildings.
-3. **Orbital Solar Cycle Coupled to Gameplay Telemetry:**
-   - Drive `sunLight` elevation, color temperature (`0xff7b47` dawn/dusk $\rightarrow$ `0xfff5e4` noon $\rightarrow$ `0x4cc9f0` orbital night), and `solarEfficiencyMultiplier` (`0.0 – 1.0`) from a single `updateSolarCycle(timeOfDay)` method.
+   - As the player pans the RTS camera across the planet, move `sunLight.target.position` and `sunLight.position` with the camera ground target, **snapped in light-space texel steps** (`followShadowTarget` in `frontend/render/core/shadowConfig.ts` and `PlanetaryLightingSystem.ts`). Quantizing prevents shadow map shimmering ("shadow swimming") on static buildings.
+3. **Orbital Solar Cycle, Sun Color & Shadow Modulation (`dayNightConfig.ts` + `@terra/sim`):**
+   - Drive `sunLight` elevation, azimuth arc, color temperature (`computeSolarState` in `frontend/render/core/dayNightConfig.ts`: warm golden-amber dawn `0xff8a3d`, Planckian Kelvin noon `3500K–8500K`, crimson-orange dusk `0xff5e2b`, cool orbital night `0x6498e8`), sky-dome/fog tint (`applyDayNightAtmosphere`), and dynamic shadow modulation (`shadowIntensityMult`, `shadowSoftnessMult`) from `timeOfDay` (`0..24h`).
+   - All parameters are live-tunable in the 4th **`DAY/NIGHT`** tab of the `F8` Visual Shader Lab (`frontend/render/ui/pixelDialog.ts` + `visualLabSpecs.ts`).
+   - In online/singleplayer gameplay (`?host=local` and multiplayer `PlanetHost`), planetary time is authoritative in `@terra/sim` (`shared/sim/src/systems/time/index.ts`, `blobs.planetTime`, `setPlanetTime`, `dev.time`) and synchronized bidirectionally each frame by `bindOnlineDayNightSync` (`frontend/game/app/online/dayNightSync.ts`).
 4. **Weather Hazard State Interpolation:**
    - Smoothly interpolate fog density, directional sun attenuation, and hemisphere tint over `2.5s` when transitioning between `'clear'`, `'sandstorm'`, `'blizzard'`, `'lightningStorm'`, and `'radiationAnomaly'`.
 

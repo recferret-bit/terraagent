@@ -1,5 +1,5 @@
 // `npm run scenario -- <id> [--ticks N]`: builds a seed scenario headless with SimHost, steps N ticks and prints a summary.
-import { createScenarioPlanet, listScenarios } from '../../scenarios/_loader';
+import { createScenarioPlanet, listScenarios } from '../../tests/scenarios/_loader';
 
 
 const fnv = (b: Uint8Array): string => {

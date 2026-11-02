@@ -53,6 +53,36 @@ describe('LocalTransport', () => {
   });
 });
 
+describe('LocalTransport.dispose (FA-03)', () => {
+  it('terminates the worker only after the host saved its final snapshot', async () => {
+    const fromHost = new Emitter<FromLocalHost>();
+    const saves: Array<() => void> = [];
+    const store = memorySnapshotStore();
+    const slowStore = { ...store, save: (k: string, v: Parameters<typeof store.save>[1]) => new Promise<void>((ok) => saves.push(() => { void store.save(k, v).then(ok); })) };
+    const ctl = new LocalHostController((m) => queueMicrotask(() => fromHost.emit(m)), {
+      now: () => performance.now(), wallMs: () => Date.now(), schedule: (fn, ms) => { const h = setTimeout(fn, ms); return () => clearTimeout(h); }, store: slowStore,
+    });
+    let terminated = 0;
+    const link: LocalLink = { post: (m: ToLocalHost) => ctl.handle(m), onMessage: (fn) => fromHost.on(fn), dispose: () => { terminated++; } };
+    const t = new LocalTransport(link, { scenario: 'w00' });
+    t.start();
+    await wait(100);
+    t.dispose();
+    await wait(20);
+    expect(terminated).toBe(0); // the final save is still running
+    expect(saves).toHaveLength(1);
+    saves[0]();
+    await wait(20);
+    expect(terminated).toBe(1);
+    expect(store.map.has('terra-local:w00')).toBe(true);
+    t.dispose();
+    t.start();
+    await wait(20);
+    expect(terminated).toBe(1);
+    expect(t.state.phase).toBe('idle');
+  });
+});
+
 describe('localHostOptions', () => {
   it('only ?host=local; scenario defaults to w00; waves is passed through', () => {
     expect(localHostOptions('?scenario=w00')).toBeNull();

@@ -76,7 +76,7 @@ export function computeEnvironmentAtCycleTick(
       baseDaylight = 1;
     } else {
       const duskT = Math.min(1, Math.max(0, (dayProgress - 0.85) / 0.15));
-      baseDaylight = Number((0.5 * (1 + Math.cos(Math.PI * duskT))).toFixed(4));
+      baseDaylight = Number((1 - duskT * duskT * (3 - 2 * duskT)).toFixed(4));
     }
   } else {
     phase = 'night';

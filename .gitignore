@@ -1,13 +1,22 @@
 node_modules/
 dist/
+frontend/dist/
 .DS_Store
 *.log
 .env
 .env.*
+infra/.env
+infra/.env.*
 *-E
-!.env.example
+!infra/.env.example
+!infra/hosts/.env.example
 test-results/
 playwright-report/
-e2e/.out/
+tests/.out/
+tests/e2e/.out/
 coverage/
+scripts/dev/.out/
 .dev/
+
+# the committed coverage reference (docs/coverage/README.md) is not a coverage output folder
+!docs/coverage/

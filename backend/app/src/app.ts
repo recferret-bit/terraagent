@@ -47,6 +47,8 @@ export async function createApp(options: CreateAppOptions = {}): Promise<Created
   app.useLogger(new PinoNestLogger(layerLogger(root, 'infra', env.LOG_LEVELS as string | undefined)));
   app.use(requestIdMiddleware);
   app.useGlobalFilters(new AllExceptionsFilter(layerLogger(root, 'http', env.LOG_LEVELS as string | undefined), env.NODE_ENV === 'production'));
+  const trustProxy = env.TA_TRUST_PROXY as string | undefined; // per-IP throttle behind a proxy (BE-05)
+  if (trustProxy) (app.getHttpAdapter().getInstance() as { set(k: string, v: unknown): void }).set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
   app.setGlobalPrefix('v1');
   app.enableCors({ origin: corsOrigin(env), credentials: true });
   app.enableShutdownHooks();

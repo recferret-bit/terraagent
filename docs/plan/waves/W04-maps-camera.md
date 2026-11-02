@@ -1,6 +1,6 @@
 # W04 — Maps & Camera
 
-> **Track:** Client (C) · **Flag:** `W04` · **Tag:** `wave-04` · **Scenario:** `scenarios/w04-maps-camera.ts` · **Depends on:** W01 (rendered planet, HQ, Hub, full-state store)
+> **Track:** Client (C) · **Flag:** `W04` · **Tag:** `wave-04` · **Scenario:** `tests/scenarios/w04-maps-camera.ts` · **Depends on:** W01 (rendered planet, HQ, Hub, full-state store)
 > **Specs:** [`CLIENT.md`](../../spec/CLIENT.md) §8b (minimap, global map, rings), §9 (performance), §11 (devices, accessibility) · [`AGENTS.md`](../../../AGENTS.md) Pillar 4 (28° telephoto diorama viewport) · D-22, D-24 (full state, client-side fog), D-29 · [`CLAUDE.md`](../../../CLAUDE.md) (Faction Plate UI rules)
 > **Owned paths:** `frontend/game/maps/**`, `frontend/game/camera/**`, `frontend/game/core/selection/**`, `frontend/game/core/input/**` (except `core/input/touch/**`, owned by W24).
 >
@@ -16,7 +16,7 @@ The player always knows where they are on the planet and can move anywhere in on
 
 Layers and markers belonging to waves that are not enabled stay hidden. W04 depends only on W01, so it can be built in parallel with W02, W03 and the rest.
 
-## Demo story (`e2e/w04.spec.ts`)
+## Demo story (`tests/e2e/w04.spec.ts`)
 
 1. Open `/play.html?scenario=w04`: a W01 colony (HQ, Hub, prepared ground), a second colony far away, and the map partly explored → **see** the minimap at the bottom-left showing tile states, own territory in orange, explored tiles dim and unexplored tiles black, and a white camera trapezoid.
 2. Click the far corner of the minimap → **see** the camera pan there and the trapezoid move.
@@ -102,11 +102,11 @@ Layers and markers belonging to waves that are not enabled stay hidden. W04 depe
 | W04-30 | Accessibility: `?` shortcut overlay lists the map, selection and camera keys; ARIA labels on minimap, chips and map; visible focus rings; contrast ≥ 4.5:1 on chips | client | S |  | W04-13 | Run the e2e axe check with the global map and the `?` overlay open → see 0 violations | CLIENT §11 | — |
 | W04-31 | Performance probe: minimap repaint ≤ 1 ms p95, global map redraw ≤ 8 ms p95, draw calls ≤ 60 with the overlay closed | test | S |  | W04-22, W04-28 | Run `npm run e2e:perf -- w04` → see all three budgets green | CLIENT §9 | — |
 | W04-32 | Analytics events `map_opened`, `minimap_jump`, `map_layer_toggled`, `control_group_set` via `track()` | client | S |  | W04-11, W04-25 | Open the map → see `map_opened` in the dev analytics log | CLIENT §10 | — |
-| W04-33 | Wave e2e `e2e/w04.spec.ts` + scenario `w04-maps-camera` (two colonies, partial exploration) + tag `wave-04` | test | M | H | W04-02 … W04-32 | Run `npm run e2e -- --waves ..04` → see the demo story pass and the W00–W03 suites still green | PRODUCT_WAVES §3 | — |
+| W04-33 | Wave e2e `tests/e2e/w04.spec.ts` + scenario `w04-maps-camera` (two colonies, partial exploration) + tag `wave-04` | test | M | H | W04-02 … W04-32 | Run `npm run e2e -- --waves ..04` → see the demo story pass and the W00–W03 suites still green | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
 
-- `e2e/w04.spec.ts` passes, and every earlier wave's e2e still passes.
+- `tests/e2e/w04.spec.ts` passes, and every earlier wave's e2e still passes.
 - `?scenario=w04` loads into the demo state.
 - With `TA_WAVES=..03` there is no minimap, no global map and no `M` handling, and the camera behaves as in W01.
 - Tag `wave-04` exists.

@@ -1,4 +1,4 @@
-import { newId } from '@terra/contracts';
+import { newId, type ServerMessage } from '@terra/contracts';
 import type { Transport } from './types';
 
 /** Outcome of one sim command: acked at a tick, or rejected (`code` is a `RejectCode`, `timeout`, `not_connected` or `host_unavailable`). */
@@ -20,29 +20,52 @@ export class CommandBus {
   private readonly pending = new Map<string, Pending>();
   private readonly off: () => void;
 
-  /** `onSent` sees every command right after it is sent (the sim worker predicts it, D-31). */
+  /**
+   * `onSent` sees every command right after it is sent (the sim worker predicts it, D-31). `onTimedOut` sees a command
+   * that got neither ack nor reject in time, so the prediction can drop it (the server may never have received it).
+   */
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'>,
     private readonly timeoutMs = COMMAND_TIMEOUT_MS,
     private readonly onSent?: (id: string, kind: string, args: unknown) => void,
+    private readonly onTimedOut?: (id: string) => void,
   ) {
-    this.off = transport.onMessage((m) => {
-      if (m.t !== 'cmd.ack' && m.t !== 'cmd.reject') return;
-      const p = this.pending.get(m.d.id);
-      if (!p) return;
-      this.settle(m.d.id, p, m.t === 'cmd.ack' ? { ok: true, appliedAtTick: m.d.appliedAtTick } : { ok: false, code: m.d.code, ...(m.d.detail ? { detail: m.d.detail } : {}) });
-    });
+    this.off = transport.onMessage((m) => this.handleMessage(m));
   }
 
-  /** Bound for use as `FeatureServices.sendCommand`. */
+  handleMessage(m: ServerMessage): void {
+    if (m.t !== 'cmd.ack' && m.t !== 'cmd.reject') return;
+    const p = this.pending.get(m.d.id);
+    if (!p) return;
+    this.settle(
+      m.d.id,
+      p,
+      m.t === 'cmd.ack'
+        ? { ok: true, appliedAtTick: m.d.appliedAtTick }
+        : { ok: false, code: m.d.code, ...(m.d.detail ? { detail: m.d.detail } : {}) },
+    );
+  }
+
+  /**
+   * Bound for use as `FeatureServices.sendCommand`. Never rejects: a transport that cannot send right now (connecting,
+   * reconnecting) resolves `not_connected` at once and the command is neither pending nor predicted.
+   */
   readonly send: SendCommand = (kind, args = {}, opts) => {
     const id = newId('cm');
     return new Promise<CommandResult>((resolve) => {
       const timer = setTimeout(() => {
-        if (this.pending.delete(id)) resolve({ ok: false, code: 'timeout', detail: `no ack for ${kind} within ${this.timeoutMs} ms` });
+        if (!this.pending.delete(id)) return;
+        this.onTimedOut?.(id);
+        resolve({ ok: false, code: 'timeout', detail: `no ack for ${kind} within ${this.timeoutMs} ms` });
       }, this.timeoutMs);
-      this.pending.set(id, { resolve, timer });
-      this.transport.send({ t: 'cmd', id, d: { kind, args } });
+      const p: Pending = { resolve, timer };
+      this.pending.set(id, p); // before sending: a transport may answer synchronously
+      try {
+        this.transport.send({ t: 'cmd', id, d: { kind, args } });
+      } catch (e) {
+        this.settle(id, p, { ok: false, code: 'not_connected', detail: e instanceof Error ? e.message : String(e) });
+        return;
+      }
       if (opts?.predict !== false) this.onSent?.(id, kind, args);
     });
   };

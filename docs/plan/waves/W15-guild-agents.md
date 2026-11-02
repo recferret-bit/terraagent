@@ -1,6 +1,6 @@
 # W15 — Guild & Agents (F3 + F4, mock)
 
-> **Track:** Economy/NEAR (E) · **Flag:** `W15` · **Tag:** `wave-15` · **Scenario:** `scenarios/w15-guild-agents.ts` · **E2E:** `e2e/w15.spec.ts`
+> **Track:** Economy/NEAR (E) · **Flag:** `W15` · **Tag:** `wave-15` · **Scenario:** `tests/scenarios/w15-guild-agents.ts` · **E2E:** `tests/e2e/w15.spec.ts`
 > **Depends on waves:** W13 (order books, matching, settlement, price board), W09 (W09-13's `autoTrade` limits contract and `withinAutoTrade`, used by this wave's autoTrade rows). Through W13 it also needs W10 and W06.
 > **Cross-wave hooks** (they work without these waves, using the dev console):
 > - W09 (beyond the hard W09-13 dependency above): presence/away state, away budget, digest, notifications.
@@ -24,7 +24,7 @@
 > - sim: `shared/sim/src/systems/trade/autotrade.ts` (the director's trade decisions, D-31)
 > - client: `frontend/game/features/{guild,autotrade}/**`
 > - kitbash: `frontend/render/kitbash/archetypes/units/guild.ts` (`ship.guildTrader` = a Guild livery variant of the existing `ship.carrier`, not a new hull)
-> - tests: `scenarios/w15-*.ts`, `e2e/w15.spec.ts`
+> - tests: `tests/scenarios/w15-*.ts`, `tests/e2e/w15.spec.ts`
 > - uses from W00 without owning: `AgentWalletPort` (W00-30), mock base (W00-32), outbox (W00-37), contract harness (W00-38)
 
 ## Goal
@@ -93,7 +93,7 @@ The colony **director** gets its own capped key (allowance = the trading share o
 | ID | Title | Type | Size | H | Deps | Acceptance (do X → see Y) | Spec | Replaces |
 |---|---|---|---|---|---|---|---|---|
 | W15-01 | Contracts: extend W00-30's `AgentWalletPort` (`createSubAccount`, `addLimitedKey(allowance)`, `revokeKey`) with `keyStatus` and the port error `NEAR_ALLOWANCE_EXHAUSTED`; commands `market.acceptGuildOffer {offerId}`, `setAutoTrade {limits}`; pushes `guild.arrived {shipId, planetId, offers, departAt}`, `guild.departed`, `director.status`; events `guildTradeSettled`, `directorTrade`, `directorOrderRequested`, `directorAllowanceExhausted`; errors `offer_expired`, `director_key_missing`, `director_key_revoked`, `allowance_exhausted`, `autotrade_limit`; flag `W15` | contract | M | H | W13-01, W00-30 | `npm run contracts:check` → the new commands are in `CommandKind`, and `AgentWalletPort.keyStatus` compiles | NEAR §1a, NEAR-70..81, PROTOCOL | TA-10.11 (part) |
-| W15-02 | Data `data/guild.ts`: 2 NPCs for the hackathon (Kestrel, Osprey) with home routes; target inventory per sub-resource (`ResourceKey`, D-34; T2/T3 targets smaller and priced higher); base spread 4 %, thin-side widening up to 15 %; dock duration 12 min; interval between visits 20–40 min (seeded); inventory caps 5 000 per sub-resource; NEAR float cap 5 NEAR | data | S | H | W15-01 | `compileData` exposes the roster, and changing the spread in data changes quotes without a code change (pricing test) | NEAR-71, NEAR-72, NEAR-73 | — |
+| W15-02 | Data `shared/sim/src/data/guild.ts`: 2 NPCs for the hackathon (Kestrel, Osprey) with home routes; target inventory per sub-resource (`ResourceKey`, D-34; T2/T3 targets smaller and priced higher); base spread 4 %, thin-side widening up to 15 %; dock duration 12 min; interval between visits 20–40 min (seeded); inventory caps 5 000 per sub-resource; NEAR float cap 5 NEAR | data | S | H | W15-01 | `compileData` exposes the roster, and changing the spread in data changes quotes without a code change (pricing test) | NEAR-71, NEAR-72, NEAR-73 | — |
 | W15-03 | `MockAgentWalletAdapter` on the W00-32 mock base (Postgres `mock_chain_access_key`): sub-account creation under a parent, function-call/intents keys with an allowance (per token amount) and receivers; every signed intent decrements the allowance; revoke deletes the key; `mock:` receipts; binding `NEAR_ADAPTER_AGENT_WALLET` | server | M | H | W06-10, W15-01, W00-32 | Add a key with a 600-metal allowance and sign a 300 trade → `keyStatus` shows spent 300; after revoke, signing fails with `director_key_revoked` | NEAR §2, NEAR-80 | TA-10.11 (part) |
 | W15-04 | Contract suite `agent-wallet.contract.ts` on the W00-38 harness: sub-account naming, allowance decrement, exhaustion → stable `NEAR_ALLOWANCE_EXHAUSTED`, revoke, receiver scoping (only `intents.near` and `res.*`); W23-27 runs this same suite against the real adapter | test | S | H | W15-03, W00-38 | `npm run test:contract -- --port agent-wallet` → all cases pass against the mock | NEAR §1a rule 5 | — |
 | W15-05 | Guild provisioning job (idempotent at boot): create `guild-N.npc.terraagent.mock` sub-accounts, mint the initial cargo through `minter` (W00-37 outbox, `opId = guild-seed:{npc}:{resourceKey}`), seed the NEAR float in the mock verifier, write `chain.guild_npc` | server | S | H | W15-03, W10-10, W13-04, W00-37 | Boot twice → each NPC exists once with seeded inventory, and `/dev/chain` shows one seed mint per resource | NEAR-70, NEAR-73 | TA-10.11 (part) |
@@ -125,11 +125,11 @@ The colony **director** gets its own capped key (allowance = the trading share o
 | W15-31 | Mobile acceptance: Guild tab, arrival toast and Settings → Away work in phone landscape with touch | client | S |  | W15-17, W15-23 | Run the e2e at 844 × 390 with touch → steps 2–8 pass | D-22 | — |
 | W15-32 | Docs: README "mock vs real" row F3/F4 (`AgentWalletPort` = mock); `ENVS.md`: `NEAR_ADAPTER_AGENT_WALLET`, `GUILD_ENABLED`, `GUILD_NPC_COUNT`; a short "How the Guild prices" section for judges | docs | S |  | W15-04 | README lists `AgentWalletPort` as "mock" and explains pricing in ≤ 10 lines | D-27, near-economy F3 | — |
 | W15-33 | Perf: 2 NPCs quoting on 60 planets' books (when W11 is on) re-quote within 1 s of a fill and use < 5 % of one core | test | S |  | W15-08 | `npm run bench -- guild-60-planets` → p99 re-quote ≤ 1 s, CPU < 5 % | ARCHITECTURE capacity | — |
-| W15-34 | Wave e2e `e2e/w15.spec.ts` (demo story 1–10) + seed scenario `w15-guild-agents` (solo colony at S2 with a Trade Hub, near-full metals storage, low water, 2 NPCs, a dock in 30 s) + tag `wave-15` | test | M | H | W15-01…W15-33 | `npm run e2e -- --waves ..15` → W00–W15 suites pass | PRODUCT_WAVES §3 | — |
+| W15-34 | Wave e2e `tests/e2e/w15.spec.ts` (demo story 1–10) + seed scenario `w15-guild-agents` (solo colony at S2 with a Trade Hub, near-full metals storage, low water, 2 NPCs, a dock in 30 s) + tag `wave-15` | test | M | H | W15-01…W15-33 | `npm run e2e -- --waves ..15` → W00–W15 suites pass | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
 
-- `e2e/w15.spec.ts` passes, and every earlier wave's e2e still passes.
+- `tests/e2e/w15.spec.ts` passes, and every earlier wave's e2e still passes.
 - `?scenario=w15` loads.
 - `TA_WAVES=..14` turns off the Guild ships, the Guild tab and the Away autoTrade section. W13 player markets keep working. Director keys stay in the DB but are not used.
 - The agent-wallet contract suite passes on the mock.

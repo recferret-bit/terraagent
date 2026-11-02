@@ -1,10 +1,10 @@
 # W11 — Lobby & Planets
 
-> **Track:** Meta (M) · **Flag:** `W11` · **Tag:** `wave-11` · **Scenario:** `scenarios/w11-lobby.ts` · **E2E:** `e2e/w11.spec.ts`
+> **Track:** Meta (M) · **Flag:** `W11` · **Tag:** `wave-11` · **Scenario:** `tests/scenarios/w11-lobby.ts` · **E2E:** `tests/e2e/w11.spec.ts`
 > **Depends on waves:** W01 (spine). Rocket `TRANSFER` tickets come from W21. Party spawn adjacency uses the W01 generator. Optional: W09 (W09-01 declares the `colonyEliminated` event that W11-16 consumes; with W09 off the dev console fires it).
 > **Specs:** [MATCHMAKING](../../spec/MATCHMAKING.md) §3–§10 (`MM-01..55`, edge cases E1–E16) · [CONTINUITY](../../spec/CONTINUITY.md) §2 (`CT-01..05`) · [CLIENT](../../spec/CLIENT.md) §3–§4 (`CL-01`, `CL-13`, `CL-14`) · [ARCHITECTURE](../../spec/ARCHITECTURE.md) §15 · D-12 (amended), D-22, D-23, D-24, D-33
 > **Planet types (D-33):** `PlanetType = 'desert' | 'ocean' | 'temperate'`, shown as the three landing worlds (Kharon Dunes · `dune`, Thalassa Verde · `oceanForest`, Granite Hollow · `forestRock`). The type filter, "New planet" per type, the warm pool and auto-place all run over these three types. Until W05-17 ships the `desert` and `ocean` generators (post-hackathon), their cards read "Coming soon" and only `temperate` planets are created; the hackathon demo is `temperate` only.
-> **Owned paths:** `backend/app/src/lobby/**` (except `transfer/`, W21), `backend/app/src/game/planet-loader/`, `resolveHome` in W01's `backend/app/src/home/`, `prisma/lobby.prisma`, `shared/contracts/src/{lobby,match}/`, `shared/sim/src/gen/party-slots.ts` (new file in W01's `gen/`), `frontend/game/pages/lobby/` (picker, queue panel, party; the CLIENT `/planets` route), `frontend/game/features/{home,party}/`, and the existing orbital world menu `frontend/game/ui/{menu,worldCard}.ts`, which this wave turns into the picker
+> **Owned paths:** `backend/app/src/lobby/**` (except `transfer/`, W21), `backend/app/src/game/planet-loader/`, `resolveHome` in W01's `backend/app/src/home/`, `shared/db/prisma/lobby.prisma`, `shared/contracts/src/{lobby,match}/`, `shared/sim/src/gen/party-slots.ts` (new file in W01's `gen/`), `frontend/game/pages/lobby/` (picker, queue panel, party; the CLIENT `/planets` route), `frontend/game/features/{home,party}/`, and the existing orbital world menu `frontend/game/ui/{menu,worldCard}.ts`, which this wave turns into the picker
 > **Existing picker:** `/play.html` already opens on an orbital world menu (`frontend/game/ui/menu.ts` over `frontend/render/orbit/OrbitalStage.ts`): 3 hard-coded worlds (`dune`, `oceanForest`, `forestRock`), a seed input, bloom/quality/skip-cinematic settings and DEPLOY → the drop-pod descent. This wave **extends that menu** instead of building a separate page: the world cards become live `PlanetListV1` cards, DEPLOY becomes Join, the seed input becomes dev-only (`?host=local` and the dev console), the settings move to a settings plate, and `match.assigned` / `ACTIVE` plays the existing deploy → descent into the new colony. Locally the CLIENT `/planets` route is the menu state of `/play.html`.
 
 ## Goal
@@ -104,7 +104,7 @@ The app becomes multi-planet and multiplayer. Players pick a planet or get match
 
 ## Wave DoD
 
-- `e2e/w11.spec.ts` passes, together with all earlier suites.
+- `tests/e2e/w11.spec.ts` passes, together with all earlier suites.
 - `?scenario=w11` loads the 2-planet lobby.
 - `TA_WAVES=..10` falls back to the single dev planet auto-join (W01-05).
 - Tag `wave-11` is created.

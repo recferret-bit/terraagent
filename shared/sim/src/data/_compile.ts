@@ -1,5 +1,6 @@
 import { TICK_MS } from '../kernel/constants';
 import type { CompiledDataLike } from '../kernel/config';
+import { checkRowAmounts } from './_amounts';
 import type { Row, RowValue, TableDef, Unit } from './_define';
 import { dataHash } from './_hash';
 import { applyOverrides, type BalanceOverrides } from './_overrides';
@@ -52,7 +53,8 @@ export interface CompileInput {
 /**
  * `compileData` (SIM-D-03): converts design units to ticks, scales resource flow rates by `economyRateScale`
  * (default `ECONOMY_RATE_SCALE = 0.25`), and keeps only the rows of enabled waves. Pure; the same tables + flags
- * always give the same `hash`.
+ * always give the same `hash`. Throws on a resource amount (`TableDef.amounts`) that is not a whole,
+ * non-negative number of units.
  */
 export function compileTables({ flags, tables: base, economyRateScale = ECONOMY_RATE_SCALE, overrides }: CompileInput): CompiledData {
   const tables = overrides ? applyOverrides(base, overrides) : base;
@@ -62,6 +64,7 @@ export function compileTables({ flags, tables: base, economyRateScale = ECONOMY_
     const rows: Record<string, CompiledRow> = {};
     for (const r of t.rows) {
       if (rows[r.id]) throw new Error(`data ${t.name}: duplicate row ${r.id}`);
+      checkRowAmounts(t, r, 'data');
       if (flags.has(r.wave)) rows[r.id] = convertRow(t, r, economyRateScale);
     }
     out[t.name] = rows;

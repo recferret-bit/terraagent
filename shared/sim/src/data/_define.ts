@@ -7,6 +7,7 @@
  *   - `perSecond`    → per tick (`v × TICK_MS / 1000`)
  *   - `resourceFlow` → scaled per-second resource flow (`v × ECONOMY_RATE_SCALE`, default `0.25`)
  * Every row carries `wave`; rows of disabled waves are dropped at compile time ("no flag, no feature").
+ * `amounts` names the fields that hold resource amounts; they must be whole, non-negative units (no fractions).
  */
 export type Unit = 'seconds' | 'perSecond' | 'resourceFlow';
 
@@ -23,6 +24,18 @@ export interface TableDef<R extends Row = Row> {
   readonly name: string;
   readonly summary: string;
   readonly units?: Readonly<Partial<Record<Exclude<keyof R, 'id' | 'wave'>, Unit>>>;
+  /**
+   * Fields holding resource amounts (a cost, a cargo, a yield, a storage cap): a number, or a map of resource key →
+   * number. Every value must be a whole, non-negative number of units (`isWholeAmount`); `compileData` and every
+   * balance override / `tune` reject anything else (`_amounts.ts`).
+   */
+  readonly amounts?: readonly Exclude<keyof R & string, 'id' | 'wave'>[];
+  /**
+   * Fields `tune` and balance overrides must not change, and why (`'*'` = every field of the table). For numbers the
+   * running sim never reads from compiled data, e.g. world generation inputs (a planet is generated once, from the
+   * file rows) or identifiers; overriding them would be accepted and change nothing (WE-19).
+   */
+  readonly fixed?: { readonly fields: '*' | readonly Exclude<keyof R & string, 'id' | 'wave'>[]; readonly why: string };
   readonly rows: readonly R[];
 }
 

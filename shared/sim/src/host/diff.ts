@@ -1,9 +1,11 @@
 import { entityColumns } from '../ecs/columns';
 import { insertRow, pruneRemovals, removeRow, rowOf, setCapacity, type Removal } from '../ecs/store';
 import { decodeValue, encodeValue } from '../codec/values';
-import { tileLayers } from '../grid/layers';
+import { clientTileLayers, tileLayers } from '../grid/layers';
 import type { Blob, ColonyState, PlanetMeta, PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
+import { changedTileIndices, noteTilesStamped } from '../grid/sectors';
+import { clientMeta } from '../codec/snapshot';
 
 /** Engine diff wire format version (inside the MessagePack map). */
 export const DIFF_FORMAT = 1;
@@ -49,18 +51,21 @@ function changedIndices(stamp: ArrayLike<number>, length: number, fromTick: numb
   return Uint32Array.from(out);
 }
 
-/** Everything stamped after `fromTick`, as MessagePack bytes (`@terra/sim` host diff, D-31). Pure read of `state`. */
-export function diffSince(state: PlanetState, fromTick: number): Uint8Array {
+/**
+ * Everything stamped after `fromTick`, as MessagePack bytes (`@terra/sim` host diff, D-31). Pure read of `state`.
+ * `forClient` drops `hidden` tile layers (D-38); the replica keeps zeros there (`applyTiles` skips absent layers).
+ */
+export function diffSince(state: PlanetState, fromTick: number, opts: { forClient?: boolean } = {}): Uint8Array {
   const e = state.entities;
-  const tileIdx = changedIndices(state.grid.layers.changedAt, state.grid.count, fromTick);
+  const tileIdx = changedTileIndices(state, fromTick);
   const rows = changedIndices(e.cols.changedAt, e.count, fromTick);
   const diff: EngineDiff = {
     v: DIFF_FORMAT,
     fromTick,
     toTick: state.meta.tick,
-    meta: state.meta,
+    meta: opts.forClient ? clientMeta(state.meta) : state.meta,
     rng: state.rng,
-    tiles: { idx: tileIdx, cols: gather(tileLayers(), state.grid.layers, tileIdx) },
+    tiles: { idx: tileIdx, cols: gather(opts.forClient ? clientTileLayers() : tileLayers(), state.grid.layers, tileIdx) },
     entities: {
       capacity: e.capacity,
       count: e.count,
@@ -95,6 +100,7 @@ function applyTiles(state: PlanetState, d: EngineDiff): void {
     const to = state.grid.layers[l.name], from = cols[l.name];
     if (from) for (let i = 0; i < idx.length; i++) to[idx[i]] = from[i];
   }
+  noteTilesStamped(state, idx);
 }
 
 /** Decodes an engine diff produced by `diffSince`. */

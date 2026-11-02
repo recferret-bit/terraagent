@@ -1,21 +1,38 @@
 import { availableParallelism } from 'node:os';
-import { Inject, Module, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import { Inject, Module, Optional, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
+import type { PrismaClient } from '@terra/db';
 import { defineEnv } from '@terra/config';
+import { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, mergeOverrides, type BalanceOverrides } from '@terra/sim';
+import type { Logger } from 'pino';
 import { Counter, Gauge } from 'prom-client';
 import { z } from 'zod';
 import { EventBus } from '../bus/event-bus';
+import { HomeService } from '../core/home/home.service';
+import { PRISMA } from '../db/db.module';
 import { FlagsService } from '../flags/flags.service';
 import { MetricsRegistry } from '../core/metrics.registry';
 import { ReadinessRegistry } from '../core/readiness.registry';
-import { APP_ENV, type AppEnv } from '../core/tokens';
+import { layerLogger } from '../core/logging/logger';
+import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
 import { DevPlanetsController } from './dev-planets.controller';
-import { devPlanetIds } from './dev-planets';
+import { devPlanetIds, devPlanetsToGenerate } from './dev-planets';
 import { GamePlanets } from './game-planets.service';
-import { SnapshotService } from './persistence/snapshot.service';
+import { gameLandingHost } from './home-landing-host';
+import { DevLedgerController } from './ledger/dev-ledger.controller';
+import { InMemoryLedgerStore } from './ledger/in-memory-ledger-store';
+import { LedgerStorePort } from './ledger/ledger-store.port';
+import { PlanetLedgerService } from './ledger/planet-ledger.service';
+import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
+import { persistenceEnabled } from '../core/persistence';
+import { PlanetHeldError, SnapshotService } from './persistence/snapshot.service';
 import { SnapshotStore } from './persistence/snapshot-store';
+import { ProgressionEventForwarder } from './progression-events.service';
+import { wirePlanetRecovery } from './planet-recovery';
+import { gameSeatHost, seatAndRegisterColony } from './seat-colony';
 import { SimThreadPool } from './sim-thread-pool';
+import { W00_PLANET_TYPE } from './thread/protocol';
 
 export const env = defineEnv('game', {
   /** Sim worker threads (SIM-H-01); default: cores - 1, at least 1. */
@@ -26,44 +43,82 @@ export const env = defineEnv('game', {
   SNAPSHOTS: z.enum(['on', 'off']).optional(),
   /** Deltas per second per subscribed planet (D-31). */
   DELTA_HZ: z.coerce.number().positive().max(20).default(5),
-  /** Number of flat dev planets loaded at boot, spread evenly over the threads. */
   /** Path to `balance.overrides.json` (D-35): design-unit overrides merged over the data rows at compile time; unset = none. */
   TA_BALANCE_OVERRIDES: z.string().optional().superRefine((path, ctx) => {
     try { loadBalanceOverrides(path, []); } catch (e) { ctx.addIssue({ code: 'custom', message: e instanceof Error ? e.message : String(e) }); }
   }),
+  /** Number of dev planets loaded at boot, spread evenly over the threads (desert with W01, the flat W00 planet without). */
   GAME_DEV_PLANETS: z.coerce.number().int().min(0).default(0),
+  /** Default real-world hours for 1 full planetary day (24 solar hours); unset = data table default (0.25 h). */
+  PLANET_DAY_HOURS: z.coerce.number().min(0.005).max(168).optional(),
+  /** Default planetary time-scale multiplier; unset = data table default (1). */
+  PLANET_TIME_SCALE: z.coerce.number().min(0).max(1000).optional(),
 });
 
 const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
-  controllers: [DevPlanetsController],
+  controllers: [DevPlanetsController, DevLedgerController],
   providers: [
     {
       provide: POOL,
       inject: [APP_ENV, FlagsService],
-      useFactory: (e: AppEnv, f: FlagsService) => new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: f.list, deltaHz: Number(e.DELTA_HZ), overrides: loadBalanceOverrides(e.TA_BALANCE_OVERRIDES as string | undefined, f.list) }),
+      useFactory: (e: AppEnv, f: FlagsService) => {
+        const base = loadBalanceOverrides(e.TA_BALANCE_OVERRIDES as string | undefined, f.list);
+        const realHoursPerDay = e.PLANET_DAY_HOURS as number | undefined;
+        const timeScale = e.PLANET_TIME_SCALE as number | undefined;
+        const envTime: BalanceOverrides =
+          realHoursPerDay !== undefined || timeScale !== undefined
+            ? { time: { cycle: { ...(realHoursPerDay !== undefined ? { realHoursPerDay } : {}), ...(timeScale !== undefined ? { timeScale } : {}) } } }
+            : {};
+        return new SimThreadPool({ threads: Number(e.SIM_THREADS), flags: f.list, deltaHz: Number(e.DELTA_HZ), overrides: mergeOverrides(base, envTime) });
+      },
     },
     { provide: GamePlanets, inject: [POOL, APP_ENV], useFactory: (pool: SimThreadPool, e: AppEnv) => new GamePlanets(pool, Number(e.DELTA_HZ)) },
     SnapshotStore,
+    {
+      // The journal persists with the snapshots (same switch): Postgres, or in memory under NODE_ENV=test / SNAPSHOTS=off.
+      provide: LedgerStorePort,
+      inject: [APP_ENV, PRISMA],
+      useFactory: (e: AppEnv, prisma: PrismaClient) => (persistenceEnabled(e) ? new PrismaLedgerStore(prisma) : new InMemoryLedgerStore()),
+    },
+    PlanetLedgerService,
     SnapshotService,
+    ProgressionEventForwarder,
   ],
-  exports: [GamePlanets],
+  exports: [GamePlanets, ProgressionEventForwarder, SnapshotService],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
+  private unsubHomeSeat: (() => void) | undefined;
+  private unsubRecovery: (() => void) | undefined;
+  private readonly log: Logger;
+
   constructor(
     @Inject(POOL) private readonly pool: SimThreadPool,
     private readonly planets: GamePlanets,
     private readonly snapshots: SnapshotService,
     @Inject(APP_ENV) private readonly env: AppEnv,
+    private readonly flags: FlagsService,
     private readonly metrics: MetricsRegistry,
     private readonly readiness: ReadinessRegistry,
     private readonly bus: EventBus,
-  ) {}
+    private readonly progressionForwarder: ProgressionEventForwarder,
+    @Inject(LOGGER) root: Logger,
+    @Optional() private readonly homeService?: HomeService,
+  ) {
+    this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
+  }
 
   async onApplicationBootstrap(): Promise<void> {
     await this.pool.start();
-    bridgePlanetEvents(this.planets, this.bus);
+    bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
+    const home = this.homeService;
+    if (home) {
+      const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
+      this.unsubHomeSeat = home.onColonySeated((assignment) => seatAndRegisterColony(this.progressionForwarder, host, assignment));
+      home.setLandingHost(gameLandingHost(this.snapshots, this.planets, host));
+    }
+    this.unsubRecovery = wirePlanetRecovery(this.planets, this.pool, this.snapshots, this.log);
     const pool = this.pool;
     const reg = this.metrics.registry;
     new Gauge({ name: 'ta_game_threads', help: 'Live sim threads', registers: [reg], collect() { this.set(pool.live); } });
@@ -97,16 +152,23 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
       },
     });
     this.readiness.register('simThreads', () => {
-      if (pool.live === 0) throw new Error('no live sim threads');
+      if (pool.live < pool.size) throw new Error(`${pool.size - pool.live} of ${pool.size} sim threads down`); // BE-11
       return pool.live;
     });
-    await this.snapshots.restoreAll();
-    const have = new Set(this.planets.loadedIds());
-    const ids = devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size).filter((id) => !have.has(id));
-    await Promise.all(ids.map((id) => this.planets.load(id)));
+    const restored = await this.snapshots.restoreAll();
+    const ids = devPlanetsToGenerate(devPlanetIds(Number(this.env.GAME_DEV_PLANETS), pool.size), this.planets.loadedIds(), restored);
+    const devOpts = this.flags.has('W01')
+      ? { params: { type: DEV_PLANET_TYPE, seed: DEV_PLANET_SEED, radius: DEV_PLANET_RADIUS, capacity: DEV_PLANET_CAPACITY } }
+      : { params: { type: W00_PLANET_TYPE } };
+    // `loadNew` refuses (logged) a planet that has snapshots, e.g. only an END one: it is not generated over them
+    await Promise.all(ids.map((id) => this.snapshots.loadNew(id, devOpts).catch((e: unknown) => { if (!(e instanceof PlanetHeldError)) throw e; })));
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.unsubHomeSeat?.();
+    this.unsubHomeSeat = undefined;
+    this.unsubRecovery?.();
+    this.homeService?.setLandingHost(undefined);
     this.readiness.unregister('simThreads');
     await this.planets.shutdown();
   }

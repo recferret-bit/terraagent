@@ -12,7 +12,7 @@ npm run db:seed      # run shared/db/seeds/*.ts in name order (idempotent seeds 
 npm run db:down
 ```
 
-One Postgres server, one database per worktree: `TA_DB_NAME` (`.env.worktree`, default `terraagent`) on `TA_PG_PORT`;
+One Postgres server, one database per worktree: `TA_DB_NAME` (`infra/.env.worktree`, default `terraagent`) on `TA_PG_PORT`;
 `DATABASE_URL` overrides everything. The scripts create the database when missing. `db:gen` uses a throwaway
 `<TA_DB_NAME>_shadow` database and drops it afterwards.
 
@@ -61,7 +61,7 @@ against the worktree database; they must be idempotent (upsert / `ON CONFLICT DO
 
 ## Integration tests (need Postgres)
 
-`npm run test:integration` runs only `**/*.int.spec.ts` (`vitest.integration.config.ts`); plain `npx vitest run` excludes
+`npm run test:integration` runs only `**/*.int.spec.ts` (`tests/vitest.integration.config.ts`); plain `npx vitest run` excludes
 them and needs no database. `@terra/db/testing` provides `createTestDatabase()`: creates `terra_test_<random>` on the shared
 Postgres, runs `prisma migrate deploy`, returns `{ name, url, prisma, drop() }` (always `drop()` in `afterAll`), plus
 `databaseExists(name)`. The log lines `[test-db] created|migrated|dropped <name>` show the lifecycle.

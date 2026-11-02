@@ -1,4 +1,4 @@
-import { hexIndex } from '@terra/sim/grid/hex';
+import { SECTOR_TILES, sectorIndex } from '@terra/sim/grid/sectors';
 import { CHUNK_TILES } from './hexMath';
 
 export interface ChunkDef {
@@ -9,19 +9,23 @@ export interface ChunkDef {
   tiles: Int32Array;
 }
 
-/** Partitions the planet's tiles into 32x32 axial blocks; every tile belongs to exactly one chunk. */
+if (CHUNK_TILES % SECTOR_TILES !== 0) throw new Error(`CHUNK_TILES (${CHUNK_TILES}) must be a multiple of SECTOR_TILES (${SECTOR_TILES})`);
+
+/**
+ * Partitions the planet's tiles into 32x32 axial render chunks, each a block of whole sim sectors (D-38: one sector
+ * index drives generation, deltas and rendering); every tile belongs to exactly one chunk.
+ */
 export function chunkLayout(radius: number): ChunkDef[] {
-  const hx = hexIndex(radius);
+  const per = CHUNK_TILES / SECTOR_TILES;
   const byKey = new Map<string, number[]>();
-  const keyOf = (q: number, r: number) => `${Math.floor(q / CHUNK_TILES)},${Math.floor(r / CHUNK_TILES)}`;
-  for (let i = 0; i < hx.count; i++) {
-    const k = keyOf(hx.q[i]!, hx.r[i]!);
+  for (const s of sectorIndex(radius).sectors) {
+    const k = `${Math.floor(s.sq / per)},${Math.floor(s.sr / per)}`;
     const list = byKey.get(k);
-    if (list) list.push(i); else byKey.set(k, [i]);
+    if (list) list.push(...s.tiles); else byKey.set(k, [...s.tiles]);
   }
   return [...byKey.entries()].map(([k, list]) => {
     const [cq, cr] = k.split(',').map(Number) as [number, number];
-    return { cq, cr, tiles: Int32Array.from(list) };
+    return { cq, cr, tiles: Int32Array.from(list.sort((a, b) => a - b)) };
   });
 }
 

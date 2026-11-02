@@ -18,15 +18,23 @@ export class LocalHostController {
   handle(msg: ToLocalHost): void {
     if (this.stopped) return;
     if (msg.t === 'init') { void this.boot(msg); return; }
-    if (msg.t === 'stop') { this.stopped = true; this.core?.stop(); return; }
+    if (msg.t === 'stop') { this.stop(); return; }
     if (!this.core) { this.queue.push(msg); return; }
     this.dispatch(this.core, msg);
+  }
+
+  /** Stops the core (final save included), then answers `stopped` so the page may terminate the worker. */
+  private stop(): void {
+    if (this.stopped) return;
+    this.stopped = true;
+    const saved = this.core ? this.core.stop() : Promise.resolve();
+    void saved.then(() => this.post({ t: 'stopped' }, []));
   }
 
   private async boot(msg: Extract<ToLocalHost, { t: 'init' }>): Promise<void> {
     try {
       const core = await LocalHostCore.create(msg.opts, this.deps, this.post);
-      if (this.stopped) { core.stop(); return; }
+      if (this.stopped) { void core.stop(); return; }
       this.core = core;
       for (const m of this.queue.splice(0)) this.dispatch(core, m);
     } catch (e) {

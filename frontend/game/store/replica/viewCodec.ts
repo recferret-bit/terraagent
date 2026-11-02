@@ -1,4 +1,4 @@
-import type { PlanetType, SimView, ViewColony } from '@terra/sim';
+import type { PlanetType, SimView, ViewColony, ViewEntity } from '@terra/sim';
 
 /**
  * Entity buffer layout: `count` rows of `ENTITY_STRIDE` float32, per row in this order
@@ -7,9 +7,38 @@ import type { PlanetType, SimView, ViewColony } from '@terra/sim';
  * planet that spawns past that needs a wider id column (an Int32 side buffer); `packEntities` throws instead of
  * silently corrupting.
  */
-export const ENTITY_STRIDE = 12;
 export const ENTITY_FIELDS = ['id', 'kind', 'owner', 'q', 'r', 'x', 'y', 'rot', 'hp', 'hpMax', 'state', 'progress'] as const;
+export const ENTITY_STRIDE = ENTITY_FIELDS.length;
 export const MAX_EXACT_ID = 1 << 24;
+export type EntityField = (typeof ENTITY_FIELDS)[number];
+
+/** Column offsets inside one row, from `ENTITY_FIELDS`: `buf[i * ENTITY_STRIDE + E.hp]`. Never hard-code the numbers. */
+export const E = Object.freeze(Object.fromEntries(ENTITY_FIELDS.map((f, i) => [f, i]))) as { readonly [K in EntityField]: number };
+
+/** One entity row as plain numbers (the packed columns only). */
+export type EntityRow = { [K in EntityField]: number };
+
+/** Row `i` of a packed entity buffer, or of a `SimView`'s `ViewEntity[]` (headless hosts / tests pass those). */
+export function readEntity(ents: Float32Array | readonly ViewEntity[], i: number): EntityRow {
+  if (!(ents instanceof Float32Array)) {
+    const e = ents[i];
+    return { id: e.id, kind: e.kind, owner: e.owner, q: e.q, r: e.r, x: e.x, y: e.y, rot: e.rot, hp: e.hp, hpMax: e.hpMax, state: e.state, progress: e.progress };
+  }
+  const o = i * ENTITY_STRIDE;
+  const row = {} as EntityRow;
+  for (const f of ENTITY_FIELDS) row[f] = ents[o + E[f]];
+  return row;
+}
+
+/** Number of rows in either entity form (`count` wins for a packed buffer when given). */
+export const entityCount = (ents: Float32Array | readonly ViewEntity[] | undefined, count?: number): number =>
+  !ents ? 0 : ents instanceof Float32Array ? (count ?? Math.floor(ents.length / ENTITY_STRIDE)) : ents.length;
+
+/** Calls `fn` for every entity row; returning `false` stops the walk. */
+export function forEachEntity(ents: Float32Array | readonly ViewEntity[] | undefined, count: number | undefined, fn: (row: EntityRow, i: number) => void | boolean): void {
+  const n = entityCount(ents, count);
+  for (let i = 0; i < n; i++) if (fn(readEntity(ents!, i), i) === false) return;
+}
 
 /** Tile layers sent to the renderer (copies, never views of the replica state). */
 export interface ClientTiles {
@@ -61,8 +90,7 @@ export function packEntities(entities: SimView['entities']): Float32Array {
   for (let i = 0; i < entities.length; i++) {
     const e = entities[i], o = i * ENTITY_STRIDE;
     if (e.id >= MAX_EXACT_ID) throw new Error(`entity id ${e.id} exceeds float32 exact range`);
-    out[o] = e.id; out[o + 1] = e.kind; out[o + 2] = e.owner; out[o + 3] = e.q; out[o + 4] = e.r; out[o + 5] = e.x;
-    out[o + 6] = e.y; out[o + 7] = e.rot; out[o + 8] = e.hp; out[o + 9] = e.hpMax; out[o + 10] = e.state; out[o + 11] = e.progress;
+    for (const f of ENTITY_FIELDS) out[o + E[f]] = e[f];
   }
   return out;
 }

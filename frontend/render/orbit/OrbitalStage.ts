@@ -35,7 +35,7 @@ class OrbitalStageImpl implements OrbitalStage {
   private readonly carrier: FittedModel;
   private readonly deploy: DeploySequence;
 
-  constructor(private readonly viewport: ColonyViewport, spec: PlanetSpec) {
+  constructor(viewport: ColonyViewport, spec: PlanetSpec) {
     const { scene, sunDir } = this;
     scene.background = new THREE.Color(0x01020a);
     scene.environment = viewport.environment;

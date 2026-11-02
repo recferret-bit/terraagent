@@ -7,5 +7,5 @@
   "scripts": {
     "test": "vitest run --passWithNoTests"
   },
-  "dependencies": { "@terra/contracts": "0.1.0", "@terra/design": "0.1.0", "@terra/render": "0.1.0", "@terra/sim": "0.1.0", "three": "^0.174.0" }
+  "dependencies": { "@terra/contracts": "0.1.0", "@terra/design": "0.1.0", "@terra/ledger": "0.1.0", "@terra/render": "0.1.0", "@terra/scenarios": "0.1.0", "@terra/sim": "0.1.0", "three": "^0.174.0" }
 }

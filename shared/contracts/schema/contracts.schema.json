@@ -128,7 +128,7 @@
           "additionalProperties": false,
           "properties": {
             "planetId": {
-              "pattern": "^pl_[0-9A-HJKMNP-TV-Z]{26}$",
+              "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
               "type": "string"
             }
           },
@@ -543,7 +543,9 @@
         "additionalProperties": false,
         "properties": {
           "amount": {
-            "type": "number"
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
           },
           "resource": {
             "enum": [
@@ -569,7 +571,7 @@
       },
       "dev": true,
       "origin": "client",
-      "summary": "Dev console: adds or subtracts `amount` of `resource` on the caller colony (clamped to >= 0).",
+      "summary": "Dev console: adds (positive) or withdraws (negative) `amount` whole units of `resource` on the caller colony via the ledger (`dev.grant`); a withdrawal is clamped to the balance so stock stays >= 0.",
       "wave": "W01"
     },
     "dev.land": {
@@ -738,6 +740,11 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "id": {
             "maximum": 9007199254740991,
             "minimum": 0,
@@ -755,7 +762,6 @@
           }
         },
         "required": [
-          "id",
           "q",
           "r"
         ],
@@ -769,23 +775,48 @@
     "dev.time": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "target": {
-            "maxLength": 16,
-            "minLength": 1,
-            "type": "string"
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "realHoursPerDay": {
+                "maximum": 168,
+                "minimum": 0.005,
+                "type": "number"
+              },
+              "timeOfDay": {
+                "maximum": 24,
+                "minimum": 0,
+                "type": "number"
+              },
+              "timeScale": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "target": {
+                "maxLength": 16,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "target"
+            ],
+            "type": "object"
           }
-        },
-        "required": [
-          "target"
-        ],
-        "type": "object"
+        ]
       },
       "dev": true,
       "origin": "client",
-      "summary": "Dev console: sets the planet day/night clock to `day`, `night`, or `hh:mm` (W02-30).",
-      "wave": "W02"
+      "summary": "Dev command to configure the planet time of day (0..24h or `day`/`night`/`hh:mm`), real hours per day, and time scale without requiring a seated colony.",
+      "wave": "W00"
     },
     "enqueueTask": {
       "args": {
@@ -1084,6 +1115,17 @@
       "summary": "Enqueues a terraform order (W01), a building construction order (W02), or a unit production order (W02) in the colony queue.",
       "wave": "W01"
     },
+    "landPod": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Opens the caller colony's descending pod as soon as it has descended `hq.startingKit.podLandMinS` (the client's touchdown animation); `already_landed` once it is open.",
+      "wave": "W01"
+    },
     "moveUnit": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1248,22 +1290,87 @@
       "summary": "Immediately updates the per-family harvest weights for standing Harvester jobs (UO-L-01, W02-12).",
       "wave": "W02"
     },
+    "setPlanetTime": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "realHoursPerDay": {
+            "maximum": 168,
+            "minimum": 0.005,
+            "type": "number"
+          },
+          "timeOfDay": {
+            "maximum": 24,
+            "minimum": 0,
+            "type": "number"
+          },
+          "timeScale": {
+            "maximum": 1000,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Configures the authoritative planetary solar time of day (0..24h), day length in real hours, and time scale multiplier.",
+      "wave": "W00"
+    },
+    "stopUnit": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entityId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Stops an owned unit: drops its current and queued commands and its route; queued auto work resumes after a short hold.",
+      "wave": "W01"
+    },
     "system.spawnColony": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
           "colonyId": {
-            "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
-            "type": "string"
+            "anyOf": [
+              {
+                "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                "type": "string"
+              },
+              {
+                "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                "type": "string"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "color": {
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
           },
+          "handle": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
           "name": {
-            "maxLength": 32,
+            "maxLength": 64,
             "minLength": 1,
             "type": "string"
           },
@@ -1396,6 +1503,9 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "achievement": {
+            "type": "string"
+          },
           "colonyId": {
             "type": "string"
           },
@@ -1536,6 +1646,55 @@
       "summary": "Emitted when a colony remains in brownout for >= 30 s continuously (SIM §9, W02-06, W02-17).",
       "wave": "W02"
     },
+    "groundRevealed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "deposit": {
+            "enum": [
+              "metals",
+              "minerals",
+              "oil"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "richnessBp": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "q",
+          "r",
+          "deposit",
+          "richnessBp"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a Clear / Break uncovers a buried deposit from the hidden subsurface (D-38).",
+      "wave": "W01"
+    },
     "hqLanded": {
       "audience": "player",
       "data": {
@@ -1584,6 +1743,9 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "achievement": {
+            "type": "string"
+          },
           "colonyId": {
             "type": "string"
           },
@@ -1598,6 +1760,29 @@
               "break"
             ],
             "type": "string"
+          },
+          "overflow": {
+            "additionalProperties": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "metals.t1",
+                "metals.t2",
+                "metals.t3",
+                "minerals.t1",
+                "minerals.t2",
+                "minerals.t3",
+                "bio.water",
+                "bio.biomass",
+                "bio.t2",
+                "bio.t3"
+              ],
+              "type": "string"
+            },
+            "type": "object"
           },
           "playerId": {
             "type": "string"
@@ -1621,7 +1806,7 @@
         "type": "object"
       },
       "severity": "info",
-      "summary": "Emitted when a Forest or Rock obstacle is removed via Clear or Break (Stone Mason progression, W01-13, W01-31).",
+      "summary": "Emitted when a Forest or Rock obstacle is removed via Clear or Break (Stone Mason progression, W01-13, W01-31); `overflow` is the capped-away yield.",
       "wave": "W01"
     },
     "resourceProduced": {
@@ -1727,6 +1912,9 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "achievement": {
+            "type": "string"
+          },
           "colonyId": {
             "type": "string"
           },
@@ -1757,6 +1945,48 @@
       },
       "severity": "info",
       "summary": "Emitted when one or more tiles reach the Prepared state via Grade (Groundbreaker progression, W01-13, W01-31).",
+      "wave": "W01"
+    },
+    "treasuryRejected": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "invalid_resource",
+              "invalid_reason",
+              "invalid_amount",
+              "insufficient_funds"
+            ],
+            "type": "string"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "detail": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ref": {
+            "type": "string"
+          },
+          "resource": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "reason",
+          "code"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A resource change a sim system expected to succeed (a terraform yield, a construction refund) was refused by the colony treasury (bad data); nothing moved.",
       "wave": "W01"
     },
     "unitProduced": {
@@ -1960,7 +2190,12 @@
                 "planet_ended",
                 "wave_disabled",
                 "host_unavailable",
-                "internal"
+                "internal",
+                "rate_limited",
+                "already_landed",
+                "landing_site_taken",
+                "queue_full",
+                "planet_full"
               ],
               "type": "string"
             },
@@ -2293,8 +2528,16 @@
             "colonyId": {
               "anyOf": [
                 {
-                  "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
-                  "type": "string"
+                  "anyOf": [
+                    {
+                      "pattern": "^co_[0-9A-HJKMNP-TV-Z]{26}$",
+                      "type": "string"
+                    },
+                    {
+                      "pattern": "^col_[A-Za-z0-9_-]{1,64}$",
+                      "type": "string"
+                    }
+                  ]
                 },
                 {
                   "type": "null"
@@ -2330,7 +2573,7 @@
                   "type": "integer"
                 },
                 "id": {
-                  "pattern": "^pl_[0-9A-HJKMNP-TV-Z]{26}$",
+                  "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
                   "type": "string"
                 },
                 "name": {

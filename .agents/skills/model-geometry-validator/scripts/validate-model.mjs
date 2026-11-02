@@ -15,7 +15,7 @@ const flag = (n) => args.includes(n);
 const val = (n) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : undefined; };
 const ids = args.filter((a, i) => !a.startsWith('--') && args[i - 1] !== '--category' && args[i - 1] !== '--tol');
 
-const vite = await createServer({ root: resolve(root, 'frontend'), configFile: resolve(root, 'vite.config.ts'), logLevel: 'error', appType: 'custom', server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, include: [] } });
+const vite = await createServer({ root: resolve(root, 'frontend'), configFile: resolve(root, 'frontend/vite.config.ts'), logLevel: 'error', appType: 'custom', server: { middlewareMode: true }, optimizeDeps: { noDiscovery: true, include: [] } });
 try {
   const kit = await vite.ssrLoadModule('/render/kitbash/index.ts');
   const v = await vite.ssrLoadModule('/render/kitbash/validate/index.ts');

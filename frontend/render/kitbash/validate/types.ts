@@ -4,6 +4,8 @@ import type { RoleSummary } from './appearance';
 
 export interface PartDef {
   index: number; name: string; zone: string; kind: string;
+  /** Explicit role for the geometry checks (`PartRole` in KitbashRegistry); names never decide a verdict there. */
+  role?: 'plinth' | 'plinthDetail' | 'whip';
   /** 0 static · 1 spinY · 2 bobY · 3 recoilZ · 4 bipedLeg · 5 bipedArm · 6 spiderLeg · 7 wheelSpin (see UnifiedColonyMaterial). */
   animType: number;
   pivot: [number, number, number];

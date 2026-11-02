@@ -6,6 +6,11 @@ export const command = defineCommand({
   wave: 'W00',
   origin: 'client',
   dev: true,
-  args: z.strictObject({ id: z.number().int().nonnegative(), q: z.number().int().min(-32768).max(32767), r: z.number().int().min(-32768).max(32767) }),
+  args: z.strictObject({
+    id: z.number().int().nonnegative().optional(),
+    entityId: z.number().int().nonnegative().optional(),
+    q: z.number().int().min(-32768).max(32767),
+    r: z.number().int().min(-32768).max(32767),
+  }),
   summary: 'Sets a test entity position directly to tile (q, r).',
 });

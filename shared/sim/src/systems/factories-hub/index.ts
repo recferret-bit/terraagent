@@ -1,6 +1,7 @@
 import type { ResourceKey } from '@terra/contracts';
 import { compileData, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
@@ -152,10 +153,7 @@ function spawnHarvesterAtHubEdge(state: PlanetState, colonyIndex: number, tick: 
   cols.kind[row] = ENTITY_KIND.harvester;
   cols.owner[row] = colonyIndex;
   cols.tier[row] = Number(harvester.tier ?? 1);
-  cols.q[row] = pos.q;
-  cols.r[row] = pos.r;
-  cols.x[row] = Math.fround(pos.q);
-  cols.y[row] = Math.fround(pos.r);
+  placeSpawnedEntity(state.entities, row, pos.q, pos.r, tick);
   cols.hp[row] = Math.fround(Number(harvester.hp ?? 160));
   cols.hpMax[row] = Math.fround(Number(harvester.hp ?? 160));
   cols.state[row] = ENTITY_STATE.idle;
