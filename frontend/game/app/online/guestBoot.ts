@@ -82,4 +82,28 @@ export class GuestBootTarget implements SessionTarget {
     this.accessToken = token;
     this.tokenExpiresAtMs = expiresInS === undefined ? undefined : this.now() + expiresInS * 1000;
   }
+
+  /**
+   * Social login on this same session: the boot object is mutated in place (the session holds that reference)
+   * and `accessToken` is what the socket sends next. No re-boot, no reload.
+   */
+  applyLinkedSession(next: {
+    accessToken: string;
+    expiresIn?: number;
+    isGuest: boolean;
+    handle: string;
+    accountId: string;
+    playerId?: string;
+  }): void {
+    const cur = this.current;
+    if (cur) {
+      cur.accessToken = next.accessToken;
+      cur.isGuest = next.isGuest;
+      cur.handle = next.handle;
+      cur.accountId = next.accountId;
+      if (next.playerId) cur.playerId = next.playerId;
+      if (next.expiresIn !== undefined) cur.tokenExpiresInS = next.expiresIn;
+    }
+    this.setToken(next.accessToken, next.expiresIn ?? cur?.tokenExpiresInS);
+  }
 }

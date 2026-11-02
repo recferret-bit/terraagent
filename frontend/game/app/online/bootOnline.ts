@@ -78,6 +78,10 @@ export interface BootAuthResult {
   deviceSecret: string;
   playerId: string;
   handle: string;
+  /** True for a guest. An auth JSON that omits `player.isGuest` counts as a guest, so older boot fixtures still work. */
+  isGuest: boolean;
+  /** Pilot account id when the auth JSON includes one (social). Absent for a guest login. */
+  accountId?: string;
   state: string;
   planet: BootPlanetSummary;
   colony: BootColonySummary;
@@ -316,6 +320,7 @@ export function createLocalBootFallback(
     deviceSecret,
     playerId: 'pr_local',
     handle: 'Colonist',
+    isGuest: true,
     state: 'ACTIVE',
     planet: {
       id: planetId,
@@ -337,6 +342,12 @@ export function createLocalBootFallback(
     },
     localHost,
   };
+}
+
+/** `accountId` on an auth JSON (social). Guest login omits it. */
+function readAccountId(auth: object): string | undefined {
+  const id = (auth as { accountId?: unknown }).accountId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
 }
 
 /** The orbit pick as a dev planet type (seats a NEW colony on that family); no pick → `undefined` (server default). */
@@ -374,6 +385,8 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
       deviceSecret,
       playerId: auth.player?.id ?? 'pr_guest',
       handle: auth.player?.handle ?? 'Colonist',
+      isGuest: auth.player?.isGuest !== false,
+      accountId: readAccountId(auth),
       state,
       planet,
       colony,

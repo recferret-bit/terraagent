@@ -1,6 +1,6 @@
 # Frontend gameplay features: questions and limitations
 
-Gameplay UI features in `frontend/game/features/` (`dev-console`, `hub-placement`, `hud-min`, `landfall`,
+Gameplay UI features in `frontend/game/features/` (`dev-console`, `hub-placement`, `hud-min`, `identity`, `landfall`,
 `terraform-basic`, `territory-border`, plus `define.ts` / `index.ts`), their specs and CSS, as mounted by the online
 flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule), AGENTS.md §6, the design system in
 `frontend/design/css/`. Format: [README](./README.md). Ledger limits are in [`economy-ledger.md`](./economy-ledger.md).
@@ -593,3 +593,23 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **To resolve:** validate the args with `parseCommandArgs('enqueueTask', …)` before sending (or export the limit) and show "Area too large" in the status line without sending.
 - **Fix:** the brush validates its args with `parseCommandArgs('enqueueTask', …)` before sending; a box over the limit is not sent and the status line reads `Area too large: N tiles, nothing sent`; `BrushController.ts`, `TerraformMenu.ts`. Test `terraform-basic.spec.ts` › "a box larger than one command may carry is not sent".
 - **Found:** 2026-11-01, review-fix round (frontend features)
+
+### FF-34 · Social login does not reauth the open socket
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/app/online/pilotBridge.ts` (`loginSocial`), `frontend/game/app/online/guestBoot.ts` (`applyLinkedSession`), `frontend/game/net/WsTransport.ts` (`reauth`)
+- **What happens:** **Save progress** replaces `GuestBootTarget.accessToken` (and the boot object, in place) with the `POST /v1/auth/social` token and updates the chip, with no reload. The socket that is already open keeps the guest JWT until `WsTransport`'s existing renewal timer calls `refresh()` and sends `reauth`. Login itself does not send `reauth`.
+- **Why it is like this:** `reauth` is private to the transport. A guest bearer upgrades that same player, so the open socket stays the right colony. The new token is what the next `hello`, the next `reauth`, and later `Authorization` headers use.
+- **Workaround / mitigation:** the social response also sets the refresh cookie, so the renewal timer rotates onto the linked session. The chip and `pilot.view().accessToken` already show the new token.
+- **To resolve:** only if a linked token must be on the socket immediately — add a session push for `reauth`. Not needed while the upgrade keeps the player id.
+- **Found:** 2026-11-02, W06-15
+
+### FF-35 · A reload shows Guest pilot again
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/identity/PilotChip.ts`, `frontend/game/app/online/bootOnline.ts` (`bootAuthAndHome`), `backend/app/src/core/auth/auth.service.ts` (`guestLogin`)
+- **What happens:** linking in this page updates the chip to `Pilot ID <accountId>` with no reload. The next page load boots with `POST /v1/auth/guest`, which always answers `isGuest: true` and has no `accountId`, so the chip reads `Guest pilot` again until the pilot saves progress once more.
+- **Why it is like this:** W06-15 only required the in-page handoff. Guest login does not return the pilot id, and the chip has nowhere else to read it. Nothing is written to `localStorage`.
+- **Workaround / mitigation:** the server still has the upgraded player (same device secret). Saving progress again with the same mock identity posts the guest bearer and links that player once more.
+- **To resolve:** have guest/refresh return `accountId` when the player is already linked, and have the chip render `Pilot ID` from that boot field.
+- **Found:** 2026-11-02, W06-15

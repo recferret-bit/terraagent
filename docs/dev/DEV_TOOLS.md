@@ -227,3 +227,12 @@ Dev console commands for mock-port failure and latency, and for resetting or upg
 A relayer fail rate of 1 throws `NEAR_MOCK_INJECTED_FAILURE` once. The relayer retries once, then the action ends as `NEAR_RELAY_FAILED`. That counts as the action failing.
 
 `POST /v1/dev/commands/near.mock.latency` body is `{ "port": "relayer", "minMs": 0, "maxMs": 0 }`. `account.reset` body is `{ "player": "<id or handle>" }`. `account.upgrade` body is `{ "provider": "google", "subject": "<subject>" }`.
+
+## W06-15
+
+Guest-first pilot chip on the server play page when wave `W06` is on. Hidden on `?host=local` and when `W06` is off.
+
+- **Chip** (`data-testid="pilot-chip"`, top left, order 20): a guest reads `Guest pilot` and has **Save progress** (`data-testid="save-progress"`). After a social login the same chip reads `Pilot ID <accountId>` (`data-testid="pilot-id"`, for example `Pilot ID test-pilot.terraagent.mock`) with no page reload. A copy control is left for W06-16; the id text stays `Pilot ID <accountId>`.
+- **Plate**: **Save progress** opens a plate on the page (it does not navigate) with **Continue with Google (mock)** (`data-testid="continue-google"`) and **Continue with X (mock)**.
+- **Popup**: either button runs `window.open('/dev/mock-oauth?provider=google|x&return=' + encodeURIComponent(location.pathname + location.search), 'terra-mock-oauth', 'popup,width=480,height=640')`. When that mock page has a same-origin `window.opener`, minting a token `postMessage`s `{ type: 'terra:mock-token', provider, token }` to the opener and `window.close()`s. It does not load the game inside the popup, and it does not navigate the game page. With no opener (the mock page opened directly, or the opener is not same-origin), it still redirects that window to `return#mock_token=…`.
+- The play page accepts the message only when `event.origin === location.origin` and `event.source` is the popup it opened, then `POST /v1/auth/social` with `Authorization: Bearer <current access token>` and `credentials: 'include'`. A `200` swaps the session access token (the value later `hello` / `reauth` calls send) and the chip. The already-open socket is not reauthed until its next renewal (FF-34).
