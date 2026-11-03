@@ -1,4 +1,4 @@
-import { flagsFromList, newId, type ServerMessage, type SimEventWire } from '@terra/contracts';
+import { flagsFromList, newId, type CargoStatusPayload, type ServerMessage, type SimEventWire } from '@terra/contracts';
 import { compileData, TICK_MS, type BalanceOverrides } from '@terra/sim';
 import { ownBytes } from './bytes';
 import { Emitter } from '../net/emitter';
@@ -98,6 +98,8 @@ export class WorldStore {
   private readonly renderEvents = new Emitter<readonly SimEventWire[]>();
   private readonly serverEvents = new Emitter<readonly SimEventWire[]>();
   private readonly rejects = new Emitter<{ id: string; kind: string; code: string }>();
+  private latestCargoStatus: CargoStatusPayload | null = null;
+  private readonly cargoStatuses = new Emitter<CargoStatusPayload>();
 
   constructor(
     private readonly transport: Pick<Transport, 'send' | 'onMessage'> & { bindStore?: (store: WorldStore) => void },
@@ -114,8 +116,10 @@ export class WorldStore {
   get status(): WorldStatus { return this.currentStatus; }
   /** Milliseconds the worker spent on the last diff + view pack. */
   get applyMs(): number { return this.lastApplyMs; }
+  get cargoStatus(): CargoStatusPayload | null { return this.latestCargoStatus; }
   onView(fn: (v: ClientView) => void): () => void { return this.views.on(fn); }
   onStatus(fn: (s: WorldStatus) => void): () => void { return this.statuses.on(fn); }
+  onCargoStatus(fn: (s: CargoStatusPayload) => void): () => void { return this.cargoStatuses.on(fn); }
 
   /** Render-only events from the predicted engine (projectiles, VFX); never toasts or alerts. */
   onRenderEvents(fn: (e: readonly SimEventWire[]) => void): () => void { return this.renderEvents.on(fn); }
@@ -220,6 +224,13 @@ export class WorldStore {
       w.postMessage({ t: 'ack', id: m.d.id, appliedAtTick: m.d.appliedAtTick }, []);
     } else if (m.t === 'cmd.reject') {
       w.postMessage({ t: 'reject', id: m.d.id, code: m.d.code }, []);
+    } else if (m.t === 'cargo.status') {
+      this.latestCargoStatus = m.d;
+      if (this.latestView) {
+        (this.latestView as unknown as Record<string, unknown>).cargoStatus = m.d;
+        this.views.emit(this.latestView);
+      }
+      this.cargoStatuses.emit(m.d);
     }
   }
 
@@ -229,6 +240,9 @@ export class WorldStore {
       if (m.pred) this.info = { pending: m.pred.pending, p95Ms: m.pred.p95Ms };
       const v = unpackView(m.view, this.serverTimeMs());
       if (v.tiles) this.tiles = v.tiles;
+      if (this.latestCargoStatus) {
+        (v as unknown as Record<string, unknown>).cargoStatus = this.latestCargoStatus;
+      }
       this.latestView = v;
       this.views.emit(v);
     } else if (m.t === 'cmdRejected') {
