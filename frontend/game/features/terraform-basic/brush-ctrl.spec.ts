@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { BrushController, type BrushCommandSink } from './BrushController';
+import { mountTerraformBasic } from './index';
 
 let hovered = { q: 0, r: 0 };
 const click = (el: HTMLElement, q: number, r: number, init: MouseEventInit = {}): void => {
@@ -78,5 +79,35 @@ describe('Terraform brush: host reject', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(brush.getLastStroke()?.statusText).toMatch(/^Terraform ordered/);
     expect(brush.getLastOutcome()?.ok).toBe(true);
+  });
+});
+
+describe('W08-11: TerraformMenu stage filtering', () => {
+  it('shows S2 terraform ops fill and bridge greyed out at S1 and unlocked at S2', () => {
+    const container = document.createElement('div');
+    const tf = mountTerraformBasic(container, {});
+
+    tf.update({ colonies: [{ stage: 1, unlockStage: 1 }] } as never);
+    const fillBtn = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-fill"]');
+    const bridgeBtn = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-bridge"]');
+    expect(fillBtn).not.toBeNull();
+    expect(bridgeBtn).not.toBeNull();
+    expect(fillBtn?.disabled).toBe(true);
+    expect(bridgeBtn?.disabled).toBe(true);
+    expect(fillBtn?.querySelector('.ta-tf-menu__reason')?.textContent).toBe(
+      'Unlocks at S2: extractor + generator · 2 min',
+    );
+    expect(bridgeBtn?.querySelector('.ta-tf-menu__reason')?.textContent).toBe(
+      'Unlocks at S2: extractor + generator · 2 min',
+    );
+
+    tf.update({ colonies: [{ stage: 2, unlockStage: 2 }] } as never);
+    const fillUnlocked = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-fill"]');
+    const bridgeUnlocked = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-bridge"]');
+    expect(fillUnlocked?.disabled).toBe(false);
+    expect(bridgeUnlocked?.disabled).toBe(false);
+    expect(fillUnlocked?.querySelector('.ta-tf-menu__reason')).toBeNull();
+
+    tf.dispose();
   });
 });
