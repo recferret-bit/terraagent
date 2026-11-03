@@ -315,3 +315,49 @@ describe('PowerHud - follows the landfall selection (FF-49)', () => {
     expect(listener).toBeNull();
   });
 });
+
+describe('PowerHud - pylon load and overload display', () => {
+  let uninstall: () => void;
+  beforeEach(() => {
+    uninstall = installMockDocument();
+  });
+  afterEach(() => {
+    uninstall();
+  });
+
+  it('displays pylon load and highlights overload state', () => {
+    const parent = new MockElement('div') as unknown as HTMLElement;
+    const hud = new PowerHud(parent);
+
+    hud.update({
+      colonies: [
+        {
+          index: 0,
+          power: {
+            supply: 150,
+            demand: 95,
+            pylonLoads: { 50: { flow: 95, max: 80, overloaded: true } },
+            overloadedEntityIds: [50],
+          },
+        },
+      ],
+      entities: [
+        { id: 50, kind: ENTITY_KIND.pylon, owner: 0, hp: 100, hpMax: 100, state: ENTITY_STATE.active },
+      ],
+      pylonLoads: { 50: { flow: 95, max: 80, overloaded: true } },
+    } as unknown as GameView);
+
+    const mockParent = parent as unknown as MockElement;
+    const banner = mockParent.querySelector('.ta-power-hud__brownout')!;
+    expect(banner.getAttribute('data-overload')).toBe('true');
+    expect(banner.textContent).toContain('POWER OVERLOAD');
+
+    const inspector = mockParent.querySelector('.ta-building-inspector')!;
+    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Power Line Pylon');
+    expect(inspector.querySelector('.ta-building-inspector__load')?.textContent).toBe('95 / 80 E/s');
+    expect(inspector.querySelector('.ta-building-inspector__state')?.textContent).toBe('OVERLOAD');
+    expect(inspector.getAttribute('data-overload')).toBe('true');
+
+    hud.dispose();
+  });
+});

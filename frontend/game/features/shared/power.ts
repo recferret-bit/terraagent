@@ -15,6 +15,77 @@ export function readColonyPower(view: unknown, colonyIndex: number): PowerRecord
   return (col?.power ?? byColony[colonyIndex] ?? v.power) as PowerRecord | undefined;
 }
 
+export interface EntityPowerView {
+  state: 'online' | 'offline';
+  reason?: string;
+  component: number;
+  flow?: number;
+  max?: number;
+  overloaded?: boolean;
+}
+
+export interface PylonLoadView {
+  flow: number;
+  max: number;
+  overloaded?: boolean;
+}
+
+/** Reads per-building power state `{state, reason, component, flow, max, overloaded}` from client or sim view. */
+export function readEntityPower(
+  view: unknown,
+  entityId: number,
+  colonyIndex = 0,
+): EntityPowerView | undefined {
+  const v = (view ?? {}) as Record<string, unknown>;
+  const epMap = v.entityPower as Record<number, EntityPowerView> | undefined;
+  if (epMap?.[entityId]) return epMap[entityId];
+
+  if (Array.isArray(v.entities)) {
+    const ent = (v.entities as Array<{ id: number; power?: EntityPowerView }>).find((e) => e.id === entityId);
+    if (ent?.power) return ent.power;
+  }
+
+  const colPower = readColonyPower(view, colonyIndex);
+  const ep = (colPower?.entityPower as Record<number, { state: 'online' | 'offline'; reason?: string; component: number }> | undefined)?.[entityId];
+  if (ep) {
+    const pl = (colPower?.pylonLoads as Record<number, { flow: number; max: number; overloaded?: boolean }> | undefined)?.[entityId];
+    return {
+      state: ep.state,
+      ...(ep.reason ? { reason: ep.reason } : {}),
+      component: ep.component,
+      ...(pl ? { flow: pl.flow, max: pl.max, ...(pl.overloaded !== undefined ? { overloaded: pl.overloaded } : {}) } : {}),
+    };
+  }
+  return undefined;
+}
+
+/** Reads per-pylon load `{flow, max, overloaded}` from client or sim view. */
+export function readPylonLoad(
+  view: unknown,
+  entityId: number,
+  colonyIndex = 0,
+): PylonLoadView | undefined {
+  const v = (view ?? {}) as Record<string, unknown>;
+  const plMap = v.pylonLoads as Record<number, PylonLoadView> | undefined;
+  if (plMap?.[entityId]) return plMap[entityId];
+
+  if (Array.isArray(v.entities)) {
+    const ent = (v.entities as Array<{ id: number; pylon?: PylonLoadView }>).find((e) => e.id === entityId);
+    if (ent?.pylon) return ent.pylon;
+  }
+
+  const colPower = readColonyPower(view, colonyIndex);
+  const pl = (colPower?.pylonLoads as Record<number, { flow: number; max: number; overloaded?: boolean }> | undefined)?.[entityId];
+  if (pl) {
+    return {
+      flow: pl.flow,
+      max: pl.max,
+      ...(pl.overloaded !== undefined ? { overloaded: pl.overloaded } : {}),
+    };
+  }
+  return undefined;
+}
+
 /** What the HUD shows of the grid, in whole E/s. */
 export interface GridBalance {
   supply: number;
