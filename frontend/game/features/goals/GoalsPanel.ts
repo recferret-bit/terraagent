@@ -285,7 +285,7 @@ export class GoalsPanel {
 
     const desc = document.createElement('p');
     desc.className = 'ta-goal-suggestion-card__desc';
-    desc.textContent = 'Lay down the command hub and initial power grid.';
+    desc.textContent = 'Prepare site, place Command Hub, and build 1 extractor + 1 generator';
 
     const actions = document.createElement('div');
     actions.className = 'ta-goal-suggestion-card__actions';
@@ -301,7 +301,7 @@ export class GoalsPanel {
     dismissBtn.type = 'button';
     dismissBtn.className = 'ta-goal-suggestion-card__dismiss-btn';
     dismissBtn.setAttribute('data-testid', 'goal-suggestion-dismiss');
-    dismissBtn.textContent = 'DISMISS';
+    dismissBtn.textContent = 'DO IT MYSELF';
     dismissBtn.onclick = () => this.dismissSuggestion();
 
     actions.append(acceptBtn, dismissBtn);

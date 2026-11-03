@@ -5,6 +5,7 @@ import { isBuildablePrepared } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { colonyWho } from '../find';
+import { onCommandHubCompleted } from '../progression';
 import { resolveHqT1Row, rowNum } from '../rows';
 import { claimTerritoryRadius } from '../territory-claim';
 import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
@@ -160,6 +161,7 @@ function completeBuildingJob(state: PlanetState, row: number, owner: number, ctx
     const radius = Number(resolveBuildingRow(bName, ctx.data)?.row.claimRadius ?? 10);
     claimTerritoryRadius(state, { colonyId: owner, q: cols.q[row], r: cols.r[row], radius, tick });
     recomputeFamilyCaps(ensureColony(state, owner, tick), true, 0, tick);
+    onCommandHubCompleted(state, owner, ctx);
   }
   const { colonyIdStr, who } = colonyWho(state, owner);
   ctx.emit({

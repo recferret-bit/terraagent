@@ -315,7 +315,8 @@ function makeCard(
 export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, view?: GameView): BuildingCardModel[] {
   const fs = toFlagSet(flags);
   const data = clientDataFor(fs);
-  const colonyStage = resolveColonyUnlockStage(view);
+  const isLiveGameView = Boolean(view && typeof view === 'object' && 'planet' in view && (view as { planet?: unknown }).planet !== undefined);
+  const colonyStage = !fs.has('W08') && isLiveGameView ? undefined : resolveColonyUnlockStage(view);
   const candidateRows: Record<string, unknown>[] = [];
   const seenBuildings = new Set<string>();
 

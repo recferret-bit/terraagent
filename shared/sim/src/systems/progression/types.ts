@@ -135,6 +135,7 @@ export interface ColonyProgressionState {
   offeredSuggestionStages: number[];
   lastEvaluatedTick: number | null;
   initialExploredCount?: number;
+  stageOverride?: string;
 }
 
 /** Aggregated completed building and unit counts for a colony used by `evaluateStageTrigger`. */
