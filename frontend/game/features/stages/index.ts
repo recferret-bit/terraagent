@@ -1,8 +1,10 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
 import { StageTrackHud } from './StageTrackHud';
+import { stageDevCommands } from './devCommands';
 import './stages.css';
 
 export { formatDwellCountdown, StageTrackHud } from './StageTrackHud';
+export { autopilotCommand, goalCommand, stageCommand, stageDevCommands } from './devCommands';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
@@ -57,4 +59,5 @@ export default defineFeature({
       mount: mountStageTrackHud,
     },
   ],
+  devCommands: stageDevCommands,
 });
