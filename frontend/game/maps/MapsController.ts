@@ -255,10 +255,9 @@ export class MapsController {
 
   panToTile(q: number, r: number): void {
     this.ctx.services.focusTile?.(q, r, true);
-    this.minimapHud.render();
-    if (this.openClose.isOpen) {
-      this.globalOverlay.render();
-    }
+    // A click / drag answers at once (counted in the scheduler's stats); camera follow-ups go through markDirty.
+    this.scheduler.forceRedrawMinimap();
+    if (this.openClose.isOpen) this.scheduler.forceRedrawGlobalMap();
   }
 
   private registeredFlagKey = '';
@@ -310,7 +309,9 @@ export class MapsController {
     if (cv && typeof cv.count === 'number' && cv.entities) {
       this.lastClientView = cv as ClientView;
     }
-    if (tiles && tiles.terrain && tiles.prep && tiles.owner) {
+    // Tile layers are fresh copies whenever a tile changed (`ClientTiles`): the same object again (every rendered
+    // frame re-sends the latest view) has nothing new, so the per-tile dirty scan is skipped.
+    if (tiles && tiles !== this.lastTiles && tiles.terrain && tiles.prep && tiles.owner) {
       this.lastTiles = tiles;
       const planetId =
         cv.planet?.id ??
@@ -349,10 +350,8 @@ export class MapsController {
     const key = `${rts.target.x.toFixed(2)},${rts.target.z.toFixed(2)},${cx.toFixed(2)},${cy.toFixed(2)},${cz.toFixed(2)}`;
     if (key !== this.prevCamKey) {
       this.prevCamKey = key;
-      this.minimapHud.render();
-      if (this.openClose.isOpen) {
-        this.globalOverlay.render();
-      }
+      // Through the scheduler (≤ 4 Hz minimap, ≤ 2 Hz global map), never a redraw per panning frame.
+      this.scheduler.markDirty({ minimap: true, globalMap: true });
     }
   }
 

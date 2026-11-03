@@ -1,4 +1,8 @@
+import { isGameInputBlocked, setGameInputBlocked } from '../core/input/gameInputBlock';
 import { isTypingTarget } from '../features/shared/hotkeys';
+
+/** Input-block source of the open global map (`core/input/gameInputBlock.ts`). */
+export const GLOBAL_MAP_INPUT_SOURCE = 'global-map';
 
 export interface RtsCameraEnableTarget {
   enabled: boolean;
@@ -29,6 +33,10 @@ export interface GlobalMapOpenCloseOptions {
   readonly isWaveEnabled?: () => boolean;
   readonly getRtsCamera?: () => RtsCameraEnableTarget | null | undefined;
   readonly onStateChange?: (isOpen: boolean) => void;
+  /** Feeds the shared modal input block (default: the `core/input` singleton under `GLOBAL_MAP_INPUT_SOURCE`). */
+  readonly setInputBlocked?: (blocked: boolean) => void;
+  /** Another modal (pause) owns the input: the map does not open (default: any other block source is on). */
+  readonly isOpenBlocked?: () => boolean;
 }
 
 const SUSPENDED_3D_KEYS = new Set([
@@ -59,6 +67,10 @@ export class GlobalMapOpenCloseController {
   private readonly getRtsCamera?: () => RtsCameraEnableTarget | null | undefined;
   private readonly onStateChange?: (isOpen: boolean) => void;
   private readonly onNavigate?: (action: MapNavAction) => void;
+  private readonly setInputBlocked: (blocked: boolean) => void;
+  private readonly isOpenBlocked: () => boolean;
+  /** `enabled` of the RTS camera before the map opened (a paused or scripted camera stays off after close). */
+  private camEnabledBeforeOpen: boolean | null = null;
   private readonly onKeyDownBound: (e: KeyboardEvent) => void;
   private readonly cleanups: Array<() => void> = [];
 
@@ -67,6 +79,8 @@ export class GlobalMapOpenCloseController {
     this.getRtsCamera = opts.getRtsCamera;
     this.onStateChange = opts.onStateChange;
     this.onNavigate = opts.onNavigate;
+    this.setInputBlocked = opts.setInputBlocked ?? ((b) => setGameInputBlocked(GLOBAL_MAP_INPUT_SOURCE, b));
+    this.isOpenBlocked = opts.isOpenBlocked ?? (() => isGameInputBlocked(GLOBAL_MAP_INPUT_SOURCE));
 
     this.onKeyDownBound = (e: KeyboardEvent) => this.handleKeyDown(e);
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -79,19 +93,28 @@ export class GlobalMapOpenCloseController {
   }
 
   open(): void {
-    if (!this.isWaveEnabled() || this.openState) return;
+    if (!this.isWaveEnabled() || this.openState || this.isOpenBlocked()) return;
     this.openState = true;
     const cam = this.getRtsCamera?.();
+    this.camEnabledBeforeOpen = cam ? cam.enabled : null;
     if (cam) cam.enabled = false;
+    this.setInputBlocked(true);
     this.onStateChange?.(true);
   }
 
   close(): void {
     if (!this.openState) return;
+    this.release();
+    this.onStateChange?.(false);
+  }
+
+  /** Leaves the open state: restores the camera's previous `enabled` and lifts the input block. */
+  private release(): void {
     this.openState = false;
     const cam = this.getRtsCamera?.();
-    if (cam) cam.enabled = true;
-    this.onStateChange?.(false);
+    if (cam && this.camEnabledBeforeOpen !== null) cam.enabled = this.camEnabledBeforeOpen;
+    this.camEnabledBeforeOpen = null;
+    this.setInputBlocked(false);
   }
 
   toggle(): void {
@@ -128,7 +151,7 @@ export class GlobalMapOpenCloseController {
     }
 
     if (this.openState) {
-      if (e.key === 'Escape') {
+      if (e.key === 'Escape' && !isTypingTarget(e)) { // Esc typed in the dev console closes the console, not the map
         e.preventDefault();
         e.stopImmediatePropagation();
         this.close();
@@ -176,11 +199,7 @@ export class GlobalMapOpenCloseController {
   }
 
   dispose(): void {
-    if (this.openState) {
-      const cam = this.getRtsCamera?.();
-      if (cam) cam.enabled = true;
-      this.openState = false;
-    }
+    if (this.openState) this.release();
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener('keydown', this.onKeyDownBound, true);
     }

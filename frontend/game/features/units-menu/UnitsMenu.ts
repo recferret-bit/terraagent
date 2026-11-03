@@ -2,6 +2,7 @@ import type { Disposable, FeatureContext, GameView } from '../../core/registry/t
 import { ownColonyIndex, viewColony } from '../shared/colony';
 import { supplyBlockReason, supplyLevel } from '../shared/supply';
 import { buildUnitsCatalog, resolveSupply, type SupplySummary, type UnitCardModel } from './catalog';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 
 interface QueueItemLike {
   taskId?: string;
@@ -120,7 +121,7 @@ export class UnitsMenu implements Disposable {
     this.el.appendChild(this.root);
 
     this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'u' || e.key === 'U') {
+      if ((e.key === 'u' || e.key === 'U') && !isGameInputBlocked()) {
         const target = e.target as HTMLElement | null;
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
         this.toggle();

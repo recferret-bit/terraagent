@@ -1,3 +1,4 @@
+import { isGameInputBlocked } from '../input/gameInputBlock';
 import type { FeatureContext } from '../registry/types';
 
 export type DockTabId = 'build' | 'production' | 'terraform' | 'queue';
@@ -159,6 +160,7 @@ export class CommandDock {
 
   private handleKeyDown(e: KeyboardEvent): void {
     if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || isTypingTarget(e.target)) return; // a held key toggles once
+    if (isGameInputBlocked()) return; // a modal (global map, pause) is up: B / U / T stay with it
     const key = (e.key ?? '').toLowerCase();
     if (key === 'b' && this.tabButtons.has('build')) {
       e.stopImmediatePropagation?.();

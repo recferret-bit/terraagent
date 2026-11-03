@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { describe, expect, it, vi } from 'vitest';
-import type { ViewEntity } from '@terra/sim';
+import { ENTITY_KIND, type ViewEntity } from '@terra/sim';
 import { hexCount, hexIndex } from '@terra/sim/grid/hex';
 import {
   ClientTiles,
@@ -9,6 +9,8 @@ import {
 } from '../store/replica/viewCodec';
 import type { MapLayerDrawView } from './types';
 import {
+  BUILDING_SQUARE_PX,
+  classifyEntityRole,
   collectEntityDots,
   createUnitsMapLayer,
   drawEntityDots,
@@ -133,7 +135,6 @@ describe('W04-07 fauna and guild classification', () => {
   it('classifies fauna (red #F04848) by owner code and archetype prefix', () => {
     const list: ViewEntity[] = [
       makeEntity(101, -2, 0, 0),
-      makeEntity(102, -1, 1, 0),
       makeEntity(103, 0, 2, 0, { archetype: 'fauna_crawler' }),
     ];
     const clientView: ClientView = {
@@ -145,11 +146,30 @@ describe('W04-07 fauna and guild classification', () => {
     };
     const view = makeView({ clientView });
     const dots = collectEntityDots(view);
-    expect(dots).toHaveLength(3);
+    expect(dots).toHaveLength(2);
     for (const dot of dots) {
       expect(dot.role).toBe('fauna');
       expect(dot.color).toBe('#F04848');
     }
+  });
+
+  it('unowned (-1) and other negative owners are neutral steel, not fauna', () => {
+    const list: ViewEntity[] = [makeEntity(301, -1, 0, 0), makeEntity(302, -7, 1, 0)];
+    const clientView: ClientView = {
+      tick: 1,
+      planet: { id: 'p_test', type: 'temperate', radius: 10 },
+      entities: packEntities(list),
+      count: list.length,
+      colonies: [],
+    };
+    const dots = collectEntityDots(makeView({ clientView }));
+    expect(dots.map((d) => [d.role, d.color])).toEqual([
+      ['neutral', '#8A93A6'],
+      ['neutral', '#8A93A6'],
+    ]);
+    expect(classifyEntityRole(-1, 0)).toBe('neutral');
+    expect(classifyEntityRole(-3, 0)).toBe('guild');
+    expect(classifyEntityRole(2, 0)).toBe('foreign');
   });
 
   it('classifies Guild ships (blue #52B4FF) by owner code and archetype names', () => {
@@ -262,5 +282,71 @@ describe('W04-07 CSS tokens and layer definition', () => {
     expect(layer.defaultOn).toBe(true);
     expect(layer.order).toBe(30);
     expect(unitsMapLayer.id).toBe('units');
+  });
+});
+
+describe('W04 entity markers branch on kind', () => {
+  const viewOf = (list: ViewEntity[]) =>
+    makeView({
+      clientView: {
+        tick: 1,
+        planet: { id: 'p_test', type: 'temperate', radius: 10 },
+        entities: packEntities(list),
+        count: list.length,
+        colonies: [],
+      },
+    });
+
+  it('buildings (hub, pylon, capacitor, wind, thermal, depot, quarry, well, pod) are squares drawn before unit dots', () => {
+    const K = ENTITY_KIND;
+    const list: ViewEntity[] = [
+      makeEntity(1, 0, 0, 0, { kind: K.builder }),
+      makeEntity(2, 0, 1, 0, { kind: K.commandHub }),
+      makeEntity(3, 0, 2, 0, { kind: K.pylon }),
+      makeEntity(4, 0, 3, 0, { kind: K.harvester }),
+      ...[K.capacitor, K.wind, K.thermal, K.supplyDepot, K.mineralsQuarry, K.petroleumWell, K.pod].map((kind, i) =>
+        makeEntity(10 + i, 1, i, 1, { kind }),
+      ),
+      makeEntity(5, 0, 0, 2, { kind: K.hq }),
+    ];
+    const dots = collectEntityDots(viewOf(list));
+    const shapes = dots.map((d) => d.shape);
+    const firstDot = shapes.indexOf('dot');
+    expect(shapes.slice(firstDot).every((s) => s === 'dot')).toBe(true);
+    expect(dots.filter((d) => d.shape === 'dot').map((d) => d.id)).toEqual([1, 4, 5]);
+    expect(dots.filter((d) => d.shape === 'square')).toHaveLength(9);
+    expect(dots.find((d) => d.id === 2)!.radiusPx * 2).toBe(BUILDING_SQUARE_PX.hub);
+    expect(dots.find((d) => d.id === 3)!.radiusPx * 2).toBe(BUILDING_SQUARE_PX.small);
+    expect(dots.find((d) => d.id === 10)!.radiusPx * 2).toBe(BUILDING_SQUARE_PX.large);
+
+    const calls: string[] = [];
+    const mockCtx = {
+      set fillStyle(_c: string) {},
+      fillRect: vi.fn(() => calls.push('rect')),
+      beginPath: vi.fn(),
+      arc: vi.fn(() => calls.push('arc')),
+      fill: vi.fn(),
+    } as unknown as CanvasRenderingContext2D;
+    drawEntityDots(mockCtx, viewOf(list));
+    expect(calls).toEqual([...Array(9).fill('rect'), 'arc', 'arc', 'arc']);
+  });
+
+  it('keeps units first under MAX_ENTITY_DOTS; buildings fill the rest', () => {
+    const list: ViewEntity[] = [];
+    for (let i = 0; i < 1000; i++) list.push(makeEntity(i + 1, 0, 0, 0, { kind: ENTITY_KIND.pylon }));
+    for (let i = 0; i < 1200; i++) list.push(makeEntity(5000 + i, 0, 0, 0, { kind: ENTITY_KIND.builder }));
+    const dots = collectEntityDots(viewOf(list));
+    expect(dots).toHaveLength(MAX_ENTITY_DOTS);
+    expect(dots.filter((d) => d.shape === 'dot')).toHaveLength(1200);
+    expect(dots.filter((d) => d.shape === 'square')).toHaveLength(MAX_ENTITY_DOTS - 1200);
+  });
+
+  it('resolves the role colours from the design tokens once per draw, not once per entity', () => {
+    const list: ViewEntity[] = [];
+    for (let i = 0; i < 50; i++) list.push(makeEntity(i + 1, 0, 0, 0));
+    const spy = vi.spyOn(window, 'getComputedStyle');
+    collectEntityDots(viewOf(list));
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
   });
 });

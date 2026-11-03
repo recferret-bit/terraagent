@@ -99,8 +99,14 @@
   outline: none;
 }
 
-.ta-hud__slot--bottom-left .ta-command-dock__body {
-  max-height: min(32vh, 220px);
+/*
+ * Bottom-left slot shared by the Command Dock (W03, expanded by default) and the minimap (HudRoot renders
+ * `.ta-hud__slot[data-slot='bottom-left']`). Only when the minimap is mounted, the dock body gives up the room the
+ * minimap takes, so dock + minimap stay between the top HUD (~65 px) and the slot's bottom offset (56 px):
+ * 420 px = 56 slot offset + 16 padding + 180 minimap + 8 gap + ~60 dock bar/padding + ~100 top HUD and margin.
+ */
+.ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) .ta-command-dock__body {
+  max-height: clamp(120px, calc(100vh - 420px), 520px);
 }
 
 @media (max-height: 500px), (max-width: 900px) and (orientation: landscape) {
@@ -109,18 +115,25 @@
     height: 140px !important;
   }
 
-  .ta-hud__slot--bottom-left {
+  /*
+   * Phone landscape: dock and minimap side by side, both bottom-aligned, lifted above the centred HQ panel
+   * (`.ta-hq-panel`, 76 px tall, 12 px from the bottom) that the side-by-side row would otherwise reach.
+   */
+  .ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) {
+    bottom: 80px;
     flex-direction: row;
     align-items: flex-end;
     gap: var(--ta-s2);
+    max-width: none;
   }
 
-  .ta-hud__slot--bottom-left .ta-command-dock {
-    width: min(260px, calc(100vw - 180px));
+  .ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) .ta-command-dock {
+    width: min(260px, calc(100vw - 200px));
+    flex: 0 1 auto;
   }
 
-  .ta-hud__slot--bottom-left .ta-command-dock__body {
-    max-height: min(42vh, 150px);
+  .ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) .ta-command-dock__body {
+    max-height: min(30vh, 120px);
   }
 }
 

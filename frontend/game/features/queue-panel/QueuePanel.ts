@@ -21,6 +21,7 @@ import {
   syncEarmarkBar,
   syncStorageHint,
 } from './queueChipHelpers';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 
 export { STORAGE_HINT_BUTTON_TEXT, STORAGE_HINT_TEXT };
 
@@ -108,7 +109,7 @@ export class QueuePanel {
     host.appendChild(this.root);
 
     this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      if (e.ctrlKey || e.metaKey || e.altKey || isGameInputBlocked()) return;
       const target = e.target as HTMLElement | null;
       if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
       if (e.key === 'q' || e.key === 'Q') {
