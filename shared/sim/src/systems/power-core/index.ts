@@ -26,6 +26,7 @@ export * from './graph';
 export * from './windAndCap';
 export * from './evaluate';
 export * from './overload';
+export * from './drains';
 export { collectWorkLoad, terraformOpShedGroup, type WorkLoad } from './workLoad';
 
 let cachedW02Data: CompiledDataLike | null = null;

@@ -4,6 +4,7 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import { getEnvironment } from '../environment';
 import { applyBrownoutShedding, type ShedCandidate, type SheddingResult } from './shedding';
+import { pylonDrainPerS, resolveConsumerDrains } from './drains';
 import { type PowerGraph, type PowerGraphComponent } from './graph';
 import { evaluateWindOutput, stepCapacitorsForComponent } from './windAndCap';
 import { stepThermalPlantFuel } from './thermal';
@@ -50,17 +51,10 @@ export interface ComponentBuildingsResult {
   onlineEntityIds: number[];
 }
 
-export const DRAINS: Record<number, { drain: number; group: number }> = {
-  [ENTITY_KIND.capacitor]: { drain: 1.5, group: 4 },
-  [ENTITY_KIND.supplyDepot]: { drain: 2.0, group: 3 },
-  [ENTITY_KIND.mineralsQuarry]: { drain: 8.0, group: 3 },
-  [ENTITY_KIND.waterExtractor]: { drain: 7.0, group: 3 },
-  [ENTITY_KIND.petroleumWell]: { drain: 10.0, group: 3 },
-  [ENTITY_KIND.metalsExtractor]: { drain: 6.0, group: 3 },
-};
-
-export function getShedGroupForEntityKind(kind: number): number {
-  if (DRAINS[kind]) return DRAINS[kind].group;
+/** The shed group of a building kind: its row's `shedGroup` for consumers, 4 for generators / pylons, else 3. */
+export function getShedGroupForEntityKind(kind: number, data?: CompiledDataLike): number {
+  const consumer = resolveConsumerDrains(data).get(kind);
+  if (consumer) return consumer.group;
   if (kind === ENTITY_KIND.wind || kind === ENTITY_KIND.thermal || kind === ENTITY_KIND.pylon) {
     return 4;
   }
@@ -110,6 +104,7 @@ export function evaluateComponentBuildingRows(
   const capRows: number[] = [], shedCandidates: ShedCandidate[] = [];
   const nightSolarIds: number[] = [], noFuelIds: number[] = [];
   const onlineEntityIds: number[] = [...comp.hubIds, ...comp.pylonIds];
+  const drains = resolveConsumerDrains(data);
 
   for (const row of comp.attachedBuildingRows) {
     const id = cols.id[row], kind = cols.kind[row], st = cols.state[row];
@@ -142,12 +137,9 @@ export function evaluateComponentBuildingRows(
         thermalGross += res.grossPerS; thermalDrain += res.drainPerS; thermalNet += res.netPerS;
         genSupply += res.netPerS; onlineEntityIds.push(id);
       }
-    } else if (kind === ENTITY_KIND.capacitor) {
-      capRows.push(row); compDemand += 1.5;
-      shedCandidates.push({ entityId: id, row, group: 4, drainPerS: 1.5, kind });
-      onlineEntityIds.push(id);
-    } else if (DRAINS[kind]) {
-      const { drain, group } = DRAINS[kind];
+    } else if (drains.has(kind)) {
+      const { drain, group } = drains.get(kind)!;
+      if (kind === ENTITY_KIND.capacitor) capRows.push(row);
       compDemand += drain;
       shedCandidates.push({ entityId: id, row, group, drainPerS: drain, kind });
       onlineEntityIds.push(id);
@@ -169,8 +161,9 @@ function computeComponentDemands(
   unitDemand: number,
   workDemand: number,
   hubDrainPerHub: number,
+  data?: CompiledDataLike,
 ): { compBuildingDemand: number; compUnitDemand: number; compWorkDemand: number; compRawDemand: number } {
-  let compBuildingDemand = comp.hubIds.length * hubDrainPerHub + comp.pylonIds.length * 0.5 + bRes.compDemand;
+  let compBuildingDemand = comp.hubIds.length * hubDrainPerHub + comp.pylonIds.length * pylonDrainPerS(data) + bRes.compDemand;
   if (overloadRes.shedConsumerRows.size > 0) {
     for (const c of bRes.shedCandidates) {
       if (overloadRes.shedConsumerRows.has(c.row)) {
@@ -267,7 +260,7 @@ export function evaluateSingleComponent(
     : { overloadedPylons: [], overloadedShedEntityIds: [], pylonLoads: {}, shedConsumerRows: new Set<number>(), absorbedSyntheticLoad: 0 };
 
   const { compUnitDemand, compWorkDemand, compRawDemand } = computeComponentDemands(
-    state, colonyIndex, comp, bRes, overloadRes, unitDemand, work.demand, hubDrainPerHub,
+    state, colonyIndex, comp, bRes, overloadRes, unitDemand, work.demand, hubDrainPerHub, data,
   );
 
   const hasCapStored = bRes.capRows.some((r) => (cols.cell?.[r] ?? 0) > 0);

@@ -62,11 +62,22 @@ const LABELS: Record<string, string> = {
   powerLine: 'Power Line',
 };
 
+const numField = (row: Record<string, unknown>, key: string): number =>
+  typeof row[key] === 'number' && Number.isFinite(row[key]) ? (row[key] as number) : 0;
+
+/** Generator net at full output (E/s): `grossOutputPerS − internalDrainPerS` when the row has a gross, else `netOutputPerS`. */
+function generatorNet(row: Record<string, unknown>): number {
+  const gross = numField(row, 'grossOutputPerS');
+  if (gross > 0) return Number((gross - numField(row, 'internalDrainPerS')).toFixed(2));
+  return numField(row, 'netOutputPerS');
+}
+
+/** A card's power line, read from its balance row (`founderCoreGenPerS`, `powerDrainPerS`, gross / net, `capacityE`). */
 function formatPower(row: Record<string, unknown>): string {
-  const gen = typeof row.founderCoreGenPerS === 'number' ? row.founderCoreGenPerS : 0;
-  const drain = typeof row.powerDrainPerS === 'number' ? row.powerDrainPerS : 0;
-  const net = typeof row.netOutputPerS === 'number' ? row.netOutputPerS : 0;
-  const capE = typeof row.capacityE === 'number' ? row.capacityE : 0;
+  const gen = numField(row, 'founderCoreGenPerS');
+  const drain = numField(row, 'powerDrainPerS');
+  const net = generatorNet(row);
+  const capE = numField(row, 'capacityE');
 
   if (gen > 0 && drain > 0) {
     return `+${gen} / −${drain} E/s`;
@@ -219,7 +230,7 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
         designBuildS: 4,
         hqBuildS: 2.7,
         cost: pylonCost,
-        powerText: '−0.5 E/s / pylon',
+        powerText: `−${numField(pylonRow, 'powerDrainPerS')} E/s / pylon`,
         disabled: insufficient,
         disabledReason: insufficient ? 'Insufficient resources' : undefined,
       });
