@@ -77,6 +77,17 @@ export interface ResolvedTradeHubCargoView {
   inOrbit: Record<ResourceKey, number>;
   stock: Record<ResourceKey, number>;
   pending: CargoPendingItem[];
+  familyCaps: Record<ResourceFamily, number>;
+  familyUsed: Record<ResourceFamily, number>;
+  familyReserved: Record<ResourceFamily, number>;
+  familyFree: Record<ResourceFamily, number>;
+}
+
+export interface TransferBounds {
+  maxAmount: number;
+  availableAmount: number;
+  capBound: number;
+  limitReason: string | null;
 }
 
 export interface ScannedHubEntity {
@@ -252,6 +263,54 @@ function resolveMintedAndThroughput(
   return { todayMintedByResource, todayMinted, dailyCap, throughputUsedPerMin };
 }
 
+function resolveColonyFamilyStorage(
+  col: Record<string, unknown> | undefined,
+  colCargo: Record<string, unknown> | undefined,
+  rawView: Record<string, unknown>,
+  stock: Record<ResourceKey, number>,
+): {
+  familyCaps: Record<ResourceFamily, number>;
+  familyUsed: Record<ResourceFamily, number>;
+  familyReserved: Record<ResourceFamily, number>;
+  familyFree: Record<ResourceFamily, number>;
+} {
+  const familyCaps: Record<ResourceFamily, number> = { metals: 500, minerals: 500, bio: 500 };
+  const rawCaps = (col?.caps ?? rawView.caps) as Partial<Record<ResourceFamily, unknown>> | undefined;
+  if (rawCaps && typeof rawCaps === 'object') {
+    for (const fam of RESOURCE_FAMILIES) {
+      const val = rawCaps[fam];
+      if (typeof val === 'number' && Number.isFinite(val) && val >= 0) {
+        familyCaps[fam] = Math.floor(val);
+      }
+    }
+  }
+
+  const familyUsed: Record<ResourceFamily, number> = { metals: 0, minerals: 0, bio: 0 };
+  for (const key of RESOURCE_KEYS) {
+    const fam = RESOURCE_FAMILY_OF[key];
+    familyUsed[fam] += stock[key] ?? 0;
+  }
+
+  const familyReserved: Record<ResourceFamily, number> = { metals: 0, minerals: 0, bio: 0 };
+  const rawReserved = colCargo?.reservedByFamily as Partial<Record<ResourceFamily, unknown>> | undefined;
+  if (rawReserved && typeof rawReserved === 'object') {
+    for (const fam of RESOURCE_FAMILIES) {
+      const val = rawReserved[fam];
+      if (typeof val === 'number' && Number.isFinite(val) && val > 0) {
+        familyReserved[fam] = Math.floor(val);
+      }
+    }
+  }
+
+  const familyFree: Record<ResourceFamily, number> = {
+    metals: Math.max(0, familyCaps.metals - familyUsed.metals - familyReserved.metals),
+    minerals: Math.max(0, familyCaps.minerals - familyUsed.minerals - familyReserved.minerals),
+    bio: Math.max(0, familyCaps.bio - familyUsed.bio - familyReserved.bio),
+  };
+
+  return { familyCaps, familyUsed, familyReserved, familyFree };
+}
+
 export function resolveTradeHubCargoView(
   view?: unknown,
   cargoStatus?: Partial<CargoStatusPayload> | null,
@@ -298,6 +357,7 @@ export function resolveTradeHubCargoView(
 
   const { todayMintedByResource, todayMinted, dailyCap, throughputUsedPerMin } = resolveMintedAndThroughput(rawView, col, colCargo, viewStatus, svcStatus);
   const pending = (svcStatus?.pending ?? viewStatus?.pending ?? (colCargo?.pending as CargoPendingItem[] | undefined) ?? []) as CargoPendingItem[];
+  const { familyCaps, familyUsed, familyReserved, familyFree } = resolveColonyFamilyStorage(col, colCargo, rawView, stock);
 
   return {
     colonyIndex,
@@ -315,5 +375,110 @@ export function resolveTradeHubCargoView(
     inOrbit,
     stock,
     pending,
+    familyCaps,
+    familyUsed,
+    familyReserved,
+    familyFree,
   };
+}
+
+export function computeTransferBounds(
+  resolved: ResolvedTradeHubCargoView,
+  tab: TradeHubTab,
+  resource: ResourceKey,
+): TransferBounds {
+  if (tab === 'export') {
+    const availableAmount = Math.max(0, Math.floor(resolved.stock[resource] ?? 0));
+    const throughputRemaining = Math.max(0, resolved.throughputCapPerMin - resolved.throughputUsedPerMin);
+    const byResMap = resolved.todayMintedByResource;
+    const anyByRes = byResMap ? Object.values(byResMap).some((v) => typeof v === 'number' && v > 0) : false;
+    const mintedForRes = anyByRes
+      ? (byResMap?.[resource] ?? 0)
+      : (byResMap?.[resource] || resolved.todayMinted || 0);
+    const dailyRemaining = Math.max(0, resolved.dailyCap - mintedForRes);
+    const capBound = Math.min(throughputRemaining, dailyRemaining);
+    const maxAmount = resolved.hubOnline ? Math.max(0, Math.min(availableAmount, capBound)) : 0;
+
+    let limitReason: string | null = null;
+    if (!resolved.hubOnline) {
+      limitReason = resolved.hubConstructing ? 'Trade Hub constructing — offline' : 'Trade Hub offline';
+    } else if (availableAmount <= 0) {
+      limitReason = 'No stock available in colony';
+    } else if (throughputRemaining <= 0) {
+      limitReason = `Throughput cap reached (${formatCargoCount(resolved.throughputCapPerMin)} / min)`;
+    } else if (dailyRemaining <= 0) {
+      limitReason = `Daily export limit reached (${formatCargoCount(resolved.dailyCap)} / day)`;
+    } else if (capBound < availableAmount) {
+      limitReason =
+        throughputRemaining <= dailyRemaining
+          ? `Bounded by throughput cap (${formatCargoCount(throughputRemaining)} / min remaining)`
+          : `Bounded by daily export limit (${formatCargoCount(dailyRemaining)} / day remaining)`;
+    }
+
+    return { maxAmount, availableAmount, capBound, limitReason };
+  }
+
+  const family = RESOURCE_FAMILY_OF[resource];
+  const availableAmount = Math.max(0, Math.floor(resolved.inOrbit[resource] ?? 0));
+  const capBound = Math.max(0, Math.floor(resolved.familyFree?.[family] ?? 0));
+  const maxAmount = resolved.hubOnline ? Math.max(0, Math.min(availableAmount, capBound)) : 0;
+
+  let limitReason: string | null = null;
+  if (!resolved.hubOnline) {
+    limitReason = resolved.hubConstructing ? 'Trade Hub constructing — offline' : 'Trade Hub offline';
+  } else if (availableAmount <= 0) {
+    limitReason = 'No cargo in orbit';
+  } else if (capBound <= 0) {
+    limitReason = 'Colony storage full';
+  } else if (capBound < availableAmount) {
+    limitReason = `Bounded by free storage (${formatCargoCount(capBound)} free)`;
+  }
+
+  return { maxAmount, availableAmount, capBound, limitReason };
+}
+
+export function formatTransferPreview(
+  resolved: ResolvedTradeHubCargoView,
+  tab: TradeHubTab,
+  resource: ResourceKey,
+  amount: number,
+  bounds: TransferBounds,
+): { previewText: string; limitReason: string | null } {
+  const safeAmount = Math.max(0, Math.floor(amount));
+  const label = SUB_RESOURCE_LABELS[resource];
+  const curStock = resolved.stock[resource] ?? 0;
+  const curOrbit = resolved.inOrbit[resource] ?? 0;
+
+  let effectiveReason = bounds.limitReason;
+  if (!effectiveReason && resolved.hubOnline && safeAmount > bounds.capBound) {
+    effectiveReason =
+      tab === 'export'
+        ? `Bounded by throughput cap (${formatCargoCount(bounds.capBound)} / min remaining)`
+        : `Bounded by free storage (${formatCargoCount(bounds.capBound)} free)`;
+  }
+
+  if (tab === 'export') {
+    const remStock = Math.max(0, curStock - safeAmount);
+    const nextOrbit = curOrbit + safeAmount;
+    const reasonSuffix = effectiveReason ? ` · ${effectiveReason}` : '';
+    const previewText = `Export ${safeAmount} ${label} → Orbit (${remStock} remaining in stock · Stock ${curStock} → ${remStock}, Orbit ${curOrbit} → ${nextOrbit}${reasonSuffix})`;
+    return { previewText, limitReason: effectiveReason };
+  }
+
+  const family = RESOURCE_FAMILY_OF[resource];
+  const freeStorage = resolved.familyFree[family] ?? 0;
+  if (safeAmount > freeStorage && resolved.hubOnline) {
+    const clamped = Math.max(0, freeStorage);
+    const nextStock = curStock + clamped;
+    const nextOrbit = Math.max(0, curOrbit - clamped);
+    const previewText = `Import ${clamped} of ${safeAmount} ${label} → Colony (clamped to ${freeStorage} free storage · Stock ${curStock} → ${nextStock}, Orbit ${curOrbit} → ${nextOrbit})`;
+    const clampReason = effectiveReason ?? `Bounded by free storage (${formatCargoCount(freeStorage)} free)`;
+    return { previewText, limitReason: clampReason };
+  }
+
+  const nextStock = curStock + safeAmount;
+  const nextOrbit = Math.max(0, curOrbit - safeAmount);
+  const reasonSuffix = effectiveReason ? ` · ${effectiveReason}` : '';
+  const previewText = `Import ${safeAmount} ${label} → Colony (free storage: ${freeStorage} · Stock ${curStock} → ${nextStock}, Orbit ${curOrbit} → ${nextOrbit}${reasonSuffix})`;
+  return { previewText, limitReason: effectiveReason };
 }
