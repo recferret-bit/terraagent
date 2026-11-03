@@ -7,8 +7,8 @@ import xpFeature from '../xp/index';
 type ServerEventItem = { kind: string; data?: Record<string, unknown> };
 type ServerEventEmit = (events: readonly ServerEventItem[]) => void;
 
-describe('W12-27 in-game toasts for achievement earned and level up + /me HUD link', () => {
-  it('renders achievement earned toast and level up toast from server events and links to /me.html#achievements', () => {
+describe('W12-27 in-game toasts for achievement earned and level up without profile navigation', () => {
+  it('renders achievement earned toast and level up toast from server events without profile links', () => {
     const handlers: ServerEventEmit[] = [];
     const emitEvents: ServerEventEmit = (events) => {
       for (const fn of handlers) fn(events);
@@ -36,8 +36,8 @@ describe('W12-27 in-game toasts for achievement earned and level up + /me HUD li
     const xpPanel = xpFeature.hud?.[0]?.mount(xpEl, ctx);
 
     const meLink = meEl.querySelector<HTMLAnchorElement>('[data-testid="hud-me-link"]');
-    expect(meLink).not.toBeNull();
-    expect(meLink?.getAttribute('href')).toBe('/me.html');
+    expect(meLink).toBeNull();
+
 
     emitEvents([
       {
@@ -64,12 +64,12 @@ describe('W12-27 in-game toasts for achievement earned and level up + /me HUD li
     const achToast = achEl.querySelector('[data-testid="achievement-toast"]');
     expect(achToast).not.toBeNull();
     expect(achToast?.textContent).toContain('Groundbreaker · Silver (+150 XP)');
-    expect(achToast?.querySelector('a')?.getAttribute('href')).toBe('/me.html#achievements');
+    expect(achToast?.querySelector('a')).toBeNull();
 
     const xpToast = xpEl.querySelector('[data-testid="xp-level-up-toast"]');
     expect(xpToast).not.toBeNull();
     expect(xpToast?.textContent).toContain('Level 5 · Surveyor (1500 XP)');
-    expect(xpToast?.querySelector('a')?.getAttribute('href')).toBe('/me.html#achievements');
+    expect(xpToast?.querySelector('a')).toBeNull();
 
     mePanel?.dispose();
     achPanel?.dispose();

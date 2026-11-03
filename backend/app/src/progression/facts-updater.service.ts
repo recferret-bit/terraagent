@@ -1,6 +1,9 @@
+import { PROGRESSION_EVENT_RULES, progressEventId } from './event-rules.js';
+import { ProgressionEngine } from './progression-engine.js';
 import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
   ProgressEventV1Schema,
+  ACHIEVEMENT_FAMILY_BY_ID,
   type AchievementFamilyId,
   type AchievementMetric,
   type ProgressEventV1,
@@ -37,33 +40,13 @@ export function planetEventToProgress(
     '';
   if (!playerId || !colonyId) return null;
 
-  const base = { playerId, colonyId, planetId: e.planetId, atTick: e.tick ?? 0 };
-  switch (e.kind) {
-    case 'tilePrepared':
-      return {
-        ...base,
-        family: 'groundbreaker',
-        metric: 'counter',
-        value: typeof data.count === 'number' && data.count > 0 ? Math.floor(data.count) : 1,
-      };
-    case 'obstacleRemoved':
-      return {
-        ...base,
-        family: 'stone-mason',
-        metric: 'counter',
-        value: typeof data.count === 'number' && data.count > 0 ? Math.floor(data.count) : 1,
-      };
-    case 'colonyFounded':
-      return { ...base, family: 'first-landfall', metric: 'counter', value: 1 };
-    case 'buildingCompleted':
-      return { ...base, family: 'architect', metric: 'counter', value: 1 };
-    case 'resourceProduced': {
-      const raw = typeof data.amount === 'number' ? data.amount : typeof data.count === 'number' ? data.count : 1;
-      return { ...base, family: 'stockpile', metric: 'counter', value: Math.max(1, Math.floor(raw)) };
-    }
-    default:
-      return null;
-  }
+  const rule = PROGRESSION_EVENT_RULES[e.kind];
+  if (!rule) return null;
+  const raw = rule.fields.map(key => data[key]).find(value => typeof value === 'number');
+  const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : rule.fallback;
+  return { playerId, colonyId, planetId: e.planetId, atTick: e.tick ?? 0,
+    eventId: progressEventId(e), family: rule.family, metric: ACHIEVEMENT_FAMILY_BY_ID.get(rule.family)!.metric, value };
+
 }
 
 /**
@@ -79,6 +62,7 @@ export class FactsUpdaterService implements OnModuleInit, OnModuleDestroy {
     @Inject(FactsStore) private readonly store: FactsStore,
     @Optional() @Inject(EventBus) private readonly bus?: EventBus,
     @Optional() @Inject(HomeRepository) private readonly homeRepo?: HomeRepository,
+    @Optional() @Inject(ProgressionEngine) private readonly engine?: ProgressionEngine,
   ) {}
 
   onModuleInit(): void {
@@ -88,14 +72,14 @@ export class FactsUpdaterService implements OnModuleInit, OnModuleDestroy {
         'planet.event',
         (ev) => {
           const prog = planetEventToProgress(ev, (cid) => this.homeRepo?.findCachedColonyById(cid)?.playerId);
-          if (prog) void this.applyProgressEvent(prog);
+          if (prog) return this.applyProgressEvent(prog);
         },
         { module: 'progression' },
       ),
       this.bus.on(
         'progression.fact',
         (ev) => {
-          void this.applyProgressEvent(ev);
+          return this.applyProgressEvent(ev);
         },
         { module: 'progression' },
       ),
@@ -115,6 +99,7 @@ export class FactsUpdaterService implements OnModuleInit, OnModuleDestroy {
 
   async applyProgressEvent(raw: ProgressEventV1): Promise<FactUpdateResult> {
     const ev = ProgressEventV1Schema.parse(raw);
+    if (this.engine?.enabled) return this.engine.apply(ev);
     return this.recordFact(ev.playerId, ev.family, ev.value, ev.metric);
   }
 
@@ -124,6 +109,10 @@ export class FactsUpdaterService implements OnModuleInit, OnModuleDestroy {
     valueOrDelta: number,
     metricOverride?: AchievementMetric,
   ): Promise<FactUpdateResult> {
+    if (this.engine?.enabled) {
+      const metric = metricOverride ?? ACHIEVEMENT_FAMILY_BY_ID.get(family)!.metric;
+      return this.engine.apply({ playerId, family, value: valueOrDelta, metric, colonyId: 'admin', planetId: 'admin', atTick: 0 });
+    }
     const result = await this.store.update(playerId, family, valueOrDelta, metricOverride);
     const allFacts = await this.store.getAll(playerId);
     for (const fn of this.listeners) {

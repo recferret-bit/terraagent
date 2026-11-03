@@ -1,3 +1,4 @@
+import { withProgressionTransaction } from './progression-transaction.js';
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { levelForXp, titleForLevel } from '@terra/contracts';
@@ -154,59 +155,63 @@ export class XpStore {
     if (delta <= 0) {
       return { applied: false, delta: 0, previousXp: prev.xp, previousLevel: prev.level, state: prev };
     }
-    const memOut = await this.mem.award(playerId, source, sourceId, delta);
-    if (!this.useDb || !this.prisma) return memOut;
+    if (!this.useDb || !this.prisma) return this.mem.award(playerId, source, sourceId, delta);
 
-    try {
-      await this.prisma.xpLedger.create({
-        data: {
-          id: `xp_${randomUUID()}`,
+    return withProgressionTransaction(this.prisma, playerId, async (tx) => {
+      const current = await tx.playerXp.findUnique({ where: { playerId } });
+      const prev = current ?? { playerId, xp: 0, level: 0, title: 'Cadet', frame: 'default', unlockStage: 1 };
+
+      try {
+        await tx.xpLedger.create({
+          data: {
+            id: `xp_${randomUUID()}`,
+            playerId,
+            source,
+            sourceId,
+            delta,
+          },
+        });
+      } catch (e) {
+        if (!isUniqueError(e)) throw e;
+        return { applied: false, delta: 0, previousXp: prev.xp, previousLevel: prev.level, state: prev };
+      }
+
+      const nextXp = prev.xp + delta;
+      const { level: nextLevel } = levelForXp(nextXp);
+      const nextTitle = nextLevel > prev.level ? titleForLevel(nextLevel) : prev.title;
+      const saved = await tx.playerXp.upsert({
+        where: { playerId },
+        create: {
           playerId,
-          source,
-          sourceId,
-          delta,
+          xp: nextXp,
+          level: nextLevel,
+          title: nextTitle,
+          frame: prev.frame,
+          unlockStage: prev.unlockStage,
+        },
+        update: {
+          xp: nextXp,
+          level: nextLevel,
+          title: nextTitle,
         },
       });
-    } catch (e) {
-      if (!isUniqueError(e)) throw e;
-      return { applied: false, delta: 0, previousXp: prev.xp, previousLevel: prev.level, state: prev };
-    }
+      const state: PlayerXpState = {
+        playerId: saved.playerId,
+        xp: saved.xp,
+        level: saved.level,
+        title: saved.title,
+        frame: saved.frame,
+        unlockStage: saved.unlockStage,
+      };
 
-    const nextXp = prev.xp + delta;
-    const { level: nextLevel } = levelForXp(nextXp);
-    const nextTitle = nextLevel > prev.level ? titleForLevel(nextLevel) : prev.title;
-    const saved = await this.prisma.playerXp.upsert({
-      where: { playerId },
-      create: {
-        playerId,
-        xp: nextXp,
-        level: nextLevel,
-        title: nextTitle,
-        frame: prev.frame,
-        unlockStage: prev.unlockStage,
-      },
-      update: {
-        xp: nextXp,
-        level: nextLevel,
-        title: nextTitle,
-      },
+      return {
+        applied: true,
+        delta,
+        previousXp: prev.xp,
+        previousLevel: prev.level,
+        state,
+      };
     });
-    const state: PlayerXpState = {
-      playerId: saved.playerId,
-      xp: saved.xp,
-      level: saved.level,
-      title: saved.title,
-      frame: saved.frame,
-      unlockStage: saved.unlockStage,
-    };
-    await this.mem.seed(playerId, state);
-    return {
-      applied: true,
-      delta,
-      previousXp: prev.xp,
-      previousLevel: prev.level,
-      state,
-    };
   }
 
   async setUnlockStage(playerId: string, stage: number): Promise<PlayerXpState> {

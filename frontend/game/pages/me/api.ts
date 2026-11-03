@@ -42,7 +42,7 @@ export function resolveMeBearerToken(search?: string): string {
   const stored = readActivePilot();
   if (stored?.accessToken) return stored.accessToken;
   if (stored?.playerId) return `player:${stored.playerId}`;
-  return 'dev:w12';
+  return '';
 }
 
 function isWaveDisabledPayload(status: number, body: unknown): boolean {
@@ -61,7 +61,18 @@ export async function fetchMeData(
   search?: string,
 ): Promise<MeFetchResult> {
   const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
-  const token = resolveMeBearerToken(rawSearch);
+  let token = resolveMeBearerToken(rawSearch);
+  const params = new URLSearchParams(rawSearch);
+  if (!params.has('as') && !params.has('playerId')) {
+    try {
+      const refreshed = await doFetch('/v1/auth/refresh', { method: 'POST', credentials: 'include' });
+      if (refreshed.ok) {
+        const body = await refreshed.json() as { accessToken?: string };
+        if (body.accessToken) token = body.accessToken;
+      }
+    } catch { /* A still-valid bearer can be used if refresh is unavailable. */ }
+  }
+  if (!token) return { kind: 'error', message: 'Sign in from the landing or planet selection screen to view your pilot.' };
   const headers: Record<string, string> = {
     Accept: 'application/json',
     Authorization: `Bearer ${token}`,

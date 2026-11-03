@@ -12,7 +12,7 @@ interface EventSourceLike {
 
 /**
  * In-game toast for `achievement.earned` events (W12-27).
- * Uses `createElement` + `textContent` only (PA-03: never `innerHTML`) and links to `/me.html#achievements`.
+ * Uses `createElement` + `textContent` only (PA-03: never `innerHTML`) without profile navigation.
  */
 export class AchievementToastHost {
   private current: HTMLElement | null = null;
@@ -80,14 +80,8 @@ export class AchievementToastHost {
     title.textContent = `${payload.familyName} · ${payload.tierName} (+${payload.xp} XP)`;
     bodyRow.appendChild(title);
 
-    const link = document.createElement('a');
-    link.className = 'btn btn-ghost btn-sm ta-achievement-toast-link';
-    link.href = '/me.html#achievements';
-    link.textContent = 'VIEW ACHIEVEMENTS →';
-
     card.appendChild(head);
     card.appendChild(bodyRow);
-    card.appendChild(link);
 
     this.host.appendChild(card);
     this.host.hidden = false;

@@ -8,7 +8,7 @@ export function renderPlanetsSection(profile: MeProfileResponse): HTMLElement {
       { className: 'plate-sm ta-colony-card', dataset: { testid: 'me-current-colony', colonyId: c.colonyId } },
       el('div', { className: 'ta-colony-head' }, el('strong', null, c.name), el('span', { className: 'label c-terra' }, `S${c.stage}`)),
       el('p', { className: 'ta-colony-meta' }, `${c.planetName} · ${c.planetType}`),
-      el('a', { className: 'btn btn-primary btn-sm', href: `/play.html?join=${encodeURIComponent(c.planetId)}`, dataset: { testid: 'me-colony-dive-in' } }, 'Dive in'),
+      el('a', { className: 'btn btn-primary btn-sm', href: c.colonyId.startsWith('co_w12_') ? '/play.html?scenario=w12&as=w12' : '/play.html?skip=1', dataset: { testid: 'me-colony-dive-in' } }, 'Dive in'),
     ),
   );
 

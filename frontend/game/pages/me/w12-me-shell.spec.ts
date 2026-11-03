@@ -11,6 +11,7 @@ describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 saf
     const achievements = makeW12AchievementsFixture();
 
     const page = new MePage(root, {
+      search: '?as=w12',
       fetch: async (url) => ({
         ok: true,
         status: 200,
@@ -36,6 +37,7 @@ describe('W12-13 /me page shell, sticky tabs, wave_disabled plate, and PA-03 saf
   it('renders Player page is off plate when /v1/me/profile returns wave_disabled (403)', async () => {
     const root = document.createElement('div');
     const page = new MePage(root, {
+      search: '?as=w12',
       fetch: async () => ({
         ok: false,
         status: 403,

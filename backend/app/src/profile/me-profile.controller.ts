@@ -22,7 +22,7 @@ export class MeProfileController {
   async profile(@Req() req: IncomingMessage): Promise<MeProfileResponse> {
     const player = resolveMePlayer(req, this.tokens, this.flags, this.env?.NODE_ENV === 'production');
     if (this.env?.NODE_ENV !== 'production') {
-      await this.seed?.ensureSeeded(player.id);
+      if (player.id === 'pr_dev_w12') await this.seed?.ensureSeeded(player.id);
     }
     return this.service.getForPlayer(player);
   }

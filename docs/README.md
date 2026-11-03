@@ -40,3 +40,5 @@ Several files describe the earlier multi-service design that decision D-24 simpl
 | [`textures-shaders-lighting-spec.md`](./visuals/textures-shaders-lighting-spec.md) | Procedural PBR textures, terrain and water shaders, day/night lighting, lightning |
 
 The short, enforced version of these rules is in [`AGENTS.md`](../AGENTS.md) and the skills under [`.agents/skills/`](../.agents/skills).
+
+Progression: [W12 persistence, configurable achievement rules and durable effect delivery](spec/PROGRESSION_ENGINE.md).

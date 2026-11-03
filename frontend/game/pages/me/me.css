@@ -68,11 +68,14 @@
   padding: 0 16px;
   display: flex;
   flex-direction: column;
-  gap: 20px;
+  gap: 40px;
 }
 
 .ta-me-section {
-  padding: 20px;
+  padding: 28px;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-3);
+  border-top: 3px solid var(--ta-blue);
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -85,14 +88,14 @@
   justify-content: space-between;
   gap: 12px;
   border-bottom: 1px solid var(--ta-seam);
-  padding-bottom: 10px;
+  padding: 8px 0 20px;
 }
 
 .ta-me-eyebrow {
   margin: 0;
-  font-size: 13px;
+  font-size: 20px;
   letter-spacing: 0.16em;
-  color: var(--ta-steel);
+  color: var(--ta-bone);
 }
 
 .ta-me-disabled,
@@ -177,11 +180,12 @@
 
   .ta-me-main {
     padding: 0 10px;
-    gap: 14px;
+    gap: 28px;
   }
 
   .ta-me-section {
     padding: 14px;
+    scroll-margin-top: 140px;
   }
 
   .ta-colony-grid {

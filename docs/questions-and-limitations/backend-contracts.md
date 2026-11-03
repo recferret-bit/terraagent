@@ -675,7 +675,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 - **Status:** Accepted (by design)
 - **Area / code:** `backend/app/src/progression/{facts.store,achievement-unlock.store,xp.store,w12-seed.service}.ts`, `backend/app/src/profile/{colony-history.store,me-profile.service,me-achievements.service}.ts`, `shared/db/prisma/progression.prisma`
-- **What happens:** `FactsStore`, `AchievementUnlockStore`, and `XpStore` persist to `progression.facts`, `progression.achievement_unlock`, `progression.xp_ledger`, and `progression.player_xp` (migration `0009_w12_progression`) when `PRISMA` is injected and `databaseEnabled(env)` is true, and fall back to in-memory maps when the database is off (`NODE_ENV=test` without `DATABASE_URL`). In non-production builds, `W12SeedService.ensureSeeded` seeds any empty pilot with the W12 scenario baseline (9 earned achievements, Level 4 `1 120 / 1 500` XP, title `Surveyor`, `unlockStage = 4`, 1 active colony + 2 past colonies) unless `profile.reset` was called for that pilot in the current process.
+- **What happens:** `FactsStore`, `AchievementUnlockStore`, and `XpStore` persist to `core.player_fact`, `core.achievement_unlock`, `core.xp_ledger`, and `core.player_xp` (migration `0009_w12_progression`) when `PRISMA` is injected and `databaseEnabled(env)` is true, and fall back to in-memory maps when the database is off (`NODE_ENV=test` without `DATABASE_URL`). In non-production builds, `W12SeedService.ensureSeeded` automatically seeds only the explicit `pr_dev_w12` demo pilot with the W12 scenario baseline (9 earned achievements, Level 4 `1 120 / 1 500` XP, title `Surveyor`, `unlockStage = 4`, 1 active colony + 2 past colonies) unless `profile.reset` was called for that pilot in the current process.
 - **Why it is like this:** The W12 unit suites (`w12-facts`, `w12-evaluator`, `w12-xp`, `w12-me-profile`, `w12-me-achievements`, `w12-dev-commands`) run without Postgres, while the dev stack and e2e suite persist progression in Postgres across restarts.
 - **Workaround / mitigation:** `profile reset` in the dev console clears a pilot's Postgres and in-memory progression rows; `npm run dev:restart` after `profile reset` re-seeds the W12 baseline on the next `/me.html` or `/play.html?scenario=w12` load.
 - **To resolve:** Add catch-up evaluation (`W12-04`) and the `BadgeMint` outbox worker (`W12-25`).
@@ -685,8 +685,38 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 - **Status:** Open
 - **Area / code:** `docs/plan/waves/W12-player-page-achievements.md`, `backend/app/src/progression/`, `backend/app/src/profile/`
-- **What happens:** In accordance with the W12 hackathon slice (`H` tag), the following non-`H` issues are deferred: `W12-04` (catch-up evaluation on profile load), `W12-06` (milestone XP consumers for `stageReached`, `colonySettled`, `planet_result`), `W12-07` (level-10 nameplate colour and level-30 gold border), `W12-10` & `W12-11` (`player_history` writer and `GET /v1/me/history?cursor=`), `W12-25` & `W12-26` (`BadgeMint` 1 h delayed outbox via `BadgeNftPort` and real vs mock explorer link on card back), `W12-28..30` (`PA-01` 60-tier integration test, `PA-04` viewport screenshot test, profile analytics events), and `W12-33..34` (`PROGRESSION_ACHIEVEMENTS` forwarder for `buildingCompleted`/`resourceProduced` and `audience: 'server'` fanout filtering). Note that `MeProfileService` already computes titles and frames per level (`unlockedTitlesForLevel`, `unlockedFramesForLevel`) and `FactsUpdaterService` maps `tilePrepared`, `obstacleRemoved`, `colonyFounded`, `buildingCompleted`, and `resourceProduced` from `planet.event`.
+- **What happens:** In accordance with the W12 hackathon slice (`H` tag), the following non-`H` issues are deferred: `W12-04` (catch-up evaluation on profile load), `W12-06` (milestone XP consumers for `stageReached`, `colonySettled`, `planet_result`), `W12-07` (level-10 nameplate colour and level-30 gold border), `W12-10` & `W12-11` (`player_history` writer and `GET /v1/me/history?cursor=`), `W12-25` & `W12-26` (`BadgeMint` 1 h delayed outbox via `BadgeNftPort` and real vs mock explorer link on card back), `W12-28..30` (`PA-04` viewport screenshot test, profile analytics events), and `W12-33..34` (`PROGRESSION_ACHIEVEMENTS` forwarder for `buildingCompleted`/`resourceProduced` and `audience: 'server'` fanout filtering). Note that `MeProfileService` already computes titles and frames per level (`unlockedTitlesForLevel`, `unlockedFramesForLevel`) and `FactsUpdaterService` maps `tilePrepared`, `obstacleRemoved`, `colonyFounded`, `buildingCompleted`, and `resourceProduced` from `planet.event`.
 - **Why it is like this:** Scoped out of the 18-issue `H` cut for W12 (`PRODUCT_WAVES.md`, `W12-player-page-achievements.md` §Hackathon slice).
 - **Workaround / mitigation:** Seeded unlocks on the W12 pilot carry `nft.status = 'minted'` (`Recorded (mock)`), and newly unlocked tiers in dev show `Badge minting…` on the card back; `/me.html` renders the Planets, History, and Play shell sections so all 6 sticky tabs (`PILOT · PROGRESS · PLANETS · HISTORY · ACHIEVEMENTS · PLAY`) navigate cleanly.
 - **To resolve:** Land the remaining `H+` and post-hackathon W12 issues (`W12-04`, `W12-06..07`, `W12-10..11`, `W12-17..19`, `W12-24..26`, `W12-28..30`, `W12-33..34`).
 - **Found:** 2026-11-03, W12
+
+### BE-48 · Sim progression ingress still precedes durable commit
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/game/bus-bridge.ts`, `backend/app/src/progression/facts-updater.service.ts`
+- **What happens:** the sim publishes to an in-process bus; a process crash before the progression transaction commits can lose that input. Once committed, the journal, statistics, unlocks, XP and effect queue survive restart atomically. Current sim event IDs hash the envelope; replay after a world reset needs an incarnation ID.
+- **Why it is like this:** W12 now supplies the durable consumer boundary; the sim producer has no transactional outbox yet.
+- **Workaround / mitigation:** failed async handlers are logged; producers using the awaited API may replay stable event IDs safely.
+- **To resolve:** persist the source event with the authoritative sim checkpoint/outbox before acknowledgment, replay until accepted, include world incarnation and sequence. Required producer gate in every future wave.
+- **Found:** 2026-11-03, W12 fixes.
+
+### BE-49 · Queued badge and notification consumers are future-wave adapters
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/progression/progression-effects.ts`, `docs/spec/PROGRESSION_ENGINE.md`
+- **What happens:** unlocks create durable independent badge/notification rows. No NFT or external notification is sent until a consumer is installed; rows stay pending. Delivery leases are 60 seconds, so longer handlers need external effect-ID deduplication.
+- **Why it is like this:** the owner requested the queue now for future minting and notifications.
+- **Workaround / mitigation:** lease recovery, capped retry backoff, attempt/error records and deterministic IDs are implemented and covered with PostgreSQL tests.
+- **To resolve:** W09 notification and W23 badge providers schedule `drain` and forward the effect ID to their external ports.
+- **Found:** 2026-11-03, W12 fixes.
+
+### BE-50 · Live colony profile stage and multi-colony resume need W11 projection
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/profile/colony-history.store.ts`, `frontend/game/pages/me/sections/PlanetsHistoryPlaySections.ts`
+- **What happens:** live colonies now come from database seats and planets; their stage defaults to 1 because the seat table has no stage projection. Dive in resumes authenticated home. Mock cards enter the W12 scenario. Arbitrary colony-specific resume and real archive lifecycle writers remain future work.
+- **Why it is like this:** the old link used the dev-only `join` route with mock planet IDs that were not joinable. The existing home route is the supported live entry point.
+- **Workaround / mitigation:** explicit mock scenario routing works; the W11 plan now requires a validated colony resume contract and unavailable-colony handling.
+- **To resolve:** project colony stage/outcomes from authoritative events and add owned-colony resume before supporting multiple destinations.
+- **Found:** 2026-11-03, W12 fixes.

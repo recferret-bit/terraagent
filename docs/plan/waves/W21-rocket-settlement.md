@@ -85,3 +85,9 @@ The colony's endgame works end to end. The player terraforms all owned land to L
 - AC-17 passes.
 - The transfer saga works with mock ports.
 - Tag `wave-21` is created.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Persist the settlement outcome, colony archive and settler fact; retries must not archive or reward twice.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

@@ -1,3 +1,4 @@
+import { PilotAccess } from '../design/pilot/PilotAccess';
 // Landing page entry: boots every section (copy variant, live stats, hex colony, roadmap first; then the heavy WebGL
 // sections: hero stage, planet cards, resource viewer) and the CRT treatment of the live pictures.
 // WebGL sections are loaded lazily so the light sections never wait for three.js; one failing never blocks the rest.
@@ -17,6 +18,7 @@ class LandingPage {
     () => initLiveStats(this.page),
     initColonyCanvas,
     initRoadmap,
+    () => { const host = document.querySelector<HTMLElement>('.header-right'); if (host) new PilotAccess(host); },
     lazy(() => import('./hero/HeroStage').then((m) => m.initHeroStage)),
     lazy(() => import('./sections/planetCards').then((m) => m.initPlanetCards)),
     lazy(() => import('./resources').then((m) => m.initResources)),

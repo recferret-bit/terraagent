@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { ProgressionEngine } from './progression-engine.js';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { ACHIEVEMENT_BY_ID, type AchievementFamilyId } from '@terra/contracts';
 import { AchievementUnlockStore, type SeedUnlockEntry } from './achievement-unlock.store.js';
 import { FactsStore } from './facts.store.js';
@@ -53,6 +54,7 @@ export const W12_SEED_XP = {
  */
 @Injectable()
 export class W12SeedService {
+  private readonly seeding = new Map<string, Promise<boolean>>();
   private readonly seededPlayers = new Set<string>();
   private readonly resetPlayers = new Set<string>();
   private readonly resetListeners = new Set<(playerId: string) => void | Promise<void>>();
@@ -62,6 +64,7 @@ export class W12SeedService {
     @Inject(FactsStore) private readonly facts: FactsStore,
     @Inject(AchievementUnlockStore) private readonly unlocks: AchievementUnlockStore,
     @Inject(XpStore) private readonly xp: XpStore,
+    @Optional() @Inject(ProgressionEngine) private readonly engine?: ProgressionEngine,
   ) {}
 
   onReset(fn: (playerId: string) => void | Promise<void>): () => void {
@@ -79,7 +82,15 @@ export class W12SeedService {
     return this.resetPlayers.has(playerId);
   }
 
-  async ensureSeeded(playerId: string): Promise<boolean> {
+  ensureSeeded(playerId: string): Promise<boolean> {
+    const pending = this.seeding.get(playerId);
+    if (pending) return pending;
+    const task = this.ensureSeededOnce(playerId).finally(() => this.seeding.delete(playerId));
+    this.seeding.set(playerId, task);
+    return task;
+  }
+
+  private async ensureSeededOnce(playerId: string): Promise<boolean> {
     this.noteActivePlayer(playerId);
     if (this.resetPlayers.has(playerId) || this.seededPlayers.has(playerId)) return false;
     const [existingFacts, existingUnlocks, existingXp] = await Promise.all([
@@ -137,7 +148,8 @@ export class W12SeedService {
   private async resetSinglePilot(playerId: string): Promise<void> {
     this.seededPlayers.delete(playerId);
     this.resetPlayers.add(playerId);
-    await Promise.all([
+    if (this.engine?.enabled) await this.engine.resetPlayer(playerId);
+    else await Promise.all([
       this.facts.reset(playerId),
       this.unlocks.reset(playerId),
       this.xp.reset(playerId),

@@ -135,8 +135,7 @@ export class AchievementUnlockStore {
     def: AchievementDef,
     earnedAt: Date = new Date(),
   ): Promise<{ created: boolean; record: UnlockedAchievementRecord }> {
-    const memRes = await this.mem.recordUnlock(playerId, def, earnedAt);
-    if (!this.useDb || !this.prisma) return memRes;
+    if (!this.useDb || !this.prisma) return this.mem.recordUnlock(playerId, def, earnedAt);
 
     const existing = await this.prisma.achievementUnlock.findUnique({
       where: { playerId_achievementId: { playerId, achievementId: def.id } },
@@ -161,7 +160,7 @@ export class AchievementUnlockStore {
     try {
       const created = await this.prisma.achievementUnlock.create({
         data: {
-          id: memRes.record.id,
+          id: `au_${randomUUID()}`,
           playerId,
           achievementId: def.id,
           family: def.familyId,
@@ -184,7 +183,9 @@ export class AchievementUnlockStore {
       };
     } catch (e) {
       if (!isUniqueError(e)) throw e;
-      return { created: false, record: memRes.record };
+      const record = (await this.getEarnedMap(playerId)).get(def.id);
+      if (!record) throw e;
+      return { created: false, record };
     }
   }
 
@@ -197,7 +198,7 @@ export class AchievementUnlockStore {
     const memMap = await this.mem.getEarnedMap(playerId);
     if (!this.useDb || !this.prisma) return memMap;
     const rows = await this.prisma.achievementUnlock.findMany({ where: { playerId } });
-    const out = new Map(memMap);
+    const out = new Map<string, UnlockedAchievementRecord>();
     for (const r of rows) {
       out.set(r.achievementId, {
         id: r.id,

@@ -114,3 +114,9 @@ Every Trade Hub is a **market stall** whose owner sets a fee (0–3 %). Players 
 - `?scenario=w13` loads; `TA_WAVES=..12` hides the Market tab and rejects market commands (`wave_disabled`). Orders stay in the DB untouched.
 - The Intents contract suite passes on the mock. No restart ever executes a batch twice.
 - Tag `wave-13` created.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Publish facts only for settled market trades and port throughput, with trade/settlement IDs.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

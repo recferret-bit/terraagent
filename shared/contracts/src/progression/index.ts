@@ -30,6 +30,7 @@ export type AchievementProgress = z.infer<typeof AchievementProgressSchema>;
 
 /** Bus/updater progression fact event (`ProgressEventV1`, W12-01 / W12-02). */
 export const ProgressEventV1Schema = z.strictObject({
+  eventId: z.string().min(1).max(256).optional(),
   playerId: z.string().min(1),
   colonyId: z.string().min(1),
   planetId: z.string().min(1),

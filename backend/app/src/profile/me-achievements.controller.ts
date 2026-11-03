@@ -24,7 +24,7 @@ export class MeAchievementsController {
     const player = resolveMePlayer(req, this.tokens, this.flags, prod);
     let wavesOverride: string | undefined;
     if (!prod) {
-      await this.seed?.ensureSeeded(player.id);
+      if (player.id === 'pr_dev_w12') await this.seed?.ensureSeeded(player.id);
       const qIdx = req.url?.indexOf('?') ?? -1;
       if (qIdx !== -1 && req.url) {
         wavesOverride = new URLSearchParams(req.url.slice(qIdx)).get('waves') ?? undefined;

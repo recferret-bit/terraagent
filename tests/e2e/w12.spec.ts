@@ -42,7 +42,7 @@ async function tickAdvances(target: Page, from: number): Promise<void> {
 test('@hack 1. open /play.html?scenario=w12 and open /me.html in a second tab -> sticky section tabs', async () => {
   serverOnly();
   const t0 = await loadScenario(playPage, 'w12', {}, { as: 'w12', timeout: 45_000 });
-  await expect(playPage.locator('[data-testid="hud-me-link"]')).toBeVisible({ timeout: 15_000 });
+  await expect(playPage.locator('[data-testid="hud-me-link"]')).toHaveCount(0);
   await tickAdvances(playPage, t0);
 
   await mePage.goto('/me.html?as=w12');

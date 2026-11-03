@@ -77,3 +77,32 @@ model ColonyHistory {
   @@map("colony_history")
   @@schema("core")
 }
+
+/// Durable input journal. Producers retain eventId across retries.
+model ProgressionReceipt {
+  id        String   @id
+  playerId  String   @map("player_id")
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([playerId])
+  @@map("progression_receipt")
+  @@schema("core")
+}
+
+/// Transactional effect queue; each consumer has its own idempotency key and retry lease.
+model ProgressionEffect {
+  id          String    @id
+  kind        String
+  playerId    String    @map("player_id")
+  payload     Json
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now()) @map("available_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  lastError   String?   @map("last_error")
+  lease       String?
+
+  @@index([kind, completedAt, availableAt])
+  @@map("progression_effect")
+  @@schema("core")
+}

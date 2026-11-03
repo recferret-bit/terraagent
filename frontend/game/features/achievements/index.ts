@@ -11,25 +11,15 @@ declare module '../../core/registry/types' {
   }
 }
 
-function mountMeChip(el: HTMLElement, ctx: FeatureContext) {
+function mountPilotTracking(_el: HTMLElement, ctx: FeatureContext) {
   const tracker = new ActivePilotTracker(ctx);
   ctx.services.activePilot = tracker;
-
-  const chip = document.createElement('div');
-  chip.className = 'plate-sm ta-me-chip';
-  const link = document.createElement('a');
-  link.className = 'ta-me-link';
-  link.dataset.testid = 'hud-me-link';
-  link.href = '/me.html';
-  link.textContent = 'PILOT / ME';
-  chip.appendChild(link);
-  el.appendChild(chip);
 
   return {
     dispose() {
       if (ctx.services.activePilot === tracker) ctx.services.activePilot = undefined;
       tracker.dispose();
-      chip.remove();
+
     },
   };
 }
@@ -41,10 +31,10 @@ export default defineFeature({
   devCommands: [factCommand, xpCommand, profileCommand],
   hud: [
     {
-      id: 'me-link',
+      id: 'pilot-tracking',
       slot: 'top-left',
       order: 25,
-      mount: mountMeChip,
+      mount: mountPilotTracking,
     },
     {
       id: 'achievement-toast',

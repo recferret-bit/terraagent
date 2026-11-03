@@ -125,6 +125,7 @@ export class MeProfileService {
     let currentColonies = await this.colonies.getCurrent(playerId);
     let allPastColonies = await this.colonies.getPast(playerId);
     if (
+      playerId === 'pr_dev_w12' &&
       currentColonies.length === 0 &&
       allPastColonies.length === 0 &&
       !this.seed?.isReset(playerId) &&

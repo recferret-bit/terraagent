@@ -1,3 +1,5 @@
+import { ProgressionEngine } from './progression-engine.js';
+import { ProgressionEffects } from './progression-effects.js';
 import { Global, Module } from '@nestjs/common';
 import { AchievementEvaluatorService } from './achievement-evaluator.service.js';
 import { AchievementUnlockStore } from './achievement-unlock.store.js';
@@ -16,6 +18,8 @@ import { XpStore } from './xp.store.js';
 @Global()
 @Module({
   providers: [
+    ProgressionEngine,
+    ProgressionEffects,
     FactsStore,
     FactsUpdaterService,
     AchievementUnlockStore,
@@ -27,6 +31,8 @@ import { XpStore } from './xp.store.js';
     ProgressionDevCommand,
   ],
   exports: [
+    ProgressionEngine,
+    ProgressionEffects,
     FactsStore,
     FactsUpdaterService,
     AchievementUnlockStore,

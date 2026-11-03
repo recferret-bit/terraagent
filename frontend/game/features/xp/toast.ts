@@ -11,7 +11,7 @@ interface EventSourceLike {
 
 /**
  * In-game toast for `xp.levelUp` events (W12-27).
- * Uses `createElement` + `textContent` only (PA-03: never `innerHTML`) and links to `/me.html#achievements`.
+ * Uses `createElement` + `textContent` only (PA-03: never `innerHTML`) without profile navigation.
  */
 export class XpToastHost {
   private current: HTMLElement | null = null;
@@ -65,14 +65,8 @@ export class XpToastHost {
     const titlePart = payload.title ? ` · ${payload.title}` : '';
     title.textContent = `Level ${payload.level}${titlePart} (${payload.xp} XP)`;
 
-    const link = document.createElement('a');
-    link.className = 'btn btn-ghost btn-sm ta-xp-toast-link';
-    link.href = '/me.html#achievements';
-    link.textContent = 'PILOT PROFILE →';
-
     card.appendChild(head);
     card.appendChild(title);
-    card.appendChild(link);
 
     this.host.appendChild(card);
     this.host.hidden = false;

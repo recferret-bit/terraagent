@@ -13,6 +13,8 @@ export interface FactUpdateResult {
   readonly playerId: string;
   readonly family: AchievementFamilyId;
   readonly metric: AchievementMetric;
+  readonly levelUp?: import('./xp-ledger.service.js').XpLevelUpEventV1 | null;
+  readonly unlocked?: import('./achievement-evaluator.service.js').AchievementUnlockedEventV1[];
   readonly previousValue: number;
   readonly value: number;
 }
@@ -109,10 +111,9 @@ export class FactsStore implements FactsStorePort {
     valueOrDelta: number,
     metricOverride?: AchievementMetric,
   ): Promise<FactUpdateResult> {
-    const memRes = await this.mem.update(playerId, family, valueOrDelta, metricOverride);
-    if (!this.useDb || !this.prisma) return memRes;
+    if (!this.useDb || !this.prisma) return this.mem.update(playerId, family, valueOrDelta, metricOverride);
 
-    const metric = memRes.metric;
+    const metric = defaultMetric(family, metricOverride);
     const input = sanitizeNonNegative(valueOrDelta);
     const prevRow = await this.prisma.playerFact.findUnique({
       where: { playerId_family: { playerId, family } },
@@ -144,7 +145,7 @@ export class FactsStore implements FactsStorePort {
       where: { playerId_family: { playerId, family } },
       select: { value: true },
     });
-    return row?.value ?? (await this.mem.get(playerId, family));
+    return row?.value ?? 0;
   }
 
   async getAll(playerId: string): Promise<Record<string, number>> {
@@ -154,7 +155,7 @@ export class FactsStore implements FactsStorePort {
       where: { playerId },
       select: { family: true, value: true },
     });
-    const out: Record<string, number> = { ...memFacts };
+    const out: Record<string, number> = {};
     for (const r of rows) out[r.family] = r.value;
     return out;
   }

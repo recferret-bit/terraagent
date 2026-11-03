@@ -111,3 +111,9 @@ Leaving is safe and honest. A colony keeps running while its player is away: the
 - `TA_WAVES=..08` hides the away panel, digest and notification UI; presence and coarse stepping keep running as platform behaviour.
 - Tag `wave-09` is created.
 - Every `CT-*` and `AW-*` rule in CONTINUITY is mapped above. `CT-01..05` home routing is in W11.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Implement the notification consumer with persisted delivery state and effect-ID deduplication.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

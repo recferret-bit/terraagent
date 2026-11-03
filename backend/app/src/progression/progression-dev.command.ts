@@ -79,9 +79,8 @@ export class ProgressionDevCommand implements OnModuleInit {
 
     try {
       const res = await this.factsUpdater.recordFact(pid, input.family, input.delta);
-      if (pid !== 'pr_dev_w12') {
-        await this.factsUpdater.recordFact('pr_dev_w12', input.family, input.delta);
-      }
+      if (res.unlocked) unlocked.push(...res.unlocked);
+      if (res.levelUp) levelUp = res.levelUp;
       const xpState = await this.xpLedger.getPlayerXp(pid);
       return {
         playerId: pid,
