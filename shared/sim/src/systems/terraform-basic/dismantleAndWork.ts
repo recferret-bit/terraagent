@@ -30,7 +30,7 @@ export { workJobsSystem } from './workSystem';
 
 /** The base build cost of an entity kind (repair is priced and dismantle refunded from it); the client preview reads it too. */
 export function getEntityBaseBuildCost(kind: number, data?: CompiledDataLike): Partial<Record<ResourceKey, number>> {
-  const src = data ?? compileData(new Set(['W00', 'W01', 'W02']));
+  const src = data ?? compileData(new Set(['W00', 'W01', 'W02', 'W10']));
   if (kind === ENTITY_KIND.harvester) return ((resolveHarvesterRow(src).cost ?? { 'metals.t1': 70, 'minerals.t1': 30 }) as Partial<Record<ResourceKey, number>>);
   if (kind === ENTITY_KIND.hq) return { 'metals.t1': 100, 'minerals.t1': 50 };
   const resolved = resolveBuildingRow(buildingKindName(kind), src);
@@ -64,7 +64,12 @@ export function findOwnEntitiesAtTile(
       // The landed pod (the wreck) is one hex and can be scrapped: it matches its own tile only.
       if (cols.state[row] !== ENTITY_STATE.descending && Math.round(cols.q[row]) === q && Math.round(cols.r[row]) === r) matches.push(row);
     } else {
-      const defFp = kind === ENTITY_KIND.commandHub ? 3 : kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar ? 2 : 1;
+      const defFp =
+        kind === ENTITY_KIND.commandHub
+          ? 3
+          : kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.tradeHub
+            ? 2
+            : 1;
       const w = Math.max(1, cols.footprintW[row] || defFp);
       const d = Math.max(1, cols.footprintD[row] || defFp);
       const fp = getFootprintTileIndices(state as PlanetState, cols.q[row], cols.r[row], w, d, cols.rot[row]);
