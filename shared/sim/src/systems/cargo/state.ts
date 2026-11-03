@@ -18,6 +18,8 @@ export interface PendingCargoImport {
   importSeq: number;
   resource: ResourceKey;
   amount: number;
+  requestedAmount?: number;
+  debitedInOrbit?: boolean;
   atTick: number;
 }
 
