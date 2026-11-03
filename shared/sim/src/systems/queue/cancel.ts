@@ -27,7 +27,15 @@ export function refundEntrySpent(
   data?: CompiledDataLike,
 ): boolean {
   let refunded = false;
-  if (entry.entityId !== undefined) {
+  if (entry.subEntityIds && entry.subEntityIds.length > 0) {
+    for (const subId of entry.subEntityIds) {
+      const eRow = rowOf(state.entities, subId);
+      if (eRow >= 0 && state.entities.cols.state[eRow] === ENTITY_STATE.constructing) {
+        const bRes = cancelBuildingConstruction(state, subId, entry.colonyIndex, tick, data);
+        if (bRes.ok && bRes.refunded) refunded = true;
+      }
+    }
+  } else if (entry.entityId !== undefined) {
     // Its building finished this step (the queue marks the entry `done` next step): nothing to cancel or refund.
     const eRow = rowOf(state.entities, entry.entityId);
     if (eRow >= 0 && state.entities.cols.state[eRow] !== ENTITY_STATE.constructing) return false;
