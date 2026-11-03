@@ -2,6 +2,7 @@ import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
 import { DEFAULT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import { MAP_LAYER_META, type MapLayerId } from '@terra/contracts';
 import { drawEntityDots } from './entityDots';
+import { drawResourcesLayer } from './resourceLayer';
 import { resolveTileColorFromTokens } from './tileColors';
 import type { MapLayer, MapLayerDrawView } from './types';
 
@@ -45,10 +46,9 @@ export function drawFlatMapBackground(
   ctx: CanvasRenderingContext2D,
   view: MapLayerDrawView,
 ): void {
-  ctx.save();
-  ctx.fillStyle = '#151A22';
-  ctx.fillRect(0, 0, view.width, view.height);
-  ctx.restore();
+  // Terrain off: no opaque square. The caller shows its own backdrop (blurred scene + uncharted lattice).
+  void ctx;
+  void view;
 }
 
 export function drawTerrainLayer(
@@ -144,7 +144,7 @@ export function drawUnitsLayer(
   return drawEntityDots(ctx, view).length;
 }
 
-export function createBuiltinW04Layers(): Record<'terrain' | 'territory' | 'units', MapLayer> {
+export function createBuiltinW04Layers(): Record<'terrain' | 'territory' | 'units' | 'resources', MapLayer> {
   return {
     territory: {
       ...MAP_LAYER_META.territory,
@@ -156,6 +156,12 @@ export function createBuiltinW04Layers(): Record<'terrain' | 'territory' | 'unit
       ...MAP_LAYER_META.terrain,
       draw: (ctx, view) => {
         drawTerrainLayer(ctx, view);
+      },
+    },
+    resources: {
+      ...MAP_LAYER_META.resources,
+      draw: (ctx, view) => {
+        drawResourcesLayer(ctx, view);
       },
     },
     units: {
@@ -197,6 +203,10 @@ export function renderCompositeMapLayers(
     territory = drawTerritoryLayer(ctx, view);
     drawnLayers.push('territory');
   }
+  if (activeLayers.has('resources')) {
+    drawResourcesLayer(ctx, view);
+    drawnLayers.push('resources');
+  }
   if (activeLayers.has('units')) {
     unitDots = drawUnitsLayer(ctx, view);
     drawnLayers.push('units');
@@ -207,6 +217,7 @@ export function renderCompositeMapLayers(
       layer.id !== 'terrain' &&
       layer.id !== 'territory' &&
       layer.id !== 'units' &&
+      layer.id !== 'resources' &&
       activeLayers.has(layer.id)
     ) {
       layer.draw(ctx, view);

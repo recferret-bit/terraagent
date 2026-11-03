@@ -88,7 +88,7 @@ describe('W04-01 MapLayerRegistry wave filtering', () => {
     const el = document.createElement('div');
 
     const panel = mountMapsFeature(el, ctx, registry);
-    expect(registry.all().map((l) => l.id)).toEqual(['territory', 'terrain', 'units']);
+    expect(registry.all().map((l) => l.id)).toEqual(['territory', 'terrain', 'resources', 'units']);
 
     flags.delete('W04');
     panel.update?.({});

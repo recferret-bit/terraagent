@@ -79,6 +79,18 @@
     border-color var(--ta-dur-quick) ease;
 }
 
+.ta-minimap__actions {
+  display: flex;
+  gap: var(--ta-s1);
+  pointer-events: none;
+}
+
+.ta-minimap__toggle[data-active="true"] {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange-hi);
+}
+
 .ta-minimap__expand:hover,
 .ta-minimap__expand:focus-visible {
   background: var(--ta-orange);
@@ -110,4 +122,19 @@
   .ta-hud__slot--bottom-left .ta-command-dock__body {
     max-height: min(42vh, 150px);
   }
+}
+
+/* Map-only tile palette (read by tileColors.ts; fallbacks live there). */
+:root {
+  --ta-map-unexplored: #3b4c6b;
+  --ta-map-flat: #b4cc72;
+  --ta-map-forest: #2fa35c;
+  --ta-map-rock: #a99f94;
+  --ta-map-slope: #d9a05b;
+  --ta-map-hole: #9a5e3e;
+  --ta-map-shallow: #66d3f5;
+  --ta-map-deep: #3a78e0;
+  --ta-map-prepared: #f3e3a6;
+  --ta-map-living: #3deb8a;
+  --ta-map-ridge: #a583ee;
 }

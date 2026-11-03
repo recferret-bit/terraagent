@@ -24,7 +24,7 @@ if (typeof window !== 'undefined' && typeof window.PointerEvent === 'undefined')
 }
 
 describe('GlobalMapViewport wheel and zoom clamping', () => {
-  it('starts at 1x fit-to-screen and clamps manual zoom to [1x, 4x]', () => {
+  it('starts at 1x fit-to-screen and clamps manual zoom to [min, max]', () => {
     const vp = new GlobalMapViewport({ baseSize: 640 });
     expect(vp.transform).toEqual({ zoom: 1, panX: 0, panY: 0 });
 
@@ -34,10 +34,8 @@ describe('GlobalMapViewport wheel and zoom clamping', () => {
     vp.setZoom(10);
     expect(vp.transform.zoom).toBe(GLOBAL_MAP_MAX_ZOOM);
 
-    vp.setZoom(0.2);
+    vp.setZoom(0.05);
     expect(vp.transform.zoom).toBe(GLOBAL_MAP_MIN_ZOOM);
-    expect(vp.transform.panX).toBe(0);
-    expect(vp.transform.panY).toBe(0);
   });
 
   it('wheel-zooming in and out clamps between 1x and 4x and notifies listener', () => {
@@ -49,19 +47,15 @@ describe('GlobalMapViewport wheel and zoom clamping', () => {
     expect(vp.transform.zoom).toBeGreaterThan(1);
     expect(onChange).toHaveBeenCalled();
 
-    // Repeated wheel zoom in clamps to 4x
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 40; i++) {
       vp.wheelZoom(-100);
     }
-    expect(vp.transform.zoom).toBe(4);
+    expect(vp.transform.zoom).toBe(GLOBAL_MAP_MAX_ZOOM);
 
-    // Repeated wheel zoom out clamps to 1x and resets pan
-    for (let i = 0; i < 20; i++) {
+    for (let i = 0; i < 80; i++) {
       vp.wheelZoom(100);
     }
-    expect(vp.transform.zoom).toBe(1);
-    expect(vp.transform.panX).toBe(0);
-    expect(vp.transform.panY).toBe(0);
+    expect(vp.transform.zoom).toBe(GLOBAL_MAP_MIN_ZOOM);
   });
 
   it('DOM wheel event on canvas prevents default and updates zoom', () => {
@@ -93,14 +87,14 @@ describe('GlobalMapViewport pinch zoom gestures', () => {
     vp.pinchZoom(2);
     expect(vp.transform.zoom).toBe(2);
 
-    vp.pinchZoom(3);
-    expect(vp.transform.zoom).toBe(4);
+    vp.pinchZoom(10);
+    expect(vp.transform.zoom).toBe(GLOBAL_MAP_MAX_ZOOM);
 
-    vp.pinchZoom(0.1);
-    expect(vp.transform.zoom).toBe(1);
+    vp.pinchZoom(0.01);
+    expect(vp.transform.zoom).toBe(GLOBAL_MAP_MIN_ZOOM);
   });
 
-  it('two-pointer gestures on canvas pinch zoom between 1x and 4x', () => {
+  it('two-pointer gestures on canvas pinch zoom within the zoom range', () => {
     const canvas = document.createElement('canvas');
     canvas.width = 640;
     canvas.height = 640;
@@ -114,13 +108,13 @@ describe('GlobalMapViewport pinch zoom gestures', () => {
     canvas.dispatchEvent(new MockPointerEvent('pointermove', { pointerId: 2, clientX: 300, clientY: 100 }));
     expect(vp.transform.zoom).toBe(2);
 
-    // Pointer 2 moves to (600, 100) -> dist = 500 (should clamp at 4x)
-    canvas.dispatchEvent(new MockPointerEvent('pointermove', { pointerId: 2, clientX: 600, clientY: 100 }));
-    expect(vp.transform.zoom).toBe(4);
+    // Pointer 2 moves to (1600, 100) -> dist = 1500 (clamps at the max zoom)
+    canvas.dispatchEvent(new MockPointerEvent('pointermove', { pointerId: 2, clientX: 1600, clientY: 100 }));
+    expect(vp.transform.zoom).toBe(GLOBAL_MAP_MAX_ZOOM);
 
-    // Pointer 2 moves closer to pointer 1 -> dist = 50 -> shrinks zoom
+    // Pointer 2 moves closer to pointer 1 -> shrinks zoom
     canvas.dispatchEvent(new MockPointerEvent('pointermove', { pointerId: 2, clientX: 150, clientY: 100 }));
-    expect(vp.transform.zoom).toBeLessThan(4);
+    expect(vp.transform.zoom).toBeLessThan(GLOBAL_MAP_MAX_ZOOM);
 
     canvas.dispatchEvent(new MockPointerEvent('pointerup', { pointerId: 2 }));
     canvas.dispatchEvent(new MockPointerEvent('pointerup', { pointerId: 1 }));
@@ -129,18 +123,18 @@ describe('GlobalMapViewport pinch zoom gestures', () => {
 });
 
 describe('GlobalMapViewport drag pan and planet bounds clamping', () => {
-  it('at zoom 1 pan is clamped to (0, 0)', () => {
+  it('pans freely at zoom 1 (the map is endless, not clamped to the planet)', () => {
     const vp = new GlobalMapViewport({ baseSize: 640 });
     expect(vp.transform.zoom).toBe(1);
 
     vp.panBy(50, 100);
-    expect(vp.transform.panX).toBe(0);
-    expect(vp.transform.panY).toBe(0);
+    expect(vp.transform.panX).toBe(50);
+    expect(vp.transform.panY).toBe(100);
   });
 
   it('at zoom > 1 drag pans (panX, panY) and clamps to [-maxPan, +maxPan]', () => {
     const vp = new GlobalMapViewport({ baseSize: 640 });
-    // At zoom 2, maxPan = (640 * (2 - 1)) / 2 = 320
+    // At zoom 2, maxPan = 640 * 2 / 2 + 640 / 4 = 800 (planet can leave the view, never entirely)
     vp.setZoom(2);
     expect(vp.transform.panX).toBe(0);
     expect(vp.transform.panY).toBe(0);
@@ -150,30 +144,30 @@ describe('GlobalMapViewport drag pan and planet bounds clamping', () => {
     expect(vp.transform.panY).toBe(-50);
 
     // Exceed bounds positive
-    vp.panBy(500, 500);
-    expect(vp.transform.panX).toBe(320);
-    expect(vp.transform.panY).toBe(320);
+    vp.panBy(2000, 2000);
+    expect(vp.transform.panX).toBe(800);
+    expect(vp.transform.panY).toBe(800);
 
     // Exceed bounds negative
-    vp.panBy(-1000, -1000);
-    expect(vp.transform.panX).toBe(-320);
-    expect(vp.transform.panY).toBe(-320);
+    vp.panBy(-2000, -2000);
+    expect(vp.transform.panX).toBe(-800);
+    expect(vp.transform.panY).toBe(-800);
   });
 
-  it('single-pointer dragging on canvas pans when zoomed', () => {
+  it('single-pointer dragging on canvas pans', () => {
     const canvas = document.createElement('canvas');
     canvas.width = 640;
     canvas.height = 640;
     const vp = new GlobalMapViewport({ canvas });
 
-    // Drag at zoom 1 has no effect
+    // Drag pans at zoom 1 too
     canvas.dispatchEvent(new MockPointerEvent('pointerdown', { pointerId: 1, clientX: 100, clientY: 100 }));
     canvas.dispatchEvent(new MockPointerEvent('pointermove', { pointerId: 1, clientX: 150, clientY: 150 }));
     canvas.dispatchEvent(new MockPointerEvent('pointerup', { pointerId: 1 }));
-    expect(vp.transform.panX).toBe(0);
-    expect(vp.transform.panY).toBe(0);
+    expect(vp.transform.panX).toBe(50);
+    expect(vp.transform.panY).toBe(50);
 
-    // Zoom in to 2x then drag
+    vp.reset();
     vp.setZoom(2);
     canvas.dispatchEvent(new MockPointerEvent('pointerdown', { pointerId: 1, clientX: 200, clientY: 200 }));
     canvas.dispatchEvent(new MockPointerEvent('pointermove', { pointerId: 1, clientX: 250, clientY: 280 }));

@@ -1,7 +1,8 @@
 import type { MapViewportTransform } from './types';
 
-export const GLOBAL_MAP_MIN_ZOOM = 1;
-export const GLOBAL_MAP_MAX_ZOOM = 4;
+export const GLOBAL_MAP_MIN_ZOOM = 0.35;
+export const GLOBAL_MAP_MAX_ZOOM = 8;
+export const GLOBAL_MAP_DEFAULT_ZOOM = 1;
 export const GLOBAL_MAP_DEFAULT_BASE_SIZE = 640;
 
 export interface GlobalMapViewportOptions {
@@ -25,7 +26,7 @@ export function calculateWheelFactor(deltaY: number): number {
 }
 
 export class GlobalMapViewport {
-  private zoom = GLOBAL_MAP_MIN_ZOOM;
+  private zoom = GLOBAL_MAP_DEFAULT_ZOOM;
   private panX = 0;
   private panY = 0;
 
@@ -52,40 +53,25 @@ export class GlobalMapViewport {
   }
 
   reset(): void {
-    this.zoom = GLOBAL_MAP_MIN_ZOOM;
+    this.zoom = GLOBAL_MAP_DEFAULT_ZOOM;
     this.panX = 0;
     this.panY = 0;
     this.notifyChange();
   }
 
   setZoom(nextZoom: number, anchorX?: number, anchorY?: number): MapViewportTransform {
-    const rawTarget = Number.isFinite(nextZoom) ? nextZoom : GLOBAL_MAP_MIN_ZOOM;
-    const clampedTarget = Math.max(GLOBAL_MAP_MIN_ZOOM, Math.min(GLOBAL_MAP_MAX_ZOOM, rawTarget));
-
-    if (clampedTarget <= GLOBAL_MAP_MIN_ZOOM) {
-      this.zoom = GLOBAL_MAP_MIN_ZOOM;
-      this.panX = 0;
-      this.panY = 0;
-      this.notifyChange();
-      return this.transform;
-    }
-
-    const baseSize = this.getBaseSize();
-    const cx = (this.canvas?.width || baseSize) / 2;
-    const cy = (this.canvas?.height || baseSize) / 2;
+    const raw = Number.isFinite(nextZoom) ? nextZoom : GLOBAL_MAP_DEFAULT_ZOOM;
+    const target = Math.max(GLOBAL_MAP_MIN_ZOOM, Math.min(GLOBAL_MAP_MAX_ZOOM, raw));
+    const cx = (this.canvas?.width || this.getBaseSize()) / 2;
+    const cy = (this.canvas?.height || this.getBaseSize()) / 2;
     const ax = anchorX ?? cx;
     const ay = anchorY ?? cy;
-
-    const prevZoom = this.zoom > 0 ? this.zoom : GLOBAL_MAP_MIN_ZOOM;
-    const ratio = clampedTarget / prevZoom;
-
-    const rawPanX = (ax - cx) * (1 - ratio) + ratio * this.panX;
-    const rawPanY = (ay - cy) * (1 - ratio) + ratio * this.panY;
-
-    this.zoom = clampedTarget;
-    const maxPan = (baseSize * (this.zoom - 1)) / 2;
-    this.panX = Math.max(-maxPan, Math.min(maxPan, rawPanX));
-    this.panY = Math.max(-maxPan, Math.min(maxPan, rawPanY));
+    const prevZoom = this.zoom > 0 ? this.zoom : GLOBAL_MAP_DEFAULT_ZOOM;
+    const ratio = target / prevZoom;
+    this.zoom = target;
+    this.panX = (ax - cx) * (1 - ratio) + ratio * this.panX;
+    this.panY = (ay - cy) * (1 - ratio) + ratio * this.panY;
+    this.clampPan();
     this.notifyChange();
     return this.transform;
   }
@@ -102,22 +88,17 @@ export class GlobalMapViewport {
   }
 
   panBy(dx: number, dy: number): MapViewportTransform {
-    if (this.zoom <= GLOBAL_MAP_MIN_ZOOM) {
-      this.panX = 0;
-      this.panY = 0;
-      this.notifyChange();
-      return this.transform;
-    }
-
-    const baseSize = this.getBaseSize();
-    const maxPan = (baseSize * (this.zoom - 1)) / 2;
-    const targetX = this.panX + (Number.isFinite(dx) ? dx : 0);
-    const targetY = this.panY + (Number.isFinite(dy) ? dy : 0);
-
-    this.panX = Math.max(-maxPan, Math.min(maxPan, targetX));
-    this.panY = Math.max(-maxPan, Math.min(maxPan, targetY));
+    this.panX += Number.isFinite(dx) ? dx : 0;
+    this.panY += Number.isFinite(dy) ? dy : 0;
+    this.clampPan();
     this.notifyChange();
     return this.transform;
+  }
+
+  /** Largest |pan| (canvas px): the planet may leave the view but never entirely. */
+  maxPan(): number {
+    const size = this.getBaseSize();
+    return (size * this.zoom) / 2 + size * 0.25;
   }
 
   applyToContext(ctx: CanvasRenderingContext2D, width: number, height: number): void {
@@ -140,8 +121,18 @@ export class GlobalMapViewport {
     this.lastPinchDist = 0;
   }
 
+  private clampPan(): void {
+    const max = this.maxPan();
+    this.panX = Math.max(-max, Math.min(max, this.panX));
+    this.panY = Math.max(-max, Math.min(max, this.panY));
+  }
+
+  /** Side of the square the planet is drawn in (the shorter canvas edge). */
   private getBaseSize(): number {
-    return this.canvas?.width || this.options.baseSize || GLOBAL_MAP_DEFAULT_BASE_SIZE;
+    if (this.canvas && this.canvas.width && this.canvas.height) {
+      return Math.min(this.canvas.width, this.canvas.height);
+    }
+    return this.options.baseSize || GLOBAL_MAP_DEFAULT_BASE_SIZE;
   }
 
   private notifyChange(): void {
@@ -159,7 +150,15 @@ export class GlobalMapViewport {
 
   private readonly onWheel = (e: WheelEvent): void => {
     e.preventDefault();
-    this.wheelZoom(e.deltaY);
+    const rect = this.canvas?.getBoundingClientRect?.();
+    const hasAnchor = !!rect && rect.width > 0 && rect.height > 0;
+    const scaleX = hasAnchor && this.canvas ? this.canvas.width / rect.width : 1;
+    const scaleY = hasAnchor && this.canvas ? this.canvas.height / rect.height : 1;
+    this.wheelZoom(
+      e.deltaY,
+      hasAnchor ? (e.clientX - rect.left) * scaleX : undefined,
+      hasAnchor ? (e.clientY - rect.top) * scaleY : undefined,
+    );
   };
 
   private readonly onPointerDown = (ev: Event): void => {
@@ -187,8 +186,11 @@ export class GlobalMapViewport {
     this.activePointers.set(pointerId, { x: e.clientX, y: e.clientY });
 
     if (this.activePointers.size === 1) {
-      const dx = e.clientX - this.lastDragX;
-      const dy = e.clientY - this.lastDragY;
+      const rect = this.canvas?.getBoundingClientRect?.();
+      const kx = rect && rect.width > 0 && this.canvas ? this.canvas.width / rect.width : 1;
+      const ky = rect && rect.height > 0 && this.canvas ? this.canvas.height / rect.height : 1;
+      const dx = (e.clientX - this.lastDragX) * kx;
+      const dy = (e.clientY - this.lastDragY) * ky;
       this.lastDragX = e.clientX;
       this.lastDragY = e.clientY;
       if (dx !== 0 || dy !== 0) {

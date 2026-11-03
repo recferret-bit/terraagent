@@ -63,3 +63,23 @@ describe('W04-11 Global map open/close wiring and 3D input suspension', () => {
     rtsCam.dispose();
   });
 });
+
+describe('W04 map navigation keys while the global map is open', () => {
+  it('maps WASD/arrows to pan, Q/E to zoom, 0 to reset, and routes them to onNavigate', async () => {
+    const { navActionForKey, GlobalMapOpenCloseController: Ctrl } = await import('./openCloseController');
+    expect(navActionForKey({ key: 'w', shiftKey: false })).toEqual({ kind: 'pan', dx: 0, dy: 1, fast: false });
+    expect(navActionForKey({ key: 'ArrowRight', shiftKey: true })).toEqual({ kind: 'pan', dx: -1, dy: 0, fast: true });
+    expect(navActionForKey({ key: 'e', shiftKey: false })).toEqual({ kind: 'zoom', factor: 1.25 });
+    expect(navActionForKey({ key: '0', shiftKey: false })).toEqual({ kind: 'reset' });
+    expect(navActionForKey({ key: 'x', shiftKey: false })).toBeNull();
+
+    const onNavigate = vi.fn();
+    const ctrl = new Ctrl({ onNavigate });
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    expect(onNavigate).not.toHaveBeenCalled();
+    ctrl.open();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', bubbles: true }));
+    expect(onNavigate).toHaveBeenCalledWith({ kind: 'pan', dx: 1, dy: 0, fast: false });
+    ctrl.dispose();
+  });
+});

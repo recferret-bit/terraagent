@@ -29,7 +29,7 @@ export function isExpandButtonTarget(
   const el = target as HTMLElement | null;
   if (
     typeof el?.closest === 'function' &&
-    el.closest('[data-testid="minimap-expand"]')
+    el.closest('[data-testid="minimap-expand"], [data-testid="minimap-resources-toggle"]')
   ) {
     return true;
   }

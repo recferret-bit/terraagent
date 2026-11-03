@@ -133,15 +133,15 @@ describe('W04-04 Map colours vs Legend consistency', () => {
 
 describe('W04-04 Dynamic CSS variable pickup', () => {
   beforeEach(() => {
-    document.documentElement.style.removeProperty('--ta-ok');
+    document.documentElement.style.removeProperty('--ta-map-living');
   });
 
   afterEach(() => {
-    document.documentElement.style.removeProperty('--ta-ok');
+    document.documentElement.style.removeProperty('--ta-map-living');
   });
 
-  it('updates table and legend when --ta-ok is customized', () => {
-    document.documentElement.style.setProperty('--ta-ok', '#40d080');
+  it('updates table and legend when --ta-map-living is customized', () => {
+    document.documentElement.style.setProperty('--ta-map-living', '#40d080');
 
     const table = getTileColorTable();
     expect(table.living).toBe('#40d080');

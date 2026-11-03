@@ -30,18 +30,37 @@ export interface TileColorDefinition {
   readonly fallbackHex: string;
 }
 
+/**
+ * Map-only palette (`--ta-map-*`, defined in `minimap.css`; the hex is the fallback). Deliberately bright and
+ * mutually distinct: no near-black state, so every legend swatch stays readable on the blurred overlay.
+ */
 export const TILE_COLOR_DEFINITIONS: readonly TileColorDefinition[] = [
-  { key: 'unexplored', label: 'Unexplored', cssVar: '--ta-void', fallbackHex: '#0B0E13' },
-  { key: 'flat', label: 'Flat', cssVar: '--ta-plate-hi', fallbackHex: '#252E3C' },
-  { key: 'forest', label: 'Forest', cssVar: '--ta-biome-temperate', fallbackHex: '#2D6B4A' },
-  { key: 'rock', label: 'Rock', cssVar: '--ta-text-lo', fallbackHex: '#596579' },
-  { key: 'slope', label: 'Slope', cssVar: '--ta-edge-hi', fallbackHex: '#3A4659' },
-  { key: 'hole', label: 'Hole', cssVar: '--ta-inset', fallbackHex: '#0F131A' },
-  { key: 'shallow', label: 'Shallow Water', cssVar: '--ta-blue-hi', fallbackHex: '#52B4FF' },
-  { key: 'deep', label: 'Deep Water', cssVar: '--ta-blue-lo', fallbackHex: '#0E2438' },
-  { key: 'prepared', label: 'Prepared', cssVar: '--ta-text-mid', fallbackHex: '#8E9BAE' },
-  { key: 'living', label: 'Living', cssVar: '--ta-ok', fallbackHex: '#39C878' },
-  { key: 'ridgeMoat', label: 'Ridge / Moat', cssVar: '--ta-plate', fallbackHex: '#151A22' },
+  { key: 'unexplored', label: 'Unexplored', cssVar: '--ta-map-unexplored', fallbackHex: '#3B4C6B' },
+  { key: 'flat', label: 'Flat', cssVar: '--ta-map-flat', fallbackHex: '#B4CC72' },
+  { key: 'forest', label: 'Forest', cssVar: '--ta-map-forest', fallbackHex: '#2FA35C' },
+  { key: 'rock', label: 'Rock', cssVar: '--ta-map-rock', fallbackHex: '#A99F94' },
+  { key: 'slope', label: 'Slope', cssVar: '--ta-map-slope', fallbackHex: '#D9A05B' },
+  { key: 'hole', label: 'Hole', cssVar: '--ta-map-hole', fallbackHex: '#9A5E3E' },
+  { key: 'shallow', label: 'Shallow Water', cssVar: '--ta-map-shallow', fallbackHex: '#66D3F5' },
+  { key: 'deep', label: 'Deep Water', cssVar: '--ta-map-deep', fallbackHex: '#3A78E0' },
+  { key: 'prepared', label: 'Prepared', cssVar: '--ta-map-prepared', fallbackHex: '#F3E3A6' },
+  { key: 'living', label: 'Living', cssVar: '--ta-map-living', fallbackHex: '#3DEB8A' },
+  { key: 'ridgeMoat', label: 'Ridge / Moat', cssVar: '--ta-map-ridge', fallbackHex: '#A583EE' },
+] as const;
+
+export type ResourceKey = 'metals' | 'minerals' | 'oil';
+
+export interface ResourceLegendEntry {
+  readonly key: ResourceKey;
+  readonly label: string;
+  readonly color: string;
+}
+
+/** Deposit marker colours (`DEPOSIT_CODES`: 1 metals, 2 minerals, 3 oil), drawn by the `resources` layer. */
+export const RESOURCE_LEGEND: readonly ResourceLegendEntry[] = [
+  { key: 'metals', label: 'Metals', color: '#FFD43B' },
+  { key: 'minerals', label: 'Minerals', color: '#FF7AC8' },
+  { key: 'oil', label: 'Oil', color: '#F2552C' },
 ] as const;
 
 export function readTokenColor(cssVar: string, fallbackHex: string): string {

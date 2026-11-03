@@ -994,3 +994,16 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Workaround / mitigation:** none needed for `H` scope.
 - **To resolve:** implement `F` and `L` issues when those waves / tags are opened.
 - **Found:** 2026-11-03, W04 wave lead
+
+### FF-63 · Global map "neighbouring sectors" are a decorative lattice, not real sectors
+
+- **Status:** Accepted (until W27)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/maps/unchartedLattice.ts`, `MapsController.drawGlobalMap`
+- **What happens:** the global map is endless to pan/zoom, but the area around the planet is only a faint hex lattice (one cached pattern tile). There is exactly one planet per session today, so there are no neighbouring sectors to draw; the `Resources` layer shows only the visible `deposit` layer of explored tiles (never the hidden `subDeposit`).
+- **Why it is like this:** real neighbouring sectors and streaming belong to W27 (planet atlas, `docs/plan/waves/W27-planet-sectors.md`).
+- **Workaround / mitigation:** none needed; the lattice is skipped when hexes would be < 5 px on screen.
+- **To resolve:** draw summary tiles of adjacent sectors in place of the lattice when W27 lands.
+- **Found:** 2026-11-03, W04 map fixes
+

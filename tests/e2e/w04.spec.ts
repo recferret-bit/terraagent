@@ -223,9 +223,16 @@ test('@hack 4. Press M -> the fullscreen global map opens with layer chips along
   });
   expect(insideOverlay).toBe(true);
 
-  // Wheel zoom works between 1x and 4x
+  // Wheel zoom works; the readout shows the zoom and map position
   await page.getByTestId('global-map-canvas').dispatchEvent('wheel', { deltaY: -240 });
   await expect.poll(async () => (await getMinimapStats(page))?.zoom ?? 1).toBeGreaterThan(1);
+  await expect(page.getByTestId('global-map-readout')).toContainText('ZOOM');
+  await expect(page.getByTestId('global-map-readout')).toContainText('CENTER');
+
+  // Keyboard pans the map itself (the 3D camera stays suspended)
+  const panBefore = (await getMinimapStats(page))?.panX ?? 0;
+  await page.keyboard.press('a');
+  await expect.poll(async () => (await getMinimapStats(page))?.panX ?? 0).toBeGreaterThan(panBefore);
 
   await screenshot(page, 'w04-step4-global-map-open');
   expectNoPageErrors(page);
@@ -239,9 +246,10 @@ test('@hack 5. Toggle Terrain off and Territory on -> the map redraws; chips for
   await expect(overlay).toBeVisible();
 
   const chips = page.getByTestId('global-map-chips').locator('[data-layer]');
-  await expect(chips).toHaveCount(3);
+  await expect(chips).toHaveCount(4);
   await expect(page.getByTestId('map-layer-chip-territory')).toBeVisible();
   await expect(page.getByTestId('map-layer-chip-terrain')).toBeVisible();
+  await expect(page.getByTestId('map-layer-chip-resources')).toBeVisible();
   await expect(page.getByTestId('map-layer-chip-units')).toBeVisible();
 
   // Chips for disabled waves (Market, Threats, Walls) are absent

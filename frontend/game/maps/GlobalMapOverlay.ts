@@ -1,6 +1,6 @@
 import type { MapLayerId } from '@terra/contracts';
 import { getSafe2dContext } from './rasterCache';
-import { getTileLegendEntries, type TileLegendEntry } from './tileColors';
+import { getTileLegendEntries, RESOURCE_LEGEND, type TileLegendEntry } from './tileColors';
 import type { MapLayer } from './types';
 import './global-map.css';
 
@@ -11,6 +11,7 @@ export interface GlobalMapOverlayOptions {
   readonly onCloseClick?: () => void;
   readonly onChipToggle?: (layerId: MapLayerId, active: boolean) => void;
   readonly onRender?: (ctx: CanvasRenderingContext2D, canvas: HTMLCanvasElement) => void;
+  readonly onRecenterClick?: () => void;
 }
 
 const FOCUSABLE_SELECTOR =
@@ -65,6 +66,8 @@ export class GlobalMapOverlay {
   readonly stageEl: HTMLElement;
   readonly canvas: HTMLCanvasElement;
   readonly legendEl: HTMLElement;
+  readonly readoutEl: HTMLElement;
+  readonly recenterBtn: HTMLButtonElement;
   readonly ctx: CanvasRenderingContext2D;
 
   private readonly onCloseClick?: () => void;
@@ -73,6 +76,8 @@ export class GlobalMapOverlay {
   private readonly onKeyDownBound: (e: KeyboardEvent) => void;
   private previouslyFocused: HTMLElement | null = null;
   private openState = false;
+  private resizeObserver: ResizeObserver | null = null;
+  private readonly readoutText: HTMLElement;
 
   constructor(opts: GlobalMapOverlayOptions) {
     this.onCloseClick = opts.onCloseClick;
@@ -109,6 +114,26 @@ export class GlobalMapOverlay {
     this.canvas.setAttribute('aria-label', 'Global map canvas');
     this.stageEl.appendChild(this.canvas);
 
+    this.readoutEl = document.createElement('div');
+    this.readoutEl.className = 'ta-global-map__readout plate-sm';
+    this.readoutEl.dataset.testid = 'global-map-readout';
+    this.readoutText = document.createElement('span');
+    this.readoutText.className = 'ta-global-map__readout-text';
+    this.recenterBtn = document.createElement('button');
+    this.recenterBtn.type = 'button';
+    this.recenterBtn.className = 'ta-global-map__recenter';
+    this.recenterBtn.dataset.testid = 'global-map-recenter';
+    this.recenterBtn.textContent = 'RESET [0]';
+    this.recenterBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      opts.onRecenterClick?.();
+    });
+    const hint = document.createElement('span');
+    hint.className = 'ta-global-map__hint';
+    hint.textContent = 'DRAG / WASD PAN · WHEEL / Q E ZOOM';
+    this.readoutEl.append(this.readoutText, this.recenterBtn, hint);
+    this.stageEl.appendChild(this.readoutEl);
+
     this.legendEl = document.createElement('aside');
     this.legendEl.className = 'ta-global-map__legend plate-sm';
     this.legendEl.dataset.testid = 'global-map-legend';
@@ -142,6 +167,7 @@ export class GlobalMapOverlay {
           ? document.activeElement
           : null;
       this.renderLegend();
+      this.fitCanvasToStage();
       this.render();
       const focusables = this.getFocusableElements();
       (focusables[0] ?? this.closeBtn).focus();
@@ -151,11 +177,35 @@ export class GlobalMapOverlay {
     }
   }
 
+  /** Sizes the canvas backing store (1 px = 1 CSS px) to the stage so the map fills the whole screen. */
+  fitCanvasToStage(): boolean {
+    const w = Math.round(this.stageEl.clientWidth);
+    const h = Math.round(this.stageEl.clientHeight);
+    if (w < 16 || h < 16) return false;
+    if (this.canvas.width === w && this.canvas.height === h) return false;
+    this.canvas.width = w;
+    this.canvas.height = h;
+    return true;
+  }
+
+  watchResize(onResize: () => void): void {
+    if (typeof ResizeObserver === 'undefined') return;
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = new ResizeObserver(() => {
+      if (this.openState && this.fitCanvasToStage()) onResize();
+    });
+    this.resizeObserver.observe(this.stageEl);
+  }
+
+  setReadout(text: string): void {
+    this.readoutText.textContent = text;
+  }
+
   renderLegend(entries: readonly TileLegendEntry[] = getTileLegendEntries()): void {
     this.legendEl.replaceChildren();
     const title = document.createElement('div');
     title.className = 'ta-global-map__legend-title';
-    title.textContent = 'TERRAIN & PREP LEGEND';
+    title.textContent = 'TERRAIN LEGEND';
     this.legendEl.appendChild(title);
 
     for (const entry of entries) {
@@ -171,6 +221,24 @@ export class GlobalMapOverlay {
       const label = document.createElement('span');
       label.textContent = entry.label;
 
+      row.append(swatch, label);
+      this.legendEl.appendChild(row);
+    }
+
+    const resTitle = document.createElement('div');
+    resTitle.className = 'ta-global-map__legend-title';
+    resTitle.textContent = 'RESOURCE DEPOSITS';
+    this.legendEl.appendChild(resTitle);
+    for (const res of RESOURCE_LEGEND) {
+      const row = document.createElement('div');
+      row.className = 'ta-global-map__legend-item';
+      row.dataset.legendKey = `res-${res.key}`;
+      const swatch = document.createElement('span');
+      swatch.className = 'ta-global-map__legend-swatch ta-global-map__legend-swatch--dot';
+      swatch.dataset.legendSwatch = `res-${res.key}`;
+      swatch.style.backgroundColor = res.color;
+      const label = document.createElement('span');
+      label.textContent = res.label;
       row.append(swatch, label);
       this.legendEl.appendChild(row);
     }
@@ -245,8 +313,6 @@ export class GlobalMapOverlay {
 
   render(): void {
     this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
-    this.ctx.fillStyle = '#0B0E13';
-    this.ctx.fillRect(0, 0, this.canvas.width, this.canvas.height);
     this.onRender?.(this.ctx, this.canvas);
   }
 
@@ -254,6 +320,8 @@ export class GlobalMapOverlay {
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener('keydown', this.onKeyDownBound, true);
     }
+    this.resizeObserver?.disconnect();
+    this.resizeObserver = null;
     this.el.remove();
   }
 }

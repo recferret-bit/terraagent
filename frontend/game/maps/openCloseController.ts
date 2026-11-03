@@ -4,7 +4,28 @@ export interface RtsCameraEnableTarget {
   enabled: boolean;
 }
 
+export type MapNavAction =
+  | { readonly kind: 'pan'; readonly dx: number; readonly dy: number; readonly fast: boolean }
+  | { readonly kind: 'zoom'; readonly factor: number }
+  | { readonly kind: 'reset' };
+
+/** Map-navigation key → action (while the global map is open; WASD/arrows pan, Q/E or +/- zoom, 0/Home reset). */
+export function navActionForKey(e: Pick<KeyboardEvent, 'key' | 'shiftKey'>): MapNavAction | null {
+  const fast = e.shiftKey;
+  switch (e.key) {
+    case 'w': case 'W': case 'ArrowUp': return { kind: 'pan', dx: 0, dy: 1, fast };
+    case 's': case 'S': case 'ArrowDown': return { kind: 'pan', dx: 0, dy: -1, fast };
+    case 'a': case 'A': case 'ArrowLeft': return { kind: 'pan', dx: 1, dy: 0, fast };
+    case 'd': case 'D': case 'ArrowRight': return { kind: 'pan', dx: -1, dy: 0, fast };
+    case 'e': case 'E': case '+': case '=': return { kind: 'zoom', factor: 1.25 };
+    case 'q': case 'Q': case '-': case '_': return { kind: 'zoom', factor: 0.8 };
+    case '0': case 'Home': return { kind: 'reset' };
+    default: return null;
+  }
+}
+
 export interface GlobalMapOpenCloseOptions {
+  readonly onNavigate?: (action: MapNavAction) => void;
   readonly isWaveEnabled?: () => boolean;
   readonly getRtsCamera?: () => RtsCameraEnableTarget | null | undefined;
   readonly onStateChange?: (isOpen: boolean) => void;
@@ -37,6 +58,7 @@ export class GlobalMapOpenCloseController {
   private readonly isWaveEnabled: () => boolean;
   private readonly getRtsCamera?: () => RtsCameraEnableTarget | null | undefined;
   private readonly onStateChange?: (isOpen: boolean) => void;
+  private readonly onNavigate?: (action: MapNavAction) => void;
   private readonly onKeyDownBound: (e: KeyboardEvent) => void;
   private readonly cleanups: Array<() => void> = [];
 
@@ -44,6 +66,7 @@ export class GlobalMapOpenCloseController {
     this.isWaveEnabled = opts.isWaveEnabled ?? (() => true);
     this.getRtsCamera = opts.getRtsCamera;
     this.onStateChange = opts.onStateChange;
+    this.onNavigate = opts.onNavigate;
 
     this.onKeyDownBound = (e: KeyboardEvent) => this.handleKeyDown(e);
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
@@ -122,6 +145,15 @@ export class GlobalMapOpenCloseController {
         e.stopImmediatePropagation();
         this.close();
         return;
+      }
+      if (!isTypingTarget(e) && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        const action = navActionForKey(e);
+        if (action) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          this.onNavigate?.(action);
+          return;
+        }
       }
       if (!isTypingTarget(e) && SUSPENDED_3D_KEYS.has(e.key)) {
         e.preventDefault();

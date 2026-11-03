@@ -9,7 +9,7 @@ import {
 } from './layerChipsState';
 
 describe('W04-15 Layer registry plus chips and localStorage persistence', () => {
-  it('with TA_WAVES=..04 shows only Territory, Terrain and Units chips while Market, Threats and Walls are absent', () => {
+  it('with TA_WAVES=..04 shows only Territory, Terrain, Resources and Units chips while Market, Threats and Walls are absent', () => {
     const registry = createMapLayerRegistry();
     const cleanup = registerAllCatalogMapLayers(registry);
     const flags = new Set<string>(parseWaves('..04').list);
@@ -39,8 +39,8 @@ describe('W04-15 Layer registry plus chips and localStorage persistence', () => 
     overlay.renderChips(ctrl.getVisibleLayers(), ctrl.getActiveSet());
 
     const chips = Array.from(overlay.chipBarEl.querySelectorAll<HTMLElement>('[data-layer]'));
-    expect(chips.map((c) => c.dataset.layer)).toEqual(['territory', 'terrain', 'units']);
-    expect(chips.map((c) => c.textContent)).toEqual(['Territory', 'Terrain', 'Units']);
+    expect(chips.map((c) => c.dataset.layer)).toEqual(['territory', 'terrain', 'resources', 'units']);
+    expect(chips.map((c) => c.textContent)).toEqual(['Territory', 'Terrain', 'Resources', 'Units']);
 
     expect(overlay.chipBarEl.querySelector('[data-layer="market"]')).toBeNull();
     expect(overlay.chipBarEl.querySelector('[data-layer="threats"]')).toBeNull();
@@ -86,6 +86,6 @@ describe('W04-15 Layer registry plus chips and localStorage persistence', () => 
     });
     expect(() => ctrl.toggleLayer('terrain', false)).not.toThrow();
     expect(ctrl.isLayerActive('terrain')).toBe(false);
-    expect(onChange).toHaveBeenCalledWith(['territory', 'units']);
+    expect(onChange).toHaveBeenCalledWith(['territory', 'resources', 'units']);
   });
 });

@@ -30,17 +30,17 @@
    - Resize the browser viewport to phone landscape (`844 × 390` in responsive device toolbar) → **see** the minimap shrink to **`140 × 140 px`** cleanly with no HUD overlap; restore the desktop viewport size.
 4. **Open the fullscreen Global Planet Map (`M` / expand button).**
    - Press **`M`** (or click **`⤢`** on the minimap) → **see** the fullscreen **Global Planet Map** overlay (`GLOBAL PLANET MAP`) with:
-     - The **layer-chip bar** along the top (**`TERRITORY`**, **`TERRAIN`**, **`UNITS`**, each lit in Signal Orange with dark void text when active).
-     - The interactive 2D planet canvas in the centre showing the hex grid, territory fill/outline rings for Colony A and Colony B, entity dots, and the white camera footprint trapezoid.
+     - The **layer-chip bar** along the top (**`TERRITORY`**, **`TERRAIN`**, **`RESOURCES`**, **`UNITS`**, each lit in Signal Orange with dark void text when active).
+     - The interactive 2D planet map filling the screen over a blurred, translucent view of the game (no black square), with a faint hex lattice continuing past the planet edge, showing the hex grid, territory fill/outline rings for Colony A and Colony B, entity dots, and the white camera footprint trapezoid.
      - The **tile-colour legend** along the bottom (`Flat`, `Hill`, `Water`, `Prepared`, `Living`, `Ridge / Moat`, `Your Units`, `Other Colony`, `Fauna`).
      - The **`FIT [1×]`** and **`CLOSE [ESC]`** plates in the top-right header.
-   - While the Global Map is open, press **`W` / `A` / `S` / `D`** → **see** that 3D camera movement is suspended while the overlay is open. Press **`Tab`** repeatedly → focus cycles strictly inside the overlay's interactive buttons (`focus trap`).
+   - While the Global Map is open, press **`W` / `A` / `S` / `D`** (or drag with the mouse) → **see** the *map* pan (the 3D camera stays suspended); `Q` / `E` zoom, `0` recenters; the bottom-left readout shows zoom and map position. On the minimap, click **`◆`** → deposit dots (metals yellow, minerals pink, oil red) toggle. Press **`Tab`** repeatedly → focus cycles strictly inside the overlay's interactive buttons (`focus trap`).
 5. **Layer chips toggle redraw & wave-gated layers (`&waves=..04`).**
-   - In the Global Map's top chip bar, click **`TERRAIN`** to toggle it off (`aria-pressed="false"`) while keeping **`TERRITORY`** on → **see** the map redraw immediately with a dark flat background (`--ta-void`) and the territory overlays + unit dots standing out clearly. Click **`TERRAIN`** again to turn it back on.
+   - In the Global Map's top chip bar, click **`TERRAIN`** to toggle it off (`aria-pressed="false"`) while keeping **`TERRITORY`** on → **see** the map redraw immediately over the blurred backdrop and the hex lattice and the territory overlays + unit dots standing out clearly. Click **`TERRAIN`** again to turn it back on.
    - Toggle **`TERRITORY`** or **`UNITS`** off and on → **see** each layer redraw immediately (and persist across page reloads in `localStorage`).
-   - Open `<client>/play.html?scenario=w04&waves=..04` and press **`M`** → **see** only the **`TERRITORY`**, **`TERRAIN`** and **`UNITS`** chips; **`Market`** (`W13`), **`Threats`** (`W07`) and **`Walls`** (`W14`) chips are absent because their producer waves are off.
+   - Open `<client>/play.html?scenario=w04&waves=..04` and press **`M`** → **see** only the **`TERRITORY`**, **`TERRAIN`**, **`RESOURCES`** and **`UNITS`** chips; **`Market`** (`W13`), **`Threats`** (`W07`) and **`Walls`** (`W14`) chips are absent because their producer waves are off.
 6. **Global map wheel-zoom (`1×–4×`) & pan** *(click-to-fly `W04-20` is stretch `H+`, not in this landing)*.
-   - With the Global Map open (`M`), scroll the mouse wheel over the map canvas → **see** the map zoom smoothly between **`1×`** and **`4×`** (clamped at `4×`), drag on the zoomed map canvas to pan across the planet (clamped to the planet bounds), and click **`FIT [1×]`** to reset zoom to `1×` centred.
+   - With the Global Map open (`M`), scroll the mouse wheel over the map canvas → **see** the map zoom toward the cursor (`0.35×`–`8×`), drag to pan freely (also at `1×`; the planet can leave the view but never entirely), and click **`RESET [0]`** to recenter.
    - Press **`M`** or **`Esc`** (or click **`CLOSE [ESC]`**) → **see** the Global Map close.
 7. **Box selection & selection panel** — *not in this landing* (`W04-23` and `W04-24` are stretch `H+`). Left-clicking the HQ drone continues to use W01's click-select. Skip.
 8. **Control groups (`Ctrl+1..9` / `1..9`)** — *not in this landing* (`W04-25` is full-product scope). Skip.

@@ -9,29 +9,29 @@ export type TileColorResolver = (tiles: ClientTiles, index: number) => string;
 /** Fallback tile colour resolver (replaced/extended by W04-04 token table). */
 export const defaultTileColorResolver: TileColorResolver = (tiles, index) => {
   if (tiles.explored && tiles.explored[index] === 0) {
-    return '#0B0E13';
+    return '#3B4C6B';
   }
   const prep = tiles.prep[index] ?? PREP_CODES.wild;
-  if (prep === PREP_CODES.living || prep === PREP_CODES.irrigated) return '#39C878';
-  if (prep === PREP_CODES.prepared) return '#8B98AB';
-  if (prep === PREP_CODES.ridge || prep === PREP_CODES.moat) return '#121821';
+  if (prep === PREP_CODES.living || prep === PREP_CODES.irrigated) return '#3DEB8A';
+  if (prep === PREP_CODES.prepared) return '#F3E3A6';
+  if (prep === PREP_CODES.ridge || prep === PREP_CODES.moat) return '#A583EE';
   const terrain = tiles.terrain[index] ?? TERRAIN_CODES.flat;
   switch (terrain) {
     case TERRAIN_CODES.shallow:
-      return '#52B4FF';
+      return '#66D3F5';
     case TERRAIN_CODES.deep:
-      return '#22659C';
+      return '#3A78E0';
     case TERRAIN_CODES.forest:
-      return '#2A6F4E';
+      return '#2FA35C';
     case TERRAIN_CODES.rock:
-      return '#5A6575';
+      return '#A99F94';
     case TERRAIN_CODES.slope:
-      return '#465060';
+      return '#D9A05B';
     case TERRAIN_CODES.hole:
-      return '#171D26';
+      return '#9A5E3E';
     case TERRAIN_CODES.flat:
     default:
-      return '#2C3542';
+      return '#B4CC72';
   }
 };
 

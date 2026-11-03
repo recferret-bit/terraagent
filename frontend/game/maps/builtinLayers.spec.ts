@@ -64,7 +64,8 @@ describe('W04-16 Built-in layers Territory, Terrain, Units', () => {
     expect(result.drawnLayers).toEqual(['territory']);
     expect(result.territory.ownedTileCount).toBe(7);
     expect(result.territory.borderEdgeCount).toBe(18);
-    expect(fillRectSpy).toHaveBeenCalledWith(0, 0, size, size);
+    // Terrain off must not paint an opaque square over the whole map
+    expect(fillRectSpy).not.toHaveBeenCalledWith(0, 0, size, size);
     expect(strokeSpy).toHaveBeenCalledTimes(18);
   });
 });

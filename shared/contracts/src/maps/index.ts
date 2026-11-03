@@ -36,7 +36,7 @@ export const MAP_LAYER_META: Record<MapLayerId, MapLayerMeta> = {
   terrain: { id: 'terrain', label: 'Terrain', wave: 'W04', defaultOn: true, order: 20 },
   units: { id: 'units', label: 'Units', wave: 'W04', defaultOn: true, order: 30 },
   terraformPct: { id: 'terraformPct', label: 'Terraform %', wave: 'W15', defaultOn: false, order: 40 },
-  resources: { id: 'resources', label: 'Resources', wave: 'W09', defaultOn: false, order: 50 },
+  resources: { id: 'resources', label: 'Resources', wave: 'W04', defaultOn: true, order: 25 },
   threats: { id: 'threats', label: 'Threats', wave: 'W07', defaultOn: false, order: 60 },
   market: { id: 'market', label: 'Market', wave: 'W13', defaultOn: false, order: 70 },
   walls: { id: 'walls', label: 'Walls', wave: 'W14', defaultOn: false, order: 80 },

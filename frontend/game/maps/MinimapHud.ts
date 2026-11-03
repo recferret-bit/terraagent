@@ -17,6 +17,7 @@ export interface MinimapHudOptions {
   readonly parent: HTMLElement;
   readonly rasterCache: PlanetRasterCache;
   readonly onExpandClick?: () => void;
+  readonly onResourcesToggle?: (next: boolean) => void;
   readonly onOverlayDraw?: (ctx: CanvasRenderingContext2D, view: MapLayerDrawView) => void;
 }
 
@@ -40,6 +41,7 @@ export class MinimapHud {
   readonly el: HTMLElement;
   readonly canvas: HTMLCanvasElement;
   readonly expandBtn: HTMLButtonElement;
+  readonly resourcesBtn: HTMLButtonElement;
   private readonly ctx: CanvasRenderingContext2D;
   private readonly rasterCache: PlanetRasterCache;
   private readonly onExpandClick?: () => void;
@@ -54,6 +56,7 @@ export class MinimapHud {
   constructor(opts: MinimapHudOptions) {
     this.rasterCache = opts.rasterCache;
     this.onExpandClick = opts.onExpandClick;
+    const onResourcesToggle = opts.onResourcesToggle;
     this.onOverlayDraw = opts.onOverlayDraw;
 
     this.el = document.createElement('section');
@@ -84,7 +87,24 @@ export class MinimapHud {
       this.onExpandClick?.();
     });
 
-    bar.append(title, this.expandBtn);
+    this.resourcesBtn = document.createElement('button');
+    this.resourcesBtn.type = 'button';
+    this.resourcesBtn.className = 'ta-minimap__expand ta-minimap__toggle';
+    this.resourcesBtn.dataset.testid = 'minimap-resources-toggle';
+    this.resourcesBtn.dataset.active = 'false';
+    this.resourcesBtn.setAttribute('aria-pressed', 'false');
+    this.resourcesBtn.setAttribute('aria-label', 'Toggle resource deposits on map');
+    this.resourcesBtn.title = 'Resources on/off';
+    this.resourcesBtn.textContent = '◆';
+    this.resourcesBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onResourcesToggle?.(this.resourcesBtn.dataset.active !== 'true');
+    });
+
+    const actions = document.createElement('div');
+    actions.className = 'ta-minimap__actions';
+    actions.append(this.resourcesBtn, this.expandBtn);
+    bar.append(title, actions);
     this.el.append(this.canvas, bar);
     opts.parent.appendChild(this.el);
 
@@ -115,6 +135,11 @@ export class MinimapHud {
       this.canvas.height = next;
     }
     return next;
+  }
+
+  setResourcesActive(active: boolean): void {
+    this.resourcesBtn.dataset.active = active ? 'true' : 'false';
+    this.resourcesBtn.setAttribute('aria-pressed', active ? 'true' : 'false');
   }
 
   setVisible(visible: boolean): void {

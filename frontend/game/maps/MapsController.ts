@@ -14,7 +14,10 @@ import { MapLayerChipController } from './layerChipsState';
 import { mapLayerRegistry, type MapLayerRegistry } from './layerRegistry';
 import { MinimapHud } from './MinimapHud';
 import { bindMinimapInput } from './minimapInput';
-import { GlobalMapOpenCloseController } from './openCloseController';
+import { GlobalMapOpenCloseController, type MapNavAction } from './openCloseController';
+import { drawResourcesLayer } from './resourceLayer';
+import { drawUnchartedLattice } from './unchartedLattice';
+import { inHex } from '@terra/sim/grid/hex';
 import {
   axialToCanvasPixel,
   canvasPixelToAxial,
@@ -67,6 +70,8 @@ export class MapsController {
       getFlags: () => this.ctx.flags,
       onChange: () => {
         this.syncOverlayChips();
+        this.minimapHud.setResourcesActive(this.chipController.isLayerActive('resources'));
+        this.scheduler.forceRedrawMinimap();
         this.scheduler.forceRedrawGlobalMap();
       },
     });
@@ -74,6 +79,7 @@ export class MapsController {
     this.openClose = new GlobalMapOpenCloseController({
       isWaveEnabled: () => this.ctx.flags.has('W04'),
       getRtsCamera: () => this.ctx.services.rtsCamera ?? null,
+      onNavigate: (action) => this.navigateGlobalMap(action),
       onStateChange: (open) => {
         this.globalOverlay.setOpen(open);
         if (open) {
@@ -87,6 +93,7 @@ export class MapsController {
       parent: opts.el,
       rasterCache: this.rasterCache,
       onExpandClick: () => this.openClose.open(),
+      onResourcesToggle: (next) => this.chipController.setLayerActive('resources', next),
       onOverlayDraw: (ctx2d, drawView) => this.drawMinimapOverlays(ctx2d, drawView),
     });
 
@@ -106,6 +113,7 @@ export class MapsController {
         this.chipController.setLayerActive(id, active);
       },
       onRender: (ctx2d, canvas) => this.drawGlobalMap(ctx2d, canvas),
+      onRecenterClick: () => this.globalViewport.reset(),
     });
 
     this.globalViewport = new GlobalMapViewport({
@@ -124,15 +132,78 @@ export class MapsController {
       onRedrawGlobalMap: () => this.globalOverlay.render(),
     });
 
+    this.globalOverlay.watchResize(() => this.globalOverlay.render());
+    this.globalOverlay.canvas.addEventListener('pointermove', this.onGlobalPointerMove);
+    this.globalOverlay.canvas.addEventListener('pointerleave', this.onGlobalPointerLeave);
+
     this.stats = this.createStatsProxy();
     this.syncRegistration();
     this.syncOverlayChips();
+  }
+
+  private cursorPx: { x: number; y: number } | null = null;
+
+  private readonly onGlobalPointerMove = (e: PointerEvent): void => {
+    const canvas = this.globalOverlay.canvas;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return;
+    this.cursorPx = {
+      x: ((e.clientX - rect.left) / rect.width) * canvas.width,
+      y: ((e.clientY - rect.top) / rect.height) * canvas.height,
+    };
+    this.updateReadout();
+  };
+
+  private readonly onGlobalPointerLeave = (): void => {
+    this.cursorPx = null;
+    this.updateReadout();
+  };
+
+  private navigateGlobalMap(action: MapNavAction): void {
+    const vp = this.globalViewport;
+    if (action.kind === 'reset') vp.reset();
+    else if (action.kind === 'zoom') vp.setZoom(vp.transform.zoom * action.factor);
+    else {
+      const step = action.fast ? 160 : 56;
+      vp.panBy(action.dx * step, action.dy * step);
+    }
+  }
+
+  /** Planet-square side used by the global map (shorter canvas edge). */
+  private globalSquare(): number {
+    const c = this.globalOverlay.canvas;
+    return Math.max(1, Math.min(c.width, c.height));
+  }
+
+  /** Canvas pixel → axial tile on the planet (unclamped; `inside` tells whether it is a real tile). */
+  private canvasPxToTile(px: number, py: number): { q: number; r: number; inside: boolean } {
+    const c = this.globalOverlay.canvas;
+    const { zoom, panX, panY } = this.globalViewport.transform;
+    const S = this.globalSquare();
+    const sx = (px - c.width / 2 - panX) / zoom + c.width / 2 - (c.width - S) / 2;
+    const sy = (py - c.height / 2 - panY) / zoom + c.height / 2 - (c.height - S) / 2;
+    const radius = this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 12;
+    const { q, r } = canvasPixelToAxial(sx, sy, S, radius);
+    return { q, r, inside: inHex(q, r, radius) };
+  }
+
+  private updateReadout(): void {
+    if (!this.openClose.isOpen) return;
+    const c = this.globalOverlay.canvas;
+    const { zoom } = this.globalViewport.transform;
+    const centre = this.canvasPxToTile(c.width / 2, c.height / 2);
+    const fmt = (t: { q: number; r: number; inside: boolean }) =>
+      `${t.q},${t.r}${t.inside ? '' : ' (out)'}`;
+    let text = `ZOOM ${zoom.toFixed(2)}×   CENTER ${fmt(centre)}`;
+    if (this.cursorPx) text += `   CURSOR ${fmt(this.canvasPxToTile(this.cursorPx.x, this.cursorPx.y))}`;
+    this.globalOverlay.setReadout(text);
   }
 
   private drawMinimapOverlays(
     ctx2d: CanvasRenderingContext2D,
     drawView: MapLayerDrawView,
   ): void {
+    if (this.chipController.isLayerActive('resources')) drawResourcesLayer(ctx2d, drawView);
     const dots = drawEntityDots(ctx2d, drawView);
     this.lastDotCount = dots.length;
     this.lastTrapezoid = drawCameraTrapezoid(ctx2d, drawView, {
@@ -145,7 +216,9 @@ export class MapsController {
     ctx2d: CanvasRenderingContext2D,
     canvas: HTMLCanvasElement,
   ): void {
-    const size = canvas.width || GLOBAL_MAP_CANVAS_SIZE;
+    const w = canvas.width || GLOBAL_MAP_CANVAS_SIZE;
+    const h = canvas.height || GLOBAL_MAP_CANVAS_SIZE;
+    const size = Math.max(1, Math.min(w, h));
     const radius = this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 12;
     const scale = mapScaleForRadius(size, radius);
     const drawView: MapLayerDrawView = {
@@ -164,7 +237,10 @@ export class MapsController {
     };
 
     ctx2d.save();
-    this.globalViewport.applyToContext(ctx2d, size, size);
+    this.globalViewport.applyToContext(ctx2d, w, h);
+    ctx2d.translate((w - size) / 2, (h - size) / 2);
+    ctx2d.imageSmoothingEnabled = false;
+    drawUnchartedLattice(ctx2d, size, radius, this.globalViewport.transform.zoom, w, h);
     const active = this.chipController.getActiveSet();
     const visible = this.chipController.getVisibleLayers();
     this.lastComposite = renderCompositeMapLayers(ctx2d, drawView, active, visible);
@@ -176,6 +252,7 @@ export class MapsController {
       rtsCamera: this.ctx.services.rtsCamera ?? null,
     });
     ctx2d.restore();
+    this.updateReadout();
   }
 
   panToTile(q: number, r: number): void {
@@ -219,6 +296,7 @@ export class MapsController {
   }
 
   syncOverlayChips(): void {
+    this.minimapHud.setResourcesActive(this.chipController.isLayerActive('resources'));
     this.globalOverlay.renderChips(
       this.chipController.getVisibleLayers(),
       this.chipController.getActiveSet(),
@@ -318,6 +396,8 @@ export class MapsController {
   }
 
   dispose(): void {
+    this.globalOverlay.canvas.removeEventListener('pointermove', this.onGlobalPointerMove);
+    this.globalOverlay.canvas.removeEventListener('pointerleave', this.onGlobalPointerLeave);
     this.scheduler.dispose();
     this.inputHandle.dispose();
     this.globalViewport.dispose();
