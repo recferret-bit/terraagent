@@ -62,9 +62,23 @@ export class AchievementToastHost {
     head.appendChild(eyebrow);
     head.appendChild(closeBtn);
 
+    const bodyRow = document.createElement('div');
+    bodyRow.className = 'ta-achievement-toast-body';
+
+    if (payload.achievementId) {
+      const img = document.createElement('img');
+      img.className = 'ta-achievement-toast-art';
+      img.src = `/img/achievements/${encodeURIComponent(payload.achievementId)}.svg`;
+      img.alt = '';
+      img.width = 40;
+      img.height = 40;
+      bodyRow.appendChild(img);
+    }
+
     const title = document.createElement('p');
     title.className = 'ta-achievement-toast-title';
     title.textContent = `${payload.familyName} · ${payload.tierName} (+${payload.xp} XP)`;
+    bodyRow.appendChild(title);
 
     const link = document.createElement('a');
     link.className = 'btn btn-ghost btn-sm ta-achievement-toast-link';
@@ -72,7 +86,7 @@ export class AchievementToastHost {
     link.textContent = 'VIEW ACHIEVEMENTS →';
 
     card.appendChild(head);
-    card.appendChild(title);
+    card.appendChild(bodyRow);
     card.appendChild(link);
 
     this.host.appendChild(card);

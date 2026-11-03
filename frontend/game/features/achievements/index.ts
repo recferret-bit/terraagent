@@ -1,5 +1,6 @@
 import { defineFeature, type FeatureContext } from '../../core/registry/types';
 import { ActivePilotTracker } from './activePilot';
+import { factCommand, profileCommand, xpCommand } from './devCommands';
 import { AchievementToastHost } from './toast';
 import './achievements.css';
 
@@ -37,6 +38,7 @@ export default defineFeature({
   id: 'achievements',
   wave: 'W12',
   hostOnly: 'server',
+  devCommands: [factCommand, xpCommand, profileCommand],
   hud: [
     {
       id: 'me-link',

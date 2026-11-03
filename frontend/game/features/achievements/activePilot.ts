@@ -46,6 +46,8 @@ export function readActivePilot(): ActivePilotRecord | null {
 export class ActivePilotTracker {
   playerId = '';
   accessToken = '';
+  private isW12Scenario = false;
+  private seededW12For = '';
   private readonly cleanups: Array<() => void> = [];
 
   constructor(private readonly ctx: FeatureContext) {
@@ -57,12 +59,18 @@ export class ActivePilotTracker {
     this.syncFromSearch();
     this.bindPilot();
     this.bindTransport();
+    this.maybeSeedW12();
   }
 
   private syncFromSearch(): void {
     try {
       const search = typeof location !== 'undefined' ? location.search : '';
-      const as = new URLSearchParams(search).get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
+      const params = new URLSearchParams(search);
+      const scenario = params.get('scenario')?.trim().toLowerCase();
+      if (scenario?.startsWith('w12')) {
+        this.isW12Scenario = true;
+      }
+      const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
       if (as) {
         this.playerId = `pr_dev_${as}`;
         this.accessToken = `dev:${as}`;
@@ -98,11 +106,22 @@ export class ActivePilotTracker {
           this.accessToken = pilotTok;
         } else if (this.playerId.startsWith('pr_dev_')) {
           this.accessToken = `dev:${this.playerId.slice('pr_dev_'.length)}`;
+        } else {
+          this.accessToken = `player:${this.playerId}`;
         }
         this.persist();
+        this.maybeSeedW12();
       }
     });
     this.cleanups.push(off);
+  }
+
+  private maybeSeedW12(): void {
+    if (!this.isW12Scenario || !this.playerId || this.seededW12For === this.playerId) return;
+    const server = this.ctx.services.devServer;
+    if (!server) return;
+    this.seededW12For = this.playerId;
+    void server('profile.seed_w12', { playerId: this.playerId }).catch(() => undefined);
   }
 
   private persist(): void {
