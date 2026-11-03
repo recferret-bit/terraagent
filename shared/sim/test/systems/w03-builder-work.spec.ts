@@ -158,6 +158,19 @@ describe('repair: pays by the HP it restores, stalls on an empty stock, a crew i
     return { ticks, spent: before - colony.stock['metals.t1'] };
   }
 
+  it('a repair order naming another worker on an open repair joins it as a helper (no second paid job)', () => {
+    const { state, pipeline } = world('rep-join');
+    spawnBuilderUnit(state, { owner: 0, q: 3, r: 0 });
+    const hqId = spawnHqUnit(state, { owner: 0, q: -3, r: 0 });
+    const ext = extractor(state, 5, 0, 150);
+    run(state, pipeline); // auto-repair opens the lead job (the Builder)
+    const res = run(state, pipeline, [{ commandId: 'rep-hq', colonyIndex: 0, source: 'player', kind: 'repair', args: { entityId: ext, workerId: hqId } }]);
+    expect(res.outcomes[0]!.code).toBeUndefined();
+    const jobs = Object.values(getWorkJobsMap(state)).filter((j) => j.targetEntityId === ext);
+    expect(jobs.filter((j) => j.helpOf === undefined)).toHaveLength(1);
+    expect(jobs.find((j) => j.workerEntityId === hqId)).toMatchObject({ helpOf: expect.any(String), totalCost: {} });
+  });
+
   it('an idle Builder Drone joins an open repair: faster, same cost, no second paid job', () => {
     const [one, two] = [repairWith(1), repairWith(2)];
     expect(two.ticks).toBeLessThan(one.ticks);
