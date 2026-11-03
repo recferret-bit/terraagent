@@ -164,10 +164,26 @@ export function spawnColonyLanding(
     name: opts.name ?? opts.handle,
     color: opts.color,
   });
-  if (typeof opts.unlockStage === 'number' && Number.isFinite(opts.unlockStage) && opts.unlockStage >= 0) {
-    col.unlockStage = Math.max(typeof col.unlockStage === 'number' ? col.unlockStage : 0, Math.floor(opts.unlockStage));
-  }
+  const stageNum = typeof col.stage === 'number' ? col.stage : 0;
+  col.stage = stageNum;
+  const prevUnlockStage = typeof col.unlockStage === 'number' ? col.unlockStage : 0;
+  const nextUnlockStage =
+    typeof opts.unlockStage === 'number' && Number.isFinite(opts.unlockStage) && opts.unlockStage >= 0
+      ? Math.max(prevUnlockStage, Math.floor(opts.unlockStage), stageNum)
+      : Math.max(prevUnlockStage, stageNum);
+  col.unlockStage = nextUnlockStage;
   if (typeof col.threatStage !== 'number') col.threatStage = 0;
+  if (ctx && nextUnlockStage > prevUnlockStage) {
+    ctx.emit({
+      kind: 'stageUnlocked',
+      colonyIds: [colonyId],
+      data: {
+        colonyIndex: colonyId,
+        unlockStage: nextUnlockStage,
+        previousUnlockStage: prevUnlockStage,
+      },
+    });
+  }
 
   const { q, r, slot } = check.plan;
   if (slot) {
