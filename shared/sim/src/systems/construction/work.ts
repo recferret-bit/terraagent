@@ -1,4 +1,4 @@
-import { ENTITY_STATE } from '../../ecs/columns';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import { approach, atGoal, setUnitActivity } from '../../units/approach';
 import { faceTowards } from '../../units/movement/locomotion';
@@ -35,6 +35,7 @@ const reachOf = (u: UnitCtx, site: { q: number; r: number }) => ({ q: site.q, r:
 function orderSite(u: UnitCtx, orderId: string): BuildSite | null {
   const order = constructionOrdersOf(u.state.blobs.constructionQueue?.value, u.owner).find((o) => o.orderId === orderId);
   if (!order || order.status !== 'in_progress') return null;
+  if (!canDoWork(u, 'build', order.tier || 1)) return null;
   return {
     q: order.q,
     r: order.r,
@@ -60,6 +61,9 @@ function orderSite(u: UnitCtx, orderId: string): BuildSite | null {
 function jobSite(u: UnitCtx, entityId: number): BuildSite | null {
   const job = readyBuildingJob(u.state, u.owner, entityId);
   if (!job) return null;
+  const eRow = rowOf(u.state.entities, entityId);
+  const bTier = eRow >= 0 ? u.state.entities.cols.tier[eRow] || 1 : 1;
+  if (!canDoWork(u, 'build', bTier)) return null;
   return { q: job.q, r: job.r, enRoute() {}, advance: () => advanceBuildingJob(u.state, entityId, u.row, u.ctx) ?? 'completed' };
 }
 
@@ -95,15 +99,33 @@ export const buildCommand = defineUnitCommand<BuildCommand>({
       const cols = u.state.entities.cols;
       setUnitActivity(u, ENTITY_STATE.idle, cols.q[u.row], cols.r[u.row]);
     }
-    syncHqView(u.state, u.row, u.ctx.tick, u.ctx.data);
+    if (u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq) {
+      syncHqView(u.state, u.row, u.ctx.tick, u.ctx.data);
+    }
     return res === 'running' ? 'running' : 'done';
   },
 });
 
+function claimedBuildOrderIds(u: UnitCtx): Set<string> {
+  const out = new Set<string>();
+  const byId = (u.state.blobs.units?.value as { byId?: Record<string, { current?: { kind?: string; orderId?: string } | null }> } | undefined)?.byId;
+  if (!byId) return out;
+  const cols = u.state.entities.cols;
+  for (const [idStr, rec] of Object.entries(byId)) {
+    const otherId = Number(idStr);
+    if (otherId === u.id || rec?.current?.kind !== 'build' || !rec.current.orderId) continue;
+    const r = rowOf(u.state.entities, otherId);
+    if (r >= 0 && cols.owner[r] === u.owner && cols.hp[r] > 0) {
+      out.add(rec.current.orderId);
+    }
+  }
+  return out;
+}
+
 /**
- * Dispatch of construction to builders (W02-16, `UO-D-03`): a unit that may build (`maxBuildTier` ≥ the site's tier;
- * a Harvester never does) takes the colony's oldest W01 order ready for work, else its oldest W02 job ready for work,
- * and keeps the one it works on until it is done: one site at a time per builder, then it walks to the next.
+ * Dispatch of construction to builders (W02-16, W03-02, `UO-D-03`): a unit that may build (`maxBuildTier` ≥ the site's tier;
+ * a Harvester never does) takes an unclaimed ready W01 order or W02/W03 job, and keeps the one it works on until it is done:
+ * one site at a time per builder so HQ (1.5×) and Builder Drone (1.0×) build multiple sites in parallel.
  */
 export const buildProvider: UnitWorkProvider = {
   id: 'build',
@@ -111,12 +133,29 @@ export const buildProvider: UnitWorkProvider = {
     if (!canDoWork(u, 'build')) return null;
     const cur = u.record.current;
     const ready = [
-      ...constructionOrdersOf(u.state.blobs.constructionQueue?.value, u.owner).filter((o) => o.status === 'in_progress'),
-      ...readyBuildingJobs(u.state, u.owner).map((j) => ({ orderId: buildJobKey(j.entityId), q: j.q, r: j.r })),
+      ...constructionOrdersOf(u.state.blobs.constructionQueue?.value, u.owner).filter(
+        (o) => o.status === 'in_progress' && canDoWork(u, 'build', o.tier || 1),
+      ),
+      ...readyBuildingJobs(u.state, u.owner)
+        .filter((j) => {
+          const eRow = rowOf(u.state.entities, j.entityId);
+          const bTier = eRow >= 0 ? u.state.entities.cols.tier[eRow] || 1 : 1;
+          return canDoWork(u, 'build', bTier);
+        })
+        .map((j) => ({ orderId: buildJobKey(j.entityId), q: j.q, r: j.r })),
     ];
     const skipped = (key: string) => (u.record.skip[`build:${key}`] ?? 0) > u.ctx.tick;
-    if (cur?.kind === 'build' && !skipped(cur.orderId) && ready.some((o) => o.orderId === cur.orderId)) return cur;
-    const next = ready.find((o) => !skipped(o.orderId));
+    const claimed = claimedBuildOrderIds(u);
+    const unclaimed = ready.find((o) => !skipped(o.orderId) && !claimed.has(o.orderId));
+    if (
+      cur?.kind === 'build' &&
+      !skipped(cur.orderId) &&
+      ready.some((o) => o.orderId === cur.orderId) &&
+      (!claimed.has(cur.orderId) || !unclaimed || u.state.entities.cols.state[u.row] === ENTITY_STATE.constructing)
+    ) {
+      return cur;
+    }
+    const next = unclaimed ?? ready.find((o) => !skipped(o.orderId));
     return next ? { kind: 'build', source: 'auto', orderId: next.orderId, q: next.q, r: next.r } : null;
   },
 };
