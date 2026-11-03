@@ -18,7 +18,7 @@ import {
   refundEntrySpent,
   tryCancelSpecialTaskId,
 } from './cancel';
-import { executeDismantleAtTile } from '../terraform-basic/dismantleAndWork';
+import { enqueueRepairForEntity, executeDismantleAtTile } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import {
   PRECEDENCE_RANK,
@@ -186,6 +186,21 @@ function tryStartQueueEntry(
       const reason = SITE_CODES.has(started.code) ? 'site' : started.code === 'storage_cap' ? 'storage' : 'resources';
       const detail = reason === 'site' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
       markWaiting(entry, reason, detail, null, tick);
+      return;
+    }
+  } else if (entry.task.kind === 'repair') {
+    const started = enqueueRepairForEntity(state, entry.colonyIndex, entry.task.entityId, {
+      taskId: entry.taskId,
+      tick,
+      data,
+    });
+    if (started.ok) {
+      entry.cost = { ...started.job.totalCost };
+      entry.totalCost = { ...started.job.totalCost };
+      entry.buildTicks = started.job.durationTicks;
+      entry.workerEntityId = started.job.workerEntityId;
+    } else if (started.reason !== 'unknown_entity') {
+      markWaiting(entry, 'worker', 'waiting: worker', null, tick);
       return;
     }
   }
@@ -380,8 +395,9 @@ export const enqueueTaskHandler = defineCommandHandler({
       const dRes = executeDismantleAtTile(state, colIdx, norm.task.q, norm.task.r, ctx.tick, ctx.data);
       return dRes.ok ? undefined : dRes.reason;
     }
-    if (norm.task.kind === 'terraform' && norm.task.op === 'work') {
-      return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
+    if (norm.task.kind === 'terraform' && (norm.task.op === 'work' || norm.task.op === 'repair')) {
+      const intent = norm.task.op === 'repair' ? 'repair' : (norm.task as Partial<WorkOrderArgs>).intent;
+      return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), intent, tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
     }
     const { precedence, costOverride } = enqueueAuthority(cmd.source, norm); // a player never sets its own cost or jumps the queue
     const res = enqueueQueueTask(state, { colonyIndex: colIdx, task: norm.task, precedence, taskId: norm.taskId, costOverride, tick: ctx.tick, data: ctx.data }, ctx);

@@ -11,6 +11,7 @@ import { defineSystem } from '../../kernel/system';
 import { faceTowards } from '../../units/movement/locomotion';
 import { cancelMove, requestMove } from '../../units/movement/orchestrator';
 import { creditResource, payProgressiveSlice } from '../economy/ledger';
+import { autoQueueDamagedStructures, resolveWorkerRepairRate, syncRepairQueueEntries } from './autoRepair';
 import { continueWorkChain } from './chain';
 import { spawnTerraformDeposit } from './resourceSpawn';
 import { abandonUnreachableJob } from './unreachable';
@@ -46,7 +47,8 @@ function stepRepairWorkJob(state: PlanetState, job: WorkJobRecord, workerRow: nu
     return true;
   }
   const colony = ensureColony(state, job.colonyId, ctx.tick);
-  const nextElapsed = job.elapsedTicks + ctx.dt;
+  const rate = resolveWorkerRepairRate(state, job.workerEntityId, ctx.data);
+  const nextElapsed = Math.min(job.durationTicks, job.elapsedTicks + ctx.dt * rate);
   const nextProgress = Math.min(1, nextElapsed / Math.max(1, job.durationTicks));
 
   if (Object.keys(job.totalCost).length > 0) {
@@ -135,8 +137,9 @@ function approachJob(
   ctx: StepContext,
 ): 'arrived' | 'moving' | 'abandoned' {
   const e = state.entities, cols = e.cols;
-  if (isWorkerAtJob(state, wRow, job.q, job.r)) return 'arrived';
-  const goal = { q: job.q, r: job.r, minDist: 1, maxDist: workReach(cols.kind[wRow]) };
+  const tRow = job.mode === 'repair' && job.targetEntityId !== undefined ? rowOf(e, job.targetEntityId) : -1;
+  if (isWorkerAtJob(state, wRow, job.q, job.r, tRow)) return 'arrived';
+  const goal = { q: job.q, r: job.r, minDist: 1, maxDist: workReach(cols.kind[wRow], tRow, state) };
   const report = !job.chain || (job.chainSeq ?? 0) === 0; // a chain's automatic follow-up is skipped silently
   if (abandonUnreachableJob(state, job.workerEntityId, wRow, goal, ctx, report)) {
     delete jobs[job.jobId];
@@ -176,12 +179,16 @@ export const workJobsSystem = defineSystem({
   wave: 'W01',
   run(state, ctx) {
     const jobs = getWorkJobsMap(state);
+    let changed = autoQueueDamagedStructures(state, jobs, ctx);
     const entries = Object.values(jobs);
-    if (entries.length === 0) return;
+    if (entries.length === 0) {
+      if (changed) saveWorkJobsMap(state, jobs, ctx.tick);
+      syncRepairQueueEntries(state, jobs, ctx.tick, ctx.data);
+      return;
+    }
 
     const e = state.entities, cols = e.cols;
     const processedWorkers = new Set<number>();
-    let changed = false;
 
     for (const job of entries) {
       if (processedWorkers.has(job.workerEntityId)) continue;
@@ -214,5 +221,6 @@ export const workJobsSystem = defineSystem({
     }
 
     if (changed) saveWorkJobsMap(state, jobs, ctx.tick);
+    syncRepairQueueEntries(state, jobs, ctx.tick, ctx.data);
   },
 });

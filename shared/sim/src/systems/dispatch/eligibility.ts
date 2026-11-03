@@ -54,7 +54,7 @@ export function isWorkerEligibleForJob(entityKind: number, workerTier: number, j
   }
   if (entityKind === ENTITY_KIND.harvester) {
     if (job.kind === 'build' || job.kind === 'linkedPrep') return false;
-    return job.op === 'clear' || job.op === 'break' || job.op === 'work';
+    return job.op === 'clear' || job.op === 'break' || job.op === 'work' || job.op === 'repair';
   }
   return false;
 }

@@ -5,7 +5,8 @@ import type { PlanetState } from '../../kernel/state';
 import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
-import { produceHarvesterAtHubEdge } from '../factories-hub';
+import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge } from '../factories-hub';
+import { getWorkJobsMap } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
 import { followPowerLineEntry } from './powerLine';
 import type { QueueEntry } from './types';
@@ -60,13 +61,46 @@ function followBuildEntry(state: PlanetState, entry: QueueEntry & { entityId: nu
   entry.waitDetail = wait && job ? BUILD_WAIT_DETAIL[wait](state, job) : undefined;
 }
 
+/** A repair entry follows its target entity's repair work job (W03-03). */
+function followRepairEntry(state: PlanetState, entry: QueueEntry): boolean {
+  if (entry.task.kind !== 'repair') return false;
+  const targetId = entry.task.entityId;
+  const eRow = rowOf(state.entities, targetId);
+  const job = Object.values(getWorkJobsMap(state)).find((j) => j.mode === 'repair' && j.targetEntityId === targetId);
+  if (job) {
+    entry.workerEntityId = job.workerEntityId;
+    entry.cost = { ...job.totalCost };
+    entry.totalCost = { ...job.totalCost };
+    entry.spentCost = { ...job.spentCost };
+    entry.paid = Object.values(job.spentCost).some((v) => (v ?? 0) > 0);
+    entry.buildTicks = job.durationTicks;
+    entry.elapsedTicks = job.elapsedTicks;
+    entry.progress = Math.min(1, Number(job.progress.toFixed(4)));
+    entry.waitReason = job.status === 'waiting' ? ((job.waitReason as QueueEntry['waitReason']) ?? 'resources') : undefined;
+    entry.waitDetail = entry.waitReason ? `waiting: ${entry.waitReason}` : undefined;
+    return true;
+  }
+  if (eRow >= 0 && (state.entities.cols.hp[eRow] <= 0 || state.entities.cols.hp[eRow] >= state.entities.cols.hpMax[eRow])) {
+    entry.spentCost = { ...(entry.totalCost ?? entry.cost) };
+    entry.paid = Object.values(entry.spentCost).some((v) => (v ?? 0) > 0);
+    entry.progress = 1;
+    entry.state = 'done';
+    return true;
+  }
+  return eRow >= 0;
+}
+
 /**
  * A `buildUnit` entry finished one unit: with units of its `count` left, or `repeat` on, it starts the next one
  * (paid progressively again; `queued`, so the scan re-checks supply and resources first), else it is `done`.
  */
 function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
-  produceHarvesterAtHubEdge(state, colIdx, ctx);
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
+  if (task?.unit === 'builder') {
+    produceBuilderAtHubEdge(state, colIdx, ctx);
+  } else {
+    produceHarvesterAtHubEdge(state, colIdx, ctx);
+  }
   const count = Math.max(1, Math.floor(task?.count ?? 1));
   const left = (entry.remainingCount ?? count) - 1;
   if (left <= 0 && !task?.repeat) {
@@ -90,6 +124,9 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
   }
   if (entry.task.kind === 'build' && entry.entityId !== undefined) {
     followBuildEntry(state, entry as QueueEntry & { entityId: number });
+    return;
+  }
+  if (entry.task.kind === 'repair' && followRepairEntry(state, entry)) {
     return;
   }
   const colony = ensureColony(state, colIdx, ctx.tick);

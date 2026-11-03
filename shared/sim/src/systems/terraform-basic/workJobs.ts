@@ -98,15 +98,21 @@ export function workJobDrawPerS(job: Pick<WorkJobRecord, 'energyCost' | 'duratio
   return job.energyCost > 0 ? Number((job.energyCost / workS).toFixed(4)) : 0;
 }
 
-/** How far (hexes) a worker works a job from: the HQ Drone 2, any other worker 1. */
-export function workReach(kind: number): number {
-  return kind === ENTITY_KIND.hq ? 2 : 1;
+/** How far (hexes) a worker works a job from: the HQ Drone 2, any other worker 1 (or 2 for a 3x3 structure). */
+export function workReach(kind: number, targetRow = -1, state?: SimState): number {
+  const base = kind === ENTITY_KIND.hq ? 2 : 1;
+  if (targetRow >= 0 && state) {
+    const cols = state.entities.cols;
+    const fp = Math.max(cols.footprintW[targetRow] || 1, cols.footprintD[targetRow] || 1, cols.kind[targetRow] === ENTITY_KIND.commandHub ? 3 : 1);
+    if (fp >= 3) return Math.max(base, 2);
+  }
+  return base;
 }
 
 /** Whether worker row `wRow` is in reach of `(q, r)`: it works the job there (and draws power) instead of walking. */
-export function isWorkerAtJob(state: SimState, wRow: number, q: number, r: number): boolean {
+export function isWorkerAtJob(state: SimState, wRow: number, q: number, r: number, targetRow = -1): boolean {
   const cols = state.entities.cols;
-  return hexDistance(cols.q[wRow], cols.r[wRow], q, r) <= workReach(cols.kind[wRow]);
+  return hexDistance(cols.q[wRow], cols.r[wRow], q, r) <= workReach(cols.kind[wRow], targetRow, state);
 }
 
 /** Whether `id` names an open work job: its own id, or the root id of a terraform chain. */
