@@ -6,6 +6,7 @@ import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { cancelQueueTask, getAllQueueEntries } from '../queue';
 import { GOAL_CATALOG, getSuggestedGoalForStage } from './catalog';
+import { stepColonyGoalsBreakdown } from './breakdown';
 import {
   acceptSuggestionHandler,
   cancelGoalHandler,
@@ -39,6 +40,8 @@ export * from './catalog';
 export * from './store';
 export * from './priorities';
 export * from './handlers';
+export * from './sites';
+export * from './breakdown';
 
 export function normalizeGoalParams(args: Partial<QueueGoalArgs>): GoalParams {
   return {
@@ -356,6 +359,7 @@ export const goalsSystem = defineSystem({
         saveColonyGoals(state, col.index, goals, ctx.tick);
         if (promoted) emitGoalProgress(ctx, col.index, promoted);
       }
+      stepColonyGoalsBreakdown(state, col.index, ctx);
     }
   },
 });

@@ -11,6 +11,7 @@ import {
 import { resolveHarvesterRow } from '../systems/harvest/unit';
 import type { HqJob, HqUnitView } from '../systems/hq';
 import { getColonyProgression } from '../systems/progression';
+import { getLastAutopilotDecision, type AutopilotDecision, type AutopilotOrderSuggestion } from '../systems/rule-engine';
 
 /**
  * W00 view: a minimal read-only projection for render/HUD. Tile arrays are shared with the state (no copy; do not
@@ -51,6 +52,8 @@ export interface ViewColony {
   dwellRemainingS?: number | null;
   dwellRemainingTicks?: number | null;
   nextStageConditionText?: string;
+  lastAutopilotDecision?: AutopilotDecision | null;
+  activeSuggestion?: AutopilotOrderSuggestion | null;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -135,6 +138,7 @@ export function view(state: PlanetState): SimView {
       typeof k.nextStageConditionText === 'string'
         ? k.nextStageConditionText
         : prog.nextStageConditionText || (getStageSpec(out.stage + 1)?.unlockConditionText ?? '');
+    out.lastAutopilotDecision = getLastAutopilotDecision(state, k.index);
     return out;
   });
   return {
