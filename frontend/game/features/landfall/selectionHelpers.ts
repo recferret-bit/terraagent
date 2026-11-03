@@ -435,6 +435,16 @@ export function buildSelectedEntityFromRow(
   const b = BLDG_META[e.kind];
   if (!b) return null;
   const reason = offlineReasons[e.id];
+  const dismantle = dismantleJobOf(rawView, e.id);
+  if (dismantle) {
+    // Coming down (owner feedback W03 #6): a site again, its progress is the dismantle job's (0 → 100 %).
+    return {
+      entityId: e.id, kind: e.kind, kindLabel: b.label, shortCode: b.code,
+      isUnit: false, isMovable: false, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
+      hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: 'dismantling', queueCount: 1,
+      footprintW: b.w, footprintD: b.d, state: e.state, progress: Math.max(0.001, Math.min(0.999, dismantle.progress)),
+    };
+  }
   const job = reason
     ? reason
     : e.state === ENTITY_STATE.constructing ? 'constructing'
@@ -454,6 +464,17 @@ export function buildSelectedEntityFromRow(
     hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: job, queueCount,
     footprintW: b.w, footprintD: b.d, state: e.state, progress,
   };
+}
+
+/** The open dismantle job (`blobs.workJobs`, mode `dismantle`, not a helper record) of building `entityId`, if any. */
+export function dismantleJobOf(rawView: unknown, entityId: number): { progress: number } | null {
+  const byId = ((rawView as { blobs?: Record<string, unknown> } | null)?.blobs?.workJobs as
+    { byId?: Record<string, { mode?: string; targetEntityId?: number; helpOf?: string; progress?: number }> } | undefined)?.byId;
+  if (!byId) return null;
+  for (const j of Object.values(byId)) {
+    if (j?.mode === 'dismantle' && j.targetEntityId === entityId && j.helpOf === undefined) return { progress: Number(j.progress) || 0 };
+  }
+  return null;
 }
 
 /** Colony `owner`'s Units-lane entry CANCEL JOB on the Command Hub ends: the running one, else the next queued; null if none. */
