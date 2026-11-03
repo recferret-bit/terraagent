@@ -10,82 +10,42 @@ import {
 } from '@terra/sim';
 import type { FeatureContext, GameView } from '../../core/registry/types';
 import { ownColonyIndex } from '../shared/colony';
+import {
+  STORAGE_HINT_BUTTON_TEXT,
+  STORAGE_HINT_TEXT,
+  formatChipStatus,
+  hasFlag,
+  resolveChipTitleAndIcon,
+  serializeLaneKey,
+  serializeStructureKey,
+  syncEarmarkBar,
+  syncStorageHint,
+} from './queueChipHelpers';
 
-const TASK_TITLES: Readonly<Record<string, string>> = {
-  solar: 'Solar Array T1',
-  metalsExtractor: 'Metals Extractor T1',
-  commandHub: 'Command Hub T1',
-  harvester: 'Harvester',
-};
+export { STORAGE_HINT_BUTTON_TEXT, STORAGE_HINT_TEXT };
 
-const TASK_ICONS: Readonly<Record<string, string>> = {
-  solar: '☀',
-  metalsExtractor: '⛏',
-  commandHub: '⬡',
-  harvester: '⚙',
-};
-
-function resolveChipTitleAndIcon(entry: QueueEntry): { title: string; icon: string } {
-  if (entry.task.kind === 'build') {
-    const key = entry.task.building;
-    return { title: TASK_TITLES[key] ?? key, icon: TASK_ICONS[key] ?? '▣' };
-  }
-  if (entry.task.kind === 'buildUnit') {
-    const key = entry.task.unit;
-    return { title: TASK_TITLES[key] ?? key, icon: TASK_ICONS[key] ?? '⚙' };
-  }
-  return { title: `Terraform: ${entry.task.op}`, icon: '⛰' };
-}
-
-function formatChipStatus(entry: QueueEntry): string {
-  if (entry.state === 'in_progress') {
-    return `in_progress · ${Math.round((entry.progress ?? 0) * 100)}%`;
-  }
-  if (entry.state === 'waiting') {
-    return entry.waitDetail ?? `waiting: ${entry.waitReason ?? 'resources'}`;
-  }
-  return entry.state;
-}
-
-/** Greyed hint on a `waiting(storage)` entry: the cost exceeds a family cap; only a Supply Depot (W03) raises it. */
-export const STORAGE_HINT_TEXT = 'Build a Supply Depot to raise the cap (W03)';
-
-/** Adds / removes the greyed storage hint of `chip` to match `entry` (create and in-place update share it). */
-function syncStorageHint(chip: HTMLElement, entry: QueueEntry): void {
-  const want = entry.state === 'waiting' && entry.waitReason === 'storage';
-  const hint = chip.querySelector('[data-testid="queue-storage-hint"]');
-  if (want && !hint) {
-    const el = document.createElement('div');
-    el.className = 'ta-queue-chip__hint';
-    el.setAttribute('data-testid', 'queue-storage-hint');
-    el.setAttribute('aria-disabled', 'true');
-    el.title = 'The Supply Depot arrives in W03';
-    el.textContent = STORAGE_HINT_TEXT;
-    chip.appendChild(el);
-  } else if (!want && hint) {
-    hint.remove();
-  }
-}
-
-function serializeLaneKey(entries: readonly QueueEntry[]): string {
-  return entries
-    .map((e) => `${e.taskId}:${e.state}:${Math.round((e.progress ?? 0) * 100)}:${e.waitDetail ?? ''}:${e.waitReason ?? ''}`)
-    .join('|');
-}
-
-function serializeStructureKey(entries: readonly QueueEntry[]): string {
-  return entries.map((e) => `${e.taskId}:${e.state}`).join('|');
-}
+const LANE_TABS: ReadonlyArray<{ id: QueueLane | 'all'; label: string }> = [
+  { id: 'all', label: 'All' },
+  { id: 'construction', label: 'Construction' },
+  { id: 'terraform', label: 'Terraform' },
+  { id: 'units', label: 'Units' },
+  { id: 'hqGoals', label: 'HQ Goals' },
+];
 
 export class QueuePanel {
   readonly root: HTMLElement;
   private readonly ctx: FeatureContext;
   private readonly collapseBtn: HTMLButtonElement;
   private readonly cancelAllBtn: HTMLButtonElement;
+  private readonly tabsBar: HTMLElement;
   private readonly constructionList: HTMLElement;
+  private readonly terraformList: HTMLElement;
   private readonly unitsList: HTMLElement;
+  private readonly hqGoalsList: HTMLElement;
+  private readonly laneSections = new Map<QueueLane, HTMLElement>();
   private readonly laneKeys = new Map<HTMLElement, string>();
   private readonly laneStructKeys = new Map<HTMLElement, string>();
+  private activeLaneTab: QueueLane | 'all' = 'all';
   private collapsed = false;
   private entries: QueueEntry[] = [];
   private simState: PlanetState | null = null;
@@ -99,6 +59,7 @@ export class QueuePanel {
     this.root.className = 'ta-queue-panel plate-sm';
     this.root.dataset.collapsed = 'false';
     this.root.dataset.empty = 'true';
+    this.root.dataset.activeLane = 'all';
 
     const header = document.createElement('div');
     header.className = 'ta-queue-panel__header';
@@ -124,17 +85,22 @@ export class QueuePanel {
     this.collapseBtn.onclick = () => this.setCollapsed(!this.collapsed);
 
     header.append(title, this.cancelAllBtn, this.collapseBtn);
+    this.tabsBar = this.createTabsBar();
 
     const lanes = document.createElement('div');
     lanes.className = 'ta-queue-panel__lanes';
 
     const cLane = this.createLaneSection('construction', 'Construction');
     this.constructionList = cLane.list;
+    const tLane = this.createLaneSection('terraform', 'Terraform');
+    this.terraformList = tLane.list;
     const uLane = this.createLaneSection('units', 'Units');
     this.unitsList = uLane.list;
+    const gLane = this.createLaneSection('hqGoals', 'HQ Goals');
+    this.hqGoalsList = gLane.list;
 
-    lanes.append(cLane.section, uLane.section);
-    this.root.append(header, lanes);
+    lanes.append(cLane.section, tLane.section, uLane.section, gLane.section);
+    this.root.append(header, this.tabsBar, lanes);
     host.appendChild(this.root);
 
     this.onKeyDown = (e: KeyboardEvent) => {
@@ -151,6 +117,25 @@ export class QueuePanel {
     this.render();
   }
 
+  private createTabsBar(): HTMLElement {
+    const bar = document.createElement('div');
+    bar.className = 'ta-queue-panel__tabs';
+    bar.dataset.testid = 'queue-lane-tabs';
+    bar.setAttribute('data-testid', 'queue-lane-tabs');
+    for (const tab of LANE_TABS) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'ta-queue-panel__tab';
+      btn.dataset.laneTab = tab.id;
+      btn.dataset.active = String(tab.id === this.activeLaneTab);
+      btn.setAttribute('aria-pressed', String(tab.id === this.activeLaneTab));
+      btn.textContent = tab.label;
+      btn.onclick = () => this.setActiveLane(tab.id);
+      bar.appendChild(btn);
+    }
+    return bar;
+  }
+
   private createLaneSection(lane: QueueLane, label: string): { section: HTMLElement; list: HTMLElement } {
     const section = document.createElement('div');
     section.className = 'ta-queue-lane';
@@ -164,7 +149,30 @@ export class QueuePanel {
     const list = document.createElement('div');
     list.className = 'ta-queue-lane__list';
     section.append(hdr, list);
+    this.laneSections.set(lane, section);
     return { section, list };
+  }
+
+  setActiveLane(lane: QueueLane | 'all'): void {
+    this.activeLaneTab = lane;
+    this.root.dataset.activeLane = lane;
+    const buttons = this.tabsBar.querySelectorAll<HTMLButtonElement>('[data-lane-tab]');
+    for (const btn of buttons) {
+      const active = btn.dataset.laneTab === lane;
+      btn.dataset.active = String(active);
+      btn.setAttribute('aria-pressed', String(active));
+    }
+    this.syncLaneVisibility();
+  }
+
+  getActiveLane(): QueueLane | 'all' {
+    return this.activeLaneTab;
+  }
+
+  private syncLaneVisibility(): void {
+    for (const [lane, section] of this.laneSections.entries()) {
+      section.hidden = this.activeLaneTab !== 'all' && this.activeLaneTab !== lane;
+    }
   }
 
   bindSimState(state: PlanetState, colonyIndex = 0): void {
@@ -285,8 +293,17 @@ export class QueuePanel {
   private render(): void {
     this.root.dataset.empty = String(this.entries.length === 0);
     this.updateHeaderSummary();
-    this.renderLane(this.constructionList, this.entries.filter((e) => e.lane === 'construction' || e.lane === 'terraform'));
+    const hasW03 = hasFlag(this.ctx.flags, 'W03');
+    if (hasW03) {
+      this.renderLane(this.constructionList, this.entries.filter((e) => e.lane === 'construction'));
+      this.renderLane(this.terraformList, this.entries.filter((e) => e.lane === 'terraform'));
+    } else {
+      this.renderLane(this.constructionList, this.entries.filter((e) => e.lane === 'construction' || e.lane === 'terraform'));
+      this.renderLane(this.terraformList, []);
+    }
     this.renderLane(this.unitsList, this.entries.filter((e) => e.lane === 'units'));
+    this.renderLane(this.hqGoalsList, this.entries.filter((e) => e.lane === 'hqGoals'));
+    this.syncLaneVisibility();
   }
 
   private renderLane(container: HTMLElement, laneEntries: QueueEntry[]): void {
@@ -325,7 +342,8 @@ export class QueuePanel {
       fill.dataset.chipProgress = String(pct);
       fill.style.width = `${pct}%`;
     }
-    syncStorageHint(chip, entry);
+    syncStorageHint(chip, entry, this.ctx);
+    syncEarmarkBar(chip, entry);
   }
 
   private createChipElement(entry: QueueEntry, index: number, total: number): HTMLElement {
@@ -371,7 +389,8 @@ export class QueuePanel {
     status.textContent = formatChipStatus(entry);
 
     chip.append(row, status);
-    syncStorageHint(chip, entry);
+    syncStorageHint(chip, entry, this.ctx);
+    syncEarmarkBar(chip, entry);
 
     if (entry.state === 'in_progress') {
       const bar = document.createElement('div');

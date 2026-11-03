@@ -6,7 +6,7 @@ import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
 
 export interface UnitCardModel {
   id: string;
-  unit: 'harvester';
+  unit: 'harvester' | 'builder';
   label: string;
   archetype: string;
   tier: number;
@@ -56,6 +56,15 @@ function formatPower(drain: number): string {
   return '0 E/s';
 }
 
+function isSupplyUnitKind(kind: number | undefined, unit: string | undefined): boolean {
+  return (
+    kind === ENTITY_KIND.harvester ||
+    kind === ENTITY_KIND.builder ||
+    unit === 'harvester' ||
+    unit === 'builder'
+  );
+}
+
 export function resolveSupply(view?: GameView): SupplySummary {
   if (!view) return { used: 0, cap: 10 };
   const v = view as {
@@ -76,21 +85,19 @@ export function resolveSupply(view?: GameView): SupplySummary {
     return { used: colSupply.used, cap: colSupply.cap };
   }
 
-  let activeHarvesters = 0;
+  let activeUnits = 0;
   if (v.entities) {
     if (v.entities instanceof Float32Array) {
       for (let i = 0; i < v.entities.length; i += ENTITY_STRIDE) {
-        if (v.entities[i + 1] === ENTITY_KIND.harvester && v.entities[i + 8] > 0) {
-          activeHarvesters++;
+        const kind = v.entities[i + 1];
+        if ((kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder) && v.entities[i + 8] > 0) {
+          activeUnits++;
         }
       }
     } else if (Array.isArray(v.entities)) {
       for (const e of v.entities) {
-        if (
-          (e.kind === ENTITY_KIND.harvester || e.unit === 'harvester') &&
-          (e.hp === undefined || e.hp > 0)
-        ) {
-          activeHarvesters++;
+        if (isSupplyUnitKind(e.kind, e.unit) && (e.hp === undefined || e.hp > 0)) {
+          activeUnits++;
         }
       }
     }
@@ -99,7 +106,44 @@ export function resolveSupply(view?: GameView): SupplySummary {
   const queue = v.colonies?.[0]?.unitQueue ?? v.blobs?.hubProduction?.entries ?? [];
   const inProgress = queue.filter((en) => en.state === 'in_progress').length;
 
-  return { used: activeHarvesters + inProgress, cap: 10 };
+  return { used: activeUnits + inProgress, cap: 10 };
+}
+
+function toUnitCardModel(
+  row: Record<string, unknown>,
+  unit: 'harvester' | 'builder',
+  fallbackLabel: string,
+  fallbackArchetype: string,
+  fallbackBuildS: number,
+  fallbackDrain: number,
+): UnitCardModel {
+  const buildS = typeof row.designBuildS === 'number'
+    ? row.designBuildS
+    : typeof row.buildS === 'number'
+      ? Math.round(row.buildS / 5)
+      : fallbackBuildS;
+  const powerDrain = typeof row.powerDrainPerS === 'number' ? row.powerDrainPerS : fallbackDrain;
+  const cost = (row.cost as Record<string, number>) ?? {};
+  const costPills: string[] = [];
+  for (const [res, amt] of Object.entries(cost)) {
+    if (amt > 0) {
+      costPills.push(`${amt} ${formatResourceLabel(res)}`);
+    }
+  }
+  return {
+    id: String(row.id ?? unit),
+    unit,
+    label: typeof row.label === 'string' ? row.label : fallbackLabel,
+    archetype: typeof row.archetype === 'string' ? row.archetype : fallbackArchetype,
+    tier: typeof row.tier === 'number' ? row.tier : 1,
+    buildS,
+    supply: typeof row.supply === 'number' ? row.supply : 1,
+    powerDrainPerS: powerDrain,
+    powerText: formatPower(powerDrain),
+    cost,
+    costSummary: costPills.join(' · '),
+    costPills,
+  };
 }
 
 export function buildUnitsCatalog(
@@ -113,39 +157,18 @@ export function buildUnitsCatalog(
   const unitsTable = data.tables['unitsWorkersBasic'];
   if (!unitsTable) return [];
 
+  const cards: UnitCardModel[] = [];
   const harvesterRow = unitsTable['harvester'];
-  if (!harvesterRow) return [];
+  if (harvesterRow) {
+    cards.push(toUnitCardModel(harvesterRow, 'harvester', 'Harvester Drone', 'robot.miner', 10, 1.5));
+  }
 
-  const buildS = typeof harvesterRow.designBuildS === 'number'
-    ? harvesterRow.designBuildS
-    : typeof harvesterRow.buildS === 'number'
-      ? Math.round(harvesterRow.buildS / 5)
-      : 10;
-  const powerDrain = typeof harvesterRow.powerDrainPerS === 'number' ? harvesterRow.powerDrainPerS : 1.5;
-  const cost = (harvesterRow.cost as Record<string, number>) ?? {};
-
-  const costPills: string[] = [];
-  for (const [res, amt] of Object.entries(cost)) {
-    if (amt > 0) {
-      costPills.push(`${amt} ${formatResourceLabel(res)}`);
+  if (fs.has('W03')) {
+    const builderRow = data.tables['grid']?.['builder'] ?? unitsTable['builder'];
+    if (builderRow) {
+      cards.push(toUnitCardModel(builderRow, 'builder', 'Builder Drone', 'robot.worker_biped', 12, 2.0));
     }
   }
-  const costSummary = costPills.join(' · ');
 
-  return [
-    {
-      id: String(harvesterRow.id ?? 'harvester'),
-      unit: 'harvester',
-      label: typeof harvesterRow.label === 'string' ? harvesterRow.label : 'Harvester Drone',
-      archetype: typeof harvesterRow.archetype === 'string' ? harvesterRow.archetype : 'robot.miner',
-      tier: typeof harvesterRow.tier === 'number' ? harvesterRow.tier : 1,
-      buildS,
-      supply: typeof harvesterRow.supply === 'number' ? harvesterRow.supply : 1,
-      powerDrainPerS: powerDrain,
-      powerText: formatPower(powerDrain),
-      cost,
-      costSummary,
-      costPills,
-    },
-  ];
+  return cards;
 }
