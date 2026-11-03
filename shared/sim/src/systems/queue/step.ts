@@ -6,7 +6,7 @@ import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
 import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge } from '../factories-hub';
-import { getWorkJobsMap } from '../terraform-basic/workJobs';
+import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
 import { followPowerLineEntry } from './powerLine';
 import type { QueueEntry } from './types';
@@ -61,12 +61,28 @@ function followBuildEntry(state: PlanetState, entry: QueueEntry & { entityId: nu
   entry.waitDetail = wait && job ? BUILD_WAIT_DETAIL[wait](state, job) : undefined;
 }
 
+/** A dismantle entry follows its dismantle work job; the job gone = the building is down (or the dismantle ended). */
+function followDismantleEntry(state: PlanetState, entry: QueueEntry & { task: { kind: 'dismantle' } }): void {
+  const job = leadJobOn(getWorkJobsMap(state), 'dismantle', entry.task.entityId);
+  if (!job) {
+    entry.progress = rowOf(state.entities, entry.task.entityId) < 0 ? 1 : entry.progress;
+    entry.state = 'done';
+    return;
+  }
+  entry.workerEntityId = job.workerEntityId;
+  entry.buildTicks = job.durationTicks;
+  entry.elapsedTicks = job.elapsedTicks;
+  entry.progress = Math.min(1, Number(job.progress.toFixed(4)));
+  entry.waitReason = job.status === 'waiting' ? ((job.waitReason as QueueEntry['waitReason']) ?? 'worker') : undefined;
+  entry.waitDetail = entry.waitReason === 'worker' ? 'waiting: worker (en route)' : entry.waitReason ? `waiting: ${entry.waitReason}` : undefined;
+}
+
 /** A repair entry follows its target entity's repair work job (W03-03). */
 function followRepairEntry(state: PlanetState, entry: QueueEntry): boolean {
   if (entry.task.kind !== 'repair') return false;
   const targetId = entry.task.entityId;
   const eRow = rowOf(state.entities, targetId);
-  const job = Object.values(getWorkJobsMap(state)).find((j) => j.mode === 'repair' && j.targetEntityId === targetId);
+  const job = leadJobOn(getWorkJobsMap(state), 'repair', targetId);
   if (job) {
     entry.workerEntityId = job.workerEntityId;
     entry.cost = { ...job.totalCost };
@@ -127,6 +143,10 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
     return;
   }
   if (entry.task.kind === 'repair' && followRepairEntry(state, entry)) {
+    return;
+  }
+  if (entry.task.kind === 'dismantle') {
+    followDismantleEntry(state, entry as QueueEntry & { task: { kind: 'dismantle' } });
     return;
   }
   const colony = ensureColony(state, colIdx, ctx.tick);

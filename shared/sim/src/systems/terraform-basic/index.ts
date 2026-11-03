@@ -40,10 +40,13 @@ export const enqueueTask = defineCommandHandler({
     const { op, tiles, entityId } = args.terraform;
 
     if (op === 'dismantle') {
+      if (hasWorkJob(state, cmd.commandId)) return 'invalid_args';
       let anyOk = false;
       let firstReject: RejectCode | undefined;
-      for (const t of tiles) {
-        const dRes = executeDismantleAtTile(state, colonyId, t.q, t.r, ctx.tick, ctx.data, entityId);
+      for (let i = 0; i < tiles.length; i++) {
+        const t = tiles[i]!;
+        const taskId = tiles.length > 1 ? `${cmd.commandId}:${i}` : cmd.commandId; // a dismantle job's id (cancelTask)
+        const dRes = executeDismantleAtTile(state, colonyId, t.q, t.r, ctx.tick, ctx.data, entityId, taskId);
         if (dRes.ok) anyOk = true;
         else if (!firstReject || dRes.reason === 'cannot_dismantle_hq') firstReject = dRes.reason;
       }

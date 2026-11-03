@@ -6,13 +6,19 @@ import { hexDistance } from '../../grid/hex';
 import { TICK_MS } from '../../kernel/constants';
 import { setBlob, type ColonyState, type PlanetState, type SimState } from '../../kernel/state';
 import { cancelMove } from '../../units/movement/orchestrator';
+import type { CrewTally } from '../dispatch/crew';
 import { ensureColonyLedger, refundCost } from '../economy/ledger';
+import { restoreDismantleSite } from './dismantleSite';
 
-/** One `work` job (`op: 'work'`): a repair of an own entity or the terraforming of one ground tile (`blobs.workJobs`). */
-export interface WorkJobRecord {
+/**
+ * One `work` job (`blobs.workJobs`): a repair of an own entity, the terraforming of one ground tile (`op: 'work'`), or
+ * the dismantling of an own building (`op: 'dismantle'`, `dismantleJob.ts`). A helper record (`helpOf`) puts one more
+ * worker on another job (its lead): it walks there and adds its crew share to the lead's progress (`crewHelpers.ts`).
+ */
+export interface WorkJobRecord extends CrewTally {
   jobId: string;
   colonyId: number;
-  mode: 'repair' | 'terraform';
+  mode: 'repair' | 'terraform' | 'dismantle';
   workerEntityId: number;
   targetEntityId?: number;
   terrainKey?: TerraformTimeKey;
@@ -47,7 +53,37 @@ export interface WorkJobRecord {
   chainSkipped?: number[];
   /** Tiles still an obstacle after their own job (levelled but uneven, or no longer workable): never picked again. */
   chainGiveUp?: number[];
+  /** A helper record: the id of the job (the lead) this worker helps. It has no cost or progress of its own. */
+  helpOf?: string;
+  /** Dismantle: the whole refund (refund rate × build cost) and what was credited so far (step by step). */
+  refundTotal?: Partial<Record<ResourceKey, number>>;
+  refunded?: Partial<Record<ResourceKey, number>>;
+  /** Dismantle: the building's `state` / `progress` before it became a dismantling site (restored on cancel). */
+  prevState?: number;
+  prevProgress?: number;
+  /** Dismantle: share of the hull a cancel takes off per unit of progress (`dismantleSite.ts`). */
+  hpLossRate?: number;
 }
+
+/** Whether `job` is a job of its own (not a helper record). */
+export const isLeadJob = (job: Pick<WorkJobRecord, 'helpOf'>): boolean => job.helpOf === undefined;
+
+/** The open lead job of `mode` on entity `targetId`, if any. */
+export function leadJobOn(
+  jobs: Readonly<Record<string, WorkJobRecord>>,
+  mode: WorkJobRecord['mode'],
+  targetId: number,
+): WorkJobRecord | undefined {
+  for (const id in jobs) {
+    const j = jobs[id]!;
+    if (j.mode === mode && j.targetEntityId === targetId && isLeadJob(j)) return j;
+  }
+  return undefined;
+}
+
+/** The open dismantle job of building `entityId`, if it is being dismantled. */
+export const dismantleJobOf = (state: SimState, entityId: number): WorkJobRecord | undefined =>
+  leadJobOn(storedJobs(state), 'dismantle', entityId);
 
 /** The stored jobs, read-only (no copy: callers that edit use {@link getWorkJobsMap}). */
 const storedJobs = (state: SimState): Readonly<Record<string, WorkJobRecord>> =>
@@ -144,11 +180,13 @@ export function cancelWorkJobs(
   let cancelled = 0;
   const e = state.entities, cols = e.cols;
 
+  const ended = new Set<string>();
   for (const [id, job] of Object.entries(jobs)) {
     if (colonyId !== undefined && colonyId !== null && job.colonyId !== colonyId) continue;
     const match = Boolean(filter.all) || (filter.jobId !== undefined && (id === filter.jobId || job.chainRootId === filter.jobId)) ||
-      (filter.workerEntityId !== undefined && (job.workerEntityId === filter.workerEntityId || job.targetEntityId === filter.workerEntityId));
+      (filter.workerEntityId !== undefined && (job.workerEntityId === filter.workerEntityId || (isLeadJob(job) && job.targetEntityId === filter.workerEntityId)));
     if (!match) continue;
+    ended.add(id);
     if (Object.keys(job.spentCost).length > 0) {
       const colony = ensureWorkColony(state, job.colonyId, tick);
       refundCost(colony, job.spentCost, DISMANTLE_REFUND_RATE, tick);
@@ -162,12 +200,24 @@ export function cancelWorkJobs(
       setField(e, wRow, 'progress', 0, tick);
       setField(e, wRow, 'state', ENTITY_STATE.idle, tick);
     }
-    if (job.targetEntityId !== undefined) {
+    if (job.mode === 'dismantle' && isLeadJob(job)) restoreDismantleSite(state, job, tick);
+    else if (job.targetEntityId !== undefined && isLeadJob(job)) {
       const tRow = rowOf(e, job.targetEntityId);
       if (tRow >= 0 && cols.state[tRow] !== ENTITY_STATE.constructing) setField(e, tRow, 'progress', 0, tick);
     }
     delete jobs[id];
     cancelled++;
+  }
+  // The helpers of an ended job stop with it.
+  for (const [id, job] of Object.entries(jobs)) {
+    if (job.helpOf === undefined || !ended.has(job.helpOf)) continue;
+    const wRow = rowOf(e, job.workerEntityId);
+    if (wRow >= 0) {
+      cancelMove(state as PlanetState, job.workerEntityId, tick);
+      setField(e, wRow, 'progress', 0, tick);
+      setField(e, wRow, 'state', ENTITY_STATE.idle, tick);
+    }
+    delete jobs[id];
   }
   if (cancelled > 0) saveWorkJobsMap(state, jobs, tick);
   return { cancelled, refunded };

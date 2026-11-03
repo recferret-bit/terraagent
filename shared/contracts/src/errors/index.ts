@@ -19,6 +19,8 @@ export const REJECT_CODES = [
   'unknown_task',
   // W03 queue: lane has reached its capacity and no `auto` entry can be dropped
   'lane_full',
+  // W03 dismantle: the building is already being dismantled (owner feedback W03 #6)
+  'already_dismantling',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

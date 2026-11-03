@@ -76,10 +76,18 @@ export function resolveChipTitleAndIcon(entry: QueueEntry): { title: string; ico
   if (task.kind === 'hqGoal') {
     return { title: `Goal: ${task.goal}`, icon: '🎯' };
   }
+  if (task.kind === 'dismantle') {
+    const name = task.building ? (TASK_TITLES[task.building] ?? task.building) : `#${task.entityId}`;
+    return { title: `Dismantle ${name}`, icon: '⛏' };
+  }
   return { title: `Terraform: ${task.op}`, icon: '⛰' };
 }
 
 export function formatChipStatus(entry: QueueEntry): string {
+  // A dismantle comes down step by step: "Dismantling n%" once a worker is on it (owner feedback W03 #6).
+  if (entry.task.kind === 'dismantle' && entry.state === 'in_progress') {
+    return entry.waitReason ? (entry.waitDetail ?? `waiting: ${entry.waitReason}`) : `Dismantling ${Math.round((entry.progress ?? 0) * 100)}%`;
+  }
   if (entry.state === 'in_progress') {
     return `in_progress · ${Math.round((entry.progress ?? 0) * 100)}%`;
   }

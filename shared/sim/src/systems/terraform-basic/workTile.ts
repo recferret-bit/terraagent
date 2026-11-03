@@ -13,6 +13,7 @@ import { syncHqView } from '../hq/view';
 import { UnitBook } from '../../units/book';
 import { cancelMove } from '../../units/movement/orchestrator';
 import { occupiedGroundTiles } from '../construction/occupancy';
+import { isWorkerEligibleForJob } from '../dispatch/eligibility';
 import { groundWorkYields } from './ops';
 import { terraformOwnershipBlock, terraformWorldFromState, type TerraformWorld } from './rules';
 import { getWorkJobsMap, type WorkJobRecord } from './workJobs';
@@ -88,6 +89,7 @@ export function createGroundWorkJob(
  * - Uses `preferredWorkerId` if valid and alive.
  * - For `mode === 'repair'`, prefers idle `ENTITY_KIND.builder` workers first (since Builder repairs at 1.5x),
  *   falling back to nearest idle `hq` or `harvester` if no idle builder is free (or nearest candidate if all are busy).
+ * - For `mode === 'dismantle'`, only a Builder Drone or the HQ (`dispatch/eligibility.ts`), a Builder first.
  */
 export function selectWorkerForWorkOp(
   state: SimState,
@@ -96,17 +98,16 @@ export function selectWorkerForWorkOp(
   r: number,
   preferredWorkerId?: number,
   avoidEntityId?: number,
-  mode: 'repair' | 'terraform' = avoidEntityId !== undefined ? 'repair' : 'terraform',
+  mode: 'repair' | 'terraform' | 'dismantle' = avoidEntityId !== undefined ? 'repair' : 'terraform',
 ): number | null {
   const e = state.entities, cols = e.cols;
+  const takes = (kind: number): boolean =>
+    mode === 'dismantle'
+      ? isWorkerEligibleForJob(kind, 1, { kind: 'terraform', op: 'dismantle' })
+      : kind === ENTITY_KIND.hq || kind === ENTITY_KIND.builder || kind === ENTITY_KIND.harvester;
   if (preferredWorkerId !== undefined) {
     const r0 = rowOf(e, preferredWorkerId);
-    if (
-      r0 >= 0 &&
-      cols.owner[r0] === colonyId &&
-      cols.hp[r0] > 0 &&
-      (cols.kind[r0] === ENTITY_KIND.hq || cols.kind[r0] === ENTITY_KIND.harvester || cols.kind[r0] === ENTITY_KIND.builder)
-    ) {
+    if (r0 >= 0 && cols.owner[r0] === colonyId && cols.hp[r0] > 0 && takes(cols.kind[r0])) {
       return preferredWorkerId;
     }
   }
@@ -117,12 +118,12 @@ export function selectWorkerForWorkOp(
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyId || cols.hp[row] <= 0) continue;
     const kind = cols.kind[row];
-    if (kind !== ENTITY_KIND.hq && kind !== ENTITY_KIND.harvester && kind !== ENTITY_KIND.builder) continue;
+    if (!takes(kind)) continue;
     const id = cols.id[row];
     const dist = hexDistance(cols.q[row], cols.r[row], q, r);
     const busyPenalty = busyWorkers.has(id) ? 500 : cols.state[row] === ENTITY_STATE.idle ? 0 : 100;
     const rolePenalty =
-      mode === 'repair'
+      mode !== 'terraform'
         ? kind === ENTITY_KIND.builder
           ? 0
           : 50

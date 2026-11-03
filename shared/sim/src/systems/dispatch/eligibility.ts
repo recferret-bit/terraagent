@@ -37,7 +37,8 @@ export function checkWorkerBuildTier(
  * Whether a worker entity (`ENTITY_KIND.hq`, `ENTITY_KIND.builder`, or `ENTITY_KIND.harvester`) may take `job`:
  * - HQ builds up to its tier (`maxBuildTier`) and runs every terraform op and linked site prep.
  * - Builder Drone (`maxBuildTier 1`) builds T1 sites (`tier <= 1`), prepares building footprints (`linkedPrep`),
- *   and runs `work`, `repair`, or `grade` ops.
+ *   and runs `work`, `repair`, `grade` or `dismantle` ops.
+ * - Only the HQ and a Builder Drone dismantle a building (owner feedback W03 #6).
  * - Harvester (`maxBuildTier 0`) never builds or prepares a site; it only takes Clear / Break / Work sub-jobs.
  */
 export function isWorkerEligibleForJob(entityKind: number, workerTier: number, job: WorkEligibilitySpec): boolean {
@@ -50,7 +51,7 @@ export function isWorkerEligibleForJob(entityKind: number, workerTier: number, j
     const maxBuildTier = 1;
     if (job.kind === 'build') return maxBuildTier >= (job.tier ?? 1);
     if (job.kind === 'linkedPrep') return true;
-    return job.op === 'work' || job.op === 'repair' || job.op === 'grade';
+    return job.op === 'work' || job.op === 'repair' || job.op === 'grade' || job.op === 'dismantle';
   }
   if (entityKind === ENTITY_KIND.harvester) {
     if (job.kind === 'build' || job.kind === 'linkedPrep') return false;

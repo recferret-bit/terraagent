@@ -18,7 +18,7 @@ import {
   refundEntrySpent,
   tryCancelSpecialTaskId,
 } from './cancel';
-import { enqueueRepairForEntity, executeDismantleAtTile } from '../terraform-basic/dismantleAndWork';
+import { dismantleQueueTask, enqueueRepairForEntity } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
 import {
   PRECEDENCE_RANK,
@@ -391,9 +391,8 @@ export const enqueueTaskHandler = defineCommandHandler({
     if (!norm.task || typeof norm.task.kind !== 'string') return 'invalid_args';
     const colIdx = commandColony(cmd);
     if (typeof colIdx === 'string') return colIdx;
-    if (norm.task.kind === 'terraform' && norm.task.op === 'dismantle') {
-      const dRes = executeDismantleAtTile(state, colIdx, norm.task.q, norm.task.r, ctx.tick, ctx.data);
-      return dRes.ok ? undefined : dRes.reason;
+    if (norm.task.kind === 'dismantle' || (norm.task.kind === 'terraform' && norm.task.op === 'dismantle')) {
+      return dismantleQueueTask(state, colIdx, norm.task, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
     }
     if (norm.task.kind === 'terraform' && (norm.task.op === 'work' || norm.task.op === 'repair')) {
       const intent = norm.task.op === 'repair' ? 'repair' : (norm.task as Partial<WorkOrderArgs>).intent;

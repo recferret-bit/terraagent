@@ -40,6 +40,7 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   cannot_dismantle_hq: 'Rejected: Cannot dismantle Command Hub or HQ',
   unknown_task: 'Rejected: Order no longer in the queue',
   lane_full: 'Rejected: Queue lane full',
+  already_dismantling: 'Rejected: Already being dismantled',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };
