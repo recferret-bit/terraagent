@@ -1,26 +1,18 @@
 // @vitest-environment jsdom
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import { loadFeatures } from '../../core/registry';
 import type { FeatureContext } from '../../core/registry/types';
 import defaultFeature, {
   formatDwellCountdown,
+  formatItemList,
+  formatItemLabel,
   isWaveOn,
   mountStageTrackHud,
+  showStageToast,
   StageTrackHud,
 } from './index';
-
-function makeMockContext(flagsList = '..08'): FeatureContext {
-  return {
-    flags: new Set(parseWaves(flagsList).list),
-    host: 'server',
-    services: {
-      track: () => {},
-      colonyId: 0,
-      session: { planetId: () => 'test-planet' },
-    },
-  };
-}
+import { expectToastUnlocks, makeMockContext, makeMockTransport } from './stageTestHelpers';
 
 describe('W08-12 formatDwellCountdown', () => {
   it('formats various dwell times accurately as M:SS', () => {
@@ -251,5 +243,222 @@ describe('W08-12 Wave Gating & Registry', () => {
     expect(defaultFeature.hud?.[0].id).toBe('stage-track-hud');
     expect(defaultFeature.hud?.[0].slot).toBe('top-left');
     expect(defaultFeature.hud?.[0].order).toBe(15);
+  });
+});
+
+describe('W08-13 Acceptance Check: Reach S2 and Unlock Reveal Panel', () => {
+  let container: HTMLElement;
+  let ctx: FeatureContext;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    ctx = makeMockContext();
+  });
+
+  it('advance stage from 1 to 2 -> toast "S2 The Grid" appears and unlock reveal lists Builder, Pylon, and Depot (plus Capacitor and Fill/Bridge/Dismantle)', () => {
+    const mounted = mountStageTrackHud(container, ctx);
+
+    // Initial baseline at stage 1
+    mounted.update?.({ colonies: [{ index: 0, stage: 1 }] });
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).toBeNull();
+
+    // Advance to stage 2
+    mounted.update?.({ colonies: [{ index: 0, stage: 2 }] });
+
+    const toast = container.querySelector('[data-testid="stage-reached-toast"]');
+    expect(toast).not.toBeNull();
+    expect(container.querySelector('[data-testid="stage-toast-title"]')?.textContent).toBe('S2 The Grid');
+    expect(container.querySelector('[data-testid="stage-toast-teaches"]')?.textContent).toContain(
+      'Grid reach, parallel workers, storage, night',
+    );
+
+    // Unlock Reveal Panel
+    expectToastUnlocks(container, {
+      units: ['Builder'],
+      buildings: ['Pylon', 'Depot', 'Capacitor'],
+      orders: ['Fill', 'Bridge', 'Dismantle'],
+    });
+
+    mounted.dispose();
+  });
+});
+
+describe('W08-13 Stage Transitions & Safety Overrides', () => {
+  let container: HTMLElement;
+  let ctx: FeatureContext;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    ctx = makeMockContext();
+  });
+
+  it('reaching S1 shows "S1 First Light" without override badge', () => {
+    const mounted = mountStageTrackHud(container, ctx);
+
+    // Baseline at S0
+    mounted.update?.({ colonies: [{ index: 0, stage: 0 }] });
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).toBeNull();
+
+    // Advance to S1
+    mounted.update?.({ colonies: [{ index: 0, stage: 1 }] });
+
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="stage-toast-title"]')?.textContent).toBe('S1 First Light');
+    expect(container.querySelector('[data-testid="stage-toast-teaches"]')?.textContent).toContain(
+      'Resources flow, and everything costs energy',
+    );
+    expect(container.querySelector('[data-testid="stage-toast-override"]')).toBeNull();
+
+    expectToastUnlocks(container, {
+      units: ['Harvester'],
+      buildings: ['Metals Extractor', 'Solar Collector', 'Wind Turbine'],
+      orders: ['Harvest'],
+    });
+
+    mounted.dispose();
+  });
+
+  it('reaching S3 with override "fauna" shows "S3 First Contact" and override badge', () => {
+    const mounted = mountStageTrackHud(container, ctx);
+
+    // Baseline at S2
+    mounted.update?.({ colonies: [{ index: 0, stage: 2 }] });
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).toBeNull();
+
+    // Advance to S3 with override 'fauna'
+    mounted.update?.({ colonies: [{ index: 0, stage: 3, stageOverride: 'fauna' }] });
+
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="stage-toast-title"]')?.textContent).toBe('S3 First Contact');
+    expect(container.querySelector('[data-testid="stage-toast-teaches"]')?.textContent).toContain(
+      'Threat and defense, supply cap',
+    );
+
+    const overrideBadge = container.querySelector('[data-testid="stage-toast-override"]');
+    expect(overrideBadge).not.toBeNull();
+    expect(overrideBadge?.textContent).toBe('Safety Override: fauna');
+
+    expectToastUnlocks(container, {
+      units: ['Scout', 'Guard'],
+      buildings: ['Robotics Factory', 'Turret'],
+      orders: ['Patrol', 'Hold', 'Guard'],
+    });
+
+    mounted.dispose();
+  });
+});
+
+describe('W08-13 Toast Dismiss & Auto-Dismiss Timer', () => {
+  let container: HTMLElement;
+  let ctx: FeatureContext;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    ctx = makeMockContext();
+  });
+
+  it('dismiss button hides the toast immediately when clicked', () => {
+    const mounted = mountStageTrackHud(container, ctx);
+
+    mounted.hud?.showStageToast(2);
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
+
+    const dismissBtn = container.querySelector('[data-testid="stage-toast-dismiss"]') as HTMLButtonElement | null;
+    expect(dismissBtn).not.toBeNull();
+
+    dismissBtn?.click();
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).toBeNull();
+
+    mounted.dispose();
+  });
+
+  it('auto-dismisses toast after default 8000ms timer', () => {
+    vi.useFakeTimers();
+    try {
+      const mounted = mountStageTrackHud(container, ctx);
+      mounted.hud?.showStageToast(1);
+
+      expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
+      vi.advanceTimersByTime(7999);
+      expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
+      vi.advanceTimersByTime(1);
+      expect(container.querySelector('[data-testid="stage-reached-toast"]')).toBeNull();
+
+      mounted.dispose();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('cancels auto-dismiss timer cleanly on dispose', () => {
+    vi.useFakeTimers();
+    try {
+      const mounted = mountStageTrackHud(container, ctx);
+      mounted.hud?.showStageToast(2);
+      expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
+
+      mounted.dispose();
+      expect(container.querySelector('[data-testid="stage-reached-toast"]')).toBeNull();
+      vi.advanceTimersByTime(10000);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('W08-13 Transport stageReached Event & Direct API', () => {
+  it('shows toast when stageReached event is received over transport.onMessage', () => {
+    const container = document.createElement('div');
+    const { transport, emit } = makeMockTransport();
+    const ctx = makeMockContext('..08', transport);
+    const mounted = mountStageTrackHud(container, ctx);
+
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).toBeNull();
+
+    emit({
+      t: 'event',
+      d: {
+        kind: 'stageReached',
+        data: {
+          colonyIndex: 0,
+          stage: 2,
+          title: 'S2 The Grid',
+          teaches: 'Grid reach, parallel workers, storage, night',
+        },
+      },
+    });
+
+    expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
+    expect(container.querySelector('[data-testid="stage-toast-title"]')?.textContent).toBe('S2 The Grid');
+    expectToastUnlocks(container, {
+      units: ['Builder'],
+      buildings: ['Pylon'],
+    });
+
+    mounted.dispose();
+  });
+
+  it('showStageToast module function works with active HUD', () => {
+    const container = document.createElement('div');
+    const ctx = makeMockContext();
+    const mounted = mountStageTrackHud(container, ctx);
+
+    const toastEl = showStageToast(4);
+    expect(toastEl).not.toBeNull();
+    expect(container.querySelector('[data-testid="stage-toast-title"]')?.textContent).toBe('S4 Neighbor');
+
+    mounted.dispose();
+    expect(showStageToast(4)).toBeNull();
+  });
+
+  it('formatItemLabel and formatItemList format and deduplicate labels properly', () => {
+    expect(formatItemLabel('builder')).toBe('Builder');
+    expect(formatItemLabel('metalsExtractor')).toBe('Metals Extractor');
+    expect(formatItemLabel('solar')).toBe('Solar Collector');
+    expect(formatItemLabel('wind')).toBe('Wind Turbine');
+    expect(formatItemLabel('custom_building_name')).toBe('Custom building name');
+
+    const formatted = formatItemList(['roboticsFactory', 'robotics_factory', 'turret', 'turret']);
+    expect(formatted).toEqual(['Robotics Factory', 'Turret']);
   });
 });
