@@ -51,7 +51,28 @@ const DEFAULT_LABELS: Record<string, string> = {
   commandHub: 'Command Hub',
   metalsExtractor: 'Metals Extractor',
   solar: 'Solar Collector Array',
+  pylon: 'Power Pylon',
+  capacitor: 'Capacitor Bank',
+  wind: 'Wind Turbine',
+  thermal: 'Thermal Plant',
+  supplyDepot: 'Supply Depot',
+  mineralsQuarry: 'Minerals Quarry',
+  waterExtractor: 'Water Extractor',
+  petroleumWell: 'Petroleum Well',
+  powerLine: 'Power Line',
 };
+
+const TWO_BY_TWO_KINDS = new Set<number>([
+  ENTITY_KIND.metalsExtractor,
+  ENTITY_KIND.solar,
+  ENTITY_KIND.capacitor,
+  ENTITY_KIND.wind,
+  ENTITY_KIND.thermal,
+  ENTITY_KIND.supplyDepot,
+  ENTITY_KIND.mineralsQuarry,
+  ENTITY_KIND.waterExtractor,
+  ENTITY_KIND.petroleumWell,
+]);
 
 export function resolveBuildingMeta(data: CompiledDataLike, building: string): BuildingRowMeta {
   let row: Record<string, unknown> | undefined;
@@ -63,10 +84,18 @@ export function resolveBuildingMeta(data: CompiledDataLike, building: string): B
     if (row) break;
   }
   const label = typeof row?.label === 'string' ? row.label : (DEFAULT_LABELS[building] ?? building);
-  const defFp = building === 'commandHub' ? 3 : 2;
+  const defFp = building === 'commandHub' ? 3 : building === 'pylon' || building === 'powerLine' ? 1 : 2;
   const footprintW = typeof row?.footprintW === 'number' ? row.footprintW : defFp;
   const footprintD = typeof row?.footprintD === 'number' ? row.footprintD : defFp;
-  const requiresDeposit = typeof row?.requiresDeposit === 'string' ? row.requiresDeposit : (building === 'metalsExtractor' ? 'metals' : undefined);
+  const fallbackDep =
+    building === 'metalsExtractor'
+      ? 'metals'
+      : building === 'mineralsQuarry' || building === 'quarry'
+        ? 'minerals'
+        : building === 'petroleumWell' || building === 'oilWell'
+          ? 'oil'
+          : undefined;
+  const requiresDeposit = typeof row?.requiresDeposit === 'string' ? row.requiresDeposit : fallbackDep;
   return { label, footprintW, footprintD, requiresDeposit };
 }
 
@@ -95,7 +124,14 @@ function markFootprintIndices(occupied: Set<number>, hIndex: { indexOf(q: number
 
 interface QueuedBuildLike {
   state?: string;
-  task?: { kind?: string; building?: string; q?: number; r?: number; rotation?: number };
+  task?: {
+    kind?: string;
+    building?: string;
+    q?: number;
+    r?: number;
+    rotation?: number;
+    tiles?: Array<{ q: number; r: number }>;
+  };
 }
 
 function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexOf(q: number, r: number): number }): Set<number> {
@@ -113,7 +149,7 @@ function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexO
       if (e.hpMax > 0 && e.hp <= 0) return;
       const size = e.kind === ENTITY_KIND.commandHub
         ? 3
-        : (e.kind === ENTITY_KIND.metalsExtractor || e.kind === ENTITY_KIND.solar ? 2 : (e.kind === ENTITY_KIND.pod ? 1 : 0));
+        : (TWO_BY_TWO_KINDS.has(e.kind) ? 2 : (e.kind === ENTITY_KIND.pylon || e.kind === ENTITY_KIND.pod ? 1 : 0));
       if (size > 0) markFootprintIndices(occupied, hIndex, e.q, e.r, size, size, e.rot);
     });
   }
@@ -123,8 +159,14 @@ function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexO
     if (!entry || entry.state === 'done' || entry.state === 'cancelled') continue;
     const t = entry.task;
     if (t?.kind === 'build' && typeof t.q === 'number' && typeof t.r === 'number') {
-      const sz = t.building === 'commandHub' ? 3 : 2;
+      const sz = t.building === 'commandHub' ? 3 : t.building === 'pylon' ? 1 : 2;
       markFootprintIndices(occupied, hIndex, t.q, t.r, sz, sz, t.rotation ?? 0);
+    } else if (t?.kind === 'powerLine' && Array.isArray(t.tiles)) {
+      for (const tile of t.tiles) {
+        if (tile && typeof tile.q === 'number' && typeof tile.r === 'number') {
+          markFootprintIndices(occupied, hIndex, tile.q, tile.r, 1, 1, 0);
+        }
+      }
     }
   }
   return occupied;

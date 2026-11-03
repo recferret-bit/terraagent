@@ -14,10 +14,20 @@ export interface SiteVerdict {
 /** The ghost's wording for an Extractor off a metals deposit (the card and the e2e read it). */
 export const NO_DEPOSIT_TEXT = 'must cover a metals deposit';
 
+export function depositReasonText(building: string, requiresDeposit?: string): string {
+  if (requiresDeposit === 'minerals' || building === 'mineralsQuarry' || building === 'quarry') {
+    return 'must cover a minerals deposit';
+  }
+  if (requiresDeposit === 'oil' || building === 'petroleumWell' || building === 'oilWell') {
+    return 'must cover an oil deposit';
+  }
+  return NO_DEPOSIT_TEXT;
+}
+
 /**
- * The site rule for a Solar / Metals Extractor at `(q, r)` through the one shared `evaluatePlacement` (D-37: the same
+ * The site rule for a Solar / Extractor / W03 building at `(q, r)` through the one shared `evaluatePlacement` (D-37: the same
  * function the `enqueueTask` build handler runs on the server and the local host): deposits under a Solar, uneven
- * ground, foreign territory, terrain to terraform first, an Extractor without a metals tile. `null` until the view
+ * ground, foreign territory, terrain to terraform first, an Extractor without a matching deposit tile. `null` until the view
  * carries complete tiles (terrain, prep, owner): the ghost then has nothing to judge. `world`: the view already adapted
  * (`viewPlacementWorld`), when one caller judges many sites.
  */
@@ -36,7 +46,7 @@ export function evaluateSiteWithSim(
     data: opts.data,
   });
   if (res.ok) return { valid: true, reason: 'valid site' };
-  const reason = res.block === 'noDeposit' ? NO_DEPOSIT_TEXT : res.text ?? res.code ?? 'blocked';
+  const reason = res.block === 'noDeposit' ? depositReasonText(opts.building) : res.text ?? res.code ?? 'blocked';
   return { valid: false, reason, code: res.code, block: res.block };
 }
 

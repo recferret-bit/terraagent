@@ -16,6 +16,15 @@ const ARCHETYPE_BY_BUILDING: Record<string, string> = {
   commandHub: 'building.commandHub',
   metalsExtractor: 'building.mine',
   solar: 'building.solar',
+  pylon: 'building.pylon',
+  powerLine: 'building.pylon',
+  capacitor: 'building.capacitor',
+  wind: 'building.wind',
+  thermal: 'building.coalGen',
+  supplyDepot: 'building.depot',
+  mineralsQuarry: 'building.quarry',
+  waterExtractor: 'building.waterPump',
+  petroleumWell: 'building.oilWell',
 };
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
