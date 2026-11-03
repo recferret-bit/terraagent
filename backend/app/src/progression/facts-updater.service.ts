@@ -1,4 +1,4 @@
-import { Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
   ProgressEventV1Schema,
   type AchievementFamilyId,
@@ -76,9 +76,9 @@ export class FactsUpdaterService implements OnModuleInit, OnModuleDestroy {
   private readonly listeners = new Set<FactUpdatedListener>();
 
   constructor(
-    private readonly store: FactsStore,
-    @Optional() private readonly bus?: EventBus,
-    @Optional() private readonly homeRepo?: HomeRepository,
+    @Inject(FactsStore) private readonly store: FactsStore,
+    @Optional() @Inject(EventBus) private readonly bus?: EventBus,
+    @Optional() @Inject(HomeRepository) private readonly homeRepo?: HomeRepository,
   ) {}
 
   onModuleInit(): void {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ACHIEVEMENT_BY_ID, type AchievementFamilyId } from '@terra/contracts';
 import { AchievementUnlockStore, type SeedUnlockEntry } from './achievement-unlock.store.js';
 import { FactsStore } from './facts.store.js';
@@ -59,9 +59,9 @@ export class W12SeedService {
   lastActivePlayerId = 'pr_dev_w12';
 
   constructor(
-    private readonly facts: FactsStore,
-    private readonly unlocks: AchievementUnlockStore,
-    private readonly xp: XpStore,
+    @Inject(FactsStore) private readonly facts: FactsStore,
+    @Inject(AchievementUnlockStore) private readonly unlocks: AchievementUnlockStore,
+    @Inject(XpStore) private readonly xp: XpStore,
   ) {}
 
   onReset(fn: (playerId: string) => void | Promise<void>): () => void {

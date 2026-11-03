@@ -11,11 +11,11 @@ import { MeAchievementsService } from './me-achievements.service.js';
 @Controller('me')
 export class MeAchievementsController {
   constructor(
-    private readonly service: MeAchievementsService,
-    private readonly tokens: AuthTokenService,
-    private readonly flags: FlagsService,
+    @Inject(MeAchievementsService) private readonly service: MeAchievementsService,
+    @Inject(AuthTokenService) private readonly tokens: AuthTokenService,
+    @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
-    @Optional() private readonly seed?: W12SeedService,
+    @Optional() @Inject(W12SeedService) private readonly seed?: W12SeedService,
   ) {}
 
   @Get('achievements')

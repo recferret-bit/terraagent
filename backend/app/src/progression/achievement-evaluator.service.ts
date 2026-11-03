@@ -1,4 +1,4 @@
-import { Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import {
   evaluateNewUnlocks,
   progressOf,
@@ -47,9 +47,9 @@ export class AchievementEvaluatorService implements OnModuleInit, OnModuleDestro
   private allowedFamiliesProvider?: () => ReadonlySet<string>;
 
   constructor(
-    private readonly unlocks: AchievementUnlockStore,
-    @Optional() private readonly factsUpdater?: FactsUpdaterService,
-    @Optional() private readonly bus?: EventBus,
+    @Inject(AchievementUnlockStore) private readonly unlocks: AchievementUnlockStore,
+    @Optional() @Inject(FactsUpdaterService) private readonly factsUpdater?: FactsUpdaterService,
+    @Optional() @Inject(EventBus) private readonly bus?: EventBus,
   ) {}
 
   onModuleInit(): void {

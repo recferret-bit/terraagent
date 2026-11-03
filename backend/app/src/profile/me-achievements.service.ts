@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   ACHIEVEMENTS,
   parseWaves,
@@ -48,10 +48,10 @@ export function nextAchievements(
 @Injectable()
 export class MeAchievementsService {
   constructor(
-    private readonly facts: FactsStore,
-    private readonly unlocks: AchievementUnlockStore,
-    private readonly availability: FamilyAvailabilityService,
-    private readonly flags: FlagsService,
+    @Inject(FactsStore) private readonly facts: FactsStore,
+    @Inject(AchievementUnlockStore) private readonly unlocks: AchievementUnlockStore,
+    @Inject(FamilyAvailabilityService) private readonly availability: FamilyAvailabilityService,
+    @Inject(FlagsService) private readonly flags: FlagsService,
   ) {}
 
   async getForPlayer(playerId: string, wavesOverride?: string): Promise<MeAchievementsResponse> {

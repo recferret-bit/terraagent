@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable, Optional, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnModuleInit } from '@nestjs/common';
 import { AchievementFamilyIdSchema } from '@terra/contracts';
 import { z } from 'zod';
 import { defineDevCommand, DevCommandRegistry } from '../dev/dev-command.registry.js';
@@ -42,11 +42,11 @@ export interface XpAddDevResult {
 @Injectable()
 export class ProgressionDevCommand implements OnModuleInit {
   constructor(
-    @Optional() private readonly registry: DevCommandRegistry | undefined,
-    private readonly factsUpdater: FactsUpdaterService,
-    private readonly evaluator: AchievementEvaluatorService,
-    private readonly xpLedger: XpLedgerService,
-    private readonly seed: W12SeedService,
+    @Optional() @Inject(DevCommandRegistry) private readonly registry: DevCommandRegistry | undefined,
+    @Inject(FactsUpdaterService) private readonly factsUpdater: FactsUpdaterService,
+    @Inject(AchievementEvaluatorService) private readonly evaluator: AchievementEvaluatorService,
+    @Inject(XpLedgerService) private readonly xpLedger: XpLedgerService,
+    @Inject(W12SeedService) private readonly seed: W12SeedService,
   ) {}
 
   onModuleInit(): void {
@@ -63,6 +63,9 @@ export class ProgressionDevCommand implements OnModuleInit {
     delta: number;
   }): Promise<FactAddDevResult> {
     const pid = input.playerId ?? this.seed.lastActivePlayerId ?? 'pr_dev_w12';
+    if (pid === 'pr_dev_w12') {
+      await this.seed.ensureSeeded(pid);
+    }
     this.seed.noteActivePlayer(pid);
     const unlocked: AchievementUnlockedEventV1[] = [];
     let levelUp: XpLevelUpEventV1 | null = null;
@@ -103,6 +106,9 @@ export class ProgressionDevCommand implements OnModuleInit {
     sourceId?: string;
   }): Promise<XpAddDevResult> {
     const pid = input.playerId ?? this.seed.lastActivePlayerId ?? 'pr_dev_w12';
+    if (pid === 'pr_dev_w12') {
+      await this.seed.ensureSeeded(pid);
+    }
     const sid = input.sourceId ?? randomUUID();
     this.seed.noteActivePlayer(pid);
     let levelUp: XpLevelUpEventV1 | null = null;
@@ -139,7 +145,7 @@ export class ProgressionDevCommand implements OnModuleInit {
 
   async runProfileSeed(input: { playerId?: string }): Promise<{ playerId: string; seeded: true }> {
     const pid = input.playerId ?? this.seed.lastActivePlayerId ?? 'pr_dev_w12';
-    await this.seed.seedPilot(pid);
+    await this.seed.ensureSeeded(pid);
     return { playerId: pid, seeded: true };
   }
 

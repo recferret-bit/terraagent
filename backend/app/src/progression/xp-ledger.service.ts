@@ -1,4 +1,4 @@
-import { Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { levelForXp, xpRequiredForLevel } from '@terra/contracts';
 import { EventBus, type Unsubscribe } from '../bus/event-bus.js';
 import { AchievementEvaluatorService } from './achievement-evaluator.service.js';
@@ -32,9 +32,9 @@ export class XpLedgerService implements OnModuleInit, OnModuleDestroy {
   private readonly listeners = new Set<LevelUpListener>();
 
   constructor(
-    private readonly store: XpStore,
-    @Optional() private readonly evaluator?: AchievementEvaluatorService,
-    @Optional() private readonly bus?: EventBus,
+    @Inject(XpStore) private readonly store: XpStore,
+    @Optional() @Inject(AchievementEvaluatorService) private readonly evaluator?: AchievementEvaluatorService,
+    @Optional() @Inject(EventBus) private readonly bus?: EventBus,
   ) {}
 
   onModuleInit(): void {

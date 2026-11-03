@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   ACHIEVEMENT_FAMILIES,
   ACHIEVEMENT_FAMILY_BY_ID,
@@ -57,7 +57,7 @@ export function availableFamilyIds(hasWave: (wave: string) => boolean): Set<Achi
 /** NestJS service delegating family and tier availability to server-wide FlagsService. */
 @Injectable()
 export class FamilyAvailabilityService {
-  constructor(private readonly flags: FlagsService) {}
+  constructor(@Inject(FlagsService) private readonly flags: FlagsService) {}
 
   isAvailable(familyId: AchievementFamilyId): boolean {
     return isFamilyAvailable(familyId, (wave) => this.flags.has(wave));

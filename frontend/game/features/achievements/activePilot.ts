@@ -47,6 +47,7 @@ export class ActivePilotTracker {
   playerId = '';
   accessToken = '';
   private isW12Scenario = false;
+  private lockedPilot = false;
   private seededW12For = '';
   private readonly cleanups: Array<() => void> = [];
 
@@ -71,9 +72,11 @@ export class ActivePilotTracker {
         this.isW12Scenario = true;
       }
       const as = params.get('as')?.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '');
-      if (as) {
-        this.playerId = `pr_dev_${as}`;
-        this.accessToken = `dev:${as}`;
+      const devHandle = as || (this.isW12Scenario ? 'w12' : '');
+      if (devHandle) {
+        this.playerId = `pr_dev_${devHandle}`;
+        this.accessToken = `dev:${devHandle}`;
+        this.lockedPilot = true;
         this.persist();
       }
     } catch {
@@ -85,6 +88,7 @@ export class ActivePilotTracker {
     const pilot = this.ctx.services.pilot;
     if (!pilot) return;
     const apply = () => {
+      if (this.lockedPilot) return;
       const v = pilot.view();
       if (v.accessToken) {
         this.accessToken = v.accessToken;
@@ -100,16 +104,18 @@ export class ActivePilotTracker {
     if (!transport || typeof transport.onMessage !== 'function') return;
     const off = transport.onMessage((msg) => {
       if (msg.t === 'ready' && typeof msg.d?.playerId === 'string') {
-        this.playerId = msg.d.playerId;
-        const pilotTok = this.ctx.services.pilot?.view().accessToken ?? '';
-        if (pilotTok) {
-          this.accessToken = pilotTok;
-        } else if (this.playerId.startsWith('pr_dev_')) {
-          this.accessToken = `dev:${this.playerId.slice('pr_dev_'.length)}`;
-        } else {
-          this.accessToken = `player:${this.playerId}`;
+        if (!this.lockedPilot) {
+          this.playerId = msg.d.playerId;
+          const pilotTok = this.ctx.services.pilot?.view().accessToken ?? '';
+          if (pilotTok) {
+            this.accessToken = pilotTok;
+          } else if (this.playerId.startsWith('pr_dev_')) {
+            this.accessToken = `dev:${this.playerId.slice('pr_dev_'.length)}`;
+          } else {
+            this.accessToken = `player:${this.playerId}`;
+          }
+          this.persist();
         }
-        this.persist();
         this.maybeSeedW12();
       }
     });

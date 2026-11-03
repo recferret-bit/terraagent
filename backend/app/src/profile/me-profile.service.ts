@@ -1,4 +1,4 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   ACHIEVEMENTS,
   levelForXp,
@@ -87,12 +87,12 @@ function buildProfileStats(
 @Injectable()
 export class MeProfileService {
   constructor(
-    private readonly facts: FactsStore,
-    private readonly xp: XpStore,
-    private readonly achievements: MeAchievementsService,
-    private readonly colonies: ColonyHistoryStore,
-    private readonly flags: FlagsService,
-    @Optional() private readonly seed?: W12SeedService,
+    @Inject(FactsStore) private readonly facts: FactsStore,
+    @Inject(XpStore) private readonly xp: XpStore,
+    @Inject(MeAchievementsService) private readonly achievements: MeAchievementsService,
+    @Inject(ColonyHistoryStore) private readonly colonies: ColonyHistoryStore,
+    @Inject(FlagsService) private readonly flags: FlagsService,
+    @Optional() @Inject(W12SeedService) private readonly seed?: W12SeedService,
   ) {
     if (this.seed) {
       this.seed.onReset(async (pid) => {

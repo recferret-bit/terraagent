@@ -11,11 +11,11 @@ import { MeProfileService } from './me-profile.service.js';
 @Controller('me')
 export class MeProfileController {
   constructor(
-    private readonly service: MeProfileService,
-    private readonly tokens: AuthTokenService,
-    private readonly flags: FlagsService,
+    @Inject(MeProfileService) private readonly service: MeProfileService,
+    @Inject(AuthTokenService) private readonly tokens: AuthTokenService,
+    @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
-    @Optional() private readonly seed?: W12SeedService,
+    @Optional() @Inject(W12SeedService) private readonly seed?: W12SeedService,
   ) {}
 
   @Get('profile')
