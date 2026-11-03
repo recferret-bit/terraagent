@@ -3,6 +3,7 @@ import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { getPlanetTime } from '../time';
 import { resolvePowerRow, type ColonyPowerSummary } from './index';
 
 export interface PowerEventTracker {
@@ -12,6 +13,9 @@ export interface PowerEventTracker {
   lastGroupEmitTick: Record<number, number>;
   prevActivePylonIds?: number[];
   prevOnlineEntityIds?: number[];
+  prevComponentShedIds?: Record<number, number[]>;
+  prevPhase?: 'day' | 'night';
+  nightShedBeyondGroup1?: boolean;
 }
 
 const BROWNOUT_DEBOUNCE_TICKS = 50; // 10 s debounce per shed group
@@ -69,6 +73,79 @@ function checkPowerSevered(
   return { currentPylonIds, currentOnlineIds };
 }
 
+function checkBrownoutShedEvents(
+  state: PlanetState,
+  colonyIndex: number,
+  summary: ColonyPowerSummary,
+  prevComponentShedIds: Record<number, number[]> | undefined,
+  ctx: StepContext,
+): Record<number, number[]> {
+  const nextShedIds: Record<number, number[]> = {};
+  if (!summary.components) return nextShedIds;
+
+  for (const comp of summary.components) {
+    const cId = comp.componentId;
+    const currentShed = comp.shedEntityIds ?? [];
+    nextShedIds[cId] = [...currentShed];
+
+    const prevShed = prevComponentShedIds?.[cId] ?? [];
+    const isDifferent =
+      currentShed.length !== prevShed.length ||
+      currentShed.some((id) => !prevShed.includes(id));
+
+    if (currentShed.length > 0 && isDifferent) {
+      ctx.emit({
+        kind: 'brownoutShed',
+        severity: 'warn',
+        colonyIds: [colonyIndex],
+        data: {
+          colonyId: state.colonies[colonyIndex]?.id,
+          componentId: comp.componentId,
+          groups: comp.shedGroupsActive,
+          shedEntityIds: currentShed,
+          deficitPerS: comp.deficitPerS,
+        },
+      });
+    }
+  }
+  return nextShedIds;
+}
+
+function checkNightSurvived(
+  state: PlanetState,
+  colonyIndex: number,
+  summary: ColonyPowerSummary,
+  prevPhase: 'day' | 'night' | undefined,
+  nightShedBeyondGroup1: boolean,
+  ctx: StepContext,
+  data?: CompiledDataLike,
+): boolean {
+  let nextShedBeyond = nightShedBeyondGroup1;
+  if (summary.phase === 'night') {
+    if (summary.shedGroupsActive.some((g) => g > 1)) {
+      nextShedBeyond = true;
+    }
+  }
+
+  if (prevPhase === 'night' && summary.phase === 'day') {
+    if (!nextShedBeyond && summary.hasHub) {
+      const pTime = getPlanetTime(state, data, ctx.tick);
+      ctx.emit({
+        kind: 'nightSurvived',
+        severity: 'info',
+        colonyIds: [colonyIndex],
+        data: {
+          colonyId: state.colonies[colonyIndex]?.id,
+          dayNumber: pTime.day,
+          capacitorChargeRemainingE: Math.max(0, Number((summary.capacitorStoredE ?? 0).toFixed(2))),
+        },
+      });
+    }
+    nextShedBeyond = false;
+  }
+  return nextShedBeyond;
+}
+
 export function evaluatePowerEventsForColony(
   state: PlanetState,
   colonyIndex: number,
@@ -78,7 +155,7 @@ export function evaluatePowerEventsForColony(
   data?: CompiledDataLike,
 ): PowerEventTracker {
   const dayCycleRow = resolvePowerRow(data, 'economyT1Basic', 'dayCycle');
-  const collapseAfterTicks = Number(dayCycleRow.energyCollapseAfterS ?? 150); // 30 s = 150 ticks
+  const collapseAfterTicks = Number(dayCycleRow.energyCollapseAfterS ?? 150);
 
   const next: PowerEventTracker = tracker
     ? {
@@ -88,12 +165,17 @@ export function evaluatePowerEventsForColony(
         lastGroupEmitTick: { ...tracker.lastGroupEmitTick },
         prevActivePylonIds: tracker.prevActivePylonIds,
         prevOnlineEntityIds: tracker.prevOnlineEntityIds,
+        prevComponentShedIds: tracker.prevComponentShedIds ? { ...tracker.prevComponentShedIds } : {},
+        prevPhase: tracker.prevPhase ?? summary.phase,
+        nightShedBeyondGroup1: tracker.nightShedBeyondGroup1 ?? false,
       }
     : {
         brownoutTicks: 0,
         collapseEmitted: false,
         activeGroups: [],
         lastGroupEmitTick: {},
+        prevPhase: summary.phase,
+        nightShedBeyondGroup1: false,
       };
 
   const { currentPylonIds, currentOnlineIds } = checkPowerSevered(
@@ -101,6 +183,15 @@ export function evaluatePowerEventsForColony(
   );
   next.prevActivePylonIds = currentPylonIds;
   next.prevOnlineEntityIds = currentOnlineIds;
+
+  next.prevComponentShedIds = checkBrownoutShedEvents(
+    state, colonyIndex, summary, tracker?.prevComponentShedIds, ctx,
+  );
+
+  next.nightShedBeyondGroup1 = checkNightSurvived(
+    state, colonyIndex, summary, tracker?.prevPhase, Boolean(next.nightShedBeyondGroup1), ctx, data,
+  );
+  next.prevPhase = summary.phase;
 
   if (!summary.brownout) {
     next.brownoutTicks = 0;
@@ -111,7 +202,6 @@ export function evaluatePowerEventsForColony(
 
   const deficitPerS = Math.max(0, Number((summary.rawDemand - summary.supply).toFixed(4)));
 
-  // Emit debounced brownout {group} for newly shed groups
   for (const group of summary.shedGroupsActive) {
     const wasActive = next.activeGroups.includes(group);
     const lastTick = next.lastGroupEmitTick[group] ?? -Infinity;
@@ -131,7 +221,6 @@ export function evaluatePowerEventsForColony(
   }
   next.activeGroups = [...summary.shedGroupsActive];
 
-  // Track continuous brownout duration for energyCollapse (>= 30s = 150 ticks)
   next.brownoutTicks += ctx.dt;
   if (next.brownoutTicks >= collapseAfterTicks && !next.collapseEmitted) {
     const durationS = Math.round((next.brownoutTicks * TICK_MS) / 1000);
@@ -148,7 +237,6 @@ export function evaluatePowerEventsForColony(
     next.collapseEmitted = true;
   }
 
-  // Expose tracker on colony for inspection
   const col = state.colonies[colonyIndex];
   if (col) {
     col.brownoutTicks = next.brownoutTicks;
