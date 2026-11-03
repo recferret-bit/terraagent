@@ -88,13 +88,19 @@ export function readPylonLoad(
 
 /** What the HUD shows of the grid, in whole E/s. */
 export interface GridBalance {
+  /** Generation (`generationPerS`: founder core + generators); older summaries: `supply`. Store discharge is not income. */
   supply: number;
   /** E/s the colony's consumers ask for (the sim's `rawDemand`, before brownout shedding). */
   requested: number;
   /** E/s shed by the brownout (`rawDemand − demand`): consumers switched off, e.g. an `offline: brownout` Extractor. */
   shed: number;
-  /** Supply minus requested demand: negative while the grid cannot carry every consumer. */
+  /** Generation minus requested demand: negative at night / in a deficit, while the stores or a brownout cover it. */
   net: number;
+  /**
+   * E/s into (+) or out of (−) the stores (HQ cell first, then Capacitor Banks): `+10` charging by day, `−3` while
+   * the stores carry the night. 0 with no store flow (or an older summary).
+   */
+  stored: number;
 }
 
 const num = (v: unknown): number | undefined => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
@@ -107,14 +113,21 @@ const num = (v: unknown): number | undefined => (typeof v === 'number' && Number
 export function gridBalance(power: PowerRecord | undefined): GridBalance {
   const supply = num(power?.supply) ?? 0;
   const demand = num(power?.demand) ?? 0;
-  const postShedNet = num(power?.net) ?? supply - demand;
   const requested = Math.max(demand, num(power?.rawDemand) ?? demand);
   const shed = requested - demand;
+  const generation = num(power?.generationPerS);
+  const field = (k: string): number => num(power?.[k]) ?? 0;
+  const stored = field('hqCellChargePerS') + field('capacitorChargePerS') - field('hqCellDischargePerS') - field('capacitorDischargePerS');
+  if (generation === undefined) {
+    const postShedNet = num(power?.net) ?? supply - demand;
+    return { supply: Math.round(supply), requested: Math.round(requested), shed: Math.round(shed), net: Math.round(postShedNet - shed), stored: 0 };
+  }
   return {
-    supply: Math.round(supply),
+    supply: Math.round(generation),
     requested: Math.round(requested),
     shed: Math.round(shed),
-    net: Math.round(postShedNet - shed),
+    net: Math.round(generation - requested),
+    stored: Math.round(stored),
   };
 }
 

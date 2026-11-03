@@ -58,14 +58,15 @@ describe('W03-07 Per-component brownout shedding', () => {
     });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
 
-    // Component A (Hub component at 0, 0): Hub provides +8, draws 5. Extractor draws 6.
-    // Total supply = 8, total demand = 11 -> Deficit = 3 -> Extractor A sheds.
+    // Component A (Hub component at 0, 0, no HQ cell): Hub provides +16, draws 7. Two Extractors draw 8 each.
+    // Total supply = 16, total demand = 23 -> Deficit = 7 -> the newest Extractor A sheds.
     spawnBuilding(state, ENTITY_KIND.commandHub, 0, 0, 3, 3, 1500);
+    spawnBuilding(state, ENTITY_KIND.metalsExtractor, -3, 0, 2, 2, 500);
     const extARow = spawnBuilding(state, ENTITY_KIND.metalsExtractor, 3, 0, 2, 2, 500);
     const extAId = state.entities.cols.id[extARow];
 
-    // Component B (Island B at 20, 20): Pylon (0.5) + Wind (+15 net) + Extractor (6).
-    // Total supply = 15, total demand = 6.5 -> Surplus = 8.5 -> Extractor B stays active.
+    // Component B (Island B at 20, 20): Pylon (2.5) + Wind (+12 net) + Extractor (8).
+    // Total supply = 12, total demand = 10.5 -> Surplus = 1.5 -> Extractor B stays active.
     spawnBuilding(state, ENTITY_KIND.pylon, 20, 20, 1, 1, 100);
     spawnBuilding(state, ENTITY_KIND.wind, 21, 20, 2, 2, 350);
     const extBRow = spawnBuilding(state, ENTITY_KIND.metalsExtractor, 22, 20, 2, 2, 500);
@@ -90,7 +91,7 @@ describe('W03-07 Per-component brownout shedding', () => {
     expect(shedEvent?.data.componentId).toBe(0);
     expect(shedEvent?.data.shedEntityIds).toContain(extAId);
     expect(shedEvent?.data.groups).toContain(3);
-    expect(shedEvent?.data.deficitPerS).toBe(3);
+    expect(shedEvent?.data.deficitPerS).toBe(7);
   });
 
   it('robot drain counts only on the Hub component, not on isolated island components', () => {
@@ -108,12 +109,12 @@ describe('W03-07 Per-component brownout shedding', () => {
     // Hub component at (0, 0)
     spawnBuilding(state, ENTITY_KIND.commandHub, 0, 0, 3, 3, 1500);
 
-    // Island B at (20, 20): Pylon (0.5) + Wind (+15 net) + Extractor (6) -> demand 6.5
+    // Island B at (20, 20): Pylon (2.5) + Wind (+12 net) + Extractor (8) -> demand 10.5
     spawnBuilding(state, ENTITY_KIND.pylon, 20, 20, 1, 1, 100);
     spawnBuilding(state, ENTITY_KIND.wind, 21, 20, 2, 2, 350);
     const extBRow = spawnBuilding(state, ENTITY_KIND.metalsExtractor, 22, 20, 2, 2, 500);
 
-    // Spawn 4 active Harvesters (4 * 1.5 = 6 E/s robot demand)
+    // Spawn 4 active Harvesters (4 * 2 = 8 E/s robot demand)
     spawnHarvester(state, true);
     spawnHarvester(state, true);
     spawnHarvester(state, true);
@@ -122,17 +123,17 @@ describe('W03-07 Per-component brownout shedding', () => {
     step(state, [], 1, pipeline);
     const power = getColonyPower(state, 0);
 
-    // Island B demand remains 6.5 (does not pay robot demand)
+    // Island B demand remains 10.5 (does not pay robot demand)
     const compB = power.components?.[1];
     expect(compB).toBeDefined();
-    expect(compB?.demand).toBe(6.5);
-    expect(compB?.rawDemand).toBe(6.5);
+    expect(compB?.demand).toBe(10.5);
+    expect(compB?.rawDemand).toBe(10.5);
     expect(compB?.shedEntityIds).toEqual([]);
     expect(state.entities.cols.state[extBRow]).toBe(ENTITY_STATE.active);
 
-    // Hub component pays the 6 E/s unit demand + 5 Hub drain = 11 E/s
+    // Hub component pays the 8 E/s unit demand + 7 Hub drain = 15 E/s
     const compA = power.components?.[0];
-    expect(compA?.rawDemand).toBe(11);
+    expect(compA?.rawDemand).toBe(15);
   });
 });
 
@@ -150,7 +151,7 @@ describe('W03-07 nightSurvived event', () => {
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
 
     spawnBuilding(state, ENTITY_KIND.commandHub, 0, 0, 3, 3, 1500);
-    spawnBuilding(state, ENTITY_KIND.wind, 3, 0, 2, 2, 350); // +15 net at night
+    spawnBuilding(state, ENTITY_KIND.wind, 3, 0, 2, 2, 350); // +12 net at night
     const capRow = spawnBuilding(state, ENTITY_KIND.capacitor, 0, 3, 2, 2, 300);
     state.entities.cols.cell[capRow] = 500;
 
@@ -184,9 +185,10 @@ describe('W03-07 nightSurvived event', () => {
     });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
 
-    // Hub (+8 supply, 5 drain) + Extractor (6 drain, group 3) = 11 demand -> deficit 3
+    // Hub (+16 supply, 7 drain) + 2 Extractors (8 drain each, group 3) = 23 demand -> deficit 7 (no HQ cell)
     spawnBuilding(state, ENTITY_KIND.commandHub, 0, 0, 3, 3, 1500);
     spawnBuilding(state, ENTITY_KIND.metalsExtractor, 3, 0, 2, 2, 500);
+    spawnBuilding(state, ENTITY_KIND.metalsExtractor, -3, 0, 2, 2, 500);
 
     // Midnight -> group 3 is shed
     setPlanetTime(state, { timeOfDay: 0 }, 0);

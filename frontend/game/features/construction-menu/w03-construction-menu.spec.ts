@@ -63,10 +63,12 @@ describe('W03-17 Construction catalog & deposit ghost rules', () => {
     ]);
 
     const capCard = w03Cards.find((c) => c.building === 'capacitor')!;
-    expect(capCard.powerText).toBe('−1.5 E/s · 1500 E');
+    expect(capCard.powerText).toBe('−2 E/s · 1500 E');
     const pylonCard = w03Cards.find((c) => c.building === 'pylon')!;
     expect(pylonCard.label).toBe('Power Pylon');
+    expect(pylonCard.powerText).toBe('−2.5 E/s'); // grid.pylon.powerDrainPerS
     expect(pylonCard.cost).toEqual({ 'metals.t1': 15, 'minerals.t1': 5, 'bio.biomass': 0, 'bio.water': 0 });
+    expect(w03Cards.find((c) => c.building === 'wind')!.powerText).toBe('+12 E/s'); // gross 13 − internal 1
   });
 
   it('validates Minerals Quarry (minerals deposit) and Petroleum Well (oil deposit) on the ghost', () => {

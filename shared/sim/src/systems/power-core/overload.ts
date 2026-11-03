@@ -6,6 +6,7 @@ import { type ShedCandidate } from './shedding';
 import { relaysLinked, type PowerGraph, type PowerGraphComponent, type RelayNode } from './graph';
 import { resolvePowerRow, computeSolarOutputPerS, type ComponentBuildingsResult } from './index';
 import { stepThermalPlantFuel } from './thermal';
+import { capacitorMaxDischargePerS, pylonDrainPerS } from './drains';
 import { evaluateWindOutput } from './windAndCap';
 
 export interface OverloadPylonInfo {
@@ -72,7 +73,7 @@ export function findHighestNetGeneratorRelayId(
       const res = stepThermalPlantFuel(state, colonyIndex, row, 0, tick, data);
       if (res.fueled) net = res.netPerS;
     } else if (kind === ENTITY_KIND.capacitor) {
-      net = (cols.cell?.[row] ?? 0) > 0 ? 30 : 0;
+      net = (cols.cell?.[row] ?? 0) > 0 ? capacitorMaxDischargePerS(data) : 0;
     }
     if (net > 0 && (net > bestNet || (net === bestNet && id < bestId))) {
       const rId = graph.attachedRelayByBuildingId.get(id);
@@ -191,6 +192,7 @@ function computeRelayFlows(
   explicitSynthTarget: boolean,
   hubMax: number,
   pylonMax: number,
+  pylonDrain: number,
 ): { localLoad: Map<number, number>; flow: Map<number, number>; maxLoads: Map<number, number> } {
   const localLoad = new Map<number, number>();
   const maxLoads = new Map<number, number>();
@@ -200,7 +202,7 @@ function computeRelayFlows(
     const isPylon = r.kind === ENTITY_KIND.pylon;
     const maxL = isPylon ? pylonMax : hubMax;
     maxLoads.set(r.id, maxL);
-    let l = isPylon ? 0.5 : 0;
+    let l = isPylon ? pylonDrain : 0;
     if (r.id === synthTargetId && (isPylon || explicitSynthTarget)) l += synthLoad;
     for (const c of consumersByRelay.get(r.id) ?? []) l += c.drainPerS;
     localLoad.set(r.id, Number(l.toFixed(4)));
@@ -309,7 +311,7 @@ export function checkComponentPylonOverload(
   );
 
   const { flow, maxLoads } = computeRelayFlows(
-    compRelays, tree, consumersByRelay, synthTargetId, synthLoad, hasExplicitTarget, hubMax, pylonMax,
+    compRelays, tree, consumersByRelay, synthTargetId, synthLoad, hasExplicitTarget, hubMax, pylonMax, pylonDrainPerS(data),
   );
 
   const initialFlow = new Map(flow);

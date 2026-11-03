@@ -18,7 +18,7 @@ describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)
     expect(builder.workRate).toBe(1.0);
     expect(builder.repairRateMultiplier).toBe(1.5);
     expect(builder.maxBuildTier).toBe(1);
-    expect(builder.powerDrainPerS).toBe(2.0);
+    expect(builder.powerDrainPerS).toBe(3);
     expect(builder.hp).toBe(150);
 
     // Pylon T1 (4s -> 20 ticks, power zone radius 5 (Hub 6), maxLoadPerS 80)
@@ -34,12 +34,12 @@ describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)
     expect(cap.buildS).toBe(80);
     expect(cap.capacityE).toBe(1500);
     expect(cap.maxDischargePerS).toBe(30);
-    expect(cap.powerDrainPerS).toBe(1.5);
+    expect(cap.powerDrainPerS).toBe(2);
 
     // Wind T1 (14s -> 70 ticks, gross 16, drain 1)
     const wind = dataRow(compiled, 'grid', 'wind');
     expect(wind.buildS).toBe(70);
-    expect(wind.grossOutputPerS).toBe(16);
+    expect(wind.grossOutputPerS).toBe(13);
     expect(wind.internalDrainPerS).toBe(1);
 
     // Thermal T1 (15s -> 75 ticks, gross 28, drain 3, fuelPerS 1.5 * 0.25 = 0.375)

@@ -15,7 +15,9 @@ import {
   processUnattachedBuildings,
   calculateUnitDemand,
   applyOfflineStatuses,
+  type ComponentEvalResult,
 } from './evaluate';
+import { summarizeComponentStores } from './hqCell';
 
 export * from './types';
 export * from './shedding';
@@ -26,6 +28,8 @@ export * from './graph';
 export * from './windAndCap';
 export * from './evaluate';
 export * from './overload';
+export * from './drains';
+export * from './hqCell';
 export { collectWorkLoad, terraformOpShedGroup, type WorkLoad } from './workLoad';
 
 let cachedW02Data: CompiledDataLike | null = null;
@@ -87,7 +91,7 @@ export function evaluateColonyPower(
   let solarGross = 0, solarDrain = 0, solarNet = 0;
   let thermalGross = 0, thermalDrain = 0, thermalNet = 0;
   let windGross = 0, windDrain = 0, windNet = 0;
-  let capStoredE = 0, capCapacityE = 0, capDischargePerS = 0, capChargePerS = 0;
+  const results: ComponentEvalResult[] = [];
 
   const unpoweredEntityIds: number[] = [], nightSolarEntityIds: number[] = [], noFuelEntityIds: number[] = [];
   const allShedEntityIds: number[] = [], allShedWorkJobIds: string[] = [];
@@ -105,6 +109,7 @@ export function evaluateColonyPower(
       state, colonyIndex, comp, graph, env, windOut, unitDemand, work, graph.hubAnchors, dtTicks, tick, data,
     );
     componentsSummary.push(res.summary);
+    results.push(res);
     totalSupply += res.effectiveSupply;
     totalRawDemand += res.rawDemand;
     totalDemand += res.demand;
@@ -112,8 +117,6 @@ export function evaluateColonyPower(
     solarGross += res.solarGross; solarDrain += res.solarDrain; solarNet += res.solarNet;
     thermalGross += res.thermalGross; thermalDrain += res.thermalDrain; thermalNet += res.thermalNet;
     windGross += res.windGross; windDrain += res.windDrain; windNet += res.windNet;
-    capStoredE += res.capStoredE; capCapacityE += res.capCapacityE;
-    capDischargePerS += res.capDischargePerS; capChargePerS += res.capChargePerS;
     unpoweredEntityIds.push(...res.unpoweredIds);
     nightSolarEntityIds.push(...res.nightSolarIds);
     noFuelEntityIds.push(...res.noFuelIds);
@@ -155,7 +158,7 @@ export function evaluateColonyPower(
     solarGrossPerS: Number(solarGross.toFixed(4)), solarInternalDrainPerS: Number(solarDrain.toFixed(4)), solarNetPerS: Number(solarNet.toFixed(4)),
     thermalGrossPerS: Number(thermalGross.toFixed(4)), thermalInternalDrainPerS: Number(thermalDrain.toFixed(4)), thermalNetPerS: Number(thermalNet.toFixed(4)),
     windFactor: windOut.windFactor, windGrossPerS: Number(windGross.toFixed(4)), windInternalDrainPerS: Number(windDrain.toFixed(4)), windNetPerS: Number(windNet.toFixed(4)),
-    capacitorStoredE: capStoredE, capacitorCapacityE: capCapacityE, capacitorDischargePerS: capDischargePerS, capacitorChargePerS: capChargePerS,
+    ...summarizeComponentStores(results),
     supply: effectiveSupply, demand, rawDemand, buildingDemand, unitDemand: Number(unitDemand.toFixed(4)), workDemand,
     net, brownout,
     shedGroupsActive, shedEntityIds: allShedEntityIds, shedWorkJobIds: allShedWorkJobIds,

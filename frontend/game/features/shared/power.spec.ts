@@ -3,11 +3,23 @@ import { formatSignedEPerS, gridBalance, readColonyPower, readEntityPower, readP
 
 describe('grid power readers (shared/power.ts)', () => {
   it('gridBalance shows requested demand and the deficit; a grid without shedding is unchanged', () => {
-    expect(gridBalance({ supply: 8, demand: 5, rawDemand: 11, net: 3 })).toEqual({ supply: 8, requested: 11, shed: 6, net: -3 });
-    expect(gridBalance({ supply: 28, demand: 11, rawDemand: 11, net: 17 })).toEqual({ supply: 28, requested: 11, shed: 0, net: 17 });
+    expect(gridBalance({ supply: 8, demand: 5, rawDemand: 11, net: 3 })).toEqual({ supply: 8, requested: 11, shed: 6, net: -3, stored: 0 });
+    expect(gridBalance({ supply: 28, demand: 11, rawDemand: 11, net: 17 })).toEqual({ supply: 28, requested: 11, shed: 0, net: 17, stored: 0 });
     // older summaries without rawDemand, and the night solar drain already inside the sim's net
-    expect(gridBalance({ supply: 8, demand: 14, net: -7 })).toEqual({ supply: 8, requested: 14, shed: 0, net: -7 });
-    expect(gridBalance(undefined)).toEqual({ supply: 0, requested: 0, shed: 0, net: 0 });
+    expect(gridBalance({ supply: 8, demand: 14, net: -7 })).toEqual({ supply: 8, requested: 14, shed: 0, net: -7, stored: 0 });
+    expect(gridBalance(undefined)).toEqual({ supply: 0, requested: 0, shed: 0, net: 0, stored: 0 });
+  });
+
+  it('gridBalance with stores: income is generation, net goes negative at night while the HQ cell / banks carry it', () => {
+    // Night, W03 start: 16 generation, 19 requested, the HQ cell discharges 3 (sim supply 19 includes it), nothing shed
+    const night = { generationPerS: 16, supply: 19, demand: 19, rawDemand: 19, net: 0, hqCellDischargePerS: 3 };
+    expect(gridBalance(night)).toEqual({ supply: 16, requested: 19, shed: 0, net: -3, stored: -3 });
+    // Day: surplus 10 refills the cell (8) and a bank (2)
+    const day = { generationPerS: 29, supply: 29, demand: 19, rawDemand: 19, net: 10, hqCellChargePerS: 8, capacitorChargePerS: 2 };
+    expect(gridBalance(day)).toEqual({ supply: 29, requested: 19, shed: 0, net: 10, stored: 10 });
+    // Stores empty: the deficit is shed
+    const shed = { generationPerS: 16, supply: 16, demand: 15, rawDemand: 23, net: 1 };
+    expect(gridBalance(shed)).toEqual({ supply: 16, requested: 23, shed: 8, net: -7, stored: 0 });
   });
 
   it('readColonyPower picks the asked colony: col.power, then blobs.power.byColony, then view.power', () => {

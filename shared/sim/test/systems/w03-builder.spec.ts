@@ -99,7 +99,7 @@ describe('W03-02 Builder Drone in sim: Hub production (12 s / 60 ticks)', () => 
       workRate: 1.0,
       maxBuildTier: 1,
       supply: 1,
-      powerDrainPerS: 2.0,
+      powerDrainPerS: 3,
       viewRadius: 7,
     });
   });

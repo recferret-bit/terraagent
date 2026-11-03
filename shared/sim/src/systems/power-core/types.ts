@@ -37,6 +37,14 @@ export interface ColonyPowerSummary {
   capacitorCapacityE?: number;
   capacitorDischargePerS?: number;
   capacitorChargePerS?: number;
+  /** Generation only (founder core + generators' net), before any store discharge; `supply` adds the discharges. */
+  generationPerS?: number;
+  /** The HQ cell backs the Hub's grid (`power-core/hqCell.ts`); `hq/cell.ts` then stops its free recharge. */
+  hqCellLinked?: boolean;
+  hqCellStoredE?: number;
+  hqCellCapacityE?: number;
+  hqCellDischargePerS?: number;
+  hqCellChargePerS?: number;
   supply: number;
   demand: number;
   rawDemand: number;

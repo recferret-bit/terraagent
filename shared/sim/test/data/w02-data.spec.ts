@@ -24,13 +24,13 @@ describe('W02-01 data rows: resources, economyT1Basic, unitsWorkersBasic', () =>
     // Metals Extractor T1 (14s -> 70 ticks) & Solar T1 (18s -> 90 ticks)
     const extractor = dataRow(compiled, 'economyT1Basic', 'metalsExtractor');
     expect(extractor.buildS).toBe(70);
-    expect(extractor.powerDrainPerS).toBe(6);
+    expect(extractor.powerDrainPerS).toBe(8);
     expect(extractor.hp).toBe(500);
     expect(extractor.requiresDeposit).toBe('metals');
 
     const solar = dataRow(compiled, 'economyT1Basic', 'solar');
     expect(solar.buildS).toBe(90);
-    expect(solar.grossOutputPerS).toBe(21);
+    expect(solar.grossOutputPerS).toBe(14);
     expect(solar.internalDrainPerS).toBe(1);
     expect(solar.desertBonusMult).toBe(1.35);
 
@@ -46,7 +46,7 @@ describe('W02-01 data rows: resources, economyT1Basic, unitsWorkersBasic', () =>
     const harvester = dataRow(compiled, 'unitsWorkersBasic', 'harvester');
     expect(harvester.buildS).toBe(50);
     expect(harvester.supply).toBe(1);
-    expect(harvester.powerDrainPerS).toBe(1.5);
+    expect(harvester.powerDrainPerS).toBe(2);
     expect(harvester.hp).toBe(160);
     expect(harvester.speedTilesPerS).toBeCloseTo(0.3, 5);
     expect(harvester.viewRadius).toBe(7);
