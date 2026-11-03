@@ -11,6 +11,15 @@ const KIND_NAMES: Record<number, string> = {
   [ENTITY_KIND.hq]: 'Colony HQ',
   [ENTITY_KIND.dropPod]: 'Drop Pod',
   [ENTITY_KIND.harvester]: 'Harvester',
+  [ENTITY_KIND.builder]: 'Builder Drone',
+  [ENTITY_KIND.pylon]: 'Power Line Pylon',
+  [ENTITY_KIND.capacitor]: 'Capacitor Bank',
+  [ENTITY_KIND.wind]: 'Wind Turbine',
+  [ENTITY_KIND.thermal]: 'Thermal Plant',
+  [ENTITY_KIND.supplyDepot]: 'Supply Depot',
+  [ENTITY_KIND.mineralsQuarry]: 'Minerals Quarry',
+  [ENTITY_KIND.waterExtractor]: 'Water Extractor',
+  [ENTITY_KIND.petroleumWell]: 'Petroleum Well',
 };
 
 const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
@@ -19,6 +28,14 @@ const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.commandHub,
   ENTITY_KIND.hq,
   ENTITY_KIND.dropPod,
+  ENTITY_KIND.pylon,
+  ENTITY_KIND.capacitor,
+  ENTITY_KIND.wind,
+  ENTITY_KIND.thermal,
+  ENTITY_KIND.supplyDepot,
+  ENTITY_KIND.mineralsQuarry,
+  ENTITY_KIND.waterExtractor,
+  ENTITY_KIND.petroleumWell,
 ]);
 
 /** A `SimView` entity as the inspector reads it (tests pass partial rows). */
@@ -40,9 +57,13 @@ export function formatEntityState(state: number, explicitReason?: string): strin
     case ENTITY_STATE.offlineBrownout: return 'offline: brownout';
     case ENTITY_STATE.offlineUnpowered: return 'offline: unpowered';
     case ENTITY_STATE.offlineCapped: return 'offline: capped';
+    case ENTITY_STATE.offlineNoFuel: return 'offline: no fuel';
+    case ENTITY_STATE.offlineNoGrid: return 'offline: no grid';
+    case ENTITY_STATE.offlineOverload: return 'offline: overload';
     case ENTITY_STATE.idle: return 'idle';
     case ENTITY_STATE.working: return 'working';
     case ENTITY_STATE.harvesting: return 'harvesting';
+    case ENTITY_STATE.repairing: return 'repairing';
     default: return 'online';
   }
 }
