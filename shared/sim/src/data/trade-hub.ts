@@ -120,5 +120,14 @@ export default defineTable({
       dailyMintCapPerResource: 20000,
       throughputWindowS: 60,
     },
+    {
+      id: 'unlock',
+      wave: 'W10',
+      kind: 'unlockRule',
+      rule: 'neighborContact(>=S2) | guildVisit | S5',
+      minContactStage: 2,
+      autoUnlockStage: 5,
+      tradeHubAtS2: true,
+    },
   ],
 });
