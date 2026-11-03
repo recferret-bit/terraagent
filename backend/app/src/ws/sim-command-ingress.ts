@@ -105,17 +105,17 @@ export class SimCommandIngress implements CommandIngress {
         if (out.ok) {
           this.acked.inc({ kind: cmd.d.kind });
           ctx.reply({ v: 1, t: 'cmd.ack', d: { id: cmd.id, appliedAtTick: out.appliedAtTick } });
-        } else if (isRejectCode(out.code)) this.reject(ctx, cmd, out.code, out.detail); // the sim's cause (GP-31)
+        } else if (isRejectCode(out.code)) this.reject(ctx, cmd, out.code, out.detail, out.unlocksAt); // the sim's cause (GP-31)
         else this.reject(ctx, cmd, 'internal', out.code);
       },
       () => this.reject(ctx, cmd, 'internal', 'engine unavailable'),
     );
   }
 
-  private reject(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>, code: RejectCode, detail?: string): void {
+  private reject(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>, code: RejectCode, detail?: string, unlocksAt?: string): void {
     this.rejected.inc({ kind: this.labelKind(cmd.d.kind), code });
     const d = detail ? detail.slice(0, REJECT_DETAIL_MAX) : ''; // a longer detail would fail the client's frame check
-    ctx.reply({ v: 1, t: 'cmd.reject', d: { id: cmd.id, code, ...(d ? { detail: d } : {}) } });
+    ctx.reply({ v: 1, t: 'cmd.reject', d: { id: cmd.id, code, ...(d ? { detail: d } : {}), ...(unlocksAt ? { unlocksAt } : {}) } });
   }
 
   /** Unknown kinds share one label so a client cannot create unbounded metric series. */

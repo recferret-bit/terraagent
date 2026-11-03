@@ -12,6 +12,7 @@ export type RejectCodeOf = string;
 export interface CommandReject {
   code: RejectCodeOf;
   detail?: string;
+  unlocksAt?: string;
 }
 
 /**
@@ -35,4 +36,5 @@ export interface CommandOutcome {
   appliedAtTick: number;
   code?: string; // set when rejected
   detail?: string; // optional cause of a rejection (hosts pass it in `cmd.reject.detail`)
+  unlocksAt?: string; // optional stage unlock target when `code === 'stage_locked'` (hosts pass it in `cmd.reject.unlocksAt`)
 }

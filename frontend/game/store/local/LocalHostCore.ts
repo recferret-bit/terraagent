@@ -252,7 +252,16 @@ export class LocalHostCore {
       // a handler may name the cause (`{ code, detail }`, GP-31); a code outside the contract is `internal` with the code as detail
       const code: RejectCode = isRejectCode(o.code) ? o.code : 'internal';
       const detail = code === o.code ? o.detail : o.detail ? `${o.code}: ${o.detail}` : o.code;
-      this.server({ v: 1, t: 'cmd.reject', d: { id: o.commandId, code, ...(detail ? { detail: detail.slice(0, REJECT_DETAIL_MAX) } : {}) } });
+      this.server({
+        v: 1,
+        t: 'cmd.reject',
+        d: {
+          id: o.commandId,
+          code,
+          ...(detail ? { detail: detail.slice(0, REJECT_DETAIL_MAX) } : {}),
+          ...(code === o.code && o.unlocksAt ? { unlocksAt: o.unlocksAt } : {}),
+        },
+      });
     }
   }
 
