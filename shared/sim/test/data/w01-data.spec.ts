@@ -44,6 +44,6 @@ describe('W01-01 data rows: terrain, opsBasic, hq, hub', () => {
     expect(hub.claimRadius).toBe(10);
     expect(hub.storageCapPerFamily).toBe(500);
     expect(hub.supplyCap).toBe(10);
-    expect(hub.founderCoreGenPerS).toBe(8);
+    expect(hub.founderCoreGenPerS).toBe(16);
   });
 });

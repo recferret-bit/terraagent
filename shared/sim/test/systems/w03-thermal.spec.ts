@@ -64,7 +64,7 @@ describe('W03-10 Thermal Plant T1 fuel consumption and power', () => {
     expect(state.entities.cols.state[thermalRow]).toBe(ENTITY_STATE.offlineNoFuel);
     expect(evalSummary.offlineReasons[thermalId]).toBe('offline: no fuel');
     expect(evalSummary.thermalNetPerS).toBe(0);
-    expect(evalSummary.supply).toBe(8); // Hub Founder Core only
+    expect(evalSummary.supply).toBe(16); // Hub Founder Core only
 
     // Stepping simulation keeps plant offline: no fuel
     step(state, [], 1, pipeline);
@@ -72,7 +72,7 @@ describe('W03-10 Thermal Plant T1 fuel consumption and power', () => {
     expect(state.entities.cols.state[thermalRow]).toBe(ENTITY_STATE.offlineNoFuel);
     expect(summary.offlineReasons[thermalId]).toBe('offline: no fuel');
     expect(summary.thermalNetPerS).toBe(0);
-    expect(summary.supply).toBe(8);
+    expect(summary.supply).toBe(16);
   });
 
   it('Test 2: Credit 10 biomass -> 5 ticks (1s) generates +25 E/s net, drains 0.375 biomass, and increments pollution', () => {
@@ -88,9 +88,9 @@ describe('W03-10 Thermal Plant T1 fuel consumption and power', () => {
     expect(summary.thermalGrossPerS).toBe(28);
     expect(summary.thermalInternalDrainPerS).toBe(3);
     expect(summary.thermalNetPerS).toBe(25);
-    expect(summary.supply).toBe(33); // 8 founder core + 25 thermal net
-    expect(summary.demand).toBe(5); // 5 hub drain
-    expect(summary.net).toBe(28);
+    expect(summary.supply).toBe(41); // 16 founder core + 25 thermal net
+    expect(summary.demand).toBe(7); // 7 hub drain
+    expect(summary.net).toBe(34);
 
     // Biomass decreased by 0.375 (from 10 to 9.625)
     expect(colony.stock['bio.biomass']).toBe(9.625);
@@ -118,7 +118,7 @@ describe('W03-10 Thermal Plant T1 depletion and grid connectivity', () => {
     expect(state.entities.cols.state[thermalRow]).toBe(ENTITY_STATE.offlineNoFuel);
     expect(summary.offlineReasons[thermalId]).toBe('offline: no fuel');
     expect(summary.thermalNetPerS).toBe(0);
-    expect(summary.supply).toBe(8);
+    expect(summary.supply).toBe(16);
   });
 
   it('marks unattached thermal plant as offline: unpowered', () => {

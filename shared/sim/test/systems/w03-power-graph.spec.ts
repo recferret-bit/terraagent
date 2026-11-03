@@ -103,7 +103,7 @@ describe('W03-05 Power graph v2 — acceptance check', () => {
 });
 
 describe('W03-05 Wind Turbine T1 output & overrides', () => {
-  it('produces +15 net at windFactor 1.0, scales with windFactor override, operates day and night', () => {
+  it('produces +12 net at windFactor 1.0, scales with windFactor override, operates day and night', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w03', radius: 16 });
     state.colonies.push({
       index: 0,
@@ -121,30 +121,30 @@ describe('W03-05 Wind Turbine T1 output & overrides', () => {
     // Default wind factor 1.0 at tick < 1200
     step(state, [], 1, pipeline);
     const p1 = getColonyPower(state, 0);
-    expect(p1.windGrossPerS).toBe(16);
+    expect(p1.windGrossPerS).toBe(13);
     expect(p1.windInternalDrainPerS).toBe(1);
-    expect(p1.windNetPerS).toBe(15);
+    expect(p1.windNetPerS).toBe(12);
 
     // Override to min wind factor 0.5
     (state.colonies[0] as { windFactorOverride?: number }).windFactorOverride = 0.5;
     step(state, [], 1, pipeline);
     const pMin = getColonyPower(state, 0);
-    expect(pMin.windGrossPerS).toBe(8);
-    expect(pMin.windNetPerS).toBe(7);
+    expect(pMin.windGrossPerS).toBe(6.5);
+    expect(pMin.windNetPerS).toBe(5.5);
 
     // Override to max wind factor 1.4
     (state.colonies[0] as { windFactorOverride?: number }).windFactorOverride = 1.4;
     step(state, [], 1, pipeline);
     const pMax = getColonyPower(state, 0);
-    expect(pMax.windGrossPerS).toBe(22.4);
-    expect(pMax.windNetPerS).toBe(21.4);
+    expect(pMax.windGrossPerS).toBe(18.2);
+    expect(pMax.windNetPerS).toBe(17.2);
 
     // Operates at night (midnight)
     setPlanetTime(state, { timeOfDay: 0 }, state.meta.tick);
     step(state, [], 1, pipeline);
     const pNight = getColonyPower(state, 0);
-    expect(pNight.windNetPerS).toBe(21.4);
-    expect(pNight.supply).toBeGreaterThanOrEqual(21.4);
+    expect(pNight.windNetPerS).toBe(17.2);
+    expect(pNight.supply).toBeGreaterThanOrEqual(17.2);
   });
 });
 
@@ -176,14 +176,15 @@ describe('W03-05 Capacitor Bank T1 charging & brownout mitigation', () => {
     // Set stored energy manually to 500 E and switch to midnight with a heavy consumer
     state.entities.cols.cell[capRow] = 500;
     const extRow = spawnBuilding(state, ENTITY_KIND.metalsExtractor, 0, 3, 2, 2, 500);
+    spawnBuilding(state, ENTITY_KIND.metalsExtractor, -3, 0, 2, 2, 500);
     setPlanetTime(state, { timeOfDay: 0 }, state.meta.tick);
 
-    // Hub (+8), Solar (+0 net -1), Capacitor drain (1.5), Hub drain (5), Extractor (6)
-    // Demand = 5 + 1.5 + 6 = 12.5. Gen supply = 8. Deficit = 4.5 E/s.
+    // Hub (+16), Solar (offline at night), Capacitor drain (2), Hub drain (7), 2 Extractors (8 each)
+    // Demand = 7 + 2 + 16 = 25. Gen supply = 16. Deficit = 9 E/s (no HQ cell here: the bank carries it all).
     step(state, [], 1, pipeline);
 
     const pNight = getColonyPower(state, 0);
-    expect(pNight.capacitorDischargePerS).toBeCloseTo(4.5, 1);
+    expect(pNight.capacitorDischargePerS).toBeCloseTo(9, 1);
     expect(pNight.brownout).toBe(false);
     expect(state.entities.cols.state[extRow]).toBe(ENTITY_STATE.active);
     expect(state.entities.cols.cell[capRow]).toBeLessThan(500);

@@ -6,6 +6,8 @@ import {
   enqueueQueueTask,
   getBuildingJobs,
   getColonyQueue,
+  placeMetalsExtractor,
+  rowOf,
   type ColonyWithLedger,
 } from '@terra/sim';
 import { createScenarioPlanet, getScenario } from '../_loader';
@@ -20,6 +22,8 @@ interface TestColonyPower {
   solarGrossPerS?: number;
   solarNetPerS?: number;
   brownout?: boolean;
+  hqCellDischargePerS?: number;
+  hqCellChargePerS?: number;
 }
 
 type Host = ReturnType<typeof createScenarioPlanet>['host'];
@@ -47,7 +51,7 @@ const isBuilt = (host: Host, kind: number): boolean => {
 };
 
 describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', () => {
-  it('loads w02 / w02-first-light with Hub done, morning 06:00, stock 400/250/150/150, +8 supply / -5 demand', () => {
+  it('loads w02 / w02-first-light with Hub done, morning 06:00, stock 400/250/150/150, +16 supply / -7 demand', () => {
     expect(getScenario('w02')).toBeDefined();
     expect(getScenario('w02-first-light')).toBe(getScenario('w02'));
 
@@ -61,9 +65,9 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
     });
     expect(col.caps).toEqual({ metals: 500, minerals: 500, bio: 500 });
     expect(col.power).toMatchObject({
-      supply: 8,
-      demand: 5,
-      net: 3,
+      supply: 16,
+      demand: 7,
+      net: 9,
       phase: 'day',
       clockText: '06:00',
       daylight: 1,
@@ -119,7 +123,7 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
     expect(isBuilt(host, ENTITY_KIND.solar)).toBe(false);
     stepUntil(host, () => isBuilt(host, ENTITY_KIND.solar), 300);
     host.step(1);
-    expect(col.power?.solarNetPerS).toBe(20);
+    expect(col.power?.solarNetPerS).toBe(13);
 
     // Step 5: Queue a second Extractor when Minerals are set to 5 -> waiting: Minerals 5/20 · ~30 s
     col.stock['minerals.t1'] = 5;
@@ -159,22 +163,38 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
     stepUntil(host, () => isBuilt(host, ENTITY_KIND.solar) && isBuilt(host, ENTITY_KIND.metalsExtractor), 600);
     host.step(1);
 
-    // Step 6: Run dev.time night -> Solar drops to 0, demand exceeds supply, Extractor shed (offlineBrownout)
+    // Step 6: Run dev.time night -> Solar drops to 0; the Founder Core (+16) still carries Hub (7) + Extractor (8)
     host.submit({ colonyIndex: 0, source: 'dev', commandId: 'c-night', kind: 'dev.time', args: { target: 'night' } });
     host.step(1);
     expect(col.power?.solarGrossPerS).toBe(0);
-    expect(col.power?.brownout).toBe(true);
+    expect(col.power?.brownout).toBe(false);
     let extRow = -1;
     for (let r = 0; r < host.state.entities.count; r++) {
       if (host.state.entities.cols.kind[r] === ENTITY_KIND.metalsExtractor) extRow = r;
     }
-    expect(host.state.entities.cols.state[extRow]).toBe(ENTITY_STATE.offlineBrownout);
+    expect(host.state.entities.cols.state[extRow]).toBe(ENTITY_STATE.active);
 
-    // Restore day -> Extractor back online
+    // A second Extractor puts the night grid in deficit (23 > 16): the HQ cell carries it (no brownout, cell draining)
+    const ext2 = placeMetalsExtractor(host.state, { owner: 0, q: 6, r: 0 });
+    expect(ext2.ok).toBe(true);
+    const ext2Row = ext2.ok ? rowOf(host.state.entities, ext2.entityId) : -1;
+    host.step(1);
+    expect(col.power?.brownout).toBe(false);
+    expect(col.power?.hqCellDischargePerS).toBeCloseTo(7, 3);
+    // ...until the cell is empty (`dev.cell 0`): then the newest Extractor is shed (offlineBrownout), the first runs on
+    host.submit({ colonyIndex: 0, source: 'dev', commandId: 'c-cell0', kind: 'dev.cell', args: { energy: 0 } });
+    host.step(2);
+    expect(col.power?.brownout).toBe(true);
+    expect(host.state.entities.cols.state[ext2Row]).toBe(ENTITY_STATE.offlineBrownout);
+    expect(host.state.entities.cols.state[extRow]).toBe(ENTITY_STATE.active);
+
+    // Restore day -> both Extractors online, the surplus refills the cell
     host.submit({ colonyIndex: 0, source: 'dev', commandId: 'c-day', kind: 'dev.time', args: { target: 'day' } });
     host.step(1);
     expect(col.power?.brownout).toBe(false);
-    expect(host.state.entities.cols.state[extRow]).toBe(ENTITY_STATE.active);
+    expect(host.state.entities.cols.state[ext2Row]).toBe(ENTITY_STATE.active);
+    expect(col.power?.hqCellChargePerS).toBeGreaterThan(0);
+    host.state.entities.cols.hp[ext2Row] = 0; // gone again: steps 7–8 run with one Extractor
 
     // Step 7: Fill Metals to cap (500/500) -> Extractor halts at cap, and entry costing > cap shows waiting: storage (no ETA)
     host.submit({ colonyIndex: 0, source: 'dev', commandId: 'c-fill', kind: 'dev.fill', args: { res: 'metals.t1', amount: 9999 } });

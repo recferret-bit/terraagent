@@ -58,9 +58,12 @@ describe('W03-17 Construction catalog & deposit ghost rules', () => {
     ]);
 
     const capCard = w03Cards.find((c) => c.building === 'capacitor')!;
-    expect(capCard.powerText).toBe('−1.5 E/s · 1500 E');
+    expect(capCard.powerText).toBe('−2 E/s · 1500 E');
     const lineCard = w03Cards.find((c) => c.building === 'powerLine')!;
     expect(lineCard.footprintText).toBe('Chain (≤6 span)');
+    expect(lineCard.powerText).toBe('−2.5 E/s / pylon'); // grid.pylon.powerDrainPerS
+    expect(w03Cards.find((c) => c.building === 'pylon')!.powerText).toBe('−2.5 E/s');
+    expect(w03Cards.find((c) => c.building === 'wind')!.powerText).toBe('+12 E/s'); // gross 13 − internal 1
     expect(lineCard.cost).toEqual({ 'metals.t1': 15, 'minerals.t1': 5, 'bio.biomass': 0, 'bio.water': 0 });
   });
 

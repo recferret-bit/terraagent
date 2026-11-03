@@ -152,8 +152,8 @@ describe('W03-19: Units menu Builder card and Selection panel #id + W03 kinds', 
     expect(builder.label).toBe('Builder Drone');
     expect(builder.buildS).toBe(12);
     expect(builder.supply).toBe(1);
-    expect(builder.powerDrainPerS).toBe(2);
-    expect(builder.powerText).toBe('−2 E/s');
+    expect(builder.powerDrainPerS).toBe(3);
+    expect(builder.powerText).toBe('−3 E/s');
     expect(builder.costSummary).toBe('45 Metals · 25 Minerals · 10 Biomass');
 
     const supply = resolveSupply({

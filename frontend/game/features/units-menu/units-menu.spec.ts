@@ -132,7 +132,7 @@ describe('Units Catalog & Helpers', () => {
     expect(harvester.label).toBe('Harvester Drone');
     expect(harvester.buildS).toBe(10);
     expect(harvester.supply).toBe(1);
-    expect(harvester.powerText).toBe('−1.5 E/s');
+    expect(harvester.powerText).toBe('−2 E/s');
     expect(harvester.cost).toEqual({
       'metals.t1': 40,
       'minerals.t1': 15,
@@ -227,7 +227,7 @@ describe('UnitsMenu DOM Component', () => {
     expect(harvesterCard?.querySelector('.ta-units__title')?.textContent).toBe('Harvester Drone');
     expect(harvesterCard?.querySelector('.ta-units__supply-tag')?.textContent).toBe('Supply 1');
     expect(harvesterCard?.querySelector('.ta-units__time')?.textContent).toBe('10s');
-    expect(harvesterCard?.querySelector('.ta-units__power')?.textContent).toBe('−1.5 E/s');
+    expect(harvesterCard?.querySelector('.ta-units__power')?.textContent).toBe('−2 E/s');
 
     const pills = harvesterCard?.querySelectorAll('.ta-units__cost-pill').map((p) => p.textContent);
     expect(pills).toEqual(['40 Metals', '15 Minerals', '5 Biomass']);
