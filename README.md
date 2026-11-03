@@ -4,7 +4,7 @@ Autonomous colony builder in the browser: drop one robot on a live planet, set p
 
 **Stack:** Vite + TypeScript + Three.js (WebGL2) client with a vanilla-DOM HUD · one NestJS app with sim worker threads · PostgreSQL (Prisma) · npm workspaces.
 
-> **Status:** waves W00 (platform skeleton), W01 (landfall), and W26 (public hosts) landed — the rails, first playable loop, and hosting front door. Gameplay and on-chain features arrive across 27 product waves (`W00`–`W26`) ([`docs/plan/PRODUCT_WAVES.md`](./docs/plan/PRODUCT_WAVES.md)).
+> **Status:** waves W00 (platform skeleton), W01 (landfall), W02 (first light), and W26 (public hosts) landed — the rails, first playable loop, a living economy (resources, power, day/night, order queue), and the hosting front door. Gameplay and on-chain features arrive across 27 product waves (`W00`–`W26`) ([`docs/plan/PRODUCT_WAVES.md`](./docs/plan/PRODUCT_WAVES.md)).
 
 ## Quick start: do X → see Y
 
