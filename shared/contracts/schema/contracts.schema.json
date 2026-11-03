@@ -2003,6 +2003,45 @@
     }
   },
   "events": {
+    "account.created": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "accountId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^(([a-z\\d]+[-_])*[a-z\\d]+\\.)*([a-z\\d]+[-_])*[a-z\\d]+$",
+            "type": "string"
+          },
+          "playerId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "provider": {
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "subject": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "playerId",
+          "accountId",
+          "provider",
+          "subject"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Named account created and linked to the player (F5).",
+      "wave": "W06"
+    },
     "brownout": {
       "audience": "player",
       "data": {
@@ -2571,6 +2610,139 @@
       "severity": "warn",
       "summary": "Emitted when destroying or demolishing a pylon/generator splits the colony power graph or disconnects buildings (W03-05).",
       "wave": "W03"
+    },
+    "relay.failed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "errorCode": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "message": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "opId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "receiverId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^(([a-z\\d]+[-_])*[a-z\\d]+\\.)*([a-z\\d]+[-_])*[a-z\\d]+$",
+            "type": "string"
+          },
+          "signerId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^(([a-z\\d]+[-_])*[a-z\\d]+\\.)*([a-z\\d]+[-_])*[a-z\\d]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "opId",
+          "signerId",
+          "receiverId",
+          "errorCode",
+          "message"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A gasless action failed.",
+      "wave": "W06"
+    },
+    "relay.settled": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "opId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "receiverId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^(([a-z\\d]+[-_])*[a-z\\d]+\\.)*([a-z\\d]+[-_])*[a-z\\d]+$",
+            "type": "string"
+          },
+          "signerId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^(([a-z\\d]+[-_])*[a-z\\d]+\\.)*([a-z\\d]+[-_])*[a-z\\d]+$",
+            "type": "string"
+          },
+          "status": {
+            "const": "FINAL",
+            "type": "string"
+          },
+          "txHash": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "opId",
+          "txHash",
+          "signerId",
+          "receiverId",
+          "status"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A gasless action settled.",
+      "wave": "W06"
+    },
+    "relay.submitted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "method": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "opId": {
+            "maxLength": 200,
+            "minLength": 1,
+            "type": "string"
+          },
+          "receiverId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^(([a-z\\d]+[-_])*[a-z\\d]+\\.)*([a-z\\d]+[-_])*[a-z\\d]+$",
+            "type": "string"
+          },
+          "signerId": {
+            "maxLength": 64,
+            "minLength": 2,
+            "pattern": "^(([a-z\\d]+[-_])*[a-z\\d]+\\.)*([a-z\\d]+[-_])*[a-z\\d]+$",
+            "type": "string"
+          }
+        },
+        "required": [
+          "opId",
+          "signerId",
+          "receiverId",
+          "method"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "A gasless action was submitted through the relayer.",
+      "wave": "W06"
     },
     "resourceProduced": {
       "audience": "server",

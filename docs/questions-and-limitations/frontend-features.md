@@ -1,6 +1,6 @@
 # Frontend gameplay features: questions and limitations
 
-Gameplay UI features in `frontend/game/features/` (`dev-console`, `hub-placement`, `hud-min`, `landfall`,
+Gameplay UI features in `frontend/game/features/` (`dev-console`, `hub-placement`, `hud-min`, `identity`, `landfall`,
 `terraform-basic`, `territory-border`, plus `define.ts` / `index.ts`), their specs and CSS, as mounted by the online
 flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule), AGENTS.md §6, the design system in
 `frontend/design/css/`. Format: [README](./README.md). Ledger limits are in [`economy-ledger.md`](./economy-ledger.md).
@@ -978,3 +978,29 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Workaround / mitigation:** all forms work on the server flow and on `?host=local`.
 - **To resolve:** register `time` in one feature; send a bare hour as `dev.time { target }`; make a bare `time` print the clock from the view (`blobs.planetTime` / colony power summary) instead of setting it. Update `docs/dev/DEV_TOOLS.md` with the split if it stays.
 - **Found:** 2026-11-03, W02 review round 2 (lead)
+
+
+## W06 Invisible Chain
+
+These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-34..FF-61 on `main` first, so the W06 entries continue at FF-62.
+
+### FF-62 · Social login does not reauth the open socket
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/app/online/pilotBridge.ts` (`loginSocial`), `frontend/game/app/online/guestBoot.ts` (`applyLinkedSession`), `frontend/game/net/WsTransport.ts` (`reauth`)
+- **What happens:** **Save progress** replaces `GuestBootTarget.accessToken` (and the boot object, in place) with the `POST /v1/auth/social` token and updates the chip, with no reload. The socket that is already open keeps the guest JWT until `WsTransport`'s existing renewal timer calls `refresh()` and sends `reauth`. Login itself does not send `reauth`.
+- **Why it is like this:** `reauth` is private to the transport. A guest bearer upgrades that same player, so the open socket stays the right colony. The new token is what the next `hello`, the next `reauth`, and later `Authorization` headers use.
+- **Workaround / mitigation:** the social response also sets the refresh cookie, so the renewal timer rotates onto the linked session. The chip and `pilot.view().accessToken` already show the new token.
+- **To resolve:** only if a linked token must be on the socket immediately — add a session push for `reauth`. Not needed while the upgrade keeps the player id.
+- **Found:** 2026-11-02, W06-15
+
+### FF-63 · A reload shows Guest pilot again
+
+- **Status:** Resolved (W06-06)
+- **Area / code:** `frontend/game/features/identity/PilotChip.ts`, `frontend/game/app/online/bootOnline.ts` (`bootAuthAndHome`, `readAccountId`), `backend/app/src/core/auth/auth.service.ts` (`guestLogin`)
+- **What happens:** linking in this page updates the chip to `Pilot ID <accountId>` with no reload. The next page load boots with `POST /v1/auth/guest`. Before W06-06 that answer was always `isGuest: true` and had no `accountId`, so the chip read `Guest pilot` again until the pilot saved progress once more.
+- **Why it is like this:** W06-15 only required the in-page handoff. Guest login did not return the pilot id, and the chip has nowhere else to read it. Nothing is written to `localStorage`.
+- **Workaround / mitigation:** the server still has the upgraded player (same device secret).
+- **To resolve:** have guest/refresh return `accountId` when the player is already linked, and have the chip render `Pilot ID` from that boot field.
+- **Fix:** the guest auth response now carries `isGuest: false` and top-level `accountId` when the player has a `social_identity` row. `readAccountId` already reads that field, and `isGuest` is `player.isGuest !== false`, so a reload shows `Pilot ID …`. The chip was not rewritten. Refresh of a linked player returns the same two fields.
+- **Found:** 2026-11-02, W06-15

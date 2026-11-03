@@ -533,3 +533,138 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Fix (round 2):** the harness boots the app with `TA_WAVES` = every wave up to the highest one selected (`appWavesFor`) and tells the suites (`E2E_APP_WAVES` → `expectedOnWaves()`; the W00 suite's flag-chip step expects that count).
 - **Still true:** `E2E_REUSE=1` attaches to the running dev stack and keeps its own `TA_WAVES`; `expectedOnWaves()` then assumes every wave is on. `--host local` boots no app (sim-only suites; the W01 suite is skipped there). `--waves ..00` runs on the flat W00 dev planet and `..01` on the pure W01 server path, so a failure there can be a missing W02 piece rather than a regression.
 - **Found:** 2026-11-03, W02 review rounds 1–2 (frontend agent)
+
+
+## W06 Invisible Chain
+
+These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28..BE-32 on `main` first, so the W06 entries continue at BE-33.
+
+### BE-33 · Landed IdentityPort shapes differ from the W06 issue text (Q-01-22)
+
+- **Status:** Question for the owner
+- **Area / code:** `backend/app/src/near/application/ports/identity.port.ts`, `shared/contracts/src/rest/near-account.ts` (`namedAccountOpId`)
+- **What happens:** W06-01 says the port is used unchanged. The landed `loginSocial` returns `{playerId, email, isNew}`, and `createNamedAccount` takes `{opId, name, parent?}` with no `(provider, subject)`. The issue text for W06-03 asks the adapter to return `{provider, subject, email?}`, and W06-05 asks for idempotency per `(provider, subject)`.
+- **Why it is like this:** Q-01-22 has no proposed default. W06-01 forbids redefining the port, so this wave keeps the landed signatures. The HTTP `POST /v1/auth/social` still returns `{accessToken, player, accountId}` (PROTOCOL §8). Idempotency rides on `opId = named-account:{provider}:{subject}` (`namedAccountOpId`). Token verification (`{provider, subject, email?}`) stays inside the mock adapter, then the service maps it onto `SocialLoginResult`.
+- **Workaround / mitigation:** callers that need "the same social subject, the same account" pass that opId. A repeat with the same opId returns the stored account. A different subject with the same display name gets the `-2` suffix.
+- **To resolve:** confirm this mapping, or change `IdentityPort` (and W23's real adapter) to take `(provider, subject)` on the port itself.
+- **Found:** 2026-11-02, W06-01 (open question Q-01-22; owner default was "none", so the port stays as landed)
+
+### BE-34 · Dev KEK seals rows when NEAR_KEK is unset
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/keystore/kek.ts` (`DEV_KEK`, `loadKekRing`)
+- **What happens:** with `NEAR_KEK` unset, new key rows are sealed with the in-repo 32-byte `DEV_KEK` (`terraagent-dev-kek-do-not-ship!!`) at version 1. Anyone with the source can open those rows. `NODE_ENV=production` throws inside `loadKekRing` when the key is missing or equals `DEV_KEK`. Nest boot does not call `loadKekRing`, so a production process that never seals a key still starts. Colony sub-account creation (W06-08) is the first caller and passes the parsed app env; `NEAR_KEK`, `NEAR_KEK_VERSION` and `NEAR_KEK_RING` are optional on the near env section, so a missing key still boots and this rule applies when a key is sealed. `NEAR_KEK_RING` entries are not compared to `DEV_KEK`, so a rotation can still open rows sealed under the dev key. The envelope has no AAD, and `open` does not check that the seed matches `publicKey`.
+- **Why it is like this:** unit tests and local play must run without a secret, and adding a required boot env would fail existing production boot tests (W06-09).
+- **Workaround / mitigation:** set `NEAR_KEK` (base64 of 32 bytes) before any real deployment. Production refuses the dev key at the moment a ring is loaded.
+- **To resolve:** require `NEAR_KEK` at boot when `NODE_ENV=production`, the same way as `JWT_ACCESS_SECRET` (BE-01).
+- **Found:** 2026-11-02, W06-09
+
+### BE-35 · Mock OAuth secret is a public dev default, read from process.env
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/mock-token.ts` (`MOCK_OAUTH_SECRET_DEFAULT`), `mock-oauth.controller.ts` (`nearAdapterFor('Identity', process.env)`)
+- **What happens:** unset or empty `MOCK_OAUTH_SECRET` uses `terra-dev-mock-oauth-secret`. The Identity-adapter check reads `process.env` at request time, so a test `createApp({ source })` override of `NEAR_ADAPTER_IDENTITY` does not change it. `verifyMockToken` treats `exp` equal to the current unix second as expired. There is no HTTP verify route; a bad signature throws `NEAR_PROVIDER_REJECTED` from `verifyMockToken` (W06-03 maps that to the social login response).
+- **Why it is like this:** the dev screen must sign tokens with no setup, and the route is already 404 in production (`DevOnlyGuard`).
+- **Workaround / mitigation:** set `MOCK_OAUTH_SECRET` outside local dev. The page is only linked from the hub.
+- **To resolve:** none for the hackathon mock. W23 replaces the provider.
+- **Found:** 2026-11-02, W06-02
+
+### BE-36 · Social subject → player is `core.social_identity` on the database path, and a process map in unit tests
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/social-link.ts` (`link`, `bySubject`), `backend/app/src/near/identity/social-auth.service.ts`
+- **What happens:** When `databaseEnabled` is true, `POST /v1/auth/social` finds `core.social_identity` by `(provider, subject)`. A hit uses that player. A miss with a guest bearer links that player (colonies stay; no second player). A miss with no bearer creates a player, the same as before. The row is upserted with `playerId`, `provider`, `subject`, `accountId` from `createNamedAccount`, and the token email when it fits 254 characters. A restart finds the same player. When the database is off (`NODE_ENV=test` and no `DATABASE_URL`), the in-memory map remains and nothing is written to `core.social_identity`, so `social-auth.spec.ts` needs no Postgres. `isGuest` is still not a column. Guest login and refresh read the social row (`AuthRepository.findPilotAccount`) and, when one exists, answer `isGuest: false` plus top-level `accountId`. Every social login revokes that player's refresh sessions, then issues a new one.
+- **Why it is like this:** W06-06 persists the link. The unit spec must keep passing with the database off, so the memory path stays.
+- **Workaround / mitigation:** the database path is the one play uses. The memory path forgets the subject when the process stops; that path is tests only.
+- **To resolve:** nothing for this split. A real provider is W23. `account.created` is built but not on the socket (BE-40).
+- **Found:** 2026-11-02, W06-03; database path updated W06-06
+
+### BE-37 · Receipt detail URL is rewritten only by Vite
+
+- **Status:** Open
+- **Area / code:** `frontend/vite.config.ts` (`rewriteChainTx`), `infra/nginx/hosts/devchain.conf` (`try_files` → `/dev/chain/index.html`), `backend/app/src/core/dev-only.guard.ts`
+- **What happens:** `/dev/chain/tx/<hash>` serves the receipt page under Vite dev and preview. On `devchain.terraagent.fun` that path is the explorer list (`/dev/chain/index.html`), so the hash link does not open the receipt. `GET /v1/dev/chain/accounts` and `GET /v1/dev/chain/tx` also stay 404 in production when `NEAR_ALLOW_MOCK_IN_PROD=true`, because `DevOnlyGuard` hides every `/v1/dev/*` route (`backend/app/test/core/dev-routes.spec.ts` boots with that flag and expects 404).
+- **Why it is like this:** W06-14 asked for the Vite rewrite and the same guard as the other explorer routes. The nginx vhost and the production 404 test were left unchanged.
+- **Workaround / mitigation:** open the receipt from the Vite app (`http://127.0.0.1:5173/dev/chain/`). The API is available when `NODE_ENV` is not `production`.
+- **To resolve:** add an nginx location that serves `/dev/chain/tx.html` for `/dev/chain/tx` and `/dev/chain/tx/*`, and leave `/v1` on the app proxy. Do not weaken `DevOnlyGuard` unless that production test is changed on purpose.
+- **Found:** 2026-11-02, W06-14
+
+### BE-38 · Named-account collisions skip `-1`, ignore `parent`, and do not sleep
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/account-allocate.ts` (`nextFreeLabel`), `backend/app/src/near/infrastructure/adapters/identity/named-account.db.ts`, `mock-identity.adapter.ts` (`createNamedAccount`)
+- **What happens:** A free label is used as-is. A taken label gets `-2`, then `-3`, never `-1` (`-1` stays the reserved-name suffix from `deriveAccountName`). The search stops after 64 candidates fitted into 32 characters; the next caller gets `NEAR_NAME_TAKEN`. `parent` is not read (colony sub-accounts are W06-08). The write does not go through `MockChainBase.call`, so `MOCK_LATENCY_*`, `MOCK_FAIL_RATE`, and `near.mock.fail` do not apply to named-account creation. When `databaseEnabled` is false, nothing is inserted into `chain.mock_chain_account`. When it is true, one transaction inserts kind `named` and a `mock:` receipt; a unique clash retries the next suffix or replays the opId (at most 4 extra attempts, then `NEAR_UNAVAILABLE`).
+- **Why it is like this:** W06-05 says `-1` is only for reserved labels, `parent` may be ignored, and the unit-test path must not sleep. Social login is the caller, so a 300–1500 ms mock delay would stall `POST /v1/auth/social`.
+- **Workaround / mitigation:** the in-memory book and the database path share `nextFreeLabel`. Replaying an opId returns the stored account and does not consume a suffix.
+- **To resolve:** W06-08 reads `parent` for colony sub-accounts. Route this write through `MockChainBase` only if named-account creation should honour the mock clock.
+- **Found:** 2026-11-02, W06-05
+
+### BE-39 · Mock fail overrides are process-wide
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/mock/mock-controls.ts` (`mockChainControls`), `backend/app/src/near/infrastructure/dev/near-mock.command.ts` (`account.reset`, `account.upgrade`), `backend/app/src/near/identity/social-link.ts` (BE-36)
+- **What happens:** `near.mock.fail` and `near.mock.latency` write one process singleton. Every mock port in that process sees the override until `reset()` or a restart. `setFail(port, 0)` forces success even when the boot `MOCK_FAIL_RATE` is 1. An unset port keeps the config the adapter was built with. Named-account creation does not read this singleton (BE-38). `account.reset` revokes sessions and deletes `core.social_identity` rows for that player. It does not delete the player or their colonies. It also does not clear the in-memory subject map, which matters only when the database is off (unit tests). With the database on, the table is the source of truth, so after a reset the next `account.upgrade` of that subject (no guest bearer) creates a new player. `account.upgrade` signs a 60-second mock token and calls `SocialAuthService.login`, which writes `social_identity` when the database is on (W06-06). The refresh token from login is dropped; only `{ playerId, accountId, accessToken }` is returned, so a refresh session row sits unused until `account.reset` or expiry.
+- **Why it is like this:** W06-25 asked for one process singleton, not a second DI graph. A stored mock `opId` still returns before the fail roll; that was already the base behaviour. W06-06 made login persist the subject on the database path and left the memory map for unit tests.
+- **Workaround / mitigation:** restart the app to clear overrides and, when the database is off, the subject map. Tests call `mockChainControls.reset()` in `afterEach`. `account.reset` revokes the sessions `account.upgrade` created.
+- **To resolve:** nothing for the singleton. Clearing the in-memory map inside `account.reset` is unused on the database path.
+- **Found:** 2026-11-02, W06-25; social row note updated W06-06
+
+### BE-40 · `account.created` is built and not sent on the socket
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/social-link.ts` (`noteAccountCreated`), `backend/app/src/ws/rooms.ts` (`onEvent`), `shared/contracts/src/events/account-created.ts`
+- **What happens:** The first time a `(provider, subject)` is linked, `SocialLink` parses `{ playerId, accountId, provider, subject }` with `eventDef('account.created').data` and keeps that object on the service (`lastAccountCreated`). A repeat login of the same subject does not build another one. The websocket only forwards events the sim thread emits (`rooms.ts` `onEvent`, plus the `dev.warp` push). `account.created` is not a sim event, so the client never receives it.
+- **Why it is like this:** W06-06 says to write the event with the existing contract and not to invent a second protocol or fake a websocket. There is no player-audience push outside the sim path.
+- **Workaround / mitigation:** `POST /v1/auth/social` already returns `accountId`. The checked payload stays in this process until restart.
+- **To resolve:** when a non-sim player push exists, send this payload on that path. Do not put it on `planet.event`.
+- **Found:** 2026-11-02, W06-06
+
+### BE-41 · Relayer replay reads the caller opId from the payload
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/infrastructure/adapters/relayer/mock-relayer.adapter.ts` (`startRelay`, `inflight`), `backend/app/src/near/infrastructure/mock/mock-chain.base.ts` (`findReceiptByPayload`)
+- **What happens:** The receipt row's unique `op_id` stays `relayTxHash:nonce`, so a new nonce is a new row. The caller's `opId` is only in the JSON payload. `submitMetaTx` loads that field and returns the row before `runRelayed`, so a repeat in this process does not take another nonce. Two overlapping calls in one process share one in-flight promise. Two processes can both miss the row and each take a nonce; both inserts succeed because the unique column includes the nonce. The dev explorer's `opId` is that hash:nonce key. The payload still has the caller opId.
+- **Why it is like this:** W06-22 says a repeated caller `opId` returns the stored receipt before the lane (the lane hands out a nonce before the attempt) and that a distinct `opId` still takes a nonce. Keeping the nonce in the unique key is what makes those two rows different.
+- **Workaround / mitigation:** one Nest process. A failed attempt writes nothing, so a retry of that `opId` still goes through the lane.
+- **To resolve:** put the caller `opId` in the unique column only if a second process double-submits in practice. The retry must then still be a new row when the first attempt did not commit.
+- **Found:** 2026-11-02, W06-22
+
+### BE-42 · Colony account ids shorten the player name to stay within 64 characters
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/colony-account-id.ts` (`fitColonyAccountId`), `backend/app/src/near/identity/colony-account-write.ts` (`ensureColonyAccounts`), `shared/contracts/src/rest/near-account.ts` (`colonyAccountId`)
+- **What happens:** A colony sub-account id is `colonyAccountId(colonyId, deriveAccountName(subject))`, which is `{colonyId lowercased}.{name}.terraagent.mock`. `NearAccountId` and `chain.near_colony_account.account_id` are at most 64 characters. A `co_` ULID (29 characters) plus a short name fits (`co_01arz….test-pilot.terraagent.mock` is 57). A 32-character name does not (79). The stored id keeps the whole colony segment and cuts the name stem (a trailing `-` is removed) until the id is at most 64 and still a valid account id. A stem that would collide with an existing mock or near account id gets `-2`, `-3`, … inside the same budget. The colony id is never removed. If the colony segment alone cannot leave room for a one-character name, creation throws and no row is written. These rows are not `createNamedAccount({ parent })`. They are written beside the social link (one `near_colony_account` row and a mock row of kind `colony`). `CreateNamedAccountInput.parent` is still not read (BE-38). The identity port still has no colony list. The name stem is `deriveAccountName(subject)`, not a `-2` collision suffix that `createNamedAccount` may have put on the named account. The owner is that named account id.
+- **Why it is like this:** W06-08 requires a valid account id and says not to throw away the colony id. The port signature was left unchanged.
+- **Workaround / mitigation:** pilot names that fit (a `deriveAccountName` result of about 17 characters or fewer next to a `co_` ULID) are stored unchanged. `test-pilot` is one of those.
+- **To resolve:** a shorter colony label (a hash) if 64 stops being enough for the colony id plus a readable name. Do not drop the colony id to make room.
+- **Found:** 2026-11-02, W06-08
+
+### BE-43 · Colony storage_deposit delegate is a JSON stub
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/colony-account-write.ts` (`enqueueStorageDeposit`), `backend/app/src/near/infrastructure/adapters/relayer/mock-relayer.adapter.ts` (`submitAt`, `delegateReceiptFields`)
+- **What happens:** Each colony sub-account enqueues `storage-deposit:{accountId}` for `Relayer.submitMetaTx`. `signedDelegate` is the JSON text `{"action":"storage_deposit","account_id":"<colony account id>"}`, not a NEP-366 signed delegate. The mock receipt copies `action` and `account_id` onto the payload. It does not debit the relayer or credit storage on `res.terraagent.mock`. The signer is `relayer.terraagent.mock` and the receiver is `res.terraagent.mock`. The player row (`slot` `player`) is not enqueued. The receipt row's own `op_id` stays `relayTxHash:nonce` (BE-41); the caller opId is in the payload.
+- **Why it is like this:** W06-12 specifies that JSON so the mock relayer pays and `/dev/chain` can show the action. A real signature and an attached deposit are not part of this issue.
+- **Workaround / mitigation:** one outbox row and one mock receipt per colony account. A second submit of the same caller opId returns the stored receipt.
+- **To resolve:** when the real relayer lands (W23), replace the JSON stub with a signed delegate and whatever deposit `res.*` requires. Keep the opId `storage-deposit:{colonyAccountId}`.
+- **Found:** 2026-11-02, W06-12
+
+### BE-44 · Relay outcome is polled, not pushed on the socket
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/relay-status.controller.ts` (`GET /v1/near/relay`), `frontend/game/features/identity/orbitStatus.ts`, `backend/app/src/ws/rooms.ts` (`onEvent`)
+- **What happens:** After social login the client shows `Saving to orbit…` and polls `GET /v1/near/relay` about every 400 ms until the deposit is `settled` or `failed`. The socket still only forwards sim events and `dev.warp` (BE-40). `relay.settled` and `relay.failed` are not delivered to the browser. The outbox relay does not publish those payloads. `POST /v1/near/relay/retry` sets that player's `FAILED` rows back to `PENDING` with `nextAttemptAt` now. A `RUNNING` row keeps its lease. A `DEAD` row is `failed` in the poll and is not requeued.
+- **Why it is like this:** W06-20 says not to invent a second websocket. The outbox may `bus.publish` the same payloads later, when a non-sim player push exists. Until then the HUD learns the state from the authenticated poll.
+- **Workaround / mitigation:** the pilot bearer poll, and Retry. The first `failed` stops the poll. Retry watches for 20 s, including through another `failed` from an attempt that was already `RUNNING` (that row is not requeued), so a later backoff success clears the toast. A reload polls once and shows the chip or the toast only when that deposit is still pending or failed.
+- **To resolve:** when a non-sim player push exists, publish `relay.settled` / `relay.failed` on that path and drop the poll. Do not put them on `planet.event`.
+- **Found:** 2026-11-02, W06-20
+
+### BE-45 · A dev scenario player gets a database colony so Save progress can attach a deposit
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/near/identity/dev-scenario-seat.ts` (`seatDevScenarioPlayer`), `backend/app/src/ws/connection.ts` (`seatScenario`), `frontend/game/app/online/pilotBridge.ts` (`sessionToken`)
+- **What happens:** `?scenario=` joins with a `dev:` token and plays colony 0 with no `core.colony` row (BE-07). Social login only enqueues the colony deposit for rows of that player, so the join writes a player and a colony at index 0 on that planet. The row id is a new `co_` id, not the sim colony id `col_0`. Save progress sends the `dev:` token as the bearer (non-production only) so the upgrade is that same player. A real guest session (JWT, home seating) is unchanged.
+- **Why it is like this:** the W06 demo starts from the W01 landfall scenario. Without the row, the pilot id appears and no relayer deposit is enqueued.
+- **Workaround / mitigation:** one colony row per dev player per scenario planet. A unique clash on index 0 leaves the existing row.
+- **To resolve:** when scenario join seats through the same home path as a guest, drop this extra write and keep using that colony id.
+- **Found:** 2026-11-02, W06-28

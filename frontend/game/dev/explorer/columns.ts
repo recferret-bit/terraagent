@@ -1,10 +1,11 @@
 import type { Row, TabId } from './api';
 
-export interface Column { head: string; cell: (r: Row) => string; cls?: string }
+export interface Column { head: string; cell: (r: Row) => string; cls?: string; href?: (r: Row) => string | null }
 export interface TabDef { id: TabId; label: string; empty: string; key: (r: Row) => string; columns: Column[] }
 
 const s = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v));
 const short = (v: unknown, n = 48): string => { const t = s(v); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
+const receiptHref = (hash: string): string | null => (hash ? `/dev/chain/tx/${encodeURIComponent(hash)}` : null);
 
 export function age(ms: unknown, now = Date.now()): string {
   const d = Math.max(0, Math.round((now - Number(ms)) / 1000));
@@ -16,9 +17,16 @@ export function age(ms: unknown, now = Date.now()): string {
 export const TABS: TabDef[] = [
   { id: 'receipts', label: 'Receipts', empty: 'No receipts yet. Run chain.ping in the dev console or press the ping button.', key: (r) => s(r.txHash),
     columns: [
-      { head: 'BLOCK', cell: (r) => s(r.blockHeight), cls: 'num' }, { head: 'HASH', cell: (r) => s(r.txHash), cls: 'hash' },
+      { head: 'BLOCK', cell: (r) => s(r.blockHeight), cls: 'num' },
+      { head: 'HASH', cell: (r) => s(r.txHash), cls: 'hash', href: (r) => receiptHref(s(r.txHash)) },
       { head: 'CALL', cell: (r) => `${s(r.port)}.${s(r.method)}` }, { head: 'STATUS', cell: (r) => s(r.status), cls: 'status' },
       { head: 'OP ID', cell: (r) => short(r.opId, 40) }, { head: 'AGE', cell: (r) => age(r.at), cls: 'num' },
+    ] },
+  { id: 'accounts', label: 'Accounts', empty: 'No accounts yet.', key: (r) => `${s(r.accountId)}|${s(r.kind)}|${s(r.ownerAccountId)}`,
+    columns: [
+      { head: 'ACCOUNT', cell: (r) => s(r.accountId) },
+      { head: 'KIND', cell: (r) => s(r.kind) },
+      { head: 'OWNER', cell: (r) => s(r.ownerAccountId) },
     ] },
   { id: 'balances', label: 'Balances', empty: 'No balances.', key: (r) => `${s(r.accountId)}|${s(r.tokenId)}|${s(r.amount)}`,
     columns: [{ head: 'ACCOUNT', cell: (r) => s(r.accountId) }, { head: 'TOKEN', cell: (r) => s(r.tokenId) }, { head: 'AMOUNT', cell: (r) => s(r.amount), cls: 'num' }] },
@@ -41,6 +49,6 @@ export const TABS: TabDef[] = [
     columns: [
       { head: 'ID', cell: (r) => s(r.id), cls: 'num' }, { head: 'OP ID', cell: (r) => short(r.opId, 40) }, { head: 'CALL', cell: (r) => `${s(r.port)}.${s(r.method)}` },
       { head: 'STATUS', cell: (r) => s(r.status), cls: 'status' }, { head: 'TRIES', cell: (r) => s(r.attempts), cls: 'num' },
-      { head: 'HASH', cell: (r) => s(r.txHash), cls: 'hash' }, { head: 'ERROR', cell: (r) => short(r.lastError, 50) },
+      { head: 'HASH', cell: (r) => s(r.txHash), cls: 'hash', href: (r) => receiptHref(s(r.txHash)) }, { head: 'ERROR', cell: (r) => short(r.lastError, 50) },
     ] },
 ];

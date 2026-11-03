@@ -43,17 +43,17 @@ A player can go from **guest → social login → a named account ("Pilot ID")**
 - [x] Dev chain explorer page (accounts, txs, balances) — W06-14
 - [x] Login UI: guest-first, "Continue with …", no wallet wording — W06-15
 - [x] Pilot ID in HUD and profile header — W06-16
-- [x] Settings → Account (Pilot ID, providers, sessions, sign out, claim stub) — W06-17
-- [x] NEP-413 wallet link: verifier with test vectors + challenge endpoint; UI hidden (optional, D-10) — W06-18
-- [x] `POST /v1/near/claim` stub returning `not_available_yet` (real in W21/W23) — W06-17
+- [ ] Settings → Account (Pilot ID, providers, sessions, sign out, claim stub) — W06-17 (not in this landing)
+- [ ] NEP-413 wallet link: verifier with test vectors + challenge endpoint; UI hidden (optional, D-10) — W06-18 (not in this landing)
+- [ ] `POST /v1/near/claim` stub returning `not_available_yet` (real in W21/W23) — W06-17 (not in this landing)
 - [x] Error codes as `CoreException` subclasses (`NEAR_PROVIDER_REJECTED`, `NEAR_NAME_TAKEN`, `NEAR_RELAY_FAILED`) mapped to toasts — W06-19
 - [x] Pending / failed / retry UX for relayed actions — W06-20
-- [x] Copy lint: no wallet / gas / transaction / seed-phrase words in player-facing strings (exceptions: claim and staking screens) — W06-21
+- [ ] Copy lint: no wallet / gas / transaction / seed-phrase words in player-facing strings (exceptions: claim and staking screens) — W06-21 (not in this landing; the landed strings do not use those words)
 - [x] Contract suites for `IdentityPort` and `RelayerPort` run against the mocks in CI (W23 re-runs the same suites against the real adapters) — W06-22
-- [x] Analytics funnel — W06-23
-- [x] Telemetry (`near_tx_total{kind=relay}`, `near_tx_pending`) — W06-24
+- [ ] Analytics funnel — W06-23 (not in this landing)
+- [ ] Telemetry (`near_tx_total{kind=relay}`, `near_tx_pending`) — W06-24 (not in this landing)
 - [x] Dev console commands for mocks — W06-25
-- [x] Mobile / touch acceptance of login and settings (D-22) — W06-26
+- [ ] Mobile / touch acceptance of login and settings (D-22) — W06-26 (not in this landing)
 - [x] README "mock vs real" row for F5 + env docs — W06-27
 - [x] Flag off hides login, Pilot ID and explorer — W06-28
 

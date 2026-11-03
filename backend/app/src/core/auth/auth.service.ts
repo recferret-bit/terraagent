@@ -59,7 +59,12 @@ export class AuthService {
       const handle = input.handle ?? `Colonist-${id.slice(-4)}`;
       player = await this.repo.createPlayer({ id, handle, deviceSecretHash });
     }
-    return this.issueSession(player);
+    return this.issueForKnownPlayer(player);
+  }
+
+  /** Access token plus refresh session. Social login passes `isGuest: false` and sets `accountId` itself. */
+  issueFor(player: PlayerRecord, isGuest: boolean): Promise<IssuedAuth> {
+    return this.issueSession(player, isGuest);
   }
 
   /**
@@ -84,7 +89,7 @@ export class AuthService {
     if (!player) {
       throw new UnauthorizedException('Player not found for session');
     }
-    return this.issueSession(player);
+    return this.issueForKnownPlayer(player);
   }
 
   async logout(refreshToken: string | undefined): Promise<{ ok: true }> {
@@ -94,7 +99,15 @@ export class AuthService {
     return { ok: true };
   }
 
-  private async issueSession(player: PlayerRecord): Promise<IssuedAuth> {
+  /** A `social_identity` row means this player is a Pilot: `isGuest: false` and the Pilot ID on the response. */
+  private async issueForKnownPlayer(player: PlayerRecord): Promise<IssuedAuth> {
+    const accountId = await this.repo.findPilotAccount(player.id);
+    const issued = await this.issueSession(player, accountId === null);
+    if (accountId === null) return issued;
+    return { refreshToken: issued.refreshToken, response: { ...issued.response, accountId } };
+  }
+
+  private async issueSession(player: PlayerRecord, isGuest = true): Promise<IssuedAuth> {
     await this.pruneExpiredSessions();
     const refreshToken = `rt_${randomBytes(16).toString('hex')}`;
     const refreshTokenHash = sha256Hex(refreshToken);
@@ -118,7 +131,7 @@ export class AuthService {
         player: {
           id: player.id,
           handle: player.handle,
-          isGuest: true,
+          isGuest,
         },
       },
     };

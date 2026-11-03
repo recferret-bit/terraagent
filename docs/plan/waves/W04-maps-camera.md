@@ -6,6 +6,8 @@
 >
 > **Already exists (prototype):** `frontend/game/app/RTSCamera.ts` (28° diorama camera: WASD/arrows and 8 px edge pan with zoom-scaled speed, MMB drag, wheel zoom clamped 20–95, `Q`/`E` 90° yaw, pan clamped to the surface bounds, hero follow on `Home`/held `F`, `focus()`), driven from `frontend/game/app/Gameplay.ts`. W04-26 moves it to `frontend/game/camera/` and only adds what is missing. There is no minimap, global map, box selection or control groups yet; click-select of the HQ comes from W01-26.
 
+**Planet-scale follow-up:** [W27](./W27-planet-sectors.md) extends this map registry with continent/sector summaries, bounded detail caches and load-aware camera travel. Its full-state/canvas amendments apply only with W27 enabled; W04 remains independently runnable.
+
 ## Goal
 
 The player always knows where they are on the planet and can move anywhere in one gesture:

@@ -29,7 +29,7 @@ afterAll(async () => { await app?.close(); });
 describe('every /v1/dev route is 404 in production (BE-18)', () => {
   it('walks the mapped routes: each /v1/dev/* answers 404 not_found, whatever the method', async () => {
     const dev = routes.filter((r) => r.path.startsWith('/v1/dev'));
-    expect(dev.length).toBeGreaterThanOrEqual(10); // planets, ledger, scenarios ×2, commands ×2, chain ping + 6 explorer reads
+    expect(dev.length).toBeGreaterThanOrEqual(10); // planets, ledger, scenarios ×2, commands ×2, chain ping + 8 explorer reads
     for (const r of dev) {
       const res = await fetch(`${url}${r.path.replace(/:\w+/g, 'x')}`, {
         method: r.method, headers: { 'content-type': 'application/json' }, ...(r.method === 'GET' ? {} : { body: '{}' }),

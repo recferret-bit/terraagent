@@ -906,3 +906,19 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Workaround / mitigation:** none needed.
 - **To resolve:** owner decides the look. To revert, delete the two `if (stage !== 'full') { … }` blocks in `nature.ts` (then the half / depleted stages report validator warnings again: either accept them for these stages or relax the check per stage). Check in `/playground.html?inspect=resource.metalDeposit&depositStage=half|depleted` (and `resource.crystalDeposit`).
 - **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+
+## W06 Invisible Chain
+
+This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `main` first, so the shadow-depth fix continues at RN-63.
+
+### RN-63 · Shadow depth pass failed to compile (`objectNormal` undeclared)
+
+- **Status:** Resolved (W06, 2026-11-02)
+- **Area / code:** `frontend/render/visuals/unified/shaderChunks.ts` (`vertBeginVertex`)
+- **What happens:** the unified vertex chunk wrote `vTaWorldNormal` from Three's `objectNormal`. `MeshDepthMaterial` (the shadow pass) does not declare that name, so Chrome logged `THREE.WebGLProgram: Shader Error` and `tests/e2e/w01.spec.ts` step 1 failed on `expectNoPageErrors`. The colour pass still drew.
+- **Why it is like this:** `objectNormal` comes from `<beginnormal_vertex>`, which the depth material does not include before this chunk.
+- **Workaround / mitigation:** none; the depth shader did not compile.
+- **To resolve:** build the same vector `beginnormal_vertex` would (`normal`, times `instanceMatrix` when instancing) inside the chunk.
+- **Found:** 2026-11-02, W06 e2e (`npm run e2e -- --waves 01 --hack`)
+- **Fix:** `vertBeginVertex` no longer reads `objectNormal`.
