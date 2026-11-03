@@ -29,6 +29,7 @@ function jobText(j: WorkJobView): string {
   const at = `(${j.q},${j.r})`;
   const wait = j.status === 'waiting' ? ` · waiting${j.waitReason ? ` (${j.waitReason})` : ''}` : '';
   if (j.mode === 'repair') return `REPAIR ${at} ${pct}${wait}`;
+  if (j.mode === 'dismantle') return `DISMANTLE ${at} ${pct}${wait}`;
   const hex = j.chain ? ` · hex ${(j.chainSeq ?? 0) + 1}` : '';
   return `TERRAFORM ${GROUND_NAME[j.terrainKey ?? ''] ?? 'HEX'} ${at} ${pct}${hex}${wait}`;
 }

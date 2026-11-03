@@ -4,6 +4,7 @@ import { rowOf, setField } from '../../ecs/store';
 import { isBuildablePrepared } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { nextCrewShare, type CrewTally } from '../dispatch/crew';
 import { colonyWho } from '../find';
 import { resolveHqT1Row, rowNum } from '../rows';
 import { claimTerritoryRadius } from '../territory-claim';
@@ -21,7 +22,7 @@ import { maxAffordableProgress, payProgressiveSlice, syncColonyDepotCaps } from 
 /** Why a job is not advancing: its site is not prepared, the stock cannot pay the next slice, or no builder is on it. */
 export type BuildJobWait = 'site' | 'resources' | 'worker';
 
-export interface BuildingJobRecord {
+export interface BuildingJobRecord extends CrewTally {
   entityId: number;
   building: string;
   owner: number;
@@ -117,7 +118,9 @@ export function advanceBuildingJob(state: PlanetState, entityId: number, builder
   const row = isUnderConstruction(state, entityId);
   if (!job || row < 0) return null;
   const e = state.entities, cols = e.cols, tick = ctx.tick;
-  const rate = cols.workRate[builderRow] > 0 ? cols.workRate[builderRow] : rowNum(resolveHqT1Row(ctx.data), 'workRate');
+  // A crew on one site: each further builder this step adds less (`workCrew.crew`), the cost follows the progress.
+  const crew = nextCrewShare(job, tick, ctx.data);
+  const rate = crew.share * (cols.workRate[builderRow] > 0 ? cols.workRate[builderRow] : rowNum(resolveHqT1Row(ctx.data), 'workRate'));
   const prevProgress = job.elapsedWeightedTicks / job.buildTicks;
   let weighted = job.elapsedWeightedTicks + ctx.dt * rate;
   let progress = Math.min(1, weighted / job.buildTicks);
@@ -130,7 +133,7 @@ export function advanceBuildingJob(state: PlanetState, entityId: number, builder
     short = true;
     progress = maxAffordableProgress(colony, totalCost, spentCost, progress);
     if (progress <= prevProgress + 1e-6) {
-      jobs[entityId] = { ...withWait(job, 'resources'), workedAt: tick };
+      jobs[entityId] = { ...withWait(job, 'resources'), workedAt: tick, ...crew.tally };
       saveBuildingJobs(state, jobs, tick);
       return 'paused';
     }
@@ -145,7 +148,7 @@ export function advanceBuildingJob(state: PlanetState, entityId: number, builder
     delete jobs[entityId];
   } else {
     const paid = job.paid || Object.values(spentCost).some((v) => (v ?? 0) > 0);
-    jobs[entityId] = { ...withWait(job, short ? 'resources' : undefined), elapsedWeightedTicks: weighted, spentCost, paid, workedAt: tick };
+    jobs[entityId] = { ...withWait(job, short ? 'resources' : undefined), elapsedWeightedTicks: weighted, spentCost, paid, workedAt: tick, ...crew.tally };
   }
   saveBuildingJobs(state, jobs, tick);
   return done ? 'completed' : short ? 'paused' : 'running';

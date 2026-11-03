@@ -3039,7 +3039,8 @@
                 "cannot_dismantle_hq",
                 "unknown_task",
                 "lane_full",
-                "outside_power_zone"
+                "outside_power_zone",
+                "already_dismantling"
               ],
               "type": "string"
             },

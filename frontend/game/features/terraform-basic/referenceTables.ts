@@ -44,7 +44,7 @@ export function timeReferenceRows(data?: CompiledDataLike): ReferenceTableRow[] 
     { target: 'Terraform: Wild Ground', detail: `${secs('flat')} · Prepared Hex` },
     resourceFindRow(data),
     { target: 'Repair', detail: `${secs('repair')} · ${pct(REPAIR_COST_RATE)} of base cost` },
-    { target: 'Dismantle', detail: `${secs('dismantle')} · +${pct(DISMANTLE_REFUND_RATE)} spent refund` },
+    { target: 'Dismantle', detail: `½ build time (Builder / HQ) · +${pct(DISMANTLE_REFUND_RATE)} refunded step by step` },
   ];
 }
 

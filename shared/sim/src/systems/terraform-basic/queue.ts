@@ -120,8 +120,10 @@ export function enqueueTerraformOrder(state: SimState, opts: EnqueueTerraformOrd
     if (tiles.length === 0) return { ok: false, reason: 'invalid_args', skippedCount: 0 };
     let okCount = 0;
     let firstReject: RejectCode | undefined;
-    for (const t of tiles) {
-      const res = executeDismantleAtTile(state, colonyId, t.q, t.r, tick, opts.data);
+    for (let i = 0; i < tiles.length; i++) {
+      const t = tiles[i]!;
+      const taskId = opts.taskId === undefined ? undefined : tiles.length > 1 ? `${opts.taskId}:${i}` : opts.taskId;
+      const res = executeDismantleAtTile(state, colonyId, t.q, t.r, tick, opts.data, undefined, taskId);
       if (res.ok) okCount++;
       else if (!firstReject || res.reason === 'cannot_dismantle_hq') firstReject = res.reason;
     }

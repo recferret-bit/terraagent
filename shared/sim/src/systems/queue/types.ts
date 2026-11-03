@@ -18,6 +18,8 @@ export type QueueTaskPayload =
   | { kind: 'buildUnit'; unit: string; count?: number; repeat?: boolean; producerId?: number }
   | { kind: 'terraform'; op: string; q: number; r: number }
   | { kind: 'repair'; entityId: number; q?: number; r?: number; op?: string }
+  /** A building coming down (owner feedback W03 #6): follows its dismantle work job (`terraform-basic/dismantleJob.ts`). */
+  | { kind: 'dismantle'; entityId: number; building?: string; q?: number; r?: number }
   | { kind: 'hqGoal'; goal: string; target?: string; q?: number; r?: number; op?: string };
 
 export interface QueueEntry {

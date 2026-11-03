@@ -331,7 +331,7 @@ describe('Brush hotkeys and the 3-button Terraform UI (FF-07)', () => {
 
     expect(terraformBtn.textContent).toBe('TERRAFORM [G]Flatten ground · continuous');
     expect(repairBtn.textContent).toBe('REPAIR [R]40% of base cost');
-    expect(dismantleBtn.textContent).toBe('DISMANTLE [Z]Refund 50% of cost');
+    expect(dismantleBtn.textContent).toBe('DISMANTLE [Z]½ build time · 50% of cost back');
     expect(status.textContent).toBe('Pick an op, then click a hex');
 
     repairBtn.click();

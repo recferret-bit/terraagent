@@ -21,6 +21,8 @@ export const REJECT_CODES = [
   'lane_full',
   // W03 grid: a building other than the Command Hub must stand inside the colony's power zone (Hub / Power Pylon reach)
   'outside_power_zone',
+  // W03 dismantle: the building is already being dismantled (owner feedback W03 #6)
+  'already_dismantling',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

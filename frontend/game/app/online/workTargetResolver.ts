@@ -149,7 +149,7 @@ function resolveFromWorkJobsAndHarvest(
       if (job.workerEntityId !== rec.id) continue;
       const q = Number.isFinite(job.q) ? Number(job.q) : rec.q;
       const r = Number.isFinite(job.r) ? Number(job.r) : rec.r;
-      if (job.mode === 'repair') {
+      if (job.mode === 'repair' || job.mode === 'dismantle') { // a dismantle shows the same tool sparks on the building
         const tEnt = job.targetEntityId !== undefined ? records.get(job.targetEntityId) : undefined;
         return { q, r, targetKind: 'repair', targetWorldXZ: tEnt ? [tEnt.mesh.position.x, tEnt.mesh.position.z] : undefined };
       }

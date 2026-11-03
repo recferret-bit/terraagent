@@ -26,7 +26,7 @@ export interface TerraformPrimaryOpDef {
 export const PRIMARY_OP_DEFS: readonly TerraformPrimaryOpDef[] = [
   { op: 'terraform', label: 'TERRAFORM [G]', subtitle: 'Flatten ground · continuous', key: 'g', testid: 'tf-op-terraform' },
   { op: 'repair', label: 'REPAIR [R]', subtitle: `${pct(REPAIR_COST_RATE)} of base cost`, key: 'r', testid: 'tf-op-repair', wave: 'W02' },
-  { op: 'dismantle', label: 'DISMANTLE [Z]', subtitle: `Refund ${pct(DISMANTLE_REFUND_RATE)} of cost`, key: 'z', testid: 'tf-op-dismantle', wave: 'W02' },
+  { op: 'dismantle', label: 'DISMANTLE [Z]', subtitle: `½ build time · ${pct(DISMANTLE_REFUND_RATE)} of cost back`, key: 'z', testid: 'tf-op-dismantle', wave: 'W02' },
 ];
 
 const HOTKEY_OP_MAP: Readonly<Record<string, TerraformPrimaryOp>> = Object.fromEntries(

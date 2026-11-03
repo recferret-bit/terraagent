@@ -18,6 +18,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState, SimState } from '../../kernel/state';
+import { nextCrewShare } from '../dispatch/crew';
 import { colonyWho } from '../find';
 import { resolveHqT1Row, resolveHubT1Row, rowNum, ticksToSeconds } from '../rows';
 import { applyHubCompletionEffects } from '../territory-claim';
@@ -167,7 +168,10 @@ export function advanceConstructionProgress(
   const data = ctx?.data;
   const dtS = (TICK_MS / 1000) * (ctx?.dt ?? 1);
   const cols = state.entities.cols;
-  const rate = cols.workRate[builderRow] > 0 ? cols.workRate[builderRow] : rowNum(resolveHqT1Row(data), 'workRate');
+  // A crew on one site: each further builder this step adds less (`workCrew.crew`); the ledger pays by progress.
+  const crew = nextCrewShare(order, tick, data);
+  Object.assign(order, crew.tally);
+  const rate = crew.share * (cols.workRate[builderRow] > 0 ? cols.workRate[builderRow] : rowNum(resolveHqT1Row(data), 'workRate'));
   const delta = order.buildTimeS > 0 ? (dtS * rate) / order.buildTimeS : 1;
   const rawProgress = Math.min(1, order.progress + delta);
   // Snap float drift (0.9999999…) to 1 so the last slice settles the cost exactly and the order completes.

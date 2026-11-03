@@ -7,7 +7,7 @@ import { isUnitKind } from '../../units/mobility';
 import { getAllQueueEntries, saveQueueEntries } from '../queue';
 import { PRECEDENCE_RANK, type QueueEntry, type QueuePrecedence } from '../queue/types';
 import { createRepairWorkJobRecord } from './dismantleAndWork';
-import type { WorkJobRecord } from './workJobs';
+import { isLeadJob, leadJobOn, type WorkJobRecord } from './workJobs';
 import { primeWorkerForWorkJob, selectWorkerForWorkOp } from './workTile';
 
 /** Whether W03 auto-repair is enabled in the active compiled data. */
@@ -152,7 +152,7 @@ export function autoQueueDamagedStructures(
   for (const row of damagedRows) {
     const targetId = cols.id[row], colonyId = cols.owner[row];
     const precedence = repairPrecedenceForHp(cols.hp[row], cols.hpMax[row], ctx.data);
-    const existingJob = Object.values(jobs).find((j) => j.mode === 'repair' && j.targetEntityId === targetId);
+    const existingJob = leadJobOn(jobs, 'repair', targetId);
     if (existingJob) {
       const wRow = rowOf(e, existingJob.workerEntityId);
       if (wRow < 0 || cols.hp[wRow] <= 0) {
@@ -192,7 +192,7 @@ export function syncRepairQueueEntries(
   data?: CompiledDataLike,
 ): void {
   const entries = getAllQueueEntries(state);
-  const repairJobs = Object.values(jobs).filter((j) => j.mode === 'repair');
+  const repairJobs = Object.values(jobs).filter((j) => j.mode === 'repair' && isLeadJob(j));
   const hasRepairEntries = entries.some((e) => e.task.kind === 'repair');
   if (repairJobs.length === 0 && !hasRepairEntries) return;
 

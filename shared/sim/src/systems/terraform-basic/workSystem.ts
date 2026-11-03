@@ -11,20 +11,25 @@ import { defineSystem } from '../../kernel/system';
 import { faceTowards } from '../../units/movement/locomotion';
 import { cancelMove, requestMove } from '../../units/movement/orchestrator';
 import { creditResource, payProgressiveSlice } from '../economy/ledger';
+import { nextCrewShare } from '../dispatch/crew';
 import { autoQueueDamagedStructures, resolveWorkerRepairRate, syncRepairQueueEntries } from './autoRepair';
 import { continueWorkChain } from './chain';
+import { attachIdleHelpers, releaseHelpers } from './crewHelpers';
+import { stepDismantleWorkJob } from './dismantleJob';
+import { restoreDismantleSite } from './dismantleSite';
 import { spawnTerraformDeposit } from './resourceSpawn';
 import { abandonUnreachableJob } from './unreachable';
 import { colonyWho, levelToAdjacentFlat } from './work';
 import {
   ensureWorkColony as ensureColony,
   getWorkJobsMap,
+  isLeadJob,
   isWorkerAtJob,
   saveWorkJobsMap,
   workReach,
   type WorkJobRecord,
 } from './workJobs';
-import { classifyGroundWorkTile, syncWorkerView } from './workTile';
+import { classifyGroundWorkTile, primeWorkerForWorkJob, selectWorkerForWorkOp, syncWorkerView } from './workTile';
 
 /**
  * The work-jobs system (`blobs.workJobs`, construction slot 6): each worker walks to its first job (insertion order)
@@ -47,7 +52,10 @@ function stepRepairWorkJob(state: PlanetState, job: WorkJobRecord, workerRow: nu
     return true;
   }
   const colony = ensureColony(state, job.colonyId, ctx.tick);
-  const rate = resolveWorkerRepairRate(state, job.workerEntityId, ctx.data);
+  // `workerRow` may be a helper's: its own repair rate, scaled by its crew share this step (`workCrew.crew`).
+  const crew = nextCrewShare(job, ctx.tick, ctx.data);
+  Object.assign(job, crew.tally);
+  const rate = crew.share * resolveWorkerRepairRate(state, state.entities.cols.id[workerRow], ctx.data);
   const nextElapsed = Math.min(job.durationTicks, job.elapsedTicks + ctx.dt * rate);
   const nextProgress = Math.min(1, nextElapsed / Math.max(1, job.durationTicks));
 
@@ -125,6 +133,48 @@ function stepGroundWorkJob(state: PlanetState, job: WorkJobRecord, workerRow: nu
   return true;
 }
 
+/** Ends `job` unfinished (no path, no worker left): a dismantling building stands again, a lead's helpers stop. */
+function dropJob(state: PlanetState, jobs: Record<string, WorkJobRecord>, job: WorkJobRecord, tick: number): void {
+  delete jobs[job.jobId];
+  if (!isLeadJob(job)) return;
+  if (job.mode === 'dismantle') restoreDismantleSite(state, job, tick);
+  releaseHelpers(state, jobs, job.jobId, tick);
+}
+
+/** Ends finished job `lead`: its worker and its helpers stop (whichever crew member made the last step). */
+function finishJob(state: PlanetState, jobs: Record<string, WorkJobRecord>, lead: WorkJobRecord, ctx: StepContext): void {
+  delete jobs[lead.jobId];
+  const wRow = rowOf(state.entities, lead.workerEntityId);
+  if (wRow >= 0) {
+    cancelMove(state, lead.workerEntityId, ctx.tick);
+    idleWorker(state, wRow, ctx.tick);
+  }
+  releaseHelpers(state, jobs, lead.jobId, ctx.tick, ctx.data);
+  continueWorkChain(state, lead, jobs, ctx);
+}
+
+/**
+ * A repair / dismantle lead whose worker is gone: a helper takes it over, else another worker is picked. Returns
+ * whether the job has a worker again.
+ */
+function reassignLead(state: PlanetState, jobs: Record<string, WorkJobRecord>, lead: WorkJobRecord, ctx: StepContext): boolean {
+  if (!isLeadJob(lead) || lead.mode === 'terraform') return false;
+  const cols = state.entities.cols;
+  const alive = (id: number): boolean => { const r = rowOf(state.entities, id); return r >= 0 && cols.hp[r] > 0; };
+  const helper = Object.values(jobs).find((j) => j.helpOf === lead.jobId && alive(j.workerEntityId));
+  if (helper) {
+    delete jobs[helper.jobId];
+    lead.workerEntityId = helper.workerEntityId;
+    return true;
+  }
+  const next = selectWorkerForWorkOp(state, lead.colonyId, lead.q, lead.r, undefined, lead.targetEntityId, lead.mode);
+  if (next === null || !alive(next)) return false;
+  const busy = Object.values(jobs).some((j) => j.workerEntityId === next);
+  lead.workerEntityId = next;
+  if (!busy) primeWorkerForWorkJob(state, next, lead.q, lead.r, ctx.tick, ctx.data);
+  return true;
+}
+
 /**
  * Walks the worker towards its job: `arrived` (in reach: work now), `moving`, or `abandoned` (no path: the job is
  * dropped from `jobs` and its chain goes on).
@@ -137,13 +187,13 @@ function approachJob(
   ctx: StepContext,
 ): 'arrived' | 'moving' | 'abandoned' {
   const e = state.entities, cols = e.cols;
-  const tRow = job.mode === 'repair' && job.targetEntityId !== undefined ? rowOf(e, job.targetEntityId) : -1;
+  const tRow = job.mode !== 'terraform' && job.targetEntityId !== undefined ? rowOf(e, job.targetEntityId) : -1;
   if (isWorkerAtJob(state, wRow, job.q, job.r, tRow)) return 'arrived';
   const goal = { q: job.q, r: job.r, minDist: 1, maxDist: workReach(cols.kind[wRow], tRow, state) };
   const report = !job.chain || (job.chainSeq ?? 0) === 0; // a chain's automatic follow-up is skipped silently
   if (abandonUnreachableJob(state, job.workerEntityId, wRow, goal, ctx, report)) {
-    delete jobs[job.jobId];
-    continueWorkChain(state, job, jobs, ctx, true);
+    dropJob(state, jobs, job, ctx.tick);
+    if (isLeadJob(job)) continueWorkChain(state, job, jobs, ctx, true);
     return 'abandoned';
   }
   setField(e, wRow, 'targetQ', job.q, ctx.tick);
@@ -173,6 +223,37 @@ function waitForPower(state: PlanetState, job: WorkJobRecord): { waits: boolean;
   return { waits: false, changed: true };
 }
 
+/** One step of the job of `job`'s worker (a helper works its lead's job). Returns whether `jobs` changed. */
+function stepWorkerJob(
+  state: PlanetState,
+  job: WorkJobRecord,
+  lead: WorkJobRecord,
+  wRow: number,
+  jobs: Record<string, WorkJobRecord>,
+  ctx: StepContext,
+): boolean {
+  const e = state.entities, cols = e.cols;
+  if (lead.mode !== 'terraform' && lead.targetEntityId !== undefined) {
+    const tRow = rowOf(e, lead.targetEntityId);
+    if (tRow >= 0) { lead.q = job.q = cols.q[tRow]; lead.r = job.r = cols.r[tRow]; }
+  }
+  const approach = approachJob(state, job, wRow, jobs, ctx);
+  if (approach !== 'arrived') return approach === 'abandoned';
+
+  cancelMove(state, job.workerEntityId, ctx.tick);
+  if (hexDistance(cols.q[wRow], cols.r[wRow], job.q, job.r) > 0) faceTowards(state, wRow, job.q, job.r, ctx.tick);
+  if (cols.state[wRow] !== ENTITY_STATE.working) setField(e, wRow, 'state', ENTITY_STATE.working, ctx.tick);
+  const power = waitForPower(state, lead);
+  if (power.waits) { syncWorkerView(state, wRow, ctx.tick, ctx.data); return power.changed; }
+
+  const done = lead.mode === 'repair' ? stepRepairWorkJob(state, lead, wRow, ctx)
+    : lead.mode === 'dismantle' ? stepDismantleWorkJob(state, lead, wRow, ctx)
+    : stepGroundWorkJob(state, lead, wRow, ctx);
+  if (done) finishJob(state, jobs, lead, ctx);
+  syncWorkerView(state, wRow, ctx.tick, ctx.data);
+  return true;
+}
+
 export const workJobsSystem = defineSystem({
   id: 'terraform.workJobs',
   slot: 6,
@@ -180,6 +261,7 @@ export const workJobsSystem = defineSystem({
   run(state, ctx) {
     const jobs = getWorkJobsMap(state);
     let changed = autoQueueDamagedStructures(state, jobs, ctx);
+    if (attachIdleHelpers(state, jobs, ctx)) changed = true;
     const entries = Object.values(jobs);
     if (entries.length === 0) {
       if (changed) saveWorkJobsMap(state, jobs, ctx.tick);
@@ -191,33 +273,17 @@ export const workJobsSystem = defineSystem({
     const processedWorkers = new Set<number>();
 
     for (const job of entries) {
-      if (processedWorkers.has(job.workerEntityId)) continue;
+      if (!jobs[job.jobId] || processedWorkers.has(job.workerEntityId)) continue; // ended earlier this step
       const wRow = rowOf(e, job.workerEntityId);
-      if (wRow < 0 || cols.hp[wRow] <= 0) { delete jobs[job.jobId]; changed = true; continue; }
+      if (wRow < 0 || cols.hp[wRow] <= 0) {
+        if (!reassignLead(state, jobs, job, ctx)) dropJob(state, jobs, job, ctx.tick);
+        changed = true;
+        continue;
+      }
       processedWorkers.add(job.workerEntityId);
-
-      if (job.mode === 'repair' && job.targetEntityId !== undefined) {
-        const tRow = rowOf(e, job.targetEntityId);
-        if (tRow >= 0) { job.q = cols.q[tRow]; job.r = cols.r[tRow]; }
-      }
-      const approach = approachJob(state, job, wRow, jobs, ctx);
-      if (approach === 'abandoned') changed = true;
-      if (approach !== 'arrived') continue;
-
-      cancelMove(state, job.workerEntityId, ctx.tick);
-      if (hexDistance(cols.q[wRow], cols.r[wRow], job.q, job.r) > 0) faceTowards(state, wRow, job.q, job.r, ctx.tick);
-      if (cols.state[wRow] !== ENTITY_STATE.working) setField(e, wRow, 'state', ENTITY_STATE.working, ctx.tick);
-      const power = waitForPower(state, job);
-      if (power.changed) changed = true;
-      if (power.waits) { syncWorkerView(state, wRow, ctx.tick, ctx.data); continue; }
-
-      const done = job.mode === 'repair' ? stepRepairWorkJob(state, job, wRow, ctx) : stepGroundWorkJob(state, job, wRow, ctx);
-      changed = true;
-      if (done) {
-        delete jobs[job.jobId];
-        continueWorkChain(state, job, jobs, ctx);
-      }
-      syncWorkerView(state, wRow, ctx.tick, ctx.data);
+      const lead = job.helpOf !== undefined ? jobs[job.helpOf] : job;
+      if (!lead) { delete jobs[job.jobId]; idleWorker(state, wRow, ctx.tick); changed = true; continue; }
+      if (stepWorkerJob(state, job, lead, wRow, jobs, ctx)) changed = true;
     }
 
     if (changed) saveWorkJobsMap(state, jobs, ctx.tick);
