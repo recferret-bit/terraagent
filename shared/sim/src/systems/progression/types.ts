@@ -125,6 +125,8 @@ export interface ColonyProgressionState {
   unlockStage: number;
   threatStage: number;
   stageEnteredAtTick: number;
+  s2ReachedAtTick?: number | null;
+  s3ReachedAtTick?: number | null;
   dwellRemainingTicks: number | null;
   dwellRemainingS: number | null;
   triggerSatisfiedForStage: number | null;

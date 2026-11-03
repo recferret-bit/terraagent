@@ -43,6 +43,7 @@ export interface SpawnColonyLandingOpts {
   handle?: string;
   name?: string;
   color?: number;
+  unlockStage?: number;
   slotIndex?: number;
   q?: number;
   r?: number;
@@ -163,6 +164,10 @@ export function spawnColonyLanding(
     name: opts.name ?? opts.handle,
     color: opts.color,
   });
+  if (typeof opts.unlockStage === 'number' && Number.isFinite(opts.unlockStage) && opts.unlockStage >= 0) {
+    col.unlockStage = Math.max(typeof col.unlockStage === 'number' ? col.unlockStage : 0, Math.floor(opts.unlockStage));
+  }
+  if (typeof col.threatStage !== 'number') col.threatStage = 0;
 
   const { q, r, slot } = check.plan;
   if (slot) {
@@ -252,6 +257,7 @@ interface SpawnColonyCommandArgs {
   name?: string;
   colonyName?: string;
   color?: number;
+  unlockStage?: number;
   slotIndex?: number;
   q?: number;
   r?: number;
@@ -289,6 +295,7 @@ export const spawnColony = defineCommandHandler({
         handle: args.handle,
         name: args.name ?? args.colonyName ?? args.handle,
         color: args.color,
+        unlockStage: args.unlockStage,
         slotIndex: args.slotIndex,
         q: args.q,
         r: args.r,
