@@ -165,7 +165,7 @@ export class PlanetHost {
   private answer(planetId: string, tick: number, postings: readonly LedgerPosting[], outcomes: readonly CommandOutcome[]): void {
     if (postings.length) this.post({ t: 'ledger', planetId, tick, postings });
     for (const o of outcomes) {
-      if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick, ...(o.detail ? { detail: o.detail } : {}) });
+      if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick, ...(o.detail ? { detail: o.detail } : {}), ...(o.unlocksAt ? { unlocksAt: o.unlocksAt } : {}) });
       else this.post({ t: 'ack', planetId, commandId: o.commandId, appliedAtTick: o.appliedAtTick });
     }
   }
