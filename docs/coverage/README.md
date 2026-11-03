@@ -7,6 +7,10 @@ are not included. Use it as a reference: compare a new run against it.
 Regenerate: per package `npx vitest run --config tests/vitest.config.ts --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary`
 (exclude specs, `test/`, `*.d.ts`, `index.generated.ts`), then update this file. A new snapshot moves *after* to *baseline*.
 
+## Specs added by W02 (not measured yet)
+
+The numbers below are the W01 snapshot. Specs added since, to include in the next snapshot: `shared/sim/test/units/dispatch-build.spec.ts`, `shared/sim/test/systems/w02-review-fixes.spec.ts`, `shared/sim/test/systems/harvester-snapshot.spec.ts`, `shared/sim/test/systems/power-extractor-brownout.spec.ts`, `frontend/game/features/shared/power.spec.ts`, `shared/sim/test/systems/queue-nonblocking.spec.ts`, `backend/app/test/game/production-batches.spec.ts`, `frontend/game/features/construction-menu/ghost-context.spec.ts`, `frontend/game/features/construction-menu/placement-ghost.spec.ts`, `frontend/game/app/online/unitHealthBars.spec.ts`, and e2e `tests/e2e/w02.spec.ts` (steps 1 to 10; step 10 is the `?waves=..01` check). Regenerate with the command above and move *after* to *baseline*.
+
 ## Totals per package (lines · branches · functions)
 
 | Package | Lines baseline | Lines after | Branches baseline | Branches after | Functions baseline | Functions after | Files after |

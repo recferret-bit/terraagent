@@ -427,7 +427,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
   - W02-29: analytics events (`first_building_built`, `first_unit_built`, `brownout_seen`, `queue_wait_seen`) are not recorded anywhere;
   - W02-32: the pacing test `pacing-s0-s1.spec.ts` does not exist;
   - W02-33: `npm run sim:bench` is a stub, so there is no economy-heavy perf number (GP-63).
-- **To resolve:** build them in a later landing of W02 (`wave-02.2`) or move them to the wave that needs them.
+- **To resolve:** build them in a later landing of W02 (`wave-02.2`) or in the wave that now owns them: W02-18..21 → W03-31; W02-27 → W03-37 (sliders reuse W08-27's component); W02-29 → W03-26 (events) and W25-15 (funnel); W02-32 → W25-22 (AC-01 asserts the S0–S1 rows); W02-33 → W03-28 (makes `sim:bench` real, adds `w02-econ`). Other W02 leftovers: dispatch / eligibility W03-32, one Units lane W03-33, depleted extractor W03-34, owner-decided economy rules W03-35, day window and income-table cleanup W03-36, `resourceProduced` durability / player id / audience W12-33 and W12-34.
 - **Found:** 2026-11-03, W02 review round 1 (audit)
 
 ### XC-32 · Two near-identical particle reference pages in the `procedural-particles-3d` skill

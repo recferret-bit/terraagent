@@ -98,7 +98,7 @@ flowchart LR
 
 **Progressive resource deduction, 50 % cancel/dismantle refunds, and 40 % repair cost (`shared/sim/src/data/ops-basic.ts`, `shared/sim/src/data/resources.ts`, W01/W02).**
 - **Progressive payment:** Construction orders, factory unit production slots, and unit/building repairs deduct resources **progressively** in whole units proportional to work progress (`0 → 1`) rather than upfront on enqueue. If a required resource runs out mid-task, work pauses (`waiting: resources`) and resumes automatically as income arrives.
-- **Cancel & Dismantle refund (`DISMANTLE_REFUND_RATE = 0.5`):** Cancelling an in-progress construction/production order or dismantling a friendly unit or building returns **50 %** of the resources spent so far.
+- **Cancel & Dismantle refund (`DISMANTLE_REFUND_RATE = 0.5`):** Cancelling an in-progress construction/production order or dismantling a friendly unit or building returns **50 %** of the resources spent so far (as built, W02 refunds are clamped at the family storage cap, LED-17, D-42).
 - **Full-repair cost (`REPAIR_COST_RATE = 0.4`):** Repairing a damaged unit or building from `0% → 100%` HP costs **40 %** of its base build cost (scaled linearly by missing HP and deducted progressively), taking `4.0 s` (`TERRAFORM_TIME_TABLE.repair`).
 - **Canonical data tables:** Terraform operation durations and energy costs live in `TERRAFORM_TIME_TABLE` (`shared/sim/src/data/ops-basic.ts`), and lump-sum clearing yields / per-second extraction rates live in `RESOURCE_INCOME_TABLE` (`shared/sim/src/data/resources.ts`).
 
