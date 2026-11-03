@@ -11,8 +11,12 @@ export interface PowerComponentSummary {
   hasHub: boolean;
   supply: number;
   demand: number;
+  rawDemand?: number;
   net: number;
   powered: boolean;
+  shedEntityIds?: number[];
+  shedGroupsActive?: number[];
+  deficitPerS?: number;
 }
 
 export interface ColonyPowerSummary {

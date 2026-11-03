@@ -5,7 +5,6 @@ import { setBlob, type PlanetState, type PlanetType } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { getEnvironment } from '../environment';
-import { applyBrownoutShedding, type ShedCandidate } from './shedding';
 import { evaluatePowerEventsForColony, type PowerEventTracker } from './events';
 import { collectWorkLoad } from './workLoad';
 import { buildPowerGraph } from './graph';
@@ -63,7 +62,7 @@ export function computeSolarOutputPerS(
   return { gross, internalDrain, net };
 }
 
-/** Evaluates colony power across all power graph components with brownout shedding (W03-05). */
+/** Evaluates colony power across all power graph components with per-component brownout shedding (W03-05, W03-07). */
 export function evaluateColonyPower(
   state: PlanetState,
   colonyIndex: number,
@@ -80,21 +79,33 @@ export function evaluateColonyPower(
   const col = state.colonies[colonyIndex];
   if (col) col.pollution = Number(col.pollution ?? 0);
 
-  let totalSupply = 0, rawBuildingDemand = 0;
+  const unitDemand = calculateUnitDemand(state, colonyIndex, data);
+  const work = graph.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
+
+  let totalSupply = 0, totalRawDemand = 0, totalDemand = 0, totalBuildingDemand = 0;
   let solarGross = 0, solarDrain = 0, solarNet = 0;
   let thermalGross = 0, thermalDrain = 0, thermalNet = 0;
   let windGross = 0, windDrain = 0, windNet = 0;
   let capStoredE = 0, capCapacityE = 0, capDischargePerS = 0, capChargePerS = 0;
 
   const unpoweredEntityIds: number[] = [], nightSolarEntityIds: number[] = [], noFuelEntityIds: number[] = [];
-  const allShedCandidates: ShedCandidate[] = [], componentsSummary: PowerComponentSummary[] = [];
+  const allShedEntityIds: number[] = [], allShedWorkJobIds: string[] = [];
+  const allShedGroupsSet = new Set<number>();
+  let hqFastRechargeShed = false;
+  let totalShedWorkDemand = 0;
+  const componentsSummary: PowerComponentSummary[] = [];
   const entityPower: Record<number, EntityPowerStatus> = {};
+  const offlineReasons: Record<number, string> = {};
 
   for (const comp of graph.components) {
-    const res = evaluateSingleComponent(state, colonyIndex, comp, env, windOut, dtTicks, tick, data);
+    const res = evaluateSingleComponent(
+      state, colonyIndex, comp, env, windOut, unitDemand, work, graph.hubAnchors, dtTicks, tick, data,
+    );
     componentsSummary.push(res.summary);
     totalSupply += res.effectiveSupply;
-    rawBuildingDemand += res.demand;
+    totalRawDemand += res.rawDemand;
+    totalDemand += res.demand;
+    totalBuildingDemand += res.buildingDemand;
     solarGross += res.solarGross; solarDrain += res.solarDrain; solarNet += res.solarNet;
     thermalGross += res.thermalGross; thermalDrain += res.thermalDrain; thermalNet += res.thermalNet;
     windGross += res.windGross; windDrain += res.windDrain; windNet += res.windNet;
@@ -103,27 +114,27 @@ export function evaluateColonyPower(
     unpoweredEntityIds.push(...res.unpoweredIds);
     nightSolarEntityIds.push(...res.nightSolarIds);
     noFuelEntityIds.push(...res.noFuelIds);
-    allShedCandidates.push(...res.shedCandidates);
+    allShedEntityIds.push(...res.shed.shedEntityIds);
+    for (const g of res.shed.shedGroupsActive) allShedGroupsSet.add(g);
+    allShedWorkJobIds.push(...res.shed.shedWorkJobIds);
+    totalShedWorkDemand += res.shed.shedWorkDemand;
+    if (res.shed.hqFastRechargeShed) hqFastRechargeShed = true;
+    for (const [idStr, r] of Object.entries(res.shed.offlineReasons)) offlineReasons[Number(idStr)] = r;
     for (const id of res.onlineEntityIds) entityPower[id] = { state: 'online', component: comp.componentId };
   }
 
-  const offlineReasons: Record<number, string> = {};
   processUnattachedBuildings(state, graph, tick, unpoweredEntityIds, offlineReasons, entityPower, data);
 
-  const unitDemand = calculateUnitDemand(state, colonyIndex, data);
-  const work = graph.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
-  allShedCandidates.push(...work.candidates);
+  applyOfflineStatuses(graph, unpoweredEntityIds, nightSolarEntityIds, noFuelEntityIds, allShedEntityIds, offlineReasons, entityPower);
 
-  const rawDemand = Number((rawBuildingDemand + unitDemand + work.demand).toFixed(4));
+  const workDemand = Math.max(0, Number((work.demand - totalShedWorkDemand).toFixed(4)));
   const effectiveSupply = Math.max(0, Number(totalSupply.toFixed(4)));
-  const shed = applyBrownoutShedding(state, colonyIndex, effectiveSupply, rawDemand, allShedCandidates, graph.hubAnchors, tick, data);
-
-  applyOfflineStatuses(graph, shed, unpoweredEntityIds, nightSolarEntityIds, noFuelEntityIds, offlineReasons, entityPower);
-
-  const demand = shed.remainingDemand;
-  const workDemand = Math.max(0, Number((work.demand - shed.shedWorkDemand).toFixed(4)));
-  const buildingDemand = Math.max(0, Number((demand - unitDemand - workDemand).toFixed(4)));
+  const demand = Math.max(0, Number(totalDemand.toFixed(4)));
+  const rawDemand = Math.max(0, Number(totalRawDemand.toFixed(4)));
+  const buildingDemand = Math.max(0, Number(totalBuildingDemand.toFixed(4)));
   const net = Number((effectiveSupply - demand).toFixed(4));
+  const shedGroupsActive = [...allShedGroupsSet].sort((a, b) => a - b);
+  const brownout = allShedEntityIds.length > 0 || allShedWorkJobIds.length > 0 || rawDemand > effectiveSupply + 1e-6;
 
   return {
     colonyIndex, hasHub: graph.hasHub, founderCorePerS,
@@ -132,9 +143,9 @@ export function evaluateColonyPower(
     windFactor: windOut.windFactor, windGrossPerS: Number(windGross.toFixed(4)), windInternalDrainPerS: Number(windDrain.toFixed(4)), windNetPerS: Number(windNet.toFixed(4)),
     capacitorStoredE: capStoredE, capacitorCapacityE: capCapacityE, capacitorDischargePerS: capDischargePerS, capacitorChargePerS: capChargePerS,
     supply: effectiveSupply, demand, rawDemand, buildingDemand, unitDemand: Number(unitDemand.toFixed(4)), workDemand,
-    net, brownout: shed.shedEntityIds.length > 0 || shed.shedWorkJobIds.length > 0 || rawDemand > effectiveSupply + 1e-6,
-    shedGroupsActive: shed.shedGroupsActive, shedEntityIds: shed.shedEntityIds, shedWorkJobIds: shed.shedWorkJobIds,
-    unpoweredEntityIds, hqFastRechargeShed: shed.hqFastRechargeShed, offlineReasons: shed.offlineReasons,
+    net, brownout,
+    shedGroupsActive, shedEntityIds: allShedEntityIds, shedWorkJobIds: allShedWorkJobIds,
+    unpoweredEntityIds, hqFastRechargeShed, offlineReasons,
     daylight: env.daylight, phase: env.phase, clockText: env.clockText, entityPower, components: componentsSummary,
   };
 }

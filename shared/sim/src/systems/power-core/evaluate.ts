@@ -3,7 +3,7 @@ import type { PlanetState } from '../../kernel/state';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import { getEnvironment } from '../environment';
-import { applyBrownoutShedding, type ShedCandidate } from './shedding';
+import { applyBrownoutShedding, type ShedCandidate, type SheddingResult } from './shedding';
 import { type PowerGraph, type PowerGraphComponent } from './graph';
 import { evaluateWindOutput, stepCapacitorsForComponent } from './windAndCap';
 import { stepThermalPlantFuel } from './thermal';
@@ -15,6 +15,8 @@ export interface ComponentEvalResult {
   genSupply: number;
   effectiveSupply: number;
   demand: number;
+  rawDemand: number;
+  buildingDemand: number;
   solarGross: number; solarDrain: number; solarNet: number;
   thermalGross: number; thermalDrain: number; thermalNet: number;
   windGross: number; windDrain: number; windNet: number;
@@ -22,8 +24,8 @@ export interface ComponentEvalResult {
   unpoweredIds: number[];
   nightSolarIds: number[];
   noFuelIds: number[];
-  shedCandidates: ShedCandidate[];
   onlineEntityIds: number[];
+  shed: SheddingResult;
 }
 
 export interface ComponentBuildingsResult {
@@ -39,7 +41,7 @@ export interface ComponentBuildingsResult {
   onlineEntityIds: number[];
 }
 
-const DRAINS: Record<number, { drain: number; group: number }> = {
+export const DRAINS: Record<number, { drain: number; group: number }> = {
   [ENTITY_KIND.capacitor]: { drain: 1.5, group: 4 },
   [ENTITY_KIND.supplyDepot]: { drain: 2.0, group: 3 },
   [ENTITY_KIND.mineralsQuarry]: { drain: 8.0, group: 3 },
@@ -47,6 +49,39 @@ const DRAINS: Record<number, { drain: number; group: number }> = {
   [ENTITY_KIND.petroleumWell]: { drain: 10.0, group: 3 },
   [ENTITY_KIND.metalsExtractor]: { drain: 6.0, group: 3 },
 };
+
+export function getShedGroupForEntityKind(kind: number): number {
+  if (DRAINS[kind]) return DRAINS[kind].group;
+  if (kind === ENTITY_KIND.wind || kind === ENTITY_KIND.thermal || kind === ENTITY_KIND.pylon) {
+    return 4;
+  }
+  return 3;
+}
+
+export function getComponentSyntheticLoad(colony: unknown, comp: PowerGraphComponent): number {
+  const colExt = colony as {
+    syntheticLoadPerS?: number;
+    extraLoadPerS?: number;
+    syntheticLoadEntityId?: number;
+    syntheticLoadPylonId?: number;
+  } | undefined;
+  if (!colExt) return 0;
+  const load = Number(colExt.syntheticLoadPerS ?? colExt.extraLoadPerS ?? 0);
+  if (load <= 0) return 0;
+
+  const targetId = colExt.syntheticLoadEntityId ?? colExt.syntheticLoadPylonId;
+  if (typeof targetId === 'number') {
+    const inComp =
+      comp.attachedBuildingIds.includes(targetId) ||
+      comp.pylonIds.includes(targetId) ||
+      comp.hubIds.includes(targetId);
+    return inComp ? load : 0;
+  }
+  if (comp.hasHub || comp.componentId === 0) {
+    return load;
+  }
+  return 0;
+}
 
 export function evaluateComponentBuildingRows(
   state: PlanetState,
@@ -87,6 +122,9 @@ export function evaluateComponentBuildingRows(
           setField(state.entities, row, 'state', ENTITY_STATE.active, tick);
         }
         genSupply += windOut.netPerS; onlineEntityIds.push(id);
+      } else if (windOut.internalDrainPerS > 0) {
+        compDemand += windOut.internalDrainPerS;
+        shedCandidates.push({ entityId: id, row, group: 4, drainPerS: windOut.internalDrainPerS, kind });
       }
     } else if (kind === ENTITY_KIND.thermal) {
       const res = stepThermalPlantFuel(state, colonyIndex, row, dtTicks, tick, data);
@@ -119,6 +157,9 @@ export function evaluateSingleComponent(
   comp: PowerGraphComponent,
   env: ReturnType<typeof getEnvironment>,
   windOut: ReturnType<typeof evaluateWindOutput>,
+  unitDemand: number,
+  work: { demand: number; candidates: ShedCandidate[] },
+  hubAnchors: ReadonlyArray<{ q: number; r: number }>,
   dtTicks: number,
   tick: number,
   data?: CompiledDataLike,
@@ -130,10 +171,26 @@ export function evaluateSingleComponent(
 
   const bRes = evaluateComponentBuildingRows(state, colonyIndex, comp, env, windOut, dtTicks, tick, data);
   const genSupply = comp.hubIds.length * founderCorePerHub + bRes.genSupply;
-  const compDemand = comp.hubIds.length * hubDrainPerHub + comp.pylonIds.length * 0.5 + bRes.compDemand;
+  const compBuildingDemand = comp.hubIds.length * hubDrainPerHub + comp.pylonIds.length * 0.5 + bRes.compDemand;
+
+  const compUnitDemand = comp.hasHub ? unitDemand : 0;
+  const compWorkDemand = comp.hasHub ? work.demand : 0;
+  const compWorkCandidates = comp.hasHub ? work.candidates : [];
+  const compSyntheticLoad = getComponentSyntheticLoad(state.colonies[colonyIndex], comp);
+  const compRawDemand = Number((compBuildingDemand + compUnitDemand + compWorkDemand + compSyntheticLoad).toFixed(4));
 
   const hasCapStored = bRes.capRows.some((r) => (cols.cell?.[r] ?? 0) > 0);
   const isPowered = genSupply > 0 || hasCapStored;
+
+  const emptyShed: SheddingResult = {
+    shedEntityIds: [],
+    shedGroupsActive: [],
+    hqFastRechargeShed: false,
+    remainingDemand: 0,
+    offlineReasons: {},
+    shedWorkJobIds: [],
+    shedWorkDemand: 0,
+  };
 
   if (!isPowered) {
     const isW03 = Boolean((data?.tables?.grid as Record<string, unknown> | undefined)?.pylon);
@@ -150,32 +207,47 @@ export function evaluateSingleComponent(
     return {
       summary: {
         componentId: comp.componentId, entityIds: [...comp.hubIds, ...comp.pylonIds, ...comp.attachedBuildingIds],
-        pylonIds: comp.pylonIds, hasHub: comp.hasHub, supply: 0, demand: 0, net: 0, powered: false,
+        pylonIds: comp.pylonIds, hasHub: comp.hasHub, supply: 0, demand: 0, rawDemand: compRawDemand, net: 0, powered: false,
+        shedEntityIds: [], shedGroupsActive: [], deficitPerS: compRawDemand,
       },
-      genSupply: 0, effectiveSupply: 0, demand: 0,
+      genSupply: 0, effectiveSupply: 0, demand: 0, rawDemand: compRawDemand, buildingDemand: 0,
       solarGross: bRes.solarGross, solarDrain: bRes.solarDrain, solarNet: bRes.solarNet,
       thermalGross: bRes.thermalGross, thermalDrain: bRes.thermalDrain, thermalNet: bRes.thermalNet,
       windGross: bRes.windGross, windDrain: bRes.windDrain, windNet: bRes.windNet,
       capStoredE: 0, capCapacityE: 0, capDischargePerS: 0, capChargePerS: 0,
-      unpoweredIds, nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, shedCandidates: [], onlineEntityIds: [],
+      unpoweredIds, nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, onlineEntityIds: [],
+      shed: emptyShed,
     };
   }
 
-  const capRes = stepCapacitorsForComponent(state, bRes.capRows, genSupply, compDemand, dtTicks, tick, data);
+  const capRes = stepCapacitorsForComponent(state, bRes.capRows, genSupply, compRawDemand, dtTicks, tick, data);
   const effectiveSupply = Number((genSupply + capRes.dischargePerS).toFixed(4));
-  const compNet = Number((effectiveSupply - compDemand).toFixed(4));
+
+  const compCandidates = [...bRes.shedCandidates, ...compWorkCandidates];
+  const compAnchors = comp.hasHub ? hubAnchors : [];
+  const shed = applyBrownoutShedding(state, colonyIndex, effectiveSupply, compRawDemand, compCandidates, compAnchors, tick, data);
+
+  const compRemainingDemand = shed.remainingDemand;
+  const compNet = Number((effectiveSupply - compRemainingDemand).toFixed(4));
+  const deficitPerS = Math.max(0, Number((compRawDemand - effectiveSupply).toFixed(4)));
+  const compBuildingRemainingDemand = Math.max(
+    0,
+    Number((compRemainingDemand - compUnitDemand - (compWorkDemand - shed.shedWorkDemand)).toFixed(4)),
+  );
 
   return {
     summary: {
       componentId: comp.componentId, entityIds: [...comp.hubIds, ...comp.pylonIds, ...comp.attachedBuildingIds],
-      pylonIds: comp.pylonIds, hasHub: comp.hasHub, supply: effectiveSupply, demand: compDemand, net: compNet, powered: true,
+      pylonIds: comp.pylonIds, hasHub: comp.hasHub, supply: effectiveSupply, demand: compRemainingDemand, rawDemand: compRawDemand,
+      net: compNet, powered: true, shedEntityIds: shed.shedEntityIds, shedGroupsActive: shed.shedGroupsActive, deficitPerS,
     },
-    genSupply, effectiveSupply, demand: compDemand,
+    genSupply, effectiveSupply, demand: compRemainingDemand, rawDemand: compRawDemand, buildingDemand: compBuildingRemainingDemand,
     solarGross: bRes.solarGross, solarDrain: bRes.solarDrain, solarNet: bRes.solarNet,
     thermalGross: bRes.thermalGross, thermalDrain: bRes.thermalDrain, thermalNet: bRes.thermalNet,
     windGross: bRes.windGross, windDrain: bRes.windDrain, windNet: bRes.windNet,
     capStoredE: capRes.storedE, capCapacityE: capRes.capacityE, capDischargePerS: capRes.dischargePerS, capChargePerS: capRes.chargePerS,
-    unpoweredIds: [], nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, shedCandidates: bRes.shedCandidates, onlineEntityIds: bRes.onlineEntityIds,
+    unpoweredIds: [], nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, onlineEntityIds: bRes.onlineEntityIds,
+    shed,
   };
 }
 
@@ -227,10 +299,10 @@ export function calculateUnitDemand(
 
 export function applyOfflineStatuses(
   graph: PowerGraph,
-  shed: ReturnType<typeof applyBrownoutShedding>,
   unpoweredEntityIds: number[],
   nightSolarEntityIds: number[],
   noFuelEntityIds: number[],
+  shedEntityIds: number[],
   offlineReasons: Record<number, string>,
   entityPower: Record<number, EntityPowerStatus>,
 ): void {
@@ -242,15 +314,14 @@ export function applyOfflineStatuses(
     }
   }
   for (const id of nightSolarEntityIds) {
-    shed.offlineReasons[id] = 'offline: night';
+    offlineReasons[id] = 'offline: night';
     entityPower[id] = { state: 'offline', reason: 'offline: night', component: graph.componentByBuildingId.get(id) ?? -1 };
   }
   for (const id of noFuelEntityIds) {
-    shed.offlineReasons[id] = 'offline: no fuel';
+    offlineReasons[id] = 'offline: no fuel';
     entityPower[id] = { state: 'offline', reason: 'offline: no fuel', component: graph.componentByBuildingId.get(id) ?? -1 };
   }
-  for (const [idStr, reason] of Object.entries(offlineReasons)) shed.offlineReasons[Number(idStr)] = reason;
-  for (const id of shed.shedEntityIds) {
+  for (const id of shedEntityIds) {
     entityPower[id] = { state: 'offline', reason: 'offline: brownout', component: graph.componentByBuildingId.get(id) ?? -1 };
   }
 }
