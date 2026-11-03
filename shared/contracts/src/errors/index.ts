@@ -17,6 +17,8 @@ export const REJECT_CODES = [
   'cannot_dismantle_hq',
   // W02 queue: `cancelTask` / `reorderTask` names no open task of the colony
   'unknown_task',
+  // W10 cargo & trade hub: insufficient stock/cargo, storage full on import, or Trade Hub offline
+  'insufficient_stock', 'insufficient_cargo', 'storage_full', 'hub_offline',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

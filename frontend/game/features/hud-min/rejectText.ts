@@ -39,6 +39,10 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   planet_full: 'Rejected: Planet full',
   cannot_dismantle_hq: 'Rejected: Cannot dismantle Command Hub or HQ',
   unknown_task: 'Rejected: Order no longer in the queue',
+  insufficient_stock: 'Rejected: Insufficient colony stock',
+  insufficient_cargo: 'Rejected: Insufficient orbital cargo',
+  storage_full: 'Rejected: Colony storage is full',
+  hub_offline: 'Rejected: Trade Hub is offline',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

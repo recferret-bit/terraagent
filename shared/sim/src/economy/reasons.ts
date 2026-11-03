@@ -23,6 +23,9 @@ export const LEDGER_REASONS = {
   'construction.refund': { directions: ['add'], counter: 'sys:construction', summary: 'Share of the paid cost returned when a build is cancelled.' },
   'building.sell': { directions: ['add'], counter: 'sys:construction', summary: 'Salvage returned when a building is sold.' },
   trade: { directions: ['add', 'withdraw'], counter: 'sys:market', summary: 'Goods bought from or sold to the market.' },
+  'cargo.export': { directions: ['withdraw'], counter: 'sys:cargo', summary: 'Cargo exported to orbital custody via a Trade Hub.' },
+  'cargo.import': { directions: ['add'], counter: 'sys:cargo', summary: 'Cargo imported from orbital custody via a Trade Hub.' },
+  'cargo.refund': { directions: ['add'], counter: 'sys:cargo', summary: 'Failed cargo export refunded to the colony stockpile.' },
   'dev.grant': { directions: ['add', 'withdraw'], counter: 'sys:dev', summary: 'Dev console grant (positive) or revoke (negative).' },
   'admin.correction': { directions: ['add', 'withdraw'], counter: 'sys:admin', summary: 'Manual correction: seeding, tests, support fixes.' },
   // Host-only (the treasury rejects it): a journal that starts after the planet did (a resumed local save) opens each
