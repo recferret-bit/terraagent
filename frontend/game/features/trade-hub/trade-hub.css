@@ -1,0 +1,294 @@
+.ta-trade-hub {
+  width: 340px;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  color: var(--ta-text);
+  box-sizing: border-box;
+}
+
+.ta-trade-hub[data-open='false'] {
+  display: none;
+}
+
+.ta-trade-hub__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding-bottom: var(--ta-s2);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-trade-hub__title-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+}
+
+.ta-trade-hub__title {
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-button);
+  color: var(--ta-text);
+  text-transform: uppercase;
+}
+
+.ta-trade-hub__badges {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s1);
+}
+
+.ta-trade-hub__badge {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  padding: 2px var(--ta-s2);
+  border: 1px solid var(--ta-seam-2);
+  background: var(--ta-plate-2);
+  color: var(--ta-text-2);
+  text-transform: uppercase;
+}
+
+.ta-trade-hub__badge--tier {
+  color: var(--ta-blue-hi);
+  background: var(--ta-blue-deep);
+  border-color: var(--ta-blue);
+}
+
+.ta-trade-hub__badge--status[data-online='true'] {
+  color: var(--ta-void);
+  background: var(--ta-terra);
+  border-color: var(--ta-terra);
+}
+
+.ta-trade-hub__badge--status[data-online='false'] {
+  color: var(--ta-fault-text);
+  background: var(--ta-deep);
+  border-color: var(--ta-fault);
+}
+
+.ta-trade-hub__close {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ta-s1) var(--ta-s2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  color: var(--ta-steel);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.ta-trade-hub__close:hover {
+  color: var(--ta-orange-hi);
+  border-color: var(--ta-orange);
+}
+
+.ta-trade-hub__close:focus-visible {
+  outline: 2px solid var(--ta-orange);
+}
+
+.ta-trade-hub__offline-banner {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-fault-text);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-fault);
+  padding: var(--ta-s1) var(--ta-s2);
+  text-transform: uppercase;
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-trade-hub__offline-banner[hidden] {
+  display: none;
+}
+
+.ta-trade-hub__meters {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ta-s2);
+}
+
+.ta-trade-hub__meter-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+}
+
+.ta-trade-hub__meter-label {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-steel);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+}
+
+.ta-trade-hub__meter {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+}
+
+.ta-trade-hub__meter-val {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  color: var(--ta-text);
+}
+
+.ta-trade-hub__meter-bar {
+  width: 100%;
+  height: 6px;
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+  overflow: hidden;
+}
+
+.ta-trade-hub__meter-fill {
+  height: 100%;
+  width: 0%;
+  background: var(--ta-orange);
+  transition: width var(--ta-dur-quick) ease;
+}
+
+.ta-trade-hub__meter-fill--daily {
+  background: var(--ta-blue-hi);
+}
+
+.ta-trade-hub__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--ta-s1);
+}
+
+.ta-trade-hub__tab {
+  all: unset;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--ta-s2);
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  background: var(--ta-plate-2);
+  color: var(--ta-steel);
+  border: 1px solid var(--ta-seam-2);
+  text-align: center;
+}
+
+.ta-trade-hub__tab:hover {
+  color: var(--ta-orange-hi);
+  border-color: var(--ta-orange);
+}
+
+.ta-trade-hub__tab[data-active='true'] {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange-hi);
+}
+
+.ta-trade-hub__tab:focus-visible {
+  outline: 2px solid var(--ta-orange);
+}
+
+.ta-trade-hub__orbit-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+}
+
+.ta-trade-hub__section-title {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-steel);
+  text-transform: uppercase;
+}
+
+.ta-trade-hub__families {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-trade-hub__family {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+}
+
+.ta-trade-hub__family-header {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-orange-hi);
+  text-transform: uppercase;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-trade-hub__orbit-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  padding: 1px 0;
+  color: var(--ta-text-2);
+}
+
+.ta-trade-hub__orbit-row[data-empty='true'] {
+  color: var(--ta-dim);
+}
+
+.ta-trade-hub__orbit-label {
+  color: inherit;
+}
+
+.ta-trade-hub__orbit-value {
+  font-weight: 600;
+  color: var(--ta-text);
+}
+
+.ta-trade-hub__orbit-row[data-empty='true'] .ta-trade-hub__orbit-value {
+  color: var(--ta-dim);
+}
+
+.ta-trade-hub__tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2);
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+}
+
+.ta-trade-hub__tab-placeholder {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-steel);
+}

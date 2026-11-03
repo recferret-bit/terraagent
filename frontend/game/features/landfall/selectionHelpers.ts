@@ -36,6 +36,7 @@ const KIND_BY_NAME: Record<string, number> = {
   metalsExtractor: ENTITY_KIND.metalsExtractor,
   solar: ENTITY_KIND.solar,
   solarArray: ENTITY_KIND.solar,
+  tradeHub: ENTITY_KIND.tradeHub,
   pod: ENTITY_KIND.pod,
   devProbe: ENTITY_KIND.devProbe,
 };
@@ -403,6 +404,7 @@ export function buildSelectedEntityFromRow(
     [ENTITY_KIND.commandHub]: { label: 'COMMAND HUB', code: 'HUB', w: 3, d: 3, hpMax: 1500 },
     [ENTITY_KIND.metalsExtractor]: { label: 'METALS EXTRACTOR', code: 'EXT', w: 2, d: 2, hpMax: 500 },
     [ENTITY_KIND.solar]: { label: 'SOLAR ARRAY', code: 'SOL', w: 2, d: 2, hpMax: 300 },
+    [ENTITY_KIND.tradeHub]: { label: 'TRADE HUB', code: 'TRD', w: 2, d: 2, hpMax: 900 },
     [ENTITY_KIND.pod]: { label: 'DROP POD', code: 'POD', w: 1, d: 1, hpMax: 600 },
   };
   const b = bldgMeta[e.kind];
