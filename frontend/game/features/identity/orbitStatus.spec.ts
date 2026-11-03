@@ -105,4 +105,25 @@ describe('orbit save chip (W06-20)', () => {
       panel.dispose();
     }
   });
+
+  it('keeps polling after Retry when the in-flight attempt fails once more', async () => {
+    const { el, panel, pilot, seen } = mount([
+      { state: 'failed', opId: 'storage-deposit:co.pilot' },
+      { state: 'failed', opId: 'storage-deposit:co.pilot' },
+      { state: 'settled' },
+    ]);
+    try {
+      await pilot.loginSocial('google', 'tok');
+      await flush();
+      expect(el.querySelector('[data-testid="orbit-toast"]')?.textContent).toContain("Couldn't save to orbit, retrying");
+      (el.querySelector('[data-testid="orbit-retry"]') as HTMLButtonElement).click();
+      await vi.waitFor(() => {
+        expect(el.querySelector('[data-testid="orbit-toast"]')).toBeNull();
+        expect(el.querySelector('[data-testid="orbit-save"]')).toBeNull();
+      }, { timeout: 2000 });
+      expect(seen.filter((call) => call.url === '/v1/near/relay')).toHaveLength(3);
+    } finally {
+      panel.dispose();
+    }
+  });
 });

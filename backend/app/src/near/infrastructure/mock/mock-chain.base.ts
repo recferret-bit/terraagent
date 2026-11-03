@@ -62,16 +62,18 @@ export abstract class MockChainBase {
 
   /** Like `call`, but also returns `fn`'s value (on an idempotent replay: the stored payload). */
   protected async callWithResult<T extends object>(port: string, method: string, opId: string | undefined, fn: (tx: DbClient) => Promise<T>, opts: MockCallOptions = {}): Promise<{ value: T; receipt: ChainReceipt }> {
-    // Per-port overrides win over the boot config. A stored opId still returns before the fail roll.
+    // Latency is the override at the start of the call. The fail roll reads it again after the sleep,
+    // so `near.mock.fail <port> 0` during that wait saves the attempt already in flight.
     const cfg = mockChainControls.overlay(port, this.config);
     await this.runtime.sleep(latencyMs(cfg, this.random));
     if (opId !== undefined) {
       const prior = await this.prisma.mockChainReceipt.findUnique({ where: { opId } });
       if (prior) return { value: prior.payload as T, receipt: toReceipt(prior) };
     }
-    if (this.random() < cfg.failRate) {
+    const rolled = mockChainControls.overlay(port, this.config);
+    if (this.random() < rolled.failRate) {
       const code = opts.failCode ?? 'NEAR_MOCK_INJECTED_FAILURE';
-      throw new NearMockException(code, { message: `mock ${port}.${method} failed by injection (MOCK_FAIL_RATE=${cfg.failRate})`, details: { port, method, opId } });
+      throw new NearMockException(code, { message: `mock ${port}.${method} failed by injection (MOCK_FAIL_RATE=${rolled.failRate})`, details: { port, method, opId } });
     }
     const txHash = opId === undefined ? randomMockTxHash(this.random) : mockTxHashFor(opId);
     return withTransaction(this.prisma, async (tx) => {

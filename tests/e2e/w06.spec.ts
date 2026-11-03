@@ -59,6 +59,12 @@ test('@hack 1. open ?scenario=w06 as a guest with a colony; the chip says Guest 
   serverOnly();
   const t0 = await loadScenario(page, 'w06', {}, { as: 'w06' });
   await expect(page.locator('[data-testid=pilot-chip]')).toContainText('Guest pilot');
+  await expect.poll(async () => page.evaluate(() => {
+    const o = (window as unknown as {
+      __online?: { colonyIndex?: number; store?: { latest?: { colonies?: unknown[] } } };
+    }).__online;
+    return o?.colonyIndex === 0 && (o.store?.latest?.colonies?.length ?? 0) > 0;
+  }), { timeout: 20_000 }).toBe(true);
   await tickAdvances(page, t0);
 });
 
@@ -81,14 +87,19 @@ test('@hack 4. /dev/chain/ lists the pilot and a mock hash; the receipt shows FI
   const accounts = explorer.getByRole('tab', { name: 'ACCOUNTS' });
   await expect(accounts).toBeVisible({ timeout: 15_000 });
   await accounts.click();
-  await expect(explorer.locator('#app')).toContainText(PILOT, { timeout: 20_000 });
+  const accountCells = explorer.locator('#app td');
+  // The pilot id is also the colony row's owner, so it appears more than once. The colony id is the longer one.
+  await expect(accountCells.filter({ hasText: /^test-pilot\.terraagent\.mock$/ }).first()).toBeVisible({ timeout: 20_000 });
+  await expect(accountCells.filter({ hasText: /\.test-pilot\.terraagent\.mock$/ }).first()).toBeVisible();
   await explorer.getByRole('tab', { name: 'RECEIPTS' }).click();
   const link = explorer.locator('tr', { hasText: 'submitMetaTx' }).locator('a.hash-link', { hasText: 'mock:' });
-  await expect(link.first()).toBeVisible({ timeout: 30_000 });
-  await link.first().click();
+  await expect(link).toHaveCount(1, { timeout: 30_000 });
+  await link.click();
   await expect(explorer).toHaveURL(/\/dev\/chain\/tx\//, { timeout: 15_000 });
   await expect(explorer.locator('body')).toContainText('FINAL', { timeout: 20_000 });
   await expect(explorer.locator('body')).toContainText('relayer.terraagent.mock');
+  await expect(explorer.locator('body')).toContainText('res.terraagent.mock');
+  await expect(explorer.locator('body')).toContainText('storage_deposit');
   await explorer.close();
 });
 
@@ -106,7 +117,9 @@ test('@hack 6. relayer fail shows the orbit retry toast; clearing the fail rate 
   const other = await fresh.newPage();
   try {
     await loadScenario(other, 'w06', {}, { as: 'w06b', timeout: 45_000 });
+    const sawSaving = other.locator('[data-testid=orbit-save]').waitFor({ state: 'visible', timeout: 30_000 });
     await saveWithGoogle(other, RETRY_SUBJECT);
+    await sawSaving;
     await expect(other.locator('[data-testid=orbit-toast]')).toContainText("Couldn't save to orbit, retrying", { timeout: 30_000 });
     await setRelayerFail(other, 0);
     await other.locator('[data-testid=orbit-retry]').click();

@@ -2,6 +2,8 @@ import type { FeatureContext, HudPanelInstance } from '../../core/registry/types
 import { makeBtn, makeDiv } from '../shared/dom';
 
 const POLL_MS = 400;
+/** After Retry, keep polling through a FAILED that an in-flight attempt writes, until the backoff settles. */
+const RETRY_WATCH_MS = 20_000;
 const SAVING = 'Saving to orbit…';
 const FAILED = "Couldn't save to orbit, retrying";
 
@@ -20,6 +22,8 @@ interface Loop {
   busy: boolean;
   timer: ReturnType<typeof setTimeout> | undefined;
   watch: RelayPoll | null;
+  /** Epoch ms. While this is in the future, `failed` does not stop the poll. */
+  untilSettledUntil: number;
 }
 
 function paint(loop: Loop, onRetry: () => void): void {
@@ -51,13 +55,15 @@ function arm(loop: Loop, poll: () => void): void {
 }
 
 function apply(loop: Loop, state: RelayState, poll: () => void): void {
-  if (state === 'pending') {
-    loop.phase = 'saving';
+  const keep = state === 'pending' || (state === 'failed' && loop.untilSettledUntil > Date.now());
+  if (keep) {
+    loop.phase = state === 'pending' ? 'saving' : 'failed';
     paint(loop, () => onRetry(loop, poll));
     arm(loop, poll);
     return;
   }
   clearTimer(loop);
+  loop.untilSettledUntil = 0;
   loop.phase = state === 'failed' ? 'failed' : 'off';
   paint(loop, () => onRetry(loop, poll));
 }
@@ -75,6 +81,7 @@ async function pollOnce(loop: Loop): Promise<void> {
 function onRetry(loop: Loop, poll: () => void): void {
   if (loop.busy || !loop.watch || loop.phase !== 'failed') return;
   loop.busy = true;
+  loop.untilSettledUntil = Date.now() + RETRY_WATCH_MS;
   loop.phase = 'saving';
   paint(loop, () => onRetry(loop, poll));
   void loop.watch.retry()
@@ -92,7 +99,7 @@ export function mountOrbitStatus(el: HTMLElement, ctx: FeatureContext): HudPanel
   const pilot = ctx.services.pilot;
   const host = makeDiv('ta-orbit');
   el.appendChild(host);
-  const loop: Loop = { host, phase: 'off', disposed: false, busy: false, timer: undefined, watch: null };
+  const loop: Loop = { host, phase: 'off', disposed: false, busy: false, timer: undefined, watch: null, untilSettledUntil: 0 };
   let seen = epochOf(ctx);
 
   const begin = (showNow: boolean): void => {

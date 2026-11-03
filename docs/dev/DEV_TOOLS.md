@@ -182,7 +182,9 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `NEAR_KEK_VERSION` | 1 | Integer version stored on new key rows |
 | `NEAR_KEK_RING` | — | JSON `{"1":"<base64>",...}` of older keys so a rotated version still decrypts |
 | `OUTBOX_RELAY_ENABLED`, `OUTBOX_POLL_MS`, `OUTBOX_LEASE_MS`, `OUTBOX_MAX_ATTEMPTS` | on, 1000, 30000, 8 | Chain outbox relay |
-| `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection (see above) |
+| `NEAR_ADAPTER_IDENTITY` | mock | `IdentityPort` (W06). Anything but `testnet` or `mainnet` is the mock |
+| `NEAR_ADAPTER_RELAYER` | mock | `RelayerPort` (W06). Anything but `testnet` or `mainnet` is the mock |
+| `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection for the other ports (see above) |
 | `NEAR_ALLOW_MOCK_IN_PROD`, `AI_ALLOW_MOCK_IN_PROD`, `NOTIFY_ALLOW_MOCK_IN_PROD` | — | Allow mocks in production |
 | `ANALYTICS_DISABLED` | — | `true` drops analytics intake |
 | `TA_DB_POOL_SIZE` | 20 | Prisma connection pool |
