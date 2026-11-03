@@ -293,7 +293,7 @@ export function scoreExtractionNeed(
   const minResourceRatio = Math.min(stock['metals.t1'] / Math.max(1, capFor('metals.t1')), stock['minerals.t1'] / Math.max(1, capFor('minerals.t1')));
 
   let score: number;
-  if (extractorCount === 0) score = clampBp(6500 + Math.round(Math.max(0, 1 - minResourceRatio) * 2000));
+  if (extractorCount === 0) score = clampBp(5500 + Math.round(Math.max(0, 1 - minResourceRatio) * 400));
   else if (netResourcePerS < 0) score = clampBp(6000 + Math.min(2500, Math.round(Math.abs(netResourcePerS) * 500)));
   else if (minResourceRatio < 0.4) score = clampBp(5500 + Math.round(((0.4 - minResourceRatio) / 0.4) * 3000));
   else if (income <= 0) score = 5500;
@@ -362,10 +362,11 @@ export function scoreExpandNeed(
   const ownerLayer = layers.owner as Int8Array, terrainLayer = layers.terrain as Uint8Array;
   const prepLayer = layers.prep as Uint8Array, depositLayer = layers.deposit as Uint8Array;
 
-  let freeBuildable = 0, ownedDeposits = 0, freeOwnedDeposits = 0, unclaimedNear = 0;
+  let ownedTiles = 0, freeBuildable = 0, ownedDeposits = 0, freeOwnedDeposits = 0, unclaimedNear = 0;
   for (let i = 0; i < state.grid.count; i++) {
     const own = ownerLayer[i], dep = depositLayer[i], isOcc = occupied.has(i);
     if (own === colonyIndex) {
+      ownedTiles++;
       if (dep !== DEPOSIT.none) {
         ownedDeposits++;
         if (!isOcc) freeOwnedDeposits++;
@@ -380,15 +381,16 @@ export function scoreExpandNeed(
   const freeBuildableOwnedTiles = overrides?.freeBuildableOwnedTiles ?? freeBuildable;
   const unclaimedDepositsWithin20 = overrides?.unclaimedDepositsWithin20 ?? unclaimedNear;
   const ownedDepositsAllOccupied = overrides?.ownedDepositsAllOccupied ?? (ownedDeposits === 0 || freeOwnedDeposits === 0);
+  const hasTerritory = ownedTiles > 0 || overrides?.freeBuildableOwnedTiles !== undefined || overrides?.unclaimedDepositsWithin20 !== undefined;
 
   let score = 0;
-  if (freeBuildableOwnedTiles < 30) {
+  if (hasTerritory && freeBuildableOwnedTiles < 30) {
     score = Math.max(score, clampBp(5000 + Math.round(((30 - Math.max(0, freeBuildableOwnedTiles)) / 30) * 3500)));
   }
-  if (unclaimedDepositsWithin20 > 0 && ownedDepositsAllOccupied) {
+  if (hasTerritory && unclaimedDepositsWithin20 > 0 && ownedDepositsAllOccupied) {
     score = Math.max(score, clampBp(5000 + Math.min(3500, unclaimedDepositsWithin20 * 700)));
   }
-  if (score === 0 && freeBuildableOwnedTiles < 90) {
+  if (hasTerritory && score === 0 && freeBuildableOwnedTiles < 90) {
     score = clampBp(Math.round(((90 - freeBuildableOwnedTiles) / 60) * 2500));
   }
   return { score, freeBuildableOwnedTiles, unclaimedDepositsWithin20, ownedDepositsAllOccupied };
