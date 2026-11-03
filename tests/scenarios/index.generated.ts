@@ -4,10 +4,12 @@ import scn_w00_empty from './w00-empty';
 import scn_w01_landfall from './w01-landfall';
 import scn_w02_first_light from './w02-first-light';
 import scn_w06_invisible_chain from './w06-invisible-chain';
+import scn_w08_stages_goals from './w08-stages-goals';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
   { file: 'w00-empty', def: scn_w00_empty },
   { file: 'w01-landfall', def: scn_w01_landfall },
   { file: 'w02-first-light', def: scn_w02_first_light },
   { file: 'w06-invisible-chain', def: scn_w06_invisible_chain },
+  { file: 'w08-stages-goals', def: scn_w08_stages_goals },
 ];

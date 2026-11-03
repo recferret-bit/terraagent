@@ -48,6 +48,7 @@ export interface ViewColony {
   stage?: number;
   unlockStage?: number;
   threatStage?: number;
+  stageOverride?: string;
   stageDwellRemainingS?: number | null;
   dwellRemainingS?: number | null;
   dwellRemainingTicks?: number | null;
@@ -125,6 +126,8 @@ export function view(state: PlanetState): SimView {
     out.stage = typeof k.stage === 'number' ? k.stage : prog.stage;
     out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : prog.unlockStage;
     out.threatStage = typeof k.threatStage === 'number' ? k.threatStage : prog.threatStage;
+    if (typeof k.stageOverride === 'string') out.stageOverride = k.stageOverride;
+    else if (prog.stageOverride) out.stageOverride = prog.stageOverride;
     out.dwellRemainingTicks =
       typeof k.dwellRemainingTicks === 'number' ? k.dwellRemainingTicks : prog.dwellRemainingTicks;
     out.dwellRemainingS =

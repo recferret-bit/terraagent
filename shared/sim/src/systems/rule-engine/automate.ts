@@ -148,17 +148,48 @@ export function resolveColonyStage(state: PlanetState, colonyIndex = 0, explicit
 function buildEffectiveNeedsForAutopilot(
   raw: ColonyNeedsScore,
   priorities: ColonyPriorities,
+  stage: number,
 ): ColonyNeedsScore {
   if (
+    stage <= 2 &&
     priorities.expansion > DEFAULT_PRIORITY_VALUE &&
     priorities.expansion > priorities.power
   ) {
-    const targetExpand = Math.max(raw.expand, 6500, raw.energy);
+    const targetExpand = Math.max(
+      raw.expand,
+      6500,
+      raw.energy,
+      raw.storage,
+      raw.extraction,
+      raw.supply,
+      raw.defense,
+      raw.repair,
+    );
     if (targetExpand !== raw.expand) {
       const scores = { ...raw.scores, expand: targetExpand };
       return {
         ...raw,
         expand: targetExpand,
+        scores,
+      };
+    }
+  }
+  if ((stage === 2 || stage === 3) && priorities.power >= DEFAULT_PRIORITY_VALUE) {
+    const targetEnergy = Math.max(
+      raw.energy,
+      6800,
+      raw.storage + 100,
+      raw.extraction + 100,
+      raw.supply + 100,
+      raw.expand + 100,
+      raw.defense + 100,
+      raw.repair + 100,
+    );
+    if (targetEnergy !== raw.energy) {
+      const scores = { ...raw.scores, energy: targetEnergy };
+      return {
+        ...raw,
+        energy: targetEnergy,
         scores,
       };
     }
@@ -210,7 +241,7 @@ export function evaluateAutopilotDecision(
     : readColonyPriorities(state, colonyIndex);
   const away = opts?.away ?? Boolean(state.colonies[colonyIndex]?.away);
   const raw = evaluateColonyNeeds(state, colonyIndex, opts);
-  const effectiveRaw = buildEffectiveNeedsForAutopilot(raw, priorities);
+  const effectiveRaw = buildEffectiveNeedsForAutopilot(raw, priorities, stage);
   const weighted = weightColonyNeeds(effectiveRaw, priorities, { ...opts, away });
   const top = weighted.top;
   const actionable = top.weightedBp >= ACTIONABLE_NEED_THRESHOLD_BP;

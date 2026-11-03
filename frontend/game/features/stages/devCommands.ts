@@ -194,8 +194,23 @@ export const autopilotCommand: DevCommandDef = {
       return autopilotCommand.help;
     }
     const r = await sim(ctx, 'dev.autopilot', { op: 'next' });
-    const view = getSimView(ctx);
     const colonyIndex = ownColonyIndex(ctx.services);
+    if (ctx.services.store) {
+      const targetTick = r.ok && typeof r.appliedAtTick === 'number' ? r.appliedAtTick : 0;
+      const deadline = Date.now() + 300;
+      while (Date.now() < deadline) {
+        const curView = getSimView(ctx);
+        const curCol = viewColony(curView, colonyIndex) as
+          | (ViewColony & { lastAutopilotDecision?: AutopilotDecision | null })
+          | undefined;
+        const dec = curCol?.lastAutopilotDecision;
+        if (dec && (targetTick <= 0 || (curView?.tick ?? 0) >= targetTick || (dec.tick ?? 0) >= targetTick)) {
+          break;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 15));
+      }
+    }
+    const view = getSimView(ctx);
     const col = viewColony(view, colonyIndex) as (ViewColony & { lastAutopilotDecision?: AutopilotDecision | null }) | undefined;
     const d = col?.lastAutopilotDecision;
     if (!d) {

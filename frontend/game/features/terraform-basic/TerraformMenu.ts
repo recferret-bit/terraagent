@@ -189,7 +189,10 @@ export class TerraformMenu {
   }
 
   private renderStageOps(): void {
-    const colonyStage = resolveTerraformUnlockStage(this.brush.getView(), this.opts.getColonyId?.() ?? 0);
+    const view = this.brush.getView();
+    const isLiveGameView = Boolean(view && typeof view === 'object' && 'planet' in view && (view as { planet?: unknown }).planet !== undefined);
+    const w08Off = Boolean(this.opts.flags && !this.opts.flags.has('W08') && isLiveGameView);
+    const colonyStage = w08Off ? undefined : resolveTerraformUnlockStage(view, this.opts.getColonyId?.() ?? 0);
     const stageKey = colonyStage === undefined ? 'none' : String(colonyStage);
     if (this.lastStageKey === stageKey) return;
     this.lastStageKey = stageKey;

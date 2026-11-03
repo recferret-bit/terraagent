@@ -20,6 +20,7 @@ import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildin
 import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
 import { checkCostAffordability, debitCost, recomputeFamilyCaps, refundCost } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
+import { onCommandHubCompleted } from '../progression';
 import { syncColonyThreatStage } from '../progression/threatStage';
 import { claimTerritoryRadius } from '../territory-claim';
 
@@ -250,6 +251,7 @@ export function startBuildingConstruction(
     if (entityKind === ENTITY_KIND.commandHub) {
       claimHubTerritory(state, opts.owner, opts.q, opts.r, Number(row.claimRadius ?? 10), tick);
       recomputeFamilyCaps(colony, true, 0, tick);
+      onCommandHubCompleted(state, opts.owner, ctx ?? { tick, data });
     }
     syncColonyThreatStage(state, opts.owner, tick);
   }
