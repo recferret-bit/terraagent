@@ -223,6 +223,11 @@ export function evaluateColonyPower(
     } else if (kind === ENTITY_KIND.metalsExtractor && st !== ENTITY_STATE.constructing) {
       rawBuildingDemand += evaluateDrainBuildingRow(state, row, extractorRow, 3, netInfo, unpoweredEntityIds, shedCandidates, tick);
     } else if (kind === ENTITY_KIND.tradeHub && st !== ENTITY_STATE.constructing) {
+      if (data?.tables?.tradeHub && !(data.tables.tradeHub as Record<string, unknown>).t1) {
+        if (st !== ENTITY_STATE.inert) setField(e, row, 'state', ENTITY_STATE.inert, tick);
+        continue;
+      }
+      if (st === ENTITY_STATE.inert) setField(e, row, 'state', ENTITY_STATE.active, tick);
       const tradeHubRow = resolveTradeHubPowerRow(cols.tier?.[row] || 1, data);
       rawBuildingDemand += evaluateDrainBuildingRow(state, row, tradeHubRow, 2, netInfo, unpoweredEntityIds, shedCandidates, tick);
     } else if (kind === ENTITY_KIND.harvester) {
@@ -236,9 +241,11 @@ export function evaluateColonyPower(
   const work = netInfo.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
   shedCandidates.push(...work.candidates);
 
-  const supply = Number((founderCorePerS + onlineGen).toFixed(4));
+  const colOverride = state.colonies[colonyIndex]?.powerSupplyOverride;
+  const hasOverride = typeof colOverride === 'number' && Number.isFinite(colOverride);
+  const supply = hasOverride ? Math.max(0, Number(colOverride.toFixed(4))) : Number((founderCorePerS + onlineGen).toFixed(4));
   const rawDemand = Number((rawBuildingDemand + unitDemand + work.demand).toFixed(4));
-  const effectiveSupply = Math.max(0, Number((supply + Math.min(0, solarNetPerS)).toFixed(4)));
+  const effectiveSupply = hasOverride ? supply : Math.max(0, Number((supply + Math.min(0, solarNetPerS)).toFixed(4)));
 
   const shed = applyBrownoutShedding(
     state, colonyIndex, effectiveSupply, rawDemand, shedCandidates, netInfo.hubAnchors, tick, data,

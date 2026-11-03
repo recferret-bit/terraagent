@@ -60,7 +60,11 @@ export class LocalCargoRelay {
     if (!port || typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0 || rate > 1) {
       throw new LocalDevError('invalid_args', 'near.mock.fail needs { port, rate: 0..1 }');
     }
-    this.failRates.set(port.toLowerCase(), rate);
+    const lower = port.toLowerCase();
+    if (lower !== 'cargo' && lower !== 'cargotoken') {
+      throw new LocalDevError('host_unavailable', `near.mock.fail for "${port}" needs the game server; not available on this host`);
+    }
+    this.failRates.set(lower, rate);
     return { port, rate };
   }
 

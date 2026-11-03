@@ -208,19 +208,23 @@ function resolveMintedAndThroughput(
       }
     | undefined;
 
-  for (const src of [
-    cargoCaps?.mintedToday,
-    colCargo?.mintedToday,
-    colCargo?.todayMinted,
-    viewStatus?.mintedToday,
-    viewStatus?.todayMinted,
-    svcStatus?.mintedToday,
-    svcStatus?.todayMinted,
-  ]) {
+  const wasCapReset = typeof colCargo?.capResetAtTick === 'number';
+  const mapSources = wasCapReset
+    ? [cargoCaps?.mintedToday, colCargo?.mintedToday, colCargo?.todayMinted]
+    : [
+        cargoCaps?.mintedToday,
+        colCargo?.mintedToday,
+        colCargo?.todayMinted,
+        viewStatus?.mintedToday,
+        viewStatus?.todayMinted,
+        svcStatus?.mintedToday,
+        svcStatus?.todayMinted,
+      ];
+  for (const src of mapSources) {
     applyResourceMap(todayMintedByResource, src);
   }
 
-  const directToday = [svcStatus?.todayMinted, viewStatus?.todayMinted, colCargo?.todayMinted].find(
+  const directToday = (wasCapReset ? [colCargo?.todayMinted] : [svcStatus?.todayMinted, viewStatus?.todayMinted, colCargo?.todayMinted]).find(
     (v): v is number => typeof v === 'number' && Number.isFinite(v),
   );
   const maxByRes = Math.max(0, ...Object.values(todayMintedByResource));
@@ -251,12 +255,13 @@ function resolveMintedAndThroughput(
     }
   }
 
-  const rawUsed =
-    svcStatus?.throughputUsedPerMin ??
-    viewStatus?.throughputUsedPerMin ??
-    (colCargo?.throughputUsedPerMin as number | undefined) ??
-    (colCargo?.throughputUsed as number | undefined) ??
-    windowSum;
+  const rawUsed = wasCapReset
+    ? windowSum
+    : (svcStatus?.throughputUsedPerMin ??
+        viewStatus?.throughputUsedPerMin ??
+        (colCargo?.throughputUsedPerMin as number | undefined) ??
+        (colCargo?.throughputUsed as number | undefined) ??
+        windowSum);
   const throughputUsedPerMin =
     typeof rawUsed === 'number' && Number.isFinite(rawUsed) ? Math.max(0, Math.floor(rawUsed)) : 0;
 

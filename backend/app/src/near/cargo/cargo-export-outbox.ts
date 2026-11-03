@@ -75,7 +75,7 @@ export class CargoExportOutboxService implements OnModuleInit, OnModuleDestroy {
     const baseAmount = toCargoBaseUnits(amount);
 
     return withTransaction(prisma, async (tx) => {
-      const accountId = await resolveColonyAccountId(tx, colonyId, playerId);
+      const accountId = await resolveColonyAccountId(tx, colonyId, playerId, event.planetId, colonyIndex);
 
       await tx.cargoTx.upsert({
         where: { opId },
@@ -131,6 +131,8 @@ export async function resolveColonyAccountId(
   tx: DbClient,
   colonyId: string,
   playerId: string | null,
+  planetId?: string,
+  colonyIndex?: number,
 ): Promise<string> {
   const byColony = await tx.nearColonyAccount.findFirst({
     where: { colonyId },
@@ -144,6 +146,28 @@ export async function resolveColonyAccountId(
       select: { accountId: true },
     });
     if (bySlot) return bySlot.accountId;
+    const byPlayer = await tx.nearColonyAccount.findFirst({
+      where: { playerId, slot: { not: 'player' } },
+      select: { accountId: true },
+    });
+    if (byPlayer) return byPlayer.accountId;
+  }
+
+  if (planetId && 'colony' in tx && tx.colony) {
+    const dbCol = await tx.colony.findFirst({
+      where: { planetId, colonyIndex: colonyIndex ?? 0 },
+      orderBy: { createdAt: 'desc' },
+      select: { id: true, playerId: true },
+    });
+    if (dbCol) {
+      const byDbCol = await tx.nearColonyAccount.findFirst({
+        where: {
+          OR: [{ colonyId: dbCol.id }, { playerId: dbCol.playerId, slot: { not: 'player' } }],
+        },
+        select: { accountId: true },
+      });
+      if (byDbCol) return byDbCol.accountId;
+    }
   }
 
   const stem = colonyId.toLowerCase().replace(/[^a-z0-9_-]/g, '-');

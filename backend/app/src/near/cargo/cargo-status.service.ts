@@ -106,17 +106,18 @@ export class CargoStatusService implements OnModuleInit, OnModuleDestroy {
     colonyId: string;
     accountId?: string;
     playerId?: string;
+    planetId?: string;
   }): Promise<CargoStatusPayload> {
     if (!this.flags.has('W10')) {
       throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
     }
     const colonyId = opts.colonyId || 'col-0';
-    const accountId = await this.resolveAccountId(colonyId, opts.accountId, opts.playerId);
+    const accountId = await this.resolveAccountId(colonyId, opts.accountId, opts.playerId, opts.planetId);
     const prisma = this.database();
     const rows =
       prisma && 'cargoTx' in prisma && prisma.cargoTx
         ? await prisma.cargoTx.findMany({
-            where: { colonyId },
+            where: { OR: [{ colonyId }, { accountId }] },
             orderBy: { createdAt: 'asc' },
           })
         : [];
@@ -233,7 +234,7 @@ export class CargoStatusService implements OnModuleInit, OnModuleDestroy {
     accountId?: string,
   ): Promise<CargoStatusPayload | null> {
     if (this.destroyed || !this.flags.has('W10')) return null;
-    const status = await this.getColonyCargoStatus({ colonyId, accountId, playerId });
+    const status = await this.getColonyCargoStatus({ colonyId, accountId, playerId, planetId });
     if (this.destroyed) return null;
     this.bus.emit('near.cargo.status', {
       ...(planetId ? { planetId } : {}),
@@ -313,6 +314,7 @@ export class CargoStatusService implements OnModuleInit, OnModuleDestroy {
     colonyId: string,
     accountId?: string,
     playerId?: string,
+    planetId?: string,
   ): Promise<string> {
     if (typeof accountId === 'string' && accountId.trim().length > 0) {
       return accountId.trim();
@@ -332,6 +334,23 @@ export class CargoStatusService implements OnModuleInit, OnModuleDestroy {
             select: { accountId: true },
           });
           if (byPlayerSlot) return byPlayerSlot.accountId;
+        }
+
+        if (planetId && 'colony' in prisma && prisma.colony) {
+          const dbCol = await prisma.colony.findFirst({
+            where: { planetId },
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, playerId: true },
+          });
+          if (dbCol) {
+            const byDbCol = await prisma.nearColonyAccount.findFirst({
+              where: {
+                OR: [{ colonyId: dbCol.id }, { playerId: dbCol.playerId, slot: { not: PLAYER_SLOT } }],
+              },
+              select: { accountId: true },
+            });
+            if (byDbCol) return byDbCol.accountId;
+          }
         }
       }
 
