@@ -4,10 +4,14 @@ import {
   devConsole,
   expect,
   expectNoPageErrors,
+  getColony0,
+  getEntitiesSnapshot,
   hostMode,
+  KIND,
   loadLocal,
   loadScenario,
   screenshot,
+  sendSimCmd,
   test,
 } from './harness';
 
@@ -19,47 +23,6 @@ test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
 const local = hostMode() === 'local';
 
-interface OnlineColonyView {
-  stock?: Record<string, number>;
-  caps?: Record<string, number>;
-  power?: {
-    supply?: number;
-    demand?: number;
-    net?: number;
-    solarGrossPerS?: number;
-    solarNetPerS?: number;
-    brownout?: boolean;
-    offlineReasons?: Record<string, string>;
-    phase?: string;
-    clockText?: string;
-    daylight?: number;
-  };
-  queue?: Array<{
-    taskId: string;
-    lane: string;
-    state: string;
-    waitReason?: string;
-    waitDetail?: string;
-    spentCost?: Record<string, number>;
-  }>;
-}
-
-interface OnlineDebugWindow {
-  __online: {
-    store: {
-      latest: {
-        tick: number;
-        count: number;
-        entities: Float32Array;
-        colonies: OnlineColonyView[];
-      } | null;
-    };
-    commands: {
-      send(kind: string, args?: unknown): Promise<{ ok: boolean; appliedAtTick?: number; code?: string }>;
-    };
-  };
-}
-
 async function openW02(page: Page, params: Record<string, string> = {}): Promise<void> {
   if (local) {
     await loadLocal(page, 'w02', params);
@@ -68,13 +31,7 @@ async function openW02(page: Page, params: Record<string, string> = {}): Promise
   }
 }
 
-const getColony0 = (page: Page) =>
-  page.evaluate(() => (window as unknown as OnlineDebugWindow).__online.store.latest?.colonies?.[0] ?? null);
-
-const sendSimCmd = (page: Page, kind: string, args: unknown) =>
-  page.evaluate(([k, a]) => (window as unknown as OnlineDebugWindow).__online.commands.send(k, a), [kind, args] as const);
-
-test('@hack 1. Load ?scenario=w02: Hub done, stock 400/250/150/150, morning -> see resource bar, planet clock and energy hover (+8 supply / -5 demand)', async ({ page }) => {
+test('@hack 1. Load ?scenario=w02: Hub done, stock 400/250/150/150, morning -> see resource bar, planet clock and energy hover (+16 supply / -7 demand)', async ({ page }) => {
   await openW02(page);
   await expect.poll(async () => (await getColony0(page))?.stock?.['metals.t1'] ?? 0).toBe(400);
   const col = await getColony0(page);
@@ -85,9 +42,9 @@ test('@hack 1. Load ?scenario=w02: Hub done, stock 400/250/150/150, morning -> s
     'bio.water': 150,
   });
   expect(col?.power).toMatchObject({
-    supply: 8,
-    demand: 5,
-    net: 3,
+    supply: 16, // founder core
+    demand: 7, // Command Hub drain
+    net: 9,
     phase: 'day',
   });
   await expect(page.locator('.ta-resources-hud')).toBeVisible();
@@ -97,9 +54,9 @@ test('@hack 1. Load ?scenario=w02: Hub done, stock 400/250/150/150, morning -> s
   const energy = page.locator('[data-testid="hud-hq-cell"]');
   await energy.hover();
   await expect(energy.locator('[data-testid="res-income-energy"]')).toBeVisible();
-  await expect(energy.locator('[data-testid="res-income-energy"]')).toHaveText('Income (Supply): +8 E/s');
-  await expect(energy.locator('[data-testid="res-spending-energy"]')).toHaveText('Spending (Demand): −5 E/s');
-  await expect(energy.locator('[data-testid="res-net-energy"]')).toHaveText('Net: +3 E/s');
+  await expect(energy.locator('[data-testid="res-income-energy"]')).toHaveText('Income (Supply): +16 E/s');
+  await expect(energy.locator('[data-testid="res-spending-energy"]')).toHaveText('Spending (Demand): −7 E/s');
+  await expect(energy.locator('[data-testid="res-net-energy"]')).toHaveText('Net: +9 E/s');
   await screenshot(page, '1-w02-morning-hud');
   expectNoPageErrors(page);
 });
@@ -113,24 +70,14 @@ test('@hack 2. Queue 1 Harvester in Units menu -> paid progressively (40/15/5/0)
   });
   expect(ack.ok).toBe(true);
 
-  await expect.poll(async () => {
-    const v = await page.evaluate(() => {
-      const s = (window as unknown as OnlineDebugWindow).__online.store.latest;
-      if (!s) return false;
-      for (let i = 0; i < s.count; i++) {
-        if (s.entities[i * 12 + 1] === 7) return true; // ENTITY_KIND.harvester = 7
-      }
-      return false;
-    });
-    return v;
-  }, { timeout: 15_000 }).toBe(true);
+  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.kind === KIND.harvester), { timeout: 15_000 }).toBe(true);
 
   await devConsole(page, 'warp 1');
   await screenshot(page, '2-harvester-active');
   expectNoPageErrors(page);
 });
 
-test('@hack 3 & 4. Build Metals Extractor on deposit and Solar -> Extractor produces ~1.0 metals.t1/s and Solar provides +20 E/s', async ({ page }) => {
+test('@hack 3 & 4. Build Metals Extractor on deposit and Solar -> Extractor produces ~1.0 metals.t1/s and Solar provides +13 E/s', async ({ page }) => {
   await openW02(page);
   await devConsole(page, 'warp 20');
 
@@ -144,7 +91,7 @@ test('@hack 3 & 4. Build Metals Extractor on deposit and Solar -> Extractor prod
     task: { kind: 'build', building: 'metalsExtractor', q: 3, r: 0 },
   })).ok).toBe(true);
 
-  await expect.poll(async () => (await getColony0(page))?.power?.solarNetPerS ?? 0, { timeout: 20_000 }).toBe(20);
+  await expect.poll(async () => (await getColony0(page))?.power?.solarNetPerS ?? 0, { timeout: 20_000 }).toBe(13);
   await devConsole(page, 'warp 1');
   await screenshot(page, '4-extractor-and-solar-online');
   expectNoPageErrors(page);
@@ -157,8 +104,8 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   // Build Solar + Extractor so colony relies on Solar
   await sendSimCmd(page, 'enqueueTask', { taskId: 'b-sol', task: { kind: 'build', building: 'solar', q: -3, r: 2 } });
   await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext', task: { kind: 'build', building: 'metalsExtractor', q: 3, r: 0 } });
-  await expect.poll(async () => (await getColony0(page))?.power?.solarNetPerS ?? 0, { timeout: 20_000 }).toBe(20);
-  await expect.poll(async () => (await getColony0(page))?.power?.demand ?? 0, { timeout: 20_000 }).toBeGreaterThanOrEqual(11);
+  await expect.poll(async () => (await getColony0(page))?.power?.solarNetPerS ?? 0, { timeout: 20_000 }).toBe(13);
+  await expect.poll(async () => (await getColony0(page))?.power?.demand ?? 0, { timeout: 20_000 }).toBeGreaterThanOrEqual(15); // Hub 7 + Extractor 8
   await devConsole(page, 'warp 1');
 
   // Step 5: Lower Minerals to 5 (< 20) and queue a second Extractor on the uncovered metals deposit (6, 0) ((4, 0) is
@@ -184,13 +131,30 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   expect(afterWaitCancel['bio.water']).toBe(beforeWaitCancel['bio.water']);
   await devConsole(page, 'fill minerals.t1 250');
 
-  // Step 6: Run `time night` in dev console -> Solar drops to 0, brownout banner appears; `time day` restores
+  // Step 6: the Hub + Solar + Extractor colony runs +1 E/s at night (founder core 16 vs demand 15), so it needs a second
+  // Extractor (demand 23) to run short: `time night` -> Solar drops to 0 and the HQ cell covers the 7 E/s deficit
+  // (Stored draining, no brownout); with the cell empty (`cell 0`) the brownout banner appears and the shed group goes
+  // offline; `time day` restores.
+  await devConsole(page, 'warp 20');
+  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext-2', task: { kind: 'build', building: 'metalsExtractor', q: 5, r: -1 } })).ok).toBe(true);
+  await expect.poll(async () => (await getColony0(page))?.power?.demand ?? 0, { timeout: 20_000 }).toBeGreaterThanOrEqual(23); // + Extractor 8
+  await devConsole(page, 'warp 1');
+  await devConsole(page, 'cell 200'); // a full cell (the HQ spent some building): 200 E last ~28 s against 7 E/s
   await devConsole(page, 'time night');
+  await expect.poll(async () => (await getColony0(page))?.power?.phase ?? 'day').toBe('night');
+  await expect.poll(async () => (await getColony0(page))?.power?.hqCellDischargePerS ?? 0).toBe(7);
+  expect((await getColony0(page))?.power?.brownout).toBe(false);
+  const energy = page.locator('[data-testid="hud-hq-cell"]');
+  await energy.hover();
+  await expect(energy.locator('[data-testid="res-stored-energy"]')).toHaveText('Stored: −7 E/s (draining)');
+  await screenshot(page, '6-night-cell-draining');
+
+  await devConsole(page, 'cell 0');
   await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? false).toBe(true);
   const nightPower = (await getColony0(page))?.power;
   expect(nightPower?.solarNetPerS ?? 99).toBeGreaterThanOrEqual(-1); // Solar gives 0, minus its 1 E/s internal drain
   expect(nightPower?.solarNetPerS ?? 99).toBeLessThanOrEqual(0);
-  expect(Object.values(nightPower?.offlineReasons ?? {})).toContain('offline: brownout'); // the Extractor is shed
+  expect(Object.values(nightPower?.offlineReasons ?? {})).toContain('offline: brownout'); // an Extractor is shed
   await expect(page.locator('.ta-power-hud__brownout[data-brownout="true"]')).toBeVisible();
   await expect(page.locator('.ta-power-hud__brownout')).toContainText('BROWNOUT');
   await screenshot(page, '6-night-brownout');
@@ -222,7 +186,7 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
 
   // Step 8: Start a Solar order (paid progressively, slice by slice) and cancel it in progress -> 50% of what was paid
   // so far comes back. Read the paid Metals and the stock together right before the cancel; between that read and the
-  // cancel a slice more may be paid (~3 Metals/s) and the Extractor adds ~1 Metal/s, so allow ±3.
+  // cancel a slice more may be paid (~3 Metals/s) and the two Extractors add ~2 Metals/s, so allow ±3.
   await sendSimCmd(page, 'enqueueTask', { taskId: 'b-cancel-prog', task: { kind: 'build', building: 'solar', q: 5, r: -4 } }); // free ground (a Solar may not stand on a deposit)
   const paidOf = async () => {
     const col = await getColony0(page);
