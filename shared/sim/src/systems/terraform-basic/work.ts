@@ -13,6 +13,7 @@ import { approach, atGoal, setUnitActivity } from '../../units/approach';
 import { colonyWho } from '../find';
 import { faceTowards } from '../../units/movement/locomotion';
 import { defineUnitCommand, type TerraformCommand, type UnitCtx, type UnitWorkProvider } from '../../units/types';
+import { canDoWork } from '../dispatch/eligibility';
 import { stepTerraformWorkWithCell } from '../hq/cell';
 import { syncHqView } from '../hq/view';
 import { getTerraformOpSpec } from './ops';
@@ -257,8 +258,16 @@ function terraformProviderFor(id: string, lane: (o: TerraformOrder) => boolean):
   };
 }
 
-/** A Hub's linked site prep (asked before construction: a site is prepared before it is built on). */
-export const linkedPrepProvider = terraformProviderFor('terraformPrep', (o) => o.isLinkedPrep);
+const anyLinkedPrep = terraformProviderFor('terraformPrep', (o) => o.isLinkedPrep);
+
+/**
+ * A building's linked site prep (asked before construction: a site is prepared before it is built on). Only a
+ * terraform-capable builder takes it (the HQ in W02, `UO-D-03`); a Harvester never prepares a site.
+ */
+export const linkedPrepProvider: UnitWorkProvider = {
+  id: anyLinkedPrep.id,
+  propose: (u) => (canDoWork(u, 'linkedPrep') ? anyLinkedPrep.propose(u) : null),
+};
 
 /** The player's manual terraform orders (asked after construction, GP-04). */
 export const terraformProvider = terraformProviderFor('terraform', (o) => !o.isLinkedPrep);

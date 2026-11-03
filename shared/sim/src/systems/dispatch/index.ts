@@ -7,6 +7,9 @@ import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { assignHarvesterSubJob } from '../harvest';
 import { hasActiveWorkJobForWorker } from '../terraform-basic/workJobs';
+import { isWorkerEligibleForJob } from './eligibility';
+
+export { canDoWork, colonyHasEligibleWorker, isWorkerEligibleForJob, type WorkEligibilitySpec, type WorkKind } from './eligibility';
 
 export type DispatchPrecedence = 'system' | 'player' | 'auto';
 
@@ -60,23 +63,6 @@ function getDispatchMap(state: PlanetState): Record<number, WorkerDispatchRecord
 
 function saveDispatchMap(state: PlanetState, byWorker: Record<number, WorkerDispatchRecord>, tick: number): void {
   setBlob(state, 'dispatch', { byWorker }, tick);
-}
-
-/** Checks whether a worker entity (`ENTITY_KIND.hq` or `ENTITY_KIND.harvester`) is eligible for `job`. */
-export function isWorkerEligibleForJob(entityKind: number, workerTier: number, job: DispatchJobSpec): boolean {
-  if (entityKind === ENTITY_KIND.hq) {
-    const maxBuildTier = workerTier >= 1 ? workerTier : 1;
-    if (job.kind === 'build') return maxBuildTier >= (job.tier ?? 1);
-    return true; // HQ can run all terraform ops and linked prep in W02
-  }
-  if (entityKind === ENTITY_KIND.harvester) {
-    // Harvester has maxBuildTier = 0 and allowedTerraformOps = ['clear', 'break', 'work']
-    if (job.kind === 'build' || job.kind === 'linkedPrep') return false;
-    if (job.kind === 'terraform') {
-      return job.op === 'clear' || job.op === 'break' || job.op === 'work';
-    }
-  }
-  return false;
 }
 
 function determineWorkerPrecedence(

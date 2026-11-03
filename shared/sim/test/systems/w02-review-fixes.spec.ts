@@ -214,3 +214,37 @@ describe('buildingCompleted (W02 build path) matches the contract and the W01 sh
     expect(eventDef('buildingCompleted').data.safeParse(ev?.data).success).toBe(true);
   });
 });
+
+describe('unitProduced matches the contract and the player-event shape (round 2)', () => {
+  it('carries colonyIds [colony id string] and data.colonyId / playerId, like buildingCompleted', () => {
+    const { state, colony } = colonyPlanet('up-event', RICH);
+    colony.id = 'col-alpha';
+    (colony as { playerId?: string }).playerId = 'pl_1';
+    addActiveHub(state);
+    const res = enqueueQueueTask(state, { colonyIndex: 0, task: { kind: 'buildUnit', unit: 'harvester' } });
+    if (!res.ok) throw new Error(res.code);
+    const p = pipeline();
+    let ev: { colonyIds: unknown[]; data: unknown } | undefined;
+    for (let i = 0; i < 200 && !ev; i++) ev = step(state, [], 1, p).events.find((e) => e.kind === 'unitProduced');
+    expect(ev?.colonyIds).toEqual(['col-alpha']);
+    expect(ev?.data).toMatchObject({ colonyId: 'col-alpha', playerId: 'pl_1', unit: 'harvester' });
+    expect(eventDef('unitProduced').data.safeParse(ev?.data).success).toBe(true);
+  });
+});
+
+describe('enqueueTask authority (round 2): a player command never sets its cost or jumps the queue', () => {
+  const send = (state: PlanetState, source: 'player' | 'dev', args: Record<string, unknown>) =>
+    step(state, [{ commandId: `c-${source}-${String(args.taskId)}`, colonyIndex: 0, source, kind: 'enqueueTask', args }], 1, pipeline()).outcomes[0];
+
+  it('ignores a player costOverride and maps its precedence word to at most `player`; dev keeps both', () => {
+    const { state } = colonyPlanet('authority', RICH);
+    const build = (q: number) => ({ kind: 'build', building: 'solar', q, r: 0 });
+    expect(send(state, 'player', { taskId: 'p', costOverride: {}, precedence: 'autoSitePrep', task: build(2) })?.code).toBeUndefined();
+    expect(send(state, 'player', { taskId: 'p2', precedence: 'standing', task: build(5) })?.code).toBeUndefined();
+    expect(send(state, 'dev', { taskId: 'd', costOverride: {}, precedence: 'autoSitePrep', task: build(-4) })?.code).toBeUndefined();
+    const byId = Object.fromEntries(getColonyQueue(state, 0, 'construction').map((e) => [e.taskId, e]));
+    expect(byId.p).toMatchObject({ precedence: 'player', cost: { 'metals.t1': 60, 'minerals.t1': 75 } });
+    expect(byId.p2.precedence).toBe('auto');
+    expect(byId.d).toMatchObject({ precedence: 'system', cost: {} });
+  });
+});

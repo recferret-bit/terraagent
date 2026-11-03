@@ -52,6 +52,7 @@ export {
   constructionSystem,
   demolishBuilding,
   demolishHandler,
+  getBuildingJobs,
   getFootprintTileIndices,
   startBuildingConstruction,
   type BuildingJobRecord,

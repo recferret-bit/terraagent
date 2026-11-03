@@ -4,6 +4,7 @@ import {
   ENTITY_STATE,
   ensureColonyLedger,
   enqueueQueueTask,
+  getBuildingJobs,
   getColonyQueue,
   type ColonyWithLedger,
 } from '@terra/sim';
@@ -21,9 +22,29 @@ interface TestColonyPower {
   brownout?: boolean;
 }
 
-function getCol(host: ReturnType<typeof createScenarioPlanet>['host']): ColonyWithLedger & { power?: TestColonyPower } {
+type Host = ReturnType<typeof createScenarioPlanet>['host'];
+
+function getCol(host: Host): ColonyWithLedger & { power?: TestColonyPower } {
   return ensureColonyLedger(host.state.colonies[0]) as ColonyWithLedger & { power?: TestColonyPower };
 }
+
+/**
+ * Steps until `done()` (at most `max` ticks) and returns the ticks it took. W02 builds take as long as the HQ needs to
+ * walk to each site, grade its footprint (linked prep) and build it, one site after the other (W02-16).
+ */
+function stepUntil(host: Host, done: () => boolean, max: number): number {
+  let n = 0;
+  for (; n < max && !done(); n++) host.step(1);
+  expect(done()).toBe(true);
+  return n;
+}
+
+/** A building of `kind` stands finished (active, or shed / capped by the power and storage rules). */
+const isBuilt = (host: Host, kind: number): boolean => {
+  const cols = host.state.entities.cols;
+  for (let r = 0; r < host.state.entities.count; r++) if (cols.kind[r] === kind && cols.state[r] !== ENTITY_STATE.constructing) return true;
+  return false;
+};
 
 describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', () => {
   it('loads w02 / w02-first-light with Hub done, morning 06:00, stock 400/250/150/150, +8 supply / -5 demand', () => {
@@ -81,7 +102,6 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
       kind: 'enqueueTask',
       args: { taskId: 'b-ext-1', task: { kind: 'build', building: 'metalsExtractor', q: 3, r: 0 } },
     });
-    host.step(50);
     host.submit({
       colonyIndex: 0,
       source: 'player',
@@ -89,7 +109,16 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
       kind: 'enqueueTask',
       args: { taskId: 'b-sol-1', task: { kind: 'build', building: 'solar', q: -3, r: 2 } },
     });
-    host.step(65);
+    host.step(1);
+    // One HQ builds them one after the other: the Solar waits for it while it preps and builds the Extractor
+    expect(getColonyQueue(host.state, 0, 'construction').map((e) => [e.taskId, e.state, e.waitReason])).toEqual([
+      ['b-ext-1', 'in_progress', 'site'],
+      ['b-sol-1', 'waiting', 'worker'],
+    ]);
+    stepUntil(host, () => isBuilt(host, ENTITY_KIND.metalsExtractor), 300);
+    expect(isBuilt(host, ENTITY_KIND.solar)).toBe(false);
+    stepUntil(host, () => isBuilt(host, ENTITY_KIND.solar), 300);
+    host.step(1);
     expect(col.power?.solarNetPerS).toBe(20);
 
     // Step 5: Queue a second Extractor when Minerals are set to 5 -> waiting: Minerals 5/20 · ~30 s
@@ -120,7 +149,6 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
       kind: 'enqueueTask',
       args: { taskId: 'b-sol', task: { kind: 'build', building: 'solar', q: -3, r: 2 } },
     });
-    host.step(65);
     host.submit({
       colonyIndex: 0,
       source: 'player',
@@ -128,7 +156,8 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
       kind: 'enqueueTask',
       args: { taskId: 'b-ext', task: { kind: 'build', building: 'metalsExtractor', q: 3, r: 0 } },
     });
-    host.step(55);
+    stepUntil(host, () => isBuilt(host, ENTITY_KIND.solar) && isBuilt(host, ENTITY_KIND.metalsExtractor), 600);
+    host.step(1);
 
     // Step 6: Run dev.time night -> Solar drops to 0, demand exceeds supply, Extractor shed (offlineBrownout)
     host.submit({ colonyIndex: 0, source: 'dev', commandId: 'c-night', kind: 'dev.time', args: { target: 'night' } });
@@ -177,11 +206,17 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
       kind: 'enqueueTask',
       args: { taskId: 'in-prog-solar', task: { kind: 'build', building: 'solar', q: 5, r: -4 } /* off the deposits: no building stands on one (D-37) */ },
     });
-    host.step(30); // 30 ticks = 50% progress -> 30 Metals spent
-    expect(getColonyQueue(host.state, 0, 'construction').find((e) => e.taskId === 'in-prog-solar')?.state).toBe('in_progress');
-    const afterStartMetals = col.stock['metals.t1'];
+    // The HQ walks there, grades the footprint and builds: run until it has paid 30 Metals (half the Solar)
+    const inProg = () => getColonyQueue(host.state, 0, 'construction').find((e) => e.taskId === 'in-prog-solar');
+    stepUntil(host, () => (inProg()?.spentCost?.['metals.t1'] ?? 0) >= 30, 400);
+    expect(inProg()?.state).toBe('in_progress');
+    const paid = getBuildingJobs(host.state)[inProg()?.entityId ?? -1]?.spentCost ?? {}; // paid so far (the job's own record)
+    const before = { ...col.stock };
     host.submit({ colonyIndex: 0, source: 'player', commandId: 'c-can-p', kind: 'cancelTask', args: { taskId: 'in-prog-solar' } });
     host.step(1);
-    expect(col.stock['metals.t1']).toBeGreaterThanOrEqual(afterStartMetals + 15); // 50% of 30 spent Metals = 15
+    // 50 % of what was paid comes back (Minerals: no income here; Metals also gets the Extractor's output)
+    expect(paid['minerals.t1'] ?? 0).toBeGreaterThan(30);
+    expect(col.stock['minerals.t1']).toBeCloseTo(before['minerals.t1'] + (paid['minerals.t1'] ?? 0) * 0.5, 4);
+    expect(col.stock['metals.t1']).toBeGreaterThanOrEqual(before['metals.t1'] + (paid['metals.t1'] ?? 0) * 0.5);
   });
 });

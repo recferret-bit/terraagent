@@ -5,7 +5,8 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { cancelConstructionOrder } from '../construction';
 import { cancelBuildingConstruction, type BuildingJobRecord } from '../economy/construction';
-import { ensureColonyLedger, refundCost } from '../economy/ledger';
+import { ensureColony } from '../economy/buildingRows';
+import { refundCost } from '../economy/ledger';
 import { cancelHubUnit, getHubUnitQueue } from '../factories-hub';
 import { cancelHarvesterTask } from '../harvest';
 import { cancelWorkJobs, hasWorkJob } from '../terraform-basic/dismantleAndWork';
@@ -16,14 +17,7 @@ import type { QueueEntry } from './types';
 /** Share of an in-progress entry's paid cost a cancel returns (`CANCEL_REFUND_RATE`, owner 2026-11-02). */
 export const CANCEL_IN_PROGRESS_REFUND_RATIO = CANCEL_REFUND_RATE;
 
-export function ensureColony(state: PlanetState, colonyIndex: number, tick: number): ColonyState {
-  let col = state.colonies[colonyIndex];
-  if (!col) {
-    col = { index: colonyIndex, id: `col-${colonyIndex}`, name: `Colony ${colonyIndex + 1}`, color: 0xff6b00, status: 'active', changedAt: tick };
-    state.colonies[colonyIndex] = col;
-  }
-  return ensureColonyLedger(col);
-}
+export { ensureColony };
 
 export function refundEntrySpent(
   state: PlanetState,
@@ -107,6 +101,16 @@ export function cancelAllColonyTasks(
 }
 
 /**
+ * Cancels the build a linked prep order belongs to: a W01 construction order (its order id), or a W02 building job
+ * (`building:<entityId>`, refund rules of `cancelBuildingConstruction`; its queue entry ends with it).
+ */
+function cancelLinkedBuild(state: PlanetState, colonyIndex: number, linkedOrderId: string, tick: number, data?: CompiledDataLike): void {
+  if (cancelConstructionOrder(state, colonyIndex, linkedOrderId, tick, data)) return;
+  const entityId = linkedOrderId.startsWith('building:') ? Number(linkedOrderId.slice('building:'.length)) : NaN;
+  if (Number.isInteger(entityId)) cancelBuildingConstruction(state, entityId, colonyIndex, tick, data);
+}
+
+/**
  * Ends the terraform order unit `entityId` is working on (current or shift-queued `terraform` commands), so the work
  * provider does not hand the same tile straight back. A Hub's linked prep is ended by cancelling its construction order.
  */
@@ -118,7 +122,7 @@ function cancelUnitTerraformOrders(state: PlanetState, entityId: number, colonyI
     const order = findTerraformOrder(state, colonyIndex, c.orderId);
     if (!order) continue;
     if (order.isLinkedPrep) {
-      if (order.linkedOrderId !== undefined) cancelConstructionOrder(state, colonyIndex, order.linkedOrderId, tick, data);
+      if (order.linkedOrderId !== undefined) cancelLinkedBuild(state, colonyIndex, order.linkedOrderId, tick, data);
     } else {
       cancelTerraformOrder(state, colonyIndex, order.orderId, tick, data);
     }

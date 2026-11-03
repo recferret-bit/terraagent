@@ -1,5 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
-import { CANCEL_REFUND_RATE, compileData, dataRow, type CompiledRow } from '../../data';
+import { CANCEL_REFUND_RATE, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, removeRow, rowOf, setField } from '../../ecs/store';
@@ -9,44 +9,20 @@ import { bumpPathEpoch, setTilePrep } from '../../grid/tileModel';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
-import { setBlob, touchTile, type ColonyState, type PlanetState } from '../../kernel/state';
+import { touchTile, type ColonyState, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { requestMove } from '../../units/movement/orchestrator';
 import { buildingFootprints } from '../construction/occupancy';
-import { constructionOrdersOf } from '../construction/orders';
-import { colonyWho } from '../find';
-import {
-  checkCostAffordability,
-  debitCost,
-  ensureColonyLedger,
-  maxAffordableProgress,
-  payProgressiveSlice,
-  recomputeFamilyCaps,
-  refundCost,
-} from './ledger';
+import { resolvePlacementRule } from '../construction/placement';
+import { buildLinkedPrepJobs } from '../construction/prep';
+import { enqueueTerraformOrder, removeTerraformOrder } from '../terraform-basic/queue';
+import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
+import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
+import { checkCostAffordability, debitCost, recomputeFamilyCaps, refundCost } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
 import { claimTerritoryRadius } from '../territory-claim';
 
-export interface BuildingJobRecord {
-  entityId: number;
-  building: string;
-  owner: number;
-  q: number;
-  r: number;
-  rot: number;
-  footprintW: number;
-  footprintD: number;
-  buildTicks: number;
-  elapsedWeightedTicks: number;
-  workRate: number;
-  workerEntityId?: number;
-  cost: Partial<Record<ResourceKey, number>>;
-  totalCost?: Partial<Record<ResourceKey, number>>;
-  spentCost?: Partial<Record<ResourceKey, number>>;
-  status?: 'in_progress' | 'waiting';
-  waitReason?: string;
-  paid: boolean;
-}
+export { buildingKindName, getBuildingJobs, getFootprintTileIndices, resolveBuildingRow, type BuildingJobRecord };
 
 export interface StartConstructionOptions {
   owner: number;
@@ -60,81 +36,6 @@ export interface StartConstructionOptions {
   tick?: number;
   data?: CompiledDataLike;
   costOverride?: Partial<Record<ResourceKey, number>>;
-}
-
-let cachedData: CompiledDataLike | null = null;
-function defaultData(): CompiledDataLike {
-  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02']));
-  return cachedData;
-}
-
-export function resolveBuildingRow(building: string, data?: CompiledDataLike): { row: CompiledRow; entityKind: number } | null {
-  const d = data?.tables?.economyT1Basic ? data : defaultData();
-  if (building === 'commandHub' || building === 'hub' || building === 't1') {
-    return { row: dataRow(d, 'hub', 't1'), entityKind: ENTITY_KIND.commandHub };
-  }
-  if (building === 'metalsExtractor' || building === 'extractor') {
-    return { row: dataRow(d, 'economyT1Basic', 'metalsExtractor'), entityKind: ENTITY_KIND.metalsExtractor };
-  }
-  if (building === 'solar' || building === 'solarCollector') {
-    return { row: dataRow(d, 'economyT1Basic', 'solar'), entityKind: ENTITY_KIND.solar };
-  }
-  return null;
-}
-
-export function buildingKindName(entityKind: number): string {
-  if (entityKind === ENTITY_KIND.commandHub) return 'commandHub';
-  if (entityKind === ENTITY_KIND.metalsExtractor) return 'metalsExtractor';
-  if (entityKind === ENTITY_KIND.solar) return 'solar';
-  return 'building';
-}
-
-export function getFootprintTileIndices(
-  state: PlanetState,
-  q: number,
-  r: number,
-  w: number,
-  d: number,
-  rot = 0,
-): { valid: boolean; indices: number[]; coords: Array<{ q: number; r: number }> } {
-  const swap = rot % 2 !== 0;
-  const fw = Math.max(1, swap ? d : w);
-  const fd = Math.max(1, swap ? w : d);
-  const minQ = -Math.floor((fw - 1) / 2);
-  const minR = -Math.floor((fd - 1) / 2);
-  const idx = hexIndex(state.grid.radius);
-  const indices: number[] = [];
-  const coords: Array<{ q: number; r: number }> = [];
-
-  for (let dr = 0; dr < fd; dr++) {
-    for (let dq = 0; dq < fw; dq++) {
-      const tq = q + minQ + dq;
-      const tr = r + minR + dr;
-      const tileIdx = idx.indexOf(tq, tr);
-      if (tileIdx < 0) return { valid: false, indices: [], coords: [] };
-      indices.push(tileIdx);
-      coords.push({ q: tq, r: tr });
-    }
-  }
-  return { valid: true, indices, coords };
-}
-
-function ensureColony(state: PlanetState, owner: number, tick: number): ColonyState {
-  let col = state.colonies[owner];
-  if (!col) {
-    col = { index: owner, id: `col-${owner}`, name: `Colony ${owner + 1}`, color: 0xff6b00, status: 'active', changedAt: tick };
-    state.colonies[owner] = col;
-  }
-  return ensureColonyLedger(col);
-}
-
-function getJobsMap(state: PlanetState): Record<number, BuildingJobRecord> {
-  const raw = (state.blobs.construction?.value as { jobs?: Record<number, BuildingJobRecord> } | undefined)?.jobs;
-  return raw ? { ...raw } : {};
-}
-
-function saveJobsMap(state: PlanetState, jobs: Record<number, BuildingJobRecord>, tick: number): void {
-  setBlob(state, 'construction', { jobs }, tick);
 }
 
 function resolveBuilderWorkRate(state: PlanetState, owner: number, workerEntityId?: number, explicitRate?: number): { ok: true; workRate: number } | { ok: false; code: string } {
@@ -246,7 +147,53 @@ function validateFootprintAndCost(
   return { ok: true };
 }
 
-/** Validates and starts (or completes if `instant`) a T1 building construction, preparing footprint tiles and debiting cost. */
+/** The building's entity, `constructing` (or `active` when `instant`) with the row's stats. */
+function spawnBuildingRow(state: PlanetState, entityId: number, entityKind: number, row: CompiledRow, opts: StartConstructionOptions, tick: number): void {
+  const eRow = insertRow(state.entities, entityId, tick);
+  bumpPathEpoch(state.meta);
+  const cols = state.entities.cols;
+  cols.kind[eRow] = entityKind;
+  cols.owner[eRow] = opts.owner;
+  cols.tier[eRow] = Number(row.tier ?? 1);
+  placeSpawnedEntity(state.entities, eRow, opts.q, opts.r, tick);
+  cols.rot[eRow] = opts.rot ?? 0;
+  cols.footprintW[eRow] = Number(row.footprintW ?? row.footprint ?? 2);
+  cols.footprintD[eRow] = Number(row.footprintD ?? row.footprint ?? 2);
+  cols.shedGroup[eRow] = Number(row.shedGroup ?? 4);
+  cols.hp[eRow] = Math.fround(Number(row.hp ?? 500));
+  cols.hpMax[eRow] = Math.fround(Number(row.hp ?? 500));
+  cols.state[eRow] = opts.instant ? ENTITY_STATE.active : ENTITY_STATE.constructing;
+  cols.progress[eRow] = opts.instant ? 1 : 0;
+  cols.createdAt[eRow] = tick;
+  cols.changedAt[eRow] = tick;
+}
+
+/**
+ * The linked site prep of a new building job (`UO-TF-03`, the W01 mechanism): one Grade order over the footprint tiles
+ * that are not prepared yet, worked by a terraform-capable builder before it builds. Returns its order id, if any.
+ */
+function enqueueLinkedPrep(state: PlanetState, entityId: number, building: string, coords: ReadonlyArray<{ q: number; r: number }>, owner: number, tick: number, data?: CompiledDataLike): string | undefined {
+  const jobs = buildLinkedPrepJobs(state, coords, data);
+  if (jobs.length === 0) return undefined;
+  const res = enqueueTerraformOrder(state, {
+    colonyId: owner,
+    jobs,
+    orderId: `${buildJobKey(entityId)}/prep`,
+    linkedOrderId: `building:${entityId}`, // `cancelTask` of the prep cancels the building (queue path)
+    linkedBuildingEntityId: entityId,
+    isLinkedPrep: true,
+    allowUnclaimed: resolvePlacementRule(building, data)?.allowUnclaimed ?? true,
+    tick,
+    data,
+  });
+  return res.order?.orderId;
+}
+
+/**
+ * Validates and starts (or completes if `instant`) a T1 building construction. An `instant` building (scenario setup)
+ * has its footprint prepared and its cost debited at once. Otherwise it is a building job (`./buildJob.ts`): the
+ * footprint gets linked prep, and a builder on site builds it and pays it progressively.
+ */
 export function startBuildingConstruction(
   state: PlanetState,
   opts: StartConstructionOptions,
@@ -273,50 +220,46 @@ export function startBuildingConstruction(
   const check = validateFootprintAndCost(state, colony, row, opts.q, opts.r, fp.indices, cost, workerCheck.workRate, buildTicks, Boolean(opts.instant), tick, data);
   if (!check.ok) return check;
 
-  for (const tileIdx of fp.indices) {
-    if (state.grid.layers.height && Math.abs(state.grid.layers.height[tileIdx]) > 0.15) {
-      state.grid.layers.height[tileIdx] = 0.08;
-    }
-    setTilePrep(state, tileIdx, PREP.prepared, tick);
-    touchTile(state, tileIdx, tick);
-  }
-
   const entityId = ctx ? ctx.newEntityId() : state.meta.nextEntityId++;
-  const eRow = insertRow(state.entities, entityId, tick);
-  bumpPathEpoch(state.meta);
-  const cols = state.entities.cols;
-  cols.kind[eRow] = entityKind;
-  cols.owner[eRow] = opts.owner;
-  cols.tier[eRow] = Number(row.tier ?? 1);
-  placeSpawnedEntity(state.entities, eRow, opts.q, opts.r, tick);
-  cols.rot[eRow] = opts.rot ?? 0;
-  cols.footprintW[eRow] = w;
-  cols.footprintD[eRow] = d;
-  cols.shedGroup[eRow] = Number(row.shedGroup ?? 4);
-  cols.hp[eRow] = Math.fround(Number(row.hp ?? 500));
-  cols.hpMax[eRow] = Math.fround(Number(row.hp ?? 500));
-  cols.state[eRow] = opts.instant ? ENTITY_STATE.active : ENTITY_STATE.constructing;
-  cols.progress[eRow] = opts.instant ? 1 : 0;
-  cols.createdAt[eRow] = tick;
-  cols.changedAt[eRow] = tick;
+  if (opts.instant) {
+    for (const tileIdx of fp.indices) {
+      if (state.grid.layers.height && Math.abs(state.grid.layers.height[tileIdx]) > 0.15) state.grid.layers.height[tileIdx] = 0.08;
+      setTilePrep(state, tileIdx, PREP.prepared, tick);
+      touchTile(state, tileIdx, tick);
+    }
+  }
+  spawnBuildingRow(state, entityId, entityKind, row, opts, tick);
   evacuateUnitsFromFootprint(state, fp.indices, tick, data, ctx);
 
   if (!opts.instant) {
-    const jobs = getJobsMap(state);
+    const building = String(row.building ?? opts.building);
+    const prepOrderId = enqueueLinkedPrep(state, entityId, building, fp.coords, opts.owner, tick, data);
+    const jobs = getBuildingJobs(state);
     jobs[entityId] = {
-      entityId, building: String(row.building ?? opts.building), owner: opts.owner,
+      entityId, building, owner: opts.owner,
       q: opts.q, r: opts.r, rot: opts.rot ?? 0, footprintW: w, footprintD: d,
       buildTicks, elapsedWeightedTicks: 0, workRate: workerCheck.workRate,
       workerEntityId: opts.workerEntityId,
-      cost: { ...cost }, totalCost: { ...cost }, spentCost: {}, status: 'in_progress', paid: false,
+      cost: { ...cost }, totalCost: { ...cost }, spentCost: {}, paid: false,
+      status: 'waiting', waitReason: prepOrderId ? 'site' : 'worker',
+      ...(prepOrderId ? { prepOrderId } : {}),
     };
-    saveJobsMap(state, jobs, tick);
+    saveBuildingJobs(state, jobs, tick);
   } else if (entityKind === ENTITY_KIND.commandHub) {
     claimHubTerritory(state, opts.owner, opts.q, opts.r, Number(row.claimRadius ?? 10), tick);
     recomputeFamilyCaps(colony, true, 0, tick);
   }
 
   return { ok: true, entityId, buildTicks, effectiveTicks };
+}
+
+/** Ends the job of building `entityId` (cancel, demolish) with its linked prep order, if any. */
+function dropJob(state: PlanetState, jobs: Record<number, BuildingJobRecord>, entityId: number, owner: number, tick: number, data?: CompiledDataLike): void {
+  const job = jobs[entityId];
+  if (!job) return;
+  if (job.prepOrderId) removeTerraformOrder(state, owner, job.prepOrderId, tick, data);
+  delete jobs[entityId];
+  saveBuildingJobs(state, jobs, tick);
 }
 
 function removeBuildingAndClearFootprint(
@@ -350,7 +293,7 @@ export function cancelBuildingConstruction(
   data?: CompiledDataLike,
 ): { ok: true; refunded: boolean; refundedAmounts: Partial<Record<ResourceKey, number>> } | { ok: false; code: string } {
   const eRow = rowOf(state.entities, entityId);
-  const jobs = getJobsMap(state);
+  const jobs = getBuildingJobs(state);
   const job = jobs[entityId];
   if (eRow < 0 && !job) return { ok: false, code: 'unknown_entity' };
   const owner = eRow >= 0 ? state.entities.cols.owner[eRow] : job!.owner;
@@ -367,7 +310,7 @@ export function cancelBuildingConstruction(
     if (v > 0) { refundedAmounts[k] = v * ratio; refunded = true; }
   }
   if (refunded) refundCost(colony, spent, ratio, tick);
-  if (jobs[entityId]) { delete jobs[entityId]; saveJobsMap(state, jobs, tick); }
+  dropJob(state, jobs, entityId, owner, tick, data);
   return { ok: true, refunded, refundedAmounts };
 }
 
@@ -387,7 +330,7 @@ export function demolishBuilding(
   const resolved = resolveBuildingRow(buildingKindName(cols.kind[eRow]), data);
   if (!resolved) return { ok: false, code: 'invalid_args' };
 
-  const jobs = getJobsMap(state);
+  const jobs = getBuildingJobs(state);
   const job = jobs[entityId];
   const ratio = Number(resolved.row.demolishRefundRatio ?? 0.5);
   const cost =
@@ -401,7 +344,7 @@ export function demolishBuilding(
     if (v > 0) refunded[k] = v * ratio;
   }
   removeBuildingAndClearFootprint(state, entityId, eRow, tick, data, job);
-  if (jobs[entityId]) { delete jobs[entityId]; saveJobsMap(state, jobs, tick); }
+  dropJob(state, jobs, entityId, owner, tick, data);
   return { ok: true, refunded };
 }
 
@@ -416,73 +359,15 @@ export const demolishHandler = defineCommandHandler({
   },
 });
 
+/**
+ * Site bookkeeping of the W02 building jobs (construction slot 6, after `constructionProgress`, where builders on site
+ * advance them through the `build` unit command): prepared footprint tiles and why a job waits. Nothing builds here.
+ */
 export const constructionSystem = defineSystem({
   id: 'economy.construction',
   slot: 6,
   wave: 'W02',
   run(state, ctx) {
-    const jobs = getJobsMap(state);
-    const w01EntityIds = new Set(constructionOrdersOf(state.blobs.constructionQueue?.value).map((o) => o.entityId));
-    const e = state.entities, cols = e.cols;
-    let jobsChanged = false;
-
-    for (let row = 0; row < e.count; row++) {
-      if (cols.state[row] !== ENTITY_STATE.constructing || cols.hp[row] <= 0) continue;
-      const id = cols.id[row];
-      if (w01EntityIds.has(id)) continue;
-      const bName = buildingKindName(cols.kind[row]);
-      const resolved = resolveBuildingRow(bName, ctx.data);
-      const buildTicks = jobs[id]?.buildTicks ?? Math.max(1, Number(resolved?.row.buildS ?? 50));
-      const workRate = jobs[id]?.workRate ?? 1.5;
-
-      const prevWeighted = jobs[id]?.elapsedWeightedTicks ?? cols.progress[row] * buildTicks;
-      const nextWeighted = prevWeighted + ctx.dt * workRate;
-      const progress = Math.min(1, nextWeighted / buildTicks);
-      const owner = cols.owner[row];
-      const colony = ensureColony(state, owner, ctx.tick);
-
-      const job = jobs[id];
-      const totalCost = job?.totalCost ?? job?.cost ?? {};
-      const spentCost = { ...(job?.spentCost ?? {}) };
-      const isLegacyPaidUpfront = Boolean(job?.paid && !job?.spentCost);
-      if (!isLegacyPaidUpfront && Object.keys(totalCost).length > 0) {
-        const pay = payProgressiveSlice(colony, totalCost, spentCost, progress, ctx.tick);
-        if (!pay.ok) {
-          const prevProg = prevWeighted / buildTicks;
-          const capProg = maxAffordableProgress(colony, totalCost, spentCost, progress);
-          if (capProg > prevProg + 1e-6) {
-            payProgressiveSlice(colony, totalCost, spentCost, capProg, ctx.tick);
-            setField(e, row, 'progress', Math.fround(capProg), ctx.tick);
-            if (job) {
-              jobs[id] = { ...job, elapsedWeightedTicks: capProg * buildTicks, spentCost, paid: true, status: 'waiting', waitReason: 'resources' };
-              jobsChanged = true;
-            }
-          } else if (job) {
-            jobs[id] = { ...job, status: 'waiting', waitReason: 'resources' };
-            jobsChanged = true;
-          }
-          continue;
-        }
-      }
-
-      setField(e, row, 'progress', Math.fround(progress), ctx.tick);
-
-      if (progress >= 1 - 1e-6) {
-        setField(e, row, 'progress', 1, ctx.tick);
-        setField(e, row, 'state', ENTITY_STATE.active, ctx.tick);
-        if (cols.kind[row] === ENTITY_KIND.commandHub) {
-          claimHubTerritory(state, owner, cols.q[row], cols.r[row], Number(resolved?.row.claimRadius ?? 10), ctx.tick);
-          recomputeFamilyCaps(colony, true, 0, ctx.tick);
-        }
-        const { colonyIdStr, who } = colonyWho(state, owner); // the W01 event shape (contract `buildingCompleted`)
-        ctx.emit({ kind: 'buildingCompleted', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, entityId: id, building: bName, kind: bName, tier: cols.tier[row] || 1, q: cols.q[row], r: cols.r[row] } });
-        if (jobs[id]) { delete jobs[id]; jobsChanged = true; }
-      } else if (jobs[id]) {
-        const hasSpent = Object.values(spentCost).some((v) => (v ?? 0) > 0);
-        jobs[id] = { ...jobs[id], elapsedWeightedTicks: nextWeighted, spentCost, paid: jobs[id].paid || hasSpent, status: 'in_progress', waitReason: undefined };
-        jobsChanged = true;
-      }
-    }
-    if (jobsChanged) saveJobsMap(state, jobs, ctx.tick);
+    stepBuildingSites(state, ctx);
   },
 });

@@ -21,6 +21,9 @@ import {
 test.describe.configure({ mode: 'serial' });
 
 const local = hostMode() === 'local';
+// The whole story is the online flow (guest login, server planet, splash hand-over, app restart): there is no browser
+// local-host variant, so `--host local` skips the suite (beforeAll does not run either) instead of failing step 1.
+test.skip(local, 'W01 has no local-host variant: it needs the app (server host)');
 /** Entity view layout and codes, passed into `page.evaluate` (it cannot import): one source with the client (XC-06). */
 const VIEW = { E, S: ENTITY_STRIDE, K: { hq: ENTITY_KIND.hq, hub: ENTITY_KIND.hub }, ST: { active: ENTITY_STATE.active } };
 const serverOnly = () => test.skip(local, 'needs the app (server host)');

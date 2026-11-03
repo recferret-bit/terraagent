@@ -8,6 +8,7 @@ export const event = defineEvent({
   audience: 'player',
   data: z.strictObject({
     colonyId: z.string().optional(),
+    playerId: z.string().optional(),
     entityId: z.number().int(),
     unit: z.string(),
     producerId: z.number().int().optional(),

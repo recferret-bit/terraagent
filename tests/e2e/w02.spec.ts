@@ -204,13 +204,19 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   if (!local) {
     // An order costing more than the Metals cap waits on storage with the greyed Supply Depot hint. `tune` is a server
     // dev command; single quotes keep the JSON's double quotes through the console tokenizer.
+    // The page keeps predicting with the old cost (the replica reloads tuned numbers only on a reload), so the
+    // order may show `in_progress` until the ack: poll the server's verdict. `tune reset` runs even when a step fails,
+    // so a 600-Metal Solar never leaks into the next steps.
     await devConsole(page, `tune economyT1Basic.solar.cost '{"metals.t1":600,"minerals.t1":75,"bio.biomass":10,"bio.water":5}'`);
-    await sendSimCmd(page, 'enqueueTask', { taskId: 'b-storage', task: { kind: 'build', building: 'solar', q: 5, r: -4 } });
-    await expect.poll(async () => ((await getColony0(page))?.queue ?? []).find((e) => e.taskId === 'b-storage')?.waitReason ?? '', { timeout: 15_000 }).toBe('storage');
-    await expect(page.locator('[data-task-id="b-storage"] [data-testid="queue-storage-hint"]')).toContainText('Supply Depot');
-    await screenshot(page, '7-waiting-storage');
-    expect((await sendSimCmd(page, 'cancelTask', { taskId: 'b-storage' })).ok).toBe(true);
-    await devConsole(page, 'tune reset');
+    try {
+      await sendSimCmd(page, 'enqueueTask', { taskId: 'b-storage', task: { kind: 'build', building: 'solar', q: 5, r: -4 } });
+      await expect.poll(async () => ((await getColony0(page))?.queue ?? []).find((e) => e.taskId === 'b-storage')?.waitReason ?? '', { timeout: 15_000 }).toBe('storage');
+      await expect(page.locator('[data-task-id="b-storage"] [data-testid="queue-storage-hint"]')).toContainText('Supply Depot');
+      await screenshot(page, '7-waiting-storage');
+      expect((await sendSimCmd(page, 'cancelTask', { taskId: 'b-storage' })).ok).toBe(true);
+    } finally {
+      await devConsole(page, 'tune reset');
+    }
   }
 
   // Step 8: Start a Solar order (paid progressively, slice by slice) and cancel it in progress -> 50% of what was paid

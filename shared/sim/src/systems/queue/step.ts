@@ -2,9 +2,10 @@ import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
-import type { BuildingJobRecord } from '../economy/construction';
+import { colonyHasEligibleWorker } from '../dispatch/eligibility';
+import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
-import { spawnHarvesterAtHubEdge } from '../factories-hub';
+import { produceHarvesterAtHubEdge } from '../factories-hub';
 import { ensureColony } from './cancel';
 import type { QueueEntry } from './types';
 import { computeResourceWaitState } from './wait';
@@ -17,7 +18,14 @@ export function markWaiting(entry: QueueEntry, reason: QueueEntry['waitReason'],
   entry.waitDetail = detail;
 }
 
-/** A build entry follows its building's construction job (`economy.construction` pays and advances it). */
+/** What an in-progress build entry shows while its job does not advance (`../economy/buildJob.ts`). */
+const BUILD_WAIT_DETAIL: Readonly<Record<BuildJobWait, (state: PlanetState, job: BuildingJobRecord) => string>> = {
+  site: (_s, job) => `waiting: site (prep ${job.preparedCount ?? 0}/${job.totalTiles ?? 0})`,
+  resources: () => 'waiting: resources',
+  worker: (s, job) => (colonyHasEligibleWorker(s, job.owner, { kind: 'build' }) ? 'waiting: worker (HQ en route)' : 'waiting: worker (no builder)'),
+};
+
+/** A build entry follows its building's job (a builder on site advances and pays it, W02-16). */
 function followBuildEntry(state: PlanetState, entry: QueueEntry & { entityId: number }): void {
   const eRow = rowOf(state.entities, entry.entityId);
   const jobs = (state.blobs.construction?.value as { jobs?: Record<number, BuildingJobRecord> } | undefined)?.jobs ?? {};
@@ -34,8 +42,9 @@ function followBuildEntry(state: PlanetState, entry: QueueEntry & { entityId: nu
     return;
   }
   entry.progress = state.entities.cols.progress[eRow];
-  entry.waitReason = job?.status === 'waiting' ? 'resources' : undefined;
-  entry.waitDetail = job?.status === 'waiting' ? 'waiting: resources' : undefined;
+  const wait = job?.status === 'waiting' ? (job.waitReason ?? 'resources') : undefined;
+  entry.waitReason = wait;
+  entry.waitDetail = wait && job ? BUILD_WAIT_DETAIL[wait](state, job) : undefined;
 }
 
 /**
@@ -43,8 +52,7 @@ function followBuildEntry(state: PlanetState, entry: QueueEntry & { entityId: nu
  * (paid progressively again; `queued`, so the scan re-checks supply and resources first), else it is `done`.
  */
 function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
-  const spawned = spawnHarvesterAtHubEdge(state, colIdx, ctx.tick, ctx.data, ctx);
-  ctx.emit({ kind: 'unitProduced', colonyIds: [colIdx], data: { entityId: spawned.entityId, unit: 'harvester', q: spawned.q, r: spawned.r } });
+  produceHarvesterAtHubEdge(state, colIdx, ctx);
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
   const count = Math.max(1, Math.floor(task?.count ?? 1));
   const left = (entry.remainingCount ?? count) - 1;

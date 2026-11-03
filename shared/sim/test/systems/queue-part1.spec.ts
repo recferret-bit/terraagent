@@ -11,6 +11,7 @@ import {
   reorderQueueTask,
   step,
 } from '../../src';
+import { readyBuilder } from '../helpers/builder';
 
 describe('W02-13 Queue v1 part 1 — Construction and Units lanes, progressive payment, cancel refunds, reorderTask', () => {
   it('cancel a waiting entry -> 100 % stock unchanged; cancel an in_progress entry -> 50 % of spentCost refunded', () => {
@@ -24,6 +25,7 @@ describe('W02-13 Queue v1 part 1 — Construction and Units lanes, progressive p
       changedAt: 0,
     });
     state.colonies.push(colony);
+    readyBuilder(state, [{ q: 2, r: 1 }]); // the HQ in build reach of a prepared site: it builds from the first step (W02-16)
 
     // Seed colony with enough for 1 Solar (60/75/10/5), not enough for a second Solar
     creditResource(colony, 'metals.t1', 100, 0);

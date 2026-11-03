@@ -47,6 +47,9 @@ describe('W02-09 Generic T1 construction & demolish refund', () => {
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
+    // A prepared site (no linked prep) with the HQ already in build reach [2, 3]: it builds from the first step (W02-16)
+    for (const i of getFootprintTileIndices(state, 2, 1, 2, 2).indices) setTilePrep(state.grid, i, PREP.prepared);
+
     // Start building Solar T1 (2x2) at (2, 1): designBuildS = 18s (90 ticks) -> 12s (60 ticks) at HQ 1.5x
     const started = startBuildingConstruction(state, {
       owner: 0,

@@ -4,25 +4,68 @@ import { approach, atGoal, setUnitActivity } from '../../units/approach';
 import { faceTowards } from '../../units/movement/locomotion';
 import { defineUnitCommand, type BuildCommand, type UnitCtx, type UnitWorkProvider } from '../../units/types';
 import { syncHqView } from '../hq/view';
-import { advanceConstructionProgress } from './build';
+import { advanceBuildingJob, buildJobEntityId, buildJobKey, readyBuildingJob, readyBuildingJobs } from '../economy/buildJob';
+import { canDoWork } from '../dispatch/eligibility';
+import { advanceConstructionProgress, type BuildStepResult } from './build';
 import { constructionOrdersOf, readConstructionOrders, writeConstructionOrders } from './orders';
 
 /**
- * Construction as unit work (`UO-L-05`, `UO-Q-01`). The construction queue (`state.blobs.constructionQueue`) says WHAT
- * to build; the `build` unit command does it: the builder walks (movement orchestrator) to a tile within its build
- * reach of the site centre, outside the footprint, then advances the order each step. Payment starts when the site is
- * ready (construction system); the cost is spent as progress is made. The command sets the builder's state; build
- * code only reports progress (GP-16).
+ * Construction as unit work (`UO-L-05`, `UO-Q-01`, W02-16). What to build comes from two queues: the W01 construction
+ * orders (`state.blobs.constructionQueue`, the Command Hub) and the W02 building jobs (`state.blobs.construction`,
+ * `../economy/buildJob.ts`); the `build` unit command does both the same way: the builder walks (movement orchestrator)
+ * to a tile within its build reach of the site, outside the footprint, then advances the site each step it stands there.
+ * Payment follows the work (each queue pays its own way). The command sets the builder's state; build code only reports
+ * progress (GP-16).
  */
 
 const EN_ROUTE = 'waiting(builder: HQ en route)';
 
-const reachOf = (u: UnitCtx, order: { q: number; r: number }) => ({ q: order.q, r: order.r, minDist: u.stats.buildReach[0], maxDist: u.stats.buildReach[1] });
+/** One site the `build` command can work: where it is, what to show while the builder walks, one step of work. */
+interface BuildSite {
+  q: number;
+  r: number;
+  /** While the builder walks: the W01 order shows `EN_ROUTE` (a W02 job's bookkeeping says `worker` by itself). */
+  enRoute(u: UnitCtx): void;
+  advance(u: UnitCtx): BuildStepResult;
+}
 
-/** The colony's order `c` names while it is in progress (read-only). */
-function readyOrder(u: UnitCtx, c: BuildCommand) {
-  const order = constructionOrdersOf(u.state.blobs.constructionQueue?.value, u.owner).find((o) => o.orderId === c.orderId);
-  return order && order.status === 'in_progress' ? order : null;
+const reachOf = (u: UnitCtx, site: { q: number; r: number }) => ({ q: site.q, r: site.r, minDist: u.stats.buildReach[0], maxDist: u.stats.buildReach[1] });
+
+/** The colony's W01 order `orderId` while it is in progress, as a build site (read-only until worked). */
+function orderSite(u: UnitCtx, orderId: string): BuildSite | null {
+  const order = constructionOrdersOf(u.state.blobs.constructionQueue?.value, u.owner).find((o) => o.orderId === orderId);
+  if (!order || order.status !== 'in_progress') return null;
+  return {
+    q: order.q,
+    r: order.r,
+    enRoute() {
+      if (order.statusText === EN_ROUTE) return;
+      const orders = readConstructionOrders(u.state);
+      const own = orders.find((o) => o.orderId === order.orderId);
+      if (own) own.statusText = EN_ROUTE;
+      writeConstructionOrders(u.state, orders, u.ctx.tick);
+    },
+    advance() {
+      const orders = readConstructionOrders(u.state);
+      const own = orders.find((o) => o.orderId === order.orderId);
+      if (!own) return 'completed';
+      const res = advanceConstructionProgress(u.state, own, rowOf(u.state.entities, own.entityId), u.row, u.ctx.tick, u.ctx);
+      writeConstructionOrders(u.state, orders, u.ctx.tick);
+      return res;
+    },
+  };
+}
+
+/** The colony's W02 job of building `entityId` while a builder can work it, as a build site. */
+function jobSite(u: UnitCtx, entityId: number): BuildSite | null {
+  const job = readyBuildingJob(u.state, u.owner, entityId);
+  if (!job) return null;
+  return { q: job.q, r: job.r, enRoute() {}, advance: () => advanceBuildingJob(u.state, entityId, u.row, u.ctx) ?? 'completed' };
+}
+
+function siteOf(u: UnitCtx, c: BuildCommand): BuildSite | null {
+  const jobEntity = buildJobEntityId(c.orderId);
+  return jobEntity !== null ? jobSite(u, jobEntity) : orderSite(u, c.orderId);
 }
 
 export const buildCommand = defineUnitCommand<BuildCommand>({
@@ -31,32 +74,23 @@ export const buildCommand = defineUnitCommand<BuildCommand>({
   key: (c) => `build:${c.orderId}`,
   /** Units slot: walk to a tile within build reach of the site (outside its footprint) and face it. */
   execute(u, c) {
-    const order = readyOrder(u, c);
-    if (!order) return 'done';
-    const status = approach(u, reachOf(u, order));
+    const site = siteOf(u, c);
+    if (!site) return 'done';
+    const status = approach(u, reachOf(u, site));
     if (status !== 'arrived') {
-      if (order.statusText !== EN_ROUTE) {
-        const orders = readConstructionOrders(u.state);
-        const own = orders.find((o) => o.orderId === order.orderId);
-        if (own) own.statusText = EN_ROUTE;
-        writeConstructionOrders(u.state, orders, u.ctx.tick);
-      }
+      site.enRoute(u);
       return status === 'failed' ? 'failed' : 'running';
     }
-    faceTowards(u.state, u.row, order.q, order.r, u.ctx.tick);
+    faceTowards(u.state, u.row, site.q, site.r, u.ctx.tick);
     return 'running';
   },
-  /** Construction slot: one step of build progress (and the matching slice of the cost). */
+  /** Construction slot: one step of build progress (and the matching slice of the cost), only while in reach. */
   work(u, c) {
-    const ready = readyOrder(u, c);
-    if (!ready) return 'done';
-    if (!atGoal(u, reachOf(u, ready))) return 'running';
-    const orders = readConstructionOrders(u.state);
-    const order = orders.find((o) => o.orderId === ready.orderId);
-    if (!order) return 'done';
-    setUnitActivity(u, ENTITY_STATE.constructing, order.q, order.r);
-    const res = advanceConstructionProgress(u.state, order, rowOf(u.state.entities, order.entityId), u.row, u.ctx.tick, u.ctx);
-    writeConstructionOrders(u.state, orders, u.ctx.tick);
+    const site = siteOf(u, c);
+    if (!site) return 'done';
+    if (!atGoal(u, reachOf(u, site))) return 'running';
+    setUnitActivity(u, ENTITY_STATE.constructing, site.q, site.r);
+    const res = site.advance(u);
     if (res !== 'running') {
       const cols = u.state.entities.cols;
       setUnitActivity(u, ENTITY_STATE.idle, cols.q[u.row], cols.r[u.row]);
@@ -66,12 +100,20 @@ export const buildCommand = defineUnitCommand<BuildCommand>({
   },
 });
 
-/** Hands an idle builder the colony's oldest construction order that is ready for work (site prepared, started). */
+/**
+ * Dispatch of construction to builders (W02-16, `UO-D-03`): a unit that may build (`maxBuildTier` ≥ the site's tier;
+ * a Harvester never does) takes the colony's oldest W01 order ready for work, else its oldest W02 job ready for work,
+ * and keeps the one it works on until it is done: one site at a time per builder, then it walks to the next.
+ */
 export const buildProvider: UnitWorkProvider = {
   id: 'build',
   propose(u) {
+    if (!canDoWork(u, 'build')) return null;
     const cur = u.record.current;
-    const ready = constructionOrdersOf(u.state.blobs.constructionQueue?.value, u.owner).filter((o) => o.status === 'in_progress');
+    const ready = [
+      ...constructionOrdersOf(u.state.blobs.constructionQueue?.value, u.owner).filter((o) => o.status === 'in_progress'),
+      ...readyBuildingJobs(u.state, u.owner).map((j) => ({ orderId: buildJobKey(j.entityId), q: j.q, r: j.r })),
+    ];
     const skipped = (key: string) => (u.record.skip[`build:${key}`] ?? 0) > u.ctx.tick;
     if (cur?.kind === 'build' && !skipped(cur.orderId) && ready.some((o) => o.orderId === cur.orderId)) return cur;
     const next = ready.find((o) => !skipped(o.orderId));

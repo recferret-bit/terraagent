@@ -12,6 +12,7 @@ import { defineSystem } from '../../kernel/system';
 import { buildingFootprints } from '../construction/occupancy';
 import { defineSimModule } from '../define';
 import { checkCostAffordability, ensureColonyLedger, payProgressiveSlice, refundCost } from '../economy/ledger';
+import { colonyWho } from '../find';
 import { revealVision } from '../hq';
 
 export interface HubUnitQueueEntry {
@@ -174,6 +175,17 @@ export function findHubEdgeSpawnTile(state: PlanetState, colonyIndex: number, da
     }
   }
   return { q: hubQ + maxQ + 1, r: hubR };
+}
+
+/**
+ * A finished Harvester: spawned at the Hub edge, then `unitProduced` in the one player-event shape (`colonyIds` = the
+ * colony's string id, `data.colonyId` / `playerId`, see `colonyWho`) so it reaches the colony's channel.
+ */
+export function produceHarvesterAtHubEdge(state: PlanetState, colonyIndex: number, ctx: StepContext): { entityId: number; q: number; r: number } {
+  const spawned = spawnHarvesterAtHubEdge(state, colonyIndex, ctx.tick, ctx.data, ctx);
+  const { colonyIdStr, who } = colonyWho(state, colonyIndex);
+  ctx.emit({ kind: 'unitProduced', colonyIds: [colonyIdStr], data: { ...who, entityId: spawned.entityId, unit: 'harvester', q: spawned.q, r: spawned.r } });
+  return spawned;
 }
 
 export function spawnHarvesterAtHubEdge(state: PlanetState, colonyIndex: number, tick: number, data?: CompiledDataLike, ctx?: StepContext): { entityId: number; q: number; r: number } {
@@ -388,13 +400,8 @@ export const hubProductionSystem = defineSystem({
 
         while (active.state === 'in_progress' && active.elapsedTicks >= active.buildTicks - 1e-6) {
           const carry = Math.max(0, active.elapsedTicks - active.buildTicks);
-          const spawned = spawnHarvesterAtHubEdge(state, colIdx, ctx.tick, ctx.data, ctx);
+          const spawned = produceHarvesterAtHubEdge(state, colIdx, ctx);
           active.spawnedEntityIds.push(spawned.entityId);
-          ctx.emit({
-            kind: 'unitProduced',
-            colonyIds: [colIdx],
-            data: { entityId: spawned.entityId, unit: 'harvester', q: spawned.q, r: spawned.r },
-          });
 
           if (active.remainingCount > 1) {
             active.remainingCount -= 1;

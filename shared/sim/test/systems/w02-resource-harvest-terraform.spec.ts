@@ -37,6 +37,7 @@ import {
   TERRAFORM_TIME_TABLE,
   TERRAIN,
 } from '../../src';
+import { readyBuilder } from '../helpers/builder';
 
 describe('W02 Authoritative Data Tables & Finite Resource Deposits', () => {
   it('exposes TERRAFORM_TIME_TABLE and RESOURCE_INCOME_TABLE with authoritative durations, energy, yields, and rates', () => {
@@ -197,7 +198,7 @@ describe('W02 Progressive Cost Subtraction & 50% Cancel Refunds', () => {
     creditResource(colony, 'bio.biomass', 50, 0);
     creditResource(colony, 'bio.water', 50, 0);
 
-    const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    const hqId = readyBuilder(state, [{ q: 2, r: 1 }]); // a prepared site, the HQ in build reach (W02-16)
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
     const started = startBuildingConstruction(state, {

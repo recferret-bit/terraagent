@@ -9,6 +9,7 @@ import {
   getColonyQueue,
   step,
 } from '../../src';
+import { readyBuilder } from '../helpers/builder';
 
 describe('W02-15 Non-blocking queue scan', () => {
   it('entry 1 waiting on Minerals, entry 2 needs only Metals (in stock) -> entry 2 starts immediately', () => {
@@ -84,7 +85,9 @@ describe('W02-15 Non-blocking queue scan', () => {
       task: { kind: 'build', building: 'solar', q: 5, r: 1 },
     });
 
-    // Credit 40 Metals and step the simulation -> entry 2 starts while entry 1 stays waiting
+    // Credit 40 Metals and step the simulation -> entry 2 starts while entry 1 stays waiting (its site is prepared and
+    // the HQ stands in build reach, so it builds from this step on: W02-16)
+    readyBuilder(state, [{ q: 5, r: 1 }], { q: 3, r: 0 });
     creditResource(colony, 'metals.t1', 40, 0);
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
     step(state, [], 1, pipeline);

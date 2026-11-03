@@ -67,7 +67,8 @@ export const enqueueTask = defineCommandHandler({
  * `cancelTask { taskId }` (GP-10): cancels one order in its own lane. `taskId` names an order by its order id, the
  * client's id (the command id that created it) or, for a building, its entity id. Lane wildcards: `'active'` = the
  * colony's first manual terraform order, `'current'` = its open construction order; they never cross lanes. A Hub's
- * linked prep cancels the Hub's construction order (refund rules). Nothing matched → `unknown_entity`.
+ * linked prep cancels the Hub's construction order (refund rules). Nothing matched → `unknown_entity` (W01) /
+ * `unknown_task` (with W02 on: no order, queue entry or task of the colony has that id).
  */
 export const cancelTask = defineCommandHandler({
   kind: 'cancelTask',
@@ -93,6 +94,8 @@ export const cancelTask = defineCommandHandler({
     }
     const cancelBuild = (key: string) => cancelConstructionOrder(state, colonyId, key, ctx.tick, ctx.data, ctx);
     let done: boolean;
+    // A W02 building's linked prep names its building (`building:<entityId>`): cancelling the prep cancels the building.
+    let w02Id = id;
     if (id === 'current') done = cancelBuild('current');
     else if (id === 'active') done = cancelTerraformOrder(state, colonyId, 'active', ctx.tick, ctx.data);
     else {
@@ -100,11 +103,12 @@ export const cancelTask = defineCommandHandler({
       if (tf?.isLinkedPrep) done = tf.linkedOrderId !== undefined && cancelBuild(tf.linkedOrderId);
       else if (tf) done = cancelTerraformOrder(state, colonyId, tf.orderId, ctx.tick, ctx.data);
       else done = cancelBuild(id);
+      if (tf?.isLinkedPrep && tf.linkedOrderId !== undefined) w02Id = tf.linkedOrderId;
     }
     if (!done && ctx.flags.has('W02')) {
-      const w02Res = cancelQueueTask(state, id, colonyId, ctx.tick, ctx.data);
+      const w02Res = cancelQueueTask(state, w02Id, colonyId, ctx.tick, ctx.data);
       if (w02Res.ok) return undefined;
-      if (w02Res.code === 'not_own_colony') return 'not_own_colony';
+      if (w02Res.code === 'not_own_colony' || w02Res.code === 'unknown_task') return w02Res.code;
     }
     if (!done) return 'unknown_entity';
   },

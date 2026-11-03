@@ -1,10 +1,17 @@
 import { expect, test, type Page } from '@playwright/test';
 import { mkdirSync } from 'node:fs';
 import { basename, resolve } from 'node:path';
+import { parseWaves } from '../../../shared/contracts/src/flags/index';
 import { OUT } from './ports';
 
 /** `--host local` (runner) sets E2E_HOST=local: suites run the sim-only variant and skip server-only steps. */
 export const hostMode = (): 'server' | 'local' => (process.env.E2E_HOST === 'local' ? 'local' : 'server');
+
+/**
+ * How many waves the app has on: the stack's `TA_WAVES` (`--waves ..02` boots it with `..02`: 3), else every wave
+ * (no `--waves`, or `E2E_REUSE=1`, where the dev stack's own setting is not known here).
+ */
+export const expectedOnWaves = (): number => parseWaves(process.env.E2E_APP_WAVES ?? '').list.length;
 
 const errorsOf = new WeakMap<Page, string[]>();
 

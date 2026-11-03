@@ -1,10 +1,11 @@
 import type { FlagSet } from '@terra/contracts';
-import { DEPOSIT, ENTITY_KIND, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, hexDistance, hexIndex, type GeoBlock, type ViewEntity } from '@terra/sim';
-import { clientDataFor } from '../../core/flags/data';
+import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, hexDistance, type GeoBlock } from '@terra/sim';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
-import { forEachEntity, type ClientTiles } from '../../store/replica/viewCodec';
+import type { ClientTiles } from '../../store/replica/viewCodec';
+import { extractHqFromView } from '../shared/hqView';
 import { isHotkeyPress } from '../shared/hotkeys';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
+import { buildGhostContext, resolveBuildingMeta, type GhostContext } from './ghostContext';
 import { evaluateSiteWithSim, ownColonyIndex } from './sitePlacement';
 
 export interface PlacementGhostTile {
@@ -21,54 +22,6 @@ export interface PlacementGhostState {
 
 export interface EvaluatePlacementGhostOptions {
   building: string; q: number; r: number; rotation: number; flags: ReadonlySet<string> | FlagSet; view?: GameView; colonyId?: number;
-}
-
-function toFlagSet(flags: ReadonlySet<string> | FlagSet): FlagSet {
-  if ('spec' in flags && 'list' in flags && typeof flags.has === 'function') return flags as FlagSet;
-  const set = flags as ReadonlySet<string>;
-  const list = Array.from(set);
-  return { has: (w: string) => set.has(w), list, spec: list.join(',') };
-}
-
-interface BuildingRowMeta {
-  label: string;
-  footprintW: number;
-  footprintD: number;
-  requiresDeposit?: string;
-}
-
-const DEFAULT_LABELS: Record<string, string> = {
-  commandHub: 'Command Hub',
-  metalsExtractor: 'Metals Extractor',
-  solar: 'Solar Collector Array',
-};
-
-function resolveBuildingMeta(flags: ReadonlySet<string> | FlagSet, building: string): BuildingRowMeta {
-  const data = clientDataFor(toFlagSet(flags));
-  let row: Record<string, unknown> | undefined;
-  for (const table of Object.values(data.tables)) {
-    if (!table) continue;
-    for (const r of Object.values(table)) {
-      if (r && (r.building === building || r.id === building)) { row = r as Record<string, unknown>; break; }
-    }
-    if (row) break;
-  }
-  const label = typeof row?.label === 'string' ? row.label : (DEFAULT_LABELS[building] ?? building);
-  const defFp = building === 'commandHub' ? 3 : 2;
-  const footprintW = typeof row?.footprintW === 'number' ? row.footprintW : defFp;
-  const footprintD = typeof row?.footprintD === 'number' ? row.footprintD : defFp;
-  const requiresDeposit = typeof row?.requiresDeposit === 'string' ? row.requiresDeposit : (building === 'metalsExtractor' ? 'metals' : undefined);
-  return { label, footprintW, footprintD, requiresDeposit };
-}
-
-function getPlanetRadius(view?: GameView): number {
-  if (!view) return 56;
-  const v = view as { planet?: { radius?: number }; tiles?: { count?: number } };
-  if (typeof v.planet?.radius === 'number' && v.planet.radius > 0) return v.planet.radius;
-  if (typeof v.tiles?.count === 'number' && v.tiles.count > 0) {
-    return Math.round((-3 + Math.sqrt(Math.max(0, 12 * v.tiles.count - 3))) / 6);
-  }
-  return 56;
 }
 
 function getTilePrepOp(terrain: number, prep: number): string | undefined {
@@ -89,56 +42,6 @@ function formatPrepBillText(bill: Record<string, number>): string {
   const order: Record<string, number> = { 'clear + prepare': 1, 'break + prepare': 2, 'flatten + prepare': 3, prepare: 4 };
   entries.sort((a, b) => (order[a[0]] ?? 99) - (order[b[0]] ?? 99));
   return `Prep: ${entries.map(([op, count]) => `${count}× ${PREP_LABELS[op] ?? (op.charAt(0).toUpperCase() + op.slice(1))}`).join(', ')}`;
-}
-
-function markFootprintIndices(occupied: Set<number>, hIndex: { indexOf(q: number, r: number): number }, q: number, r: number, w: number, d: number, rot = 0): void {
-  const swap = (((Math.round(rot) % 6) + 6) % 2) !== 0;
-  const fw = swap ? d : w, fd = swap ? w : d;
-  const minQ = -Math.floor((fw - 1) / 2);
-  const minR = -Math.floor((fd - 1) / 2);
-  for (let dr = 0; dr < fd; dr++) {
-    for (let dq = 0; dq < fw; dq++) {
-      const idx = hIndex.indexOf(q + minQ + dq, r + minR + dr);
-      if (idx >= 0) occupied.add(idx);
-    }
-  }
-}
-
-interface QueuedBuildLike {
-  state?: string;
-  task?: { kind?: string; building?: string; q?: number; r?: number; rotation?: number };
-}
-
-function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexOf(q: number, r: number): number }): Set<number> {
-  const occupied = new Set<number>();
-  if (!view) return occupied;
-  const v = view as {
-    entities?: Float32Array | readonly ViewEntity[];
-    count?: number;
-    colonies?: Array<{ queue?: QueuedBuildLike[]; constructionQueue?: QueuedBuildLike[] }>;
-    blobs?: { queue?: { entries?: QueuedBuildLike[]; value?: { entries?: QueuedBuildLike[] } } };
-  };
-  // Occupancy comes from the buildings themselves; the `anchors` tile layer is the territory claim count, not "occupied".
-  if (v.entities) {
-    forEachEntity(v.entities, v.count, (e) => {
-      if (e.hpMax > 0 && e.hp <= 0) return;
-      const size = e.kind === ENTITY_KIND.commandHub
-        ? 3
-        : (e.kind === ENTITY_KIND.metalsExtractor || e.kind === ENTITY_KIND.solar ? 2 : (e.kind === ENTITY_KIND.pod ? 1 : 0));
-      if (size > 0) markFootprintIndices(occupied, hIndex, e.q, e.r, size, size, e.rot);
-    });
-  }
-  const fromColonies = (v.colonies ?? []).flatMap((c) => c?.constructionQueue ?? c?.queue ?? []); // every seat's pending site, not colony 0's
-  const qList = fromColonies.length > 0 ? fromColonies : v.blobs?.queue?.entries ?? v.blobs?.queue?.value?.entries ?? [];
-  for (const entry of qList) {
-    if (!entry || entry.state === 'done' || entry.state === 'cancelled') continue;
-    const t = entry.task;
-    if (t?.kind === 'build' && typeof t.q === 'number' && typeof t.r === 'number') {
-      const sz = t.building === 'commandHub' ? 3 : 2;
-      markFootprintIndices(occupied, hIndex, t.q, t.r, sz, sz, t.rotation ?? 0);
-    }
-  }
-  return occupied;
 }
 
 interface FootprintScanResult {
@@ -218,17 +121,19 @@ function evaluateValidity(
   return { valid: true, statusColor: 'green', reason: 'valid site', depositCovered: false };
 }
 
-export function evaluatePlacementGhost(opts: EvaluatePlacementGhostOptions): PlacementGhostState {
-  const meta = resolveBuildingMeta(opts.flags, opts.building);
+/**
+ * The construction ghost's verdict on one site. `ctx` (`buildGhostContext`) carries the site-independent inputs; a
+ * caller judging many sites on one view (the auto-site search, the Extractor anchor nudge) builds it once.
+ */
+export function evaluatePlacementGhost(opts: EvaluatePlacementGhostOptions, ctx: GhostContext = buildGhostContext(opts.flags, opts.view)): PlacementGhostState {
+  const meta = resolveBuildingMeta(ctx.data, opts.building);
   const rot = ((opts.rotation % 6) + 6) % 6;
   const isSwapped = rot % 2 !== 0;
   const footprintW = isSwapped ? meta.footprintD : meta.footprintW;
   const footprintD = isSwapped ? meta.footprintW : meta.footprintD;
-  const hIndex = hexIndex(getPlanetRadius(opts.view));
   const tilesData = (opts.view as { tiles?: ClientTiles } | undefined)?.tiles;
-  const occupied = collectOccupiedTileIndices(opts.view, hIndex);
-  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, hIndex, occupied, tilesData, meta.requiresDeposit);
-  const sim = scan.hasOccupied ? null : evaluateSiteWithSim(opts.view, { building: opts.building, q: opts.q, r: opts.r, colonyId: opts.colonyId ?? 0, data: clientDataFor(toFlagSet(opts.flags)) });
+  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, tilesData, meta.requiresDeposit);
+  const sim = scan.hasOccupied ? null : evaluateSiteWithSim(opts.view, { building: opts.building, q: opts.q, r: opts.r, colonyId: opts.colonyId ?? 0, data: ctx.data, world: ctx.world });
   const val = sim ? { valid: sim.valid, statusColor: sim.valid ? 'green' as const : 'red' as const, reason: sim.reason, depositCovered: sim.valid && scan.coveredDepositIndices.length > 0 }
     : evaluateValidity(Boolean(tilesData), scan.hasOutOfBounds, scan.hasImpassable, scan.hasOccupied, scan.terrainBlock, meta.requiresDeposit, scan.coveredDepositIndices.length);
 
@@ -241,27 +146,28 @@ export function evaluatePlacementGhost(opts: EvaluatePlacementGhostOptions): Pla
   };
 }
 
+/** Best valid site within 10 hexes of the own HQ (else the planet origin): deposits scored per building, then distance. */
 function findValidPlacementSite(
-  building: string,
-  rotation: number,
-  flags: ReadonlySet<string> | FlagSet,
-  view: GameView,
-  avoidIndices: ReadonlySet<number>, colonyId = 0,
+  base: Omit<EvaluatePlacementGhostOptions, 'q' | 'r'> & { view: GameView },
+  avoidIndices: ReadonlySet<number>,
+  ctx: GhostContext,
 ): { q: number; r: number } | null {
-  const searchR = Math.min(getPlanetRadius(view), 10);
+  const searchR = Math.min(ctx.radius, 10);
+  const hq = extractHqFromView(base.view, base.colonyId ?? 0);
+  const cq = Math.round(hq?.q ?? 0), cr = Math.round(hq?.r ?? 0);
   let best: { q: number; r: number; score: number } | null = null;
   for (let dr = -searchR; dr <= searchR; dr++) {
     for (let dq = -searchR; dq <= searchR; dq++) {
       const dist = hexDistance(0, 0, dq, dr);
       if (dist > searchR) continue;
-      const st = evaluatePlacementGhost({ building, q: dq, r: dr, rotation, flags, view, colonyId });
+      const st = evaluatePlacementGhost({ ...base, q: cq + dq, r: cr + dr }, ctx);
       if (!st.valid || st.tiles.some((t) => avoidIndices.has(t.tileIdx))) continue;
       const anchorDep = st.tiles[0]?.deposit === DEPOSIT.metals ? 0 : 1;
       const depPenalty = st.requiresDeposit === 'metals'
         ? anchorDep * 20 - st.depositTileIndices.length * 4
         : st.tiles.filter((t) => t.deposit !== DEPOSIT.none).length * 50;
       const score = depPenalty + dist * 4 + Math.abs(dr) * 0.1 + Math.abs(dq) * 0.05;
-      if (!best || score < best.score) best = { q: dq, r: dr, score };
+      if (!best || score < best.score) best = { q: cq + dq, r: cr + dr, score };
     }
   }
   return best ? { q: best.q, r: best.r } : null;
@@ -382,6 +288,12 @@ export class PlacementGhostController implements Disposable {
     return !hasTiles && store?.latestTiles ? ({ ...(base ?? {}), tiles: store.latestTiles } as GameView) : base;
   }
 
+  /** The site-independent ghost inputs on `view` for `building` (one build per user action, shared by its evaluations). */
+  private ghostInputs(building: string, view: GameView | undefined) {
+    const base = { building, rotation: this.rotation, flags: this.opts.ctx.flags, view, colonyId: ownColonyIndex(this.opts.ctx.services) };
+    return { base, ctx: buildGhostContext(base.flags, view, this.opts.ctx.services.store) };
+  }
+
   start(building: string): void {
     this.activeBuilding = building;
     this.rotation = 0;
@@ -389,9 +301,10 @@ export class PlacementGhostController implements Disposable {
     if (this.element.style) this.element.style.display = '';
     const effView = this.resolveEffectiveView();
     if (effView && (effView as { tiles?: ClientTiles }).tiles) {
-      const cur = evaluatePlacementGhost({ building, q: this.hoverQ, r: this.hoverR, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView, colonyId: ownColonyIndex(this.opts.ctx.services) });
+      const { base, ctx } = this.ghostInputs(building, effView);
+      const cur = evaluatePlacementGhost({ ...base, q: this.hoverQ, r: this.hoverR }, ctx);
       if (!cur.valid || cur.tiles.some((t) => this.pendingIndices.has(t.tileIdx))) {
-        const site = findValidPlacementSite(building, this.rotation, this.opts.ctx.flags, effView, this.pendingIndices, ownColonyIndex(this.opts.ctx.services));
+        const site = findValidPlacementSite({ ...base, view: effView }, this.pendingIndices, ctx);
         if (site) { this.hoverQ = site.q; this.hoverR = site.r; }
       }
     }
@@ -405,11 +318,12 @@ export class PlacementGhostController implements Disposable {
     const effView = this.resolveEffectiveView();
     const tilesData = (effView as { tiles?: ClientTiles } | undefined)?.tiles;
     if (effView && tilesData?.deposit) {
-      const direct = evaluatePlacementGhost({ building: this.activeBuilding, q, r, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView, colonyId: ownColonyIndex(this.opts.ctx.services) });
-      const hoverIdx = hexIndex(getPlanetRadius(effView)).indexOf(q, r);
+      const { base, ctx } = this.ghostInputs(this.activeBuilding, effView);
+      const direct = evaluatePlacementGhost({ ...base, q, r }, ctx);
+      const hoverIdx = ctx.hIndex.indexOf(q, r);
       if (!direct.valid && direct.requiresDeposit === 'metals' && hoverIdx >= 0 && tilesData.deposit[hoverIdx] === DEPOSIT.metals) {
         for (const [aq, ar] of [[q - 1, r], [q, r - 1], [q - 1, r - 1]]) {
-          if (evaluatePlacementGhost({ building: this.activeBuilding, q: aq, r: ar, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView, colonyId: ownColonyIndex(this.opts.ctx.services) }).valid) {
+          if (evaluatePlacementGhost({ ...base, q: aq, r: ar }, ctx).valid) {
             this.hoverQ = aq;
             this.hoverR = ar;
             break;
@@ -454,14 +368,8 @@ export class PlacementGhostController implements Disposable {
 
   private evaluate(): void {
     if (!this.activeBuilding) { this.state = null; return; }
-    this.state = evaluatePlacementGhost({
-      building: this.activeBuilding,
-      q: this.hoverQ,
-      r: this.hoverR,
-      rotation: this.rotation,
-      flags: this.opts.ctx.flags,
-      view: this.resolveEffectiveView(), colonyId: ownColonyIndex(this.opts.ctx.services),
-    });
+    const { base, ctx } = this.ghostInputs(this.activeBuilding, this.resolveEffectiveView());
+    this.state = evaluatePlacementGhost({ ...base, q: this.hoverQ, r: this.hoverR }, ctx);
     this.renderState(this.state);
   }
 

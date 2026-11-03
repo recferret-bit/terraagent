@@ -1,11 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
-  applyEnvironmentState,
-  computeEnvironmentAtCycleTick,
   createRegistryPipeline,
   createState,
-  cycleTickForTimeSpec,
   DEPOSIT,
   ENTITY_KIND,
   ENTITY_STATE,
@@ -16,6 +13,7 @@ import {
   placeMetalsExtractor,
   rowOf,
   setHqCellEnergy,
+  setPlanetTime,
   spawnHqUnit,
   step,
   type PlanetState,
@@ -90,7 +88,7 @@ describe('Hub + HQ + one Metals Extractor: the extractor is shed, the HQ cell is
     expect(cols.cell[hqRow]).toBeCloseTo(100.6, 4); // 3 E/s = 0.6 E per tick
 
     // A midday Solar (+20 net) carries the extractor: group 3 is no longer shed, the fast recharge returns
-    applyEnvironmentState(state, computeEnvironmentAtCycleTick('temperate', cycleTickForTimeSpec('12:00', 'temperate')), state.meta.tick);
+    setPlanetTime(state, { timeOfDay: 12 }, state.meta.tick); // the environment follows the planet's solar clock each step
     const solarRow = insertRow(state.entities, state.meta.nextEntityId++, state.meta.tick);
     cols.kind[solarRow] = ENTITY_KIND.solar;
     cols.owner[solarRow] = 0;

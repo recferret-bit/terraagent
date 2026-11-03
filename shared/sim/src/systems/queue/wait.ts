@@ -191,3 +191,24 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
   }
   return {};
 }
+
+/** The contract's precedence words (`enqueueTask.precedence`) in the queue's terms (`system > player > auto`). */
+const CONTRACT_PRECEDENCE: Readonly<Record<string, QueuePrecedence>> = { explicit: 'player', queued: 'player', standing: 'auto', autoSitePrep: 'system' };
+
+/** Command sources that may set an entry's cost or raise its precedence (dev tools, the sim's own systems, admins). */
+const TRUSTED_SOURCES: ReadonlySet<string> = new Set(['dev', 'system', 'admin']);
+
+/**
+ * What an `enqueueTask` command may decide about its entry: a player (or AI / chain) command never sets `costOverride`
+ * (a free building) and never ranks above `player` (it may lower its own entry to `auto`); trusted sources may do both.
+ */
+export function enqueueAuthority(
+  source: string,
+  norm: { precedence?: string; costOverride?: Partial<Record<ResourceKey, number>> },
+): { precedence?: QueuePrecedence; costOverride?: Partial<Record<ResourceKey, number>> } {
+  const word = norm.precedence;
+  const asked = word === undefined ? undefined : (CONTRACT_PRECEDENCE[word] ?? (word === 'system' || word === 'player' || word === 'auto' ? word : undefined));
+  if (TRUSTED_SOURCES.has(source)) return { precedence: asked, costOverride: norm.costOverride };
+  return { precedence: asked === 'auto' ? 'auto' : asked === undefined ? undefined : 'player' };
+}
+

@@ -83,6 +83,24 @@ describe('W02-28 Stockpile: resourceProduced batches from the sim thread', () =>
     ]);
   });
 
+  it('several colonies: one batch per colony and resource; a colony founded mid-window reports its whole production', () => {
+    const { host, events } = hostWith(W02_ON);
+    host.handle({ t: 'load', planetId: PLANET, params: { type: W00_PLANET_TYPE } });
+    const a = addColony(host, 'col_a');
+    const half = PRODUCTION_WINDOW_TICKS / 2;
+    let b: ReturnType<typeof addColony> | undefined;
+    for (let i = 0; i < PRODUCTION_WINDOW_TICKS; i++) {
+      if (i === half) b = addColony(host, 'col_b'); // not known at load: baseline zero
+      a.production.produced['metals.t1'] += 0.25;
+      if (b) b.production.produced['metals.t1'] += 1;
+      host.stepPlanet(PLANET, 1);
+    }
+    expect(batches(events).map((e) => [e.colonyIds, e.data.colonyId, e.data.res, e.data.amount])).toEqual([
+      [['col_a'], 'col_a', 'metals.t1', expect.closeTo(0.25 * PRODUCTION_WINDOW_TICKS, 9)],
+      [['col_b'], 'col_b', 'metals.t1', expect.closeTo(half, 9)],
+    ]);
+  });
+
   it('W02 off (TA_WAVES=..01): no resourceProduced batch', () => {
     const { host, events } = hostWith(W02_OFF);
     host.handle({ t: 'load', planetId: PLANET, params: { type: W00_PLANET_TYPE } });

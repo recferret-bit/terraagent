@@ -15,6 +15,8 @@ export const REJECT_CODES = [
   'queue_full', 'planet_full',
   // W02 dismantle: Command Hub and HQ Drone cannot be dismantled
   'cannot_dismantle_hq',
+  // W02 queue: `cancelTask` / `reorderTask` names no open task of the colony
+  'unknown_task',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

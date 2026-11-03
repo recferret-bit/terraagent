@@ -30,7 +30,7 @@ import {
   type QueueTaskPayload,
 } from './types';
 import { markWaiting, stepQueueEntry } from './step';
-import { computeResourceWaitState, isBlockedByPower, normalizeEnqueueArgs } from './wait';
+import { computeResourceWaitState, enqueueAuthority, isBlockedByPower, normalizeEnqueueArgs } from './wait';
 
 export * from './types';
 export * from './wait';
@@ -381,7 +381,8 @@ export const enqueueTaskHandler = defineCommandHandler({
     if (norm.task.kind === 'terraform' && norm.task.op === 'work') {
       return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
     }
-    const res = enqueueQueueTask(state, { colonyIndex: colIdx, task: norm.task, precedence: norm.precedence, taskId: norm.taskId, costOverride: norm.costOverride, tick: ctx.tick, data: ctx.data }, ctx);
+    const { precedence, costOverride } = enqueueAuthority(cmd.source, norm); // a player never sets its own cost or jumps the queue
+    const res = enqueueQueueTask(state, { colonyIndex: colIdx, task: norm.task, precedence, taskId: norm.taskId, costOverride, tick: ctx.tick, data: ctx.data }, ctx);
     return res.ok ? undefined : { code: res.code, detail: res.detail }; // e.g. the terrain block text (GP-31)
   },
 });

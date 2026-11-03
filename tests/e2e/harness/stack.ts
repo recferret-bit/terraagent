@@ -2,10 +2,12 @@ import { spawn, type ChildProcess } from 'node:child_process';
 import { createServer, type Server } from 'node:http';
 import { createWriteStream, mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { LAST_WAVE } from '../../../shared/contracts/src/flags/index';
 import { OUT, ROOT, urls } from './ports';
 
 /**
  * The E2E stack: a fresh migrated Postgres database (`createTestDatabase()`, dropped at the end), the app and Vite.
+ * `--waves` also narrows the app (`TA_WAVES`, see `appWavesFor`); `E2E_REUSE=1` and `--host local` leave it alone.
  * With `E2E_HOST=local` only Vite is started (no database, no app). Booted by Playwright's globalSetup (main process). Suites run in a worker, so they control the app through a tiny
  * loopback HTTP control server (URL in `E2E_CONTROL`): see `restartApp` / `stopApp` / `startApp` below.
  */
@@ -42,6 +44,20 @@ function logged(cmd: string, args: string[], cwd: string, env: NodeJS.ProcessEnv
   return child;
 }
 
+/**
+ * `TA_WAVES` for the app under `--waves` (`E2E_WAVES`): every wave up to the highest one selected (`..01` stays `..01`,
+ * `00,03` → `..03`), so the server runs the selected suites' waves with the later ones off, as the owner's check does.
+ * Empty / `all` / a bound at or past the last wave → undefined (the app's own default: every wave on).
+ */
+export function appWavesFor(spec: string | undefined): string | undefined {
+  const s = (spec ?? '').trim();
+  if (s === '' || s.toLowerCase() === 'all') return undefined;
+  const nums = (s.match(/\d{1,2}/g) ?? []).map(Number);
+  if (nums.length === 0) return undefined;
+  const top = Math.max(...nums);
+  return top >= LAST_WAVE ? undefined : `..${String(top).padStart(2, '0')}`;
+}
+
 /** Boots DB + app + Vite and the control server. Throws (after cleanup) when something does not come up. */
 export async function bootStack(): Promise<Stack> {
   const u = urls();
@@ -54,10 +70,13 @@ export async function bootStack(): Promise<Stack> {
   }
   const { createTestDatabase } = await import('@terra/db/testing');
   const db = await createTestDatabase();
+  const waves = appWavesFor(process.env.E2E_WAVES);
   const appEnv: NodeJS.ProcessEnv = {
     ...process.env, NODE_ENV: 'development', PORT: String(u.appPort), DATABASE_URL: db.url,
     SIM_THREADS: '1', GAME_DEV_PLANETS: '1', SNAPSHOT_EVERY_S: '5', TA_PORT_BASE: String(u.base),
+    ...(waves ? { TA_WAVES: waves } : {}),
   };
+  process.env.E2E_APP_WAVES = appEnv.TA_WAVES ?? ''; // the suites (workers) read it: `expectedOnWaves()`
   let app: ChildProcess | undefined;
   const startApp = async () => {
     if (app && !exited(app)) return;
