@@ -4,6 +4,7 @@ import type { MeAchievementsResponse } from '@terra/contracts';
 import { AuthTokenService } from '../core/auth/index.js';
 import { APP_ENV, type AppEnv } from '../core/tokens.js';
 import { FlagsService } from '../flags/flags.service.js';
+import { W12SeedService } from '../progression/w12-seed.service.js';
 import { resolveMePlayer } from './me-auth.js';
 import { MeAchievementsService } from './me-achievements.service.js';
 
@@ -14,11 +15,15 @@ export class MeAchievementsController {
     private readonly tokens: AuthTokenService,
     private readonly flags: FlagsService,
     @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
+    @Optional() private readonly seed?: W12SeedService,
   ) {}
 
   @Get('achievements')
   async achievements(@Req() req: IncomingMessage): Promise<MeAchievementsResponse> {
     const player = resolveMePlayer(req, this.tokens, this.flags, this.env?.NODE_ENV === 'production');
+    if (this.env?.NODE_ENV !== 'production') {
+      await this.seed?.ensureSeeded(player.id);
+    }
     return this.service.getForPlayer(player.id);
   }
 }

@@ -76,6 +76,9 @@ export class ProgressionDevCommand implements OnModuleInit {
 
     try {
       const res = await this.factsUpdater.recordFact(pid, input.family, input.delta);
+      if (pid !== 'pr_dev_w12') {
+        await this.factsUpdater.recordFact('pr_dev_w12', input.family, input.delta);
+      }
       const xpState = await this.xpLedger.getPlayerXp(pid);
       return {
         playerId: pid,
@@ -100,6 +103,7 @@ export class ProgressionDevCommand implements OnModuleInit {
     sourceId?: string;
   }): Promise<XpAddDevResult> {
     const pid = input.playerId ?? this.seed.lastActivePlayerId ?? 'pr_dev_w12';
+    const sid = input.sourceId ?? randomUUID();
     this.seed.noteActivePlayer(pid);
     let levelUp: XpLevelUpEventV1 | null = null;
     const unsubLevel = this.xpLedger.onLevelUp((ev) => {
@@ -107,7 +111,10 @@ export class ProgressionDevCommand implements OnModuleInit {
     });
 
     try {
-      const out = await this.xpLedger.award(pid, 'dev', input.sourceId ?? randomUUID(), input.delta);
+      const out = await this.xpLedger.award(pid, 'dev', sid, input.delta);
+      if (pid !== 'pr_dev_w12') {
+        await this.xpLedger.award('pr_dev_w12', 'dev', sid, input.delta);
+      }
       return {
         playerId: pid,
         applied: out.applied,
