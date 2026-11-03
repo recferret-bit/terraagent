@@ -8,6 +8,7 @@ export const command = defineCommand({
   origin: 'module',
   args: z.strictObject({
     colonyId: z.string().min(1).optional(),
+    colonyIndex: z.number().int().nonnegative().optional(),
     ref: z.string().min(1).max(160),
     direction: z.enum(['export', 'import']).optional(),
     resource: ResourceKey.optional(),

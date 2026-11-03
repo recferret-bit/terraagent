@@ -15,6 +15,7 @@ export const event = defineEvent({
     direction: z.enum(['export', 'import']).optional(),
     resource: ResourceKey,
     amount: z.number().int().positive(),
+    reason: z.string().optional(),
   }),
   summary: 'A failed orbital cargo export was refunded to colony stock (even above cap) or a failed import reservation was released (W10-01, W10-07).',
 });

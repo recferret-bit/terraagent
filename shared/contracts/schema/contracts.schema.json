@@ -506,6 +506,11 @@
             "minLength": 1,
             "type": "string"
           },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
           "direction": {
             "enum": [
               "export",
@@ -2078,6 +2083,9 @@
             "type": "string"
           },
           "playerId": {
+            "type": "string"
+          },
+          "reason": {
             "type": "string"
           },
           "ref": {
