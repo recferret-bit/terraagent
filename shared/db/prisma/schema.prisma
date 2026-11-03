@@ -287,6 +287,87 @@ model MockChainReceipt {
   @@schema("chain")
 }
 
+// --- progression.prisma ---
+/// Per-player lifetime progression facts (`counter` += delta, `max` = GREATEST(old, new), W12-02).
+model PlayerFact {
+  playerId  String   @map("player_id")
+  family    String   @db.VarChar(64)
+  metric    String   @default("counter") @db.VarChar(16)
+  value     Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([playerId, family])
+  @@index([playerId])
+  @@map("player_fact")
+  @@schema("core")
+}
+
+/// Append-only achievement tier unlocks (`(playerId, achievementId)` unique, W12-03).
+model AchievementUnlock {
+  id            String   @id
+  playerId      String   @map("player_id")
+  achievementId String   @map("achievement_id") @db.VarChar(64)
+  family        String   @db.VarChar(64)
+  tier          Int
+  earnedAt      DateTime @default(now()) @map("earned_at") @db.Timestamptz(3)
+  nftStatus     String   @default("none") @map("nft_status") @db.VarChar(16)
+  nftTokenId    String?  @map("nft_token_id") @db.VarChar(128)
+  nftTxHash     String?  @map("nft_tx_hash") @db.VarChar(128)
+
+  @@unique([playerId, achievementId])
+  @@index([playerId])
+  @@map("achievement_unlock")
+  @@schema("core")
+}
+
+/// Player XP, level (`50*L*(L+1)` cap 30), active title, avatar frame, and career `unlockStage` (W12-05, W12-09).
+model PlayerXp {
+  playerId    String   @id @map("player_id")
+  xp          Int      @default(0)
+  level       Int      @default(0)
+  title       String   @default("Cadet") @db.VarChar(64)
+  frame       String   @default("default") @db.VarChar(64)
+  unlockStage Int      @default(1) @map("unlock_stage")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("player_xp")
+  @@schema("core")
+}
+
+/// Idempotent XP awards (`(playerId, source, sourceId)` unique, W12-05).
+model XpLedger {
+  id        String   @id
+  playerId  String   @map("player_id")
+  source    String   @db.VarChar(32)
+  sourceId  String   @map("source_id") @db.VarChar(128)
+  delta     Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([playerId, source, sourceId])
+  @@index([playerId])
+  @@map("xp_ledger")
+  @@schema("core")
+}
+
+/// Past colony records for `/v1/me/profile` and `/v1/me/history` (W12-09).
+model ColonyHistory {
+  id           String   @id
+  playerId     String   @map("player_id")
+  colonyId     String   @map("colony_id")
+  name         String   @db.VarChar(64)
+  planetId     String   @map("planet_id")
+  planetName   String   @map("planet_name") @db.VarChar(64)
+  planetType   String   @map("planet_type") @db.VarChar(32)
+  stageReached Int      @default(1) @map("stage_reached")
+  outcome      String   @db.VarChar(32)
+  foundedAt    DateTime @default(now()) @map("founded_at") @db.Timestamptz(3)
+  endedAt      DateTime @default(now()) @map("ended_at") @db.Timestamptz(3)
+
+  @@index([playerId])
+  @@map("colony_history")
+  @@schema("core")
+}
+
 // --- world.prisma ---
 enum SnapshotKind {
   PERIODIC

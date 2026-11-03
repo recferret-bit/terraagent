@@ -39,12 +39,20 @@ function rewriteMockOauth(req: { url?: string }): void {
   req.url = `/dev/mock-oauth/index.html${search}`;
 }
 
+/** `/me` and `/me/` serve `me.html` (`OWNER_TASKS.md` N2). */
+function rewriteMePage(req: { url?: string }): void {
+  const { path, search } = splitUrl(req.url ?? '');
+  if (path !== '/me' && path !== '/me/') return;
+  req.url = `/me.html${search}`;
+}
+
 const chainTxPage: Plugin = {
   name: 'chain-tx-page',
   configureServer(server) {
     server.middlewares.use((req, _res, next) => {
       rewriteChainTx(req);
       rewriteMockOauth(req);
+      rewriteMePage(req);
       next();
     });
   },
@@ -52,6 +60,7 @@ const chainTxPage: Plugin = {
     server.middlewares.use((req, _res, next) => {
       rewriteChainTx(req);
       rewriteMockOauth(req);
+      rewriteMePage(req);
       next();
     });
   },
@@ -72,6 +81,7 @@ export default defineConfig({
         main: resolve(frontend, 'index.html'),
         landing: resolve(frontend, 'landing.html'),
         play: resolve(frontend, 'play.html'),
+        me: resolve(frontend, 'me.html'),
         playground: resolve(frontend, 'playground.html'),
         devChain: resolve(frontend, 'dev/chain/index.html'),
         devChainTx: resolve(frontend, 'dev/chain/tx.html'),
