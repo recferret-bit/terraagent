@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import { parseWaves } from '@terra/contracts';
 import { AuthTokenService, extractBearerPlayer } from '../core/auth/index.js';
 import { CoreException, CoreUnauthorized } from '../core/errors/index.js';
 import { FlagsService } from '../flags/flags.service.js';
@@ -52,6 +53,23 @@ export function resolveMePlayer(
       message: 'Player page is off',
       details: { code: 'wave_disabled' },
     });
+  }
+
+  if (!production) {
+    const wavesParam = extractQueryParam(req.url, 'waves');
+    if (wavesParam) {
+      try {
+        if (!parseWaves(wavesParam).has('W12')) {
+          throw new CoreException('wave_disabled', {
+            status: 403,
+            message: 'Player page is off',
+            details: { code: 'wave_disabled' },
+          });
+        }
+      } catch (e) {
+        if (e instanceof CoreException) throw e;
+      }
+    }
   }
 
   const bearerToken = extractBearerToken(req);
