@@ -4,7 +4,19 @@ import { clientDataFor } from '../../core/flags/data';
 import type { GameView } from '../../core/registry/types';
 import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
 
-export type BuildingKind = 'commandHub' | 'metalsExtractor' | 'solar';
+export type BuildingKind =
+  | 'commandHub'
+  | 'metalsExtractor'
+  | 'solar'
+  | 'pylon'
+  | 'capacitor'
+  | 'wind'
+  | 'thermal'
+  | 'supplyDepot'
+  | 'mineralsQuarry'
+  | 'waterExtractor'
+  | 'petroleumWell'
+  | 'powerLine';
 
 export interface BuildingCardModel {
   id: string;
@@ -39,18 +51,31 @@ const LABELS: Record<string, string> = {
   commandHub: 'Command Hub',
   metalsExtractor: 'Metals Extractor',
   solar: 'Solar Collector Array',
+  pylon: 'Power Pylon',
+  capacitor: 'Capacitor Bank',
+  wind: 'Wind Turbine',
+  thermal: 'Thermal Plant',
+  supplyDepot: 'Supply Depot',
+  mineralsQuarry: 'Minerals Quarry',
+  waterExtractor: 'Water Extractor',
+  petroleumWell: 'Petroleum Well',
+  powerLine: 'Power Line',
 };
 
 function formatPower(row: Record<string, unknown>): string {
   const gen = typeof row.founderCoreGenPerS === 'number' ? row.founderCoreGenPerS : 0;
   const drain = typeof row.powerDrainPerS === 'number' ? row.powerDrainPerS : 0;
   const net = typeof row.netOutputPerS === 'number' ? row.netOutputPerS : 0;
+  const capE = typeof row.capacityE === 'number' ? row.capacityE : 0;
 
   if (gen > 0 && drain > 0) {
     return `+${gen} / −${drain} E/s`;
   }
   if (net > 0) {
     return `+${net} E/s`;
+  }
+  if (capE > 0 && drain > 0) {
+    return `−${drain} E/s · ${capE} E`;
   }
   if (drain > 0) {
     return `−${drain} E/s`;
@@ -170,6 +195,34 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
     const buildingRows = Object.values(econTable).filter((r) => r.kind === 'building');
     for (const row of buildingRows) {
       cards.push(makeCard(row as Record<string, unknown>, view));
+    }
+  }
+
+  const gridTable = data.tables['grid'];
+  if (gridTable) {
+    const gridBuildingRows = Object.values(gridTable).filter((r) => r.kind === 'building');
+    for (const row of gridBuildingRows) {
+      cards.push(makeCard(row as Record<string, unknown>, view));
+    }
+    const pylonRow = gridTable['pylon'] as Record<string, unknown> | undefined;
+    if (pylonRow) {
+      const pylonCost = (pylonRow.cost as Record<string, number>) ?? { 'metals.t1': 15, 'minerals.t1': 5 };
+      const insufficient = hasInsufficientStock(pylonCost, view);
+      cards.push({
+        id: 'powerLine',
+        building: 'powerLine',
+        label: 'Power Line',
+        tier: 1,
+        footprintW: 1,
+        footprintD: 1,
+        footprintText: 'Chain (≤6 span)',
+        designBuildS: 4,
+        hqBuildS: 2.7,
+        cost: pylonCost,
+        powerText: '−0.5 E/s / pylon',
+        disabled: insufficient,
+        disabledReason: insufficient ? 'Insufficient resources' : undefined,
+      });
     }
   }
 
