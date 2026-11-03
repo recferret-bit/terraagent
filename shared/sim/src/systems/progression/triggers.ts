@@ -81,12 +81,25 @@ const EXTRACTOR_SET = new Set<string>(EXTRACTOR_BUILDING_IDS);
 const GENERATOR_SET = new Set<string>(GENERATOR_BUILDING_IDS);
 
 function buildingAliases(kind: string): readonly string[] {
-  if (kind === 'commandHub' || kind === 'hub') return ['commandHub', 'hub'];
-  if (kind === 'roboticsFactory' || kind === 'robotics_factory') return ['roboticsFactory', 'robotics_factory'];
+  if (kind === 'commandHub' || kind === 'hub' || kind === 'Command Hub T1') return ['commandHub', 'hub'];
+  if (kind === 'commandHub_t2' || kind === 'hub_t2' || kind === 'Command Hub T2') return ['commandHub_t2', 'commandHub', 'hub'];
+  if (kind === 'commandHub_t3' || kind === 'hub_t3' || kind === 'Command Hub T3') return ['commandHub_t3', 'commandHub', 'hub'];
+  if (kind === 'roboticsFactory' || kind === 'robotics_factory' || kind === 'factory' || kind === 'Factory T1') {
+    return ['roboticsFactory', 'robotics_factory', 'factory'];
+  }
+  if (kind === 'roboticsFactory_t2' || kind === 'robotics_factory_t2' || kind === 'factory_t2' || kind === 'Factory T2') {
+    return ['roboticsFactory_t2', 'roboticsFactory', 'robotics_factory', 'factory'];
+  }
   if (kind === 'depot' || kind === 'storageDepot' || kind === 'supplyDepot') return ['depot', 'storageDepot', 'supplyDepot'];
   if (kind === 'solar' || kind === 'solarCollector') return ['solar', 'solarCollector'];
   if (kind === 'mineralsExtractor' || kind === 'mineralsQuarry') return ['mineralsExtractor', 'mineralsQuarry'];
   return [kind];
+}
+
+function inferTierFromKind(kind: string, tier: number): number {
+  if (kind.endsWith('_t3') || kind.endsWith('T3')) return Math.max(tier, 3);
+  if (kind.endsWith('_t2') || kind.endsWith('T2')) return Math.max(tier, 2);
+  return tier;
 }
 
 function unitAliases(kind: string): readonly string[] {
@@ -95,15 +108,16 @@ function unitAliases(kind: string): readonly string[] {
 }
 
 function recordBuilding(counts: ColonyEntityCounts, kind: string, tier: number): void {
+  const effectiveTier = inferTierFromKind(kind, tier);
   counts.completedBuildings++;
   if (EXTRACTOR_SET.has(kind)) counts.completedExtractors++;
   if (GENERATOR_SET.has(kind)) counts.completedGenerators++;
   for (const alias of buildingAliases(kind)) {
     counts.buildingCountsByKind[alias] = (counts.buildingCountsByKind[alias] ?? 0) + 1;
     const prevTier = counts.maxBuildingTierByKind[alias] ?? 0;
-    if (tier > prevTier) counts.maxBuildingTierByKind[alias] = tier;
-    if (tier >= 2) {
-      const tKey = `${alias}_t${tier}`;
+    if (effectiveTier > prevTier) counts.maxBuildingTierByKind[alias] = effectiveTier;
+    if (effectiveTier >= 2 && !alias.endsWith(`_t${effectiveTier}`)) {
+      const tKey = `${alias}_t${effectiveTier}`;
       counts.buildingCountsByKind[tKey] = (counts.buildingCountsByKind[tKey] ?? 0) + 1;
     }
   }
@@ -199,7 +213,10 @@ export function countColonyEntities(state: PlanetState, colonyIndex: number): Co
   const col = state.colonies[colonyIndex];
   if (typeof col?.hubEntityId === 'number' && (counts.buildingCountsByKind.commandHub ?? 0) === 0) {
     const hubRow = rowOf(state.entities, col.hubEntityId);
-    if (hubRow < 0 || (cols.hp[hubRow] > 0 && !isEntityConstructing(cols.state[hubRow]) && !jobs[col.hubEntityId])) {
+    if (
+      (hubRow < 0 && state.meta.nextEntityId <= col.hubEntityId) ||
+      (hubRow >= 0 && cols.hp[hubRow] > 0 && !isEntityConstructing(cols.state[hubRow]) && !jobs[col.hubEntityId])
+    ) {
       recordBuilding(counts, 'commandHub', Number(col.hubTier ?? 1));
     }
   }
