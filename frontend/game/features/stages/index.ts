@@ -7,6 +7,7 @@ import {
   type StageToastOptions,
 } from './StageToast';
 import { StageTrackHud } from './StageTrackHud';
+import { stageDevCommands } from './devCommands';
 import './stages.css';
 
 export {
@@ -17,6 +18,7 @@ export {
   type StageToastOptions,
 };
 export { extractDwellRemainingSeconds, formatDwellCountdown, StageTrackHud } from './StageTrackHud';
+export { autopilotCommand, goalCommand, stageCommand, stageDevCommands } from './devCommands';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
@@ -77,4 +79,5 @@ export default defineFeature({
       mount: mountStageTrackHud,
     },
   ],
+  devCommands: stageDevCommands,
 });
