@@ -73,7 +73,8 @@ export const devAddLoad = defineCommandHandler({
   kind: 'dev.addload',
   wave: 'W03',
   handle(s, c, ctx) {
-    const args = (c.args ?? {}) as {
+    const raw = (c.args ?? (c as { data?: unknown }).data ?? {}) as Record<string, unknown>;
+    const args = raw as {
       loadPerS?: number;
       ePerS?: number;
       amount?: number;
@@ -102,7 +103,7 @@ export const devAddLoad = defineCommandHandler({
       colExt.syntheticLoadPylonId = targetEntityId;
     }
     colony.changedAt = ctx.tick;
-    recomputeAllColonyPower(s, ctx.data, ctx.tick);
+    recomputeAllColonyPower(s, ctx.data, ctx.tick, 0, ctx);
   },
 });
 

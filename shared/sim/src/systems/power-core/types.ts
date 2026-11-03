@@ -56,4 +56,6 @@ export interface ColonyPowerSummary {
   clockText: string;
   entityPower?: Record<number, EntityPowerStatus>;
   components?: PowerComponentSummary[];
+  pylonLoads?: Record<number, { flow: number; max: number; overloaded?: boolean; shedEntityIds?: number[] }>;
+  overloadedEntityIds?: number[];
 }
