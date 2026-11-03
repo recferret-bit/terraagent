@@ -30,6 +30,49 @@
   gap: var(--ta-s2);
 }
 
+.ta-tf-menu__stage-ops {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-tf-menu__stage-ops[hidden] {
+  display: none;
+}
+
+.ta-tf-menu__stage-op.is-stage-locked {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-color: var(--ta-seam);
+  background: var(--ta-deep);
+}
+
+.ta-tf-menu__reason {
+  align-self: flex-start;
+  margin-top: 2px;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-steel);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-2);
+  padding: 2px var(--ta-s1);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-tf-menu__unlock-detail {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .ta-tf-menu__op-btn {
   display: flex;
   flex-direction: column;

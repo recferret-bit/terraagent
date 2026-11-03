@@ -272,3 +272,72 @@ describe('ConstructionMenu DOM HUD Component', () => {
     expect(mockParent.children).toHaveLength(0);
   });
 });
+
+describe('W08-11: ConstructionMenu stage filtering', () => {
+  const origDoc = globalThis.document;
+  const origWin = globalThis.window;
+
+  beforeEach(() => {
+    (globalThis as unknown as { document: unknown }).document = { createElement: (tag: string) => new MockElement(tag) };
+    (globalThis as unknown as { window: unknown }).window = { addEventListener: () => {}, removeEventListener: () => {} };
+  });
+
+  afterEach(() => {
+    (globalThis as unknown as { document: unknown }).document = origDoc;
+    (globalThis as unknown as { window: unknown }).window = origWin;
+  });
+
+  it('at S1 shows Builder, Pylon, and Depot greyed out with unlock condition and unlocks them at S2', () => {
+    const parentEl = new MockElement('div') as unknown as HTMLElement;
+    const startPlacement = vi.fn();
+    const track = vi.fn();
+    const flags = new Set(['W00', 'W01', 'W02', 'W08']);
+    const ctx = { flags, host: 'server' as const, services: { startPlacement, track } };
+
+    const instance = constructionFeature.hud![0].mount(parentEl, ctx);
+    const mockParent = parentEl as unknown as MockElement;
+    instance.update?.({ colonies: [{ stage: 1, unlockStage: 1, hubBuilt: true }] });
+
+    for (const kind of ['builder', 'pylon', 'depot']) {
+      const btn = mockParent.querySelector(`[data-building="${kind}"]`);
+      expect(btn).not.toBeNull();
+      expect(btn?.disabled).toBe(true);
+      expect(btn?.getAttribute('data-disabled')).toBe('true');
+      expect(btn?.getAttribute('data-stage-locked')).toBe('true');
+      expect(btn?.className).toContain('is-stage-locked');
+      expect(btn?.querySelector('.ta-construction__reason')?.textContent).toBe(
+        'Unlocks at S2: extractor + generator · 2 min',
+      );
+      expect(btn?.getAttribute('data-unlock-detail')).toBe(
+        'Unlocks at S2: extractor + generator complete · 2 min',
+      );
+      btn?.click();
+      expect(startPlacement).not.toHaveBeenCalled();
+    }
+
+    // S3 items are more than 1 stage ahead at S1 and must be hidden
+    expect(mockParent.querySelector('[data-building="roboticsFactory"]')).toBeNull();
+    expect(mockParent.querySelector('[data-building="turret"]')).toBeNull();
+
+    // Advance to S2: Builder, Pylon, Depot unlock; S3 items appear greyed out
+    instance.update?.({ colonies: [{ stage: 2, unlockStage: 2, hubBuilt: true }] });
+    for (const kind of ['builder', 'pylon', 'depot']) {
+      const btn = mockParent.querySelector(`[data-building="${kind}"]`);
+      expect(btn?.disabled).toBe(false);
+      expect(btn?.getAttribute('data-disabled')).toBe('false');
+      expect(btn?.getAttribute('data-stage-locked')).toBeNull();
+      expect(btn?.querySelector('.ta-construction__reason')).toBeNull();
+    }
+
+    for (const kind of ['roboticsFactory', 'turret']) {
+      const btn = mockParent.querySelector(`[data-building="${kind}"]`);
+      expect(btn).not.toBeNull();
+      expect(btn?.disabled).toBe(true);
+      expect(btn?.querySelector('.ta-construction__reason')?.textContent).toBe(
+        'Unlocks at S3: 6 buildings + 2nd extractor · 3 min',
+      );
+    }
+
+    instance.dispose();
+  });
+});
