@@ -14,6 +14,7 @@ import { isWorldPointInColonyFov, resetColonyVisionAndLights, syncColonyVisionAn
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { disposeObject3D, UnitHealthBars } from './unitHealthBars';
+import { archetypeForKind, isConstructibleBuilding } from './entityKinds';
 import {
   buildActiveWorkSites,
   computeWorkTarget,
@@ -21,6 +22,8 @@ import {
   hubBuildProgressForState,
   is2x2BuildingKind,
 } from './workTargetResolver';
+
+export { archetypeForKind };
 
 export interface EntityMeshRecord {
   id: number; kind: number; owner: number; q: number; r: number; x: number; y: number; rot: number;
@@ -45,21 +48,6 @@ const UNPREDICTABLE_REJECTS: ReadonlySet<string> = new Set([
 ]);
 
 export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
-
-export function archetypeForKind(kind: number): string {
-  if (kind === ENTITY_KIND.hq) return 'robot.hero';
-  if (kind === ENTITY_KIND.pod) return 'ship.dropPod';
-  if (kind === ENTITY_KIND.commandHub) return 'building.commandHub';
-  if (kind === ENTITY_KIND.metalsExtractor) return 'building.mine';
-  if (kind === ENTITY_KIND.solar) return 'building.solar';
-  if (kind === ENTITY_KIND.harvester) return 'robot.miner';
-  // devProbe (W00 test entity) and any kind without its own model: a registered unit archetype (XC-25)
-  return 'robot.builder';
-}
-
-function isConstructibleBuilding(kind: number): boolean {
-  return kind === ENTITY_KIND.commandHub || kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar;
-}
 
 export function entityWorldXZ(kind: number, x: number, y: number): [number, number] {
   return is2x2BuildingKind(kind) ? tileXZ(x + 0.5, y + 0.5) : tileXZ(x, y);
@@ -394,7 +382,7 @@ export class EntityMeshes {
         continue;
       }
 
-      const isTrackedUnit = rec.kind === ENTITY_KIND.hq || rec.kind === ENTITY_KIND.harvester;
+      const isTrackedUnit = rec.kind === ENTITY_KIND.hq || rec.kind === ENTITY_KIND.harvester || rec.kind === ENTITY_KIND.builder;
       const wantWalk = isTrackedUnit ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
       const wantWork = computeWorkTarget(rec.kind, rec.state, isDaylight);
       rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);

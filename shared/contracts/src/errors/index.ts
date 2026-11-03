@@ -17,6 +17,8 @@ export const REJECT_CODES = [
   'cannot_dismantle_hq',
   // W02 queue: `cancelTask` / `reorderTask` names no open task of the colony
   'unknown_task',
+  // W03 queue: lane has reached its capacity and no `auto` entry can be dropped
+  'lane_full',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

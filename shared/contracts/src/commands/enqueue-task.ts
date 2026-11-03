@@ -40,9 +40,33 @@ export const EnqueueBuildUnitTask = z.strictObject({
   }),
 });
 
+export const EnqueuePowerLineTask = z.strictObject({
+  powerLine: z.strictObject({
+    tiles: z.array(TilePos).min(1).max(64),
+    tier: z.number().int().min(1).max(2).optional(),
+  }),
+});
+
+export const EnqueueRepairTask = z.strictObject({
+  repair: z.strictObject({
+    entityId: z.number().int().positive(),
+    q: TileCoord.optional(),
+    r: TileCoord.optional(),
+  }),
+});
+
+export const EnqueueHqGoalTask = z.strictObject({
+  hqGoal: z.strictObject({
+    goal: z.string().min(1).max(64),
+    target: z.string().max(64).optional(),
+    q: TileCoord.optional(),
+    r: TileCoord.optional(),
+  }),
+});
+
 export const EnqueueDirectTask = z.strictObject({
   taskId: z.string().min(1).max(64).optional(),
-  precedence: z.enum(['explicit', 'autoSitePrep', 'queued', 'standing']).optional(),
+  precedence: z.enum(['explicit', 'autoSitePrep', 'queued', 'standing', 'system', 'player', 'hq', 'ai', 'auto']).optional(),
   costOverride: z.record(z.string(), z.number().nonnegative()).optional(),
   task: z.union([
     z.strictObject({
@@ -72,6 +96,24 @@ export const EnqueueDirectTask = z.strictObject({
       /** `op: 'work'` only: as `terraform.intent` (the same order path, `enqueueWorkOrder`). */
       intent: WorkIntent.optional(),
     }),
+    z.strictObject({
+      kind: z.literal('powerLine'),
+      tiles: z.array(TilePos).min(1).max(64),
+      tier: z.number().int().min(1).max(2).optional(),
+    }),
+    z.strictObject({
+      kind: z.literal('repair'),
+      entityId: z.number().int().positive(),
+      q: TileCoord.optional(),
+      r: TileCoord.optional(),
+    }),
+    z.strictObject({
+      kind: z.literal('hqGoal'),
+      goal: z.string().min(1).max(64),
+      target: z.string().max(64).optional(),
+      q: TileCoord.optional(),
+      r: TileCoord.optional(),
+    }),
   ]),
 });
 
@@ -79,7 +121,15 @@ export const command = defineCommand({
   kind: 'enqueueTask',
   wave: 'W01',
   origin: 'client',
-  args: z.union([EnqueueTerraformTask, EnqueueBuildTask, EnqueueBuildUnitTask, EnqueueDirectTask]),
+  args: z.union([
+    EnqueueTerraformTask,
+    EnqueueBuildTask,
+    EnqueueBuildUnitTask,
+    EnqueuePowerLineTask,
+    EnqueueRepairTask,
+    EnqueueHqGoalTask,
+    EnqueueDirectTask,
+  ]),
   summary:
-    'Enqueues a terraform order (W01), a building construction order (W02), or a unit production order (W02) in the colony queue.',
+    'Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a power-line / repair / HQ-goal order (W03) in the colony queue.',
 });
