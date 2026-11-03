@@ -16,13 +16,13 @@ function ackText(kind: string, r: CommandResult): string {
 
 export const contactFakeCmd: DevCommandDef = {
   name: 'contact.fake',
-  help: 'contact.fake [colonyIndex]  Fake neighbour/Guild contact so Trade Hub unlocks below Stage 5 (W10-03)',
+  help: 'contact.fake [1|0|off]  Fake neighbour/Guild contact so Trade Hub unlocks below Stage 5 (W10-03)',
   async run(a, ctx) {
-    const rawIdx = a[0] !== undefined && a[0] !== '' ? Number(a[0]) : undefined;
-    const colonyIndex =
-      rawIdx !== undefined && Number.isInteger(rawIdx) && rawIdx >= 0 ? rawIdx : undefined;
+    const raw = (a[0] ?? '').trim().toLowerCase();
+    const enabled = raw !== 'false' && raw !== 'off';
     const r = await sim(ctx, 'dev.contactFake', {
-      ...(colonyIndex !== undefined ? { colonyIndex } : {}),
+      colonyIndex: 0,
+      enabled,
     });
     return ackText('dev.contactFake', r);
   },
@@ -32,4 +32,5 @@ export default defineFeature({
   id: 'cargo-unlock',
   wave: 'W10',
   devCommands: [contactFakeCmd],
+  consoleCommands: [contactFakeCmd],
 });

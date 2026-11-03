@@ -71,6 +71,7 @@ export class TradeHubPanel implements Disposable {
   private offSelection: (() => void) | null = null;
   private offStoreReject: (() => void) | null = null;
   private offStoreEvents: (() => void) | null = null;
+  private offStoreCargo: (() => void) | null = null;
   private lastSeenRefundRef: string | null = null;
 
   constructor(
@@ -177,12 +178,7 @@ export class TradeHubPanel implements Disposable {
     return { container, exportChip, importChip };
   }
 
-  private buildHeader(): {
-    header: HTMLElement;
-    tierBadge: HTMLElement;
-    statusBadge: HTMLElement;
-    closeBtn: HTMLButtonElement;
-  } {
+  private buildHeader(): { header: HTMLElement; tierBadge: HTMLElement; statusBadge: HTMLElement; closeBtn: HTMLButtonElement } {
     const header = makeDiv('ta-trade-hub__header');
     const titleGroup = makeDiv('ta-trade-hub__title-group');
     const title = makeSpan('ta-trade-hub__title', 'trade-hub-title', 'INTER-COLONY TRADE HUB');
@@ -190,27 +186,18 @@ export class TradeHubPanel implements Disposable {
     const tierBadge = makeSpan('ta-trade-hub__badge ta-trade-hub__badge--tier plate-sm', 'trade-hub-tier', 'TIER 1');
     const statusBadge = makeSpan('ta-trade-hub__badge ta-trade-hub__badge--status plate-sm', 'trade-hub-status', 'ONLINE');
     statusBadge.setAttribute('data-online', 'true');
-
     badges.append(tierBadge, statusBadge);
     titleGroup.append(title, badges);
-
     const closeBtn = makeBtn('ta-trade-hub__close btn-sm plate-sm', 'trade-hub-close', 'CLOSE', () => {
       this.closedForEntityId = this.selectedHubId;
       this.setOpen(false);
     });
     closeBtn.setAttribute('aria-label', 'Close Trade Hub panel');
-
     header.append(titleGroup, closeBtn);
     return { header, tierBadge, statusBadge, closeBtn };
   }
 
-  private buildMetersRow(): {
-    metersRow: HTMLElement;
-    throughputVal: HTMLElement;
-    throughputFill: HTMLElement;
-    dailyCapVal: HTMLElement;
-    dailyCapFill: HTMLElement;
-  } {
+  private buildMetersRow(): { metersRow: HTMLElement; throughputVal: HTMLElement; throughputFill: HTMLElement; dailyCapVal: HTMLElement; dailyCapFill: HTMLElement } {
     const metersRow = makeDiv('ta-trade-hub__meters');
     const tp = this.buildMeterCard('Throughput', 'trade-hub-throughput', 'trade-hub-throughput-val', '0 / 250 / min', 'trade-hub-throughput-fill');
     const dc = this.buildMeterCard('Daily Export Limit', 'trade-hub-daily-cap', 'trade-hub-daily-cap-val', '0 / 20,000 / day', 'trade-hub-daily-cap-fill ta-trade-hub__meter-fill--daily');
@@ -343,22 +330,32 @@ export class TradeHubPanel implements Disposable {
   }
 
   private bindStore(): void {
-    if (this.offStoreReject || this.offStoreEvents) return;
     const store = this.ctx?.services.store;
-    if (typeof store?.onCommandRejected === 'function') {
+    if (!this.offStoreReject && typeof store?.onCommandRejected === 'function') {
       this.offStoreReject = store.onCommandRejected((rej: { id?: string; kind?: string; code?: string; detail?: string }) => {
         const isCargo = rej.kind === 'cargo.export' || rej.kind === 'cargo.import' || (rej.code && rej.code in CARGO_ERROR_MESSAGES);
         if (isCargo) this.notifyError(rej.code ?? 'mint_cap', rej.detail);
       });
     }
-    const storeEvents = store as { onServerEvents?(fn: (e: readonly { kind: string; data?: Record<string, unknown> }[]) => void): () => void } | undefined;
-    if (typeof storeEvents?.onServerEvents === 'function') {
+    const storeEvents = store as {
+      cargoStatus?: CargoStatusPayload | null;
+      onCargoStatus?(fn: (s: CargoStatusPayload) => void): () => void;
+      onServerEvents?(fn: (e: readonly { kind: string; data?: Record<string, unknown> }[]) => void): () => void;
+    } | undefined;
+    if (!this.offStoreEvents && typeof storeEvents?.onServerEvents === 'function') {
       this.offStoreEvents = storeEvents.onServerEvents((events) => {
         for (const e of events) {
           if (e.kind === 'cargoRefunded' && e.data) {
             this.notifyRefund(Number(e.data.amount ?? 0), e.data.resource as ResourceKey, (e.data.direction ?? 'export') as 'export' | 'import');
           }
         }
+      });
+    }
+    if (!this.offStoreCargo && typeof storeEvents?.onCargoStatus === 'function') {
+      if (storeEvents.cargoStatus && !this.cargoStatus) this.cargoStatus = storeEvents.cargoStatus;
+      this.offStoreCargo = storeEvents.onCargoStatus((s) => {
+        if (this.ctx?.services) this.ctx.services.cargoStatus = s;
+        this.setCargoStatus(s);
       });
     }
   }
@@ -481,6 +478,8 @@ export class TradeHubPanel implements Disposable {
     this.offStoreReject = null;
     this.offStoreEvents?.();
     this.offStoreEvents = null;
+    this.offStoreCargo?.();
+    this.offStoreCargo = null;
     this.toastController.dispose();
     this.orbitRows.clear();
     this.root.remove();

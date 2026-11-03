@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { RESOURCE_KEYS } from '@terra/contracts';
+import { MOCK_CARGO_CONTRACT, RESOURCE_KEYS } from '@terra/contracts';
 import type { DbClient } from '@terra/db';
 import { adapterOf } from '../../../../ports/adapters.js';
 import {
@@ -33,6 +33,9 @@ export class MockCargoTokenAdapter extends MockChainBase implements CargoTokenPo
       return {
         standard: 'nep245',
         event: 'mt_mint',
+        contract_id: MOCK_CARGO_CONTRACT,
+        receiverId: MOCK_CARGO_CONTRACT,
+        signerId: input.caller ?? CARGO_MINTER_ACCOUNT,
         caller: input.caller ?? CARGO_MINTER_ACCOUNT,
         owner_id: input.to,
         token_ids: [input.tokenId],
@@ -51,6 +54,9 @@ export class MockCargoTokenAdapter extends MockChainBase implements CargoTokenPo
       return {
         standard: 'nep245',
         event: 'mt_burn',
+        contract_id: MOCK_CARGO_CONTRACT,
+        receiverId: MOCK_CARGO_CONTRACT,
+        signerId: input.caller ?? CARGO_MINTER_ACCOUNT,
         caller: input.caller ?? CARGO_MINTER_ACCOUNT,
         owner_id: input.from,
         token_ids: [input.tokenId],
@@ -69,6 +75,9 @@ export class MockCargoTokenAdapter extends MockChainBase implements CargoTokenPo
       return {
         standard: 'nep245',
         event: 'mt_transfer',
+        contract_id: MOCK_CARGO_CONTRACT,
+        receiverId: MOCK_CARGO_CONTRACT,
+        signerId: input.from,
         sender_id: input.from,
         receiver_id: input.to,
         token_ids: [input.tokenId],
@@ -83,6 +92,8 @@ export class MockCargoTokenAdapter extends MockChainBase implements CargoTokenPo
       await this.ensureAccount(tx, accountId);
       return {
         action: 'storage_deposit',
+        contract_id: MOCK_CARGO_CONTRACT,
+        receiverId: MOCK_CARGO_CONTRACT,
         account_id: accountId,
       };
     });

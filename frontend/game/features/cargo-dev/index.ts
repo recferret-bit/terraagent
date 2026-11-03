@@ -6,6 +6,7 @@ import '../../net/services';
 const GRANT_USAGE = 'cargo.grant <colony> <res> <amt>';
 const CAP_RESET_USAGE = 'cargo.cap.reset [colony]';
 const TRADEHUB_SPAWN_USAGE = 'tradehub.spawn [q] [r]';
+const POWER_SET_USAGE = 'power.set <0|restore|E/s>';
 
 async function sim(ctx: FeatureContext, kind: string, args: unknown): Promise<CommandResult> {
   const send = ctx.services.sendCommand;
@@ -38,11 +39,19 @@ export const cargoGrantCmd: DevCommandDef = {
       res = a[0] ?? '';
       amtStr = a[1] ?? '';
     } else if (a.length === 3) {
-      const parsed = parseColony(a[0]);
-      colony = parsed.colony;
-      colonyIndex = parsed.colonyIndex;
-      res = a[1] ?? '';
-      amtStr = a[2] ?? '';
+      if (RESOURCE_KEYS.includes((a[0] ?? '') as ResourceKey)) {
+        res = a[0] ?? '';
+        amtStr = a[1] ?? '';
+        const parsed = parseColony(a[2]);
+        colony = parsed.colony;
+        colonyIndex = parsed.colonyIndex;
+      } else {
+        const parsed = parseColony(a[0]);
+        colony = parsed.colony;
+        colonyIndex = parsed.colonyIndex;
+        res = a[1] ?? '';
+        amtStr = a[2] ?? '';
+      }
     } else {
       throw new Error(`usage: ${GRANT_USAGE}`);
     }
@@ -62,21 +71,30 @@ export const cargoGrantCmd: DevCommandDef = {
       throw new Error(`dev.cargoGrant rejected: ${r.code}${r.detail ? ` (${r.detail})` : ''}`);
     }
 
-    if (ctx.host !== 'local' && typeof fetch === 'function') {
-      try {
-        await fetch('/v1/dev/command', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ name: 'cargo.grant', args: { colony: String(colony), resource, amount } }),
-        });
-      } catch {
-        // ignore network errors in offline/local mode
-      }
+    if (ctx.host !== 'local') {
+      const storeCol = (ctx.services.store as { latest?: { colonies?: Array<{ id?: string }> } } | undefined)
+        ?.latest?.colonies?.[colonyIndex];
+      const serverColony =
+        (colony === '0' || colony === 'col-0' || colony === 'me') && storeCol?.id
+          ? storeCol.id
+          : colony === 'me'
+            ? 'col-0'
+            : String(colony);
       if (ctx.services.devServer) {
         try {
-          await ctx.services.devServer('cargo.grant', { colony: String(colony), resource, amount });
+          await ctx.services.devServer('cargo.grant', { colony: serverColony, resource, amount });
         } catch {
           // ignore
+        }
+      } else if (typeof fetch === 'function') {
+        try {
+          await fetch('/v1/dev/command', {
+            method: 'POST',
+            headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ name: 'cargo.grant', args: { colony: serverColony, resource, amount } }),
+          });
+        } catch {
+          // ignore network errors in offline/local mode
         }
       }
     }
@@ -93,6 +111,14 @@ export const cargoCapResetCmd: DevCommandDef = {
     const r = await sim(ctx, 'dev.cargoCapReset', { colonyIndex });
     if (!r.ok && r.code !== 'not_connected') {
       throw new Error(`dev.cargoCapReset rejected: ${r.code}${r.detail ? ` (${r.detail})` : ''}`);
+    }
+    if (ctx.services.cargoStatus) {
+      ctx.services.cargoStatus = {
+        ...ctx.services.cargoStatus,
+        throughputUsedPerMin: 0,
+        mintedToday: {},
+        todayMinted: {},
+      };
     }
     return `Reset cargo mint caps for colony ${colonyIndex}`;
   },
@@ -127,9 +153,32 @@ export const tradehubSpawnCmd: DevCommandDef = {
   },
 };
 
+export const powerSetCmd: DevCommandDef = {
+  name: 'power.set',
+  help: `${POWER_SET_USAGE}  Override colony power supply (0 cuts power; restore/1/auto restores normal supply)`,
+  async run(a, ctx) {
+    const raw = (a[0] ?? 'restore').trim().toLowerCase();
+    let supplyOverride: number | null = null;
+    if (raw === '' || raw === 'restore' || raw === 'auto' || raw === 'on' || raw === '1' || raw === '-1') {
+      supplyOverride = null;
+    } else {
+      const parsed = Number(raw);
+      if (!Number.isFinite(parsed) || parsed < 0) {
+        throw new Error(`usage: ${POWER_SET_USAGE}`);
+      }
+      supplyOverride = parsed;
+    }
+    const res = await sim(ctx, 'dev.power', { colonyIndex: 0, supplyOverride });
+    if (!res.ok && res.code !== 'not_connected') {
+      throw new Error(`dev.power rejected: ${res.code}${res.detail ? ` (${res.detail})` : ''}`);
+    }
+    return supplyOverride === null ? 'Power supply restored' : `Power supply set to ${supplyOverride} E/s`;
+  },
+};
+
 export default defineFeature({
   id: 'cargo-dev',
   wave: 'W10',
-  devCommands: [cargoGrantCmd, cargoCapResetCmd, tradehubSpawnCmd],
-  consoleCommands: [cargoGrantCmd, cargoCapResetCmd, tradehubSpawnCmd],
+  devCommands: [cargoGrantCmd, cargoCapResetCmd, tradehubSpawnCmd, powerSetCmd],
+  consoleCommands: [cargoGrantCmd, cargoCapResetCmd, tradehubSpawnCmd, powerSetCmd],
 });

@@ -372,7 +372,7 @@ export function buildSelectedEntityFromRow(
   offlineReasons: Record<number, string>,
   unitsById: Record<string, { current?: unknown; queue?: unknown[] }>,
 ): SelectedEntityView | null {
-  if (e.hp <= 0 || e.state === ENTITY_STATE.descending) return null;
+  if (e.hp <= 0 || e.state === ENTITY_STATE.descending || (e.kind === ENTITY_KIND.tradeHub && e.state === ENTITY_STATE.inert)) return null;
   const progress = resolveEntityActivityProgress(e, rawView);
   if (e.kind === ENTITY_KIND.harvester) {
     const job =

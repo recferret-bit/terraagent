@@ -180,7 +180,10 @@ export class NearMockCommand implements OnModuleInit {
       });
       if (found) return found.accountId;
       if (colonyStr === '0' || colonyStr === 'col-0') {
-        const first = await this.prisma.nearColonyAccount.findFirst();
+        const first = await this.prisma.nearColonyAccount.findFirst({
+          where: { slot: { not: 'player' } },
+          orderBy: { createdAt: 'desc' },
+        });
         if (first) return first.accountId;
       }
     }

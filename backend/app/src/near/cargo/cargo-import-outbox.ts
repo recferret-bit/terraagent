@@ -127,7 +127,13 @@ export class CargoImportOutboxService implements OnModuleInit, OnModuleDestroy {
     const prisma = this.database();
     if (!prisma) return null;
 
-    const accountId = await resolveColonyAccountId(prisma, parsed.colonyId, parsed.playerId);
+    const accountId = await resolveColonyAccountId(
+      prisma,
+      parsed.colonyId,
+      parsed.playerId,
+      parsed.planetId,
+      parsed.colonyIndex,
+    );
     const existing = await prisma.cargoTx.findUnique({
       where: { opId: parsed.opId },
       select: { state: true },

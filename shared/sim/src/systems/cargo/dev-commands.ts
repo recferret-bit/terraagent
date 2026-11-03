@@ -155,6 +155,7 @@ export const devCargoCapResetHandler = defineCommandHandler({
     }
     cargo.windowExports = [];
     cargo.dailyMinted = { utcDay: capState.utcDay, byResource: {} };
+    cargo.capResetAtTick = ctx.tick;
     if (cargo.caps && typeof cargo.caps === 'object') {
       (cargo.caps as Record<string, unknown>).windowEntries = [];
       (cargo.caps as Record<string, unknown>).mintedToday = {};

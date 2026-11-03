@@ -99,6 +99,7 @@ export class EntityMeshes {
   readonly podTouchdown: PodTouchdownFx;
   readonly healthBars: UnitHealthBars;
   readonly workParticles: WorkParticleSystem;
+  isW10Enabled: () => boolean = () => true;
   private readonly entries = new Map<number, EntityMeshRecord>();
   private selectedEntityId: number | null = null;
   private ownerColonyIndex = 0;
@@ -207,6 +208,7 @@ export class EntityMeshes {
     if (kind === ENTITY_KIND.commandHub && owner === this.ownerColonyIndex && !tdState.uiVisible) {
       return false;
     }
+    if (kind === ENTITY_KIND.tradeHub && (state === ENTITY_STATE.inert || !this.isW10Enabled())) return false;
     return true;
   }
 
