@@ -48,12 +48,57 @@ export interface CargoThroughputWindowEntry {
   amount: number;
 }
 
-/** Per-colony cargo export cap state stored on `ColonyState.cargoCaps`. */
+/** Per-colony cargo export cap state stored on `ColonyState.cargo` (aliased on `ColonyState.cargoCaps`). */
 export interface ColonyCargoCapState {
   windowEntries: CargoThroughputWindowEntry[];
   utcDay: number;
   mintedToday: Partial<Record<ResourceKey, number>>;
   dailyCapOverride?: number;
+  dailyCap?: number;
+  currentUtcDay?: string;
+}
+
+/** Converts a `YYYY-MM-DD` string or integer day index to a non-negative integer UTC day index (days since 1970-01-01). */
+export function parseCargoUtcDayInput(input?: number | string): number | undefined {
+  if (typeof input === 'number') {
+    return Number.isFinite(input) ? Math.max(0, Math.floor(input)) : undefined;
+  }
+  if (typeof input !== 'string') return undefined;
+  const trimmed = input.trim();
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed);
+  if (!m) {
+    const asNum = Number(trimmed);
+    return Number.isFinite(asNum) && trimmed.length > 0 ? Math.max(0, Math.floor(asNum)) : undefined;
+  }
+  let y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  y -= mo <= 2 ? 1 : 0;
+  const era = Math.floor((y >= 0 ? y : y - 399) / 400);
+  const yoe = y - era * 400;
+  const doy = Math.floor((153 * (mo + (mo > 2 ? -3 : 9)) + 2) / 5) + d - 1;
+  const doe = yoe * 365 + Math.floor(yoe / 4) - Math.floor(yoe / 100) + doy;
+  return Math.max(0, era * 146097 + doe - 719468);
+}
+
+/** Formats a non-negative integer UTC day index (days since 1970-01-01) as `YYYY-MM-DD`. */
+export function formatCargoUtcDay(dayIndex: number): string {
+  const z = Math.max(0, Math.floor(dayIndex)) + 719468;
+  const era = Math.floor((z >= 0 ? z : z - 146096) / 146097);
+  const doe = z - era * 146097;
+  const yoe = Math.floor(
+    (doe - Math.floor(doe / 1460) + Math.floor(doe / 36524) - Math.floor(doe / 146096)) / 365,
+  );
+  let y = yoe + era * 400;
+  const doy = doe - (365 * yoe + Math.floor(yoe / 4) - Math.floor(yoe / 100));
+  const mp = Math.floor((5 * doy + 2) / 153);
+  const d = doy - Math.floor((153 * mp + 2) / 5) + 1;
+  const m = mp + (mp < 10 ? 3 : -9);
+  if (m <= 2) y += 1;
+  const ys = String(y).padStart(4, '0');
+  const ms = String(m).padStart(2, '0');
+  const ds = String(d).padStart(2, '0');
+  return `${ys}-${ms}-${ds}`;
 }
 
 export interface UtcDayClockInput {
@@ -136,12 +181,9 @@ export function resolveDailyCargoMintCap(
   data?: CompiledDataLike,
   capState?: ColonyCargoCapState,
 ): number {
-  if (
-    typeof capState?.dailyCapOverride === 'number' &&
-    Number.isFinite(capState.dailyCapOverride) &&
-    capState.dailyCapOverride > 0
-  ) {
-    return Math.floor(capState.dailyCapOverride);
+  const override = capState?.dailyCapOverride ?? capState?.dailyCap;
+  if (typeof override === 'number' && Number.isFinite(override) && override > 0) {
+    return Math.floor(override);
   }
   const tradeHubTable = data?.tables?.tradeHub as Record<string, Record<string, unknown>> | undefined;
   const capsRow = tradeHubTable?.caps;
@@ -153,12 +195,18 @@ export function resolveDailyCargoMintCap(
   return DEFAULT_CARGO_MINT_CAP_PER_DAY;
 }
 
-function syncUtcDay(capState: ColonyCargoCapState, currentUtcDay?: number): void {
-  if (currentUtcDay === undefined || !Number.isFinite(currentUtcDay)) return;
-  const normalizedDay = Math.max(0, Math.floor(currentUtcDay));
-  if (normalizedDay !== capState.utcDay) {
-    capState.utcDay = normalizedDay;
+function syncUtcDay(capState: ColonyCargoCapState, currentUtcDay?: number | string): void {
+  const parsed = parseCargoUtcDayInput(currentUtcDay);
+  if (parsed === undefined) return;
+  if (parsed !== capState.utcDay) {
+    capState.utcDay = parsed;
+    capState.currentUtcDay =
+      typeof currentUtcDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(currentUtcDay.trim())
+        ? currentUtcDay.trim()
+        : formatCargoUtcDay(parsed);
     capState.mintedToday = {};
+  } else if (typeof currentUtcDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(currentUtcDay.trim())) {
+    capState.currentUtcDay = currentUtcDay.trim();
   }
 }
 
@@ -186,44 +234,62 @@ export function pruneRollingThroughputWindow(
 }
 
 /**
- * Ensures `colony.cargoCaps` is initialized as a valid `ColonyCargoCapState`.
+ * Ensures `colony.cargo` (and `colony.cargoCaps`) is initialized as a valid `ColonyCargoCapState`.
  * If `currentUtcDay` is provided and differs from `capState.utcDay`, resets `mintedToday` and updates `utcDay`.
  */
 export function ensureColonyCargoCapState(
   colony: ColonyState,
-  currentUtcDay?: number,
+  currentUtcDay?: number | string,
 ): ColonyCargoCapState {
-  const raw = colony.cargoCaps as Partial<ColonyCargoCapState> | undefined;
+  if (colony.cargo && colony.cargoCaps && colony.cargo !== colony.cargoCaps) {
+    Object.assign(colony.cargo as Record<string, unknown>, colony.cargoCaps as Record<string, unknown>);
+  }
+  const raw = (colony.cargo ?? colony.cargoCaps) as Record<string, unknown> | undefined;
+  const parsedDay = parseCargoUtcDayInput(currentUtcDay);
   if (!raw || typeof raw !== 'object') {
+    const initialDay = parsedDay ?? 0;
     const initial: ColonyCargoCapState = {
       windowEntries: [],
-      utcDay:
-        currentUtcDay !== undefined && Number.isFinite(currentUtcDay)
-          ? Math.max(0, Math.floor(currentUtcDay))
-          : 0,
+      utcDay: initialDay,
+      currentUtcDay:
+        typeof currentUtcDay === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(currentUtcDay.trim())
+          ? currentUtcDay.trim()
+          : formatCargoUtcDay(initialDay),
       mintedToday: {},
     };
+    colony.cargo = initial;
     colony.cargoCaps = initial;
     return initial;
   }
 
   if (!Array.isArray(raw.windowEntries)) {
-    raw.windowEntries = [];
+    raw.windowEntries = Array.isArray(raw.windowExports) ? raw.windowExports : [];
   }
   if (typeof raw.utcDay !== 'number' || !Number.isFinite(raw.utcDay)) {
     raw.utcDay =
-      currentUtcDay !== undefined && Number.isFinite(currentUtcDay)
-        ? Math.max(0, Math.floor(currentUtcDay))
-        : 0;
+      parsedDay ?? parseCargoUtcDayInput(raw.currentUtcDay as string | number | undefined) ?? 0;
   } else {
     raw.utcDay = Math.max(0, Math.floor(raw.utcDay));
   }
+  if (typeof raw.currentUtcDay !== 'string' || raw.currentUtcDay.length === 0) {
+    raw.currentUtcDay = formatCargoUtcDay(raw.utcDay as number);
+  }
   if (!raw.mintedToday || typeof raw.mintedToday !== 'object') {
-    raw.mintedToday = {};
+    raw.mintedToday =
+      raw.dailyMinted && typeof raw.dailyMinted === 'object' ? raw.dailyMinted : {};
+  }
+  if (
+    typeof raw.dailyCap === 'number' &&
+    Number.isFinite(raw.dailyCap) &&
+    raw.dailyCapOverride === undefined
+  ) {
+    raw.dailyCapOverride = raw.dailyCap;
   }
 
-  const capState = raw as ColonyCargoCapState;
+  const capState = raw as unknown as ColonyCargoCapState;
   syncUtcDay(capState, currentUtcDay);
+  colony.cargo = capState;
+  colony.cargoCaps = capState;
   return capState;
 }
 
@@ -244,7 +310,7 @@ export function getRollingThroughputUsed(
 export function getMintedToday(
   capState: ColonyCargoCapState,
   resource: ResourceKey,
-  currentUtcDay?: number,
+  currentUtcDay?: number | string,
 ): number {
   syncUtcDay(capState, currentUtcDay);
   const val = capState.mintedToday[resource];
@@ -255,10 +321,13 @@ export interface CargoMintCapCheckOptions {
   capState: ColonyCargoCapState;
   amount: number;
   resource: ResourceKey;
-  currentTick: number;
-  onlineThroughputPerMin: number;
+  currentTick?: number;
+  tick?: number;
+  onlineThroughputPerMin?: number;
+  onlineHubThroughputPerMin?: number;
   dailyCap?: number;
-  currentUtcDay?: number;
+  dailyCapOverride?: number;
+  currentUtcDay?: number | string;
   secondsUntilUtcMidnight?: number;
 }
 
@@ -278,7 +347,10 @@ export type CargoMintCapCheckResult =
  * 2. The colony's per-sub-resource UTC-day cap (`dailyCap`, default `20_000`).
  */
 export function checkCargoMintCaps(opts: CargoMintCapCheckOptions): CargoMintCapCheckResult {
-  const { capState, amount, resource, currentTick, onlineThroughputPerMin } = opts;
+  const { capState, amount, resource } = opts;
+  const currentTick = opts.currentTick ?? opts.tick ?? 0;
+  const onlineThroughputPerMin =
+    opts.onlineThroughputPerMin ?? opts.onlineHubThroughputPerMin ?? 0;
   const used = getRollingThroughputUsed(capState, currentTick);
 
   if (used + amount > onlineThroughputPerMin) {
@@ -303,7 +375,11 @@ export function checkCargoMintCaps(opts: CargoMintCapCheckOptions): CargoMintCap
   }
 
   const dailyCap =
-    opts.dailyCap ?? capState.dailyCapOverride ?? DEFAULT_CARGO_MINT_CAP_PER_DAY;
+    opts.dailyCap ??
+    opts.dailyCapOverride ??
+    capState.dailyCapOverride ??
+    capState.dailyCap ??
+    DEFAULT_CARGO_MINT_CAP_PER_DAY;
   const mintedToday = getMintedToday(capState, resource, opts.currentUtcDay);
 
   if (mintedToday + amount > dailyCap) {
@@ -326,13 +402,15 @@ export function recordCargoMint(
   amount: number,
   resource: ResourceKey,
   currentTick: number,
-  currentUtcDay?: number,
+  currentUtcDay?: number | string,
 ): void {
   pruneRollingThroughputWindow(capState, currentTick);
   syncUtcDay(capState, currentUtcDay);
   if (typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return;
 
-  capState.windowEntries.push({ tick: currentTick, amount });
+  const entry: CargoThroughputWindowEntry = { tick: currentTick, amount };
+  Object.defineProperty(entry, '_fromMint', { value: true, configurable: true });
+  capState.windowEntries.push(entry);
   capState.mintedToday[resource] = (capState.mintedToday[resource] ?? 0) + amount;
 }
 

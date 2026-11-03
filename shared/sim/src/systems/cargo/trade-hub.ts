@@ -5,6 +5,7 @@ import {
   ensureColonyCargoCapState,
   getRollingThroughputUsed,
   getTradeHubTierThroughputPerMin,
+  pruneRollingThroughputWindow,
 } from './caps';
 
 export interface TradeHubEntityStatus {
@@ -24,6 +25,7 @@ export interface ColonyTradeHubStatus {
   highestTier: number;
   onlineHighestTier: number;
   throughputCapPerMin: number;
+  totalOnlineThroughputPerMin: number;
   throughputUsedPerMin: number;
   hubs: TradeHubEntityStatus[];
 }
@@ -104,7 +106,33 @@ export function getColonyTradeHubStatus(
     highestTier,
     onlineHighestTier,
     throughputCapPerMin,
+    totalOnlineThroughputPerMin: throughputCapPerMin,
     throughputUsedPerMin,
     hubs,
   };
+}
+
+/**
+ * Records a cargo transfer of `amount` units at `currentTick` into the colony's rolling 60 s Trade Hub meter.
+ * Safe to call alongside `recordCargoMint` (deduplicates the entry already pushed by `recordCargoMint`).
+ */
+export function recordColonyTradeHubTransfer(
+  state: PlanetState,
+  colonyIndex: number,
+  amount: number,
+  currentTick: number = state.meta.tick,
+  _data?: CompiledDataLike,
+): void {
+  const colony = state.colonies[colonyIndex];
+  if (!colony || typeof amount !== 'number' || !Number.isFinite(amount) || amount <= 0) return;
+  const capState = ensureColonyCargoCapState(colony);
+  pruneRollingThroughputWindow(capState, currentTick);
+  const last = capState.windowEntries[capState.windowEntries.length - 1] as
+    | { tick: number; amount: number; _fromMint?: boolean }
+    | undefined;
+  if (last && last.tick === currentTick && last.amount === amount && last._fromMint) {
+    Object.defineProperty(last, '_fromMint', { value: false, configurable: true });
+    return;
+  }
+  capState.windowEntries.push({ tick: currentTick, amount });
 }
