@@ -17,7 +17,6 @@ export type QueueTaskPayload =
   | { kind: 'build'; building: string; q: number; r: number; tier?: number; rotation?: number }
   | { kind: 'buildUnit'; unit: string; count?: number; repeat?: boolean; producerId?: number }
   | { kind: 'terraform'; op: string; q: number; r: number }
-  | { kind: 'powerLine'; tiles: Array<{ q: number; r: number }>; tier?: number; subEntityIds?: number[]; op?: string }
   | { kind: 'repair'; entityId: number; q?: number; r?: number; op?: string }
   | { kind: 'hqGoal'; goal: string; target?: string; q?: number; r?: number; op?: string };
 
@@ -49,7 +48,5 @@ export interface QueueEntry {
   resourceWaitSinceTick?: number;
   /** Earmarked missing resources reserved by this entry after 60 s of resource starvation (W03-13). */
   earmarked?: Partial<Record<ResourceKey, number>>;
-  /** Sub-site entity IDs for multi-pylon `powerLine` entries (W03-17). */
-  subEntityIds?: number[];
   createdAt: number;
 }

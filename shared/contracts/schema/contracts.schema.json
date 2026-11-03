@@ -1138,54 +1138,6 @@
           {
             "additionalProperties": false,
             "properties": {
-              "powerLine": {
-                "additionalProperties": false,
-                "properties": {
-                  "tier": {
-                    "maximum": 2,
-                    "minimum": 1,
-                    "type": "integer"
-                  },
-                  "tiles": {
-                    "items": {
-                      "additionalProperties": false,
-                      "properties": {
-                        "q": {
-                          "maximum": 32767,
-                          "minimum": -32768,
-                          "type": "integer"
-                        },
-                        "r": {
-                          "maximum": 32767,
-                          "minimum": -32768,
-                          "type": "integer"
-                        }
-                      },
-                      "required": [
-                        "q",
-                        "r"
-                      ],
-                      "type": "object"
-                    },
-                    "maxItems": 64,
-                    "minItems": 1,
-                    "type": "array"
-                  }
-                },
-                "required": [
-                  "tiles"
-                ],
-                "type": "object"
-              }
-            },
-            "required": [
-              "powerLine"
-            ],
-            "type": "object"
-          },
-          {
-            "additionalProperties": false,
-            "properties": {
               "repair": {
                 "additionalProperties": false,
                 "properties": {
@@ -1421,50 +1373,6 @@
                   {
                     "additionalProperties": false,
                     "properties": {
-                      "kind": {
-                        "const": "powerLine",
-                        "type": "string"
-                      },
-                      "tier": {
-                        "maximum": 2,
-                        "minimum": 1,
-                        "type": "integer"
-                      },
-                      "tiles": {
-                        "items": {
-                          "additionalProperties": false,
-                          "properties": {
-                            "q": {
-                              "maximum": 32767,
-                              "minimum": -32768,
-                              "type": "integer"
-                            },
-                            "r": {
-                              "maximum": 32767,
-                              "minimum": -32768,
-                              "type": "integer"
-                            }
-                          },
-                          "required": [
-                            "q",
-                            "r"
-                          ],
-                          "type": "object"
-                        },
-                        "maxItems": 64,
-                        "minItems": 1,
-                        "type": "array"
-                      }
-                    },
-                    "required": [
-                      "kind",
-                      "tiles"
-                    ],
-                    "type": "object"
-                  },
-                  {
-                    "additionalProperties": false,
-                    "properties": {
                       "entityId": {
                         "exclusiveMinimum": 0,
                         "maximum": 9007199254740991,
@@ -1540,7 +1448,7 @@
         ]
       },
       "origin": "client",
-      "summary": "Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a power-line / repair / HQ-goal order (W03) in the colony queue.",
+      "summary": "Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a repair / HQ-goal order (W03; a Power Pylon is a plain `build` order) in the colony queue.",
       "wave": "W01"
     },
     "landPod": {
@@ -1622,118 +1530,6 @@
       "origin": "client",
       "summary": "Queues construction of a structure at (q, r) and auto-links any missing site preparation ops (UO-TF-03).",
       "wave": "W01"
-    },
-    "placePowerLine": {
-      "args": {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "anchors": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "q": {
-                  "maximum": 32767,
-                  "minimum": -32768,
-                  "type": "integer"
-                },
-                "r": {
-                  "maximum": 32767,
-                  "minimum": -32768,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "q",
-                "r"
-              ],
-              "type": "object"
-            },
-            "maxItems": 64,
-            "minItems": 1,
-            "type": "array"
-          },
-          "from": {
-            "additionalProperties": false,
-            "properties": {
-              "q": {
-                "maximum": 32767,
-                "minimum": -32768,
-                "type": "integer"
-              },
-              "r": {
-                "maximum": 32767,
-                "minimum": -32768,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "q",
-              "r"
-            ],
-            "type": "object"
-          },
-          "taskId": {
-            "maxLength": 64,
-            "minLength": 1,
-            "type": "string"
-          },
-          "tier": {
-            "maximum": 2,
-            "minimum": 1,
-            "type": "integer"
-          },
-          "tiles": {
-            "items": {
-              "additionalProperties": false,
-              "properties": {
-                "q": {
-                  "maximum": 32767,
-                  "minimum": -32768,
-                  "type": "integer"
-                },
-                "r": {
-                  "maximum": 32767,
-                  "minimum": -32768,
-                  "type": "integer"
-                }
-              },
-              "required": [
-                "q",
-                "r"
-              ],
-              "type": "object"
-            },
-            "maxItems": 64,
-            "minItems": 1,
-            "type": "array"
-          },
-          "to": {
-            "additionalProperties": false,
-            "properties": {
-              "q": {
-                "maximum": 32767,
-                "minimum": -32768,
-                "type": "integer"
-              },
-              "r": {
-                "maximum": 32767,
-                "minimum": -32768,
-                "type": "integer"
-              }
-            },
-            "required": [
-              "q",
-              "r"
-            ],
-            "type": "object"
-          }
-        },
-        "type": "object"
-      },
-      "origin": "client",
-      "summary": "Enqueues a multi-pylon power line construction order along a hex path (auto-spaced up to span 6, W03-01, W03-17).",
-      "wave": "W03"
     },
     "reorderTask": {
       "args": {
@@ -3242,7 +3038,8 @@
                 "planet_full",
                 "cannot_dismantle_hq",
                 "unknown_task",
-                "lane_full"
+                "lane_full",
+                "outside_power_zone"
               ],
               "type": "string"
             },

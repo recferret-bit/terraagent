@@ -132,7 +132,6 @@ export default defineTable({
       resourceShortageWindowS: 60,
       designResourceShortageWindowS: 60,
       resourceShortageCapRatio: 0.05,
-      pylonAttachRadius: 3,
       unitIdleDrainMult: 0.5,
       economyRateScale: 0.25,
     },

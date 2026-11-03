@@ -56,7 +56,6 @@ const RESERVED: Record<string, string> = {
   'hq.t1.selfPreservationHpRatio': 'HQ retreat rule: combat wave',
   'hq.startingKit.autoPlaceIdleS': 'auto Hub placement after idling (W01-18 stretch, client-side today)',
   'hub.t1.powerDrainPerS': 'power grid drain: W02 power grid',
-  'hub.t1.pylonSpan': 'pylon chains: W02 power grid',
   'hub.t1.pylonMaxLoad': 'pylon chains: W02 power grid',
   'opsBasic.*.unlockStage': 'stage unlocks: a later wave (every S0 op is unlocked in W01)',
 };

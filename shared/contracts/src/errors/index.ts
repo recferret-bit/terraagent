@@ -19,6 +19,8 @@ export const REJECT_CODES = [
   'unknown_task',
   // W03 queue: lane has reached its capacity and no `auto` entry can be dropped
   'lane_full',
+  // W03 grid: a building other than the Command Hub must stand inside the colony's power zone (Hub / Power Pylon reach)
+  'outside_power_zone',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

@@ -24,7 +24,6 @@ describe('W03-01 contracts: commands, events, reject codes, W03 flag', () => {
   it('registers all W03 commands and validates their strict args', () => {
     const required: CommandKind[] = [
       'repair',
-      'placePowerLine',
       'demolish',
       'reorderTask',
       'dev.setwind',
@@ -33,14 +32,15 @@ describe('W03-01 contracts: commands, events, reject codes, W03 flag', () => {
       'dev.damage',
     ];
     for (const k of required) expect(COMMAND_KINDS).toContain(k);
+    // one way to build a Power Pylon: a plain `build` order (the multi-pylon power-line tool was removed)
+    expect(COMMAND_KINDS).not.toContain('placePowerLine');
+    expect(parseCommandArgs('enqueueTask', { task: { kind: 'build', building: 'pylon', q: 3, r: -1 } }).success).toBe(true);
+    expect(parseCommandArgs('enqueueTask', { task: { kind: 'powerLine', tiles: [{ q: 0, r: 0 }] } }).success).toBe(false);
 
     expect(commandDef('repair').wave).toBe('W03');
-    expect(commandDef('placePowerLine').wave).toBe('W03');
 
     expect(parseCommandArgs('repair', { entityId: 7 }).success).toBe(true);
     expect(parseCommandArgs('repair', { q: 2, r: -1, workerId: 3, precedence: 'system' }).success).toBe(true);
-    expect(parseCommandArgs('placePowerLine', { tiles: [{ q: 0, r: 0 }, { q: 6, r: 0 }] }).success).toBe(true);
-    expect(parseCommandArgs('placePowerLine', { from: { q: 0, r: 0 }, to: { q: 12, r: 0 } }).success).toBe(true);
     expect(parseCommandArgs('reorderTask', { taskId: 'q-1', direction: 'up', lane: 'hqGoals' }).success).toBe(true);
 
     expect(parseCommandArgs('dev.setwind', { pct: 120 }).success).toBe(true);
@@ -58,7 +58,7 @@ describe('W03-01 contracts: commands, events, reject codes, W03 flag', () => {
     expect(EVENT_KINDS).toContain('energyCollapse');
   });
 
-  it('includes W03 reject codes worker_tier_locked and lane_full', () => {
-    expect(REJECT_CODES).toEqual(expect.arrayContaining(['worker_tier_locked', 'lane_full']));
+  it('includes W03 reject codes worker_tier_locked, lane_full and outside_power_zone', () => {
+    expect(REJECT_CODES).toEqual(expect.arrayContaining(['worker_tier_locked', 'lane_full', 'outside_power_zone']));
   });
 });

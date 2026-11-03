@@ -3,7 +3,7 @@ import type { PlanetState } from '../../kernel/state';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import { type ShedCandidate } from './shedding';
-import { minFootprintDistance, type PowerGraph, type PowerGraphComponent, type RelayNode } from './graph';
+import { relaysLinked, type PowerGraph, type PowerGraphComponent, type RelayNode } from './graph';
 import { resolvePowerRow, computeSolarOutputPerS, type ComponentBuildingsResult } from './index';
 import { stepThermalPlantFuel } from './thermal';
 import { evaluateWindOutput } from './windAndCap';
@@ -104,7 +104,7 @@ export function buildSpanningTree(
   for (let i = 0; i < compRelays.length; i++) {
     for (let j = i + 1; j < compRelays.length; j++) {
       const a = compRelays[i], b = compRelays[j];
-      if (minFootprintDistance(a.footprintTiles, b.footprintTiles) <= Math.max(a.span, b.span)) {
+      if (relaysLinked(a, b)) {
         adj.get(a.id)!.push(b.id);
         adj.get(b.id)!.push(a.id);
       }

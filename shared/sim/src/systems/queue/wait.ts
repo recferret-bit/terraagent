@@ -62,16 +62,6 @@ export function resolveTaskCostAndTicks(
       workRate: 1.0,
     };
   }
-  if (task.kind === 'powerLine') {
-    const count = Math.max(1, task.tiles?.length ?? 1);
-    const res = resolveBuildingRow('pylon', data);
-    const unitCost = (res?.row.cost ?? { 'metals.t1': 15, 'minerals.t1': 5 }) as Partial<Record<ResourceKey, number>>;
-    const cost: Partial<Record<ResourceKey, number>> = {};
-    for (const [k, v] of Object.entries(unitCost) as [ResourceKey, number][]) {
-      if (v && v > 0) cost[k] = v * count;
-    }
-    return { cost, buildTicks: Math.max(1, Number(res?.row.buildS ?? 20)) * count, workRate: 1.5 };
-  }
   if (task.kind === 'hqGoal') {
     return { cost: {}, buildTicks: 1, workRate: 1.0 };
   }
@@ -265,13 +255,6 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
     return {
       ...base,
       task: { kind: 'hqGoal', goal: g.goal, target: g.target, q: g.q, r: g.r },
-    };
-  }
-  if (raw.powerLine && typeof raw.powerLine === 'object') {
-    const p = raw.powerLine as { tiles: Array<{ q: number; r: number }>; tier?: number };
-    return {
-      ...base,
-      task: { kind: 'powerLine', tiles: p.tiles, tier: p.tier },
     };
   }
   if (raw.repair && typeof raw.repair === 'object') {

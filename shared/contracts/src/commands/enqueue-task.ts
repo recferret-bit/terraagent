@@ -40,13 +40,6 @@ export const EnqueueBuildUnitTask = z.strictObject({
   }),
 });
 
-export const EnqueuePowerLineTask = z.strictObject({
-  powerLine: z.strictObject({
-    tiles: z.array(TilePos).min(1).max(64),
-    tier: z.number().int().min(1).max(2).optional(),
-  }),
-});
-
 export const EnqueueRepairTask = z.strictObject({
   repair: z.strictObject({
     entityId: z.number().int().positive(),
@@ -97,11 +90,6 @@ export const EnqueueDirectTask = z.strictObject({
       intent: WorkIntent.optional(),
     }),
     z.strictObject({
-      kind: z.literal('powerLine'),
-      tiles: z.array(TilePos).min(1).max(64),
-      tier: z.number().int().min(1).max(2).optional(),
-    }),
-    z.strictObject({
       kind: z.literal('repair'),
       entityId: z.number().int().positive(),
       q: TileCoord.optional(),
@@ -125,11 +113,10 @@ export const command = defineCommand({
     EnqueueTerraformTask,
     EnqueueBuildTask,
     EnqueueBuildUnitTask,
-    EnqueuePowerLineTask,
     EnqueueRepairTask,
     EnqueueHqGoalTask,
     EnqueueDirectTask,
   ]),
   summary:
-    'Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a power-line / repair / HQ-goal order (W03) in the colony queue.',
+    'Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a repair / HQ-goal order (W03; a Power Pylon is a plain `build` order) in the colony queue.',
 });
