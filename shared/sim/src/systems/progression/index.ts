@@ -2,19 +2,20 @@ import { getStageSpec, type StageRow } from '../../data';
 import { defineCommandHandler } from '../../kernel/commands';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import type { CompiledDataLike } from '../../kernel/config';
-import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type ColonyState, type PlanetState } from '../../kernel/state';
 import { defineSystem, type SimSystem } from '../../kernel/system';
 import { parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { getColonyGoalHistory, getColonyGoals } from '../goals/store';
+import { ticksToRemainingSeconds } from './dwell';
 import {
   countTotalExploredTiles,
   evaluateStageTrigger,
   isColonyLanded,
   resolveCompiledStageRow,
 } from './triggers';
+import { computeColonyThreatStage, syncColonyThreatStage } from './threatStage';
 import {
   OVERRIDE_TARGET_STAGE,
   STAGE_EVAL_INTERVAL_TICKS,
@@ -24,7 +25,11 @@ import {
 } from './types';
 
 export * from './types';
+export * from './dwell';
 export * from './triggers';
+export * from './threatStage';
+export * from './unlockStage';
+export * from './threat';
 
 function cloneProgressionState(p: ColonyProgressionState): ColonyProgressionState {
   return {
@@ -60,11 +65,6 @@ function computeNextConditionText(stage: number, data?: CompiledDataLike): strin
   return nextRow.unlockConditionText || nextRow.triggerText || '';
 }
 
-function ticksToRemainingSeconds(ticks: number | null): number | null {
-  if (ticks === null || !Number.isFinite(ticks)) return null;
-  return Math.max(0, Math.ceil(ticks / TICKS_PER_SECOND));
-}
-
 export function getColonyProgression(
   state: PlanetState,
   colonyIndex = 0,
@@ -75,8 +75,9 @@ export function getColonyProgression(
   const col = state.colonies[colonyIndex] as ColonyState | undefined;
   const colStage = typeof col?.stage === 'number' ? col.stage : undefined;
   const colUnlockStage = typeof col?.unlockStage === 'number' ? col.unlockStage : undefined;
-  const colThreatStage = typeof col?.threatStage === 'number' ? col.threatStage : undefined;
   const colDwellTicks = typeof col?.dwellRemainingTicks === 'number' ? col.dwellRemainingTicks : undefined;
+  const colS2Tick = typeof col?.s2ReachedAtTick === 'number' ? col.s2ReachedAtTick : undefined;
+  const colS3Tick = typeof col?.s3ReachedAtTick === 'number' ? col.s3ReachedAtTick : undefined;
 
   if (existing) {
     const synced = cloneProgressionState(existing);
@@ -87,9 +88,11 @@ export function getColonyProgression(
       synced.unlockStage = colUnlockStage;
     }
     synced.unlockStage = Math.max(synced.unlockStage, synced.stage);
-    if (colThreatStage !== undefined) {
-      synced.threatStage = colThreatStage;
-    }
+    synced.threatStage = computeColonyThreatStage(state, colonyIndex, synced.stage);
+    if (colS2Tick !== undefined) synced.s2ReachedAtTick = colS2Tick;
+    else if (synced.stage >= 2 && synced.s2ReachedAtTick == null) synced.s2ReachedAtTick = synced.stageEnteredAtTick;
+    if (colS3Tick !== undefined) synced.s3ReachedAtTick = colS3Tick;
+    else if (synced.stage >= 3 && synced.s3ReachedAtTick == null) synced.s3ReachedAtTick = synced.stageEnteredAtTick;
     if (colDwellTicks !== undefined && synced.dwellRemainingTicks === null) {
       synced.dwellRemainingTicks = colDwellTicks;
       synced.triggerSatisfiedForStage = synced.stage + 1;
@@ -101,14 +104,17 @@ export function getColonyProgression(
 
   const stage = colStage ?? 0;
   const unlockStage = Math.max(colUnlockStage ?? 0, stage);
-  const threatStage = colThreatStage ?? 0;
+  const threatStage = computeColonyThreatStage(state, colonyIndex, stage);
+  const stageEnteredAtTick = typeof col?.stageEnteredAtTick === 'number' ? col.stageEnteredAtTick : state.meta.tick;
   const dwellRemainingTicks = colDwellTicks ?? null;
   return {
     colonyIndex,
     stage,
     unlockStage,
     threatStage,
-    stageEnteredAtTick: typeof col?.stageEnteredAtTick === 'number' ? col.stageEnteredAtTick : state.meta.tick,
+    stageEnteredAtTick,
+    s2ReachedAtTick: colS2Tick ?? (stage >= 2 ? stageEnteredAtTick : null),
+    s3ReachedAtTick: colS3Tick ?? (stage >= 3 ? stageEnteredAtTick : null),
     dwellRemainingTicks,
     dwellRemainingS: ticksToRemainingSeconds(dwellRemainingTicks),
     triggerSatisfiedForStage: dwellRemainingTicks !== null ? stage + 1 : null,
@@ -127,6 +133,9 @@ export function saveColonyProgression(
   data?: CompiledDataLike,
 ): void {
   prog.unlockStage = Math.max(prog.unlockStage, prog.stage);
+  prog.threatStage = computeColonyThreatStage(state, colonyIndex, prog.stage);
+  if (prog.stage >= 2 && prog.s2ReachedAtTick == null) prog.s2ReachedAtTick = prog.stageEnteredAtTick;
+  if (prog.stage >= 3 && prog.s3ReachedAtTick == null) prog.s3ReachedAtTick = prog.stageEnteredAtTick;
   prog.dwellRemainingS = ticksToRemainingSeconds(prog.dwellRemainingTicks);
   prog.nextStageConditionText = computeNextConditionText(prog.stage, data);
 
@@ -139,6 +148,8 @@ export function saveColonyProgression(
   colony.unlockStage = prog.unlockStage;
   colony.threatStage = prog.threatStage;
   colony.stageEnteredAtTick = prog.stageEnteredAtTick;
+  colony.s2ReachedAtTick = prog.s2ReachedAtTick ?? null;
+  colony.s3ReachedAtTick = prog.s3ReachedAtTick ?? null;
   colony.dwellRemainingTicks = prog.dwellRemainingTicks;
   colony.dwellRemainingS = prog.dwellRemainingS;
   colony.stageDwellRemainingS = prog.dwellRemainingS;
@@ -280,6 +291,8 @@ function advanceColonyToStage(
   prog.stage = targetStage;
   prog.unlockStage = Math.max(prog.unlockStage, targetStage);
   prog.stageEnteredAtTick = tick;
+  if (targetStage >= 2 && prog.s2ReachedAtTick == null) prog.s2ReachedAtTick = tick;
+  if (targetStage >= 3 && prog.s3ReachedAtTick == null) prog.s3ReachedAtTick = tick;
   prog.dwellRemainingTicks = null;
   prog.dwellRemainingS = null;
   prog.triggerSatisfiedForStage = null;
@@ -349,7 +362,10 @@ function advanceDwellAndStages(
  * Evaluates and advances progression for `colonyIndex` on a 1 Hz cadence (`TICKS_PER_SECOND = 5` ticks).
  */
 export function stepColonyProgression(state: PlanetState, colonyIndex: number, ctx: StepContext): void {
-  if (!isColonyLanded(state, colonyIndex)) return;
+  if (!isColonyLanded(state, colonyIndex)) {
+    syncColonyThreatStage(state, colonyIndex, ctx.tick);
+    return;
+  }
   const prog = getColonyProgression(state, colonyIndex, ctx.data);
   let changed = false;
 
@@ -380,8 +396,20 @@ export function stepColonyProgression(state: PlanetState, colonyIndex: number, c
     changed = true;
   }
 
+  const nextThreatStage = computeColonyThreatStage(state, colonyIndex, prog.stage);
+  if (prog.threatStage !== nextThreatStage) {
+    prog.threatStage = nextThreatStage;
+    changed = true;
+  }
+
   const col = state.colonies[colonyIndex];
-  if (changed || !col || col.stage !== prog.stage || col.stageDwellRemainingS !== ticksToRemainingSeconds(prog.dwellRemainingTicks)) {
+  if (
+    changed ||
+    !col ||
+    col.stage !== prog.stage ||
+    col.threatStage !== prog.threatStage ||
+    col.stageDwellRemainingS !== ticksToRemainingSeconds(prog.dwellRemainingTicks)
+  ) {
     saveColonyProgression(state, colonyIndex, prog, ctx.tick, ctx.data);
   }
 }

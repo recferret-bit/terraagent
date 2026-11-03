@@ -43,6 +43,7 @@ export interface SpawnColonyLandingOpts {
   handle?: string;
   name?: string;
   color?: number;
+  unlockStage?: number;
   slotIndex?: number;
   q?: number;
   r?: number;
@@ -163,6 +164,26 @@ export function spawnColonyLanding(
     name: opts.name ?? opts.handle,
     color: opts.color,
   });
+  const stageNum = typeof col.stage === 'number' ? col.stage : 0;
+  col.stage = stageNum;
+  const prevUnlockStage = typeof col.unlockStage === 'number' ? col.unlockStage : 0;
+  const nextUnlockStage =
+    typeof opts.unlockStage === 'number' && Number.isFinite(opts.unlockStage) && opts.unlockStage >= 0
+      ? Math.max(prevUnlockStage, Math.floor(opts.unlockStage), stageNum)
+      : Math.max(prevUnlockStage, stageNum);
+  col.unlockStage = nextUnlockStage;
+  if (typeof col.threatStage !== 'number') col.threatStage = 0;
+  if (ctx && nextUnlockStage > prevUnlockStage) {
+    ctx.emit({
+      kind: 'stageUnlocked',
+      colonyIds: [colonyId],
+      data: {
+        colonyIndex: colonyId,
+        unlockStage: nextUnlockStage,
+        previousUnlockStage: prevUnlockStage,
+      },
+    });
+  }
 
   const { q, r, slot } = check.plan;
   if (slot) {
@@ -252,6 +273,7 @@ interface SpawnColonyCommandArgs {
   name?: string;
   colonyName?: string;
   color?: number;
+  unlockStage?: number;
   slotIndex?: number;
   q?: number;
   r?: number;
@@ -289,6 +311,7 @@ export const spawnColony = defineCommandHandler({
         handle: args.handle,
         name: args.name ?? args.colonyName ?? args.handle,
         color: args.color,
+        unlockStage: args.unlockStage,
         slotIndex: args.slotIndex,
         q: args.q,
         r: args.r,
