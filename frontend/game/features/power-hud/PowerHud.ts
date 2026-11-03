@@ -8,6 +8,7 @@ const KIND_NAMES: Record<number, string> = {
   [ENTITY_KIND.metalsExtractor]: 'Metals Extractor',
   [ENTITY_KIND.solar]: 'Solar Array',
   [ENTITY_KIND.commandHub]: 'Command Hub',
+  [ENTITY_KIND.tradeHub]: 'Inter-Colony Trade Hub',
   [ENTITY_KIND.hq]: 'Colony HQ',
   [ENTITY_KIND.dropPod]: 'Drop Pod',
   [ENTITY_KIND.harvester]: 'Harvester',
@@ -17,6 +18,7 @@ const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.solar,
   ENTITY_KIND.commandHub,
+  ENTITY_KIND.tradeHub,
   ENTITY_KIND.hq,
   ENTITY_KIND.dropPod,
 ]);

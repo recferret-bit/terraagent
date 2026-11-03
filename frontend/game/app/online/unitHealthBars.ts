@@ -43,13 +43,14 @@ function isBarSupportedKind(kind: number): boolean {
     kind === ENTITY_KIND.commandHub ||
     kind === ENTITY_KIND.metalsExtractor ||
     kind === ENTITY_KIND.solar ||
+    kind === ENTITY_KIND.tradeHub ||
     kind === ENTITY_KIND.pod
   );
 }
 
 function barHeightForKind(kind: number): number {
   if (kind === ENTITY_KIND.commandHub) return 2.6;
-  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar) return 2.1;
+  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.tradeHub) return 2.1;
   if (kind === ENTITY_KIND.hq) return 2.05;
   return 1.55;
 }

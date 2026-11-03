@@ -385,7 +385,7 @@ export function isWorkerUnitKind(kind: number): boolean {
 }
 
 export function is2x2BuildingKind(kind: number): boolean {
-  return kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar;
+  return kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.tradeHub;
 }
 
 export function entityGroundY(terrain: HexTerrain | null, kind: number, q: number, r: number, wx: number, wz: number): number {
@@ -411,7 +411,7 @@ export function entityGroundY(terrain: HexTerrain | null, kind: number, q: numbe
 
 export function computeWorkTarget(kind: number, state: number, isDaylight: boolean): number {
   if (kind === ENTITY_KIND.solar) return state === ENTITY_STATE.active && isDaylight ? 1 : 0;
-  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.commandHub) {
+  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.commandHub || kind === ENTITY_KIND.tradeHub) {
     return state === ENTITY_STATE.active || state === ENTITY_STATE.working ? 1 : 0;
   }
   return state === ENTITY_STATE.working || state === ENTITY_STATE.constructing || state === ENTITY_STATE.harvesting ? 1 : 0;

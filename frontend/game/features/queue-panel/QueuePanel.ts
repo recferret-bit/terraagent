@@ -15,6 +15,7 @@ const TASK_TITLES: Readonly<Record<string, string>> = {
   solar: 'Solar Array T1',
   metalsExtractor: 'Metals Extractor T1',
   commandHub: 'Command Hub T1',
+  tradeHub: 'Inter-Colony Trade Hub T1',
   harvester: 'Harvester',
 };
 
@@ -22,6 +23,7 @@ const TASK_ICONS: Readonly<Record<string, string>> = {
   solar: '☀',
   metalsExtractor: '⛏',
   commandHub: '⬡',
+  tradeHub: '⇵',
   harvester: '⚙',
 };
 
