@@ -43,7 +43,7 @@
 | **W24** | Mobile, PWA & Landing | Client | Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls, live landing diorama | W02, W04 |
 | **W25** | Launch Ops & Submission | Ops | Monitoring, backups, rollback deploy, first-party analytics, load test, balance harness + reference bot, README / LICENSE / video / X post / form. Hosting is W26 | W00 (grows with each wave; hosting issues name W26 ids) |
 | **W26** | Sites | Ops | `terraagent.fun` and its subdomains on one nginx, four compose stacks, local and on `DEPLOY_HOST` over SSH. No Cloudflare | W00 |
-| **W27** | [Planet Atlas, Continents & Sector Streaming](./waves/W27-planet-sectors.md) | Sim/Meta/Client | One planet per type, configurable hex sectors and continent generation, bounded streaming, cross-sector colonies, W04 atlas map, live hologram picker and landing facts | W04, W05, W11 |
+| **W27** | [Planet Atlas, Continents & Sector Streaming](./waves/W27-planet-sectors.md) | Sim/Meta/Client | One planet per type, configurable hex sectors and continent generation, bounded streaming, cross-sector colonies, continuous ground-to-shaded-globe W04 map, persistent location cues, shared landing renderer and live picker | W04, W05, W11 |
 
 ```mermaid
 flowchart LR
