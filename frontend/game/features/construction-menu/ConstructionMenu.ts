@@ -1,6 +1,7 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { buildConstructionCatalog, type BuildingCardModel, type BuildingKind } from './catalog';
 import { PlacementGhostController, type PlacementGhostState } from './PlacementGhost';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 
 const RESOURCE_LABELS: Record<string, string> = {
   'metals.t1': 'Metals',
@@ -66,7 +67,7 @@ export class ConstructionMenu implements Disposable {
     this.root.appendChild(header);
 
     this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'b' || e.key === 'B') {
+      if ((e.key === 'b' || e.key === 'B') && !isGameInputBlocked()) {
         const target = e.target as HTMLElement | null;
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
         this.toggle();

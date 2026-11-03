@@ -3,6 +3,7 @@ import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, hexDistance, typ
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { extractHqFromView } from '../shared/hqView';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { isHotkeyPress } from '../shared/hotkeys';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 import { buildGhostContext, resolveBuildingMeta, type GhostContext } from './ghostContext';
@@ -261,7 +262,7 @@ export class PlacementGhostController implements Disposable {
     };
 
     this.onKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
-    this.onContextMenu = (e: MouseEvent) => { if (this.activeBuilding) { e.preventDefault?.(); this.cancel(); } };
+    this.onContextMenu = (e: MouseEvent) => { if (this.activeBuilding && !isGameInputBlocked()) { e.preventDefault?.(); this.cancel(); } };
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.onKeyDown, { capture: true });
       window.addEventListener('contextmenu', this.onContextMenu);

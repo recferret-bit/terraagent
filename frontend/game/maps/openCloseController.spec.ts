@@ -64,6 +64,51 @@ describe('W04-11 Global map open/close wiring and 3D input suspension', () => {
   });
 });
 
+describe('W04 global map restores the camera it suspended', () => {
+  it('a camera that was off (paused, scripted) stays off after close; one that was on comes back on', () => {
+    const cam = { enabled: false };
+    const ctrl = new GlobalMapOpenCloseController({ getRtsCamera: () => cam, setInputBlocked: () => {}, isOpenBlocked: () => false });
+    ctrl.open();
+    expect(cam.enabled).toBe(false);
+    ctrl.close();
+    expect(cam.enabled).toBe(false);
+
+    cam.enabled = true;
+    ctrl.open();
+    expect(cam.enabled).toBe(false);
+    ctrl.close();
+    expect(cam.enabled).toBe(true);
+
+    cam.enabled = false;
+    ctrl.open();
+    ctrl.dispose();
+    expect(cam.enabled).toBe(false);
+  });
+
+  it('does not open while another modal blocks input; feeds its own block while open', () => {
+    const cam = { enabled: true };
+    const blocked: boolean[] = [];
+    let paused = true;
+    const ctrl = new GlobalMapOpenCloseController({
+      getRtsCamera: () => cam,
+      setInputBlocked: (b) => blocked.push(b),
+      isOpenBlocked: () => paused,
+    });
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'm', bubbles: true }));
+    ctrl.open();
+    expect(ctrl.isOpen).toBe(false);
+    expect(cam.enabled).toBe(true);
+    expect(blocked).toEqual([]);
+
+    paused = false;
+    ctrl.open();
+    expect(ctrl.isOpen).toBe(true);
+    ctrl.close();
+    expect(blocked).toEqual([true, false]);
+    ctrl.dispose();
+  });
+});
+
 describe('W04 map navigation keys while the global map is open', () => {
   it('maps WASD/arrows to pan, Q/E to zoom, 0 to reset, and routes them to onNavigate', async () => {
     const { navActionForKey, GlobalMapOpenCloseController: Ctrl } = await import('./openCloseController');
