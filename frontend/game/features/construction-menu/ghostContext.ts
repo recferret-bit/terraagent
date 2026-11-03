@@ -51,16 +51,23 @@ const DEFAULT_LABELS: Record<string, string> = {
   commandHub: 'Command Hub',
   metalsExtractor: 'Metals Extractor',
   solar: 'Solar Collector Array',
+  tradeHub: 'Inter-Colony Trade Hub',
 };
 
 export function resolveBuildingMeta(data: CompiledDataLike, building: string): BuildingRowMeta {
+  const tables = (data as { tables?: Record<string, Record<string, unknown> | undefined> }).tables ?? {};
   let row: Record<string, unknown> | undefined;
-  for (const table of Object.values((data as { tables?: Record<string, Record<string, unknown> | undefined> }).tables ?? {})) {
-    if (!table) continue;
-    for (const r of Object.values(table) as Array<Record<string, unknown> | undefined>) {
-      if (r && (r.building === building || r.id === building)) { row = r; break; }
+  if (building === 'tradeHub') {
+    row = tables['tradeHub']?.['t1'] as Record<string, unknown> | undefined;
+  }
+  if (!row) {
+    for (const table of Object.values(tables)) {
+      if (!table) continue;
+      for (const r of Object.values(table) as Array<Record<string, unknown> | undefined>) {
+        if (r && (r.building === building || r.id === building)) { row = r; break; }
+      }
+      if (row) break;
     }
-    if (row) break;
   }
   const label = typeof row?.label === 'string' ? row.label : (DEFAULT_LABELS[building] ?? building);
   const defFp = building === 'commandHub' ? 3 : 2;
@@ -113,7 +120,7 @@ function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexO
       if (e.hpMax > 0 && e.hp <= 0) return;
       const size = e.kind === ENTITY_KIND.commandHub
         ? 3
-        : (e.kind === ENTITY_KIND.metalsExtractor || e.kind === ENTITY_KIND.solar ? 2 : (e.kind === ENTITY_KIND.pod ? 1 : 0));
+        : (e.kind === ENTITY_KIND.metalsExtractor || e.kind === ENTITY_KIND.solar || e.kind === ENTITY_KIND.tradeHub ? 2 : (e.kind === ENTITY_KIND.pod ? 1 : 0));
       if (size > 0) markFootprintIndices(occupied, hIndex, e.q, e.r, size, size, e.rot);
     });
   }

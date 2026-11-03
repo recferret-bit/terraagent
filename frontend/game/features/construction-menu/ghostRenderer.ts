@@ -16,6 +16,7 @@ const ARCHETYPE_BY_BUILDING: Record<string, string> = {
   commandHub: 'building.commandHub',
   metalsExtractor: 'building.mine',
   solar: 'building.solar',
+  tradeHub: 'building.tradeHub',
 };
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
