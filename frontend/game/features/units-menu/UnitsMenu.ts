@@ -22,6 +22,10 @@ interface CachedUnitCard {
   readonly costs: HTMLElement;
   readonly countSpan: HTMLElement;
   readonly repeatBtn: HTMLButtonElement;
+  readonly queueBtn: HTMLButtonElement;
+  reason: HTMLElement | null;
+  unlockDetail: HTMLElement | null;
+  card: UnitCardModel;
   costKey: string;
 }
 
@@ -177,6 +181,7 @@ export class UnitsMenu implements Disposable {
   }
 
   private updateCardElement(cached: CachedUnitCard, card: UnitCardModel): void {
+    cached.card = card;
     if (cached.title.textContent !== card.label) cached.title.textContent = card.label;
     const supplyText = `Supply ${card.supply}`;
     if (cached.supplyTag.textContent !== supplyText) cached.supplyTag.textContent = supplyText;
@@ -199,6 +204,64 @@ export class UnitsMenu implements Disposable {
     cached.countSpan.textContent = String(this.count);
     cached.countSpan.setAttribute('data-count', String(this.count));
     cached.repeatBtn.setAttribute('data-repeat', String(this.repeat));
+    this.syncUnitCardLockState(cached, card);
+  }
+
+  private syncUnitCardLockState(cached: CachedUnitCard, card: UnitCardModel): void {
+    const disabled = Boolean(card.disabled);
+    cached.root.className = card.stageLocked ? 'ta-units__card plate-sm is-stage-locked' : 'ta-units__card plate-sm';
+    cached.root.setAttribute('data-disabled', String(disabled));
+    cached.root.setAttribute('data-unlock-stage', String(card.unlockStage));
+    cached.queueBtn.disabled = disabled;
+    cached.queueBtn.setAttribute('data-disabled', String(disabled));
+
+    if (card.stageLocked) {
+      cached.root.setAttribute('data-stage-locked', 'true');
+      const cond = card.unlockConditionText ?? card.disabledReason ?? '';
+      const detail = card.unlockDetailText ?? cond;
+      const fullTooltip = detail && detail !== cond ? `${cond} (${detail})` : cond;
+      cached.root.setAttribute('title', fullTooltip);
+      cached.root.setAttribute('aria-label', `${card.label} — ${fullTooltip}`);
+      cached.root.setAttribute('data-unlock-detail', detail);
+    } else if (typeof cached.root.removeAttribute === 'function') {
+      for (const attr of ['data-stage-locked', 'title', 'aria-label', 'data-unlock-detail']) {
+        cached.root.removeAttribute(attr);
+      }
+    }
+
+    if (disabled && card.disabledReason) {
+      if (!cached.reason) {
+        cached.reason = document.createElement('span');
+        cached.reason.className = 'ta-units__reason';
+        cached.root.appendChild(cached.reason);
+      }
+      if (cached.reason.textContent !== card.disabledReason) {
+        cached.reason.textContent = card.disabledReason;
+      }
+      const detail = card.unlockDetailText ?? '';
+      if (card.stageLocked && detail && detail !== card.disabledReason) {
+        if (!cached.unlockDetail) {
+          cached.unlockDetail = document.createElement('span');
+          cached.unlockDetail.className = 'ta-units__unlock-detail';
+          cached.root.appendChild(cached.unlockDetail);
+        }
+        if (cached.unlockDetail.textContent !== detail) {
+          cached.unlockDetail.textContent = detail;
+        }
+      } else if (cached.unlockDetail) {
+        cached.unlockDetail.remove();
+        cached.unlockDetail = null;
+      }
+    } else {
+      if (cached.reason) {
+        cached.reason.remove();
+        cached.reason = null;
+      }
+      if (cached.unlockDetail) {
+        cached.unlockDetail.remove();
+        cached.unlockDetail = null;
+      }
+    }
   }
 
   private createCardElement(card: UnitCardModel): CachedUnitCard {
@@ -235,9 +298,9 @@ export class UnitsMenu implements Disposable {
       costs.appendChild(pill);
     }
 
-    const { controls, countSpan, repeatBtn } = this.createControlsRow(card.unit);
+    const { controls, countSpan, repeatBtn, queueBtn } = this.createControlsRow(card);
     cardEl.append(headRow, metaRow, costs, controls);
-    return {
+    const cached: CachedUnitCard = {
       root: cardEl,
       title,
       supplyTag,
@@ -246,15 +309,23 @@ export class UnitsMenu implements Disposable {
       costs,
       countSpan,
       repeatBtn,
+      queueBtn,
+      reason: null,
+      unlockDetail: null,
+      card,
       costKey: card.costPills.join('|'),
     };
+    this.syncUnitCardLockState(cached, card);
+    return cached;
   }
 
-  private createControlsRow(unit: string): {
+  private createControlsRow(card: UnitCardModel): {
     controls: HTMLElement;
     countSpan: HTMLElement;
     repeatBtn: HTMLButtonElement;
+    queueBtn: HTMLButtonElement;
   } {
+    const unit = card.unit;
     const controls = document.createElement('div');
     controls.className = 'ta-units__controls';
 
@@ -302,10 +373,13 @@ export class UnitsMenu implements Disposable {
     queueBtn.className = 'ta-units__queue-btn';
     queueBtn.setAttribute('data-queue-unit', unit);
     queueBtn.textContent = 'QUEUE';
-    queueBtn.onclick = () => this.queueUnit(unit);
+    queueBtn.onclick = () => {
+      if (this.cardElements.get(unit)?.card.disabled) return;
+      this.queueUnit(unit);
+    };
 
     controls.append(stepper, repeatBtn, queueBtn);
-    return { controls, countSpan, repeatBtn };
+    return { controls, countSpan, repeatBtn, queueBtn };
   }
 
   private updateCountReadouts(): void {
