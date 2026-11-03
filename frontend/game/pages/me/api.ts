@@ -60,16 +60,24 @@ export async function fetchMeData(
   doFetch: MeFetchFn = (input, init) => fetch(input, init),
   search?: string,
 ): Promise<MeFetchResult> {
-  const token = resolveMeBearerToken(search);
+  const rawSearch = search ?? (typeof location !== 'undefined' ? location.search : '');
+  const token = resolveMeBearerToken(rawSearch);
   const headers: Record<string, string> = {
     Accept: 'application/json',
     Authorization: `Bearer ${token}`,
   };
+  let querySuffix = '';
+  try {
+    const waves = new URLSearchParams(rawSearch).get('waves')?.trim();
+    if (waves) querySuffix = `?waves=${encodeURIComponent(waves)}`;
+  } catch {
+    // Ignore
+  }
 
   try {
     const [profRes, achRes] = await Promise.all([
-      doFetch('/v1/me/profile', { headers, credentials: 'include' }),
-      doFetch('/v1/me/achievements', { headers, credentials: 'include' }),
+      doFetch(`/v1/me/profile${querySuffix}`, { headers, credentials: 'include' }),
+      doFetch(`/v1/me/achievements${querySuffix}`, { headers, credentials: 'include' }),
     ]);
 
     const [profBody, achBody] = await Promise.all([

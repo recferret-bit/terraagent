@@ -20,10 +20,16 @@ export class MeAchievementsController {
 
   @Get('achievements')
   async achievements(@Req() req: IncomingMessage): Promise<MeAchievementsResponse> {
-    const player = resolveMePlayer(req, this.tokens, this.flags, this.env?.NODE_ENV === 'production');
-    if (this.env?.NODE_ENV !== 'production') {
+    const prod = this.env?.NODE_ENV === 'production';
+    const player = resolveMePlayer(req, this.tokens, this.flags, prod);
+    let wavesOverride: string | undefined;
+    if (!prod) {
       await this.seed?.ensureSeeded(player.id);
+      const qIdx = req.url?.indexOf('?') ?? -1;
+      if (qIdx !== -1 && req.url) {
+        wavesOverride = new URLSearchParams(req.url.slice(qIdx)).get('waves') ?? undefined;
+      }
     }
-    return this.service.getForPlayer(player.id);
+    return this.service.getForPlayer(player.id, wavesOverride);
   }
 }

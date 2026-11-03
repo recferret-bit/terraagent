@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import {
   ACHIEVEMENTS,
+  parseWaves,
   progressOf,
   type AchievementNftStatus,
   type MeAchievementsResponse,
@@ -10,7 +11,7 @@ import { CoreException } from '../core/errors/index.js';
 import { FlagsService } from '../flags/flags.service.js';
 import { AchievementUnlockStore } from '../progression/achievement-unlock.store.js';
 import { FactsStore } from '../progression/facts.store.js';
-import { FamilyAvailabilityService } from '../progression/family-availability.js';
+import { FamilyAvailabilityService, resolveAchievementStatus } from '../progression/family-availability.js';
 
 /**
  * Filters entries to locked tiers, taking only the lowest unearned tier of each family,
@@ -53,7 +54,7 @@ export class MeAchievementsService {
     private readonly flags: FlagsService,
   ) {}
 
-  async getForPlayer(playerId: string): Promise<MeAchievementsResponse> {
+  async getForPlayer(playerId: string, wavesOverride?: string): Promise<MeAchievementsResponse> {
     if (!this.flags.has('W12')) {
       throw new CoreException('wave_disabled', {
         status: 403,
@@ -62,12 +63,24 @@ export class MeAchievementsService {
       });
     }
 
+    let narrowedHas: ((w: string) => boolean) | null = null;
+    if (wavesOverride) {
+      try {
+        const parsed = parseWaves(wavesOverride);
+        narrowedHas = (w: string) => this.flags.has(w) && parsed.has(w);
+      } catch {
+        // Ignore invalid override
+      }
+    }
+
     const facts = await this.facts.getAll(playerId);
     const earnedMap = await this.unlocks.getEarnedMap(playerId);
     const earnedIds = new Set(earnedMap.keys());
 
     const achievements: PlayerAchievementEntry[] = ACHIEVEMENTS.map((def) => {
-      const status = this.availability.tierStatus(def, earnedIds);
+      const status = narrowedHas
+        ? resolveAchievementStatus(def, earnedIds, narrowedHas)
+        : this.availability.tierStatus(def, earnedIds);
       const earnedRecord = earnedMap.get(def.id);
       const progress =
         status === 'earned'
