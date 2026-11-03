@@ -180,6 +180,23 @@ export class GlobalMapOverlay {
     visibleLayers: readonly MapLayer[],
     activeSet: ReadonlySet<MapLayerId>,
   ): void {
+    const existing = Array.from(this.chipBarEl.querySelectorAll<HTMLButtonElement>('button[data-layer]'));
+    const sameOrder =
+      existing.length === visibleLayers.length &&
+      existing.every((btn, idx) => btn.dataset.layer === visibleLayers[idx]?.id);
+
+    if (sameOrder) {
+      for (let i = 0; i < existing.length; i++) {
+        const btn = existing[i]!;
+        const layer = visibleLayers[i]!;
+        const active = activeSet.has(layer.id);
+        btn.dataset.active = active ? 'true' : 'false';
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+        btn.textContent = layer.label;
+      }
+      return;
+    }
+
     this.chipBarEl.replaceChildren();
     for (const layer of visibleLayers) {
       const active = activeSet.has(layer.id);

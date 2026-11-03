@@ -93,8 +93,8 @@
 
 @media (max-height: 500px), (max-width: 900px) and (orientation: landscape) {
   .ta-minimap {
-    width: 140px;
-    height: 140px;
+    width: 140px !important;
+    height: 140px !important;
   }
 
   .ta-hud__slot--bottom-left {

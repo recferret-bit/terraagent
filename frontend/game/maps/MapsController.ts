@@ -227,7 +227,6 @@ export class MapsController {
 
   updateFromView(view: GameView): void {
     this.syncRegistration();
-    this.syncOverlayChips();
     if (!this.ctx.flags.has('W04')) return;
 
     const cv = (view.sim?.view ?? this.ctx.services.getView?.() ?? view) as Partial<ClientView>;

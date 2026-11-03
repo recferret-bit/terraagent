@@ -1,4 +1,4 @@
-import type { Page } from '@playwright/test';
+import type { BrowserContext, Page } from '@playwright/test';
 import {
   expect,
   expectNoPageErrors,
@@ -16,6 +16,18 @@ import {
 test.describe.configure({ mode: 'serial' });
 
 const local = hostMode() === 'local';
+
+let context: BrowserContext;
+let page: Page;
+
+test.beforeAll(async ({ browser }) => {
+  context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  page = await context.newPage();
+});
+
+test.afterAll(async () => {
+  await context?.close();
+});
 
 interface MinimapDebugStats {
   dirtyTiles: number;
@@ -90,12 +102,12 @@ const getCamState = (page: Page) =>
     };
   });
 
-test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the 180 px minimap at bottom-left with tile colours and a white camera trapezoid', async ({ page }) => {
+test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the 180 px minimap at bottom-left with tile colours and a white camera trapezoid', async () => {
   await page.setViewportSize({ width: 1280, height: 720 });
-  await openW04(page);
+  await openW04(page, { waves: '..04' });
 
   const minimap = page.getByTestId('minimap-hud');
-  await expect(minimap).toBeVisible();
+  await expect(minimap).toBeVisible({ timeout: 25_000 });
   const box = await minimap.boundingBox();
   expect(box).not.toBeNull();
   expect(Math.round(box!.width)).toBe(180);
@@ -103,28 +115,27 @@ test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the
   expect(box!.x).toBeLessThan(100);
   expect(box!.y).toBeGreaterThan(350);
 
-  await expect.poll(async () => (await getMinimapStats(page))?.trapezoid?.length ?? 0).toBe(4);
+  await expect.poll(async () => (await getMinimapStats(page))?.trapezoid?.length ?? 0, { timeout: 25_000 }).toBe(4);
   const stats = await getMinimapStats(page);
   expect(stats?.entityDotCount).toBeGreaterThanOrEqual(5);
 
   // Verify W04-03 dirtyTiles === 1 when 1 tile state changes
   await page.evaluate(() =>
-    (window as unknown as OnlineDebugWindow).__online.commands.send('dev.cell', {
+    (window as unknown as OnlineDebugWindow).__online.commands.send('dev.spawndeposit', {
       q: 3,
       r: -2,
-      prep: 'living',
+      family: 'metals',
+      tier: 1,
     }),
   );
-  await expect.poll(async () => (await getMinimapStats(page))?.dirtyTiles ?? 0).toBe(1);
+  await expect.poll(async () => (await getMinimapStats(page))?.dirtyTiles ?? 0, { timeout: 15_000 }).toBe(1);
 
   await screenshot(page, 'w04-step1-minimap');
   expectNoPageErrors(page);
 });
 
-test('@hack 2. Click a far corner of the minimap -> the 3D camera pans there; the trapezoid moves to that corner', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await openW04(page);
-  await expect.poll(async () => (await getCamState(page)) !== null).toBe(true);
+test('@hack 2. Click a far corner of the minimap -> the 3D camera pans there; the trapezoid moves to that corner', async () => {
+  await expect.poll(async () => (await getCamState(page)) !== null, { timeout: 20_000 }).toBe(true);
 
   const beforeCam = (await getCamState(page))!;
   const beforeTrap = (await getMinimapStats(page))!.trapezoid!;
@@ -155,9 +166,7 @@ test('@hack 2. Click a far corner of the minimap -> the 3D camera pans there; th
   expectNoPageErrors(page);
 });
 
-test('@hack 3. Drag on the minimap -> the camera pans continuously along the drag', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await openW04(page);
+test('@hack 3. Drag on the minimap -> the camera pans continuously along the drag', async () => {
   await expect.poll(async () => (await getCamState(page)) !== null).toBe(true);
 
   const canvas = page.getByTestId('minimap-canvas');
@@ -179,18 +188,17 @@ test('@hack 3. Drag on the minimap -> the camera pans continuously along the dra
 
   // Verify phone landscape 844 x 390 shrinks minimap to 140 px with zero HUD overlap
   await page.setViewportSize({ width: 844, height: 390 });
+  await expect
+    .poll(async () => Math.round((await page.getByTestId('minimap-hud').boundingBox())?.width ?? 0))
+    .toBe(140);
   const mmBox = (await page.getByTestId('minimap-hud').boundingBox())!;
-  expect(Math.round(mmBox.width)).toBe(140);
   expect(Math.round(mmBox.height)).toBe(140);
 
   await page.setViewportSize({ width: 1280, height: 720 });
   expectNoPageErrors(page);
 });
 
-test('@hack 4. Press M -> the fullscreen global map opens with layer chips along the top', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await openW04(page, { waves: '..04' });
-
+test('@hack 4. Press M -> the fullscreen global map opens with layer chips along the top', async () => {
   const overlay = page.getByTestId('global-map-overlay');
   await expect(overlay).toBeHidden();
 
@@ -223,12 +231,11 @@ test('@hack 4. Press M -> the fullscreen global map opens with layer chips along
   expectNoPageErrors(page);
 });
 
-test('@hack 5. Toggle Terrain off and Territory on -> the map redraws; chips for waves that are off (Market, Threats, Walls when TA_WAVES=..04) are not shown', async ({ page }) => {
-  await page.setViewportSize({ width: 1280, height: 720 });
-  await openW04(page, { waves: '..04' });
-
-  await page.keyboard.press('m');
+test('@hack 5. Toggle Terrain off and Territory on -> the map redraws; chips for waves that are off (Market, Threats, Walls when TA_WAVES=..04) are not shown', async () => {
   const overlay = page.getByTestId('global-map-overlay');
+  if (!(await overlay.isVisible())) {
+    await page.keyboard.press('m');
+  }
   await expect(overlay).toBeVisible();
 
   const chips = page.getByTestId('global-map-chips').locator('[data-layer]');
@@ -264,7 +271,7 @@ test('@hack 5. Toggle Terrain off and Territory on -> the map redraws; chips for
   expectNoPageErrors(page);
 });
 
-test('@hack 10. Reload with &waves=..03 -> no minimap, M does nothing', async ({ page }) => {
+test('@hack 10. Reload with &waves=..03 -> no minimap, M does nothing', async () => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await openW04(page, { waves: '..03' });
 

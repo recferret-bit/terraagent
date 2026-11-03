@@ -157,6 +157,7 @@ export interface PlanetRasterEntry {
   readonly prep: Uint8Array;
   readonly owner: Int8Array;
   readonly explored: Uint8Array;
+  readonly deposit: Uint8Array;
   initialized: boolean;
 }
 
@@ -206,6 +207,7 @@ export class PlanetRasterCache {
       prep: new Uint8Array(count),
       owner: new Int8Array(count),
       explored: new Uint8Array(count),
+      deposit: new Uint8Array(count),
       initialized: false,
     };
     entry.explored.fill(1);
@@ -282,11 +284,13 @@ export class PlanetRasterCache {
     i: number,
   ): boolean {
     const exp = tiles.explored ? tiles.explored[i]! : 1;
+    const dep = tiles.deposit ? tiles.deposit[i]! : 0;
     return (
       entry.terrain[i] !== tiles.terrain[i] ||
       entry.prep[i] !== tiles.prep[i] ||
       entry.owner[i] !== tiles.owner[i] ||
-      entry.explored[i] !== exp
+      entry.explored[i] !== exp ||
+      entry.deposit[i] !== dep
     );
   }
 
@@ -302,6 +306,7 @@ export class PlanetRasterCache {
     entry.prep[i] = tiles.prep[i]!;
     entry.owner[i] = tiles.owner[i]!;
     entry.explored[i] = tiles.explored ? tiles.explored[i]! : 1;
+    entry.deposit[i] = tiles.deposit ? tiles.deposit[i]! : 0;
     const { x, y } = axialToCanvasPixel(q, r, entry.size, entry.radius);
     const fill = this.colorResolver(tiles, i);
     drawPointyHex(entry.ctx, x, y, hexRadius, fill);
