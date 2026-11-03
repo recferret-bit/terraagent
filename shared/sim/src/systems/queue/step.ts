@@ -7,15 +7,28 @@ import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
 import { produceHarvesterAtHubEdge } from '../factories-hub';
 import { ensureColony } from './cancel';
+import { followPowerLineEntry } from './powerLine';
 import type { QueueEntry } from './types';
 import { computeResourceWaitState } from './wait';
 
 /** Marks `entry` waiting on `reason` with its status text and ETA (seconds, `null` = none). */
-export function markWaiting(entry: QueueEntry, reason: QueueEntry['waitReason'], detail: string, eta: number | null = null): void {
+export function markWaiting(
+  entry: QueueEntry,
+  reason: QueueEntry['waitReason'],
+  detail: string,
+  eta: number | null = null,
+  tick?: number,
+): void {
   entry.state = 'waiting';
   entry.waitReason = reason;
   entry.etaSeconds = eta;
   entry.waitDetail = detail;
+  if (reason === 'resources') {
+    if (tick !== undefined) entry.resourceWaitSinceTick ??= tick;
+  } else {
+    entry.resourceWaitSinceTick = undefined;
+    entry.earmarked = undefined;
+  }
 }
 
 /** What an in-progress build entry shows while its job does not advance (`../economy/buildJob.ts`). */
@@ -71,6 +84,10 @@ function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: 
 
 /** Advances one `in_progress` entry by `ctx.dt`: pays its next slice (or waits on resources) and completes it. */
 export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
+  if (entry.task.kind === 'powerLine' && (entry.subEntityIds?.length || entry.task.subEntityIds?.length)) {
+    followPowerLineEntry(state, entry, (s, job, r) => BUILD_WAIT_DETAIL[r](s, job));
+    return;
+  }
   if (entry.task.kind === 'build' && entry.entityId !== undefined) {
     followBuildEntry(state, entry as QueueEntry & { entityId: number });
     return;
@@ -84,7 +101,7 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
     const pay = payProgressiveSlice(colony, totalCost, spentCost, nextProgress, ctx.tick);
     if (!pay.ok) {
       const waitInfo = computeResourceWaitState(state, colony, totalCost, pay.missing);
-      markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds);
+      markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds, ctx.tick);
       return;
     }
     entry.spentCost = spentCost;
@@ -100,4 +117,6 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
   }
   entry.progress = 1;
   entry.state = 'done';
+  entry.resourceWaitSinceTick = undefined;
+  entry.earmarked = undefined;
 }

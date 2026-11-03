@@ -1,15 +1,13 @@
 import type { ResourceKey } from '@terra/contracts';
 import { commandColony } from '../command';
-import { ENTITY_STATE } from '../../ecs/columns';
-import { rowOf } from '../../ecs/store';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
-import { setBlob, type ColonyState, type PlanetState } from '../../kernel/state';
+import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { buildSiteReject } from '../economy/siteTerrain';
-import { startBuildingConstruction, type BuildingJobRecord } from '../economy/construction';
+import { startBuildingConstruction } from '../economy/construction';
 import { checkCostAffordability } from '../economy/ledger';
 import { getColonySupply } from '../factories-hub';
 import {
@@ -31,6 +29,17 @@ import {
 } from './types';
 import { markWaiting, stepQueueEntry } from './step';
 import {
+  checkStartMissing,
+  compareEarmarkPriority,
+  hasActiveEarmark,
+  updateColonyEarmarks,
+} from './earmarks';
+import {
+  type PlacePowerLineCommandArgs,
+  resolvePowerLineTiles,
+  startPowerLineConstruction,
+} from './powerLine';
+import {
   computeResourceWaitState,
   enqueueAuthority,
   findOldestAutoIndex,
@@ -47,6 +56,8 @@ import {
 
 export * from './types';
 export * from './wait';
+export * from './earmarks';
+export * from './powerLine';
 export { CANCEL_IN_PROGRESS_REFUND_RATIO };
 
 /** `startBuildingConstruction` codes that mean the site (not the stock) holds the entry back. */
@@ -67,6 +78,8 @@ export function getAllQueueEntries(state: PlanetState): QueueEntry[] {
         cost: { ...e.cost },
         totalCost: e.totalCost ? { ...e.totalCost } : { ...e.cost },
         spentCost: e.spentCost ? { ...e.spentCost } : {},
+        earmarked: e.earmarked ? { ...e.earmarked } : undefined,
+        subEntityIds: e.subEntityIds ? [...e.subEntityIds] : undefined,
       }))
     : [];
 }
@@ -79,11 +92,20 @@ export function saveQueueEntries(state: PlanetState, entries: QueueEntry[], tick
   for (const e of active) colonies.add(e.colonyIndex);
   for (const idx of colonies) {
     const col = ensureColony(state, idx, tick);
-    col.queue = active.filter((e) => e.colonyIndex === idx);
-    col.constructionQueue = active.filter((e) => e.colonyIndex === idx && e.lane === 'construction');
-    col.terraformQueue = active.filter((e) => e.colonyIndex === idx && e.lane === 'terraform');
-    col.unitQueue = active.filter((e) => e.colonyIndex === idx && e.lane === 'units');
-    col.hqGoalQueue = active.filter((e) => e.colonyIndex === idx && e.lane === 'hqGoals');
+    const colActive = active.filter((e) => e.colonyIndex === idx);
+    col.queue = colActive;
+    col.constructionQueue = colActive.filter((e) => e.lane === 'construction');
+    col.terraformQueue = colActive.filter((e) => e.lane === 'terraform');
+    col.unitQueue = colActive.filter((e) => e.lane === 'units');
+    col.hqGoalQueue = colActive.filter((e) => e.lane === 'hqGoals');
+    const earmarks: Partial<Record<ResourceKey, number>> = {};
+    for (const e of colActive) {
+      if (!e.earmarked) continue;
+      for (const [k, v] of Object.entries(e.earmarked) as [ResourceKey, number][]) {
+        if (v && v > 0) earmarks[k] = (earmarks[k] ?? 0) + v;
+      }
+    }
+    col.earmarks = earmarks;
     col.changedAt = tick;
   }
 }
@@ -96,47 +118,6 @@ export interface EnqueueQueueTaskOptions {
   costOverride?: Partial<Record<ResourceKey, number>>;
   tick?: number;
   data?: CompiledDataLike;
-}
-
-function checkStartMissing(
-  state: PlanetState,
-  colony: ColonyState,
-  entry: QueueEntry,
-  allEntries: QueueEntry[],
-): Partial<Record<ResourceKey, number>> | null {
-  const totalCost = entry.totalCost ?? entry.cost;
-  const spentCost = entry.spentCost ?? {};
-  const stock = (colony.stock ?? {}) as Partial<Record<ResourceKey, number>>;
-  const committed: Partial<Record<ResourceKey, number>> = {};
-  const jobs = (state.blobs.construction?.value as { jobs?: Record<number, BuildingJobRecord> } | undefined)?.jobs ?? {};
-
-  for (const other of allEntries) {
-    if (other.colonyIndex !== entry.colonyIndex || other.state !== 'in_progress' || other.taskId === entry.taskId) continue;
-    if (other.entityId !== undefined) {
-      const eRow = rowOf(state.entities, other.entityId);
-      if (eRow < 0 || state.entities.cols.state[eRow] !== ENTITY_STATE.constructing) continue;
-    }
-    const oTotal = other.totalCost ?? other.cost;
-    const oSpent = (other.entityId !== undefined ? jobs[other.entityId]?.spentCost : undefined) ?? other.spentCost ?? {};
-    for (const [k, v] of Object.entries(oTotal) as [ResourceKey, number][]) {
-      if (!v || v <= 0) continue;
-      const rem = Math.max(0, v - (oSpent[k] ?? 0));
-      if (rem > 0) committed[k] = (committed[k] ?? 0) + rem;
-    }
-  }
-
-  const missing: Partial<Record<ResourceKey, number>> = {};
-  let short = false;
-  for (const [k, v] of Object.entries(totalCost) as [ResourceKey, number][]) {
-    if (!v || v <= 0) continue;
-    const needed = Math.max(0, v - (spentCost[k] ?? 0));
-    const avail = Math.max(0, (stock[k] ?? 0) - (committed[k] ?? 0));
-    if (avail + 1e-6 < needed) {
-      missing[k] = needed - avail;
-      short = true;
-    }
-  }
-  return short ? missing : null;
 }
 
 function tryStartQueueEntry(
@@ -153,11 +134,11 @@ function tryStartQueueEntry(
   if (Object.keys(afford.exceedsCap).length > 0) {
     entry.exceedsCap = afford.exceedsCap;
     entry.missingResources = undefined;
-    markWaiting(entry, 'storage', 'waiting: storage (no ETA)');
+    markWaiting(entry, 'storage', 'waiting: storage (no ETA)', null, tick);
     return;
   }
   if (isBlockedByPower(state, colony, entry)) {
-    markWaiting(entry, 'power', 'waiting: power');
+    markWaiting(entry, 'power', 'waiting: power', null, tick);
     return;
   }
   if (entry.lane === 'units') {
@@ -166,23 +147,23 @@ function tryStartQueueEntry(
       (e) => e.colonyIndex === entry.colonyIndex && e.lane === 'units' && e.state === 'in_progress',
     ).length;
     if (supply.activeUnits + inProgUnits + 1 > supply.cap) {
-      markWaiting(entry, 'supply', 'waiting: supply');
+      markWaiting(entry, 'supply', 'waiting: supply', null, tick);
       return;
     }
   }
-  const missingForStart = checkStartMissing(state, colony, entry, allEntries);
+  const missingForStart = checkStartMissing(state, colony, entry, allEntries, data);
   if (missingForStart) {
     entry.missingResources = missingForStart;
     entry.exceedsCap = undefined;
     const waitInfo = computeResourceWaitState(state, colony, entry.totalCost ?? entry.cost, missingForStart);
-    markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds);
+    markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds, tick);
     return;
   }
   const activeCountInLane = allEntries.filter(
     (e) => e.colonyIndex === entry.colonyIndex && e.lane === entry.lane && e.state === 'in_progress' && e.taskId !== entry.taskId,
   ).length;
   if (activeCountInLane >= maxConcurrentInLane(state, entry.colonyIndex, entry.lane)) {
-    markWaiting(entry, 'worker', 'waiting: worker');
+    markWaiting(entry, 'worker', 'waiting: worker', null, tick);
     return;
   }
 
@@ -195,10 +176,18 @@ function tryStartQueueEntry(
     if (!started.ok) {
       const reason = SITE_CODES.has(started.code) ? 'site' : started.code === 'storage_cap' ? 'storage' : 'resources';
       const detail = reason === 'site' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
-      markWaiting(entry, reason, detail);
+      markWaiting(entry, reason, detail, null, tick);
       return;
     }
     entry.entityId = started.entityId;
+  } else if (entry.task.kind === 'powerLine' && (!entry.subEntityIds || entry.subEntityIds.length === 0)) {
+    const started = startPowerLineConstruction(state, entry, tick, data, ctx);
+    if (!started.ok) {
+      const reason = SITE_CODES.has(started.code) ? 'site' : started.code === 'storage_cap' ? 'storage' : 'resources';
+      const detail = reason === 'site' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
+      markWaiting(entry, reason, detail, null, tick);
+      return;
+    }
   }
   entry.totalCost ??= { ...entry.cost };
   entry.spentCost ??= {};
@@ -208,6 +197,8 @@ function tryStartQueueEntry(
   entry.missingResources = undefined;
   entry.exceedsCap = undefined;
   entry.etaSeconds = undefined;
+  entry.resourceWaitSinceTick = undefined;
+  entry.earmarked = undefined;
 }
 
 export function scanAndStartQueueEntries(
@@ -218,10 +209,18 @@ export function scanAndStartQueueEntries(
   data?: CompiledDataLike,
   ctx?: StepContext,
 ): QueueEntry[] {
+  updateColonyEarmarks(state, entries, colonyIndex, tick, data);
   const indexed = entries
     .map((entry, idx) => ({ entry, idx }))
     .filter(({ entry }) => entry.colonyIndex === colonyIndex && (entry.state === 'queued' || entry.state === 'waiting'))
     .sort((a, b) => {
+      const aEarmarked = hasActiveEarmark(a.entry) ? 1 : 0;
+      const bEarmarked = hasActiveEarmark(b.entry) ? 1 : 0;
+      if (aEarmarked !== bEarmarked) return bEarmarked - aEarmarked;
+      if (aEarmarked && bEarmarked) {
+        const cmp = compareEarmarkPriority(a.entry, b.entry);
+        if (cmp !== 0) return cmp;
+      }
       const rankDiff = PRECEDENCE_RANK[b.entry.precedence] - PRECEDENCE_RANK[a.entry.precedence];
       return rankDiff !== 0 ? rankDiff : a.idx - b.idx;
     });
@@ -233,6 +232,7 @@ export function scanAndStartQueueEntries(
       started.push(entry);
     }
   }
+  updateColonyEarmarks(state, entries, colonyIndex, tick, data);
   return started;
 }
 
@@ -415,6 +415,34 @@ export const reorderTaskHandler = defineCommandHandler({
   },
 });
 
+export const placePowerLineHandler = defineCommandHandler({
+  kind: 'placePowerLine',
+  wave: 'W03',
+  handle(state, cmd, ctx) {
+    const args = (cmd.args ?? {}) as PlacePowerLineCommandArgs;
+    const colIdx = commandColony(cmd);
+    if (typeof colIdx === 'string') return colIdx;
+    const tiles = resolvePowerLineTiles(state, args, ctx.data);
+    if (!tiles || tiles.length === 0) return 'invalid_args';
+    for (const tile of tiles) {
+      const site = buildSiteReject(state, colIdx, { building: 'pylon', q: tile.q, r: tile.r }, ctx.data);
+      if (site) return { code: site.code, detail: site.detail };
+    }
+    const res = enqueueQueueTask(
+      state,
+      {
+        colonyIndex: colIdx,
+        task: { kind: 'powerLine', tiles, tier: args.tier ?? 1 },
+        taskId: args.taskId ?? cmd.commandId,
+        tick: ctx.tick,
+        data: ctx.data,
+      },
+      ctx,
+    );
+    return res.ok ? undefined : { code: res.code, detail: res.detail };
+  },
+});
+
 export const queueSystem = defineSystem({
   id: 'queue.manager',
   slot: 4,
@@ -440,5 +468,5 @@ export default defineSimModule({
   id: 'queue',
   wave: 'W02',
   systems: [queueSystem],
-  handlers: [reorderTaskHandler],
+  handlers: [reorderTaskHandler, placePowerLineHandler],
 });
