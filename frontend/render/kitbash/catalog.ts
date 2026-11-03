@@ -248,6 +248,8 @@ export function stripBuildingPlinth(mesh: THREE.Object3D): void {
   }
   newGeo.computeBoundingBox();
   newGeo.computeBoundingSphere();
+  // How far the model moved down (model-space anchors such as the grid cable insulators subtract it).
+  newGeo.userData = { stripOffsetY: Number.isFinite(minY) && minY > 0 ? minY : 0 };
   m.geometry = newGeo;
   oldGeo.dispose();
   const u = (m.userData as any)?.uniforms;
