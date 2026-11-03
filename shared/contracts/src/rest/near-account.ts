@@ -30,3 +30,5 @@ export const colonyAccountId = (colonyId: string, playerName: string): string =>
 export const namedAccountOpId = (provider: string, subject: string): string => `named-account:${provider}:${subject}`;
 export const colonyAccountOpId = (colonyId: string): string => `colony-account:${colonyId}`;
 export const storageDepositOpId = (colonyAccountIdValue: string): string => `storage-deposit:${colonyAccountIdValue}`;
+export const cargoExportOpId = (colonyId: string, exportSeq: number): string => `cargo-export:${colonyId}:${exportSeq}`;
+export const cargoImportOpId = (colonyId: string, importSeq: number): string => `cargo-import:${colonyId}:${importSeq}`;
