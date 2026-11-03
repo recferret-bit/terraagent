@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { cargoExportOpId, MOCK_ACCOUNT_ROOT, type ResourceKey } from '@terra/contracts';
-import { withTransaction, type PrismaClient, type TransactionClient } from '@terra/db';
+import { withTransaction, type DbClient, type PrismaClient } from '@terra/db';
 import type { PlanetEventV1 } from '../../bus/channels.js';
 import { EventBus } from '../../bus/event-bus.js';
 import { databaseEnabled } from '../../core/persistence.js';
@@ -127,8 +127,8 @@ export class CargoExportOutboxService implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-async function resolveColonyAccountId(
-  tx: TransactionClient,
+export async function resolveColonyAccountId(
+  tx: DbClient,
   colonyId: string,
   playerId: string | null,
 ): Promise<string> {
