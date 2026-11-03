@@ -5,6 +5,7 @@ import {
   devTradehubSpawnHandler,
 } from './dev-commands';
 import { cargoExportHandler } from './export';
+import { cargoSettledHandler } from './settled';
 import { devContactFakeHandler } from './unlock';
 
 export * from './caps';
@@ -13,6 +14,7 @@ export * from './unlock';
 export * from './trade-hub';
 export * from './state';
 export * from './export';
+export * from './settled';
 
 export default defineSimModule({
   id: 'cargo',
@@ -20,6 +22,7 @@ export default defineSimModule({
   handlers: [
     devContactFakeHandler,
     cargoExportHandler,
+    cargoSettledHandler,
     devTradehubSpawnHandler,
     devCargoCapResetHandler,
     devCargoGrantHandler,
