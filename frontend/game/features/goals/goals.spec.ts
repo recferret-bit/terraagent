@@ -31,7 +31,7 @@ function makeMockContext(flagsList = '..08'): {
 }
 
 describe('W08-21 HQ Goals - Add and Cancel', () => {
-  it('adds Grow Economy (+10 metals/min) from UI, shows progress & budget, and cancels', () => {
+  it('adds Grow Economy (10 metals/min) from UI, shows progress & budget, and cancels', () => {
     const { ctx, sendCommand } = makeMockContext();
     const container = document.createElement('div');
     const mounted = mountGoalsPanel(container, ctx);
@@ -62,7 +62,7 @@ describe('W08-21 HQ Goals - Add and Cancel', () => {
     expect(item).not.toBeNull();
     expect(item.getAttribute('data-goal-kind')).toBe('grow_economy');
     expect(item.getAttribute('data-goal-status')).toBe('active');
-    expect(item.textContent).toContain('Grow Economy (+10 metals/min)');
+    expect(item.textContent).toContain('Grow Economy (10 metals/min)');
 
     const goalId = item.getAttribute('data-testid')!.replace('goal-item-', '');
     const progressBar = container.querySelector(`[data-testid="goal-progress-${goalId}"]`)!;
@@ -285,10 +285,10 @@ describe('W08-21 HQ Goals - Wave Gating and Limits', () => {
 describe('W08-21 HQ Goals - Labels', () => {
   it('formats goal labels for various goals', () => {
     expect(formatGoalLabel('grow_economy', { resource: 'metals.t1', targetRatePerMin: 20 })).toBe(
-      'Grow Economy (+20 metals/min)',
+      'Grow Economy (20 metals/min)',
     );
     expect(formatGoalLabel('grow_economy', { resource: 'bio.water', targetRatePerMin: 15 })).toBe(
-      'Grow Economy (+15 water/min)',
+      'Grow Economy (15 water/min)',
     );
     expect(formatGoalLabel('secure_power', { targetNetEnergyPerS: 30 })).toBe(
       'Secure Power (+30 E/s night)',

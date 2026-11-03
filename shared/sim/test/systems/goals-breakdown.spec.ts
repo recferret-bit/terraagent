@@ -159,7 +159,8 @@ describe('W08-17 acceptSuggestion establish_colony chain', () => {
       if (doneGoals.length >= 2) break;
     }
 
-    expect(doneGoals).toEqual(['establish_colony', 'secure_power']);
+    expect(doneGoals).toEqual(['establish_colony']);
+    expect(getOpenColonyGoals(state, 0)[0]).toMatchObject({ goal: 'secure_power', status: 'active' });
     expect(countCompletedKind(state, 0, ENTITY_KIND.commandHub)).toBe(1);
     expect(countCompletedKind(state, 0, ENTITY_KIND.metalsExtractor)).toBe(1);
     expect(countCompletedKind(state, 0, ENTITY_KIND.solar)).toBe(2);
@@ -266,7 +267,7 @@ describe('W08-17 Goal breakdown: grow_economy', () => {
 });
 
 describe('W08-17 Goal breakdown: secure_power', () => {
-  it('queues hq-tagged solar generator order for { targetNetEnergyPerS: 10 }, emits goalProgress and goalDone once held', () => {
+  it('queues hq-tagged solar generator order for { targetNetEnergyPerS: 10 }, emits progress but waits for actual night output', () => {
     const { state, pipeline } = createS0ColonyPlanet('secure-power');
     startBuildingConstruction(state, {
       owner: 0,
@@ -319,12 +320,8 @@ describe('W08-17 Goal breakdown: secure_power', () => {
 
     expect(countCompletedKind(state, 0, ENTITY_KIND.solar)).toBe(1);
     expect(progressEvents.length).toBeGreaterThanOrEqual(2);
-    expect(doneEvents).toHaveLength(1);
-    expect(doneEvents[0].data).toMatchObject({
-      colonyIndex: 0,
-      goalId: active.id,
-      goal: 'secure_power',
-    });
+    expect(doneEvents).toHaveLength(0); // daytime solar is not proof of night output
+    expect(getOpenColonyGoals(state, 0)[0].detail).toContain('Waiting for night');
   });
 });
 

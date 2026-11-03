@@ -132,3 +132,9 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 
 - **Deep Reclaim** is fully built and tested here, but it is gated by worker tier, not by wave. It becomes playable the moment W17 adds HQ T2 and Multitask T2, with no extra code. Its unlock stage (S5) is enforced only when W08 is on.
 - **Meteor timing** uses the stage engine when W08 is on. Otherwise it falls back to colony age.
+
+## W08 follow-up: executable progression and priorities
+
+Register Terraform Zone / corridor execution with real prep commands and terraform priority.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

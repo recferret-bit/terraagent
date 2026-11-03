@@ -1,3 +1,4 @@
+import { STAGE_TABLE_ROWS } from '../../data/stages';
 import type { WaveId } from '../../kernel/types';
 import { DEFAULT_GOAL_BUDGET_BP, type GoalKind } from './types';
 
@@ -113,19 +114,9 @@ export const GOAL_CATALOG: Readonly<Record<GoalKind, GoalCatalogEntry>> = {
 };
 
 /** Default suggested HQ goal per stage S0..S10 (`UO-G-03`, §6.2 table). */
-export const STAGE_SUGGESTED_GOAL: Readonly<Record<number, GoalKind>> = {
-  0: 'establish_colony',
-  1: 'grow_economy',
-  2: 'secure_power',
-  3: 'defend_colony',
-  4: 'expand_territory',
-  5: 'tech_up',
-  6: 'build_army',
-  7: 'defend_colony',
-  8: 'defend_colony',
-  9: 'build_army',
-  10: 'build_rocket',
-};
+export const STAGE_SUGGESTED_GOAL: Readonly<Record<number, GoalKind>> = Object.fromEntries(
+  STAGE_TABLE_ROWS.map((row) => [row.stage, row.suggestedGoal as GoalKind]),
+);
 
 export function getGoalCatalogEntry(goal: GoalKind): GoalCatalogEntry {
   return GOAL_CATALOG[goal];

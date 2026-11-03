@@ -1,5 +1,6 @@
 import { getStageSpec, STAGE_TABLE_ROWS, type StageRow, type ViewColony } from '@terra/sim';
 import type { Disposable, FeatureContext } from '../../core/registry/types';
+import { stageGuideText } from './guide';
 import { ownColonyIndex, viewColony } from '../shared/colony';
 import { extractStageReachedData, StageToast, type StageToastOptions } from './StageToast';
 
@@ -44,6 +45,9 @@ export class StageTrackHud implements Disposable {
   private readonly toast: StageToast;
   private readonly cleanups: Array<() => void> = [];
 
+  private selectedStage = 0;
+  private guideHidden = false;
+  private toggleGuide!: HTMLButtonElement;
   private currentStage = 0;
   private colonyIndex = 0;
   private hasBaseline = false;
@@ -64,6 +68,7 @@ export class StageTrackHud implements Disposable {
     this.segmentsContainer.className = 'ta-stage-track__segments';
     this.segmentsContainer.setAttribute('data-testid', 'stage-track-segments');
     this.buildSegments();
+    this.buildGuideControls();
 
     // Meta section: current stage title/teaches + next condition & dwell countdown
     const meta = document.createElement('div');
@@ -129,7 +134,9 @@ export class StageTrackHud implements Disposable {
   private buildSegments(): void {
     for (const row of STAGE_TABLE_ROWS) {
       const n = row.stage;
-      const el = document.createElement('div');
+      const el = document.createElement('button');
+      el.type = 'button';
+      el.onclick = () => this.browseStage(n);
       el.className = 'ta-stage-segment';
       el.setAttribute('data-testid', `stage-segment-S${n}`);
       el.setAttribute('data-stage', String(n));
@@ -143,6 +150,43 @@ export class StageTrackHud implements Disposable {
       this.segmentEls.push(el);
       this.segmentsContainer.appendChild(el);
     }
+  }
+
+  private buildGuideControls(): void {
+    const controls = document.createElement('div');
+    controls.className = 'ta-stage-guide-controls';
+    for (const [label, id, action] of [
+      ['Previous', 'stage-guide-previous', () => this.browseStage(this.selectedStage - 1)],
+      ['Next', 'stage-guide-next', () => this.browseStage(this.selectedStage + 1)],
+      ['Current', 'stage-guide-current', () => this.browseStage(this.currentStage)],
+      ['Show guide', 'stage-guide-toggle', () => this.toggleStageGuide()],
+    ] as const) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.className = 'btn btn-ghost btn-sm';
+      button.dataset.testid = id;
+      button.textContent = label;
+      button.onclick = action;
+      controls.append(button);
+      if (id === 'stage-guide-toggle') this.toggleGuide = button;
+    }
+    this.root.append(controls);
+  }
+
+  private toggleStageGuide(): void {
+    if (this.toast.getElement()) {
+      this.guideHidden = true;
+      this.dismissStageToast();
+    } else {
+      this.guideHidden = false;
+      this.browseStage(this.selectedStage);
+    }
+  }
+
+  private browseStage(stage: number): void {
+    this.selectedStage = Math.max(0, Math.min(STAGE_TABLE_ROWS.length - 1, stage));
+    this.guideHidden = false;
+    this.showStageToast(this.selectedStage, { autoDismissMs: 0, replay: true });
   }
 
   private updateSegmentStates(stage: number): void {
@@ -228,12 +272,20 @@ export class StageTrackHud implements Disposable {
   }
 
   showStageToast(stage: number, opts?: StageToastOptions): HTMLElement {
-    this.previousStage = Math.max(this.previousStage, stage);
-    return this.toast.show(stage, opts);
+    if (!opts?.replay) this.previousStage = Math.max(this.previousStage, stage);
+    this.selectedStage = stage;
+    this.toggleGuide.textContent = 'Hide guide';
+    const el = this.toast.show(stage, { guide: stageGuideText(stage, opts?.replay ? this.currentStage : Math.max(stage, this.currentStage)), ...opts, onDismiss: () => {
+      this.toggleGuide.textContent = 'Show guide';
+      opts?.onDismiss?.();
+    } });
+    if (this.guideHidden && !opts?.replay) this.dismissStageToast();
+    return el;
   }
 
   dismissStageToast(): void {
     this.toast.dismiss();
+    this.toggleGuide.textContent = 'Show guide';
   }
 
   getActiveToast(): HTMLElement | null {
@@ -246,6 +298,7 @@ export class StageTrackHud implements Disposable {
     if (typeof data.colonyIndex === 'number' && data.colonyIndex !== this.colonyIndex) {
       return;
     }
+    if (data.stage === this.previousStage && this.toast.getElement()) return;
     this.showStageToast(data.stage, {
       title: data.title,
       teaches: data.teaches,

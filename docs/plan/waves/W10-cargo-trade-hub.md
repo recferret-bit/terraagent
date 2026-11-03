@@ -121,3 +121,9 @@ A player builds a **Trade Hub** and **exports** colony stock to "cargo in orbit"
 - `?scenario=w10` loads; `TA_WAVES=..09` hides the Trade Hub, the cargo panel and the cargo commands (`wave_disabled`). Existing hubs are inert, not deleted.
 - The cargo contract suite passes on the mock. A restart during an export never double-mints.
 - Tag `wave-10` created.
+
+## W08 follow-up: executable progression and priorities
+
+Connect expansion/supply tutorial goals to real cargo routes, escorts and Trade Hub orders.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

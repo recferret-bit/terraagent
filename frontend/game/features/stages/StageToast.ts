@@ -4,6 +4,8 @@ import type { Disposable } from '../../core/registry/types';
 
 export interface StageToastOptions {
   title?: string;
+  replay?: boolean;
+  guide?: string;
   teaches?: string;
   units?: readonly string[];
   buildings?: readonly string[];
@@ -167,6 +169,7 @@ export function extractStageReachedData(m: unknown): StageReachedData | null {
 export class StageToast implements Disposable {
   private element: HTMLElement | null = null;
   private autoDismissTimer: ReturnType<typeof setTimeout> | null = null;
+  private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private readonly host: HTMLElement;
 
   constructor(host: HTMLElement) {
@@ -195,7 +198,7 @@ export class StageToast implements Disposable {
 
     const eyebrow = document.createElement('div');
     eyebrow.className = 'ta-stage-toast__eyebrow';
-    eyebrow.textContent = 'STAGE REACHED';
+    eyebrow.textContent = opts?.replay ? 'STAGE GUIDE' : 'STAGE REACHED';
 
     const titleRow = document.createElement('div');
     titleRow.className = 'ta-stage-toast__title-row';
@@ -230,7 +233,7 @@ export class StageToast implements Disposable {
 
     const revealHeader = document.createElement('div');
     revealHeader.className = 'ta-stage-unlock__header';
-    revealHeader.textContent = 'UNLOCKED';
+    revealHeader.textContent = opts?.replay ? 'STAGE CONTENT' : 'UNLOCKED';
     reveal.appendChild(revealHeader);
 
     const unitsSection = this.createUnlockSection('Units', units, 'stage-unlock-units');
@@ -244,7 +247,7 @@ export class StageToast implements Disposable {
 
     const dismissBtn = document.createElement('button');
     dismissBtn.type = 'button';
-    dismissBtn.className = 'btn btn-secondary btn-sm ta-stage-toast__dismiss';
+    dismissBtn.className = 'btn btn-ghost btn-sm ta-stage-toast__dismiss';
     dismissBtn.setAttribute('data-testid', 'stage-toast-dismiss');
     dismissBtn.textContent = 'Dismiss';
     dismissBtn.onclick = () => {
@@ -253,19 +256,33 @@ export class StageToast implements Disposable {
     };
     actions.appendChild(dismissBtn);
 
-    el.append(header, reveal, actions);
+    const guide = document.createElement('p');
+    guide.className = 'ta-stage-toast__teaches';
+    guide.dataset.testid = 'stage-guide-text';
+    guide.textContent = opts?.guide ?? '';
+    el.append(header, guide, reveal, actions);
     this.host.appendChild(el);
     this.element = el;
 
-    const timeoutMs = opts?.autoDismissMs ?? 8000;
-    if (timeoutMs > 0 && Number.isFinite(timeoutMs)) {
-      this.autoDismissTimer = setTimeout(() => {
-        this.dismiss();
-        opts?.onDismiss?.();
-      }, timeoutMs);
-    }
+    this.startCountdown(actions, opts);
 
     return el;
+  }
+
+  private startCountdown(actions: HTMLElement, opts?: StageToastOptions): void {
+    const timeoutMs = opts?.autoDismissMs ?? 30_000;
+    if (timeoutMs <= 0 || !Number.isFinite(timeoutMs)) return;
+    const countdown = document.createElement('span');
+    countdown.dataset.testid = 'stage-toast-countdown';
+    const deadline = Date.now() + timeoutMs;
+    const update = () => { countdown.textContent = `Closes in ${Math.max(0, Math.ceil((deadline - Date.now()) / 1000))}s`; };
+    update();
+    actions.prepend(countdown);
+    this.countdownTimer = setInterval(update, 250);
+    this.autoDismissTimer = setTimeout(() => {
+      this.dismiss();
+      opts?.onDismiss?.();
+    }, timeoutMs);
   }
 
   private createUnlockSection(category: string, ids: readonly string[], testId: string): HTMLElement {
@@ -296,6 +313,8 @@ export class StageToast implements Disposable {
   }
 
   dismiss(): void {
+    if (this.countdownTimer !== null) clearInterval(this.countdownTimer);
+    this.countdownTimer = null;
     if (this.autoDismissTimer !== null) {
       clearTimeout(this.autoDismissTimer);
       this.autoDismissTimer = null;

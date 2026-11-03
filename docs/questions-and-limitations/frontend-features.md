@@ -1020,3 +1020,13 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** child tasks are visible in the Order Queue panel (`QueuePanel`) and in `window.__online.store.latest.colonies[0].queue`; `unlockStage` vs `threatStage` is exposed on `colonies[0]` and verified in `tests/e2e/w08.spec.ts` step 6.
 - **To resolve:** implement `W08-22` and `W08-28` in `H+` and enable step 7b when `W12` lands `/me.html`.
 - **Found:** 2026-11-03, W08 wave implementation (lead)
+
+### FF-65 · Stage navigation replays lessons; later mechanics remain previews
+
+- **Status:** Accepted (W08 owner follow-up interpretation)
+- **Area / code:** `frontend/game/features/stages/{StageTrackHud,guide}.ts`, `frontend/game/features/goals/HqPanel.ts`
+- **What happens:** Previous / Next and stage segments browse all S0–S10 guides; they never roll back the simulation, earned unlocks or threat. New-stage notices last 30 seconds with a visible timer. Replay has no timer; Hide suppresses subsequent automatic notices until Show. Goals and Priorities share tabs, with state preserved when switching. Unimplemented tutorial suggestions are disabled and describe future-wave prerequisites.
+- **Why it is like this:** interpreting “navigate back” as reviewing tutorial stages preserves world progress and irreversible gameplay. S5–S10 require future-wave mechanics, so their guides explicitly say Preview rather than claiming a playable lesson today.
+- **Workaround / mitigation:** Current returns to the current stage guide; the dev-only `stage set` command still changes simulated stage for testing.
+- **To resolve:** extend each guide and executable suggestion when its owning wave lands, following the [progression contract](../plan/W08-PROGRESSION-CONTRACT.md).
+- **Found:** 2026-11-03, W08 owner fixes.

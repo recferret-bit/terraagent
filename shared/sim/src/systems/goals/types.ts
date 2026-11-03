@@ -73,6 +73,8 @@ export interface ColonyGoalEntry {
   budgetBp: number;
   spent: Record<string, number>;
   childTaskIds: string[];
+  /** Current action or actionable wait reason, replicated with the goal. */
+  detail?: string;
   createdAtTick: number;
   startedAtTick?: number;
   completedAtTick?: number;

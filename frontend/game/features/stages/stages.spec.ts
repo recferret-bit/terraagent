@@ -372,14 +372,14 @@ describe('W08-13 Toast Dismiss & Auto-Dismiss Timer', () => {
     mounted.dispose();
   });
 
-  it('auto-dismisses toast after default 8000ms timer', () => {
+  it('auto-dismisses toast after default 30000ms timer', () => {
     vi.useFakeTimers();
     try {
       const mounted = mountStageTrackHud(container, ctx);
       mounted.hud?.showStageToast(1);
 
       expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
-      vi.advanceTimersByTime(7999);
+      vi.advanceTimersByTime(29999);
       expect(container.querySelector('[data-testid="stage-reached-toast"]')).not.toBeNull();
       vi.advanceTimersByTime(1);
       expect(container.querySelector('[data-testid="stage-reached-toast"]')).toBeNull();

@@ -236,3 +236,9 @@ Lead first: contracts, decision amendments and shared-file changes (W27-01/-02/-
 Continuous navigation is planned here, not implemented by this documentation; WE-32 also records the planar-to-globe presentation boundary. Planning defaults (R=24, X=4, continent assignments, finite atlas projection) are recorded in [WE-32](../../questions-and-limitations/sim-world-engine.md). Production instance provisioning, cross-instance migration/sharding and geodesic/polar gameplay are deferred; this wave includes measured single-authority capacity validation and rejects unsupported configurations. Existing small-world issues WE-06 and WE-29 remain open/accepted until implementation proves their fixes.
 
 Algorithm references, consulted 2026-11-03: [Red Blob Games: axial hex geometry and coordinate conversions](https://www.redblobgames.com/grids/hexagons/) supports the coordinate foundation; [terrain from noise](https://www.redblobgames.com/maps/terrain-from-noise/) describes frequency/mask techniques, extended here with explicit continent quota/connectivity constraints. [H3 overview](https://h3geo.org/docs/core-library/overview/) documents spherical exceptional cells; [H3 indexing](https://h3geo.org/docs/highlights/indexing/) distinguishes logical from geometric containment. These inform topology constraints; H3 is not a required dependency or a substitute for the existing sim grid.
+
+## W08 follow-up: executable progression and priorities
+
+Connect Expand Toward and exploration tutorials to canonical sectors and reachable routes; expansion priority affects target choice.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

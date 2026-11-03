@@ -1,5 +1,6 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
 import { GoalsPanel } from './GoalsPanel';
+import { HqPanel } from './HqPanel';
 import './goals.css';
 
 export { GoalForm, type GoalFormOptions } from './GoalForm';
@@ -29,18 +30,20 @@ export function mountGoalsPanel(el: HTMLElement, ctx: FeatureContext): HudPanelI
   }
 
   el.hidden = false;
-  const panel = new GoalsPanel(el, ctx);
+  const hq = new HqPanel(el, ctx);
+  const panel = hq.goals;
+  ctx.services.getPrioritiesPanel = () => hq.priorities;
   activePanel = panel;
   ctx.services.getGoalsPanel = () => activePanel;
 
   return {
     panel,
     update(view) {
-      panel.update(view);
+      hq.update(view);
     },
     dispose() {
       if (activePanel === panel) activePanel = null;
-      panel.dispose();
+      hq.dispose();
     },
   };
 }

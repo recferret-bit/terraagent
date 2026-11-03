@@ -89,3 +89,9 @@ Add a strategic LLM director that makes the rare high-level calls, about 5–10 
 - Tag `wave-16` is created.
 - `AI-01..15` and the §14 test matrix are mapped above.
 - A live Z.ai eval run is a manual gate, not part of the e2e.
+
+## W08 follow-up: executable progression and priorities
+
+Use the shared goal executors and five priorities for director decisions; explain permissions and blocked actions.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

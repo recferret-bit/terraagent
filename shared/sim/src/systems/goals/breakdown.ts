@@ -1,7 +1,6 @@
-import { RESOURCE_FAMILY_OF, type ResourceFamily, type ResourceKey } from '@terra/contracts';
+import { RESOURCE_FAMILY_OF, type ResourceKey } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
-import { DEPOSIT } from '../../grid/layers';
 import { isBuildablePrepared } from '../../grid/tileModel';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -10,14 +9,13 @@ import type { PlanetState } from '../../kernel/state';
 import { getConstructionOrders } from '../construction/orders';
 import { getFootprintTileIndices } from '../economy/buildingRows';
 import { getBuildingJobs } from '../economy/buildJob';
-import { ensureColonyLedger, familyStock, recomputeFamilyCaps } from '../economy/ledger';
+import { recomputeFamilyCaps } from '../economy/ledger';
 import { getEnvironment } from '../environment';
 import { getColonyPower } from '../power-core';
 import { enqueueQueueTask, getColonyQueue, type QueueTaskPayload } from '../queue';
 import { completeColonyGoal } from './index';
 import {
   ensureStarterGoalStock,
-  ensureStarterMetalsDeposit,
   findExtractorSiteForGoal,
   findGeneratorSiteForGoal,
   findHubSiteForGoal,
@@ -25,8 +23,9 @@ import {
 } from './sites';
 import { emitGoalProgress, getColonyGoals, saveColonyGoals } from './store';
 import type { ColonyGoalEntry } from './types';
+import { getGoalExecutor, registerGoalExecutor } from './executors';
+import { planGrowth } from './growth';
 
-const SECURE_POWER_HOLD_TICKS_DAY = 15;
 const SECURE_POWER_HOLD_TICKS_NIGHT = 5;
 
 export function normalizeGoalResource(raw?: string): ResourceKey {
@@ -90,7 +89,10 @@ function enqueueGoalChildTask(
     },
     ctx,
   );
-  if (!res.ok) return false;
+  if (!res.ok) {
+    goal.detail = `Waiting: ${res.detail ?? res.code}`;
+    return false;
+  }
   if (!goal.childTaskIds.includes(res.entry.taskId)) {
     goal.childTaskIds.push(res.entry.taskId);
   }
@@ -199,40 +201,11 @@ export function computeColonyResourceRatePerMin(
   resourceKey: ResourceKey,
   data?: CompiledDataLike,
 ): number {
-  const family: ResourceFamily = RESOURCE_FAMILY_OF[resourceKey] ?? 'metals';
+  // Read actual production. Idle harvesters, depleted deposits and unpowered extractors yield zero.
   const colony = state.colonies[colonyIndex];
-  const prod = colony?.production as
-    | { incomePerS?: Partial<Record<ResourceKey, number>>; familyIncomePerS?: Partial<Record<ResourceFamily, number>> }
-    | undefined;
-  const keyIncomePerS = Number(prod?.incomePerS?.[resourceKey] ?? 0);
-  const famIncomePerS = resourceKey.endsWith('.t1') ? Number(prod?.familyIncomePerS?.[family] ?? 0) : 0;
-  const ledgerRatePerMin = Math.max(keyIncomePerS, famIncomePerS) * 60;
-
-  let entityPerS = 0;
-  const { count, cols } = state.entities;
-  const { deposit, richness } = state.grid.layers;
-  for (let row = 0; row < count; row++) {
-    if (cols.owner[row] !== colonyIndex) continue;
-    if (cols.hp[row] <= 0 && cols.hpMax[row] > 0) continue;
-    if (cols.state[row] === ENTITY_STATE.constructing || cols.state[row] === ENTITY_STATE.waiting) continue;
-    const kind = cols.kind[row];
-    if (kind === ENTITY_KIND.metalsExtractor && resourceKey === 'metals.t1') {
-      const fp = getFootprintTileIndices(state, cols.q[row], cols.r[row], cols.footprintW[row] || 2, cols.footprintD[row] || 2, cols.rot[row]);
-      let mult = 1;
-      for (const idx of fp.indices) {
-        if (deposit[idx] === DEPOSIT.metals) {
-          const rVal = richness ? richness[idx] : 10000;
-          mult = rVal > 100 ? rVal / 10000 : rVal > 0 ? rVal : 1;
-          break;
-        }
-      }
-      entityPerS += 1.0 * mult;
-    } else if (kind === ENTITY_KIND.harvester) {
-      entityPerS += 0.25;
-    }
-  }
+  const production = colony?.production as { incomePerS?: Partial<Record<ResourceKey, number>> } | undefined;
   void data;
-  return Math.max(ledgerRatePerMin, entityPerS * 60);
+  return Math.max(0, Number(production?.incomePerS?.[resourceKey] ?? 0)) * 60;
 }
 
 function computeEffectivePowerNetPerS(
@@ -241,30 +214,7 @@ function computeEffectivePowerNetPerS(
   data?: CompiledDataLike,
 ): { netPerS: number; brownout: boolean } {
   const power = getColonyPower(state, colonyIndex, data);
-  const rawColPower = state.colonies[colonyIndex]?.power as { nightNetPerS?: number; net?: number } | undefined;
-  const nightOverride = typeof rawColPower?.nightNetPerS === 'number' ? rawColPower.nightNetPerS : -Infinity;
-
-  let hubSupply = 0;
-  let solarSupply = 0;
-  let demand = 0;
-  const { count, cols } = state.entities;
-  for (let row = 0; row < count; row++) {
-    if (cols.owner[row] !== colonyIndex) continue;
-    if (cols.hp[row] <= 0 && cols.hpMax[row] > 0) continue;
-    if (cols.state[row] === ENTITY_STATE.constructing || cols.state[row] === ENTITY_STATE.waiting) continue;
-    const kind = cols.kind[row];
-    if (kind === ENTITY_KIND.commandHub) {
-      hubSupply += 8;
-      demand += 5;
-    } else if (kind === ENTITY_KIND.solar) {
-      solarSupply += 20;
-    } else if (kind === ENTITY_KIND.metalsExtractor) {
-      demand += 6;
-    }
-  }
-  const installedNet = hubSupply + solarSupply - demand;
-  const netPerS = Math.max(power.net, installedNet, nightOverride);
-  return { netPerS, brownout: power.brownout };
+  return { netPerS: power.net, brownout: power.brownout };
 }
 
 function stepEstablishColonyGoal(
@@ -276,7 +226,6 @@ function stepEstablishColonyGoal(
   ctx?: StepContext,
 ): void {
   ensureStarterGoalStock(state, colonyIndex, tick, ctx?.data);
-  ensureStarterMetalsDeposit(state, colonyIndex, ctx?.data);
 
   const hasHubAny = hasAliveBuilding(state, colonyIndex, ENTITY_KIND.commandHub, false) || hasOpenBuildTask(state, colonyIndex, 'commandHub');
   if (!hasHubAny) {
@@ -335,7 +284,6 @@ function stepGrowEconomyGoal(
   ctx?: StepContext,
 ): void {
   const resourceKey = normalizeGoalResource(goal.params.resource);
-  const family: ResourceFamily = RESOURCE_FAMILY_OF[resourceKey] ?? 'metals';
   const targetRatePerMin = Math.max(1, Number(goal.params.targetRatePerMin ?? goal.params.target ?? 10));
   goal.params.resource = resourceKey;
   goal.params.targetRatePerMin = targetRatePerMin;
@@ -348,32 +296,15 @@ function stepGrowEconomyGoal(
   }
 
   ensureStarterGoalStock(state, colonyIndex, tick, ctx?.data);
-  const childSet = new Set(goal.childTaskIds);
-  const openQueue = [...getColonyQueue(state, colonyIndex, 'construction'), ...getColonyQueue(state, colonyIndex, 'units')];
-  const hasOpenChild = openQueue.some(
-    (e) => (e.goalId === goal.id || childSet.has(e.taskId)) && e.state !== 'done' && e.state !== 'cancelled',
-  );
-
-  if (!hasOpenChild) {
-    const colony = ensureColonyLedger(ensureColonyRecord(state, colonyIndex, tick));
-    const cap = Math.max(1, colony.caps[family] ?? 500);
-    const fillRatio = familyStock(colony, family) / cap;
-    if (fillRatio >= 0.85 && !hasOpenBuildTask(state, colonyIndex, 'depot')) {
-      const depotSite = findGeneratorSiteForGoal(state, colonyIndex, ctx?.data, 'depot');
-      if (depotSite) {
-        enqueueGoalChildTask(state, colonyIndex, goal, { kind: 'build', building: 'depot', q: depotSite.q, r: depotSite.r }, tick, ctx);
-      }
-    } else if (resourceKey === 'metals.t1') {
-      ensureStarterMetalsDeposit(state, colonyIndex, ctx?.data);
-      const extSite = findExtractorSiteForGoal(state, colonyIndex, ctx?.data);
-      if (extSite) {
-        enqueueGoalChildTask(state, colonyIndex, goal, { kind: 'build', building: 'metalsExtractor', q: extSite.q, r: extSite.r }, tick, ctx);
-      } else if (hasAliveBuilding(state, colonyIndex, ENTITY_KIND.commandHub, true)) {
-        enqueueGoalChildTask(state, colonyIndex, goal, { kind: 'buildUnit', unit: 'harvester', count: 1 }, tick, ctx);
-      }
-    } else if (hasAliveBuilding(state, colonyIndex, ENTITY_KIND.commandHub, true)) {
-      enqueueGoalChildTask(state, colonyIndex, goal, { kind: 'buildUnit', unit: 'harvester', count: 1 }, tick, ctx);
-    }
+  const orders = [...getColonyQueue(state, colonyIndex, 'construction'), ...getColonyQueue(state, colonyIndex, 'units')];
+  const openChild = orders.find((e) => e.goalId === goal.id && e.state !== 'done' && e.state !== 'cancelled');
+  goal.detail = `${currentRatePerMin.toFixed(1)} / ${targetRatePerMin} ${resourceKey}/min. `;
+  if (openChild) {
+    goal.detail += openChild.waitDetail || `Working: ${openChild.task.kind === 'build' ? openChild.task.building : 'harvester'}`;
+  } else {
+    const plan = planGrowth(state, colonyIndex, resourceKey, tick, ctx?.data);
+    goal.detail += plan.detail;
+    if (plan.task) enqueueGoalChildTask(state, colonyIndex, goal, plan.task, tick, ctx);
   }
 
   const rateRatio = Math.max(0, Math.min(1, currentRatePerMin / targetRatePerMin));
@@ -401,6 +332,7 @@ function stepSecurePowerGoal(
   ensureStarterGoalStock(state, colonyIndex, tick, ctx?.data);
 
   const { netPerS, brownout } = computeEffectivePowerNetPerS(state, colonyIndex, ctx?.data);
+  goal.detail = `${netPerS.toFixed(1)} / ${targetNetEnergyPerS} E/s. ${getEnvironment(state).phase === 'night' ? 'Night power: solar cannot meet a night deficit; night generators arrive in W03.' : 'Building daytime power, then verifying at night.'}`;
   const hasOpenSolar =
     hasOpenBuildTask(state, colonyIndex, 'solar') ||
     (hasAliveBuilding(state, colonyIndex, ENTITY_KIND.solar, false) &&
@@ -408,7 +340,7 @@ function stepSecurePowerGoal(
 
   if (netPerS < targetNetEnergyPerS - 1e-6 || brownout) {
     goal.nightHeldTicks = 0;
-    if (!hasOpenSolar) {
+    if (!hasOpenSolar && getEnvironment(state).phase !== 'night') {
       const solarSite = findGeneratorSiteForGoal(state, colonyIndex, ctx?.data, 'solar');
       if (solarSite) {
         enqueueGoalChildTask(state, colonyIndex, goal, { kind: 'build', building: 'solar', q: solarSite.q, r: solarSite.r }, tick, ctx);
@@ -427,9 +359,15 @@ function stepSecurePowerGoal(
     return;
   }
 
+  if (getEnvironment(state).phase !== 'night') {
+    goal.detail = 'Daytime power ready. Waiting for night to verify the target.';
+    goal.nightHeldTicks = 0;
+    saveColonyGoals(state, colonyIndex, goals, tick);
+    return;
+  }
   const dt = Math.max(1, ctx?.dt ?? 1);
   goal.nightHeldTicks = (goal.nightHeldTicks ?? 0) + dt;
-  const holdTarget = getEnvironment(state).phase === 'night' ? SECURE_POWER_HOLD_TICKS_NIGHT : SECURE_POWER_HOLD_TICKS_DAY;
+  const holdTarget = SECURE_POWER_HOLD_TICKS_NIGHT;
   if (goal.nightHeldTicks >= holdTarget) {
     saveColonyGoals(state, colonyIndex, goals, tick);
     completeColonyGoal(state, colonyIndex, goal.id, tick, ctx);
@@ -461,11 +399,14 @@ export function stepColonyGoalsBreakdown(
   const active = goals.find((g) => g.status === 'active');
   if (!active) return;
 
-  if (active.goal === 'establish_colony') {
-    stepEstablishColonyGoal(state, colonyIndex, active, goals, tick, ctx);
-  } else if (active.goal === 'grow_economy') {
-    stepGrowEconomyGoal(state, colonyIndex, active, goals, tick, ctx);
-  } else if (active.goal === 'secure_power') {
-    stepSecurePowerGoal(state, colonyIndex, active, goals, tick, ctx);
+  const executor = getGoalExecutor(active.goal);
+  if (executor) executor(state, colonyIndex, active, goals, tick, ctx);
+  else {
+    active.detail = 'Unavailable: this goal requires its owning feature wave. Cancel to continue.';
+    saveColonyGoals(state, colonyIndex, goals, tick);
   }
 }
+
+registerGoalExecutor('establish_colony', stepEstablishColonyGoal);
+registerGoalExecutor('grow_economy', stepGrowEconomyGoal);
+registerGoalExecutor('secure_power', stepSecurePowerGoal);

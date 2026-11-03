@@ -3,10 +3,10 @@ import {
   DEFAULT_GOAL_BUDGET_BP,
   GOAL_CATALOG,
   type ColonyGoalEntry,
-  type ColonySuggestion,
 } from '@terra/sim';
 import type { FeatureContext } from '../../core/registry/types';
 import { ownColonyIndex, viewColony } from '../shared/colony';
+import { renderStageSuggestion } from './suggestion';
 import { GoalForm } from './GoalForm';
 
 export function formatGoalLabel(goal: GoalKind, params?: GoalParams): string {
@@ -14,7 +14,7 @@ export function formatGoalLabel(goal: GoalKind, params?: GoalParams): string {
     const rawRes = params?.resource ?? 'metals.t1';
     const res = rawRes.replace(/\.t[0-9]+$/, '').replace(/^bio\./, '');
     const rate = params?.targetRatePerMin ?? 10;
-    return `Grow Economy (+${rate} ${res}/min)`;
+    return `Grow Economy (${rate} ${res}/min)`;
   }
   if (goal === 'secure_power') {
     const net = params?.targetNetEnergyPerS ?? 10;
@@ -36,13 +36,11 @@ export class GoalsPanel {
   private colonyIndex = 0;
   private goalLimit = 2;
   private colonyStage = 0;
-  private activeSuggestion: ColonySuggestion | null = null;
   private suggestionDismissed = false;
   private goals: ColonyGoalEntry[] = [];
   private collapsed = false;
   private draggedGoalId: string | null = null;
   private lastListKey = '';
-  private suggestionRendered = false;
 
   constructor(host: HTMLElement, ctx: FeatureContext) {
     this.ctx = ctx;
@@ -228,8 +226,6 @@ export class GoalsPanel {
       goals?: ColonyGoalEntry[];
       goalLimit?: number;
       stage?: number;
-      activeSuggestion?: ColonySuggestion;
-      suggestion?: ColonySuggestion;
     } | undefined;
 
     if (col) {
@@ -244,13 +240,9 @@ export class GoalsPanel {
           childTaskIds: [...(g.childTaskIds ?? [])],
         }));
       }
-      if (typeof col.stage === 'number') {
+      if (typeof col.stage === 'number' && col.stage !== this.colonyStage) {
         this.colonyStage = col.stage;
-      }
-      if (col.activeSuggestion !== undefined) {
-        this.activeSuggestion = col.activeSuggestion;
-      } else if (col.suggestion !== undefined) {
-        this.activeSuggestion = col.suggestion;
+        this.suggestionDismissed = false;
       }
       this.render();
     }
@@ -266,60 +258,8 @@ export class GoalsPanel {
   }
 
   private renderSuggestion(): void {
-    const hasEstablish = this.goals.some((g) => g.goal === 'establish_colony');
-    const isS0OrSuggested = this.colonyStage === 0 || !!this.activeSuggestion;
-    const show = isS0OrSuggested && !hasEstablish && !this.suggestionDismissed;
-
-    if (!show) {
-      if (this.suggestionRendered || this.suggestionContainer.firstChild) {
-        this.suggestionContainer.innerHTML = '';
-        this.suggestionRendered = false;
-      }
-      return;
-    }
-
-    if (this.suggestionRendered && this.suggestionContainer.firstElementChild) {
-      return;
-    }
-    this.suggestionContainer.innerHTML = '';
-    this.suggestionRendered = true;
-
-    const card = document.createElement('div');
-    card.className = 'ta-goal-suggestion-card';
-    card.setAttribute('data-testid', 'goal-suggestion-card');
-
-    const tag = document.createElement('span');
-    tag.className = 'ta-goal-suggestion-card__tag';
-    tag.textContent = 'SUGGESTION';
-
-    const title = document.createElement('span');
-    title.className = 'ta-goal-suggestion-card__title';
-    title.textContent = 'Establish Colony';
-
-    const desc = document.createElement('p');
-    desc.className = 'ta-goal-suggestion-card__desc';
-    desc.textContent = 'Prepare site, place Command Hub, and build 1 extractor + 1 generator';
-
-    const actions = document.createElement('div');
-    actions.className = 'ta-goal-suggestion-card__actions';
-
-    const acceptBtn = document.createElement('button');
-    acceptBtn.type = 'button';
-    acceptBtn.className = 'ta-goal-suggestion-card__accept-btn';
-    acceptBtn.setAttribute('data-testid', 'goal-suggestion-accept');
-    acceptBtn.textContent = 'ACCEPT';
-    acceptBtn.onclick = () => this.acceptSuggestion(0, 'establish_colony');
-
-    const dismissBtn = document.createElement('button');
-    dismissBtn.type = 'button';
-    dismissBtn.className = 'ta-goal-suggestion-card__dismiss-btn';
-    dismissBtn.setAttribute('data-testid', 'goal-suggestion-dismiss');
-    dismissBtn.textContent = 'DO IT MYSELF';
-    dismissBtn.onclick = () => this.dismissSuggestion();
-
-    actions.append(acceptBtn, dismissBtn);
-    card.append(tag, title, desc, actions);
-    this.suggestionContainer.appendChild(card);
+    renderStageSuggestion(this.suggestionContainer, this.colonyStage, this.goals, this.suggestionDismissed,
+      (goal) => this.acceptSuggestion(this.colonyStage, goal), () => this.dismissSuggestion());
   }
 
   private renderList(): void {
@@ -329,7 +269,7 @@ export class GoalsPanel {
         (g) =>
           `${g.id}:${g.goal}:${g.status}:${Math.round((g.progress ?? 0) * 100)}:${g.stepsCompleted ?? 0}/${
             g.stepsTotal ?? 1
-          }:${g.budgetBp ?? 5000}:${JSON.stringify(g.params ?? {})}`,
+          }:${g.budgetBp ?? 5000}:${g.detail ?? ""}:${JSON.stringify(g.params ?? {})}`,
       )
       .join('|');
     if (listKey === this.lastListKey && this.listEl.childElementCount === open.length) {
@@ -465,6 +405,11 @@ export class GoalsPanel {
     item.draggable = true;
 
     item.append(this.createGoalTopRow(entry), this.createGoalProgressRow(entry));
+    const detail = document.createElement('p');
+    detail.className = 'ta-goal-detail';
+    detail.dataset.testid = `goal-detail-${entry.id}`;
+    detail.textContent = entry.status === 'queued' ? 'Waiting for the active goal. Move up to prioritize.' : entry.detail ?? 'Planning work…';
+    item.append(detail);
     this.attachGoalDragAndDrop(item, entry.id, itemIndex);
     return item;
   }

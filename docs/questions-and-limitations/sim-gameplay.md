@@ -771,3 +771,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** `dev.stage` (`stage set <0..10>`, `stage trigger <fauna|hazard>`, `stage skip-dwell`) and `dev.autopilot` allow testing any stage or override directly.
 - **To resolve:** implement `W08-05`, `W08-07`, `W08-14`, `W08-15`, `W08-18`–`W08-20`, `W08-26`, `W08-29`, `W08-31`, `W08-32` when their target waves (`W03`–`W05`, `W07`, `W09`–`W12`, `W23`) land.
 - **Found:** 2026-11-03, W08 wave implementation (lead)
+
+### GP-67 · W08 goals expose missing production capabilities instead of claiming completion
+
+- **Status:** Open (owning-wave work specified)
+- **Area / code:** `shared/sim/src/systems/goals/{executors,growth,breakdown}.ts`; [progression contract](../plan/W08-PROGRESSION-CONTRACT.md)
+- **What happens:** Grow Metals now bypasses unavailable storage placement, creates real production orders and reads the production ledger. An idle unit, capped stock or unpowered extractor no longer counts as output. Secure Power uses actual night output; +10 E/s cannot complete with the current solar-only construction catalog. Water growth is unavailable because the current harvest path cannot produce water. Unsupported goal kinds reject with `wave_disabled` instead of taking a slot and doing nothing. Existing saved unsupported goals explain the missing executor and can be cancelled.
+- **Why it is like this:** W03 owns storage/night generators/resource extractors; W07 and later waves own combat, expansion, tech and rocket actions. W08 does not implement those waves. Goal executor registration is now the availability gate.
+- **Workaround / mitigation:** active goals show action/wait reasons. Spend full storage, supply missing resources, clear a valid site or cancel a blocked goal. Automatic harvesters follow the active resource goal without changing saved weights; manual assignments remain authoritative. Goals no longer create a fallback metals deposit in the live world.
+- **To resolve:** owning waves must implement the acceptance tests and tutorial chain in the progression contract, including storage growth, actual positive night output, Water extraction, finite-resource/reachability handling and budget ceilings (W08-20, still deferred). Current budget values remain metadata, not enforced spending ceilings.
+- **Found:** 2026-11-03, W08 owner fixes. Supersedes GP-66's claim that unfinished goals are intentionally queueable.

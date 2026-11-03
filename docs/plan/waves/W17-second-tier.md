@@ -96,3 +96,9 @@ The colony moves past T1:
 
 - **Deep Reclaim** is built and tier-gated in W05-06; this wave only adds its S5 unlock row (W17-16) and the T2 workers that can run it. W17-18 was folded into W17-16.
 - **Rings and spotting** are W07 systems (W07-08, W07-21); this wave adds radar contacts and the radar ring only.
+
+## W08 follow-up: executable progression and priorities
+
+Deliver executable S5–S7 lessons, Tech Up and Build Army, with counter/terrain/power decisions affected by priorities.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

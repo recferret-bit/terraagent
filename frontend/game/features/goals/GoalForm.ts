@@ -1,5 +1,5 @@
 import type { GoalKind, GoalParams, QueueGoalArgs } from '@terra/contracts';
-import { GOAL_CATALOG } from '@terra/sim';
+import { GOAL_CATALOG, isGoalExecutable } from '@terra/sim';
 
 export interface GoalFormOptions {
   onAdd: (args: QueueGoalArgs) => void;
@@ -38,7 +38,8 @@ export class GoalForm {
     for (const [key, entry] of Object.entries(GOAL_CATALOG)) {
       const opt = document.createElement('option');
       opt.value = key;
-      opt.textContent = entry.label;
+      opt.disabled = !isGoalExecutable(entry.id);
+      opt.textContent = entry.label + (opt.disabled ? ' — coming in a future wave' : '');
       this.kindSelect.appendChild(opt);
     }
     this.kindSelect.value = 'establish_colony';
@@ -117,7 +118,8 @@ export class GoalForm {
       for (const r of resources) {
         const opt = document.createElement('option');
         opt.value = r.value;
-        opt.textContent = r.label;
+        opt.disabled = r.value === 'bio.water';
+        opt.textContent = r.label + (opt.disabled ? ' — requires W03 extraction' : '');
         resSelect.appendChild(opt);
       }
 
@@ -164,7 +166,8 @@ export class GoalForm {
   submit(): void {
     if (this.addBtn.disabled) return;
     const kind = this.kindSelect.value as GoalKind;
-    const budgetPct = Number(this.budgetInput.value) || 50;
+    if (!isGoalExecutable(kind)) return;
+    const budgetPct = Number(this.budgetInput.value);
     const budgetBp = Math.round(budgetPct * 100);
 
     const params: GoalParams = {};
@@ -175,7 +178,7 @@ export class GoalForm {
       if (rateInput) params.targetRatePerMin = Number(rateInput.value) || 10;
     } else if (kind === 'secure_power') {
       const energyInput = this.paramsBox.querySelector<HTMLInputElement>('[data-testid="goal-param-energy"]');
-      if (energyInput) params.targetNetEnergyPerS = Number(energyInput.value) || 10;
+      if (energyInput) params.targetNetEnergyPerS = energyInput.value === '' ? 10 : Number(energyInput.value);
     }
 
     this.onAdd({

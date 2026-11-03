@@ -114,3 +114,9 @@ Every Trade Hub is a **market stall** whose owner sets a fee (0–3 %). Players 
 - `?scenario=w13` loads; `TA_WAVES=..12` hides the Market tab and rejects market commands (`wave_disabled`). Orders stay in the DB untouched.
 - The Intents contract suite passes on the mock. No restart ever executes a batch twice.
 - Tag `wave-13` created.
+
+## W08 follow-up: executable progression and priorities
+
+Register Negotiate Supply execution; economy priority affects supply/trade proposals under explicit spending bounds.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

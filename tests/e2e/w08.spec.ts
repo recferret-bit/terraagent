@@ -206,6 +206,8 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
   await runConsole(page, 'stage set 2');
   await expect.poll(async () => (await getColony0(page))?.stage ?? 0).toBe(2);
 
+  await page.locator('[data-testid=hq-tab-priorities]').click();
+
   // Priorities panel: 5 sliders at 50, sum = 250
   await expect(page.locator('[data-testid="priorities-panel"]')).toBeVisible();
   await expect(page.locator('[data-testid="priority-sum"]')).toHaveText('250');
@@ -297,7 +299,7 @@ test('@hack 8. Goal queue limit: HQ T1 allows 2 active+queued goals, rejects a 3
   await expect(page.locator('[data-testid="goal-add-btn"]')).toBeDisabled();
 
   // Attempting to add a 3rd goal rejects with goal_limit
-  const g3 = await runConsole(page, 'goal add defend_colony');
+  const g3 = await runConsole(page, 'goal add grow_economy minerals 100');
   expect(g3).toContain('goal_limit');
   await screenshot(page, '8-goal-limit-enforced');
 
@@ -315,8 +317,54 @@ test('@hack 8. Goal queue limit: HQ T1 allows 2 active+queued goals, rejects a 3
   await expect(page.locator('[data-testid="goals-limit-badge"]')).toHaveText('1 / 2');
   await expect(page.locator('[data-testid="goal-add-btn"]')).toBeEnabled();
 
-  const g3Retry = await runConsole(page, 'goal add defend_colony');
-  expect(g3Retry).toContain('goal defend_colony queued');
+  const g3Retry = await runConsole(page, 'goal add grow_economy minerals 100');
+  expect(g3Retry).toContain('goal grow_economy queued');
   await expect(page.locator('[data-testid="goals-limit-badge"]')).toHaveText('2 / 2');
+  expectNoPageErrors(page);
+});
+
+test('owner fixes: replay, previous stage, hide/show and HQ tabs', async ({ page }) => {
+  await openW08(page);
+  await runConsole(page, 'stage set 2');
+  await page.keyboard.press('Backquote');
+  await expect(page.getByTestId('stage-toast-countdown')).toContainText(/Closes in \d+s/);
+  await page.getByTestId('stage-toast-dismiss').click();
+  await page.getByTestId('stage-guide-toggle').click();
+  await expect(page.getByTestId('stage-toast-countdown')).toHaveCount(0);
+  await page.getByTestId('stage-guide-previous').click();
+  await expect(page.getByTestId('stage-toast-title')).toHaveText('S1 First Light');
+  expect((await getColony0(page))?.stage).toBe(2);
+  await page.getByTestId('stage-guide-toggle').click();
+  await expect(page.getByTestId('stage-reached-toast')).toHaveCount(0);
+  await page.getByTestId('stage-guide-toggle').click();
+  await expect(page.getByTestId('stage-toast-title')).toHaveText('S1 First Light');
+  await page.getByTestId('stage-segment-S10').click();
+  await expect(page.getByTestId('stage-guide-text')).toContainText('W21');
+  await expect(page.getByTestId('stage-guide-text')).toContainText('Preview');
+  await page.getByTestId('hq-tab-priorities').click();
+  await expect(page.getByTestId('priorities-panel')).toBeVisible();
+  await expect(page.getByTestId('goals-panel')).toBeHidden();
+  await page.getByTestId('hq-tab-goals').click();
+  await expect(page.getByTestId('goals-panel')).toBeVisible();
+  await expect(page.getByTestId('priorities-panel')).toBeHidden();
+  await screenshot(page, 'owner-stage-guide-and-hq-tabs');
+  expectNoPageErrors(page);
+});
+
+test('owner fixes: Grow Metals issues real work and completes from production', async ({ page }) => {
+  test.setTimeout(120_000);
+  await openW08(page);
+  await page.getByTestId('goal-suggestion-accept').click();
+  await runConsole(page, 'warp 20');
+  await expect.poll(async () => (await getColony0(page))?.goals?.find((g) => g.goal === 'establish_colony')?.status,
+    { timeout: 60_000 }).toBe('done');
+  await runConsole(page, 'warp 1');
+  await runConsole(page, 'goal add grow_economy metals 100');
+  await expect.poll(async () => (await getColony0(page))?.queue?.filter((e) => e.goalId && e.goalId !== 'goal_0_1').length ?? 0).toBeGreaterThan(0);
+  await runConsole(page, 'warp 20');
+  await expect.poll(async () => (await getColony0(page))?.goals?.find((g) => g.goal === 'grow_economy')?.status,
+    { timeout: 60_000 }).toBe('done');
+  await runConsole(page, 'warp 1');
+  await screenshot(page, 'owner-grow-metals-completed');
   expectNoPageErrors(page);
 });

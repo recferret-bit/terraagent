@@ -123,3 +123,9 @@
 - The phone perf probe is ≥ 30 FPS, and the landing bundle budgets are green in the build report.
 - Tag `wave-24` exists.
 - Every row of the features table is covered by a closed issue.
+
+## W08 follow-up: executable progression and priorities
+
+Verify tabbed HQ controls and all guide replay/hide/navigation controls with touch and keyboard.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

@@ -68,3 +68,5 @@ This directory contains the product plan, not a live implementation-status board
 | [`DEPLOYMENT.md`](../spec/DEPLOYMENT.md) | `terraagent.fun` hosts, four compose files, HTTP on port 80, SSH deploy from `DEPLOY_HOST` (D-40) |
 
 Gameplay design lives in [`docs/game/`](../game) ([`autonomous-colony-spec.md`](../game/autonomous-colony-spec.md), [`colony-economy-and-buildings-spec.md`](../game/colony-economy-and-buildings-spec.md), [`units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md), [`near-economy-features-spec.md`](../game/near-economy-features-spec.md), [`player-profile-and-achievements-spec.md`](../game/player-profile-and-achievements-spec.md)); 3D visual rules stay in [`AGENTS.md`](../../AGENTS.md) and `.agents/skills/`.
+
+- [Progression, tutorial goals and priorities contract](W08-PROGRESSION-CONTRACT.md) — required W08 follow-up integration and acceptance checks for future gameplay waves.

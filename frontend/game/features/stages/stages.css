@@ -300,3 +300,9 @@
 .ta-stage-toast__dismiss {
   cursor: pointer;
 }
+
+.ta-stage-guide-controls { display: flex; gap: var(--ta-s1); pointer-events: auto; }
+.ta-stage-segment { pointer-events: auto; cursor: pointer; padding: 0; }
+.ta-stage-reached-toast { pointer-events: auto; max-height: 55vh; overflow-y: auto; }
+.ta-stage-toast__actions { align-items: center; justify-content: space-between; gap: var(--ta-s2); }
+.ta-stage-toast__actions span { color: var(--ta-text-2); font: var(--ta-fs-label) var(--ta-font-mono); }

@@ -113,3 +113,9 @@
 - **Stage gating** (walls at S7, S4 in the demo) is enforced only when W08 is on. Otherwise the wave flag alone controls availability.
 - **Truce partners through gates** (`openToPartners`) are stored here but used only by W18.
 - **The extra Drifter flock** against a closed ring is a data hook here; it becomes live with W19.
+
+## W08 follow-up: executable progression and priorities
+
+Extend Defend Area with coverage, repair and fortification orders driven by defense/power priorities.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

@@ -48,12 +48,5 @@ export function mountPrioritiesPanel(el: HTMLElement, ctx: FeatureContext): HudP
 export default defineFeature({
   id: 'priorities',
   wave: 'W08',
-  hud: [
-    {
-      id: 'priorities-panel',
-      slot: 'top-right',
-      order: 30,
-      mount: mountPrioritiesPanel,
-    },
-  ],
+  // Mounted inside the HQ Goals / Priorities tabbed panel.
 });

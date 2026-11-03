@@ -437,3 +437,11 @@
   color: var(--ta-dim);
   white-space: nowrap;
 }
+
+.ta-hq-command-panel { background: var(--ta-plate); border: 1px solid var(--ta-seam); width: 260px; }
+.ta-hq-tabs { display: flex; gap: var(--ta-s1); padding: var(--ta-s2); }
+.ta-hq-tabs [aria-selected="true"], .ta-hq-tabs [aria-selected="true"]:hover:not(:disabled) { background: var(--ta-orange); color: var(--ta-void); }
+.ta-hq-command-panel .ta-goals-panel, .ta-hq-command-panel .ta-priorities-panel { max-width: none; width: 100%; border: 0; }
+.ta-hq-command-panel [hidden] { display: none; }
+.ta-hq-command-panel [role="tabpanel"] { max-height: max(160px, calc(100dvh - 400px)); overflow-y: auto; }
+.ta-goal-detail { color: var(--ta-text-2); font: var(--ta-fs-label) var(--ta-font-body); }

@@ -5,6 +5,7 @@ import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { cancelQueueTask, getAllQueueEntries } from '../queue';
+import { isGoalExecutable } from './executors';
 import { GOAL_CATALOG, getSuggestedGoalForStage } from './catalog';
 import { stepColonyGoalsBreakdown } from './breakdown';
 import {
@@ -36,6 +37,7 @@ import {
 } from './types';
 
 export * from './types';
+export * from './executors';
 export * from './catalog';
 export * from './store';
 export * from './priorities';
@@ -97,6 +99,12 @@ export function queueColonyGoal(
   const limit = getHqGoalLimit(state, colonyIndex);
   if (openCount >= limit) {
     return { ok: false, code: 'goal_limit' };
+  }
+
+  if (!isGoalExecutable(args.goal)) return { ok: false, code: 'wave_disabled' };
+
+  if (args.goal === 'grow_economy' && ['water', 'bio.water'].includes(String(normalizeGoalParams(args).resource))) {
+    return { ok: false, code: 'wave_disabled' };
   }
 
   const seq = nextGoalSequence(state, colonyIndex, goals);

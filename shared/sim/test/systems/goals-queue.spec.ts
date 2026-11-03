@@ -79,7 +79,7 @@ describe('W08-16 HQ T1 goal queue limit', () => {
     expect(getHqGoalLimit(state, 0)).toBe(3);
     const rT2 = step(
       state,
-      [{ commandId: 'g4', colonyIndex: 0, source: 'player', kind: 'queueGoal', args: { goal: 'defend_colony' } }],
+      [{ commandId: 'g4', colonyIndex: 0, source: 'player', kind: 'queueGoal', args: { goal: 'grow_economy' } }],
       1,
       pipeline,
     );
@@ -124,8 +124,8 @@ describe('W08-16 HQ T2 and T3 goal queue limits', () => {
       state,
       [
         { commandId: 'q-4b', colonyIndex: 0, source: 'player', kind: 'queueGoal', args: { goal: 'secure_power' } },
-        { commandId: 'q-5b', colonyIndex: 0, source: 'player', kind: 'queueGoal', args: { goal: 'expand_territory' } },
-        { commandId: 'q-6b', colonyIndex: 0, source: 'player', kind: 'queueGoal', args: { goal: 'terraform_zone' } },
+        { commandId: 'q-5b', colonyIndex: 0, source: 'player', kind: 'queueGoal', args: { goal: 'grow_economy' } },
+        { commandId: 'q-6b', colonyIndex: 0, source: 'player', kind: 'queueGoal', args: { goal: 'secure_power' } },
       ],
       1,
       pipeline,
