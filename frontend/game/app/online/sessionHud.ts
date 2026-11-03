@@ -38,6 +38,8 @@ export interface SessionHudDeps {
   camera?(): THREE.PerspectiveCamera;
   rtsCamera?(): RTSCamera | null;
   focusTile?(q: number, r: number, snap?: boolean): void;
+  /** Identity chip (W06). The session bridge; the panel subscribes. */
+  pilot: FeatureServices['pilot'];
 }
 
 /**
@@ -63,6 +65,7 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     getView: () => d.store.latest ?? undefined,
     landfall: d.landfall, pickTile: (cx, cy) => d.pickAt(cx, cy), canvas: d.canvas, surface: d.canvas,
     focusTile: d.focusTile,
+    pilot: d.pilot,
   };
   Object.defineProperties(services, {
     colonyId: { get: d.colonyIndex, enumerable: true, configurable: true },

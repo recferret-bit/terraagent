@@ -1,6 +1,6 @@
 # Dev tools reference
 
-Everything a developer or agent uses to run, inspect and test the game locally: URL parameters, the in-game dev console, dev-only pages and REST routes, the mock blockchain, environment variables, debug handles and test commands. Dev tools are **dev-only** (not anti-cheat, D-25): a production build never mounts the console, and the `/v1/dev/*` routes answer 404 there (`DevOnlyGuard`); the dev pages (`/dev/chain/`, `/dev/parity/`) are still built, but their data routes are those `/v1/dev/*` routes.
+Everything a developer or agent uses to run, inspect and test the game locally: URL parameters, the in-game dev console, dev-only pages and REST routes, the mock blockchain, environment variables, debug handles and test commands. Dev tools are **dev-only** (not anti-cheat, D-25): a production build never mounts the console, and the `/v1/dev/*` routes answer 404 there (`DevOnlyGuard`); the dev pages (`/dev/chain/`, `/dev/parity/`, `/dev/mock-oauth`) are still built, but their data routes are those `/v1/dev/*` routes.
 
 Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come from `TA_PORT_BASE` (default 4000): app `base+1` (4001), client `base+1173` (5173). A wave or issue worktree pins its own base in a gitignored `infra/.env.worktree`, so check that file for the URL (e.g. the W00 worktree uses 4101 / 5273).
 
@@ -13,10 +13,12 @@ Start the stack with `npm run dev` (Postgres in Docker + app + Vite). Ports come
 | `/play.html` | **Fast-start online play flow (W01+):** skips the 3D orbital planet selector and atmospheric drop animation (`POST /v1/auth/guest` + `GET /v1/me/home` + instant landing into colony view; a new colony is seated on the dev planet family of the remembered orbit pick, sent as `?type=` (desert `pl_dev` when there is none); an existing colony keeps its planet) |
 | `/play.html?scenario=w04` | **W04 Maps & Camera scenario:** temperate radius-16 planet (`w04-maps-camera`) with two colonies (colony 0 at `(0, 0)`, foreign colony 1 at `(7, 0)`), partial exploration, varied tile states (Prepared grey, Living green, Forest, Rock, Shallow water blue), 180 px minimap (`MinimapHud`) and fullscreen Global Map (`[M]`) |
 | `/play.html?scenario=w01` | **Online scenario flow:** fresh temperate planet (`w01-landfall`) with colony 0's pod descending at spawn slot 0 (cargo credited at once; the HQ drone deploys when the pod opens), HUD, Terraform & Construction menus, dev console |
+| `/play.html?scenario=w06` | **W06 scenario:** the same guest colony as W01 landfall (`w06-invisible-chain`). `&waves=..05` hides the pilot chip; the tick still moves |
 | `/play.html?scenario=w00` | **W00 scenario:** flat radius-56 planet + test entity id 1 at tile 0,0 |
 | `/play.html?host=local&scenario=w01` | Same (`w00`, `w01`, `w02`, or `w04`), with the engine running in the browser alone (no app, no Postgres) |
 | `/play.html?planet=dune&seed=1&skip=1` | The pre-wave **decorative prototype** (used for visual QA when `seed` + `skip=1` or `qat`/`t` is set) |
-| `/dev/chain/` | **Mock chain explorer:** receipts, balances, NFTs, DAO, escrow, outbox; account filter; 1 s auto-refresh; `CHAIN.PING` button |
+| `/dev/chain/` | **Mock chain explorer:** receipts, balances, NFTs, DAO, escrow, outbox; account filter; 1 s auto-refresh; `CHAIN.PING` button. `?waves=..05` (or a list without `06` / `W06`), or `GET /v1/near/health` 404, shows Off instead of the receipt table |
+| `/dev/mock-oauth?provider=google\|x&return=<path>` | **Mock login:** plate titled "Google (mock)" or "X (mock)" (anything but `x` is Google). Pick `test-pilot` or type a name (1–64) → `POST /v1/dev/mock-oauth/token` → redirect to `return` with `#mock_token=…` (`encodeURIComponent`). `return` must be a same-origin path (one leading `/`, no `//`, no `://`, no backslash), else `/play.html`. 404 unless the Identity adapter is `mock` and wave `W06` is on |
 | `/dev/parity/` | Engine parity page used by `npm run test:parity` (`window.__parity.run(id)`) |
 | `/playground.html`, `/landing.html`, `/design/` | 3D model storybook, landing site, design system (see the main README) |
 
@@ -89,6 +91,7 @@ Open with the **`` ` ``** key (the key under Esc on any layout; click the game f
 | `scenario <id>` | Create a fresh planet from a scenario and print its id (local host: restart the local planet from it) | both |
 | `planet.wipe <planetId>` | Server dev command `planet.wipe`: delete a held (unloaded) planet with its snapshots, ledger rows and colony rows so the next seat or boot starts it fresh; a loaded planet is refused (409) | server |
 | `chain.ping` | Write a ping receipt through the mock chain; prints its `mock:` hash (shows in `/dev/chain/`) | server |
+| `near.error <code>` | Force one player-facing NEAR error (`NEAR_PROVIDER_REJECTED` 401, `NEAR_NAME_TAKEN` 409, `NEAR_RELAY_FAILED` 503, `NEAR_RELAY_RECEIVER_NOT_ALLOWED` 403). The HUD toasts that sentence. Any other code is 400 `VALIDATION_ERROR` (W06-19) | server |
 | `local.reset` | Start a fresh local planet (drops the IndexedDB snapshot) | local |
 | `grant <resource> <n>` | Add `<n>` whole units to colony stock (`metals`/`metals.t1`, `minerals`/`minerals.t1`, `biomass`/`bio.biomass`, `water`/`bio.water`: the console maps the shorthands, `dev.grant` itself takes only a full `ResourceKey`; bypasses storage cap); a negative `<n>` withdraws, clamped to the balance. `<n>` must be an integer (the console rejects `2.5`). Only for an existing colony (a colony index with no record is rejected `invalid_args`, no placeholder colony is created). Posts a `dev.grant` ledger entry (W01) | both |
 | `ledger [n] [account]` | Print the last `n` (default 10) resource-ledger journal entries touching `account` (default your `colony:<i>`; e.g. `sys:construction`, `sys:dev`), one per line (`#seq t=tick reason actor ref  account asset ±delta · …`), then that account's balance; `ledger colony:1` works too. The journal lives on the host only (clients get `col.stock`, never postings), so the command asks it: online `GET /v1/dev/planets/:planetId/ledger`; `?host=local` the worker's journal (dev message `ledger`, last 1024 entries, reset on a new planet); the no-server fallback its in-process one. All hosts run the same `PlanetJournal` (`@terra/sim`). A fresh scenario planet's journal starts with its setup postings (the real `landing.cargo`, on both hosts). `?host=local` saves the journal inside its IndexedDB snapshot (same tick as the planet), so a reload continues it: `landing.cargo`, grants and spends stay visible and `seq` goes on. Only when that saved journal is missing (an older save), malformed or does not reconcile with the planet's `col.stock` (reported as a host error) does the resumed host open each colony's stock with one `ledger.opening` entry (`sys:opening` → `colony:<i>`, by `system:resume`); the no-server fallback's journal starts with the postings of seating its colony (the real `landing.cargo`). After an opening, `sys:*` totals count only what happened since (W01) | both |
@@ -137,7 +140,7 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 
 - **Mocks today:** `ChainReadPort` (receipts, health, `chain.ping`) and `BadgeNftPort` (NEP-171, idempotent by `opId`). Every other port's mock lands with its feature wave.
 - **Chain outbox:** every chain write is queued in `chain.chain_outbox` in the same transaction as the game change and relayed with retry/backoff; deterministic `opId`s make retries safe.
-- **Explorer:** `/dev/chain/`. Contract tests: `npm run test:contract` (mocks), `npm run contract:real -- --port X` (real adapters, from W23).
+- **Explorer:** `/dev/chain/`. Contract tests: `npm run test:contract` (mocks; `--port identity,relayer` is a case-insensitive comma list, and an empty `--port` runs every suite), `npm run contract:real -- --port X` (real adapters, from W23).
 - **Selection:** `NEAR_ADAPTER_<PORT>=mock|testnet|mainnet` (anything but the exact strings `testnet`/`mainnet` means mock), `AI_PROVIDER`, `NOTIFY_ADAPTER`. Production refuses mocks unless the matching `*_ALLOW_MOCK_IN_PROD=true` is set, and boot names every mocked port.
 
 ## REST routes (auth, home & dev; `/v1/dev/*` 404 in production)
@@ -149,9 +152,10 @@ All NEAR features run on **mock adapters** behind abstract ports (`backend/app/s
 | `GET /v1/me/home[?type=desert\|ocean\|temperate]` | Player home state (`NEW` auto-seats on the first dev planet with a free seat of the asked type, default desert: `pl_dev`, `pl_dev_2` … / `pl_dev_ocean` … / `pl_dev_temperate` … → returns `ACTIVE` with `planet` and `colony`; `type` is ignored once the player has a colony). The landing site is the planet's own sim's answer (`nextLandingSite`); an existing home's planet is loaded (restored from its snapshot) before `ACTIVE` is answered, 503 `HOME_UNAVAILABLE` when it cannot be (held). New colony ids are `co_<ULID>` (W01, not dev-only) |
 | `GET /v1/dev/planets` | Loaded planet ids |
 | `GET /v1/dev/scenarios`, `POST /v1/dev/scenarios/:id` | List scenarios / create a fresh planet → `{ planetId, scenario, tick }` |
-| `GET /v1/dev/commands`, `POST /v1/dev/commands/:name` | List / run server dev commands (`warp`, `time`, `tune`, `scenario`, `chain.ping`, `planet.wipe`). `planet.wipe {planetId}` deletes a held planet (not loaded: corrupt snapshots or from a newer build) with its snapshots, ledger rows and colony rows, so the next seat or boot starts it fresh; 409 for a loaded planet (W01) |
+| `GET /v1/dev/commands`, `POST /v1/dev/commands/:name` | List / run server dev commands (`warp`, `time`, `tune`, `scenario`, `chain.ping`, `planet.wipe`, `near.error`). `planet.wipe {planetId}` deletes a held planet (not loaded: corrupt snapshots or from a newer build) with its snapshots, ledger rows and colony rows, so the next seat or boot starts it fresh; 409 for a loaded planet (W01). `near.error` is W06-19 |
 | `GET /v1/dev/planets/:planetId/ledger?account=colony:0&limit=10` | The planet's resource ledger (Postgres; in memory with `SNAPSHOTS=off` or under tests) for one account → `{ planetId, account, balances, entries }`: non-zero balances and the last `limit` journal entries touching it (`{ seq, at, reason, actor, ref?, legs }`, oldest first). 404 when the planet is not loaded, 400 for a bad account, 503 `LEDGER_UNAVAILABLE` while the planet's journal is still restoring (answered after at most 2 s) or its restore was abandoned. Used by the console `ledger` (W01) |
 | `POST /v1/dev/chain/ping` | Mock chain ping → `ChainReceipt` |
+| `POST /v1/dev/mock-oauth/token` | Mock OAuth: `{ provider: 'google'\|'x', subject (1–64), email? }` → `{ token }` (HMAC-SHA256, `MOCK_OAUTH_SECRET`, 5 min). 404 in production, when Identity is not the mock adapter, or when `W06` is off |
 | `GET /v1/dev/chain/{receipts,balances,nfts,dao,escrow,outbox}` | Explorer data (`?account=`, `?limit=`, `?status=`, `?collection=`) |
 | `POST /v1/analytics/events` | Analytics intake (`AnalyticsBatchV1`, not dev-only) |
 
@@ -177,8 +181,14 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `TA_BALANCE_OVERRIDES` | — | Path to `balance.overrides.json` merged over the data tables (D-35) |
 | `WS_HELLO_TIMEOUT_MS`, `WS_IDLE_TIMEOUT_MS` | 5000, 60000 | Socket timeouts |
 | `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`, `MOCK_FAIL_RATE`, `MOCK_SEED` | 300, 1500, 0, — | Mock chain behaviour |
+| `MOCK_OAUTH_SECRET` | `terra-dev-mock-oauth-secret` | HMAC secret for the dev mock OAuth token (`signMockToken` / `verifyMockToken`, `/dev/mock-oauth`). Unset or empty uses the default. Not in the Nest boot env schema. Token TTL is 5 minutes |
+| `NEAR_KEK` | dev 32-byte `DEV_KEK` (not in production) | Base64 of 32 bytes. Seals ed25519 seeds (AES-256-GCM). Production `loadKekRing` refuses a missing key or `DEV_KEK` |
+| `NEAR_KEK_VERSION` | 1 | Integer version stored on new key rows |
+| `NEAR_KEK_RING` | — | JSON `{"1":"<base64>",...}` of older keys so a rotated version still decrypts |
 | `OUTBOX_RELAY_ENABLED`, `OUTBOX_POLL_MS`, `OUTBOX_LEASE_MS`, `OUTBOX_MAX_ATTEMPTS` | on, 1000, 30000, 8 | Chain outbox relay |
-| `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection (see above) |
+| `NEAR_ADAPTER_IDENTITY` | mock | `IdentityPort` (W06). Anything but `testnet` or `mainnet` is the mock |
+| `NEAR_ADAPTER_RELAYER` | mock | `RelayerPort` (W06). Anything but `testnet` or `mainnet` is the mock |
+| `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection for the other ports (see above) |
 | `NEAR_ALLOW_MOCK_IN_PROD`, `AI_ALLOW_MOCK_IN_PROD`, `NOTIFY_ALLOW_MOCK_IN_PROD` | — | Allow mocks in production |
 | `ANALYTICS_DISABLED` | — | `true` drops analytics intake |
 | `TA_DB_POOL_SIZE` | 20 | Prisma connection pool |
@@ -217,3 +227,106 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `npm run stack:local:down` | Stop those four compose projects. Leaves the dev Postgres (`terra-pg`, port 15434) running |
 | `npm run stack:local:smoke` | DEPLOYMENT §5 curls (`--resolve` to 127.0.0.1), including the explorer page while the app is stopped |
 | `npm run deploy`, `deploy:{infra,frontend,backend,chain}` | SSH the stack to `DEPLOY_USER@DEPLOY_HOST`. Compose uses `--env-file /srv/terraagent/.env`. A missing `NODE_ENV` there becomes `production`, and a missing `DATABASE_URL` points at `postgres:5432` on `terra_internal`. Existing keys are left as they are. The operator `.env` is not uploaded. Each stack reloads nginx after its vhosts, then curls. `--dry-run` prints the plan and does not connect. An empty `DEPLOY_HOST` or `DEPLOY_USER` exits non-zero and names the variable |
+
+## W06-14
+
+Account list and receipt detail for the mock chain explorer (`/dev/chain/`). Same guard as the other explorer routes: 404 in production (`DevOnlyGuard`), including when `NEAR_ALLOW_MOCK_IN_PROD=true`, and 404 when ChainRead is not the mock adapter. The Accounts tab lists account id, kind and owner. Balances stay on the Balances tab and are empty until cargo rows exist. The Receipts hash cell links to the receipt page.
+
+| Route or URL | What |
+|---|---|
+| `GET /v1/dev/chain/accounts` | Player and colony accounts from `chain.mock_chain_account` and `chain.near_colony_account`, one row per account id. Shape `{ accountId, kind, publicKey, ownerAccountId }`. `kind` is the mock row's kind when that row exists (`named` is the player account, `colony` is a colony sub-account). A `near_colony_account` row with `slot` `player` is `named`; any other slot is `colony`, and `ownerAccountId` is that table's owner (null when only the mock row exists). `?account=` is an exact account id. `?limit=` is 1–200, default 50 |
+| `GET /v1/dev/chain/tx?hash=` | One receipt. The hash is a query parameter because `mock:` contains a colon. 404 `NOT_FOUND` when no row has that hash. Body: `txHash`, `status` (stored value), `statusLabel` (`FINAL` when stored status is `success`, otherwise the stored status), `signerId`, `receiverId` (payload keys, null when absent), `opId`, `port`, `method`, `blockHeight`, `payload`. Stored status stays `pending`, `success` or `failure` |
+| `/dev/chain/tx/<hash>` | Receipt page (`frontend/dev/chain/tx.html`). The hash is URL-encoded (`mock:` → `mock%3A…`). `?hash=` on `/dev/chain/tx` also works. Shows signer, receiver, the `mock:` hash and status `FINAL`. Back link is `/dev/chain/`. Vite dev and preview rewrite `/dev/chain/tx` and `/dev/chain/tx/*` to that page and do not rewrite `/v1` |
+
+## W06-25
+
+Dev console commands for mock-port failure and latency, and for resetting or upgrading a player. They are not player-facing. The client feature is `frontend/game/features/near-dev` (wave `W06`, both hosts). A host with no game server answers `host_unavailable`. The server registers them on `DevCommandRegistry` (`POST /v1/dev/commands/:name`, 404 in production). Port names are case-insensitive (`relayer` matches `Relayer`). An unset port keeps the boot config (`MOCK_FAIL_RATE`, `MOCK_LATENCY_MIN_MS`, `MOCK_LATENCY_MAX_MS`).
+
+| Command | What |
+|---|---|
+| `near.mock.fail <port> <rate>` | Set the injected fail rate (`0..1`) for one mock port. `1` fails the next call; `0` forces success even when `MOCK_FAIL_RATE` is `1`. |
+| `near.mock.latency <port> <minMs> <maxMs>` | Set the sleep range for one mock port. Both bounds are integers ≥ 0, and `maxMs` must be ≥ `minMs` (otherwise 400 `VALIDATION_ERROR`). |
+| `account.reset <player>` | Revoke every session of the player (id or handle) and delete that player's `social_identity` rows. The player and their colonies stay. Unknown player: 404 `NOT_FOUND`. |
+| `account.upgrade <provider> <subject>` | `provider` is `google` or `x`, `subject` is 1–64 characters. Signs a short-lived mock token and runs social login. Returns `{ playerId, accountId, accessToken }`. When the database is on, this writes `core.social_identity` (W06-06). With the database off, the subject map stays in memory (BE-36). The refresh token is not returned. |
+
+`POST /v1/dev/commands/near.mock.fail` body:
+
+```json
+{ "port": "relayer", "rate": 1 }
+```
+
+`port` is a non-empty string. `rate` is a number from 0 to 1. `near.mock.fail relayer 0` sends `{ "port": "relayer", "rate": 0 }` and restores success.
+
+A relayer fail rate of 1 throws `NEAR_MOCK_INJECTED_FAILURE` once. The relayer retries once, then the action ends as `NEAR_RELAY_FAILED`. That counts as the action failing.
+
+`POST /v1/dev/commands/near.mock.latency` body is `{ "port": "relayer", "minMs": 0, "maxMs": 0 }`. `account.reset` body is `{ "player": "<id or handle>" }`. `account.upgrade` body is `{ "provider": "google", "subject": "<subject>" }`.
+
+## W06-15
+
+Guest-first pilot chip on the server play page when wave `W06` is on. Hidden on `?host=local` and when `W06` is off.
+
+- **Chip** (`data-testid="pilot-chip"`, top left, order 20): a guest reads `Guest pilot` and has **Save progress** (`data-testid="save-progress"`). After a social login the same chip reads `Pilot ID <accountId>` (`data-testid="pilot-id"`, for example `Pilot ID test-pilot.terraagent.mock`) with no page reload. A copy control is left for W06-16; the id text stays `Pilot ID <accountId>`.
+- **Plate**: **Save progress** opens a plate on the page (it does not navigate) with **Continue with Google (mock)** (`data-testid="continue-google"`) and **Continue with X (mock)**.
+- **Popup**: either button runs `window.open('/dev/mock-oauth?provider=google|x&return=' + encodeURIComponent(location.pathname + location.search), 'terra-mock-oauth', 'popup,width=480,height=640')`. When that mock page has a same-origin `window.opener`, minting a token `postMessage`s `{ type: 'terra:mock-token', provider, token }` to the opener and `window.close()`s. It does not load the game inside the popup, and it does not navigate the game page. With no opener (the mock page opened directly, or the opener is not same-origin), it still redirects that window to `return#mock_token=…`.
+- The play page accepts the message only when `event.origin === location.origin` and `event.source` is the popup it opened, then `POST /v1/auth/social` with `Authorization: Bearer <current access token>` and `credentials: 'include'`. A `200` swaps the session access token (the value later `hello` / `reauth` calls send) and the chip. The already-open socket is not reauthed until its next renewal (FF-62).
+
+## W06-16
+
+The linked pilot chip keeps `Pilot ID <accountId>` (`data-testid="pilot-id"`) and adds **Copy** (`data-testid="pilot-copy"`, `.btn.btn-ghost`). Copy writes only the account id, for example `test-pilot.terraagent.mock`, through `navigator.clipboard.writeText` (a spec can pass another writer into `copyText`). Success sets `data-copied="ok"` on the button. A rejected write sets `data-copied="fail"`, selects the id text, and does not throw. A guest chip still shows `Guest pilot · Save progress` (`data-testid="pilot-chip"`, `data-testid="save-progress"`).
+
+## W06-19
+
+Dev console `near.error <code>` forces one player-facing NEAR error. The client feature is `frontend/game/features/near-errors` (wave `W06`, both hosts). It is hidden when `W06` is off. Open the console with the `` ` `` key on `/play.html` and type, for example, `near.error NEAR_NAME_TAKEN`.
+
+The command calls `POST /v1/dev/commands/near.error` with `{ "code": "<CODE>" }`. The server throws `NearException` for the four codes below. The global filter answers `{ errorCode, error: { code, message }, requestId }` with that code's HTTP status. `error.message` is the toast sentence. Any other code, including other `NEAR_*` codes, is 400 `VALIDATION_ERROR` and is not toasted. A host with no game server (`?host=local`, or the in-browser fallback) answers `host_unavailable` and shows no plate.
+
+The plate is this feature's own HUD slot: bottom left, order 80 (there is no bottom-centre slot). One plate at a time (`data-testid="near-toast"`, `data-code="<CODE>"`). A click dismisses it. The next code replaces it. The sentence is looked up on the client from the same four lines as `NEAR_ERROR_CODES`; it does not mention a wallet, gas, a transaction, a seed, or a private key.
+
+| Code | Status | Toast |
+|---|---|---|
+| `NEAR_PROVIDER_REJECTED` | 401 | That sign-in could not be confirmed. Try again. |
+| `NEAR_NAME_TAKEN` | 409 | That Pilot ID is already in use. |
+| `NEAR_RELAY_FAILED` | 503 | Couldn't save to orbit. Retrying. |
+| `NEAR_RELAY_RECEIVER_NOT_ALLOWED` | 403 | That save is not allowed for this colony. |
+
+`near.mock.fail`, `near.mock.latency`, `account.reset`, and `account.upgrade` are unchanged (W06-25).
+
+## W06-12
+
+Creating a colony sub-account enqueues one NEP-145 `storage_deposit` in `chain.chain_outbox`, in the same database transaction as the `near_colony_account` row. The player row (`slot` `player`) does not get one. A later login enqueues only when that outbox row is missing (the same `opId` is a no-op). The relay is off when `NODE_ENV=test` unless `OUTBOX_RELAY_ENABLED=true`.
+
+| Field | Value |
+|---|---|
+| `opId` | `storage-deposit:{colonyAccountId}` from `storageDepositOpId` (for example `storage-deposit:co_….test-pilot.terraagent.mock`) |
+| `port` / `method` | `Relayer` / `submitMetaTx` |
+| payload `signerId` | `relayer.terraagent.mock` (`MOCK_RELAYER_ACCOUNT`). The relayer pays |
+| payload `receiverId` | `res.terraagent.mock` (`MOCK_CARGO_CONTRACT`) |
+| payload `signedDelegate` | JSON string `{"action":"storage_deposit","account_id":"<colony account id>"}` |
+
+The relay calls `RelayerPort.submitMetaTx`. The mock receipt `txHash` starts with `mock:`. Its payload signer is the relayer and its receiver is `res.terraagent.mock`. When `signedDelegate` is that JSON, the receipt payload also has `action: "storage_deposit"` and `account_id` set to the colony account id. A non-JSON delegate does not add those fields. Submitting the same caller `opId` again (a relay retry, or a process restart after the receipt committed) does not write a second receipt. `/dev/chain/tx/<hash>` shows that payload (`GET /v1/dev/chain/tx?hash=` because `mock:` contains a colon).
+
+## W06-20
+
+After **Save progress** links a pilot, the identity HUD (same top-left slot) shows `Saving to orbit…` (`data-testid="orbit-save"`) while a colony deposit is still in flight. The client polls `GET /v1/near/relay` with `Authorization: Bearer <access token>` about every 400 ms. The socket does not carry `relay.settled` or `relay.failed` (BE-44). A reload of an already linked pilot polls once and shows the chip or the toast only when the deposit is still pending or failed. Both routes below are 404 when wave `W06` is off, including with no bearer. They are not dev routes.
+
+| `state` | What the HUD does |
+|---|---|
+| `pending` | `orbit-save` stays, text exactly `Saving to orbit…` |
+| `settled` or `none` | `orbit-save` is removed |
+| `failed` | `orbit-save` is removed. `data-testid="orbit-toast"` includes `Couldn't save to orbit, retrying` and a button `data-testid="orbit-retry"` labelled `Retry` |
+
+`GET /v1/near/relay` looks up that player's colony `near_colony_account` rows (not the `player` slot) and their `storage-deposit:{accountId}` outbox rows. `pending` if any row is `PENDING` or `RUNNING` (this wins over a failed row). `failed` if any row is `FAILED` or `DEAD` and none are in flight. `settled` if every existing deposit row is `DONE`. `none` if there are no deposit rows. Body is `{ state, opId? }`.
+
+`POST /v1/near/relay/retry` with the same bearer sets that player's `FAILED` deposit rows back to `PENDING` with `nextAttemptAt` now, leaves `RUNNING` leases alone, and answers `{ "state": "pending" }`. The chip shows again and polling resumes.
+
+`near.mock.latency relayer 1500 1500` makes the chip stay about 1.5 s. `near.mock.fail relayer 1` then a new social login ends in the Retry toast. `near.mock.fail relayer 0` then Retry settles.
+
+## W06-28
+
+Scenario id `w06` (`tests/scenarios/w06-invisible-chain.ts`, seed `w06-invisible-chain`, waves `..06`): a temperate guest colony in the W01 landfall state (`system.spawnColony`, same cargo and slot as `w01`). Open `/play.html?scenario=w06`. The e2e is `tests/e2e/w06.spec.ts` (`npm run e2e -- --waves 06 --hack`).
+
+`/dev/chain/?waves=..05` shows a plate whose text includes `Off`. A ceiling or list that does not include `06` / `W06` does the same, and so does `GET /v1/near/health` returning 404 (wave `W06` off on the server). That plate does not render the receipt table or the heading `MOCK CHAIN EXPLORER`. With health 200 and waves unrestricted (no `waves` param, or `all`), the explorer is unchanged, including `chain.ping` from `/play.html?scenario=w00`.
+
+Vite rewrites `/dev/mock-oauth` (no trailing slash) to `dev/mock-oauth/index.html`, keeping the query. Without that, the SPA fallback serves the hub and the Save progress popup has no preset button. `/dev/mock-oauth/` already serves that page.
+
+A `dev:` session on a scenario planet (`?as=`) gets a `core.colony` row at index 0 when it joins, and Save progress sends that `dev:` token as the bearer so the upgrade keeps the player and enqueues the colony deposit. The colony row id is not the sim id `col_0` (BE-45). Production does not accept a `dev:` bearer.

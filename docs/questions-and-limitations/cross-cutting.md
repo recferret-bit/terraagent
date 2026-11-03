@@ -439,3 +439,13 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Workaround / mitigation:** both were brought in line with the code in the W02 docs pass (2026-11-03).
 - **To resolve:** keep one page (physics + catalog) and make the other a short pointer, so a future preset change is written once.
 - **Found:** 2026-11-03, W02 docs pass (skills agent)
+
+### XC-33 · W06 rows past the hackathon slice are not built
+
+- **Status:** Accepted (deferred, hackathon slice)
+- **Area / code:** `docs/plan/waves/W06-invisible-chain.md` (Hackathon slice; features list), `docs/plan/HACKATHON_CUT.md`
+- **What happens:** this landing is the H slice (guest login, Pilot ID, named and colony accounts, key store, mock relayer, one `storage_deposit`, retry toast, contract suites, dev console, flag off). These rows are not built: W06-17 (Settings → Account and `POST /v1/near/claim`), W06-18 (NEP-413 verifier and `W06.walletLink`), W06-21 (`npm run test:copy`), W06-23 (analytics `track()` events), W06-24 (`near_tx_total` / `near_tx_pending`), W06-26 (844×390 touch pass). W06-07's server path is built and unit-tested; only the second-device e2e step is skipped. The player-facing strings in the landed HUD do not say wallet, gas, transaction, seed phrase, or private key.
+- **Why it is like this:** the hackathon slice defers account settings, the second device, the wallet link, copy lint, and telemetry. Analytics and the mobile pass are blank in the H column (after the hackathon).
+- **Workaround / mitigation:** the features list in the wave file is unchecked for those rows. Returning login of the same subject is covered by `backend/app/test/near/social-auth.spec.ts`.
+- **To resolve:** build them in a later landing. W21 owns the claim button. W23 owns the real adapters and can run the same contract suites.
+- **Found:** 2026-11-03, W06 plan review

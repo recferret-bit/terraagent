@@ -51,6 +51,28 @@ export class ChainOutboxRepository extends RepositoryBase {
     return this.db(tx).chainOutbox.findUnique({ where: { opId } });
   }
 
+  /** Status of the given op ids. Missing ids are omitted (the caller treats that as "no row"). */
+  findStatuses(opIds: readonly string[]): Promise<Array<{ opId: string; status: string }>> {
+    if (opIds.length === 0) return Promise.resolve([]);
+    return this.prisma.chainOutbox.findMany({
+      where: { opId: { in: [...opIds] } },
+      select: { opId: true, status: true },
+    });
+  }
+
+  /**
+   * Puts FAILED rows back to PENDING with `nextAttemptAt` now so the relay can claim them.
+   * RUNNING rows are not updated, so a live lease stays in place.
+   */
+  async requeueFailed(opIds: readonly string[]): Promise<number> {
+    if (opIds.length === 0) return 0;
+    const updated = await this.prisma.chainOutbox.updateMany({
+      where: { opId: { in: [...opIds] }, status: 'FAILED' },
+      data: { status: 'PENDING', nextAttemptAt: new Date(), lockedUntil: null },
+    });
+    return updated.count;
+  }
+
   /**
    * Atomically claims up to `limit` due rows (PENDING/FAILED with `nextAttemptAt <= now`, plus RUNNING rows whose lease expired because
    * their relay died). Every claim counts as an attempt. Uses `FOR UPDATE SKIP LOCKED`, so concurrent relays never take the same row.

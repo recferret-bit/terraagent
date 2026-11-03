@@ -20,6 +20,11 @@ export interface ConnectionDeps {
   readonly log: Logger;
   readonly helloTimeoutMs: number;
   readonly idleTimeoutMs: number;
+  /**
+   * Dev scenario join: write the player and colony 0 so a later social login can attach the colony deposit.
+   * Absent in unit tests that have no database.
+   */
+  seatDevScenario?(input: { playerId: string; handle: string; planetId: string }): Promise<void>;
   /** Called after the welcome of a join was sent; the gateway closes the player's older planet socket with 4001. */
   onJoined(conn: Connection): void;
   onClosed(conn: Connection): void;
@@ -140,6 +145,18 @@ export class Connection implements RoomMember {
     this.expTimer.unref?.();
   }
 
+  /** Best-effort. A failure leaves the dev session on the synthetic colony 0 (BE-07). */
+  private async seatScenario(planetId: string): Promise<void> {
+    const seat = this.d.seatDevScenario;
+    const playerId = this.playerId;
+    if (!seat || !playerId || !this.session?.dev || !this.d.planets.isScenarioColonyPlanet(planetId)) return;
+    try {
+      await seat({ playerId, handle: this.session.handle ?? 'pilot', planetId });
+    } catch (e) {
+      this.d.log.warn({ err: e, playerId, planetId }, 'scenario colony seat failed');
+    }
+  }
+
   private async resolveHome(playerId: string): Promise<HomeResponse> {
     if (!this.d.home) return DEFAULT_HOME;
     try {
@@ -242,6 +259,7 @@ export class Connection implements RoomMember {
     if (!this.d.planets.isLoaded(planetId)) return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     this.state = 'joining';
     this.planetId = planetId;
+    await this.seatScenario(planetId);
     const home = this.playerId ? await this.resolveHome(this.playerId) : DEFAULT_HOME;
     if (this.state !== 'joining') return; // closed or left meanwhile
     const own = home.state === 'ACTIVE' && home.colony.planetId === planetId;

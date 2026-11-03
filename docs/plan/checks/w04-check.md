@@ -21,7 +21,7 @@
      - A crisp **white camera footprint trapezoid** showing the 3D camera's ground-plane frustum around `(0, 0)`.
    - Press **`Q`** or **`E`** to yaw the 3D camera by `90°` → **see** the white trapezoid on the minimap rotate `90°` to match.
    - Open the in-game dev console (**`` ` ``**) and run `spawndeposit 3 -2 metals 1` → only that single hex is repainted in the offscreen raster cache (`window.__online.minimap.dirtyTiles === 1` in browser DevTools). Run `spawn robot.harvester 4 -2` → **see** a new orange unit dot appear on the minimap and move as the robot walks.
-   - *(Hackathon slice note: fog-of-war rendering W04-08 and foreign-territory diagonal border hatching W04-06 are deferred out of the `H` slice; see [`frontend-features.md`](../../questions-and-limitations/frontend-features.md) FF-62.)*
+   - *(Hackathon slice note: fog-of-war rendering W04-08 and foreign-territory diagonal border hatching W04-06 are deferred out of the `H` slice; see [`frontend-features.md`](../../questions-and-limitations/frontend-features.md) FF-64.)*
 2. **Click on the minimap to pan the 3D camera.**
    - Click near the **far top-right or bottom-left corner** of the minimap canvas (away from the `⤢` expand button) → **see** the 3D diorama camera pan immediately to that part of the planet and the white camera trapezoid jump to the clicked spot.
    - Click the **`⤢`** expand button in the top-right corner of the minimap → **see** the Global Map open **without** panning the 3D camera; press **`Esc`** to close it.

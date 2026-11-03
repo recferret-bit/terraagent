@@ -86,7 +86,7 @@ Every NEAR feature, the LLM director and notifications sit behind ports (abstrac
 |---|---|---|---|
 | ChainRead | receipts, health | mock (Postgres) | W23 |
 | BadgeNft | achievements | mock (Postgres, NEP-171) | W23 |
-| Identity, Relayer | F5 accounts, gasless tx | — (W06 mock) | W23 |
+| Identity, Relayer | F5 accounts, gasless tx | mock (Postgres) | W23 |
 | CargoToken | F1 cargo (NEP-245) | — (W10 mock) | W23 |
 | Intents | F2 markets | — (W13 mock) | W23 |
 | AgentWallet | F3/F4 | — (W15 mock) | W23 |
@@ -95,7 +95,7 @@ Every NEAR feature, the LLM director and notifications sit behind ports (abstrac
 | LlmProvider | AI director | — (W16) | Z.ai `glm-5.3` |
 | Notifier | push / Telegram | — (W09) | Web Push, Telegram |
 
-W25 finalises this table for the submission.
+W25 finalises this table for the submission. W06's adapter variables and their defaults are in [`docs/dev/ENVS.md`](./docs/dev/ENVS.md).
 
 ## Pages
 
