@@ -41,6 +41,8 @@ export class GoalsPanel {
   private goals: ColonyGoalEntry[] = [];
   private collapsed = false;
   private draggedGoalId: string | null = null;
+  private lastListKey = '';
+  private suggestionRendered = false;
 
   constructor(host: HTMLElement, ctx: FeatureContext) {
     this.ctx = ctx;
@@ -264,12 +266,23 @@ export class GoalsPanel {
   }
 
   private renderSuggestion(): void {
-    this.suggestionContainer.innerHTML = '';
     const hasEstablish = this.goals.some((g) => g.goal === 'establish_colony');
     const isS0OrSuggested = this.colonyStage === 0 || !!this.activeSuggestion;
     const show = isS0OrSuggested && !hasEstablish && !this.suggestionDismissed;
 
-    if (!show) return;
+    if (!show) {
+      if (this.suggestionRendered || this.suggestionContainer.firstChild) {
+        this.suggestionContainer.innerHTML = '';
+        this.suggestionRendered = false;
+      }
+      return;
+    }
+
+    if (this.suggestionRendered && this.suggestionContainer.firstElementChild) {
+      return;
+    }
+    this.suggestionContainer.innerHTML = '';
+    this.suggestionRendered = true;
 
     const card = document.createElement('div');
     card.className = 'ta-goal-suggestion-card';
@@ -310,8 +323,20 @@ export class GoalsPanel {
   }
 
   private renderList(): void {
-    this.listEl.innerHTML = '';
     const open = this.getOpenGoals();
+    const listKey = open
+      .map(
+        (g) =>
+          `${g.id}:${g.goal}:${g.status}:${Math.round((g.progress ?? 0) * 100)}:${g.stepsCompleted ?? 0}/${
+            g.stepsTotal ?? 1
+          }:${g.budgetBp ?? 5000}:${JSON.stringify(g.params ?? {})}`,
+      )
+      .join('|');
+    if (listKey === this.lastListKey && this.listEl.childElementCount === open.length) {
+      return;
+    }
+    this.lastListKey = listKey;
+    this.listEl.innerHTML = '';
 
     for (let i = 0; i < open.length; i++) {
       const entry = open[i];

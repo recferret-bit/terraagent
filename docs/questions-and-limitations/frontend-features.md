@@ -1004,3 +1004,19 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **To resolve:** have guest/refresh return `accountId` when the player is already linked, and have the chip render `Pilot ID` from that boot field.
 - **Fix:** the guest auth response now carries `isGuest: false` and top-level `accountId` when the player has a `social_identity` row. `readAccountId` already reads that field, and `isGuest` is `player.isGuest !== false`, so a reload shows `Pilot ID …`. The chip was not rewritten. Refresh of a linked player returns the same two fields.
 - **Found:** 2026-11-02, W06-15
+
+## W08 Stages & HQ Goals
+
+### FF-64 · W08 H-scope cut: Goal progress drawer, slider-impact preview, and `/me.html` UnlockStage profile view are deferred
+
+- **Status:** Accepted (by design, W08 H-scope cut)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/goals/GoalsPanel.ts`, `frontend/game/features/priorities/PrioritiesPanel.ts`, `tests/e2e/w08.spec.ts` (`7b` skipped); `docs/plan/waves/W08-stages-goals.md` §1 & §3
+- **What happens:**
+  - `GoalsPanel` shows each goal's status badge, progress bar (`pct% (stepsCompleted/stepsTotal)`), budget share, reorder buttons (`▲`/`▼` + drag-and-drop), and cancel button (`✕`, which cancels non-started child tasks in the sim). The expandable per-child-order drawer (`W08-22`, `H+`) and the slider-impact preview bar (`W08-28`, `H+`) are not rendered in the `H` cut.
+  - Demo step 7b (`/me.html` showing `UnlockStage: S4` across worlds) is marked `test.skip` in `tests/e2e/w08.spec.ts` because `/me.html` is built in `W12 Accounts & Profiles`.
+- **Why it is like this:** `docs/plan/waves/W08-stages-goals.md` defers `W08-22` and `W08-28` to `H+` and `/me.html` to `W12`.
+- **Workaround / mitigation:** child tasks are visible in the Order Queue panel (`QueuePanel`) and in `window.__online.store.latest.colonies[0].queue`; `unlockStage` vs `threatStage` is exposed on `colonies[0]` and verified in `tests/e2e/w08.spec.ts` step 6.
+- **To resolve:** implement `W08-22` and `W08-28` in `H+` and enable step 7b when `W12` lands `/me.html`.
+- **Found:** 2026-11-03, W08 wave implementation (lead)

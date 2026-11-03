@@ -14,6 +14,7 @@ export class PrioritiesPanel {
   private collapsed = false;
   private colonyIndex = 0;
   private planetId: string | null = null;
+  private lastPrioritiesKey = '';
 
   constructor(host: HTMLElement, ctx: FeatureContext) {
     this.ctx = ctx;
@@ -87,9 +88,13 @@ export class PrioritiesPanel {
 
     const col = viewColony(view, this.colonyIndex) as { priorities?: Record<PriorityKey, number> } | undefined;
     if (col?.priorities && typeof col.priorities === 'object') {
-      this.sliders.setValues(col.priorities, false);
-      this.sumBadge.textContent = String(this.sliders.getSum());
-      savePriorities(this.sliders.getValues(), this.planetId, this.colonyIndex);
+      const nextKey = `${col.priorities.economy ?? ''}:${col.priorities.expansion ?? ''}:${col.priorities.defense ?? ''}:${col.priorities.power ?? ''}:${col.priorities.terraform ?? ''}`;
+      if (nextKey !== this.lastPrioritiesKey) {
+        this.lastPrioritiesKey = nextKey;
+        this.sliders.setValues(col.priorities, false);
+        this.sumBadge.textContent = String(this.sliders.getSum());
+        savePriorities(this.sliders.getValues(), this.planetId, this.colonyIndex);
+      }
     }
   }
 

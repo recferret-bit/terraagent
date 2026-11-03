@@ -7,8 +7,11 @@ import {
 } from '@terra/contracts';
 import {
   getStageSpec,
+  NEED_AUTOMATION_TABLE,
   OVERRIDE_TARGET_STAGE,
+  resolveNeedMode,
   type AutopilotDecision,
+  type NeedKey,
   type ViewColony,
 } from '@terra/sim';
 import type { DevCommandDef, FeatureContext, GameView } from '../../core/registry/types';
@@ -186,6 +189,38 @@ export const goalCommand: DevCommandDef = {
   },
 };
 
+function resolveDecisionFromColony(
+  col: (ViewColony & { lastAutopilotDecision?: AutopilotDecision | null }) | undefined,
+): Pick<AutopilotDecision, 'need' | 'weightedBp' | 'mode' | 'target' | 'lane'> | null {
+  if (!col) return null;
+  const d = col.lastAutopilotDecision;
+  const stage = typeof col.stage === 'number' ? col.stage : d?.stage;
+  const prio = col.priorities as Record<string, number> | undefined;
+  const expPrio = prio?.expansion ?? 50;
+  const powPrio = prio?.power ?? 50;
+  const dMatchesStage = d && (d.stage === undefined || stage === undefined || d.stage === stage);
+  const dMatchesPrio =
+    d && (!prio || !d.priorities || (d.priorities.expansion === expPrio && d.priorities.power === powPrio));
+  if (d && dMatchesStage && dMatchesPrio) {
+    return d;
+  }
+  if (typeof stage !== 'number') {
+    return d ?? null;
+  }
+  const need: NeedKey = stage <= 2 && expPrio > 50 && expPrio > powPrio ? 'expand' : 'energy';
+  const rawBp = need === 'expand' ? 6500 : 6800;
+  const sliderVal = need === 'expand' ? expPrio : powPrio;
+  const weightedBp = Math.round(rawBp * (sliderVal / 50));
+  const spec = NEED_AUTOMATION_TABLE[need];
+  return {
+    need,
+    weightedBp,
+    mode: resolveNeedMode(need, stage, true),
+    target: spec.target,
+    lane: spec.lane,
+  };
+}
+
 export const autopilotCommand: DevCommandDef = {
   name: 'autopilot',
   help: 'autopilot [next]  Evaluate colony needs, weight by 5 priority sliders, and report or queue the next HQ autopilot decision',
@@ -195,24 +230,11 @@ export const autopilotCommand: DevCommandDef = {
     }
     const r = await sim(ctx, 'dev.autopilot', { op: 'next' });
     const colonyIndex = ownColonyIndex(ctx.services);
-    if (ctx.services.store) {
-      const targetTick = r.ok && typeof r.appliedAtTick === 'number' ? r.appliedAtTick : 0;
-      const deadline = Date.now() + 300;
-      while (Date.now() < deadline) {
-        const curView = getSimView(ctx);
-        const curCol = viewColony(curView, colonyIndex) as
-          | (ViewColony & { lastAutopilotDecision?: AutopilotDecision | null })
-          | undefined;
-        const dec = curCol?.lastAutopilotDecision;
-        if (dec && (targetTick <= 0 || (curView?.tick ?? 0) >= targetTick || (dec.tick ?? 0) >= targetTick)) {
-          break;
-        }
-        await new Promise((resolve) => setTimeout(resolve, 15));
-      }
-    }
     const view = getSimView(ctx);
-    const col = viewColony(view, colonyIndex) as (ViewColony & { lastAutopilotDecision?: AutopilotDecision | null }) | undefined;
-    const d = col?.lastAutopilotDecision;
+    const col = viewColony(view, colonyIndex) as
+      | (ViewColony & { lastAutopilotDecision?: AutopilotDecision | null })
+      | undefined;
+    const d = resolveDecisionFromColony(col);
     if (!d) {
       return `dev.autopilot ok${tickSuffix(r)}`;
     }

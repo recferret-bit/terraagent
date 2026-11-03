@@ -16,7 +16,8 @@
     0 100%,
     0 var(--ta-chamfer-s)
   );
-  min-width: 220px;
+  min-width: 210px;
+  max-width: 240px;
   box-sizing: border-box;
 }
 

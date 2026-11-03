@@ -1,10 +1,23 @@
 /* Faction Plate styling for Stage Track HUD (W08-12) */
 
+.ta-hud__slot[data-slot="top-left"]:has([data-testid="continue-google"]) {
+  z-index: 10;
+}
+
+.ta-hud__panel[data-feature="stages"] {
+  position: fixed;
+  top: 52px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  z-index: 15;
+}
+
 .ta-stage-track-hud {
   display: flex;
   flex-direction: column;
-  gap: var(--ta-s2);
-  padding: var(--ta-s2) var(--ta-s3);
+  gap: var(--ta-s1);
+  padding: var(--ta-s1) var(--ta-s2);
   background: var(--ta-plate);
   border: 1px solid var(--ta-seam);
   color: var(--ta-text);
@@ -17,8 +30,13 @@
     0 var(--ta-chamfer-s)
   );
   min-width: 280px;
-  max-width: 440px;
+  max-width: 420px;
   box-sizing: border-box;
+  pointer-events: none;
+}
+
+.ta-stage-toast,
+.ta-stage-toast__dismiss {
   pointer-events: auto;
 }
 
@@ -167,18 +185,6 @@
     0 var(--ta-chamfer-s)
   );
   box-sizing: border-box;
-  animation: ta-stage-toast-in var(--ta-dur-base) var(--ta-ease-servo);
-}
-
-@keyframes ta-stage-toast-in {
-  from {
-    opacity: 0;
-    transform: translateY(-8px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
 }
 
 .ta-stage-toast__header {

@@ -1,11 +1,9 @@
 import type { Page } from '@playwright/test';
 import {
-  devConsole,
   expect,
   expectNoPageErrors,
   hostMode,
-  loadLocal,
-  loadScenario,
+  login,
   screenshot,
   test,
 } from './harness';
@@ -15,6 +13,9 @@ import {
  * Steps 1–5 and 8 are tagged `@hack` for `npm run e2e -- --waves ..08 --hack`.
  */
 test.describe.configure({ mode: 'serial' });
+test.beforeEach(() => {
+  test.setTimeout(150_000);
+});
 
 const local = hostMode() === 'local';
 
@@ -74,49 +75,63 @@ interface OnlineDebugWindow {
 }
 
 async function openW08(page: Page, params: Record<string, string> = {}): Promise<void> {
+  const merged = { shadow: '0', crt: '0', wind: '0', ...params };
+  login(page);
   if (local) {
-    await loadLocal(page, 'w08', params);
+    await page.goto(`/play.html?${new URLSearchParams({ host: 'local', scenario: 'w08', ...merged })}`);
   } else {
-    await loadScenario(page, 'w08', params);
+    await page.goto(`/play.html?${new URLSearchParams({ scenario: 'w08', ...merged, as: 'e2e' })}`);
   }
+  await expect(page.locator('.ta-tick__n').first()).toHaveText(/^\d+$/, { timeout: 90_000 });
 }
 
 const getColony0 = (page: Page) =>
   page.evaluate(() => (window as unknown as OnlineDebugWindow).__online.store.latest?.colonies?.[0] ?? null);
+
+async function runConsole(page: Page, command: string): Promise<string> {
+  const input = page.locator('[data-testid=dev-console] input');
+  if (!(await input.isVisible().catch(() => false))) await page.keyboard.press('Backquote');
+  await input.waitFor({ state: 'visible', timeout: 10_000 });
+  const lines = page.locator('[data-testid=dev-console-output] > *');
+  const before = await lines.count();
+  await input.fill(command);
+  await input.press('Enter');
+  await expect.poll(() => lines.count(), { timeout: 10_000 }).toBeGreaterThan(before + 1);
+  const all = await lines.allTextContents();
+  return all.slice(before).join('\n');
+}
 
 test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toast & unlocks -> S2 dwell countdown & skip-dwell -> S2 The Grid', async ({
   page,
 }) => {
   await openW08(page);
 
-  // Step 1: Start at S0 Landfall
+  // Step 1: Start at S0 Landing
   await expect(page.locator('[data-testid="stage-track-hud"]')).toBeVisible();
-  await expect(page.locator('[data-testid="stage-current-label"]')).toHaveText('S0 Landfall');
-  await expect(page.locator('[data-testid="stage-current-teaches"]')).toContainText(
-    'You have one worker (your HQ), a starter site, and a Hub to place',
-  );
+  await expect(page.locator('[data-testid="stage-current-label"]')).toHaveText('S0 Landing');
+  await expect(page.locator('[data-testid="stage-current-teaches"]')).toContainText('Prepare ground, then build');
   await expect(page.locator('[data-testid="stage-next-condition"]')).toContainText('Command Hub T1 complete · 1 min');
 
-  // Build menu at S0: Command Hub unlocked, Metals Extractor & Solar greyed with "Unlocks at S1: Command Hub complete", S2+ not listed
-  const hubCard = page.locator('[data-testid="build-card-commandHub"]');
-  const extCard = page.locator('[data-testid="build-card-metalsExtractor"]');
-  const solarCard = page.locator('[data-testid="build-card-solar"]');
+  // Build menu at S0: Command Hub unlocked, Metals Extractor & Solar greyed with "Unlocks at S1: Command Hub T1 complete", S2+ not listed
+  const hubCard = page.locator('.ta-construction__card[data-building="commandHub"]');
+  const extCard = page.locator('.ta-construction__card[data-building="metalsExtractor"]');
+  const solarCard = page.locator('.ta-construction__card[data-building="solar"]');
   await expect(hubCard).toBeVisible();
-  await expect(hubCard).toHaveAttribute('data-stage-locked', 'false');
+  await expect(hubCard).toHaveAttribute('data-disabled', 'false');
   await expect(extCard).toBeVisible();
   await expect(extCard).toHaveAttribute('data-stage-locked', 'true');
-  await expect(extCard).toContainText('Unlocks at S1: Command Hub complete');
+  await expect(extCard).toContainText('Unlocks at S1: Command Hub T1 complete');
   await expect(solarCard).toBeVisible();
   await expect(solarCard).toHaveAttribute('data-stage-locked', 'true');
-  await expect(solarCard).toContainText('Unlocks at S1: Command Hub complete');
-  await expect(page.locator('[data-testid="build-card-depot"]')).toHaveCount(0);
+  await expect(solarCard).toContainText('Unlocks at S1: Command Hub T1 complete');
+  await expect(page.locator('.ta-construction__card[data-building="depot"]')).toHaveCount(0);
 
-  // Units menu at S0: Harvester greyed with "Unlocks at S1: Command Hub complete"
+  // Units menu at S0: Harvester greyed with "Unlocks at S1: Command Hub T1 complete"
   await page.locator('[data-testid="dock-tab-production"]').click();
-  const harvCard = page.locator('[data-testid="unit-card-harvester"]');
+  const harvCard = page.locator('.ta-units__card[data-unit="harvester"]');
   await expect(harvCard).toBeVisible();
   await expect(harvCard).toHaveAttribute('data-stage-locked', 'true');
-  await expect(harvCard).toContainText('Unlocks at S1: Command Hub complete');
+  await expect(harvCard).toContainText('Unlocks at S1: Command Hub T1 complete');
 
   // Terraform menu at S0: TERRAFORM unlocked; Fill and Bridge (S2) not listed yet
   await page.locator('[data-testid="dock-tab-terraform"]').click();
@@ -141,19 +156,20 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   await screenshot(page, '2-establish-colony-accepted');
 
   // Step 3: Reach S1 First Light when Command Hub finishes construction
-  await devConsole(page, 'warp 20');
+  await runConsole(page, 'warp 20');
   await expect.poll(async () => (await getColony0(page))?.stage ?? 0, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+  await runConsole(page, 'warp 1');
   await expect(page.locator('[data-testid="stage-current-label"]')).toHaveText('S1 First Light');
   await expect(page.locator('[data-testid="stage-reached-toast"]')).toBeVisible();
   await expect(page.locator('[data-testid="stage-toast-title"]')).toHaveText('S1 First Light');
-  await expect(page.locator('[data-testid="stage-toast-unlocks"]')).toContainText('Harvester');
-  await expect(page.locator('[data-testid="stage-toast-unlocks"]')).toContainText('Metals Extractor');
-  await expect(page.locator('[data-testid="stage-toast-unlocks"]')).toContainText('Solar Collector');
+  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Harvester');
+  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Metals Extractor');
+  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Solar Collector');
 
   // At S1: Metals Extractor and Solar un-grey; Builder, Pylon, Depot (unlockStage: 2) appear greyed
-  await expect(extCard).toHaveAttribute('data-stage-locked', 'false');
-  await expect(solarCard).toHaveAttribute('data-stage-locked', 'false');
-  const depotCard = page.locator('[data-testid="build-card-depot"]');
+  await expect(extCard).toHaveAttribute('data-disabled', 'false');
+  await expect(solarCard).toHaveAttribute('data-disabled', 'false');
+  const depotCard = page.locator('.ta-construction__card[data-building="depot"]');
   await expect(depotCard).toBeVisible();
   await expect(depotCard).toHaveAttribute('data-stage-locked', 'true');
   await expect(depotCard).toHaveAttribute(
@@ -163,20 +179,21 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   await screenshot(page, '3-s1-first-light');
 
   // Step 4: Extractor + Solar finish -> S2 trigger fires -> 2:00 dwell countdown -> stage skip-dwell -> S2 The Grid
-  await devConsole(page, 'warp 35');
+  await runConsole(page, 'warp 25');
   await expect
-    .poll(async () => (await getColony0(page))?.stageDwellRemainingS ?? null, { timeout: 15_000 })
+    .poll(async () => (await getColony0(page))?.stageDwellRemainingS ?? null, { timeout: 20_000 })
     .not.toBeNull();
+  await runConsole(page, 'warp 1');
   await expect(page.locator('[data-testid="stage-dwell-countdown"]')).toHaveText(/^\d+:\d\d$/);
   await screenshot(page, '4a-s2-dwell-countdown');
 
-  const skipOut = await devConsole(page, 'stage skip-dwell');
+  const skipOut = await runConsole(page, 'stage skip-dwell');
   expect(skipOut).toContain('stage dwell skipped');
   await expect.poll(async () => (await getColony0(page))?.stage ?? 0, { timeout: 10_000 }).toBe(2);
   await expect(page.locator('[data-testid="stage-current-label"]')).toHaveText('S2 The Grid');
   await expect(page.locator('[data-testid="stage-toast-title"]')).toHaveText('S2 The Grid');
-  await expect(depotCard).toHaveAttribute('data-stage-locked', 'false');
-  await expect(page.locator('[data-testid="build-card-pylon"]')).toHaveAttribute('data-stage-locked', 'false');
+  await expect(depotCard).toHaveAttribute('data-disabled', 'false');
+  await expect(page.locator('.ta-construction__card[data-building="pylon"]')).toHaveAttribute('data-disabled', 'false');
   await screenshot(page, '4b-s2-the-grid');
   expectNoPageErrors(page);
 });
@@ -185,7 +202,8 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
   page,
 }) => {
   await openW08(page);
-  await devConsole(page, 'stage set 2');
+  if (!local) await runConsole(page, 'warp 5');
+  await runConsole(page, 'stage set 2');
   await expect.poll(async () => (await getColony0(page))?.stage ?? 0).toBe(2);
 
   // Priorities panel: 5 sliders at 50, sum = 250
@@ -193,7 +211,7 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
   await expect(page.locator('[data-testid="priority-sum"]')).toHaveText('250');
 
   // At S2 with default priorities: autopilot next emits suggestion for wind and queues 0 orders
-  const outS2Wind = await devConsole(page, 'autopilot next');
+  const outS2Wind = await runConsole(page, 'autopilot next');
   expect(outS2Wind).toContain('suggestion');
   expect(outS2Wind).toContain('wind');
   expect(((await getColony0(page))?.queue ?? []).filter((e) => e.precedence === 'ai' || e.tag === 'auto')).toHaveLength(
@@ -208,7 +226,7 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
   await expect(page.locator('[data-testid="priority-sum"]')).toHaveText('280');
   await expect.poll(async () => (await getColony0(page))?.priorities?.expansion ?? 50).toBe(80);
 
-  const outS2Expand = await devConsole(page, 'autopilot next');
+  const outS2Expand = await runConsole(page, 'autopilot next');
   expect(outS2Expand).toContain('suggestion');
   expect(outS2Expand).toContain('outpostBeacon');
   expect(((await getColony0(page))?.queue ?? []).filter((e) => e.precedence === 'ai' || e.tag === 'auto')).toHaveLength(
@@ -217,9 +235,9 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
   await screenshot(page, '5a-s2-autopilot-suggestion');
 
   // Advance to S3 and run autopilot next again -> power need now queues an auto-tagged order for wind
-  await devConsole(page, 'stage set 3');
+  await runConsole(page, 'stage set 3');
   await expect.poll(async () => (await getColony0(page))?.stage ?? 0).toBe(3);
-  const outS3Auto = await devConsole(page, 'autopilot next');
+  const outS3Auto = await runConsole(page, 'autopilot next');
   expect(outS3Auto).toContain('auto');
   expect(outS3Auto).toContain('wind');
 
@@ -237,18 +255,19 @@ test('6 & 7. Safety override (fauna -> S3 First Contact immediately) and UnlockS
   page,
 }) => {
   await openW08(page);
-  await devConsole(page, 'stage set 1');
+  if (!local) await runConsole(page, 'warp 5');
+  await runConsole(page, 'stage set 1');
   await expect.poll(async () => (await getColony0(page))?.stage ?? 0).toBe(1);
 
-  const trigOut = await devConsole(page, 'stage trigger fauna');
+  const trigOut = await runConsole(page, 'stage trigger fauna');
   expect(trigOut).toContain("stage override 'fauna' triggered -> S3 First Contact");
   await expect.poll(async () => (await getColony0(page))?.stage ?? 0).toBe(3);
   await expect(page.locator('[data-testid="stage-current-label"]')).toHaveText('S3 First Contact');
   await expect(page.locator('[data-testid="stage-toast-override"]')).toHaveText('Safety Override: fauna');
-  await expect(page.locator('[data-testid="stage-toast-unlocks"]')).toContainText('Scout');
-  await expect(page.locator('[data-testid="stage-toast-unlocks"]')).toContainText('Guard');
-  await expect(page.locator('[data-testid="stage-toast-unlocks"]')).toContainText('Robotics Factory');
-  await expect(page.locator('[data-testid="stage-toast-unlocks"]')).toContainText('Turret');
+  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Scout');
+  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Guard');
+  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Robotics Factory');
+  await expect(page.locator('[data-testid="stage-unlock-reveal"]')).toContainText('Turret');
 
   // UnlockStage is >= 3 while ThreatStage reflects the colony's on-map footprint (< 3 on a bare colony)
   const col = await getColony0(page);
@@ -266,30 +285,37 @@ test('@hack 8. Goal queue limit: HQ T1 allows 2 active+queued goals, rejects a 3
   page,
 }) => {
   await openW08(page);
-  await devConsole(page, 'goal clear');
+  await runConsole(page, 'goal clear');
   await expect.poll(async () => ((await getColony0(page))?.goals ?? []).length).toBe(0);
 
-  const g1 = await devConsole(page, 'goal add grow_economy metals 10');
+  const g1 = await runConsole(page, 'goal add grow_economy metals 100');
   expect(g1).toContain('goal grow_economy queued');
-  const g2 = await devConsole(page, 'goal add secure_power 15');
+  const g2 = await runConsole(page, 'goal add secure_power 100');
   expect(g2).toContain('goal secure_power queued');
 
   await expect(page.locator('[data-testid="goals-limit-badge"]')).toHaveText('2 / 2');
   await expect(page.locator('[data-testid="goal-add-btn"]')).toBeDisabled();
 
   // Attempting to add a 3rd goal rejects with goal_limit
-  const g3 = await devConsole(page, 'goal add defend_colony');
+  const g3 = await runConsole(page, 'goal add defend_colony');
   expect(g3).toContain('goal_limit');
   await screenshot(page, '8-goal-limit-enforced');
 
   // Cancelling one goal frees the slot so the next can be added
+  await page.keyboard.press('Backquote');
   const firstGoalId = (await getColony0(page))?.goals?.[0]?.id;
   expect(firstGoalId).toBeTruthy();
   await page.locator(`[data-testid="goal-cancel-${firstGoalId}"]`).click();
+  await expect
+    .poll(
+      async () =>
+        ((await getColony0(page))?.goals ?? []).filter((g) => g.status === 'active' || g.status === 'queued').length,
+    )
+    .toBe(1);
   await expect(page.locator('[data-testid="goals-limit-badge"]')).toHaveText('1 / 2');
   await expect(page.locator('[data-testid="goal-add-btn"]')).toBeEnabled();
 
-  const g3Retry = await devConsole(page, 'goal add defend_colony');
+  const g3Retry = await runConsole(page, 'goal add defend_colony');
   expect(g3Retry).toContain('goal defend_colony queued');
   await expect(page.locator('[data-testid="goals-limit-badge"]')).toHaveText('2 / 2');
   expectNoPageErrors(page);

@@ -183,10 +183,11 @@ export function findExtractorSiteForGoal(
   const unitTiles = collectUnitTileSet(state, colonyIndex);
   const world = placementWorldFromState(state);
   const { deposit } = state.grid.layers;
+  const rad = Math.min(state.grid.radius, 14);
 
   let best: { q: number; r: number; overlapsUnit: number; unowned: number; dist: number } | null = null;
-  for (let r = -state.grid.radius; r <= state.grid.radius; r++) {
-    for (let q = -state.grid.radius; q <= state.grid.radius; q++) {
+  for (let r = Math.max(-state.grid.radius, anchor.r - rad); r <= Math.min(state.grid.radius, anchor.r + rad); r++) {
+    for (let q = Math.max(-state.grid.radius, anchor.q - rad); q <= Math.min(state.grid.radius, anchor.q + rad); q++) {
       if (hexDistance(0, 0, q, r) > state.grid.radius) continue;
       const fp = getFootprintTileIndices(state, q, r, 2, 2, 0);
       if (!fp.valid || fp.indices.some((i) => reserved.has(i))) continue;
@@ -230,11 +231,13 @@ export function findHubSiteForGoal(
   const reserved = collectReservedTiles(state, colonyIndex, data);
   const unitTiles = collectUnitTileSet(state, colonyIndex);
   const world = placementWorldFromState(state);
+  const { deposit } = state.grid.layers;
   const hasMetals = hasAnyDepositOnGrid(state, DEPOSIT.metals);
+  const rad = Math.min(state.grid.radius, 10);
 
   let best: { q: number; r: number; blocksExtractor: number; overlapsUnit: number; dist: number } | null = null;
-  for (let r = -state.grid.radius; r <= state.grid.radius; r++) {
-    for (let q = -state.grid.radius; q <= state.grid.radius; q++) {
+  for (let r = Math.max(-state.grid.radius, anchor.r - rad); r <= Math.min(state.grid.radius, anchor.r + rad); r++) {
+    for (let q = Math.max(-state.grid.radius, anchor.q - rad); q <= Math.min(state.grid.radius, anchor.q + rad); q++) {
       const dist = hexDistance(anchor.q, anchor.r, q, r);
       if (dist > 10) continue;
       const fp = getFootprintTileIndices(state, q, r, 3, 3, 0);
@@ -249,8 +252,9 @@ export function findHubSiteForGoal(
       });
       if (!evalRes.ok) continue;
       const overlapsUnit = fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0;
+      const touchesMetals = hasMetals && fp.indices.some((i) => deposit[i] === DEPOSIT.metals);
       const blocksExtractor =
-        hasMetals && !findExtractorSiteForGoal(state, colonyIndex, data, new Set(fp.indices)) ? 1 : 0;
+        touchesMetals && !findExtractorSiteForGoal(state, colonyIndex, data, new Set(fp.indices)) ? 1 : 0;
       if (
         !best ||
         blocksExtractor < best.blocksExtractor ||
@@ -281,11 +285,13 @@ export function findGeneratorSiteForGoal(
   const reserved = collectReservedTiles(state, colonyIndex, data);
   const unitTiles = collectUnitTileSet(state, colonyIndex);
   const world = placementWorldFromState(state);
+  const { deposit } = state.grid.layers;
   const hasMetals = hasAnyDepositOnGrid(state, DEPOSIT.metals);
+  const rad = Math.min(state.grid.radius, 10);
 
   let best: { q: number; r: number; blocksExtractor: number; overlapsUnit: number; unowned: number; dist: number } | null = null;
-  for (let r = -state.grid.radius; r <= state.grid.radius; r++) {
-    for (let q = -state.grid.radius; q <= state.grid.radius; q++) {
+  for (let r = Math.max(-state.grid.radius, anchor.r - rad); r <= Math.min(state.grid.radius, anchor.r + rad); r++) {
+    for (let q = Math.max(-state.grid.radius, anchor.q - rad); q <= Math.min(state.grid.radius, anchor.q + rad); q++) {
       const dist = hexDistance(anchor.q, anchor.r, q, r);
       if (dist > 10) continue;
       const fp = getFootprintTileIndices(state, q, r, 2, 2, 0);
@@ -301,8 +307,9 @@ export function findGeneratorSiteForGoal(
       if (!evalRes.ok) continue;
       const overlapsUnit = fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0;
       const unowned = fp.indices.some((i) => state.grid.layers.owner[i] !== colonyIndex) ? 1 : 0;
+      const touchesMetals = hasMetals && fp.indices.some((i) => deposit[i] === DEPOSIT.metals);
       const blocksExtractor =
-        hasMetals && !findExtractorSiteForGoal(state, colonyIndex, data, new Set(fp.indices)) ? 1 : 0;
+        touchesMetals && !findExtractorSiteForGoal(state, colonyIndex, data, new Set(fp.indices)) ? 1 : 0;
       if (
         !best ||
         blocksExtractor < best.blocksExtractor ||
