@@ -265,6 +265,67 @@ describe('UnitsMenu DOM Component', () => {
   });
 });
 
+describe('W08-11: UnitsMenu stage filtering', () => {
+  const origDoc = globalThis.document;
+  const origWin = globalThis.window;
+
+  beforeEach(() => {
+    (globalThis as unknown as { document: unknown }).document = { createElement: (tag: string) => new MockElement(tag) };
+    (globalThis as unknown as { window: unknown }).window = { addEventListener: () => {}, removeEventListener: () => {} };
+  });
+
+  afterEach(() => {
+    (globalThis as unknown as { document: unknown }).document = origDoc;
+    (globalThis as unknown as { window: unknown }).window = origWin;
+  });
+
+  it('filters units by unlockStage and shows next-stage units greyed out with unlock condition', () => {
+    const parentEl = new MockElement('div') as unknown as HTMLElement;
+    const sendCommand = vi.fn();
+    const track = vi.fn();
+    const ctx = {
+      flags: new Set(['W00', 'W01', 'W02', 'W08']),
+      host: 'server' as const,
+      services: { sendCommand, track },
+    };
+
+    const instance = unitsFeature.hud![0].mount(parentEl, ctx);
+    const mockParent = parentEl as unknown as MockElement;
+
+    instance.update?.({ colonies: [{ stage: 1, unlockStage: 1 }] });
+    const harvesterCard = mockParent.querySelector('[data-unit="harvester"]');
+    const builderCard = mockParent.querySelector('[data-unit="builder"]');
+    expect(harvesterCard?.getAttribute('data-disabled')).toBe('false');
+    expect(builderCard).not.toBeNull();
+    expect(builderCard?.getAttribute('data-disabled')).toBe('true');
+    expect(builderCard?.getAttribute('data-stage-locked')).toBe('true');
+    expect(builderCard?.className).toContain('is-stage-locked');
+    expect(builderCard?.querySelector('.ta-units__reason')?.textContent).toBe(
+      'Unlocks at S2: extractor + generator · 2 min',
+    );
+    expect(mockParent.querySelector('[data-unit="scout"]')).toBeNull();
+    expect(mockParent.querySelector('[data-unit="guard"]')).toBeNull();
+
+    // Clicking queue on a stage-locked unit does not send a command
+    mockParent.querySelector('[data-queue-unit="builder"]')?.click();
+    expect(sendCommand).not.toHaveBeenCalled();
+
+    // Advance to S2: Builder unlocks, Scout and Guard appear greyed out with S3 condition
+    instance.update?.({ colonies: [{ stage: 2, unlockStage: 2 }] });
+    expect(mockParent.querySelector('[data-unit="builder"]')?.getAttribute('data-disabled')).toBe('false');
+    for (const s3Unit of ['scout', 'guard']) {
+      const card = mockParent.querySelector(`[data-unit="${s3Unit}"]`);
+      expect(card).not.toBeNull();
+      expect(card?.getAttribute('data-disabled')).toBe('true');
+      expect(card?.querySelector('.ta-units__reason')?.textContent).toBe(
+        'Unlocks at S3: 6 buildings + 2nd extractor · 3 min',
+      );
+    }
+
+    instance.dispose();
+  });
+});
+
 function setupColonyState(): { state: ReturnType<typeof createState>; colony: ReturnType<typeof ensureColonyLedger> } {
   const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
   const colony = ensureColonyLedger({

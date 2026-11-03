@@ -1,11 +1,53 @@
-import { DISMANTLE_REFUND_RATE, REPAIR_COST_RATE, type CompiledDataLike } from '@terra/sim';
+import {
+  DISMANTLE_REFUND_RATE,
+  formatUnlockAtTooltip,
+  getItemUnlockStage,
+  REPAIR_COST_RATE,
+  type CompiledDataLike,
+} from '@terra/sim';
 import { isDockPaneShown } from '../../core/hud/CommandDock';
+import type { GameView } from '../../core/registry/types';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { isHotkeyPress } from '../shared/hotkeys';
 import type { BrushController, TerraformButtonOp, TerraformPrimaryOp } from './BrushController';
 import { pct, ReferenceTables } from './referenceTables';
 import type { TileOverlay } from './TileOverlay';
 import { colonyWorkJobs, workStatusText } from './workStatus';
+
+export interface TerraformStageOpDef {
+  readonly id: 'fill' | 'bridge';
+  readonly label: string;
+  readonly subtitle: string;
+  readonly testid: string;
+  readonly unlockStage: number;
+}
+
+export const STAGE_TERRAFORM_OP_DEFS: readonly TerraformStageOpDef[] = [
+  { id: 'fill', label: 'FILL', subtitle: 'Fill hole · Prepared ground', testid: 'tf-op-fill', unlockStage: getItemUnlockStage('fill') || 2 },
+  { id: 'bridge', label: 'BRIDGE', subtitle: 'Bridge water · Prepared ground', testid: 'tf-op-bridge', unlockStage: getItemUnlockStage('bridge') || 2 },
+];
+
+function resolveTerraformUnlockStage(view: GameView | null | undefined, colonyId = 0): number | undefined {
+  if (!view) return undefined;
+  const v = view as {
+    colonyId?: number;
+    colonyIndex?: number;
+    unlockStage?: number;
+    stage?: number;
+    colonies?: Array<{ index?: number; unlockStage?: number; stage?: number }>;
+  };
+  const idx = v.colonyIndex ?? v.colonyId ?? colonyId;
+  const col = v.colonies?.find((c) => c?.index === idx) ?? v.colonies?.[idx] ?? v.colonies?.[0];
+  const val = col?.unlockStage ?? col?.stage ?? v.unlockStage ?? v.stage;
+  return typeof val === 'number' && Number.isFinite(val) ? val : undefined;
+}
+
+function formatTerraformUnlockDetail(stage: number): string {
+  if (stage === 2) {
+    return 'Unlocks at S2: extractor + generator complete · 2 min';
+  }
+  return formatUnlockAtTooltip(stage);
+}
 
 export interface TerraformPrimaryOpDef {
   readonly op: TerraformPrimaryOp;
@@ -47,12 +89,14 @@ export interface TerraformMenuOptions {
 export class TerraformMenu {
   readonly el: HTMLElement;
   private readonly opButtons = new Map<TerraformButtonOp, HTMLButtonElement>();
+  private readonly stageOpsRow: HTMLElement;
   private readonly workerBadge: HTMLElement;
   private readonly statusEl: HTMLElement;
   private readonly tables: ReferenceTables;
   private readonly onKey: (e: KeyboardEvent) => void;
   /** The newest stroke whose work showed up in the view (so its end can be reported). */
   private workSeenFor: string | null = null;
+  private lastStageKey: string | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -78,10 +122,12 @@ export class TerraformMenu {
       opsRow.appendChild(btn);
     }
 
+    this.stageOpsRow = makeDiv('ta-tf-menu__stage-ops', 'tf-stage-ops');
+    this.stageOpsRow.hidden = true;
     this.statusEl = makeDiv('ta-tf-menu__status', 'tf-status');
 
     this.tables = new ReferenceTables(() => this.opts.simData?.());
-    this.el.append(header, opsRow, this.statusEl, this.tables.el);
+    this.el.append(header, opsRow, this.stageOpsRow, this.statusEl, this.tables.el);
     parent.appendChild(this.el);
 
     this.onKey = (e) => this.handleKey(e);
@@ -137,8 +183,65 @@ export class TerraformMenu {
     this.workerBadge.dataset.available = String(workersReady);
 
     this.el.dataset.armed = String(armed);
+    this.renderStageOps();
     this.tables.refresh();
     this.statusEl.textContent = this.statusText(armed, selectedOp);
+  }
+
+  private renderStageOps(): void {
+    const colonyStage = resolveTerraformUnlockStage(this.brush.getView(), this.opts.getColonyId?.() ?? 0);
+    const stageKey = colonyStage === undefined ? 'none' : String(colonyStage);
+    if (this.lastStageKey === stageKey) return;
+    this.lastStageKey = stageKey;
+
+    this.stageOpsRow.replaceChildren();
+    if (colonyStage === undefined) {
+      this.stageOpsRow.hidden = true;
+      return;
+    }
+
+    const visibleDefs = STAGE_TERRAFORM_OP_DEFS.filter((d) => d.unlockStage <= colonyStage + 1);
+    if (visibleDefs.length === 0) {
+      this.stageOpsRow.hidden = true;
+      return;
+    }
+
+    this.stageOpsRow.hidden = false;
+    for (const def of visibleDefs) {
+      const stageLocked = colonyStage < def.unlockStage;
+      const cls = stageLocked
+        ? 'btn btn-sm btn-ghost ta-tf-menu__op-btn ta-tf-menu__stage-op is-stage-locked'
+        : 'btn btn-sm btn-ghost ta-tf-menu__op-btn ta-tf-menu__stage-op';
+      const btn = makeBtn(cls, def.testid, '', () => {});
+      btn.setAttribute('data-stage-op', def.id);
+      btn.setAttribute('data-terraform-op', def.id);
+      btn.setAttribute('data-order', def.id);
+      btn.setAttribute('data-unlock-stage', String(def.unlockStage));
+      btn.setAttribute('data-disabled', String(stageLocked));
+      btn.disabled = stageLocked;
+
+      const titleSpan = makeSpan('ta-tf-menu__op-title', undefined, def.label);
+      const descSpan = makeSpan('ta-tf-menu__op-desc', undefined, def.subtitle);
+      btn.append(titleSpan, descSpan);
+
+      if (stageLocked) {
+        const cond = formatUnlockAtTooltip(def.unlockStage);
+        const detail = formatTerraformUnlockDetail(def.unlockStage);
+        const fullTooltip = detail !== cond ? `${cond} (${detail})` : cond;
+        btn.setAttribute('data-stage-locked', 'true');
+        btn.setAttribute('title', fullTooltip);
+        btn.setAttribute('aria-label', `${def.label} — ${fullTooltip}`);
+        btn.setAttribute('data-unlock-detail', detail);
+        const reasonSpan = makeSpan('ta-tf-menu__reason', undefined, cond);
+        btn.appendChild(reasonSpan);
+        if (detail !== cond) {
+          const detailSpan = makeSpan('ta-tf-menu__unlock-detail', undefined, detail);
+          btn.appendChild(detailSpan);
+        }
+      }
+
+      this.stageOpsRow.appendChild(btn);
+    }
   }
 
   /**
