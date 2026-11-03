@@ -6,7 +6,8 @@ import { getEnvironment } from '../environment';
 import { applyBrownoutShedding, type ShedCandidate, type SheddingResult } from './shedding';
 import { pylonDrainPerS, resolveConsumerDrains } from './drains';
 import { type PowerGraph, type PowerGraphComponent } from './graph';
-import { evaluateWindOutput, stepCapacitorsForComponent } from './windAndCap';
+import { evaluateWindOutput } from './windAndCap';
+import { stepComponentStores, type HqCellStepResult } from './hqCell';
 import { stepThermalPlantFuel } from './thermal';
 import { resolvePowerRow, computeSolarOutputPerS } from './index';
 import type { EntityPowerStatus, PowerComponentSummary } from './types';
@@ -28,6 +29,8 @@ export interface ComponentEvalResult {
   thermalGross: number; thermalDrain: number; thermalNet: number;
   windGross: number; windDrain: number; windNet: number;
   capStoredE: number; capCapacityE: number; capDischargePerS: number; capChargePerS: number;
+  /** The HQ cell's part in this component (`hqCell.ts`): linked only in the Hub's component. */
+  hqCell: HqCellStepResult;
   unpoweredIds: number[];
   nightSolarIds: number[];
   noFuelIds: number[];
@@ -224,6 +227,7 @@ function buildUnpoweredComponentResult(
     thermalGross: bRes.thermalGross, thermalDrain: bRes.thermalDrain, thermalNet: bRes.thermalNet,
     windGross: bRes.windGross, windDrain: bRes.windDrain, windNet: bRes.windNet,
     capStoredE: 0, capCapacityE: 0, capDischargePerS: 0, capChargePerS: 0,
+    hqCell: { linked: false, storedE: 0, capacityE: 0, dischargePerS: 0, chargePerS: 0 },
     unpoweredIds, nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, onlineEntityIds: [],
     shed: emptyShed,
     pylonLoads: overloadRes.pylonLoads,
@@ -270,8 +274,9 @@ export function evaluateSingleComponent(
     return buildUnpoweredComponentResult(state, comp, bRes, overloadRes, compRawDemand, isW03, tick);
   }
 
-  const capRes = stepCapacitorsForComponent(state, bRes.capRows, genSupply, compRawDemand, dtTicks, tick, data);
-  const effectiveSupply = Number((genSupply + capRes.dischargePerS).toFixed(4));
+  const { hqCell, capRes, effectiveSupply } = stepComponentStores(
+    state, colonyIndex, comp.hasHub, hubAnchors, bRes.capRows, genSupply, compRawDemand, dtTicks, tick, data,
+  );
 
   const remainingCandidates = bRes.shedCandidates.filter((c) => !overloadRes.shedConsumerRows.has(c.row));
   const compWorkCandidates = comp.hasHub ? work.candidates : [];
@@ -303,6 +308,7 @@ export function evaluateSingleComponent(
     thermalGross: bRes.thermalGross, thermalDrain: bRes.thermalDrain, thermalNet: bRes.thermalNet,
     windGross: bRes.windGross, windDrain: bRes.windDrain, windNet: bRes.windNet,
     capStoredE: capRes.storedE, capCapacityE: capRes.capacityE, capDischargePerS: capRes.dischargePerS, capChargePerS: capRes.chargePerS,
+    hqCell,
     unpoweredIds: [], nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, onlineEntityIds: bRes.onlineEntityIds,
     shed,
     pylonLoads: overloadRes.pylonLoads,

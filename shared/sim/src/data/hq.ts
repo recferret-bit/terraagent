@@ -12,6 +12,7 @@ export default defineTable({
     speedTilesPerS: 'perSecond',
     cellSelfRechargePerS: 'perSecond',
     cellFastRechargePerS: 'perSecond',
+    cellGridDischargePerS: 'perSecond',
     podDescentS: 'seconds',
     podLandMinS: 'seconds',
     autoPlaceIdleS: 'seconds',
@@ -38,6 +39,9 @@ export default defineTable({
       cellFastRechargePerS: 20,
       cellFastRechargeRadius: 6,
       cellFastRechargeShedGroup: 3,
+      // With the W02 grid the cell is the Hub grid's first store (`power-core/hqCell.ts`): a deficit draws it at up to
+      // this rate, surplus refills it at up to the fast (docked) / self rate, and it no longer recharges for free.
+      cellGridDischargePerS: 30,
       selfPreservationHpRatio: 0.4,
       dps: 12,
       weaponRange: 5,
