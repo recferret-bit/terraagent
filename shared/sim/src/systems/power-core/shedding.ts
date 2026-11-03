@@ -87,9 +87,14 @@ export function applyBrownoutShedding(
   const orderedGroups = getOrderedShedGroups(data);
   const hqFast = checkHqFastRechargeCandidate(state, colonyIndex, hubAnchors, data);
 
-  // First, restore any candidate that was in offlineBrownout so we evaluate fresh against current supply
+  // First, restore any candidate that was offline so we evaluate fresh against current supply
   for (const c of candidates) {
-    if (c.jobId === undefined && cols.state[c.row] === ENTITY_STATE.offlineBrownout) {
+    if (
+      c.jobId === undefined &&
+      (cols.state[c.row] === ENTITY_STATE.offlineBrownout ||
+        cols.state[c.row] === ENTITY_STATE.offlineNoGrid ||
+        cols.state[c.row] === ENTITY_STATE.offlineUnpowered)
+    ) {
       setField(e, c.row, 'state', ENTITY_STATE.active, tick);
     }
   }
