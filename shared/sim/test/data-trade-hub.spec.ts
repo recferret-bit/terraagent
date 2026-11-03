@@ -120,12 +120,18 @@ describe('W10-02 data rows: tradeHub (Inter-Colony Trade Hub T1/T2/T3 and cargoC
     expect(compiled.tables.tradeHub?.caps).toBeUndefined();
   });
 
-  it('compiles tradeHub table with t1, t2, t3, and caps when W10 is enabled', () => {
+  it('compiles tradeHub table with t1, t2, t3, caps, and unlock when W10 is enabled', () => {
     const compiled = compileData(W10_FLAGS);
-    expect(Object.keys(compiled.tables.tradeHub)).toHaveLength(4);
+    expect(Object.keys(compiled.tables.tradeHub)).toHaveLength(5);
     verifyT1Row(dataRow(compiled, 'tradeHub', 't1'));
     verifyT2Row(dataRow(compiled, 'tradeHub', 't2'));
     verifyT3Row(dataRow(compiled, 'tradeHub', 't3'));
     verifyCapsRow(dataRow(compiled, 'tradeHub', 'caps'));
+    const unlock = dataRow(compiled, 'tradeHub', 'unlock');
+    expect(unlock.kind).toBe('unlockRule');
+    expect(unlock.rule).toBe('neighborContact(>=S2) | guildVisit | S5');
+    expect(unlock.minContactStage).toBe(2);
+    expect(unlock.autoUnlockStage).toBe(5);
+    expect(unlock.tradeHubAtS2).toBe(true);
   });
 });
