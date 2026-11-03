@@ -1,6 +1,7 @@
 import { getStageSpec, STAGE_TABLE_ROWS, type StageRow, type ViewColony } from '@terra/sim';
 import type { Disposable, FeatureContext } from '../../core/registry/types';
 import { ownColonyIndex, viewColony } from '../shared/colony';
+import { extractStageReachedData, StageToast, type StageToastOptions } from './StageToast';
 
 /**
  * Formats a dwell countdown in seconds into M:SS representation (e.g. 80 -> "1:20", 5 -> "0:05").
@@ -40,9 +41,13 @@ export class StageTrackHud implements Disposable {
   private readonly currentTeachesEl: HTMLElement;
   private readonly nextConditionEl: HTMLElement;
   private readonly dwellCountdownEl: HTMLElement;
+  private readonly toast: StageToast;
+  private readonly cleanups: Array<() => void> = [];
 
   private currentStage = 0;
   private colonyIndex = 0;
+  private hasBaseline = false;
+  private previousStage = 0;
 
   constructor(host: HTMLElement, ctx: FeatureContext) {
     this.ctx = ctx;
@@ -51,6 +56,8 @@ export class StageTrackHud implements Disposable {
     this.root = document.createElement('section');
     this.root.className = 'ta-stage-track-hud plate-sm';
     this.root.setAttribute('data-testid', 'stage-track-hud');
+
+    this.toast = new StageToast(this.root);
 
     // Segments container: 11 stage segments S0..S10
     this.segmentsContainer = document.createElement('div');
@@ -96,6 +103,23 @@ export class StageTrackHud implements Disposable {
 
     // Initial render at S0
     this.renderStage(0, null, undefined);
+
+    const services = ctx.services as unknown as Record<string, unknown>;
+    const rawCtx = ctx as unknown as Record<string, unknown>;
+    const transport = (services.transport ?? rawCtx.transport) as {
+      onMessage?: (fn: (m: unknown) => void) => unknown;
+    } | undefined;
+
+    if (transport && typeof transport.onMessage === 'function') {
+      const off = transport.onMessage((m: unknown) => {
+        this.handleTransportMessage(m);
+      });
+      if (typeof off === 'function') {
+        this.cleanups.push(off as () => void);
+      } else if (off && typeof off === 'object' && 'dispose' in off && typeof (off as { dispose: unknown }).dispose === 'function') {
+        this.cleanups.push(() => (off as { dispose: () => void }).dispose());
+      }
+    }
 
     if (ctx.services.store?.latest) {
       this.update(ctx.services.store.latest);
@@ -187,6 +211,49 @@ export class StageTrackHud implements Disposable {
       : undefined;
 
     this.renderStage(stage, dwell, condition);
+
+    if (!this.hasBaseline) {
+      this.hasBaseline = true;
+      this.previousStage = stage;
+    } else if (stage > this.previousStage) {
+      const colRecord = col as Record<string, unknown> | undefined;
+      const override = typeof colRecord?.stageOverride === 'string'
+        ? colRecord.stageOverride
+        : typeof colRecord?.override === 'string'
+          ? colRecord.override
+          : undefined;
+      this.previousStage = stage;
+      this.showStageToast(stage, { override });
+    }
+  }
+
+  showStageToast(stage: number, opts?: StageToastOptions): HTMLElement {
+    this.previousStage = Math.max(this.previousStage, stage);
+    return this.toast.show(stage, opts);
+  }
+
+  dismissStageToast(): void {
+    this.toast.dismiss();
+  }
+
+  getActiveToast(): HTMLElement | null {
+    return this.toast.getElement();
+  }
+
+  private handleTransportMessage(m: unknown): void {
+    const data = extractStageReachedData(m);
+    if (!data) return;
+    if (typeof data.colonyIndex === 'number' && data.colonyIndex !== this.colonyIndex) {
+      return;
+    }
+    this.showStageToast(data.stage, {
+      title: data.title,
+      teaches: data.teaches,
+      units: data.units,
+      buildings: data.buildings,
+      orders: data.orders,
+      override: data.override,
+    });
   }
 
   getCurrentStage(): number {
@@ -194,6 +261,13 @@ export class StageTrackHud implements Disposable {
   }
 
   dispose(): void {
+    for (const c of this.cleanups) {
+      try {
+        c();
+      } catch {}
+    }
+    this.cleanups.length = 0;
+    this.toast.dispose();
     this.root.remove();
   }
 }
