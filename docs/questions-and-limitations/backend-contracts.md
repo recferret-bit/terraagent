@@ -668,3 +668,25 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** one colony row per dev player per scenario planet. A unique clash on index 0 leaves the existing row.
 - **To resolve:** when scenario join seats through the same home path as a guest, drop this extra write and keep using that colony id.
 - **Found:** 2026-11-02, W06-28
+
+## W12 Player Page & Achievements
+
+### BE-46 · Progression stores (`FactsStore`, `AchievementUnlockStore`, `XpStore`) use Postgres when `databaseEnabled` is true and in-memory maps in unit tests
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/progression/{facts.store,achievement-unlock.store,xp.store,w12-seed.service}.ts`, `backend/app/src/profile/{colony-history.store,me-profile.service,me-achievements.service}.ts`, `shared/db/prisma/progression.prisma`
+- **What happens:** `FactsStore`, `AchievementUnlockStore`, and `XpStore` persist to `progression.facts`, `progression.achievement_unlock`, `progression.xp_ledger`, and `progression.player_xp` (migration `0009_w12_progression`) when `PRISMA` is injected and `databaseEnabled(env)` is true, and fall back to in-memory maps when the database is off (`NODE_ENV=test` without `DATABASE_URL`). In non-production builds, `W12SeedService.ensureSeeded` seeds any empty pilot with the W12 scenario baseline (9 earned achievements, Level 4 `1 120 / 1 500` XP, title `Surveyor`, `unlockStage = 4`, 1 active colony + 2 past colonies) unless `profile.reset` was called for that pilot in the current process.
+- **Why it is like this:** The W12 unit suites (`w12-facts`, `w12-evaluator`, `w12-xp`, `w12-me-profile`, `w12-me-achievements`, `w12-dev-commands`) run without Postgres, while the dev stack and e2e suite persist progression in Postgres across restarts.
+- **Workaround / mitigation:** `profile reset` in the dev console clears a pilot's Postgres and in-memory progression rows; `npm run dev:restart` after `profile reset` re-seeds the W12 baseline on the next `/me.html` or `/play.html?scenario=w12` load.
+- **To resolve:** Add catch-up evaluation (`W12-04`) and the `BadgeMint` outbox worker (`W12-25`).
+- **Found:** 2026-11-03, W12
+
+### BE-47 · Deferred W12 progression & profile issues (`H+` / post-hackathon)
+
+- **Status:** Open
+- **Area / code:** `docs/plan/waves/W12-player-page-achievements.md`, `backend/app/src/progression/`, `backend/app/src/profile/`
+- **What happens:** In accordance with the W12 hackathon slice (`H` tag), the following non-`H` issues are deferred: `W12-04` (catch-up evaluation on profile load), `W12-06` (milestone XP consumers for `stageReached`, `colonySettled`, `planet_result`), `W12-07` (level-10 nameplate colour and level-30 gold border), `W12-10` & `W12-11` (`player_history` writer and `GET /v1/me/history?cursor=`), `W12-25` & `W12-26` (`BadgeMint` 1 h delayed outbox via `BadgeNftPort` and real vs mock explorer link on card back), `W12-28..30` (`PA-01` 60-tier integration test, `PA-04` viewport screenshot test, profile analytics events), and `W12-33..34` (`PROGRESSION_ACHIEVEMENTS` forwarder for `buildingCompleted`/`resourceProduced` and `audience: 'server'` fanout filtering). Note that `MeProfileService` already computes titles and frames per level (`unlockedTitlesForLevel`, `unlockedFramesForLevel`) and `FactsUpdaterService` maps `tilePrepared`, `obstacleRemoved`, `colonyFounded`, `buildingCompleted`, and `resourceProduced` from `planet.event`.
+- **Why it is like this:** Scoped out of the 18-issue `H` cut for W12 (`PRODUCT_WAVES.md`, `W12-player-page-achievements.md` §Hackathon slice).
+- **Workaround / mitigation:** Seeded unlocks on the W12 pilot carry `nft.status = 'minted'` (`Recorded (mock)`), and newly unlocked tiers in dev show `Badge minting…` on the card back; `/me.html` renders the Planets, History, and Play shell sections so all 6 sticky tabs (`PILOT · PROGRESS · PLANETS · HISTORY · ACHIEVEMENTS · PLAY`) navigate cleanly.
+- **To resolve:** Land the remaining `H+` and post-hackathon W12 issues (`W12-04`, `W12-06..07`, `W12-10..11`, `W12-17..19`, `W12-24..26`, `W12-28..30`, `W12-33..34`).
+- **Found:** 2026-11-03, W12

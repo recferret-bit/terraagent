@@ -1004,3 +1004,15 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **To resolve:** have guest/refresh return `accountId` when the player is already linked, and have the chip render `Pilot ID` from that boot field.
 - **Fix:** the guest auth response now carries `isGuest: false` and top-level `accountId` when the player has a `social_identity` row. `readAccountId` already reads that field, and `isGuest` is `player.isGuest !== false`, so a reload shows `Pilot ID …`. The chip was not rewritten. Refresh of a linked player returns the same two fields.
 - **Found:** 2026-11-02, W06-15
+
+## W12 Player Page & Achievements
+
+### FF-64 · `/play.html?scenario=w12` and `/me.html` share the dev pilot session via `localStorage` (`ta_active_pilot`) and `?as=`
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/achievements/activePilot.ts` (`ActivePilotTracker`), `frontend/game/features/achievements/devCommands.ts`, `frontend/game/pages/me/api.ts`, `backend/app/src/profile/me-auth.ts`
+- **What happens:** Opening `/play.html?scenario=w12` (or passing `?as=<handle>`) locks `ActivePilotTracker` to `playerId = pr_dev_<handle>` (default `pr_dev_w12`) and `accessToken = dev:<handle>` (`dev:w12`), persists that record to `localStorage` (`ta_active_pilot`), and calls `profile.seed_w12` once so the pilot's W12 baseline is seeded. Opening `/me.html` in a second tab reads `?as=` (or `ta_active_pilot` from `localStorage`, or falls back to `pr_dev_w12` on the server in non-production) so dev console commands (`fact add`, `xp add`, `profile reset`) in the game tab and reloads of `/me.html` always address the same pilot. In-game achievement/level-up toasts (`W12-27`) are triggered both by server events on `WorldStore` and directly by the `fact add` / `xp add` dev console commands (`W12-31`), because dev command HTTP responses return synchronously without a separate non-sim socket push (BE-40).
+- **Why it is like this:** `?scenario=w12` joins `/ws` with a dev token whose hash-derived `ready.playerId` (`devPlayerId('w12')`) would otherwise differ from `/me.html`'s default dev pilot id (`pr_dev_w12`), and the websocket only forwards sim events (`rooms.ts`).
+- **Workaround / mitigation:** `ProgressionDevCommand` also mirrors `fact.add`, `xp.add`, `profile.reset`, and `profile.seed_w12` onto `pr_dev_w12` whenever a different dev player id is used.
+- **To resolve:** When a non-sim player websocket channel lands (BE-40), push `achievement.earned` and `xp.levelUp` over that socket for non-sim progression sources as well.
+- **Found:** 2026-11-03, W12
