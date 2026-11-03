@@ -5,7 +5,10 @@ import {
   createState,
   ENTITY_KIND,
   ENTITY_STATE,
+  evaluateColonyPower,
   hqCellGridLinked,
+  pylonDrainPerS,
+  resolveConsumerDrains,
   insertRow,
   rowOf,
   setHqCellEnergy,
@@ -74,5 +77,28 @@ describe('HQ cell on the Hub grid', () => {
 
     const building = colony({ q: 2, r: 0 }, ENTITY_STATE.constructing);
     expect(hqCellGridLinked(building.state, 0, W02)).toBe(false);
+  });
+
+  it('drains come from the rows: a tune of powerDrainPerS / shedGroup reaches the next evaluation', () => {
+    const tuned = compileData(parseWaves('..03'), {
+      economyT1Basic: { metalsExtractor: { powerDrainPerS: 20, shedGroup: 2 } },
+      grid: { pylon: { powerDrainPerS: 5 } },
+    });
+    expect(resolveConsumerDrains(tuned).get(ENTITY_KIND.metalsExtractor)).toEqual({ drain: 20, group: 2 });
+    expect(pylonDrainPerS(tuned)).toBe(5);
+
+    const { state } = colony({ q: 2, r: 0 });
+    const cols = state.entities.cols;
+    const ext = insertRow(state.entities, state.meta.nextEntityId++, 0);
+    cols.kind[ext] = ENTITY_KIND.metalsExtractor;
+    cols.owner[ext] = 0;
+    cols.q[ext] = 3;
+    cols.footprintW[ext] = 2;
+    cols.footprintD[ext] = 2;
+    cols.hp[ext] = 500;
+    cols.state[ext] = ENTITY_STATE.active;
+    const hubDrain = Number(tuned.tables.hub!.t1!.powerDrainPerS);
+    expect(evaluateColonyPower(state, 0, tuned).rawDemand).toBe(hubDrain + 20);
+    expect(evaluateColonyPower(state, 0, W02).rawDemand).toBe(hubDrain + Number(W02.tables.economyT1Basic!.metalsExtractor!.powerDrainPerS));
   });
 });
