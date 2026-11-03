@@ -1,0 +1,68 @@
+.ta-me-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  font-family: var(--ta-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.1em;
+}
+
+.ta-me-link {
+  color: var(--ta-orange);
+  text-decoration: none;
+  font-weight: 600;
+}
+
+.ta-me-link:hover {
+  color: var(--ta-orange-hi);
+}
+
+.ta-achievement-toast {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 260px;
+  max-width: 340px;
+  padding: 12px 14px;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-orange);
+  color: var(--ta-hull);
+}
+
+.ta-achievement-toast-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ta-achievement-toast-title {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--ta-hull);
+}
+
+.ta-achievement-toast-link {
+  align-self: flex-start;
+  text-decoration: none;
+}
+
+.ta-toast-close {
+  background: transparent;
+  border: 1px solid var(--ta-seam-3);
+  color: var(--ta-steel);
+  cursor: pointer;
+  padding: 0 6px;
+  font-family: var(--ta-font-mono);
+  font-size: 13px;
+}
+
+.ta-toast-close:hover {
+  border-color: var(--ta-orange);
+  color: var(--ta-hull);
+}
