@@ -16,7 +16,7 @@ export class CommandRunner {
 
   constructor(features: readonly Feature[], private readonly ctx: FeatureContext) {
     for (const f of features) {
-      for (const c of f.devCommands ?? []) {
+      for (const c of f.devCommands ?? f.consoleCommands ?? []) {
         if (this.table.has(c.name)) {
           if (this.table.get(c.name) !== c) console.warn(`dev command "${c.name}" from ${f.id} ignored: already registered`);
           continue;
