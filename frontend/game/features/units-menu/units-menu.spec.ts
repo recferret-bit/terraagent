@@ -168,16 +168,15 @@ describe('Units Catalog & Helpers', () => {
     expect(waiting).toBe('harvester ×1 · waiting(supply)');
   });
 
-  it('resolves supply from colony, view supply, or entities fallback', () => {
-    expect(resolveSupply()).toEqual({ used: 0, cap: 10 });
-    expect(resolveSupply({ colonies: [{ supply: { used: 3, cap: 10 } }] })).toEqual({ used: 3, cap: 10 });
-
-    const entityBuf = new Float32Array(24);
-    entityBuf[1] = ENTITY_KIND.harvester;
-    entityBuf[8] = 160;
-    entityBuf[13] = ENTITY_KIND.harvester;
-    entityBuf[20] = 160;
-    expect(resolveSupply({ entities: entityBuf })).toEqual({ used: 2, cap: 10 });
+  it('reads the own colony supply the host computed (never counts units itself)', () => {
+    expect(resolveSupply(undefined)).toBeNull();
+    expect(resolveSupply({ colonies: [{ index: 0 }] } as GameView)).toBeNull();
+    const colonies = [
+      { index: 0, supply: { used: 3, cap: 10 } },
+      { index: 1, supply: { used: 7, units: 6, reserved: 1, cap: 18, available: 11, max: 200, sources: [] } },
+    ];
+    expect(resolveSupply({ colonies } as GameView)).toMatchObject({ used: 3, cap: 10, units: 3, reserved: 0, available: 7 });
+    expect(resolveSupply({ colonies } as GameView, 1)).toMatchObject({ used: 7, units: 6, reserved: 1, cap: 18 });
   });
 });
 
@@ -219,7 +218,7 @@ describe('UnitsMenu DOM Component', () => {
     expect(root?.dataset.open).toBe('true');
 
     const supplyReadout = mockParent.querySelector('[data-supply]');
-    expect(supplyReadout?.textContent).toBe('0 / 10');
+    expect(supplyReadout?.textContent).toBe('— / —'); // no view yet
     expect(supplyReadout?.getAttribute('data-warning')).toBe('false');
 
     const harvesterCard = mockParent.querySelector('[data-unit="harvester"]');
@@ -376,6 +375,9 @@ describe('W02-24 Acceptance Check', () => {
     const instance = unitsFeature.hud![0].mount(parentEl, ctx);
     const mockParent = parentEl as unknown as MockElement;
     const supplyReadout = mockParent.querySelector('[data-supply]');
+    expect(supplyReadout?.textContent).toBe('— / —');
+    step(state, [], 1, pipeline); // the supply system writes colony.supply (the Hub's share)
+    instance.update?.(view(state) as unknown as GameView);
     expect(supplyReadout?.textContent).toBe('0 / 10');
 
     queueThreeHarvesters(mockParent, sendCommand);
@@ -402,7 +404,15 @@ describe('W02-24 Acceptance Check', () => {
     instance.update?.(view(state) as unknown as GameView);
     expect(supplyReadout?.textContent).toBe('10 / 10');
     expect(supplyReadout?.getAttribute('data-warning')).toBe('true');
+    expect(supplyReadout?.getAttribute('data-level')).toBe('full');
     expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('harvester ×2 ↻ · waiting(supply)');
+
+    // At the cap the QUEUE button is disabled with the reason (the host would reject with supply_cap).
+    const card = mockParent.querySelector('[data-unit="harvester"]');
+    const queueBtn = card?.querySelector('[data-queue-unit="harvester"]');
+    expect(card?.getAttribute('data-supply-blocked')).toBe('true');
+    expect(queueBtn?.disabled).toBe(true);
+    expect(card?.querySelector('[data-supply-reason]')?.textContent).toBe('Supply cap reached — build a Supply Depot');
 
     instance.dispose();
   });

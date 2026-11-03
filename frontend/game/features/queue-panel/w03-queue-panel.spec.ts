@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseWaves } from '@terra/contracts';
-import { ENTITY_KIND, ENTITY_STATE, type QueueEntry } from '@terra/sim';
+import { createState, ENTITY_KIND, ENTITY_STATE, insertRow, syncAllColonySupply, view, type QueueEntry } from '@terra/sim';
 import { QueuePanel, STORAGE_HINT_BUTTON_TEXT, STORAGE_HINT_TEXT } from './QueuePanel';
 import { buildUnitsCatalog, resolveSupply } from '../units-menu/catalog';
 import { HqPanel } from '../landfall/HqPanel';
@@ -143,7 +143,7 @@ describe('W03-19: QueuePanel v2 earmarks and Build Depot button', () => {
 });
 
 describe('W03-19: Units menu Builder card and Selection panel #id + W03 kinds', () => {
-  it('includes builder card in buildUnitsCatalog under W03 and counts builders in resolveSupply', () => {
+  it('includes builder card in buildUnitsCatalog under W03 and reads builders in the host colony supply', () => {
     expect(buildUnitsCatalog(parseWaves('..02')).map((c) => c.unit)).toEqual(['harvester']);
 
     const w03Cards = buildUnitsCatalog(parseWaves('..03'));
@@ -156,13 +156,18 @@ describe('W03-19: Units menu Builder card and Selection panel #id + W03 kinds', 
     expect(builder.powerText).toBe('−3 E/s');
     expect(builder.costSummary).toBe('45 Metals · 25 Minerals · 10 Biomass');
 
-    const supply = resolveSupply({
-      entities: [
-        { kind: ENTITY_KIND.harvester, hp: 160 },
-        { kind: ENTITY_KIND.builder, hp: 150 },
-      ],
-    });
-    expect(supply).toEqual({ used: 2, cap: 10 });
+    // The host counts builders like harvesters (row `supply: 1`); the menu reads the colony field it sends.
+    const state = createState({ planetId: 'p-sup', planetType: 'temperate', seed: 'sup', radius: 8 });
+    state.colonies.push({ index: 0, id: 'col-0', name: 'A', color: 0, status: 'active', changedAt: 0 });
+    for (const [kind, st] of [[ENTITY_KIND.commandHub, ENTITY_STATE.active], [ENTITY_KIND.harvester, ENTITY_STATE.idle], [ENTITY_KIND.builder, ENTITY_STATE.idle]]) {
+      const row = insertRow(state.entities, state.meta.nextEntityId++, 0);
+      state.entities.cols.kind[row] = kind;
+      state.entities.cols.owner[row] = 0;
+      state.entities.cols.hp[row] = 150;
+      state.entities.cols.state[row] = st;
+    }
+    syncAllColonySupply(state, 1);
+    expect(resolveSupply(view(state) as never)).toMatchObject({ used: 2, units: 2, cap: 10 });
   });
 
   it('displays #<entityId> on HqPanel and resolves W03 unit and building kinds', () => {

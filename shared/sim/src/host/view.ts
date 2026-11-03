@@ -3,6 +3,7 @@ import { ENTITY_KIND } from '../ecs/columns';
 import type { PlanetState, PlanetType } from '../kernel/state';
 import { resolveBuilderRow } from '../systems/factories-hub/unit';
 import { resolveHarvesterRow } from '../systems/harvest/unit';
+import { unitSupplyOfKind } from '../systems/supply/sources';
 import type { HqJob, HqUnitView } from '../systems/hq';
 import type { ColonyPowerSummary } from '../systems/power-core/types';
 
@@ -146,7 +147,7 @@ export function view(state: PlanetState): SimView {
       ent.unit = 'harvester';
       ent.label = String(harvesterRow.label ?? 'Harvester Drone');
       ent.archetype = String(harvesterRow.archetype ?? 'robot.miner');
-      ent.supply = Number(harvesterRow.supply ?? 1);
+      ent.supply = unitSupplyOfKind(kind);
       ent.powerDrainPerS = Number(harvesterRow.powerDrainPerS ?? 1.5);
       ent.speedTilesPerS = Number(harvesterRow.designSpeedTilesPerS ?? 1.5);
       ent.viewRadius = Number(harvesterRow.viewRadius ?? 7);
@@ -159,7 +160,7 @@ export function view(state: PlanetState): SimView {
       ent.unit = 'builder';
       ent.label = String(builderRow.label ?? 'Builder Drone');
       ent.archetype = String(builderRow.archetype ?? 'robot.builder');
-      ent.supply = Number(builderRow.supply ?? 1);
+      ent.supply = unitSupplyOfKind(kind);
       ent.powerDrainPerS = Number(builderRow.powerDrainPerS ?? 2.0);
       ent.speedTilesPerS = Number(builderRow.designSpeedTilesPerS ?? 1.5);
       ent.viewRadius = Number(builderRow.viewRadius ?? 7);

@@ -31,7 +31,7 @@ describe('W03-13 Earmarks — 60s starvation earmark & Harvester drain protectio
   it('queue a 200-Minerals building at 40 Minerals, keep queueing 15-Minerals Harvesters -> after 60 s it earmarks 160 Minerals and eventually starts', () => {
     const { state, colony } = setupColony('p-earmark-accept');
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
-    // a Command Hub whose power zone (radius 6) holds the Solar site at (2, 1)
+    // a finished Command Hub: its power zone (radius 6) holds the Solar site at (2, 1); its supply is the colony's cap
     expect(startBuildingConstruction(state, { owner: 0, building: 'commandHub', q: 2, r: -2, instant: true, costOverride: {}, tick: 0 }).ok).toBe(true);
 
     expect(DEFAULT_EARMARK_AFTER_TICKS).toBe(300);

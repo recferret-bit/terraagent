@@ -86,7 +86,6 @@ export default defineTable({
       producer: 'commandHub',
       bufferSlots: 5,
       productionRate: 1.0,
-      baseSupplyCap: 10,
       constructionLaneLimit: 20,
       unitsLaneLimit: 10,
     },

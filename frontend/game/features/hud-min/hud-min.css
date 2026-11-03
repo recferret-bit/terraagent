@@ -137,6 +137,22 @@
   color: var(--ta-fault-text);
 }
 
+/* Unit supply: warn near the cap (orange), alert at it (fault); the icon follows the value. */
+.ta-hud-min__stock--supply[data-level='warn'] .ta-hud-min__stock-val,
+.ta-hud-min__stock--supply[data-level='warn'] .ta-hud-min__icon--supply {
+  color: var(--ta-orange-hi);
+}
+
+.ta-hud-min__stock--supply[data-level='full'] .ta-hud-min__icon--supply {
+  color: var(--ta-fault-text);
+}
+
+.ta-hud-min .ta-res-breakdown__sources {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .ta-hud-min__cell {
   position: relative;
   display: inline-flex;

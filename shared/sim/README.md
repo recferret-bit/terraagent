@@ -165,6 +165,20 @@ Known limitations and open questions of the economy, the host journals and seati
   target, ctx?)` moves a colony to an exact stock with at most one withdraw and one add `admin.correction` posting by
   `system:admin` (scenarios, tests); gameplay never uses it.
 
+## Unit supply (`systems/supply/`)
+
+- **One source.** `computeColonySupply(state, i, data, { pending?, excludeTaskId? })` is the only computation:
+  `used = units + reserved`, where `units` sums `supply` of the colony's alive units (unit rows `kind: 'unit'`, plus
+  `hq.t1.supply` = 0) and `reserved` sums the supply of unit orders whose production started (queue `units` lane and
+  the legacy Hub lane; released when the unit spawns or the order is cancelled). `cap` sums `supplyProvided` of the
+  colony's active buildings (finished, alive, powered: the same rule as the storage caps; Hub 10, Supply Depot +8),
+  clamped to `hub.t1.supplyCapMax`.
+- **Synced field.** The `supply.sync` system (lifecycle slot) writes `colony.supply` `{ used, units, reserved, cap,
+  available, max, sources }`, stamping `changedAt` only when it changed; clients read it from the view on both hosts.
+- **One rule.** `checkUnitSupply(state, i, unit, data, opts)` answers "room for one more `unit`": the `enqueueTask`
+  handler rejects a `buildUnit` over the cap (`supply_cap`) or of an unknown unit (`invalid_args`), and both queues
+  keep a started-later unit `waiting: supply` with it (pass the live order list as `pending` while mutating it).
+
 ## Landing (`systems/landing/`, `systems/dev/land.ts`)
 
 - `checkColonyLanding` validates, `spawnColonyLanding` validates first and changes **nothing** when rejected; it

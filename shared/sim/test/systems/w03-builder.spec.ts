@@ -13,7 +13,7 @@ import {
   ENTITY_KIND,
   ENTITY_STATE,
   getBuildingJobs,
-  getColonySupply,
+  computeColonySupply,
   getHubUnitQueue,
   insertRow,
   isWorkerEligibleForJob,
@@ -81,7 +81,7 @@ describe('W03-02 Builder Drone in sim: Hub production (12 s / 60 ticks)', () => 
     const doneStep = step(state, [], 1, pipeline);
     expect(doneStep.events.some((e) => e.kind === 'unitProduced' && (e.data as { unit?: string }).unit === 'builder')).toBe(true);
     expect(getHubUnitQueue(state, 0)).toHaveLength(0);
-    expect(getColonySupply(state, 0).activeUnits).toBe(1);
+    expect(computeColonySupply(state, 0).units).toBe(1);
     expect(colony.stock['metals.t1']).toBeCloseTo(455, 4);
     expect(colony.stock['minerals.t1']).toBeCloseTo(475, 4);
     expect(colony.stock['bio.biomass']).toBeCloseTo(490, 4);
@@ -253,6 +253,6 @@ describe('W03-02 Builder Drone in sim: linked site prep and Hub batch count', ()
     const q2 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'builder', count: 2 });
     expect(q2.ok).toBe(true);
     for (let t = 0; t < 120; t++) step(state, [], 1, pipeline);
-    expect(getColonySupply(state, 0).activeUnits).toBe(3);
+    expect(computeColonySupply(state, 0).units).toBe(3);
   });
 });

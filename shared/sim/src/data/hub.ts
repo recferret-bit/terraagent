@@ -28,7 +28,9 @@ export default defineTable({
       hp: 1500,
       claimRadius: 10,
       storageCapPerFamily: 500,
-      supplyCap: 10,
+      // Unit supply (W02 production): this Hub's share of the colony supply cap, and the cap's ceiling (all sources).
+      supplyProvided: 10,
+      supplyCapMax: 200,
       powerZoneRadius: 6,
       pylonMaxLoad: 150,
       cancelRefundBp: 7500,

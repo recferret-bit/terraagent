@@ -7,7 +7,9 @@ import { extractHqFromView } from '../shared/hqView';
 import { readDaytime } from '../shared/daytime';
 import { readColonyPower } from '../shared/power';
 import { createHudIcon, type HudIconKind } from './hudIcons';
+import { readColonySupply } from '../shared/supply';
 import { formatRejectToast } from './rejectText';
+import { formatSupplyValue, renderSupplyBreakdown, supplyTitle } from './supplyBreakdown';
 import {
   bindHoverPopover,
   computeResourceFlow,
@@ -66,7 +68,7 @@ export function wholeStock(stock: Record<string, number> | undefined): Record<st
 interface StockSlot {
   el: HTMLElement;
   val: HTMLElement;
-  breakdown?: HTMLElement;
+  breakdown: HTMLElement;
 }
 
 function stockSlot(kind: HudIconKind, testid: string, name: string, family: FamilyKey | 'supply'): StockSlot {
@@ -76,19 +78,22 @@ function stockSlot(kind: HudIconKind, testid: string, name: string, family: Fami
   const val = makeSpan('ta-hud-min__stock-val', undefined, NO_DATA);
   el.append(createHudIcon(kind), makeSpan('ta-hud-min__sr-only', undefined, `${name}: `), val);
 
-  if (family !== 'supply') {
-    el.setAttribute('data-capped', 'false');
-    const breakdown = makeDiv('ta-res-chip__breakdown plate-sm', `res-breakdown-${family}`);
+  el.setAttribute('data-capped', 'false');
+  const breakdown = makeDiv('ta-res-chip__breakdown plate-sm', `res-breakdown-${family}`);
+  if (family === 'supply') {
+    el.setAttribute('data-level', 'ok');
+    renderSupplyBreakdown(breakdown, null);
+  } else {
     renderFamilyBreakdown(breakdown, family, {}, computeResourceFlow(undefined, undefined, 0));
-    el.appendChild(breakdown);
-    bindHoverPopover(el);
-    return { el, val, breakdown };
   }
-  return { el, val };
+  el.appendChild(breakdown);
+  bindHoverPopover(el);
+  return { el, val, breakdown };
 }
 
 /**
- * Compact top HUD header: icon-only Metals/Minerals/Bio/Supply stocks with hover tier & flow breakdowns,
+ * Compact top HUD header: icon-only Metals/Minerals/Bio stocks with hover tier & flow breakdowns, unit Supply
+ * `used / cap` with its sources breakdown,
  * inline HQ power cell bar with hover power breakdown, planet time of day, game clock, and reject/resource waiting toasts.
  */
 export class MinimalHud {
@@ -262,10 +267,17 @@ export class MinimalHud {
     this.bioSub.textContent = `(Biomass ${biomass} · Water ${water})`;
     this.bio.el.title = `Biomass: ${biomass} · Water: ${water} · Cap: ${caps.bio}`;
 
-    const supplyUsed = (col as { supplyUsed?: number } | undefined)?.supplyUsed ?? 0;
-    const supplyCap = (col as { supplyCap?: number } | undefined)?.supplyCap ?? 0;
-    this.supply.val.textContent = `${supplyUsed} / ${supplyCap}`;
-    this.supply.el.title = `Supply: ${supplyUsed} / ${supplyCap}`;
+    this.renderSupply(view, colonyIdx);
+  }
+
+  /** Unit supply `used / cap` from the host's `colony.supply`: warn colour near the cap, alert colour at it. */
+  private renderSupply(view: Record<string, unknown>, colonyIdx: number): void {
+    const supply = readColonySupply(view, colonyIdx);
+    const level = renderSupplyBreakdown(this.supply.breakdown, supply);
+    this.supply.val.textContent = formatSupplyValue(supply);
+    this.supply.el.title = supplyTitle(supply);
+    this.supply.el.setAttribute('data-level', level);
+    this.supply.el.setAttribute('data-capped', String(level === 'full'));
   }
 
   /** One reject reaches the HUD twice (the transport's `cmd.reject` and the store's rollback): toast it once. */
