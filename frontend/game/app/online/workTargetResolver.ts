@@ -89,6 +89,12 @@ export function targetHeightOffset(kind: InteractionTargetKind): number {
   return 0.22;
 }
 
+/** Terrain key of tile `(q, r)` (`grade` on a hole fills it, on a slope levels a dune); undefined off the map. */
+function tileTerrainKeyAt(tiles: ClientTiles | null | undefined, planetRadius: number | undefined, q: number, r: number): string | undefined {
+  const idx = tiles ? resolveTileIndex(tiles as unknown as Record<string, unknown>, planetRadius, q, r) : -1;
+  return idx >= 0 ? TERRAIN_KEY_BY_CODE[Number(tiles!.terrain?.[idx] ?? 0)] : undefined;
+}
+
 function inspectTileTargetKind(
   tiles: ClientTiles | null,
   planetRadius: number | undefined,
@@ -153,7 +159,7 @@ function resolveFromWorkJobsAndHarvest(
     if (assign.mode === 'harvest' && resPrefix) {
       return { q, r, targetKind: ParticlePresetRegistry.resolveTargetKind({ depositKind: resPrefix, biomeKey }) };
     }
-    if (assign.mode === 'clear' || assign.mode === 'break' || assign.mode === 'flatten' || assign.mode === 'fill') {
+    if (assign.mode === 'clear' || assign.mode === 'break') {
       return { q, r, targetKind: ParticlePresetRegistry.resolveTargetKind({ mode: assign.mode, biomeKey }) };
     }
     return { q, r, targetKind: inspectTileTargetKind(tiles, planetRadius, q, r, biomeKey, assign.mode === 'harvest') };
@@ -294,7 +300,8 @@ function resolveWorkerTargetFromView(
     if (cur.kind === 'build' || cur.kind === 'construct') return { q, r, targetKind: 'repair' };
     const tfOp = cur.op ?? lookupTerraformTaskOp(blobs, rec.owner, cur.orderId, q, r);
     if (tfOp && tfOp !== 'prepare' && tfOp !== 'work') {
-      return { q, r, targetKind: ParticlePresetRegistry.resolveTargetKind({ mode: tfOp, biomeKey }) };
+      const terrainKey = tileTerrainKeyAt(tiles, planetRadius, q, r);
+      return { q, r, targetKind: ParticlePresetRegistry.resolveTargetKind({ mode: tfOp, terrainKey, biomeKey }) };
     }
     return { q, r, targetKind: inspectTileTargetKind(tiles, planetRadius, q, r, biomeKey, false) };
   }
@@ -318,7 +325,8 @@ function resolveWorkerTargetFromView(
       if (tq !== rec.q || tr !== rec.r) {
         const tfOp = lookupTerraformTaskOp(blobs, rec.owner, undefined, tq, tr);
         if (tfOp && tfOp !== 'prepare' && tfOp !== 'work') {
-          return { q: tq, r: tr, targetKind: ParticlePresetRegistry.resolveTargetKind({ mode: tfOp, biomeKey }) };
+          const terrainKey = tileTerrainKeyAt(tiles, planetRadius, tq, tr);
+          return { q: tq, r: tr, targetKind: ParticlePresetRegistry.resolveTargetKind({ mode: tfOp, terrainKey, biomeKey }) };
         }
         return { q: tq, r: tr, targetKind: inspectTileTargetKind(tiles, planetRadius, tq, tr, biomeKey, false) };
       }
@@ -330,7 +338,8 @@ function resolveWorkerTargetFromView(
 
   const fallbackOp = lookupTerraformTaskOp(blobs, rec.owner, undefined, rec.q, rec.r);
   if (fallbackOp && fallbackOp !== 'prepare' && fallbackOp !== 'work') {
-    return { q: rec.q, r: rec.r, targetKind: ParticlePresetRegistry.resolveTargetKind({ mode: fallbackOp, biomeKey }) };
+    const terrainKey = tileTerrainKeyAt(tiles, planetRadius, rec.q, rec.r);
+    return { q: rec.q, r: rec.r, targetKind: ParticlePresetRegistry.resolveTargetKind({ mode: fallbackOp, terrainKey, biomeKey }) };
   }
 
   const neighborTarget = findNearestWorkableNeighborTile(rec, tiles, planetRadius, biomeKey);

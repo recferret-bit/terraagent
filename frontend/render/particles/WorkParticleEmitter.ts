@@ -118,12 +118,15 @@ export class WorkParticleEmitter {
   private site: ActiveWorkSiteInput;
   private active = true;
   private burstRemaining = 0;
+  private burstDuration = 1;
   private clock = 0;
-  private rngState = 1337;
+  private rngState: number;
 
   constructor(preset: ParticlePresetSpec, initialSite: ActiveWorkSiteInput) {
     this.preset = preset;
     this.site = initialSite;
+    // Per worker + preset seed: two bots working at once must not throw identical debris patterns.
+    this.rngState = [...`${preset.id}|${initialSite.workerId}`].reduce((h, c) => Math.imul(h ^ c.charCodeAt(0), 16777619) >>> 0, 2166136261);
     this.group.name = `WorkParticleEmitter(${preset.id})`;
 
     preset.layers.forEach((layerSpec, idx) => {
@@ -184,10 +187,9 @@ export class WorkParticleEmitter {
     return this.rngState / 0xffffffff;
   }
 
-  /** World xz of the worked target (view-focus culling, `WorkParticleSystem.update`). */
-  get targetXZ(): readonly [number, number] {
-    return [this.site.targetPos[0], this.site.targetPos[2]];
-  }
+  /** World x / z of the worked target (view-focus culling, `WorkParticleSystem.update`; per frame, no tuple). */
+  get targetX(): number { return this.site.targetPos[0]; }
+  get targetZ(): number { return this.site.targetPos[2]; }
 
   updateSite(site: ActiveWorkSiteInput): void {
     const moved = Math.hypot(site.targetPos[0] - this.site.targetPos[0], site.targetPos[2] - this.site.targetPos[2]) > 0.7;
@@ -200,6 +202,7 @@ export class WorkParticleEmitter {
 
   triggerBurst(durationSeconds = 0.95): void {
     this.burstRemaining = Math.max(this.burstRemaining, durationSeconds);
+    this.burstDuration = Math.max(1e-3, this.burstRemaining);
     this.active = true;
     this.seedAllParticles(1.55);
   }
@@ -436,7 +439,7 @@ export class WorkParticleEmitter {
     if (showRing) {
       const [tx, , tz] = this.site.targetPos;
       this.shockRing.position.set(tx, this.site.groundY + 0.035, tz);
-      const ringRadius = this.burstRemaining > 0 ? 0.45 + (1 - this.burstRemaining) * 1.45 : 0.32 + ringPhase * 0.78;
+      const ringRadius = this.burstRemaining > 0 ? 0.45 + (1 - this.burstRemaining / this.burstDuration) * 1.45 : 0.32 + ringPhase * 0.78;
       this.shockRing.scale.set(ringRadius, 1, ringRadius);
       this.ringMat.opacity = (1 - ringPhase) * 0.78;
     }
@@ -444,6 +447,7 @@ export class WorkParticleEmitter {
 
   /** Steps physics and returns true while any particle or beam is still alive. */
   step(dt: number): boolean {
+    if (!(dt > 0)) return true; // paused (0) or NaN: freeze this frame instead of poisoning the clock
     const clampedDt = Math.min(0.05, Math.max(0.001, dt));
     this.clock += clampedDt;
     if (this.burstRemaining > 0) {

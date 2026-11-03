@@ -59,6 +59,7 @@ export function validateBuildingPlacement(state: SimState, opts: ValidateHubPlac
     building: opts.buildingKind,
     tier: opts.tier,
     builderEntityId: opts.builderEntityId,
+    hubOnly: true, // W02 buildings are queued (`enqueueTask`), never built through `placeBuilding` (GP-05)
     data: opts.data,
   });
   const tiles: FootprintTileInfo[] = placement.tiles

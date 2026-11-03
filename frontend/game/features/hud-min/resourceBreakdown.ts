@@ -1,3 +1,5 @@
+import { formatSignedEPerS, gridBalance } from '../shared/power';
+
 export type FamilyKey = 'metals' | 'minerals' | 'bio';
 
 export interface SubResourceDef {
@@ -242,10 +244,10 @@ export function renderPowerBreakdown(
   power: Record<string, unknown> | undefined,
   hqCell?: { cell: number; cellMax: number } | null,
   includeCellLine = true,
+  /** The grid supply / demand / net lines (W02 power-core); false hides them (`?waves=..01`), the HQ cell line stays. */
+  includeGrid = true,
 ): void {
-  const sup = power && typeof power.supply === 'number' ? Math.round(Number(power.supply)) : 0;
-  const dem = power && typeof power.demand === 'number' ? Math.round(Number(power.demand)) : 0;
-  const net = power && typeof power.net === 'number' ? Math.round(Number(power.net)) : sup - dem;
+  const g = gridBalance(power);
 
   if (!container.querySelector('.ta-res-breakdown__header')) {
     container.replaceChildren();
@@ -276,7 +278,11 @@ export function renderPowerBreakdown(
     netEl.className = 'ta-res-breakdown__flow-line ta-res-breakdown__net';
     netEl.setAttribute('data-testid', 'res-net-energy');
 
-    flowEl.append(incEl, spendEl, netEl);
+    const shedEl = document.createElement('div');
+    shedEl.className = 'ta-res-breakdown__flow-line ta-res-breakdown__spending';
+    shedEl.setAttribute('data-testid', 'res-shed-energy');
+
+    flowEl.append(incEl, spendEl, shedEl, netEl);
     container.appendChild(flowEl);
   }
 
@@ -287,14 +293,29 @@ export function renderPowerBreakdown(
       : 'HQ Cell: — E';
   }
 
-  const incEl = container.querySelector('[data-testid="res-income-energy"]');
-  if (incEl) incEl.textContent = `Income (Supply): +${sup} E/s`;
+  const incEl = container.querySelector<HTMLElement>('[data-testid="res-income-energy"]');
+  if (incEl) {
+    incEl.hidden = !includeGrid;
+    incEl.textContent = `Income (Supply): +${g.supply} E/s`;
+  }
 
-  const spendEl = container.querySelector('[data-testid="res-spending-energy"]');
-  if (spendEl) spendEl.textContent = `Spending (Demand): −${dem} E/s`;
+  const spendEl = container.querySelector<HTMLElement>('[data-testid="res-spending-energy"]');
+  if (spendEl) {
+    spendEl.hidden = !includeGrid;
+    spendEl.textContent = `Spending (Demand): −${g.requested} E/s`;
+  }
 
-  const netEl = container.querySelector('[data-testid="res-net-energy"]');
-  if (netEl) netEl.textContent = `Net: ${net >= 0 ? '+' : '−'}${Math.abs(net)} E/s`;
+  const shedEl = container.querySelector<HTMLElement>('[data-testid="res-shed-energy"]');
+  if (shedEl) {
+    shedEl.hidden = !includeGrid || g.shed <= 0;
+    shedEl.textContent = `Brownout: ${g.shed} E/s offline`;
+  }
+
+  const netEl = container.querySelector<HTMLElement>('[data-testid="res-net-energy"]');
+  if (netEl) {
+    netEl.hidden = !includeGrid;
+    netEl.textContent = `Net: ${formatSignedEPerS(g.net)}`;
+  }
 }
 
 export function bindHoverPopover(chipEl: HTMLElement): void {

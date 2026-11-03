@@ -1,4 +1,4 @@
-import { ENTITY_KIND, ENTITY_STATE, hexDistance, type CompiledDataLike, type ViewEntity } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, entityFootprint, getBuildingFootprintTiles, hexDistance, occupiesGround, type CompiledDataLike, type ViewEntity } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import type { SendCommand } from '../../net/commandBus';
 import { forEachEntity, type ClientView } from '../../store/replica/viewCodec';
@@ -9,6 +9,7 @@ import {
   buildSelectedEntityFromRow,
   buildSupplementalUnitMap,
   enrichHqSelectedView,
+  hubUnitsLaneTaskId,
   inspectDepositAt,
   isBuildingCoveringTile,
   normalizeEntityRowWithSupplements,
@@ -332,11 +333,9 @@ export class LandfallController {
     if (!latest?.entities || (!(latest.entities instanceof Float32Array) && !Array.isArray(latest.entities))) return false;
     let hit = false;
     forEachEntity(latest.entities, latest.count, (e) => {
-      if (hit || (e.hpMax > 0 && e.hp <= 0)) return;
-      const size = e.kind === ENTITY_KIND.commandHub ? 3 : (e.kind === ENTITY_KIND.metalsExtractor || e.kind === ENTITY_KIND.solar ? 2 : (e.kind === ENTITY_KIND.pod ? 1 : 0));
-      if (size <= 0) return;
-      const minOff = -Math.floor((size - 1) / 2);
-      if (q >= e.q + minOff && q < e.q + minOff + size && r >= e.r + minOff && r < e.r + minOff + size) hit = true;
+      // the sim's ground rule (GP-23): alive buildings only (no drop pod), their row footprint
+      if (hit || !occupiesGround(e)) return;
+      hit = getBuildingFootprintTiles(e.q, e.r, entityFootprint(e.kind, this.opts.store?.simData?.() ?? undefined)).some((p) => p.q === q && p.r === r);
     });
     return hit;
   }
@@ -371,13 +370,13 @@ export class LandfallController {
     const isConstructingBuilding = !sel.isUnit && (sel.currentJob === 'constructing' || sel.state === ENTITY_STATE.constructing);
     const taskId = isConstructingBuilding
       ? `building:${sel.entityId}`
-      : !sel.isUnit && sel.kind === ENTITY_KIND.commandHub
-        ? 'all'
+      : !sel.isUnit && sel.kind === ENTITY_KIND.commandHub // the Hub's job is its Units lane, never every lane ('all')
+        ? hubUnitsLaneTaskId(this.latestView ?? this.opts.store?.latest, this.getOwnerColonyIndex() ?? 0)
         : `harvester:${sel.entityId}`;
+    if (taskId === null) return false;
     if (this.opts.store?.sendCommand) {
       this.opts.store.sendCommand({ type: 'cancelTask', taskId });
-    }
-    if (this.opts.sendCommand) {
+    } else if (this.opts.sendCommand) { // one channel, like orderMove / stopSelected (both are set online)
       void this.opts.sendCommand('cancelTask', { taskId });
     }
     return Boolean(this.opts.store?.sendCommand || this.opts.sendCommand);

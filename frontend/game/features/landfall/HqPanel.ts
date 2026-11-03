@@ -160,11 +160,11 @@ export class HqPanel {
     this.el.hidden = false;
 
     this.slotEl.textContent = meta.code;
-    this.countEl.textContent = stageLabel;
+    this.countEl.hidden = true; // the stage is the footer status (one place, like a unit's job)
     this.titleEl.textContent = meta.name;
 
-    this.hpKey.textContent = 'DEPOSIT RESERVES';
-    this.hpText.textContent = `DEPOSIT RESERVES: ${Math.round(deposit.remaining)} / ${deposit.maxUnits} LEFT`;
+    this.hpKey.textContent = 'RESERVES';
+    this.hpText.textContent = `${Math.round(deposit.remaining)} / ${deposit.maxUnits}`;
     this.hpFill.style.width = `${clampPct(deposit.remaining, deposit.maxUnits).toFixed(1)}%`;
 
     this.cellStat.hidden = true;
@@ -221,6 +221,7 @@ export class HqPanel {
 
     this.el.hidden = false;
     this.slotEl.textContent = entity.shortCode;
+    this.countEl.hidden = false;
     this.countEl.textContent = '1';
     this.titleEl.textContent = entity.kindLabel;
     this.hpKey.textContent = 'HULL HP';

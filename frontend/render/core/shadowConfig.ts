@@ -251,7 +251,8 @@ export function followShadowTarget(vp: ColonyViewport, target: THREE.Vector3): v
 export function fitShadowToView(vp: ColonyViewport, focus: Readonly<ViewFocus>): void {
   const rec = viewports.get(vp);
   if (!rec) return;
-  rec.focus = { ...focus };
+  if (rec.focus) Object.assign(rec.focus, focus); // per frame: reuse the record, no allocation
+  else rec.focus = { ...focus };
   followShadowTarget(vp, rec.lastTarget);
 }
 

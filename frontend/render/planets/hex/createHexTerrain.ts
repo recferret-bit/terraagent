@@ -212,7 +212,7 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       if (uniforms.uTime) uniforms.uTime.value = elapsedTime;
       if (water.uniforms.uTime) water.uniforms.uTime.value = elapsedTime;
       props.timeU.value = elapsedTime;
-      props.cullToFocus(); // hide what lies off the view focus (one frame stale; the focus has a 1.5x margin)
+      props.cullToFocus(); // hide what lies off the view focus (one frame stale; covered by the focus's 4 m edge pad)
       water.cullToFocus(); // surface + fauna buckets
       ambient.setTime(elapsedTime);
     },

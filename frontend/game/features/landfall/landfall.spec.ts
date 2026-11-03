@@ -19,7 +19,7 @@ import { PROGRESS_BAR_COLOR, UnitHealthBars } from '../../app/online/unitHealthB
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
 import { LocalHost } from '../../store/local/LocalHost';
-import { unitHasTerraformJob } from './selectionHelpers';
+import { hubUnitsLaneTaskId, isBuildingCoveringTile, unitHasTerraformJob } from './selectionHelpers';
 import landfallFeature, { extractHqFromView, extractSelectableEntities, hqJobFromStateCode, mountLandfall } from './index';
 
 /** A clean `document.body` for each test (jsdom). */
@@ -361,7 +361,9 @@ describe('W02: Resource deposit inspection and right-click move', () => {
     });
     expect(hudRoot.querySelector('[data-testid="selection-slot"]')?.textContent).toBe('FE');
     expect(hudRoot.querySelector('[data-testid="hq-title"]')?.textContent).toBe('IRON DEPOSIT · T1');
-    expect(hudRoot.querySelector('[data-testid="hq-hp"]')?.textContent).toBe('DEPOSIT RESERVES: 500 / 500 LEFT');
+    expect(hudRoot.querySelector('[data-testid="hq-hp"]')?.textContent).toBe('500 / 500');
+    expect(hudRoot.querySelector('.ta-hq-panel__key')?.textContent).toBe('RESERVES');
+    expect(hudRoot.querySelector<HTMLElement>('[data-testid="selection-count"]')?.hidden).toBe(true); // stage shown once, in the footer
     expect(hudRoot.querySelector('[data-testid="hq-job"]')?.textContent).toBe('FULL');
     expect(hudRoot.querySelector('[data-testid="hq-queue"]')?.textContent).toBe('(4, 0)');
 
@@ -371,7 +373,7 @@ describe('W02: Resource deposit inspection and right-click move', () => {
     mounted.update(host.sync(true));
     expect(mounted.getSelectedDeposit()?.remaining).toBe(250);
     expect(mounted.getSelectedDeposit()?.stage).toBe('half');
-    expect(hudRoot.querySelector('[data-testid="hq-hp"]')?.textContent).toBe('DEPOSIT RESERVES: 250 / 500 LEFT');
+    expect(hudRoot.querySelector('[data-testid="hq-hp"]')?.textContent).toBe('250 / 500');
     expect(hudRoot.querySelector('[data-testid="hq-job"]')?.textContent).toBe('HALF');
 
     const norm = extractSelectableEntities({
@@ -418,5 +420,45 @@ describe('CANCEL on a unit doing a terraform job', () => {
     cancelBtn.click();
     expect(sendSpy).toHaveBeenCalledWith({ type: 'cancelTask', taskId: `harvester:${hqId}` });
     mounted.dispose();
+  });
+});
+
+describe('CANCEL JOB: one command per click; the Command Hub cancels only its running Units-lane job', () => {
+  it('store and bus both set (the online wiring) -> exactly one cancelTask, through the store', () => {
+    freshBody();
+    const host = new LocalHost({ flags: ['W00', 'W01', 'W02'], radius: 16 });
+    const harvId = spawnHarvesterUnit(host.state, { owner: 0, q: 2, r: 0 });
+    host.sync(true);
+    const storeSpy = vi.spyOn(host.store, 'sendCommand');
+    const busSpy = vi.fn(async () => ({ ok: true as const, appliedAtTick: 1 }));
+    const mounted = mountLandfall({ hudRoot: document.createElement('div'), store: host.store, sendCommand: busSpy });
+    mounted.update(host.sync(false));
+    expect(mounted.clickTile(2, 0)).toBe(true);
+    expect(mounted.getSelectedEntityId()).toBe(harvId);
+    mounted.controller.cancelSelected();
+    expect(storeSpy.mock.calls.filter(([c]) => (c as { type?: string }).type === 'cancelTask')).toHaveLength(1);
+    expect(busSpy).not.toHaveBeenCalled();
+    mounted.dispose();
+  });
+
+  it('hubUnitsLaneTaskId names the own colony\'s running (else next) Units entry, never "all"', () => {
+    const view = {
+      colonies: [
+        { index: 0, queue: [{ taskId: 'b-1', lane: 'construction', state: 'in_progress' }, { taskId: 'u-2', lane: 'units', state: 'waiting' }] },
+        { index: 1, queue: [{ taskId: 'u-9', lane: 'units', state: 'in_progress' }] },
+      ],
+    };
+    expect(hubUnitsLaneTaskId(view, 0)).toBe('u-2'); // nothing running: the next queued Units entry, never construction
+    expect(hubUnitsLaneTaskId({ colonies: [{ index: 0, queue: [] }] }, 0)).toBeNull();
+    expect(hubUnitsLaneTaskId(view, 1)).toBe('u-9');
+  });
+});
+
+describe('building hit test matches the sim footprint (getBuildingFootprintTiles)', () => {
+  it('a 2x2 Extractor at (3, 0) covers exactly (3..4, 0..1): the deposit west / north of it stays clickable', () => {
+    const ext = { kind: ENTITY_KIND.metalsExtractor, q: 3, r: 0, x: 3.5, y: 0.5, footprintW: 2, footprintD: 2 } as unknown as Parameters<typeof isBuildingCoveringTile>[0];
+    const covered: string[] = [];
+    for (let r = -2; r <= 3; r++) for (let q = 1; q <= 6; q++) if (isBuildingCoveringTile(ext, q, r)) covered.push(`${q},${r}`);
+    expect(covered.sort()).toEqual(['3,0', '3,1', '4,0', '4,1']);
   });
 });

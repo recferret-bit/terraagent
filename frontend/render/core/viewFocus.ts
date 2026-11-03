@@ -63,15 +63,26 @@ const tmpNear = new THREE.Vector3();
 const tmpFar = new THREE.Vector3();
 const hits: Array<[number, number]> = ndc.map(() => [0, 0]);
 
-/** Where the ray through NDC (nx, ny) meets the plane y = groundY; rays above the horizon are clamped far out. */
-function groundHit(camera: THREE.Camera, nx: number, ny: number, groundY: number, out: [number, number]): void {
+/** Horizontal reach (m) of a corner hit: rays at / above the horizon and grazing ones just below it end this far out. */
+const MAX_HIT_REACH = VIEW_FOCUS_MAX_RADIUS * 2;
+
+/**
+ * Where the ray through NDC (nx, ny) meets the plane y = groundY, its horizontal distance from the near point capped
+ * at `MAX_HIT_REACH`. The cap is on the horizontal reach (not the ray length) so it is continuous across the horizon:
+ * a ray just below it and one just above it both end `MAX_HIT_REACH` out. (Capping the ray length at 4× while rays
+ * above the horizon got 2× put a grazing camera's far corners ~880 m out and the capped circle off the screen.)
+ */
+function groundHit(camera: THREE.Camera, nx: number, ny: number, groundY: number, out: [number, number]): boolean {
   tmpNear.set(nx, ny, -1).unproject(camera);
   tmpFar.set(nx, ny, 1).unproject(camera).sub(tmpNear).normalize();
   const dy = tmpFar.y;
-  const t = dy < -1e-3 ? (groundY - tmpNear.y) / dy : VIEW_FOCUS_MAX_RADIUS * 2;
-  const tc = Math.min(Math.max(t, 0), VIEW_FOCUS_MAX_RADIUS * 4);
-  out[0] = tmpNear.x + tmpFar.x * tc;
-  out[1] = tmpNear.z + tmpFar.z * tc;
+  const horiz = Math.hypot(tmpFar.x, tmpFar.z);
+  const full = dy < -1e-3 ? Math.max(0, (groundY - tmpNear.y) / dy) * horiz : Infinity;
+  const reach = Math.min(full, MAX_HIT_REACH);
+  const s = horiz > 1e-6 ? reach / horiz : 0;
+  out[0] = tmpNear.x + tmpFar.x * s;
+  out[1] = tmpNear.z + tmpFar.z * s;
+  return full > MAX_HIT_REACH;
 }
 
 /** Fills `edges` / `quad` from the 4 ground corners (any winding), scaled by `margin` about (cx, cz) and padded. */
@@ -113,11 +124,12 @@ export function updateViewFocus(camera: THREE.Camera, groundY = 0): Readonly<Vie
     clearEdges();
   } else {
     camera.updateMatrixWorld();
-    for (let i = 0; i < ndc.length; i++) groundHit(camera, ndc[i]![0], ndc[i]![1], groundY, hits[i]!);
+    let capped = false; // a corner at / near the horizon: the footprint is unbounded, report the capped radius
+    for (let i = 0; i < ndc.length; i++) capped = groundHit(camera, ndc[i]![0], ndc[i]![1], groundY, hits[i]!) || capped;
     let cx = 0, cz = 0;
     for (let i = 0; i < 4; i++) { cx += hits[i]![0]; cz += hits[i]![1]; }
     cx /= 4; cz /= 4;
-    let r = 0;
+    let r = capped ? VIEW_FOCUS_MAX_RADIUS : 0;
     for (const [x, z] of hits) r = Math.max(r, Math.hypot(x - cx, z - cz));
     focus.x = cx; focus.z = cz;
     focus.visibleRadius = Math.min(r, VIEW_FOCUS_MAX_RADIUS);

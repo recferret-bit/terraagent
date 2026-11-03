@@ -143,20 +143,23 @@ export function syncHarvesterView(
   const owner = state.entities.cols.owner[row];
   if (owner >= 0 && state.colonies[owner]) {
     const col = state.colonies[owner];
-    const prevHarvesters = Array.isArray(col.harvesters)
-      ? (col.harvesters as HarvesterUnitView[]).filter((u) => u.entityId !== unitView.entityId)
-      : [];
-    const nextHarvesters = [...prevHarvesters, unitView];
-    (nextHarvesters as unknown as Record<number, HarvesterUnitView>)[unitView.entityId] = unitView;
-    col.harvesters = nextHarvesters;
-
-    const prevList = Array.isArray(col.units)
-      ? (col.units as HarvesterUnitView[]).filter((u) => u.entityId !== unitView.entityId)
-      : [];
-    col.units = [...prevList, unitView];
+    col.harvesters = [...withoutUnitView(col.harvesters, unitView.entityId), unitView];
+    col.units = [...withoutUnitView(col.units, unitView.entityId), unitView];
     col.changedAt = tick;
   }
   return unitView;
+}
+
+/**
+ * The views of `list` (`col.harvesters` / `col.units`) other than `entityId`'s. Dense arrays only: an index alias
+ * (`list[entityId] = view`) made the array sparse, and the snapshot codec saves its holes as `null`, so a restored
+ * planet crashed here (`reading 'entityId'` of null). Non-object entries are dropped, which heals such snapshots.
+ */
+export function withoutUnitView(list: unknown, entityId: number): HarvesterUnitView[] {
+  if (!Array.isArray(list)) return [];
+  return (list as unknown[]).filter(
+    (u): u is HarvesterUnitView => !!u && typeof u === 'object' && (u as HarvesterUnitView).entityId !== entityId,
+  );
 }
 
 export function spawnHarvesterUnit(

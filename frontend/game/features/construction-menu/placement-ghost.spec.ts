@@ -167,7 +167,7 @@ describe('evaluatePlacementGhost - terrain & bounds', () => {
     });
     expect(ghost.valid).toBe(false);
     expect(ghost.statusColor).toBe('red');
-    expect(ghost.reason).toBe('out of bounds');
+    expect(ghost.reason).toBe('outside the map'); // the shared sim text (D-37)
   });
 
   it('detects impassable terrain (deep water, ridge, moat)', () => {
@@ -184,7 +184,7 @@ describe('evaluatePlacementGhost - terrain & bounds', () => {
     });
     expect(ghostDeep.valid).toBe(false);
     expect(ghostDeep.statusColor).toBe('red');
-    expect(ghostDeep.reason).toBe('impassable terrain');
+    expect(ghostDeep.reason).toBe('water');
 
     setTile(0, 0, { terrain: TERRAIN.flat, prep: PREP.ridge });
     const ghostRidge = evaluatePlacementGhost({
@@ -197,7 +197,23 @@ describe('evaluatePlacementGhost - terrain & bounds', () => {
     });
     expect(ghostRidge.valid).toBe(false);
     expect(ghostRidge.statusColor).toBe('red');
-    expect(ghostRidge.reason).toBe('impassable terrain');
+    expect(ghostRidge.reason).toBe('ridge / moat');
+  });
+});
+
+describe('evaluatePlacementGhost - the host rule decides (D-37, evaluatePlacement)', () => {
+  it('a Solar on a deposit tile and a site in foreign territory are red, as the server rejects them', () => {
+    const { view, setTile, hIndex } = createPlanetView(3);
+    setTile(1, 0, { deposit: DEPOSIT.metals });
+    const onDeposit = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
+    expect([onDeposit.valid, onDeposit.statusColor]).toEqual([false, 'red']);
+
+    setTile(1, 0, { deposit: DEPOSIT.none });
+    for (const [q, r] of [[0, 0], [1, 0], [0, 1], [1, 1]]) view.tiles.owner[hIndex.indexOf(q, r)] = 1; // colony 1's ground
+    const foreign = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view, colonyId: 0 });
+    expect([foreign.valid, foreign.reason]).toEqual([false, 'not your territory']);
+    const own = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view, colonyId: 1 });
+    expect([own.valid, own.reason]).toEqual([true, 'valid site']);
   });
 });
 

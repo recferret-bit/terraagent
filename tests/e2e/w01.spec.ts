@@ -86,7 +86,10 @@ test.afterAll(async () => {
 });
 
 test('@hack 1. open /play.html in a fresh profile -> orbital boot splash, then hand-over to the dev planet with no click', async () => {
-  await page.goto('/play.html');
+  // The W01 UI (the bottom-right Hub menu with only Command Hub, its ghost and prep bill) is what this suite checks.
+  // With W02 on, the Command Dock BUILD tab (full catalog) replaces that menu by design (hub-placement/index.ts
+  // `hiddenByW02`), so narrow the client to ..01; the server still runs every wave it has on.
+  await page.goto('/play.html?waves=..01');
   const splash = page.locator('[data-testid=orbital-splash]');
   await expect(splash).toBeAttached({ timeout: 30_000 });
 

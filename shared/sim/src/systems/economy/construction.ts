@@ -1,10 +1,10 @@
 import type { ResourceKey } from '@terra/contracts';
-import { compileData, dataRow, type CompiledRow } from '../../data';
+import { CANCEL_REFUND_RATE, compileData, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, removeRow, rowOf, setField } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
+import { PREP, TERRAIN } from '../../grid/layers';
 import { bumpPathEpoch, setTilePrep } from '../../grid/tileModel';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -12,8 +12,9 @@ import type { StepContext } from '../../kernel/context';
 import { setBlob, touchTile, type ColonyState, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { requestMove } from '../../units/movement/orchestrator';
-import { buildingFootprints, occupiedGroundTiles } from '../construction/occupancy';
+import { buildingFootprints } from '../construction/occupancy';
 import { constructionOrdersOf } from '../construction/orders';
+import { colonyWho } from '../find';
 import {
   checkCostAffordability,
   debitCost,
@@ -23,7 +24,7 @@ import {
   recomputeFamilyCaps,
   refundCost,
 } from './ledger';
-import { footprintTerrainBlock } from './siteTerrain';
+import { buildingSiteBlock } from './siteTerrain';
 import { claimTerritoryRadius } from '../territory-claim';
 
 export interface BuildingJobRecord {
@@ -214,6 +215,8 @@ function validateFootprintAndCost(
   state: PlanetState,
   colony: ColonyState,
   row: CompiledRow,
+  q: number,
+  r: number,
   fpIndices: readonly number[],
   cost: Partial<Record<ResourceKey, number>>,
   workRate: number,
@@ -222,16 +225,8 @@ function validateFootprintAndCost(
   tick: number,
   data?: CompiledDataLike,
 ): { ok: true } | { ok: false; code: string; detail?: string } {
-  const layers = state.grid.layers;
-  const occupied = occupiedGroundTiles(state, data); // buildings, not `anchors` (territory claim count)
-  let hasMetalsDeposit = false;
-  for (const tileIdx of fpIndices) {
-    const tb = footprintTerrainBlock(state, [tileIdx]);
-    if (tb) return { ok: false, code: 'terrain_unbuildable', detail: tb.text };
-    if (occupied.has(tileIdx)) return { ok: false, code: 'site_blocked', detail: 'tile occupied' };
-    if (layers.deposit[tileIdx] === DEPOSIT.metals && Number(layers.richness?.[tileIdx] ?? 10000) > 0) hasMetalsDeposit = true;
-  }
-  if (row.requiresDeposit === 'metals' && !hasMetalsDeposit) return { ok: false, code: 'site_blocked', detail: 'no deposit' };
+  const site = buildingSiteBlock(state, { owner: colony.index, building: String(row.building ?? ''), q, r }, fpIndices, data);
+  if (site) return { ok: false, ...site };
 
   const stock = colony.stock as Record<string, number>;
   const totalStock = Object.values(stock).reduce((a, b) => a + b, 0);
@@ -275,7 +270,7 @@ export function startBuildingConstruction(
   const effectiveTicks = Math.round(buildTicks / workerCheck.workRate);
   const colony = ensureColony(state, opts.owner, tick);
   const cost = (opts.costOverride ?? row.cost ?? {}) as Partial<Record<ResourceKey, number>>;
-  const check = validateFootprintAndCost(state, colony, row, fp.indices, cost, workerCheck.workRate, buildTicks, Boolean(opts.instant), tick, data);
+  const check = validateFootprintAndCost(state, colony, row, opts.q, opts.r, fp.indices, cost, workerCheck.workRate, buildTicks, Boolean(opts.instant), tick, data);
   if (!check.ok) return check;
 
   for (const tileIdx of fp.indices) {
@@ -342,7 +337,11 @@ function removeBuildingAndClearFootprint(
   bumpPathEpoch(state.meta);
 }
 
-/** Cancels an in-progress building construction, removing the entity and refunding 50% of `spentCost`. */
+/**
+ * Cancels an in-progress building construction, removing the entity and refunding `cancelRefundRatio` (50 %) of
+ * `spentCost`. A finished building is never cancelled (`invalid_args`: demolish it instead), also not in the step
+ * between its completion (slot 6) and its queue entry turning `done` (slot 4 of the next step).
+ */
 export function cancelBuildingConstruction(
   state: PlanetState,
   entityId: number,
@@ -356,6 +355,8 @@ export function cancelBuildingConstruction(
   if (eRow < 0 && !job) return { ok: false, code: 'unknown_entity' };
   const owner = eRow >= 0 ? state.entities.cols.owner[eRow] : job!.owner;
   if (colonyIndex !== undefined && colonyIndex !== null && owner !== colonyIndex) return { ok: false, code: 'not_own_colony' };
+  if (eRow >= 0 && state.entities.cols.state[eRow] !== ENTITY_STATE.constructing) return { ok: false, code: 'invalid_args' };
+  const ratio = Number(resolveBuildingRow(eRow >= 0 ? buildingKindName(state.entities.cols.kind[eRow]) : job!.building, data)?.row.cancelRefundRatio ?? CANCEL_REFUND_RATE);
   if (eRow >= 0) removeBuildingAndClearFootprint(state, entityId, eRow, tick, data, job);
 
   const colony = ensureColony(state, owner, tick);
@@ -363,9 +364,9 @@ export function cancelBuildingConstruction(
   const refundedAmounts: Partial<Record<ResourceKey, number>> = {};
   let refunded = false;
   for (const [k, v] of Object.entries(spent) as [ResourceKey, number][]) {
-    if (v > 0) { refundedAmounts[k] = v * 0.5; refunded = true; }
+    if (v > 0) { refundedAmounts[k] = v * ratio; refunded = true; }
   }
-  if (refunded) refundCost(colony, spent, 0.5, tick);
+  if (refunded) refundCost(colony, spent, ratio, tick);
   if (jobs[entityId]) { delete jobs[entityId]; saveJobsMap(state, jobs, tick); }
   return { ok: true, refunded, refundedAmounts };
 }
@@ -473,7 +474,8 @@ export const constructionSystem = defineSystem({
           claimHubTerritory(state, owner, cols.q[row], cols.r[row], Number(resolved?.row.claimRadius ?? 10), ctx.tick);
           recomputeFamilyCaps(colony, true, 0, ctx.tick);
         }
-        ctx.emit({ kind: 'buildingCompleted', colonyIds: [owner], data: { entityId: id, building: bName, kind: bName, q: cols.q[row], r: cols.r[row], playerId: colony.id } });
+        const { colonyIdStr, who } = colonyWho(state, owner); // the W01 event shape (contract `buildingCompleted`)
+        ctx.emit({ kind: 'buildingCompleted', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, entityId: id, building: bName, kind: bName, tier: cols.tier[row] || 1, q: cols.q[row], r: cols.r[row] } });
         if (jobs[id]) { delete jobs[id]; jobsChanged = true; }
       } else if (jobs[id]) {
         const hasSpent = Object.values(spentCost).some((v) => (v ?? 0) > 0);

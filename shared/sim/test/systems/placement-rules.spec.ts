@@ -120,3 +120,57 @@ describe('shared placement rules: one function for server handler and client gho
     expect(res.block).toBe('occupied');
   });
 });
+
+/** D-37, W02-08/09: the W02 buildings (Metals Extractor, Solar) run the same `evaluatePlacement` as the Hub. */
+describe('shared placement rules: W02 building rows', () => {
+  function w02Host(): SimHost {
+    const h = new SimHost({ flags: parseWaves('..02') });
+    h.load(createPlanet({ type: 'flat', seed: 'placement-rules-w02', radius: 12 }));
+    spawnHqUnit(h.state, { owner: 0, q: 0, r: 0 });
+    return h;
+  }
+  const at = (h: SimHost, q: number, r: number): number => hexIndex(h.state.grid.radius).indexOf(q, r);
+  const evalAt = (h: SimHost, building: string, q: number, r: number) =>
+    evaluatePlacement(placementWorldFromState(h.state), { colonyId: 0, building, q, r, requireBuilder: false });
+
+  it('a Solar may not stand on any deposit tile (also a depleted one); free Flat ground is fine', () => {
+    const h = w02Host();
+    expect(evalAt(h, 'solar', 4, 2).ok).toBe(true);
+    setTileDeposit(h.state.grid, at(h, 5, 3), DEPOSIT.minerals, 10000);
+    expect(evalAt(h, 'solar', 4, 2)).toMatchObject({ ok: false, code: 'terrain_unbuildable', block: 'deposit' });
+    setTileDeposit(h.state.grid, at(h, 5, 3), DEPOSIT.minerals, 0);
+    expect(evalAt(h, 'solar', 4, 2)).toMatchObject({ ok: false, block: 'deposit' });
+  });
+
+  it('a Metals Extractor must cover a non-depleted metals deposit (site_blocked otherwise)', () => {
+    const h = w02Host();
+    expect(evalAt(h, 'metalsExtractor', 4, 2)).toMatchObject({ ok: false, code: 'site_blocked', block: 'noDeposit' });
+    setTileDeposit(h.state.grid, at(h, 5, 2), DEPOSIT.metals, 10000);
+    expect(evalAt(h, 'metalsExtractor', 4, 2).ok).toBe(true);
+    setTileDeposit(h.state.grid, at(h, 5, 2), DEPOSIT.metals, 0);
+    expect(evalAt(h, 'metalsExtractor', 4, 2)).toMatchObject({ ok: false, block: 'noDeposit' });
+  });
+
+  it('refuses foreign territory and trees, through evaluatePlacement and the enqueueTask build path', () => {
+    const h = w02Host();
+    h.state.grid.layers.owner[at(h, 4, 2)] = 1;
+    expect(evalAt(h, 'solar', 4, 2)).toMatchObject({ ok: false, code: 'not_own_territory', block: 'foreign' });
+    setTileTerrain(h.state.grid, at(h, 5, -3), TERRAIN.forest);
+    h.submit(mkCmd({ taskId: 'w02-a', task: { kind: 'build', building: 'solar', q: 4, r: 2 } }, 'enqueueTask'));
+    h.submit(mkCmd({ taskId: 'w02-b', task: { kind: 'build', building: 'solar', q: 4, r: -3 } }, 'enqueueTask'));
+    setTileDeposit(h.state.grid, at(h, -4, 2), DEPOSIT.oil, 10000);
+    h.submit(mkCmd({ taskId: 'w02-c', task: { kind: 'build', building: 'solar', q: -4, r: 2 } }, 'enqueueTask'));
+    const out = h.step(1);
+    expect(out.outcomes.map((o) => [o.code, o.detail])).toEqual([
+      ['not_own_territory', 'not your territory'],
+      ['terrain_unbuildable', 'trees: clear them first'],
+      ['terrain_unbuildable', 'resource deposit'],
+    ]);
+  });
+
+  it('placeBuilding still builds only the Command Hub (GP-05)', () => {
+    const h = w02Host();
+    h.submit(mkCmd({ building: 'solar', q: 4, r: 2 }));
+    expect(h.step(1).outcomes[0]?.code).toBe('invalid_args');
+  });
+});

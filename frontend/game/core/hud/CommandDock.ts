@@ -158,7 +158,7 @@ export class CommandDock {
   }
 
   private handleKeyDown(e: KeyboardEvent): void {
-    if (e.ctrlKey || e.metaKey || e.altKey || isTypingTarget(e.target)) return;
+    if (e.ctrlKey || e.metaKey || e.altKey || e.repeat || isTypingTarget(e.target)) return; // a held key toggles once
     const key = (e.key ?? '').toLowerCase();
     if (key === 'b' && this.tabButtons.has('build')) {
       e.stopImmediatePropagation?.();

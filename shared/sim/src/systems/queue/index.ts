@@ -8,10 +8,10 @@ import type { StepContext } from '../../kernel/context';
 import { setBlob, type ColonyState, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
-import { buildSiteTerrainBlock } from '../economy/siteTerrain';
+import { buildSiteReject } from '../economy/siteTerrain';
 import { resolveBuildingRow, startBuildingConstruction, type BuildingJobRecord } from '../economy/construction';
-import { checkCostAffordability, payProgressiveSlice } from '../economy/ledger';
-import { getColonySupply, resolveHubProducerRows, spawnHarvesterAtHubEdge } from '../factories-hub';
+import { checkCostAffordability } from '../economy/ledger';
+import { getColonySupply, resolveHubProducerRows } from '../factories-hub';
 import {
   applyReorderQueueTask,
   CANCEL_IN_PROGRESS_REFUND_RATIO,
@@ -29,6 +29,7 @@ import {
   type QueuePrecedence,
   type QueueTaskPayload,
 } from './types';
+import { markWaiting, stepQueueEntry } from './step';
 import { computeResourceWaitState, isBlockedByPower, normalizeEnqueueArgs } from './wait';
 
 export * from './types';
@@ -38,6 +39,8 @@ export { CANCEL_IN_PROGRESS_REFUND_RATIO };
 export const CONSTRUCTION_LANE_LIMIT = 20;
 export const UNITS_LANE_LIMIT = 10;
 export const PRODUCER_BUFFER_LIMIT = 5;
+/** `startBuildingConstruction` codes that mean the site (not the stock) holds the entry back. */
+const SITE_CODES: ReadonlySet<string> = new Set(['site_blocked', 'terrain_unbuildable', 'not_own_territory', 'invalid_args']);
 
 export function getColonyQueue(state: PlanetState, colonyIndex = 0, lane?: QueueLane): QueueEntry[] {
   const all = getAllQueueEntries(state).filter(
@@ -111,13 +114,6 @@ export interface EnqueueQueueTaskOptions {
   costOverride?: Partial<Record<ResourceKey, number>>;
   tick?: number;
   data?: CompiledDataLike;
-}
-
-function markWaiting(entry: QueueEntry, reason: QueueEntry['waitReason'], detail: string, eta: number | null = null): void {
-  entry.state = 'waiting';
-  entry.waitReason = reason;
-  entry.etaSeconds = eta;
-  entry.waitDetail = detail;
 }
 
 function checkStartMissing(
@@ -215,8 +211,8 @@ function tryStartQueueEntry(
       ctx,
     );
     if (!started.ok) {
-      const reason = started.code === 'site_blocked' ? 'site' : 'resources';
-      const detail = started.code === 'site_blocked' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
+      const reason = SITE_CODES.has(started.code) ? 'site' : started.code === 'storage_cap' ? 'storage' : 'resources';
+      const detail = reason === 'site' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
       markWaiting(entry, reason, detail);
       return;
     }
@@ -282,13 +278,13 @@ export function enqueueQueueTask(
       (e) => e.task.kind === 'buildUnit' && e.task.producerId === producerId,
     );
     if (producerEntries.length >= PRODUCER_BUFFER_LIMIT) {
-      return { ok: false, code: 'producer_buffer_full', detail: 'producer buffer full' };
+      return { ok: false, code: 'queue_full', detail: 'producer buffer full' }; // a contract code (the host maps others to `internal`)
     }
   }
 
   if (opts.task.kind === 'build') {
-    const site = buildSiteTerrainBlock(state, opts.task, opts.data ?? ctx?.data);
-    if (site) return { ok: false, code: 'terrain_unbuildable', detail: site };
+    const site = buildSiteReject(state, colonyIndex, opts.task, opts.data ?? ctx?.data);
+    if (site) return { ok: false, ...site };
   }
   const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(opts.task, opts.data ?? ctx?.data);
   const resolvedCost = opts.costOverride ? { ...opts.costOverride } : cost;
@@ -296,7 +292,7 @@ export function enqueueQueueTask(
     taskId: opts.taskId ?? `q-${colonyIndex}-${tick}-${entries.length + 1}`,
     colonyIndex,
     lane,
-    precedence: opts.precedence ?? 'player',
+    precedence: opts.precedence && Object.hasOwn(PRECEDENCE_RANK, opts.precedence) ? opts.precedence : 'player', // the contract's other words would sort as NaN
     state: 'queued',
     task: opts.task,
     cost: resolvedCost,
@@ -386,7 +382,7 @@ export const enqueueTaskHandler = defineCommandHandler({
       return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
     }
     const res = enqueueQueueTask(state, { colonyIndex: colIdx, task: norm.task, precedence: norm.precedence, taskId: norm.taskId, costOverride: norm.costOverride, tick: ctx.tick, data: ctx.data }, ctx);
-    return res.ok ? undefined : res.code;
+    return res.ok ? undefined : { code: res.code, detail: res.detail }; // e.g. the terrain block text (GP-31)
   },
 });
 
@@ -415,60 +411,6 @@ export const reorderTaskHandler = defineCommandHandler({
     return res.ok ? undefined : res.code;
   },
 });
-
-function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
-  const colony = ensureColony(state, colIdx, ctx.tick);
-  if (entry.task.kind === 'build' && entry.entityId !== undefined) {
-    const eRow = rowOf(state.entities, entry.entityId);
-    const jobs = (state.blobs.construction?.value as { jobs?: Record<number, BuildingJobRecord> } | undefined)?.jobs ?? {};
-    const job = jobs[entry.entityId];
-    if (job?.spentCost) {
-      entry.spentCost = { ...job.spentCost };
-      entry.paid = Object.values(entry.spentCost).some((v) => (v ?? 0) > 0);
-    }
-    if (eRow < 0 || state.entities.cols.state[eRow] !== ENTITY_STATE.constructing || state.entities.cols.progress[eRow] >= 1) {
-      entry.spentCost = { ...(entry.totalCost ?? entry.cost) };
-      entry.paid = true;
-      entry.progress = 1;
-      entry.state = 'done';
-    } else {
-      entry.progress = state.entities.cols.progress[eRow];
-      if (job?.status === 'waiting') {
-        entry.waitReason = 'resources';
-        entry.waitDetail = 'waiting: resources';
-      } else {
-        entry.waitReason = undefined;
-        entry.waitDetail = undefined;
-      }
-    }
-    return;
-  }
-
-  const nextElapsed = entry.elapsedTicks + ctx.dt * entry.workRate;
-  const nextProgress = Math.min(1, nextElapsed / entry.buildTicks);
-  const totalCost = entry.totalCost ?? entry.cost;
-  const spentCost = { ...(entry.spentCost ?? {}) };
-  if (Object.keys(totalCost).length > 0) {
-    const pay = payProgressiveSlice(colony, totalCost, spentCost, nextProgress, ctx.tick);
-    if (!pay.ok) {
-      const waitInfo = computeResourceWaitState(state, colony, totalCost, pay.missing);
-      markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds);
-      return;
-    }
-    entry.spentCost = spentCost;
-    entry.paid = Object.values(spentCost).some((v) => (v ?? 0) > 0);
-  }
-  entry.elapsedTicks = nextElapsed;
-  entry.progress = Math.min(1, Number(nextProgress.toFixed(4)));
-  if (entry.elapsedTicks >= entry.buildTicks - 1e-6) {
-    if (entry.task.kind === 'buildUnit') {
-      const spawned = spawnHarvesterAtHubEdge(state, colIdx, ctx.tick, ctx.data, ctx);
-      ctx.emit({ kind: 'unitProduced', colonyIds: [colIdx], data: { entityId: spawned.entityId, unit: 'harvester', q: spawned.q, r: spawned.r } });
-    }
-    entry.progress = 1;
-    entry.state = 'done';
-  }
-}
 
 export const queueSystem = defineSystem({
   id: 'queue.manager',

@@ -192,7 +192,7 @@ function checkBeamAndBounce(
     );
   }
   const b = preset.toolBeam;
-  if (!Number.isFinite(b.beamRadius) || b.beamRadius <= 0 || b.sweepRadius < 0 || b.pulseFreq <= 0) {
+  if (!(b.beamRadius > 0) || !(b.sweepRadius >= 0) || !(b.pulseFreq > 0) || ![b.beamRadius, b.sweepRadius, b.pulseFreq].every(Number.isFinite)) {
     add(
       'error',
       'PHYSICS_INVALID',
@@ -200,7 +200,7 @@ function checkBeamAndBounce(
       'Ensure toolBeam.beamRadius > 0, sweepRadius >= 0, and pulseFreq > 0.',
     );
   }
-  if (b.emissiveIntensity < 3.0) {
+  if (!(b.emissiveIntensity >= 3.0)) { // NaN fails too
     add(
       'error',
       'EMISSIVE_TOO_LOW',
@@ -246,7 +246,7 @@ export function validateParticlePreset(preset: ParticlePresetSpec): ParticleVali
     totalTriangles += c * getParticleGeometryTriCount(layer.geometry);
     roleCounts[layer.role] = (roleCounts[layer.role] ?? 0) + c;
 
-    if (layer.role === 'accent' && (layer.emissiveIntensity ?? 0) < 3.0) {
+    if (layer.role === 'accent' && !((layer.emissiveIntensity ?? 0) >= 3.0)) {
       add(
         'error',
         'EMISSIVE_TOO_LOW',

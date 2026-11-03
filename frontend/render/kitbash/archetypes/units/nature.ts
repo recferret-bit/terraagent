@@ -145,6 +145,11 @@ function buildMetalDeposit(b: KitbashBuilder, stage: DepositVisualStage = 'full'
     [-0.68, 0.32 * yScale, 0.42],
     [-0.18, 0.32 * yScale, -0.62],
   ];
+  if (stage !== 'full') {
+    // Mined-out ore pits: dull chips where the harvested nuggets were (detail on the rocks they left bare).
+    const chips: V3[] = [[-0.72, 0.4 * yScale, 0.38], [-0.5, 0.45 * yScale, 0.5], [-0.17, 0.34 * yScale, -0.68]];
+    chips.forEach((p, i) => b.addPart(rockGeo(0.065, 40 + i, 0.8, 0), 'hullPrimary', { name: 'mined ore chip', position: p }));
+  }
   const nuggetCount = stage === 'full' ? 4 : stage === 'half' ? 2 : 1;
   const nuggetRad = stage === 'full' ? 0.11 : stage === 'half' ? 0.095 : 0.075;
   for (let i = 0; i < nuggetCount; i++) {
@@ -188,6 +193,9 @@ function buildCrystalDeposit(b: KitbashBuilder, stage: DepositVisualStage = 'ful
         emissiveIntensity: i === 0 ? 4.2 : 3.4,
       });
     }
+    // Cut-down stubs that would sit wholly inside the bed rock are left out (invisible, and the validator's
+    // BURIED_PART / HAIRLINE_GAP between neighbouring stubs): half keeps spires 0–2, depleted the centre + outer one.
+    if ((stage === 'half' && i >= 3) || (stage === 'depleted' && i >= 1 && i <= 4)) return;
     b.addPart(cyl(rad * 0.9, rad, h * 0.66, 6), stage === 'depleted' && i > 1 ? 'frameGunmetal' : 'energyCyan', {
       position: [x, baseOff + h * 0.33, z],
       rotation: [lean, 0, lean * 0.6],
@@ -201,6 +209,13 @@ function buildCrystalDeposit(b: KitbashBuilder, stage: DepositVisualStage = 'ful
     [-0.64, 0.24 * bedY, -0.26],
     [0.16, 0.42 * bedY, 0.42],
   ];
+  if (stage !== 'full') {
+    // Spent crystal stumps on the side rocks: the harvested spires leave dark broken bases (detail on the rocks).
+    const stumps: V3[] = [[0.6, 0.27 * bedY, 0.08], [0.68, 0.25 * bedY, 0.3], [-0.4, 0.27 * bedY, -0.3], [-0.54, 0.27 * bedY, -0.12]];
+    stumps.forEach((p, i) => b.addPart(cyl(0.028, 0.04, 0.16 * bedY + 0.04, 6), 'frameGunmetal', {
+      name: 'spent crystal stump', position: p, rotation: [0.15 * (i % 2 ? 1 : -1), 0, 0.12],
+    }));
+  }
   const shardCount = stage === 'full' ? 5 : stage === 'half' ? 2 : 1;
   for (let i = 0; i < shardCount; i++) {
     b.addPart(new THREE.OctahedronGeometry(stage === 'depleted' ? 0.08 : 0.11, 0), 'energyCyan', {

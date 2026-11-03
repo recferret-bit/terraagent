@@ -53,16 +53,17 @@ interface CompactState {
 const states = new WeakMap<THREE.InstancedMesh, CompactState>();
 /** Horizontal shadow offset per metre of height, per directional shadow camera seen (filled by `onBeforeShadow`). */
 const lightDirs = new Map<THREE.Camera, THREE.Vector3>();
+const tmpDir = new THREE.Vector3();
 let lightKey = 0;
 
 /** Remembers a directional (ortho) shadow camera's direction; spot/point shadows keep the directional set. */
 function recordShadowLight(cam: THREE.Camera): void {
   if (!(cam as THREE.OrthographicCamera).isOrthographicCamera) return;
   const e = cam.matrixWorld.elements;
-  const d = new THREE.Vector3(-e[8]!, -e[9]!, -e[10]!).normalize(); // a camera looks down its -Z
+  const d = tmpDir.set(-e[8]!, -e[9]!, -e[10]!).normalize(); // a camera looks down its -Z
   const prev = lightDirs.get(cam);
   if (prev && prev.dot(d) >= LIGHT_COS_EPS) return;
-  lightDirs.set(cam, d);
+  lightDirs.set(cam, d.clone()); // allocate only when the direction is new (this runs per bucket per shadow pass)
   lightKey++;
 }
 

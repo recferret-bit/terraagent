@@ -7,11 +7,11 @@ import { removeRow } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { bumpPathEpoch } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
-import { setBlob, type ColonyState, type PlanetState, type SimState } from '../../kernel/state';
+import { setBlob, type PlanetState, type SimState } from '../../kernel/state';
 import { isUnitKind } from '../../units/mobility';
 import { buildingKindName, demolishBuilding, getFootprintTileIndices, resolveBuildingRow } from '../economy/construction';
 import { refundCost } from '../economy/ledger';
-import { cancelHarvesterTask, resolveHarvesterRow } from '../harvest';
+import { cancelHarvesterTask, resolveHarvesterRow, withoutUnitView } from '../harvest';
 import {
   ensureWorkColony as ensureColony,
   getWorkJobsMap,
@@ -140,8 +140,9 @@ export function executeDismantleAtTile(
   }
 
   cancelHarvesterTask(state as PlanetState, entityId, tick);
-  const colHarvs = (colony as ColonyState & { harvesters?: Record<number, unknown> }).harvesters;
-  if (colHarvs && entityId in colHarvs) delete colHarvs[entityId];
+  // Drop its views from the colony lists (by `entityId`: a `delete list[i]` would leave a hole the codec saves as null).
+  if (Array.isArray(colony.harvesters)) colony.harvesters = withoutUnitView(colony.harvesters, entityId);
+  if (Array.isArray(colony.units)) colony.units = withoutUnitView(colony.units, entityId);
   const prevUnits = (state.blobs.units?.value as Record<string, unknown> | undefined) ?? {};
   const byId = { ...((prevUnits.byId as Record<string, unknown> | undefined) ?? {}) };
   delete byId[String(entityId)];

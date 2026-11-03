@@ -581,3 +581,33 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **What happened / decision:** `DISMANTLE` now removes the colony's landed pod (never one still descending). The pod is the colony's reference before its Hub stands (`terraformWorldFrom` pre-Hub radius, `landingBlock` Hub distance read the pod entity), so the dismantle is refused (`site_blocked`; client: `pod_needed`, "Build the Command Hub first") until the colony has an active Hub or Command Hub. On a hex shared with the HQ Drone the pod ranks before the HQ. Nothing is refunded: the pod has no build cost (a scrap yield would be a balance row).
 - **Still open:** (1) should the player get a salvage refund? (2) if the pod must be removable before the Hub, those two rules must read `blobs.landingPods` / `landingHistory` instead of the entity. (3) The removal is instant (like other `dismantle` ops), with no work job or wreck-fade animation; `PodTouchdownFx.podDismantleProgress` is only the egress retraction.
 - **Found:** 2026-11-03, owner request
+
+### GP-50 · A restored planet with a Harvester crashed on its first step (`reading 'entityId'` of null)
+
+- **Status:** Resolved (2026-11-03, economy review, uncommitted at writing)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/harvest/unit.ts` (`syncHarvesterView`, `withoutUnitView`), `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts` (unit dismantle)
+- **What happened:** `syncHarvesterView` added an index alias to the `col.harvesters` array (`list[entityId] = view`). A Harvester with entity id 3 turned a one-element list into a sparse `[view, , , view]`. Live, `filter` skips holes, so nothing showed. The snapshot codec saves holes as `null`, so the first step after a restore (server restart, `?host=local` reload) threw in `filter((u) => u.entityId …)`. Dev server log: `planet pl_01M6EG80PWJJA4Y2N5RHFET9ER went down (step_failed): step to tick 91022 failed: Cannot read properties of null (reading 'entityId')`; its saved `col.harvesters` was `[3, null, null, 3]`. Dismantling a unit ran `delete colHarvs[entityId]`, which made the same kind of hole and left the unit's view in both lists.
+- **Fix:** both lists stay dense, one view per unit, matched by `entityId` (`withoutUnitView`; it also drops non-object entries, so already saved snapshots heal on their first step). Unit dismantle filters both lists the same way. Readers (`frontend/game/features/landfall/selectionHelpers.ts`) already search arrays by `entityId`. Test `shared/sim/test/systems/harvester-snapshot.spec.ts` (snapshot round trip, plus a saved planet with null holes). The saved dev snapshot of `pl_01M6EG80…` now steps.
+- **Found:** 2026-11-03, dev server log, economy review
+
+### GP-51 · HQ fast recharge: suspended in a group-3 brownout now, but never counted as grid load
+
+- **Status:** Question for the owner (suspension: Resolved 2026-11-03, economy review, uncommitted at writing)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/hq/cell.ts` (`rechargePerTick`, `fastRechargeShed`), `shared/sim/src/systems/power-core/shedding.ts` (`hqFastRechargeShed`), `hq.t1.cellFastRechargeShedGroup`; `UO-HQ-06`, W01-11, W02-06
+- **What happened:** the power core computed `ColonyPowerSummary.hqFastRechargeShed` but nothing read it, so the HQ cell kept recharging at 20 E/s next to an active Hub during a brownout that shed group 3. Now `rechargePerTick` falls back to the 3 E/s self rate while the colony's stored power summary has `hqFastRechargeShed`. `hq` sorts before `power.core` in slot 7, so the HQ reads the previous step's verdict (a one-step lag, the same on every host). Without the W02 power system there is no summary and the old rule applies. Test `shared/sim/test/systems/power-extractor-brownout.spec.ts`.
+- **Still open (owner):** the spec says the fast recharge "counts as grid load in shed group 3", but it is never added to `rawDemand`. Counting 20 E/s against a Hub-only grid (+8 / −5) would shed it at once in every early colony. Effect today: a Hub-only colony with one Extractor is always in a group-3 brownout, so the HQ recharges at 3 E/s until a Solar carries the Extractor. Any deficit still left when shedding reaches group 3 suspends it, also one made only of unshed load: a Hub-only colony with three Harvesters (5 + 4.5 > 8 E/s) sheds nothing visible, but its HQ recharges at 3 E/s. Recommendation: count the fast recharge only while the cell is below its maximum, as `fast − self` E/s, and shed it in group 3 like an Extractor, or keep it free and drop the sentence from the spec.
+- **Found:** 2026-11-03, economy review (owner report "built an extractor, energy still 200/200")
+
+### GP-52 · Harvesters draw grid power but a brownout never stops them
+
+- **Status:** Question for the owner
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/power-core/index.ts` (`evaluateColonyPower`, harvester branch), `shared/sim/src/systems/harvest/index.ts` (`production.harvest`), `economyT1Basic.shedGroup1..4` categories
+- **What happens:** each Harvester adds 1.5 E/s (0.75 E/s idle) to `unitDemand`, but it is never a shed candidate and `production.harvest` has no power gate, so in a deficit the extractors are shed while Harvesters keep mining. No shed group lists units, so this matches the data.
+- **To resolve:** decide whether units take part in shedding (a unit category in a group, then gate `production.harvest` on `offlineBrownout`) or keep units always on and leave the drain as information only.
+- **Found:** 2026-11-03, economy review

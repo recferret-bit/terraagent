@@ -220,7 +220,8 @@ export class BrushController {
     return true;
   }
 
-  private isPointerActive(): boolean {
+  /** Map clicks belong to the brush: armed and not blocked (another map mode, or its dock tab hidden). */
+  isPointerActive(): boolean {
     return this.armed && !this.sink.isBlocked?.();
   }
 

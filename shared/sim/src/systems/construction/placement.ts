@@ -1,8 +1,9 @@
 import type { RejectCode } from '@terra/contracts';
-import type { CompiledRow } from '../../data';
+import { compileData, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
+import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { resolveHubT1Row, resolveStartingKitRow, rowNum } from '../rows';
 import { planPrepJobs, summarizePrepJobs } from './prep';
@@ -51,6 +52,8 @@ export interface PlacementRule {
   hqOnly: boolean;
   maxPerColony: number;
   deposit: DepositRule;
+  /** The footprint must cover at least one non-depleted tile of this `DEPOSIT` code (Metals Extractor, W02-08). */
+  requiresDeposit?: number;
 }
 
 /** Why a placement fails; maps 1:1 to a protocol `RejectCode` and a UI text. */
@@ -101,12 +104,14 @@ export interface EvaluatePlacementOpts {
   builderEntityId?: number;
   /** `false` skips the "colony has a landed HQ" check (ghost previews before landing). */
   requireBuilder?: boolean;
+  /** Only the Command Hub is placeable (the `placeBuilding` command; W02 buildings go through `enqueueTask`). */
+  hubOnly?: boolean;
   data?: CompiledDataLike;
 }
 
 const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
   water: 'terrain_unbuildable', trees: 'terrain_unbuildable', rock: 'terrain_unbuildable', slope: 'terrain_unbuildable',
-  hole: 'terrain_unbuildable', ridge: 'terrain_unbuildable', uneven: 'terrain_unbuildable', deposit: 'terrain_unbuildable', noDeposit: 'terrain_unbuildable',
+  hole: 'terrain_unbuildable', ridge: 'terrain_unbuildable', uneven: 'terrain_unbuildable', deposit: 'terrain_unbuildable', noDeposit: 'site_blocked',
   outOfMap: 'site_blocked', occupied: 'site_blocked', hubExists: 'site_blocked',
   foreign: 'not_own_territory', unclaimed: 'not_own_territory',
   noBuilder: 'worker_tier_locked', builderBusy: 'worker_tier_locked', tierLocked: 'tier_locked', badArgs: 'invalid_args',
@@ -145,10 +150,43 @@ export function resolveBuildingRow(building: string | undefined, data?: Compiled
   return isHubBuildingKind(building, data) ? resolveHubT1Row(data) : null;
 }
 
-/** The placement rule of `building` from its row, or `null` when the building is unknown. */
+let defaultW02: CompiledDataLike | null = null;
+const W02_BUILDING_ALIASES: Readonly<Record<string, string>> = { extractor: 'metalsExtractor', solarCollector: 'solar' };
+
+/** The W02 T1 building row (`economyT1Basic`, `kind: 'building'`: Metals Extractor, Solar) named `building`, or `null`. */
+export function resolveEconomyBuildingRow(building: string | undefined, data?: CompiledDataLike): CompiledRow | null {
+  if (building === undefined) return null;
+  const src = data?.tables?.economyT1Basic ? data : (defaultW02 ??= compileData(new Set(['W00', 'W01', 'W02'])));
+  const row = (src.tables.economyT1Basic as Record<string, CompiledRow> | undefined)?.[W02_BUILDING_ALIASES[building] ?? building];
+  return row && row.kind === 'building' ? row : null;
+}
+
+/**
+ * The placement rule of a W02 building row (D-37, W02-09): its square footprint (`footprintW`), any deposit allowed on
+ * the tiles of an extractor that must cover its `requiresDeposit` family, no deposit under any other building. Unclaimed
+ * ground is allowed for now (as the W02 build path always did; foreign territory never is).
+ */
+function economyPlacementRule(row: CompiledRow): PlacementRule {
+  const requires = typeof row.requiresDeposit === 'string' ? DEPOSIT[row.requiresDeposit as keyof typeof DEPOSIT] : undefined;
+  return {
+    building: String(row.building ?? row.id),
+    isHub: false,
+    footprint: Number(row.footprintW ?? row.footprint ?? 2),
+    allowUnclaimed: true,
+    hqOnly: false,
+    maxPerColony: Number.POSITIVE_INFINITY,
+    deposit: requires !== undefined ? 'any' : 'forbid',
+    ...(requires !== undefined ? { requiresDeposit: requires } : {}),
+  };
+}
+
+/** The placement rule of `building` from its row (the Command Hub, or a W02 building row), or `null` when unknown. */
 export function resolvePlacementRule(building?: string, data?: CompiledDataLike): PlacementRule | null {
   const row = resolveBuildingRow(building, data);
-  if (!row) return null;
+  if (!row) {
+    const eco = resolveEconomyBuildingRow(building, data);
+    return eco ? economyPlacementRule(eco) : null;
+  }
   return {
     building: String(row.building),
     isHub: true,
@@ -281,6 +319,10 @@ function footprintSpread(world: PlacementWorld, tiles: readonly PlacementTile[])
   return tiles.length ? hi - lo : 0;
 }
 
+/** Whether footprint tile `t` holds a non-depleted deposit of code `deposit`. */
+const coversDeposit = (world: PlacementWorld, t: PlacementTile, deposit: number): boolean =>
+  t.deposit === deposit && !(world.richness != null && Number(world.richness[t.tileIdx] ?? 0) <= 0);
+
 const fail = (block: PlacementBlock, tiles: PlacementTile[], bill: PlacementBill): PlacementResult => {
   const prepared = tiles.filter((t) => t.prepared).length;
   return { ok: false, code: BLOCK_CODE[block], block, text: BLOCK_TEXT[block], tiles, preparedCount: prepared, unpreparedCount: tiles.length - prepared, bill };
@@ -295,7 +337,7 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   const rule = resolvePlacementRule(opts.building, opts.data);
   const { colonyId, q, r, tier } = opts;
   const empty: PlacementBill = { tilesToPrepare: 0, totalTiles: 0, baseSeconds: 0, hqSeconds: 0, totalEnergyE: 0, yields: { 'metals.t1': 0, 'bio.biomass': 0 }, ops: { grade: 0, clear: 0, break: 0 } };
-  if (!rule) return fail('unknownBuilding', [], empty);
+  if (!rule || (opts.hubOnly && !rule.isHub)) return fail('unknownBuilding', [], empty);
   if (!Number.isInteger(colonyId) || colonyId < 0 || !Number.isInteger(q) || !Number.isInteger(r)) return fail('badArgs', [], empty);
   if (tier !== undefined && (!Number.isInteger(tier) || tier < 1 || tier > 3)) return fail('badArgs', [], empty);
   if (tier !== undefined && tier > 1) return fail('tierLocked', [], empty);
@@ -306,6 +348,7 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   const bill = billFor(tiles, opts.data);
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
   if (footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
+  if (rule.requiresDeposit !== undefined && !tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!))) return fail('noDeposit', tiles, bill);
   const cb = colonyBlock(world, rule, opts);
   if (cb) return fail(cb, tiles, bill);
   const prepared = tiles.filter((t) => t.prepared).length;

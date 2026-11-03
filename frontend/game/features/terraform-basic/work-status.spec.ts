@@ -55,8 +55,28 @@ describe('Command dock gating', () => {
     press('z');
     expect([tf.isArmed(), tf.getSelectedOp()]).toEqual([true, 'dismantle']);
     dock.selectTab('build');
+    expect(tf.brush.isPointerActive()).toBe(false); // still armed until the next render, but map clicks are not the brush's
     tf.update({});
     expect(tf.isArmed()).toBe(false);
+    tf.dispose();
+    dock.dispose();
+    slot.remove();
+  });
+});
+
+describe('?waves=..01: the Terraform tab offers only TERRAFORM (REPAIR / DISMANTLE are W02)', () => {
+  it('no REPAIR / DISMANTLE buttons and R / Z do nothing without W02; G still arms TERRAFORM', () => {
+    const slot = document.createElement('div');
+    document.body.appendChild(slot);
+    const dock = new CommandDock(slot, {} as never, new Set(['terraform'] as const));
+    const tf = mountTerraformBasic(dock.containerFor('terraform'), { flags: new Set(['W00', 'W01']) });
+    const menu = slot.querySelector('[data-testid="terraform-menu"]')!;
+    expect([...menu.querySelectorAll('[data-op]')].map((e) => e.getAttribute('data-op'))).toEqual(['terraform']);
+    const press = (key: string) => window.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true }));
+    for (const key of ['r', 'z']) press(key);
+    expect(tf.isArmed()).toBe(false);
+    press('g');
+    expect([tf.isArmed(), tf.getSelectedOp()]).toEqual([true, 'terraform']);
     tf.dispose();
     dock.dispose();
     slot.remove();

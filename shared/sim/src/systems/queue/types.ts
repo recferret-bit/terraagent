@@ -38,5 +38,7 @@ export interface QueueEntry {
   missingResources?: Partial<Record<ResourceKey, number>>;
   exceedsCap?: Partial<Record<ResourceFamily, number>>;
   etaSeconds?: number | null;
+  /** `buildUnit` only: units of the batch (`task.count`) still to build, the current one included (absent = `count`). */
+  remainingCount?: number;
   createdAt: number;
 }

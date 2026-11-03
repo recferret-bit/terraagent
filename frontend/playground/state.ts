@@ -45,7 +45,7 @@ export function createState(params: URLSearchParams): PgState {
     hexTerrain: params.get('hexterrain') === '1', hatch: params.get('hatch') === '1', work: params.get('work') === '1',
     workTarget: parseWorkTarget(params.get('workTarget')),
     build: parseBuild(params.get('build')),
-    depositStage: parseDepositStage(params.get('stage') ?? params.get('depositStage')),
+    depositStage: parseDepositStage(params.get('depositStage') ?? params.get('stage')), // `stage`: short alias
     row: row && CATS.includes(row) ? row : null,
     filter: '',
   };
@@ -62,7 +62,7 @@ export function syncURL(state: PgState) {
   if (state.work) q.set('work', '1');
   if (state.workTarget !== 'tree') q.set('workTarget', state.workTarget);
   if (state.build !== 1) q.set('build', String(Math.round(state.build * 100)));
-  if (state.depositStage !== 'full') q.set('stage', state.depositStage);
+  if (state.depositStage !== 'full') q.set('depositStage', state.depositStage); // the documented name
   if (state.turntable) q.set('turntable', '1');
   if (state.pixel) q.set('pixel', '1');
   if (state.validate) q.set('validate', '1');

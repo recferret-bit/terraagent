@@ -302,3 +302,20 @@ describe('workTargetResolver: multi-hex reach & prop-aligned targets', () => {
     expect(Math.hypot(sites[0].targetPos[0] - blendedX, sites[0].targetPos[2] - blendedZ)).toBeLessThanOrEqual(0.15);
   });
 });
+
+describe('workTargetResolver: grade reads the target tile terrain', () => {
+  it('a grade order on a hole tile resolves to hole (not flat / dune)', () => {
+    const hq = makeRecord({ id: 11, kind: ENTITY_KIND.hq, owner: 0, q: 0, r: 0, state: ENTITY_STATE.working });
+    const view = {
+      planet: { radius: 3 },
+      blobs: {
+        hq: { byColony: { '0': { entityId: 11, targetQ: 1, targetR: 0 } } },
+        terraformTasks: { byColony: { '0': [{ id: 't1', q: 1, r: 0, op: 'grade' }] } },
+      },
+    } as unknown as ClientView;
+    const tiles = { indexOf: () => 0, terrain: [TERRAIN_CODES.hole], deposit: [DEPOSIT_CODES.none] } as unknown as ClientTiles;
+    const sites = buildActiveWorkSites({ records: new Map([[11, hq]]), view, tiles, terrain: null, biomeKey: 'oceanForest' });
+    expect(sites).toHaveLength(1);
+    expect(sites[0].targetKind).toBe('hole');
+  });
+});

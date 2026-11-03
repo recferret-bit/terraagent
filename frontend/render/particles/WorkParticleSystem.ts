@@ -18,8 +18,11 @@ export class WorkParticleSystem {
     parent?.add(this.group);
   }
 
+  private readonly seen = new Set<string>();
+
   syncSites(sites: readonly ActiveWorkSiteInput[]): void {
-    const seen = new Set<string>();
+    const seen = this.seen; // called every frame: reuse the set
+    seen.clear();
     for (const site of sites) {
       if ((site.intensity ?? 1) <= 0.02) continue;
       seen.add(site.workerId);
@@ -91,8 +94,7 @@ export class WorkParticleSystem {
   }
 
   private showIfInFocus(emitter: WorkParticleEmitter): boolean {
-    const [x, z] = emitter.targetXZ;
-    emitter.group.visible = inViewFocus(x, z, WORK_PARTICLE_FOCUS_PAD_M);
+    emitter.group.visible = inViewFocus(emitter.targetX, emitter.targetZ, WORK_PARTICLE_FOCUS_PAD_M);
     return emitter.group.visible;
   }
 

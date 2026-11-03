@@ -2,7 +2,9 @@ import { dataRow } from '../../data';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState, type PlanetType } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { TICK_MS } from '../../kernel/constants';
 import { defineSimModule } from '../define';
+import { getPlanetTime, normalizeSolarHour, resolveTimeCycleConfig } from '../time';
 
 export interface EnvironmentState {
   cycleTick: number;
@@ -18,7 +20,8 @@ export interface EnvironmentState {
   stormDaylightMult: number;
 }
 
-const DEFAULT_DAY_LENGTH_TICKS = 6000; // 20 min at 5 TPS
+/** Nightfall on every planet type: the night lasts `nightShare` of the 24 h solar clock from here (W02-04, D-33). */
+export const SUNSET_HOUR = 18;
 
 export function getNightShare(planetType: PlanetType, data?: CompiledDataLike): number {
   const table = data?.tables?.economyT1Basic as Record<string, unknown> | undefined;
@@ -31,10 +34,24 @@ export function getNightShare(planetType: PlanetType, data?: CompiledDataLike): 
   return typeof row?.defaultNightShare === 'number' ? row.defaultNightShare : 0.4;
 }
 
+/**
+ * Ticks of one 24 h solar day: single-sourced in the planetary solar clock (`systems/time`, `time.cycle`
+ * `realHoursPerDay` / `timeScale`, or the planet's own anchor), never the W02 `dayCycle.dayLengthS` row.
+ */
+export function dayLengthTicksFor(realHoursPerDay: number, timeScale: number): number {
+  if (!(timeScale > 0) || !(realHoursPerDay > 0)) return Number.POSITIVE_INFINITY;
+  return (realHoursPerDay * 3_600_000) / TICK_MS / timeScale;
+}
+
+/** Ticks of one solar day at the data's default rates (`time.cycle`). */
 export function getDayLengthTicks(data?: CompiledDataLike): number {
-  const table = data?.tables?.economyT1Basic as Record<string, unknown> | undefined;
-  const row = table?.dayCycle as { dayLengthS?: number } | undefined;
-  return typeof row?.dayLengthS === 'number' && row.dayLengthS > 0 ? row.dayLengthS : DEFAULT_DAY_LENGTH_TICKS;
+  const cfg = resolveTimeCycleConfig(data);
+  return dayLengthTicksFor(cfg.realHoursPerDay, cfg.timeScale > 0 ? cfg.timeScale : 1); // a frozen clock: one 1× day
+}
+
+/** Sunrise hour of a planet type: `SUNSET_HOUR` plus its night (temperate 45 % → 10.8 h → 04:48). */
+export function getSunriseHour(planetType: PlanetType, data?: CompiledDataLike): number {
+  return normalizeSolarHour(SUNSET_HOUR + 24 * getNightShare(planetType, data));
 }
 
 function formatClock(hourOfDay: number): string {
@@ -46,12 +63,49 @@ function formatClock(hourOfDay: number): string {
 }
 
 /**
- * Computes the deterministic environment state for a given `cycleTick`.
- * - Daytime occupies `cycleProgress in [0, dayShare)` and maps to `06:00 .. 18:00`.
- * - Nighttime occupies `cycleProgress in [dayShare, 1)` and maps to `18:00 .. 06:00`.
- * - On `temperate` (`nightShare = 0.45`, `dayShare = 0.55`), advancing 11 min (`3300` ticks) from tick 0
- *   reaches `cycleProgress = 0.55` (`18:00`), where `phase === 'night'` and `daylight === 0`.
+ * The environment at planetary solar hour `hour` (`systems/time`, the one authoritative clock the 3D sun follows too):
+ * night from `SUNSET_HOUR` (18:00) for `nightShare` of the 24 h (temperate 45 %: 18:00 → 04:48), day the rest. Daylight
+ * is 1 from sunrise and falls over the last 15 % of the day (smoothstep) to 0 at sunset; a storm halves it.
+ * `cycleProgress` is the share of the day since sunrise (`dayShare` = sunset); `cycleTick` the same in ticks.
  */
+export function computeEnvironmentAtHour(
+  planetType: PlanetType,
+  hour: number,
+  data?: CompiledDataLike,
+  stormActive = false,
+  dayLengthTicks: number = getDayLengthTicks(data),
+): EnvironmentState {
+  const nightShare = getNightShare(planetType, data);
+  const dayShare = Math.max(0.05, 1 - nightShare);
+  const h = normalizeSolarHour(hour);
+  const sinceSunrise = normalizeSolarHour(h - getSunriseHour(planetType, data));
+  const cycleProgress = Math.min(1, sinceSunrise / 24);
+  const phase: 'day' | 'night' = cycleProgress < dayShare - 1e-9 ? 'day' : 'night';
+  let baseDaylight = 0;
+  if (phase === 'day') {
+    const dayProgress = cycleProgress / dayShare;
+    const duskT = Math.min(1, Math.max(0, (dayProgress - 0.85) / 0.15));
+    baseDaylight = dayProgress < 0.85 ? 1 : Number((1 - duskT * duskT * (3 - 2 * duskT)).toFixed(4));
+  }
+  const stormDaylightMult = stormActive ? 0.5 : 1;
+  const daylight = baseDaylight === 0 ? 0 : Number((baseDaylight * stormDaylightMult).toFixed(4));
+  const finiteDay = Number.isFinite(dayLengthTicks) ? dayLengthTicks : 0;
+  return {
+    cycleTick: Math.round(cycleProgress * finiteDay),
+    dayLengthTicks: finiteDay,
+    nightShare,
+    dayShare,
+    cycleProgress,
+    phase,
+    daylight,
+    hourOfDay: h,
+    clockText: formatClock(h),
+    stormActive,
+    stormDaylightMult,
+  };
+}
+
+/** The environment `cycleTick` ticks after sunrise (a position in the solar day; see {@link computeEnvironmentAtHour}). */
 export function computeEnvironmentAtCycleTick(
   planetType: PlanetType,
   cycleTick: number,
@@ -59,93 +113,39 @@ export function computeEnvironmentAtCycleTick(
   stormActive = false,
 ): EnvironmentState {
   const dayLengthTicks = getDayLengthTicks(data);
-  const nightShare = getNightShare(planetType, data);
-  const dayShare = Math.max(0.05, 1 - nightShare);
-  const wrappedTick = ((cycleTick % dayLengthTicks) + dayLengthTicks) % dayLengthTicks;
-  const cycleProgress = wrappedTick / dayLengthTicks;
-
-  let phase: 'day' | 'night';
-  let baseDaylight: number;
-  let hourOfDay: number;
-
-  if (cycleProgress < dayShare - 1e-9) {
-    phase = 'day';
-    const dayProgress = cycleProgress / dayShare; // 0 (06:00) -> 0.5 (12:00) -> 1.0 (18:00)
-    hourOfDay = 6 + dayProgress * 12;
-    if (dayProgress < 0.85) {
-      baseDaylight = 1;
-    } else {
-      const duskT = Math.min(1, Math.max(0, (dayProgress - 0.85) / 0.15));
-      baseDaylight = Number((1 - duskT * duskT * (3 - 2 * duskT)).toFixed(4));
-    }
-  } else {
-    phase = 'night';
-    baseDaylight = 0;
-    const nightProgress = nightShare > 0 ? (cycleProgress - dayShare) / nightShare : 0;
-    hourOfDay = (18 + nightProgress * 12) % 24;
-  }
-
-  const stormDaylightMult = stormActive ? 0.5 : 1;
-  const daylight = baseDaylight === 0 ? 0 : Number((baseDaylight * stormDaylightMult).toFixed(4));
-
-  return {
-    cycleTick: wrappedTick,
-    dayLengthTicks,
-    nightShare,
-    dayShare,
-    cycleProgress,
-    phase,
-    daylight,
-    hourOfDay,
-    clockText: formatClock(hourOfDay),
-    stormActive,
-    stormDaylightMult,
-  };
+  const wrapped = ((cycleTick % dayLengthTicks) + dayLengthTicks) % dayLengthTicks;
+  const hour = getSunriseHour(planetType, data) + (wrapped / dayLengthTicks) * 24;
+  return computeEnvironmentAtHour(planetType, hour, data, stormActive, dayLengthTicks);
 }
 
-/** Converts `'day'`, `'night'`, or `'HH:MM'` into a `cycleTick` in `[0, dayLengthTicks)`. */
-export function cycleTickForTimeSpec(
-  target: string,
-  planetType: PlanetType,
-  data?: CompiledDataLike,
-): number {
-  const dayLengthTicks = getDayLengthTicks(data);
-  const nightShare = getNightShare(planetType, data);
-  const dayShare = 1 - nightShare;
+/** The solar hour of `'day'` (12:00), `'morning'` (06:00), `'night'` (18:00), `'midnight'`, or `'HH:MM'`; null if unreadable. */
+export function hourForTimeSpec(target: string): number | null {
   const trimmed = target.trim().toLowerCase();
+  if (trimmed === 'day' || trimmed === 'midday' || trimmed === 'noon') return 12;
+  if (trimmed === 'morning' || trimmed === 'sunrise' || trimmed === 'dawn') return 6;
+  if (trimmed === 'night' || trimmed === 'sunset' || trimmed === 'dusk') return SUNSET_HOUR;
+  if (trimmed === 'midnight') return 0;
+  const m = /^(\d{1,2})(?::(\d{2}))?$/.exec(trimmed);
+  return m ? (Number(m[1]) % 24) + (Number(m[2] ?? '0') % 60) / 60 : null;
+}
 
-  let hour = 12;
-  if (trimmed === 'day' || trimmed === 'midday' || trimmed === 'noon') {
-    hour = 12;
-  } else if (trimmed === 'morning' || trimmed === 'sunrise' || trimmed === 'dawn') {
-    hour = 6;
-  } else if (trimmed === 'night' || trimmed === 'sunset' || trimmed === 'dusk') {
-    hour = 18;
-  } else if (trimmed === 'midnight') {
-    hour = 0;
-  } else {
-    const m = /^(\d{1,2})(?::(\d{2}))?$/.exec(trimmed);
-    if (m) {
-      const hh = Number(m[1]) % 24;
-      const mm = Number(m[2] ?? '0') % 60;
-      hour = hh + mm / 60;
-    }
-  }
+/** Converts a time spec (see {@link hourForTimeSpec}; unreadable → 12:00) into a `cycleTick` (ticks after sunrise). */
+export function cycleTickForTimeSpec(target: string, planetType: PlanetType, data?: CompiledDataLike): number {
+  const dayLengthTicks = getDayLengthTicks(data);
+  const sinceSunrise = normalizeSolarHour((hourForTimeSpec(target) ?? 12) - getSunriseHour(planetType, data));
+  return Math.round((sinceSunrise / 24) * dayLengthTicks) % dayLengthTicks;
+}
 
-  let cycleProgress: number;
-  if (hour >= 6 && hour < 18) {
-    cycleProgress = ((hour - 6) / 12) * dayShare;
-  } else {
-    const nightHours = hour >= 18 ? hour - 18 : hour + 6;
-    cycleProgress = dayShare + (nightHours / 12) * nightShare;
-  }
-  return Math.round(cycleProgress * dayLengthTicks) % dayLengthTicks;
+/** The environment of the planet's solar clock at `tickF` (default: now), with the planet's own day length. */
+export function environmentFromPlanetTime(state: PlanetState, data?: CompiledDataLike, stormActive = false, tickF?: number): EnvironmentState {
+  const pt = getPlanetTime(state, data, tickF);
+  return computeEnvironmentAtHour(state.meta.planetType, pt.hour, data, stormActive, dayLengthTicksFor(pt.realHoursPerDay, pt.timeScale));
 }
 
 export function getEnvironment(state: PlanetState, data?: CompiledDataLike): EnvironmentState {
   const existing = state.blobs.environment?.value as EnvironmentState | undefined;
   if (existing && typeof existing.daylight === 'number') return existing;
-  return computeEnvironmentAtCycleTick(state.meta.planetType, state.meta.tick, data, false);
+  return environmentFromPlanetTime(state, data);
 }
 
 export function applyEnvironmentState(state: PlanetState, env: EnvironmentState, tick: number): void {
@@ -160,21 +160,18 @@ export function applyEnvironmentState(state: PlanetState, env: EnvironmentState,
   }
 }
 
+/**
+ * Slot 1: the environment follows the planetary solar clock (`getPlanetTime`) every step; it keeps no clock of its
+ * own, so the HUD clock, Solar output, brownouts and the 3D sun (`dayNightSync`) read the same time.
+ */
 const environmentSystem = defineSystem({
   id: 'environment.dayCycle',
   slot: 1,
   wave: 'W02',
   run(state, ctx) {
-    // Ensure dayCycle row exists when W02 is enabled
-    dataRow(ctx.data, 'economyT1Basic', 'dayCycle');
+    dataRow(ctx.data, 'economyT1Basic', 'dayCycle'); // the W02 row (night shares) must exist when W02 is on
     const prev = state.blobs.environment?.value as Partial<EnvironmentState> | undefined;
-    const stormActive = prev?.stormActive === true;
-    const changedAtThisTick = state.blobs.environment?.changedAt === ctx.tick;
-    const baseCycleTick = typeof prev?.cycleTick === 'number'
-      ? (changedAtThisTick ? prev.cycleTick : prev.cycleTick + ctx.dt)
-      : ctx.tick;
-    const env = computeEnvironmentAtCycleTick(state.meta.planetType, baseCycleTick, ctx.data, stormActive);
-    applyEnvironmentState(state, env, ctx.tick);
+    applyEnvironmentState(state, environmentFromPlanetTime(state, ctx.data, prev?.stormActive === true, ctx.tick), ctx.tick);
   },
 });
 

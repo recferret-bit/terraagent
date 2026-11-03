@@ -71,6 +71,10 @@
   font-weight: 700;
 }
 
+.ta-hq-panel__count[hidden] {
+  display: none;
+}
+
 .ta-hq-panel__head {
   display: flex;
   align-items: center;
@@ -98,7 +102,7 @@
   flex-direction: column;
   justify-content: center;
   gap: 6px;
-  width: 96px;
+  min-width: 96px;
 }
 
 .ta-hq-panel__stat[hidden] {

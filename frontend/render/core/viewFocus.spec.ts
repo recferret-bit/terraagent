@@ -5,6 +5,7 @@ import {
   setViewFocusMargin, updateViewFocus, VIEW_FOCUS_EDGE_PAD, VIEW_FOCUS_MARGIN, VIEW_FOCUS_MAX_RADIUS,
   viewFocusQuadDistance,
 } from './viewFocus';
+import { viewFocusBounded } from './focusCull';
 
 function topDownCamera(x: number, h: number, z: number, groundY = 0): THREE.PerspectiveCamera {
   const cam = new THREE.PerspectiveCamera(28, 16 / 9, 1, 600);
@@ -75,6 +76,29 @@ describe('view focus (padded camera footprint quad + bounding circle)', () => {
     expect(f.radius).toBeLessThanOrEqual(VIEW_FOCUS_MAX_RADIUS);
     expect(f.visibleRadius).toBeLessThanOrEqual(VIEW_FOCUS_MAX_RADIUS);
     expect(Number.isFinite(f.x) && Number.isFinite(f.z)).toBe(true);
+  });
+
+  it('a grazing camera (top edge just below the horizon) keeps the screen centre and bottom corners in focus', () => {
+    const groundAt = (cam: THREE.Camera, nx: number, ny: number): [number, number] => {
+      const o = new THREE.Vector3(nx, ny, -1).unproject(cam);
+      const d = new THREE.Vector3(nx, ny, 1).unproject(cam).sub(o).normalize();
+      const t = -o.y / d.y;
+      return [o.x + d.x * t, o.z + d.z * t];
+    };
+    // pitch 14.3–16° with a 28° FOV: the top corners hit the ground 0.3–2° below the horizon (hundreds of metres out)
+    for (const [h, pitch] of [[10, 14.3], [10, 14.6], [10, 15.5], [40, 14.6], [40, 16], [40, 20]] as const) {
+      const cam = new THREE.PerspectiveCamera(28, 16 / 9, 1, 2000);
+      cam.position.set(0, h, 0);
+      cam.lookAt(100, h - 100 * Math.tan(THREE.MathUtils.degToRad(pitch)), 0);
+      cam.updateMatrixWorld();
+      const f = updateViewFocus(cam);
+      expect(f.radius).toBeLessThanOrEqual(VIEW_FOCUS_MAX_RADIUS);
+      if (pitch < 18) expect(viewFocusBounded(), `h ${h} pitch ${pitch}`).toBe(false); // grazing: no focus culling
+      for (const [nx, ny] of [[0, 0], [-0.95, -0.95], [0.95, -0.95], [0, -0.95]] as const) {
+        const [x, z] = groundAt(cam, nx, ny);
+        expect(inViewFocus(x, z), `h ${h} pitch ${pitch} ndc (${nx}, ${ny})`).toBe(true);
+      }
+    }
   });
 
   it('disabled: the focus covers everything', () => {

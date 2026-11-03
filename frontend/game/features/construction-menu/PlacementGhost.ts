@@ -3,7 +3,9 @@ import { DEPOSIT, ENTITY_KIND, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, hex
 import { clientDataFor } from '../../core/flags/data';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { forEachEntity, type ClientTiles } from '../../store/replica/viewCodec';
+import { isHotkeyPress } from '../shared/hotkeys';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
+import { evaluateSiteWithSim, ownColonyIndex } from './sitePlacement';
 
 export interface PlacementGhostTile {
   q: number; r: number; tileIdx: number; deposit: number; terrain: number; prep: number; prepOp?: string;
@@ -18,7 +20,7 @@ export interface PlacementGhostState {
 }
 
 export interface EvaluatePlacementGhostOptions {
-  building: string; q: number; r: number; rotation: number; flags: ReadonlySet<string> | FlagSet; view?: GameView;
+  building: string; q: number; r: number; rotation: number; flags: ReadonlySet<string> | FlagSet; view?: GameView; colonyId?: number;
 }
 
 function toFlagSet(flags: ReadonlySet<string> | FlagSet): FlagSet {
@@ -126,7 +128,8 @@ function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexO
       if (size > 0) markFootprintIndices(occupied, hIndex, e.q, e.r, size, size, e.rot);
     });
   }
-  const qList = v.colonies?.[0]?.constructionQueue ?? v.colonies?.[0]?.queue ?? v.blobs?.queue?.entries ?? v.blobs?.queue?.value?.entries ?? [];
+  const fromColonies = (v.colonies ?? []).flatMap((c) => c?.constructionQueue ?? c?.queue ?? []); // every seat's pending site, not colony 0's
+  const qList = fromColonies.length > 0 ? fromColonies : v.blobs?.queue?.entries ?? v.blobs?.queue?.value?.entries ?? [];
   for (const entry of qList) {
     if (!entry || entry.state === 'done' || entry.state === 'cancelled') continue;
     const t = entry.task;
@@ -161,8 +164,7 @@ function scanFootprintTiles(
   const tiles: PlacementGhostTile[] = [];
   const prepBill: Record<string, number> = {};
   const coveredDepositIndices: number[] = [];
-  let hasOutOfBounds = false, hasImpassable = false, hasOccupied = false;
-  let terrainBlock: GeoBlock | null = null;
+  let hasOutOfBounds = false, hasImpassable = false, hasOccupied = false, terrainBlock: GeoBlock | null = null;
 
   const minQ = -Math.floor((w - 1) / 2), minR = -Math.floor((d - 1) / 2);
   for (let dr = 0; dr < d; dr++) {
@@ -226,7 +228,9 @@ export function evaluatePlacementGhost(opts: EvaluatePlacementGhostOptions): Pla
   const tilesData = (opts.view as { tiles?: ClientTiles } | undefined)?.tiles;
   const occupied = collectOccupiedTileIndices(opts.view, hIndex);
   const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, hIndex, occupied, tilesData, meta.requiresDeposit);
-  const val = evaluateValidity(Boolean(tilesData), scan.hasOutOfBounds, scan.hasImpassable, scan.hasOccupied, scan.terrainBlock, meta.requiresDeposit, scan.coveredDepositIndices.length);
+  const sim = scan.hasOccupied ? null : evaluateSiteWithSim(opts.view, { building: opts.building, q: opts.q, r: opts.r, colonyId: opts.colonyId ?? 0, data: clientDataFor(toFlagSet(opts.flags)) });
+  const val = sim ? { valid: sim.valid, statusColor: sim.valid ? 'green' as const : 'red' as const, reason: sim.reason, depositCovered: sim.valid && scan.coveredDepositIndices.length > 0 }
+    : evaluateValidity(Boolean(tilesData), scan.hasOutOfBounds, scan.hasImpassable, scan.hasOccupied, scan.terrainBlock, meta.requiresDeposit, scan.coveredDepositIndices.length);
 
   return {
     building: opts.building, label: meta.label, q: opts.q, r: opts.r, rotation: rot,
@@ -242,7 +246,7 @@ function findValidPlacementSite(
   rotation: number,
   flags: ReadonlySet<string> | FlagSet,
   view: GameView,
-  avoidIndices: ReadonlySet<number>,
+  avoidIndices: ReadonlySet<number>, colonyId = 0,
 ): { q: number; r: number } | null {
   const searchR = Math.min(getPlanetRadius(view), 10);
   let best: { q: number; r: number; score: number } | null = null;
@@ -250,7 +254,7 @@ function findValidPlacementSite(
     for (let dq = -searchR; dq <= searchR; dq++) {
       const dist = hexDistance(0, 0, dq, dr);
       if (dist > searchR) continue;
-      const st = evaluatePlacementGhost({ building, q: dq, r: dr, rotation, flags, view });
+      const st = evaluatePlacementGhost({ building, q: dq, r: dr, rotation, flags, view, colonyId });
       if (!st.valid || st.tiles.some((t) => avoidIndices.has(t.tileIdx))) continue;
       const anchorDep = st.tiles[0]?.deposit === DEPOSIT.metals ? 0 : 1;
       const depPenalty = st.requiresDeposit === 'metals'
@@ -345,8 +349,7 @@ export class PlacementGhostController implements Disposable {
 
   private handleKeyDown(e: KeyboardEvent): void {
     if (!this.activeBuilding) return;
-    const target = e.target as HTMLElement | null;
-    if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+    if (!isHotkeyPress(e)) return; // typing, auto-repeat and Ctrl/Cmd+R (page reload) are not a rotate
     if (e.key === 'r' || e.key === 'R') { e.preventDefault?.(); this.rotate(); }
     else if (e.key === 'Escape') { e.preventDefault?.(); e.stopImmediatePropagation?.(); this.cancel(); }
   }
@@ -386,9 +389,9 @@ export class PlacementGhostController implements Disposable {
     if (this.element.style) this.element.style.display = '';
     const effView = this.resolveEffectiveView();
     if (effView && (effView as { tiles?: ClientTiles }).tiles) {
-      const cur = evaluatePlacementGhost({ building, q: this.hoverQ, r: this.hoverR, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView });
+      const cur = evaluatePlacementGhost({ building, q: this.hoverQ, r: this.hoverR, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView, colonyId: ownColonyIndex(this.opts.ctx.services) });
       if (!cur.valid || cur.tiles.some((t) => this.pendingIndices.has(t.tileIdx))) {
-        const site = findValidPlacementSite(building, this.rotation, this.opts.ctx.flags, effView, this.pendingIndices);
+        const site = findValidPlacementSite(building, this.rotation, this.opts.ctx.flags, effView, this.pendingIndices, ownColonyIndex(this.opts.ctx.services));
         if (site) { this.hoverQ = site.q; this.hoverR = site.r; }
       }
     }
@@ -402,11 +405,11 @@ export class PlacementGhostController implements Disposable {
     const effView = this.resolveEffectiveView();
     const tilesData = (effView as { tiles?: ClientTiles } | undefined)?.tiles;
     if (effView && tilesData?.deposit) {
-      const direct = evaluatePlacementGhost({ building: this.activeBuilding, q, r, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView });
+      const direct = evaluatePlacementGhost({ building: this.activeBuilding, q, r, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView, colonyId: ownColonyIndex(this.opts.ctx.services) });
       const hoverIdx = hexIndex(getPlanetRadius(effView)).indexOf(q, r);
       if (!direct.valid && direct.requiresDeposit === 'metals' && hoverIdx >= 0 && tilesData.deposit[hoverIdx] === DEPOSIT.metals) {
         for (const [aq, ar] of [[q - 1, r], [q, r - 1], [q - 1, r - 1]]) {
-          if (evaluatePlacementGhost({ building: this.activeBuilding, q: aq, r: ar, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView }).valid) {
+          if (evaluatePlacementGhost({ building: this.activeBuilding, q: aq, r: ar, rotation: this.rotation, flags: this.opts.ctx.flags, view: effView, colonyId: ownColonyIndex(this.opts.ctx.services) }).valid) {
             this.hoverQ = aq;
             this.hoverR = ar;
             break;
@@ -457,7 +460,7 @@ export class PlacementGhostController implements Disposable {
       r: this.hoverR,
       rotation: this.rotation,
       flags: this.opts.ctx.flags,
-      view: this.resolveEffectiveView(),
+      view: this.resolveEffectiveView(), colonyId: ownColonyIndex(this.opts.ctx.services),
     });
     this.renderState(this.state);
   }

@@ -10,6 +10,7 @@ import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { approach, atGoal, setUnitActivity } from '../../units/approach';
+import { colonyWho } from '../find';
 import { faceTowards } from '../../units/movement/locomotion';
 import { defineUnitCommand, type TerraformCommand, type UnitCtx, type UnitWorkProvider } from '../../units/types';
 import { stepTerraformWorkWithCell } from '../hq/cell';
@@ -32,12 +33,7 @@ import { evaluateTerraformTile, terraformWorldFromState } from './rules';
 const jobKey = (orderId: string, q: number, r: number): string => `tf:${orderId}:${q},${r}`;
 
 /** The colony's id string and the `colonyId` / `playerId` fields of its player events. */
-export const colonyWho = (state: PlanetState, colonyId: number) => {
-  const col = state.colonies[colonyId];
-  const colonyIdStr = col?.id ?? `col_${colonyId}`;
-  const playerId = typeof col?.playerId === 'string' ? col.playerId : undefined;
-  return { colonyIdStr, who: { colonyId: colonyIdStr, ...(playerId ? { playerId } : {}) } };
-};
+export { colonyWho };
 
 /** Whether `order`'s job may still run on its tile (the enqueue rule, with the order's own `allowUnclaimed`). */
 function jobStillValid(state: PlanetState, order: TerraformOrder, job: TerraformJob, data: StepContext['data']): boolean {

@@ -14,8 +14,8 @@ import {
   step,
 } from '../../src';
 
-describe('W02-10 Hub worker production (slot 9): Units lane, paid on start, 10s build, supply cap 10', () => {
-  it('queue 1 Harvester -> 40/15/5/0 paid on start, spawns after 10 s; queue an 11th -> waits on waiting(supply)', () => {
+describe('W02-10 Hub worker production (slot 9): Units lane, paid progressively, 10s build, supply cap 10', () => {
+  it('queue 1 Harvester -> 40/15/5/0 paid progressively, spawns after 10 s; queue an 11th -> waits on waiting(supply)', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     const colony = ensureColonyLedger({
       index: 0,

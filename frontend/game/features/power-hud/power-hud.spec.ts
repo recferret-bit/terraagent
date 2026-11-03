@@ -2,8 +2,9 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import { PowerHud } from './PowerHud';
 import { installMockDocument, MockElement } from '../test-dom';
+import type { FeatureContext, GameView } from '../../core/registry/types';
 
-describe('PowerHud - balance and clock', () => {
+describe('PowerHud - no clock / balance bar (moved to the top bar)', () => {
   let uninstall: () => void;
 
   beforeEach(() => {
@@ -14,65 +15,14 @@ describe('PowerHud - balance and clock', () => {
     uninstall();
   });
 
-  it('renders power balance and day/night clock', () => {
+  it('renders only the brownout banner and the inspector', () => {
     const parent = new MockElement('div') as unknown as HTMLElement;
     const hud = new PowerHud(parent);
-
-    hud.update({
-      colonies: [
-        {
-          power: {
-            supply: 28,
-            demand: 11,
-            net: 17,
-            phase: 'day',
-            clockText: '11:30',
-            daylight: 0.95,
-            brownout: false,
-          },
-        },
-      ],
-    });
-
-    const mockParent = parent as unknown as MockElement;
-    expect(mockParent.querySelector('.ta-power-hud__flow')?.textContent).toBe('+28 / −11 E/s');
-    expect(mockParent.querySelector('.ta-power-hud__net')?.textContent).toBe('+17 E/s');
-    expect(mockParent.querySelector('.ta-power-hud__clock-icon')?.textContent).toBe('☀');
-    expect(mockParent.querySelector('.ta-power-hud__clock-text')?.textContent).toBe('11:30');
-    expect(mockParent.querySelector('.ta-power-hud__daylight')?.textContent).toBe('95%');
-
-    hud.dispose();
-  });
-
-  it('shows moon icon and 0% daylight at night', () => {
-    const parent = new MockElement('div') as unknown as HTMLElement;
-    const hud = new PowerHud(parent);
-
-    hud.update({
-      colonies: [
-        {
-          power: {
-            supply: 8,
-            demand: 14,
-            net: -6,
-            phase: 'night',
-            clockText: '23:00',
-            daylight: 0.0,
-            brownout: true,
-            shedGroupsActive: [3],
-            shedEntityIds: [42],
-            offlineReasons: { 42: 'offline: brownout' },
-          },
-        },
-      ],
-    });
-
-    const mockParent = parent as unknown as MockElement;
-    expect(mockParent.querySelector('.ta-power-hud__clock-icon')?.textContent).toBe('☾');
-    expect(mockParent.querySelector('.ta-power-hud__clock-text')?.textContent).toBe('23:00');
-    expect(mockParent.querySelector('.ta-power-hud__daylight')?.textContent).toBe('0%');
-    expect(mockParent.querySelector('.ta-power-hud__net')?.getAttribute('data-deficit')).toBe('true');
-
+    hud.update({ colonies: [{ power: { supply: 28, demand: 11, net: 17, phase: 'day', clockText: '11:30', daylight: 0.95, brownout: false } }] });
+    const p = parent as unknown as MockElement;
+    expect(p.querySelector('.ta-power-hud__clock-text')).toBeNull();
+    expect(p.querySelector('.ta-power-hud__flow')).toBeNull();
+    expect(p.querySelector('.ta-power-hud__brownout')?.getAttribute('data-brownout')).toBe('false');
     hud.dispose();
   });
 });
@@ -251,5 +201,117 @@ describe('PowerHud - inspector and selection', () => {
     expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Metals Extractor');
 
     hud.dispose();
+  });
+});
+
+describe('PowerHud - requested demand, brownout deficit and own colony', () => {
+  let uninstall: () => void;
+
+  beforeEach(() => {
+    uninstall = installMockDocument();
+  });
+
+  afterEach(() => {
+    uninstall();
+  });
+
+  const hubOnlyBrownout = {
+    supply: 8,
+    demand: 5,
+    rawDemand: 11,
+    net: 3,
+    brownout: true,
+    shedGroupsActive: [3],
+    shedEntityIds: [3],
+    offlineReasons: { 3: 'offline: brownout' },
+  };
+
+  it('a Hub-only grid with a shed Extractor names its 6 E/s offline in the banner', () => {
+    const parent = new MockElement('div') as unknown as HTMLElement;
+    const hud = new PowerHud(parent);
+    hud.update({ colonies: [{ power: hubOnlyBrownout }] });
+
+    const p = parent as unknown as MockElement;
+    const banner = p.querySelector('.ta-power-hud__brownout')!;
+    expect(banner.getAttribute('data-brownout')).toBe('true');
+    expect(banner.textContent).toBe('BROWNOUT — SHEDDING GROUP 3 · 6 E/s OFFLINE');
+    hud.dispose();
+  });
+
+  it('a brownout with nothing shed does not name a shed group', () => {
+    const parent = new MockElement('div') as unknown as HTMLElement;
+    const hud = new PowerHud(parent);
+    hud.update({ colonies: [{ power: { supply: 0, demand: 1.5, rawDemand: 1.5, net: -1.5, brownout: true, shedGroupsActive: [] } }] });
+    const banner = (parent as unknown as MockElement).querySelector('.ta-power-hud__brownout')!;
+    expect(banner.textContent).toBe('BROWNOUT — DEMAND OVER SUPPLY');
+    hud.dispose();
+  });
+
+  it("reads the player's colony (seat 1), not colony 0, and inspects only its own buildings", () => {
+    const parent = new MockElement('div') as unknown as HTMLElement;
+    const ctx = { services: { landfall: { getOwnerColonyIndex: () => 1 } } } as unknown as FeatureContext;
+    const hud = new PowerHud(parent, ctx);
+    hud.update({
+      colonies: [
+        { index: 0, power: { supply: 28, demand: 11, rawDemand: 11, net: 17, brownout: false } },
+        { index: 1, power: hubOnlyBrownout },
+      ],
+      entities: [
+        { id: 2, kind: ENTITY_KIND.solar, owner: 0, hp: 300, hpMax: 300, state: ENTITY_STATE.active },
+        { id: 3, kind: ENTITY_KIND.metalsExtractor, owner: 1, hp: 500, hpMax: 500, state: ENTITY_STATE.offlineBrownout },
+      ],
+    } as unknown as GameView);
+
+    const p = parent as unknown as MockElement;
+    expect(p.querySelector('.ta-power-hud__brownout')?.textContent).toBe('BROWNOUT — SHEDDING GROUP 3 · 6 E/s OFFLINE');
+    const inspector = p.querySelector('.ta-building-inspector')!;
+    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Metals Extractor');
+    expect(inspector.querySelector('.ta-building-inspector__state')?.textContent).toBe('OFFLINE: BROWNOUT');
+    hud.dispose();
+  });
+});
+
+describe('PowerHud - follows the landfall selection (FF-49)', () => {
+  let uninstall: () => void;
+  beforeEach(() => {
+    uninstall = installMockDocument();
+  });
+  afterEach(() => {
+    uninstall();
+  });
+
+  it('a selected building is inspected; a selected unit or nothing falls back to the shed building; dispose unsubscribes', () => {
+    type Snap = { selectedEntity: { entityId: number; isUnit: boolean } | null };
+    let listener: ((s: Snap) => void) | null = null;
+    const landfall = {
+      getOwnerColonyIndex: () => 0,
+      onChange(fn: (s: Snap) => void) {
+        listener = fn;
+        fn({ selectedEntity: null });
+        return () => { listener = null; };
+      },
+    };
+    const ctx = { services: { landfall } } as unknown as FeatureContext;
+    const parent = new MockElement('div') as unknown as HTMLElement;
+    const hud = new PowerHud(parent, ctx);
+    const view = {
+      colonies: [{ index: 0, power: { supply: 8, demand: 5, rawDemand: 11, net: 3, brownout: true, shedEntityIds: [3], offlineReasons: { 3: 'offline: brownout' } } }],
+      entities: [
+        { id: 2, kind: ENTITY_KIND.solar, owner: 0, hp: 250, hpMax: 300, state: ENTITY_STATE.active },
+        { id: 3, kind: ENTITY_KIND.metalsExtractor, owner: 0, hp: 500, hpMax: 500, state: ENTITY_STATE.offlineBrownout },
+      ],
+    } as unknown as GameView;
+    const title = () => (parent as unknown as MockElement).querySelector('.ta-building-inspector__title')?.textContent;
+
+    hud.update(view);
+    expect(title()).toBe('Metals Extractor');
+    listener!({ selectedEntity: { entityId: 2, isUnit: false } });
+    hud.update(view);
+    expect(title()).toBe('Solar Array');
+    listener!({ selectedEntity: { entityId: 9, isUnit: true } });
+    hud.update(view);
+    expect(title()).toBe('Metals Extractor');
+    hud.dispose();
+    expect(listener).toBeNull();
   });
 });

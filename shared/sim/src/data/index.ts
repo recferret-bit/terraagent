@@ -19,6 +19,7 @@ export {
 } from './_overrides';
 export { dataHash, canonical } from './_hash';
 export {
+  CANCEL_REFUND_RATE,
   DISMANTLE_REFUND_RATE,
   REPAIR_COST_RATE,
   TERRAFORM_TIME_TABLE,

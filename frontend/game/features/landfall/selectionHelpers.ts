@@ -4,6 +4,7 @@ import {
   ENTITY_STATE,
   depositRemainingUnits,
   depositStageFromRichness,
+  getBuildingFootprintTiles,
   hexCount,
   hexDistance,
   hexIndex,
@@ -245,14 +246,8 @@ export function isBuildingCoveringTile(e: SelectedEntityView, q: number, r: numb
   const d = e.footprintD ?? 1;
   const bq = Number.isFinite(e.x) ? Math.round(e.x) : e.q;
   const br = Number.isFinite(e.y) ? Math.round(e.y) : e.r;
-  if (w === 2 && d === 2) {
-    for (const [cq, cr] of [[bq, br], [e.q, e.r]]) {
-      const inNeg = q >= cq - 1 && q <= cq && r >= cr - 1 && r <= cr;
-      const inPos = q >= cq && q <= cq + 1 && r >= cr && r <= cr + 1;
-      if (inNeg || inPos) return true;
-    }
-    return false;
-  }
+  // 2×2: the sim's footprint (`getBuildingFootprintTiles`, anchor + offsets 0..1), 4 tiles, never the 3 west / north ones
+  if (w === 2 && d === 2) return getBuildingFootprintTiles(e.q, e.r, 2).some((p) => p.q === q && p.r === r);
   const minW = -Math.floor((w - 1) / 2);
   const minD = -Math.floor((d - 1) / 2);
   const inRound = q >= bq + minW && q < bq + minW + w && r >= br + minD && r < br + minD + d;
@@ -429,4 +424,11 @@ export function buildSelectedEntityFromRow(
     hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: job, queueCount,
     footprintW: b.w, footprintD: b.d, state: e.state, progress,
   };
+}
+
+/** Colony `owner`'s Units-lane entry CANCEL JOB on the Command Hub ends: the running one, else the next queued; null if none. */
+export function hubUnitsLaneTaskId(rawView: unknown, owner: number): string | null {
+  const queue = (viewColony(rawView, owner) as { queue?: Array<{ taskId?: string; lane?: string; state?: string }> } | undefined)?.queue;
+  const lane = (queue ?? []).filter((t) => t.lane === 'units' && typeof t.taskId === 'string');
+  return (lane.find((t) => t.state === 'in_progress') ?? lane[0])?.taskId ?? null;
 }

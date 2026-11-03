@@ -12,7 +12,7 @@ import {
   step,
 } from '../../src';
 
-describe('W02-13 Queue v1 part 1 — Construction and Units lanes, payment at start, cancel refunds, reorderTask', () => {
+describe('W02-13 Queue v1 part 1 — Construction and Units lanes, progressive payment, cancel refunds, reorderTask', () => {
   it('cancel a waiting entry -> 100 % stock unchanged; cancel an in_progress entry -> 50 % of spentCost refunded', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     const colony = ensureColonyLedger({
@@ -72,7 +72,7 @@ describe('W02-13 Queue v1 part 1 — Construction and Units lanes, payment at st
     expect(colony.stock['bio.water']).toBeCloseTo(7.5 + 1.25, 4);
   });
 
-  it('reorderTask moves player entry within its lane', () => {
+  it('reorderTask moves player entry within its lane, and the new head starts first', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -102,5 +102,10 @@ describe('W02-13 Queue v1 part 1 — Construction and Units lanes, payment at st
     );
     expect(res.outcomes[0].code).toBeUndefined();
     expect(getColonyQueue(state, 0, 'construction').map((e) => e.taskId)).toEqual(['t-2', 't-3', 't-1']);
+
+    // Stock for one Solar arrives: the reordered head (t-2) starts, the others wait (W02-13 acceptance)
+    for (const [k, v] of [['metals.t1', 100], ['minerals.t1', 100], ['bio.biomass', 20], ['bio.water', 10]] as const) creditResource(colony, k, v, 1);
+    step(state, [], 1, pipeline);
+    expect(getColonyQueue(state, 0, 'construction').filter((e) => e.state === 'in_progress').map((e) => e.taskId)).toEqual(['t-2']);
   });
 });

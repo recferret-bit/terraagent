@@ -29,6 +29,7 @@ interface OnlineColonyView {
     solarGrossPerS?: number;
     solarNetPerS?: number;
     brownout?: boolean;
+    offlineReasons?: Record<string, string>;
     phase?: string;
     clockText?: string;
     daylight?: number;
@@ -73,7 +74,7 @@ const getColony0 = (page: Page) =>
 const sendSimCmd = (page: Page, kind: string, args: unknown) =>
   page.evaluate(([k, a]) => (window as unknown as OnlineDebugWindow).__online.commands.send(k, a), [kind, args] as const);
 
-test('@hack 1. Load ?scenario=w02: Hub done, stock 400/250/150/150, morning -> see resource bar and power widget (+8 supply / -5 demand)', async ({ page }) => {
+test('@hack 1. Load ?scenario=w02: Hub done, stock 400/250/150/150, morning -> see resource bar, planet clock and energy hover (+8 supply / -5 demand)', async ({ page }) => {
   await openW02(page);
   await expect.poll(async () => (await getColony0(page))?.stock?.['metals.t1'] ?? 0).toBe(400);
   const col = await getColony0(page);
@@ -90,12 +91,20 @@ test('@hack 1. Load ?scenario=w02: Hub done, stock 400/250/150/150, morning -> s
     phase: 'day',
   });
   await expect(page.locator('.ta-resources-hud')).toBeVisible();
-  await expect(page.locator('.ta-power-hud')).toBeVisible();
+  await expect(page.locator('[data-testid="hud-daytime"]')).toBeVisible(); // planet time of day in the top bar (the old power widget bar is gone)
+  await expect(page.locator('[data-testid="hud-daytime-clock"]')).toHaveText(/^\d\d:\d\d$/);
+  // The grid balance lives in the energy (HQ cell) chip's hover popover.
+  const energy = page.locator('[data-testid="hud-hq-cell"]');
+  await energy.hover();
+  await expect(energy.locator('[data-testid="res-income-energy"]')).toBeVisible();
+  await expect(energy.locator('[data-testid="res-income-energy"]')).toHaveText('Income (Supply): +8 E/s');
+  await expect(energy.locator('[data-testid="res-spending-energy"]')).toHaveText('Spending (Demand): −5 E/s');
+  await expect(energy.locator('[data-testid="res-net-energy"]')).toHaveText('Net: +3 E/s');
   await screenshot(page, '1-w02-morning-hud');
   expectNoPageErrors(page);
 });
 
-test('@hack 2. Queue 1 Harvester in Units menu -> paid on start (40/15/5/0), completes and harvests nearest deposit', async ({ page }) => {
+test('@hack 2. Queue 1 Harvester in Units menu -> paid progressively (40/15/5/0), completes and harvests nearest deposit', async ({ page }) => {
   await openW02(page);
   await devConsole(page, 'warp 20');
   const ack = await sendSimCmd(page, 'enqueueTask', {
@@ -152,22 +161,37 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   await expect.poll(async () => (await getColony0(page))?.power?.demand ?? 0, { timeout: 20_000 }).toBeGreaterThanOrEqual(11);
   await devConsole(page, 'warp 1');
 
-  // Step 5: Lower Minerals to 5 (< 20) and queue a second Extractor -> see `waiting(resources)` in the queue
+  // Step 5: Lower Minerals to 5 (< 20) and queue a second Extractor on the uncovered metals deposit (6, 0) ((4, 0) is
+  // inside the first Extractor's 2x2 footprint at (3, 0)) -> see `waiting: Minerals 5/20 · ~N s` (or `(no ETA)`).
   await devConsole(page, 'fill minerals.t1 5');
   await expect.poll(async () => (await getColony0(page))?.stock?.['minerals.t1'] ?? 250).toBe(5);
-  await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext-wait', task: { kind: 'build', building: 'metalsExtractor', q: 4, r: 0 } });
-  await expect.poll(async () => {
-    const q = (await getColony0(page))?.queue ?? [];
-    return q.find((e) => e.taskId === 'b-ext-wait')?.waitReason ?? '';
-  }).toBe('resources');
+  await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext-wait', task: { kind: 'build', building: 'metalsExtractor', q: 6, r: 0 } });
+  const waitEntry = async () => ((await getColony0(page))?.queue ?? []).find((e) => e.taskId === 'b-ext-wait');
+  await expect.poll(async () => (await waitEntry())?.waitReason ?? '').toBe('resources');
+  // polled: one tick may still carry the bare `waiting: resources` before the detailed text
+  await expect.poll(async () => (await waitEntry())?.waitDetail ?? '').toMatch(/Minerals 5\/20.*(~\d+ s|\(no ETA\))/);
+  await expect(page.locator('[data-task-id="b-ext-wait"] [data-chip-status]')).toContainText('Minerals');
   await screenshot(page, '5-queue-waiting-minerals');
-  await sendSimCmd(page, 'cancelTask', { taskId: 'b-ext-wait' });
+  // A waiting order is cancelled with nothing charged (step 8, second half): Minerals and Water stay as they were
+  // (no income on either here; Metals has the Extractor's income).
+  const beforeWaitCancel = (await getColony0(page))?.stock ?? {};
+  expect(Object.values((await waitEntry())?.spentCost ?? {}).every((v) => v === 0)).toBe(true);
+  expect((await sendSimCmd(page, 'cancelTask', { taskId: 'b-ext-wait' })).ok).toBe(true);
+  await expect.poll(async () => (await waitEntry()) === undefined).toBe(true);
+  const afterWaitCancel = (await getColony0(page))?.stock ?? {};
+  expect(afterWaitCancel['minerals.t1']).toBe(beforeWaitCancel['minerals.t1']);
+  expect(afterWaitCancel['bio.water']).toBe(beforeWaitCancel['bio.water']);
   await devConsole(page, 'fill minerals.t1 250');
 
   // Step 6: Run `time night` in dev console -> Solar drops to 0, brownout banner appears; `time day` restores
   await devConsole(page, 'time night');
   await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? false).toBe(true);
+  const nightPower = (await getColony0(page))?.power;
+  expect(nightPower?.solarNetPerS ?? 99).toBeGreaterThanOrEqual(-1); // Solar gives 0, minus its 1 E/s internal drain
+  expect(nightPower?.solarNetPerS ?? 99).toBeLessThanOrEqual(0);
+  expect(Object.values(nightPower?.offlineReasons ?? {})).toContain('offline: brownout'); // the Extractor is shed
   await expect(page.locator('.ta-power-hud__brownout[data-brownout="true"]')).toBeVisible();
+  await expect(page.locator('.ta-power-hud__brownout')).toContainText('BROWNOUT');
   await screenshot(page, '6-night-brownout');
 
   await devConsole(page, 'time day');
@@ -177,11 +201,22 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   await devConsole(page, 'fill metals.t1 9999');
   await expect.poll(async () => (await getColony0(page))?.stock?.['metals.t1'] ?? 0).toBe(500);
   await screenshot(page, '7-metals-capped');
+  if (!local) {
+    // An order costing more than the Metals cap waits on storage with the greyed Supply Depot hint. `tune` is a server
+    // dev command; single quotes keep the JSON's double quotes through the console tokenizer.
+    await devConsole(page, `tune economyT1Basic.solar.cost '{"metals.t1":600,"minerals.t1":75,"bio.biomass":10,"bio.water":5}'`);
+    await sendSimCmd(page, 'enqueueTask', { taskId: 'b-storage', task: { kind: 'build', building: 'solar', q: 5, r: -4 } });
+    await expect.poll(async () => ((await getColony0(page))?.queue ?? []).find((e) => e.taskId === 'b-storage')?.waitReason ?? '', { timeout: 15_000 }).toBe('storage');
+    await expect(page.locator('[data-task-id="b-storage"] [data-testid="queue-storage-hint"]')).toContainText('Supply Depot');
+    await screenshot(page, '7-waiting-storage');
+    expect((await sendSimCmd(page, 'cancelTask', { taskId: 'b-storage' })).ok).toBe(true);
+    await devConsole(page, 'tune reset');
+  }
 
   // Step 8: Start a Solar order (paid progressively, slice by slice) and cancel it in progress -> 50% of what was paid
   // so far comes back. Read the paid Metals and the stock together right before the cancel; between that read and the
   // cancel a slice more may be paid (~3 Metals/s) and the Extractor adds ~1 Metal/s, so allow ±3.
-  await sendSimCmd(page, 'enqueueTask', { taskId: 'b-cancel-prog', task: { kind: 'build', building: 'solar', q: 6, r: 0 } });
+  await sendSimCmd(page, 'enqueueTask', { taskId: 'b-cancel-prog', task: { kind: 'build', building: 'solar', q: 5, r: -4 } }); // free ground (a Solar may not stand on a deposit)
   const paidOf = async () => {
     const col = await getColony0(page);
     const entry = col?.queue?.find((e) => e.taskId === 'b-cancel-prog');
@@ -255,5 +290,31 @@ test('@hack 9. Terraform dock: TERRAFORM / REPAIR / DISMANTLE, hotkeys only on t
   await expect.poll(async () => (await workJobs(page)).some((j) => j.chainSeq >= 1 && j.jobId.includes('~')), { timeout: 30_000 }).toBe(true);
   await devConsole(page, 'warp 1');
   await screenshot(page, '9-terraform-chain');
+  expectNoPageErrors(page);
+});
+
+test('@hack 10. DoD: ?waves=..01 hides the W02 UI (planet clock, grid lines, Production tab, W02 build cards, power widget)', async ({ page }) => {
+  // Server host only: the client narrows the server's flags to ..01 while the scenario keeps its W02 sim.
+  test.skip(local, 'the local engine would compile the w02 scenario without W02');
+  await openW02(page, { waves: '..01' });
+  await expect(page.locator('[data-testid="hud-hq-cell"]')).toBeVisible();
+  await expect(page.locator('[data-testid="hud-daytime"]')).toBeHidden();
+  await expect(page.locator('[data-testid="hud-hq-cell"] [data-testid="res-income-energy"]')).toBeHidden();
+  await expect(page.locator('[data-testid="dock-tab-production"]')).toHaveCount(0);
+  // BUILD holds the W01 Hub menu (Command Hub only), not the W02 catalog.
+  await expect(page.locator('[data-testid="construction-menu"]')).toBeVisible();
+  await expect(page.locator('[data-testid="construction-menu"] [data-building]')).toHaveCount(1);
+  await expect(page.locator('[data-building="metalsExtractor"]')).toHaveCount(0);
+  await expect(page.locator('.ta-power-hud')).toHaveCount(0);
+  // The Terraform tab (a W01 feature) offers TERRAFORM only: REPAIR / DISMANTLE are W02.
+  await expect(page.locator('[data-testid="tf-op-terraform"]')).toHaveCount(1);
+  await expect(page.locator('[data-testid="tf-op-repair"]')).toHaveCount(0);
+  await expect(page.locator('[data-testid="tf-op-dismantle"]')).toHaveCount(0);
+  // No W02 overhead HP / progress bars in the scene.
+  expect(await page.evaluate(() => {
+    const o = (window as unknown as { __online?: { entities?: { healthBars?: { group?: { children?: unknown[] } } } } }).__online;
+    return o?.entities?.healthBars?.group?.children?.length ?? 0;
+  })).toBe(0);
+  await screenshot(page, '10-waves-01-no-w02-ui');
   expectNoPageErrors(page);
 });

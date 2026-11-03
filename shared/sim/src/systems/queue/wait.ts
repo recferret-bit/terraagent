@@ -27,10 +27,20 @@ function depositCodeToResourceKey(dep: number): ResourceKey | null {
   return null;
 }
 
+/** Whether a Harvester of `colonyIndex` harvests now (the production ledger then holds the real per-key rates). */
+function harvestersAtWork(state: PlanetState, colonyIndex: number): boolean {
+  const { count, cols } = state.entities;
+  for (let r = 0; r < count; r++) {
+    if (cols.owner[r] === colonyIndex && cols.kind[r] === ENTITY_KIND.harvester && cols.state[r] === ENTITY_STATE.harvesting) return true;
+  }
+  return false;
+}
+
 /**
  * Estimates current colony income per second (`amount/s`) for a given `ResourceKey`.
- * Uses explicit `colony.incomePerS` / `colony.production.incomePerS` if present,
- * otherwise sums active extractors (`1.0 * richness`/s) and harvesters (`0.5`/s).
+ * Uses explicit `colony.incomePerS`, else the production ledger (`colony.production.incomePerS`, written each step by
+ * `production.extractors` / `production.harvest`: the real per-key rate, so a Harvester mining metals adds nothing to
+ * Minerals). Without a ledger rate it guesses: active extractors (`1.0 * richness`/s) and idle / moving Harvesters.
  */
 export function estimateResourceIncomePerS(
   state: PlanetState,
@@ -41,6 +51,10 @@ export function estimateResourceIncomePerS(
   if (typeof explicitColony === 'number' && explicitColony > 0) {
     return explicitColony;
   }
+  const production = (colony as { production?: { incomePerS?: Partial<Record<ResourceKey, number>> } }).production;
+  const ledgerRate = production?.incomePerS?.[key];
+  if (typeof ledgerRate === 'number' && ledgerRate > 0) return ledgerRate;
+  if (production?.incomePerS && harvestersAtWork(state, colony.index)) return 0; // the ledger knows: nothing comes in
 
   let rate = 0;
   let idleOrMovingHarvesters = 0;

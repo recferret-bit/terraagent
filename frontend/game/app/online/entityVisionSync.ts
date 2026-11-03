@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { computeSolarState, getDayNightParams, isDayNightOn } from '@terra/render/core/dayNightConfig';
 import {
   attachEntityProjectorRig,
-  getArchetypeLights,
+  peekArchetypeLights,
   getColonyLightingBlend,
   isWorldPointInColonyFov,
   MAX_PROJECTOR_CANDIDATES,
@@ -79,7 +79,7 @@ function appendArchetypeProjectors(opts: {
   const effScale = lightScale * stateMul;
   if (effScale <= 0.005) return;
 
-  const sources = getArchetypeLights(archetypeId);
+  const sources = peekArchetypeLights(archetypeId);
   const cosY = Math.cos(yaw);
   const sinY = Math.sin(yaw);
 

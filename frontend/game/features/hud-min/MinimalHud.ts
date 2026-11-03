@@ -4,6 +4,8 @@ import type { GameView } from '../../core/registry/types';
 import { viewColony } from '../shared/colony';
 import { clampPct, makeDiv, makeSpan } from '../shared/dom';
 import { extractHqFromView } from '../shared/hqView';
+import { readDaytime } from '../shared/daytime';
+import { readColonyPower } from '../shared/power';
 import { createHudIcon, type HudIconKind } from './hudIcons';
 import { formatRejectToast } from './rejectText';
 import {
@@ -30,6 +32,11 @@ export interface MinimalHudOptions {
   transport?: Pick<Transport, 'onMessage'>;
   ownerColonyIndex?: number;
   getOwnerColonyIndex?: () => number | undefined;
+  /**
+   * Whether wave `wave` is on (the live client flags). The planet time of day and the grid supply / demand lines are
+   * W02 (power-core, environment): with W02 off (`?waves=..01`) they are hidden. Default: every wave on.
+   */
+  isWaveOn?: (wave: string) => boolean;
 }
 
 /** Shown in place of a number until the first view arrives. */
@@ -82,7 +89,7 @@ function stockSlot(kind: HudIconKind, testid: string, name: string, family: Fami
 
 /**
  * Compact top HUD header: icon-only Metals/Minerals/Bio/Supply stocks with hover tier & flow breakdowns,
- * inline HQ power cell bar with hover power breakdown, game clock, and reject/resource waiting toasts.
+ * inline HQ power cell bar with hover power breakdown, planet time of day, game clock, and reject/resource waiting toasts.
  */
 export class MinimalHud {
   readonly el: HTMLElement;
@@ -99,6 +106,10 @@ export class MinimalHud {
   private readonly cellVal: HTMLElement;
   private readonly cellFill: HTMLElement;
   private readonly cellBreakdown: HTMLElement;
+  private readonly daytimeEl: HTMLElement;
+  private readonly daytimeIcon: HTMLElement;
+  private readonly daytimeClock: HTMLElement;
+  private readonly daytimeLight: HTMLElement;
   private cleanups: Array<() => void> = [];
 
   constructor(parent: HTMLElement, private readonly opts: MinimalHudOptions = {}) {
@@ -137,11 +148,22 @@ export class MinimalHud {
     );
     bindHoverPopover(cellEl);
 
+    // Planet time of day (the sim's solar clock), right after energy: solar output follows the daylight %.
+    this.daytimeEl = makeDiv('ta-hud-min__daytime', 'hud-daytime');
+    this.daytimeEl.setAttribute('data-phase', 'day');
+    this.daytimeEl.title = 'Local time · daylight (solar output)';
+    this.daytimeIcon = makeSpan('ta-hud-min__daytime-icon', undefined, '☀');
+    this.daytimeIcon.setAttribute('aria-hidden', 'true');
+    this.daytimeClock = makeSpan('ta-hud-min__daytime-clock', 'hud-daytime-clock', NO_DATA);
+    this.daytimeLight = makeSpan('ta-hud-min__daytime-light', 'hud-daytime-light', '');
+    this.daytimeEl.append(this.daytimeIcon, this.daytimeClock, this.daytimeLight);
+    this.daytimeEl.hidden = !this.gridOn();
+
     this.toastContainer = makeDiv('ta-hud-toasts', 'hud-toast-container');
     this.toastContainer.setAttribute('role', 'status');
     this.toastContainer.setAttribute('aria-live', 'polite');
 
-    this.el.append(stocks, cellEl, brand, this.toastContainer);
+    this.el.append(stocks, cellEl, this.daytimeEl, brand, this.toastContainer);
     parent.appendChild(this.el);
     this.initListeners();
   }
@@ -165,6 +187,11 @@ export class MinimalHud {
     }
   }
 
+  /** W02 grid power and solar clock are on (read per call: the flags are live). */
+  private gridOn(): boolean {
+    return this.opts.isWaveOn?.('W02') ?? true;
+  }
+
   private colonyIndex(): number {
     return this.opts.getOwnerColonyIndex?.() ?? this.opts.ownerColonyIndex ?? 0;
   }
@@ -182,13 +209,18 @@ export class MinimalHud {
     this.cellVal.textContent = hqCell ? `${Math.round(hqCell.cell)} / ${Math.round(hqCell.cellMax)} E` : `${NO_DATA} E`;
     this.cellFill.style.width = `${(hqCell ? clampPct(hqCell.cell, hqCell.cellMax) : 0).toFixed(1)}%`;
 
-    const vRec = (view ?? {}) as Record<string, unknown>;
-    const blobs = (vRec.blobs ?? {}) as Record<string, unknown>;
-    const powerBlob = (blobs.power ?? {}) as Record<string, unknown>;
-    const byColony = (powerBlob.byColony ?? {}) as Record<number, unknown>;
-    const colRec = (col ?? {}) as Record<string, unknown>;
-    const power = (colRec.power ?? byColony[colonyIdx] ?? vRec.power) as Record<string, unknown> | undefined;
-    renderPowerBreakdown(this.cellBreakdown, power, hqCell, true);
+    const grid = this.gridOn();
+    renderPowerBreakdown(this.cellBreakdown, readColonyPower(view, colonyIdx), hqCell, true, grid);
+    this.daytimeEl.hidden = !grid;
+    if (grid) this.renderDaytime(view, colonyIdx);
+  }
+
+  private renderDaytime(view: GameView, colonyIdx: number): void {
+    const t = readDaytime(view, colonyIdx);
+    this.daytimeEl.setAttribute('data-phase', t?.phase ?? 'day');
+    this.daytimeIcon.textContent = t?.phase === 'night' ? '☾' : '☀';
+    this.daytimeClock.textContent = t?.clockText ?? NO_DATA;
+    this.daytimeLight.textContent = t ? `${Math.round(t.daylight * 100)}%` : '';
   }
 
   private setFamilyStatus(

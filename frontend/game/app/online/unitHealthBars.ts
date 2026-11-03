@@ -12,7 +12,12 @@ export interface UnitHealthRecordLike {
   mesh: THREE.Object3D;
 }
 
+/**
+ * Frees what `obj` owns on the GPU: every mesh's geometry and materials, plus its projector rig (`attachEntityProjectorRig`
+ * puts it in `userData.projectorRig`; its halo is a `Sprite`, which the mesh walk below would miss).
+ */
 export function disposeObject3D(obj: THREE.Object3D): void {
+  (obj.userData as { projectorRig?: { dispose?: () => void } } | undefined)?.projectorRig?.dispose?.();
   obj.traverse((child) => {
     const mesh = child as THREE.Mesh;
     if (mesh.isMesh) {
@@ -69,6 +74,20 @@ const BAR_W = 0.64;
 const BAR_H = 0.08;
 const ISO_YAW = Math.PI / 4;
 const ISO_PITCH = -Math.atan(1 / Math.SQRT2);
+const camQuat = new THREE.Quaternion();
+
+/**
+ * Billboard: turns the bar group to the rendering camera right before its backing plate draws (three.js calls
+ * `onBeforeRender` before it reads the object's world matrix), so bars stay readable after Q / E camera turns.
+ */
+function faceCameraBeforeRender(plate: THREE.Mesh, aboveGroup: THREE.Group): void {
+  plate.onBeforeRender = (_renderer, _scene, camera) => {
+    camera.getWorldQuaternion(camQuat);
+    if (aboveGroup.quaternion.equals(camQuat)) return;
+    aboveGroup.quaternion.copy(camQuat);
+    aboveGroup.updateMatrixWorld(true);
+  };
+}
 export const PROGRESS_BAR_COLOR = 0x38bdf8;
 
 /**
@@ -100,15 +119,19 @@ export class UnitHealthBars {
     this.sharedMats.push(this.aboveBgMat);
   }
 
+  /** Whether bars are drawn (the session ties it to the W02 flag; live, read per sync). Default: on. */
+  isEnabled: () => boolean = () => true;
+
   sync(records: Iterable<UnitHealthRecordLike>): void {
     const seen = new Set<number>();
-    for (const rec of records) {
+    for (const rec of this.isEnabled() ? records : []) {
       const kind = normalizeKindCode(rec.kind);
       if (!isBarSupportedKind(kind) || rec.hp <= 0 || rec.hpMax <= 0) continue;
       const isUnit = isMobileUnitKind(kind);
       const isDamaged = rec.hp < rec.hpMax;
       const prog = typeof rec.progress === 'number' && Number.isFinite(rec.progress) ? rec.progress : 0;
-      const hasProgress = prog > 0 && prog < 1;
+      // a descending drop pod's `progress` is its landing, not work: no blue bar over the touchdown cinematic
+      const hasProgress = kind !== ENTITY_KIND.pod && prog > 0 && prog < 1;
       if (!isUnit && !isDamaged && !hasProgress) continue;
 
       seen.add(rec.id);
@@ -146,6 +169,7 @@ export class UnitHealthBars {
     hpGroup.name = 'hp-bar-group';
     const aboveBg = new THREE.Mesh(this.aboveBgGeo, this.aboveBgMat);
     aboveBg.renderOrder = 10;
+    faceCameraBeforeRender(aboveBg, aboveGroup);
 
     const aboveMat = new THREE.MeshBasicMaterial({
       color: 0x39ff88,
@@ -168,6 +192,7 @@ export class UnitHealthBars {
 
     const progressBg = new THREE.Mesh(this.aboveBgGeo, this.aboveBgMat);
     progressBg.renderOrder = 10;
+    faceCameraBeforeRender(progressBg, aboveGroup);
     const progressMat = new THREE.MeshBasicMaterial({
       color: PROGRESS_BAR_COLOR,
       transparent: true,
@@ -218,7 +243,6 @@ export class UnitHealthBars {
       const sx = Math.max(0.001, clamped);
       entry.progressFill.scale.x = sx;
       entry.progressFill.position.x = -0.5 * BAR_W * (1 - clamped);
-      entry.progressMat.color.setHex(PROGRESS_BAR_COLOR);
     }
   }
 

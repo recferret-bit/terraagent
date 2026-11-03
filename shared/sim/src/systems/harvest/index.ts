@@ -19,6 +19,7 @@ import { defineSystem } from '../../kernel/system';
 import { UnitBook } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
 import { cancelMove, requestMove } from '../../units/movement/orchestrator';
+import { commandColony } from '../command';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { defineSimModule } from '../define';
 import { creditResource, ensureColonyLedger, isFamilyAtCap, type ColonyWithLedger } from '../economy/ledger';
@@ -229,8 +230,10 @@ export const setHarvestWeightsHandler = defineCommandHandler({
   kind: 'setHarvestWeights',
   wave: 'W02',
   handle(state, cmd, ctx) {
+    const colIdx = commandColony(cmd); // never "colony 0" for a planet-level command (GP-46)
+    if (typeof colIdx === 'string') return colIdx;
     const args = (cmd.args ?? {}) as Partial<HarvestWeights>;
-    applyColonyHarvestWeights(state, cmd.colonyIndex ?? 0, args, ctx.tick);
+    applyColonyHarvestWeights(state, colIdx, args, ctx.tick);
   },
 });
 
@@ -319,7 +322,9 @@ const standingHarvestAssignSystem = defineSystem({
       if (!cur) continue;
       const distToDep = hexDistance(cols.q[row], cols.r[row], cur.q, cur.r);
       const fracDist = hexDistance(cols.x[row], cols.y[row], cols.q[row], cols.r[row]);
-      if (distToDep === 1 && fracDist <= 0.15) {
+      // A building placed over its stand tile (construction evacuates it) sends it to another free side of the deposit.
+      const standBuiltOver = occupied.has(hexIndex(state.grid.radius).indexOf(cols.q[row], cols.r[row]));
+      if (distToDep === 1 && fracDist <= 0.15 && !standBuiltOver) {
         cancelMove(state, id, ctx.tick);
         faceTowards(state, row, cur.q, cur.r, ctx.tick);
         if (cols.targetQ[row] !== cur.q) setField(e, row, 'targetQ', cur.q, ctx.tick);

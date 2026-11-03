@@ -157,7 +157,7 @@ describe('W02-14 Queue v1 part 2 — precedence & limits', () => {
       taskId: 'u-p1-over',
       task: { kind: 'buildUnit', unit: 'harvester', producerId: 100 },
     });
-    expect(uOver).toEqual({ ok: false, code: 'producer_buffer_full', detail: 'producer buffer full' });
+    expect(uOver).toEqual({ ok: false, code: 'queue_full', detail: 'producer buffer full' });
 
     // Units lane limit (10 total across producers)
     for (let i = 0; i < UNITS_LANE_LIMIT - PRODUCER_BUFFER_LIMIT; i++) {

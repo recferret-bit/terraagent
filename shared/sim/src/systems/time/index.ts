@@ -259,13 +259,16 @@ export function setPlanetTime(
   return computePlanetTimeAtTick(nextAnchor, tick, data);
 }
 
-import {
-  applyEnvironmentState,
-  computeEnvironmentAtCycleTick,
-  cycleTickForTimeSpec,
-  type EnvironmentState,
-} from '../environment';
+import { applyEnvironmentState, environmentFromPlanetTime, hourForTimeSpec, type EnvironmentState } from '../environment';
 import { recomputeAllColonyPower } from '../power-core';
+
+/** Re-derives the W02 environment (when it runs) from the solar clock right away, and the power that follows it. */
+function syncEnvironmentNow(state: PlanetState, ctx: { tick: number; data: CompiledDataLike }): void {
+  if (state.blobs.environment === undefined) return;
+  const prevStorm = (state.blobs.environment.value as Partial<EnvironmentState> | undefined)?.stormActive === true;
+  applyEnvironmentState(state, environmentFromPlanetTime(state, ctx.data, prevStorm, ctx.tick), ctx.tick);
+  recomputeAllColonyPower(state, ctx.data, ctx.tick);
+}
 
 function handleSetPlanetTimeCommand(
   state: PlanetState,
@@ -274,13 +277,9 @@ function handleSetPlanetTimeCommand(
 ): 'invalid_args' | void {
   const args = (cmd.args ?? {}) as Record<string, unknown>;
   if (typeof args.target === 'string') {
-    const prev = state.blobs.environment?.value as Partial<EnvironmentState> | undefined;
-    const prevStorm = prev?.stormActive === true;
-    const targetCycleTick = cycleTickForTimeSpec(args.target, state.meta.planetType, ctx.data);
-    const env = computeEnvironmentAtCycleTick(state.meta.planetType, targetCycleTick, ctx.data, prevStorm);
-    applyEnvironmentState(state, env, ctx.tick);
-    setPlanetTime(state, { timeOfDay: env.hourOfDay }, ctx.tick, ctx.data);
-    recomputeAllColonyPower(state, ctx.data, ctx.tick);
+    setPlanetTime(state, { timeOfDay: hourForTimeSpec(args.target) ?? 12 }, ctx.tick, ctx.data);
+    if (state.blobs.environment === undefined) applyEnvironmentState(state, environmentFromPlanetTime(state, ctx.data, false, ctx.tick), ctx.tick);
+    syncEnvironmentNow(state, ctx);
     return;
   }
   const patch: { timeOfDay?: number; realHoursPerDay?: number; timeScale?: number } = {};
@@ -302,18 +301,8 @@ function handleSetPlanetTimeCommand(
     }
     patch.timeScale = args.timeScale;
   }
-  const view = setPlanetTime(state, patch, ctx.tick, ctx.data);
-  if (patch.timeOfDay !== undefined && state.blobs.environment !== undefined) {
-    const prev = state.blobs.environment?.value as Partial<EnvironmentState> | undefined;
-    const prevStorm = prev?.stormActive === true;
-    const hh = Math.floor(view.hour);
-    const mm = Math.round((view.hour - hh) * 60) % 60;
-    const spec = `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
-    const targetCycleTick = cycleTickForTimeSpec(spec, state.meta.planetType, ctx.data);
-    const env = computeEnvironmentAtCycleTick(state.meta.planetType, targetCycleTick, ctx.data, prevStorm);
-    applyEnvironmentState(state, env, ctx.tick);
-    recomputeAllColonyPower(state, ctx.data, ctx.tick);
-  }
+  setPlanetTime(state, patch, ctx.tick, ctx.data);
+  syncEnvironmentNow(state, ctx);
 }
 
 /**

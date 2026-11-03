@@ -14,6 +14,8 @@ export interface TerraformPrimaryOpDef {
   /** `KeyboardEvent.key`, lower case. */
   readonly key: string;
   readonly testid: string;
+  /** The wave that brings the op (absent: the feature's own wave); without it the button and its hotkey are absent. */
+  readonly wave?: string;
 }
 
 /**
@@ -23,8 +25,8 @@ export interface TerraformPrimaryOpDef {
  */
 export const PRIMARY_OP_DEFS: readonly TerraformPrimaryOpDef[] = [
   { op: 'terraform', label: 'TERRAFORM [G]', subtitle: 'Flatten ground · continuous', key: 'g', testid: 'tf-op-terraform' },
-  { op: 'repair', label: 'REPAIR [R]', subtitle: `${pct(REPAIR_COST_RATE)} of base cost`, key: 'r', testid: 'tf-op-repair' },
-  { op: 'dismantle', label: 'DISMANTLE [Z]', subtitle: `Refund ${pct(DISMANTLE_REFUND_RATE)} of cost`, key: 'z', testid: 'tf-op-dismantle' },
+  { op: 'repair', label: 'REPAIR [R]', subtitle: `${pct(REPAIR_COST_RATE)} of base cost`, key: 'r', testid: 'tf-op-repair', wave: 'W02' },
+  { op: 'dismantle', label: 'DISMANTLE [Z]', subtitle: `Refund ${pct(DISMANTLE_REFUND_RATE)} of cost`, key: 'z', testid: 'tf-op-dismantle', wave: 'W02' },
 ];
 
 const HOTKEY_OP_MAP: Readonly<Record<string, TerraformPrimaryOp>> = Object.fromEntries(
@@ -38,6 +40,8 @@ export interface TerraformMenuOptions {
   getColonyId?: () => number;
   /** The host's compiled balance data (`WorldStore.simData`) the reference tables read. */
   simData?: () => CompiledDataLike | null | undefined;
+  /** The client flags: ops of a wave that is off (`?waves=..01`: REPAIR, DISMANTLE) are not offered. Absent: all on. */
+  flags?: ReadonlySet<string>;
 }
 
 export class TerraformMenu {
@@ -64,6 +68,7 @@ export class TerraformMenu {
 
     const opsRow = makeDiv('ta-tf-menu__ops');
     for (const def of PRIMARY_OP_DEFS) {
+      if (def.wave && this.opts.flags && !this.opts.flags.has(def.wave)) continue;
       const btn = makeBtn('btn btn-sm btn-ghost ta-tf-menu__op-btn', def.testid, '', () => this.toggleOp(def.op));
       btn.dataset.op = def.op;
       const titleSpan = makeSpan('ta-tf-menu__op-title', undefined, def.label);
@@ -102,7 +107,7 @@ export class TerraformMenu {
     } else {
       const op = HOTKEY_OP_MAP[k];
       // Only while the Terraform tab is open: an armed tool must be visible (G / R / Z do nothing on a hidden tab).
-      if (!op || !isDockPaneShown(this.el)) return;
+      if (!op || !this.opButtons.has(op) || !isDockPaneShown(this.el)) return;
       this.brush.selectOp(op);
     }
     this.render();

@@ -31,14 +31,18 @@ try {
     presets = ParticlePresetRegistry.list();
   } else {
     for (const id of ids) {
-      const p = ParticlePresetRegistry.get(id) ?? ParticlePresetRegistry.getByTargetKind(id);
+      // `getByTargetKind` falls back to work.flat for any unknown kind, so look the kind up in the list instead:
+      // a typo must fail, not silently validate work.flat.
+      const p = ParticlePresetRegistry.get(id) ?? ParticlePresetRegistry.list().find((x) => x.targetKind === id);
       if (!p) {
         console.error(`unknown particle preset or targetKind "${id}"`);
-        process.exit(2);
+        process.exitCode = 2;
+        break;
       }
       presets.push(p);
     }
   }
+  if (process.exitCode === 2) presets = [];
 
   const reports = presets.map((p) => validateParticlePreset(p));
   if (flag('--json')) {
@@ -54,7 +58,7 @@ try {
       `${reports.length} preset${reports.length === 1 ? '' : 's'}: ${reports.filter((r) => r.pass).length} pass, ${reports.filter((r) => !r.pass).length} fail · ${e} errors, ${w} warnings`,
     );
   }
-  process.exitCode = reports.some((r) => !r.pass || (flag('--strict') && r.warnings > 0)) ? 1 : 0;
+  if (process.exitCode !== 2) process.exitCode = reports.some((r) => !r.pass || (flag('--strict') && r.warnings > 0)) ? 1 : 0;
 } finally {
   await vite.close();
 }

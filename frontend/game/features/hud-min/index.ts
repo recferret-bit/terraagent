@@ -38,6 +38,8 @@ export interface MountMinimalHudCtx {
   store?: StoreLike;
   transport?: Pick<Transport, 'onMessage'>;
   ownerColonyIndex?: number;
+  /** The live client flags (`ctx.flags`): W02-only parts of the bar hide while W02 is off. Absent: every wave on. */
+  flags?: ReadonlySet<string>;
 }
 
 export interface MountedMinimalHud extends HudPanelInstance {
@@ -54,6 +56,7 @@ export function mountMinimalHud(ctx: MountMinimalHudCtx): MountedMinimalHud {
     transport: ctx.transport ?? ctx.services?.transport,
     ownerColonyIndex: ctx.ownerColonyIndex,
     getOwnerColonyIndex: () => ctx.ownerColonyIndex ?? ctx.services?.landfall?.getOwnerColonyIndex(),
+    isWaveOn: ctx.flags ? (wave) => ctx.flags!.has(wave) : undefined,
   });
   if (ctx.services && !ctx.services.hudMin) {
     ctx.services.hudMin = hud;
@@ -76,7 +79,7 @@ export const hudMinFeature: Feature & { mount(ctx: MountMinimalHudCtx): MountedM
         slot: 'top-center',
         order: 0,
         mount(el, ctx) {
-          return mountMinimalHud({ el, services: ctx.services });
+          return mountMinimalHud({ el, services: ctx.services, flags: ctx.flags });
         },
       },
     ],

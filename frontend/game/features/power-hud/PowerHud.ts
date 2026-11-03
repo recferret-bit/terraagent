@@ -1,5 +1,8 @@
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
+import { forEachEntity } from '../../store/replica/viewCodec';
+import { ownColonyIndex } from '../shared/colony';
+import { gridBalance, readColonyPower } from '../shared/power';
 
 const KIND_NAMES: Record<number, string> = {
   [ENTITY_KIND.metalsExtractor]: 'Metals Extractor',
@@ -17,6 +20,9 @@ const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.hq,
   ENTITY_KIND.dropPod,
 ]);
+
+/** A `SimView` entity as the inspector reads it (tests pass partial rows). */
+type EntitySummaryRow = Partial<Record<'id' | 'kind' | 'owner' | 'hp' | 'hpMax' | 'state', number>>;
 
 export interface EntitySummary {
   id: number;
@@ -43,12 +49,6 @@ export function formatEntityState(state: number, explicitReason?: string): strin
 
 export class PowerHud implements Disposable {
   readonly root: HTMLElement;
-  private readonly clockEl: HTMLElement;
-  private readonly clockIcon: HTMLElement;
-  private readonly clockText: HTMLElement;
-  private readonly daylightText: HTMLElement;
-  private readonly flowEl: HTMLElement;
-  private readonly netEl: HTMLElement;
   private readonly brownoutBanner: HTMLElement;
   private readonly inspector: HTMLElement;
   private readonly inspectorTitle: HTMLElement;
@@ -56,6 +56,7 @@ export class PowerHud implements Disposable {
   private readonly inspectorHp: HTMLElement;
   private readonly inspectorReason: HTMLElement;
   selectedEntityId: number | null = null;
+  private offSelection: (() => void) | null = null;
 
   constructor(
     private readonly parent: HTMLElement,
@@ -63,41 +64,6 @@ export class PowerHud implements Disposable {
   ) {
     this.root = document.createElement('div');
     this.root.className = 'ta-power-hud';
-
-    const bar = document.createElement('div');
-    bar.className = 'ta-power-hud__bar plate-sm';
-
-    this.clockEl = document.createElement('div');
-    this.clockEl.className = 'ta-power-hud__clock';
-    this.clockEl.setAttribute('data-phase', 'day');
-
-    this.clockIcon = document.createElement('span');
-    this.clockIcon.className = 'ta-power-hud__clock-icon';
-    this.clockIcon.textContent = '☀';
-
-    this.clockText = document.createElement('span');
-    this.clockText.className = 'ta-power-hud__clock-text';
-    this.clockText.textContent = '12:00';
-
-    this.daylightText = document.createElement('span');
-    this.daylightText.className = 'ta-power-hud__daylight';
-    this.daylightText.textContent = '100%';
-
-    this.clockEl.append(this.clockIcon, this.clockText, this.daylightText);
-
-    const balance = document.createElement('div');
-    balance.className = 'ta-power-hud__balance';
-
-    this.flowEl = document.createElement('span');
-    this.flowEl.className = 'ta-power-hud__flow';
-    this.flowEl.textContent = '+0 / −0 E/s';
-
-    this.netEl = document.createElement('span');
-    this.netEl.className = 'ta-power-hud__net';
-    this.netEl.textContent = '+0 E/s';
-
-    balance.append(this.flowEl, this.netEl);
-    bar.append(this.clockEl, balance);
 
     this.brownoutBanner = document.createElement('div');
     this.brownoutBanner.className = 'ta-power-hud__brownout plate-sm';
@@ -134,64 +100,42 @@ export class PowerHud implements Disposable {
     this.inspectorReason.style.display = 'none';
 
     this.inspector.append(head, body, this.inspectorReason);
-    this.root.append(bar, this.brownoutBanner, this.inspector);
+    this.root.append(this.brownoutBanner, this.inspector);
     this.parent.appendChild(this.root);
   }
 
+  /**
+   * Follows the player's selection (FF-49): a selected own building is inspected, else the first shed one. Bound on
+   * the first update that sees `services.landfall` (the landfall panel may mount after this one).
+   */
+  private bindSelection(): void {
+    const landfall = this.ctx?.services.landfall;
+    if (this.offSelection || typeof landfall?.onChange !== 'function') return;
+    this.offSelection = landfall.onChange(({ selectedEntity }) => {
+      this.selectEntity(selectedEntity && !selectedEntity.isUnit ? selectedEntity.entityId : null);
+    });
+  }
+
   update(view: GameView): void {
+    this.bindSelection();
     const v = (view ?? {}) as Record<string, unknown>;
-    const colonies = Array.isArray(v.colonies) ? v.colonies : [];
-    const col = (colonies[0] ?? v.colony ?? v) as Record<string, unknown>;
-    const blobs = (v.blobs ?? {}) as Record<string, unknown>;
-    const powerBlob = (blobs.power ?? {}) as Record<string, unknown>;
-    const byColony = (powerBlob.byColony ?? {}) as Record<number, unknown>;
-    const power = (col.power ?? byColony[0] ?? v.power) as Record<string, unknown> | undefined;
-    const env = ((blobs.environment ?? power ?? {}) as Record<string, unknown>);
+    const colonyIdx = ownColonyIndex(this.ctx?.services);
+    const power = readColonyPower(view, colonyIdx) ?? ((v.colony as Record<string, unknown> | undefined)?.power as Record<string, unknown> | undefined);
 
-    this.updateClock(power, env);
-    this.updatePowerReadout(power);
     this.updateBrownout(power);
-    this.updateBuildingInspector(view, power);
-  }
-
-  private updateClock(power?: Record<string, unknown>, env?: Record<string, unknown>): void {
-    const phase = (power?.phase ?? env?.phase ?? 'day') as 'day' | 'night';
-    const clockText = String(power?.clockText ?? env?.clockText ?? '12:00');
-    const daylight = typeof power?.daylight === 'number'
-      ? power.daylight
-      : typeof env?.daylight === 'number' ? env.daylight : (phase === 'night' ? 0 : 1);
-
-    this.clockEl.setAttribute('data-phase', phase);
-    this.clockIcon.textContent = phase === 'night' ? '☾' : '☀';
-    this.clockText.textContent = clockText;
-    this.daylightText.textContent = `${Math.round(daylight * 100)}%`;
-  }
-
-  private updatePowerReadout(power?: Record<string, unknown>): void {
-    if (power && typeof power.supply === 'number') {
-      const sup = Math.round(Number(power.supply));
-      const dem = Math.round(Number(power.demand ?? 0));
-      const net = Math.round(Number(power.net ?? (sup - dem)));
-      this.flowEl.textContent = `+${sup} / −${dem} E/s`;
-      this.netEl.textContent = `${net >= 0 ? '+' : ''}${net} E/s`;
-      this.netEl.setAttribute('data-deficit', String(net < 0));
-    } else {
-      this.flowEl.textContent = '+0 / −0 E/s';
-      this.netEl.textContent = '+0 E/s';
-      this.netEl.setAttribute('data-deficit', 'false');
-    }
+    this.updateBuildingInspector(view, power, colonyIdx);
   }
 
   private updateBrownout(power?: Record<string, unknown>): void {
     const isBrownout = Boolean(power?.brownout);
     this.brownoutBanner.setAttribute('data-brownout', String(isBrownout));
-    const activeGroups = Array.isArray(power?.shedGroupsActive) && power.shedGroupsActive.length > 0
-      ? (power.shedGroupsActive as number[]).join(', ')
-      : '3';
-    this.brownoutBanner.textContent = `BROWNOUT — SHEDDING GROUP ${activeGroups}`;
+    const groups = Array.isArray(power?.shedGroupsActive) ? (power.shedGroupsActive as number[]) : [];
+    const { shed } = gridBalance(power);
+    const head = groups.length > 0 ? `BROWNOUT — SHEDDING GROUP ${groups.join(', ')}` : 'BROWNOUT — DEMAND OVER SUPPLY';
+    this.brownoutBanner.textContent = shed > 0 ? `${head} · ${shed} E/s OFFLINE` : head;
   }
 
-  private updateBuildingInspector(view: GameView, power?: Record<string, unknown>): void {
+  private updateBuildingInspector(view: GameView, power: Record<string, unknown> | undefined, colonyIdx: number): void {
     const targetId = this.selectedEntityId ?? (view as { selectedEntityId?: number }).selectedEntityId;
     const shedIds = (power?.shedEntityIds ?? []) as number[];
     const candidateId = targetId !== undefined && targetId !== null
@@ -203,7 +147,8 @@ export class PowerHud implements Disposable {
       return;
     }
 
-    const entity = this.findTargetEntity((view as { entities?: unknown }).entities, candidateId);
+    const ents = view as { entities?: Float32Array | EntitySummaryRow[]; count?: number };
+    const entity = this.findTargetEntity(ents.entities, ents.count, candidateId, colonyIdx);
     if (!entity) {
       this.inspector.style.display = 'none';
       return;
@@ -231,40 +176,28 @@ export class PowerHud implements Disposable {
     }
   }
 
-  private findTargetEntity(entities: unknown, targetId: number | null): EntitySummary | null {
-    if (!entities) return null;
+  /** Entity `targetId`, or (none asked) the first building of colony `colonyIdx`; reads either entity form (`viewCodec`). */
+  private findTargetEntity(
+    entities: Float32Array | EntitySummaryRow[] | undefined,
+    count: number | undefined,
+    targetId: number | null,
+    colonyIdx: number,
+  ): EntitySummary | null {
+    if (!entities || !(entities instanceof Float32Array || Array.isArray(entities))) return null;
+    let target: EntitySummary | null = null;
     let fallbackBuilding: EntitySummary | null = null;
-
-    if (entities instanceof Float32Array) {
-      for (let i = 0; i < entities.length; i += 12) {
-        const id = entities[i];
-        const kind = entities[i + 1];
-        const hp = entities[i + 8];
-        const hpMax = entities[i + 9] || hp;
-        const state = entities[i + 10];
-        const summary: EntitySummary = { id, kind, hp, hpMax, state };
-        if (targetId !== null && id === targetId) return summary;
-        if (fallbackBuilding === null && BUILDING_KINDS.has(kind)) fallbackBuilding = summary;
+    const rows = Array.isArray(entities) ? (entities.filter(Boolean) as unknown as Parameters<typeof forEachEntity>[0]) : entities;
+    forEachEntity(rows, count, (e) => {
+      const summary: EntitySummary = { id: Number(e.id ?? 0), kind: Number(e.kind ?? 0), hp: Number(e.hp ?? 0), hpMax: Number(e.hpMax || e.hp || 0), state: Number(e.state ?? 0) };
+      if (targetId !== null) {
+        if (summary.id !== targetId) return;
+        target = summary;
+        return false;
       }
-      return targetId === null ? fallbackBuilding : null;
-    }
-
-    if (Array.isArray(entities)) {
-      for (const e of entities) {
-        if (!e) continue;
-        const id = Number(e.id ?? 0);
-        const kind = Number(e.kind ?? 0);
-        const hp = Number(e.hp ?? 0);
-        const hpMax = Number(e.hpMax ?? hp);
-        const state = Number(e.state ?? 0);
-        const summary: EntitySummary = { id, kind, hp, hpMax, state };
-        if (targetId !== null && id === targetId) return summary;
-        if (fallbackBuilding === null && BUILDING_KINDS.has(kind)) fallbackBuilding = summary;
-      }
-      return targetId === null ? fallbackBuilding : null;
-    }
-
-    return null;
+      const owned = typeof e.owner !== 'number' || e.owner === colonyIdx; // test rows may omit the owner
+      if (fallbackBuilding === null && owned && BUILDING_KINDS.has(summary.kind)) fallbackBuilding = summary;
+    });
+    return targetId === null ? fallbackBuilding : target;
   }
 
   selectEntity(id: number | null): void {
@@ -272,6 +205,8 @@ export class PowerHud implements Disposable {
   }
 
   dispose(): void {
+    this.offSelection?.();
+    this.offSelection = null;
     this.root.remove();
   }
 }

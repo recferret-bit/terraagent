@@ -9,6 +9,7 @@ import {
   type QueueLane,
 } from '@terra/sim';
 import type { FeatureContext, GameView } from '../../core/registry/types';
+import { ownColonyIndex } from '../shared/colony';
 
 const TASK_TITLES: Readonly<Record<string, string>> = {
   solar: 'Solar Array T1',
@@ -44,6 +45,26 @@ function formatChipStatus(entry: QueueEntry): string {
     return entry.waitDetail ?? `waiting: ${entry.waitReason ?? 'resources'}`;
   }
   return entry.state;
+}
+
+/** Greyed hint on a `waiting(storage)` entry: the cost exceeds a family cap; only a Supply Depot (W03) raises it. */
+export const STORAGE_HINT_TEXT = 'Build a Supply Depot to raise the cap (W03)';
+
+/** Adds / removes the greyed storage hint of `chip` to match `entry` (create and in-place update share it). */
+function syncStorageHint(chip: HTMLElement, entry: QueueEntry): void {
+  const want = entry.state === 'waiting' && entry.waitReason === 'storage';
+  const hint = chip.querySelector('[data-testid="queue-storage-hint"]');
+  if (want && !hint) {
+    const el = document.createElement('div');
+    el.className = 'ta-queue-chip__hint';
+    el.setAttribute('data-testid', 'queue-storage-hint');
+    el.setAttribute('aria-disabled', 'true');
+    el.title = 'The Supply Depot arrives in W03';
+    el.textContent = STORAGE_HINT_TEXT;
+    chip.appendChild(el);
+  } else if (!want && hint) {
+    hint.remove();
+  }
 }
 
 function serializeLaneKey(entries: readonly QueueEntry[]): string {
@@ -240,8 +261,9 @@ export class QueuePanel {
       this.syncFromSimState();
       return;
     }
+    this.colonyIndex = ownColonyIndex(this.ctx.services); // the player's seat (FF-05), not colony 0
     const colonies = view.colonies as Array<{ index?: number; queue?: QueueEntry[]; constructionQueue?: QueueEntry[]; unitQueue?: QueueEntry[] }> | undefined;
-    const col = colonies?.find((c) => c.index === this.colonyIndex) ?? colonies?.[this.colonyIndex] ?? colonies?.[0] ?? {};
+    const col = colonies?.find((c) => c.index === this.colonyIndex) ?? colonies?.[this.colonyIndex] ?? {};
     const blobEntries = (view.blobs?.queue as { value?: { entries?: QueueEntry[] }; entries?: QueueEntry[] } | undefined);
     const fromBlob = blobEntries?.value?.entries ?? blobEntries?.entries;
     if (Array.isArray(col.queue)) {
@@ -303,6 +325,7 @@ export class QueuePanel {
       fill.dataset.chipProgress = String(pct);
       fill.style.width = `${pct}%`;
     }
+    syncStorageHint(chip, entry);
   }
 
   private createChipElement(entry: QueueEntry, index: number, total: number): HTMLElement {
@@ -348,6 +371,7 @@ export class QueuePanel {
     status.textContent = formatChipStatus(entry);
 
     chip.append(row, status);
+    syncStorageHint(chip, entry);
 
     if (entry.state === 'in_progress') {
       const bar = document.createElement('div');

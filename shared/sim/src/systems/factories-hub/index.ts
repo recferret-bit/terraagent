@@ -1,5 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
-import { compileData, dataRow, type CompiledRow } from '../../data';
+import { CANCEL_REFUND_RATE, compileData, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
@@ -271,7 +271,7 @@ export interface EnqueueHubUnitOptions {
   data?: CompiledDataLike;
 }
 
-/** Enqueues a Harvester unit production order at the Command Hub's Units lane (5-slot buffer, 1.0x rate, paid on start). */
+/** Enqueues a Harvester unit production order at the Command Hub's Units lane (5-slot buffer, 1.0x rate, paid progressively as it builds). */
 export function enqueueHubUnit(
   state: PlanetState,
   opts: EnqueueHubUnitOptions = {},
@@ -335,7 +335,7 @@ export function cancelHubUnit(
   const colony = ensureColony(state, entry.colonyIndex, tick);
   const spent = entry.spentCost && Object.keys(entry.spentCost).length > 0 ? entry.spentCost : entry.paid ? entry.cost : {};
   const hasSpent = Object.values(spent).some((v) => (v ?? 0) > 0);
-  if (hasSpent) refundCost(colony, spent, 0.5, tick);
+  if (hasSpent) refundCost(colony, spent, CANCEL_REFUND_RATE, tick);
 
   entries.splice(idx, 1);
   refreshColonyUnitQueueStates(state, entries, entry.colonyIndex, tick, data);

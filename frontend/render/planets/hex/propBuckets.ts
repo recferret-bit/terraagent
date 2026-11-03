@@ -13,8 +13,12 @@ import type { ChunkPropBuckets, PropKind, TilePropInstance } from './chunkPropSc
  */
 export const PROP_CELL_M = 32;
 const SPARSE_CELL_M = PROP_CELL_M * 2;
-/** Bounds padding (m) on top of the instances' own bounds: the foliage wind lean / sway (`Scatter.ts`) is < 0.5 m. */
-export const PROP_BOUNDS_PAD = 0.75;
+/**
+ * Bounds padding (m) on top of the instances' own bounds, for the foliage wind (`Scatter.ts` `FOLIAGE_SWAY_BEGIN`): a
+ * ~5.9 m pine moves ~0.6 m at the default wind but ~1.9 m at the slider maxima (strength 2, gust 1: lean ≈ 1.2 m +
+ * trunk ≈ 0.5 m + crown ≈ 0.2 m); with less, crowns of corner trees pop at the screen edge / fitted shadow box.
+ */
+export const PROP_BOUNDS_PAD = 2;
 
 export const propCellSize = (kind: PropKind): number => (kind === 'pine' ? PROP_CELL_M : SPARSE_CELL_M);
 

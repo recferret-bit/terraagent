@@ -438,6 +438,7 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **To resolve:** read rates and maxima from the sim constants / compiled data; render "—" until a view arrives;
   return `null` instead of inventing an entity id.
 - **Fix:** clock from `TICKS_PER_SECOND`; HUD and panel show `—` until a view carries the value (no `800 / 800 E` / `900 / 900` placeholders); missing maxima come from the `hq.t1` row (live data when the store has it); `extractHqFromView` returns `null` instead of inventing entity id 1. Tests `hud-min.spec.ts` › "shows placeholders until the first view…", `landfall.spec.ts` › "a view with HQ metadata but no entity id names no HQ".
+- **Later (2026-11-03, econ-sync review, left as is):** `shared/hqView.ts` (`extractHqFromView`, `cell: extras.cell ?? meta?.cell ?? cellMax`) still shows a **full** cell when a packed client view has the HQ entity but no `col.hq` / `blobs.hq` record (the packed entity buffer has no `cell` column). The sim writes `col.hq` on the HQ's first step (`syncHqView` from `stepHq`), so this lasts at most one view; showing `—` would need `HqStatusView.cell` to become optional for both panels.
 - **Found:** 2026-11-01, review (frontend features)
 
 ### FF-24 · HUD accessibility basics
@@ -723,3 +724,101 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Workaround / mitigation:** use `/play.html?host=local&scenario=w02` or `/playground.html?hexterrain=1&biome=oceanForest` / `?surface=1` for visual checks.
 - **To resolve:** find which boot step the `skip=1` prototype path now depends on, or update CLAUDE.md if the prototype path is retired.
 - **Found:** 2026-11-02, water rework (wind / water agents)
+
+### FF-46 · The grid widget hid a shed consumer's draw, read colony 0, and its brownout banner was barely legible
+
+- **Status:** Resolved (econ-sync review 2026-11-03, uncommitted at time of writing)
+- **Severity:** high
+- **Confidence:** CONFIRMED (headless probe on `?host=local&scenario=w02` and `?scenario=w02`)
+- **Area / code:** `frontend/game/features/power-hud/PowerHud.ts` (`update`, `updatePowerReadout`, `updateBrownout`,
+  `findTargetEntity`), `frontend/game/features/hud-min/resourceBreakdown.ts` (`renderPowerBreakdown`),
+  `frontend/game/features/shared/power.ts` (new: `readColonyPower`, `gridBalance`), `power-hud/power-hud.css`
+- **What happens:** with only the Command Hub (+8 supply, −5 drain) an Extractor (−6) is shed at once
+  (`rawDemand 11 > supply 8` → `offlineBrownout`). The sim's `demand` / `net` are post-shed, so the widget kept showing
+  `+8 / −5 E/s · +3 E/s` in green and the Extractor's −6 E/s never appeared anywhere; next to the HQ cell chip
+  (`200 / 200 E`, FF-47) the owner read "energy is still full". The widget also read `colonies[0]` /
+  `blobs.power.byColony[0]` whatever the player's seat (a guest on `pl_dev` is colony 1+), its fallback inspector
+  took the first building of any colony, it hard-coded the entity stride `12`, the banner named "group 3" even when
+  nothing was shed, and the banner background was a 20 % raw-rgba red over the 3D terrain.
+- **Fix:** one reader `readColonyPower(view, ownColonyIndex(...))` for the widget and the top-bar breakdown;
+  `gridBalance` shows **requested** demand (`rawDemand`) and the deficit against it (`+8 / −11 E/s`, `−3 E/s` red,
+  `data-deficit="true"`), the banner appends `· 6 E/s OFFLINE` and says `DEMAND OVER SUPPLY` with no shed group; the
+  top-bar hover adds `Brownout: 6 E/s offline`. Inspector rows via `forEachEntity`, own colony only. Banner background
+  is the plate tinted with `--ta-fault` (opaque). Tests `power-hud.spec.ts` › "requested demand, brownout deficit and
+  own colony", `hud-min.spec.ts` › "Top-bar power breakdown…", `shared/power.spec.ts`.
+- **Default chosen (owner may change):** the widget's second number is requested demand, not the post-shed demand the
+  grid actually carries; the alternative is `+8 / −5 E/s (6 shed)`.
+- **Left:** the prototype `GameHud` (`frontend/game/ui/hud.ts:103-105`, `?planet=` path, single colony) still reads
+  `byColony[0]`.
+- **Found:** 2026-11-03, owner report ("extractor spends 6 E/s, energy is still 200/200"), econ-sync review
+
+### FF-47 · The top bar's energy chip is the HQ drone's power cell, not the colony grid
+
+- **Status:** Question for the owner
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/hud-min/MinimalHud.ts` (constructor `cellEl`, `update`),
+  `frontend/game/features/shared/hqView.ts` (`extractHqFromView`)
+- **What happens:** the only energy number in the top resource bar is `⚡ 200 / 200 E` (W02 scenario; 800 elsewhere):
+  the HQ cell, a store that only terraform work draws (`shared/sim/src/systems/hq/cell.ts`). Buildings draw grid flow
+  (E/s, `colony-economy-and-buildings-spec.md` §2), which since FF-50 is shown only in this chip's hover and the brownout banner (the top-right widget's balance bar was removed on the owner's request). Building or shedding an
+  Extractor never moves the top-bar number, so it reads as "energy is full" during a brownout. The chip says what it is
+  only in its tooltip / screen-reader label.
+- **Why it is like this:** W01 had no grid; the cell chip predates power-core (W02).
+- **Workaround / mitigation:** its hover breakdown now shows the grid (`Spending (Demand)`, `Brownout: N E/s offline`,
+  `Net`), and the brownout banner names the offline E/s (FF-46). ~~the top-right widget shows the deficit~~ removed (FF-50).
+- **To resolve (owner pick):** (a) keep the cell, but label it `CELL` with the HQ icon so it does not read as colony
+  energy; (b) replace it with the grid balance (`+8 / −11 E/s`, red in a brownout) and leave the cell to the HQ panel;
+  (c) show both, grid first. Recommendation: (b), the cell is a unit stat already shown in the HQ panel.
+- **Found:** 2026-11-03, econ-sync review
+
+### FF-48 · An Extractor on a Hub-only grid is shed at once; nothing says so before it is placed
+
+- **Status:** Question for the owner
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/catalog.ts` (`formatPower`), `ConstructionMenu.ts`;
+  balance in `shared/sim/src/data/hub.ts` (`founderCoreGenPerS 8`, `powerDrainPerS 5`) and
+  `shared/sim/src/data/economy-t1-basic.ts` (`metalsExtractor.powerDrainPerS 6`)
+- **What happens:** the Hub leaves +3 E/s headroom; the first Extractor (−6 E/s) completes, goes `offline: brownout`
+  and never produces until a Solar Array is built. The build card shows `−6 E/s` but not the colony's headroom, so the
+  player pays 65/20/10 for a building that is off from the first tick. The W02 e2e story builds Solar first.
+- **Why it is like this:** by the balance rows; the client only shows sim numbers.
+- **To resolve (owner pick):** (a) intended: add a hint on the card / ghost such as `grid short by 3 E/s` from the
+  current `col.power` (display only); (b) rebalance so one Extractor runs on the Hub alone (sim data change).
+- **Found:** 2026-11-03, econ-sync review
+
+### FF-50 · Top-right power widget bar removed; planet time of day moved into the top resource bar; deposit card de-duplicated
+
+- **Status:** Open (owner request 2026-11-03; one follow-up for the owner)
+- **Severity:** low
+- **Confidence:** CONFIRMED (specs + headless screenshots)
+- **Area / code:** `frontend/game/features/hud-min/MinimalHud.ts` (`daytimeEl`, `renderDaytime`), `hud-min.css`
+  (`.ta-hud-min__daytime*`), `frontend/game/features/shared/daytime.ts` (new: `readDaytime`),
+  `frontend/game/features/power-hud/PowerHud.ts` + `power-hud.css` (bar, clock and balance removed),
+  `frontend/game/features/landfall/HqPanel.ts` (`renderDeposit`) + `landfall.css`, `tests/e2e/w02.spec.ts`
+- **What changed:** (1) the top-right plate (`☀ 06:27 100%` + `+8 / −5 E/s +3 E/s`) is gone; the planet clock
+  (sun / moon, `HH:MM`, daylight %) is a chip in the top bar right after the energy chip, before the session clock;
+  it reads the player's colony power summary (`phase`, `clockText`, `daylight`), else `blobs.environment`. The brownout
+  banner and the building inspector stay in the top-right slot (shown only when relevant). (2) The selected-deposit
+  card showed its stage twice (orange count badge + footer) and its reserves twice (`DEPOSIT RESERVES` key and a
+  `DEPOSIT RESERVES: 500 / 500 LEFT` value in a fixed 96 px column, which overflowed into the footer coordinates):
+  it now shows the stage once (footer), `RESERVES` / `500 / 500`, and the stat column grows with its text.
+- **Trade-off / question:** with the balance bar gone, the colony grid balance (`+supply / −demand E/s`, the deficit)
+  has no always-visible number: it is in the energy chip's hover and in the brownout banner. Together with FF-47
+  (the chip shows the HQ cell), option (b) there, the grid balance in the chip, would restore it.
+- **Found:** 2026-11-03, owner HUD request
+
+### FF-49 · The power widget's inspector ignores the player's selection
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/power-hud/PowerHud.ts` (`selectEntity`, `updateBuildingInspector`),
+  `power-hud/index.ts` (`GameView.selectedEntityId` declared, never set)
+- **What happens:** nothing calls `PowerHud.selectEntity` and no view carries `selectedEntityId`, so the inspector
+  shows the first shed building (or nothing). Clicking a building shows its state in the bottom selection bar
+  (`landfall/selectionHelpers.ts`, incl. `offline: brownout`), not here.
+- **To resolve:** either wire it to `services.landfall.onChange` or drop the inspector's selection path and keep it as
+  a "shed buildings" list.
+- **Found:** 2026-11-03, econ-sync review

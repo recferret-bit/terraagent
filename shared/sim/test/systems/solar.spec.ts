@@ -1,17 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
-  applyEnvironmentState,
-  computeEnvironmentAtCycleTick,
   createRegistryPipeline,
   createState,
-  cycleTickForTimeSpec,
   ENTITY_KIND,
   ENTITY_STATE,
   evaluateColonySolar,
   evaluateSolarArrayOutput,
   getColonyPower,
   insertRow,
+  setPlanetTime,
   step,
 } from '../../src';
 
@@ -31,8 +29,7 @@ describe('W02-07 Solar T1 output: gross +21 * daylight * (desert ? 1.35 : 1.0), 
     state.entities.cols.state[solarRow] = ENTITY_STATE.active;
 
     // Set time to 12:00 (midday)
-    const tick1200 = cycleTickForTimeSpec('12:00', 'temperate');
-    applyEnvironmentState(state, computeEnvironmentAtCycleTick('temperate', tick1200), 0);
+    setPlanetTime(state, { timeOfDay: 12 }, 0); // the environment follows the planet's solar clock
     step(state, [], 1, pipeline);
 
     const middaySolar = evaluateColonySolar(state, 0);
@@ -42,8 +39,7 @@ describe('W02-07 Solar T1 output: gross +21 * daylight * (desert ? 1.35 : 1.0), 
     expect(getColonyPower(state, 0).solarNetPerS).toBe(20);
 
     // Set time to 00:00 (midnight)
-    const tick0000 = cycleTickForTimeSpec('00:00', 'temperate');
-    applyEnvironmentState(state, computeEnvironmentAtCycleTick('temperate', tick0000), state.meta.tick);
+    setPlanetTime(state, { timeOfDay: 0 }, state.meta.tick);
     step(state, [], 1, pipeline);
 
     const midnightSolar = evaluateColonySolar(state, 0);

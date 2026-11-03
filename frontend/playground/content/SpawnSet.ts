@@ -10,7 +10,7 @@ import {
 } from '@terra/render/kitbash';
 import { MAX_COLONY_PROJECTORS, updateColonyProjectorsAndVision, type ColonyProjectorDesc } from '@terra/render/lighting/ColonyVisionAndLights';
 import { attachEntityProjectorRig, EntityProjectorRig, type EntityProjectorRigState } from '@terra/render/lighting/EntityProjectorRig';
-import { getArchetypeLights } from '@terra/render/lighting/archetypeLights';
+import { getArchetypeLights, peekArchetypeLights } from '@terra/render/lighting/archetypeLights';
 import {
   WorkParticleSystem,
   computeMeshToolOrigins,
@@ -40,7 +40,13 @@ export class SpawnSet {
 
   dispose() {
     this.workParticles.clear();
-    for (const s of this.spawns) { this.content.remove(s.mesh); s.mesh.geometry.dispose(); (s.mesh.material as THREE.Material).dispose(); }
+    for (const s of this.spawns) {
+      this.content.remove(s.mesh);
+      // every robot / building mesh carries a projector rig (cones, pools, lenses, halo): free it with the model
+      (s.mesh.userData as { projectorRig?: EntityProjectorRigState } | undefined)?.projectorRig?.dispose();
+      s.mesh.geometry.dispose();
+      (s.mesh.material as THREE.Material).dispose();
+    }
     this.spawns = [];
   }
 
@@ -116,7 +122,7 @@ export class SpawnSet {
     const projectors: ColonyProjectorDesc[] = [];
     const boost = nightMode ? 1.35 : lightsMode ? 1.0 : 0.35;
     for (const s of ordered) {
-      const lights = getArchetypeLights(s.id);
+      const lights = peekArchetypeLights(s.id); // per frame: no copy
       for (const l of lights) {
         if (projectors.length >= MAX_COLONY_PROJECTORS) break;
         _pos.set(l.pos[0], l.pos[1], l.pos[2]).applyMatrix4(s.mesh.matrixWorld);

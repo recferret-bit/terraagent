@@ -3,10 +3,10 @@ import type { FeatureContext } from '../../core/registry';
 import type { CommandResult } from '../../net/commandBus';
 import { CommandRunner } from '../../dev/console/runner';
 import { DevServerError, hostUnavailableDevServer } from '../../net/devServer';
-import devtools from './index';
+import devtools, { devtoolsW02 } from './index';
 
 const run = async (line: string, services: Partial<FeatureContext['services']>, host: FeatureContext['host'] = 'server') => {
-  const r = await new CommandRunner([devtools], { flags: new Set(['W00']), host, services: services as FeatureContext['services'] }).run(line);
+  const r = await new CommandRunner([devtools, devtoolsW02], { flags: new Set(['W00', 'W02']), host, services: services as FeatureContext['services'] }).run(line);
   return r?.kind === 'text' ? r.text : '';
 };
 const acking = (res: CommandResult = { ok: true, appliedAtTick: 42 }) => vi.fn(async () => res);
@@ -125,5 +125,18 @@ describe('devtools W02 commands', () => {
     expect(out).toContain('supply: 28 E/s (core: 8, solar: 20 [gross 21, drain 1])');
     expect(out).toContain('demand: 5 E/s (raw: 5, buildings: 5, units: 0, work: 3)');
     expect(out).toContain('daylight: 1 (day 12:00)');
+  });
+
+  it('power with no argument reads the player\'s colony (seat 1), not colony 0', async () => {
+    const sendCommand = acking();
+    const view = { colonies: [{ index: 0, power: { net: 17 } }, { index: 1, power: { net: -3, brownout: true } }] };
+    const out = await run('power', { sendCommand, view, landfall: { getOwnerColonyIndex: () => 1 } } as unknown as Partial<FeatureContext['services']>);
+    expect(out).toContain('colony 1 power: -3 E/s (BROWNOUT)');
+  });
+
+  it('the W02 commands (fill, skipnight, power, spawndeposit) are a W02 feature: ?waves=..01 does not list them', () => {
+    expect(devtoolsW02.wave).toBe('W02');
+    expect(devtoolsW02.devCommands?.map((c) => c.name).sort()).toEqual(['fill', 'power', 'skipnight', 'spawndeposit']);
+    expect(devtools.devCommands?.some((c) => ['fill', 'skipnight', 'power', 'spawndeposit'].includes(c.name))).toBe(false);
   });
 });

@@ -181,6 +181,10 @@
   white-space: nowrap;
 }
 
+.ta-res-breakdown__flow-line[hidden] {
+  display: none;
+}
+
 .ta-res-breakdown__income {
   color: var(--ta-terra);
 }

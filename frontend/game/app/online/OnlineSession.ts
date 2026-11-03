@@ -121,6 +121,7 @@ export class OnlineSession {
     this.commandBus = new CommandBus(this.transport, COMMAND_TIMEOUT_MS + lagMs, (id, kind, args) => this.store.notifySent(id, kind, args), (id) => this.store.notifyTimedOut(id));
     this.commands = this.commandBus;
     this.entities = new EntityMeshes(this.viewport.scene, opts.makeMesh, !this.skipDescent);
+    this.entities.healthBars.isEnabled = () => this.flags.current.flags.has('W02'); // overhead bars are W02 (`?waves=..01`: none)
     if (this.fromSpaceDescent && !this.skipDescent) {
       this.entities.podTouchdown.setMode('full');
       this.entities.podTouchdown.setSpacePhase('orbit');

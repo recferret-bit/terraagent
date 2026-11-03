@@ -190,6 +190,14 @@ export function getArchetypeLights(archetypeId: string): ArchetypeLightSource[] 
   return ensureLiveEntry(archetypeId).map(cloneLight);
 }
 
+/**
+ * The live light list for `archetypeId`, not copied: for per-frame readers (projector upload, playground sync) that
+ * must not allocate. Never mutate it; edits go through `setArchetypeLights` / `updateArchetypeLight` (version bump).
+ */
+export function peekArchetypeLights(archetypeId: string): ReadonlyArray<Readonly<ArchetypeLightSource>> {
+  return ensureLiveEntry(archetypeId);
+}
+
 /** Replaces the light source list for `archetypeId` and notifies listeners. */
 export function setArchetypeLights(archetypeId: string, lights: ArchetypeLightSource[]): void {
   liveRegistry.set(archetypeId, lights.map(cloneLight));
@@ -270,7 +278,7 @@ function formatLightSourceCode(s: ArchetypeLightSource): string {
   const target = `[${roundNum(s.target[0])}, ${roundNum(s.target[1])}, ${roundNum(s.target[2])}]`;
   return [
     '    {',
-    `      id: '${s.id}',`,
+    `      id: ${JSON.stringify(s.id)},`,
     `      pos: ${pos},`,
     `      target: ${target},`,
     `      color: ${hex},`,

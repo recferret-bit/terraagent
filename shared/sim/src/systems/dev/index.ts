@@ -20,7 +20,7 @@ import { defineSimModule } from '../define';
 import { creditResource, ensureColonyLedger, remainingFamilyCap } from '../economy/ledger';
 import {
   applyEnvironmentState,
-  computeEnvironmentAtCycleTick,
+  environmentFromPlanetTime,
   type EnvironmentState,
 } from '../environment';
 import { findColonyHqRow } from '../find';
@@ -216,9 +216,8 @@ const skipnight = defineCommandHandler({
   handle(s, _c, ctx) {
     const prev = s.blobs.environment?.value as Partial<EnvironmentState> | undefined;
     const prevStorm = prev?.stormActive === true;
-    const env = computeEnvironmentAtCycleTick(s.meta.planetType, 0, ctx.data, prevStorm);
-    applyEnvironmentState(s, env, ctx.tick);
-    setPlanetTime(s, { timeOfDay: 6 }, ctx.tick, ctx.data);
+    setPlanetTime(s, { timeOfDay: 6 }, ctx.tick, ctx.data); // morning: full daylight (the environment follows the clock)
+    applyEnvironmentState(s, environmentFromPlanetTime(s, ctx.data, prevStorm, ctx.tick), ctx.tick);
     recomputeAllColonyPower(s, ctx.data, ctx.tick);
   },
 });

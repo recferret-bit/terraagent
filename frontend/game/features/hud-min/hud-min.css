@@ -174,6 +174,40 @@
   transition: width var(--ta-dur-quick) ease;
 }
 
+.ta-hud-min__daytime {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding-left: var(--ta-s3);
+  border-left: 1px solid var(--ta-seam);
+  white-space: nowrap;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: 0.05em;
+}
+
+.ta-hud-min__daytime[hidden] {
+  display: none;
+}
+
+.ta-hud-min__daytime-icon {
+  color: var(--ta-orange);
+  line-height: 1;
+}
+
+.ta-hud-min__daytime[data-phase='night'] .ta-hud-min__daytime-icon {
+  color: var(--ta-blue-hi);
+}
+
+.ta-hud-min__daytime-clock {
+  font-weight: 600;
+  color: var(--ta-text);
+}
+
+.ta-hud-min__daytime-light {
+  color: var(--ta-steel);
+}
+
 .ta-hud-min__brand {
   display: inline-flex;
   align-items: center;
@@ -254,6 +288,11 @@
   justify-content: space-between;
   gap: var(--ta-s2);
   white-space: nowrap;
+}
+
+/* a line toggled with `hidden` (the power breakdown's brownout line) must not be kept visible by the flex rule */
+.ta-hud-min .ta-res-breakdown__flow-line[hidden] {
+  display: none;
 }
 
 .ta-hud-min .ta-res-breakdown__income {

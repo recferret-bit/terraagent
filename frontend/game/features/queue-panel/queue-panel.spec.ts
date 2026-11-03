@@ -8,9 +8,10 @@ import {
   ensureColonyLedger,
   insertRow,
 } from '@terra/sim';
-import type { FeatureContext } from '../../core/registry/types';
+import type { QueueEntry } from '@terra/sim';
+import type { FeatureContext, GameView } from '../../core/registry/types';
 import { installMockDocument } from '../test-dom';
-import { QueuePanel } from './QueuePanel';
+import { QueuePanel, STORAGE_HINT_TEXT } from './QueuePanel';
 
 function makeContext(): { ctx: FeatureContext; commands: Array<{ kind: string; args: unknown }> } {
   const commands: Array<{ kind: string; args: unknown }> = [];
@@ -133,7 +134,8 @@ describe('W02-25 Queue panel UI — lanes, progress, reorder, and collapsed mode
     panel.bindSimState(state, 0);
 
     panel.enqueue({ taskId: 'c-1', task: { kind: 'build', building: 'solar', q: 2, r: 1 } });
-    panel.enqueue({ taskId: 'c-2', task: { kind: 'build', building: 'metalsExtractor', q: 4, r: 1 } });
+    // a second Solar (an Extractor needs a metals deposit under its footprint, which this blank planet has none of)
+    panel.enqueue({ taskId: 'c-2', task: { kind: 'build', building: 'solar', q: 4, r: 1 } });
     panel.enqueue({ taskId: 'u-1', task: { kind: 'buildUnit', unit: 'harvester' } });
 
     const cLane = host.querySelector('[data-lane="construction"]');
@@ -167,6 +169,44 @@ describe('W02-25 Queue panel UI — lanes, progress, reorder, and collapsed mode
     expect(panel.getEntries().length).toBe(0);
     expect(cancelAllBtn?.hidden).toBe(true);
 
+    panel.dispose();
+  });
+});
+
+describe('W02 demo step 7: waiting(storage) shows a greyed "build a Supply Depot" hint; the panel reads the own colony', () => {
+  let restoreDoc: (() => void) | null = null;
+  beforeEach(() => {
+    restoreDoc = installMockDocument();
+  });
+  afterEach(() => {
+    restoreDoc?.();
+    restoreDoc = null;
+  });
+
+  const entry = (over: Partial<QueueEntry>): QueueEntry => ({
+    taskId: 'sol-cap', colonyIndex: 1, lane: 'construction', precedence: 'player', state: 'waiting',
+    task: { kind: 'build', building: 'solar', q: 6, r: 0 } as QueueEntry['task'], cost: { 'metals.t1': 600 }, paid: false,
+    progress: 0, buildTicks: 90, elapsedTicks: 0, workRate: 1, createdAt: 0, ...over,
+  });
+
+  it('greyed hint on a storage wait only; it goes once the entry waits for something else; seat 1 is read, not colony 0', () => {
+    const { ctx } = makeContext();
+    (ctx.services as unknown as Record<string, unknown>).landfall = { getOwnerColonyIndex: () => 1 };
+    const host = document.createElement('div');
+    const panel = new QueuePanel(host, ctx);
+    const viewWith = (e: QueueEntry) =>
+      ({ colonies: [{ index: 0, queue: [] }, { index: 1, queue: [e] }] }) as unknown as GameView;
+
+    panel.update(viewWith(entry({ waitReason: 'storage', waitDetail: 'waiting: storage (no ETA)' })));
+    const chip = host.querySelector('[data-task-id="sol-cap"]') as HTMLElement | null;
+    expect(chip).not.toBeNull();
+    const hint = chip!.querySelector('[data-testid="queue-storage-hint"]') as HTMLElement | null;
+    expect(hint?.textContent).toBe(STORAGE_HINT_TEXT);
+    expect(hint?.getAttribute('aria-disabled')).toBe('true');
+
+    panel.update(viewWith(entry({ waitReason: 'resources', waitDetail: 'waiting: Metals 5/600 (no ETA)' })));
+    const same = host.querySelector('[data-task-id="sol-cap"]') as HTMLElement;
+    expect(same.querySelector('[data-testid="queue-storage-hint"]')).toBeNull();
     panel.dispose();
   });
 });

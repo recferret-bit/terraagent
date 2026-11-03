@@ -157,7 +157,7 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
       colonyIndex: 0,
       taskId: 'over-cap',
       costOverride: { 'metals.t1': 600 },
-      task: { kind: 'build', building: 'solar', q: 6, r: 0 },
+      task: { kind: 'build', building: 'solar', q: 5, r: -4 } /* off the deposits: no building stands on one (D-37) */,
     });
     expect(overCap.ok && overCap.entry.waitReason).toBe('storage');
     expect(overCap.ok && overCap.entry.waitDetail).toBe('waiting: storage (no ETA)');
@@ -175,7 +175,7 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
       source: 'player',
       commandId: 'c-prog',
       kind: 'enqueueTask',
-      args: { taskId: 'in-prog-solar', task: { kind: 'build', building: 'solar', q: 6, r: 0 } },
+      args: { taskId: 'in-prog-solar', task: { kind: 'build', building: 'solar', q: 5, r: -4 } /* off the deposits: no building stands on one (D-37) */ },
     });
     host.step(30); // 30 ticks = 50% progress -> 30 Metals spent
     expect(getColonyQueue(host.state, 0, 'construction').find((e) => e.taskId === 'in-prog-solar')?.state).toBe('in_progress');

@@ -43,7 +43,7 @@ export default defineTable({
       outputPerS: 4.0,
       designOutputPerS: 4.0,
       demolishRefundRatio: 0.5,
-      cancelRefundRatio: 0.75,
+      cancelRefundRatio: 0.5,
     },
     {
       id: 'solar',
@@ -72,7 +72,7 @@ export default defineTable({
       hp: 400,
       shedGroup: 4,
       demolishRefundRatio: 0.5,
-      cancelRefundRatio: 0.75,
+      cancelRefundRatio: 0.5,
     },
     {
       id: 'shedGroup1',

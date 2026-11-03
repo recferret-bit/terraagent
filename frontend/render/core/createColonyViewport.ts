@@ -211,7 +211,8 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       fitShadowToView(vp, focus);
       focusRing.update(renderPass.scene, focus, focusGroundY, isFocusRingOn());
       composer.render();
-      if (renderScale.frame(performance.now())) vp.resize(); // AUTO stepped: one resize, not per frame
+      // AUTO stepped: one resize, not per frame (a `?res=` preset renders at ratio 1: nothing to resize)
+      if (renderScale.frame(performance.now()) && !customRes) vp.resize();
     },
     dispose() {
       renderScale.dispose();
@@ -219,6 +220,7 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
       window.removeEventListener('resize', onResize);
       offShadow();
       offPixel();
+      sun.dispose(); secondaryShadowLight.dispose(); // their shadow-map render targets
       composer.dispose(); pmrem.dispose(); renderer.dispose();
       renderer.domElement.remove();
     },

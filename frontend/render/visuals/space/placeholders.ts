@@ -83,6 +83,8 @@ export function acquireModel(id: string, biomeKey: string, fit?: { size: number;
     dispose() {
       root.removeFromParent();
       root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose()); } });
+      // the projector rig's lamp halo is a Sprite (shared geometry; only its material is the rig's own)
+      root.traverse((o) => { if ((o as THREE.Sprite).isSprite) (o as THREE.Sprite).material.dispose(); });
     },
   };
 }

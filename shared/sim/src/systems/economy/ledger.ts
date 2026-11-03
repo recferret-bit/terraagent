@@ -132,12 +132,14 @@ export function isFamilyAtCap(colony: ColonyState, family: ResourceFamily): bool
 /**
  * Credits `amount` of `key` to `colony.stock[key]`, clamping against the shared family cap (`caps[family]`).
  * Any overflow beyond the family cap is added to `colony.production.capped[family]`. Stamps `colony.changedAt = tick`.
+ * `produced: false` (refunds) leaves `production.produced` alone: it counts what the colony made (Stockpile, W02-28).
  */
 export function creditResource(
   colony: ColonyState,
   key: ResourceKey,
   amount: number,
   tick: number = colony.changedAt,
+  opts: { produced?: boolean } = {},
 ): { credited: number; capped: number } {
   const c = ensureColonyLedger(colony);
   if (amount <= 0) return { credited: 0, capped: 0 };
@@ -148,7 +150,7 @@ export function creditResource(
 
   if (credited > 0) {
     c.stock[key] += credited;
-    c.production.produced[key] += credited;
+    if (opts.produced !== false) c.production.produced[key] += credited;
   }
   if (capped > 0) {
     c.production.capped[family] += capped;
@@ -216,7 +218,7 @@ export function debitCost(
   return true;
 }
 
-/** Refunds `ratio` (e.g. `0.5` on cancel or demolish) of `cost` back into `colony.stock` (clamped by cap). */
+/** Refunds `ratio` (e.g. `0.5` on cancel or demolish) of `cost` back into `colony.stock` (clamped by cap; not counted as produced). */
 export function refundCost(
   colony: ColonyState,
   cost: Partial<Record<ResourceKey, number>>,
@@ -226,7 +228,7 @@ export function refundCost(
   if (ratio <= 0) return;
   for (const k of RESOURCE_KEYS) {
     const amt = (cost[k] ?? 0) * ratio;
-    if (amt > 0) creditResource(colony, k, amt, tick);
+    if (amt > 0) creditResource(colony, k, amt, tick, { produced: false });
   }
 }
 

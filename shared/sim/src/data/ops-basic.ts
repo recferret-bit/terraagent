@@ -25,6 +25,11 @@ export const TERRAFORM_TIME_TABLE = {
 export type TerraformTimeKey = keyof typeof TERRAFORM_TIME_TABLE;
 export const DISMANTLE_REFUND_RATE = TERRAFORM_TIME_TABLE.dismantle.refundRate;
 export const REPAIR_COST_RATE = TERRAFORM_TIME_TABLE.repair.costRate;
+/**
+ * Share of what an order already paid that its cancel returns (owner 2026-11-02: 50 %, was 75 % paid at start): queue
+ * entries, building construction (the building row's `cancelRefundRatio` when set), Hub unit production.
+ */
+export const CANCEL_REFUND_RATE = DISMANTLE_REFUND_RATE;
 
 export { TERRAFORM_RESOURCE_SPAWN } from './terraform-finds';
 

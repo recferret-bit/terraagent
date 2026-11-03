@@ -315,6 +315,32 @@ describe('W02: Hover resource tier & flow breakdown', () => {
   });
 });
 
+describe('Top-bar power breakdown: requested demand and the brownout (grid, not the HQ cell)', () => {
+  it('a shed Extractor keeps its draw in Spending, shows the offline E/s and the deficit; the HQ cell line is separate', () => {
+    const parent = freshBody();
+    const hud = new MinimalHud(parent, { ownerColonyIndex: 0 });
+    const colony = {
+      index: 0, id: 'col-0', name: 'First Light', color: 0, status: 'active',
+      power: { supply: 8, demand: 5, rawDemand: 11, net: 3, brownout: true, shedEntityIds: [3] },
+      hq: { entityId: 2, owner: 0, tier: 1, q: 2, r: -1, x: 2, y: -1, hp: 800, hpMax: 800, cell: 200, cellMax: 200, workRate: 1.5, viewRadius: 9, targetQ: 2, targetR: -1, currentJob: 'idle' as const, queueCount: 0 },
+    };
+    hud.update({ tick: 10, colonies: [colony] } as unknown as ClientView);
+
+    const cellEl = parent.querySelector<HTMLElement>('[data-testid="hud-hq-cell"]')!;
+    expect(cellEl.querySelector('[data-testid="res-cell-energy"]')?.textContent).toBe('HQ Cell: 200 / 200 E');
+    expect(cellEl.querySelector('[data-testid="res-spending-energy"]')?.textContent).toBe('Spending (Demand): −11 E/s');
+    const shed = cellEl.querySelector<HTMLElement>('[data-testid="res-shed-energy"]')!;
+    expect(shed.hidden).toBe(false);
+    expect(shed.textContent).toBe('Brownout: 6 E/s offline');
+    expect(cellEl.querySelector('[data-testid="res-net-energy"]')?.textContent).toBe('Net: −3 E/s');
+
+    hud.update({ tick: 11, colonies: [{ ...colony, power: { supply: 28, demand: 11, rawDemand: 11, net: 17, brownout: false } }] } as unknown as ClientView);
+    expect(shed.hidden).toBe(true);
+    expect(cellEl.querySelector('[data-testid="res-net-energy"]')?.textContent).toBe('Net: +17 E/s');
+    hud.dispose();
+  });
+});
+
 describe('HUD shows whole resource units only', () => {
   it('floors any fractional stock at the read boundary (stock and toasts)', () => {
     expect(wholeStock({ 'metals.t1': 250.0000000000006, 'bio.water': 49.9, bad: Number.NaN })).toEqual({
@@ -395,3 +421,64 @@ describe('Reject toasts per command kind, live costs, accessibility, placeholder
     }
   });
 });
+
+describe('Top bar: planet time of day right after energy (was the top-right power widget)', () => {
+  it('shows the colony clock, sun / moon and daylight %, after the energy chip and before the game clock', () => {
+    const parent = freshBody();
+    const hud = new MinimalHud(parent, { ownerColonyIndex: 1 });
+    const day = freshDaytime(hud);
+    expect(day.clock.textContent).toBe('—');
+    expect(day.light.textContent).toBe('');
+    hud.update({
+      tick: 10,
+      colonies: [
+        { index: 0, power: { phase: 'night', clockText: '23:00', daylight: 0 } },
+        { index: 1, power: { supply: 8, demand: 5, net: 3, phase: 'day', clockText: '06:27', daylight: 0.996 } },
+      ],
+    } as unknown as ClientView);
+    expect(day.el.getAttribute('data-phase')).toBe('day');
+    expect(day.el.querySelector('.ta-hud-min__daytime-icon')?.textContent).toBe('☀');
+    expect(day.clock.textContent).toBe('06:27');
+    expect(day.light.textContent).toBe('100%');
+    const order = [...hud.el.children].map((c) => (c as HTMLElement).dataset.testid ?? c.className);
+    expect(order.indexOf('hud-daytime')).toBe(order.indexOf('hud-hq-cell') + 1);
+
+    hud.update({ tick: 11, blobs: { environment: { phase: 'night', clockText: '21:10', daylight: 0 } }, colonies: [] } as unknown as ClientView);
+    expect(day.el.getAttribute('data-phase')).toBe('night');
+    expect(day.el.querySelector('.ta-hud-min__daytime-icon')?.textContent).toBe('☾');
+    expect(day.clock.textContent).toBe('21:10');
+    expect(day.light.textContent).toBe('0%');
+    hud.dispose();
+  });
+});
+
+describe('?waves=..01 hides the W02 parts of the top bar (time of day, grid lines); flags are live', () => {
+  it('W02 off: no daytime chip and only the HQ cell line in the energy popover; W02 switched on: both back', () => {
+    const flags = new Set(['W00', 'W01']);
+    const mounted = mountMinimalHud({ el: freshBody(), ownerColonyIndex: 0, flags });
+    const view = { tick: 10, colonies: [{ index: 0, power: { supply: 8, demand: 5, rawDemand: 11, net: 3, phase: 'day', clockText: '06:00', daylight: 0.5 } }] } as unknown as ClientView;
+    mounted.update(view);
+    const day = freshDaytime(mounted.hud);
+    const line = (id: string) => mounted.hud.el.querySelector<HTMLElement>(`[data-testid="${id}"]`)!;
+    expect(day.el.hidden).toBe(true);
+    for (const id of ['res-income-energy', 'res-spending-energy', 'res-shed-energy', 'res-net-energy']) expect(line(id).hidden).toBe(true);
+    expect(line('res-cell-energy').hidden).not.toBe(true);
+
+    flags.add('W02');
+    mounted.update(view);
+    expect(day.el.hidden).toBe(false);
+    expect(day.clock.textContent).toBe('06:00');
+    expect(line('res-income-energy').hidden).toBe(false);
+    expect(line('res-shed-energy').hidden).toBe(false);
+    mounted.dispose();
+  });
+});
+
+function freshDaytime(hud: MinimalHud): { el: HTMLElement; clock: HTMLElement; light: HTMLElement } {
+  const el = hud.el.querySelector<HTMLElement>('[data-testid="hud-daytime"]')!;
+  return {
+    el,
+    clock: el.querySelector<HTMLElement>('[data-testid="hud-daytime-clock"]')!,
+    light: el.querySelector<HTMLElement>('[data-testid="hud-daytime-light"]')!,
+  };
+}

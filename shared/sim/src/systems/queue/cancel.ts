@@ -1,4 +1,5 @@
-import { ENTITY_KIND } from '../../ecs/columns';
+import { CANCEL_REFUND_RATE } from '../../data';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
@@ -12,7 +13,8 @@ import { cancelTerraformOrder, findTerraformOrder } from '../terraform-basic/que
 import { UnitBook } from '../../units/book';
 import type { QueueEntry } from './types';
 
-export const CANCEL_IN_PROGRESS_REFUND_RATIO = 0.5;
+/** Share of an in-progress entry's paid cost a cancel returns (`CANCEL_REFUND_RATE`, owner 2026-11-02). */
+export const CANCEL_IN_PROGRESS_REFUND_RATIO = CANCEL_REFUND_RATE;
 
 export function ensureColony(state: PlanetState, colonyIndex: number, tick: number): ColonyState {
   let col = state.colonies[colonyIndex];
@@ -32,6 +34,9 @@ export function refundEntrySpent(
 ): boolean {
   let refunded = false;
   if (entry.entityId !== undefined) {
+    // Its building finished this step (the queue marks the entry `done` next step): nothing to cancel or refund.
+    const eRow = rowOf(state.entities, entry.entityId);
+    if (eRow >= 0 && state.entities.cols.state[eRow] !== ENTITY_STATE.constructing) return false;
     const bRes = cancelBuildingConstruction(state, entry.entityId, entry.colonyIndex, tick, data);
     if (bRes.ok && bRes.refunded) refunded = true;
   }

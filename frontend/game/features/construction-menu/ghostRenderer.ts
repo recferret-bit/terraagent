@@ -54,9 +54,12 @@ export class ConstructionGhostRig3D {
     if (!this.body) return;
     const ghostMats = new Set<THREE.Material>([this.bodyMats.ok, this.bodyMats.bad]);
     const toDispose = new Set<THREE.Material>();
+    // the body's geometry is its own (`createArchetypeMesh` clones the cache; `stripBuildingPlinth` builds a new one)
     this.body.traverse((o) => {
       const mesh = o as THREE.Mesh;
       if (!mesh.isMesh) return;
+      mesh.geometry?.dispose();
+      if (mesh.customDepthMaterial) toDispose.add(mesh.customDepthMaterial);
       for (const m of Array.isArray(mesh.material) ? mesh.material : [mesh.material]) {
         if (m && !ghostMats.has(m)) toDispose.add(m);
       }
@@ -79,6 +82,9 @@ export class ConstructionGhostRig3D {
       stripBuildingPlinth(this.body);
       const projRig = this.body.getObjectByName('entity-projector-rig');
       if (projRig) this.body.remove(projRig);
+      // the ghost shows no lamps: free the rig's materials too (it is not under the body any more)
+      (this.body.userData as { projectorRig?: { dispose?: () => void } }).projectorRig?.dispose?.();
+      delete (this.body.userData as { projectorRig?: unknown }).projectorRig;
       this.body.traverse((o) => {
         o.castShadow = false;
         o.receiveShadow = false;

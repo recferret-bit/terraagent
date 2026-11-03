@@ -6,6 +6,7 @@ import {
 } from '../../core/registry/types';
 import { ENTITY_KIND } from '@terra/sim';
 import '../../net/services';
+import { isDockPaneShown } from '../../core/hud/CommandDock';
 import { ownColonyIndex } from '../shared/colony';
 import type { InProcessHost } from '../shared/commandDispatch';
 import type { TilePickerFn } from '../shared/pointer';
@@ -181,12 +182,13 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     host: simHost,
     getColonyId,
     getWorkerId,
-    isBlocked,
+    // an armed tool on a hidden / collapsed dock tab never takes map clicks (the menu disarms it on its next render)
+    isBlocked: () => isBlocked() || (menu !== null && !isDockPaneShown(menu.el)),
     simData: () => store?.simData?.(),
     onChange: () => syncView(),
   });
 
-  menu = new TerraformMenu(container, brush, overlay, { isBlocked, getColonyId, simData: () => store?.simData?.() });
+  menu = new TerraformMenu(container, brush, overlay, { isBlocked, getColonyId, simData: () => store?.simData?.(), flags: opts?.flags });
 
   const surface = opts?.surface ?? services.surface ?? services.canvas;
   const pickTile = opts?.pickTile ?? services.pickTile;

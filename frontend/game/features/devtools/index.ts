@@ -3,6 +3,7 @@ import { DevServerError } from '../../net/devServer';
 import { numArg } from '../../dev/console/parse';
 import type { CommandResult } from '../../net/commandBus';
 import { timeCommand } from '../warp';
+import { ownColonyIndex, viewColony } from '../shared/colony';
 import '../../net/services';
 
 export interface PowerSummaryView {
@@ -90,7 +91,7 @@ const power: DevCommandDef = {
   name: 'power',
   help: 'power [colonyIndex]  Dump power grid component supply/demand/shedding',
   async run(a, ctx) {
-    const colonyIndex = a[0] !== undefined ? Number(a[0]) : 0;
+    const colonyIndex = a[0] !== undefined ? Number(a[0]) : ownColonyIndex(ctx.services); // the player's seat (FF-46)
     const r = await sim(ctx, 'dev.power', a[0] !== undefined ? { colonyIndex } : {});
     const ack = ackText('dev.power', r);
     const v = typeof ctx.services.getView === 'function'
@@ -98,7 +99,7 @@ const power: DevCommandDef = {
       : typeof ctx.services.view === 'function'
         ? (ctx.services.view as () => GameView | undefined)()
         : ctx.services.view;
-    const colony = v?.colonies?.[colonyIndex] as { power?: PowerSummaryView } | undefined;
+    const colony = viewColony(v, colonyIndex) as { power?: PowerSummaryView } | undefined;
     const p = colony?.power;
     if (!p) return ack;
     const lines = [
@@ -171,11 +172,22 @@ export default defineFeature({
     }),
     simCommand('teleport', 'teleport <id> <q> <r>  Set a test entity position', (a) => ({ id: numArg(a, 0, 'id'), q: numArg(a, 1, 'q'), r: numArg(a, 2, 'r') })),
     simCommand('teleport!', 'teleport! <id> <q> <r>  Like teleport, but the client does not predict it (watch the correction blend)', (a) => ({ id: numArg(a, 0, 'id'), q: numArg(a, 1, 'q'), r: numArg(a, 2, 'r') })),
+    time,
+  ],
+});
+
+/**
+ * Dev commands whose sim handlers are wave W02 (`dev.fill`, `dev.skipnight`, `dev.power`, `dev.spawndeposit`): a W02
+ * feature (mounted by `features/devtools-w02`), so `?waves=..01` does not list commands the host would reject.
+ */
+export const devtoolsW02 = defineFeature({
+  id: 'devtools-w02',
+  wave: 'W02',
+  devCommands: [
     simCommand('spawndeposit', 'spawndeposit <q> <r> <metals|minerals|oil> <1|2|3>  Place a full deposit of that tier on a tile (a terraform find)', (a) => ({
       q: numArg(a, 0, 'q'), r: numArg(a, 1, 'r'), family: a[2] ?? 'metals', tier: numArg(a, 3, 'tier', 1),
     })),
     fill,
-    time,
     skipnight,
     power,
   ],

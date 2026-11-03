@@ -42,7 +42,8 @@ class ParticlePresetRegistryImpl {
     const biome = (params.biomeKey ?? '').toLowerCase();
     const isDuneBiome = biome === 'dune' || biome === 'desert';
 
-    if (mode === 'repair' || mode === 'construct' || mode === 'constructing' || mode === 'build') {
+    // `dismantle` (W02 terraform op) takes a building apart: the same cutting / welding sparks as repair.
+    if (mode === 'repair' || mode === 'construct' || mode === 'constructing' || mode === 'build' || mode === 'dismantle') {
       return 'repair';
     }
     if (deposit === 'metals' || deposit === 'metal') return 'metals';

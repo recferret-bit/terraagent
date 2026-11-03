@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BUILTIN_PARTICLE_PRESETS,
   ParticlePresetRegistry,
+  WorkParticleEmitter,
   WorkParticleSystem,
   computeMeshToolOrigins,
   deltaE76,
@@ -65,6 +66,11 @@ describe('Particle geometries & preset registry (@terra/render/particles)', () =
     expect(ParticlePresetRegistry.resolveTargetKind({ depositKind: 'oil' })).toBe('oil');
     expect(ParticlePresetRegistry.resolveTargetKind({ mode: 'repair', terrainKey: 'forest' })).toBe('repair');
     expect(ParticlePresetRegistry.resolveTargetKind({ mode: 'construct' })).toBe('repair');
+    // real W02 terraform ops (`TerraformOp`): grade follows the tile, dismantle is structural work
+    expect(ParticlePresetRegistry.resolveTargetKind({ mode: 'dismantle', biomeKey: 'oceanForest' })).toBe('repair');
+    expect(ParticlePresetRegistry.resolveTargetKind({ mode: 'grade', terrainKey: 'hole', biomeKey: 'oceanForest' })).toBe('hole');
+    expect(ParticlePresetRegistry.resolveTargetKind({ mode: 'grade', terrainKey: 'slope', biomeKey: 'oceanForest' })).toBe('dune');
+    expect(ParticlePresetRegistry.resolveTargetKind({ mode: 'grade', biomeKey: 'oceanForest' })).toBe('flat');
   });
 });
 
@@ -209,5 +215,42 @@ describe('Tool origins kinematics (@terra/render/particles)', () => {
     expect(meshOrigins[0][0]).toBeCloseTo(2 + exactLeft[2], 5);
     expect(meshOrigins[0][1]).toBeCloseTo(0.5 + exactLeft[1], 5);
     expect(meshOrigins[0][2]).toBeCloseTo(-1 - exactLeft[0], 5);
+  });
+});
+
+describe('Preset coverage & emitter robustness (@terra/render/particles)', () => {
+  it('has exactly one preset per target kind, and NaN beam emissive fails the validator', () => {
+    const kinds = ParticlePresetRegistry.list().map((p) => p.targetKind).sort();
+    expect(kinds).toEqual(['dune', 'flat', 'hole', 'metals', 'minerals', 'oil', 'repair', 'rock', 'tree']);
+    expect(new Set(BUILTIN_PARTICLE_PRESETS.map((p) => p.id)).size).toBe(9);
+    const clean = structuredClone(ParticlePresetRegistry.getByTargetKind('rock'));
+    const nanBeam = { ...clean, toolBeam: { ...clean.toolBeam, emissiveIntensity: Number.NaN, pulseFreq: Number.NaN } };
+    const codes = validateParticlePreset(nanBeam).issues.map((i) => i.code);
+    expect(codes).toContain('EMISSIVE_TOO_LOW');
+    expect(codes).toContain('PHYSICS_INVALID');
+  });
+
+  it('an emitter freezes on dt 0 / NaN (no NaN positions) and sizes its burst ring by burst progress', () => {
+    const site = {
+      workerId: '7', targetKind: 'rock' as const, botOrigin: [0, 0, 0] as [number, number, number],
+      toolOrigins: [[0, 0.5, 0.7]] as [number, number, number][], targetPos: [0, 0.4, 1.2] as [number, number, number],
+      groundY: 0, intensity: 1,
+    };
+    const em = new WorkParticleEmitter(ParticlePresetRegistry.getByTargetKind('rock'), site);
+    em.step(0.05);
+    expect(em.step(Number.NaN)).toBe(true);
+    expect(em.step(0)).toBe(true);
+    em.step(0.05);
+    const m = new THREE.Matrix4();
+    for (const mesh of em.group.children.filter((c): c is THREE.InstancedMesh => (c as THREE.InstancedMesh).isInstancedMesh)) {
+      mesh.getMatrixAt(0, m);
+      expect(m.elements.every(Number.isFinite)).toBe(true);
+    }
+    const ring = em.group.children.find((c) => (c as THREE.Mesh).geometry === getParticleGeometry('shockRing'))!;
+    em.triggerBurst(0.2);
+    em.step(0.05); // 25 % through a 0.2 s burst: the ring starts small, not at the end of a 1 s burst's growth
+    expect(ring.scale.x).toBeGreaterThan(0.45);
+    expect(ring.scale.x).toBeLessThan(0.45 + 0.5 * 1.45);
+    em.dispose();
   });
 });
