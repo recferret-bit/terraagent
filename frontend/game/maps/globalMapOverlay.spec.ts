@@ -64,6 +64,43 @@ describe('W04-13 GlobalMapOverlay shell, legend, chips, and focus trap', () => {
     parent.remove();
   });
 
+  it('leaves Tab alone inside the dev console (a dialog stacked above the map) and sits below it', () => {
+    const parent = document.createElement('div');
+    const consoleEl = document.createElement('div');
+    consoleEl.setAttribute('role', 'dialog');
+    const input = document.createElement('input');
+    consoleEl.appendChild(input);
+    document.body.append(parent, consoleEl);
+    const overlay = new GlobalMapOverlay({ parent });
+    overlay.setOpen(true);
+
+    input.focus();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    input.dispatchEvent(tab);
+    expect(tab.defaultPrevented).toBe(false);
+    expect(document.activeElement).toBe(input);
+
+    // From anywhere else (e.g. body) Tab is still trapped inside the map
+    input.blur();
+    const tab2 = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    window.dispatchEvent(tab2);
+    expect(tab2.defaultPrevented).toBe(true);
+    expect(overlay.el.contains(document.activeElement)).toBe(true);
+
+    const z = (file: string, sel: string) => {
+      const css = readFileSync(resolve(import.meta.dirname, file), 'utf8');
+      const block = css.slice(css.indexOf(sel));
+      return Number(/z-index:\s*(\d+)/.exec(block)![1]);
+    };
+    expect(z('../dev/console/console.css', '.ta-devcon {')).toBeGreaterThan(z('global-map.css', '.ta-global-map {'));
+
+    overlay.dispose();
+    parent.remove();
+    consoleEl.remove();
+  });
+});
+
+describe('W04-13 GlobalMapOverlay styles', () => {
   it('uses only valid --ta-* tokens and zero border-radius in global-map.css', () => {
     const css = readFileSync(resolve(import.meta.dirname, 'global-map.css'), 'utf8');
     const tokensCss = readFileSync(

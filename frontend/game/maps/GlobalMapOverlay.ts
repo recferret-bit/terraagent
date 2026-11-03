@@ -1,4 +1,5 @@
 import type { MapLayerId } from '@terra/contracts';
+import { isTypingTarget } from '../features/shared/hotkeys';
 import { getSafe2dContext } from './rasterCache';
 import { getTileLegendEntries, RESOURCE_LEGEND, type TileLegendEntry } from './tileColors';
 import type { MapLayer } from './types';
@@ -308,8 +309,15 @@ export class GlobalMapOverlay {
     return Array.from(this.el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
   }
 
+  /** Tab inside a field or dialog stacked above the map (the dev console) belongs to it, not to the map's trap. */
+  private isForeignDialogKey(e: KeyboardEvent): boolean {
+    const t = e.target;
+    if (typeof Element === 'undefined' || !(t instanceof Element) || this.el.contains(t)) return false;
+    return isTypingTarget(e) || t.closest('[role="dialog"]') !== null;
+  }
+
   private handleFocusTrap(e: KeyboardEvent): void {
-    if (!this.openState || e.key !== 'Tab') return;
+    if (!this.openState || e.key !== 'Tab' || this.isForeignDialogKey(e)) return;
     const focusables = this.getFocusableElements();
     if (focusables.length === 0) return;
 
