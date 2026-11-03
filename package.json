@@ -31,6 +31,8 @@
     "test:wave": "node --test scripts/wave/*.test.mjs",
     "validate:models": "node .agents/skills/model-geometry-validator/scripts/validate-model.mjs",
     "test:models": "node .agents/skills/model-geometry-validator/scripts/self-test.mjs",
+    "validate:particles": "node .agents/skills/particle-effect-validator/scripts/validate-particles.mjs",
+    "test:particles": "node .agents/skills/particle-effect-validator/scripts/self-test.mjs",
     "db:up": "docker compose -f infra/docker-compose.yml up -d --wait",
     "db:down": "docker compose -f infra/docker-compose.yml down",
     "db:gen": "npm run db:gen -w @terra/db --silent --",

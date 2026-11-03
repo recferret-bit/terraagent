@@ -3,7 +3,7 @@ import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import { nextInt } from '../kernel/rng';
 import { setBlob, type Blob, type SimState } from '../kernel/state';
 import { DEV_PLANET_CAPACITY } from './flat';
-import { ALL_DEPOSITS, collectDiskTiles, footprint2x2Valid, spawnCfg } from './spawnDisk';
+import { ALL_DEPOSITS, collectDiskTiles, collectPodBlastTiles, footprint2x2Valid, spawnCfg } from './spawnDisk';
 import { getDepositRichnessBp } from './temperate';
 
 /** Spawn slots of a planet generated without a `capacity`: the seats of a dev planet. */
@@ -136,19 +136,22 @@ function enforceR4Guarantee(
   const cfg = spawnCfg(state);
   const terrain = state.grid.layers.terrain as Uint8Array;
   const deposit = state.grid.layers.deposit as Uint8Array;
+  const richness = state.grid.layers.richness as Float32Array;
   const r4Tiles = collectDiskTiles(hex, slot.q, slot.r, cfg.guaranteeRadius);
+
+  // Clear the circular pod-drop explosion/touchdown blast zone of all obstacles and deposits.
+  for (const idx of collectPodBlastTiles(hex, slot.q, slot.r)) {
+    makeTileFlat(state, idx, convertedCounts);
+    if (deposit[idx] !== DEPOSIT.none) {
+      deposit[idx] = DEPOSIT.none;
+      richness[idx] = 0;
+    }
+  }
 
   for (const idx of r4Tiles) {
     const t = terrain[idx];
     if (t !== TERRAIN.flat && t !== TERRAIN.forest && t !== TERRAIN.rock) {
       makeTileFlat(state, idx, convertedCounts);
-    }
-  }
-
-  for (let dr = -1; dr <= 1; dr++) {
-    for (let dq = -1; dq <= 1; dq++) {
-      const idx = hex.indexOf(slot.q + dq, slot.r + dr);
-      if (idx >= 0) makeTileFlat(state, idx, convertedCounts);
     }
   }
 
@@ -203,9 +206,9 @@ function enforceR8MetalsAnd2x2(
     return;
   }
 
-  const candidates = collectDiskTiles(hex, slot.q, slot.r, 6, 2);
+  const candidates = collectDiskTiles(hex, slot.q, slot.r, cfg.metalsRadius, 3);
   for (const mIdx of candidates) {
-    if (deposit[mIdx] !== DEPOSIT.none) continue;
+    if (deposit[mIdx] !== DEPOSIT.none || protectedTiles.has(mIdx)) continue;
     const fp = footprint2x2Valid(hex, slot, hex.q[mIdx], hex.r[mIdx], cfg.metalsRadius);
     if (!fp || fp.some((fIdx) => deposit[fIdx] !== DEPOSIT.none)) continue;
     for (const fIdx of fp) {
@@ -321,11 +324,8 @@ export function generateSpawnSlots(
     for (const idx of collectDiskTiles(hex, slot.q, slot.r, cfg.allDepositsRadius)) {
       slotZoneTiles.add(idx);
     }
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dq = -1; dq <= 1; dq++) {
-        const idx = hex.indexOf(slot.q + dq, slot.r + dr);
-        if (idx >= 0) reservedTiles.add(idx);
-      }
+    for (const idx of collectPodBlastTiles(hex, slot.q, slot.r)) {
+      reservedTiles.add(idx);
     }
   }
 
@@ -350,4 +350,11 @@ export function getSpawnSlots(state: SimState): SpawnSlot[] {
   return Array.isArray(raw.value) ? (raw.value as SpawnSlot[]) : [];
 }
 
-export { ensureStarterHubSpace, STARTER_HUB_SEARCH_RADIUS, starterHubSiteBlocked } from './starterSpace';
+export {
+  collectPodBlastTiles,
+  isInPodBlastCircle,
+  POD_BLAST_RADIUS_TILES,
+  POD_IMPACT_OFFSET_PLANE,
+  POD_IMPACT_RADIUS_TILES,
+} from './spawnDisk';
+export { clearPodBlastZone, ensureStarterHubSpace, STARTER_HUB_SEARCH_RADIUS, starterHubSiteBlocked } from './starterSpace';

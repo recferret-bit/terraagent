@@ -36,7 +36,7 @@ export async function ensureColonyAccounts(
       return;
     } catch (e) {
       if (!isUnique(e) || attempt >= RACE_RETRIES) {
-        if (isUnique(e)) throw new Error('colony account id is already used');
+        if (isUnique(e)) throw new Error('colony account id is already used', { cause: e });
         throw e;
       }
     }

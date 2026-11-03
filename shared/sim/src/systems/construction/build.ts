@@ -18,6 +18,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState, SimState } from '../../kernel/state';
+import { colonyWho } from '../find';
 import { resolveHqT1Row, resolveHubT1Row, rowNum, ticksToSeconds } from '../rows';
 import { applyHubCompletionEffects } from '../territory-claim';
 import { setOrderStatus, type ConstructionOrder } from './orders';
@@ -203,13 +204,12 @@ function completeConstruction(state: PlanetState, order: ConstructionOrder, enti
     setField(state.entities, entityRow, 'hp', hp, tick);
     setField(state.entities, entityRow, 'hpMax', hp, tick);
   }
-  const col = state.colonies[order.colonyId];
-  const colonyIdStr = col?.id ?? `col_${order.colonyId}`;
+  const { colonyIdStr, who } = colonyWho(state, order.colonyId);
   ctx?.emit?.({
     kind: 'buildingCompleted',
     severity: 'info',
     colonyIds: [colonyIdStr],
-    data: { colonyId: colonyIdStr, entityId: order.entityId, building: order.building, tier: order.tier, q: order.q, r: order.r },
+    data: { ...who, entityId: order.entityId, building: order.building, kind: order.building, tier: order.tier, q: order.q, r: order.r },
   });
   if (isHubBuildingKind(order.building, ctx?.data)) applyHubCompletionEffects(state, order, tick, ctx);
 }

@@ -184,6 +184,13 @@ export class KitbashBuilder {
       throw new Error('KitbashBuilder: Cannot build empty geometry.');
     }
     const merged = BufferGeometryUtils.mergeGeometries(this.parts, false);
+    let cursor = 0;
+    const partRanges: Array<{ role?: PartRole; start: number; count: number }> = [];
+    for (const m of this.meta) {
+      partRanges.push({ ...(m.role ? { role: m.role } : {}), start: cursor, count: m.vertexCount });
+      cursor += m.vertexCount;
+    }
+    merged.userData.partRanges = partRanges;
     merged.computeVertexNormals();
     merged.computeBoundingBox();
     merged.computeBoundingSphere();

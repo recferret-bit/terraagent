@@ -48,6 +48,8 @@ function statsFromRow(row: CompiledRow): MobileStats {
   };
 }
 
+import { resolveHarvesterRow, syncHarvesterView } from '../systems/harvest/unit';
+
 const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileKindDef>([
   [
     ENTITY_KIND.hq,
@@ -55,6 +57,29 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
       stats: (data) => statsFromRow(resolveHqT1Row(data)),
       onChanged: (state, row, tick, data) => {
         syncHqView(state, row, tick, data);
+      },
+    },
+  ],
+  [
+    ENTITY_KIND.harvester,
+    {
+      stats: (data) => {
+        const row = resolveHarvesterRow(data);
+        return {
+          speedPerTick: Math.fround(Number(row.speedTilesPerS ?? 0.3)),
+          viewRadius: Number(row.viewRadius ?? 7),
+          profile: 'harvester',
+          terraformReach: [0, 1],
+          buildReach: [0, 0],
+          weaponRange: 0,
+          dps: 0,
+          stopHoldTicks: 15,
+          retryTicks: 10,
+          retryMaxTicks: 80,
+        };
+      },
+      onChanged: (state, row, tick, data) => {
+        syncHarvesterView(state, row, tick, data);
       },
     },
   ],

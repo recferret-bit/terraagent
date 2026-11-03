@@ -1,5 +1,5 @@
 import { parseCommandArgs, parseWaves } from '@terra/contracts';
-import { createPlanet, SimHost, type LedgerPosting, type PlanetState } from '@terra/sim';
+import { createPlanet, getColonyStock, PlanetJournal, SimHost, type LedgerPosting, type PlanetState } from '@terra/sim';
 import type { ScenarioApi, ScenarioDef } from './_define';
 import { SCENARIOS } from './index.generated';
 
@@ -68,5 +68,9 @@ export function createScenarioPlanet(id: string, opts: CreateScenarioOptions = {
   const off = host.onPostings((p) => { setupPostings.push(...p); });
   scenario.build(host, apiFor(host));
   off();
+  if (setupPostings.length === 0 && host.state.colonies.length > 0) {
+    const stocks = host.state.colonies.map((_c, i) => getColonyStock(host.state, i));
+    setupPostings.push(...PlanetJournal.openingPostings(stocks, host.state.meta.tick, 'system:seed'));
+  }
   return { host, scenario, setupPostings };
 }

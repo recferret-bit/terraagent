@@ -52,13 +52,17 @@ Reports use these names. Unnamed parts show as `Cylinder#31`, which is hard to m
 ```bash
 npm run validate:models -- robot.builder            # one model
 npm run validate:models -- --category robot         # a category: robot|building|ship|resource|fauna|prop
-npm run validate:models -- --all --quiet            # the whole catalog, one line per model
+npm run validate:models -- --all --quiet            # the whole catalog, one line per model (35 models)
+npm run validate:models -- resource.metalDeposit    # a deposit: all three stages (full, @half, @depleted)
 npm run validate:models -- robot.builder --json     # machine-readable (for agents and CI)
 npm run validate:models -- robot.builder --pairs    # every touching/crossing pair with its numbers (calibration)
 npm run validate:models -- robot.builder --geometry-only   # skip the colour / material / detail checks
 npm run test:models                                 # self-test of the validator itself (48 known-good/bad fixtures, geometry and appearance)
 ```
-Exit code is `1` when any model has an **error** (`--strict` also fails on warnings).
+A resource deposit (`resource.metalDeposit`, `resource.crystalDeposit`, `resource.oilDeposit`) is three meshes, one per
+depletion stage (`registerDepositStageBuilder`), so every run that includes one validates all three and reports them as
+`<id>`, `<id>@half` and `<id>@depleted`: `--all` is 35 models (29 archetypes + the 6 extra deposit stages).
+Exit code is `1` when any model has an **error** (`--strict` also fails on warnings), `2` for an unknown id.
 
 ### Step 3: Fix, using the check tables below
 Every issue prints a `fix:` line. Fix the **cause in the model code**, not the threshold. The report also prints `colour by role`

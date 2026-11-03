@@ -11,7 +11,7 @@ import { ensureColonyAccounts, type EnsureColonyAccountsInput } from './colony-a
 
 /**
  * Colony sub-accounts for a linked player. Guests (no `social_identity` row) are skipped.
- * The database-off path (unit tests) never seals a key. `loadKekRing` runs on the first write, not at boot (BE-29).
+ * The database-off path (unit tests) never seals a key. `loadKekRing` runs on the first write, not at boot (BE-34).
  */
 @Injectable()
 export class ColonyAccounts implements OnModuleInit, OnModuleDestroy {

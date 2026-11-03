@@ -1,6 +1,7 @@
 import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
 import { isGroundMoveBlocked, isTileUneven } from './geo';
+import { DEPOSIT, PREP, TERRAIN } from './layers';
 
 /**
  * Footprints (tile index lists) ground units cannot walk through (buildings). Registered by the module that owns the
@@ -35,7 +36,7 @@ interface Blockers { blocked: Predicate; goalBlocked: Predicate }
  * Named movement profiles for path requests. A request in the path queue is plain data (it lives in a blob), so it
  * names its obstacle rule instead of carrying a function. `none` = terrain passability only (Deep, Ridge, Moat block).
  */
-export type PathProfileId = 'none' | 'ground';
+export type PathProfileId = 'none' | 'ground' | 'harvester';
 
 const PROFILES: Record<PathProfileId, ((state: PlanetState, fromIdx: number, data?: CompiledDataLike) => Blockers) | null> = {
   none: null,
@@ -45,6 +46,21 @@ const PROFILES: Record<PathProfileId, ((state: PlanetState, fromIdx: number, dat
     const { own, others } = occupiedTiles(state, fromIdx, data);
     const blocked: Predicate = (i) =>
       (i !== fromIdx && (isGroundMoveBlocked(terrain[i], deposit[i]) || isTileUneven(state.grid.radius, i, terrain, height))) ||
+      others.has(i);
+    return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) };
+  },
+  /** Harvesters: cross flat, slope, forest and rock tiles freely, but never step inside resource deposits, water, holes, ridges, moats or buildings. */
+  harvester: (state, fromIdx, data) => {
+    const { terrain, prep, deposit } = state.grid.layers;
+    const { own, others } = occupiedTiles(state, fromIdx, data);
+    const blocked: Predicate = (i) =>
+      (i !== fromIdx &&
+        (terrain[i] === TERRAIN.deep ||
+          terrain[i] === TERRAIN.shallow ||
+          terrain[i] === TERRAIN.hole ||
+          prep[i] === PREP.ridge ||
+          prep[i] === PREP.moat ||
+          deposit[i] !== DEPOSIT.none)) ||
       others.has(i);
     return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) };
   },

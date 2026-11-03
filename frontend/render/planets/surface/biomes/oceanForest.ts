@@ -26,6 +26,6 @@ export function buildOceanForest(c: SurfaceContext) {
   c.addMesh(buildInstanced(makeBroadleafGeo(la, lb, 4), tmat, trees, { sx: [0.8, 1.5], sy: [0.8, 1.7], sink: 0.1, tilt: 0.08, tint: jitter(0.22, 0.25) }));
   c.addMesh(buildInstanced(makePalmGeo(light(0x4c9a3a, 1.0)), pmat, palms, { sx: [0.9, 1.3], sy: [0.9, 1.5], sink: 0.1, tilt: 0.12, tint: jitter(0.18, 0.2) }));
   c.boulders(70, (x, z) => { const h = heightAt(x, z) - level; return h > -0.4 && h < 3 ? 0.07 : 0.005; }, [0.4, 1.4], c.rockTint);
-  const pollen = createParticles({ count: 160, box: 120, height: 10, size: 0.7, color: new THREE.Color(0xfff3c0), drift: new THREE.Vector3(0.7, 0.15, 0.4), wobble: 2.0, additive: true, alpha: 0.5, seed: c.spec.seed });
+  const pollen = createParticles({ count: 160, box: 120, height: 10, size: 0.7, color: new THREE.Color(0xfff3c0), drift: new THREE.Vector3(0, 0.15, 0), windDrift: 0.17, wobble: 2.0, additive: true, alpha: 0.5, seed: c.spec.seed });
   c.addLayer(pollen.points, pollen.uniforms, pollen);
 }

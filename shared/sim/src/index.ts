@@ -30,26 +30,8 @@ export * from './gen/spawnGuarantee';
 export * from './codec';
 export * from './systems/define';
 export * from './systems/registry';
-export {
-  defaultW01Data,
-  getHqRechargeRateEPerS,
-  getHqView,
-  hq,
-  hqJobFromState,
-  resolveHqRow,
-  resolveHqT1Row,
-  revealVision,
-  setHqCellEnergy,
-  spawnHqUnit,
-  stepHq,
-  stepTerraformWorkWithCell,
-  syncHqView,
-  type HqJob,
-  type HqUnitView,
-  type SpawnHqOpts,
-  type StepTerraformWorkOpts,
-  type StepTerraformWorkResult,
-} from './systems/hq';
+export * from './ecs/placement';
+export * from './systems/hq';
 export { issueUnitCommand, moveUnit, stopUnit, UNIT_REGISTRY, units } from './systems/units';
 export * from './units/types';
 export { getUnitCommand, getUnitRecord, type UnitRecord } from './units/book';
@@ -62,5 +44,26 @@ export * from './systems/terraform-basic';
 export * from './systems/construction';
 export * from './systems/territory-claim';
 export * from './systems/time';
+export * from './systems/harvest';
+export * from './systems/economy/ledger';
+export {
+  buildingKindName,
+  cancelBuildingConstruction,
+  constructionSystem,
+  demolishBuilding,
+  demolishHandler,
+  getBuildingJobs,
+  getFootprintTileIndices,
+  startBuildingConstruction,
+  type BuildingJobRecord,
+  type StartConstructionOptions,
+} from './systems/economy/construction';
+export * from './systems/economy/events';
+export * from './systems/environment';
+export * from './systems/power-core';
+export * from './systems/production';
+export * from './systems/factories-hub';
+export * from './systems/queue';
+export * from './systems/dispatch';
 export * from './data';
 export * from './host';

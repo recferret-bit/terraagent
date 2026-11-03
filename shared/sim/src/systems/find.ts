@@ -18,3 +18,14 @@ export function findColonyEntityRow(state: PlanetState, colony: number, kind: nu
 
 /** The row of `colony`'s alive HQ, or -1. */
 export const findColonyHqRow = (state: PlanetState, colony: number): number => findColonyEntityRow(state, colony, ENTITY_KIND.hq);
+
+/**
+ * Who an event is about: the colony's string id (`colonyIds[0]` and `data.colonyId`, `col_<index>` before it has one)
+ * and its `playerId` when set. One shape for every player-facing event (`buildingCompleted`, terraform events).
+ */
+export const colonyWho = (state: PlanetState, colonyId: number) => {
+  const col = state.colonies[colonyId];
+  const colonyIdStr = col?.id ?? `col_${colonyId}`;
+  const playerId = typeof col?.playerId === 'string' ? col.playerId : undefined;
+  return { colonyIdStr, who: { colonyId: colonyIdStr, ...(playerId ? { playerId } : {}) } };
+};

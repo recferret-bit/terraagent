@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind, type PlanetSpec } from '@terra/render/planets/PlanetSpec';
-import { specForPlanetType, tileXZ, type HexPick, type HexTerrain, type SimPlanetType } from '@terra/render/planets/hex';
+import { getDepositVisualStage, specForPlanetType, tileXZ, type HexPick, type HexTerrain, type HexTiles, type SimPlanetType } from '@terra/render/planets/hex';
 import type { LocalTransport } from '../../net/LocalTransport';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 
@@ -25,6 +25,8 @@ export function isEscapeBlockedByHudOverlay(): boolean {
   if (typeof document === 'undefined') return false;
   const ghost = document.querySelector<HTMLElement>('[data-testid="hub-placement-ghost"]');
   if (ghost && ghost.dataset.active === 'true' && !ghost.hidden) return true;
+  const cGhost = document.querySelector<HTMLElement>('.ta-placement-ghost');
+  if (cGhost && !cGhost.hidden && cGhost.style.display !== 'none') return true;
   const devCon = document.querySelector<HTMLElement>('[data-testid="dev-console"]');
   if (devCon && !devCon.hidden && devCon.style.display !== 'none') return true;
   return false;
@@ -118,7 +120,11 @@ export function resolveOnlinePlanetLook(planetType: SimPlanetType | string, pref
   return specForPlanetType('temperate');
 }
 
-/** Tile indices whose height, terrain, prep, deposit or owner differs between two tile snapshots. */
+/**
+ * Tile indices whose height, terrain, prep, deposit (kind or tier), deposit stage or owner differs between two tile
+ * snapshots. Richness counts only when it crosses a visual stage (`getDepositVisualStage`): a harvester drains it every
+ * tick, and nothing else the terrain draws depends on it.
+ */
 export function changedTiles(a: ClientTiles, b: ClientTiles): number[] {
   const out: number[] = [];
   for (let i = 0; i < b.count; i++) {
@@ -127,12 +133,43 @@ export function changedTiles(a: ClientTiles, b: ClientTiles): number[] {
       a.terrain[i] !== b.terrain[i] ||
       a.prep[i] !== b.prep[i] ||
       a.deposit?.[i] !== b.deposit?.[i] ||
+      (a.depositTier?.[i] ?? 0) !== (b.depositTier?.[i] ?? 0) ||
+      getDepositVisualStage(a.richness?.[i]) !== getDepositVisualStage(b.richness?.[i]) ||
       a.owner?.[i] !== b.owner?.[i]
     ) {
       out.push(i);
     }
   }
   return out;
+}
+
+export interface TileChangePatchItem {
+  q: number;
+  r: number;
+  terrain?: number;
+  prep?: number;
+  height?: number;
+  deposit?: number;
+  richness?: number;
+}
+
+export function applyChangedTileList(terrain: HexTerrain, list: readonly TileChangePatchItem[]): void {
+  for (const c of list) {
+    terrain.setTileState(c.q, c.r, c.terrain, c.prep, c.height, c.deposit, c.richness);
+  }
+}
+
+export function applyTerrainTileChanges(
+  terrain: HexTerrain,
+  prevTiles: ClientTiles,
+  nextTiles: ClientTiles,
+  _radius?: number,
+): void {
+  // One incremental update from the new snapshot. No per-tile `setTileState`: it writes into the terrain's current
+  // layers (the previous replica snapshot) and rebuilds the planet once per tile.
+  const changed = changedTiles(prevTiles, nextTiles);
+  if (!changed.length) return;
+  terrain.updateTiles(nextTiles as HexTiles, changed);
 }
 
 export function createSafeViewport(root: HTMLElement, provided?: ColonyViewport): ColonyViewport {

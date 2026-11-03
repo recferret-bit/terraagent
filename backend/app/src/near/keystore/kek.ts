@@ -1,5 +1,5 @@
 // KEK ring for colony key envelopes. `NEAR_KEK`, `NEAR_KEK_VERSION` and `NEAR_KEK_RING` are optional on the
-// near env section: production boot must not require NEAR_KEK until a caller loads the ring (BE-29).
+// near env section: production boot must not require NEAR_KEK until a caller loads the ring (BE-34).
 import { timingSafeEqual } from 'node:crypto';
 
 /**

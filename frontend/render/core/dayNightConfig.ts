@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
+import { getColonyLightingBlend, getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
 import type { PlanetSpec } from '../planets/PlanetSpec';
 import type { ColonyViewport } from './createColonyViewport';
 
@@ -42,6 +42,13 @@ export interface SolarCycleState {
   readonly shadowSoftnessMult: number;
   readonly hemiIntensity: number;
   readonly envIntensity: number;
+  /**
+   * Deep-night target for the secondary moon light, as a multiplier on `secondaryIntensity` (driven by `nightBrightness`).
+   * `shadowConfig` blends the daytime fill toward it by `1 - daylight`, so the moon is a faint cool fill, never a second sun.
+   */
+  readonly moonIntensityMult: number;
+  /** Deep-night target for the moon's shadow opacity, as a multiplier on `nightShadowIntensity` (very weak by default). */
+  readonly moonShadowMult: number;
 }
 
 export interface ViewportPlanetBaseline {
@@ -181,7 +188,7 @@ export function computeSolarState(
   const rawSin = Math.sin(solarAngle);
   const isMorning = hour < 12;
 
-  const daylight = smoothstep(-0.08, 0.68, rawSin);
+  const daylight = smoothstep(-0.35, 0.35, rawSin);
   const twilight = Math.max(0, 1 - Math.abs(rawSin - 0.04) / 0.34) * smoothstep(-0.32, 0.02, rawSin);
 
   let period: DayPeriod = 'DAY';
@@ -224,8 +231,8 @@ export function computeSolarState(
 
   const nightKey = 0.015 + 0.22 * Math.pow(p.nightBrightness, 1.35);
   const sunIntensityMult = rawSin >= 0
-    ? 0.42 + 0.58 * smoothstep(0.0, 0.65, rawSin)
-    : nightKey + (0.42 - nightKey) * smoothstep(-0.22, 0.0, rawSin);
+    ? 0.65 + 0.35 * smoothstep(0.0, 0.65, rawSin)
+    : nightKey + (0.65 - nightKey) * smoothstep(-0.22, 0.0, rawSin);
 
   // Shadows respond to solar elevation & time of day:
   const rawShadowDay = rawSin >= 0
@@ -255,7 +262,20 @@ export function computeSolarState(
     shadowSoftnessMult,
     hemiIntensity,
     envIntensity,
+    ...computeMoonMults(p),
   };
+}
+
+/**
+ * Night moon key and shadow targets from the `NIGHT MOONLIGHT` slider. At the default 12% the moon is ~9% of
+ * `secondaryIntensity` (≈0.13 vs the 2.25 noon sun) with ~12% of `nightShadowIntensity`: barely visible, so the
+ * colony projectors carry the night. `shadowDayFactor` 0 keeps the moon's shadow as opaque as the day fill's.
+ */
+function computeMoonMults(p: Readonly<DayNightParams>): { moonIntensityMult: number; moonShadowMult: number } {
+  const moonIntensityMult = 0.04 + 0.55 * Math.pow(p.nightBrightness, 1.1);
+  const rawMoonShadow = 0.08 + 0.32 * p.nightBrightness;
+  const moonShadowMult = clamp(1 + (rawMoonShadow - 1) * p.shadowDayFactor, 0, 1.35);
+  return { moonIntensityMult, moonShadowMult };
 }
 
 export function recordViewportPlanetBase(vp: ColonyViewport, look?: PlanetSpec): ViewportPlanetBaseline {
@@ -282,7 +302,14 @@ export function hasViewportPlanetSurface(vp: ColonyViewport): boolean {
 }
 
 export function isViewportInDescent(vp: ColonyViewport): boolean {
-  return Boolean(vp.scene.getObjectByName('descent:root'));
+  return isSceneInDescent(vp.scene);
+}
+
+/** True while the descent cinematic's root (`DescentRunner`, a direct scene child) is in `scene`. Cheap per frame. */
+export function isSceneInDescent(scene: THREE.Object3D): boolean {
+  const kids = scene.children;
+  for (let i = 0; i < kids.length; i++) if (kids[i]!.name === 'descent:root') return true;
+  return false;
 }
 
 export function getViewportPlanetBase(vp: ColonyViewport): ViewportPlanetBaseline {
@@ -323,7 +350,7 @@ export function applyDayNightAtmosphere(vp: ColonyViewport, baseAzimuth = 318, b
   vp.sun.intensity = base.sunIntensity * solar.sunIntensityMult;
 
   const nightFactor = 1 - solar.daylight;
-  visionUniforms.uNightFactor.value = nightFactor;
+  visionUniforms.uNightFactor.value = nightFactor * getColonyLightingBlend();
   _cHemiSky.setHex(base.hemiSky)
     .lerp(_cHorizon.setHex(0xff8e53), solar.twilight * 0.48 * params.sunWarmth)
     .lerp(_cTwilight.setHex(0x050b18), nightFactor * (0.96 - 0.16 * params.nightBrightness));

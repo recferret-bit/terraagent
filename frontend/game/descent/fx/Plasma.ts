@@ -69,7 +69,7 @@ function addBowShock({ add, shaderMat, shieldR, base }: Ctx) {
     void main(){
       float r = length(vP.xz) / ${(shieldR * 1.18).toFixed(3)};
       float n = vnoise3(vec3(vP.xz * 2.6, uTime * 7.0));
-      float f = pow(1.0 - abs(dot(normalize(vN), vV)), 1.6);
+      float f = pow(max(1.0 - abs(dot(normalize(vN), vV)), 0.0), 1.6);   // max(): pow(<0) = NaN → bloom black square
       vec3 c = mix(uHot * 1.6, uCool * 1.9, smoothstep(0.05, 0.7, r));
       float a = (0.5 + 0.5 * n) * (0.45 + 1.1 * f) * (1.0 - smoothstep(0.92, 1.0, r) * 0.5);
       gl_FragColor = vec4(c, clamp(a * uI * 0.85, 0.0, 1.0));
@@ -109,7 +109,7 @@ function addSheath({ add, shaderMat, shieldR, base }: Ctx) {
       float ang = atan(vP.z, vP.x);
       float n = fbm3lo(vec3(cos(ang) * 2.2, vP.y * 0.32 - uTime * 10.0, sin(ang) * 2.2));
       float streak = vnoise3(vec3(ang * 5.0, vP.y * 0.9 - uTime * 18.0, 3.0));
-      float rim = pow(1.0 - abs(dot(normalize(vN), vV)), 3.2);          // hollow: only the silhouette glows
+      float rim = pow(max(1.0 - abs(dot(normalize(vN), vV)), 0.0), 3.2); // hollow: only the silhouette glows
       float a = rim * (0.35 + 0.9 * n) * (0.6 + 0.6 * streak) * (1.0 - smoothstep(0.35, 1.0, s));
       vec3 c = mix(uHot * 1.4, uCool * 1.9, smoothstep(0.0, 0.18, s));
       c = mix(c, uAtm * 1.4, smoothstep(0.3, 0.75, s));

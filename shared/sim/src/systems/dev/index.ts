@@ -1,3 +1,4 @@
+import { RESOURCE_FAMILY_OF, RESOURCE_KEYS, type ResourceKey } from '@terra/contracts';
 import { isMajor } from '@terra/ledger';
 import { dataRow } from '../../data';
 import { DEV_ACTOR, treasury } from '../../economy';
@@ -12,16 +13,25 @@ import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { StepContext } from '../../kernel/context';
 import { seedRng } from '../../kernel/rng';
 import { setBlob, type PlanetState } from '../../kernel/state';
+import { cancelMove } from '../../units/movement/orchestrator';
 import { commandColony, parseArgs } from '../command';
 import { cancelConstructionOrder, getConstructionOrders } from '../construction';
 import { defineSimModule } from '../define';
+import { creditResource, ensureColonyLedger, remainingFamilyCap } from '../economy/ledger';
+import {
+  applyEnvironmentState,
+  environmentFromPlanetTime,
+  type EnvironmentState,
+} from '../environment';
 import { findColonyHqRow } from '../find';
 import { hqViewRadius, revealVision, setHqCellEnergy, syncHqView } from '../hq';
 import { MAX_COLONIES_PER_PLANET } from '../landing';
+import { evaluateColonyPower, recomputeAllColonyPower } from '../power-core';
 import { writeOrdersByColony } from '../terraform-basic/orders';
 import { claimTerritoryRadius } from '../territory-claim';
-import { cancelMove } from '../../units/movement/orchestrator';
+import { setPlanetTime } from '../time';
 import { devLand } from './land';
+import { devSpawnDeposit } from './spawnDeposit';
 
 /** `kind` of the W00 test entity spawned by `dev.spawn` (no gameplay meaning). */
 export const DEV_ENTITY_KIND = 1;
@@ -30,7 +40,7 @@ export const DEV_ENTITY_KIND = 1;
 const devColony = (cmd: SimCommand): number | 'not_own_colony' => commandColony(cmd);
 
 /** Layers `dev.seed` takes from the regenerated planet: the ground, and the per-colony layers on top of it. */
-const SEED_LAYERS = ['terrain', 'prep', 'deposit', 'richness', 'height', 'subDeposit', 'subRichness', 'owner', 'explored', 'anchors', 'graceUntil'] as const;
+const SEED_LAYERS = ['terrain', 'prep', 'deposit', 'depositTier', 'richness', 'height', 'subDeposit', 'subRichness', 'owner', 'explored', 'anchors', 'graceUntil'] as const;
 
 /** `dev.seed`: no order survives onto new ground (GP-27): construction is cancelled (refund rules), terraform dropped. */
 function dropAllOrders(s: PlanetState, ctx: StepContext): void {
@@ -117,6 +127,111 @@ const teleport = defineCommandHandler({
   },
 });
 
+function ensureColony(state: PlanetState, colonyIndex: number, tick: number) {
+  let colony = state.colonies.find((c) => c.index === colonyIndex);
+  if (!colony) {
+    colony = {
+      index: colonyIndex,
+      id: `col-${colonyIndex}`,
+      name: `Colony ${colonyIndex + 1}`,
+      color: 0x3a7bd5,
+      status: 'active',
+      changedAt: tick,
+    };
+    state.colonies.push(colony);
+  }
+  return ensureColonyLedger(colony);
+}
+
+function setOrFillKey(
+  colony: ReturnType<typeof ensureColony>,
+  key: ResourceKey,
+  amount: number | undefined,
+  tick: number,
+): void {
+  const family = RESOURCE_FAMILY_OF[key];
+  if (amount !== undefined) {
+    colony.stock[key] = 0;
+    colony.changedAt = tick;
+    if (amount > 0) creditResource(colony, key, amount, tick);
+  } else {
+    creditResource(colony, key, remainingFamilyCap(colony, family), tick);
+  }
+}
+
+const fill = defineCommandHandler({
+  kind: 'dev.fill', wave: 'W02',
+  handle(s, c, ctx) {
+    const args = (c.args ?? {}) as { res?: string; resource?: string; amount?: number; colonyIndex?: number };
+    const colonyIndex = args.colonyIndex ?? c.colonyIndex ?? 0;
+    const colony = ensureColony(s, colonyIndex, ctx.tick);
+    const targetRes = args.res ?? args.resource ?? 'all';
+    const amount = args.amount;
+
+    if (targetRes === 'all') {
+      if (amount !== undefined) {
+        for (const k of RESOURCE_KEYS) colony.stock[k] = 0;
+        colony.changedAt = ctx.tick;
+        creditResource(colony, 'metals.t1', amount, ctx.tick);
+        creditResource(colony, 'minerals.t1', amount, ctx.tick);
+        creditResource(colony, 'bio.biomass', amount, ctx.tick);
+        creditResource(colony, 'bio.water', amount, ctx.tick);
+      } else {
+        creditResource(colony, 'metals.t1', remainingFamilyCap(colony, 'metals'), ctx.tick);
+        creditResource(colony, 'minerals.t1', remainingFamilyCap(colony, 'minerals'), ctx.tick);
+        const bioRem = remainingFamilyCap(colony, 'bio');
+        const half = Math.floor(bioRem / 2);
+        creditResource(colony, 'bio.biomass', half, ctx.tick);
+        creditResource(colony, 'bio.water', remainingFamilyCap(colony, 'bio'), ctx.tick);
+      }
+    } else if (targetRes === 'metals') {
+      if (amount !== undefined) {
+        colony.stock['metals.t2'] = 0;
+        colony.stock['metals.t3'] = 0;
+      }
+      setOrFillKey(colony, 'metals.t1', amount, ctx.tick);
+    } else if (targetRes === 'minerals') {
+      if (amount !== undefined) {
+        colony.stock['minerals.t2'] = 0;
+        colony.stock['minerals.t3'] = 0;
+      }
+      setOrFillKey(colony, 'minerals.t1', amount, ctx.tick);
+    } else if (targetRes === 'bio') {
+      if (amount !== undefined) {
+        colony.stock['bio.water'] = 0;
+        colony.stock['bio.t2'] = 0;
+        colony.stock['bio.t3'] = 0;
+      }
+      setOrFillKey(colony, 'bio.biomass', amount, ctx.tick);
+    } else if ((RESOURCE_KEYS as readonly string[]).includes(targetRes)) {
+      setOrFillKey(colony, targetRes as ResourceKey, amount, ctx.tick);
+    } else {
+      return 'invalid_args';
+    }
+  },
+});
+
+const skipnight = defineCommandHandler({
+  kind: 'dev.skipnight', wave: 'W02',
+  handle(s, _c, ctx) {
+    const prev = s.blobs.environment?.value as Partial<EnvironmentState> | undefined;
+    const prevStorm = prev?.stormActive === true;
+    setPlanetTime(s, { timeOfDay: 6 }, ctx.tick, ctx.data); // morning: full daylight (the environment follows the clock)
+    applyEnvironmentState(s, environmentFromPlanetTime(s, ctx.data, prevStorm, ctx.tick), ctx.tick);
+    recomputeAllColonyPower(s, ctx.data, ctx.tick);
+  },
+});
+
+const power = defineCommandHandler({
+  kind: 'dev.power', wave: 'W02',
+  handle(s, c, ctx) {
+    const args = (c.args ?? {}) as { colonyIndex?: number };
+    const colonyIndex = args.colonyIndex ?? c.colonyIndex ?? 0;
+    const summary = evaluateColonyPower(s, colonyIndex, ctx.data, ctx.tick);
+    ctx.emit({ kind: 'dev.powerDump', colonyIds: [colonyIndex], data: { ...(summary as unknown as Record<string, unknown>) } });
+  },
+});
+
 const grant = defineCommandHandler({
   kind: 'dev.grant', wave: 'W01',
   // Whole units only; a negative amount withdraws at most the balance (clamped to >= 0). Uncapped (a dev tool), and
@@ -194,5 +309,5 @@ const seed = defineCommandHandler({
 export default defineSimModule({
   id: 'dev',
   wave: 'W00',
-  handlers: [ping, spawn, nudge, teleport, grant, cell, reveal, seed, devLand],
+  handlers: [ping, spawn, nudge, teleport, grant, cell, reveal, seed, devLand, fill, skipnight, power, devSpawnDeposit],
 });

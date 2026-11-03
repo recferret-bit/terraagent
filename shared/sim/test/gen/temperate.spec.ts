@@ -64,8 +64,8 @@ describe('Temperate planet generator (W01-06)', () => {
           expect(richness[i]).toBe(0);
           continue;
         }
-        // Deposits only spawn on passable land tiles
-        expect([TERRAIN.flat, TERRAIN.forest, TERRAIN.rock, TERRAIN.slope]).toContain(terrain[i]);
+        // Deposits only spawn on non-rock, non-forest passable land tiles (flat or slope)
+        expect([TERRAIN.flat, TERRAIN.slope]).toContain(terrain[i]);
 
         const bp = getDepositRichnessBp(seed, i, d, 'temperate');
         expect(richness[i]).toBe(bp);

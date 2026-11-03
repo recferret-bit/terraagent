@@ -37,6 +37,8 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   landing_site_taken: 'Rejected: Landing site taken or too close to another colony',
   queue_full: 'Rejected: Queue full',
   planet_full: 'Rejected: Planet full',
+  cannot_dismantle_hq: 'Rejected: Cannot dismantle Command Hub or HQ',
+  unknown_task: 'Rejected: Order no longer in the queue',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

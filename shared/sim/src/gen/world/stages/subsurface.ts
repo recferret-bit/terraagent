@@ -1,4 +1,6 @@
 import { DEPOSIT, TERRAIN } from '../../../grid/layers';
+import { collectPodBlastTiles } from '../../spawnDisk';
+import { getSpawnSlots } from '../../spawnSlots';
 import { getDepositRichnessBp } from '../../temperate';
 import type { WorldStage } from '../context';
 import { fbm2d, hash2d } from '../noise';
@@ -31,9 +33,14 @@ export const subsurface: WorldStage = {
     const boost = ctx.num('subRichnessBoostBp', 12500);
     const veinSeed = ctx.secretSeed('vein');
     const { seed, planetType } = ctx.state.meta;
+    const blastTiles = new Set<number>();
+    for (const slot of getSpawnSlots(ctx.state)) {
+      for (const idx of collectPodBlastTiles(ctx.hex, slot.q, slot.r)) blastTiles.add(idx);
+    }
     for (const s of ctx.sectors.sectors) {
       const sSeed = ctx.secretSeed('subsurface', s.id);
       for (const i of s.tiles) {
+        if (blastTiles.has(i)) continue;
         const p = chance[terrain[i]];
         if (!p || deposit[i] !== DEPOSIT.none) continue;
         // Vein field in [0,1): the top `p` share of it is ore. fbm is ~bell-shaped, so map p to a threshold.

@@ -13,8 +13,11 @@ const BASE: FieldDef[] = [
   { name: 'height', dtype: 'f32', wave: 'W00' }, // metres above the build plane
   { name: 'owner', dtype: 'i8', wave: 'W00' }, // colony index, -1 = none
   { name: 'explored', dtype: 'u8', wave: 'W00' }, // bitmask per colony, client-side fog (D-25)
-  { name: 'anchors', dtype: 'u8', wave: 'W01' }, // count of friendly anchor buildings claiming this tile (W01-17)
+  { name: 'anchors', dtype: 'u8', wave: 'W01' }, // count of friendly anchor buildings claiming this tile (W01-17): territory only; "a building stands here" is `occupiedGroundTiles` (entities)
   { name: 'graceUntil', dtype: 'f64', wave: 'W01' }, // tick when zero-anchor tile reverts to unclaimed
+  // Tier of the visible deposit (written with `deposit` by `setTileDeposit`): 0 = legacy / world generation (harvested
+  // as tier 1), 1..3 = explicit tier (a deposit spawned by terraforming, `TERRAFORM_RESOURCE_SPAWN`).
+  { name: 'depositTier', dtype: 'u8', wave: 'W02' },
   { name: 'changedAt', dtype: 'u32', wave: 'W00' },
   // Hidden subsurface (D-38): what Clear / Break uncovers. Server-only, redacted from client snapshots and diffs.
   { name: 'subDeposit', dtype: 'u8', wave: 'W01', hidden: true }, // DEPOSIT code buried under the tile, 0 = none

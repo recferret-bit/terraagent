@@ -21,6 +21,9 @@ import {
 test.describe.configure({ mode: 'serial' });
 
 const local = hostMode() === 'local';
+// The whole story is the online flow (guest login, server planet, splash hand-over, app restart): there is no browser
+// local-host variant, so `--host local` skips the suite (beforeAll does not run either) instead of failing step 1.
+test.skip(local, 'W01 has no local-host variant: it needs the app (server host)');
 /** Entity view layout and codes, passed into `page.evaluate` (it cannot import): one source with the client (XC-06). */
 const VIEW = { E, S: ENTITY_STRIDE, K: { hq: ENTITY_KIND.hq, hub: ENTITY_KIND.hub }, ST: { active: ENTITY_STATE.active } };
 const serverOnly = () => test.skip(local, 'needs the app (server host)');
@@ -86,7 +89,10 @@ test.afterAll(async () => {
 });
 
 test('@hack 1. open /play.html in a fresh profile -> orbital boot splash, then hand-over to the dev planet with no click', async () => {
-  await page.goto('/play.html');
+  // The W01 UI (the bottom-right Hub menu with only Command Hub, its ghost and prep bill) is what this suite checks.
+  // With W02 on, the Command Dock BUILD tab (full catalog) replaces that menu by design (hub-placement/index.ts
+  // `hiddenByW02`), so narrow the client to ..01; the server still runs every wave it has on.
+  await page.goto('/play.html?waves=..01');
   const splash = page.locator('[data-testid=orbital-splash]');
   await expect(splash).toBeAttached({ timeout: 30_000 });
 

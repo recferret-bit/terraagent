@@ -438,6 +438,7 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **To resolve:** read rates and maxima from the sim constants / compiled data; render "—" until a view arrives;
   return `null` instead of inventing an entity id.
 - **Fix:** clock from `TICKS_PER_SECOND`; HUD and panel show `—` until a view carries the value (no `800 / 800 E` / `900 / 900` placeholders); missing maxima come from the `hq.t1` row (live data when the store has it); `extractHqFromView` returns `null` instead of inventing entity id 1. Tests `hud-min.spec.ts` › "shows placeholders until the first view…", `landfall.spec.ts` › "a view with HQ metadata but no entity id names no HQ".
+- **Later (2026-11-03, econ-sync review, left as is):** `shared/hqView.ts` (`extractHqFromView`, `cell: extras.cell ?? meta?.cell ?? cellMax`) still shows a **full** cell when a packed client view has the HQ entity but no `col.hq` / `blobs.hq` record (the packed entity buffer has no `cell` column). The sim writes `col.hq` on the HQ's first step (`syncHqView` from `stepHq`), so this lasts at most one view; showing `—` would need `HqStatusView.cell` to become optional for both panels.
 - **Found:** 2026-11-01, review (frontend features)
 
 ### FF-24 · HUD accessibility basics
@@ -594,7 +595,396 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **Fix:** the brush validates its args with `parseCommandArgs('enqueueTask', …)` before sending; a box over the limit is not sent and the status line reads `Area too large: N tiles, nothing sent`; `BrushController.ts`, `TerraformMenu.ts`. Test `terraform-basic.spec.ts` › "a box larger than one command may carry is not sent".
 - **Found:** 2026-11-01, review-fix round (frontend features)
 
-### FF-34 · Social login does not reauth the open socket
+## W02 First Light review fixes (`hud-min`, `resources-hud`, `construction-menu`, `units-menu`, `queue-panel`, `landfall`)
+
+### FF-34 · Duplicate top resource headers and clipped hover tier breakdowns
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/hud-min/MinimalHud.ts`, `frontend/game/features/hud-min/resourceBreakdown.ts`, `frontend/game/features/resources-hud/index.ts`, `frontend/game/features/resources-hud/resources-hud.css`
+- **What happens:** both `hud-min` and `resources-hud` registered a `top-center` HUD panel, stacking two resource headers; `MinimalHud` lacked tier breakdown popovers and `.ta-resources-hud` had a direct `clip-path: polygon(...)` that clipped its `position: absolute; top: calc(100% + 6px)` `.ta-res-chip__breakdown` popover.
+- **Fix:** `resources-hud/index.ts` exports `hud: []` (keeping `ResourcesHud` exported for unit tests with its chamfer moved to `::before`), and `MinimalHud` (`hud-min`) is the single tight-to-top resource header (`ta-hud-min ta-resources-hud`) with unclipped `.ta-res-chip__breakdown` popovers showing per-tier stocks plus live `Income: +X/s`, `Spending: -Y/s`, and `Net: +Z/s` (`resourceBreakdown.ts`).
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-35 · Overloaded left/right HUD panels consolidated into a collapsible tabbed Command Dock
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/core/hud/CommandDock.ts`, `frontend/game/core/hud/HudRoot.ts`, `frontend/game/core/hud/hud.css`, `frontend/game/features/hub-placement/index.ts`
+- **What happens:** `construction-menu`, `units-menu`, `terraform-basic`, and `queue-panel` stacked separately across `bottom-left` and `bottom-right`.
+- **Fix:** `CommandDock` mounts those panels into one collapsible (`HIDE` / `SHOW`) tabbed `.ta-command-dock` in `bottom-left` with `BUILD [B]`, `PRODUCTION [U]`, `TERRAFORM [T]`, and `QUEUE` tabs; `hub-placement`'s W01 HUD panel is suppressed when `W02` is active.
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-36 · Building and unit cards rebuilt via `replaceChildren()` on every 5 Hz view tick
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/ConstructionMenu.ts`, `frontend/game/features/units-menu/UnitsMenu.ts`, `frontend/game/features/queue-panel/QueuePanel.ts`
+- **What happens:** calling `replaceChildren()` on every `update(view)` destroyed `<button>` elements between `pointerdown` and `pointerup`, flashing `:hover` orange and swallowing single clicks.
+- **Fix:** `ConstructionMenu`, `UnitsMenu`, and `QueuePanel` retain card/lane DOM elements across updates and mutate attributes/text in place; `ConstructionMenu` also handles left-button `pointerdown` with click deduplication.
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-37 · Solar Array (`waiting: site (tile occupied)`) and Metal Extractor map placement & doubled error text
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/PlacementGhost.ts`, `frontend/game/features/construction-menu/ghostRenderer.ts`, `frontend/game/features/construction-menu/index.ts`, `frontend/game/features/construction-menu/construction-menu.css`
+- **What happens:** `PlacementGhostController` had no 3D ghost renderer, no map `pointermove`/click binding, and `evaluatePlacementGhost` did not check tile occupancy (`entities` / `tiles.anchors` / queued builds), so `solar` queued at `(0, 0)` (occupied by the Command Hub) and waited on `site (tile occupied)`, while `metalsExtractor` could not be placed on ore on the map and showed `'must cover a metals deposit'` twice.
+- **Fix:** added `collectOccupiedTileIndices`, `findValidPlacementSite` (snapping initial ghost to the nearest valid free or `DEPOSIT.metals` site), 2×2 deposit-anchor offset snapping on hover, `construction-ghost-3d` (`ghostRenderer.ts`), `bindExclusivePointer` map click/right-click handling, and hid `.ta-placement-ghost__deposit[data-covered='false']` in CSS so the rejection reason renders once.
+- **Later:** `collectOccupiedTileIndices` no longer reads `tiles.anchors` (the territory claim count, not occupancy): see `sim-gameplay.md` GP-47.
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-38 · Selected unit / building bar layout, empty-ground deselect, Harvester selection, and 3D unit health bars
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/landfall/HqPanel.ts`, `frontend/game/features/landfall/selection.ts`, `frontend/game/features/landfall/landfall.css`, `frontend/game/app/online/unitHealthBars.ts`, `frontend/game/app/online/EntityMeshes.ts`, `shared/sim/src/systems/harvest/index.ts`
+- **What happens:** the selection card sat in `top-left` even with nothing selected, clicking empty ground did not deselect, Harvester robots (`ENTITY_KIND.harvester`) could not be selected or commanded (auto-harvest immediately overwrote player moves), and units had no 3D health bars.
+- **Fix:** moved `.ta-hq-panel` to a compact horizontal bottom-center bar (`hidden` when nothing is selected, with a multi-select unit grid slot + count badge ready for future box/Shift multi-selection), added empty-ground deselection, enabled Harvester & building selection + `moveUnit`/`stopUnit` orders (with `standingHarvestAssignSystem` yielding to active/queued `UnitBook` orders), and added `UnitHealthBars` (`unit-health-bars`) rendering a single camera-aligned 3D health bar sized to unit width above each unit.
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-39 · Units walking or spawning inside buildings and Solar Arrays working at night
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/construction/placement.ts`, `shared/sim/src/grid/pathProfiles.ts`, `shared/sim/src/units/mobility.ts`, `shared/sim/src/systems/units/handlers.ts`, `shared/sim/src/systems/factories-hub/index.ts`, `shared/sim/src/systems/queue/index.ts`, `shared/sim/src/systems/economy/construction.ts`, `shared/sim/src/systems/power-core/index.ts`, `frontend/game/features/landfall/selection.ts`
+- **What happens:** `OCCUPYING_KINDS` only included `commandHub`, `ENTITY_KIND.harvester` used `profile: 'none'`, `queueSystem` spawned completed Harvesters at `(0, 0)` inside the Command Hub, `moveUnit` and `LandfallController.orderMove` allowed targeting building footprint tiles, and Solar Arrays did not record `offline: night` at night.
+- **Fix:** added `metalsExtractor` and `solar` to `OCCUPYING_KINDS`, added the `'harvester'` path profile blocking building footprints and water/holes/ridges, rejected `moveUnit` onto any building tile on both server (`handlers.ts`) and client (`selection.ts`), routed `queueSystem` unit completions through `spawnHarvesterAtHubEdge`, evacuated units standing on newly placed building footprints, and marked Solar Arrays `offline: night` (`0` generation) when `phase === 'night' || daylight <= 0.001`.
+- **Found:** 2026-11-02, owner review (W02)
+
+
+### FF-40 · CANCEL JOB on a unit card: repair jobs and shared-order scope
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/landfall/{HqPanel,selectionHelpers}.ts`, `shared/sim/src/systems/queue/cancel.ts`
+- **What happens:** CANCEL JOB is shown for any busy unit and whenever the unit's current/queued command is `terraform` or it owns a work job (`unitHasTerraformJob`); it sends `cancelTask { taskId: 'harvester:<id>' }`, which now also removes the terraform order the unit works on (a Hub's linked prep cancels its construction order). There is no repair job in the sim, so none is detected. Cancelling removes the whole order (all its tiles), not only the unit's current tile, and other units on the same order stop too.
+- **Found:** 2026-11-02, W02 review
+
+
+### FF-41 · WORK on a tree an HQ Drone cannot walk next to ends with a no-path toast; no pre-check, no tree-by-tree approach
+
+- **Status:** Resolved (terraform rework 2026-11-02: the owner chose auto-chaining; a TERRAFORM click on a forest edge now eats the clump tree by tree, nearest first, GP-43)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/{dismantleAndWork,unreachable}.ts`, `frontend/game/features/terraform-basic/BrushController.ts`
+- **What happened:** the HQ Drone uses the `ground` path profile (forest blocks it) and must stand within 2 tiles of the work tile. A tree inside a forest clump has no walkable tile in that band, so the path request failed and `workJobsSystem` re-requested it every few ticks forever: the order was accepted (`ok`) and nothing ever happened. Trees on the edge of a clump, or reached by a Harvester (profile `harvester` crosses forest), worked.
+- **Now:** a work job whose route to the band fails is dropped and the worker's `lastFailure` is set to `no_path` (the existing unit-failure toast). Test: `shared/sim/test/systems/work-forest-click.spec.ts`.
+- **Left open:** the client still sends the click (no reachability pre-check at enqueue, so no immediate reject); the player has to clear a clump from its edge inward or build a Harvester. Owner decision: let the drone fly over trees, or stand off further, or auto-chain the edge trees.
+- **Brush notes:** (obsolete) Ctrl+click multi-add, the hover hex marker and the area brush were removed in the terraform rework (FF-42).
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-42 · Terraform dialog rework: TERRAFORM [G] / REPAIR [R] / DISMANTLE [Z]
+
+- **Status:** Accepted (owner, 2026-11-02)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/terraform-basic/{TerraformMenu,BrushController,primaryOps,groundPreview,referenceTables,workStatus,resourceFound}.ts`, `frontend/game/features/shared/{hotkeys,pointer,depositLabel}.ts`, `frontend/game/core/hud/CommandDock.ts`, `frontend/game/features/landfall/{HqPanel,selectionHelpers}.ts`
+- **What happens:** three buttons, TERRAFORM on top; each click sends one `enqueueTask { terraform: { op: 'work' | 'dismantle', intent?, tiles: [{q,r}], workerId? } }` and disarms the tool; the sim chains terraform (GP-43). Ctrl+click multi-add, the area brush, the 3D hover marker and brushed-tile marks are gone; the S0 grade/clear/break hotkeys are dropped (`strokeTile(q, r, { op })` still sends them from code). G / R / Z arm only while the Terraform tab is open (no invisible armed tool); right-click disarms and passes through to the map. The preview uses the sim's own helpers (parity test against `enqueueWorkAtTile` on every tile). Host rejects are matched to the brush's own command. A `resourceSpawned` toast and a deposit tier on the deposit card announce finds; reference tables read sim data.
+- **Defaults picked:** `F` is the camera follow-HQ key, so TERRAFORM is `G`; `R` is shared with the ghost rotate (the brush is blocked while a ghost is up); DISMANTLE moved from `X` to `Z` and `X` only stops the unit (owner). `workerId` is sent only for a selected own, alive HQ Drone / Harvester.
+- **To resolve:** the plan's area brush (W01-27, W05-20, units spec §4.5 menu row) comes back in W05.
+- **Found:** 2026-11-02, terraform rework
+
+### FF-43 · `Q` toggles both the queue panel and the camera rotation
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/queue-panel/QueuePanel.ts:123`, `frontend/game/app/RTSCamera.ts`, `frontend/game/features/shared/hotkeys.ts`
+- **What happens:** pressing `Q` collapses / expands the queue lane and rotates the camera left at the same time.
+- **Why it is like this:** older than the terraform rework; found in its review, behaviour left unchanged.
+- **To resolve:** owner picks one meaning for `Q` (queue panel has a mouse toggle; the camera has `Q`/`E` as a pair).
+- **Found:** 2026-11-02, terraform rework review
+
+### FF-44 · The client keeps its own copy of entity base costs for REPAIR / DISMANTLE previews
+
+- **Status:** Resolved (terraform rework review 2026-11-02: `getEntityBaseBuildCost` is exported from `@terra/sim` and `planner.resolveEntityBaseCost` reads it with the store's sim data; the client table is gone)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/terraform-basic/planner.ts` (`resolveEntityBaseCost`), `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts` (`getEntityBaseBuildCost`, not exported)
+- **What happens:** the REPAIR cost / DISMANTLE refund shown in the status line come from a partial client cost table (its Solar 60/30 differs from the data row 60/75/10/5); the host charges the real cost.
+- **To resolve:** export `getEntityBaseBuildCost` from `@terra/sim` and read it with the store's sim data.
+- **Found:** 2026-11-02, terraform rework review
+
+
+### FF-45 · `/play.html?planet=<kind>&skip=1` boots with no terrain
+
+- **Status:** Open
+- **Severity:** medium
+- **Confidence:** PLAUSIBLE
+- **Area / code:** `frontend/game/main.ts` / `frontend/game/app/online/` boot path (not investigated)
+- **What happens:** the prototype jump-in URL from CLAUDE.md ("Game flow QA") shows a grey haze and no planet surface on all three planets; it seems to wait for the online flow. Seen by the wind and water agents in headless Chrome while checking the 2026-11-02 water rework; it was already like this before those changes.
+- **Workaround / mitigation:** use `/play.html?host=local&scenario=w02` or `/playground.html?hexterrain=1&biome=oceanForest` / `?surface=1` for visual checks.
+- **To resolve:** find which boot step the `skip=1` prototype path now depends on, or update CLAUDE.md if the prototype path is retired.
+- **Found:** 2026-11-02, water rework (wind / water agents)
+
+### FF-46 · The grid widget hid a shed consumer's draw, read colony 0, and its brownout banner was barely legible
+
+- **Status:** Resolved (2f1f2c1)
+- **Severity:** high
+- **Confidence:** CONFIRMED (headless probe on `?host=local&scenario=w02` and `?scenario=w02`)
+- **Area / code:** `frontend/game/features/power-hud/PowerHud.ts` (`update`, `updatePowerReadout`, `updateBrownout`,
+  `findTargetEntity`), `frontend/game/features/hud-min/resourceBreakdown.ts` (`renderPowerBreakdown`),
+  `frontend/game/features/shared/power.ts` (new: `readColonyPower`, `gridBalance`), `power-hud/power-hud.css`
+- **What happens:** with only the Command Hub (+8 supply, −5 drain) an Extractor (−6) is shed at once
+  (`rawDemand 11 > supply 8` → `offlineBrownout`). The sim's `demand` / `net` are post-shed, so the widget kept showing
+  `+8 / −5 E/s · +3 E/s` in green and the Extractor's −6 E/s never appeared anywhere; next to the HQ cell chip
+  (`200 / 200 E`, FF-47) the owner read "energy is still full". The widget also read `colonies[0]` /
+  `blobs.power.byColony[0]` whatever the player's seat (a guest on `pl_dev` is colony 1+), its fallback inspector
+  took the first building of any colony, it hard-coded the entity stride `12`, the banner named "group 3" even when
+  nothing was shed, and the banner background was a 20 % raw-rgba red over the 3D terrain.
+- **Fix (2f1f2c1):** one reader `readColonyPower(view, ownColonyIndex(...))` (`features/shared/power.ts`) for the
+  brownout banner and the top-bar breakdown; `gridBalance` reports **requested** demand (`rawDemand`), the shed E/s
+  and the net against the requested demand. The top-right `+8 / −11 E/s` balance widget described in the first
+  version of this fix is gone (FF-50 removed it on the owner's request). The grid numbers now live in two places: the
+  energy chip's hover in the top bar (`resourceBreakdown.ts` `renderPowerBreakdown`: `HQ Cell: 200 / 200 E`,
+  `Income (Supply): +8 E/s`, `Spending (Demand): −11 E/s`, `Net: −3 E/s`, and a `Brownout: 6 E/s offline` line shown
+  only while consumers are shed), and the brownout banner top right (`PowerHud.updateBrownout`:
+  `BROWNOUT — SHEDDING GROUP n · 6 E/s OFFLINE`, or `BROWNOUT — DEMAND OVER SUPPLY` with no shed group; background the
+  plate tinted with `--ta-fault`, opaque). Inspector rows via `forEachEntity`, own colony only. Tests
+  `power-hud.spec.ts`, `hud-min.spec.ts` › "Top-bar power breakdown…", `shared/power.spec.ts`; e2e `w02.spec.ts`
+  step 1 (hover `+8` / `−5` / `+3` with no shed consumer).
+- **Default chosen (owner may change):** `Spending (Demand)` is requested demand, not the post-shed demand the grid
+  actually carries; the alternative is `−5 E/s (6 shed)`.
+- **Left:** the prototype `GameHud` (`frontend/game/ui/hud.ts:96,103-105`, `?planet=` path) still reads `colonies[0]`
+  and `byColony[0]`: FF-60.
+- **Found:** 2026-11-03, owner report ("extractor spends 6 E/s, energy is still 200/200"), econ-sync review
+
+### FF-47 · The top bar's energy chip is the HQ drone's power cell, not the colony grid
+
+- **Status:** Question for the owner
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/hud-min/MinimalHud.ts` (constructor `cellEl`, `update`),
+  `frontend/game/features/shared/hqView.ts` (`extractHqFromView`)
+- **What happens:** the only energy number in the top resource bar is `⚡ 200 / 200 E` (W02 scenario; 800 elsewhere):
+  the HQ cell, a store that only terraform work draws (`shared/sim/src/systems/hq/cell.ts`). Buildings draw grid flow
+  (E/s, `colony-economy-and-buildings-spec.md` §2), which since FF-50 is shown only in this chip's hover and the brownout banner (the top-right widget's balance bar was removed on the owner's request). Building or shedding an
+  Extractor never moves the top-bar number, so it reads as "energy is full" during a brownout. The chip says what it is
+  only in its tooltip / screen-reader label.
+- **Why it is like this:** W01 had no grid; the cell chip predates power-core (W02).
+- **Workaround / mitigation:** its hover breakdown now shows the grid (`Spending (Demand)`, `Brownout: N E/s offline`,
+  `Net`), and the brownout banner names the offline E/s (FF-46). ~~the top-right widget shows the deficit~~ removed (FF-50).
+- **To resolve (owner pick):** (a) keep the cell, but label it `CELL` with the HQ icon so it does not read as colony
+  energy; (b) replace it with the grid balance (`+8 / −11 E/s`, red in a brownout) and leave the cell to the HQ panel;
+  (c) show both, grid first. Recommendation: (b), the cell is a unit stat already shown in the HQ panel.
+- **Owner decision pending (W02 review round 1, 2026-11-03):** kept as is in 2f1f2c1 and 58956ab: the chip is still
+  the HQ cell (`MinimalHud` `cellEl`, `data-testid="hud-hq-cell"`), and the e2e (`tests/e2e/w02.spec.ts` step 1) and the
+  W02 check guide read the grid balance from its hover. This is an explicit owner pick for the W02 owner check; FF-50's
+  trade-off (no always-visible grid number) depends on the same answer.
+- **Found:** 2026-11-03, econ-sync review
+
+### FF-48 · An Extractor on a Hub-only grid is shed at once; nothing says so before it is placed
+
+- **Status:** Question for the owner
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/catalog.ts` (`formatPower`), `ConstructionMenu.ts`;
+  balance in `shared/sim/src/data/hub.ts` (`founderCoreGenPerS 8`, `powerDrainPerS 5`) and
+  `shared/sim/src/data/economy-t1-basic.ts` (`metalsExtractor.powerDrainPerS 6`)
+- **What happens:** the Hub leaves +3 E/s headroom; the first Extractor (−6 E/s) completes, goes `offline: brownout`
+  and never produces until a Solar Array is built. The build card shows `−6 E/s` but not the colony's headroom, so the
+  player pays 65/20/10 for a building that is off from the first tick. The W02 e2e story builds Solar first.
+- **Why it is like this:** by the balance rows; the client only shows sim numbers.
+- **To resolve (owner pick):** (a) intended: add a hint on the card / ghost such as `grid short by 3 E/s` from the
+  current `col.power` (display only); (b) rebalance so one Extractor runs on the Hub alone (sim data change).
+- **Found:** 2026-11-03, econ-sync review
+
+### FF-50 · Top-right power widget bar removed; planet time of day moved into the top resource bar; deposit card de-duplicated
+
+- **Status:** Open (owner request 2026-11-03; one follow-up for the owner)
+- **Severity:** low
+- **Confidence:** CONFIRMED (specs + headless screenshots)
+- **Area / code:** `frontend/game/features/hud-min/MinimalHud.ts` (`daytimeEl`, `renderDaytime`), `hud-min.css`
+  (`.ta-hud-min__daytime*`), `frontend/game/features/shared/daytime.ts` (new: `readDaytime`),
+  `frontend/game/features/power-hud/PowerHud.ts` + `power-hud.css` (bar, clock and balance removed),
+  `frontend/game/features/landfall/HqPanel.ts` (`renderDeposit`) + `landfall.css`, `tests/e2e/w02.spec.ts`
+- **What changed:** (1) the top-right plate (`☀ 06:27 100%` + `+8 / −5 E/s +3 E/s`) is gone; the planet clock
+  (sun / moon, `HH:MM`, daylight %) is a chip in the top bar right after the energy chip, before the session clock;
+  it reads the player's colony power summary (`phase`, `clockText`, `daylight`), else `blobs.environment`. The brownout
+  banner and the building inspector stay in the top-right slot (shown only when relevant). (2) The selected-deposit
+  card showed its stage twice (orange count badge + footer) and its reserves twice (`DEPOSIT RESERVES` key and a
+  `DEPOSIT RESERVES: 500 / 500 LEFT` value in a fixed 96 px column, which overflowed into the footer coordinates):
+  it now shows the stage once (footer), `RESERVES` / `500 / 500`, and the stat column grows with its text.
+- **Trade-off / question:** with the balance bar gone, the colony grid balance (`+supply / −demand E/s`, the deficit)
+  has no always-visible number: it is in the energy chip's hover and in the brownout banner. Together with FF-47
+  (the chip shows the HQ cell), option (b) there, the grid balance in the chip, would restore it.
+- **Found:** 2026-11-03, owner HUD request
+
+### FF-49 · The power widget's inspector ignores the player's selection
+
+- **Status:** Resolved (2f1f2c1)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/power-hud/PowerHud.ts` (`selectEntity`, `updateBuildingInspector`),
+  `power-hud/index.ts` (`GameView.selectedEntityId` declared, never set)
+- **What happens:** nothing calls `PowerHud.selectEntity` and no view carries `selectedEntityId`, so the inspector
+  shows the first shed building (or nothing). Clicking a building shows its state in the bottom selection bar
+  (`landfall/selectionHelpers.ts`, incl. `offline: brownout`), not here.
+- **To resolve:** either wire it to `services.landfall.onChange` or drop the inspector's selection path and keep it as
+  a "shed buildings" list.
+- **Found:** 2026-11-03, econ-sync review
+- **Fix (2f1f2c1):** `PowerHud.bindSelection` subscribes to `services.landfall.onChange` on the first `update` that
+  sees the landfall service: a selected own building is inspected, else the first shed one (units are ignored). Open
+  for the owner: the inspector now repeats what the bottom selection bar already shows for that building (state incl.
+  `offline: brownout`); keep both, or drop one. The subscription is made once and goes stale if the landfall feature
+  remounts: FF-58.
+
+## W02 review rounds 1–2 (2026-11-03)
+
+### FF-51 · `?waves=..01` still shows W02 pieces in the dock and the 3D view
+
+- **Status:** Question for the owner
+- **Severity:** low
+- **Confidence:** CONFIRMED (code trace; reported by the frontend agent, round 1)
+- **Area / code:** `frontend/game/core/hud/CommandDock.ts:30` (`hub-placement` gets the BUILD tab when W02 is off), `frontend/game/features/terraform-basic/index.ts:251` (`wave: 'W01'`, but holds the terraform rework of FF-42: TERRAFORM `work`, REPAIR, DISMANTLE, reference rows), `frontend/game/features/hud-min/MinimalHud.ts` (`bindHoverPopover` tier popovers), `frontend/game/app/online/EntityMeshes.ts:49-57,120` (`archetypeForKind`: harvester → `robot.miner`; `WorkParticleSystem`), `frontend/game/app/online/OnlineSession.ts:124,168` (only the health bars are gated by `W02`; `bindOnlineDayNightSync` is not), `frontend/render/lighting/` projector rigs; `docs/plan/PRODUCT_WAVES.md:22` (repair is a W03 row)
+- **What happens:** round 1 gated the W02 HUD, the terraform R/Z keys, health bars and the W02 dev commands behind the `W02` flag, but a `?waves=..01` client still shows: the Command Dock itself (it hosts the W01 Hub menu and the Terraform tab, where W01 had separate panels); the reworked TERRAFORM tool (`work` instead of W01's GRADE / CLEAR / BREAK, plus the reference rows); the per-tier popovers on the resource chips; work particles and hand lasers; the projector light rigs; the day/night binding of the scene to the planet clock; and Harvester meshes when a `..01` client meets a W02 host. REPAIR ships in W02 although `PRODUCT_WAVES.md` puts repair in W03.
+- **Why it is like this:** these pieces replaced W01 code in place (no W01 variant left to fall back to) or are render systems with no flag input.
+- **Workaround / mitigation:** the W01 e2e suite runs with `?waves=..01` and passes; the W02 suite's step 10 checks the gated UI (planet clock, grid lines, Production tab, W02 build cards, power widget).
+- **To resolve:** owner decides what `..01` must look like. Recommendation: accept the dock, the terraform rework, the render systems and the popovers as the new W01 look (they change no rule), and only move REPAIR behind `W03` (or update `PRODUCT_WAVES.md` to say it ships in W02).
+- **Found:** 2026-11-03, W02 review round 1 (frontend agent)
+
+### FF-52 · Construction ghost leftovers: occupancy rule of its own, pending tiles never cleared, ghost survives tab switches; Hub ghost rig copied
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/PlacementGhost.ts:199` (`pendingIndices`), `:297-312` (`start`), `:350-357` (`confirm`), `:125-140` (`evaluatePlacementGhost`), `frontend/game/features/construction-menu/ghostContext.ts:101-132` (`collectOccupiedTileIndices`), `frontend/game/core/hud/CommandDock.ts` (tab switch), `frontend/game/features/hub-placement/GhostRig3D.ts:48-60` (`ensureBody`) vs `frontend/game/features/construction-menu/ghostRenderer.ts` (`ConstructionGhostRig3D`); sim rule `shared/sim/src/systems/construction/placement.ts` (`evaluatePlacement`, D-37)
+- **What happens:**
+  1. **Occupancy is the client's, not the sim's:** `collectOccupiedTileIndices` marks the footprints of live entities (Hub 3×3, Extractor / Solar 2×2, pod 1 tile) and of every queued `build` task of every colony; when any footprint tile is in that set, `evaluatePlacementGhost` skips `evaluatePlacement` and answers `tile occupied` itself. Where the client's footprints differ from the sim's occupancy (a unit kind added later, a pod the sim no longer counts, a queued task the host already dropped), the ghost and the host disagree.
+  2. **`pendingIndices` never shrinks:** every confirmed site adds its tiles and nothing removes them, so after a build is cancelled or rejected the auto-site search in `start` still avoids those tiles for the rest of the session.
+  3. **Tab switch keeps the ghost:** switching the dock from BUILD to another tab hides the menu but does not cancel an active ghost; it stays on the map and still owns left / right clicks (`bindExclusivePointer`).
+  4. **Hub ghost rig:** `GhostRig3D` (Hub, W01 path) removes the archetype's projector rig without disposing it (the construction ghost does since 2f1f2c1), and its body / material / tint code is a near copy of `ConstructionGhostRig3D`.
+- **Fixed meanwhile:** the auto-site search cost (`findValidPlacementSite`, ~440 sim evaluations per click, 93 ms) is ~5.6 ms since the ghost context is built once per action (`ghostContext.ts`, 58956ab); the ghost uses the store's compiled overrides and centres the search on the own HQ (58956ab).
+- **Why it is like this:** the ghost had to show queued sites before the host's view carries them; the two rigs were built in different waves.
+- **Workaround / mitigation:** the host re-validates every `enqueueTask`; a wrong green ghost ends in a reject toast.
+- **To resolve:** feed queued builds to the sim rule (a `PlacementWorld` with pending footprints) instead of a client occupancy short-cut; drop a pending tile when its order leaves the view; cancel the ghost when the BUILD tab is left; one ghost-rig class for both menus that disposes the projector rig.
+- **Found:** 2026-11-03, W02 review rounds 1 and 2 (frontend agent)
+
+### FF-53 · Hotkey leftovers: dead B / U handlers in the menus, camera keys ignore modifiers
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/ConstructionMenu.ts:68-77` (`B`), `frontend/game/features/units-menu/UnitsMenu.ts:116-125` (`U`), `frontend/game/core/hud/CommandDock.ts:160-172` (`handleKeyDown`, capture phase, `stopImmediatePropagation`), `frontend/game/app/RTSCamera.ts:37-38`, `frontend/game/features/shared/hotkeys.ts` (`isHotkeyPress`, FF-07 / FA-34)
+- **What happens:** the dock's capture-phase handler takes `B` / `U` / `T` and stops the event, so the menus' own window `keydown` handlers for `B` / `U` never run inside the dock; they only act in a standalone mount and still carry their own copy of the typing guard (no auto-repeat or modifier check), the copy FA-34 removed elsewhere. `RTSCamera` skips keys only when the target is an `INPUT` (not a textarea / contenteditable) and ignores modifiers, so `Ctrl+W` / `Cmd+Q` / `Ctrl+E` also pan or rotate the camera.
+- **Why it is like this:** the menus predate the dock; the camera predates the shared guard.
+- **Workaround / mitigation:** none needed inside the dock.
+- **To resolve:** delete the menu handlers (the dock owns B / U); use `isHotkeyPress` in `RTSCamera`.
+- **Found:** 2026-11-03, W02 review round 1 (frontend agent)
+
+### FF-54 · The Solar reference row always shows the temperate output
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/terraform-basic/referenceTables.ts:59` (`computeSolarOutputPerS(1, 'temperate', data)`)
+- **What happens:** the reference table's `Solar Array (Day)` row computes the output for a temperate planet whatever planet the player is on, so on a desert or ocean planet the row and the real Solar income differ.
+- **Why it is like this:** the table has no planet type input.
+- **Workaround / mitigation:** the energy chip's hover shows the real `Income (Supply)`.
+- **To resolve:** pass the view's planet type into the reference rows.
+- **Found:** 2026-11-03, W02 review round 1 (frontend agent)
+
+### FF-55 · Server-only events reach the client's event stream
+
+- **Status:** Open (harmless today)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/contracts/src/events/resource-produced.ts:9` (`audience: 'server'`), `frontend/game/store/WorldStore.ts:208-211` (`delta.events` emitted to `onServerEvents` unfiltered), consumer `frontend/game/features/terraform-basic/resourceFound.ts`; server side: `backend-contracts.md` (rooms forward every known kind)
+- **What happens:** `resourceProduced` (a 60 s production batch meant for the progression consumer) arrives in `delta.events` and is passed to every `onServerEvents` listener. Today the only listener switches on the event kind and ignores unknown kinds, so nothing shows.
+- **Why it is like this:** neither the server nor the client filters by the contract's `audience`.
+- **Workaround / mitigation:** listeners ignore kinds they do not know.
+- **To resolve:** filter `audience: 'server'` events on the server (preferred) or in `WorldStore` before emitting.
+- **Found:** 2026-11-03, W02 review round 1 (frontend agent, backend agent)
+
+### FF-56 · The W02 e2e step 1 hover depends on nothing covering the energy chip at 1280×720
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED (test code); not seen failing
+- **Area / code:** `tests/e2e/w02.spec.ts:96-101` (`energy.hover()` on `[data-testid="hud-hq-cell"]`, then reads the popover lines), `tests/e2e/playwright.config.ts:23` (`viewport: 1280×720`)
+- **What happens:** the step hovers the top-bar chip with a real pointer move; if another HUD element (a toast, the brownout banner, a wider top bar) overlaps the chip at that size, the hover lands elsewhere and the popover assertions fail for a layout reason.
+- **Why it is like this:** the test drives the UI as a player would.
+- **Workaround / mitigation:** none needed while the top bar fits.
+- **To resolve:** assert the chip is not covered before hovering (or open the popover through its `data-open` attribute in a second, non-pointer check).
+- **Found:** 2026-11-03, W02 review round 2 (frontend agent)
+
+### FF-57 · Health-bar billboard turns one draw late and per camera
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED (code); not noticed in play
+- **Area / code:** `frontend/game/app/online/unitHealthBars.ts:79-89` (`faceCameraBeforeRender` on the backing plate)
+- **What happens:** the bar group is turned to the camera in the plate's `onBeforeRender`. Parts of the bar drawn before the plate in the same pass use last frame's rotation, so after a Q / E camera turn they lag one frame; a second camera rendering the scene (shadow pass, another viewport) turns the group again for its own view.
+- **Why it is like this:** a cheap billboard with no per-frame scene walk.
+- **Workaround / mitigation:** the lag is one frame and the bars are small.
+- **To resolve:** set the group's rotation once per frame from the main camera in `UnitHealthBars.sync` (or use a sprite / screen-space bar).
+- **Found:** 2026-11-03, W02 review round 2 (frontend agent)
+
+### FF-58 · The power widget subscribes to the selection once and goes stale on a remount
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED (code)
+- **Area / code:** `frontend/game/features/power-hud/PowerHud.ts:111-117` (`bindSelection`), `:207-209` (`dispose`); FF-49
+- **What happens:** `bindSelection` subscribes to the first `services.landfall` it sees and never again (`offSelection` set). If the landfall feature is re-mounted (a flag change that re-mounts features, FA-29) while `PowerHud` stays, the widget listens to the old controller and stops following the selection.
+- **Why it is like this:** the landfall panel may mount after the power widget, so the binding is lazy and one-shot.
+- **Workaround / mitigation:** features re-mount together when the feature set changes, which disposes `PowerHud` too.
+- **To resolve:** re-bind when `services.landfall` is a different object than the one subscribed to.
+- **Found:** 2026-11-03, W02 review round 2 (frontend agent)
+
+### FF-59 · Dead or test-only feature code: `ResourcesHud`, `QueuePanel.bindSimState`
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED (grep: no production caller)
+- **Area / code:** `frontend/game/features/resources-hud/index.ts:10` (`hud: []`), `ResourcesHud.ts:112,166` (`colonies[0]`, `byColony[0]`), `resources-hud.css:96-109` (raw `rgba` colours); `frontend/game/features/queue-panel/QueuePanel.ts:170-181` (`bindSimState`, `enqueue` → `enqueueQueueTask(simState, …)`), used only by `queue-panel.spec.ts`
+- **What happens:** since FF-34 the `resources-hud` feature mounts nothing; `ResourcesHud` stays exported for its unit tests and still reads colony 0 and uses raw `rgba` colours instead of design tokens. `QueuePanel.bindSimState` / `enqueue` write a `PlanetState` directly (the client must only send commands, AGENTS §6); only specs call them.
+- **Why it is like this:** leftovers of the first W02 HUD iteration kept for their specs.
+- **Workaround / mitigation:** unreachable in the game.
+- **To resolve:** delete `ResourcesHud` (and its CSS) and move `QueuePanel`'s spec to a host `submit`, then delete `bindSimState` / `enqueue`.
+- **Found:** 2026-11-03, W02 review round 1 (frontend agent)
+
+### FF-60 · Prototype `GameHud` reads colony 0
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/ui/hud.ts:96` (`colonies[0]`), `:103-105` (`byColony[0]`); FF-46
+- **What happens:** the prototype HUD of the `?planet=` path takes stock, caps, production and power from the first colony, not the player's. The prototype path is single-colony today, so the numbers are right there.
+- **Why it is like this:** left over when FF-46 moved the online HUD to `readColonyPower(view, ownColonyIndex(…))`.
+- **Workaround / mitigation:** single colony on the prototype path.
+- **To resolve:** use `viewColony` / `readColonyPower` with the own colony, or retire the prototype HUD with the prototype path (FF-45).
+- **Found:** 2026-11-03, econ-sync review / W02 review round 1 (frontend agent)
+
+### FF-61 · Console `time`: registered twice, split across two channels, a bare `time` may set noon
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED (code trace)
+- **Area / code:** `frontend/game/features/warp/index.ts:35-80` (`timeCommand`, feature `warp`, `devCommands: [warp, timeCommand]`), `frontend/game/features/devtools/index.ts:79,175` (`const time = timeCommand`, listed again in `devtools`); `frontend/game/dev/console/runner.ts:19-22` (duplicate names: the same object is skipped silently); `frontend/game/store/local/LocalHostCore.ts:330-356` (`devTime`); `frontend/game/app/online/featureHud.ts:80` (default `devServer: httpDevServer()`); sim `shared/sim/src/systems/environment/index.ts:122` (`hourForTimeSpec`), `systems/time/index.ts:280`
+- **What happens:**
+  1. **Registered twice:** both W00 features `warp` and `devtools` list the same `timeCommand`; the runner keeps the first and skips the second without a warning (same object), so it works, but the command has two owners.
+  2. **Two channels:** named presets (`night`, `morning`, `noon`, `dusk`, `midnight`, `day` alone) and `HH:MM` go through the sim command `dev.time { target }`; a bare hour (`time 7`), `time day <realHours>`, `time scale <k>` and a bare `time` (print) go through the dev route `devServer('time')` (the game server's route, or the local host's `devTime` on `?host=local` and the dev fallback). The sim's `hourForTimeSpec` already reads a bare hour (`'7'`), so `time 7` does not need the dev route. Without any `devServer` service those forms answer `host_unavailable`.
+  3. **Bare `time` without a dev server:** the branch `first === undefined && !ctx.services.devServer` sends `dev.time { target: 'day' }`, i.e. sets 12:00 instead of printing the clock. In the online flow `FeatureHud` always provides a `devServer` (HTTP by default, the local host's on `?host=local`), so this branch is reached only by a host that has no dev server (specs, a future host).
+- **Why it is like this:** `time` grew from a dev-route command (W00) into the solar clock (`dev.time`) without merging the two paths.
+- **Workaround / mitigation:** all forms work on the server flow and on `?host=local`.
+- **To resolve:** register `time` in one feature; send a bare hour as `dev.time { target }`; make a bare `time` print the clock from the view (`blobs.planetTime` / colony power summary) instead of setting it. Update `docs/dev/DEV_TOOLS.md` with the split if it stays.
+- **Found:** 2026-11-03, W02 review round 2 (lead)
+
+
+## W06 Invisible Chain
+
+These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-34..FF-61 on `main` first, so the W06 entries continue at FF-62.
+
+### FF-62 · Social login does not reauth the open socket
 
 - **Status:** Accepted (by design)
 - **Area / code:** `frontend/game/app/online/pilotBridge.ts` (`loginSocial`), `frontend/game/app/online/guestBoot.ts` (`applyLinkedSession`), `frontend/game/net/WsTransport.ts` (`reauth`)
@@ -604,7 +994,7 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **To resolve:** only if a linked token must be on the socket immediately — add a session push for `reauth`. Not needed while the upgrade keeps the player id.
 - **Found:** 2026-11-02, W06-15
 
-### FF-35 · A reload shows Guest pilot again
+### FF-63 · A reload shows Guest pilot again
 
 - **Status:** Resolved (W06-06)
 - **Area / code:** `frontend/game/features/identity/PilotChip.ts`, `frontend/game/app/online/bootOnline.ts` (`bootAuthAndHome`, `readAccountId`), `backend/app/src/core/auth/auth.service.ts` (`guestLogin`)

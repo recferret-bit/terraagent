@@ -4,11 +4,16 @@ import type { SendCommand } from '../../net/commandBus';
 import { HqPanel } from './HqPanel';
 import {
   extractHqFromView,
+  extractSelectableEntities,
   hqJobFromStateCode,
+  inspectDepositAt,
   isTileNearHq,
   LandfallController,
+  resolveEntityActivityProgress,
   type HqStatusView,
   type LandfallControllerOptions,
+  type SelectedDepositView,
+  type SelectedEntityView,
   type StoreLike,
   type TilePicker,
   type UnitFailureView,
@@ -18,12 +23,17 @@ import './landfall.css';
 
 export {
   extractHqFromView,
+  extractSelectableEntities,
   hqJobFromStateCode,
   HqPanel,
+  inspectDepositAt,
   isTileNearHq,
   LandfallController,
+  resolveEntityActivityProgress,
   type HqStatusView,
   type LandfallControllerOptions,
+  type SelectedDepositView,
+  type SelectedEntityView,
   type StoreLike,
   type TilePicker,
   type UnitFailureView,
@@ -32,7 +42,7 @@ export {
 
 declare module '../../core/registry/types' {
   interface GameView {
-    entities?: Float32Array | ViewEntity[];
+    entities?: Float32Array | ViewEntity[] | Array<Partial<ViewEntity> & { [key: string]: unknown }>;
     count?: number;
     blobs?: Record<string, unknown>;
   }
@@ -59,11 +69,16 @@ export interface MountedLandfall {
   readonly controller: LandfallController;
   readonly panel: HqPanel;
   selectHq(): number | null;
+  selectEntity(entityId: number | null): number | null;
   toggleSelectHq(): number | null;
   deselect(): void;
   getSelectedEntityId(): number | null;
+  getSelectedEntity(): SelectedEntityView | null;
+  getSelectedDeposit(): SelectedDepositView | null;
   getHq(): HqStatusView | null;
   orderMove(q: number, r: number): boolean;
+  cancelSelected(): boolean;
+  clickTile(q: number, r: number, shiftKey?: boolean): boolean;
   handleLeftClick(q: number, r: number, shiftKey?: boolean): boolean;
   handleRightClick(q: number, r: number): boolean;
   update(view: GameView): void;
@@ -94,11 +109,16 @@ export function mountLandfall(ctx: MountLandfallCtx): MountedLandfall {
     controller,
     panel,
     selectHq: () => controller.selectHq(),
+    selectEntity: (entityId) => controller.selectEntity(entityId),
     toggleSelectHq: () => controller.toggleSelectHq(),
     deselect: () => controller.deselect(),
     getSelectedEntityId: () => controller.getSelectedEntityId(),
+    getSelectedEntity: () => controller.getSelectedEntity(),
+    getSelectedDeposit: () => controller.getSelectedDeposit(),
     getHq: () => controller.getHq(),
     orderMove: (q, r) => controller.orderMove(q, r),
+    cancelSelected: () => controller.cancelSelected(),
+    clickTile: (q, r, shiftKey) => controller.clickTile(q, r, shiftKey),
     handleLeftClick: (q, r, shiftKey) => controller.handleLeftClick(q, r, shiftKey),
     handleRightClick: (q, r) => controller.handleRightClick(q, r),
     update: (view) => controller.onView(view),

@@ -7,6 +7,10 @@ are not included. Use it as a reference: compare a new run against it.
 Regenerate: per package `npx vitest run --config tests/vitest.config.ts --coverage --coverage.reporter=json-summary --coverage.reporter=text-summary`
 (exclude specs, `test/`, `*.d.ts`, `index.generated.ts`), then update this file. A new snapshot moves *after* to *baseline*.
 
+## Specs added by W02 (not measured yet)
+
+The numbers below are the W01 snapshot. Specs added since, to include in the next snapshot: `shared/sim/test/units/dispatch-build.spec.ts`, `shared/sim/test/systems/w02-review-fixes.spec.ts`, `shared/sim/test/systems/harvester-snapshot.spec.ts`, `shared/sim/test/systems/power-extractor-brownout.spec.ts`, `frontend/game/features/shared/power.spec.ts`, `shared/sim/test/systems/queue-nonblocking.spec.ts`, `backend/app/test/game/production-batches.spec.ts`, `frontend/game/features/construction-menu/ghost-context.spec.ts`, `frontend/game/features/construction-menu/placement-ghost.spec.ts`, `frontend/game/app/online/unitHealthBars.spec.ts`, and e2e `tests/e2e/w02.spec.ts` (steps 1 to 10; step 10 is the `?waves=..01` check). Regenerate with the command above and move *after* to *baseline*.
+
 ## Totals per package (lines · branches · functions)
 
 | Package | Lines baseline | Lines after | Branches baseline | Branches after | Functions baseline | Functions after | Files after |
@@ -650,7 +654,6 @@ Regenerate: per package `npx vitest run --config tests/vitest.config.ts --covera
 | `frontend/render/kitbash/archetypes/buildings/rocket.ts` | 100.0% (42/42) | 100.0% | 100.0% |
 | `frontend/render/planets/hex/chunkSet.ts` | 100.0% (41/41) | 83.3% | 100.0% |
 | `frontend/render/planets/hex/borderController.ts` | 100.0% (23/23) | 100.0% | 100.0% |
-| `frontend/render/planets/hex/prepTransitions.ts` | 100.0% (22/22) | 83.3% | 100.0% |
 | `frontend/render/visuals/UnifiedColonyMaterial.ts` | 100.0% (18/18) | 86.7% | 100.0% |
 | `frontend/render/planets/hex/hexMath.ts` | 100.0% (17/17) | 90.9% | 100.0% |
 | `frontend/render/kitbash/archetypes/buildings/index.ts` | 100.0% (16/16) | 100.0% | 100.0% |

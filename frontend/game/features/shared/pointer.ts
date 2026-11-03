@@ -68,13 +68,16 @@ export function bindExclusivePointer(
   surface: EventTarget,
   isActive: () => boolean,
   handlers: ExclusivePointerHandlers,
+  /** The buttons this mode owns (default primary and secondary); a button left out (and its context menu) passes through. */
+  ownedButtons: ReadonlySet<number> = OWNED_BUTTONS,
 ): () => void {
   const owned = new Set<number>();
+  const ownsRight = ownedButtons.has(2);
   let ownsContextMenu = false;
 
   const onDown = (ev: Event) => {
     const e = ev as MouseEvent;
-    if (!OWNED_BUTTONS.has(e.button)) return;
+    if (!ownedButtons.has(e.button)) return;
     if (e.button === 2) ownsContextMenu = false;
     if (!isActive()) return;
     owned.add(e.button);
@@ -90,7 +93,7 @@ export function bindExclusivePointer(
   };
   const onUp = (ev: Event) => {
     const e = ev as MouseEvent;
-    if (!OWNED_BUTTONS.has(e.button)) return;
+    if (!ownedButtons.has(e.button)) return;
     if (!owned.delete(e.button) && !isActive()) return;
     e.stopImmediatePropagation();
     handlers.up?.(e);
@@ -99,7 +102,7 @@ export function bindExclusivePointer(
   const onLost = () => owned.clear();
   const onContext = (ev: Event) => {
     const e = ev as MouseEvent;
-    if (!ownsContextMenu && !isActive()) return;
+    if (!ownsRight || (!ownsContextMenu && !isActive())) return;
     ownsContextMenu = false;
     e.preventDefault();
     e.stopImmediatePropagation();

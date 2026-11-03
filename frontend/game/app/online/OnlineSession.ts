@@ -37,8 +37,9 @@ import { createSessionHud } from './sessionHud';
 import { createSessionTarget, joinParam, scenarioParam } from './sessionTarget';
 import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
 import {
-  bindLocalSaveListeners, changedTiles, createSafeViewport, isEscapeBlockedByHudOverlay, listSceneEntities,
-  pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind, syncSpaceTerrainOffset, writeStoredPlanetKind,
+  applyChangedTileList, applyTerrainTileChanges, bindLocalSaveListeners, createSafeViewport, isEscapeBlockedByHudOverlay,
+  listSceneEntities, pickTerrainAt, projectTileToScreen, resolveOnlinePlanetLook, resolveSessionPlanetKind,
+  syncSpaceTerrainOffset, type TileChangePatchItem, writeStoredPlanetKind,
 } from './viewportHelper';
 import '../../../design/css/tokens.css';
 import '../../../design/css/base.css';
@@ -123,6 +124,7 @@ export class OnlineSession {
     this.commandBus = new CommandBus(this.transport, COMMAND_TIMEOUT_MS + lagMs, (id, kind, args) => this.store.notifySent(id, kind, args), (id) => this.store.notifyTimedOut(id));
     this.commands = this.commandBus;
     this.entities = new EntityMeshes(this.viewport.scene, opts.makeMesh, !this.skipDescent);
+    this.entities.healthBars.isEnabled = () => this.flags.current.flags.has('W02'); // overhead bars are W02 (`?waves=..01`: none)
     if (this.fromSpaceDescent && !this.skipDescent) {
       this.entities.podTouchdown.setMode('full');
       this.entities.podTouchdown.setSpacePhase('orbit');
@@ -239,8 +241,12 @@ export class OnlineSession {
   }
 
   selectHq(): number | null { return this.landfall.selectHq(); }
+  clickTile(q: number, r: number): boolean { return this.landfall.clickTile(q, r); }
   orderMove(q: number, r: number): boolean { return this.landfall.orderMove(q, r); }
   getSelectedEntityId(): number | null { return this.landfall.getSelectedEntityId(); }
+  applyTilePatch(patch: { changedTiles?: readonly TileChangePatchItem[] }): void {
+    if (this.terrain && patch.changedTiles) applyChangedTileList(this.terrain, patch.changedTiles);
+  }
 
   /** Centers the RTS camera on axial tile `(q, r)`. */
   focusTile(q: number, r: number, instant = true): void {
@@ -388,9 +394,9 @@ export class OnlineSession {
   }
 
   private onTiles(v: ClientView, tiles: ClientTiles): void {
-    if (!this.terrain || this.terrain.radius !== v.planet.radius) {
+    const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);
+    if (!this.terrain || this.terrain.radius !== v.planet.radius || this.biomeKey !== look.biomeKey) {
       if (this.terrain) { this.viewport.scene.remove(this.terrain.group); this.terrain.dispose(); }
-      const look = resolveOnlinePlanetLook(v.planet.type, this.planetKind);
       this.biomeKey = look.biomeKey;
       const inSpace = this.entities.podTouchdown.isSpacePhaseActive();
       if (!inSpace) { try { applyPlanetLook(this.viewport, look); } catch { /* Ignore in headless tests */ } }
@@ -410,8 +416,7 @@ export class OnlineSession {
         syncSpaceTerrainOffset(terrain, true, this.showSpaceTerrain, this.cameraTargetTile);
       }
     } else if (this.tiles) {
-      const changed = changedTiles(this.tiles, tiles);
-      if (changed.length) this.terrain.updateTiles(tiles as HexTiles, changed);
+      applyTerrainTileChanges(this.terrain, this.tiles, tiles, v.planet.radius);
     }
     this.tiles = tiles;
   }
@@ -438,8 +443,12 @@ export class OnlineSession {
     try {
       if (!this.entities.podTouchdown.isSpacePhaseActive()) {
         this.entities.update(animDt, this.terrain, Math.min(rawDt, 0.4));
-        if (this.cam) { this.cam.update(dt); this.viewport.followShadow(this.cam.target); }
-        this.terrain?.tick(dt);
+        if (this.cam) {
+          this.cam.setShake(this.entities.getCameraShake());
+          this.cam.update(dt);
+          this.viewport.followShadow(this.cam.target);
+        }
+        this.terrain?.tick(animDt);
         this.frameHud(now, dt);
       }
       if (this.ownsViewport) this.viewport.render();

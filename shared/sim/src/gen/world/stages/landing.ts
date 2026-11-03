@@ -1,5 +1,6 @@
 import { hexDistance } from '../../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../../grid/layers';
+import { collectPodBlastTiles } from '../../spawnDisk';
 import { generateSpawnSlots, type SpawnSlot } from '../../spawnSlots';
 import { ensureStarterHubSpace } from '../../starterSpace';
 import { TILE_M, type WorldGenContext, type WorldStage } from '../context';
@@ -26,7 +27,8 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, zone: ZoneOpts): void 
   const { radius, falloff, clearZone, keep } = zone;
   const L = ctx.state.grid.layers;
   const terrain = L.terrain as Uint8Array, prep = L.prep as Uint8Array, height = L.height as Float32Array;
-  const deposit = L.deposit as Uint8Array;
+  const deposit = L.deposit as Uint8Array, richness = L.richness as Float32Array;
+  const blastTiles = new Set(collectPodBlastTiles(ctx.hex, slot.q, slot.r));
   const outer = radius + falloff;
   const tiles: Array<{ i: number; d: number }> = [];
   const c0 = ctx.hex.indexOf(slot.q, slot.r);
@@ -39,12 +41,22 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, zone: ZoneOpts): void 
       if (hexDistance(slot.q, slot.r, ctx.hex.q[i], ctx.hex.r[i]) > hexBound) continue;
       const dx = ctx.mx[i] - cx, dy = ctx.my[i] - cy;
       const d = Math.sqrt(dx * dx + dy * dy) / TILE_M; // sqrt is correctly rounded on every engine; hypot is not
-      if (d <= outer) tiles.push({ i, d });
+      if (d <= outer || blastTiles.has(i)) tiles.push({ i, d });
     }
   }
   const rawLevel = quantile(tiles.filter((t) => t.d <= radius && !isWater(terrain[t.i])).map((t) => height[t.i]), clearZone ? 0.2 : 0.5);
   const level = Math.fround(clearZone ? Math.min(1.2, Math.max(0.15, rawLevel)) : Math.max(0.1, rawLevel));
   for (const { i, d } of tiles) {
+    if (blastTiles.has(i)) {
+      height[i] = level;
+      terrain[i] = TERRAIN.flat;
+      prep[i] = PREP.flat;
+      if (deposit[i] !== DEPOSIT.none) {
+        deposit[i] = DEPOSIT.none;
+        richness[i] = 0;
+      }
+      continue;
+    }
     if (isWater(terrain[i])) continue;
     if (d <= radius) {
       if (clearZone || terrain[i] === TERRAIN.flat) height[i] = level;
@@ -65,7 +77,7 @@ function levelZone(ctx: WorldGenContext, slot: SpawnSlot, zone: ZoneOpts): void 
     if (clearZone && t < 0.65 && terrain[i] === TERRAIN.rock && deposit[i] === DEPOSIT.none) terrain[i] = TERRAIN.slope;
   }
   // Outside the levelled pod-drop disc, wild desert stays `slope` (dunes) except for `keep` and a narrow gentle rim (`slopeGradientM`).
-  if (clearZone) reclassifyRing(ctx, slot, radius, tiles.filter((t) => t.d > radius && !keep.has(t.i)));
+  if (clearZone) reclassifyRing(ctx, slot, radius, tiles.filter((t) => t.d > radius && !keep.has(t.i) && !blastTiles.has(t.i)));
 }
 
 /**
@@ -117,6 +129,13 @@ export const landing: WorldStage = {
       levelZone(ctx, slot, zone);
       // The Hub guarantee (same geo + spread rule as placement): a buildable 3×3 within reach of every slot.
       ensureStarterHubSpace(ctx.state, slot.q, slot.r, slot.index);
+    }
+    const deposit = ctx.state.grid.layers.deposit as Uint8Array;
+    const richness = ctx.state.grid.layers.richness as Float32Array;
+    for (let i = 0; i < ctx.state.grid.count; i++) {
+      if (deposit[i] !== DEPOSIT.none && richness[i] <= 0) {
+        richness[i] = 10000;
+      }
     }
   },
 };

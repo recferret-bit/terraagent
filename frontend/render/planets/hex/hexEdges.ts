@@ -1,123 +1,90 @@
 import type * as THREE from 'three';
-import { ProceduralTextureRegistry } from '../../visuals/ProceduralTextureRegistry';
 import { glslFloat, injectAll } from '../../visuals/shaderInject';
-import { PREP_BLEND_DURATION_S } from './chunkMesh';
 import { TILE_M } from './hexMath';
 
-/** Shader literals built from the TypeScript constants, so picking / `getTilePrepBlend` and the GPU always agree. */
+/** Shader literal built from the TypeScript constant, so picking and the GPU always agree on the tile size. */
 const TILE = glslFloat(TILE_M);
-const BLEND_S = glslFloat(PREP_BLEND_DURATION_S);
-/** Size (px) of the foundation pad texture bundle; the generator is designed for 128². */
-const FOUNDATION_PAD_TEX_SIZE = 128;
 
 const HEX_VERT_COMMON = /* glsl */ `#include <common>
-#ifndef USE_COLOR
-attribute vec3 color;
-#endif
 attribute float aHexFlat;
-attribute float aPrepTarget;
-attribute float aPrepStartTime;
-uniform float uTime;
-varying vec3 vTileColor;
+attribute float aHexShore;
 varying float vHexFlat;
 varying vec2 vFlatPos;
-varying float vPrepTarget;
-varying float vPrepBlend;`;
+varying float vHexShore;`;
 
 const HEX_VERT_BEGIN = /* glsl */ `vLP = position;
-vTileColor = color;
 vHexFlat = aHexFlat;
 vFlatPos = aHexFlat * (position.xz / ${TILE});
-float prepBlend = aPrepTarget * clamp((uTime - aPrepStartTime) / ${BLEND_S}, 0.0, 1.0);
-vPrepTarget = aPrepTarget;
-vPrepBlend = prepBlend;`;
+vHexShore = aHexShore;`;
 
-/** Engineered hex-plate foundation pad evaluator for Prepared ground (samples the `foundationHexPad` bundle). */
-const FOUNDATION_PAD_GLSL = /* glsl */ `vec3 evalFoundationPad(vec2 worldXZ, vec2 hexOff, float edgeMeters, out vec3 padBump, out float padRough) {
-  vec2 padUv = worldXZ / ${TILE};
-  vec3 texCol = texture2D(uPadMap, padUv).rgb;
-  vec3 texN = texture2D(uPadNormal, padUv).xyz * 2.0 - 1.0;
-  float texR = texture2D(uPadRough, padUv).r;
-
-  float rib0 = abs(hexOff.x);
-  float rib1 = abs(dot(hexOff, vec2(0.8660254, 0.5)));
-  float rib2 = abs(dot(hexOff, vec2(-0.8660254, 0.5)));
-  float minRib = min(rib0, min(rib1, rib2));
-  float hexRadius = 0.5 - edgeMeters * 0.5;
-  float innerRing = abs(hexRadius - 0.24);
-  float seamMask = 1.0 - smoothstep(0.014, 0.032, min(minRib, innerRing));
-  float outerSeam = 1.0 - smoothstep(0.04, 0.09, edgeMeters);
-  float outerBevel = smoothstep(0.05, 0.09, edgeMeters) * (1.0 - smoothstep(0.11, 0.17, edgeMeters));
-
-  float c0 = length(hexOff - vec2(0.0, 0.38));
-  float c1 = length(hexOff - vec2(0.0, -0.38));
-  float c2 = length(hexOff - vec2(0.329, 0.19));
-  float c3 = length(hexOff - vec2(-0.329, 0.19));
-  float c4 = length(hexOff - vec2(0.329, -0.19));
-  float c5 = length(hexOff - vec2(-0.329, -0.19));
-  float anchorDist = min(min(c0, c1), min(min(c2, c3), min(c4, c5)));
-  float anchorHead = 1.0 - smoothstep(0.022, 0.038, anchorDist);
-  float anchorCollar = smoothstep(0.024, 0.038, anchorDist) * (1.0 - smoothstep(0.048, 0.068, anchorDist));
-
-  vec3 plateBase = mix(vec3(0.47, 0.51, 0.46), texCol, 0.65);
-  vec3 seamCol = vec3(0.16, 0.19, 0.22);
-  vec3 bevelCol = vec3(0.62, 0.66, 0.60);
-  vec3 anchorAmber = vec3(0.86, 0.58, 0.22);
-  vec3 col = mix(plateBase, bevelCol, outerBevel * 0.55);
-  col = mix(col, seamCol, max(seamMask * 0.75, outerSeam * 0.85));
-  col = mix(col, seamCol * 0.85, anchorCollar * 0.8);
-  col = mix(col, anchorAmber, anchorHead * 0.88);
-
-  vec2 bevelGrad = normalize(hexOff + vec2(1e-5)) * (outerBevel - outerSeam) * 0.35;
-  padBump = vec3(texN.x * 0.28 + bevelGrad.x, 0.0, texN.y * 0.28 + bevelGrad.y);
-  padRough = mix(clamp(texR, 0.38, 0.54), 0.84, max(seamMask, outerSeam));
-  padRough = mix(padRough, 0.32, anchorHead);
-  return col;
+/**
+ * Class tint of one hex cell from the per-tile tint texture (`tileTint.ts`): axial `(q, r)` -> texel, alpha 0 outside
+ * the planet. Looked up per cell (not interpolated per vertex) so a rock or slope tint stays inside its own hexagon.
+ */
+const TILE_TINT_GLSL = /* glsl */ `vec4 hexTileTint(vec2 axial) {
+  if (max(max(abs(axial.x), abs(axial.y)), abs(axial.x + axial.y)) > uTileTintR + 0.5) return vec4(0.0);
+  float n = 2.0 * uTileTintR + 1.0;
+  return texture2D(uTileTint, (axial + uTileTintR + 0.5) / n);
 }`;
 
 const HEX_FRAG_COMMON = /* glsl */ `#include <common>
-uniform sampler2D uPadMap, uPadNormal, uPadRough;
+// Flat hex land is levelled to 0 m = water level and dry basins sit below it: only real water tiles (vHexShore = 1,
+// dry shore tiles <= 0.95) get the terrain shader's water-level bands. The dry beach next to water is drawn below.
+#define TA_WATER_GATE smoothstep(0.96, 1.0, vHexShore)
 uniform float uEdge;
-varying vec3 vTileColor;
+uniform sampler2D uTileTint;
+uniform float uTileTintR;
 varying float vHexFlat;
 varying vec2 vFlatPos;
-varying float vPrepTarget;
-varying float vPrepBlend;
-${FOUNDATION_PAD_GLSL}`;
+varying float vHexShore;
+${TILE_TINT_GLSL}`;
 
-const HEX_PAD_BLEND_GLSL = /* glsl */ `  float prepFootprint = smoothstep(0.36, 0.54, vPrepTarget);
-  float prepProgress = clamp(vPrepBlend / max(vPrepTarget, 0.0001), 0.0, 1.0);
-  float prepBlend = prepFootprint * prepProgress;
-  if (prepBlend > 0.001) {
-    vec3 padBump;
-    float padRough;
-    vec3 padCol = evalFoundationPad(vLP.xz, o, em, padBump, padRough);
-    float radial = clamp(length(o) * 1.85, 0.0, 1.0);
-    float waveMask = smoothstep(radial - 0.18, radial + 0.06, prepProgress);
-    float activeBlend = prepFootprint * mix(prepProgress, waveMask, 0.45);
-    float scanRing = prepFootprint * smoothstep(0.01, 0.12, prepProgress) * (1.0 - smoothstep(0.88, 0.995, prepProgress))
-      * exp(-abs(radial - prepProgress) * 14.0);
-    vec3 frontierGlow = vec3(0.96, 0.62, 0.20) * scanRing * 2.4;
-    diffuseColor.rgb = mix(diffuseColor.rgb, padCol, activeBlend) + frontierGlow * 0.35;
-    gRough = mix(gRough, padRough, activeBlend);
-    gBump = mix(gBump, padBump, activeBlend);
-    gEmis += frontierGlow;
+/**
+ * Tint of the fragment's own cell, blended with the neighbour across the nearest edge over the last ~0.45 m (50/50 at
+ * the edge itself, so the tint is continuous across cells and a class boundary reads as a soft seam, not a painted hex).
+ */
+const HEX_TINT_GLSL = /* glsl */ `  vec2 ownAx = vec2(rc.x, rc.z);
+  float d0 = o.x, d1 = dot(o, vec2(0.5, 0.8660254)), d2 = dot(o, vec2(-0.5, 0.8660254));
+  vec2 nbStep = abs(d0) >= max(abs(d1), abs(d2)) ? vec2(sign(d0), 0.0)
+    : (abs(d1) >= abs(d2) ? vec2(0.0, sign(d1)) : vec2(-sign(d2), sign(d2)));
+  vec4 ownTint = hexTileTint(ownAx);
+  vec4 nbTint = hexTileTint(ownAx + nbStep);
+  float nbW = 0.5 * (1.0 - smoothstep(0.0, 0.45, em)) * nbTint.a;
+  vec3 tileLinear = pow(max(mix(ownTint.rgb, nbTint.rgb, nbW), vec3(0.0)), vec3(2.2));
+  float baseLum = max(0.08, dot(uLow, vec3(0.3333)));
+  float detail = clamp(dot(diffuseColor.rgb, vec3(0.3333)) / baseLum, 0.52, 1.42);
+  float isDune = step(uKind, 0.5);
+  float tileMix = mix(0.72, 0.18, isDune);
+  diffuseColor.rgb = mix(diffuseColor.rgb, tileLinear * detail, tileMix);`;
+
+const HEX_SHORE_BEACH_GLSL = /* glsl */ `  float shoreZone = (1.0 - isDune) * smoothstep(0.18, 0.62, vHexShore);
+  if (shoreZone > 0.001) {
+    vec2 sp = vLP.xz;
+    float sandNoise = fbm3(sp * 2.2);
+    float pebble = smoothstep(0.72, 0.92, tHash(floor(sp * 9.0)));
+    float ripple = sin(dot(sp, vec2(0.8, 0.6)) * 14.0 + sandNoise * 5.0);
+    vec3 drySand = vec3(0.86, 0.76, 0.54) * (0.94 + 0.12 * sandNoise + 0.03 * ripple);
+    drySand = mix(drySand, vec3(0.93, 0.85, 0.66), pebble * 0.35);
+    vec3 wetSand = vec3(0.62, 0.52, 0.35) * (0.95 + 0.08 * sandNoise);
+    // One continuous strip along the water, its inland edge broken by noise. Not a per-cell ring: banding each shore
+    // cell's own edges left a green hexagon in the middle of every beach cell, outlined by sand.
+    float coast = smoothstep(0.42, 0.7, vHexShore + (sandNoise - 0.5) * 0.3 + (vnoise(sp * 0.7) - 0.5) * 0.12);
+    float underwater = 1.0 - smoothstep(-0.08, 0.02, vLP.y);
+    float wetMask = clamp(max(underwater, (1.0 - smoothstep(0.0, 0.09, vLP.y)) * smoothstep(0.55, 0.85, vHexShore)), 0.0, 1.0);
+    float beachMask = clamp(shoreZone * max(coast, underwater * 0.95), 0.0, 1.0);
+    vec3 sandCol = mix(drySand, wetSand, wetMask);
+    diffuseColor.rgb = mix(diffuseColor.rgb, sandCol, beachMask * 0.92);
+    gRough = mix(gRough, mix(0.85, 0.38, wetMask), beachMask);
+    gBump = mix(gBump, vec3(-0.8, 0.0, -0.6) * cos(dot(sp, vec2(0.8, 0.6)) * 14.0 + sandNoise * 5.0) * 0.08 * (1.0 - wetMask * 0.6), beachMask);
   }`;
 
 /**
- * Per-tile terrain class colour tint (`vTileColor`), 0.4 s Wild -> Prepared foundation hex-plate pad blend,
- * and thin hex edge lines as a shader term (no line geometry: nothing to z-fight, antialiased by `fwidth`).
- * Hexagons are drawn strictly on terraformed, level, buildable flat tiles (`hexFlatMask` = 0 or 1, never faded).
+ * Per-cell terrain class tint (`uTileTint`), shore beach, and thin hex edge lines as a shader term (no line geometry:
+ * nothing to z-fight, antialiased by `fwidth`). Hexagons are drawn strictly on level, buildable flat tiles
+ * (`hexFlatMask` = 0 or 1, never faded); Prepared ground looks exactly like that flat ground.
  */
 const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 {
-  float baseLum = max(0.08, dot(uLow, vec3(0.3333)));
-  float detail = clamp(dot(diffuseColor.rgb, vec3(0.3333)) / baseLum, 0.52, 1.42);
-  vec3 tileLinear = pow(max(vTileColor, vec3(0.0)), vec3(2.2));
-  float isDune = step(uKind, 0.5);
-  float depTint = clamp(abs(vTileColor.b - vTileColor.r * 0.42) * 2.8, 0.0, 1.0);
-  float tileMix = mix(0.72, mix(0.18, 0.68, depTint), isDune);
-  diffuseColor.rgb = mix(diffuseColor.rgb, tileLinear * detail, tileMix);
   vec2 tp = vLP.xz / ${TILE};                          // tile units
   float hr = tp.y * 1.1547005;                     // 2/sqrt(3)
   vec2 ax = vec2(tp.x - hr * 0.5, hr);             // fractional axial (q, r)
@@ -129,23 +96,15 @@ const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
   vec2 o = tp - cen;
   float e = 0.5 - max(max(abs(o.x), abs(dot(o, vec2(0.5, 0.8660254)))), abs(dot(o, vec2(-0.5, 0.8660254))));
   float em = e * 2.0;                              // metres to the edge
-${HEX_PAD_BLEND_GLSL}
+${HEX_TINT_GLSL}
+${HEX_SHORE_BEACH_GLSL}
   float w = max(0.025, fwidth(em) * 0.75);
   float line = 1.0 - smoothstep(w, w * 2.2, em);
   float hexFlatMask = step(0.1, vHexFlat) * step(length(cen - vFlatPos / max(vHexFlat, 1e-4)), 0.72);
   diffuseColor.rgb = mix(diffuseColor.rgb, diffuseColor.rgb * 0.62, line * uEdge * hexFlatMask);
 }`;
 
-/** Uniforms of the Prepared pad (only the hex terrain draws it, so only its material pays for the textures). */
-export function foundationPadUniforms(): Record<string, THREE.IUniform> {
-  const pad = ProceduralTextureRegistry.get('foundationHexPad', FOUNDATION_PAD_TEX_SIZE);
-  return {
-    uPadMap: { value: pad.map ?? null },
-    uPadNormal: { value: pad.normalMap ?? null },
-    uPadRough: { value: pad.roughnessMap ?? null },
-  };
-}
-
+/** Hex terms on top of the terrain shader; `uTileTint` / `uTileTintR` come with the terrain uniforms (`tileTint.ts`). */
 export function addHexEdges(sh: THREE.WebGLProgramParametersWithUniforms, edge: THREE.IUniform<number>): void {
   sh.uniforms.uEdge = edge;
   sh.vertexShader = injectAll(sh.vertexShader, [

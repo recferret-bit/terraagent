@@ -64,7 +64,7 @@ export function createFlames(nozzles: Nozzle[]): Flames {
       float ang = atan(vP.z, vP.x);
       float n = fbm3lo(vec3(cos(ang) * 1.8 + uSeed, vP.y * 0.8 + uTime * 26.0, sin(ang) * 1.8));
       float f = pow(abs(dot(normalize(vN), vV)), 1.4);
-      float a = f * (0.35 + 0.95 * n) * pow(1.0 - vS, 1.6);
+      float a = f * (0.35 + 0.95 * n) * pow(max(1.0 - vS, 0.0), 1.6);   // interpolated vS can overshoot 1 → NaN
       vec3 hot = vec3(2.6, 1.05, 0.25), cool = vec3(1.3, 0.22, 0.03);
       vec3 c = mix(hot, cool, smoothstep(0.05, 0.6, vS)) * (0.8 + 0.4 * n);
       c = mix(c, vec3(0.6, 1.1, 2.6), (1.0 - smoothstep(0.0, 0.12, vS)) * 0.5);   // blue at the throat

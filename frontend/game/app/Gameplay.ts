@@ -20,14 +20,12 @@ export class Gameplay {
   private marker: THREE.Mesh;
   private cleanups: Array<() => void> = [];
   private time = 0;
-  private res = { energy: 120, metal: 60, water: 40, bio: 10 };
-  private resT = 0;
   private downAt = { x: 0, y: 0, t: 0 };
   paused = false;
 
   constructor(
     private scene: THREE.Scene, private camera: THREE.PerspectiveCamera, private dom: HTMLElement, private surface: PlanetSurface,
-    private spec: PlanetSpec, hero: THREE.Object3D, private hud: GameHud, camPose: { position: THREE.Vector3; target: THREE.Vector3 },
+    private spec: PlanetSpec, hero: THREE.Object3D, private _hud: GameHud, camPose: { position: THREE.Vector3; target: THREE.Vector3 },
   ) {
     hero.position.y = surface.heightAt(hero.position.x, hero.position.z);
     this.hero = { obj: hero, speed: 7, goal: null, yawVel: 0, walk: 0 };
@@ -81,7 +79,6 @@ export class Gameplay {
       const m = this.place(p.id, p.x, p.z, p.yaw);
       if (p.wander) this.agents.push({ obj: m, speed: p.wander.speed, goal: null, yawVel: 0, walk: 0, wander: { c: p.wander.c, r: p.wander.r, wait: p.wander.wait } });
     }
-    this.res.energy = 120;
   }
 
   private steer(a: Agent, dt: number) {
@@ -128,8 +125,6 @@ export class Gameplay {
         const moving = this.steer(a, dt);
         a.walk += ((moving ? 1 : 0) - a.walk) * Math.min(1, dt * 10);
       }
-      this.resT += dt;
-      if (this.resT > 1) { this.resT = 0; this.res.energy += 3; this.res.metal += 1; this.res.water += 0.5; this.res.bio += 0.2; this.hud.setResources(this.res); }
     }
     // hero idle bob handled by GPU anim; marker pulse
     if (this.marker.visible) {

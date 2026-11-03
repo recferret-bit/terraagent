@@ -1,16 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { hexCount, hexIndex } from '@terra/sim/grid/hex';
-import { ProceduralTextureRegistry } from '../../visuals/ProceduralTextureRegistry';
 import {
   buildChunk,
   computeEffectiveHeights,
   createHexTerrain,
+  depositVisualTier,
   HEX_DEPOSIT,
   HEX_PREP,
   HEX_TERRAIN,
   HEX_WATER_LEVEL,
-  PREP_BLEND_DURATION_S,
   scatterTileProps,
   specForPlanetType,
   tileHash01,
@@ -20,6 +19,7 @@ import {
   type TilePropInstance,
 } from './index';
 import { chunkLayout } from './chunks';
+import { createHexTileTint } from './tileTint';
 
 const R = 56;
 
@@ -163,7 +163,7 @@ describe('W01-20: Hex terrain class relief and vertex colours', () => {
     }
   });
 
-  it('produces sloped gradient heights between lower and higher neighbours and stamps color buffer in buildChunk', () => {
+  it('produces sloped gradient heights between lower and higher neighbours and stamps the per-cell class tint', () => {
     const r = 6;
     const hx = hexIndex(r);
     const terrain = new Uint8Array(hx.count).fill(HEX_TERRAIN.flat);
@@ -182,7 +182,14 @@ describe('W01-20: Hex terrain class relief and vertex colours', () => {
     const eff = computeEffectiveHeights(r, { terrain, height, prep, deposit });
     expect(eff[slopeHigh]!).toBeGreaterThan(eff[slopeLow]! + 0.08);
     const chunk = buildChunk(r, chunkLayout(r)[0]!.tiles, { terrain, height, prep, deposit });
-    expect(chunk.color.length).toBe(chunk.position.length);
+    expect(chunk.aHexShore.length * 3).toBe(chunk.position.length);
+    const tint = createHexTileTint(r, { terrain, height, prep, deposit });
+    const n = 2 * r + 1;
+    const texel = (q: number, rr: number) => Array.from((tint.texture.image.data as Uint8Array).slice(((rr + r) * n + q + r) * 4, ((rr + r) * n + q + r) * 4 + 4));
+    const rockSt = tileStyle(3, 0, HEX_TERRAIN.rock);
+    expect(texel(3, 0)).toEqual([Math.round(rockSt.r * 255), Math.round(rockSt.g * 255), Math.round(rockSt.b * 255), 255]);
+    expect(texel(-r, -r)[3]).toBe(0); // square corner outside the planet
+    tint.dispose();
   });
 });
 
@@ -214,8 +221,8 @@ describe('W01-20: Water plane and per-tile prop scatter reactivity', () => {
     expect(counts.minerals).toBeGreaterThanOrEqual(mineralsTiles * 2);
     expect(counts.oil).toBeGreaterThanOrEqual(oilTiles * 2);
 
-    expect(hexTerrain.water.mesh.visible).toBe(true);
-    expect(hexTerrain.water.mesh.position.y).toBe(HEX_WATER_LEVEL);
+    expect(hexTerrain.water.group.visible).toBe(true);
+    expect(hexTerrain.water.group.position.y).toBe(HEX_WATER_LEVEL);
     expect(hexTerrain.water.waterTileCount).toBe(waterTiles);
     expect(hexTerrain.water.waterTriangleCount).toBeGreaterThan(waterTiles);
     hexTerrain.dispose();
@@ -277,7 +284,7 @@ describe('W01-20: Selected planet biome look sync on HexTerrain', () => {
     expect(duneLook.kind).toBe('dune');
     const duneTerrain = createHexTerrain({ radius: 12, tiles, look: duneLook });
 
-    expect(duneTerrain.water.mesh.visible).toBe(false);
+    expect(duneTerrain.water.group.visible).toBe(false);
     expect(duneTerrain.water.waterTileCount).toBe(0);
     expect(duneTerrain.water.waterTriangleCount).toBe(0);
     expect(duneTerrain.props.counts().pine).toBe(0);
@@ -314,40 +321,47 @@ describe('W01-20: Selected planet biome look sync on HexTerrain', () => {
     const oceanLook = specForPlanetType('ocean');
     expect(oceanLook.kind).toBe('oceanForest');
     const oceanTerrain = createHexTerrain({ radius: 12, tiles, look: oceanLook });
-    expect(oceanTerrain.water.mesh.visible).toBe(true);
+    expect(oceanTerrain.water.group.visible).toBe(true);
     expect(oceanTerrain.water.waterTileCount).toBeGreaterThan(0);
     expect(oceanTerrain.props.counts().pine).toBeGreaterThan(0);
     oceanTerrain.dispose();
   });
 });
 
-describe('W01-21: Prepared-ground pad material and 0.4s shader blend', () => {
-  it('synthesizes foundationHexPad PBR textures in ProceduralTextureRegistry and extends the single terrain shader', () => {
-    const bundle = ProceduralTextureRegistry.get('foundationHexPad', 128);
-    expect(bundle.map).toBeDefined();
-    expect(bundle.normalMap).toBeDefined();
-    expect(bundle.roughnessMap).toBeDefined();
-    expect(bundle.map!.wrapS).toBe(THREE.RepeatWrapping);
-    expect(bundle.map!.colorSpace).toBe(THREE.SRGBColorSpace);
-    expect(bundle.normalMap!.colorSpace).toBe(THREE.NoColorSpace);
-    expect(bundle.roughnessMap!.colorSpace).toBe(THREE.NoColorSpace);
-    expect(ProceduralTextureRegistry.get('foundationHexPad', 128)).toBe(bundle);
-    expect((bundle.map!.image as { width: number }).width).toBe(128); // the generator's size, not the registry's 512 (RN-12)
-
+describe('Prepared (terraformed) ground renders as plain flat ground', () => {
+  it('gives a Prepared tile the flat tile tint, AO, hex grid and height, with no pad textures or blend attributes', () => {
     const r = 6;
     const count = hexCount(r);
+    const hx = hexIndex(r);
     const terrain = new Uint8Array(count).fill(HEX_TERRAIN.flat);
     const prep = new Uint8Array(count).fill(HEX_PREP.flat);
     const height = new Float32Array(count);
-    const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType('temperate') });
+    const preparedIdx = hx.indexOf(1, 0);
+    const flatIdx = hx.indexOf(-1, 0);
+    prep[preparedIdx] = HEX_PREP.prepared;
+    terrain[hx.indexOf(2, 0)] = HEX_TERRAIN.rock; // terraformed rock: the sim keeps the class, the look is flat ground
+    prep[hx.indexOf(2, 0)] = HEX_PREP.prepared;
 
+    const flatSt = tileStyle(1, 0, HEX_TERRAIN.flat, HEX_PREP.flat);
+    expect(tileStyle(1, 0, HEX_TERRAIN.flat, HEX_PREP.prepared)).toEqual(flatSt);
+    expect(tileStyle(2, 0, HEX_TERRAIN.rock, HEX_PREP.prepared)).toEqual(tileStyle(2, 0, HEX_TERRAIN.flat, HEX_PREP.flat));
+
+    const chunk = buildChunk(r, Array.from({ length: count }, (_, i) => i), { terrain, prep, height });
+    const v = (i: number) => chunk.vertexTile.indexOf(i);
+    expect(chunk.aAO[v(preparedIdx)]).toBe(chunk.aAO[v(flatIdx)]);
+    expect(chunk.aRock[v(preparedIdx)]).toBe(0);
+    expect(chunk.aRock[v(hx.indexOf(2, 0))]).toBe(0);
+    expect(chunk.aHexFlat[v(preparedIdx)]).toBe(1);
+    expect(chunk.position[v(preparedIdx) * 3 + 1]).toBe(0);
+    expect(chunk.position[v(hx.indexOf(2, 0)) * 3 + 1]).toBe(0);
+
+    const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType('temperate') });
     for (const chunkMesh of hexTerrain.chunks) {
       expect(chunkMesh.material).toBe(hexTerrain.material);
+      expect(chunkMesh.geometry.getAttribute('aPrepTarget')).toBeUndefined();
+      expect(chunkMesh.geometry.getAttribute('aHexShore')).toBeDefined();
     }
-    expect(hexTerrain.uniforms.uPadMap?.value).toBe(bundle.map);
-    expect(hexTerrain.uniforms.uPadNormal?.value).toBe(bundle.normalMap);
-    expect(hexTerrain.uniforms.uPadRough?.value).toBe(bundle.roughnessMap);
-
+    expect(hexTerrain.uniforms.uPadMap).toBeUndefined();
     const mockShader: THREE.WebGLProgramParametersWithUniforms = {
       uniforms: {},
       vertexShader: '#include <common>\nvoid main() {\n#include <begin_vertex>\n}',
@@ -355,44 +369,12 @@ describe('W01-21: Prepared-ground pad material and 0.4s shader blend', () => {
         '#include <common>\nvoid main() {\n#include <color_fragment>\n#include <alphatest_fragment>\n#include <roughnessmap_fragment>\n#include <normal_fragment_maps>\n#include <emissivemap_fragment>\n#include <fog_fragment>\n}',
     } as unknown as THREE.WebGLProgramParametersWithUniforms;
     hexTerrain.material.onBeforeCompile(mockShader, null as unknown as THREE.WebGLRenderer);
-
-    expect(mockShader.vertexShader).toContain('attribute float aPrepTarget;');
-    expect(mockShader.vertexShader).toContain('attribute float aPrepStartTime;');
-    expect(mockShader.vertexShader).toContain('float prepBlend = aPrepTarget * clamp((uTime - aPrepStartTime) / 0.4, 0.0, 1.0);');
-    expect(mockShader.fragmentShader).toContain('evalFoundationPad');
-    expect(mockShader.fragmentShader).toContain('frontierGlow');
-    hexTerrain.dispose();
-  });
-
-  it('blends a newly graded tile from 0 -> 0.5 -> 1.0 over 0.4s while starting initially Prepared tiles at 1.0', () => {
-    const r = 6;
-    const count = hexCount(r);
-    const hx = hexIndex(r);
-    const terrain = new Uint8Array(count).fill(HEX_TERRAIN.flat);
-    const prep = new Uint8Array(count).fill(HEX_PREP.flat);
-    const height = new Float32Array(count);
-
-    const preloadedIdx = hx.indexOf(-2, 1);
-    const gradedIdx = hx.indexOf(1, 0);
-    prep[preloadedIdx] = HEX_PREP.prepared;
-
-    const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height }, look: specForPlanetType('temperate') });
-    expect(PREP_BLEND_DURATION_S).toBe(0.4);
-    expect(hexTerrain.getTilePrepBlend(-2, 1)).toBe(1.0);
-    expect(hexTerrain.getTilePrepBlend(1, 0)).toBe(0.0);
-
-    hexTerrain.tick(1.25);
-    prep[gradedIdx] = HEX_PREP.prepared;
-    hexTerrain.updateTiles({ terrain, prep, height }, [gradedIdx]);
-
-    expect(hexTerrain.getTilePrepBlend(1, 0)).toBeCloseTo(0.0, 5);
-    hexTerrain.tick(0.2);
-    expect(hexTerrain.getTilePrepBlend(1, 0)).toBeCloseTo(0.5, 5);
-    hexTerrain.tick(0.2);
-    expect(hexTerrain.getTilePrepBlend(1, 0)).toBeCloseTo(1.0, 5);
-    hexTerrain.tick(0.5);
-    expect(hexTerrain.getTilePrepBlend(1, 0)).toBe(1.0);
-    expect(hexTerrain.getTilePrepBlend(-2, 1)).toBe(1.0);
+    expect(mockShader.vertexShader).not.toContain('aPrepTarget');
+    expect(mockShader.fragmentShader).not.toContain('evalFoundationPad');
+    expect(mockShader.fragmentShader).not.toContain('frontierGlow');
+    expect(mockShader.fragmentShader).toContain('hexTileTint(');
+    expect(mockShader.uniforms.uTileTint?.value).toBeInstanceOf(THREE.DataTexture);
+    expect(mockShader.fragmentShader).toContain('#define TA_WATER_GATE smoothstep(0.96, 1.0, vHexShore)'); // dry land is never shore
     hexTerrain.dispose();
   });
 });
@@ -462,5 +444,49 @@ describe('Hexagon edge visibility on terraformed flat ground', () => {
     expect(mockShader.fragmentShader).toContain('hexFlatMask');
     expect(mockShader.fragmentShader).not.toContain('duneSlopeFade');
     hexTerrain.dispose();
+  });
+
+  it('renders full, half, and depleted deposit stages via richness and avoids dark vertex-AO halos under deposits', () => {
+    const r = 4;
+    const count = hexCount(r);
+    const hx = hexIndex(r);
+    const terrain = new Uint8Array(count).fill(HEX_TERRAIN.flat);
+    const prep = new Uint8Array(count).fill(HEX_PREP.flat);
+    const height = new Float32Array(count);
+    const deposit = new Uint8Array(count);
+    const richness = new Uint16Array(count).fill(10000);
+    const oilIdx = hx.indexOf(0, 0);
+    deposit[oilIdx] = 3; // HEX_DEPOSIT.oil
+    const chunk = buildChunk(r, Array.from({ length: count }, (_, i) => i), { terrain, prep, height, deposit, richness, kind: 'dune' });
+    const oilVert = chunk.vertexTile.indexOf(oilIdx);
+    expect(chunk.aAO[oilVert]).toBeGreaterThanOrEqual(0.88);
+
+    const hexTerrain = createHexTerrain({ radius: r, tiles: { terrain, prep, height, deposit, richness }, look: specForPlanetType('desert') });
+    hexTerrain.setTileState(0, 0, HEX_TERRAIN.flat, HEX_PREP.flat, 0, 3, 4000);
+    expect(richness[oilIdx]).toBe(4000);
+    hexTerrain.setTileState(0, 0, HEX_TERRAIN.flat, HEX_PREP.flat, 0, 3, 0);
+    expect(richness[oilIdx]).toBe(0);
+    hexTerrain.dispose();
+  });
+});
+
+describe('Deposit tier look (sim `depositTier`)', () => {
+  it('reads a missing / 0 layer as tier 1 and grows tier 2/3 into bigger, brighter clusters of the same kind', () => {
+    expect(depositVisualTier(undefined)).toBe(1);
+    expect(depositVisualTier(0)).toBe(1);
+    expect(depositVisualTier(3)).toBe(3);
+    const at = (tier?: number, richness?: number) =>
+      scatterTileProps(2, -1, 0, HEX_TERRAIN.flat, HEX_PREP.flat, HEX_DEPOSIT.metals, () => 0, 'forestRock', richness, tier);
+    const legacy = at(), t1 = at(1), t2 = at(2), t3 = at(3);
+    expect(legacy).toEqual(t1);
+    expect([t1.length, t2.length, t3.length]).toEqual([3, 4, 5]);
+    expect(new Set(t3.map((p) => p.kind))).toEqual(new Set(['metals']));
+    expect(t1[0]!.tintMul).toBeUndefined();
+    expect(t2[0]!.tintMul).toBeGreaterThan(1);
+    expect(t3[0]!.tintMul).toBeGreaterThan(t2[0]!.tintMul!);
+    expect(t3[0]!.scaleX!).toBeGreaterThan(t1[0]!.scaleX!);
+    // A spent tier-3 deposit is still flat rubble, not a tall stack.
+    const spent = at(3, 0);
+    expect(Math.max(...spent.map((p) => p.scaleY!))).toBeLessThan(0.25);
   });
 });

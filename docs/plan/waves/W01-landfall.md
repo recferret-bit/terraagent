@@ -21,7 +21,7 @@
 > - `shared/sim/src/systems/{landing,terraform-basic,construction,territory-claim}/`
 > - `shared/sim/src/data/{terrain,ops-basic,hq,hub}.ts`
 > - `shared/sim/src/gen/**`
-> - `backend/app/src/modules/{auth,home}/`
+> - `backend/app/src/core/{auth,home}/`
 > - `frontend/game/features/{landfall,terraform-basic,hub-placement,hud-min}/`
 > - prototype play flow it replaces: `frontend/game/app/{Game,Gameplay,colonyLayout,groundPick}.ts`, `frontend/game/ui/{menu,hud}.ts`, `frontend/game/descent/**`
 > - `frontend/render/planets/hex/**` terrain classes (after W00-28)

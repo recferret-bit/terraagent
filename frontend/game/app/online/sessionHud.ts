@@ -58,6 +58,7 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     ledgerQuery: sessionLedgerQuery(d.localHost, d.local ? d.local.devServer : null, d.planetId),
     session: { planetId: d.planetId },
     scene3d, netStats: d.netStats, transport: d.transport, store: d.store,
+    getView: () => d.store.latest ?? undefined,
     landfall: d.landfall, pickTile: (cx, cy) => d.pickAt(cx, cy), canvas: d.canvas, surface: d.canvas,
     pilot: d.pilot,
   };

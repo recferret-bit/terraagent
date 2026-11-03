@@ -10,7 +10,7 @@ export interface DevScenarioSeat {
 /**
  * A `dev:` session on a scenario planet plays colony 0 without a `core.colony` row (BE-07).
  * Social upgrade only enqueues the colony deposit for rows it can see, so the join writes one.
- * The row id is a new `co_` id, not the sim's `col_0` (BE-40).
+ * The row id is a new `co_` id, not the sim's `col_0` (BE-45).
  */
 export async function seatDevScenarioPlayer(prisma: PrismaClient, input: DevScenarioSeat): Promise<void> {
   await ensurePlayer(prisma, input.playerId, input.handle);

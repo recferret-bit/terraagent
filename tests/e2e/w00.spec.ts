@@ -1,8 +1,8 @@
 import type { Page } from '@playwright/test';
 import { E, ENTITY_STRIDE } from '../../frontend/game/store/replica/viewCodec';
 import {
-  CONSOLE, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, readTick, screenshot, stack, test,
-  ticksPerSecond, urls, waitForTick,
+  CONSOLE, devConsole, expect, expectNoPageErrors, expectedOnWaves, hostMode, loadLocal, loadScenario, readTick, screenshot,
+  stack, test, ticksPerSecond, urls, waitForTick,
 } from './harness';
 
 /**
@@ -78,7 +78,8 @@ test('@hack 5. flag panel: W00 on and every other wave listed; ?waves=..00 shows
   await loadScenario(page, 'w00');
   const chips = page.locator('.ta-flags__chip');
   await expect(chips).toHaveCount(26);
-  await expect(page.locator('.ta-flags__chip[data-on=true]')).toHaveCount(26);
+  // every wave the app runs is on: all 26, or up to the `--waves` bound the stack booted the app with (`..02`: 3)
+  await expect(page.locator('.ta-flags__chip[data-on=true]')).toHaveCount(expectedOnWaves());
   await loadScenario(page, 'w00', { waves: '..00' });
   await expect(page.locator('.ta-flags__chip[data-on=true]')).toHaveCount(1);
   await expect(page.locator('.ta-flags__chip[data-wave=W00]')).toHaveAttribute('data-on', 'true');

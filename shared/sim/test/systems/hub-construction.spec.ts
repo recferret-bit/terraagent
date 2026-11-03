@@ -175,6 +175,7 @@ describe('W01-16: Command Hub 20.0 s construction progress & buildingCompleted e
       colonyId: 'col_0',
       entityId: order100.entityId,
       building: 'commandHub',
+      kind: 'commandHub', // W02-28 Architect counts by kind
       tier: 1,
       q: 3,
       r: 0,

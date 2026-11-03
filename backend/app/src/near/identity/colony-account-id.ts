@@ -1,6 +1,6 @@
 import { colonyAccountId, MOCK_ACCOUNT_ROOT, NearAccountId } from '@terra/contracts';
 
-/** `NearAccountId` and `chain.near_colony_account.account_id` both stop at 64 (BE-37). */
+/** `NearAccountId` and `chain.near_colony_account.account_id` both stop at 64 (BE-42). */
 export const COLONY_ACCOUNT_MAX = 64;
 
 const SUFFIX_ATTEMPTS = 20;
@@ -26,7 +26,7 @@ function clipStem(playerName: string, budget: number): string {
 /**
  * `{colony}.{name}.terraagent.mock` that fits in 64 characters.
  * The colony segment stays whole. Only the name stem is shortened.
- * `suffix` (for example `-2`) is kept in full when the budget allows (BE-37).
+ * `suffix` (for example `-2`) is kept in full when the budget allows (BE-42).
  */
 export function fitColonyAccountId(colonyId: string, playerName: string, suffix = ''): string {
   const budget = colonyNameBudget(colonyId) - suffix.length;

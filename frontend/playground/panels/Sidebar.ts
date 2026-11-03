@@ -12,7 +12,7 @@ export class Sidebar {
     $('#side').innerHTML = `<div class="brand"><div><div class="wm">TERRA<b>AGENT</b></div><small>3D PLAYGROUND · ${ArchetypeCatalog.list().length} ARCHETYPES</small></div><a class="pg-home" href="/">◂ HUB</a></div>
   <input id="search" placeholder="Search archetypes…  ( / )" autocomplete="off" />
   <div id="list"></div>
-  <div class="side-foot"><kbd>[</kbd><kbd>]</kbd> cycle · <kbd>1</kbd>-<kbd>4</kbd> views · <kbd>T</kbd> turntable · <kbd>F</kbd> focus<br><kbd>G</kbd> grid · <kbd>W</kbd> wire · <kbd>B</kbd> bloom · <kbd>R</kbd> row · <kbd>V</kbd> validate · dbl-click refocus</div>`;
+  <div class="side-foot"><kbd>[</kbd><kbd>]</kbd> cycle · <kbd>1</kbd>-<kbd>4</kbd> views · <kbd>T</kbd> turntable · <kbd>F</kbd> focus<br><kbd>G</kbd> grid · <kbd>W</kbd> wire · <kbd>B</kbd> bloom · <kbd>R</kbd> row · <kbd>V</kbd> validate · <kbd>L</kbd> lights</div>`;
     ($('#search') as HTMLInputElement).addEventListener('input', (e) => { this.state.filter = (e.target as HTMLInputElement).value.toLowerCase(); this.render(); });
     this.render();
   }

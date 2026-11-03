@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   axialToPlane,
+  collectPodBlastTiles,
   createPlanet,
   DEPOSIT,
   findPlacementSite,
@@ -9,6 +10,7 @@ import {
   hexDistance,
   hexIndex,
   placementWorldFromState,
+  PREP,
   snapshot,
   TERRAIN,
   type PlanetType,
@@ -58,6 +60,11 @@ describe('world generation orchestrator (D-38)', () => {
         for (const slot of slots) {
           const site = findPlacementSite(world, { colonyId: 0, q: slot.q, r: slot.r, building: 'commandHub', requireBuilder: false }, 3);
           expect(site, `${planetType} ${k} slot ${slot.q},${slot.r}`).not.toBeNull();
+          const blast = collectPodBlastTiles(hex, slot.q, slot.r);
+          const blastHs = blast.map((i) => s.grid.layers.height[i]);
+          expect(Math.max(...blastHs) - Math.min(...blastHs)).toBeLessThan(1e-6);
+          expect(blast.every((i) => s.grid.layers.terrain[i] === TERRAIN.flat && s.grid.layers.prep[i] === PREP.flat)).toBe(true);
+          expect(blast.every((i) => s.grid.layers.deposit[i] === DEPOSIT.none)).toBe(true);
           if (planetType !== 'desert') continue;
           const zone: number[] = [];
           // The zone is a round disc of `landingRadius` (5.2) tiles: check every tile within 4.8 tile spacings.
@@ -123,6 +130,6 @@ describe('generator fingerprint (bump GEN_VERSION when this changes)', () => {
   it('one planet per profile: pinned summary of the generated ground and spawn slots for GEN_VERSION', () => {
     const got = { genVersion: GEN_VERSION, desert: fingerprint('desert', 'golden-1'), temperate: fingerprint('temperate', 'golden-2'), ocean: fingerprint('ocean', 'golden-3') };
     // If this fails after a deliberate generator change: bump GEN_VERSION in gen/generators.ts, then update the values.
-    expect(got).toEqual({ genVersion: 7, desert: '95e1333f', temperate: '3f6d4840', ocean: 'edb4c709' });
+    expect(got).toEqual({ genVersion: 9, desert: '437bd25f', temperate: '8ea0d6d3', ocean: '706ff3d8' });
   });
 });

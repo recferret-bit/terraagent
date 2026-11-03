@@ -45,7 +45,7 @@ function runUntilIdle(host: SimHost, max = 400): SimEvent[] {
 }
 
 describe('GP-01: one tile pays its yield once', () => {
-  it('a tile repeated in one order and queued again in a second order is cleared once: 1 obstacleRemoved, 5 biomass', () => {
+  it('a tile repeated in one order and queued again in a second order is cleared once: 1 obstacleRemoved, 15 biomass', () => {
     const { host, idx } = rig();
     setTileTerrain(host.state.grid, idx.indexOf(2, 0), TERRAIN.forest);
     const tile = { q: 2, r: 0 };
@@ -57,7 +57,7 @@ describe('GP-01: one tile pays its yield once', () => {
     expect(send(host, 'enqueueTask', { terraform: { op: 'clear', tiles: [tile] } }).outcome.code).toBe('site_blocked');
     const events = runUntilIdle(host);
     expect(events.filter((e) => e.kind === 'obstacleRemoved')).toHaveLength(1);
-    expect(getColonyStock(host.state, 0)['bio.biomass']).toBe(5);
+    expect(getColonyStock(host.state, 0)['bio.biomass']).toBe(15);
   });
 
   it('a queued job whose tile changed before it completes is dropped without yield', () => {

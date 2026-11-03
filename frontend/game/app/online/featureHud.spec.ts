@@ -1,10 +1,14 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { ClientFlagsStore, resolveClientFlags } from '../../core/flags';
+import { loadFeatures } from '../../core/registry';
 import type { FeatureServices } from '../../core/registry/types';
 import { FeatureHud } from './featureHud';
 
 const welcome = (flags: string[]) => resolveClientFlags({ welcomeFlags: flags, search: '', dev: true });
+const allFeatureWaves = [
+  ...new Set(loadFeatures({ flags: new Set(resolveClientFlags({ search: '', dev: true }).flags.list), host: 'server' }).map((f) => f.wave)),
+].sort();
 const huds: FeatureHud[] = [];
 afterEach(() => { for (const h of huds.splice(0)) h.dispose(); document.body.replaceChildren(); });
 
@@ -21,8 +25,8 @@ describe('FeatureHud (FA-29)', () => {
     const { flags, hud } = mount();
     const before = panels();
     expect(before.length).toBeGreaterThan(0);
-    flags.update(welcome(['W00', 'W01'])); // default (all) → server: same enabled features
-    flags.update(welcome(['W00', 'W01'])); // reconnect
+    flags.update(welcome(allFeatureWaves)); // default (all) → server: same enabled features
+    flags.update(welcome(allFeatureWaves)); // reconnect
     expect(hud.mounts).toBe(1);
     expect(panels()).toEqual(before); // same elements: an open ghost / brush selection survives
     expect(document.querySelectorAll('.ta-hud')).toHaveLength(1);
@@ -32,9 +36,9 @@ describe('FeatureHud (FA-29)', () => {
     const { flags, hud } = mount();
     const ctx = () => (hud as unknown as { ctx: { flags: ReadonlySet<string>; services: { flagsSource?: string } } }).ctx;
     const first = ctx();
-    flags.update(welcome(['W00', 'W01']));
+    flags.update(welcome(allFeatureWaves));
     expect(ctx()).toBe(first);
-    expect([...first.flags].sort()).toEqual(['W00', 'W01']);
+    expect([...first.flags].sort()).toEqual(allFeatureWaves);
     expect(first.services.flagsSource).toBe('welcome');
     flags.update(welcome(['W00'])); // W01 features switched off
     expect(hud.mounts).toBe(2);

@@ -1,7 +1,7 @@
 import { hexDistance, hexIndex, type HexIndex } from '../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import type { SimState } from '../kernel/state';
-import { ALL_DEPOSITS, collectDiskTiles, footprint2x2Valid, spawnCfg } from './spawnDisk';
+import { ALL_DEPOSITS, collectDiskTiles, collectPodBlastTiles, footprint2x2Valid, spawnCfg } from './spawnDisk';
 
 /** The `UO-TF-09` spawn guarantee check of a generated planet (split from `spawnSlots.ts`). */
 
@@ -14,8 +14,20 @@ function checkR4Guarantee(state: SimState, hex: HexIndex, slot: { q: number; r: 
   const cfg = spawnCfg(state);
   const terrain = state.grid.layers.terrain as Uint8Array;
   const prep = state.grid.layers.prep as Uint8Array;
+  const deposit = state.grid.layers.deposit as Uint8Array;
   const r4Tiles = collectDiskTiles(hex, slot.q, slot.r, cfg.guaranteeRadius);
   let flatCount = 0;
+
+  for (const idx of collectPodBlastTiles(hex, slot.q, slot.r)) {
+    if (terrain[idx] !== TERRAIN.flat || prep[idx] !== PREP.flat) {
+      reasons.push(`pod blast circle tile ${idx} is not terraformed flat (terrain=${terrain[idx]}, prep=${prep[idx]})`);
+      break;
+    }
+    if (deposit[idx] !== DEPOSIT.none) {
+      reasons.push(`pod blast circle tile ${idx} contains deposit ${deposit[idx]}`);
+      break;
+    }
+  }
 
   for (const idx of r4Tiles) {
     const t = terrain[idx];

@@ -412,6 +412,26 @@
       "summary": "Cancels a queued or in-progress order (refunds 75 % if in progress and cancels linked prep, UO-Q-02 / UO-TF-03).",
       "wave": "W01"
     },
+    "demolish": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entityId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Demolishes an owned finished structure and refunds 50 % of its cost while keeping tiles Prepared (UO-Q-02, W02-09).",
+      "wave": "W02"
+    },
     "dev.cell": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -432,6 +452,90 @@
       "origin": "client",
       "summary": "Dev console: sets the colony HQ power cell energy to `energy` (clamped to cell capacity).",
       "wave": "W01"
+    },
+    "dev.fill": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "res": {
+            "anyOf": [
+              {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "metals",
+                  "minerals",
+                  "bio"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "type": "string"
+              }
+            ]
+          },
+          "resource": {
+            "anyOf": [
+              {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              {
+                "enum": [
+                  "metals",
+                  "minerals",
+                  "bio"
+                ],
+                "type": "string"
+              },
+              {
+                "const": "all",
+                "type": "string"
+              }
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: fills a resource (or family / all T1 resources) up to its colony family storage cap, or sets it to `amount` when provided (clamped to cap, W02-30).",
+      "wave": "W02"
     },
     "dev.grant": {
       "args": {
@@ -541,6 +645,24 @@
       "summary": "No-op command that round-trips through the sim; acked with the tick it was applied at.",
       "wave": "W00"
     },
+    "dev.power": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: dumps the colony power grid component balance and shed states (W02-30).",
+      "wave": "W02"
+    },
     "dev.reveal": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -574,6 +696,18 @@
       "summary": "Dev console: regenerates the dev planet terrain with the given seed.",
       "wave": "W01"
     },
+    "dev.skipnight": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {},
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: advances the planet clock to sunrise if currently in night (W02-30).",
+      "wave": "W02"
+    },
     "dev.spawn": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -600,6 +734,59 @@
       "origin": "client",
       "summary": "Inserts the W00 test entity (kind 1) at tile (q, r); x/y are the tile centre in axial float coordinates.",
       "wave": "W00"
+    },
+    "dev.spawndeposit": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "enum": [
+              "metals",
+              "minerals",
+              "oil"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "number"
+              },
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 3,
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "q",
+          "r",
+          "family",
+          "tier"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: places a full resource deposit of `family` and `tier` on tile `(q, r)`, like a terraform find (`terraformFinds.deposit.richnessBp`).",
+      "wave": "W02"
     },
     "dev.teleport": {
       "args": {
@@ -641,87 +828,382 @@
     "dev.time": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "realHoursPerDay": {
-            "maximum": 168,
-            "minimum": 0.005,
-            "type": "number"
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "realHoursPerDay": {
+                "maximum": 168,
+                "minimum": 0.005,
+                "type": "number"
+              },
+              "timeOfDay": {
+                "maximum": 24,
+                "minimum": 0,
+                "type": "number"
+              },
+              "timeScale": {
+                "maximum": 1000,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
           },
-          "timeOfDay": {
-            "maximum": 24,
-            "minimum": 0,
-            "type": "number"
-          },
-          "timeScale": {
-            "maximum": 1000,
-            "minimum": 0,
-            "type": "number"
+          {
+            "additionalProperties": false,
+            "properties": {
+              "target": {
+                "maxLength": 16,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "target"
+            ],
+            "type": "object"
           }
-        },
-        "type": "object"
+        ]
       },
       "dev": true,
       "origin": "client",
-      "summary": "Dev command to configure the planet time of day (0..24h), real hours per day, and time scale without requiring a seated colony.",
+      "summary": "Dev command to configure the planet time of day (0..24h or `day`/`night`/`hh:mm`), real hours per day, and time scale without requiring a seated colony.",
       "wave": "W00"
     },
     "enqueueTask": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "additionalProperties": false,
-        "properties": {
-          "terraform": {
+        "anyOf": [
+          {
             "additionalProperties": false,
             "properties": {
-              "op": {
-                "enum": [
-                  "grade",
-                  "clear",
-                  "break"
-                ],
-                "type": "string"
-              },
-              "tiles": {
-                "items": {
-                  "additionalProperties": false,
-                  "properties": {
-                    "q": {
-                      "maximum": 32767,
-                      "minimum": -32768,
-                      "type": "integer"
-                    },
-                    "r": {
-                      "maximum": 32767,
-                      "minimum": -32768,
-                      "type": "integer"
-                    }
+              "terraform": {
+                "additionalProperties": false,
+                "properties": {
+                  "entityId": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
                   },
-                  "required": [
-                    "q",
-                    "r"
-                  ],
-                  "type": "object"
+                  "intent": {
+                    "enum": [
+                      "terraform",
+                      "repair"
+                    ],
+                    "type": "string"
+                  },
+                  "op": {
+                    "enum": [
+                      "grade",
+                      "clear",
+                      "break",
+                      "dismantle",
+                      "work"
+                    ],
+                    "type": "string"
+                  },
+                  "tiles": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "q": {
+                          "maximum": 32767,
+                          "minimum": -32768,
+                          "type": "integer"
+                        },
+                        "r": {
+                          "maximum": 32767,
+                          "minimum": -32768,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "q",
+                        "r"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 256,
+                    "minItems": 1,
+                    "type": "array"
+                  },
+                  "workerId": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
                 },
-                "maxItems": 256,
-                "minItems": 1,
-                "type": "array"
+                "required": [
+                  "op",
+                  "tiles"
+                ],
+                "type": "object"
               }
             },
             "required": [
-              "op",
-              "tiles"
+              "terraform"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "build": {
+                "additionalProperties": false,
+                "properties": {
+                  "building": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "q": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "r": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "rotation": {
+                    "maximum": 5,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "tier": {
+                    "maximum": 3,
+                    "minimum": 1,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "building",
+                  "q",
+                  "r"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "build"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "buildUnit": {
+                "additionalProperties": false,
+                "properties": {
+                  "count": {
+                    "maximum": 100,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "producerId": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "repeat": {
+                    "type": "boolean"
+                  },
+                  "unit": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "unit"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "buildUnit"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "costOverride": {
+                "additionalProperties": {
+                  "minimum": 0,
+                  "type": "number"
+                },
+                "propertyNames": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              "precedence": {
+                "enum": [
+                  "explicit",
+                  "autoSitePrep",
+                  "queued",
+                  "standing"
+                ],
+                "type": "string"
+              },
+              "task": {
+                "anyOf": [
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "building": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "build",
+                        "type": "string"
+                      },
+                      "q": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "r": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "rot": {
+                        "maximum": 5,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "rotation": {
+                        "maximum": 5,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "tier": {
+                        "maximum": 3,
+                        "minimum": 1,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "building",
+                      "q",
+                      "r"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "count": {
+                        "maximum": 100,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "hubEntityId": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "buildUnit",
+                        "type": "string"
+                      },
+                      "producerId": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "repeat": {
+                        "type": "boolean"
+                      },
+                      "unit": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "unit"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "entityId": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "intent": {
+                        "enum": [
+                          "terraform",
+                          "repair"
+                        ],
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "terraform",
+                        "type": "string"
+                      },
+                      "op": {
+                        "enum": [
+                          "grade",
+                          "clear",
+                          "break",
+                          "dismantle",
+                          "work"
+                        ],
+                        "type": "string"
+                      },
+                      "q": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "r": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "workerId": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "op",
+                      "q",
+                      "r"
+                    ],
+                    "type": "object"
+                  }
+                ]
+              },
+              "taskId": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "task"
             ],
             "type": "object"
           }
-        },
-        "required": [
-          "terraform"
-        ],
-        "type": "object"
+        ]
       },
       "origin": "client",
-      "summary": "Enqueues a terraform order (grade | clear | break) over one or more tiles in the colony queue.",
+      "summary": "Enqueues a terraform order (W01), a building construction order (W02), or a unit production order (W02) in the colony queue.",
       "wave": "W01"
     },
     "landPod": {
@@ -803,6 +1285,101 @@
       "origin": "client",
       "summary": "Queues construction of a structure at (q, r) and auto-links any missing site preparation ops (UO-TF-03).",
       "wave": "W01"
+    },
+    "reorderTask": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "lane": {
+            "enum": [
+              "construction",
+              "units",
+              "terraform"
+            ],
+            "type": "string"
+          },
+          "taskId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "toIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "taskId",
+          "toIndex"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Reorders a player-queued entry within its lane (UO-P §4.4, W02-13).",
+      "wave": "W02"
+    },
+    "setHarvestWeights": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "bio": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "metals": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              },
+              "minerals": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "number"
+              }
+            },
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "weights": {
+                "additionalProperties": false,
+                "properties": {
+                  "bio": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "metals": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  },
+                  "minerals": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "number"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "weights"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Immediately updates the per-family harvest weights for standing Harvester jobs (UO-L-01, W02-12).",
+      "wave": "W02"
     },
     "setPlanetTime": {
       "args": {
@@ -959,6 +1536,46 @@
       "summary": "Named account created and linked to the player (F5).",
       "wave": "W06"
     },
+    "brownout": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "deficitPerS": {
+            "type": "number"
+          },
+          "group": {
+            "maximum": 4,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "shedCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "shedEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "group"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted (debounced) when a colony power deficit causes brownout load shedding in `group` (W02-06, W02-17).",
+      "wave": "W02"
+    },
     "buildingCompleted": {
       "audience": "player",
       "data": {
@@ -975,6 +1592,12 @@
             "maximum": 9007199254740991,
             "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "kind": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
           },
           "q": {
             "maximum": 9007199254740991,
@@ -993,17 +1616,15 @@
           }
         },
         "required": [
-          "colonyId",
           "entityId",
           "building",
-          "tier",
           "q",
           "r"
         ],
         "type": "object"
       },
       "severity": "info",
-      "summary": "Emitted when construction of a structure reaches 100 % completion (W01-16).",
+      "summary": "Emitted when construction of a structure reaches 100 % completion (W01-16, W02-17, W02-28).",
       "wave": "W01"
     },
     "colonyFounded": {
@@ -1115,6 +1736,45 @@
       "severity": "info",
       "summary": "Dev time warp changed: the planet now steps `k` engine steps per tick slot (effective value after the thread budget cap).",
       "wave": "W00"
+    },
+    "energyCollapse": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "deficitPerS": {
+            "type": "number"
+          },
+          "deficitSeconds": {
+            "type": "number"
+          },
+          "demandPerS": {
+            "type": "number"
+          },
+          "durationS": {
+            "type": "number"
+          },
+          "shedGroups": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "supplyPerS": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "severity": "critical",
+      "summary": "Emitted when a colony remains in brownout for >= 30 s continuously (SIM §9, W02-06, W02-17).",
+      "wave": "W02"
     },
     "groundRevealed": {
       "audience": "player",
@@ -1412,6 +2072,169 @@
       "summary": "A gasless action was submitted through the relayer.",
       "wave": "W06"
     },
+    "resourceProduced": {
+      "audience": "server",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "res": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "res",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Aggregated per-60 s resource production batch emitted onto the event bus for Stockpile progression (W02-28).",
+      "wave": "W02"
+    },
+    "resourceShortage": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "cap": {
+            "type": "number"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "family": {
+            "enum": [
+              "metals",
+              "minerals",
+              "bio"
+            ],
+            "type": "string"
+          },
+          "netPerS": {
+            "type": "number"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "stock": {
+            "type": "number"
+          }
+        },
+        "required": [
+          "family",
+          "stock",
+          "cap",
+          "netPerS"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a resource drops below 5 % of its family cap with negative net flow over 60 s (SIM §9, W02-17).",
+      "wave": "W02"
+    },
+    "resourceSpawned": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "deposit": {
+            "enum": [
+              "metals",
+              "minerals",
+              "oil"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "richnessBp": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "number"
+              },
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 3,
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "colonyId",
+          "q",
+          "r",
+          "deposit",
+          "tier",
+          "richnessBp"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a completed terraform `work` job spawns a new resource deposit on its hex (1 % roll, `TERRAFORM_RESOURCE_SPAWN`; tier in the `depositTier` tile layer).",
+      "wave": "W02"
+    },
     "tilePrepared": {
       "audience": "player",
       "data": {
@@ -1494,6 +2317,54 @@
       "severity": "warn",
       "summary": "A resource change a sim system expected to succeed (a terraform yield, a construction refund) was refused by the colony treasury (bad data); nothing moved.",
       "wave": "W01"
+    },
+    "unitProduced": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "producerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityId",
+          "unit",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a worker or combat unit completes production and spawns at its producer edge (W02-10, W02-17).",
+      "wave": "W02"
     }
   },
   "serverMessages": {
@@ -1656,7 +2527,9 @@
                 "already_landed",
                 "landing_site_taken",
                 "queue_full",
-                "planet_full"
+                "planet_full",
+                "cannot_dismantle_hq",
+                "unknown_task"
               ],
               "type": "string"
             },
@@ -1720,7 +2593,10 @@
                   },
                   "colonyIds": {
                     "items": {
-                      "type": "string"
+                      "type": [
+                        "string",
+                        "number"
+                      ]
                     },
                     "type": "array"
                   },
@@ -1812,7 +2688,10 @@
             },
             "colonyIds": {
               "items": {
-                "type": "string"
+                "type": [
+                  "string",
+                  "number"
+                ]
               },
               "type": "array"
             },

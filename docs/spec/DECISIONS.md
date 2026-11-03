@@ -46,6 +46,7 @@
 | D-39 | Planet presence read model + landing planner: every colony / fauna position and every landing ever made in one queryable model; `nextLandingSite` picks the next landing; no landing ever reuses (or crowds) a position | Accepted (2026-11-01, owner) |
 | D-40 | Public host `terraagent.fun` on one nginx, four compose stacks (infra, frontend, backend, chain), SSH deploy from `DEPLOY_HOST` in `infra/.env`. No Cloudflare and no R2 in this phase | Accepted (2026-11-01) |
 | D-41 | Clean root folder modelled on `../freightchain`: root holds only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, root `package.json` (`package-lock.json`), and the 7 domain folders (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`) | Accepted (2026-11-01, owner) |
+| D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
 
 ---
 
@@ -538,6 +539,20 @@ The sim owns the type; the client picks the look from it (`planetType → Planet
 
 **Alternatives.** Keep tool configs in the repo root (rejected by owner: root must stay clean like `../freightchain`).
 
+
+## D-42 — W02 economy build rules (as built)
+
+**Context.** W02 added the first economy rows (Metals Extractor, Solar), the order queue and the Harvester on top of the W01 sim. Several deliberate choices depart from the wave doc or from D-37 and must not be "fixed" back by a later wave.
+
+**Decision.**
+- **Day length follows the solar clock.** `systems/environment` derives phase and daylight from the authoritative planet time (`systems/time`, `blobs.planetTime`, default `time.cycle.realHoursPerDay = 0.25`, i.e. a 15 min day) and keeps no clock or day counter of its own; the client's day/night clock syncs from it (`dayNightSync.ts`). Night starts at 18:00 and lasts the planet type's night share (`temperate` 45 %). The spec's 20 min day and the `economyT1Basic.dayCycle` fields are not read (GP-53, WE-30).
+- **W02 building rows use `evaluatePlacement`** (D-37), through the row's placement rule (`requiresDeposit` for the Extractor, a deposit under any other building is `site_blocked`, an uneven footprint is `terrain_unbuildable` instead of being flattened). W02 rows allow unclaimed ground (GP-54, GP-55 are owner questions). There is no second W02 placement check.
+- **The HQ builds on site.** A W02 build is a `build` command job (`job:<entityId>`, linked prep `job:<entityId>/prep`) that the HQ pulls, walks to and works; the Construction lane runs one W02 build per colony at a time and a Harvester never builds or preps (`dispatch/eligibility.ts`, GP-58). Multi-builder choice and pre-emption by `player` entries arrive with the Builder (W03-32).
+- **Progressive payment, 50 % cancel refund.** Orders pay their slice of the cost as work advances; cancelling a waiting entry is free, cancelling one in progress refunds 50 % of what was paid (`CANCEL_REFUND_RATE`), demolish and dismantle refund 50 % (`DISMANTLE_REFUND_RATE`). The W01 Command Hub order keeps pay-at-start and its 75 % refund. W02 refunds go through `creditResource` and are **clamped at the family cap** (the rest is lost and counted in `production.capped`); the W01 refund is not (LED-17 asks the owner to unify).
+
+**Consequences.** `UO-Q-01/02`, `SIM-C-03` and `UO-D-03` carry as-built notes. Later waves extend the same queue, placement function and dispatch (W03-12, W03-32, W03-35) instead of adding their own.
+
+**Alternatives.** Pay at start with a 75 % refund (the original `UO-Q-01`; the owner changed it 2026-11-02); a 20 min day with its own environment clock (a second clock that drifts from the planet time); a separate W02 placement check (the drift D-37 removed).
 
 ## Amendments — as built, review-fix round 2026-11-01
 

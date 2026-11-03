@@ -1,0 +1,214 @@
+import type { ResourceKey } from '@terra/contracts';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { rowOf } from '../../ecs/store';
+import { DEPOSIT } from '../../grid/layers';
+import { indexOf } from '../../grid/hex';
+import type { ColonyState, PlanetState } from '../../kernel/state';
+import { normalizeRichness } from '../production';
+import type { QueueEntry, QueuePrecedence, QueueTaskPayload } from './types';
+
+export const RESOURCE_DISPLAY_LABELS: Readonly<Record<ResourceKey, string>> = {
+  'metals.t1': 'Metals',
+  'minerals.t1': 'Minerals',
+  'bio.biomass': 'Biomass',
+  'bio.water': 'Water',
+  'metals.t2': 'Alloys',
+  'minerals.t2': 'Crystals',
+  'bio.t2': 'Nutrients',
+  'metals.t3': 'Composites',
+  'minerals.t3': 'Metamaterials',
+  'bio.t3': 'Biopolymers',
+};
+
+function depositCodeToResourceKey(dep: number): ResourceKey | null {
+  if (dep === DEPOSIT.metals) return 'metals.t1';
+  if (dep === DEPOSIT.minerals) return 'minerals.t1';
+  if (dep === DEPOSIT.oil) return 'bio.biomass';
+  return null;
+}
+
+/** Whether a Harvester of `colonyIndex` harvests now (the production ledger then holds the real per-key rates). */
+function harvestersAtWork(state: PlanetState, colonyIndex: number): boolean {
+  const { count, cols } = state.entities;
+  for (let r = 0; r < count; r++) {
+    if (cols.owner[r] === colonyIndex && cols.kind[r] === ENTITY_KIND.harvester && cols.state[r] === ENTITY_STATE.harvesting) return true;
+  }
+  return false;
+}
+
+/**
+ * Estimates current colony income per second (`amount/s`) for a given `ResourceKey`.
+ * Uses explicit `colony.incomePerS`, else the production ledger (`colony.production.incomePerS`, written each step by
+ * `production.extractors` / `production.harvest`: the real per-key rate, so a Harvester mining metals adds nothing to
+ * Minerals). Without a ledger rate it guesses: active extractors (`1.0 * richness`/s) and idle / moving Harvesters.
+ */
+export function estimateResourceIncomePerS(
+  state: PlanetState,
+  colony: ColonyState,
+  key: ResourceKey,
+): number {
+  const explicitColony = (colony as { incomePerS?: Partial<Record<ResourceKey, number>> }).incomePerS?.[key];
+  if (typeof explicitColony === 'number' && explicitColony > 0) {
+    return explicitColony;
+  }
+  const production = (colony as { production?: { incomePerS?: Partial<Record<ResourceKey, number>> } }).production;
+  const ledgerRate = production?.incomePerS?.[key];
+  if (typeof ledgerRate === 'number' && ledgerRate > 0) return ledgerRate;
+  if (production?.incomePerS && harvestersAtWork(state, colony.index)) return 0; // the ledger knows: nothing comes in
+
+  let rate = 0;
+  let idleOrMovingHarvesters = 0;
+  const { count, cols } = state.entities;
+  for (let r = 0; r < count; r++) {
+    if (cols.owner[r] !== colony.index) continue;
+    const kind = cols.kind[r];
+    const st = cols.state[r];
+    if (kind === ENTITY_KIND.metalsExtractor && st === ENTITY_STATE.active && key === 'metals.t1') {
+      const tileIdx = indexOf(state.grid.radius, cols.q[r], cols.r[r]);
+      const rawRich = tileIdx >= 0 ? state.grid.layers.richness[tileIdx] : 10000;
+      rate += 1.0 * normalizeRichness(rawRich || 10000);
+    } else if (kind === ENTITY_KIND.harvester) {
+      if (st === ENTITY_STATE.harvesting) {
+        const tileIdx = indexOf(state.grid.radius, cols.q[r], cols.r[r]);
+        const dep = tileIdx >= 0 ? state.grid.layers.deposit[tileIdx] : DEPOSIT.none;
+        const depKey = depositCodeToResourceKey(dep);
+        if (depKey === key || dep === DEPOSIT.none) {
+          rate += 0.5;
+        }
+      } else if (st === ENTITY_STATE.idle || st === ENTITY_STATE.moving) {
+        idleOrMovingHarvesters++;
+      }
+    }
+  }
+
+  if (rate === 0 && idleOrMovingHarvesters > 0 && (key === 'metals.t1' || key === 'minerals.t1' || key === 'bio.biomass')) {
+    rate = 0.5 * idleOrMovingHarvesters;
+  }
+  return rate;
+}
+
+export function computeResourceWaitState(
+  state: PlanetState,
+  colony: ColonyState,
+  cost: Partial<Record<ResourceKey, number>>,
+  missing: Partial<Record<ResourceKey, number>>,
+): { etaSeconds: number | null; waitDetail: string } {
+  const keys = Object.keys(missing) as ResourceKey[];
+  if (keys.length === 0) {
+    return { etaSeconds: 0, waitDetail: 'waiting: resources' };
+  }
+
+  let maxEta: number | null = 0;
+  let bottleneckKey: ResourceKey = keys[0];
+  let bottleneckEta = -1;
+
+  for (const k of keys) {
+    const missAmt = missing[k] ?? 0;
+    if (missAmt <= 0) continue;
+    const income = estimateResourceIncomePerS(state, colony, k);
+    if (income <= 0) {
+      maxEta = null;
+      if (bottleneckEta < Number.POSITIVE_INFINITY) {
+        bottleneckEta = Number.POSITIVE_INFINITY;
+        bottleneckKey = k;
+      }
+    } else {
+      const kEta = Math.ceil(missAmt / income);
+      if (maxEta !== null && kEta > maxEta) {
+        maxEta = kEta;
+      }
+      if (kEta > bottleneckEta) {
+        bottleneckEta = kEta;
+        bottleneckKey = k;
+      }
+    }
+  }
+
+  const label = RESOURCE_DISPLAY_LABELS[bottleneckKey] ?? bottleneckKey;
+  const stockMap = (colony.stock ?? {}) as Partial<Record<ResourceKey, number>>;
+  const haveAmt = Math.floor(stockMap[bottleneckKey] ?? 0);
+  const needAmt = cost[bottleneckKey] ?? 0;
+  const waitDetail =
+    maxEta !== null
+      ? `waiting: ${label} ${haveAmt}/${needAmt} · ~${maxEta} s`
+      : `waiting: ${label} ${haveAmt}/${needAmt} (no ETA)`;
+
+  return { etaSeconds: maxEta, waitDetail };
+}
+
+export function isBlockedByPower(state: PlanetState, colony: ColonyState, entry: QueueEntry): boolean {
+  const taskAny = entry.task as { requiresPower?: boolean; producerId?: number };
+  const pwr = (colony.power ?? {}) as { status?: string; brownout?: boolean; net?: number };
+  if (taskAny.requiresPower && (pwr.status === 'brownout' || pwr.brownout || (pwr.net ?? 0) < 0)) {
+    return true;
+  }
+  if (entry.task.kind === 'buildUnit' && typeof entry.task.producerId === 'number') {
+    const pRow = rowOf(state.entities, entry.task.producerId);
+    if (pRow >= 0 && state.entities.cols.state[pRow] === ENTITY_STATE.offlineBrownout) {
+      return true;
+    }
+  }
+  return false;
+}
+
+export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
+  task?: QueueTaskPayload;
+  precedence?: QueuePrecedence;
+  taskId?: string;
+  costOverride?: Partial<Record<ResourceKey, number>>;
+} {
+  if (raw.task && typeof (raw.task as { kind?: unknown }).kind === 'string') {
+    return raw as {
+      task: QueueTaskPayload;
+      precedence?: QueuePrecedence;
+      taskId?: string;
+      costOverride?: Partial<Record<ResourceKey, number>>;
+    };
+  }
+  if (raw.build && typeof raw.build === 'object') {
+    const b = raw.build as { building: string; q: number; r: number; rotation?: number; rot?: number; tier?: number };
+    return {
+      taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+      task: { kind: 'build', building: b.building, q: b.q, r: b.r, tier: b.tier, rotation: b.rotation ?? b.rot },
+    };
+  }
+  if (raw.buildUnit && typeof raw.buildUnit === 'object') {
+    const u = raw.buildUnit as { unit: string; count?: number; repeat?: boolean; producerId?: number };
+    return {
+      taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+      task: { kind: 'buildUnit', unit: u.unit, count: u.count, repeat: u.repeat, producerId: u.producerId },
+    };
+  }
+  if (raw.terraform && typeof raw.terraform === 'object') {
+    const tf = raw.terraform as { op: string; tiles?: Array<{ q: number; r: number }> };
+    const first = tf.tiles?.[0];
+    if (first) {
+      return {
+        taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+        task: { kind: 'terraform', op: tf.op, q: first.q, r: first.r },
+      };
+    }
+  }
+  return {};
+}
+
+/** The contract's precedence words (`enqueueTask.precedence`) in the queue's terms (`system > player > auto`). */
+const CONTRACT_PRECEDENCE: Readonly<Record<string, QueuePrecedence>> = { explicit: 'player', queued: 'player', standing: 'auto', autoSitePrep: 'system' };
+
+/** Command sources that may set an entry's cost or raise its precedence (dev tools, the sim's own systems, admins). */
+const TRUSTED_SOURCES: ReadonlySet<string> = new Set(['dev', 'system', 'admin']);
+
+/**
+ * What an `enqueueTask` command may decide about its entry: a player (or AI / chain) command never sets `costOverride`
+ * (a free building) and never ranks above `player` (it may lower its own entry to `auto`); trusted sources may do both.
+ */
+export function enqueueAuthority(
+  source: string,
+  norm: { precedence?: string; costOverride?: Partial<Record<ResourceKey, number>> },
+): { precedence?: QueuePrecedence; costOverride?: Partial<Record<ResourceKey, number>> } {
+  const word = norm.precedence;
+  const asked = word === undefined ? undefined : (CONTRACT_PRECEDENCE[word] ?? (word === 'system' || word === 'player' || word === 'auto' ? word : undefined));
+  if (TRUSTED_SOURCES.has(source)) return { precedence: asked, costOverride: norm.costOverride };
+  return { precedence: asked === 'auto' ? 'auto' : asked === undefined ? undefined : 'player' };
+}
+

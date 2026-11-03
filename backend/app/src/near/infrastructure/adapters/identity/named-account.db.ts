@@ -13,7 +13,7 @@ const RACE_RETRIES = 4;
 /**
  * One transaction: replay `opId` from the receipt, or insert the next free `{label}.terraagent.mock` (kind `named`)
  * and a `mock:` receipt. A unique violation rolls the transaction back; the caller tries again.
- * No mock latency — social login must not sleep (BE-33).
+ * No mock latency — social login must not sleep (BE-38).
  */
 export async function insertNamedAccount(
   prisma: PrismaClient,

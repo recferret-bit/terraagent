@@ -1,5 +1,6 @@
 import { adminRelocateEntity } from '../../ecs/placement';
 import { rowOf } from '../../ecs/store';
+import { ensureStarterHubSpace } from '../../gen/spawnSlots';
 import { inHex } from '../../grid/hex';
 import { defineCommandHandler } from '../../kernel/commands';
 import { setBlob } from '../../kernel/state';
@@ -46,6 +47,7 @@ export const devLand = defineCommandHandler({
       own.q = at.q;
       own.r = at.r;
       relocateLanding(state, colony, at.q, at.r, ctx.tick);
+      ensureStarterHubSpace(state, at.q, at.r, colony);
       const row = rowOf(state.entities, own.podEntityId);
       if (row >= 0) adminRelocateEntity(state.entities, row, Math.fround(at.q), Math.fround(at.r), ctx.tick);
     }

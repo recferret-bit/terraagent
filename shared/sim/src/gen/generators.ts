@@ -28,8 +28,12 @@ export type PlanetGenerator = (p: Required<Omit<PlanetParams, 'type' | 'id' | 'c
  * 5: desert returns to pre-W1 continuous wind-carved dune sea + spaced rock landforms; buildable Flat ground is only
  *    around the pod drop landing zones (wild desert sand is `slope`).
  * 6-7: desert rockiness restricted to mountains/mesas rising above local dune relief; inner landing rim graded by slopeGradientM.
+ * 8: temperate deposits only on Flat / slope (none under forest or rock); every visible deposit gets full richness
+ *    after the landing stage (W02).
+ * 9: circular pod-drop blast zone around every spawn slot cleared of trees, rock, slopes, holes, water, and deposits,
+ *    and levelled to terraformed Flat ground (W02).
  */
-export const GEN_VERSION = 7;
+export const GEN_VERSION = 9;
 
 const generators = new Map<string, PlanetGenerator>();
 

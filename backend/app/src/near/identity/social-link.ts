@@ -23,7 +23,7 @@ export interface LinkedPlayer {
   readonly created: boolean;
 }
 
-/** Last `account.created` payload built in this process. Not pushed on the socket (BE-35). */
+/** Last `account.created` payload built in this process. Not pushed on the socket (BE-40). */
 export interface AccountCreatedNote {
   readonly playerId: string;
   readonly accountId: string;
@@ -40,7 +40,7 @@ function clipEmail(email: string | null): string | null {
 
 /**
  * One `(provider, subject)`, one player. Postgres `core.social_identity` when the database is on;
- * the process map when it is off, so unit tests stay free of Postgres (BE-31).
+ * the process map when it is off, so unit tests stay free of Postgres (BE-36).
  */
 @Injectable()
 export class SocialLink {
@@ -118,7 +118,7 @@ export class SocialLink {
     return player;
   }
 
-  /** Checked against the contract. Nothing delivers a non-sim event on the socket (BE-35). */
+  /** Checked against the contract. Nothing delivers a non-sim event on the socket (BE-40). */
   private noteAccountCreated(input: SocialLinkInput, playerId: string): void {
     this.lastCreated = eventDef('account.created').data.parse({
       playerId,

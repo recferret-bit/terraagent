@@ -20,7 +20,7 @@ import { mockTxHashFor } from '../../mock/tx-hash.js';
 import { insertNamedAccount } from './named-account.db.js';
 
 /**
- * Mock social login and named accounts. No `MockChainBase` sleep (BE-33): unit tests have no database,
+ * Mock social login and named accounts. No `MockChainBase` sleep (BE-38): unit tests have no database,
  * and social login must not wait on mock latency. `claimAccount` stays unavailable.
  */
 @Injectable()

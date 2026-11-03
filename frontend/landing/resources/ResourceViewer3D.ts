@@ -3,7 +3,13 @@ import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
 import { StageHost, prefersReducedMotion } from '@terra/render/core/StageHost';
 import { PLANET_SPECS } from '@terra/render/planets/PlanetSpec';
-import { createArchetypeMesh, tickArchetypeMesh, type ArchetypeMesh } from '@terra/render/kitbash';
+import {
+  createArchetypeMesh,
+  isDepositArchetype,
+  tickArchetypeMesh,
+  type ArchetypeMesh,
+  type DepositVisualStage,
+} from '@terra/render/kitbash';
 import { RES } from './data';
 import { Pedestal } from './Pedestal';
 
@@ -18,6 +24,8 @@ export class ResourceViewer3D {
   private dist = 8; private tDist = 8;
   private mesh: ArchetypeMesh | null = null;
   private born = 0; private time = 0; private first = true;
+  private currentKey = 'metals';
+  private stage: DepositVisualStage = 'full';
 
   constructor(stageEl: HTMLElement, private readonly tagEl: HTMLElement | null) {
     const vp = this.vp = createColonyViewport(stageEl);
@@ -30,11 +38,23 @@ export class ResourceViewer3D {
     stageEl.classList.add('is-live');
   }
 
-  show(key: string) {
+  getStage(): DepositVisualStage {
+    return this.stage;
+  }
+
+  setStage(stage: DepositVisualStage) {
+    this.stage = stage;
+    this.show(this.currentKey, stage);
+  }
+
+  show(key: string, stage: DepositVisualStage = this.stage) {
+    this.currentKey = key;
+    this.stage = stage;
     const { vp, ped } = this, scene = vp.scene, r = RES[key];
+    if (!r) return;
     if (this.mesh) { scene.remove(this.mesh); this.mesh.geometry.dispose(); (this.mesh.material as THREE.Material).dispose(); }
     const spec = PLANET_SPECS[r.biome];
-    const mesh = this.mesh = createArchetypeMesh(r.archetype, spec.biomeKey);
+    const mesh = this.mesh = createArchetypeMesh(r.archetype, spec.biomeKey, stage);
     scene.add(mesh);
     ped.topMat.color.setHex(spec.palette.groundLow).lerp(new THREE.Color(BG), 0.8);
     vp.sun.color.set(spec.sky.sunColor); vp.sun.intensity = spec.sky.sunIntensity; // warm key per biome; sky/background stay HUD-dark
@@ -46,7 +66,9 @@ export class ResourceViewer3D {
     this.tDist = (radius / Math.sin(THREE.MathUtils.degToRad(14))) * 1.35;
     this.born = this.time;
     if (this.first) { this.first = false; this.center.copy(this.tCenter); this.dist = this.tDist; }
-    if (this.tagEl) this.tagEl.textContent = `LIVE RENDER · ${r.archetype} · ${(mesh.geometry.index ? mesh.geometry.index.count / 3 : mesh.geometry.attributes.position.count / 3).toLocaleString('en-US')} TRIS`;
+    const tris = (mesh.geometry.index ? mesh.geometry.index.count / 3 : mesh.geometry.attributes.position.count / 3).toLocaleString('en-US');
+    const stageTag = isDepositArchetype(r.archetype) ? ` · ${stage.toUpperCase()}` : '';
+    if (this.tagEl) this.tagEl.textContent = `LIVE RENDER · ${r.archetype}${stageTag} · ${tris} TRIS`;
     if (this.reduced) this.frame(0);
   }
 

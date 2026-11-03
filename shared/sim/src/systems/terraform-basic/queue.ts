@@ -5,6 +5,7 @@ import { placementWorldFromState } from '../construction/placementWorld';
 import { findColonyHqRow } from '../find';
 import { syncHqView } from '../hq/view';
 import { resolveHqT1Row, rowNum } from '../rows';
+import { executeDismantleAtTile } from './dismantleAndWork';
 import { getTerraformOpSpec, isTerraformOpKind, type TerraformOpKind } from './ops';
 import {
   colonyTerraformOrders,
@@ -16,6 +17,7 @@ import {
   type TerraformJob,
   type TerraformOrder,
 } from './orders';
+import { enqueueWorkOrder } from './workOrder';
 import {
   evaluateTerraform,
   evaluateTerraformTile,
@@ -113,6 +115,24 @@ function planJobs(state: SimState, opts: EnqueueTerraformOrderOpts): { jobs: Ter
 export function enqueueTerraformOrder(state: SimState, opts: EnqueueTerraformOrderOpts): EnqueueTerraformOrderResult {
   const tick = opts.tick ?? state.meta.tick;
   const colonyId = opts.colonyId;
+  if (opts.op === 'dismantle') {
+    const tiles = opts.tiles ?? [];
+    if (tiles.length === 0) return { ok: false, reason: 'invalid_args', skippedCount: 0 };
+    let okCount = 0;
+    let firstReject: RejectCode | undefined;
+    for (const t of tiles) {
+      const res = executeDismantleAtTile(state, colonyId, t.q, t.r, tick, opts.data);
+      if (res.ok) okCount++;
+      else if (!firstReject || res.reason === 'cannot_dismantle_hq') firstReject = res.reason;
+    }
+    const skippedCount = tiles.length - okCount;
+    return okCount > 0 ? { ok: true, skippedCount } : { ok: false, reason: firstReject ?? 'site_blocked', skippedCount };
+  }
+  if (opts.op === 'work') {
+    const tiles = opts.tiles ?? [];
+    const reason = enqueueWorkOrder(state, colonyId, { tiles }, opts.taskId ?? `work#${colonyId}@${tick}`, tick, opts.data);
+    return reason ? { ok: false, reason, skippedCount: tiles.length } : { ok: true, skippedCount: 0 };
+  }
   const planned = planJobs(state, opts);
   if (planned.reject) return { ok: false, reason: planned.reject, skippedCount: planned.skippedCount };
   const isLinkedPrep = Boolean(opts.isLinkedPrep);

@@ -20,7 +20,7 @@ export class Satellites {
 
   constructor(scene: THREE.Scene) {
     for (const [id, size, orbit, period, incline, node, phase] of SAT_DEFS) {
-      const model = acquireModel(id, 'dune', { size, mode: 'max', force: true });
+      const model = acquireModel(id, 'dune', { size, mode: 'max', force: true }, { spaceLit: true });
       model.root.rotation.order = 'YXZ';
       scene.add(model.root);
       this.sats.push({ model, orbit, period, incline, node, phase, plane: new THREE.Euler(incline, node, 0, 'YXZ') });

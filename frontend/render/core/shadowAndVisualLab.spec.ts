@@ -172,6 +172,35 @@ describe('Day/night cycle sun color and shadow modulation (dayNightConfig)', () 
     expect(nightState.envIntensity).toBeLessThan(0.03);
     expect(vp.sun.shadow.intensity).toBeLessThan(1.2);
     expect(vp.sun.shadow.radius).toBeGreaterThan(1.2);
+    expect(vp.secondaryShadowLight).toBeDefined();
+    expect(vp.secondaryShadowLight!.castShadow).toBe(true);
+    // The night moon is a faint cool fill, never a second sun: it used to jump to the full secondaryIntensity (1.35,
+    // 60% of the noon sun) with nightShadowIntensity (0.72) shadows, so night looked like day with blue light.
+    expect(vp.secondaryShadowLight!.intensity).toBeLessThan(DEFAULT_SHADOW_PARAMS.sunIntensity * 0.08);
+    expect(vp.secondaryShadowLight!.shadow.intensity).toBeLessThan(0.12);
+    expect(vp.sun.intensity).toBeLessThan(DEFAULT_SHADOW_PARAMS.sunIntensity * 0.05);
+    expect(vp.sun.shadow.intensity).toBeLessThan(0.12);
+  });
+
+  it('switches secondary shadow light across shadowSourceMode 0..3 and secondaryShadowEnabled', () => {
+    const vp = makeMockViewport();
+    setDayNightParams({ timeOfDay: 12.0 });
+    setShadowParams({ shadowSourceMode: 1, secondaryIntensity: 1.5, nightShadowIntensity: 0.8 });
+    syncViewportShadow(vp, 0xfff5e4);
+    expect(vp.sun.castShadow).toBe(true);
+    expect(vp.secondaryShadowLight!.castShadow).toBe(true);
+    expect(vp.secondaryShadowLight!.intensity).toBeCloseTo(1.5, 3);
+
+    setShadowParams({ shadowSourceMode: 2 });
+    syncViewportShadow(vp, 0xfff5e4);
+    expect(vp.sun.castShadow).toBe(false);
+    expect(vp.secondaryShadowLight!.castShadow).toBe(true);
+    expect(vp.secondaryShadowLight!.shadow.intensity).toBeCloseTo(0.8, 3);
+
+    setShadowParams({ shadowSourceMode: 3 });
+    syncViewportShadow(vp, 0xfff5e4);
+    expect(vp.sun.castShadow).toBe(true);
+    expect(vp.secondaryShadowLight!.castShadow).toBe(false);
   });
 });
 
@@ -366,7 +395,7 @@ describe('Bottom-left switches bar and F8 tabbed visual settings dialog', () => 
     setShadow(true);
   });
 
-  it('mounts CRT, PIXEL, SHADOW switches and F8 button in #fx-bar and renders all 4 tabs (CRT, PIXEL, SHADOW, DAY/NIGHT)', () => {
+  it('mounts CRT, PIXEL, SHADOW switches and F8 button in #fx-bar and renders all 7 tabs (CRT, PIXEL, SHADOW, DAY/NIGHT, WIND, WATER, PERF)', () => {
     const host = document.getElementById('app')!;
     initCrt([host]);
 
@@ -388,9 +417,9 @@ describe('Bottom-left switches bar and F8 tabbed visual settings dialog', () => 
     expect(dlg.textContent).not.toContain('FULL RGB');
 
     const tabs = [...dlg.querySelectorAll<HTMLElement>('.pd-tab')].map((t) => t.dataset.tab);
-    expect(tabs).toEqual(['crt', 'pixel', 'shadow', 'daynight']);
+    expect(tabs).toEqual(['crt', 'pixel', 'shadow', 'daynight', 'wind', 'water', 'perf']);
 
-    // Switch through all 4 tabs and verify every parameter slider is rendered and interactive
+    // Switch through all tabs and verify every parameter slider is rendered and interactive
     selectVisualTab('crt');
     expect(dlg.querySelectorAll('#pd-sliders input[type=range]').length).toBe(CRT_SLIDERS.length);
     const scanInp = dlg.querySelector<HTMLInputElement>('input[data-key="scanlineIntensity"]')!;
