@@ -95,36 +95,60 @@ export const STORAGE_HINT_TEXT = 'Build a Supply Depot to raise the cap (W03)';
 /** Clickable button text on a `waiting(storage)` entry in W03+: opens the Supply Depot placement ghost. */
 export const STORAGE_HINT_BUTTON_TEXT = 'Build Supply Depot';
 
-/** Adds / removes the storage hint or "Build Depot" button of `chip` to match `entry`. */
+/** Greyed hint on a `waiting: supply` unit order in W02: the unit supply cap is reached; the Supply Depot is W03. */
+export const SUPPLY_HINT_TEXT = 'Supply cap reached: lose a unit to free supply (Supply Depot in W03)';
+
+/** The two waits a Supply Depot resolves: a family storage cap, and the unit supply cap. */
+const DEPOT_HINTS: Readonly<Record<'storage' | 'supply', { testid: string; title: string; greyed: string; greyedTitle: string }>> = {
+  storage: {
+    testid: 'queue-storage-hint',
+    title: 'Open Supply Depot placement ghost (+1 000 storage cap)',
+    greyed: STORAGE_HINT_TEXT,
+    greyedTitle: 'The Supply Depot arrives in W03',
+  },
+  supply: {
+    testid: 'queue-supply-hint',
+    title: 'Supply cap reached: open Supply Depot placement ghost (+8 unit supply)',
+    greyed: SUPPLY_HINT_TEXT,
+    greyedTitle: 'The Supply Depot arrives in W03',
+  },
+};
+
+function depotHintElement(kind: 'storage' | 'supply', ctx: FeatureContext): HTMLElement {
+  const def = DEPOT_HINTS[kind];
+  if (!hasFlag(ctx.flags, 'W03')) {
+    const el = document.createElement('div');
+    el.className = 'ta-queue-chip__hint';
+    el.setAttribute('data-testid', def.testid);
+    el.setAttribute('aria-disabled', 'true');
+    el.title = def.greyedTitle;
+    el.textContent = def.greyed;
+    return el;
+  }
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'ta-queue-chip__hint ta-queue-chip__hint--btn btn-sm';
+  btn.setAttribute('data-testid', def.testid);
+  btn.dataset.buildDepot = 'true';
+  btn.title = def.title;
+  btn.textContent = STORAGE_HINT_BUTTON_TEXT;
+  btn.onclick = (e) => {
+    e.stopPropagation();
+    ctx.services.startPlacement?.('supplyDepot');
+  };
+  return btn;
+}
+
+/**
+ * Adds / removes the "Build Supply Depot" button (W03) or greyed hint (W02) of `chip` to match `entry`: shown while
+ * the entry waits on `storage` (a family cap) or `supply` (the unit supply cap).
+ */
 export function syncStorageHint(chip: HTMLElement, entry: QueueEntry, ctx: FeatureContext): void {
-  const want = entry.state === 'waiting' && entry.waitReason === 'storage';
-  const hint = chip.querySelector('[data-testid="queue-storage-hint"]');
-  const hasW03 = hasFlag(ctx.flags, 'W03');
-  if (want && !hint) {
-    if (hasW03) {
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'ta-queue-chip__hint ta-queue-chip__hint--btn btn-sm';
-      btn.setAttribute('data-testid', 'queue-storage-hint');
-      btn.dataset.buildDepot = 'true';
-      btn.title = 'Open Supply Depot placement ghost (+1 000 storage cap)';
-      btn.textContent = STORAGE_HINT_BUTTON_TEXT;
-      btn.onclick = (e) => {
-        e.stopPropagation();
-        ctx.services.startPlacement?.('supplyDepot');
-      };
-      chip.appendChild(btn);
-    } else {
-      const el = document.createElement('div');
-      el.className = 'ta-queue-chip__hint';
-      el.setAttribute('data-testid', 'queue-storage-hint');
-      el.setAttribute('aria-disabled', 'true');
-      el.title = 'The Supply Depot arrives in W03';
-      el.textContent = STORAGE_HINT_TEXT;
-      chip.appendChild(el);
-    }
-  } else if (!want && hint) {
-    hint.remove();
+  const want = entry.state === 'waiting' && (entry.waitReason === 'storage' || entry.waitReason === 'supply') ? entry.waitReason : null;
+  for (const kind of ['storage', 'supply'] as const) {
+    const hint = chip.querySelector(`[data-testid="${DEPOT_HINTS[kind].testid}"]`);
+    if (want === kind && !hint) chip.appendChild(depotHintElement(kind, ctx));
+    else if (want !== kind && hint) hint.remove();
   }
 }
 

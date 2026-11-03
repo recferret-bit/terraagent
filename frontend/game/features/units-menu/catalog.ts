@@ -1,8 +1,8 @@
 import type { FlagSet } from '@terra/contracts';
-import { ENTITY_KIND } from '@terra/sim';
+import type { ColonySupply } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
 import type { GameView } from '../../core/registry/types';
-import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
+import { readColonySupply } from '../shared/supply';
 
 export interface UnitCardModel {
   id: string;
@@ -19,10 +19,7 @@ export interface UnitCardModel {
   costPills: string[];
 }
 
-export interface SupplySummary {
-  used: number;
-  cap: number;
-}
+export type SupplySummary = ColonySupply;
 
 const RESOURCE_LABELS: Record<string, string> = {
   'metals.t1': 'Metals',
@@ -56,57 +53,12 @@ function formatPower(drain: number): string {
   return '0 E/s';
 }
 
-function isSupplyUnitKind(kind: number | undefined, unit: string | undefined): boolean {
-  return (
-    kind === ENTITY_KIND.harvester ||
-    kind === ENTITY_KIND.builder ||
-    unit === 'harvester' ||
-    unit === 'builder'
-  );
-}
-
-export function resolveSupply(view?: GameView): SupplySummary {
-  if (!view) return { used: 0, cap: 10 };
-  const v = view as {
-    colonies?: Array<{
-      supply?: { used?: number; cap?: number };
-      unitQueue?: Array<{ state?: string }>;
-      [key: string]: unknown;
-    }>;
-    supply?: { used?: number; cap?: number };
-    entities?: Float32Array | Array<{ kind?: number; unit?: string; hp?: number }>;
-    blobs?: {
-      hubProduction?: { entries?: Array<{ state?: string }> };
-    };
-  };
-
-  const colSupply = v.colonies?.[0]?.supply ?? v.supply;
-  if (typeof colSupply?.used === 'number' && typeof colSupply?.cap === 'number') {
-    return { used: colSupply.used, cap: colSupply.cap };
-  }
-
-  let activeUnits = 0;
-  if (v.entities) {
-    if (v.entities instanceof Float32Array) {
-      for (let i = 0; i < v.entities.length; i += ENTITY_STRIDE) {
-        const kind = v.entities[i + 1];
-        if ((kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder) && v.entities[i + 8] > 0) {
-          activeUnits++;
-        }
-      }
-    } else if (Array.isArray(v.entities)) {
-      for (const e of v.entities) {
-        if (isSupplyUnitKind(e.kind, e.unit) && (e.hp === undefined || e.hp > 0)) {
-          activeUnits++;
-        }
-      }
-    }
-  }
-
-  const queue = v.colonies?.[0]?.unitQueue ?? v.blobs?.hubProduction?.entries ?? [];
-  const inProgress = queue.filter((en) => en.state === 'in_progress').length;
-
-  return { used: activeUnits + inProgress, cap: 10 };
+/**
+ * The own colony's unit supply as the host computed it (`colony.supply`, `shared/sim/src/systems/supply`), or `null`
+ * before the host sent one. The client never counts units itself.
+ */
+export function resolveSupply(view: GameView | undefined, colonyIndex = 0): SupplySummary | null {
+  return readColonySupply(view, colonyIndex);
 }
 
 function toUnitCardModel(

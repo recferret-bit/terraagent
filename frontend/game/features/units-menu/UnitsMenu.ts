@@ -1,5 +1,7 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
-import { buildUnitsCatalog, resolveSupply, type UnitCardModel } from './catalog';
+import { ownColonyIndex } from '../shared/colony';
+import { supplyBlockReason, supplyLevel } from '../shared/supply';
+import { buildUnitsCatalog, resolveSupply, type SupplySummary, type UnitCardModel } from './catalog';
 
 interface QueueItemLike {
   taskId?: string;
@@ -22,6 +24,8 @@ interface CachedUnitCard {
   readonly costs: HTMLElement;
   readonly countSpan: HTMLElement;
   readonly repeatBtn: HTMLButtonElement;
+  readonly queueBtn: HTMLButtonElement;
+  readonly reason: HTMLElement;
   costKey: string;
 }
 
@@ -79,7 +83,9 @@ export class UnitsMenu implements Disposable {
     this.supplyEl.className = 'ta-units__supply';
     this.supplyEl.setAttribute('data-supply', '');
     this.supplyEl.setAttribute('data-warning', 'false');
-    this.supplyEl.textContent = '0 / 10';
+    this.supplyEl.setAttribute('data-level', 'ok');
+    this.supplyEl.title = 'Unit supply: used / cap';
+    this.supplyEl.textContent = '— / —';
 
     header.append(this.headBtn, this.supplyEl);
     this.root.appendChild(header);
@@ -143,30 +149,33 @@ export class UnitsMenu implements Disposable {
   }
 
   private render(): void {
-    this.renderSupply();
-    this.renderCards();
+    const supply = resolveSupply(this.view, ownColonyIndex(this.ctx.services));
+    this.renderSupply(supply);
+    this.renderCards(supply);
     this.renderBuffer();
   }
 
-  private renderSupply(): void {
-    const supply = resolveSupply(this.view);
-    this.supplyEl.textContent = `${supply.used} / ${supply.cap}`;
-    this.supplyEl.setAttribute('data-warning', String(supply.used >= supply.cap));
+  private renderSupply(supply: SupplySummary | null): void {
+    const level = supplyLevel(supply);
+    this.supplyEl.textContent = supply ? `${supply.used} / ${supply.cap}` : '— / —';
+    this.supplyEl.setAttribute('data-warning', String(level === 'full'));
+    this.supplyEl.setAttribute('data-level', level);
   }
 
-  private renderCards(): void {
+  private renderCards(supply: SupplySummary | null): void {
     const cards = buildUnitsCatalog(this.ctx.flags, this.view);
     const seen = new Set<string>();
     for (const card of cards) {
       seen.add(card.unit);
       const existing = this.cardElements.get(card.unit);
+      const cached = existing ?? this.createCardElement(card);
       if (existing) {
         this.updateCardElement(existing, card);
       } else {
-        const created = this.createCardElement(card);
-        this.cardElements.set(card.unit, created);
-        this.cardsContainer.appendChild(created.root);
+        this.cardElements.set(card.unit, cached);
+        this.cardsContainer.appendChild(cached.root);
       }
+      this.applySupplyBlock(cached, supplyBlockReason(supply, card.supply));
     }
     for (const [unit, cached] of this.cardElements) {
       if (!seen.has(unit)) {
@@ -174,6 +183,15 @@ export class UnitsMenu implements Disposable {
         this.cardElements.delete(unit);
       }
     }
+  }
+
+  /** At the cap the QUEUE button is disabled and the card says why (the host would reject with `supply_cap`). */
+  private applySupplyBlock(cached: CachedUnitCard, reason: string | null): void {
+    cached.root.setAttribute('data-supply-blocked', String(reason !== null));
+    cached.queueBtn.disabled = reason !== null;
+    cached.queueBtn.title = reason ?? 'Queue this unit at the Command Hub';
+    cached.reason.hidden = reason === null;
+    if (reason !== null && cached.reason.textContent !== reason) cached.reason.textContent = reason;
   }
 
   private updateCardElement(cached: CachedUnitCard, card: UnitCardModel): void {
@@ -235,8 +253,12 @@ export class UnitsMenu implements Disposable {
       costs.appendChild(pill);
     }
 
-    const { controls, countSpan, repeatBtn } = this.createControlsRow(card.unit);
-    cardEl.append(headRow, metaRow, costs, controls);
+    const { controls, countSpan, repeatBtn, queueBtn } = this.createControlsRow(card.unit);
+    const reason = document.createElement('div');
+    reason.className = 'ta-units__reason';
+    reason.setAttribute('data-supply-reason', '');
+    reason.hidden = true;
+    cardEl.append(headRow, metaRow, costs, controls, reason);
     return {
       root: cardEl,
       title,
@@ -246,6 +268,8 @@ export class UnitsMenu implements Disposable {
       costs,
       countSpan,
       repeatBtn,
+      queueBtn,
+      reason,
       costKey: card.costPills.join('|'),
     };
   }
@@ -254,6 +278,7 @@ export class UnitsMenu implements Disposable {
     controls: HTMLElement;
     countSpan: HTMLElement;
     repeatBtn: HTMLButtonElement;
+    queueBtn: HTMLButtonElement;
   } {
     const controls = document.createElement('div');
     controls.className = 'ta-units__controls';
@@ -305,7 +330,7 @@ export class UnitsMenu implements Disposable {
     queueBtn.onclick = () => this.queueUnit(unit);
 
     controls.append(stepper, repeatBtn, queueBtn);
-    return { controls, countSpan, repeatBtn };
+    return { controls, countSpan, repeatBtn, queueBtn };
   }
 
   private updateCountReadouts(): void {
