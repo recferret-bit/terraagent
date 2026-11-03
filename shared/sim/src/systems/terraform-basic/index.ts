@@ -1,14 +1,17 @@
 import type { RejectCode } from '@terra/contracts';
+import { rowOf } from '../../ecs/store';
 import { defineCommandHandler } from '../../kernel/commands';
 import { commandColony, parseArgs } from '../command';
 import { cancelConstructionOrder, isOrderIdTaken } from '../construction';
 import { defineSimModule } from '../define';
-import { cancelQueueTask, enqueueTaskHandler, getAllQueueEntries, normalizeEnqueueArgs } from '../queue';
-import { executeDismantleAtTile, hasWorkJob, workJobsSystem } from './dismantleAndWork';
+import { cancelQueueTask, enqueueAuthority, enqueueTaskHandler, getAllQueueEntries, normalizeEnqueueArgs } from '../queue';
+import { mirrorRepairQueueEntry } from './autoRepair';
+import { enqueueWorkAtTile, executeDismantleAtTile, hasWorkJob, workJobsSystem } from './dismantleAndWork';
 import { cancelTerraformOrder, enqueueTerraformOrder, findTerraformOrder } from './queue';
 import { enqueueAutoPrepares } from './rules';
 import { enqueueWorkOrder } from './workOrder';
 
+export * from './autoRepair';
 export * from './chain';
 export * from './dismantleAndWork';
 export * from './ops';
@@ -114,9 +117,42 @@ export const cancelTask = defineCommandHandler({
   },
 });
 
+export const repair = defineCommandHandler({
+  kind: 'repair',
+  wave: 'W03',
+  handle(state, cmd, ctx) {
+    if (!ctx.flags.has('W03')) return 'wave_disabled';
+    const colonyId = commandColony(cmd);
+    if (typeof colonyId === 'string') return colonyId;
+    const args = parseArgs('repair', cmd.args);
+    if (!args) return 'invalid_args';
+    let q = args.q;
+    let r = args.r;
+    if ((q === undefined || r === undefined) && args.entityId !== undefined) {
+      const row = rowOf(state.entities, args.entityId);
+      if (row < 0) return 'unknown_entity';
+      if (state.entities.cols.owner[row] !== colonyId) return 'not_own_colony';
+      q = state.entities.cols.q[row];
+      r = state.entities.cols.r[row];
+    }
+    if (q === undefined || r === undefined) return 'invalid_args';
+    const res = enqueueWorkAtTile(state, colonyId, q, r, {
+      workerId: args.workerId,
+      entityId: args.entityId,
+      taskId: args.taskId ?? cmd.commandId,
+      tick: ctx.tick,
+      data: ctx.data,
+      intent: 'repair',
+    });
+    if (!res.ok) return res.reason;
+    const { precedence } = enqueueAuthority(cmd.source, { precedence: args.precedence });
+    mirrorRepairQueueEntry(state, res.job, precedence ?? 'player', ctx.tick, ctx.data);
+  },
+});
+
 export default defineSimModule({
   id: 'terraform-basic',
   wave: 'W01',
   systems: [workJobsSystem],
-  handlers: [enqueueTask, cancelTask],
+  handlers: [enqueueTask, cancelTask, repair],
 });

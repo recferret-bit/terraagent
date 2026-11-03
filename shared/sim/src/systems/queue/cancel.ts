@@ -27,6 +27,10 @@ export function refundEntrySpent(
   data?: CompiledDataLike,
 ): boolean {
   let refunded = false;
+  if (entry.task.kind === 'repair') {
+    const wRes = cancelWorkJobs(state, entry.colonyIndex, { jobId: entry.taskId }, tick);
+    if (wRes.cancelled > 0) return Object.keys(wRes.refunded).length > 0;
+  }
   if (entry.subEntityIds && entry.subEntityIds.length > 0) {
     for (const subId of entry.subEntityIds) {
       const eRow = rowOf(state.entities, subId);
@@ -95,7 +99,7 @@ export function cancelAllColonyTasks(
   for (let r = 0; r < state.entities.count; r++) {
     if (state.entities.cols.owner[r] !== colonyIndex || state.entities.cols.hp[r] <= 0) continue;
     const k = state.entities.cols.kind[r];
-    if (k === ENTITY_KIND.harvester || k === ENTITY_KIND.hq) {
+    if (k === ENTITY_KIND.harvester || k === ENTITY_KIND.hq || k === ENTITY_KIND.builder) {
       cancelHarvesterTask(state, state.entities.cols.id[r], tick, data);
     }
   }
@@ -198,7 +202,12 @@ export function tryCancelSpecialTaskId(
       return bRes.ok ? { ok: true, refunded: bRes.refunded } : { ok: false, code: bRes.code };
     }
     const uRow = rowOf(state.entities, numId);
-    if (uRow >= 0 && (state.entities.cols.kind[uRow] === ENTITY_KIND.harvester || state.entities.cols.kind[uRow] === ENTITY_KIND.hq)) {
+    if (
+      uRow >= 0 &&
+      (state.entities.cols.kind[uRow] === ENTITY_KIND.harvester ||
+        state.entities.cols.kind[uRow] === ENTITY_KIND.hq ||
+        state.entities.cols.kind[uRow] === ENTITY_KIND.builder)
+    ) {
       if (colonyIndex !== undefined && colonyIndex !== null && state.entities.cols.owner[uRow] !== colonyIndex) {
         return { ok: false, code: 'not_own_colony' };
       }

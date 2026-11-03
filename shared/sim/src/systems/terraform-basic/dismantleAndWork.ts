@@ -3,7 +3,7 @@ import type { WorkIntent } from '@terra/contracts/commands/enqueue-task';
 import { compileData } from '../../data';
 import { DISMANTLE_REFUND_RATE, REPAIR_COST_RATE, TERRAFORM_TIME_TABLE } from '../../data/ops-basic';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { removeRow } from '../../ecs/store';
+import { removeRow, rowOf } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { bumpPathEpoch } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -11,6 +11,7 @@ import { setBlob, type PlanetState, type SimState } from '../../kernel/state';
 import { isUnitKind } from '../../units/mobility';
 import { buildingKindName, demolishBuilding, getFootprintTileIndices, resolveBuildingRow } from '../economy/construction';
 import { refundCost } from '../economy/ledger';
+import { resolveUnitRowForHub } from '../factories-hub';
 import { cancelHarvesterTask, resolveHarvesterRow, withoutUnitView } from '../harvest';
 import {
   ensureWorkColony as ensureColony,
@@ -28,12 +29,23 @@ export {
 export { classifyGroundWorkTile } from './workTile';
 export { workJobsSystem } from './workSystem';
 
+let cachedDefaultCostData: CompiledDataLike | null = null;
+function defaultBuildCostData(): CompiledDataLike {
+  cachedDefaultCostData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03']));
+  return cachedDefaultCostData;
+}
+
 /** The base build cost of an entity kind (repair is priced and dismantle refunded from it); the client preview reads it too. */
 export function getEntityBaseBuildCost(kind: number, data?: CompiledDataLike): Partial<Record<ResourceKey, number>> {
-  const src = data ?? compileData(new Set(['W00', 'W01', 'W02']));
+  const src = data ?? defaultBuildCostData();
   if (kind === ENTITY_KIND.harvester) return ((resolveHarvesterRow(src).cost ?? { 'metals.t1': 70, 'minerals.t1': 30 }) as Partial<Record<ResourceKey, number>>);
+  if (kind === ENTITY_KIND.builder) {
+    const builderRow = resolveUnitRowForHub('builder', src) ?? resolveUnitRowForHub('builder', defaultBuildCostData());
+    return ((builderRow?.cost ?? { 'metals.t1': 45, 'minerals.t1': 25, 'bio.biomass': 10 }) as Partial<Record<ResourceKey, number>>);
+  }
   if (kind === ENTITY_KIND.hq) return { 'metals.t1': 100, 'minerals.t1': 50 };
-  const resolved = resolveBuildingRow(buildingKindName(kind), src);
+  const bName = buildingKindName(kind);
+  const resolved = resolveBuildingRow(bName, src) ?? resolveBuildingRow(bName, defaultBuildCostData());
   return ((resolved?.row.cost ?? { 'metals.t1': 50, 'minerals.t1': 25 }) as Partial<Record<ResourceKey, number>>);
 }
 
@@ -154,8 +166,61 @@ export function executeDismantleAtTile(
   return { ok: true, entityId, refunded };
 }
 
+/** Creates a repair `WorkJobRecord` for a damaged entity row (`40 %` base cost scaled by missing HP fraction). */
+export function createRepairWorkJobRecord(
+  state: SimState,
+  colonyId: number,
+  damagedRow: number,
+  workerId: number,
+  jobId: string,
+  data?: CompiledDataLike,
+  chainRootId?: string,
+): WorkJobRecord {
+  const cols = state.entities.cols;
+  const targetId = cols.id[damagedRow];
+  const hpMax = cols.hpMax[damagedRow], startHp = cols.hp[damagedRow];
+  const missingFraction = Math.max(0, (hpMax - startHp) / Math.max(1, hpMax));
+  const baseCost = getEntityBaseBuildCost(cols.kind[damagedRow], data);
+  const totalCost: Partial<Record<ResourceKey, number>> = {};
+  for (const [k, v] of Object.entries(baseCost) as [ResourceKey, number][]) {
+    if (v && v > 0) totalCost[k] = Number((v * REPAIR_COST_RATE * missingFraction).toFixed(6));
+  }
+  const durationTicks = Math.max(1, Math.round(TERRAFORM_TIME_TABLE.repair.durationTicks * missingFraction));
+  const tileIdx = Math.max(0, hexIndex(state.grid.radius).indexOf(cols.q[damagedRow], cols.r[damagedRow]));
+  return {
+    jobId, colonyId, mode: 'repair', workerEntityId: workerId, targetEntityId: targetId,
+    q: cols.q[damagedRow], r: cols.r[damagedRow], tileIdx, durationTicks, elapsedTicks: 0, progress: 0,
+    startHp, hpMax, energyCost: 0, yields: {}, totalCost, spentCost: {}, status: 'in_progress',
+    ...(chainRootId !== undefined ? { chainRootId } : {}),
+  };
+}
+
+/** Enqueues or reuses an open repair `WorkJobRecord` targeting `entityId`. */
+export function enqueueRepairForEntity(
+  state: SimState,
+  colonyId: number,
+  entityId: number,
+  opts?: { workerId?: number; taskId?: string; tick?: number; data?: CompiledDataLike },
+): { ok: true; job: WorkJobRecord } | { ok: false; reason: RejectCode } {
+  const tick = opts?.tick ?? state.meta.tick;
+  const cols = state.entities.cols;
+  const row = rowOf(state.entities, entityId);
+  if (row < 0) return { ok: false, reason: 'unknown_entity' };
+  if (cols.owner[row] !== colonyId) return { ok: false, reason: 'not_own_colony' };
+  if (cols.hp[row] <= 0 || cols.hp[row] >= cols.hpMax[row] || cols.state[row] === ENTITY_STATE.constructing) {
+    return { ok: false, reason: 'site_blocked' };
+  }
+  const existing = Object.values(getWorkJobsMap(state)).find((j) => j.mode === 'repair' && j.targetEntityId === entityId);
+  if (existing) return { ok: true, job: existing };
+  const workerId = selectWorkerForWorkOp(state, colonyId, cols.q[row], cols.r[row], opts?.workerId, entityId, 'repair');
+  if (workerId === null) return { ok: false, reason: 'site_blocked' };
+  const jobId = opts?.taskId ?? `work-repair-${colonyId}-${tick}-${entityId}`;
+  const job = createRepairWorkJobRecord(state, colonyId, row, workerId, jobId, opts?.data);
+  return storeWorkJob(state, job, tick, opts?.data);
+}
+
 /**
- * Enqueues a simplified `work` job at `(q, r)` (`op: 'work'`, available to both HQ Drone and Harvester):
+ * Enqueues a simplified `work` job at `(q, r)` (`op: 'work'`, available to HQ Drone, Builder Drone, and Harvester):
  * - Case A: Target tile `(q, r)` has a damaged friendly unit or building (`hp < hpMax`) -> starts a repair job at 40% base cost scaled by missing HP.
  * - Case B: Target tile `(q, r)` is un-terraformed ground (`forest`, `rock`, `slope`, `hole`, or wild `flat`) -> starts a terraforming job using `TERRAFORM_TIME_TABLE` and `RESOURCE_INCOME_TABLE`.
  * `intent: 'repair'` allows only case A (no damaged target → `site_blocked`), `'terraform'` only case B; absent = A else B.
@@ -179,27 +244,15 @@ export function enqueueWorkAtTile(
 
   const cols = state.entities.cols;
   const ownRows = opts?.intent === 'terraform' ? [] : findOwnEntitiesAtTile(state, colonyId, q, r, opts?.data, opts?.entityId);
-  const damagedRow = ownRows.find((row) => cols.hp[row] > 0 && cols.hp[row] < cols.hpMax[row]);
+  const damagedRow = ownRows.find((row) => cols.hp[row] > 0 && cols.hp[row] < cols.hpMax[row] && cols.state[row] !== ENTITY_STATE.constructing);
   if (damagedRow === undefined && opts?.intent === 'repair') return { ok: false, reason: 'site_blocked' };
 
   if (damagedRow !== undefined) {
     const targetId = cols.id[damagedRow];
-    const workerId = selectWorkerForWorkOp(state, colonyId, cols.q[damagedRow], cols.r[damagedRow], opts?.workerId, targetId);
+    const workerId = selectWorkerForWorkOp(state, colonyId, cols.q[damagedRow], cols.r[damagedRow], opts?.workerId, targetId, 'repair');
     if (workerId === null) return { ok: false, reason: 'site_blocked' };
-    const hpMax = cols.hpMax[damagedRow], startHp = cols.hp[damagedRow];
-    const missingFraction = Math.max(0, (hpMax - startHp) / Math.max(1, hpMax));
-    const baseCost = getEntityBaseBuildCost(cols.kind[damagedRow], opts?.data);
-    const totalCost: Partial<Record<ResourceKey, number>> = {};
-    for (const [k, v] of Object.entries(baseCost) as [ResourceKey, number][]) {
-      if (v && v > 0) totalCost[k] = Number((v * REPAIR_COST_RATE * missingFraction).toFixed(6));
-    }
-    const durationTicks = Math.max(1, Math.round(TERRAFORM_TIME_TABLE.repair.durationTicks * missingFraction));
     const jobId = opts?.taskId ?? `work-repair-${colonyId}-${tick}-${targetId}`;
-    const job: WorkJobRecord = {
-      jobId, colonyId, mode: 'repair', workerEntityId: workerId, targetEntityId: targetId,
-      q: cols.q[damagedRow], r: cols.r[damagedRow], tileIdx, durationTicks, elapsedTicks: 0, progress: 0,
-      startHp, hpMax, energyCost: 0, yields: {}, totalCost, spentCost: {}, status: 'in_progress', ...rootOf,
-    };
+    const job = createRepairWorkJobRecord(state, colonyId, damagedRow, workerId, jobId, opts?.data, opts?.chainRootId);
     return storeWorkJob(state, job, tick, opts?.data);
   }
 

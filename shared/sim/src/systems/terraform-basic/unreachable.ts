@@ -4,6 +4,7 @@ import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { UnitBook } from '../../units/book';
 import { cancelMove, getMotion, sameGoal, type MoveGoal } from '../../units/movement/orchestrator';
+import { syncBuilderView } from '../factories-hub';
 import { syncHarvesterView } from '../harvest';
 import { syncHqView } from '../hq/view';
 
@@ -27,5 +28,6 @@ export function abandonUnreachableJob(state: PlanetState, workerId: number, wRow
   const kind = state.entities.cols.kind[wRow];
   if (kind === ENTITY_KIND.hq) syncHqView(state, wRow, ctx.tick, ctx.data);
   else if (kind === ENTITY_KIND.harvester) syncHarvesterView(state, wRow, ctx.tick, ctx.data);
+  else if (kind === ENTITY_KIND.builder) syncBuilderView(state, wRow, ctx.tick, ctx.data);
   return true;
 }
