@@ -92,6 +92,7 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
   }
   entry.elapsedTicks = nextElapsed;
   entry.progress = Math.min(1, Number(nextProgress.toFixed(4)));
+  if (entry.task.kind === 'hqGoal') return;
   if (entry.elapsedTicks < entry.buildTicks - 1e-6) return;
   if (entry.task.kind === 'buildUnit') {
     finishUnit(state, entry, colIdx, ctx);

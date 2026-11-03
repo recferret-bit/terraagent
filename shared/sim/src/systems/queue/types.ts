@@ -1,20 +1,25 @@
 import type { ResourceFamily, ResourceKey } from '@terra/contracts';
 
-export type QueueLane = 'construction' | 'units' | 'terraform';
-export type QueuePrecedence = 'system' | 'player' | 'auto';
+export type QueueLane = 'construction' | 'units' | 'terraform' | 'hqGoals';
+export type QueuePrecedence = 'system' | 'player' | 'hq' | 'ai' | 'auto';
 export type QueueEntryState = 'queued' | 'waiting' | 'in_progress' | 'done' | 'cancelled';
 export type QueueWaitReason = 'resources' | 'storage' | 'worker' | 'power' | 'site' | 'supply';
 
 export const PRECEDENCE_RANK: Readonly<Record<QueuePrecedence, number>> = {
-  system: 3,
-  player: 2,
+  system: 5,
+  player: 4,
+  hq: 3,
+  ai: 2,
   auto: 1,
 };
 
 export type QueueTaskPayload =
   | { kind: 'build'; building: string; q: number; r: number; tier?: number; rotation?: number }
   | { kind: 'buildUnit'; unit: string; count?: number; repeat?: boolean; producerId?: number }
-  | { kind: 'terraform'; op: string; q: number; r: number };
+  | { kind: 'terraform'; op: string; q: number; r: number }
+  | { kind: 'powerLine'; tiles: Array<{ q: number; r: number }>; tier?: number; subEntityIds?: number[]; op?: string }
+  | { kind: 'repair'; entityId: number; q?: number; r?: number; op?: string }
+  | { kind: 'hqGoal'; goal: string; target?: string; q?: number; r?: number; op?: string };
 
 export interface QueueEntry {
   taskId: string;
@@ -40,5 +45,11 @@ export interface QueueEntry {
   etaSeconds?: number | null;
   /** `buildUnit` only: units of the batch (`task.count`) still to build, the current one included (absent = `count`). */
   remainingCount?: number;
+  /** Tick since which this entry has been continuously in `waiting` with `waitReason === 'resources'` (W03-13 earmarks). */
+  resourceWaitSinceTick?: number;
+  /** Earmarked missing resources reserved by this entry after 60 s of resource starvation (W03-13). */
+  earmarked?: Partial<Record<ResourceKey, number>>;
+  /** Sub-site entity IDs for multi-pylon `powerLine` entries (W03-17). */
+  subEntityIds?: number[];
   createdAt: number;
 }

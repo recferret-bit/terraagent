@@ -3,9 +3,80 @@ import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import { DEPOSIT } from '../../grid/layers';
 import { indexOf } from '../../grid/hex';
+import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
+import { resolveBuildingRow } from '../economy/construction';
+import { resolveHubProducerRows } from '../factories-hub';
 import { normalizeRichness } from '../production';
-import type { QueueEntry, QueuePrecedence, QueueTaskPayload } from './types';
+import { PRECEDENCE_RANK, type QueueEntry, type QueueLane, type QueuePrecedence, type QueueTaskPayload } from './types';
+
+export const CONSTRUCTION_LANE_LIMIT = 20;
+export const TERRAFORM_LANE_LIMIT = 20;
+export const UNITS_LANE_LIMIT = 10;
+export const PRODUCER_BUFFER_LIMIT = 5;
+export const HQ_GOALS_LANE_LIMIT = 20;
+
+export function laneForTask(task: QueueTaskPayload): QueueLane {
+  if (task.kind === 'buildUnit') return 'units';
+  if (task.kind === 'terraform') return 'terraform';
+  if (task.kind === 'hqGoal') return 'hqGoals';
+  return 'construction';
+}
+
+export function laneLimitFor(lane: QueueLane): number {
+  if (lane === 'units') return UNITS_LANE_LIMIT;
+  if (lane === 'terraform') return TERRAFORM_LANE_LIMIT;
+  if (lane === 'hqGoals') return HQ_GOALS_LANE_LIMIT;
+  return CONSTRUCTION_LANE_LIMIT;
+}
+
+export function resolveTaskCostAndTicks(
+  task: QueueTaskPayload,
+  data?: CompiledDataLike,
+): { cost: Partial<Record<ResourceKey, number>>; buildTicks: number; workRate: number } {
+  if (task.kind === 'build') {
+    const res = resolveBuildingRow(task.building, data);
+    if (!res) return { cost: {}, buildTicks: 50, workRate: 1.5 };
+    return {
+      cost: { ...((res.row.cost ?? {}) as Partial<Record<ResourceKey, number>>) },
+      buildTicks: Math.max(1, Number(res.row.buildS ?? 50)),
+      workRate: 1.5,
+    };
+  }
+  if (task.kind === 'buildUnit') {
+    if (task.unit === 'builder') {
+      const tables = data?.tables as
+        | Record<string, Record<string, { cost?: Partial<Record<ResourceKey, number>>; buildS?: number; workRate?: number }> | undefined>
+        | undefined;
+      const builderRow = tables?.grid?.builder ?? tables?.unitsWorkersBasic?.builder;
+      return {
+        cost: { ...(builderRow?.cost ?? { 'metals.t1': 45, 'minerals.t1': 25, 'bio.biomass': 10 }) },
+        buildTicks: Math.max(1, Number(builderRow?.buildS ?? 60)),
+        workRate: Number(builderRow?.workRate ?? 1.0),
+      };
+    }
+    const { harvester } = resolveHubProducerRows(data);
+    return {
+      cost: { ...((harvester.cost ?? {}) as Partial<Record<ResourceKey, number>>) },
+      buildTicks: Math.max(1, Number(harvester.buildS ?? 50)),
+      workRate: 1.0,
+    };
+  }
+  if (task.kind === 'powerLine') {
+    const count = Math.max(1, task.tiles?.length ?? 1);
+    const res = resolveBuildingRow('pylon', data);
+    const unitCost = (res?.row.cost ?? { 'metals.t1': 15, 'minerals.t1': 5 }) as Partial<Record<ResourceKey, number>>;
+    const cost: Partial<Record<ResourceKey, number>> = {};
+    for (const [k, v] of Object.entries(unitCost) as [ResourceKey, number][]) {
+      if (v && v > 0) cost[k] = v * count;
+    }
+    return { cost, buildTicks: Math.max(1, Number(res?.row.buildS ?? 20)) * count, workRate: 1.5 };
+  }
+  if (task.kind === 'hqGoal') {
+    return { cost: {}, buildTicks: 1, workRate: 1.0 };
+  }
+  return { cost: {}, buildTicks: 25, workRate: 1.5 };
+}
 
 export const RESOURCE_DISPLAY_LABELS: Readonly<Record<ResourceKey, string>> = {
   'metals.t1': 'Metals',
@@ -157,58 +228,141 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
   taskId?: string;
   costOverride?: Partial<Record<ResourceKey, number>>;
 } {
+  const base = {
+    taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+    precedence: typeof raw.precedence === 'string' ? (raw.precedence as QueuePrecedence) : undefined,
+    costOverride: raw.costOverride as Partial<Record<ResourceKey, number>> | undefined,
+  };
   if (raw.task && typeof (raw.task as { kind?: unknown }).kind === 'string') {
-    return raw as {
-      task: QueueTaskPayload;
-      precedence?: QueuePrecedence;
-      taskId?: string;
-      costOverride?: Partial<Record<ResourceKey, number>>;
-    };
+    return { ...base, task: raw.task as QueueTaskPayload };
   }
   if (raw.build && typeof raw.build === 'object') {
     const b = raw.build as { building: string; q: number; r: number; rotation?: number; rot?: number; tier?: number };
     return {
-      taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+      ...base,
       task: { kind: 'build', building: b.building, q: b.q, r: b.r, tier: b.tier, rotation: b.rotation ?? b.rot },
     };
   }
   if (raw.buildUnit && typeof raw.buildUnit === 'object') {
     const u = raw.buildUnit as { unit: string; count?: number; repeat?: boolean; producerId?: number };
     return {
-      taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+      ...base,
       task: { kind: 'buildUnit', unit: u.unit, count: u.count, repeat: u.repeat, producerId: u.producerId },
     };
   }
   if (raw.terraform && typeof raw.terraform === 'object') {
-    const tf = raw.terraform as { op: string; tiles?: Array<{ q: number; r: number }> };
-    const first = tf.tiles?.[0];
+    const tf = raw.terraform as { op: string; q?: number; r?: number; tiles?: Array<{ q: number; r: number }> };
+    const first = tf.tiles?.[0] ?? (typeof tf.q === 'number' && typeof tf.r === 'number' ? { q: tf.q, r: tf.r } : undefined);
     if (first) {
       return {
-        taskId: typeof raw.taskId === 'string' ? raw.taskId : undefined,
+        ...base,
         task: { kind: 'terraform', op: tf.op, q: first.q, r: first.r },
       };
     }
   }
+  if (raw.hqGoal && typeof raw.hqGoal === 'object') {
+    const g = raw.hqGoal as { goal: string; target?: string; q?: number; r?: number };
+    return {
+      ...base,
+      task: { kind: 'hqGoal', goal: g.goal, target: g.target, q: g.q, r: g.r },
+    };
+  }
+  if (raw.powerLine && typeof raw.powerLine === 'object') {
+    const p = raw.powerLine as { tiles: Array<{ q: number; r: number }>; tier?: number };
+    return {
+      ...base,
+      task: { kind: 'powerLine', tiles: p.tiles, tier: p.tier },
+    };
+  }
+  if (raw.repair && typeof raw.repair === 'object') {
+    const r = raw.repair as { entityId: number; q?: number; r?: number };
+    return {
+      ...base,
+      task: { kind: 'repair', entityId: r.entityId, q: r.q, r: r.r },
+    };
+  }
   return {};
 }
 
-/** The contract's precedence words (`enqueueTask.precedence`) in the queue's terms (`system > player > auto`). */
-const CONTRACT_PRECEDENCE: Readonly<Record<string, QueuePrecedence>> = { explicit: 'player', queued: 'player', standing: 'auto', autoSitePrep: 'system' };
+/** The contract's precedence words (`enqueueTask.precedence`) in the queue's terms (`system > player > hq > ai > auto`). */
+const CONTRACT_PRECEDENCE: Readonly<Record<string, QueuePrecedence>> = {
+  explicit: 'player',
+  queued: 'player',
+  standing: 'auto',
+  autoSitePrep: 'system',
+  system: 'system',
+  player: 'player',
+  hq: 'hq',
+  ai: 'ai',
+  auto: 'auto',
+};
 
 /** Command sources that may set an entry's cost or raise its precedence (dev tools, the sim's own systems, admins). */
 const TRUSTED_SOURCES: ReadonlySet<string> = new Set(['dev', 'system', 'admin']);
 
 /**
  * What an `enqueueTask` command may decide about its entry: a player (or AI / chain) command never sets `costOverride`
- * (a free building) and never ranks above `player` (it may lower its own entry to `auto`); trusted sources may do both.
+ * (a free building) and never ranks above `player` (it may lower its own entry to `hq` / `ai` / `auto`); trusted sources may do both.
  */
 export function enqueueAuthority(
   source: string,
   norm: { precedence?: string; costOverride?: Partial<Record<ResourceKey, number>> },
 ): { precedence?: QueuePrecedence; costOverride?: Partial<Record<ResourceKey, number>> } {
   const word = norm.precedence;
-  const asked = word === undefined ? undefined : (CONTRACT_PRECEDENCE[word] ?? (word === 'system' || word === 'player' || word === 'auto' ? word : undefined));
+  const asked = word === undefined ? undefined : CONTRACT_PRECEDENCE[word];
   if (TRUSTED_SOURCES.has(source)) return { precedence: asked, costOverride: norm.costOverride };
-  return { precedence: asked === 'auto' ? 'auto' : asked === undefined ? undefined : 'player' };
+  if (source === 'ai') {
+    return { precedence: asked && PRECEDENCE_RANK[asked] <= PRECEDENCE_RANK.ai ? asked : 'ai' };
+  }
+  if (asked === undefined) return { precedence: undefined };
+  return { precedence: PRECEDENCE_RANK[asked] <= PRECEDENCE_RANK.player ? asked : 'player' };
+}
+
+export function isW03QueueActive(state: PlanetState, data?: CompiledDataLike): boolean {
+  if (data?.tables) {
+    return Boolean(data.tables.grid && Object.keys(data.tables.grid).length > 0);
+  }
+  return state.meta.seed !== 'w02';
+}
+
+export function findOldestAutoIndex(entries: readonly QueueEntry[], colonyIndex: number, lane: QueueLane): number {
+  let bestIdx = -1;
+  let bestCreatedAt = Number.POSITIVE_INFINITY;
+  for (let i = 0; i < entries.length; i++) {
+    const e = entries[i];
+    if (
+      e.colonyIndex === colonyIndex &&
+      e.lane === lane &&
+      e.state !== 'done' &&
+      e.state !== 'cancelled' &&
+      e.precedence === 'auto' &&
+      e.createdAt < bestCreatedAt
+    ) {
+      bestCreatedAt = e.createdAt;
+      bestIdx = i;
+    }
+  }
+  return bestIdx;
+}
+
+export function nextAutoTaskId(entries: readonly QueueEntry[], colonyIndex: number, tick: number): string {
+  let seq = entries.length + 1;
+  let candidate = `q-${colonyIndex}-${tick}-${seq}`;
+  while (entries.some((e) => e.taskId === candidate)) {
+    seq++;
+    candidate = `q-${colonyIndex}-${tick}-${seq}`;
+  }
+  return candidate;
+}
+
+export function maxConcurrentInLane(state: PlanetState, colonyIndex: number, lane: QueueLane): number {
+  if (lane !== 'construction') return 1;
+  let builders = 0;
+  const { count, cols } = state.entities;
+  for (let r = 0; r < count; r++) {
+    if (cols.owner[r] !== colonyIndex || cols.hp[r] <= 0) continue;
+    if (cols.kind[r] === ENTITY_KIND.hq || cols.kind[r] === ENTITY_KIND.builder) builders++;
+  }
+  return Math.max(1, builders);
 }
 
