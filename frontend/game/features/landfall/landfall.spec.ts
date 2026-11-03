@@ -1,10 +1,26 @@
 // @vitest-environment jsdom
+import * as THREE from 'three';
 import { describe, expect, it, vi } from 'vitest';
-import { ENTITY_STATE, rowOf, setField, setHqCellEnergy, spawnColonyLanding, spawnHqUnit } from '@terra/sim';
+import {
+  DEPOSIT,
+  ENTITY_KIND,
+  ENTITY_STATE,
+  hexIndex,
+  insertRow,
+  rowOf,
+  setField,
+  setHqCellEnergy,
+  setTileDeposit,
+  spawnColonyLanding,
+  spawnHarvesterUnit,
+  spawnHqUnit,
+} from '@terra/sim';
+import { PROGRESS_BAR_COLOR, UnitHealthBars } from '../../app/online/unitHealthBars';
 import { HudRoot } from '../../core/hud/HudRoot';
 import { loadFeatures } from '../../core/registry';
 import { LocalHost } from '../../store/local/LocalHost';
-import landfallFeature, { extractHqFromView, hqJobFromStateCode, mountLandfall } from './index';
+import { unitHasTerraformJob } from './selectionHelpers';
+import landfallFeature, { extractHqFromView, extractSelectableEntities, hqJobFromStateCode, mountLandfall } from './index';
 
 /** A clean `document.body` for each test (jsdom). */
 function freshBody(): HTMLElement {
@@ -149,5 +165,258 @@ describe('HQ view reading: no invented ids, live maxima, state mapping (FF-23, F
     expect(hqJobFromStateCode(ENTITY_STATE.waiting)).toBe('waiting');
     expect(hqJobFromStateCode(ENTITY_STATE.descending)).toBe('idle');
     expect(hqJobFromStateCode(ENTITY_STATE.idle)).toBe('idle');
+  });
+});
+
+describe('W02: Harvester selection, moveUnit, empty-click deselect, and 3D unit health bars', () => {
+  it('selects Harvester on left-click, orders moveUnit on right-click, and hides panel when clicking empty ground', () => {
+    const body = freshBody();
+    const host = new LocalHost({ flags: ['W00', 'W01', 'W02'], radius: 16 });
+    const hqId = spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
+    const harvId = spawnHarvesterUnit(host.state, { owner: 0, q: 3, r: 0 });
+    host.sync(true);
+
+    const hudRoot = document.createElement('div');
+    const canvas = document.createElement('canvas');
+    body.appendChild(hudRoot);
+    body.appendChild(canvas);
+
+    const tileCoords = new Map<string, { q: number; r: number }>([
+      ['100,100', { q: 0, r: 0 }],
+      ['200,100', { q: 3, r: 0 }],
+      ['300,100', { q: 6, r: 0 }],
+      ['400,400', { q: 10, r: 10 }],
+    ]);
+    const pickTile = (cx: number, cy: number) => tileCoords.get(`${cx},${cy}`) ?? null;
+    const sendSpy = vi.spyOn(host.store, 'sendCommand');
+
+    const mounted = mountLandfall({ hudRoot, store: host.store, canvas, pickTile });
+    const panel = hudRoot.querySelector<HTMLElement>('[data-testid="hq-panel"]')!;
+    const titleEl = hudRoot.querySelector('[data-testid="hq-title"]')!;
+    const hpEl = hudRoot.querySelector('[data-testid="hq-hp"]')!;
+    const slotEl = hudRoot.querySelector('[data-testid="selection-slot"]')!;
+    const countEl = hudRoot.querySelector('[data-testid="selection-count"]')!;
+
+    expect(mounted.getSelectedEntityId()).toBe(hqId);
+    expect(panel.hidden).toBe(false);
+    expect(slotEl.textContent).toBe('HQ');
+    expect(countEl.textContent).toBe('1');
+
+    // Left-click Harvester at (3, 0) -> selects Harvester
+    mouse(canvas, 'pointerdown', 0, 200, 100);
+    mouse(canvas, 'pointerup', 0, 200, 100);
+    expect(mounted.getSelectedEntityId()).toBe(harvId);
+    expect(panel.hidden).toBe(false);
+    expect(titleEl.textContent).toBe('HARVESTER DRONE');
+    expect(hpEl.textContent).toBe('160 / 160');
+    expect(slotEl.textContent).toBe('HRV');
+
+    // Right-click (6, 0) -> orders moveUnit for Harvester
+    const ctx = new MouseEvent('contextmenu', { button: 2, clientX: 300, clientY: 100, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(ctx);
+    expect(sendSpy).toHaveBeenCalledWith({ type: 'moveUnit', entityId: harvId, q: 6, r: 0 });
+
+    host.step(1);
+    const harvRow = rowOf(host.state.entities, harvId);
+    expect(host.state.entities.cols.x[harvRow]).toBeGreaterThan(3);
+
+    // Left-click empty ground at (10, 10) -> resets selection & hides panel
+    mouse(canvas, 'pointerdown', 0, 400, 400);
+    mouse(canvas, 'pointerup', 0, 400, 400);
+    expect(mounted.getSelectedEntityId()).toBeNull();
+    expect(panel.hidden).toBe(true);
+    expect(panel.dataset.selected).toBe('false');
+
+    mounted.dispose();
+  });
+});
+
+describe('W02: 3D unit health and blue progress bars', () => {
+  it('creates one 3D unit health bar per unit for HQ and Harvester', () => {
+    const scene = new THREE.Scene();
+    const bars = new UnitHealthBars(scene);
+    const hqMesh = new THREE.Object3D();
+    hqMesh.position.set(2, 0.5, 4);
+    const harvMesh = new THREE.Object3D();
+    harvMesh.position.set(6, 0.5, 4);
+
+    bars.sync([
+      { id: 1, kind: ENTITY_KIND.hq, hp: 450, hpMax: 900, mesh: hqMesh },
+      { id: 2, kind: ENTITY_KIND.harvester, hp: 160, hpMax: 160, mesh: harvMesh },
+    ]);
+
+    expect(bars.group.children.length).toBe(2);
+    const hqBarRoot = bars.group.getObjectByName('unit-hp-1')!;
+    expect(hqBarRoot.position.x).toBe(2);
+    let aboveScaleX = 0;
+    let fillCount = 0;
+    hqBarRoot.traverse((c) => {
+      if (c.userData.role === 'hp-above-fill') {
+        aboveScaleX = c.scale.x;
+        fillCount++;
+      }
+      if (c.userData.role === 'hp-under-fill') fillCount++;
+    });
+    expect(fillCount).toBe(1);
+    expect(aboveScaleX).toBeCloseTo(0.5, 3);
+
+    // Blue progress bar (0x38bdf8) appears on any unit or building with 0 < progress < 1
+    const hubMesh = new THREE.Object3D();
+    hubMesh.position.set(8, 0.5, 4);
+    bars.sync([
+      { id: 1, kind: ENTITY_KIND.hq, hp: 900, hpMax: 900, progress: 0.6, mesh: hqMesh },
+      { id: 2, kind: ENTITY_KIND.harvester, hp: 160, hpMax: 160, progress: 0.4, mesh: harvMesh },
+      { id: 3, kind: ENTITY_KIND.commandHub, hp: 1500, hpMax: 1500, progress: 0.5, mesh: hubMesh },
+    ]);
+    expect(bars.group.children.length).toBe(3);
+    const hubBarRoot = bars.group.getObjectByName('unit-hp-3')!;
+    let progScaleX = 0;
+    let progColor = 0;
+    hubBarRoot.traverse((c) => {
+      if (c.userData.role === 'progress-above-fill') {
+        progScaleX = c.scale.x;
+        progColor = ((c as THREE.Mesh).material as THREE.MeshBasicMaterial).color.getHex();
+      }
+    });
+    expect(progScaleX).toBeCloseTo(0.5, 3);
+    expect(progColor).toBe(PROGRESS_BAR_COLOR);
+
+    bars.dispose();
+  });
+});
+
+describe('W02: Reselection while harvester works, deposit reserves inspection, and cancelTask', () => {
+  it('reselects units/buildings while harvester works and dispatches cancelTask', () => {
+    const body = freshBody();
+    const host = new LocalHost({ flags: ['W00', 'W01', 'W02'], radius: 16 });
+    const hqId = spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
+    const harvId = spawnHarvesterUnit(host.state, { owner: 0, q: 2, r: 0 });
+    const bldgId = 88;
+    const bRow = insertRow(host.state.entities, bldgId, host.tick);
+    setField(host.state.entities, bRow, 'kind', ENTITY_KIND.solar, host.tick);
+    setField(host.state.entities, bRow, 'owner', 0, host.tick);
+    setField(host.state.entities, bRow, 'q', 1, host.tick);
+    setField(host.state.entities, bRow, 'r', 0, host.tick);
+    setField(host.state.entities, bRow, 'x', 1, host.tick);
+    setField(host.state.entities, bRow, 'y', 0, host.tick);
+    setField(host.state.entities, bRow, 'hp', 300, host.tick);
+    setField(host.state.entities, bRow, 'hpMax', 300, host.tick);
+    setField(host.state.entities, bRow, 'state', ENTITY_STATE.constructing, host.tick);
+    setField(host.state.entities, bRow, 'progress', 0.45, host.tick);
+    host.sync(true);
+
+    const hudRoot = document.createElement('div');
+    body.appendChild(hudRoot);
+    const sendSpy = vi.spyOn(host.store, 'sendCommand');
+    const mounted = mountLandfall({ hudRoot, store: host.store });
+
+    const harvRow = rowOf(host.state.entities, harvId);
+    setField(host.state.entities, harvRow, 'state', ENTITY_STATE.harvesting, host.tick);
+    setField(host.state.entities, harvRow, 'progress', 0.5, host.tick);
+    mounted.update(host.sync(false));
+
+    expect(mounted.clickTile(2, 0)).toBe(true);
+    expect(mounted.getSelectedEntityId()).toBe(harvId);
+    const progBar = hudRoot.querySelector<HTMLElement>('[data-testid="hq-progress-bar"]')!;
+    const cancelBtn = hudRoot.querySelector<HTMLButtonElement>('[data-testid="hq-panel-cancel"]')!;
+    expect(progBar.style.width).toBe('50%');
+    expect(cancelBtn.hidden).toBe(false);
+    cancelBtn.click();
+    expect(sendSpy).toHaveBeenCalledWith({ type: 'cancelTask', taskId: `harvester:${harvId}` });
+
+    expect(mounted.clickTile(1, 0)).toBe(true);
+    expect(mounted.getSelectedEntityId()).toBe(bldgId);
+    expect(cancelBtn.hidden).toBe(false);
+    cancelBtn.click();
+    expect(sendSpy).toHaveBeenCalledWith({ type: 'cancelTask', taskId: `building:${bldgId}` });
+
+    expect(mounted.clickTile(0, 0)).toBe(true);
+    expect(mounted.getSelectedEntityId()).toBe(hqId);
+    mounted.dispose();
+  });
+});
+
+describe('W02: Resource deposit inspection and right-click move', () => {
+  it('inspects resource deposits on left-click, updates reserves/stage live, and allows right-click move to deposit', () => {
+    const body = freshBody();
+    const host = new LocalHost({ flags: ['W00', 'W01', 'W02'], radius: 16 });
+    const hqId = spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
+    const hx = hexIndex(host.state.grid.radius);
+    const depIdx = hx.indexOf(4, 0);
+    setTileDeposit(host.state.grid, depIdx, DEPOSIT.metals);
+    host.sync(true);
+
+    const hudRoot = document.createElement('div');
+    body.appendChild(hudRoot);
+    const sendSpy = vi.spyOn(host.store, 'sendCommand');
+    const mounted = mountLandfall({ hudRoot, store: host.store });
+
+    expect(mounted.handleRightClick(4, 0)).toBe(true);
+    expect(sendSpy).toHaveBeenCalledWith({ type: 'moveUnit', entityId: hqId, q: 4, r: 0 });
+
+    expect(mounted.clickTile(4, 0)).toBe(true);
+    expect(mounted.getSelectedEntityId()).toBeNull();
+    expect(mounted.getSelectedDeposit()).toEqual({
+      q: 4, r: 0, deposit: DEPOSIT.metals, tier: 1, richness: 10000, remaining: 500, maxUnits: 500, stage: 'full',
+    });
+    expect(hudRoot.querySelector('[data-testid="selection-slot"]')?.textContent).toBe('FE');
+    expect(hudRoot.querySelector('[data-testid="hq-title"]')?.textContent).toBe('IRON DEPOSIT · T1');
+    expect(hudRoot.querySelector('[data-testid="hq-hp"]')?.textContent).toBe('DEPOSIT RESERVES: 500 / 500 LEFT');
+    expect(hudRoot.querySelector('[data-testid="hq-job"]')?.textContent).toBe('FULL');
+    expect(hudRoot.querySelector('[data-testid="hq-queue"]')?.textContent).toBe('(4, 0)');
+
+    host.state.grid.layers.richness![depIdx] = 5000;
+    if (host.state.grid.changedAt) host.state.grid.changedAt[depIdx] = host.state.meta.tick + 1;
+    host.step();
+    mounted.update(host.sync(true));
+    expect(mounted.getSelectedDeposit()?.remaining).toBe(250);
+    expect(mounted.getSelectedDeposit()?.stage).toBe('half');
+    expect(hudRoot.querySelector('[data-testid="hq-hp"]')?.textContent).toBe('DEPOSIT RESERVES: 250 / 500 LEFT');
+    expect(hudRoot.querySelector('[data-testid="hq-job"]')?.textContent).toBe('HALF');
+
+    const norm = extractSelectableEntities({
+      units: { byId: { '55': { id: 55, q: 3, r: -1, hp: 160, hpMax: 160 } } },
+      harvesters: { '55': { progress: 0.75, state: 'harvesting' } },
+    });
+    expect(norm.get(55)?.x).toBe(3);
+    expect(norm.get(55)?.y).toBe(-1);
+    expect(norm.get(55)?.progress).toBe(0.75);
+
+    mounted.dispose();
+  });
+});
+
+describe('CANCEL on a unit doing a terraform job', () => {
+  it('unitHasTerraformJob reads the unit command (current/queued) and open work jobs, nothing else', () => {
+    const view = (units: unknown, workJobs?: unknown) => ({ blobs: { units: { byId: units }, workJobs } });
+    const tf = { kind: 'terraform', source: 'auto', orderId: 'o1', q: 1, r: 0 };
+    expect(unitHasTerraformJob(view({ 7: { current: tf, queue: [] } }), 7)).toBe(true);
+    expect(unitHasTerraformJob(view({ 7: { current: null, queue: [tf] } }), 7)).toBe(true);
+    expect(unitHasTerraformJob(view({ 7: { current: { kind: 'move' }, queue: [] } }), 7)).toBe(false);
+    expect(unitHasTerraformJob(view({ 8: { current: tf, queue: [] } }), 7)).toBe(false);
+    expect(unitHasTerraformJob(view({}, { byId: { j: { workerEntityId: 7 } } }), 7)).toBe(true);
+    expect(unitHasTerraformJob(null, 7)).toBe(false);
+  });
+
+  it('an otherwise idle-looking HQ with a terraform command shows CANCEL JOB and cancels via its unit id', () => {
+    const body = freshBody();
+    const host = new LocalHost({ flags: ['W00', 'W01', 'W02'], radius: 16 });
+    const hqId = spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
+    host.sync(true);
+    const hudRoot = document.createElement('div');
+    body.appendChild(hudRoot);
+    const sendSpy = vi.spyOn(host.store, 'sendCommand');
+    const mounted = mountLandfall({ hudRoot, store: host.store });
+    expect(mounted.clickTile(0, 0)).toBe(true);
+    const cancelBtn = hudRoot.querySelector<HTMLButtonElement>('[data-testid="hq-panel-cancel"]')!;
+    expect(cancelBtn.hidden).toBe(true);
+    const view = host.sync(false) as { blobs: Record<string, unknown> };
+    view.blobs = { ...view.blobs, units: { byId: { [hqId]: { current: { kind: 'terraform', source: 'auto', orderId: 'tf1', q: 1, r: 0 }, queue: [] } } } };
+    mounted.update(view as never);
+    expect(cancelBtn.hidden).toBe(false);
+    expect(cancelBtn.textContent).toBe('CANCEL JOB');
+    cancelBtn.click();
+    expect(sendSpy).toHaveBeenCalledWith({ type: 'cancelTask', taskId: `harvester:${hqId}` });
+    mounted.dispose();
   });
 });

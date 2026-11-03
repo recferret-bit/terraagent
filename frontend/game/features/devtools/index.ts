@@ -16,9 +16,11 @@ export interface PowerSummaryView {
   rawDemand?: number;
   buildingDemand?: number;
   unitDemand?: number;
+  workDemand?: number;
   brownout?: boolean;
   shedGroupsActive?: number[];
   shedEntityIds?: number[];
+  shedWorkJobIds?: string[];
   daylight?: number;
   phase?: string;
   clockText?: string;
@@ -102,11 +104,12 @@ const power: DevCommandDef = {
     const lines = [
       `colony ${colonyIndex} power: ${p.net !== undefined && p.net >= 0 ? '+' : ''}${p.net ?? 0} E/s (${p.brownout ? 'BROWNOUT' : 'OK'})`,
       `  supply: ${p.supply ?? 0} E/s (core: ${p.founderCorePerS ?? 0}, solar: ${p.solarNetPerS ?? 0} [gross ${p.solarGrossPerS ?? 0}, drain ${p.solarInternalDrainPerS ?? 0}])`,
-      `  demand: ${p.demand ?? 0} E/s (raw: ${p.rawDemand ?? 0}, buildings: ${p.buildingDemand ?? 0}, units: ${p.unitDemand ?? 0})`,
+      `  demand: ${p.demand ?? 0} E/s (raw: ${p.rawDemand ?? 0}, buildings: ${p.buildingDemand ?? 0}, units: ${p.unitDemand ?? 0}, work: ${p.workDemand ?? 0})`,
       `  daylight: ${p.daylight ?? 0} (${p.phase ?? 'day'} ${p.clockText ?? ''})`,
     ];
     if (p.shedGroupsActive?.length) lines.push(`  shed groups: ${p.shedGroupsActive.join(', ')}`);
     if (p.shedEntityIds?.length) lines.push(`  shed entities: ${p.shedEntityIds.join(', ')}`);
+    if (p.shedWorkJobIds?.length) lines.push(`  paused work jobs: ${p.shedWorkJobIds.join(', ')}`);
     return lines.join('\n');
   },
 };
@@ -168,6 +171,9 @@ export default defineFeature({
     }),
     simCommand('teleport', 'teleport <id> <q> <r>  Set a test entity position', (a) => ({ id: numArg(a, 0, 'id'), q: numArg(a, 1, 'q'), r: numArg(a, 2, 'r') })),
     simCommand('teleport!', 'teleport! <id> <q> <r>  Like teleport, but the client does not predict it (watch the correction blend)', (a) => ({ id: numArg(a, 0, 'id'), q: numArg(a, 1, 'q'), r: numArg(a, 2, 'r') })),
+    simCommand('spawndeposit', 'spawndeposit <q> <r> <metals|minerals|oil> <1|2|3>  Place a full deposit of that tier on a tile (a terraform find)', (a) => ({
+      q: numArg(a, 0, 'q'), r: numArg(a, 1, 'r'), family: a[2] ?? 'metals', tier: numArg(a, 3, 'tier', 1),
+    })),
     fill,
     time,
     skipnight,

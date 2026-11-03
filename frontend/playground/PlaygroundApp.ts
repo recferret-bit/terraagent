@@ -1,13 +1,25 @@
 import * as THREE from 'three';
 import { createColonyViewport, type ColonyViewport } from '@terra/render/core/createColonyViewport';
+import { setDayNightExternalSync } from '@terra/render/core/dayNightConfig';
 import { onPixelArtChange, setPixelArt } from '@terra/render/core/pixelArtPass';
 import { onShadowChange, setShadow } from '@terra/render/core/shadowConfig';
+import {
+  addArchetypeLight,
+  exportArchetypeLightsCode,
+  getArchetypeLights,
+  onArchetypeLightsChange,
+  removeArchetypeLight,
+  resetArchetypeLights,
+  updateArchetypeLight,
+  type ArchetypeLightSource,
+} from '@terra/render/lighting/archetypeLights';
 import { initPixelDialog } from '@terra/render/ui/pixelDialog';
 import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
-import { ArchetypeCatalog, type ArchetypeCategory } from '@terra/render/kitbash';
+import { ArchetypeCatalog, setDepositPreviewStage, type ArchetypeCategory, type DepositVisualStage } from '@terra/render/kitbash';
 import { validateArchetype } from '@terra/render/kitbash/validate';
+import { ParticlePresetRegistry, validateParticlePreset, type InteractionTargetKind } from '@terra/render/particles';
 import { $ } from './dom';
-import { BUILD_STAGES, createState, syncURL, type BuildStage, type PgState, type ToggleKey, type View } from './state';
+import { BUILD_STAGES, WORK_TARGETS, createState, syncURL, type BuildStage, type PgState, type ToggleKey, type View } from './state';
 import { StageRig } from './stage/StageRig';
 import { SpawnSet } from './content/SpawnSet';
 import { SurfaceHost } from './content/SurfaceHost';
@@ -17,6 +29,7 @@ import { CameraRig, type ViewOpts } from './camera/CameraRig';
 import { bindPicking } from './camera/Picking';
 import { Sidebar } from './panels/Sidebar';
 import { Toolbar } from './panels/Toolbar';
+import { LightsPanel } from './panels/LightsPanel';
 import { toast } from './panels/Toast';
 import { updateInfo } from './panels/InfoPanel';
 import { validationHtml } from './panels/validationHtml';
@@ -35,12 +48,14 @@ export class PlaygroundApp {
   private cam: CameraRig;
   private sidebar: Sidebar;
   private toolbar: Toolbar;
+  private lightsPanel: LightsPanel;
   private hasFramedOnce = false;
   private clock = new THREE.Clock();
   private time = 0;
 
   constructor(private params: URLSearchParams) {
     this.state = createState(params);
+    setDayNightExternalSync(true);
     const vp = this.viewport = createColonyViewport($('#viewport'));
     this.surface = new SurfaceHost(vp.scene);
     this.hexSample = new HexSampleHost(vp.scene);
@@ -55,6 +70,15 @@ export class PlaygroundApp {
       onShot: () => { screenshot(vp, this.cam, this.state); toast('Screenshot saved'); },
       onSheet: () => this.contactSheet(),
       onBuild: () => this.setBuild(BUILD_STAGES[(BUILD_STAGES.indexOf(this.state.build) + 1) % BUILD_STAGES.length]!),
+      onWorkTarget: () => {
+        const next = WORK_TARGETS[(WORK_TARGETS.indexOf(this.state.workTarget) + 1) % WORK_TARGETS.length]!;
+        this.setWorkTarget(next, true);
+      },
+      onDepositStage: (s) => this.setDepositStage(s),
+    });
+    this.lightsPanel = new LightsPanel(this.state, {
+      onNightToggle: () => this.syncStageLighting(),
+      onClose: () => { if (this.state.lights) this.toggle('lights'); },
     });
     bindPicking(vp.renderer.domElement, vp.camera, {
       spawns: () => this.spawns.spawns, isRow: () => !!this.state.row, selectedId: () => this.state.id,
@@ -67,8 +91,14 @@ export class PlaygroundApp {
 
   start() {
     const { state, params } = this;
+    setDepositPreviewStage(state.depositStage);
     this.sidebar.build();
     this.toolbar.build();
+    this.lightsPanel.build();
+    onArchetypeLightsChange((changedId) => {
+      this.spawns.refreshLights(changedId);
+      this.lightsPanel.onExternalChange(changedId);
+    });
     const initial = params.get('inspect');
     state.id = initial && ArchetypeCatalog.has(initial) ? initial : (state.row ? ArchetypeCatalog.list(state.row)[0]?.id : ArchetypeCatalog.list()[0]?.id) ?? '';
     if (initial && !ArchetypeCatalog.has(initial)) toast(`Unknown archetype "${initial}"`);
@@ -76,6 +106,8 @@ export class PlaygroundApp {
     if (state.id) this.select(state.id, { rebuild: false, frame: true }); else this.setView(state.view, { instant: true });
     this.sidebar.render();
     this.toolbar.syncToggles();
+    this.lightsPanel.render();
+    this.syncStageLighting();
     initPixelDialog();
     onPixelArtChange((on) => { this.state.pixel = on; this.toolbar.syncToggles(); syncURL(this.state); });
     onShadowChange((on) => { this.state.shadows = on; this.toolbar.syncToggles(); syncURL(this.state); });
@@ -90,6 +122,18 @@ export class PlaygroundApp {
       state: this.state, select: (id: string) => this.select(id), validate: (id = this.state.id) => validateArchetype(id), setView: (v: View) => this.setView(v),
       setPlanet: (k: PlanetKind) => { this.state.kind = k; this.applyPlanet(); }, toggle: (k: ToggleKey) => this.toggle(k), contactSheet: () => this.contactSheet(),
       viewport: vp, camera: vp.camera, controls: this.cam.controls, spawns: () => this.spawns.spawns, setBuild: (s: BuildStage) => this.setBuild(s),
+      setWorkTarget: (t: InteractionTargetKind, enableWork = true) => this.setWorkTarget(t, enableWork),
+      validateParticles: (targetOrId: string = this.state.workTarget) => {
+        const preset = ParticlePresetRegistry.get(targetOrId) ?? ParticlePresetRegistry.getByTargetKind(targetOrId as InteractionTargetKind);
+        return validateParticlePreset(preset);
+      },
+      setDepositStage: (s: DepositVisualStage) => this.setDepositStage(s),
+      getLights: (id = this.state.id) => getArchetypeLights(id),
+      addLight: (patch?: Partial<ArchetypeLightSource>, id = this.state.id) => addArchetypeLight(id, patch),
+      removeLight: (idx: number | string, id = this.state.id) => removeArchetypeLight(id, idx),
+      updateLight: (idx: number, patch: Partial<ArchetypeLightSource>, id = this.state.id) => updateArchetypeLight(id, idx, patch),
+      resetLights: (id = this.state.id) => resetArchetypeLights(id),
+      exportLightsCode: (id = this.state.id) => exportArchetypeLightsCode(id),
     };
   }
 
@@ -99,18 +143,35 @@ export class PlaygroundApp {
   private applyPlanet() {
     const { state } = this;
     this.viewport.applySky(PLANET_SPECS[state.kind]);
+    this.syncStageLighting();
     this.buildStage();
     this.rebuildContent();
     this.syncSurface();
     this.toolbar.setPlanet(state.kind);
   }
 
+  private syncStageLighting() {
+    const vp = this.viewport;
+    if (this.lightsPanel?.isNightPreview) {
+      vp.sun.color.setHex(0x4cc9f0);
+      vp.sun.intensity = 0.22;
+      vp.hemi.color.setHex(0x162844);
+      vp.hemi.groundColor.setHex(0x050811);
+      vp.hemi.intensity = 0.14;
+      vp.scene.environmentIntensity = 0.16;
+      if (vp.scene.background instanceof THREE.Color) vp.scene.background.setHex(0x060a14);
+      if (vp.scene.fog instanceof THREE.FogExp2) vp.scene.fog.color.setHex(0x060a14);
+    } else {
+      vp.applySky(PLANET_SPECS[this.state.kind]);
+    }
+  }
+
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
-    const { kind, surface, hexTerrain, hatch } = this.state;
+    const { kind, surface, hexTerrain, hatch, depositStage } = this.state;
     const onSurface = this.surface.sync(kind, surface); // both always run: each disposes what it showed before
-    const onHex = this.hexSample.sync(kind, hexTerrain, hatch);
+    const onHex = this.hexSample.sync(kind, hexTerrain, hatch, depositStage);
     if (onSurface || onHex) this.rig.hidePedestal();
   }
 
@@ -120,9 +181,27 @@ export class PlaygroundApp {
     this.toolbar.syncToggles(); syncURL(this.state);
   }
 
+  private setWorkTarget(target: InteractionTargetKind, enableWork = false) {
+    if (!WORK_TARGETS.includes(target)) return;
+    this.state.workTarget = target;
+    if (enableWork) this.state.work = true;
+    this.toolbar.syncToggles();
+    syncURL(this.state);
+  }
+
+  private setDepositStage(stage: DepositVisualStage) {
+    this.state.depositStage = stage;
+    setDepositPreviewStage(stage);
+    this.rebuildContent();
+    this.hexSample.setDepositStage(stage);
+    this.refreshInfo();
+    this.toolbar.syncToggles();
+    syncURL(this.state);
+  }
+
   private rebuildContent() {
     const { state, spawns } = this;
-    spawns.rebuild(spawns.idsFor(state.row, state.id), PLANET_SPECS[state.kind].biomeKey, state.wire);
+    spawns.rebuild(spawns.idsFor(state.row, state.id), PLANET_SPECS[state.kind].biomeKey, state.wire, state.depositStage);
     spawns.applyBuild(state.build);
     spawns.updateRing(state.id, state.row);
     this.rig.placeHuman();
@@ -149,6 +228,7 @@ export class PlaygroundApp {
     this.spawns.updateRing(state.id, state.row);
     this.refreshInfo();
     this.sidebar.mark();
+    this.lightsPanel?.render();
     if (frame) this.setView(state.view, { instant: !this.hasFramedOnce });
     this.hasFramedOnce = true;
     syncURL(state);
@@ -176,6 +256,7 @@ export class PlaygroundApp {
     if (state.row && (!state.id || ArchetypeCatalog.get(state.id).category !== state.row)) state.id = ArchetypeCatalog.list(state.row)[0]?.id ?? state.id;
     this.rebuildContent(); this.refreshInfo(); this.sidebar.render(); this.toolbar.clearBar();
     this.toolbar.syncToggles();
+    this.lightsPanel.render();
     this.setView(state.view);
     syncURL(state);
   }
@@ -198,6 +279,7 @@ export class PlaygroundApp {
       case 'hexTerrain': if (state.hexTerrain) state.surface = false; this.buildStage(); this.syncSurface(); break;
       case 'hatch': this.hexSample.setHatch(state.hatch); break;
       case 'validate': this.applyValidation(); this.refreshInfo(); break;
+      case 'lights': this.lightsPanel.render(); this.syncStageLighting(); break;
     }
     this.toolbar.syncToggles(); syncURL(state);
   }
@@ -217,7 +299,7 @@ export class PlaygroundApp {
     const dt = Math.min(this.clock.getDelta(), 0.05);
     this.time += dt;
     this.cam.step(dt);
-    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0);
+    this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget);
     this.cam.controls.update();
     this.surface.update(dt, this.time);
     this.hexSample.update(dt);

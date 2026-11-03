@@ -593,3 +593,133 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **To resolve:** validate the args with `parseCommandArgs('enqueueTask', …)` before sending (or export the limit) and show "Area too large" in the status line without sending.
 - **Fix:** the brush validates its args with `parseCommandArgs('enqueueTask', …)` before sending; a box over the limit is not sent and the status line reads `Area too large: N tiles, nothing sent`; `BrushController.ts`, `TerraformMenu.ts`. Test `terraform-basic.spec.ts` › "a box larger than one command may carry is not sent".
 - **Found:** 2026-11-01, review-fix round (frontend features)
+
+## W02 First Light review fixes (`hud-min`, `resources-hud`, `construction-menu`, `units-menu`, `queue-panel`, `landfall`)
+
+### FF-34 · Duplicate top resource headers and clipped hover tier breakdowns
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/hud-min/MinimalHud.ts`, `frontend/game/features/hud-min/resourceBreakdown.ts`, `frontend/game/features/resources-hud/index.ts`, `frontend/game/features/resources-hud/resources-hud.css`
+- **What happens:** both `hud-min` and `resources-hud` registered a `top-center` HUD panel, stacking two resource headers; `MinimalHud` lacked tier breakdown popovers and `.ta-resources-hud` had a direct `clip-path: polygon(...)` that clipped its `position: absolute; top: calc(100% + 6px)` `.ta-res-chip__breakdown` popover.
+- **Fix:** `resources-hud/index.ts` exports `hud: []` (keeping `ResourcesHud` exported for unit tests with its chamfer moved to `::before`), and `MinimalHud` (`hud-min`) is the single tight-to-top resource header (`ta-hud-min ta-resources-hud`) with unclipped `.ta-res-chip__breakdown` popovers showing per-tier stocks plus live `Income: +X/s`, `Spending: -Y/s`, and `Net: +Z/s` (`resourceBreakdown.ts`).
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-35 · Overloaded left/right HUD panels consolidated into a collapsible tabbed Command Dock
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/core/hud/CommandDock.ts`, `frontend/game/core/hud/HudRoot.ts`, `frontend/game/core/hud/hud.css`, `frontend/game/features/hub-placement/index.ts`
+- **What happens:** `construction-menu`, `units-menu`, `terraform-basic`, and `queue-panel` stacked separately across `bottom-left` and `bottom-right`.
+- **Fix:** `CommandDock` mounts those panels into one collapsible (`HIDE` / `SHOW`) tabbed `.ta-command-dock` in `bottom-left` with `BUILD [B]`, `PRODUCTION [U]`, `TERRAFORM [T]`, and `QUEUE` tabs; `hub-placement`'s W01 HUD panel is suppressed when `W02` is active.
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-36 · Building and unit cards rebuilt via `replaceChildren()` on every 5 Hz view tick
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/ConstructionMenu.ts`, `frontend/game/features/units-menu/UnitsMenu.ts`, `frontend/game/features/queue-panel/QueuePanel.ts`
+- **What happens:** calling `replaceChildren()` on every `update(view)` destroyed `<button>` elements between `pointerdown` and `pointerup`, flashing `:hover` orange and swallowing single clicks.
+- **Fix:** `ConstructionMenu`, `UnitsMenu`, and `QueuePanel` retain card/lane DOM elements across updates and mutate attributes/text in place; `ConstructionMenu` also handles left-button `pointerdown` with click deduplication.
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-37 · Solar Array (`waiting: site (tile occupied)`) and Metal Extractor map placement & doubled error text
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/PlacementGhost.ts`, `frontend/game/features/construction-menu/ghostRenderer.ts`, `frontend/game/features/construction-menu/index.ts`, `frontend/game/features/construction-menu/construction-menu.css`
+- **What happens:** `PlacementGhostController` had no 3D ghost renderer, no map `pointermove`/click binding, and `evaluatePlacementGhost` did not check tile occupancy (`entities` / `tiles.anchors` / queued builds), so `solar` queued at `(0, 0)` (occupied by the Command Hub) and waited on `site (tile occupied)`, while `metalsExtractor` could not be placed on ore on the map and showed `'must cover a metals deposit'` twice.
+- **Fix:** added `collectOccupiedTileIndices`, `findValidPlacementSite` (snapping initial ghost to the nearest valid free or `DEPOSIT.metals` site), 2×2 deposit-anchor offset snapping on hover, `construction-ghost-3d` (`ghostRenderer.ts`), `bindExclusivePointer` map click/right-click handling, and hid `.ta-placement-ghost__deposit[data-covered='false']` in CSS so the rejection reason renders once.
+- **Later:** `collectOccupiedTileIndices` no longer reads `tiles.anchors` (the territory claim count, not occupancy): see `sim-gameplay.md` GP-47.
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-38 · Selected unit / building bar layout, empty-ground deselect, Harvester selection, and 3D unit health bars
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/landfall/HqPanel.ts`, `frontend/game/features/landfall/selection.ts`, `frontend/game/features/landfall/landfall.css`, `frontend/game/app/online/unitHealthBars.ts`, `frontend/game/app/online/EntityMeshes.ts`, `shared/sim/src/systems/harvest/index.ts`
+- **What happens:** the selection card sat in `top-left` even with nothing selected, clicking empty ground did not deselect, Harvester robots (`ENTITY_KIND.harvester`) could not be selected or commanded (auto-harvest immediately overwrote player moves), and units had no 3D health bars.
+- **Fix:** moved `.ta-hq-panel` to a compact horizontal bottom-center bar (`hidden` when nothing is selected, with a multi-select unit grid slot + count badge ready for future box/Shift multi-selection), added empty-ground deselection, enabled Harvester & building selection + `moveUnit`/`stopUnit` orders (with `standingHarvestAssignSystem` yielding to active/queued `UnitBook` orders), and added `UnitHealthBars` (`unit-health-bars`) rendering a single camera-aligned 3D health bar sized to unit width above each unit.
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-39 · Units walking or spawning inside buildings and Solar Arrays working at night
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/construction/placement.ts`, `shared/sim/src/grid/pathProfiles.ts`, `shared/sim/src/units/mobility.ts`, `shared/sim/src/systems/units/handlers.ts`, `shared/sim/src/systems/factories-hub/index.ts`, `shared/sim/src/systems/queue/index.ts`, `shared/sim/src/systems/economy/construction.ts`, `shared/sim/src/systems/power-core/index.ts`, `frontend/game/features/landfall/selection.ts`
+- **What happens:** `OCCUPYING_KINDS` only included `commandHub`, `ENTITY_KIND.harvester` used `profile: 'none'`, `queueSystem` spawned completed Harvesters at `(0, 0)` inside the Command Hub, `moveUnit` and `LandfallController.orderMove` allowed targeting building footprint tiles, and Solar Arrays did not record `offline: night` at night.
+- **Fix:** added `metalsExtractor` and `solar` to `OCCUPYING_KINDS`, added the `'harvester'` path profile blocking building footprints and water/holes/ridges, rejected `moveUnit` onto any building tile on both server (`handlers.ts`) and client (`selection.ts`), routed `queueSystem` unit completions through `spawnHarvesterAtHubEdge`, evacuated units standing on newly placed building footprints, and marked Solar Arrays `offline: night` (`0` generation) when `phase === 'night' || daylight <= 0.001`.
+- **Found:** 2026-11-02, owner review (W02)
+
+
+### FF-40 · CANCEL JOB on a unit card: repair jobs and shared-order scope
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/landfall/{HqPanel,selectionHelpers}.ts`, `shared/sim/src/systems/queue/cancel.ts`
+- **What happens:** CANCEL JOB is shown for any busy unit and whenever the unit's current/queued command is `terraform` or it owns a work job (`unitHasTerraformJob`); it sends `cancelTask { taskId: 'harvester:<id>' }`, which now also removes the terraform order the unit works on (a Hub's linked prep cancels its construction order). There is no repair job in the sim, so none is detected. Cancelling removes the whole order (all its tiles), not only the unit's current tile, and other units on the same order stop too.
+- **Found:** 2026-11-02, W02 review
+
+
+### FF-41 · WORK on a tree an HQ Drone cannot walk next to ends with a no-path toast; no pre-check, no tree-by-tree approach
+
+- **Status:** Resolved (terraform rework 2026-11-02: the owner chose auto-chaining; a TERRAFORM click on a forest edge now eats the clump tree by tree, nearest first, GP-43)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/{dismantleAndWork,unreachable}.ts`, `frontend/game/features/terraform-basic/BrushController.ts`
+- **What happened:** the HQ Drone uses the `ground` path profile (forest blocks it) and must stand within 2 tiles of the work tile. A tree inside a forest clump has no walkable tile in that band, so the path request failed and `workJobsSystem` re-requested it every few ticks forever: the order was accepted (`ok`) and nothing ever happened. Trees on the edge of a clump, or reached by a Harvester (profile `harvester` crosses forest), worked.
+- **Now:** a work job whose route to the band fails is dropped and the worker's `lastFailure` is set to `no_path` (the existing unit-failure toast). Test: `shared/sim/test/systems/work-forest-click.spec.ts`.
+- **Left open:** the client still sends the click (no reachability pre-check at enqueue, so no immediate reject); the player has to clear a clump from its edge inward or build a Harvester. Owner decision: let the drone fly over trees, or stand off further, or auto-chain the edge trees.
+- **Brush notes:** (obsolete) Ctrl+click multi-add, the hover hex marker and the area brush were removed in the terraform rework (FF-42).
+- **Found:** 2026-11-02, owner review (W02)
+
+### FF-42 · Terraform dialog rework: TERRAFORM [G] / REPAIR [R] / DISMANTLE [Z]
+
+- **Status:** Accepted (owner, 2026-11-02)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/terraform-basic/{TerraformMenu,BrushController,primaryOps,groundPreview,referenceTables,workStatus,resourceFound}.ts`, `frontend/game/features/shared/{hotkeys,pointer,depositLabel}.ts`, `frontend/game/core/hud/CommandDock.ts`, `frontend/game/features/landfall/{HqPanel,selectionHelpers}.ts`
+- **What happens:** three buttons, TERRAFORM on top; each click sends one `enqueueTask { terraform: { op: 'work' | 'dismantle', intent?, tiles: [{q,r}], workerId? } }` and disarms the tool; the sim chains terraform (GP-43). Ctrl+click multi-add, the area brush, the 3D hover marker and brushed-tile marks are gone; the S0 grade/clear/break hotkeys are dropped (`strokeTile(q, r, { op })` still sends them from code). G / R / Z arm only while the Terraform tab is open (no invisible armed tool); right-click disarms and passes through to the map. The preview uses the sim's own helpers (parity test against `enqueueWorkAtTile` on every tile). Host rejects are matched to the brush's own command. A `resourceSpawned` toast and a deposit tier on the deposit card announce finds; reference tables read sim data.
+- **Defaults picked:** `F` is the camera follow-HQ key, so TERRAFORM is `G`; `R` is shared with the ghost rotate (the brush is blocked while a ghost is up); DISMANTLE moved from `X` to `Z` and `X` only stops the unit (owner). `workerId` is sent only for a selected own, alive HQ Drone / Harvester.
+- **To resolve:** the plan's area brush (W01-27, W05-20, units spec §4.5 menu row) comes back in W05.
+- **Found:** 2026-11-02, terraform rework
+
+### FF-43 · `Q` toggles both the queue panel and the camera rotation
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/queue-panel/QueuePanel.ts:123`, `frontend/game/app/RTSCamera.ts`, `frontend/game/features/shared/hotkeys.ts`
+- **What happens:** pressing `Q` collapses / expands the queue lane and rotates the camera left at the same time.
+- **Why it is like this:** older than the terraform rework; found in its review, behaviour left unchanged.
+- **To resolve:** owner picks one meaning for `Q` (queue panel has a mouse toggle; the camera has `Q`/`E` as a pair).
+- **Found:** 2026-11-02, terraform rework review
+
+### FF-44 · The client keeps its own copy of entity base costs for REPAIR / DISMANTLE previews
+
+- **Status:** Resolved (terraform rework review 2026-11-02: `getEntityBaseBuildCost` is exported from `@terra/sim` and `planner.resolveEntityBaseCost` reads it with the store's sim data; the client table is gone)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/terraform-basic/planner.ts` (`resolveEntityBaseCost`), `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts` (`getEntityBaseBuildCost`, not exported)
+- **What happens:** the REPAIR cost / DISMANTLE refund shown in the status line come from a partial client cost table (its Solar 60/30 differs from the data row 60/75/10/5); the host charges the real cost.
+- **To resolve:** export `getEntityBaseBuildCost` from `@terra/sim` and read it with the store's sim data.
+- **Found:** 2026-11-02, terraform rework review
+
+
+### FF-45 · `/play.html?planet=<kind>&skip=1` boots with no terrain
+
+- **Status:** Open
+- **Severity:** medium
+- **Confidence:** PLAUSIBLE
+- **Area / code:** `frontend/game/main.ts` / `frontend/game/app/online/` boot path (not investigated)
+- **What happens:** the prototype jump-in URL from CLAUDE.md ("Game flow QA") shows a grey haze and no planet surface on all three planets; it seems to wait for the online flow. Seen by the wind and water agents in headless Chrome while checking the 2026-11-02 water rework; it was already like this before those changes.
+- **Workaround / mitigation:** use `/play.html?host=local&scenario=w02` or `/playground.html?hexterrain=1&biome=oceanForest` / `?surface=1` for visual checks.
+- **To resolve:** find which boot step the `skip=1` prototype path now depends on, or update CLAUDE.md if the prototype path is retired.
+- **Found:** 2026-11-02, water rework (wind / water agents)

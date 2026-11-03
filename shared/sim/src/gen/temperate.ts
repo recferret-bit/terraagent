@@ -153,12 +153,12 @@ export function assignTemperateDeposits(s: PlanetState): void {
 
   for (let i = 0; i < count; i++) {
     const t = terrain[i];
-    if (t !== TERRAIN.flat && t !== TERRAIN.rock && t !== TERRAIN.slope && t !== TERRAIN.forest) continue;
+    if (t !== TERRAIN.flat && t !== TERRAIN.slope) continue;
     const q = hex.q[i];
     const r = hex.r[i];
     const x = Math.fround(q + 0.5 * r);
     const y = Math.fround(r * SQRT3_HALF);
-    const bonus = t === TERRAIN.rock || t === TERRAIN.flat ? 0.15 : t === TERRAIN.slope ? 0.08 : 0;
+    const bonus = t === TERRAIN.flat ? 0.15 : 0.08;
     scores[i] = Math.fround(fbm2d(x, y, 0.18, depSeed) + bonus + hash2d(q, r, depSeed) * 0.2);
     candidates.push(i);
   }

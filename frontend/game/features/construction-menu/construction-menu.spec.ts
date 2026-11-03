@@ -31,6 +31,14 @@ class MockElement {
     return this.attrs.get(k) ?? null;
   }
 
+  removeAttribute(k: string) {
+    this.attrs.delete(k);
+    if (k.startsWith('data-')) {
+      const prop = k.slice(5).replace(/-([a-z])/g, (_, c) => c.toUpperCase());
+      delete this.dataset[prop];
+    }
+  }
+
   appendChild(child: MockElement): MockElement {
     child.parentElement = this;
     this.children.push(child);
@@ -240,8 +248,13 @@ describe('ConstructionMenu DOM HUD Component', () => {
     extractorBtn?.click();
     expect(startPlacement).toHaveBeenCalledWith('metalsExtractor');
 
+    const hubBtnBefore = mockParent.querySelector('[data-building="commandHub"]');
+    const solarBtnBefore = mockParent.querySelector('[data-building="solar"]');
     instance.update?.({ colonies: [{ hubBuilt: true }] });
     const hubBtn = mockParent.querySelector('[data-building="commandHub"]');
+    const solarBtnAfter = mockParent.querySelector('[data-building="solar"]');
+    expect(hubBtn).toBe(hubBtnBefore);
+    expect(solarBtnAfter).toBe(solarBtnBefore);
     expect(hubBtn?.getAttribute('data-disabled')).toBe('true');
     expect(hubBtn?.querySelector('.ta-construction__reason')?.textContent).toBe('Already built');
 

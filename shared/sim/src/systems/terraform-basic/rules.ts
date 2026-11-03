@@ -84,6 +84,11 @@ function ownershipBlock(world: TerraformWorld, colonyId: number, i: number, q: n
   return c && hexDistance(c.q, c.r, q, r) > world.preHubRadius ? 'not_own_territory' : null;
 }
 
+/** The territory part of the rule alone (own tiles; before territory unclaimed ones near the pod; never foreign). */
+export function terraformOwnershipBlock(world: TerraformWorld, colonyId: number, i: number, q: number, r: number): RejectCode | null {
+  return ownershipBlock(world, colonyId, i, q, r, false);
+}
+
 /** Whether `op` changes tile `i` (its `fromTerrain`; a terrain-keeping op such as Grade also needs the prep to change). */
 function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data?: CompiledDataLike): RejectCode | null {
   const spec = getTerraformOpSpec(op, data);

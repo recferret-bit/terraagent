@@ -1,11 +1,15 @@
+import { ENTITY_KIND } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import { hexIndex } from '../../grid/hex';
-import { PREP, TERRAIN } from '../../grid/layers';
-import { pathBlockedFor } from '../../grid/pathProfiles';
+import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
+import { pathBlockersFor } from '../../grid/pathProfiles';
 import { defineCommandHandler, type SimCommand } from '../../kernel/commands';
 import type { PlanetState } from '../../kernel/state';
 import { mobileStats } from '../../units/mobility';
 import { commandColony, parseArgs } from '../command';
+import { occupiedGroundTiles } from '../construction/occupancy';
+import { assignHarvesterDepositTarget, hasAnyPassableNeighbor } from '../harvest';
+import { cancelWorkerJobs } from '../terraform-basic/workJobs';
 import { issueUnitCommand } from './registry';
 
 /**
@@ -46,8 +50,24 @@ export const moveUnit = defineCommandHandler({
     if (tileIdx < 0) return 'invalid_args';
     const terrain = state.grid.layers.terrain[tileIdx];
     const prep = state.grid.layers.prep[tileIdx];
+    const deposit = state.grid.layers.deposit[tileIdx];
     if (terrain === TERRAIN.deep || prep === PREP.ridge || prep === PREP.moat) return 'site_blocked';
-    if (pathBlockedFor(state, stats.profile, -1, ctx.data)?.(tileIdx)) return 'site_blocked'; // uncleared forest / rock: terraform it first
+    const occupied = deposit !== DEPOSIT.none ? occupiedGroundTiles(state, ctx.data) : null; // footprints, not `anchors` (territory)
+    if (occupied && !occupied.has(tileIdx)) {
+      const kind = state.entities.cols.kind[row];
+      if (!hasAnyPassableNeighbor(state, q, r, occupied)) return 'site_blocked';
+      cancelWorkerJobs(state, args.entityId, ctx.tick); // a player order ends the unit's work jobs (and terraform chain)
+      if (kind === ENTITY_KIND.harvester) {
+        const res = assignHarvesterDepositTarget(state, args.entityId, q, r, ctx.tick, ctx);
+        return res.ok ? undefined : res.code;
+      }
+      if (kind === ENTITY_KIND.hq && ctx.flags.has('W02')) {
+        return issueUnitCommand(state, row, { kind: 'move', source: 'player', q, r, minDist: 1, maxDist: 1 }, ctx);
+      }
+    }
+    const blockers = pathBlockersFor(state, stats.profile, -1, ctx.data);
+    if (blockers?.goalBlocked(tileIdx)) return 'site_blocked'; // uncleared forest / rock / building footprint
+    cancelWorkerJobs(state, args.entityId, ctx.tick);
     return issueUnitCommand(state, row, { kind: 'move', source: 'player', q, r }, ctx);
   },
 });
@@ -60,6 +80,7 @@ export const stopUnit = defineCommandHandler({
     if (!args) return 'invalid_args';
     const row = ownUnitRow(state, cmd, args.entityId);
     if (typeof row === 'string') return row;
+    cancelWorkerJobs(state, args.entityId, ctx.tick);
     return issueUnitCommand(state, row, { kind: 'stop', source: 'player' }, ctx);
   },
 });

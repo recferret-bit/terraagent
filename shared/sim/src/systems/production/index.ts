@@ -1,4 +1,5 @@
-import { compileData, dataRow, type CompiledRow } from '../../data';
+import type { ResourceKey } from '@terra/contracts';
+import { compileData, consumeDepositRichness, dataRow, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, setField } from '../../ecs/store';
@@ -11,6 +12,7 @@ import type { ColonyState, PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { creditResource, ensureColonyLedger, isFamilyAtCap } from '../economy/ledger';
+import { depositFamilyAndKey } from '../harvest/adjacency';
 
 export interface DepositCoverageResult {
   covered: boolean;
@@ -42,9 +44,11 @@ export function resolveExtractorRow(data?: CompiledDataLike): CompiledRow {
 }
 
 export function normalizeRichness(raw: number): number {
-  if (!Number.isFinite(raw) || raw <= 0) return 1.0;
+  if (!Number.isFinite(raw) || raw <= 0) return 0;
   // generateTemperate stores richness in basis points (e.g. 9000..13800 bp); tests may set float (e.g. 1.15)
-  return raw > 10 ? raw / 10000 : raw;
+  if (raw <= 10) return raw;
+  // As finite deposits deplete from 10000 bp down toward 0, keep extraction rate at 1.0x until depleted
+  return raw > 10000 ? raw / 10000 : 1.0;
 }
 
 /**
@@ -76,9 +80,10 @@ export function checkExtractorDepositCoverage(
       if (tileIdx < 0) {
         return { covered: false, richnessMult: 0, depositTiles: [], invalidTile: true };
       }
-      if (depositLayer[tileIdx] === requiredDeposit) {
+      const rawRich = richnessLayer ? Number(richnessLayer[tileIdx] ?? 0) : 10000;
+      if (depositLayer[tileIdx] === requiredDeposit && rawRich > 0) {
         depositTiles.push(tileIdx);
-        const rMult = normalizeRichness(richnessLayer?.[tileIdx] ?? 0);
+        const rMult = normalizeRichness(rawRich);
         if (rMult > bestRichness) bestRichness = rMult;
       }
     }
@@ -163,6 +168,29 @@ export function placeMetalsExtractor(
   return { ok: true, entityId: id, richnessMult: check.richnessMult };
 }
 
+/**
+ * Extracts up to `desired` units from the covered deposit tiles (in order) and credits each tile's yield to the stock
+ * key of its tier (`depositTier`: a t2 / t3 metals deposit found by terraforming pays `metals.t2` / `metals.t3`, like a
+ * Harvester). Returns what was extracted per key.
+ */
+function extractTiered(state: PlanetState, colony: ColonyState, depositTiles: readonly number[], desired: number, tick: number): Map<ResourceKey, number> {
+  const out = new Map<ResourceKey, number>();
+  const tiers = state.grid.layers.depositTier as Uint8Array | undefined;
+  let remaining = desired;
+  for (const depTileIdx of depositTiles) {
+    if (remaining <= 0) break;
+    const got = consumeDepositRichness(state, depTileIdx, remaining, tick);
+    if (got <= 0) continue;
+    remaining -= got;
+    const key = depositFamilyAndKey(DEPOSIT.metals, tiers?.[depTileIdx] ?? 0)!.key;
+    creditResource(colony, key, got, tick);
+    out.set(key, (out.get(key) ?? 0) + got);
+  }
+  return out;
+}
+
+const METALS_KEYS: readonly ResourceKey[] = ['metals.t1', 'metals.t2', 'metals.t3'];
+
 const extractorProductionSystem = defineSystem({
   id: 'production.extractors',
   slot: 8,
@@ -173,7 +201,7 @@ const extractorProductionSystem = defineSystem({
     const e = state.entities;
     const cols = e.cols;
 
-    const extractorIncomeByOwner = new Map<number, number>();
+    const extractorIncomeByOwner = new Map<number, Partial<Record<ResourceKey, number>>>();
 
     for (let row = 0; row < e.count; row++) {
       if (cols.kind[row] !== ENTITY_KIND.metalsExtractor) continue;
@@ -208,10 +236,14 @@ const extractorProductionSystem = defineSystem({
       if (!cov.covered) continue;
 
       const ratePerS = baseOutputPerS * cov.richnessMult;
-      const amount = (ratePerS * TICK_MS * ctx.dt) / 1000;
-      creditResource(colony, 'metals.t1', amount, ctx.tick);
-
-      extractorIncomeByOwner.set(owner, (extractorIncomeByOwner.get(owner) ?? 0) + ratePerS);
+      const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
+      const byKey = extractTiered(state, colony, cov.depositTiles, desiredAmount, ctx.tick);
+      let extracted = 0;
+      for (const v of byKey.values()) extracted += v;
+      if (extracted <= 0) continue;
+      const income = extractorIncomeByOwner.get(owner) ?? {};
+      for (const [key, got] of byKey) income[key] = (income[key] ?? 0) + (ratePerS * got) / extracted;
+      extractorIncomeByOwner.set(owner, income);
 
       if (isFamilyAtCap(colony, 'metals')) {
         setField(e, row, 'state', ENTITY_STATE.offlineCapped, ctx.tick);
@@ -221,9 +253,13 @@ const extractorProductionSystem = defineSystem({
     for (const colony of state.colonies) {
       if (!colony) continue;
       const c = ensureColonyLedger(colony);
-      const extRate = Number((extractorIncomeByOwner.get(c.index) ?? 0).toFixed(4));
-      c.production.incomePerS['metals.t1'] = extRate;
-      c.production.familyIncomePerS.metals = extRate;
+      const income = extractorIncomeByOwner.get(c.index) ?? {};
+      let family = 0;
+      for (const key of METALS_KEYS) {
+        c.production.incomePerS[key] = Number((income[key] ?? 0).toFixed(4)); // the metals rates' reset: harvest adds after
+        family += income[key] ?? 0;
+      }
+      c.production.familyIncomePerS.metals = Number(family.toFixed(4));
     }
   },
 });

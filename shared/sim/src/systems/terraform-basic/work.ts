@@ -31,7 +31,8 @@ import { evaluateTerraformTile, terraformWorldFromState } from './rules';
 
 const jobKey = (orderId: string, q: number, r: number): string => `tf:${orderId}:${q},${r}`;
 
-const colonyWho = (state: PlanetState, colonyId: number) => {
+/** The colony's id string and the `colonyId` / `playerId` fields of its player events. */
+export const colonyWho = (state: PlanetState, colonyId: number) => {
   const col = state.colonies[colonyId];
   const colonyIdStr = col?.id ?? `col_${colonyId}`;
   const playerId = typeof col?.playerId === 'string' ? col.playerId : undefined;
@@ -51,7 +52,7 @@ function dropJob(order: TerraformOrder, at: number): void {
 }
 
 /** Levels a newly cleared/broken flat tile to match adjacent level flat ground so it becomes passable and buildable. */
-function levelToAdjacentFlat(state: PlanetState, tileIdx: number, tick: number): void {
+export function levelToAdjacentFlat(state: PlanetState, tileIdx: number, tick: number): void {
   const hx = hexIndex(state.grid.radius);
   const q = hx.q[tileIdx]!, r = hx.r[tileIdx]!;
   const { terrain, height } = state.grid.layers;
@@ -108,10 +109,10 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
  */
 function creditYield(state: PlanetState, colonyId: number, job: TerraformJob, ctx: StepContext): Amounts | undefined {
   const spec = getTerraformOpSpec(job.op, ctx.data);
-  if (!spec.yieldResource || spec.yieldAmount === 0) return undefined;
+  if (Object.values(spec.yields).every((v) => !v)) return undefined;
   const req: AddRequest = {
     colony: colonyId,
-    amounts: { [spec.yieldResource]: spec.yieldAmount },
+    amounts: { ...spec.yields },
     reason: 'terraform.yield',
     actor: colonyActor(state, colonyId),
     ref: `tile:${job.q},${job.r}`,

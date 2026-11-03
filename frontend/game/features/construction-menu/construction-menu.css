@@ -64,6 +64,7 @@
 .ta-construction__card {
   all: unset;
   cursor: pointer;
+  user-select: none;
   display: flex;
   flex-direction: column;
   gap: var(--ta-s1);
@@ -72,6 +73,10 @@
   border: 1px solid var(--ta-seam-2);
   box-sizing: border-box;
   transition: border-color var(--ta-dur-quick) ease, background-color var(--ta-dur-quick) ease;
+}
+
+.ta-construction__card * {
+  pointer-events: none;
 }
 
 .ta-construction__card:hover:not([data-disabled='true']) {
@@ -237,9 +242,7 @@
 }
 
 .ta-placement-ghost__deposit[data-covered='false'] {
-  color: var(--ta-fault-text);
-  background: var(--ta-deep);
-  border: 1px solid var(--ta-fault);
+  display: none;
 }
 
 .ta-placement-ghost__prep {

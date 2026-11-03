@@ -199,6 +199,122 @@ describe('W01-29: Minimal HUD toasts and mounting', () => {
   });
 });
 
+describe('W02: Unified resource header', () => {
+  it('mounts only a single unified resource header (.ta-resources-hud) when W02 is enabled (no duplicate header)', () => {
+    const parent = freshBody();
+    const flags = new Set(['W00', 'W01', 'W02']);
+    const features = loadFeatures({ flags, host: 'server' });
+
+    const root = new HudRoot(parent as unknown as HTMLElement, features, {
+      flags,
+      host: 'server',
+      services: { track: () => {} } as never,
+    });
+
+    const resourceHeaders = parent.querySelectorAll('.ta-resources-hud');
+    expect(resourceHeaders).toHaveLength(1);
+    expect(resourceHeaders[0].getAttribute('data-testid')).toBe('hud-min');
+    expect(parent.querySelectorAll('.ta-hud__slot[data-slot="top-center"] > .ta-hud__panel')).toHaveLength(1);
+
+    root.dispose();
+  });
+});
+
+describe('W02: Hover resource tier & flow breakdown', () => {
+  it('populates hover resource tier breakdowns with current income, in-progress spending, and power flow', () => {
+    const parent = freshBody();
+    const hud = new MinimalHud(parent);
+
+    const colony = {
+      index: 0,
+      id: 'col_0',
+      name: 'Alpha',
+      color: 0xff8800,
+      status: 'active' as const,
+      stock: {
+        'metals.t1': 500,
+        'metals.t2': 12,
+        'metals.t3': 0,
+        'minerals.t1': 250,
+        'bio.water': 150,
+        'bio.biomass': 150,
+      },
+      caps: { metals: 500, minerals: 500, bio: 500 },
+      production: {
+        familyIncomePerS: { metals: 2.5, minerals: 0.5, bio: 0.2 },
+        incomePerS: { 'metals.t1': 2.0, 'metals.t2': 0.5, 'minerals.t1': 0.5, 'bio.water': 0.2 },
+      },
+      queue: [
+        {
+          taskId: 'q-1',
+          colonyIndex: 0,
+          lane: 'construction',
+          state: 'in_progress',
+          cost: { 'metals.t1': 60, 'minerals.t1': 30 },
+          buildTicks: 75,
+          workRate: 1.5, // duration = (75 / 1.5) * 0.2 = 10s -> 6.0 metals/s, 3.0 minerals/s
+        },
+      ],
+      power: { supply: 28, demand: 5, net: 23 },
+      hq: {
+        entityId: 1,
+        owner: 0,
+        tier: 1,
+        q: 0,
+        r: 0,
+        x: 0,
+        y: 0,
+        hp: 900,
+        hpMax: 900,
+        cell: 800,
+        cellMax: 800,
+        workRate: 1.5,
+        viewRadius: 9,
+        targetQ: 0,
+        targetR: 0,
+        currentJob: 'idle' as const,
+        queueCount: 1,
+      },
+    };
+
+    hud.update({ tick: 50, colonies: [colony] } as unknown as ClientView);
+
+    const metalsEl = parent.querySelector<HTMLElement>('[data-testid="hud-stock-metals"]')!;
+    expect(metalsEl.getAttribute('data-family')).toBe('metals');
+    expect(metalsEl.getAttribute('data-capped')).toBe('true');
+    expect(metalsEl.classList.contains('ta-res-chip--capped')).toBe(true);
+
+    metalsEl.dispatchEvent(new MouseEvent('mouseenter'));
+    expect(metalsEl.getAttribute('data-open')).toBe('true');
+    metalsEl.dispatchEvent(new MouseEvent('mouseleave'));
+    expect(metalsEl.getAttribute('data-open')).toBeNull();
+
+    expect(metalsEl.querySelector('[data-testid="res-income-metals"]')?.textContent).toBe('Income: +2.5/s');
+    expect(metalsEl.querySelector('[data-testid="res-spending-metals"]')?.textContent).toBe('Spending: −6.0/s');
+    expect(metalsEl.querySelector('[data-testid="res-net-metals"]')?.textContent).toBe('Net: −3.5/s');
+
+    const t1Row = metalsEl.querySelector('[data-res="metals.t1"]')!;
+    expect(t1Row.getAttribute('data-locked')).toBe('false');
+    expect(t1Row.querySelector('.ta-res-breakdown__name')?.textContent).toBe('Iron');
+    expect(t1Row.querySelector('.ta-res-breakdown__amount')?.textContent).toBe('500');
+    expect(t1Row.querySelector('.ta-res-breakdown__rate')?.textContent).toBe('+2.0 / −6.0/s');
+
+    const t2Row = metalsEl.querySelector('[data-res="metals.t2"]')!;
+    expect(t2Row.getAttribute('data-locked')).toBe('false');
+    expect(t2Row.querySelector('.ta-res-breakdown__amount')?.textContent).toBe('12');
+
+    const t3Row = metalsEl.querySelector('[data-res="metals.t3"]')!;
+    expect(t3Row.getAttribute('data-locked')).toBe('true');
+
+    const cellEl = parent.querySelector<HTMLElement>('[data-testid="hud-hq-cell"]')!;
+    expect(cellEl.querySelector('[data-testid="res-income-energy"]')?.textContent).toBe('Income (Supply): +28 E/s');
+    expect(cellEl.querySelector('[data-testid="res-spending-energy"]')?.textContent).toBe('Spending (Demand): −5 E/s');
+    expect(cellEl.querySelector('[data-testid="res-net-energy"]')?.textContent).toBe('Net: +23 E/s');
+
+    hud.dispose();
+  });
+});
+
 describe('HUD shows whole resource units only', () => {
   it('floors any fractional stock at the read boundary (stock and toasts)', () => {
     expect(wholeStock({ 'metals.t1': 250.0000000000006, 'bio.water': 49.9, bad: Number.NaN })).toEqual({

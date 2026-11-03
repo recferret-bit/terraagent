@@ -13,11 +13,12 @@ import { event as event_hqLanded } from './hq-landed';
 import { event as event_obstacleRemoved } from './obstacle-removed';
 import { event as event_resourceProduced } from './resource-produced';
 import { event as event_resourceShortage } from './resource-shortage';
+import { event as event_resourceSpawned } from './resource-spawned';
 import { event as event_tilePrepared } from './tile-prepared';
 import { event as event_treasuryRejected } from './treasury-rejected';
 import { event as event_unitProduced } from './unit-produced';
 
-export const EVENTS = [event_brownout, event_buildingCompleted, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_groundRevealed, event_hqLanded, event_obstacleRemoved, event_resourceProduced, event_resourceShortage, event_tilePrepared, event_treasuryRejected, event_unitProduced] as const;
+export const EVENTS = [event_brownout, event_buildingCompleted, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_groundRevealed, event_hqLanded, event_obstacleRemoved, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_tilePrepared, event_treasuryRejected, event_unitProduced] as const;
 
 export type EventKind = (typeof EVENTS)[number]['kind'];
 export const EVENT_KINDS = [...EVENTS.map((d) => d.kind)] as unknown as readonly [EventKind, ...EventKind[]];

@@ -1,4 +1,4 @@
-import { DEPOSIT, PREP, TERRAIN, hexCount, hexIndex } from '@terra/sim';
+import { DEPOSIT, ENTITY_KIND, PREP, TERRAIN, hexCount, hexIndex } from '@terra/sim';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConstructionMenu } from './ConstructionMenu';
 import { evaluatePlacementGhost } from './PlacementGhost';
@@ -237,40 +237,38 @@ describe('evaluatePlacementGhost - metals deposit coverage', () => {
 });
 
 describe('evaluatePlacementGhost - prep bill & rotation', () => {
-  it('computes prep bill for forest, rock, slope, flat, and prepared tiles', () => {
+  it('refuses un-terraformed ground (trees, rock, slope, hole, water): red, with the reason, never a prep bill', () => {
+    const cases: Array<[number, string]> = [
+      [TERRAIN.forest, 'trees: clear them first'],
+      [TERRAIN.rock, 'rock: break it first'],
+      [TERRAIN.slope, 'slope'],
+      [TERRAIN.hole, 'hole'],
+      [TERRAIN.shallow, 'water'],
+    ];
+    for (const [terrain, reason] of cases) {
+      const { view, setTile } = createPlanetView(3);
+      setTile(1, 1, { terrain, prep: PREP.wild });
+      const ghost = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
+      expect(ghost.valid, `terrain ${terrain}`).toBe(false);
+      expect(ghost.statusColor).toBe('red');
+      expect(ghost.reason).toBe(reason);
+      expect(Object.keys(ghost.prepBill)).toEqual(['prepare']);
+    }
+  });
+
+  it('bills a plain Grade for flat ground and nothing for prepared ground', () => {
     const { view, setTile } = createPlanetView(3);
-    setTile(0, 0, { terrain: TERRAIN.forest, prep: PREP.wild });
-    setTile(1, 0, { terrain: TERRAIN.rock, prep: PREP.wild });
-    setTile(0, 1, { terrain: TERRAIN.slope, prep: PREP.wild });
+    setTile(0, 0, { terrain: TERRAIN.flat, prep: PREP.wild });
     setTile(1, 1, { terrain: TERRAIN.flat, prep: PREP.prepared });
+    const ghost = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
+    expect(ghost.valid).toBe(true);
+    expect(ghost.prepBill).toEqual({ prepare: 3 });
 
-    const ghost = evaluatePlacementGhost({
-      building: 'solar',
-      q: 0,
-      r: 0,
-      rotation: 0,
-      flags: DEFAULT_FLAGS,
-      view,
-    });
-    expect(ghost.prepBill).toEqual({
-      'clear + prepare': 1,
-      'break + prepare': 1,
-      'flatten + prepare': 1,
-    });
-    expect(ghost.prepBillText).toBe('Prep: 1× Clear + Prepare, 1× Break + Prepare, 1× Flatten + Prepare');
-
-    setTile(0, 0, { terrain: TERRAIN.forest, prep: PREP.prepared });
-    setTile(1, 0, { terrain: TERRAIN.rock, prep: PREP.living });
-    setTile(0, 1, { terrain: TERRAIN.slope, prep: PREP.prepared });
-
-    const ghostPrepared = evaluatePlacementGhost({
-      building: 'solar',
-      q: 0,
-      r: 0,
-      rotation: 0,
-      flags: DEFAULT_FLAGS,
-      view,
-    });
+    setTile(0, 0, { terrain: TERRAIN.flat, prep: PREP.prepared });
+    setTile(1, 0, { terrain: TERRAIN.flat, prep: PREP.living });
+    setTile(0, 1, { terrain: TERRAIN.flat, prep: PREP.prepared });
+    const ghostPrepared = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
+    expect(ghostPrepared.valid).toBe(true);
     expect(ghostPrepared.prepBill).toEqual({});
     expect(ghostPrepared.prepBillText).toBe('Site prepared');
   });
@@ -416,6 +414,49 @@ describe('PlacementGhostController - cancellation', () => {
     expect(mockParent.querySelector('.ta-placement-ghost')).not.toBeNull();
     dom.listeners['contextmenu']?.[0]?.({ preventDefault: vi.fn() });
     expect(mockParent.querySelector('.ta-placement-ghost')).toBeNull();
+
+    menu.dispose();
+  });
+
+  it('rejects occupied tiles and snaps initial Solar and Metals Extractor ghosts to valid sites', () => {
+    const { view, setTile } = createPlanetView(5);
+    setTile(3, 0, { deposit: DEPOSIT.metals });
+    const entities = new Float32Array(12);
+    entities[0] = 1;
+    entities[1] = ENTITY_KIND.commandHub;
+    entities[3] = 0;
+    entities[4] = 0;
+    entities[8] = 500;
+    entities[9] = 500;
+    const viewWithHub = { ...view, entities, count: 1 };
+
+    const blockedAtHub = evaluatePlacementGhost({
+      building: 'solar',
+      q: 0,
+      r: 0,
+      rotation: 0,
+      flags: DEFAULT_FLAGS,
+      view: viewWithHub,
+    });
+    expect(blockedAtHub.valid).toBe(false);
+    expect(blockedAtHub.reason).toBe('tile occupied');
+
+    const parentEl = new MockElement('div') as unknown as HTMLElement;
+    const sendCommand = vi.fn().mockResolvedValue({ ok: true, appliedAtTick: 1 });
+    const ctx = { flags: DEFAULT_FLAGS, host: 'server' as const, services: { sendCommand, track: vi.fn() } };
+    const menu = new ConstructionMenu(parentEl, ctx, viewWithHub);
+
+    menu.startPlacement('solar');
+    const solarGhost = menu.getGhostState();
+    expect(solarGhost?.valid).toBe(true);
+    expect(solarGhost?.q === 0 && solarGhost?.r === 0).toBe(false);
+    expect(menu.confirm()).toBe(true);
+
+    menu.startPlacement('metalsExtractor');
+    const extGhost = menu.getGhostState();
+    expect(extGhost?.valid).toBe(true);
+    expect(extGhost?.depositCovered).toBe(true);
+    expect([extGhost?.q, extGhost?.r]).toEqual([3, 0]);
 
     menu.dispose();
   });

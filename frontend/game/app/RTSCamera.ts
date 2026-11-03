@@ -14,6 +14,9 @@ export class RTSCamera {
   /** True while the camera trails `followTarget`; any manual pan clears it, F/Home/`follow()` re-arms it. */
   following = false;
   private readonly tmp = new THREE.Vector3();
+  private readonly lookTmp = new THREE.Vector3();
+  private shakeAmp = 0;
+  private shakeTime = 0;
   minDist = 20; maxDist = 95; halfSize = 60; enabled = true;
   private cleanups: Array<() => void> = [];
 
@@ -91,7 +94,17 @@ export class RTSCamera {
     this.target.lerp(this.goal, k);
     this.yaw += (this.yawGoal - this.yaw) * (1 - Math.exp(-dt * 8));
     this.dist += (this.distGoal - this.dist) * (1 - Math.exp(-dt * 8));
+    this.shakeTime += dt;
     this.apply();
+  }
+
+  /** Sets `0..1` seismic camera shake amplitude (e.g. drop-pod impact shockwave). */
+  setShake(amp: number) {
+    this.shakeAmp = Math.max(0, amp);
+  }
+
+  getShake(): number {
+    return this.shakeAmp;
   }
 
   /** Starts trailing `obj` (defaults to the current follow target). */
@@ -107,8 +120,21 @@ export class RTSCamera {
   }
   private apply() {
     const h = Math.sin(this.elev) * this.dist, r = Math.cos(this.elev) * this.dist;
-    this.camera.position.set(this.target.x + Math.sin(this.yaw) * r, this.target.y + h, this.target.z + Math.cos(this.yaw) * r);
-    this.camera.lookAt(this.target);
+    let sx = 0, sy = 0, sz = 0;
+    if (this.shakeAmp > 1e-4) {
+      const t = this.shakeTime;
+      const a = this.shakeAmp * (0.018 * this.dist);
+      sx = a * (Math.sin(t * 47.3) + 0.55 * Math.sin(t * 89.1 + 1.7));
+      sy = a * 1.35 * (Math.cos(t * 53.7 + 0.5) + 0.65 * Math.sin(t * 97.3 + 2.4));
+      sz = a * (Math.sin(t * 41.9 + 3.1) + 0.55 * Math.cos(t * 83.7 + 0.9));
+    }
+    this.camera.position.set(
+      this.target.x + Math.sin(this.yaw) * r + sx,
+      this.target.y + h + sy,
+      this.target.z + Math.cos(this.yaw) * r + sz,
+    );
+    this.lookTmp.set(this.target.x + sx * 0.75, this.target.y + sy * 0.9, this.target.z + sz * 0.75);
+    this.camera.lookAt(this.lookTmp);
     if (this.camera.fov !== 28) { this.camera.fov = 28; this.camera.updateProjectionMatrix(); }
   }
   dispose() { this.cleanups.forEach((f) => f()); this.cleanups = []; }

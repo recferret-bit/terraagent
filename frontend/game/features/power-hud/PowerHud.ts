@@ -59,7 +59,7 @@ export class PowerHud implements Disposable {
 
   constructor(
     private readonly parent: HTMLElement,
-    _ctx?: FeatureContext,
+    private readonly ctx?: FeatureContext,
   ) {
     this.root = document.createElement('div');
     this.root.className = 'ta-power-hud';
@@ -197,6 +197,11 @@ export class PowerHud implements Disposable {
     const candidateId = targetId !== undefined && targetId !== null
       ? targetId
       : shedIds.length > 0 ? shedIds[0] : null;
+
+    if (this.ctx && candidateId === null) {
+      this.inspector.style.display = 'none';
+      return;
+    }
 
     const entity = this.findTargetEntity((view as { entities?: unknown }).entities, candidateId);
     if (!entity) {

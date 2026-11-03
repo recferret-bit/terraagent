@@ -10,7 +10,6 @@ import {
   createHexTerrain,
   HEX_PREP,
   HEX_TERRAIN,
-  PREP_BLEND_DURATION_S,
   scatterTileProps,
   specForPlanetType,
   tileHash01,
@@ -22,7 +21,8 @@ import { makeHeightSampler } from './heightSampler';
 import { TILE_M, tileXZ } from './hexMath';
 
 const look = specForPlanetType('temperate');
-const SURFACE_ATTRS = ['position', 'normal', 'color', 'aAO', 'aRock', 'aPrepTarget', 'aPrepStartTime'] as const;
+const SURFACE_ATTRS = ['position', 'normal', 'aAO', 'aRock', 'aHexFlat', 'aHexShore'] as const;
+const tintData = (t: HexTerrain) => Array.from((t.uniforms.uTileTint!.value as THREE.DataTexture).image.data as Uint8Array);
 
 /** Every tile a Slope with hashed relief, so a height change spreads through slope easing and normals. */
 function slopeTiles(radius: number): HexTiles {
@@ -43,11 +43,14 @@ const copyTiles = (t: HexTiles): HexTiles => ({
 });
 
 const chunkByName = (t: HexTerrain) => new Map(t.chunks.map((m) => [m.name, m]));
+const waterGeos = (t: HexTerrain) => t.water.buckets.map((m) => m.geometry);
+const sameGeos = (a: readonly THREE.BufferGeometry[], b: readonly THREE.BufferGeometry[]) => a.length === b.length && a.every((g, i) => g === b[i]);
 
 /** Asserts the chunk surfaces of two terrains are identical, attribute by attribute. */
 function expectSameSurfaces(a: HexTerrain, b: HexTerrain): void {
   const ma = chunkByName(a), mb = chunkByName(b);
   expect([...ma.keys()].sort()).toEqual([...mb.keys()].sort());
+  expect(tintData(a), 'per-cell class tint').toEqual(tintData(b));
   for (const [name, mesh] of ma) {
     const other = mb.get(name)!;
     for (const attr of SURFACE_ATTRS) {
@@ -94,22 +97,24 @@ describe('RN-03 / RN-07: incremental updates', () => {
     (tiles.terrain as Uint8Array)[hx.indexOf(-2, 1)] = HEX_TERRAIN.forest;
     const terrain = createHexTerrain({ radius, tiles, look });
     const chunksBefore = [...terrain.chunks];
-    const pine = terrain.props.meshes.pine;
-    const waterGeo = terrain.water.mesh.geometry;
+    const pine = [...terrain.props.meshes.pine];
+    expect(pine.length).toBeGreaterThan(0);
+    const waterGeo = waterGeos(terrain);
     const borderGeo = terrain.borderMesh.geometry;
 
     (tiles.owner as Int8Array)[hx.indexOf(0, 0)] = 0;
     terrain.updateTiles({ ...tiles }, []);
     expect(terrain.chunks).toEqual(chunksBefore);
-    expect(terrain.props.meshes.pine).toBe(pine);
-    expect(terrain.water.mesh.geometry).toBe(waterGeo);
+    expect(terrain.props.meshes.pine).toEqual(pine);
+    terrain.props.meshes.pine.forEach((m, i) => expect(m).toBe(pine[i]));
+    expect(sameGeos(waterGeos(terrain), waterGeo)).toBe(true);
     expect(terrain.borderMesh.geometry).not.toBe(borderGeo);
     expect(terrain.getTerritoryBorderStats().ownedTileCount).toBe(1);
 
     (tiles.owner as Int8Array)[hx.indexOf(1, 0)] = 0;
     terrain.refreshBorders();
     expect(terrain.getTerritoryBorderStats().ownedTileCount).toBe(2);
-    expect(terrain.water.mesh.geometry).toBe(waterGeo);
+    expect(sameGeos(waterGeos(terrain), waterGeo)).toBe(true);
     terrain.dispose();
   });
 
@@ -121,22 +126,45 @@ describe('RN-03 / RN-07: incremental updates', () => {
     const rockTile = hx.indexOf(-3, 2);
     (tiles.terrain as Uint8Array)[rockTile] = HEX_TERRAIN.rock;
     const terrain = createHexTerrain({ radius, tiles, look });
-    const waterGeo = terrain.water.mesh.geometry;
-    const boulder = terrain.props.meshes.boulder;
-    const pine = terrain.props.meshes.pine;
+    const waterGeo = waterGeos(terrain);
+    const boulder = [...terrain.props.meshes.boulder];
+    const pine = [...terrain.props.meshes.pine];
 
     const dry = hx.indexOf(-5, 0);
     (tiles.terrain as Uint8Array)[dry] = HEX_TERRAIN.forest;
     terrain.updateTiles([dry]);
-    expect(terrain.water.mesh.geometry).toBe(waterGeo);
-    expect(terrain.props.meshes.pine).not.toBe(pine); // the new forest grew trees
-    expect(terrain.props.meshes.boulder).toBe(boulder); // no boulder moved
+    expect(sameGeos(waterGeos(terrain), waterGeo)).toBe(true);
+    expect(terrain.props.meshes.pine).not.toEqual(pine); // the new forest grew trees
+    expect(terrain.props.meshes.boulder).toHaveLength(boulder.length); // no boulder moved
+    terrain.props.meshes.boulder.forEach((m, i) => expect(m).toBe(boulder[i]));
 
     const wet = hx.indexOf(4, 3);
     (tiles.terrain as Uint8Array)[wet] = HEX_TERRAIN.deep;
     terrain.updateTiles([wet]);
-    expect(terrain.water.mesh.geometry).not.toBe(waterGeo);
+    expect(sameGeos(waterGeos(terrain), waterGeo)).toBe(false);
     expect(terrain.water.waterTileCount).toBe(2);
+    terrain.dispose();
+  });
+});
+
+describe('deposit tier delta', () => {
+  it('a depositTier-only change re-scatters the deposit nodes (tier 3 = 5 nodes) without touching the tint', () => {
+    const radius = 6;
+    const hx = hexIndex(radius);
+    const tiles: HexTiles = {
+      terrain: new Uint8Array(hx.count).fill(HEX_TERRAIN.flat),
+      prep: new Uint8Array(hx.count).fill(HEX_PREP.flat),
+      height: new Float32Array(hx.count),
+      deposit: new Uint8Array(hx.count),
+    };
+    const i = hx.indexOf(1, 1);
+    (tiles.deposit as Uint8Array)[i] = 1; // metals
+    const terrain = createHexTerrain({ radius, tiles, look });
+    const tintBefore = tintData(terrain);
+    expect(terrain.props.counts().metals).toBe(3);
+    terrain.updateTiles({ ...tiles, depositTier: Uint8Array.from({ length: hx.count }, (_, k) => (k === i ? 3 : 0)) }, [i]);
+    expect(terrain.props.counts().metals).toBe(5);
+    expect(tintData(terrain)).toEqual(tintBefore);
     terrain.dispose();
   });
 });
@@ -198,8 +226,8 @@ describe('RN-05: one cleared-ground rule for height, water and props', () => {
   });
 });
 
-describe('RN-09: a pad prepared during play matches a reload once its blend is over', () => {
-  it('rebuilds the tile with the pad style after the 0.4 s blend', () => {
+describe('RN-09: a tile prepared during play matches a reload', () => {
+  it('rebuilds the tile as plain flat ground at once (no pad, no blend)', () => {
     const radius = 6;
     const hx = hexIndex(radius);
     const count = hexCount(radius);
@@ -210,6 +238,8 @@ describe('RN-09: a pad prepared during play matches a reload once its blend is o
     };
     const terrain = createHexTerrain({ radius, tiles, look });
     terrain.tick(1);
+    (tiles.terrain as Uint8Array)[hx.indexOf(1, 0)] = HEX_TERRAIN.rock;
+    terrain.updateTiles([hx.indexOf(1, 0)]);
     (tiles.prep as Uint8Array)[hx.indexOf(1, 0)] = HEX_PREP.prepared;
     terrain.updateTiles([hx.indexOf(1, 0)]);
     const reloaded = createHexTerrain({ radius, tiles: { ...tiles, prep: Uint8Array.from(tiles.prep!) }, look });
@@ -218,12 +248,8 @@ describe('RN-09: a pad prepared during play matches a reload once its blend is o
     const v = Array.from(buildChunk(radius, def.tiles, tiles).vertexTile).indexOf(hx.indexOf(1, 0)); // vertex order
     expect(v).toBeGreaterThanOrEqual(0);
     const aoOf = (t: HexTerrain) => chunkByName(t).get('hexChunk 0,0')!.geometry.getAttribute('aAO').getX(v);
-    expect(aoOf(terrain)).toBe(1); // mid-blend: old ground style under the shader wave
-    expect(aoOf(reloaded)).toBeCloseTo(0.96, 6);
-    terrain.tick(0.2);
-    expect(aoOf(terrain)).toBe(1);
-    terrain.tick(0.25);
-    expect(terrain.getTilePrepBlend(1, 0)).toBe(1);
+    expect(aoOf(terrain)).toBe(1); // flat-ground AO, the same as a reload
+    expect(aoOf(reloaded)).toBe(1);
     expectSameSurfaces(terrain, reloaded);
     terrain.dispose();
     reloaded.dispose();
@@ -254,7 +280,7 @@ describe('RN-01: territory border follows the relief', () => {
   });
 });
 
-describe('RN-10 / RN-12: hex shader constants and pad cost', () => {
+describe('RN-10: hex shader constants', () => {
   const realSources = () => ({
     uniforms: {},
     vertexShader: THREE.ShaderLib.standard.vertexShader,
@@ -265,10 +291,12 @@ describe('RN-10 / RN-12: hex shader constants and pad cost', () => {
     const terrain = createHexTerrain({ radius: 4, tiles: slopeTiles(4), look });
     const sh = realSources();
     terrain.material.onBeforeCompile(sh, null as unknown as THREE.WebGLRenderer);
-    expect(sh.vertexShader).toContain(`/ ${PREP_BLEND_DURATION_S}, 0.0, 1.0);`);
+    expect(sh.vertexShader).toContain(`vFlatPos = aHexFlat * (position.xz / ${TILE_M.toFixed(1)});`);
     expect(sh.fragmentShader).toContain(`vec2 tp = vLP.xz / ${TILE_M.toFixed(1)};`);
-    expect(sh.fragmentShader).toContain('vec3 evalFoundationPad(');
-    expect(sh.fragmentShader.indexOf('uniform sampler2D uPadMap')).toBeLessThan(sh.fragmentShader.indexOf('vec3 evalFoundationPad('));
+    expect(sh.fragmentShader.indexOf('uniform sampler2D uTileTint')).toBeLessThan(sh.fragmentShader.indexOf('vec4 hexTileTint('));
+    // The hex water gate must be defined before the terrain chunk's `#ifndef` default, or GLSL sees a redefinition.
+    expect(sh.fragmentShader.indexOf('#define TA_WATER_GATE smoothstep')).toBeGreaterThan(-1);
+    expect(sh.fragmentShader.indexOf('#define TA_WATER_GATE smoothstep')).toBeLessThan(sh.fragmentShader.indexOf('#ifndef TA_WATER_GATE'));
     terrain.dispose();
   });
 
@@ -280,12 +308,21 @@ describe('RN-10 / RN-12: hex shader constants and pad cost', () => {
     terrain.dispose();
   });
 
-  it('only the hex material carries the pad textures and GLSL; plain terrain does not pay for them', () => {
+  it('only the hex material carries the per-cell tint; plain heightfield terrain keeps its above-water shore band', () => {
     const uniforms = terrainUniforms(look, 0, 100, [1, 0]);
-    expect(uniforms.uPadMap).toBeUndefined();
+    expect(uniforms.uTileTint).toBeUndefined();
     const sh = realSources();
     createTerrainMaterial(uniforms).onBeforeCompile(sh, null as unknown as THREE.WebGLRenderer);
-    expect(sh.fragmentShader).not.toContain('evalFoundationPad');
-    expect(sh.fragmentShader).not.toContain('uPadMap');
+    expect(sh.fragmentShader).not.toContain('hexTileTint');
+    expect(sh.fragmentShader).toContain('#define TA_WATER_GATE 1.0');
+    expect(sh.fragmentShader).not.toContain('vHexShore');
+  });
+
+  it('the hex and plain terrain materials never share a compiled program (distinct program cache keys)', () => {
+    const plain = createTerrainMaterial(terrainUniforms(look, 0, 100, [1, 0]));
+    const terrain = createHexTerrain({ radius: 4, tiles: slopeTiles(4), look });
+    expect(terrain.material.customProgramCacheKey()).not.toBe(plain.customProgramCacheKey());
+    terrain.dispose();
+    plain.dispose();
   });
 });

@@ -18,6 +18,27 @@ export {
   type BalanceOverrides, type TunePath,
 } from './_overrides';
 export { dataHash, canonical } from './_hash';
+export {
+  DISMANTLE_REFUND_RATE,
+  REPAIR_COST_RATE,
+  TERRAFORM_TIME_TABLE,
+  type TerraformTimeKey,
+  type TerraformTimeSpec,
+} from './ops-basic';
+export { findSpecFromRow, FIND_FAMILIES, TERRAFORM_RESOURCE_SPAWN, type FindFamily, type TerraformFindSpec } from './terraform-finds';
+export {
+  RESOURCE_INCOME_TABLE,
+  type ResourceIncomeKey,
+} from './resources';
+export {
+  consumeDepositRichness,
+  DEPOSIT_BP_PER_UNIT,
+  DEPOSIT_MAX_RICHNESS_BP,
+  DEPOSIT_MAX_UNITS,
+  depositRemainingUnits,
+  depositStageFromRichness,
+  type DepositStage,
+} from './terrain';
 
 /** Every discovered table (`shared/sim/src/data/*.ts`, listed by `npm run gen`). */
 export const allTables = (): readonly TableDef[] => DATA_TABLES;

@@ -43,6 +43,8 @@ export interface SimView {
     terrain: Uint8Array;
     prep: Uint8Array;
     deposit: Uint8Array;
+    /** Tier of the visible deposit: 0 = legacy (tier 1), 1..3 explicit (`depositTier` layer). */
+    depositTier?: Uint8Array;
     richness?: Float32Array;
     height: Float32Array;
     owner: Int8Array;
@@ -105,6 +107,7 @@ export function view(state: PlanetState): SimView {
       terrain: L.terrain as Uint8Array,
       prep: L.prep as Uint8Array,
       deposit: L.deposit as Uint8Array,
+      depositTier: L.depositTier as Uint8Array,
       richness: L.richness as Float32Array,
       height: L.height as Float32Array,
       owner: L.owner as Int8Array,

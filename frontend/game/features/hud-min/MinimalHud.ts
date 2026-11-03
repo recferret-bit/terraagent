@@ -6,6 +6,14 @@ import { clampPct, makeDiv, makeSpan } from '../shared/dom';
 import { extractHqFromView } from '../shared/hqView';
 import { createHudIcon, type HudIconKind } from './hudIcons';
 import { formatRejectToast } from './rejectText';
+import {
+  bindHoverPopover,
+  computeResourceFlow,
+  renderFamilyBreakdown,
+  renderPowerBreakdown,
+  type FamilyKey,
+  type ResourceFlowSummary,
+} from './resourceBreakdown';
 
 export { formatRejectToast };
 
@@ -51,19 +59,30 @@ export function wholeStock(stock: Record<string, number> | undefined): Record<st
 interface StockSlot {
   el: HTMLElement;
   val: HTMLElement;
+  breakdown?: HTMLElement;
 }
 
-function stockSlot(kind: HudIconKind, testid: string, name: string): StockSlot {
-  const el = makeDiv(`ta-hud-min__stock ta-hud-min__stock--${kind}`, testid);
+function stockSlot(kind: HudIconKind, testid: string, name: string, family: FamilyKey | 'supply'): StockSlot {
+  const el = makeDiv(`ta-hud-min__stock ta-hud-min__stock--${kind} ta-res-chip`, testid);
+  el.setAttribute('data-family', family);
   el.title = name;
   const val = makeSpan('ta-hud-min__stock-val', undefined, NO_DATA);
   el.append(createHudIcon(kind), makeSpan('ta-hud-min__sr-only', undefined, `${name}: `), val);
+
+  if (family !== 'supply') {
+    el.setAttribute('data-capped', 'false');
+    const breakdown = makeDiv('ta-res-chip__breakdown plate-sm', `res-breakdown-${family}`);
+    renderFamilyBreakdown(breakdown, family, {}, computeResourceFlow(undefined, undefined, 0));
+    el.appendChild(breakdown);
+    bindHoverPopover(el);
+    return { el, val, breakdown };
+  }
   return { el, val };
 }
 
 /**
- * Compact top HUD header: icon-only Metals/Minerals/Bio/Supply stocks, inline HQ power cell bar,
- * game clock, and reject/resource waiting toasts.
+ * Compact top HUD header: icon-only Metals/Minerals/Bio/Supply stocks with hover tier & flow breakdowns,
+ * inline HQ power cell bar with hover power breakdown, game clock, and reject/resource waiting toasts.
  */
 export class MinimalHud {
   readonly el: HTMLElement;
@@ -79,10 +98,11 @@ export class MinimalHud {
   private readonly supply: StockSlot;
   private readonly cellVal: HTMLElement;
   private readonly cellFill: HTMLElement;
+  private readonly cellBreakdown: HTMLElement;
   private cleanups: Array<() => void> = [];
 
   constructor(parent: HTMLElement, private readonly opts: MinimalHudOptions = {}) {
-    this.el = makeDiv('plate-sm ta-hud-min', 'hud-min');
+    this.el = makeDiv('plate-sm ta-hud-min ta-resources-hud', 'hud-min');
 
     const brand = makeDiv('ta-hud-min__brand');
     this.colonyEl = makeSpan('ta-hud-min__colony ta-hud-min__sr-only', 'hud-colony-name', 'Colony');
@@ -90,22 +110,32 @@ export class MinimalHud {
     brand.append(this.colonyEl, createHudIcon('clock'), this.clockEl);
 
     const stocks = makeDiv('ta-hud-min__stocks');
-    this.metals = stockSlot('metals', 'hud-stock-metals', 'Metals');
-    this.minerals = stockSlot('minerals', 'hud-stock-minerals', 'Minerals');
-    this.bio = stockSlot('bio', 'hud-stock-bio', 'Bio');
+    this.metals = stockSlot('metals', 'hud-stock-metals', 'Metals', 'metals');
+    this.minerals = stockSlot('minerals', 'hud-stock-minerals', 'Minerals', 'minerals');
+    this.bio = stockSlot('bio', 'hud-stock-bio', 'Bio', 'bio');
     this.bioSub = makeSpan('ta-hud-min__stock-sub ta-hud-min__sr-only');
-    this.bio.el.append(this.bioSub);
-    this.supply = stockSlot('supply', 'hud-supply', 'Supply');
+    this.bio.el.insertBefore(this.bioSub, this.bio.breakdown ?? null);
+    this.supply = stockSlot('supply', 'hud-supply', 'Supply', 'supply');
     stocks.append(this.metals.el, this.minerals.el, this.bio.el, this.supply.el);
 
-    const cellEl = makeDiv('ta-hud-min__cell', 'hud-hq-cell');
+    const cellEl = makeDiv('ta-hud-min__cell ta-res-chip', 'hud-hq-cell');
+    cellEl.setAttribute('data-family', 'energy');
     cellEl.title = 'HQ Power Cell';
     const cellBar = makeDiv('ta-hud-min__cell-bar');
     this.cellFill = makeDiv('ta-hud-min__cell-fill', 'hud-hq-cell-bar');
     this.cellFill.style.width = '0%';
     cellBar.appendChild(this.cellFill);
     this.cellVal = makeSpan('ta-hud-min__cell-val', undefined, `${NO_DATA} E`);
-    cellEl.append(createHudIcon('cell'), makeSpan('ta-hud-min__sr-only', undefined, 'HQ power cell: '), cellBar, this.cellVal);
+    this.cellBreakdown = makeDiv('ta-res-chip__breakdown plate-sm', 'res-breakdown-energy');
+    renderPowerBreakdown(this.cellBreakdown, undefined, null, true);
+    cellEl.append(
+      createHudIcon('cell'),
+      makeSpan('ta-hud-min__sr-only', undefined, 'HQ power cell: '),
+      cellBar,
+      this.cellVal,
+      this.cellBreakdown,
+    );
+    bindHoverPopover(cellEl);
 
     this.toastContainer = makeDiv('ta-hud-toasts', 'hud-toast-container');
     this.toastContainer.setAttribute('role', 'status');
@@ -146,16 +176,44 @@ export class MinimalHud {
     const colonyIdx = this.colonyIndex();
     const col = viewColony(view, colonyIdx);
     this.colonyEl.textContent = col?.name ?? `Colony ${colonyIdx}`;
-    this.renderStocks(col);
+    this.renderStocks(col, view as unknown as Record<string, unknown>, colonyIdx);
 
     const hqCell = extractHqFromView(view, colonyIdx, this.opts.store?.simData?.() ?? undefined);
     this.cellVal.textContent = hqCell ? `${Math.round(hqCell.cell)} / ${Math.round(hqCell.cellMax)} E` : `${NO_DATA} E`;
     this.cellFill.style.width = `${(hqCell ? clampPct(hqCell.cell, hqCell.cellMax) : 0).toFixed(1)}%`;
+
+    const vRec = (view ?? {}) as Record<string, unknown>;
+    const blobs = (vRec.blobs ?? {}) as Record<string, unknown>;
+    const powerBlob = (blobs.power ?? {}) as Record<string, unknown>;
+    const byColony = (powerBlob.byColony ?? {}) as Record<number, unknown>;
+    const colRec = (col ?? {}) as Record<string, unknown>;
+    const power = (colRec.power ?? byColony[colonyIdx] ?? vRec.power) as Record<string, unknown> | undefined;
+    renderPowerBreakdown(this.cellBreakdown, power, hqCell, true);
   }
 
-  private renderStocks(col: ViewColony | undefined): void {
+  private setFamilyStatus(
+    slot: StockSlot,
+    family: FamilyKey,
+    total: number,
+    cap: number,
+    stock: Record<string, number>,
+    flow: ResourceFlowSummary,
+    textOverride?: string,
+  ): void {
+    const isCapped = cap > 0 && total >= cap - 1e-6;
+    slot.el.setAttribute('data-capped', String(isCapped));
+    slot.el.classList.toggle('ta-res-chip--capped', isCapped);
+    slot.val.textContent = textOverride ?? `${total} / ${cap}`;
+    if (slot.breakdown) {
+      renderFamilyBreakdown(slot.breakdown, family, stock, flow);
+    }
+  }
+
+  private renderStocks(col: ViewColony | undefined, view: Record<string, unknown>, colonyIdx: number): void {
     const stock = wholeStock(col?.stock);
     const caps = capsOf(col?.caps); // the sim's caps, INITIAL_CAPS for a family the view does not carry
+    const flow = computeResourceFlow(col as unknown as Record<string, unknown> | undefined, view, colonyIdx);
+
     const metalsT1 = stock['metals.t1'] ?? 0;
     const metalsTotal = metalsT1 + (stock['metals.t2'] ?? 0) + (stock['metals.t3'] ?? 0);
     const mineralsT1 = stock['minerals.t1'] ?? 0;
@@ -164,11 +222,11 @@ export class MinimalHud {
     const water = stock['bio.water'] ?? 0;
     const bioTotal = biomass + water + (stock['bio.t2'] ?? 0) + (stock['bio.t3'] ?? 0);
 
-    this.metals.val.textContent = `${metalsTotal} / ${caps.metals}`;
+    this.setFamilyStatus(this.metals, 'metals', metalsTotal, caps.metals, stock, flow);
     this.metals.el.title = `Iron (T1): ${metalsT1} · Cap: ${caps.metals}`;
-    this.minerals.val.textContent = `${mineralsTotal} / ${caps.minerals}`;
+    this.setFamilyStatus(this.minerals, 'minerals', mineralsTotal, caps.minerals, stock, flow);
     this.minerals.el.title = `Silica (T1): ${mineralsT1} · Cap: ${caps.minerals}`;
-    this.bio.val.textContent = `${bioTotal} / ${caps.bio} `;
+    this.setFamilyStatus(this.bio, 'bio', bioTotal, caps.bio, stock, flow, `${bioTotal} / ${caps.bio} `);
     this.bioSub.textContent = `(Biomass ${biomass} · Water ${water})`;
     this.bio.el.title = `Biomass: ${biomass} · Water: ${water} · Cap: ${caps.bio}`;
 

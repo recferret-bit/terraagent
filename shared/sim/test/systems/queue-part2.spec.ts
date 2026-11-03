@@ -47,7 +47,7 @@ describe('W02-14 Queue v1 part 2 — wait reasons, ETA, storage non-earmarking, 
     expect(q1.entry.waitDetail).toBe('waiting: storage (no ETA)');
     expect(colony.stock['metals.t1']).toBe(100);
 
-    // Entry 2: affordable Solar (60/75/10/5) -> still starts immediately!
+    // Entry 2: affordable Solar (60/75/10/5) -> still starts immediately (progressive cost deducted on ticks)!
     const q2 = enqueueQueueTask(state, {
       colonyIndex: 0,
       taskId: 'affordable-solar',
@@ -56,8 +56,7 @@ describe('W02-14 Queue v1 part 2 — wait reasons, ETA, storage non-earmarking, 
     expect(q2.ok).toBe(true);
     if (!q2.ok) throw new Error('expected ok');
     expect(q2.entry.state).toBe('in_progress');
-    expect(q2.entry.paid).toBe(true);
-    expect(colony.stock['metals.t1']).toBe(40);
+    expect(colony.stock['metals.t1']).toBe(100);
   });
 
   it('computes missing resource ETA from current income (e.g. Minerals 5/20 · ~30 s at 0.5/s)', () => {

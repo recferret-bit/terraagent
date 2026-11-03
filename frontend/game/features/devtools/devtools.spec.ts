@@ -109,6 +109,7 @@ describe('devtools W02 commands', () => {
             rawDemand: 5,
             buildingDemand: 5,
             unitDemand: 0,
+            workDemand: 3,
             brownout: false,
             shedGroupsActive: [],
             shedEntityIds: [],
@@ -122,7 +123,7 @@ describe('devtools W02 commands', () => {
     const out = await run('power', { sendCommand, view });
     expect(out).toContain('colony 0 power: +23 E/s (OK)');
     expect(out).toContain('supply: 28 E/s (core: 8, solar: 20 [gross 21, drain 1])');
-    expect(out).toContain('demand: 5 E/s (raw: 5, buildings: 5, units: 0)');
+    expect(out).toContain('demand: 5 E/s (raw: 5, buildings: 5, units: 0, work: 3)');
     expect(out).toContain('daylight: 1 (day 12:00)');
   });
 });

@@ -89,7 +89,9 @@ describe('W01-26: PodTouchdownFx strict landing state machine', () => {
     const engineStopState = meshes.podTouchdown.computeState(false, 1);
     expect([engineStopState.state, engineStopState.phase, engineStopState.podLift]).toEqual(['impact_wait', 'engine-stop', 0]);
     expect(engineStopState.thrust).toBeGreaterThan(0);
-    expect([meshes.podTouchdown.impactRig.craterGroup.visible, meshes.podTouchdown.impactRig.waveGroup.visible]).toEqual([true, true]);
+    expect(engineStopState.cameraShake).toBeGreaterThan(0.4);
+    expect(meshes.getCameraShake()).toBeGreaterThan(0.4);
+    expect([meshes.podTouchdown.impactRig.craterGroup.visible, meshes.podTouchdown.impactRig.waveGroup.visible]).toEqual([false, true]);
     expect([engineStopState.podVisible, engineStopState.hqVisible, engineStopState.uiVisible]).toEqual([true, false, false]);
 
     meshes.update(1.25, null);
@@ -109,7 +111,8 @@ describe('W01-26: PodTouchdownFx strict landing state machine', () => {
     meshes.update(0.9, null);
     const settledState = meshes.podTouchdown.computeState(false, 1);
     expect([settledState.state, settledState.phase]).toEqual(['done', 'settled']);
-    expect([podRec.mesh.visible, meshes.podTouchdown.impactRig.egressGroup.visible, meshes.podTouchdown.impactRig.craterGroup.visible]).toEqual([false, false, true]);
+    expect([podRec.mesh.visible, meshes.podTouchdown.impactRig.egressGroup.visible, meshes.podTouchdown.impactRig.craterGroup.visible]).toEqual([false, true, false]);
+    expect(meshes.podTouchdown.impactRig.craterGroup.children.length).toBe(0);
     expect([settledState.hqVisible, settledState.uiVisible]).toEqual([true, true]);
     expect(Math.hypot(podRec.targetPos.x, podRec.targetPos.z)).toBeGreaterThan(1.2);
     meshes.dispose();

@@ -1,28 +1,54 @@
-import type { TerraformOpKind } from '@terra/sim';
+import { DISMANTLE_REFUND_RATE, REPAIR_COST_RATE, type CompiledDataLike } from '@terra/sim';
+import { isDockPaneShown } from '../../core/hud/CommandDock';
 import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import { isHotkeyPress } from '../shared/hotkeys';
-import type { BrushController } from './BrushController';
+import type { BrushController, TerraformButtonOp, TerraformPrimaryOp } from './BrushController';
+import { pct, ReferenceTables } from './referenceTables';
 import type { TileOverlay } from './TileOverlay';
+import { colonyWorkJobs, workStatusText } from './workStatus';
 
-const OP_DEFS: ReadonlyArray<{ op: TerraformOpKind; label: string; key: string; testid: string }> = [
-  { op: 'grade', label: 'GRADE [G]', key: 'g', testid: 'tf-op-grade' },
-  { op: 'clear', label: 'CLEAR [C]', key: 'c', testid: 'tf-op-clear' },
-  { op: 'break', label: 'BREAK [B]', key: 'b', testid: 'tf-op-break' },
+export interface TerraformPrimaryOpDef {
+  readonly op: TerraformPrimaryOp;
+  readonly label: string;
+  readonly subtitle: string;
+  /** `KeyboardEvent.key`, lower case. */
+  readonly key: string;
+  readonly testid: string;
+}
+
+/**
+ * The dock buttons, top to bottom. `F` is the camera's follow-HQ key, so TERRAFORM takes `G` (the old Grade key).
+ * `R` is the construction ghost's rotate key while a ghost is up (the brush hotkeys are blocked then). `X` stays the
+ * selected unit's stop key only (`app/online/unitControl`; owner decision W02), so DISMANTLE takes `Z`.
+ */
+export const PRIMARY_OP_DEFS: readonly TerraformPrimaryOpDef[] = [
+  { op: 'terraform', label: 'TERRAFORM [G]', subtitle: 'Flatten ground · continuous', key: 'g', testid: 'tf-op-terraform' },
+  { op: 'repair', label: 'REPAIR [R]', subtitle: `${pct(REPAIR_COST_RATE)} of base cost`, key: 'r', testid: 'tf-op-repair' },
+  { op: 'dismantle', label: 'DISMANTLE [Z]', subtitle: `Refund ${pct(DISMANTLE_REFUND_RATE)} of cost`, key: 'z', testid: 'tf-op-dismantle' },
 ];
 
+const HOTKEY_OP_MAP: Readonly<Record<string, TerraformPrimaryOp>> = Object.fromEntries(
+  PRIMARY_OP_DEFS.map((d) => [d.key, d.op]),
+);
+
 export interface TerraformMenuOptions {
-  /** Another map mode owns input (the Hub ghost): the brush hotkeys stay quiet. */
+  /** Another map mode owns input (a Hub / construction ghost): the brush hotkeys stay quiet. */
   isBlocked?: () => boolean;
+  /** The player's colony (whose work jobs the status line shows). */
+  getColonyId?: () => number;
+  /** The host's compiled balance data (`WorldStore.simData`) the reference tables read. */
+  simData?: () => CompiledDataLike | null | undefined;
 }
 
 export class TerraformMenu {
   readonly el: HTMLElement;
-  private readonly opButtons = new Map<TerraformOpKind, HTMLButtonElement>();
-  private readonly brushBtn: HTMLButtonElement;
-  private readonly overlayBtn: HTMLButtonElement;
-  private readonly cancelBtn: HTMLButtonElement;
+  private readonly opButtons = new Map<TerraformButtonOp, HTMLButtonElement>();
+  private readonly workerBadge: HTMLElement;
   private readonly statusEl: HTMLElement;
+  private readonly tables: ReferenceTables;
   private readonly onKey: (e: KeyboardEvent) => void;
+  /** The newest stroke whose work showed up in the view (so its end can be reported). */
+  private workSeenFor: string | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -33,32 +59,24 @@ export class TerraformMenu {
     this.el = makeDiv('ta-tf-menu plate', 'terraform-menu');
     const header = makeDiv('ta-tf-menu__header');
     header.appendChild(makeSpan('eyebrow', undefined, 'TERRAFORM OPS'));
+    this.workerBadge = makeSpan('ta-tf-menu__workers mono', 'tf-worker-badge', 'HQ Drone & Harvester');
+    header.appendChild(this.workerBadge);
 
     const opsRow = makeDiv('ta-tf-menu__ops');
-    for (const def of OP_DEFS) {
-      const btn = makeBtn('btn btn-sm btn-ghost', def.testid, def.label, () => this.toggleOp(def.op));
+    for (const def of PRIMARY_OP_DEFS) {
+      const btn = makeBtn('btn btn-sm btn-ghost ta-tf-menu__op-btn', def.testid, '', () => this.toggleOp(def.op));
       btn.dataset.op = def.op;
+      const titleSpan = makeSpan('ta-tf-menu__op-title', undefined, def.label);
+      const descSpan = makeSpan('ta-tf-menu__op-desc', undefined, def.subtitle);
+      btn.append(titleSpan, descSpan);
       this.opButtons.set(def.op, btn);
       opsRow.appendChild(btn);
     }
 
-    this.brushBtn = makeBtn('btn btn-sm btn-ghost', 'tf-brush-mode', '', () => {
-      this.brush.setBrushMode(this.brush.getBrushMode() === 'single' ? 'area' : 'single');
-      this.render();
-    });
-    this.overlayBtn = makeBtn('btn btn-sm btn-ghost', 'tf-overlay-toggle', '', () => {
-      this.overlay.setVisible();
-      this.render();
-    });
-    this.cancelBtn = makeBtn('btn btn-sm btn-danger', 'tf-cancel', 'CANCEL', () => {
-      this.brush.cancelOrder(this.overlay.getActiveOrder()?.orderId);
-      this.render();
-    });
-    const controlsRow = makeDiv('ta-tf-menu__controls');
-    controlsRow.append(this.brushBtn, this.overlayBtn, this.cancelBtn);
-
     this.statusEl = makeDiv('ta-tf-menu__status', 'tf-status');
-    this.el.append(header, opsRow, controlsRow, this.statusEl);
+
+    this.tables = new ReferenceTables(() => this.opts.simData?.());
+    this.el.append(header, opsRow, this.statusEl, this.tables.el);
     parent.appendChild(this.el);
 
     this.onKey = (e) => this.handleKey(e);
@@ -68,7 +86,7 @@ export class TerraformMenu {
   }
 
   /** Clicking the armed op again disarms the brush. */
-  private toggleOp(op: TerraformOpKind): void {
+  private toggleOp(op: TerraformButtonOp): void {
     if (this.brush.isArmed() && this.brush.getSelectedOp() === op) this.brush.disarm();
     else this.brush.selectOp(op);
     this.render();
@@ -81,49 +99,69 @@ export class TerraformMenu {
       if (!this.brush.isArmed()) return;
       e.stopImmediatePropagation();
       this.brush.disarm();
-    } else if (k === 'v') {
-      this.overlay.setVisible();
     } else {
-      const def = OP_DEFS.find((d) => d.key === k);
-      if (!def) return;
-      this.brush.selectOp(def.op);
+      const op = HOTKEY_OP_MAP[k];
+      // Only while the Terraform tab is open: an armed tool must be visible (G / R / Z do nothing on a hidden tab).
+      if (!op || !isDockPaneShown(this.el)) return;
+      this.brush.selectOp(op);
     }
     this.render();
   }
 
   render(): void {
+    // The tab was closed or switched while a tool was armed: an invisible tool must not take map clicks.
+    if (this.brush.isArmed() && !isDockPaneShown(this.el)) {
+      this.brush.disarm(); // re-renders through the brush's onChange
+      if (!this.brush.isArmed()) return this.renderState();
+    }
+    this.renderState();
+  }
+
+  private renderState(): void {
     const selectedOp = this.brush.getSelectedOp();
     const armed = this.brush.isArmed();
     for (const [op, btn] of this.opButtons) {
       const isSelected = armed && selectedOp === op;
       btn.setAttribute('aria-pressed', String(isSelected));
-      btn.className = isSelected ? 'btn btn-sm btn-primary' : 'btn btn-sm btn-ghost';
+      btn.className = isSelected
+        ? 'btn btn-sm btn-primary ta-tf-menu__op-btn'
+        : 'btn btn-sm btn-ghost ta-tf-menu__op-btn';
     }
 
-    const mode = this.brush.getBrushMode();
-    this.brushBtn.dataset.mode = mode;
-    this.brushBtn.textContent = mode === 'single' ? 'BRUSH: SINGLE (1×1)' : 'BRUSH: AREA (BOX)';
+    const workersReady = this.brush.hasWorkerAvailable();
+    this.workerBadge.dataset.available = String(workersReady);
 
-    const overlayOn = this.overlay.isVisible();
-    this.overlayBtn.setAttribute('aria-pressed', String(overlayOn));
-    this.overlayBtn.className = overlayOn ? 'btn btn-sm btn-system' : 'btn btn-sm btn-ghost';
-    this.overlayBtn.textContent = overlayOn ? 'OVERLAY: ON [V]' : 'OVERLAY: OFF [V]';
-
-    const active = this.overlay.getActiveOrder();
-    this.cancelBtn.disabled = !active;
     this.el.dataset.armed = String(armed);
+    this.tables.refresh();
+    this.statusEl.textContent = this.statusText(armed, selectedOp);
+  }
 
-    const parts: string[] = [];
+  /**
+   * The status line: a refused click or a host reject first, then the colony's running `work` jobs (the TERRAFORM
+   * chain hex by hex, repairs), then an S0 order's progress, then the last order, then a hint.
+   */
+  private statusText(armed: boolean, selectedOp: TerraformButtonOp): string {
     const stroke = this.brush.getLastStroke();
-    if (stroke) parts.push(stroke.tooLarge ? `Area too large: ${stroke.tiles.length} tiles, nothing sent` : `Queued ${stroke.queuedCount} jobs · ${stroke.skippedCount} skipped`);
+    const failed = stroke?.outcome?.ok === false || (stroke !== null && stroke.queuedCount === 0);
+    const jobs = colonyWorkJobs(this.brush.getView(), this.opts.getColonyId?.() ?? 0);
+    if (stroke && jobs.length > 0) this.workSeenFor = stroke.strokeId;
+    const work = workStatusText(jobs);
+    const active = this.overlay.getActiveOrder();
+    if (stroke && failed) {
+      const refused = stroke.statusText ?? `Nothing to do here · ${stroke.skippedCount} skipped`;
+      return work ? `${refused} | ${work}` : refused;
+    }
+    if (work) return work;
     if (active) {
       const cur = active.currentJob;
       const curStr = cur ? `${cur.op.toUpperCase()} ${cur.percent}%` : `${active.overallPercent}%`;
-      parts.push(`${active.completedJobs} / ${active.totalJobs} jobs · ${curStr}`);
-    } else if (!stroke) {
-      parts.push(armed ? `Tool: ${selectedOp.toUpperCase()} · ${mode.toUpperCase()}` : 'Pick an op to paint the map');
+      return `${active.completedJobs} / ${active.totalJobs} jobs · ${curStr}`;
     }
-    this.statusEl.textContent = parts.join(' | ');
+    if (stroke && this.workSeenFor === stroke.strokeId && (stroke.op === 'terraform' || stroke.op === 'repair')) {
+      return stroke.op === 'terraform' ? 'Terraform chain ended: no reachable obstacle left, or the worker was stopped' : 'Repair done';
+    }
+    if (stroke) return stroke.statusText ?? `Queued ${stroke.queuedCount} jobs · ${stroke.skippedCount} skipped`;
+    return armed ? `Tool: ${selectedOp.toUpperCase()} · click a hex` : 'Pick an op, then click a hex';
   }
 
   dispose(): void {

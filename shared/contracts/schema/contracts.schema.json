@@ -735,6 +735,59 @@
       "summary": "Inserts the W00 test entity (kind 1) at tile (q, r); x/y are the tile centre in axial float coordinates.",
       "wave": "W00"
     },
+    "dev.spawndeposit": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "family": {
+            "enum": [
+              "metals",
+              "minerals",
+              "oil"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "number"
+              },
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 3,
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "q",
+          "r",
+          "family",
+          "tier"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: places a full resource deposit of `family` and `tier` on tile `(q, r)`, like a terraform find (`terraformFinds.deposit.richnessBp`).",
+      "wave": "W02"
+    },
     "dev.teleport": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -828,11 +881,25 @@
               "terraform": {
                 "additionalProperties": false,
                 "properties": {
+                  "entityId": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "intent": {
+                    "enum": [
+                      "terraform",
+                      "repair"
+                    ],
+                    "type": "string"
+                  },
                   "op": {
                     "enum": [
                       "grade",
                       "clear",
-                      "break"
+                      "break",
+                      "dismantle",
+                      "work"
                     ],
                     "type": "string"
                   },
@@ -860,6 +927,11 @@
                     "maxItems": 256,
                     "minItems": 1,
                     "type": "array"
+                  },
+                  "workerId": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
                   }
                 },
                 "required": [
@@ -1065,6 +1137,18 @@
                   {
                     "additionalProperties": false,
                     "properties": {
+                      "entityId": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
+                        "type": "integer"
+                      },
+                      "intent": {
+                        "enum": [
+                          "terraform",
+                          "repair"
+                        ],
+                        "type": "string"
+                      },
                       "kind": {
                         "const": "terraform",
                         "type": "string"
@@ -1073,7 +1157,9 @@
                         "enum": [
                           "grade",
                           "clear",
-                          "break"
+                          "break",
+                          "dismantle",
+                          "work"
                         ],
                         "type": "string"
                       },
@@ -1085,6 +1171,11 @@
                       "r": {
                         "maximum": 32767,
                         "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "workerId": {
+                        "maximum": 9007199254740991,
+                        "minimum": 0,
                         "type": "integer"
                       }
                     },
@@ -1906,6 +1997,72 @@
       "summary": "Emitted when a resource drops below 5 % of its family cap with negative net flow over 60 s (SIM §9, W02-17).",
       "wave": "W02"
     },
+    "resourceSpawned": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "deposit": {
+            "enum": [
+              "metals",
+              "minerals",
+              "oil"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "richnessBp": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "number"
+              },
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 3,
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "colonyId",
+          "q",
+          "r",
+          "deposit",
+          "tier",
+          "richnessBp"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a completed terraform `work` job spawns a new resource deposit on its hex (1 % roll, `TERRAFORM_RESOURCE_SPAWN`; tier in the `depositTier` tile layer).",
+      "wave": "W02"
+    },
     "tilePrepared": {
       "audience": "player",
       "data": {
@@ -2195,7 +2352,8 @@
                 "already_landed",
                 "landing_site_taken",
                 "queue_full",
-                "planet_full"
+                "planet_full",
+                "cannot_dismantle_hq"
               ],
               "type": "string"
             },

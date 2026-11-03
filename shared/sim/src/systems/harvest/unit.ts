@@ -39,6 +39,9 @@ export interface HarvesterUnitView {
   targetR: number;
   state: number;
   currentJob: HarvesterJob;
+  progress: number;
+  task: HarvesterJob;
+  carrying: number;
 }
 
 export interface SpawnHarvesterOpts {
@@ -79,6 +82,8 @@ export function buildHarvesterView(
   const hRow = resolveHarvesterRow(data);
   const currentJob = harvesterJobFromState(cols.state[row]);
   const cost = (hRow.cost ?? {}) as Record<string, number>;
+  const progress = Number(cols.progress?.[row] ?? 0);
+  const carrying = Number(cols.cell?.[row] ?? 0);
   return {
     entityId: cols.id[row],
     kind: cols.kind[row],
@@ -109,6 +114,9 @@ export function buildHarvesterView(
     targetR: cols.targetR[row],
     state: cols.state[row],
     currentJob,
+    progress,
+    task: currentJob,
+    carrying,
   };
 }
 
@@ -119,8 +127,18 @@ export function syncHarvesterView(
   data?: CompiledDataLike,
 ): HarvesterUnitView {
   const unitView = buildHarvesterView(state, row, data);
-  const prevUnits = (state.blobs.units?.value as Record<number, HarvesterUnitView> | undefined) ?? {};
-  setBlob(state, 'units', { ...prevUnits, [unitView.entityId]: unitView }, tick);
+  const prevObj = (state.blobs.units?.value as Record<string, unknown> | undefined) ?? {};
+  const prevById = (prevObj.byId as Record<string, Record<string, unknown>> | undefined) ?? {};
+  const idKey = String(unitView.entityId);
+  const existingRec = prevById[idKey];
+  if (existingRec && typeof existingRec === 'object') {
+    existingRec.progress = unitView.progress;
+    existingRec.task = unitView.task;
+    existingRec.carrying = unitView.carrying;
+  }
+  prevObj.byId = prevById;
+  prevObj[unitView.entityId] = unitView;
+  setBlob(state, 'units', prevObj, tick);
 
   const owner = state.entities.cols.owner[row];
   if (owner >= 0 && state.colonies[owner]) {
@@ -128,7 +146,9 @@ export function syncHarvesterView(
     const prevHarvesters = Array.isArray(col.harvesters)
       ? (col.harvesters as HarvesterUnitView[]).filter((u) => u.entityId !== unitView.entityId)
       : [];
-    col.harvesters = [...prevHarvesters, unitView];
+    const nextHarvesters = [...prevHarvesters, unitView];
+    (nextHarvesters as unknown as Record<number, HarvesterUnitView>)[unitView.entityId] = unitView;
+    col.harvesters = nextHarvesters;
 
     const prevList = Array.isArray(col.units)
       ? (col.units as HarvesterUnitView[]).filter((u) => u.entityId !== unitView.entityId)

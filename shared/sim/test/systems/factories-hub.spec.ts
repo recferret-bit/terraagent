@@ -45,25 +45,26 @@ describe('W02-10 Hub worker production (slot 9): Units lane, paid on start, 10s 
 
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
-    // Queue 1 Harvester: 40/15/5/0 paid immediately on start
+    // Queue 1 Harvester: starts in_progress, cost (40/15/5) is deducted progressively across 50 ticks
     const q1 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'harvester' });
     expect(q1.ok).toBe(true);
     if (!q1.ok) throw new Error('expected ok');
     expect(q1.entry.state).toBe('in_progress');
-    expect(q1.entry.paid).toBe(true);
-    expect(colony.stock['metals.t1']).toBe(460);
-    expect(colony.stock['minerals.t1']).toBe(485);
-    expect(colony.stock['bio.biomass']).toBe(495);
+    expect(colony.stock['metals.t1']).toBe(500);
 
-    // Step 49 ticks (9.8 s) -> not spawned yet
+    // Step 49 ticks (9.8 s) -> not spawned yet, progressive cost deducted
     step(state, [], 49, pipeline);
     expect(getHubUnitQueue(state, 0)).toHaveLength(1);
+    expect(colony.stock['metals.t1']).toBeCloseTo(460.8, 4);
 
-    // Step 1 more tick (50 ticks = 10.0 s) -> Harvester spawns at Hub edge!
+    // Step 1 more tick (50 ticks = 10.0 s) -> Harvester spawns at Hub edge and full 40/15/5 is deducted!
     const doneRes = step(state, [], 1, pipeline);
     expect(doneRes.events.some((e) => e.kind === 'unitProduced')).toBe(true);
     expect(getHubUnitQueue(state, 0)).toHaveLength(0);
     expect(getColonySupply(state, 0).activeUnits).toBe(1);
+    expect(colony.stock['metals.t1']).toBe(460);
+    expect(colony.stock['minerals.t1']).toBe(485);
+    expect(colony.stock['bio.biomass']).toBe(495);
 
     // Spawn 9 more Harvesters so total active Harvesters = 10 (at Hub T1 supply cap 10)
     for (let i = 0; i < 9; i++) {

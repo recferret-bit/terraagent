@@ -2,10 +2,22 @@ import { z } from 'zod';
 import { TerraformOp, TileCoord, TilePos } from '../ws/sim';
 import { defineCommand } from './define';
 
+/** What a `work` order means on its tile (W02): repair a damaged own entity, or terraform the ground. */
+export const WorkIntent = z.enum(['terraform', 'repair']);
+export type WorkIntent = z.infer<typeof WorkIntent>;
+
 export const EnqueueTerraformTask = z.strictObject({
   terraform: z.strictObject({
     op: TerraformOp,
     tiles: z.array(TilePos).min(1).max(256),
+    workerId: z.number().int().nonnegative().optional(),
+    entityId: z.number().int().nonnegative().optional(),
+    /**
+     * `op: 'work'` only: `'repair'` repairs a damaged own entity on the tile (none → reject), `'terraform'` ignores
+     * damaged entities and terraforms the ground (the worker then keeps clearing the nearest obstacles). Absent: repair
+     * a damaged target if there is one, else terraform.
+     */
+    intent: WorkIntent.optional(),
   }),
 });
 
@@ -55,6 +67,10 @@ export const EnqueueDirectTask = z.strictObject({
       op: TerraformOp,
       q: TileCoord,
       r: TileCoord,
+      workerId: z.number().int().nonnegative().optional(),
+      entityId: z.number().int().nonnegative().optional(),
+      /** `op: 'work'` only: as `terraform.intent` (the same order path, `enqueueWorkOrder`). */
+      intent: WorkIntent.optional(),
     }),
   ]),
 });

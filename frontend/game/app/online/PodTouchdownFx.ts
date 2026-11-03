@@ -82,6 +82,8 @@ export interface PodTouchdownState {
   readonly hqVisible: boolean;
   readonly heroEgressProgress: number;
   readonly uiVisible: boolean;
+  /** `0..1` seismic camera shake intensity (retro ground-effect rumble + touchdown impact jolt). */
+  readonly cameraShake: number;
 }
 
 /**
@@ -114,6 +116,7 @@ export class PodTouchdownFx {
   private elapsed = 0;
   private time = 0;
   private wasSimDescending = false;
+  private lastCameraShake = 0;
   private readonly groundPos = new THREE.Vector3();
 
   constructor(
@@ -196,6 +199,10 @@ export class PodTouchdownFx {
     return !this.spacePhase && (!this.enabled || this.elapsed >= POD_TOUCHDOWN_TOTAL_S);
   }
 
+  getCameraShake(): number {
+    return this.lastCameraShake;
+  }
+
   private ensureFlames(podMesh: THREE.Object3D): Flames {
     if (this.flames && this.attachedPodMesh === podMesh) return this.flames;
     if (this.flames && this.attachedPodMesh) {
@@ -256,6 +263,7 @@ export class PodTouchdownFx {
         hqVisible: false,
         heroEgressProgress: 0,
         uiVisible: false,
+        cameraShake: 0,
       };
     }
 
@@ -274,13 +282,14 @@ export class PodTouchdownFx {
         thrust: 0,
         dustIntensity: 0,
         podVisible: false,
-        egressRigVisible: false,
+        egressRigVisible: true,
         podOpenProgress: 1,
-        podDismantleProgress: 1,
+        podDismantleProgress: 0,
         craterVisible: true,
         hqVisible: true,
         heroEgressProgress: 1,
         uiVisible: true,
+        cameraShake: 0,
       };
     }
 
@@ -294,6 +303,7 @@ export class PodTouchdownFx {
       const podLift = POD_TOUCHDOWN_START_ALT_M * decel * decel;
       const ignite = this.mode === 'full' ? 1 : smoothstep(0, 0.22, t);
       const prox = clamp(1 - podLift / 22, 0, 1);
+      const retroRumble = smoothstep(0.52, 1.0, u) * 0.22;
       return {
         mode: this.mode,
         state: 'retro',
@@ -310,12 +320,16 @@ export class PodTouchdownFx {
         hqVisible: false,
         heroEgressProgress: 0,
         uiVisible: false,
+        cameraShake: retroRumble,
       };
     }
 
     if (t < POD_WAIT_END_S) {
       const thrust = 1 - smoothstep(POD_TOUCHDOWN_DESCENT_S, POD_ENGINE_STOP_END_S, t);
       const dust = (1 - smoothstep(POD_TOUCHDOWN_DESCENT_S, POD_WAIT_END_S, t)) * 0.92;
+      const dtImpact = Math.max(0, t - POD_TOUCHDOWN_DESCENT_S);
+      const primaryJolt = Math.exp(-dtImpact * 3.8) * (1 - smoothstep(0, 1.25, dtImpact));
+      const aftershock = 0.34 * Math.exp(-Math.pow((dtImpact - 0.2) / 0.14, 2));
       return {
         mode: this.mode,
         state: 'impact_wait',
@@ -332,6 +346,7 @@ export class PodTouchdownFx {
         hqVisible: false,
         heroEgressProgress: 0,
         uiVisible: false,
+        cameraShake: clamp(primaryJolt + aftershock, 0, 1),
       };
     }
 
@@ -346,12 +361,13 @@ export class PodTouchdownFx {
       dustIntensity: (1 - u) * 0.28,
       podVisible: false,
       egressRigVisible: true,
-      podOpenProgress: smoother(0, 0.45, u),
-      podDismantleProgress: smoother(0.72, 1.0, u),
+      podOpenProgress: smoother(0, 0.55, u),
+      podDismantleProgress: 0,
       craterVisible: true,
       hqVisible: u >= 0.12,
       heroEgressProgress: smoother(0.12, 0.85, u),
       uiVisible: false,
+      cameraShake: 0,
     };
   }
 
@@ -370,6 +386,7 @@ export class PodTouchdownFx {
     }
 
     const state = this.computeState(simDescending, simProgress);
+    this.lastCameraShake = podMesh ? state.cameraShake : 0;
     if (!podMesh) {
       this.hideFx();
       this.impactRig.hide();

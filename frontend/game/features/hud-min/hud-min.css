@@ -6,7 +6,8 @@
 }
 
 .ta-hud-min,
-.ta-hud-min.plate-sm {
+.ta-hud-min.plate-sm,
+.ta-hud-min.ta-resources-hud {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -21,9 +22,11 @@
   font-size: var(--ta-fs-label);
   line-height: 1;
   user-select: none;
+  pointer-events: auto;
 }
 
-.ta-hud-min::before {
+.ta-hud-min::before,
+.ta-hud-min.ta-resources-hud::before {
   content: '';
   position: absolute;
   inset: 0;
@@ -31,7 +34,7 @@
   backdrop-filter: blur(8px);
   border: 1px solid var(--ta-seam-2);
   /* The design system's .plate-sm chamfer, on the backdrop only: a clip-path on the bar would also clip the toasts
-     hanging below it. */
+     and resource breakdown popovers hanging below it. */
   clip-path: polygon(
     var(--ta-chamfer-s) 0,
     100% 0,
@@ -106,17 +109,22 @@
 .ta-hud-min__stocks {
   display: flex;
   align-items: center;
+  height: 100%;
   gap: var(--ta-s3);
 }
 
 .ta-hud-min__stock {
+  position: relative;
   display: inline-flex;
   align-items: center;
+  height: 100%;
   gap: 5px;
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
   letter-spacing: 0.04em;
   white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .ta-hud-min__stock-val {
@@ -124,13 +132,22 @@
   font-weight: 600;
 }
 
+.ta-hud-min__stock[data-capped='true'] .ta-hud-min__stock-val,
+.ta-hud-min__stock.ta-res-chip--capped .ta-hud-min__stock-val {
+  color: var(--ta-fault-text);
+}
+
 .ta-hud-min__cell {
+  position: relative;
   display: inline-flex;
   align-items: center;
+  height: 100%;
   gap: 6px;
   padding-left: var(--ta-s3);
   border-left: 1px solid var(--ta-seam);
   white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
 }
 
 .ta-hud-min__cell-val {
@@ -172,6 +189,119 @@
   font-weight: 600;
   color: var(--ta-text-2);
   letter-spacing: 0.05em;
+}
+
+/* Resource tiers & flow hover breakdown popover */
+.ta-hud-min .ta-res-chip__breakdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + var(--ta-s1));
+  left: 0;
+  min-width: 196px;
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-seam-3);
+  padding: var(--ta-s2) var(--ta-s3);
+  flex-direction: column;
+  gap: var(--ta-s1);
+  z-index: 120;
+  pointer-events: none;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+}
+
+.ta-hud-min__stock:hover .ta-res-chip__breakdown,
+.ta-hud-min__stock:focus-within .ta-res-chip__breakdown,
+.ta-hud-min__stock[data-open='true'] .ta-res-chip__breakdown,
+.ta-hud-min__cell:hover .ta-res-chip__breakdown,
+.ta-hud-min__cell:focus-within .ta-res-chip__breakdown,
+.ta-hud-min__cell[data-open='true'] .ta-res-chip__breakdown {
+  display: flex;
+}
+
+.ta-hud-min .ta-res-breakdown__header {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-button);
+  color: var(--ta-orange);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--ta-seam-2);
+  padding-bottom: var(--ta-s1);
+  margin-bottom: 2px;
+}
+
+.ta-hud-min .ta-res-breakdown__flow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--ta-s1);
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--ta-seam-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+}
+
+.ta-hud-min .ta-res-breakdown__flow-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  white-space: nowrap;
+}
+
+.ta-hud-min .ta-res-breakdown__income {
+  color: var(--ta-terra);
+}
+
+.ta-hud-min .ta-res-breakdown__spending {
+  color: var(--ta-orange-hi);
+}
+
+.ta-hud-min .ta-res-breakdown__net {
+  color: var(--ta-text);
+  font-weight: 600;
+}
+
+.ta-hud-min .ta-res-breakdown__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+  white-space: nowrap;
+}
+
+.ta-hud-min .ta-res-breakdown__row[data-locked='true'],
+.ta-hud-min .ta-res-tier--locked {
+  color: var(--ta-dim);
+  opacity: 0.55;
+}
+
+.ta-hud-min .ta-res-breakdown__name {
+  flex: 1;
+}
+
+.ta-hud-min .ta-res-breakdown__amount {
+  font-weight: 600;
+  color: var(--ta-text);
+}
+
+.ta-hud-min .ta-res-breakdown__row[data-locked='true'] .ta-res-breakdown__amount {
+  color: var(--ta-dim);
+}
+
+.ta-hud-min .ta-res-breakdown__rate {
+  font-size: 10px;
+  color: var(--ta-steel);
 }
 
 /* Toasts */

@@ -1,24 +1,37 @@
 import * as THREE from 'three';
-import { hexIndex } from '@terra/sim/grid/hex';
+import { hexIndex, hexRound } from '@terra/sim/grid/hex';
 import type { PlanetSpec } from '../PlanetSpec';
-import { createWater, type LiquidResult } from '../../visuals/terrain/Liquids';
-import { buildHeightTexture } from '../../visuals/terrain/TerrainGrid';
+import { createWaterMaterial } from '../../visuals/water/WaterMaterial';
+import { createWaterFauna, type WaterFauna } from '../../visuals/water/fauna';
+import {
+  bakeShoreField, createShoreField, createShoreFieldTexture, writeShoreFieldTexture, type WaterCodeAt,
+} from '../../visuals/water/shoreField';
 import { HEX_TERRAIN, isClearedPrep, type HexTileLayers } from './chunkMesh';
-import { planetExtent, tileAt, tileXZ } from './hexMath';
+import { TILE_M, planetExtent } from './hexMath';
+import { createWaterBucketSet } from './waterBuckets';
 
 export const HEX_WATER_LEVEL = 0.0;
-const TEX_RES = 128;
 
 export interface HexWater {
-  readonly mesh: THREE.Mesh;
+  /** Parent of the surface buckets and the fauna, at the water level (add this to the scene). */
+  readonly group: THREE.Group;
+  /** Surface buckets: one Mesh per 32 m cell with water (`waterBuckets.ts`), all sharing `material`. */
+  readonly buckets: readonly THREE.Mesh[];
+  /** The one water material (F8 WATER / WIND and the clocks reach every bucket through it). */
+  readonly material: THREE.Material;
   readonly uniforms: Record<string, THREE.IUniform>;
   readonly waterTileCount: number;
   readonly waterTriangleCount: number;
+  /** Fish and jellies under the surface (a child of `group`; placed from the shore field, bucketed per cell). */
+  readonly fauna: WaterFauna;
   /**
    * Re-reads the water tiles. With `changed` (tile indices), nothing is rebuilt unless one of them gained, lost or
-   * changed its water (shallow / deep); without it, the bed texture and surface are always rebuilt.
+   * changed its water (shallow / deep), and then only the surface buckets around those tiles; without it, the bed
+   * texture and every bucket are rebuilt.
    */
   update(layers: HexTileLayers, changed?: ArrayLike<number>): void;
+  /** Hides the surface buckets and fauna buckets wholly outside the view focus; call once per frame. */
+  cullToFocus(): void;
   dispose(): void;
 }
 
@@ -35,160 +48,100 @@ function waterCode(layers: HexTileLayers, i: number): number {
   return layers.terrain![i] === HEX_TERRAIN.deep ? 2 : 1;
 }
 
-function sampleWaterBed(radius: number, layers: HexTileLayers, span: number): Float32Array {
-  const hs = new Float32Array(TEX_RES * TEX_RES);
-  const step = span / (TEX_RES - 1);
-  for (let j = 0; j < TEX_RES; j++) {
-    const z = -span / 2 + j * step;
-    for (let i = 0; i < TEX_RES; i++) {
-      const x = -span / 2 + i * step;
-      const hit = tileAt(radius, x, z);
-      let h = 1.0;
-      if (hit && layers.terrain && isWaterTile(layers, hit.i)) {
-        const t = layers.terrain[hit.i] ?? 0;
-        h = t === HEX_TERRAIN.deep ? -1.6 : -0.35;
-      }
-      hs[j * TEX_RES + i] = h;
-    }
-  }
-  return hs;
-}
-
-function buildWaterSurfaceGeometry(
-  radius: number,
-  layers: HexTileLayers,
-): { geo: THREE.BufferGeometry; waterTiles: number; waterTris: number } {
+/**
+ * `tileAt` with the hex index cached (same rounding as `planeToAxial`) returning the recorded water code: the shore
+ * field calls it once per texel (512²), so it must stay cheap.
+ */
+export function hexWaterCodeAt(radius: number, codes: ArrayLike<number>): WaterCodeAt {
   const hx = hexIndex(radius);
-  const local = new Map<number, number>();
-  const order: number[] = [];
-  const vert = (i: number) => {
-    let v = local.get(i);
-    if (v === undefined) {
-      v = order.length;
-      local.set(i, v);
-      order.push(i);
-    }
-    return v;
+  const inv = 1 / TILE_M, rk = 2 / Math.sqrt(3);
+  return (x, z) => {
+    const r = z * inv * rk;
+    const [q, rr] = hexRound(x * inv - r / 2, r);
+    const i = hx.indexOf(q, rr);
+    return i < 0 ? 0 : codes[i]!;
   };
-  const idx: number[] = [];
-  let waterTiles = 0;
-  for (let i = 0; i < hx.count; i++) {
-    const w0 = isWaterTile(layers, i);
-    if (w0) waterTiles++;
-    const q = hx.q[i]!, r = hx.r[i]!;
-    const b = hx.indexOf(q + 1, r), c = hx.indexOf(q, r + 1);
-    if (b >= 0 && c >= 0 && (w0 || isWaterTile(layers, b) || isWaterTile(layers, c))) {
-      idx.push(vert(i), vert(c), vert(b));
-    }
-    const b2 = hx.indexOf(q, r - 1), c2 = hx.indexOf(q - 1, r);
-    if (b2 >= 0 && c2 >= 0 && (w0 || isWaterTile(layers, b2) || isWaterTile(layers, c2))) {
-      idx.push(vert(b2), vert(c2), vert(i));
-    }
-  }
-  const V = order.length;
-  const pos = new Float32Array(V * 3);
-  const nor = new Float32Array(V * 3);
-  const uv = new Float32Array(V * 2);
-  const ext = Math.max(1, planetExtent(radius).x * 2.2);
-  for (let v = 0; v < V; v++) {
-    const i = order[v]!;
-    const [x, z] = tileXZ(hx.q[i]!, hx.r[i]!);
-    pos[v * 3] = x;
-    pos[v * 3 + 1] = isWaterTile(layers, i) ? 0.0 : -0.015;
-    pos[v * 3 + 2] = z;
-    nor[v * 3 + 1] = 1;
-    uv[v * 2] = x / ext + 0.5;
-    uv[v * 2 + 1] = z / ext + 0.5;
-  }
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  geo.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
-  geo.setIndex(new THREE.BufferAttribute(Uint32Array.from(idx), 1));
-  if (V > 0) {
-    geo.computeBoundingSphere();
-    geo.computeBoundingBox();
-  }
-  return { geo, waterTiles, waterTris: idx.length / 3 };
 }
 
-/** Creates the animated hydro water plane over Shallow and Deep hex tiles using `Liquids.ts`. */
+/** Creates the animated hydro water over Shallow and Deep hex tiles: spatial surface buckets sharing one material. */
 export function createHexWater(radius: number, look: PlanetSpec, initialLayers: HexTileLayers): HexWater {
   const ext = planetExtent(radius);
   const span = Math.max(16, ext.x * 2.2);
-  let heightTex = buildHeightTexture(sampleWaterBed(radius, initialLayers, span), TEX_RES);
-  const shallowCol = look.palette.water ?? 0x38858f;
+  const field = createShoreField(span);
+  const fieldTex = createShoreFieldTexture(field.res);
   const deepCol = look.palette.waterDeep ?? 0x10344a;
-  const liquid: LiquidResult = createWater(
-    { level: HEX_WATER_LEVEL, heightTex, span, coverage: span },
-    shallowCol,
-    deepCol,
-    look.sky.skyColor,
-  );
-  liquid.mesh.name = 'hexWater';
-  liquid.mesh.position.y = HEX_WATER_LEVEL;
+  const water = createWaterMaterial({
+    shallow: look.palette.water ?? 0x38858f, deep: deepCol, sky: look.sky.skyColor, heightTex: fieldTex, span,
+    level: HEX_WATER_LEVEL, shoreField: true,
+  });
+  const surface = createWaterBucketSet(radius, water.material);
+  const group = new THREE.Group();
+  group.name = 'hexWater';
+  group.position.y = HEX_WATER_LEVEL;
+  const fauna = createWaterFauna({ time: water.uniforms.uTime!, deepColor: { value: new THREE.Color(deepCol) }, seed: look.seed });
+  group.add(surface.group, fauna.group);
 
   const hasWater = look.kind !== 'dune';
   let waterTileCount = 0;
-  let waterTriangleCount = 0;
   const codes = new Uint8Array(hexIndex(radius).count);
-  const recordCodes = (layers: HexTileLayers) => { for (let i = 0; i < codes.length; i++) codes[i] = waterCode(layers, i); };
-  const waterChanged = (layers: HexTileLayers, changed: ArrayLike<number>) => {
+  const isWater = (i: number) => codes[i] !== 0;
+  const setCode = (i: number, c: number) => { waterTileCount += (c !== 0 ? 1 : 0) - (codes[i] !== 0 ? 1 : 0); codes[i] = c; };
+  /** Tiles of `changed` whose water code differs from the recorded one. */
+  const waterChanges = (layers: HexTileLayers, changed: ArrayLike<number>) => {
+    const out: number[] = [];
     for (let n = 0; n < changed.length; n++) {
       const i = changed[n]!;
-      if (i >= 0 && i < codes.length && codes[i] !== waterCode(layers, i)) return true;
+      if (i >= 0 && i < codes.length && codes[i] !== waterCode(layers, i)) out.push(i);
     }
-    return false;
+    return out;
   };
 
-  const syncGeometry = (layers: HexTileLayers) => {
-    if (!hasWater) {
-      liquid.mesh.visible = false;
-      waterTileCount = 0;
-      waterTriangleCount = 0;
-      return;
-    }
-    const { geo, waterTiles, waterTris } = buildWaterSurfaceGeometry(radius, layers);
-    liquid.mesh.geometry.dispose();
-    liquid.mesh.geometry = geo;
-    liquid.mesh.visible = waterTiles > 0;
-    waterTileCount = waterTiles;
-    waterTriangleCount = waterTris;
+  const codeAt = hexWaterCodeAt(radius, codes);
+  /** Re-bakes the bed / shore-distance / mask field from `codes` and re-places the fish. */
+  const bakeField = () => {
+    bakeShoreField(codeAt, field);
+    writeShoreFieldTexture(fieldTex, field);
+    if (water.uniforms.uHeightTex) water.uniforms.uHeightTex.value = fieldTex;
+    fauna.rebuild(field);
+  };
+  const rebuildAll = (layers: HexTileLayers) => {
+    for (let i = 0; i < codes.length; i++) setCode(i, waterCode(layers, i));
+    bakeField();
+    surface.rebuild(isWater);
+    group.visible = waterTileCount > 0;
   };
 
-  syncGeometry(initialLayers);
-  recordCodes(initialLayers);
+  if (hasWater) rebuildAll(initialLayers);
+  else group.visible = false;
 
   return {
-    get mesh() {
-      return liquid.mesh;
-    },
-    get uniforms() {
-      return liquid.uniforms;
-    },
-    get waterTileCount() {
-      return waterTileCount;
-    },
-    get waterTriangleCount() {
-      return waterTriangleCount;
-    },
+    group,
+    get buckets() { return surface.meshes; },
+    material: water.material,
+    uniforms: water.uniforms,
+    get waterTileCount() { return waterTileCount; },
+    get waterTriangleCount() { return surface.triangleCount; },
+    fauna,
     update(layers, changed) {
-      if (!hasWater) {
-        syncGeometry(layers);
-        return;
-      }
-      if (changed && !waterChanged(layers, changed)) return;
-      recordCodes(layers);
-      const nextTex = buildHeightTexture(sampleWaterBed(radius, layers, span), TEX_RES);
-      heightTex.dispose();
-      heightTex = nextTex;
-      if (liquid.uniforms.uHeightTex) liquid.uniforms.uHeightTex.value = heightTex;
-      syncGeometry(layers);
+      if (!hasWater) return;
+      if (!changed) { rebuildAll(layers); return; }
+      const touched = waterChanges(layers, changed);
+      if (touched.length === 0) return;
+      for (const i of touched) setCode(i, waterCode(layers, i));
+      bakeField();
+      surface.rebuild(isWater, surface.cellsTouchedBy(touched));
+      group.visible = waterTileCount > 0;
+    },
+    cullToFocus() {
+      surface.cullToFocus();
+      fauna.cullToFocus();
     },
     dispose() {
-      heightTex.dispose();
-      liquid.dispose();
-      liquid.mesh.removeFromParent();
+      fauna.dispose();
+      surface.dispose();
+      fieldTex.dispose();
+      water.dispose();
+      group.removeFromParent();
     },
   };
 }

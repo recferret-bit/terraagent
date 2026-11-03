@@ -650,7 +650,6 @@ Regenerate: per package `npx vitest run --config tests/vitest.config.ts --covera
 | `frontend/render/kitbash/archetypes/buildings/rocket.ts` | 100.0% (42/42) | 100.0% | 100.0% |
 | `frontend/render/planets/hex/chunkSet.ts` | 100.0% (41/41) | 83.3% | 100.0% |
 | `frontend/render/planets/hex/borderController.ts` | 100.0% (23/23) | 100.0% | 100.0% |
-| `frontend/render/planets/hex/prepTransitions.ts` | 100.0% (22/22) | 83.3% | 100.0% |
 | `frontend/render/visuals/UnifiedColonyMaterial.ts` | 100.0% (18/18) | 86.7% | 100.0% |
 | `frontend/render/planets/hex/hexMath.ts` | 100.0% (17/17) | 90.9% | 100.0% |
 | `frontend/render/kitbash/archetypes/buildings/index.ts` | 100.0% (16/16) | 100.0% | 100.0% |

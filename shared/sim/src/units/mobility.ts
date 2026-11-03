@@ -68,7 +68,7 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
         return {
           speedPerTick: Math.fround(Number(row.speedTilesPerS ?? 0.3)),
           viewRadius: Number(row.viewRadius ?? 7),
-          profile: 'none',
+          profile: 'harvester',
           terraformReach: [0, 1],
           buildReach: [0, 0],
           weaponRange: 0,

@@ -1,12 +1,13 @@
 import { ENTITY_STATE } from '../ecs/columns';
 import { rowOf, setField } from '../ecs/store';
-import { hexDistance } from '../grid/hex';
+import { hexDistance, hexIndex } from '../grid/hex';
+import { DEPOSIT } from '../grid/layers';
 import type { StepContext } from '../kernel/context';
 import type { PlanetState } from '../kernel/state';
 import { setUnitActivity } from './approach';
 import { UnitBook } from './book';
 import { mobileStats, notifyUnitChanged } from './mobility';
-import { cancelMove, requestMove, runMovement } from './movement/orchestrator';
+import { cancelMove, getMotion, requestMove, runMovement } from './movement/orchestrator';
 import { commandKey, type UnitCommand, type UnitCommandStatus, type UnitCtx, type UnitRegistry, type UnitWorkPhase } from './types';
 
 /**
@@ -128,12 +129,25 @@ export function stepUnits(reg: UnitRegistry, state: PlanetState, ctx: StepContex
     }
     think(reg, u, book);
     if (!u.record.current && e.cols.state[row] === ENTITY_STATE.moving) {
-      const tq = e.cols.targetQ[row], tr = e.cols.targetR[row];
-      if (hexDistance(e.cols.x[row], e.cols.y[row], tq, tr) > 1e-4) {
-        requestMove(state, row, { q: tq, r: tr, minDist: 0, maxDist: 0 }, ctx);
-      } else {
-        setField(e, row, 'state', ENTITY_STATE.idle, ctx.tick);
-        notifyUnitChanged(state, row, ctx.tick, ctx.data);
+      const existingMotion = getMotion(state, u.id);
+      if (!existingMotion || existingMotion.status === 'failed') {
+        const tq = e.cols.targetQ[row], tr = e.cols.targetR[row];
+        const tIdx = hexIndex(state.grid.radius).indexOf(tq, tr);
+        const isDep = tIdx >= 0 && state.grid.layers.deposit[tIdx] !== DEPOSIT.none;
+        if (isDep) {
+          const atAdj = hexDistance(e.cols.q[row], e.cols.r[row], tq, tr) === 1 && hexDistance(e.cols.x[row], e.cols.y[row], e.cols.q[row], e.cols.r[row]) <= 0.15;
+          if (!atAdj) {
+            requestMove(state, row, { q: tq, r: tr, minDist: 1, maxDist: 1 }, ctx);
+          } else {
+            setField(e, row, 'state', ENTITY_STATE.idle, ctx.tick);
+            notifyUnitChanged(state, row, ctx.tick, ctx.data);
+          }
+        } else if (hexDistance(e.cols.x[row], e.cols.y[row], tq, tr) > 1e-4) {
+          requestMove(state, row, { q: tq, r: tr, minDist: 0, maxDist: 0 }, ctx);
+        } else {
+          setField(e, row, 'state', ENTITY_STATE.idle, ctx.tick);
+          notifyUnitChanged(state, row, ctx.tick, ctx.data);
+        }
       }
     }
   }

@@ -49,8 +49,7 @@ describe('W02-15 Non-blocking queue scan', () => {
     expect(q2.ok).toBe(true);
     if (!q2.ok) throw new Error('expected ok');
     expect(q2.entry.state).toBe('in_progress');
-    expect(q2.entry.paid).toBe(true);
-    expect(colony.stock['metals.t1']).toBe(40);
+    expect(colony.stock['metals.t1']).toBe(100); // Deducted progressively on ticks
 
     const queue = getColonyQueue(state, 0, 'construction');
     expect(queue[0].taskId).toBe('entry-1');
@@ -93,6 +92,7 @@ describe('W02-15 Non-blocking queue scan', () => {
     const queue = getColonyQueue(state, 0, 'construction');
     expect(queue.find((e) => e.taskId === 'wait-minerals')?.state).toBe('waiting');
     expect(queue.find((e) => e.taskId === 'wait-metals')?.state).toBe('in_progress');
-    expect(colony.stock['metals.t1']).toBe(0);
+    // 1 tick of progressive deduction at 1.5/90 of 40 Metals = 0.666667 deducted
+    expect(colony.stock['metals.t1']).toBeCloseTo(40 - 40 * (1.5 / 90), 4);
   });
 });

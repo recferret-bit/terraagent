@@ -3,6 +3,8 @@ import type * as THREE from 'three';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
 import { NOISE_GLSL } from './glsl';
 import { injectAll } from '../shaderInject';
+import { WATER_BED_TINT_GLSL } from '../water/glsl/bed';
+import { getWaterUniforms } from '../water/waterConfig';
 
 const VERT_COMMON = /* glsl */ `#include <common>
 attribute float aAO; attribute float aRock; varying vec3 vLP; varying vec3 vLN; varying float vAO; varying float vRock;`;
@@ -68,15 +70,15 @@ const KIND_DUNE = /* glsl */ `    // ---- dune: wind-carved sand, rippled
 `;
 const KIND_OCEAN_FOREST = /* glsl */ `    // ---- ocean forest: sand, grass, wet shore
     float above = y - uLevel;
-    float sand = 1.0 - smoothstep(0.35, 1.15 + 0.5*n1, above);
+    float sand = (1.0 - smoothstep(0.35, 1.15 + 0.5*n1, above)) * shoreGate;
     float hgt = smoothstep(0.5, 6.5, y);
     vec3 grass = mix(uLow, uHigh, clamp(hgt + 0.4*(n2-0.5) + 0.2*(nL-0.5), 0.0, 1.0));
     grass = mix(grass, grass*vec3(0.8,0.95,0.7), smoothstep(0.5,0.7,fbm3(p*0.16))*0.7);
     col = mix(grass, uAccent, sand);
-    float wet = 1.0 - smoothstep(0.0, 0.55, above);
+    float wet = (1.0 - smoothstep(0.0, 0.55, above)) * shoreGate;
     col = mix(col, col*vec3(0.55,0.58,0.55), wet);
     float under = 1.0 - smoothstep(-2.6, 0.0, above);
-    col = mix(col, uAccent*vec3(0.62,0.66,0.62), under*0.8*step(above,0.0));
+    col = mix(col, uAccent*vec3(0.62,0.66,0.62), under*0.8*step(above,0.0)*shoreGate);
     col = mix(col, rockCol, rockMask*smoothstep(0.0,0.5,above));
     gRough = mix(0.95, 0.55, wet);
 `;
@@ -89,7 +91,10 @@ const KIND_FOREST_ROCK = /* glsl */ `    // ---- forest rock: moss, meadow, clif
     float dirt = smoothstep(0.2,0.32,sl)*(1.0-rockMask);
     col = mix(col, vec3(0.30,0.24,0.17), dirt*0.6);
     col = mix(col, rockCol, rockMask);
-    float above = y - uLevel; col = mix(col, vec3(0.22,0.2,0.15), (1.0-smoothstep(0.0,0.6,above))*0.8);
+    float above = y - uLevel;
+    float shoreSand = (1.0 - smoothstep(-0.02, 0.08, above)) * smoothstep(-0.32, -0.04, above) * (1.0 - rockMask) * shoreGate;
+    col = mix(col, vec3(0.78, 0.68, 0.48) * (0.92 + 0.16 * n2), shoreSand * 0.75);
+    col = mix(col, vec3(0.26, 0.23, 0.18), (1.0 - smoothstep(-0.35, -0.04, above)) * 0.65 * shoreGate);
   
 `;
 
@@ -102,6 +107,7 @@ const COLOR_PRE = /* glsl */ `{
   vec3 col; gEmis = vec3(0.0); gRough = 0.92; gBump = vec3(0.0);
   vec3 rockCol = strataRock(p, y, uRock, uRockDark, mix(uRock, uAccent, 0.45));
   float rockMask = smoothstep(0.30, 0.50, sl);
+  float shoreGate = TA_WATER_GATE;                                          // 0 = dry land whatever its height
 `;
 const COLOR_POST = /* glsl */ `  col *= 0.9 + 0.2*n2;
   col *= mix(0.42, 1.0, smoothstep(0.25, 1.0, vAO));                       // baked AO: creases & cliff feet
@@ -115,11 +121,20 @@ const COLOR_POST = /* glsl */ `  col *= 0.9 + 0.2*n2;
   diffuseColor.rgb = col;
 }`;
 
+/**
+ * Water-level bands (shore sand, wet ground, lake-bed mud) assume land rises out of the water as a continuous
+ * heightfield. A material whose dry ground can sit at or below the water level defines `TA_WATER_GATE` (1 on water
+ * tiles, 0 on dry ground) before this chunk; the hex terrain does (`hexEdges.ts`), since it levels flat land to 0 m.
+ */
 const FRAG_COMMON = `#include <common>
 #define TA_TERRAIN_SHADER 1
+#ifndef TA_WATER_GATE
+#define TA_WATER_GATE 1.0
+#endif
 ${FRAG_DECLS}${NOISE_GLSL}
 float hash1(float n){ return fract(sin(n * 127.1) * 43758.5453); }
 ${STRATA_ROCK}
+${WATER_BED_TINT_GLSL}
 ${COLONY_VISION_AND_LIGHTS_GLSL}`;
 
 const FRAG_COLOR = `#include <color_fragment>
@@ -136,7 +151,7 @@ const FRAG_FOG = /* glsl */ `#include <fog_fragment>
 gl_FragColor.rgb = applyColonyFovShroud(vLP, gl_FragColor.rgb);`;
 
 export function applyTerrainShader(sh: THREE.WebGLProgramParametersWithUniforms, uniforms: Record<string, THREE.IUniform>) {
-  Object.assign(sh.uniforms, getColonyVisionUniforms(), uniforms);
+  Object.assign(sh.uniforms, getColonyVisionUniforms(), { uAbsorption: getWaterUniforms().uAbsorption }, uniforms);
   sh.vertexShader = injectAll(sh.vertexShader, [
     ['#include <common>', VERT_COMMON],
     ['#include <begin_vertex>', VERT_BEGIN],
@@ -144,7 +159,8 @@ export function applyTerrainShader(sh: THREE.WebGLProgramParametersWithUniforms,
   sh.fragmentShader = injectAll(sh.fragmentShader, [
     ['#include <common>', FRAG_COMMON],
     ['#include <color_fragment>', FRAG_COLOR],
-    ['#include <roughnessmap_fragment>', `#include <roughnessmap_fragment>\nroughnessFactor = gRough;`],
+    // after the colour AND the hex beach (`alphatest_fragment`, hexEdges.ts): ground under water is tinted by depth
+    ['#include <roughnessmap_fragment>', `diffuseColor.rgb = waterBedTint(diffuseColor.rgb, uLevel - vLP.y, TA_WATER_GATE);\n#include <roughnessmap_fragment>\nroughnessFactor = gRough;`],
     ['#include <normal_fragment_maps>', `#include <normal_fragment_maps>\nnormal = normalize(normal + (viewMatrix*vec4(gBump,0.0)).xyz);`],
     ['#include <emissivemap_fragment>', `#include <emissivemap_fragment>\nvec3 taProj = evalColonyProjectorLight(vLP, normalize(vLN + gBump));\ntotalEmissiveRadiance += gEmis + diffuseColor.rgb * taProj + taProj * 0.06;`],
     ['#include <fog_fragment>', FRAG_FOG],

@@ -153,7 +153,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 
 ### RN-09 · A tile prepared during play looks different after a reload
 
-- **Status:** Resolved (review-fix round 2026-11-01)
+- **Status:** Resolved (review-fix round 2026-11-01); superseded 2026-11-02: the Prepared pad, its blend and textures were removed (RN-29)
 - **Severity:** low
 - **Confidence:** PLAUSIBLE
 - **Area / code:** `frontend/render/planets/hex/chunkMesh.ts:280-285` (`stylePrep = isPrep && startT >= 0 ? HEX_PREP.flat : prepVal`)
@@ -171,7 +171,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 
 ### RN-10 · Shader constants copied from TypeScript (`0.4` s blend, `TILE_M = 2`)
 
-- **Status:** Resolved (review-fix round 2026-11-01)
+- **Status:** Resolved (review-fix round 2026-11-01); superseded 2026-11-02: the Prepared pad, its blend and textures were removed (RN-29)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/hexEdges.ts:16` (`/ 0.4`) vs `chunkMesh.ts:32` (`PREP_BLEND_DURATION_S`); `hexEdges.ts:55` (`vLP.xz / 2.0`) vs `hexMath.ts:4` (`TILE_M`); `hexEdges.ts:74-79` (`String.replace` on `'vLP = position;'` and `'#include <alphatest_fragment>'`)
@@ -207,7 +207,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 
 ### RN-12 · Foundation pad textures are generated at 512² instead of 128², and for every terrain
 
-- **Status:** Resolved (review-fix round 2026-11-01)
+- **Status:** Resolved (review-fix round 2026-11-01); superseded 2026-11-02: the Prepared pad, its blend and textures were removed (RN-29)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/visuals/terrain/terrainMaterial.ts:12` (`ProceduralTextureRegistry.get('foundationHexPad')`); `ProceduralTextureRegistry.ts:88` (`get(name, size = 512)`), `:255` (generator default `size = 128`); `terrainShader.ts:18,162` (`FOUNDATION_PAD_GLSL` in the shared `FRAG_COMMON`)
@@ -449,3 +449,327 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **To resolve:** give one shared helper a radial-segment option and have both kits call it with their current defaults (geometry must stay byte-identical; check with an attribute hash of all archetypes).
 - **Found:** 2026-11-01, render review-fix round
 - **Fix:** one helper `tubeThrough(b, pts, r, zone, { along, radial }, opts)` in `frontend/render/kitbash/greebles/tube.ts` (CatmullRom `TubeGeometry`, named `power cable` unless `opts.name` says otherwise); `kit.tube` (and so `kit.cable`) calls it with `{ along: o.seg ?? 10, radial: 4 }` and the same option bag, `unitParts.cable` (and `sag`) with `{ along: 10, radial: 5 }`, and the third copy found on the way, the `saggingCable` greeble in `KitbashRegistry.ts` (used by no archetype), with `{ along: 12, radial: 6 }` (its part is now named `power cable`). Geometry byte-identical: a scratch SHA-256 over every archetype's merged attributes + index and its extracted part list (name, zone, kind, role, anim, pivot, emissive) is unchanged for all 29 archetypes; `npm run validate:models -- --all` 29 pass, 0 errors, 0 warnings before and after; `npm run test:models` 48/48.
+
+## W02 First Light review fixes (`lighting`, `planets/hex`, `visuals/terrain`, `playground`)
+
+### RN-26 · Daytime shutoff, cone/ground projector sync, 4-sided building illumination, and Playground Lights Editor
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/lighting/archetypeLights.ts`, `frontend/render/lighting/EntityProjectorRig.ts`, `frontend/render/lighting/ColonyVisionAndLights.ts`, `frontend/game/app/online/entityVisionSync.ts`, `frontend/playground/panels/LightsPanel.ts`
+- **What happens:** unit and building volumetric cones and projectors remained on during daytime (`rigIntensity` floor `0.22`), volumetric cone cylinders pointed 180° away from their ground illumination pools, `metalsExtractor` and `solar` fell through to the 1-lamp robot projector branch instead of lighting all 4 building sides, and light sources could not be tuned in `/playground.html`.
+- **Fix:** created `archetypeLights.ts` as the single code-configurable registry of `ArchetypeLightSource`s (`pos`, `target`, `color`, `intensity`, `range`, `coneTopRadius`, `coneBottomRadius`, `poolRadius`) shared by `EntityProjectorRig` (orienting cones via `quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir)`) and `entityVisionSync` (projecting all 4 corner lights on `commandHub`, `metalsExtractor`, `solar`, and `dropPod`, with `MAX_COLONY_PROJECTORS = 32`); gated all unit/building lights off during daytime (`daylight >= 0.65`) and disabled Solar lights/animation at night; added the interactive `LightsPanel` (`?lights=1` / `[L]`) in `/playground.html` with live add/remove/move/aim/tune controls and TypeScript code export.
+- **Found:** 2026-11-02, owner review (W02)
+
+### RN-27 · Missing hex grid lines and partial foundation plates under HQ / placed buildings
+
+- **Status:** Resolved (W02 review-fix 2026-11-02); the metallic foundation plate part is superseded the same day: Prepared ground is drawn as plain flat ground (RN-29)
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/planets/hex/chunkMesh.ts`, `frontend/render/planets/hex/hexEdges.ts`, `frontend/game/app/online/EntityMeshes.ts`, `shared/sim/src/systems/economy/construction.ts`
+- **What happens:** `isFlatBuildable` excluded `isClearedPrep` tiles bordering uneven ground and `hexEdges.ts` attenuated hex grid lines on prepared pads; barycentric `smoothstep(0.36, 0.54, vPrepTarget)` clipped off the outer half and 6 corners of every prepared hex; `3×3` Command Hub prepared `[0..2]` while its mesh sat at `(0, 0)`, and `2×2` buildings sat at `(q, r)` instead of `(q + 0.5, r + 0.5)`.
+- **Fix:** included `isClearedPrep(prepVal)` in `isFlatBuildable`, computed exact Voronoi hex membership (`vPrepPos`) in `hexEdges.ts` so 100% of every prepared hexagon renders as a metallic foundation plate with crisp dark metallic hex borders, centered `3×3` footprints at `[q-1..q+1, r-1..r+1]`, and centered `2×2` building meshes at `(x + 0.5, y + 0.5)` over their 4 footprint hexes.
+- **Found:** 2026-11-02, owner review (W02)
+
+### RN-28 · Prop/deposit overlap, animated water spilling past hex borders, and sandy beach shoreline transition
+
+- **Status:** Resolved (W02 review-fix 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/planets/hex/chunkPropScatter.ts`, `frontend/render/planets/hex/hexWater.ts`, `frontend/render/visuals/terrain/Liquids.ts`, `frontend/render/planets/hex/chunkMesh.ts`, `frontend/render/planets/hex/hexEdges.ts`, `shared/sim/src/gen/temperate.ts`
+- **What happens:** `assignTemperateDeposits` and `scatterTileProps` placed rocks/trees and resource deposits on the same tile, multi-instance props could overlap randomly, and `Liquids.ts` displaced dry bank vertices upward so animated water spilled over adjacent land tiles.
+- **Fix:** restricted deposit candidates in `assignTemperateDeposits` to `TERRAIN.flat`/`TERRAIN.slope`, skipped wild rock/forest props on deposit tiles in `chunkPropScatter.ts` with even angular sector spacing (`minR >= 0.34m`), pinned dry shoreline water vertices (`WATER_SHORE_PIN_Y = -0.16`, `waterVert = 0`) with exact Voronoi water-hex clipping (`inWaterHex`) in `Liquids.ts`, and added procedural wet/dry sandy beach transitions (`vHexShore`, `HEX_SHORE_BEACH_GLSL`) along water borders and hex corners.
+- **Found:** 2026-11-02, owner review (W02)
+
+### RN-29 · Prepared ground is drawn as plain flat ground (metal pad removed)
+
+- **Status:** Accepted (owner request 2026-11-02)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/planets/hex/{chunkMesh,createHexTerrain,hexEdges,chunkSet}.ts`, `frontend/render/visuals/ProceduralTextureRegistry.ts`
+- **What happens:** `tileStyle` gives Prepared the flat style (same tint, AO 1.0, levelled height, hex lines); the engineered hex-plate pad (`evalFoundationPad`, `frontierGlow`, `uPad*`, `foundationHexPad`), the 0.4 s Wild → Prepared blend (`prepTransitions.ts`, `PREP_BLEND_DURATION_S`, `getTilePrepBlend`, `aPrepTarget` / `aPrepStartTime`) are gone; the shore factor lives in its own attribute `aHexShore`. A Prepared tile next to water gets the beach band like a flat tile. Deposit tiles are levelled at `levelledFlatHeight(raw)` instead of 0 m (no more pits on raised ground).
+- **Why it is like this:** the owner wants terraform to just flatten the ground; buildable ground is no longer visible on its own (the build ghost shows it).
+- **To resolve:** if buildable ground should be readable again, add a subtle overlay in the build ghost, not a ground material.
+- **Found:** 2026-11-02, terraform rework
+
+### RN-30 · Hex terrain colour on uneven ground: water bands gated to water tiles, class tint per hex cell
+
+- **Status:** Resolved (terraform rework 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED (bisected: stayed with `?shadow=0`, `?daynight=0`, projectors / FoV off; gone with a plain material)
+- **Area / code:** `frontend/render/visuals/terrain/terrainShader.ts` (`TA_WATER_GATE`), `frontend/render/planets/hex/{tileTint,hexEdges,chunkMesh}.ts`
+- **What happened:** around the rock ridge north of the HQ a dark parallelogram, pale diagonal stripes and a brown smear showed. (a/b) The forestRock / oceanForest shader adds shore-sand / wet / lake-bed bands measured from the water level, and levelled hex land sits exactly at `HEX_WATER_LEVEL` (0 m): level tiles got ~0.9 sand, tiles raised ≥ 10 cm none, cut along mesh triangles; dry basins below 0 m showed lake-bed sand. (c) The class tint (slope brown, rock grey) was a per-vertex colour at tile centres, smeared a full tile across 2 m triangles.
+- **Fix:** every water-level band is multiplied by `TA_WATER_GATE` (1.0 for the continuous terrain; `smoothstep(0.96, 1.0, vHexShore)` on the hex terrain, so only real water tiles get them). The class tint is a per-cell `(2R+1)²` DataTexture (`tileTint.ts`, updated in `updateTiles`) sampled for the fragment's own hex and the neighbour across the nearest edge, 0.45 m seam; the vertex `color` attribute is gone.
+- **Left as is:** slope tiles stay brown inside their own hex (design; knobs `CLASS_STYLES` in `chunkMesh.ts`, `tileMix` 0.72, the 0.45 m seam in `HEX_TINT_GLSL`). The tint is now crisp per hex instead of the soft vertex blend.
+- **Found:** 2026-11-02, owner screenshot (terraform rework)
+
+### RN-31 · Deposit tier look is a default
+
+- **Status:** Question for the owner
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/planets/hex/chunkPropScatter.ts` (`depositVisualTier`), `frontend/render/visuals/terrain/Scatter.ts` (`Place.tintMul`), `frontend/game/store/replica/viewCodec.ts` (`depositTier`), `frontend/game/features/landfall/HqPanel.ts`
+- **What happens:** tier from the sim's `depositTier` layer (missing / 0 = t1): t1 3 nodes; t2 4 nodes, 1.12× size, colour ×1.1; t3 5 nodes, 1.24× size, colour ×1.2. Same models, so the family stays readable; the selection bar now names the tier and resource (`IRON DEPOSIT · T1`, `LIGHT ALLOYS DEPOSIT · T2`, etc.).
+- **To resolve:** owner tunes the 3D node counts/scales/tints if desired.
+- **Found:** 2026-11-02, terraform rework
+
+### RN-32 (RND-04) · Work particle bounce uses a scalar groundY plane per work site, and tool muzzle origins use a CPU-side GPU-pose mirror (`toolOrigins.ts`)
+
+- **Status:** Deliberate trade-off / Resolved (`toolOrigins.ts`)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/particles/WorkParticleEmitter.ts` (`stepLayer`), `frontend/render/particles/toolOrigins.ts` (`evalArchetypeToolOrigins`, `computeMeshToolOrigins`), `frontend/game/app/online/workTargetResolver.ts` (`buildActiveWorkSites`)
+- **What happens:**
+  1. **Scalar ground bounce plane:** each active work emitter samples `terrain.heightAt(tx, tz)` once per frame at the target cut point (`site.groundY`) and bounces all 100 instanced 3D debris chunks against that horizontal plane (`groundY + baseScale * 0.35`) rather than querying `terrain.heightAt(px, pz)` per particle per frame. On steeply sloped hex edges a chunk that skitters > 1 m upslope can clip slightly into the slope, or hover a few centimetres downslope before fading out.
+  2. **CPU mirror of GPU vertex animation for hand-locked tool beams (`RND-04`):** because robot limb kinematics (`BipedArm 5` + `BipedBody 8`, `SpinY 1`, `HoverBob 2`, `RecoilPulse 3`) are evaluated on the GPU in `UnifierShader.ts`, `frontend/render/particles/toolOrigins.ts` mirrors the exact shader math on the CPU (`evalArchetypeToolOrigins` / `computeMeshToolOrigins`) so dual cutter lasers on `robot.hero` (HQ bot) originate strictly from the animated left and right hands (with glowing palm muzzle orbs) and drills/torches/barrels on `robot.miner`, `robot.builder`, and `robot.combat` stay locked to their animated tips.
+  3. **Prop-instance target resolution across 1–2 hexes (`2m–4m`):** when a worker operates from 1–2 hexes away, `workTargetResolver.ts` queries `terrain.props.instancesForTile(targetTileIndex)` and snaps the laser cut point and 3D particle fountain to the nearest actual tree/rock/deposit prop instance (or tile center) with a 360° radial debris splash around the object rather than spraying backward into the bot.
+- **Why:** keeps per-emitter CPU stepping at ~100 simple arithmetic ops per frame + 1 lightweight analytical pose evaluation per active worker instead of GPU readbacks or 100 hex-height lookups per worker per frame.
+- **To resolve:** if upslope clipping is noticeable on steep ridges, sample `terrain.heightAt(px, pz)` only on frames where `py < groundY + 0.4`; if a new `aPartAnim` channel is added to `UnifierShader.ts` for a tool-bearing limb, mirror its formula in `toolOrigins.ts`.
+- **Found:** 2026-11-02, object-driven 3D work particles & hand-locked HQ lasers
+
+### RN-33 · Hex grid lines are the only "prepared" cue, and they also show on uneven Prepared tiles and deposits
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/planets/hex/chunkMesh.ts` (`isFlatBuildable`: `isClearedPrep ||`, `hasDeposit ||`), `shared/sim/src/systems/terraform-basic/workTile.ts` (uneven Prepared is re-workable)
+- **What happens:** with the pad gone (RN-29) the grid lines are the only hint that a hex is buildable. A Prepared tile that is uneven still gets the grid although the sim treats it as re-workable, and deposits get the grid although only deposit buildings may stand there.
+- **Why it is like this:** kept on purpose during the terraform rework review; changing it hides the grid on tiles players already see it on.
+- **To resolve:** decide whether the grid should mean "buildable now"; if so drop both shortcuts and let the build ghost carry the deposit rule.
+- **Found:** 2026-11-02, terraform rework review
+
+### RN-34 · A reseed to another planet type at the same radius keeps the old terrain look
+
+- **Status:** Resolved (W02 audit 2026-11-02)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/app/online/OnlineSession.ts` (`onTiles`), `frontend/render/planets/hex/createHexTerrain.ts` (`look.kind`, `uKind`)
+- **What happens:** the hex terrain was only recreated when the radius changed; a dev `seed` to another planet type with the same radius kept the previous `look.kind` for the tint table and `uKind`.
+- **Fix:** `OnlineSession.onTiles` resolves `look = resolveOnlinePlanetLook(v.planet.type, this.planetKind)` up front and recreates the `HexTerrain` (and applies the new sky look) whenever `this.biomeKey !== look.biomeKey`.
+- **Found:** 2026-11-02, terraform rework review
+
+### RN-35 · Viewport tile updates: one rebuild per snapshot, richness only by visual stage
+
+- **Status:** Resolved (terraform rework review 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/app/online/viewportHelper.ts` (`applyTerrainTileChanges`, `changedTiles`), `frontend/render/planets/hex/hexEdges.ts` (shore beach)
+- **What happened:** with ≤ 16 changed tiles each tile went through `setTileState` (a full planet rebuild each, writing into the previous snapshot's layers) before the final `updateTiles`: up to 17 rebuilds per snapshot. `changedTiles` compared raw `richness`, which a working harvester drains every tick, so every snapshot rebuilt chunks, props and borders near it. Shore cells showed a sand ring with a green hexagon inside.
+- **Fix:** a single `updateTiles(nextTiles, changed)`; richness compared by `getDepositVisualStage`; a `depositTier`-only change still triggers; the beach is one continuous noise-edged strip. Tests in `viewportHelper.spec.ts`, `hexUpdates.spec.ts`.
+- **Found:** 2026-11-02, terraform rework review
+
+
+## Water, wind and F8 WIND / WATER tabs (2026-11-02)
+
+### RN-36 · Waves are per-pixel below ~8 m; the water mesh only carries the long swell
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/visuals/water/glsl/waves.ts` (`waterSwellHeight`, `waterWaves`), `frontend/render/planets/hex/hexWater.ts` (one vertex per tile centre, 2 m apart)
+- **What happens:** the Gerstner sum has four wind-driven components (9, 5.2, 3.1, 1.8 m × `waveScale`). Only components ≥ ~8 m move vertices (soft-clamped to ±0.12 m, shores pinned); the shorter ones and the ripples exist only in the normals, so silhouettes at the shore never show small waves.
+- **Why it is like this:** the hex water mesh is rebuilt on terraform and has a 2 m lattice; subdividing it costs geometry for a barely visible gain at the diorama distance.
+- **To resolve:** a finer, camera-local water grid (or tessellated shore strips) if close-up shots need geometric chop.
+- **Found:** 2026-11-02, water rework (lead)
+
+### RN-37 · Stylised choices in the water lighting
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/visuals/water/glsl/reflections.ts`, `glsl/stages.ts` (`FRAG_EMISSIVE`, `FRAG_OUTPUT`), `glsl/bed.ts`, `frontend/render/visuals/terrain/terrainShader.ts` (bed tint before `roughnessmap_fragment`)
+- **What happens:** (1) Projector (bot lamp) reflections use a widened lobe and a Fresnel floor of 0.4, so lamps read as glitter on the water even though physically almost nothing would reflect at the diorama angle; a lamp that faces away from the camera still reflects nothing. (2) The extra sun glint is emissive, so it is not darkened by cast shadows. (3) The ground under the water is tinted per channel by the terrain shader (Beer-Lambert on its real depth), because the alpha-blended surface can only fade it with one scalar; bed tint and surface use the same extinction and `uAbsorption`, but the surface's depth comes from the baked bed field (R channel), the tint from the terrain's own height, so they can differ by a few cm. (4) Absorption, foam and caustic strengths are single values tuned on oceanForest.
+- **Why it is like this:** one pass, no reflection/refraction render targets (GPU budget); readability over physics for the lamps.
+- **Workaround / mitigation:** every strength is an F8 → WATER slider (`projectorReflect`, `sunGlint`, `absorption`, …).
+- **To resolve:** per-biome water presets if forestRock lakes need a different look.
+- **Found:** 2026-11-02, water rework (lead, browser check)
+
+### RN-38 · Water fauna: re-placed on every water rebuild, sparse in small lakes
+
+- **Status:** Open (wave-depth, jellyfish and "drawn above the water" parts resolved 2026-11-02, follow-ups)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/visuals/water/fauna/` (`faunaPlacement.ts`, `jellyPlacement.ts`, `faunaSink.ts`, `faunaWater.ts`, `fishMaterial.ts`, `jellyMaterial.ts`), `frontend/render/visuals/water/glsl/surface.ts` (alpha cap), `frontend/render/planets/hex/hexWater.ts`
+- **What happens:** (1) fish and jelly loops are placed from the seed and the shore field, so every terraform that changes water tiles re-places all of them (they jump). (2) The whole wave sink (`FAUNA_SINK_MAX` = 0.15 m) is budgeted against the bed, so shallow-only lakes (bed −0.55 m) get no fish and jellies need ≥ 1.1 m of water; the w02 scenario lake has 8 fish. (3) To keep fauna visible under the surface, the water's alpha is capped at 0.8 (was 0.95), so 20 % of the (terrain-tinted, dark) bed shows through even the deepest water.
+- **Fixed in the follow-ups:** fauna depth follows the waves (an eased `uFaunaSink` = deepest swell trough for the gusty wind × `waveHeight`, `waveScale`, from the shared `waveModel.ts`); bioluminescent jellyfish (≤ 24, deep water, one draw call). The fauna first read as drawn on top of the water (it was drawn after the surface): it is now drawn before the surface again, so the surface's alpha, foam, glints and caustic lines lie over it, and its image wobbles with the waves above (refraction shift against the Gerstner slope, `faunaWater.ts`).
+- **To resolve:** keep placements whose loops are still valid across rebuilds.
+- **Found:** 2026-11-02, water rework (fauna agent; follow-ups by the lead)
+
+### RN-39 · Wind is global and partly static
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/core/windConfig.ts`, `frontend/render/planets/hex/hexAmbient.ts`, `frontend/render/planets/surface/biomes/dune.ts`, `frontend/render/visuals/terrain/heightfields.ts`
+- **What happens:** (1) On the prototype surfaces (`?planet=…` heightfield) the dune ripple geometry and shading keep the seeded `field.wind`; only dust, trees and waves follow F8 wind there (on the hex planet the ripples follow it too). (2) Hex ambient particles fly at 0..12–16 m absolute height and pass through higher mesas. (3) `uWindPhase` / `uWindDrift` grow without bound; float precision drifts after many hours of play. (4) ~~Sway frequency follows the global strength~~ superseded 2026-11-03: each tree has its own frequency (size + hash) and reacts to the local gust with a lag (RN-45). (5) The landing page's planet cards use their own renderer, so the wind clock does not tick there. (6) The F8 compass is in world terms (right = +X, down = +Z), it does not turn with the camera.
+- **To resolve:** wrap phase/drift modulo a large period in `tickWindClock`; height-follow the ambient layer (sample `heightAt` in a small texture) if mesas look wrong.
+- **Found:** 2026-11-02, water rework (wind agent)
+
+### RN-40 · Night lighting: two dim night keys, fixed moon direction
+
+- **Status:** Question for the owner (night "second sun" bug resolved in the same change, uncommitted on `wave/w02-first-light`)
+- **Severity:** low
+- **Confidence:** CONFIRMED (browser check, oceanForest `?host=local`, 00:10 / 18:30 / 12:00)
+- **Area / code:** `frontend/render/core/shadowConfig.ts` (`applyShadowSourceMode`, mode 0), `frontend/render/core/dayNightConfig.ts` (`computeSolarState`, `computeMoonMults`)
+- **What happened:** in shadow source mode 0 the secondary "moon" directional jumped at the horizon to the full `secondaryIntensity` (1.35, 60 % of the noon sun) with `nightShadowIntensity` (0.72) shadows, from a fixed −55° / 38° direction, and `NIGHT MOONLIGHT` never reached it, so night looked like a blue day with crisp shadows. It now blends continuously (by `1 − daylight`) from the unchanged day fill (18 % light, 15 % shadow) to a dim moon driven by `nightBrightness` (≈0.13 light, ≈0.09 shadow at 12 %).
+- **Still open:** (1) the sun light keeps its own dim night key (`nightKey`, ≈0.06, shadow ≈0.06, shallow 14–32° "moonlight" angle), so two faint night sources with different directions remain; both are near-invisible at the default. (2) The moon has a fixed azimuth/elevation (lab sliders), no arc over the night. (3) Modes 1 and 2 still use the full `secondaryIntensity` at night (explicit lab choices). (4) The night is now very dark outside projector cones; in the check only the commander drone's headlight lit the ground; the landed pod showed no visible light pool (before and after this change, so not caused by it; projector rigs: `EntityProjectorRig.ts`, `archetypeLights.ts`).
+- **To resolve:** decide whether the sun should drop to 0 below the horizon in mode 0 (the moon is then the only night key), and whether the moon should arc with the clock.
+- **Found:** 2026-11-03, night lighting fix (render agent)
+
+## Orbital deploy: space hardware vs colony lighting (2026-11-03)
+
+### RN-41 · Colony FoV shroud / night factor / projectors are global and reach space hardware
+
+- **Status:** Resolved (uncommitted on `wave/w02-first-light`, 2026-11-03: space-phase / descent gate + eased hand-over; see **Fix** below)
+- **Severity:** high (before the mitigation: carrier and pod rendered as near-black silhouettes at "Bay open — pod clamps releasing")
+- **Confidence:** CONFIRMED (browser: stage carrier/pod program uniforms; zeroing the vision map with `uFovEnabled = 1` reproduces the user screenshot, `setSpaceLit(false)` brings it back)
+- **Area / code:** `frontend/render/lighting/ColonyVisionAndLights.ts` (`sharedUniforms`, `applyColonyFovShroud`), `frontend/render/visuals/UnifiedColonyMaterial.ts` (`onBeforeCompile` assigns the shared uniforms to every Unified material), `frontend/game/app/online/EntityMeshes.ts` (`syncVisionAndForeignVisibility`), `frontend/game/app/online/entityVisionSync.ts` (`fovEnabled: Boolean(terrain)`); mitigation in `frontend/render/visuals/space/spaceLighting.ts` + `placeholders.ts` (`acquireModel(..., { spaceLit })`, `FittedModel.setSpaceLit`)
+- **What happens:** the online session is created at DEPLOY and syncs colony vision as soon as it has terrain, with no gate on the space phase. The shroud keys on world xz of whatever scene renders a Unified material, so the orbital stage's carrier/pod (stage coordinates) and the descent pod (≈90 m off the colony in xz, 580 m up) fall "outside vision" and are dimmed to ≈ 5 % + desaturated; `uNightFactor` also kills their rim light. Whether it shows depends on how fast the session gets its first view (not reproduced on every run).
+- **Mitigation:** stage carrier, satellites and the drop-rig pod are acquired with `spaceLit: true`: their materials read 0 for `uFovEnabled`, `uNightFactor`, `uProjectorCount`, `uVisionSourceCount` (same GLSL, one extra cached program). The descent pod keeps that through touchdown.
+- **Fix:** `EntityMeshes.syncVisionAndForeignVisibility` passes `colonyActive: !podTouchdown.isSpacePhaseActive() && !isSceneInDescent(scene)` (`dayNightConfig.ts`, direct-child check of `descent:root`); while it is false `syncColonyVisionAndProjectors` (`entityVisionSync.ts`) holds the shroud, night factor, vision sources and projectors at 0, then eases them in over `COLONY_FADE_IN_S` = 0.8 s (`setColonyLightingBlend` in `ColonyVisionAndLights.ts`; `uFovEnabled` is now a 0..1 shroud strength and `applyDayNightAtmosphere` scales its `uNightFactor` write by the same blend, so the two writers no longer fight). Browser: at "CHUTE JETTISONED — TERMINAL APPROACH VECTOR" (`?planet=oceanForest&deploy=1`, online and `?host=local`) every ground material reads `uFovEnabled` 0 / `uNightFactor` 0 and props are lit; after the hand-over both rise monotonically 0.3 → 1 (day and 00:10 night landings). The pod-`setSpaceLit(false)` item is moot: the descent pod is removed with `descent:root` at hand-over and the colony pod entity is a normal (not space-lit) mesh.
+- **Before the fix, to resolve:** (1) gate the vision sync on the space phase (hold `fovEnabled`/`nightFactor` at 0 or call `resetColonyVisionAndLights()` until touchdown) in `EntityMeshes`/`entityVisionSync`; (2) `DescentRunner` now passes `{ spaceLit: true }` for its carrier (done 2026-11-03); still open: call `rig.pod.setSpaceLit(false)` when the pod stands in the colony (touchdown) so the landed pod follows night/FoV again.
+- **Found:** 2026-11-03, orbital deploy visual bugs (render agent)
+
+### RN-42 · Descent key light ignores the descent sun direction
+
+- **Status:** Resolved (uncommitted on `wave/w02-first-light`, 2026-11-03): `setDescentSunDirection(vp, ctx.sunDir)` (`shadowConfig.ts`) is set by `DescentRunner` and cleared in `restoreAndCleanup`; while the descent renders `followShadowTarget` places the key light along it (browser at tn 30.6: `vp.sun` direction (0.50, 0.79, 0.36) = `ctx.sunDir`). Still open: the descent ignores the planet clock, so a night landing cuts from a sunlit descent to the night colony at hand-over.
+- **Severity:** medium
+- **Confidence:** CONFIRMED (browser, `?planet=oceanForest&deploy=1`, tn ≈ 9–10: `vp.sun` direction (−0.44, 0.53, −0.73) vs `ctx.sunDir` (0.50, 0.79, 0.36))
+- **Area / code:** `frontend/render/core/shadowConfig.ts` (`followShadowTarget` → `computeSunOffset(undefined)` uses the day/night solar clock; `fitShadowToView` re-places the sun every rendered frame), `frontend/game/descent/parts/SkyRig.ts` (`viewport.followShadow(podCenter)`), `frontend/game/descent/DescentRunner.ts` (`sunDir = (35, 55, 25)`)
+- **What happens:** during the descent the globe, backdrop, cloud deck and canopy are lit from `ctx.sunDir`, but the directional key light is placed from the planet's time of day, so the pod can be back-lit (dark side towards the camera) while the planet under it is in full sun.
+- **To resolve:** in `followShadowTarget`, when `isViewportInDescent(vp)`, place the sun along the descent's sun direction (e.g. a `setDescentSunDir(vp, dir)` the `SkyRig` calls once, or `computeSunOffset(out, params)` with the planet-look default angles) instead of the solar-clock angles.
+- **Found:** 2026-11-03, orbital deploy visual bugs (render agent)
+
+### RN-43 · Drop pod carries two heat shields
+
+- **Status:** Resolved (uncommitted on `wave/w02-first-light`, 2026-11-03 pod-base fit change); one open question below
+- **Severity:** low
+- **Area / code:** `frontend/render/descent/dropRig.ts` (`SHIELD_PROFILE`, `HULL_R`, `setShieldAttached`, `setLegDeploy`), `frontend/render/descent/podGear.ts`, `frontend/game/descent/parts/HeatShield.ts`, `frontend/render/kitbash/archetypes/units/ships.ts` (`podShell` shield + rim band, landing legs; unchanged)
+- **What happened:** the rig's shield (first a 3.6 m black half-sphere sized from the leg bbox, then a r 1.37 skin) sat over the archetype's own shield (r 1.32) and orange rim band (r 1.34), all wider than the petal cone (r 1.25), so the base read as a separate plate glued under the pod, with the splayed legs and foot pads poking out. The fitted root was also centred on the leg-skewed bbox, 0.25 m off the hull axis, so shield, bay ring and clamp arms were off-centre; the jettisoned copy spawned 1.9 m below the pod (`podBase − podH/2`).
+- **Now:** while attached, `podGear` skips the archetype's shield + rim band with a draw range and the rig shield hugs the cone (r 1.26, ≈ 1 cm seam, top tucked inside the petals); the pod axis sits on the rig origin; the legs are retracted into their hull hinges. At tn 23 the free copy separates from exactly where it sat (pod pose at 23 s), the built-in base comes back (matching the landed colony pod) and the legs extend over tn 24.5–27.5. Checked in the browser: freefall close-ups, reentry glow (tn 21), separation (tn 23.0 / 24.0), legs out under the chute (tn 28.5), stage hold.
+- **Still open:** after the jettison the built-in base (r 1.32 shield + r 1.34 band) is ~8 cm wider than the jettisoned cover, the reverse of a real capsule. Decide whether the archetype's base should be slimmed to the cone (a kitbash change in `ships.ts` that also changes the landed pod; needs `validate:models -- ship.dropPod`) or kept as is.
+- **Found:** 2026-11-03, orbital deploy visual bugs (render agent)
+
+### RN-44 · Drop pod has no projector lights
+
+- **Status:** Accepted (owner decision, 2026-11-03)
+- **Severity:** low
+- **Confidence:** CONFIRMED (browser: orbit bay, freefall, `/playground.html?inspect=ship.dropPod&lights=1` shows 0 sources; night `?host=local&scenario=w02` / `?scenario=w02`: 4 Command Hub ground pools, `uProjectorCount = 5`)
+- **Area / code:** `frontend/render/lighting/archetypeLights.ts` (`'ship.dropPod': []`), `frontend/game/app/online/entityVisionSync.ts`
+- **What happens:** the pod lost its 4 warm corner projectors everywhere (orbit bay, descent, landed pod; mesh rig and GPU colony projectors read the same list). A night landing (e.g. `?host=local&scenario=w01` at 00:10) therefore has `uProjectorCount = 0` until the HQ leaves the pod; the site is lit only by the HQ headlight and, later, building floodlights. Supersedes the `dropPod` mention in RN-26.
+- **To resolve:** if a dark night landing site reads badly, give the landed pod one dim light (authored live in the playground LIGHTS editor) without bringing back the descent cones.
+- **Found:** 2026-11-03, descent visual bugs (lighting agent)
+
+## Rendering optimisation and per-tree wind (2026-11-03)
+
+### RN-45 · Per-tree wind sway is an imitation of inertia, not a simulation
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/visuals/terrain/Scatter.ts` (`FOLIAGE_SWAY_BEGIN`, `FOLIAGE_TREE`, `foliageTreeTraits`)
+- **What happens:** each tree's frequency (≈ 1/√height ± 20 %), mass, phase, lean tilt and orbit come from a hash of its position and its instance height; inertia is two gust samples downwind of the tree (the gust that already passed), their mean drives the lean and their difference the overshoot. There is no per-tree state, so it is not a real spring–damper. The lag is in metres (gust-front travel), so its time lag shrinks as the wind strengthens. Trait sizes assume the ~5 m tree geometry (crown mask 1.2–4.5 m in model units). Tree bounds are padded by `PROP_BOUNDS_PAD` = 0.75 m for the sway (calculated, not measured against a gale).
+- **To resolve:** a per-instance spring state in a small texture updated on the GPU, if the owner wants true settling.
+- **Found:** 2026-11-03, tree wind rework
+
+### RN-46 · View focus: effects restricted to the visible ground (padded footprint quad since RN-52), global state, flat-ground assumption
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/core/viewFocus.ts`, `core/shadowFit.ts`, `planets/hex/propBuckets.ts`, `lighting/ColonyVisionAndLights.ts` (`selectFocusedProjectors`), `game/app/online/entityVisionSync.ts`, `visuals/water/fauna/faunaBounds.ts`, `planets/hex/hexAmbient.ts`
+- **What happens:** per frame the camera's ground footprint (plane at min(0, target y)) is the "view focus": since RN-52 the footprint quad × margin (default 1.0) + 4 m inside a bounding circle (≤ 220 m); before, the circle around it × 1.5. Props are split into 32 m (trees) / 64 m (rocks, deposits) instanced buckets that three frustum-culls and that are hidden outside the focus; the sun / night shadow boxes fit the visible radius × 1.25 (stepped, clamped to [max(12 m, `frustumSize`/2.5), `frustumSize`], blur scaled so softness stays the same); only projectors touching the focus are uploaded (nearest 32 of up to 256); trees outside it stop swaying; fauna and the ambient layer are bounded / follow it. Trade-offs: (1) draw calls ≈ 2.7× (≈ 310 on the radius-56 planet) for ≈ 32 % fewer triangles; (2) ~~a tree just outside the focus casts no shadow, so a very long low-sun shadow from beyond ~0.5× the visible radius can be missing~~ props off the focus whose shadow reaches it are drawn in the shadow passes since RN-51 (units / buildings still rely on the fitted shadow camera only); (3) the focus is one global (pages with several viewports share the last rendered camera's), prop / fauna culling and the projector list use the previous frame's focus (covered by the margin); (4) the F8 `frustumSize` slider is now the maximum shadow box; (5) basins far below 0 m could make the focus slightly small; (6) ~~fauna has one box for all lakes~~ fauna and the water surface are bucketed per 64 m / 32 m cell since RN-49. `?focus=0` turns it all off for comparison.
+- **Measured:** real Chrome on the owner's machine, w02 scenario, 2992×1702: 32–35 FPS with the focus on vs 26 with it off. Headless A/B on the radius-56 planet: frame time −20 % (upper bound). At the default camera on the small w02 map everything is on screen, so most of the gain is on bigger maps and zoomed-in views.
+- **To resolve:** per-viewport focus if a page ever renders two colony views. (Per-cell fauna bounds: done, RN-49.)
+- **Found:** 2026-11-03, rendering optimisation
+
+### RN-47 · Frame time is dominated by fill rate (DPR 2), not by off-screen work
+
+- **Status:** Resolved (F8 → PERF, 2026-11-03; see RN-50)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/core/createColonyViewport.ts` (`maxDpr = min(devicePixelRatio, 2)`), `core/perfConfig.ts`, `core/shadowConfig.ts` (secondary shadow)
+- **What happens:** at 1920×1080 CSS on a DPR-2 display the canvas is 8.3 M pixels, each running the terrain / unified shader and two soft-shadow lookups (~41 texture fetches). Measured (headless ANGLE Metal, A/B in one page): ~80 % of the frame scales with resolution; DPR 1.5 saves ~32 % (day 5 ms, night 7.7 ms per frame), DPR 1 ~58 %; shadows cost 25–30 % (of which the daytime secondary "moon" shadow, at 0.108 intensity, 1.4–2.1 ms); bloom, water, props, particles, FoV shroud ≈ noise at the default camera.
+- **Why it is like this:** the look was tuned at native DPR; lowering resolution or dropping the faint daytime secondary shadow changes the look, so it was not done without the owner.
+- **To resolve (recommendation):** cap the default DPR at 1.5 (or an F8 / settings render-scale, or adaptive resolution that drops to 1.5 when frame time > 20 ms); skip the secondary shadow map by day (fade its intensity, keep `castShadow` on to avoid a ~30-program recompile at dusk, and skip its map render instead).
+- **Found:** 2026-11-03, rendering optimisation (perf agent)
+- **Fix:** both recommendations are in F8 → `PERF` (2026-11-03, uncommitted at the time of writing): render scale AUTO (dynamic resolution, default) or fixed 1 / 1.25 / 1.5 / 2, and the daytime secondary shadow faded out by day with its map frozen and its taps skipped. Remaining trade-offs: RN-50.
+
+### RN-50 · F8 → PERF: dynamic resolution, daytime secondary shadow skip, focus margin / ring (trade-offs)
+
+- **Status:** Open (defaults picked by the perf agent; owner to confirm)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/core/perfConfig.ts` (PERF store), `core/adaptiveScale.ts`, `core/renderScale.ts`, `core/createColonyViewport.ts` (`resize()`), `core/shadowConfig.ts` + `core/shadowFit.ts` (`daySecondaryShadowFade`), `core/shadowShaderPatch.ts` (tap skip), `core/viewFocus.ts` (margin, freeze), `core/viewFocusRing.ts`
+- **What happens / trade-offs:**
+  1. **AUTO is the default**, so a slow machine now renders below native DPR (softer image) without being asked. It steps 2 → 1.75 → 1.5 → 1.25 → 1 on 1 s of slow frames and back on 3 s of fast ones (since RN-52 relative to the display refresh: > 1.12 × / < 1.04 × the refresh interval; before, > 18 ms / < 12 ms, i.e. a 60 FPS budget). It measures rAF intervals, so it cannot tell a GPU-bound frame from a CPU-bound one (sim, path-finding, GC): a CPU-bound stretch also lowers the resolution, which does not help (it recovers once frames are fast again). The scene build / shader compiles after load and the descent → colony hand-off are slow stretches too (100–250 ms frames count as 100 ms), so AUTO may start a level or two down and climb back at 3 s per level.
+  2. On a vsync-locked 60 Hz display a frame is never < 12 ms, so "fast" there means within 4 % of the refresh interval; a step up is then a probe that costs ~1 s of slow frames if the level is too heavy, retried after 3 → 6 → … ≤ 60 s. Displays slower than ~59 Hz are not recognised (their frames count as slow).
+  3. **Daytime secondary shadow OFF by default** changes the look by day: the faint (0.108) secondary "moon" shadow is gone while `1 − daylight` < 0.02 and fades back in up to 0.5. With day/night off (playground, `?daynight=0`) it counts as day, so the playground loses it too. Only shadow source mode 0 is affected (modes 1–3 are explicit choices). The shader patch now skips the taps of every directional light whose shadow intensity is 0 (identical output, a uniform branch).
+  4. The focus ring is the computed circle on the flat focus plane (min(0, target y)), drawn on top of everything, not draped on relief. It encloses the screen by construction, so `focusRing=2` (freeze) is the way to see it; while frozen, everything focus-limited (incl. the shadow box) stays at the frozen place.
+  5. `perfTelemetry` and the focus are global (last rendered viewport wins), like RN-46.
+  6. Focus margin on the small w02 map changes nothing (everything is on screen); on w01 the 1.0 / 1.5 / 2.5 A/B was within the ±2 ms run-to-run noise of headless timing. ~~so the default stays 1.5~~ Default 1.0 (on the footprint quad) since RN-52.
+- **Measured (headless Chromium ANGLE Metal, 1920×1080 CSS at DPR 2 = 3840×2160 canvas, vsync off, paired A/B medians):** PERF ON (AUTO) vs OFF −4.1 to −5.7 ms per frame (−23 to −27 %; AUTO settled at ×1.5–1.75) on w02 / w01, day and night; daytime secondary shadow skip −1.1 to −3.4 ms by day, 0 ± 1.5 ms (noise) at night as intended; focus margin 1.0 vs 1.5 vs 2.5 within noise. Headless timing on a GPU shared with other agents' benches is ±2 ms; no shader recompiles across a full day cycle (32 programs before / after).
+- **To resolve:** owner decides the defaults (AUTO vs fixed 1.5; daytime secondary shadow off vs on). A GPU timer query (`EXT_disjoint_timer_query_webgl2`, where available) would let AUTO react to GPU time only.
+- **Found:** 2026-11-03, PERF tab (perf agent 2)
+
+### RN-52 · Shadow filter early-out, one shadow light at night, AUTO aims at the display rate, footprint-quad focus
+
+- **Status:** Open (defaults picked 2026-11-03 on the owner's "do it"; owner to confirm in play)
+- **Severity:** low
+- **Confidence:** CONFIRMED (headless measurements); the owner's in-browser FPS is not reproduced (see 5)
+- **Area / code:** `frontend/render/core/shadowShaderPatch.ts` (`taSampleShadowSoft` early-out), `core/shadowConfig.ts` + `core/shadowFit.ts` (`nightSunShadowFade`), `core/perfConfig.ts` (`targetFps`, `nightSunShadow`, store v2), `core/displayRefresh.ts`, `core/adaptiveScale.ts`, `core/renderScale.ts`, `core/viewFocus.ts` (quad, `uViewFocusEdges`), `core/viewFocusRing.ts`
+- **Why:** the owner could not hold 120 FPS and saw trees / water animating past the screen. Measured first (headless Chromium ANGLE Metal, 3840×2160 canvas, vsync off, one page, each toggle 3× interleaved, GPU-synced `readPixels` around `composer.render`): day 7.9 ms, night 9.2 ms; shadows off −0.8 / −1.8 ms, a 1-read hard shadow −0.7 / −1.6 ms (so ~90 % of the shadow cost was the 41-read soft filter per pixel per light, not the shadow-map render); bloom −0.4 / −0.5 ms; hiding all props, all water or all entities: 0 ± 0.2 ms (off-screen work costs nothing measurable; it was already culled). Two lights cast shadows at night (the sun's residual ~0.06 shadow + the moon's ~0.085). CPU per frame ≈ 1.8 ms (canvas shrunk to 320×180): the frame is fill-bound.
+- **What changed:**
+  1. **Soft shadow early-out:** when all 5 blocker probes agree (lit / deep shadow) the filter returns 1 / 0 without its 36 reads; only penumbrae filter. The final `smoothstep(0.08, 0.92, s)` already mapped those pixels to 1 / 0; a sub-texel acne gap (< 4e-5 depth) at the centre probe no longer darkens lit pixels.
+  2. **Night sun shadow off (F8 → PERF → NIGHT SUN SHADOW, default OFF):** in shadow mode 0 the sun shadow intensity × (1 − smoothstep(0.6, 0.95, 1 − daylight)) (~18:00 → ~19:00), and its map stops re-rendering at 0 (`castShadow` untouched, no recompile). At night only the moon casts.
+  3. **AUTO aims at the display:** thresholds are 1.12 × / 1.04 × the refresh interval from a page-lifetime rAF probe (clamped to [8.33 ms = 120 FPS, 17 ms]); F8 → PERF → AUTO TARGET FPS / `?fps=` forces 60 or 120.
+  4. **Focus = footprint quad:** the four screen-corner ground hits, scaled about their centre by the margin (default now 1.0) and padded 4 m; the shaders (`viewFocusWeight`) and `inViewFocus` (lights, entities, work particles, prop / water / fauna buckets) test circle ∩ quad. The prop per-instance compaction (RN-51) and the shadow box fit still use the bounding circle.
+- **Measured after (same harness, same page):** day 7.9 → 7.4 ms, night 9.2 → 7.7 ms (−16 %); shadow cost day 0.8 → 0.2 ms, night 1.8 → 0.4 ms. Frame pacing with AUTO (rAF, vsync off): night median 8.1 → 6.1 ms, frames over 8.33 ms 34 % → 9 %; day 8 % (unchanged). Screens: shadows / focus quad / night checked by eye, no shader errors.
+- **Trade-offs / open:**
+  1. Margin 1.0 + 4 m: things just past the screen edge are still (sway / waves fade in over the shader fade, 16 m trees / 12 m water, so a fast pan can show a tree "waking up" at the edge); a tree taller than ~4 m whose base is below the bottom edge sways with reduced amplitude. Raise FOCUS MARGIN if it shows.
+  2. The tree shadow-map program ignores the focus (`TA_FOCUS_SHADOW_PASS`: weight 1), so an off-screen tree whose shadow falls on screen keeps swaying in its shadow; which casters enter the shadow pass is still the CPU's choice (RN-51).
+  3. The refresh probe needs ≥ 2 refresh-length frames in some block of 8; a 120 Hz screen that is GPU-bound from the first frame (never presents at 8.3 ms) reads as slower, so AUTO aims too low; then set AUTO TARGET FPS = 120. 144 / 240 Hz screens are held at 120.
+  4. Night look: the faint sun shadow is gone at night (moon shadow kept); dusk / dawn unchanged.
+  5. ~8 % of frames still take ~2× the median in headless (bimodal 6 / 12–13 ms, at every resolution above tiny, none at 320×180, no long tasks): GPU back-pressure of the uncapped headless pipeline is the likely cause; not verified on a vsync-locked screen. The owner's earlier 32–35 FPS (2992×1702, live planet) is far below the headless numbers on the same machine (~140 FPS): the difference (live planet size, online session, other tabs) is not reproduced; a PERF readout from the owner's session is needed.
+  6. Bloom at half resolution (−0.2…0.3 ms expected) was not done (not asked for).
+- **Found:** 2026-11-03, 120 FPS pass
+
+## Off-screen work audit (2026-11-03)
+
+### RN-51 · Per-instance prop culling to the view focus; entity / work-particle off-focus skip
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED (headless audit + frozen-frame pixel diffs)
+- **Area / code:** `frontend/render/planets/hex/propFocusCompaction.ts` (+ `propBuckets.ts` `cullToFocus` / `pick`), `render/particles/WorkParticleSystem.ts`, `game/app/online/entityFocus.ts` (used by `EntityMeshes.update`, `entityVisionSync.ts`, `unitHealthBars.ts`)
+- **Audit (headless Chromium ANGLE Metal, 3840×2160, one frame, every draw recorded per pass with its world bounds):** mesh-level culling was already clean (0 off-frustum draws in the colour pass; terrain chunks, entities, pod rig, hp bars, sky, water all frustum-culled; shadow passes cull against the view-fitted box). The waste was **inside** the prop buckets: a 32 m pine cell touching the focus drew all its trees. w01 zoomed in (focus r 22 m): 2211 of 3092 colour-pass tree instances (200k of 296k triangles) and 3045 of 3926 shadow-pass instances (278k of 381k) lay outside the focus. CPU per frame was negligible: `EntityMeshes.update` ≈ 0.08 ms, `terrain.tick` ≈ 0.04 ms (1–3 entities in w01/w02).
+- **What changed:** a straddling bucket reorders its instance buffers into [in focus | shadow-only | culled]: the colour pass draws `count = nMain`, `onBeforeShadow` raises it to `nShadow` (off-focus trees whose shadow segment, height × cot(sun elevation) along each directional shadow light seen, clamped 60 m, reaches the focus) and `onAfterShadow` lowers it again. The bucket-level test is padded by the bucket's shadow reach, so buckets just off the focus can cast into it. Bounds stay the full set's; re-classified only when the focus leaves the classified circle (+ max(2 m, 8 % of the radius)) or a light turns > 1.5°; only the live prefix is uploaded. Picking maps instance ids through `placedIndex`. Work-particle emitters off the focus (+ 6 m) are hidden and not stepped (fading ones are dropped). Entities off the focus (+ 8 m) keep their pose / walk / work weights every frame but skip the shader clock + projector-rig power upload and the hp-bar layout; `mesh.visible` is untouched (vision sources and selection read it), so draw culling of entities stays three's frustum test.
+- **Measured (same page, interleaved):** w01 zoomed in: triangles 677k → 252k per frame (colour 296k → 116k, shadow 381k → 136k), draws 126 → 112; w01 zoomed in, panned into forest: 375k → 218k; w01 default zoom: 1.17M → 1.10M; w02 zoomed in: 75k → 51k; w02 default zoom: unchanged (everything on screen). Frame time: no measurable change (vsync off, w01 zoomed in, static and panning: median 14.1 vs 13.9 ms / 12.9 vs 12.3 ms, within noise), because the frame is fill-bound (RN-47: DPR 2 → 1 on the same page 19.4 → 8.2 ms median; shadows on/off 12.2 → 11.2 ms). Frozen-time frames with the culling vs with every prop drawn are pixel-identical (zoomed in and default, low sun 6.5 h / 17.7 h, 6–10 pan steps with the real, stale classification, also after the full orbit → descent → colony flow).
+- **Trade-offs:** (1) the colour pass culls to the focus circle, not the frustum: zoomed in ~75–90 % of the drawn tree instances are still off-frustum (inside the 1.5× circle; per-instance frustum culling would re-sort on every camera turn); (2) the classification slack keeps ~10–20 % of drawn instances just outside the focus; (3) spot/point shadow cameras get only the directional shadow-only set; (4) a bucket kept only for its shadow issues a 0-instance colour-pass draw; (5) the shadow reach uses the previous frame's light directions (first frame after load: every caster kept); (6) territory borders (1 mesh, ~500 triangles) and the sky dome were left as is (not measurable); (7) ~~`propBuckets.ts` still does not use `core/focusCull.ts`~~ resolved 2026-11-03 (it uses `worldCellKey`, `viewFocusBounded`, `sphereInViewFocus` with a shadow pad); (8) the instance world positions are cached per bucket and re-measured when the bucket's world translation changes (the space view offsets the terrain group, `syncSpaceTerrainOffset`; checked on the real `?planet=forestRock&deploy=1` flow); (9) dev only: a hot reload of `propFocusCompaction.ts` leaves an open tab with already compacted buckets it can no longer restore (some trees missing until a reload).
+- **Found:** 2026-11-03, off-screen work audit (offscreen agent)
+
+## HDR NaN → bloom black square (2026-11-03)
+
+### RN-48 · One NaN pixel anywhere in the HDR pass becomes a ~1000 px black square
+
+- **Status:** Open (the drop-pod case is fixed; the pipeline has no NaN guard)
+- **Area / code:** `frontend/render/core/createColonyViewport.ts` (`UnrealBloomPass` → `OutputPass`), every HDR shader; fixed: `frontend/render/visuals/unified/shaderChunks.ts` (`FRAG_RIM` fresnel), `frontend/game/descent/fx/{Plasma,Flames,Streaks}.ts`
+- **What happens:** the composer renders into a HalfFloat target. If a single fragment writes NaN (e.g. `pow(x, y)` with `x` a hair below 0), the bloom bright-pass passes it on, each of the 5 separable mip blurs spreads it over its kernel, the composite sums all levels and `OutputPass` shows NaN as black: an axis-aligned black square ~1100 px wide (2992 px canvas) for every frame the NaN pixel exists. In the descent the Unified material's fresnel `pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 3.2)` hit NaN on the drop pod's view-facing face (|dot| rounds to 1.0000001) around authored t ≈ 12.05 s, one or two frames, so the user saw "sometimes a black square behind the pod". Bloom off: the same frame shows one dark pixel only.
+- **Why it is like this:** three's `UnrealBloomPass` has no NaN/Inf filter; any shader math that can go out of domain is a latent full-square flash.
+- **Workaround / mitigation:** the known sites now clamp the `pow` base with `max(…, 0.0)`. The same unclamped pattern in `frontend/render/orbit/Moons.ts`, `frontend/render/planets/globe/surfaceFrag.ts` and `frontend/render/visuals/water/fauna/jellyMaterial.ts` was clamped too (2026-11-03, lead).
+- **To resolve:** clamp those three; optionally a NaN guard in the bloom bright-pass (replace non-finite texels with 0 before the blur, one `isnan`/`isinf` check per texel) so a future shader bug costs one pixel, not a square. Probe used: render the scene into a clone of `composer.renderTarget1`, `readRenderTargetPixels` as `Uint16Array`, count halves with exponent `0x7C00`, bisect visible meshes.
+- **Found:** 2026-11-03, descent black-square bug (descent fx agent)
+
+## Water culling (2026-11-03)
+
+### RN-49 · Hex water: 32 m surface buckets, 64 m fauna cells, shader still-water fade off the view focus
+
+- **Status:** Accepted (by design)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/planets/hex/waterBuckets.ts`, `planets/hex/hexWater.ts` (`HexWater.group` / `buckets` / `material` / `cullToFocus`, replacing `mesh`), `visuals/water/fauna/faunaBuckets.ts` (`WaterFauna.fish` / `jellies` are now arrays), `visuals/water/glsl/stages.ts` (`WATER_FOCUS_FADE`), `core/focusCull.ts`
+- **What happens:** the hex water surface is one Mesh per 32 m cell with water (all on one material, so F8 / clocks stay shared); three frustum-culls them and `cullToFocus` hides cells off the view focus (unless the focus is clamped at 220 m). A water-tile change rebuilds only the cells around the changed tiles, but the shore field (512² bake) and the fauna placement are still rebuilt whole, as before. Fish and jellies are one InstancedMesh per 64 m cell. In the shader the swell, waves, ripples, caustics, crest foam, foam motion and glint sparkle are scaled by `viewFocusWeight(p, 12 m)` and skipped where it is 0 (amplitudes fade, clocks never do, so the edge does not pop or smear).
+- **Trade-offs:** (1) more meshes: up to ≈ 48 surface buckets on a radius-56 planet instead of 1, but only the ones in view draw (headless w01: 3–7 draws / 307–795 of 2310 triangles instead of 1 draw / 2310; radius-56 ocean probe: 12.6 % / 31 % / 67 % of the water triangles at camera distance 20 / 50 / 95 m); (2) fauna: up to one draw per 64 m cell per kind instead of 2 in total; (3) vertices on cell borders are duplicated (seamless; everything is world-derived); (4) the shader fade only shows when the focus is capped (zoomed far out); the RTS camera's max zoom (95 m) keeps the whole planet in the focus on today's maps, so it is mostly a guard for bigger planets; (5) ~~`propBuckets.ts` still has its own copy of the cell key and the clamped-focus rule~~ resolved 2026-11-03: it now uses `core/focusCull.ts`. (6) a water-tile change now disposes and recreates the fauna cell meshes (cloned ~40-triangle geometries + sliced instance buffers) instead of rewriting one set of buffers in place: a little GC churn when terraforming near water.
+- **Measured:** frame time is not a meaningful number here (RN-47: fill-rate bound); the gain is submitted water triangles / vertex-shader work and per-lake fauna draws.
+- **Found:** 2026-11-03, water culling (water agent)

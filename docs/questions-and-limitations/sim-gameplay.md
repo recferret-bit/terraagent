@@ -479,3 +479,105 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** when competitive multiplayer waves land, gate `setPlanetTime` behind planet owner/admin privileges or move it to `dev: true`.
 - **Found:** 2026-11-02, day/night review round (SIM-GAMEPLAY)
 
+
+### GP-41 · Terraform resource find: odds, family and richness
+
+- **Status:** Accepted (owner, 2026-11-02)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/data/terraform-finds.ts` (row `terraformFinds.deposit`; file constant `TERRAFORM_RESOURCE_SPAWN`), `shared/sim/src/systems/terraform-basic/resourceSpawn.ts`, `shared/sim/src/systems/dev/spawnDeposit.ts`
+- **What happens:** every finished terraform hex with no deposit after the buried-deposit reveal (and no unit on it) rolls 1%; a hit puts a full deposit (`richnessBp` 10000) on the hex, tier t1 50% / t2 35% / t3 15%, family uniform over metals / minerals / oil. Fixed yields and the buried reveal are kept. A found deposit makes the hex unbuildable and impassable again (deposit rule) and, depleted, stays as rubble like any deposit (owner). A Harvester or Extractor on it pays the tier. Data without the W02 row gives chance 0 (W01 planets never roll).
+- **Why it is like this:** the owner asked for 60 / 35 / 15 (110%) and chose 50 / 35 / 15; uniform family and rubble on depletion confirmed by the owner.
+- **Workaround / mitigation:** `tune terraformFinds.deposit.chance 1` and the dev command `spawndeposit <q> <r> <family> <tier>` make finds checkable.
+- **Found:** 2026-11-02, terraform rework
+
+### GP-42 · The resource-find roll is predictable by a modified client
+
+- **Status:** Accepted (by design, for now)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/resourceSpawn.ts`, `shared/sim/src/kernel/rng.ts`
+- **What happens:** the roll draws `ctx.rng('misc')`; every client receives every stream state, so a modified client can know whether the next finished hex will spawn a deposit. Client prediction runs the same draw, but its hidden `subDeposit` layer is zero-filled, so a predicted completion could briefly show a different reveal / find; completions are far beyond the 25-tick prediction lead, so this is practically never seen.
+- **Why it is like this:** no server-only stream exists yet (rng.ts header: the first system whose draws must stay hidden gets one).
+- **To resolve:** give the roll a server-only stream seeded with `meta.worldSalt` and stripped from client payloads.
+- **Found:** 2026-11-02, terraform rework
+
+### GP-43 · Terraform chain: rough edges
+
+- **Status:** Resolved in part (terraform rework review 2026-11-02); the items under "Still open" stay
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/{chain,workTile,workOrder,workSystem,dismantleAndWork}.ts`, `shared/sim/src/systems/units/registry.ts`
+- **Fixed:** the clicked tile follows the chain's territory rule (`classifyGroundWorkTile` with `terraformOwnershipBlock`, footprints, anchors, deposits); unreachable follow-ups are skipped silently (owner), only the clicked hex reports `no_path`; a REPAIR for a chaining worker queues behind its current hex and the chain resumes; providers and dispatch skip workers with a work job (`unlessOnWorkJob`); the direct task form and `enqueueTerraformOrder(op: 'work')` go through `enqueueWorkOrder`; no find under a unit; an uneven tile that stays uneven after levelling is not re-picked forever (it was an infinite loop); completion re-checks the tile (GP-01: foreign, building, anchor, already done → dropped with no yield); command / chain ids never overwrite another job; `cancelTask <cmdId>` cancels a multi-tile order and its chain.
+- **Still open:**
+  - ~~Skipped tiles stay skipped for the whole chain~~ Resolved (2026-11-03): an unreachable follow-up is retried after the chain's next finished tile; the chain now works outward from the clicked tile (`chainOrigin`, closest first) instead of from the last tile, so it no longer drifts far from the order.
+  - The chain ignores tiles already queued in W01 manual orders (the completion re-check prevents a double yield, but a walk is wasted).
+  - `cancelTask <root>~n` cancels only that job; the chain ends because nothing is left.
+  - A Harvester in a chain does not harvest.
+- **Found:** 2026-11-02, terraform rework
+
+### GP-44 · `work` completion events do not match their schemas
+
+- **Status:** Resolved (terraform rework review 2026-11-02)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/workSystem.ts`
+- **What happened:** `obstacleRemoved` was emitted with `op: 'work'`, `tilePrepared` with an `op` key its schema lacks, no `groundRevealed`, no `playerId`; the backend progression counter counted rocks as "clear".
+- **Fix:** forest → `obstacleRemoved` `clear`, rock → `break`, others → `tilePrepared`, plus `groundRevealed`; all carry `colonyWho` (with `playerId`). Test `terraform-work-guards.spec.ts` validates every work-path event against its contract schema.
+- **Found:** 2026-11-02, terraform rework
+
+### GP-45 · Player work jobs (TERRAFORM / REPAIR) draw no energy
+
+- **Status:** Resolved (owner: colony grid, 2026-11-02)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/{workJobs,workSystem}.ts`, `shared/sim/src/systems/power-core/{workLoad,shedding,index}.ts`
+- **What happened:** work jobs carried an energy cost from `TERRAFORM_TIME_TABLE` but nothing drew it, so continuous terraforming was free and a brownout did not throttle it (`UO-TF-02`, shed group 1). The W01 order path draws from the HQ power cell; a Harvester has no cell.
+- **Fix:** the owner picked the colony grid, for the HQ Drone and the Harvester alike. Each worker's current job draws `energyCost / work time` (`workJobDrawPerS`: `durationTicks × TICK_MS`, e.g. forest 8 E / 12 s ≈ 0.67 E/s; repair 0) while the worker is at the job (walking draws nothing). The power core (`collectWorkLoad`) adds it to `rawDemand` as shed candidates in the group whose `categories` list `terraformOp` (`shedGroup1`), so jobs go before factories and extractors (newest worker first). A shed job is listed in `ColonyPowerSummary.shedWorkJobIds`, its worker's entity state is not touched; the next step the work-jobs system holds it at `waiting` / `power` with its progress kept, and it resumes (and its chain goes on) once the grid carries it again. The summary gains `workDemand` (drawn after shedding; `buildingDemand` excludes it); the `power` dev command prints `work:` and the paused jobs; the power widget's demand includes it; the TERRAFORM status line shows `waiting (power)`. Test `terraform-work-power.spec.ts`.
+- **Still open:** before the Command Hub there is no grid (supply 0), so pre-Hub work jobs stay unmetered (free) as before; an HQ-cell fallback was not built. Balance: a Hub-only colony has +3 E/s spare, so one terraform job fits, but with a few Harvesters or an Extractor the job pauses until a Solar is up (and at night). `TERRAFORM_TIME_TABLE` documents its ticks as 20 Hz while the sim runs at 5 Hz (`TICK_MS` 200), so the real work time (and the draw) uses `durationTicks × 0.2 s`.
+- **Found:** 2026-11-02, terraform rework review
+
+### GP-46 · The direct-task `enqueueTask` form uses `cmd.colonyIndex ?? 0`
+
+- **Status:** Resolved (W02 audit 2026-11-02)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/queue/index.ts` (`enqueueTaskHandler`, `cancelTaskHandler`, `reorderTaskHandler`), `shared/sim/src/systems/terraform-basic/index.ts` (`cancelTask`)
+- **What happens:** the `task` form of `enqueueTask` (and `cancelTask { taskId: 'all' }` / `reorderTask`) fell back to colony 0 when a command had no colony instead of rejecting `not_own_colony` like `commandColony` does.
+- **Fix:** `enqueueTaskHandler`, `cancelTaskHandler`, `reorderTaskHandler`, and the W02 branch of `cancelTask` all check `commandColony(cmd)` first. Test `terraform-work-guards.spec.ts` › GP-46.
+- **Found:** 2026-11-02, terraform rework review
+
+### GP-47 · `anchors` meant both "territory claim count" and "a building stands here"
+
+- **Status:** Resolved (anchors-occupancy fix, 2026-11-02); the items under "Still open" stay
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/grid/layers.ts` (`anchors`), `shared/sim/src/systems/economy/construction.ts`, `shared/sim/src/systems/terraform-basic/workTile.ts`, `shared/sim/src/systems/harvest/{adjacency,index}.ts`, `shared/sim/src/systems/units/handlers.ts` (`moveUnit`), `frontend/game/features/construction-menu/PlacementGhost.ts`
+- **What happened:** `claimTerritoryRadius` adds 1 to `anchors` on every tile a Hub claims (W01-17, `SIMULATION.md` territory), while W02 construction set `anchors = 1` under a footprint, read `anchors !== 0` as "tile occupied" and set it to 0 on demolish; TERRAFORM `work`, harvest stand/target tiles and `moveUnit` onto a deposit read it the same way, and so did the client placement ghost. Once a real Command Hub completed, every tile of its territory looked occupied: W02 builds waited on `site (tile occupied)`, TERRAFORM was refused, Harvesters found no deposit or stand tile, and a demolish zeroed the territory count of its tiles. The `w02` scenario seeds territory without anchors, so it never showed.
+- **Fix:** `anchors` is territory only. Building occupancy is `occupiedGroundTiles(state, data)` (`systems/construction/occupancy.ts`, the union of the cached `buildingFootprints`, i.e. `occupiesGround` + `entityFootprint`, the rule placement and path profiles already use). Construction checks it (validation runs before the new entity is inserted) and no longer writes `anchors`; `classifyGroundWorkTile`, the harvest scan (built once per system run and passed down) and `moveUnit` use it; `buildingFootprintTiles` (workTile) is replaced by it; the client ghost marks only entity footprints and queued builds. Path profiles / `bumpPathEpoch` never read `anchors`. Test `territory-anchors-occupancy.spec.ts` (real W01 Hub claim, then build, TERRAFORM, harvest and demolish inside territory).
+- **Still open:**
+  - No save migration. Nothing in the sim reads `anchors` for a decision today (no grace/loss system yet; `dev.seed` resets it), so pre-fix saves that carry `anchors = 1` under a building outside territory, or `0` under a demolished building inside it, are harmless until a territory-loss system reads the count. That system should recompute `anchors` from the alive anchor buildings on load instead of trusting the stored value.
+  - ~~Two territory claims~~ Resolved (same review): the W02 `claimHubTerritory` now calls `claimTerritoryRadius` (owner + anchor count, frozen foreign borders).
+  - Footprint sizes come from two places: occupancy uses `entityFootprint` (Extractor / Solar hard-coded 2, Hub from `hub.t1.footprint`, square, no rotation) while W02 construction lays out tiles from the row's `footprintW` / `footprintD` and `rot`. They agree for today's square footprints and drift if a row changes.
+- **Found:** 2026-11-02, code reading during the W02 wave
+
+### GP-48 · W02 construction built through trees, rock, slopes and holes
+
+- **Status:** Resolved (2026-11-03, uncommitted at writing); the item under "Still open" stays
+- **Severity:** high
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/economy/{construction,siteTerrain}.ts`, `shared/sim/src/systems/queue/index.ts` (`enqueueQueueTask`), `frontend/game/features/construction-menu/PlacementGhost.ts`
+- **What happened:** the W02 build path (Extractor, Solar via `enqueueTask { kind: 'build' }`) only refused deep water and ridges. `startBuildingConstruction` then forced every footprint tile to `TERRAIN.flat`, and the ghost billed "clear + prepare" and showed green, so buildings stood on forest. This contradicted D-37 (the Hub path through `evaluatePlacement` was already correct).
+- **Fix:** one terrain rule (`geoBuildBlock` via `footprintTerrainBlock`) at all three layers: the client ghost goes red with the reason; `enqueueTask` rejects `terrain_unbuildable` up front; `startBuildingConstruction` rechecks (queue entries waiting from before, dev paths) and no longer rewrites terrain. Tests in `construction.spec.ts` and `placement-ghost.spec.ts`.
+- **Still open:** flat but unprepared ground is still graded automatically by the build (D-37 "after at most a Grade"). If "prepared first" must be mandatory for W02 buildings too, that is an owner decision. The W02 path also does not yet run the `uneven` footprint-spread check of `evaluatePlacement`; it flattens heights above 0.15 m instead.
+- **Found:** 2026-11-03, owner screenshot of a ghost on trees
+
+### GP-49 · Dismantling the landed pod (wreck): gated on a finished Hub, no refund
+
+- **Status:** Open (owner decisions)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts` (`colonyHasActiveHub`, pod branch), `frontend/game/features/terraform-basic/{planner,primaryOps}.ts`
+- **What happened / decision:** `DISMANTLE` now removes the colony's landed pod (never one still descending). The pod is the colony's reference before its Hub stands (`terraformWorldFrom` pre-Hub radius, `landingBlock` Hub distance read the pod entity), so the dismantle is refused (`site_blocked`; client: `pod_needed`, "Build the Command Hub first") until the colony has an active Hub or Command Hub. On a hex shared with the HQ Drone the pod ranks before the HQ. Nothing is refunded: the pod has no build cost (a scrap yield would be a balance row).
+- **Still open:** (1) should the player get a salvage refund? (2) if the pod must be removable before the Hub, those two rules must read `blobs.landingPods` / `landingHistory` instead of the entity. (3) The removal is instant (like other `dismantle` ops), with no work job or wreck-fade animation; `PodTouchdownFx.podDismantleProgress` is only the egress retraction.
+- **Found:** 2026-11-03, owner request

@@ -41,7 +41,7 @@ export function createStreakField(count: number, radius: number, rMin: number, h
       }`,
     fragmentShader: /* glsl */ `
       uniform vec3 uColA, uColB; uniform float uIntensity; varying float vT; varying float vK;
-      void main(){ float a = pow(vT, 2.0) * vK * uIntensity * 0.6; gl_FragColor = vec4(mix(uColA, uColB, vT) * a, 1.0); }`,
+      void main(){ float a = pow(max(vT, 0.0), 2.0) * vK * uIntensity * 0.6; gl_FragColor = vec4(mix(uColA, uColB, vT) * a, 1.0); }`,
   });
   const mesh = new THREE.Mesh(g, mat);
   mesh.frustumCulled = false; mesh.renderOrder = 20; mesh.visible = false;

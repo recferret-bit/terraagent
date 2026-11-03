@@ -11,6 +11,11 @@ export interface ShedCandidate {
   group: number;
   drainPerS: number;
   kind: number;
+  /**
+   * Set for a player work job (`power-core/workLoad.ts`): shedding pauses that job (`shedWorkJobIds`) and never touches
+   * its worker's entity state; `entityId` / `row` are the worker's.
+   */
+  jobId?: string;
 }
 
 export interface SheddingResult {
@@ -19,6 +24,10 @@ export interface SheddingResult {
   hqFastRechargeShed: boolean;
   remainingDemand: number;
   offlineReasons: Record<number, string>;
+  /** Work jobs paused this step (shed group 1, `UO-TF-02`), in shed order. */
+  shedWorkJobIds: string[];
+  /** E/s of the shed work jobs. */
+  shedWorkDemand: number;
 }
 
 /** Reads the ordered shed groups (1..4) from `economyT1Basic`. */
@@ -59,7 +68,8 @@ function checkHqFastRechargeCandidate(
  * - Restores previously shed (`offlineBrownout`) candidates before re-evaluating this tick's deficit.
  * - Iterates groups 1..4 in priority order; within each group, sheds newest (`entityId` descending) first
  *   until `remainingDemand <= availableSupply`.
- * - Marks shed entities with `ENTITY_STATE.offlineBrownout` and records `'offline: brownout'` reason.
+ * - Marks shed entities with `ENTITY_STATE.offlineBrownout` and records `'offline: brownout'` reason; a shed work-job
+ *   candidate (`jobId`) is only listed in `shedWorkJobIds` (the work-jobs system pauses it).
  * - Suspends HQ fast-recharge when group 3 is shed.
  */
 export function applyBrownoutShedding(
@@ -79,7 +89,7 @@ export function applyBrownoutShedding(
 
   // First, restore any candidate that was in offlineBrownout so we evaluate fresh against current supply
   for (const c of candidates) {
-    if (cols.state[c.row] === ENTITY_STATE.offlineBrownout) {
+    if (c.jobId === undefined && cols.state[c.row] === ENTITY_STATE.offlineBrownout) {
       setField(e, c.row, 'state', ENTITY_STATE.active, tick);
     }
   }
@@ -88,10 +98,12 @@ export function applyBrownoutShedding(
   const shedEntityIds: number[] = [];
   const shedGroupsSet = new Set<number>();
   const offlineReasons: Record<number, string> = {};
+  const shedWorkJobIds: string[] = [];
+  let shedWorkDemand = 0;
   let hqFastRechargeShed = false;
 
   if (remainingDemand <= availableSupply + 1e-6) {
-    return { shedEntityIds, shedGroupsActive: [], hqFastRechargeShed: false, remainingDemand, offlineReasons };
+    return { shedEntityIds, shedGroupsActive: [], hqFastRechargeShed: false, remainingDemand, offlineReasons, shedWorkJobIds, shedWorkDemand };
   }
 
   for (const group of orderedGroups) {
@@ -108,10 +120,15 @@ export function applyBrownoutShedding(
 
     for (const c of inGroup) {
       if (remainingDemand <= availableSupply + 1e-6) break;
-      setField(e, c.row, 'state', ENTITY_STATE.offlineBrownout, tick);
       remainingDemand = Math.max(0, Number((remainingDemand - c.drainPerS).toFixed(4)));
-      shedEntityIds.push(c.entityId);
       shedGroupsSet.add(group);
+      if (c.jobId !== undefined) {
+        shedWorkJobIds.push(c.jobId);
+        shedWorkDemand = Number((shedWorkDemand + c.drainPerS).toFixed(4));
+        continue;
+      }
+      setField(e, c.row, 'state', ENTITY_STATE.offlineBrownout, tick);
+      shedEntityIds.push(c.entityId);
       offlineReasons[c.entityId] = 'offline: brownout';
     }
   }
@@ -122,5 +139,7 @@ export function applyBrownoutShedding(
     hqFastRechargeShed,
     remainingDemand,
     offlineReasons,
+    shedWorkJobIds,
+    shedWorkDemand,
   };
 }

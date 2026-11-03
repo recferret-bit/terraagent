@@ -9,10 +9,12 @@ import { defineSimModule } from '../define';
 import { getEnvironment } from '../environment';
 import { applyBrownoutShedding, type ShedCandidate } from './shedding';
 import { evaluatePowerEventsForColony, type PowerEventTracker } from './events';
+import { collectWorkLoad } from './workLoad';
 
 export * from './shedding';
 export * from './solar';
 export * from './events';
+export { collectWorkLoad, terraformOpShedGroup, type WorkLoad } from './workLoad';
 
 export interface BuildingFootprintTile {
   q: number;
@@ -31,10 +33,14 @@ export interface ColonyPowerSummary {
   rawDemand: number;
   buildingDemand: number;
   unitDemand: number;
+  /** E/s the colony's player work jobs (TERRAFORM / REPAIR) draw now, after shedding (`UO-TF-02`). */
+  workDemand: number;
   net: number;
   brownout: boolean;
   shedGroupsActive: number[];
   shedEntityIds: number[];
+  /** Work jobs paused by the brownout (shed group 1): `waiting (power)`, progress kept, resumed when power returns. */
+  shedWorkJobIds: string[];
   unpoweredEntityIds: number[];
   hqFastRechargeShed: boolean;
   offlineReasons: Record<number, string>;
@@ -62,10 +68,12 @@ export function getEntityFootprintTiles(q: number, r: number, w: number, d: numb
   const swap = rot % 2 !== 0;
   const fw = swap ? depth : width;
   const fd = swap ? width : depth;
+  const minQ = -Math.floor((fw - 1) / 2);
+  const minR = -Math.floor((fd - 1) / 2);
   const tiles: BuildingFootprintTile[] = [];
   for (let dr = 0; dr < fd; dr++) {
     for (let dq = 0; dq < fw; dq++) {
-      tiles.push({ q: q + dq, r: r + dr });
+      tiles.push({ q: q + minQ + dq, r: r + minR + dr });
     }
   }
   return tiles;
@@ -160,6 +168,7 @@ export function evaluateColonyPower(
   let solarGrossPerS = 0, solarInternalDrainPerS = 0, solarNetPerS = 0, onlineGen = 0;
   let rawBuildingDemand = hubDrainPerS, unitDemand = 0;
   const unpoweredEntityIds: number[] = [];
+  const nightSolarEntityIds: number[] = [];
   const shedCandidates: ShedCandidate[] = [];
   const e = state.entities, cols = e.cols;
 
@@ -176,7 +185,11 @@ export function evaluateColonyPower(
       if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
       const out = computeSolarOutputPerS(env.daylight, state.meta.planetType, data);
       solarGrossPerS += out.gross; solarInternalDrainPerS += out.internalDrain; solarNetPerS += out.net;
-      if (out.net >= 0) onlineGen += out.net;
+      if (env.phase === 'night' || env.daylight <= 0.001) {
+        nightSolarEntityIds.push(cols.id[row]);
+      } else if (out.net >= 0) {
+        onlineGen += out.net;
+      }
     } else if (kind === ENTITY_KIND.metalsExtractor && st !== ENTITY_STATE.constructing) {
       const drain = Number(extractorRow.powerDrainPerS ?? 6);
       if (!isRowAttachedToPylons(state, row, Number(extractorRow.footprintW ?? 2), Number(extractorRow.footprintD ?? 2), netInfo)) {
@@ -195,17 +208,23 @@ export function evaluateColonyPower(
     }
   }
 
+  // Player work jobs draw from the grid (shed group 1); before the Hub there is no grid and they stay unmetered (GP-45).
+  const work = netInfo.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
+  shedCandidates.push(...work.candidates);
+
   const supply = Number((founderCorePerS + onlineGen).toFixed(4));
-  const rawDemand = Number((rawBuildingDemand + unitDemand).toFixed(4));
+  const rawDemand = Number((rawBuildingDemand + unitDemand + work.demand).toFixed(4));
   const effectiveSupply = Math.max(0, Number((supply + Math.min(0, solarNetPerS)).toFixed(4)));
 
   const shed = applyBrownoutShedding(
     state, colonyIndex, effectiveSupply, rawDemand, shedCandidates, netInfo.hubAnchors, tick, data,
   );
   for (const id of unpoweredEntityIds) shed.offlineReasons[id] = 'offline: unpowered';
+  for (const id of nightSolarEntityIds) shed.offlineReasons[id] = 'offline: night';
 
   const demand = shed.remainingDemand;
-  const buildingDemand = Math.max(0, Number((demand - unitDemand).toFixed(4)));
+  const workDemand = Math.max(0, Number((work.demand - shed.shedWorkDemand).toFixed(4)));
+  const buildingDemand = Math.max(0, Number((demand - unitDemand - workDemand).toFixed(4)));
   const net = Number((effectiveSupply - demand).toFixed(4));
 
   return {
@@ -214,10 +233,11 @@ export function evaluateColonyPower(
     solarInternalDrainPerS: Number(solarInternalDrainPerS.toFixed(4)),
     solarNetPerS: Number(solarNetPerS.toFixed(4)),
     supply, demand, rawDemand, buildingDemand,
-    unitDemand: Number(unitDemand.toFixed(4)),
-    net, brownout: shed.shedEntityIds.length > 0 || rawDemand > effectiveSupply + 1e-6,
+    unitDemand: Number(unitDemand.toFixed(4)), workDemand,
+    net, brownout: shed.shedEntityIds.length > 0 || shed.shedWorkJobIds.length > 0 || rawDemand > effectiveSupply + 1e-6,
     shedGroupsActive: shed.shedGroupsActive,
     shedEntityIds: shed.shedEntityIds,
+    shedWorkJobIds: shed.shedWorkJobIds,
     unpoweredEntityIds,
     hqFastRechargeShed: shed.hqFastRechargeShed,
     offlineReasons: shed.offlineReasons,

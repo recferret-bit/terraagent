@@ -42,9 +42,7 @@ function buildChunkMesh(
   geo.setAttribute('aAO', new THREE.BufferAttribute(b.aAO, 1));
   geo.setAttribute('aRock', new THREE.BufferAttribute(b.aRock, 1));
   geo.setAttribute('aHexFlat', new THREE.BufferAttribute(b.aHexFlat, 1));
-  geo.setAttribute('color', new THREE.BufferAttribute(b.color, 3));
-  geo.setAttribute('aPrepTarget', new THREE.BufferAttribute(b.aPrepTarget, 1));
-  geo.setAttribute('aPrepStartTime', new THREE.BufferAttribute(b.aPrepStartTime, 1));
+  geo.setAttribute('aHexShore', new THREE.BufferAttribute(b.aHexShore, 1));
   geo.setIndex(new THREE.BufferAttribute(b.index, 1));
   geo.computeBoundingSphere();
   geo.computeBoundingBox();

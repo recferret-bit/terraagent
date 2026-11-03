@@ -13,6 +13,18 @@ interface QueueItemLike {
   progress?: number;
 }
 
+interface CachedUnitCard {
+  readonly root: HTMLElement;
+  readonly title: HTMLElement;
+  readonly supplyTag: HTMLElement;
+  readonly time: HTMLElement;
+  readonly power: HTMLElement;
+  readonly costs: HTMLElement;
+  readonly countSpan: HTMLElement;
+  readonly repeatBtn: HTMLButtonElement;
+  costKey: string;
+}
+
 export function formatBufferItem(entry: QueueItemLike): string {
   const unit = entry.unit ?? 'harvester';
   const cnt = entry.remainingCount ?? entry.count ?? 1;
@@ -35,6 +47,8 @@ export class UnitsMenu implements Disposable {
   private readonly supplyEl: HTMLElement;
   private readonly cardsContainer: HTMLElement;
   private readonly bufferContainer: HTMLElement;
+  private readonly cardElements = new Map<string, CachedUnitCard>();
+  private lastBufferKey: string | null = null;
   private isOpen = true;
   private view?: GameView;
   count = 1;
@@ -141,14 +155,53 @@ export class UnitsMenu implements Disposable {
   }
 
   private renderCards(): void {
-    this.cardsContainer.replaceChildren();
     const cards = buildUnitsCatalog(this.ctx.flags, this.view);
+    const seen = new Set<string>();
     for (const card of cards) {
-      this.cardsContainer.appendChild(this.createCardElement(card));
+      seen.add(card.unit);
+      const existing = this.cardElements.get(card.unit);
+      if (existing) {
+        this.updateCardElement(existing, card);
+      } else {
+        const created = this.createCardElement(card);
+        this.cardElements.set(card.unit, created);
+        this.cardsContainer.appendChild(created.root);
+      }
+    }
+    for (const [unit, cached] of this.cardElements) {
+      if (!seen.has(unit)) {
+        cached.root.remove();
+        this.cardElements.delete(unit);
+      }
     }
   }
 
-  private createCardElement(card: UnitCardModel): HTMLElement {
+  private updateCardElement(cached: CachedUnitCard, card: UnitCardModel): void {
+    if (cached.title.textContent !== card.label) cached.title.textContent = card.label;
+    const supplyText = `Supply ${card.supply}`;
+    if (cached.supplyTag.textContent !== supplyText) cached.supplyTag.textContent = supplyText;
+    const timeText = `${card.buildS}s`;
+    if (cached.time.textContent !== timeText) cached.time.textContent = timeText;
+    if (cached.power.textContent !== card.powerText) cached.power.textContent = card.powerText;
+
+    const costKey = card.costPills.join('|');
+    if (cached.costKey !== costKey) {
+      cached.costKey = costKey;
+      cached.costs.replaceChildren();
+      for (const pillText of card.costPills) {
+        const pill = document.createElement('span');
+        pill.className = 'ta-units__cost-pill';
+        pill.textContent = pillText;
+        cached.costs.appendChild(pill);
+      }
+    }
+
+    cached.countSpan.textContent = String(this.count);
+    cached.countSpan.setAttribute('data-count', String(this.count));
+    cached.repeatBtn.setAttribute('data-repeat', String(this.repeat));
+  }
+
+  private createCardElement(card: UnitCardModel): CachedUnitCard {
     const cardEl = document.createElement('div');
     cardEl.className = 'ta-units__card plate-sm';
     cardEl.setAttribute('data-unit', card.unit);
@@ -182,12 +235,26 @@ export class UnitsMenu implements Disposable {
       costs.appendChild(pill);
     }
 
-    const controls = this.createControlsRow(card.unit);
+    const { controls, countSpan, repeatBtn } = this.createControlsRow(card.unit);
     cardEl.append(headRow, metaRow, costs, controls);
-    return cardEl;
+    return {
+      root: cardEl,
+      title,
+      supplyTag,
+      time,
+      power,
+      costs,
+      countSpan,
+      repeatBtn,
+      costKey: card.costPills.join('|'),
+    };
   }
 
-  private createControlsRow(unit: string): HTMLElement {
+  private createControlsRow(unit: string): {
+    controls: HTMLElement;
+    countSpan: HTMLElement;
+    repeatBtn: HTMLButtonElement;
+  } {
     const controls = document.createElement('div');
     controls.className = 'ta-units__controls';
 
@@ -227,7 +294,7 @@ export class UnitsMenu implements Disposable {
     repeatBtn.textContent = 'REPEAT';
     repeatBtn.onclick = () => {
       this.repeat = !this.repeat;
-      repeatBtn.setAttribute('data-repeat', String(this.repeat));
+      this.updateRepeatButtons();
     };
 
     const queueBtn = document.createElement('button');
@@ -238,7 +305,7 @@ export class UnitsMenu implements Disposable {
     queueBtn.onclick = () => this.queueUnit(unit);
 
     controls.append(stepper, repeatBtn, queueBtn);
-    return controls;
+    return { controls, countSpan, repeatBtn };
   }
 
   private updateCountReadouts(): void {
@@ -246,6 +313,13 @@ export class UnitsMenu implements Disposable {
     for (const el of readouts) {
       el.textContent = String(this.count);
       el.setAttribute('data-count', String(this.count));
+    }
+  }
+
+  private updateRepeatButtons(): void {
+    const btns = this.root.querySelectorAll('[data-repeat]');
+    for (const el of btns) {
+      el.setAttribute('data-repeat', String(this.repeat));
     }
   }
 
@@ -269,7 +343,6 @@ export class UnitsMenu implements Disposable {
   }
 
   private renderBuffer(): void {
-    this.bufferContainer.replaceChildren();
     const v = this.view as {
       colonies?: Array<{ unitQueue?: QueueItemLike[] }>;
       blobs?: { hubProduction?: { entries?: QueueItemLike[] } };
@@ -277,7 +350,11 @@ export class UnitsMenu implements Disposable {
 
     const raw = v?.colonies?.[0]?.unitQueue ?? v?.blobs?.hubProduction?.entries ?? [];
     const entries = raw.filter((en) => en.state !== 'done' && en.state !== 'cancelled');
+    const nextKey = entries.map((en) => `${en.taskId ?? ''}:${formatBufferItem(en)}`).join('|');
+    if (this.lastBufferKey === nextKey) return;
+    this.lastBufferKey = nextKey;
 
+    this.bufferContainer.replaceChildren();
     if (entries.length === 0) {
       const empty = document.createElement('span');
       empty.className = 'ta-units__buffer-empty';
@@ -299,6 +376,7 @@ export class UnitsMenu implements Disposable {
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.onKeyDown);
     }
+    this.cardElements.clear();
     this.root.remove();
   }
 }

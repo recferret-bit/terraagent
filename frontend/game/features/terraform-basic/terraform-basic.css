@@ -18,11 +18,51 @@
   border-bottom: 1px solid var(--ta-seam);
 }
 
-.ta-tf-menu__ops,
-.ta-tf-menu__controls {
+.ta-tf-menu__workers {
+  font-size: var(--ta-fs-label);
+  color: var(--ta-terra);
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-tf-menu__ops {
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
   gap: var(--ta-s2);
+}
+
+.ta-tf-menu__op-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--ta-s1);
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+  padding: var(--ta-s2) var(--ta-s3);
+}
+
+.ta-tf-menu__op-title {
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-button);
+}
+
+.ta-tf-menu__op-desc {
+  font-family: var(--ta-font-body);
+  font-size: var(--ta-fs-label);
+  font-weight: 400;
+  color: var(--ta-text-2);
+  line-height: 1.3;
+  letter-spacing: normal;
+  text-transform: none;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.btn-primary .ta-tf-menu__op-desc {
+  color: var(--ta-ink);
 }
 
 .ta-tf-menu__status {
@@ -33,6 +73,52 @@
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
   letter-spacing: var(--ta-track-label);
+}
+
+.ta-tf-menu__tables {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  margin-top: var(--ta-s1);
+}
+
+.ta-tf-menu__table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  padding: var(--ta-s2);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam);
+}
+
+.ta-tf-menu__table-title {
+  font-size: var(--ta-fs-label);
+  color: var(--ta-blue-hi);
+  padding-bottom: var(--ta-s1);
+  border-bottom: 1px solid var(--ta-seam);
+}
+
+.ta-tf-menu__table-rows {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+}
+
+.ta-tf-menu__table-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  font-size: var(--ta-fs-label);
+}
+
+.ta-tf-menu__table-key {
+  color: var(--ta-text-2);
+}
+
+.ta-tf-menu__table-val {
+  color: var(--ta-terra);
+  text-align: right;
 }
 
 .ta-tf-overlay {

@@ -46,12 +46,25 @@ function formatChipStatus(entry: QueueEntry): string {
   return entry.state;
 }
 
+function serializeLaneKey(entries: readonly QueueEntry[]): string {
+  return entries
+    .map((e) => `${e.taskId}:${e.state}:${Math.round((e.progress ?? 0) * 100)}:${e.waitDetail ?? ''}:${e.waitReason ?? ''}`)
+    .join('|');
+}
+
+function serializeStructureKey(entries: readonly QueueEntry[]): string {
+  return entries.map((e) => `${e.taskId}:${e.state}`).join('|');
+}
+
 export class QueuePanel {
   readonly root: HTMLElement;
   private readonly ctx: FeatureContext;
   private readonly collapseBtn: HTMLButtonElement;
+  private readonly cancelAllBtn: HTMLButtonElement;
   private readonly constructionList: HTMLElement;
   private readonly unitsList: HTMLElement;
+  private readonly laneKeys = new Map<HTMLElement, string>();
+  private readonly laneStructKeys = new Map<HTMLElement, string>();
   private collapsed = false;
   private entries: QueueEntry[] = [];
   private simState: PlanetState | null = null;
@@ -64,6 +77,7 @@ export class QueuePanel {
     this.root = document.createElement('section');
     this.root.className = 'ta-queue-panel plate-sm';
     this.root.dataset.collapsed = 'false';
+    this.root.dataset.empty = 'true';
 
     const header = document.createElement('div');
     header.className = 'ta-queue-panel__header';
@@ -72,6 +86,15 @@ export class QueuePanel {
     title.className = 'ta-queue-panel__title';
     title.textContent = 'QUEUE [Q]';
 
+    this.cancelAllBtn = document.createElement('button');
+    this.cancelAllBtn.type = 'button';
+    this.cancelAllBtn.className = 'ta-queue-panel__cancel-all-btn';
+    this.cancelAllBtn.dataset.testid = 'queue-cancel-all';
+    this.cancelAllBtn.setAttribute('data-testid', 'queue-cancel-all');
+    this.cancelAllBtn.textContent = 'CANCEL ALL (50% REFUND)';
+    this.cancelAllBtn.hidden = true;
+    this.cancelAllBtn.onclick = () => this.cancelAll();
+
     this.collapseBtn = document.createElement('button');
     this.collapseBtn.type = 'button';
     this.collapseBtn.className = 'ta-queue-panel__collapse-btn';
@@ -79,7 +102,7 @@ export class QueuePanel {
     this.collapseBtn.textContent = 'Collapse';
     this.collapseBtn.onclick = () => this.setCollapsed(!this.collapsed);
 
-    header.append(title, this.collapseBtn);
+    header.append(title, this.cancelAllBtn, this.collapseBtn);
 
     const lanes = document.createElement('div');
     lanes.className = 'ta-queue-panel__lanes';
@@ -94,6 +117,9 @@ export class QueuePanel {
     host.appendChild(this.root);
 
     this.onKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey || e.metaKey || e.altKey) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
       if (e.key === 'q' || e.key === 'Q') {
         this.setCollapsed(!this.collapsed);
       }
@@ -108,6 +134,7 @@ export class QueuePanel {
     const section = document.createElement('div');
     section.className = 'ta-queue-lane';
     section.dataset.lane = lane;
+    section.dataset.empty = 'true';
 
     const hdr = document.createElement('div');
     hdr.className = 'ta-queue-lane__header';
@@ -169,6 +196,18 @@ export class QueuePanel {
     this.ctx.services.cancelQueueTask?.(taskId);
   }
 
+  cancelAll(): void {
+    if (this.simState) {
+      cancelQueueTask(this.simState, 'all', this.colonyIndex);
+      this.syncFromSimState();
+    } else {
+      this.entries = [];
+      this.render();
+    }
+    this.ctx.services.sendCommand?.('cancelTask', { taskId: 'all' });
+    this.ctx.services.cancelQueueTask?.('all');
+  }
+
   reorderTask(taskId: string, toIndex: number): void {
     if (this.simState) {
       reorderQueueTask(this.simState, taskId, { toIndex, colonyIndex: this.colonyIndex });
@@ -201,13 +240,14 @@ export class QueuePanel {
       this.syncFromSimState();
       return;
     }
-    const col = (view.colonies?.[0] ?? {}) as { queue?: QueueEntry[]; constructionQueue?: QueueEntry[]; unitQueue?: QueueEntry[] };
+    const colonies = view.colonies as Array<{ index?: number; queue?: QueueEntry[]; constructionQueue?: QueueEntry[]; unitQueue?: QueueEntry[] }> | undefined;
+    const col = colonies?.find((c) => c.index === this.colonyIndex) ?? colonies?.[this.colonyIndex] ?? colonies?.[0] ?? {};
     const blobEntries = (view.blobs?.queue as { value?: { entries?: QueueEntry[] }; entries?: QueueEntry[] } | undefined);
     const fromBlob = blobEntries?.value?.entries ?? blobEntries?.entries;
     if (Array.isArray(col.queue)) {
       this.entries = col.queue;
     } else if (Array.isArray(fromBlob)) {
-      this.entries = fromBlob;
+      this.entries = fromBlob.filter((e) => (e.colonyIndex ?? 0) === this.colonyIndex);
     } else if (Array.isArray(col.constructionQueue) || Array.isArray(col.unitQueue)) {
       this.entries = [...(col.constructionQueue ?? []), ...(col.unitQueue ?? [])];
     }
@@ -217,19 +257,52 @@ export class QueuePanel {
   private updateHeaderSummary(): void {
     const count = this.entries.length;
     this.collapseBtn.textContent = this.collapsed ? `+${count} more` : 'Collapse';
+    this.cancelAllBtn.hidden = count === 0;
   }
 
   private render(): void {
+    this.root.dataset.empty = String(this.entries.length === 0);
     this.updateHeaderSummary();
     this.renderLane(this.constructionList, this.entries.filter((e) => e.lane === 'construction' || e.lane === 'terraform'));
     this.renderLane(this.unitsList, this.entries.filter((e) => e.lane === 'units'));
   }
 
   private renderLane(container: HTMLElement, laneEntries: QueueEntry[]): void {
+    if (container.parentElement) {
+      container.parentElement.dataset.empty = String(laneEntries.length === 0);
+    }
+    const nextFullKey = serializeLaneKey(laneEntries);
+    if (this.laneKeys.get(container) === nextFullKey) return;
+    this.laneKeys.set(container, nextFullKey);
+
+    const nextStructKey = serializeStructureKey(laneEntries);
+    if (this.laneStructKeys.get(container) === nextStructKey && container.children.length === laneEntries.length) {
+      for (let i = 0; i < laneEntries.length; i++) {
+        this.updateChipInPlace(container.children[i] as HTMLElement, laneEntries[i]);
+      }
+      return;
+    }
+
+    this.laneStructKeys.set(container, nextStructKey);
     container.innerHTML = '';
     laneEntries.forEach((entry, index) => {
       container.appendChild(this.createChipElement(entry, index, laneEntries.length));
     });
+  }
+
+  private updateChipInPlace(chip: HTMLElement, entry: QueueEntry): void {
+    chip.dataset.state = entry.state;
+    const status = chip.querySelector('[data-chip-status]') as HTMLElement | null;
+    if (status) {
+      status.dataset.chipStatus = entry.state;
+      status.textContent = formatChipStatus(entry);
+    }
+    const fill = chip.querySelector('.ta-queue-chip__bar-fill') as HTMLElement | null;
+    if (fill && entry.state === 'in_progress') {
+      const pct = Math.round((entry.progress ?? 0) * 100);
+      fill.dataset.chipProgress = String(pct);
+      fill.style.width = `${pct}%`;
+    }
   }
 
   private createChipElement(entry: QueueEntry, index: number, total: number): HTMLElement {
@@ -329,6 +402,8 @@ export class QueuePanel {
     if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
       window.removeEventListener('keydown', this.onKeyDown);
     }
+    this.laneKeys.clear();
+    this.laneStructKeys.clear();
     this.root.remove();
   }
 }

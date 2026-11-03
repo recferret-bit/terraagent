@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { LocalTransport } from '../../net/LocalTransport';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import {
-  bindLocalSaveListeners, changedTiles, createSafeViewport, isEscapeBlockedByHudOverlay, listSceneEntities, PLANET_KIND_SESSION_KEY,
+  applyTerrainTileChanges, bindLocalSaveListeners, changedTiles, createSafeViewport, isEscapeBlockedByHudOverlay, listSceneEntities, PLANET_KIND_SESSION_KEY,
   pickTerrainAt, projectTileToScreen, readStoredPlanetKind, resolveOnlinePlanetLook, resolveSessionPlanetKind, syncSpaceTerrainOffset,
 } from './viewportHelper';
 
@@ -50,6 +50,32 @@ describe('viewportHelper: tiles and planet look', () => {
     expect(changedTiles(tiles(6), b)).toEqual([0, 1, 2, 3, 4]);
     const noLayers = { ...tiles(2), deposit: undefined, owner: undefined } as unknown as ClientTiles;
     expect(changedTiles(noLayers, noLayers)).toEqual([]);
+  });
+
+  it('changedTiles sees a deposit tier change alone, and richness only when it crosses a visual stage', () => {
+    const withLayers = (tier: number[], rich: number[]) =>
+      ({ ...tiles(4), depositTier: Uint8Array.from(tier), richness: Float32Array.from(rich) }) as ClientTiles;
+    const a = withLayers([0, 0, 0, 0], [10000, 10000, 4000, 100]);
+    // tile 0: tier 0 -> 2; tile 1: drained but still `full`; tile 2: `half` -> still `half`; tile 3: `half` -> `depleted`
+    const b = withLayers([2, 0, 0, 0], [10000, 9000, 3000, 0]);
+    expect(changedTiles(a, b)).toEqual([0, 3]);
+    const c = withLayers([0, 0, 0, 0], [5000, 10000, 4000, 100]); // tile 0: `full` -> `half`
+    expect(changedTiles(a, c)).toEqual([0]);
+  });
+
+  it('applyTerrainTileChanges runs one incremental update and never writes into the previous snapshot', () => {
+    const prev = tiles(6);
+    const next = tiles(6, { terrain: [2, 1], prep: [2, 3] });
+    const updateTiles = vi.fn();
+    const setTileState = vi.fn();
+    const terrain = { updateTiles, setTileState } as unknown as HexTerrain;
+    applyTerrainTileChanges(terrain, prev, next, 6);
+    expect(updateTiles).toHaveBeenCalledTimes(1);
+    expect(updateTiles).toHaveBeenCalledWith(next, [2]);
+    expect(setTileState).not.toHaveBeenCalled();
+    expect(Array.from(prev.terrain)).toEqual([0, 0, 0, 0, 0, 0]);
+    applyTerrainTileChanges(terrain, next, next, 6);
+    expect(updateTiles).toHaveBeenCalledTimes(1); // nothing changed: no rebuild
   });
 
   it('the sim planet type decides the look; the orbit pick only fills in for an unknown type; else temperate', () => {

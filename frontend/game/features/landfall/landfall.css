@@ -1,14 +1,31 @@
+.ta-hud__panel[data-panel='hq-panel'] {
+  position: static;
+}
+
 .ta-hq-panel {
-  min-width: 280px;
-  max-width: 340px;
+  position: fixed;
+  bottom: var(--ta-s3);
+  left: calc(50% + 52px);
+  transform: translateX(-50%);
+  z-index: 25;
+  min-width: auto;
+  min-height: 76px;
+  max-width: calc(100vw - 440px);
   padding: var(--ta-s3) var(--ta-s4);
   background: var(--ta-plate);
   border: 1.5px solid var(--ta-seam-2);
   color: var(--ta-text);
   font-family: var(--ta-font-body);
   display: flex;
-  flex-direction: column;
-  gap: var(--ta-s2);
+  flex-direction: row;
+  align-items: center;
+  gap: var(--ta-s4);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.ta-hq-panel[hidden] {
+  display: none !important;
 }
 
 .ta-hq-panel[data-selected='true'] {
@@ -16,13 +33,50 @@
   box-shadow: var(--ta-glow-1);
 }
 
+.ta-hq-panel__grid {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  padding-right: var(--ta-s3);
+  border-right: 1px solid var(--ta-seam);
+}
+
+.ta-hq-panel__slot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 38px;
+  height: 36px;
+  padding: 0 var(--ta-s2);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-orange);
+  color: var(--ta-orange-hi);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+}
+
+.ta-hq-panel__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  height: 24px;
+  padding: 0 var(--ta-s1);
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+}
+
 .ta-hq-panel__head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--ta-s2);
-  border-bottom: 1px solid var(--ta-seam);
-  padding-bottom: var(--ta-s2);
+  padding-right: var(--ta-s3);
+  border-right: 1px solid var(--ta-seam);
 }
 
 .ta-hq-panel__title {
@@ -36,34 +90,26 @@
 }
 
 .ta-hq-panel__badge {
-  padding: var(--ta-s1) var(--ta-s2);
-  font-family: var(--ta-font-mono);
-  font-size: var(--ta-fs-label);
-  font-weight: 600;
-  letter-spacing: var(--ta-track-label);
-  text-transform: uppercase;
-  background: var(--ta-orange);
-  color: var(--ta-void);
-  border: 1px solid var(--ta-orange);
-  cursor: pointer;
-}
-
-.ta-hq-panel[data-selected='false'] .ta-hq-panel__badge {
-  background: var(--ta-deep);
-  color: var(--ta-steel);
-  border-color: var(--ta-seam-3);
+  display: none;
 }
 
 .ta-hq-panel__stat {
   display: flex;
   flex-direction: column;
-  gap: var(--ta-s1);
+  justify-content: center;
+  gap: 6px;
+  width: 96px;
+}
+
+.ta-hq-panel__stat[hidden] {
+  display: none !important;
 }
 
 .ta-hq-panel__row {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
   letter-spacing: var(--ta-track-label);
@@ -80,8 +126,8 @@
 }
 
 .ta-hq-panel__bar {
-  width: 100%;
-  height: 6px;
+  width: 92px;
+  height: 7px;
   background: var(--ta-deep);
   border: 1px solid var(--ta-seam-2);
   overflow: hidden;
@@ -101,19 +147,40 @@
   background: var(--ta-energy);
 }
 
+.ta-hq-panel__fill--progress {
+  background: #38bdf8;
+}
+
+.ta-hq-panel__cancel {
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-fault);
+  color: var(--ta-fault-text);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+  white-space: nowrap;
+  flex: none;
+  cursor: pointer;
+}
+
+.ta-hq-panel__cancel[hidden] {
+  display: none !important;
+}
+
 .ta-hq-panel__footer {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--ta-s2);
-  padding-top: var(--ta-s1);
-  border-top: 1px solid var(--ta-seam);
+  padding-left: var(--ta-s3);
+  border-left: 1px solid var(--ta-seam);
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
 }
 
 .ta-hq-panel__job {
-  padding: 2px var(--ta-s2);
+  padding: var(--ta-s1) var(--ta-s2);
   background: var(--ta-deep);
   border: 1px solid var(--ta-seam-3);
   color: var(--ta-orange-hi);

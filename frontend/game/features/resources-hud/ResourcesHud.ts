@@ -1,40 +1,16 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
+import {
+  bindHoverPopover,
+  computeResourceFlow,
+  FAMILY_DEFS,
+  renderFamilyBreakdown,
+  renderPowerBreakdown,
+  type FamilyKey,
+  type ResourceFlowSummary,
+  type SubResourceDef,
+} from '../hud-min/resourceBreakdown';
 
-export type FamilyKey = 'metals' | 'minerals' | 'bio';
-
-export interface SubResourceDef {
-  key: string;
-  name: string;
-  isT1: boolean;
-}
-
-export const FAMILY_DEFS: Record<FamilyKey, { label: string; subs: SubResourceDef[] }> = {
-  metals: {
-    label: 'METALS',
-    subs: [
-      { key: 'metals.t1', name: 'Iron', isT1: true },
-      { key: 'metals.t2', name: 'T2 Metal', isT1: false },
-      { key: 'metals.t3', name: 'T3 Metal', isT1: false },
-    ],
-  },
-  minerals: {
-    label: 'MINERALS',
-    subs: [
-      { key: 'minerals.t1', name: 'Silica', isT1: true },
-      { key: 'minerals.t2', name: 'T2 Mineral', isT1: false },
-      { key: 'minerals.t3', name: 'T3 Mineral', isT1: false },
-    ],
-  },
-  bio: {
-    label: 'BIO',
-    subs: [
-      { key: 'bio.water', name: 'Water', isT1: true },
-      { key: 'bio.biomass', name: 'Biomass', isT1: true },
-      { key: 'bio.t2', name: 'T2 Bio', isT1: false },
-      { key: 'bio.t3', name: 'T3 Bio', isT1: false },
-    ],
-  },
-};
+export { FAMILY_DEFS, type FamilyKey, type SubResourceDef };
 
 interface FamilyElements {
   chip: HTMLElement;
@@ -45,8 +21,9 @@ interface FamilyElements {
 
 export class ResourcesHud implements Disposable {
   readonly root: HTMLElement;
-  private energyEl: { chip: HTMLElement; stockEl: HTMLElement; rateEl: HTMLElement };
+  private energyEl: { chip: HTMLElement; stockEl: HTMLElement; rateEl: HTMLElement; breakdownEl: HTMLElement };
   private families: Record<FamilyKey, FamilyElements>;
+  private prevFamilyStock: Record<string, number> = {};
 
   constructor(
     private readonly parent: HTMLElement,
@@ -86,9 +63,15 @@ export class ResourcesHud implements Disposable {
     rateEl.className = 'ta-res-chip__rate';
     rateEl.textContent = '+0 E/s';
 
-    chip.append(label, stockEl, rateEl);
+    const breakdownEl = document.createElement('div');
+    breakdownEl.className = 'ta-res-chip__breakdown plate-sm';
+    breakdownEl.setAttribute('data-testid', 'res-breakdown-energy');
+    renderPowerBreakdown(breakdownEl, undefined, null, false);
+
+    chip.append(label, stockEl, rateEl, breakdownEl);
+    bindHoverPopover(chip);
     container.appendChild(chip);
-    return { chip, stockEl, rateEl };
+    return { chip, stockEl, rateEl, breakdownEl };
   }
 
   private createFamilyChip(container: HTMLElement, family: FamilyKey): FamilyElements {
@@ -97,6 +80,8 @@ export class ResourcesHud implements Disposable {
     chip.className = 'ta-res-chip';
     chip.setAttribute('data-family', family);
     chip.setAttribute('data-capped', 'false');
+    chip.dataset.trend = 'flat';
+    chip.setAttribute('data-trend', 'flat');
 
     const label = document.createElement('span');
     label.className = 'ta-res-chip__label';
@@ -112,8 +97,11 @@ export class ResourcesHud implements Disposable {
 
     const breakdownEl = document.createElement('div');
     breakdownEl.className = 'ta-res-chip__breakdown plate-sm';
+    breakdownEl.setAttribute('data-testid', `res-breakdown-${family}`);
+    renderFamilyBreakdown(breakdownEl, family, {}, computeResourceFlow(undefined, undefined, 0));
 
     chip.append(label, stockEl, rateEl, breakdownEl);
+    bindHoverPopover(chip);
     container.appendChild(chip);
     return { chip, stockEl, rateEl, breakdownEl };
   }
@@ -124,12 +112,10 @@ export class ResourcesHud implements Disposable {
     const col = (colonies[0] ?? v.colony ?? v) as Record<string, unknown>;
     const stock = ((col.stock ?? v.stock ?? {}) as Record<string, number>);
     const caps = ((col.caps ?? v.caps ?? {}) as Record<string, number>);
-    const prod = (col.production ?? v.production ?? {}) as Record<string, unknown>;
-    const famIncome = ((prod.familyIncomePerS ?? {}) as Record<string, number>);
-    const subIncome = ((prod.incomePerS ?? {}) as Record<string, number>);
+    const flow = computeResourceFlow(col, v, 0);
 
     for (const f of ['metals', 'minerals', 'bio'] as const) {
-      this.updateFamily(f, stock, caps, famIncome, subIncome);
+      this.updateFamily(f, stock, caps, flow);
     }
     this.updateEnergy(col, v);
   }
@@ -138,8 +124,7 @@ export class ResourcesHud implements Disposable {
     family: FamilyKey,
     stock: Record<string, number>,
     caps: Record<string, number>,
-    famIncome: Record<string, number>,
-    subIncome: Record<string, number>,
+    flow: ResourceFlowSummary,
   ): void {
     const def = FAMILY_DEFS[family];
     const el = this.families[family];
@@ -147,45 +132,31 @@ export class ResourcesHud implements Disposable {
     for (const s of def.subs) totStock += (stock[s.key] ?? 0);
 
     const cap = typeof caps[family] === 'number' ? caps[family] : 500;
-    const income = typeof famIncome[family] === 'number' ? famIncome[family] : 0;
+    const income = flow.familyIncome[family] ?? 0;
+    const spending = flow.familySpending[family] ?? 0;
+    const totalRate = income - spending;
+    const prevStock = this.prevFamilyStock[family];
+    const stockDelta = typeof prevStock === 'number' ? totStock - prevStock : 0;
+    this.prevFamilyStock[family] = totStock;
+    const nearZeroRate = Math.abs(totalRate) <= 0.01;
+    const trend: 'up' | 'down' | 'flat' =
+      totalRate > 0.01 || (nearZeroRate && stockDelta > 0.01)
+        ? 'up'
+        : totalRate < -0.01 || (nearZeroRate && stockDelta < -0.01)
+          ? 'down'
+          : 'flat';
     const isCapped = cap > 0 && totStock >= cap - 1e-6;
 
+    el.chip.dataset.trend = trend;
+    el.chip.setAttribute('data-trend', trend);
+    el.chip.classList.toggle('ta-resources-hud__chip--up', trend === 'up');
+    el.chip.classList.toggle('ta-resources-hud__chip--down', trend === 'down');
     el.chip.setAttribute('data-capped', String(isCapped));
     el.chip.classList.toggle('ta-res-chip--capped', isCapped);
     el.stockEl.textContent = `${Math.floor(totStock)} / ${Math.floor(cap)}`;
     el.rateEl.textContent = `${income >= 0 ? '+' : ''}${income.toFixed(1)}/s`;
 
-    el.breakdownEl.replaceChildren();
-    const hdr = document.createElement('div');
-    hdr.className = 'ta-res-breakdown__header';
-    hdr.textContent = `${def.label} TIERS`;
-    el.breakdownEl.appendChild(hdr);
-
-    for (const s of def.subs) {
-      const val = Math.floor(stock[s.key] ?? 0);
-      const rate = typeof subIncome[s.key] === 'number' ? subIncome[s.key] : 0;
-      const isLocked = !s.isT1 && val <= 0 && rate <= 0;
-
-      const row = document.createElement('div');
-      row.className = 'ta-res-breakdown__row' + (isLocked ? ' ta-res-tier--locked' : '');
-      row.setAttribute('data-res', s.key);
-      row.setAttribute('data-locked', String(isLocked));
-
-      const name = document.createElement('span');
-      name.className = 'ta-res-breakdown__name';
-      name.textContent = s.name;
-
-      const amt = document.createElement('span');
-      amt.className = 'ta-res-breakdown__amount';
-      amt.textContent = String(val);
-
-      const rateSpan = document.createElement('span');
-      rateSpan.className = 'ta-res-breakdown__rate';
-      rateSpan.textContent = `${rate >= 0 ? '+' : ''}${rate.toFixed(1)}/s`;
-
-      row.append(name, amt, rateSpan);
-      el.breakdownEl.appendChild(row);
-    }
+    renderFamilyBreakdown(el.breakdownEl, family, stock, flow);
   }
 
   private updateEnergy(col: Record<string, unknown>, v: Record<string, unknown>): void {
@@ -204,6 +175,7 @@ export class ResourcesHud implements Disposable {
       this.energyEl.stockEl.textContent = '+0 / −0 E/s';
       this.energyEl.rateEl.textContent = '+0 E/s';
     }
+    renderPowerBreakdown(this.energyEl.breakdownEl, power, null, false);
   }
 
   dispose(): void {

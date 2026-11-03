@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 import { ArchetypeCatalog, createArchetypeMesh, tickArchetypeMesh } from '../../kitbash';
+import { createSpaceLighting, type SpaceLighting } from './spaceLighting';
 
 /** A model wrapped so that its pivot is bottom-centre (y=0) and its largest dimension is `size` (optional). */
 export interface FittedModel {
@@ -9,7 +10,17 @@ export interface FittedModel {
   /** Size after fitting. */
   size: THREE.Vector3;
   placeholder: boolean;
+  /**
+   * true: ignore the colony FoV shroud / night factor / projector lights (hardware in space, see `spaceLighting.ts`);
+   * false: follow them (e.g. a pod once it stands in the colony). Defaults to `acquireModel(..., { spaceLit })`.
+   */
+  setSpaceLit(isolated: boolean): void;
   dispose(): void;
+}
+
+export interface AcquireOptions {
+  /** Hardware rendered in space (orbital stage, carrier, drop pod): starts isolated from colony-only lighting. */
+  spaceLit?: boolean;
 }
 
 /** Clearly-labelled stand-in used until the real archetype is registered. */
@@ -46,7 +57,7 @@ function placeholderFor(id: string): THREE.Object3D {
  * `fit`: if given, the model's largest horizontal/vertical extent is scaled to `fit` only when it is outside
  * [fit*minRatio, fit*maxRatio] (so correctly-sized archetypes are left alone).
  */
-export function acquireModel(id: string, biomeKey: string, fit?: { size: number; mode: 'max' | 'height'; minRatio?: number; maxRatio?: number; force?: boolean }): FittedModel {
+export function acquireModel(id: string, biomeKey: string, fit?: { size: number; mode: 'max' | 'height'; minRatio?: number; maxRatio?: number; force?: boolean }, opts: AcquireOptions = {}): FittedModel {
   const has = ArchetypeCatalog.has(id);
   const mesh: THREE.Object3D = has ? createArchetypeMesh(id, biomeKey) : placeholderFor(id);
   if (!has) console.warn(`[space] archetype "${id}" not registered — using PLACEHOLDER`);
@@ -62,8 +73,13 @@ export function acquireModel(id: string, biomeKey: string, fit?: { size: number;
     const lo = fit.size * (fit.minRatio ?? 0.5), hi = fit.size * (fit.maxRatio ?? 2);
     if (fit.force || cur < lo || cur > hi) { const k = fit.size / Math.max(cur, 1e-4); root.scale.setScalar(k); size.multiplyScalar(k); }
   }
+  let space: SpaceLighting | null = opts.spaceLit ? createSpaceLighting(mesh, true) : null;
   return {
     root, mesh, size, placeholder: !has,
+    setSpaceLit(isolated) {
+      if (space) space.set(isolated);
+      else if (isolated) space = createSpaceLighting(mesh, true);
+    },
     dispose() {
       root.removeFromParent();
       root.traverse((o) => { const m = o as THREE.Mesh; if (m.isMesh) { m.geometry.dispose(); (Array.isArray(m.material) ? m.material : [m.material]).forEach((x) => x.dispose()); } });

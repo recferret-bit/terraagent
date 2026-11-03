@@ -1,15 +1,22 @@
+import type { RejectCode } from '@terra/contracts';
 import { defineCommandHandler } from '../../kernel/commands';
 import { commandColony, parseArgs } from '../command';
 import { cancelConstructionOrder, isOrderIdTaken } from '../construction';
 import { defineSimModule } from '../define';
 import { cancelQueueTask, enqueueTaskHandler, getAllQueueEntries, normalizeEnqueueArgs } from '../queue';
+import { executeDismantleAtTile, hasWorkJob, workJobsSystem } from './dismantleAndWork';
 import { cancelTerraformOrder, enqueueTerraformOrder, findTerraformOrder } from './queue';
 import { enqueueAutoPrepares } from './rules';
+import { enqueueWorkOrder } from './workOrder';
 
+export * from './chain';
+export * from './dismantleAndWork';
 export * from './ops';
 export * from './orders';
 export * from './queue';
+export * from './resourceSpawn';
 export * from './rules';
+export { enqueueWorkOrder, type WorkOrderArgs } from './workOrder';
 export { linkedPrepProvider, terraformCommand, terraformProvider } from './work';
 
 export const enqueueTask = defineCommandHandler({
@@ -27,8 +34,22 @@ export const enqueueTask = defineCommandHandler({
     if (typeof colonyId === 'string') return colonyId;
     const args = parseArgs('enqueueTask', cmd.args);
     if (!args || !('terraform' in args)) return 'invalid_args';
-    if (isOrderIdTaken(state, colonyId, cmd.commandId)) return 'invalid_args';
-    const { op, tiles } = args.terraform;
+    const { op, tiles, entityId } = args.terraform;
+
+    if (op === 'dismantle') {
+      let anyOk = false;
+      let firstReject: RejectCode | undefined;
+      for (const t of tiles) {
+        const dRes = executeDismantleAtTile(state, colonyId, t.q, t.r, ctx.tick, ctx.data, entityId);
+        if (dRes.ok) anyOk = true;
+        else if (!firstReject || dRes.reason === 'cannot_dismantle_hq') firstReject = dRes.reason;
+      }
+      return anyOk ? undefined : (firstReject ?? 'site_blocked');
+    }
+
+    // A client id names one order or job (GP-09): a cancel by it never hits two.
+    if (isOrderIdTaken(state, colonyId, cmd.commandId) || hasWorkJob(state, cmd.commandId)) return 'invalid_args';
+    if (op === 'work') return enqueueWorkOrder(state, colonyId, args.terraform, cmd.commandId, ctx.tick, ctx.data);
     const res = enqueueTerraformOrder(state, {
       colonyId,
       op,
@@ -54,18 +75,22 @@ export const cancelTask = defineCommandHandler({
   handle(state, cmd, ctx) {
     const args = parseArgs('cancelTask', cmd.args);
     if (!args) return 'invalid_args';
+    const colonyId = commandColony(cmd);
+    if (typeof colonyId === 'string') return colonyId;
     const id = args.taskId;
     if (ctx.flags.has('W02')) {
-      const hasQueueEntry = getAllQueueEntries(state).some(
-        (e) => e.taskId === id && e.state !== 'done' && e.state !== 'cancelled',
-      );
-      if (hasQueueEntry) {
-        const res = cancelQueueTask(state, id, cmd.colonyIndex, ctx.tick, ctx.data);
+      const isSpecialW02Id =
+        id === 'all' ||
+        id.startsWith('building:') ||
+        id.startsWith('harvester:') ||
+        id.startsWith('unit:') ||
+        hasWorkJob(state, id) ||
+        getAllQueueEntries(state).some((e) => e.taskId === id && e.state !== 'done' && e.state !== 'cancelled');
+      if (isSpecialW02Id) {
+        const res = cancelQueueTask(state, id, colonyId, ctx.tick, ctx.data);
         return res.ok ? undefined : res.code;
       }
     }
-    const colonyId = commandColony(cmd);
-    if (typeof colonyId === 'string') return colonyId;
     const cancelBuild = (key: string) => cancelConstructionOrder(state, colonyId, key, ctx.tick, ctx.data, ctx);
     let done: boolean;
     if (id === 'current') done = cancelBuild('current');
@@ -76,6 +101,11 @@ export const cancelTask = defineCommandHandler({
       else if (tf) done = cancelTerraformOrder(state, colonyId, tf.orderId, ctx.tick, ctx.data);
       else done = cancelBuild(id);
     }
+    if (!done && ctx.flags.has('W02')) {
+      const w02Res = cancelQueueTask(state, id, colonyId, ctx.tick, ctx.data);
+      if (w02Res.ok) return undefined;
+      if (w02Res.code === 'not_own_colony') return 'not_own_colony';
+    }
     if (!done) return 'unknown_entity';
   },
 });
@@ -83,5 +113,6 @@ export const cancelTask = defineCommandHandler({
 export default defineSimModule({
   id: 'terraform-basic',
   wave: 'W01',
+  systems: [workJobsSystem],
   handlers: [enqueueTask, cancelTask],
 });

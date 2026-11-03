@@ -36,11 +36,11 @@ const emptyRecord = (): UnitRecord => ({ current: null, queue: [], holdUntil: 0,
  * if anything changed, so an idle planet sends no unit-command delta.
  */
 export class UnitBook {
-  private readonly value: UnitsBlobValue;
+  private readonly value: UnitsBlobValue & Record<string, unknown>;
   private dirty = false;
 
   constructor(private readonly state: PlanetState) {
-    const raw = state.blobs.units?.value as UnitsBlobValue | undefined;
+    const raw = state.blobs.units?.value as (UnitsBlobValue & Record<string, unknown>) | undefined;
     if (raw && typeof raw === 'object') {
       if (!raw.byId) raw.byId = {};
       this.value = raw;
@@ -84,6 +84,12 @@ export class UnitBook {
 
   flush(tick: number): void {
     if (!this.dirty) return;
+    const latest = this.state.blobs.units?.value as Record<string, unknown> | undefined;
+    if (latest && typeof latest === 'object' && latest !== this.value) {
+      for (const [k, v] of Object.entries(latest)) {
+        if (k !== 'byId') this.value[k] = v;
+      }
+    }
     setBlob(this.state, 'units', this.value, tick);
     this.dirty = false;
   }

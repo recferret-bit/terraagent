@@ -9,6 +9,8 @@ const RESOURCE_LABELS: Record<string, string> = {
   'bio.water': 'Water',
 };
 
+const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());
+
 export function formatResourceLabel(res: string): string {
   if (RESOURCE_LABELS[res]) return RESOURCE_LABELS[res];
   const parts = res.split('.');
@@ -16,11 +18,24 @@ export function formatResourceLabel(res: string): string {
   return last.charAt(0).toUpperCase() + last.slice(1);
 }
 
+interface CardDomRefs {
+  btn: HTMLButtonElement;
+  title: HTMLElement;
+  footprint: HTMLElement;
+  time: HTMLElement;
+  power: HTMLElement;
+  costs: HTMLElement;
+  costKey: string;
+  reason: HTMLElement | null;
+  card: BuildingCardModel;
+}
+
 export class ConstructionMenu implements Disposable {
   readonly root: HTMLElement;
   readonly ghost: PlacementGhostController;
   private readonly headBtn: HTMLButtonElement;
   private readonly cardsContainer: HTMLElement;
+  private readonly cardRefs = new Map<BuildingKind, CardDomRefs>();
   private isOpen = true;
   private view?: GameView;
   selectedBuilding: BuildingKind | null = null;
@@ -32,7 +47,8 @@ export class ConstructionMenu implements Disposable {
     private readonly ctx: FeatureContext,
     initialView?: GameView,
   ) {
-    this.view = initialView;
+    const storeLatest = (ctx.services.store as { latest?: GameView | null } | undefined)?.latest ?? undefined;
+    this.view = initialView ?? ctx.services.getView?.() ?? storeLatest;
     this.root = document.createElement('div');
     this.root.className = 'ta-construction plate-sm';
     this.root.dataset.open = 'true';
@@ -104,6 +120,9 @@ export class ConstructionMenu implements Disposable {
   }
 
   startPlacement(building: BuildingKind | string): void {
+    if (this.ctx.services.hubPlacement?.isPlacementActive?.()) {
+      this.ctx.services.hubPlacement.cancelPlacement();
+    }
     this.selectedBuilding = building as BuildingKind;
     this.setOpen(true);
     this.ghost.start(building);
@@ -146,37 +165,47 @@ export class ConstructionMenu implements Disposable {
     this.renderCards();
   }
 
-  private renderCards(): void {
-    this.cardsContainer.replaceChildren();
-    const cards = buildConstructionCatalog(this.ctx.flags, this.view);
-    for (const card of cards) {
-      this.cardsContainer.appendChild(this.createCardElement(card));
+  private activateCard(building: BuildingKind): void {
+    this.startPlacement(building);
+    if (this.externalStartPlacement && this.externalStartPlacement !== this.ctx.services.startPlacement) {
+      this.externalStartPlacement(building);
     }
   }
 
-  private createCardElement(card: BuildingCardModel): HTMLButtonElement {
+  private renderCards(): void {
+    const cards = buildConstructionCatalog(this.ctx.flags, this.view);
+    const activeKinds = new Set(cards.map((c) => c.building));
+    for (const [kind, ref] of [...this.cardRefs.entries()]) {
+      if (!activeKinds.has(kind)) {
+        ref.btn.remove();
+        this.cardRefs.delete(kind);
+      }
+    }
+    for (const card of cards) {
+      let ref = this.cardRefs.get(card.building);
+      if (!ref) {
+        ref = this.createCardDom(card);
+        this.cardRefs.set(card.building, ref);
+        this.cardsContainer.appendChild(ref.btn);
+      }
+      this.syncCardDom(ref, card);
+    }
+  }
+
+  private createCardDom(card: BuildingCardModel): CardDomRefs {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'ta-construction__card plate-sm';
     btn.setAttribute('data-building', card.building);
-    btn.setAttribute('data-disabled', String(card.disabled));
-    if (card.disabled) {
-      btn.disabled = true;
-    }
-    if (this.selectedBuilding === card.building) {
-      btn.setAttribute('data-selected', 'true');
-    }
 
     const headRow = document.createElement('div');
     headRow.className = 'ta-construction__card-head';
 
     const title = document.createElement('span');
     title.className = 'ta-construction__title';
-    title.textContent = card.label;
 
     const footprint = document.createElement('span');
     footprint.className = 'ta-construction__footprint';
-    footprint.textContent = card.footprintText;
     headRow.append(title, footprint);
 
     const metaRow = document.createElement('div');
@@ -184,41 +213,103 @@ export class ConstructionMenu implements Disposable {
 
     const time = document.createElement('span');
     time.className = 'ta-construction__time';
-    time.textContent = `${card.designBuildS}s (${card.hqBuildS}s HQ)`;
 
     const power = document.createElement('span');
     power.className = 'ta-construction__power';
-    power.textContent = card.powerText;
     metaRow.append(time, power);
 
     const costs = document.createElement('div');
     costs.className = 'ta-construction__costs';
-    for (const [res, amt] of Object.entries(card.cost)) {
-      if (amt <= 0) continue;
-      const pill = document.createElement('span');
-      pill.className = 'ta-construction__cost-pill';
-      pill.textContent = `${amt} ${formatResourceLabel(res)}`;
-      costs.appendChild(pill);
-    }
 
     btn.append(headRow, metaRow, costs);
 
-    if (card.disabled && card.disabledReason) {
-      const reason = document.createElement('span');
-      reason.className = 'ta-construction__reason';
-      reason.textContent = card.disabledReason;
-      btn.appendChild(reason);
-    }
-
-    btn.onclick = () => {
-      if (card.disabled) return;
-      this.startPlacement(card.building);
-      if (this.externalStartPlacement && this.externalStartPlacement !== this.ctx.services.startPlacement) {
-        this.externalStartPlacement(card.building);
-      }
+    const ref: CardDomRefs = {
+      btn,
+      title,
+      footprint,
+      time,
+      power,
+      costs,
+      costKey: '',
+      reason: null,
+      card,
     };
 
-    return btn;
+    let pointerDownAt = -Infinity;
+    (btn as unknown as { onpointerdown?: (e?: PointerEvent) => void }).onpointerdown = (e?: PointerEvent) => {
+      if (e && typeof e.button === 'number' && e.button !== 0) return;
+      if (ref.card.disabled) return;
+      pointerDownAt = now();
+      this.activateCard(ref.card.building);
+    };
+    btn.onclick = () => {
+      if (now() - pointerDownAt < 400) {
+        pointerDownAt = -Infinity;
+        return;
+      }
+      if (ref.card.disabled) return;
+      this.activateCard(ref.card.building);
+    };
+
+    return ref;
+  }
+
+  private syncCardDom(ref: CardDomRefs, card: BuildingCardModel): void {
+    ref.card = card;
+    const disabledStr = String(card.disabled);
+    if (ref.btn.getAttribute('data-disabled') !== disabledStr) {
+      ref.btn.setAttribute('data-disabled', disabledStr);
+    }
+    if (ref.btn.disabled !== card.disabled) {
+      ref.btn.disabled = card.disabled;
+    }
+
+    const isSelected = this.selectedBuilding === card.building;
+    if (isSelected) {
+      if (ref.btn.getAttribute('data-selected') !== 'true') {
+        ref.btn.setAttribute('data-selected', 'true');
+      }
+    } else if (ref.btn.getAttribute('data-selected') !== null) {
+      if (typeof ref.btn.removeAttribute === 'function') {
+        ref.btn.removeAttribute('data-selected');
+      } else {
+        ref.btn.setAttribute('data-selected', 'false');
+      }
+    }
+
+    if (ref.title.textContent !== card.label) ref.title.textContent = card.label;
+    if (ref.footprint.textContent !== card.footprintText) ref.footprint.textContent = card.footprintText;
+
+    const timeText = `${card.designBuildS}s (${card.hqBuildS}s HQ)`;
+    if (ref.time.textContent !== timeText) ref.time.textContent = timeText;
+    if (ref.power.textContent !== card.powerText) ref.power.textContent = card.powerText;
+
+    const costEntries = Object.entries(card.cost).filter(([, amt]) => amt > 0);
+    const costKey = costEntries.map(([r, a]) => `${r}:${a}`).join('|');
+    if (ref.costKey !== costKey) {
+      ref.costKey = costKey;
+      ref.costs.replaceChildren();
+      for (const [res, amt] of costEntries) {
+        const pill = document.createElement('span');
+        pill.className = 'ta-construction__cost-pill';
+        pill.textContent = `${amt} ${formatResourceLabel(res)}`;
+        ref.costs.appendChild(pill);
+      }
+    }
+
+    if (card.disabled && card.disabledReason) {
+      if (!ref.reason) {
+        ref.reason = document.createElement('span');
+        ref.reason.className = 'ta-construction__reason';
+        ref.btn.appendChild(ref.reason);
+      }
+      if (ref.reason.textContent !== card.disabledReason) {
+        ref.reason.textContent = card.disabledReason;
+      }
+    } else if (ref.reason) {
+      ref.reason.remove();
+      ref.reason = null;
+    }
   }
 
   dispose(): void {
@@ -229,4 +320,3 @@ export class ConstructionMenu implements Disposable {
     this.root.remove();
   }
 }
-

@@ -33,13 +33,13 @@ describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
     // Slightly farther deposit: minerals at (0, 2) (dist 2)
     setTileDeposit(state, idx.indexOf(0, 2), DEPOSIT.minerals, 10000, 0);
 
-    // Spawn 1 idle Harvester at (0, 0)
+    // Spawn 1 idle Harvester at (0, 0) (already adjacent dist === 1 to metals deposit at (1, 0))
     const harvId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
 
-    // Walk 5 ticks (1.0 s -> moves 1.5 tiles -> arrives at (1, 0) on tick 4)
-    for (let i = 0; i < 4; i++) step(state, [], 1, pipeline);
-    expect(state.entities.cols.q[0]).toBe(1);
+    // Harvester stays on adjacent hex (0, 0) (never steps onto deposit tile (1, 0))
+    step(state, [], 1, pipeline);
+    expect(state.entities.cols.q[0]).toBe(0);
     expect(state.entities.cols.r[0]).toBe(0);
 
     const beforeMetals = colony.stock['metals.t1'];
@@ -55,13 +55,11 @@ describe('W02-12 Standing harvest job & setHarvestWeights retargeting', () => {
       pipeline,
     );
     expect(retargetStep.outcomes[0].code).toBeUndefined();
-    expect(state.entities.cols.targetQ[0]).toBe(0);
-    expect(state.entities.cols.targetR[0]).toBe(2);
 
-    // Walk to (0, 2) and harvest for 1 second -> credits +0.5 minerals.t1
+    // Walk to adjacent hex (0, 1) next to minerals deposit at (0, 2) and harvest for 1 second -> credits +0.5 minerals.t1
     for (let i = 0; i < 8; i++) step(state, [], 1, pipeline);
     expect(state.entities.cols.q[0]).toBe(0);
-    expect(state.entities.cols.r[0]).toBe(2);
+    expect(state.entities.cols.r[0]).toBe(1);
     const beforeMinerals = colony.stock['minerals.t1'];
     step(state, [], 5, pipeline);
     expect(colony.stock['minerals.t1'] - beforeMinerals).toBeCloseTo(0.5, 5);

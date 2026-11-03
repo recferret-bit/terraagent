@@ -82,7 +82,7 @@ describe('W01-15: Linked site prep order & waiting(site: n/9) progression (UO-TF
     expect(bill.baseSeconds).toBe(45);
     expect(bill.hqSeconds).toBeCloseTo(30, 5);
     expect(bill.totalEnergyE).toBe(360);
-    expect(bill.yields).toEqual({ 'bio.biomass': 0, 'metals.t1': 30 });
+    expect(bill.yields).toEqual({ 'bio.biomass': 0, 'metals.t1': 24, 'minerals.t1': 12 });
 
     // Rock (and trees) must be terraformed by the player first: the server rejects the placement.
     host.submit(mkCmd('placeBuilding', { building: 'commandHub', q: 3, r: 0 }, 0, 'place_on_rock'));
@@ -154,7 +154,7 @@ describe('W01-15: Forest/Rock prep planning & cancel propagation (UO-TF-03, UO-Q
     const bill = prepBill(state, 3, 0);
     expect(bill.unpreparedTiles).toBe(7);
     expect(bill.totalTiles).toBe(9);
-    expect(bill.yields).toEqual({ 'bio.biomass': 10, 'metals.t1': 10 });
+    expect(bill.yields).toEqual({ 'bio.biomass': 30, 'metals.t1': 8, 'minerals.t1': 4 });
   });
 
   it('cancelling construction mid-prep cancels the linked terraform order, removes the pending Hub, and keeps prepared tiles', () => {

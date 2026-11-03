@@ -31,6 +31,7 @@ import { writeOrdersByColony } from '../terraform-basic/orders';
 import { claimTerritoryRadius } from '../territory-claim';
 import { setPlanetTime } from '../time';
 import { devLand } from './land';
+import { devSpawnDeposit } from './spawnDeposit';
 
 /** `kind` of the W00 test entity spawned by `dev.spawn` (no gameplay meaning). */
 export const DEV_ENTITY_KIND = 1;
@@ -39,7 +40,7 @@ export const DEV_ENTITY_KIND = 1;
 const devColony = (cmd: SimCommand): number | 'not_own_colony' => commandColony(cmd);
 
 /** Layers `dev.seed` takes from the regenerated planet: the ground, and the per-colony layers on top of it. */
-const SEED_LAYERS = ['terrain', 'prep', 'deposit', 'richness', 'height', 'subDeposit', 'subRichness', 'owner', 'explored', 'anchors', 'graceUntil'] as const;
+const SEED_LAYERS = ['terrain', 'prep', 'deposit', 'depositTier', 'richness', 'height', 'subDeposit', 'subRichness', 'owner', 'explored', 'anchors', 'graceUntil'] as const;
 
 /** `dev.seed`: no order survives onto new ground (GP-27): construction is cancelled (refund rules), terraform dropped. */
 function dropAllOrders(s: PlanetState, ctx: StepContext): void {
@@ -309,5 +310,5 @@ const seed = defineCommandHandler({
 export default defineSimModule({
   id: 'dev',
   wave: 'W00',
-  handlers: [ping, spawn, nudge, teleport, grant, cell, reveal, seed, devLand, fill, skipnight, power],
+  handlers: [ping, spawn, nudge, teleport, grant, cell, reveal, seed, devLand, fill, skipnight, power, devSpawnDeposit],
 });

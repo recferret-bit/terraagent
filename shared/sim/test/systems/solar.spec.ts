@@ -50,7 +50,9 @@ describe('W02-07 Solar T1 output: gross +21 * daylight * (desert ? 1.35 : 1.0), 
     expect(midnightSolar.grossPerS).toBe(0);
     expect(midnightSolar.internalDrainPerS).toBe(1);
     expect(midnightSolar.netPerS).toBe(-1);
-    expect(getColonyPower(state, 0).solarNetPerS).toBe(-1);
+    const midnightPower = getColonyPower(state, 0);
+    expect(midnightPower.solarNetPerS).toBe(-1);
+    expect(midnightPower.offlineReasons[state.entities.cols.id[solarRow]]).toBe('offline: night');
   });
 
   it('applies desert 1.35x solar bonus (+28.35 gross, +27.35 net at midday)', () => {

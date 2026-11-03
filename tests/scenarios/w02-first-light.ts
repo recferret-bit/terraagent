@@ -41,15 +41,26 @@ export default defineScenario({
     });
     state.colonies[0] = colony;
 
+    // Ensure all open ground (flat, slope, hole) and deposit tiles across the planet sit on level, terraformed flat ground
+    for (let i = 0; i < state.grid.count; i++) {
+      const t = state.grid.layers.terrain[i];
+      if (t === TERRAIN.flat || t === TERRAIN.slope || t === TERRAIN.hole || state.grid.layers.deposit[i] !== DEPOSIT.none) {
+        state.grid.layers.terrain[i] = TERRAIN.flat;
+        state.grid.layers.height[i] = 0.08;
+        setTilePrep(state, i, PREP.flat, 0);
+      }
+    }
+
     // Clear and flatten the starting basin around (0, 0) (radius 8) so placement and pathing are unobstructed
     for (let r = -8; r <= 8; r++) {
       for (let q = -8; q <= 8; q++) {
         const idx = indexOf(state.grid.radius, q, r);
         if (idx >= 0) {
           state.grid.layers.terrain[idx] = TERRAIN.flat;
+          state.grid.layers.height[idx] = 0.08;
           state.grid.layers.deposit[idx] = DEPOSIT.none;
           state.grid.layers.richness[idx] = 0;
-          setTilePrep(state, idx, PREP.wild, 0);
+          setTilePrep(state, idx, PREP.flat, 0);
         }
       }
     }
@@ -66,8 +77,11 @@ export default defineScenario({
     for (const [q, r, dep] of deposits) {
       const idx = indexOf(state.grid.radius, q, r);
       if (idx >= 0) {
+        state.grid.layers.terrain[idx] = TERRAIN.flat;
+        state.grid.layers.height[idx] = 0.08;
         state.grid.layers.deposit[idx] = dep;
         state.grid.layers.richness[idx] = 10000;
+        setTilePrep(state, idx, PREP.flat, 0);
       }
     }
 

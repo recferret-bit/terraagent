@@ -68,7 +68,7 @@
 .ta-units__supply[data-warning='true'] {
   color: var(--ta-orange-hi);
   border-color: var(--ta-orange);
-  background: rgba(255, 106, 19, 0.15);
+  background: var(--ta-deep);
 }
 
 .ta-units__body {

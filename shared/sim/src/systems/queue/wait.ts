@@ -166,7 +166,7 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
     };
   }
   if (raw.terraform && typeof raw.terraform === 'object') {
-    const tf = raw.terraform as { op: 'grade' | 'clear' | 'break'; tiles?: Array<{ q: number; r: number }> };
+    const tf = raw.terraform as { op: string; tiles?: Array<{ q: number; r: number }> };
     const first = tf.tiles?.[0];
     if (first) {
       return {

@@ -58,9 +58,9 @@ describe('W02-25 Queue panel UI — Construction & Units lanes, ETA chip, cancel
     state.entities.cols.owner[hRow] = 0;
     state.entities.cols.state[hRow] = ENTITY_STATE.idle;
 
-    // Seed colony with 100 Metals, 5 Minerals, 20 Biomass, 10 Water
+    // Seed colony with 100 Metals, 0 Minerals, 20 Biomass, 10 Water
     creditResource(colony, 'metals.t1', 100, 0);
-    creditResource(colony, 'minerals.t1', 5, 0);
+    creditResource(colony, 'minerals.t1', 0, 0);
     creditResource(colony, 'bio.biomass', 20, 0);
     creditResource(colony, 'bio.water', 10, 0);
 
@@ -69,7 +69,7 @@ describe('W02-25 Queue panel UI — Construction & Units lanes, ETA chip, cancel
     const panel = new QueuePanel(host, ctx);
     panel.bindSimState(state, 0);
 
-    // Queue Solar short on Minerals (needs 20 Minerals, has 5 -> missing 15 @ 0.5/s = 30s)
+    // Queue Solar short on Minerals (needs 20 Minerals, has 0 -> missing 20 @ 0.5/s = 40s)
     const entry = panel.enqueue({
       taskId: 'solar-short',
       costOverride: { 'metals.t1': 60, 'minerals.t1': 20, 'bio.biomass': 10, 'bio.water': 5 },
@@ -81,16 +81,16 @@ describe('W02-25 Queue panel UI — Construction & Units lanes, ETA chip, cancel
     expect(chip).not.toBeNull();
     expect(chip?.dataset.state).toBe('waiting');
     const statusEl = chip?.querySelector('[data-chip-status]') as HTMLElement | null;
-    expect(statusEl?.textContent).toBe('waiting: Minerals 5/20 · ~30 s');
+    expect(statusEl?.textContent).toBe('waiting: Minerals 0/20 · ~40 s');
 
-    // Click cancel -> removed with no cost paid (stock unchanged: 100 Metals, 5 Minerals)
+    // Click cancel -> removed with no cost paid (stock unchanged: 100 Metals, 0 Minerals)
     const cancelBtn = chip?.querySelector('[data-cancel-task="solar-short"]') as HTMLButtonElement | null;
     expect(cancelBtn).not.toBeNull();
     cancelBtn?.click();
 
     expect(host.querySelector('[data-task-id="solar-short"]')).toBeNull();
     expect(colony.stock['metals.t1']).toBe(100);
-    expect(colony.stock['minerals.t1']).toBe(5);
+    expect(colony.stock['minerals.t1']).toBe(0);
     expect(commands).toContainEqual({ kind: 'cancelTask', args: { taskId: 'solar-short' } });
 
     panel.dispose();
@@ -156,6 +156,16 @@ describe('W02-25 Queue panel UI — lanes, progress, reorder, and collapsed mode
     collapseBtn?.click();
     expect(panel.isCollapsed()).toBe(true);
     expect(collapseBtn?.textContent).toBe('+3 more');
+
+    // Cancel all button is visible when queue has entries and sends cancelTask({ taskId: 'all' })
+    const cancelAllBtn = host.querySelector('[data-testid="queue-cancel-all"]') as HTMLButtonElement | null;
+    expect(cancelAllBtn).not.toBeNull();
+    expect(cancelAllBtn?.hidden).toBe(false);
+    expect(cancelAllBtn?.textContent).toBe('CANCEL ALL (50% REFUND)');
+    cancelAllBtn?.click();
+    expect(commands).toContainEqual({ kind: 'cancelTask', args: { taskId: 'all' } });
+    expect(panel.getEntries().length).toBe(0);
+    expect(cancelAllBtn?.hidden).toBe(true);
 
     panel.dispose();
   });

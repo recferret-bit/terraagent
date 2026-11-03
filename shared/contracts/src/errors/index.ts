@@ -13,6 +13,8 @@ export const REJECT_CODES = [
   // W01 sim: the colony's terraform lane is full (`hq.t1.terraformMaxOrders` / `terraformMaxJobs`); the planet has no
   // room for another colony (8 per planet: one `explored` bit each)
   'queue_full', 'planet_full',
+  // W02 dismantle: Command Hub and HQ Drone cannot be dismantled
+  'cannot_dismantle_hq',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

@@ -379,16 +379,16 @@ describe('W02-24 Acceptance Check', () => {
     expect(supplyReadout?.textContent).toBe('0 / 10');
 
     queueThreeHarvesters(mockParent, sendCommand);
-    expect(colony.stock['metals.t1']).toBe(460);
-    expect(colony.stock['minerals.t1']).toBe(485);
-    expect(colony.stock['bio.biomass']).toBe(495);
+    expect(colony.stock['metals.t1']).toBe(500);
+    expect(colony.stock['minerals.t1']).toBe(500);
+    expect(colony.stock['bio.biomass']).toBe(500);
 
     instance.update?.(view(state) as unknown as GameView);
     expect(mockParent.querySelector('.ta-units__buffer-item')?.textContent).toBe('harvester ×3 ↻ · in_progress 0%');
     expect(supplyReadout?.textContent).toBe('1 / 10');
 
     verifyLoopCycle(state, pipeline, instance, mockParent);
-    expect(colony.stock['metals.t1']).toBe(340);
+    expect(colony.stock['metals.t1']).toBe(380);
 
     for (let i = 0; i < 6; i++) {
       const r = insertRow(state.entities, state.meta.nextEntityId++, state.meta.tick);

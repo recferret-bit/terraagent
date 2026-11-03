@@ -53,7 +53,7 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
     const { host } = createScenarioPlanet('w02');
     const col = getCol(host);
 
-    // Step 2: Queue 1 Harvester -> paid on start (-40/-15/-5/0), completes in 10s (50 ticks) and harvests
+    // Step 2: Queue 1 Harvester -> paid progressively across 50 ticks (-40/-15/-5/0), completes in 10s (50 ticks) and harvests
     host.submit({
       colonyIndex: 0,
       source: 'player',
@@ -62,9 +62,9 @@ describe('W02-34 scenario w02-first-light — seed state & demo steps 1–5', ()
       args: { taskId: 'u-harv-1', task: { kind: 'buildUnit', unit: 'harvester' } },
     });
     host.step(1);
-    expect(col.stock['metals.t1']).toBe(360);
-    expect(col.stock['minerals.t1']).toBe(235);
-    expect(col.stock['bio.biomass']).toBe(145);
+    expect(col.stock['metals.t1']).toBeCloseTo(400 - 40 / 50, 4);
+    expect(col.stock['minerals.t1']).toBeCloseTo(250 - 15 / 50, 4);
+    expect(col.stock['bio.biomass']).toBeCloseTo(150 - 5 / 50, 4);
 
     host.step(55);
     let harvRow = -1;
@@ -162,12 +162,14 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
     expect(overCap.ok && overCap.entry.waitReason).toBe('storage');
     expect(overCap.ok && overCap.entry.waitDetail).toBe('waiting: storage (no ETA)');
 
-    // Step 8: Cancel waiting order (free) and cancel in-progress order (75% refunded)
+    // Step 8: Cancel waiting order (free) and cancel in-progress order (50% of spentCost refunded)
     const metalsBeforeWaitCancel = col.stock['metals.t1'];
     host.submit({ colonyIndex: 0, source: 'player', commandId: 'c-can-w', kind: 'cancelTask', args: { taskId: 'over-cap' } });
     host.step(1);
     expect(col.stock['metals.t1']).toBe(metalsBeforeWaitCancel);
 
+    // Lower metals below cap so we can observe the progressive deduction and 50% refund without cap clamping
+    col.stock['metals.t1'] = 200;
     host.submit({
       colonyIndex: 0,
       source: 'player',
@@ -175,11 +177,11 @@ describe('W02-34 scenario w02-first-light — demo steps 6–8 (night brownout, 
       kind: 'enqueueTask',
       args: { taskId: 'in-prog-solar', task: { kind: 'build', building: 'solar', q: 6, r: 0 } },
     });
-    host.step(1);
+    host.step(30); // 30 ticks = 50% progress -> 30 Metals spent
     expect(getColonyQueue(host.state, 0, 'construction').find((e) => e.taskId === 'in-prog-solar')?.state).toBe('in_progress');
     const afterStartMetals = col.stock['metals.t1'];
     host.submit({ colonyIndex: 0, source: 'player', commandId: 'c-can-p', kind: 'cancelTask', args: { taskId: 'in-prog-solar' } });
     host.step(1);
-    expect(col.stock['metals.t1']).toBeGreaterThanOrEqual(afterStartMetals + 45); // 75% of 60 Metals = 45
+    expect(col.stock['metals.t1']).toBeGreaterThanOrEqual(afterStartMetals + 15); // 50% of 30 spent Metals = 15
   });
 });

@@ -153,6 +153,132 @@ describe('ResourcesHud - capping and breakdown', () => {
     expect(t2Row.getAttribute('data-locked')).toBe('true');
     expect(t2Row.classList.contains('ta-res-tier--locked')).toBe(true);
 
+    expect(metalsChip.querySelector('[data-testid="res-income-metals"]')?.textContent).toBe('Income: +1.0/s');
+    expect(metalsChip.querySelector('[data-testid="res-spending-metals"]')?.textContent).toBe('Spending: −0.0/s');
+    expect(metalsChip.querySelector('[data-testid="res-net-metals"]')?.textContent).toBe('Net: +1.0/s');
+
+    hud.dispose();
+  });
+});
+
+describe('ResourcesHud - spending breakdown', () => {
+  let uninstall: () => void;
+
+  beforeEach(() => {
+    uninstall = installMockDocument();
+  });
+
+  afterEach(() => {
+    uninstall();
+  });
+
+  it('computes spending rate from active in_progress queue orders in breakdown popover', () => {
+    const parent = new MockElement('div') as unknown as HTMLElement;
+    const hud = new ResourcesHud(parent);
+
+    hud.update({
+      colonies: [
+        {
+          stock: { 'metals.t1': 400, 'minerals.t1': 250, 'bio.water': 150 },
+          caps: { metals: 500, minerals: 500, bio: 500 },
+          production: {
+            familyIncomePerS: { metals: 1.0, minerals: 0.5, bio: 0 },
+            incomePerS: { 'metals.t1': 1.0, 'minerals.t1': 0.5 },
+            capped: { metals: 0, minerals: 0, bio: 0 },
+            produced: {},
+          },
+          queue: [
+            {
+              taskId: 'u-harv-1',
+              colonyIndex: 0,
+              lane: 'units',
+              state: 'in_progress',
+              cost: { 'metals.t1': 40, 'minerals.t1': 15, 'bio.biomass': 5 },
+              buildTicks: 50,
+              workRate: 1.0, // 10s -> 4.0 metals/s, 1.5 minerals/s, 0.5 bio/s
+            },
+          ],
+        },
+      ],
+    });
+
+    const metalsChip = (parent as unknown as MockElement).querySelector('[data-family="metals"]')!;
+    expect(metalsChip.querySelector('[data-testid="res-income-metals"]')?.textContent).toBe('Income: +1.0/s');
+    expect(metalsChip.querySelector('[data-testid="res-spending-metals"]')?.textContent).toBe('Spending: −4.0/s');
+    expect(metalsChip.querySelector('[data-testid="res-net-metals"]')?.textContent).toBe('Net: −3.0/s');
+
+    const t1Row = metalsChip.querySelector('[data-res="metals.t1"]')!;
+    expect(t1Row.querySelector('.ta-res-breakdown__rate')?.textContent).toBe('+1.0 / −4.0/s');
+    expect(metalsChip.dataset.trend).toBe('down');
+    expect(metalsChip.classList.contains('ta-resources-hud__chip--down')).toBe(true);
+    expect(metalsChip.classList.contains('ta-resources-hud__chip--up')).toBe(false);
+
+    const mineralsChip = (parent as unknown as MockElement).querySelector('[data-family="minerals"]')!;
+    expect(mineralsChip.dataset.trend).toBe('down');
+    expect(mineralsChip.classList.contains('ta-resources-hud__chip--down')).toBe(true);
+
+    hud.dispose();
+  });
+});
+
+describe('ResourcesHud - trend highlight', () => {
+  let uninstall: () => void;
+
+  beforeEach(() => {
+    uninstall = installMockDocument();
+  });
+
+  afterEach(() => {
+    uninstall();
+  });
+
+  it('highlights chip green when increasing, red when decreasing, and neutral when flat', () => {
+    const parent = new MockElement('div') as unknown as HTMLElement;
+    const hud = new ResourcesHud(parent);
+
+    hud.update({
+      colonies: [
+        {
+          stock: { 'metals.t1': 100, 'minerals.t1': 100, 'bio.water': 100 },
+          caps: { metals: 500, minerals: 500, bio: 500 },
+          production: {
+            familyIncomePerS: { metals: 2.0, minerals: 0, bio: 0 },
+            incomePerS: { 'metals.t1': 2.0 },
+          },
+        },
+      ],
+    });
+
+    const metalsChip = (parent as unknown as MockElement).querySelector('[data-family="metals"]')!;
+    const mineralsChip = (parent as unknown as MockElement).querySelector('[data-family="minerals"]')!;
+    const bioChip = (parent as unknown as MockElement).querySelector('[data-family="bio"]')!;
+
+    expect(metalsChip.dataset.trend).toBe('up');
+    expect(metalsChip.classList.contains('ta-resources-hud__chip--up')).toBe(true);
+    expect(mineralsChip.dataset.trend).toBe('flat');
+    expect(mineralsChip.classList.contains('ta-resources-hud__chip--up')).toBe(false);
+    expect(mineralsChip.classList.contains('ta-resources-hud__chip--down')).toBe(false);
+
+    // Stock delta fallback when rate is 0
+    hud.update({
+      colonies: [
+        {
+          stock: { 'metals.t1': 100, 'minerals.t1': 110, 'bio.water': 90 },
+          caps: { metals: 500, minerals: 500, bio: 500 },
+          production: {
+            familyIncomePerS: { metals: 0, minerals: 0, bio: 0 },
+            incomePerS: {},
+          },
+        },
+      ],
+    });
+
+    expect(metalsChip.dataset.trend).toBe('flat');
+    expect(mineralsChip.dataset.trend).toBe('up');
+    expect(mineralsChip.classList.contains('ta-resources-hud__chip--up')).toBe(true);
+    expect(bioChip.dataset.trend).toBe('down');
+    expect(bioChip.classList.contains('ta-resources-hud__chip--down')).toBe(true);
+
     hud.dispose();
   });
 });

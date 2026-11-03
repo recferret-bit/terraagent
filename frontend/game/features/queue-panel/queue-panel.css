@@ -6,7 +6,7 @@
   background: var(--ta-plate);
   border: 1px solid var(--ta-seam);
   color: var(--ta-text);
-  clip-path: var(--ta-chamfer-s);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
   min-width: 240px;
 }
 
@@ -25,14 +25,24 @@
   color: var(--ta-orange);
 }
 
-.ta-queue-panel__collapse-btn {
+.ta-queue-panel__collapse-btn,
+.ta-queue-panel__cancel-all-btn {
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-seam);
   color: var(--ta-text-2);
   padding: 2px 6px;
   font-size: var(--ta-fs-label, 11px);
-  clip-path: var(--ta-chamfer-s);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
   cursor: pointer;
+}
+
+.ta-queue-panel__cancel-all-btn {
+  border-color: var(--ta-fault);
+  color: var(--ta-fault-text, var(--ta-fault));
+}
+
+.ta-queue-panel__cancel-all-btn[hidden] {
+  display: none !important;
 }
 
 .ta-queue-panel__lanes {
@@ -71,7 +81,7 @@
   padding: 6px 8px;
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-seam);
-  clip-path: var(--ta-chamfer-s);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
 }
 
 .ta-queue-chip[data-state="in_progress"] {
@@ -117,7 +127,7 @@
   color: var(--ta-text);
   padding: 1px 5px;
   font-size: var(--ta-fs-label, 11px);
-  clip-path: var(--ta-chamfer-s);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
   cursor: pointer;
 }
 

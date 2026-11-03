@@ -48,6 +48,7 @@ export * from './systems/harvest';
 export * from './systems/economy/ledger';
 export {
   buildingKindName,
+  cancelBuildingConstruction,
   constructionSystem,
   demolishBuilding,
   demolishHandler,

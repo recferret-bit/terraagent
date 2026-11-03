@@ -24,6 +24,8 @@ export interface QueueEntry {
   state: QueueEntryState;
   task: QueueTaskPayload;
   cost: Partial<Record<ResourceKey, number>>;
+  totalCost?: Partial<Record<ResourceKey, number>>;
+  spentCost?: Partial<Record<ResourceKey, number>>;
   paid: boolean;
   progress: number;
   buildTicks: number;

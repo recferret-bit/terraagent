@@ -2,16 +2,18 @@ import * as THREE from 'three';
 import { hexIndex } from '@terra/sim/grid/hex';
 import type { PlanetSpec } from '../PlanetSpec';
 import { createTerrainMaterial, terrainUniforms } from '../../visuals/terrain/terrainMaterial';
-import { computeEffectiveHeights, HEX_PREP, type HexTileLayers } from './chunkMesh';
+import { computeEffectiveHeights, type HexTileLayers } from './chunkMesh';
 import { createHexChunkSet } from './chunkSet';
 import { createHexPropScatter, type HexPropScatter } from './chunkPropScatter';
 import { createBorderController } from './borderController';
-import { addHexEdges, foundationPadUniforms } from './hexEdges';
+import { addHexEdges } from './hexEdges';
 import { planetExtent, rayGround, tileAt } from './hexMath';
 import { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
+import { createHexAmbient } from './hexAmbient';
+import { getWindUniforms } from '../../core/windConfig';
 import { makeHeightSampler } from './heightSampler';
-import { PrepTransitions } from './prepTransitions';
 import type { TerritoryBorderStats } from './territoryBorder';
+import { createHexTileTint } from './tileTint';
 
 /** Tile layers the terrain reads (apps pass plain arrays; the sim's `ClientTiles` fits). */
 export interface HexTiles extends HexTileLayers {
@@ -19,6 +21,7 @@ export interface HexTiles extends HexTileLayers {
   height: ArrayLike<number>;
   prep?: ArrayLike<number>;
   deposit?: ArrayLike<number>;
+  richness?: ArrayLike<number>;
   owner?: ArrayLike<number>;
 }
 
@@ -44,12 +47,20 @@ export interface HexTerrain {
    * `changed` rebuilds nothing but the borders. Without `changed`, everything is rebuilt.
    */
   updateTiles(tilesOrChanged?: HexTiles | ArrayLike<number>, changed?: ArrayLike<number>): void;
+  /** Mutates a single tile's state in place (including optional deposit richness) and incrementally rebuilds chunks/props. */
+  setTileState(
+    q: number,
+    r: number,
+    terrain?: number,
+    prep?: number,
+    height?: number,
+    deposit?: number,
+    richness?: number,
+  ): void;
   /** Rebuilds only the territory borders (owner layer changed), optionally from new tile layers with the same ground. */
   refreshBorders(tiles?: HexTiles): void;
-  /** Advances shader time (`uTime`, foliage sway) for the 0.4 s Wild -> Prepared pad transition and water ripples. */
+  /** Advances shader time (`uTime`) for foliage sway and water ripples. */
   tick(dt: number): void;
-  /** Returns the current [0..1] Prepared pad blend factor for tile `(q, r)`. */
-  getTilePrepBlend(q: number, r: number): number;
   /** Returns current territory border geometry statistics. */
   getTerritoryBorderStats(): TerritoryBorderStats;
   /** Enables or disables the colour-blind hatch pattern along territory borders. */
@@ -73,7 +84,7 @@ export interface HexTerrainOptions {
   colonyColors?: Record<number, number>;
 }
 
-const WIND: [number, number] = [0.8, 0.6];
+/** Placeholder only: the hex terrain's `uWind` is replaced by the shared F8 wind direction (`core/windConfig.ts`). */
 const activeTerrains = new Set<HexTerrain>();
 let globalColorBlindMode = false;
 
@@ -102,19 +113,49 @@ function resolveTilesAndChanged(
   return { tiles: current, changed: nextOrChanged };
 }
 
+function applyTileStateMutation(
+  tiles: HexTiles,
+  count: number,
+  idx: number,
+  terrainVal?: number,
+  prepVal?: number,
+  heightVal?: number,
+  depositVal?: number,
+  richnessVal?: number,
+): void {
+  if (terrainVal !== undefined) (tiles.terrain as { [n: number]: number })[idx] = terrainVal;
+  if (prepVal !== undefined) {
+    if (!tiles.prep) (tiles as { prep?: Uint8Array }).prep = new Uint8Array(count);
+    (tiles.prep as { [n: number]: number })[idx] = prepVal;
+  }
+  if (heightVal !== undefined) (tiles.height as { [n: number]: number })[idx] = heightVal;
+  if (depositVal !== undefined) {
+    if (!tiles.deposit) (tiles as { deposit?: Uint8Array }).deposit = new Uint8Array(count);
+    (tiles.deposit as { [n: number]: number })[idx] = depositVal;
+  }
+  if (richnessVal !== undefined) {
+    if (!tiles.richness) (tiles as { richness?: Uint16Array }).richness = new Uint16Array(count).fill(10000);
+    (tiles.richness as { [n: number]: number })[idx] = richnessVal;
+  }
+}
+
 /** Hex terrain from the sim tile grid: 32x32-tile chunks, class relief, hydro water plane, and per-tile prop scatter. */
 export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const { radius, look } = opts;
   const hx = hexIndex(radius);
   let tiles = opts.tiles;
   let elapsedTime = 0;
-  const prep = new PrepTransitions(hx.count, tiles.prep);
-  const chunkLayers = (): HexTileLayers => ({ ...tiles, prepStartTime: prep.startTimes, kind: look.kind });
+  const chunkLayers = (): HexTileLayers => ({ ...tiles, kind: look.kind });
   let effHeights = computeEffectiveHeights(radius, chunkLayers());
   const ext = planetExtent(radius);
-  const uniforms = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, WIND), ...foundationPadUniforms() };
+  const tint = createHexTileTint(radius, chunkLayers());
+  // Dune ripples follow the same shared wind object as dust, trees and waves (by reference: F8 WIND re-orients them).
+  const uniforms: Record<string, THREE.IUniform> = { ...terrainUniforms(look, HEX_WATER_LEVEL, ext.x * 1.2, [0, 0]), ...tint.uniforms, uWind: getWindUniforms().uWindDir };
   const edge: THREE.IUniform<number> = { value: opts.edges ?? 0.55 };
   const material = createTerrainMaterial(uniforms, (sh) => addHexEdges(sh, edge));
+  // three keys programs on `onBeforeCompile.toString()`, which is the same closure for the plain heightfield terrain:
+  // without its own key a renderer showing both would reuse one program (no tint / water gate, or missing attributes).
+  material.customProgramCacheKey = () => 'taHexTerrain';
   const group = new THREE.Group();
   group.name = 'hexTerrain';
   const heightAt = makeHeightSampler(radius, () => effHeights);
@@ -124,7 +165,8 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
   const chunks = createHexChunkSet(radius, group, material, props, heightAt);
 
   chunks.rebuild(chunkLayers(), effHeights);
-  group.add(water.mesh, props.group, borders.mesh);
+  const ambient = createHexAmbient(look, ext.z);
+  group.add(water.group, props.group, borders.mesh, ambient.points);
   const ray = new THREE.Raycaster();
 
   const handle: HexTerrain = {
@@ -134,20 +176,32 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       let r = input as THREE.Raycaster;
       if (input instanceof THREE.Vector2) { ray.setFromCamera(input, camera!); r = ray; }
       const hit = rayGround(r.ray.origin, r.ray.direction, heightAt);
+      // A click on a tree canopy or a rock picks the tile that prop stands on, not the ground behind it.
+      const prop = props.pickProp(r);
+      if (prop && (!hit || prop.distance < r.ray.origin.distanceTo(new THREE.Vector3(hit.x, hit.y, hit.z)))) {
+        const i = hexIndex(radius).indexOf(prop.q, prop.r);
+        if (i >= 0) return { q: prop.q, r: prop.r, i };
+      }
       return hit ? tileAt(radius, hit.x, hit.z) : null;
     },
     updateTiles(nextOrChanged, maybeChanged) {
       const resolved = resolveTilesAndChanged(tiles, nextOrChanged, maybeChanged);
       tiles = resolved.tiles;
-      prep.sync(tiles.prep, elapsedTime);
       const changed = resolved.changed;
       if (!changed || changed.length > 0) {
         const layers = chunkLayers();
         effHeights = computeEffectiveHeights(radius, layers);
+        tint.update(layers, changed);
         chunks.rebuild(layers, effHeights, changed);
         water.update(tiles, changed);
       }
       borders.rebuild(tiles, effHeights);
+    },
+    setTileState(q, r, terrainVal, prepVal, heightVal, depositVal, richnessVal) {
+      const idx = hx.indexOf(q, r);
+      if (idx < 0) return;
+      applyTileStateMutation(tiles, hx.count, idx, terrainVal, prepVal, heightVal, depositVal, richnessVal);
+      handle.updateTiles([idx]);
     },
     refreshBorders(next) {
       if (next) tiles = next;
@@ -158,12 +212,9 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
       if (uniforms.uTime) uniforms.uTime.value = elapsedTime;
       if (water.uniforms.uTime) water.uniforms.uTime.value = elapsedTime;
       props.timeU.value = elapsedTime;
-      const settled = prep.settle(elapsedTime);
-      if (settled.length) chunks.rebuild(chunkLayers(), effHeights, settled);
-    },
-    getTilePrepBlend(q, r) {
-      const i = hx.indexOf(q, r);
-      return i < 0 ? 0 : prep.blend(i, (tiles.prep?.[i] ?? 0) === HEX_PREP.prepared, elapsedTime);
+      props.cullToFocus(); // hide what lies off the view focus (one frame stale; the focus has a 1.5x margin)
+      water.cullToFocus(); // surface + fauna buckets
+      ambient.setTime(elapsedTime);
     },
     getTerritoryBorderStats: () => borders.getStats(),
     setColorBlindMode: (enabled) => borders.setColorBlindMode(enabled, tiles, effHeights),
@@ -171,7 +222,7 @@ export function createHexTerrain(opts: HexTerrainOptions): HexTerrain {
     dispose() {
       activeTerrains.delete(handle);
       chunks.dispose();
-      water.dispose(); props.dispose(); borders.dispose(); material.dispose();
+      water.dispose(); props.dispose(); borders.dispose(); material.dispose(); tint.dispose(); ambient.dispose();
       group.removeFromParent();
     },
   };

@@ -6,6 +6,7 @@ import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { assignHarvesterSubJob } from '../harvest';
+import { hasActiveWorkJobForWorker } from '../terraform-basic/workJobs';
 
 export type DispatchPrecedence = 'system' | 'player' | 'auto';
 
@@ -69,10 +70,10 @@ export function isWorkerEligibleForJob(entityKind: number, workerTier: number, j
     return true; // HQ can run all terraform ops and linked prep in W02
   }
   if (entityKind === ENTITY_KIND.harvester) {
-    // Harvester has maxBuildTier = 0 and allowedTerraformOps = ['clear', 'break']
+    // Harvester has maxBuildTier = 0 and allowedTerraformOps = ['clear', 'break', 'work']
     if (job.kind === 'build' || job.kind === 'linkedPrep') return false;
     if (job.kind === 'terraform') {
-      return job.op === 'clear' || job.op === 'break';
+      return job.op === 'clear' || job.op === 'break' || job.op === 'work';
     }
   }
   return false;
@@ -122,6 +123,7 @@ export function selectWorkerForDispatch(
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
     const kind = cols.kind[row];
     if (kind !== ENTITY_KIND.hq && kind !== ENTITY_KIND.harvester) continue;
+    if (hasActiveWorkJobForWorker(state, cols.id[row])) continue; // on a `work` job / terraform chain (never pre-empted)
     const tier = cols.tier[row] || 1;
     if (!isWorkerEligibleForJob(kind, tier, job)) continue;
 
@@ -185,7 +187,7 @@ export function dispatchJob(
   const colonyIndex = job.colonyIndex ?? cols.owner[row];
   const precedence: DispatchPrecedence = job.precedence ?? 'player';
 
-  if (cols.kind[row] === ENTITY_KIND.harvester && job.kind === 'terraform' && (job.op === 'clear' || job.op === 'break')) {
+  if (cols.kind[row] === ENTITY_KIND.harvester && job.kind === 'terraform' && (job.op === 'clear' || job.op === 'break' || job.op === 'work')) {
     const idx = hexIndex(state.grid.radius);
     const tileIdx = idx.indexOf(job.q, job.r);
     if (tileIdx >= 0) {

@@ -13,7 +13,7 @@ import {
 } from '../../src';
 
 describe('W02-13 Queue v1 part 1 — Construction and Units lanes, payment at start, cancel refunds, reorderTask', () => {
-  it('cancel a waiting entry -> 100 % stock unchanged; cancel an in_progress entry -> 75 % refunded', () => {
+  it('cancel a waiting entry -> 100 % stock unchanged; cancel an in_progress entry -> 50 % of spentCost refunded', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     const colony = ensureColonyLedger({
       index: 0,
@@ -31,7 +31,7 @@ describe('W02-13 Queue v1 part 1 — Construction and Units lanes, payment at st
     creditResource(colony, 'bio.biomass', 20, 0);
     creditResource(colony, 'bio.water', 10, 0);
 
-    // Entry 1: Solar at (2, 1) -> starts immediately (in_progress), pays 60/75/10/5 -> stock is now 40/25/10/5
+    // Entry 1: Solar at (2, 1) -> starts immediately (in_progress), deducts progressively
     const q1 = enqueueQueueTask(state, {
       colonyIndex: 0,
       taskId: 'solar-1',
@@ -40,9 +40,6 @@ describe('W02-13 Queue v1 part 1 — Construction and Units lanes, payment at st
     expect(q1.ok).toBe(true);
     if (!q1.ok) throw new Error('expected ok');
     expect(q1.entry.state).toBe('in_progress');
-    expect(q1.entry.paid).toBe(true);
-    expect(colony.stock['metals.t1']).toBe(40);
-    expect(colony.stock['minerals.t1']).toBe(25);
 
     // Entry 2: Solar at (5, 1) -> waits on resources (unpaid)
     const q2 = enqueueQueueTask(state, {
@@ -55,21 +52,24 @@ describe('W02-13 Queue v1 part 1 — Construction and Units lanes, payment at st
     expect(q2.entry.state).toBe('waiting');
     expect(q2.entry.paid).toBe(false);
 
-    // 1. Cancel waiting entry (solar-2) -> 100% stock unchanged (40/25/10/5)
+    // Step 30 ticks (halfway: 45/90 = 50% progress -> spent 30/37.5/5/2.5, remaining stock 70/62.5/15/7.5)
+    const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
+    step(state, [], 30, pipeline);
+    expect(colony.stock['metals.t1']).toBeCloseTo(70, 4);
+    expect(colony.stock['minerals.t1']).toBeCloseTo(62.5, 4);
+
+    // 1. Cancel waiting entry (solar-2) -> stock unchanged
     const cWait = cancelQueueTask(state, 'solar-2', 0);
     expect(cWait).toEqual({ ok: true, refunded: false });
-    expect(colony.stock['metals.t1']).toBe(40);
-    expect(colony.stock['minerals.t1']).toBe(25);
-    expect(colony.stock['bio.biomass']).toBe(10);
-    expect(colony.stock['bio.water']).toBe(5);
+    expect(colony.stock['metals.t1']).toBeCloseTo(70, 4);
 
-    // 2. Cancel in_progress entry (solar-1) -> 75% of (60/75/10/5) = (45/56.25/7.5/3.75) refunded!
+    // 2. Cancel in_progress entry (solar-1) -> 50% of spent (30/37.5/5/2.5) = (15/18.75/2.5/1.25) refunded!
     const cProg = cancelQueueTask(state, 'solar-1', 0);
     expect(cProg).toEqual({ ok: true, refunded: true });
-    expect(colony.stock['metals.t1']).toBe(40 + 45);
-    expect(colony.stock['minerals.t1']).toBe(25 + 56.25);
-    expect(colony.stock['bio.biomass']).toBe(10 + 7.5);
-    expect(colony.stock['bio.water']).toBe(5 + 3.75);
+    expect(colony.stock['metals.t1']).toBeCloseTo(70 + 15, 4);
+    expect(colony.stock['minerals.t1']).toBeCloseTo(62.5 + 18.75, 4);
+    expect(colony.stock['bio.biomass']).toBeCloseTo(15 + 2.5, 4);
+    expect(colony.stock['bio.water']).toBeCloseTo(7.5 + 1.25, 4);
   });
 
   it('reorderTask moves player entry within its lane', () => {

@@ -44,6 +44,6 @@ describe('path search optimality bound (weighted A*)', () => {
       }
     }
     // Deterministic: if a change to the search moves these numbers, update them on purpose (and the HEURISTIC doc).
-    expect({ pairs, suboptimal, worst: worst.toFixed(4) }).toEqual({ pairs: 120, suboptimal: 54, worst: '1.1679' });
+    expect({ pairs, suboptimal, worst: worst.toFixed(4) }).toEqual({ pairs: 120, suboptimal: 56, worst: '1.0959' });
   });
 });

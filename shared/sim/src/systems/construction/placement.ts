@@ -34,6 +34,7 @@ export interface PlacementWorld {
   terrain: ArrayLike<number>;
   prep: ArrayLike<number>;
   deposit: ArrayLike<number> | null;
+  richness?: ArrayLike<number> | null;
   owner: ArrayLike<number>;
   /** Ground height (m). With relief (D-38) a footprint must be level: see `MAX_FOOTPRINT_SPREAD_M`. */
   height?: ArrayLike<number> | null;
@@ -168,14 +169,22 @@ export function getBuildingFootprintTiles(q: number, r: number, footprint = 3): 
   return out;
 }
 
+const OCCUPYING_KINDS: ReadonlySet<number> = new Set([
+  ENTITY_KIND.commandHub,
+  ENTITY_KIND.metalsExtractor,
+  ENTITY_KIND.solar,
+]);
+
 /** Whether an entity occupies ground with its footprint: an alive building (GP-23: one rule for placement and paths). */
 export function occupiesGround(e: { kind: number; hp: number; hpMax: number }): boolean {
-  return e.kind === ENTITY_KIND.hub && !(e.hpMax > 0 && e.hp <= 0);
+  return OCCUPYING_KINDS.has(e.kind) && !(e.hpMax > 0 && e.hp <= 0);
 }
 
 /** Footprint size of an existing building entity of `kind` (its row's `footprint`). */
 export function entityFootprint(kind: number, data?: CompiledDataLike): number {
-  return kind === ENTITY_KIND.hub ? rowNum(resolveHubT1Row(data), 'footprint') : 1;
+  if (kind === ENTITY_KIND.commandHub) return rowNum(resolveHubT1Row(data), 'footprint');
+  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar) return 2;
+  return 1;
 }
 
 const isAlive = (e: PlacementEntity): boolean => !(e.hpMax > 0 && e.hp <= 0);
@@ -203,7 +212,11 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, colonyId: numb
   if (owner >= 0 && owner !== colonyId) block = 'foreign';
   else if (owner < 0 && !rule.allowUnclaimed) block = 'unclaimed';
   else if (occupied.has(tileIdx)) block = 'occupied';
-  else block = geoBuildBlock(terrain, prep, deposit, rule.deposit);
+  else {
+    const isDepleted = deposit !== 0 && world.richness != null && Number(world.richness[tileIdx] ?? 0) <= 0;
+    const effectiveDeposit = rule.deposit === 'require' && isDepleted ? 0 : deposit;
+    block = geoBuildBlock(terrain, prep, effectiveDeposit, rule.deposit);
+  }
   if (!block && isTileUneven(world.radius, tileIdx, world.terrain, world.height)) block = 'uneven';
   if (block) { tile.ok = false; tile.block = block; }
   return tile;

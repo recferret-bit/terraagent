@@ -35,8 +35,8 @@ describe('W02-16 Dispatch v1: nearest idle eligible worker, lowest tier on ties,
     setTileDeposit(state, idx.indexOf(1, 0), DEPOSIT.metals, 10000, 0);
     setTileTerrain(state, idx.indexOf(2, 0), TERRAIN.forest, 0);
 
-    // Spawn Harvester at (1, 0) on the deposit and step once so it is actively harvesting (auto precedence)
-    const harvId = spawnHarvesterUnit(state, { owner: 0, q: 1, r: 0 });
+    // Spawn Harvester at (0, 0) adjacent to the deposit at (1, 0) and step once so it is actively harvesting (auto precedence)
+    const harvId = spawnHarvesterUnit(state, { owner: 0, q: 0, r: 0 });
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
     step(state, [], 1, pipeline);
     expect(state.entities.cols.state[0]).toBe(ENTITY_STATE.harvesting);

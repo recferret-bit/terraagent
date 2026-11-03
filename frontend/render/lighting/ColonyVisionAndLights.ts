@@ -1,8 +1,12 @@
 import * as THREE from 'three';
 import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
 import { planetExtent, tileAt } from '../planets/hex/hexMath';
+import { getViewFocus, inViewFocus } from '../core/viewFocus';
 
-export const MAX_COLONY_PROJECTORS = 16;
+/** Projectors uploaded to the GPU (the per-fragment loop length): the nearest ones lighting the view focus. */
+export const MAX_COLONY_PROJECTORS = 32;
+/** How many projector candidates a caller may hand to `updateColonyProjectorsAndVision` (whole colony). */
+export const MAX_PROJECTOR_CANDIDATES = 256;
 export const MAX_VISION_SOURCES = 16;
 const VISION_TEX_SIZE = 128;
 
@@ -74,7 +78,22 @@ export function getColonyVisionUniforms(): Record<string, THREE.IUniform> {
   return sharedUniforms;
 }
 
+let colonyLightingBlend = 1;
+
+/**
+ * How much the colony's own lighting (FoV shroud, night factor, projectors) applies, 0..1: 0 while the space phase /
+ * descent cinematic renders, eased to 1 once the colony takes over. Every writer of `uNightFactor` scales by it.
+ */
+export function setColonyLightingBlend(blend: number): void {
+  colonyLightingBlend = THREE.MathUtils.clamp(blend, 0, 1);
+}
+
+export function getColonyLightingBlend(): number {
+  return colonyLightingBlend;
+}
+
 export const COLONY_VISION_AND_LIGHTS_GLSL = /* glsl */ `
+#define MAX_COLONY_PROJECTORS ${MAX_COLONY_PROJECTORS}
 uniform sampler2D uVisionMap;
 uniform float uVisionWorldSpan;
 uniform float uFovEnabled;
@@ -87,9 +106,14 @@ uniform vec4 uProjectorPosRange[${MAX_COLONY_PROJECTORS}];
 uniform vec4 uProjectorDirAngle[${MAX_COLONY_PROJECTORS}];
 uniform vec4 uProjectorColorInt[${MAX_COLONY_PROJECTORS}];
 
-vec3 evalColonyProjectorLight(vec3 worldPos, vec3 worldNormal) {
-  vec3 total = vec3(0.0);
+/**
+ * One loop over the colony projectors accumulating world-space diffuse AND (when shininess > 0) normalised
+ * Blinn-Phong specular toward the unit view vector V (fragment -> camera). Callers that only need diffuse use
+ * evalColonyProjectorLight; the water passes its wave normal + roughness to get bots' lights reflected.
+ */
+void colonyProjectorLighting(vec3 worldPos, vec3 worldNormal, vec3 V, float shininess, inout vec3 diffuse, inout vec3 spec) {
   vec3 N = normalize(worldNormal);
+  float specNorm = (shininess + 8.0) * 0.0397887; // (n + 8) / (8 pi)
   for (int i = 0; i < ${MAX_COLONY_PROJECTORS}; i++) {
     if (i >= uProjectorCount) break;
     vec4 posRange = uProjectorPosRange[i];
@@ -112,9 +136,18 @@ vec3 evalColonyProjectorLight(vec3 worldPos, vec3 worldNormal) {
     }
     float ndl = max(0.26, dot(N, L));
     vec4 colInt = uProjectorColorInt[i];
-    total += colInt.rgb * (colInt.w * distAtten * coneAtten * ndl);
+    diffuse += colInt.rgb * (colInt.w * distAtten * coneAtten * ndl);
+    if (shininess > 0.0) {
+      float ndh = max(dot(N, normalize(L + V)), 0.0);
+      spec += colInt.rgb * (colInt.w * distAtten * coneAtten * max(dot(N, L), 0.0) * pow(ndh, shininess) * specNorm);
+    }
   }
-  return total;
+}
+
+vec3 evalColonyProjectorLight(vec3 worldPos, vec3 worldNormal) {
+  vec3 diffuse = vec3(0.0), spec = vec3(0.0);
+  colonyProjectorLighting(worldPos, worldNormal, vec3(0.0, 1.0, 0.0), 0.0, diffuse, spec);
+  return diffuse;
 }
 
 vec2 evalColonyFovMask(vec3 worldPos) {
@@ -135,8 +168,9 @@ vec2 evalColonyFovMask(vec3 worldPos) {
   return vec2(clamp(liveVis, 0.0, 1.0), clamp(expVis, 0.0, 1.0));
 }
 
+// uFovEnabled is the shroud strength 0..1 (eased in after the descent hands over, so there is no pop).
 vec3 applyColonyFovShroud(vec3 worldPos, vec3 color) {
-  if (uFovEnabled < 0.5 || uFovDim <= 0.001) return color;
+  if (uFovEnabled <= 0.001 || uFovDim <= 0.001) return color;
   vec2 fov = evalColonyFovMask(worldPos);
   float liveVis = fov.x;
   float expVis = fov.y;
@@ -148,7 +182,7 @@ vec3 applyColonyFovShroud(vec3 worldPos, vec3 color) {
   vec3 shroudTint = mix(vec3(0.004, 0.007, 0.015), vec3(0.012, 0.020, 0.036), expVis);
   float rimBand = smoothstep(0.05, 0.24, liveVis) * (1.0 - smoothstep(0.24, 0.55, liveVis));
   vec3 scannerRim = vec3(0.09, 0.42, 0.64) * (rimBand * 0.11 * uFovDim);
-  return mix(shroudTint, desat, keep) + scannerRim;
+  return mix(color, mix(shroudTint, desat, keep) + scannerRim, clamp(uFovEnabled, 0.0, 1.0));
 }
 `;
 
@@ -257,25 +291,55 @@ export function updateColonyVisionTexture(input: ColonyVisionTextureInput): void
   visionTexture.needsUpdate = true;
 }
 
-/** Updates active projector light uniforms and live unit/building vision circles in-place for the current frame. */
+const picked: number[] = [];
+
+/**
+ * Indices of the projectors whose light circle (xz, range) touches the view focus, nearest to the focus centre first
+ * when more than `MAX_COLONY_PROJECTORS` qualify. Off-screen lights never reach the GPU, so every terrain / water /
+ * foliage / unit fragment loops over the on-screen ones only. With the focus off (`?focus=0`) all qualify.
+ */
+export function selectFocusedProjectors(projectors: ReadonlyArray<ColonyProjectorDesc>, out: number[] = picked): number[] {
+  out.length = 0;
+  const n = Math.min(projectors.length, MAX_PROJECTOR_CANDIDATES);
+  for (let i = 0; i < n; i++) {
+    const p = projectors[i]!;
+    if (inViewFocus(p.x, p.z, p.range)) out.push(i);
+  }
+  if (out.length > MAX_COLONY_PROJECTORS) {
+    const { x, z } = getViewFocus();
+    const d2 = (i: number) => (projectors[i]!.x - x) ** 2 + (projectors[i]!.z - z) ** 2;
+    out.sort((a, b) => d2(a) - d2(b));
+    out.length = MAX_COLONY_PROJECTORS;
+  }
+  return out;
+}
+
+/**
+ * Updates active projector light uniforms (only those lighting the view focus, `selectFocusedProjectors`) and live
+ * unit/building vision circles in-place for the current frame. Vision sources are not culled: the CPU FoV test
+ * `isWorldPointInColonyFov` reads them for off-screen points too.
+ */
 export function updateColonyProjectorsAndVision(opts: {
   projectors: ReadonlyArray<ColonyProjectorDesc>;
   visionSources: ReadonlyArray<ColonyVisionSourceDesc>;
   fovEnabled: boolean;
+  /** Shroud strength 0..1 while `fovEnabled` (default 1); eases the shroud in instead of switching it on. */
+  fovStrength?: number;
   fovDim?: number;
   nightFactor?: number;
 }): void {
-  sharedUniforms.uFovEnabled.value = opts.fovEnabled ? 1.0 : 0.0;
+  sharedUniforms.uFovEnabled.value = opts.fovEnabled ? THREE.MathUtils.clamp(opts.fovStrength ?? 1, 0, 1) : 0.0;
   if (opts.fovDim !== undefined) sharedUniforms.uFovDim.value = opts.fovDim;
   if (opts.nightFactor !== undefined) sharedUniforms.uNightFactor.value = opts.nightFactor;
 
-  const pCount = Math.min(MAX_COLONY_PROJECTORS, opts.projectors.length);
+  const sel = selectFocusedProjectors(opts.projectors);
+  const pCount = sel.length;
   sharedUniforms.uProjectorCount.value = pCount;
   const posArr = sharedUniforms.uProjectorPosRange.value;
   const dirArr = sharedUniforms.uProjectorDirAngle.value;
   const colArr = sharedUniforms.uProjectorColorInt.value;
   for (let i = 0; i < pCount; i++) {
-    const p = opts.projectors[i]!;
+    const p = opts.projectors[sel[i]!]!;
     posArr[i]!.set(p.x, p.y, p.z, p.range);
     dirArr[i]!.set(p.dirX, p.dirY, p.dirZ, p.cosAngle);
     colArr[i]!.set(p.r, p.g, p.b, p.intensity);
@@ -292,7 +356,7 @@ export function updateColonyProjectorsAndVision(opts: {
 
 /** Checks whether world coordinates `(wx, wz)` lie inside the active Field of View of the user's units or base. */
 export function isWorldPointInColonyFov(wx: number, wz: number): boolean {
-  if (sharedUniforms.uFovEnabled.value < 0.5) return true;
+  if (sharedUniforms.uFovEnabled.value <= 0.001) return true;
   const vCount = sharedUniforms.uVisionSourceCount.value;
   const vArr = sharedUniforms.uVisionSources.value;
   for (let i = 0; i < vCount; i++) {
@@ -314,6 +378,7 @@ export function resetColonyVisionAndLights(): void {
   sharedUniforms.uProjectorCount.value = 0;
   sharedUniforms.uVisionSourceCount.value = 0;
   sharedUniforms.uNightFactor.value = 0.0;
+  colonyLightingBlend = 1;
   lastTexSignature = '';
   visionData.fill(255);
   visionTexture.needsUpdate = true;
