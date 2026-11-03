@@ -162,10 +162,11 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   await devConsole(page, 'warp 1');
 
   // Step 5: Lower Minerals to 5 (< 20) and queue a second Extractor on the uncovered metals deposit (6, 0) ((4, 0) is
-  // inside the first Extractor's 2x2 footprint at (3, 0)) -> see `waiting: Minerals 5/20 · ~N s` (or `(no ETA)`).
+  // inside the first Extractor's 2x2 footprint at (3, 0)) -> see `waiting: Minerals 5/20 · ~N s` (or `(no ETA)`). Anchored
+  // at (5, -1) so its footprint (5..6, -1..0) stays inside the Hub's power zone (radius 6) when the W03 grid is on.
   await devConsole(page, 'fill minerals.t1 5');
   await expect.poll(async () => (await getColony0(page))?.stock?.['minerals.t1'] ?? 250).toBe(5);
-  await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext-wait', task: { kind: 'build', building: 'metalsExtractor', q: 6, r: 0 } });
+  await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext-wait', task: { kind: 'build', building: 'metalsExtractor', q: 5, r: -1 } });
   const waitEntry = async () => ((await getColony0(page))?.queue ?? []).find((e) => e.taskId === 'b-ext-wait');
   await expect.poll(async () => (await waitEntry())?.waitReason ?? '').toBe('resources');
   // polled: one tick may still carry the bare `waiting: resources` before the detailed text
