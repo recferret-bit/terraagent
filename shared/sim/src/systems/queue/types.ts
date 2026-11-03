@@ -1,13 +1,15 @@
 import type { ResourceFamily, ResourceKey } from '@terra/contracts';
 
 export type QueueLane = 'construction' | 'units' | 'terraform';
-export type QueuePrecedence = 'system' | 'player' | 'auto';
+export type QueuePrecedence = 'system' | 'player' | 'hq' | 'ai' | 'auto';
 export type QueueEntryState = 'queued' | 'waiting' | 'in_progress' | 'done' | 'cancelled';
 export type QueueWaitReason = 'resources' | 'storage' | 'worker' | 'power' | 'site' | 'supply';
 
 export const PRECEDENCE_RANK: Readonly<Record<QueuePrecedence, number>> = {
-  system: 3,
-  player: 2,
+  system: 5,
+  player: 4,
+  hq: 3,
+  ai: 2,
   auto: 1,
 };
 
@@ -40,5 +42,9 @@ export interface QueueEntry {
   etaSeconds?: number | null;
   /** `buildUnit` only: units of the batch (`task.count`) still to build, the current one included (absent = `count`). */
   remainingCount?: number;
+  /** Optional parent HQ goal id (`ColonyGoalEntry.id`) when broken down from an HQ goal (`precedence: 'hq'`, W08-16/17). */
+  goalId?: string;
   createdAt: number;
 }
+
+export type OrderQueueEntry = QueueEntry;

@@ -1,6 +1,13 @@
 import type { CompiledRow } from '../data';
 import { ENTITY_KIND } from '../ecs/columns';
 import type { PlanetState, PlanetType } from '../kernel/state';
+import {
+  getColonyGoals,
+  getColonyPriorities,
+  getHqGoalLimit,
+  type ColonyGoalEntry,
+  type ColonyPriorities,
+} from '../systems/goals';
 import { resolveHarvesterRow } from '../systems/harvest/unit';
 import type { HqJob, HqUnitView } from '../systems/hq';
 
@@ -33,6 +40,12 @@ export interface ViewColony {
   hq?: HqUnitView;
   currentJob?: HqJob;
   queueCount?: number;
+  goals?: ColonyGoalEntry[];
+  goalLimit?: number;
+  priorities?: ColonyPriorities;
+  stage?: number;
+  unlockStage?: number;
+  threatStage?: number;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -97,6 +110,12 @@ export function view(state: PlanetState): SimView {
       out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;
       out.queueCount = (k.queueCount as number | undefined) ?? hq.queueCount;
     }
+    out.goals = getColonyGoals(state, k.index);
+    out.goalLimit = getHqGoalLimit(state, k.index);
+    out.priorities = getColonyPriorities(state, k.index);
+    out.stage = typeof k.stage === 'number' ? k.stage : 0;
+    out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : out.stage;
+    out.threatStage = typeof k.threatStage === 'number' ? k.threatStage : 0;
     return out;
   });
   return {
