@@ -98,20 +98,21 @@ export function relayTree<T extends { id: number }>(relays: readonly T[], isRoot
   if (relays.length < 2) return [];
   const sorted = [...relays].sort((a, b) => a.id - b.id);
   const root = sorted.find(isRoot) ?? sorted[0];
-  const inTree = [root];
   const rest = sorted.filter((n) => n !== root);
+  // O(n²) Prim: each remaining node keeps its nearest tree node so far.
+  const parent = rest.map(() => root);
+  const dist = rest.map((n) => d2(root, n));
   const edges: Array<[T, T]> = [];
   while (rest.length > 0) {
-    let best = -1, bestParent = root, bestD = Infinity;
+    let best = 0;
+    for (let i = 1; i < rest.length; i++) if (dist[i] < dist[best]) best = i;
+    const child = rest[best];
+    edges.push([parent[best], child]);
+    rest.splice(best, 1); parent.splice(best, 1); dist.splice(best, 1);
     for (let i = 0; i < rest.length; i++) {
-      for (const t of inTree) {
-        const d = d2(t, rest[i]);
-        if (d < bestD) { bestD = d; best = i; bestParent = t; }
-      }
+      const d = d2(child, rest[i]);
+      if (d < dist[i]) { dist[i] = d; parent[i] = child; }
     }
-    const child = rest.splice(best, 1)[0];
-    edges.push([bestParent, child]);
-    inTree.push(child);
   }
   return edges;
 }
