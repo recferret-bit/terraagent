@@ -1,6 +1,7 @@
 import type { CompiledRow } from '../data';
 import { ENTITY_KIND } from '../ecs/columns';
 import type { PlanetState, PlanetType } from '../kernel/state';
+import { resolveBuilderRow } from '../systems/factories-hub/unit';
 import { resolveHarvesterRow } from '../systems/harvest/unit';
 import type { HqJob, HqUnitView } from '../systems/hq';
 
@@ -59,6 +60,7 @@ export function view(state: PlanetState): SimView {
   const e = state.entities, c = e.cols, L = state.grid.layers;
   const entities: ViewEntity[] = [];
   let harvesterRow: CompiledRow | null = null;
+  let builderRow: CompiledRow | null = null;
   for (let i = 0; i < e.count; i++) {
     const kind = c.kind[i];
     const ent: ViewEntity = {
@@ -83,6 +85,18 @@ export function view(state: PlanetState): SimView {
       ent.harvestRatePerS = Number(harvesterRow.harvestRatePerS ?? 0.5);
       ent.workRate = c.workRate?.[i] ?? 1.0;
       ent.maxBuildTier = Number(harvesterRow.maxBuildTier ?? 0);
+    } else if (kind === ENTITY_KIND.builder) {
+      if (!builderRow) builderRow = resolveBuilderRow();
+      ent.unit = 'builder';
+      ent.label = String(builderRow.label ?? 'Builder Drone');
+      ent.archetype = String(builderRow.archetype ?? 'robot.builder');
+      ent.supply = Number(builderRow.supply ?? 1);
+      ent.powerDrainPerS = Number(builderRow.powerDrainPerS ?? 2.0);
+      ent.speedTilesPerS = Number(builderRow.designSpeedTilesPerS ?? 1.5);
+      ent.viewRadius = Number(builderRow.viewRadius ?? 7);
+      ent.radius = Number(builderRow.radius ?? 0.4);
+      ent.workRate = c.workRate?.[i] || 1.0;
+      ent.maxBuildTier = Number(builderRow.maxBuildTier ?? 1);
     }
     entities.push(ent);
   }
