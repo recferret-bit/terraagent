@@ -9,14 +9,12 @@ import {
 } from '../store/replica/viewCodec';
 import type { MapLayerDrawView } from './types';
 import {
-  classifyEntityRole,
   collectEntityDots,
   createUnitsMapLayer,
   drawEntityDots,
   formatHexColor,
   MAX_ENTITY_DOTS,
   resolveCssToken,
-  resolveEntityDotColor,
   resolveForeignColonyColor,
   unitsMapLayer,
 } from './entityDots';

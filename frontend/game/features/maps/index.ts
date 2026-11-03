@@ -7,19 +7,21 @@ import type { RTSCamera } from '../../app/RTSCamera';
 import {
   defineFeature,
   type FeatureContext,
-  type GameView,
   type HudPanelInstance,
 } from '../../core/registry/types';
-import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
+import type { ClientTiles } from '../../store/replica/viewCodec';
 import {
   mapLayerRegistry,
+  MapsController,
   PlanetRasterCache,
+  resolveTileColorFromTokens,
   type MapLayer,
   type MapLayerRegistry,
   type MinimapStats,
 } from '../../maps';
 
 export interface MapsFeatureService {
+  readonly controller: MapsController;
   readonly layerRegistry: MapLayerRegistry;
   readonly rasterCache: PlanetRasterCache;
   readonly stats: MinimapStats;
@@ -27,6 +29,10 @@ export interface MapsFeatureService {
   getVisibleLayers(): MapLayer[];
   isEnabled(): boolean;
   updateTiles(tiles: ClientTiles, opts?: { planetId?: string; radius?: number; changedIndices?: readonly number[] }): number;
+  openGlobalMap(): void;
+  closeGlobalMap(): void;
+  toggleLayer(id: MapLayerId, force?: boolean): boolean;
+  panToTile(q: number, r: number): void;
 }
 
 declare module '../../core/registry/types' {
@@ -49,117 +55,46 @@ export function createBuiltinMapLayers(): MapLayer[] {
       wave: meta.wave,
       defaultOn: meta.defaultOn,
       order: meta.order,
-      draw: () => {
-        // Built-in layer rendering is wired in W04-16.
-      },
+      draw: () => {},
     };
   });
 }
 
-function createMinimapStats(
-  registry: MapLayerRegistry,
-  rasterCache: PlanetRasterCache,
-): MinimapStats {
-  return {
-    get dirtyTiles() {
-      return rasterCache.dirtyTiles;
-    },
-    set dirtyTiles(v: number) {
-      rasterCache.dirtyTiles = v;
-    },
-    get totalRepaints() {
-      return rasterCache.totalRepaints;
-    },
-    set totalRepaints(v: number) {
-      rasterCache.totalRepaints = v;
-    },
-    get lastRadius() {
-      return rasterCache.lastRadius;
-    },
-    set lastRadius(v: number) {
-      rasterCache.lastRadius = v;
-    },
-    get lastPlanetId() {
-      return rasterCache.lastPlanetKey;
-    },
-    set lastPlanetId(v: string | null) {
-      rasterCache.lastPlanetKey = v;
-    },
-    minimapRedraws: 0,
-    globalMapRedraws: 0,
-    minimapHz: 0,
-    globalMapHz: 0,
-    entityDotCount: 0,
-    globalMapOpen: false,
-    activeLayers: ['territory', 'terrain', 'units'],
-    get registeredLayers() {
-      return registry.all().map((l) => l.id);
-    },
-    set registeredLayers(_v: MapLayerId[]) {
-      // derived from registry
-    },
-  };
-}
-
 export function mountMapsFeature(
-  _el: HTMLElement,
+  el: HTMLElement,
   ctx: FeatureContext,
   registry: MapLayerRegistry = mapLayerRegistry,
-  rasterCache: PlanetRasterCache = new PlanetRasterCache(),
+  rasterCache: PlanetRasterCache = new PlanetRasterCache(resolveTileColorFromTokens),
 ): HudPanelInstance {
-  let cleanups: Array<() => void> = [];
-  let registered = false;
-  const stats = createMinimapStats(registry, rasterCache);
-
-  const syncRegistration = () => {
-    const enabled = ctx.flags.has('W04');
-    if (enabled && !registered) {
-      for (const layer of createBuiltinMapLayers()) {
-        cleanups.push(registry.register(layer));
-      }
-      registered = true;
-    } else if (!enabled && registered) {
-      for (const fn of cleanups) fn();
-      cleanups = [];
-      registered = false;
-      rasterCache.clear();
-    }
-  };
-
-  syncRegistration();
-
-  const updateFromView = (view: GameView) => {
-    syncRegistration();
-    if (!ctx.flags.has('W04')) return;
-    const cv = (view.sim?.view ?? view) as Partial<ClientView>;
-    const tiles = (view.tiles ?? cv.tiles) as ClientTiles | undefined;
-    if (tiles && tiles.terrain && tiles.prep && tiles.owner) {
-      const planetId = cv.planet?.id ?? view.planet?.id ?? ctx.services.session?.planetId?.() ?? 'default';
-      const radius = cv.planet?.radius ?? view.planet?.radius;
-      rasterCache.update(tiles, { planetId, radius });
-    }
-  };
+  const controller = new MapsController({
+    el,
+    ctx,
+    registry,
+    rasterCache,
+  });
 
   const service: MapsFeatureService = {
+    controller,
     layerRegistry: registry,
     rasterCache,
-    stats,
+    stats: controller.stats,
     getRegisteredLayers: () => registry.all(),
-    getVisibleLayers: () => registry.forFlags(ctx.flags),
+    getVisibleLayers: () => controller.chipController.getVisibleLayers(),
     isEnabled: () => ctx.flags.has('W04'),
     updateTiles: (tiles, opts) => rasterCache.update(tiles, opts).repainted,
+    openGlobalMap: () => controller.openClose.open(),
+    closeGlobalMap: () => controller.openClose.close(),
+    toggleLayer: (id, force) => controller.chipController.toggleLayer(id, force),
+    panToTile: (q, r) => controller.panToTile(q, r),
   };
   ctx.services.maps = service;
 
   return {
     update(view) {
-      updateFromView(view);
+      controller.updateFromView(view);
     },
     dispose() {
-      for (const fn of cleanups) fn();
-      cleanups = [];
-      registered = false;
-      rasterCache.clear();
+      controller.dispose();
       if (ctx.services.maps === service) {
         delete ctx.services.maps;
       }
@@ -174,9 +109,23 @@ export const mapsFeature = defineFeature({
     {
       id: 'minimap',
       slot: 'bottom-left',
-      order: 30,
+      order: 5,
       mount(el, ctx) {
         return mountMapsFeature(el, ctx);
+      },
+    },
+  ],
+  renderers: [
+    {
+      id: 'maps-camera-sync',
+      mount(ctx) {
+        return {
+          update(view) {
+            ctx.services.maps?.controller.updateFromView(view);
+            ctx.services.maps?.controller.syncCameraFrame();
+          },
+          dispose() {},
+        };
       },
     },
   ],

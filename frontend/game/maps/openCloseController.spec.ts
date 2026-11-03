@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
 import * as THREE from 'three';
+import type { PlanetSurface } from '@terra/render/planets/surface/types';
 import { describe, expect, it, vi } from 'vitest';
 import { RTSCamera } from '../app/RTSCamera';
 import { GlobalMapOpenCloseController } from './openCloseController';
@@ -11,7 +12,7 @@ describe('W04-11 Global map open/close wiring and 3D input suspension', () => {
     const rtsCam = new RTSCamera(
       cam3d,
       canvas,
-      { halfSize: 50, heightAt: () => 0 },
+      { halfSize: 50, heightAt: () => 0 } as unknown as PlanetSurface,
       new THREE.Vector3(20, 20, 20),
       new THREE.Vector3(0, 0, 0),
     );

@@ -205,7 +205,7 @@ describe('W04-10: disposal cleanup', () => {
   });
 
   it('removes listeners and stops drag after dispose()', () => {
-    const { container, canvas, onPanToTile, controller } = createHarness(6);
+    const { canvas, onPanToTile, controller } = createHarness(6);
     dispatchPointer(canvas, 'pointerdown', { clientX: 90, clientY: 90, pointerId: 5 });
     expect(controller.isDragging()).toBe(true);
 

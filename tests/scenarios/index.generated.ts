@@ -3,9 +3,11 @@ import type { ScenarioDef } from './_define';
 import scn_w00_empty from './w00-empty';
 import scn_w01_landfall from './w01-landfall';
 import scn_w02_first_light from './w02-first-light';
+import scn_w04_maps_camera from './w04-maps-camera';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
   { file: 'w00-empty', def: scn_w00_empty },
   { file: 'w01-landfall', def: scn_w01_landfall },
   { file: 'w02-first-light', def: scn_w02_first_light },
+  { file: 'w04-maps-camera', def: scn_w04_maps_camera },
 ];
