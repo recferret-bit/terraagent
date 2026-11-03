@@ -29,6 +29,7 @@ export * from './dwell';
 export * from './triggers';
 export * from './threatStage';
 export * from './unlockStage';
+export * from './threat';
 
 function cloneProgressionState(p: ColonyProgressionState): ColonyProgressionState {
   return {
