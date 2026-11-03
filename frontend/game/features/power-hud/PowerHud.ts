@@ -12,7 +12,7 @@ const KIND_NAMES: Record<number, string> = {
   [ENTITY_KIND.dropPod]: 'Drop Pod',
   [ENTITY_KIND.harvester]: 'Harvester',
   [ENTITY_KIND.builder]: 'Builder Drone',
-  [ENTITY_KIND.pylon]: 'Power Line Pylon',
+  [ENTITY_KIND.pylon]: 'Power Pylon',
   [ENTITY_KIND.capacitor]: 'Capacitor Bank',
   [ENTITY_KIND.wind]: 'Wind Turbine',
   [ENTITY_KIND.thermal]: 'Thermal Plant',

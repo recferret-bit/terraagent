@@ -17,7 +17,6 @@ const ARCHETYPE_BY_BUILDING: Record<string, string> = {
   metalsExtractor: 'building.mine',
   solar: 'building.solar',
   pylon: 'building.pylon',
-  powerLine: 'building.pylon',
   capacitor: 'building.capacitor',
   wind: 'building.wind',
   thermal: 'building.coalGen',

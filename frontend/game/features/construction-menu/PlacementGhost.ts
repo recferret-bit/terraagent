@@ -6,10 +6,7 @@ import { extractHqFromView } from '../shared/hqView';
 import { isHotkeyPress } from '../shared/hotkeys';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 import { buildGhostContext, resolveBuildingMeta, type GhostContext } from './ghostContext';
-import { evaluatePowerLineGhost, hexLine, planPowerLinePylonSites } from './powerLineGhost';
 import { depositReasonText, evaluateSiteWithSim, ownColonyIndex } from './sitePlacement';
-
-export { hexLine, planPowerLinePylonSites };
 
 export interface PlacementGhostTile {
   q: number; r: number; tileIdx: number; deposit: number; terrain: number; prep: number; prepOp?: string;
@@ -21,9 +18,6 @@ export interface PlacementGhostState {
   tiles: PlacementGhostTile[]; prepBill: Record<string, number>; prepBillText: string;
   valid: boolean; statusColor: 'green' | 'red'; reason: string;
   requiresDeposit?: string; depositCovered: boolean; depositTileIndices: number[];
-  pylonSites?: Array<{ q: number; r: number }>;
-  totalCost?: Record<string, number>;
-  costText?: string;
 }
 
 function depositCodeForRequired(requiresDeposit?: string): number | undefined {
@@ -209,7 +203,6 @@ export class PlacementGhostController implements Disposable {
   private hoverQ = 0;
   private hoverR = 0;
   private rotation = 0;
-  private dragStart: { q: number; r: number } | null = null;
   private state: PlacementGhostState | null = null;
   private view?: GameView;
   private readonly pendingIndices = new Set<number>();
@@ -280,17 +273,6 @@ export class PlacementGhostController implements Disposable {
     const surface = (this.opts.ctx.services.surface ?? this.opts.ctx.services.canvas) as HTMLElement | undefined;
     if (!surface || typeof surface.addEventListener !== 'function') return undefined;
     return bindExclusivePointer(surface, () => this.activeBuilding !== null, {
-      down: (e) => {
-        if (e.button === 0 && this.activeBuilding === 'powerLine') {
-          const coord = resolvePointerTile(e, this.opts.ctx.services.pickTile);
-          if (coord) {
-            this.dragStart = { q: coord.q, r: coord.r };
-            this.hoverQ = coord.q;
-            this.hoverR = coord.r;
-            this.evaluate();
-          }
-        }
-      },
       move: (e) => {
         if (this.opts.ctx.services.scene3d) return;
         const coord = resolvePointerTile(e, this.opts.ctx.services.pickTile);
@@ -324,11 +306,10 @@ export class PlacementGhostController implements Disposable {
   start(building: string): void {
     this.activeBuilding = building;
     this.rotation = 0;
-    this.dragStart = null;
     if (this.opts.container && !this.element.parentElement) this.opts.container.appendChild(this.element);
     if (this.element.style) this.element.style.display = '';
     const effView = this.resolveEffectiveView();
-    if (building !== 'powerLine' && effView && (effView as { tiles?: ClientTiles }).tiles) {
+    if (effView && (effView as { tiles?: ClientTiles }).tiles) {
       const { base, ctx } = this.ghostInputs(building, effView);
       const cur = evaluatePlacementGhost({ ...base, q: this.hoverQ, r: this.hoverR }, ctx);
       if (!cur.valid || cur.tiles.some((t) => this.pendingIndices.has(t.tileIdx))) {
@@ -339,22 +320,7 @@ export class PlacementGhostController implements Disposable {
     this.evaluate();
   }
 
-  setPowerLineDrag(from: { q: number; r: number }, to: { q: number; r: number }): void {
-    if (this.activeBuilding !== 'powerLine') this.start('powerLine');
-    this.dragStart = { q: from.q, r: from.r };
-    this.hoverQ = to.q;
-    this.hoverR = to.r;
-    this.evaluate();
-  }
-
   setHoverTile(q: number, r: number): void {
-    if (this.activeBuilding === 'powerLine') {
-      if (!this.dragStart) this.dragStart = { q, r };
-      this.hoverQ = q;
-      this.hoverR = r;
-      this.evaluate();
-      return;
-    }
     this.hoverQ = q;
     this.hoverR = r;
     if (!this.activeBuilding) return;
@@ -385,7 +351,6 @@ export class PlacementGhostController implements Disposable {
 
   cancel(): void {
     this.activeBuilding = null;
-    this.dragStart = null;
     this.state = null;
     if (this.element.style) this.element.style.display = 'none';
     this.element.remove();
@@ -394,13 +359,9 @@ export class PlacementGhostController implements Disposable {
 
   confirm(): boolean {
     if (!this.activeBuilding || !this.state || !this.state.valid) return false;
-    const { building, q, r, rotation, tiles, pylonSites } = this.state;
+    const { building, q, r, rotation, tiles } = this.state;
     for (const t of tiles) if (t.tileIdx >= 0) this.pendingIndices.add(t.tileIdx);
-    if (building === 'powerLine' && pylonSites && pylonSites.length > 0) {
-      this.opts.ctx.services.sendCommand?.('placePowerLine', { tiles: pylonSites, tier: 1 });
-    } else {
-      this.opts.ctx.services.sendCommand?.('enqueueTask', { task: { kind: 'build', building, q, r, rotation } });
-    }
+    this.opts.ctx.services.sendCommand?.('enqueueTask', { task: { kind: 'build', building, q, r, rotation } });
     this.cancel();
     this.opts.onConfirm?.();
     return true;
@@ -419,17 +380,7 @@ export class PlacementGhostController implements Disposable {
     if (!this.activeBuilding) { this.state = null; return; }
     const effView = this.resolveEffectiveView();
     const { base, ctx } = this.ghostInputs(this.activeBuilding, effView);
-    if (this.activeBuilding === 'powerLine') {
-      const from = this.dragStart ?? { q: this.hoverQ, r: this.hoverR };
-      this.state = evaluatePowerLineGhost(
-        { from, to: { q: this.hoverQ, r: this.hoverR }, flags: base.flags, view: effView, colonyId: base.colonyId },
-        ctx,
-        evaluatePlacementGhost,
-        formatPrepBillText,
-      );
-    } else {
-      this.state = evaluatePlacementGhost({ ...base, q: this.hoverQ, r: this.hoverR }, ctx);
-    }
+    this.state = evaluatePlacementGhost({ ...base, q: this.hoverQ, r: this.hoverR }, ctx);
     this.renderState(this.state);
   }
 
@@ -439,8 +390,7 @@ export class PlacementGhostController implements Disposable {
     this.element.setAttribute('data-deposit-covered', String(state.depositCovered));
     this.element.setAttribute('data-building', state.building);
     this.headTitle.textContent = state.label;
-    this.headFootprint.textContent =
-      state.building === 'powerLine' ? state.footprintText : `${state.footprintText} · rot ${state.rotation} [R]`;
+    this.headFootprint.textContent = `${state.footprintText} · rot ${state.rotation} [R]`;
 
     if (state.requiresDeposit === 'metals' || state.requiresDeposit === 'minerals' || state.requiresDeposit === 'oil') {
       if (this.depositBadge.style) this.depositBadge.style.display = '';

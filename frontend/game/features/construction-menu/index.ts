@@ -3,9 +3,7 @@ import { ConstructionMenu } from './ConstructionMenu';
 import { createConstructionGhostRenderer, GHOST_IDLE_PICK_MS } from './ghostRenderer';
 import {
   evaluatePlacementGhost,
-  hexLine,
   PlacementGhostController,
-  planPowerLinePylonSites,
   type PlacementGhostState,
   type PlacementGhostTile,
 } from './PlacementGhost';
@@ -17,9 +15,7 @@ export {
   createConstructionGhostRenderer,
   evaluatePlacementGhost,
   GHOST_IDLE_PICK_MS,
-  hexLine,
   PlacementGhostController,
-  planPowerLinePylonSites,
 };
 export type { PlacementGhostState, PlacementGhostTile };
 
@@ -28,7 +24,6 @@ declare module '../../core/registry/types' {
     /** Request placing a building ghost of the given kind. */
     startPlacement?: (building: BuildingKind | string) => void;
     setHoverTile?: (q: number, r: number) => void;
-    setPowerLineDrag?: (from: { q: number; r: number }, to: { q: number; r: number }) => void;
     rotate?: () => void;
     confirm?: () => boolean;
     cancel?: () => void;

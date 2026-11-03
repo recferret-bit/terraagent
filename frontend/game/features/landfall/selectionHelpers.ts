@@ -383,7 +383,7 @@ const BLDG_META: Record<number, { label: string; code: string; w: number; d: num
   [ENTITY_KIND.metalsExtractor]: { label: 'METALS EXTRACTOR', code: 'EXT', w: 2, d: 2, hpMax: 500 },
   [ENTITY_KIND.solar]: { label: 'SOLAR ARRAY', code: 'SOL', w: 2, d: 2, hpMax: 300 },
   [ENTITY_KIND.pod]: { label: 'DROP POD', code: 'POD', w: 1, d: 1, hpMax: 600 },
-  [ENTITY_KIND.pylon]: { label: 'POWER LINE PYLON', code: 'PYL', w: 1, d: 1, hpMax: 200 },
+  [ENTITY_KIND.pylon]: { label: 'POWER PYLON', code: 'PYL', w: 1, d: 1, hpMax: 200 },
   [ENTITY_KIND.capacitor]: { label: 'CAPACITOR BANK', code: 'CAP', w: 2, d: 2, hpMax: 350 },
   [ENTITY_KIND.wind]: { label: 'WIND TURBINE', code: 'WND', w: 2, d: 2, hpMax: 280 },
   [ENTITY_KIND.thermal]: { label: 'THERMAL PLANT', code: 'THM', w: 2, d: 2, hpMax: 550 },
