@@ -24,7 +24,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
-- **Area / code:** sim: `shared/sim/src/systems/construction/build.ts:45-50` (Hub cost 200/100/50/50), `shared/sim/src/systems/landing/index.ts:58` (cargo 600/350/200/200), `shared/sim/src/systems/construction/build.ts:227` and `index.ts:203` (`hp ?? 1500`), `shared/sim/src/systems/territory-claim/index.ts:77,135,137,139` (`claimRadius ?? 10`, `supplyCap ?? 10`, `?? 8`), `shared/sim/src/systems/hq/index.ts:294-296` (`?? 3`, `?? 20`, `?? 6`), `shared/sim/src/systems/terraform-basic/queue.ts:65-66` (`?? 3`, `?? 20`); client: `frontend/game/features/hud-min/MinimalHud.ts:107,110` (`cellMax ?? 800`), `frontend/game/features/landfall/selection.ts:179,181` (`?? 900`, `?? 800`), `frontend/game/features/hud-min/MinimalHud.ts:214,223,232` (`'0 / 500'` placeholders)
+- **Area / code:** sim: `shared/sim/src/systems/construction/build.ts:45-50` (Hub cost 200/100/50/50), `shared/sim/src/systems/landing/index.ts:58` (cargo 600/350/200/200), `shared/sim/src/systems/construction/build.ts:227` and `index.ts:203` (`hp ?? 1500`), `shared/sim/src/systems/territory-claim/index.ts:77,135,137,139` (`claimRadius ?? 10`, `supplyCap ?? 10` — removed, Resolved (47facdc): supply is computed by `systems/supply/` from `supplyProvided` rows —, `?? 8`), `shared/sim/src/systems/hq/index.ts:294-296` (`?? 3`, `?? 20`, `?? 6`), `shared/sim/src/systems/terraform-basic/queue.ts:65-66` (`?? 3`, `?? 20`); client: `frontend/game/features/hud-min/MinimalHud.ts:107,110` (`cellMax ?? 800`), `frontend/game/features/landfall/selection.ts:179,181` (`?? 900`, `?? 800`), `frontend/game/features/hud-min/MinimalHud.ts:214,223,232` (`'0 / 500'` placeholders)
 - **What happens:** the same balance values live in the data rows and as literal fallbacks. If a row is renamed or its field dropped, the code silently keeps running on the stale literal instead of failing, and a fallback cannot tell design units from compiled ticks (`landing/index.ts:70` `podDescentS ?? 30` is ticks, `queue.ts:65` `?? 3` is seconds). The client fallbacks show 800 / 900 even when the data says otherwise.
 - **Why it is like this:** defensive defaults for tests and for hosts started without W01 data.
 - **Workaround / mitigation:** all hosts load the W01 data, so the fallbacks are not reached in normal play.
@@ -479,3 +479,15 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **What happens:** W02 (`58956ab`) updated `tests/e2e/harness/stack.ts` so `npm run e2e -- --waves ..NN` boots the backend with `TA_WAVES=..NN`. W06 (`91aad6d`) gated `/dev/chain/` on `GET /v1/near/health` (`NearHealthController`), which returns `404` whenever `W06` is not in `TA_WAVES`. Because `/dev/chain/` is a W00 feature (`W00-35`, tested by `w00.spec.ts` Test 7), running `npm run e2e -- --waves ..03` booted the backend with `TA_WAVES=..03`, causing `/v1/near/health` to return `404` and `/dev/chain/` to render `Off` during `w00.spec.ts`.
 - **Fix:** `nearHealthStatus` in `frontend/game/dev/explorer/gate.ts` now probes `/v1/dev/chain/receipts?limit=1` (W00's dev chain explorer endpoint, guarded by `DevOnlyGuard` in production) while `wavesExcludeW06(location.search)` continues to gate explicit `?waves=..05` URLs (`w06.spec.ts` Test 7).
 - **Found:** 2026-11-03, W03 merge with `main`
+
+### XC-36 · Dead balance rows after the W03 owner-feedback pass
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/data/ops-basic.ts` (`TERRAFORM_TIME_TABLE.dismantle`), `hq.t1.cellFastRechargeShedGroup`, `ColonyPowerSummary.hqFastRechargeShed`, `docs/game/colony-economy-and-buildings-spec.md` (still says "Power Line Pylon"), `docs/plan/ISSUE_INDEX.md` (W03-01 row)
+- **What happens:** `TERRAFORM_TIME_TABLE.dismantle` (60 ticks, 5 E) no longer drives anything (dismantle is a work job, GP-69) and `w02-resource-harvest-terraform.spec.ts:49` still asserts its shape; the fast-recharge shed fields are unused (GP-67); design docs still describe the removed Power Line path tool.
+- **Why it is like this:** Left to avoid widening the owner-feedback change.
+- **Workaround / mitigation:** —
+- **To resolve:** Remove the rows and fields, update the spec text.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)

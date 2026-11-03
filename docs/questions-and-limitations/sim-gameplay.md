@@ -595,7 +595,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-51 · HQ fast recharge: suspended in a group-3 brownout now, but never counted as grid load
 
-- **Status:** Question for the owner (suspension: Resolved (2f1f2c1))
+- **Status:** Resolved (7e901d5): the HQ cell is now the grid's first store; the fast recharge is paid from grid surplus only (a surplus sink, never a load), so `hqFastRechargeShed`, `cellFastRechargeShedGroup` and the `hqFastRecharge` shed category are unused (see GP-67)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/hq/cell.ts` (`rechargePerTick`, `fastRechargeShed`), `shared/sim/src/systems/power-core/shedding.ts` (`hqFastRechargeShed`), `hq.t1.cellFastRechargeShedGroup`; `UO-HQ-06`, W01-11, W02-06
@@ -754,3 +754,75 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **What happens:** `production.produced` grows on every `creditResource` call except refunds (`refundCost` passes `produced: false`). Dev `fill` / grant commands and TERRAFORM / Harvester work-job yields therefore count as produced, and the W02-28 `resourceProduced` batches (Stockpile progression) include them, not only Extractor and Harvester output.
 - **To resolve:** pass `produced: false` from dev grants (and from terraform yields if Stockpile should count only extraction), or split the counter by source.
 - **Found:** 2026-11-03, W02 review round 1 (backend agent)
+
+### GP-66 · The HQ cell is the grid's first energy store (night brownout fix)
+
+- **Status:** Accepted (by design, 7e901d5)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/power-core/hqCell.ts`, `evaluate.ts`, `shared/sim/src/systems/hq/cell.ts` (`hqCellGridLinked`), `hq.t1.cellGridDischargePerS`
+- **What happens:** Owner report: "all works by day, all dies at night". The grid only used Capacitor Banks as storage and ignored the HQ cell, so at sunset group 3 was shed at once. Now, in the Hub's component, a deficit draws the HQ cell first (≤ 30 E/s), then the banks; surplus refills the cell first (≤ 20 E/s within 6 tiles of the Hub, else 3 E/s), then the banks. Shedding starts only when the stores can't cover the deficit. Once a Hub is built the free HQ self-recharge stops (it would be a free generator); with a deficit and an empty cell, HQ terraform progress drops to 0 — the 3 E/s trickle remains only before the Hub.
+- **Why it is like this:** A store that sits in the top bar should be the store the grid uses; the order cell → banks keeps the visible chip honest.
+- **Workaround / mitigation:** `cell <n>` sets it; the hover shows `Stored: ±N E/s`.
+- **To resolve:** Owner: confirm the order and the 30 / 20 / 3 E/s caps.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-67 · Energy retune: founder core 16 instead of a bigger cell
+
+- **Status:** Question for the owner
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** data rows `shared/sim/src/data/hub.ts`, `grid.ts`, `economy-t1-basic.ts`, `units-workers-basic.ts`, `hq.ts`
+- **What happens:** Owner feedback #3 ("too much energy"): every consumer costs more (Extractor −8, Quarry −10, Water −9, Well −12, Depot −3, Capacitor −2, Pylon −2.5, Harvester −2/−1, Builder −3; Solar net 13, Wind 12). To keep the W03 start alive through most of a night with the 800 E cell, the Hub founder core rose from +8 to +16 (drain −5 → −7). W03 start: day net about +10, night about −3 (cell lasts ~267 s with working Harvesters, the whole night when they idle); one more Extractor + Quarry browns out in under a minute at night. The W02 night-brownout demo no longer happens with one Extractor (+1 at night).
+- **Why it is like this:** The alternative, a bigger `hq.t1.cellCapacity`, needs the scenarios' hard-coded `cell` / `cellMax` changed too.
+- **Workaround / mitigation:** All numbers are data rows and `tune`-able.
+- **To resolve:** Owner: keep founder 16, or lower it and raise the cell capacity. Also: the `hqFastRechargeShed` / `cellFastRechargeShedGroup` fields are dead and `docs/game/colony-economy-and-buildings-spec.md` §2.2 ("fast recharge counts as group-3 load") is outdated — remove both.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-68 · Power zones: rule, radii and what counts
+
+- **Status:** Question for the owner (radii)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/construction/powerZone.ts`, `placement.ts` (`evaluatePlacement`), `power-core/graph.ts`; `hub.t1.powerZoneRadius` 6, `grid.pylon.powerZoneRadius` 5
+- **What happens:** Owner feedback #4 (Protoss-style pylons): with the W03 grid on (gated on the `grid.pylon` row) every building except the Command Hub must have its whole footprint inside the union of zones, else `outside_power_zone`; pylons too, which is how the network extends. Built, under-construction and queued pylons count for placement (so a chain can be queued in one go), only built ones power, so a building in an unfinished pylon's zone shows `offline: no grid` until it finishes. Cancelling or losing a Hub or pylon strands the buildings in its zone: unstarted orders wait `site (outside the power zone)`, built ones go `offline: no grid`, nothing is removed. W02-only planets place anywhere as before. `enqueueQueueTask` without `data` (internal / tests) skips the check at enqueue; it runs again when the order starts. The graph fallback "no Hub and no relays → everything powered" remains, reachable only through scenario / dev spawns.
+- **Why it is like this:** One field per source replaced `pylonSpan`, `attachRadius` and `dayCycle.pylonAttachRadius`; the graph uses the same zones so anything placeable is powered once its relays are built.
+- **Workaround / mitigation:** The zone is drawn while a building ghost is armed.
+- **To resolve:** Owner: tune the radii (6 / 5 picked by the agent).
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-69 · Dismantle is a timed work job; open details
+
+- **Status:** Accepted (by design, 7795d3d)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts`, the dismantle job files next to it, `shared/sim/src/data/work-crew.ts`
+- **What happens:** Owner feedback #6: a Builder Drone (else the HQ) walks to the building and takes it apart in 0.5 × build time, refunding 50 % step by step. Details: the building goes offline at order time (before the worker arrives), so dismantling a pylon splits the network at once; a cancel at ≥ 80 % leaves 1 HP and triggers a critical auto-repair; a dismantle takes a construction-lane slot from order time (with only the HQ, a queued build waits on `worker`); units are still recycled instantly (50 %) and the pod wreck is scrapped; the `demolish` command is still instant (unused by the client, a second path); multi-tile dismantles can't be cancelled by command id (job ids lack `chainRootId`; the client sends single tiles); no `buildingDismantled` event contract exists.
+- **Why it is like this:** Dismantle reuses the repair work-job machinery (`blobs.workJobs`), not a second worker path.
+- **Workaround / mitigation:** Cancel via CANCEL JOB on the building or the queue chip.
+- **To resolve:** Route `demolish` through the job or remove it; add a `buildingDismantled` event if a client needs it.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-70 · Crew speed-up and auto-help
+
+- **Status:** Accepted (by design, 7795d3d)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `workCrew.crew` (`helperEfficiency` 0.6, `maxCrew` 4, `autoHelpRadius` 12), `workCrew.repair.costRate` 0.4
+- **What happens:** Owner feedback #9: the k-th worker on a job adds `0.6^k` of its rate (1/2/3 Builders on a Solar site: 93 → 60 → 50 ticks, same 60 metals), payment and refunds follow progress so a crew costs what one worker costs. Repair costs 0.4 × cost × missing HP share and waits on `resources` at zero stock. Any idle Builder within 12 hexes joins an open repair or dismantle — including one the player parked — and can't take builds until that job ends; the HQ and Harvesters never auto-help.
+- **Why it is like this:** Diminishing returns stop a swarm from making work instant.
+- **Workaround / mitigation:** Give the Builder another order to pull it off.
+- **To resolve:** Owner: confirm that auto-help may grab parked Builders.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-71 · Unit supply: open details
+
+- **Status:** Question for the owner (depot power)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/supply/`, `hub.t1.supplyProvided` 10, `grid.supplyDepot.supplyProvided` 8, `hub.t1.supplyCapMax` 200
+- **What happens:** Owner feedback #2: supply is one module (`computeColonySupply`, `checkUnitSupply`, system `supply.sync` → `colony.supply`). A depot's supply counts only while it is finished and powered (same rule as storage caps): a browned-out depot drops the cap, units can sit over it, and production pauses. The `supply_cap` reject applies to every `enqueueTask` source — a future AI / HQ path would be rejected instead of queued (internal `enqueueQueueTask` callers still wait). The legacy `hubProduction` lane is still registered next to the queue `units` lane and supply counts reservations from both. `REJECT_TEXT_BY_KIND.enqueueTask.invalid_args` says "Invalid terraform order" even for an unknown unit.
+- **Why it is like this:** Matching storage caps keeps one "active provider" rule (`isActiveCapacityProvider`).
+- **Workaround / mitigation:** Keep the depot inside a powered zone; the HQ cell now carries nights.
+- **To resolve:** Owner: should depot supply ignore power? Remove the legacy Hub lane; word the unknown-unit reject.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)

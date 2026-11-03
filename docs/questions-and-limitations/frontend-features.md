@@ -759,7 +759,7 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 
 ### FF-47 · The top bar's energy chip is the HQ drone's power cell, not the colony grid
 
-- **Status:** Question for the owner
+- **Status:** Resolved (7e901d5): the chip is now truthfully the colony's first energy store and drains at night (GP-66)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/features/hud-min/MinimalHud.ts` (constructor `cellEl`, `update`),
@@ -783,7 +783,7 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 
 ### FF-48 · An Extractor on a Hub-only grid is shed at once; nothing says so before it is placed
 
-- **Status:** Question for the owner
+- **Status:** Resolved (7e901d5): after the retune one Extractor fits a Hub-only grid (+9 E/s headroom)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/features/construction-menu/catalog.ts` (`formatPower`), `ConstructionMenu.ts`;
@@ -1012,6 +1012,7 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/maps/`, `frontend/game/features/maps/index.ts`, `docs/plan/waves/W04-maps-camera.md`
+- **Update (2026-11-04, W03 merge review):** the Resources layer shipped in W04 (`MAP_LAYER_META.resources`), so W04-17 is no longer deferred; the Power map layer assigned to W03 does not exist (no `power` id in `shared/contracts/src/maps/index.ts`) — see FF-67.
 - **What happens:**
   1. **Deferred W04 issues (tags `F` and `L`):** per `docs/plan/waves/W04-maps-camera.md`, the 14 `H`-tagged issues (`W04-01`, `W04-03..05`, `W04-07`, `W04-09..11`, `W04-13..16`, `W04-22`, `W04-33`) ship in this wave. The `F` and `L` issues — `W04-02` (server `alertPing` emission; schema `alertPingEvent` is already registered in `shared/contracts/src/events/alert-ping.ts`), `W04-06` (separate three-state fog overlay pass; unexplored tiles are already painted `--ta-void` in `tileColors.ts`), `W04-08` (`alertPing` expanding ring + `Space` jump), `W04-12` (`Space` jump to last alert), `W04-17..20` (Resources, Power, Threats, Walls, Market map layers for W03/W05/W07/W08/W10/W11), `W04-21` (global map click-to-pan), and `W04-23..32` (unit follow ring, box-drag lasso, control groups `1..9`, double-tap, `Tab` sub-selection, `Home` key, touch pinch/pan) — remain scheduled for their respective full/launch waves and demo steps 6–9 are marked deferred in `docs/plan/checks/w04-check.md`.
   2. **Analytical frustum fallback in `cameraTrapezoid.ts`:** `computeCameraTrapezoid` projects the 4 NDC screen corners onto the ground plane via `projectFrustumRaysToGround(camera, groundY, dist * 3.5)`; when no `THREE.PerspectiveCamera` is provided (e.g. unit specs passing explicit `{ targetX, targetZ, yaw, dist }`) or a near-horizon ray does not intersect within `3.5 × dist`, it falls back to `computeAnalyticalWorldCorners`.
@@ -1031,3 +1032,63 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** none needed; `RESET [0]` recenters on the planet.
 - **To resolve:** draw summary tiles of adjacent sectors around the planet when W27 lands.
 - **Found:** 2026-11-03, W04 map fixes
+
+### FF-66 · Power-zone highlight only while a building ghost is armed
+
+- **Status:** Accepted (by design, dabc102)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/construction-menu/powerZoneOverlay.ts`
+- **What happens:** The blue zone fill + outline shows only while a non-Hub building ghost is armed; there is no always-on display and none on the Hub placement ghost; hexes are flat per tile at tile height.
+- **Why it is like this:** Keeps the scene clean outside placement.
+- **Workaround / mitigation:** Arm any building card (B) to see the zones.
+- **To resolve:** Add a toggle (or the map Power layer, FF-67) if the owner wants it always visible.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### FF-67 · No Power layer on the minimap / global map
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/contracts/src/maps/index.ts` (`MAP_LAYER_IDS`), `frontend/game/maps/layers/`
+- **What happens:** The W04 plan assigned a Power map layer to W03; W03 is merged with no `power` layer id, so zones, pylons and brownouts are not on the maps.
+- **Why it is like this:** Out of the W03 owner-feedback scope.
+- **Workaround / mitigation:** Building squares (incl. pylons) are drawn on the minimap.
+- **To resolve:** Add a `power` layer: zones tinted, shed buildings marked.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### FF-68 · Power HUD shows CONSTRUCTING for a building being dismantled
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/power-hud/PowerHud.ts` (~line 56)
+- **What happens:** A dismantle puts the building back into the `constructing` state with falling progress; the power inspector labels it CONSTRUCTING, the selection inspector and queue chip say "Dismantling n%".
+- **Why it is like this:** The power HUD reads the entity state only.
+- **Workaround / mitigation:** The queue chip and selection panel are correct.
+- **To resolve:** Read the colony work jobs and say DISMANTLING.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### FF-69 · Game hotkeys are quiet while the global map or the pause dialog is open
+
+- **Status:** Accepted (by design, 2489c56)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/core/input/gameInputBlock.ts` and its callers (CommandDock, ConstructionMenu, UnitsMenu, QueuePanel, PlacementGhost, terraform, unit control)
+- **What happens:** W04 review: B/U/T, ghost R / right-click, H, G/R/Z and X used to act behind the open map. One guard now blocks them while the map or pause dialog holds the block; the map's own keys and the dev console ignore it. The camera trapezoid updates at ≤ 4 Hz while panning with WASD (scheduler), minimap drag stays immediate. The ghost right-click guard has no unit spec (checked in the browser).
+- **Why it is like this:** One shared guard instead of scattered checks.
+- **Workaround / mitigation:** —
+- **To resolve:** Add a PlacementGhost spec for the right-click guard.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### FF-70 · Minimap owner codes −2 / −3 exist only on the client
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/maps/entityDots.ts`, `shared/sim/src/world/presence.ts` (`presenceRoleOf`)
+- **What happens:** The sim defines only owner −1 (unowned); −2 (fauna) and −3 (Guild) exist only in `entityDots.ts`, and no fauna kind is registered. Also `presenceRoleOf` treats every kind ≥ hub as `structure`, so Harvesters (7) and Builders (8) count as structures for presence / AI; nothing calls `registerPresenceRole`.
+- **Why it is like this:** Found by the W04 review; outside the map fix scope.
+- **Workaround / mitigation:** Unowned entities draw neutral steel.
+- **To resolve:** Define owner codes in contracts; register presence roles for unit kinds.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)

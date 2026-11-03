@@ -922,3 +922,27 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **To resolve:** build the same vector `beginnormal_vertex` would (`normal`, times `instanceMatrix` when instancing) inside the chunk.
 - **Found:** 2026-11-02, W06 e2e (`npm run e2e -- --waves 01 --hack`)
 - **Fix:** `vertBeginVertex` no longer reads `objectNormal`.
+
+### RN-64 · Grid cables are a visual tree, not the sim's adjacency
+
+- **Status:** Accepted (by design, 4b45c18)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/app/online/powerCableSpans.ts`, `frontend/render/lighting/gridCables/`
+- **What happens:** Cables are a minimum spanning tree per synced grid component (Hub + pylons, 2 conductors per span) plus one thin cable from each attached building to its nearest relay. A pylon may reach more relays in the sim than it is wired to on screen; cables can clip through a building between two nodes; only the own colony's cables are drawn, with no shroud tint and no quality / `?perf` switch.
+- **Why it is like this:** Two draw calls, geometry rebuilt only on shape change, zero per-frame allocation.
+- **Workaround / mitigation:** —
+- **To resolve:** Route cables around footprints; add a quality switch if perf needs it.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### RN-65 · Buildings without their own light entry inherit the 4-corner mine rig
+
+- **Status:** Open
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/lighting/archetypeLights.ts` (`DEFAULT_ARCHETYPE_LIGHTS`, `resolveDefaultLights`)
+- **What happens:** Owner feedback #5 found that the pylon had 4 light sources because `building.pylon` had no entry and fell back to `building.mine`'s 4-corner rig; fixed for the pylon (single grid-core light). Capacitor, wind, coalGen, supplyDepot, waterPump and the quarry / well mapped to mine still inherit the 4-corner rig. Pylons and other unlisted buildings also go through the unit branch of `collectOwnedEntityVisionAndProjectors` and add forward vision sources at +2.8 m / +7.5 m like robots. The pylon's insulator caps are now `hullSecondary`, which reads tan / orange on dune.
+- **Why it is like this:** Out of the owner's item scope (pylon only).
+- **Workaround / mitigation:** —
+- **To resolve:** Give each building archetype an explicit light entry; route buildings through a building vision branch.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
