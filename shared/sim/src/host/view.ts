@@ -1,4 +1,4 @@
-import type { CompiledRow } from '../data';
+import { getStageSpec, type CompiledRow } from '../data';
 import { ENTITY_KIND } from '../ecs/columns';
 import type { PlanetState, PlanetType } from '../kernel/state';
 import {
@@ -10,6 +10,7 @@ import {
 } from '../systems/goals';
 import { resolveHarvesterRow } from '../systems/harvest/unit';
 import type { HqJob, HqUnitView } from '../systems/hq';
+import { getColonyProgression } from '../systems/progression';
 
 /**
  * W00 view: a minimal read-only projection for render/HUD. Tile arrays are shared with the state (no copy; do not
@@ -46,6 +47,10 @@ export interface ViewColony {
   stage?: number;
   unlockStage?: number;
   threatStage?: number;
+  stageDwellRemainingS?: number | null;
+  dwellRemainingS?: number | null;
+  dwellRemainingTicks?: number | null;
+  nextStageConditionText?: string;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -113,9 +118,23 @@ export function view(state: PlanetState): SimView {
     out.goals = getColonyGoals(state, k.index);
     out.goalLimit = getHqGoalLimit(state, k.index);
     out.priorities = getColonyPriorities(state, k.index);
-    out.stage = typeof k.stage === 'number' ? k.stage : 0;
-    out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : out.stage;
-    out.threatStage = typeof k.threatStage === 'number' ? k.threatStage : 0;
+    const prog = getColonyProgression(state, k.index);
+    out.stage = typeof k.stage === 'number' ? k.stage : prog.stage;
+    out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : prog.unlockStage;
+    out.threatStage = typeof k.threatStage === 'number' ? k.threatStage : prog.threatStage;
+    out.dwellRemainingTicks =
+      typeof k.dwellRemainingTicks === 'number' ? k.dwellRemainingTicks : prog.dwellRemainingTicks;
+    out.dwellRemainingS =
+      typeof k.stageDwellRemainingS === 'number'
+        ? k.stageDwellRemainingS
+        : typeof k.dwellRemainingS === 'number'
+          ? k.dwellRemainingS
+          : prog.dwellRemainingS;
+    out.stageDwellRemainingS = out.dwellRemainingS;
+    out.nextStageConditionText =
+      typeof k.nextStageConditionText === 'string'
+        ? k.nextStageConditionText
+        : prog.nextStageConditionText || (getStageSpec(out.stage + 1)?.unlockConditionText ?? '');
     return out;
   });
   return {
