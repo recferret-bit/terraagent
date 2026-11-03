@@ -111,6 +111,7 @@ export interface EnqueueQueueTaskOptions {
   task: QueueTaskPayload;
   precedence?: QueuePrecedence;
   taskId?: string;
+  goalId?: string;
   costOverride?: Partial<Record<ResourceKey, number>>;
   tick?: number;
   data?: CompiledDataLike;
@@ -303,6 +304,7 @@ export function enqueueQueueTask(
     buildTicks,
     elapsedTicks: 0,
     workRate,
+    ...(opts.goalId ? { goalId: opts.goalId } : {}),
     createdAt: tick,
   };
 
