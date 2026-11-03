@@ -16,7 +16,6 @@ import { MinimapHud } from './MinimapHud';
 import { bindMinimapInput } from './minimapInput';
 import { GlobalMapOpenCloseController, type MapNavAction } from './openCloseController';
 import { drawResourcesLayer } from './resourceLayer';
-import { drawUnchartedLattice } from './unchartedLattice';
 import { inHex } from '@terra/sim/grid/hex';
 import {
   axialToCanvasPixel,
@@ -240,7 +239,6 @@ export class MapsController {
     this.globalViewport.applyToContext(ctx2d, w, h);
     ctx2d.translate((w - size) / 2, (h - size) / 2);
     ctx2d.imageSmoothingEnabled = false;
-    drawUnchartedLattice(ctx2d, size, radius, this.globalViewport.transform.zoom, w, h);
     const active = this.chipController.getActiveSet();
     const visible = this.chipController.getVisibleLayers();
     this.lastComposite = renderCompositeMapLayers(ctx2d, drawView, active, visible);

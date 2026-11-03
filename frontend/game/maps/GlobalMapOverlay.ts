@@ -60,6 +60,7 @@ function buildHeaderDom(onClose?: () => void): {
 
 export class GlobalMapOverlay {
   readonly el: HTMLElement;
+  readonly dialogEl: HTMLElement;
   readonly headerEl: HTMLElement;
   readonly chipBarEl: HTMLElement;
   readonly closeBtn: HTMLButtonElement;
@@ -78,6 +79,7 @@ export class GlobalMapOverlay {
   private openState = false;
   private resizeObserver: ResizeObserver | null = null;
   private readonly readoutText: HTMLElement;
+  private backdropPointerDown = false;
 
   constructor(opts: GlobalMapOverlayOptions) {
     this.onCloseClick = opts.onCloseClick;
@@ -85,7 +87,7 @@ export class GlobalMapOverlay {
     this.onRender = opts.onRender;
 
     this.el = document.createElement('div');
-    this.el.className = 'ta-global-map plate';
+    this.el.className = 'ta-global-map';
     this.el.dataset.testid = 'global-map-overlay';
     this.el.dataset.open = 'false';
     this.el.setAttribute('role', 'dialog');
@@ -140,7 +142,12 @@ export class GlobalMapOverlay {
     this.legendEl.setAttribute('aria-label', 'Map legend');
 
     body.append(this.stageEl, this.legendEl);
-    this.el.append(this.headerEl, body);
+    this.dialogEl = document.createElement('div');
+    this.dialogEl.className = 'ta-global-map__dialog plate';
+    this.dialogEl.dataset.testid = 'global-map-dialog';
+    this.dialogEl.append(this.headerEl, body);
+    this.el.append(this.dialogEl);
+    this.bindBackdropClose();
     opts.parent.appendChild(this.el);
 
     this.ctx = getSafe2dContext(this.canvas);
@@ -150,6 +157,18 @@ export class GlobalMapOverlay {
     if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
       window.addEventListener('keydown', this.onKeyDownBound, true);
     }
+  }
+
+  /** A click that both starts and ends on the blurred backdrop (outside the dialog) closes the map. */
+  private bindBackdropClose(): void {
+    this.el.addEventListener('pointerdown', (e) => {
+      this.backdropPointerDown = e.target === this.el;
+    });
+    this.el.addEventListener('click', (e) => {
+      const fromBackdrop = this.backdropPointerDown && e.target === this.el;
+      this.backdropPointerDown = false;
+      if (fromBackdrop) this.onCloseClick?.();
+    });
   }
 
   get isOpen(): boolean {
@@ -177,7 +196,7 @@ export class GlobalMapOverlay {
     }
   }
 
-  /** Sizes the canvas backing store (1 px = 1 CSS px) to the stage so the map fills the whole screen. */
+  /** Sizes the canvas backing store (1 px = 1 CSS px) to the stage so the map fills the dialog. */
   fitCanvasToStage(): boolean {
     const w = Math.round(this.stageEl.clientWidth);
     const h = Math.round(this.stageEl.clientHeight);

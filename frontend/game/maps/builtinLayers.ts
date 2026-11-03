@@ -46,7 +46,7 @@ export function drawFlatMapBackground(
   ctx: CanvasRenderingContext2D,
   view: MapLayerDrawView,
 ): void {
-  // Terrain off: no opaque square. The caller shows its own backdrop (blurred scene + uncharted lattice).
+  // Terrain off: no opaque square. The caller shows its own backdrop (flat translucent dialog over the blurred scene).
   void ctx;
   void view;
 }
