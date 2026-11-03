@@ -34,6 +34,7 @@ export interface PowerGraph {
   components: PowerGraphComponent[];
   componentByRelayId: Map<number, number>;
   componentByBuildingId: Map<number, number>;
+  attachedRelayByBuildingId: Map<number, number>;
   unattachedBuildingRows: number[];
   unattachedBuildingIds: number[];
   hasHub: boolean;
@@ -206,11 +207,13 @@ function attachBuildingsToRelays(
   hasHub: boolean,
 ): {
   componentByBuildingId: Map<number, number>;
+  attachedRelayByBuildingId: Map<number, number>;
   unattachedBuildingRows: number[];
   unattachedBuildingIds: number[];
 } {
   const e = state.entities, cols = e.cols;
   const componentByBuildingId = new Map<number, number>();
+  const attachedRelayByBuildingId = new Map<number, number>();
   const unattachedBuildingRows: number[] = [];
   const unattachedBuildingIds: number[] = [];
 
@@ -232,7 +235,7 @@ function attachBuildingsToRelays(
       comp.attachedBuildingRows.push(row);
       comp.attachedBuildingIds.push(bId);
     }
-    return { componentByBuildingId, unattachedBuildingRows, unattachedBuildingIds };
+    return { componentByBuildingId, attachedRelayByBuildingId, unattachedBuildingRows, unattachedBuildingIds };
   }
 
   for (let row = 0; row < e.count; row++) {
@@ -265,6 +268,7 @@ function attachBuildingsToRelays(
     if (bestRelay !== null) {
       const cId = bestRelay.componentId;
       componentByBuildingId.set(bId, cId);
+      attachedRelayByBuildingId.set(bId, bestRelay.id);
       components[cId].attachedBuildingRows.push(row);
       components[cId].attachedBuildingIds.push(bId);
     } else {
@@ -273,7 +277,7 @@ function attachBuildingsToRelays(
       unattachedBuildingIds.push(bId);
     }
   }
-  return { componentByBuildingId, unattachedBuildingRows, unattachedBuildingIds };
+  return { componentByBuildingId, attachedRelayByBuildingId, unattachedBuildingRows, unattachedBuildingIds };
 }
 
 /** Constructs the complete Power Graph v2 for `colonyIndex`. */
@@ -287,7 +291,7 @@ export function buildPowerGraph(
   const dayCycleRow = resolvePowerRow(data, 'economyT1Basic', 'dayCycle');
   const attachRadius = Number(dayCycleRow.pylonAttachRadius ?? 3);
 
-  const { componentByBuildingId, unattachedBuildingRows, unattachedBuildingIds } = attachBuildingsToRelays(
+  const { componentByBuildingId, attachedRelayByBuildingId, unattachedBuildingRows, unattachedBuildingIds } = attachBuildingsToRelays(
     state, colonyIndex, relayNodes, components, attachRadius, hasHub,
   );
 
@@ -296,6 +300,7 @@ export function buildPowerGraph(
     components,
     componentByRelayId,
     componentByBuildingId,
+    attachedRelayByBuildingId,
     unattachedBuildingRows,
     unattachedBuildingIds,
     hasHub,

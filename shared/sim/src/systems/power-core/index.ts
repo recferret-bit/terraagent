@@ -25,6 +25,7 @@ export * from './thermal';
 export * from './graph';
 export * from './windAndCap';
 export * from './evaluate';
+export * from './overload';
 export { collectWorkLoad, terraformOpShedGroup, type WorkLoad } from './workLoad';
 
 let cachedW02Data: CompiledDataLike | null = null;
@@ -90,6 +91,8 @@ export function evaluateColonyPower(
 
   const unpoweredEntityIds: number[] = [], nightSolarEntityIds: number[] = [], noFuelEntityIds: number[] = [];
   const allShedEntityIds: number[] = [], allShedWorkJobIds: string[] = [];
+  const allOverloadedEntityIds: number[] = [];
+  const pylonLoads: Record<number, { flow: number; max: number; overloaded?: boolean; shedEntityIds?: number[] }> = {};
   const allShedGroupsSet = new Set<number>();
   let hqFastRechargeShed = false;
   let totalShedWorkDemand = 0;
@@ -99,7 +102,7 @@ export function evaluateColonyPower(
 
   for (const comp of graph.components) {
     const res = evaluateSingleComponent(
-      state, colonyIndex, comp, env, windOut, unitDemand, work, graph.hubAnchors, dtTicks, tick, data,
+      state, colonyIndex, comp, graph, env, windOut, unitDemand, work, graph.hubAnchors, dtTicks, tick, data,
     );
     componentsSummary.push(res.summary);
     totalSupply += res.effectiveSupply;
@@ -115,6 +118,8 @@ export function evaluateColonyPower(
     nightSolarEntityIds.push(...res.nightSolarIds);
     noFuelEntityIds.push(...res.noFuelIds);
     allShedEntityIds.push(...res.shed.shedEntityIds);
+    allOverloadedEntityIds.push(...res.overloadedEntityIds);
+    Object.assign(pylonLoads, res.pylonLoads);
     for (const g of res.shed.shedGroupsActive) allShedGroupsSet.add(g);
     allShedWorkJobIds.push(...res.shed.shedWorkJobIds);
     totalShedWorkDemand += res.shed.shedWorkDemand;
@@ -125,7 +130,16 @@ export function evaluateColonyPower(
 
   processUnattachedBuildings(state, graph, tick, unpoweredEntityIds, offlineReasons, entityPower, data);
 
-  applyOfflineStatuses(graph, unpoweredEntityIds, nightSolarEntityIds, noFuelEntityIds, allShedEntityIds, offlineReasons, entityPower);
+  applyOfflineStatuses(
+    graph,
+    unpoweredEntityIds,
+    nightSolarEntityIds,
+    noFuelEntityIds,
+    allShedEntityIds,
+    allOverloadedEntityIds,
+    offlineReasons,
+    entityPower,
+  );
 
   const workDemand = Math.max(0, Number((work.demand - totalShedWorkDemand).toFixed(4)));
   const effectiveSupply = Math.max(0, Number(totalSupply.toFixed(4)));
@@ -147,6 +161,7 @@ export function evaluateColonyPower(
     shedGroupsActive, shedEntityIds: allShedEntityIds, shedWorkJobIds: allShedWorkJobIds,
     unpoweredEntityIds, hqFastRechargeShed, offlineReasons,
     daylight: env.daylight, phase: env.phase, clockText: env.clockText, entityPower, components: componentsSummary,
+    pylonLoads, overloadedEntityIds: allOverloadedEntityIds,
   };
 }
 
@@ -185,9 +200,11 @@ export function recomputeAllColonyPower(
   data?: CompiledDataLike,
   tick: number = state.meta.tick,
   dtTicks = 0,
+  ctx?: StepContext,
 ): Record<number, ColonyPowerSummary> {
   const prevTrackers = (state.blobs.power?.value as { trackers?: Record<number, PowerEventTracker> } | undefined)?.trackers ?? {};
   const byColony: Record<number, ColonyPowerSummary> = {};
+  const trackers: Record<number, PowerEventTracker> = {};
   const colonyIndices = new Set<number>();
   for (const c of state.colonies) colonyIndices.add(c.index);
   for (let row = 0; row < state.entities.count; row++) colonyIndices.add(state.entities.cols.owner[row]);
@@ -196,10 +213,13 @@ export function recomputeAllColonyPower(
   for (const idx of colonyIndices) {
     const summary = evaluateColonyPower(state, idx, data, tick, dtTicks);
     byColony[idx] = summary;
+    if (ctx) {
+      trackers[idx] = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, data);
+    }
     const col = state.colonies[idx];
     if (col) { col.power = summary; col.changedAt = tick; }
   }
-  setBlob(state, 'power', { byColony, trackers: prevTrackers }, tick);
+  setBlob(state, 'power', { byColony, trackers: ctx ? trackers : prevTrackers }, tick);
   return byColony;
 }
 

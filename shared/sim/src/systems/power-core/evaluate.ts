@@ -9,6 +9,12 @@ import { evaluateWindOutput, stepCapacitorsForComponent } from './windAndCap';
 import { stepThermalPlantFuel } from './thermal';
 import { resolvePowerRow, computeSolarOutputPerS } from './index';
 import type { EntityPowerStatus, PowerComponentSummary } from './types';
+import {
+  checkComponentPylonOverload,
+  type ComponentOverloadResult,
+  type OverloadPylonInfo,
+  type PylonLoadInfo,
+} from './overload';
 
 export interface ComponentEvalResult {
   summary: PowerComponentSummary;
@@ -26,6 +32,9 @@ export interface ComponentEvalResult {
   noFuelIds: number[];
   onlineEntityIds: number[];
   shed: SheddingResult;
+  pylonLoads: Record<number, PylonLoadInfo>;
+  overloadedPylons: OverloadPylonInfo[];
+  overloadedEntityIds: number[];
 }
 
 export interface ComponentBuildingsResult {
@@ -151,36 +160,55 @@ export function evaluateComponentBuildingRows(
   };
 }
 
-export function evaluateSingleComponent(
+function computeComponentDemands(
   state: PlanetState,
   colonyIndex: number,
   comp: PowerGraphComponent,
-  env: ReturnType<typeof getEnvironment>,
-  windOut: ReturnType<typeof evaluateWindOutput>,
+  bRes: ComponentBuildingsResult,
+  overloadRes: ComponentOverloadResult,
   unitDemand: number,
-  work: { demand: number; candidates: ShedCandidate[] },
-  hubAnchors: ReadonlyArray<{ q: number; r: number }>,
-  dtTicks: number,
-  tick: number,
-  data?: CompiledDataLike,
-): ComponentEvalResult {
-  const e = state.entities, cols = e.cols;
-  const hubRow = resolvePowerRow(data, 'hub', 't1');
-  const founderCorePerHub = Number(hubRow.founderCoreGenPerS ?? 8);
-  const hubDrainPerHub = Number(hubRow.powerDrainPerS ?? 5);
-
-  const bRes = evaluateComponentBuildingRows(state, colonyIndex, comp, env, windOut, dtTicks, tick, data);
-  const genSupply = comp.hubIds.length * founderCorePerHub + bRes.genSupply;
-  const compBuildingDemand = comp.hubIds.length * hubDrainPerHub + comp.pylonIds.length * 0.5 + bRes.compDemand;
+  workDemand: number,
+  hubDrainPerHub: number,
+): { compBuildingDemand: number; compUnitDemand: number; compWorkDemand: number; compRawDemand: number } {
+  let compBuildingDemand = comp.hubIds.length * hubDrainPerHub + comp.pylonIds.length * 0.5 + bRes.compDemand;
+  if (overloadRes.shedConsumerRows.size > 0) {
+    for (const c of bRes.shedCandidates) {
+      if (overloadRes.shedConsumerRows.has(c.row)) {
+        compBuildingDemand = Math.max(0, Number((compBuildingDemand - c.drainPerS).toFixed(4)));
+      }
+    }
+  }
 
   const compUnitDemand = comp.hasHub ? unitDemand : 0;
-  const compWorkDemand = comp.hasHub ? work.demand : 0;
-  const compWorkCandidates = comp.hasHub ? work.candidates : [];
-  const compSyntheticLoad = getComponentSyntheticLoad(state.colonies[colonyIndex], comp);
+  const compWorkDemand = comp.hasHub ? workDemand : 0;
+  let compSyntheticLoad = getComponentSyntheticLoad(state.colonies[colonyIndex], comp);
+  if (overloadRes.absorbedSyntheticLoad > 0) {
+    compSyntheticLoad = Math.max(0, Number((compSyntheticLoad - overloadRes.absorbedSyntheticLoad).toFixed(4)));
+  }
   const compRawDemand = Number((compBuildingDemand + compUnitDemand + compWorkDemand + compSyntheticLoad).toFixed(4));
+  return { compBuildingDemand, compUnitDemand, compWorkDemand, compRawDemand };
+}
 
-  const hasCapStored = bRes.capRows.some((r) => (cols.cell?.[r] ?? 0) > 0);
-  const isPowered = genSupply > 0 || hasCapStored;
+function buildUnpoweredComponentResult(
+  state: PlanetState,
+  comp: PowerGraphComponent,
+  bRes: ComponentBuildingsResult,
+  overloadRes: ComponentOverloadResult,
+  compRawDemand: number,
+  isW03: boolean,
+  tick: number,
+): ComponentEvalResult {
+  const e = state.entities, cols = e.cols;
+  const unpoweredIds: number[] = [];
+  for (const row of comp.attachedBuildingRows) {
+    const id = cols.id[row], kind = cols.kind[row], st = cols.state[row];
+    if (st === ENTITY_STATE.constructing) continue;
+    if (kind !== ENTITY_KIND.solar && kind !== ENTITY_KIND.wind && kind !== ENTITY_KIND.thermal) {
+      unpoweredIds.push(id);
+      const targetState = isW03 ? ENTITY_STATE.offlineNoGrid : ENTITY_STATE.offlineUnpowered;
+      if (st !== targetState) setField(e, row, 'state', targetState, tick);
+    }
+  }
 
   const emptyShed: SheddingResult = {
     shedEntityIds: [],
@@ -192,40 +220,76 @@ export function evaluateSingleComponent(
     shedWorkDemand: 0,
   };
 
+  return {
+    summary: {
+      componentId: comp.componentId, entityIds: [...comp.hubIds, ...comp.pylonIds, ...comp.attachedBuildingIds],
+      pylonIds: comp.pylonIds, hasHub: comp.hasHub, supply: 0, demand: 0, rawDemand: compRawDemand, net: 0, powered: false,
+      shedEntityIds: [], shedGroupsActive: [], deficitPerS: compRawDemand,
+    },
+    genSupply: 0, effectiveSupply: 0, demand: 0, rawDemand: compRawDemand, buildingDemand: 0,
+    solarGross: bRes.solarGross, solarDrain: bRes.solarDrain, solarNet: bRes.solarNet,
+    thermalGross: bRes.thermalGross, thermalDrain: bRes.thermalDrain, thermalNet: bRes.thermalNet,
+    windGross: bRes.windGross, windDrain: bRes.windDrain, windNet: bRes.windNet,
+    capStoredE: 0, capCapacityE: 0, capDischargePerS: 0, capChargePerS: 0,
+    unpoweredIds, nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, onlineEntityIds: [],
+    shed: emptyShed,
+    pylonLoads: overloadRes.pylonLoads,
+    overloadedPylons: overloadRes.overloadedPylons,
+    overloadedEntityIds: overloadRes.overloadedShedEntityIds,
+  };
+}
+
+export function evaluateSingleComponent(
+  state: PlanetState,
+  colonyIndex: number,
+  comp: PowerGraphComponent,
+  graph: PowerGraph,
+  env: ReturnType<typeof getEnvironment>,
+  windOut: ReturnType<typeof evaluateWindOutput>,
+  unitDemand: number,
+  work: { demand: number; candidates: ShedCandidate[] },
+  hubAnchors: ReadonlyArray<{ q: number; r: number }>,
+  dtTicks: number,
+  tick: number,
+  data?: CompiledDataLike,
+): ComponentEvalResult {
+  const cols = state.entities.cols;
+  const hubRow = resolvePowerRow(data, 'hub', 't1');
+  const founderCorePerHub = Number(hubRow.founderCoreGenPerS ?? 8);
+  const hubDrainPerHub = Number(hubRow.powerDrainPerS ?? 5);
+
+  const bRes = evaluateComponentBuildingRows(state, colonyIndex, comp, env, windOut, dtTicks, tick, data);
+  const genSupply = comp.hubIds.length * founderCorePerHub + bRes.genSupply;
+
+  const isW03 = Boolean((data?.tables?.grid as Record<string, unknown> | undefined)?.pylon);
+  const overloadRes = isW03
+    ? checkComponentPylonOverload(state, colonyIndex, comp, graph, bRes, env, windOut, tick, data)
+    : { overloadedPylons: [], overloadedShedEntityIds: [], pylonLoads: {}, shedConsumerRows: new Set<number>(), absorbedSyntheticLoad: 0 };
+
+  const { compUnitDemand, compWorkDemand, compRawDemand } = computeComponentDemands(
+    state, colonyIndex, comp, bRes, overloadRes, unitDemand, work.demand, hubDrainPerHub,
+  );
+
+  const hasCapStored = bRes.capRows.some((r) => (cols.cell?.[r] ?? 0) > 0);
+  const isPowered = genSupply > 0 || hasCapStored;
+
   if (!isPowered) {
-    const isW03 = Boolean((data?.tables?.grid as Record<string, unknown> | undefined)?.pylon);
-    const unpoweredIds: number[] = [];
-    for (const row of comp.attachedBuildingRows) {
-      const id = cols.id[row], kind = cols.kind[row], st = cols.state[row];
-      if (st === ENTITY_STATE.constructing) continue;
-      if (kind !== ENTITY_KIND.solar && kind !== ENTITY_KIND.wind && kind !== ENTITY_KIND.thermal) {
-        unpoweredIds.push(id);
-        const targetState = isW03 ? ENTITY_STATE.offlineNoGrid : ENTITY_STATE.offlineUnpowered;
-        if (st !== targetState) setField(e, row, 'state', targetState, tick);
-      }
-    }
-    return {
-      summary: {
-        componentId: comp.componentId, entityIds: [...comp.hubIds, ...comp.pylonIds, ...comp.attachedBuildingIds],
-        pylonIds: comp.pylonIds, hasHub: comp.hasHub, supply: 0, demand: 0, rawDemand: compRawDemand, net: 0, powered: false,
-        shedEntityIds: [], shedGroupsActive: [], deficitPerS: compRawDemand,
-      },
-      genSupply: 0, effectiveSupply: 0, demand: 0, rawDemand: compRawDemand, buildingDemand: 0,
-      solarGross: bRes.solarGross, solarDrain: bRes.solarDrain, solarNet: bRes.solarNet,
-      thermalGross: bRes.thermalGross, thermalDrain: bRes.thermalDrain, thermalNet: bRes.thermalNet,
-      windGross: bRes.windGross, windDrain: bRes.windDrain, windNet: bRes.windNet,
-      capStoredE: 0, capCapacityE: 0, capDischargePerS: 0, capChargePerS: 0,
-      unpoweredIds, nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, onlineEntityIds: [],
-      shed: emptyShed,
-    };
+    return buildUnpoweredComponentResult(state, comp, bRes, overloadRes, compRawDemand, isW03, tick);
   }
 
   const capRes = stepCapacitorsForComponent(state, bRes.capRows, genSupply, compRawDemand, dtTicks, tick, data);
   const effectiveSupply = Number((genSupply + capRes.dischargePerS).toFixed(4));
 
-  const compCandidates = [...bRes.shedCandidates, ...compWorkCandidates];
+  const remainingCandidates = bRes.shedCandidates.filter((c) => !overloadRes.shedConsumerRows.has(c.row));
+  const compWorkCandidates = comp.hasHub ? work.candidates : [];
+  const compCandidates = [...remainingCandidates, ...compWorkCandidates];
   const compAnchors = comp.hasHub ? hubAnchors : [];
   const shed = applyBrownoutShedding(state, colonyIndex, effectiveSupply, compRawDemand, compCandidates, compAnchors, tick, data);
+
+  for (const id of overloadRes.overloadedShedEntityIds) {
+    shed.offlineReasons[id] = 'offline: overload';
+  }
+  const totalShedEntityIds = [...overloadRes.overloadedShedEntityIds, ...shed.shedEntityIds];
 
   const compRemainingDemand = shed.remainingDemand;
   const compNet = Number((effectiveSupply - compRemainingDemand).toFixed(4));
@@ -239,7 +303,7 @@ export function evaluateSingleComponent(
     summary: {
       componentId: comp.componentId, entityIds: [...comp.hubIds, ...comp.pylonIds, ...comp.attachedBuildingIds],
       pylonIds: comp.pylonIds, hasHub: comp.hasHub, supply: effectiveSupply, demand: compRemainingDemand, rawDemand: compRawDemand,
-      net: compNet, powered: true, shedEntityIds: shed.shedEntityIds, shedGroupsActive: shed.shedGroupsActive, deficitPerS,
+      net: compNet, powered: true, shedEntityIds: totalShedEntityIds, shedGroupsActive: shed.shedGroupsActive, deficitPerS,
     },
     genSupply, effectiveSupply, demand: compRemainingDemand, rawDemand: compRawDemand, buildingDemand: compBuildingRemainingDemand,
     solarGross: bRes.solarGross, solarDrain: bRes.solarDrain, solarNet: bRes.solarNet,
@@ -248,6 +312,9 @@ export function evaluateSingleComponent(
     capStoredE: capRes.storedE, capCapacityE: capRes.capacityE, capDischargePerS: capRes.dischargePerS, capChargePerS: capRes.chargePerS,
     unpoweredIds: [], nightSolarIds: bRes.nightSolarIds, noFuelIds: bRes.noFuelIds, onlineEntityIds: bRes.onlineEntityIds,
     shed,
+    pylonLoads: overloadRes.pylonLoads,
+    overloadedPylons: overloadRes.overloadedPylons,
+    overloadedEntityIds: overloadRes.overloadedShedEntityIds,
   };
 }
 
@@ -303,6 +370,7 @@ export function applyOfflineStatuses(
   nightSolarEntityIds: number[],
   noFuelEntityIds: number[],
   shedEntityIds: number[],
+  overloadedEntityIds: number[],
   offlineReasons: Record<number, string>,
   entityPower: Record<number, EntityPowerStatus>,
 ): void {
@@ -323,5 +391,9 @@ export function applyOfflineStatuses(
   }
   for (const id of shedEntityIds) {
     entityPower[id] = { state: 'offline', reason: 'offline: brownout', component: graph.componentByBuildingId.get(id) ?? -1 };
+  }
+  for (const id of overloadedEntityIds) {
+    offlineReasons[id] = 'offline: overload';
+    entityPower[id] = { state: 'offline', reason: 'offline: overload', component: graph.componentByBuildingId.get(id) ?? -1 };
   }
 }
