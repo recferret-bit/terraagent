@@ -571,3 +571,13 @@ Format: [README](./README.md).
 - **What happens:** besides the `forest` / `rock` mirrors of the `opsBasic` yields (already `@deprecated`), the table lists rates no system reads: `harvester.metals` 1.875/s, `harvester.minerals` 1.5/s, `harvester.oil` 1.25/s (the row gives 0.5/s: `harvestRatePerS` 2.0 × 0.25), `extractor.metals.t1` 2.5/s (the row gives 1.0/s: `outputPerS` 4.0 × 0.25), `solar.t1` 20 E/s (matches `netOutputPerS` 20) and `command.hub` 8 E/s + 0.5 water/s. Only the spec asserts them; a reader of the table gets the wrong harvester and extractor rates.
 - **To resolve:** delete the rate entries (keep the yield mirrors until their callers move to `groundWorkYields`) and drop them from the spec, or derive them from the compiled rows.
 - **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### WE-32 · W27 planet topology defaults and production scale remain proposed
+
+- **Status:** Open
+- **Area / code:** [W27 planet wave](../plan/waves/W27-planet-sectors.md), world generation, sector storage, planet admission, globe projection
+- **What happens:** the owner requested configurable 3–5-player sectors and 150-sector continents. The planning default is radius 24 (1,801 tiles), capacity 4, Kharon with one supercontinent, Thalassa/Granite with three continents each. One authoritative finite atlas supplies the globe and map; polar travel and circumnavigation are not implemented by that projection. These are planning assumptions, not owner-approved balance values or shipped features.
+- **Why it is like this:** the current sim is planar; regular hexagons alone cannot form a closed spherical grid. Exact sector geometry constrains Y; a three-continent planet reaches 2,250 seats at X=5, exceeding current identity, fog, memory and full-state replication assumptions.
+- **Workaround / mitigation:** W27 makes topology/config immutable per world, tests 1/3-continent and 3/4/5-seat presets, adds wide identities and bounded residency, and gates advertised capacity on measured load. Existing WE-06 and WE-29 remain unresolved by this documentation.
+- **To resolve:** implement and validate W27; confirm balance defaults through its owner check. Production instance provisioning and cross-instance distribution remain for the owner's later scope. If true spherical traversal is required, revise the topology contract before W27-03 and explicitly support exceptional cells. Preserve current worlds rather than silently regenerate them.
+- **Found:** 2026-11-03, parallel wave/planet architecture review.

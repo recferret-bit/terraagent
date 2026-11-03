@@ -2,7 +2,7 @@
 
 > **Status:** v1 (2026-10-30). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
 > **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-42; D-42 = W02 as-built build rules; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
-> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**880 issues in 27 waves, ≈ 625 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
+> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**919 issues in 28 waves, ≈ 663 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
 
 ## 1. The rule
 
@@ -43,6 +43,7 @@
 | **W24** | Mobile, PWA & Landing | Client | Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls, live landing diorama | W02, W04 |
 | **W25** | Launch Ops & Submission | Ops | Monitoring, backups, rollback deploy, first-party analytics, load test, balance harness + reference bot, README / LICENSE / video / X post / form. Hosting is W26 | W00 (grows with each wave; hosting issues name W26 ids) |
 | **W26** | Sites | Ops | `terraagent.fun` and its subdomains on one nginx, four compose stacks, local and on `DEPLOY_HOST` over SSH. No Cloudflare | W00 |
+| **W27** | [Planet Atlas, Continents & Sector Streaming](./waves/W27-planet-sectors.md) | Sim/Meta/Client | One planet per type, configurable hex sectors and continent generation, bounded streaming, cross-sector colonies, W04 atlas map, live hologram picker and landing facts | W04, W05, W11 |
 
 ```mermaid
 flowchart LR
@@ -69,7 +70,10 @@ flowchart LR
   W00 & W06 & W10 & W12 & W13 & W15 & W20 & W21 & W22 & W25 --> W23
   W00 --> W25
   W00 --> W26
+  W04 & W05 & W11 --> W27
 ```
+
+**W27 scheduling:** its number does not require W06–W26 to land first. It follows W04/W05/W11 and explicitly amends their small-world/full-state and multi-instance policies while enabled; see its review and compatibility sections.
 
 The **spine** is W00 → W01 → W02. Everything after W02 can run on up to **five parallel tracks**.
 
