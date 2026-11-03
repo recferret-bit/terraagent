@@ -2,7 +2,7 @@
 name: particle-effect-validator
 description: >-
   Validate 3D procedural particle presets and tool-cutter beams. Checks
-  multi-layer composition (>= 3 layers, >= 2 3D geometry primitives), 60/30/10
+  multi-layer composition (>= 3 layers, >= 3 3D geometry primitives), 60/30/10
   primary/secondary/accent role balance, CIE Lab colour contrast (ΔE76 >= 15)
   between primary and secondary debris, HDR bloom intensity (>= 3.0 on accents
   and beams), ground-plane bounce physics, kinematic ranges, and GPU instance/
@@ -27,18 +27,18 @@ npm run validate:particles -- work.tree            # validate by preset ID
 npm run validate:particles -- rock                 # validate by targetKind (tree|rock|dune|hole|flat|metals|minerals|oil|repair)
 npm run validate:particles -- --all --quiet        # one summary line per preset
 npm run validate:particles -- --all --json         # machine-readable JSON output
-npm run test:particles                             # self-test of the validator (known-good and known-bad synthetic fixtures)
+npm run test:particles                             # self-test of the validator (22 known-good and known-bad fixtures)
 ```
-Exit code is `1` when any preset has an **error** (`--strict` also fails on warnings).
+Exit code is `1` when any preset has an **error** (`--strict` also fails on warnings), `2` when an id or targetKind is unknown (a typo never falls back to `work.flat`).
 
 ### Step 2: Fix Issues Using the Check Table Below
-Every reported issue prints a `fix:` prescription. Fix the **preset definition** in `frontend/render/particles/presets.ts`, never the validator thresholds.
+Every reported issue prints a `fix:` prescription. Fix the **preset definition** in its file under `frontend/render/particles/` (`presetsTerrain.ts`: tree, rock, dune; `presetsGrading.ts`: hole, flat, repair; `presetsResource.ts`: metals, minerals, oil; `presets.ts` only concatenates them), never the validator thresholds.
 
 ### Step 3: Visual QA in the 3D Playground
 Open `http://127.0.0.1:5173/playground.html?inspect=robot.miner&work=1&workTarget=tree` (or call `window.__pg.setWorkTarget('rock')` / `window.__pg.validateParticles('work.rock')`).
 Inspect `iso`, `front`, `side`, and `top` views to confirm:
 - Distinct 3D chunk silhouettes and high-contrast primary vs secondary debris colours (e.g., emerald foliage vs mahogany bark on `tree`, weathered granite vs dark basalt on `rock`, golden sand vs ochre clods on `dune`).
-- Solid chunks bouncing and skittering along the `Y = 0` ground plane.
+- Solid chunks bouncing and skittering on the work site's ground (`site.groundY`, the local terrain height under the target, not a fixed `Y = 0`).
 - Articulated tool cutter beam (locked to GPU-animated hands/drills via `toolOrigins.ts`) and HDR accent sparks triggering selective bloom.
 
 ---

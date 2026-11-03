@@ -317,6 +317,11 @@ transports, dev console wiring). Entry format: [README](./README.md). Ledger jou
 - **Why it is like this:** W01 has only these kinds; the headless fallback exists for specs.
 - **To resolve:** map kinds through a registry when new kinds arrive; use `hexDistance` from `@terra/sim/grid/hex`; show an error plate when the real viewport fails.
 - **Found:** 2026-11-01, frontend-app review
+- **Update (W02 review round 1, 2026-11-03, frontend agent): the crater / egress part is now a Question for the owner; the description above is stale.**
+  - **Kinds:** `archetypeForKind` (`EntityMeshes.ts:49-57`) now maps `metalsExtractor` → `building.mine`, `solar` → `building.solar`, `harvester` → `robot.miner`, and any other kind (`devProbe`) to `robot.builder`, not `robot.scout` (see RN-60 for the light mismatch).
+  - **Crater cover:** `hubCoversCrater` (`EntityMeshes.ts:332-353`) no longer uses axial distance. It hides the crater and the egress shell when **any** constructible building (`isConstructibleBuilding`, state not `waiting`) of **any** colony has its centre within 4.2 m (Hub) or 3.2 m (Extractor / Solar) of the pod in world xz. A tile is 2 m, so 4.2 m is about 2 hexes, while a 3×3 Hub footprint reaches about 2 hexes from its centre and the W01 rule said "within 3"; a neighbour's building next to the pod also hides it.
+  - **Egress shell:** after touchdown the opened pod (petals, ramp; `PodImpactRig.setSettled` / the `done` state of `PodTouchdownFx`) stays visible on the landing tile until such a building covers it; without a building it stays for the whole game.
+  - **Question:** should the landed pod shell disappear on its own (after the HQ walks out, or when the pod entity is dismantled), and should only the owner's own Hub hide it, using hex distance? Recommendation: hide the shell when the pod entity is gone, keep the crater until the own Hub covers it by `hexDistance ≤ 2`.
 
 ## Types, docs and tests
 
@@ -442,3 +447,17 @@ transports, dev console wiring). Entry format: [README](./README.md). Ledger jou
 - **Workaround / mitigation:** dev builds only, and only while the game server is down; `?host=local&scenario=w01` runs the full worker path with toasts and prediction.
 - **To resolve:** attach the fallback as a `LocalTransport` over a `LocalHostController` (direct link, or a Worker with a "seat colony at slot" source) and let the store consume it like any transport; or give `WorldStore` a `pushServerEvents` for the in-process host.
 - **Found:** 2026-11-01, FA-07 fix
+
+## W02 review rounds 1–2 (2026-11-03)
+
+### FA-36 · Two unused client paths write the replica's tile layers
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED (grep: no production caller)
+- **Area / code:** `frontend/game/app/online/OnlineSession.ts:243-245` (`applyTilePatch`), `frontend/game/app/online/viewportHelper.ts:156-160` (`applyChangedTileList` → `HexTerrain.setTileState`), `frontend/render/planets/hex/createHexTerrain.ts` (`setTileState` → `applyTileStateMutation` on the terrain's current `tiles`); debug handle `window.__online` (`frontend/game/app/Game.ts:218,317`); RN-35
+- **What happens:** `applyTilePatch` sends a list of tile changes through `applyChangedTileList`, which calls `setTileState` per tile: it writes terrain / prep / height / deposit / richness into the layers the terrain currently holds, which are the replica's last tile snapshot, and rebuilds the planet once per tile (RN-35). Nothing in the game calls it any more (the session applies snapshots with `applyTerrainTileChanges` → one `updateTiles`), but it is reachable from the console as `__online.applyTilePatch(...)`, and a call makes the drawn ground and the replica's tiles disagree with the host (AGENTS §6: the client never mutates world state).
+- **Why it is like this:** the per-tile path predates the single incremental update of RN-35 and was kept as a public method.
+- **Workaround / mitigation:** dev handle only.
+- **To resolve:** delete `applyTilePatch` and `applyChangedTileList` (`HexTerrain.setTileState` stays: the playground's `content/HexSampleHost.ts` uses it on its own sample terrain).
+- **Found:** 2026-11-03, W02 review round 1 (frontend agent)

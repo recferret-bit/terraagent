@@ -13,7 +13,7 @@
 > - D-23, D-24, D-25, D-27, D-30
 > - Hackathon rules: Q-002, Q-005, Q-012, Q-014, Q-016, Q-017, the submission form
 >
-> **Owned paths:** `.github/workflows/{deploy,nightly,load,security,readme}.yml` (new files only; W00-46 owns the CI workflow), `scripts/{deploy,backup,load,bot}/**` (the later rollback pipeline; W26 owns `scripts/sites/**` and the simple `deploy:*` commands), `tests/load/**`, `backend/app/src/modules/analytics/**` (dashboards), `frontend/game/pages/admin/**` (`/admin/analytics`), `README.md` (final; W00-48 writes the skeleton), `docs/submission/**`. W26 owns `infra/compose/**`, `infra/nginx/**` and `infra/hosts/**`. The duel harness `shared/sim/test/duels.spec.ts` is W07-26's; W25-20 only schedules and publishes it.
+> **Owned paths:** `.github/workflows/{deploy,nightly,load,security,readme}.yml` (new files only; W00-46 owns the CI workflow), `scripts/{deploy,backup,load,bot}/**` (the later rollback pipeline; W26 owns `scripts/sites/**` and the simple `deploy:*` commands), `tests/load/**`, `backend/app/src/analytics/**` (dashboards), `frontend/game/pages/admin/**` (`/admin/analytics`), `README.md` (final; W00-48 writes the skeleton), `docs/submission/**`. W26 owns `infra/compose/**`, `infra/nginx/**` and `infra/hosts/**`. The duel harness `shared/sim/test/duels.spec.ts` is W07-26's; W25-20 only schedules and publishes it.
 >
 > **Overlap with W00 (checked 2026-10-30):** none of these rows rebuilds W00 work. W25 extends W00-09 (`/v1/metrics`), W00-10 (logging), W00-44 (`track()` + consent stub), W00-46 (CI: new workflow files only), W00-48 (README skeleton) and uses the W00-45 e2e harness. There is no Docker/nginx/compose in W00 (W00-03's `npm run dev` only).
 

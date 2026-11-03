@@ -545,6 +545,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Area / code:** `shared/sim/src/systems/queue/index.ts` (`enqueueTaskHandler`, `cancelTaskHandler`, `reorderTaskHandler`), `shared/sim/src/systems/terraform-basic/index.ts` (`cancelTask`)
 - **What happens:** the `task` form of `enqueueTask` (and `cancelTask { taskId: 'all' }` / `reorderTask`) fell back to colony 0 when a command had no colony instead of rejecting `not_own_colony` like `commandColony` does.
 - **Fix:** `enqueueTaskHandler`, `cancelTaskHandler`, `reorderTaskHandler`, and the W02 branch of `cancelTask` all check `commandColony(cmd)` first. Test `terraform-work-guards.spec.ts` › GP-46.
+- **Also (W02 review round 1, 2f1f2c1):** `setHarvestWeights` (`shared/sim/src/systems/harvest/index.ts`, `setHarvestWeightsHandler`) read the same fallback; it now takes `commandColony(cmd)` too. Test `shared/sim/test/systems/w02-review-fixes.spec.ts` › "setHarvestWeights needs the command colony (GP-46 class)".
 - **Found:** 2026-11-02, terraform rework review
 
 ### GP-47 · `anchors` meant both "territory claim count" and "a building stands here"
@@ -563,13 +564,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-48 · W02 construction built through trees, rock, slopes and holes
 
-- **Status:** Resolved (2026-11-03, uncommitted at writing); the item under "Still open" stays
+- **Status:** Resolved (2f1f2c1); the item under "Still open" stays
 - **Severity:** high
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/economy/{construction,siteTerrain}.ts`, `shared/sim/src/systems/queue/index.ts` (`enqueueQueueTask`), `frontend/game/features/construction-menu/PlacementGhost.ts`
 - **What happened:** the W02 build path (Extractor, Solar via `enqueueTask { kind: 'build' }`) only refused deep water and ridges. `startBuildingConstruction` then forced every footprint tile to `TERRAIN.flat`, and the ghost billed "clear + prepare" and showed green, so buildings stood on forest. This contradicted D-37 (the Hub path through `evaluatePlacement` was already correct).
 - **Fix:** one terrain rule (`geoBuildBlock` via `footprintTerrainBlock`) at all three layers: the client ghost goes red with the reason; `enqueueTask` rejects `terrain_unbuildable` up front; `startBuildingConstruction` rechecks (queue entries waiting from before, dev paths) and no longer rewrites terrain. Tests in `construction.spec.ts` and `placement-ghost.spec.ts`.
-- **Still open:** flat but unprepared ground is still graded automatically by the build (D-37 "after at most a Grade"). If "prepared first" must be mandatory for W02 buildings too, that is an owner decision. The W02 path also does not yet run the `uneven` footprint-spread check of `evaluatePlacement`; it flattens heights above 0.15 m instead.
+- **Still open:** flat but unprepared ground is still graded automatically by the build (D-37 "after at most a Grade"). If "prepared first" must be mandatory for W02 buildings too, that is an owner decision. ~~The W02 path also does not yet run the `uneven` footprint-spread check of `evaluatePlacement`; it flattens heights above 0.15 m instead.~~ Resolved (2f1f2c1): W02 rows go through `evaluatePlacement` (`economy/siteTerrain.ts` `buildingSiteBlock`, D-37), so a queued W02 build is rejected on an uneven tile or a footprint whose height spread exceeds `MAX_FOOTPRINT_SPREAD_M` (0.6 m, `grid/geo.ts`) instead of being flattened. Only an `instant` build (scenario setup) still levels heights above 0.15 m (`startBuildingConstruction`). The owner may prefer flattening: see GP-55.
 - **Found:** 2026-11-03, owner screenshot of a ghost on trees
 
 ### GP-49 · Dismantling the landed pod (wreck): gated on a finished Hub, no refund
@@ -584,7 +585,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-50 · A restored planet with a Harvester crashed on its first step (`reading 'entityId'` of null)
 
-- **Status:** Resolved (2026-11-03, economy review, uncommitted at writing)
+- **Status:** Resolved (2f1f2c1)
 - **Severity:** high
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/harvest/unit.ts` (`syncHarvesterView`, `withoutUnitView`), `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts` (unit dismantle)
@@ -594,7 +595,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-51 · HQ fast recharge: suspended in a group-3 brownout now, but never counted as grid load
 
-- **Status:** Question for the owner (suspension: Resolved 2026-11-03, economy review, uncommitted at writing)
+- **Status:** Question for the owner (suspension: Resolved (2f1f2c1))
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/hq/cell.ts` (`rechargePerTick`, `fastRechargeShed`), `shared/sim/src/systems/power-core/shedding.ts` (`hqFastRechargeShed`), `hq.t1.cellFastRechargeShedGroup`; `UO-HQ-06`, W01-11, W02-06
@@ -611,3 +612,145 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **What happens:** each Harvester adds 1.5 E/s (0.75 E/s idle) to `unitDemand`, but it is never a shed candidate and `production.harvest` has no power gate, so in a deficit the extractors are shed while Harvesters keep mining. No shed group lists units, so this matches the data.
 - **To resolve:** decide whether units take part in shedding (a unit category in a group, then gate `production.harvest` on `offlineBrownout`) or keep units always on and leave the drain as information only.
 - **Found:** 2026-11-03, economy review
+
+## Found in the W02 review (rounds 1–2)
+
+### GP-53 · Day length: the W02 docs say 20 min, the solar clock runs 15 min; the `dayCycle` row is not read
+
+- **Status:** Question for the owner
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/data/time.ts` (row `time.cycle`), `shared/sim/src/data/economy-t1-basic.ts` (row `dayCycle`), `shared/sim/src/systems/environment/index.ts` (`SUNSET_HOUR`, `getSunriseHour`, `computeEnvironmentAtHour`, `dayLengthTicksFor`), `shared/sim/src/systems/time/index.ts` (`computePlanetTimeAtTick`, `DEFAULT_DAWN_HOUR` / `DEFAULT_DUSK_HOUR`), `frontend/game/app/online/dayNightSync.ts`; `docs/plan/waves/W02-first-light.md` (feature row 3, W02-04), `docs/spec/SIMULATION.md` §7.6
+- **What happens:** since review round 1 the W02 environment (`environment.dayCycle`, slot 1) has no day counter of its own: it reads the hour of the authoritative planet solar clock (`blobs.planetTime`). One 24 h day therefore lasts `time.cycle.realHoursPerDay` 0.25 h = **15 real minutes** (4 500 ticks at `timeScale` 1), while the W02 wave doc (row 3, W02-04) asks for a **20 min** day. `economyT1Basic.dayCycle.dayLengthS` 1200 (20 min, also `designDayLengthS`) and `dayCycle.sunriseHour` 6 are read by no sim code (`dayLengthS` only by `shared/sim/test/data/w02-data.spec.ts`). The clock and the environment also use two day windows:
+  - environment (power, Solar output, phase `day` / `night`): night starts at `SUNSET_HOUR` 18:00 on every planet type and lasts `nightShare` of 24 h (`nightShareByPlanetType`: temperate 45 % → sunrise 04:48; desert / ocean 40 % → 03:36). Daylight is 1 from sunrise and falls by smoothstep over the last 15 % of the day to 0 at sunset.
+  - planet time view (`computePlanetTimeAtTick`: `phase`, `daylight`, `isNight`, which `dayNightSync.ts` feeds the viewport sun and lights): `time.cycle.dawnHour` 5.5 / `duskHour` 18.5, the same on every planet type.
+  So on a temperate planet the sim says "day" from 04:48 while the 3D scene is dark until 05:30, and the sim's night starts 30 game min before the scene's dusk. New planets start at `time.cycle.startHour` 09:00. From `skipnight` (06:00) night falls 12 game hours later, 7.5 real minutes at the 15 min day.
+- **Why it is like this:** round 1 made the planet solar clock the one clock (CLAUDE.md "Authoritative planetary solar clock") so the HUD clock, the environment and the viewport cannot drift; the 15 min default of `time.cycle` (W00) won over the 20 min of the W02 row. `SIMULATION.md` §7.6 already lists both numbers (15 min W01 `time.cycle`, 20 min for the W10 weather split).
+- **Workaround / mitigation:** `PLANET_DAY_HOURS`, `setPlanetTime`, `dev.time` and `tune time.cycle.realHoursPerDay 0.3333` give a 20 min day today.
+- **To resolve (owner):** pick the day length (15 or 20 min) and one day window (sunset 18:00 + night share per type, or dawn 5.5 / dusk 18.5), set `time.cycle` to it, make the planet time view and the environment use the same window, and delete the losing fields (`dayCycle.dayLengthS` / `designDayLengthS` / `sunriseHour`, or the `dawnHour` / `duskHour` pair). Then align the wave doc and §7.6. Recommendation: keep `time.cycle` as the single source and derive dawn/dusk from the night share. See WE-30 for the unread rows.
+- **Found:** 2026-11-03, W02 review round 1 (sim agent)
+
+### GP-54 · W02 buildings may stand on unclaimed ground
+
+- **Status:** Question for the owner
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/construction/placement.ts` (`economyPlacementRule`: `allowUnclaimed: true`; `evaluateTile`), `shared/sim/src/systems/economy/construction.ts` (`enqueueLinkedPrep`)
+- **What happens:** every W02 building row (Metals Extractor, Solar) gets a placement rule with `allowUnclaimed: true`, so an Extractor or Solar may be placed on any unclaimed tile of the planet; only another colony's territory is refused (`foreign`). Its linked prep inherits the flag, so the HQ grades unclaimed tiles for it. The Command Hub keeps its own rule (`hub.t1.allowUnclaimedPlacement`, distance to the pod).
+- **Why it is like this:** the W02 build path always allowed it; round 1 kept the behaviour when it moved W02 rows onto `evaluatePlacement` (D-37).
+- **To resolve (owner):** must W02 buildings stand inside the colony's own territory (`allowUnclaimed: false`, then `unclaimed` → `not_own_territory`), or is building outside the border (deposits beyond the claim) intended? Recommendation: require own territory, as a building outside it claims nothing and cannot be defended by territory rules later.
+- **Found:** 2026-11-03, W02 review round 1 (sim agent)
+
+### GP-55 · W02 builds reject uneven ground instead of flattening it
+
+- **Status:** Question for the owner
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/economy/siteTerrain.ts` (`buildingSiteBlock`), `shared/sim/src/systems/construction/placement.ts` (`evaluateTile` `uneven`, `footprintSpread`), `shared/sim/src/grid/geo.ts` (`MAX_FOOTPRINT_SPREAD_M` 0.6 m), `shared/sim/src/systems/economy/construction.ts` (`startBuildingConstruction`, `instant` branch)
+- **What happens:** since round 1 an Extractor or Solar on an uneven tile, or on a footprint whose height spread exceeds 0.6 m, is rejected (`enqueueTask` up front, again when the queue starts it) like the Hub. Before, the W02 path levelled heights above 0.15 m. Only `instant` builds (scenario setup) still level the footprint. See GP-48.
+- **Why it is like this:** D-37: one placement rule for every building; the client ghost shows the same verdict.
+- **To resolve (owner):** keep the reject (the player levels with TERRAFORM `work` first), or let the linked prep level an uneven footprint (a Grade that also sets the height), which would need a rule change in `evaluatePlacement` for every building. Recommendation: keep the reject.
+- **Found:** 2026-11-03, W02 review round 1 (sim agent)
+
+### GP-56 · The contract's queue precedence words do not match the sim's; the mapping is a guess
+
+- **Status:** Question for the owner (security part Resolved (58956ab))
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/contracts/src/commands/enqueue-task.ts` (`precedence: 'explicit' | 'autoSitePrep' | 'queued' | 'standing'`), `shared/sim/src/systems/queue/wait.ts` (`CONTRACT_PRECEDENCE`, `TRUSTED_SOURCES`, `enqueueAuthority`), `shared/sim/src/systems/queue/types.ts` (`PRECEDENCE_RANK` system 3 > player 2 > auto 1), `shared/sim/src/systems/queue/index.ts` (`enqueueTaskHandler`, `enqueueQueueTask`)
+- **What happens:** the contract names four precedence words, the queue sorts by three others. Round 1 made unknown words fall back to `player` (they used to sort as `NaN`). Round 2 maps them: `explicit` / `queued` → `player`, `standing` → `auto`, `autoSitePrep` → `system` (the sim's own words are accepted too). Round 2 also closed a hole: any player could send `costOverride` (a free building) or `system` precedence (jump the queue). Now only sources `dev`, `system` and `admin` may set either; any other source is capped at `player` (it may lower its own entry to `auto`) and its `costOverride` is dropped. Test `shared/sim/test/systems/w02-review-fixes.spec.ts` › "enqueueTask authority (round 2)…".
+- **Why it is like this:** the contract came from the units spec (§4.4), the queue from the W02 sim; nobody defined how one maps to the other.
+- **To resolve (owner):** confirm the mapping (in particular whether `autoSitePrep` should outrank a player's explicit order), or replace the contract enum with the sim's three words.
+- **Found:** 2026-11-03, W02 review rounds 1–2 (sim agent)
+
+### GP-57 · An Extractor on a depleted deposit stays active, draws 6 E/s and produces nothing
+
+- **Status:** Question for the owner
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/production/index.ts` (`extractorProductionSystem`, `checkExtractorDepositCoverage`), `shared/sim/src/systems/power-core/index.ts` (extractor branch, `powerDrainPerS` 6)
+- **What happens:** once every metals tile under an Extractor reaches richness 0, `checkExtractorDepositCoverage` returns `covered: false` and production skips it silently. Its entity state stays `active`, so the power core keeps counting its 6 E/s and it can still cause or deepen a brownout. Nothing tells the player the deposit is used up.
+- **To resolve (owner):** should a depleted Extractor go offline (a new state, no drain, shown in the inspector), or stay as is until the player dismantles it? Recommendation: an offline state with no drain and an inspector line.
+- **Found:** 2026-11-03, W02 review round 1 (sim agent)
+
+### GP-58 · Dispatch v1: pull-based, one builder per colony, one W02 build at a time
+
+- **Status:** Accepted (by design, W02)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/construction/work.ts` (`buildProvider`), `shared/sim/src/systems/economy/buildJob.ts`, `shared/sim/src/systems/queue/index.ts` (`tryStartQueueEntry`, `activeInLane`), `shared/sim/src/systems/dispatch/index.ts` (`selectWorkerForDispatch`, `dispatchJob`, `dispatch.manager`)
+- **What happens:** W02-16 is built in round 2 (58956ab) as a pull: the HQ's `build` work provider takes the colony's oldest W01 order ready for work, else its oldest W02 job ready for work, walks into reach and works it through the W01 `build` command; a Harvester never builds. With one builder (the HQ) per colony the "nearest idle eligible worker, lowest tier on ties" rule of `UO-D-03` is trivially met, and pre-empting auto work for a player-precedence job is not implemented in the providers. `selectWorkerForDispatch` and `dispatchJob` have no caller outside tests; `dispatch.manager` (slot 5) only prunes `blobs.dispatch` records of idle or gone workers. `dispatchJob`'s Harvester branch (`dispatch/index.ts` ~181/183) would rewrite the tile's terrain to forest / rock before assigning a Clear / Break, a state write no rule allows. The construction lane also starts one W02 build per colony at a time: a second build entry waits `waiting: worker` (`activeInLane`), gets no building entity, no ghost on the map and no linked prep until the first one finishes. This is a lane rule, not a builder count: a second builder would not change it.
+- **Why it is like this:** the hackathon cut: one builder per colony in W02; Builder Drones (more builders) come later.
+- **To resolve:** when a colony can have several builders, let the lane start one entry per free builder, move the pull into `selectWorkerForDispatch` (or delete it), add pre-emption, and drop the terrain write from `dispatchJob`.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### GP-59 · Worker eligibility is hard-coded; the data rows that describe it are not read
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/dispatch/eligibility.ts` (`isWorkerEligibleForJob`, `canDoWork`, `colonyHasEligibleWorker`), `shared/sim/src/data/hq.ts` (`hq.t1.maxBuildTier`), `shared/sim/src/data/units-workers-basic.ts` (`harvester.maxBuildTier` 0, `allowedTerraformOps: ['clear', 'break']`), `shared/sim/src/host/view.ts`, `shared/sim/src/systems/harvest/unit.ts`
+- **What happens:** which unit may build, prep a site or terraform is decided by entity kind in code: the HQ builds up to its `tier` column and runs every op; a Harvester never builds or preps and takes only `clear` / `break` / `work`. `hq.t1.maxBuildTier` is read nowhere (reserved in `generation-data.spec.ts`), `harvester.maxBuildTier` is only copied into the client views (`host/view.ts`, `syncHarvesterView`), and `allowedTerraformOps` is read nowhere; it also lacks `work`, which the code allows. A `tune` of these fields changes nothing.
+- **To resolve:** read `maxBuildTier` / `allowedTerraformOps` from the unit's row in `isWorkerEligibleForJob` (add `work` to the Harvester row), or delete the fields.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### GP-60 · A W02 site can stall without a specific status
+
+- **Status:** Open
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/economy/buildJob.ts` (`siteState`, `stepBuildingSites`), `shared/sim/src/systems/economy/construction.ts` (`enqueueLinkedPrep`), `shared/sim/src/systems/queue/step.ts` (`BUILD_WAIT_DETAIL`), `shared/sim/src/systems/hq/cell.ts`
+- **What happens:** a W02 job whose footprint is not fully prepared waits `site` (`waiting: site (prep n/4)`) until the linked prep order finishes it. Nothing re-creates the prep order: when a prep job is dropped while its tile is still unprepared (the GP-01 re-check drops a job whose tile changed, e.g. claimed by another colony or turned into an obstacle by `dev.seed`), or the order is removed some other way while the building stays, the job waits `site` forever. The same is true of the W01 Hub path. Prep also stops while the HQ cell is empty (each Grade costs 20 E from the cell; the `w02` scenario starts with a 200 E cell, two 2×2 buildings need 8 Grades = 160 E), and the queue entry still only says `waiting: site (prep n/4)`.
+- **To resolve:** in `stepBuildingSites`, re-enqueue linked prep for unprepared tiles when the job has no live prep order; give the entry a `site (HQ energy)` detail when the prep waits for the cell.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### GP-61 · The queue's ETA fallback hard-codes production rates
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/queue/wait.ts` (income estimate used by `computeResourceWaitState`)
+- **What happens:** when a colony has no production ledger rate, the resource-wait ETA guesses income from literals: `1.0 × richness` per active Extractor and `0.5` per harvesting Harvester (or `0.5` per idle / moving Harvester). The rows say otherwise (Extractor `outputPerS` 4.0 × 0.25 = 1.0, Harvester `harvestRatePerS` 2.0 × 0.25 = 0.5 today) and a `tune` is not seen. Since round 1 the normal path reads `colony.production.incomePerS`, so the fallback runs only for colonies without a production ledger.
+- **To resolve:** read the rates from the compiled rows, or drop the fallback and show `(no ETA)`.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### GP-62 · Two Harvester production paths write `col.unitQueue`
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/queue/index.ts` (`saveQueueEntries`, slot 4 `queue.manager`), `shared/sim/src/systems/queue/step.ts` (`finishUnit`, `buildUnit` entries), `shared/sim/src/systems/factories-hub/index.ts` (`saveAllEntries`, `enqueueHubUnit`, slot 9 `factories.hub`)
+- **What happens:** the Units lane of the W02 queue (`enqueueTask { buildUnit }`) builds Harvesters in `queue/step.ts`, and the older `factories-hub` system has its own queue and production loop. Both write the colony's `col.unitQueue` view (slot 4 and slot 9), so one can overwrite what the other wrote in the same step. `enqueueHubUnit` has no live caller: the Units menu calls it only through an optional session hook that only `units-menu.spec.ts` supplies. Cancel paths still read both (`cancelAllColonyTasks` → `getHubUnitQueue`).
+- **To resolve:** keep one Units-lane implementation (the queue), delete `enqueueHubUnit` and the factories-hub queue, or make factories-hub the queue's producer only. See XC-28.
+- **Found:** 2026-11-03, W02 review round 1 (sim agent)
+
+### GP-63 · Every waiting build entry runs the full placement rule each scan
+
+- **Status:** Open (watch)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/queue/index.ts` (`tryStartQueueEntry` → `startBuildingConstruction`), `shared/sim/src/systems/economy/siteTerrain.ts` (`buildingSiteBlock` → `evaluatePlacement`, `placementWorldFromState`)
+- **What happens:** since round 1 a W02 build entry that reaches its start (stock and lane free) runs `evaluatePlacement` (with a fresh placement world and occupancy set) every scan; an entry that keeps waiting on `site` repeats it every step. Cheap for one colony, not measured for many.
+- **To resolve:** measure with the economy planet of `sim:bench` (W02-33, still a stub, see XC-31); if it shows, cache the verdict per entry until `pathEpoch` / the footprint tiles change.
+- **Found:** 2026-11-03, W02 review round 1 (sim agent)
+
+### GP-64 · Deposit richness above 100 % is lost as the deposit depletes
+
+- **Status:** Accepted (by design, owner comment in code)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/production/index.ts` (`normalizeRichness`)
+- **What happens:** richness in basis points above 10 000 gives an output multiplier (`raw / 10000`, up to ~1.38); at or below 10 000 bp the multiplier is 1.0 until the tile is empty. Extraction lowers the stored richness, so a rich deposit loses its bonus once it falls to 10 000 bp and then runs at 1.0× to the end.
+- **Why it is like this:** the comment in `normalizeRichness` keeps the rate at 1.0× while finite deposits deplete; the bonus is meant as an early boost.
+- **To resolve:** nothing unless the owner wants the bonus to last (store the initial richness separately).
+- **Found:** 2026-11-03, W02 review round 1 (sim agent)
+
+### GP-65 · Stockpile counts dev grants and terraform yields as production
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/economy/ledger.ts` (`creditResource`, `opts.produced`), callers in `systems/dev/index.ts` (`fill`, grants), `systems/terraform-basic/workSystem.ts`, `systems/harvest/index.ts` (`completeHarvesterWorkJob`), `backend/app/src/game/thread/production-batches.ts`
+- **What happens:** `production.produced` grows on every `creditResource` call except refunds (`refundCost` passes `produced: false`). Dev `fill` / grant commands and TERRAFORM / Harvester work-job yields therefore count as produced, and the W02-28 `resourceProduced` batches (Stockpile progression) include them, not only Extractor and Harvester output.
+- **To resolve:** pass `produced: false` from dev grants (and from terraform yields if Stockpile should count only extraction), or split the counter by source.
+- **Found:** 2026-11-03, W02 review round 1 (backend agent)

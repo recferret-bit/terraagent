@@ -458,8 +458,8 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Severity:** high
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/lighting/archetypeLights.ts`, `frontend/render/lighting/EntityProjectorRig.ts`, `frontend/render/lighting/ColonyVisionAndLights.ts`, `frontend/game/app/online/entityVisionSync.ts`, `frontend/playground/panels/LightsPanel.ts`
-- **What happens:** unit and building volumetric cones and projectors remained on during daytime (`rigIntensity` floor `0.22`), volumetric cone cylinders pointed 180° away from their ground illumination pools, `metalsExtractor` and `solar` fell through to the 1-lamp robot projector branch instead of lighting all 4 building sides, and light sources could not be tuned in `/playground.html`.
-- **Fix:** created `archetypeLights.ts` as the single code-configurable registry of `ArchetypeLightSource`s (`pos`, `target`, `color`, `intensity`, `range`, `coneTopRadius`, `coneBottomRadius`, `poolRadius`) shared by `EntityProjectorRig` (orienting cones via `quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir)`) and `entityVisionSync` (projecting all 4 corner lights on `commandHub`, `metalsExtractor`, `solar`, and `dropPod`, with `MAX_COLONY_PROJECTORS = 32`); gated all unit/building lights off during daytime (`daylight >= 0.65`) and disabled Solar lights/animation at night; added the interactive `LightsPanel` (`?lights=1` / `[L]`) in `/playground.html` with live add/remove/move/aim/tune controls and TypeScript code export.
+- **What happens:** unit and building volumetric cones and projectors remained on during daytime (`rigIntensity` floor `0.22`), volumetric cone cylinders pointed 180° away from their ground illumination pools, the Metals Extractor (archetype `building.mine`) and Solar Array (`building.solar`) fell through to the 1-lamp robot projector branch instead of lighting all 4 building sides, and light sources could not be tuned in `/playground.html`.
+- **Fix:** created `archetypeLights.ts` as the single code-configurable registry of `ArchetypeLightSource`s (`pos`, `target`, `color`, `intensity`, `range`, `coneTopRadius`, `coneBottomRadius`, `poolRadius`) shared by `EntityProjectorRig` (orienting cones via `quaternion.setFromUnitVectors(new THREE.Vector3(0, -1, 0), dir)`) and `entityVisionSync` (projecting all 4 corner lights on `building.commandHub`, `building.mine`, `building.solar` and `ship.dropPod`, with `MAX_COLONY_PROJECTORS = 32`; registry keys: there is no `metalsExtractor` key, `entityVisionSync.lightArchetypeForKind` maps that entity kind to `building.mine`; the pod's lights were later removed, RN-44); gated all unit/building lights off during daytime (`daylight >= 0.65`) and disabled Solar lights/animation at night; added the interactive `LightsPanel` (`?lights=1` / `[L]`) in `/playground.html` with live add/remove/move/aim/tune controls and TypeScript code export.
 - **Found:** 2026-11-02, owner review (W02)
 
 ### RN-27 · Missing hex grid lines and partial foundation plates under HQ / placed buildings
@@ -602,13 +602,13 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/core/windConfig.ts`, `frontend/render/planets/hex/hexAmbient.ts`, `frontend/render/planets/surface/biomes/dune.ts`, `frontend/render/visuals/terrain/heightfields.ts`
-- **What happens:** (1) On the prototype surfaces (`?planet=…` heightfield) the dune ripple geometry and shading keep the seeded `field.wind`; only dust, trees and waves follow F8 wind there (on the hex planet the ripples follow it too). (2) Hex ambient particles fly at 0..12–16 m absolute height and pass through higher mesas. (3) `uWindPhase` / `uWindDrift` grow without bound; float precision drifts after many hours of play. (4) ~~Sway frequency follows the global strength~~ superseded 2026-11-03: each tree has its own frequency (size + hash) and reacts to the local gust with a lag (RN-45). (5) The landing page's planet cards use their own renderer, so the wind clock does not tick there. (6) The F8 compass is in world terms (right = +X, down = +Z), it does not turn with the camera.
-- **To resolve:** wrap phase/drift modulo a large period in `tickWindClock`; height-follow the ambient layer (sample `heightAt` in a small texture) if mesas look wrong.
+- **What happens:** (1) On the prototype surfaces (`?planet=…` heightfield) the dune ripple geometry and shading keep the seeded `field.wind`; only dust, trees and waves follow F8 wind there (on the hex planet the ripples follow it too). (2) Hex ambient particles fly at 0..12–16 m absolute height and pass through higher mesas. (3) `uWindPhase` / `uWindDrift` grow without bound; float precision drifts after many hours of play. (4) ~~Sway frequency follows the global strength~~ superseded 2026-11-03: each tree has its own frequency (size + hash) and reacts to the local gust with a lag (RN-45). (5) The landing page's planet cards use their own renderer, so the wind clock does not tick there. (6) The F8 compass is in world terms (right = +X, down = +Z), it does not turn with the camera. (7) Two more real-time clocks grow without bound: `uWindTime` (`windConfig.ts` `tickWindClock`, `+= dt`) and `uWaterTime` (`visuals/water/waterConfig.ts` `tickWaterClock`, `+= dt × waveSpeed`), read by the Gerstner phase (`waterWaves`), foam and ripples; the same float-precision drift applies after many hours (added 2026-11-03, W02 review round 1, render agent).
+- **To resolve:** wrap phase/drift (and `uWindTime` / `uWaterTime`, modulo a period that is a whole number of every wave / foam period, or by re-basing all phases together) in `tickWindClock` / `tickWaterClock`; height-follow the ambient layer (sample `heightAt` in a small texture) if mesas look wrong.
 - **Found:** 2026-11-02, water rework (wind agent)
 
 ### RN-40 · Night lighting: two dim night keys, fixed moon direction
 
-- **Status:** Question for the owner (night "second sun" bug resolved in the same change, uncommitted on `wave/w02-first-light`)
+- **Status:** Question for the owner (night "second sun" bug resolved in the same change, d6d63a7)
 - **Severity:** low
 - **Confidence:** CONFIRMED (browser check, oceanForest `?host=local`, 00:10 / 18:30 / 12:00)
 - **Area / code:** `frontend/render/core/shadowConfig.ts` (`applyShadowSourceMode`, mode 0), `frontend/render/core/dayNightConfig.ts` (`computeSolarState`, `computeMoonMults`)
@@ -621,7 +621,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 
 ### RN-41 · Colony FoV shroud / night factor / projectors are global and reach space hardware
 
-- **Status:** Resolved (uncommitted on `wave/w02-first-light`, 2026-11-03: space-phase / descent gate + eased hand-over; see **Fix** below)
+- **Status:** Resolved (d6d63a7, 2026-11-03: space-phase / descent gate + eased hand-over; see **Fix** below)
 - **Severity:** high (before the mitigation: carrier and pod rendered as near-black silhouettes at "Bay open — pod clamps releasing")
 - **Confidence:** CONFIRMED (browser: stage carrier/pod program uniforms; zeroing the vision map with `uFovEnabled = 1` reproduces the user screenshot, `setSpaceLit(false)` brings it back)
 - **Area / code:** `frontend/render/lighting/ColonyVisionAndLights.ts` (`sharedUniforms`, `applyColonyFovShroud`), `frontend/render/visuals/UnifiedColonyMaterial.ts` (`onBeforeCompile` assigns the shared uniforms to every Unified material), `frontend/game/app/online/EntityMeshes.ts` (`syncVisionAndForeignVisibility`), `frontend/game/app/online/entityVisionSync.ts` (`fovEnabled: Boolean(terrain)`); mitigation in `frontend/render/visuals/space/spaceLighting.ts` + `placeholders.ts` (`acquireModel(..., { spaceLit })`, `FittedModel.setSpaceLit`)
@@ -633,7 +633,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 
 ### RN-42 · Descent key light ignores the descent sun direction
 
-- **Status:** Resolved (uncommitted on `wave/w02-first-light`, 2026-11-03): `setDescentSunDirection(vp, ctx.sunDir)` (`shadowConfig.ts`) is set by `DescentRunner` and cleared in `restoreAndCleanup`; while the descent renders `followShadowTarget` places the key light along it (browser at tn 30.6: `vp.sun` direction (0.50, 0.79, 0.36) = `ctx.sunDir`). Still open: the descent ignores the planet clock, so a night landing cuts from a sunlit descent to the night colony at hand-over.
+- **Status:** Resolved (d6d63a7, 2026-11-03): `setDescentSunDirection(vp, ctx.sunDir)` (`shadowConfig.ts`) is set by `DescentRunner` and cleared in `restoreAndCleanup`; while the descent renders `followShadowTarget` places the key light along it (browser at tn 30.6: `vp.sun` direction (0.50, 0.79, 0.36) = `ctx.sunDir`). Still open: the descent ignores the planet clock, so a night landing cuts from a sunlit descent to the night colony at hand-over.
 - **Severity:** medium
 - **Confidence:** CONFIRMED (browser, `?planet=oceanForest&deploy=1`, tn ≈ 9–10: `vp.sun` direction (−0.44, 0.53, −0.73) vs `ctx.sunDir` (0.50, 0.79, 0.36))
 - **Area / code:** `frontend/render/core/shadowConfig.ts` (`followShadowTarget` → `computeSunOffset(undefined)` uses the day/night solar clock; `fitShadowToView` re-places the sun every rendered frame), `frontend/game/descent/parts/SkyRig.ts` (`viewport.followShadow(podCenter)`), `frontend/game/descent/DescentRunner.ts` (`sunDir = (35, 55, 25)`)
@@ -643,7 +643,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 
 ### RN-43 · Drop pod carries two heat shields
 
-- **Status:** Resolved (uncommitted on `wave/w02-first-light`, 2026-11-03 pod-base fit change); one open question below
+- **Status:** Resolved (d6d63a7, 2026-11-03 pod-base fit change); one open question below
 - **Severity:** low
 - **Area / code:** `frontend/render/descent/dropRig.ts` (`SHIELD_PROFILE`, `HULL_R`, `setShieldAttached`, `setLegDeploy`), `frontend/render/descent/podGear.ts`, `frontend/game/descent/parts/HeatShield.ts`, `frontend/render/kitbash/archetypes/units/ships.ts` (`podShell` shield + rim band, landing legs; unchanged)
 - **What happened:** the rig's shield (first a 3.6 m black half-sphere sized from the leg bbox, then a r 1.37 skin) sat over the archetype's own shield (r 1.32) and orange rim band (r 1.34), all wider than the petal cone (r 1.25), so the base read as a separate plate glued under the pod, with the splayed legs and foot pads poking out. The fitted root was also centred on the leg-skewed bbox, 0.25 m off the hull axis, so shield, bay ring and clamp arms were off-centre; the jettisoned copy spawned 1.9 m below the pod (`podBase − podH/2`).
@@ -669,7 +669,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/visuals/terrain/Scatter.ts` (`FOLIAGE_SWAY_BEGIN`, `FOLIAGE_TREE`, `foliageTreeTraits`)
-- **What happens:** each tree's frequency (≈ 1/√height ± 20 %), mass, phase, lean tilt and orbit come from a hash of its position and its instance height; inertia is two gust samples downwind of the tree (the gust that already passed), their mean drives the lean and their difference the overshoot. There is no per-tree state, so it is not a real spring–damper. The lag is in metres (gust-front travel), so its time lag shrinks as the wind strengthens. Trait sizes assume the ~5 m tree geometry (crown mask 1.2–4.5 m in model units). Tree bounds are padded by `PROP_BOUNDS_PAD` = 0.75 m for the sway (calculated, not measured against a gale).
+- **What happens:** each tree's frequency (≈ 1/√height ± 20 %), mass, phase, lean tilt and orbit come from a hash of its position and its instance height; inertia is two gust samples downwind of the tree (the gust that already passed), their mean drives the lean and their difference the overshoot. There is no per-tree state, so it is not a real spring–damper. The lag is in metres (gust-front travel), so its time lag shrinks as the wind strengthens. Trait sizes assume the ~5 m tree geometry (crown mask 1.2–4.5 m in model units). Tree bounds are padded by `PROP_BOUNDS_PAD` = 2 m for the sway (`planets/hex/propBuckets.ts`; was 0.75 m until 2f1f2c1: a ~5.9 m pine moves ~0.6 m at the default wind but ~1.9 m at the slider maxima, strength 2 / gust 1, so crowns of corner trees popped at the screen edge; calculated, not measured against a gale).
 - **To resolve:** a per-instance spring state in a small texture updated on the GPU, if the owner wants true settling.
 - **Found:** 2026-11-03, tree wind rework
 
@@ -694,7 +694,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Why it is like this:** the look was tuned at native DPR; lowering resolution or dropping the faint daytime secondary shadow changes the look, so it was not done without the owner.
 - **To resolve (recommendation):** cap the default DPR at 1.5 (or an F8 / settings render-scale, or adaptive resolution that drops to 1.5 when frame time > 20 ms); skip the secondary shadow map by day (fade its intensity, keep `castShadow` on to avoid a ~30-program recompile at dusk, and skip its map render instead).
 - **Found:** 2026-11-03, rendering optimisation (perf agent)
-- **Fix:** both recommendations are in F8 → `PERF` (2026-11-03, uncommitted at the time of writing): render scale AUTO (dynamic resolution, default) or fixed 1 / 1.25 / 1.5 / 2, and the daytime secondary shadow faded out by day with its map frozen and its taps skipped. Remaining trade-offs: RN-50.
+- **Fix:** both recommendations are in F8 → `PERF` (2026-11-03, d6d63a7): render scale AUTO (dynamic resolution, default) or fixed 1 / 1.25 / 1.5 / 2, and the daytime secondary shadow faded out by day with its map frozen and its taps skipped. Remaining trade-offs: RN-50.
 
 ### RN-50 · F8 → PERF: dynamic resolution, daytime secondary shadow skip, focus margin / ring (trade-offs)
 
@@ -758,7 +758,7 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **What happens:** the composer renders into a HalfFloat target. If a single fragment writes NaN (e.g. `pow(x, y)` with `x` a hair below 0), the bloom bright-pass passes it on, each of the 5 separable mip blurs spreads it over its kernel, the composite sums all levels and `OutputPass` shows NaN as black: an axis-aligned black square ~1100 px wide (2992 px canvas) for every frame the NaN pixel exists. In the descent the Unified material's fresnel `pow(1.0 - abs(dot(normalize(normal), normalize(vViewPosition))), 3.2)` hit NaN on the drop pod's view-facing face (|dot| rounds to 1.0000001) around authored t ≈ 12.05 s, one or two frames, so the user saw "sometimes a black square behind the pod". Bloom off: the same frame shows one dark pixel only.
 - **Why it is like this:** three's `UnrealBloomPass` has no NaN/Inf filter; any shader math that can go out of domain is a latent full-square flash.
 - **Workaround / mitigation:** the known sites now clamp the `pow` base with `max(…, 0.0)`. The same unclamped pattern in `frontend/render/orbit/Moons.ts`, `frontend/render/planets/globe/surfaceFrag.ts` and `frontend/render/visuals/water/fauna/jellyMaterial.ts` was clamped too (2026-11-03, lead).
-- **To resolve:** clamp those three; optionally a NaN guard in the bloom bright-pass (replace non-finite texels with 0 before the blur, one `isnan`/`isinf` check per texel) so a future shader bug costs one pixel, not a square. Probe used: render the scene into a clone of `composer.renderTarget1`, `readRenderTargetPixels` as `Uint16Array`, count halves with exponent `0x7C00`, bisect visible meshes.
+- **To resolve:** a NaN guard in the bloom bright-pass (replace non-finite texels with 0 before the blur, one `isnan`/`isinf` check per texel) so a future shader bug costs one pixel, not a square. (The three files above are already clamped; checked 2026-11-03, W02 review round 1. Another latent NaN source: RN-56.) Probe used: render the scene into a clone of `composer.renderTarget1`, `readRenderTargetPixels` as `Uint16Array`, count halves with exponent `0x7C00`, bisect visible meshes.
 - **Found:** 2026-11-03, descent black-square bug (descent fx agent)
 
 ## Water culling (2026-11-03)
@@ -770,6 +770,139 @@ pillars. Entry format and rules: [README](./README.md). Found in the W01 branch 
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/render/planets/hex/waterBuckets.ts`, `planets/hex/hexWater.ts` (`HexWater.group` / `buckets` / `material` / `cullToFocus`, replacing `mesh`), `visuals/water/fauna/faunaBuckets.ts` (`WaterFauna.fish` / `jellies` are now arrays), `visuals/water/glsl/stages.ts` (`WATER_FOCUS_FADE`), `core/focusCull.ts`
 - **What happens:** the hex water surface is one Mesh per 32 m cell with water (all on one material, so F8 / clocks stay shared); three frustum-culls them and `cullToFocus` hides cells off the view focus (unless the focus is clamped at 220 m). A water-tile change rebuilds only the cells around the changed tiles, but the shore field (512² bake) and the fauna placement are still rebuilt whole, as before. Fish and jellies are one InstancedMesh per 64 m cell. In the shader the swell, waves, ripples, caustics, crest foam, foam motion and glint sparkle are scaled by `viewFocusWeight(p, 12 m)` and skipped where it is 0 (amplitudes fade, clocks never do, so the edge does not pop or smear).
-- **Trade-offs:** (1) more meshes: up to ≈ 48 surface buckets on a radius-56 planet instead of 1, but only the ones in view draw (headless w01: 3–7 draws / 307–795 of 2310 triangles instead of 1 draw / 2310; radius-56 ocean probe: 12.6 % / 31 % / 67 % of the water triangles at camera distance 20 / 50 / 95 m); (2) fauna: up to one draw per 64 m cell per kind instead of 2 in total; (3) vertices on cell borders are duplicated (seamless; everything is world-derived); (4) the shader fade only shows when the focus is capped (zoomed far out); the RTS camera's max zoom (95 m) keeps the whole planet in the focus on today's maps, so it is mostly a guard for bigger planets; (5) ~~`propBuckets.ts` still has its own copy of the cell key and the clamped-focus rule~~ resolved 2026-11-03: it now uses `core/focusCull.ts`. (6) a water-tile change now disposes and recreates the fauna cell meshes (cloned ~40-triangle geometries + sliced instance buffers) instead of rewriting one set of buffers in place: a little GC churn when terraforming near water.
+- **Trade-offs:** (1) more meshes: up to ≈ 48 surface buckets on a radius-56 planet instead of 1, but only the ones in view draw (headless w01: 3–7 draws / 307–795 of 2310 triangles instead of 1 draw / 2310; radius-56 ocean probe: 12.6 % / 31 % / 67 % of the water triangles at camera distance 20 / 50 / 95 m); (2) fauna: up to one draw per 64 m cell per kind instead of 2 in total; (3) vertices on cell borders are duplicated (seamless; everything is world-derived); (4) the shader fade only shows when the focus is capped (zoomed far out); the RTS camera's max zoom (95 m) keeps the whole planet in the focus on today's maps, so it is mostly a guard for bigger planets; (5) ~~`propBuckets.ts` still has its own copy of the cell key and the clamped-focus rule~~ resolved 2026-11-03, see RN-51 (7). (6) a water-tile change now disposes and recreates the fauna cell meshes (cloned ~40-triangle geometries + sliced instance buffers) instead of rewriting one set of buffers in place: a little GC churn when terraforming near water.
 - **Measured:** frame time is not a meaningful number here (RN-47: fill-rate bound); the gain is submitted water triangles / vertex-shader work and per-lake fauna draws.
 - **Found:** 2026-11-03, water culling (water agent)
+
+## W02 review rounds 1–2 (2026-11-03)
+
+### RN-53 · Spinners and recoil jump phase when the work weight changes
+
+- **Status:** Open (latent)
+- **Severity:** low
+- **Confidence:** CONFIRMED (code); not visible yet
+- **Area / code:** `frontend/render/visuals/unified/shaderChunks.ts:58` (`VERT_SUB_ANIM` type 1: `angle = hasBodyCarrier ? g * (1.0 + uWorkWeight) : uTime * (2.5 + 10.0 * uWorkWeight)`), `:69` (type 3: `recoilWave = sin(g * (1.0 + uWorkWeight) + pivot.x * 2.3)`)
+- **What happens:** the work weight multiplies the clock instead of the speed. When `uWorkWeight` eases from 0 to 1 the phase is `t × (2.5 + 10 w)`, so after a few minutes of play (`uTime` in the hundreds of seconds) a 0.1 change of `w` jumps the drill / spinner angle by hundreds of radians within one ease, and recoil pulses fire in a burst. Today the weight eases at `dt × 10` (`EntityMeshes.update`), so the jump happens in a few frames and reads as a flicker of the spinning part; idle → work transitions are rare in W02.
+- **Why it is like this:** the GPU animation is closed-form in time; there is no per-mesh integrated phase.
+- **Workaround / mitigation:** none needed while gameplay changes the work weight rarely.
+- **To resolve:** integrate a per-mesh `uWorkPhase` on the CPU (`phase += dt × (1 + w)` in `tickArchetypeMesh`) and use it in both branches, once gameplay drives the work weight often.
+- **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+### RN-54 · Animation clocks disagree under dev warp: trees, fauna and units follow warp, waves, foam and wind do not
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/app/online/OnlineSession.ts:436-446` (`animDt = min(rawDt, 0.4) × max(1, warp)` → `entities.update(animDt, …)` and `terrain.tick(animDt)`), `frontend/render/planets/hex/createHexTerrain.ts` (`tick`: terrain / water `uTime`, `props.timeU`, `ambient.setTime`), `frontend/render/core/createColonyViewport.ts:207-208` (`tickWindClock()`, `tickWaterClock()` from `performance.now()`), `frontend/render/visuals/water/fauna/WaterFauna.ts` (fish / jellies read the water `uTime`)
+- **What happens:** at `warp 10` tree sway (`props.timeU`), fish and jellyfish, the ambient dust layer and the units' shader animation (`EntityMeshes.time`) run 10× faster, while the waves, foam, ripples (`uWaterTime`) and the wind gusts / dune drift (`uWindPhase`, `uWindDrift`, `uWindTime`) keep real time. Trees therefore whip back and forth under a calm wind, and fish dart through slow waves.
+- **Why it is like this:** the terrain clock was made to pause with the game (fauna "pause with the game") and follow warp; the wind and water clocks were added later as global real-time clocks ticked by the viewport so every 3D page animates.
+- **Workaround / mitigation:** only with dev warp (`warp`, F8); at warp 1 all clocks agree.
+- **To resolve:** pick one rule (recommendation: cosmetic loops in real time, sim-driven motion in game time) and feed `terrain.tick` the real `dt`, or scale `tickWindClock` / `tickWaterClock` by warp too.
+- **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+### RN-55 · Hex ambient follow mode fixed at creation; a dune planet allocates water it never shows; fauna ignores WATER_QUALITY
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/planets/hex/hexAmbient.ts` (`createHexAmbient`: `follow = isViewFocusEnabled() && planetBox > AMBIENT_FOLLOW_BOX`), `frontend/render/planets/hex/hexWater.ts` (`createHexWater`: `createShoreField`, `createShoreFieldTexture`, `createWaterMaterial`, `createWaterFauna` before `hasWater = look.kind !== 'dune'`), `frontend/render/visuals/water/shoreField.ts` (`SHORE_FIELD_RES = 512`), `frontend/render/visuals/water/fauna/{fishMaterial,jellyMaterial,faunaWater}.ts`, `frontend/render/visuals/water/glsl/waves.ts` (`WATER_TIER_GLSL`)
+- **What happens:**
+  1. The ambient layer decides once, when the terrain is built, whether its wrap box follows the view focus (180 m box) or covers the planet. Toggling the focus later (`setViewFocusEnabled`, F8) does not switch it: with the focus turned on later the layer keeps the planet-sized box and its point count; turned off later, the 180 m box stays parked at the last focus.
+  2. A dune planet has no water, but `createHexWater` still bakes the shore field object (512² × (bed f32 + distance f32 + mask u8) ≈ 2.4 MB) and its 512² RGBA half-float texture (≈ 2 MB), compiles the water material and creates the fish / jelly materials; only `rebuildAll` is skipped.
+  3. The fish and jelly vertex shaders include `WATER_STAGE_COMMON_GLSL` for the refraction wobble (`faunaRefractShift` → `waterWaves`) but their materials never set the `WATER_QUALITY` define, so they always sum 4 waves (the HIGH default), also when the water surface runs LOW (2 waves): extra vertex ALU, and the wobble does not match the surface at lower tiers.
+- **Why it is like this:** each part was written for the default case (focus on, water planets, HIGH quality).
+- **Workaround / mitigation:** small costs: one ambient layer, ~4 MB on dune, a handful of fauna vertices.
+- **To resolve:** (1) re-create (or re-size) the ambient layer when the focus is toggled; (2) return a no-op `HexWater` for dune (or create the field / fauna lazily on the first water tile); (3) pass the water material's `WATER_QUALITY` define to the fauna materials.
+- **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+### RN-56 · Water fragment shader discards before it takes derivatives
+
+- **Status:** Open (theoretical; needs a visual check after the fix)
+- **Severity:** low
+- **Confidence:** PLAUSIBLE (GLSL rule; no NaN observed)
+- **Area / code:** `frontend/render/visuals/water/glsl/stages.ts:65` (`FRAG_FIELD`: `float waBank = waterHexClip(waP);`), `:69` (`FRAG_WAVES`: `waFootprint = length(fwidth(waP))`), `glsl/surface.ts` (`waterHexClip`: `if (inWaterHex < 0.5) discard;`), `glsl/foam.ts:13-14` (`dFdx` / `dFdy`), `glsl/reflections.ts:10` (`fwidth(Nw)`)
+- **What happens:** `waterHexClip` discards fragments outside a water hex before `fwidth` / `dFdx` run. After a `discard` the derivatives of the helper lanes in the same 2×2 quad are undefined on some GPUs, so a pixel on a water edge can get a garbage or NaN footprint / normal derivative. The comment "derivatives stay in uniform control flow" is true for the `if (waFocus > 0.0)` block, but not with respect to the earlier discard. A NaN there would become the bloom black square of RN-48.
+- **Why it is like this:** the hex clip was put first so off-hex fragments skip the wave math.
+- **Workaround / mitigation:** none observed; most drivers keep helper lanes running after a discard.
+- **To resolve:** make `waterHexClip` return a keep flag, take all derivatives first, and `discard` in `FRAG_OUTPUT` (or at least after the last derivative); then check the shore edges in the browser (`?host=local&scenario=w02`, oceanForest) with bloom on.
+- **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+### RN-57 · Playground projectors: 32-light cap applied before the focus cull; rigs built twice per spawn
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/playground/content/SpawnSet.ts` (`syncProjectors`, `refreshLights`, `rebuild`), `frontend/render/lighting/ColonyVisionAndLights.ts` (`selectFocusedProjectors`, `MAX_COLONY_PROJECTORS = 32`), `frontend/render/kitbash/catalog.ts:168` (`createArchetypeMesh` → `attachEntityProjectorRig`), `frontend/render/lighting/EntityProjectorRig.ts` (constructor calls `rebuild()`; `updateEntityProjectorRig` version check)
+- **What happens:**
+  1. `syncProjectors` orders the spawns selected-first and stops at 32 lights before it calls `updateColonyProjectorsAndVision`, whose `selectFocusedProjectors` then culls to the view focus. In a full row (e.g. every building, 4 corner lights each) lights of on-screen models past the first 32 are dropped although off-screen ones were kept.
+  2. Spawning builds every rig twice: `createArchetypeMesh` attaches a rig whose constructor runs `rebuild()`, then `SpawnSet.rebuild` → `refreshLights()` finds it and calls `rebuild()` again. On a LIGHTS edit the change listener rebuilds the rigs of that archetype; the per-frame version check in `updateEntityProjectorRig` would also do it, so one of the two mechanisms is redundant (no double rebuild per edit: the listener's `rebuild()` stores the new version first).
+- **Why it is like this:** the playground cap predates the focus selection (RN-46 / RN-52); the listener predates the version check.
+- **Workaround / mitigation:** playground only; inspecting a single model (`?inspect=<id>`) stays far below 32 lights.
+- **To resolve:** pass every light (up to `MAX_PROJECTOR_CANDIDATES`) and let `selectFocusedProjectors` choose, keeping the selected model first on ties; skip `rebuild()` in `refreshLights` when the rig's `lightsVersion` is current (or drop the listener and rely on the version check).
+- **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+### RN-58 · Particle validator checks less than the emitter draws
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/particles/validate/ParticleValidator.ts:86,110-111` (`spreadCone` range check), `:239-281` (`totalTriangles` budget), `frontend/render/particles/WorkParticleEmitter.ts:75-81` (`createLayer` age stagger), `:150-180` (beams, muzzle flares, impact flare, shock ring), `:225-275` (`spawnParticle`, `seedAllParticles`), `frontend/render/particles/types.ts:57`
+- **What happens:**
+  1. **`spreadCone` is validated but unused:** every preset sets it and the validator rejects values outside (0, π], but `spawnParticle` always throws a full 360° radial fountain with a 0.18 bias toward the bot; no code reads `spreadCone`.
+  2. **Triangle budget excludes the fixed meshes:** the 3,500-triangle check sums only the instanced layers. Each emitter also draws 4 beam cylinders (2 × core + sheath, 24 tris each), 2 muzzle orbs and 1 impact flare (`energyOrb`, 20 tris each) and the shock ring (torus 3 × 8, 48 tris): ≈ 204 triangles per active emitter that no check sees.
+  3. **The age stagger is lost on the first cycle:** `createLayer` staggers `age` by a golden-ratio fraction of each particle's lifetime so a stream looks continuous from frame 1, but the constructor then calls `seedAllParticles(1.0)`, which re-spawns every particle at the cut point in the same frame and re-rolls its `lifetime` (`age` is kept, so some particles now have `age ≥ lifetime` and respawn at once). The first second is a synchronous fountain, not a stream. A burst (`triggerBurst`, speed boost 1.55) also resets every `age` to 0..0.12 s (intended there).
+- **Why it is like this:** the validator was written against the preset spec, not the emitter; the cone parameter predates the radial-splash rework (RN-32).
+- **Workaround / mitigation:** visual QA in `/playground.html?inspect=<id>&work=1&workTarget=<kind>`.
+- **To resolve:** use `spreadCone` in `spawnParticle` (or remove it from the spec and the validator); add the fixed-mesh triangles (beams, orbs, ring) to `totalTriangles`; keep the constructor's ages (seed positions along each particle's own age, or do not reseed in the constructor).
+- **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+### RN-59 · A night descent may keep the PERF night-skipped sun shadow
+
+- **Status:** Open (suspicion; visual check needed)
+- **Severity:** low
+- **Confidence:** PLAUSIBLE (code path; not seen in a browser)
+- **Area / code:** `frontend/render/core/shadowConfig.ts` (`syncViewportShadow`: `if (isViewportInDescent(vp)) return;` before the mode-0 block that sets `sun.shadow.intensity = … × nightSunShadowFade(t, skipNightSunShadow())` and `sun.shadow.autoUpdate`), `core/shadowFit.ts` (`nightSunShadowFade`), `core/perfConfig.ts` (`nightSunShadow` default 0); RN-42, RN-52 (2)
+- **What happens:** while the descent renders, `syncViewportShadow` returns early, so the sun keeps whatever shadow intensity / `autoUpdate` the colony sync last set. If the colony clock was at night with F8 → PERF → NIGHT SUN SHADOW off (the default), that is intensity 0 and a frozen map, so the sunlit descent (which lights the pod from `ctx.sunDir`, RN-42) would cast no sun shadow.
+- **Why it is like this:** the early return keeps the descent's own lighting from being overwritten by the colony's night settings.
+- **Workaround / mitigation:** none known; may not show if the descent starts from a viewport that never ran a night colony sync.
+- **To resolve:** check `?planet=oceanForest&deploy=1` with the planet clock at night (and `?host=local&scenario=w01` at 00:10); if the pod casts no shadow, set the sun shadow to the day value (intensity, `autoUpdate = true`) when the descent starts and restore it in `restoreAndCleanup`.
+- **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+### RN-60 · Lighting leftovers: secondary shadow light built in two places, light keys without a model, per-frame name lookups
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/core/createColonyViewport.ts:47-79` (`createSunAndHemi` builds `secondaryShadowLight`), `frontend/render/core/shadowConfig.ts:138-158` (`ensureSecondaryShadowLight` builds the same light), `:224-248` (`followShadowTarget`: `vp.scene.getObjectByName('planetSkyDome')`), `frontend/render/lighting/archetypeLights.ts:84-90,150-160` (`robot.*` keys, `resolveDefaultLights`), `frontend/render/kitbash/archetypes/units/robots.ts` (registered: `robot.hero`, `robot.miner`, `robot.builder`, `robot.combat`), `frontend/game/app/online/entityVisionSync.ts:25-36` (`lightArchetypeForKind`), `frontend/game/app/online/EntityMeshes.ts:49-57` (`archetypeForKind`)
+- **What happens:**
+  1. **Copy/paste:** the viewport creates the secondary "moon" light (colour, 1024² map, near 8 / far 138, frustum) and `ensureSecondaryShadowLight` repeats the same construction as a fallback (found by name, else built). The copies have already drifted: only the viewport's sets `bias`, `normalBias`, `radius` and `intensity`. A change to one (map size, frustum) misses the other.
+  2. **Keys without a model:** `robot.hauler`, `robot.tleilaxu` and `robot.raid` have light entries but no registered archetype. `robot.scout` has none either, yet `lightArchetypeForKind` maps `devProbe` to `'robot.scout'` while `archetypeForKind` draws it as `robot.builder`: its projectors and its mesh come from different archetypes. Every explicit `robot.*` entry is `makeStandardRobotHeadlamp()`, which `resolveDefaultLights` already returns for any `robot.*` id.
+  3. **Per frame:** `followShadowTarget` runs every rendered frame (`fitShadowToView`) and walks the scene graph with `getObjectByName('planetSkyDome')` to update the dome's sun uniform.
+- **Why it is like this:** the light was first part of the viewport and later made lazy for viewports built elsewhere; the robot keys were written for the full robot list of the design.
+- **Workaround / mitigation:** none needed for correctness; the lookup is a few dozen nodes on today's scenes.
+- **To resolve:** one factory for the secondary light used by both; delete the three dead keys (and `robot.scout`, mapping `devProbe` to `robot.builder` lights like its mesh); cache the dome reference on the viewport record.
+- **Found:** 2026-11-03, W02 review round 1 (render agent)
+
+### RN-61 · Some focus-culling callers ignore `viewFocusBounded()`
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED (code); effect not checked in a browser
+- **Area / code:** `frontend/render/core/focusCull.ts` (`viewFocusBounded`: false while the focus is clamped to `VIEW_FOCUS_MAX_RADIUS` = 220 m), `frontend/render/particles/WorkParticleSystem.ts` (`showIfInFocus`), `frontend/render/lighting/ColonyVisionAndLights.ts` (`selectFocusedProjectors`), `frontend/game/app/online/entityFocus.ts` (`isEntityInViewFocus`); RN-46, RN-51
+- **What happens:** when the camera looks toward the horizon the focus is clamped and may not cover the screen; `cullToViewFocus` and the prop buckets then stop hiding anything. These three callers test `inViewFocus` directly, so work particles in a far corner are hidden and not stepped, projectors there are not uploaded (dark pools), and entities there skip their shader clock and rig power (frozen animation) while visible.
+- **Why it is like this:** the bounded check was added for the prop / water buckets; these callers were written against `inViewFocus` before it.
+- **Workaround / mitigation:** only while the focus is clamped (a footprint wider than 220 m: grazing camera angles, e.g. the 2f1f2c1 grazing-camera view focus work); at the default RTS pitch the focus is bounded.
+- **To resolve:** in each caller, treat everything as in focus while `!viewFocusBounded()` (one helper in `focusCull.ts`, e.g. `pointInViewFocus(x, z, pad)`).
+- **Found:** 2026-11-03, W02 review round 2 (render agent)
+
+### RN-62 · Half / depleted deposit models got extra detail to pass the validator
+
+- **Status:** Question for the owner
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/render/kitbash/archetypes/units/nature.ts:148-152` (`buildMetalDeposit`: `if (stage !== 'full')` adds three `mined ore chip` rocks), `:212-216` (`buildCrystalDeposit`: `if (stage !== 'full')` adds four `frameGunmetal` crystal stumps on the side rocks); commit 2f1f2c1
+- **What happens:** the `@half` / `@depleted` deposit stages (fewer nuggets / spires) failed the model validator's surface-detail checks, so round 1 added dull ore chips where nuggets were and dark broken crystal bases. `npm run validate:models -- --all` now passes 35/35 models with 0 errors and 0 warnings, but the depleted deposits look busier than a plain mined-out rock.
+- **Why it is like this:** CLAUDE.md requires 0 errors / 0 warnings for every kitbash model; adding detail was the smallest change that passes.
+- **Workaround / mitigation:** none needed.
+- **To resolve:** owner decides the look. To revert, delete the two `if (stage !== 'full') { … }` blocks in `nature.ts` (then the half / depleted stages report validator warnings again: either accept them for these stages or relax the check per stage). Check in `/playground.html?inspect=resource.metalDeposit&depositStage=half|depleted` (and `resource.crystalDeposit`).
+- **Found:** 2026-11-03, W02 review round 1 (render agent)

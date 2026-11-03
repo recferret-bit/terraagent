@@ -372,3 +372,70 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Found:** 2026-11-01, root reorganization & W26 merge.
 - **Fix (2026-11-02):** merged `main` (W26 + 3 untracked docs from `main`), renumbered W26 hosting to `D-40`, added `D-41` in `docs/spec/DECISIONS.md`, moved `e2e/` and `scenarios/` + `vitest*.config.ts` into `tests/`, `vite.config.ts` + `tsconfig.json` into `frontend/` (with build output in `frontend/dist/`), `tsconfig.base.json` + `eslint.config.js` + `.prettier*` into `shared/` (`shared/config/`), `.env.example` + `.env.worktree` + `Dockerfile.*.dockerignore` into `infra/`, and `.dev/` into `scripts/dev/.out/`, with backward-compatible env fallbacks and two full audit/verification passes across all code, plans, waves, and specs.
 
+
+## Found in the W02 review (rounds 1–2)
+
+### XC-27 · Two resolvers for W02 building rows, and two `resolveBuildingRow` functions
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/economy/buildingRows.ts` (`resolveBuildingRow`: Hub + Extractor + Solar with their names and aliases, own default data), `shared/sim/src/systems/construction/placement.ts` (`resolveBuildingRow`: Hub only; `resolveEconomyBuildingRow` + `W02_BUILDING_ALIASES` for the W02 rows)
+- **What happens:** the W02 build path and the placement rule map a building name to its row in two places with two alias lists (`extractor` / `metalsExtractor`, `solar` / `solarCollector`). The two exported `resolveBuildingRow` share a name but differ in scope and return type (`{ row, entityKind }` vs `CompiledRow`, Hub only), so an import from the wrong module compiles and answers `null` for an Extractor. A new W02 building must be added to both.
+- **To resolve:** one resolver (name → row, entity kind, placement rule) in one module; rename or remove the Hub-only one.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### XC-28 · Two Units-lane implementations
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/factories-hub/index.ts` (queue, `enqueueHubUnit`, production loop, slot 9), `shared/sim/src/systems/queue/step.ts` (`buildUnit` entries, `finishUnit` → `produceHarvesterAtHubEdge`)
+- **What happens:** Harvester production exists twice: the W02 queue's Units lane and the older factories-hub queue, each with cost, progress, count / repeat and cancel handling. Only the queue has a live caller; both write `col.unitQueue` (GP-62).
+- **To resolve:** remove the factories-hub queue (keep its spawn helper) or route the lane through it; one implementation.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### XC-29 · `cancelTask { taskId: 'all' }` cancels only one W01 construction order and one terraform order
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/queue/cancel.ts` (`cancelAllColonyTasks`: `cancelConstructionOrder(…, 'current')`, `cancelTerraformOrder(…, 'active')`)
+- **What happens:** "cancel all" clears every W02 queue entry, building job, Hub unit, Harvester task and work job of the colony, but for W01 orders it uses the lane wildcards, which name one order each: the open construction order (`'current'`) and the first manual terraform order (`'active'`). Other W01 terraform orders stay queued.
+- **To resolve:** loop over `constructionOrdersOf` / `colonyTerraformOrders` of the colony.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### XC-30 · Linked prep skips the duplicate-job check (pre-existing W01)
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/queue.ts` (`planJobs`: a request with explicit `jobs` bypasses `evaluateTerraform` and its `pending` set), callers `economy/construction.ts` (`enqueueLinkedPrep`) and the W01 Hub prep
+- **What happens:** a linked prep order is built from `buildLinkedPrepJobs` and passed as `jobs`, so the GP-01 rule "each `(op, q, r)` once per colony" is not applied: a footprint tile already queued in a manual terraform order gets a second job. The completion re-check (GP-01) prevents a double yield, but the HQ may walk to and start the duplicate.
+- **To resolve:** run the `pending` check for explicit `jobs` too (skip tiles already queued, count them as prepared work in progress).
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### XC-31 · W02 rows deferred past the hackathon cut
+
+- **Status:** Accepted (deferred, owner's hackathon cut)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `docs/plan/waves/W02-first-light.md` ("Deferred" line, rows 14, 20, 22, 25, 26); `package.json` (`sim:bench` → `scripts/dev/sim-bench.mjs`, `notImplemented`)
+- **What happens:** these W02 rows are not built:
+  - W02-18..21 (H+): anims on the existing `building.mine` / `building.solar` / `robot.miner` archetypes (they stand in unanimated), and wiring `PlanetaryLightingSystem` to the sim daylight view (no `frontend/game` code imports it; the scene's sun follows the viewport day/night clock synced from the solar clock);
+  - W02-27: the harvest-weight slider UI (no client code sends `setHarvestWeights`; the sim command is done);
+  - W02-29: analytics events (`first_building_built`, `first_unit_built`, `brownout_seen`, `queue_wait_seen`) are not recorded anywhere;
+  - W02-32: the pacing test `pacing-s0-s1.spec.ts` does not exist;
+  - W02-33: `npm run sim:bench` is a stub, so there is no economy-heavy perf number (GP-63).
+- **To resolve:** build them in a later landing of W02 (`wave-02.2`) or move them to the wave that needs them.
+- **Found:** 2026-11-03, W02 review round 1 (audit)
+
+### XC-32 · Two near-identical particle reference pages in the `procedural-particles-3d` skill
+
+- **Status:** Open
+- **Area / code:** `.agents/skills/procedural-particles-3d/references/particle-physics-and-presets.md`, `.agents/skills/procedural-particles-3d/references/preset-catalog.md`
+- **What happens:** both pages describe the same presets and the same physics (bounce floor, spray, per-target layers) in nearly the same words. The W02 docs pass had to correct the same stale facts (`backSprayBias`, the op list, the bounce formula) in both.
+- **Why it is like this:** the catalog was split off the physics page and the two were never merged; nobody owned the duplication.
+- **Workaround / mitigation:** both were brought in line with the code in the W02 docs pass (2026-11-03).
+- **To resolve:** keep one page (physics + catalog) and make the other a short pointer, so a future preset change is written once.
+- **Found:** 2026-11-03, W02 docs pass (skills agent)

@@ -17,8 +17,8 @@ import { defineScenario } from './_define';
 
 /**
  * W02 First Light seed scenario (`docs/plan/waves/W02-first-light.md` §1 & W02-34):
- * - Command Hub T1 completed at `(0, 0)` (prepared 3×3 footprint, territory radius 6, `+8 supply / −5 demand`).
- * - HQ T1 worker ready at `(2, 0)` (`workRate = 1.5×`).
+ * - Command Hub T1 completed at `(0, 0)` (prepared 3×3 footprint, territory radius 10 (`hub.claimRadius`), `+8 supply / −5 demand`).
+ * - HQ T1 worker ready at `(2, -1)` (`workRate = 1.5×`).
  * - Starting stock: `metals.t1 400, minerals.t1 250, bio.biomass 150, bio.water 150` (caps `500/500/500`).
  * - Nearby surface deposits (`DEPOSIT.metals` at `(3, 0)` and `(6, 0)`, `DEPOSIT.minerals` at `(0, 3)`).
  * - Morning (`06:00`, `daylight = 1.0`, `phase = 'day'`).

@@ -211,10 +211,13 @@ Known limitations and open questions: [`docs/questions-and-limitations/sim-gamep
   `hq.t1.terraformMaxOrders` / `terraformMaxJobs` → `queue_full` (GP-02).
 - **Orders** (GP-08 / GP-09 / GP-10): `blobs.terraformTasks = { byColony }`, `blobs.constructionQueue = { orders }`,
   written with `setBlob` (readers `terraformOrdersOf` / `constructionOrdersOf` work on view blobs too). Order ids are
-  sim-made (`tf#<n>`, `build#<n>`, prep `build#<n>/prep`; counter `blobs.orderSeq`); `taskId` keeps the client's
+  sim-made (`tf#<n>`, `build#<n>`, prep `build#<n>/prep`; a W02 building's prep `job:<entityId>/prep`, linked to
+  `building:<entityId>`; counter `blobs.orderSeq`); `taskId` keeps the client's
   command id, which may name only one open order (`invalid_args` when reused). `cancelTask { taskId }` cancels in
   its own lane: an order id, a task id or a building's entity id; `'active'` = the first manual terraform order,
-  `'current'` = the open construction order; a Hub's linked prep cancels the Hub; no match → `unknown_entity`.
+  `'current'` = the open construction order; a Hub's linked prep cancels the Hub, a W02 building's linked prep (or
+  `unit:<hq>` while the HQ works it) cancels that building; no match → `unknown_entity` (W01 only) / `unknown_task`
+  (W02 on).
   Completed orders leave the queue. Unknown building kinds are `invalid_args` (GP-05).
 - **Player work jobs** (`terraform-basic/{workOrder,workJobs,workTile,workSystem,chain,resourceSpawn}.ts`,
   `blobs.workJobs`): `enqueueTask { terraform: { op: 'work', intent?, tiles, workerId? } }` (the direct `task` form and
@@ -250,7 +253,11 @@ Known limitations and open questions: [`docs/questions-and-limitations/sim-gamep
   accepted and waits. `occupiesGround` (alive buildings) is the one footprint rule for placement and ground paths.
 - **Work** (GP-04, GP-12, GP-16, GP-21): providers are asked linked prep → construction → manual terraform. A build
   short of stock mid-way is `waiting_resources` and resumes once stock covers the slice; `statusTextOf` derives the
-  text. Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
+  text. W02 building jobs (`blobs.construction`, `economy/buildJob.ts`) are worked by the same `build` command
+  (id `job:<entityId>`, after the W01 orders, oldest first): progress and the progressive payment happen only while the
+  builder stands in reach (`advanceBuildingJob`); `economy.construction` (slot 6) only keeps the site bookkeeping
+  (prepared tiles, `site` / `resources` / `worker` wait). A Harvester never takes build or linked-prep work
+  (`dispatch/eligibility.ts`, GP-58 / GP-59). Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
   `retryBlockedS`, doubling per consecutive failure up to `retryBlockedMaxS`.
 - **Sync** (GP-07, GP-15): queues, `blobs.hq` (`{ byColony }`) and colony records are stamped only when they change,
   so an idle planet sends no gameplay blobs. Blob state is not filtered per colony (SIMULATION §6, GP-36).

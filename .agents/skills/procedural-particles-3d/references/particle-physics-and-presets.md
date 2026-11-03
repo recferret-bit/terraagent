@@ -24,7 +24,7 @@ All particle geometries are low-poly, non-indexed `THREE.BufferGeometry` primiti
 
 ---
 
-## 2. Built-in Object-of-Interaction Presets (`frontend/render/particles/presets.ts`)
+## 2. Built-in Object-of-Interaction Presets (`frontend/render/particles/presetsTerrain.ts` / `presetsGrading.ts` / `presetsResource.ts`, concatenated in `presets.ts`)
 
 | Preset ID | `targetKind` | Trigger Condition | 60% Primary Layer | 30% Secondary Layer | 10% HDR Accent Layer |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -36,7 +36,7 @@ All particle geometries are low-poly, non-indexed `THREE.BufferGeometry` primiti
 | `work.metals` | `metals` | Harvesting `DEPOSIT_CODES.metals` | Specular steel `oreNugget` (`#adb8c9`, metalness `0.82`, bounce `0.45`) | Rust-red oxide `slateChunk` (`#6b3a2e`, bounce `0.32`) | White-hot `weldSpark` (`#ffcf70`, HDR `5.2`, stretch `3.0`) |
 | `work.minerals` | `minerals` | Harvesting `DEPOSIT_CODES.minerals` | Cyan-teal `crystalShard` (`#4be3d6`, bounce `0.50`) | Deep indigo matrix `rockShard` (`#342c54`, bounce `0.36`) | Magenta-cyan piezo `energyOrb` (`#ff73fa`, HDR `4.8`) |
 | `work.oil` | `oil` | Harvesting `DEPOSIT_CODES.oil` | Glossy obsidian crude `oilDroplet` (`#1d222b`, bounce `0.18`) | Ochre-amber bitumen `soilClod` (`#8f6834`, bounce `0.22`) | Amber flare `energyOrb` (`#ff8826`, HDR `4.5`) |
-| `work.repair` | `repair` | Repairing damaged entity or constructing building | Ceramic-white hull `slateChunk` (`#d8dde6`, bounce `0.40`) | Gunmetal frame `rockShard` (`#333c4a`, bounce `0.34`) | Intense arc-weld `weldSpark` (`#70f5ff`, HDR `5.5`, stretch `3.2`) |
+| `work.repair` | `repair` | Repairing damaged entity, constructing a building, or dismantling one (W02 `dismantle` op) | Ceramic-white hull `slateChunk` (`#d8dde6`, bounce `0.40`) | Gunmetal frame `rockShard` (`#333c4a`, bounce `0.34`) | Intense arc-weld `weldSpark` (`#70f5ff`, HDR `5.5`, stretch `3.2`) |
 
 ---
 
@@ -44,9 +44,9 @@ All particle geometries are low-poly, non-indexed `THREE.BufferGeometry` primiti
 
 - **`gravity` ($m/s^2$):** Downward acceleration. Use `1.8–2.5` for fluttering leaves/dust, `6.5–8.5` for saltating sand and oil globules, and `10.5–14.5` for dense rock shards and metallic ore.
 - **`drag` ($s^{-1}$):** Exponential air resistance (`exp(-drag * dt)`). High drag (`2.5–3.8`) makes foliage decelerate rapidly after ejection and drift down; low drag (`0.4–0.9`) lets dense rocks follow clean parabolic arcs.
-- **`bounce` (`0..0.95`):** Coefficient of restitution on ground impact (`y <= groundY`). Horizontal X/Z velocity is damped on each bounce so chunks skitter to a halt.
+- **`bounce` (`0..0.95`):** Coefficient of restitution on ground impact (falling below `site.groundY + 0.35 × chunk scale`; `groundY` is the terrain height at the target). Horizontal X/Z velocity is damped (× 0.72) on each bounce so chunks skitter to a halt.
 - **`swirl` ($m/s$):** Tangential vortex acceleration around the work site's vertical axis. Essential for `work.tree` leaf flutter (`1.6`) and `work.dune` sand devil eddies (`1.8`).
-- **`backSprayBias` (`-1..1`):** Biases horizontal ejection along the vector from the work target back toward the bot (`> 0` sprays chips back toward the cutter; `<= 0` produces a 360° radial fountain splash around the target object so distant work sites splash naturally on the object itself).
+- **Ejection direction (not a preset field):** every layer sprays a full 360° radial fountain around the cut point, with a fixed slight (`0.18`) horizontal bias toward the bot (`WorkParticleEmitter.spawnParticle`), so distant work sites splash on the object itself.
 - **`stretchByVelocity`:** When `> 1.05`, orients the particle's local `+Z` axis along its instantaneous 3D velocity vector and scales length proportionally to speed (`1 + min(speed * 0.35, stretchByVelocity - 1)`).
 
 ---

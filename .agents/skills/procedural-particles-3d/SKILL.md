@@ -45,13 +45,13 @@ This skill enforces the **Object-Driven 3D Miniature Debris Architecture** so ev
 
 ### Step 1: Identify the Object of Interaction
 Check [particle-physics-and-presets.md](./references/particle-physics-and-presets.md) and [preset-catalog.md](./references/preset-catalog.md) for the 9 built-in `InteractionTargetKind` presets (`tree`, `rock`, `dune`, `hole`, `flat`, `metals`, `minerals`, `oil`, `repair`) and 15 procedural 3D chunk geometries.
-- `ParticlePresetRegistry.resolveTargetKind({ mode, terrainKey, depositKind, biomeKey })` maps authoritative tile codes (`TERRAIN_CODES.forest`, `TERRAIN_CODES.rock`, `TERRAIN_CODES.slope`, `TERRAIN_CODES.hole`, `DEPOSIT_CODES.*`), terraform op kinds (`clear`, `break`, `flatten`, `fill`), and planet biome (`dune`, `oceanForest`, `forestRock`) to the right preset automatically.
+- `ParticlePresetRegistry.resolveTargetKind({ mode, terrainKey, depositKind, biomeKey })` maps authoritative tile codes (`TERRAIN_CODES.forest`, `TERRAIN_CODES.rock`, `TERRAIN_CODES.slope`, `TERRAIN_CODES.hole`, `DEPOSIT_CODES.*`), the work mode, and planet biome (`dune`, `oceanForest`, `forestRock`) to the right preset automatically. The sim's terraform ops are `grade`, `clear`, `break`, `dismantle`, `work` (`W02_TERRAFORM_OPS`); `workTargetResolver.ts` passes the op as `mode` except `work` (and `prepare`), which resolve from the tile itself. `clear` → `tree` (`rock` on a dune biome), `break` → `rock`, `dismantle` (like `repair` / `build` / `construct`) → `repair`; `grade` has no mode branch and resolves from the terrain key alone (e.g. `slope` → `dune`, `hole` → `hole`, flat ground → `flat`, or `dune` on a dune biome). `flatten` / `fill` are still accepted mode strings but no sim op sends them.
 
 ### Step 2: Compose the 3-Tier Preset Blueprint
-When authoring or tuning a `ParticlePresetSpec` in `frontend/render/particles/presets.ts` (or registering a custom preset via `ParticlePresetRegistry.register()`):
+When authoring or tuning a `ParticlePresetSpec` in `frontend/render/particles/presetsTerrain.ts` (tree, rock, dune), `presetsGrading.ts` (hole, flat, repair) or `presetsResource.ts` (metals, minerals, oil) (`presets.ts` only concatenates them; or registering a custom preset via `ParticlePresetRegistry.register()`):
 1. **Primary Layer (`role: 'primary'`, ~55% of instances):**
    - Pick the signature 3D geometry (`leafCluster`, `rockShard`, `sandGrain`, `soilClod`, `oreNugget`, `crystalShard`, `oilDroplet`).
-   - Tune `speedRange`, `upwardBias`, `backSprayBias` (`> 0` biases directional spray; `0` / negative produces a full 360° radial fountain splash around the target object), `gravity`, and `bounce`.
+   - Tune `speedRange`, `upwardBias`, `gravity`, and `bounce`. The ejection direction is not a preset knob: every layer sprays a full 360° radial fountain around the cut point with a fixed slight (0.18) bias toward the bot (`WorkParticleEmitter.spawnParticle`).
 2. **Secondary Layer (`role: 'secondary'`, ~32% of instances):**
    - Pick a contrasting structural geometry (`barkSlab` / `woodSplinter`, `slateChunk`, `dustCloud`) with $\Delta E_{76} \ge 15$ against the primary layer.
 3. **Accent Layer (`role: 'accent'`, ~13% of instances):**
@@ -70,7 +70,7 @@ When a unit is actively working:
   - `WheelSpin (7)`: Subtle forward/back bracing torque rock.
 - **Exact GPU-Synchronized Muzzle Origins (`frontend/render/particles/toolOrigins.ts`):**
   - Never use static world offsets for tool beams, or the lasers will detach from moving arms and drills!
-  - `evalArchetypeToolOrigins(archetypeId, time, walkWeight, workWeight)` and `computeMeshToolOrigins(mesh, archetypeId, time, walkWeight, workWeight)` evaluate the exact CPU mirror of the vertex shader's rigid-body transforms (`bipedBodyTransform`, `spiderBodyTransform`, `BipedArm 5`, `SpinY 1`, `RecoilPulse 3`):
+  - `evalArchetypeToolOrigins({ archetypeId, position, yaw?, time?, walkWeight?, workWeight? })` (one params object; `workWeight` defaults to 1) and `computeMeshToolOrigins(mesh, fallbackArchetypeId?, fallbackWalkWeight = 0, fallbackWorkWeight = 1)` (reads the archetype id from `mesh.userData` and `uTime` / `uWalkWeight` / `uWorkWeight` from its material uniforms, the fallbacks only where those are missing) evaluate the exact CPU mirror of the vertex shader's rigid-body transforms (`bipedBodyTransform`, `spiderBodyTransform`, `BipedArm 5`, `SpinY 1`, `RecoilPulse 3`):
     - **`robot.hero` (HQ Drone):** Dual lasers originate strictly from the animated left and right hands (`animType 5` shoulder pitch + converging work yaw + `bipedBodyTransform`), with glowing muzzle flare orbs locked to both palms.
     - **`robot.miner` (Harvester):** Dual/single beams lock to the animated front rotary auger drill (`SpinY 1`) and upper Auxiliary cutter lamp.
     - **`robot.builder` (Builder Bot):** Beams lock to the articulated welding torch arm and top projector emitter (`RecoilPulse 3`).

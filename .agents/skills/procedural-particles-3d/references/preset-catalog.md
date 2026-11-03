@@ -24,7 +24,7 @@ All particle geometries are low-poly, non-indexed `THREE.BufferGeometry` primiti
 
 ---
 
-## 2. Built-in Object-of-Interaction Presets (`frontend/render/particles/presets.ts`)
+## 2. Built-in Object-of-Interaction Presets (`frontend/render/particles/presetsTerrain.ts` / `presetsGrading.ts` / `presetsResource.ts`, concatenated in `presets.ts`)
 
 | Preset ID | `targetKind` | Trigger Condition | 60% Primary Layer | 30% Secondary Layer | 10% HDR Accent Layer |
 | :--- | :--- | :--- | :--- | :--- | :--- |
@@ -36,7 +36,7 @@ All particle geometries are low-poly, non-indexed `THREE.BufferGeometry` primiti
 | `work.metals` | `metals` | Harvesting `DEPOSIT_CODES.metals` | Specular steel `oreNugget` (`#adb8c9`, metalness `0.82`, bounce `0.45`) | Rust-red oxide `slateChunk` (`#6b3a2e`, bounce `0.32`) | White-hot `weldSpark` (`#ffcf70`, HDR `5.2`, stretch `3.0`) |
 | `work.minerals` | `minerals` | Harvesting `DEPOSIT_CODES.minerals` | Cyan-teal `crystalShard` (`#4be3d6`, bounce `0.50`) | Deep indigo matrix `rockShard` (`#342c54`, bounce `0.36`) | Magenta-cyan piezo `energyOrb` (`#ff73fa`, HDR `4.8`) |
 | `work.oil` | `oil` | Harvesting `DEPOSIT_CODES.oil` | Glossy obsidian crude `oilDroplet` (`#1d222b`, bounce `0.18`) | Ochre-amber bitumen `soilClod` (`#8f6834`, bounce `0.22`) | Amber flare `energyOrb` (`#ff8826`, HDR `4.5`) |
-| `work.repair` | `repair` | Repairing damaged entity or constructing building | Ceramic-white hull `slateChunk` (`#d8dde6`, bounce `0.40`) | Gunmetal frame `rockShard` (`#333c4a`, bounce `0.34`) | Intense arc-weld `weldSpark` (`#70f5ff`, HDR `5.5`, stretch `3.2`) |
+| `work.repair` | `repair` | Repairing damaged entity, constructing a building, or dismantling one (W02 `dismantle` op) | Ceramic-white hull `slateChunk` (`#d8dde6`, bounce `0.40`) | Gunmetal frame `rockShard` (`#333c4a`, bounce `0.34`) | Intense arc-weld `weldSpark` (`#70f5ff`, HDR `5.5`, stretch `3.2`) |
 
 ---
 

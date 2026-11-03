@@ -46,7 +46,7 @@ Adjust the exposed uniforms live (or via a diagnostic GUI / URL params) to balan
 - `uTriplanarScale` (`1.5 – 4.0`): Controls frequency of procedural micro-normal/roughness variation.
 
 ### Step 3: Terrain, Water & Terraforming Splatmap Tuning
-When tuning planet terrain or hydro water shaders, use `createTerraformingTerrainMaterial()` and `createHydroWaterMaterial()` from [TerrainAndWaterShaders.ts](./examples/TerrainAndWaterShaders.ts):
+When tuning the terraforming terrain splatmap, use `createTerraformingTerrainMaterial()` from [TerrainAndWaterShaders.ts](./examples/TerrainAndWaterShaders.ts) (in-repo copy: `frontend/render/visuals/TerrainAndWaterShaders.ts`). The example's `createHydroWaterMaterial()` is not the game's water: every water surface uses `createWaterMaterial()` in `frontend/render/visuals/water/WaterMaterial.ts` (GLSL chunks in `frontend/render/visuals/water/glsl/`: `waves`, `surface`, `foam`, `reflections`, `bed`, `stages`), tuned through `waterConfig.ts` (F8 Visual Shader Lab → `WATER` tab, `?water=1|0`), with the shared wave maths (wavelengths, slopes, peak height that fauna and the CPU read too) in `waveModel.ts`. For the splatmap:
 1. Sample the dynamic `uTerraformMap` (`DataTexture` updated by terraforming stations).
 2. Compute a glowing frontier ring along the transition boundary (`smoothstep(0.42, 0.5, mask) * (1.0 - smoothstep(0.5, 0.58, mask))`) boosted by `3.8x` for selective bloom.
 3. Blend barren biome rock/sand/ice into lush terraformed grass/soil inside the mask.
