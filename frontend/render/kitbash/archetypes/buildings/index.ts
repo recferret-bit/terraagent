@@ -4,6 +4,7 @@ import { ArchetypeCatalog } from '../../catalog';
 import { commandHub, claimBeacon } from './hub';
 import { pylon, capacitor, solar, wind, coalGen } from './power';
 import { mine, waterPump, supplyDepot } from './industry';
+import { tradeHub } from './trade';
 import { droneArray, roboticsFactory, turret } from './tech';
 import { rocket } from './rocket';
 
@@ -21,6 +22,7 @@ reg('building.coalGen', 'Coal Generator', coalGen, [2, 2], 'Boiler drum, 3 stack
 reg('building.mine', 'Mine', mine, [2, 2], 'Derrick with spinning drill string (animType 1), ore bin, hut.');
 reg('building.waterPump', 'Water Pump', waterPump, [1, 1], 'Spherical water tower, pump house, pipes.');
 reg('building.supplyDepot', 'Supply Depot', supplyDepot, [2, 2], 'Vaulted warehouse, crates, gantry crane.');
+reg('building.tradeHub', 'Inter-Colony Trade Hub', tradeHub, [2, 2], 'Orbital cargo pad, logistics hall, container gantry, rotating uplink dish.');
 reg('building.droneArray', 'Drone Control Array', droneArray, [2, 2], 'Tower + 3 rotating dishes, pads, hovering drone (animType 2).');
 reg('building.roboticsFactory', 'Robotics Factory', roboticsFactory, [4, 3], 'Sawtooth hall, roof gantry arm, conveyor w/ robot torso.');
 reg('building.turret', 'Turret', turret, [1, 1], 'Rotating sensor head (1), twin barrels (animType 3 recoil).');
