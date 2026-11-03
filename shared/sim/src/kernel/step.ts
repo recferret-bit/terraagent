@@ -73,12 +73,19 @@ function applyCommands(state: PlanetState, cmds: readonly SimCommand[], ctx: Ste
   const out: CommandOutcome[] = [];
   for (const cmd of cmds) {
     const h = p.handlers.get(cmd.kind);
-    let res: string | { code: string; detail?: string } | undefined;
+    let res: string | { code: string; detail?: string; unlocksAt?: string } | undefined;
     if (!h) res = 'unknown_kind';
     else if (!ctx.flags.has(h.wave)) res = 'wave_disabled';
     else res = h.handle(state, cmd, ctx) ?? undefined;
     const rej = typeof res === 'string' ? { code: res } : res;
-    out.push({ commandId: cmd.commandId, kind: cmd.kind, appliedAtTick: ctx.tick, ...(rej?.code ? { code: rej.code } : {}), ...(rej?.code && rej.detail ? { detail: rej.detail } : {}) });
+    out.push({
+      commandId: cmd.commandId,
+      kind: cmd.kind,
+      appliedAtTick: ctx.tick,
+      ...(rej?.code ? { code: rej.code } : {}),
+      ...(rej?.code && rej.detail ? { detail: rej.detail } : {}),
+      ...(rej?.code && rej.unlocksAt ? { unlocksAt: rej.unlocksAt } : {}),
+    });
   }
   return out;
 }

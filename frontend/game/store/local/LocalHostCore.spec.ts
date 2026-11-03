@@ -1,10 +1,11 @@
-import { ServerMessage, type ServerMessageOf } from '@terra/contracts';
-import { getColonyStock, snapshot, StepError, type BalanceOverrides, type SimHost } from '@terra/sim';
+import { parseWaves, ServerMessage, type ServerMessageOf } from '@terra/contracts';
+import { createPlanet, ensureColonyLedger, ensureColonyRecord, getColonyStock, snapshot, spawnHqUnit, StepError, type BalanceOverrides, type SimHost } from '@terra/sim';
 import { describe, expect, it, vi } from 'vitest';
 import type { LedgerReply } from '../../net/devServer';
 import { ReplicaCore } from '../replica/ReplicaCore';
 import { LocalHostController } from './LocalHostController';
 import { LocalDevError, LocalHostCore, MAX_STEP_RESTORES, type LocalHostDeps } from './LocalHostCore';
+import { builtPlanetSource } from './planetSource';
 import type { FromLocalHost, LocalHostOptions } from './protocol';
 import { memorySnapshotStore } from './snapshotStore';
 
@@ -172,6 +173,31 @@ describe('LocalHostCore reject details and failing steps (GP-31, BE-12)', () => 
     expect(rej?.d.detail).toMatch(/\S/);
     expect(ServerMessage.safeParse(rej).success).toBe(true);
     core.stop();
+  });
+
+  it("a handler's { code: 'stage_locked', unlocksAt } reaches the client's cmd.reject (W08-10)", () => {
+    const r = rig();
+    const waves = parseWaves('..08').list;
+    const source = builtPlanetSource(
+      'w08-s2',
+      waves,
+      () => createPlanet({ type: 'temperate', seed: 'w08-s2-local', radius: 12 }),
+      (host) => {
+        const col = ensureColonyLedger(ensureColonyRecord(host.state, 0, 0));
+        col.status = 'active';
+        col.stage = 2;
+        col.unlockStage = 2;
+        spawnHqUnit(host.state, { owner: 0, q: 0, r: 0 });
+      },
+    );
+    const core = LocalHostCore.open(source, waves, r.deps, (m) => r.out.push(m));
+    core.handle(join);
+    core.handle(cmd('cm_rf', 'placeBuilding', { building: 'robotics_factory', q: 2, r: 0 }));
+    core.advance(1);
+    const rej = r.servers().find((m): m is ServerMessageOf<'cmd.reject'> => m.t === 'cmd.reject' && m.d.id === 'cm_rf');
+    expect(rej?.d).toMatchObject({ id: 'cm_rf', code: 'stage_locked', detail: 'S3', unlocksAt: 'S3' });
+    expect(ServerMessage.safeParse(rej).success).toBe(true);
+    void core.stop();
   });
 
   it('a step that throws rejects its commands internal (no ack), restores the last snapshot and re-welcomes', async () => {
