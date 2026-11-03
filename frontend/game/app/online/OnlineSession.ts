@@ -32,6 +32,7 @@ import { PauseOverlay } from './PauseOverlay';
 import { createUnitControl } from './unitControl';
 import type { PodLandingStateName } from './PodTouchdownFx';
 import { extractPodDescentStatus } from './podStatus';
+import { PilotBridge } from './pilotBridge';
 import { createSessionHud } from './sessionHud';
 import { createSessionTarget, joinParam, scenarioParam } from './sessionTarget';
 import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
@@ -71,6 +72,7 @@ export class OnlineSession {
   private readonly skipDescent: boolean; private readonly fromSpaceDescent: boolean; private readonly fastStartLand: boolean;
   private readonly onReturnToOrbit?: (kind: PlanetKind) => void; private readonly allowLocalFallback: boolean;
   private banner: ConnectionBanner | null; private readonly hud: FeatureHud;
+  private readonly pilot: PilotBridge;
   private readonly bootTarget: SessionTarget; private readonly guest: GuestBootTarget | null;
   private disposed = false; private localHost: LocalHost | null = null;
   private showSpaceTerrain = false; private cameraCentered = false; private landSent = false; private hqDeployedSynced = false;
@@ -108,6 +110,7 @@ export class OnlineSession {
       })
       : null;
     this.bootTarget = this.guest ?? createSessionTarget(loc);
+    this.pilot = new PilotBridge({ fetch: opts.fetch, target: () => this.guest, sessionToken: () => this.bootTarget.accessToken });
 
     const localOpts = !useGuestBoot && !opts.transport && !opts.localHost ? localHostOptions(this.search) : null;
     const local = localOpts ? new LocalTransport(workerLink(createLocalWorker()), localOpts) : null;
@@ -139,6 +142,7 @@ export class OnlineSession {
       store: this.store, commandBus: this.commandBus, netStats: this.netStats, transport: this.transport, landfall: this.landfall,
       terrain: () => this.terrain, biomeKey: () => this.biomeKey, localHost: () => this.localHost, colonyIndex: () => this.colonyIndex,
       planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
+      pilot: this.pilot,
     });
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
     if (local) this.cleanups.push(bindLocalSaveListeners(local));
@@ -280,6 +284,7 @@ export class OnlineSession {
   private applyBootResult(boot: BootAuthResult): void {
     if (this.disposed) return;
     this.bootResult = boot;
+    this.pilot.note(boot);
     this.planetId = boot.planet.id;
     this.colonyId = boot.colony.id;
     this.colonyIndex = boot.colony.colonyIndex;

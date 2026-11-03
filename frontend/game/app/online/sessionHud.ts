@@ -34,6 +34,8 @@ export interface SessionHudDeps {
   /** Own colony index (changes when the boot seats the colony). */
   colonyIndex(): number;
   pickAt(clientX: number, clientY: number): HexPick | null;
+  /** Identity chip (W06). The session bridge; the panel subscribes. */
+  pilot: FeatureServices['pilot'];
 }
 
 /**
@@ -58,6 +60,7 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     scene3d, netStats: d.netStats, transport: d.transport, store: d.store,
     getView: () => d.store.latest ?? undefined,
     landfall: d.landfall, pickTile: (cx, cy) => d.pickAt(cx, cy), canvas: d.canvas, surface: d.canvas,
+    pilot: d.pilot,
   };
   Object.defineProperties(services, {
     colonyId: { get: d.colonyIndex, enumerable: true, configurable: true },

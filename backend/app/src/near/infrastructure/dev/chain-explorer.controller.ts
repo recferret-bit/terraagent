@@ -6,6 +6,8 @@ import { DevOnlyGuard } from '../../../core/dev-only.guard.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { ChainReadPort } from '../../application/ports/chain-read.port.js';
 import { MockChainReadAdapter } from '../adapters/chain-read/mock-chain-read.adapter.js';
+import { listExplorerAccounts } from './explorer-accounts.js';
+import { readExplorerTx } from './explorer-tx.js';
 
 /** Page size cap for every explorer list (default 50). */
 export const EXPLORER_MAX = 200;
@@ -13,6 +15,8 @@ const limit = z.coerce.number().int().min(1).max(EXPLORER_MAX).default(50);
 const account = z.string().trim().min(1).max(64).optional();
 
 const ReceiptsQuery = z.object({ account, limit });
+const AccountsQuery = z.object({ account, limit });
+const TxQuery = z.object({ hash: z.string().trim().min(1).max(64) });
 const BalancesQuery = z.object({ account, limit });
 const NftsQuery = z.object({ account, collection: z.string().trim().min(1).max(64).optional(), limit });
 const EscrowQuery = z.object({ account, limit });
@@ -34,6 +38,7 @@ interface OutboxRowRaw { id: bigint; op_id: string; port: string; method: string
  *  - a row matches when its payload JSON contains the account as a whole JSON string value (any key, any depth), or
  *  - (receipts only) its opId is the opId of an NFT currently owned by the account (so mint receipts match their owner).
  * Balances, NFTs and escrow filter by their own account columns (escrow: opener or beneficiary). The DAO list is unfiltered.
+ * Accounts (`?account=` exact id) merge `mock_chain_account` and `near_colony_account`. `GET tx?hash=` is one receipt.
  */
 @Controller('dev/chain')
 @UseGuards(DevOnlyGuard)
@@ -69,6 +74,21 @@ export class ChainExplorerController {
       txHash: r.tx_hash, blockHeight: Number(r.block_height), status: r.status, network: 'mock', ...(r.error_code ? { errorCode: r.error_code } : {}),
       at: r.created_at.getTime(), opId: r.op_id, port: r.port, method: r.method, payload: r.payload,
     }));
+  }
+
+  @Get('accounts')
+  async accounts(@Query() raw: unknown) {
+    const q = this.query(AccountsQuery, raw);
+    return listExplorerAccounts(this.prisma, { account: q.account, limit: q.limit });
+  }
+
+  /** One receipt. `hash` is a query param because a `mock:` hash contains a colon. 404 when the row is missing. */
+  @Get('tx')
+  async tx(@Query() raw: unknown) {
+    const q = this.query(TxQuery, raw);
+    const detail = await readExplorerTx(this.prisma, q.hash);
+    if (!detail) throw new CoreException('NOT_FOUND', { status: 404, message: 'Not found' });
+    return detail;
   }
 
   @Get('balances')

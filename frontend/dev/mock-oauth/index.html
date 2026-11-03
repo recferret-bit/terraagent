@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>TerraAgent — Mock Login</title>
+<meta name="theme-color" content="#07080A">
+<link rel="stylesheet" href="/design/css/tokens.css">
+<link rel="stylesheet" href="/design/css/base.css">
+</head>
+<body>
+<main class="container" id="app">
+  <section class="plate mo-plate">
+    <p class="eyebrow">DEV TOOLS · IDENTITY</p>
+    <h1 class="h2" id="mo-title">Google (mock)</h1>
+    <p class="lede">Pick a test identity. You return with a signed mock token.</p>
+    <div class="mo-actions">
+      <button type="button" class="btn btn-ghost mo-id" id="mo-preset">test-pilot</button>
+    </div>
+    <label class="label" for="mo-name">Another identity</label>
+    <div class="mo-custom">
+      <input class="input" id="mo-name" type="text" maxlength="64" autocomplete="off" spellcheck="false">
+      <button type="button" class="btn btn-primary" id="mo-use">Use this name</button>
+    </div>
+    <p class="mo-err" id="mo-err" role="status"></p>
+  </section>
+</main>
+<script type="module" src="/game/dev/mock-oauth/main.ts"></script>
+</body>
+</html>

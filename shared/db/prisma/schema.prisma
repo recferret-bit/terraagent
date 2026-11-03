@@ -125,6 +125,46 @@ model Colony {
   @@schema("core")
 }
 
+// --- identity.prisma ---
+/// F5 social login (DATA_MODEL `core.social_identity`). One `(provider, subject)` is one player and one Pilot ID.
+model SocialIdentity {
+  id        String   @id
+  playerId  String   @map("player_id")
+  provider  String   @db.VarChar(32)
+  subject   String   @db.VarChar(128)
+  accountId String   @unique @map("account_id") @db.VarChar(64)
+  email     String?  @db.VarChar(254)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([provider, subject])
+  @@index([playerId])
+  @@map("social_identity")
+  @@schema("core")
+}
+
+/// Player and colony chain accounts (DATA_MODEL `chain.near_colony_account`, NEAR §2).
+/// `slot` is `player` or the colony id, so each player has one named account and one row per colony.
+/// `encryptedSecret` is AES-256-GCM under `NEAR_KEK`. The row never stores a plaintext key.
+model NearColonyAccount {
+  accountId          String    @id @map("account_id") @db.VarChar(64)
+  playerId           String    @map("player_id")
+  slot               String    @db.VarChar(64)
+  colonyId           String?   @map("colony_id")
+  ownerAccountId     String    @map("owner_account_id") @db.VarChar(64)
+  publicKey          String    @map("public_key") @db.VarChar(128)
+  encryptedSecret    String    @map("encrypted_secret")
+  kekVersion         Int       @map("kek_version")
+  accessKeyNonce     BigInt    @default(1) @map("access_key_nonce")
+  claimedAt          DateTime? @map("claimed_at") @db.Timestamptz(3)
+  claimedByAccountId String?   @map("claimed_by_account_id") @db.VarChar(64)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([playerId, slot])
+  @@index([colonyId])
+  @@map("near_colony_account")
+  @@schema("chain")
+}
+
 // --- mock-chain.prisma ---
 /// Mock NEAR chain state (NEAR §1a rule 4). Written only by the `Mock*Adapter` classes; real adapters never touch it.
 model MockChainAccount {

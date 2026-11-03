@@ -5,6 +5,7 @@ import { PRISMA } from '../../../db/db.module';
 import { NearException, type NearErrorCode } from '../../domain/errors';
 import type { ChainReceipt } from '../../domain/types';
 import { parseMockChainConfig, seededRandom, type MockChainConfig } from './mock-chain.config';
+import { mockChainControls } from './mock-controls';
 import { mockTxHashFor, randomMockTxHash } from './tx-hash';
 
 export const MOCK_CHAIN_CONFIG = Symbol('MOCK_CHAIN_CONFIG');
@@ -45,10 +46,9 @@ export abstract class MockChainBase {
     this.random = this.config.seed === undefined ? Math.random : seededRandom(this.config.seed);
   }
 
-  /** Random latency in `[latencyMinMs, latencyMaxMs]`. */
+  /** Random latency in `[latencyMinMs, latencyMaxMs]` of the boot config (not a per-port override). */
   protected pickLatencyMs(): number {
-    const { latencyMinMs: lo, latencyMaxMs: hi } = this.config;
-    return lo + Math.floor(this.random() * (hi - lo + 1));
+    return latencyMs(this.config, this.random);
   }
 
   /**
@@ -62,14 +62,18 @@ export abstract class MockChainBase {
 
   /** Like `call`, but also returns `fn`'s value (on an idempotent replay: the stored payload). */
   protected async callWithResult<T extends object>(port: string, method: string, opId: string | undefined, fn: (tx: DbClient) => Promise<T>, opts: MockCallOptions = {}): Promise<{ value: T; receipt: ChainReceipt }> {
-    await this.runtime.sleep(this.pickLatencyMs());
+    // Latency is the override at the start of the call. The fail roll reads it again after the sleep,
+    // so `near.mock.fail <port> 0` during that wait saves the attempt already in flight.
+    const cfg = mockChainControls.overlay(port, this.config);
+    await this.runtime.sleep(latencyMs(cfg, this.random));
     if (opId !== undefined) {
       const prior = await this.prisma.mockChainReceipt.findUnique({ where: { opId } });
       if (prior) return { value: prior.payload as T, receipt: toReceipt(prior) };
     }
-    if (this.random() < this.config.failRate) {
+    const rolled = mockChainControls.overlay(port, this.config);
+    if (this.random() < rolled.failRate) {
       const code = opts.failCode ?? 'NEAR_MOCK_INJECTED_FAILURE';
-      throw new NearMockException(code, { message: `mock ${port}.${method} failed by injection (MOCK_FAIL_RATE=${this.config.failRate})`, details: { port, method, opId } });
+      throw new NearMockException(code, { message: `mock ${port}.${method} failed by injection (MOCK_FAIL_RATE=${rolled.failRate})`, details: { port, method, opId } });
     }
     const txHash = opId === undefined ? randomMockTxHash(this.random) : mockTxHashFor(opId);
     return withTransaction(this.prisma, async (tx) => {
@@ -80,6 +84,17 @@ export abstract class MockChainBase {
       });
       return { value, receipt: toReceipt(row) };
     });
+  }
+
+  /**
+   * A receipt already stored for this port method, matched on one JSON payload field.
+   * Does not sleep and does not roll `MOCK_FAIL_RATE` (a finished opId must replay even when failures are forced).
+   */
+  protected async findReceiptByPayload(port: string, method: string, field: string, value: string): Promise<ChainReceipt | null> {
+    const row = await this.prisma.mockChainReceipt.findFirst({
+      where: { port, method, payload: { path: [field], equals: value } },
+    });
+    return row ? toReceipt(row) : null;
   }
 
   /** Creates the account row when missing (kind `named` by default). */
@@ -111,6 +126,11 @@ export abstract class MockChainBase {
     const row = await tx.mockChainBalance.findUnique({ where: { accountId_tokenId: { accountId, tokenId } } });
     return row?.amount.toFixed() ?? '0';
   }
+}
+
+function latencyMs(cfg: MockChainConfig, random: () => number): number {
+  const { latencyMinMs: lo, latencyMaxMs: hi } = cfg;
+  return lo + Math.floor(random() * (hi - lo + 1));
 }
 
 function toReceipt(row: { txHash: string; status: string; errorCode: string | null; blockHeight: bigint; createdAt: Date }): ChainReceipt {

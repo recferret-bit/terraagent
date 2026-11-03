@@ -21,12 +21,26 @@ const suffixed = (desired: string) => `${desired.slice(0, 27)}-${randomBytes(2).
 @Injectable()
 export class AuthRepository {
   private readonly store: AuthStore;
+  /** Set only when players live in Postgres. Unit tests (no database) leave this null. */
+  private readonly prisma: PrismaClient | null;
 
   constructor(
     @Optional() @Inject(PRISMA) prisma?: PrismaClient,
     @Optional() @Inject(APP_ENV) env?: AppEnv,
   ) {
-    this.store = prisma && databaseEnabled(env) ? new PrismaAuthStore(prisma) : new MemoryAuthStore();
+    this.prisma = prisma && databaseEnabled(env) ? prisma : null;
+    this.store = this.prisma ? new PrismaAuthStore(this.prisma) : new MemoryAuthStore();
+  }
+
+  /** Earliest Pilot ID for this player, or null when the database is off or the player is still a guest. */
+  async findPilotAccount(playerId: string): Promise<string | null> {
+    if (!this.prisma) return null;
+    const row = await this.prisma.socialIdentity.findFirst({
+      where: { playerId },
+      orderBy: { createdAt: 'asc' },
+      select: { accountId: true },
+    });
+    return row?.accountId ?? null;
   }
 
   findPlayerByDeviceSecretHash(deviceSecretHash: string): Promise<PlayerRecord | null> {

@@ -22,6 +22,11 @@ export const NEAR_ERROR_CODES = {
   NEAR_DAO_STATE: { status: 409, description: 'The proposal is not in a state that allows this action.' },
   NEAR_MOCK_INJECTED_FAILURE: { status: 503, description: 'Failure injected by MOCK_FAIL_RATE to exercise pending/failed UI states.' },
   NEAR_UNAVAILABLE: { status: 503, description: 'The chain or its RPC is temporarily unavailable; retry with the same opId.' },
+  // F5 (W06). Player-facing text: no wallet, gas, transaction, or key wording (NEAR §1 principle 1).
+  NEAR_PROVIDER_REJECTED: { status: 401, description: 'That sign-in could not be confirmed. Try again.' },
+  NEAR_NAME_TAKEN: { status: 409, description: 'That Pilot ID is already in use.' },
+  NEAR_RELAY_FAILED: { status: 503, description: "Couldn't save to orbit. Retrying." },
+  NEAR_RELAY_RECEIVER_NOT_ALLOWED: { status: 403, description: 'That save is not allowed for this colony.' },
 } as const satisfies Record<string, NearErrorDef>;
 
 export type NearErrorCode = keyof typeof NEAR_ERROR_CODES;

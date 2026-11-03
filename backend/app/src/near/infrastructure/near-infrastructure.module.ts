@@ -15,7 +15,13 @@ const keyOf = (name: string) => NEAR_PORT_KEYS.find((k) => k.port === name)!.key
 
 /** Env section (guard runs before Nest starts); exported so tests can parse it against a fixture adapter list. */
 export const nearEnvFor = (adapters: Parameters<typeof guardedEnv>[4]) =>
-  guardedEnv('near', Object.fromEntries(NEAR_PORT_KEYS.map((k) => [k.key, z.string().optional()])), 'NEAR_ALLOW_MOCK_IN_PROD',
+  guardedEnv('near', {
+    ...Object.fromEntries(NEAR_PORT_KEYS.map((k) => [k.key, z.string().optional()])),
+    // Optional: boot must not require a KEK. `loadKekRing` still refuses the dev key in production when a key is sealed (BE-34).
+    NEAR_KEK: z.string().optional(),
+    NEAR_KEK_VERSION: z.string().optional(),
+    NEAR_KEK_RING: z.string().optional(),
+  }, 'NEAR_ALLOW_MOCK_IN_PROD',
     nearPorts.map((p) => ({ name: p.name, token: p.token, key: keyOf(p.name), kind: (s) => nearAdapterFor(p.name as NearPortName, s) })), adapters);
 
 /** The only place NEAR ports are bound: one `{ provide: XPort, useClass: <selected adapter> }` per registered port. */
