@@ -1,5 +1,5 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
-import { ownColonyIndex } from '../shared/colony';
+import { ownColonyIndex, viewColony } from '../shared/colony';
 import { supplyBlockReason, supplyLevel } from '../shared/supply';
 import { buildUnitsCatalog, resolveSupply, type SupplySummary, type UnitCardModel } from './catalog';
 
@@ -368,12 +368,10 @@ export class UnitsMenu implements Disposable {
   }
 
   private renderBuffer(): void {
-    const v = this.view as {
-      colonies?: Array<{ unitQueue?: QueueItemLike[] }>;
-      blobs?: { hubProduction?: { entries?: QueueItemLike[] } };
-    } | undefined;
-
-    const raw = v?.colonies?.[0]?.unitQueue ?? v?.blobs?.hubProduction?.entries ?? [];
+    const v = this.view as { blobs?: { hubProduction?: { entries?: Array<QueueItemLike & { colonyIndex?: number }> } } } | undefined;
+    const own = ownColonyIndex(this.ctx.services);
+    const raw = (viewColony(this.view, own)?.unitQueue as QueueItemLike[] | undefined)
+      ?? (v?.blobs?.hubProduction?.entries ?? []).filter((en) => (en.colonyIndex ?? own) === own);
     const entries = raw.filter((en) => en.state !== 'done' && en.state !== 'cancelled');
     const nextKey = entries.map((en) => `${en.taskId ?? ''}:${formatBufferItem(en)}`).join('|');
     if (this.lastBufferKey === nextKey) return;
