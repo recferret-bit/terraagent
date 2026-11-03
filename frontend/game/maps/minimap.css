@@ -1,0 +1,140 @@
+.ta-minimap {
+  position: relative;
+  width: 180px;
+  height: 180px;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  overflow: hidden;
+  user-select: none;
+  touch-action: none;
+  pointer-events: auto;
+}
+
+.ta-minimap__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--ta-void);
+  cursor: crosshair;
+}
+
+.ta-minimap__bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--ta-s1) var(--ta-s2);
+  background: linear-gradient(180deg, var(--ta-deep) 0%, transparent 100%);
+  pointer-events: none;
+}
+
+.ta-minimap__title {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-text-2);
+  line-height: 1;
+}
+
+.ta-minimap__expand {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--ta-seam-3);
+  background: var(--ta-plate-2);
+  color: var(--ta-text);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-eyebrow);
+  line-height: 1;
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  transition: background var(--ta-dur-quick) ease,
+    color var(--ta-dur-quick) ease,
+    border-color var(--ta-dur-quick) ease;
+}
+
+.ta-minimap__actions {
+  display: flex;
+  gap: var(--ta-s1);
+  pointer-events: none;
+}
+
+.ta-minimap__toggle[data-active="true"] {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange-hi);
+}
+
+.ta-minimap__expand:hover,
+.ta-minimap__expand:focus-visible {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange-hi);
+  outline: none;
+}
+
+.ta-hud__slot--bottom-left .ta-command-dock__body {
+  max-height: min(32vh, 220px);
+}
+
+@media (max-height: 500px), (max-width: 900px) and (orientation: landscape) {
+  .ta-minimap {
+    width: 140px !important;
+    height: 140px !important;
+  }
+
+  .ta-hud__slot--bottom-left {
+    flex-direction: row;
+    align-items: flex-end;
+    gap: var(--ta-s2);
+  }
+
+  .ta-hud__slot--bottom-left .ta-command-dock {
+    width: min(260px, calc(100vw - 180px));
+  }
+
+  .ta-hud__slot--bottom-left .ta-command-dock__body {
+    max-height: min(42vh, 150px);
+  }
+}
+
+/* Map-only tile palette (read by tileColors.ts; fallbacks live there). */
+:root {
+  --ta-map-unexplored: #3b4c6b;
+  --ta-map-flat: #b4cc72;
+  --ta-map-forest: #2fa35c;
+  --ta-map-rock: #a99f94;
+  --ta-map-slope: #d9a05b;
+  --ta-map-hole: #9a5e3e;
+  --ta-map-shallow: #66d3f5;
+  --ta-map-deep: #3a78e0;
+  --ta-map-prepared: #f3e3a6;
+  --ta-map-living: #3deb8a;
+  --ta-map-ridge: #a583ee;
+}

@@ -979,7 +979,6 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **To resolve:** register `time` in one feature; send a bare hour as `dev.time { target }`; make a bare `time` print the clock from the view (`blobs.planetTime` / colony power summary) instead of setting it. Update `docs/dev/DEV_TOOLS.md` with the split if it stays.
 - **Found:** 2026-11-03, W02 review round 2 (lead)
 
-
 ## W06 Invisible Chain
 
 These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-34..FF-61 on `main` first, so the W06 entries continue at FF-62.
@@ -1004,3 +1003,31 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **To resolve:** have guest/refresh return `accountId` when the player is already linked, and have the chip render `Pilot ID` from that boot field.
 - **Fix:** the guest auth response now carries `isGuest: false` and top-level `accountId` when the player has a `social_identity` row. `readAccountId` already reads that field, and `isGuest` is `player.isGuest !== false`, so a reload shows `Pilot ID …`. The chip was not rewritten. Refresh of a linked player returns the same two fields.
 - **Found:** 2026-11-02, W06-15
+
+## W04 Maps & Camera (2026-11-03)
+
+### FF-64 · W04 Maps & Camera deferred scope (tags F / L) and analytical frustum fallback
+
+- **Status:** Accepted (by wave scope `docs/plan/waves/W04-maps-camera.md`)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/maps/`, `frontend/game/features/maps/index.ts`, `docs/plan/waves/W04-maps-camera.md`
+- **What happens:**
+  1. **Deferred W04 issues (tags `F` and `L`):** per `docs/plan/waves/W04-maps-camera.md`, the 14 `H`-tagged issues (`W04-01`, `W04-03..05`, `W04-07`, `W04-09..11`, `W04-13..16`, `W04-22`, `W04-33`) ship in this wave. The `F` and `L` issues — `W04-02` (server `alertPing` emission; schema `alertPingEvent` is already registered in `shared/contracts/src/events/alert-ping.ts`), `W04-06` (separate three-state fog overlay pass; unexplored tiles are already painted `--ta-void` in `tileColors.ts`), `W04-08` (`alertPing` expanding ring + `Space` jump), `W04-12` (`Space` jump to last alert), `W04-17..20` (Resources, Power, Threats, Walls, Market map layers for W03/W05/W07/W08/W10/W11), `W04-21` (global map click-to-pan), and `W04-23..32` (unit follow ring, box-drag lasso, control groups `1..9`, double-tap, `Tab` sub-selection, `Home` key, touch pinch/pan) — remain scheduled for their respective full/launch waves and demo steps 6–9 are marked deferred in `docs/plan/checks/w04-check.md`.
+  2. **Analytical frustum fallback in `cameraTrapezoid.ts`:** `computeCameraTrapezoid` projects the 4 NDC screen corners onto the ground plane via `projectFrustumRaysToGround(camera, groundY, dist * 3.5)`; when no `THREE.PerspectiveCamera` is provided (e.g. unit specs passing explicit `{ targetX, targetZ, yaw, dist }`) or a near-horizon ray does not intersect within `3.5 × dist`, it falls back to `computeAnalyticalWorldCorners`.
+- **Why it is like this:** hackathon scope (`H`) focuses on the 180 px minimap, incremental hex raster cache, unit/building dots, camera trapezoid, minimap click/drag pan, and fullscreen global map (`M`) with `Territory`, `Terrain`, and `Units` layers.
+- **Workaround / mitigation:** none needed for `H` scope.
+- **To resolve:** implement `F` and `L` issues when those waves / tags are opened.
+- **Found:** 2026-11-03, W04 wave lead
+
+### FF-65 · Global map shows nothing around the planet (no neighbouring sectors)
+
+- **Status:** Accepted (until W27)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `MapsController.drawGlobalMap`, `frontend/game/maps/global-map.css`
+- **What happens:** the global map (an 80 % pop-up over the blurred scene) is endless to pan/zoom, but the area around the planet is the dialog's flat translucent fill. The decorative hex lattice that used to fill it was removed at the owner's request (it read as "blurred hexagons"). There is exactly one planet per session today, so there are no neighbouring sectors to draw; the `Resources` layer shows only the visible `deposit` layer of explored tiles (never the hidden `subDeposit`).
+- **Why it is like this:** real neighbouring sectors and streaming belong to W27 (planet atlas, `docs/plan/waves/W27-planet-sectors.md`).
+- **Workaround / mitigation:** none needed; `RESET [0]` recenters on the planet.
+- **To resolve:** draw summary tiles of adjacent sectors around the planet when W27 lands.
+- **Found:** 2026-11-03, W04 map fixes

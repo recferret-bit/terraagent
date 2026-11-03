@@ -143,6 +143,7 @@ export class OnlineSession {
       store: this.store, commandBus: this.commandBus, netStats: this.netStats, transport: this.transport, landfall: this.landfall,
       terrain: () => this.terrain, biomeKey: () => this.biomeKey, localHost: () => this.localHost, colonyIndex: () => this.colonyIndex,
       planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
+      camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s),
       pilot: this.pilot,
     });
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
@@ -191,6 +192,7 @@ export class OnlineSession {
   }
 
   get bootPhase(): BootPhase { return this.bootOverlay?.phase ?? 'colony'; }
+  get minimap() { return this.hud.activeServices?.maps?.stats ?? null; }
   setPaused(p: boolean): void { this.pauseOverlay.setPaused(p); if (this.cam) this.cam.enabled = !p; }
 
   returnToOrbit(): void {
