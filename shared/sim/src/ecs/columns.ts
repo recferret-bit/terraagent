@@ -41,6 +41,19 @@ export const ENTITY_KIND = {
   metalsExtractor: 5,
   solar: 6,
   harvester: 7,
+  builder: 8,
+  pylon: 9,
+  capacitor: 10,
+  wind: 11,
+  thermal: 12,
+  supplyDepot: 13,
+  depot: 13,
+  mineralsQuarry: 14,
+  quarry: 14,
+  waterExtractor: 15,
+  waterPump: 15,
+  petroleumWell: 16,
+  oilWell: 16,
 } as const;
 
 export const ENTITY_STATE = {
@@ -56,6 +69,10 @@ export const ENTITY_STATE = {
   offlineUnpowered: 9,
   offlineCapped: 10,
   harvesting: 11,
+  offlineOverload: 12,
+  offlineNoFuel: 13,
+  offlineNoGrid: 14,
+  repairing: 15,
 } as const;
 
 const columns: FieldDef[] = [...BASE];

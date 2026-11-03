@@ -432,6 +432,38 @@
       "summary": "Demolishes an owned finished structure and refunds 50 % of its cost while keeping tiles Prepared (UO-Q-02, W02-09).",
       "wave": "W02"
     },
+    "dev.addload": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "type": "number"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ePerS": {
+            "type": "number"
+          },
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "loadPerS": {
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: injects synthetic electrical load (E/s) onto a colony or specific pylon branch (W03-27).",
+      "wave": "W03"
+    },
     "dev.cell": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -452,6 +484,56 @@
       "origin": "client",
       "summary": "Dev console: sets the colony HQ power cell energy to `energy` (clamped to cell capacity).",
       "wave": "W01"
+    },
+    "dev.damage": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "pct": {
+            "maximum": 100,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "entityId",
+          "pct"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: damages an entity by `pct` percent of its max HP (clamped above 1 HP unless pct >= 100, W03-27).",
+      "wave": "W03"
+    },
+    "dev.drainfuel": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: zeroes the colony biomass stock (`bio.biomass`) to test Thermal Plant fuel starvation (W03-27).",
+      "wave": "W03"
     },
     "dev.fill": {
       "args": {
@@ -695,6 +777,32 @@
       "origin": "client",
       "summary": "Dev console: regenerates the dev planet terrain with the given seed.",
       "wave": "W01"
+    },
+    "dev.setwind": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "pct": {
+            "maximum": 500,
+            "minimum": 0,
+            "type": "number"
+          }
+        },
+        "required": [
+          "pct"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: sets the planet wind speed factor percentage (e.g. 50..140, W03-27).",
+      "wave": "W03"
     },
     "dev.skipnight": {
       "args": {
@@ -1030,6 +1138,124 @@
           {
             "additionalProperties": false,
             "properties": {
+              "powerLine": {
+                "additionalProperties": false,
+                "properties": {
+                  "tier": {
+                    "maximum": 2,
+                    "minimum": 1,
+                    "type": "integer"
+                  },
+                  "tiles": {
+                    "items": {
+                      "additionalProperties": false,
+                      "properties": {
+                        "q": {
+                          "maximum": 32767,
+                          "minimum": -32768,
+                          "type": "integer"
+                        },
+                        "r": {
+                          "maximum": 32767,
+                          "minimum": -32768,
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "q",
+                        "r"
+                      ],
+                      "type": "object"
+                    },
+                    "maxItems": 64,
+                    "minItems": 1,
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "tiles"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "powerLine"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "repair": {
+                "additionalProperties": false,
+                "properties": {
+                  "entityId": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "q": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "r": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "entityId"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "repair"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "hqGoal": {
+                "additionalProperties": false,
+                "properties": {
+                  "goal": {
+                    "maxLength": 64,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "q": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "r": {
+                    "maximum": 32767,
+                    "minimum": -32768,
+                    "type": "integer"
+                  },
+                  "target": {
+                    "maxLength": 64,
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "goal"
+                ],
+                "type": "object"
+              }
+            },
+            "required": [
+              "hqGoal"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
               "costOverride": {
                 "additionalProperties": {
                   "minimum": 0,
@@ -1045,7 +1271,12 @@
                   "explicit",
                   "autoSitePrep",
                   "queued",
-                  "standing"
+                  "standing",
+                  "system",
+                  "player",
+                  "hq",
+                  "ai",
+                  "auto"
                 ],
                 "type": "string"
               },
@@ -1186,6 +1417,112 @@
                       "r"
                     ],
                     "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "kind": {
+                        "const": "powerLine",
+                        "type": "string"
+                      },
+                      "tier": {
+                        "maximum": 2,
+                        "minimum": 1,
+                        "type": "integer"
+                      },
+                      "tiles": {
+                        "items": {
+                          "additionalProperties": false,
+                          "properties": {
+                            "q": {
+                              "maximum": 32767,
+                              "minimum": -32768,
+                              "type": "integer"
+                            },
+                            "r": {
+                              "maximum": 32767,
+                              "minimum": -32768,
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "q",
+                            "r"
+                          ],
+                          "type": "object"
+                        },
+                        "maxItems": 64,
+                        "minItems": 1,
+                        "type": "array"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "tiles"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "entityId": {
+                        "exclusiveMinimum": 0,
+                        "maximum": 9007199254740991,
+                        "type": "integer"
+                      },
+                      "kind": {
+                        "const": "repair",
+                        "type": "string"
+                      },
+                      "q": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "r": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "entityId"
+                    ],
+                    "type": "object"
+                  },
+                  {
+                    "additionalProperties": false,
+                    "properties": {
+                      "goal": {
+                        "maxLength": 64,
+                        "minLength": 1,
+                        "type": "string"
+                      },
+                      "kind": {
+                        "const": "hqGoal",
+                        "type": "string"
+                      },
+                      "q": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "r": {
+                        "maximum": 32767,
+                        "minimum": -32768,
+                        "type": "integer"
+                      },
+                      "target": {
+                        "maxLength": 64,
+                        "type": "string"
+                      }
+                    },
+                    "required": [
+                      "kind",
+                      "goal"
+                    ],
+                    "type": "object"
                   }
                 ]
               },
@@ -1203,7 +1540,7 @@
         ]
       },
       "origin": "client",
-      "summary": "Enqueues a terraform order (W01), a building construction order (W02), or a unit production order (W02) in the colony queue.",
+      "summary": "Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a power-line / repair / HQ-goal order (W03) in the colony queue.",
       "wave": "W01"
     },
     "landPod": {
@@ -1286,16 +1623,139 @@
       "summary": "Queues construction of a structure at (q, r) and auto-links any missing site preparation ops (UO-TF-03).",
       "wave": "W01"
     },
+    "placePowerLine": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "anchors": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "q": {
+                  "maximum": 32767,
+                  "minimum": -32768,
+                  "type": "integer"
+                },
+                "r": {
+                  "maximum": 32767,
+                  "minimum": -32768,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "q",
+                "r"
+              ],
+              "type": "object"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
+          "from": {
+            "additionalProperties": false,
+            "properties": {
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "q",
+              "r"
+            ],
+            "type": "object"
+          },
+          "taskId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "tier": {
+            "maximum": 2,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "tiles": {
+            "items": {
+              "additionalProperties": false,
+              "properties": {
+                "q": {
+                  "maximum": 32767,
+                  "minimum": -32768,
+                  "type": "integer"
+                },
+                "r": {
+                  "maximum": 32767,
+                  "minimum": -32768,
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "q",
+                "r"
+              ],
+              "type": "object"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
+          "to": {
+            "additionalProperties": false,
+            "properties": {
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "q",
+              "r"
+            ],
+            "type": "object"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Enqueues a multi-pylon power line construction order along a hex path (auto-spaced up to span 6, W03-01, W03-17).",
+      "wave": "W03"
+    },
     "reorderTask": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "direction": {
+            "enum": [
+              "up",
+              "down",
+              "top",
+              "bottom"
+            ],
+            "type": "string"
+          },
           "lane": {
             "enum": [
               "construction",
               "units",
-              "terraform"
+              "terraform",
+              "hqGoals",
+              "goals"
             ],
             "type": "string"
           },
@@ -1311,14 +1771,60 @@
           }
         },
         "required": [
-          "taskId",
-          "toIndex"
+          "taskId"
         ],
         "type": "object"
       },
       "origin": "client",
       "summary": "Reorders a player-queued entry within its lane (UO-P §4.4, W02-13).",
       "wave": "W02"
+    },
+    "repair": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "precedence": {
+            "enum": [
+              "system",
+              "player",
+              "hq",
+              "ai",
+              "auto"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "taskId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "workerId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Enqueues or dispatches a repair job on a damaged player-owned structure or unit (UO-P §3.2, W03-03).",
+      "wave": "W03"
     },
     "setHarvestWeights": {
       "args": {
@@ -1536,6 +2042,52 @@
       "severity": "warn",
       "summary": "Emitted (debounced) when a colony power deficit causes brownout load shedding in `group` (W02-06, W02-17).",
       "wave": "W02"
+    },
+    "brownoutShed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "componentId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "deficitPerS": {
+            "type": "number"
+          },
+          "groups": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "shedEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "shedEntityIds"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when per-component brownout shedding updates the list of shed entities on a grid component (W03-07, W03-15).",
+      "wave": "W03"
     },
     "buildingCompleted": {
       "audience": "player",
@@ -1828,6 +2380,34 @@
       "summary": "Emitted when the drop pod finishes its descent and deploys the HQ Commander drone (W01-09).",
       "wave": "W01"
     },
+    "nightSurvived": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "capacitorChargeRemainingE": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "dayNumber": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted at dawn when a colony survives the full night without shedding beyond group 1 (SIM §9, W03-15).",
+      "wave": "W03"
+    },
     "obstacleRemoved": {
       "audience": "player",
       "data": {
@@ -1899,6 +2479,98 @@
       "severity": "info",
       "summary": "Emitted when a Forest or Rock obstacle is removed via Clear or Break (Stone Mason progression, W01-13, W01-31); `overflow` is the capped-away yield.",
       "wave": "W01"
+    },
+    "powerOverload": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "flowPerS": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "maxLoadPerS": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "pylonId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "shedEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "pylonId",
+          "flowPerS",
+          "maxLoadPerS"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted (debounced 600 ticks per pylon) when a pylon or Hub subtree demand exceeds its max load and sheds downstream consumers (W03-06).",
+      "wave": "W03"
+    },
+    "powerSevered": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "componentCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "pylonId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "severedCount": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "severedEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          }
+        },
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when destroying or demolishing a pylon/generator splits the colony power graph or disconnects buildings (W03-05).",
+      "wave": "W03"
     },
     "resourceProduced": {
       "audience": "server",
@@ -2357,7 +3029,8 @@
                 "queue_full",
                 "planet_full",
                 "cannot_dismantle_hq",
-                "unknown_task"
+                "unknown_task",
+                "lane_full"
               ],
               "type": "string"
             },
