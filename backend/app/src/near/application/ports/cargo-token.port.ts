@@ -43,3 +43,5 @@ export abstract class CargoTokenPort {
   abstract balanceOf(input: CargoBalanceInput): Promise<TokenAmount>;
   abstract transfer(input: TransferCargoInput): Promise<ChainReceipt>;
 }
+
+export const NEAR_ADAPTER_CARGO = CargoTokenPort;
