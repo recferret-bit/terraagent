@@ -1,10 +1,16 @@
-import { RESOURCE_KEYS, type CargoStatusPayload, type ResourceKey } from '@terra/contracts';
+import {
+  RESOURCE_KEYS,
+  type CargoStatusPayload,
+  type ResourceFamily,
+  type ResourceKey,
+} from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { normalizeKindCode, normalizeStateCode } from '../landfall/selectionHelpers';
 import { ownColonyIndex, viewColony } from '../shared/colony';
-import { clampPct } from '../shared/dom';
+import { clampPct, makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import {
+  computeTransferBounds,
   formatCargoCount,
   ORBIT_FAMILY_GROUPS,
   resolveTradeHubCargoView,
@@ -14,36 +20,29 @@ import {
   type OrbitSubResourceDef,
   type ResolvedTradeHubCargoView,
   type TradeHubTab,
+  type TransferBounds,
 } from './cargoView';
+import { formatTransferPreview, syncMockTreeText, TradeHubForms } from './TradeHubForms';
 
 export {
+  computeTransferBounds,
   formatCargoCount,
+  formatTransferPreview,
   ORBIT_FAMILY_GROUPS,
   resolveTradeHubCargoView,
   SUB_RESOURCE_LABELS,
+  TradeHubForms,
   type OrbitFamilyGroupDef,
   type OrbitSubResourceDef,
   type ResolvedTradeHubCargoView,
   type TradeHubTab,
+  type TransferBounds,
 };
-
-function syncMockTreeText(root: HTMLElement): void {
-  if ('nodeType' in root) return;
-  const walk = (el: HTMLElement): string => {
-    const children = (el as unknown as { children?: HTMLElement[] }).children;
-    if (!children || children.length === 0) {
-      return el.textContent ?? '';
-    }
-    const joined = children.map(walk).filter(Boolean).join(' ');
-    (el as { textContent: string }).textContent = joined;
-    return joined;
-  };
-  walk(root);
-}
 
 export class TradeHubPanel implements Disposable {
   readonly root: HTMLElement;
   readonly tabBodyEl: HTMLElement;
+  readonly forms: TradeHubForms;
   private readonly tierBadgeEl: HTMLElement;
   private readonly statusBadgeEl: HTMLElement;
   private readonly closeBtn: HTMLButtonElement;
@@ -55,7 +54,6 @@ export class TradeHubPanel implements Disposable {
   private readonly exportTabBtn: HTMLButtonElement;
   private readonly importTabBtn: HTMLButtonElement;
   private readonly orbitBalancesEl: HTMLElement;
-  private readonly tabPlaceholderEl: HTMLElement;
   private readonly orbitRows = new Map<ResourceKey, { row: HTMLElement; valEl: HTMLElement }>();
 
   private isOpen = false;
@@ -107,10 +105,14 @@ export class TradeHubPanel implements Disposable {
     this.tabBodyEl = document.createElement('div');
     this.tabBodyEl.className = 'ta-trade-hub__tab-body plate-sm';
     this.tabBodyEl.setAttribute('data-testid', 'trade-hub-tab-body');
-    this.tabPlaceholderEl = document.createElement('div');
-    this.tabPlaceholderEl.className = 'ta-trade-hub__tab-placeholder';
-    this.tabPlaceholderEl.textContent = 'Select cargo to export to orbit';
-    this.tabBodyEl.appendChild(this.tabPlaceholderEl);
+
+    this.forms = new TradeHubForms(this.tabBodyEl, {
+      getTab: () => this.activeTab,
+      getResolvedCargoView: () => this.getResolvedCargoView(),
+      getContext: () => this.ctx,
+      onResourceSelected: () => this.syncOrbitRowSelection(),
+      onRenderRoot: () => syncMockTreeText(this.root),
+    });
 
     this.root.append(
       headerBuild.header,
@@ -132,44 +134,22 @@ export class TradeHubPanel implements Disposable {
     statusBadge: HTMLElement;
     closeBtn: HTMLButtonElement;
   } {
-    const header = document.createElement('div');
-    header.className = 'ta-trade-hub__header';
-
-    const titleGroup = document.createElement('div');
-    titleGroup.className = 'ta-trade-hub__title-group';
-
-    const title = document.createElement('span');
-    title.className = 'ta-trade-hub__title';
-    title.setAttribute('data-testid', 'trade-hub-title');
-    title.textContent = 'INTER-COLONY TRADE HUB';
-
-    const badges = document.createElement('div');
-    badges.className = 'ta-trade-hub__badges';
-
-    const tierBadge = document.createElement('span');
-    tierBadge.className = 'ta-trade-hub__badge ta-trade-hub__badge--tier plate-sm';
-    tierBadge.setAttribute('data-testid', 'trade-hub-tier');
-    tierBadge.textContent = 'TIER 1';
-
-    const statusBadge = document.createElement('span');
-    statusBadge.className = 'ta-trade-hub__badge ta-trade-hub__badge--status plate-sm';
-    statusBadge.setAttribute('data-testid', 'trade-hub-status');
+    const header = makeDiv('ta-trade-hub__header');
+    const titleGroup = makeDiv('ta-trade-hub__title-group');
+    const title = makeSpan('ta-trade-hub__title', 'trade-hub-title', 'INTER-COLONY TRADE HUB');
+    const badges = makeDiv('ta-trade-hub__badges');
+    const tierBadge = makeSpan('ta-trade-hub__badge ta-trade-hub__badge--tier plate-sm', 'trade-hub-tier', 'TIER 1');
+    const statusBadge = makeSpan('ta-trade-hub__badge ta-trade-hub__badge--status plate-sm', 'trade-hub-status', 'ONLINE');
     statusBadge.setAttribute('data-online', 'true');
-    statusBadge.textContent = 'ONLINE';
 
     badges.append(tierBadge, statusBadge);
     titleGroup.append(title, badges);
 
-    const closeBtn = document.createElement('button');
-    closeBtn.type = 'button';
-    closeBtn.className = 'ta-trade-hub__close btn-sm plate-sm';
-    closeBtn.setAttribute('data-testid', 'trade-hub-close');
-    closeBtn.setAttribute('aria-label', 'Close Trade Hub panel');
-    closeBtn.textContent = 'CLOSE';
-    closeBtn.onclick = () => {
+    const closeBtn = makeBtn('ta-trade-hub__close btn-sm plate-sm', 'trade-hub-close', 'CLOSE', () => {
       this.closedForEntityId = this.selectedHubId;
       this.setOpen(false);
-    };
+    });
+    closeBtn.setAttribute('aria-label', 'Close Trade Hub panel');
 
     header.append(titleGroup, closeBtn);
     return { header, tierBadge, statusBadge, closeBtn };
@@ -182,48 +162,25 @@ export class TradeHubPanel implements Disposable {
     dailyCapVal: HTMLElement;
     dailyCapFill: HTMLElement;
   } {
-    const metersRow = document.createElement('div');
-    metersRow.className = 'ta-trade-hub__meters';
+    const metersRow = makeDiv('ta-trade-hub__meters');
 
-    const tpCard = document.createElement('div');
-    tpCard.className = 'ta-trade-hub__meter-card plate-sm';
-    const tpLabel = document.createElement('span');
-    tpLabel.className = 'ta-trade-hub__meter-label';
-    tpLabel.textContent = 'Throughput';
-    const tpMeter = document.createElement('div');
-    tpMeter.className = 'ta-trade-hub__meter';
-    tpMeter.setAttribute('data-testid', 'trade-hub-throughput');
-    const throughputVal = document.createElement('span');
-    throughputVal.className = 'ta-trade-hub__meter-val';
-    throughputVal.setAttribute('data-testid', 'trade-hub-throughput-val');
-    throughputVal.textContent = '0 / 250 / min';
-    const tpBar = document.createElement('div');
-    tpBar.className = 'ta-trade-hub__meter-bar';
-    const throughputFill = document.createElement('div');
-    throughputFill.className = 'ta-trade-hub__meter-fill';
-    throughputFill.setAttribute('data-testid', 'trade-hub-throughput-fill');
+    const tpCard = makeDiv('ta-trade-hub__meter-card plate-sm');
+    const tpLabel = makeSpan('ta-trade-hub__meter-label', undefined, 'Throughput');
+    const tpMeter = makeDiv('ta-trade-hub__meter', 'trade-hub-throughput');
+    const throughputVal = makeSpan('ta-trade-hub__meter-val', 'trade-hub-throughput-val', '0 / 250 / min');
+    const tpBar = makeDiv('ta-trade-hub__meter-bar');
+    const throughputFill = makeDiv('ta-trade-hub__meter-fill', 'trade-hub-throughput-fill');
     throughputFill.style.width = '0%';
     tpBar.appendChild(throughputFill);
     tpMeter.append(throughputVal, tpBar);
     tpCard.append(tpLabel, tpMeter);
 
-    const dcCard = document.createElement('div');
-    dcCard.className = 'ta-trade-hub__meter-card plate-sm';
-    const dcLabel = document.createElement('span');
-    dcLabel.className = 'ta-trade-hub__meter-label';
-    dcLabel.textContent = 'Daily Export Limit';
-    const dcMeter = document.createElement('div');
-    dcMeter.className = 'ta-trade-hub__meter';
-    dcMeter.setAttribute('data-testid', 'trade-hub-daily-cap');
-    const dailyCapVal = document.createElement('span');
-    dailyCapVal.className = 'ta-trade-hub__meter-val';
-    dailyCapVal.setAttribute('data-testid', 'trade-hub-daily-cap-val');
-    dailyCapVal.textContent = '0 / 20,000 / day';
-    const dcBar = document.createElement('div');
-    dcBar.className = 'ta-trade-hub__meter-bar';
-    const dailyCapFill = document.createElement('div');
-    dailyCapFill.className = 'ta-trade-hub__meter-fill ta-trade-hub__meter-fill--daily';
-    dailyCapFill.setAttribute('data-testid', 'trade-hub-daily-cap-fill');
+    const dcCard = makeDiv('ta-trade-hub__meter-card plate-sm');
+    const dcLabel = makeSpan('ta-trade-hub__meter-label', undefined, 'Daily Export Limit');
+    const dcMeter = makeDiv('ta-trade-hub__meter', 'trade-hub-daily-cap');
+    const dailyCapVal = makeSpan('ta-trade-hub__meter-val', 'trade-hub-daily-cap-val', '0 / 20,000 / day');
+    const dcBar = makeDiv('ta-trade-hub__meter-bar');
+    const dailyCapFill = makeDiv('ta-trade-hub__meter-fill ta-trade-hub__meter-fill--daily', 'trade-hub-daily-cap-fill');
     dailyCapFill.style.width = '0%';
     dcBar.appendChild(dailyCapFill);
     dcMeter.append(dailyCapVal, dcBar);
@@ -238,88 +195,63 @@ export class TradeHubPanel implements Disposable {
     exportBtn: HTMLButtonElement;
     importBtn: HTMLButtonElement;
   } {
-    const tabsRow = document.createElement('div');
-    tabsRow.className = 'ta-trade-hub__tabs';
+    const tabsRow = makeDiv('ta-trade-hub__tabs');
     tabsRow.setAttribute('role', 'tablist');
 
-    const exportBtn = document.createElement('button');
-    exportBtn.type = 'button';
-    exportBtn.className = 'ta-trade-hub__tab btn-sm plate-sm';
+    const exportBtn = makeBtn('ta-trade-hub__tab btn-sm plate-sm', 'trade-hub-tab-export', 'EXPORT TO ORBIT', () =>
+      this.setTab('export'),
+    );
     exportBtn.setAttribute('role', 'tab');
-    exportBtn.setAttribute('data-testid', 'trade-hub-tab-export');
     exportBtn.setAttribute('data-active', 'true');
     exportBtn.setAttribute('aria-selected', 'true');
-    exportBtn.textContent = 'EXPORT TO ORBIT';
-    exportBtn.onclick = () => this.setTab('export');
 
-    const importBtn = document.createElement('button');
-    importBtn.type = 'button';
-    importBtn.className = 'ta-trade-hub__tab btn-sm plate-sm';
+    const importBtn = makeBtn('ta-trade-hub__tab btn-sm plate-sm', 'trade-hub-tab-import', 'IMPORT TO COLONY', () =>
+      this.setTab('import'),
+    );
     importBtn.setAttribute('role', 'tab');
-    importBtn.setAttribute('data-testid', 'trade-hub-tab-import');
     importBtn.setAttribute('data-active', 'false');
     importBtn.setAttribute('aria-selected', 'false');
-    importBtn.textContent = 'IMPORT TO COLONY';
-    importBtn.onclick = () => this.setTab('import');
 
     tabsRow.append(exportBtn, importBtn);
     return { tabsRow, exportBtn, importBtn };
   }
 
   private buildOrbitBalancesSection(): HTMLElement {
-    const section = document.createElement('div');
-    section.className = 'ta-trade-hub__orbit-section plate-sm';
-    section.setAttribute('data-testid', 'trade-hub-orbit-balances');
+    const section = makeDiv('ta-trade-hub__orbit-section plate-sm', 'trade-hub-orbit-balances');
+    section.appendChild(makeDiv('ta-trade-hub__section-title', undefined, 'In Orbit'));
 
-    const sectionTitle = document.createElement('div');
-    sectionTitle.className = 'ta-trade-hub__section-title';
-    sectionTitle.textContent = 'In Orbit';
-    section.appendChild(sectionTitle);
-
-    const familiesContainer = document.createElement('div');
-    familiesContainer.className = 'ta-trade-hub__families';
-
+    const familiesContainer = makeDiv('ta-trade-hub__families');
     for (const group of ORBIT_FAMILY_GROUPS) {
-      const familyEl = document.createElement('div');
-      familyEl.className = 'ta-trade-hub__family plate-sm';
+      const familyEl = makeDiv('ta-trade-hub__family plate-sm', `orbit-family-${group.family}`);
       familyEl.setAttribute('data-family', group.family);
-      familyEl.setAttribute('data-testid', `orbit-family-${group.family}`);
-
-      const familyHeader = document.createElement('div');
-      familyHeader.className = 'ta-trade-hub__family-header';
-      familyHeader.setAttribute('data-testid', `orbit-family-header-${group.family}`);
-      familyHeader.textContent = group.label;
-      familyEl.appendChild(familyHeader);
+      familyEl.appendChild(makeDiv('ta-trade-hub__family-header', `orbit-family-header-${group.family}`, group.label));
 
       for (const sub of group.resources) {
-        const row = document.createElement('div');
-        row.className = 'ta-trade-hub__orbit-row';
-        row.setAttribute('data-testid', `orbit-balance-${sub.key}`);
+        const row = makeDiv('ta-trade-hub__orbit-row', `orbit-balance-${sub.key}`);
         row.setAttribute('data-resource', sub.key);
         row.setAttribute('data-family', group.family);
         row.setAttribute('data-balance', '0');
         row.setAttribute('data-empty', 'true');
+        row.onclick = () => this.selectResource(sub.key);
 
-        const labelEl = document.createElement('span');
-        labelEl.className = 'ta-trade-hub__orbit-label';
-        labelEl.setAttribute('data-testid', `orbit-label-${sub.key}`);
-        labelEl.textContent = sub.label;
-
-        const valEl = document.createElement('span');
-        valEl.className = 'ta-trade-hub__orbit-value';
-        valEl.setAttribute('data-testid', `orbit-value-${sub.key}`);
-        valEl.textContent = '0';
-
+        const labelEl = makeSpan('ta-trade-hub__orbit-label', `orbit-label-${sub.key}`, sub.label);
+        const valEl = makeSpan('ta-trade-hub__orbit-value', `orbit-value-${sub.key}`, '0');
         row.append(labelEl, valEl);
         familyEl.appendChild(row);
         this.orbitRows.set(sub.key, { row, valEl });
       }
-
       familiesContainer.appendChild(familyEl);
     }
 
     section.appendChild(familiesContainer);
     return section;
+  }
+
+  private syncOrbitRowSelection(): void {
+    const selected = this.forms.getSelectedResource();
+    for (const [key, entry] of this.orbitRows.entries()) {
+      entry.row.setAttribute('data-selected', String(key === selected));
+    }
   }
 
   private bindSelection(): void {
@@ -362,14 +294,48 @@ export class TradeHubPanel implements Disposable {
     this.exportTabBtn.setAttribute('aria-selected', String(isExport));
     this.importTabBtn.setAttribute('data-active', String(!isExport));
     this.importTabBtn.setAttribute('aria-selected', String(!isExport));
-    this.tabPlaceholderEl.textContent = isExport
-      ? 'Select cargo to export to orbit'
-      : 'Select orbital cargo to import to colony';
+    this.forms.onTabChanged();
     syncMockTreeText(this.root);
   }
 
   getTab(): TradeHubTab {
     return this.activeTab;
+  }
+
+  selectFamily(family: ResourceFamily): void {
+    this.forms.selectFamily(family);
+  }
+
+  getSelectedFamily(): ResourceFamily {
+    return this.forms.getSelectedFamily();
+  }
+
+  selectResource(resource: ResourceKey): void {
+    this.forms.selectResource(resource);
+  }
+
+  getSelectedResource(): ResourceKey {
+    return this.forms.getSelectedResource();
+  }
+
+  setAmount(amount: number): void {
+    this.forms.setAmount(amount);
+  }
+
+  getAmount(): number {
+    return this.forms.getAmount();
+  }
+
+  getTransferBounds(): TransferBounds {
+    return this.forms.getTransferBounds();
+  }
+
+  confirm(): boolean {
+    return this.forms.confirm();
+  }
+
+  submitTransfer(amountOverride?: number): boolean {
+    return this.forms.confirm(amountOverride);
   }
 
   setCargoStatus(status: CargoStatusPayload | null): void {
@@ -384,11 +350,7 @@ export class TradeHubPanel implements Disposable {
   selectEntity(entityId: number | null): void {
     this.selectedHubId = entityId;
     this.closedForEntityId = null;
-    if (entityId !== null) {
-      this.setOpen(true);
-    } else {
-      this.setOpen(false);
-    }
+    this.setOpen(entityId !== null);
   }
 
   getTabBodyElement(): HTMLElement {
@@ -472,6 +434,8 @@ export class TradeHubPanel implements Disposable {
       entry.row.setAttribute('data-empty', String(amt <= 0));
     }
 
+    this.forms.render(resolved);
+    this.syncOrbitRowSelection();
     syncMockTreeText(this.root);
   }
 

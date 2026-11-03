@@ -1,28 +1,36 @@
 import type { CargoStatusPayload } from '@terra/contracts';
 import { defineFeature } from '../../core/registry/types';
 import {
+  computeTransferBounds,
   formatCargoCount,
+  formatTransferPreview,
   ORBIT_FAMILY_GROUPS,
   resolveTradeHubCargoView,
   SUB_RESOURCE_LABELS,
+  TradeHubForms,
   TradeHubPanel,
   type OrbitFamilyGroupDef,
   type OrbitSubResourceDef,
   type ResolvedTradeHubCargoView,
   type TradeHubTab,
+  type TransferBounds,
 } from './TradeHubPanel';
 import './trade-hub.css';
 
 export {
+  computeTransferBounds,
   formatCargoCount,
+  formatTransferPreview,
   ORBIT_FAMILY_GROUPS,
   resolveTradeHubCargoView,
   SUB_RESOURCE_LABELS,
+  TradeHubForms,
   TradeHubPanel,
   type OrbitFamilyGroupDef,
   type OrbitSubResourceDef,
   type ResolvedTradeHubCargoView,
   type TradeHubTab,
+  type TransferBounds,
 };
 
 declare module '../../core/registry/types' {
