@@ -18,7 +18,7 @@ import { buildLinkedPrepJobs } from '../construction/prep';
 import { enqueueTerraformOrder, removeTerraformOrder } from '../terraform-basic/queue';
 import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
 import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
-import { checkCostAffordability, debitCost, recomputeFamilyCaps, refundCost } from './ledger';
+import { checkCostAffordability, debitCost, refundCost, syncColonyDepotCaps } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
 import { claimTerritoryRadius } from '../territory-claim';
 
@@ -247,7 +247,9 @@ export function startBuildingConstruction(
     saveBuildingJobs(state, jobs, tick);
   } else if (entityKind === ENTITY_KIND.commandHub) {
     claimHubTerritory(state, opts.owner, opts.q, opts.r, Number(row.claimRadius ?? 10), tick);
-    recomputeFamilyCaps(colony, true, 0, tick);
+    syncColonyDepotCaps(state, opts.owner, tick);
+  } else if (entityKind === ENTITY_KIND.supplyDepot) {
+    syncColonyDepotCaps(state, opts.owner, tick);
   }
 
   return { ok: true, entityId, buildTicks, effectiveTicks };
@@ -343,8 +345,10 @@ export function demolishBuilding(
   for (const [k, v] of Object.entries(cost) as [ResourceKey, number][]) {
     if (v > 0) refunded[k] = v * ratio;
   }
+  const wasSupplyDepot = cols.kind[eRow] === ENTITY_KIND.supplyDepot;
   removeBuildingAndClearFootprint(state, entityId, eRow, tick, data, job);
   dropJob(state, jobs, entityId, owner, tick, data);
+  if (wasSupplyDepot) syncColonyDepotCaps(state, owner, tick);
   return { ok: true, refunded };
 }
 
