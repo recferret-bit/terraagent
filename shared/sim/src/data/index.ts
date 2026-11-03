@@ -40,6 +40,13 @@ export {
   depositStageFromRichness,
   type DepositStage,
 } from './terrain';
+export {
+  STAGE_TABLE_ROWS,
+  getStageSpec,
+  getItemUnlockStage,
+  formatUnlockAtTooltip,
+  type StageRow,
+} from './stages';
 
 /** Every discovered table (`shared/sim/src/data/*.ts`, listed by `npm run gen`). */
 export const allTables = (): readonly TableDef[] => DATA_TABLES;
