@@ -18,6 +18,7 @@ export const w12ProfileScenario = defineScenario({
       name: 'Aegis Basin',
       slotIndex: 0,
     });
+    api.command('dev.land', {}, 0);
   },
 });
 

@@ -25,8 +25,8 @@ let mePage: Page;
 
 test.beforeAll(async ({ browser }) => {
   context = await browser.newContext();
-  playPage = await context.newPage();
   mePage = await context.newPage();
+  playPage = await context.newPage();
 });
 
 test.afterAll(async () => {
