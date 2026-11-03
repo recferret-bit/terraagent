@@ -67,5 +67,8 @@ export * from './systems/factories-hub';
 export * from './systems/queue';
 export * from './systems/dispatch';
 export * from './systems/goals';
+export * from './systems/progression';
+export * from './systems/rule-engine';
+export { DEFAULT_COLONY_PRIORITIES, type ColonyPriorities } from './systems/goals';
 export * from './data';
 export * from './host';

@@ -1,0 +1,196 @@
+/* Faction Plate styling for HQ Priorities HUD panel & sliders (W08-27) */
+
+.ta-priorities-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  min-width: 220px;
+  box-sizing: border-box;
+}
+
+.ta-priorities-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+
+.ta-priorities-panel__title {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-orange);
+}
+
+.ta-priorities-panel__badge {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  padding: 1px var(--ta-s1);
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-seam-2);
+  color: var(--ta-orange-hi);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+}
+
+.ta-priorities-panel__collapse-btn {
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text-2);
+  padding: 2px var(--ta-s2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-button);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  cursor: pointer;
+  transition: color var(--ta-dur-quick) var(--ta-ease-servo), border-color var(--ta-dur-quick) var(--ta-ease-servo);
+}
+
+.ta-priorities-panel__collapse-btn:hover {
+  color: var(--ta-orange-hi);
+  border-color: var(--ta-orange);
+}
+
+.ta-priorities-panel__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.ta-priorities-panel[data-collapsed="true"] .ta-priorities-panel__body {
+  display: none;
+}
+
+/* Sliders list */
+.ta-priority-sliders {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-priority-sliders__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+}
+
+.ta-priority-slider {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+}
+
+.ta-priority-slider__header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.ta-priority-slider__label {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-text-2);
+}
+
+.ta-priority-slider__value {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  color: var(--ta-orange-hi);
+}
+
+.ta-priority-slider__input.range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  outline: none;
+  background: linear-gradient(90deg, var(--ta-orange) var(--val, 50%), var(--ta-seam) var(--val, 50%));
+  margin: var(--ta-s1) 0;
+  cursor: pointer;
+}
+
+.ta-priority-slider__input.range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--ta-s3);
+  height: var(--ta-s4);
+  background: var(--ta-orange);
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-s1) 0,
+    100% 0,
+    100% calc(100% - var(--ta-s1)),
+    calc(100% - var(--ta-s1)) 100%,
+    0 100%,
+    0 var(--ta-s1)
+  );
+  border: 0;
+}
+
+.ta-priority-slider__input.range::-moz-range-thumb {
+  width: var(--ta-s3);
+  height: var(--ta-s4);
+  background: var(--ta-orange);
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-s1) 0,
+    100% 0,
+    100% calc(100% - var(--ta-s1)),
+    calc(100% - var(--ta-s1)) 100%,
+    0 100%,
+    0 var(--ta-s1)
+  );
+  border: 0;
+}
+
+.ta-priority-sliders__sum-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding-top: var(--ta-s1);
+  border-top: 1px solid var(--ta-seam);
+  margin-top: var(--ta-s1);
+}
+
+.ta-priority-sliders__sum-label {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-dim);
+}
+
+.ta-priority-sliders__sum-value {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-small);
+  font-weight: 700;
+  color: var(--ta-orange);
+}
