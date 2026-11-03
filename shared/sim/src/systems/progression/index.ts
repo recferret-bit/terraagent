@@ -2,13 +2,13 @@ import { getStageSpec, type StageRow } from '../../data';
 import { defineCommandHandler } from '../../kernel/commands';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import type { CompiledDataLike } from '../../kernel/config';
-import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type ColonyState, type PlanetState } from '../../kernel/state';
 import { defineSystem, type SimSystem } from '../../kernel/system';
 import { parseArgs } from '../command';
 import { defineSimModule } from '../define';
 import { getColonyGoalHistory, getColonyGoals } from '../goals/store';
+import { ticksToRemainingSeconds } from './dwell';
 import {
   countTotalExploredTiles,
   evaluateStageTrigger,
@@ -25,6 +25,7 @@ import {
 } from './types';
 
 export * from './types';
+export * from './dwell';
 export * from './triggers';
 export * from './threatStage';
 
@@ -60,11 +61,6 @@ function computeNextConditionText(stage: number, data?: CompiledDataLike): strin
   const nextRow = resolveCompiledStageRow(stage + 1, data) ?? (data?.tables && 'stages' in data.tables ? undefined : getStageSpec(stage + 1));
   if (!nextRow) return '';
   return nextRow.unlockConditionText || nextRow.triggerText || '';
-}
-
-function ticksToRemainingSeconds(ticks: number | null): number | null {
-  if (ticks === null || !Number.isFinite(ticks)) return null;
-  return Math.max(0, Math.ceil(ticks / TICKS_PER_SECOND));
 }
 
 export function getColonyProgression(
