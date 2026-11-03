@@ -4,6 +4,22 @@ import type { PlanetState, PlanetType } from '../kernel/state';
 import { resolveBuilderRow } from '../systems/factories-hub/unit';
 import { resolveHarvesterRow } from '../systems/harvest/unit';
 import type { HqJob, HqUnitView } from '../systems/hq';
+import type { ColonyPowerSummary } from '../systems/power-core/types';
+
+export interface ViewEntityPower {
+  state: 'online' | 'offline';
+  reason?: string;
+  component: number;
+  flow?: number;
+  max?: number;
+  overloaded?: boolean;
+}
+
+export interface ViewPylonLoad {
+  flow: number;
+  max: number;
+  overloaded?: boolean;
+}
 
 /**
  * W00 view: a minimal read-only projection for render/HUD. Tile arrays are shared with the state (no copy; do not
@@ -26,7 +42,10 @@ export interface ViewEntity {
   harvestRatePerS?: number;
   workRate?: number;
   maxBuildTier?: number;
+  power?: ViewEntityPower;
+  pylon?: ViewPylonLoad;
 }
+
 export interface ViewColony {
   index: number; id: string; name: string; color: number; status: string;
   stock?: Record<string, number>;
@@ -34,8 +53,10 @@ export interface ViewColony {
   hq?: HqUnitView;
   currentJob?: HqJob;
   queueCount?: number;
+  power?: ColonyPowerSummary | Record<string, unknown>;
   [field: string]: unknown;
 }
+
 export interface SimView {
   tick: number;
   planet: { id: string; type: PlanetType; radius: number };
@@ -56,11 +77,59 @@ export interface SimView {
   blobs?: Record<string, unknown>;
 }
 
+function applyPowerToEntity(
+  ent: ViewEntity,
+  state: PlanetState,
+  powerBlob?: { byColony?: Record<number, ColonyPowerSummary> },
+): void {
+  const colPower = (state.colonies[ent.owner]?.power as ColonyPowerSummary | undefined) ?? powerBlob?.byColony?.[ent.owner];
+  const ep = colPower?.entityPower?.[ent.id];
+  const pl = colPower?.pylonLoads?.[ent.id];
+  if (ep) {
+    ent.power = {
+      state: ep.state,
+      ...(ep.reason ? { reason: ep.reason } : {}),
+      component: ep.component,
+      ...(pl ? { flow: pl.flow, max: pl.max, ...(pl.overloaded !== undefined ? { overloaded: pl.overloaded } : {}) } : {}),
+    };
+  }
+  if (pl) {
+    ent.pylon = {
+      flow: pl.flow,
+      max: pl.max,
+      ...(pl.overloaded !== undefined ? { overloaded: pl.overloaded } : {}),
+    };
+  }
+}
+
+function buildViewColonies(
+  state: PlanetState,
+  hqBlob?: HqUnitView & { byColony?: Record<number, HqUnitView> },
+  powerBlob?: { byColony?: Record<number, ColonyPowerSummary> },
+): ViewColony[] {
+  return state.colonies.map((k) => {
+    const hq = (k.hq as HqUnitView | undefined) ?? hqBlob?.byColony?.[k.index];
+    const out: ViewColony = { ...k };
+    if (hq) {
+      out.hq = hq;
+      out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;
+      out.queueCount = (k.queueCount as number | undefined) ?? hq.queueCount;
+    }
+    const colPower = (k.power as ColonyPowerSummary | undefined) ?? powerBlob?.byColony?.[k.index];
+    if (colPower) {
+      out.power = colPower;
+    }
+    return out;
+  });
+}
+
 export function view(state: PlanetState): SimView {
   const e = state.entities, c = e.cols, L = state.grid.layers;
+  const powerBlob = state.blobs.power?.value as { byColony?: Record<number, ColonyPowerSummary> } | undefined;
   const entities: ViewEntity[] = [];
   let harvesterRow: CompiledRow | null = null;
   let builderRow: CompiledRow | null = null;
+
   for (let i = 0; i < e.count; i++) {
     const kind = c.kind[i];
     const ent: ViewEntity = {
@@ -98,21 +167,15 @@ export function view(state: PlanetState): SimView {
       ent.workRate = c.workRate?.[i] || 1.0;
       ent.maxBuildTier = Number(builderRow.maxBuildTier ?? 1);
     }
+    applyPowerToEntity(ent, state, powerBlob);
     entities.push(ent);
   }
+
   const blobs: Record<string, unknown> = {};
   for (const [k, b] of Object.entries(state.blobs)) blobs[k] = b.value;
   const hqBlob = state.blobs.hq?.value as (HqUnitView & { byColony?: Record<number, HqUnitView> }) | undefined;
-  const colonies: ViewColony[] = state.colonies.map((k) => {
-    const hq = (k.hq as HqUnitView | undefined) ?? hqBlob?.byColony?.[k.index];
-    const out: ViewColony = { ...k };
-    if (hq) {
-      out.hq = hq;
-      out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;
-      out.queueCount = (k.queueCount as number | undefined) ?? hq.queueCount;
-    }
-    return out;
-  });
+  const colonies = buildViewColonies(state, hqBlob, powerBlob);
+
   return {
     tick: state.meta.tick,
     planet: { id: state.meta.planetId, type: state.meta.planetType, radius: state.grid.radius },
