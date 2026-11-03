@@ -29,8 +29,14 @@ export const TRADE_HUB_THROUGHPUT_PER_MIN: Readonly<Record<1 | 2 | 3, number>> =
 };
 
 /** Returns the default Trade Hub throughput (units/min) for a given tier (1..3), or 0 for invalid tiers. */
-export function getTradeHubTierThroughputPerMin(tier: number): number {
+export function getTradeHubTierThroughputPerMin(tier: number, data?: CompiledDataLike): number {
   if (tier === 1 || tier === 2 || tier === 3) {
+    const tierId = tier === 3 ? 't3' : tier === 2 ? 't2' : 't1';
+    const tradeHubTable = data?.tables?.tradeHub as Record<string, Record<string, unknown>> | undefined;
+    const fromData = tradeHubTable?.[tierId]?.throughputPerMin;
+    if (typeof fromData === 'number' && Number.isFinite(fromData) && fromData >= 0) {
+      return fromData;
+    }
     return TRADE_HUB_THROUGHPUT_PER_MIN[tier];
   }
   return 0;

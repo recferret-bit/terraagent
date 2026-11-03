@@ -51,7 +51,7 @@ export interface ColonyPowerSummary {
 
 let cachedW02Data: CompiledDataLike | null = null;
 function defaultW02Data(): CompiledDataLike {
-  if (!cachedW02Data) cachedW02Data = compileData(new Set(['W00', 'W01', 'W02']));
+  if (!cachedW02Data) cachedW02Data = compileData(new Set(['W00', 'W01', 'W02', 'W10']));
   return cachedW02Data;
 }
 
@@ -146,7 +146,37 @@ function isRowAttachedToPylons(state: PlanetState, row: number, defaultW: number
   return false;
 }
 
-/** Evaluates single-component colony power and applies brownout shedding (W02-05, W02-06). */
+function resolveTradeHubPowerRow(tier: number, data?: CompiledDataLike): CompiledRow {
+  const tierId = tier === 3 ? 't3' : tier === 2 ? 't2' : 't1';
+  return resolvePowerRow(data, 'tradeHub', tierId);
+}
+
+function evaluateDrainBuildingRow(
+  state: PlanetState,
+  row: number,
+  buildingRow: CompiledRow,
+  defaultGroup: number,
+  netInfo: HubPylonNetwork,
+  unpoweredEntityIds: number[],
+  shedCandidates: ShedCandidate[],
+  tick: number,
+): number {
+  const e = state.entities, cols = e.cols, st = cols.state[row];
+  const defW = Number(buildingRow.footprintW ?? buildingRow.footprint ?? 2);
+  const defD = Number(buildingRow.footprintD ?? buildingRow.footprint ?? 2);
+  if (!isRowAttachedToPylons(state, row, defW, defD, netInfo)) {
+    unpoweredEntityIds.push(cols.id[row]);
+    if (st !== ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.offlineUnpowered, tick);
+    return 0;
+  }
+  if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
+  const drain = Number(buildingRow.powerDrainPerS ?? 6);
+  const group = cols.shedGroup?.[row] || Number(buildingRow.shedGroup ?? defaultGroup);
+  shedCandidates.push({ entityId: cols.id[row], row, group, drainPerS: drain, kind: cols.kind[row] });
+  return drain;
+}
+
+/** Evaluates single-component colony power and applies brownout shedding (W02-05, W02-06, W10-04). */
 export function evaluateColonyPower(
   state: PlanetState,
   colonyIndex: number,
@@ -191,16 +221,10 @@ export function evaluateColonyPower(
         onlineGen += out.net;
       }
     } else if (kind === ENTITY_KIND.metalsExtractor && st !== ENTITY_STATE.constructing) {
-      const drain = Number(extractorRow.powerDrainPerS ?? 6);
-      if (!isRowAttachedToPylons(state, row, Number(extractorRow.footprintW ?? 2), Number(extractorRow.footprintD ?? 2), netInfo)) {
-        unpoweredEntityIds.push(cols.id[row]);
-        if (st !== ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.offlineUnpowered, tick);
-        continue;
-      }
-      if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
-      rawBuildingDemand += drain;
-      const group = cols.shedGroup?.[row] || Number(extractorRow.shedGroup ?? 3);
-      shedCandidates.push({ entityId: cols.id[row], row, group, drainPerS: drain, kind });
+      rawBuildingDemand += evaluateDrainBuildingRow(state, row, extractorRow, 3, netInfo, unpoweredEntityIds, shedCandidates, tick);
+    } else if (kind === ENTITY_KIND.tradeHub && st !== ENTITY_STATE.constructing) {
+      const tradeHubRow = resolveTradeHubPowerRow(cols.tier?.[row] || 1, data);
+      rawBuildingDemand += evaluateDrainBuildingRow(state, row, tradeHubRow, 2, netInfo, unpoweredEntityIds, shedCandidates, tick);
     } else if (kind === ENTITY_KIND.harvester) {
       const fullDrain = Number(harvesterRow.powerDrainPerS ?? 1.5);
       const isIdle = st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout;
