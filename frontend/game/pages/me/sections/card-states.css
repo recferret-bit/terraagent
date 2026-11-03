@@ -1,0 +1,183 @@
+.flip-card.is-earned {
+  border-color: var(--ta-orange);
+  background:
+    linear-gradient(var(--ta-plate), var(--ta-plate)) padding-box,
+    linear-gradient(135deg, var(--ta-orange), var(--ta-terra)) border-box;
+  box-shadow: 0 0 14px rgba(255, 106, 19, 0.15);
+}
+
+.flip-card.is-earned .flip-back {
+  background: linear-gradient(160deg, rgba(255, 106, 19, 0.15), rgba(61, 220, 132, 0.12));
+}
+
+.flip-card.is-locked,
+.flip-card.is-coming_soon {
+  border-color: var(--ta-seam);
+}
+
+.ta-ach-front-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ta-ach-tier-label {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: var(--tier, #C8844A);
+}
+
+.ta-ach-xp-pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ta-ash);
+}
+
+.ta-ach-art-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 4px auto;
+}
+
+.ta-ach-art-wrap.is-locked .ta-ach-art-img {
+  opacity: 0.85;
+  filter: saturate(0.25);
+}
+
+.ta-ach-art-img {
+  width: 128px;
+  height: 128px;
+  max-width: 176px;
+  object-fit: contain;
+}
+
+.ta-ach-front-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ta-ach-title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--ta-bone);
+}
+
+.ta-ach-desc {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+  color: var(--ta-ash);
+}
+
+.ta-ach-threshold {
+  margin: 4px 0 0;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ta-steel);
+}
+
+.ta-ach-earned-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(61, 220, 132, 0.25);
+}
+
+.ta-ach-earned-check {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--ta-terra);
+}
+
+.ta-ach-coming-soon {
+  height: 26px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ta-steel);
+  border: 1px dashed var(--ta-seam-hi);
+}
+
+.ta-ach-progress-bar {
+  position: relative;
+  height: 26px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--ta-seam-hi);
+  clip-path: polygon(
+    6px 0,
+    100% 0,
+    100% calc(100% - 6px),
+    calc(100% - 6px) 100%,
+    0 100%,
+    0 6px
+  );
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ta-ach-progress-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, var(--ta-orange), var(--ta-energy));
+  opacity: 0.85;
+}
+
+.ta-ach-progress-label {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ta-bone);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+.ta-ach-back-top {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ta-ach-back-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ta-ach-back-meta {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.ta-ach-nft-status {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ta-ash);
+}
+
+.ta-ach-share-btn {
+  align-self: flex-start;
+  text-decoration: none;
+  color: var(--ta-void);
+  font-weight: 700;
+}
