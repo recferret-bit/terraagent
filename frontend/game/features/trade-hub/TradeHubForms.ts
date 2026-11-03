@@ -40,6 +40,7 @@ export interface TradeHubFormsCallbacks {
   getContext(): FeatureContext | undefined;
   onResourceSelected?(resource: ResourceKey): void;
   onRenderRoot?(): void;
+  onError?(code: string, detail?: string, retryInS?: number | null): void;
 }
 
 export class TradeHubForms {
@@ -373,12 +374,26 @@ export class TradeHubForms {
     }
 
     const resolved = this.callbacks.getResolvedCargoView();
-    if (!resolved.hubOnline) return false;
+    if (!resolved.hubOnline) {
+      this.callbacks.onError?.('hub_offline', 'Trade Hub is unpowered.');
+      return false;
+    }
 
     const sendAmount = Math.max(0, Math.floor(this.amount));
     if (sendAmount <= 0) return false;
 
     const tab = this.callbacks.getTab();
+    if (tab === 'export') {
+      const tpRem = Math.max(0, resolved.throughputCapPerMin - resolved.throughputUsedPerMin);
+      const byRes = resolved.todayMintedByResource?.[this.selectedResource] ?? resolved.todayMinted ?? 0;
+      const dailyRem = Math.max(0, resolved.dailyCap - byRes);
+      if (sendAmount > tpRem) {
+        this.callbacks.onError?.('mint_cap', `Throughput limit reached (${resolved.throughputCapPerMin} / min) — retry in 60s`, 60);
+      } else if (sendAmount > dailyRem) {
+        this.callbacks.onError?.('mint_cap', `Daily export limit reached (${resolved.dailyCap} / day) — retry in 86400s`, 86400);
+      }
+    }
+
     const commandKind = tab === 'export' ? 'cargo.export' : 'cargo.import';
     const payload = { resource: this.selectedResource, amount: sendAmount };
     const ctx = this.callbacks.getContext();
@@ -434,12 +449,14 @@ export class TradeHubForms {
     this.sliderEl.setAttribute('data-cap-max', String(bounds.capBound));
     (this.sliderEl.style as unknown as Record<string, string>)['--val'] = `${sliderPct.toFixed(1)}%`;
     this.sliderEl.disabled = !resolved.hubOnline || bounds.maxAmount <= 0;
+    this.updateDisabledReason(this.sliderEl, resolved.hubOnline);
     this.lastSliderStr = String(sliderVal);
     this.writeElementValue(this.sliderEl, this.lastSliderStr);
 
     const maxInputBound = Math.max(1, bounds.availableAmount);
     this.amountInputEl.setAttribute('max', String(maxInputBound));
     this.amountInputEl.disabled = !resolved.hubOnline;
+    this.updateDisabledReason(this.amountInputEl, resolved.hubOnline);
     this.lastInputStr = String(this.amount);
     this.writeElementValue(this.amountInputEl, this.lastInputStr);
 
@@ -458,5 +475,14 @@ export class TradeHubForms {
     const disabled = !resolved.hubOnline || this.amount <= 0;
     this.confirmBtnEl.disabled = disabled;
     this.confirmBtnEl.setAttribute('data-disabled', String(disabled));
+    this.updateDisabledReason(this.confirmBtnEl, resolved.hubOnline);
+  }
+
+  private updateDisabledReason(el: HTMLElement, online: boolean): void {
+    if (!online) {
+      el.setAttribute('data-disabled-reason', 'hub_offline');
+    } else {
+      el.removeAttribute('data-disabled-reason');
+    }
   }
 }
