@@ -146,23 +146,20 @@ export function drawUnitsLayer(
 
 export function createBuiltinW04Layers(): Record<'terrain' | 'territory' | 'units', MapLayer> {
   return {
-    terrain: {
-      ...MAP_LAYER_META.terrain,
-      order: 10,
-      draw: (ctx, view) => {
-        drawTerrainLayer(ctx, view);
-      },
-    },
     territory: {
       ...MAP_LAYER_META.territory,
-      order: 20,
       draw: (ctx, view) => {
         drawTerritoryLayer(ctx, view);
       },
     },
+    terrain: {
+      ...MAP_LAYER_META.terrain,
+      draw: (ctx, view) => {
+        drawTerrainLayer(ctx, view);
+      },
+    },
     units: {
       ...MAP_LAYER_META.units,
-      order: 30,
       draw: (ctx, view) => {
         drawUnitsLayer(ctx, view);
       },

@@ -112,15 +112,28 @@ export function computeCameraTrapezoid(
   source: CameraFootprintSource = {},
 ): TrapezoidCorner[] {
   const rts = source.rtsCamera ?? null;
+  const cam = source.camera ?? null;
   const targetX = source.targetX ?? rts?.target.x ?? 0;
   const targetZ = source.targetZ ?? rts?.target.z ?? 0;
   const groundY = rts?.target.y ?? 0;
-  const yaw = source.yaw ?? rts?.yaw ?? Math.PI / 4;
-  const dist = source.dist ?? rts?.dist ?? 56;
+  const inferredYaw =
+    cam && rts
+      ? Math.atan2(cam.position.z - rts.target.z, cam.position.x - rts.target.x)
+      : undefined;
+  const inferredDist =
+    cam && rts
+      ? Math.hypot(
+          cam.position.x - rts.target.x,
+          cam.position.y - rts.target.y,
+          cam.position.z - rts.target.z,
+        )
+      : undefined;
+  const yaw = source.yaw ?? inferredYaw ?? Math.PI / 4;
+  const dist = source.dist ?? inferredDist ?? 56;
 
   let worldCorners: Array<{ worldX: number; worldZ: number }> | null = null;
-  if (source.camera && source.targetX === undefined && source.yaw === undefined) {
-    worldCorners = projectFrustumRaysToGround(source.camera, groundY, dist * 3.5);
+  if (cam && source.targetX === undefined && source.yaw === undefined) {
+    worldCorners = projectFrustumRaysToGround(cam, groundY, dist * 3.5);
   }
   if (!worldCorners) {
     worldCorners = computeAnalyticalWorldCorners(targetX, targetZ, yaw, dist);

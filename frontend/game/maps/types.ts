@@ -1,5 +1,7 @@
 import type { MapLayerId, WaveId } from '@terra/contracts';
 import type { ClientTiles, ClientView } from '../store/replica/viewCodec';
+import type { CompositeMapRenderResult } from './builtinLayers';
+import type { TrapezoidCorner } from './cameraTrapezoid';
 
 export interface AxialToPixelFn {
   (q: number, r: number): { x: number; y: number };
@@ -53,4 +55,10 @@ export interface MinimapStats {
   globalMapOpen: boolean;
   activeLayers: MapLayerId[];
   registeredLayers: MapLayerId[];
+  visibleLayers?: MapLayerId[];
+  trapezoid?: TrapezoidCorner[];
+  zoom?: number;
+  panX?: number;
+  panY?: number;
+  lastComposite?: CompositeMapRenderResult | null;
 }
