@@ -22,7 +22,8 @@ export function pylon() {
     for (const s of [-1, 1]) {
       cyl(b, 'frameGunmetal', 0.035, 0.035, 0.48, [s * w, y - 0.44, 0], { seg: 6, name: 'insulator rod' });
       for (let k = 0; k < 3; k++) cyl(b, 'hullSecondary', 0.1, 0.1, 0.05, [s * w, y - 0.1 - k * 0.1, 0], { seg: 8, name: 'insulator disc' });
-      lamp(b, 'energyCyan', 0.09, [s * w, y - 0.45, 0], { name: 'insulator arc light' });
+      // Non-emissive end cap (the grid core is the pylon's only light): the cable anchor the power lines hang from.
+      b.addPart(new THREE.SphereGeometry(0.09, 6, 5), 'hullSecondary', { name: 'insulator cap', position: [s * w, y - 0.45, 0] });
     }
   }
   for (const s of [-1, 1]) {
@@ -31,8 +32,9 @@ export function pylon() {
   }
   cyl(b, 'frameGunmetal', 0.18, 0.18, 0.12, [0, 5.14, 0], { seg: 8, name: 'pylon crown' });
   cyl(b, 'frameGunmetal', 0.035, 0.045, 0.86, [0, 5.22, 0], { seg: 6, name: 'finial mast' });
+  // The pylon's single light source (its projector entry in `lighting/archetypeLights.ts` sits here).
   ball(b, 'energyCyan', 0.2, [0, 5.55, 0], { emissiveIntensity: 4.2, name: 'grid core light' });
-  lamp(b, 'dangerCrimson', 0.08, [0, 6.08, 0], { name: 'aviation beacon light' });
+  b.addPart(new THREE.SphereGeometry(0.06, 6, 5), 'frameGunmetal', { name: 'finial cap', position: [0, 6.08, 0] });
   return b.build();
 }
 
