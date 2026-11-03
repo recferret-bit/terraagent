@@ -1536,6 +1536,46 @@
       "summary": "Named account created and linked to the player (F5).",
       "wave": "W06"
     },
+    "alertPing": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "underAttack",
+              "raidIncoming",
+              "meteorWarning",
+              "ping"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "q",
+          "r",
+          "kind"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when an alert ping occurs at hex (q, r) to drive the minimap ping ring (W04-01, W04-08).",
+      "wave": "W04"
+    },
     "brownout": {
       "audience": "player",
       "data": {

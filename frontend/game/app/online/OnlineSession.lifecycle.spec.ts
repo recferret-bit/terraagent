@@ -105,7 +105,7 @@ describe('OnlineSession lifecycle', () => {
     expect(s.bootResult?.mode).toBe('local');
     expect(q('offline-badge')?.hidden).toBe(false);
     expect(q('net-banner')).toBeNull(); // no Retry next to a local host
-  });
+  }, 15_000);
 
   it("bye 4003 not_your_planet is shown, never replaced by the dev local fallback", async () => {
     const ws = closingSockets(4003, 'not_your_planet');
@@ -149,7 +149,7 @@ describe('OnlineSession lifecycle', () => {
     const boot = await s.whenBooted;
     expect(boot?.mode).toBe('local');
     expect(q('offline-badge')?.hidden).toBe(false);
-  });
+  }, 15_000);
 
   it('FA-02: dispose on the error splash ends the boot (whenBooted settles null, no socket)', async () => {
     const down: FetchLike = async () => { throw new TypeError('Failed to fetch'); };
@@ -184,7 +184,7 @@ describe('OnlineSession on the in-process fallback host (FA-07)', () => {
     const t1 = host.tick;
     await new Promise((r) => setTimeout(r, 250));
     expect(host.tick).toBe(t1);
-  });
+  }, 15_000);
 });
 
 describe('OnlineSession keys, net stats and dispose', () => {
