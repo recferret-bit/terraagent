@@ -3,7 +3,10 @@ import { createArchetypeMesh, stripBuildingPlinth } from '@terra/render/kitbash'
 import { TILE_M } from '@terra/render/planets/hex';
 import type { FeatureContext, RendererInstance } from '../../core/registry/types';
 import type { Scene3dService } from '../shared/scene3d';
+import { ghostData } from './ghostContext';
 import type { PlacementGhostState } from './PlacementGhost';
+import { PowerZoneOverlay3D } from './powerZoneOverlay';
+import { ownColonyIndex } from './sitePlacement';
 
 /** While the pointer rests on the canvas, re-pick at most this often (the camera may pan under it). */
 export const GHOST_IDLE_PICK_MS = 150;
@@ -175,6 +178,7 @@ export function createConstructionGhostRenderer(ctx: FeatureContext): RendererIn
   const s3 = ctx.services.scene3d;
   if (!s3) return { update() {}, dispose() {} };
   const rig = new ConstructionGhostRig3D(s3);
+  const zone = new PowerZoneOverlay3D(s3);
   const canvas = (ctx.services.surface ?? ctx.services.canvas) as HTMLElement | null | undefined;
   let pointer: { x: number; y: number } | null = null;
   let moved = false;
@@ -207,8 +211,11 @@ export function createConstructionGhostRenderer(ctx: FeatureContext): RendererIn
   };
 
   return {
-    update(_view, dt) {
+    update(view, dt) {
       const state = getGhostState();
+      // the power zone shows while any building but the Command Hub (placeable anywhere) is being placed
+      const zoneOn = state !== null && state.building !== 'commandHub';
+      zone.update(view, zoneOn, ownColonyIndex(ctx.services), ghostData(ctx.flags, ctx.services.store), dt);
       if (state) {
         if (!wasActive) {
           wasActive = true;
@@ -226,6 +233,7 @@ export function createConstructionGhostRenderer(ctx: FeatureContext): RendererIn
         window.removeEventListener('pointermove', onMove);
       }
       rig.dispose();
+      zone.dispose();
     },
   };
 }
