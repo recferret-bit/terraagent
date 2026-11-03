@@ -10,8 +10,10 @@ import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { approach, atGoal, setUnitActivity } from '../../units/approach';
+import { colonyWho } from '../find';
 import { faceTowards } from '../../units/movement/locomotion';
 import { defineUnitCommand, type TerraformCommand, type UnitCtx, type UnitWorkProvider } from '../../units/types';
+import { canDoWork } from '../dispatch/eligibility';
 import { stepTerraformWorkWithCell } from '../hq/cell';
 import { syncHqView } from '../hq/view';
 import { getTerraformOpSpec } from './ops';
@@ -31,12 +33,8 @@ import { evaluateTerraformTile, terraformWorldFromState } from './rules';
 
 const jobKey = (orderId: string, q: number, r: number): string => `tf:${orderId}:${q},${r}`;
 
-const colonyWho = (state: PlanetState, colonyId: number) => {
-  const col = state.colonies[colonyId];
-  const colonyIdStr = col?.id ?? `col_${colonyId}`;
-  const playerId = typeof col?.playerId === 'string' ? col.playerId : undefined;
-  return { colonyIdStr, who: { colonyId: colonyIdStr, ...(playerId ? { playerId } : {}) } };
-};
+/** The colony's id string and the `colonyId` / `playerId` fields of its player events. */
+export { colonyWho };
 
 /** Whether `order`'s job may still run on its tile (the enqueue rule, with the order's own `allowUnclaimed`). */
 function jobStillValid(state: PlanetState, order: TerraformOrder, job: TerraformJob, data: StepContext['data']): boolean {
@@ -51,7 +49,7 @@ function dropJob(order: TerraformOrder, at: number): void {
 }
 
 /** Levels a newly cleared/broken flat tile to match adjacent level flat ground so it becomes passable and buildable. */
-function levelToAdjacentFlat(state: PlanetState, tileIdx: number, tick: number): void {
+export function levelToAdjacentFlat(state: PlanetState, tileIdx: number, tick: number): void {
   const hx = hexIndex(state.grid.radius);
   const q = hx.q[tileIdx]!, r = hx.r[tileIdx]!;
   const { terrain, height } = state.grid.layers;
@@ -108,10 +106,10 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
  */
 function creditYield(state: PlanetState, colonyId: number, job: TerraformJob, ctx: StepContext): Amounts | undefined {
   const spec = getTerraformOpSpec(job.op, ctx.data);
-  if (!spec.yieldResource || spec.yieldAmount === 0) return undefined;
+  if (Object.values(spec.yields).every((v) => !v)) return undefined;
   const req: AddRequest = {
     colony: colonyId,
-    amounts: { [spec.yieldResource]: spec.yieldAmount },
+    amounts: { ...spec.yields },
     reason: 'terraform.yield',
     actor: colonyActor(state, colonyId),
     ref: `tile:${job.q},${job.r}`,
@@ -260,8 +258,16 @@ function terraformProviderFor(id: string, lane: (o: TerraformOrder) => boolean):
   };
 }
 
-/** A Hub's linked site prep (asked before construction: a site is prepared before it is built on). */
-export const linkedPrepProvider = terraformProviderFor('terraformPrep', (o) => o.isLinkedPrep);
+const anyLinkedPrep = terraformProviderFor('terraformPrep', (o) => o.isLinkedPrep);
+
+/**
+ * A building's linked site prep (asked before construction: a site is prepared before it is built on). Only a
+ * terraform-capable builder takes it (the HQ in W02, `UO-D-03`); a Harvester never prepares a site.
+ */
+export const linkedPrepProvider: UnitWorkProvider = {
+  id: anyLinkedPrep.id,
+  propose: (u) => (canDoWork(u, 'linkedPrep') ? anyLinkedPrep.propose(u) : null),
+};
 
 /** The player's manual terraform orders (asked after construction, GP-04). */
 export const terraformProvider = terraformProviderFor('terraform', (o) => !o.isLinkedPrep);

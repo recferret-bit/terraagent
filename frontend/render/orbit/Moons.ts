@@ -107,7 +107,7 @@ void main(){
   vec3 V = normalize(cameraPosition - vWP);
   float spec = pow(max(dot(N, normalize(L + V)), 0.0), 40.0) * uIce * 0.5 * term;
   vec3 col = alb * (vec3(0.014, 0.018, 0.034) + vec3(1.0, 0.96, 0.9) * uSunI * diff) + spec;
-  col += uTint * pow(1.0 - max(dot(Ng, V), 0.0), 3.0) * 0.04 * term;
+  col += uTint * pow(max(1.0 - dot(Ng, V), 0.0), 3.0) * 0.04 * term;
   gl_FragColor = vec4(clamp(col, 0.0, 40.0), 1.0);
 }`;
 

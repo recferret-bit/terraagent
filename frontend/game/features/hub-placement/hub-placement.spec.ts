@@ -91,7 +91,7 @@ describe('Construction menu & placement ghost (shared placement rules)', () => {
       baseSeconds: 27,
       hqSeconds: 18,
       totalEnergyE: 180,
-      yields: { 'metals.t1': 0, 'bio.biomass': 0 },
+      yields: { 'metals.t1': 0, 'bio.biomass': 0, 'minerals.t1': 0 },
     });
     const ghostEl = container.querySelector('[data-testid="hub-placement-ghost"]') as HTMLElement;
     expect(ghostEl.hidden).toBe(false);

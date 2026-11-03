@@ -129,7 +129,7 @@ Known limitations and open questions of the economy, the host journals and seati
   `shareBp(amount, bp)` for refunds (floor).
 - **One amount rule, also for data** (`economy/amounts.ts`): `isWholeAmount` / `amountsProblem` are used by the
   treasury and by the data compiler. A table lists its resource-amount fields in `amounts` (`hq` `cargo`, `hub` `cost`
-  and `storageCapPerFamily`, `opsBasic` `yieldAmount`); `compileData`, every balance override and every dev `tune`
+  and `storageCapPerFamily`, `opsBasic` `yields`); `compileData`, every balance override and every dev `tune`
   throw on a fraction, a negative or an unknown resource key there (`data/_amounts.ts`), naming the field and value.
 - **One affordability check.** `findShortfall(stock, cost)` names the first missing resource in `SHORTFALL_ORDER`
   (metals, minerals, biomass, water, then the higher bio tiers); the build waiting reason and
@@ -211,17 +211,53 @@ Known limitations and open questions: [`docs/questions-and-limitations/sim-gamep
   `hq.t1.terraformMaxOrders` / `terraformMaxJobs` → `queue_full` (GP-02).
 - **Orders** (GP-08 / GP-09 / GP-10): `blobs.terraformTasks = { byColony }`, `blobs.constructionQueue = { orders }`,
   written with `setBlob` (readers `terraformOrdersOf` / `constructionOrdersOf` work on view blobs too). Order ids are
-  sim-made (`tf#<n>`, `build#<n>`, prep `build#<n>/prep`; counter `blobs.orderSeq`); `taskId` keeps the client's
+  sim-made (`tf#<n>`, `build#<n>`, prep `build#<n>/prep`; a W02 building's prep `job:<entityId>/prep`, linked to
+  `building:<entityId>`; counter `blobs.orderSeq`); `taskId` keeps the client's
   command id, which may name only one open order (`invalid_args` when reused). `cancelTask { taskId }` cancels in
   its own lane: an order id, a task id or a building's entity id; `'active'` = the first manual terraform order,
-  `'current'` = the open construction order; a Hub's linked prep cancels the Hub; no match → `unknown_entity`.
+  `'current'` = the open construction order; a Hub's linked prep cancels the Hub, a W02 building's linked prep (or
+  `unit:<hq>` while the HQ works it) cancels that building; no match → `unknown_entity` (W01 only) / `unknown_task`
+  (W02 on).
   Completed orders leave the queue. Unknown building kinds are `invalid_args` (GP-05).
+- **Player work jobs** (`terraform-basic/{workOrder,workJobs,workTile,workSystem,chain,resourceSpawn}.ts`,
+  `blobs.workJobs`): `enqueueTask { terraform: { op: 'work', intent?, tiles, workerId? } }` (the direct `task` form and
+  `enqueueTerraformOrder(op: 'work')` go through the same `enqueueWorkOrder`). `intent: 'repair'` repairs a damaged own
+  entity on the tile (none → `site_blocked`); `intent: 'terraform'` only works the ground; no intent = repair if
+  damaged, else terraform. The ground tile obeys the territory rule (`terraformOwnershipBlock`) and must not be under a
+  building, anchored or a deposit (`classifyGroundWorkTile`, checked on enqueue, by the chain and again on completion:
+  a tile that changed meanwhile is dropped without yield, GP-01). A command id naming an open job or order is
+  `invalid_args`; a multi-tile order's jobs (`<id>:<i>`) carry `chainRootId: <id>`. A finished terraform job makes the
+  tile `flat` + `prepared`, levels it, pays THE terraform yield (`opsBasic.<op>.yields`: forest = Clear's, rock =
+  Break's; `terraformYields` / `groundWorkYields`), reveals buried deposits (`groundRevealed`), emits
+  `obstacleRemoved { op: 'clear' | 'break' }` or `tilePrepared`, then rolls `terraformFinds.deposit`
+  (`data/terraform-finds.ts`, tunable; read with `terraformFindSpec(data)`: 1% chance; family uniform
+  metals/minerals/oil; tier t1 50% / t2 35% / t3 15%; `ctx.rng('misc')`) for a full deposit when the tile has none and
+  no unit stands on it (`setTileDeposit(..., tier)` writes the visible `depositTier` layer, 0 = legacy t1; event
+  `resourceSpawned`; Harvester and Metals Extractor pay `depositFamilyAndKey(code, tier)`). `dev.spawndeposit` places
+  one. Terraform jobs **chain**: the worker's next job is the obstacle (forest, rock, slope, hole, uneven flat;
+  never level grass) it may terraform and nobody targets that is closest to the tile the player clicked
+  (`chainOrigin`), then closest to the tile just finished, then the lowest tile index, so it clears the area around
+  the order ring by ring; id `<rootId>~<n>`. An unreachable follow-up is skipped silently until the chain finishes
+  another tile, then tried again (only the ordered tile reports `no_path`); a tile still an obstacle after its own job
+  is never picked again (`chainGiveUp`). `moveUnit` / `stopUnit`,
+  `cancelTask` (root id, `…~n`, `unit:<id>`, `all`), a new terraform work order naming the worker, its death or no
+  eligible tile end the chain. Repair jobs never chain; a repair for the chain worker queues behind its current tile
+  and the chain goes on after it. While a worker has a work job no unit work provider or dispatch hands it other work
+  (`systems/units/registry.ts`). A worked job draws `energyCost` evenly over its work time from the colony grid
+  (`workJobDrawPerS`; walking draws nothing; no grid before the Hub = unmetered): the power core adds it to demand as
+  shed group 1 (`power-core/workLoad.ts`, `ColonyPowerSummary.workDemand`), and a job the brownout shed
+  (`shedWorkJobIds`) waits `power` with its progress kept until the grid carries it (GP-45). Their yields / repair
+  costs / refunds use the W02 `economy/ledger.ts` helpers, not the treasury (LED-16).
 - **Placement** (GP-06, GP-23, GP-30): a Hub stands within `hq.startingKit.hubMaxDistFromLanding` of its pod and not
   closer to another colony's pod or Hub (`farFromLanding` / `nearOtherColony` → `site_blocked`); an unaffordable Hub is
   accepted and waits. `occupiesGround` (alive buildings) is the one footprint rule for placement and ground paths.
 - **Work** (GP-04, GP-12, GP-16, GP-21): providers are asked linked prep → construction → manual terraform. A build
   short of stock mid-way is `waiting_resources` and resumes once stock covers the slice; `statusTextOf` derives the
-  text. Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
+  text. W02 building jobs (`blobs.construction`, `economy/buildJob.ts`) are worked by the same `build` command
+  (id `job:<entityId>`, after the W01 orders, oldest first): progress and the progressive payment happen only while the
+  builder stands in reach (`advanceBuildingJob`); `economy.construction` (slot 6) only keeps the site bookkeeping
+  (prepared tiles, `site` / `resources` / `worker` wait). A Harvester never takes build or linked-prep work
+  (`dispatch/eligibility.ts`, GP-58 / GP-59). Unit state is the units runner's (commands set it through `setUnitActivity`); failed auto work is skipped
   `retryBlockedS`, doubling per consecutive failure up to `retryBlockedMaxS`.
 - **Sync** (GP-07, GP-15): queues, `blobs.hq` (`{ byColony }`) and colony records are stamped only when they change,
   so an idle planet sends no gameplay blobs. Blob state is not filtered per colony (SIMULATION §6, GP-36).

@@ -135,9 +135,11 @@ export function mountHubPlacement(
   const pickTile = opts?.pickTile ?? services.pickTile;
   if (surface) menu.bindSurface(surface, pickTile);
 
+  const hiddenByW02 = Boolean(opts?.flags?.has('W02'));
+  if (hiddenByW02) menu.el.hidden = true;
   const offLandfall = services.landfall
     ? services.landfall.onChange(({ hq }) => {
-        menu.el.hidden = !hq;
+        menu.el.hidden = hiddenByW02 || !hq;
         if (!hq && menu.isPlacementActive()) menu.cancelPlacement();
       })
     : null;
@@ -189,6 +191,7 @@ export const hubPlacementFeature: Feature & {
         slot: 'bottom-right',
         order: 20,
         mount(el, ctx) {
+          if (ctx.flags.has('W02')) el.hidden = true;
           return mountHubPlacement(el, { flags: ctx.flags, services: ctx.services });
         },
       },

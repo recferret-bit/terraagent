@@ -16,6 +16,7 @@ tests/.out/
 tests/e2e/.out/
 coverage/
 scripts/dev/.out/
+.dev/
 
 # the committed coverage reference (docs/coverage/README.md) is not a coverage output folder
 !docs/coverage/

@@ -6,6 +6,7 @@ import {
   type BalanceOverrides, type CommandOutcome, type LedgerPosting, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent,
   type SimModule, type TuneRequest,
 } from '@terra/sim';
+import { ProductionBatches } from './production-batches';
 import { type LoadMsg, type PassStat, type Post, type PlanetStats, type ToThread, W00_PLANET_TYPE } from './protocol';
 
 /** What the host needs from the scheduler to report stats (the scheduler itself lives in the thread entry). */
@@ -29,6 +30,8 @@ interface Planet {
   windowEvents: SimEvent[];
   deltaMs: number;
   deltaBytes: number;
+  /** Stockpile `resourceProduced` batches (W02-28); only when the planet runs with W02 on. */
+  production?: ProductionBatches;
 }
 
 export interface HostOptions {
@@ -119,6 +122,7 @@ export class PlanetHost {
     const pipeline = buildPipeline(flags, base, modules);
     this.planets.set(msg.planetId, {
       state, pipeline, tuning: { flags, base, live: {} }, pending: [], subscribed: false, lastDeltaTick: state.meta.tick, nextDeltaMs: 0, windowEvents: [], deltaMs: 0, deltaBytes: 0,
+      ...(flags.includes('W02') ? { production: new ProductionBatches(state) } : {}),
     });
     const stocks = Array.from({ length: state.colonies?.length ?? 0 }, (_, i) => getColonyStock(state, i));
     this.post({ t: 'loaded', planetId: msg.planetId, tick: state.meta.tick, restored: !!msg.snapshot, genesis: !!msg.genesis, stocks });
@@ -152,7 +156,8 @@ export class PlanetHost {
     this.steps++;
     // Every step's postings leave right away (subscribed or not): the server journal must never miss one (D-34).
     this.answer(planetId, r.stats.tick, r.postings, r.outcomes);
-    this.publish(planetId, p, r.events);
+    const batches = p.production?.collect(p.state) ?? [];
+    this.publish(planetId, p, batches.length ? [...r.events, ...batches] : r.events);
     return true;
   }
 

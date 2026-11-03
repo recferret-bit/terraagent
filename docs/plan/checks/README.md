@@ -33,7 +33,7 @@ The 2026-10-30 review made every demo step name its URL, console command and vis
 
 | Wave · step | Gap |
 |---|---|
-| W02 · 5, W03 · 9–10 | Setting an exact or low resource amount (e.g. Minerals < 20): no set-resource command; `grant` is not specified for negative values |
+| W02 · 5, W03 · 9–10 | Setting an exact or low resource amount (e.g. Minerals < 20): resolved in W02 via `fill <res> <amount>` (e.g. `fill minerals.t1 5` sets `minerals.t1` to `5`; omitting `<amount>` fills to cap) |
 | W03 · 8, W05 · 8, W10 · 8 | `damage <entity> N` needs the entity id: make the selection panel (or the state inspector) show it |
 | W06 · 6 | A concrete UI action that triggers a relayed call is not named |
 | W08 · 6 | The S3 fauna override name for `stage trigger <override>` is not named (`help stage` lists it once built) |

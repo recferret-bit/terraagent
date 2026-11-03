@@ -259,12 +259,29 @@ export function setPlanetTime(
   return computePlanetTimeAtTick(nextAnchor, tick, data);
 }
 
+import { applyEnvironmentState, environmentFromPlanetTime, hourForTimeSpec, type EnvironmentState } from '../environment';
+import { recomputeAllColonyPower } from '../power-core';
+
+/** Re-derives the W02 environment (when it runs) from the solar clock right away, and the power that follows it. */
+function syncEnvironmentNow(state: PlanetState, ctx: { tick: number; data: CompiledDataLike }): void {
+  if (state.blobs.environment === undefined) return;
+  const prevStorm = (state.blobs.environment.value as Partial<EnvironmentState> | undefined)?.stormActive === true;
+  applyEnvironmentState(state, environmentFromPlanetTime(state, ctx.data, prevStorm, ctx.tick), ctx.tick);
+  recomputeAllColonyPower(state, ctx.data, ctx.tick);
+}
+
 function handleSetPlanetTimeCommand(
   state: PlanetState,
   cmd: { args: unknown },
   ctx: { tick: number; data: CompiledDataLike },
 ): 'invalid_args' | void {
   const args = (cmd.args ?? {}) as Record<string, unknown>;
+  if (typeof args.target === 'string') {
+    setPlanetTime(state, { timeOfDay: hourForTimeSpec(args.target) ?? 12 }, ctx.tick, ctx.data);
+    if (state.blobs.environment === undefined) applyEnvironmentState(state, environmentFromPlanetTime(state, ctx.data, false, ctx.tick), ctx.tick);
+    syncEnvironmentNow(state, ctx);
+    return;
+  }
   const patch: { timeOfDay?: number; realHoursPerDay?: number; timeScale?: number } = {};
   if (args.timeOfDay !== undefined) {
     if (typeof args.timeOfDay !== 'number' || !Number.isFinite(args.timeOfDay) || args.timeOfDay < 0 || args.timeOfDay > 24) {
@@ -285,6 +302,7 @@ function handleSetPlanetTimeCommand(
     patch.timeScale = args.timeScale;
   }
   setPlanetTime(state, patch, ctx.tick, ctx.data);
+  syncEnvironmentNow(state, ctx);
 }
 
 /**

@@ -16,8 +16,6 @@ export {
   HEX_DEPOSIT,
   HEX_PREP,
   HEX_TERRAIN,
-  INITIAL_PREP_START_TIME,
-  PREP_BLEND_DURATION_S,
   tileHash01,
   tileHashU32,
   tileStyle,
@@ -25,16 +23,21 @@ export {
   type HexTileLayers,
 } from './chunkMesh';
 export {
+  buildChunkPropInstances,
   createHexPropScatter,
+  depositVisualTier,
+  getDepositVisualStage,
   PROP_KINDS,
   scatterChunkProps,
   scatterTileProps,
   type ChunkPropBuckets,
+  type DepositVisualStage,
   type HexPropScatter,
   type PropKind,
   type TilePropInstance,
 } from './chunkPropScatter';
 export { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
+export { createHexTileTint, type HexTileTint } from './tileTint';
 export {
   BORDER_VERTS_PER_EDGE,
   BORDER_Y_OFFSET,

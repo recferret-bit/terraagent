@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { eventDef } from '@terra/contracts';
+import { eventDef, parseWaves } from '@terra/contracts';
 import {
   canRunTerraformOpOnTile,
+  createPlanet,
   DEPOSIT,
   enqueueTerraformOrder,
   ENTITY_KIND,
@@ -74,7 +75,7 @@ describe('W01-13: Grade, Clear, and Break operations', () => {
     expect(eventDef('tilePrepared').data.safeParse(preparedEvents[0].data).success).toBe(true);
   });
 
-  it('Clear on a Forest tile takes 3.33 s (17 ticks) at 1.5x, draws 30 E, turns tile into Flat + PREP.flat, credits +5 bio.biomass, and emits obstacleRemoved', () => {
+  it('Clear on a Forest tile takes 3.33 s (17 ticks) at 1.5x, draws 30 E, turns tile into Flat + PREP.flat, credits +15 bio.biomass, and emits obstacleRemoved', () => {
     const host = createW01Host();
     const state = host.state;
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
@@ -100,8 +101,8 @@ describe('W01-13: Grade, Clear, and Break operations', () => {
     expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(770.6, 4);
     expect(state.grid.layers.terrain[tileIdx]).toBe(TERRAIN.flat);
     expect(state.grid.layers.prep[tileIdx]).toBe(PREP.flat);
-    expect(getColonyStock(state, 0)['bio.biomass']).toBe(5);
-    expect((host.view().colonies[0]?.stock as Record<string, number>)?.['bio.biomass']).toBe(5);
+    expect(getColonyStock(state, 0)['bio.biomass']).toBe(15);
+    expect((host.view().colonies[0]?.stock as Record<string, number>)?.['bio.biomass']).toBe(15);
 
     const removedEvents = events.filter((e) => e.kind === 'obstacleRemoved');
     expect(removedEvents).toHaveLength(1);
@@ -111,7 +112,7 @@ describe('W01-13: Grade, Clear, and Break operations', () => {
 });
 
 describe('W01-13: Break, deposit preservation, territory rules, and queue management', () => {
-  it('Break on a Rock tile takes 4.0 s (20 ticks) at 1.5x, draws 60 E, turns tile into Flat + PREP.flat, credits +10 metals.t1, and emits obstacleRemoved', () => {
+  it('Break on a Rock tile takes 4.0 s (20 ticks) at 1.5x, draws 60 E, turns tile into Flat + PREP.flat, credits +8 metals.t1 +4 minerals.t1, and emits obstacleRemoved', () => {
     const host = createW01Host();
     const state = host.state;
     const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
@@ -138,8 +139,9 @@ describe('W01-13: Break, deposit preservation, territory rules, and queue manage
     expect(state.entities.cols.cell[hqSlot]).toBeCloseTo(740.6, 4);
     expect(state.grid.layers.terrain[tileIdx]).toBe(TERRAIN.flat);
     expect(state.grid.layers.prep[tileIdx]).toBe(PREP.flat);
-    expect(getColonyStock(state, 0)['metals.t1']).toBe(10);
-    expect((host.view().colonies[0]?.stock as Record<string, number>)?.['metals.t1']).toBe(10);
+    expect(getColonyStock(state, 0)['metals.t1']).toBe(8);
+    expect(getColonyStock(state, 0)['minerals.t1']).toBe(4);
+    expect((host.view().colonies[0]?.stock as Record<string, number>)?.['metals.t1']).toBe(8);
 
     const removedEvents = events.filter((e) => e.kind === 'obstacleRemoved');
     expect(removedEvents).toHaveLength(1);
@@ -232,5 +234,25 @@ describe('W01-13: Territory rules and queue management', () => {
     expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
     expect(state.entities.cols.state[hqSlot]).toBe(ENTITY_STATE.idle);
     expect(getHqView(state, 0)?.queueCount).toBe(0);
+  });
+});
+
+describe('W02: cancelTask on the working unit (CANCEL on its selection card)', () => {
+  it.each(['harvester', 'unit'])('%s:<id> ends the terraform order the unit works on and stops it', (prefix) => {
+    const host = new SimHost({ flags: parseWaves('..02') });
+    host.load(createPlanet({ type: 'flat', seed: 'tf-unit-cancel', radius: 12 }));
+    const state = host.state;
+    const hqId = spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+    const hqSlot = rowOf(state.entities, hqId);
+    const res = enqueueTerraformOrder(state, { colonyId: 0, op: 'grade', tiles: [{ q: 1, r: 0 }, { q: 3, r: 0 }], orderId: 'brush_u' });
+    expect(res.ok).toBe(true);
+    host.step(5);
+    expect(state.entities.cols.state[hqSlot]).toBe(ENTITY_STATE.working);
+
+    host.submit(mkCmd('cancelTask', { taskId: `${prefix}:${hqId}` }, 0));
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
+    expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
+    host.step(10);
+    expect(state.entities.cols.state[hqSlot]).toBe(ENTITY_STATE.idle);
   });
 });

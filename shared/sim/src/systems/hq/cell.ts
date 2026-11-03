@@ -57,12 +57,29 @@ function drawsFromCell(state: PlanetState, row: number, dtTicks: number, data?: 
 /** Hub states that do not power the fast recharge (not built yet, or switched off). */
 const NOT_POWERED: ReadonlySet<number> = new Set([ENTITY_STATE.constructing, ENTITY_STATE.waiting, ENTITY_STATE.descending, ENTITY_STATE.inert]);
 
-/** Recharge of HQ `row` in E per tick: fast within `cellFastRechargeRadius` of an active own Hub, else self. */
+/**
+ * Whether the colony's grid shed the HQ fast recharge (shed group 3, `hq.t1.cellFastRechargeShedGroup`) in its last
+ * power evaluation (`col.power` / `blobs.power`, written by `power.core`). Only the stored summary is read, never a
+ * fresh evaluation (that would shed entities from here). `hq` sorts before `power.core` in slot 7, so this is the
+ * previous step's verdict: a one-step lag, the same on every host. False without the W02 power system.
+ */
+function fastRechargeShed(state: PlanetState, owner: number): boolean {
+  const fromColony = state.colonies[owner]?.power as { hqFastRechargeShed?: unknown } | undefined;
+  if (fromColony && typeof fromColony === 'object') return fromColony.hqFastRechargeShed === true;
+  const byColony = (state.blobs.power?.value as { byColony?: Record<number, { hqFastRechargeShed?: unknown }> } | undefined)?.byColony;
+  return byColony?.[owner]?.hqFastRechargeShed === true;
+}
+
+/**
+ * Recharge of HQ `row` in E per tick: fast within `cellFastRechargeRadius` of an active own Hub, else self. A grid
+ * brownout that reaches shed group 3 suspends the fast rate (`UO-HQ-06`, W02-06): the HQ falls back to self recharge.
+ */
 function rechargePerTick(state: PlanetState, row: number, data?: CompiledDataLike): number {
   const hqRow = resolveHqT1Row(data);
   const fastRadius = rowNum(hqRow, 'cellFastRechargeRadius');
   const e = state.entities, cols = e.cols;
   const owner = cols.owner[row];
+  if (fastRechargeShed(state, owner)) return rowNum(hqRow, 'cellSelfRechargePerS');
   for (let h = 0; h < e.count; h++) {
     if (cols.kind[h] !== ENTITY_KIND.hub || cols.owner[h] !== owner) continue;
     if (NOT_POWERED.has(cols.state[h])) continue;

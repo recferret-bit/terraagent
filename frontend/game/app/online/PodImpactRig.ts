@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
-import { clamp, smoother, smoothstep } from '../../descent/math';
+import { clamp, smoothstep } from '../../descent/math';
 
 /** Forward egress direction from the pod bay down the ramp onto the spawn hex center `(wx, wz)`. */
 export const POD_EGRESS_DIR = new THREE.Vector3(0.6, 0, 0.8).normalize();
@@ -50,7 +50,6 @@ export class PodImpactRig {
 
   private readonly geos: THREE.BufferGeometry[] = [];
   private readonly mats: THREE.Material[] = [];
-  private emberMat!: THREE.MeshStandardMaterial;
   private shockwaveMesh!: THREE.Mesh;
   private shockwaveMat!: THREE.MeshBasicMaterial;
   private dustRingMesh!: THREE.Mesh;
@@ -69,7 +68,6 @@ export class PodImpactRig {
     this.waveGroup.visible = false;
     this.egressGroup.visible = false;
 
-    this.buildCrater();
     this.buildWaves();
     this.buildEgressPod();
 
@@ -85,97 +83,6 @@ export class PodImpactRig {
   private trackMat<T extends THREE.Material>(m: T): T {
     this.mats.push(m);
     return m;
-  }
-
-  private buildCrater(): void {
-    const pitMat = this.trackMat(
-      new THREE.MeshStandardMaterial({ color: 0x15171c, roughness: 0.92, metalness: 0.16 }),
-    );
-    const slagMat = this.trackMat(
-      new THREE.MeshStandardMaterial({ color: 0x20242c, roughness: 0.84, metalness: 0.32 }),
-    );
-    const rimMat = this.trackMat(
-      new THREE.MeshStandardMaterial({ color: 0x2f333c, roughness: 0.86, metalness: 0.22 }),
-    );
-    this.emberMat = this.trackMat(
-      new THREE.MeshStandardMaterial({
-        color: 0x280900,
-        emissive: 0xff5a14,
-        emissiveIntensity: 4.2,
-        roughness: 0.6,
-      }),
-    );
-
-    const pit = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(1.42, 1.56, 0.03, 24)), pitMat);
-    pit.position.y = 0.015;
-    pit.receiveShadow = true;
-
-    const innerSlag = new THREE.Mesh(this.trackGeo(new THREE.CylinderGeometry(0.98, 1.08, 0.036, 20)), slagMat);
-    innerSlag.position.y = 0.02;
-    innerSlag.receiveShadow = true;
-
-    const rimProfile: [number, number][] = [
-      [1.26, 0.01],
-      [1.48, 0.2],
-      [1.72, 0.25],
-      [2.02, 0.12],
-      [2.36, 0.01],
-    ];
-    const rim = new THREE.Mesh(
-      this.trackGeo(new THREE.LatheGeometry(rimProfile.map(([r, y]) => new THREE.Vector2(r, y)), 24)),
-      rimMat,
-    );
-    rim.castShadow = false;
-    rim.receiveShadow = true;
-
-    const emberRing = new THREE.Mesh(
-      this.trackGeo(new THREE.RingGeometry(0.45, 1.12, 20).rotateX(-Math.PI / 2)),
-      this.emberMat,
-    );
-    emberRing.position.y = 0.042;
-    this.craterGroup.add(pit, innerSlag, rim, emberRing);
-
-    this.buildCraterRocksAndFissures(rimMat, slagMat);
-    this.craterGroup.traverse((o) => {
-      o.castShadow = false;
-    });
-  }
-
-  private buildCraterRocksAndFissures(
-    rimMat: THREE.MeshStandardMaterial,
-    slagMat: THREE.MeshStandardMaterial,
-  ): void {
-    const rockGeoA = this.trackGeo(new RoundedBoxGeometry(0.42, 0.24, 0.32, 2, 0.05));
-    const rockGeoB = this.trackGeo(new RoundedBoxGeometry(0.3, 0.2, 0.25, 2, 0.04));
-    const streakGeo = this.trackGeo(new RoundedBoxGeometry(0.12, 0.03, 0.78, 1, 0.01));
-    const crackGeo = this.trackGeo(new RoundedBoxGeometry(0.06, 0.035, 1.02, 1, 0.01));
-
-    for (let i = 0; i < 12; i++) {
-      const a = (i * Math.PI * 2) / 12 + (i % 2 === 0 ? 0.08 : -0.06);
-      const r = 1.58 + (i % 3) * 0.14;
-      const rock = new THREE.Mesh(i % 2 === 0 ? rockGeoA : rockGeoB, i % 3 === 0 ? slagMat : rimMat);
-      rock.position.set(Math.cos(a) * r, 0.12 + (i % 2) * 0.04, Math.sin(a) * r);
-      rock.rotation.set(0.32 + (i % 3) * 0.08, -a + Math.PI / 2, (i % 2 === 0 ? 1 : -1) * 0.18);
-      rock.castShadow = false;
-      rock.receiveShadow = true;
-      this.craterGroup.add(rock);
-    }
-
-    for (let i = 0; i < 8; i++) {
-      const a = (i * Math.PI * 2) / 8 + 0.2;
-      const streak = new THREE.Mesh(streakGeo, slagMat);
-      streak.position.set(Math.cos(a) * 1.95, 0.04, Math.sin(a) * 1.95);
-      streak.rotation.set(-0.14, Math.atan2(Math.cos(a), Math.sin(a)), 0);
-      this.craterGroup.add(streak);
-    }
-
-    for (let i = 0; i < 6; i++) {
-      const a = (i * Math.PI) / 3 + 0.15;
-      const crack = new THREE.Mesh(crackGeo, this.emberMat);
-      crack.position.set(Math.cos(a) * 0.78, 0.035, Math.sin(a) * 0.78);
-      crack.rotation.y = Math.atan2(Math.cos(a), Math.sin(a));
-      this.craterGroup.add(crack);
-    }
   }
 
   private buildWaves(): void {
@@ -321,7 +228,7 @@ export class PodImpactRig {
     const nozzleGeo = this.trackGeo(new THREE.CylinderGeometry(0.12, 0.2, 0.34, 8));
 
     for (let i = 0; i < 4; i++) {
-      const ang = (i * Math.PI) / 2;
+      const ang = (i * Math.PI) / 2 + Math.PI / 4;
       const pivot = new THREE.Group();
       pivot.name = `pod-petal-pivot-${i}`;
       pivot.rotation.order = 'YXZ';
@@ -360,14 +267,7 @@ export class PodImpactRig {
 
   update(u: PodImpactRigUpdate): void {
     this.root.position.copy(u.pos);
-    this.craterGroup.visible = u.craterVisible;
-
-    if (u.craterVisible) {
-      const punch = smoother(0, 0.14, u.sinceTouchdown);
-      this.craterGroup.scale.setScalar(0.35 + 0.65 * punch);
-      const cool = 1 - smoothstep(0.2, 4.5, u.sinceTouchdown);
-      this.emberMat.emissiveIntensity = 4.6 * cool;
-    }
+    this.craterGroup.visible = false;
 
     const waveActive = u.craterVisible && u.sinceTouchdown >= 0 && u.sinceTouchdown < 1.6;
     this.waveGroup.visible = waveActive;
@@ -407,10 +307,11 @@ export class PodImpactRig {
     this.egressGroup.rotation.y = yaw;
     this.egressGroup.position.y = -2.3 * dismantle;
     this.egressGroup.scale.setScalar(Math.max(0.01, 1 - 0.55 * dismantle));
-    this.coreLightMat.emissiveIntensity = 4.0 * open * (1 - dismantle);
+    this.coreLightMat.emissiveIntensity = (0.7 + 3.3 * (1 - smoothstep(0.65, 1.0, open))) * open * (1 - dismantle);
 
-    for (const p of this.petals) {
-      const maxAng = p.isFront ? 1.56 : 1.44;
+    for (let i = 0; i < this.petals.length; i++) {
+      const p = this.petals[i]!;
+      const maxAng = 1.24 + (i % 2) * 0.1;
       p.pivot.rotation.x = maxAng * open;
     }
     this.rampPivot.rotation.x = -1.25 + 1.52 * open;
@@ -419,11 +320,9 @@ export class PodImpactRig {
   setSettled(pos?: THREE.Vector3): void {
     if (pos) this.root.position.copy(pos);
     this.waveGroup.visible = false;
-    this.egressGroup.visible = false;
-    if (this.craterGroup.visible) {
-      this.craterGroup.scale.setScalar(1);
-      this.emberMat.emissiveIntensity = 0;
-    }
+    this.craterGroup.visible = false;
+    this.egressGroup.visible = true;
+    this.updateEgress(POD_EGRESS_YAW, 1, 0);
   }
 
   hide(): void {

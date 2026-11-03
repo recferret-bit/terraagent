@@ -54,7 +54,8 @@ export const FamilyCaps = z.strictObject({
 export type FamilyCaps = z.infer<typeof FamilyCaps>;
 
 export const W01_TERRAFORM_OPS = ['grade', 'clear', 'break'] as const;
-export const TerraformOp = z.enum(W01_TERRAFORM_OPS);
+export const W02_TERRAFORM_OPS = ['grade', 'clear', 'break', 'dismantle', 'work'] as const;
+export const TerraformOp = z.enum(W02_TERRAFORM_OPS);
 export type TerraformOp = z.infer<typeof TerraformOp>;
 
 export const TileCoord = z.number().int().min(-32768).max(32767);
@@ -66,7 +67,7 @@ export const SimEventWire = z.object({
   kind: z.string().min(1).max(64),
   severity: z.enum(['info', 'warn', 'critical']),
   atTick: z.number().int().nonnegative(),
-  colonyIds: z.array(z.string()),
+  colonyIds: z.array(z.union([z.string(), z.number()])),
   data: z.record(z.string(), z.unknown()),
 });
 export type SimEventWire = z.infer<typeof SimEventWire>;

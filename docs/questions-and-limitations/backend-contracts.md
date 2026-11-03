@@ -475,3 +475,61 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 - **Why it is like this:** `planet_full` was added to the sim (GP-17) after the seat flow was written.
 - **Fix:** seats per planet are `min(capacity, MAX_COLONIES_PER_PLANET)` (`seatsOf`); `planet_full` from the landing-site question or from the landing itself marks the planet like one without a site (`NO_SITE_CODES`), the row is rolled back and the next planet of the family is tried. Tests `backend/app/test/unit/home-seat-reject.spec.ts` › "a planet the sim calls planet_full (8 colonies) is marked…", "a landing the sim refuses planet_full rolls the row back…", "never offers more colony indices than the sim lands…".
 - **Found:** 2026-11-01, final cross-cutting pass (SimHost/server contract leftovers from SIM-GAMEPLAY)
+
+## Found in the W02 review (rounds 1–2)
+
+### BE-28 · `resourceProduced` batch windows live in sim-thread memory
+
+- **Status:** Open
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `backend/app/src/game/thread/production-batches.ts` (`ProductionBatches`, `PRODUCTION_WINDOW_TICKS`, `windowEndAfter`), `backend/app/src/game/thread/planet-host.ts` (`production`, `collect` after each step); W02-28
+- **What happens:** the Stockpile batches (one `resourceProduced {colonyId, res, amount}` per colony and resource per 60 s window) compare `production.produced` with a baseline kept in the `PlanetHost` entry, not in the snapshot. The baseline is taken when the planet is loaded:
+  - restart / failover: production between the last closed window and the restored snapshot's tick is never reported (the window that was open is lost);
+  - a failed step restored from the last snapshot (BE-12, planet recovery): windows already emitted after that snapshot are produced and emitted again, so a consumer counts them twice;
+  - windows end on absolute tick multiples of 300 (60 s of planet time), so under warp they come faster in real time;
+  - a warped step that crosses two window ends emits one combined batch for both.
+- **Why it is like this:** the counters live in `PlanetState` (sim thread); the batcher was added in round 1 without a state field.
+- **To resolve:** keep the open window (`windowEnd` + baseline per colony) in a blob so it is saved and restored with the snapshot, or let the consumer dedupe by `(colonyId, res, windowEnd)` (add `windowEnd` to the event). Recommendation: the blob.
+- **Found:** 2026-11-03, W02 review rounds 1–2 (backend agent)
+
+### BE-29 · `resourceProduced` has no player id; W02 progression events carry no achievement tag
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/contracts/src/events/resource-produced.ts` (`playerId` optional), `production-batches.ts` (never sets it), `backend/app/src/game/progression-achievements.ts` (`PROGRESSION_ACHIEVEMENTS`: `tilePrepared`, `obstacleRemoved`, `colonyFounded` only), `backend/app/src/game/bus-bridge.ts`
+- **What happens:** `resourceProduced` and `buildingCompleted` reach the bus as plain `planet.event` entries: no `playerId` on `resourceProduced` (the sim thread does not know players) and no `achievement` field on either, because neither is in `PROGRESSION_ACHIEVEMENTS`, whose forwarder resolves players and tags achievements for the W01 kinds. A consumer (W12 Stockpile) must map colony → player itself and decide which kind counts for which achievement.
+- **To resolve:** add both kinds to the progression forwarder (player from the colony cache, achievement tag), or document that W12 maps them.
+- **Found:** 2026-11-03, W02 review rounds 1–2 (backend agent)
+
+### BE-30 · Event `audience: 'server'` is not enforced
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `backend/app/src/ws/rooms.ts` (`fanout`: `onDelta` sends `delta.events`, `onEvent` forwards every kind `hasEventKind` knows), `shared/contracts/src/events/{resource-produced,treasury-rejected,dev-tuned}.ts`
+- **What happens:** events declared `audience: 'server'` (`resourceProduced`, `treasuryRejected`, `dev.tuned`) go to every socket on the planet like player events; every player sees every colony's production batches. The client's `WorldStore` ignores kinds it does not handle, so nothing breaks, but the client does rely on one of them: `dev.tuned` rebuilds the replica's data (`frontend/game/store/replica/tuneEvent.ts`). Filtering by audience would break live `tune` unless `dev.tuned` becomes `player`.
+- **To resolve:** filter `server` events in `fanout` and change `dev.tuned` to `player` (or `dev`) in the same change.
+- **Found:** 2026-11-03, W02 review rounds 1–2 (frontend / backend agents)
+
+### BE-31 · No test runs real Extractor production into a `resourceProduced` batch
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `backend/app/test/game/production-batches.spec.ts`
+- **What happens:** the spec raises `production.produced` by hand before each step and checks the batches; the earlier spec that drove `creditResource` was deleted in round 1. Nothing checks that an Extractor or Harvester on a running planet ends up in a batch (the flag gate `flags.includes('W02')`, the step order, the colony id).
+- **To resolve:** one test that loads a `PlanetHost` with the `w02` scenario (an active Extractor), steps 300+ ticks and expects a `metals.t1` batch.
+- **Found:** 2026-11-03, W02 review round 2 (backend agent)
+
+### BE-32 · `npm run e2e -- --waves ..NN` narrows the app, with exceptions
+
+- **Status:** Accepted (by design); the problem "`E2E_WAVES` is not consumed, no run with later waves off" is Resolved (58956ab)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `tests/e2e/harness/stack.ts` (`appWavesFor`, `E2E_APP_WAVES`), `tests/e2e/harness/helpers.ts` (`expectedOnWaves`, `hostMode`), `scripts/dev/e2e.mjs`, `tests/e2e/w00.spec.ts` (step 5)
+- **What happened:** `--waves ..NN` only selected suites; the app always ran with every wave on, so no run checked an earlier wave with later waves off.
+- **Fix (round 2):** the harness boots the app with `TA_WAVES` = every wave up to the highest one selected (`appWavesFor`) and tells the suites (`E2E_APP_WAVES` → `expectedOnWaves()`; the W00 suite's flag-chip step expects that count).
+- **Still true:** `E2E_REUSE=1` attaches to the running dev stack and keeps its own `TA_WAVES`; `expectedOnWaves()` then assumes every wave is on. `--host local` boots no app (sim-only suites; the W01 suite is skipped there). `--waves ..00` runs on the flat W00 dev planet and `..01` on the pure W01 server path, so a failure there can be a missing W02 piece rather than a regression.
+- **Found:** 2026-11-03, W02 review rounds 1–2 (frontend agent)

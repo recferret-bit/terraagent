@@ -14,18 +14,30 @@ export interface CompiledData extends CompiledDataLike {
   readonly tables: Readonly<Record<string, CompiledTable>>;
 }
 
-const CONVERT: Record<Unit, (v: number) => number> = {
-  seconds: (s) => Math.round((s * 1000) / TICK_MS),
-  perSecond: (r) => (r * TICK_MS) / 1000,
-};
+/**
+ * Global economy pacing multiplier (`colony-economy-and-buildings-spec.md` §1 rule 2, `SIMULATION.md` §7.6).
+ * Scales resource production, harvest, upkeep, water, and ammo flow rates at compile time while leaving
+ * solar/power output (`grossOutputPerS`, `netOutputPerS`, `powerDrainPerS`) and build `cost` untouched.
+ */
+export const ECONOMY_RATE_SCALE = 0.25;
 
-function convertRow(table: TableDef, row: Row): CompiledRow {
+const RESOURCE_FLOW_FIELDS = new Set(['outputPerS', 'harvestRatePerS', 'upkeepPerS', 'waterPerS', 'ammoPerS']);
+
+function convertRow(table: TableDef, row: Row, scale: number): CompiledRow {
   const out: Record<string, RowValue> = { ...row };
-  for (const [field, unit] of Object.entries(table.units ?? {}) as [string, Unit][]) {
+  const units = table.units ?? {};
+  for (const [field, unit] of Object.entries(units) as [string, Unit][]) {
     const v = out[field];
     if (v === undefined) continue;
     if (typeof v !== 'number') throw new Error(`data ${table.name}.${row.id}.${field}: unit ${unit} needs a number, got ${typeof v}`);
-    out[field] = CONVERT[unit](v);
+    if (unit === 'seconds') out[field] = Math.round((v * 1000) / TICK_MS);
+    else if (unit === 'perSecond') out[field] = (v * TICK_MS) / 1000;
+    else if (unit === 'resourceFlow') out[field] = v * scale;
+  }
+  for (const field of RESOURCE_FLOW_FIELDS) {
+    if (field in units) continue;
+    const v = out[field];
+    if (typeof v === 'number') out[field] = v * scale;
   }
   return out as CompiledRow;
 }
@@ -33,16 +45,18 @@ function convertRow(table: TableDef, row: Row): CompiledRow {
 export interface CompileInput {
   flags: { has(wave: string): boolean } | ReadonlySet<string>;
   tables: readonly TableDef[];
+  economyRateScale?: number;
   /** Balance overrides in design units, merged over the rows before unit conversion (D-35). */
   overrides?: BalanceOverrides;
 }
 
 /**
- * `compileData` (SIM-D-03): converts design units to ticks and keeps only the rows of enabled waves. Pure; the same
- * tables + flags always give the same `hash`. Throws on a resource amount (`TableDef.amounts`) that is not a whole,
+ * `compileData` (SIM-D-03): converts design units to ticks, scales resource flow rates by `economyRateScale`
+ * (default `ECONOMY_RATE_SCALE = 0.25`), and keeps only the rows of enabled waves. Pure; the same tables + flags
+ * always give the same `hash`. Throws on a resource amount (`TableDef.amounts`) that is not a whole,
  * non-negative number of units.
  */
-export function compileTables({ flags, tables: base, overrides }: CompileInput): CompiledData {
+export function compileTables({ flags, tables: base, economyRateScale = ECONOMY_RATE_SCALE, overrides }: CompileInput): CompiledData {
   const tables = overrides ? applyOverrides(base, overrides) : base;
   const out: Record<string, CompiledTable> = {};
   for (const t of tables) {
@@ -51,7 +65,7 @@ export function compileTables({ flags, tables: base, overrides }: CompileInput):
     for (const r of t.rows) {
       if (rows[r.id]) throw new Error(`data ${t.name}: duplicate row ${r.id}`);
       checkRowAmounts(t, r, 'data');
-      if (flags.has(r.wave)) rows[r.id] = convertRow(t, r);
+      if (flags.has(r.wave)) rows[r.id] = convertRow(t, r, economyRateScale);
     }
     out[t.name] = rows;
   }

@@ -202,7 +202,7 @@ void main(){
   float nh = max(dot(N, Hh), 0.0);
   float sp = (pow(nh, 220.0) * 2.6 + pow(nh, 26.0) * 0.16) * isSea * term;
   col += uSunColor * sp;
-  col += uAtm * isSea * pow(1.0 - max(dot(N, V), 0.0), 4.0) * 0.3 * term;
+  col += uAtm * isSea * pow(max(1.0 - dot(N, V), 0.0), 4.0) * 0.3 * term;
   col += emis;
   // aerial perspective when seen from inside the atmosphere (descent)
   float dist = distance(cameraPosition, vWP);

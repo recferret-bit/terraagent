@@ -13,7 +13,7 @@ import type { UnitRecord } from './book';
  */
 export type CommandSource = 'player' | 'auto';
 
-export interface MoveCommand { kind: 'move'; source: CommandSource; q: number; r: number }
+export interface MoveCommand { kind: 'move'; source: CommandSource; q: number; r: number; minDist?: number; maxDist?: number }
 export interface StopCommand { kind: 'stop'; source: CommandSource }
 export interface DieCommand { kind: 'die'; source: CommandSource }
 export interface AttackCommand { kind: 'attack'; source: CommandSource; targetId: number }

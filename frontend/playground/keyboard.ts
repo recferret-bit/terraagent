@@ -3,12 +3,13 @@ import type { ToggleKey, View } from './state';
 
 export interface KeyHandlers { cycle(d: number): void; view(v: View): void; toggle(k: ToggleKey): void; focus(): void; }
 
-const KEY_TOGGLE: Record<string, ToggleKey> = { t: 'turntable', g: 'grid', w: 'wire', b: 'bloom', p: 'pixel', r: 'row', h: 'human', v: 'validate' };
+const KEY_TOGGLE: Record<string, ToggleKey> = { t: 'turntable', g: 'grid', w: 'wire', b: 'bloom', p: 'pixel', r: 'row', h: 'human', v: 'validate', l: 'lights' };
 const KEY_VIEW: Record<string, View> = { 1: 'iso', 2: 'front', 3: 'side', 4: 'top' };
 
 export function bindKeys(on: KeyHandlers) {
   window.addEventListener('keydown', (e) => {
-    const typing = (e.target as HTMLElement)?.tagName === 'INPUT';
+    const tag = (e.target as HTMLElement)?.tagName;
+    const typing = tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT';
     if (e.key === 'Escape' && typing) { (e.target as HTMLElement).blur(); return; }
     if (e.key === '/' && !typing) { e.preventDefault(); $('#search').focus(); return; }
     if (typing || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;

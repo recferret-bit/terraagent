@@ -1,6 +1,7 @@
 // `npm run e2e -- [--waves ..NN|00,03] [--hack] [--host local] [playwright args…]`
 // Runs the Playwright suites tests/e2e/wNN.spec.ts (+ the harness smoke suite when no wave suite is present).
-// --waves  which wave suites (parseWaves semantics: `..03`, `00,03`, `all`); default: every suite present
+// --waves  which wave suites (parseWaves semantics: `..03`, `00,03`, `all`); default: every suite present. The booted
+//          app also runs only up to the highest selected wave (`TA_WAVES=..03`; tests/e2e/harness/stack.ts `appWavesFor`)
 // --hack   only steps titled `@hack` (each wave's Hackathon slice)
 // --host local   sets E2E_HOST=local: suites run the sim-only variant (browser local host) and skip server-only steps
 // E2E_REUSE=1    attach to the running `npm run dev` stack instead of booting one

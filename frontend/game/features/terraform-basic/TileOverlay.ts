@@ -1,7 +1,6 @@
 import { hexIndex, PREP, TERRAIN, terraformOrdersOf, type TerraformOpKind, type TerraformOrder } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
 import { makeDiv } from '../shared/dom';
-import type { TileCoord } from '../shared/pointer';
 
 export type TilePrepStateName = 'wild' | 'flat' | 'prepared' | 'irrigated' | 'living' | 'ridge' | 'moat';
 
@@ -121,7 +120,6 @@ export function computeOverlayState(
   view: GameView | null | undefined,
   visible: boolean,
   colonyId: number,
-  trackedTiles: readonly TileCoord[],
 ): TileOverlayState {
   const counts = { wild: 0, flat: 0, prepared: 0, living: 0, other: 0 };
   const tileLayers = view?.tiles;
@@ -152,22 +150,7 @@ export function computeOverlayState(
     if (!jobByCoord.has(key)) jobByCoord.set(key, j);
   }
 
-  const seenCoords = new Set<string>();
-  const coordsToInspect: TileCoord[] = [];
-  for (const j of jobs) {
-    const key = `${j.q},${j.r}`;
-    if (!seenCoords.has(key)) {
-      seenCoords.add(key);
-      coordsToInspect.push({ q: j.q, r: j.r });
-    }
-  }
-  for (const t of trackedTiles) {
-    const key = `${t.q},${t.r}`;
-    if (!seenCoords.has(key)) {
-      seenCoords.add(key);
-      coordsToInspect.push(t);
-    }
-  }
+  const coordsToInspect = [...jobByCoord.values()].map((j) => ({ q: j.q, r: j.r }));
 
   const radius = view?.planet?.radius;
   const idx = typeof radius === 'number' ? hexIndex(radius) : null;
@@ -226,7 +209,6 @@ export class TileOverlay {
   private readonly chips: HTMLElement[] = [];
   private visible = false;
   private lastView: GameView | null = null;
-  private trackedTiles: readonly TileCoord[] = [];
   private state: TileOverlayState | null = null;
   private activeOrder: OverlayOrderProgress | null = null;
 
@@ -257,7 +239,7 @@ export class TileOverlay {
   /** Full overlay state for the newest view (computed on demand). */
   getState(): TileOverlayState {
     if (!this.state) {
-      this.state = computeOverlayState(this.lastView, this.visible, this.getColonyId(), this.trackedTiles);
+      this.state = computeOverlayState(this.lastView, this.visible, this.getColonyId());
       this.activeOrder = this.state.activeOrder;
     }
     return this.state;
@@ -268,7 +250,7 @@ export class TileOverlay {
     return this.state ? this.state.activeOrder : this.activeOrder;
   }
 
-  update(view: GameView | null, trackedTiles?: readonly TileCoord[]): void {
+  update(view: GameView | null): void {
     if (view) {
       this.lastView = view.tiles
         ? view
@@ -276,7 +258,6 @@ export class TileOverlay {
           ? { ...view, tiles: this.lastView.tiles }
           : view;
     }
-    if (trackedTiles) this.trackedTiles = trackedTiles;
     this.state = null;
     if (this.visible) this.render(this.getState());
     else this.activeOrder = activeOrderOf(this.lastView, this.getColonyId());

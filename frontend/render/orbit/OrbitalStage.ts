@@ -54,7 +54,7 @@ class OrbitalStageImpl implements OrbitalStage {
     scene.add(this.layers.group);
 
     this.globes = new StageGlobes(scene, sunDir, spec, aspect);
-    this.carrier = acquireModel('ship.carrier', 'dune', { size: 6.0, mode: 'max', minRatio: 0.8, maxRatio: 1.25 });
+    this.carrier = acquireModel('ship.carrier', 'dune', { size: 6.0, mode: 'max', minRatio: 0.8, maxRatio: 1.25 }, { spaceLit: true });
     this.carrier.root.rotation.order = 'YXZ';
     scene.add(this.carrier.root);
     this.moons = new StageMoons(scene, sunDir, spec);

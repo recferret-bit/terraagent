@@ -1,0 +1,234 @@
+/* Resources HUD — Faction Plate 3 family chips + Energy chip */
+
+.ta-resources-hud:not(.ta-hud-min),
+.ta-resources-hud.plate-sm:not(.ta-hud-min) {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  background: transparent;
+  border: 0;
+  clip-path: none;
+  color: var(--ta-text);
+  font-family: var(--ta-font-body);
+  user-select: none;
+}
+
+.ta-resources-hud::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  /* Chamfer on the backdrop pseudo-element only so child breakdown popovers below the bar are never clipped. */
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  pointer-events: none;
+  z-index: -1;
+}
+
+.ta-resources-hud__chips {
+  display: flex;
+  align-items: stretch;
+}
+
+.ta-resources-hud__chips .ta-res-chip {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  min-width: 96px;
+  padding: 6px 14px;
+  border-right: 1px solid var(--ta-seam);
+  cursor: pointer;
+  background: transparent;
+  transition: background-color var(--ta-dur-quick, 150ms) ease;
+}
+
+.ta-resources-hud__chips .ta-res-chip:last-child {
+  border-right: 0;
+}
+
+.ta-resources-hud__chips .ta-res-chip:hover {
+  background: var(--ta-plate-2);
+}
+
+.ta-res-chip[data-family='energy'] .ta-res-chip__stock {
+  color: var(--ta-energy);
+}
+
+.ta-res-chip__label {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: var(--ta-track-label, 0.14em);
+  color: var(--ta-steel);
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.ta-res-chip__stock {
+  font-family: var(--ta-font-display);
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--ta-text);
+  white-space: nowrap;
+}
+
+.ta-res-chip__rate {
+  font-family: var(--ta-font-mono);
+  font-size: 10px;
+  color: var(--ta-steel);
+  margin-top: 2px;
+  white-space: nowrap;
+}
+
+/* Subtle resource trend highlight (up = green, down = red, flat = neutral) */
+.ta-resources-hud__chips .ta-res-chip.ta-resources-hud__chip--up,
+.ta-resources-hud__chip--up {
+  border-color: rgba(74, 222, 128, 0.32);
+  background: linear-gradient(180deg, rgba(74, 222, 128, 0.08), rgba(14, 18, 26, 0.92));
+}
+
+.ta-resources-hud__chips .ta-res-chip.ta-resources-hud__chip--down,
+.ta-resources-hud__chip--down {
+  border-color: rgba(248, 113, 113, 0.35);
+  background: linear-gradient(180deg, rgba(248, 113, 113, 0.08), rgba(14, 18, 26, 0.92));
+}
+
+/* Red capped highlight when familyStock >= cap */
+.ta-resources-hud__chips .ta-res-chip[data-capped='true'],
+.ta-resources-hud__chips .ta-res-chip--capped {
+  background: rgba(255, 59, 59, 0.14);
+}
+
+.ta-res-chip[data-capped='true'] .ta-res-chip__stock,
+.ta-res-chip--capped .ta-res-chip__stock {
+  color: var(--ta-fault-text, var(--ta-fault));
+}
+
+.ta-res-chip[data-capped='true'] .ta-res-chip__label,
+.ta-res-chip--capped .ta-res-chip__label {
+  color: var(--ta-fault, var(--ta-fault-text));
+}
+
+/* Hover breakdown tooltip / popover */
+.ta-res-chip__breakdown {
+  display: none;
+  position: absolute;
+  top: calc(100% + var(--ta-s1));
+  left: 0;
+  min-width: 196px;
+  background: var(--ta-plate-3);
+  border: 1px solid var(--ta-seam-3);
+  padding: var(--ta-s2) var(--ta-s3);
+  flex-direction: column;
+  gap: var(--ta-s1);
+  z-index: 120;
+  pointer-events: none;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+}
+
+.ta-res-chip:hover .ta-res-chip__breakdown,
+.ta-res-chip:focus-within .ta-res-chip__breakdown,
+.ta-res-chip[data-open='true'] .ta-res-chip__breakdown {
+  display: flex;
+}
+
+.ta-res-breakdown__header {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-button);
+  color: var(--ta-orange);
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--ta-seam-2);
+  padding-bottom: var(--ta-s1);
+  margin-bottom: 2px;
+}
+
+.ta-res-breakdown__flow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-bottom: var(--ta-s1);
+  margin-bottom: 2px;
+  border-bottom: 1px solid var(--ta-seam-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+}
+
+.ta-res-breakdown__flow-line {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  white-space: nowrap;
+}
+
+.ta-res-breakdown__flow-line[hidden] {
+  display: none;
+}
+
+.ta-res-breakdown__income {
+  color: var(--ta-terra);
+}
+
+.ta-res-breakdown__spending {
+  color: var(--ta-orange-hi);
+}
+
+.ta-res-breakdown__net {
+  color: var(--ta-text);
+  font-weight: 600;
+}
+
+.ta-res-breakdown__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+  white-space: nowrap;
+}
+
+.ta-res-breakdown__row[data-locked='true'],
+.ta-res-tier--locked {
+  color: var(--ta-dim);
+  opacity: 0.55;
+}
+
+.ta-res-breakdown__name {
+  flex: 1;
+}
+
+.ta-res-breakdown__amount {
+  font-weight: 600;
+  color: var(--ta-text);
+}
+
+.ta-res-breakdown__row[data-locked='true'] .ta-res-breakdown__amount {
+  color: var(--ta-dim);
+}
+
+.ta-res-breakdown__rate {
+  font-size: 10px;
+  color: var(--ta-steel);
+}

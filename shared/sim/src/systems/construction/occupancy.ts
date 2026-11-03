@@ -14,6 +14,8 @@ import { entityFootprint, getBuildingFootprintTiles, occupiesGround } from './pl
 interface Cached {
   key: string;
   footprints: number[][];
+  /** Union of `footprints`, built on first use. */
+  tiles?: ReadonlySet<number>;
 }
 
 /** Last footprints per state (GP-22): recomputed only when the set of occupying buildings or their tiles changed. */
@@ -40,6 +42,19 @@ export function buildingFootprints(state: PlanetState, data?: CompiledDataLike):
   );
   cache.set(state, { key, footprints });
   return footprints;
+}
+
+/**
+ * Every tile under an alive building's footprint: the one "a building stands here" rule (placement, terraform `work`,
+ * harvest stand tiles, unit orders). The tile layer `anchors` is territory only (W01-17 claim count), never occupancy.
+ * Cached with {@link buildingFootprints}; computing it is O(entities), so callers that test many tiles build it once
+ * per run and pass it down. Read only.
+ */
+export function occupiedGroundTiles(state: PlanetState, data?: CompiledDataLike): ReadonlySet<number> {
+  const footprints = buildingFootprints(state, data);
+  const hit = cache.get(state)!;
+  if (!hit.tiles) hit.tiles = new Set(footprints.flat());
+  return hit.tiles;
 }
 
 defineGroundOccupancy(buildingFootprints);

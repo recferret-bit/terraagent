@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import type { DescentHandoff, DescentOptions, DescentSequence, DescentTelemetry } from '@terra/render/descent/types';
 import { acquireModel } from '@terra/render/visuals/space/placeholders';
+import { setDescentSunDirection } from '@terra/render/core/shadowConfig';
 import { clamp } from './math';
 import { altCurve, Telemetry } from './timeline';
 import { createDropRig, CUT_POSE } from '@terra/render/descent/dropRig';
@@ -56,9 +57,10 @@ export class DescentRunner implements DescentSequence {
     const root = new THREE.Group(); root.name = 'descent:root';
     const sunDir = new THREE.Vector3(35, 55, 25).normalize();
     this.ctx = { viewport, scene, camera, spec, surface, dens, startAt: this.startAt, tScale: this.tScale, sunDir, traj, root };
+    setDescentSunDirection(viewport, sunDir); // key light + shadows from the same sun as globe/clouds (RN-42)
 
     // ---- models (carrier + shared drop rig: bay plate, clamp arms, pod, heat shield — identical to the menu stage's)
-    const carrier = acquireModel('ship.carrier', spec.biomeKey, { size: 34, mode: 'max', minRatio: 0.45, maxRatio: 1.8 });
+    const carrier = acquireModel('ship.carrier', spec.biomeKey, { size: 34, mode: 'max', minRatio: 0.45, maxRatio: 1.8 }, { spaceLit: true });
     const rig = createDropRig(carrier.root, { biomeKey: spec.biomeKey, carrierScale: carrier.root.scale.x, attachPod: false });
     const pod = rig.pod, podH = rig.podH, podR = rig.podR;
     this.podH = podH;
@@ -179,6 +181,7 @@ export class DescentRunner implements DescentSequence {
   private restoreAndCleanup() {
     this.ctx.surface.group.visible = true;
     this.ctx.root.removeFromParent();
+    setDescentSunDirection(this.ctx.viewport, null);
     this.cam.restore();
     this.sky.restore();
     for (const p of this.disposeOrder) p.dispose?.();

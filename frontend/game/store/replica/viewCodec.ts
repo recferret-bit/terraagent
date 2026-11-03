@@ -48,6 +48,9 @@ export interface ClientTiles {
   height: Float32Array;
   owner: Int8Array;
   deposit?: Uint8Array;
+  /** Tier of the visible deposit: 0 = legacy (tier 1), 1..3 explicit (sim `depositTier` layer). */
+  depositTier?: Uint8Array;
+  richness?: Float32Array;
   explored?: Uint8Array;
 }
 
@@ -75,6 +78,8 @@ export interface WireView {
     height: ArrayBuffer;
     owner: ArrayBuffer;
     deposit?: ArrayBuffer;
+    depositTier?: ArrayBuffer;
+    richness?: ArrayBuffer;
     explored?: ArrayBuffer;
   };
   entities: ArrayBuffer;
@@ -104,6 +109,8 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
     const t = v.tiles;
     const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = copy(t.owner);
     const deposit = t.deposit ? copy(t.deposit) : undefined;
+    const depositTier = t.depositTier ? copy(t.depositTier) : undefined;
+    const richness = t.richness ? copy(t.richness) : undefined;
     const explored = t.explored ? copy(t.explored) : undefined;
     view.tiles = {
       count: t.count,
@@ -112,6 +119,8 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
       height: height.buffer as ArrayBuffer,
       owner: owner.buffer as ArrayBuffer,
       ...(deposit ? { deposit: deposit.buffer as ArrayBuffer } : {}),
+      ...(depositTier ? { depositTier: depositTier.buffer as ArrayBuffer } : {}),
+      ...(richness ? { richness: richness.buffer as ArrayBuffer } : {}),
       ...(explored ? { explored: explored.buffer as ArrayBuffer } : {}),
     };
     transfer.push(view.tiles.terrain, view.tiles.prep, view.tiles.height, view.tiles.owner);
@@ -130,6 +139,8 @@ export function unpackView(w: WireView, serverTimeMs?: number): ClientView {
       height: new Float32Array(w.tiles.height),
       owner: new Int8Array(w.tiles.owner),
       ...(w.tiles.deposit ? { deposit: new Uint8Array(w.tiles.deposit) } : {}),
+      ...(w.tiles.depositTier ? { depositTier: new Uint8Array(w.tiles.depositTier) } : {}),
+      ...(w.tiles.richness ? { richness: new Float32Array(w.tiles.richness) } : {}),
       ...(w.tiles.explored ? { explored: new Uint8Array(w.tiles.explored) } : {}),
     };
   }

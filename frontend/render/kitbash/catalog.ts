@@ -6,6 +6,77 @@ import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
 import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
 
+export type DepositVisualStage = 'full' | 'half' | 'depleted';
+export const DEPOSIT_STAGES: readonly DepositVisualStage[] = ['full', 'half', 'depleted'];
+export type CanonicalDepositId = 'resource.metalDeposit' | 'resource.crystalDeposit' | 'resource.oilDeposit';
+
+let currentDepositPreviewStage: DepositVisualStage = 'full';
+const depositStageBuilders = new Map<CanonicalDepositId, (stage: DepositVisualStage) => THREE.BufferGeometry>();
+
+const DEPOSIT_ALIAS_MAP: Record<string, CanonicalDepositId> = {
+  'resource.metalDeposit': 'resource.metalDeposit',
+  'resource.crystalDeposit': 'resource.crystalDeposit',
+  'resource.oilDeposit': 'resource.oilDeposit',
+  deposit_metals: 'resource.metalDeposit',
+  deposit_minerals: 'resource.crystalDeposit',
+  deposit_oil: 'resource.oilDeposit',
+  metals: 'resource.metalDeposit',
+  minerals: 'resource.crystalDeposit',
+  oil: 'resource.oilDeposit',
+  petroleum: 'resource.oilDeposit',
+};
+
+export function setDepositPreviewStage(stage: DepositVisualStage): void {
+  if (stage === 'full' || stage === 'half' || stage === 'depleted') {
+    currentDepositPreviewStage = stage;
+  }
+}
+
+export function getDepositPreviewStage(): DepositVisualStage {
+  return currentDepositPreviewStage;
+}
+
+export function resolveDepositArchetype(
+  rawId: string,
+): { id: CanonicalDepositId; stage?: DepositVisualStage } | null {
+  const direct = DEPOSIT_ALIAS_MAP[rawId];
+  if (direct) return { id: direct };
+  for (const st of DEPOSIT_STAGES) {
+    for (const sep of ['_', ':', '.']) {
+      const suffix = `${sep}${st}`;
+      if (rawId.endsWith(suffix)) {
+        const base = rawId.slice(0, -suffix.length);
+        const mapped = DEPOSIT_ALIAS_MAP[base];
+        if (mapped) return { id: mapped, stage: st };
+      }
+    }
+  }
+  return null;
+}
+
+export function isDepositArchetype(id: string): boolean {
+  return resolveDepositArchetype(id) !== null;
+}
+
+export function registerDepositStageBuilder(
+  id: CanonicalDepositId,
+  fn: (stage: DepositVisualStage) => THREE.BufferGeometry,
+): void {
+  depositStageBuilders.set(id, fn);
+}
+
+export function buildDepositArchetypeStage(
+  id: string,
+  stage: DepositVisualStage = currentDepositPreviewStage,
+): THREE.BufferGeometry {
+  const resolved = resolveDepositArchetype(id);
+  const canonicalId = resolved?.id ?? 'resource.metalDeposit';
+  const effStage = resolved?.stage ?? stage;
+  const builder = depositStageBuilders.get(canonicalId);
+  if (!builder) throw new Error(`No deposit stage builder registered for "${canonicalId}"`);
+  return builder(effStage);
+}
+
 export type ArchetypeCategory = 'robot' | 'building' | 'ship' | 'resource' | 'fauna' | 'prop';
 
 export interface ArchetypeEntry {
@@ -36,20 +107,35 @@ export const ArchetypeCatalog = {
     return [...entries.values()].filter((e) => !category || e.category === category);
   },
   get(id: string): ArchetypeEntry {
-    const e = entries.get(id);
+    const e = entries.get(id) ?? entries.get(resolveDepositArchetype(id)?.id ?? '');
     if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys()].join(', ')}`);
     return e;
   },
   /** Returns a clone of the cached merged BufferGeometry so runtime unit spawns skip procedural generation. */
-  getGeometry(id: string): THREE.BufferGeometry {
+  getGeometry(id: string, stage?: DepositVisualStage): THREE.BufferGeometry {
+    const dep = resolveDepositArchetype(id);
+    if (dep) {
+      const effStage = stage ?? dep.stage ?? getDepositPreviewStage();
+      const cacheKey = `${dep.id}:${effStage}`;
+      let cached = geometryCache.get(cacheKey);
+      if (!cached) {
+        cached = buildDepositArchetypeStage(dep.id, effStage);
+        geometryCache.set(cacheKey, cached);
+      }
+      return cached.clone();
+    }
     let cached = geometryCache.get(id);
     if (!cached) {
       cached = this.get(id).create();
       geometryCache.set(id, cached);
     }
-    return cached.clone();
+    const cloned = cached.clone();
+    if (cached.userData?.partRanges) {
+      cloned.userData = { ...cloned.userData, partRanges: cached.userData.partRanges };
+    }
+    return cloned;
   },
-  has: (id: string) => entries.has(id),
+  has: (id: string) => entries.has(id) || resolveDepositArchetype(id) !== null,
 };
 
 /** Uniforms of an archetype mesh: the unified material plus the `buildScaffold` modifier's per-mesh state. */
@@ -64,12 +150,12 @@ export interface ArchetypeMesh extends THREE.Mesh {
   userData: { archetypeId: string; uniforms: ArchetypeUniforms };
 }
 
-/** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind). */
-export function createArchetypeMesh(id: string, biomeKey = 'dune'): ArchetypeMesh {
+/** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind) and optional deposit stage. */
+export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
   const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD] });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
-  const geometry = ArchetypeCatalog.getGeometry(id);
+  const geometry = ArchetypeCatalog.getGeometry(id, stage);
   if (!geometry.boundingBox) geometry.computeBoundingBox();
   // Scaffold cut heights are fractions of the model's own height (RN-14).
   uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);
@@ -115,4 +201,57 @@ export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number
   const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
   updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
   return stage;
+}
+
+/**
+ * Removes the square `plinth` / `plinthDetail` foundation slab from a building mesh when placed on the hex terrain
+ * so the building stands directly on the hex terrain's metal hexagonal foundation pads without covering them up.
+ */
+export function stripBuildingPlinth(mesh: THREE.Object3D): void {
+  const m = mesh as THREE.Mesh;
+  if (!m.isMesh || !m.geometry) return;
+  const ranges = m.geometry.userData?.partRanges as Array<{ role?: string; start: number; count: number }> | undefined;
+  if (!ranges || !ranges.some((r) => r.role === 'plinth' || r.role === 'plinthDetail')) return;
+  const kept = ranges.filter((r) => r.role !== 'plinth' && r.role !== 'plinthDetail');
+  if (kept.length === 0) return;
+
+  const oldGeo = m.geometry;
+  const totalVerts = kept.reduce((acc, r) => acc + r.count, 0);
+  const newGeo = new THREE.BufferGeometry();
+  for (const name of Object.keys(oldGeo.attributes)) {
+    const attr = oldGeo.getAttribute(name) as THREE.BufferAttribute;
+    const itemSize = attr.itemSize;
+    const src = attr.array as Float32Array;
+    const dst = new Float32Array(totalVerts * itemSize);
+    let offset = 0;
+    for (const r of kept) {
+      const start = r.start * itemSize;
+      const len = r.count * itemSize;
+      dst.set(src.subarray(start, start + len), offset);
+      offset += len;
+    }
+    newGeo.setAttribute(name, new THREE.BufferAttribute(dst, itemSize));
+  }
+
+  const pos = newGeo.getAttribute('position') as THREE.BufferAttribute;
+  let minY = Infinity;
+  for (let i = 0; i < pos.count; i++) {
+    const y = pos.getY(i);
+    if (y < minY) minY = y;
+  }
+  if (Number.isFinite(minY) && minY > 0) {
+    for (let i = 0; i < pos.count; i++) pos.setY(i, pos.getY(i) - minY);
+    const anim = newGeo.getAttribute('aPartAnim') as THREE.BufferAttribute | undefined;
+    if (anim) {
+      for (let i = 0; i < anim.count; i++) anim.setZ(i, anim.getZ(i) - minY);
+    }
+  }
+  newGeo.computeBoundingBox();
+  newGeo.computeBoundingSphere();
+  m.geometry = newGeo;
+  oldGeo.dispose();
+  const u = (m.userData as any)?.uniforms;
+  if (u?.uBuildHeight && newGeo.boundingBox) {
+    u.uBuildHeight.value = Math.max(0.1, newGeo.boundingBox.max.y);
+  }
 }

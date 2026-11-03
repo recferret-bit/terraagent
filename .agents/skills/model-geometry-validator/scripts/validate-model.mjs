@@ -27,7 +27,18 @@ try {
   const reports = [];
   for (const id of targets) {
     if (!kit.ArchetypeCatalog.has(id)) { console.error(`unknown archetype "${id}"`); process.exit(2); }
-    reports.push(v.validateArchetype(id, { keepPairs: flag('--pairs'), appearance: !flag('--geometry-only') }));
+    const opts = { keepPairs: flag('--pairs'), appearance: !flag('--geometry-only') };
+    // A resource deposit is three meshes (full / half / depleted, `registerDepositStageBuilder`): validate every stage.
+    const stages = kit.isDepositArchetype(id) && !kit.resolveDepositArchetype(id)?.stage ? kit.DEPOSIT_STAGES : [null];
+    const before = kit.getDepositPreviewStage();
+    for (const stage of stages) {
+      if (stage) kit.setDepositPreviewStage(stage);
+      try {
+        const r = v.validateArchetype(id, opts);
+        if (stage && stage !== 'full') { r.id = `${r.id}@${stage}`; if (r.label) r.label = `${r.label} · ${stage}`; }
+        reports.push(r);
+      } finally { kit.setDepositPreviewStage(before); }
+    }
   }
   if (flag('--json')) console.log(JSON.stringify(reports, null, 2));
   else {

@@ -3,6 +3,7 @@ import { geoBuildBlock, isTileUneven, MAX_FOOTPRINT_SPREAD_M } from '../grid/geo
 import { DEPOSIT, PREP, TERRAIN } from '../grid/layers';
 import type { SimState } from '../kernel/state';
 import { setTileDeposit, setTileHeight, setTilePrep, setTileTerrain } from '../grid/tileModel';
+import { collectPodBlastTiles } from './spawnDisk';
 
 /** Hub footprint is 3×3 (centre + ring 1); mirrors `getHubFootprintTiles`. */
 const HUB_OFFSETS: ReadonlyArray<readonly [number, number]> = (() => {
@@ -64,14 +65,71 @@ export function starterHubSiteBlocked(state: SimState, q: number, r: number, col
 }
 
 /**
- * Guarantees a clear, buildable 3×3 Command Hub site within `STARTER_HUB_SEARCH_RADIUS` of the landing tile.
- * If none exists, the nearest in-grid 3×3 that touches no other colony's territory is deterministically levelled to
+ * Clears and levels the circular pod-drop explosion/touchdown blast zone around `(q, r)` for `colonyId`: every
+ * non-water tile in `collectPodBlastTiles` that is not owned by another colony is flattened (`TERRAIN.flat`,
+ * `PREP.flat`), cleared of deposits, and levelled to the median height of the zone.
+ */
+export function clearPodBlastZone(state: SimState, q: number, r: number, colonyId: number): void {
+  const hex = hexIndex(state.grid.radius);
+  const L = state.grid.layers;
+  const terrain = L.terrain as Uint8Array;
+  const prep = L.prep as Uint8Array;
+  const owner = L.owner as Int8Array;
+  const height = L.height as Float32Array;
+  const deposit = L.deposit as Uint8Array | undefined;
+  const blast = collectPodBlastTiles(hex, q, r).filter(
+    (i) => terrain[i] !== TERRAIN.shallow && terrain[i] !== TERRAIN.deep && (owner[i] < 0 || owner[i] === colonyId),
+  );
+  if (blast.length === 0) return;
+
+  let lo = Infinity;
+  let hi = -Infinity;
+  let needsClear = false;
+  for (const i of blast) {
+    const h = height[i];
+    if (h < lo) lo = h;
+    if (h > hi) hi = h;
+    if (
+      terrain[i] !== TERRAIN.flat ||
+      prep[i] === PREP.ridge ||
+      prep[i] === PREP.moat ||
+      (deposit && deposit[i] !== DEPOSIT.none)
+    ) {
+      needsClear = true;
+    }
+  }
+  if (!needsClear && hi - lo <= 1e-3) return;
+
+  const sortedHeights = blast.map((i) => height[i]).sort((a, b) => a - b);
+  const level = Math.fround(sortedHeights[sortedHeights.length >> 1]);
+  for (const i of blast) {
+    if (terrain[i] !== TERRAIN.flat) {
+      setTileTerrain(state.grid, i, TERRAIN.flat);
+      setTilePrep(state.grid, i, PREP.flat);
+    } else if (prep[i] === PREP.ridge || prep[i] === PREP.moat) {
+      setTilePrep(state.grid, i, PREP.flat);
+    }
+    if (deposit && deposit[i] !== DEPOSIT.none) setTileDeposit(state.grid, i, DEPOSIT.none, 0);
+    if (L.subDeposit && (L.subDeposit as Uint8Array)[i] !== DEPOSIT.none) {
+      (L.subDeposit as Uint8Array)[i] = DEPOSIT.none;
+      (L.subRichness as Float32Array)[i] = 0;
+    }
+    if (Math.abs(height[i] - level) > 1e-5) setTileHeight(state.grid, i, level);
+  }
+}
+
+/**
+ * Guarantees a clear, buildable 3×3 Command Hub site within `STARTER_HUB_SEARCH_RADIUS` of the landing tile, and
+ * clears the circular pod-drop blast zone around `(q, r)`.
+ * If no 3×3 is ready, the nearest in-grid 3×3 that touches no other colony's territory is deterministically levelled to
  * Flat (trees, rock and visible deposits on it are lost without yield). Returns the centre of the guaranteed site, or
  * null when every candidate touches foreign territory (`starterHubSiteBlocked`; the landing planner refuses those).
  * Pure of RNG: same state gives the same result.
  */
 export function ensureStarterHubSpace(state: SimState, q: number, r: number, colonyId: number): { q: number; r: number } | null {
   const cands = hubCandidates(state, q, r);
+  if (cands.every((c) => touchesForeign(state, c.tiles, colonyId))) return null;
+  clearPodBlastZone(state, q, r, colonyId);
   for (const c of cands) {
     if (siteReady(state, c.tiles, colonyId)) return { q: c.q, r: c.r };
   }

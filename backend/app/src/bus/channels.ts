@@ -88,7 +88,10 @@ export interface BatchedColonyFoundedEvent {
  * (the module specifier is the path of this file as seen from the augmenting file, or `'@terra/bus'`-style alias if one is added).
  */
 export interface BusChannels {
-  /** Every sim event of every planet; progression kinds arrive batched per step (`ProgressionEventForwarder`). */
+  /**
+   * Every sim event of every planet; W01 progression kinds arrive batched per step (`ProgressionEventForwarder`),
+   * W02 `resourceProduced` once per 60 s per colony and resource (`ProductionBatches`, in the sim thread).
+   */
   'planet.event': PlanetEventV1;
 }
 export type BusChannel = keyof BusChannels;

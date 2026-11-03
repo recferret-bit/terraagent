@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { defineCommand } from './define';
 import { PlanetTimeArgsSchema } from './set-planet-time';
 
@@ -6,7 +7,12 @@ export const command = defineCommand({
   wave: 'W00',
   origin: 'client',
   dev: true,
-  args: PlanetTimeArgsSchema,
+  args: z.union([
+    PlanetTimeArgsSchema,
+    z.strictObject({
+      target: z.string().min(1).max(16),
+    }),
+  ]),
   summary:
-    'Dev command to configure the planet time of day (0..24h), real hours per day, and time scale without requiring a seated colony.',
+    'Dev command to configure the planet time of day (0..24h or `day`/`night`/`hh:mm`), real hours per day, and time scale without requiring a seated colony.',
 });

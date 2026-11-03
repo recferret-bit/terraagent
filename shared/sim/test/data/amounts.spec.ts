@@ -9,7 +9,7 @@ describe('resource amounts in data are whole, non-negative units (TableDef.amoun
   it('every shipped table compiles; hq, hub and opsBasic declare their amount fields', () => {
     expect(() => compileData(flags)).not.toThrow();
     const declared = Object.fromEntries(allTables().filter((t) => t.amounts).map((t) => [t.name, t.amounts]));
-    expect(declared).toEqual({ hq: ['cargo'], hub: ['cost', 'storageCapPerFamily'], opsBasic: ['yieldAmount'] });
+    expect(declared).toEqual({ hq: ['cargo'], hub: ['cost', 'storageCapPerFamily'], opsBasic: ['yields'] });
   });
 
   it('rejects a fractional cargo override (the landing repro) with the exact place and value', () => {
@@ -21,11 +21,11 @@ describe('resource amounts in data are whole, non-negative units (TableDef.amoun
   it('rejects fractional or negative costs and yields, and unknown resource keys', () => {
     expect(() => compileData(flags, { hub: { t1: { cost: { 'metals.t1': 200.5 } } } })).toThrow(/hub\.t1\.cost\['metals\.t1'\].*got 200\.5/);
     expect(() => compileData(flags, { hub: { t1: { cost: { gold: 5 } } } })).toThrow('balance override hub.t1.cost: unknown resource "gold"');
-    expect(() => compileData(flags, { opsBasic: { break: { yieldAmount: 10.5 } } })).toThrow(/opsBasic\.break\.yieldAmount: .*got 10\.5/);
-    expect(() => compileData(flags, { opsBasic: { clear: { yieldAmount: -1 } } })).toThrow(/got -1/);
+    expect(() => compileData(flags, { opsBasic: { break: { yields: { 'metals.t1': 10.5 } } } })).toThrow(/opsBasic\.break\.yields\['metals\.t1'\]: .*got 10\.5/);
+    expect(() => compileData(flags, { opsBasic: { clear: { yields: { 'bio.biomass': -1 } } } })).toThrow(/got -1/);
     expect(() => compileData(flags, { hub: { t1: { storageCapPerFamily: 499.9 } } })).toThrow(/storageCapPerFamily/);
     // Whole amounts and other fields stay tunable.
-    expect(dataRow(compileData(flags, { opsBasic: { break: { yieldAmount: 25 } } }), 'opsBasic', 'break').yieldAmount).toBe(25);
+    expect(dataRow(compileData(flags, { opsBasic: { break: { yields: { 'metals.t1': 25 } } } }), 'opsBasic', 'break').yields).toEqual({ 'metals.t1': 25 });
     expect(() => compileData(flags, { hq: { startingKit: { cargo: { ...cargo, 'metals.t1': 0 } } } })).not.toThrow();
   });
 
@@ -42,9 +42,9 @@ describe('resource amounts in data are whole, non-negative units (TableDef.amoun
 
   it('dev `tune` refuses a fractional amount and leaves the planet tuning untouched', () => {
     const t: PlanetTuning = { flags: parseWaves('..01').list as string[], base: {}, live: {} };
-    expect(() => tune(t, { op: 'set', path: 'opsBasic.break.yieldAmount', value: '10.5' })).toThrow(/opsBasic\.break\.yieldAmount: resource amounts are whole/);
+    expect(() => tune(t, { op: 'set', path: 'opsBasic.break.yields', value: '{"metals.t1":10.5}' })).toThrow(/opsBasic\.break\.yields\['metals\.t1'\]: resource amounts are whole/);
     expect(() => tune(t, { op: 'set', path: 'hq.startingKit.cargo', value: JSON.stringify({ ...cargo, 'bio.water': 0.5 }) })).toThrow(/cargo\['bio\.water'\]/);
     expect(t.live).toEqual({});
-    expect(tune(t, { op: 'set', path: 'opsBasic.break.yieldAmount', value: '12' }).next?.live).toEqual({ opsBasic: { break: { yieldAmount: 12 } } });
+    expect(tune(t, { op: 'set', path: 'opsBasic.break.yields', value: '{"metals.t1":12}' }).next?.live).toEqual({ opsBasic: { break: { yields: { 'metals.t1': 12 } } } });
   });
 });

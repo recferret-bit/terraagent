@@ -25,14 +25,17 @@ export interface HotkeyDef {
  * `features/` (camera, stop, console, pause) are listed for completeness; each owner reads its key itself.
  */
 export const HOTKEYS: readonly HotkeyDef[] = [
-  { key: 'g', owner: 'terraform-basic', action: 'arm the Grade brush' },
-  { key: 'c', owner: 'terraform-basic', action: 'arm the Clear brush' },
-  { key: 'b', owner: 'terraform-basic', action: 'arm the Break brush' },
-  { key: 'v', owner: 'terraform-basic', action: 'toggle the tile-state overlay' },
+  { key: 'g', owner: 'terraform-basic', action: 'arm TERRAFORM while the Terraform tab is open (click a hex: the worker terraforms it, then the nearest obstacles)' },
+  { key: 'r', owner: 'terraform-basic / construction-menu', action: 'arm REPAIR while the Terraform tab is open; rotates the building ghost while one is up (the brush is blocked then)' },
+  { key: 'b', owner: 'core/hud/CommandDock', action: 'toggle the Build tab' },
+  { key: 't', owner: 'core/hud/CommandDock', action: 'toggle the Terraform tab' },
+  { key: 'u', owner: 'core/hud/CommandDock', action: 'toggle the Production tab' },
   { key: 'h', owner: 'hub-placement', action: 'open the Command Hub placement ghost' },
   { key: 'escape', owner: 'hub-placement / terraform-basic / session', action: 'cancel placement, else disarm the brush, else pause' },
+  { key: 'z', owner: 'terraform-basic', action: 'arm DISMANTLE while the Terraform tab is open (click an own building or unit: 50% refund)' },
   { key: 'x', owner: 'app/online/unitControl', action: 'stop the selected unit' },
-  { key: 'q', owner: 'app/RTSCamera', action: 'rotate the camera left' },
+  // Conflict (reported, behaviour unchanged): Q both rotates the camera and toggles the queue panel.
+  { key: 'q', owner: 'app/RTSCamera / queue-panel', action: 'rotate the camera left; also toggles the queue panel (QueuePanel)' },
   { key: 'e', owner: 'app/RTSCamera', action: 'rotate the camera right' },
   { key: 'w', owner: 'app/RTSCamera', action: 'pan up' },
   { key: 'a', owner: 'app/RTSCamera', action: 'pan left' },

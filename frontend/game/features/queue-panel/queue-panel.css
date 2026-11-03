@@ -1,0 +1,155 @@
+.ta-queue-panel {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2, 8px);
+  padding: var(--ta-s2, 8px) var(--ta-s3, 12px);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+  min-width: 240px;
+}
+
+.ta-queue-panel__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2, 8px);
+}
+
+.ta-queue-panel__title {
+  font-family: var(--ta-font-display, monospace);
+  font-size: var(--ta-fs-label, 11px);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ta-orange);
+}
+
+.ta-queue-panel__collapse-btn,
+.ta-queue-panel__cancel-all-btn {
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text-2);
+  padding: 2px 6px;
+  font-size: var(--ta-fs-label, 11px);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+  cursor: pointer;
+}
+
+.ta-queue-panel__cancel-all-btn {
+  border-color: var(--ta-fault);
+  color: var(--ta-fault-text, var(--ta-fault));
+}
+
+.ta-queue-panel__cancel-all-btn[hidden] {
+  display: none !important;
+}
+
+.ta-queue-panel__lanes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2, 8px);
+}
+
+.ta-queue-panel[data-collapsed="true"] .ta-queue-panel__lanes {
+  display: none;
+}
+
+.ta-queue-lane {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ta-queue-lane__header {
+  font-size: var(--ta-fs-label, 11px);
+  text-transform: uppercase;
+  color: var(--ta-blue);
+  letter-spacing: 0.06em;
+}
+
+.ta-queue-lane__list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.ta-queue-chip {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-seam);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-queue-chip[data-state="in_progress"] {
+  border-color: var(--ta-orange);
+}
+
+.ta-queue-chip[data-state="waiting"] {
+  border-color: var(--ta-orange-hi);
+}
+
+.ta-queue-chip__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ta-queue-chip__info {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--ta-fs-eyebrow, 12px);
+}
+
+.ta-queue-chip__icon {
+  color: var(--ta-orange);
+}
+
+.ta-queue-chip__status {
+  font-size: var(--ta-fs-label, 11px);
+  color: var(--ta-text-2);
+}
+
+.ta-queue-chip__hint {
+  font-size: var(--ta-fs-label, 11px);
+  color: var(--ta-steel);
+  opacity: 0.6;
+  font-style: italic;
+  cursor: not-allowed;
+}
+
+.ta-queue-chip__actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.ta-queue-chip__btn {
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam);
+  color: var(--ta-text);
+  padding: 1px 5px;
+  font-size: var(--ta-fs-label, 11px);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+  cursor: pointer;
+}
+
+.ta-queue-chip__btn--cancel {
+  color: var(--ta-fault);
+}
+
+.ta-queue-chip__bar {
+  height: 3px;
+  background: var(--ta-plate);
+  overflow: hidden;
+}
+
+.ta-queue-chip__bar-fill {
+  height: 100%;
+  background: var(--ta-orange);
+}

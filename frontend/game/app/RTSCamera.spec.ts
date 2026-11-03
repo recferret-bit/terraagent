@@ -123,7 +123,7 @@ describe('RTSCamera (mouse, follow, dispose)', () => {
   });
 
   it('follow() trails an object until a manual pan; F re-arms it; dispose unbinds the keys', () => {
-    const { cam, settle } = rig();
+    const { cam, camera, settle } = rig();
     const obj = new THREE.Object3D();
     obj.position.set(10, 0, 10);
     obj.updateMatrixWorld();
@@ -146,5 +146,14 @@ describe('RTSCamera (mouse, follow, dispose)', () => {
     const before = cam.target.clone();
     settle(1);
     expect(cam.target.distanceTo(before)).toBeLessThan(1e-6);
+
+    const restPos = camera.position.clone();
+    cam.setShake(0.8);
+    expect(cam.getShake()).toBeCloseTo(0.8, 5);
+    cam.update(0.05);
+    expect(camera.position.distanceTo(restPos)).toBeGreaterThan(0.1);
+    cam.setShake(0);
+    cam.update(0.05);
+    expect(camera.position.distanceTo(restPos)).toBeLessThan(1e-4);
   });
 });

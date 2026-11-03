@@ -1,12 +1,21 @@
-import { parseCommandArgs } from '@terra/contracts';
 import type { CompiledDataLike } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
-import { dispatchCommand, type CommandSink, type InProcessHost } from '../shared/commandDispatch';
+import { dispatchCommand, type CommandSink, type DispatchedCommand, type InProcessHost } from '../shared/commandDispatch';
 import { bindExclusivePointer, resolvePointerTile, type TileCoord, type TilePickerFn } from '../shared/pointer';
-import { computeBoxTiles, planBrushStroke, type BrushOpSelection, type PlannedTileJob } from './planner';
+import {
+  extractViewEntities,
+  hasWorkerEntity,
+  isPrimaryOp,
+  planBrushStroke,
+  type BrushOpSelection,
+  type PlannedTileJob,
+  type TerraformButtonOp,
+  type TerraformOpId,
+  type TerraformPrimaryOp,
+} from './planner';
+import { planPrimaryOp, type BrushStrokeOutcome, type TerraformWireArgs, type WorkIntent } from './primaryOps';
 
-export type BrushMode = 'single' | 'area';
-export type { TileCoord };
+export type { BrushOpSelection, BrushStrokeOutcome, TerraformButtonOp, TerraformOpId, TerraformPrimaryOp, TerraformWireArgs, TileCoord, WorkIntent };
 
 export interface BrushStrokeOptions {
   op?: BrushOpSelection;
@@ -17,13 +26,12 @@ export interface BrushStrokeSummary {
   /** Client-side id of this stroke (status line only; never sent: the host names its own order). */
   strokeId: string;
   op: BrushOpSelection;
-  mode: BrushMode;
   tiles: TileCoord[];
   jobs: PlannedTileJob[];
   queuedCount: number;
   skippedCount: number;
-  /** The stroke covered more tiles than one command may carry: nothing was sent. */
-  tooLarge?: boolean;
+  statusText?: string;
+  outcome?: BrushStrokeOutcome;
 }
 
 export interface BrushCommandSink extends CommandSink {
@@ -33,9 +41,13 @@ export interface BrushCommandSink extends CommandSink {
     simData?(): CompiledDataLike | null;
   };
   host?: InProcessHost;
+  /** Optional direct sender of the dock buttons' `enqueueTask { terraform }` args (mock senders in unit tests). */
+  enqueueTerraform?: (terraform: TerraformWireArgs) => unknown;
   /** The player's colony, read per stroke (FF-05). */
   getColonyId?: () => number;
-  /** Another map mode owns the pointer (the Hub placement ghost): the armed brush leaves clicks alone. */
+  /** The selected own unit, sent as `workerId` of TERRAFORM / REPAIR (`undefined`: the host picks the worker). */
+  getWorkerId?: () => number | undefined;
+  /** Another map mode owns the pointer (a placement ghost): the armed brush leaves clicks alone. */
   isBlocked?: () => boolean;
   /** The host's live balance data (`WorldStore.simData`), so the preview runs the same numbers. */
   simData?: () => CompiledDataLike | null | undefined;
@@ -44,20 +56,21 @@ export interface BrushCommandSink extends CommandSink {
 }
 
 let strokeSeq = 0;
+const LEFT_ONLY: ReadonlySet<number> = new Set([0]);
 
 /**
- * Terraform brush: picks an op, previews a stroke and sends one `enqueueTask` per stroke through exactly one channel.
- * Map clicks paint only while the brush is armed (an op chosen by button or hotkey); Esc or a right click disarms it.
+ * Terraform brush: picks an op (TERRAFORM / REPAIR / DISMANTLE, plus the S0 ops `grade` / `clear` / `break` through the
+ * API), previews a click and sends one command per click. Map clicks act only while the brush is armed; Esc or right
+ * click disarms it, and so does a map click that sent an order (one armed click = one order, like the construction
+ * ghost: TERRAFORM is a continuous order the host chains hex by hex, so the next click selects again). A click the
+ * preview refuses keeps the brush armed for another hex. The host's reject of the newest order replaces its status.
  */
 export class BrushController {
-  private selectedOp: BrushOpSelection = 'grade';
+  private selectedOp: BrushOpSelection = 'terraform';
   private armed = false;
-  private brushMode: BrushMode = 'single';
   private lastStroke: BrushStrokeSummary | null = null;
-  private brushedTiles: TileCoord[] = [];
-  private previewTiles: TileCoord[] = [];
-  private dragStart: TileCoord | null = null;
-  private dragCurrent: TileCoord | null = null;
+  private lastOutcome: BrushStrokeOutcome | null = null;
+  private pressTile: TileCoord | null = null;
   private currentView: GameView | null = null;
   private cleanups: Array<() => void> = [];
 
@@ -78,38 +91,44 @@ export class BrushController {
     return this.armed;
   }
 
-  /** Map clicks stop painting (Esc, right click). */
+  /** Map clicks stop acting (Esc, right click). */
   disarm(): void {
     this.armed = false;
-    this.dragStart = null;
-    this.dragCurrent = null;
-    this.previewTiles = [];
+    this.pressTile = null;
     this.sink.onChange?.();
-  }
-
-  setBrushMode(mode: BrushMode): void {
-    this.brushMode = mode;
-    this.sink.onChange?.();
-  }
-
-  getBrushMode(): BrushMode {
-    return this.brushMode;
   }
 
   getLastStroke(): BrushStrokeSummary | null {
     return this.lastStroke;
   }
 
-  getBrushedTiles(): readonly TileCoord[] {
-    return this.brushedTiles;
+  getLastOutcome(): BrushStrokeOutcome | null {
+    return this.lastOutcome;
   }
 
-  getPreviewTiles(): readonly TileCoord[] {
-    return this.previewTiles;
+  /** The host rejected the newest order (`strokeId`: only if it is still the newest): the status stops claiming it was ordered. */
+  noteRejected(code: string, strokeId?: string): void {
+    if (strokeId !== undefined && this.lastStroke?.strokeId !== strokeId) return;
+    const status = `Rejected by host: ${code.replace(/_/g, ' ')}`;
+    this.lastOutcome = { ...(this.lastOutcome ?? {}), ok: false, reason: code, status };
+    if (this.lastStroke) this.lastStroke = { ...this.lastStroke, statusText: status, outcome: this.lastOutcome };
+    this.sink.onChange?.();
   }
 
   setView(view: GameView | null): void {
     this.currentView = view;
+  }
+
+  /** The newest view the brush previews on (the menu's status line reads the colony's work jobs from it). */
+  getView(): GameView | null {
+    return this.resolveView();
+  }
+
+  /** True when the player has an alive HQ Drone or Harvester available to execute terraform/work tasks. */
+  hasWorkerAvailable(view?: GameView | null): boolean {
+    const resolved = view ?? this.resolveView();
+    const entities = extractViewEntities(resolved, this.sink.host?.state);
+    return hasWorkerEntity(entities, this.colonyId(), resolved);
   }
 
   private resolveView(): GameView | null {
@@ -123,45 +142,70 @@ export class BrushController {
     return opts?.colonyId ?? this.sink.getColonyId?.() ?? 0;
   }
 
-  /** Performs a single-tile (1x1) brush stroke and dispatches one `enqueueTask` order. */
+  /** One click at `(q, r)`: previews it and dispatches at most one `enqueueTask` order. */
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary {
-    return this.executeStroke([{ q: Math.trunc(q), r: Math.trunc(r) }], 'single', opts);
-  }
-
-  /** Performs an area box brush stroke from `from` to `to` and dispatches one `enqueueTask` order. */
-  strokeArea(from: TileCoord, to: TileCoord, opts?: BrushStrokeOptions): BrushStrokeSummary {
-    const view = this.resolveView();
-    const tiles = computeBoxTiles(from, to, view?.planet?.radius);
-    return this.executeStroke(tiles, 'area', opts);
-  }
-
-  private executeStroke(tiles: TileCoord[], mode: BrushMode, opts?: BrushStrokeOptions): BrushStrokeSummary {
+    const tile = { q: Math.trunc(q), r: Math.trunc(r) };
     const op = opts?.op ?? this.selectedOp;
-    const colonyId = this.colonyId(opts);
-    const view = this.resolveView();
-    const args = { terraform: { op, tiles: tiles.map((t) => ({ q: t.q, r: t.r })) } };
-    // The contract bounds a stroke (tile count); one the host would reject as a whole is not sent (FF-33).
-    const tooLarge = !parseCommandArgs('enqueueTask', args).success;
-    const planned = tooLarge
-      ? { jobs: [], queuedCount: 0, skippedCount: tiles.length }
-      : planBrushStroke(view, tiles, { op, colonyId, data: this.sink.simData?.() ?? undefined });
-    if (!tooLarge) dispatchCommand(this.sink, 'enqueueTask', args, colonyId);
+    return isPrimaryOp(op) ? this.executePrimary(op, tile, opts) : this.executeStroke(op, tile, opts);
+  }
 
+  private recordStroke(
+    op: BrushOpSelection,
+    tile: TileCoord,
+    jobs: PlannedTileJob[],
+    queuedCount: number,
+    outcome: BrushStrokeOutcome,
+  ): BrushStrokeSummary {
+    this.lastOutcome = outcome;
     const summary: BrushStrokeSummary = {
       strokeId: `tf_stroke_${++strokeSeq}`,
       op,
-      mode,
-      tiles,
-      jobs: planned.jobs,
-      queuedCount: planned.queuedCount,
-      skippedCount: planned.skippedCount,
-      ...(tooLarge ? { tooLarge: true } : {}),
+      tiles: [tile],
+      jobs,
+      queuedCount,
+      skippedCount: queuedCount > 0 ? 0 : 1,
+      ...(outcome.status ? { statusText: outcome.status } : {}),
+      outcome,
     };
     this.lastStroke = summary;
-    this.brushedTiles = tiles;
-    this.previewTiles = [];
     this.sink.onStroke?.(summary);
     this.sink.onChange?.();
+    return summary;
+  }
+
+  private executePrimary(op: TerraformPrimaryOp, tile: TileCoord, opts?: BrushStrokeOptions): BrushStrokeSummary {
+    const colonyId = this.colonyId(opts);
+    const view = this.resolveView();
+    const hostState = this.sink.host?.state;
+    const entities = extractViewEntities(view, hostState);
+    const data = this.sink.simData?.() ?? null;
+    const workerId = this.sink.getWorkerId?.();
+    const plan = planPrimaryOp(op, { view, hostState, entities, colonyId, workerId, data }, tile.q, tile.r);
+    let sent: DispatchedCommand | null = null;
+    if (plan.terraform) {
+      if (this.sink.enqueueTerraform) this.sink.enqueueTerraform(plan.terraform);
+      else sent = dispatchCommand(this.sink, 'enqueueTask', { terraform: plan.terraform }, colonyId);
+    }
+    const summary = this.recordStroke(op, tile, plan.job ? [plan.job] : [], plan.terraform ? 1 : 0, plan.outcome);
+    this.watchVerdict(sent, summary.strokeId);
+    return summary;
+  }
+
+  /** The command bus answers this very command: a reject (or timeout) shows on the status line while it is the newest. */
+  private watchVerdict(sent: DispatchedCommand | null, strokeId: string): void {
+    void sent?.result.then((r) => {
+      if (r && !r.ok) this.noteRejected(r.code ?? 'rejected', strokeId);
+    });
+  }
+
+  /** A concrete S0 op (`grade` / `clear` / `break`) on one tile, previewed with the sim's own rule. */
+  private executeStroke(op: TerraformOpId, tile: TileCoord, opts?: BrushStrokeOptions): BrushStrokeSummary {
+    const colonyId = this.colonyId(opts);
+    const planned = planBrushStroke(this.resolveView(), [tile], { op, colonyId, data: this.sink.simData?.() ?? undefined });
+    const sent = planned.queuedCount > 0 ? dispatchCommand(this.sink, 'enqueueTask', { terraform: { op, tiles: [tile] } }, colonyId) : null;
+    const outcome: BrushStrokeOutcome = { ok: planned.queuedCount > 0, op };
+    const summary = this.recordStroke(op, tile, planned.jobs, planned.queuedCount, outcome);
+    this.watchVerdict(sent, summary.strokeId);
     return summary;
   }
 
@@ -176,41 +220,40 @@ export class BrushController {
     return true;
   }
 
-  private isPointerActive(): boolean {
+  /** Map clicks belong to the brush: armed and not blocked (another map mode, or its dock tab hidden). */
+  isPointerActive(): boolean {
     return this.armed && !this.sink.isBlocked?.();
   }
 
-  /** Binds click / drag brushing on `surface`; clicks belong to the brush only while it is armed. */
+  /**
+   * Binds click input on `surface`. Left clicks belong to the brush only while it is armed. A right click disarms it
+   * and still reaches the map below (a unit move order is not swallowed).
+   */
   bindSurface(surface: HTMLElement, pickTile?: TilePickerFn): () => void {
-    const cleanup = bindExclusivePointer(surface, () => this.isPointerActive(), {
-      down: (e) => {
-        if (e.button !== 0) return;
-        const coord = resolvePointerTile(e, pickTile);
-        if (!coord) return;
-        this.dragStart = coord;
-        this.dragCurrent = coord;
-        this.previewTiles = [coord];
-        this.sink.onChange?.();
+    const offLeft = bindExclusivePointer(
+      surface,
+      () => this.isPointerActive(),
+      {
+        down: (e) => {
+          this.pressTile = resolvePointerTile(e, pickTile);
+        },
+        up: (e) => {
+          if (!this.pressTile) return;
+          const tile = resolvePointerTile(e, pickTile) ?? this.pressTile;
+          this.pressTile = null;
+          if (this.strokeTile(tile.q, tile.r).queuedCount > 0) this.disarm();
+        },
       },
-      move: (e) => {
-        if (!this.dragStart) return;
-        const coord = resolvePointerTile(e, pickTile);
-        if (!coord || (this.dragCurrent && coord.q === this.dragCurrent.q && coord.r === this.dragCurrent.r)) return;
-        this.dragCurrent = coord;
-        this.previewTiles = this.brushMode === 'area' ? computeBoxTiles(this.dragStart, coord) : [coord];
-        this.sink.onChange?.();
-      },
-      up: (e) => {
-        if (e.button !== 0 || !this.dragStart) return;
-        const end = resolvePointerTile(e, pickTile) ?? this.dragCurrent ?? this.dragStart;
-        const start = this.dragStart;
-        this.dragStart = null;
-        this.dragCurrent = null;
-        if (this.brushMode === 'single') this.strokeTile(end.q, end.r);
-        else this.strokeArea(start, end);
-      },
-      context: () => this.disarm(),
-    });
+      LEFT_ONLY,
+    );
+    const onRight = (ev: Event) => {
+      if ((ev.type === 'contextmenu' || (ev as MouseEvent).button === 2) && this.isPointerActive()) this.disarm();
+    };
+    for (const type of ['pointerdown', 'contextmenu']) surface.addEventListener(type, onRight, { capture: true });
+    const cleanup = () => {
+      offLeft();
+      for (const type of ['pointerdown', 'contextmenu']) surface.removeEventListener(type, onRight, { capture: true });
+    };
     this.cleanups.push(cleanup);
     return cleanup;
   }

@@ -84,14 +84,16 @@ export function summarizePrepJobs(
   const hqWorkRate = rowNum(resolveHqT1Row(data), 'workRate');
   let baseSeconds = 0;
   let totalEnergyE = 0;
-  const yields = { 'bio.biomass': 0, 'metals.t1': 0 };
+  const yields = { 'bio.biomass': 0, 'metals.t1': 0, 'minerals.t1': 0 };
   const countsByOp = { grade: 0, clear: 0, break: 0 };
   for (const job of jobs) {
     baseSeconds += job.baseTimeS;
     totalEnergyE += job.totalEnergyE;
-    countsByOp[job.op]++;
+    if (job.op === 'grade' || job.op === 'clear' || job.op === 'break') {
+      countsByOp[job.op]++;
+    }
     const spec = getTerraformOpSpec(job.op, data);
-    if (spec.yieldResource && spec.yieldResource in yields) yields[spec.yieldResource as keyof typeof yields] += spec.yieldAmount;
+    for (const [k, v] of Object.entries(spec.yields)) if (k in yields && v) yields[k as keyof typeof yields] += v;
   }
   return { baseSeconds, hqSeconds: hqWorkRate > 0 ? baseSeconds / hqWorkRate : baseSeconds, totalEnergyE, yields, countsByOp };
 }

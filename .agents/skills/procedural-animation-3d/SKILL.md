@@ -50,22 +50,32 @@ This skill enforces **Zero-CPU Runtime Procedural Animation** across all `TerraA
 
 Stamp each part in `KitbashBuilder.addPart(geo, zone, { name, position, animType, animPivot })`:
 
-| `animType` | Channel Name | Typical Parts | Rigid Kinematic Formula in `shaderChunks.ts` & `poses.ts` |
+| `animType` | Channel Name | Typical Parts | Rigid Kinematic Formula in `shaderChunks.ts` & `poses.ts` (`uWalkWeight` $w$ & `uWorkWeight` $w_k$) |
 | :---: | :--- | :--- | :--- |
 | **`0`** | `Static` | Building foundations, rover/miner hulls | $\Delta\mathbf{p} = \mathbf{0}$ (rest pose). |
-| **`1`** | `SpinY` | Radar dishes, turbines, auger drills | Rigid Y-axis spin around `pivot`: $\theta = 2.5 t$. |
-| **`2`** | `HoverBob` | Thruster cores, hover pads, crystal nodes | Rigid vertical oscillation: $\Delta y = \sin(4.0 t + 3.1 p_x) \cdot 0.05\text{ m}$. |
-| **`3`** | `RecoilPulse` | Cannon barrels, thumpers, beacons, torches | Rigid impulse recoil along $-Z$: $\Delta z = -\max(\sin(5.0 t + 2.3 p_x), 0)^6 \cdot 0.06\text{ m}$. |
-| **`4, 14, 24`** | `BipedLeg / Shin / Foot` | 3-link rigid biped leg (`4` thigh, `14` shin+ankle, `24` foot) | Coupled to `BipedBody (8)` at hip `pivot`. Link `4` pitches rigidly by $\theta_{\text{hip}} = 0.22 w \sin\tau$; Link `14` pivots rigidly around the moving knee by $\theta_{\text{shin}} = \theta_{\text{hip}} + 0.52 w \max(0, \cos\tau)$; Link `24` translates rigidly with the moving ankle, staying level with the ground. |
-| **`5`** | `BipedArm` | Bipedal arms (`robot.hero` shoulder $\rightarrow$ hand) | Rigid counter-phase shoulder swing $\phi = (p_x \ge 0) ? \pi : 0$ around `pivot`, then transformed by `BipedBody (8)`. |
-| **`6, 16`** | `SpiderLeg / Tibia` | 2-link rigid spider leg (`6` hip+femur, `16` knee+tibia+foot) | Coupled to `SpiderBody (9)` at hip `pivot`. Link `6` rotates rigidly by femur elevation $\theta_{\text{femur}} = (\text{stepLift} - \Delta h_y) / |p_x|$ and coxa yaw $\theta_{\text{yaw}} = 0.18 w \text{sign}(p_x)\sin\tau$; Link `16` attaches at the moving knee $\mathbf{p}'_{\text{knee}}$ and yaws rigidly by $\theta_{\text{yaw}}$ while keeping the tibia and foot upright. |
-| **`7`** | `WheelSpin` | Rover wheels (`tyre`+`rim`+`hub`), track rollers | Rigid X-axis rolling around wheel axle `pivot`: $\theta = 4.0 t w_{\text{walk}}$. |
-| **`8`** | `BipedBody` | Bipedal pelvis, torso, head, backpack, cables | Rigid full-body step reaction around COM `(0, 0.92, 0)`: $2\omega$ impact heave, lateral weight sway, forward surge, hip roll, pitch, and counter-yaw. |
-| **`9`** | `SpiderBody` | Spider carapace, underbelly, turret, cables | Rigid quadruped/arachnid chassis suspension around COM `(0, 0.76, 0)`: spring-damped $2\omega$ step-impact heave, phase-lagged roll, pitch, yaw, sway, and surge. |
+| **`1`** | `SpinY` | Radar dishes, turbines, auger drills | Rigid Y-axis spin around `pivot`: $\theta = t \cdot (2.5 + 10.0 w_k)$ standalone, or $g \cdot (1 + w_k)$ when mounted on a body carrier (`18`/`19`). |
+| **`2`** | `HoverBob` | Thruster cores, hover pads, crystal nodes | Rigid vertical oscillation: $\Delta y = \sin(\omega t + 3.1 p_x) \cdot A$ ($A = 0.05\text{ m}$ standalone, $0.025\text{ m}$ on carrier). |
+| **`3`** | `RecoilPulse` | Cannon barrels, thumpers, beacons, torches | Rigid impulse recoil along $-Z$: $\Delta z = -\max(\sin(g(1 + w_k) + 2.3 p_x), 0)^6 \cdot 0.06\text{ m}$. |
+| **`4, 14, 24`** | `BipedLeg / Shin / Foot` | 3-link rigid biped leg (`4` thigh, `14` shin+ankle, `24` foot) | Coupled to `BipedBody (8)` at hip `pivot` ($\Delta\mathbf{h} = \mathcal{B}_{\text{biped}}(\mathbf{p}_{\text{hip}}, g, w, w_k) - \mathbf{p}_{\text{hip}}$). Link `4` pitches rigidly by $\theta_{\text{hip}} = 0.22 w \sin\tau$; Link `14` pivots rigidly around the moving knee by $\theta_{\text{shin}} = \theta_{\text{hip}} + 0.52 w \max(0, \cos\tau)$; Link `24` translates rigidly with the moving ankle, staying level with the ground. |
+| **`5`** | `BipedArm` | Bipedal arms (`robot.hero` shoulder $\rightarrow$ hand) | Rigid counter-phase shoulder pitch $\theta_{\text{arm}} = 0.22 w \sin\tau + (-0.62 + 0.26\sin(2g + 0.5\phi)) w_k$ plus converging inward work yaw $\psi_{\text{work}} = \text{sign}(p_x)(-0.10 + 0.08\cos(2g + 0.5\phi)) w_k$ around `pivot`, then transformed by `BipedBody (8)`. |
+| **`6, 16`** | `SpiderLeg / Tibia` | 2-link rigid spider leg (`6` hip+femur, `16` knee+tibia+foot) | Coupled to `SpiderBody (9)` at hip `pivot` ($\Delta\mathbf{h} = \mathcal{B}_{\text{spider}}(\mathbf{p}_{\text{hip}}, g, w, w_k) - \mathbf{p}_{\text{hip}}$). Link `6` rotates rigidly by femur elevation $\theta_{\text{femur}} = (\text{stepLift} - \Delta h_y) / |p_x|$ and coxa yaw $\theta_{\text{yaw}} = 0.18 w \text{sign}(p_x)\sin\tau$; Link `16` attaches at the moving knee $\mathbf{p}'_{\text{knee}}$ and yaws rigidly by $\theta_{\text{yaw}}$ while keeping the tibia and foot upright. |
+| **`7`** | `WheelSpin` | Rover wheels (`tyre`+`rim`+`hub`), track rollers | Rigid X-axis rolling around wheel axle `pivot`: $\theta = 4.0 t w + 0.35 \sin(g) w_k$ (bracing torque rock while working). |
+| **`8`** | `BipedBody` | Bipedal pelvis, torso, head, backpack, cables | Rigid full-body step reaction & work effort around COM `(0, 0.92, 0)`: $2\omega$ impact heave + work effort heave, lateral weight sway, forward lean/surge, hip roll, pitch, and counter-yaw driven by $(w, w_k)$. |
+| **`9`** | `SpiderBody` | Spider carapace, underbelly, turret, cables | Rigid quadruped/arachnid chassis suspension & work bracing around COM `(0, 0.76, 0)`: spring-damped $2\omega$ step-impact heave, phase-lagged roll, pitch, yaw, sway, and surge driven by $(w, w_k)$. |
 | **`18, 28, 38`** | `Sub + BipedBody` | Radar (`18`), thruster (`28`), beacon (`38`) on biped | Evaluates rigid `SpinY (1)` / `HoverBob (2)` / `RecoilPulse (3)` around `pivot`, then rides on `BipedBody (8)`. |
 | **`19, 29, 39`** | `Sub + SpiderBody` | Radar (`19`), core (`29`), cannons (`39`) on spider | Evaluates rigid `SpinY (1)` / `HoverBob (2)` / `RecoilPulse (3)` around `pivot`, then rides on `SpiderBody (9)`. |
 
 Full mathematical derivations and phase tables are in [references/gait-and-ik-math.md](./references/gait-and-ik-math.md).
+
+---
+
+## Attaching VFX & Tool Beams to GPU-Animated Limbs (`toolOrigins.ts`)
+
+Because vertex displacement happens on the GPU in `shaderChunks.ts`,Three.js `mesh.position` / `mesh.matrixWorld` remain at the unit's root origin. When attaching 3D laser beams, muzzle flares, or particle emitters to animated hands, drills, or turret barrels, **never use static local offsets**:
+- Use `evalArchetypeToolOrigins(archetypeId, time, walkWeight, workWeight)` or `computeMeshToolOrigins(mesh, archetypeId, time, walkWeight, workWeight)` in `frontend/render/particles/toolOrigins.ts`.
+- `toolOrigins.ts` evaluates the exact closed-form CPU mirror of `bipedBodyTransform`, `spiderBodyTransform`, `BipedArm (5)`, `SpinY (1)`, and `RecoilPulse (3)` for the 1–2 tool muzzle points per working unit:
+  - **`robot.hero` (HQ Drone):** Dual lasers and palm flare orbs stay 100% locked to the left and right hands (`animType 5` + `BipedBody 8`) throughout the dual-axis cutting sweep.
+  - **`robot.miner` (Harvester), `robot.builder` (Builder), `robot.combat` (Recon):** Beams lock to the spinning auger tip (`SpinY 1`), pulsing welding torch (`RecoilPulse 3`), or alternating twin cannon barrels (`animType 39`).
 
 ---
 

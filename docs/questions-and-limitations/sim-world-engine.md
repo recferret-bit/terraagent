@@ -549,3 +549,25 @@ Format: [README](./README.md).
 - **To resolve:** if profiling shows it matters, pool arrays per radius and hand them back when a search finishes
   (never while it is paused), or size the arrays to a bounding box of the search.
 - **Found:** 2026-11-01, review-fix round (WE-17)
+
+## Found in the W02 review (rounds 1–2)
+
+### WE-30 · Unread day-cycle fields in `economyT1Basic.dayCycle`
+
+- **Status:** Open (decision in GP-53)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/data/economy-t1-basic.ts` (row `dayCycle`), `shared/sim/src/systems/environment/index.ts` (`dayLengthTicksFor`, `getSunriseHour`, `SUNSET_HOUR`), `shared/sim/test/data/generation-data.spec.ts` (`CHECKED_TABLES`)
+- **What happens:** `dayCycle.dayLengthS` 1200 / `designDayLengthS` 1200 and `dayCycle.sunriseHour` 6 are read by no sim code (`dayLengthS` only by `test/data/w02-data.spec.ts`); the environment takes the day length from `time.cycle` and computes sunrise as `SUNSET_HOUR` 18 + 24 × night share − 24 (temperate 45 % → 04:48), so the "morning 06:00" the row suggests is 1.2 game hours after the sim's sunrise. `tune economyT1Basic.dayCycle.dayLengthS …` succeeds and changes nothing. The row's other fields (`defaultNightShare`, `nightShareByPlanetType`, `economyRateScale`, …) are read. `economyT1Basic` is not in `CHECKED_TABLES`, so the "every field is read" test does not see it; note that its check is textual and would also pass on the comment in `environment/index.ts` that names `dayCycle.dayLengthS`.
+- **To resolve:** after the owner's day-length choice (GP-53), delete the losing fields or read them, and add `economyT1Basic` (and `unitsWorkersBasic`, `time`) to `CHECKED_TABLES` with a `RESERVED` list.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)
+
+### WE-31 · `RESOURCE_INCOME_TABLE` contradicts the economy rows and is read only by a spec
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/data/resources.ts` (`RESOURCE_INCOME_TABLE`, exported through `data/index.ts`), `shared/sim/test/systems/w02-resource-harvest-terraform.spec.ts`
+- **What happens:** besides the `forest` / `rock` mirrors of the `opsBasic` yields (already `@deprecated`), the table lists rates no system reads: `harvester.metals` 1.875/s, `harvester.minerals` 1.5/s, `harvester.oil` 1.25/s (the row gives 0.5/s: `harvestRatePerS` 2.0 × 0.25), `extractor.metals.t1` 2.5/s (the row gives 1.0/s: `outputPerS` 4.0 × 0.25), `solar.t1` 20 E/s (matches `netOutputPerS` 20) and `command.hub` 8 E/s + 0.5 water/s. Only the spec asserts them; a reader of the table gets the wrong harvester and extractor rates.
+- **To resolve:** delete the rate entries (keep the yield mirrors until their callers move to `groundWorkYields`) and drop them from the spec, or derive them from the compiled rows.
+- **Found:** 2026-11-03, W02 review round 2 (sim agent)

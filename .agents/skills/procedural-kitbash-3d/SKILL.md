@@ -53,6 +53,8 @@ Assemble the entity in four layers from bottom to top:
 4. **Layer D — Emissive Telemetry & Silhouette Breakers:**
    - Glowing sensor visors, status LED beacons, plasma coils, or rotating radar/wind vanes tagged with GPU animation channels.
 
+**Resource deposits** (`resource.metalDeposit`, `resource.crystalDeposit`, `resource.oilDeposit`) live in `frontend/render/kitbash/archetypes/units/nature.ts` (there is no separate deposits file). Each is built per depletion stage: register one builder with `registerDepositStageBuilder(id, (stage) => geometry)` (`frontend/render/kitbash/catalog.ts`, `stage` = `'full' | 'half' | 'depleted'`). All three stages are separate meshes that must each pass the validator (`npm run validate:models -- <deposit id>` checks all three); preview them with `/playground.html?inspect=<id>&depositStage=half|depleted`.
+
 ### Step 3: Encode GPU Animation Channels (Zero CPU Overhead)
 Instead of creating separate child `THREE.Mesh` hierarchies for `AnimationMixer`, tag vertices via `PartOptions` (`animType` + `animPivot`) in [KitbashRegistry.ts](./examples/KitbashRegistry.ts) (see the [`procedural-animation-3d`](../procedural-animation-3d/SKILL.md) skill for coupled limb rigging and gait math):
 - `animType = 0`: Static chassis part.

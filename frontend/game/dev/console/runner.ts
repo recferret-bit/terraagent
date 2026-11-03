@@ -17,7 +17,10 @@ export class CommandRunner {
   constructor(features: readonly Feature[], private readonly ctx: FeatureContext) {
     for (const f of features) {
       for (const c of f.devCommands ?? []) {
-        if (this.table.has(c.name)) { console.warn(`dev command "${c.name}" from ${f.id} ignored: already registered`); continue; }
+        if (this.table.has(c.name)) {
+          if (this.table.get(c.name) !== c) console.warn(`dev command "${c.name}" from ${f.id} ignored: already registered`);
+          continue;
+        }
         this.table.set(c.name, c);
       }
     }

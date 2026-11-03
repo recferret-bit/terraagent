@@ -87,19 +87,23 @@ function breakRig(d: CompiledData = data) {
 }
 
 describe('M2: terraform yields respect the storage caps', () => {
-  it('a Break at full metals (600/600) credits nothing, posts the lost 10 to sys:overflow and reports it as overflow', () => {
+  it('a Break at full metals and minerals (600/600) credits nothing, posts the lost 8 + 4 to sys:overflow and reports it as overflow', () => {
     const { h, run } = breakRig();
-    setColonyStock(h.state, 0, { 'metals.t1': 600 });
+    setColonyStock(h.state, 0, { 'metals.t1': 600, 'minerals.t1': 600 });
     const { removed, postings } = run();
     expect(getColonyStock(h.state, 0)['metals.t1']).toBe(600);
-    expect(postings.filter((p) => p.reason === 'terraform.yield').map((p) => p.legs)).toEqual([
-      [
-        { account: 'sys:world', asset: 'metals.t1', delta: -10 },
-        { account: 'sys:overflow', asset: 'metals.t1', delta: 10 },
-      ],
-    ]);
+    expect(getColonyStock(h.state, 0)['minerals.t1']).toBe(600);
+    const legs = postings.filter((p) => p.reason === 'terraform.yield').map((p) => p.legs);
+    expect(legs).toHaveLength(1);
+    expect(legs[0]).toHaveLength(4);
+    expect(legs[0]).toEqual(expect.arrayContaining([
+      { account: 'sys:world', asset: 'metals.t1', delta: -8 },
+      { account: 'sys:overflow', asset: 'metals.t1', delta: 8 },
+      { account: 'sys:world', asset: 'minerals.t1', delta: -4 },
+      { account: 'sys:overflow', asset: 'minerals.t1', delta: 4 },
+    ]));
     expect(removed).toHaveLength(1);
-    expect(removed[0].data).toMatchObject({ op: 'break', overflow: { 'metals.t1': 10 } });
+    expect(removed[0].data).toMatchObject({ op: 'break', overflow: { 'metals.t1': 8, 'minerals.t1': 4 } });
     expect(eventDef('obstacleRemoved').data.safeParse(removed[0].data).success).toBe(true);
   });
 
@@ -107,20 +111,21 @@ describe('M2: terraform yields respect the storage caps', () => {
     const { h, run } = breakRig();
     setColonyStock(h.state, 0, { 'metals.t1': 590, 'metals.t2': 6 });
     const { removed, postings } = run();
-    expect(getColonyStock(h.state, 0)).toEqual(fullStock({ 'metals.t1': 594, 'metals.t2': 6 }));
+    expect(getColonyStock(h.state, 0)).toEqual(fullStock({ 'metals.t1': 594, 'metals.t2': 6, 'minerals.t1': 4 }));
     expect(postings.filter((p) => p.reason === 'terraform.yield')).toHaveLength(1);
-    expect(removed[0].data).toMatchObject({ overflow: { 'metals.t1': 6 } });
+    expect(removed[0].data).toMatchObject({ overflow: { 'metals.t1': 4 } });
   });
 
   it('a yield that fits carries no overflow', () => {
     const { h, run } = breakRig();
     const { removed } = run();
-    expect(getColonyStock(h.state, 0)['metals.t1']).toBe(10);
+    expect(getColonyStock(h.state, 0)['metals.t1']).toBe(8);
+    expect(getColonyStock(h.state, 0)['minerals.t1']).toBe(4);
     expect(removed[0].data).not.toHaveProperty('overflow');
   });
 
   it('a refused yield (bad data) still clears the tile and emits a treasuryRejected warning', () => {
-    const { h, run } = breakRig(corrupt('opsBasic', 'break', 'yieldAmount', 10.5));
+    const { h, run } = breakRig(corrupt('opsBasic', 'break', 'yields', { 'metals.t1': 10.5 }));
     const { events, removed, postings } = run();
     expect(h.state.grid.layers.terrain[hexIndex(h.state.grid.radius).indexOf(-1, 2)]).toBe(TERRAIN.flat);
     expect(removed).toHaveLength(1);

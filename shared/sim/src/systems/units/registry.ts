@@ -5,9 +5,19 @@ import { dieCommand } from '../../units/commands/die';
 import { moveCommand } from '../../units/commands/move';
 import { stopCommand } from '../../units/commands/stop';
 import { issueUnitCommand as issueWith, stepUnitWork as workWith, stepUnits as stepWith, type IssueOpts } from '../../units/runner';
-import { createUnitRegistry, type UnitCommand, type UnitWorkPhase } from '../../units/types';
+import { createUnitRegistry, type UnitCommand, type UnitWorkPhase, type UnitWorkProvider } from '../../units/types';
 import { buildCommand, buildProvider } from '../construction/work';
 import { linkedPrepProvider, terraformCommand, terraformProvider } from '../terraform-basic/work';
+import { hasActiveWorkJobForWorker } from '../terraform-basic/workJobs';
+
+/**
+ * A worker that carries out a work job (`blobs.workJobs`: a `work` order, a terraform chain) is driven by the work-jobs
+ * system until the job (and its chain) ends; no provider hands it other work meanwhile, so the chain is not hijacked.
+ */
+const unlessOnWorkJob = (p: UnitWorkProvider): UnitWorkProvider => ({
+  id: p.id,
+  propose: (u) => (hasActiveWorkJobForWorker(u.state, u.id) ? null : p.propose(u)),
+});
 
 /**
  * Every unit command kind and work provider. Add a command: one `defineUnitCommand` file + one entry here.
@@ -16,7 +26,7 @@ import { linkedPrepProvider, terraformCommand, terraformProvider } from '../terr
  */
 export const UNIT_REGISTRY = createUnitRegistry(
   [moveCommand, stopCommand, dieCommand, attackCommand, buildCommand, terraformCommand],
-  [linkedPrepProvider, buildProvider, terraformProvider],
+  [linkedPrepProvider, buildProvider, terraformProvider].map(unlessOnWorkJob),
 );
 
 /**

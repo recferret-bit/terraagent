@@ -1,9 +1,14 @@
 import { formatSolarClock, type DayNightParams } from '../core/dayNightConfig';
 import type { PixelArtParams } from '../core/pixelArtPass';
 import type { ShadowParams } from '../core/shadowConfig';
+import type { WindParams } from '../core/windConfig';
+import { WIND_RANGES } from '../core/windConfig';
+import type { WaterParams } from '../visuals/water/waterConfig';
+import { WATER_RANGES } from '../visuals/water/waterConfig';
 import type { CrtParams } from './crt';
+import { PERF_RANGES, RENDER_SCALES, TARGET_FPS, type PerfParams } from '../core/perfConfig';
 
-export type VisualTabId = 'crt' | 'pixel' | 'shadow' | 'daynight';
+export type VisualTabId = 'crt' | 'pixel' | 'shadow' | 'daynight' | 'wind' | 'water' | 'perf';
 
 export interface SliderSpec<K extends string = string> {
   key: K;
@@ -12,14 +17,9 @@ export interface SliderSpec<K extends string = string> {
   max: number;
   step: number;
   fmt: (v: number) => string;
+  /** Section heading drawn above the first slider of a group (consecutive sliders share it). */
+  group?: string;
 }
-
-export const VISUAL_TABS: readonly { id: VisualTabId; label: string; statusTitle: string }[] = [
-  { id: 'crt', label: 'CRT', statusTitle: 'CRT OVERLAY STATUS (F9)' },
-  { id: 'pixel', label: 'PIXEL', statusTitle: 'PIXEL SHADER STATUS (F10)' },
-  { id: 'shadow', label: 'SHADOW', statusTitle: 'SUN & SHADOW STATUS (F7)' },
-  { id: 'daynight', label: 'DAY/NIGHT', statusTitle: 'PLANETARY SOLAR CYCLE' },
-];
 
 export const CRT_SLIDERS: readonly SliderSpec<keyof CrtParams>[] = [
   { key: 'scanlineIntensity', label: 'SCANLINE OPACITY', min: 0, max: 0.65, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` },
@@ -45,7 +45,15 @@ export const PIXEL_SLIDERS: readonly SliderSpec<keyof PixelArtParams>[] = [
   { key: 'gridStrength', label: 'PIXEL GRID BEVEL', min: 0, max: 0.35, step: 0.01, fmt: (v) => `${Math.round(v * 100)}%` },
 ];
 
+const SHADOW_SOURCE_MODES = ['SUN + NIGHT MOON', 'DUAL SUN + FILL', 'NIGHT PROJECTOR', 'SUN ONLY'] as const;
+
 export const SHADOW_SLIDERS: readonly SliderSpec<keyof ShadowParams>[] = [
+  { key: 'shadowSourceMode', label: 'SHADOW SOURCE MODE', min: 0, max: 3, step: 1, fmt: (v) => SHADOW_SOURCE_MODES[Math.round(v)] ?? 'SUN + NIGHT MOON' },
+  { key: 'secondaryShadowEnabled', label: 'SECONDARY SHADOW ON/OFF', min: 0, max: 1, step: 1, fmt: (v) => (v >= 0.5 ? 'ON' : 'OFF') },
+  { key: 'nightShadowIntensity', label: 'NIGHT SHADOW STRENGTH', min: 0, max: 1.6, step: 0.04, fmt: (v) => `${Math.round(v * 100)}%` },
+  { key: 'secondaryAzimuthDeg', label: 'SECONDARY AZIMUTH °', min: -180, max: 180, step: 1, fmt: (v) => `${Math.round(v)}°` },
+  { key: 'secondaryElevationDeg', label: 'SECONDARY ELEVATION °', min: 8, max: 85, step: 1, fmt: (v) => `${Math.round(v)}°` },
+  { key: 'secondaryIntensity', label: 'SECONDARY LIGHT INTENSITY', min: 0, max: 3.5, step: 0.05, fmt: (v) => v.toFixed(2) },
   { key: 'sunAzimuth', label: 'SUN AZIMUTH', min: 0, max: 360, step: 1, fmt: (v) => `${Math.round(v)}°` },
   { key: 'sunElevation', label: 'SUN ELEVATION', min: 8, max: 85, step: 1, fmt: (v) => `${Math.round(v)}°` },
   { key: 'sunOrbitSpeed', label: 'SUN ORBIT SPEED', min: 0, max: 30, step: 0.5, fmt: (v) => `${v.toFixed(1)} °/s` },
@@ -81,9 +89,55 @@ export const DAY_NIGHT_SLIDERS: readonly SliderSpec<keyof DayNightParams>[] = [
   { key: 'fovDim', label: 'FOV FOG SHROUD', min: 0, max: 1.0, step: 0.02, fmt: (v) => `${Math.round(v * 100)}%` },
 ];
 
-export const SLIDERS_BY_TAB: Record<VisualTabId, readonly SliderSpec[]> = {
-  crt: CRT_SLIDERS,
-  pixel: PIXEL_SLIDERS,
-  shadow: SHADOW_SLIDERS,
-  daynight: DAY_NIGHT_SLIDERS,
+const pct = (v: number) => `${Math.round(v * 100)}%`;
+const mul = (v: number) => `×${v.toFixed(2)}`;
+/** Slider bounds straight from a lab store's clamp ranges, so the UI can never ask for a value the store rejects. */
+const span = (r: readonly [number, number]) => ({ min: r[0], max: r[1] });
+const WIND_NAMES = ['CALM', 'BREEZE', 'WINDY', 'GALE'] as const;
+const windName = (v: number) => WIND_NAMES[v < 0.05 ? 0 : v < 1 ? 1 : v < 1.5 ? 2 : 3];
+const WATER_TIERS = ['LOW', 'MED', 'HIGH'] as const;
+
+export const WIND_SLIDERS: readonly SliderSpec<keyof WindParams>[] = [
+  { key: 'directionDeg', label: 'DIRECTION (TOWARD)', ...span(WIND_RANGES.directionDeg), step: 1, fmt: (v) => `${Math.round(v)}°` },
+  { key: 'strength', label: 'STRENGTH', ...span(WIND_RANGES.strength), step: 0.05, fmt: (v) => `${v.toFixed(2)} · ${windName(v)}` },
+  { key: 'gust', label: 'GUST FRONTS', ...span(WIND_RANGES.gust), step: 0.01, fmt: pct },
+  { key: 'turbulence', label: 'TURBULENCE / FLUTTER', ...span(WIND_RANGES.turbulence), step: 0.01, fmt: pct },
+];
+
+export const WATER_SLIDERS: readonly SliderSpec<keyof WaterParams>[] = [
+  { group: 'WAVES', key: 'waveHeight', label: 'WAVE HEIGHT', ...span(WATER_RANGES.waveHeight), step: 0.05, fmt: mul },
+  { group: 'WAVES', key: 'waveSteepness', label: 'STEEPNESS / CHOP', ...span(WATER_RANGES.waveSteepness), step: 0.01, fmt: pct },
+  { group: 'WAVES', key: 'waveScale', label: 'WAVELENGTH', ...span(WATER_RANGES.waveScale), step: 0.05, fmt: mul },
+  { group: 'WAVES', key: 'waveSpeed', label: 'WAVE SPEED', ...span(WATER_RANGES.waveSpeed), step: 0.05, fmt: mul },
+  { group: 'SURFACE', key: 'detailNormal', label: 'RIPPLE DETAIL', ...span(WATER_RANGES.detailNormal), step: 0.05, fmt: pct },
+  { group: 'SURFACE', key: 'roughness', label: 'ROUGHNESS', ...span(WATER_RANGES.roughness), step: 0.01, fmt: (v) => v.toFixed(2) },
+  { group: 'SURFACE', key: 'absorption', label: 'ABSORPTION / MURK', ...span(WATER_RANGES.absorption), step: 0.05, fmt: mul },
+  { group: 'SURFACE', key: 'parallax', label: 'BED PARALLAX', ...span(WATER_RANGES.parallax), step: 0.05, fmt: pct },
+  { group: 'SURFACE', key: 'caustics', label: 'CAUSTICS', ...span(WATER_RANGES.caustics), step: 0.05, fmt: pct },
+  { group: 'FOAM', key: 'foamAmount', label: 'FOAM AMOUNT', ...span(WATER_RANGES.foamAmount), step: 0.05, fmt: pct },
+  { group: 'FOAM', key: 'foamWidth', label: 'SHORE FOAM WIDTH', ...span(WATER_RANGES.foamWidth), step: 0.1, fmt: (v) => `${v.toFixed(1)} m` },
+  { group: 'REFLECTIONS', key: 'sunGlint', label: 'SUN GLINT', ...span(WATER_RANGES.sunGlint), step: 0.05, fmt: pct },
+  { group: 'REFLECTIONS', key: 'projectorReflect', label: 'PROJECTOR REFLECTIONS', ...span(WATER_RANGES.projectorReflect), step: 0.05, fmt: pct },
+  { group: 'FAUNA & QUALITY', key: 'faunaDensity', label: 'FISH DENSITY', ...span(WATER_RANGES.faunaDensity), step: 0.05, fmt: pct },
+  { group: 'FAUNA & QUALITY', key: 'quality', label: 'SHADER TIER', ...span(WATER_RANGES.quality), step: 1, fmt: (v) => WATER_TIERS[Math.round(v)] ?? 'HIGH' },
+];
+
+const onOff = (v: number) => (v >= 0.5 ? 'ON' : 'OFF');
+const RING_MODES = ['OFF', 'ON', 'ON + FREEZE FOCUS'] as const;
+const fpsName = (v: number) => {
+  const f = TARGET_FPS[Math.round(v)] ?? 'display';
+  return f === 'display' ? 'DISPLAY RATE (≤ 120)' : `${f} FPS`;
 };
+const scaleName = (v: number) => {
+  const s = RENDER_SCALES[Math.round(v)] ?? 'auto';
+  return s === 'auto' ? 'AUTO (DYNAMIC)' : `×${s.toFixed(2)} FIXED`;
+};
+
+export const PERF_SLIDERS: readonly SliderSpec<keyof PerfParams>[] = [
+  { group: 'RESOLUTION', key: 'renderScale', label: 'RENDER SCALE / PIXEL RATIO', ...span(PERF_RANGES.renderScale), step: 1, fmt: scaleName },
+  { group: 'RESOLUTION', key: 'targetFps', label: 'AUTO TARGET FPS', ...span(PERF_RANGES.targetFps), step: 1, fmt: fpsName },
+  { group: 'VIEW FOCUS', key: 'focusMargin', label: 'FOCUS MARGIN', ...span(PERF_RANGES.focusMargin), step: 0.05, fmt: mul },
+  { group: 'VIEW FOCUS', key: 'focusRing', label: 'SHOW FOCUS RING (DEBUG)', ...span(PERF_RANGES.focusRing), step: 1, fmt: (v) => RING_MODES[Math.round(v)] ?? 'OFF' },
+  { group: 'SHADOWS', key: 'daySecondaryShadow', label: 'DAYTIME SECONDARY SHADOW', ...span(PERF_RANGES.daySecondaryShadow), step: 1, fmt: onOff },
+  { group: 'SHADOWS', key: 'nightSunShadow', label: 'NIGHT SUN SHADOW', ...span(PERF_RANGES.nightSunShadow), step: 1, fmt: onOff },
+];

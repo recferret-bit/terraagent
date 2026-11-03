@@ -259,13 +259,26 @@ export function setTileOwner(grid: GridLike, tileIdx: number, owner: number, tic
   stampTile(layers, meta, tileIdx, tick);
 }
 
-/** Sets a tile's `deposit` kind (`DEPOSIT.*`) and optional `richness`, stamping `changedAt`. */
-export function setTileDeposit(grid: GridLike, tileIdx: number, deposit: number, richness?: number, tick?: number): void {
+/**
+ * Sets a tile's `deposit` kind (`DEPOSIT.*`), optional `richness` and its `depositTier` (`0` = legacy tier 1, `1..3`;
+ * always `0` without a deposit), stamping `changedAt`.
+ */
+export function setTileDeposit(grid: GridLike, tileIdx: number, deposit: number, richness?: number, tick?: number, tier = 0): void {
   if (!isValidTileIndex(grid, tileIdx)) return;
   const { layers, meta } = resolveTileLayers(grid);
   if (layers.deposit && layers.deposit[tileIdx] !== deposit) bumpPathEpoch(meta);
   if (layers.deposit) layers.deposit[tileIdx] = deposit;
-  if (richness !== undefined && layers.richness) layers.richness[tileIdx] = richness;
+  const tiers = layers.depositTier as Uint8Array | undefined;
+  if (tiers) tiers[tileIdx] = deposit === DEPOSIT.none ? 0 : tier;
+  if (layers.richness) {
+    if (richness !== undefined) {
+      layers.richness[tileIdx] = richness;
+    } else if (deposit !== DEPOSIT.none && (layers.richness[tileIdx] ?? 0) <= 0) {
+      layers.richness[tileIdx] = 10000;
+    } else if (deposit === DEPOSIT.none) {
+      layers.richness[tileIdx] = 0;
+    }
+  }
   stampTile(layers, meta, tileIdx, tick);
 }
 

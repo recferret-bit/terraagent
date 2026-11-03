@@ -20,6 +20,6 @@ export function buildForestRock(c: SurfaceContext) {
   c.addMesh(buildInstanced(makePineGeo(pa, pb), createFoliageMaterial(c.timeU, 0.7), pines, { sx: [0.75, 1.35], sy: [0.8, 1.9], sink: 0.1, tilt: 0.06, tint: jitter(0.2, 0.15) }));
   c.boulders(260, (x, z) => 0.06 + Math.min(0.4, c.slopeAt(x, z) * 0.35), [0.5, 2.0], c.rockTint, 3);
   c.spires((x, z) => (c.slopeAt(x, z) > 0.45 ? 0.35 : 0.01), 40, [0.7, 1.5], [3, 8], c.rockTint);
-  const motes = createParticles({ count: 140, box: 120, height: 12, size: 0.55, color: new THREE.Color(0xe8f2c0), drift: new THREE.Vector3(0.4, 0.1, 0.25), wobble: 2.5, additive: true, alpha: 0.4, seed: c.spec.seed });
+  const motes = createParticles({ count: 140, box: 120, height: 12, size: 0.55, color: new THREE.Color(0xe8f2c0), drift: new THREE.Vector3(0, 0.1, 0), windDrift: 0.1, wobble: 2.5, additive: true, alpha: 0.4, seed: c.spec.seed });
   c.addLayer(motes.points, motes.uniforms, motes);
 }

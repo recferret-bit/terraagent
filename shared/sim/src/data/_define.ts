@@ -3,12 +3,13 @@
  * constant in system code. A table file default-exports `defineTable({...})`; the generator lists every table file.
  *
  * Rows are written in **design units** (seconds, per-second rates). `units` names the fields `compileData` converts:
- *   - `seconds`   → ticks (`round(s × 1000 / TICK_MS)`), e.g. a 30 s build → 150 ticks
- *   - `perSecond` → per tick (`v × TICK_MS / 1000`)
+ *   - `seconds`      → ticks (`round(s × 1000 / TICK_MS)`), e.g. a 30 s build → 150 ticks
+ *   - `perSecond`    → per tick (`v × TICK_MS / 1000`)
+ *   - `resourceFlow` → scaled per-second resource flow (`v × ECONOMY_RATE_SCALE`, default `0.25`)
  * Every row carries `wave`; rows of disabled waves are dropped at compile time ("no flag, no feature").
  * `amounts` names the fields that hold resource amounts; they must be whole, non-negative units (no fractions).
  */
-export type Unit = 'seconds' | 'perSecond';
+export type Unit = 'seconds' | 'perSecond' | 'resourceFlow';
 
 export type RowValue = number | string | boolean | null | readonly RowValue[] | { readonly [k: string]: RowValue };
 
