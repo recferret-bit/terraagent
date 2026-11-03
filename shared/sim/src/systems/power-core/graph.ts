@@ -2,6 +2,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { hexDistance } from '../../grid/hex';
+import { inSourceZone, powerZoneRadiusOf } from '../construction/powerZone';
 import { resolvePowerRow } from './index';
 
 export interface BuildingFootprintTile {
@@ -15,7 +16,8 @@ export interface RelayNode {
   kind: number;
   q: number;
   r: number;
-  span: number;
+  /** Power zone radius around `(q, r)` (`powerZone.ts`): the tiles this relay powers and the relays it links to. */
+  radius: number;
   footprintTiles: BuildingFootprintTile[];
   componentId: number;
 }
@@ -78,8 +80,8 @@ function collectRelayNodes(
 ): { relayNodes: RelayNode[]; hubAnchors: BuildingFootprintTile[]; hasHub: boolean } {
   const hubRow = resolvePowerRow(data, 'hub', 't1');
   const pylonRow = resolvePowerRow(data, 'grid', 'pylon');
-  const hubSpan = Number(hubRow.pylonSpan ?? 6);
-  const pylonSpan = Number(pylonRow.span ?? 6);
+  const hubRadius = powerZoneRadiusOf(hubRow);
+  const pylonRadius = powerZoneRadiusOf(pylonRow);
 
   const e = state.entities, cols = e.cols;
   const relayNodes: RelayNode[] = [];
@@ -98,7 +100,7 @@ function collectRelayNodes(
       hubAnchors.push({ q: cols.q[row], r: cols.r[row] });
       relayNodes.push({
         row, id: cols.id[row], kind, q: cols.q[row], r: cols.r[row],
-        span: hubSpan, footprintTiles: tiles, componentId: -1,
+        radius: hubRadius, footprintTiles: tiles, componentId: -1,
       });
     } else if (kind === ENTITY_KIND.pylon) {
       const w = cols.footprintW?.[row] || 1;
@@ -106,11 +108,16 @@ function collectRelayNodes(
       const tiles = getEntityFootprintTiles(cols.q[row], cols.r[row], w, d, cols.rot[row]);
       relayNodes.push({
         row, id: cols.id[row], kind, q: cols.q[row], r: cols.r[row],
-        span: pylonSpan, footprintTiles: tiles, componentId: -1,
+        radius: pylonRadius, footprintTiles: tiles, componentId: -1,
       });
     }
   }
   return { relayNodes, hubAnchors, hasHub };
+}
+
+/** Two relays link when one stands in the other's zone: a pylon placed inside a zone (the placement rule) joins its source. */
+export function relaysLinked(a: RelayNode, b: RelayNode): boolean {
+  return inSourceZone(a, b.q, b.r) || inSourceZone(b, a.q, a.r);
 }
 
 function partitionRelayComponents(relayNodes: RelayNode[]): {
@@ -124,8 +131,7 @@ function partitionRelayComponents(relayNodes: RelayNode[]): {
   for (let i = 0; i < relayNodes.length; i++) {
     for (let j = i + 1; j < relayNodes.length; j++) {
       const a = relayNodes[i], b = relayNodes[j];
-      const maxSpan = Math.max(a.span, b.span);
-      if (minFootprintDistance(a.footprintTiles, b.footprintTiles) <= maxSpan) {
+      if (relaysLinked(a, b)) {
         adj[i].push(j);
         adj[j].push(i);
       }
@@ -203,7 +209,6 @@ function attachBuildingsToRelays(
   colonyIndex: number,
   relayNodes: RelayNode[],
   components: PowerGraphComponent[],
-  attachRadius: number,
   hasHub: boolean,
 ): {
   componentByBuildingId: Map<number, number>;
@@ -253,17 +258,11 @@ function attachBuildingsToRelays(
     let bestDist = Infinity;
 
     for (const rNode of relayNodes) {
+      if (!touchesZone(rNode, bTiles)) continue;
       const distToFootprint = minFootprintDistance(bTiles, rNode.footprintTiles);
-      let qualifies = distToFootprint <= attachRadius;
-      if (!qualifies && rNode.kind === ENTITY_KIND.commandHub) {
-        const distToAnchor = minFootprintDistance(bTiles, [{ q: rNode.q, r: rNode.r }]);
-        if (distToAnchor <= 6) qualifies = true;
-      }
-      if (qualifies) {
-        if (distToFootprint < bestDist || (distToFootprint === bestDist && (!bestRelay || rNode.id < bestRelay.id))) {
-          bestDist = distToFootprint;
-          bestRelay = rNode;
-        }
+      if (distToFootprint < bestDist || (distToFootprint === bestDist && (!bestRelay || rNode.id < bestRelay.id))) {
+        bestDist = distToFootprint;
+        bestRelay = rNode;
       }
     }
 
@@ -282,6 +281,14 @@ function attachBuildingsToRelays(
   return { componentByBuildingId, attachedRelayByBuildingId, unattachedBuildingRows, unattachedBuildingIds };
 }
 
+/**
+ * Whether a building footprint touches `relay`'s power zone. Placement keeps every footprint tile inside the union of the
+ * zones, so a placed building touches at least one zone and is powered once that relay is built.
+ */
+function touchesZone(relay: RelayNode, tiles: readonly BuildingFootprintTile[]): boolean {
+  return tiles.some((t) => inSourceZone(relay, t.q, t.r));
+}
+
 /** Constructs the complete Power Graph v2 for `colonyIndex`. */
 export function buildPowerGraph(
   state: PlanetState,
@@ -290,11 +297,8 @@ export function buildPowerGraph(
 ): PowerGraph {
   const { relayNodes, hubAnchors, hasHub } = collectRelayNodes(state, colonyIndex, data);
   const { components, componentByRelayId } = partitionRelayComponents(relayNodes);
-  const dayCycleRow = resolvePowerRow(data, 'economyT1Basic', 'dayCycle');
-  const attachRadius = Number(dayCycleRow.pylonAttachRadius ?? 3);
-
   const { componentByBuildingId, attachedRelayByBuildingId, unattachedBuildingRows, unattachedBuildingIds } = attachBuildingsToRelays(
-    state, colonyIndex, relayNodes, components, attachRadius, hasHub,
+    state, colonyIndex, relayNodes, components, hasHub,
   );
 
   return {
@@ -326,9 +330,5 @@ export function isRowAttachedToPylons(
   const w = cols.footprintW?.[row] || defaultW;
   const d = cols.footprintD?.[row] || defaultD;
   const bTiles = getEntityFootprintTiles(cols.q[row], cols.r[row], w, d, cols.rot[row]);
-  for (const rNode of graph.relayNodes) {
-    if (minFootprintDistance(bTiles, rNode.footprintTiles) <= 3) return true;
-    if (rNode.kind === ENTITY_KIND.commandHub && minFootprintDistance(bTiles, [{ q: rNode.q, r: rNode.r }]) <= 6) return true;
-  }
-  return false;
+  return graph.relayNodes.some((rNode) => touchesZone(rNode, bTiles));
 }

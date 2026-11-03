@@ -182,7 +182,7 @@ All numbers from `docs/game/colony-economy-and-buildings-spec.md` unless marked 
 | Command Hub | T2 | 4×4 | 75 s | 600/350/200/150 | −14 | 3 800 | Claim R 15; storage +1 500 per family; supply +25 |
 | Territory Claim Beacon | T1 | 1×1 | 18 s | 80/40/0/10 | −4 | 400 | Claim R 8 |
 | Territory Claim Beacon | T2 | 2×2 | 42 s | 220/140/40/30 | −11 | 1 100 | Claim R 14; vision R 20 |
-| Power Line Pylon | T1 | 1×1 | 4 s | 15/5/0/0 | −0.5 | 120 | Span 6; max load 80 E/s (enforced, `SIM-G-PWR`, D-21) |
+| Power Pylon | T1 | 1×1 | 4 s | 15/5/0/0 | −0.5 | 120 | Power zone radius 5 (Hub 6; buildings must stand in a zone, D-37); max load 80 E/s (enforced, `SIM-G-PWR`, D-21) |
 | Energy Capacitor Bank | T1 | 2×2 | 16 s | 70/60/10/10 | −1.5 | 450 | Stores 1 500 E; discharge ≤ 30 E/s |
 | Coal/Oil Thermal Plant | T1 | 2×2 | 15 s | 80/20/20/10 | −3 | 450 **(proposed HP)** | +28 gross; consumes 1.5 `bio.biomass`/s; pollution +1 |
 | Wind Turbine | T1 | 2×2 | 14 s | 70/35/5/0 | −1 | 400 **(proposed HP)** | +16 gross × wind factor 50–140 % (storms do not change it, B13) |

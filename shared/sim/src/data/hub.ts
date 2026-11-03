@@ -29,7 +29,7 @@ export default defineTable({
       claimRadius: 10,
       storageCapPerFamily: 500,
       supplyCap: 10,
-      pylonSpan: 6,
+      powerZoneRadius: 6,
       pylonMaxLoad: 150,
       cancelRefundBp: 7500,
       hqOnly: true,

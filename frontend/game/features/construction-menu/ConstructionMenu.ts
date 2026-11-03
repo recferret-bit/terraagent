@@ -106,7 +106,6 @@ export class ConstructionMenu implements Disposable {
     };
     const s = this.ctx.services as unknown as Record<string, unknown>;
     s.setHoverTile = (q: number, r: number) => this.setHoverTile(q, r);
-    s.setPowerLineDrag = (from: { q: number; r: number }, to: { q: number; r: number }) => this.setPowerLineDrag(from, to);
     s.rotate = () => this.rotate();
     s.confirm = () => this.confirm();
     s.cancel = () => this.cancel();
@@ -127,13 +126,6 @@ export class ConstructionMenu implements Disposable {
     this.selectedBuilding = building as BuildingKind;
     this.setOpen(true);
     this.ghost.start(building);
-    this.renderCards();
-  }
-
-  setPowerLineDrag(from: { q: number; r: number }, to: { q: number; r: number }): void {
-    this.selectedBuilding = 'powerLine';
-    this.setOpen(true);
-    this.ghost.setPowerLineDrag(from, to);
     this.renderCards();
   }
 

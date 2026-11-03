@@ -3,7 +3,7 @@ import { ENTITY_KIND, hexIndex, type CompiledDataLike, type PlacementWorld, type
 import { clientDataFor } from '../../core/flags/data';
 import type { FeatureStore, GameView } from '../../core/registry/types';
 import { forEachEntity } from '../../store/replica/viewCodec';
-import { viewPlacementWorld } from '../shared/placementWorld';
+import { viewPlacementWorld, viewQueueEntries } from '../shared/placementWorld';
 
 /** A building row as the ghost reads it (label, footprint, deposit rule). */
 export interface BuildingRowMeta {
@@ -59,7 +59,6 @@ const DEFAULT_LABELS: Record<string, string> = {
   mineralsQuarry: 'Minerals Quarry',
   waterExtractor: 'Water Extractor',
   petroleumWell: 'Petroleum Well',
-  powerLine: 'Power Line',
 };
 
 const TWO_BY_TWO_KINDS = new Set<number>([
@@ -84,7 +83,7 @@ export function resolveBuildingMeta(data: CompiledDataLike, building: string): B
     if (row) break;
   }
   const label = typeof row?.label === 'string' ? row.label : (DEFAULT_LABELS[building] ?? building);
-  const defFp = building === 'commandHub' ? 3 : building === 'pylon' || building === 'powerLine' ? 1 : 2;
+  const defFp = building === 'commandHub' ? 3 : building === 'pylon' ? 1 : 2;
   const footprintW = typeof row?.footprintW === 'number' ? row.footprintW : defFp;
   const footprintD = typeof row?.footprintD === 'number' ? row.footprintD : defFp;
   const fallbackDep =
@@ -122,27 +121,11 @@ function markFootprintIndices(occupied: Set<number>, hIndex: { indexOf(q: number
   }
 }
 
-interface QueuedBuildLike {
-  state?: string;
-  task?: {
-    kind?: string;
-    building?: string;
-    q?: number;
-    r?: number;
-    rotation?: number;
-    tiles?: Array<{ q: number; r: number }>;
-  };
-}
 
 function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexOf(q: number, r: number): number }): Set<number> {
   const occupied = new Set<number>();
   if (!view) return occupied;
-  const v = view as {
-    entities?: Float32Array | readonly ViewEntity[];
-    count?: number;
-    colonies?: Array<{ queue?: QueuedBuildLike[]; constructionQueue?: QueuedBuildLike[] }>;
-    blobs?: { queue?: { entries?: QueuedBuildLike[]; value?: { entries?: QueuedBuildLike[] } } };
-  };
+  const v = view as { entities?: Float32Array | readonly ViewEntity[]; count?: number };
   // Occupancy comes from the buildings themselves; the `anchors` tile layer is the territory claim count, not "occupied".
   if (v.entities) {
     forEachEntity(v.entities, v.count, (e) => {
@@ -153,20 +136,12 @@ function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexO
       if (size > 0) markFootprintIndices(occupied, hIndex, e.q, e.r, size, size, e.rot);
     });
   }
-  const fromColonies = (v.colonies ?? []).flatMap((c) => c?.constructionQueue ?? c?.queue ?? []); // every seat's pending site, not colony 0's
-  const qList = fromColonies.length > 0 ? fromColonies : v.blobs?.queue?.entries ?? v.blobs?.queue?.value?.entries ?? [];
-  for (const entry of qList) {
+  for (const entry of viewQueueEntries(view)) {
     if (!entry || entry.state === 'done' || entry.state === 'cancelled') continue;
     const t = entry.task;
     if (t?.kind === 'build' && typeof t.q === 'number' && typeof t.r === 'number') {
       const sz = t.building === 'commandHub' ? 3 : t.building === 'pylon' ? 1 : 2;
       markFootprintIndices(occupied, hIndex, t.q, t.r, sz, sz, t.rotation ?? 0);
-    } else if (t?.kind === 'powerLine' && Array.isArray(t.tiles)) {
-      for (const tile of t.tiles) {
-        if (tile && typeof tile.q === 'number' && typeof tile.r === 'number') {
-          markFootprintIndices(occupied, hIndex, tile.q, tile.r, 1, 1, 0);
-        }
-      }
     }
   }
   return occupied;

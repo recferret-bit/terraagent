@@ -1,15 +1,19 @@
 // @vitest-environment jsdom
-import { DEPOSIT, hexCount, hexDistance, hexIndex } from '@terra/sim';
+import { DEPOSIT, ENTITY_KIND, ENTITY_STATE, hexCount, hexIndex, type ViewEntity } from '@terra/sim';
 import { describe, expect, it, vi } from 'vitest';
 import type { FeatureContext, GameView } from '../../core/registry/types';
 import { buildConstructionCatalog } from './catalog';
 import { ConstructionMenu } from './ConstructionMenu';
-import { evaluatePlacementGhost, planPowerLinePylonSites } from './PlacementGhost';
+import { evaluatePlacementGhost } from './PlacementGhost';
 
 const W02_FLAGS = new Set(['W00', 'W01', 'W02']);
 const W03_FLAGS = new Set(['W00', 'W01', 'W02', 'W03']);
 
-function createPlanetView(radius = 20) {
+/** A built Command Hub of colony 0 at `(q, r)` as a view entity (its power zone, radius 6, holds the test sites). */
+const hubAt = (q: number, r: number): ViewEntity =>
+  ({ id: 1, kind: ENTITY_KIND.commandHub, owner: 0, q, r, hp: 1500, hpMax: 1500, state: ENTITY_STATE.idle }) as unknown as ViewEntity;
+
+function createPlanetView(radius = 20, entities: ViewEntity[] = []) {
   const count = hexCount(radius);
   const terrain = new Uint8Array(count);
   const prep = new Uint8Array(count);
@@ -23,6 +27,8 @@ function createPlanetView(radius = 20) {
     view: {
       planet: { id: 'test-w03', type: 'temperate' as const, radius },
       tiles: { count, terrain, prep, deposit, height, owner },
+      entities,
+      count: entities.length,
     } as unknown as GameView,
     setTile(q: number, r: number, patch: { terrain?: number; prep?: number; deposit?: number; owner?: number }) {
       const idx = hexIndex(radius).indexOf(q, r);
@@ -37,7 +43,7 @@ function createPlanetView(radius = 20) {
 }
 
 describe('W03-17 Construction catalog & deposit ghost rules', () => {
-  it('includes all 8 W03 grid buildings and the Power Line drag tool when W03 is active, and hides them under ..02', () => {
+  it('includes all 8 W03 grid buildings (one Power Pylon card, no separate power-line tool) when W03 is active, and hides them under ..02', () => {
     const w02Cards = buildConstructionCatalog(W02_FLAGS);
     expect(w02Cards.map((c) => c.building)).toEqual(['commandHub', 'metalsExtractor', 'solar']);
 
@@ -54,18 +60,17 @@ describe('W03-17 Construction catalog & deposit ghost rules', () => {
       'mineralsQuarry',
       'waterExtractor',
       'petroleumWell',
-      'powerLine',
     ]);
 
     const capCard = w03Cards.find((c) => c.building === 'capacitor')!;
     expect(capCard.powerText).toBe('−1.5 E/s · 1500 E');
-    const lineCard = w03Cards.find((c) => c.building === 'powerLine')!;
-    expect(lineCard.footprintText).toBe('Chain (≤6 span)');
-    expect(lineCard.cost).toEqual({ 'metals.t1': 15, 'minerals.t1': 5, 'bio.biomass': 0, 'bio.water': 0 });
+    const pylonCard = w03Cards.find((c) => c.building === 'pylon')!;
+    expect(pylonCard.label).toBe('Power Pylon');
+    expect(pylonCard.cost).toEqual({ 'metals.t1': 15, 'minerals.t1': 5, 'bio.biomass': 0, 'bio.water': 0 });
   });
 
   it('validates Minerals Quarry (minerals deposit) and Petroleum Well (oil deposit) on the ghost', () => {
-    const { view, setTile, hIndex } = createPlanetView(6);
+    const { view, setTile, hIndex } = createPlanetView(6, [hubAt(0, -2)]);
 
     const quarryOff = evaluatePlacementGhost({
       building: 'mineralsQuarry',
@@ -116,54 +121,40 @@ describe('W03-17 Construction catalog & deposit ghost rules', () => {
   });
 });
 
-describe('W03-17 Power-line drag tool', () => {
-  it('dragging across 15 tiles previews 3 auto-spaced pylons (span <= 6) and total cost, and confirm sends placePowerLine', () => {
-    const sites = planPowerLinePylonSites({ q: 0, r: 0 }, { q: 15, r: 0 });
-    expect(sites).toEqual([
-      { q: 5, r: 0 },
-      { q: 10, r: 0 },
-      { q: 15, r: 0 },
-    ]);
-    expect(hexDistance(0, 0, sites[0].q, sites[0].r)).toBeLessThanOrEqual(6);
-    expect(hexDistance(sites[0].q, sites[0].r, sites[1].q, sites[1].r)).toBeLessThanOrEqual(6);
-    expect(hexDistance(sites[1].q, sites[1].r, sites[2].q, sites[2].r)).toBeLessThanOrEqual(6);
+describe('Power Pylon placement (Protoss-style power zone)', () => {
+  const ghostAt = (view: GameView, building: string, q: number, r: number) =>
+    evaluatePlacementGhost({ building, q, r, rotation: 0, flags: W03_FLAGS, view });
 
-    const { view } = createPlanetView(20);
-    const parentEl = document.createElement('div');
+  it('rejects a building outside the Hub zone, accepts it inside, and a queued pylon extends the zone', () => {
+    const { view } = createPlanetView(20, [hubAt(0, 0)]);
+    const out = ghostAt(view, 'solar', 9, 0);
+    expect(out.valid).toBe(false);
+    expect(out.reason).toBe('outside the power zone');
+    expect(ghostAt(view, 'solar', 3, -3).valid).toBe(true);
+    expect(ghostAt(view, 'pylon', 6, 0).valid).toBe(true);
+    expect(ghostAt(view, 'pylon', 7, 0).valid).toBe(false);
+
+    // a Power Pylon order at (6, 0) (not started yet) already counts: (9, 0) is inside its radius-5 zone
+    (view as unknown as { colonies: unknown[] }).colonies = [
+      { index: 0, constructionQueue: [{ colonyIndex: 0, state: 'waiting', task: { kind: 'build', building: 'pylon', q: 6, r: 0 } }] },
+    ];
+    expect(ghostAt(view, 'solar', 9, 0).valid).toBe(true);
+  });
+
+  it('the Power Pylon card arms a single-pylon ghost and confirm sends one enqueueTask build order', () => {
+    const { view } = createPlanetView(20, [hubAt(0, 0)]);
     const sendCommand = vi.fn().mockResolvedValue({ ok: true, appliedAtTick: 1 });
-    const ctx = {
-      flags: W03_FLAGS,
-      host: 'server' as const,
-      services: { sendCommand, track: vi.fn() },
-    } as unknown as FeatureContext;
-
-    const menu = new ConstructionMenu(parentEl, ctx, view);
-    menu.setPowerLineDrag({ q: 0, r: 0 }, { q: 15, r: 0 });
-
+    const ctx = { flags: W03_FLAGS, host: 'server' as const, services: { sendCommand, track: vi.fn() } } as unknown as FeatureContext;
+    const menu = new ConstructionMenu(document.createElement('div'), ctx, view);
+    menu.startPlacement('pylon');
+    menu.setHoverTile(4, -2);
     const ghostState = menu.getGhostState();
-    expect(ghostState).not.toBeNull();
-    expect(ghostState?.building).toBe('powerLine');
+    expect(ghostState?.building).toBe('pylon');
+    expect(ghostState?.label).toBe('Power Pylon');
     expect(ghostState?.valid).toBe(true);
-    expect(ghostState?.pylonSites).toEqual([
-      { q: 5, r: 0 },
-      { q: 10, r: 0 },
-      { q: 15, r: 0 },
-    ]);
-    expect(ghostState?.tiles).toHaveLength(3);
-    expect(ghostState?.totalCost).toEqual({ 'metals.t1': 45, 'minerals.t1': 15 });
-    expect(ghostState?.costText).toBe('Cost: 45 Metals, 15 Minerals (3× Pylon)');
-    expect(ghostState?.prepBillText).toContain('Cost: 45 Metals, 15 Minerals (3× Pylon)');
-
+    expect(ghostState?.tiles).toHaveLength(1);
     expect(menu.confirm()).toBe(true);
-    expect(sendCommand).toHaveBeenCalledWith('placePowerLine', {
-      tiles: [
-        { q: 5, r: 0 },
-        { q: 10, r: 0 },
-        { q: 15, r: 0 },
-      ],
-      tier: 1,
-    });
-
+    expect(sendCommand).toHaveBeenCalledWith('enqueueTask', { task: { kind: 'build', building: 'pylon', q: 4, r: -2, rotation: 0 } });
     menu.dispose();
   });
 });

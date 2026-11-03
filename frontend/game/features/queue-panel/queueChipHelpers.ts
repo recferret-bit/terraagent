@@ -6,7 +6,7 @@ export const TASK_TITLES: Readonly<Record<string, string>> = {
   metalsExtractor: 'Metals Extractor T1',
   commandHub: 'Command Hub T1',
   harvester: 'Harvester',
-  pylon: 'Power Line Pylon T1',
+  pylon: 'Power Pylon T1',
   capacitor: 'Capacitor Bank T1',
   wind: 'Wind Turbine T1',
   thermal: 'Thermal Plant T1',
@@ -65,10 +65,6 @@ export function resolveChipTitleAndIcon(entry: QueueEntry): { title: string; ico
   if (task.kind === 'buildUnit') {
     const key = task.unit;
     return { title: TASK_TITLES[key] ?? key, icon: TASK_ICONS[key] ?? '⚙' };
-  }
-  if (task.kind === 'powerLine') {
-    const count = Array.isArray(task.tiles) ? task.tiles.length : 1;
-    return { title: `Power Line (${count}× Pylon)`, icon: '⚡' };
   }
   if (task.kind === 'repair') {
     return { title: `Repair #${task.entityId}`, icon: '🔧' };

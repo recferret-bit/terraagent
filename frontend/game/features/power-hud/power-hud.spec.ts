@@ -353,7 +353,7 @@ describe('PowerHud - pylon load and overload display', () => {
     expect(banner.textContent).toContain('POWER OVERLOAD');
 
     const inspector = mockParent.querySelector('.ta-building-inspector')!;
-    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Power Line Pylon');
+    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Power Pylon');
     expect(inspector.querySelector('.ta-building-inspector__load')?.textContent).toBe('95 / 80 E/s');
     expect(inspector.querySelector('.ta-building-inspector__state')?.textContent).toBe('OVERLOAD');
     expect(inspector.getAttribute('data-overload')).toBe('true');

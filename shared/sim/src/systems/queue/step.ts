@@ -8,7 +8,6 @@ import { payProgressiveSlice } from '../economy/ledger';
 import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge } from '../factories-hub';
 import { getWorkJobsMap } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
-import { followPowerLineEntry } from './powerLine';
 import type { QueueEntry } from './types';
 import { computeResourceWaitState } from './wait';
 
@@ -118,10 +117,6 @@ function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: 
 
 /** Advances one `in_progress` entry by `ctx.dt`: pays its next slice (or waits on resources) and completes it. */
 export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
-  if (entry.task.kind === 'powerLine' && (entry.subEntityIds?.length || entry.task.subEntityIds?.length)) {
-    followPowerLineEntry(state, entry, (s, job, r) => BUILD_WAIT_DETAIL[r](s, job));
-    return;
-  }
   if (entry.task.kind === 'build' && entry.entityId !== undefined) {
     followBuildEntry(state, entry as QueueEntry & { entityId: number });
     return;

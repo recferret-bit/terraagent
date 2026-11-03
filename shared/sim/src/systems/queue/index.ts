@@ -35,11 +35,6 @@ import {
   updateColonyEarmarks,
 } from './earmarks';
 import {
-  type PlacePowerLineCommandArgs,
-  resolvePowerLineTiles,
-  startPowerLineConstruction,
-} from './powerLine';
-import {
   computeResourceWaitState,
   enqueueAuthority,
   findOldestAutoIndex,
@@ -57,11 +52,10 @@ import {
 export * from './types';
 export * from './wait';
 export * from './earmarks';
-export * from './powerLine';
 export { CANCEL_IN_PROGRESS_REFUND_RATIO };
 
 /** `startBuildingConstruction` codes that mean the site (not the stock) holds the entry back. */
-const SITE_CODES: ReadonlySet<string> = new Set(['site_blocked', 'terrain_unbuildable', 'not_own_territory', 'invalid_args']);
+const SITE_CODES: ReadonlySet<string> = new Set(['site_blocked', 'terrain_unbuildable', 'not_own_territory', 'outside_power_zone', 'invalid_args']);
 
 export function getColonyQueue(state: PlanetState, colonyIndex = 0, lane?: QueueLane): QueueEntry[] {
   const all = getAllQueueEntries(state).filter(
@@ -79,7 +73,6 @@ export function getAllQueueEntries(state: PlanetState): QueueEntry[] {
         totalCost: e.totalCost ? { ...e.totalCost } : { ...e.cost },
         spentCost: e.spentCost ? { ...e.spentCost } : {},
         earmarked: e.earmarked ? { ...e.earmarked } : undefined,
-        subEntityIds: e.subEntityIds ? [...e.subEntityIds] : undefined,
       }))
     : [];
 }
@@ -180,14 +173,6 @@ function tryStartQueueEntry(
       return;
     }
     entry.entityId = started.entityId;
-  } else if (entry.task.kind === 'powerLine' && (!entry.subEntityIds || entry.subEntityIds.length === 0)) {
-    const started = startPowerLineConstruction(state, entry, tick, data, ctx);
-    if (!started.ok) {
-      const reason = SITE_CODES.has(started.code) ? 'site' : started.code === 'storage_cap' ? 'storage' : 'resources';
-      const detail = reason === 'site' && started.detail ? `waiting: site (${started.detail})` : `waiting: ${reason}`;
-      markWaiting(entry, reason, detail, null, tick);
-      return;
-    }
   } else if (entry.task.kind === 'repair') {
     const started = enqueueRepairForEntity(state, entry.colonyIndex, entry.task.entityId, {
       taskId: entry.taskId,
@@ -431,34 +416,6 @@ export const reorderTaskHandler = defineCommandHandler({
   },
 });
 
-export const placePowerLineHandler = defineCommandHandler({
-  kind: 'placePowerLine',
-  wave: 'W03',
-  handle(state, cmd, ctx) {
-    const args = (cmd.args ?? {}) as PlacePowerLineCommandArgs;
-    const colIdx = commandColony(cmd);
-    if (typeof colIdx === 'string') return colIdx;
-    const tiles = resolvePowerLineTiles(state, args, ctx.data);
-    if (!tiles || tiles.length === 0) return 'invalid_args';
-    for (const tile of tiles) {
-      const site = buildSiteReject(state, colIdx, { building: 'pylon', q: tile.q, r: tile.r }, ctx.data);
-      if (site) return { code: site.code, detail: site.detail };
-    }
-    const res = enqueueQueueTask(
-      state,
-      {
-        colonyIndex: colIdx,
-        task: { kind: 'powerLine', tiles, tier: args.tier ?? 1 },
-        taskId: args.taskId ?? cmd.commandId,
-        tick: ctx.tick,
-        data: ctx.data,
-      },
-      ctx,
-    );
-    return res.ok ? undefined : { code: res.code, detail: res.detail };
-  },
-});
-
 export const queueSystem = defineSystem({
   id: 'queue.manager',
   slot: 4,
@@ -484,5 +441,5 @@ export default defineSimModule({
   id: 'queue',
   wave: 'W02',
   systems: [queueSystem],
-  handlers: [reorderTaskHandler, placePowerLineHandler],
+  handlers: [reorderTaskHandler],
 });

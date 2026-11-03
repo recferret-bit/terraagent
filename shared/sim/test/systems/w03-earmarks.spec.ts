@@ -3,18 +3,13 @@ import { parseWaves } from '@terra/contracts';
 import {
   DEFAULT_EARMARK_AFTER_TICKS,
   DEFAULT_EARMARK_CAP_RATIO,
-  ENTITY_KIND,
-  ENTITY_STATE,
-  PREP,
-  TERRAIN,
   createRegistryPipeline,
   createState,
   creditResource,
   enqueueQueueTask,
   ensureColonyLedger,
   getColonyQueue,
-  indexOf,
-  insertRow,
+  startBuildingConstruction,
   step,
 } from '../../src';
 
@@ -36,6 +31,8 @@ describe('W03-13 Earmarks — 60s starvation earmark & Harvester drain protectio
   it('queue a 200-Minerals building at 40 Minerals, keep queueing 15-Minerals Harvesters -> after 60 s it earmarks 160 Minerals and eventually starts', () => {
     const { state, colony } = setupColony('p-earmark-accept');
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
+    // a Command Hub whose power zone (radius 6) holds the Solar site at (2, 1)
+    expect(startBuildingConstruction(state, { owner: 0, building: 'commandHub', q: 2, r: -2, instant: true, costOverride: {}, tick: 0 }).ok).toBe(true);
 
     expect(DEFAULT_EARMARK_AFTER_TICKS).toBe(300);
     expect(DEFAULT_EARMARK_CAP_RATIO).toBe(0.8);
@@ -138,56 +135,5 @@ describe('W03-13 Earmarks — 80% storage cap clamp & waiting(storage) non-earma
     expect(starved480?.waitReason).toBe('resources');
     expect(starved480?.earmarked).toEqual({ 'minerals.t1': 400 });
     expect((colony as { earmarks?: Record<string, number> }).earmarks).toEqual({ 'minerals.t1': 400 });
-  });
-});
-
-describe('W03-13 placePowerLine command & multi-pylon construction entry', () => {
-  it('enqueues a single powerLine construction entry with subEntityIds and completes when pylons finish', () => {
-    const { state, colony } = setupColony('p-powerline');
-    const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
-
-    // Claim and prepare territory around (1,0) and (4,0)
-    for (let q = -2; q <= 6; q++) {
-      for (let r = -2; r <= 2; r++) {
-        const idx = indexOf(state.grid.radius, q, r);
-        if (idx >= 0) {
-          state.grid.layers.owner[idx] = 0;
-          state.grid.layers.terrain[idx] = TERRAIN.flat;
-          state.grid.layers.prep[idx] = PREP.prepared;
-        }
-      }
-    }
-
-    const hqRow = insertRow(state.entities, 1, 0);
-    state.entities.cols.kind[hqRow] = ENTITY_KIND.hq;
-    state.entities.cols.owner[hqRow] = 0;
-    state.entities.cols.hp[hqRow] = 900;
-    state.entities.cols.state[hqRow] = ENTITY_STATE.idle;
-
-    creditResource(colony, 'metals.t1', 200, 0);
-    creditResource(colony, 'minerals.t1', 200, 0);
-
-    // Hop > span (6) is rejected
-    const badRes = step(
-      state,
-      [{ commandId: 'pl-bad', colonyIndex: 0, source: 'player', kind: 'placePowerLine', args: { tiles: [{ q: 0, r: 0 }, { q: 8, r: 0 }] } }],
-      1,
-      pipeline,
-    );
-    expect(badRes.outcomes[0].code).toBe('invalid_args');
-
-    // Valid 2-pylon line (hop = 3 <= 6)
-    const okRes = step(
-      state,
-      [{ commandId: 'pl-ok', colonyIndex: 0, source: 'player', kind: 'placePowerLine', args: { taskId: 'line-2', tiles: [{ q: 1, r: 0 }, { q: 4, r: 0 }] } }],
-      1,
-      pipeline,
-    );
-    expect(okRes.outcomes[0].code).toBeUndefined();
-
-    const lineEntry = getColonyQueue(state, 0, 'construction').find((e) => e.taskId === 'line-2');
-    expect(lineEntry).toBeDefined();
-    expect(lineEntry?.cost).toEqual({ 'metals.t1': 30, 'minerals.t1': 10 });
-    expect(lineEntry?.subEntityIds).toHaveLength(2);
   });
 });

@@ -52,10 +52,10 @@ describe('W03-12 Four lanes in sim — lane routing & HQ-goal shell', () => {
       taskId: 'c-build',
       task: { kind: 'build', building: 'solar', q: 2, r: 0 },
     });
-    const cPowerLine = enqueueQueueTask(state, {
+    const cPylon = enqueueQueueTask(state, {
       colonyIndex: 0,
-      taskId: 'c-line',
-      task: { kind: 'powerLine', tiles: [{ q: 3, r: 0 }, { q: 4, r: 0 }] },
+      taskId: 'c-pylon',
+      task: { kind: 'build', building: 'pylon', q: 4, r: 0 },
     });
     const cRepair = enqueueQueueTask(state, {
       colonyIndex: 0,
@@ -80,14 +80,14 @@ describe('W03-12 Four lanes in sim — lane routing & HQ-goal shell', () => {
     });
 
     expect(cBuild.ok && cBuild.entry.lane).toBe('construction');
-    expect(cPowerLine.ok && cPowerLine.entry.lane).toBe('construction');
+    expect(cPylon.ok && cPylon.entry.lane).toBe('construction');
     expect(cRepair.ok && cRepair.entry.lane).toBe('construction');
     expect(tfEntry.ok && tfEntry.entry.lane).toBe('terraform');
     expect(uBuilder.ok && uBuilder.entry.lane).toBe('units');
     expect(uBuilder.ok && uBuilder.entry.cost).toEqual({ 'metals.t1': 45, 'minerals.t1': 25, 'bio.biomass': 10 });
     expect(gGoal.ok && gGoal.entry.lane).toBe('hqGoals');
 
-    expect(getColonyQueue(state, 0, 'construction').map((e) => e.taskId)).toEqual(['c-build', 'c-line', 'c-repair']);
+    expect(getColonyQueue(state, 0, 'construction').map((e) => e.taskId)).toEqual(['c-build', 'c-pylon', 'c-repair']);
     expect(getColonyQueue(state, 0, 'terraform').map((e) => e.taskId)).toEqual(['tf-grade']);
     expect(getColonyQueue(state, 0, 'units').map((e) => e.taskId)).toEqual(['u-builder']);
     expect(getColonyQueue(state, 0, 'hqGoals').map((e) => e.taskId)).toEqual(['g-power']);

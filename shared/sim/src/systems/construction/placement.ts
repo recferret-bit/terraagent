@@ -6,6 +6,7 @@ import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { resolveHubT1Row, resolveStartingKitRow, rowNum } from '../rows';
+import { inPowerZone, placementPowerZoneSources, powerZoneActive, type PowerZoneSource } from './powerZone';
 import { planPrepJobs, summarizePrepJobs } from './prep';
 
 export { resolveHubT1Row } from '../rows';
@@ -41,6 +42,8 @@ export interface PlacementWorld {
   height?: ArrayLike<number> | null;
   valid?: ArrayLike<number> | null;
   entities: readonly PlacementEntity[];
+  /** Open build orders without a site entity yet (a queued Power Pylon already extends the power zone, `powerZone.ts`). */
+  plannedSites?: ReadonlyArray<{ owner: number; building: string; q: number; r: number }>;
 }
 
 /** Per-building placement rule (balance rows supply the numbers; the geo part is fixed per building class). */
@@ -59,7 +62,7 @@ export interface PlacementRule {
 /** Why a placement fails; maps 1:1 to a protocol `RejectCode` and a UI text. */
 export type PlacementBlock =
   | GeoBlock | 'uneven' | 'outOfMap' | 'foreign' | 'unclaimed' | 'occupied' | 'hubExists' | 'noBuilder' | 'builderBusy'
-  | 'tierLocked' | 'badArgs' | 'unknownBuilding' | 'farFromLanding' | 'nearOtherColony';
+  | 'tierLocked' | 'badArgs' | 'unknownBuilding' | 'farFromLanding' | 'nearOtherColony' | 'outsidePowerZone';
 
 export interface PlacementTile {
   q: number;
@@ -116,6 +119,7 @@ const BLOCK_CODE: Readonly<Record<PlacementBlock, RejectCode>> = {
   foreign: 'not_own_territory', unclaimed: 'not_own_territory',
   noBuilder: 'worker_tier_locked', builderBusy: 'worker_tier_locked', tierLocked: 'tier_locked', badArgs: 'invalid_args',
   unknownBuilding: 'invalid_args', farFromLanding: 'site_blocked', nearOtherColony: 'site_blocked',
+  outsidePowerZone: 'outside_power_zone',
 };
 
 const BLOCK_TEXT: Readonly<Record<PlacementBlock, string>> = {
@@ -124,10 +128,11 @@ const BLOCK_TEXT: Readonly<Record<PlacementBlock, string>> = {
   occupied: 'another building is here', hubExists: 'hub already exists', noBuilder: 'requires HQ',
   builderBusy: 'builder unavailable', tierLocked: 'tier locked', badArgs: 'invalid site', unknownBuilding: 'unknown building',
   farFromLanding: 'too far from your landing', nearOtherColony: 'closer to another colony',
+  outsidePowerZone: 'outside the power zone',
 };
 
 /** Tile-level failures, most important first: the footprint's reason is the highest-ranked one among its tiles. */
-const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclaimed', 'occupied', 'water', 'ridge', 'trees', 'rock', 'slope', 'hole', 'uneven', 'deposit', 'noDeposit'];
+const TILE_PRIORITY: readonly PlacementBlock[] = ['outOfMap', 'foreign', 'unclaimed', 'outsidePowerZone', 'occupied', 'water', 'ridge', 'trees', 'rock', 'slope', 'hole', 'uneven', 'deposit', 'noDeposit'];
 
 export const placementRejectCode = (b: PlacementBlock): RejectCode => BLOCK_CODE[b];
 export const placementBlockText = (b: PlacementBlock): string => BLOCK_TEXT[b];
@@ -264,7 +269,15 @@ function occupiedTiles(world: PlacementWorld, data?: CompiledDataLike): Set<numb
   return out;
 }
 
-function evaluateTile(world: PlacementWorld, rule: PlacementRule, colonyId: number, occupied: Set<number>, q: number, r: number, tileIdx: number): PlacementTile {
+/** What every footprint tile is judged against: the colony, the occupied tiles and the power zone (`null`: no zone rule). */
+interface TileContext {
+  colonyId: number;
+  occupied: Set<number>;
+  zone: readonly PowerZoneSource[] | null;
+}
+
+function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileContext, q: number, r: number, tileIdx: number): PlacementTile {
+  const { colonyId, occupied, zone } = ctx;
   const inMap = tileIdx >= 0 && tileIdx < world.tileCount && (!world.valid || world.valid[tileIdx] !== 0);
   if (!inMap) return { q, r, tileIdx, terrain: -1, prep: -1, deposit: 0, owner: -1, prepared: false, ok: false, block: 'outOfMap' };
   const terrain = world.terrain[tileIdx], prep = world.prep[tileIdx], owner = world.owner[tileIdx];
@@ -273,6 +286,7 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, colonyId: numb
   let block: PlacementBlock | null;
   if (owner >= 0 && owner !== colonyId) block = 'foreign';
   else if (owner < 0 && !rule.allowUnclaimed) block = 'unclaimed';
+  else if (zone && !inPowerZone(zone, q, r)) block = 'outsidePowerZone';
   else if (occupied.has(tileIdx)) block = 'occupied';
   else {
     const isDepleted = deposit !== 0 && world.richness != null && Number(world.richness[tileIdx] ?? 0) <= 0;
@@ -354,8 +368,9 @@ const fail = (block: PlacementBlock, tiles: PlacementTile[], bill: PlacementBill
 
 /**
  * Validates placing `opts.building` with its footprint centred at `(q, r)` for `opts.colonyId` (`UO-TF-01/05`, `UO-L-03`).
- * Every footprint tile must be inside the map, owned by the colony (or unclaimed when the rule allows it), free of other
- * buildings and geo-buildable: Flat ground, no trees / rock (terraform first), no water, slope, hole, ridge or deposit.
+ * Every footprint tile must be inside the map, owned by the colony (or unclaimed when the rule allows it), inside the
+ * colony's power zone (every building but the Command Hub, from W03 on: `powerZone.ts`), free of other buildings and
+ * geo-buildable: Flat ground, no trees / rock (terraform first), no water, slope, hole, ridge or deposit.
  */
 export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacementOpts): PlacementResult {
   const rule = resolvePlacementRule(opts.building, opts.data);
@@ -367,8 +382,9 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   if (tier !== undefined && tier > 1) return fail('tierLocked', [], empty);
 
   const idx = hexIndex(world.radius);
-  const occupied = occupiedTiles(world, opts.data);
-  const tiles = getBuildingFootprintTiles(q, r, rule.footprint).map((p) => evaluateTile(world, rule, colonyId, occupied, p.q, p.r, idx.indexOf(p.q, p.r)));
+  const zone = !rule.isHub && powerZoneActive(opts.data) ? placementPowerZoneSources(world, colonyId, opts.data) : null;
+  const ctx: TileContext = { colonyId, occupied: occupiedTiles(world, opts.data), zone };
+  const tiles = getBuildingFootprintTiles(q, r, rule.footprint).map((p) => evaluateTile(world, rule, ctx, p.q, p.r, idx.indexOf(p.q, p.r)));
   const bill = billFor(tiles, opts.data);
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
   if (footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);

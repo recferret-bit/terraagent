@@ -15,8 +15,7 @@ export type BuildingKind =
   | 'supplyDepot'
   | 'mineralsQuarry'
   | 'waterExtractor'
-  | 'petroleumWell'
-  | 'powerLine';
+  | 'petroleumWell';
 
 export interface BuildingCardModel {
   id: string;
@@ -59,7 +58,6 @@ const LABELS: Record<string, string> = {
   mineralsQuarry: 'Minerals Quarry',
   waterExtractor: 'Water Extractor',
   petroleumWell: 'Petroleum Well',
-  powerLine: 'Power Line',
 };
 
 function formatPower(row: Record<string, unknown>): string {
@@ -203,26 +201,6 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
     const gridBuildingRows = Object.values(gridTable).filter((r) => r.kind === 'building');
     for (const row of gridBuildingRows) {
       cards.push(makeCard(row as Record<string, unknown>, view));
-    }
-    const pylonRow = gridTable['pylon'] as Record<string, unknown> | undefined;
-    if (pylonRow) {
-      const pylonCost = (pylonRow.cost as Record<string, number>) ?? { 'metals.t1': 15, 'minerals.t1': 5 };
-      const insufficient = hasInsufficientStock(pylonCost, view);
-      cards.push({
-        id: 'powerLine',
-        building: 'powerLine',
-        label: 'Power Line',
-        tier: 1,
-        footprintW: 1,
-        footprintD: 1,
-        footprintText: 'Chain (≤6 span)',
-        designBuildS: 4,
-        hqBuildS: 2.7,
-        cost: pylonCost,
-        powerText: '−0.5 E/s / pylon',
-        disabled: insufficient,
-        disabledReason: insufficient ? 'Insufficient resources' : undefined,
-      });
     }
   }
 

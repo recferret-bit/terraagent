@@ -123,7 +123,7 @@ describe('W03-19: QueuePanel v2 earmarks and Build Depot button', () => {
     panel.dispose();
   });
 
-  it('preserves greyed storage hint div when W03 flag is off (..02) and formats powerLine/repair titles', () => {
+  it('preserves greyed storage hint div when W03 flag is off (..02) and formats Power Pylon / repair titles', () => {
     const panelW02 = new QueuePanel(host, makeCtx('..02'));
     panelW02.setEntries([makeQueueEntry({ taskId: 'w02_wait', state: 'waiting', waitReason: 'storage' })]);
     const hintDiv = panelW02.root.querySelector('[data-testid="queue-storage-hint"]');
@@ -133,10 +133,10 @@ describe('W03-19: QueuePanel v2 earmarks and Build Depot button', () => {
 
     const panelW03 = new QueuePanel(host, makeCtx('..03'));
     panelW03.setEntries([
-      makeQueueEntry({ taskId: 'pl_1', task: { kind: 'powerLine', tiles: [{ q: 0, r: 0 }, { q: 1, r: 0 }, { q: 2, r: 0 }] } }),
+      makeQueueEntry({ taskId: 'pl_1', task: { kind: 'build', building: 'pylon', q: 3, r: -1 } }),
       makeQueueEntry({ taskId: 'rep_1', task: { kind: 'repair', entityId: 42 } }),
     ]);
-    expect(panelW03.root.textContent).toContain('Power Line (3× Pylon)');
+    expect(panelW03.root.textContent).toContain('Power Pylon T1');
     expect(panelW03.root.textContent).toContain('Repair #42');
     panelW03.dispose();
   });

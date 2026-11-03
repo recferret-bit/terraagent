@@ -21,11 +21,11 @@ describe('W03-01 data rows: grid table (Builder + 8 W03 buildings + queueConfig)
     expect(builder.powerDrainPerS).toBe(2.0);
     expect(builder.hp).toBe(150);
 
-    // Pylon T1 (4s -> 20 ticks, span 6, maxLoadPerS 80)
+    // Pylon T1 (4s -> 20 ticks, power zone radius 5 (Hub 6), maxLoadPerS 80)
     const pylon = dataRow(compiled, 'grid', 'pylon');
     expect(pylon.buildS).toBe(20);
-    expect(pylon.span).toBe(6);
-    expect(pylon.attachRadius).toBe(3);
+    expect(pylon.powerZoneRadius).toBe(5);
+    expect(dataRow(compiled, 'hub', 't1').powerZoneRadius).toBe(6);
     expect(pylon.maxLoadPerS).toBe(80);
     expect(pylon.shedGroup).toBe(4);
 
