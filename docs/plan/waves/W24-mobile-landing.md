@@ -6,6 +6,8 @@
 >
 > **Already exists (live landing, 2026-10-30):** the hero is the real orbit stage (`frontend/landing/hero/HeroStage.ts`) loaded by a dynamic `import()` after the light sections; `StageHost` pauses it off-screen (IntersectionObserver) and renders one still frame under reduced motion; a WebGL failure adds `.is-fallback`; Canvas2D hex colony, planet cards, resource viewer, roadmap, road-to-market board and FAQ; `liveStats.ts` already polls `GET /v1/planets/stats` every 60 s; PLAY / DROP IN / LAND ON <world> CTAs link to `/play.html`; meta description and theme colour; PRIVACY / TERMS footer links (dead `#top` anchors). The orbit menu already has a `low`/`high` quality and bloom setting (`frontend/game/ui/menu.ts`). The landing rows below cover only what is missing: poster + budgets, Save-Data/no-WebGL2 fallback, the stats endpoint binding, "Resume colony", SEO/OG and legal pages, responsive QA.
 
+**Landing coordination:** [W27](./W27-planet-sectors.md) adds authoritative continent/sector/population facts to the existing landing cards and orbital picker. Share the public summary contract and coordinate `frontend/landing/` ownership; neither wave imports the other app or rebuilds its page.
+
 ## Goal
 
 1. **Phone play.** The full game is playable on a phone held in landscape:

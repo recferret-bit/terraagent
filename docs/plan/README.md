@@ -1,8 +1,9 @@
 # docs/plan — TerraAgent online build plan
 
-Plan only: the online game (server, sim, contracts, NEAR) is not built yet. What already exists is a client-only prototype in `frontend/` (landing, orbit menu, descent, colony diorama, 3D playground, kitbash archetypes; see the inventory in [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) §2 "Reuse, don't rebuild"). The waves reuse it instead of rebuilding it. Layout: D-32.
+This directory contains the product plan, not a live implementation-status board. The repository already includes the shared sim, backend and game client alongside the landing, orbital menu, descent and playground; inspect landed wave tags and code for implementation status. Waves extend those foundations. Layout: D-32.
 
-**Start with [`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md)** (2026-11-01). It is the plan: **27 product waves, 880 issues (≈ 625 agent-days)**, listed in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md), with one file per wave in [`waves/`](./waves/).
+**Start with [`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md)** (2026-11-01). It is the plan: **28 product waves, 919 issues (≈ 663 agent-days)**, listed in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md), with one file per wave in [`waves/`](./waves/).
+- **New: [W27 — Planet Atlas, Continents & Sector Streaming](./waves/W27-planet-sectors.md)** reviews W04 and plans one world per type, configurable multiplayer sectors, continent generation and bounded streaming. Depends on W04/W05/W11.
 - **Every wave ships a working app.** Each wave has a flag, a git tag, a seed scenario and its own e2e suite, so it can be tested on its own and you can go back and forward.
 - **Waves run in parallel** on five tracks after the spine (W00–W02).
 - **Each wave has its own branch and worktree** and reaches `main` only after the owner's manual check; then the worktree and branch are deleted and `main` is pushed ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7).
