@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, stripBuildingPlinth, tickArchetypeMesh } from '@terra/render/kitbash';
 import { attachEntityProjectorRig } from '@terra/render/lighting';
+import { GridCableRenderer } from '@terra/render/lighting/gridCables';
 import { WorkParticleSystem } from '@terra/render/particles';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
@@ -12,6 +13,7 @@ import { isEntityInViewFocus } from './entityFocus';
 import { MotionTrack, RenderClock } from './entityMotion';
 import { isWorldPointInColonyFov, resetColonyVisionAndLights, syncColonyVisionAndProjectors } from './entityVisionSync';
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
+import { derivePowerCableSpans } from './powerCableSpans';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { disposeObject3D, UnitHealthBars } from './unitHealthBars';
 import { archetypeForKind, isConstructibleBuilding } from './entityKinds';
@@ -81,6 +83,8 @@ export class EntityMeshes {
   readonly podTouchdown: PodTouchdownFx;
   readonly healthBars: UnitHealthBars;
   readonly workParticles: WorkParticleSystem;
+  /** Grid cables + lightning between the Hub, pylons and attached buildings (`powerCableSpans.ts`). */
+  readonly gridCables: GridCableRenderer;
   private readonly entries = new Map<number, EntityMeshRecord>();
   private selectedEntityId: number | null = null;
   private ownerColonyIndex = 0;
@@ -106,6 +110,7 @@ export class EntityMeshes {
     this.podTouchdown = new PodTouchdownFx(this.scene, playPodTouchdown);
     this.healthBars = new UnitHealthBars(this.scene);
     this.workParticles = new WorkParticleSystem(this.scene);
+    this.gridCables = new GridCableRenderer(this.scene);
     this.selectionRing = makeGroundRing(0.75, 0.95, 0xff6a13, 'selection-ring');
     this.scene.add(this.selectionRing);
     this.targetMarker = makeGroundRing(0.55, 0.75, 0x00f0ff, 'target-marker');
@@ -243,6 +248,8 @@ export class EntityMeshes {
     this.syncVisionAndForeignVisibility(terrain, tdState);
     this.healthBars.sync(this.entries.values());
     this.updateSelectionRing();
+    const ground = terrain ? (x: number, z: number) => terrain.heightAt(x, z) : undefined;
+    this.gridCables.setSpans(derivePowerCableSpans(this.entries.values(), view, this.ownerColonyIndex), ground);
   }
 
   private syncVisionAndForeignVisibility(terrain: HexTerrain | null, tdState: PodTouchdownState): void {
@@ -411,6 +418,7 @@ export class EntityMeshes {
     }
     this.workParticles.syncSites(workSites);
     this.workParticles.update(dt);
+    this.gridCables.update(realDt);
 
     this.syncVisionAndForeignVisibility(terrain, tdState);
     this.healthBars.sync(this.entries.values());
@@ -461,6 +469,7 @@ export class EntityMeshes {
     this.podTouchdown.dispose();
     this.healthBars.dispose();
     this.workParticles.dispose();
+    this.gridCables.dispose();
     for (const rec of this.entries.values()) {
       this.group.remove(rec.mesh);
       disposeObject3D(rec.mesh);

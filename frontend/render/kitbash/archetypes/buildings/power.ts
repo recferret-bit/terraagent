@@ -7,6 +7,11 @@ import { box, cyl, ball, ring, strut, cable, lamp, glow, plinth, lattice, type V
 const PI = Math.PI;
 
 // ---------------------------------------------------------------- Pylon (1x1)
+/** Crossbeams `[height, half-width]`; the grid cables hang from the `insulator cap` under each end (`gridCables`). */
+export const PYLON_CROSSBEAMS: ReadonlyArray<readonly [number, number]> = [[4.2, 0.9], [5.0, 0.6]];
+/** Drop from a crossbeam's height to the centre of its insulator cap. */
+export const PYLON_INSULATOR_DROP = 0.45;
+
 export function pylon() {
   const b = new KitbashBuilder();
   plinth(b, 2, 2);
@@ -17,13 +22,13 @@ export function pylon() {
     box(b, 'hullPrimary', [0.36, 0.48, 0.36], [s * 0.68, 0.18, s * 0.58], { r: 0.05, name: 'feeder transformer' });
   }
   // crossbeams w/ insulators
-  for (const [y, w] of [[4.2, 0.9], [5.0, 0.6]] as [number, number][]) {
+  for (const [y, w] of PYLON_CROSSBEAMS) {
     box(b, 'frameGunmetal', [w * 2 + 0.1, 0.12, 0.42], [0, y, 0], { r: 0.03, name: 'pylon crossbeam' });
     for (const s of [-1, 1]) {
       cyl(b, 'frameGunmetal', 0.035, 0.035, 0.48, [s * w, y - 0.44, 0], { seg: 6, name: 'insulator rod' });
       for (let k = 0; k < 3; k++) cyl(b, 'hullSecondary', 0.1, 0.1, 0.05, [s * w, y - 0.1 - k * 0.1, 0], { seg: 8, name: 'insulator disc' });
       // Non-emissive end cap (the grid core is the pylon's only light): the cable anchor the power lines hang from.
-      b.addPart(new THREE.SphereGeometry(0.09, 6, 5), 'hullSecondary', { name: 'insulator cap', position: [s * w, y - 0.45, 0] });
+      b.addPart(new THREE.SphereGeometry(0.09, 6, 5), 'hullSecondary', { name: 'insulator cap', position: [s * w, y - PYLON_INSULATOR_DROP, 0] });
     }
   }
   for (const s of [-1, 1]) {
