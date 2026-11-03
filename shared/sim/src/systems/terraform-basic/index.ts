@@ -3,6 +3,7 @@ import { defineCommandHandler } from '../../kernel/commands';
 import { commandColony, parseArgs } from '../command';
 import { cancelConstructionOrder, isOrderIdTaken } from '../construction';
 import { defineSimModule } from '../define';
+import { checkItemUnlockStage, resolveItemUnlockStage } from '../progression/validate';
 import { cancelQueueTask, enqueueTaskHandler, getAllQueueEntries, normalizeEnqueueArgs } from '../queue';
 import { executeDismantleAtTile, hasWorkJob, workJobsSystem } from './dismantleAndWork';
 import { cancelTerraformOrder, enqueueTerraformOrder, findTerraformOrder } from './queue';
@@ -32,6 +33,24 @@ export const enqueueTask = defineCommandHandler({
     }
     const colonyId = commandColony(cmd);
     if (typeof colonyId === 'string') return colonyId;
+    const rawTf = raw.terraform as { op?: unknown; tiles?: unknown } | undefined;
+    if (
+      cmd.source !== 'system' &&
+      (cmd.source as string) !== 'module' &&
+      rawTf &&
+      typeof rawTf === 'object' &&
+      typeof rawTf.op === 'string' &&
+      Array.isArray(rawTf.tiles) &&
+      rawTf.tiles.length > 0
+    ) {
+      const stageCheck = checkItemUnlockStage(state, colonyId, rawTf.op, ctx.flags);
+      if (!stageCheck.ok) {
+        return { code: stageCheck.code, detail: stageCheck.detail, unlocksAt: stageCheck.unlocksAt };
+      }
+      if (ctx.flags.has('W02') && resolveItemUnlockStage(rawTf.op) >= 2 && rawTf.op !== 'dismantle') {
+        return enqueueTaskHandler.handle(state, cmd, ctx);
+      }
+    }
     const args = parseArgs('enqueueTask', cmd.args);
     if (!args || !('terraform' in args)) return 'invalid_args';
     const { op, tiles, entityId } = args.terraform;

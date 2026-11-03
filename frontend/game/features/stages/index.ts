@@ -1,18 +1,37 @@
 import { defineFeature, type FeatureContext, type HudPanelInstance } from '../../core/registry/types';
+import {
+  extractStageReachedData,
+  formatItemList,
+  formatItemLabel,
+  StageToast,
+  type StageToastOptions,
+} from './StageToast';
 import { StageTrackHud } from './StageTrackHud';
 import { stageDevCommands } from './devCommands';
 import './stages.css';
 
-export { formatDwellCountdown, StageTrackHud } from './StageTrackHud';
+export {
+  extractStageReachedData,
+  formatItemList,
+  formatItemLabel,
+  StageToast,
+  type StageToastOptions,
+};
+export { extractDwellRemainingSeconds, formatDwellCountdown, StageTrackHud } from './StageTrackHud';
 export { autopilotCommand, goalCommand, stageCommand, stageDevCommands } from './devCommands';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
     getStageTrackHud?: () => StageTrackHud | null;
+    showStageToast?: (stage: number, opts?: StageToastOptions) => HTMLElement | null;
   }
 }
 
 let activeHud: StageTrackHud | null = null;
+
+export function showStageToast(stage: number, opts?: StageToastOptions): HTMLElement | null {
+  return activeHud?.showStageToast(stage, opts) ?? null;
+}
 
 export function isWaveOn(ctxOrFlags?: FeatureContext | ReadonlySet<string>, wave = 'W08'): boolean {
   if (!ctxOrFlags) return true;
@@ -34,6 +53,7 @@ export function mountStageTrackHud(el: HTMLElement, ctx: FeatureContext): HudPan
   activeHud = hud;
   if (ctx.services) {
     ctx.services.getStageTrackHud = () => activeHud;
+    ctx.services.showStageToast = (stage, opts) => activeHud?.showStageToast(stage, opts) ?? null;
   }
 
   return {

@@ -22,6 +22,7 @@ import {
 } from './cancel';
 import { executeDismantleAtTile } from '../terraform-basic/dismantleAndWork';
 import { enqueueWorkOrder, type WorkOrderArgs } from '../terraform-basic/workOrder';
+import { checkItemUnlockStage } from '../progression/validate';
 import {
   PRECEDENCE_RANK,
   type QueueEntry,
@@ -376,6 +377,23 @@ export const enqueueTaskHandler = defineCommandHandler({
     if (!norm.task || typeof norm.task.kind !== 'string') return 'invalid_args';
     const colIdx = commandColony(cmd);
     if (typeof colIdx === 'string') return colIdx;
+    const { precedence, costOverride } = enqueueAuthority(cmd.source, norm); // a player never sets its own cost or jumps the queue
+    if (cmd.source !== 'system' && (cmd.source as string) !== 'module' && precedence !== 'hq') {
+      const itemId =
+        norm.task.kind === 'build'
+          ? norm.task.building
+          : norm.task.kind === 'buildUnit'
+            ? norm.task.unit
+            : norm.task.kind === 'terraform'
+              ? norm.task.op
+              : undefined;
+      if (itemId) {
+        const stageCheck = checkItemUnlockStage(state, colIdx, itemId, ctx.flags);
+        if (!stageCheck.ok) {
+          return { code: stageCheck.code, detail: stageCheck.detail, unlocksAt: stageCheck.unlocksAt };
+        }
+      }
+    }
     if (norm.task.kind === 'terraform' && norm.task.op === 'dismantle') {
       const dRes = executeDismantleAtTile(state, colIdx, norm.task.q, norm.task.r, ctx.tick, ctx.data);
       return dRes.ok ? undefined : dRes.reason;
@@ -383,7 +401,6 @@ export const enqueueTaskHandler = defineCommandHandler({
     if (norm.task.kind === 'terraform' && norm.task.op === 'work') {
       return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
     }
-    const { precedence, costOverride } = enqueueAuthority(cmd.source, norm); // a player never sets its own cost or jumps the queue
     const res = enqueueQueueTask(state, { colonyIndex: colIdx, task: norm.task, precedence, taskId: norm.taskId, costOverride, tick: ctx.tick, data: ctx.data }, ctx);
     return res.ok ? undefined : { code: res.code, detail: res.detail }; // e.g. the terrain block text (GP-31)
   },
