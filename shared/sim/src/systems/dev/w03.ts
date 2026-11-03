@@ -101,6 +101,9 @@ export const devAddLoad = defineCommandHandler({
     if (typeof targetEntityId === 'number') {
       colExt.syntheticLoadEntityId = targetEntityId;
       colExt.syntheticLoadPylonId = targetEntityId;
+    } else {
+      delete colExt.syntheticLoadEntityId;
+      delete colExt.syntheticLoadPylonId;
     }
     colony.changedAt = ctx.tick;
     recomputeAllColonyPower(s, ctx.data, ctx.tick, 0, ctx);

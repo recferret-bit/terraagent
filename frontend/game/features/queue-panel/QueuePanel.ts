@@ -100,7 +100,11 @@ export class QueuePanel {
     this.hqGoalsList = gLane.list;
 
     lanes.append(cLane.section, tLane.section, uLane.section, gLane.section);
-    this.root.append(header, this.tabsBar, lanes);
+    if (hasFlag(this.ctx.flags, 'W03')) {
+      this.root.append(header, this.tabsBar, lanes);
+    } else {
+      this.root.append(header, lanes);
+    }
     host.appendChild(this.root);
 
     this.onKeyDown = (e: KeyboardEvent) => {
@@ -170,8 +174,13 @@ export class QueuePanel {
   }
 
   private syncLaneVisibility(): void {
+    const hasW03 = hasFlag(this.ctx.flags, 'W03');
     for (const [lane, section] of this.laneSections.entries()) {
-      section.hidden = this.activeLaneTab !== 'all' && this.activeLaneTab !== lane;
+      if (!hasW03 && (lane === 'terraform' || lane === 'hqGoals')) {
+        section.hidden = true;
+      } else {
+        section.hidden = this.activeLaneTab !== 'all' && this.activeLaneTab !== lane;
+      }
     }
   }
 

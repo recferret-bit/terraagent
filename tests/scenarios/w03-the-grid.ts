@@ -81,10 +81,10 @@ function spawnW03StructuresAndUnits(state: PlanetState): void {
   state.entities.cols.owner[hqRow] = 0;
   state.entities.cols.tier[hqRow] = 1;
   placeSpawnedEntity(state.entities, hqRow, 2, -1, 0);
-  state.entities.cols.hp[hqRow] = 800;
-  state.entities.cols.hpMax[hqRow] = 800;
-  state.entities.cols.cell[hqRow] = 200;
-  state.entities.cols.cellMax[hqRow] = 200;
+  state.entities.cols.hp[hqRow] = 900;
+  state.entities.cols.hpMax[hqRow] = 900;
+  state.entities.cols.cell[hqRow] = 800;
+  state.entities.cols.cellMax[hqRow] = 800;
   state.entities.cols.workRate[hqRow] = 1.5;
   state.entities.cols.state[hqRow] = ENTITY_STATE.idle;
 

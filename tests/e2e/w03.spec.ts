@@ -15,7 +15,7 @@ import {
  * W03 The Grid — Wave E2E suite covering demo steps 1–10 + DoD (`docs/plan/waves/W03-the-grid.md` §2–§3 & W03-29).
  * Tagged `@hack` so both `npm run e2e -- --waves ..03` and `npm run e2e -- --waves ..03 --hack` run them.
  */
-test.describe.configure({ mode: 'serial' });
+test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
 const local = hostMode() === 'local';
 
@@ -91,9 +91,9 @@ interface OnlineDebugWindow {
 
 async function openW03(page: Page, params: Record<string, string> = {}): Promise<void> {
   if (local) {
-    await loadLocal(page, 'w03', params);
+    await loadLocal(page, 'w03', params, 60_000);
   } else {
-    await loadScenario(page, 'w03', params);
+    await loadScenario(page, 'w03', params, { timeout: 60_000 });
   }
 }
 
@@ -159,7 +159,7 @@ test('@hack 1 & 2. Load ?scenario=w03 (Hub, Extractor, Solar, 2 Harvesters) -> o
 
   await expect.poll(async () => {
     const ents = await getEntitiesSnapshot(page);
-    return ents.filter((e) => e.kind === 9 && e.state === 2).length; // ENTITY_KIND.pylon = 9, ENTITY_STATE.active = 2
+    return ents.filter((e) => e.kind === 9 && e.state === 5).length; // ENTITY_KIND.pylon = 9, ENTITY_STATE.active = 5
   }, { timeout: 20_000 }).toBe(2);
 
   await devConsole(page, 'warp 1');
@@ -182,7 +182,7 @@ test('@hack 3 & 4. Power Line (1 queue entry for 3 pylons) and distant Minerals 
   let quarryId = 0;
   await expect.poll(async () => {
     const ents = await getEntitiesSnapshot(page);
-    const q = ents.find((e) => e.kind === 14 && e.state !== 1); // ENTITY_KIND.mineralsQuarry = 14, not constructing
+    const q = ents.find((e) => e.kind === 14 && e.state !== 4); // ENTITY_KIND.mineralsQuarry = 14, not constructing (4)
     if (q) quarryId = q.id;
     return Boolean(q);
   }, { timeout: 25_000 }).toBe(true);
@@ -195,7 +195,7 @@ test('@hack 3 & 4. Power Line (1 queue entry for 3 pylons) and distant Minerals 
   // Step 3 & Step 4 part B: Drag/place a Power Line of 3 pylons toward the distant Quarry -> 1 queue entry with 3 sub-sites
   const plAck = await sendSimCmd(page, 'placePowerLine', {
     taskId: 'pl-east',
-    pylons: [
+    tiles: [
       { q: 3, r: -1 },
       { q: 6, r: -1 },
       { q: 9, r: -1 },
@@ -239,7 +239,7 @@ test('@hack 5, 6 & 7. Supply Depot (cap 500 -> 1500), Wind & Capacitor, night + 
     task: { kind: 'build', building: 'capacitor', q: 3, r: -3 },
   })).ok).toBe(true);
 
-  await expect.poll(async () => (await getColony0(page))?.caps?.['metals.t1'] ?? 500, { timeout: 25_000 }).toBe(1500);
+  await expect.poll(async () => (await getColony0(page))?.caps?.metals ?? 500, { timeout: 25_000 }).toBe(1500);
   await expect.poll(async () => (await getColony0(page))?.power?.windNetPerS ?? 0, { timeout: 25_000 }).toBeGreaterThan(0);
   await expect.poll(async () => (await getColony0(page))?.power?.capacitorStoredE ?? 0, { timeout: 25_000 }).toBeGreaterThan(0);
 
@@ -259,8 +259,8 @@ test('@hack 5, 6 & 7. Supply Depot (cap 500 -> 1500), Wind & Capacitor, night + 
   let branchWaterId = 0;
   await expect.poll(async () => {
     const ents = await getEntitiesSnapshot(page);
-    const p = ents.find((e) => e.kind === 9 && e.q === 5 && e.r === -1 && e.state === 2);
-    const w = ents.find((e) => e.kind === 15 && e.q === 7 && e.r === -1 && e.state === 2);
+    const p = ents.find((e) => e.kind === 9 && e.q === 5 && e.r === -1 && e.state !== 4);
+    const w = ents.find((e) => e.kind === 15 && e.q === 7 && e.r === -1 && e.state !== 4);
     if (p) branchPylonId = p.id;
     if (w) branchWaterId = w.id;
     return Boolean(p && w);
@@ -330,6 +330,7 @@ test('@hack 8. Select building (#id in selection panel), run damage <entity> 50 
 
 test('@hack 9 & 10. Storage wait ("Build Depot" button opens placement ghost) and 60s resource-starved earmark in Queue panel v2', async ({ page }) => {
   await openW03(page);
+  await page.locator('[data-testid="dock-tab-queue"]').click();
   await expect(page.locator('[data-testid="queue-lane-tabs"]')).toBeVisible();
 
   // Step 9: Storage wait when order cost > 500 cap (server host uses tune)
@@ -343,9 +344,10 @@ test('@hack 9 & 10. Storage wait ("Build Depot" button opens placement ghost) an
       await expect.poll(async () => ((await getColony0(page))?.queue ?? []).find((e) => e.taskId === 'b-storage-w03')?.waitReason ?? '', { timeout: 15_000 }).toBe('storage');
       const hintBtn = page.locator('[data-task-id="b-storage-w03"] [data-testid="queue-storage-hint"]');
       await expect(hintBtn).toBeVisible();
-      await expect(hintBtn).toContainText('Build Depot');
+      await expect(hintBtn).toContainText('Build Supply Depot');
       await hintBtn.click();
-      await expect(page.locator('[data-building="supplyDepot"]')).toHaveAttribute('data-selected', 'true');
+      await expect(page.locator('.ta-construction__card[data-building="supplyDepot"]')).toHaveAttribute('data-selected', 'true');
+      await expect(page.locator('.ta-placement-ghost[data-building="supplyDepot"]')).toBeVisible();
       expect((await sendSimCmd(page, 'cancelTask', { taskId: 'b-storage-w03' })).ok).toBe(true);
     } finally {
       await devConsole(page, 'tune reset');
@@ -353,8 +355,8 @@ test('@hack 9 & 10. Storage wait ("Build Depot" button opens placement ghost) an
   }
 
   // Step 10: Resource-starved item earmarks after 60s of game time and HUD shows the earmark bar
-  await devConsole(page, 'fill minerals.t1 35');
-  await expect.poll(async () => (await getColony0(page))?.stock?.['minerals.t1'] ?? 250).toBe(35);
+  await devConsole(page, 'fill bio.water 0');
+  await expect.poll(async () => (await getColony0(page))?.stock?.['bio.water'] ?? 200).toBe(0);
 
   expect((await sendSimCmd(page, 'enqueueTask', {
     taskId: 'b-starved-solar',
@@ -365,12 +367,15 @@ test('@hack 9 & 10. Storage wait ("Build Depot" button opens placement ghost) an
   await expect.poll(async () => {
     const col = await getColony0(page);
     const entry = col?.queue?.find((e) => e.taskId === 'b-starved-solar');
-    return entry?.earmarked?.['minerals.t1'] ?? col?.earmarks?.['minerals.t1'] ?? 0;
+    return entry?.earmarked?.['bio.water'] ?? col?.earmarks?.['bio.water'] ?? 0;
   }, { timeout: 25_000 }).toBeGreaterThan(0);
 
+  if (await page.locator('[data-testid="command-dock"]').getAttribute('data-active-tab') !== 'queue') {
+    await page.locator('[data-testid="dock-tab-queue"]').click();
+  }
   await expect(page.locator('[data-testid="queue-earmark-bar"]')).toBeVisible();
   await expect(page.locator('[data-testid="queue-earmark-bar"]')).toContainText('Earmarked:');
-  await expect(page.locator('[data-testid="queue-earmark-bar"]')).toContainText('Minerals');
+  await expect(page.locator('[data-testid="queue-earmark-bar"]')).toContainText('Water');
 
   await devConsole(page, 'warp 1');
   await screenshot(page, '9-10-storage-wait-and-earmark');

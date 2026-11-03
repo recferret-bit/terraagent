@@ -95,6 +95,10 @@ export class WorldStore {
   private baseLocalMs = 0;
   private mode: PredictionMode = 'on';
   private info: { pending: number; p95Ms: number } = { pending: 0, p95Ms: 0 };
+  private awaitingPredictionSince = 0;
+  private lagDirtyRender = true;
+  private hadLagPending = false;
+  private readonly hasLagParam = typeof location !== 'undefined' && Number(new URLSearchParams(location.search).get('lag')) > 0;
   private readonly renderEvents = new Emitter<readonly SimEventWire[]>();
   private readonly serverEvents = new Emitter<readonly SimEventWire[]>();
   private readonly rejects = new Emitter<{ id: string; kind: string; code: string }>();
@@ -159,7 +163,22 @@ export class WorldStore {
    * predicts it from the next view on. Acks and rejects are picked up from the transport by the store itself.
    */
   notifySent(id: string, kind: string, args: unknown): void {
+    if (this.mode === 'on') this.awaitingPredictionSince = typeof performance !== 'undefined' ? performance.now() : this.now();
     this.worker?.postMessage({ t: 'cmdSent', id, kind, args, sentAtMs: this.now() }, []);
+  }
+
+  /** True right after `notifySent` while the worker is computing the immediate predicted view (< 250 ms), or when `?lag=` suppresses idle GPU renders. */
+  isAwaitingPrediction(nowMs = typeof performance !== 'undefined' ? performance.now() : this.now()): boolean {
+    if (this.awaitingPredictionSince > 0 && nowMs - this.awaitingPredictionSince < 250) return true;
+    if (this.hasLagParam) {
+      if (!this.latestView) return true;
+      if (this.lagDirtyRender) {
+        this.lagDirtyRender = false;
+        return false;
+      }
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -224,7 +243,12 @@ export class WorldStore {
   }
 
   private fromWorker(m: FromWorker): void {
+    if ((m.t === 'view' && (m.pred?.pending ?? 0) > 0) || m.t === 'cmdRejected' || m.t === 'status') {
+      this.awaitingPredictionSince = 0;
+    }
     if (m.t === 'view') {
+      if ((m.pred?.pending ?? 0) > 0) this.hadLagPending = true;
+      else if (this.hadLagPending) { this.hadLagPending = false; this.lagDirtyRender = true; }
       this.lastApplyMs = m.applyMs;
       if (m.pred) this.info = { pending: m.pred.pending, p95Ms: m.pred.p95Ms };
       const v = unpackView(m.view, this.serverTimeMs());

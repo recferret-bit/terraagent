@@ -229,6 +229,7 @@ function attachBuildingsToRelays(
     components.push(comp);
     for (let row = 0; row < e.count; row++) {
       if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
+      if (cols.state[row] === ENTITY_STATE.constructing) continue;
       if (!POWERED_BUILDING_KINDS.has(cols.kind[row])) continue;
       const bId = cols.id[row];
       componentByBuildingId.set(bId, 0);
@@ -240,6 +241,7 @@ function attachBuildingsToRelays(
 
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
+    if (cols.state[row] === ENTITY_STATE.constructing) continue;
     if (!POWERED_BUILDING_KINDS.has(cols.kind[row])) continue;
     const bId = cols.id[row];
 

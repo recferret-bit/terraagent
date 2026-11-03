@@ -188,25 +188,35 @@ function computeRelayFlows(
   consumersByRelay: Map<number, ShedCandidate[]>,
   synthTargetId: number,
   synthLoad: number,
+  explicitSynthTarget: boolean,
   hubMax: number,
   pylonMax: number,
 ): { localLoad: Map<number, number>; flow: Map<number, number>; maxLoads: Map<number, number> } {
   const localLoad = new Map<number, number>();
   const maxLoads = new Map<number, number>();
+  const relayById = new Map<number, RelayNode>();
   for (const r of compRelays) {
+    relayById.set(r.id, r);
     const isPylon = r.kind === ENTITY_KIND.pylon;
     const maxL = isPylon ? pylonMax : hubMax;
     maxLoads.set(r.id, maxL);
     let l = isPylon ? 0.5 : 0;
-    if (r.id === synthTargetId) l += synthLoad;
+    if (r.id === synthTargetId && (isPylon || explicitSynthTarget)) l += synthLoad;
     for (const c of consumersByRelay.get(r.id) ?? []) l += c.drainPerS;
     localLoad.set(r.id, Number(l.toFixed(4)));
   }
 
   const flow = new Map<number, number>();
   for (const u of tree.reverseBfs) {
+    const isPylon = relayById.get(u)?.kind === ENTITY_KIND.pylon;
     let f = localLoad.get(u) ?? 0;
-    for (const ch of tree.children.get(u) ?? []) f += flow.get(ch) ?? 0;
+    for (const ch of tree.children.get(u) ?? []) {
+      let chFlow = flow.get(ch) ?? 0;
+      if (!isPylon && !explicitSynthTarget && synthLoad > 0) {
+        chFlow = Math.max(0, chFlow - synthLoad);
+      }
+      f += chFlow;
+    }
     flow.set(u, Number(f.toFixed(4)));
   }
 
@@ -291,12 +301,15 @@ export function checkComponentPylonOverload(
     }
   }
 
+  const colExt = state.colonies[colonyIndex] as { syntheticLoadEntityId?: number; syntheticLoadPylonId?: number } | undefined;
+  const hasExplicitTarget = typeof (colExt?.syntheticLoadEntityId ?? colExt?.syntheticLoadPylonId) === 'number';
+
   const { synthLoad, synthTargetId } = resolveSyntheticLoadTarget(
     state.colonies[colonyIndex], comp, tree, graph, consumersByRelay, rootRelayId,
   );
 
   const { flow, maxLoads } = computeRelayFlows(
-    compRelays, tree, consumersByRelay, synthTargetId, synthLoad, hubMax, pylonMax,
+    compRelays, tree, consumersByRelay, synthTargetId, synthLoad, hasExplicitTarget, hubMax, pylonMax,
   );
 
   const initialFlow = new Map(flow);
@@ -328,6 +341,6 @@ export function checkComponentPylonOverload(
     }
   }
 
-  const absorbedSyntheticLoad = overloadedPylons.length > 0 && synthLoad > 0 ? synthLoad : 0;
+  const absorbedSyntheticLoad = hasExplicitTarget && overloadedPylons.length > 0 && synthLoad > 0 ? synthLoad : 0;
   return { overloadedPylons, overloadedShedEntityIds, pylonLoads, shedConsumerRows, absorbedSyntheticLoad };
 }

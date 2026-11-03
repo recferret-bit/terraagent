@@ -100,7 +100,7 @@ function evacuateUnitsFromFootprint(
   const e = state.entities, cols = e.cols;
   for (let uRow = 0; uRow < e.count; uRow++) {
     const k = cols.kind[uRow];
-    if ((k !== ENTITY_KIND.hq && k !== ENTITY_KIND.harvester) || cols.hp[uRow] <= 0) continue;
+    if ((k !== ENTITY_KIND.hq && k !== ENTITY_KIND.harvester && k !== ENTITY_KIND.builder) || cols.hp[uRow] <= 0) continue;
     const uIdx = idx.indexOf(cols.q[uRow], cols.r[uRow]);
     if (!fpSet.has(uIdx)) continue;
     const exit = findNearestExitTile(state, cols.q[uRow], cols.r[uRow], allBlocked);

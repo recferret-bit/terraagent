@@ -93,7 +93,7 @@ export function formatChipStatus(entry: QueueEntry): string {
 export const STORAGE_HINT_TEXT = 'Build a Supply Depot to raise the cap (W03)';
 
 /** Clickable button text on a `waiting(storage)` entry in W03+: opens the Supply Depot placement ghost. */
-export const STORAGE_HINT_BUTTON_TEXT = 'Build Depot';
+export const STORAGE_HINT_BUTTON_TEXT = 'Build Supply Depot';
 
 /** Adds / removes the storage hint or "Build Depot" button of `chip` to match `entry`. */
 export function syncStorageHint(chip: HTMLElement, entry: QueueEntry, ctx: FeatureContext): void {

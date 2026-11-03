@@ -451,9 +451,9 @@ export class OnlineSession {
         this.terrain?.tick(animDt);
         this.frameHud(now, dt);
       }
-      if (this.ownsViewport) this.viewport.render();
+      if (this.ownsViewport && !this.store.isAwaitingPrediction(now)) this.viewport.render();
     } catch (e) { console.error('frame error', e); }
-    if (typeof requestAnimationFrame === 'function') this.raf = requestAnimationFrame(this.loop);
+    if (typeof requestAnimationFrame === 'function') { if (this.raf && typeof cancelAnimationFrame === 'function') cancelAnimationFrame(this.raf); this.raf = requestAnimationFrame(this.loop); }
   };
 
   private frameHud(now: number, dt: number): void {

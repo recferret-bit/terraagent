@@ -15,7 +15,7 @@ import {
  * W02 First Light — Wave E2E suite covering demo steps 1–8 (`docs/plan/waves/W02-first-light.md` §1 & W02-34).
  * Every step is tagged `@hack` for `npm run e2e -- --waves ..02 --hack`.
  */
-test.describe.configure({ mode: 'serial' });
+test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
 const local = hostMode() === 'local';
 

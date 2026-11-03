@@ -161,6 +161,13 @@ export class ConstructionMenu implements Disposable {
     this.isOpen = open;
     this.root.dataset.open = String(open);
     this.headBtn.setAttribute('aria-expanded', String(open));
+    if (open) {
+      const dock = this.root.closest?.('[data-testid="command-dock"]');
+      const buildTab = dock?.querySelector<HTMLButtonElement>('[data-testid="dock-tab-build"]');
+      if (buildTab && buildTab.getAttribute('data-active') !== 'true') {
+        buildTab.click();
+      }
+    }
   }
 
   toggle(): void {

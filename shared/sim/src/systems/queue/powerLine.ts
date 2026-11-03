@@ -14,6 +14,7 @@ import type { QueueEntry } from './types';
 export interface PlacePowerLineCommandArgs {
   tiles?: Array<{ q: number; r: number }>;
   anchors?: Array<{ q: number; r: number }>;
+  pylons?: Array<{ q: number; r: number }>;
   from?: { q: number; r: number };
   to?: { q: number; r: number };
   tier?: number;
@@ -31,7 +32,7 @@ export function resolvePowerLineTiles(
   data?: CompiledDataLike,
 ): Array<{ q: number; r: number }> | null {
   const span = resolvePylonSpan(data);
-  const explicit = args.tiles ?? args.anchors;
+  const explicit = args.tiles ?? args.anchors ?? args.pylons;
   if (Array.isArray(explicit)) {
     if (explicit.length === 0) return null;
     const out: Array<{ q: number; r: number }> = [];

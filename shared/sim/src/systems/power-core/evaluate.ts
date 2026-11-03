@@ -331,6 +331,7 @@ export function processUnattachedBuildings(
   const e = state.entities, cols = e.cols;
   for (const row of graph.unattachedBuildingRows) {
     const id = cols.id[row], kind = cols.kind[row], st = cols.state[row];
+    if (st === ENTITY_STATE.constructing) continue;
     unpoweredEntityIds.push(id);
     const isGen = kind === ENTITY_KIND.solar || kind === ENTITY_KIND.wind || kind === ENTITY_KIND.thermal;
     const targetState = (!isGen && isW03) ? ENTITY_STATE.offlineNoGrid : ENTITY_STATE.offlineUnpowered;

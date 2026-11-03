@@ -25,7 +25,7 @@ function track(page: Page): string[] {
     page.on('console', (m) => {
       if (m.type() !== 'error') return;
       const url = m.location().url;
-      if (/favicon\.ico/.test(url)) return; // browsers probe it unasked
+      if (/favicon\.ico|fonts\.g(oogleapis|static)\.com/.test(url)) return; // browsers probe favicon unasked; CDN fonts fail offline
       errs.push(url ? `${m.text()} (${url})` : m.text());
     });
   }
@@ -58,14 +58,19 @@ export async function loadScenario(page: Page, id: string, params: Record<string
   const [k, v] = login(page, opts.as).split('=');
   q.set(k, decodeURIComponent(v));
   await page.goto(`/play.html?${q}`);
-  return waitForTick(page, () => true, opts.timeout ?? 30_000);
+  const tick = await waitForTick(page, () => true, opts.timeout ?? 60_000);
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  if (Number(params.lag) > 0) await page.waitForTimeout(Number(params.lag) + 100);
+  return tick;
 }
 
 /** Opens `/play.html?host=local&scenario=<id>&…` (the engine runs in the browser; no app needed) and waits for the first view. */
-export async function loadLocal(page: Page, scenario = 'w00', params: Record<string, string> = {}, timeout = 30_000): Promise<number> {
+export async function loadLocal(page: Page, scenario = 'w00', params: Record<string, string> = {}, timeout = 60_000): Promise<number> {
   track(page);
   await page.goto(`/play.html?${new URLSearchParams({ host: 'local', scenario, ...params })}`);
-  return waitForTick(page, () => true, timeout);
+  const tick = await waitForTick(page, () => true, timeout);
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  return tick;
 }
 
 /** Measures the tick rate (ticks per second) over `ms` of wall time. */

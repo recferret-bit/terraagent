@@ -19,10 +19,10 @@ export function explorerIsOff(search: string, healthStatus: number | null): bool
   return wavesExcludeW06(search) || healthStatus === 404;
 }
 
-/** Status of `GET /v1/near/health`, or null when the request fails. */
+/** Status of `GET /v1/dev/chain/receipts?limit=1` (W00 dev chain explorer endpoint), or null when the request fails. */
 export async function nearHealthStatus(fetchImpl: typeof fetch = fetch): Promise<number | null> {
   try {
-    return (await fetchImpl('/v1/near/health')).status;
+    return (await fetchImpl('/v1/dev/chain/receipts?limit=1')).status;
   } catch {
     return null;
   }

@@ -449,3 +449,33 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Workaround / mitigation:** the features list in the wave file is unchecked for those rows. Returning login of the same subject is covered by `backend/app/test/near/social-auth.spec.ts`.
 - **To resolve:** build them in a later landing. W21 owns the claim button. W23 owns the real adapters and can run the same contract suites.
 - **Found:** 2026-11-03, W06 plan review
+
+### XC-34 · W03 rows deferred past the hackathon cut
+
+- **Status:** Accepted (deferred, owner's hackathon cut)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `docs/plan/waves/W03-the-grid.md` ("Hackathon slice" and Issues table), `docs/plan/HACKATHON_CUT.md`
+- **What happens:** this landing builds the 15 H-tagged issues (`W03-01..03`, `W03-05..07`, `W03-10..13`, `W03-16..17`, `W03-19`, `W03-27`, `W03-29`). The H+ / post-hackathon rows are not in this landing:
+  - `W03-04`: worker assist (up to 4 workers on one construction job);
+  - `W03-08`, `W03-09`: Capacitor T1 discharge/charge and Wind Turbine T1 wind-factor curve (`grid.capacitor` and `grid.wind` data rows compile in `W03-01`, and `dev.setwind` exists from `W03-27`; step 5 of the demo story builds only the Supply Depot in the H slice);
+  - `W03-15`, `W03-25`, `W03-26`: `nightSurvived` event, Night Shift / Power Broker progression events, and `first_*` analytics events;
+  - `W03-18`, `W03-20`: power overlay (`P` toggle) + full power HUD shed list (steps 3, 6, 7 assert the synced power fields from `W03-16`) and building context action plate (manual Repair/Dismantle already work from the Terraform tab);
+  - `W03-21..24`, `W03-31`: validator fixes/animations for `building.pylon`, `building.capacitor`, `building.wind`, `building.coalGen`, `building.supplyDepot`, `building.waterPump`, new `building.quarry` / `building.petroleumWell` archetypes (existing kitbash models stand in), sagging power-line cables/sparks VFX, and W02-18..21 visuals;
+  - `W03-28`: 300-node grid perf benchmark and `npm run sim:bench`;
+  - `W03-30`: Petroleum Well T1 `bio.t2` runtime hook (needs W05-34's terraforming gate);
+  - `W03-32..37`: multi-builder dispatch cleanup, single Units-lane consolidation, depleted-extractor offline state, economy-row territory/refund rules, day-window cleanup, and harvest-weight slider UI.
+- **Why it is like this:** per `docs/plan/waves/W03-the-grid.md` ("Hackathon slice"), only the 15 `H` issues are in scope for this wave landing.
+- **Workaround / mitigation:** the 15 H issues and all `@hack` demo steps (steps 1–4, 5 Depot, 6 night + group shedding, 7 pylon branch overload, 8 Builder 1.5× auto-repair, 9 `waiting(storage)` + Build Depot button, 10 60 s earmark, plus `?waves=..02` DoD) are built and verified in `tests/e2e/w03.spec.ts`.
+- **To resolve:** build the H+ and post-hackathon rows in a later landing (`wave-03.2`) or their downstream waves.
+- **Found:** 2026-11-03, W03 landing
+
+### XC-35 · `/dev/chain/` probed `/v1/near/health` (W06-gated), breaking `w00.spec.ts` when `TA_WAVES` is below `W06`
+
+- **Status:** Resolved (W03 landing 2026-11-03)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/dev/explorer/gate.ts` (`nearHealthStatus`), `backend/app/src/near/infrastructure/dev/near-health.controller.ts`, `tests/e2e/w00.spec.ts` (Test 7), `tests/e2e/w06.spec.ts` (Test 7)
+- **What happens:** W02 (`58956ab`) updated `tests/e2e/harness/stack.ts` so `npm run e2e -- --waves ..NN` boots the backend with `TA_WAVES=..NN`. W06 (`91aad6d`) gated `/dev/chain/` on `GET /v1/near/health` (`NearHealthController`), which returns `404` whenever `W06` is not in `TA_WAVES`. Because `/dev/chain/` is a W00 feature (`W00-35`, tested by `w00.spec.ts` Test 7), running `npm run e2e -- --waves ..03` booted the backend with `TA_WAVES=..03`, causing `/v1/near/health` to return `404` and `/dev/chain/` to render `Off` during `w00.spec.ts`.
+- **Fix:** `nearHealthStatus` in `frontend/game/dev/explorer/gate.ts` now probes `/v1/dev/chain/receipts?limit=1` (W00's dev chain explorer endpoint, guarded by `DevOnlyGuard` in production) while `wavesExcludeW06(location.search)` continues to gate explicit `?waves=..05` URLs (`w06.spec.ts` Test 7).
+- **Found:** 2026-11-03, W03 merge with `main`
