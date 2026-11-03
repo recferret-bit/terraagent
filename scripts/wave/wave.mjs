@@ -25,11 +25,14 @@ const VALUE_OPTS = ['--tags', '--parallel', '--runner', '--model', '--advisor', 
 const flag = (n) => args.includes(n);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_OPTS.includes(args[i - 1]));
-const [command = 'next', waveArg] = positional;
+const KNOWN = ['next', 'status', 'land', 'open', 'check', 'issue', 'issue:land'];
+const [command, waveArg] = KNOWN.includes(positional[0])
+  ? [positional[0] ?? 'next', positional[1]]
+  : (/^w?\d+$/i.test(positional[0] ?? '') ? ['next', positional[0]] : [positional[0] ?? 'next', positional[1]]);
 
 const root = mainRoot();
 let plan = withState(root, loadPlan(root));
-const byId = (n) => plan.waves.find((w) => w.id === `W${String(n).padStart(2, '0')}`) ?? fail(`unknown wave ${n}`);
+const byId = (n) => plan.waves.find((w) => w.id === `W${String(n).replace(/^w/i, '').padStart(2, '0')}`) ?? fail(`unknown wave ${n}`);
 const overrides = () => ({
   runner: opt('--runner', null),
   model: opt('--model', null),

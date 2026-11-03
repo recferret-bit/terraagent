@@ -2,6 +2,7 @@
 
 import { z } from 'zod';
 import { event as event_accountCreated } from './account-created';
+import { event as event_alertPing } from './alert-ping';
 import { event as event_brownoutShed } from './brownout-shed';
 import { event as event_brownout } from './brownout';
 import { event as event_buildingCompleted } from './building-completed';
@@ -26,7 +27,7 @@ import { event as event_tilePrepared } from './tile-prepared';
 import { event as event_treasuryRejected } from './treasury-rejected';
 import { event as event_unitProduced } from './unit-produced';
 
-export const EVENTS = [event_accountCreated, event_brownoutShed, event_brownout, event_buildingCompleted, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_groundRevealed, event_hqLanded, event_nightSurvived, event_obstacleRemoved, event_powerOverload, event_powerSevered, event_relayFailed, event_relaySettled, event_relaySubmitted, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_tilePrepared, event_treasuryRejected, event_unitProduced] as const;
+export const EVENTS = [event_accountCreated, event_alertPing, event_brownoutShed, event_brownout, event_buildingCompleted, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_groundRevealed, event_hqLanded, event_nightSurvived, event_obstacleRemoved, event_powerOverload, event_powerSevered, event_relayFailed, event_relaySettled, event_relaySubmitted, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_tilePrepared, event_treasuryRejected, event_unitProduced] as const;
 
 export type EventKind = (typeof EVENTS)[number]['kind'];
 export const EVENT_KINDS = [...EVENTS.map((d) => d.kind)] as unknown as readonly [EventKind, ...EventKind[]];
