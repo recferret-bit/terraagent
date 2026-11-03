@@ -10,6 +10,7 @@ import {
 } from '../systems/goals';
 import { resolveHarvesterRow } from '../systems/harvest/unit';
 import type { HqJob, HqUnitView } from '../systems/hq';
+import { getLastAutopilotDecision, type AutopilotDecision, type AutopilotOrderSuggestion } from '../systems/rule-engine';
 
 /**
  * W00 view: a minimal read-only projection for render/HUD. Tile arrays are shared with the state (no copy; do not
@@ -46,6 +47,8 @@ export interface ViewColony {
   stage?: number;
   unlockStage?: number;
   threatStage?: number;
+  lastAutopilotDecision?: AutopilotDecision | null;
+  activeSuggestion?: AutopilotOrderSuggestion | null;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -116,6 +119,7 @@ export function view(state: PlanetState): SimView {
     out.stage = typeof k.stage === 'number' ? k.stage : 0;
     out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : out.stage;
     out.threatStage = typeof k.threatStage === 'number' ? k.threatStage : 0;
+    out.lastAutopilotDecision = getLastAutopilotDecision(state, k.index);
     return out;
   });
   return {
