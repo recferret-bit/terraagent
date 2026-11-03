@@ -32,6 +32,7 @@ import { claimTerritoryRadius } from '../territory-claim';
 import { setPlanetTime } from '../time';
 import { devLand } from './land';
 import { devSpawnDeposit } from './spawnDeposit';
+import { devAddLoad, devDamage, devDrainFuel, devSetWind } from './w03';
 
 /** `kind` of the W00 test entity spawned by `dev.spawn` (no gameplay meaning). */
 export const DEV_ENTITY_KIND = 1;
@@ -309,5 +310,23 @@ const seed = defineCommandHandler({
 export default defineSimModule({
   id: 'dev',
   wave: 'W00',
-  handlers: [ping, spawn, nudge, teleport, grant, cell, reveal, seed, devLand, fill, skipnight, power, devSpawnDeposit],
+  handlers: [
+    ping,
+    spawn,
+    nudge,
+    teleport,
+    grant,
+    cell,
+    reveal,
+    seed,
+    devLand,
+    fill,
+    skipnight,
+    power,
+    devSpawnDeposit,
+    devSetWind,
+    devDrainFuel,
+    devAddLoad,
+    devDamage,
+  ],
 });
