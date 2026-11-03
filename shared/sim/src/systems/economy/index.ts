@@ -2,7 +2,7 @@ import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { constructionSystem, demolishHandler } from './construction';
 import { resourceShortageSystem } from './events';
-import { ensureColonyLedger } from './ledger';
+import { ensureColonyLedger, syncColonyDepotCaps } from './ledger';
 
 export * from './ledger';
 export * from './construction';
@@ -14,9 +14,11 @@ const ledgerInitSystem = defineSystem({
   wave: 'W02',
   run(state, ctx) {
     for (const colony of state.colonies) {
+      if (!colony) continue;
       const hadLedger = colony.stock !== undefined && colony.caps !== undefined && colony.production !== undefined;
       ensureColonyLedger(colony);
       if (!hadLedger) colony.changedAt = ctx.tick;
+      syncColonyDepotCaps(state, colony.index, ctx.tick);
     }
   },
 });

@@ -5,7 +5,8 @@ import {
   type ResourceFamily,
   type ResourceKey,
 } from '@terra/contracts';
-import type { ColonyState } from '../../kernel/state';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import type { ColonyState, PlanetState } from '../../kernel/state';
 
 export const BASE_HUB_STORAGE_CAP = 500;
 export const DEPOT_STORAGE_CAP = 1000;
@@ -99,7 +100,8 @@ export function recomputeFamilyCaps(
   const cap = (hasHub ? BASE_HUB_STORAGE_CAP : 0) + depotCount * DEPOT_STORAGE_CAP;
   let changed = false;
   for (const f of RESOURCE_FAMILIES) {
-    const nextCap = hasHub ? Math.max(c.caps[f] ?? 0, cap) : cap;
+    const cur = c.caps[f] ?? 0;
+    const nextCap = hasHub && depotCount === 0 && cur < BASE_HUB_STORAGE_CAP + DEPOT_STORAGE_CAP ? Math.max(cur, cap) : cap;
     if (c.caps[f] !== nextCap) {
       c.caps[f] = nextCap;
       changed = true;
@@ -107,6 +109,38 @@ export function recomputeFamilyCaps(
   }
   if (changed && tick !== undefined) c.changedAt = tick;
   return c.caps;
+}
+
+/** Counts active (completed, alive, powered) Supply Depot T1 entities owned by `colonyIndex`. */
+export function countActiveSupplyDepots(state: PlanetState, colonyIndex: number): number {
+  const e = state.entities, cols = e.cols;
+  let count = 0;
+  for (let r = 0; r < e.count; r++) {
+    if (cols.owner[r] !== colonyIndex || cols.kind[r] !== ENTITY_KIND.supplyDepot || cols.hp[r] <= 0) continue;
+    const st = cols.state[r];
+    if (
+      st === ENTITY_STATE.constructing ||
+      st === ENTITY_STATE.offlineBrownout ||
+      st === ENTITY_STATE.offlineUnpowered ||
+      st === ENTITY_STATE.offlineOverload ||
+      st === ENTITY_STATE.offlineNoGrid
+    ) {
+      continue;
+    }
+    count++;
+  }
+  return count;
+}
+
+/** Synchronizes `colony.caps` for `colonyIndex` from its active Supply Depots (`500` + `1000` per active depot). */
+export function syncColonyDepotCaps(
+  state: PlanetState,
+  colonyIndex: number,
+  tick: number = state.meta.tick,
+): Record<ResourceFamily, number> {
+  const colony = state.colonies[colonyIndex];
+  if (!colony) return createDefaultFamilyCaps();
+  return recomputeFamilyCaps(colony, true, countActiveSupplyDepots(state, colonyIndex), tick);
 }
 
 /** Total stored stock across all tiers of `family` (`metals`, `minerals`, or `bio`). */

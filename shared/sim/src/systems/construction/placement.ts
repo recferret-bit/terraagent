@@ -150,15 +150,30 @@ export function resolveBuildingRow(building: string | undefined, data?: Compiled
   return isHubBuildingKind(building, data) ? resolveHubT1Row(data) : null;
 }
 
-let defaultW02: CompiledDataLike | null = null;
-const W02_BUILDING_ALIASES: Readonly<Record<string, string>> = { extractor: 'metalsExtractor', solarCollector: 'solar' };
+let defaultEconomyData: CompiledDataLike | null = null;
+const ECONOMY_BUILDING_ALIASES: Readonly<Record<string, string>> = {
+  extractor: 'metalsExtractor',
+  solarCollector: 'solar',
+  depot: 'supplyDepot',
+  quarry: 'mineralsQuarry',
+  water: 'waterExtractor',
+  waterPump: 'waterExtractor',
+  coalGen: 'thermal',
+  thermalPlant: 'thermal',
+  oilWell: 'petroleumWell',
+};
 
-/** The W02 T1 building row (`economyT1Basic`, `kind: 'building'`: Metals Extractor, Solar) named `building`, or `null`. */
+/** The W02/W03 T1 building row (`economyT1Basic` or `grid`, `kind: 'building'`) named `building`, or `null`. */
 export function resolveEconomyBuildingRow(building: string | undefined, data?: CompiledDataLike): CompiledRow | null {
   if (building === undefined) return null;
-  const src = data?.tables?.economyT1Basic ? data : (defaultW02 ??= compileData(new Set(['W00', 'W01', 'W02'])));
-  const row = (src.tables.economyT1Basic as Record<string, CompiledRow> | undefined)?.[W02_BUILDING_ALIASES[building] ?? building];
-  return row && row.kind === 'building' ? row : null;
+  const canonical = ECONOMY_BUILDING_ALIASES[building] ?? building;
+  const fallback = (defaultEconomyData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03'])));
+  const ecoSrc = data?.tables?.economyT1Basic ? data : fallback;
+  const ecoRow = (ecoSrc.tables.economyT1Basic as Record<string, CompiledRow> | undefined)?.[canonical];
+  if (ecoRow && ecoRow.kind === 'building') return ecoRow;
+  const gridSrc = data?.tables?.grid ? data : fallback;
+  const gridRow = (gridSrc.tables.grid as Record<string, CompiledRow> | undefined)?.[canonical];
+  return gridRow && gridRow.kind === 'building' ? gridRow : null;
 }
 
 /**
@@ -211,6 +226,14 @@ const OCCUPYING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.commandHub,
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.solar,
+  ENTITY_KIND.pylon,
+  ENTITY_KIND.capacitor,
+  ENTITY_KIND.wind,
+  ENTITY_KIND.thermal,
+  ENTITY_KIND.supplyDepot,
+  ENTITY_KIND.mineralsQuarry,
+  ENTITY_KIND.waterExtractor,
+  ENTITY_KIND.petroleumWell,
 ]);
 
 /** Whether an entity occupies ground with its footprint: an alive building (GP-23: one rule for placement and paths). */
@@ -221,7 +244,8 @@ export function occupiesGround(e: { kind: number; hp: number; hpMax: number }): 
 /** Footprint size of an existing building entity of `kind` (its row's `footprint`). */
 export function entityFootprint(kind: number, data?: CompiledDataLike): number {
   if (kind === ENTITY_KIND.commandHub) return rowNum(resolveHubT1Row(data), 'footprint');
-  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar) return 2;
+  if (kind === ENTITY_KIND.pylon) return 1;
+  if (OCCUPYING_KINDS.has(kind)) return 2;
   return 1;
 }
 

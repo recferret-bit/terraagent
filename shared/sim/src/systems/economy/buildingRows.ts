@@ -9,20 +9,48 @@ import { ensureColonyLedger } from './ledger';
 
 let cachedData: CompiledDataLike | null = null;
 function defaultData(): CompiledDataLike {
-  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02']));
+  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03']));
   return cachedData;
 }
 
 export function resolveBuildingRow(building: string, data?: CompiledDataLike): { row: CompiledRow; entityKind: number } | null {
   const d = data?.tables?.economyT1Basic ? data : defaultData();
   if (building === 'commandHub' || building === 'hub' || building === 't1') {
-    return { row: dataRow(d, 'hub', 't1'), entityKind: ENTITY_KIND.commandHub };
+    const row = (d.tables.hub as Record<string, CompiledRow> | undefined)?.t1 ?? dataRow(defaultData(), 'hub', 't1');
+    return { row, entityKind: ENTITY_KIND.commandHub };
   }
+  const eco = d.tables.economyT1Basic as Record<string, CompiledRow> | undefined;
   if (building === 'metalsExtractor' || building === 'extractor') {
-    return { row: dataRow(d, 'economyT1Basic', 'metalsExtractor'), entityKind: ENTITY_KIND.metalsExtractor };
+    return eco?.metalsExtractor ? { row: eco.metalsExtractor, entityKind: ENTITY_KIND.metalsExtractor } : null;
   }
   if (building === 'solar' || building === 'solarCollector') {
-    return { row: dataRow(d, 'economyT1Basic', 'solar'), entityKind: ENTITY_KIND.solar };
+    return eco?.solar ? { row: eco.solar, entityKind: ENTITY_KIND.solar } : null;
+  }
+  const gridSrc = data?.tables?.grid ? data : defaultData();
+  const grid = gridSrc.tables.grid as Record<string, CompiledRow> | undefined;
+  if (building === 'pylon') {
+    return grid?.pylon ? { row: grid.pylon, entityKind: ENTITY_KIND.pylon } : null;
+  }
+  if (building === 'capacitor') {
+    return grid?.capacitor ? { row: grid.capacitor, entityKind: ENTITY_KIND.capacitor } : null;
+  }
+  if (building === 'wind') {
+    return grid?.wind ? { row: grid.wind, entityKind: ENTITY_KIND.wind } : null;
+  }
+  if (building === 'thermal' || building === 'coalGen' || building === 'thermalPlant') {
+    return grid?.thermal ? { row: grid.thermal, entityKind: ENTITY_KIND.thermal } : null;
+  }
+  if (building === 'supplyDepot' || building === 'depot') {
+    return grid?.supplyDepot ? { row: grid.supplyDepot, entityKind: ENTITY_KIND.supplyDepot } : null;
+  }
+  if (building === 'mineralsQuarry' || building === 'quarry') {
+    return grid?.mineralsQuarry ? { row: grid.mineralsQuarry, entityKind: ENTITY_KIND.mineralsQuarry } : null;
+  }
+  if (building === 'waterExtractor' || building === 'waterPump' || building === 'water') {
+    return grid?.waterExtractor ? { row: grid.waterExtractor, entityKind: ENTITY_KIND.waterExtractor } : null;
+  }
+  if (building === 'petroleumWell' || building === 'oilWell') {
+    return grid?.petroleumWell ? { row: grid.petroleumWell, entityKind: ENTITY_KIND.petroleumWell } : null;
   }
   return null;
 }
@@ -31,6 +59,14 @@ export function buildingKindName(entityKind: number): string {
   if (entityKind === ENTITY_KIND.commandHub) return 'commandHub';
   if (entityKind === ENTITY_KIND.metalsExtractor) return 'metalsExtractor';
   if (entityKind === ENTITY_KIND.solar) return 'solar';
+  if (entityKind === ENTITY_KIND.pylon) return 'pylon';
+  if (entityKind === ENTITY_KIND.capacitor) return 'capacitor';
+  if (entityKind === ENTITY_KIND.wind) return 'wind';
+  if (entityKind === ENTITY_KIND.thermal) return 'thermal';
+  if (entityKind === ENTITY_KIND.supplyDepot) return 'supplyDepot';
+  if (entityKind === ENTITY_KIND.mineralsQuarry) return 'mineralsQuarry';
+  if (entityKind === ENTITY_KIND.waterExtractor) return 'waterExtractor';
+  if (entityKind === ENTITY_KIND.petroleumWell) return 'petroleumWell';
   return 'building';
 }
 

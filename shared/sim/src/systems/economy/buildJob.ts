@@ -8,7 +8,7 @@ import { colonyWho } from '../find';
 import { resolveHqT1Row, rowNum } from '../rows';
 import { claimTerritoryRadius } from '../territory-claim';
 import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
-import { maxAffordableProgress, payProgressiveSlice, recomputeFamilyCaps } from './ledger';
+import { maxAffordableProgress, payProgressiveSlice, syncColonyDepotCaps } from './ledger';
 
 /**
  * W02 building jobs (`blobs.construction.jobs`, keyed by the building's entity id) as builder work (W02-16, `UO-D-03`,
@@ -159,7 +159,9 @@ function completeBuildingJob(state: PlanetState, row: number, owner: number, ctx
   if (cols.kind[row] === ENTITY_KIND.commandHub) {
     const radius = Number(resolveBuildingRow(bName, ctx.data)?.row.claimRadius ?? 10);
     claimTerritoryRadius(state, { colonyId: owner, q: cols.q[row], r: cols.r[row], radius, tick });
-    recomputeFamilyCaps(ensureColony(state, owner, tick), true, 0, tick);
+    syncColonyDepotCaps(state, owner, tick);
+  } else if (cols.kind[row] === ENTITY_KIND.supplyDepot) {
+    syncColonyDepotCaps(state, owner, tick);
   }
   const { colonyIdStr, who } = colonyWho(state, owner);
   ctx.emit({
