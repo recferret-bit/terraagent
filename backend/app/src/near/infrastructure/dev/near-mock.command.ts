@@ -14,6 +14,7 @@ import {
   type MintCargoInput,
 } from '../../application/ports/cargo-token.port.js';
 import { NearException, type NearErrorCode } from '../../domain/errors.js';
+import { CargoStatusService } from '../../cargo/cargo-status.service.js';
 import { mockOauthSecret, signMockToken } from '../../identity/mock-token.js';
 import { SocialAuthService } from '../../identity/social-auth.service.js';
 import { mockChainControls } from '../mock/mock-controls.js';
@@ -60,6 +61,7 @@ export class NearMockCommand implements OnModuleInit {
     private readonly authRepo: AuthRepository,
     private readonly social: SocialAuthService,
     @Optional() @Inject(NEAR_ADAPTER_CARGO) private readonly cargo?: CargoTokenPort,
+    @Optional() @Inject(CargoStatusService) private readonly cargoStatus?: CargoStatusService,
   ) {}
 
   onModuleInit(): void {
@@ -162,6 +164,7 @@ export class NearMockCommand implements OnModuleInit {
           by: CARGO_MINTER_ACCOUNT,
           caller: CARGO_MINTER_ACCOUNT,
         } as MintCargoInput);
+        await this.cargoStatus?.pushColonyStatus(String(colony), undefined, undefined, accountId);
         return { colony: String(colony), accountId, resource, amount, txHash: res.txHash };
       },
     });

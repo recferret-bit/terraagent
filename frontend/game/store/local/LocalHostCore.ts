@@ -5,6 +5,7 @@ import {
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
 import { describeJournalProblem, resumeJournal } from './hostJournal';
+import { LocalCargoRelay } from './localCargoRelay';
 import { scenarioSource, type PlanetSource, type SeededPlanet } from './planetSource';
 import type { FromLocalHost, LocalHostOptions, LocalPost, ToLocalHost } from './protocol';
 import { compatible, snapshotKey, type LocalSnapshot, type SnapshotStore } from './snapshotStore';
@@ -60,6 +61,7 @@ export class LocalHostCore {
   private running = false;
   private readonly sched: PlanetScheduler;
   private readonly playerId = newId('pr');
+  private readonly cargoRelay = new LocalCargoRelay();
 
   /** `waves`: the flags a dev `scenario` switch runs with (intersected with the scenario's waves). */
   private constructor(private readonly waves: readonly string[], private readonly deps: LocalHostDeps, private readonly post: LocalPost) {
@@ -172,7 +174,10 @@ export class LocalHostCore {
     this.window = [];
     this.lastDeltaTick = host.tick;
     this.unlisten = [
-      host.onEvents((events) => { if (this.joined) this.window.push(...events); }),
+      host.onEvents((events) => {
+        if (this.joined) this.window.push(...events);
+        this.cargoRelay.onEvents(events, this.host.tick);
+      }),
       host.onOutcomes((outcomes) => this.answer(outcomes)),
       // the journal stays here (host-side); postings never reach the client store / replica
       host.onPostings((postings) => this.report(this.ledger.record(postings))),
@@ -189,6 +194,7 @@ export class LocalHostCore {
   }
 
   private async restart(source: PlanetSource): Promise<{ planetId: string }> {
+    this.cargoRelay.reset();
     await this.build(source, true);
     this.up();
     this.sched.setWarp('local', 1);
@@ -201,7 +207,8 @@ export class LocalHostCore {
 
   private stepOnce(dt: number): void {
     if (this.down) return; // the scheduler pass that saw the failure may still call (warp > 1)
-    const batch = this.queue.splice(0);
+    const due = this.cargoRelay.drainDue(this.host.tick + dt);
+    const batch = [...this.queue.splice(0), ...due];
     this.stepOutcomes = [];
     try {
       for (const c of batch) this.host.submit(c);
@@ -224,7 +231,10 @@ export class LocalHostCore {
   private fail(batch: readonly SimCommand[], e: unknown): void {
     this.down = true;
     this.sched.remove('local');
-    for (const c of [...batch, ...this.queue.splice(0)]) this.server({ v: 1, t: 'cmd.reject', d: { id: c.commandId, code: 'internal' } });
+    for (const c of [...batch, ...this.queue.splice(0)]) {
+      if (this.cargoRelay.isInternalCommand(c.commandId)) continue;
+      this.server({ v: 1, t: 'cmd.reject', d: { id: c.commandId, code: 'internal' } });
+    }
     const why = e instanceof Error ? e.message : String(e);
     if (this.restores >= MAX_STEP_RESTORES) return this.post({ t: 'error', message: `step failed: ${why}; planet down (restored ${this.restores}×)` }, []);
     this.restores++;
@@ -248,6 +258,7 @@ export class LocalHostCore {
   private answer(outcomes: readonly CommandOutcome[]): void {
     if (this.stepOutcomes) { this.stepOutcomes.push(...outcomes); return; }
     for (const o of outcomes) {
+      if (this.cargoRelay.isInternalCommand(o.commandId)) continue;
       if (!o.code) { this.server({ v: 1, t: 'cmd.ack', d: { id: o.commandId, appliedAtTick: o.appliedAtTick } }); continue; }
       // a handler may name the cause (`{ code, detail }`, GP-31); a code outside the contract is `internal` with the code as detail
       const code: RejectCode = isRejectCode(o.code) ? o.code : 'internal';
@@ -329,6 +340,8 @@ export class LocalHostCore {
       case 'tune': return this.devTune(a);
       case 'time': return this.devTime(a);
       case 'ledger': return this.ledger.view(this.planetId, String(a.account ?? 'colony:0'), Number(a.limit ?? 10) || 10);
+      case 'near.mock.fail': return this.cargoRelay.devFail(a);
+      case 'cargo.grant': return this.cargoRelay.devGrant(a, this.queue);
       default: throw new LocalDevError('host_unavailable', `"${name}" needs the game server; not available on this host`);
     }
   }

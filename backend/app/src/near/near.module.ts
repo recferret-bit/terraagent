@@ -3,6 +3,8 @@ import type { EnvSection } from '@terra/config';
 import { z } from 'zod';
 import { OutboxModule, env as outboxEnv } from './application/outbox/outbox.module.js';
 import { CargoExportOutboxService } from './cargo/cargo-export-outbox.js';
+import { CargoStatusController } from './cargo/cargo-status.controller.js';
+import { CargoStatusService } from './cargo/cargo-status.service.js';
 import { ChainDevController } from './infrastructure/dev/chain-dev.controller.js';
 import { ChainExplorerController } from './infrastructure/dev/chain-explorer.controller.js';
 import { NearHealthController } from './infrastructure/dev/near-health.controller.js';
@@ -21,9 +23,31 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
 
 /** NEAR integration: port bindings, chain outbox, dev chain routes, mock OAuth, social login, relay status, and `/v1/near/health`. */
 @Module({
-  controllers: [ChainDevController, ChainExplorerController, MockOauthController, NearHealthController, RelayStatusController, SocialAuthController],
-  providers: [CargoExportOutboxService, ColonyAccounts, RelayStatusService, SocialAuthService, SocialLink, NearMockCommand],
+  controllers: [
+    CargoStatusController,
+    ChainDevController,
+    ChainExplorerController,
+    MockOauthController,
+    NearHealthController,
+    RelayStatusController,
+    SocialAuthController,
+  ],
+  providers: [
+    CargoExportOutboxService,
+    CargoStatusService,
+    ColonyAccounts,
+    RelayStatusService,
+    SocialAuthService,
+    SocialLink,
+    NearMockCommand,
+  ],
   imports: [NearInfrastructureModule, OutboxModule],
-  exports: [CargoExportOutboxService, NearInfrastructureModule, OutboxModule, SocialLink],
+  exports: [
+    CargoExportOutboxService,
+    CargoStatusService,
+    NearInfrastructureModule,
+    OutboxModule,
+    SocialLink,
+  ],
 })
 export class NearModule {}
