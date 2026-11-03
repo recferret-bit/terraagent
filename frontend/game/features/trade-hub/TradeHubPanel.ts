@@ -22,21 +22,21 @@ import {
   type TradeHubTab,
   type TransferBounds,
 } from './cargoView';
+import {
+  CARGO_ERROR_MESSAGES,
+  CargoToastController,
+  buildOrbitBalancesSection,
+  extractPendingTransfers,
+  formatPendingExportChipText,
+  formatPendingImportChipText,
+} from './cargoUx';
 import { formatTransferPreview, syncMockTreeText, TradeHubForms } from './TradeHubForms';
 
 export {
-  computeTransferBounds,
-  formatCargoCount,
-  formatTransferPreview,
-  ORBIT_FAMILY_GROUPS,
-  resolveTradeHubCargoView,
-  SUB_RESOURCE_LABELS,
-  TradeHubForms,
-  type OrbitFamilyGroupDef,
-  type OrbitSubResourceDef,
-  type ResolvedTradeHubCargoView,
-  type TradeHubTab,
-  type TransferBounds,
+  computeTransferBounds, formatCargoCount, formatTransferPreview, ORBIT_FAMILY_GROUPS,
+  resolveTradeHubCargoView, SUB_RESOURCE_LABELS, TradeHubForms,
+  type OrbitFamilyGroupDef, type OrbitSubResourceDef, type ResolvedTradeHubCargoView,
+  type TradeHubTab, type TransferBounds,
 };
 
 export class TradeHubPanel implements Disposable {
@@ -47,6 +47,12 @@ export class TradeHubPanel implements Disposable {
   private readonly statusBadgeEl: HTMLElement;
   private readonly closeBtn: HTMLButtonElement;
   private readonly offlineBannerEl: HTMLElement;
+  private readonly toastEl: HTMLElement;
+  private readonly floatingToastEl: HTMLElement;
+  private readonly toastController: CargoToastController;
+  private readonly pendingContainerEl: HTMLElement;
+  private readonly pendingExportChipEl: HTMLElement;
+  private readonly pendingImportChipEl: HTMLElement;
   private readonly throughputValEl: HTMLElement;
   private readonly throughputFillEl: HTMLElement;
   private readonly dailyCapValEl: HTMLElement;
@@ -54,7 +60,7 @@ export class TradeHubPanel implements Disposable {
   private readonly exportTabBtn: HTMLButtonElement;
   private readonly importTabBtn: HTMLButtonElement;
   private readonly orbitBalancesEl: HTMLElement;
-  private readonly orbitRows = new Map<ResourceKey, { row: HTMLElement; valEl: HTMLElement }>();
+  private readonly orbitRows: Map<ResourceKey, { row: HTMLElement; valEl: HTMLElement }>;
 
   private isOpen = false;
   private activeTab: TradeHubTab = 'export';
@@ -63,6 +69,9 @@ export class TradeHubPanel implements Disposable {
   private selectedHubId: number | null = null;
   private closedForEntityId: number | null = null;
   private offSelection: (() => void) | null = null;
+  private offStoreReject: (() => void) | null = null;
+  private offStoreEvents: (() => void) | null = null;
+  private lastSeenRefundRef: string | null = null;
 
   constructor(
     private readonly parent: HTMLElement,
@@ -84,11 +93,18 @@ export class TradeHubPanel implements Disposable {
     this.statusBadgeEl = headerBuild.statusBadge;
     this.closeBtn = headerBuild.closeBtn;
 
-    this.offlineBannerEl = document.createElement('div');
-    this.offlineBannerEl.className = 'ta-trade-hub__offline-banner plate-sm';
-    this.offlineBannerEl.setAttribute('data-testid', 'trade-hub-offline-banner');
-    this.offlineBannerEl.textContent = 'OFFLINE — UNPOWERED';
+    this.offlineBannerEl = makeDiv('ta-trade-hub__offline-banner plate-sm', 'trade-hub-offline-banner', 'Trade Hub is unpowered.');
     this.offlineBannerEl.hidden = true;
+
+    const toastBuild = this.buildToastSection();
+    this.toastEl = toastBuild.toastEl;
+    this.floatingToastEl = toastBuild.floatingToastEl;
+    this.toastController = toastBuild.controller;
+
+    const pendingBuild = this.buildPendingSection();
+    this.pendingContainerEl = pendingBuild.container;
+    this.pendingExportChipEl = pendingBuild.exportChip;
+    this.pendingImportChipEl = pendingBuild.importChip;
 
     const metersBuild = this.buildMetersRow();
     this.throughputValEl = metersBuild.throughputVal;
@@ -100,23 +116,25 @@ export class TradeHubPanel implements Disposable {
     this.exportTabBtn = tabsBuild.exportBtn;
     this.importTabBtn = tabsBuild.importBtn;
 
-    this.orbitBalancesEl = this.buildOrbitBalancesSection();
+    const orbitBuild = buildOrbitBalancesSection((k) => this.selectResource(k));
+    this.orbitBalancesEl = orbitBuild.section;
+    this.orbitRows = orbitBuild.orbitRows;
 
-    this.tabBodyEl = document.createElement('div');
-    this.tabBodyEl.className = 'ta-trade-hub__tab-body plate-sm';
-    this.tabBodyEl.setAttribute('data-testid', 'trade-hub-tab-body');
-
+    this.tabBodyEl = makeDiv('ta-trade-hub__tab-body plate-sm', 'trade-hub-tab-body');
     this.forms = new TradeHubForms(this.tabBodyEl, {
       getTab: () => this.activeTab,
       getResolvedCargoView: () => this.getResolvedCargoView(),
       getContext: () => this.ctx,
       onResourceSelected: () => this.syncOrbitRowSelection(),
       onRenderRoot: () => syncMockTreeText(this.root),
+      onError: (code, detail, retryInS) => this.notifyError(code, detail, retryInS),
     });
 
     this.root.append(
       headerBuild.header,
       this.offlineBannerEl,
+      this.toastEl,
+      this.pendingContainerEl,
       metersBuild.metersRow,
       tabsBuild.tabsRow,
       this.orbitBalancesEl,
@@ -125,7 +143,38 @@ export class TradeHubPanel implements Disposable {
     this.parent.appendChild(this.root);
 
     this.bindSelection();
+    this.bindStore();
     this.render();
+  }
+
+  private buildToastSection(): { toastEl: HTMLElement; floatingToastEl: HTMLElement; controller: CargoToastController } {
+    const toastEl = makeDiv('ta-trade-hub__toast plate-sm', 'trade-hub-toast');
+    toastEl.setAttribute('role', 'status');
+    toastEl.hidden = true;
+
+    const floatingToastEl = makeDiv('ta-cargo-toast plate-sm', 'cargo-toast');
+    floatingToastEl.setAttribute('role', 'status');
+    floatingToastEl.setAttribute('aria-live', 'polite');
+    floatingToastEl.hidden = true;
+    this.parent.appendChild(floatingToastEl);
+
+    const controller = new CargoToastController(toastEl, floatingToastEl);
+    return { toastEl, floatingToastEl, controller };
+  }
+
+  private buildPendingSection(): {
+    container: HTMLElement; exportChip: HTMLElement; importChip: HTMLElement;
+  } {
+    const container = makeDiv('ta-trade-hub__pending', 'trade-hub-pending');
+    container.hidden = true;
+    const exportChip = makeSpan('ta-trade-hub__chip ta-trade-hub__chip--export plate-sm', 'trade-hub-chip-export');
+    exportChip.setAttribute('data-direction', 'export');
+    exportChip.hidden = true;
+    const importChip = makeSpan('ta-trade-hub__chip ta-trade-hub__chip--import plate-sm', 'trade-hub-chip-import');
+    importChip.setAttribute('data-direction', 'import');
+    importChip.hidden = true;
+    container.append(exportChip, importChip);
+    return { container, exportChip, importChip };
   }
 
   private buildHeader(): {
@@ -163,31 +212,25 @@ export class TradeHubPanel implements Disposable {
     dailyCapFill: HTMLElement;
   } {
     const metersRow = makeDiv('ta-trade-hub__meters');
+    const tp = this.buildMeterCard('Throughput', 'trade-hub-throughput', 'trade-hub-throughput-val', '0 / 250 / min', 'trade-hub-throughput-fill');
+    const dc = this.buildMeterCard('Daily Export Limit', 'trade-hub-daily-cap', 'trade-hub-daily-cap-val', '0 / 20,000 / day', 'trade-hub-daily-cap-fill ta-trade-hub__meter-fill--daily');
+    metersRow.append(tp.card, dc.card);
+    return { metersRow, throughputVal: tp.val, throughputFill: tp.fill, dailyCapVal: dc.val, dailyCapFill: dc.fill };
+  }
 
-    const tpCard = makeDiv('ta-trade-hub__meter-card plate-sm');
-    const tpLabel = makeSpan('ta-trade-hub__meter-label', undefined, 'Throughput');
-    const tpMeter = makeDiv('ta-trade-hub__meter', 'trade-hub-throughput');
-    const throughputVal = makeSpan('ta-trade-hub__meter-val', 'trade-hub-throughput-val', '0 / 250 / min');
-    const tpBar = makeDiv('ta-trade-hub__meter-bar');
-    const throughputFill = makeDiv('ta-trade-hub__meter-fill', 'trade-hub-throughput-fill');
-    throughputFill.style.width = '0%';
-    tpBar.appendChild(throughputFill);
-    tpMeter.append(throughputVal, tpBar);
-    tpCard.append(tpLabel, tpMeter);
-
-    const dcCard = makeDiv('ta-trade-hub__meter-card plate-sm');
-    const dcLabel = makeSpan('ta-trade-hub__meter-label', undefined, 'Daily Export Limit');
-    const dcMeter = makeDiv('ta-trade-hub__meter', 'trade-hub-daily-cap');
-    const dailyCapVal = makeSpan('ta-trade-hub__meter-val', 'trade-hub-daily-cap-val', '0 / 20,000 / day');
-    const dcBar = makeDiv('ta-trade-hub__meter-bar');
-    const dailyCapFill = makeDiv('ta-trade-hub__meter-fill ta-trade-hub__meter-fill--daily', 'trade-hub-daily-cap-fill');
-    dailyCapFill.style.width = '0%';
-    dcBar.appendChild(dailyCapFill);
-    dcMeter.append(dailyCapVal, dcBar);
-    dcCard.append(dcLabel, dcMeter);
-
-    metersRow.append(tpCard, dcCard);
-    return { metersRow, throughputVal, throughputFill, dailyCapVal, dailyCapFill };
+  private buildMeterCard(title: string, meterId: string, valId: string, defaultVal: string, fillClass: string): {
+    card: HTMLElement; val: HTMLElement; fill: HTMLElement;
+  } {
+    const card = makeDiv('ta-trade-hub__meter-card plate-sm');
+    const meter = makeDiv('ta-trade-hub__meter', meterId);
+    const val = makeSpan('ta-trade-hub__meter-val', valId, defaultVal);
+    const bar = makeDiv('ta-trade-hub__meter-bar');
+    const fill = makeDiv(`ta-trade-hub__meter-fill ${fillClass}`, fillClass.split(' ')[0]);
+    fill.style.width = '0%';
+    bar.appendChild(fill);
+    meter.append(val, bar);
+    card.append(makeSpan('ta-trade-hub__meter-label', undefined, title), meter);
+    return { card, val, fill };
   }
 
   private buildTabsRow(): {
@@ -197,54 +240,16 @@ export class TradeHubPanel implements Disposable {
   } {
     const tabsRow = makeDiv('ta-trade-hub__tabs');
     tabsRow.setAttribute('role', 'tablist');
-
-    const exportBtn = makeBtn('ta-trade-hub__tab btn-sm plate-sm', 'trade-hub-tab-export', 'EXPORT TO ORBIT', () =>
-      this.setTab('export'),
-    );
+    const exportBtn = makeBtn('ta-trade-hub__tab btn-sm plate-sm', 'trade-hub-tab-export', 'EXPORT TO ORBIT', () => this.setTab('export'));
     exportBtn.setAttribute('role', 'tab');
     exportBtn.setAttribute('data-active', 'true');
     exportBtn.setAttribute('aria-selected', 'true');
-
-    const importBtn = makeBtn('ta-trade-hub__tab btn-sm plate-sm', 'trade-hub-tab-import', 'IMPORT TO COLONY', () =>
-      this.setTab('import'),
-    );
+    const importBtn = makeBtn('ta-trade-hub__tab btn-sm plate-sm', 'trade-hub-tab-import', 'IMPORT TO COLONY', () => this.setTab('import'));
     importBtn.setAttribute('role', 'tab');
     importBtn.setAttribute('data-active', 'false');
     importBtn.setAttribute('aria-selected', 'false');
-
     tabsRow.append(exportBtn, importBtn);
     return { tabsRow, exportBtn, importBtn };
-  }
-
-  private buildOrbitBalancesSection(): HTMLElement {
-    const section = makeDiv('ta-trade-hub__orbit-section plate-sm', 'trade-hub-orbit-balances');
-    section.appendChild(makeDiv('ta-trade-hub__section-title', undefined, 'In Orbit'));
-
-    const familiesContainer = makeDiv('ta-trade-hub__families');
-    for (const group of ORBIT_FAMILY_GROUPS) {
-      const familyEl = makeDiv('ta-trade-hub__family plate-sm', `orbit-family-${group.family}`);
-      familyEl.setAttribute('data-family', group.family);
-      familyEl.appendChild(makeDiv('ta-trade-hub__family-header', `orbit-family-header-${group.family}`, group.label));
-
-      for (const sub of group.resources) {
-        const row = makeDiv('ta-trade-hub__orbit-row', `orbit-balance-${sub.key}`);
-        row.setAttribute('data-resource', sub.key);
-        row.setAttribute('data-family', group.family);
-        row.setAttribute('data-balance', '0');
-        row.setAttribute('data-empty', 'true');
-        row.onclick = () => this.selectResource(sub.key);
-
-        const labelEl = makeSpan('ta-trade-hub__orbit-label', `orbit-label-${sub.key}`, sub.label);
-        const valEl = makeSpan('ta-trade-hub__orbit-value', `orbit-value-${sub.key}`, '0');
-        row.append(labelEl, valEl);
-        familyEl.appendChild(row);
-        this.orbitRows.set(sub.key, { row, valEl });
-      }
-      familiesContainer.appendChild(familyEl);
-    }
-
-    section.appendChild(familiesContainer);
-    return section;
   }
 
   private syncOrbitRowSelection(): void {
@@ -302,41 +307,15 @@ export class TradeHubPanel implements Disposable {
     return this.activeTab;
   }
 
-  selectFamily(family: ResourceFamily): void {
-    this.forms.selectFamily(family);
-  }
-
-  getSelectedFamily(): ResourceFamily {
-    return this.forms.getSelectedFamily();
-  }
-
-  selectResource(resource: ResourceKey): void {
-    this.forms.selectResource(resource);
-  }
-
-  getSelectedResource(): ResourceKey {
-    return this.forms.getSelectedResource();
-  }
-
-  setAmount(amount: number): void {
-    this.forms.setAmount(amount);
-  }
-
-  getAmount(): number {
-    return this.forms.getAmount();
-  }
-
-  getTransferBounds(): TransferBounds {
-    return this.forms.getTransferBounds();
-  }
-
-  confirm(): boolean {
-    return this.forms.confirm();
-  }
-
-  submitTransfer(amountOverride?: number): boolean {
-    return this.forms.confirm(amountOverride);
-  }
+  selectFamily(family: ResourceFamily): void { this.forms.selectFamily(family); }
+  getSelectedFamily(): ResourceFamily { return this.forms.getSelectedFamily(); }
+  selectResource(resource: ResourceKey): void { this.forms.selectResource(resource); }
+  getSelectedResource(): ResourceKey { return this.forms.getSelectedResource(); }
+  setAmount(amount: number): void { this.forms.setAmount(amount); }
+  getAmount(): number { return this.forms.getAmount(); }
+  getTransferBounds(): TransferBounds { return this.forms.getTransferBounds(); }
+  confirm(): boolean { return this.forms.confirm(); }
+  submitTransfer(amountOverride?: number): boolean { return this.forms.confirm(amountOverride); }
 
   setCargoStatus(status: CargoStatusPayload | null): void {
     this.cargoStatus = status;
@@ -363,8 +342,30 @@ export class TradeHubPanel implements Disposable {
     return resolveTradeHubCargoView(this.view, status, colonyIdx, this.selectedHubId);
   }
 
+  private bindStore(): void {
+    if (this.offStoreReject || this.offStoreEvents) return;
+    const store = this.ctx?.services.store;
+    if (typeof store?.onCommandRejected === 'function') {
+      this.offStoreReject = store.onCommandRejected((rej: { id?: string; kind?: string; code?: string; detail?: string }) => {
+        const isCargo = rej.kind === 'cargo.export' || rej.kind === 'cargo.import' || (rej.code && rej.code in CARGO_ERROR_MESSAGES);
+        if (isCargo) this.notifyError(rej.code ?? 'mint_cap', rej.detail);
+      });
+    }
+    const storeEvents = store as { onServerEvents?(fn: (e: readonly { kind: string; data?: Record<string, unknown> }[]) => void): () => void } | undefined;
+    if (typeof storeEvents?.onServerEvents === 'function') {
+      this.offStoreEvents = storeEvents.onServerEvents((events) => {
+        for (const e of events) {
+          if (e.kind === 'cargoRefunded' && e.data) {
+            this.notifyRefund(Number(e.data.amount ?? 0), e.data.resource as ResourceKey, (e.data.direction ?? 'export') as 'export' | 'import');
+          }
+        }
+      });
+    }
+  }
+
   update(view: GameView): void {
     this.bindSelection();
+    this.bindStore();
     this.view = view;
     if (this.ctx?.services.cargoStatus !== undefined) {
       this.cargoStatus = this.ctx.services.cargoStatus;
@@ -376,6 +377,16 @@ export class TradeHubPanel implements Disposable {
     };
     const colonyIdx = ownColonyIndex(this.ctx?.services);
     const hubs = scanColonyTradeHubs(view as Record<string, unknown>, viewColony(view, colonyIdx), colonyIdx);
+
+    const rawCol = viewColony(view as Record<string, unknown>, colonyIdx) as Record<string, unknown> | undefined;
+    const colCargo = (rawCol?.cargo ?? (view as Record<string, unknown> | undefined)?.cargo) as Record<string, unknown> | undefined;
+    const lastEvent = colCargo?.lastEvent as { kind?: string; ref?: string; amount?: number; resource?: ResourceKey; direction?: 'export' | 'import' } | undefined;
+    if (lastEvent?.kind === 'refunded' && lastEvent.ref && lastEvent.ref !== this.lastSeenRefundRef) {
+      this.lastSeenRefundRef = lastEvent.ref;
+      if (typeof lastEvent.amount === 'number' && lastEvent.resource) {
+        this.notifyRefund(lastEvent.amount, lastEvent.resource, lastEvent.direction ?? 'export');
+      }
+    }
 
     if (raw.selectedEntity && normalizeKindCode(raw.selectedEntity.kind) === ENTITY_KIND.tradeHub) {
       const id = Number(raw.selectedEntity.entityId ?? raw.selectedEntity.id ?? 0);
@@ -399,6 +410,21 @@ export class TradeHubPanel implements Disposable {
     this.render();
   }
 
+  notifyError(code: string, detail?: string, retryInS?: number | null): void {
+    this.toastController.notifyError(code, detail, retryInS);
+    syncMockTreeText(this.root);
+  }
+
+  notifyRefund(amount: number, resource: ResourceKey, direction: 'export' | 'import' = 'export'): void {
+    this.toastController.notifyRefund(amount, resource, direction);
+    syncMockTreeText(this.root);
+  }
+
+  dismissToast(): void {
+    this.toastController.dismiss();
+    syncMockTreeText(this.root);
+  }
+
   private render(): void {
     const resolved = this.getResolvedCargoView();
 
@@ -413,7 +439,16 @@ export class TradeHubPanel implements Disposable {
     this.offlineBannerEl.hidden = resolved.hubOnline;
     this.offlineBannerEl.textContent = resolved.hubConstructing
       ? 'OFFLINE — CONSTRUCTING'
-      : 'OFFLINE — UNPOWERED';
+      : 'Trade Hub is unpowered.';
+
+    const pending = extractPendingTransfers(resolved, this.view, resolved.colonyIndex);
+    const hasExp = pending.exports.length > 0;
+    const hasImp = pending.imports.length > 0;
+    this.pendingContainerEl.hidden = !hasExp && !hasImp;
+    this.pendingExportChipEl.hidden = !hasExp;
+    if (hasExp) this.pendingExportChipEl.textContent = formatPendingExportChipText(pending.exports);
+    this.pendingImportChipEl.hidden = !hasImp;
+    if (hasImp) this.pendingImportChipEl.textContent = formatPendingImportChipText(pending.imports);
 
     this.throughputValEl.textContent = `${formatCargoCount(resolved.throughputUsedPerMin)} / ${formatCargoCount(resolved.throughputCapPerMin)} / min`;
     const tpPct = clampPct(resolved.throughputUsedPerMin, resolved.throughputCapPerMin || 250);
@@ -442,6 +477,11 @@ export class TradeHubPanel implements Disposable {
   dispose(): void {
     this.offSelection?.();
     this.offSelection = null;
+    this.offStoreReject?.();
+    this.offStoreReject = null;
+    this.offStoreEvents?.();
+    this.offStoreEvents = null;
+    this.toastController.dispose();
     this.orbitRows.clear();
     this.root.remove();
   }

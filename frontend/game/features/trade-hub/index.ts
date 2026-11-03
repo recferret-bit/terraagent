@@ -16,6 +16,7 @@ import {
   type TransferBounds,
 } from './TradeHubPanel';
 import './trade-hub.css';
+import './cargo-ux.css';
 
 export {
   computeTransferBounds,
@@ -32,6 +33,20 @@ export {
   type TradeHubTab,
   type TransferBounds,
 };
+
+export {
+  CARGO_ERROR_MESSAGES,
+  CargoToastController,
+  buildOrbitBalancesSection,
+  extractPendingTransfers,
+  formatCargoErrorToast,
+  formatCargoRefundToast,
+  formatPendingExportChipText,
+  formatPendingImportChipText,
+  parseRetryInSeconds,
+  type ExtractedPendingTransfers,
+  type PendingTransferItem,
+} from './cargoUx';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
