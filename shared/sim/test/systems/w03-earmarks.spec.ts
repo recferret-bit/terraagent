@@ -32,9 +32,25 @@ function setupColony(id: string) {
   return { state, colony };
 }
 
+/** A finished Command Hub: units are made at the Hub and its `supplyProvided` is the colony's supply cap. */
+function addActiveHub(state: ReturnType<typeof createState>, q: number, r: number): void {
+  const cols = state.entities.cols;
+  const row = insertRow(state.entities, state.meta.nextEntityId++, 0);
+  cols.kind[row] = ENTITY_KIND.commandHub;
+  cols.owner[row] = 0;
+  cols.q[row] = q;
+  cols.r[row] = r;
+  cols.footprintW[row] = 3;
+  cols.footprintD[row] = 3;
+  cols.hp[row] = 1500;
+  cols.hpMax[row] = 1500;
+  cols.state[row] = ENTITY_STATE.active;
+}
+
 describe('W03-13 Earmarks — 60s starvation earmark & Harvester drain protection', () => {
   it('queue a 200-Minerals building at 40 Minerals, keep queueing 15-Minerals Harvesters -> after 60 s it earmarks 160 Minerals and eventually starts', () => {
     const { state, colony } = setupColony('p-earmark-accept');
+    addActiveHub(state, -5, -3);
     const pipeline = createRegistryPipeline({ flags: parseWaves('..03') });
 
     expect(DEFAULT_EARMARK_AFTER_TICKS).toBe(300);

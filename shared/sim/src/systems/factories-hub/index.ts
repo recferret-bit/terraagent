@@ -14,6 +14,7 @@ import { defineSimModule } from '../define';
 import { checkCostAffordability, ensureColonyLedger, payProgressiveSlice, refundCost } from '../economy/ledger';
 import { colonyWho } from '../find';
 import { revealVision } from '../hq';
+import { checkUnitSupply, syncColonySupply } from '../supply';
 import {
   buildBuilderView,
   builderJobFromState,
@@ -64,14 +65,6 @@ export interface HubUnitQueueEntry {
   spawnedEntityIds: number[];
 }
 
-export interface ColonySupplySummary {
-  used: number;
-  activeUnits: number;
-  inProgressSupply: number;
-  cap: number;
-  available: number;
-}
-
 function ensureColony(state: PlanetState, colonyIndex: number, tick: number): ColonyState {
   let col = state.colonies[colonyIndex];
   if (!col) {
@@ -79,37 +72,6 @@ function ensureColony(state: PlanetState, colonyIndex: number, tick: number): Co
     state.colonies[colonyIndex] = col;
   }
   return ensureColonyLedger(col);
-}
-
-/** Computes current unit supply usage and cap (`10` from Hub T1) for `colonyIndex`. */
-export function getColonySupply(
-  state: PlanetState,
-  colonyIndex = 0,
-  entries: readonly HubUnitQueueEntry[] = [],
-  data?: CompiledDataLike,
-): ColonySupplySummary {
-  const { harvester, builder, hubProd, hub } = resolveHubProducerRows(data);
-  const harvesterSupply = Number(harvester.supply ?? 1);
-  const builderSupply = Number(builder?.supply ?? 1);
-  const e = state.entities, cols = e.cols;
-  let activeUnits = 0;
-  let hubCount = 0;
-
-  for (let row = 0; row < e.count; row++) {
-    if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    if (cols.kind[row] === ENTITY_KIND.harvester) activeUnits += harvesterSupply;
-    else if (cols.kind[row] === ENTITY_KIND.builder) activeUnits += builderSupply;
-    else if (cols.kind[row] === ENTITY_KIND.commandHub && cols.state[row] !== ENTITY_STATE.constructing) hubCount++;
-  }
-
-  const inProgressSupply = entries
-    .filter((en) => en.colonyIndex === colonyIndex && en.state === 'in_progress')
-    .reduce((sum, en) => sum + (en.unit === 'builder' ? builderSupply : harvesterSupply), 0);
-
-  const baseCap = Number(hub.supplyCap ?? hubProd.baseSupplyCap ?? 10);
-  const cap = hubCount > 0 ? hubCount * baseCap : baseCap;
-  const used = activeUnits + inProgressSupply;
-  return { used, activeUnits, inProgressSupply, cap, available: Math.max(0, cap - used) };
 }
 
 function getAllEntries(state: PlanetState): HubUnitQueueEntry[] {
@@ -135,8 +97,8 @@ function saveAllEntries(state: PlanetState, entries: HubUnitQueueEntry[], tick: 
     const col = ensureColony(state, idx, tick);
     const colEntries = entries.filter((en) => en.colonyIndex === idx && en.state !== 'done' && en.state !== 'cancelled');
     col.unitQueue = colEntries;
-    col.supply = getColonySupply(state, idx, colEntries, data);
     col.changedAt = tick;
+    syncColonySupply(state, idx, tick, data);
   }
 }
 
@@ -239,7 +201,6 @@ export function produceBuilderAtHubEdge(state: PlanetState, colonyIndex: number,
 }
 
 function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueEntry[], colonyIndex: number, tick: number, data?: CompiledDataLike): void {
-  const { harvester } = resolveHubProducerRows(data);
   const colony = ensureColony(state, colonyIndex, tick);
   const stock = colony.stock as Record<string, number>;
   const totalStock = Object.values(stock).reduce((a, b) => a + b, 0);
@@ -250,10 +211,7 @@ function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueE
     if (entry.colonyIndex !== colonyIndex || entry.state === 'done' || entry.state === 'cancelled' || entry.state === 'in_progress') {
       continue;
     }
-    const unitRow = resolveUnitRowForHub(entry.unit, data);
-    const unitSupply = Number(unitRow?.supply ?? harvester.supply ?? 1);
-    const supply = getColonySupply(state, colonyIndex, entries, data);
-    if (supply.used + unitSupply > supply.cap) {
+    if (!checkUnitSupply(state, colonyIndex, entry.unit, data, { pending: { hub: entries }, excludeTaskId: entry.taskId }).ok) {
       entry.state = 'waiting';
       entry.waitReason = 'supply';
       entry.waitDetail = 'waiting(supply)';

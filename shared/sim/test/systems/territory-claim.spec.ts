@@ -172,7 +172,7 @@ describe('W01-17: Colony stats (storage cap 500, supply cap 10, Founder Core +8 
     // GP-11: a cap never goes down: metals keep the pod's 600, the others rise to the Hub's 500.
     expect(col.caps).toEqual({ metals: 600, minerals: 500, energy: 0, bio: 500, item: 0 });
     expect(getColonyCaps(state, 0)).toEqual({ metals: 600, minerals: 500, energy: 0, bio: 500, item: 0 });
-    expect(col.supplyCap).toBe(10);
+    expect(col.supply).toMatchObject({ used: 0, units: 0, reserved: 0, cap: 10, sources: [{ building: 'commandHub', count: 1, each: 10, total: 10 }] });
     expect(col.founderCoreGenPerS).toBe(8); // one colony field (XC-01)
     expect(col).not.toHaveProperty('founderCoreEPerS');
     expect(col).not.toHaveProperty('powerGenEPerS');

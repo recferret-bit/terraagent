@@ -8,6 +8,7 @@ import { touchTile, type ColonyState, type PlanetState } from '../../kernel/stat
 import type { ConstructionOrder } from '../construction/orders';
 import { resolveHubT1Row, rowNum } from '../rows';
 import { defineSimModule } from '../define';
+import { syncColonySupply } from '../supply';
 
 export interface ClaimedTileInfo {
   q: number;
@@ -87,7 +88,8 @@ export function claimTerritoryRadius(state: PlanetState, opts: ClaimTerritoryOpt
  * Applies Command Hub T1 completion effects (`colony-economy-and-buildings-spec.md` §2.1, §3.1, `W01-17`):
  * - Claims `hub.t1.claimRadius` territory around `(order.q, order.r)` respecting immutable foreign borders.
  * - Sets colony `status = 'active'`, raises each family's storage cap to `hub.t1.storageCapPerFamily` (a cap never goes
- *   down, GP-11), `supplyCap` and the Founder Core generation `founderCoreGenPerS` (one colony field, XC-01).
+ *   down, GP-11) and the Founder Core generation `founderCoreGenPerS` (one colony field, XC-01); the unit supply cap
+ *   follows from the finished Hub (`systems/supply`).
  * - Emits `colonyFounded`.
  */
 export function applyHubCompletionEffects(
@@ -119,10 +121,10 @@ export function applyHubCompletionEffects(
   };
   col.status = 'active';
   col.caps = caps;
-  col.supplyCap = rowNum(hubRow, 'supplyCap');
   col.founderCoreGenPerS = rowNum(hubRow, 'founderCoreGenPerS');
   col.hubEntityId = order.entityId;
   col.changedAt = tick;
+  syncColonySupply(state, order.colonyId, tick, data); // the Hub's supply share (`hub.t1.supplyProvided`)
 
   const colonyIdStr = col.id || `col_${order.colonyId}`;
   const playerId = typeof col.playerId === 'string' && col.playerId.length > 0 ? col.playerId : undefined;

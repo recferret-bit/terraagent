@@ -198,6 +198,7 @@ export default defineTable({
       powerDrainPerS: 2,
       hp: 600,
       storageCapBonusPerFamily: 1000,
+      supplyProvided: 8,
       shedGroup: 3,
       demolishRefundRatio: 0.5,
       cancelRefundRatio: 0.5,

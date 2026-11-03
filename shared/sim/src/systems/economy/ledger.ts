@@ -111,23 +111,28 @@ export function recomputeFamilyCaps(
   return c.caps;
 }
 
+/** Entity states in which a building gives no colony capacity (storage, unit supply): not built yet, or off the grid. */
+const INACTIVE_PROVIDER_STATES: ReadonlySet<number> = new Set([
+  ENTITY_STATE.constructing,
+  ENTITY_STATE.offlineBrownout,
+  ENTITY_STATE.offlineUnpowered,
+  ENTITY_STATE.offlineOverload,
+  ENTITY_STATE.offlineNoGrid,
+]);
+
+/** Whether entity row `r` is an alive, completed and powered building (one rule for storage and supply caps). */
+export function isActiveCapacityProvider(state: PlanetState, r: number): boolean {
+  const cols = state.entities.cols;
+  return cols.hp[r] > 0 && !INACTIVE_PROVIDER_STATES.has(cols.state[r]);
+}
+
 /** Counts active (completed, alive, powered) Supply Depot T1 entities owned by `colonyIndex`. */
 export function countActiveSupplyDepots(state: PlanetState, colonyIndex: number): number {
   const e = state.entities, cols = e.cols;
   let count = 0;
   for (let r = 0; r < e.count; r++) {
-    if (cols.owner[r] !== colonyIndex || cols.kind[r] !== ENTITY_KIND.supplyDepot || cols.hp[r] <= 0) continue;
-    const st = cols.state[r];
-    if (
-      st === ENTITY_STATE.constructing ||
-      st === ENTITY_STATE.offlineBrownout ||
-      st === ENTITY_STATE.offlineUnpowered ||
-      st === ENTITY_STATE.offlineOverload ||
-      st === ENTITY_STATE.offlineNoGrid
-    ) {
-      continue;
-    }
-    count++;
+    if (cols.owner[r] !== colonyIndex || cols.kind[r] !== ENTITY_KIND.supplyDepot) continue;
+    if (isActiveCapacityProvider(state, r)) count++;
   }
   return count;
 }

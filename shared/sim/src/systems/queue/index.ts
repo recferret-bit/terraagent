@@ -9,7 +9,7 @@ import { defineSimModule } from '../define';
 import { buildSiteReject } from '../economy/siteTerrain';
 import { startBuildingConstruction } from '../economy/construction';
 import { checkCostAffordability } from '../economy/ledger';
-import { getColonySupply } from '../factories-hub';
+import { checkUnitSupply, unitSupplyOfName } from '../supply';
 import {
   applyReorderQueueTask,
   CANCEL_IN_PROGRESS_REFUND_RATIO,
@@ -141,15 +141,9 @@ function tryStartQueueEntry(
     markWaiting(entry, 'power', 'waiting: power', null, tick);
     return;
   }
-  if (entry.lane === 'units') {
-    const supply = getColonySupply(state, entry.colonyIndex, [], data);
-    const inProgUnits = allEntries.filter(
-      (e) => e.colonyIndex === entry.colonyIndex && e.lane === 'units' && e.state === 'in_progress',
-    ).length;
-    if (supply.activeUnits + inProgUnits + 1 > supply.cap) {
-      markWaiting(entry, 'supply', 'waiting: supply', null, tick);
-      return;
-    }
+  if (entry.task.kind === 'buildUnit' && !checkUnitSupply(state, entry.colonyIndex, entry.task.unit, data, { pending: { queue: allEntries }, excludeTaskId: entry.taskId }).ok) {
+    markWaiting(entry, 'supply', 'waiting: supply', null, tick);
+    return;
   }
   const missingForStart = checkStartMissing(state, colony, entry, allEntries, data);
   if (missingForStart) {
@@ -271,6 +265,9 @@ export function enqueueQueueTask(
   const limit = laneLimitFor(lane);
   const fullCode = isW03QueueActive(state, data) ? 'lane_full' : 'queue_full';
 
+  if (opts.task.kind === 'buildUnit' && unitSupplyOfName(opts.task.unit, data) === undefined) {
+    return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
+  }
   if (opts.task.kind === 'buildUnit' && typeof opts.task.producerId === 'number') {
     const producerId = opts.task.producerId;
     const producerEntries = activeLane.filter(
@@ -398,6 +395,10 @@ export const enqueueTaskHandler = defineCommandHandler({
     if (norm.task.kind === 'terraform' && (norm.task.op === 'work' || norm.task.op === 'repair')) {
       const intent = norm.task.op === 'repair' ? 'repair' : (norm.task as Partial<WorkOrderArgs>).intent;
       return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), intent, tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
+    }
+    if (norm.task.kind === 'buildUnit') { // the first unit must fit the supply cap now; the rest of a batch waits on `supply`
+      const supply = checkUnitSupply(state, colIdx, norm.task.unit, ctx.data);
+      if (!supply.ok) return { code: supply.code, detail: supply.detail };
     }
     const { precedence, costOverride } = enqueueAuthority(cmd.source, norm); // a player never sets its own cost or jumps the queue
     const res = enqueueQueueTask(state, { colonyIndex: colIdx, task: norm.task, precedence, taskId: norm.taskId, costOverride, tick: ctx.tick, data: ctx.data }, ctx);

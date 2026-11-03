@@ -49,7 +49,6 @@ const RESERVED: Record<string, string> = {
   'dev.probe.buildS': 'unit-conversion probe (tests and the tune loop only)',
   'dev.probe.ratePerS': 'unit-conversion probe (tests and the tune loop only)',
   'terrain.*.code': 'documents the TERRAIN layer code (fixed)',
-  'hq.t1.supply': 'supply use of a unit: W02 production / supply cap',
   'hq.t1.gridDrawPerS': 'power grid draw: W02 power grid',
   'hq.t1.maxBuildTier': 'worker tier rule (UO-L-02): when a second building tier exists',
   'hq.t1.cellFastRechargeShedGroup': 'power shedding group: W02 power grid',
