@@ -97,6 +97,13 @@ export class W12SeedService {
 
   async seedPilot(playerId: string): Promise<void> {
     this.noteActivePlayer(playerId);
+    await this.seedSinglePilot(playerId);
+    if (playerId !== 'pr_dev_w12') {
+      await this.seedSinglePilot('pr_dev_w12');
+    }
+  }
+
+  private async seedSinglePilot(playerId: string): Promise<void> {
     this.resetPlayers.delete(playerId);
     this.seededPlayers.add(playerId);
 
@@ -121,6 +128,13 @@ export class W12SeedService {
 
   async resetPilot(playerId: string): Promise<void> {
     this.noteActivePlayer(playerId);
+    await this.resetSinglePilot(playerId);
+    if (playerId !== 'pr_dev_w12') {
+      await this.resetSinglePilot('pr_dev_w12');
+    }
+  }
+
+  private async resetSinglePilot(playerId: string): Promise<void> {
     this.seededPlayers.delete(playerId);
     this.resetPlayers.add(playerId);
     await Promise.all([
