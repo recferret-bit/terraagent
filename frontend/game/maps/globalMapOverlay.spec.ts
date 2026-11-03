@@ -64,7 +64,10 @@ describe('W04-13 GlobalMapOverlay shell, legend, chips, and focus trap', () => {
     parent.remove();
   });
 
-  it('leaves Tab alone inside the dev console (a dialog stacked above the map) and sits below it', () => {
+});
+
+describe('W04 GlobalMapOverlay under the dev console', () => {
+  it('keeps Tab inside the dev console (a dialog stacked above the map) instead of pulling focus back, and sits below it', () => {
     const parent = document.createElement('div');
     const consoleEl = document.createElement('div');
     consoleEl.setAttribute('role', 'dialog');
@@ -77,8 +80,16 @@ describe('W04-13 GlobalMapOverlay shell, legend, chips, and focus trap', () => {
     input.focus();
     const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
     input.dispatchEvent(tab);
-    expect(tab.defaultPrevented).toBe(false);
-    expect(document.activeElement).toBe(input);
+    expect(document.activeElement).toBe(input); // the console's only field keeps focus; the map does not take it
+
+    // A text field outside any dialog keeps the browser's own Tab
+    const loose = document.createElement('input');
+    document.body.appendChild(loose);
+    loose.focus();
+    const tabLoose = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    loose.dispatchEvent(tabLoose);
+    expect(tabLoose.defaultPrevented).toBe(false);
+    loose.remove();
 
     // From anywhere else (e.g. body) Tab is still trapped inside the map
     input.blur();

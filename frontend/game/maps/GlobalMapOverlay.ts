@@ -309,16 +309,23 @@ export class GlobalMapOverlay {
     return Array.from(this.el.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
   }
 
-  /** Tab inside a field or dialog stacked above the map (the dev console) belongs to it, not to the map's trap. */
-  private isForeignDialogKey(e: KeyboardEvent): boolean {
+  /**
+   * Where Tab cycles: the map, or a dialog stacked above it (the dev console) when the key comes from inside that
+   * dialog; null leaves Tab alone (a text field outside any dialog).
+   */
+  private trapScopeFor(e: KeyboardEvent): Element | null {
     const t = e.target;
-    if (typeof Element === 'undefined' || !(t instanceof Element) || this.el.contains(t)) return false;
-    return isTypingTarget(e) || t.closest('[role="dialog"]') !== null;
+    if (typeof Element === 'undefined' || !(t instanceof Element) || this.el.contains(t)) return this.el;
+    const dialog = t.closest('[role="dialog"]');
+    if (dialog) return dialog;
+    return isTypingTarget(e) ? null : this.el;
   }
 
   private handleFocusTrap(e: KeyboardEvent): void {
-    if (!this.openState || e.key !== 'Tab' || this.isForeignDialogKey(e)) return;
-    const focusables = this.getFocusableElements();
+    if (!this.openState || e.key !== 'Tab') return;
+    const scope = this.trapScopeFor(e);
+    if (!scope) return;
+    const focusables = Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
     if (focusables.length === 0) return;
 
     e.preventDefault();
