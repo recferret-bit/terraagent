@@ -1,8 +1,6 @@
 import { compileData, dataRow, type CompiledRow } from '../../data';
-import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
-import { setField } from '../../ecs/store';
-import { hexDistance } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
+import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState, type PlanetType } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
@@ -10,49 +8,25 @@ import { getEnvironment } from '../environment';
 import { applyBrownoutShedding, type ShedCandidate } from './shedding';
 import { evaluatePowerEventsForColony, type PowerEventTracker } from './events';
 import { collectWorkLoad } from './workLoad';
-import { stepThermalPlantFuel } from './thermal';
+import { buildPowerGraph } from './graph';
+import { evaluateWindOutput } from './windAndCap';
+import type { ColonyPowerSummary, EntityPowerStatus, PowerComponentSummary } from './types';
+import {
+  evaluateSingleComponent,
+  processUnattachedBuildings,
+  calculateUnitDemand,
+  applyOfflineStatuses,
+} from './evaluate';
 
+export * from './types';
 export * from './shedding';
 export * from './solar';
 export * from './events';
 export * from './thermal';
+export * from './graph';
+export * from './windAndCap';
+export * from './evaluate';
 export { collectWorkLoad, terraformOpShedGroup, type WorkLoad } from './workLoad';
-
-export interface BuildingFootprintTile {
-  q: number;
-  r: number;
-}
-
-export interface ColonyPowerSummary {
-  colonyIndex: number;
-  hasHub: boolean;
-  founderCorePerS: number;
-  solarGrossPerS: number;
-  solarInternalDrainPerS: number;
-  solarNetPerS: number;
-  thermalGrossPerS?: number;
-  thermalInternalDrainPerS?: number;
-  thermalNetPerS?: number;
-  supply: number;
-  demand: number;
-  rawDemand: number;
-  buildingDemand: number;
-  unitDemand: number;
-  /** E/s the colony's player work jobs (TERRAFORM / REPAIR) draw now, after shedding (`UO-TF-02`). */
-  workDemand: number;
-  net: number;
-  brownout: boolean;
-  shedGroupsActive: number[];
-  shedEntityIds: number[];
-  /** Work jobs paused by the brownout (shed group 1): `waiting (power)`, progress kept, resumed when power returns. */
-  shedWorkJobIds: string[];
-  unpoweredEntityIds: number[];
-  hqFastRechargeShed: boolean;
-  offlineReasons: Record<number, string>;
-  daylight: number;
-  phase: 'day' | 'night';
-  clockText: string;
-}
 
 let cachedW02Data: CompiledDataLike | null = null;
 function defaultW02Data(): CompiledDataLike {
@@ -60,40 +34,17 @@ function defaultW02Data(): CompiledDataLike {
   return cachedW02Data;
 }
 
+let cachedW03Data: CompiledDataLike | null = null;
+function defaultW03Data(): CompiledDataLike {
+  if (!cachedW03Data) cachedW03Data = compileData(new Set(['W00', 'W01', 'W02', 'W03']));
+  return cachedW03Data;
+}
+
 export function resolvePowerRow(data: CompiledDataLike | undefined, table: string, id: string): CompiledRow {
   const t = data?.tables?.[table] as Record<string, CompiledRow> | undefined;
   if (t?.[id]) return t[id];
+  if (table === 'grid') return dataRow(defaultW03Data(), table, id);
   return dataRow(defaultW02Data(), table, id);
-}
-
-/** Computes the axial tiles covered by an entity with anchor `(q, r)` and footprint `(w, d)`. */
-export function getEntityFootprintTiles(q: number, r: number, w: number, d: number, rot = 0): BuildingFootprintTile[] {
-  const width = Math.max(1, w || 1);
-  const depth = Math.max(1, d || 1);
-  const swap = rot % 2 !== 0;
-  const fw = swap ? depth : width;
-  const fd = swap ? width : depth;
-  const minQ = -Math.floor((fw - 1) / 2);
-  const minR = -Math.floor((fd - 1) / 2);
-  const tiles: BuildingFootprintTile[] = [];
-  for (let dr = 0; dr < fd; dr++) {
-    for (let dq = 0; dq < fw; dq++) {
-      tiles.push({ q: q + minQ + dq, r: r + minR + dr });
-    }
-  }
-  return tiles;
-}
-
-/** Minimum hex distance between any tile of `a` and any tile of `b`. */
-export function minFootprintDistance(a: readonly BuildingFootprintTile[], b: readonly BuildingFootprintTile[]): number {
-  let best = Infinity;
-  for (const ta of a) {
-    for (const tb of b) {
-      const dist = hexDistance(ta.q, ta.r, tb.q, tb.r);
-      if (dist < best) best = dist;
-    }
-  }
-  return best;
 }
 
 /** Computes Solar T1 gross, internal drain, and net output (E/s) for a given `daylight` and `planetType`. */
@@ -112,154 +63,7 @@ export function computeSolarOutputPerS(
   return { gross, internalDrain, net };
 }
 
-interface HubPylonNetwork {
-  hasHub: boolean;
-  hubCount: number;
-  pylonTiles: BuildingFootprintTile[];
-  hubAnchors: BuildingFootprintTile[];
-  span: number;
-  attachRadius: number;
-}
-
-function collectHubPylons(state: PlanetState, colonyIndex: number, hubRow: CompiledRow, attachRadius: number): HubPylonNetwork {
-  const e = state.entities, cols = e.cols;
-  const pylonTiles: BuildingFootprintTile[] = [];
-  const hubAnchors: BuildingFootprintTile[] = [];
-  let hubCount = 0;
-  for (let row = 0; row < e.count; row++) {
-    if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    if (cols.kind[row] !== ENTITY_KIND.commandHub || cols.state[row] === ENTITY_STATE.constructing) continue;
-    hubCount++;
-    const w = cols.footprintW?.[row] || Number(hubRow.footprintW ?? 3);
-    const d = cols.footprintD?.[row] || Number(hubRow.footprintD ?? 3);
-    hubAnchors.push({ q: cols.q[row], r: cols.r[row] });
-    pylonTiles.push(...getEntityFootprintTiles(cols.q[row], cols.r[row], w, d, cols.rot[row]));
-  }
-  return { hasHub: hubCount > 0, hubCount, pylonTiles, hubAnchors, span: Number(hubRow.pylonSpan ?? 6), attachRadius };
-}
-
-function isRowAttachedToPylons(state: PlanetState, row: number, defaultW: number, defaultD: number, net: HubPylonNetwork): boolean {
-  if (!net.hasHub) return true;
-  const cols = state.entities.cols;
-  const w = cols.footprintW?.[row] || defaultW;
-  const d = cols.footprintD?.[row] || defaultD;
-  const tiles = getEntityFootprintTiles(cols.q[row], cols.r[row], w, d, cols.rot[row]);
-  if (minFootprintDistance(tiles, net.pylonTiles) <= net.attachRadius) return true;
-  for (const h of net.hubAnchors) {
-    if (minFootprintDistance(tiles, [h]) <= net.span) return true;
-  }
-  return false;
-}
-
-interface PowerEntitiesCollection {
-  solarGrossPerS: number;
-  solarInternalDrainPerS: number;
-  solarNetPerS: number;
-  thermalGrossPerS: number;
-  thermalInternalDrainPerS: number;
-  thermalNetPerS: number;
-  onlineGen: number;
-  rawBuildingDemand: number;
-  unitDemand: number;
-  unpoweredEntityIds: number[];
-  nightSolarEntityIds: number[];
-  noFuelEntityIds: number[];
-  shedCandidates: ShedCandidate[];
-}
-
-function collectColonyPowerEntities(
-  state: PlanetState,
-  colonyIndex: number,
-  netInfo: HubPylonNetwork,
-  env: ReturnType<typeof getEnvironment>,
-  hubDrainPerS: number,
-  data?: CompiledDataLike,
-  tick: number = state.meta.tick,
-  dtTicks = 0,
-): PowerEntitiesCollection {
-  const extractorRow = resolvePowerRow(data, 'economyT1Basic', 'metalsExtractor');
-  const harvesterRow = resolvePowerRow(data, 'unitsWorkersBasic', 'harvester');
-  const dayCycleRow = resolvePowerRow(data, 'economyT1Basic', 'dayCycle');
-  const idleDrainMult = Number(dayCycleRow.unitIdleDrainMult ?? 0.5);
-
-  let solarGrossPerS = 0, solarInternalDrainPerS = 0, solarNetPerS = 0;
-  let thermalGrossPerS = 0, thermalInternalDrainPerS = 0, thermalNetPerS = 0;
-  let onlineGen = 0, rawBuildingDemand = hubDrainPerS, unitDemand = 0;
-  const unpoweredEntityIds: number[] = [];
-  const nightSolarEntityIds: number[] = [];
-  const noFuelEntityIds: number[] = [];
-  const shedCandidates: ShedCandidate[] = [];
-  const e = state.entities, cols = e.cols;
-
-  for (let row = 0; row < e.count; row++) {
-    if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    const kind = cols.kind[row], st = cols.state[row];
-
-    if (kind === ENTITY_KIND.solar && st !== ENTITY_STATE.constructing) {
-      if (!isRowAttachedToPylons(state, row, 2, 2, netInfo)) {
-        unpoweredEntityIds.push(cols.id[row]);
-        if (st !== ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.offlineUnpowered, tick);
-        continue;
-      }
-      if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
-      const out = computeSolarOutputPerS(env.daylight, state.meta.planetType, data);
-      solarGrossPerS += out.gross; solarInternalDrainPerS += out.internalDrain; solarNetPerS += out.net;
-      if (env.phase === 'night' || env.daylight <= 0.001) {
-        nightSolarEntityIds.push(cols.id[row]);
-      } else if (out.net >= 0) {
-        onlineGen += out.net;
-      }
-    } else if (kind === ENTITY_KIND.thermal && st !== ENTITY_STATE.constructing) {
-      if (!isRowAttachedToPylons(state, row, 2, 2, netInfo)) {
-        unpoweredEntityIds.push(cols.id[row]);
-        if (st !== ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.offlineUnpowered, tick);
-        continue;
-      }
-      if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
-      const res = stepThermalPlantFuel(state, colonyIndex, row, dtTicks, tick, data);
-      if (!res.fueled) {
-        noFuelEntityIds.push(cols.id[row]);
-      } else {
-        thermalGrossPerS += res.grossPerS;
-        thermalInternalDrainPerS += res.drainPerS;
-        thermalNetPerS += res.netPerS;
-        onlineGen += res.netPerS;
-        const c = state.colonies[colonyIndex];
-        const prod = c?.production as { incomePerS?: Record<string, number> } | undefined;
-        if (prod?.incomePerS && dtTicks > 0) {
-          prod.incomePerS['bio.biomass'] = Number(
-            ((prod.incomePerS['bio.biomass'] ?? 0) - res.fuelConsumedPerS).toFixed(4),
-          );
-        }
-      }
-    } else if (kind === ENTITY_KIND.metalsExtractor && st !== ENTITY_STATE.constructing) {
-      const drain = Number(extractorRow.powerDrainPerS ?? 6);
-      if (!isRowAttachedToPylons(state, row, Number(extractorRow.footprintW ?? 2), Number(extractorRow.footprintD ?? 2), netInfo)) {
-        unpoweredEntityIds.push(cols.id[row]);
-        if (st !== ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.offlineUnpowered, tick);
-        continue;
-      }
-      if (st === ENTITY_STATE.offlineUnpowered) setField(e, row, 'state', ENTITY_STATE.active, tick);
-      rawBuildingDemand += drain;
-      const group = cols.shedGroup?.[row] || Number(extractorRow.shedGroup ?? 3);
-      shedCandidates.push({ entityId: cols.id[row], row, group, drainPerS: drain, kind });
-    } else if (kind === ENTITY_KIND.harvester) {
-      const fullDrain = Number(harvesterRow.powerDrainPerS ?? 1.5);
-      const isIdle = st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout;
-      unitDemand += isIdle ? fullDrain * idleDrainMult : fullDrain;
-    }
-  }
-
-  return {
-    solarGrossPerS, solarInternalDrainPerS, solarNetPerS,
-    thermalGrossPerS, thermalInternalDrainPerS, thermalNetPerS,
-    onlineGen, rawBuildingDemand, unitDemand,
-    unpoweredEntityIds, nightSolarEntityIds, noFuelEntityIds,
-    shedCandidates,
-  };
-}
-
-/** Evaluates single-component colony power and applies brownout shedding (W02-05, W02-06). */
+/** Evaluates colony power across all power graph components with brownout shedding (W03-05). */
 export function evaluateColonyPower(
   state: PlanetState,
   colonyIndex: number,
@@ -267,66 +71,94 @@ export function evaluateColonyPower(
   tick: number = state.meta.tick,
   dtTicks = 0,
 ): ColonyPowerSummary {
-  const hubRow = resolvePowerRow(data, 'hub', 't1');
-  const dayCycleRow = resolvePowerRow(data, 'economyT1Basic', 'dayCycle');
-  const attachRadius = Number(dayCycleRow.pylonAttachRadius ?? 3);
-
   const env = getEnvironment(state, data);
-  const netInfo = collectHubPylons(state, colonyIndex, hubRow, attachRadius);
-  const founderCorePerS = netInfo.hasHub ? Number(hubRow.founderCoreGenPerS ?? 8) * netInfo.hubCount : 0;
-  const hubDrainPerS = netInfo.hasHub ? Number(hubRow.powerDrainPerS ?? 5) * netInfo.hubCount : 0;
+  const windOut = evaluateWindOutput(state, colonyIndex, tick, data);
+  const graph = buildPowerGraph(state, colonyIndex, data);
+  const hubRow = resolvePowerRow(data, 'hub', 't1');
+  const founderCorePerS = graph.hasHub ? Number(hubRow.founderCoreGenPerS ?? 8) * graph.hubAnchors.length : 0;
 
   const col = state.colonies[colonyIndex];
-  if (col) {
-    col.pollution = Number(col.pollution ?? 0);
+  if (col) col.pollution = Number(col.pollution ?? 0);
+
+  let totalSupply = 0, rawBuildingDemand = 0;
+  let solarGross = 0, solarDrain = 0, solarNet = 0;
+  let thermalGross = 0, thermalDrain = 0, thermalNet = 0;
+  let windGross = 0, windDrain = 0, windNet = 0;
+  let capStoredE = 0, capCapacityE = 0, capDischargePerS = 0, capChargePerS = 0;
+
+  const unpoweredEntityIds: number[] = [], nightSolarEntityIds: number[] = [], noFuelEntityIds: number[] = [];
+  const allShedCandidates: ShedCandidate[] = [], componentsSummary: PowerComponentSummary[] = [];
+  const entityPower: Record<number, EntityPowerStatus> = {};
+
+  for (const comp of graph.components) {
+    const res = evaluateSingleComponent(state, colonyIndex, comp, env, windOut, dtTicks, tick, data);
+    componentsSummary.push(res.summary);
+    totalSupply += res.effectiveSupply;
+    rawBuildingDemand += res.demand;
+    solarGross += res.solarGross; solarDrain += res.solarDrain; solarNet += res.solarNet;
+    thermalGross += res.thermalGross; thermalDrain += res.thermalDrain; thermalNet += res.thermalNet;
+    windGross += res.windGross; windDrain += res.windDrain; windNet += res.windNet;
+    capStoredE += res.capStoredE; capCapacityE += res.capCapacityE;
+    capDischargePerS += res.capDischargePerS; capChargePerS += res.capChargePerS;
+    unpoweredEntityIds.push(...res.unpoweredIds);
+    nightSolarEntityIds.push(...res.nightSolarIds);
+    noFuelEntityIds.push(...res.noFuelIds);
+    allShedCandidates.push(...res.shedCandidates);
+    for (const id of res.onlineEntityIds) entityPower[id] = { state: 'online', component: comp.componentId };
   }
 
-  const entities = collectColonyPowerEntities(
-    state, colonyIndex, netInfo, env, hubDrainPerS, data, tick, dtTicks,
-  );
+  const offlineReasons: Record<number, string> = {};
+  processUnattachedBuildings(state, graph, tick, unpoweredEntityIds, offlineReasons, entityPower, data);
 
-  // Player work jobs draw from the grid (shed group 1); before the Hub there is no grid and they stay unmetered (GP-45).
-  const work = netInfo.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
-  const allCandidates = [...entities.shedCandidates, ...work.candidates];
+  const unitDemand = calculateUnitDemand(state, colonyIndex, data);
+  const work = graph.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
+  allShedCandidates.push(...work.candidates);
 
-  const supply = Number((founderCorePerS + entities.onlineGen).toFixed(4));
-  const rawDemand = Number((entities.rawBuildingDemand + entities.unitDemand + work.demand).toFixed(4));
-  const effectiveSupply = Math.max(
-    0,
-    Number((supply + Math.min(0, entities.solarNetPerS) + Math.min(0, entities.thermalNetPerS)).toFixed(4)),
-  );
+  const rawDemand = Number((rawBuildingDemand + unitDemand + work.demand).toFixed(4));
+  const effectiveSupply = Math.max(0, Number(totalSupply.toFixed(4)));
+  const shed = applyBrownoutShedding(state, colonyIndex, effectiveSupply, rawDemand, allShedCandidates, graph.hubAnchors, tick, data);
 
-  const shed = applyBrownoutShedding(
-    state, colonyIndex, effectiveSupply, rawDemand, allCandidates, netInfo.hubAnchors, tick, data,
-  );
-  for (const id of entities.unpoweredEntityIds) shed.offlineReasons[id] = 'offline: unpowered';
-  for (const id of entities.nightSolarEntityIds) shed.offlineReasons[id] = 'offline: night';
-  for (const id of entities.noFuelEntityIds) shed.offlineReasons[id] = 'offline: no fuel';
+  applyOfflineStatuses(graph, shed, unpoweredEntityIds, nightSolarEntityIds, noFuelEntityIds, offlineReasons, entityPower);
 
   const demand = shed.remainingDemand;
   const workDemand = Math.max(0, Number((work.demand - shed.shedWorkDemand).toFixed(4)));
-  const buildingDemand = Math.max(0, Number((demand - entities.unitDemand - workDemand).toFixed(4)));
+  const buildingDemand = Math.max(0, Number((demand - unitDemand - workDemand).toFixed(4)));
   const net = Number((effectiveSupply - demand).toFixed(4));
 
   return {
-    colonyIndex, hasHub: netInfo.hasHub, founderCorePerS,
-    solarGrossPerS: Number(entities.solarGrossPerS.toFixed(4)),
-    solarInternalDrainPerS: Number(entities.solarInternalDrainPerS.toFixed(4)),
-    solarNetPerS: Number(entities.solarNetPerS.toFixed(4)),
-    thermalGrossPerS: Number(entities.thermalGrossPerS.toFixed(4)),
-    thermalInternalDrainPerS: Number(entities.thermalInternalDrainPerS.toFixed(4)),
-    thermalNetPerS: Number(entities.thermalNetPerS.toFixed(4)),
-    supply, demand, rawDemand, buildingDemand,
-    unitDemand: Number(entities.unitDemand.toFixed(4)), workDemand,
+    colonyIndex, hasHub: graph.hasHub, founderCorePerS,
+    solarGrossPerS: Number(solarGross.toFixed(4)), solarInternalDrainPerS: Number(solarDrain.toFixed(4)), solarNetPerS: Number(solarNet.toFixed(4)),
+    thermalGrossPerS: Number(thermalGross.toFixed(4)), thermalInternalDrainPerS: Number(thermalDrain.toFixed(4)), thermalNetPerS: Number(thermalNet.toFixed(4)),
+    windFactor: windOut.windFactor, windGrossPerS: Number(windGross.toFixed(4)), windInternalDrainPerS: Number(windDrain.toFixed(4)), windNetPerS: Number(windNet.toFixed(4)),
+    capacitorStoredE: capStoredE, capacitorCapacityE: capCapacityE, capacitorDischargePerS: capDischargePerS, capacitorChargePerS: capChargePerS,
+    supply: effectiveSupply, demand, rawDemand, buildingDemand, unitDemand: Number(unitDemand.toFixed(4)), workDemand,
     net, brownout: shed.shedEntityIds.length > 0 || shed.shedWorkJobIds.length > 0 || rawDemand > effectiveSupply + 1e-6,
-    shedGroupsActive: shed.shedGroupsActive,
-    shedEntityIds: shed.shedEntityIds,
-    shedWorkJobIds: shed.shedWorkJobIds,
-    unpoweredEntityIds: entities.unpoweredEntityIds,
-    hqFastRechargeShed: shed.hqFastRechargeShed,
-    offlineReasons: shed.offlineReasons,
-    daylight: env.daylight, phase: env.phase, clockText: env.clockText,
+    shedGroupsActive: shed.shedGroupsActive, shedEntityIds: shed.shedEntityIds, shedWorkJobIds: shed.shedWorkJobIds,
+    unpoweredEntityIds, hqFastRechargeShed: shed.hqFastRechargeShed, offlineReasons: shed.offlineReasons,
+    daylight: env.daylight, phase: env.phase, clockText: env.clockText, entityPower, components: componentsSummary,
   };
+}
+
+export function notifyPylonOrBuildingRemoved(
+  state: PlanetState,
+  entityId: number,
+  tick: number = state.meta.tick,
+  data?: CompiledDataLike,
+  ctx?: StepContext,
+): void {
+  const summaries = recomputeAllColonyPower(state, data, tick);
+  if (ctx) {
+    const prevBlob = (state.blobs.power?.value as {
+      trackers?: Record<number, PowerEventTracker>;
+    } | undefined) ?? {};
+    const prevTrackers = prevBlob.trackers ?? {};
+    const trackers: Record<number, PowerEventTracker> = {};
+    for (const [colIdxStr, summary] of Object.entries(summaries)) {
+      const colIdx = Number(colIdxStr);
+      trackers[colIdx] = evaluatePowerEventsForColony(state, colIdx, summary, prevTrackers[colIdx], ctx, data);
+    }
+    setBlob(state, 'power', { byColony: summaries, trackers }, tick);
+  }
 }
 
 export function getColonyPower(state: PlanetState, colonyIndex = 0, data?: CompiledDataLike): ColonyPowerSummary {
