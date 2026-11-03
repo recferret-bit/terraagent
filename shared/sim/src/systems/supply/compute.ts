@@ -137,7 +137,10 @@ export function checkUnitSupply(
   if (unitSupply === undefined) return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
   const supply = computeColonySupply(state, colonyIndex, data, opts);
   if (unitSupply > 0 && supply.used + unitSupply > supply.cap) {
-    return { ok: false, code: 'supply_cap', detail: `Supply cap reached (${supply.used} / ${supply.cap}): build a Supply Depot` };
+    const detail = supply.cap <= 0
+      ? 'No unit supply yet: finish the Command Hub'
+      : `Supply cap reached (${supply.used} / ${supply.cap}): build a Supply Depot`;
+    return { ok: false, code: 'supply_cap', detail };
   }
   return { ok: true, supply, unitSupply };
 }

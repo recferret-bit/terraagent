@@ -49,6 +49,16 @@ describe('supply in the resource header', () => {
     expect(full.querySelector<HTMLElement>('[data-testid="res-supply-hint"]')!.hidden).toBe(false);
   });
 
+  it('without a Command Hub (cap 0) it is neutral, not "full", and does not point at the Supply Depot', () => {
+    const el = render([{ index: 0, supply: supply(0, 0, { sources: [] }) }]);
+    expect(el.querySelector('.ta-hud-min__stock-val')!.textContent).toBe('0 / 0');
+    expect(el.getAttribute('data-level')).toBe('none');
+    expect(el.getAttribute('data-capped')).toBe('false');
+    expect(el.title).toContain('No unit supply yet — finish the Command Hub');
+    expect(el.querySelector<HTMLElement>('[data-testid="res-supply-hint"]')!.hidden).toBe(true);
+    expect(supplyBlockReason({ used: 0, cap: 0 }, 1)).toBe('No unit supply yet — finish the Command Hub');
+  });
+
   it('shows no number before the host sent the colony supply', () => {
     expect(render([{ index: 0 }]).querySelector('.ta-hud-min__stock-val')!.textContent).toBe('— / —');
   });

@@ -1,5 +1,5 @@
 import type { ColonySupply } from '@terra/sim';
-import { supplyLevel, SUPPLY_CAP_TEXT, type SupplyLevel } from '../shared/supply';
+import { supplyLevel, SUPPLY_CAP_TEXT, SUPPLY_NONE_TEXT, type SupplyLevel } from '../shared/supply';
 
 /** Header slot text: `used / cap`, `— / —` before the host sent the colony's supply. */
 export function formatSupplyValue(s: ColonySupply | null): string {
@@ -10,7 +10,7 @@ export function formatSupplyValue(s: ColonySupply | null): string {
 export function supplyTitle(s: ColonySupply | null): string {
   if (!s) return 'Unit supply';
   const level = supplyLevel(s);
-  const tail = level === 'full' ? ` · ${SUPPLY_CAP_TEXT}` : '';
+  const tail = level === 'full' ? ` · ${SUPPLY_CAP_TEXT}` : level === 'none' ? ` · ${SUPPLY_NONE_TEXT}` : '';
   return `Unit supply: ${s.used} / ${s.cap} (units ${s.units}, in production ${s.reserved})${tail}`;
 }
 
@@ -82,7 +82,7 @@ export function renderSupplyBreakdown(container: HTMLElement, s: ColonySupply | 
       if (!s?.sources.length) {
         const none = document.createElement('div');
         none.className = 'ta-res-breakdown__row';
-        none.textContent = 'No supply source yet (Command Hub)';
+        none.textContent = SUPPLY_NONE_TEXT;
         box.appendChild(none);
       }
     }
