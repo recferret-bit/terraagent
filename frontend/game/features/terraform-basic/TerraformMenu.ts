@@ -4,6 +4,7 @@ import {
   getItemUnlockStage,
   REPAIR_COST_RATE,
   type CompiledDataLike,
+  type TerraformOpKind,
 } from '@terra/sim';
 import { isDockPaneShown } from '../../core/hud/CommandDock';
 import type { GameView } from '../../core/registry/types';
@@ -12,6 +13,13 @@ import { isHotkeyPress } from '../shared/hotkeys';
 import type { BrushController, TerraformButtonOp, TerraformPrimaryOp } from './BrushController';
 import { pct, ReferenceTables } from './referenceTables';
 import type { TileOverlay } from './TileOverlay';
+import {
+  createBrushBarDom,
+  renderW05MenuOpChips,
+  syncBrushBarDom,
+  type BrushBarRefs,
+  type BrushShape,
+} from './w05MenuOps';
 import { colonyWorkJobs, workStatusText } from './workStatus';
 
 export interface TerraformStageOpDef {
@@ -89,11 +97,15 @@ export interface TerraformMenuOptions {
 export class TerraformMenu {
   readonly el: HTMLElement;
   private readonly opButtons = new Map<TerraformButtonOp, HTMLButtonElement>();
+  private w05OpButtons = new Map<TerraformOpKind, HTMLButtonElement>();
   private readonly stageOpsRow: HTMLElement;
+  private readonly w05OpsRow: HTMLElement;
+  private readonly brushBar: BrushBarRefs | null;
   private readonly workerBadge: HTMLElement;
   private readonly statusEl: HTMLElement;
   private readonly tables: ReferenceTables;
   private readonly onKey: (e: KeyboardEvent) => void;
+  private readonly w05Enabled: boolean;
   /** The newest stroke whose work showed up in the view (so its end can be reported). */
   private workSeenFor: string | null = null;
   private lastStageKey: string | null = null;
@@ -104,10 +116,15 @@ export class TerraformMenu {
     private readonly overlay: TileOverlay,
     private readonly opts: TerraformMenuOptions = {},
   ) {
+    this.w05Enabled = !this.opts.flags || this.opts.flags.has('W05');
     this.el = makeDiv('ta-tf-menu plate', 'terraform-menu');
     const header = makeDiv('ta-tf-menu__header');
     header.appendChild(makeSpan('eyebrow', undefined, 'TERRAFORM OPS'));
-    this.workerBadge = makeSpan('ta-tf-menu__workers mono', 'tf-worker-badge', 'HQ Drone & Harvester');
+    this.workerBadge = makeSpan(
+      'ta-tf-menu__workers mono',
+      'tf-worker-badge',
+      this.w05Enabled ? 'HQ, Builder & Terraformer' : 'HQ Drone & Harvester',
+    );
     header.appendChild(this.workerBadge);
 
     const opsRow = makeDiv('ta-tf-menu__ops');
@@ -124,10 +141,32 @@ export class TerraformMenu {
 
     this.stageOpsRow = makeDiv('ta-tf-menu__stage-ops', 'tf-stage-ops');
     this.stageOpsRow.hidden = true;
+
+    this.brushBar = this.w05Enabled
+      ? createBrushBarDom(
+          (shape: BrushShape) => {
+            this.brush.setBrushShape(shape);
+            this.render();
+          },
+          () => {
+            this.brush.cancelArea();
+            this.brush.setCancelMode(!this.brush.isCancelMode());
+            this.render();
+          },
+        )
+      : null;
+
+    this.w05OpsRow = makeDiv('ta-tf-menu__w05-ops', 'tf-w05-ops');
+    this.w05OpsRow.hidden = !this.w05Enabled;
+
     this.statusEl = makeDiv('ta-tf-menu__status', 'tf-status');
 
     this.tables = new ReferenceTables(() => this.opts.simData?.());
-    this.el.append(header, opsRow, this.stageOpsRow, this.statusEl, this.tables.el);
+    if (this.brushBar) {
+      this.el.append(header, opsRow, this.brushBar.root, this.stageOpsRow, this.w05OpsRow, this.statusEl, this.tables.el);
+    } else {
+      this.el.append(header, opsRow, this.stageOpsRow, this.w05OpsRow, this.statusEl, this.tables.el);
+    }
     parent.appendChild(this.el);
 
     this.onKey = (e) => this.handleKey(e);
@@ -138,7 +177,7 @@ export class TerraformMenu {
 
   /** Clicking the armed op again disarms the brush. */
   private toggleOp(op: TerraformButtonOp): void {
-    if (this.brush.isArmed() && this.brush.getSelectedOp() === op) this.brush.disarm();
+    if (this.brush.isArmed() && !this.brush.isCancelMode() && this.brush.getSelectedOp() === op) this.brush.disarm();
     else this.brush.selectOp(op);
     this.render();
   }
@@ -170,7 +209,7 @@ export class TerraformMenu {
 
   private renderState(): void {
     const selectedOp = this.brush.getSelectedOp();
-    const armed = this.brush.isArmed();
+    const armed = this.brush.isArmed() && !this.brush.isCancelMode();
     for (const [op, btn] of this.opButtons) {
       const isSelected = armed && selectedOp === op;
       btn.setAttribute('aria-pressed', String(isSelected));
@@ -182,10 +221,27 @@ export class TerraformMenu {
     const workersReady = this.brush.hasWorkerAvailable();
     this.workerBadge.dataset.available = String(workersReady);
 
-    this.el.dataset.armed = String(armed);
+    this.el.dataset.armed = String(this.brush.isArmed());
     this.renderStageOps();
+    if (this.w05Enabled) {
+      const view = this.brush.getView();
+      const planetType = (view as { planet?: { type?: string } } | null)?.planet?.type;
+      this.w05OpButtons = renderW05MenuOpChips({
+        container: this.w05OpsRow,
+        data: this.opts.simData?.() ?? undefined,
+        planetType,
+        maxWorkerTier: this.brush.getMaxWorkerTier(view),
+        selectedOp,
+        armed,
+        omitOps: this.stageOpsRow.hidden ? undefined : new Set(['fill']),
+        onSelectOp: (op) => this.toggleOp(op),
+      });
+      if (this.brushBar) {
+        syncBrushBarDom(this.brushBar, this.brush.getBrushShape(), this.brush.isCancelMode());
+      }
+    }
     this.tables.refresh();
-    this.statusEl.textContent = this.statusText(armed, selectedOp);
+    this.statusEl.textContent = this.statusText(this.brush.isArmed(), selectedOp);
   }
 
   private renderStageOps(): void {
@@ -272,6 +328,7 @@ export class TerraformMenu {
       return stroke.op === 'terraform' ? 'Terraform chain ended: no reachable obstacle left, or the worker was stopped' : 'Repair done';
     }
     if (stroke) return stroke.statusText ?? `Queued ${stroke.queuedCount} jobs · ${stroke.skippedCount} skipped`;
+    if (this.brush.isCancelMode()) return 'Tool: CANCEL AREA · click or drag hexes';
     return armed ? `Tool: ${selectedOp.toUpperCase()} · click a hex` : 'Pick an op, then click a hex';
   }
 

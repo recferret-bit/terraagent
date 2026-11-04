@@ -58,6 +58,7 @@ export interface InspectableEntity {
   hpMax?: number;
   /** `ENTITY_STATE` code when the view carries it. */
   state?: number;
+  tier?: number;
   footprintW: number;
   footprintD: number;
   cost?: Readonly<Record<string, number>>;
@@ -67,6 +68,8 @@ export function normalizeEntityKindName(kind: unknown): string {
   if (kind === ENTITY_KIND.commandHub || kind === 'commandHub' || kind === 'hub') return 'commandHub';
   if (kind === ENTITY_KIND.hq || kind === 'hq' || kind === 'hqDrone') return 'hq';
   if (kind === ENTITY_KIND.harvester || kind === 'harvester') return 'harvester';
+  if (kind === ENTITY_KIND.builder || kind === 'builder' || kind === 'builderDrone') return 'builder';
+  if (kind === ENTITY_KIND.terraformer || kind === 'terraformer' || kind === 'terraformerDrone') return 'terraformer';
   if (kind === ENTITY_KIND.metalsExtractor || kind === 'metalsExtractor' || kind === 'extractor') return 'metalsExtractor';
   if (kind === ENTITY_KIND.solar || kind === 'solar' || kind === 'solarCollector') return 'solar';
   if (kind === ENTITY_KIND.tradeHub || kind === 'tradeHub') return 'tradeHub';
@@ -135,6 +138,7 @@ function toInspectableEntity(raw: Record<string, unknown>): InspectableEntity | 
     ...(typeof raw.hp === 'number' ? { hp: raw.hp } : {}),
     ...(typeof raw.hpMax === 'number' ? { hpMax: raw.hpMax } : {}),
     ...(typeof raw.state === 'number' ? { state: raw.state } : {}),
+    ...(typeof raw.tier === 'number' ? { tier: raw.tier } : {}),
     footprintW: Math.max(1, Math.trunc(fw)),
     footprintD: Math.max(1, Math.trunc(fd)),
     ...(raw.cost && typeof raw.cost === 'object' ? { cost: raw.cost as Readonly<Record<string, number>> } : {}),
@@ -206,7 +210,7 @@ export function findEntityAtTile(
   return null;
 }
 
-/** Checks whether the player has an alive HQ Drone or Harvester available to perform terraform/work orders. */
+/** Checks whether the player has an alive HQ Drone, Harvester, Builder, or Terraformer available to perform terraform/work orders. */
 export function hasWorkerEntity(
   entities: readonly InspectableEntity[],
   colonyId: number,
@@ -215,11 +219,33 @@ export function hasWorkerEntity(
   for (const e of entities) {
     if (!isEntityAlive(e)) continue;
     if (e.owner !== undefined && e.owner !== colonyId) continue;
-    if (e.kindName === 'hq' || e.kindName === 'harvester') return true;
+    if (e.kindName === 'hq' || e.kindName === 'harvester' || e.kindName === 'builder' || e.kindName === 'terraformer') return true;
   }
   const colonies = (view as { colonies?: Array<{ index?: number; hq?: { hp?: number; cell?: number } }> } | null)?.colonies;
   const col = colonies?.find((c) => c.index === colonyId) ?? colonies?.[colonyId];
   return Boolean(col?.hq && (col.hq.hp === undefined || col.hq.hp > 0));
+}
+
+/** Highest worker tier owned by `colonyId` (`1` in T1, `2` once a T2 worker exists; gates `deepReclaim`). */
+export function colonyMaxWorkerTier(
+  entities: readonly InspectableEntity[],
+  colonyId: number,
+  view?: GameView | null,
+): number {
+  let maxTier = 1;
+  for (const e of entities) {
+    if (!isEntityAlive(e)) continue;
+    if (e.owner !== undefined && e.owner !== colonyId) continue;
+    if (e.kindName === 'hq' || e.kindName === 'builder' || e.kindName === 'terraformer') {
+      const t = typeof e.tier === 'number' && e.tier > 0 ? e.tier : 1;
+      if (t > maxTier) maxTier = t;
+    }
+  }
+  const colonies = (view as { colonies?: Array<{ index?: number; maxWorkerTier?: number; workerTier?: number }> } | null)?.colonies;
+  const col = colonies?.find((c, i) => (c?.index ?? i) === colonyId);
+  const viewTier = col?.maxWorkerTier ?? col?.workerTier;
+  if (typeof viewTier === 'number' && viewTier > maxTier) maxTier = viewTier;
+  return maxTier;
 }
 
 /** The host's `enqueueTask` auto-prepare rule (the sim's own export, so client and host cannot drift). */
