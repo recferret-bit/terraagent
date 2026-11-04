@@ -2,6 +2,7 @@ import type { ResourceKey } from '@terra/contracts';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import type { ColonyState, SimState } from '../../kernel/state';
+import { fromMicro, toMicro } from '../../economy/residual';
 import { creditResource } from '../economy/ledger';
 
 /**
@@ -42,11 +43,12 @@ export function creditDismantleRefund(colony: ColonyState, job: DismantleSiteJob
   const p = Math.max(0, Math.min(1, progress));
   for (const [k, v] of Object.entries(total) as [ResourceKey, number][]) {
     if (!v || v <= 0) continue;
-    const target = p >= 1 ? v : v * p;
-    const slice = target - (refunded[k] ?? 0);
-    if (slice <= 1e-9) continue;
-    creditResource(colony, k, slice, tick, { produced: false });
-    refunded[k] = target;
+    // Micro-units telescope: the credited slices add up to exactly the micro-rounded target, with no drift per step.
+    const targetMicro = toMicro(p >= 1 ? v : v * p);
+    const sliceMicro = targetMicro - toMicro(refunded[k] ?? 0);
+    if (sliceMicro <= 0) continue;
+    creditResource(colony, k, fromMicro(sliceMicro), tick, { produced: false });
+    refunded[k] = fromMicro(targetMicro);
   }
   job.refunded = refunded;
 }
