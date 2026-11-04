@@ -73,5 +73,6 @@ export * from './systems/progression/validate';
 export * from './systems/rule-engine';
 export { DEFAULT_COLONY_PRIORITIES, type ColonyPriorities } from './systems/goals';
 export * from './systems/cargo';
+export * from './systems/trade';
 export * from './data';
 export * from './host';
