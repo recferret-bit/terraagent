@@ -1,5 +1,6 @@
 import { hasCommandKind, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type ClientMessageOf, type RejectCode, type SimCommandV1 } from '@terra/contracts';
 import { Counter, type Registry } from 'prom-client';
+import type { CommandPrechecks } from '../core/command-prechecks';
 import type { ColonyRecord } from '../core/home/home.repository';
 import type { FlagsService, CommandWaveLookup } from '../flags/flags.service';
 import type { GamePlanets } from '../game/game-planets.service';
@@ -21,6 +22,8 @@ export interface SimCommandIngressOptions {
   readonly homeRepo?: ColonyLookup;
   /** Per-player token bucket (default 20 commands/s, bursts of 40); over it a command is rejected `rate_limited`. */
   readonly rateLimit?: CommandRateLimitOptions;
+  /** Server-side prechecks per kind (W13-01), run after the contract checks and before the sim. */
+  readonly prechecks?: Pick<CommandPrechecks, 'has' | 'run'>;
 }
 
 /**
@@ -59,7 +62,7 @@ export class SimCommandIngress implements CommandIngress {
       } catch {
         return this.reject(ctx, cmd, 'internal', 'colony lookup failed');
       }
-      this.dispatchWithColony(ctx, cmd, colony);
+      await this.dispatchWithColony(ctx, cmd, colony);
     });
     this.chains.set(ctx.playerId, next);
     void next.finally(() => { if (this.chains.get(ctx.playerId) === next) this.chains.delete(ctx.playerId); });
@@ -83,7 +86,7 @@ export class SimCommandIngress implements CommandIngress {
     ctx: CommandContext,
     cmd: ClientMessageOf<'cmd'>,
     colony: ColonyRecord | null,
-  ): void {
+  ): Promise<void> | void {
     const pre = precheckClientCommand(cmd.d.kind, cmd.d.args, {
       gate: (k) => this.o.flags.gate(k, this.waveOf),
       production: this.o.production,
@@ -93,12 +96,29 @@ export class SimCommandIngress implements CommandIngress {
     if (!pre.dev && (colony?.status === 'ELIMINATED' || colony?.state === 'ELIMINATED')) {
       return this.reject(ctx, cmd, 'colony_inactive');
     }
+    if (this.o.prechecks?.has(cmd.d.kind)) return this.precheckThenSubmit(ctx, cmd, colony, pre.args, pre.dev);
+    this.submit(ctx, cmd, colony, pre.args, pre.dev);
+  }
+
+  /** A registered server precheck (W13-01) may reject before the sim sees the command; otherwise it is submitted. */
+  /** Awaited by the player's command chain, so a precheck never reorders that player's commands (BE-09). */
+  private precheckThenSubmit(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>, colony: ColonyRecord | null, args: unknown, dev: boolean): Promise<void> {
+    const input = { kind: cmd.d.kind, args, playerId: ctx.playerId, planetId: ctx.planetId, colony: colony ? { id: colony.id, colonyIndex: colony.colonyIndex } : null, dev };
+    return Promise.resolve()
+      .then(() => this.o.prechecks!.run(input))
+      .then(
+        (out) => (out ? this.reject(ctx, cmd, out.code, out.detail) : this.submit(ctx, cmd, colony, args, dev)),
+        () => this.reject(ctx, cmd, 'internal', 'precheck failed'),
+      );
+  }
+
+  private submit(ctx: CommandContext, cmd: ClientMessageOf<'cmd'>, colony: ColonyRecord | null, args: unknown, dev: boolean): void {
     const simCmd: SimCommandV1 = {
       colonyIndex: colony ? colony.colonyIndex : null,
-      source: pre.dev ? 'dev' : 'player',
+      source: dev ? 'dev' : 'player',
       commandId: cmd.id,
       kind: cmd.d.kind,
-      args: pre.args,
+      args,
     };
     this.o.planets.submit(ctx.planetId, simCmd).then(
       (out) => {

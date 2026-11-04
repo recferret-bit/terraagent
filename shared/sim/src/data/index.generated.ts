@@ -5,6 +5,7 @@ import table_economy_t1_basic from './economy-t1-basic';
 import table_grid from './grid';
 import table_hq from './hq';
 import table_hub from './hub';
+import table_market from './market';
 import table_ops_basic from './ops-basic';
 import table_resources from './resources';
 import table_stages from './stages';
@@ -16,4 +17,4 @@ import table_units_workers_basic from './units-workers-basic';
 import table_work_crew from './work-crew';
 import table_worldgen from './worldgen';
 
-export const DATA_TABLES: readonly TableDef[] = [table_dev, table_economy_t1_basic, table_grid, table_hq, table_hub, table_ops_basic, table_resources, table_stages, table_terraform_finds, table_terrain, table_time, table_trade_hub, table_units_workers_basic, table_work_crew, table_worldgen];
+export const DATA_TABLES: readonly TableDef[] = [table_dev, table_economy_t1_basic, table_grid, table_hq, table_hub, table_market, table_ops_basic, table_resources, table_stages, table_terraform_finds, table_terrain, table_time, table_trade_hub, table_units_workers_basic, table_work_crew, table_worldgen];

@@ -18,6 +18,7 @@ import { seatDevScenarioPlayer } from '../near/identity/dev-scenario-seat';
 import { FlagsService } from '../flags/flags.service';
 import { GameModule } from '../game/game.module';
 import { GamePlanets } from '../game/game-planets.service';
+import { CommandPrechecks } from '../core/command-prechecks';
 import { COMMAND_INGRESS, type CommandIngress } from './command-ingress';
 import { DbHomeProvider, HOME_PROVIDER, type HomeProvider } from './home-provider';
 import { SimCommandIngress } from './sim-command-ingress';
@@ -48,13 +49,14 @@ export const env = defineEnv('ws', {
     },
     {
       provide: COMMAND_INGRESS,
-      inject: [APP_ENV, MetricsRegistry, FlagsService, GamePlanets, { token: HomeRepository, optional: true }],
+      inject: [APP_ENV, MetricsRegistry, FlagsService, GamePlanets, { token: HomeRepository, optional: true }, { token: CommandPrechecks, optional: true }],
       useFactory: (
         e: AppEnv,
         m: MetricsRegistry,
         flags: FlagsService,
         planets: GamePlanets,
         homeRepo?: HomeRepository,
+        prechecks?: CommandPrechecks,
       ): CommandIngress =>
         new SimCommandIngress({
           planets,
@@ -62,6 +64,7 @@ export const env = defineEnv('ws', {
           registry: m.registry,
           production: e.NODE_ENV === 'production',
           homeRepo,
+          prechecks,
         }),
     },
     {
