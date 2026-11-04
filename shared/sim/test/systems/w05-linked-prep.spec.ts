@@ -167,7 +167,7 @@ describe('W05-09: Deep Reclaim tier gate & GP-55 uneven height spread in linked 
     expect(deepLocked.block).toBe('water');
 
     // Spawn a T2 Terraformer -> Deep Reclaim linked prep becomes valid
-    spawnTerraformerUnit(state, { owner: 0, q: 1, r: 0, tier: 2 }, 0, data);
+    spawnTerraformerUnit(state, { owner: 0, q: 1, r: 0, tier: 2 });
     const deepUnlocked = evaluatePlacement(placementWorldFromState(state), {
       colonyId: 0,
       building: 'commandHub',

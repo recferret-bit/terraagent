@@ -3,6 +3,7 @@ import {
   enqueueQueueTask,
   getColonyQueue,
   reorderQueueTask,
+  terraformOrdersOf,
   type EnqueueQueueTaskOptions,
   type PlanetState,
   type QueueEntry,
@@ -285,11 +286,40 @@ export class QueuePanel {
     const blobEntries = (view.blobs?.queue as { value?: { entries?: QueueEntry[] }; entries?: QueueEntry[] } | undefined);
     const fromBlob = blobEntries?.value?.entries ?? blobEntries?.entries;
     if (Array.isArray(col.queue)) {
-      this.entries = col.queue;
+      this.entries = [...col.queue];
     } else if (Array.isArray(fromBlob)) {
       this.entries = fromBlob.filter((e) => (e.colonyIndex ?? 0) === this.colonyIndex);
     } else if (Array.isArray(col.constructionQueue) || Array.isArray(col.unitQueue)) {
       this.entries = [...(col.constructionQueue ?? []), ...(col.unitQueue ?? [])];
+    }
+    const tfBlob = (view.blobs?.terraformTasks as { value?: unknown } | undefined)?.value ?? view.blobs?.terraformTasks;
+    const tfOrders = terraformOrdersOf(tfBlob, this.colonyIndex);
+    if (tfOrders.length > 0) {
+      const seenIds = new Set(this.entries.map((e) => e.taskId));
+      for (const o of tfOrders) {
+        if (seenIds.has(o.orderId) || seenIds.has(o.taskId)) continue;
+        const waitReason = o.waitReason ?? o.jobs[0]?.waitReason;
+        const isWaiting = o.status === 'waiting' || o.jobs[0]?.status === 'waiting' || Boolean(waitReason);
+        const total = Math.max(o.jobs.length, o.totalJobs ?? o.jobs.length);
+        const done = o.completedJobs ?? Math.max(0, total - o.jobs.length);
+        const curProg = Number(o.jobs[0]?.progress ?? 0);
+        const progress = total > 0 ? Math.min(1, (done + curProg) / total) : 0;
+        this.entries.push({
+          taskId: o.orderId,
+          colonyIndex: this.colonyIndex,
+          lane: 'terraform',
+          precedence: o.isLinkedPrep ? 'system' : 'player',
+          state: isWaiting ? 'waiting' : 'in_progress',
+          ...(waitReason ? { waitReason, waitDetail: `waiting(${waitReason})` } : {}),
+          task: { kind: 'terraform', op: o.op, q: o.jobs[0]?.q ?? 0, r: o.jobs[0]?.r ?? 0 },
+          cost: {}, paid: true,
+          progress,
+          buildTicks: Math.max(1, total * 50),
+          elapsedTicks: Math.round(progress * total * 50),
+          workRate: 1,
+          createdAt: 0,
+        });
+      }
     }
     this.render();
   }

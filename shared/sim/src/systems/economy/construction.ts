@@ -250,6 +250,12 @@ export function startBuildingConstruction(
   if (!opts.instant) {
     const building = String(row.building ?? opts.building);
     const prepOrderId = enqueueLinkedPrep(state, entityId, building, fp.coords, opts.owner, tick, data);
+    const preparedCount = fp.indices.filter(
+      (i) =>
+        state.grid.layers.prep[i] === PREP.prepared ||
+        state.grid.layers.prep[i] === PREP.irrigated ||
+        state.grid.layers.prep[i] === PREP.living,
+    ).length;
     const jobs = getBuildingJobs(state);
     jobs[entityId] = {
       entityId, building, owner: opts.owner,
@@ -258,6 +264,7 @@ export function startBuildingConstruction(
       workerEntityId: opts.workerEntityId,
       cost: { ...cost }, totalCost: { ...cost }, spentCost: {}, paid: false,
       status: 'waiting', waitReason: prepOrderId ? 'site' : 'worker',
+      preparedCount, totalTiles: fp.indices.length,
       ...(prepOrderId ? { prepOrderId } : {}),
     };
     saveBuildingJobs(state, jobs, tick);

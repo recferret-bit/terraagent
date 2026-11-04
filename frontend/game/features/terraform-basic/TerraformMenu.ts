@@ -322,7 +322,8 @@ export class TerraformMenu {
     if (active) {
       const cur = active.currentJob;
       const curStr = cur ? `${cur.op.toUpperCase()} ${cur.percent}%` : `${active.overallPercent}%`;
-      return `${active.completedJobs} / ${active.totalJobs} jobs · ${curStr}`;
+      const waitSuffix = active.waitingText ? ` · ${active.waitingText}` : '';
+      return `${active.completedJobs} / ${active.totalJobs} jobs · ${curStr}${waitSuffix}`;
     }
     if (stroke && this.workSeenFor === stroke.strokeId && (stroke.op === 'terraform' || stroke.op === 'repair')) {
       return stroke.op === 'terraform' ? 'Terraform chain ended: no reachable obstacle left, or the worker was stopped' : 'Repair done';

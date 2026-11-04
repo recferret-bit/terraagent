@@ -90,7 +90,16 @@ interface OnlineDebugWindow {
 }
 
 /** Entity kinds the suites look for (`ENTITY_KIND` in `shared/sim/src/ecs/columns.ts`). */
-export const KIND = { metalsExtractor: 5, solar: 6, harvester: 7, builder: 50, pylon: 9, mineralsQuarry: 14, waterExtractor: 15 } as const;
+export const KIND = {
+  metalsExtractor: 5,
+  solar: 6,
+  harvester: 7,
+  builder: 50,
+  terraformer: 51,
+  pylon: 9,
+  mineralsQuarry: 14,
+  waterExtractor: 15,
+} as const;
 /** `ENTITY_STATE.constructing`: a building site, not a finished building. */
 export const STATE_CONSTRUCTING = 4;
 

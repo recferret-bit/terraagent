@@ -34,6 +34,7 @@ const KIND_BY_NAME: Record<string, number> = {
   hq: ENTITY_KIND.hq,
   harvester: ENTITY_KIND.harvester,
   builder: ENTITY_KIND.builder,
+  terraformer: ENTITY_KIND.terraformer,
   commandHub: ENTITY_KIND.commandHub,
   metalsExtractor: ENTITY_KIND.metalsExtractor,
   solar: ENTITY_KIND.solar,
@@ -183,7 +184,12 @@ export function resolveEntityActivityProgress(
   if (unitProg !== null) return unitProg;
 
   const col = viewColony(v, e.owner ?? 0) as Record<string, unknown> | undefined;
-  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder) {
+  if (
+    kind === ENTITY_KIND.hq ||
+    kind === ENTITY_KIND.harvester ||
+    kind === ENTITY_KIND.builder ||
+    kind === ENTITY_KIND.terraformer
+  ) {
     const wp = resolveWorkerQueueOrTerraformProgress(e, v, col);
     if (wp !== null) return wp;
   }

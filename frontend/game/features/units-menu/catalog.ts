@@ -5,7 +5,7 @@ import { clientDataFor } from '../../core/flags/data';
 import type { GameView } from '../../core/registry/types';
 import { readColonySupply } from '../shared/supply';
 
-export type UnitKind = 'harvester' | 'builder' | 'scout' | 'guard' | 'combatEngineer' | 'hauler';
+export type UnitKind = 'harvester' | 'builder' | 'terraformer' | 'scout' | 'guard' | 'combatEngineer' | 'hauler';
 
 export interface UnitCardModel {
   id: string;
