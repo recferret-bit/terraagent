@@ -131,7 +131,7 @@ describe('W10-21 Trade Hub Export & Import Forms — Acceptance & Command Dispat
     importTabBtn.click();
     expect(panelEl.getAttribute('data-tab')).toBe('import');
 
-    const panel = ctx.services.getTradeHubPanel?.()!;
+    const panel = ctx.services.getTradeHubPanel!()!;
     panel.selectResource('metals.t1');
     panel.setAmount(100);
 

@@ -4,7 +4,6 @@ import {
   ENTITY_KIND,
   ENTITY_STATE,
   hexIndex,
-  type PlanetState,
   type SimCommand,
   type StepContext,
 } from '../src';

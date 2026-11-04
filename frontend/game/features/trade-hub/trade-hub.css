@@ -1,11 +1,18 @@
+.ta-hud__slot[data-slot='bottom-left'] .ta-command-dock__body {
+  max-height: min(32vh, 220px);
+}
+
 .ta-trade-hub {
   width: 340px;
+  max-height: calc(100vh - 72px);
+  overflow-y: auto;
+  scrollbar-width: thin;
   background: var(--ta-plate);
   border: 1px solid var(--ta-seam-2);
-  padding: var(--ta-s3);
+  padding: var(--ta-s2);
   display: flex;
   flex-direction: column;
-  gap: var(--ta-s2);
+  gap: var(--ta-s1);
   color: var(--ta-text);
   box-sizing: border-box;
 }
@@ -210,8 +217,8 @@
 .ta-trade-hub__orbit-section {
   display: flex;
   flex-direction: column;
-  gap: var(--ta-s2);
-  padding: var(--ta-s2);
+  gap: var(--ta-s1);
+  padding: var(--ta-s1) var(--ta-s2);
   background: var(--ta-plate-2);
   border: 1px solid var(--ta-seam);
 }
@@ -226,18 +233,19 @@
 }
 
 .ta-trade-hub__families {
-  display: flex;
-  flex-direction: column;
-  gap: var(--ta-s2);
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--ta-s1);
 }
 
 .ta-trade-hub__family {
   display: flex;
   flex-direction: column;
-  gap: 2px;
-  padding: var(--ta-s1) var(--ta-s2);
+  gap: 1px;
+  padding: var(--ta-s1);
   background: var(--ta-deep);
   border: 1px solid var(--ta-seam);
+  min-width: 0;
 }
 
 .ta-trade-hub__family-header {

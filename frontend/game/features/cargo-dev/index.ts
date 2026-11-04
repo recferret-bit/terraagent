@@ -32,8 +32,8 @@ export const cargoGrantCmd: DevCommandDef = {
   async run(a, ctx) {
     let colony = '0';
     let colonyIndex = 0;
-    let res = '';
-    let amtStr = '';
+    let res: string;
+    let amtStr: string;
 
     if (a.length === 2) {
       res = a[0] ?? '';
@@ -158,7 +158,7 @@ export const powerSetCmd: DevCommandDef = {
   help: `${POWER_SET_USAGE}  Override colony power supply (0 cuts power; restore/1/auto restores normal supply)`,
   async run(a, ctx) {
     const raw = (a[0] ?? 'restore').trim().toLowerCase();
-    let supplyOverride: number | null = null;
+    let supplyOverride: number | null;
     if (raw === '' || raw === 'restore' || raw === 'auto' || raw === 'on' || raw === '1' || raw === '-1') {
       supplyOverride = null;
     } else {

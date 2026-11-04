@@ -322,7 +322,7 @@ describe('W10-22 Acceptance: hub_offline and Closed Panel Toast', () => {
 
     const mockParent = parentEl as unknown as MockElement;
     const panelEl = mockParent.querySelector('[data-testid="trade-hub-panel"]')!;
-    const panel = ctx.services.getTradeHubPanel?.()!;
+    const panel = ctx.services.getTradeHubPanel!()!;
     panel.setOpen(true);
 
     const offlineBanner = panelEl.querySelector('[data-testid="trade-hub-offline-banner"]')!;

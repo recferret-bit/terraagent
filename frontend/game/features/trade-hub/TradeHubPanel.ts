@@ -334,7 +334,10 @@ export class TradeHubPanel implements Disposable {
     if (!this.offStoreReject && typeof store?.onCommandRejected === 'function') {
       this.offStoreReject = store.onCommandRejected((rej: { id?: string; kind?: string; code?: string; detail?: string }) => {
         const isCargo = rej.kind === 'cargo.export' || rej.kind === 'cargo.import' || (rej.code && rej.code in CARGO_ERROR_MESSAGES);
-        if (isCargo) this.notifyError(rej.code ?? 'mint_cap', rej.detail);
+        if (isCargo) {
+          const fallbackRetry = rej.code === 'mint_cap' && !rej.detail ? 60 : undefined;
+          this.notifyError(rej.code ?? 'mint_cap', rej.detail, fallbackRetry);
+        }
       });
     }
     const storeEvents = store as {
