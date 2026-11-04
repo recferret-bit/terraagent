@@ -48,7 +48,7 @@ function statsFromRow(row: CompiledRow): MobileStats {
   };
 }
 
-import { resolveReconRow, syncReconView } from '../systems/factories-hub/robotics';
+import { resolveReconRow } from '../systems/factories-hub/robotics';
 import { resolveBuilderRow, syncBuilderView } from '../systems/factories-hub/unit';
 import { resolveHarvesterRow, syncHarvesterView } from '../systems/harvest/unit';
 import { revealVision } from '../systems/hq';
@@ -158,7 +158,6 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
         const cols = state.entities.cols;
         const rRow = resolveReconRow(data);
         revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(rRow.viewRadius ?? 8), tick);
-        syncReconView(state, row, tick, data);
       },
     },
   ],

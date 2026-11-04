@@ -149,12 +149,23 @@ export function getEnvironment(state: PlanetState, data?: CompiledDataLike): Env
 }
 
 export function applyEnvironmentState(state: PlanetState, env: EnvironmentState, tick: number): void {
-  setBlob(state, 'environment', env, tick);
+  const prev = state.blobs.environment?.value as Partial<EnvironmentState> | undefined;
+  const envChanged =
+    !state.blobs.environment ||
+    prev?.daylight !== env.daylight ||
+    prev?.phase !== env.phase ||
+    prev?.stormActive !== env.stormActive;
+  if (envChanged || !state.blobs.environment) {
+    setBlob(state, 'environment', env, tick);
+  } else {
+    state.blobs.environment.value = env;
+  }
   for (const colony of state.colonies) {
-    if (colony.daylight !== env.daylight || colony.dayPhase !== env.phase || colony.timeOfDay !== env.clockText) {
-      colony.daylight = env.daylight;
-      colony.dayPhase = env.phase;
-      colony.timeOfDay = env.clockText;
+    const lightChanged = colony.daylight !== env.daylight || colony.dayPhase !== env.phase;
+    colony.daylight = env.daylight;
+    colony.dayPhase = env.phase;
+    colony.timeOfDay = env.clockText;
+    if (lightChanged) {
       colony.changedAt = tick;
     }
   }

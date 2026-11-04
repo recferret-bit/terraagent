@@ -28,6 +28,15 @@ function getAttackerOwnerMap(state: PlanetState): Record<number, number> {
   return raw ? { ...raw } : {};
 }
 
+function writeCombatDamageBlob(state: PlanetState, value: CombatDamageBlob, tick: number): void {
+  const existing = state.blobs.combatDamage;
+  if (existing) {
+    existing.value = value;
+  } else {
+    setBlob(state, 'combatDamage', value, tick);
+  }
+}
+
 export function recordEntityDamaged(
   state: PlanetState,
   entityId: number,
@@ -46,7 +55,7 @@ export function recordEntityDamaged(
   if (typeof resolvedOwner === 'number' && resolvedOwner >= 0) {
     lastAttackerOwnerByEntity[entityId] = resolvedOwner;
   }
-  setBlob(state, 'combatDamage', { lastDamagedByEntity, lastAttackerOwnerByEntity }, tick);
+  writeCombatDamageBlob(state, { lastDamagedByEntity, lastAttackerOwnerByEntity }, tick);
   provokeHiveFromDamage(state, entityId, resolvedOwner, attackerId, tick);
 }
 
@@ -54,7 +63,7 @@ export function clearEntityDamaged(state: PlanetState, entityId: number, tick: n
   const lastDamagedByEntity = getDamageMap(state);
   if (entityId in lastDamagedByEntity) {
     delete lastDamagedByEntity[entityId];
-    setBlob(state, 'combatDamage', { lastDamagedByEntity }, tick);
+    writeCombatDamageBlob(state, { lastDamagedByEntity }, tick);
   }
 }
 

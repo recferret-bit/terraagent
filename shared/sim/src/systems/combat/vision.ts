@@ -230,7 +230,12 @@ export function updateColonyVisionCache(
     byColony,
   };
   colonySetCache.set(nextBlob, setMap);
-  setBlob(state, COMBAT_VISION_BLOB, nextBlob, tick);
+  const existingBlob = state.blobs[COMBAT_VISION_BLOB];
+  if (existingBlob) {
+    existingBlob.value = nextBlob;
+  } else {
+    setBlob(state, COMBAT_VISION_BLOB, nextBlob, tick);
+  }
   return nextBlob;
 }
 

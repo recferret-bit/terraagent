@@ -52,7 +52,12 @@ function readEvasiveBlob(state: PlanetState): CombatEvasiveBlob {
 }
 
 function writeEvasiveBlob(state: PlanetState, blob: CombatEvasiveBlob, tick: number): void {
-  setBlob(state, COMBAT_EVASIVE_BLOB, blob, tick);
+  const existing = state.blobs[COMBAT_EVASIVE_BLOB];
+  if (existing) {
+    existing.value = blob;
+  } else {
+    setBlob(state, COMBAT_EVASIVE_BLOB, blob, tick);
+  }
 }
 
 /**

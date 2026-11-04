@@ -224,7 +224,12 @@ export function fireProjectile(
     impactTick,
   };
 
-  setBlob(state, PROJECTILE_IMPACTS_BLOB, { nextProjectileId: blob.nextProjectileId + 1, queue: [...blob.queue, entry] }, tick);
+  const nextBlobVal = { nextProjectileId: blob.nextProjectileId + 1, queue: [...blob.queue, entry] };
+  if (state.blobs[PROJECTILE_IMPACTS_BLOB]) {
+    state.blobs[PROJECTILE_IMPACTS_BLOB]!.value = nextBlobVal;
+  } else {
+    setBlob(state, PROJECTILE_IMPACTS_BLOB, nextBlobVal, tick);
+  }
 
   emitCombatEvent(
     state,
@@ -382,7 +387,12 @@ export function stepProjectileImpacts(
   if (due.length === 0) return [];
 
   due.sort((a, b) => a.id - b.id);
-  setBlob(state, PROJECTILE_IMPACTS_BLOB, { nextProjectileId: blob.nextProjectileId, queue: remaining }, tick);
+  const nextVal = { nextProjectileId: blob.nextProjectileId, queue: remaining };
+  if (state.blobs[PROJECTILE_IMPACTS_BLOB]) {
+    state.blobs[PROJECTILE_IMPACTS_BLOB]!.value = nextVal;
+  } else {
+    setBlob(state, PROJECTILE_IMPACTS_BLOB, nextVal, tick);
+  }
 
   const resolved: ProjectileImpactEvent[] = [];
   for (const impact of due) {

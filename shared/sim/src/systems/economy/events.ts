@@ -100,6 +100,29 @@ export const resourceShortageSystem = defineSystem({
       nextMap[c.index] = trackers;
     }
 
-    setBlob(state, 'economyEvents', { byColony: nextMap }, ctx.tick);
+    let shortageChanged = !state.blobs.economyEvents;
+    if (!shortageChanged) {
+      for (const [idxStr, nextCol] of Object.entries(nextMap)) {
+        const prevCol = prevMap[Number(idxStr)];
+        if (!prevCol) {
+          shortageChanged = true;
+          break;
+        }
+        for (const fam of RESOURCE_FAMILIES) {
+          if (
+            prevCol[fam].lowAndNegativeTicks !== nextCol[fam].lowAndNegativeTicks ||
+            prevCol[fam].lastEmittedTick !== nextCol[fam].lastEmittedTick
+          ) {
+            shortageChanged = true;
+            break;
+          }
+        }
+      }
+    }
+    if (shortageChanged || !state.blobs.economyEvents) {
+      setBlob(state, 'economyEvents', { byColony: nextMap }, ctx.tick);
+    } else {
+      state.blobs.economyEvents.value = { byColony: nextMap };
+    }
   },
 });

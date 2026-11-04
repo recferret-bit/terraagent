@@ -147,6 +147,36 @@ function buildSyncedFaunaState(
   };
 }
 
+function sameNumArr(a: readonly number[], b: readonly number[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return false;
+  return true;
+}
+
+function hasStructuralFaunaChange(prev: FaunaHivesBlob | undefined, next: FaunaHivesBlob): boolean {
+  if (!prev) return true;
+  if (prev.initialized !== next.initialized) return true;
+  const pHives = Object.keys(prev.hivesById), nHives = Object.keys(next.hivesById);
+  if (pHives.length !== nHives.length) return true;
+  for (const k of nHives) {
+    const ph = prev.hivesById[Number(k)], nh = next.hivesById[Number(k)]!;
+    if (!ph || ph.destroyed !== nh.destroyed || ph.mode !== nh.mode) return true;
+    if (!sameNumArr(ph.aggressiveColonies, nh.aggressiveColonies)) return true;
+  }
+  return false;
+}
+
+function hasModeMapChanged(
+  prev: Record<number, FaunaBehaviorMode> | undefined,
+  next: Record<number, FaunaBehaviorMode>,
+): boolean {
+  if (!prev) return true;
+  const pKeys = Object.keys(prev), nKeys = Object.keys(next);
+  if (pKeys.length !== nKeys.length) return true;
+  for (const k of nKeys) if (prev[Number(k)] !== next[Number(k)]) return true;
+  return false;
+}
+
 /**
  * Persists `fauna` into `state.blobs.faunaHives` and synchronizes `state.blobs.faunaMode` and
  * `state.blobs.faunaAggression` so `targeting.ts` (`W07-09`) sees colony-scoped hostility.
@@ -156,6 +186,7 @@ export function saveFaunaHivesState(
   fauna: FaunaHivesBlob,
   tick = state.meta.tick,
 ): void {
+  const prevHivesBlob = state.blobs[FAUNA_HIVES_BLOB]?.value as FaunaHivesBlob | undefined;
   const synced = buildSyncedFaunaState(
     fauna.initialized,
     fauna.hivesById,
@@ -167,7 +198,6 @@ export function saveFaunaHivesState(
     fauna.scheduledRollIndexByColony,
     fauna.pendingEvents,
   );
-  setBlob(state, FAUNA_HIVES_BLOB, synced, tick);
 
   const prevModeRaw = (
     state.blobs[FAUNA_MODE_BLOB]?.value as
@@ -214,13 +244,25 @@ export function saveFaunaHivesState(
     };
   }
 
-  setBlob(state, FAUNA_MODE_BLOB, { byEntityId: modeByEntityId }, tick);
-  setBlob(
-    state,
-    FAUNA_AGGRESSION_BLOB,
-    { byEntityId: aggroByEntityId, byHiveId: aggroByHiveId },
-    tick,
-  );
+  const structuralChanged = hasStructuralFaunaChange(prevHivesBlob, synced);
+  if (!state.blobs[FAUNA_HIVES_BLOB] || structuralChanged) {
+    setBlob(state, FAUNA_HIVES_BLOB, synced, tick);
+  } else {
+    state.blobs[FAUNA_HIVES_BLOB].value = synced;
+  }
+
+  if (!state.blobs[FAUNA_MODE_BLOB] || hasModeMapChanged(prevModeRaw, modeByEntityId)) {
+    setBlob(state, FAUNA_MODE_BLOB, { byEntityId: modeByEntityId }, tick);
+  } else {
+    state.blobs[FAUNA_MODE_BLOB].value = { byEntityId: modeByEntityId };
+  }
+
+  const nextAggro = { byEntityId: aggroByEntityId, byHiveId: aggroByHiveId };
+  if (!state.blobs[FAUNA_AGGRESSION_BLOB] || structuralChanged) {
+    setBlob(state, FAUNA_AGGRESSION_BLOB, nextAggro, tick);
+  } else {
+    state.blobs[FAUNA_AGGRESSION_BLOB].value = nextAggro;
+  }
 }
 
 export function getHiveRecord(state: PlanetState, hiveId: number): HiveRecord | undefined {
@@ -251,7 +293,7 @@ export function getCohortRecord(
 
 export function getActiveCohorts(state: PlanetState): FaunaCohortRecord[] {
   return Object.values(getFaunaHivesState(state).cohortsById).sort((a, b) =>
-    a.cohortId.localeCompare(b.cohortId),
+    a.cohortId < b.cohortId ? -1 : a.cohortId > b.cohortId ? 1 : 0,
   );
 }
 

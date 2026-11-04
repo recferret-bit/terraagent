@@ -32,7 +32,7 @@ import {
 
 const WANDER_INTERVAL_TICKS = 15;
 
-function syncFaunaLiveness(state: PlanetState, fauna: FaunaHivesBlob): void {
+function syncFaunaLiveness(state: PlanetState, fauna: FaunaHivesBlob, tick = state.meta.tick): void {
   const cols = state.entities.cols;
   for (const hive of Object.values(fauna.hivesById)) {
     const hRow = rowOf(state.entities, hive.hiveId);
@@ -42,10 +42,14 @@ function syncFaunaLiveness(state: PlanetState, fauna: FaunaHivesBlob): void {
     } else {
       hive.hp = cols.hp[hRow]!;
     }
+    const wasAtCap = hive.residentIds.length >= hive.popCap;
     hive.residentIds = hive.residentIds.filter((id) => {
       const bRow = rowOf(state.entities, id);
       return bRow >= 0 && cols.hp[bRow]! > 0;
     });
+    if (wasAtCap && hive.residentIds.length < hive.popCap) {
+      hive.lastReplenishTick = tick;
+    }
   }
 
   for (const [idStr, bug] of Object.entries(fauna.bugsById)) {
@@ -208,9 +212,11 @@ function stepAggressiveBugMovement(
     if (dist > cfg.range + fpPad + 1e-4) {
       const bandMax = (cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1) + fpPad;
       const curCmd = getUnitCommand(state, bug.entityId);
+      const driftAllowance = dist > 3 ? 2 : 1;
       if (
         curCmd?.kind !== 'move' ||
-        hexDistance(curCmd.q, curCmd.r, tq, tr) > 1 ||
+        cols.state[bugRow] !== ENTITY_STATE.moving ||
+        hexDistance(curCmd.q, curCmd.r, tq, tr) > driftAllowance ||
         (curCmd.maxDist ?? 0) !== bandMax
       ) {
         issueUnitCommand(
@@ -267,7 +273,7 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
   flushPendingFaunaEvents(state, ctx);
   detectAndApplyDamageProvocation(state, ctx.tick, ctx);
   fauna = getFaunaHivesState(state);
-  syncFaunaLiveness(state, fauna);
+  syncFaunaLiveness(state, fauna, ctx.tick);
   saveFaunaHivesState(state, fauna, ctx.tick);
 
   stepActiveCohorts(state, ctx);
@@ -281,14 +287,7 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
   for (const hiveId of hiveIds) {
     const latest = getFaunaHivesState(state);
     const hive = latest.hivesById[hiveId];
-    if (!hive || hive.destroyed) continue;
-    if (hive.residentIds.length >= hive.popCap) {
-      if (hive.lastReplenishTick !== ctx.tick) {
-        hive.lastReplenishTick = ctx.tick;
-        saveFaunaHivesState(state, latest, ctx.tick);
-      }
-      continue;
-    }
+    if (!hive || hive.destroyed || hive.residentIds.length >= hive.popCap) continue;
     if (ctx.tick - hive.lastReplenishTick >= hive.replenishTicks) {
       spawnResidentBug(state, hiveId, ctx.tick, ctx.data);
       const afterSpawn = getFaunaHivesState(state);
@@ -327,7 +326,7 @@ export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
   flushPendingFaunaEvents(state, ctx);
   detectAndApplyDamageProvocation(state, ctx.tick, ctx);
   const fauna = getFaunaHivesState(state);
-  syncFaunaLiveness(state, fauna);
+  syncFaunaLiveness(state, fauna, ctx.tick);
   saveFaunaHivesState(state, fauna, ctx.tick);
 
   const cols = state.entities.cols;
@@ -401,7 +400,7 @@ export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
   saveFaunaHivesState(state, fauna, ctx.tick);
   stepProjectileImpacts(state, ctx.tick, ctx);
   const afterCombat = getFaunaHivesState(state);
-  syncFaunaLiveness(state, afterCombat);
+  syncFaunaLiveness(state, afterCombat, ctx.tick);
   saveFaunaHivesState(state, afterCombat, ctx.tick);
   stepActiveCohorts(state, ctx);
 }
