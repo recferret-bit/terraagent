@@ -67,8 +67,7 @@ Green on this branch while writing the guide:
 - `npm test -w @terra/director`
 - `npm run e2e -- --waves 16` → 2 passed (server)
 - `npm run e2e -- --waves 16 --host local` → 2 passed (browser host)
-
-`npm run e2e -- --waves ..15` (earlier suites with W16 off) is the remaining full-suite gate. Do not treat it as green until that command finishes.
+- `npm run e2e -- --waves ..15` → 60 passed, then two failures: the W03 dismantle click stuck on the stage-toast countdown, and the W06 saving chip was already the retry toast. After those two harness fixes, the same `--waves ..15` grep re-ran the W03 dismantle, the W02 dismantle hotkey, and W06 steps 1, 6, and 7: 5 passed. The other 60 were not repeated after the harness edit.
 
 ## When you're done
 

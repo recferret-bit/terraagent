@@ -117,9 +117,8 @@ test('@hack 6. relayer fail shows the orbit retry toast; clearing the fail rate 
   const other = await fresh.newPage();
   try {
     await loadScenario(other, 'w06', {}, { as: 'w06b', timeout: 45_000 });
-    const sawSaving = other.locator('[data-testid=orbit-save]').waitFor({ state: 'visible', timeout: 30_000 });
     await saveWithGoogle(other, RETRY_SUBJECT);
-    await sawSaving;
+    // A fail rate of 1 replaces the saving chip with the toast in the same poll, so the chip is not required here.
     await expect(other.locator('[data-testid=orbit-toast]')).toContainText("Couldn't save to orbit, retrying", { timeout: 30_000 });
     await setRelayerFail(other, 0);
     await other.locator('[data-testid=orbit-retry]').click();

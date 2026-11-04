@@ -88,13 +88,15 @@ interface OnlineDebug {
   lastPick: { q: number; r: number; i: number } | null;
 }
 
-/** Clicks the centre of tile (q, r) via `window.__online.tileToScreen`; returns the resulting `__online.lastPick`. */
+/**
+ * Clicks the centre of tile (q, r) via `window.__online.tileToScreen`; returns the resulting `__online.lastPick`.
+ * The stage toast countdown rewrites its label every 250 ms, so a Playwright click never sees a stable button.
+ */
 export async function clickTile(page: Page, q: number, r: number): Promise<{ q: number; r: number; i: number } | null> {
-  // Stage announcements cover the centre of the map until dismissed.
-  const dismiss = page.getByTestId('stage-toast-dismiss');
-  if (await dismiss.isVisible()) await dismiss.click();
-  const closeGoals = page.getByTestId('stage-goals-close');
-  if (await closeGoals.isVisible()) await closeGoals.click();
+  await page.evaluate(() => {
+    document.querySelector<HTMLButtonElement>('[data-testid=stage-toast-dismiss]')?.click();
+    document.querySelector<HTMLButtonElement>('[data-testid=stage-goals-close]')?.click();
+  });
   const pos = await page.evaluate(([a, b]) => (window as unknown as { __online: OnlineDebug }).__online.tileToScreen(a, b), [q, r] as const);
   if (!pos) throw new Error(`clickTile(${q},${r}): terrain is not ready`);
   await page.mouse.click(pos.x, pos.y);
