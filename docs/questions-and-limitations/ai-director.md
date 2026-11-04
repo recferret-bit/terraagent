@@ -59,3 +59,13 @@
 - **Workaround / mitigation:** `partitionExpired` does not take policy rows. A later repository should implement `DirectorAuditPort` in `backend/app/src/ai/audit/types.ts`. Callers pass `expiresAtMs` (short-lived context, 30-day decision audit); this store does not choose those windows or redact secrets (W16-16).
 - **To resolve:** add a Prisma `DirectorAuditPort` against the generated client, plus attempt and action-result writers, without expiring `director_policy`.
 - **Found:** 2026-11-04, W16-15.
+
+### AI-07 · Proposal outbox is in-memory
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/ai/audit/outbox.ts` (`ProposalOutbox`), `shared/db/prisma/ai.prisma` (`DirectorProposal`)
+- **What happens:** `accept` keeps the first action list for a `requestId` in process memory. A lower fence than that colony's latest accepted fence, or an `intentRevision` below `noteIntent`, returns `superseded` and stores nothing. A repeat `requestId` returns `duplicate: true` and does not append actions. Nothing is written to `director_proposal` or `director_action_result`. A process restart drops accepted proposals.
+- **Why it is like this:** W16-12's acceptance is fencing and request-id dedupe. The task forbids Prisma edits, so the durable table stays unused.
+- **Workaround / mitigation:** callers can read the one stored list with `results(requestId)`. Do not treat this object as crash-safe, and do not replay a superseded proposal under the same request id after raising the fence elsewhere.
+- **To resolve:** persist the same accept rules in one transaction on `director_proposal`, still deduping `requestId`, without applying a stale fence or an older intent revision.
+- **Found:** 2026-11-04, W16-12.
