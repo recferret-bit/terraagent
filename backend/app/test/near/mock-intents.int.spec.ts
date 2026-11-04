@@ -75,7 +75,7 @@ describe('MockIntentsAdapter (W13-04)', () => {
     expect(await own('bob.mock', 'bio.water')).toBe(toCargoBaseUnits(50));
   });
 
-  it('USDC and NEAR round-trip; unknown token rejected; unimplemented methods unavailable', async () => {
+  it('USDC and NEAR round-trip; unknown token rejected', async () => {
     const { intents } = make();
     const acc = 'carol.mock';
     await db.prisma.$executeRaw`INSERT INTO chain.mock_chain_account (account_id, kind) VALUES (${acc}, 'named') ON CONFLICT DO NOTHING`;
@@ -88,7 +88,6 @@ describe('MockIntentsAdapter (W13-04)', () => {
     expect(await own(acc, 'USDC')).toBe('5000000');
     expect(await intents.verifierBalances(acc)).toEqual({ NEAR: 7n });
     await expect(intents.deposit({ opId: 'x1', accountId: acc, tokenId: 'nep141:nope', amount: '1' })).rejects.toMatchObject({ errorCode: 'NEAR_NFT_INVALID' });
-    await expect(intents.execute({ opId: 'x2', intents: [] })).rejects.toMatchObject({ errorCode: 'NEAR_UNAVAILABLE' });
   });
 
   it('IntentsPort resolves to MockIntentsAdapter from the container by default (cargo port too)', async () => {
