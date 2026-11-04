@@ -1,4 +1,7 @@
 # TerraAgent — Master Economy, On-Chain, AI Orchestrator & Monetization Plan
+
+> **D-44 supersedes the fee rules below (2026-11-04).** The buyer pays the platform fee (100 bp) and the maker stall's fee (0-100 bp, default 100) in the pair's **quote token**, independent of maker/taker role; the fee is never taken from the received token and there is no 50-300 bp or 0-3 % range. W22's treasury share is carved out of the platform fee. See [ECONOMY](spec/ECONOMY.md) §3 and [NEAR](spec/NEAR.md) `NEAR-61`. Older fee statements in this file are historical.
+
 > **Status:** 2026-10-31. Consolidated final document for NEAR Hackathon (Games With Real Economies + Agent Economy).  
 > All numbers marked *(proposed)* are tunable defaults. Decisions from grooming sessions are applied.
 
