@@ -42,7 +42,7 @@ export interface BatchedObstacleRemovedEvent {
   readonly colonyIds: readonly string[];
   readonly colonyId: string;
   readonly playerId: string;
-  readonly op: 'clear' | 'break';
+  readonly op: 'clear' | 'break' | 'level' | 'fill' | 'reclaim' | 'deepReclaim' | 'seed';
   readonly count: number;
   readonly q?: number;
   readonly r?: number;
@@ -50,7 +50,7 @@ export interface BatchedObstacleRemovedEvent {
   readonly data: {
     readonly colonyId: string;
     readonly playerId: string;
-    readonly op: 'clear' | 'break';
+    readonly op: 'clear' | 'break' | 'level' | 'fill' | 'reclaim' | 'deepReclaim' | 'seed';
     readonly count: number;
     readonly q?: number;
     readonly r?: number;

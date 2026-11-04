@@ -1,5 +1,6 @@
-import type { SimCommandV1 } from '@terra/contracts';
+import { parseWaves, type SimCommandV1 } from '@terra/contracts';
 import {
+  createPlanet,
   hexIndex,
   isBuildablePrepared,
   placeBuildingOrder,
@@ -9,6 +10,8 @@ import {
   setTileTerrain,
   SimHost,
   spawnHqUnit,
+  spawnTerraformerUnit,
+  startBuildingConstruction,
   TERRAIN,
   type SimEvent,
 } from '@terra/sim';
@@ -330,3 +333,89 @@ describe('W01-31: Live SimHost gameplay progression events', () => {
     expect(foundedEvents[0].achievement).toBe('Landfall');
   });
 });
+
+describe('W05-29: W05 progression events (obstacleRemoved + family mapping)', () => {
+  it('acceptance: Seed 3 tiles -> the progression bus logs 3 obstacleRemoved { op: "seed" } with achievement Green Thumb', () => {
+    const bus = new EventBus();
+    const host = new SimHost({ flags: parseWaves('..05') });
+    host.load(createPlanet({ type: 'flat', seed: 'w05-seed-bus', radius: 12 }));
+    const state = host.state;
+
+    state.colonies[0] = {
+      index: 0,
+      id: 'col_0',
+      playerId: 'pr_w05',
+      name: 'Green Colony',
+      color: 0xff6a2a,
+      status: 'active',
+      changedAt: 0,
+      powerSupplyOverride: 500,
+    };
+    setColonyStock(state, 0, {
+      'metals.t1': 500,
+      'minerals.t1': 500,
+      'bio.biomass': 500,
+      'bio.water': 500,
+    });
+    startBuildingConstruction(state, {
+      owner: 0,
+      building: 'commandHub',
+      q: 0,
+      r: 0,
+      instant: true,
+      costOverride: {},
+    });
+    const tiles = [
+      { q: 3, r: 0 },
+      { q: 3, r: 1 },
+      { q: 4, r: -1 },
+    ];
+    const hex = hexIndex(state.grid.radius);
+    for (const t of tiles) {
+      setTilePrep(state.grid, hex.indexOf(t.q, t.r), PREP.irrigated, 0);
+    }
+
+    spawnTerraformerUnit(state, { owner: 0, q: 4, r: 0 });
+
+    const obstacleEvents = collect<BatchedObstacleRemovedEvent>(bus, 'obstacleRemoved');
+    forwardHost(host, bus, 'pl_w05');
+
+    host.submit(mkCmd('enqueueTask', { terraform: { op: 'seed', tiles } }, 0));
+    for (let t = 0; t < 300; t++) {
+      host.step(1);
+      const totalSeeded = obstacleEvents.reduce((sum, e) => sum + (e.op === 'seed' ? e.count : 0), 0);
+      if (totalSeeded >= 3) break;
+    }
+
+    const seedEvents = obstacleEvents.filter((e) => e.op === 'seed');
+    expect(seedEvents.reduce((sum, e) => sum + e.count, 0)).toBe(3);
+    for (const ev of seedEvents) {
+      expect(ev.op).toBe('seed');
+      expect(ev.achievement).toBe('Green Thumb');
+      expect(ev.data.achievement).toBe('Green Thumb');
+      expect(ev.playerId).toBe('pr_w05');
+    }
+  });
+
+  it('maps level/fill to Stone Mason, reclaim/deepReclaim to Hydro Engineer, and seed to Green Thumb', () => {
+    const bus = new EventBus();
+    const forwarder = new ProgressionEventForwarder(bus);
+    const stepEvents: SimEvent[] = [
+      { atTick: 10, kind: 'obstacleRemoved', severity: 'info', colonyIds: ['col_A'], data: { colonyId: 'col_A', playerId: 'p_A', op: 'level', count: 2, q: 1, r: 0 } },
+      { atTick: 10, kind: 'obstacleRemoved', severity: 'info', colonyIds: ['col_A'], data: { colonyId: 'col_A', playerId: 'p_A', op: 'fill', count: 1, q: 2, r: 0 } },
+      { atTick: 10, kind: 'obstacleRemoved', severity: 'info', colonyIds: ['col_A'], data: { colonyId: 'col_A', playerId: 'p_A', op: 'reclaim', count: 3, q: 3, r: 0 } },
+      { atTick: 10, kind: 'obstacleRemoved', severity: 'info', colonyIds: ['col_A'], data: { colonyId: 'col_A', playerId: 'p_A', op: 'deepReclaim', count: 1, q: 4, r: 0 } },
+      { atTick: 10, kind: 'obstacleRemoved', severity: 'info', colonyIds: ['col_A'], data: { colonyId: 'col_A', playerId: 'p_A', op: 'seed', count: 3, q: 5, r: 0 } },
+    ];
+
+    const batched = forwarder.forwardStep('pl_w05', stepEvents);
+    expect(batched.obstacleRemoved.map((e) => [e.op, e.count, e.achievement])).toEqual([
+      ['level', 2, 'Stone Mason'],
+      ['fill', 1, 'Stone Mason'],
+      ['reclaim', 3, 'Hydro Engineer'],
+      ['deepReclaim', 1, 'Hydro Engineer'],
+      ['seed', 3, 'Green Thumb'],
+    ]);
+  });
+});
+
