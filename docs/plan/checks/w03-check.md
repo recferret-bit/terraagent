@@ -64,7 +64,7 @@
 - **Do (refused):**
   1. Open a fresh `http://127.0.0.1:5273/play.html?scenario=w03`.
   2. Press **`B`**, click **Minerals Quarry** (`−10 E/s`) and try to place it on the deposit at `(10, 0)`.
-- **See:** It is refused — red toast **`Rejected: Outside the power zone (build a Power Pylon to extend it)`**.
+- **See:** It is refused — the ghost stays **red** with **`OUTSIDE THE POWER ZONE`**, and clicking does not place it (nothing is queued). *(A direct command from another client is rejected by the host with `outside_power_zone`, toast `Rejected: Outside the power zone (build a Power Pylon to extend it)`.)*
 - **Do (connect):**
   1. Place **Power Pylons** at `(3, -1)`, `(6, -1)`, `(9, -1)` as in step 3, then place the **Minerals Quarry** at `(10, 0)` — now accepted.
   2. Run `warp 20` until everything is built, then `warp 1`, and click the Quarry.
@@ -87,7 +87,7 @@
   - The **HQ Power Cell** chip drains slowly: `800` → about `600` after ~70 s. Hover: **`Income +16`**, **`Spending −19`**, **`Net −3 E/s`**, **`Stored: −3 E/s (draining)`**.
   - The cell lasts most of a night with working Harvesters (all night when they idle) and refills within ~70 s after sunrise.
 - **Do (force a brownout):** run `addLoad 200`.
-- **See:** Within a moment the top-right banner reads **`BROWNOUT — SHEDDING GROUP 3 · 8 E/S OFFLINE`** (the stores can give at most 30 E/s); clicking the **Metals Extractor** shows **`OFFLINE: BROWNOUT`**; its cable sputters amber.
+- **See:** Within a moment the top-right banner reads **`BROWNOUT — SHEDDING GROUP 3 · 8 E/S OFFLINE`** (the stores can give at most 30 E/s); clicking the **Metals Extractor** shows **`OFFLINE: BROWNOUT`**; its cable goes dark and the remaining cables sputter amber.
 - **Optional:** `cell 0` instead of `addLoad`: with the HQ store empty, the night deficit sheds at once.
 - **Reset:** `addLoad 0`, `time day`.
 
@@ -152,12 +152,13 @@
   - Without a Builder, the **HQ Drone** does the job.
 
 ### 15. Pylon light & grid cables (owner feedback #4, #5)
-- **Do:** after step 3, zoom in on a pylon; run `time 22` for night.
+- **Do:** after step 3, zoom in on a pylon; run `time night`.
 - **See:** each pylon casts **one** cyan light pool (from its top core) — not four; cables sag between Hub, pylons and buildings with travelling lightning (cyan online, amber sputter in a brownout, crimson on an overloaded pylon, none when unpowered).
 - **Playground:** `http://127.0.0.1:5273/playground.html?inspect=building.pylon&lights=1` → one light.
 
 ### 16. W04 Maps & Camera alongside the W03 HUD
-- **Do:** on the w03 colony at a 1280×720-ish window, open **`BUILD [B]`**; then press **`M`**; press **`B`**, **`U`**, **`Z`**, **`X`**, `R`; press **`` ` ``**; then **`M`** / **Esc**.
+- **Open:** `http://127.0.0.1:5273/play.html?scenario=w04` (the `w03` scenario runs with waves `..03`, so it has no minimap; `w04` has the W03 HUD and the maps).
+- **Do:** at a 1280×720-ish window, open **`BUILD [B]`**; then press **`M`**; press **`B`**, **`U`**, **`Z`**, **`X`**, `R`; press **`` ` ``**; then **`M`** / **Esc**.
 - **See:** the **minimap** (bottom-left) and the **Command Dock** stack without overlapping, and the dock never leaves the screen; buildings are small squares and units dots on the minimap. While the global map is open the game hotkeys do nothing (no dock toggles, no ghost rotation, no unit stop); the dev console opens **above** the map and keeps typing focus. Closing the map returns the camera; it does not open while the game is paused (`Esc` pause → `M` does nothing).
 
 ---
@@ -178,7 +179,7 @@ Open the W03 kitbash archetypes in the 3D Playground with `&validate=1` (all pas
 
 ## Automated checks (green on the branch, 2026-11-04)
 
-`npm run typecheck` · `npm test` (1 timing spec flaky only under heavy machine load; passes alone) · `npm run build` · `npm run check:structure` · `npm run gen:check` · `npm run test:parity` (w00-empty, w03-supply) · `npm run validate:models -- --all` (35/35) · `npm run test:models` · `npm run validate:particles -- --all` · `npm run test:particles` · `npm run e2e` (all suites, server host: 47 passed, 4 skipped, 0 failed — w00, w01, w02, w03, w04, w06, w26) · `npm run e2e -- --waves ..03 --host local` (14 passed, 18 server-only skipped).
+`npm run typecheck` · `npm test` (307 files, 1766 passed, 1 skipped) · `npm run build` · `npm run check:structure` · `npm run gen:check` · `npm run test:parity` (w00-empty, w03-supply) · `npm run validate:models -- --all` (35/35) · `npm run test:models` · `npm run validate:particles -- --all` · `npm run test:particles` · `npm run e2e` (all suites, server host: 47 passed, 4 skipped, 0 failed — w00, w01, w02, w03, w04, w06, w26) · `npm run e2e -- --waves ..03 --host local` (14 passed, 18 server-only skipped).
 
 ## When you're done
 
