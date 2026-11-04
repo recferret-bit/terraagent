@@ -47,7 +47,7 @@ export function formatUnitPrice(num: bigint | string, den: bigint | number, quot
   if (d <= 0n) throw new RangeError('price denominator must be positive');
   if (n === 0n) return '0.00';
   const whole = n / d;
-  let frac = MIN_FRACTION;
+  let frac: number;
   if (whole > 0n) frac = Math.max(MIN_FRACTION, 3 - whole.toString().length);
   else {
     let zeros = 0;
