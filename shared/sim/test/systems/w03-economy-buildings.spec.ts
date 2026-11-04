@@ -29,6 +29,7 @@ import {
   type PlanetState,
 } from '../../src';
 import { resolveBuildingRow as resolveEconomyConstructionRow } from '../../src/systems/economy/buildingRows';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 function createCleanFlatPlanet(planetType: 'temperate' | 'desert' = 'temperate', radius = 8): PlanetState {
   const state = createState({ planetId: `p-${planetType}`, planetType, seed: 'w03-11', radius });
@@ -121,7 +122,7 @@ describe('W03-11 Minerals Quarry T1 placement & production', () => {
 
     step(state, [], 5, pipeline);
     const colony = ensureColonyLedger(state.colonies[0]);
-    expect(colony.stock['minerals.t1']).toBeCloseTo(0.9, 5);
+    expect(resourceValue(colony, 'minerals.t1')).toBeCloseTo(0.9, 5);
     expect(colony.production.incomePerS['minerals.t1']).toBeCloseTo(0.9, 4);
     expect(colony.production.familyIncomePerS.minerals).toBeCloseTo(0.9, 4);
 
@@ -171,7 +172,7 @@ describe('W03-11 Supply Depot T1 storage caps & Water Extractor T1 production', 
     expect(placeWaterExtractor(tempState, { owner: 0, q: 2, r: 1 })).toMatchObject({ ok: true, outputMult: 1.0 });
     step(tempState, [], 5, pipeline);
     const tempCol = ensureColonyLedger(tempState.colonies[0]);
-    expect(tempCol.stock['bio.water']).toBeCloseTo(0.875, 5);
+    expect(resourceValue(tempCol, 'bio.water')).toBeCloseTo(0.875, 5);
     expect(tempCol.production.incomePerS['bio.water']).toBeCloseTo(0.875, 4);
     expect(tempCol.production.familyIncomePerS.bio).toBeCloseTo(0.875, 4);
 
@@ -180,7 +181,7 @@ describe('W03-11 Supply Depot T1 storage caps & Water Extractor T1 production', 
     expect(placeWaterExtractor(desertState, { owner: 0, q: 2, r: 1 })).toMatchObject({ ok: true, outputMult: 0.5 });
     step(desertState, [], 5, pipeline);
     const desertCol = ensureColonyLedger(desertState.colonies[0]);
-    expect(desertCol.stock['bio.water']).toBeCloseTo(0.4375, 5);
+    expect(resourceValue(desertCol, 'bio.water')).toBeCloseTo(0.4375, 5);
     expect(desertCol.production.incomePerS['bio.water']).toBeCloseTo(0.4375, 4);
     expect(desertCol.production.incomePerS['bio.water']).toBeCloseTo(tempCol.production.incomePerS['bio.water'] * 0.5, 5);
   });

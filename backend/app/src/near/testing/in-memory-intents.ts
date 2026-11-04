@@ -100,7 +100,7 @@ export class InMemoryIntents extends IntentsPort {
     return { ok: code === null, ...(code === null ? {} : { errorCode: code }), effects: intents.map((i) => i.diff) };
   }
 
-  /** Atomic. A failing check or short balance leaves the ledger and nonces untouched. Idempotent by opId. */
+  /** Atomic — a failing check or short balance leaves the ledger and nonces untouched. Idempotent by opId. */
   async execute(input: IntentsExecuteInput): Promise<ChainReceipt> {
     return this.chain.write(input.opId, () => {
       const code = this.checkSync(input.intents);

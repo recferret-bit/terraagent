@@ -10,6 +10,7 @@ import {
   step,
 } from '../../src';
 import { readyBuilder } from '../helpers/builder';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W02-15 Non-blocking queue scan', () => {
   it('entry 1 waiting on Minerals, entry 2 needs only Metals (in stock) -> entry 2 starts immediately', () => {
@@ -38,7 +39,7 @@ describe('W02-15 Non-blocking queue scan', () => {
     if (!q1.ok) throw new Error('expected ok');
     expect(q1.entry.state).toBe('waiting');
     expect(q1.entry.waitReason).toBe('resources');
-    expect(colony.stock['metals.t1']).toBe(100); // Not earmarked by entry 1!
+    expect(resourceValue(colony, 'metals.t1')).toBe(100); // Not earmarked by entry 1!
 
     // Entry 2: requires only 60 Metals (in stock!) -> starts immediately despite entry 1 waiting ahead of it
     const q2 = enqueueQueueTask(state, {
@@ -50,7 +51,7 @@ describe('W02-15 Non-blocking queue scan', () => {
     expect(q2.ok).toBe(true);
     if (!q2.ok) throw new Error('expected ok');
     expect(q2.entry.state).toBe('in_progress');
-    expect(colony.stock['metals.t1']).toBe(100); // Deducted progressively on ticks
+    expect(resourceValue(colony, 'metals.t1')).toBe(100); // Deducted progressively on ticks
 
     const queue = getColonyQueue(state, 0, 'construction');
     expect(queue[0].taskId).toBe('entry-1');
@@ -96,6 +97,6 @@ describe('W02-15 Non-blocking queue scan', () => {
     expect(queue.find((e) => e.taskId === 'wait-minerals')?.state).toBe('waiting');
     expect(queue.find((e) => e.taskId === 'wait-metals')?.state).toBe('in_progress');
     // 1 tick of progressive deduction at 1.5/90 of 40 Metals = 0.666667 deducted
-    expect(colony.stock['metals.t1']).toBeCloseTo(40 - 40 * (1.5 / 90), 4);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(40 - 40 * (1.5 / 90), 4);
   });
 });

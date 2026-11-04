@@ -7,8 +7,14 @@
 export * from './accounts';
 export * from './amounts';
 export * from './caps';
+export * from './flows';
+export * from './position';
 export * from './reasons';
+export * from './residual';
 export * from './report';
 export { emptyStock, getColonyStock } from './store';
 export * from './treasury';
 export * from './params';
+export * from './market-config';
+export { sha256Hex } from './sha256';
+export * from './compile-profile';

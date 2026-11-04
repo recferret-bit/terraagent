@@ -11,6 +11,7 @@ import {
   ENTITY_KIND,
   ENTITY_STATE,
 } from '../../src';
+import { resourceValue, zeroResource } from '../../src/systems/economy/ledger';
 
 function setupPlanetWithHubAndThermal(initialBiomass = 0) {
   const state = createState({ planetId: 'p-thermal', planetType: 'temperate', seed: 'w03', radius: 16 });
@@ -93,7 +94,7 @@ describe('W03-10 Thermal Plant T1 fuel consumption and power', () => {
     expect(summary.net).toBe(34);
 
     // Biomass decreased by 0.375 (from 10 to 9.625)
-    expect(colony.stock['bio.biomass']).toBe(9.625);
+    expect(resourceValue(colony, 'bio.biomass')).toBe(9.625);
 
     // Pollution increased (> 0)
     expect(Number(colony.pollution)).toBeGreaterThan(0);
@@ -110,7 +111,7 @@ describe('W03-10 Thermal Plant T1 depletion and grid connectivity', () => {
     expect(state.entities.cols.state[thermalRow]).toBe(ENTITY_STATE.active);
 
     // Drain biomass to 0
-    colony.stock['bio.biomass'] = 0;
+    zeroResource(colony, 'bio.biomass', 0); // stock and residual
 
     // Next step transitions to offline: no fuel
     step(state, [], 1, pipeline);
@@ -164,6 +165,6 @@ describe('W03-10 Thermal Plant T1 depletion and grid connectivity', () => {
     expect(summary.unpoweredEntityIds).toContain(farThermalId);
     expect(summary.offlineReasons[farThermalId]).toBe('offline: unpowered');
     // Unpowered plant does not consume fuel
-    expect(colony.stock['bio.biomass']).toBe(100);
+    expect(resourceValue(colony, 'bio.biomass')).toBe(100);
   });
 });

@@ -1,4 +1,4 @@
-import { RESOURCE_KEYS, type ResourceKey, type Stock } from '@terra/contracts';
+import { RESOURCE_KEYS, type ResourceFamily, type ResourceKey, type Stock } from '@terra/contracts';
 import { isMajor, transferLegs, type Leg } from '@terra/ledger';
 import { ensureColonyRecord } from '../kernel/colonies';
 import type { CompiledDataLike } from '../kernel/config';
@@ -7,7 +7,7 @@ import type { EmitInput } from '../kernel/events';
 import type { PlanetState } from '../kernel/state';
 import { colonyAccount, systemActor } from './accounts';
 import { amountsProblem, findShortfall } from './amounts';
-import { clampToCaps, getColonyCaps } from './caps';
+import { clampToCaps, getColonyCaps, type ColonyCaps } from './caps';
 import { LEDGER_REASONS, isHostOnlyReason, isLedgerReason, reasonAllows, type LedgerReason, type MoveDirection } from './reasons';
 import { getColonyStock, writeColonyStock } from './store';
 
@@ -63,6 +63,8 @@ export interface AddRequest extends MoveRequest {
    * entry from the reason's counter account to {@link OVERFLOW_ACCOUNT}, so the journal shows the loss (LED-11).
    */
   clampToCap?: boolean;
+  /** With `clampToCap`: room per family that is not free (incoming cargo imports have reserved it), whole units. */
+  reserved?: Partial<Record<ResourceFamily, number>>;
 }
 
 /** Where capped-off value goes: the journal's record of what storage caps destroyed. */
@@ -119,7 +121,7 @@ export class ColonyTreasury {
     if (!this.state.colonies[req.colony]) return { ok: false, code: 'invalid_amount', detail: 'unknown colony' };
     const stock = this.stock(req.colony);
     const credited = req.clampToCap
-      ? clampToCaps(stock, getColonyCaps(this.state, req.colony, this.ctx.data), req.amounts).credited
+      ? clampToCaps(stock, withReserved(getColonyCaps(this.state, req.colony, this.ctx.data), req.reserved), req.amounts).credited
       : positive(req.amounts);
     for (const [key, v] of entriesOf(credited)) {
       if (!isMajor(stock[key] + v)) return { ok: false, code: 'invalid_amount', resource: key, detail: 'balance overflow' };
@@ -217,6 +219,14 @@ export function checkMove(req: MoveRequest, direction: MoveDirection): TreasuryR
   return bad.resource === undefined
     ? { ok: false, code: bad.code, detail: bad.detail }
     : { ok: false, code: bad.code, resource: bad.resource as ResourceKey, detail: bad.detail };
+}
+
+/** The caps with the reserved room of each family taken off (never below 0). */
+function withReserved(caps: ColonyCaps, reserved: AddRequest['reserved']): ColonyCaps {
+  if (!reserved) return caps;
+  const out = { ...caps };
+  for (const f of Object.keys(reserved) as ResourceFamily[]) out[f] = Math.max(0, out[f] - Math.max(0, reserved[f] ?? 0));
+  return out;
 }
 
 function entriesOf(amounts: Amounts): [ResourceKey, number][] {
