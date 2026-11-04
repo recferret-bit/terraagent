@@ -72,6 +72,7 @@ export {
   applyDirectorPolicy,
   buildColonyBrief,
   colonyDirector,
+  goalSuppressed,
   guardBriefText,
   noteDirectorPlan,
   priorityKey,
@@ -80,6 +81,7 @@ export {
   screenDirective,
   screenProposal,
   selectDirectorSkills,
+  suppressGoal,
 } from './systems/director';
 export * from './systems/progression';
 export * from './systems/progression/validate';

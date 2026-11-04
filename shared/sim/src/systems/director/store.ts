@@ -25,6 +25,8 @@ export interface ColonyDirectorRecord {
   baselined: boolean;
   seenPriorities: string;
   seenGoals: string;
+  /** Exclusive tick deadline per goal. An equivalent re-proposal stays quiet while `tick` is below it. */
+  suppressUntil: Record<string, number>;
 }
 
 interface DirectorBlob {
@@ -59,6 +61,7 @@ function emptyRecord(): ColonyDirectorRecord {
     baselined: false,
     seenPriorities: '',
     seenGoals: '',
+    suppressUntil: {},
   };
 }
 

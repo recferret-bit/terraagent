@@ -11,6 +11,7 @@ export { directorSkillIds, selectDirectorSkills, type SkillSelectInput } from '.
 export { actionLeavesColony, scopeDirective, screenDirective, screenProposal, type ColonyScope } from './scope';
 export { applyDirectorPolicy, colonyDirector, noteDirectorPlan, setDirectorPolicyHandler } from './policy';
 export { priorityKey, type ColonyDirectorRecord, type DirectorPlanRef } from './store';
+export { goalSuppressed, suppressGoal } from './suppress';
 
 export default defineSimModule({
   id: 'director',
