@@ -21,6 +21,7 @@ import { SettlementFillsHook } from './settlement/settlement-fills.hook.js';
 import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
 import { NearModule } from '../near/near.module.js';
+import { MarketProgressionProducer } from './progression/market-progression.producer.js';
 
 /**
  * W13 F2 markets (mock settlement): order book, matcher, batch builder, settlement, cancellation/expiry, price board,
@@ -49,6 +50,7 @@ import { NearModule } from '../near/near.module.js';
     { provide: MarketFillsHook, useExisting: SettlementFillsHook },
     MarketFaucetService,
     MarketFaucetCommand,
+    MarketProgressionProducer,
   ],
   controllers: [
     MarketFaucetController,
