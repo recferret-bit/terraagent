@@ -1,6 +1,7 @@
 import { RESOURCE_KEYS } from '@terra/contracts';
 import market from '../../data/market';
 import type { ParamRegistry } from './registry';
+import type { ParamUnit } from './types';
 import { registerField } from './fields';
 
 const BP = { min: 0, max: 10000 } as const;
@@ -28,8 +29,24 @@ export function registerMarketParams(r: ParamRegistry): void {
   registerField(r, t, 'policy', 'bookPushHz', { description: 'Order-book push rate.', unit: 'hz', type: 'int', bounds: { min: 1, max: 10 } });
   registerField(r, t, 'quote.*', 'minNotionalAtomic', { description: 'Minimum order notional in the quote token market atomic units (USDC micro, NEAR yocto, resources whole units).', unit: 'atomic', type: 'atomic', bounds: { min: 0, max: ATOMIC_MAX } });
   registerField(r, t, 'quote.*', 'tickAtomic', { description: 'Price tick in the quote token market atomic units.', unit: 'atomic', type: 'atomic', bounds: { min: 1, max: '1000000000000' } });
+  registerBoard(r);
   registerDevSeed(r);
   for (const k of RESOURCE_KEYS) registerResource(r, k);
+}
+
+/** Price-board limits (W13-18): decide when finalized trades may establish an organic reference price. */
+function registerBoard(r: ParamRegistry): void {
+  const row = 'board';
+  const int = (f: string, description: string, unit: ParamUnit, min: number, max: number): void =>
+    registerField(r, market, row, f, { description, unit, type: 'int', bounds: { min, max } });
+  int('windowS', 'Price board: look-back window of 24 h change, volume and VWAP.', 'seconds', 60, 2592000);
+  int('candleS', 'Price board: candle size.', 'seconds', 60, 86400);
+  int('minEligibleTrades', 'Price board: organic trades needed before a reference price exists.', 'count', 1, 1000);
+  int('minEligibleVolume', 'Price board: organic base volume (whole units) needed before a reference price exists.', 'whole_units', 1, 1000000000);
+  int('minCounterparties', 'Price board: distinct organic counterparties needed before a reference price exists.', 'count', 2, 1000);
+  int('counterpartyWeightCapBp', 'Price board: largest share of organic volume one counterparty may take part in (bp of 2x volume); above it the reference is withheld.', 'ratio_bp', 1, 10000);
+  int('maxMoveBp', 'Price board: organic trades further than this from the median organic price are excluded as outliers.', 'ratio_bp', 1, 1000000);
+  int('stalenessS', 'Price board: the newest organic trade must be younger than this.', 'seconds', 1, 2592000);
 }
 
 /** Dev fixture ladder of `market.seed` (never used by the sim or settlement). */
