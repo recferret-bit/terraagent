@@ -48,6 +48,7 @@ function statsFromRow(row: CompiledRow): MobileStats {
   };
 }
 
+import { resolveReconRow, syncReconView } from '../systems/factories-hub/robotics';
 import { resolveBuilderRow, syncBuilderView } from '../systems/factories-hub/unit';
 import { resolveHarvesterRow, syncHarvesterView } from '../systems/harvest/unit';
 import { revealVision } from '../systems/hq';
@@ -108,6 +109,34 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
         const bRow = resolveBuilderRow(data);
         revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(bRow.viewRadius ?? 7), tick);
         syncBuilderView(state, row, tick, data);
+      },
+    },
+  ],
+  [
+    ENTITY_KIND.recon,
+    {
+      stats: (data) => {
+        const row = resolveReconRow(data);
+        const rawSpeed = Number(row.speed ?? row.speedTilesPerS ?? 0.7);
+        const speedPerTick = rawSpeed > 1.5 ? rawSpeed * 0.2 : rawSpeed;
+        return {
+          speedPerTick: Math.fround(speedPerTick),
+          viewRadius: Number(row.viewRadius ?? 8),
+          profile: 'hover',
+          terraformReach: [0, 0],
+          buildReach: [0, 0],
+          weaponRange: Number(row.range ?? 4),
+          dps: Number(row.dps ?? 14),
+          stopHoldTicks: 15,
+          retryTicks: 10,
+          retryMaxTicks: 80,
+        };
+      },
+      onChanged: (state, row, tick, data) => {
+        const cols = state.entities.cols;
+        const rRow = resolveReconRow(data);
+        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(rRow.viewRadius ?? 8), tick);
+        syncReconView(state, row, tick, data);
       },
     },
   ],
