@@ -11,3 +11,4 @@ export * from './reasons';
 export * from './report';
 export { emptyStock, getColonyStock } from './store';
 export * from './treasury';
+export * from './params';
