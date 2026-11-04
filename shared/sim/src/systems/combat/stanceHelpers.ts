@@ -373,6 +373,22 @@ export function findClosestHostileInAnchorLeash(
   return bestRow;
 }
 
+export function resolveAttackMoveGoalBand(
+  state: PlanetState,
+  row: number,
+  goal: { q: number; r: number },
+  data?: CompiledDataLike,
+): MoveGoal {
+  const cols = state.entities.cols;
+  const idx = hexIndex(state.grid.radius);
+  const here = idx.indexOf(cols.q[row]!, cols.r[row]!);
+  const goalIdx = idx.indexOf(goal.q, goal.r);
+  const profile = (data ? mobileStats(cols.kind[row]!, data)?.profile : undefined) ?? 'hover';
+  const blockers = pathBlockersFor(state, profile, here, data);
+  const maxDist = goalIdx >= 0 && blockers?.goalBlocked(goalIdx) ? 2 : 0;
+  return { q: goal.q, r: goal.r, minDist: 0, maxDist };
+}
+
 export function stepAttackMoveGoal(
   state: PlanetState,
   row: number,
@@ -402,11 +418,11 @@ export function stepAttackMoveGoal(
 
   rec.targetId = null;
   clearEvasiveState(state, entityId, ctx.tick);
+  const moveGoal = resolveAttackMoveGoalBand(state, row, goal, ctx.data);
   const [ax, ay] = getUnitContinuousCoords(cols, row);
   const atGoal =
-    cols.q[row] === goal.q &&
-    cols.r[row] === goal.r &&
-    hexDistance(ax, ay, goal.q, goal.r) <= 1e-3;
+    hexDistance(ax, ay, goal.q, goal.r) <= moveGoal.maxDist + 1e-3 &&
+    hexDistance(cols.q[row]!, cols.r[row]!, goal.q, goal.r) <= moveGoal.maxDist;
   const motion = getMotion(state, entityId);
   if (atGoal || motion?.status === 'failed') {
     rec.anchorQ = cols.q[row]!;
@@ -414,6 +430,6 @@ export function stepAttackMoveGoal(
     rec.attackMoveGoal = null;
     haltCombatUnit(state, row, ctx.tick, undefined, undefined, ctx.data);
   } else {
-    orderCombatUnitMove(state, row, { q: goal.q, r: goal.r, minDist: 0, maxDist: 0 }, ctx);
+    orderCombatUnitMove(state, row, moveGoal, ctx);
   }
 }

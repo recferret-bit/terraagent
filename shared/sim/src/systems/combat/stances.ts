@@ -18,6 +18,7 @@ import {
   mirrorUnitStanceToView,
   orderCombatUnitMove,
   readStancesBlob,
+  resolveAttackMoveGoalBand,
   stepAttackMoveGoal,
   tryFireUnitWeapon,
   writeStancesBlob,
@@ -377,7 +378,7 @@ export function orderUnitAttackMove(
     returningToAnchor: false,
   };
   writeStancesBlob(state, byEntityId, ctx.tick);
-  orderCombatUnitMove(state, row, { q: goal.q, r: goal.r, minDist: 0, maxDist: 0 }, ctx);
+  orderCombatUnitMove(state, row, resolveAttackMoveGoalBand(state, row, goal, ctx.data), ctx);
   return true;
 }
 
