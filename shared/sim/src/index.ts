@@ -81,6 +81,7 @@ export {
   screenDirective,
   screenProposal,
   selectDirectorSkills,
+  spatialAllowed,
   suppressGoal,
 } from './systems/director';
 export * from './systems/progression';
