@@ -23,29 +23,46 @@ function ownEntityRow(state: PlanetState, cmd: SimCommand, id: number): number |
   return row;
 }
 
-function extractEntityIds(args: { entityId?: number; entityIds?: number[] }): number[] {
+function extractEntityIds(args: { entityId?: number; entityIds?: number[]; unitId?: number; unitIds?: number[] }): number[] {
   if (Array.isArray(args.entityIds) && args.entityIds.length > 0) {
     return args.entityIds;
+  }
+  if (Array.isArray(args.unitIds) && args.unitIds.length > 0) {
+    return args.unitIds;
   }
   if (typeof args.entityId === 'number') {
     return [args.entityId];
   }
+  if (typeof args.unitId === 'number') {
+    return [args.unitId];
+  }
   return [];
 }
 
-function normalizeToCoordArgs(raw: unknown): unknown {
-  if (!raw || typeof raw !== 'object' || !('to' in raw)) return raw;
+function normalizeCombatArgs(raw: unknown): unknown {
+  if (!raw || typeof raw !== 'object') return raw;
   const obj = raw as Record<string, unknown>;
-  if (!obj.to || typeof obj.to !== 'object') return raw;
-  const { to, ...rest } = obj;
-  return { ...rest, ...(to as Record<string, unknown>) };
+  let next: Record<string, unknown> = { ...obj };
+  if ('to' in next && next.to && typeof next.to === 'object') {
+    const { to, ...rest } = next;
+    next = { ...rest, ...(to as Record<string, unknown>) };
+  }
+  if ('unitIds' in next) {
+    const { unitIds, ...rest } = next;
+    next = { ...rest, entityIds: rest.entityIds ?? unitIds };
+  }
+  if ('unitId' in next) {
+    const { unitId, ...rest } = next;
+    next = { ...rest, entityId: rest.entityId ?? unitId };
+  }
+  return next;
 }
 
 export const setStanceHandler = defineCommandHandler({
   kind: 'setStance',
   wave: 'W07',
   handle(state, cmd, ctx) {
-    const args = parseArgs('setStance', cmd.args);
+    const args = parseArgs('setStance', normalizeCombatArgs(cmd.args));
     if (!args) return 'invalid_args';
     const ids = extractEntityIds(args);
     if (ids.length === 0) return 'invalid_args';
@@ -68,7 +85,7 @@ export const setRallyHandler = defineCommandHandler({
   kind: 'setRally',
   wave: 'W07',
   handle(state, cmd, ctx) {
-    const args = parseArgs('setRally', normalizeToCoordArgs(cmd.args));
+    const args = parseArgs('setRally', normalizeCombatArgs(cmd.args));
     if (!args) return 'invalid_args';
 
     const tileIdx = hexIndex(state.grid.radius).indexOf(args.q, args.r);
@@ -102,7 +119,7 @@ export const attackMoveHandler = defineCommandHandler({
   kind: 'attackMove',
   wave: 'W07',
   handle(state, cmd, ctx) {
-    const args = parseArgs('attackMove', normalizeToCoordArgs(cmd.args));
+    const args = parseArgs('attackMove', normalizeCombatArgs(cmd.args));
     if (!args) return 'invalid_args';
 
     const tileIdx = hexIndex(state.grid.radius).indexOf(args.q, args.r);
@@ -133,7 +150,7 @@ export const attackTargetHandler = defineCommandHandler({
   kind: 'attackTarget',
   wave: 'W07',
   handle(state, cmd, ctx) {
-    const args = parseArgs('attackTarget', cmd.args);
+    const args = parseArgs('attackTarget', normalizeCombatArgs(cmd.args));
     if (!args) return 'invalid_args';
 
     const cols = state.entities.cols;

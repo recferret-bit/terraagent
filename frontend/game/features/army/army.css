@@ -1,0 +1,121 @@
+.ta-hud__panel[data-panel='army-stance-panel'] {
+  position: static;
+}
+
+.ta-army-panel {
+  position: fixed;
+  bottom: calc(var(--ta-s3) + 84px);
+  left: calc(50% + 52px);
+  transform: translateX(-50%);
+  z-index: 26;
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1.5px solid var(--ta-seam-2);
+  color: var(--ta-text);
+  font-family: var(--ta-font-body);
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: var(--ta-s3);
+  white-space: nowrap;
+  box-sizing: border-box;
+}
+
+.ta-army-panel[hidden] {
+  display: none !important;
+}
+
+.ta-army-panel[data-visible='true'] {
+  border-color: var(--ta-orange);
+  box-shadow: var(--ta-glow-1);
+}
+
+.ta-army-panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  padding-right: var(--ta-s2);
+  border-right: 1px solid var(--ta-seam);
+}
+
+.ta-army-panel__label {
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-text-2);
+  text-transform: uppercase;
+}
+
+.ta-army-panel__count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
+  padding: 0 var(--ta-s1);
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 700;
+}
+
+.ta-army-panel__stances {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s1);
+}
+
+.ta-army-panel__stance-btn,
+.ta-army-panel__attack-move-btn {
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-deep);
+  border: 1px solid var(--ta-seam-3);
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  cursor: pointer;
+  transition: background var(--ta-dur-quick) ease, color var(--ta-dur-quick) ease;
+}
+
+.ta-army-panel__stance-btn[data-active='true'] {
+  background: var(--ta-orange);
+  border-color: var(--ta-orange);
+  color: var(--ta-void);
+  font-weight: 700;
+}
+
+.ta-army-panel__attack-move-btn[data-armed='true'] {
+  background: var(--ta-orange);
+  border-color: var(--ta-orange);
+  color: var(--ta-void);
+  font-weight: 700;
+  box-shadow: var(--ta-glow-1);
+}
+
+.ta-army-markers {
+  pointer-events: none;
+}
+
+.ta-order-marker {
+  display: inline-block;
+  width: var(--ta-s2);
+  height: var(--ta-s2);
+  border: 1px solid var(--ta-energy);
+  background: var(--ta-deep);
+}
+
+.ta-order-marker--move {
+  border-color: var(--ta-energy);
+}
+
+.ta-order-marker--attackMove {
+  border-color: var(--ta-orange);
+}
+
+.ta-order-marker--attackTarget {
+  border-color: var(--ta-fault);
+}
