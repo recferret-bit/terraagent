@@ -43,7 +43,11 @@ export class SimThreadPool {
   private entry: URL | undefined;
   private execArgv: string[] | undefined;
 
+  /** Thread base for threads (re)spawned later; follows every economy profile swap. */
+  private baseOverrides: BalanceOverrides | undefined;
+
   constructor(private readonly opts: SimThreadPoolOptions) {
+    this.baseOverrides = opts.overrides;
     if (!Number.isInteger(opts.threads) || opts.threads < 1) throw new Error(`SIM_THREADS must be a positive integer, got ${opts.threads}`);
   }
 
@@ -79,7 +83,7 @@ export class SimThreadPool {
   private spawn(thread: number): Promise<void> {
     const entry = this.entry as URL;
     const execArgv = this.execArgv;
-    const init: ThreadInit = { thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true, deltaHz: this.opts.deltaHz, simModules: this.opts.simModules, overrides: this.opts.overrides };
+    const init: ThreadInit = { thread, flags: this.opts.flags, autoStep: this.opts.autoStep ?? true, deltaHz: this.opts.deltaHz, simModules: this.opts.simModules, overrides: this.baseOverrides };
     const w = new Worker(entry, { workerData: init, ...(execArgv ? { execArgv } : {}) });
     this.workers[thread] = w;
     return new Promise<void>((resolve, reject) => {
@@ -112,6 +116,9 @@ export class SimThreadPool {
     w.postMessage(msg, transfer);
     return true;
   }
+
+  /** Records the base a respawned thread starts with (the live threads receive the `profile` message). */
+  setBaseOverrides(o: BalanceOverrides): void { this.baseOverrides = o; }
 
   /** Sends to the thread that owns `planetId`. */
   sendToPlanet(planetId: string, msg: ToThread, transfer: ArrayBuffer[] = []): boolean {
