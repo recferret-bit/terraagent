@@ -28,6 +28,7 @@ import { event as event_nightSurvived } from './night-survived';
 import { event as event_obstacleRemoved } from './obstacle-removed';
 import { event as event_powerOverload } from './power-overload';
 import { event as event_powerSevered } from './power-severed';
+import { event as event_prestigeCompleted } from './prestige-completed';
 import { event as event_relayFailed } from './relay-failed';
 import { event as event_relaySettled } from './relay-settled';
 import { event as event_relaySubmitted } from './relay-submitted';
@@ -43,7 +44,7 @@ import { event as event_treasuryRejected } from './treasury-rejected';
 import { event as event_unitProduced } from './unit-produced';
 import { event as event_xpLevelUp } from './xp-level-up';
 
-export const EVENTS = [event_accountCreated, event_achievementEarned, event_alertPing, event_brownoutShed, event_brownout, event_buildingCompleted, event_cargoExported, event_cargoImported, event_cargoRefunded, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_feeEarned, event_goalDone, event_goalProgress, event_groundRevealed, event_hqLanded, event_marketCancelRequested, event_marketHubFeeSet, event_marketOrderRejected, event_marketOrderRequested, event_nightSurvived, event_obstacleRemoved, event_powerOverload, event_powerSevered, event_relayFailed, event_relaySettled, event_relaySubmitted, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_stageReached, event_stageUnlocked, event_suggestionOffered, event_tilePrepared, event_tradeSettled, event_treasuryRejected, event_unitProduced, event_xpLevelUp] as const;
+export const EVENTS = [event_accountCreated, event_achievementEarned, event_alertPing, event_brownoutShed, event_brownout, event_buildingCompleted, event_cargoExported, event_cargoImported, event_cargoRefunded, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_feeEarned, event_goalDone, event_goalProgress, event_groundRevealed, event_hqLanded, event_marketCancelRequested, event_marketHubFeeSet, event_marketOrderRejected, event_marketOrderRequested, event_nightSurvived, event_obstacleRemoved, event_powerOverload, event_powerSevered, event_prestigeCompleted, event_relayFailed, event_relaySettled, event_relaySubmitted, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_stageReached, event_stageUnlocked, event_suggestionOffered, event_tilePrepared, event_tradeSettled, event_treasuryRejected, event_unitProduced, event_xpLevelUp] as const;
 
 export type EventKind = (typeof EVENTS)[number]['kind'];
 export const EVENT_KINDS = [...EVENTS.map((d) => d.kind)] as unknown as readonly [EventKind, ...EventKind[]];

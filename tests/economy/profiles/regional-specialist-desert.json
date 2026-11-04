@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "requestId": "candidate-regional-specialist-desert-1",
+  "expectedVersion": 1,
+  "ops": [
+    { "op": "set", "path": "prestige.project.survey_array.cost", "value": { "metals.t1": 80, "minerals.t1": 30, "bio.water": 45, "minerals.t2": 6 } },
+    { "op": "set", "path": "prestige.project.monument.cost", "value": { "metals.t1": 120, "minerals.t1": 50, "bio.biomass": 30, "metals.t3": 4 } },
+    { "op": "set", "path": "prestige.transport.cargo.cost", "value": { "bio.biomass": 3 } }
+  ]
+}
