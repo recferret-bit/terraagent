@@ -70,7 +70,11 @@ export function applyDirectorPolicy(
   writePatch(record, patch);
   record.policy.revision += 1;
   record.awayRaids = false;
-  if (patch.priorities) setColonyPriorities(state, colonyIndex, patch.priorities, tick);
+  if (patch.priorities) {
+    setColonyPriorities(state, colonyIndex, patch.priorities, tick);
+    record.baselinePriorities = { ...record.policy.priorities };
+    record.overlayUntilTick = null;
+  }
   record.seenPriorities = priorityKey(record.policy.priorities);
   supersedeOpenPlans(record);
   record.baselined = true;
