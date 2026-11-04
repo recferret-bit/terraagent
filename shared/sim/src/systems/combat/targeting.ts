@@ -56,6 +56,8 @@ const WEAPON_ID_ALIASES: Readonly<Record<string, string>> = {
 const KIND_TO_WEAPON_ID: Readonly<Record<number, string>> = {
   [ENTITY_KIND.hq]: 'hqAutoTurret',
   [ENTITY_KIND.recon]: 'reconGun',
+  [ENTITY_KIND.demoTank]: 'tankRocket',
+  [ENTITY_KIND.demoArtillery]: 'artilleryShell',
   [ENTITY_KIND.autocannon]: 'autocannon',
   [ENTITY_KIND.laserTower]: 'laserTower',
   [ENTITY_KIND.blackAnt]: 'antBite',

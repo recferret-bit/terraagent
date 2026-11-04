@@ -7,7 +7,6 @@ import { createArchetypeMesh, setArchetypeBuildProgress, stripBuildingPlinth, ti
 import { attachEntityProjectorRig } from '@terra/render/lighting';
 import { GridCableRenderer } from '@terra/render/lighting/gridCables';
 import { WorkParticleSystem } from '@terra/render/particles';
-import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
 import { ENTITY_KIND, ENTITY_STATE, TICK_MS } from '@terra/sim';
 import { forEachEntity, type ClientTiles, type ClientView, type EntityRow } from '../../store/replica/viewCodec';
@@ -19,7 +18,16 @@ import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRi
 import { derivePowerCableSpans } from './powerCableSpans';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { disposeObject3D, UnitHealthBars } from './unitHealthBars';
-import { entityWorldXZ, archetypeForKind, isConstructibleBuilding } from './entityKinds';
+import { CombatSyncController } from './combatSync';
+import {
+  archetypeForKind,
+  entityWorldXZ,
+  is3x3FootprintKind,
+  isConstructibleBuilding,
+  isTrackedWalkingUnitKind,
+  makeGroundRing,
+  planetKindForBiome,
+} from './entityKinds';
 import {
   buildActiveWorkSites,
   computeWorkTarget,
@@ -54,22 +62,6 @@ const UNPREDICTABLE_REJECTS: ReadonlySet<string> = new Set([
 
 export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
 
-function planetKindForBiome(biomeKey: string): PlanetKind {
-  if (biomeKey === 'desert' || biomeKey === 'dune') return 'dune';
-  if (biomeKey === 'ocean' || biomeKey === 'oceanForest') return 'oceanForest';
-  return 'forestRock';
-}
-
-function makeGroundRing(innerR: number, outerR: number, color: number, name: string): THREE.Mesh {
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(innerR, outerR, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, fog: false }),
-  );
-  ring.name = name;
-  ring.visible = false;
-  return ring;
-}
-
 /**
  * Renders sim entities (`devProbe`, `pod`, `hq`, `commandHub`, `metalsExtractor`, `solar`, `harvester`) in the online
  * 3D scene, interpolating continuous axial coordinates `(x, y)` smoothly and driving `aPartAnim` walk/work weights,
@@ -82,6 +74,7 @@ export class EntityMeshes {
   readonly podTouchdown: PodTouchdownFx;
   readonly healthBars: UnitHealthBars;
   readonly workParticles: WorkParticleSystem;
+  readonly combatSync: CombatSyncController;
   /** Grid cables + lightning between the Hub, pylons and attached buildings (`powerCableSpans.ts`). */
   readonly gridCables: GridCableRenderer;
   isW10Enabled: () => boolean = () => true;
@@ -111,6 +104,7 @@ export class EntityMeshes {
     this.podTouchdown = new PodTouchdownFx(this.scene, playPodTouchdown);
     this.healthBars = new UnitHealthBars(this.scene);
     this.workParticles = new WorkParticleSystem(this.scene);
+    this.combatSync = new CombatSyncController(this.scene);
     this.gridCables = new GridCableRenderer(this.scene);
     this.selectionRing = makeGroundRing(0.75, 0.95, 0xff6a13, 'selection-ring');
     this.scene.add(this.selectionRing);
@@ -252,6 +246,7 @@ export class EntityMeshes {
     }
     this.syncVisionAndForeignVisibility(terrain, tdState);
     this.healthBars.sync(this.entries.values());
+    this.combatSync.syncView(view, terrain);
     this.updateSelectionRing();
     const ground = terrain ? (x: number, z: number) => terrain.heightAt(x, z) : undefined;
     this.gridCables.setSpans(derivePowerCableSpans(this.entries.values(), view, this.ownerColonyIndex), ground);
@@ -375,7 +370,7 @@ export class EntityMeshes {
       if (isOwnedPod && tdState.state !== 'done') {
         rec.mesh.position.y = rec.targetPos.y;
       } else if (!isOwnedPod) {
-        rec.mesh.position.y = is2x2BuildingKind(rec.kind)
+        rec.mesh.position.y = is2x2BuildingKind(rec.kind) || is3x3FootprintKind(rec.kind)
           ? baseWy
           : terrain ? terrain.heightAt(rec.mesh.position.x, rec.mesh.position.z) : baseWy;
       }
@@ -395,8 +390,7 @@ export class EntityMeshes {
         continue;
       }
 
-      const isTrackedUnit = rec.kind === ENTITY_KIND.hq || rec.kind === ENTITY_KIND.harvester || rec.kind === ENTITY_KIND.builder;
-      const wantWalk = isTrackedUnit ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
+      const wantWalk = isTrackedWalkingUnitKind(rec.kind) ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
       updateSelectionPulse(rec.mesh, rec.id === this.selectedEntityId, this.time);
       const wantWork = computeWorkTarget(rec.kind, rec.state, isDaylight);
       rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);
@@ -425,6 +419,7 @@ export class EntityMeshes {
     }
     this.workParticles.syncSites(workSites);
     this.workParticles.update(dt);
+    this.combatSync.update(dt);
     this.gridCables.update(realDt);
 
     this.syncVisionAndForeignVisibility(terrain, tdState);
@@ -482,6 +477,7 @@ export class EntityMeshes {
     this.podTouchdown.dispose();
     this.healthBars.dispose();
     this.workParticles.dispose();
+    this.combatSync.dispose();
     this.gridCables.dispose();
     for (const rec of this.entries.values()) {
       this.group.remove(rec.mesh);
