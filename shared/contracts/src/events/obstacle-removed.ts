@@ -10,7 +10,7 @@ export const event = defineEvent({
   data: z.strictObject({
     colonyId: z.string(),
     playerId: z.string().optional(),
-    op: z.enum(['clear', 'break']),
+    op: z.enum(['clear', 'break', 'level', 'fill', 'reclaim', 'deepReclaim', 'seed']),
     count: z.number().int().positive(),
     q: z.number().int().optional(),
     r: z.number().int().optional(),

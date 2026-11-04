@@ -55,6 +55,14 @@ export const ENTITY_KIND = {
   petroleumWell: 16,
   oilWell: 16,
   tradeHub: 8,
+  territoryBeacon: 21,
+  outpostBeacon: 21,
+  hazardShield: 26,
+  shieldDome: 26,
+  lightningRod: 41,
+  hydro: 42,
+  hydroGenerator: 42,
+  terraformer: 51,
 } as const;
 
 export const ENTITY_STATE = {
