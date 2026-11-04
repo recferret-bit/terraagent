@@ -1,5 +1,4 @@
-import { ENTITY_KIND } from '../../ecs/columns';
-import { removeRow, rowOf, setField } from '../../ecs/store';
+import { rowOf } from '../../ecs/store';
 import { hexDistance, hexRound } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
@@ -7,6 +6,10 @@ import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { colonyWho } from '../find';
+import { collectAoeSplashTargets, getEntityHitRadius, SPLASH_DAMAGE_RATIO } from './aoe';
+import { applyDamage } from './damage';
+
+export { getEntityHitRadius } from './aoe';
 
 export const PROJECTILE_IMPACTS_BLOB = 'projectileImpacts';
 
@@ -83,47 +86,6 @@ export type ApplyProjectileDamageFn = (
   ctx?: StepContext,
 ) => void;
 
-const KIND_TO_ROW_ID: Readonly<Record<number, string>> = {
-  [ENTITY_KIND.hq]: 'hq',
-  [ENTITY_KIND.commandHub]: 'commandHub',
-  [ENTITY_KIND.harvester]: 'harvester',
-  [ENTITY_KIND.builder]: 'builder',
-  [ENTITY_KIND.roboticsFactory]: 'roboticsFactory',
-  [ENTITY_KIND.droneControlArray]: 'droneControlArray',
-  [ENTITY_KIND.autocannon]: 'autocannon',
-  [ENTITY_KIND.laserTower]: 'laserTower',
-  [ENTITY_KIND.recon]: 'recon',
-  [ENTITY_KIND.blackAnt]: 'blackAnt',
-  [ENTITY_KIND.blueBeetle]: 'blueBeetle',
-  [ENTITY_KIND.greenSpitter]: 'greenSpitter',
-  [ENTITY_KIND.hiveBlackAnt]: 'hiveBlackAnt',
-  [ENTITY_KIND.hiveBlueBeetle]: 'hiveBlueBeetle',
-  [ENTITY_KIND.hiveGreenSpitter]: 'hiveGreenSpitter',
-};
-
-const DEFAULT_HIT_RADIUS_BY_KIND: Readonly<Record<number, number>> = {
-  [ENTITY_KIND.blackAnt]: 0.3,
-  [ENTITY_KIND.greenSpitter]: 0.4,
-  [ENTITY_KIND.recon]: 0.5,
-  [ENTITY_KIND.hq]: 0.5,
-  [ENTITY_KIND.harvester]: 0.5,
-  [ENTITY_KIND.builder]: 0.5,
-  [ENTITY_KIND.blueBeetle]: 0.8,
-  [ENTITY_KIND.autocannon]: 0.65,
-  [ENTITY_KIND.laserTower]: 0.65,
-  [ENTITY_KIND.droneControlArray]: 0.65,
-  [ENTITY_KIND.solar]: 0.65,
-  [ENTITY_KIND.pylon]: 0.65,
-  [ENTITY_KIND.devProbe]: 0.65,
-  [ENTITY_KIND.roboticsFactory]: 1.5,
-  [ENTITY_KIND.commandHub]: 1.5,
-  [ENTITY_KIND.pod]: 1.5,
-  [ENTITY_KIND.tradeHub]: 1.5,
-  [ENTITY_KIND.hiveBlackAnt]: 1.5,
-  [ENTITY_KIND.hiveBlueBeetle]: 1.5,
-  [ENTITY_KIND.hiveGreenSpitter]: 1.5,
-};
-
 function toContractWeaponType(kind: ProjectileWeaponKind): 'bullet' | 'shell' | 'rocket' {
   if (kind === 'shell') return 'shell';
   if (kind === 'rocket') return 'rocket';
@@ -184,34 +146,6 @@ export function getProjectileImpactsBlob(state: PlanetState): ProjectileImpactsB
  */
 export function getPendingProjectileImpacts(state: PlanetState): readonly PendingProjectileImpact[] {
   return getProjectileImpactsBlob(state).queue;
-}
-
-/**
- * Resolves the hit radius (in tiles) for an entity row (`UO-C-00`, `UO-C-03`).
- */
-export function getEntityHitRadius(
-  state: PlanetState,
-  row: number,
-  data?: CompiledDataLike,
-): number {
-  if (row < 0 || row >= state.entities.count) return 0.5;
-  const cols = state.entities.cols;
-  const kind = cols.kind[row]!;
-  const rowId = KIND_TO_ROW_ID[kind];
-
-  if (rowId && data?.tables) {
-    const combatUnitsTbl = data.tables.combatUnits as Record<string, Record<string, unknown> | undefined> | undefined;
-    const faunaTbl = data.tables.fauna as Record<string, Record<string, unknown> | undefined> | undefined;
-    const tableRow = combatUnitsTbl?.[rowId] ?? faunaTbl?.[rowId];
-    if (typeof tableRow?.radius === 'number' && tableRow.radius > 0) {
-      return tableRow.radius;
-    }
-  }
-
-  const byKind = DEFAULT_HIT_RADIUS_BY_KIND[kind];
-  if (byKind !== undefined) return byKind;
-  if (cols.footprintW[row]! >= 3 || cols.footprintD[row]! >= 3) return 1.5;
-  return 0.65;
 }
 
 function normalizePoint(
@@ -324,44 +258,22 @@ export function fireProjectile(
   return entry;
 }
 
-function defaultApplyProjectileDamage(state: PlanetState, targetId: number, amount: number, tick: number): void {
-  if (amount <= 0) return;
-  const row = rowOf(state.entities, targetId);
-  if (row < 0) return;
-  const cols = state.entities.cols;
-  const owner = cols.owner[row]!;
-  if (owner >= 0 && (state.colonies[owner] as { godMode?: boolean } | undefined)?.godMode === true) return;
-  const prevHp = cols.hp[row]!;
-  if (prevHp <= 0) return;
-
-  if (cols.kind[row] === ENTITY_KIND.hq) {
-    setField(state.entities, row, 'hp', Math.fround(Math.max(1, prevHp - amount)), tick);
-    return;
-  }
-
-  const nextHp = Math.fround(Math.max(0, prevHp - amount));
-  if (nextHp > 0) setField(state.entities, row, 'hp', nextHp, tick);
-  else removeRow(state.entities, targetId, tick);
-}
-
-function collectAoeSplashTargets(
+function defaultApplyProjectileDamage(
   state: PlanetState,
-  impact: PendingProjectileImpact,
-  directHitTarget: boolean,
-  data?: CompiledDataLike,
-): number[] {
-  const cols = state.entities.cols;
-  const splashTargetIds: number[] = [];
-  for (let row = 0; row < state.entities.count; row++) {
-    const entityId = cols.id[row]!;
-    if (directHitTarget && entityId === impact.targetId) continue;
-    if (cols.hp[row]! <= 0) continue;
-    if (cols.owner[row]! === impact.attackerOwner) continue;
-    const d = hexDistance(cols.x[row]!, cols.y[row]!, impact.to.x, impact.to.y);
-    const r = getEntityHitRadius(state, row, data);
-    if (d <= impact.aoe + r + 1e-5) splashTargetIds.push(entityId);
-  }
-  return splashTargetIds;
+  targetId: number,
+  amount: number,
+  attackerId?: number,
+  attackerOwner?: number,
+  tick?: number,
+  ctx?: StepContext,
+): void {
+  applyDamage(state, targetId, amount, {
+    attackerId,
+    attackerOwner,
+    tick: tick ?? ctx?.tick ?? state.meta.tick,
+    ctx,
+    data: ctx?.data,
+  });
 }
 
 function resolveSingleImpact(
@@ -377,7 +289,7 @@ function resolveSingleImpact(
 
   const dealDamage = (targetId: number, amount: number): void => {
     if (applyDmg) applyDmg(state, targetId, amount, impact.attackerId, impact.attackerOwner, ctx);
-    else defaultApplyProjectileDamage(state, targetId, amount, tick);
+    else defaultApplyProjectileDamage(state, targetId, amount, impact.attackerId, impact.attackerOwner, tick, ctx);
   };
 
   const tRow = rowOf(state.entities, impact.targetId);
@@ -392,8 +304,15 @@ function resolveSingleImpact(
   }
 
   if (impact.aoe > 0) {
-    const splashTargets = collectAoeSplashTargets(state, impact, directHitTarget, ctx?.data);
-    const splashDamage = impact.damage * 0.5;
+    const splashTargets = collectAoeSplashTargets(
+      state,
+      impact.to,
+      impact.aoe,
+      impact.attackerOwner,
+      directHitTarget ? impact.targetId : undefined,
+      ctx?.data,
+    );
+    const splashDamage = impact.damage * SPLASH_DAMAGE_RATIO;
     for (const splashId of splashTargets) {
       hitIds.push(splashId);
       dealDamage(splashId, splashDamage);
