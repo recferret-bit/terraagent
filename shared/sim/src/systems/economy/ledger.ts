@@ -11,11 +11,20 @@ import type { ColonyState, PlanetState } from '../../kernel/state';
 export const BASE_HUB_STORAGE_CAP = 500;
 export const DEPOT_STORAGE_CAP = 1000;
 
+export interface ExtractorLivingBonusRecord {
+  entityId: number;
+  adjacentToLiving: boolean;
+  livingBonus: number;
+  livingBonusText: string;
+  ratePerS: number;
+}
+
 export interface ColonyProductionLedger {
   capped: Record<ResourceFamily, number>;
   produced: Record<ResourceKey, number>;
   incomePerS: Record<ResourceKey, number>;
   familyIncomePerS: Record<ResourceFamily, number>;
+  extractors?: Record<number, ExtractorLivingBonusRecord>;
 }
 
 export interface ColonyLedgerFields {
@@ -84,7 +93,14 @@ export function ensureColonyLedger(
     if (typeof rawProd.produced?.[k] === 'number') produced[k] = rawProd.produced[k];
     if (typeof rawProd.incomePerS?.[k] === 'number') incomePerS[k] = rawProd.incomePerS[k];
   }
-  colony.production = { capped, produced, incomePerS, familyIncomePerS };
+  const extractors = rawProd.extractors && typeof rawProd.extractors === 'object' ? { ...rawProd.extractors } : undefined;
+  colony.production = {
+    capped,
+    produced,
+    incomePerS,
+    familyIncomePerS,
+    ...(extractors ? { extractors } : {}),
+  };
 
   return colony as ColonyWithLedger;
 }

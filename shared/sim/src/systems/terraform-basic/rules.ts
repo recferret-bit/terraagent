@@ -143,7 +143,7 @@ export function computeColonyTerraformStats(
     eligibleOwnedTiles++;
     if (p === PREP.living) livingTiles++;
   }
-  const percent = eligibleOwnedTiles > 0 ? Math.round((livingTiles / eligibleOwnedTiles) * 1000) / 10 : 0;
+  const percent = eligibleOwnedTiles > 0 ? Number(((livingTiles / eligibleOwnedTiles) * 100).toFixed(1)) : 0;
   return { livingTiles, eligibleOwnedTiles, percent };
 }
 

@@ -1,6 +1,7 @@
 import { setField } from '../../ecs/store';
 import { axialToPlane, hexDistance, hexIndex, hexRound } from '../../grid/hex';
-import { isGroundPassable } from '../../grid/tileModel';
+import { PREP } from '../../grid/layers';
+import { groundMoveMultiplierBp, isGroundPassable } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
 import { atan2Det } from '../../kernel/detMath';
 import type { PlanetState } from '../../kernel/state';
@@ -53,7 +54,12 @@ export function advanceAlongRoute(
   const prevR = cols.r[row];
   let x = cols.x[row];
   let y = cols.y[row];
-  let budget = Math.fround(stats.speedPerTick * ctx.dt);
+  const curTileIdx = idx.indexOf(prevQ, prevR);
+  const effectiveSpeedPerTick =
+    curTileIdx >= 0 && state.grid.layers.prep[curTileIdx] === PREP.living
+      ? stats.speedPerTick * (groundMoveMultiplierBp(state.grid, curTileIdx, ctx.data) / 10000)
+      : stats.speedPerTick;
+  let budget = Math.fround(effectiveSpeedPerTick * ctx.dt);
   let result: LocomotionResult = 'moving';
   const waypoints = route.path.length / 2;
 
