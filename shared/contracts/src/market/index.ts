@@ -2,3 +2,4 @@
 export * from './tokens';
 export * from './orders';
 export * from './views';
+export * from './format';
