@@ -1,6 +1,8 @@
 import { withTransaction } from '@terra/db';
+import { mockChainControls } from '../../src/near/infrastructure/mock/mock-controls.js';
+import { acct, bootHarness, USDC, type Harness } from './market-harness.js';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { buildFillBatch } from '../../src/market/settlement/batch-builder.js';
 import { MarketBooks } from '../../src/market/book/market-books.js';
 import { MarketOrderRepository, type CreateMarketOrderInput } from '../../src/market/book/market-order.repository.js';
@@ -93,7 +95,62 @@ describe('restart after partial fills', () => {
 });
 
 describe('settlement-dependent cases (W13-13 / W13-14)', () => {
-  it.todo('W13-14: an ambiguous settlement outcome quarantines the trade and keeps both reservations until reconciled');
-  it.todo('W13-14: restart after the batch was executed but before FINAL is recorded settles exactly once');
-  it.todo('W13-13: a failed final settlement restores both orders to executable with reservations reacquired atomically');
+  let h: Harness;
+  let n = 200;
+  beforeAll(async () => { h = await bootHarness(); });
+  afterEach(() => mockChainControls.reset());
+  afterAll(async () => { await h?.close(); });
+
+  it('an ambiguous settlement outcome quarantines the trade and keeps both reservations until reconciled', async () => {
+    const t = await h.matched(++n);
+    mockChainControls.setOutcomeUnknown('Intents', true);
+    await h.relay.pollOnce();
+    expect((await h.trades.find(t.tradeId))!.state).toBe('UNKNOWN');
+    expect(await h.recovery.reconcile()).toBe(0); // still ambiguous: not released, not finalized
+    expect((await h.trades.find(t.tradeId))!.state).toBe('UNKNOWN');
+    expect((await h.funds.view(acct(t.buyer), t.buyer, 'USDC')).free).toBe(0n);
+    mockChainControls.reset();
+    expect(await h.recovery.reconcile()).toBe(1);
+    expect((await h.trades.find(t.tradeId))!.state).toBe('FINAL');
+  });
+
+  it('restart after the batch was executed but before FINAL is recorded settles exactly once', async () => {
+    const t = await h.matched(++n);
+    const exec = vi.spyOn(h.intents, 'execute');
+    h.settlement.onModuleDestroy();
+    await h.relay.pollOnce();
+    await h.settlement.recover();
+    await h.settlement.recover();
+    await h.relay.pollOnce();
+    h.settlement.onModuleInit();
+    expect(exec).toHaveBeenCalledTimes(1);
+    expect(await h.db.prisma.intentTrade.count({ where: { tradeId: t.tradeId, state: 'FINAL' } })).toBe(1);
+    expect(h.cmds.filter((c) => c.kind === 'market.settled' && (c.args as { tradeId: string }).tradeId === t.tradeId)).toHaveLength(3);
+    exec.mockRestore();
+  });
+
+  it('a failed final settlement restores both orders to executable with reservations reacquired atomically', async () => {
+    const t = await h.matched(++n);
+    await h.setVerifier(acct(t.buyer), USDC, 0n);
+    await h.relay.pollOnce();
+    const ask = await h.order$(t.askId);
+    expect([ask.state, ask.filled.toFixed(), ask.reservedPrincipal.toFixed()]).toEqual(['OPEN', '0', '300']);
+    // the buyer lost its funds, so it cannot reacquire its reservation: nothing is left reserved for it
+    const bid = await h.order$(t.bidId);
+    expect([bid.state, bid.reservedPrincipal.toFixed(), bid.reservedFees.toFixed()]).toEqual(['REJECTED', '0', '0']);
+  });
+
+  it('cancel racing the failure: the reservation is released exactly once whatever the order', async () => {
+    for (let i = 0; i < 4; i++) {
+      const t = await h.matched(++n);
+      await h.setVerifier(acct(t.buyer), USDC, 0n);
+      const settle = h.relay.pollOnce();
+      const cancel = h.release.release(t.askId, 'cancelled').catch(() => undefined);
+      await Promise.all([settle, cancel]);
+      const ask = await h.order$(t.askId);
+      expect(['OPEN', 'CANCELLED']).toContain(ask.state);
+      expect(ask.reservedPrincipal.toFixed()).toBe(ask.state === 'OPEN' ? '300' : '0');
+      expect(ask.filled.toFixed()).toBe('0');
+    }
+  });
 });
