@@ -9,8 +9,74 @@ export interface UnitHealthRecordLike {
   hp: number;
   hpMax: number;
   progress?: number;
+  owner?: number;
+  selected?: boolean;
   mesh: THREE.Object3D;
 }
+
+const EK = ENTITY_KIND as Readonly<Record<string, number | undefined>>;
+const DEMO_TANK_CODE = EK.demoTank ?? 52;
+const DEMO_ARTILLERY_CODE = EK.demoArtillery ?? 53;
+
+const EXTRA_KIND_BY_NAME: Readonly<Record<string, number>> = {
+  recon: ENTITY_KIND.recon,
+  demoTank: DEMO_TANK_CODE,
+  demoArtillery: DEMO_ARTILLERY_CODE,
+  blackAnt: ENTITY_KIND.blackAnt,
+  blueBeetle: ENTITY_KIND.blueBeetle,
+  greenSpitter: ENTITY_KIND.greenSpitter,
+  hiveBlackAnt: ENTITY_KIND.hiveBlackAnt,
+  blackAntHive: EK.blackAntHive ?? ENTITY_KIND.hiveBlackAnt,
+  hiveBlueBeetle: ENTITY_KIND.hiveBlueBeetle,
+  blueBeetleHive: EK.blueBeetleHive ?? ENTITY_KIND.hiveBlueBeetle,
+  hiveGreenSpitter: ENTITY_KIND.hiveGreenSpitter,
+  greenSpitterHive: EK.greenSpitterHive ?? ENTITY_KIND.hiveGreenSpitter,
+  roboticsFactory: ENTITY_KIND.roboticsFactory,
+  droneControlArray: ENTITY_KIND.droneControlArray,
+  droneArray: ENTITY_KIND.droneArray,
+  autocannon: ENTITY_KIND.autocannon,
+  turret: ENTITY_KIND.turret,
+  laserTower: ENTITY_KIND.laserTower,
+  pulseTurret: ENTITY_KIND.pulseTurret,
+};
+
+export function resolveHealthBarKind(raw: number | string): number {
+  const norm = normalizeKindCode(raw);
+  if (norm !== 0) return norm;
+  if (typeof raw === 'string') return EXTRA_KIND_BY_NAME[raw] ?? EK[raw] ?? 0;
+  return 0;
+}
+
+const HIVE_KINDS = new Set<number>(
+  [
+    ENTITY_KIND.hiveBlackAnt,
+    ENTITY_KIND.hiveBlueBeetle,
+    ENTITY_KIND.hiveGreenSpitter,
+    EK.blackAntHive,
+    EK.blueBeetleHive,
+    EK.greenSpitterHive,
+  ].filter((k): k is number => typeof k === 'number'),
+);
+
+const BUILDING_2X2_KINDS = new Set<number>([
+  ENTITY_KIND.metalsExtractor,
+  ENTITY_KIND.solar,
+  ENTITY_KIND.tradeHub,
+  ENTITY_KIND.capacitor,
+  ENTITY_KIND.wind,
+  ENTITY_KIND.thermal,
+  ENTITY_KIND.supplyDepot,
+  ENTITY_KIND.mineralsQuarry,
+  ENTITY_KIND.waterExtractor,
+  ENTITY_KIND.petroleumWell,
+]);
+
+const BUILDING_1X1_KINDS = new Set<number>([
+  ENTITY_KIND.pylon,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
+]);
 
 /**
  * Frees what `obj` owns on the GPU: every mesh's geometry and materials, plus its projector rig (`attachEntityProjectorRig`
@@ -29,33 +95,53 @@ export function disposeObject3D(obj: THREE.Object3D): void {
   });
 }
 
-function isMobileUnitKind(kind: number): boolean {
+export function isMobileUnitKind(rawKind: number | string): boolean {
+  const kind = typeof rawKind === 'number' ? rawKind : resolveHealthBarKind(rawKind);
   return (
     kind === ENTITY_KIND.hq ||
     kind === ENTITY_KIND.harvester ||
-    kind === ENTITY_KIND.devProbe
+    kind === ENTITY_KIND.builder ||
+    kind === ENTITY_KIND.devProbe ||
+    kind === ENTITY_KIND.recon ||
+    kind === DEMO_TANK_CODE ||
+    kind === DEMO_ARTILLERY_CODE ||
+    kind === ENTITY_KIND.blackAnt ||
+    kind === ENTITY_KIND.blueBeetle ||
+    kind === ENTITY_KIND.greenSpitter
   );
 }
 
-function isBarSupportedKind(kind: number): boolean {
+export function isBarSupportedKind(rawKind: number | string): boolean {
+  const kind = typeof rawKind === 'number' ? rawKind : resolveHealthBarKind(rawKind);
   return (
     isMobileUnitKind(kind) ||
     kind === ENTITY_KIND.commandHub ||
-    kind === ENTITY_KIND.metalsExtractor ||
-    kind === ENTITY_KIND.solar ||
-    kind === ENTITY_KIND.tradeHub ||
-    kind === ENTITY_KIND.pod
+    kind === ENTITY_KIND.roboticsFactory ||
+    kind === ENTITY_KIND.pod ||
+    BUILDING_2X2_KINDS.has(kind) ||
+    BUILDING_1X1_KINDS.has(kind) ||
+    HIVE_KINDS.has(kind)
   );
 }
 
-function barHeightForKind(kind: number): number {
-  if (kind === ENTITY_KIND.commandHub) return 2.6;
-  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.tradeHub) return 2.1;
+export function barHeightForKind(rawKind: number | string): number {
+  const kind = typeof rawKind === 'number' ? rawKind : resolveHealthBarKind(rawKind);
+  if (kind === ENTITY_KIND.commandHub || kind === ENTITY_KIND.roboticsFactory || HIVE_KINDS.has(kind)) return 2.6;
+  if (BUILDING_2X2_KINDS.has(kind)) return 2.1;
   if (kind === ENTITY_KIND.hq) return 2.05;
+  if (BUILDING_1X1_KINDS.has(kind)) return 1.9;
   return 1.55;
 }
 
-function hpColorForRatio(ratio: number): number {
+export function hpColorForRatio(ratio: number, owner?: number, ownColonyIndex = 0): number {
+  if (owner !== undefined && owner < 0) {
+    return ratio >= 0.5 ? 0xf04848 : 0xff3b3b;
+  }
+  if (owner !== undefined && owner !== ownColonyIndex) {
+    if (ratio >= 0.6) return 0x38bdf8;
+    if (ratio >= 0.3) return 0xff9b2f;
+    return 0xff3b3b;
+  }
   if (ratio >= 0.6) return 0x39ff88;
   if (ratio >= 0.3) return 0xff9b2f;
   return 0xff3b3b;
@@ -98,6 +184,8 @@ export const PROGRESS_BAR_COLOR = 0x38bdf8;
 export class UnitHealthBars {
   readonly group = new THREE.Group();
   private readonly bars = new Map<number, UnitBarEntry>();
+  private readonly selectedEntityIds = new Set<number>();
+  private ownColonyIndex = 0;
   private readonly sharedGeos: THREE.BufferGeometry[] = [];
   private readonly sharedMats: THREE.Material[] = [];
 
@@ -123,17 +211,38 @@ export class UnitHealthBars {
   /** Whether bars are drawn (the session ties it to the W02 flag; live, read per sync). Default: on. */
   isEnabled: () => boolean = () => true;
 
+  setOwnColonyIndex(colonyIndex: number): void {
+    this.ownColonyIndex = colonyIndex;
+  }
+
+  setSelectedEntityId(id: number | null): void {
+    this.selectedEntityIds.clear();
+    if (typeof id === 'number' && Number.isFinite(id)) {
+      this.selectedEntityIds.add(id);
+    }
+  }
+
+  setSelectedEntityIds(ids: Iterable<number>): void {
+    this.selectedEntityIds.clear();
+    for (const id of ids) {
+      if (typeof id === 'number' && Number.isFinite(id)) {
+        this.selectedEntityIds.add(id);
+      }
+    }
+  }
+
   sync(records: Iterable<UnitHealthRecordLike>): void {
     const seen = new Set<number>();
     for (const rec of this.isEnabled() ? records : []) {
-      const kind = normalizeKindCode(rec.kind);
+      const kind = resolveHealthBarKind(rec.kind);
       if (!isBarSupportedKind(kind) || rec.hp <= 0 || rec.hpMax <= 0) continue;
       const isUnit = isMobileUnitKind(kind);
       const isDamaged = rec.hp < rec.hpMax;
+      const isSelected = Boolean(rec.selected) || this.selectedEntityIds.has(rec.id);
       const prog = typeof rec.progress === 'number' && Number.isFinite(rec.progress) ? rec.progress : 0;
       // a descending drop pod's `progress` is its landing, not work: no blue bar over the touchdown cinematic
       const hasProgress = kind !== ENTITY_KIND.pod && prog > 0 && prog < 1;
-      if (!isUnit && !isDamaged && !hasProgress) continue;
+      if (!isUnit && !isDamaged && !isSelected && !hasProgress) continue;
 
       seen.add(rec.id);
       let entry = this.bars.get(rec.id);
@@ -141,7 +250,7 @@ export class UnitHealthBars {
         entry = this.createEntry(rec.id, kind);
         this.bars.set(rec.id, entry);
       }
-      this.updateEntry(entry, rec, isUnit, isDamaged, prog, hasProgress);
+      this.updateEntry(entry, rec, isUnit, isDamaged, isSelected, prog, hasProgress);
     }
 
     for (const [id, entry] of [...this.bars]) {
@@ -220,21 +329,26 @@ export class UnitHealthBars {
     rec: UnitHealthRecordLike,
     isUnit: boolean,
     isDamaged: boolean,
+    isSelected: boolean,
     prog: number,
     hasProgress: boolean,
   ): void {
     entry.root.visible = rec.mesh.visible && isEntityInViewFocus(rec.mesh); // off-screen: no layout
     if (!entry.root.visible) return;
 
+    const ownerVal = rec.owner ?? this.ownColonyIndex;
+    entry.root.userData.owner = ownerVal;
+    entry.hpGroup.userData.owner = ownerVal;
+    entry.aboveFill.userData.owner = ownerVal;
     entry.root.position.copy(rec.mesh.position);
-    const showHp = isUnit || isDamaged;
+    const showHp = isUnit || isDamaged || isSelected;
     entry.hpGroup.visible = showHp;
     if (showHp) {
       const ratio = Math.max(0, Math.min(1, rec.hp / Math.max(1, rec.hpMax)));
       const sx = Math.max(0.001, ratio);
       entry.aboveFill.scale.x = sx;
       entry.aboveFill.position.x = -0.5 * BAR_W * (1 - ratio);
-      entry.aboveMat.color.setHex(hpColorForRatio(ratio));
+      entry.aboveMat.color.setHex(hpColorForRatio(ratio, rec.owner, this.ownColonyIndex));
     }
 
     entry.progressGroup.visible = hasProgress;

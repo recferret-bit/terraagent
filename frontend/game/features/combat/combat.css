@@ -1,0 +1,173 @@
+.ta-combat-hud {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ta-s2);
+  pointer-events: auto;
+  width: 248px;
+  max-width: calc(100vw - var(--ta-s6));
+}
+
+.ta-combat-edge-pings {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 25;
+}
+
+.ta-combat-edge-ping {
+  all: unset;
+  pointer-events: auto;
+  cursor: pointer;
+  position: fixed;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  padding: var(--ta-s2) var(--ta-s3);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-fault);
+  color: var(--ta-fault-text);
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-button);
+  text-transform: uppercase;
+  box-shadow: var(--ta-glow-1);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  animation: ta-combat-ping-pulse var(--ta-dur-cinematic) infinite alternate;
+}
+
+.ta-combat-edge-ping:hover {
+  background: var(--ta-plate-3);
+  border-color: var(--ta-orange);
+  color: var(--ta-orange-hi);
+}
+
+.ta-combat-edge-ping:focus-visible {
+  outline: 2px solid var(--ta-orange);
+}
+
+.ta-combat-edge-ping[data-edge='top'] {
+  top: var(--ta-s7);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.ta-combat-edge-ping[data-edge='bottom'] {
+  bottom: var(--ta-s7);
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.ta-combat-edge-ping[data-edge='left'] {
+  left: var(--ta-s4);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.ta-combat-edge-ping[data-edge='right'] {
+  right: var(--ta-s4);
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+@keyframes ta-combat-ping-pulse {
+  from {
+    opacity: 0.78;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.ta-combat-log {
+  width: 100%;
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s2) var(--ta-s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+}
+
+.ta-combat-log[data-empty='true'] {
+  display: none;
+}
+
+.ta-combat-log__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--ta-font-display);
+  font-weight: 700;
+  font-size: var(--ta-fs-label);
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  color: var(--ta-orange);
+  border-bottom: 1px solid var(--ta-seam);
+  padding-bottom: var(--ta-s1);
+}
+
+.ta-combat-log__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s1);
+  max-height: 156px;
+  overflow-y: auto;
+}
+
+.ta-combat-log__entry {
+  all: unset;
+  box-sizing: border-box;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+  padding: var(--ta-s1) var(--ta-s2);
+  background: var(--ta-plate-2);
+  border-left: 2px solid var(--ta-steel);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+}
+
+.ta-combat-log__entry:hover {
+  background: var(--ta-plate-3);
+  color: var(--ta-text);
+  border-left-color: var(--ta-orange);
+}
+
+.ta-combat-log__entry[data-event-kind='underAttack'],
+.ta-combat-log__entry[data-event-kind='raidStarted'],
+.ta-combat-log__entry[data-event-kind='buildingDestroyed'],
+.ta-combat-log__entry[data-event-kind='unitDestroyed'] {
+  border-left-color: var(--ta-fault);
+  color: var(--ta-fault-text);
+}
+
+.ta-combat-log__entry[data-event-kind='raidRepelled'],
+.ta-combat-log__entry[data-event-kind='nestDestroyed'] {
+  border-left-color: var(--ta-terra);
+  color: var(--ta-terra);
+}
+
+.ta-combat-log__coords {
+  color: var(--ta-dim);
+  white-space: nowrap;
+}

@@ -54,7 +54,6 @@ const UNPREDICTABLE_REJECTS: ReadonlySet<string> = new Set([
 
 export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
 
-
 function planetKindForBiome(biomeKey: string): PlanetKind {
   if (biomeKey === 'desert' || biomeKey === 'dune') return 'dune';
   if (biomeKey === 'ocean' || biomeKey === 'oceanForest') return 'oceanForest';
@@ -148,6 +147,7 @@ export class EntityMeshes {
   setOwnerColonyIndex(colonyIndex: number): void {
     if (this.ownerColonyIndex === colonyIndex) return;
     this.ownerColonyIndex = colonyIndex;
+    this.healthBars.setOwnColonyIndex(colonyIndex);
     const tdState = this.podTouchdown.computeState(false, 1);
     for (const rec of this.entries.values()) {
       rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState);
@@ -157,6 +157,7 @@ export class EntityMeshes {
 
   setSelectedEntityId(entityId: number | null): void {
     this.selectedEntityId = entityId;
+    this.healthBars.setSelectedEntityId(entityId);
     this.updateSelectionRing();
   }
 
