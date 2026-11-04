@@ -144,3 +144,53 @@ describe('compiled profile: one hash everywhere, no tick reads the DB', () => {
     expect(compileData(new Set(flags), JSON.parse(JSON.stringify(state.overrides ?? {}))).hash).toBe(expected.dataHash);
   }, 120_000);
 });
+
+describe('GET /resolve with sector scope: regional endowment with provenance (W13-50)', () => {
+  const activate = async (id: string, scope: string, regions: unknown) => {
+    const repo = new EconomyProfileRepository(db.prisma);
+    await db.prisma.economyProfile.create({ data: { id, name: id } });
+    const v = await repo.createVersion(id, { author: 'test', content: { regions } });
+    await repo.markValidated(v.version.id);
+    await repo.markApproved(v.version.id);
+    await db.prisma.economyActivation.create({ data: { id: `act_${id}`, scope, versionId: v.version.id, state: 'ACTIVE', operator: 'test' } });
+  };
+
+  it('resolves desert crystal 15 vs the ridge archetype 80 per field and reports provenance and hashes', async () => {
+    await activate('geo-desert', 'planetType:desert', {
+      profiles: [
+        { regionProfileId: 'desert', resources: { 'minerals.t3': { occurrenceWeightBp: 1500 } } },
+        { regionProfileId: 'ridge', resources: { 'minerals.t3': { occurrenceWeightBp: 8000 } } },
+      ],
+      bindings: [
+        { scopeKind: 'planetType', planetType: 'desert', regionProfileId: 'desert' },
+        { scopeKind: 'sectorArchetype', archetype: 'crystal-ridge', regionProfileId: 'ridge' },
+      ],
+    });
+    const plain = await call('GET', '/resolve?planetType=desert&planetId=pl_dune', undefined, DEV_ECONOMY_READ_TOKEN);
+    const ridge = await call('GET', '/resolve?planetType=desert&planetId=pl_dune&sectorArchetype=crystal-ridge&sectorId=sec_42', undefined, DEV_ECONOMY_READ_TOKEN);
+    const crystal = (j: Json) => j.region.resources.find((r: Json) => r.resource === 'minerals.t3');
+    expect(plain.json.regionErrors).toEqual([]);
+    expect(crystal(plain.json).fields.occurrenceWeightBp).toBe(1500);
+    expect(crystal(plain.json).provenance.occurrenceWeightBp).toBe('planetType');
+    expect(crystal(ridge.json).fields.occurrenceWeightBp).toBe(8000);
+    expect(crystal(ridge.json).provenance.occurrenceWeightBp).toBe('sectorArchetype');
+    expect(crystal(ridge.json).provenance.reserveUnitsMax).toBe('global');
+    expect(ridge.json.region.resources).toHaveLength(10);
+    expect(ridge.json.region.endowmentHash).not.toBe(plain.json.region.endowmentHash);
+    expect(ridge.json.region.runtimeHash).toBe(plain.json.region.runtimeHash);
+  });
+
+  it('reports ambiguous bindings as structured errors instead of guessing', async () => {
+    await activate('geo-ambiguous', 'planetType:ocean', {
+      profiles: [{ regionProfileId: 'a', resources: {} }, { regionProfileId: 'b', resources: {} }],
+      bindings: [
+        { scopeKind: 'planetType', planetType: 'ocean', regionProfileId: 'a', priority: 3 },
+        { scopeKind: 'planetType', planetType: 'ocean', planetId: 'pl_sea', regionProfileId: 'b', priority: 3 },
+      ],
+    });
+    const r = await call('GET', '/resolve?planetType=ocean&planetId=pl_sea', undefined, DEV_ECONOMY_READ_TOKEN);
+    expect(r.status).toBe(200);
+    expect(r.json.region).toBeNull();
+    expect(r.json.regionErrors[0].code).toBe('ambiguous_binding');
+  });
+});

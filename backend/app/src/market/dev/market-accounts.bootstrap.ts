@@ -37,15 +37,18 @@ export class MarketAccountsBootstrap implements OnModuleInit {
 
   async ensure(): Promise<void> {
     const keys = new KeyStore(loadKekRing(kekEnv(this.env)));
-    for (const accountId of MARKET_SYSTEM_ACCOUNTS) {
-      await this.prisma.mockChainAccount.upsert({ where: { accountId }, create: { accountId, kind: 'system' }, update: {} });
-      if (await this.prisma.nearColonyAccount.findUnique({ where: { accountId }, select: { accountId: true } })) continue;
-      const g = keys.generate();
-      await this.prisma.nearColonyAccount.upsert({
-        where: { accountId },
-        create: { accountId, playerId: `system:${accountId}`, slot: 'system', ownerAccountId: accountId, publicKey: g.row.publicKey, encryptedSecret: g.row.encryptedSecret, kekVersion: g.row.kekVersion },
-        update: {},
-      });
-    }
+    for (const accountId of MARKET_SYSTEM_ACCOUNTS) await ensureCustodialAccount(this.prisma, keys, accountId);
   }
+}
+
+/** Idempotent: the mock chain account plus a sealed custodial signing key (a row that exists keeps its key). Dev/demo only. */
+export async function ensureCustodialAccount(prisma: PrismaClient, keys: KeyStore, accountId: string): Promise<void> {
+  await prisma.mockChainAccount.upsert({ where: { accountId }, create: { accountId, kind: 'system' }, update: {} });
+  if (await prisma.nearColonyAccount.findUnique({ where: { accountId }, select: { accountId: true } })) return;
+  const g = keys.generate();
+  await prisma.nearColonyAccount.upsert({
+    where: { accountId },
+    create: { accountId, playerId: `system:${accountId}`, slot: 'system', ownerAccountId: accountId, publicKey: g.row.publicKey, encryptedSecret: g.row.encryptedSecret, kekVersion: g.row.kekVersion },
+    update: {},
+  });
 }

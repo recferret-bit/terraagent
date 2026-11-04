@@ -5,7 +5,10 @@ import { ZodPipe } from '../../core/errors';
 import { EconomyProfileService } from './profile.service';
 
 const MutationBody = z.strictObject({ requestId: z.string().min(1).max(120), rationale: z.string().max(2000).optional() });
-const ScopeQuery = z.strictObject({ planetType: z.string().min(1).max(60).optional(), planetId: z.string().min(1).max(64).optional() });
+const ScopeQuery = z.strictObject({
+  planetType: z.string().min(1).max(60).optional(), planetId: z.string().min(1).max(64).optional(),
+  sectorArchetype: z.string().min(1).max(64).optional(), sectorId: z.string().min(1).max(64).optional(),
+});
 const actorOf = (req: EconomyRequest): string => req.economy?.actor ?? 'unknown';
 
 /**
@@ -26,8 +29,13 @@ export class EconomyProfileController {
 
   @Get('resolve') @RequireEconomyRole('read')
   async resolve(@Query(new ZodPipe(ScopeQuery)) q: z.infer<typeof ScopeQuery>) {
-    const c = await this.profiles.compiledFor(q);
-    return { layers: c.layers, overrides: c.overrides, overridesHash: c.overridesHash, dataHash: c.dataHash, marketPolicyHash: c.marketConfig?.policyHash ?? null };
+    const [c, region] = await Promise.all([this.profiles.compiledFor(q), this.profiles.regionFor(q)]);
+    return {
+      layers: c.layers, overrides: c.overrides, overridesHash: c.overridesHash, dataHash: c.dataHash, marketPolicyHash: c.marketConfig?.policyHash ?? null,
+      /** Resolved endowment with per-field provenance and hashes (W13-50); `regionErrors` when the bindings/profile are invalid for this scope. */
+      region: region.ok ? region.region : null,
+      regionErrors: region.ok ? [] : region.errors,
+    };
   }
 
   @Get('profiles/:id/versions') @RequireEconomyRole('read')

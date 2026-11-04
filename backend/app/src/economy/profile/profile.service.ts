@@ -4,14 +4,14 @@ import {
 } from '@terra/contracts';
 import { EconomyProfileRepository, EconomyRepoError, withTransaction, type DbClient, type ExportedVersion } from '@terra/db';
 import type { PrismaClient } from '@prisma/client';
-import { defaultParamRegistry, describeSchema, tryCompileProfile, validatePatch, type CompiledProfile } from '@terra/sim';
+import { defaultParamRegistry, describeSchema, resolveRegion, tryCompileProfile, validatePatch, validateRegionContent, type CompiledProfile, type ResolveRegionResult } from '@terra/sim';
 import { CoreException } from '../../core/errors';
 import { persistenceEnabled } from '../../core/persistence';
 import { APP_ENV, type AppEnv } from '../../core/tokens';
 import { PRISMA } from '../../db/db.module';
 import { FlagsService } from '../../flags/flags.service';
 
-export interface ProfileScope { readonly planetType?: string; readonly planetId?: string }
+export interface ProfileScope { readonly planetType?: string; readonly planetId?: string; readonly sectorArchetype?: string; readonly sectorId?: string }
 export interface ScopeLayer { readonly scope: string; readonly versionId: string; readonly contentHash: string }
 export interface ResolvedProfile extends CompiledProfile { readonly layers: readonly ScopeLayer[] }
 /** What the host loaded at boot: an active version (`loaded`), the bundled bootstrap tables (`bootstrap`), or nothing it can trust (`unavailable`). */
@@ -24,8 +24,14 @@ export function economyException(errors: readonly EconomyError[], status = 422):
   return new CoreException(conflict ? 'VERSION_CONFLICT' : 'ECONOMY_INVALID', { status: conflict ? 409 : status, message: errors[0]?.message ?? 'invalid economy request', details: { errors } });
 }
 
-/** Scope keys, most general first: global → planet type → planet id. Sector levels (W13-50) append here. */
-export const scopeChain = (s: ProfileScope): string[] => ['global', ...(s.planetType ? [`planetType:${s.planetType}`] : []), ...(s.planetId ? [`planet:${s.planetId}`] : [])];
+/** Scope keys, most general first: global → planet type → planet id → sector archetype → sector id (ECONOMY §2.2). */
+export const scopeChain = (s: ProfileScope): string[] => [
+  'global',
+  ...(s.planetType ? [`planetType:${s.planetType}`] : []),
+  ...(s.planetId ? [`planet:${s.planetId}`] : []),
+  ...(s.sectorArchetype ? [`sectorArchetype:${s.sectorArchetype}`] : []),
+  ...(s.sectorId ? [`sector:${s.sectorId}`] : []),
+];
 
 /**
  * Profile management (ECONOMY §5, W13-38): clone / patch / validate / export on top of `EconomyProfileRepository`, and the
@@ -108,7 +114,7 @@ export class EconomyProfileService {
   }
 
   checkContent(content: ProfileContent): EconomyError[] {
-    const errors: EconomyError[] = [...checkProfileContent(content)];
+    const errors: EconomyError[] = [...checkProfileContent(content), ...validateRegionContent(content.regions, content.logistics)];
     const compiled = tryCompileProfile(content, this.flags.list);
     if (!compiled.ok) errors.push(...compiled.errors);
     for (const [path, v] of Object.entries(content.parameters)) {
@@ -143,6 +149,23 @@ export class EconomyProfileService {
     const resolved: ResolvedProfile = Object.freeze({ ...r.compiled, layers: Object.freeze(layers) });
     this.compiledCache.set(key, resolved);
     return resolved;
+  }
+
+  /**
+   * The effective regional endowment of a sector/planet with per-field provenance and the endowment/runtime hashes. Parameters merge
+   * field by field across the active scope layers (as `compiledFor`); the region bindings and profiles come from the most specific
+   * active layer that defines any (bindings of different versions are never concatenated, so a layer cannot create an ambiguity).
+   */
+  async regionFor(scope: ProfileScope): Promise<ResolveRegionResult> {
+    const layers = await this.resolve(scope);
+    const parameters: Record<string, ParamValue> = {};
+    let regions: ProfileContent['regions'] = { profiles: [], bindings: [] };
+    for (const l of layers) {
+      const c = (await this.immutableVersion(l.versionId)).content;
+      Object.assign(parameters, c.parameters);
+      if (c.regions.profiles.length > 0 || c.regions.bindings.length > 0) regions = c.regions;
+    }
+    return resolveRegion({ parameters, regions }, { planetType: scope.planetType ?? '', planetId: scope.planetId ?? '', sectorArchetype: scope.sectorArchetype, sectorId: scope.sectorId });
   }
 
   /**
