@@ -1,3 +1,4 @@
+import type { ResourceKey } from '@terra/contracts';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import type { TerraformOpKind } from './ops';
 
@@ -16,6 +17,9 @@ export interface TerraformJob {
   baseTimeS: number;
   totalEnergyE: number;
   energyDrawnE: number;
+  totalCost?: Partial<Record<ResourceKey, number>>;
+  spentCost?: Partial<Record<ResourceKey, number>>;
+  waitReason?: 'resources' | 'power';
   assignedUnitId?: number;
 }
 
@@ -60,12 +64,18 @@ export function colonyTerraformOrders(state: PlanetState, colony: number): reado
   return terraformOrdersOf(state.blobs.terraformTasks?.value, colony);
 }
 
+const cloneJob = (j: TerraformJob): TerraformJob => ({
+  ...j,
+  ...(j.totalCost ? { totalCost: { ...j.totalCost } } : {}),
+  ...(j.spentCost ? { spentCost: { ...j.spentCost } } : {}),
+});
+
 /** A mutable deep copy of every colony's orders (change it, then {@link writeOrdersByColony}). */
 export function readOrdersByColony(state: PlanetState): Record<number, TerraformOrder[]> {
   const byColony = (state.blobs.terraformTasks?.value as Partial<TerraformTasksBlobValue> | undefined)?.byColony ?? {};
   const out: Record<number, TerraformOrder[]> = {};
   for (const [k, list] of Object.entries(byColony)) {
-    if (Array.isArray(list)) out[Number(k)] = list.map((o) => ({ ...withDefaults(o), jobs: o.jobs.map((j) => ({ ...j })) }));
+    if (Array.isArray(list)) out[Number(k)] = list.map((o) => ({ ...withDefaults(o), jobs: o.jobs.map(cloneJob) }));
   }
   return out;
 }
@@ -83,7 +93,7 @@ export function writeOrdersByColony(state: PlanetState, byColony: Record<number,
 
 /** A mutable deep copy of `colony`'s orders only (change it, then {@link writeColonyOrders}; GP-22). */
 export function readColonyOrders(state: PlanetState, colony: number): TerraformOrder[] {
-  return colonyTerraformOrders(state, colony).map((o) => ({ ...o, jobs: o.jobs.map((j) => ({ ...j })) }));
+  return colonyTerraformOrders(state, colony).map((o) => ({ ...o, jobs: o.jobs.map(cloneJob) }));
 }
 
 /** Replaces `colony`'s orders (other colonies' lists are kept as they are) and stamps the blob at `tick`. */

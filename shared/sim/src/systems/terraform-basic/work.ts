@@ -5,18 +5,20 @@ import { isTileUneven } from '../../grid/geo';
 import { HEX_DIRS, hexDistance, hexIndex } from '../../grid/hex';
 import { TERRAIN } from '../../grid/layers';
 import { revealSubsurface } from '../../grid/subsurface';
-import { setTileHeight, setTilePrep, setTileTerrain } from '../../grid/tileModel';
+import { prepKeyFromId, setTileHeight, setTilePrep, setTileTerrain, terrainKeyFromId } from '../../grid/tileModel';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { approach, atGoal, setUnitActivity } from '../../units/approach';
+import { ensureColony } from '../economy/buildingRows';
+import { maxAffordableProgress, payProgressiveSlice } from '../economy/ledger';
 import { colonyWho } from '../find';
 import { faceTowards } from '../../units/movement/locomotion';
 import { defineUnitCommand, type TerraformCommand, type UnitCtx, type UnitWorkProvider } from '../../units/types';
 import { canDoWork } from '../dispatch/eligibility';
 import { stepTerraformWorkWithCell } from '../hq/cell';
 import { syncHqView } from '../hq/view';
-import { getTerraformOpSpec } from './ops';
+import { getTerraformJobCost, getTerraformOpSpec } from './ops';
 import { colonyTerraformOrders, readColonyOrders, writeColonyOrders, type TerraformJob, type TerraformOrder } from './orders';
 import { evaluateTerraformTile, terraformWorldFromState } from './rules';
 
@@ -79,14 +81,45 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   if (tileIdx < 0) return;
   const { colonyIdStr, who } = colonyWho(state, colonyId);
   const spec = getTerraformOpSpec(job.op, ctx.data);
+  const prevTerrain = terrainKeyFromId(state.grid.layers.terrain[tileIdx]);
+  const prevPrep = prepKeyFromId(state.grid.layers.prep[tileIdx]);
   if (spec.toTerrain === spec.fromTerrain) {
     setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
-    ctx.emit({ kind: 'tilePrepared', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, count: 1, q: job.q, r: job.r } });
+    if (ctx.flags.has('W05')) {
+      ctx.emit({
+        kind: 'tileStateChanged',
+        severity: 'info',
+        colonyIds: [colonyIdStr],
+        data: { ...who, q: job.q, r: job.r, prevTerrain, prevPrep, terrain: prevTerrain, prep: prepKeyFromId(spec.toPrep), op: job.op },
+      });
+    }
+    if (job.op === 'seed') {
+      ctx.emit({ kind: 'obstacleRemoved', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, op: 'seed', count: 1, q: job.q, r: job.r } });
+    } else {
+      ctx.emit({ kind: 'tilePrepared', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, count: 1, q: job.q, r: job.r } });
+    }
     return;
   }
   setTileTerrain(state.grid, tileIdx, spec.toTerrain, tick);
   setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
   if (spec.toTerrain === TERRAIN.flat) levelToAdjacentFlat(state, tileIdx, tick);
+  if (ctx.flags.has('W05')) {
+    ctx.emit({
+      kind: 'tileStateChanged',
+      severity: 'info',
+      colonyIds: [colonyIdStr],
+      data: {
+        ...who,
+        q: job.q,
+        r: job.r,
+        prevTerrain,
+        prevPrep,
+        terrain: terrainKeyFromId(spec.toTerrain),
+        prep: prepKeyFromId(spec.toPrep),
+        op: job.op,
+      },
+    });
+  }
   // Removing the obstacle uncovers what world generation buried under it (D-38, `grid/subsurface.ts`).
   const found = revealSubsurface(state, tileIdx, tick);
   if (found) ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, q: job.q, r: job.r, ...found } });
@@ -127,16 +160,40 @@ function creditYield(state: PlanetState, colonyId: number, job: TerraformJob, ct
 function workJob(state: PlanetState, order: TerraformOrder, row: number, ctx: StepContext): boolean {
   const job = order.jobs[0];
   const tick = ctx.tick;
+  const totalCost = job.totalCost ?? getTerraformJobCost(job.op, ctx.data, state.meta.planetType);
+  const hasCost = Object.keys(totalCost).length > 0;
+  const fullRem = Math.max(0, 1 - job.progress);
+  let remainingProgress = fullRem;
+  if (hasCost) {
+    const colony = ensureColony(state, order.colonyId, tick);
+    const spentCost = (job.spentCost ??= {});
+    const maxProg = maxAffordableProgress(colony, totalCost, spentCost, 1);
+    if (maxProg <= job.progress + 1e-6) {
+      job.waitReason = 'resources';
+      setField(state.entities, row, 'state', ENTITY_STATE.waiting, tick);
+      return false;
+    }
+    remainingProgress = Math.min(fullRem, Math.max(0, maxProg - job.progress));
+  }
+  const fullRemE = Math.max(0, job.totalEnergyE - job.energyDrawnE);
+  const remainingEnergyE = fullRem > 1e-6 ? fullRemE * (remainingProgress / fullRem) : fullRemE;
   const workRes = stepTerraformWorkWithCell(state, row, {
     baseTimeS: job.baseTimeS,
     totalEnergyE: job.totalEnergyE,
     dtS: (TICK_MS / 1000) * ctx.dt,
-    remainingProgress: Math.max(0, 1 - job.progress),
-    remainingEnergyE: Math.max(0, job.totalEnergyE - job.energyDrawnE),
+    remainingProgress,
+    remainingEnergyE,
     tick,
     data: ctx.data,
   });
-  job.progress = Math.min(1, job.progress + workRes.progressDelta);
+  const nextProgress = Math.min(1, job.progress + workRes.progressDelta);
+  if (hasCost && workRes.progressDelta > 0) {
+    const colony = ensureColony(state, order.colonyId, tick);
+    const spentCost = (job.spentCost ??= {});
+    payProgressiveSlice(colony, totalCost, spentCost, nextProgress, tick);
+  }
+  job.waitReason = hasCost && remainingProgress + 1e-6 < fullRem && nextProgress < 1 - 1e-6 ? 'resources' : undefined;
+  job.progress = nextProgress;
   job.energyDrawnE += workRes.energyDrawnE;
   if (job.progress < 1 - 1e-6) {
     setField(state.entities, row, 'progress', Math.fround(job.progress), tick);
