@@ -53,3 +53,4 @@ export { MarketSetHubFeeArgs } from './commands/market-set-hub-fee';
 export { MarketReserveArgs, MarketResourceDeltas } from './commands/market-reserve';
 export { MarketReleaseArgs, MarketReleaseReason } from './commands/market-release';
 export { MarketSettledArgs } from './commands/market-settled';
+export * from './economy';

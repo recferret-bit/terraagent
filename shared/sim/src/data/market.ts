@@ -5,12 +5,15 @@ import { defineTable } from './_define';
  * W13-38); these rows are the bootstrap/seed values and what `?host=local`, tests and experiments compile.
  *  - `policy`: buyer-paid platform fee 100 bp, stall fee 0–100 bp (default 100), W22 treasury share of the platform
  *    fee (applied only while W22 is on), TTL options, open-order limit per colony, base lot (whole units).
+ *  - `resource.<ResourceKey>` (all ten): per-resource policy defaults (reserve horizon, target inventory band as bp of
+ *    the family storage cap, lot, tradable flag); ECONOMY §2. Calibration hypotheses, not facts.
  *  - `quote.<token>`: minimum notional and price tick per quote token, market atomic units as decimal strings
  *    (USDC micro, NEAR yocto, resources whole units). A resource quote (barter) uses `quote.resource`.
  */
 export default defineTable({
   name: 'market',
   summary: 'W13 market policy bootstrap: buyer-paid platform/stall fees, TTL options, order limit, lot, minimum notional per quote token.',
+  units: { reserveHorizonS: 'seconds' },
   fixed: { fields: ['policyVersion'], why: 'identifies the pinned policy; a new version is a new profile (W13-03)' },
   rows: [
     {
@@ -31,5 +34,15 @@ export default defineTable({
     { id: 'quote.USDC', wave: 'W13', minNotionalAtomic: '100000', tickAtomic: '1' },
     { id: 'quote.NEAR', wave: 'W13', minNotionalAtomic: '10000000000000000000000', tickAtomic: '1' },
     { id: 'quote.resource', wave: 'W13', minNotionalAtomic: '1', tickAtomic: '1' },
+    { id: 'resource.metals.t1', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.metals.t2', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.metals.t3', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.minerals.t1', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.minerals.t2', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.minerals.t3', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.bio.water', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.bio.biomass', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.bio.t2', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
+    { id: 'resource.bio.t3', wave: 'W13', reserveHorizonS: 3600, targetBandLoBp: 1000, targetBandHiBp: 8000, lotUnits: 1, tradable: true },
   ],
 });
