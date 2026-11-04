@@ -1,342 +1,180 @@
-# TerraAgent — AI Orchestrator Specification
+# TerraAgent — AI Director Specification
 
-> **Status:** v0.2 (2026-10-30) · **Module:** `ai` inside the one app (`backend/app/src/ai`, D-24). There is no separate service, NATS or work queue.
-> **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6, §10, §15 · **Decisions:** [D-09](./DECISIONS.md#d-09--zai-glm-53), D-17, D-24, D-25, D-26 · **Plan:** [`TA-09`](../plan/issues/TA-09-ai-orchestrator.md)
-> **Game design:** [`docs/game/autonomous-colony-spec.md`](../game/autonomous-colony-spec.md) §10 (rules first, LLM rarely)
+> **Status:** W16 replan, 2026-11-04; specification only, not implemented or live-validated.
+> **Plan:** [W16](../plan/waves/W16-ai-director.md). **Decisions:** D-09, D-17, D-24/W16 amendment, D-25, D-31, D-37, D-42.
+> **Integration:** landed [W08 goals](../../shared/sim/src/systems/goals/catalog.ts), [W11 foundations](../plan/waves/W11-lobby-planets.md), [W27 scale](../plan/waves/W27-planet-sectors.md).
 
----
+## 1. Purpose and process boundary
 
-## 1. Purpose
+The director makes occasional strategic choices; the rule engine and HQ goal executors handle routine work. Players choose objectives and how much gameplay risk to take. Both mock and live Z.ai adapters ship in W16; the live evaluation is a required release gate, separate from deterministic e2e.
 
-The colony is autonomous. The rule engine inside `@terra/sim` (TA-06.7) makes **90–95 %** of decisions every tick for free. The AI orchestrator is the **strategic director** for the remaining **5–10 %**: rare, event-driven decisions such as re-prioritising after an attack, answering a trade offer, deciding when to start a rocket. It runs whether the player is connected or away. Away behaviour follows [`CONTINUITY.md`](./CONTINUITY.md) and TA-08.2.
+W16 adds **`backend/director/`**, a separately runnable Node/TypeScript worker in this monorepo. NestJS remains the HTTP/WS, identity and game authority. The worker owns provider calls, bounded planning, skill selection and evaluations. It has no sim memory access, game-table write privileges, player sessions or signing keys. CPU/memory and DB pool limits are independent of the game process. This is a scoped D-24 exception, not a split of the game into microservices.
 
-It never touches simulation state directly. Triggers come **straight from sim events** on the in-process event bus. The module reads a compact **colony brief** from the sim thread and returns a validated **`DirectiveV1`**. The directive goes to the planet's sim thread as an ordinary command (`ai.directive`), which is applied at the next step.
+The game publishes immutable context references and consumes proposed directives through a durable Postgres queue. A private MCP endpoint in `backend/app/src/ai/mcp/` exposes bounded game queries and proposal submission to the worker. MCP is the tool protocol, not a job scheduler, LLM provider, or authorization policy. `shared/contracts/src/ai/` owns wire schemas; pure policy predicates live in `shared/sim`. Neither backend application imports the other's internals. Infrastructure uses the existing stack scripts; no public director web app is required. Player controls stay in the existing game HUD.
 
 ```mermaid
-sequenceDiagram
-  participant T as sim thread (planet)
-  participant B as event bus
-  participant A as ai module
-  participant PG as Postgres (ai.*)
-  participant Z as api.z.ai (glm-5.3)
-  T->>B: planet.event (trigger-worthy, with brief)
-  B->>A: AiRequestV1 {trigger, severity, brief}
-  A->>PG: gate: kill switch · per-colony interval · daily cap · global token budget · in-flight
-  alt rejected
-    A->>A: drop (outcome = rate_limited | budget_exhausted | disabled | duplicate)
-  else allowed
-    A->>Z: chat/completions (system v1 + brief, JSON mode, max_tokens 400, 20 s)
-    Z-->>A: JSON
-    A->>A: zod-validate DirectiveV1 → clamp → staleness check
-    A->>T: cmd {kind: ai.directive, commandId = requestId}
-    A->>PG: ai_decision row (outcome, tokens, latency)
-  end
+flowchart LR
+  P[Player goals and settings] --> G[Nest game authority / sim]
+  G --> Q[Postgres jobs / context references]
+  Q --> D[Director worker]
+  D --> L[Mock or Z.ai]
+  D <-->|Private MCP: scoped reads / proposals| G
+  G --> C[Shared policy and ordinary command ingress]
+  C --> S[HQ goals / order queue / sim]
+  S --> G
 ```
 
----
+## 2. Invariants and threat boundary
 
-## 2. Rules
-
-| ID | Rule |
+| Rule | Requirement |
 |---|---|
-| `AI-01` | The orchestrator MUST NOT be on the tick path. A missing, late or invalid directive MUST leave the colony running on the rule engine with the player's last priorities. |
-| `AI-02` | LLM calls are triggered only by `AiRequestV1` built from sim events on the event bus (§3). The only timer is the `idle.checkpoint` trigger, which the `game` module emits. In-memory requests are lost on restart, which is accepted (`AI-01`). |
-| `AI-03` | Per colony there MUST be at most **1 call / `AI_MIN_INTERVAL_S` (300 s)** for `normal` triggers, at most **1 call / `AI_CRITICAL_INTERVAL_S` (120 s)** for `critical` triggers, and at most **`AI_MAX_CALLS_PER_DAY` (150)** calls per UTC day. A critical call also resets the normal interval. |
-| `AI-04` | A global daily token budget `AI_DAILY_TOKEN_BUDGET` MUST be enforced before each call, using an estimate of prompt tokens plus `max_tokens`. When it is exhausted, requests get `budget_exhausted` until 00:00 UTC. |
-| `AI-05` | At most one in-flight call per colony. A second request for the same colony while one is in flight MUST be dropped as `duplicate`. |
-| `AI-06` | Every provider response MUST be parsed as JSON and validated against `DirectiveV1` (zod, `.strict()`). Invalid → outcome `invalid` and nothing is published. |
-| `AI-07` | Valid directives MUST be **clamped** (§6.3) before they are published. Clamping is logged as `clampedFields[]`. |
-| `AI-08` | A directive MUST be dropped as `stale` if more than `AI_TIMEOUT_S` (20 s) passed since the request was enqueued, or if the request's `basedOnTick` is older than the planet's latest known tick by more than 600 ticks (60 s). |
-| `AI-09` | Directives are posted to the sim thread with `commandId = requestId`. The sim ignores a second directive with the same `requestId`. |
-| `AI-10` | Every attempted provider call MUST write exactly one `ai.ai_decision` row. Rejections before the call are counted in metrics and are not written as rows. |
-| `AI-11` | `AI_ENABLED=false` (env) or the runtime kill switch (admin endpoint, persisted in `ai.ai_settings`) MUST stop all provider calls within 5 s. Requests are dropped as `disabled`. |
-| `AI-12` | Away-mode limits (TA-08.2) are enforced **in the sim** when the directive is applied, for example no raids on other players while away unless allowed. The AI side only avoids proposing them (system prompt + clamp). The sim is the authority. |
-| `AI-13` | Tests and every lane except L4 MUST use the mock provider. Real Z.ai calls require `AI_PROVIDER=zai` **and** `AI_LIVE=1` outside production. |
-| `AI-14` | Secrets (`ZAI_API_KEY`) MUST never be logged. Prompts and responses are stored as a SHA-256 hash plus the parsed directive. Raw text is stored when `AI_LOG_RAW=1`, which is **on in prod** (owner decision). Raw columns are purged after **14 days**; hashes and directives follow the 30-day `ai_decision` retention. Prompts contain no PII. |
-| `AI-15` | **No per-player throttling beyond the budgets (D-25).** The per-colony intervals, the daily cap and the global token budget are cost controls. There are no abuse checks. |
+| AI-01 | Provider, worker or queue outage leaves rule-engine play running with the player's settings. No network/DB/provider work on the sim tick. |
+| AI-02 | Only authoritative events trigger work; player HTTP/WS input cannot impersonate a director job or set its principal. |
+| AI-03 | Per-colony minimum normal interval 300 s, critical interval 120 s, 150 provider requests/day; atomic reservations, including every model turn/retry. |
+| AI-04 | Global 20M tokens/UTC day; reserve maximum possible input/output before every provider attempt, reconcile actual usage, retain reservation for unknown billed outcomes. No midnight overspend from outstanding requests. |
+| AI-05 | At most one running and one coalesced pending plan per colony; fencing rejects late workers. |
+| AI-06 | Strict bounded Zod schemas for every job, tool argument/result and directive; unknown action, extra field, malformed JSON or oversized response is rejected. |
+| AI-07 | Deterministic policy checks before proposing and again at authoritative application; shared game rules own placement, affordability, stage, permissions and away policy. |
+| AI-08 | Reject expired context, changed player intent, changed planet epoch, revoked authority or stale dependencies even if provider responded within its deadline. |
+| AI-09 | Deterministic request/action IDs, replay fencing and transactional proposal outbox; queue delivery is at least once, never a claim of exactly-once external effects. |
+| AI-10 | Record each provider attempt, decision, tool use and per-action authoritative result. `proposed` is not `applied`; only sim acknowledgement establishes application. |
+| AI-11 | Global/planet/colony kill switch effective within 5 s, checked at claim, each tool/turn and apply. Cancels pending/in-flight work and revokes capabilities. |
+| AI-12 | Player orders, locked goals, away permissions and spending ceilings always win over either risk profile. Risk never grants authority. |
+| AI-13 | Mock by default outside production; explicit `zai` without `AI_LIVE=1` fails boot. Unknown adapter fails boot. Prod refuses mock without explicit override. |
+| AI-14 | No secrets, session tokens, wallet keys or PII in prompts/logs. Redact before storage; raw logging follows D-09 (AI_LOG_RAW=1 by default in prod, 14-day purge), decision metadata 30 days. |
+| AI-15 | Identity, authorization, isolation and bounded-load controls are mandatory; this does not add anti-cheat/farm detection prohibited by D-25. |
+| AI-16 | Conservative/Risky strategy and all skill permissions are enforced as data, not merely prompt instructions. |
+| AI-17 | Context is scoped to the authorized colony and its permitted knowledge; no full-world dumps, hidden deposits or unrelated player history. |
+| AI-18 | No shell, filesystem, SQL, arbitrary HTTP, package installation, remote skill loading or wallet-signing tool is exposed to the model. |
 
----
+MCP uses Streamable HTTP on an internal listener with authenticated workload identity, short-lived audience-bound credentials, and request-specific capabilities bound to job, colony, planet, allowed tools and expiry. Credentials are injected by the worker host, never model arguments. Server resolves the principal independently on every call; session IDs alone are not authentication. Reject token passthrough, wrong audience, scope escalation, guessed IDs and replay after revocation. TLS is required across hosts; bind local development to loopback. Validate Origin against an explicit browser allowlist (or reject browser origins for the worker-only endpoint); missing Origin does not bypass workload authentication. Do not expose the endpoint through public nginx routes.
 
-## 3. Triggers
+Pin the owned MCP server/tool schema versions. Tool descriptions and annotations are hints, never permission checks. Allowlisted provider/MCP URLs come only from operator config: block arbitrary redirects, metadata/link-local destinations and DNS-rebinding routes, with explicit fixed private-service destinations permitted. Egress credentials are service-specific. Remote MCP discovery, sampling, elicitation and resource subscriptions are disabled unless a later reviewed feature needs them.
 
-Event kinds are owned by `@terra/contracts` (TA-01.3 / TA-07.7). This table maps them to AI triggers. The **`game` module** decides when to emit an `AiRequestV1` from sim events, using its own hysteresis (re-emit no more than once per 60 s per trigger while the condition persists). The AI service enforces the limits in §2.
+Player text, colony names, diplomacy messages and tool results are untrusted data. Delimit and length-limit them; never concatenate them into system instructions. Do not send other players' free text unless required. Validate output IDs against scoped observations, escape rationales as text in the UI, and reject secret/URL requests. Injection tests must pass by authorization boundaries even when the model follows malicious instructions. Admin kill/config endpoints require admin auth and audit; player settings require colony ownership, version checks and existing CSRF/session protection. Dev fault tools remain unavailable in production.
 
-| Trigger (`AiRequestV1.trigger`) | Source condition (sim event) | Severity |
+## 3. Triggers and player awareness
+
+Retain resource critical/shortage, storage full, supply capped, power collapse, hub critical, under attack, building destroyed, hazard ended, neighbor contact, trade offer, rocket available, away started and away-only 30-minute checkpoint. Add `player.intent_changed`, `goal.blocked`, `goal.completed`, `diplomacy.truce_offered` and meaningful observed sector threat/resource changes. Debounce each condition (60 s baseline), coalesce related events and suppress director-generated feedback loops. Player edits invalidate work immediately; they do not bypass call budgets.
+
+Store a bounded authoritative event summary: recent player commands and cancellations, current manual orders, goal queue/order/budgets, locked entities/areas, recently rejected proposals and reasons. Retain at most 32 summarized events and 10 decisions per planning context; never replay an unbounded transcript. Every player change to priorities, goals, permissions or protected orders increments `intentRevision`. An older plan becomes `superseded`. Temporary AI priorities are an overlay with expiry; never overwrite the player's baseline. Cancelling an AI goal suppresses equivalent re-proposals for a tunable 10-minute default, persisted across restart.
+
+## 4. Player strategy and risk settings
+
+Reuse W08's independent `economy`, `expansion`, `defense`, `power`, `terraform` sliders (0–100); **do not normalize their sum to 100**. The landed defaults are all 50. UI steps are 10; away overrides stay within ±10 of the last explicit player values, including across repeated calls. W08 HQ goals, 2/3/5 open-slot limits, stage gates, learned-lane rules, budgets and progressive order payment remain authoritative.
+
+Presets are editable views over those settings and skill preferences: **Defence, Resources, Terraforming, Expansion, Aggressive, Balanced**. Aggressive favors combat goals only when their owning waves/stages and player permissions allow them. It neither makes peaceful targets hostile nor enables away raids. A free-text intent note (max 500 chars) may explain preferences but grants no permissions. Preview preset changes before applying; persist per colony and show the effective settings.
+
+| Tunable | Conservative (default) | Risky |
 |---|---|---|
-| `colony.under_attack` | fauna or another colony damages a building or robot owned by the colony, with no attack in the last 120 s | **critical** |
-| `power.collapse` | brownout shedding reached group ≥ 3 (extractors/depots) or generation < 50 % of demand for 30 s | **critical** |
-| `hub.critical` | Command Hub HP < 50 % | **critical** |
-| `resource.critical` | a consumed sub-resource (`ResourceKey`, D-34) reaches 0 within ≤ 120 s at the current net rate | **critical** |
-| `resource.shortage` | a consumed resource reaches 0 within ≤ 600 s | normal |
-| `storage.full` | any resource family (Metals, Minerals, Bio) ≥ 95 % of its cap for 60 s (its sources halted) | normal |
-| `supply.capped` | robot supply used = cap and the build queue holds robots | normal |
-| `neighbor.contact` | first territory border contact with another colony | normal |
-| `trade.offer_received` | an incoming trade offer arrived (TA-10.5) | normal |
-| `building.destroyed` | a building of the colony was destroyed (hazard, fauna or raid) | normal |
-| `hazard.ended` | a weather hazard ended and repairs are pending | normal |
-| `rocket.available` | rocket prerequisites met (TA-06.10). Decide launch timing and destination type | normal |
-| `away.started` | player marked away (`AWAY_AFTER_S` = 60 s), so set the autopilot strategy | normal |
-| `idle.checkpoint` | no AI call for this colony in 30 min **and** the player is away | normal |
+| Reserve floor for discretionary actions | Keep 40% of unearmarked stock | Keep 15% of unearmarked stock |
+| New discretionary commitment per planning cycle | At most 15% of unearmarked stock | At most 35% of unearmarked stock |
+| Optional combat candidate threshold | Estimated friendly/enemy strength ≥ 1.5 | ≥ 0.9; uncertain intel requires scouting |
+| Expansion | Connected, observed, defended routes | Longer observed frontier routes and opportunistic outposts |
+| Economic tactics | Redundancy, stable supply, repair first | Specialization, timed stockpiling, temporary low reserves |
+| Candidate diversity | Two alternatives including hold | Up to four, including flank, diversion or staged expansion |
 
----
+These are initial balance parameters, not measured win-rate guarantees. Resource ratios apply per resource after player earmarks; energy uses its shared power policy. Player reserve floors and spend ceilings can tighten either profile; the effective limit is the strictest player, profile, goal, away and game limit. Risky cannot relax trade hard caps, `autoTrade`, director-key allowance, newcomer shields, tier-up consent or launch consent. Defence emergency behavior uses existing rule-engine rules, never an AI override of reserves.
 
-## 4. Rate limits & budgets
+Persist a versioned `DirectorPolicy` with risk, skill allow/deny, objective references, reserve/spend settings, protected areas/entities, optional note and revision. Authority changes apply at sim acknowledgement and invalidate older proposals. UI shows risk, goals inherited from W08, effective permissions, pause/rules-only, next-call time and budget. Explain each action with goal served, expected cost, uncertainty and why it fits the selected style; expose rejected/clamped reasons and an ordinary cancel control. No modal approval for every move: the player's configured delegation authorizes valid actions.
 
-| Key | Default | Meaning |
+## 5. Context, W11 and W27
+
+`ColonyBriefV2` is a bounded, versioned projection, built from sim read views and maintained event aggregates, not a scan per request. Include world/colony IDs, global tile/sector IDs, atlas/config version, epoch, tick, simulation time, observed-at time, intent/goal/permission revisions, enabled waves, unlock stage, HQ tier, resources/net rates/reservations, power/solar state, current goals and player actions, policies, threats and available skills.
+
+W11 supplies the three canonical persistent planets, stable spatial identities, cross-sector colonies and authoritative lifecycle/admission status. Include home versus occupied sectors and open/full/paused/faulted state where relevant; a full founding sector does not prohibit expansion. Never infer lifecycle from age, create overflow planets or relocate units. W11-off dev worlds use a bounded compatibility view with explicit capabilities.
+
+W27 enriches the same context contract with continent/sector summaries, observation freshness, residency and route availability. Query owned territory plus bounded neighboring/goal-relevant sectors, independently of the player's camera. Unloaded, unknown and absent are distinct. A query returns `unavailable`/`stale` rather than fabricating zero resources or loading all sectors. Cross-sector actions use global identities and the existing shared path/placement services. AI cannot request unlimited sector residency or discover hidden terrain for free. W27 owns real scale adapter acceptance; W16 ships its contract and fake streaming fixtures without making W27 a prerequisite.
+
+W11/W27 summaries must apply the AI knowledge policy even where legacy clients receive full state. Known observations may be stale; the model sees their age and confidence. Brief cache keys include colony, epoch, policy/intent revision and summary version; never share private context across tenants.
+
+Replace the old 1,200-character limit with an **8 KiB serialized brief** and **4,000 input-token aggregate per planning cycle**, including system prompts, tool schemas/results and repeated context across all turns. Bound each read result to 8 KiB / 64 records and each provider response to 16 KiB. Initial active-skill selection ≤6; full skill catalog stays server-side. Truncate optional history before critical state; if mandatory context cannot fit, fail closed with `context_too_large`. Enforce byte caps before parsing and token caps before sending.
+
+## 6. Skills, tools and directives
+
+Runtime skills are versioned game strategies, not Codex SKILL.md files or downloadable executable scripts. `DirectorSkillRegistry` entries declare id/version, purpose, required waves/stages, allowed tools/actions, preconditions, conservative/risky variants, cost/reserve limits, termination conditions and fixture IDs. Registry is the superset; a request receives only applicable authorized skills. Skill text cannot expand tool authority.
+
+| Skill family | Shared goal/action integration | Risky possibilities within permissions |
 |---|---|---|
-| `AI_ENABLED` | `true` | Global env switch (restart). The runtime switch is the admin endpoint (§9). |
-| `AI_PROVIDER` | `zai` in prod, `mock` otherwise | `zai` \| `mock` |
-| `AI_MODEL` | `glm-5.3` | Owner-confirmed ([D-09](./DECISIONS.md#d-09--zai-glm-53)); check account rate limits in the Z.ai console |
-| `AI_BASE_URL` | `https://api.z.ai/api/paas/v4` | OpenAI-compatible **general** endpoint (owner-confirmed) |
-| `AI_MIN_INTERVAL_S` | `300` | Normal trigger interval per colony |
-| `AI_CRITICAL_INTERVAL_S` | `120` | Critical trigger interval per colony |
-| `AI_MAX_CALLS_PER_DAY` | `150` | Per colony per UTC day |
-| `AI_DAILY_TOKEN_BUDGET` | `20000000` (≈ $40/day, §8) | Global, input + output tokens. Owner-confirmed for launch. Includes `away.story` calls (CONTINUITY CT-34). |
-| `AI_TIMEOUT_S` | `20` | End-to-end per call, including one retry |
-| `AI_MAX_TOKENS` | `400` | Completion cap |
-| `AI_CONCURRENCY` | `8` | Max parallel provider calls |
-| `AI_LOG_RAW` | `1` in prod | Store raw prompt and response text (14-day retention, AI-14) |
-| `AI_RAW_RETENTION_D` | `14` | Purge window for `raw_prompt` / `raw_response` |
+| Recovery and survival | establish_colony, secure_power, repair orders | Recover critical infrastructure with staged resource commitments |
+| Resource strategy | grow_economy, shared extraction/production | Specialize and stockpile ahead of known shortages |
+| Defence and fortification | defend_colony, W14 walls | Forward defence, mobile interception, deliberate fallback |
+| Scouting and nest control | clear_corridor, movement/observation | Scout a flank, clear a corridor for a later expansion |
+| Expansion | expand_territory, W05 beacons | Frontier outpost and alternate route after failed access |
+| Terraforming | terraform_zone, shared terrain preparation | Staged reclamation or defensive terrain shaping |
+| Logistics and trade | negotiate_supply, W10/W13 cargo/market | Opportunistic trade within stock, price and allowance ceilings |
+| Technology and forces | tech_up, build_army (W17/W19) | Specialize composition; upgrades still need existing consent |
+| Diplomacy and aggression | W18 truce/raid_target | Feints, flanks and opportunistic raids on eligible targets |
+| Settlement | build_rocket / W21 transfer | Prepare alternatives; launch/transfer needs existing player authority |
+| Away stewardship | W09 policy, existing goals | Greater permitted commitment, never implicit away raids |
+| Guild and reporting | W15 strategy; W09 away story | Distinct NPC principal; narrative output has no command authority |
 
-**State.** Per-colony limits live in Postgres (`ai.ai_colony_budget`). The gate is one atomic `UPDATE … WHERE … RETURNING`, so limits survive restarts and can be audited together with `ai_decision`.
+Unavailable executors are absent from the tool list, not advertised as working skills. Register strategies over existing executors; do not implement alternate build, payment, pathing or battle loops. Read tools: `colony.readBrief`, `goals.list`, `world.readSectorSummaries`, `world.queryObserved`, `actions.preview`. One proposal tool: `director.propose` accepts a validated batch, never mutates the world directly. Read-only annotations describe the tools; permission checks enforce them. Batch reads against the same context version; cache within a job.
 
-```sql
-UPDATE ai.ai_colony_budget
-   SET last_call_at = now(),
-       last_critical_at = CASE WHEN $sev = 'critical' THEN now() ELSE last_critical_at END,
-       calls_today = CASE WHEN day = current_date THEN calls_today + 1 ELSE 1 END,
-       day = current_date,
-       in_flight_until = now() + interval '20 seconds'
- WHERE colony_id = $1
-   AND (in_flight_until IS NULL OR in_flight_until < now())
-   AND (day <> current_date OR calls_today < $maxPerDay)
-   AND ( ($sev = 'critical' AND (last_critical_at IS NULL OR last_critical_at < now() - $critInterval))
-      OR ($sev = 'normal'   AND (last_call_at     IS NULL OR last_call_at     < now() - $minInterval)) )
-RETURNING colony_id;
-```
+`DirectiveV2` references existing command argument schemas (queueGoal, queueUnit, permitted build/repair/terraform, priorities, trade, diplomacy) instead of duplicating catalog enums. Its envelope binds request ID, job/fence, colony/world, epoch, intent/permission/context revisions, deadline, maximum context age of 60 simulation seconds (use the authoritative solar/simulation clock, never a fixed tick-to-seconds assumption), selected skills/versions, rationale ≤200 chars and ≤5 actions with stable action IDs. The host supplies identity fields. Include observed dependencies and expected policy version; the model supplies only proposal content.
 
----
+Preview and apply call the same shared predicates over current authority state (D-37). Validate cumulative batch commitments, goal slots and dependencies, not each action against the same initial stock. Sim processes in order and acknowledges each accepted/rejected action; never retry a rejected batch wholesale. Economic costs flow through existing progressive payment and earmarks (D-42). Priority overrides expire, preserve manual values and obey away guard bands. Player-source work is never cancelled/reordered by AI; only its own still-authorized work may be revised. Unknown actions are rejected, not guessed or mapped to an arbitrary fallback.
 
-## 5. Prompt shape
+## 7. Durable scheduling and failure handling
 
-### 5.1 System prompt (static, versioned `PROMPT_VERSION = 1`)
-- Role: "strategic director of an autonomous robot colony; the rule engine executes; you only set priorities and up to 5 high-level actions".
-- Output: **JSON only**, matching the embedded JSON Schema generated from `DirectiveV1` (`zod-to-json-schema`). No prose outside `rationale` (≤ 200 chars).
-- Constraints: use only the building/robot ids listed in the catalog line; do not exceed the stock shown; when `away=yes`, follow the player's stated away policy and never propose `raid` unless `raidsAllowed=yes`.
-- Size target: ≤ 450 tokens, identical on every call so the provider's context cache can be used where supported (verify for Z.ai).
+Use **pg-boss** behind `DirectorJobPort` with the existing Postgres service. Queue payloads hold immutable context references, scoped IDs, trigger summary, enqueue time and deadline; secrets and raw history stay out. Separate planning, narrative and Guild queues under one global provider concurrency/budget allocator. Atomic admission caps pending work (initial default 512 globally, one per colony); coalesce before inserting, prefer critical over routine, round-robin across colonies with aging, and reserve at least one slot for critical work. Overflow drops routine requests with an observable outcome; never blocks a sim tick. A separate durable trigger intent/outbox reconciles enqueue failures; reconcile only fresh events.
 
-### 5.2 User message: compact brief (≤ 1200 chars, ~150–300 tokens)
+Initial global provider concurrency is 4 (hard configurable maximum 8 on the launch host); per-colony concurrency 1. Scheduler fairness must not starve ordinary colonies during critical floods; cap consecutive critical claims and measure oldest eligible wait. Planning deadline is **20 seconds from original enqueue**, including waiting, tool calls and retries. Never reset it on retry/coalescing. Expired jobs are discarded before paid calls; fresh events can create fresh jobs. Provider timeout uses remaining deadline. Maximum 3 model turns, 6 tool calls, 5 actions, 1 transport retry total per job; disable SDK/queue nested automatic provider retries. Retry only 429/5xx/network with jitter/Retry-After when sufficient time remains; 401/403 opens circuit and alerts.
 
-Built only from `ColonyBriefV1` (contract, produced by the sim thread). Fixed field order. Numbers rounded to integers in the brief.
+Reserve token maxima atomically for each attempt under the global and colony budgets, including parallel workers, narrative and Guild calls. Unknown usage remains charged at the reservation until reconciliation; UTC rollover accounts to reservation day. Tokens are not dollars: an independent configured cost ceiling uses verified provider prices; missing prices prevent live rollout. Queue retry is allowed for safe delivery/reconciliation, not automatic repeat of an ambiguously completed paid call.
 
-```text
-T=18342 planet=desert day=2.1 night=no weather=sandstorm(90s)
-trigger=resource.critical(bio.water eta=95s) sev=critical
-res Met=820/1500[t1 820 t2 0 t3 0] Min=310/1500[t1 310 t2 0 t3 0] Bio=52/1500[water 12 biomass 40 t2 0 t3 0] | E +14/s (gen 62 use 48) batt 40%
-bld hub1:1 beacon1:2 solar1:4 coal1:1 mine1:3 pump1:0 depot1:1 dca1:1 fac1:1 turret1:1
-bots miner1:5 builder1:2 combat1:1 supply 9/10 queue: mine1,miner1
-threats nest@NE d=14 lvl1 | neighbors C-7 border=yes hostile=no
-offers in: #o81 C-7 gives bio.water 150 wants metals.t1 200 exp=240s
-prio econ60 exp20 def10 pow10 terra0 | away=yes 47m raidsAllowed=no
-catalog bld=[hub,beacon,pylon,capacitor,solar,wind,coal,mine,pump,depot,dca,factory,turret] bots=[miner,builder,combat]
-```
+Worker claims include expiring execution leases and monotonically increasing fencing tokens. Proposal acceptance writes result/outbox atomically and deduplicates `requestId/actionId`. Game ingress checks the fence, current permissions, epoch and expiry. A worker crash after response cannot cause duplicate commands. Persist decision IDs with the authoritative snapshot; on game restart increment epoch and invalidate old proposals/outboxes rather than replaying effects lost in a pre-crash snapshot. D-24's possible ≤60 s rollback remains; W16 does not invent durable simulation replay. External economic effects retain their existing saga/outbox idempotency.
 
-### 5.3 Provider request (Z.ai, OpenAI-compatible)
+Outcomes include disabled, rate_limited, budget_exhausted, coalesced, overloaded, expired, superseded, unauthorized, context_unavailable, invalid, proposed, applied, partially_applied, rejected, timeout and provider_error. Five consecutive provider failures open a 60 s circuit, then one probe. Stopping a worker returns rules-only status in the HUD. Kill-switch acknowledgement is independent of provider completion; late results are rejected even if cancellation cannot stop upstream billing.
 
-```http
-POST {AI_BASE_URL}/chat/completions
-Authorization: Bearer ${ZAI_API_KEY}
-{
-  "model": "glm-5.3",
-  "messages": [{"role":"system","content":"<v1>"},{"role":"user","content":"<brief>"}],
-  "response_format": {"type": "json_object"},
-  "temperature": 0.3,
-  "max_tokens": 400,
-  "thinking": {"type": "disabled"}
-}
-```
-`response_format` and `thinking` support must be **verified against Z.ai docs** in TA-09.1. If either is unsupported, the provider adapter drops it and relies on the system prompt plus a strict parser.
+## 8. Library selection and compatibility gate
 
----
+Research checked 2026-11-04; select exact stable versions and security patches at implementation, lock them, and verify Node/Postgres/Zod compatibility. No packages are installed by this planning change.
 
-## 6. `DirectiveV1`
-
-### 6.1 Schema (lives in `@terra/contracts/ai`; contract change request for the W1/W3 pre-step)
-
-```ts
-export const Priority = z.number().int().min(0).max(100);
-export const DirectiveActionV1 = z.discriminatedUnion('kind', [
-  z.object({ kind: z.literal('queueBuild'),   building: BuildingId, tier: z.literal(1).or(z.literal(2)), near: z.enum(['hub','frontier','deposit:metals','deposit:minerals','deposit:oil','water']), count: z.number().int().min(1).max(3) }).strict(),
-  z.object({ kind: z.literal('queueRobot'),   robot: RobotId, tier: z.literal(1), count: z.number().int().min(1).max(5) }).strict(),
-  z.object({ kind: z.literal('upgrade'),      building: BuildingId, toTier: z.literal(2) }).strict(),
-  z.object({ kind: z.literal('tradeOffer'),   give: ResAmount, want: ResAmount, to: ColonyId.optional() }).strict(),   // ResAmount = { resource: ResourceKey, amount }
-  z.object({ kind: z.literal('tradeRespond'), offerId: z.string(), accept: z.boolean() }).strict(),
-  z.object({ kind: z.literal('rally'),        target: z.enum(['hub','frontier','nest','enemyBorder']) }).strict(),
-  z.object({ kind: z.literal('raid'),         targetColonyId: ColonyId }).strict(),
-]);
-export const DirectiveV1 = z.object({
-  v: z.literal(1),
-  rationale: z.string().max(200),
-  priorities: z.object({ economy: Priority, expansion: Priority, defense: Priority, power: Priority, terraform: Priority }).strict().optional(),
-  actions: z.array(DirectiveActionV1).max(5),
-  ttlTicks: z.number().int().min(600).max(6000).default(3000),
-}).strict();
-```
-The sim command that wraps it: `{ kind: 'ai.directive', source: 'ai', colonyId, requestId, basedOnTick, promptVersion, directive: DirectiveV1 }`.
-
-Priority names must equal the player's priority sliders in TA-06.7 and TA-11.7. Reconcile them in the W1 pre-step.
-
-### 6.2 Validation
-1. `JSON.parse`. On failure, try once to extract the first `{…}` block, then fail as `invalid`.
-2. `DirectiveV1.safeParse`. On failure → `invalid`, with zod issues stored in `ai_decision.error`.
-3. Reference checks against the brief: building and robot ids are in the catalog; `offerId` exists in `offers in`; `targetColonyId` is a known neighbor.
-
-### 6.3 Clamping (deterministic, unit-tested)
-
-| Field | Clamp |
+| Choice | Why it fits / alternative |
 |---|---|
-| `priorities` | If present, normalise so the sum is 100, rounding to integers with the remainder going to the largest. All zeros → drop `priorities`. |
-| `actions` | Drop unknown ids. Dedupe identical actions. Keep the first 5. |
-| `queueBuild.count` / `queueRobot.count` | `min(count, affordableNow)`. Affordability is estimated from brief stock × catalog cost (from `@terra/sim` data tables, read-only). |
-| `tradeOffer.give.amount` | ≤ 20 % of current stock of that resource. ≤ 50 % is the player-level hard cap enforced by the sim/trade saga. |
-| `raid` | Removed when `away=yes && raidsAllowed=no` or `hostile=no` with no prior attack, and logged as clamped. |
-| `ttlTicks` | Clamp into [600, 6000]. |
+| Official MCP TypeScript SDK | Owned server and typed protocol client; avoid custom JSON-RPC. Verify supported stable release/transport against [official SDK](https://github.com/modelcontextprotocol/typescript-sdk). |
+| `ai` + `@ai-sdk/openai-compatible` | Typed model/tool orchestration behind LlmProviderPort, explicit abort and step budgets; [provider support](https://ai-sdk.dev/providers/openai-compatible-providers). Plain fetch remains a small fallback adapter if Z.ai compatibility fails. |
+| `@ai-sdk/mcp` | Allowlisted MCP-to-model tool bridge with explicit input/output schemas; [MCP tooling](https://ai-sdk.dev/docs/ai-sdk-core/mcp-tools). Use one client lifecycle; do not create a connection per tool call. |
+| Existing Zod 4 | Shared strict contracts and native `z.toJSONSchema()`; remove planned zod-to-json-schema dependency. [Zod docs](https://zod.dev/json-schema). |
+| `pg-boss` | Durable Node queue on existing Postgres, concurrent claims via SKIP LOCKED; [project](https://github.com/timgit/pg-boss). Keep tenant fencing and command dedupe above queue semantics. |
+| BullMQ + `@nestjs/bullmq` | Strong Nest integration, but requires Redis; retain as an alternative only if measured Postgres contention justifies another service. [Nest queues](https://docs.nestjs.com/techniques/queues). |
+| Existing pino / prom-client / Vitest | Structured audits, bounded-label metrics and contract/failure tests; no second logging stack. |
 
----
+A graph framework is not needed for this bounded plan/read/propose loop. Reconsider only if durable branching workflows exceed explicit state-machine complexity. Add package license/advisory checks, lockfile verification, dependency update policy and provider contract fixtures. Never assume OpenAI-compatible means identical tool/JSON/usage/abort behavior. Z.ai `glm-5.3` remains the owner's configured target, **not verified availability**: live smoke must verify the model, JSON/tool schemas, usage accounting, unsupported options and cancellation. Disable unsupported fields explicitly; never silently change model or provider.
 
-## 7. Fallback & failure handling
+MCP security requirements above are grounded in the [official security guidance](https://modelcontextprotocol.io/specification/2025-11-25/basic/security_best_practices). Our colony capability and game-policy checks are application requirements in addition to the protocol.
 
-| Failure | Behaviour | Outcome code |
-|---|---|---|
-| Kill switch / `AI_ENABLED=false` | No call | `disabled` |
-| Interval/day cap hit | No call | `rate_limited` |
-| Global budget hit | No call; `ai_budget_exhausted` gauge = 1 | `budget_exhausted` |
-| In-flight for the colony | No call | `duplicate` |
-| HTTP 429 / 5xx / network | 1 retry with jitter if ≥ 8 s remain, else give up | `provider_error` |
-| HTTP 401/403 | No retry; circuit opens; `ai_provider_auth_error` alert | `provider_error` |
-| Timeout (20 s) | Abort | `timeout` |
-| Invalid JSON / schema | Nothing published | `invalid` |
-| Late (§2 `AI-08`) | Nothing published | `stale` |
-| Valid | Published | `applied`. Sim-side rejection arrives later as `cmd.rejected` and is joined in analytics, not here. |
+## 9. Kill switch and operations
 
-**Circuit breaker:** 5 consecutive `provider_error`/`timeout` → open 60 s (all requests `provider_error` without calling) → half-open with 1 probe.
+Nest owns authenticated admin controls and durable settings; workers get read access to their effective settings and bounded queue/audit tables. Database grants separate game, worker and migration roles. Worker compromise cannot update player policy, balances, identities or game state. Workload keys rotate independently of provider keys. Health exposes provider/queue state without secrets; worker failure is not game readiness failure.
 
-In every case the rule engine continues with the player's last priorities (`AI-01`).
+Deployment adds a capped director container/process, restricted egress and graceful drain/abort. Document local startup, mock fault modes, live enablement, migrations, rollback and private port configuration in DEV_TOOLS when implemented. Wave-off starts no jobs or MCP listener. Rolling back preserves player policy/audit data and falls back to rules. No automatic expansion to more workers than global budget/concurrency can support.
 
----
+## 10. Persistence
 
-## 8. Cost model (estimate)
+Game-owned: versioned DirectorPolicy, player intent revision, immutable context snapshots with expiry, proposal outbox and acknowledged action results. Worker-owned: job attempts/fences, skill/prompt/model versions, decision/usage records and circuit state. Queue schema belongs to pg-boss; schema changes are controlled migrations. Add indexed expiry cleanup and bounded retention; pending context is short-lived, sanitized raw prompts 14 days, decision audit 30 days. Store current durable preferences separately from expiring context. Log hashes plus parsed results; keep authorization credentials out of all records. Tenant-scoped reads protect director history and explanations.
 
-Prices **per third-party listing, verify on the Z.ai console**: input **$1.40 / 1M**, output **$4.40 / 1M** tokens for `glm-5.3`.
+## 11. Mock and local mode
 
-| Item | Tokens | Cost / call |
-|---|---|---|
-| System prompt v1 | ~450 in | $0.00063 |
-| Brief | ~250 in | $0.00035 |
-| Directive | ~200 out | $0.00088 |
-| **Total** | **~700 in + 200 out** | **≈ $0.0019** |
+Mock uses the same registry, MCP schemas, policies, queue and command path as live. Provide deterministic conservative/risky variants plus timeout, invalid_json, schema_violation, http_429, http_500, slow, prompt_injection, cross_colony, over_budget, stale_revision and raid_proposal fixtures. Away stories remain ≤600 chars, one per digest close behind AWAY_STORY_ENABLED; failures omit the paragraph. No fake provider success bypasses authoritative checks. Browser local-host mode runs pure mock policy/command parity without remote credentials; private MCP and durable multi-process scheduling are online-only and marked unavailable locally.
 
-| Scenario | Calls / colony / day | $ / colony / day | 1,000 colonies (200 planets × 5, future scale) / day |
-|---|---|---|---|
-| Quiet (mostly `idle.checkpoint` while away) | 20 | $0.04 | $38 |
-| Typical (events + checkpoints) | 45 | $0.09 | $86 |
-| Worst case (hard cap) | 150 | $0.29 | $285 |
+## 12. Evaluation and performance gates
 
-`AI_DAILY_TOKEN_BUDGET = 20M` tokens/day (≈ 22k calls ≈ $40/day) is owner-confirmed. It caps spend below the "typical" scenario at full scale; at the budget, colonies still run on rules. With the launch host (D-23, `MAX_ACTIVE_PLANETS` 60 ⇒ ≤ 300 colonies) the typical scenario is ≈ $26/day, so the cap is rarely hit at launch. Hard offline mode (D-17) makes away calls (`idle.checkpoint`, critical triggers) more valuable; keep them inside the per-colony caps. Context caching of the static system prompt (if Z.ai bills cached input lower) would cut input cost by ~60 %.
+Retain `ai:eval` / `--live` as planned commands. At least 60 fixtures span three biomes, both risks, all skills/triggers, manual interventions and wave masks. Paired cases must show meaningful permitted strategic variation; always choosing hold fails the behavior score. Mandatory invariants have **zero violations**, separately from model quality thresholds. Live gate: ≥98% valid, ≥80% behavior properties, p95 planning latency ≤8 s on admitted non-overloaded jobs, all jobs bounded by 20 s; report queue wait separately. Cost/token distributions replace the obsolete 1,000-token mean gate: enforce 4,000 aggregate input and 1,200 aggregate output tokens/job, report cost using verified prices and demonstrate daily caps under retries.
 
----
+Run real Postgres integration tests for duplicate deliveries, two workers, claim crash, response-before-ack crash, outbox retry, game epoch restart, UTC rollover, permission revocation and kill during tool execution. Security fixtures include hostile player text/tool output, IDOR, forged source/colony/epoch, expired/wrong-audience capabilities, SSRF/redirect attempts, overlong/deep JSON, arbitrary tool names and escaped HUD text. No real funds or harmful game mutation is needed for these fixtures.
 
-## 9. Kill switch & ops
-
-- **Env:** `AI_ENABLED=false` → the module drops every request as `disabled`.
-- **Runtime:** admin endpoint `POST /v1/admin/ai {op: 'disable' | 'enable' | 'status', scope: 'global' | {planetId}}`. State is held in memory and persisted to `ai.ai_settings`, so a restart keeps it.
-- **Budget alarms:** `ai_budget_used_ratio` gauge, alert at 0.8 and 1.0 (TA-13.2).
-
----
-
-## 10. Persistence (`ai` namespace)
-
-| Table | Columns (key ones) | Notes |
-|---|---|---|
-| `ai.ai_decision` | `id uuid`, `request_id` (unique), `planet_id`, `colony_id`, `trigger`, `severity`, `based_on_tick`, `prompt_version`, `model`, `prompt_tokens`, `completion_tokens`, `latency_ms`, `outcome` enum, `directive jsonb`, `clamped_fields text[]`, `prompt_sha256`, `response_sha256`, `raw_prompt text null`, `raw_response text null`, `error text null`, `created_at` | Retention 30 days; raw columns nulled after 14 days (daily purge job) |
-| `ai.ai_colony_budget` | `colony_id` PK, `last_call_at`, `last_critical_at`, `day date`, `calls_today int`, `in_flight_until` | Created lazily on first request |
-| `ai.ai_usage_daily` | `day` PK, `calls`, `prompt_tokens`, `completion_tokens`, `est_cost_usd numeric(10,4)` | Budget source of truth |
-| `ai.ai_settings` | `scope` PK (`global` or `planet:{id}`), `enabled bool`, `updated_by`, `updated_at` | Runtime kill switch |
-
-These must exist in Prisma schema v1 (TA-03.1). Anything missing is a migration change request for the W1 pre-step.
-
----
-
-## 11. Mock provider
-
-`MockLlmProvider` implements `LlmProviderPort` deterministically from the brief:
-- `resource.critical(X)` → `queueBuild` of the extractor for `X` near the matching deposit + `priorities.economy` high.
-- `colony.under_attack` → `rally: hub` + `queueRobot combat` + `defense` high.
-- `trade.offer_received` → accept if `want` ≤ 20 % of stock and `give` is a resource below 25 % of cap.
-- otherwise → `priorities` echo + no actions.
-
-Fault injection via `AI_MOCK_MODE`: `ok` (default) · `timeout` · `invalid_json` · `schema_violation` · `http_429` · `http_500` · `slow:<ms>`. Integration tests in every lane and the barrier suites use it.
-
----
-
-## 12. Eval harness
-
-`npm run ai:eval -w @terra/app [-- --live]`
-- Fixtures: `backend/app/src/ai/eval/fixtures/*.json`, ≥ 30 `{ brief, expectations[] }` cases covering every trigger in §3 and both planet types.
-- Expectations are properties, not exact text. Examples: `actions contains queueBuild(pump)`, `no raid`, `priorities.defense ≥ 40`, `tradeRespond(o81).accept = true`.
-- Report `eval/out/report.json`: validity rate, property-pass rate, clamp rate, p50/p95 latency, tokens/call.
-- **Gate (live, L4 only, owner key):** validity ≥ 98 %, property-pass ≥ 80 %, p95 latency ≤ 8 s, mean total tokens ≤ 1,000. The mock run must be 100 % valid (regression test for the clamper and validator).
-
----
+Performance comparison uses fixed seeds, populations and hardware with director off/on: sim p95 step and WS p95 command latency regress ≤5%, no whole-atlas scans or resident-sector growth from AI reads. Exercise W11 small atlas and W27 150/450-sector synthetic summaries now; repeat on the real W27 streaming stack when it lands. Inject 1,000 simultaneous triggers, sustained critical floods and DB/provider stalls: queue stays ≤512 pending, per-colony bound holds, memory plateaus and gameplay remains responsive. Publish measured RSS, CPU, DB pool/lock latency and p95 brief build/read costs; initial targets 512 MiB worker RSS, 5 ms brief projection and 50 ms bounded MCP read at reference load. These are acceptance targets, not measured claims; failing targets block scale rollout and require revising capacity, not weakening guards.
 
 ## 13. Telemetry
 
-| Name | Type | Labels |
-|---|---|---|
-| `ai_requests_total` | counter | `trigger`, `severity`, `outcome` |
-| `ai_provider_latency_seconds` | histogram | `model`, `status` |
-| `ai_tokens_total` | counter | `kind` = prompt\|completion |
-| `ai_est_cost_usd_total` | counter | — |
-| `ai_budget_used_ratio` | gauge | — |
-| `ai_circuit_open` | gauge | — |
-| `ai_clamped_fields_total` | counter | `field` |
-| `ai_inflight` | gauge | — |
-| Log event `ai.decision` | structured log | `requestId`, `colonyId`, `outcome`, `latencyMs`, tokens |
+Retain requests/latency/tokens/estimated cost/budget/circuit/clamp metrics. Add queue depth/oldest age/wait, coalesces/drops, tool latency/denials, context bytes/tokens, revision invalidations, per-action results, worker restarts and game performance deltas. Metric labels are bounded enums (trigger, skill, risk, outcome); IDs go in sampled structured audit records, never metric labels. Budget alarms at 0.8/1.0; alerts for queue starvation, repeated authorization failures and missing worker heartbeat. Player rationale is a short explanation, not hidden chain-of-thought.
 
----
+## 14. Release acceptance
 
-## 14. Test matrix
+W16 DoD requires mock e2e, policy parity, hostile-input tests, Postgres crash/replay suite, player-control UI check, W11 compatibility fixtures, W27 streaming contract fixtures, load report and manual live-provider report. The live gate cannot be replaced by a successful mock demo. If credentials/provider support are unavailable, label delivery mock-complete/live-blocked and leave W16 live acceptance open. W27 later runs the same director cases against its real streaming implementation. Prior-wave suites pass with W16 off.
 
-| Rule | Test | Task |
-|---|---|---|
-| AI-01 | `backend/app/test/ai/ai-fallback.spec.ts`: mock `timeout` → no command posted | TA-09.4 |
-| AI-03 | `rate-limiter.spec.ts`: normal 300 s / critical 120 s / 150/day with a fake clock; `ai-budget.int.spec.ts`: two concurrent requests → one call | TA-09.2 |
-| AI-04 | `budget.service.spec.ts`: estimate gate; rollover at 00:00 UTC | TA-09.2 |
-| AI-05 | `ai-dedupe.int.spec.ts`: same colony twice → 1 call, 1 `duplicate` | TA-09.2 |
-| AI-06/07 | `directive-validator.spec.ts`, `clamp.spec.ts` (table-driven, ≥ 25 cases) | TA-09.3 |
-| AI-08 | `staleness.spec.ts` | TA-09.4 |
-| AI-09 | `ai-directive-dedupe.spec.ts`: the same `requestId` twice → applied once | TA-09.4 |
-| AI-10 | `decision-log.int.spec.ts` | TA-09.4 |
-| AI-11 | `kill-switch.int.spec.ts`: admin disable → next request `disabled` in < 5 s | TA-09.5 |
-| AI-13 | `config.spec.ts`: prod + `mock` refused; non-prod `zai` without `AI_LIVE=1` refused | TA-09.1 |
-| AI-14 | `redaction.spec.ts`: logger never contains the key; raw text null by default | TA-09.1 / TA-09.4 |
+## 15. Decisions and limitations
 
----
-
-## 15. Owner decisions (2026-10-29 / 2026-10-30)
-
-| # | Question | Decision | Ref | Consequence for this spec |
-|---|---|---|---|---|
-| 1 | Model and endpoint | **`glm-5.3`, general `/api/paas/v4`**; check rate limits in the console | D-09 | §4 rows confirmed |
-| 2 | Daily spend cap | **20M tokens/day (~$40)** | D-09 | §4, §8 |
-| 3 | AI-initiated raids while away | **Opt-in per colony, default off** | D-17 | §6.3 `raid` clamp: removed when `away=yes` unless `awayRaids=true` (CONTINUITY AW-11) |
-| 4 | Show `rationale` in the HUD | **Yes**, as "Director: …" in the event log | D-09 | CLIENT §5.3 / HUD |
-| 5 | Raw prompt logging | **Raw in prod, 14-day retention** | D-09 | AI-14, §4, §10 |
-| 6 | One app (no NATS, no separate service) | **Yes** | D-24 | Triggers from the event bus; directives posted to the sim thread; admin endpoint kill switch |
-| 7 | Anti-abuse throttling | **None beyond budgets** | D-25 | `AI-15` |
-| 8 | NEAR economy | The director key (F4) signs `autoTrade` market orders within the away budget; briefs add market prices, cargo and Guild offers | D-26 | §5.2 brief fields, `DirectiveV1` v2 `marketOrder` action (contract change) |
-
-Also affecting this spec (D-16, D-17):
-- `DirectiveV1` v2: `queueUnit`, `queueGoal`, `truceOffer` and `truceRespond` (units spec §7, rows 7 and 16).
-- New triggers `diplomacy.truce_offered` and `away.story`. The away story is one call per return, behind a flag.
-- `autoTrade`: offers the AI makes or accepts while away must fit the player's `autoTrade` limits (CONTINUITY AW-13).
+Owner requested MCP, broader strategic skills, conservative/risky player control, world awareness and separate-app consideration on 2026-11-04. This plan adopts a separate worker with shared Postgres, preserving game authority. D-09 model/budgets, D-17 away opt-in and D-25 no anti-cheat remain. Initial risk tuning, library/provider compatibility and performance measurements are tracked in [AI director limitations](../questions-and-limitations/ai-director.md); these must be resolved or explicitly accepted before rollout.

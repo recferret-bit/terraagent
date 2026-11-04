@@ -9,6 +9,7 @@ that breaks a deliberate choice.
 | [`economy-ledger.md`](./economy-ledger.md) | Colony resources: treasury, ledger journal (server, browser host), seating and landing |
 | [`sim-world-engine.md`](./sim-world-engine.md) | Sim engine core: kernel, codec, change tracking, hidden layers, path search, world generation, landing planner/presence, data/tune |
 | [`sim-gameplay.md`](./sim-gameplay.md) | Sim gameplay: terraform, construction, HQ, units and unit commands, economy use, landing/dev commands, scenarios |
+| [`ai-director.md`](./ai-director.md) | W16 director worker, MCP, strategic risk, provider compatibility and scale gates |
 | [`backend-contracts.md`](./backend-contracts.md) | Server: auth, home/seating, WS ingress, sim threads and protocol, persistence, dev routes, progression; DB schema; shared contracts; e2e |
 | [`frontend-app.md`](./frontend-app.md) | Game client shell: online session, store/replica/prediction, local host, transports, boot flow, dev console runner |
 | [`frontend-features.md`](./frontend-features.md) | Gameplay UI features: hub placement, terraform brush, HUD, landfall selection, territory border, dev console commands |

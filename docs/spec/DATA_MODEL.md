@@ -579,3 +579,7 @@ Schema additions requested by other owner decisions (lead pre-step migration; no
 - **`chain.staking_position`:** colony, pool, staked amount snapshot (read model only; the chain is the truth) (NEAR §7a).
 - **`chain.intent_trade`:** sketched in §4.4.1 (D-19, D-26).
 - **Retention (§6):** `ai.ai_decision.raw_*` nulled after 14 days (AI_ORCHESTRATOR AI-14).
+
+## W16 AI persistence amendment (planned 2026-11-04)
+
+[AI_ORCHESTRATOR §10](./AI_ORCHESTRATOR.md#10-persistence) defines the revised AI persistence scope: durable player policy/intent revisions, immutable expiring context, job attempts/fences, token reservations, per-action acknowledgements and a transactional proposal outbox. Add pg-boss-owned queue schema alongside Prisma-owned AI tables, with separate worker/game/migration grants. Existing AI table sketches are a baseline, not a complete W16 migration. Reconcile schema ownership and indexes in W16-15/-28/-31 before implementing; worker grants never include world, player-policy or economic state writes. D-24 snapshot rollback is unchanged; epoch fencing invalidates old proposals after restart.

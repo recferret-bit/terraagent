@@ -1,100 +1,105 @@
-# W16 — AI Director
+# W16 — Player-directed AI Strategy
 
-> **Track:** Autonomy (P) · **Flag:** `W16` · **Tag:** `wave-16` · **Scenario:** `tests/scenarios/w16-director.ts` · **E2E:** `tests/e2e/w16.spec.ts`
-> **Depends on waves:** W08 (goals, rule engine, priorities). Directive actions that target later waves are offered only when those waves are on: market orders (W13), Guild (W15), truces and raids (W18), Tech Up to T2 (W17). The away story serves W09. Optional: W09 (away policy W09-09, autopilot mode W09-01, digest hook W09-18), W15 (`GuildStrategyPort` slot W15-13).
-> **Specs:** [AI_ORCHESTRATOR](../../spec/AI_ORCHESTRATOR.md) §1–§15 (`AI-01..15`) · [SIMULATION](../../spec/SIMULATION.md) `SIM-R-04, 06` · [CONTINUITY](../../spec/CONTINUITY.md) `AW-06, 11, 22`, `CT-34` · units spec §7 rows 7, 16 · [NEAR](../../spec/NEAR.md) §1a (port pattern) · D-09, D-17, D-25, D-30
-> **Owned paths:** `backend/app/src/ai/**` (incl. `ai/triggers/`, which subscribes to W00-13's in-process event bus; no NATS or work queue, D-24), `shared/db/prisma/ai.prisma`, `shared/contracts/src/ai/`, `shared/sim/src/systems/ai-brief/`, `shared/sim/src/systems/directive/`, `frontend/game/features/director/`
-> **Builds on W00:** the `LlmProviderPort` abstract class (W00-30) and its adapter switch + production mock guard (W00-31); this wave adds the mock and Z.ai adapters.
+> **Status:** Replanned 2026-11-04; implementation and live-provider verification remain to be done.
+> **Track:** Autonomy · **Flag:** `W16` · **Tag:** `wave-16` · **Scenario:** `tests/scenarios/w16-director.ts` · **E2E:** `tests/e2e/w16.spec.ts`
+> **Depends on waves:** W08 (landed HQ goals, independent priorities and rule engine).
+> **Optional integrations:** W09 away policy/digest; W11 persistent sectors; W15 Guild; W27 streamed summaries. Test explicit capability absence when off. Later-wave skill bodies activate only when their executors land.
+> **Spec:** [AI_ORCHESTRATOR](../../spec/AI_ORCHESTRATOR.md) is the revised normative contract; historical TA-09 issues are traceability only.
+> **Owned paths:** `backend/director/`, existing `backend/app/src/ai/`, `shared/contracts/src/ai/`, `shared/db/prisma/ai.prisma`, shared sim policy/context/directive modules, existing game Director/HQ UI; workspace/stack wiring and structure checks. Match actual landed paths before implementation.
 
 ## Goal
 
-Add a strategic LLM director that makes the rare high-level calls, about 5–10 % of decisions. It is called only on significant events, within strict budgets. Its output is a validated, clamped `DirectiveV1` (v2 actions) that the sim applies as an ordinary command. If the director is missing, late or wrong, the colony keeps running on the rule engine. Players see the director's reasoning in the HUD.
+A strategic director follows the player's existing goals and priorities, with **Conservative** and **Risky** play styles. It can propose resource specialization, defensive positions, scouting, frontier expansion, terraforming and permitted aggression. Runtime skills form a broad versioned registry; only enabled, authorized skills reach a request. Every action goes through the existing HQ goals, shared rules and order queue.
 
-## Demo story (e2e)
+Both mock and real Z.ai integration belong to this wave. Isolate provider work in a separate worker, use private MCP for scoped queries/proposals and a bounded Postgres queue for scheduling. The game remains authoritative and continues without the worker. See the spec for exact caps, security boundary, tool contracts and acceptance criteria.
 
-1. Open `/play.html?scenario=w16` (a colony at S4, mock LLM) → open the **Director** panel → it shows mode `director`, "next call allowed in —", and budget 0 / 20M.
-2. Dev console `ai trigger resource.critical` (a water-critical state, D-34 key `bio.water`) → within 2 s the event log shows "Director: Water critical — building 2 pumps near the oasis" and two `ai`-tagged orders appear. `ai brief` prints the brief it used.
-3. Run `ai trigger resource.critical` again within 120 s → the log shows "rate limited", and nothing else happens.
-4. Dev console `ai mock invalid_json` (same as `AI_MOCK_MODE=invalid_json`), then `ai trigger resource.critical` → the trigger is logged `invalid`; the colony keeps running on rules.
-5. Run `curl -X POST /v1/admin/ai -d '{"op":"disable"}'` against the app → the next `ai trigger resource.critical` is logged `disabled` within 5 s.
-6. Dev console `presence away` with `awayRaids=false` (Away settings) and `ai mock` set to the mode that proposes a raid → the raid is **clamped** away (`clampedFields:['actions.raid']`, visible in the event log).
-7. Reload `/play.html?scenario=w16` after `away.warp 1` → the digest shows a one-paragraph **away story** (W09 modal).
-8. Run `TA_WAVES=..15 npm run dev:restart` and reload `/play.html?scenario=w16` → no director panel, no LLM calls, and the colony runs on rules alone.
+## Landed integration and readiness
 
-## Features covered
+- Reuse `shared/sim/src/systems/goals/{catalog,handlers,priorities,types}.ts`: the five sliders are independent 0–100 values, default 50 each. The old sum-to-100 clamp is removed. Existing 2/3/5 goal slots, progressive payment and learned-lane gates apply.
+- Verify the required W08 goal executors, not merely a wave tag. Missing bodies must land in their owning wave; do not expose contract-only goals as working skills.
+- W11 is currently replanned, not presumed landed: build its versioned context adapter against foundation contracts and verify against real W11 when available. W16 base mode still works without W11.
+- W27 shares W11 identity/topology and adds summaries/residency. Ship bounded synthetic fixtures now; real scale validation belongs to W27's integration gate. Neither wave must wait for the other to implement its unrelated core.
+- D-24's scoped worker/queue exception is recorded in DECISIONS. Existing owner changes to W11/W27 are preserved. Risk affects gameplay decisions, never authentication or financial authority.
 
-| # | Spec item | Issues |
-|---|---|---|
-| 1 | `AiRequestV1`, `ColonyBriefV1`, `DirectiveV1` v2 (`queueUnit`, `queueGoal`, `truceOffer`/`truceRespond`, `marketOrder`, tier 1–3), `ai.directive` command, outcome enum | W16-01 |
-| 2 | Deterministic mock for W00-30's `LlmProviderPort` + `AI_MOCK_MODE` faults (§11) | W16-02 |
-| 3 | Z.ai `glm-5.3` adapter (general endpoint, JSON mode, thinking disabled, verify support, 20 s, 1 retry) | W16-03 |
-| 4 | Config guards: prod + mock refused (W00-31's guard); `zai` outside prod needs `AI_LIVE=1` (`AI-13`) | W16-04 |
-| 5 | 14 triggers from sim events with 60 s hysteresis + `idle.checkpoint` timer (§3, `AI-02`) | W16-05 |
-| 6 | Brief builder on the sim thread (fixed order, ≤ 1 200 chars, market/cargo/Guild fields when their waves are on) | W16-06 |
-| 7 | Gate: per-colony 300 s / critical 120 s / 150 per day, in-flight dedupe, global token budget (`AI-03..05`) | W16-07, W16-08 |
-| 8 | Prompt: system v1 + embedded JSON schema + brief (`PROMPT_VERSION`) | W16-09 |
-| 9 | Validation: parse → extract → strict zod → reference checks (`AI-06`, §6.2) | W16-10 |
-| 10 | Clamping table incl. raid removal while away without opt-in and tier clamp by Hub tier and `unlockStage` (`AI-07`, §6.3) | W16-11 |
-| 11 | Staleness and publish with `commandId = requestId` (`AI-08, 09`) | W16-12 |
-| 12 | Sim apply: priority override for `ttlTicks`, `ai` tasks/goals, away policy, dedupe, guard band ±1 step (`SIM-R-04`, `AI-12`, `AW-06`) | W16-13 |
-| 13 | Circuit breaker and fallback outcomes (§7) | W16-14 |
-| 14 | Persistence: `ai_decision`, `ai_colony_budget`, `ai_usage_daily`, `ai_settings`; raw logs 14 d purge; redaction (`AI-10, 14`) | W16-15, W16-16 |
-| 15 | Kill switch (env + admin, global/planet, ≤ 5 s) (`AI-11`) | W16-17 |
-| 16 | Rationale in the HUD event log + director panel | W16-18, W16-19 |
-| 17 | Away story generation (`CT-34`) | W16-20 |
-| 18 | Guild strategy hook for W15 (hourly strategy call, mock) | W16-21 |
-| 19 | Eval harness ≥ 30 fixtures, report, live gate (§12) | W16-22 |
-| 20 | Telemetry + budget alarms 0.8 / 1.0 (§9, §13) | W16-23 |
-| 21 | Test matrix (§14) | W16-24 |
-| 22 | No per-player throttling beyond budgets (`AI-15`) | W16-07 (only budgets implemented) |
-| 23 | Analytics, dev console | W16-25, W16-26 |
+## Demo story and owner check
+
+1. Start the game plus director worker in mock mode; open `/play.html?scenario=w16`. Director shows inherited HQ goals, independent priorities, Conservative, current permissions and budget.
+2. Select Resources and Conservative, trigger a shortage: see a budgeted goal, linked orders and acknowledged rationale. Reset the fixture and choose Risky: see a different allowed commitment/strategy with its cost and uncertainty.
+3. Select Terraforming or Defence and protect a manual goal/area. Trigger a conflicting opportunity: director respects the player choice and reports the rejected alternative.
+4. Change priorities or cancel an AI goal while a mock call is delayed. The old plan is superseded; cancellation suppresses immediate re-proposal. Reload preserves preferences.
+5. Enable Aggressive/Risky with away raids disabled. A raid-proposal fault cannot create an unauthorized raid. A valid W18 fixture exercises only eligible targets; disabled W18 hides the skill.
+6. Inject invalid JSON, hostile tool text, a foreign colony ID, timeout and duplicate job delivery. No unauthorized/duplicate command occurs; colony keeps running. Use an authenticated admin control to stop AI mid-call and verify late results cannot apply.
+7. Exercise W11 border-crossing context and W27 fake streamed summaries: offscreen owned sectors remain relevant; unknown/unloaded sectors stay explicit; no whole-world load or overflow world creation.
+8. Flood the scheduler and kill/restart the worker. Show queue bounds, fairness, stale rejection, budget accounting and responsive gameplay. Return from away to the narrative-only digest when W09 is enabled.
+9. Disable W16: no AI jobs/panel/MCP listener, prior-wave play remains functional. Run local-host pure mock parity separately.
+10. Run the manual live-provider eval and one real player-directed scenario; attach model/version, redacted results, cost and latency report. Mock completion alone does not satisfy this step.
+
+The implementation owner writes exact worktree URLs, commands and authenticated admin steps to `docs/plan/checks/w16-check.md` after exercising this story. This planning edit does not claim that the scenario or new commands already exist.
 
 ## Issues
 
+Existing IDs 01–27 remain, with revised acceptance; 28–49 make the added architecture, security, skills and integration work explicit. All are post-hackathon; sizes are planning units, not measured delivery estimates.
+
 | ID | Title | Type | Size | H | Deps | Acceptance (do X → see Y) | Spec | Replaces |
 |---|---|---|---|---|---|---|---|---|
-| W16-01 | Contracts: `AiRequestV1`, `ColonyBriefV1`, `DirectiveV1` v2 (actions incl. `queueUnit`, `queueGoal`, `truceOffer`, `truceRespond`, `marketOrder`; tiers 1–3), `ai.directive` command, outcome enum, flag `W16` | contract | M |  | W08-01 | Parse the v2 sample with `queueGoal` → valid; a v1-only `queueRobot` → rejected; an extra key → rejected (strict) | §6.1, units §7 rows 7, 16 | TA-09.3, TA-09.6 |
-| W16-02 | Server: `MockLlmProvider` for W00-30's `LlmProviderPort` (deterministic rules for the §11 triggers) + `AI_MOCK_MODE` (`ok`, `timeout`, `invalid_json`, `schema_violation`, `http_429`, `http_500`, `slow:<ms>`) | server | M |  | W16-01, W00-30 | Mock with `resource.critical(W)` → a `queueBuild pump` action; `AI_MOCK_MODE=http_429` → the adapter raises a provider error | §11, D-30 | TA-09.1 |
-| W16-03 | Server: Z.ai `glm-5.3` adapter (`/api/paas/v4/chat/completions`, JSON mode, `thinking` disabled, drop unsupported fields, 20 s timeout, 1 retry with jitter if ≥ 8 s remain) | server | M |  | W16-02 | Contract test (manual, `AI_LIVE=1`) → a valid JSON response for a fixture brief; without a key → a clear config error | §5.3, D-09 | TA-09.1 |
-| W16-04 | Server: AI env on top of W00-31's adapter switch and production mock guard — `AI_PROVIDER` selects the adapter, `zai` outside production also needs `AI_LIVE=1`, the key is never logged | server | S |  | W16-02, W00-31 | Start non-prod with `AI_PROVIDER=zai` and no `AI_LIVE` → boot fails with `AI_LIVE_REQUIRED` | `AI-13, 14` | TA-09.1 |
-| W16-05 | Server (`ai/triggers`): trigger emission for the 14 triggers from sim events on W00-13's in-process bus, 60 s hysteresis per trigger, + `idle.checkpoint` (30 min, away only) | server | M |  | W16-01 | Keep water critical for 3 min → exactly 3 `resource.critical` requests (one per 60 s) | §3, `AI-02` | TA-09.2 |
-| W16-06 | Sim: `ColonyBriefV1` builder (fixed field order, ints, ≤ 1 200 chars; adds market, cargo and Guild lines only when W10 / W13 / W15 are on) | sim | M |  | W16-01 | Build a brief for the scenario colony → it matches the §5.2 golden fixture; length ≤ 1 200 | §5.2 | TA-09.3 |
-| W16-07 | Server: per-colony gate (atomic `UPDATE … RETURNING` on `ai_colony_budget`: 300 s normal, 120 s critical, 150 per UTC day, in-flight 20 s) | server | M |  | W16-15 | Two concurrent requests for one colony → one call, one `duplicate`; a critical 60 s after a normal call → allowed and resets the normal interval | `AI-03, 05, 15` | TA-09.2 |
-| W16-08 | Server: global daily token budget (estimate = prompt tokens + `max_tokens`; `budget_exhausted` until 00:00 UTC; `ai_usage_daily`) | server | S |  | W16-15 | Set the budget to 2 000 tokens → the 3rd call gets `budget_exhausted`; at the UTC rollover (fake clock) → calls resume | `AI-04` | TA-09.2 |
-| W16-09 | Server: prompt builder (static system prompt v1 + JSON schema via `zod-to-json-schema` + brief; ≤ 450 tokens system) | server | S |  | W16-06 | Snapshot test of the system prompt; the token estimate of the system prompt ≤ 450 | §5.1 | TA-09.3 |
-| W16-10 | Server: validation pipeline (JSON.parse → extract first `{…}` once → strict zod → reference checks against the brief: ids in catalogue, `offerId` exists, target is a neighbour) | server | M |  | W16-01 | Response with prose around the JSON → extracted and valid; unknown building id → dropped by reference check; garbage → `invalid` with zod issues stored | §6.2, `AI-06` | TA-09.3 |
-| W16-11 | Server: clamping (normalise priorities to 100, dedupe/drop unknown actions, keep 5, `count ≤ affordable`, trade give ≤ 20 % of stock, remove `raid` when away without `awayRaids` or no hostility, `ttlTicks` 600–6 000, tier ≤ Hub tier and ≤ `unlockStage`) | server | M |  | W16-10 | Table test with ≥ 25 cases → each expected `clampedFields`; a raid while away without opt-in → removed | §6.3, `AI-07` | TA-09.3, TA-09.6 |
-| W16-12 | Server: staleness (> 20 s since enqueue, or `basedOnTick` older than 600 ticks) + publish `ai.directive` with `commandId = requestId` | server | S |  | W16-11 | `AI_MOCK_MODE=slow:25000` → outcome `stale`, nothing published | `AI-08, 09` | TA-09.4 |
-| W16-13 | Sim: apply `ai.directive` (priority override for `ttlTicks`, guard band ±1 step while away, actions → `ai` orders/goals, away policy check, ignore duplicate `requestId`) | sim | M |  | W16-12, W09-09 | Apply the same directive twice → orders appear once; while away, a priority jump of +3 steps → clamped to +1 | `SIM-R-04, 06`, `AW-06`, `AI-12` | TA-06.7, TA-09.4 |
-| W16-14 | Server: circuit breaker (5 consecutive `provider_error`/`timeout` → open 60 s → half-open probe) + fallback outcomes | server | S |  | W16-02 | `AI_MOCK_MODE=http_500` × 5 → the 6th request is `provider_error` without a provider call; after 60 s one probe runs | §7 | TA-09.4 |
-| W16-15 | Server: Prisma `ai.prisma` (`ai_decision`, `ai_colony_budget`, `ai_usage_daily`, `ai_settings`) + one decision row per attempted call | server | M |  | W16-01 | Run 3 calls → 3 `ai_decision` rows with outcome, tokens, latency; pre-call rejections → no rows, only metrics | §10, `AI-10` | TA-09.4 |
-| W16-16 | Server: raw prompt/response logging (`AI_LOG_RAW=1` in prod), SHA-256 hashes, daily purge of raw columns after 14 d, 30 d row retention, redaction test | server | S |  | W16-15 | Fake clock +15 d, run the purge → raw columns `null`, hashes kept; the logger output never contains the key | `AI-14` | TA-09.5, TA-09.6 |
-| W16-17 | Server: kill switch (`AI_ENABLED` env + `POST /v1/admin/ai {disable \| enable \| status, scope}`, persisted in `ai_settings`, effective ≤ 5 s) | server | S |  | W16-15 | Disable for one planet → that planet's next request is `disabled`, the other planets still call | `AI-11`, §9 | TA-09.5 |
-| W16-18 | Client: rationale in the HUD event log ("Director: …", outcome badge, link to the orders it created) | client | S |  | W16-12 | Trigger a directive → the event log shows the rationale ≤ 200 chars and an `applied` badge | §15 #4 | TA-09.6 |
-| W16-19 | Client: Director panel (mode `director`/`rules_only` from W09's `setAutopilot`, last 10 decisions with outcome, next call allowed in, budget used today) | client | M |  | W16-15, W09-01 | Open the panel after 3 calls → 3 rows with outcomes and a "next call in 4:10" countdown | §2, §4 | TA-09.6 |
-| W16-20 | Server: away story as W09-18's `AwayStoryProvider` (`trigger: away.story` on digest close, ≤ 600 chars, flag `AWAY_STORY_ENABLED`, counts against the budget, failure → omitted) | server | S |  | W16-07, W09-18 | Return from away with the mock → the digest gets a story ≤ 600 chars; with `AI_MOCK_MODE=timeout` → the digest has no story and still shows | `CT-34` | TA-08.3 |
-| W16-21 | Server: Guild strategy hook (`strategyFor(guildNpc, marketBrief)` hourly via the same port and budget, filling W15-13's `LlmGuildStrategy` slot; mock returns a stockpile/visit plan) | server | S |  | W16-07, W15-13 | With W15 on, warp 1 h → one strategy call per Guild NPC is logged; with W15 off → none | NEAR §7 (F3) | TA-10.11 |
-| W16-22 | Server: eval harness `npm run ai:eval [-- --live]` (≥ 30 fixtures covering all triggers on the three planet types (D-33; `desert` / `ocean` fixtures once W05-17 lands), property expectations, `report.json`, live gate thresholds) | test | M |  | W16-11 | `npm run ai:eval` (mock) → validity 100 %; the report lists property-pass, clamp rate, latency, tokens | §12 | TA-09.5 |
-| W16-23 | Telemetry: `ai_requests_total`, `ai_provider_latency_seconds`, `ai_tokens_total`, `ai_est_cost_usd_total`, `ai_budget_used_ratio` (alerts 0.8 / 1.0), `ai_circuit_open`, `ai_clamped_fields_total`, `ai_inflight` | ops | S |  | W16-15 | `curl /metrics` after the demo → every metric present; the budget ratio crosses 0.8 in a test → alert rule fires | §13, §9 | TA-09.5, TA-13.2 |
-| W16-24 | Test: §14 matrix (`ai-fallback`, `rate-limiter`, `ai-budget`, `ai-dedupe`, `directive-validator`, `clamp`, `staleness`, `ai-directive-dedupe`, `decision-log`, `kill-switch`, `config`, `redaction`) | test | M |  | W16-17 | `npm run test ai` → all suites green | §14 | TA-09.1–09.5 |
-| W16-25 | Analytics: `director_decision_seen{outcome}`, `director_mode_changed{mode}` | client | S |  | W16-18 | Toggle the mode with consent on → one `director_mode_changed` row | CLIENT §10.3 | — |
-| W16-26 | Dev console: `ai trigger <kind>`, `ai mock <mode>`, `ai brief` (prints the brief), `ai budget reset` | client | S |  | W16-05 | `ai brief` → the current brief text printed in the console | PRODUCT_WAVES §3 | — |
-| W16-27 | Wave e2e + seed scenario `w16-director` + tag `wave-16` | test | M |  | all W16 | `npm run e2e -- --waves ..16` → the demo story passes, and every earlier suite passes | PRODUCT_WAVES §3 | — |
+| W16-01 | Versioned job, context, DirectiveV2 and policy contracts reusing landed command schemas | contract | M |  | W08-01 | Unknown actions/fields fail; independent priorities remain independent | AI §2, §6 | TA-09 |
+| W16-02 | Deterministic mock plus policy, injection, stale and fault modes | server | M |  | W16-01 | Same brief in two risk profiles yields permitted distinct plans; failures never bypass guards | AI §11 | TA-09 |
+| W16-03 | Live Z.ai adapter behind LlmProviderPort; SDK compatibility and usage/abort contract tests | server | M |  | W16-02, W16-28 | Owner model returns typed tools/JSON and metered usage; unsupported options handled explicitly | AI §8 | TA-09 |
+| W16-04 | Fail-closed adapter/env selection; explicit live opt-in and production mock guard | server | S |  | W16-03 | Unknown provider and non-prod zai without AI_LIVE fail boot; secrets absent from logs | AI AI-13 | TA-09 |
+| W16-05 | Authoritative trigger projection, hysteresis and director feedback-loop suppression | server | M |  | W16-01 | Burst and director-generated events coalesce without repeated self-triggering | AI §3 | TA-09 |
+| W16-06 | Bounded context builder over sim views, player actions, goals and policy revisions | sim | M |  | W16-01 | Context contains current manual orders and goals, stays in byte cap and makes no atlas scan | AI §5 | TA-09 |
+| W16-07 | Atomic per-colony attempt/cooldown/in-flight budgets | server | M |  | W16-15 | Two workers racing one colony reserve at most one active plan and respect day limits | AI AI-03, AI-05 | TA-09 |
+| W16-08 | Atomic global token/cost reservations and usage reconciliation | server | M |  | W16-15 | Retries, unknown usage and UTC rollover cannot overspend reservations | AI AI-04 | TA-09 |
+| W16-09 | Versioned prompt/schema builder using native Zod 4 JSON Schema and bounded skill selection | server | S |  | W16-06, W16-35 | Golden context exposes at most six eligible skills and fits aggregate token cap | AI §5, §8 | TA-09 |
+| W16-10 | Strict input/output validation and colony-scoped reference checks | server | M |  | W16-01 | Malformed/deep/oversized JSON and cross-colony IDs are rejected before commands | AI AI-06, AI-17 | TA-09 |
+| W16-11 | Shared conservative/risky policy predicates and cumulative batch preview | sim | M |  | W16-10, W16-34 | Batch cannot reuse the same free resources or goal slot; risky does not bypass caps | AI §4, §6 | TA-09 |
+| W16-12 | Proposal outbox, fencing and freshness/intent checks at authoritative ingress | server | M |  | W16-11, W16-31 | Late worker or player-revised plan is superseded; duplicate proposal produces one result | AI AI-08, AI-09 | TA-09 |
+| W16-13 | Apply directives via ordinary goal/order handlers with per-action acknowledgements | sim | M |  | W16-12 | Manual work is preserved; valid actions pay progressively and rejected actions report reasons | AI §6 | TA-09 |
+| W16-14 | Provider circuit, bounded retry/abort and rules-only fallback | server | S |  | W16-03 | Failure storm opens circuit; rule-engine commands continue during worker outage | AI §7 | TA-09 |
+| W16-15 | AI schema migrations, attempt/decision/result audit and settings | server | M |  | W16-01 | Round-trip versioned records and expire context without deleting durable player policy | AI §10 | TA-09 |
+| W16-16 | Sanitized raw logging, hashes, retention and secret redaction | server | S |  | W16-15 | Injected secrets/tokens never reach prompt storage; raw columns purge at 14 days | AI AI-14 | TA-09 |
+| W16-17 | Authenticated kill switch with durable scopes and in-flight revocation | server | S |  | W16-15, W16-32 | Kill during tool execution rejects late result within 5 seconds; unauthorized admin rejected | AI AI-11 | TA-09 |
+| W16-18 | HUD explanation, goal linkage, proposed/applied/rejected states and ordinary cancel | client | S |  | W16-13 | Sim rejection is never displayed as applied; malicious rationale renders as text | AI AI-10 | TA-09 |
+| W16-19 | Director controls integrated with W08 priorities/goals and W09 mode | client | M |  | W16-34, W16-18 | Edit preset, individual weights and risk; reload preserves effective policy without rescaling sliders | AI §4 | TA-09 |
+| W16-20 | Away story provider using shared budget and narrative-only capability | server | S |  | W16-08, W09-18 | Return digest gets bounded story; failure omits it and narrative cannot submit actions | AI §6, §7 | TA-09 |
+| W16-21 | Guild strategy provider with separate NPC principal and shared global budget | server | S |  | W16-08, W15-13 | Hourly NPC strategy cannot read or command unrelated player colony | AI §6 | TA-09 |
+| W16-22 | Evaluation harness with at least 60 paired-risk/security/world fixtures | test | M |  | W16-11, W16-36 | Report separates zero-tolerance invariants, strategic variation and model-quality scores | AI §12 | TA-09 |
+| W16-23 | Metrics and alerts for budget, queue, tool denials, worker health and sim regression | ops | S |  | W16-15, W16-30 | Load run reports bounded labels, oldest wait and accurate per-action outcomes | AI §13 | TA-09 |
+| W16-24 | Policy, authorization, revocation and malformed-input regression suite | test | M |  | W16-17, W16-33 | Hostile tool/text, forged principal, expired scope and risky escalation yield zero violations | AI §2, §12 | TA-09 |
+| W16-25 | Consent-aware risk/preset/decision analytics using existing pipeline | client | S |  | W16-19 | Consent-off emits nothing; enabled events report bounded enums without free text | AI §13 | TA-09 |
+| W16-26 | Dev tools for trigger/mock/brief/policy/queue inspection; update DEV_TOOLS | client | S |  | W16-05, W16-30 | Mock scenario explains queue/fence/revision; production denies fault and reset commands | AI §9, §11 | TA-09 |
+| W16-27 | Wave e2e, owner guide and live acceptance artifact; tag only after complete gates | test | M |  | all W16 | Demo, crash, security, load and live reports pass; earlier suites pass with W16 off | AI §14 | TA-09 |
+| W16-28 | Library/version/license/advisory spike for Node, Zod 4, MCP, AI SDK and pg-boss | server | S |  | W16-01 | Locked compatible versions pass small MCP/provider/PG smoke; record unsupported features | AI §8 | — |
+| W16-29 | Separate director worker workspace and dependency boundary | server | M |  | W16-28 | Worker boots alone; cannot import backend/app internals or access game DB writes | AI §1, §9 | — |
+| W16-30 | Bounded durable pg-boss scheduler, fairness and coalescing | server | M |  | W16-29, W16-15 | 1000 simultaneous events retain at most 512 pending and one pending per colony | AI §7 | — |
+| W16-31 | Claim leases/fences, trigger outbox and restart reconciliation | server | M |  | W16-30 | Crash at claim/response/ack boundaries rejects stale fences and does not duplicate commands | AI §7 | — |
+| W16-32 | Private MCP transport and workload/capability authentication | server | M |  | W16-29 | Wrong audience, missing scope, revoked job and browser-origin abuse are denied | AI §2 | — |
+| W16-33 | MCP bounded read/proposal tools with pinned schemas and hostile-input checks | server | M |  | W16-32, W16-06 | Allowlisted tools enforce identity, result caps, no arbitrary URLs and no direct mutation | AI §2, §6 | — |
+| W16-34 | Persisted player risk/preset/permission policy with authoritative intent revision | sim | M |  | W16-01 | Changing player intent invalidates old plans; risk toggle never enables away raids | AI §3, §4 | — |
+| W16-35 | Runtime skill registry and capability-filtered selection | server | M |  | W16-01, W16-34 | Each skill declares prerequisites, permissions, variants and fixtures; disabled executor absent | AI §6 | — |
+| W16-36 | Core skill strategies: survival, power and economy | server | M |  | W16-35, W16-11 | Both risk profiles achieve goal-specific fixtures through existing executors | AI §6 | — |
+| W16-37 | Spatial skill strategies: defence, scouting, expansion and terraforming | server | M |  | W16-35, W16-11 | Flank/frontier/terraform variants remain within observed routes and protected areas | AI §6 | — |
+| W16-38 | Wave-gated strategy adapters: trade, tech, aggression and settlement | server | M |  | W16-35, W16-11 | Disabled wave/stage removes skills; raid/upgrade/launch permissions stay mandatory | AI §6 | — |
+| W16-39 | Bounded action history, intent invalidation and cancellation suppression | server | M |  | W16-06, W16-34 | Cancel a goal during provider call: stale plan drops and equivalent re-proposal is suppressed | AI §3 | — |
+| W16-40 | W11 world/context adapter and persistent sector compatibility | server | M |  | W16-06 | Canonical IDs and border-crossing colony context survive restart; full sector is not an expansion wall | AI §5 | — |
+| W16-41 | W27 summary/read port and unknown/stale/unloaded fake streaming fixtures | contract | M |  | W16-40 | 450-sector synthetic world returns bounded relevant summaries with no forced full residency | AI §5 | — |
+| W16-42 | MCP/AI planning loop caps and proposal-only side effects | server | M |  | W16-09, W16-33 | Loop stops at 3 turns/6 tools/deadline; all attempts share token reservations | AI §7 | — |
+| W16-43 | Player command and preview parity; temporary priority overlay and rollback | sim | M |  | W16-13, W16-39 | Expiry restores latest player baseline; repeated away calls never ratchet beyond guard band | AI §3, §6 | — |
+| W16-44 | Postgres multiworker delivery and budget crash integration suite | test | M |  | W16-31, W16-08, W16-12 | Kill worker/game around commit boundaries and midnight; no duplicate effects or cap bypass | AI §12 | — |
+| W16-45 | UI flow for strategic controls and same-state conservative/risky comparison | test | M |  | W16-19, W16-37 | Two permitted strategies differ visibly; locked player goals and cancel controls remain effective | AI §4 | — |
+| W16-46 | Stack deployment, resource limits, private network/DB grants and rollback | ops | M |  | W16-29, W16-32 | Stop/restart director independently; game remains ready and unauthorized DB writes fail | AI §9 | — |
+| W16-47 | Load benchmark with AI off/on, critical flood and W27 synthetic context | test | M |  | W16-23, W16-41, W16-42 | Publish latency/memory/DB evidence meeting §12 bounds; no simulated capacity claims | AI §12 | — |
+| W16-48 | Manual live provider evaluation and cost calibration | test | M |  | W16-22, W16-38, W16-42 | Real model passes JSON/tool/usage and strategy gates; credentials absent leaves acceptance open | AI §8, §12 | — |
+| W16-49 | Local-host mock parity and wave-mask regression coverage | test | M |  | W16-43 | Local and online shared policy outcomes match; W16-off opens no worker jobs or MCP | AI §11 | — |
 
 ## Wave DoD
 
-- `tests/e2e/w16.spec.ts` passes (mock provider), together with all earlier suites.
-- `?scenario=w16` loads an S4 colony.
-- `TA_WAVES=..15` disables every AI call and hides the panel; the colony runs on rules.
-- Tag `wave-16` is created.
-- `AI-01..15` and the §14 test matrix are mapped above.
-- A live Z.ai eval run is a manual gate, not part of the e2e.
-
-## W08 follow-up: executable progression and priorities
-
-Use the shared goal executors and five priorities for director decisions; explain permissions and blocked actions.
-
-Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+- All issue acceptance checks pass, including security and real Postgres crash/replay tests.
+- Owner story covers both risk profiles, player intent changes, W11 context compatibility and W27 synthetic partial-world contracts.
+- Performance report meets AI §12 gates with actual hardware/load stated; real W27 scale is separately validated when W27 lands.
+- Manual live Z.ai report passes; missing key/model support is explicitly **live-blocked**, not complete W16.
+- Prior-wave e2e and local shared-policy parity pass with W16 on/off. Deployment/rollback and DEV_TOOLS are current.
+- Commit the exercised owner guide on the wave branch before owner landing and `wave-16` tag.
 
 ## W12 progression integration gate (revised)
 
