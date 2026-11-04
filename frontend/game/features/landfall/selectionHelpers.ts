@@ -13,6 +13,7 @@ import {
 import { forEachEntity, type EntityRow } from '../../store/replica/viewCodec';
 import { viewColony } from '../shared/colony';
 import { hqJobFromStateCode, type HqStatusView } from '../shared/hqView';
+import { resolveExtractorTierView } from './extractorTierView';
 import type { SelectedEntityView } from './selection';
 
 export { depositStageFromRichness };
@@ -461,11 +462,13 @@ export function buildSelectedEntityFromRow(
     : e.kind === ENTITY_KIND.pod ? 'landed'
     : progress > 0 && progress < 1 ? 'working' : 'online';
   const queueCount = progress > 0 && progress < 1 ? 1 : 0;
+  const extractorTier = resolveExtractorTierView(rawView, e.owner ?? 0, e.id, e.kind);
   return {
     entityId: e.id, kind: e.kind, kindLabel: b.label, shortCode: b.code,
     isUnit: false, isMovable: false, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
     hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: job, queueCount,
     footprintW: b.w, footprintD: b.d, state: e.state, progress,
+    ...(extractorTier ? { extractorTier } : {}),
   };
 }
 

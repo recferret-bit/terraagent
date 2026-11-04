@@ -13,10 +13,24 @@ export const DEPOT_STORAGE_CAP = 1000;
 
 export interface ExtractorLivingBonusRecord {
   entityId: number;
+  q?: number;
+  r?: number;
+  family?: ResourceFamily;
   adjacentToLiving: boolean;
   livingBonus: number;
   livingBonusText: string;
   ratePerS: number;
+  unlockedTier?: 1 | 2 | 3;
+  ringRadius?: number;
+  ringTotalTiles?: number;
+  ringTerraformedTiles?: number;
+  ringLivingTiles?: number;
+  ringTerraformedRatio?: number;
+  ringLivingRatio?: number;
+  ringTerraformedPct?: number;
+  ringLivingPct?: number;
+  shares?: { t1Share: number; t2Share: number; t3Share: number };
+  incomePerSByKey?: Partial<Record<ResourceKey, number>>;
 }
 
 export interface ColonyProductionLedger {
@@ -25,6 +39,7 @@ export interface ColonyProductionLedger {
   incomePerS: Record<ResourceKey, number>;
   familyIncomePerS: Record<ResourceFamily, number>;
   extractors?: Record<number, ExtractorLivingBonusRecord>;
+  tierGates?: unknown;
 }
 
 export interface ColonyLedgerFields {
@@ -94,12 +109,14 @@ export function ensureColonyLedger(
     if (typeof rawProd.incomePerS?.[k] === 'number') incomePerS[k] = rawProd.incomePerS[k];
   }
   const extractors = rawProd.extractors && typeof rawProd.extractors === 'object' ? { ...rawProd.extractors } : undefined;
+  const tierGates = rawProd.tierGates && typeof rawProd.tierGates === 'object' ? rawProd.tierGates : undefined;
   colony.production = {
     capped,
     produced,
     incomePerS,
     familyIncomePerS,
     ...(extractors ? { extractors } : {}),
+    ...(tierGates ? { tierGates } : {}),
   };
 
   return colony as ColonyWithLedger;

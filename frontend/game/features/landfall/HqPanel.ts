@@ -96,6 +96,7 @@ export class HqPanel {
   private readonly progressFill: HTMLElement;
   private readonly jobText: HTMLElement;
   private readonly queueText: HTMLElement;
+  private readonly tierText: HTMLElement;
   private readonly cancelBtn: HTMLButtonElement;
   private readonly offChange: () => void;
 
@@ -170,6 +171,11 @@ export class HqPanel {
     this.queueText.dataset.testid = 'hq-queue';
     this.queueText.textContent = 'Queue: 0';
 
+    this.tierText = document.createElement('span');
+    this.tierText.className = 'ta-hq-panel__queue';
+    this.tierText.dataset.testid = 'hq-extractor-tier';
+    this.tierText.hidden = true;
+
     this.cancelBtn = document.createElement('button');
     this.cancelBtn.type = 'button';
     this.cancelBtn.className = 'ta-hq-panel__cancel btn-sm';
@@ -180,7 +186,7 @@ export class HqPanel {
     this.cancelBtn.onclick = () => {
       this.controller.cancelSelected();
     };
-    footer.append(this.jobText, this.queueText, this.cancelBtn);
+    footer.append(this.jobText, this.queueText, this.tierText, this.cancelBtn);
 
     this.el.append(grid, head, hp.stat, this.cellStat, this.progressStat, footer);
     this.details = new SelectionDetails(this.el);
@@ -214,6 +220,7 @@ export class HqPanel {
     this.cellStat.hidden = true;
     this.progressStat.hidden = true;
     this.cancelBtn.hidden = true;
+    this.tierText.hidden = true;
 
     this.jobText.textContent = stageLabel;
     this.queueText.textContent = `(${deposit.q}, ${deposit.r})`;
@@ -279,6 +286,17 @@ export class HqPanel {
 
     this.jobText.textContent = entity.currentJob;
     this.queueText.textContent = `Queue: ${entity.queueCount}`;
+    if (entity.extractorTier) {
+      this.tierText.hidden = false;
+      this.tierText.textContent = entity.extractorTier.summaryText;
+      this.tierText.dataset.unlockedTier = String(entity.extractorTier.unlockedTier);
+      this.tierText.dataset.ringPct = String(entity.extractorTier.ringTerraformedPct);
+    } else {
+      this.tierText.hidden = true;
+      this.tierText.textContent = '';
+      delete this.tierText.dataset.unlockedTier;
+      delete this.tierText.dataset.ringPct;
+    }
     this.cancelBtn.hidden = !isEntityBusy(entity, prog);
   }
 

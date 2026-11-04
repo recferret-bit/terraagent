@@ -5,6 +5,7 @@ import { forEachEntity, type ClientView } from '../../store/replica/viewCodec';
 import { viewColony } from '../shared/colony';
 import { extractHqFromView, type HqStatusView } from '../shared/hqView';
 import { resolvePointerTile, type TilePickerFn } from '../shared/pointer';
+import type { ExtractorTierView } from './extractorTierView';
 import {
   buildSelectedEntityFromRow,
   buildSupplementalUnitMap,
@@ -41,8 +42,8 @@ export interface SelectedEntityView {
   footprintD?: number;
   state?: number;
   progress?: number;
-  /** The unit's current or queued job is terraform work (order / work job): CANCEL is shown and ends it on the host. */
   terraformJob?: boolean;
+  extractorTier?: ExtractorTierView;
 }
 
 export interface StoreLike {
