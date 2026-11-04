@@ -30,8 +30,6 @@ import {
   stepHqSelfRepair,
 } from './hqSurvival';
 import {
-  emitRaidRepelled,
-  emitRaidStarted,
   emitUnderAttackIfDue,
   noteColonyBuildingDestroyedDuringRaid,
 } from './events';
@@ -335,6 +333,21 @@ function isHostileDamage(state: PlanetState, targetOwner: number, opts?: ApplyDa
 }
 
 /**
+ * Returns `true` when `owner` is a colony index (`>= 0`) with `godMode` active
+ * in `state.blobs.godMode.byColony[owner]` or `state.colonies[owner].godMode`.
+ */
+export function isColonyGodMode(state: PlanetState, owner: number): boolean {
+  if (owner < 0) return false;
+  if ((state.colonies[owner] as { godMode?: boolean } | undefined)?.godMode === true) {
+    return true;
+  }
+  const rawBlob = (state.blobs.godMode?.value ?? state.blobs.godMode) as
+    | { byColony?: Record<number, boolean> }
+    | undefined;
+  return rawBlob?.byColony?.[owner] === true;
+}
+
+/**
  * Applies plain battle v1 damage to `targetId` (`UO-C`, `UO-TF-04`, `UO-HQ-03`):
  * - Non-HQ units at `<= 0` HP are removed and emit `unitDestroyed` / `faunaKilled`.
  * - Buildings at `<= 0` HP are removed, leave all footprint tiles `PREP.prepared` (`UO-TF-04`), and emit `buildingDestroyed` / `nestDestroyed`.
@@ -353,7 +366,8 @@ export function applyDamage(
 
   const cols = state.entities.cols;
   const owner = cols.owner[row];
-  if (owner >= 0 && (state.colonies[owner] as { godMode?: boolean } | undefined)?.godMode === true) {
+  const rawDamage = owner >= 0 && isColonyGodMode(state, owner) ? 0 : amount;
+  if (rawDamage <= 0) {
     return { applied: 0, hpAfter: cols.hp[row], destroyed: false, clampedHq: false, retreatedHq: false };
   }
 

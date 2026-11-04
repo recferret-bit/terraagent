@@ -7,6 +7,7 @@ import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { colonyWho } from '../find';
 import { recordEntityDamaged } from './hqSurvival';
+import { isColonyGodMode } from './damage';
 import { canWeaponHitTarget } from './layers';
 
 export type ApplyLaserDamageFn = (
@@ -234,7 +235,7 @@ function defaultApplyLaserDamage(
   if (row < 0) return;
   const cols = state.entities.cols;
   const owner = cols.owner[row]!;
-  if (owner >= 0 && (state.colonies[owner] as { godMode?: boolean } | undefined)?.godMode === true) {
+  if (owner >= 0 && isColonyGodMode(state, owner)) {
     return;
   }
   const prevHp = cols.hp[row]!;

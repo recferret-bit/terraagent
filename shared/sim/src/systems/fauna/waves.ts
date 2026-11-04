@@ -234,7 +234,7 @@ export function flushPendingFaunaEvents(state: PlanetState, ctx: StepContext): v
   for (const ev of events) {
     ctx.emit({
       kind: ev.kind,
-      colonyId: ev.colonyIndex,
+      colonyIds: [ev.colonyIndex],
       data: ev.data,
     });
   }
@@ -439,23 +439,28 @@ export function selectCandidateHiveForRaid(
  * selects a live hive (by `hiveId`, `species`, or closest to `colonyIndex`), ensures an
  * aggression episode is active, and dispatches a bounded wave of living residents.
  */
+export function spawnHiveRaidWave(state: PlanetState, opts: SpawnHiveRaidWaveOptions, ctx?: StepContext): FaunaCohortRecord | null;
+export function spawnHiveRaidWave(state: PlanetState, hiveId: number, colonyIndex?: number, tick?: number, ctx?: StepContext): number;
 export function spawnHiveRaidWave(
   state: PlanetState,
-  opts: SpawnHiveRaidWaveOptions,
-  ctx?: StepContext,
-): FaunaCohortRecord | null {
+  optsOrHiveId: SpawnHiveRaidWaveOptions | number,
+  colonyIndexOrCtx?: number | StepContext,
+  tickArg?: number,
+  ctxArg?: StepContext,
+): FaunaCohortRecord | null | number {
+  const isPositional = typeof optsOrHiveId === 'number';
+  const ctx = isPositional ? ctxArg : (colonyIndexOrCtx as StepContext | undefined);
+  const opts: SpawnHiveRaidWaveOptions = isPositional
+    ? { hiveId: optsOrHiveId, colonyIndex: typeof colonyIndexOrCtx === 'number' ? colonyIndexOrCtx : 0, tick: tickArg }
+    : optsOrHiveId;
   const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
   const data = opts.data ?? ctx?.data ?? defaultFaunaData();
-  const hive = selectCandidateHiveForRaid(state, opts.colonyIndex, {
-    hiveId: opts.hiveId,
-    species: opts.species,
-    data,
-  });
-  if (!hive) return null;
+  const hive = selectCandidateHiveForRaid(state, opts.colonyIndex, { hiveId: opts.hiveId, species: opts.species, data });
+  if (!hive) return isPositional ? 0 : null;
 
   const fauna = getFaunaHivesState(state);
   const liveHive = fauna.hivesById[hive.hiveId];
-  if (!liveHive || liveHive.destroyed) return null;
+  if (!liveHive || liveHive.destroyed) return isPositional ? 0 : null;
 
   const waveCfg = resolveWaveConfig(data);
   if (!liveHive.aggressionByColony[opts.colonyIndex]) {
@@ -472,13 +477,8 @@ export function spawnHiveRaidWave(
     saveFaunaHivesState(state, fauna, tick);
   }
 
-  return dispatchHiveWave(
-    state,
-    hive.hiveId,
-    opts.colonyIndex,
-    { budget: opts.budget, tick, data },
-    ctx,
-  );
+  const cohort = dispatchHiveWave(state, hive.hiveId, opts.colonyIndex, { budget: opts.budget, tick, data }, ctx);
+  return isPositional ? (cohort?.memberIds.length ?? 0) : cohort;
 }
 
 export {

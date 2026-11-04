@@ -1080,6 +1080,71 @@
       "summary": "Dev console: zeroes the colony biomass stock (`bio.biomass`) to test Thermal Plant fuel starvation (W03-27).",
       "wave": "W03"
     },
+    "dev.faunamode": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "hiveId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "id": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "passive",
+              "aggressive"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "targetId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "targetQ": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "targetR": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`faunaMode` / `faunaTarget`): switches a hive or bug between passive and aggressive mode and/or retargets it (W07-29).",
+      "wave": "W07"
+    },
     "dev.fill": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1297,6 +1362,27 @@
       "origin": "client",
       "summary": "Dev command to add, cancel, or clear HQ goals (`goal add <type>`).",
       "wave": "W08"
+    },
+    "dev.godmode": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`godMode`): toggles or sets damage immunity for the colony (W07-29).",
+      "wave": "W07"
     },
     "dev.grant": {
       "args": {
@@ -1580,6 +1666,160 @@
       "origin": "client",
       "summary": "Dev console: places a full resource deposit of `family` and `tier` on tile `(q, r)`, like a terraform find (`terraformFinds.deposit.richnessBp`).",
       "wave": "W02"
+    },
+    "dev.spawnhive": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entranceQ": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "entranceR": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "initialResidents": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "mode": {
+            "enum": [
+              "passive",
+              "aggressive"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "species": {
+            "enum": [
+              "blackAnt",
+              "blueBeetle",
+              "greenSpitter"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`spawnHive`): spawns a 3x3 species hive and its initial resident bugs at (q, r) (W07-29).",
+      "wave": "W07"
+    },
+    "dev.spawnraid": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "hiveId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "species": {
+            "enum": [
+              "blackAnt",
+              "blueBeetle",
+              "greenSpitter"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`spawnRaid`): provokes a species hive and dispatches a bounded raid wave against the colony (W07-29).",
+      "wave": "W07"
+    },
+    "dev.spawnunit": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "owner": {
+            "maximum": 9007199254740991,
+            "minimum": -1,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "unit": {
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`spawnUnit`): spawns colony combat/worker units or neutral fauna bugs at (q, r) (W07-29).",
+      "wave": "W07"
     },
     "dev.stage": {
       "args": {
