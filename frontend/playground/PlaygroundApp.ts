@@ -19,9 +19,10 @@ import { ArchetypeCatalog, setDepositPreviewStage, type ArchetypeCategory, type 
 import { validateArchetype } from '@terra/render/kitbash/validate';
 import { ParticlePresetRegistry, validateParticlePreset, type InteractionTargetKind } from '@terra/render/particles';
 import { $ } from './dom';
-import { BUILD_STAGES, WORK_TARGETS, createState, syncURL, type BuildStage, type PgState, type ToggleKey, type View } from './state';
+import { BUILD_STAGES, WORK_TARGETS, createState, syncURL, type BuildStage, type FaunaMode, type FaunaSceneKind, type PgState, type ToggleKey, type View } from './state';
 import { StageRig } from './stage/StageRig';
 import { SpawnSet } from './content/SpawnSet';
+import { FaunaSceneHost } from './content/FaunaSceneHost';
 import { SurfaceHost } from './content/SurfaceHost';
 import { HexSampleHost } from './content/HexSampleHost';
 import { ValidationOverlay } from './content/Validation';
@@ -30,6 +31,7 @@ import { bindPicking } from './camera/Picking';
 import { Sidebar } from './panels/Sidebar';
 import { Toolbar } from './panels/Toolbar';
 import { LightsPanel } from './panels/LightsPanel';
+import { FaunaScenePanel } from './panels/FaunaScenePanel';
 import { toast } from './panels/Toast';
 import { updateInfo } from './panels/InfoPanel';
 import { validationHtml } from './panels/validationHtml';
@@ -42,6 +44,7 @@ export class PlaygroundApp {
   private viewport: ColonyViewport;
   private rig: StageRig;
   private spawns = new SpawnSet();
+  private faunaHost: FaunaSceneHost;
   private surface: SurfaceHost;
   private hexSample: HexSampleHost;
   private validation = new ValidationOverlay();
@@ -49,7 +52,9 @@ export class PlaygroundApp {
   private sidebar: Sidebar;
   private toolbar: Toolbar;
   private lightsPanel: LightsPanel;
+  private faunaPanel: FaunaScenePanel;
   private hasFramedOnce = false;
+  private hasStarted = false;
   private clock = new THREE.Clock();
   private time = 0;
 
@@ -59,8 +64,9 @@ export class PlaygroundApp {
     const vp = this.viewport = createColonyViewport($('#viewport'));
     this.surface = new SurfaceHost(vp.scene);
     this.hexSample = new HexSampleHost(vp.scene);
+    this.faunaHost = new FaunaSceneHost(vp.scene);
     this.rig = new StageRig(() => this.spawns.minX());
-    this.cam = new CameraRig(vp.camera, vp.renderer.domElement, () => this.bounds(), () => !!this.state.row);
+    this.cam = new CameraRig(vp.camera, vp.renderer.domElement, () => this.bounds(), () => !!this.state.row || !!this.state.faunaScene);
     vp.scene.add(this.rig.group, this.spawns.content, this.spawns.ring);
     this.sidebar = new Sidebar(this.state, { onSelect: (id) => this.select(id), onRow: (c) => this.toggleRow(c) });
     this.toolbar = new Toolbar(this.state, {
@@ -80,6 +86,15 @@ export class PlaygroundApp {
       onNightToggle: () => this.syncStageLighting(),
       onClose: () => { if (this.state.lights) this.toggle('lights'); },
     });
+    this.faunaPanel = new FaunaScenePanel(this.state, () => this.faunaHost.getStats(), {
+      onScene: (scene) => this.setFaunaScene(scene),
+      onMode: (mode) => this.setFaunaMode(mode),
+      onSeed: (seed) => this.setFaunaSeed(seed),
+      onPauseToggle: () => this.pauseFauna(),
+      onStep: (ticks) => this.stepFauna(ticks),
+      onReset: () => this.resetFauna(),
+      onAcidPreview: () => this.triggerAcidPreview(),
+    });
     bindPicking(vp.renderer.domElement, vp.camera, {
       spawns: () => this.spawns.spawns, isRow: () => !!this.state.row, selectedId: () => this.state.id,
       select: (id) => this.select(id, { rebuild: false, frame: false }),
@@ -95,6 +110,7 @@ export class PlaygroundApp {
     this.sidebar.build();
     this.toolbar.build();
     this.lightsPanel.build();
+    this.faunaPanel.build();
     onArchetypeLightsChange((changedId) => {
       this.spawns.refreshLights(changedId);
       this.lightsPanel.onExternalChange(changedId);
@@ -104,14 +120,17 @@ export class PlaygroundApp {
     if (initial && !ArchetypeCatalog.has(initial)) toast(`Unknown archetype "${initial}"`);
     this.applyPlanet();
     if (state.id) this.select(state.id, { rebuild: false, frame: true }); else this.setView(state.view, { instant: true });
+    this.syncFaunaStage();
     this.sidebar.render();
     this.toolbar.syncToggles();
     this.lightsPanel.render();
+    this.faunaPanel.render();
     this.syncStageLighting();
     initPixelDialog();
     onPixelArtChange((on) => { this.state.pixel = on; this.toolbar.syncToggles(); syncURL(this.state); });
     onShadowChange((on) => { this.state.shadows = on; this.toolbar.syncToggles(); syncURL(this.state); });
     this.setView(state.view, { instant: true });
+    this.hasStarted = true;
     this.frame();
   }
 
@@ -134,10 +153,21 @@ export class PlaygroundApp {
       updateLight: (idx: number, patch: Partial<ArchetypeLightSource>, id = this.state.id) => updateArchetypeLight(id, idx, patch),
       resetLights: (id = this.state.id) => resetArchetypeLights(id),
       exportLightsCode: (id = this.state.id) => exportArchetypeLightsCode(id),
+      faunaHost: this.faunaHost,
+      setFaunaScene: (scene: FaunaSceneKind | null, opts?: { mode?: FaunaMode; seed?: number }) => this.setFaunaScene(scene, opts),
+      setFaunaMode: (mode: FaunaMode) => this.setFaunaMode(mode),
+      setFaunaSeed: (seed: number) => this.setFaunaSeed(seed),
+      pauseFauna: (paused?: boolean) => this.pauseFauna(paused),
+      stepFauna: (ticks = 1) => this.stepFauna(ticks),
+      resetFauna: (seed?: number) => this.resetFauna(seed),
+      triggerAcidPreview: () => this.triggerAcidPreview(),
+      getFaunaStats: () => this.faunaHost.getStats(),
     };
   }
 
-  private bounds() { return this.spawns.bounds(this.state.id, this.state.row); }
+  private bounds() {
+    return this.state.faunaScene !== null ? this.faunaHost.bounds() : this.spawns.bounds(this.state.id, this.state.row);
+  }
 
   // ---------------------------------------------------------------- planet / content
   private applyPlanet() {
@@ -146,8 +176,79 @@ export class PlaygroundApp {
     this.syncStageLighting();
     this.buildStage();
     this.rebuildContent();
+    this.faunaHost.setBiome(PLANET_SPECS[state.kind].biomeKey);
     this.syncSurface();
     this.toolbar.setPlanet(state.kind);
+    this.faunaPanel?.render();
+  }
+
+  private syncFaunaStage() {
+    const { state } = this;
+    const active = state.faunaScene !== null;
+    this.spawns.content.visible = !active;
+    if (active) this.spawns.ring.visible = false;
+    else this.spawns.updateRing(state.id, state.row);
+    this.faunaHost.setScene(state.faunaScene, {
+      mode: state.faunaMode,
+      seed: state.faunaSeed,
+      biomeKey: PLANET_SPECS[state.kind].biomeKey,
+      wire: state.wire,
+    });
+    this.faunaPanel?.render();
+  }
+
+  private setFaunaScene(scene: FaunaSceneKind | null, opts?: { mode?: FaunaMode; seed?: number }) {
+    this.state.faunaScene = scene;
+    if (opts?.mode) this.state.faunaMode = opts.mode;
+    if (opts?.seed !== undefined && Number.isFinite(opts.seed)) this.state.faunaSeed = Math.trunc(opts.seed);
+    this.syncFaunaStage();
+    this.setView(this.state.view);
+    syncURL(this.state);
+    return this.faunaHost.getStats();
+  }
+
+  private setFaunaMode(mode: FaunaMode) {
+    this.state.faunaMode = mode;
+    this.faunaHost.setMode(mode);
+    this.faunaPanel?.render();
+    syncURL(this.state);
+    return this.faunaHost.getStats();
+  }
+
+  private setFaunaSeed(seed: number) {
+    if (!Number.isFinite(seed)) return this.faunaHost.getStats();
+    this.state.faunaSeed = Math.trunc(seed);
+    this.faunaHost.setSeed(this.state.faunaSeed);
+    this.faunaPanel?.render();
+    syncURL(this.state);
+    return this.faunaHost.getStats();
+  }
+
+  private pauseFauna(paused?: boolean) {
+    if (paused === undefined) this.faunaHost.togglePause();
+    else this.faunaHost.setPaused(paused);
+    this.faunaPanel?.render();
+    return this.faunaHost.getStats();
+  }
+
+  private stepFauna(ticks = 1) {
+    this.faunaHost.stepTick(ticks);
+    this.faunaPanel?.render();
+    return this.faunaHost.getStats();
+  }
+
+  private resetFauna(seed?: number) {
+    if (seed !== undefined && Number.isFinite(seed)) this.state.faunaSeed = Math.trunc(seed);
+    this.faunaHost.reset(this.state.faunaSeed);
+    this.faunaPanel?.render();
+    syncURL(this.state);
+    return this.faunaHost.getStats();
+  }
+
+  private triggerAcidPreview() {
+    this.faunaHost.triggerAcidPreview();
+    this.faunaPanel?.render();
+    return this.faunaHost.getStats();
   }
 
   private syncStageLighting() {
@@ -223,6 +324,10 @@ export class PlaygroundApp {
     const { rebuild = !state.row, frame = true } = opts;
     if (!ArchetypeCatalog.has(id)) { toast(`Unknown archetype: ${id}`); return; }
     state.id = id;
+    if (this.hasStarted && state.faunaScene !== null) {
+      state.faunaScene = null;
+      this.syncFaunaStage();
+    }
     if (state.row && ArchetypeCatalog.get(id).category !== state.row) state.row = ArchetypeCatalog.get(id).category;
     if (rebuild) this.rebuildContent();
     this.spawns.updateRing(state.id, state.row);
@@ -269,7 +374,7 @@ export class PlaygroundApp {
     switch (k) {
       case 'bloom': vp.bloom.enabled = state.bloom; break;
       case 'pixel': setPixelArt(state.pixel, false); break;
-      case 'wire': this.spawns.applyWire(state.wire); break;
+      case 'wire': this.spawns.applyWire(state.wire); this.faunaHost.applyWire(state.wire); break;
       case 'grid': this.rig.grid.visible = state.grid; break;
       case 'ruler': this.rig.ruler.visible = state.ruler; break;
       case 'human': this.rig.human.visible = state.human; break;
@@ -300,6 +405,8 @@ export class PlaygroundApp {
     this.time += dt;
     this.cam.step(dt);
     this.spawns.tick(this.time, dt, this.state.turntable, !!this.state.row, this.state.work ? 1 : 0, this.state.id, this.state.lights, this.lightsPanel.isNightPreview, this.state.workTarget);
+    this.faunaHost.update(this.time, dt, { wire: this.state.wire, bloom: this.state.bloom, shadows: this.state.shadows, pixel: this.state.pixel });
+    if (this.state.faunaScene !== null) this.faunaPanel.renderStats();
     this.cam.controls.update();
     this.surface.update(dt, this.time);
     this.hexSample.update(dt);

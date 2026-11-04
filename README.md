@@ -133,6 +133,7 @@ All pages are entries of one Vite app (see `rollupOptions.input` in [`frontend/v
 | Playground | `&hexterrain=1`, `&hatch=1` | Hex terrain sample scene instead of the pedestal (every tile class, deposits, Prepared tiles drawn as plain flat ground (RN-29), a tier 1/2/3 Metals deposit row at axial (-4,4) / (-3,4) / (-2,4) in front of the model, two colonies' borders); colour-blind border hatch. |
 | Playground | `&build=0\|33\|66`, `&work=1`, `&workTarget=<kind>` | Construction scaffold stage of the shown models (toolbar `build` cycles it); biped work pose (`uWorkWeight` 1) + 3D object-of-interaction particle emitter (`tree\|rock\|dune\|hole\|flat\|metals\|minerals\|oil\|repair`). |
 | Playground | `&depositStage=full\|half\|depleted` (alias `&stage=`), `&lights=1` | Preview 3-stage resource deposit depletion (`full`, `half`, `depleted`); open the interactive 3D `LIGHTS` editor panel (`[L]`). |
+| Playground | `&faunaScene=blackAnt\|blueBeetle\|greenSpitter\|mixed`, `&faunaMode=passive\|aggressive`, `&faunaSeed=<int>` | Seeded W07 hive-life scene fixtures (`blackAnt`, `blueBeetle`, `greenSpitter`, `mixed`) with deterministic tick stepping (`PAUSE`/`STEP`/`RESET`), `PASSIVE`/`AGGRESSIVE` mode switch, and `ACID PREVIEW`. |
 | All 3D pages | `?pixel=1\|0`, `?shadow=1\|0`, `?crt=1\|0`, `?daynight=1\|0` | Enable or disable the pixel-art post-processing shader, dynamic sun shadows, CRT scanline overlay, or orbital day/night cycle. |
 
 ### Controls

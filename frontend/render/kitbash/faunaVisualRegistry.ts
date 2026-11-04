@@ -95,6 +95,19 @@ export function registerFaunaVisualOverride(
   planetOverrides.set(makeOverrideKey(planetKey, species, role), archetypeId);
 }
 
+function splitSpeciesAndPlanet(
+  first: FaunaVisualSpecies | string,
+  second?: FaunaVisualSpecies | string,
+): { species: FaunaVisualSpecies; planetType?: string } {
+  if ((FAUNA_VISUAL_SPECIES as readonly string[]).includes(first)) {
+    return { species: first as FaunaVisualSpecies, planetType: second };
+  }
+  if (second && (FAUNA_VISUAL_SPECIES as readonly string[]).includes(second)) {
+    return { species: second as FaunaVisualSpecies, planetType: first };
+  }
+  return { species: 'blackAnt', planetType: first };
+}
+
 /**
  * Resolves the kitbash archetype ID for `(species, role)` on `planetType`, falling back to the shared
  * W07 archetype when no planet-specific override is registered.
@@ -111,6 +124,28 @@ export function resolveFaunaArchetypeId(
   }
   const bySpecies = DEFAULT_FAUNA_ARCHETYPES[species] ?? DEFAULT_FAUNA_ARCHETYPES.blackAnt;
   return bySpecies[role] ?? bySpecies.bug;
+}
+
+/**
+ * Resolves the species hive archetype ID for `(planetType, species)` (or `(species, planetType)`).
+ */
+export function resolveFaunaHiveArchetypeId(
+  planetOrSpecies: string | FaunaVisualSpecies,
+  speciesOrPlanet?: FaunaVisualSpecies | string,
+): string {
+  const { species, planetType } = splitSpeciesAndPlanet(planetOrSpecies, speciesOrPlanet);
+  return resolveFaunaArchetypeId(species, 'hive', planetType);
+}
+
+/**
+ * Resolves the species bug archetype ID for `(planetType, species)` (or `(species, planetType)`).
+ */
+export function resolveFaunaBugArchetypeId(
+  planetOrSpecies: string | FaunaVisualSpecies,
+  speciesOrPlanet?: FaunaVisualSpecies | string,
+): string {
+  const { species, planetType } = splitSpeciesAndPlanet(planetOrSpecies, speciesOrPlanet);
+  return resolveFaunaArchetypeId(species, 'bug', planetType);
 }
 
 /** Clears registered planet-specific fauna visual overrides (all planets when `planetType` is omitted). */
