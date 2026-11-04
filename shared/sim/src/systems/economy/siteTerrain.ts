@@ -1,3 +1,4 @@
+import { ENTITY_KIND } from '../../ecs/columns';
 import { GEO_BLOCK_TEXT, geoBuildBlock, type GeoBlock } from '../../grid/geo';
 import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -8,14 +9,35 @@ import { placementWorldFromState } from '../construction/placementWorld';
 import { getFootprintTileIndices, resolveBuildingRow } from './construction';
 
 /**
- * Terrain rule for every building (D-37): nothing is built on ground the player has not terraformed. Trees, rock, slope,
- * holes, water and ridges block until cleared / levelled; construction never converts them (it only Grades flat ground).
- * Resource deposits are allowed here (extractors stand on them; the deposit rule is the building row's).
+ * Terrain rule for every building (D-37): in W01..W04, nothing is built on ground the player has not terraformed;
+ * in W05 (`W05-09`), trees, rock, slope, holes and shallow water are linked-prep-able (and deep water when a T2+ worker
+ * exists). Resource deposits are allowed here (extractors stand on them; the deposit rule is the building row's).
  */
-export function footprintTerrainBlock(state: PlanetState, indices: readonly number[]): { block: GeoBlock; text: string } | null {
+export function footprintTerrainBlock(
+  state: PlanetState,
+  indices: readonly number[],
+  data?: CompiledDataLike,
+  colonyId?: number,
+): { block: GeoBlock; text: string } | null {
   const { terrain, prep } = state.grid.layers;
+  const linkedPrep = Boolean((data?.tables?.opsBasic as Record<string, unknown> | undefined)?.level);
+  let canDeepReclaim = false;
+  if (linkedPrep && colonyId !== undefined) {
+    const { count, cols } = state.entities;
+    for (let r = 0; r < count; r++) {
+      if (
+        cols.owner[r] === colonyId &&
+        cols.hp[r] > 0 &&
+        cols.tier[r] >= 2 &&
+        (cols.kind[r] === ENTITY_KIND.hq || cols.kind[r] === ENTITY_KIND.builder || cols.kind[r] === ENTITY_KIND.terraformer)
+      ) {
+        canDeepReclaim = true;
+        break;
+      }
+    }
+  }
   for (const i of indices) {
-    const block = geoBuildBlock(terrain[i], prep[i], DEPOSIT.none, 'any');
+    const block = geoBuildBlock(terrain[i], prep[i], DEPOSIT.none, 'any', { linkedPrep, canDeepReclaim });
     if (block) return { block, text: GEO_BLOCK_TEXT[block] };
   }
   return null;
@@ -64,7 +86,7 @@ export function buildingSiteBlock(
   }
   const occupied = occupiedGroundTiles(state, data); // buildings, not `anchors` (territory claim count)
   for (const tileIdx of fpIndices) {
-    const tb = footprintTerrainBlock(state, [tileIdx]);
+    const tb = footprintTerrainBlock(state, [tileIdx], data, site.owner);
     if (tb) return { code: 'terrain_unbuildable', detail: tb.text };
     if (occupied.has(tileIdx)) return { code: 'site_blocked', detail: 'tile occupied' };
   }

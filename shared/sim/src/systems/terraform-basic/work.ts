@@ -85,6 +85,7 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   const prevPrep = prepKeyFromId(state.grid.layers.prep[tileIdx]);
   if (spec.toTerrain === spec.fromTerrain) {
     setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
+    if (job.op === 'grade') levelToAdjacentFlat(state, tileIdx, tick);
     syncColonyTerraformStats(state, colonyId, tick);
     if (ctx.flags.has('W05')) {
       ctx.emit({
