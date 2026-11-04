@@ -209,7 +209,8 @@ describe('W10-12 Sim: cargo.import clamping and ok:true settlement', () => {
     expect(getColonyStock(state, 0)['metals.t1']).toBe(420);
 
     const hubStatus = getColonyTradeHubStatus(state, 0, data, 1);
-    expect(hubStatus.throughputUsedPerMin).toBe(80);
+    expect(hubStatus.throughputUsedPerMin).toBe(0);
+    expect(cargoState.mintedToday).toEqual({});
 
     const reqEvent = res.events.find((e) => e.kind === 'cargoImported');
     expect(eventDef('cargoImported').data.parse(reqEvent?.data)).toEqual({

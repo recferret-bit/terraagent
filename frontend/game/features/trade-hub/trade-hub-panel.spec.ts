@@ -234,8 +234,12 @@ describe('W10-20 Trade Hub Panel — Live Cargo Updates & Offline State', () => 
 
     expect(panelEl.querySelector('[data-testid="orbit-value-metals.t1"]')?.textContent).toBe('450');
     expect(panelEl.querySelector('[data-testid="orbit-value-minerals.t2"]')?.textContent).toBe('75');
-    expect(panelEl.querySelector('[data-testid="trade-hub-throughput"]')?.textContent).toBe('250 / 250 / min');
+    expect(panelEl.querySelector('[data-testid="trade-hub-throughput"]')?.textContent).toBe('200 / 250 / min');
     expect(panelEl.querySelector('[data-testid="trade-hub-daily-cap"]')?.textContent).toBe('450 / 20,000 / day');
+
+    state.meta.tick = 305;
+    instance.update?.(view(state) as unknown as GameView);
+    expect(panelEl.querySelector('[data-testid="trade-hub-throughput"]')?.textContent).toBe('0 / 250 / min');
 
     state.entities.cols.state[hubRow] = ENTITY_STATE.offlineBrownout;
     instance.update?.(view(state) as unknown as GameView);

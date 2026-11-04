@@ -1,3 +1,4 @@
+import { CargoFlights } from './CargoFlights';
 import type { CargoStatusPayload } from '@terra/contracts';
 import { defineFeature } from '../../core/registry/types';
 import {
@@ -66,6 +67,7 @@ let activePanel: TradeHubPanel | null = null;
 export default defineFeature({
   id: 'trade-hub',
   wave: 'W10',
+  renderers: [{ id: 'cargo-flights', mount: (ctx) => new CargoFlights(ctx) }],
   hud: [
     {
       id: 'trade-hub-panel',

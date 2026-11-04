@@ -250,7 +250,7 @@ describe('W10-22 Acceptance: Refund Toast and mint_cap Countdown', () => {
     expect(panelToast.textContent).toBe('Orbit transfer failed — 50 Metals T1 returned to stock');
 
     const floatingToast = (parentEl as unknown as MockElement).querySelector('[data-testid="cargo-toast"]')!;
-    expect(isHidden(floatingToast)).toBe(false);
+    expect(isHidden(floatingToast)).toBe(true);
     expect(floatingToast.textContent).toBe('Orbit transfer failed — 50 Metals T1 returned to stock');
 
     expect(panel.getResolvedCargoView().stock['metals.t1']).toBe(900);
@@ -280,7 +280,7 @@ describe('W10-22 Acceptance: Refund Toast and mint_cap Countdown', () => {
     expect(panelToast.textContent).toBe('Throughput limit reached (250 / min) — retry in 42s');
 
     const floatingToast = (parentEl as unknown as MockElement).querySelector('[data-testid="cargo-toast"]')!;
-    expect(isHidden(floatingToast)).toBe(false);
+    expect(isHidden(floatingToast)).toBe(true);
     expect(floatingToast.getAttribute('data-retry-in')).toBe('42');
 
     vi.advanceTimersByTime(1000);
@@ -292,6 +292,9 @@ describe('W10-22 Acceptance: Refund Toast and mint_cap Countdown', () => {
     expect(panelToast.getAttribute('data-retry-in')).toBe('36');
     expect(panelToast.textContent).toBe('Throughput limit reached (250 / min) — retry in 36s');
 
+    vi.advanceTimersByTime(2000);
+    expect(isHidden(panelToast)).toBe(true);
+    expect(isHidden(floatingToast)).toBe(true);
     panel.dispose();
     vi.useRealTimers();
   });

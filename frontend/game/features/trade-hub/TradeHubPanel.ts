@@ -1,3 +1,4 @@
+import { createProgressBar, setProgress } from '../shared/progress';
 import {
   RESOURCE_KEYS,
   type CargoStatusPayload,
@@ -8,7 +9,7 @@ import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { normalizeKindCode, normalizeStateCode } from '../landfall/selectionHelpers';
 import { ownColonyIndex, viewColony } from '../shared/colony';
-import { clampPct, makeBtn, makeDiv, makeSpan } from '../shared/dom';
+import { makeBtn, makeDiv, makeSpan } from '../shared/dom';
 import {
   computeTransferBounds,
   formatCargoCount,
@@ -131,16 +132,13 @@ export class TradeHubPanel implements Disposable {
       onError: (code, detail, retryInS) => this.notifyError(code, detail, retryInS),
     });
 
-    this.root.append(
-      headerBuild.header,
-      this.offlineBannerEl,
-      this.toastEl,
-      this.pendingContainerEl,
-      metersBuild.metersRow,
-      tabsBuild.tabsRow,
-      this.orbitBalancesEl,
-      this.tabBodyEl,
-    );
+    const content = makeDiv('ta-trade-hub__content');
+    const balances = makeDiv('ta-trade-hub__column');
+    const transfer = makeDiv('ta-trade-hub__column');
+    balances.append(metersBuild.metersRow, this.orbitBalancesEl);
+    transfer.append(tabsBuild.tabsRow, this.tabBodyEl);
+    content.append(balances, transfer);
+    this.root.append(headerBuild.header, this.offlineBannerEl, this.toastEl, this.pendingContainerEl, content);
     this.parent.appendChild(this.root);
 
     this.bindSelection();
@@ -211,10 +209,8 @@ export class TradeHubPanel implements Disposable {
     const card = makeDiv('ta-trade-hub__meter-card plate-sm');
     const meter = makeDiv('ta-trade-hub__meter', meterId);
     const val = makeSpan('ta-trade-hub__meter-val', valId, defaultVal);
-    const bar = makeDiv('ta-trade-hub__meter-bar');
-    const fill = makeDiv(`ta-trade-hub__meter-fill ${fillClass}`, fillClass.split(' ')[0]);
-    fill.style.width = '0%';
-    bar.appendChild(fill);
+    const { bar, fill } = createProgressBar(title, 'ta-trade-hub__meter-bar',
+      `ta-trade-hub__meter-fill ${fillClass}`, fillClass.split(' ')[0]);
     meter.append(val, bar);
     card.append(makeSpan('ta-trade-hub__meter-label', undefined, title), meter);
     return { card, val, fill };
@@ -253,9 +249,9 @@ export class TradeHubPanel implements Disposable {
       if (selectedEntity && selectedEntity.kind === ENTITY_KIND.tradeHub) {
         const isConstructing =
           selectedEntity.state === ENTITY_STATE.constructing || selectedEntity.currentJob === 'constructing';
+        if (this.selectedHubId !== selectedEntity.entityId) this.closedForEntityId = null;
         this.selectedHubId = selectedEntity.entityId;
-        this.closedForEntityId = null;
-        if (!isConstructing) {
+        if (!isConstructing && this.closedForEntityId !== this.selectedHubId) {
           this.setOpen(true);
         }
         this.render();
@@ -269,7 +265,7 @@ export class TradeHubPanel implements Disposable {
 
   setOpen(open: boolean): void {
     this.isOpen = open;
-    if (open) this.closedForEntityId = null;
+    this.closedForEntityId = open ? null : this.selectedHubId;
     this.root.setAttribute('data-open', String(open));
     this.render();
   }
@@ -428,6 +424,13 @@ export class TradeHubPanel implements Disposable {
   private render(): void {
     const resolved = this.getResolvedCargoView();
 
+    const details = this.ctx?.services.selectionDetails;
+    if (this.selectedHubId !== null) details?.show(this.root, this.isOpen, (open) => {
+      this.closedForEntityId = open ? null : this.selectedHubId;
+      this.setOpen(open);
+    });
+    else details?.hide();
+    this.toastController.setPanelOpen(this.isOpen);
     this.root.setAttribute('data-open', String(this.isOpen));
     this.root.setAttribute('data-tab', this.activeTab);
     this.root.setAttribute('data-online', String(resolved.hubOnline));
@@ -451,14 +454,10 @@ export class TradeHubPanel implements Disposable {
     if (hasImp) this.pendingImportChipEl.textContent = formatPendingImportChipText(pending.imports);
 
     this.throughputValEl.textContent = `${formatCargoCount(resolved.throughputUsedPerMin)} / ${formatCargoCount(resolved.throughputCapPerMin)} / min`;
-    const tpPct = clampPct(resolved.throughputUsedPerMin, resolved.throughputCapPerMin || 250);
-    this.throughputFillEl.style.width = `${tpPct.toFixed(1)}%`;
-    this.throughputFillEl.setAttribute('data-progress', String(Math.round(tpPct)));
+    setProgress(this.throughputFillEl, resolved.throughputUsedPerMin, resolved.throughputCapPerMin);
 
     this.dailyCapValEl.textContent = `${formatCargoCount(resolved.todayMinted)} / ${formatCargoCount(resolved.dailyCap)} / day`;
-    const dcPct = clampPct(resolved.todayMinted, resolved.dailyCap);
-    this.dailyCapFillEl.style.width = `${dcPct.toFixed(1)}%`;
-    this.dailyCapFillEl.setAttribute('data-progress', String(Math.round(dcPct)));
+    setProgress(this.dailyCapFillEl, resolved.todayMinted, resolved.dailyCap);
 
     for (const key of RESOURCE_KEYS) {
       const entry = this.orbitRows.get(key);

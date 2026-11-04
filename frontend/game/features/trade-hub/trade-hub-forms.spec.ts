@@ -74,7 +74,7 @@ describe('W10-21 Trade Hub Export & Import Forms — Acceptance & Command Dispat
     uninstallDom();
   });
 
-  it('acceptance: selecting metals.t1, setting amount to 300, and clicking Confirm sends cargo.export with { resource: "metals.t1", amount: 300 }', () => {
+  it('rejects an amount above the cap and submits a valid export', () => {
     const { state } = createTradeHubFormsFixture();
     const sendCommand = vi.fn().mockResolvedValue({ ok: true, appliedAtTick: 1 });
     const parentEl = new MockElement('div') as unknown as HTMLElement;
@@ -98,15 +98,15 @@ describe('W10-21 Trade Hub Export & Import Forms — Acceptance & Command Dispat
 
     const confirmBtn = mockRoot.querySelector('[data-testid="trade-hub-confirm"]')!;
     expect(confirmBtn.textContent).toBe('CONFIRM EXPORT');
-    expect(confirmBtn.disabled).toBe(false);
+    expect(confirmBtn.disabled).toBe(true);
 
     confirmBtn.click();
 
-    expect(sendCommand).toHaveBeenCalledTimes(1);
-    expect(sendCommand).toHaveBeenCalledWith('cargo.export', {
-      resource: 'metals.t1',
-      amount: 300,
-    });
+    expect(sendCommand).not.toHaveBeenCalled();
+    panel.setAmount(250);
+    confirmBtn.click();
+    expect(sendCommand).toHaveBeenCalledWith('cargo.export', { resource: 'metals.t1', amount: 250 });
+
 
     panel.dispose();
   });
@@ -284,7 +284,7 @@ describe('W10-21 Trade Hub Forms — Slider Cap Clamping, Preview & Offline Stat
 
     // Confirm uses store.sendCommand fallback when services.sendCommand is absent
     expect(panel.confirm()).toBe(true);
-    expect(storeSend).toHaveBeenCalledWith('cargo.import', { resource: 'metals.t1', amount: 500 });
+    expect(storeSend).toHaveBeenCalledWith('cargo.import', { resource: 'metals.t1', amount: 100 });
 
     // Offline hub disables confirm and computeTransferBounds returns maxAmount = 0
     state.entities.cols.state[hubRow] = ENTITY_STATE.offlineUnpowered;

@@ -209,6 +209,7 @@ export function formatPendingImportChipText(imports: readonly PendingTransferIte
  * Manages toast state, countdowns, and synchronization between panel toast and floating HUD toast.
  */
 export class CargoToastController {
+  private panelOpen = false;
   private countdownTimer: ReturnType<typeof setInterval> | null = null;
   private autoDismissTimer: ReturnType<typeof setTimeout> | null = null;
   private activeCode: string | null = null;
@@ -232,6 +233,7 @@ export class CargoToastController {
 
     this.renderToast(code, detail, this.activeRetryInS);
 
+    this.autoDismissTimer = setTimeout(() => this.dismiss(), 8000);
     if (code === 'mint_cap' && this.activeRetryInS !== null && this.activeRetryInS > 0) {
       let remaining = this.activeRetryInS;
       this.countdownTimer = setInterval(() => {
@@ -240,7 +242,8 @@ export class CargoToastController {
         if (remaining <= 0) {
           if (this.countdownTimer) clearInterval(this.countdownTimer);
           this.countdownTimer = null;
-          this.activeRetryInS = 0;
+          this.dismiss();
+          return;
         }
         this.renderToast('mint_cap', this.activeDetail, this.activeRetryInS);
       }, 1000);
@@ -278,8 +281,14 @@ export class CargoToastController {
       } else {
         el.removeAttribute('data-retry-in');
       }
-      el.hidden = false;
+      el.hidden = el === this.panelToastEl ? !this.panelOpen : this.panelOpen;
     }
+  }
+
+  setPanelOpen(open: boolean): void {
+    this.panelOpen = open;
+    this.panelToastEl.hidden = !this.activeCode || !open;
+    this.floatingToastEl.hidden = !this.activeCode || open;
   }
 
   dismiss(): void {

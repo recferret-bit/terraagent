@@ -200,7 +200,7 @@ function resolveMintedAndThroughput(
   throughputUsedPerMin: number;
 } {
   const todayMintedByResource = emptyResourceRecord();
-  const cargoCaps = col?.cargoCaps as
+  const cargoCaps = (col?.cargoCaps ?? colCargo) as
     | {
         windowEntries?: Array<{ tick?: number; amount?: number }>;
         mintedToday?: Record<string, number>;
@@ -255,7 +255,7 @@ function resolveMintedAndThroughput(
     }
   }
 
-  const rawUsed = wasCapReset
+  const rawUsed = wasCapReset || Array.isArray(cargoCaps?.windowEntries)
     ? windowSum
     : (svcStatus?.throughputUsedPerMin ??
         viewStatus?.throughputUsedPerMin ??
@@ -465,8 +465,7 @@ export function formatTransferPreview(
   if (tab === 'export') {
     const remStock = Math.max(0, curStock - safeAmount);
     const nextOrbit = curOrbit + safeAmount;
-    const reasonSuffix = effectiveReason ? ` · ${effectiveReason}` : '';
-    const previewText = `Export ${safeAmount} ${label} → Orbit (${remStock} remaining in stock · Stock ${curStock} → ${remStock}, Orbit ${curOrbit} → ${nextOrbit}${reasonSuffix})`;
+    const previewText = `Export ${safeAmount} ${label} → Orbit (${remStock} remaining in stock · Stock ${curStock} → ${remStock}, Orbit ${curOrbit} → ${nextOrbit})`;
     return { previewText, limitReason: effectiveReason };
   }
 
@@ -483,7 +482,6 @@ export function formatTransferPreview(
 
   const nextStock = curStock + safeAmount;
   const nextOrbit = Math.max(0, curOrbit - safeAmount);
-  const reasonSuffix = effectiveReason ? ` · ${effectiveReason}` : '';
-  const previewText = `Import ${safeAmount} ${label} → Colony (free storage: ${freeStorage} · Stock ${curStock} → ${nextStock}, Orbit ${curOrbit} → ${nextOrbit}${reasonSuffix})`;
+  const previewText = `Import ${safeAmount} ${label} → Colony (free storage: ${freeStorage} · Stock ${curStock} → ${nextStock}, Orbit ${curOrbit} → ${nextOrbit})`;
   return { previewText, limitReason: effectiveReason };
 }

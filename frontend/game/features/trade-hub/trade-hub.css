@@ -1,10 +1,6 @@
-.ta-hud__slot[data-slot='bottom-left'] .ta-command-dock__body {
-  max-height: min(32vh, 220px);
-}
-
 .ta-trade-hub {
-  width: 340px;
-  max-height: calc(100vh - 72px);
+  width: 100%;
+  max-height: min(60vh, 520px);
   overflow-y: auto;
   scrollbar-width: thin;
   background: var(--ta-plate);
@@ -325,7 +321,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 30px;
+  min-height: 24px;
   padding: var(--ta-s1) var(--ta-s2);
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
@@ -381,8 +377,11 @@
 }
 
 .ta-trade-hub__amount-input {
+  width: 0;
+  min-width: 0;
+  box-sizing: border-box;
   flex: 1;
-  min-height: 32px;
+  min-height: 26px;
   padding: var(--ta-s1) var(--ta-s2);
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
@@ -419,7 +418,7 @@
 
 .ta-trade-hub__confirm {
   width: 100%;
-  min-height: 36px;
+  min-height: 30px;
   padding: var(--ta-s2);
   font-family: var(--ta-font-display);
   font-size: var(--ta-fs-eyebrow);
@@ -442,4 +441,15 @@
   color: var(--ta-dim);
   border-color: var(--ta-seam);
   cursor: not-allowed;
+}
+
+.ta-trade-hub__meter-card { min-width: 0; }
+.ta-trade-hub__meter-label, .ta-trade-hub__meter-val { white-space: nowrap; }
+.ta-trade-hub__content { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: var(--ta-s2); }
+.ta-trade-hub__column { display: flex; flex-direction: column; gap: var(--ta-s2); min-width: 0; }
+.ta-selection-details .ta-trade-hub { clip-path: none; border: 0; padding: 0; white-space: normal; }
+.ta-trade-hub button { box-sizing: border-box; min-height: 28px; padding: var(--ta-s1) var(--ta-s2); font-size: var(--ta-fs-label); }
+.ta-trade-hub .ta-trade-hub__amount-input { min-height: 28px; padding: var(--ta-s1) var(--ta-s2); }
+@media (max-width: 800px) {
+  .ta-trade-hub__content { grid-template-columns: 1fr; }
 }

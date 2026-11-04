@@ -1,3 +1,4 @@
+import { setRangeProgress } from '../shared/progress';
 import {
   RESOURCE_FAMILIES,
   RESOURCE_FAMILY_OF,
@@ -7,7 +8,6 @@ import {
 } from '@terra/contracts';
 import type { FeatureContext } from '../../core/registry/types';
 import '../../net/services';
-import { clampPct } from '../shared/dom';
 import {
   computeTransferBounds,
   formatCargoCount,
@@ -379,20 +379,13 @@ export class TradeHubForms {
       return false;
     }
 
-    const sendAmount = Math.max(0, Math.floor(this.amount));
+    let sendAmount = Math.max(0, Math.floor(this.amount));
     if (sendAmount <= 0) return false;
 
     const tab = this.callbacks.getTab();
-    if (tab === 'export') {
-      const tpRem = Math.max(0, resolved.throughputCapPerMin - resolved.throughputUsedPerMin);
-      const byRes = resolved.todayMintedByResource?.[this.selectedResource] ?? resolved.todayMinted ?? 0;
-      const dailyRem = Math.max(0, resolved.dailyCap - byRes);
-      if (sendAmount > tpRem) {
-        this.callbacks.onError?.('mint_cap', `Throughput limit reached (${resolved.throughputCapPerMin} / min) — retry in 60s`, 60);
-      } else if (sendAmount > dailyRem) {
-        this.callbacks.onError?.('mint_cap', `Daily export limit reached (${resolved.dailyCap} / day) — retry in 86400s`, 86400);
-      }
-    }
+    const bounds = computeTransferBounds(resolved, tab, this.selectedResource);
+    if (tab === 'import') sendAmount = Math.min(sendAmount, bounds.capBound);
+    if (sendAmount <= 0 || sendAmount > bounds.maxAmount) return false;
 
     const commandKind = tab === 'export' ? 'cargo.export' : 'cargo.import';
     const payload = { resource: this.selectedResource, amount: sendAmount };
@@ -400,10 +393,12 @@ export class TradeHubForms {
 
     if (ctx?.services.sendCommand) {
       void ctx.services.sendCommand(commandKind, payload);
+      this.userSetAmount = false;
       return true;
     }
     if (ctx?.services.store?.sendCommand) {
       ctx.services.store.sendCommand(commandKind, payload);
+      this.userSetAmount = false;
       return true;
     }
     return false;
@@ -442,12 +437,11 @@ export class TradeHubForms {
     }
 
     const sliderVal = Math.max(0, Math.min(this.amount, bounds.maxAmount));
-    const sliderPct = clampPct(sliderVal, bounds.maxAmount);
     this.sliderEl.setAttribute('max', String(bounds.maxAmount));
     this.sliderEl.setAttribute('data-slider-max', String(bounds.maxAmount));
     this.sliderEl.setAttribute('data-stock-max', String(bounds.availableAmount));
     this.sliderEl.setAttribute('data-cap-max', String(bounds.capBound));
-    (this.sliderEl.style as unknown as Record<string, string>)['--val'] = `${sliderPct.toFixed(1)}%`;
+    setRangeProgress(this.sliderEl, sliderVal, bounds.maxAmount);
     this.sliderEl.disabled = !resolved.hubOnline || bounds.maxAmount <= 0;
     this.updateDisabledReason(this.sliderEl, resolved.hubOnline);
     this.lastSliderStr = String(sliderVal);
@@ -472,7 +466,8 @@ export class TradeHubForms {
     this.previewEl.textContent = previewText;
 
     this.confirmBtnEl.textContent = isExport ? 'CONFIRM EXPORT' : 'CONFIRM IMPORT';
-    const disabled = !resolved.hubOnline || this.amount <= 0;
+    const effectiveAmount = isExport ? this.amount : Math.min(this.amount, bounds.capBound);
+    const disabled = !resolved.hubOnline || effectiveAmount <= 0 || effectiveAmount > bounds.maxAmount;
     this.confirmBtnEl.disabled = disabled;
     this.confirmBtnEl.setAttribute('data-disabled', String(disabled));
     this.updateDisabledReason(this.confirmBtnEl, resolved.hubOnline);

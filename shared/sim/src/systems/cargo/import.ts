@@ -10,7 +10,7 @@ import type { StepContext } from '../../kernel/context';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { ensureColonyLedger, remainingFamilyCap } from '../economy/ledger';
 import { ensureColonyCargoState, type ColonyCargoState } from './state';
-import { getColonyTradeHubStatus, recordColonyTradeHubTransfer } from './trade-hub';
+import { getColonyTradeHubStatus } from './trade-hub';
 
 export interface CargoImportCommandArgs {
   colonyId?: string;
@@ -90,7 +90,7 @@ function applyCargoImportRequest(
     atTick: ctx.tick,
   };
 
-  recordColonyTradeHubTransfer(state, colonyIndex, clampedAmount, ctx.tick, ctx.data);
+  // Mint pacing applies to exports only; importing must not spend the export allowance.
   colony.changedAt = ctx.tick;
 
   const playerId = (colony.playerId as string | undefined) ?? cmdPlayerId ?? '';

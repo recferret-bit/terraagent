@@ -1034,16 +1034,36 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 
 ## W10 Cargo & Trade Hub (2026-11-03)
 
-### FF-66 · W10 Cargo & Trade Hub deferred scope (shuttle VFX, history, analytics/telemetry, mobile, send-to-account) and T1 250/min throughput in demo step 3
+### FF-66 · W10 Cargo & Trade Hub deferred scope (dedicated shuttle model, history, analytics/telemetry, mobile, send-to-account) and T1 250/min throughput in demo step 3
 
 - **Status:** Accepted (by wave scope `docs/plan/waves/W10-cargo-trade-hub.md`)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/data/trade-hub.ts`, `shared/sim/src/systems/cargo/`, `frontend/game/features/trade-hub/`, `tests/e2e/w10.spec.ts`, `docs/plan/waves/W10-cargo-trade-hub.md`
 - **What happens:**
-  1. **Deferred W10 issues (non-`H` and `H+`):** per `docs/plan/waves/W10-cargo-trade-hub.md` (§ Hackathon slice), the 21 `H`-tagged issues (`W10-01..14`, `W10-16`, `W10-19..22`, `W10-26`, `W10-30`) ship in this wave. `W10-15` (rocket carry-over hook for W21), `W10-17..18` (`ship.cargoShuttle` archetype and shuttle launch/land VFX), `W10-23` (`H+` history/event-log rows for W12), `W10-24..25` (analytics funnel & Prometheus cargo telemetry), `W10-27..29` (mobile bottom sheet, `sim:bench` case, `ENVS.md` docs), and `W10-31` (`H+` send-to-account `cargo.transfer`) remain deferred.
+  1. **Deferred W10 issues (non-`H` and `H+`):** per `docs/plan/waves/W10-cargo-trade-hub.md` (§ Hackathon slice), the 21 `H`-tagged issues (`W10-01..14`, `W10-16`, `W10-19..22`, `W10-26`, `W10-30`) ship in this wave. `W10-15` (rocket carry-over hook for W21), `W10-23` (`H+` history/event-log rows for W12), `W10-24..25` (analytics funnel & Prometheus cargo telemetry), `W10-27..29` (mobile bottom sheet, `sim:bench` case, `ENVS.md` docs), and `W10-31` (`H+` send-to-account `cargo.transfer`) remain deferred.
   2. **T1 throughput (`250/min`) vs Demo Story step 3 prose (`300`):** `docs/plan/waves/W10-cargo-trade-hub.md` Demo Story step 3 says "Export 300 metals" while step 5 says "at T1 throughput (250/min)", and both `colony-economy-and-buildings-spec.md` §3.5 and `W10-02` / `W10-06` define a single online T1 Trade Hub's rolling 60-second throughput cap as `250 units/min`. Accordingly, a single T1 Trade Hub bounds a single export to `250` (`metals.t1`: `900 → 650` on export, `0 → 250` in orbit, then `150` imported back to `800` stock and `100` in orbit).
 - **Why it is like this:** `W10-02` and `W10-06` enforce the economy spec's `250/min` T1 throughput cap (`TRADE_HUB_THROUGHPUT_PER_MIN[1] = 250`).
 - **Workaround / mitigation:** `tests/e2e/w10.spec.ts` and `docs/plan/checks/w10-check.md` use `250` for the T1 export and `150` for the import (leaving the same `100` in orbit as the `300 − 200` prose).
 - **To resolve:** implement the non-`H` / `H+` issues when their waves open.
 - **Found:** 2026-11-03, W10 wave lead
+
+### FF-67 · Cargo flights reuse the colony pod and are cosmetic
+
+- **Status:** Accepted (W10 fixes, 2026-11-04)
+- **Area / code:** `frontend/game/features/trade-hub/CargoFlights.ts`, `frontend/render/visuals/space/CargoFlight.ts`
+- **What happens:** accepted exports launch a pod and settled imports land one at the Trade Hub. The flight reuses `ship.dropPod` and the existing retro-engine shader; no separate cargo-shuttle archetype is introduced. Settlement and the rolling export allowance follow authoritative sim state, independently of the six-second visual flight.
+- **Why it is like this:** reuse preserves the established renderer and keeps financial settlement independent of frame rate or a closed browser. The previous FF-66 launch/land deferral is resolved by this change; the dedicated shuttle design remains deferred.
+- **Workaround / mitigation:** the panel shows authoritative balances, pending transfers and errors; reconnecting does not replay past flights.
+- **To resolve:** introduce a dedicated cargo-shuttle design when distinct spacecraft silhouettes are needed.
+- **Found:** 2026-11-04, W10 fixes.
+
+### FF-68 · Fix trading-spot shuttle animation
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/trade-hub/CargoFlights.ts`, `frontend/render/visuals/space/CargoFlight.ts`, Trade Hub cargo pad.
+- **What happens:** the owner requested a follow-up fix for the trading-spot shuttle animation after checking W10. The current launch/landing implementation remains in place; its animation is not considered finished.
+- **Why it is like this:** the owner explicitly chose to record this remaining issue and land W10, deferring the animation fix.
+- **Workaround / mitigation:** export/import settlement and throughput use authoritative simulation state independently of the cosmetic flight (FF-67).
+- **To resolve:** reproduce the animation at the Trade Hub during exports and imports, correct its launch/landing behavior and pad alignment as needed, then visually verify both directions with the owner.
+- **Found:** 2026-11-04, owner review and instruction to land W10 with this follow-up open.
