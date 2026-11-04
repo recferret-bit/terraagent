@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "baseline-two-colony",
+  "version": 1,
+  "description": "The W13 seed layout: Port A (water-rich seller) and Port B (water-poor buyer), each an S2 colony with an online Trade Hub, trading under the baseline profile.",
+  "waves": "..13",
+  "populations": [{ "cohort": "specialist", "colonies": 2, "params": {} }],
+  "shocks": [],
+  "assumptions": {
+    "baseScenario": "w13",
+    "tradeResources": ["bio.water", "bio.biomass", "metals.t1", "minerals.t1"],
+    "gates": [
+      { "gateId": "econ.position_nonnegative", "gateVersion": 1, "metricKey": "inventory.position", "scope": "global", "resource": "bio.water", "aggregate": "min", "op": "gte", "threshold": "0" }
+    ]
+  }
+}

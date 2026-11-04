@@ -1,0 +1,18 @@
+{
+  "schemaVersion": 1,
+  "id": "mature-flat-population",
+  "version": 1,
+  "description": "Two mature colonies with stocked storage and a flat population (no growth): the specialists trade smaller lots against a deeper inventory.",
+  "waves": "..13",
+  "populations": [{ "cohort": "mature-flat", "colonies": 2, "params": { "populationGrowthBp": 0 } }],
+  "shocks": [],
+  "assumptions": {
+    "baseScenario": "w13",
+    "tradeResources": ["bio.water", "bio.biomass", "metals.t1", "minerals.t1"],
+    "stockGrants": { "0": { "bio.water": 1200, "metals.t1": 900 }, "1": { "minerals.t1": 900, "bio.biomass": 700 } },
+    "behavior": { "exportLot": 60, "buyLot": 40, "keepUnits": 250, "exportAbove": 400, "buyBelow": 350 },
+    "gates": [
+      { "gateId": "econ.position_nonnegative", "gateVersion": 1, "metricKey": "inventory.position", "scope": "global", "resource": "bio.water", "aggregate": "min", "op": "gte", "threshold": "0" }
+    ]
+  }
+}
