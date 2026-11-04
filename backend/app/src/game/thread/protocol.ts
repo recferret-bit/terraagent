@@ -97,6 +97,12 @@ export type ToThread =
   | { readonly t: 'tune'; readonly planetId: string; readonly reqId: number; readonly req: TuneRequest }
   /** Seating (LED-14): where colony `colony` would land now. Answered with `landingSite`. */
   | { readonly t: 'landingSite'; readonly planetId: string; readonly reqId: number; readonly colony: number }
+  /**
+   * Economy profile swap (W13-39): `overrides` is the new thread base (file ⊕ env ⊕ active profile). Every loaded planet
+   * rebuilds its pipeline from it once its tick reaches `effectiveTick` (later loads use it at once). Answered with
+   * `profileScheduled` (stored) and, per planet, `profileApplied`.
+   */
+  | { readonly t: 'profile'; readonly reqId: number; readonly overrides: BalanceOverrides; readonly effectiveTick: number; readonly profileHash: string }
   | ({ readonly t: 'ctl' } & CtlOp);
 
 export interface PlanetStats {
@@ -140,6 +146,8 @@ export type FromThread =
   | { readonly t: 'warp'; readonly planetId: string; /** effective warp */ readonly k: number; readonly requested: number }
   | { readonly t: 'fullState'; readonly planetId: string; readonly reqId: number; readonly tick: number; readonly warp: number; readonly bytes: Uint8Array; readonly simVersion: number; readonly dataHash: string; readonly planetType: string; readonly overrides?: BalanceOverrides }
   | { readonly t: 'tuned'; readonly planetId: string; readonly reqId: number; readonly ok: boolean; readonly dataHash: string; readonly overrides: BalanceOverrides; readonly text?: string; readonly error?: string }
+  | { readonly t: 'profileScheduled'; readonly thread: number; readonly reqId: number; readonly profileHash: string; readonly planets: number }
+  | { readonly t: 'profileApplied'; readonly planetId: string; readonly tick: number; readonly profileHash: string; readonly dataHash: string }
   | { readonly t: 'stats'; readonly thread: number; readonly reqId: number; readonly planets: PlanetStats[]; readonly steps: number; readonly maxLag: number; readonly recentPasses: PassStat[] }
   | { readonly t: 'landingSite'; readonly planetId: string; readonly reqId: number; readonly answer: LandingSiteAnswer }
   /**

@@ -21,6 +21,10 @@ interface Planet {
   pipeline: Pipeline;
   /** Balance overrides (D-35): `base` = file ⊕ scenario, `live` = dev tunes. */
   tuning: PlanetTuning;
+  /** Scenario overrides of the load, kept so a profile swap can rebuild `tuning.base` (swap ⊕ scenario). */
+  scenario: BalanceOverrides;
+  /** Economy profile waiting for its effective tick (W13-39). */
+  pendingProfile?: { readonly overrides: BalanceOverrides; readonly effectiveTick: number; readonly profileHash: string };
   pending: SimCommandV1[];
   subscribed: boolean;
   /** Tick of the last delta sent (or of the subscription); the next delta starts here (D-31). */
@@ -64,10 +68,13 @@ export class PlanetHost {
     private readonly sched?: SchedulerView,
     private readonly opts: HostOptions = {},
   ) {
+    this.threadOverrides = opts.overrides ?? {};
     this.deltaIntervalMs = 1000 / (opts.deltaHz && opts.deltaHz > 0 ? opts.deltaHz : 5);
     this.now = opts.now ?? (() => performance.now());
   }
 
+  /** File ⊕ env ⊕ active profile base of every planet loaded on this thread; replaced by a `profile` message. */
+  private threadOverrides: BalanceOverrides;
   private readonly deltaIntervalMs: number;
   private readonly now: () => number;
 
@@ -99,6 +106,7 @@ export class PlanetHost {
       }
       case 'snapshotNow': return this.snapshotNow(msg.planetId);
       case 'fullState': return this.fullState(msg.planetId, msg.reqId);
+      case 'profile': return this.scheduleProfile(msg);
       case 'tune': return this.tune(msg.planetId, msg.reqId, msg.req);
       case 'landingSite': return this.landingSite(msg.planetId, msg.reqId, msg.colony);
       case 'ctl': return this.ctl(msg);
@@ -118,10 +126,11 @@ export class PlanetHost {
         });
     const modules = this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined;
     const flags = msg.flags ?? this.flags;
-    const base = mergeOverrides(this.opts.overrides ?? {}, msg.overrides ?? {});
+    const scenario = msg.overrides ?? {};
+    const base = mergeOverrides(this.threadOverrides, scenario);
     const pipeline = buildPipeline(flags, base, modules);
     this.planets.set(msg.planetId, {
-      state, pipeline, tuning: { flags, base, live: {} }, pending: [], subscribed: false, lastDeltaTick: state.meta.tick, nextDeltaMs: 0, windowEvents: [], deltaMs: 0, deltaBytes: 0,
+      state, pipeline, scenario, tuning: { flags, base, live: {} }, pending: [], subscribed: false, lastDeltaTick: state.meta.tick, nextDeltaMs: 0, windowEvents: [], deltaMs: 0, deltaBytes: 0,
       ...(flags.includes('W02') ? { production: new ProductionBatches(state) } : {}),
     });
     const stocks = Array.from({ length: state.colonies?.length ?? 0 }, (_, i) => getColonyStock(state, i));
@@ -145,6 +154,7 @@ export class PlanetHost {
   stepPlanet(planetId: string, dt: number): boolean {
     const p = this.planets.get(planetId);
     if (!p) return true;
+    this.applyProfileIfDue(planetId, p);
     const cmds = p.pending.splice(0);
     let r: ReturnType<typeof step>;
     try {
@@ -182,6 +192,38 @@ export class PlanetHost {
       if (!answered.has(c.commandId)) this.post({ t: 'reject', planetId, commandId: c.commandId, code: 'internal' });
     }
     this.post({ t: 'planetFailed', planetId, message: e instanceof Error ? e.message : String(e) });
+  }
+
+  /** `profile` message: remember the new thread base, arm every loaded planet and acknowledge (applied at the effective tick). */
+  private scheduleProfile(msg: Extract<ToThread, { t: 'profile' }>): void {
+    this.threadOverrides = msg.overrides;
+    for (const [planetId, p] of this.planets) {
+      p.pendingProfile = { overrides: msg.overrides, effectiveTick: msg.effectiveTick, profileHash: msg.profileHash };
+      this.applyProfileIfDue(planetId, p);
+    }
+    this.post({ t: 'profileScheduled', thread: this.thread, reqId: msg.reqId, profileHash: msg.profileHash, planets: this.planets.size });
+  }
+
+  /**
+   * Swaps a planet to the pending economy profile once its tick reached the effective tick: the pipeline is rebuilt from the
+   * profile ⊕ scenario ⊕ live tunes, state is kept, and a `dev.tuned` reset event (new dataHash) makes subscribed clients
+   * fetch a fresh welcome, which carries the new overrides. A profile that fails to compile leaves the planet untouched.
+   */
+  private applyProfileIfDue(planetId: string, p: Planet): void {
+    const pp = p.pendingProfile;
+    if (!pp || p.state.meta.tick < pp.effectiveTick) return;
+    p.pendingProfile = undefined;
+    try {
+      const base = mergeOverrides(pp.overrides, p.scenario);
+      const pipeline = buildPipeline(p.tuning.flags, mergeOverrides(base, p.tuning.live), this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined);
+      p.pipeline = pipeline;
+      p.tuning = { flags: p.tuning.flags, base, live: p.tuning.live };
+      const dataHash = pipeline.config.data.hash;
+      this.publish(planetId, p, [{ kind: 'dev.tuned', severity: 'info', colonyIds: [], data: { op: 'reset', dataHash }, atTick: p.state.meta.tick }]);
+      this.post({ t: 'profileApplied', planetId, tick: p.state.meta.tick, profileHash: pp.profileHash, dataHash });
+    } catch (e) {
+      this.post({ t: 'error', thread: this.thread, planetId, message: `profile ${pp.profileHash}: ${e instanceof Error ? e.message : String(e)}` });
+    }
   }
 
   /** Reply to `landingSite`: the landing planner on the live state, with the planet's compiled data (LED-14). */
