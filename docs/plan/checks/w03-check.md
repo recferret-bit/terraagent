@@ -1,6 +1,6 @@
 # W03 — The Grid: owner check
 
-> The wave's demo story ([`waves/W03-the-grid.md`](../waves/W03-the-grid.md)) as a hands-on checklist. Format and rules: [`README.md`](./README.md). About 15 minutes.
+> The wave's demo story ([`waves/W03-the-grid.md`](../waves/W03-the-grid.md)) as a hands-on checklist. Format and rules: [`README.md`](./README.md). About 25 minutes. Updated 2026-11-04 after the owner-feedback pass (W04 merged in, power zones, HQ-cell night store and energy retune, single Power Pylon card, grid cables, timed dismantle, crews, unit supply).
 
 ## Before you start
 
@@ -21,7 +21,8 @@
   - **Solar Array T1** (`#3`) at `(-3, 2)`
   - **HQ Drone** (`#4`) at `(2, -1)`
   - **2 Harvesters** (`#5`, `#6`) at `(2, 2)` and `(-2, 2)`
-  - **Distant Minerals Deposit** at `(10, 0)` (outside the Hub's 3-tile grid radius)
+  - **Distant Minerals Deposit** at `(10, 0)` (outside the Hub's power zone)
+- **Power zones (new):** only the **Command Hub** may stand anywhere. Every other building, Power Pylons included, must stand inside a **power zone**: 6 tiles around the Hub, 5 tiles around each Power Pylon. Outside it the game refuses with **"outside the power zone"**. The zone is drawn in **blue** on the ground while a building card is armed.
 - Every tool used below is described in [`docs/dev/DEV_TOOLS.md`](../../dev/DEV_TOOLS.md).
 
 ---
@@ -30,157 +31,154 @@
 
 ### 1. Morning colony from the end of W02
 - **Open:** `http://127.0.0.1:5273/play.html?scenario=w03`
-- **See on map:** A temperate hex planet at `06:00` morning with a finished **Command Hub T1** at `(0, 0)`, **Metals Extractor T1** at `(3, 0)`, **Solar Array T1** at `(-3, 2)`, **HQ Drone** at `(2, -1)`, and **2 Harvesters** at `(2, 2)` and `(-2, 2)`.
+- **See on map:** A temperate hex planet at `06:00` morning with a finished **Command Hub T1** at `(0, 0)`, **Metals Extractor T1** at `(3, 0)`, **Solar Array T1** at `(-3, 2)`, **HQ Drone** at `(2, -1)`, and **2 Harvesters** at `(2, 2)` and `(-2, 2)`. Dark cables run from the Hub to the Extractor and the Solar, with **cyan lightning pulses** travelling outward along them.
 - **See in top bar:**
-  - **Metals:** `400 / 500`
-  - **Minerals:** `250 / 500`
-  - **Bio:** `400 / 500` (hover shows `Biomass: 200 · Water: 200`)
-  - **Supply:** `2 / 10`
-  - **HQ Power Cell:** `800 / 800 E` (hover shows **`Income (Supply): +28 E/s`**, **`Spending (Demand): −15 E/s`**, **`Net: +13 E/s`**)
+  - **Metals:** `400 / 500` · **Minerals:** `250 / 500` · **Bio:** `400 / 500` (hover: `Biomass: 200 · Water: 200`)
+  - **Supply:** `2 / 10` (hover: `Units: 2`, `In production: 0`, `Command Hub ×1 +10`)
+  - **HQ Power Cell:** `800 / 800 E`; hover shows **`Income (Supply): +29 E/s`**, **`Spending (Demand): −19 E/s`**, **`Net: +10 E/s`** (no `Stored` line while the cell is full)
   - **Planet clock:** **`☀ 06:00 100%`**
+- **Optional:** dev console (**`` ` ``**) → `power` → `supply 29 (core 16, solar 13 …)`, `demand 19 (buildings 15, units 4)`.
 
-### 2. Produce a Builder drone at the Hub & run 2 constructions in parallel
+### 2. Produce a Builder Drone at the Hub & run 2 constructions in parallel
 - **Do (queue Builder):**
-  1. Press **`U`** (or click **`PRODUCTION [U]`** in the bottom-left Command Dock).
-  2. Click **Builder Drone** (`55 Metals · 25 Minerals · 10 Biomass · 12s`).
-  3. Open the dev console (**`` ` ``**), run `warp 10`, and press **`` ` ``** to close it.
-- **See:** After ~1.2 s, the **Builder Drone** rolls out from the Hub edge (`Supply: 3 / 10`).
+  1. Press **`U`** (or click **`PRODUCTION [U]`**). The Builder Drone card shows its cost and **`Supply 1`**.
+  2. Click **Builder Drone**, then open the dev console (**`` ` ``**), run `warp 10`, and close it with **`` ` ``**.
+- **See:** After ~1–2 s the **Builder Drone** rolls out of the Hub; the top bar reads **`Supply: 3 / 10`**.
 - **Do (parallel build):**
-  1. Press **`B`** (or click **`BUILD [B]`**).
-  2. Click **Power Pylon** (`15 Metals · 5 Minerals · 4s`) and click a flat hex to the east, e.g. `(4, -2)`.
-  3. Click **Power Pylon** again and click a flat hex to the west, e.g. `(-4, -2)`.
-- **See:** Both Construction orders go **`IN PROGRESS`** at the same time — the **HQ Drone** and the **Builder Drone** each take one site and build both pylons in parallel.
-- **Reset speed:** Open dev console (**`` ` ``**) and run `warp 1`.
+  1. Press **`B`**, click **Power Pylon** (`15 Metals · 5 Minerals · −2.5 E/s`) — the **blue power zone** appears on the ground around the Hub.
+  2. Click `(4, -2)`; click **Power Pylon** again and click `(-4, -2)`.
+- **See:** Both orders go **`IN PROGRESS`** at the same time — the HQ Drone and the Builder each take one site. When a pylon finishes, a cable with lightning pulses connects it.
+- **Reset speed:** `warp 1`.
 
-### 3. Power-Line drag tool (3 pylons = 1 queue entry)
+### 3. Power zones: one Power Pylon card, the zone grows pylon by pylon
 - **Do:**
-  1. Press **`B`** to open the Construction menu and click **Power Line** (`Chain (≤6 span) · 4s · −0.5 E/s / pylon · 15 Metals · 5 Minerals`).
-  2. Click-and-drag (or click start then end) from **`(3, -1)`** east toward **`(9, -1)`** (just west of the distant minerals deposit at `(10, 0)`).
+  1. Press **`B`** and look at the cards: there is **one** power-node card, **Power Pylon** (no separate "Power Line" tool any more).
+  2. Click **Solar Collector Array** and hover far east, e.g. `(9, 0)`: the ghost is **red** and says **"outside the power zone"**; hover inside the blue area: it turns **green**. Press **Esc**: the blue zone disappears.
+  3. Click **Power Pylon** and place it at `(3, -1)` (inside the Hub zone). Without waiting, place two more at `(6, -1)` and `(9, -1)` — each queued pylon already extends the blue zone, so the next one is accepted.
 - **See:**
-  - While dragging: a chain of **3 auto-spaced pylon ghosts** (`(3, -1)`, `(6, -1)`, `(9, -1)`) previews the span (`≤ 6` tiles per hop) and total cost (`45 Metals · 15 Minerals`).
-  - After confirming: click the **`QUEUE`** tab → **1 single Construction entry** appears for the entire chain (**`Power Line (×3)`**) instead of 3 separate queue rows, and workers build the sub-sites in sequence (`warp 10` speeds it up).
-  - *(Note: the `P` 3D power-arc overlay is `W03-18` (`H+`, deferred); in the H slice, inspect grid nodes via the top-right building inspector or the `power` dev console command.)*
+  - The **`QUEUE`** tab shows three separate **`Power Pylon T1`** orders.
+  - The blue zone visibly grows around every pylon you place.
+  - `warp 20` until they are built → cables with cyan lightning link Hub → (3,-1) → (6,-1) → (9,-1). `warp 1`.
 
-### 4. Distant Minerals Quarry: `OFFLINE: NO GRID` → `ONLINE` when connected
-- **Do (build disconnected Quarry first):**
-  1. Open a fresh scenario (`http://127.0.0.1:5273/play.html?scenario=w03`) so the east power line isn't built yet.
-  2. Press **`B`**, click **Minerals Quarry** (`2×2 · 16s · −8 E/s · 75 Metals · 30 Minerals · 5 Biomass · 15 Water`), and place it on the distant minerals deposit at **`(10, 0)`** (beyond the Hub's 3-tile connection radius).
-  3. Run `warp 20` in the dev console (**`` ` ``**) until the Quarry finishes building, then click the Quarry at `(10, 0)`.
-- **See (disconnected):** The top-right building inspector reads **`OFFLINE: NO GRID`** (`offline: no grid`) and Minerals income does not increase.
-- **Do (connect the grid):**
-  1. Press **`B`**, select **Power Line**, and drag/place the 3-pylon chain from **`(3, -1)`** to **`(9, -1)`** (bridging the Hub at `(0, 0)` to the Quarry at `(10, 0)`).
-- **See (connected):** As soon as the 3 pylons finish, the Quarry at `(10, 0)` automatically switches to **`ONLINE`** in the top-right inspector and the **Minerals** chip income rises by **`+0.75/s`**.
+### 4. Distant Minerals Quarry: refused outside the zone → online inside it → offline when the bridge is lost
+- **Do (refused):**
+  1. Open a fresh `http://127.0.0.1:5273/play.html?scenario=w03`.
+  2. Press **`B`**, click **Minerals Quarry** (`−10 E/s`) and try to place it on the deposit at `(10, 0)`.
+- **See:** It is refused — red toast **`Rejected: Outside the power zone (build a Power Pylon to extend it)`**.
+- **Do (connect):**
+  1. Place **Power Pylons** at `(3, -1)`, `(6, -1)`, `(9, -1)` as in step 3, then place the **Minerals Quarry** at `(10, 0)` — now accepted.
+  2. Run `warp 20` until everything is built, then `warp 1`, and click the Quarry.
+- **See:** The Quarry's inspector shows **`ONLINE`**; a cable runs to it; Minerals income rises. The energy hover now shows the grid running a small deficit by day (about `Income +29`, `Spending −36.5`) and a **`Stored: −7.5 E/s (draining)`** line: this is **expected** with the new, stricter power budget — build a Wind Turbine / Solar (step 5) to fix it.
+- **Do (lose the bridge):** click the pylon at `(6, -1)`, read its `#id` in the bottom selection bar, and run `damage <id> 100`.
+- **See:** The Quarry turns **`OFFLINE: NO GRID`** and its cable goes dark. *(A destroyed pylon is not auto-repaired or rebuilt — recorded as GP-72.)*
 
-### 5. Supply Depot (`500` → `1 500` cap), Wind Turbine & Capacitor Bank
+### 5. Supply Depot (`500` → `1 500` caps, supply `10` → `18`), Wind Turbine & Capacitor Bank
 - **Do:**
-  1. Press **`B`**, select **Supply Depot** (`2×2 · 12s · −2 E/s · 60 Metals · 25 Minerals · 10 Biomass`), and place it at **`(-3, -3)`** (use `warp 20` to finish quickly).
-  2. Optionally place a **Wind Turbine** (`+15 E/s`) at **`(0, -4)`** and a **Capacitor Bank** (`1500 E`) at **`(3, -3)`**.
+  1. Press **`B`**, select **Supply Depot** (`2×2 · −3 E/s`) and place it at `(-3, -3)`; `warp 20` until it is built.
+  2. Place a **Wind Turbine** (`+12 E/s`) at `(0, -4)` and a **Capacitor Bank** (`−2 E/s · 1500 E`) at `(3, -3)`.
 - **See:**
-  - When the **Supply Depot** completes, all three top-bar resource family caps jump from **`/ 500`** to **`/ 1500`** (`Metals … / 1500`, `Minerals … / 1500`, `Bio … / 1500`).
-  - Open the dev console (**`` ` ``**) and run `power` → **see** wind output (`setWind 0..1` adjusts wind factor) and capacitor stored energy charging toward `1500 E`.
+  - When the Depot completes: all three resource caps go **`/ 500` → `/ 1500`**, and **`Supply: … / 18`** (hover: `Supply Depot ×1 +8`).
+  - Dev console `power` → wind output (it varies with the wind factor; `setWind 0..1` sets it) and the capacitor charging toward `1500 E`.
 
-### 6. Night brownout, Capacitor discharge & priority-group shedding
-- **Do:**
-  1. Open the dev console (**`` ` ``**) and run:
-     ```text
-     time night
-     ```
-  2. Then push grid demand above supply by running:
-     ```text
-     addLoad 200
-     ```
+### 6. Night: the HQ cell carries the colony; brownout only when the stores can't cover it
+- **Do:** on a fresh `http://127.0.0.1:5273/play.html?scenario=w03`, open the dev console and run `time night`. Watch for ~1 minute.
 - **See:**
-  - At `time night`: the planet clock switches to **`☾`**, Solar output drops to `0`, Wind holds steady, and any charged Capacitor discharges up to `30 E/s` to buffer the grid.
-  - With `addLoad 200` (once the Capacitor / HQ cell drains):
-    - The red alert banner at the top-right reads **`BROWNOUT — SHEDDING GROUP … · N E/s OFFLINE`** (shedding lower-priority groups first: `group 1` → `group 2` → `group 3`).
-    - Clicking a shed consumer (e.g. the **Metals Extractor** at `(3, 0)` or **Minerals Quarry** at `(10, 0)`) shows **`OFFLINE: BROWNOUT`** (`offline: brownout`) in the top-right building inspector.
-- **Reset:** Run `addLoad 0` and `time day` in the dev console.
+  - Clock switches to **`☾`**, Solar shows **`offline: night`** — but **no brownout banner**, the Extractor keeps working.
+  - The **HQ Power Cell** chip drains slowly: `800` → about `600` after ~70 s. Hover: **`Income +16`**, **`Spending −19`**, **`Net −3 E/s`**, **`Stored: −3 E/s (draining)`**.
+  - The cell lasts most of a night with working Harvesters (all night when they idle) and refills within ~70 s after sunrise.
+- **Do (force a brownout):** run `addLoad 200`.
+- **See:** Within a moment the top-right banner reads **`BROWNOUT — SHEDDING GROUP 3 · 8 E/S OFFLINE`** (the stores can give at most 30 E/s); clicking the **Metals Extractor** shows **`OFFLINE: BROWNOUT`**; its cable sputters amber.
+- **Optional:** `cell 0` instead of `addLoad`: with the HQ store empty, the night deficit sheds at once.
+- **Reset:** `addLoad 0`, `time day`.
 
 ### 7. Per-pylon max load (`> 80 E/s` on a T1 Pylon) & branch overload
 - **Do:**
-  1. Press **`B`**, place a **Power Pylon** (`1×1`) at **`(5, -1)`**, and place a **Water Extractor** (`2×2 · −7 E/s`) at **`(7, -1)`** so the Water Extractor attaches to the grid through the pylon at `(5, -1)`.
-  2. Run `warp 20` until both finish, then run in the dev console (**`` ` ``**):
-     ```text
-     addLoad 85
-     ```
-     *(This pushes flow through the T1 Pylon past its `80 E/s` max load while keeping the Command Hub below its `150 E/s` limit.)*
+  1. Place a **Power Pylon** at `(5, -1)` and a **Water Extractor** (`2×2 · −9 E/s`) at `(7, -1)` (it attaches through that pylon); `warp 20` until both finish.
+  2. Run `addLoad 85`.
 - **See:**
-  - The top-right alert banner reads **`POWER OVERLOAD — PYLON CAPACITY EXCEEDED`**.
-  - Clicking the **Power Pylon** at `(5, -1)` shows **`OVERLOAD`** (`91 / 80 E/s`) in the top-right inspector.
-  - Clicking the downstream **Water Extractor** at `(7, -1)` shows **`OFFLINE: OVERLOAD`** (`offline: overload`).
-- **Reset:** Run `addLoad 0` and `warp 1` in the dev console.
+  - Banner **`POWER OVERLOAD — PYLON CAPACITY EXCEEDED`**; the pylon at `(5, -1)` shows **`OVERLOAD`** (about `104.5 / 80 E/s`); its cable flickers crimson.
+  - The **Water Extractor** shows **`OFFLINE: OVERLOAD`**.
+- **Reset:** `addLoad 0`, `warp 1`. *(`addLoad` also drains the HQ cell; run `cell 800` afterwards.)*
 
-### 8. Building `#id` in the selection panel & auto-queued `1.5×` Builder repair
+### 8. Building `#id`, auto-repair that costs resources, crews that speed it up
 - **Do:**
-  1. Click the **Metals Extractor** at **`(3, 0)`**.
-  2. Look at the bottom selection bar → **see** the entity ID badge **`#2`** (`[data-testid="selection-entity-id"]`) next to `METALS EXTRACTOR T1`.
-  3. Open the dev console (**`` ` ``**) and run:
-     ```text
-     damage 2 60
-     ```
-     *(Damages entity `#2` by 60%, dropping its hull from `500 / 500 HP` to `200 / 500 HP`.)*
+  1. Order a **Builder Drone** (step 2) if you don't have one. Click the **Metals Extractor** at `(3, 0)`: the bottom bar shows the badge **`#2`**.
+  2. Note the Metals / Minerals values, then run `damage 2 60`.
 - **See:**
-  - Entity `#2`'s HP bar drops to `200 / 500` (40%).
-  - An auto-queued **`Repair #2`** order immediately appears in the Construction lane at `system` precedence.
-  - A **Builder Drone** (or HQ Drone) walks to `(3, 0)` and repairs it back to **`500 / 500 HP`** at the Builder's `1.5×` repair speed (`warp 10` speeds it up).
+  - HP drops to `200 / 500`; an auto-queued **`Repair #2`** appears in the Construction lane (`SYS`).
+  - A Builder walks to `(3, 0)` and repairs it to `500 / 500` (Builder works at `1.5×`).
+  - **New:** Metals / Minerals **drop a little while it repairs** (repair costs 40 % of the building cost × the missing HP share, paid as it goes; with an empty stock it waits on `resources`).
+  - **Crews:** with two Builders, both join and the repair finishes visibly faster for the same total cost (each extra worker adds 60 %, 36 %, … of its speed; max 4).
 
-### 9. `waiting: storage` & the interactive `Build Supply Depot (+1 000 cap)` button
+### 9. `waiting: storage` & the `Build Supply Depot (+1 000 cap)` button
 - **Do:**
-  1. Open a fresh scenario (`http://127.0.0.1:5273/play.html?scenario=w03`) where no Supply Depot is built yet (caps are `500`).
-  2. Open the dev console (**`` ` ``**) and run (keep the single quotes):
+  1. Fresh `http://127.0.0.1:5273/play.html?scenario=w03`. Dev console:
      ```text
      tune economyT1Basic.solar.cost '{"metals.t1":600,"minerals.t1":75,"bio.biomass":10,"bio.water":5}'
      ```
-  3. Press **`` ` ``** to close the console, press **`B`**, click **Solar Collector Array**, and place it at **`(5, -4)`**.
-  4. Click the **`QUEUE`** tab in the bottom-left Command Dock.
-- **See:**
-  - The queued Solar entry shows **`waiting: storage (no ETA)`** and an interactive button **`Build Supply Depot (+1 000 cap)`** (`[data-testid="queue-storage-hint"]`).
-  - Click **`Build Supply Depot (+1 000 cap)`** → the Command Dock automatically switches to the **`BUILD [B]`** tab with **Supply Depot** selected and the Supply Depot 2×2 placement ghost active on the map.
-- **Cleanup:** Cancel the test Solar entry (`×` in the Queue tab) and run `tune reset` in the dev console.
+  2. Close the console, press **`B`**, click **Solar Collector Array**, and place it at `(5, -4)`. Open the **`QUEUE`** tab.
+- **See:** the Solar entry shows **`waiting: storage (no ETA)`** with the button **`Build Supply Depot (+1 000 cap)`**; clicking it switches to **`BUILD [B]`** with the Supply Depot ghost armed (and the blue zone shown).
+- **Cleanup:** cancel the Solar entry (`×`) and run `tune reset`.
 
-### 10. Queue Panel v2: 4 lane tabs (`ALL`, `BUILD`, `TERRA`, `UNITS`, `HQ`) & 60 s earmark
+### 10. Queue Panel v2: lane tabs & 60 s earmark
 - **Do:**
-  1. Click the **`QUEUE`** tab in the Command Dock → **see** the lane filter tabs **`ALL`**, **`BUILD (0/20)`**, **`TERRA (0/20)`**, **`UNITS (0/10)`**, and **`HQ (0/1)`**.
-  2. Open the dev console (**`` ` ``**) and drain water to `0` (Harvesters only gather Metals and Minerals, so Water will stay at `0`):
-     ```text
-     fill bio.water 0
-     ```
-  3. Press **`B`**, select **Solar Collector Array** (which costs `5 Water`), and place it at **`(5, -4)`**.
-  4. Switch back to the **`QUEUE`** tab → the entry reads **`waiting: Bio 0/5`**.
-  5. Open the dev console (**`` ` ``**) and run `warp 20` for ~3 real seconds (60 s of game time), then `warp 1`.
-- **See:**
-  - After 60 s of game time waiting on a missing resource, the entry **earmarks** its required resources (`earmarked: Water 5`).
-  - A summary bar (`[data-testid="queue-earmark-bar"]`) appears at the top of the Queue panel reading **`Earmarked: Water 5`**, reserving that resource against lower-precedence orders.
+  1. **`QUEUE`** tab → lane tabs **`ALL`**, **`BUILD (0/20)`**, **`TERRA (0/20)`**, **`UNITS (0/10)`**, **`HQ (0/1)`**.
+  2. Dev console `fill bio.water 0`; **`B`** → **Solar Collector Array** at `(5, -4)`; back to **`QUEUE`** → **`waiting: Bio 0/5`**.
+  3. `warp 20` for ~3 real seconds, then `warp 1`.
+- **See:** the entry earmarks **`earmarked: Water 5`** and the bar **`Earmarked: Water 5`** appears at the top of the Queue panel.
 
 ### 11. Night Survived & Night Shift progression *(deferred)*
-- Deferred: `W03-15` (Night Survived toast & Night Shift progression card) and `W03-25` (grid-overload lightning arcs) are outside the 15-issue H slice (recorded in [`docs/questions-and-limitations/cross-cutting.md`](../../questions-and-limitations/cross-cutting.md) `XC-34`).
+- Deferred: `W03-15` and `W03-25` are outside the H slice (`XC-34`). The lightning on grid cables (owner feedback) now covers the "grid arcs" visual.
 
 ### 12. Earlier waves stay clean (`?waves=..02`)
 - **Open:** `http://127.0.0.1:5273/play.html?scenario=w03&waves=..02`
-- **See:** The W02 game without any W03 UI:
-  - No four-lane tab bar (`[data-testid="queue-lane-tabs"]`) in the Queue panel
-  - No W03 building cards (**Power Pylon**, **Power Line**, **Capacitor Bank**, **Wind Turbine**, **Thermal Plant**, **Supply Depot**, **Minerals Quarry**, **Water Extractor**, **Petroleum Well**) in the **`BUILD [B]`** tab
-  - No **Builder Drone** card in the **`PRODUCTION [U]`** tab
+- **See:** no lane tab bar in the Queue panel, no W03 building cards (**Power Pylon**, **Capacitor Bank**, **Wind Turbine**, **Thermal Plant**, **Supply Depot**, **Minerals Quarry**, **Water Extractor**, **Petroleum Well**) under **`BUILD [B]`**, no **Builder Drone** under **`PRODUCTION [U]`**.
+
+### 13. Unit supply (owner feedback #2)
+- **Do:** fresh `http://127.0.0.1:5273/play.html?scenario=w03`; press **`U`** and queue **Harvesters** one by one (8 in total); `warp 20`.
+- **See:**
+  - The top-bar **Supply** chip counts up: `3 / 10` … it turns **orange at `8 / 10`** and **red at `10 / 10`**; hover shows `Units`, `In production` and the cap sources.
+  - At the cap the Harvester's **QUEUE** button is disabled with **"Supply cap reached — build a Supply Depot"**; a queued Harvester waits with **`waiting: supply`** and a **`BUILD SUPPLY DEPOT`** button.
+  - Build a **Supply Depot** (step 5): when it is finished and powered the chip shows **`… / 18`** and the waiting Harvester starts.
+- **Optional (host validation):** in the browser DevTools console, at the cap: `__online.commands.send('enqueueTask',{task:{kind:'buildUnit',unit:'harvester'}})` → toast **"Supply cap reached — build a Supply Depot"** (`supply_cap`).
+
+### 14. Dismantle takes time and refunds step by step (owner feedback #6)
+- **Do:** order a **Builder Drone** (step 2). Click the **Solar Array** at `(-3, 2)`. Press **`T`** (TERRAFORM), then **`Z`** (DISMANTLE), and click the Solar.
+- **See:**
+  - The **`QUEUE`** tab shows **`Dismantle Solar Array T1`** — `waiting: worker (en route)` for a few seconds, then **`Dismantling n%`**; the Builder walks over (no teleport) and works with sparks; the Solar goes offline and comes down.
+  - Metals / Minerals / Bio rise **in small steps**; after ~9 s of work (half the Solar's build time) the Solar is gone, and you got back **50 %** of its cost in total (`30 Metals · 37.5 Minerals · 5 Biomass · 2.5 Water`).
+  - Pressing **`Z`** on it again while it is being dismantled → **`Rejected: Already being dismantled`**.
+  - **Cancel:** on another building, press **CANCEL JOB** halfway → it stays standing but damaged, and a Builder repairs it (which costs resources again — no free refund loop).
+  - Without a Builder, the **HQ Drone** does the job.
+
+### 15. Pylon light & grid cables (owner feedback #4, #5)
+- **Do:** after step 3, zoom in on a pylon; run `time 22` for night.
+- **See:** each pylon casts **one** cyan light pool (from its top core) — not four; cables sag between Hub, pylons and buildings with travelling lightning (cyan online, amber sputter in a brownout, crimson on an overloaded pylon, none when unpowered).
+- **Playground:** `http://127.0.0.1:5273/playground.html?inspect=building.pylon&lights=1` → one light.
+
+### 16. W04 Maps & Camera alongside the W03 HUD
+- **Do:** on the w03 colony at a 1280×720-ish window, open **`BUILD [B]`**; then press **`M`**; press **`B`**, **`U`**, **`Z`**, **`X`**, `R`; press **`` ` ``**; then **`M`** / **Esc**.
+- **See:** the **minimap** (bottom-left) and the **Command Dock** stack without overlapping, and the dock never leaves the screen; buildings are small squares and units dots on the minimap. While the global map is open the game hotkeys do nothing (no dock toggles, no ghost rotation, no unit stop); the dev console opens **above** the map and keeps typing focus. Closing the map returns the camera; it does not open while the game is paused (`Esc` pause → `M` does nothing).
 
 ---
 
 ## 3D Kitbash & Playground QA (Pillar 1 & Pillar 4)
 
-Open any of the 8 W03 kitbash archetypes in the 3D Playground with `&validate=1` (all pass `npm run validate:models -- --all` with 0 errors and 0 warnings):
+Open the W03 kitbash archetypes in the 3D Playground with `&validate=1` (all pass `npm run validate:models -- --all` with 0 errors and 0 warnings):
 - **Builder Drone (`robot.builder`):** `http://127.0.0.1:5273/playground.html?inspect=robot.builder&validate=1`
-- **Power Pylon (`building.powerPylon`):** `http://127.0.0.1:5273/playground.html?inspect=building.powerPylon&validate=1`
-- **Wind Turbine (`building.windTurbine`):** `http://127.0.0.1:5273/playground.html?inspect=building.windTurbine&validate=1`
-- **Thermal Plant (`building.thermalGenerator`):** `http://127.0.0.1:5273/playground.html?inspect=building.thermalGenerator&validate=1`
+- **Power Pylon (`building.pylon`):** `http://127.0.0.1:5273/playground.html?inspect=building.pylon&validate=1`
+- **Wind Turbine (`building.wind`):** `http://127.0.0.1:5273/playground.html?inspect=building.wind&validate=1`
+- **Thermal Plant (`building.coalGen`):** `http://127.0.0.1:5273/playground.html?inspect=building.coalGen&validate=1`
 - **Capacitor Bank (`building.capacitor`):** `http://127.0.0.1:5273/playground.html?inspect=building.capacitor&validate=1`
 - **Supply Depot (`building.supplyDepot`):** `http://127.0.0.1:5273/playground.html?inspect=building.supplyDepot&validate=1`
-- **Minerals Quarry (`building.crystalExtractor`):** `http://127.0.0.1:5273/playground.html?inspect=building.crystalExtractor&validate=1`
-- **Water Extractor (`building.waterExtractor`):** `http://127.0.0.1:5273/playground.html?inspect=building.waterExtractor&validate=1`
+- **Minerals Quarry (`building.mine`):** `http://127.0.0.1:5273/playground.html?inspect=building.mine&validate=1`
+- **Water Extractor (`building.waterPump`):** `http://127.0.0.1:5273/playground.html?inspect=building.waterPump&validate=1`
 
 ---
 
-## Automated checks (already green on the branch)
+## Automated checks (green on the branch, 2026-11-04)
 
-`npm run check` · `npm test -- --run` · `npm run build` · `npm run test:parity` · `npm run validate:models -- --all` · `npm run test:models` · `npm run validate:particles -- --all` · `npm run test:particles` · `npm run e2e -- --waves ..03` (27/27 active tests across W00 + W01 + W02 + W03 passing on server host with `TA_WAVES=..03`) · `npm run e2e -- --waves ..03 --host local` (11/11 local-host tests passing).
+`npm run typecheck` · `npm test` (1 timing spec flaky only under heavy machine load; passes alone) · `npm run build` · `npm run check:structure` · `npm run gen:check` · `npm run test:parity` (w00-empty, w03-supply) · `npm run validate:models -- --all` (35/35) · `npm run test:models` · `npm run validate:particles -- --all` · `npm run test:particles` · `npm run e2e` (all suites, server host: 47 passed, 4 skipped, 0 failed — w00, w01, w02, w03, w04, w06, w26) · `npm run e2e -- --waves ..03 --host local` (14 passed, 18 server-only skipped).
 
 ## When you're done
 

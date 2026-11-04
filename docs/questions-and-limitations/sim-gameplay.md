@@ -826,3 +826,39 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** Keep the depot inside a powered zone; the HQ cell now carries nights.
 - **To resolve:** Owner: should depot supply ignore power? Remove the legacy Hub lane; word the unknown-unit reject.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-72 · A building at 0 HP stays as an active wreck; no rebuild path
+
+- **Status:** Open
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `dev.damage`, `shared/sim/src/systems/terraform-basic/autoRepair.ts`, power graph
+- **What happens:** `damage <pylon> 100` leaves the pylon at hp 0 with state `active`. The power graph drops it (its downstream Quarry goes `offline: no grid`), but auto-repair skips it and nothing removes it, so its tile stays occupied and the player can't rebuild the bridge on the same tile. The W03 demo step "rebuild the pylon → online" is not covered by e2e.
+- **Why it is like this:** Destruction / wreck handling is not part of W03.
+- **Workaround / mitigation:** Place a new pylon on a neighbouring tile inside the zone.
+- **To resolve:** Remove (or turn into rubble) a building at 0 HP, or let repair restore it from 0.
+- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+
+### GP-73 · `dismantle` wire form is rejected by the contract
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/contracts/src/commands/enqueue-task.ts`, the sim dismantle handler
+- **What happens:** `enqueueTask {task:{kind:'dismantle', entityId}}` is rejected `invalid_args` by the wire contract though the sim handler and its docstring accept it; only `{kind:'terraform', op:'dismantle', q, r}` (what the client sends) gets through.
+- **Why it is like this:** The client never sends the entity form.
+- **Workaround / mitigation:** Use the terraform op form.
+- **To resolve:** Add the entity form to the contract or drop it from the handler.
+- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+
+### GP-74 · `addLoad` without an entity id lands on one branch and drains the stores colony-wide
+
+- **Status:** Accepted (dev tool)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `power-core/evaluate.ts` (`getComponentSyntheticLoad`), dev `addLoad`
+- **What happens:** With the HQ cell as the grid store, `addLoad 85` (overload demo) also drains the cell and capacitors (800 → 11 E in one run), so later steps start with an empty store.
+- **Why it is like this:** Synthetic load is real demand.
+- **Workaround / mitigation:** Run `cell 800` after an `addLoad` demo; the e2e runs the night step on a fresh colony.
+- **To resolve:** —
+- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)

@@ -1092,3 +1092,15 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** Unowned entities draw neutral steel.
 - **To resolve:** Define owner codes in contracts; register presence roles for unit kinds.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### FF-71 · Bottom-left dock vs the W06 pilot chip; top-left slot stacks above other slots
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/maps/minimap.css` (dock body budget `calc(100vh - 460px)`), `frontend/game/core/hud/hud.css` (top-left slot `z-index: 1`)
+- **What happens:** At 1280×720 the expanded Command Dock over the minimap reached the W06 pilot chip and caught its clicks (fixed in bce78bc by a tighter budget and lifting the top-left slot). At phone landscape 844×390 with W06 on, the dock (y 77–294) still overlaps the pilot chip (y 57–115). Side effect of the fix: the top-left slot now stacks above every other HUD slot.
+- **Why it is like this:** The bottom-left slot holds both the dock and the W04 minimap.
+- **Workaround / mitigation:** Collapse the dock (`Q`) on small screens.
+- **To resolve:** A HUD layout budget per breakpoint that reserves the top-left plate.
+- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
