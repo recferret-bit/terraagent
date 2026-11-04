@@ -43,10 +43,11 @@ export function planetEventToProgress(
 
   const rule = PROGRESSION_EVENT_RULES[e.kind];
   if (!rule) return null;
+  const family = (typeof data.op === 'string' && rule.familyByOp?.[data.op]) || rule.family;
   const raw = rule.fields.map(key => data[key]).find(value => typeof value === 'number');
   const value = typeof raw === 'number' && Number.isFinite(raw) ? Math.max(0, Math.floor(raw)) : rule.fallback;
   return { playerId, colonyId, planetId: e.planetId, atTick: e.tick ?? 0,
-    eventId: progressEventId(e), family: rule.family, metric: ACHIEVEMENT_FAMILY_BY_ID.get(rule.family)!.metric, value };
+    eventId: progressEventId(e), family, metric: ACHIEVEMENT_FAMILY_BY_ID.get(family)!.metric, value };
 
 }
 

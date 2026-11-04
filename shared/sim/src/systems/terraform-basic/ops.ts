@@ -181,3 +181,23 @@ export function getTerraformJobCost(
 export function groundWorkYields(key: string, data?: CompiledDataLike): Partial<Record<ResourceKey, number>> {
   return key === 'forest' ? terraformYields('clear', data) : key === 'rock' ? terraformYields('break', data) : {};
 }
+
+export type ObstacleRemovedAchievement = 'Stone Mason' | 'Hydro Engineer' | 'Green Thumb';
+
+export const OBSTACLE_REMOVED_ACHIEVEMENTS = {
+  clear: 'Stone Mason',
+  break: 'Stone Mason',
+  level: 'Stone Mason',
+  fill: 'Stone Mason',
+  reclaim: 'Hydro Engineer',
+  deepReclaim: 'Hydro Engineer',
+  seed: 'Green Thumb',
+} as const satisfies Readonly<Record<string, ObstacleRemovedAchievement>>;
+
+/** Maps an `obstacleRemoved` terraform op (`clear`, `break`, `level`, `fill`, `reclaim`, `deepReclaim`, `seed`) to its achievement family name (W05-29). */
+export function resolveObstacleRemovedAchievement(op: string): ObstacleRemovedAchievement {
+  if (op === 'reclaim' || op === 'deepReclaim') return 'Hydro Engineer';
+  if (op === 'seed') return 'Green Thumb';
+  return 'Stone Mason';
+}
+

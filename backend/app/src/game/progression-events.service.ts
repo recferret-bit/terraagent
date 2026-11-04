@@ -10,9 +10,15 @@ import type {
 import { EventBus } from '../bus/event-bus';
 import { HomeRepository } from '../core/home/home.repository';
 import { LOGGER } from '../core/tokens';
-import { isProgressionEventKind, PROGRESSION_ACHIEVEMENTS, type ProgressionKind } from './progression-achievements';
+import {
+  isObstacleRemovedOp,
+  isProgressionEventKind,
+  PROGRESSION_ACHIEVEMENTS,
+  resolveObstacleRemovedAchievement,
+  type ProgressionKind,
+} from './progression-achievements';
 
-export { isProgressionEventKind } from './progression-achievements';
+export { isProgressionEventKind, resolveObstacleRemovedAchievement } from './progression-achievements';
 
 export type ProgressionEvent =
   | BatchedTilePreparedEvent
@@ -50,14 +56,16 @@ function resolveWho(e: SimEvent, resolvePlayerId?: PlayerIdResolver): Who | null
 
 /** A batched progression event: `fields` both at the top level and in `data`, plus the kind's achievement. */
 function toEvent(kind: ProgressionKind, planetId: string, tick: number, who: Who, fields: Fields): ProgressionEvent {
-  const payload = { ...who, ...defined(fields), achievement: PROGRESSION_ACHIEVEMENTS[kind] };
+  const achievement =
+    kind === 'obstacleRemoved' ? resolveObstacleRemovedAchievement(fields.op) : PROGRESSION_ACHIEVEMENTS[kind];
+  const payload = { ...who, ...defined(fields), achievement };
   return { planetId, tick, kind, severity: 'info', colonyIds: [who.colonyId], ...payload, data: payload } as unknown as ProgressionEvent;
 }
 
 /** How a counted kind groups its events: extra key fields (e.g. `op`) beyond (colony, player). */
 const COUNT_KEYS: Readonly<Record<'tilePrepared' | 'obstacleRemoved', (data: Fields) => Fields>> = {
   tilePrepared: () => ({}),
-  obstacleRemoved: (data) => ({ op: data.op === 'break' ? 'break' : 'clear' }),
+  obstacleRemoved: (data) => ({ op: isObstacleRemovedOp(data.op) ? data.op : 'clear' }),
 };
 
 /**
