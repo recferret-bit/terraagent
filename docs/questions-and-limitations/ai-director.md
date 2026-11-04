@@ -16,7 +16,7 @@
 - **Area / code:** [AI spec §4](../spec/AI_ORCHESTRATOR.md#4-player-strategy-and-risk-settings)
 - **What happens:** Conservative/Risky reserve, commitment and combat thresholds are initial tunable defaults; they have not been measured for balance or enjoyment.
 - **Why it is like this:** owner requested more adventurous behavior with two player-selectable levels; numeric values need actual scenario evidence.
-- **Workaround / mitigation:** player ceilings and locked goals remain stricter; risk never grants permissions; paired behavior fixtures reject an always-hold director.
+- **Workaround / mitigation:** player ceilings and locked goals remain stricter; risk never grants permissions; paired behavior fixtures reject an always-hold director. W16-01 stores the spec §4 numbers in `shared/sim/src/data/director.ts` as the proposed default (conservative reserve 40% / commit 15% / strength 1.5, risky reserve 15% / commit 35% / strength 0.9). They are not calibrated.
 - **To resolve:** evaluate profiles across three biomes, threats and objectives, publish results and calibrate defaults before rollout.
 - **Found:** 2026-11-04, W16 planning review.
 

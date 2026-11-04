@@ -20,7 +20,11 @@ export {
 } from './commands/queue-goal';
 export { CancelGoalArgsSchema, command as cancelGoal, type CancelGoalArgs } from './commands/cancel-goal';
 export { ReorderGoalArgsSchema, command as reorderGoal, type ReorderGoalArgs } from './commands/reorder-goal';
-export { AcceptSuggestionArgsSchema, command as acceptSuggestion, type AcceptSuggestionArgs } from './commands/accept-suggestion';
+export {
+  AcceptSuggestionArgsSchema,
+  command as acceptSuggestion,
+  type AcceptSuggestionArgs,
+} from './commands/accept-suggestion';
 export {
   PRIORITY_KEYS,
   PriorityKeySchema,
@@ -38,7 +42,11 @@ export {
 } from './commands/dev-stage';
 export { StageReachedDataSchema, event as stageReached, type StageReachedData } from './events/stage-reached';
 export { StageUnlockedDataSchema, event as stageUnlocked, type StageUnlockedData } from './events/stage-unlocked';
-export { SuggestionOfferedDataSchema, event as suggestionOffered, type SuggestionOfferedData } from './events/suggestion-offered';
+export {
+  SuggestionOfferedDataSchema,
+  event as suggestionOffered,
+  type SuggestionOfferedData,
+} from './events/suggestion-offered';
 export { GoalProgressDataSchema, event as goalProgress, type GoalProgressData } from './events/goal-progress';
 export { GoalDoneDataSchema, event as goalDone, type GoalDoneData } from './events/goal-done';
 export * from './rest';
@@ -46,3 +54,11 @@ export * from './precheck';
 export * from './progression';
 export * from './profile';
 export * from './maps';
+export * from './ai';
+export {
+  SetDirectorPolicyArgsSchema,
+  command as setDirectorPolicy,
+  type SetDirectorPolicyArgs,
+} from './commands/set-director-policy';
+export { DirectorActionDataSchema, event as directorAction, type DirectorActionData } from './events/director-action';
+export { DirectorStatusDataSchema, event as directorStatus, type DirectorStatusData } from './events/director-status';

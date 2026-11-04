@@ -10,6 +10,7 @@ conflict the spec wins and the code is fixed.
 | `src/ws` | Client → app and app → client messages, the engine sync payloads and the wire codec |
 | `src/errors` | `RejectCode` (incl. `wave_disabled`, `host_unavailable`), `CLOSE_CODES`, REST error codes |
 | `src/flags` | Wave flag ids and the `TA_WAVES` / `?waves=` parser |
+| `src/ai` | W16 director wire: policy, `ColonyBriefV2`, `DirectiveV2`, jobs, skills and MCP tool args |
 | `src/commands/*.ts` | One file per command kind: `export const command = defineCommand({...})` |
 | `src/events/*.ts` | One file per event kind: `export const event = defineEvent({...})` |
 
