@@ -56,9 +56,6 @@
   .ta-hud-min__stocks {
     gap: var(--ta-s2);
   }
-  .ta-hud-min__cell-bar {
-    display: none;
-  }
 }
 
 .ta-hud-min__sr-only {
@@ -153,7 +150,7 @@
   color: var(--ta-fault-text);
 }
 
-.ta-hud-min .ta-res-breakdown__sources {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__sources {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -180,28 +177,10 @@
   letter-spacing: 0.04em;
 }
 
-.ta-hud-min__cell-bar {
-  width: 36px;
-  height: 4px;
-  background: var(--ta-deep);
-  border: 1px solid var(--ta-seam-2);
-  overflow: hidden;
-  flex-shrink: 0;
-}
-
-.ta-hud-min__cell-fill {
-  height: 100%;
-  width: 100%;
-  background: var(--ta-energy);
-  transition: width var(--ta-dur-quick) ease;
-}
-
 .ta-hud-min__daytime {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding-left: var(--ta-s2);
-  border-left: 1px solid var(--ta-seam);
   white-space: nowrap;
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
@@ -234,10 +213,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  height: 100%;
   gap: 5px;
-  padding-left: var(--ta-s2);
-  border-left: 1px solid var(--ta-seam);
   white-space: nowrap;
   font-family: var(--ta-font-mono);
   font-size: var(--ta-fs-label);
@@ -274,7 +250,7 @@
 }
 
 /* Resource tiers & flow hover breakdown popover */
-.ta-hud-min .ta-res-chip__breakdown {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-chip__breakdown {
   display: none;
   position: absolute;
   top: calc(100% + var(--ta-s1));
@@ -309,7 +285,7 @@
   display: flex;
 }
 
-.ta-hud-min .ta-res-breakdown__header {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__header {
   font-family: var(--ta-font-display);
   font-size: var(--ta-fs-label);
   font-weight: 700;
@@ -321,7 +297,7 @@
   margin-bottom: 2px;
 }
 
-.ta-hud-min .ta-res-breakdown__flow {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__flow {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -333,7 +309,7 @@
   color: var(--ta-text-2);
 }
 
-.ta-hud-min .ta-res-breakdown__flow-line {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__flow-line {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -342,24 +318,24 @@
 }
 
 /* a line toggled with `hidden` (the power breakdown's brownout line) must not be kept visible by the flex rule */
-.ta-hud-min .ta-res-breakdown__flow-line[hidden] {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__flow-line[hidden] {
   display: none;
 }
 
-.ta-hud-min .ta-res-breakdown__income {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__income {
   color: var(--ta-terra);
 }
 
-.ta-hud-min .ta-res-breakdown__spending {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__spending {
   color: var(--ta-orange-hi);
 }
 
-.ta-hud-min .ta-res-breakdown__net {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__net {
   color: var(--ta-text);
   font-weight: 600;
 }
 
-.ta-hud-min .ta-res-breakdown__row {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -370,26 +346,26 @@
   white-space: nowrap;
 }
 
-.ta-hud-min .ta-res-breakdown__row[data-locked='true'],
-.ta-hud-min .ta-res-tier--locked {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__row[data-locked='true'],
+:is(.ta-hud-min, .ta-env-panel) .ta-res-tier--locked {
   color: var(--ta-dim);
   opacity: 0.55;
 }
 
-.ta-hud-min .ta-res-breakdown__name {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__name {
   flex: 1;
 }
 
-.ta-hud-min .ta-res-breakdown__amount {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__amount {
   font-weight: 600;
   color: var(--ta-text);
 }
 
-.ta-hud-min .ta-res-breakdown__row[data-locked='true'] .ta-res-breakdown__amount {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__row[data-locked='true'] .ta-res-breakdown__amount {
   color: var(--ta-dim);
 }
 
-.ta-hud-min .ta-res-breakdown__rate {
+:is(.ta-hud-min, .ta-env-panel) .ta-res-breakdown__rate {
   font-size: 10px;
   color: var(--ta-steel);
 }

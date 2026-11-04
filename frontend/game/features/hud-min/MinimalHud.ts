@@ -1,18 +1,11 @@
-import {
-  capsOf,
-  computeColonyTerraformStats,
-  TICKS_PER_SECOND,
-  type ColonyTerraformStats,
-  type CompiledDataLike,
-  type ViewColony,
-} from '@terra/sim';
+import { capsOf, TICKS_PER_SECOND, type CompiledDataLike, type ViewColony } from '@terra/sim';
 import type { Transport } from '../../net/types';
 import type { GameView } from '../../core/registry/types';
 import { viewColony } from '../shared/colony';
-import { clampPct, makeDiv, makeSpan } from '../shared/dom';
+import { makeDiv, makeSpan } from '../shared/dom';
 import { extractHqFromView } from '../shared/hqView';
-import { readDaytime } from '../shared/daytime';
 import { readColonyPower } from '../shared/power';
+import { EnvPanel } from './envPanel';
 import { createHudIcon, type HudIconKind } from './hudIcons';
 import { readColonySupply } from '../shared/supply';
 import { formatRejectToast } from './rejectText';
@@ -98,88 +91,11 @@ function stockSlot(kind: HudIconKind, testid: string, name: string, family: Fami
   return { el, val, breakdown };
 }
 
-export const TERRAFORM_BONUS_HINT = 'Living ground: +10 % ground move speed · +5 % adjacent extractor output';
-export const TERRAFORM_TIER_GATE_HINT = 'T2 at 30 % · T3 at 70 %';
-
-function readColonyTerraformStats(
-  col: ViewColony | undefined,
-  view: GameView | undefined,
-  colonyIdx: number,
-): ColonyTerraformStats {
-  const raw = (col as { terraform?: Partial<ColonyTerraformStats> } | undefined)?.terraform;
-  let colStats: ColonyTerraformStats | null = null;
-  if (raw && typeof raw.livingTiles === 'number' && typeof raw.eligibleOwnedTiles === 'number') {
-    const livingTiles = Math.max(0, Math.floor(raw.livingTiles));
-    const eligibleOwnedTiles = Math.max(0, Math.floor(raw.eligibleOwnedTiles));
-    const percent =
-      typeof raw.percent === 'number' && Number.isFinite(raw.percent)
-        ? raw.percent
-        : eligibleOwnedTiles > 0
-          ? Number(((livingTiles / eligibleOwnedTiles) * 100).toFixed(1))
-          : 0;
-    colStats = { livingTiles, eligibleOwnedTiles, percent };
-  }
-  const tiles = (view as {
-    tiles?: {
-      count: number;
-      terrain?: ArrayLike<number>;
-      prep?: ArrayLike<number>;
-      owner?: ArrayLike<number>;
-      valid?: ArrayLike<number>;
-    };
-  } | undefined)?.tiles;
-  if (tiles && tiles.terrain && tiles.prep && tiles.owner && tiles.count > 0) {
-    const tileStats = computeColonyTerraformStats(
-      { tileCount: tiles.count, terrain: tiles.terrain, prep: tiles.prep, owner: tiles.owner, valid: tiles.valid },
-      colonyIdx,
-    );
-    if (tileStats.eligibleOwnedTiles > 0) {
-      if (!colStats) return tileStats;
-      if (tileStats.livingTiles !== colStats.livingTiles) {
-        return tileStats.livingTiles > colStats.livingTiles ? tileStats : colStats;
-      }
-      return tileStats;
-    }
-  }
-  return colStats ?? { livingTiles: 0, eligibleOwnedTiles: 0, percent: 0 };
-}
-
-function renderTerraformBreakdown(container: HTMLElement, stats: ColonyTerraformStats): void {
-  if (!container.querySelector('.ta-res-breakdown__header')) {
-    container.replaceChildren();
-    const hdr = makeDiv('ta-res-breakdown__header', undefined, 'TERRAFORM');
-    const flow = makeDiv('ta-res-breakdown__flow');
-    const countLine = makeDiv('ta-res-breakdown__flow-line ta-res-breakdown__net', 'res-terraform-count');
-    const bonusLine = makeDiv('ta-res-breakdown__flow-line ta-res-breakdown__income', 'res-terraform-bonus');
-    const gateLine = makeDiv('ta-res-breakdown__flow-line', 'res-terraform-gates');
-    flow.append(countLine, bonusLine, gateLine);
-    container.append(hdr, flow);
-  }
-  const countEl = container.querySelector('[data-testid="res-terraform-count"]');
-  if (countEl) {
-    countEl.textContent = `Terraform ${stats.livingTiles} / ${stats.eligibleOwnedTiles} (${stats.percent.toFixed(1)} %)`;
-  }
-  const bonusEl = container.querySelector('[data-testid="res-terraform-bonus"]');
-  if (bonusEl) bonusEl.textContent = TERRAFORM_BONUS_HINT;
-  const gateEl = container.querySelector('[data-testid="res-terraform-gates"]');
-  if (gateEl) gateEl.textContent = TERRAFORM_TIER_GATE_HINT;
-}
-
-function createTerraformSlot(): StockSlot {
-  const el = makeDiv('ta-hud-min__terraform ta-res-chip', 'hud-terraform');
-  el.setAttribute('data-family', 'terraform');
-  const val = makeSpan('ta-hud-min__terraform-val', 'hud-terraform-val', 'Terraform 0 / 0 (0.0 %)');
-  const breakdown = makeDiv('ta-res-chip__breakdown plate-sm', 'res-breakdown-terraform');
-  renderTerraformBreakdown(breakdown, { livingTiles: 0, eligibleOwnedTiles: 0, percent: 0 });
-  el.append(createHudIcon('terraform'), val, breakdown);
-  bindHoverPopover(el);
-  return { el, val, breakdown };
-}
-
 /**
  * Compact top HUD header: icon-only Metals/Minerals/Bio stocks with hover tier & flow breakdowns, unit Supply
  * `used / cap` with its sources breakdown,
- * inline HQ power cell bar with hover power breakdown, planet time of day, game clock, and reject/resource waiting toasts.
+ * HQ power cell icon + numbers with hover power breakdown, game clock, and reject/resource waiting toasts. Time of day,
+ * wind and the Terraform meter are the {@link EnvPanel} under the minimap.
  */
 export class MinimalHud {
   readonly el: HTMLElement;
@@ -194,13 +110,8 @@ export class MinimalHud {
   private readonly bioSub: HTMLElement;
   private readonly supply: StockSlot;
   private readonly cellVal: HTMLElement;
-  private readonly cellFill: HTMLElement;
   private readonly cellBreakdown: HTMLElement;
-  private readonly daytimeEl: HTMLElement;
-  private readonly daytimeIcon: HTMLElement;
-  private readonly daytimeClock: HTMLElement;
-  private readonly daytimeLight: HTMLElement;
-  private readonly terraform: StockSlot;
+  private readonly env: EnvPanel;
   private cleanups: Array<() => void> = [];
 
   constructor(parent: HTMLElement, private readonly opts: MinimalHudOptions = {}) {
@@ -223,43 +134,27 @@ export class MinimalHud {
     const cellEl = makeDiv('ta-hud-min__cell ta-res-chip', 'hud-hq-cell');
     cellEl.setAttribute('data-family', 'energy');
     cellEl.title = 'HQ Power Cell';
-    const cellBar = makeDiv('ta-hud-min__cell-bar');
-    this.cellFill = makeDiv('ta-hud-min__cell-fill', 'hud-hq-cell-bar');
-    this.cellFill.style.width = '0%';
-    cellBar.appendChild(this.cellFill);
     this.cellVal = makeSpan('ta-hud-min__cell-val', undefined, `${NO_DATA} E`);
     this.cellBreakdown = makeDiv('ta-res-chip__breakdown plate-sm', 'res-breakdown-energy');
     renderPowerBreakdown(this.cellBreakdown, undefined, null, true);
     cellEl.append(
       createHudIcon('cell'),
       makeSpan('ta-hud-min__sr-only', undefined, 'HQ power cell: '),
-      cellBar,
       this.cellVal,
       this.cellBreakdown,
     );
     bindHoverPopover(cellEl);
 
-    // Planet time of day (the sim's solar clock), right after energy: solar output follows the daylight %.
-    this.daytimeEl = makeDiv('ta-hud-min__daytime', 'hud-daytime');
-    this.daytimeEl.setAttribute('data-phase', 'day');
-    this.daytimeEl.title = 'Local time · daylight (solar output)';
-    this.daytimeIcon = makeSpan('ta-hud-min__daytime-icon', undefined, '☀');
-    this.daytimeIcon.setAttribute('aria-hidden', 'true');
-    this.daytimeClock = makeSpan('ta-hud-min__daytime-clock', 'hud-daytime-clock', NO_DATA);
-    this.daytimeLight = makeSpan('ta-hud-min__daytime-light', 'hud-daytime-light', '');
-    this.daytimeEl.append(this.daytimeIcon, this.daytimeClock, this.daytimeLight);
-    this.daytimeEl.hidden = !this.gridOn();
-
-    this.terraform = createTerraformSlot();
-    this.renderTerraform(undefined, undefined, 0);
-    this.terraform.el.hidden = !this.terraformOn();
+    // Time of day, wind and the Terraform meter live in the env panel under the minimap (attachEnvPanel); until it
+    // is attached it sits next to the bar.
+    this.env = new EnvPanel(parent, { getColonyIndex: () => this.colonyIndex(), isWaveOn: opts.isWaveOn });
 
     this.toastContainer = makeDiv('ta-hud-toasts', 'hud-toast-container');
     this.toastContainer.setAttribute('role', 'status');
     this.toastContainer.setAttribute('aria-live', 'polite');
 
-    this.el.append(stocks, cellEl, this.daytimeEl, this.terraform.el, brand, this.toastContainer);
-    parent.appendChild(this.el);
+    this.el.append(stocks, cellEl, brand, this.toastContainer);
+    parent.insertBefore(this.el, this.env.el);
     this.initListeners();
   }
 
@@ -287,11 +182,6 @@ export class MinimalHud {
     return this.opts.isWaveOn?.('W02') ?? true;
   }
 
-  /** W05 Terraform meter is on (read per call: the flags are live). */
-  private terraformOn(): boolean {
-    return this.opts.isWaveOn?.('W05') ?? true;
-  }
-
   private colonyIndex(): number {
     return this.opts.getOwnerColonyIndex?.() ?? this.opts.ownerColonyIndex ?? 0;
   }
@@ -307,39 +197,14 @@ export class MinimalHud {
 
     const hqCell = extractHqFromView(view, colonyIdx, this.opts.store?.simData?.() ?? undefined);
     this.cellVal.textContent = hqCell ? `${String(Math.round(hqCell.cell)).padStart(4, '0')} / ${String(Math.round(hqCell.cellMax)).padStart(4, '0')} E` : `${NO_DATA} E`;
-    this.cellFill.style.width = `${(hqCell ? clampPct(hqCell.cell, hqCell.cellMax) : 0).toFixed(1)}%`;
 
-    const grid = this.gridOn();
-    renderPowerBreakdown(this.cellBreakdown, readColonyPower(view, colonyIdx), hqCell, true, grid);
-    this.daytimeEl.hidden = !grid;
-    if (grid) this.renderDaytime(view, colonyIdx);
-
-    const tfOn = this.terraformOn();
-    this.terraform.el.hidden = !tfOn;
-    if (tfOn) this.renderTerraform(col, view, colonyIdx);
+    renderPowerBreakdown(this.cellBreakdown, readColonyPower(view, colonyIdx), hqCell, true, this.gridOn());
+    this.env.update(view);
   }
 
-  private renderTerraform(col: ViewColony | undefined, view: GameView | undefined, colonyIdx: number): void {
-    const stats = readColonyTerraformStats(col, view, colonyIdx);
-    const pctText = stats.percent.toFixed(1);
-    const label = `Terraform ${stats.livingTiles} / ${stats.eligibleOwnedTiles} (${pctText} %)`;
-    this.terraform.val.textContent = label;
-    this.terraform.el.setAttribute('data-living', String(stats.livingTiles));
-    this.terraform.el.setAttribute('data-eligible', String(stats.eligibleOwnedTiles));
-    this.terraform.el.setAttribute('data-percent', pctText);
-    this.terraform.el.setAttribute('data-living-hint', '+10 % ground move speed');
-    this.terraform.el.title = `${label} · ${TERRAFORM_BONUS_HINT} · ${TERRAFORM_TIER_GATE_HINT}`;
-    renderTerraformBreakdown(this.terraform.breakdown, stats);
-  }
-
-  private renderDaytime(view: GameView, colonyIdx: number): void {
-    const t = readDaytime(view, colonyIdx);
-    this.daytimeEl.setAttribute('data-phase', t?.phase ?? 'day');
-    this.daytimeIcon.textContent = t?.phase === 'night' ? '☾' : '☀';
-    this.daytimeClock.textContent = t?.clockText ?? NO_DATA;
-    const wind = readColonyPower(view, colonyIdx)?.windFactor;
-    const level = typeof wind !== 'number' ? '' : ` · Wind ${wind < 1 ? 'LOW' : wind > 1 ? 'HIGH' : 'MED'} ${Math.round(wind * 100)}%`;
-    this.daytimeLight.textContent = (t ? `${Math.round(t.daylight * 100)}%` : '') + level;
+  /** Moves the env panel (time of day, wind, Terraform meter) into `container`, e.g. the slot under the minimap. */
+  attachEnvPanel(container: HTMLElement): void {
+    container.appendChild(this.env.el);
   }
 
   private setFamilyStatus(
@@ -453,6 +318,7 @@ export class MinimalHud {
     this.cleanups = [];
     for (const t of this.toastTimers.values()) clearTimeout(t);
     this.toastTimers.clear();
+    this.env.dispose();
     this.el.remove();
   }
 }

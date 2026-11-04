@@ -90,7 +90,6 @@ describe('W01-29: Minimal HUD clock & view rendering', () => {
     const mineralsEl = parent.querySelector('[data-testid="hud-stock-minerals"]')!;
     const bioEl = parent.querySelector('[data-testid="hud-stock-bio"]')!;
     const cellEl = parent.querySelector('[data-testid="hud-hq-cell"]')!;
-    const cellBar = parent.querySelector<HTMLElement>('[data-testid="hud-hq-cell-bar"]')!;
 
     expect(colonyEl.textContent).toBe("Colonist's Colony");
     expect(clockEl.textContent).toBe('00:25');
@@ -100,7 +99,9 @@ describe('W01-29: Minimal HUD clock & view rendering', () => {
     expect(bioEl.textContent).toContain('Biomass 0200');
     expect(bioEl.textContent).toContain('Water 0200');
     expect(cellEl.textContent).toContain('800 / 800 E');
-    expect(cellBar.style.width).toBe('100%'); // the browser (and jsdom) normalises '100.0%'
+    // Icon and numbers only: the energy progress bar is gone from the header.
+    expect(parent.querySelector('[data-testid="hud-hq-cell-bar"]')).toBeNull();
+    expect(cellEl.querySelector('.ta-hud-min__cell-bar')).toBeNull();
 
     expect(hud.el.className).toContain('plate-sm');
     expect(parent.querySelector('.ta-hud-min__stock-label')).toBeNull();
@@ -422,8 +423,8 @@ describe('Reject toasts per command kind, live costs, accessibility, placeholder
   });
 });
 
-describe('Top bar: planet time of day right after energy (was the top-right power widget)', () => {
-  it('shows the colony clock, sun / moon and daylight %, after the energy chip and before the game clock', () => {
+describe('Env panel under the minimap: planet time of day, daylight % and wind (was in the top bar)', () => {
+  it('shows the colony clock, sun / moon and daylight %, with the wind readout on its own row', () => {
     const parent = freshBody();
     const hud = new MinimalHud(parent, { ownerColonyIndex: 1 });
     const day = freshDaytime(hud);
@@ -440,8 +441,11 @@ describe('Top bar: planet time of day right after energy (was the top-right powe
     expect(day.el.querySelector('.ta-hud-min__daytime-icon')?.textContent).toBe('☀');
     expect(day.clock.textContent).toBe('06:27');
     expect(day.light.textContent).toBe('100%');
-    const order = [...hud.el.children].map((c) => (c as HTMLElement).dataset.testid ?? c.className);
-    expect(order.indexOf('hud-daytime')).toBe(order.indexOf('hud-hq-cell') + 1);
+    expect(day.light.textContent).not.toContain('Wind');
+    // Time of day, wind and Terraform are no longer in the header bar: they are the env panel under the minimap.
+    expect(hud.el.querySelector('[data-testid="hud-daytime"]')).toBeNull();
+    expect(hud.el.querySelector('[data-testid="hud-terraform"]')).toBeNull();
+    expect(day.el.closest('[data-testid="hud-env"]')).not.toBeNull();
 
     hud.update({ tick: 11, blobs: { environment: { phase: 'night', clockText: '21:10', daylight: 0 } }, colonies: [] } as unknown as ClientView);
     expect(day.el.getAttribute('data-phase')).toBe('night');
@@ -475,7 +479,7 @@ describe('?waves=..01 hides the W02 parts of the top bar (time of day, grid line
 });
 
 function freshDaytime(hud: MinimalHud): { el: HTMLElement; clock: HTMLElement; light: HTMLElement } {
-  const el = hud.el.querySelector<HTMLElement>('[data-testid="hud-daytime"]')!;
+  const el = hud.el.parentElement!.querySelector<HTMLElement>('[data-testid="hud-daytime"]')!;
   return {
     el,
     clock: el.querySelector<HTMLElement>('[data-testid="hud-daytime-clock"]')!,
