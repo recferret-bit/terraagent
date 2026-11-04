@@ -19,6 +19,7 @@ export function createPlanet(p: PlanetParams): PlanetState {
     radius: p.radius ?? DEV_PLANET_RADIUS,
     capacity: p.capacity,
     ...(p.worldSalt ? { worldSalt: p.worldSalt } : {}),
+    ...(p.region ? { region: p.region } : {}),
   });
   state.meta.genVersion = GEN_VERSION;
   return state;
