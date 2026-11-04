@@ -10,6 +10,7 @@ import { MarketMatcher } from '../../src/market/matching/market-matcher.service.
 import { LoggingMarketFillsHook } from '../../src/market/orders/market-fills.hook.js';
 import { MarketPolicyProvider } from '../../src/market/orders/market-policy.provider.js';
 import { MarketSimGateway, type NearMarketCommandBusEvent } from '../../src/market/orders/market-sim-gateway.js';
+import { IntentTradeRepository } from '../../src/market/settlement/intent-trade.repository.js';
 import { OrderFunds } from '../../src/market/orders/order-funds.js';
 import { PlaceOrderPrecheck } from '../../src/market/orders/place-order.precheck.js';
 import { PlaceOrderService } from '../../src/market/orders/place-order.service.js';
@@ -35,7 +36,7 @@ function rig(colony: string): Rig {
   bus.on('near.market.command', (c) => cmds.push(c), { module: 'test' });
   const repo = new MarketOrderRepository(db.prisma);
   const books = new MarketBooks(repo);
-  const funds = new OrderFunds(repo, cargoPort, verifierPort);
+  const funds = new OrderFunds(repo, cargoPort, verifierPort, new IntentTradeRepository(db.prisma));
   const policy = new MarketPolicyProvider();
   const outbox = new ChainOutboxRepository(db.prisma);
   const env = { NODE_ENV: 'test', DATABASE_URL: 'x' } as never;

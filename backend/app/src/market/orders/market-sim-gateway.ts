@@ -39,4 +39,8 @@ export class MarketSimGateway {
   release(t: SimTarget, args: Omit<MarketReleaseArgs, 'colonyId' | 'colonyIndex'>): void {
     this.send(t, 'market.release', { colonyId: t.colonyId, ...(t.colonyIndex !== null ? { colonyIndex: t.colonyIndex } : {}), ...args });
   }
+
+  settled(t: SimTarget, args: Omit<MarketSettledArgs, 'colonyId' | 'colonyIndex'>): void {
+    this.send(t, 'market.settled', { colonyId: t.colonyId, ...(t.colonyIndex !== null ? { colonyIndex: t.colonyIndex } : {}), ...args });
+  }
 }
