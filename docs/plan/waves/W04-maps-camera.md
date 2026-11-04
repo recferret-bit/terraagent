@@ -6,7 +6,9 @@
 >
 > **Already exists (prototype):** `frontend/game/app/RTSCamera.ts` (28° diorama camera: WASD/arrows and 8 px edge pan with zoom-scaled speed, MMB drag, wheel zoom clamped 20–95, `Q`/`E` 90° yaw, pan clamped to the surface bounds, hero follow on `Home`/held `F`, `focus()`), driven from `frontend/game/app/Gameplay.ts`. W04-26 moves it to `frontend/game/camera/` and only adds what is missing. There is no minimap, global map, box selection or control groups yet; click-select of the HQ comes from W01-26.
 
-**Planet-scale follow-up:** [W27](./W27-planet-sectors.md) extends this map registry with continent/sector summaries, bounded detail caches, continuous ground-to-shaded-globe zoom, persistent camera/home/selection cues and load-aware camera travel. Its full-state/canvas amendments apply only with W27 enabled; W04 remains independently runnable.
+**Planet foundation and scale follow-up:** [W11](./W11-lobby-planets.md) first adds a small-atlas sector overlay and simple location/selection using this registry; W04-03/-15 must be landed. [W27](./W27-planet-sectors.md) extends this map registry with continent/sector summaries, bounded detail caches, continuous ground-to-shaded-globe zoom, persistent camera/home/selection cues and load-aware camera travel. Its full-state/canvas amendments apply only with W27 enabled; W04 remains independently runnable.
+
+**Current-code handoff:** W11/W27 implementers must read [MAP_EXTENSION_HANDOFF](../MAP_EXTENSION_HANDOFF.md). It distinguishes shipped map behavior from this historical issue table and assigns atlas, identity, streaming and navigation regression gates.
 
 ## Goal
 

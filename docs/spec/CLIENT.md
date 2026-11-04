@@ -1,5 +1,7 @@
 # TerraAgent — Game Client & Landing Specification
 
+> **W11/W27 amendment (2026-11-04): W11 uses three always-visible persistent world cards and a simple sector selector; remove New Planet and age-based availability timers. W11 supports bounded small-atlas full-state replication. W27 negotiates partial replicas/interest and continuous globe navigation; missing sectors are unknown/loading, not empty. Current admission and DTO rules are MATCHMAKING §0; preserve authorized home resume and existing orbital/descent UI.**
+
 > **Status:** v0.2 (2026-10-30). This targets the one-app server (D-24): one WS endpoint, **full planet state with fog drawn on the client** (D-25), and NEAR economy surfaces for F1–F8 (D-26).
 > **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §4, §7, §12, §13 · **Decisions:** [`DECISIONS.md`](./DECISIONS.md) (D-10, D-16, D-22, D-24, D-25, D-26)
 > **Issues:** [`TA-11`](../plan/issues/TA-11-game-client.md) (game), [`TA-12`](../plan/issues/TA-12-landing.md) (landing), [`TA-13.3`](../plan/issues/TA-13-qa-observability-and-load.md) (E2E)

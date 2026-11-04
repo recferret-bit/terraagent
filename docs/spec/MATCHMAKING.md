@@ -1,10 +1,64 @@
 # TerraAgent — Matchmaking & Planet Lifecycle Specification
 
-> **Status:** v0.2 (2026-10-30). The `lobby` module of the one app (D-24): no NATS, no worker scheduler, no leader election. Planets are loaded onto in-process sim threads.
+> **Status:** W11/W27 policy amended 2026-11-04; §0 is normative for the planned persistent-world product. §§1–11 retain the superseded v0.2 instance design for historical traceability only. The `lobby` module of the one app (D-24): no NATS, no worker scheduler, no leader election. Planets are loaded onto in-process sim threads.
 > **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §7, §8, §14, §15 · **Decisions:** [`DECISIONS.md`](./DECISIONS.md) D-02, D-08, D-12 · **Related:** [`CONTINUITY.md`](./CONTINUITY.md)
 > **Plan:** [`TA-05`](../plan/issues/TA-05-matchmaking-and-planet-lifecycle.md) (lifecycle, queue, matchmaker, scheduler) · [`TA-04`](../plan/issues/TA-04-core-api-auth-and-home.md) (home, tickets, lobby WS, admin)
 
 ---
+
+## 0. Persistent sector worlds — current W11/W27 policy (2026-11-04)
+
+The owner approved W11 as a simplified version of W27: three canonical persistent worlds, a small connected playable sector atlas first, large-scale streaming/navigation second. This section and D-12's amendment override conflicting rules, examples, DTOs, configuration, tests and owner decisions in historical §§1–11. Do not implement both matchmaking policies behind W27: W11 already owns the new policy. Pre-W11 dev seating remains a separate compatibility path.
+
+### 0.1 Ownership and rollout
+
+- [W11](../plan/waves/W11-lobby-planets.md): canonical identities, exact atlas/sector topology, safe slots, wide identity/exploration, pinned saves, reservation/spawn/party/home flow, small-world border play and simple maps.
+- [W27](../plan/waves/W27-planet-sectors.md): large continent configs, sparse storage/pathing, streaming snapshots/deltas, bounded replicas/caches, summaries and continuous globe navigation over the same foundations.
+- One simulation authority per planet; one canonical identity per type and at most one active world per type. No sector workers/independent clocks. Admission full/paused/faulted does not delete the world. Admin archival does not create a replacement.
+- Config/seed/topology are immutable per world. W27 preserves occupied W11 saves and their size; larger production worlds require an explicit future provisioning/migration decision. Scenario resets are isolated dev operations.
+
+### 0.2 Rule amendments
+
+| Existing IDs | Current rule |
+|---|---|
+| MM-01, MM-02, MM-10 | Persist versioned lifecycle, health, admission and immutable atlas config. Reserve only on loaded, healthy, admission-open worlds with a valid safe slot. Use optimistic concurrency and audited admin transitions. |
+| MM-03, MM-04, MM-09 | Capacity is per sector; full is derived availability, not a permanent SEALED transition. No age-based sealing or warm-world exception. |
+| MM-05 | Founded seats, reservations, living/present colonies and online players are distinct counts. Reservation release is idempotent and fenced against late spawn. Conservative default: founded seats remain held after elimination/settlement; no automatic inactivity eviction or two-hour refill. Final reclaim/rejoin policy remains WE-33. |
+| MM-06 | Admission pause prevents new reservations; already reserved spawns finish or reconcile. Explicit maintenance archival must drain/reconcile outstanding reservations before finalizing. |
+| MM-07, MM-08 | No automatic lifetime, extinction, all-settled or victory ending. Explicit admin archival persists final snapshot/results before unload; preserves historical identity and carry. Victory/settlement can produce outcomes without destroying the world. |
+| MM-20..24 | Always list three canonical types with open/full/paused/faulted/archived availability, live timestamps and counts. No New Planet action, close-soon hiding or warm-pool cards. Active players resume through authorized home selection. |
+| MM-30, MM-31, MM-39 | Idempotent enqueue/cancel and existing live-colony/ownership constraints remain; reuse landed authenticated multi-colony resume rules rather than adding a competing home implementation. |
+| MM-32..34, MM-41 | Reserve an eligible sector/landing slot on the selected canonical planet. Chosen-sector failure queues or offers an explicit alternative on that planet. An explicit automatic-sector intent may select any eligible sector there. Never silently switch planet/type or create overflow. |
+| MM-33 | Atomically lock/check sector capacity and safe landing slots, count held and founded seats exactly once, allocate founding colony/ticket IDs and TTL. Revalidate at sim authority before spawning. |
+| MM-35..38 | Retain idempotent spawn, bounded retries, reservation expiry fencing and orphan reconciliation. Persist slot/sector identity in the saga. Never release/reassign a site while late spawn ownership is unresolved. |
+| MM-40, MM-45..48 | Retain bounded, pausable, cancellable queue, expiry/priority and measured ETA; capacity waiting never triggers new-world creation. TRANSFER remains pending with durable carry if no eligible different destination exists; retry is idempotent, no source-planet respawn. |
+| MM-42..44 | Warm pool and MAX_ACTIVE_PLANETS overflow policy are removed. Provision only canonical identities; validate supported atlas and safe-site budgets before allocation; report capacity blocked. |
+| MM-49..52 | Keep audited queue/admission/health/explicit-archive admin and existing sim-thread load/restart machinery. Retry same canonical identity; never create an automatic replacement after failure or archival. |
+| MM-55 | Party maximum five, independent of X. Reserve adjacent sites atomically within one or neighbouring sectors on the same world. No feasible set → queue. Successful member spawns persist; reconcile/release failed members individually and report partial status. |
+
+Founding slots are admission records, not territory ownership. Walking, expansion, camera interest and disconnect never consume/release founding seats. Safe sites need authoritative validity, not merely a free database row. No new anti-abuse policy is introduced.
+
+### 0.3 Contract changes
+
+`PlanetSummaryV1` includes canonical ID/type/look, lifecycle/health/admission, derived availability, atlas version/hash, total/land/ocean sector counts, validated capacity, reserved/founded/free seats, living/present colonies, online players and updated time. Nullable live values are unavailable/stale, never false zero. Publish only authorized/public fields; never hidden subsurface or enemy tactical data.
+
+`PlanetListV1` has the three summaries and queue state; remove `newPlanet` and age-based timers. Sector summaries include stable sector/continent IDs, safe founding capacity and counts. Ticket intent has selected planet, optional chosen sector or explicit automatic-sector selection; reservation stores planet/sector/landingSlot IDs and epoch/expiry. `NEW_PLANET` is rejected with a clear unsupported-mode error. `TRANSFER` keeps durable carry and requires an eligible selected different canonical planet; choosing another type is explicit. Preserve the existing no-rejoin restriction until WE-33 is decided.
+
+Home/assignment includes canonical world and founding-sector context, not an instruction to allocate another seat. Keep queue WS and REST fallbacks. W11 uses bounded small-world replication; W27 negotiates interest/streaming capabilities without a new lobby or seat model.
+
+### 0.4 Configuration, tests and open decisions
+
+W11 proposed fixture: seven connected land-bearing sectors per type, one continent, X=4, R=24; validate X=3/4/5. W27 targets configured 150-sector continents and 1/3-continent presets. Counts are not concurrency guarantees; reject unsupported configurations based on measured budgets and validated safe sites. Legacy `PLANET_CAPACITY`, admission/lifetime/refill hours, warm-pool and hide-before-close settings do not control canonical worlds. Keep reservation/queue TTL and capacity-protection settings where applicable.
+
+Acceptance: concurrent joins/party failures, late spawns versus cancellation, idempotent releases, persistent full/paused worlds, no age/end/overflow side effects, cross-border play with stable counts, reconnect/restart/save upgrade, and incompatible flags without reset. W11 and W27 issue tables own current tests; historical §10 is not the acceptance matrix.
+
+[WE-33](../questions-and-limitations/sim-world-engine.md#we-33--w11-small-world-rollout-and-persistent-seat-policies) tracks exact rollout sizes, founded-seat reclaim/inactivity/rejoin, and occupied-world growth. Conservative defaults preserve state; these are not owner-approved balance decisions. W21 settlement records outcomes without ending canonical worlds.
+
+---
+
+## Historical v0.2 instance design (superseded for W11/W27)
+
+The following sections preserve old rule IDs and rationale. Conflicting statements are not current implementation requirements; use §0 above.
 
 ## 1. Purpose
 

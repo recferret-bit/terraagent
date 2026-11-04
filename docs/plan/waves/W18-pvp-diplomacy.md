@@ -1,7 +1,7 @@
 # W18 — PvP & Diplomacy
 
 > **Track:** Gameplay (G) · **Flag:** `W18` · **Tag:** `wave-18` · **Scenario:** `tests/scenarios/w18-pvp-diplomacy.ts` (5 colonies on one planet, with the shield states and armies below) · **E2E:** `tests/e2e/w18.spec.ts`
-> **Depends on waves:** W07 (battle v1, combat units, `attackMove`), W11 (planets with several colonies, seat refill), W09 (away policy, notification routing, the `colonyCritical` / `colonyEliminated` events). Optional: W04 (map layer for shields), W08 (HQ goals), W14 (gates as raid path targets), W16 (AI director accept), W24 (touch).
+> **Depends on waves:** W07 (battle v1, combat units, `attackMove`), W11 (persistent sector worlds and elimination accounting), W09 (away policy, notification routing, the `colonyCritical` / `colonyEliminated` events). Optional: W04 (map layer for shields), W08 (HQ goals), W14 (gates as raid path targets), W16 (AI director accept), W24 (touch).
 > **Specs:** [units spec](../../game/units-orders-and-progression-spec.md) `UO-W-08`, `UO-T-05`, `UO-HQ-04`, `UO-TF-05`, `UO-DIP-01..06`, AC-06, AC-12, AC-13 · [SIMULATION](../../spec/SIMULATION.md) §7.7 · [CONTINUITY](../../spec/CONTINUITY.md) `AW-11`, `AW-13`, §5a · [MATCHMAKING](../../spec/MATCHMAKING.md) `MM-05` · D-17, D-28, D-31
 > **Owned paths:** `shared/sim/src/systems/{pvp,elimination,diplomacy}/`, `shared/sim/src/data/diplomacy.ts`, `shared/contracts/src/{commands,events}/{pvp,diplomacy}.ts`, `frontend/game/features/{raid,diplomacy,colony-status}/`, the ruin variant in `frontend/render/visuals/UnifiedColonyMaterial.ts`
 
@@ -13,7 +13,7 @@ Colonies on the same planet can fight and make peace. Players raid each other wi
 
 1. Open `/play.html?scenario=w18`: A at S6 with an army, B at S6 without a shield. HQ Goals menu → Raid Colony on B. → The army attack-moves into B's territory and turrets engage. Combat units next to B's depot siphon resources into A.
 2. Open colony C in a second profile (from A's tab, dev console `planet c` prints the join link `/play.html?join=<planet id>&as=c`), aged 1 h at S3. → The Raid Colony goal is greyed with "newcomer shield: 5 h left" and the command is rejected `raid_protected`. (Dev console `setShield <h>` changes the shield.)
-3. In B's tab (join link from `planet b`) run `killHq` in the dev console. → B's Hub reprints the HQ (90 s, top of the Units lane). Run `killHub`. → B becomes `critical` with a 10-min re-establish timer. Kill the re-printed HQ too (`killHq`). → B is eliminated, its buildings become ruins, and the lobby frees the seat if the planet is under 2 h old (W11-16).
+3. In B's tab (join link from `planet b`) run `killHq` in the dev console. → B's Hub reprints the HQ (90 s, top of the Units lane). Run `killHub`. → B becomes `critical` with a 10-min re-establish timer. Kill the re-printed HQ too (`killHq`). → B is eliminated, its buildings become ruins, and W11-16 updates living/present counts once while retaining the founded seat under the provisional persistent-world reclaim policy (MATCHMAKING §0, WE-33).
 4. From A, open Negotiate on D and offer a 6 h truce; D (join link from `planet d`) accepts in its Diplomacy panel. → A's attack-move into D's territory is rejected `truce_active`, and neither colony's units fire at the other's.
 5. A cancels the truce in Negotiate. → A 10-min notice starts while the truce still holds, and A's HQ card shows "Oathbreaker 24 h".
 6. D, now away (`presence away`) with AI allowed, receives a truce offer from E (`offerTruce <colony> <h>` in E's console). → The director accepts it (W16 on; with W16 off the `offerTruce` console command + an `ai.directive` fixture stands in).
@@ -30,7 +30,7 @@ Colonies on the same planet can fight and make peace. Players raid each other wi
 | HQ reprint at Hub (cost/time per tier, top of Units lane, pauses T2+ construction) (`UO-HQ-04`) | W18-07 |
 | Colony critical (Hub destroyed, 10 min to rebuild, auto goal "Re-establish"), Hub-site exception for unclaimed tiles (`UO-HQ-04`, `UO-TF-05`) | W18-08 |
 | Elimination: both destroyed or timer ends → ruins (owner −1, 1 % HP/s decay), tile grace revert, `colonyEliminated` | W18-09 |
-| Seat-refill on elimination: W11-16 already consumes `colonyEliminated` from the bus (MM-05 2 h window); this wave's e2e step 3 asserts it (W18-10 dropped) | W18-29 |
+| Elimination accounting: W11-16 consumes `colonyEliminated` idempotently; living counts drop but founded seats stay held pending WE-33; e2e step 3 asserts it (W18-10 dropped) | W18-29 |
 | Truces `UO-DIP-01` requirements (contact, both HQs alive, no damage in 10 min) | W18-11 |
 | `UO-DIP-02` terms (2/6/24/72 h, capped by HQ tier; active truces 1/2/4; offer expiry 10 min) | W18-12 |
 | `UO-DIP-03` effects (no auto-target, raid/attack-move rejected; partners pass `openToPartners` gates when W14 is on) | W18-13 |

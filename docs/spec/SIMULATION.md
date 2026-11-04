@@ -398,7 +398,7 @@ The planned test per rule (task plan). Files marked by a later wave's task do no
 | 13 | `powerOverload` debounce | 600 ticks in §7.4 and §9 (under `SIM-D-03` that is 60 s of game time) | R8 | §9 row |
 
 Follow-up design needed:
-- Settled colonies and the planet `ENDED` condition: resolved in MATCHMAKING `MM-07`. An all-settled planet ends early (proposed).
+- Settled colonies persist on canonical worlds; settlement does not end the planet. MATCHMAKING §0 and amended D-12 supersede the old MM-07 all-settled ending. Transfers await an eligible different selected world; no replacement instance or source respawn.
 
 ---
 
