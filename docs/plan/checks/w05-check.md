@@ -33,7 +33,7 @@
 5. **Terraform → irrigate → seed over 10 Prepared tiles → `Terraform 10 / 412 (2.4 %)` and `+10 %` move speed.**
    - With **`Terraform`** armed, Ctrl+click the prepared pad around **`(-2, 0)`** and **`(-4, 0)`**, **`(-4, 1)`**, **`(-4, 2)`** (`10` Prepared tiles) → **see** them irrigated (`15 Water` per hex). Ctrl+click them again → they are seeded (`10 Water + 5 Minerals` per hex). A mis-click on prepared ground costs water.
    - As the 10 tiles finish seeding, **see**:
-     - The 10 hexes turn lush green **Living** ground.
+     - The 10 hexes turn lush green **Living** ground (no glowing green or blue rims: only the orange hover and queued targets are highlighted).
      - The **Terraform %** meter in the panel **under the minimap** updates to **`Terraform 10 / 412 (2.4 %)`** (hover it for `Living tiles: 10`, `Eligible owned: 412`, `Colony ratio: 2.4 %`, and the T2/T3 gate status).
    - Press **`L`** (with the dev console closed) → **see** the **Living overlay** highlight the 10 Living hexes and show **`+10% move speed on Living tiles`**. Press **`L`** again to turn it off.
 6. **Build a Territory Beacon T1 (`R 8` claim)** — *not in this landing* (`W05-12`, `W05-21`, `W05-25` are full-product scope, deferred out of the `H` slice; see [`frontend-features.md`](../../questions-and-limitations/frontend-features.md) FF-82). Skip.
@@ -58,6 +58,10 @@
       - **`Light Alloys (T2)`** is **unlocked** (`data-locked="false"`) and receiving **`+0.47/s`** (`30 %` of the ringed extractor's `1.575/s` output; `70 / 30` T1/T2 split), while the second extractor on unterraformed ground contributes T1 only.
 14. **Earlier waves stay clean (`&waves=..04`).**
     - Open `<client>/play.html?scenario=w04&waves=..04` → **see** no `Terraform %` chip in the top HUD, no `Terraformer Drone` in `PRODUCTION [U]`, only the W01 3-button toolset (`TERRAFORM [G]`, `REPAIR [R]`, `DISMANTLE [Z]`) in `TERRAFORM [T]` (no W05 op chips or area brushes), and pressing **`L`** does not activate the Living overlay.
+
+18. **Cannot terraform terraformed hexes.** With `Terraform` armed, click a Living hex → **see** `Already terraformed (Living)` and nothing is queued. Click a hex that already has a queued job → **see** `Already queued`. Ctrl+click over a mix of valid and invalid hexes → the valid ones queue, the rest are skipped.
+19. **Cancel cancels all.** Queue 3 terraform orders, open **`QUEUE`** and click the × once → **see** all three leave the queue, the workers go idle and the orange targets vanish.
+20. **Deep water.** The deep hex next to the lake says `Deep water needs a T2 worker` on click; order a Terraformer to reclaim it.
 
 ## Automated checks (already green on the branch)
 

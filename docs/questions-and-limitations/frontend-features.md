@@ -1253,3 +1253,11 @@ Open items, see the format in `README.md`:
 - **Wind label shows power %, not rotor %.** The rotor follows the new curve in `rotorSpeed.ts`; the label is the sim output factor.
 - **Cable lift cap.** A very tall obstacle on a short span may leave the wire passing through its roof instead of spiking up.
 
+## W05 terraform validation, cancel and overlay (2026-11-05)
+
+- **`already_queued` blocks any op on a hex with a pending job**, so Irrigate can only be queued after Grade completes. Duplicate hexes in one stroke are skipped silently and counted in `skippedCount`.
+- **Cancel by kind, not by op.** Cancelling a terraform entry cancels all terraform work of the colony, whatever the op; HQ-goal child entries are excluded; there is no per-entry cancel button. Owner question: kind-level or op-level?
+- **Living/Irrigated hexes are subtle on green biomes** since the glowing rim was removed from hex terrain (it drew a green/blue outline on every cell). The HUD meter and the `L` overlay still show them. Follow-up: a flat non-glowing tint.
+- **Unclickable last water hex not reproduced.** Picking now intersects the water surface first (a hardening, not a confirmed cause). The likeliest cause is the deep hex next to the lake, which is picked but refused with `Deep water needs a T2 worker` on the status line only. Follow-up: a hover hint.
+- **Cancel-same-kind refunds** for a partly paid queue entry are not covered by a spec.
+
