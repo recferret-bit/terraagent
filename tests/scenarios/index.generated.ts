@@ -8,6 +8,7 @@ import scn_w06_invisible_chain from './w06-invisible-chain';
 import scn_w08_stages_goals from './w08-stages-goals';
 import scn_w10_cargo_trade_hub from './w10-cargo-trade-hub';
 import scn_w12_profile from './w12-profile';
+import scn_w16_director from './w16-director';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
   { file: 'w00-empty', def: scn_w00_empty },
@@ -18,4 +19,5 @@ export const SCENARIOS: readonly { readonly file: string; readonly def: Scenario
   { file: 'w08-stages-goals', def: scn_w08_stages_goals },
   { file: 'w10-cargo-trade-hub', def: scn_w10_cargo_trade_hub },
   { file: 'w12-profile', def: scn_w12_profile },
+  { file: 'w16-director', def: scn_w16_director },
 ];
