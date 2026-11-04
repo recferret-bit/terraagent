@@ -30,7 +30,17 @@ export function placementWorldFromState(state: SimState): PlacementWorld {
   const c = e.cols;
   const entities: PlacementEntity[] = [];
   for (let i = 0; i < e.count; i++) {
-    entities.push({ id: c.id[i], kind: c.kind[i], owner: c.owner[i], q: c.q[i], r: c.r[i], hp: c.hp[i], hpMax: c.hpMax[i], state: c.state[i] });
+    entities.push({
+      id: c.id[i],
+      kind: c.kind[i],
+      owner: c.owner[i],
+      q: c.q[i],
+      r: c.r[i],
+      hp: c.hp[i],
+      hpMax: c.hpMax[i],
+      state: c.state[i],
+      tier: c.tier[i],
+    });
   }
   return {
     radius: state.grid.radius,

@@ -27,6 +27,7 @@ export interface PlacementEntity {
   hp: number;
   hpMax: number;
   state: number;
+  tier?: number;
 }
 
 /** Read-only map + entity snapshot (built from `SimState` on the host, from the replica view in the client). */
