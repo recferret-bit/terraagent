@@ -24,6 +24,7 @@
   top: 0;
   left: 0;
   align-items: flex-start;
+  z-index: 1; /* an opened top-left plate (the pilot chip's Save progress) drops over the bottom-left Command Dock */
 }
 
 .ta-hud__slot[data-slot='top-right'] {
