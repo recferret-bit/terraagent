@@ -97,6 +97,42 @@ test('@hack 3 & 4. Build Metals Extractor on deposit and Solar -> Extractor prod
   expectNoPageErrors(page);
 });
 
+/**
+ * Step 6: the Hub + Solar + Extractor colony runs +1 E/s at night (founder core 16 vs demand 15), so it needs a second
+ * Extractor (demand 23) to run short: `time night` -> Solar drops to 0 and the HQ cell covers the 7 E/s deficit
+ * (Stored draining, no brownout); with the cell empty (`cell 0`) the brownout banner appears and the shed group goes
+ * offline; `time day` restores.
+ */
+async function nightDrainThenBrownout(page: Page): Promise<void> {
+  await devConsole(page, 'warp 20');
+  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext-2', task: { kind: 'build', building: 'metalsExtractor', q: 5, r: -1 } })).ok).toBe(true);
+  await expect.poll(async () => (await getColony0(page))?.power?.demand ?? 0, { timeout: 20_000 }).toBeGreaterThanOrEqual(23); // + Extractor 8
+  await devConsole(page, 'warp 1');
+  await devConsole(page, 'cell 200'); // a full cell (the HQ spent some building): 200 E last ~28 s against 7 E/s
+  await devConsole(page, 'time night');
+  await expect.poll(async () => (await getColony0(page))?.power?.phase ?? 'day').toBe('night');
+  await expect.poll(async () => (await getColony0(page))?.power?.hqCellDischargePerS ?? 0).toBe(7);
+  expect((await getColony0(page))?.power?.brownout).toBe(false);
+  const energy = page.locator('[data-testid="hud-hq-cell"]');
+  await energy.hover();
+  await expect(energy.locator('[data-testid="res-stored-energy"]')).toHaveText('Stored: −7 E/s (draining)');
+  await screenshot(page, '6-night-cell-draining');
+
+  await devConsole(page, 'cell 0');
+  await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? false).toBe(true);
+  const nightPower = (await getColony0(page))?.power;
+  expect(nightPower?.solarNetPerS ?? 99).toBeGreaterThanOrEqual(-1); // Solar gives 0, minus its 1 E/s internal drain
+  expect(nightPower?.solarNetPerS ?? 99).toBeLessThanOrEqual(0);
+  expect(Object.values(nightPower?.offlineReasons ?? {})).toContain('offline: brownout'); // an Extractor is shed
+  await expect(page.locator('.ta-power-hud__brownout[data-brownout="true"]')).toBeVisible();
+  await expect(page.locator('.ta-power-hud__brownout')).toContainText('BROWNOUT');
+  await screenshot(page, '6-night-brownout');
+
+  await devConsole(page, 'time day');
+  await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? true).toBe(false);
+  await devConsole(page, 'cell 200'); // the HQ works on its cell: refill it for the orders of steps 7–8
+}
+
 test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & storage wait, and cancel refunds (50% of what was paid)', async ({ page }) => {
   await openW02(page);
   await devConsole(page, 'warp 20');
@@ -131,37 +167,7 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
   expect(afterWaitCancel['bio.water']).toBe(beforeWaitCancel['bio.water']);
   await devConsole(page, 'fill minerals.t1 250');
 
-  // Step 6: the Hub + Solar + Extractor colony runs +1 E/s at night (founder core 16 vs demand 15), so it needs a second
-  // Extractor (demand 23) to run short: `time night` -> Solar drops to 0 and the HQ cell covers the 7 E/s deficit
-  // (Stored draining, no brownout); with the cell empty (`cell 0`) the brownout banner appears and the shed group goes
-  // offline; `time day` restores.
-  await devConsole(page, 'warp 20');
-  expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'b-ext-2', task: { kind: 'build', building: 'metalsExtractor', q: 5, r: -1 } })).ok).toBe(true);
-  await expect.poll(async () => (await getColony0(page))?.power?.demand ?? 0, { timeout: 20_000 }).toBeGreaterThanOrEqual(23); // + Extractor 8
-  await devConsole(page, 'warp 1');
-  await devConsole(page, 'cell 200'); // a full cell (the HQ spent some building): 200 E last ~28 s against 7 E/s
-  await devConsole(page, 'time night');
-  await expect.poll(async () => (await getColony0(page))?.power?.phase ?? 'day').toBe('night');
-  await expect.poll(async () => (await getColony0(page))?.power?.hqCellDischargePerS ?? 0).toBe(7);
-  expect((await getColony0(page))?.power?.brownout).toBe(false);
-  const energy = page.locator('[data-testid="hud-hq-cell"]');
-  await energy.hover();
-  await expect(energy.locator('[data-testid="res-stored-energy"]')).toHaveText('Stored: −7 E/s (draining)');
-  await screenshot(page, '6-night-cell-draining');
-
-  await devConsole(page, 'cell 0');
-  await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? false).toBe(true);
-  const nightPower = (await getColony0(page))?.power;
-  expect(nightPower?.solarNetPerS ?? 99).toBeGreaterThanOrEqual(-1); // Solar gives 0, minus its 1 E/s internal drain
-  expect(nightPower?.solarNetPerS ?? 99).toBeLessThanOrEqual(0);
-  expect(Object.values(nightPower?.offlineReasons ?? {})).toContain('offline: brownout'); // an Extractor is shed
-  await expect(page.locator('.ta-power-hud__brownout[data-brownout="true"]')).toBeVisible();
-  await expect(page.locator('.ta-power-hud__brownout')).toContainText('BROWNOUT');
-  await screenshot(page, '6-night-brownout');
-
-  await devConsole(page, 'time day');
-  await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? true).toBe(false);
-  await devConsole(page, 'cell 200'); // the HQ works on its cell: refill it for the orders of steps 7–8
+  await nightDrainThenBrownout(page); // Step 6
 
   // Step 7: Fill Metals to cap (500/500)
   await devConsole(page, 'fill metals.t1 9999');
