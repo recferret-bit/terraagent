@@ -4,6 +4,7 @@ import { rowOf, setField } from '../../ecs/store';
 import { isTileUneven } from '../../grid/geo';
 import { HEX_DIRS, hexDistance, hexIndex } from '../../grid/hex';
 import { TERRAIN } from '../../grid/layers';
+import { regionalClearingYields } from '../../economy/regions/sources';
 import { revealSubsurface } from '../../grid/subsurface';
 import { setTileHeight, setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import { TICK_MS } from '../../kernel/constants';
@@ -106,10 +107,11 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
  */
 function creditYield(state: PlanetState, colonyId: number, job: TerraformJob, ctx: StepContext): Amounts | undefined {
   const spec = getTerraformOpSpec(job.op, ctx.data);
-  if (Object.values(spec.yields).every((v) => !v)) return undefined;
+  const yields = regionalClearingYields(state, spec.yields); // W13-51: regional clearing yield (identity without a pinned region)
+  if (Object.values(yields).every((v) => !v)) return undefined;
   const req: AddRequest = {
     colony: colonyId,
-    amounts: { ...spec.yields },
+    amounts: { ...yields },
     reason: 'terraform.yield',
     actor: colonyActor(state, colonyId),
     ref: `tile:${job.q},${job.r}`,
