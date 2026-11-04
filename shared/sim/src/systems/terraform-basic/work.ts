@@ -20,7 +20,7 @@ import { stepTerraformWorkWithCell } from '../hq/cell';
 import { syncHqView } from '../hq/view';
 import { getTerraformJobCost, getTerraformOpSpec } from './ops';
 import { colonyTerraformOrders, readColonyOrders, writeColonyOrders, type TerraformJob, type TerraformOrder } from './orders';
-import { evaluateTerraformTile, terraformWorldFromState } from './rules';
+import { evaluateTerraformTile, syncColonyTerraformStats, terraformWorldFromState } from './rules';
 
 /**
  * Terraform as unit work (`UO-TF`, `UO-HQ-06`). The colony's terraform queue (`state.blobs.terraformTasks`) says WHAT
@@ -85,6 +85,7 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   const prevPrep = prepKeyFromId(state.grid.layers.prep[tileIdx]);
   if (spec.toTerrain === spec.fromTerrain) {
     setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
+    syncColonyTerraformStats(state, colonyId, tick);
     if (ctx.flags.has('W05')) {
       ctx.emit({
         kind: 'tileStateChanged',
@@ -103,6 +104,7 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   setTileTerrain(state.grid, tileIdx, spec.toTerrain, tick);
   setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
   if (spec.toTerrain === TERRAIN.flat) levelToAdjacentFlat(state, tileIdx, tick);
+  syncColonyTerraformStats(state, colonyId, tick);
   if (ctx.flags.has('W05')) {
     ctx.emit({
       kind: 'tileStateChanged',

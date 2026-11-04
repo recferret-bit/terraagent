@@ -3,6 +3,7 @@ import { parseWaves } from '@terra/contracts';
 import {
   cancelTerraformOrder,
   colonyTerraformOrders,
+  colonyTerraformStats,
   createRegistryPipeline,
   createState,
   creditResource,
@@ -15,6 +16,7 @@ import {
   rowOf,
   setTileHeight,
   setTileOwner,
+  setTilePrep,
   setTileTerrain,
   spawnHqUnit,
   spawnTerraformerUnit,
@@ -319,5 +321,111 @@ describe('W05-05 · Deep Reclaim worker tier gate', () => {
     expect(rUnlocked.outcomes[0]?.code).toBeUndefined();
   });
 });
+
+describe('W05-07 · Irrigate and Seed -> Living, and building footprint revert', () => {
+  it('Acceptance: Irrigate then Seed 1 tile -> Living; build over it -> Prepared again and Terraform % drops', () => {
+    const { state, colony, hx, pipeline } = createW05Colony('temperate');
+    const target = { q: 3, r: 0 };
+    const tIdx = hx.indexOf(target.q, target.r);
+    setTilePrep(state.grid, tIdx, PREP.prepared, 0);
+
+    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    const startWater = colony.stock['bio.water'];
+    const startMinerals = colony.stock['minerals.t1'];
+
+    // 1. Irrigate (10 s = 50 ticks, 80 E, 15 bio.water on temperate)
+    const rIrr = step(
+      state,
+      [
+        {
+          commandId: 'cmd-irr-1',
+          colonyIndex: 0,
+          source: 'player',
+          kind: 'enqueueTask',
+          args: { terraform: { op: 'irrigate', tiles: [target] } },
+        },
+      ],
+      1,
+      pipeline,
+    );
+    expect(rIrr.outcomes[0]?.code).toBeUndefined();
+    for (let t = 0; t < 55; t++) step(state, [], 1, pipeline);
+
+    expect(state.grid.layers.prep[tIdx]).toBe(PREP.irrigated);
+    expect(colony.stock['bio.water']).toBeCloseTo(startWater - 15, 5);
+
+    // 2. Seed (15 s = 75 ticks, 90 E, 10 bio.water + 5 minerals.t1) -> Living
+    const rSeed = step(
+      state,
+      [
+        {
+          commandId: 'cmd-seed-1',
+          colonyIndex: 0,
+          source: 'player',
+          kind: 'enqueueTask',
+          args: { terraform: { op: 'seed', tiles: [target] } },
+        },
+      ],
+      1,
+      pipeline,
+    );
+    expect(rSeed.outcomes[0]?.code).toBeUndefined();
+    for (let t = 0; t < 80; t++) step(state, [], 1, pipeline);
+
+    expect(state.grid.layers.prep[tIdx]).toBe(PREP.living);
+    expect(colony.stock['bio.water']).toBeCloseTo(startWater - 25, 5);
+    expect(colony.stock['minerals.t1']).toBeCloseTo(startMinerals - 5, 5);
+
+    const statsBeforeBuild = colonyTerraformStats(state, 0);
+    expect(statsBeforeBuild.livingTiles).toBe(1);
+    expect(statsBeforeBuild.percent).toBeGreaterThan(0);
+
+    // 3. Build over the Living tile -> reverts to Prepared and Terraform % drops
+    const buildRes = startBuildingConstruction(state, {
+      owner: 0,
+      building: 'pylon',
+      q: target.q,
+      r: target.r,
+    });
+    expect(buildRes.ok).toBe(true);
+    expect(state.grid.layers.prep[tIdx]).toBe(PREP.prepared);
+    const statsAfterBuild = colonyTerraformStats(state, 0);
+    expect(statsAfterBuild.livingTiles).toBe(0);
+    expect(statsAfterBuild.percent).toBe(0);
+  });
+});
+
+describe('W05-07 · Desert 2x water cost on Irrigate', () => {
+  it('charges 2x water (30 bio.water) for Irrigate on desert planets', () => {
+    const { state, colony, hx, pipeline } = createW05Colony('desert');
+    const target = { q: 3, r: 0 };
+    const tIdx = hx.indexOf(target.q, target.r);
+    setTilePrep(state.grid, tIdx, PREP.prepared, 0);
+
+    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    const startWater = colony.stock['bio.water'];
+
+    const rIrr = step(
+      state,
+      [
+        {
+          commandId: 'cmd-irr-desert',
+          colonyIndex: 0,
+          source: 'player',
+          kind: 'enqueueTask',
+          args: { terraform: { op: 'irrigate', tiles: [target] } },
+        },
+      ],
+      1,
+      pipeline,
+    );
+    expect(rIrr.outcomes[0]?.code).toBeUndefined();
+    for (let t = 0; t < 55; t++) step(state, [], 1, pipeline);
+
+    expect(state.grid.layers.prep[tIdx]).toBe(PREP.irrigated);
+    expect(colony.stock['bio.water']).toBeCloseTo(startWater - 30, 5);
+  });
+});
+
 
 

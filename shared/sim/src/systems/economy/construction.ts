@@ -16,6 +16,7 @@ import { buildingFootprints } from '../construction/occupancy';
 import { resolvePlacementRule } from '../construction/placement';
 import { buildLinkedPrepJobs } from '../construction/prep';
 import { enqueueTerraformOrder, removeTerraformOrder } from '../terraform-basic/queue';
+import { revertFootprintLivingTiles } from '../terraform-basic/rules';
 import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
 import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
 import { checkCostAffordability, debitCost, refundCost, syncColonyDepotCaps } from './ledger';
@@ -229,6 +230,13 @@ export function startBuildingConstruction(
   if (!check.ok) return check;
 
   const entityId = ctx ? ctx.newEntityId() : state.meta.nextEntityId++;
+  revertFootprintLivingTiles(
+    state,
+    opts.owner,
+    fp.indices,
+    tick,
+    ctx?.emit && ctx.flags?.has('W05') ? (ev) => ctx.emit(ev) : undefined,
+  );
   if (opts.instant) {
     for (const tileIdx of fp.indices) {
       if (state.grid.layers.height && Math.abs(state.grid.layers.height[tileIdx]) > 0.15) state.grid.layers.height[tileIdx] = 0.08;

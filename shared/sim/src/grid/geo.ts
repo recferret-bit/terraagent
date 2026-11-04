@@ -28,9 +28,9 @@ export function isGroundMoveBlocked(terrain: number, deposit: number): boolean {
 /** Max height difference (m) inside one building footprint: Grade prepares a tile, it does not move dunes (Level is W05). */
 export const MAX_FOOTPRINT_SPREAD_M = 0.6;
 
-/** Ground is ready for a foundation (Prepared or Living). */
+/** Ground is ready for a foundation (Prepared, Irrigated, or Living; placing a building reverts Irrigated/Living to Prepared). */
 export function isPreparedGround(prep: number): boolean {
-  return prep === PREP.prepared || prep === PREP.living;
+  return prep === PREP.prepared || prep === PREP.irrigated || prep === PREP.living;
 }
 
 /** How a building treats resource deposits on its footprint. */

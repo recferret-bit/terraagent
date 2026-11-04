@@ -2,7 +2,7 @@ import type { RejectCode } from '@terra/contracts';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { isTileUneven } from '../../grid/geo';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { PREP } from '../../grid/layers';
+import { PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { SimState } from '../../kernel/state';
 import type { PlacementEntity, PlacementWorld } from '../construction/placement';
@@ -104,7 +104,7 @@ export function terraformOwnershipBlock(world: TerraformWorld, colonyId: number,
   return ownershipBlock(world, colonyId, i, q, r, false);
 }
 
-/** Whether `op` changes tile `i` (its `fromTerrain`; a terrain-keeping op such as Grade also needs the prep to change). */
+/** Whether `op` changes tile `i` (its `fromTerrain`; a terrain-keeping op such as Grade/Irrigate/Seed also needs the prep to match/change). */
 function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data?: CompiledDataLike): RejectCode | null {
   const spec = getTerraformOpSpec(op, data);
   const terrain = world.terrain[i], prep = world.prep[i];
@@ -112,7 +112,110 @@ function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data
   if (spec.minWorkerTier > (world.maxWorkerTier ?? 1)) return 'worker_tier_locked';
   if (spec.toTerrain !== spec.fromTerrain) return null;
   if (isTileUneven(world.radius, i, world.terrain, world.height)) return 'site_blocked';
-  return prep === spec.toPrep || prep === PREP.living || prep === PREP.ridge || prep === PREP.moat ? 'site_blocked' : null;
+  if (spec.fromPrep !== null) return prep === spec.fromPrep ? null : 'site_blocked';
+  return prep === spec.toPrep || prep === PREP.irrigated || prep === PREP.living || prep === PREP.ridge || prep === PREP.moat
+    ? 'site_blocked'
+    : null;
+}
+
+export interface ColonyTerraformStats {
+  livingTiles: number;
+  eligibleOwnedTiles: number;
+  /** `Living ÷ eligibleOwned * 100`, rounded to 0.1 % (e.g. `10 / 412 -> 2.4`). */
+  percent: number;
+}
+
+/**
+ * Computes `colonyId`'s Terraform % (`Living ÷ owned`, excluding unreclaimed Deep Water and Ridge/Moat, W05-07 / W05-10).
+ */
+export function computeColonyTerraformStats(
+  world: Pick<TerraformWorld, 'tileCount' | 'terrain' | 'prep' | 'owner' | 'valid'>,
+  colonyId: number,
+): ColonyTerraformStats {
+  let livingTiles = 0;
+  let eligibleOwnedTiles = 0;
+  for (let i = 0; i < world.tileCount; i++) {
+    if (world.valid && world.valid[i] === 0) continue;
+    if (world.owner[i] !== colonyId) continue;
+    const t = world.terrain[i];
+    const p = world.prep[i];
+    if (t === TERRAIN.deep || p === PREP.ridge || p === PREP.moat) continue;
+    eligibleOwnedTiles++;
+    if (p === PREP.living) livingTiles++;
+  }
+  const percent = eligibleOwnedTiles > 0 ? Math.round((livingTiles / eligibleOwnedTiles) * 1000) / 10 : 0;
+  return { livingTiles, eligibleOwnedTiles, percent };
+}
+
+/** Computes and returns `colonyId`'s Terraform % stats on authoritative `state`. */
+export function colonyTerraformStats(state: SimState, colonyId: number): ColonyTerraformStats {
+  const L = state.grid.layers;
+  return computeColonyTerraformStats(
+    {
+      tileCount: state.grid.count,
+      terrain: L.terrain,
+      prep: L.prep,
+      owner: L.owner,
+      valid: (L as { valid?: ArrayLike<number> }).valid ?? null,
+    },
+    colonyId,
+  );
+}
+
+/** Updates `state.colonies[colonyId].terraform` with the latest `ColonyTerraformStats`. */
+export function syncColonyTerraformStats(state: SimState, colonyId: number, tick: number = state.meta.tick): ColonyTerraformStats {
+  const stats = colonyTerraformStats(state, colonyId);
+  const col = state.colonies[colonyId];
+  if (col) {
+    (col as { terraform?: ColonyTerraformStats }).terraform = stats;
+    col.changedAt = tick;
+  }
+  return stats;
+}
+
+/**
+ * Reverts any `PREP.irrigated` or `PREP.living` tiles in `tileIndices` to `PREP.prepared` when a building footprint is placed on them (W05-07).
+ */
+export function revertFootprintLivingTiles(
+  state: SimState,
+  colonyId: number,
+  tileIndices: readonly number[],
+  tick: number = state.meta.tick,
+  emit?: (ev: { kind: 'tileStateChanged'; severity: 'info'; colonyIds: string[]; data: Record<string, unknown> }) => void,
+): number {
+  const hx = hexIndex(state.grid.radius);
+  const { prep } = state.grid.layers;
+  const col = state.colonies[colonyId];
+  const colonyIdStr = col?.id ?? `col-${colonyId}`;
+  const playerId = (col as { playerId?: string } | undefined)?.playerId;
+  let reverted = 0;
+  for (const tileIdx of tileIndices) {
+    if (tileIdx < 0 || tileIdx >= state.grid.count) continue;
+    const prev = prep[tileIdx];
+    if (prev !== PREP.living && prev !== PREP.irrigated) continue;
+    prep[tileIdx] = PREP.prepared;
+    state.grid.layers.changedAt[tileIdx] = tick;
+    reverted++;
+    if (emit) {
+      emit({
+        kind: 'tileStateChanged',
+        severity: 'info',
+        colonyIds: [colonyIdStr],
+        data: {
+          colonyId: colonyIdStr,
+          ...(playerId ? { playerId } : {}),
+          q: hx.q[tileIdx]!,
+          r: hx.r[tileIdx]!,
+          prevTerrain: 'flat',
+          prevPrep: prev === PREP.living ? 'living' : 'irrigated',
+          terrain: 'flat',
+          prep: 'prepared',
+        },
+      });
+    }
+  }
+  syncColonyTerraformStats(state, colonyId, tick);
+  return reverted;
 }
 
 /** Whether `colonyId` may run `op` on tile `(q, r)` now (`UO-TF-05`, §4.5). */
