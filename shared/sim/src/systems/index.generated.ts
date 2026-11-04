@@ -3,6 +3,7 @@ import type { SimModule } from './define';
 import mod_cargo from './cargo/index';
 import mod_construction from './construction/index';
 import mod_dev from './dev/index';
+import mod_director from './director/index';
 import mod_dispatch from './dispatch/index';
 import mod_economy from './economy/index';
 import mod_environment from './environment/index';
@@ -22,4 +23,4 @@ import mod_territory_claim from './territory-claim/index';
 import mod_time from './time/index';
 import mod_units from './units/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_cargo, mod_construction, mod_dev, mod_dispatch, mod_economy, mod_environment, mod_factories_hub, mod_finalize, mod_goals, mod_harvest, mod_hq, mod_landing, mod_power_core, mod_production, mod_progression, mod_queue, mod_rule_engine, mod_terraform_basic, mod_territory_claim, mod_time, mod_units];
+export const SIM_MODULES: readonly SimModule[] = [mod_cargo, mod_construction, mod_dev, mod_director, mod_dispatch, mod_economy, mod_environment, mod_factories_hub, mod_finalize, mod_goals, mod_harvest, mod_hq, mod_landing, mod_power_core, mod_production, mod_progression, mod_queue, mod_rule_engine, mod_terraform_basic, mod_territory_claim, mod_time, mod_units];

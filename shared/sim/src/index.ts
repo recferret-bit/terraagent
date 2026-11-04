@@ -67,6 +67,12 @@ export * from './systems/factories-hub';
 export * from './systems/queue';
 export * from './systems/dispatch';
 export * from './systems/goals';
+export {
+  applyDirectorPolicy,
+  colonyDirector,
+  noteDirectorPlan,
+  priorityKey,
+} from './systems/director';
 export * from './systems/progression';
 export * from './systems/progression/validate';
 export * from './systems/rule-engine';

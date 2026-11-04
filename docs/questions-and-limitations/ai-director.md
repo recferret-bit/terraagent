@@ -30,6 +30,16 @@
 - **To resolve:** W16-28 and W16-48 record versions, measured usage/cost and real contract results.
 - **Found:** 2026-11-04, W16 planning review.
 
+### AI-05 · Director away-raid mirror is not the W09 setting yet
+
+- **Status:** Open
+- **Area / code:** `shared/sim/src/systems/director/store.ts` (`awayRaids`)
+- **What happens:** director state stores `awayRaids: false`. `setDirectorPolicy`, including a switch to Risky, never writes `true`. The W09 away opt-in is not in this tree, so there is no second writer.
+- **Why it is like this:** W16 must prove risk does not grant raids (AI-12) before W09's `setAutopilot` lands. The mirror is the checkable stand-in.
+- **Workaround / mitigation:** the field stays false. A command that sends `awayRaids` is `invalid_args` because the policy schema has no such key.
+- **To resolve:** when W09 away policy is in the sim, read that setting here and delete the mirror.
+- **Found:** 2026-11-04, W16-34.
+
 ### AI-04 · Separate worker and large-world performance are unmeasured
 
 - **Status:** Open
