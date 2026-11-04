@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { syncExtractorAppearance } from './extractorAppearance';
 import { updateSelectionPulse } from './selectionPulse';
 import { getWindUniforms } from '@terra/render/core/windConfig';
+import { rotorClockRate } from '@terra/render/core/rotorSpeed';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, stripBuildingPlinth, tickArchetypeMesh } from '@terra/render/kitbash';
 import { attachEntityProjectorRig } from '@terra/render/lighting';
@@ -356,7 +357,7 @@ export class EntityMeshes {
   /** `dt`: animation time (warp-scaled); `realDt`: wall-clock seconds for the render clock (defaults to `dt`). */
   update(dt: number, terrain: HexTerrain | null = null, realDt = dt): void {
     this.time += dt;
-    this.windTime += dt * getWindUniforms().uWindStrength.value;
+    this.windTime += dt * rotorClockRate(getWindUniforms().uWindStrength.value);
     this.hasTerrain = Boolean(terrain);
     const renderTick = this.clock.advance(realDt);
     const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
