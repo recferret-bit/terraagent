@@ -106,6 +106,10 @@
   color: var(--ta-steel);
 }
 
+.ta-hud-min__icon--terraform {
+  color: var(--ta-terra);
+}
+
 .ta-hud-min__stocks {
   display: flex;
   align-items: center;
@@ -226,6 +230,32 @@
   color: var(--ta-steel);
 }
 
+.ta-hud-min__terraform {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  gap: 5px;
+  padding-left: var(--ta-s3);
+  border-left: 1px solid var(--ta-seam);
+  white-space: nowrap;
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.ta-hud-min__terraform[hidden] {
+  display: none;
+}
+
+.ta-hud-min__terraform-val {
+  font-variant-numeric: tabular-nums;
+  color: var(--ta-terra);
+  font-weight: 600;
+}
+
 .ta-hud-min__brand {
   display: inline-flex;
   align-items: center;
@@ -272,7 +302,10 @@
 .ta-hud-min__stock[data-open='true'] .ta-res-chip__breakdown,
 .ta-hud-min__cell:hover .ta-res-chip__breakdown,
 .ta-hud-min__cell:focus-within .ta-res-chip__breakdown,
-.ta-hud-min__cell[data-open='true'] .ta-res-chip__breakdown {
+.ta-hud-min__cell[data-open='true'] .ta-res-chip__breakdown,
+.ta-hud-min__terraform:hover .ta-res-chip__breakdown,
+.ta-hud-min__terraform:focus-within .ta-res-chip__breakdown,
+.ta-hud-min__terraform[data-open='true'] .ta-res-chip__breakdown {
   display: flex;
 }
 
