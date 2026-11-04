@@ -42,14 +42,14 @@ function defaultW02Data(): CompiledDataLike {
 
 let cachedW03Data: CompiledDataLike | null = null;
 function defaultW03Data(): CompiledDataLike {
-  if (!cachedW03Data) cachedW03Data = compileData(new Set(['W00', 'W01', 'W02', 'W03']));
+  if (!cachedW03Data) cachedW03Data = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W07']));
   return cachedW03Data;
 }
 
 export function resolvePowerRow(data: CompiledDataLike | undefined, table: string, id: string): CompiledRow {
   const t = data?.tables?.[table] as Record<string, CompiledRow> | undefined;
   if (t?.[id]) return t[id];
-  if (table === 'grid') return dataRow(defaultW03Data(), table, id);
+  if (table === 'grid' || table === 'combatUnits') return dataRow(defaultW03Data(), table, id);
   return dataRow(defaultW02Data(), table, id);
 }
 

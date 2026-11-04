@@ -6,7 +6,7 @@ import { indexOf } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { resolveBuildingRow } from '../economy/construction';
-import { resolveHubProducerRows } from '../factories-hub';
+import { defaultHubData, resolveHubProducerRows } from '../factories-hub';
 import { normalizeRichness } from '../production';
 import { PRECEDENCE_RANK, type QueueEntry, type QueueLane, type QueuePrecedence, type QueueTaskPayload } from './types';
 
@@ -53,6 +53,18 @@ export function resolveTaskCostAndTicks(
         cost: { ...(builderRow?.cost ?? { 'metals.t1': 45, 'minerals.t1': 25, 'bio.biomass': 10 }) },
         buildTicks: Math.max(1, Number(builderRow?.buildS ?? 60)),
         workRate: Number(builderRow?.workRate ?? 1.0),
+      };
+    }
+    if (task.unit === 'recon') {
+      const src = data?.tables?.combatUnits ? data : defaultHubData();
+      const tables = src.tables as
+        | Record<string, Record<string, { cost?: Partial<Record<ResourceKey, number>>; buildS?: number; workRate?: number }> | undefined>
+        | undefined;
+      const reconRow = tables?.combatUnits?.recon;
+      return {
+        cost: { ...(reconRow?.cost ?? { 'metals.t1': 35, 'minerals.t1': 15, 'bio.biomass': 0, 'bio.water': 5 }) },
+        buildTicks: Math.max(1, Number(reconRow?.buildS ?? 50)),
+        workRate: Number(reconRow?.workRate ?? 1.0),
       };
     }
     const { harvester } = resolveHubProducerRows(data);

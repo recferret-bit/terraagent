@@ -34,7 +34,13 @@ export interface SupplySources {
 const ENTITY_KIND_BY_NAME = ENTITY_KIND as Readonly<Record<string, number>>;
 const cache = new WeakMap<object, SupplySources>();
 
-/** The data a supply read uses: the step's compiled data when it has the Hub table, else the W00–W03 defaults. */
+export const UNIT_SUPPLY_TABLE_PATHS: Readonly<Record<string, readonly [string, string, string]>> = {
+  harvester: ['unitsWorkersBasic', 'harvester', 'supply'],
+  builder: ['grid', 'builder', 'supply'],
+  recon: ['combatUnits', 'recon', 'supplyCost'],
+};
+
+/** The data a supply read uses: the step's compiled data when it has the Hub table, else the W00–W07 defaults. */
 export function supplyData(data?: CompiledDataLike): CompiledDataLike {
   return data?.tables?.hub ? data : defaultHubData();
 }
@@ -53,21 +59,34 @@ function kindOf(name: unknown): number | undefined {
   return typeof name === 'string' ? ENTITY_KIND_BY_NAME[name] : undefined;
 }
 
-function collect(data: CompiledDataLike): SupplySources {
-  const unitSupplyByKind = new Map<number, number>();
-  const unitSupplyByName = new Map<string, number>();
-  const providers = new Map<number, SupplyProvider>();
-  for (const [table, row] of tableRows(data)) {
+function scanRows(
+  rows: ReadonlyArray<[string, CompiledRow]>,
+  unitSupplyByKind: Map<number, number>,
+  unitSupplyByName: Map<string, number>,
+  providers: Map<number, SupplyProvider>,
+): void {
+  for (const [table, row] of rows) {
     const unitKind = row.kind === 'unit' ? kindOf(row.unit) : undefined;
-    if (unitKind !== undefined && typeof row.supply === 'number' && !unitSupplyByName.has(String(row.unit))) {
-      unitSupplyByKind.set(unitKind, row.supply);
-      unitSupplyByName.set(String(row.unit), row.supply);
+    const supplyVal = typeof row.supply === 'number' ? row.supply : typeof row.supplyCost === 'number' ? row.supplyCost : undefined;
+    if (unitKind !== undefined && supplyVal !== undefined && !unitSupplyByName.has(String(row.unit))) {
+      unitSupplyByKind.set(unitKind, supplyVal);
+      unitSupplyByName.set(String(row.unit), supplyVal);
     }
     const buildingKind = kindOf(row.building);
     if (buildingKind !== undefined && typeof row.supplyProvided === 'number' && !providers.has(buildingKind)) {
       const label = typeof row.label === 'string' ? row.label : table === 'hub' ? 'Command Hub' : String(row.building);
       providers.set(buildingKind, { kind: buildingKind, building: String(row.building), label, provided: row.supplyProvided });
     }
+  }
+}
+
+function collect(data: CompiledDataLike): SupplySources {
+  const unitSupplyByKind = new Map<number, number>();
+  const unitSupplyByName = new Map<string, number>();
+  const providers = new Map<number, SupplyProvider>();
+  scanRows(tableRows(data), unitSupplyByKind, unitSupplyByName, providers);
+  if (!providers.has(ENTITY_KIND.droneControlArray) || !unitSupplyByKind.has(ENTITY_KIND.recon)) {
+    scanRows(tableRows(defaultHubData()), unitSupplyByKind, unitSupplyByName, providers);
   }
   const tables = data.tables as Record<string, Record<string, CompiledRow> | undefined>;
   const hq = tables.hq?.t1;
