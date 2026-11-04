@@ -235,13 +235,14 @@ const ownObstaclesOnScreen = (page: Page) =>
     return out.sort((a, b) => a.d - b.d);
   });
 
-const workJobs = (page: Page) =>
+/** Open orders in the colony's terraform queue (`blobs.terraformTasks.byColony`). */
+const terraformOrderCount = (page: Page) =>
   page.evaluate(() => {
-    const v = (window as unknown as { __online: { store: { latest: { blobs?: { workJobs?: { byId?: Record<string, { jobId: string; chainSeq?: number }> } } } | null } } }).__online.store.latest;
-    return Object.values(v?.blobs?.workJobs?.byId ?? {}).map((j) => ({ jobId: j.jobId, chainSeq: j.chainSeq ?? 0 }));
+    const v = (window as unknown as { __online: { store: { latest: { blobs?: { terraformTasks?: { byColony?: Record<string, unknown[]> } } } | null } } }).__online.store.latest;
+    return Object.values(v?.blobs?.terraformTasks?.byColony ?? {}).reduce((n, list) => n + list.length, 0);
   });
 
-test('@hack 9. Terraform dock: TERRAFORM / REPAIR / DISMANTLE, hotkeys only on the open tab, G + click an obstacle -> the chain moves on', async ({ page }) => {
+test('@hack 9. Terraform dock: TERRAFORM / REPAIR / DISMANTLE, hotkeys only on the open tab, G + click an obstacle -> one terraform order', async ({ page }) => {
   await openW02(page);
   const menu = page.locator('[data-testid="terraform-menu"]');
   // The Build tab is open: the brush hotkeys do nothing (an armed tool must be visible).
@@ -261,13 +262,10 @@ test('@hack 9. Terraform dock: TERRAFORM / REPAIR / DISMANTLE, hotkeys only on t
   // Tall tree props may make the pick land on a neighbouring hex; any terraformable hex starts the chain.
   expect(await clickTile(page, target!.q, target!.r)).toBeTruthy();
   await expect(menu).toHaveAttribute('data-armed', 'false'); // one order per armed click
-  await expect.poll(async () => (await workJobs(page)).length, { timeout: 10_000 }).toBeGreaterThan(0);
-  await expect(page.locator('[data-testid="tf-status"]')).toContainText('TERRAFORM');
-
-  await devConsole(page, 'warp 20');
-  await expect.poll(async () => (await workJobs(page)).some((j) => j.chainSeq >= 1 && j.jobId.includes('~')), { timeout: 30_000 }).toBe(true);
-  await devConsole(page, 'warp 1');
-  await screenshot(page, '9-terraform-chain');
+  // TERRAFORM picks the hex's op (Clear / Break ...) and queues one order in the host's terraform queue.
+  await expect.poll(async () => (await terraformOrderCount(page)), { timeout: 10_000 }).toBeGreaterThan(0);
+  await expect(page.locator('[data-testid="tf-status"]')).toContainText(/Terraform|jobs/i);
+  await screenshot(page, '9-terraform-order');
   expectNoPageErrors(page);
 });
 

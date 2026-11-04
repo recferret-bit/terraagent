@@ -211,15 +211,53 @@ describe('Terraform targets: highlighted hexes and Ctrl+click queueing', () => {
     expect(group.visible).toBe(false);
   });
 
-  it('a macOS Ctrl+click (a contextmenu right after the press) does not disarm the brush', () => {
-    const { tf, click, container } = mountOnW05Planet();
+  it('Ctrl+click on a queued hex takes it out of the queue again (toggle) and the highlight goes', () => {
+    const { host, tf, click } = mountOnW05Planet();
+    tf.selectOp('terraform');
+    click(2, 0, { ctrlKey: true });
+    click(3, 0, { ctrlKey: true });
+    host.step(1);
+    tf.update(host.view() as never);
+    expect(tf.getTargetTiles()).toHaveLength(2);
+
+    click(2, 0, { ctrlKey: true }); // already queued: cancel, not a second order
+    expect(tf.getLastStroke()?.statusText).toBe('Terraform cancelled (2,0)');
+    host.step(1);
+    tf.update(host.view() as never);
+    expect(getColonyTerraformOrders(host.state, 0).map((o) => o.jobs[0]!.op)).toEqual(['break']);
+    expect(tf.getTargetTiles().map((t) => `${t.q},${t.r}`)).toEqual(['3,0']);
+    expect(tf.isArmed()).toBe(true);
+  });
+
+  it('a macOS Ctrl+click (a contextmenu right after the press) neither disarms nor reaches the map below', () => {
+    const { tf, click } = mountOnW05Planet();
     const canvas = document.body.querySelector('canvas')!;
+    const below = vi.fn();
+    canvas.addEventListener('contextmenu', below);
     tf.selectOp('terraform');
     click(2, 0, { ctrlKey: true });
     const ev = new MouseEvent('contextmenu', { button: 0, ctrlKey: true, bubbles: true, cancelable: true });
     canvas.dispatchEvent(ev);
     expect(ev.defaultPrevented).toBe(true);
+    expect(below).not.toHaveBeenCalled();
     expect(tf.isArmed()).toBe(true);
-    expect(container.isConnected).toBe(true);
+  });
+});
+
+describe('Terraform on ground that is already clear: Irrigate, then Seed (Living)', () => {
+  it('a prepared hex gets Irrigate, an irrigated one Seed; a Living hex has nothing left', () => {
+    const { host, tf } = mountOnW05Planet();
+    const idx = hexIndex(host.state.grid.radius);
+    const i = idx.indexOf(-1, 1);
+    tf.selectOp('terraform');
+    for (const [prep, op] of [[PREP.prepared, 'irrigate'], [PREP.irrigated, 'seed']] as const) {
+      setTileTerrain(host.state.grid, i, TERRAIN.flat);
+      setTilePrep(host.state.grid, i, prep);
+      tf.update(host.view() as never);
+      expect(tf.strokeTile(-1, 1).jobs.map((j) => j.op)).toEqual([op]);
+    }
+    setTilePrep(host.state.grid, i, PREP.living);
+    tf.update(host.view() as never);
+    expect(tf.strokeTile(-1, 1).queuedCount).toBe(0);
   });
 });

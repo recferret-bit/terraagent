@@ -117,6 +117,7 @@ const SKIP_STATUS: Readonly<Record<string, string>> = {
   site_blocked: 'Nothing to terraform here (already done, queued, or built on)',
   building_here: 'A building stands on this hex',
   deposit_here: 'Resource deposit here: harvest it instead',
+  worker_tier_locked: 'Deep water needs a T2 worker',
 };
 
 /**

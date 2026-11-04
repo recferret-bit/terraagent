@@ -31,7 +31,8 @@ import {
   type PlannedTileJob,
 } from './planner';
 import { bindResourceFoundToasts, resourceFoundText, type ResourceFoundSource } from './resourceFound';
-import { TargetHighlight3D, terraformTargetTiles } from './TargetHighlight3D';
+import { TargetHighlight3D } from './TargetHighlight3D';
+import { terraformTargetIdsAt, terraformTargetTiles } from './targets';
 import { PRIMARY_OP_DEFS, TerraformMenu, type TerraformPrimaryOpDef } from './TerraformMenu';
 import {
   computeOverlayState,
@@ -58,6 +59,7 @@ export {
   resourceFoundText,
   TargetHighlight3D,
   TerraformMenu,
+  terraformTargetIdsAt,
   terraformTargetTiles,
   TileOverlay,
   type BrushCommandSink,

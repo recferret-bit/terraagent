@@ -255,10 +255,14 @@ function pendingJobKeys(view: GameView | null | undefined, colonyId: number): Se
   return out;
 }
 
+/** The growth ops TERRAFORM falls back to on ground that is already clear: prepared → Irrigate → Seed (Living). */
+const GROWTH_LADDER: readonly TerraformOpKind[] = ['irrigate', 'seed'];
+
 /**
- * Preview of a TERRAFORM stroke over the replica view with the sim's own rule (`evaluateTerraform` with `auto`, the
- * function the `enqueueTask` handler runs: each hex gets the op its ground needs, trees, rock, slope, crater and
- * water included; D-37, FF-03).
+ * Preview of a TERRAFORM stroke over the replica view with the sim's own rule (`evaluateTerraform`, the function the
+ * `enqueueTask` handler runs). Each hex gets the op its ground needs (`auto`: trees → Clear, rock → Break, slope →
+ * Level, crater → Fill, water → Reclaim, plain ground → Grade); ground that is already prepared climbs the growth
+ * ladder instead (Irrigate, then Seed), so the one button also takes a hex to Living. D-37, FF-03.
  */
 export function planTerraformTiles(
   view: GameView | null | undefined,
@@ -267,18 +271,26 @@ export function planTerraformTiles(
 ): BrushPlan {
   const placement = viewPlacementWorld(view);
   if (placement.tileCount === 0) return { jobs: [], queuedCount: 0, skippedCount: tiles.length };
-  const plan = evaluateTerraform(terraformWorldFrom(placement, opts.colonyId, opts.data), {
-    colonyId: opts.colonyId,
-    op: 'grade',
-    tiles,
-    auto: true,
-    pending: pendingJobKeys(view, opts.colonyId),
-    data: opts.data,
-  });
-  return {
-    jobs: plan.jobs,
-    queuedCount: plan.jobs.length,
-    skippedCount: plan.skipped.length,
-    ...(plan.firstReject ? { firstReject: plan.firstReject } : {}),
-  };
+  const world = terraformWorldFrom(placement, opts.colonyId, opts.data);
+  const pending = pendingJobKeys(view, opts.colonyId);
+  const base = { colonyId: opts.colonyId, pending, data: opts.data } as const;
+  const table = opts.data?.tables?.opsBasic as Record<string, unknown> | undefined;
+  const jobs: PlannedTileJob[] = [];
+  let skippedCount = 0;
+  let firstReject: RejectCode | undefined;
+  for (const t of tiles) {
+    const auto = evaluateTerraform(world, { ...base, op: 'grade', tiles: [t], auto: true });
+    let job = auto.jobs[0];
+    for (const op of job ? [] : GROWTH_LADDER) {
+      if (table && !(op in table)) continue; // the op's wave is off: no such row in the compiled data
+      job = evaluateTerraform(world, { ...base, op, tiles: [t] }).jobs[0];
+      if (job) break;
+    }
+    if (job) jobs.push(job);
+    else {
+      skippedCount++;
+      firstReject ??= auto.firstReject;
+    }
+  }
+  return { jobs, queuedCount: jobs.length, skippedCount, ...(firstReject ? { firstReject } : {}) };
 }

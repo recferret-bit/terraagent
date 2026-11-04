@@ -9,6 +9,7 @@ import {
   type TerraformPrimaryOp,
 } from './planner';
 import { planPrimaryOp, type BrushStrokeOutcome, type TerraformWireArgs, type WorkIntent } from './primaryOps';
+import { terraformTargetIdsAt } from './targets';
 
 export type { BrushStrokeOutcome, TerraformPrimaryOp, TerraformWireArgs, TileCoord, WorkIntent };
 
@@ -184,6 +185,23 @@ export class BrushController {
   }
 
   /**
+   * Ctrl+click on a hex that is already a terraform target takes it out of the queue again: cancels the orders / jobs
+   * that target it. Returns whether the hex was queued (then nothing new is ordered).
+   */
+  toggleQueued(q: number, r: number): boolean {
+    const tile = { q: Math.trunc(q), r: Math.trunc(r) };
+    const ids = terraformTargetIdsAt(this.resolveView(), this.colonyId(), tile.q, tile.r);
+    if (ids.length === 0) return false;
+    for (const id of ids) this.cancelOrder(id);
+    const status = `Terraform cancelled (${tile.q},${tile.r})`;
+    const outcome: BrushStrokeOutcome = { ok: true, op: 'terraform', status };
+    this.lastOutcome = outcome;
+    this.lastStroke = { strokeId: `tf_stroke_${++strokeSeq}`, op: 'terraform', tiles: [tile], jobs: [], queuedCount: 0, skippedCount: 0, statusText: status, outcome };
+    this.sink.onChange?.();
+    return true;
+  }
+
+  /**
    * Cancels the host order `orderId` (the id the view carries). Without an id nothing is sent: the client never sends
    * a wildcard or an id the host does not know (FF-09). Returns whether a command was sent.
    */
@@ -217,6 +235,7 @@ export class BrushController {
           const tile = resolvePointerTile(e, pickTile) ?? this.pressTile;
           this.pressTile = null;
           const queue = e.ctrlKey || e.metaKey;
+          if (queue && this.selectedOp === 'terraform' && this.toggleQueued(tile.q, tile.r)) return;
           if (this.strokeTile(tile.q, tile.r).queuedCount > 0 && !queue) this.disarm();
         },
       },
@@ -225,7 +244,9 @@ export class BrushController {
     const onRight = (ev: Event) => {
       if (!this.isPointerActive()) return;
       if (ev.type === 'contextmenu' && now() - this.lastCtrlPressAt < CTRL_CLICK_CONTEXT_MS) {
-        ev.preventDefault(); // macOS Ctrl+click: no browser menu, the brush stays armed
+        // macOS Ctrl+click: no browser menu, the brush stays armed, and the map below gets no right click (no unit order)
+        ev.preventDefault();
+        ev.stopImmediatePropagation();
         return;
       }
       if (ev.type === 'contextmenu' || (ev as MouseEvent).button === 2) this.disarm();

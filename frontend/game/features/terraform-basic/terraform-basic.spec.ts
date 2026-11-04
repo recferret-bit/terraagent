@@ -381,7 +381,7 @@ describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
     return { tf, sendCommand, lastTerraform };
   }
 
-  it('TERRAFORM sends one per-hex op order (trees → Clear); water and prepared hexes send nothing', () => {
+  it('TERRAFORM sends one per-hex op order (trees → Clear, prepared ground → Irrigate); deep water needs a T2 worker', () => {
     const { tf, sendCommand, lastTerraform } = mountWithEntities(2);
     expect(tf.hasWorkerAvailable()).toBe(true);
     tf.selectOp('terraform');
@@ -392,8 +392,11 @@ describe('TERRAFORM / REPAIR / DISMANTLE commands', () => {
     expect(parseCommandArgs('enqueueTask', sendCommand.mock.lastCall?.[1]).success).toBe(true);
 
     tf.strokeTile(10, 0);
-    expect(tf.getLastOutcome()).toMatchObject({ ok: false, reason: 'site_blocked' });
-    expect(sendCommand).toHaveBeenCalledTimes(1);
+    expect(lastTerraform()).toEqual({ op: 'irrigate', tiles: [{ q: 10, r: 0 }] });
+
+    tf.strokeTile(9, 0);
+    expect(tf.getLastOutcome()).toMatchObject({ ok: false, reason: 'worker_tier_locked', status: 'Deep water needs a T2 worker' });
+    expect(sendCommand).toHaveBeenCalledTimes(2);
   });
 
   it('REPAIR targets a damaged own entity only (40% full-repair cost); elsewhere it says so and sends nothing', () => {

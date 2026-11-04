@@ -1,6 +1,7 @@
 import { parseWaves } from '@terra/contracts';
 import {
   buildPipeline,
+  canRunTerraformOpOnTile,
   createPlanet,
   evaluateTerraform,
   hexIndex,
@@ -14,6 +15,7 @@ import {
   terraformWorldFromState,
   view,
   type PlanetType,
+  type TerraformOpKind,
 } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
 import { packView, unpackView } from '../../store/replica/viewCodec';
@@ -67,8 +69,15 @@ function checkEveryTile(waves: string, planetType: PlanetType, claimRing: boolea
       if (!inHex(q, r, R)) continue;
       const s = evaluateTerraform(world, { colonyId: 0, op: 'grade', tiles: [{ q, r }], auto: true, data });
       const c = planTerraformTiles(client, [{ q, r }], { colonyId: 0, data });
-      expect([q, r, c.jobs.map((j) => j.op)]).toEqual([q, r, s.jobs.map((j) => j.op)]);
-      for (const j of s.jobs) ops.add(j.op);
+      if (s.jobs.length > 0) expect([q, r, c.jobs.map((j) => j.op)]).toEqual([q, r, s.jobs.map((j) => j.op)]);
+      else {
+        // already-clear ground climbs the growth ladder: whatever op the client picks, the host accepts it
+        for (const j of c.jobs) expect([q, r, j.op, canRunTerraformOpOnTile(host.state, 0, j.op as TerraformOpKind, q, r, { data }).ok]).toEqual([q, r, j.op, true]);
+        if (c.jobs.length === 0 && waves === '..05') {
+          for (const op of ['irrigate', 'seed'] as const) expect([q, r, op, canRunTerraformOpOnTile(host.state, 0, op, q, r, { data }).ok]).toEqual([q, r, op, false]);
+        }
+      }
+      for (const j of c.jobs) ops.add(j.op);
       if (s.firstReject) reasons.add(s.firstReject);
     }
   }
@@ -106,11 +115,11 @@ describe('terraform parity: authoritative state vs client replica view (FF-03)',
     for (const t of computeBoxTiles({ q: -3, r: -3 }, { q: 3, r: 3 }, 14)) {
       const p = planPrimaryOp('terraform', { view: client as never, entities, colonyId: 0, data }, t.q, t.r);
       const s = evaluateTerraform(terraformWorldFromState(host.state, 0, data), { colonyId: 0, op: 'grade', tiles: [t], auto: true, data });
-      expect([t.q, t.r, p.terraform !== null]).toEqual([t.q, t.r, s.jobs.length > 0]);
-      if (p.terraform) {
+      if (s.jobs.length > 0) {
+        expect([t.q, t.r, p.terraform?.op]).toEqual([t.q, t.r, s.jobs[0]!.op]);
         sent++;
-        expect(p.terraform.op).toBe(s.jobs[0]!.op);
       }
+      if (p.terraform) expect(canRunTerraformOpOnTile(host.state, 0, p.terraform.op, t.q, t.r, { data }).ok).toBe(true);
     }
     expect(sent).toBeGreaterThan(0);
   });
