@@ -47,6 +47,7 @@ export interface SpawnBuilderOpts {
   owner: number;
   q: number;
   r: number;
+  tier?: number;
   tick?: number;
   data?: CompiledDataLike;
 }
@@ -194,7 +195,7 @@ export function spawnBuilderUnit(
 
   cols.kind[row] = ENTITY_KIND.builder;
   cols.owner[row] = opts.owner;
-  cols.tier[row] = Number(rowDef.tier ?? 1);
+  cols.tier[row] = opts.tier ?? Number(rowDef.tier ?? 1);
   placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   cols.rot[row] = 0;
   cols.hp[row] = Math.fround(Number(rowDef.hp ?? 150));
@@ -333,7 +334,7 @@ export function spawnTerraformerUnit(
 
   cols.kind[row] = ENTITY_KIND.terraformer;
   cols.owner[row] = opts.owner;
-  cols.tier[row] = Number(rowDef.tier ?? 1);
+  cols.tier[row] = opts.tier ?? Number(rowDef.tier ?? 1);
   placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   cols.rot[row] = 0;
   cols.hp[row] = Math.fround(Number(rowDef.hp ?? 160));

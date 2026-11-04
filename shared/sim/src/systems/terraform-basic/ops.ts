@@ -16,6 +16,9 @@ export type TerraformOpKind = TerraformOp;
 
 export const MENU_TERRAFORM_OPS = [...W01_TERRAFORM_OPS, ...W05_NEW_TERRAFORM_OPS] as const;
 
+export const SITE_PREP_TERRAFORM_OPS = ['grade', 'clear', 'break', 'level', 'fill', 'reclaim', 'deepReclaim'] as const;
+export type SitePrepTerraformOp = (typeof SITE_PREP_TERRAFORM_OPS)[number];
+
 const VALID_OPS: ReadonlySet<string> = new Set(W05_TERRAFORM_OPS);
 const VALID_W01_OPS: ReadonlySet<string> = new Set(W01_TERRAFORM_OPS);
 const VALID_W02_OPS: ReadonlySet<string> = new Set(W02_TERRAFORM_OPS);
@@ -141,8 +144,12 @@ export function listTerraformMenuOps(data?: CompiledDataLike): TerraformOpSpec[]
 }
 
 /** The op that works a tile of `terrain` (the op whose `fromTerrain` it is; Grade for flat ground), or `null`. */
-export function opForTerrain(terrain: number, data?: CompiledDataLike): (typeof W01_TERRAFORM_OPS)[number] | null {
-  for (const op of W01_TERRAFORM_OPS) if (getTerraformOpSpec(op, data).fromTerrain === terrain) return op;
+export function opForTerrain(terrain: number, data?: CompiledDataLike): SitePrepTerraformOp | null {
+  const table = data?.tables?.opsBasic as Record<string, unknown> | undefined;
+  for (const op of SITE_PREP_TERRAFORM_OPS) {
+    if (!isW01TerraformOpKind(op) && table && !(op in table)) continue;
+    if (getTerraformOpSpec(op, data).fromTerrain === terrain) return op;
+  }
   return null;
 }
 

@@ -1,4 +1,4 @@
-import type { RejectCode } from '@terra/contracts';
+import type { RejectCode, ResourceKey } from '@terra/contracts';
 import { compileData, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { GEO_BLOCK_TEXT, geoBuildBlock, isPreparedGround, isTileUneven, MAX_FOOTPRINT_SPREAD_M, type DepositRule, type GeoBlock } from '../../grid/geo';
@@ -7,7 +7,7 @@ import { DEPOSIT } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { resolveHubT1Row, resolveStartingKitRow, rowNum } from '../rows';
 import { inPowerZone, placementPowerZoneSources, powerZoneActive, type PowerZoneSource } from './powerZone';
-import { planPrepJobs, summarizePrepJobs } from './prep';
+import { planPrepJobs, summarizePrepJobs, type SitePrepOpCounts } from './prep';
 
 export { resolveHubT1Row } from '../rows';
 
@@ -84,8 +84,9 @@ export interface PlacementBill {
   baseSeconds: number;
   hqSeconds: number;
   totalEnergyE: number;
-  yields: { 'metals.t1': number; 'bio.biomass': number };
-  ops: { grade: number; clear: number; break: number };
+  yields: { 'metals.t1': number; 'bio.biomass': number; 'minerals.t1'?: number };
+  cost?: Partial<Record<ResourceKey, number>>;
+  ops: SitePrepOpCounts;
 }
 
 export interface PlacementResult {
@@ -281,10 +282,12 @@ interface TileContext {
   colonyId: number;
   occupied: Set<number>;
   zone: readonly PowerZoneSource[] | null;
+  linkedPrep: boolean;
+  canDeepReclaim: boolean;
 }
 
 function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileContext, q: number, r: number, tileIdx: number): PlacementTile {
-  const { colonyId, occupied, zone } = ctx;
+  const { colonyId, occupied, zone, linkedPrep, canDeepReclaim } = ctx;
   const inMap = tileIdx >= 0 && tileIdx < world.tileCount && (!world.valid || world.valid[tileIdx] !== 0);
   if (!inMap) return { q, r, tileIdx, terrain: -1, prep: -1, deposit: 0, owner: -1, prepared: false, ok: false, block: 'outOfMap' };
   const terrain = world.terrain[tileIdx], prep = world.prep[tileIdx], owner = world.owner[tileIdx];
@@ -298,9 +301,9 @@ function evaluateTile(world: PlacementWorld, rule: PlacementRule, ctx: TileConte
   else {
     const isDepleted = deposit !== 0 && world.richness != null && Number(world.richness[tileIdx] ?? 0) <= 0;
     const effectiveDeposit = rule.deposit === 'require' && isDepleted ? 0 : deposit;
-    block = geoBuildBlock(terrain, prep, effectiveDeposit, rule.deposit);
+    block = geoBuildBlock(terrain, prep, effectiveDeposit, rule.deposit, { linkedPrep, canDeepReclaim });
   }
-  if (!block && isTileUneven(world.radius, tileIdx, world.terrain, world.height)) block = 'uneven';
+  if (!block && !(linkedPrep && !tile.prepared) && isTileUneven(world.radius, tileIdx, world.terrain, world.height)) block = 'uneven';
   if (block) { tile.ok = false; tile.block = block; }
   return tile;
 }
@@ -338,8 +341,7 @@ function colonyBlock(world: PlacementWorld, rule: PlacementRule, opts: EvaluateP
 }
 
 function billFor(tiles: readonly PlacementTile[], data?: CompiledDataLike): PlacementBill {
-  // Only the prep the linked order would really do: buildable tiles (Grade). Blocked tiles (trees, rock, …) are the
-  // player's own terraform ops, so an invalid site never advertises Break / Clear work or their yields (D-37).
+  // Only the prep the linked order would really do: buildable tiles. Blocked tiles are not billed (D-37).
   const buildable = tiles.filter((t) => t.ok);
   const sum = summarizePrepJobs(planPrepJobs(buildable, data), data);
   return {
@@ -349,6 +351,7 @@ function billFor(tiles: readonly PlacementTile[], data?: CompiledDataLike): Plac
     hqSeconds: sum.hqSeconds,
     totalEnergyE: sum.totalEnergyE,
     yields: sum.yields,
+    ...(sum.cost ? { cost: sum.cost } : {}),
     ops: sum.countsByOp,
   };
 }
@@ -390,11 +393,21 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
 
   const idx = hexIndex(world.radius);
   const zone = !rule.isHub && powerZoneActive(opts.data) ? placementPowerZoneSources(world, colonyId, opts.data) : null;
-  const ctx: TileContext = { colonyId, occupied: occupiedTiles(world, opts.data), zone };
+  const linkedPrep = Boolean((opts.data?.tables?.opsBasic as Record<string, unknown> | undefined)?.level);
+  const canDeepReclaim =
+    linkedPrep &&
+    world.entities.some(
+      (e) =>
+        e.owner === colonyId &&
+        isAlive(e) &&
+        (e.tier ?? 1) >= 2 &&
+        (e.kind === ENTITY_KIND.hq || e.kind === ENTITY_KIND.builder || e.kind === ENTITY_KIND.terraformer),
+    );
+  const ctx: TileContext = { colonyId, occupied: occupiedTiles(world, opts.data), zone, linkedPrep, canDeepReclaim };
   const tiles = getBuildingFootprintTiles(q, r, rule.footprint).map((p) => evaluateTile(world, rule, ctx, p.q, p.r, idx.indexOf(p.q, p.r)));
   const bill = billFor(tiles, opts.data);
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
-  if (footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
+  if (!(linkedPrep && tiles.some((t) => !t.prepared)) && footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
   if (rule.requiresDeposit !== undefined && !tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!) || (rule.requiresDeposit === DEPOSIT.metals && coversDeposit(world, t, DEPOSIT.minerals)))) return fail('noDeposit', tiles, bill);
   const cb = colonyBlock(world, rule, opts);
   if (cb) return fail(cb, tiles, bill);

@@ -643,13 +643,13 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-55 · W02 builds reject uneven ground instead of flattening it
 
-- **Status:** Question for the owner
+- **Status:** Resolved (W05-09, 2026-11-04): when W05 linked prep is active (`opsBasic.level` compiled), unprepared footprint tiles may have mild height spread and are levelled to adjacent flat ground when their linked `grade` / `level` / `fill` / `reclaim` sub-job completes (`levelToAdjacentFlat`); waves `..01`–`..04` keep the `uneven` reject so earlier wave suites are unchanged
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/economy/siteTerrain.ts` (`buildingSiteBlock`), `shared/sim/src/systems/construction/placement.ts` (`evaluateTile` `uneven`, `footprintSpread`), `shared/sim/src/grid/geo.ts` (`MAX_FOOTPRINT_SPREAD_M` 0.6 m), `shared/sim/src/systems/economy/construction.ts` (`startBuildingConstruction`, `instant` branch)
 - **What happens:** since round 1 an Extractor or Solar on an uneven tile, or on a footprint whose height spread exceeds 0.6 m, is rejected (`enqueueTask` up front, again when the queue starts it) like the Hub. Before, the W02 path levelled heights above 0.15 m. Only `instant` builds (scenario setup) still level the footprint. See GP-48.
 - **Why it is like this:** D-37: one placement rule for every building; the client ghost shows the same verdict.
-- **To resolve (owner):** keep the reject (the player levels with TERRAFORM `work` first), or let the linked prep level an uneven footprint (a Grade that also sets the height), which would need a rule change in `evaluatePlacement` for every building. Recommendation: keep the reject.
+- **To resolve (owner):** Resolved in W05-09 by allowing linked prep (`Grade` / `Level`) to level mild uneven footprints when W05 is active (`opsBasic.level` in `data`), while preserving the `uneven` reject for `..01`–`..04`.
 - **Found:** 2026-11-03, W02 review round 1 (sim agent)
 
 ### GP-56 · The contract's queue precedence words do not match the sim's; the mapping is a guess
@@ -930,3 +930,15 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** W07-14/15/25/33–35 and the contract's delivery gates require the actual shared sim, backend, frontend, model and replay work before claiming completion. Shared planet models and cosmetic feeding/building are explicitly owner-requested simplifications.
 - **To resolve:** Implement and validate the wave; playtest proposed numbers and confirm whether blue beetles need actual damage mitigation. Reconcile existing progression helpers and later-wave roster references without inventing a second raid system.
 - **Found:** 2026-11-04, owner fauna redesign.
+
+### GP-81 · W05-09 re-opens D-37 for linked site prep (`Level`, `Fill`, `Reclaim`, `Deep Reclaim`, `Clear`, `Break`)
+
+- **Status:** Accepted (by design, W05-09)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/grid/geo.ts` (`geoBuildBlock`), `shared/sim/src/systems/construction/{prep,placement}.ts`, `shared/sim/src/systems/economy/siteTerrain.ts`, `shared/sim/src/systems/terraform-basic/ops.ts` (`SITE_PREP_TERRAFORM_OPS`, `opForTerrain`)
+- **What happens:** W05-09 re-opens D-37 per terrain class when W05 data (`opsBasic.level`) is active: `TERRAIN.forest` (`clear` + `grade`), `TERRAIN.rock` (`break` + `grade`), `TERRAIN.slope` (`level` + `grade`), `TERRAIN.hole` (`fill` + `grade`), and `TERRAIN.shallow` (`reclaim` + `grade`) become linked-prep-able in `geoBuildBlock` and `planPrepJobs` under one shared rule (`evaluatePlacement` + `planPrepJobs`). `TERRAIN.deep` (`deepReclaim` + `grade`) is linked-prep-able only when the colony has an alive T2+ worker (`hq`, `builder`, or `terraformer`); otherwise it remains blocked (`water`). `PREP.ridge` and `PREP.moat` remain `terrain_unbuildable` (`ridge`). When `TA_WAVES=..01..04` (or `data` is omitted in W01 unit specs), `linkedPrep` is `false` so W01–W04 `terrain_unbuildable` placement checks remain unchanged.
+- **Why it is like this:** Keeps one shared `evaluatePlacement` + `planPrepJobs` rule across server, local host, and client construction ghost while preserving W01–W04 wave compatibility (`--waves ..04`).
+- **Workaround / mitigation:** None needed; `cancelTask` on either the build or its linked prep cancels both and refunds `50 %` of spent resources.
+- **To resolve:** —
+- **Found:** 2026-11-04, W05-09 implementation.
