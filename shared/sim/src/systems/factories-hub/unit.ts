@@ -54,7 +54,7 @@ export interface SpawnBuilderOpts {
 let cachedData: CompiledDataLike | null = null;
 
 export function defaultHubData(): CompiledDataLike {
-  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03']));
+  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W07']));
   return cachedData;
 }
 

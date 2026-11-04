@@ -6,7 +6,7 @@ import { indexOf } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { resolveBuildingRow } from '../economy/construction';
-import { resolveHubProducerRows } from '../factories-hub';
+import { findColonyRoboticsFactories, resolveHubProducerRows, resolveReconRow } from '../factories-hub';
 import { normalizeRichness } from '../production';
 import { PRECEDENCE_RANK, type QueueEntry, type QueueLane, type QueuePrecedence, type QueueTaskPayload } from './types';
 
@@ -44,6 +44,14 @@ export function resolveTaskCostAndTicks(
     };
   }
   if (task.kind === 'buildUnit') {
+    if (task.unit === 'recon') {
+      const reconRow = resolveReconRow(data);
+      return {
+        cost: { ...((reconRow.cost ?? { 'metals.t1': 35, 'minerals.t1': 15, 'bio.biomass': 0, 'bio.water': 5 }) as Partial<Record<ResourceKey, number>>) },
+        buildTicks: Math.max(1, Number(reconRow.buildS ?? 50)),
+        workRate: Number(reconRow.workRate ?? 1.0),
+      };
+    }
     if (task.unit === 'builder') {
       const tables = data?.tables as
         | Record<string, Record<string, { cost?: Partial<Record<ResourceKey, number>>; buildS?: number; workRate?: number }> | undefined>
@@ -200,13 +208,37 @@ export function computeResourceWaitState(
 export function isBlockedByPower(state: PlanetState, colony: ColonyState, entry: QueueEntry): boolean {
   const taskAny = entry.task as { requiresPower?: boolean; producerId?: number };
   const pwr = (colony.power ?? {}) as { status?: string; brownout?: boolean; net?: number };
-  if (taskAny.requiresPower && (pwr.status === 'brownout' || pwr.brownout || (pwr.net ?? 0) < 0)) {
+  const inBrownout = pwr.status === 'brownout' || Boolean(pwr.brownout) || (pwr.net ?? 0) < 0;
+  if (taskAny.requiresPower && inBrownout) {
     return true;
   }
-  if (entry.task.kind === 'buildUnit' && typeof entry.task.producerId === 'number') {
-    const pRow = rowOf(state.entities, entry.task.producerId);
-    if (pRow >= 0 && state.entities.cols.state[pRow] === ENTITY_STATE.offlineBrownout) {
-      return true;
+  if (entry.task.kind === 'buildUnit') {
+    if (typeof entry.task.producerId === 'number') {
+      const pRow = rowOf(state.entities, entry.task.producerId);
+      if (pRow >= 0) {
+        const st = state.entities.cols.state[pRow];
+        if (
+          st === ENTITY_STATE.offlineBrownout ||
+          st === ENTITY_STATE.offlineUnpowered ||
+          st === ENTITY_STATE.offlineOverload ||
+          st === ENTITY_STATE.offlineNoGrid ||
+          st === ENTITY_STATE.constructing
+        ) {
+          return true;
+        }
+      }
+    }
+    if (entry.task.unit === 'recon') {
+      const factories = findColonyRoboticsFactories(state, entry.colonyIndex);
+      if (factories.length > 0) {
+        const anyOnline = factories.some((r) => {
+          const st = state.entities.cols.state[r];
+          return st === ENTITY_STATE.active || st === ENTITY_STATE.idle;
+        });
+        if (!anyOnline) return true;
+      } else if (inBrownout) {
+        return true;
+      }
     }
   }
   return false;
@@ -231,6 +263,18 @@ export function normalizeEnqueueArgs(raw: Record<string, unknown>): {
     return {
       ...base,
       task: { kind: 'build', building: b.building, q: b.q, r: b.r, tier: b.tier, rotation: b.rotation ?? b.rot },
+    };
+  }
+  if (typeof raw.buildUnit === 'string') {
+    return {
+      ...base,
+      task: {
+        kind: 'buildUnit',
+        unit: raw.buildUnit,
+        count: typeof raw.count === 'number' ? raw.count : undefined,
+        repeat: typeof raw.repeat === 'boolean' ? raw.repeat : undefined,
+        producerId: typeof raw.producerId === 'number' ? raw.producerId : undefined,
+      },
     };
   }
   if (raw.buildUnit && typeof raw.buildUnit === 'object') {

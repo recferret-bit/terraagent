@@ -9,6 +9,7 @@ import { defineSimModule } from '../define';
 import { buildSiteReject } from '../economy/siteTerrain';
 import { startBuildingConstruction } from '../economy/construction';
 import { checkCostAffordability } from '../economy/ledger';
+import { selectRoboticsFactoryProducer } from '../factories-hub';
 import { checkUnitSupply, unitSupplyOfName } from '../supply';
 import {
   applyReorderQueueTask,
@@ -115,6 +116,10 @@ export interface EnqueueQueueTaskOptions {
   data?: CompiledDataLike;
 }
 
+function unitSupplyData(unit: string, data?: CompiledDataLike): CompiledDataLike | undefined {
+  return unit === 'recon' && !data?.tables?.combatUnits ? undefined : data;
+}
+
 function tryStartQueueEntry(
   state: PlanetState,
   entry: QueueEntry,
@@ -136,7 +141,13 @@ function tryStartQueueEntry(
     markWaiting(entry, 'power', 'waiting: power', null, tick);
     return;
   }
-  if (entry.task.kind === 'buildUnit' && !checkUnitSupply(state, entry.colonyIndex, entry.task.unit, data, { pending: { queue: allEntries }, excludeTaskId: entry.taskId }).ok) {
+  if (
+    entry.task.kind === 'buildUnit' &&
+    !checkUnitSupply(state, entry.colonyIndex, entry.task.unit, unitSupplyData(entry.task.unit, data), {
+      pending: { queue: allEntries },
+      excludeTaskId: entry.taskId,
+    }).ok
+  ) {
     markWaiting(entry, 'supply', 'waiting: supply', null, tick);
     return;
   }
@@ -234,6 +245,31 @@ export function scanAndStartQueueEntries(
 
 export const scanQueueNonBlocking = scanAndStartQueueEntries;
 
+function resolveUnitTaskProducer(
+  state: PlanetState,
+  colonyIndex: number,
+  task: QueueTaskPayload,
+  activeLane: readonly QueueEntry[],
+): { ok: true; task: QueueTaskPayload } | { ok: false; code: string; detail: string } {
+  if (task.kind !== 'buildUnit') return { ok: true, task };
+  if (task.unit === 'recon') {
+    const sel = selectRoboticsFactoryProducer(state, colonyIndex, activeLane, task.producerId);
+    if (!sel.ok) return sel;
+    if (sel.producerId !== undefined && task.producerId === undefined) {
+      return { ok: true, task: { ...task, producerId: sel.producerId } };
+    }
+    return { ok: true, task };
+  }
+  if (typeof task.producerId === 'number') {
+    const producerId = task.producerId;
+    const producerEntries = activeLane.filter((e) => e.task.kind === 'buildUnit' && e.task.producerId === producerId);
+    if (producerEntries.length >= PRODUCER_BUFFER_LIMIT) {
+      return { ok: false, code: 'queue_full', detail: 'producer buffer full' };
+    }
+  }
+  return { ok: true, task };
+}
+
 export function enqueueQueueTask(
   state: PlanetState,
   opts: EnqueueQueueTaskOptions,
@@ -252,18 +288,12 @@ export function enqueueQueueTask(
   const limit = laneLimitFor(lane);
   const fullCode = isW03QueueActive(state, data) ? 'lane_full' : 'queue_full';
 
-  if (opts.task.kind === 'buildUnit' && unitSupplyOfName(opts.task.unit, data) === undefined) {
+  if (opts.task.kind === 'buildUnit' && unitSupplyOfName(opts.task.unit, unitSupplyData(opts.task.unit, data)) === undefined) {
     return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
   }
-  if (opts.task.kind === 'buildUnit' && typeof opts.task.producerId === 'number') {
-    const producerId = opts.task.producerId;
-    const producerEntries = activeLane.filter(
-      (e) => e.task.kind === 'buildUnit' && e.task.producerId === producerId,
-    );
-    if (producerEntries.length >= PRODUCER_BUFFER_LIMIT) {
-      return { ok: false, code: 'queue_full', detail: 'producer buffer full' };
-    }
-  }
+  const prodRes = resolveUnitTaskProducer(state, colonyIndex, opts.task, activeLane);
+  if (!prodRes.ok) return prodRes;
+  const task = prodRes.task;
 
   if (activeLane.length >= limit) {
     const oldestAutoIdx =
@@ -273,8 +303,8 @@ export function enqueueQueueTask(
     if (oldestAutoIdx < 0) {
       return { ok: false, code: fullCode, detail: `${lane} lane full` };
     }
-    if (opts.task.kind === 'build') {
-      const site = buildSiteReject(state, colonyIndex, opts.task, data);
+    if (task.kind === 'build') {
+      const site = buildSiteReject(state, colonyIndex, task, data);
       if (site) return { ok: false, ...site };
     }
     const evicted = entries[oldestAutoIdx];
@@ -282,12 +312,12 @@ export function enqueueQueueTask(
     refundEntrySpent(state, evicted, colony, tick, data);
     evicted.state = 'cancelled';
     entries.splice(oldestAutoIdx, 1);
-  } else if (opts.task.kind === 'build') {
-    const site = buildSiteReject(state, colonyIndex, opts.task, data);
+  } else if (task.kind === 'build') {
+    const site = buildSiteReject(state, colonyIndex, task, data);
     if (site) return { ok: false, ...site };
   }
 
-  const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(opts.task, data);
+  const { cost, buildTicks, workRate } = resolveTaskCostAndTicks(task, data);
   const resolvedCost = opts.costOverride ? { ...opts.costOverride } : cost;
   const entry: QueueEntry = {
     taskId: opts.taskId ?? nextAutoTaskId(entries, colonyIndex, tick),
@@ -295,7 +325,7 @@ export function enqueueQueueTask(
     lane,
     precedence: incomingPrecedence,
     state: 'queued',
-    task: opts.task,
+    task,
     cost: resolvedCost,
     totalCost: { ...resolvedCost },
     spentCost: {},
@@ -401,7 +431,7 @@ export const enqueueTaskHandler = defineCommandHandler({
       return enqueueWorkOrder(state, colIdx, { ...(norm.task as Partial<WorkOrderArgs>), intent, tiles: [norm.task] }, norm.taskId ?? cmd.commandId, ctx.tick, ctx.data);
     }
     if (norm.task.kind === 'buildUnit') { // the first unit must fit the supply cap now; the rest of a batch waits on `supply`
-      const supply = checkUnitSupply(state, colIdx, norm.task.unit, ctx.data);
+      const supply = checkUnitSupply(state, colIdx, norm.task.unit, unitSupplyData(norm.task.unit, ctx.data));
       if (!supply.ok) return { code: supply.code, detail: supply.detail };
     }
     const res = enqueueQueueTask(state, { colonyIndex: colIdx, task: norm.task, precedence, taskId: norm.taskId, costOverride, tick: ctx.tick, data: ctx.data }, ctx);
@@ -445,6 +475,11 @@ export const queueSystem = defineSystem({
     const colonies = new Set<number>(entries.map((e) => e.colonyIndex));
 
     for (const colIdx of colonies) {
+      for (const entry of entries) {
+        if (entry.colonyIndex === colIdx && entry.state === 'waiting' && entry.waitReason === 'power') {
+          tryStartQueueEntry(state, entry, entries, ctx.tick, ctx.data, ctx);
+        }
+      }
       for (const entry of entries) {
         if (entry.colonyIndex !== colIdx || entry.state !== 'in_progress') continue;
         stepQueueEntry(state, entry, colIdx, ctx);
