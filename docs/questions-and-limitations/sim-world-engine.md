@@ -594,3 +594,13 @@ Format: [README](./README.md).
 - **Workaround / mitigation:** retain founded seats and existing no-rejoin restrictions; release only unfulfilled reservations after fenced orphan reconciliation; never evict an inactive colony. Full worlds queue, with no new instance. Settlement/carry remains durable while no eligible different world is selected. Preserve occupied W11 IDs/config/terrain on W27 upgrade; a small atlas stays small, while large presets run in isolated scenarios. No production reset or automatic expansion is authorized by this documentation.
 - **To resolve:** before production rollout, approve initial measured scale and a reclaim/rejoin policy (recommend explicit terminal-colony/site revalidation, never automatic inactivity deletion), and decide whether W27 expands occupied worlds through a versioned migration or provisions a fresh deployment by explicit owner action. Any expansion must preserve occupied coordinates, identities and edits and cannot silently reinterpret a pinned config. Until decided, report the conservative limits in owner guides; do not claim endless admission or automatic world growth.
 - **Found:** 2026-11-04, W11/W27 grooming after owner accepted the three initial recommendations. This is a planning change, not an implementation or migration.
+
+### WE-34 · Tile sync chunking caps deltas for large brushes
+
+- **Status:** Resolved (issue/W05-19)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/host/diff.ts` (`diffSinceChunked`, `applyDiff`, `encodeDiff`), `shared/sim/src/host/SimHost.ts` (`onDelta`, `diffSinceChunked`), `shared/sim/test/host/w05-tile-sync-chunking.spec.ts`
+- **What happens:** when one order or brush operation modifies many tiles (e.g. 200 tiles across `terrain`, `prep`, `owner`), a single unchunked diff could exceed transmission frame budgets. `diffSinceChunked` partitions changed tiles into batches capped at `MAX_TILE_DIFF_PER_DELTA = 100` and ensures encoded payload size `≤ MAX_DIFF_PAYLOAD_BYTES = 8192` (8 KB). For 200 tiles, the client receives `≤ 3` deltas (specifically 2 deltas). `applyDiff` verifies chunk continuity (`chunk.index > 0 && state.meta.tick === d.toTick`), rejecting gaps or out-of-order chunks.
+- **Why it is like this:** prevents WebSocket or worker message buffer overflow when bulk terraforming or brushing large tile areas.
+- **Found:** 2026-11-04, W05-19 implementation.
