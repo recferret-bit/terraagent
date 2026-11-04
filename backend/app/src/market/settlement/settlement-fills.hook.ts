@@ -88,6 +88,7 @@ export class SettlementFillsHook extends MarketFillsHook {
     const plan: TradePlan = {
       tradeId: batch.tradeId, planetId: buyer.planetId, base: batch.base, quote: batch.quote, qty: Number(batch.qty), notional: batch.notional.toString(),
       platformFee: batch.platformFee.toString(), stallFee: batch.stallFee.toString(), stallFeeBp: batch.stallFeeBp, makerSide: maker.side, pair, organic,
+      makerKind: maker.actorKind, treasuryFee: batch.treasuryAllocation.toString(),
       parties: planParties(batch, buyer, seller, maker), rollback,
     };
     const intents = await signTradeLegs(this.intents, batch.tradeId, batch.legs, Date.now() + TRADE_INTENT_TTL_MS);
