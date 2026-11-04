@@ -5,9 +5,11 @@ import {
   FAUNA_MODE_BLOB,
   type FaunaAggressionEntry,
   type FaunaBehaviorMode,
+  type FaunaCohortRecord,
   type FaunaHivesBlob,
   type HiveAggressionRecord,
   type HiveRecord,
+  type PendingFaunaEvent,
   type ResidentBugRecord,
 } from './types';
 
@@ -33,6 +35,7 @@ function cloneHiveRecord(hive: HiveRecord): HiveRecord {
     residentIds: [...hive.residentIds],
     aggressionByColony,
     aggressiveColonies,
+    lastWaveTickByColony: hive.lastWaveTickByColony ? { ...hive.lastWaveTickByColony } : {},
     mode: aggressiveColonies.length > 0 ? 'aggressive' : hive.mode,
   };
 }
@@ -44,6 +47,21 @@ function cloneBugRecord(bug: ResidentBugRecord): ResidentBugRecord {
       ? [...bug.aggressiveColonies].sort((a, b) => a - b)
       : [],
   };
+}
+
+function cloneCohortsMap(
+  src: Record<string, FaunaCohortRecord> | undefined,
+): Record<string, FaunaCohortRecord> {
+  if (!src) return {};
+  const out: Record<string, FaunaCohortRecord> = {};
+  for (const [k, v] of Object.entries(src)) {
+    if (!v) continue;
+    out[k] = {
+      ...v,
+      memberIds: Array.isArray(v.memberIds) ? [...v.memberIds] : [],
+    };
+  }
+  return out;
 }
 
 /**
@@ -64,8 +82,29 @@ export function getFaunaHivesState(state: PlanetState): FaunaHivesBlob {
   const lastSeenHpByEntityId: Record<number, number> = raw?.lastSeenHpByEntityId
     ? { ...raw.lastSeenHpByEntityId }
     : {};
+  const cohortsById = cloneCohortsMap(raw?.cohortsById);
+  const nextCohortSeq = typeof raw?.nextCohortSeq === 'number' ? raw.nextCohortSeq : 1;
+  const lastScheduledRollTickByColony: Record<number, number> = raw?.lastScheduledRollTickByColony
+    ? { ...raw.lastScheduledRollTickByColony }
+    : {};
+  const scheduledRollIndexByColony: Record<number, number> = raw?.scheduledRollIndexByColony
+    ? { ...raw.scheduledRollIndexByColony }
+    : {};
+  const pendingEvents: PendingFaunaEvent[] = Array.isArray(raw?.pendingEvents)
+    ? raw.pendingEvents.map((e) => ({ ...e, data: { ...e.data } }))
+    : [];
 
-  return buildSyncedFaunaState(Boolean(raw?.initialized), hivesById, bugsById, lastSeenHpByEntityId);
+  return buildSyncedFaunaState(
+    Boolean(raw?.initialized),
+    hivesById,
+    bugsById,
+    lastSeenHpByEntityId,
+    cohortsById,
+    nextCohortSeq,
+    lastScheduledRollTickByColony,
+    scheduledRollIndexByColony,
+    pendingEvents,
+  );
 }
 
 function buildSyncedFaunaState(
@@ -73,6 +112,11 @@ function buildSyncedFaunaState(
   hivesById: Record<number, HiveRecord>,
   bugsById: Record<number, ResidentBugRecord>,
   lastSeenHpByEntityId: Record<number, number>,
+  cohortsById: Record<string, FaunaCohortRecord> = {},
+  nextCohortSeq = 1,
+  lastScheduledRollTickByColony: Record<number, number> = {},
+  scheduledRollIndexByColony: Record<number, number> = {},
+  pendingEvents: PendingFaunaEvent[] = [],
 ): FaunaHivesBlob {
   const hives: Record<number, HiveRecord> = {};
   const byEntityId: Record<number, HiveRecord | ResidentBugRecord> = {};
@@ -95,6 +139,11 @@ function buildSyncedFaunaState(
     byEntityId,
     residentHiveByEntityId,
     lastSeenHpByEntityId,
+    cohortsById,
+    nextCohortSeq,
+    lastScheduledRollTickByColony,
+    scheduledRollIndexByColony,
+    pendingEvents,
   };
 }
 
@@ -112,6 +161,11 @@ export function saveFaunaHivesState(
     fauna.hivesById,
     fauna.bugsById,
     fauna.lastSeenHpByEntityId,
+    fauna.cohortsById,
+    fauna.nextCohortSeq,
+    fauna.lastScheduledRollTickByColony,
+    fauna.scheduledRollIndexByColony,
+    fauna.pendingEvents,
   );
   setBlob(state, FAUNA_HIVES_BLOB, synced, tick);
 
@@ -188,6 +242,19 @@ export function getAllResidentBugs(state: PlanetState): ResidentBugRecord[] {
   return Object.values(getFaunaHivesState(state).bugsById).sort((a, b) => a.entityId - b.entityId);
 }
 
+export function getCohortRecord(
+  state: PlanetState,
+  cohortId: string,
+): FaunaCohortRecord | undefined {
+  return getFaunaHivesState(state).cohortsById[cohortId];
+}
+
+export function getActiveCohorts(state: PlanetState): FaunaCohortRecord[] {
+  return Object.values(getFaunaHivesState(state).cohortsById).sort((a, b) =>
+    a.cohortId.localeCompare(b.cohortId),
+  );
+}
+
 export function isHiveAggressiveToColony(
   state: PlanetState,
   hiveId: number,
@@ -208,7 +275,5 @@ export function isFaunaEntityAggressiveToColony(
   if (hive) return Boolean(hive.aggressionByColony[colonyIndex]);
   const bug = fauna.bugsById[entityId];
   if (!bug) return false;
-  if (bug.aggressiveColonies.includes(colonyIndex)) return true;
-  const home = fauna.hivesById[bug.homeHiveId];
-  return Boolean(home?.aggressionByColony[colonyIndex]);
+  return bug.aggressiveColonies.includes(colonyIndex);
 }

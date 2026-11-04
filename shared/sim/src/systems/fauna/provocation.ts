@@ -6,6 +6,7 @@ import type { PlanetState } from '../../kernel/state';
 import { UnitBook } from '../../units/book';
 import { getFaunaHivesState, saveFaunaHivesState } from './state';
 import { defaultFaunaData } from './types';
+import { dispatchHiveWave } from './waves';
 
 function resolveMaxWavesPerEpisode(data?: CompiledDataLike): number {
   const src = data ?? defaultFaunaData();
@@ -15,8 +16,10 @@ function resolveMaxWavesPerEpisode(data?: CompiledDataLike): number {
 }
 
 /**
- * Provokes a specific hive (`hiveId`) and its current resident bugs against `colonyIndex`
- * (`fauna-hives-spec.md` §2). Other hives and other colonies remain neutral.
+ * Provokes a specific hive (`hiveId`) and dispatches a bounded wave of its living resident bugs
+ * against `colonyIndex` (`fauna-hives-spec.md` §2). Repeated damage during an active episode
+ * preserves episode bounds (`maxWavesPerEpisode = 3`, `60 s` cooldown, `<= 1` active cohort).
+ * Other hives and other colonies remain neutral.
  */
 export function provokeHiveAgainstColony(
   state: PlanetState,
@@ -24,6 +27,7 @@ export function provokeHiveAgainstColony(
   colonyIndex: number,
   tick = state.meta.tick,
   data?: CompiledDataLike,
+  ctx?: StepContext,
 ): boolean {
   if (!Number.isInteger(colonyIndex) || colonyIndex < 0) return false;
   const fauna = getFaunaHivesState(state);
@@ -32,12 +36,13 @@ export function provokeHiveAgainstColony(
 
   const maxWaves = resolveMaxWavesPerEpisode(data);
   const existing = hive.aggressionByColony[colonyIndex];
+  const prevWaveTick = hive.lastWaveTickByColony?.[colonyIndex] ?? -999999;
   hive.aggressionByColony[colonyIndex] = {
     colonyIndex,
     triggeredAtTick: existing ? existing.triggeredAtTick : tick,
     wavesSent: existing ? existing.wavesSent : 0,
     maxWaves,
-    lastWaveTick: existing ? existing.lastWaveTick : tick,
+    lastWaveTick: existing ? existing.lastWaveTick : prevWaveTick,
     activeCohortId: existing ? existing.activeCohortId : null,
   };
   hive.mode = 'aggressive';
@@ -45,19 +50,8 @@ export function provokeHiveAgainstColony(
     hive.aggressiveColonies = [...hive.aggressiveColonies, colonyIndex].sort((a, b) => a - b);
   }
 
-  for (const bugId of hive.residentIds) {
-    const bug = fauna.bugsById[bugId];
-    if (!bug) continue;
-    if (!bug.aggressiveColonies.includes(colonyIndex)) {
-      bug.aggressiveColonies = [...bug.aggressiveColonies, colonyIndex].sort((a, b) => a - b);
-    }
-    bug.mode = 'aggressive';
-    if (bug.targetColony === null) {
-      bug.targetColony = colonyIndex;
-    }
-  }
-
   saveFaunaHivesState(state, fauna, tick);
+  dispatchHiveWave(state, hiveId, colonyIndex, { tick, data }, ctx);
   return true;
 }
 
@@ -74,6 +68,11 @@ export function clearHiveAggressionAgainstColony(
   const hive = fauna.hivesById[hiveId];
   if (!hive || !hive.aggressionByColony[colonyIndex]) return false;
 
+  const activeCohortId = hive.aggressionByColony[colonyIndex]?.activeCohortId;
+  if (activeCohortId && fauna.cohortsById[activeCohortId]) {
+    delete fauna.cohortsById[activeCohortId];
+  }
+
   delete hive.aggressionByColony[colonyIndex];
   hive.aggressiveColonies = Object.keys(hive.aggressionByColony)
     .map(Number)
@@ -83,6 +82,7 @@ export function clearHiveAggressionAgainstColony(
   for (const bugId of hive.residentIds) {
     const bug = fauna.bugsById[bugId];
     if (!bug) continue;
+    if (bug.cohortId === activeCohortId) bug.cohortId = null;
     bug.aggressiveColonies = bug.aggressiveColonies.filter((c) => c !== colonyIndex);
     bug.mode = bug.aggressiveColonies.length > 0 ? 'aggressive' : 'passive';
     if (bug.targetColony === colonyIndex) {
@@ -123,6 +123,7 @@ export function provokeHiveFromDamage(
   attackerEntityId?: number,
   tick = state.meta.tick,
   data?: CompiledDataLike,
+  ctx?: StepContext,
 ): boolean {
   const colonyIndex = resolveAttackerColony(state, attackerOwner, attackerEntityId);
   if (colonyIndex === null || colonyIndex < 0) return false;
@@ -130,12 +131,12 @@ export function provokeHiveFromDamage(
   const fauna = getFaunaHivesState(state);
   const directHive = fauna.hivesById[targetEntityId];
   if (directHive) {
-    return provokeHiveAgainstColony(state, directHive.hiveId, colonyIndex, tick, data);
+    return provokeHiveAgainstColony(state, directHive.hiveId, colonyIndex, tick, data, ctx);
   }
 
   const bug = fauna.bugsById[targetEntityId];
   if (bug) {
-    return provokeHiveAgainstColony(state, bug.homeHiveId, colonyIndex, tick, data);
+    return provokeHiveAgainstColony(state, bug.homeHiveId, colonyIndex, tick, data, ctx);
   }
   return false;
 }
@@ -193,14 +194,14 @@ export function detectAndApplyDamageProvocation(
         const colonyIndex = typeof d.colonyIndex === 'number' ? d.colonyIndex : undefined;
         const hitIds = Array.isArray(d.hitEntityIds) ? (d.hitEntityIds as number[]) : [];
         for (const tid of hitIds) {
-          provokeHiveFromDamage(state, tid, colonyIndex, attackerId, tick, ctx.data);
+          provokeHiveFromDamage(state, tid, colonyIndex, attackerId, tick, ctx.data, ctx);
         }
       } else if (ev.kind === 'faunaKilled' || ev.kind === 'nestDestroyed') {
         const tid = Number(d.entityId ?? d.hiveId ?? 0);
         const attackerId = typeof d.attackerId === 'number' ? d.attackerId : undefined;
         const colonyIndex = typeof d.colonyIndex === 'number' ? d.colonyIndex : undefined;
         if (tid > 0) {
-          provokeHiveFromDamage(state, tid, colonyIndex, attackerId, tick, ctx.data);
+          provokeHiveFromDamage(state, tid, colonyIndex, attackerId, tick, ctx.data, ctx);
         }
       }
     }
@@ -217,7 +218,7 @@ export function detectAndApplyDamageProvocation(
     if (curHp < prevHp) {
       const attackerColony = findColonyAttackingEntity(state, hive.hiveId);
       if (attackerColony !== null) {
-        provokeHiveAgainstColony(state, hive.hiveId, attackerColony, tick, ctx?.data);
+        provokeHiveAgainstColony(state, hive.hiveId, attackerColony, tick, ctx?.data, ctx);
       }
       fauna.lastSeenHpByEntityId[hive.hiveId] = curHp;
       dirty = true;
@@ -231,7 +232,7 @@ export function detectAndApplyDamageProvocation(
     if (curHp < prevHp) {
       const attackerColony = findColonyAttackingEntity(state, bug.entityId);
       if (attackerColony !== null) {
-        provokeHiveAgainstColony(state, bug.homeHiveId, attackerColony, tick, ctx?.data);
+        provokeHiveAgainstColony(state, bug.homeHiveId, attackerColony, tick, ctx?.data, ctx);
       }
       fauna.lastSeenHpByEntityId[bug.entityId] = curHp;
       dirty = true;

@@ -23,6 +23,12 @@ import {
   type HiveRecord,
   type ResidentBugRecord,
 } from './types';
+import {
+  flushPendingFaunaEvents,
+  stepActiveCohorts,
+  stepProvokedHiveWaveDispatches,
+  stepScheduledHiveWaves,
+} from './waves';
 
 const WANDER_INTERVAL_TICKS = 15;
 
@@ -113,7 +119,8 @@ function findClosestProvokedColonyTarget(
     const contDist = hexDistance(bx, by, cols.x[r]!, cols.y[r]!);
     const tileDist = hexDistance(bq, br, cols.q[r]!, cols.r[r]!);
     const d = Math.min(contDist, tileDist);
-    if (d > maxDist + 1e-4) continue;
+    const fpPad = Math.floor(Math.max(1, cols.footprintW[r] || 1) / 2);
+    if (d > maxDist + fpPad + 1e-4) continue;
     const id = cols.id[r]!;
     if (contDist < bestDist - 1e-5 || (Math.abs(contDist - bestDist) <= 1e-5 && id < bestId)) {
       bestDist = contDist;
@@ -174,7 +181,10 @@ function stepAggressiveBugMovement(
   const bugRow = rowOf(state.entities, bug.entityId);
   if (bugRow < 0) return;
   const cfg = resolveSpeciesConfig(bug.species, ctx.data);
-  const searchRadius = Math.max(16, (hive?.patrolRadius ?? 5) * 4);
+  const searchRadius =
+    bug.cohortId !== null
+      ? Math.max(256, state.grid.radius * 4)
+      : Math.max(16, (hive?.patrolRadius ?? 5) * 4);
   const targetRow = findClosestProvokedColonyTarget(
     state,
     bugRow,
@@ -194,8 +204,9 @@ function stepAggressiveBugMovement(
     const tr = cols.r[targetRow]!;
     const tileDist = hexDistance(cols.q[bugRow]!, cols.r[bugRow]!, tq, tr);
     const dist = Math.min(contDist, tileDist);
-    if (dist > cfg.range + 1e-4) {
-      const bandMax = cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1;
+    const fpPad = Math.floor(Math.max(1, cols.footprintW[targetRow] || 1) / 2);
+    if (dist > cfg.range + fpPad + 1e-4) {
+      const bandMax = (cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1) + fpPad;
       const curCmd = getUnitCommand(state, bug.entityId);
       if (
         curCmd?.kind !== 'move' ||
@@ -220,6 +231,7 @@ function stepAggressiveBugMovement(
   }
 
   if (
+    bug.cohortId === null &&
     hive &&
     !hive.destroyed &&
     hexDistance(cols.q[bugRow]!, cols.r[bugRow]!, hive.entranceQ, hive.entranceR) >
@@ -243,7 +255,8 @@ function stepAggressiveBugMovement(
 
 /**
  * Fauna slot (3): materializes worldgen hives on first W07 step, syncs liveness & provocation,
- * replenishes resident bugs up to `popCap`, and issues movement orders through the units runner (`SIM-M-01`).
+ * resolves/schedules bounded wave cohorts, replenishes resident bugs up to `popCap`, and issues
+ * movement orders through the units runner (`SIM-M-01`).
  */
 export function stepFauna(state: PlanetState, ctx: StepContext): void {
   let fauna = getFaunaHivesState(state);
@@ -251,11 +264,17 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
     materializeWorldgenHives(state, ctx.tick, ctx.data);
   }
 
+  flushPendingFaunaEvents(state, ctx);
   detectAndApplyDamageProvocation(state, ctx.tick, ctx);
   fauna = getFaunaHivesState(state);
   syncFaunaLiveness(state, fauna);
   saveFaunaHivesState(state, fauna, ctx.tick);
 
+  stepActiveCohorts(state, ctx);
+  stepScheduledHiveWaves(state, ctx);
+  stepProvokedHiveWaveDispatches(state, ctx);
+
+  fauna = getFaunaHivesState(state);
   const hiveIds = Object.keys(fauna.hivesById)
     .map(Number)
     .sort((a, b) => a - b);
@@ -305,9 +324,11 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
  * `beetleBite`) or ranged acid (`spitterAcid`) for provoked bugs in range, and steps due projectile impacts.
  */
 export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
+  flushPendingFaunaEvents(state, ctx);
   detectAndApplyDamageProvocation(state, ctx.tick, ctx);
   const fauna = getFaunaHivesState(state);
   syncFaunaLiveness(state, fauna);
+  saveFaunaHivesState(state, fauna, ctx.tick);
 
   const cols = state.entities.cols;
   const bugIds = Object.keys(fauna.bugsById)
@@ -352,6 +373,7 @@ export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
         ctx,
       );
     } else {
+      const fpPad = Math.floor(Math.max(1, cols.footprintW[targetRow] || 1) / 2);
       fireLaserOrMelee(
         state,
         {
@@ -359,7 +381,7 @@ export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
           targetId,
           weaponId: cfg.weaponId,
           damage: cfg.damage,
-          range: cfg.range,
+          range: cfg.range + fpPad,
           tick: ctx.tick,
           applyDmg: (s, tId, amt, aId, aOwner, c) => {
             applyDamage(s, tId, amt, {
@@ -378,4 +400,8 @@ export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
 
   saveFaunaHivesState(state, fauna, ctx.tick);
   stepProjectileImpacts(state, ctx.tick, ctx);
+  const afterCombat = getFaunaHivesState(state);
+  syncFaunaLiveness(state, afterCombat);
+  saveFaunaHivesState(state, afterCombat, ctx.tick);
+  stepActiveCohorts(state, ctx);
 }
