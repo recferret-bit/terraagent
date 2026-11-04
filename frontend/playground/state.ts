@@ -13,11 +13,25 @@ export const TOGGLES: ToggleKey[] = ['turntable', 'bloom', 'pixel', 'wire', 'gri
 export const BUILD_STAGES = [1, 0, 0.33, 0.66] as const;
 export type BuildStage = (typeof BUILD_STAGES)[number];
 export const WORK_TARGETS: InteractionTargetKind[] = ['tree', 'rock', 'dune', 'hole', 'flat', 'metals', 'minerals', 'oil', 'repair'];
+export type FaunaSceneKind = 'blackAnt' | 'blueBeetle' | 'greenSpitter' | 'mixed';
+export const FAUNA_SCENES: readonly FaunaSceneKind[] = ['blackAnt', 'blueBeetle', 'greenSpitter', 'mixed'] as const;
+export type FaunaMode = 'passive' | 'aggressive';
+export const FAUNA_MODES: readonly FaunaMode[] = ['passive', 'aggressive'] as const;
+
 const parseBuild = (v: string | null): BuildStage => ({ '0': 0, '33': 0.33, '66': 0.66 } as Record<string, BuildStage>)[v ?? ''] ?? 1;
 const parseDepositStage = (v: string | null): DepositVisualStage =>
   DEPOSIT_STAGES.includes(v as DepositVisualStage) ? (v as DepositVisualStage) : 'full';
 const parseWorkTarget = (v: string | null): InteractionTargetKind =>
   WORK_TARGETS.includes(v as InteractionTargetKind) ? (v as InteractionTargetKind) : 'tree';
+const parseFaunaScene = (v: string | null): FaunaSceneKind | null =>
+  FAUNA_SCENES.includes(v as FaunaSceneKind) ? (v as FaunaSceneKind) : null;
+const parseFaunaMode = (v: string | null): FaunaMode =>
+  FAUNA_MODES.includes(v as FaunaMode) ? (v as FaunaMode) : 'passive';
+const parseFaunaSeed = (v: string | null): number => {
+  if (v === null || v.trim() === '') return 42;
+  const n = Number(v);
+  return Number.isFinite(n) ? Math.trunc(n) : 42;
+};
 
 export interface PgState {
   id: string; kind: PlanetKind; view: View;
@@ -30,6 +44,12 @@ export interface PgState {
   build: BuildStage;
   /** Visual stage of resource deposits (`full` | `half` | `depleted`). */
   depositStage: DepositVisualStage;
+  /** Active seeded hive-life playground scene (`blackAnt` | `blueBeetle` | `greenSpitter` | `mixed` | `null`). */
+  faunaScene: FaunaSceneKind | null;
+  /** Hive-life behavior mode (`passive` | `aggressive`). */
+  faunaMode: FaunaMode;
+  /** Deterministic PRNG seed for the hive-life scene (`&faunaSeed=<int>`, default 42). */
+  faunaSeed: number;
   row: ArchetypeCategory | null; filter: string;
 }
 
@@ -46,12 +66,15 @@ export function createState(params: URLSearchParams): PgState {
     workTarget: parseWorkTarget(params.get('workTarget')),
     build: parseBuild(params.get('build')),
     depositStage: parseDepositStage(params.get('depositStage') ?? params.get('stage')), // `stage`: short alias
+    faunaScene: parseFaunaScene(params.get('faunaScene')),
+    faunaMode: parseFaunaMode(params.get('faunaMode')),
+    faunaSeed: parseFaunaSeed(params.get('faunaSeed')),
     row: row && CATS.includes(row) ? row : null,
     filter: '',
   };
 }
 
-export function syncURL(state: PgState) {
+export function syncURL(state: PgState): URLSearchParams {
   const q = new URLSearchParams();
   if (state.id) q.set('inspect', state.id);
   q.set('biome', state.kind); q.set('view', state.view);
@@ -67,5 +90,13 @@ export function syncURL(state: PgState) {
   if (state.pixel) q.set('pixel', '1');
   if (state.validate) q.set('validate', '1');
   if (state.lights) q.set('lights', '1');
-  history.replaceState(null, '', `${location.pathname}?${q}`);
+  if (state.faunaScene !== null) {
+    q.set('faunaScene', state.faunaScene);
+    q.set('faunaMode', state.faunaMode);
+    q.set('faunaSeed', String(Math.trunc(state.faunaSeed)));
+  }
+  if (typeof history !== 'undefined' && typeof location !== 'undefined') {
+    history.replaceState(null, '', `${location.pathname}?${q}`);
+  }
+  return q;
 }

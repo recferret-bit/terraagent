@@ -89,3 +89,23 @@ kbd{background:var(--ta-plate);border:1px solid var(--ta-seam-2);padding:0 4px;c
 .lp-code-toggle:hover{color:var(--ta-hull)}
 .lp-code{margin:0;padding:8px;max-height:140px;overflow:auto;background:var(--ta-void);border:1px solid var(--ta-seam-2);color:var(--ta-text-2);font:10px/1.4 var(--ta-font-mono);white-space:pre}
 @media(max-width:1100px){#lights-panel{right:14px}}
+/* hive-life playground panel (W07-34) */
+#fauna-panel{top:48px;left:14px;width:336px;display:flex;flex-direction:column;gap:8px;border-top:3px solid var(--ta-blue);z-index:4}
+.fp-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding-bottom:6px;border-bottom:1px solid var(--ta-seam)}
+.fp-title{font-family:var(--ta-font-display);font-weight:700;font-size:13px;letter-spacing:.1em;color:var(--ta-text)}
+.fp-badge{font-size:10px;font-weight:600;padding:2px 7px;border:1px solid var(--ta-seam-3);color:var(--ta-terra);background:var(--ta-plate-2);letter-spacing:.08em}
+.fp-badge.aggro{border-color:var(--ta-fault);color:var(--ta-fault-text)}
+.fp-scenes{display:flex;gap:4px;flex-wrap:wrap}
+.fp-scene-btn{padding:5px 8px;font-size:10px}
+.fp-body{display:flex;flex-direction:column;gap:7px;padding-top:4px;border-top:1px solid var(--ta-seam)}
+.fp-body[hidden]{display:none!important}
+.fp-controls,.fp-transport{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.fp-seed-lbl{display:inline-flex;align-items:center;gap:6px;font-size:10px;color:var(--ta-steel);letter-spacing:.08em}
+.fp-seed-input{width:68px;background:var(--ta-void);border:1px solid var(--ta-seam-2);color:var(--ta-text);padding:4px 6px;font:500 11px var(--ta-font-mono);outline:none}
+.fp-seed-input:focus{border-color:var(--ta-orange)}
+.fp-acid-btn{border-color:var(--ta-terra);color:var(--ta-terra)}
+.fp-stats{display:flex;flex-direction:column;gap:4px;padding:7px 8px;background:var(--ta-plate-2);border:1px solid var(--ta-seam);font-size:11px}
+.fp-stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:4px 8px;color:var(--ta-steel);font-size:10px;letter-spacing:.06em}
+.fp-stat-grid b{color:var(--ta-text)}
+.fp-hive-row{display:flex;justify-content:space-between;gap:6px;padding-top:4px;border-top:1px solid var(--ta-seam);font-size:10px;color:var(--ta-text-2)}
+.fp-hive-row b{color:var(--ta-blue-hi)}
