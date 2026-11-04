@@ -114,9 +114,9 @@ test('@hack 1. Open ?scenario=w10 -> S2 colony with 900 metals.t1 stock, online 
   });
   expect(col?.caps?.metals).toBeGreaterThanOrEqual(1500);
   expect(col?.power).toMatchObject({
-    supply: 28,
-    demand: 11,
-    net: 17,
+    supply: 29,
+    demand: 19,
+    net: 10,
     brownout: false,
   });
 
@@ -248,7 +248,10 @@ test('@hack 7. near.mock.fail cargo 1, then export 50 metals.t1 -> fails and ref
 
 test('@hack 8. Cut power (time night) so Trade Hub is shed -> Export button disables with Trade Hub offline; skipnight restores', async () => {
   await runConsole(page, 'time night');
-  await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? false).toBe(true);
+  // W03's HQ cell carries the night deficit until its reserve is exhausted.
+  await runConsole(page, 'warp 20');
+  await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? false, { timeout: 20_000 }).toBe(true);
+  await runConsole(page, 'warp 1');
   await expect(page.locator('[data-testid="trade-hub-status"]')).toHaveAttribute('data-online', 'false');
   await expect(page.locator('[data-testid="trade-hub-status"]')).toContainText('OFFLINE');
   await expect(page.locator('[data-testid="trade-hub-offline-banner"]')).toBeVisible();

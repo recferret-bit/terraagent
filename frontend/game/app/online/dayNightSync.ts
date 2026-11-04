@@ -7,6 +7,8 @@ import {
   type DayNightParams,
 } from '@terra/render/core/dayNightConfig';
 import { computePlanetTimeAtTick, getPlanetTimeAnchor, type PlanetTimeView } from '@terra/sim';
+import { getWindParams, setWindParams } from '@terra/render/core/windConfig';
+import { readColonyPower } from '../../features/shared/power';
 import type { CommandBus } from '../../net/commandBus';
 import type { WorldStore } from '../../store/WorldStore';
 
@@ -84,6 +86,8 @@ export function bindOnlineDayNightSync(
     syncFrame(nowMs = typeof performance !== 'undefined' ? performance.now() : Date.now()): PlanetTimeView | null {
       const v = store.latest;
       if (!v) return null;
+      const wind = readColonyPower(v, 0)?.windFactor;
+      if (typeof wind === 'number' && getWindParams().strength !== wind) setWindParams({ strength: wind });
       const data = store.simData() ?? undefined;
       const anchor = getPlanetTimeAnchor(v.blobs, data);
       const tickF = v.tick + Math.max(0, store.serverTickF() - store.confirmedTick) * Math.max(1, getWarp());

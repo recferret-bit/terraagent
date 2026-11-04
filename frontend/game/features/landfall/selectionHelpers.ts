@@ -32,6 +32,7 @@ export interface SelectedDepositView {
 const KIND_BY_NAME: Record<string, number> = {
   hq: ENTITY_KIND.hq,
   harvester: ENTITY_KIND.harvester,
+  builder: ENTITY_KIND.builder,
   commandHub: ENTITY_KIND.commandHub,
   metalsExtractor: ENTITY_KIND.metalsExtractor,
   solar: ENTITY_KIND.solar,
@@ -39,6 +40,14 @@ const KIND_BY_NAME: Record<string, number> = {
   tradeHub: ENTITY_KIND.tradeHub,
   pod: ENTITY_KIND.pod,
   devProbe: ENTITY_KIND.devProbe,
+  pylon: ENTITY_KIND.pylon,
+  capacitor: ENTITY_KIND.capacitor,
+  wind: ENTITY_KIND.wind,
+  thermal: ENTITY_KIND.thermal,
+  supplyDepot: ENTITY_KIND.supplyDepot,
+  mineralsQuarry: ENTITY_KIND.mineralsQuarry,
+  waterExtractor: ENTITY_KIND.waterExtractor,
+  petroleumWell: ENTITY_KIND.petroleumWell,
 };
 
 const STATE_BY_NAME: Record<string, number> = {
@@ -48,6 +57,10 @@ const STATE_BY_NAME: Record<string, number> = {
   constructing: ENTITY_STATE.constructing,
   harvesting: ENTITY_STATE.harvesting,
   waiting: ENTITY_STATE.waiting,
+  repairing: ENTITY_STATE.repairing,
+  offlineNoFuel: ENTITY_STATE.offlineNoFuel,
+  offlineNoGrid: ENTITY_STATE.offlineNoGrid,
+  offlineOverload: ENTITY_STATE.offlineOverload,
 };
 
 export function normalizeKindCode(k: unknown): number {
@@ -169,7 +182,7 @@ export function resolveEntityActivityProgress(
   if (unitProg !== null) return unitProg;
 
   const col = viewColony(v, e.owner ?? 0) as Record<string, unknown> | undefined;
-  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester) {
+  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder) {
     const wp = resolveWorkerQueueOrTerraformProgress(e, v, col);
     if (wp !== null) return wp;
   }
@@ -366,6 +379,22 @@ export function enrichHqSelectedView(hq: HqStatusView, rawView: unknown): Select
   };
 }
 
+const BLDG_META: Record<number, { label: string; code: string; w: number; d: number; hpMax: number }> = {
+  [ENTITY_KIND.tradeHub]: { label: 'TRADE HUB', code: 'TRD', w: 2, d: 2, hpMax: 900 },
+  [ENTITY_KIND.commandHub]: { label: 'COMMAND HUB', code: 'HUB', w: 3, d: 3, hpMax: 1500 },
+  [ENTITY_KIND.metalsExtractor]: { label: 'METALS EXTRACTOR', code: 'EXT', w: 2, d: 2, hpMax: 500 },
+  [ENTITY_KIND.solar]: { label: 'SOLAR ARRAY', code: 'SOL', w: 2, d: 2, hpMax: 300 },
+  [ENTITY_KIND.pod]: { label: 'DROP POD', code: 'POD', w: 1, d: 1, hpMax: 600 },
+  [ENTITY_KIND.pylon]: { label: 'POWER PYLON', code: 'PYL', w: 1, d: 1, hpMax: 200 },
+  [ENTITY_KIND.capacitor]: { label: 'CAPACITOR BANK', code: 'CAP', w: 2, d: 2, hpMax: 350 },
+  [ENTITY_KIND.wind]: { label: 'WIND TURBINE', code: 'WND', w: 2, d: 2, hpMax: 280 },
+  [ENTITY_KIND.thermal]: { label: 'THERMAL PLANT', code: 'THM', w: 2, d: 2, hpMax: 550 },
+  [ENTITY_KIND.supplyDepot]: { label: 'SUPPLY DEPOT', code: 'DEP', w: 2, d: 2, hpMax: 600 },
+  [ENTITY_KIND.mineralsQuarry]: { label: 'MINERALS QUARRY', code: 'QRY', w: 2, d: 2, hpMax: 500 },
+  [ENTITY_KIND.waterExtractor]: { label: 'WATER EXTRACTOR', code: 'H2O', w: 2, d: 2, hpMax: 420 },
+  [ENTITY_KIND.petroleumWell]: { label: 'PETROLEUM WELL', code: 'OIL', w: 2, d: 2, hpMax: 550 },
+};
+
 export function buildSelectedEntityFromRow(
   e: EntityRow,
   rawView: unknown,
@@ -374,20 +403,25 @@ export function buildSelectedEntityFromRow(
 ): SelectedEntityView | null {
   if (e.hp <= 0 || e.state === ENTITY_STATE.descending || (e.kind === ENTITY_KIND.tradeHub && e.state === ENTITY_STATE.inert)) return null;
   const progress = resolveEntityActivityProgress(e, rawView);
-  if (e.kind === ENTITY_KIND.harvester) {
+  if (e.kind === ENTITY_KIND.harvester || e.kind === ENTITY_KIND.builder) {
+    const isBuilder = e.kind === ENTITY_KIND.builder;
     const job =
       e.state === ENTITY_STATE.moving ? 'moving'
       : e.state === ENTITY_STATE.harvesting ? 'harvesting'
+      : e.state === ENTITY_STATE.repairing ? 'repairing'
+      : e.state === ENTITY_STATE.constructing ? 'constructing'
       : e.state === ENTITY_STATE.working ? 'working'
       : e.state === ENTITY_STATE.offlineBrownout ? 'offline: brownout'
-      : progress > 0 && progress < 1 ? 'harvesting'
+      : progress > 0 && progress < 1 ? (isBuilder ? 'working' : 'harvesting')
       : 'idle';
     const uRec = unitsById[String(e.id)];
     const queueCount = uRec ? (uRec.current ? 1 : 0) + (Array.isArray(uRec.queue) ? uRec.queue.length : 0) : (job === 'idle' ? 0 : 1);
     return {
-      entityId: e.id, kind: e.kind, kindLabel: 'HARVESTER DRONE', shortCode: 'HRV',
+      entityId: e.id, kind: e.kind,
+      kindLabel: isBuilder ? 'BUILDER DRONE' : 'HARVESTER DRONE',
+      shortCode: isBuilder ? 'BLD' : 'HRV',
       isUnit: true, isMovable: true, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
-      hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : 160, currentJob: job, queueCount,
+      hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : (isBuilder ? 150 : 160), currentJob: job, queueCount,
       state: e.state, progress, terraformJob: unitHasTerraformJob(rawView, e.id),
     };
   }
@@ -400,16 +434,19 @@ export function buildSelectedEntityFromRow(
       state: e.state, progress,
     };
   }
-  const bldgMeta: Record<number, { label: string; code: string; w: number; d: number; hpMax: number }> = {
-    [ENTITY_KIND.commandHub]: { label: 'COMMAND HUB', code: 'HUB', w: 3, d: 3, hpMax: 1500 },
-    [ENTITY_KIND.metalsExtractor]: { label: 'METALS EXTRACTOR', code: 'EXT', w: 2, d: 2, hpMax: 500 },
-    [ENTITY_KIND.solar]: { label: 'SOLAR ARRAY', code: 'SOL', w: 2, d: 2, hpMax: 300 },
-    [ENTITY_KIND.tradeHub]: { label: 'TRADE HUB', code: 'TRD', w: 2, d: 2, hpMax: 900 },
-    [ENTITY_KIND.pod]: { label: 'DROP POD', code: 'POD', w: 1, d: 1, hpMax: 600 },
-  };
-  const b = bldgMeta[e.kind];
+  const b = BLDG_META[e.kind];
   if (!b) return null;
   const reason = offlineReasons[e.id];
+  const dismantle = dismantleJobOf(rawView, e.id);
+  if (dismantle) {
+    // Coming down (owner feedback W03 #6): a site again, its progress is the dismantle job's (0 → 100 %).
+    return {
+      entityId: e.id, kind: e.kind, kindLabel: b.label, shortCode: b.code,
+      isUnit: false, isMovable: false, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
+      hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: 'dismantling', queueCount: 1,
+      footprintW: b.w, footprintD: b.d, state: e.state, progress: Math.max(0.001, Math.min(0.999, dismantle.progress)),
+    };
+  }
   const job = reason
     ? reason
     : e.state === ENTITY_STATE.constructing ? 'constructing'
@@ -417,6 +454,9 @@ export function buildSelectedEntityFromRow(
     : e.state === ENTITY_STATE.offlineBrownout ? 'offline: brownout'
     : e.state === ENTITY_STATE.offlineUnpowered ? 'offline: unpowered'
     : e.state === ENTITY_STATE.offlineCapped ? 'offline: capped'
+    : e.state === ENTITY_STATE.offlineNoFuel ? 'offline: no fuel'
+    : e.state === ENTITY_STATE.offlineNoGrid ? 'offline: no grid'
+    : e.state === ENTITY_STATE.offlineOverload ? 'offline: overload'
     : e.kind === ENTITY_KIND.pod ? 'landed'
     : progress > 0 && progress < 1 ? 'working' : 'online';
   const queueCount = progress > 0 && progress < 1 ? 1 : 0;
@@ -426,6 +466,17 @@ export function buildSelectedEntityFromRow(
     hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : b.hpMax, currentJob: job, queueCount,
     footprintW: b.w, footprintD: b.d, state: e.state, progress,
   };
+}
+
+/** The open dismantle job (`blobs.workJobs`, mode `dismantle`, not a helper record) of building `entityId`, if any. */
+export function dismantleJobOf(rawView: unknown, entityId: number): { progress: number } | null {
+  const byId = ((rawView as { blobs?: Record<string, unknown> } | null)?.blobs?.workJobs as
+    { byId?: Record<string, { mode?: string; targetEntityId?: number; helpOf?: string; progress?: number }> } | undefined)?.byId;
+  if (!byId) return null;
+  for (const j of Object.values(byId)) {
+    if (j?.mode === 'dismantle' && j.targetEntityId === entityId && j.helpOf === undefined) return { progress: Number(j.progress) || 0 };
+  }
+  return null;
 }
 
 /** Colony `owner`'s Units-lane entry CANCEL JOB on the Command Hub ends: the running one, else the next queued; null if none. */

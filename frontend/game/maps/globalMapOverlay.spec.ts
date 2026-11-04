@@ -64,6 +64,54 @@ describe('W04-13 GlobalMapOverlay shell, legend, chips, and focus trap', () => {
     parent.remove();
   });
 
+});
+
+describe('W04 GlobalMapOverlay under the dev console', () => {
+  it('keeps Tab inside the dev console (a dialog stacked above the map) instead of pulling focus back, and sits below it', () => {
+    const parent = document.createElement('div');
+    const consoleEl = document.createElement('div');
+    consoleEl.setAttribute('role', 'dialog');
+    const input = document.createElement('input');
+    consoleEl.appendChild(input);
+    document.body.append(parent, consoleEl);
+    const overlay = new GlobalMapOverlay({ parent });
+    overlay.setOpen(true);
+
+    input.focus();
+    const tab = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    input.dispatchEvent(tab);
+    expect(document.activeElement).toBe(input); // the console's only field keeps focus; the map does not take it
+
+    // A text field outside any dialog keeps the browser's own Tab
+    const loose = document.createElement('input');
+    document.body.appendChild(loose);
+    loose.focus();
+    const tabLoose = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    loose.dispatchEvent(tabLoose);
+    expect(tabLoose.defaultPrevented).toBe(false);
+    loose.remove();
+
+    // From anywhere else (e.g. body) Tab is still trapped inside the map
+    input.blur();
+    const tab2 = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true });
+    window.dispatchEvent(tab2);
+    expect(tab2.defaultPrevented).toBe(true);
+    expect(overlay.el.contains(document.activeElement)).toBe(true);
+
+    const z = (file: string, sel: string) => {
+      const css = readFileSync(resolve(import.meta.dirname, file), 'utf8');
+      const block = css.slice(css.indexOf(sel));
+      return Number(/z-index:\s*(\d+)/.exec(block)![1]);
+    };
+    expect(z('../dev/console/console.css', '.ta-devcon {')).toBeGreaterThan(z('global-map.css', '.ta-global-map {'));
+
+    overlay.dispose();
+    parent.remove();
+    consoleEl.remove();
+  });
+});
+
+describe('W04-13 GlobalMapOverlay styles', () => {
   it('uses only valid --ta-* tokens and zero border-radius in global-map.css', () => {
     const css = readFileSync(resolve(import.meta.dirname, 'global-map.css'), 'utf8');
     const tokensCss = readFileSync(

@@ -10,6 +10,7 @@ import { refundCost } from '../economy/ledger';
 import { cancelHubUnit, getHubUnitQueue } from '../factories-hub';
 import { cancelHarvesterTask } from '../harvest';
 import { cancelWorkJobs, hasWorkJob } from '../terraform-basic/dismantleAndWork';
+import { dismantleJobOf } from '../terraform-basic/workJobs';
 import { cancelTerraformOrder, findTerraformOrder } from '../terraform-basic/queue';
 import { UnitBook } from '../../units/book';
 import type { QueueEntry } from './types';
@@ -27,6 +28,10 @@ export function refundEntrySpent(
   data?: CompiledDataLike,
 ): boolean {
   let refunded = false;
+  if (entry.task.kind === 'repair' || entry.task.kind === 'dismantle') {
+    const wRes = cancelWorkJobs(state, entry.colonyIndex, { jobId: entry.taskId }, tick);
+    if (wRes.cancelled > 0 || entry.task.kind === 'dismantle') return Object.keys(wRes.refunded).length > 0;
+  }
   if (entry.entityId !== undefined) {
     // Its building finished this step (the queue marks the entry `done` next step): nothing to cancel or refund.
     const eRow = rowOf(state.entities, entry.entityId);
@@ -87,7 +92,7 @@ export function cancelAllColonyTasks(
   for (let r = 0; r < state.entities.count; r++) {
     if (state.entities.cols.owner[r] !== colonyIndex || state.entities.cols.hp[r] <= 0) continue;
     const k = state.entities.cols.kind[r];
-    if (k === ENTITY_KIND.harvester || k === ENTITY_KIND.hq) {
+    if (k === ENTITY_KIND.harvester || k === ENTITY_KIND.hq || k === ENTITY_KIND.builder) {
       cancelHarvesterTask(state, state.entities.cols.id[r], tick, data);
     }
   }
@@ -129,6 +134,33 @@ function cancelUnitTerraformOrders(state: PlanetState, entityId: number, colonyI
   }
 }
 
+/**
+ * Cancels the dismantle of `entityId` (CANCEL on a building being dismantled, `building:<id>`): the building stands
+ * again with the hull it lost (`terraform-basic/dismantleSite.ts`); the refund already credited stays.
+ */
+function cancelDismantle(
+  state: PlanetState,
+  jobId: string,
+  entityId: number,
+  colonyIndex: number | null | undefined,
+  entries: QueueEntry[],
+  tick: number,
+  scanAndSave: (colIdx: number) => void,
+): { ok: true; refunded: boolean } | { ok: false; code: string } {
+  const row = rowOf(state.entities, entityId);
+  if (row >= 0 && colonyIndex !== undefined && colonyIndex !== null && state.entities.cols.owner[row] !== colonyIndex) {
+    return { ok: false, code: 'not_own_colony' };
+  }
+  cancelWorkJobs(state, colonyIndex, { jobId }, tick);
+  const qIdx = entries.findIndex((e) => e.taskId === jobId);
+  if (qIdx >= 0) {
+    const colIdx = entries[qIdx].colonyIndex;
+    entries.splice(qIdx, 1);
+    scanAndSave(colIdx);
+  }
+  return { ok: true, refunded: false };
+}
+
 export function tryCancelSpecialTaskId(
   state: PlanetState,
   taskId: string,
@@ -141,6 +173,8 @@ export function tryCancelSpecialTaskId(
   if (taskId.startsWith('building:')) {
     const entityId = Number(taskId.slice('building:'.length));
     if (!Number.isInteger(entityId) || entityId <= 0) return { ok: false, code: 'invalid_args' };
+    const dismantle = dismantleJobOf(state, entityId);
+    if (dismantle) return cancelDismantle(state, dismantle.jobId, entityId, colonyIndex, entries, tick, scanAndSave);
     const qIdx = entries.findIndex((e) => e.entityId === entityId && e.state !== 'done' && e.state !== 'cancelled');
     const colIdx = qIdx >= 0 ? entries[qIdx].colonyIndex : (colonyIndex ?? 0);
     const bRes = cancelBuildingConstruction(state, entityId, colonyIndex, tick, data);
@@ -190,7 +224,12 @@ export function tryCancelSpecialTaskId(
       return bRes.ok ? { ok: true, refunded: bRes.refunded } : { ok: false, code: bRes.code };
     }
     const uRow = rowOf(state.entities, numId);
-    if (uRow >= 0 && (state.entities.cols.kind[uRow] === ENTITY_KIND.harvester || state.entities.cols.kind[uRow] === ENTITY_KIND.hq)) {
+    if (
+      uRow >= 0 &&
+      (state.entities.cols.kind[uRow] === ENTITY_KIND.harvester ||
+        state.entities.cols.kind[uRow] === ENTITY_KIND.hq ||
+        state.entities.cols.kind[uRow] === ENTITY_KIND.builder)
+    ) {
       if (colonyIndex !== undefined && colonyIndex !== null && state.entities.cols.owner[uRow] !== colonyIndex) {
         return { ok: false, code: 'not_own_colony' };
       }

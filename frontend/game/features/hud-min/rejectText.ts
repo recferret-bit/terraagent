@@ -1,4 +1,5 @@
 import type { RejectCode } from '@terra/contracts';
+import { SUPPLY_CAP_TEXT } from '../shared/supply';
 
 /** Codes a toast can show: every host `RejectCode` plus the client's own `timeout` / `not_connected`. */
 export type ToastRejectCode = RejectCode | 'timeout' | 'not_connected';
@@ -16,7 +17,7 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   site_blocked: 'Rejected: Site blocked',
   terrain_unbuildable: 'Rejected: Terrain unbuildable',
   insufficient_resources: 'Waiting: Insufficient resources',
-  supply_cap: 'Rejected: Supply cap reached',
+  supply_cap: SUPPLY_CAP_TEXT,
   unknown_entity: 'Rejected: Unknown entity',
   tier_locked: 'Rejected: Tier locked',
   worker_tier_locked: 'Rejected: No worker available',
@@ -39,6 +40,9 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   planet_full: 'Rejected: Planet full',
   cannot_dismantle_hq: 'Rejected: Cannot dismantle Command Hub or HQ',
   unknown_task: 'Rejected: Order no longer in the queue',
+  lane_full: 'Rejected: Queue lane full',
+  outside_power_zone: 'Rejected: Outside the power zone (build a Power Pylon to extend it)',
+  already_dismantling: 'Rejected: Already being dismantled',
   goal_limit: 'Rejected: Goal limit reached',
   unknown_goal: 'Rejected: Goal no longer in the queue',
   insufficient_stock: 'Rejected: Insufficient colony stock',

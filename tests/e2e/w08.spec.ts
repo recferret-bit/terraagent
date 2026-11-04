@@ -126,7 +126,7 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   await expect(solarCard).toBeVisible();
   await expect(solarCard).toHaveAttribute('data-stage-locked', 'true');
   await expect(solarCard).toContainText('Unlocks at S1: Command Hub T1 complete');
-  await expect(page.locator('.ta-construction__card[data-building="depot"]')).toHaveCount(0);
+  await expect(page.locator('.ta-construction__card[data-building="supplyDepot"]')).toHaveCount(0);
 
   // Units menu at S0: Harvester greyed with "Unlocks at S1: Command Hub T1 complete"
   await page.locator('[data-testid="dock-tab-production"]').click();
@@ -171,7 +171,7 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   // At S1: Metals Extractor and Solar un-grey; Builder, Pylon, Depot (unlockStage: 2) appear greyed
   await expect(extCard).toHaveAttribute('data-disabled', 'false');
   await expect(solarCard).toHaveAttribute('data-disabled', 'false');
-  const depotCard = page.locator('.ta-construction__card[data-building="depot"]');
+  const depotCard = page.locator('.ta-construction__card[data-building="supplyDepot"]');
   await expect(depotCard).toBeVisible();
   await expect(depotCard).toHaveAttribute('data-stage-locked', 'true');
   await expect(depotCard).toHaveAttribute(

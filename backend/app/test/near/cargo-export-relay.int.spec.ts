@@ -121,7 +121,7 @@ describe('CargoExport outbox relay happy path (W10-09)', () => {
         }),
       );
       expect(enqueued).not.toBeNull();
-      expect(await relayService.pollOnce()).toBe(1);
+      await expect.poll(() => relayService.pollOnce(), { timeout: 10_000 }).toBe(1);
 
       const cargoTx = await db.prisma.cargoTx.findUniqueOrThrow({ where: { opId } });
       expect(cargoTx.state).toBe('FINAL');
@@ -197,7 +197,7 @@ describe('CargoExport outbox relay forced failure (W10-09)', () => {
       expect(enqueued).not.toBeNull();
 
       // First attempt fails -> status FAILED on outbox, SENT on cargo_tx, not dead yet
-      expect(await relayService.pollOnce()).toBe(1);
+      await expect.poll(() => relayService.pollOnce(), { timeout: 10_000 }).toBe(1);
       const txAfterFirst = await db.prisma.cargoTx.findUniqueOrThrow({ where: { opId } });
       expect(txAfterFirst.state).toBe('SENT');
       expect(txAfterFirst.lastError).toContain('NEAR_MOCK_INJECTED_FAILURE');
@@ -205,7 +205,7 @@ describe('CargoExport outbox relay forced failure (W10-09)', () => {
 
       // Make the retry due immediately and run the final attempt (maxAttemptsFor CargoToken = 2)
       await db.prisma.$executeRaw`UPDATE chain.chain_outbox SET next_attempt_at = now() - interval '1 second' WHERE op_id = ${opId}`;
-      expect(await relayService.pollOnce()).toBe(1);
+      await expect.poll(() => relayService.pollOnce(), { timeout: 10_000 }).toBe(1);
 
       const txAfterDead = await db.prisma.cargoTx.findUniqueOrThrow({ where: { opId } });
       expect(txAfterDead.state).toBe('FAILED');

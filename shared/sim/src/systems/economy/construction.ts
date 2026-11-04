@@ -18,13 +18,19 @@ import { buildLinkedPrepJobs } from '../construction/prep';
 import { enqueueTerraformOrder, removeTerraformOrder } from '../terraform-basic/queue';
 import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
 import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
-import { checkCostAffordability, debitCost, recomputeFamilyCaps, refundCost } from './ledger';
+import { checkCostAffordability, debitCost, refundCost, syncColonyDepotCaps } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
 import { onCommandHubCompleted } from '../progression';
 import { syncColonyThreatStage } from '../progression/threatStage';
 import { claimTerritoryRadius } from '../territory-claim';
 
 export { buildingKindName, getBuildingJobs, getFootprintTileIndices, resolveBuildingRow, type BuildingJobRecord };
+
+/** Whether building `entityId` is being dismantled (an open dismantle work job, `terraform-basic/dismantleJob.ts`). */
+function isBeingDismantled(state: PlanetState, entityId: number): boolean {
+  const byId = (state.blobs.workJobs?.value as { byId?: Record<string, { mode?: string; targetEntityId?: number; helpOf?: string }> } | undefined)?.byId ?? {};
+  return Object.values(byId).some((j) => j.mode === 'dismantle' && j.targetEntityId === entityId && j.helpOf === undefined);
+}
 
 export interface StartConstructionOptions {
   owner: number;
@@ -102,7 +108,7 @@ function evacuateUnitsFromFootprint(
   const e = state.entities, cols = e.cols;
   for (let uRow = 0; uRow < e.count; uRow++) {
     const k = cols.kind[uRow];
-    if ((k !== ENTITY_KIND.hq && k !== ENTITY_KIND.harvester) || cols.hp[uRow] <= 0) continue;
+    if ((k !== ENTITY_KIND.hq && k !== ENTITY_KIND.harvester && k !== ENTITY_KIND.builder) || cols.hp[uRow] <= 0) continue;
     const uIdx = idx.indexOf(cols.q[uRow], cols.r[uRow]);
     if (!fpSet.has(uIdx)) continue;
     const exit = findNearestExitTile(state, cols.q[uRow], cols.r[uRow], allBlocked);
@@ -250,9 +256,10 @@ export function startBuildingConstruction(
   } else {
     if (entityKind === ENTITY_KIND.commandHub) {
       claimHubTerritory(state, opts.owner, opts.q, opts.r, Number(row.claimRadius ?? 10), tick);
-      recomputeFamilyCaps(colony, true, 0, tick);
+      syncColonyDepotCaps(state, opts.owner, tick);
       onCommandHubCompleted(state, opts.owner, ctx ?? { tick, data });
     }
+    if (entityKind === ENTITY_KIND.supplyDepot) syncColonyDepotCaps(state, opts.owner, tick);
     syncColonyThreatStage(state, opts.owner, tick);
   }
 
@@ -307,6 +314,7 @@ export function cancelBuildingConstruction(
   const owner = eRow >= 0 ? state.entities.cols.owner[eRow] : job!.owner;
   if (colonyIndex !== undefined && colonyIndex !== null && owner !== colonyIndex) return { ok: false, code: 'not_own_colony' };
   if (eRow >= 0 && state.entities.cols.state[eRow] !== ENTITY_STATE.constructing) return { ok: false, code: 'invalid_args' };
+  if (!job && isBeingDismantled(state, entityId)) return { ok: false, code: 'invalid_args' }; // a dismantle site: cancel its job
   const ratio = Number(resolveBuildingRow(eRow >= 0 ? buildingKindName(state.entities.cols.kind[eRow]) : job!.building, data)?.row.cancelRefundRatio ?? CANCEL_REFUND_RATE);
   if (eRow >= 0) removeBuildingAndClearFootprint(state, entityId, eRow, tick, data, job);
 
@@ -323,13 +331,17 @@ export function cancelBuildingConstruction(
   return { ok: true, refunded, refundedAmounts };
 }
 
-/** Demolishes a completed building, refunding 50% of its cost and leaving its footprint tiles `PREP.prepared`. */
+/**
+ * Demolishes a building at once, refunding `refundRatio` (default: the row's `demolishRefundRatio`, 50 %) of its cost
+ * and leaving its footprint tiles `PREP.prepared`. A finished dismantle job passes 0: it refunded step by step.
+ */
 export function demolishBuilding(
   state: PlanetState,
   entityId: number,
   colonyIndex?: number | null,
   tick: number = state.meta.tick,
   data?: CompiledDataLike,
+  refundRatio?: number,
 ): { ok: true; refunded: Partial<Record<ResourceKey, number>> } | { ok: false; code: string } {
   const eRow = rowOf(state.entities, entityId);
   if (eRow < 0) return { ok: false, code: 'unknown_entity' };
@@ -342,7 +354,7 @@ export function demolishBuilding(
 
   const jobs = getBuildingJobs(state);
   const job = jobs[entityId];
-  const ratio = Number(resolved?.row.demolishRefundRatio ?? 0.5);
+  const ratio = refundRatio ?? Number(resolved?.row.demolishRefundRatio ?? 0.5);
   const cost =
     cols.state[eRow] === ENTITY_STATE.constructing && job?.spentCost
       ? job.spentCost
@@ -351,10 +363,12 @@ export function demolishBuilding(
   refundCost(colony, cost, ratio, tick);
   const refunded: Partial<Record<ResourceKey, number>> = {};
   for (const [k, v] of Object.entries(cost) as [ResourceKey, number][]) {
-    if (v > 0) refunded[k] = v * ratio;
+    if (v > 0 && ratio > 0) refunded[k] = v * ratio;
   }
+  const wasSupplyDepot = cols.kind[eRow] === ENTITY_KIND.supplyDepot;
   removeBuildingAndClearFootprint(state, entityId, eRow, tick, data, job);
   dropJob(state, jobs, entityId, owner, tick, data);
+  if (wasSupplyDepot) syncColonyDepotCaps(state, owner, tick);
   syncColonyThreatStage(state, owner, tick);
   return { ok: true, refunded };
 }
@@ -365,6 +379,7 @@ export const demolishHandler = defineCommandHandler({
   handle(state, cmd, ctx) {
     const { entityId } = (cmd.args ?? {}) as { entityId?: number };
     if (typeof entityId !== 'number') return 'invalid_args';
+    if (isBeingDismantled(state, entityId)) return 'already_dismantling';
     const res = demolishBuilding(state, entityId, cmd.colonyIndex, ctx.tick, ctx.data);
     return res.ok ? undefined : res.code;
   },

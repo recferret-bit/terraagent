@@ -102,6 +102,45 @@ const getCamState = (page: Page) =>
     };
   });
 
+/** Opens the Command Dock on its Build tab (W03; the tallest pane), when the dock is mounted. */
+async function openDockBuildTab(page: Page): Promise<void> {
+  const dock = page.getByTestId('command-dock');
+  if ((await dock.count()) === 0) return;
+  const open = async () => (await dock.getAttribute('data-collapsed')) !== 'true' && (await dock.getAttribute('data-active-tab')) === 'build';
+  if (!(await open())) await page.getByTestId('dock-tab-build').click();
+  await expect.poll(open).toBe(true);
+}
+
+/**
+ * Pairs of HUD boxes that intersect: the Command Dock and the minimap against each other, every visible child of the
+ * top slots and the HQ panel; plus either one leaving the viewport. Empty when the bottom-left stack fits.
+ */
+const hudOverlaps = (page: Page) =>
+  page.evaluate(() => {
+    const box = (el: Element | null) => {
+      if (!el || (el as HTMLElement).hidden) return null;
+      const r = el.getBoundingClientRect();
+      return r.width > 0 && r.height > 0 ? r : null;
+    };
+    const named = (name: string, el: Element | null) => ({ name, r: box(el) });
+    const dock = named('dock', document.querySelector('[data-testid="command-dock"]'));
+    const minimap = named('minimap', document.querySelector('[data-testid="minimap-hud"]'));
+    const others = [
+      ...Array.from(document.querySelectorAll(".ta-hud__slot[data-slot^='top'] > *")).map((el, i) => named(`top#${i}:${el.className}`, el)),
+      named('hq-panel', document.querySelector('.ta-hq-panel')),
+    ];
+    const hit = (a: DOMRect, b: DOMRect) =>
+      a.left < b.right - 1 && b.left < a.right - 1 && a.top < b.bottom - 1 && b.top < a.bottom - 1;
+    const out: string[] = [];
+    for (const m of [dock, minimap]) {
+      if (!m.r) continue;
+      if (m.r.top < 0 || m.r.left < 0 || m.r.bottom > innerHeight || m.r.right > innerWidth) out.push(`${m.name} off-screen`);
+      for (const o of others) if (o.r && hit(m.r, o.r)) out.push(`${m.name} x ${o.name}`);
+    }
+    if (dock.r && minimap.r && hit(dock.r, minimap.r)) out.push('dock x minimap');
+    return out;
+  });
+
 test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the 180 px minimap at bottom-left with tile colours and a white camera trapezoid', async () => {
   await page.setViewportSize({ width: 1280, height: 720 });
   await openW04(page, { waves: '..04' });
@@ -114,6 +153,11 @@ test('@hack 1. Load ?scenario=w04 (two colonies, partial exploration) -> see the
   expect(Math.round(box!.height)).toBe(180);
   expect(box!.x).toBeLessThan(100);
   expect(box!.y).toBeGreaterThan(350);
+
+  // The expanded Command Dock (Build tab) and the minimap share the bottom-left slot without overlapping each other,
+  // the top HUD or the HQ panel
+  await openDockBuildTab(page);
+  expect(await hudOverlaps(page)).toEqual([]);
 
   await expect.poll(async () => (await getMinimapStats(page))?.trapezoid?.length ?? 0, { timeout: 25_000 }).toBe(4);
   const stats = await getMinimapStats(page);
@@ -193,8 +237,14 @@ test('@hack 3. Drag on the minimap -> the camera pans continuously along the dra
     .toBe(140);
   const mmBox = (await page.getByTestId('minimap-hud').boundingBox())!;
   expect(Math.round(mmBox.height)).toBe(140);
+  await openDockBuildTab(page);
+  await expect.poll(() => hudOverlaps(page)).toEqual([]);
+
+  await page.setViewportSize({ width: 1920, height: 1080 });
+  await expect.poll(() => hudOverlaps(page)).toEqual([]);
 
   await page.setViewportSize({ width: 1280, height: 720 });
+  await expect.poll(() => hudOverlaps(page)).toEqual([]);
   expectNoPageErrors(page);
 });
 

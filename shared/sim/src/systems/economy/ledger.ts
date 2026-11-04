@@ -5,7 +5,8 @@ import {
   type ResourceFamily,
   type ResourceKey,
 } from '@terra/contracts';
-import type { ColonyState } from '../../kernel/state';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import type { ColonyState, PlanetState } from '../../kernel/state';
 
 export const BASE_HUB_STORAGE_CAP = 500;
 export const DEPOT_STORAGE_CAP = 1000;
@@ -99,7 +100,8 @@ export function recomputeFamilyCaps(
   const cap = (hasHub ? BASE_HUB_STORAGE_CAP : 0) + depotCount * DEPOT_STORAGE_CAP;
   let changed = false;
   for (const f of RESOURCE_FAMILIES) {
-    const nextCap = hasHub ? Math.max(c.caps[f] ?? 0, cap) : cap;
+    const cur = c.caps[f] ?? 0;
+    const nextCap = hasHub && depotCount === 0 && cur < BASE_HUB_STORAGE_CAP + DEPOT_STORAGE_CAP ? Math.max(cur, cap) : cap;
     if (c.caps[f] !== nextCap) {
       c.caps[f] = nextCap;
       changed = true;
@@ -107,6 +109,43 @@ export function recomputeFamilyCaps(
   }
   if (changed && tick !== undefined) c.changedAt = tick;
   return c.caps;
+}
+
+/** Entity states in which a building gives no colony capacity (storage, unit supply): not built yet, or off the grid. */
+const INACTIVE_PROVIDER_STATES: ReadonlySet<number> = new Set([
+  ENTITY_STATE.constructing,
+  ENTITY_STATE.offlineBrownout,
+  ENTITY_STATE.offlineUnpowered,
+  ENTITY_STATE.offlineOverload,
+  ENTITY_STATE.offlineNoGrid,
+]);
+
+/** Whether entity row `r` is an alive, completed and powered building (one rule for storage and supply caps). */
+export function isActiveCapacityProvider(state: PlanetState, r: number): boolean {
+  const cols = state.entities.cols;
+  return cols.hp[r] > 0 && !INACTIVE_PROVIDER_STATES.has(cols.state[r]);
+}
+
+/** Counts active (completed, alive, powered) Supply Depot T1 entities owned by `colonyIndex`. */
+export function countActiveSupplyDepots(state: PlanetState, colonyIndex: number): number {
+  const e = state.entities, cols = e.cols;
+  let count = 0;
+  for (let r = 0; r < e.count; r++) {
+    if (cols.owner[r] !== colonyIndex || cols.kind[r] !== ENTITY_KIND.supplyDepot) continue;
+    if (isActiveCapacityProvider(state, r)) count++;
+  }
+  return count;
+}
+
+/** Synchronizes `colony.caps` for `colonyIndex` from its active Supply Depots (`500` + `1000` per active depot). */
+export function syncColonyDepotCaps(
+  state: PlanetState,
+  colonyIndex: number,
+  tick: number = state.meta.tick,
+): Record<ResourceFamily, number> {
+  const colony = state.colonies[colonyIndex];
+  if (!colony) return createDefaultFamilyCaps();
+  return recomputeFamilyCaps(colony, true, countActiveSupplyDepots(state, colonyIndex), tick);
 }
 
 /** Total stored stock across all tiers of `family` (`metals`, `minerals`, or `bio`). */
@@ -153,7 +192,8 @@ export function creditResource(
   const capped = Math.max(0, amount - credited);
 
   if (credited > 0) {
-    c.stock[key] += credited;
+    const next = c.stock[key] + credited;
+    c.stock[key] = Math.abs(next - Math.round(next)) < 1e-9 ? Math.round(next) : next;
     if (opts.produced !== false) c.production.produced[key] += credited;
   }
   if (capped > 0) {

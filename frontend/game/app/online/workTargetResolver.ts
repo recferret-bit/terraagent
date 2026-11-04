@@ -11,6 +11,15 @@ import { ENTITY_KIND, ENTITY_STATE, hexDistance } from '@terra/sim';
 import { resolveTileIndex } from '../../features/landfall/selectionHelpers';
 import type { ClientTiles, ClientView } from '../../store/replica/viewCodec';
 import type { EntityMeshRecord } from './EntityMeshes';
+import {
+  computeWorkTarget,
+  entityGroundY,
+  hubBuildProgressForState,
+  is2x2BuildingKind,
+  isWorkerUnitKind,
+} from './entityKinds';
+
+export { computeWorkTarget, entityGroundY, hubBuildProgressForState, is2x2BuildingKind, isWorkerUnitKind };
 
 interface RawWorkJob {
   workerEntityId?: number;
@@ -140,7 +149,7 @@ function resolveFromWorkJobsAndHarvest(
       if (job.workerEntityId !== rec.id) continue;
       const q = Number.isFinite(job.q) ? Number(job.q) : rec.q;
       const r = Number.isFinite(job.r) ? Number(job.r) : rec.r;
-      if (job.mode === 'repair') {
+      if (job.mode === 'repair' || job.mode === 'dismantle') { // a dismantle shows the same tool sparks on the building
         const tEnt = job.targetEntityId !== undefined ? records.get(job.targetEntityId) : undefined;
         return { q, r, targetKind: 'repair', targetWorldXZ: tEnt ? [tEnt.mesh.position.x, tEnt.mesh.position.z] : undefined };
       }
@@ -378,49 +387,6 @@ function resolveTargetWorldPosition(
     }
   }
   return [tileX, tileZ];
-}
-
-export function isWorkerUnitKind(kind: number): boolean {
-  return kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.devProbe;
-}
-
-export function is2x2BuildingKind(kind: number): boolean {
-  return kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.tradeHub;
-}
-
-export function entityGroundY(terrain: HexTerrain | null, kind: number, q: number, r: number, wx: number, wz: number): number {
-  if (!terrain) return 0;
-  let maxY = terrain.heightAt(wx, wz);
-  if (kind === ENTITY_KIND.commandHub) {
-    for (let dr = -1; dr <= 1; dr++) {
-      for (let dq = -1; dq <= 1; dq++) {
-        const [tx, tz] = tileXZ(q + dq, r + dr);
-        maxY = Math.max(maxY, terrain.heightAt(tx, tz));
-      }
-    }
-  } else if (is2x2BuildingKind(kind)) {
-    for (let dr = 0; dr < 2; dr++) {
-      for (let dq = 0; dq < 2; dq++) {
-        const [tx, tz] = tileXZ(q + dq, r + dr);
-        maxY = Math.max(maxY, terrain.heightAt(tx, tz));
-      }
-    }
-  }
-  return maxY;
-}
-
-export function computeWorkTarget(kind: number, state: number, isDaylight: boolean): number {
-  if (kind === ENTITY_KIND.solar) return state === ENTITY_STATE.active && isDaylight ? 1 : 0;
-  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.commandHub || kind === ENTITY_KIND.tradeHub) {
-    return state === ENTITY_STATE.active || state === ENTITY_STATE.working ? 1 : 0;
-  }
-  return state === ENTITY_STATE.working || state === ENTITY_STATE.constructing || state === ENTITY_STATE.harvesting ? 1 : 0;
-}
-
-export function hubBuildProgressForState(state: number, progress: number): number {
-  if (state === ENTITY_STATE.waiting) return 0;
-  if (state === ENTITY_STATE.constructing) return progress;
-  return 1;
 }
 
 export function buildActiveWorkSites(params: {

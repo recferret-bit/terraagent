@@ -20,8 +20,8 @@ Turn the single-generator colony from W02 into a real **power grid with workers 
 
 1. Open `/play.html?scenario=w03`. This is the colony at the end of W02: Hub, 1 Metals Extractor, 1 Solar, 2 Harvesters.
 2. Units menu → order 1 Builder at the Hub → the Builder appears; the queue now runs Construction on 2 workers.
-3. Construction menu → Power Line: drag a line of 3 pylons toward a minerals deposit → it becomes **one** queue entry. The pylons get built and the power overlay shows them connected.
-4. Place a Minerals Quarry beyond the last pylon's reach → it shows `offline: no grid`. Extend the line → it turns online.
+3. Construction menu → arm any building: the colony's power zone (Hub reach) shows in blue; a site outside it is red `outside the power zone`. Place Power Pylons one by one toward a minerals deposit, each inside the zone; each pylon extends the zone (Protoss-style, owner check).
+4. Place a Minerals Quarry on the far deposit inside the last pylon's zone → it runs online. Lose a bridging pylon → the Quarry shows `offline: no grid`; rebuild the pylon → it turns online.
 5. Build a Wind Turbine, a Capacitor and a Supply Depot → the storage cap of every family goes from 500 to 1 500 and the capacitor charges.
 6. Dev console `time night` (add `warp 20` to speed it up) → solar drops to 0, the capacitor discharges, the wind holds. Then `addLoad 200` → the brownout sheds **group 1 first, then group 2…**, and the HUD lists shed buildings with reasons.
 7. Dev console `addLoad 200` while the load runs through one T1 pylon (> 80 E/s) → its branch sheds, the pylon shows `overload`, and a `powerOverload` alert fires.

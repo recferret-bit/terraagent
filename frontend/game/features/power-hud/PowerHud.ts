@@ -2,16 +2,25 @@ import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import { forEachEntity } from '../../store/replica/viewCodec';
 import { ownColonyIndex } from '../shared/colony';
-import { gridBalance, readColonyPower } from '../shared/power';
+import { gridBalance, readColonyPower, readEntityPower, readPylonLoad } from '../shared/power';
 
 const KIND_NAMES: Record<number, string> = {
-  [ENTITY_KIND.metalsExtractor]: 'Metals Extractor',
+  [ENTITY_KIND.metalsExtractor]: 'Resource Extractor',
   [ENTITY_KIND.solar]: 'Solar Array',
   [ENTITY_KIND.commandHub]: 'Command Hub',
   [ENTITY_KIND.tradeHub]: 'Inter-Colony Trade Hub',
   [ENTITY_KIND.hq]: 'Colony HQ',
   [ENTITY_KIND.dropPod]: 'Drop Pod',
   [ENTITY_KIND.harvester]: 'Harvester',
+  [ENTITY_KIND.builder]: 'Builder Drone',
+  [ENTITY_KIND.pylon]: 'Power Pylon',
+  [ENTITY_KIND.capacitor]: 'Capacitor Bank',
+  [ENTITY_KIND.wind]: 'Wind Turbine',
+  [ENTITY_KIND.thermal]: 'Thermal Plant',
+  [ENTITY_KIND.supplyDepot]: 'Supply Depot',
+  [ENTITY_KIND.mineralsQuarry]: 'Minerals Quarry',
+  [ENTITY_KIND.waterExtractor]: 'Water Extractor',
+  [ENTITY_KIND.petroleumWell]: 'Petroleum Well',
 };
 
 const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
@@ -21,6 +30,14 @@ const BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.tradeHub,
   ENTITY_KIND.hq,
   ENTITY_KIND.dropPod,
+  ENTITY_KIND.pylon,
+  ENTITY_KIND.capacitor,
+  ENTITY_KIND.wind,
+  ENTITY_KIND.thermal,
+  ENTITY_KIND.supplyDepot,
+  ENTITY_KIND.mineralsQuarry,
+  ENTITY_KIND.waterExtractor,
+  ENTITY_KIND.petroleumWell,
 ]);
 
 /** A `SimView` entity as the inspector reads it (tests pass partial rows). */
@@ -42,9 +59,13 @@ export function formatEntityState(state: number, explicitReason?: string): strin
     case ENTITY_STATE.offlineBrownout: return 'offline: brownout';
     case ENTITY_STATE.offlineUnpowered: return 'offline: unpowered';
     case ENTITY_STATE.offlineCapped: return 'offline: capped';
+    case ENTITY_STATE.offlineNoFuel: return 'offline: no fuel';
+    case ENTITY_STATE.offlineNoGrid: return 'offline: no grid';
+    case ENTITY_STATE.offlineOverload: return 'offline: overload';
     case ENTITY_STATE.idle: return 'idle';
     case ENTITY_STATE.working: return 'working';
     case ENTITY_STATE.harvesting: return 'harvesting';
+    case ENTITY_STATE.repairing: return 'repairing';
     default: return 'online';
   }
 }
@@ -56,6 +77,7 @@ export class PowerHud implements Disposable {
   private readonly inspectorTitle: HTMLElement;
   private readonly inspectorState: HTMLElement;
   private readonly inspectorHp: HTMLElement;
+  private readonly inspectorLoad: HTMLElement;
   private readonly inspectorReason: HTMLElement;
   selectedEntityId: number | null = null;
   private offSelection: (() => void) | null = null;
@@ -71,6 +93,7 @@ export class PowerHud implements Disposable {
     this.brownoutBanner.className = 'ta-power-hud__brownout plate-sm';
     this.brownoutBanner.setAttribute('data-brownout-banner', '');
     this.brownoutBanner.setAttribute('data-brownout', 'false');
+    this.brownoutBanner.setAttribute('data-overload', 'false');
     this.brownoutBanner.textContent = 'BROWNOUT — SHEDDING GROUP 3';
 
     this.inspector = document.createElement('div');
@@ -95,7 +118,11 @@ export class PowerHud implements Disposable {
     this.inspectorHp = document.createElement('span');
     this.inspectorHp.className = 'ta-building-inspector__hp';
     this.inspectorHp.textContent = '0 / 0 HP';
-    body.appendChild(this.inspectorHp);
+
+    this.inspectorLoad = document.createElement('span');
+    this.inspectorLoad.className = 'ta-building-inspector__load';
+    this.inspectorLoad.style.display = 'none';
+    body.append(this.inspectorHp, this.inspectorLoad);
 
     this.inspectorReason = document.createElement('div');
     this.inspectorReason.className = 'ta-building-inspector__reason';
@@ -130,19 +157,38 @@ export class PowerHud implements Disposable {
 
   private updateBrownout(power?: Record<string, unknown>): void {
     const isBrownout = Boolean(power?.brownout);
-    this.brownoutBanner.setAttribute('data-brownout', String(isBrownout));
+    const pylonLoads = (power?.pylonLoads ?? {}) as Record<string, { flow?: number; max?: number; overloaded?: boolean }>;
+    const isOverload = Object.values(pylonLoads).some((p) => Boolean(p.overloaded));
+    this.brownoutBanner.setAttribute('data-brownout', String(isBrownout || isOverload));
+    this.brownoutBanner.setAttribute('data-overload', String(isOverload));
     const groups = Array.isArray(power?.shedGroupsActive) ? (power.shedGroupsActive as number[]) : [];
     const { shed } = gridBalance(power);
-    const head = groups.length > 0 ? `BROWNOUT — SHEDDING GROUP ${groups.join(', ')}` : 'BROWNOUT — DEMAND OVER SUPPLY';
+    let head = 'BROWNOUT — DEMAND OVER SUPPLY';
+    if (isOverload) {
+      head = 'POWER OVERLOAD — PYLON CAPACITY EXCEEDED';
+    } else if (groups.length > 0) {
+      head = `BROWNOUT — SHEDDING GROUP ${groups.join(', ')}`;
+    }
     this.brownoutBanner.textContent = shed > 0 ? `${head} · ${shed} E/s OFFLINE` : head;
   }
 
   private updateBuildingInspector(view: GameView, power: Record<string, unknown> | undefined, colonyIdx: number): void {
     const targetId = this.selectedEntityId ?? (view as { selectedEntityId?: number }).selectedEntityId;
     const shedIds = (power?.shedEntityIds ?? []) as number[];
-    const candidateId = targetId !== undefined && targetId !== null
-      ? targetId
-      : shedIds.length > 0 ? shedIds[0] : null;
+    const overloadedIds = (power?.overloadedEntityIds ?? []) as number[];
+    const pylonLoads = (power?.pylonLoads ?? {}) as Record<string, { flow?: number; max?: number; overloaded?: boolean }>;
+    const firstOverloadedPylonId = Object.entries(pylonLoads).find(([, pl]) => Boolean(pl?.overloaded))?.[0];
+
+    let candidateId: number | null = null;
+    if (targetId !== undefined && targetId !== null) {
+      candidateId = targetId;
+    } else if (overloadedIds.length > 0) {
+      candidateId = overloadedIds[0];
+    } else if (firstOverloadedPylonId !== undefined) {
+      candidateId = Number(firstOverloadedPylonId);
+    } else if (shedIds.length > 0) {
+      candidateId = shedIds[0];
+    }
 
     if (this.ctx && candidateId === null) {
       this.inspector.style.display = 'none';
@@ -161,18 +207,36 @@ export class PowerHud implements Disposable {
     this.inspectorTitle.textContent = label;
     this.inspectorHp.textContent = `${Math.round(entity.hp)} / ${Math.round(entity.hpMax)} HP`;
 
+    const ep = readEntityPower(view, entity.id, colonyIdx);
+    const pl = readPylonLoad(view, entity.id, colonyIdx);
+
+    if (pl) {
+      this.inspectorLoad.style.display = 'inline';
+      this.inspectorLoad.textContent = `${Math.round(pl.flow)} / ${Math.round(pl.max)} E/s`;
+      this.inspector.setAttribute('data-overload', String(Boolean(pl.overloaded)));
+    } else {
+      this.inspectorLoad.style.display = 'none';
+      this.inspector.setAttribute('data-overload', 'false');
+    }
+
     const reasons = (power?.offlineReasons ?? {}) as Record<number, string>;
-    const stateStr = formatEntityState(entity.state, reasons[entity.id]);
-    this.inspectorState.textContent = stateStr.toUpperCase();
+    const explicitReason = ep?.reason ?? reasons[entity.id];
+    let stateStr = formatEntityState(entity.state, explicitReason);
+    if (pl?.overloaded) {
+      stateStr = 'offline: overload';
+      this.inspectorState.textContent = 'OVERLOAD';
+    } else {
+      this.inspectorState.textContent = stateStr.toUpperCase();
+    }
     this.inspector.setAttribute('data-state', stateStr);
 
-    const isOffline = stateStr.startsWith('offline:') || stateStr === 'offline';
+    const isOffline = stateStr.startsWith('offline:') || stateStr === 'offline' || Boolean(pl?.overloaded);
     this.inspector.setAttribute('data-offline', String(isOffline));
     this.inspectorState.setAttribute('data-offline', String(isOffline));
 
     if (isOffline) {
       this.inspectorReason.style.display = 'block';
-      this.inspectorReason.textContent = reasons[entity.id] ?? stateStr;
+      this.inspectorReason.textContent = explicitReason ?? (pl?.overloaded ? 'offline: overload' : stateStr);
     } else {
       this.inspectorReason.style.display = 'none';
     }

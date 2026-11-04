@@ -118,16 +118,16 @@ describe('buildConstructionCatalog - enabled waves', () => {
     expect(hub.footprintText).toBe('3×3');
     expect(hub.designBuildS).toBe(30);
     expect(hub.hqBuildS).toBe(20);
-    expect(hub.powerText).toBe('+8 / −5 E/s');
+    expect(hub.powerText).toBe('+16 / −7 E/s');
     expect(hub.cost).toEqual({ 'metals.t1': 200, 'minerals.t1': 100, 'bio.biomass': 50, 'bio.water': 50 });
     expect(hub.disabled).toBe(false);
 
     expect(extractor.building).toBe('metalsExtractor');
-    expect(extractor.label).toBe('Metals Extractor');
+    expect(extractor.label).toBe('Resource Extractor');
     expect(extractor.footprintText).toBe('2×2');
     expect(extractor.designBuildS).toBe(14);
     expect(extractor.hqBuildS).toBe(9.3);
-    expect(extractor.powerText).toBe('−6 E/s');
+    expect(extractor.powerText).toBe('−8 E/s');
     expect(extractor.cost).toEqual({ 'metals.t1': 65, 'minerals.t1': 20, 'bio.biomass': 0, 'bio.water': 10 });
     expect(extractor.disabled).toBe(false);
 
@@ -137,7 +137,7 @@ describe('buildConstructionCatalog - enabled waves', () => {
     expect(solar.footprintText).toBe('2×2');
     expect(solar.designBuildS).toBe(18);
     expect(solar.hqBuildS).toBe(12);
-    expect(solar.powerText).toBe('+20 E/s');
+    expect(solar.powerText).toBe('+13 E/s');
     expect(solar.cost).toEqual({ 'metals.t1': 60, 'minerals.t1': 75, 'bio.biomass': 10, 'bio.water': 5 });
     expect(solar.disabled).toBe(false);
   });
@@ -285,10 +285,10 @@ describe('ConstructionMenu DOM HUD Component', () => {
 
     const extractorBtn = mockParent.querySelector('[data-building="metalsExtractor"]');
     expect(extractorBtn?.getAttribute('data-disabled')).toBe('false');
-    expect(extractorBtn?.querySelector('.ta-construction__title')?.textContent).toBe('Metals Extractor');
+    expect(extractorBtn?.querySelector('.ta-construction__title')?.textContent).toBe('Resource Extractor');
     expect(extractorBtn?.querySelector('.ta-construction__footprint')?.textContent).toBe('2×2');
     expect(extractorBtn?.querySelector('.ta-construction__time')?.textContent).toBe('14s (9.3s HQ)');
-    expect(extractorBtn?.querySelector('.ta-construction__power')?.textContent).toBe('−6 E/s');
+    expect(extractorBtn?.querySelector('.ta-construction__power')?.textContent).toBe('−8 E/s');
 
     const pills = extractorBtn?.querySelectorAll('.ta-construction__cost-pill').map((p) => p.textContent);
     expect(pills).toEqual(['65 Metals', '20 Minerals', '10 Water']);

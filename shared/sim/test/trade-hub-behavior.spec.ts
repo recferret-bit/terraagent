@@ -24,6 +24,7 @@ import {
   setPlanetTime,
   setTilePrep,
   startBuildingConstruction,
+  spawnHqUnit,
   step,
 } from '../src';
 import { ensureColony, resolveBuildingRow } from '../src/systems/economy/buildingRows';
@@ -76,6 +77,7 @@ describe('W10-04 Trade Hub placement, construction & wave gating', () => {
   it('evaluates placement on 2x2 footprint (computing Grade prep bill on unprepared tiles) and spawns Trade Hub with shedGroup 2, hp 650, footprint 2x2', () => {
     const state = createPlanet({ type: 'flat', seed: 'th-place', radius: 10 });
     const w10 = compileData(parseWaves('..10'));
+    spawnTestBuilding(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: -2, r: 0, w: 3, d: 3, hp: 1500 });
     const idx = hexIndex(state.grid.radius);
 
     setTilePrep(state.grid, idx.indexOf(2, 0), PREP.prepared);
@@ -132,16 +134,16 @@ describe('W10-04 Trade Hub placement, construction & wave gating', () => {
     expect(overlap.ok).toBe(false);
     expect(overlap.block).toBe('occupied');
 
+    spawnHqUnit(state, { owner: 0, q: 3, r: -1 });
     const dismantle = executeDismantleAtTile(state, 0, 2, 0, 2, w10);
     expect(dismantle.ok).toBe(true);
     if (dismantle.ok) {
-      expect(dismantle.refunded).toEqual({
-        'metals.t1': 50,
-        'minerals.t1': 40,
-        'bio.biomass': 15,
-        'bio.water': 5,
-      });
+      expect(dismantle.jobId).toBeDefined();
+      expect(dismantle.refunded).toEqual({}); // W03 pays refunds progressively through the worker job.
     }
+    const pipeline = createRegistryPipeline({ flags: parseWaves('..10') });
+    for (let i = 0; i < 100 && rowOf(state.entities, buildRes.entityId) >= 0; i++) step(state, [], 5, pipeline);
+    expect(rowOf(state.entities, buildRes.entityId)).toBe(-1);
   });
 });
 
@@ -169,7 +171,8 @@ describe('W10-04 Trade Hub power, brownout shedding (group 2) & online state', (
     expect(dayStatus.onlineCount).toBe(1);
     expect(dayStatus.throughputCapPerMin).toBe(250);
 
-    // 2. Nighttime (00:00 -> daylight = 0): Hub (5) + Trade Hub (6) = 11 E/s > effectiveSupply 7 E/s
+    // Add a consumer so current founder output cannot cover the Trade Hub at night.
+    spawnTestBuilding(state, { kind: ENTITY_KIND.metalsExtractor, owner: 0, q: 0, r: 3, w: 2, d: 2, hp: 500 });
     setPlanetTime(state, { timeOfDay: 0 }, 2, w10);
     applyEnvironmentState(state, environmentFromPlanetTime(state, w10, false, 2), 2);
     const nightSummary = evaluateColonyPower(state, 0, w10, 2);
@@ -196,15 +199,16 @@ describe('W10-04 Trade Hub power, brownout shedding (group 2) & online state', (
     const state = createState({ planetId: 'p-prio', planetType: 'temperate', seed: 'w10-prio', radius: 10 });
     const w10 = compileData(parseWaves('..10'));
 
-    // Two Hubs: 2 * 8 = 16 E/s supply, 2 * 5 = 10 E/s hub demand (leaves 6 E/s for one 6 E/s building)
+    // Limit supply to cover the Hubs and extractor, but not the lower-priority Trade Hub.
     const hub1 = spawnTestBuilding(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0, w: 3, d: 3, hp: 1500, shedGroup: 4 });
     spawnTestBuilding(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: 2, r: -2, w: 3, d: 3, hp: 1500, shedGroup: 4 });
     const ext = spawnTestBuilding(state, { kind: ENTITY_KIND.metalsExtractor, owner: 0, q: 0, r: 3, w: 2, d: 2, hp: 500, shedGroup: 3 });
     const th = spawnTestBuilding(state, { kind: ENTITY_KIND.tradeHub, owner: 0, q: -3, r: 0, w: 2, d: 2, hp: 650, shedGroup: 2, tier: 1 });
 
+    ensureColony(state, 0, 0).powerSupplyOverride = 22;
     const summary = evaluateColonyPower(state, 0, w10, 1);
-    expect(summary.supply).toBe(16);
-    expect(summary.rawDemand).toBe(22);
+    expect(summary.supply).toBe(22);
+    expect(summary.rawDemand).toBe(28);
     expect(summary.shedGroupsActive).toEqual([2]);
     expect(summary.shedEntityIds).toEqual([th.id]);
     expect(state.entities.cols.state[th.row]).toBe(ENTITY_STATE.offlineBrownout);

@@ -1,3 +1,5 @@
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
+
 /** Keyboard rules shared by every feature hotkey: one typing guard and one table of who owns which key. */
 
 /** The key event comes from a text field (input, textarea, select, contenteditable): hotkeys stay quiet. */
@@ -8,9 +10,9 @@ export function isTypingTarget(e: Event): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT' || t.isContentEditable === true;
 }
 
-/** A plain hotkey press: no modifier, not auto-repeat, not typing. */
+/** A plain hotkey press: no modifier, not auto-repeat, not typing, and no modal (global map, pause) holds the input. */
 export function isHotkeyPress(e: KeyboardEvent): boolean {
-  return !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && !isTypingTarget(e);
+  return !e.ctrlKey && !e.metaKey && !e.altKey && !e.repeat && !isTypingTarget(e) && !isGameInputBlocked();
 }
 
 export interface HotkeyDef {

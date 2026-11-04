@@ -25,7 +25,7 @@ describe('W02-17 Events: energyCollapse, brownout {group} with debounce, resourc
     });
     state.colonies.push(colony);
 
-    // Hub (+8 / -5) + 1 Extractor (-6) -> rawDemand 11 > supply 8 -> brownout in group 3!
+    // Hub (+16 / -7) + 2 Extractors (-16) -> rawDemand 23 > supply 16, no HQ cell to draw -> brownout in group 3!
     const hubRow = insertRow(state.entities, state.meta.nextEntityId++, 0);
     state.entities.cols.kind[hubRow] = ENTITY_KIND.commandHub;
     state.entities.cols.owner[hubRow] = 0;
@@ -34,16 +34,18 @@ describe('W02-17 Events: energyCollapse, brownout {group} with debounce, resourc
     state.entities.cols.hp[hubRow] = 1500;
     state.entities.cols.state[hubRow] = ENTITY_STATE.active;
 
-    const extRow = insertRow(state.entities, state.meta.nextEntityId++, 0);
-    state.entities.cols.kind[extRow] = ENTITY_KIND.metalsExtractor;
-    state.entities.cols.owner[extRow] = 0;
-    state.entities.cols.q[extRow] = 2;
-    state.entities.cols.r[extRow] = 0;
-    state.entities.cols.footprintW[extRow] = 2;
-    state.entities.cols.footprintD[extRow] = 2;
-    state.entities.cols.shedGroup[extRow] = 3;
-    state.entities.cols.hp[extRow] = 500;
-    state.entities.cols.state[extRow] = ENTITY_STATE.active;
+    for (const q of [2, -3]) {
+      const extRow = insertRow(state.entities, state.meta.nextEntityId++, 0);
+      state.entities.cols.kind[extRow] = ENTITY_KIND.metalsExtractor;
+      state.entities.cols.owner[extRow] = 0;
+      state.entities.cols.q[extRow] = q;
+      state.entities.cols.r[extRow] = 0;
+      state.entities.cols.footprintW[extRow] = 2;
+      state.entities.cols.footprintD[extRow] = 2;
+      state.entities.cols.shedGroup[extRow] = 3;
+      state.entities.cols.hp[extRow] = 500;
+      state.entities.cols.state[extRow] = ENTITY_STATE.active;
+    }
 
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
     const allEvents: SimEvent[] = [];

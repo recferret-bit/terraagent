@@ -27,7 +27,47 @@ function buildStatBlock(labelText: string, valTestId: string, valInit: string, f
   return { stat, keyEl, valEl, fillEl };
 }
 
-/** Slot code and title of a deposit card: `IRON DEPOSIT · T1`, `LIGHT ALLOYS DEPOSIT · T2` (the sim's resource names). */
+function hqFallbackEntity(hq: HqStatusView): SelectedEntityView {
+  return {
+    entityId: hq.entityId,
+    kind: 1,
+    kindLabel: `HQ T${hq.tier} · COMMANDER DRONE`,
+    shortCode: 'HQ',
+    isUnit: true,
+    isMovable: true,
+    tier: hq.tier,
+    q: hq.q,
+    r: hq.r,
+    x: hq.x,
+    y: hq.y,
+    hp: hq.hp,
+    hpMax: hq.hpMax,
+    cell: hq.cell,
+    cellMax: hq.cellMax,
+    currentJob: hq.currentJob,
+    queueCount: hq.queueCount,
+  };
+}
+
+function isEntityBusy(entity: SelectedEntityView, prog: number): boolean {
+  const job = entity.currentJob;
+  const st = entity.state;
+  return (
+    job === 'working' ||
+    job === 'moving' ||
+    job === 'constructing' ||
+    job === 'harvesting' ||
+    job === 'repairing' ||
+    st === ENTITY_STATE.working ||
+    st === ENTITY_STATE.moving ||
+    st === ENTITY_STATE.constructing ||
+    st === ENTITY_STATE.harvesting ||
+    st === ENTITY_STATE.repairing ||
+    (prog > 0 && prog < 1) ||
+    entity.queueCount > 0 ||
+    entity.terraformJob === true
+  );
+}
 function depositMeta(deposit: number, tier: number): { code: string; name: string } {
   const code = deposit === 1 ? 'FE' : deposit === 2 ? 'SI' : 'CH';
   const res = depositResource(deposit, tier);
@@ -43,6 +83,7 @@ export class HqPanel {
   private readonly slotEl: HTMLElement;
   private readonly countEl: HTMLElement;
   private readonly titleEl: HTMLElement;
+  private readonly entityIdEl: HTMLElement;
   private readonly selectBtn: HTMLButtonElement;
   private readonly hpKey: HTMLElement;
   private readonly hpText: HTMLElement;
@@ -87,16 +128,19 @@ export class HqPanel {
     this.titleEl.dataset.testid = 'hq-title';
     this.titleEl.textContent = 'HQ T1 · COMMANDER DRONE';
 
+    this.entityIdEl = document.createElement('span');
+    this.entityIdEl.className = 'ta-hq-panel__id';
+    this.entityIdEl.dataset.testid = 'selection-entity-id';
+    this.entityIdEl.hidden = true;
+
     this.selectBtn = document.createElement('button');
     this.selectBtn.type = 'button';
     this.selectBtn.className = 'ta-hq-panel__badge plate-sm';
     this.selectBtn.dataset.testid = 'hq-select-btn';
     this.selectBtn.textContent = 'SELECT HQ';
     this.selectBtn.setAttribute('aria-pressed', 'false');
-    this.selectBtn.onclick = () => {
-      this.controller.toggleSelectHq();
-    };
-    head.append(this.titleEl, this.selectBtn);
+    this.selectBtn.onclick = () => this.controller.toggleSelectHq();
+    head.append(this.titleEl, this.entityIdEl, this.selectBtn);
 
     const hp = buildStatBlock('HULL HP', 'hq-hp', '— / —', 'hq-hp-bar', 'ta-hq-panel__fill--hp');
     this.hpKey = hp.keyEl;
@@ -160,6 +204,8 @@ export class HqPanel {
     this.slotEl.textContent = meta.code;
     this.countEl.hidden = true; // the stage is the footer status (one place, like a unit's job)
     this.titleEl.textContent = meta.name;
+    this.entityIdEl.hidden = true;
+    delete this.el.dataset.entityId;
 
     this.hpKey.textContent = 'RESERVES';
     this.hpText.textContent = `${Math.round(deposit.remaining)} / ${deposit.maxUnits}`;
@@ -186,25 +232,7 @@ export class HqPanel {
     }
 
     delete this.el.dataset.depositStage;
-    const entity: SelectedEntityView | null = selectedEntity ?? (hq ? {
-      entityId: hq.entityId,
-      kind: 1,
-      kindLabel: `HQ T${hq.tier} · COMMANDER DRONE`,
-      shortCode: 'HQ',
-      isUnit: true,
-      isMovable: true,
-      tier: hq.tier,
-      q: hq.q,
-      r: hq.r,
-      x: hq.x,
-      y: hq.y,
-      hp: hq.hp,
-      hpMax: hq.hpMax,
-      cell: hq.cell,
-      cellMax: hq.cellMax,
-      currentJob: hq.currentJob,
-      queueCount: hq.queueCount,
-    } : null);
+    const entity: SelectedEntityView | null = selectedEntity ?? (hq ? hqFallbackEntity(hq) : null);
 
     this.el.dataset.selected = String(selected);
     this.selectBtn.textContent = selected ? 'SELECTED' : 'SELECT HQ';
@@ -214,10 +242,15 @@ export class HqPanel {
       this.el.hidden = true;
       this.cancelBtn.hidden = true;
       this.progressStat.hidden = true;
+      this.entityIdEl.hidden = true;
+      delete this.el.dataset.entityId;
       return;
     }
 
     this.el.hidden = false;
+    this.el.dataset.entityId = String(entity.entityId);
+    this.entityIdEl.hidden = false;
+    this.entityIdEl.textContent = `#${entity.entityId}`;
     this.slotEl.textContent = entity.shortCode;
     this.countEl.hidden = false;
     this.countEl.textContent = '1';
@@ -246,21 +279,7 @@ export class HqPanel {
 
     this.jobText.textContent = entity.currentJob;
     this.queueText.textContent = `Queue: ${entity.queueCount}`;
-
-    const job = entity.currentJob;
-    const st = entity.state;
-    const isBusy =
-      job === 'working' ||
-      job === 'moving' ||
-      job === 'constructing' ||
-      job === 'harvesting' ||
-      st === ENTITY_STATE.working ||
-      st === ENTITY_STATE.moving ||
-      st === ENTITY_STATE.constructing ||
-      st === ENTITY_STATE.harvesting ||
-      (prog > 0 && prog < 1) ||
-      entity.queueCount > 0;
-    this.cancelBtn.hidden = !(isBusy || entity.terraformJob === true);
+    this.cancelBtn.hidden = !isEntityBusy(entity, prog);
   }
 
   dispose(): void {

@@ -1,11 +1,22 @@
 import { defineFeature } from '../../core/registry/types';
 import { ConstructionMenu } from './ConstructionMenu';
 import { createConstructionGhostRenderer, GHOST_IDLE_PICK_MS } from './ghostRenderer';
-import { evaluatePlacementGhost, PlacementGhostController, type PlacementGhostState, type PlacementGhostTile } from './PlacementGhost';
+import {
+  evaluatePlacementGhost,
+  PlacementGhostController,
+  type PlacementGhostState,
+  type PlacementGhostTile,
+} from './PlacementGhost';
 import type { BuildingKind } from './catalog';
 import './construction-menu.css';
 
-export { ConstructionMenu, createConstructionGhostRenderer, evaluatePlacementGhost, GHOST_IDLE_PICK_MS, PlacementGhostController };
+export {
+  ConstructionMenu,
+  createConstructionGhostRenderer,
+  evaluatePlacementGhost,
+  GHOST_IDLE_PICK_MS,
+  PlacementGhostController,
+};
 export type { PlacementGhostState, PlacementGhostTile };
 
 declare module '../../core/registry/types' {

@@ -1,4 +1,5 @@
 import {
+  plannedSitesFromQueue,
   placementWorldFromState,
   type PlacementEntity,
   type PlacementWorld,
@@ -35,6 +36,25 @@ function radiusOfTileCount(count: number): number {
   return count > 0 ? Math.round((Math.sqrt(12 * count - 3) - 3) / 6) : 0;
 }
 
+/** An open queue entry as the client reads it from a view (build orders carry their site). */
+export interface ViewQueueEntry {
+  colonyIndex?: number;
+  state?: string;
+  task?: { kind?: string; building?: string; q?: number; r?: number; rotation?: number };
+}
+
+/** Every seat's open queue entries in a view (its colonies' construction queues, else the raw `queue` blob). */
+export function viewQueueEntries(source: unknown): ViewQueueEntry[] {
+  const v = (source ?? {}) as {
+    colonies?: Array<{ index?: number; queue?: ViewQueueEntry[]; constructionQueue?: ViewQueueEntry[] } | null>;
+    blobs?: { queue?: { entries?: ViewQueueEntry[]; value?: { entries?: ViewQueueEntry[] } } };
+  };
+  const fromColonies = (v.colonies ?? []).flatMap((c) =>
+    (c?.constructionQueue ?? c?.queue ?? []).map((e) => (e.colonyIndex === undefined && typeof c?.index === 'number' ? { ...e, colonyIndex: c.index } : e)),
+  );
+  return fromColonies.length > 0 ? fromColonies : v.blobs?.queue?.entries ?? v.blobs?.queue?.value?.entries ?? [];
+}
+
 /** Adapts any world source (authoritative state, replica view, local host view) into the shared `PlacementWorld`. */
 export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTiles | null): PlacementWorld {
   if (isPlanetState(source)) return placementWorldFromState(source);
@@ -55,6 +75,7 @@ export function viewPlacementWorld(source: WorldSource, fallbackTiles?: ClientTi
     owner: tiles?.owner ?? new Int8Array(0),
     height: tiles?.height ?? null,
     entities: entitiesFromView(v.entities, v.count),
+    plannedSites: plannedSitesFromQueue(viewQueueEntries(source)),
   };
 }
 

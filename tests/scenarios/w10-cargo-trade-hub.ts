@@ -8,7 +8,6 @@ import {
   insertRow,
   placeSpawnedEntity,
   PREP,
-  recomputeFamilyCaps,
   revealVision,
   setTilePrep,
   startBuildingConstruction,
@@ -74,7 +73,7 @@ function prepareW10Basin(state: PlanetState): void {
  * - Command Hub T1 completed at `(0, 0)`, Solar Collector T1 at `(-3, 2)`, and an online Trade Hub T1 at `(2, 1)`.
  * - Prepared tiles at `q: 2..4, r: -3..-1` for additional building placement.
  * - HQ T1 worker ready at `(0, 3)` (`workRate = 1.5×`).
- * - Starting stock: `900 metals.t1`, `400 minerals.t1`, `300 bio.water`, `200 bio.biomass` (storage cap `1500/1500/1500`).
+ * - Starting stock: `900 metals.t1`, `400 minerals.t1`, `300 bio.water`, `200 bio.biomass` (storage cap `2500/2500/2500`).
  * - Morning (`06:00`, `daylight = 1.0`, `phase = 'day'`).
  */
 export const w10CargoTradeHubScenario = defineScenario({
@@ -138,8 +137,12 @@ export const w10CargoTradeHubScenario = defineScenario({
       tick: 0,
     });
 
-    // Storage cap at 1,500 per family so starting stock of 900 metals.t1 fits with 600 free room
-    recomputeFamilyCaps(colony, true, 2, 0);
+    // Physical powered depots keep the 2,500 family cap after W03 capacity synchronization.
+    for (const [q, r] of [[-4, -2], [2, -4]]) {
+      startBuildingConstruction(state, {
+        owner: 0, building: 'supplyDepot', q, r, instant: true, costOverride: {}, tick: 0,
+      });
+    }
 
     // Spawn HQ T1 worker at (0, 3)
     const hqId = state.meta.nextEntityId++;
@@ -162,7 +165,7 @@ export const w10CargoTradeHubScenario = defineScenario({
     creditResource(colony, 'bio.water', 300, 0);
     creditResource(colony, 'bio.biomass', 200, 0);
 
-    // Ensure morning (06:00, daylight = 1.0) and evaluate initial power (+28 supply / -11 demand / +17 E/s net)
+    // Ensure morning (06:00, daylight = 1.0) and evaluate initial power (generation and depot draw use current balance rows)
     api.command('dev.skipnight', {});
   },
 });

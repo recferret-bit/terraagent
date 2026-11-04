@@ -42,7 +42,7 @@ describe('W02-11: Harvester unit stats and data compilation', () => {
     expect(hRow.designBuildS).toBe(10);
     expect(hRow.buildS).toBe(50);
     expect(hRow.supply).toBe(1);
-    expect(hRow.powerDrainPerS).toBe(1.5);
+    expect(hRow.powerDrainPerS).toBe(2);
     expect(hRow.hp).toBe(160);
     expect(hRow.designSpeedTilesPerS).toBe(1.5);
     expect(hRow.speedTilesPerS).toBeCloseTo(0.3, 5);
@@ -101,7 +101,7 @@ describe('W02-11: Harvester views and inspector fields', () => {
       hp: 160,
       hpMax: 160,
       supply: 1,
-      powerDrainPerS: 1.5,
+      powerDrainPerS: 2,
       speedTilesPerS: 1.5,
       designSpeedTilesPerS: 1.5,
       viewRadius: 7,
@@ -131,7 +131,7 @@ describe('W02-11: Harvester views and inspector fields', () => {
       label: 'Harvester Drone',
       archetype: 'robot.miner',
       supply: 1,
-      powerDrainPerS: 1.5,
+      powerDrainPerS: 2,
       speedTilesPerS: 1.5,
       viewRadius: 7,
       radius: 0.4,

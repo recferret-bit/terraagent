@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { RESOURCE_KEYS } from '@terra/contracts';
+import { MOCK_CARGO_CONTRACT, RESOURCE_KEYS } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
@@ -43,6 +43,9 @@ async function assertNep245Receipts(
   expect(storedMint.payload).toEqual({
     standard: 'nep245',
     event: 'mt_mint',
+    contract_id: MOCK_CARGO_CONTRACT,
+    receiverId: MOCK_CARGO_CONTRACT,
+    signerId: CARGO_MINTER_ACCOUNT,
     caller: CARGO_MINTER_ACCOUNT,
     owner_id: alice,
     token_ids: [tokenId],
@@ -56,6 +59,9 @@ async function assertNep245Receipts(
   expect(storedTransfer.payload).toEqual({
     standard: 'nep245',
     event: 'mt_transfer',
+    contract_id: MOCK_CARGO_CONTRACT,
+    receiverId: MOCK_CARGO_CONTRACT,
+    signerId: alice,
     sender_id: alice,
     receiver_id: bob,
     token_ids: [tokenId],
@@ -69,6 +75,9 @@ async function assertNep245Receipts(
   expect(storedBurn.payload).toEqual({
     standard: 'nep245',
     event: 'mt_burn',
+    contract_id: MOCK_CARGO_CONTRACT,
+    receiverId: MOCK_CARGO_CONTRACT,
+    signerId: CARGO_MINTER_ACCOUNT,
     caller: CARGO_MINTER_ACCOUNT,
     owner_id: alice,
     token_ids: [tokenId],

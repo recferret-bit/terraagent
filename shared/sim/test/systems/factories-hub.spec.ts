@@ -8,7 +8,7 @@ import {
   ensureColonyLedger,
   ENTITY_KIND,
   ENTITY_STATE,
-  getColonySupply,
+  computeColonySupply,
   getHubUnitQueue,
   insertRow,
   step,
@@ -61,7 +61,7 @@ describe('W02-10 Hub worker production (slot 9): Units lane, paid progressively,
     const doneRes = step(state, [], 1, pipeline);
     expect(doneRes.events.some((e) => e.kind === 'unitProduced')).toBe(true);
     expect(getHubUnitQueue(state, 0)).toHaveLength(0);
-    expect(getColonySupply(state, 0).activeUnits).toBe(1);
+    expect(computeColonySupply(state, 0).units).toBe(1);
     expect(colony.stock['metals.t1']).toBe(460);
     expect(colony.stock['minerals.t1']).toBe(485);
     expect(colony.stock['bio.biomass']).toBe(495);
@@ -74,7 +74,7 @@ describe('W02-10 Hub worker production (slot 9): Units lane, paid progressively,
       state.entities.cols.hp[r] = 160;
       state.entities.cols.state[r] = ENTITY_STATE.idle;
     }
-    expect(getColonySupply(state, 0)).toMatchObject({ used: 10, cap: 10, available: 0 });
+    expect(computeColonySupply(state, 0)).toMatchObject({ used: 10, cap: 10, available: 0 });
 
     // Queue an 11th Harvester -> waits on waiting(supply) and does NOT debit resources
     const q11 = enqueueHubUnit(state, { colonyIndex: 0, unit: 'harvester' });

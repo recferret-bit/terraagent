@@ -13,9 +13,33 @@ export interface WorkEligibilitySpec {
 }
 
 /**
- * Whether a worker entity (`ENTITY_KIND.hq` or `ENTITY_KIND.harvester`) may take `job`: the HQ builds up to its tier
- * (`maxBuildTier`) and runs every terraform op and linked site prep; a Harvester (`maxBuildTier 0`) never builds or
- * prepares a site, it only takes Clear / Break / Work sub-jobs.
+ * Checks whether a worker entity (`entityKind`, `workerTier`) is allowed to construct a site of `siteTier`.
+ * Returns `{ ok: false, code: 'worker_tier_locked' }` when `siteTier` exceeds the worker's `maxBuildTier`.
+ */
+export function checkWorkerBuildTier(
+  entityKind: number,
+  workerTier: number,
+  siteTier = 1,
+): { ok: true } | { ok: false; code: 'worker_tier_locked' } {
+  let maxBuildTier = 0;
+  if (entityKind === ENTITY_KIND.hq) {
+    maxBuildTier = Math.max(1, workerTier);
+  } else if (entityKind === ENTITY_KIND.builder) {
+    maxBuildTier = 1;
+  }
+  if (maxBuildTier <= 0 || siteTier > maxBuildTier) {
+    return { ok: false, code: 'worker_tier_locked' };
+  }
+  return { ok: true };
+}
+
+/**
+ * Whether a worker entity (`ENTITY_KIND.hq`, `ENTITY_KIND.builder`, or `ENTITY_KIND.harvester`) may take `job`:
+ * - HQ builds up to its tier (`maxBuildTier`) and runs every terraform op and linked site prep.
+ * - Builder Drone (`maxBuildTier 1`) builds T1 sites (`tier <= 1`), prepares building footprints (`linkedPrep`),
+ *   and runs `work`, `repair`, `grade` or `dismantle` ops.
+ * - Only the HQ and a Builder Drone dismantle a building (owner feedback W03 #6).
+ * - Harvester (`maxBuildTier 0`) never builds or prepares a site; it only takes Clear / Break / Work sub-jobs.
  */
 export function isWorkerEligibleForJob(entityKind: number, workerTier: number, job: WorkEligibilitySpec): boolean {
   if (entityKind === ENTITY_KIND.hq) {
@@ -23,9 +47,15 @@ export function isWorkerEligibleForJob(entityKind: number, workerTier: number, j
     if (job.kind === 'build') return maxBuildTier >= (job.tier ?? 1);
     return true;
   }
+  if (entityKind === ENTITY_KIND.builder) {
+    const maxBuildTier = 1;
+    if (job.kind === 'build') return maxBuildTier >= (job.tier ?? 1);
+    if (job.kind === 'linkedPrep') return true;
+    return job.op === 'work' || job.op === 'repair' || job.op === 'grade' || job.op === 'dismantle';
+  }
   if (entityKind === ENTITY_KIND.harvester) {
     if (job.kind === 'build' || job.kind === 'linkedPrep') return false;
-    return job.op === 'clear' || job.op === 'break' || job.op === 'work';
+    return job.op === 'clear' || job.op === 'break' || job.op === 'work' || job.op === 'repair';
   }
   return false;
 }

@@ -11,11 +11,11 @@ describe('W02-03 ECONOMY_RATE_SCALE in compileData', () => {
     const solar = dataRow(compiled, 'economyT1Basic', 'solar');
     const harvester = dataRow(compiled, 'unitsWorkersBasic', 'harvester');
 
-    // Acceptance check: Extractor outputPerS is 1.0, Solar grossOutputPerS is still 21
+    // Acceptance check: Extractor outputPerS is 1.0, Solar grossOutputPerS is still 14
     expect(extractor.outputPerS).toBe(1.0);
     expect(extractor.designOutputPerS).toBe(4.0);
-    expect(solar.grossOutputPerS).toBe(21);
-    expect(solar.netOutputPerS).toBe(20);
+    expect(solar.grossOutputPerS).toBe(14);
+    expect(solar.netOutputPerS).toBe(13);
     expect(solar.internalDrainPerS).toBe(1);
 
     // Harvester standing harvest rate (2.0 -> 0.5 res/s)
@@ -41,6 +41,6 @@ describe('W02-03 ECONOMY_RATE_SCALE in compileData', () => {
     const unscaled = compileData(parseWaves('..02'), { economyRateScale: 1.0 });
     expect(dataRow(unscaled, 'economyT1Basic', 'metalsExtractor').outputPerS).toBe(4.0);
     expect(dataRow(unscaled, 'unitsWorkersBasic', 'harvester').harvestRatePerS).toBe(2.0);
-    expect(dataRow(unscaled, 'economyT1Basic', 'solar').grossOutputPerS).toBe(21);
+    expect(dataRow(unscaled, 'economyT1Basic', 'solar').grossOutputPerS).toBe(14);
   });
 });

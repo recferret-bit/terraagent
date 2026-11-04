@@ -13,6 +13,7 @@ import {
   insertRow,
   PREP,
   rowOf,
+  setHqCellEnergy,
   setTileDeposit,
   setTilePrep,
   setTileTerrain,
@@ -28,7 +29,7 @@ import {
 
 /** GP-45 (owner: colony grid): player work jobs draw from the colony grid and are shed first (group 1, `UO-TF-02`). */
 
-/** Own level Flat world with colony 0, a Command Hub at (0, 0) (+8 / −5 E/s) and the HQ Drone at `hqAt`. */
+/** Own level Flat world with colony 0, a Command Hub at (0, 0) (+16 / −7 E/s) and the HQ Drone at `hqAt`. */
 function gridWorld(seed: string, hqAt = { q: 3, r: 0 }, radius = 10) {
   const state = createState({ planetId: `p-${seed}`, planetType: 'temperate', seed, radius });
   state.colonies.push(ensureColonyLedger({ index: 0, id: 'col-0', name: 'A', color: 0xff6b00, status: 'active', changedAt: 0 }));
@@ -62,7 +63,7 @@ function gridWorld(seed: string, hqAt = { q: 3, r: 0 }, radius = 10) {
   };
 }
 
-/** A powered Metals Extractor (−6 E/s, shed group 3) at `(q, r)`; returns its row. */
+/** A powered Metals Extractor (−8 E/s, shed group 3) at `(q, r)`; returns its row. */
 function addExtractor(state: PlanetState, q: number, r: number): number {
   const row = insertRow(state.entities, state.meta.nextEntityId++, 0);
   const c = state.entities.cols;
@@ -104,14 +105,14 @@ describe('GP-45 work jobs on the colony grid', () => {
     w.forest(7, 0);
     w.run([work('w1', [{ q: 7, r: 0 }])]);
     expect(getColonyPower(w.state, 0).workDemand).toBe(0);
-    expect(getColonyPower(w.state, 0).rawDemand).toBe(5);
+    expect(getColonyPower(w.state, 0).rawDemand).toBe(7);
 
     expect(runUntil(w.run, () => getColonyPower(w.state, 0).workDemand > 0)).toBeGreaterThan(1);
     const p = getColonyPower(w.state, 0);
     expect(p.workDemand).toBe(FOREST_DRAW);
-    expect(p.rawDemand).toBeCloseTo(5 + FOREST_DRAW, 4);
-    expect(p.demand).toBeCloseTo(5 + FOREST_DRAW, 4);
-    expect(p.buildingDemand).toBe(5);
+    expect(p.rawDemand).toBeCloseTo(7 + FOREST_DRAW, 4);
+    expect(p.demand).toBeCloseTo(7 + FOREST_DRAW, 4);
+    expect(p.buildingDemand).toBe(7);
     expect(p.brownout).toBe(false);
     expect(jobsOf(w.state).w1).toMatchObject({ status: 'in_progress' });
   });
@@ -120,17 +121,20 @@ describe('GP-45 work jobs on the colony grid', () => {
     const w = gridWorld('wp-shed');
     w.forest(4, 0);
     w.forest(5, 0);
-    const ext = addExtractor(w.state, -4, 0);
+    addExtractor(w.state, -4, 0);
+    const ext = addExtractor(w.state, 0, -4);
+    setHqCellEnergy(w.state, rowOf(w.state.entities, w.hq), 0); // an empty HQ cell: the grid has no store to draw
     w.run([work('w1', [{ q: 4, r: 0 }])]);
     w.ticks(2);
 
-    // Hub 5 + Extractor 6 + job 0.67 = 11.67 > 8: group 1 (the job) is shed first, then group 3 (the Extractor).
+    // Hub 7 + 2 Extractors 16 + job 0.67 = 23.67 > 16: group 1 (the job) is shed first, then group 3 (the newest
+    // Extractor); Hub 7 + the older Extractor 8 = 15 then fits.
     const p = getColonyPower(w.state, 0);
     expect(p.brownout).toBe(true);
     expect(p.shedWorkJobIds).toEqual(['w1']);
     expect(p.shedGroupsActive).toEqual([1, 3]);
     expect(p.workDemand).toBe(0);
-    expect(p.demand).toBe(5);
+    expect(p.demand).toBe(15);
     expect(jobsOf(w.state).w1).toMatchObject({ status: 'waiting', waitReason: 'power' });
 
     const frozen = jobsOf(w.state).w1!.progress;
@@ -138,7 +142,7 @@ describe('GP-45 work jobs on the colony grid', () => {
     expect(jobsOf(w.state).w1!.progress).toBe(frozen);
     expect(w.terrain(4, 0)).toBe(TERRAIN.forest);
 
-    w.state.entities.cols.hp[ext] = 0; // the load goes away: 5 + 0.67 <= 8
+    w.state.entities.cols.hp[ext] = 0; // the load goes away: 7 + 8 + 0.67 <= 16
     w.ticks(1); // power decides at the end of a step, the job obeys it the next step
     expect(jobsOf(w.state).w1!.progress).toBe(frozen);
     w.ticks(1);

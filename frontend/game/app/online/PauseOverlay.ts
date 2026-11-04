@@ -1,3 +1,8 @@
+import { setGameInputBlocked } from '../../core/input/gameInputBlock';
+
+/** Input-block source of the pause dialog: game hotkeys stay quiet and the global map does not open while paused. */
+export const PAUSE_INPUT_SOURCE = 'pause';
+
 export interface PauseOverlayCallbacks {
   onResume(): void;
   onReturnToOrbit(): void;
@@ -66,6 +71,7 @@ export class PauseOverlay {
     this.isPaused = paused;
     this.el.hidden = !paused;
     this.el.dataset.active = paused ? 'true' : 'false';
+    setGameInputBlocked(PAUSE_INPUT_SOURCE, paused);
   }
 
   toggle(): boolean {
@@ -74,6 +80,7 @@ export class PauseOverlay {
   }
 
   dispose(): void {
+    if (this.isPaused) setGameInputBlocked(PAUSE_INPUT_SOURCE, false);
     this.el.remove();
   }
 }

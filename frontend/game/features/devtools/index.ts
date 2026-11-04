@@ -192,3 +192,55 @@ export const devtoolsW02 = defineFeature({
     power,
   ],
 });
+
+const makeSetWind = (name: string): DevCommandDef => ({
+  name,
+  help: 'setWind <pct>  Set wind output factor (0..500%)',
+  async run(a, ctx) {
+    const pct = numArg(a, 0, 'pct');
+    return ackText('dev.setwind', await sim(ctx, 'dev.setwind', { pct }));
+  },
+});
+
+const makeDrainFuel = (name: string): DevCommandDef => ({
+  name,
+  help: 'drainFuel [colonyIndex]  Zero out colony bio.biomass stock to test Thermal Plant fuel starvation',
+  async run(a, ctx) {
+    const args = a[0] !== undefined ? { colonyIndex: numArg(a, 0, 'colonyIndex') } : {};
+    return ackText('dev.drainfuel', await sim(ctx, 'dev.drainfuel', args));
+  },
+});
+
+const makeAddLoad = (name: string): DevCommandDef => ({
+  name,
+  help: 'addLoad <E/s> [entityId]  Inject synthetic electrical load (E/s) onto the colony or a pylon',
+  async run(a, ctx) {
+    const loadPerS = numArg(a, 0, 'loadPerS');
+    const entityId = a[1] !== undefined ? numArg(a, 1, 'entityId') : undefined;
+    return ackText('dev.addload', await sim(ctx, 'dev.addload', { loadPerS, ...(entityId !== undefined ? { entityId } : {}) }));
+  },
+});
+
+const damageCommand: DevCommandDef = {
+  name: 'damage',
+  help: 'damage <entity> <pct>  Damage an entity by pct% of its max HP (1..100)',
+  async run(a, ctx) {
+    const entityId = numArg(a, 0, 'entity');
+    const pct = numArg(a, 1, 'pct');
+    return ackText('dev.damage', await sim(ctx, 'dev.damage', { entityId, pct }));
+  },
+};
+
+export const devtoolsW03 = defineFeature({
+  id: 'devtools-w03',
+  wave: 'W03',
+  devCommands: [
+    makeSetWind('setWind'),
+    makeSetWind('setwind'),
+    makeDrainFuel('drainFuel'),
+    makeDrainFuel('drainfuel'),
+    makeAddLoad('addLoad'),
+    makeAddLoad('addload'),
+    damageCommand,
+  ],
+});

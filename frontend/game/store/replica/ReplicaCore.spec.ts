@@ -135,3 +135,46 @@ describe('ReplicaCore with balance overrides (D-35)', () => {
     expect(stale.welcome(welcomeOf(auth, { dataHash }))).toMatchObject({ ok: false, reason: 'dataHash' });
   });
 });
+
+describe('viewCodec power fields sync', () => {
+  it('packView and unpackView preserve entityPower and pylonLoads', () => {
+    const mockView = {
+      tick: 42,
+      planet: { id: 'p', type: 'temperate' as const, radius: 16 },
+      tiles: {
+        count: 1,
+        terrain: new Uint8Array(1),
+        prep: new Uint8Array(1),
+        deposit: new Uint8Array(1),
+        height: new Float32Array(1),
+        owner: new Int8Array(1),
+        explored: new Uint8Array(1),
+      },
+      entities: [
+        {
+          id: 10, kind: 5, owner: 0, tier: 1, q: 6, r: 0, x: 6, y: 0, rot: 0,
+          hp: 500, hpMax: 500, state: 12, progress: 0,
+          power: { state: 'offline' as const, reason: 'offline: overload', component: 0 },
+        },
+        {
+          id: 20, kind: 9, owner: 0, tier: 1, q: 5, r: 0, x: 5, y: 0, rot: 0,
+          hp: 100, hpMax: 100, state: 5, progress: 0,
+          pylon: { flow: 95, max: 80, overloaded: true },
+          power: { state: 'online' as const, component: 0, flow: 95, max: 80, overloaded: true },
+        },
+      ],
+      colonies: [
+        { index: 0, id: 'col-0', name: 'Alpha', color: 0xff6b00, status: 'active', power: { supply: 100, demand: 80 } as never },
+      ],
+    };
+
+    const packed = packView(mockView, false);
+    expect(packed.view.entityPower?.[10]).toEqual({ state: 'offline', reason: 'offline: overload', component: 0 });
+    expect(packed.view.pylonLoads?.[20]).toEqual({ flow: 95, max: 80, overloaded: true });
+
+    const unpacked = unpackView(packed.view);
+    expect(unpacked.entityPower?.[10]).toEqual({ state: 'offline', reason: 'offline: overload', component: 0 });
+    expect(unpacked.pylonLoads?.[20]).toEqual({ flow: 95, max: 80, overloaded: true });
+    expect(unpacked.colonies[0].power?.supply).toBe(100);
+  });
+});

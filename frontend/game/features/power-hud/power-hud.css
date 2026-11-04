@@ -30,7 +30,8 @@
   clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
 }
 
-.ta-power-hud__brownout[data-brownout='true'] {
+.ta-power-hud__brownout[data-brownout='true'],
+.ta-power-hud__brownout[data-overload='true'] {
   display: flex;
 }
 
@@ -87,6 +88,15 @@
 
 .ta-building-inspector__hp {
   color: var(--ta-text-2);
+}
+
+.ta-building-inspector__load {
+  color: var(--ta-text-2);
+}
+
+.ta-building-inspector[data-overload='true'] .ta-building-inspector__load {
+  color: var(--ta-fault-text);
+  font-weight: 700;
 }
 
 .ta-building-inspector__reason {

@@ -1,3 +1,4 @@
+import { gridPort } from './gridPorts';
 // Extraction & storage: mine, water pump, supply depot.
 import * as THREE from 'three';
 import { KitbashBuilder } from '../../KitbashRegistry';
@@ -39,6 +40,7 @@ export function mine() {
   strut(b, 'frameGunmetal', [0.95, 0.55, -1.05], [0.72, 0.32, -0.45], 0.09, { name: 'slurry transfer pipe' });
   cable(b, [-1.15, 1.15, -1.2], [-0.55, 5.12, -0.45], 0.22, 0.035, 'frameGunmetal', { name: 'hoist power cable' });
   lamp(b, 'warningAmber', 0.11, [0.0, 5.95, 0.0], { name: 'derrick beacon light' });
+  gridPort(b, 'building.mine', 5.87);
   return b.build();
 }
 
@@ -103,5 +105,6 @@ export function supplyDepot() {
   lamp(b, 'warningAmber', 0.09, [1.7, 3.04, -1.72], { name: 'gantry rear light' });
   lamp(b, 'warningAmber', 0.09, [1.7, 3.04, 1.72], { name: 'gantry front light' });
   cable(b, [-1.55, 0.95, 0.36], [-1.3, 0.82, 0.92], 0.08, 0.04, 'frameGunmetal', { name: 'depot feeder cable' });
+  gridPort(b, 'building.supplyDepot', 1.87);
   return b.build();
 }

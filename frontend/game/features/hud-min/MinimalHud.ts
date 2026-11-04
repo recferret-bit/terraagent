@@ -7,7 +7,9 @@ import { extractHqFromView } from '../shared/hqView';
 import { readDaytime } from '../shared/daytime';
 import { readColonyPower } from '../shared/power';
 import { createHudIcon, type HudIconKind } from './hudIcons';
+import { readColonySupply } from '../shared/supply';
 import { formatRejectToast } from './rejectText';
+import { formatSupplyValue, renderSupplyBreakdown, supplyTitle } from './supplyBreakdown';
 import {
   bindHoverPopover,
   computeResourceFlow,
@@ -58,7 +60,7 @@ export function formatClock(tick: number): string {
 export function wholeStock(stock: Record<string, number> | undefined): Record<string, number> {
   const out: Record<string, number> = {};
   for (const [key, v] of Object.entries(stock ?? {})) {
-    if (typeof v === 'number' && Number.isFinite(v)) out[key] = Math.floor(v);
+    if (typeof v === 'number' && Number.isFinite(v)) out[key] = Math.floor(v + 1e-6);
   }
   return out;
 }
@@ -66,7 +68,7 @@ export function wholeStock(stock: Record<string, number> | undefined): Record<st
 interface StockSlot {
   el: HTMLElement;
   val: HTMLElement;
-  breakdown?: HTMLElement;
+  breakdown: HTMLElement;
 }
 
 function stockSlot(kind: HudIconKind, testid: string, name: string, family: FamilyKey | 'supply'): StockSlot {
@@ -76,19 +78,22 @@ function stockSlot(kind: HudIconKind, testid: string, name: string, family: Fami
   const val = makeSpan('ta-hud-min__stock-val', undefined, NO_DATA);
   el.append(createHudIcon(kind), makeSpan('ta-hud-min__sr-only', undefined, `${name}: `), val);
 
-  if (family !== 'supply') {
-    el.setAttribute('data-capped', 'false');
-    const breakdown = makeDiv('ta-res-chip__breakdown plate-sm', `res-breakdown-${family}`);
+  el.setAttribute('data-capped', 'false');
+  const breakdown = makeDiv('ta-res-chip__breakdown plate-sm', `res-breakdown-${family}`);
+  if (family === 'supply') {
+    el.setAttribute('data-level', 'ok');
+    renderSupplyBreakdown(breakdown, null);
+  } else {
     renderFamilyBreakdown(breakdown, family, {}, computeResourceFlow(undefined, undefined, 0));
-    el.appendChild(breakdown);
-    bindHoverPopover(el);
-    return { el, val, breakdown };
   }
-  return { el, val };
+  el.appendChild(breakdown);
+  bindHoverPopover(el);
+  return { el, val, breakdown };
 }
 
 /**
- * Compact top HUD header: icon-only Metals/Minerals/Bio/Supply stocks with hover tier & flow breakdowns,
+ * Compact top HUD header: icon-only Metals/Minerals/Bio stocks with hover tier & flow breakdowns, unit Supply
+ * `used / cap` with its sources breakdown,
  * inline HQ power cell bar with hover power breakdown, planet time of day, game clock, and reject/resource waiting toasts.
  */
 export class MinimalHud {
@@ -206,7 +211,7 @@ export class MinimalHud {
     this.renderStocks(col, view as unknown as Record<string, unknown>, colonyIdx);
 
     const hqCell = extractHqFromView(view, colonyIdx, this.opts.store?.simData?.() ?? undefined);
-    this.cellVal.textContent = hqCell ? `${Math.round(hqCell.cell)} / ${Math.round(hqCell.cellMax)} E` : `${NO_DATA} E`;
+    this.cellVal.textContent = hqCell ? `${String(Math.round(hqCell.cell)).padStart(4, '0')} / ${String(Math.round(hqCell.cellMax)).padStart(4, '0')} E` : `${NO_DATA} E`;
     this.cellFill.style.width = `${(hqCell ? clampPct(hqCell.cell, hqCell.cellMax) : 0).toFixed(1)}%`;
 
     const grid = this.gridOn();
@@ -220,7 +225,9 @@ export class MinimalHud {
     this.daytimeEl.setAttribute('data-phase', t?.phase ?? 'day');
     this.daytimeIcon.textContent = t?.phase === 'night' ? '☾' : '☀';
     this.daytimeClock.textContent = t?.clockText ?? NO_DATA;
-    this.daytimeLight.textContent = t ? `${Math.round(t.daylight * 100)}%` : '';
+    const wind = readColonyPower(view, colonyIdx)?.windFactor;
+    const level = typeof wind !== 'number' ? '' : ` · Wind ${wind < 1 ? 'LOW' : wind > 1 ? 'HIGH' : 'MED'} ${Math.round(wind * 100)}%`;
+    this.daytimeLight.textContent = (t ? `${Math.round(t.daylight * 100)}%` : '') + level;
   }
 
   private setFamilyStatus(
@@ -235,7 +242,8 @@ export class MinimalHud {
     const isCapped = cap > 0 && total >= cap - 1e-6;
     slot.el.setAttribute('data-capped', String(isCapped));
     slot.el.classList.toggle('ta-res-chip--capped', isCapped);
-    slot.val.textContent = textOverride ?? `${total} / ${cap}`;
+    slot.val.textContent = textOverride ?? `${String(total).padStart(4, '0')} / ${String(cap).padStart(4, '0')}`;
+    slot.el.title = `${total} / ${cap}`;
     if (slot.breakdown) {
       renderFamilyBreakdown(slot.breakdown, family, stock, flow);
     }
@@ -247,25 +255,33 @@ export class MinimalHud {
     const flow = computeResourceFlow(col as unknown as Record<string, unknown> | undefined, view, colonyIdx);
 
     const metalsT1 = stock['metals.t1'] ?? 0;
-    const metalsTotal = metalsT1 + (stock['metals.t2'] ?? 0) + (stock['metals.t3'] ?? 0);
+    const totalOf = (family: string) => Math.floor(Object.entries(col?.stock ?? {}).reduce((sum, [key, value]) => key.startsWith(`${family}.`) && Number.isFinite(value) ? sum + value : sum, 0) + 1e-6);
+    const metalsTotal = totalOf('metals');
     const mineralsT1 = stock['minerals.t1'] ?? 0;
-    const mineralsTotal = mineralsT1 + (stock['minerals.t2'] ?? 0) + (stock['minerals.t3'] ?? 0);
+    const mineralsTotal = totalOf('minerals');
     const biomass = stock['bio.biomass'] ?? 0;
     const water = stock['bio.water'] ?? 0;
-    const bioTotal = biomass + water + (stock['bio.t2'] ?? 0) + (stock['bio.t3'] ?? 0);
+    const bioTotal = totalOf('bio');
 
     this.setFamilyStatus(this.metals, 'metals', metalsTotal, caps.metals, stock, flow);
     this.metals.el.title = `Iron (T1): ${metalsT1} · Cap: ${caps.metals}`;
     this.setFamilyStatus(this.minerals, 'minerals', mineralsTotal, caps.minerals, stock, flow);
     this.minerals.el.title = `Silica (T1): ${mineralsT1} · Cap: ${caps.minerals}`;
-    this.setFamilyStatus(this.bio, 'bio', bioTotal, caps.bio, stock, flow, `${bioTotal} / ${caps.bio} `);
-    this.bioSub.textContent = `(Biomass ${biomass} · Water ${water})`;
+    this.setFamilyStatus(this.bio, 'bio', bioTotal, caps.bio, stock, flow);
+    this.bioSub.textContent = `(Biomass ${String(biomass).padStart(4, '0')} · Water ${String(water).padStart(4, '0')})`;
     this.bio.el.title = `Biomass: ${biomass} · Water: ${water} · Cap: ${caps.bio}`;
 
-    const supplyUsed = (col as { supplyUsed?: number } | undefined)?.supplyUsed ?? 0;
-    const supplyCap = (col as { supplyCap?: number } | undefined)?.supplyCap ?? 0;
-    this.supply.val.textContent = `${supplyUsed} / ${supplyCap}`;
-    this.supply.el.title = `Supply: ${supplyUsed} / ${supplyCap}`;
+    this.renderSupply(view, colonyIdx);
+  }
+
+  /** Unit supply `used / cap` from the host's `colony.supply`: warn colour near the cap, alert colour at it. */
+  private renderSupply(view: Record<string, unknown>, colonyIdx: number): void {
+    const supply = readColonySupply(view, colonyIdx);
+    const level = renderSupplyBreakdown(this.supply.breakdown, supply);
+    this.supply.val.textContent = formatSupplyValue(supply);
+    this.supply.el.title = supplyTitle(supply);
+    this.supply.el.setAttribute('data-level', level);
+    this.supply.el.setAttribute('data-capped', String(level === 'full'));
   }
 
   /** One reject reaches the HUD twice (the transport's `cmd.reject` and the store's rollback): toast it once. */

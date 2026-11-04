@@ -35,9 +35,9 @@ describe('W10-30 w10-cargo-trade-hub seed scenario', () => {
 
     const power = getColonyPower(state, 0);
     expect(power.hasHub).toBe(true);
-    expect(power.supply).toBe(28);
-    expect(power.demand).toBe(11);
-    expect(power.net).toBe(17);
+    expect(power.supply).toBe(29);
+    expect(power.demand).toBe(19);
+    expect(power.net).toBe(10);
     expect(power.brownout).toBe(false);
     expect(power.phase).toBe('day');
 
@@ -68,6 +68,6 @@ describe('W10-30 w10-cargo-trade-hub seed scenario', () => {
     expect(tradeHubRow).toBeGreaterThanOrEqual(0);
     expect(state.entities.cols.state[tradeHubRow]).toBe(ENTITY_STATE.inert);
     const power = getColonyPower(state, 0);
-    expect(power.demand).toBe(5);
+    expect(power.demand).toBe(13);
   });
 });

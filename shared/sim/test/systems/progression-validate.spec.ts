@@ -15,6 +15,7 @@ import {
   resolveItemUnlockStage,
   SimHost,
   spawnHqUnit,
+  startBuildingConstruction,
   step,
   type CommandOutcome,
 } from '../../src';
@@ -30,6 +31,9 @@ function createStagePlanet(stage: number, unlockStage = stage, waves = '..08') {
   colony.stock['bio.biomass'] = 500;
   colony.stock['bio.water'] = 500;
   spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
+  if (stage > 0) {
+    expect(startBuildingConstruction(state, { owner: 0, building: 'commandHub', q: -2, r: 0, instant: true, costOverride: {} }).ok).toBe(true);
+  }
   const pipeline = createRegistryPipeline({ flags: parseWaves(waves) });
   return { state, colony, pipeline };
 }
@@ -177,7 +181,7 @@ describe('W08-10 · enqueueTask S2 and S3/S4 unlock-stage validation', () => {
 
     expect(rInheritedS3.outcomes.map((o) => ({ code: o.code, unlocksAt: o.unlocksAt }))).toEqual([
       { code: undefined, unlocksAt: undefined },
-      { code: undefined, unlocksAt: undefined },
+      { code: 'invalid_args', unlocksAt: undefined }, // scout is still a preview; stage unlock does not add its production row
       { code: 'stage_locked', unlocksAt: 'S4' },
     ]);
   });
@@ -215,7 +219,7 @@ describe('W08-10 · S0 / S1 Command Hub and HQ precedence unlock rules', () => {
       1,
       pipeline,
     );
-    expect(rHq.outcomes[0]?.code).toBeUndefined();
+    expect(rHq.outcomes[0]?.code).toBe('outside_power_zone'); // HQ precedence bypasses stage locks, not grid placement
 
     const hubRow = insertRow(state.entities, state.meta.nextEntityId++, state.meta.tick);
     state.entities.cols.kind[hubRow] = ENTITY_KIND.commandHub;
