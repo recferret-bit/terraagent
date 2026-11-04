@@ -7,6 +7,8 @@ import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
 import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
 
+export * from './faunaVisualRegistry';
+
 export type DepositVisualStage = 'full' | 'half' | 'depleted';
 export const DEPOSIT_STAGES: readonly DepositVisualStage[] = ['full', 'half', 'depleted'];
 export type CanonicalDepositId = 'resource.metalDeposit' | 'resource.crystalDeposit' | 'resource.oilDeposit';
@@ -99,6 +101,14 @@ export const REQUIRED_IDS = ['robot.hero', 'ship.carrier', 'ship.dropPod'] as co
 const entries = new Map<string, ArchetypeEntry>();
 const geometryCache = new Map<string, THREE.BufferGeometry>();
 
+const ARCHETYPE_ALIAS_MAP: Readonly<Record<string, string>> = {
+  'unit.recon': 'robot.recon',
+};
+
+function resolveCanonicalArchetypeId(id: string): string {
+  return ARCHETYPE_ALIAS_MAP[id] ?? id;
+}
+
 export const ArchetypeCatalog = {
   register(entry: ArchetypeEntry) {
     entries.set(entry.id, entry);
@@ -108,13 +118,15 @@ export const ArchetypeCatalog = {
     return [...entries.values()].filter((e) => !category || e.category === category);
   },
   get(id: string): ArchetypeEntry {
-    const e = entries.get(id) ?? entries.get(resolveDepositArchetype(id)?.id ?? '');
+    const canonical = resolveCanonicalArchetypeId(id);
+    const e = entries.get(canonical) ?? entries.get(resolveDepositArchetype(canonical)?.id ?? '');
     if (!e) throw new Error(`ArchetypeCatalog: unknown "${id}". Have: ${[...entries.keys()].join(', ')}`);
     return e;
   },
   /** Returns a clone of the cached merged BufferGeometry so runtime unit spawns skip procedural generation. */
   getGeometry(id: string, stage?: DepositVisualStage): THREE.BufferGeometry {
-    const dep = resolveDepositArchetype(id);
+    const canonical = resolveCanonicalArchetypeId(id);
+    const dep = resolveDepositArchetype(canonical);
     if (dep) {
       const effStage = stage ?? dep.stage ?? getDepositPreviewStage();
       const cacheKey = `${dep.id}:${effStage}`;
@@ -125,10 +137,10 @@ export const ArchetypeCatalog = {
       }
       return cached.clone();
     }
-    let cached = geometryCache.get(id);
+    let cached = geometryCache.get(canonical);
     if (!cached) {
-      cached = this.get(id).create();
-      geometryCache.set(id, cached);
+      cached = this.get(canonical).create();
+      geometryCache.set(canonical, cached);
     }
     const cloned = cached.clone();
     if (cached.userData?.partRanges) {
@@ -136,7 +148,10 @@ export const ArchetypeCatalog = {
     }
     return cloned;
   },
-  has: (id: string) => entries.has(id) || resolveDepositArchetype(id) !== null,
+  has: (id: string) => {
+    const canonical = resolveCanonicalArchetypeId(id);
+    return entries.has(canonical) || resolveDepositArchetype(canonical) !== null;
+  },
 };
 
 /** Uniforms of an archetype mesh: the unified material plus the `buildScaffold` modifier's per-mesh state. */
