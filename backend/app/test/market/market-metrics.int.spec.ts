@@ -1,8 +1,8 @@
 import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
-import { MARKET_TOKENS, marketOrderRef, marketTradeOpId, toChainUnits } from '@terra/contracts';
+import { MARKET_TOKENS, marketOrderRef, toChainUnits } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app.js';
 import type { PlanetEventOf } from '../../src/bus/channels.js';
 import { EventBus } from '../../src/bus/event-bus.js';
