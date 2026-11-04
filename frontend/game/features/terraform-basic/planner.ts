@@ -1,11 +1,10 @@
+import type { RejectCode } from '@terra/contracts';
 import {
   DISMANTLE_REFUND_RATE,
-  enqueueAutoPrepares,
   ENTITY_KIND,
   evaluateTerraform,
   getEntityBaseBuildCost,
   getBuildingFootprintTiles,
-  isTerraformOpKind,
   placementWorldFromState,
   REPAIR_COST_RATE,
   terraformJobKey,
@@ -19,28 +18,29 @@ import { viewPlacementWorld } from '../shared/placementWorld';
 import type { TileCoord } from '../shared/pointer';
 import { extractColonyOrders } from './TileOverlay';
 
-export type TerraformOpId = TerraformOpKind;
-/** The 3 buttons of the Terraform dock tab. TERRAFORM and REPAIR both go on the wire as `op: 'work'` + an `intent`. */
+/**
+ * The 3 buttons of the Terraform dock tab. TERRAFORM goes on the wire as the sim's per-tile ops (the host picks each
+ * hex's op from its ground: `enqueueTask { terraform: { op: 'grade', tiles } }` auto-prepares), REPAIR as `work` +
+ * `intent: 'repair'`, DISMANTLE as `dismantle`.
+ */
 export type TerraformPrimaryOp = 'terraform' | 'repair' | 'dismantle';
-export type TerraformButtonOp = TerraformPrimaryOp | TerraformOpId;
-
-/** A brush names either one of the 3 primary UI actions or a concrete S0 op (`grade`, `clear`, `break`; API only). */
-export type BrushOpSelection = TerraformButtonOp;
-
-export const isPrimaryOp = (op: BrushOpSelection): op is TerraformPrimaryOp =>
-  op === 'terraform' || op === 'repair' || op === 'dismantle';
 
 export interface PlannedTileJob {
   q: number;
   r: number;
-  op: TerraformButtonOp;
+  op: TerraformOpKind | 'repair';
 }
 
 export interface BrushPlan {
   jobs: PlannedTileJob[];
   queuedCount: number;
   skippedCount: number;
+  /** Why the first skipped hex was skipped (what a stroke with no valid hex is rejected with). */
+  firstReject?: RejectCode;
 }
+
+/** `45%`, `12.5%`: a rate as a percentage. */
+export const pct = (x: number): string => `${Number((x * 100).toFixed(2))}%`;
 
 /** The sim's rates (`TERRAFORM_TIME_TABLE.repair.costRate` / `.dismantle.refundRate`). */
 export const FULL_REPAIR_COST_RATIO = REPAIR_COST_RATE;
@@ -248,9 +248,6 @@ export function colonyMaxWorkerTier(
   return maxTier;
 }
 
-/** The host's `enqueueTask` auto-prepare rule (the sim's own export, so client and host cannot drift). */
-export const hostAutoPrepares = (op: TerraformOpKind, tileCount: number): boolean => enqueueAutoPrepares(op, tileCount);
-
 /** Every `op:q,r` the colony already has queued in the view (the host skips those tiles: never worked twice). */
 function pendingJobKeys(view: GameView | null | undefined, colonyId: number): Set<string> {
   const out = new Set<string>();
@@ -258,26 +255,42 @@ function pendingJobKeys(view: GameView | null | undefined, colonyId: number): Se
   return out;
 }
 
+/** The growth ops TERRAFORM falls back to on ground that is already clear: prepared → Irrigate → Seed (Living). */
+const GROWTH_LADDER: readonly TerraformOpKind[] = ['irrigate', 'seed'];
+
 /**
- * Preview of a brush stroke over the replica view with the sim's own rule (`evaluateTerraform` over a read-only
- * `TerraformWorld`, the function the `enqueueTask` handler runs; D-37, FF-03).
+ * Preview of a TERRAFORM stroke over the replica view with the sim's own rule (`evaluateTerraform`, the function the
+ * `enqueueTask` handler runs). Each hex gets the op its ground needs (`auto`: trees → Clear, rock → Break, slope →
+ * Level, crater → Fill, water → Reclaim, plain ground → Grade); ground that is already prepared climbs the growth
+ * ladder instead (Irrigate, then Seed), so the one button also takes a hex to Living. D-37, FF-03.
  */
-export function planBrushStroke(
+export function planTerraformTiles(
   view: GameView | null | undefined,
   tiles: readonly TileCoord[],
-  opts: { op: BrushOpSelection; colonyId: number; data?: CompiledDataLike },
+  opts: { colonyId: number; data?: CompiledDataLike },
 ): BrushPlan {
   const placement = viewPlacementWorld(view);
   if (placement.tileCount === 0) return { jobs: [], queuedCount: 0, skippedCount: tiles.length };
-  const simOp: TerraformOpKind = isTerraformOpKind(opts.op) ? opts.op : 'grade';
-  const auto = opts.op === 'terraform' ? true : hostAutoPrepares(simOp, tiles.length);
-  const plan = evaluateTerraform(terraformWorldFrom(placement, opts.colonyId, opts.data), {
-    colonyId: opts.colonyId,
-    op: simOp,
-    tiles,
-    auto,
-    pending: pendingJobKeys(view, opts.colonyId),
-    data: opts.data,
-  });
-  return { jobs: plan.jobs, queuedCount: plan.jobs.length, skippedCount: plan.skipped.length };
+  const world = terraformWorldFrom(placement, opts.colonyId, opts.data);
+  const pending = pendingJobKeys(view, opts.colonyId);
+  const base = { colonyId: opts.colonyId, pending, data: opts.data } as const;
+  const table = opts.data?.tables?.opsBasic as Record<string, unknown> | undefined;
+  const jobs: PlannedTileJob[] = [];
+  let skippedCount = 0;
+  let firstReject: RejectCode | undefined;
+  for (const t of tiles) {
+    const auto = evaluateTerraform(world, { ...base, op: 'grade', tiles: [t], auto: true });
+    let job = auto.jobs[0];
+    for (const op of job ? [] : GROWTH_LADDER) {
+      if (table && !(op in table)) continue; // the op's wave is off: no such row in the compiled data
+      job = evaluateTerraform(world, { ...base, op, tiles: [t] }).jobs[0];
+      if (job) break;
+    }
+    if (job) jobs.push(job);
+    else {
+      skippedCount++;
+      firstReject ??= auto.firstReject;
+    }
+  }
+  return { jobs, queuedCount: jobs.length, skippedCount, ...(firstReject ? { firstReject } : {}) };
 }

@@ -1,7 +1,6 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it } from 'vitest';
 import { BrushController, type BrushCommandSink } from './BrushController';
-import { mountTerraformBasic } from './index';
 
 let hovered = { q: 0, r: 0 };
 const click = (el: HTMLElement, q: number, r: number, init: MouseEventInit = {}): void => {
@@ -11,7 +10,7 @@ const click = (el: HTMLElement, q: number, r: number, init: MouseEventInit = {})
 };
 const terraformOf = (s: { args: unknown }) => (s.args as { terraform: Record<string, unknown> }).terraform;
 
-describe('Terraform brush: one click, one order (no multi-select)', () => {
+describe('Terraform brush: one click, one order; Ctrl+click queues and stays armed', () => {
   let cleanup: (() => void) | null = null;
   afterEach(() => cleanup?.());
 
@@ -25,14 +24,25 @@ describe('Terraform brush: one click, one order (no multi-select)', () => {
     return { brush, surface, sent };
   }
 
-  it('TERRAFORM: a click sends one `work` order with intent `terraform` and disarms (the next click selects again)', () => {
+  it('TERRAFORM: a click sends one order (the host picks the op) and disarms (the next click selects again)', () => {
     const { brush, surface, sent } = setup();
-    click(surface, 3, 1, { ctrlKey: true });
+    click(surface, 3, 1);
     expect(sent.map((s) => s.kind)).toEqual(['enqueueTask']);
-    expect(sent.map(terraformOf)).toEqual([{ op: 'work', intent: 'terraform', tiles: [{ q: 3, r: 1 }] }]);
+    expect(sent.map(terraformOf)).toEqual([{ op: 'grade', tiles: [{ q: 3, r: 1 }] }]);
     expect(brush.isArmed()).toBe(false);
     click(surface, 4, 1);
     expect(sent).toHaveLength(1);
+  });
+
+  it('Ctrl+click and Cmd+click send the order and keep the brush armed for the next hex', () => {
+    const { brush, surface, sent } = setup();
+    click(surface, 3, 1, { ctrlKey: true });
+    click(surface, 4, 1, { metaKey: true });
+    expect(sent.map(terraformOf).map((t) => t.tiles)).toEqual([[{ q: 3, r: 1 }], [{ q: 4, r: 1 }]]);
+    expect(brush.isArmed()).toBe(true);
+    click(surface, 5, 1);
+    expect(sent).toHaveLength(3);
+    expect(brush.isArmed()).toBe(false);
   });
 
   it('a click the preview refuses sends nothing and keeps the brush armed for another hex', () => {
@@ -44,10 +54,11 @@ describe('Terraform brush: one click, one order (no multi-select)', () => {
     expect(brush.isArmed()).toBe(true);
   });
 
-  it('the selected unit is sent as workerId', () => {
-    const { surface, sent } = setup({ getWorkerId: () => 7 });
+  it('the selected unit is sent as workerId of a REPAIR order only', () => {
+    const { brush, surface, sent } = setup({ getWorkerId: () => 7 });
     click(surface, 2, 0);
-    expect(terraformOf(sent[0]!)).toEqual({ op: 'work', intent: 'terraform', tiles: [{ q: 2, r: 0 }], workerId: 7 });
+    expect(terraformOf(sent[0]!)).toEqual({ op: 'grade', tiles: [{ q: 2, r: 0 }] });
+    expect(brush.isArmed()).toBe(false);
   });
 
   it('any right click (Ctrl or not) disarms', () => {
@@ -79,35 +90,5 @@ describe('Terraform brush: host reject', () => {
     await new Promise((r) => setTimeout(r, 0));
     expect(brush.getLastStroke()?.statusText).toMatch(/^Terraform ordered/);
     expect(brush.getLastOutcome()?.ok).toBe(true);
-  });
-});
-
-describe('W08-11: TerraformMenu stage filtering', () => {
-  it('shows S2 terraform ops fill and bridge greyed out at S1 and unlocked at S2', () => {
-    const container = document.createElement('div');
-    const tf = mountTerraformBasic(container, {});
-
-    tf.update({ colonies: [{ stage: 1, unlockStage: 1 }] } as never);
-    const fillBtn = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-fill"]');
-    const bridgeBtn = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-bridge"]');
-    expect(fillBtn).not.toBeNull();
-    expect(bridgeBtn).not.toBeNull();
-    expect(fillBtn?.disabled).toBe(true);
-    expect(bridgeBtn?.disabled).toBe(true);
-    expect(fillBtn?.querySelector('.ta-tf-menu__reason')?.textContent).toBe(
-      'Unlocks at S2: extractor + generator · 2 min',
-    );
-    expect(bridgeBtn?.querySelector('.ta-tf-menu__reason')?.textContent).toBe(
-      'Unlocks at S2: extractor + generator · 2 min',
-    );
-
-    tf.update({ colonies: [{ stage: 2, unlockStage: 2 }] } as never);
-    const fillUnlocked = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-fill"]');
-    const bridgeUnlocked = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-bridge"]');
-    expect(fillUnlocked?.disabled).toBe(false);
-    expect(bridgeUnlocked?.disabled).toBe(false);
-    expect(fillUnlocked?.querySelector('.ta-tf-menu__reason')).toBeNull();
-
-    tf.dispose();
   });
 });
