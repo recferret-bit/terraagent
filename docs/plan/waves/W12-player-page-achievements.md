@@ -109,6 +109,12 @@ Players have a home outside the planet. The `/me` page shows who they are (pilot
 - PA-01..PA-05 are covered.
 - Each producer wave owns its "emit progression events for <family>" issue; this wave only consumes the events.
 
+## W08 follow-up: executable progression and priorities
+
+Persist lesson completion and UnlockStage while keeping current-world threat independent.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
 ## W12 progression integration gate (revised)
 
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Identify any new statistics producers and reuse the W12 catalogue, transaction and effect queue; do not introduce parallel counters or reward callbacks.

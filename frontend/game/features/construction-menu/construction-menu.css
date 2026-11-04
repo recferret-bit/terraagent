@@ -57,7 +57,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--ta-s2);
-  max-height: 480px;
+  max-height: 350px;
   overflow-y: auto;
 }
 
@@ -178,6 +178,24 @@
   border: 1px solid var(--ta-fault);
   padding: 2px var(--ta-s1);
   clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+
+.ta-construction__card.is-stage-locked .ta-construction__reason {
+  color: var(--ta-steel);
+  border-color: var(--ta-seam-2);
+  text-transform: none;
+}
+
+.ta-construction__unlock-detail {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 /* Placement ghost HUD banner */

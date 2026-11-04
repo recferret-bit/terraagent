@@ -1,8 +1,17 @@
-import type { CompiledRow } from '../data';
+import { getStageSpec, type CompiledRow } from '../data';
 import { ENTITY_KIND } from '../ecs/columns';
 import type { PlanetState, PlanetType } from '../kernel/state';
+import {
+  getColonyGoals,
+  getColonyPriorities,
+  getHqGoalLimit,
+  type ColonyGoalEntry,
+  type ColonyPriorities,
+} from '../systems/goals';
 import { resolveHarvesterRow } from '../systems/harvest/unit';
 import type { HqJob, HqUnitView } from '../systems/hq';
+import { getColonyProgression } from '../systems/progression';
+import { getLastAutopilotDecision, type AutopilotDecision, type AutopilotOrderSuggestion } from '../systems/rule-engine';
 
 /**
  * W00 view: a minimal read-only projection for render/HUD. Tile arrays are shared with the state (no copy; do not
@@ -33,6 +42,19 @@ export interface ViewColony {
   hq?: HqUnitView;
   currentJob?: HqJob;
   queueCount?: number;
+  goals?: ColonyGoalEntry[];
+  goalLimit?: number;
+  priorities?: ColonyPriorities;
+  stage?: number;
+  unlockStage?: number;
+  threatStage?: number;
+  stageOverride?: string;
+  stageDwellRemainingS?: number | null;
+  dwellRemainingS?: number | null;
+  dwellRemainingTicks?: number | null;
+  nextStageConditionText?: string;
+  lastAutopilotDecision?: AutopilotDecision | null;
+  activeSuggestion?: AutopilotOrderSuggestion | null;
   [field: string]: unknown;
 }
 export interface SimView {
@@ -97,6 +119,29 @@ export function view(state: PlanetState): SimView {
       out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;
       out.queueCount = (k.queueCount as number | undefined) ?? hq.queueCount;
     }
+    out.goals = getColonyGoals(state, k.index);
+    out.goalLimit = getHqGoalLimit(state, k.index);
+    out.priorities = getColonyPriorities(state, k.index);
+    const prog = getColonyProgression(state, k.index);
+    out.stage = typeof k.stage === 'number' ? k.stage : state.blobs.progression ? prog.stage : undefined;
+    out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : prog.unlockStage;
+    out.threatStage = typeof k.threatStage === 'number' ? k.threatStage : prog.threatStage;
+    if (typeof k.stageOverride === 'string') out.stageOverride = k.stageOverride;
+    else if (prog.stageOverride) out.stageOverride = prog.stageOverride;
+    out.dwellRemainingTicks =
+      typeof k.dwellRemainingTicks === 'number' ? k.dwellRemainingTicks : prog.dwellRemainingTicks;
+    out.dwellRemainingS =
+      typeof k.stageDwellRemainingS === 'number'
+        ? k.stageDwellRemainingS
+        : typeof k.dwellRemainingS === 'number'
+          ? k.dwellRemainingS
+          : prog.dwellRemainingS;
+    out.stageDwellRemainingS = out.dwellRemainingS;
+    out.nextStageConditionText =
+      typeof k.nextStageConditionText === 'string'
+        ? k.nextStageConditionText
+        : prog.nextStageConditionText || (getStageSpec((out.stage ?? 0) + 1)?.unlockConditionText ?? '');
+    out.lastAutopilotDecision = getLastAutopilotDecision(state, k.index);
     return out;
   });
   return {

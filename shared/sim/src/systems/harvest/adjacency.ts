@@ -138,6 +138,7 @@ export function pickBestSurfaceDepositForUnit(
   selfEntityId = -1,
   assignments?: Record<number, HarvesterTargetAssignment>,
   occupied: ReadonlySet<number> = occupiedGroundTiles(state),
+  goalResource: ResourceKey | null = null,
 ): { tileIdx: number; q: number; r: number; standQ: number; standR: number; family: ResourceFamily; resourceKey: ResourceKey } | null {
   const familyNeed: Record<ResourceFamily, number> = { metals: 0, minerals: 0, bio: 0 };
   for (const f of RESOURCE_FAMILIES) {
@@ -162,6 +163,7 @@ export function pickBestSurfaceDepositForUnit(
   for (let i = 0; i < state.grid.count; i++) {
     if (deposit[i] === DEPOSIT.none) continue;
     const info = tileDepositInfo(state, i);
+    if (goalResource && info?.key !== goalResource) continue;
     if (!info || occupied.has(i)) continue; // a deposit under a building (an Extractor) is not harvested
     if (Number(richness?.[i] ?? 10000) <= 0) continue;
     if (terrain[i] === TERRAIN.deep || prep[i] === PREP.ridge || prep[i] === PREP.moat) continue;

@@ -130,3 +130,9 @@ Also in this wave:
 - **Laser Tower T1** unlocks at S3 (B7 default, accepted 2026-10-30): its data row carries `unlock: 'S3'` and the units-spec stage table (§6.2) is corrected from S7 to S3, so the `@hack` e2e holds with W08 on without a scenario grant.
 - **Open numbers** are settled by the OWNER_TASKS B-defaults (B2 view radii, B4 air targeting, B8 footprints, B9 stance radii, B10 no ammo/laser spike, B11 bite cadence). They are data rows; the owner retunes them in playtests with W00-59 (D-35).
 - **Stage-dependent numbers** (`threatStage`, S3 + 5 min) fall back to building-derived values when W08 is off. They switch to the stage engine when W08 is on, with no change in this wave's code (read through `progression.threatStage()`).
+
+## W08 follow-up: executable progression and priorities
+
+Register Defend Area and Clear Nest executors; make defense priority affect protection and test actual combat completion.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

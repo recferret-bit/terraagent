@@ -754,3 +754,30 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **What happens:** `production.produced` grows on every `creditResource` call except refunds (`refundCost` passes `produced: false`). Dev `fill` / grant commands and TERRAFORM / Harvester work-job yields therefore count as produced, and the W02-28 `resourceProduced` batches (Stockpile progression) include them, not only Extractor and Harvester output.
 - **To resolve:** pass `produced: false` from dev grants (and from terraform yields if Stockpile should count only extraction), or split the counter by source.
 - **Found:** 2026-11-03, W02 review round 1 (backend agent)
+
+## W08 Stages & HQ Goals
+
+### GP-66 · W08 H-scope cut: S5–S10 runtime triggers, threat scaling hooks, and late-stage goal breakdowns are deferred to H+ / F
+
+- **Status:** Accepted (by design, W08 H-scope cut)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/progression/` (`index.ts`, `threatStage.ts`, `unlockStage.ts`, `threat.ts`), `shared/sim/src/systems/goals/breakdown.ts`, `shared/sim/src/systems/rule-engine/automate.ts`; `docs/plan/waves/W08-stages-goals.md` §3
+- **What happens:**
+  - `S0`–`S4` runtime stage triggers (`Command Hub T1`, `extractor + generator`, `3 buildings + 2 workers` + `fauna` safety override, `HQ T2 || 6 buildings + 1 defense` + `hazard` safety override) are evaluated at 1 Hz; `S5`–`S10` data rows exist in `shared/sim/src/data/stages.ts` (`W08-02`) and can be set via `dev.stage`, while their runtime evaluators (`W08-05`) and unbuilt-wave row tags (`W08-14`) wait for `H+` / `F` waves (`W03`–`W05`, `W07`, `W09`–`W11`, `W23`).
+  - `Establish Colony`, `Grow Economy`, and `Secure Power` break down into concrete `OrderQueue` tasks (`W08-17`). The remaining 6 goal kinds (`defend_colony`, `expand_border`, `upgrade_hq`, `terraform_area`, `prepare_for_hazard`, `build_rocket`) can be queued, reordered, and cancelled in the HQ goal queue (`W08-16`), while their task breakdowns and budget-ceiling reservations (`W08-18`–`W08-20`) are deferred to `H+` / `F`.
+  - `UnlockStage` and `ThreatStage` are tracked separately in the sim (`W08-06`, `W08-08`, `W08-09`); persisting `UnlockStage` in `player_profiles` across planets (`W08-07`), early-raid protection scaling (`W08-15`), `S4+` automation hooks (`W08-26`), and `priorityPresets.ts` (`W08-29`) are deferred to `H+` / `F`.
+- **Why it is like this:** `docs/plan/waves/W08-stages-goals.md` scopes W08 to the 20 `H`-tagged issues so W08 ships cleanly before `W03`–`W05`, `W07`, and `W12` land.
+- **Workaround / mitigation:** `dev.stage` (`stage set <0..10>`, `stage trigger <fauna|hazard>`, `stage skip-dwell`) and `dev.autopilot` allow testing any stage or override directly.
+- **To resolve:** implement `W08-05`, `W08-07`, `W08-14`, `W08-15`, `W08-18`–`W08-20`, `W08-26`, `W08-29`, `W08-31`, `W08-32` when their target waves (`W03`–`W05`, `W07`, `W09`–`W12`, `W23`) land.
+- **Found:** 2026-11-03, W08 wave implementation (lead)
+
+### GP-67 · W08 goals expose missing production capabilities instead of claiming completion
+
+- **Status:** Open (owning-wave work specified)
+- **Area / code:** `shared/sim/src/systems/goals/{executors,growth,breakdown}.ts`; [progression contract](../plan/W08-PROGRESSION-CONTRACT.md)
+- **What happens:** Grow Metals now bypasses unavailable storage placement, creates real production orders and reads the production ledger. An idle unit, capped stock or unpowered extractor no longer counts as output. Secure Power uses actual night output; +10 E/s cannot complete with the current solar-only construction catalog. Water growth is unavailable because the current harvest path cannot produce water. Unsupported goal kinds reject with `wave_disabled` instead of taking a slot and doing nothing. Existing saved unsupported goals explain the missing executor and can be cancelled.
+- **Why it is like this:** W03 owns storage/night generators/resource extractors; W07 and later waves own combat, expansion, tech and rocket actions. W08 does not implement those waves. Goal executor registration is now the availability gate.
+- **Workaround / mitigation:** active goals show action/wait reasons. Spend full storage, supply missing resources, clear a valid site or cancel a blocked goal. Automatic harvesters follow the active resource goal without changing saved weights; manual assignments remain authoritative. Goals no longer create a fallback metals deposit in the live world.
+- **To resolve:** owning waves must implement the acceptance tests and tutorial chain in the progression contract, including storage growth, actual positive night output, Water extraction, finite-resource/reachability handling and budget ceilings (W08-20, still deferred). Current budget values remain metadata, not enforced spending ceilings.
+- **Found:** 2026-11-03, W08 owner fixes. Supersedes GP-66's claim that unfinished goals are intentionally queueable.

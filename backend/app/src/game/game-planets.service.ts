@@ -7,7 +7,7 @@ import type { FromThread, LandingSiteAnswer, LoadedInfo, LoadMsg } from './threa
 
 export type CommandOutcomeMsg =
   | { readonly ok: true; readonly commandId: string; readonly appliedAtTick: number }
-  | { readonly ok: false; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number; readonly detail?: string };
+  | { readonly ok: false; readonly commandId: string; readonly code: string; readonly appliedAtTick?: number; readonly detail?: string; readonly unlocksAt?: string };
 
 /**
  * Reject codes of `submit` that come from the host, not the sim: the planet's thread is down (`thread_down`) or the
@@ -307,7 +307,7 @@ export class GamePlanets {
       case 'ack': return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, { ok: true, commandId: msg.commandId, appliedAtTick: msg.appliedAtTick });
       case 'reject':
         return this.settleCmd(`${msg.planetId}\0${msg.commandId}`, {
-          ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick, ...(msg.detail ? { detail: msg.detail } : {}),
+          ok: false, commandId: msg.commandId, code: msg.code, appliedAtTick: msg.appliedAtTick, ...(msg.detail ? { detail: msg.detail } : {}), ...(msg.unlocksAt ? { unlocksAt: msg.unlocksAt } : {}),
         });
       case 'delta':
         this.tap(msg.planetId, msg.events);

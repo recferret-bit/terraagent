@@ -2,7 +2,7 @@ import { newId, type ServerMessage } from '@terra/contracts';
 import type { Transport } from './types';
 
 /** Outcome of one sim command: acked at a tick, or rejected (`code` is a `RejectCode`, `timeout`, `not_connected` or `host_unavailable`). */
-export type CommandResult = { ok: true; appliedAtTick: number } | { ok: false; code: string; detail?: string };
+export type CommandResult = { ok: true; appliedAtTick: number } | { ok: false; code: string; detail?: string; unlocksAt?: string };
 
 /** Sends a sim command and resolves with its ack/reject. Features reach it through `FeatureServices.sendCommand`. */
 /** `opts.predict: false` sends without telling the predictor (dev: the client learns of the result only from the server). */
@@ -42,7 +42,7 @@ export class CommandBus {
       p,
       m.t === 'cmd.ack'
         ? { ok: true, appliedAtTick: m.d.appliedAtTick }
-        : { ok: false, code: m.d.code, ...(m.d.detail ? { detail: m.d.detail } : {}) },
+        : { ok: false, code: m.d.code, ...(m.d.detail ? { detail: m.d.detail } : {}), ...(m.d.unlocksAt ? { unlocksAt: m.d.unlocksAt } : {}) },
     );
   }
 

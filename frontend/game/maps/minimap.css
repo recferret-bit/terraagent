@@ -99,7 +99,7 @@
   outline: none;
 }
 
-.ta-hud__slot--bottom-left .ta-command-dock__body {
+.ta-hud__slot[data-slot='bottom-left'] .ta-command-dock__body {
   max-height: min(32vh, 220px);
 }
 
@@ -109,17 +109,17 @@
     height: 140px !important;
   }
 
-  .ta-hud__slot--bottom-left {
+  .ta-hud__slot[data-slot='bottom-left'] {
     flex-direction: row;
     align-items: flex-end;
     gap: var(--ta-s2);
   }
 
-  .ta-hud__slot--bottom-left .ta-command-dock {
+  .ta-hud__slot[data-slot='bottom-left'] .ta-command-dock {
     width: min(260px, calc(100vw - 180px));
   }
 
-  .ta-hud__slot--bottom-left .ta-command-dock__body {
+  .ta-hud__slot[data-slot='bottom-left'] .ta-command-dock__body {
     max-height: min(42vh, 150px);
   }
 }

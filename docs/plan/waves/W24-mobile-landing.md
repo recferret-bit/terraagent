@@ -124,6 +124,12 @@
 - Tag `wave-24` exists.
 - Every row of the features table is covered by a closed issue.
 
+## W08 follow-up: executable progression and priorities
+
+Verify tabbed HQ controls and all guide replay/hide/navigation controls with touch and keyboard.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
 ## W12 progression integration gate (revised)
 
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Keep sign-in/profile access on landing and selection only; verify new-tab behavior and section navigation on mobile.

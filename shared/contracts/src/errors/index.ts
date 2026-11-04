@@ -17,6 +17,8 @@ export const REJECT_CODES = [
   'cannot_dismantle_hq',
   // W02 queue: `cancelTask` / `reorderTask` names no open task of the colony
   'unknown_task',
+  // W08 HQ goals: goal queue is full for the colony's HQ tier (2 / 3 / 5); `cancelGoal` / `reorderGoal` names no open goal
+  'goal_limit', 'unknown_goal',
   // W10 cargo & trade hub: insufficient stock/cargo, storage full on import, or Trade Hub offline
   'insufficient_stock', 'insufficient_cargo', 'storage_full', 'hub_offline',
 ] as const;

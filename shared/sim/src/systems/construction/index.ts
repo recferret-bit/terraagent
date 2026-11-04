@@ -3,6 +3,7 @@ import type { SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { commandColony, parseArgs } from '../command';
 import { defineSimModule } from '../define';
+import { checkItemUnlockStage } from '../progression/validate';
 import { colonyTerraformOrders } from '../terraform-basic/orders';
 import './occupancy';
 import { placeBuildingOrder } from './place';
@@ -38,6 +39,12 @@ export const placeBuilding = defineCommandHandler({
     const args = parseArgs('placeBuilding', cmd.args);
     if (!args) return 'invalid_args';
     if (isOrderIdTaken(state, colonyId, cmd.commandId)) return 'invalid_args';
+    if (cmd.source !== 'system' && (cmd.source as string) !== 'module') {
+      const stageCheck = checkItemUnlockStage(state, colonyId, args.building, ctx.flags, ctx.data);
+      if (!stageCheck.ok) {
+        return { code: stageCheck.code, detail: stageCheck.detail, unlocksAt: stageCheck.unlocksAt };
+      }
+    }
     const res = placeBuildingOrder(
       state,
       { colonyId, q: args.q, r: args.r, buildingKind: args.building, tier: args.tier, taskId: cmd.commandId, tick: ctx.tick, data: ctx.data },

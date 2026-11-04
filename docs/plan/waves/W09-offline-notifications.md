@@ -112,6 +112,12 @@ Leaving is safe and honest. A colony keeps running while its player is away: the
 - Tag `wave-09` is created.
 - Every `CT-*` and `AW-*` rule in CONTINUITY is mapped above. `CT-01..05` home routing is in W11.
 
+## W08 follow-up: executable progression and priorities
+
+Preserve goals, tutorial position and priorities across away/resume; enforce away permission and budget limits.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
 ## W12 progression integration gate (revised)
 
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Extend the existing in-app notification consumer with a separate opt-in external-push effect; preserve persisted delivery state and effect-ID deduplication. Use the authenticated `colonyId` resume route.

@@ -1079,3 +1079,46 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** `ProgressionDevCommand` also mirrors `fact.add`, `xp.add`, `profile.reset`, and `profile.seed_w12` onto `pr_dev_w12` whenever a different dev player id is used.
 - **To resolve:** When a non-sim player websocket channel lands (BE-40), push `achievement.earned` and `xp.levelUp` over that socket for non-sim progression sources as well.
 - **Found:** 2026-11-03, W12
+
+## W08 Stages & HQ Goals
+
+### FF-70 · W08 H-scope cut: Goal progress drawer, slider-impact preview, and `/me.html` UnlockStage profile view are deferred
+
+- **Status:** Accepted (by design, W08 H-scope cut)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/features/goals/GoalsPanel.ts`, `frontend/game/features/priorities/PrioritiesPanel.ts`, `tests/e2e/w08.spec.ts` (`7b` skipped); `docs/plan/waves/W08-stages-goals.md` §1 & §3
+- **What happens:**
+  - `GoalsPanel` shows each goal's status badge, progress bar (`pct% (stepsCompleted/stepsTotal)`), budget share, reorder buttons (`▲`/`▼` + drag-and-drop), and cancel button (`✕`, which cancels non-started child tasks in the sim). The expandable per-child-order drawer (`W08-22`, `H+`) and the slider-impact preview bar (`W08-28`, `H+`) are not rendered in the `H` cut.
+  - Demo step 7b (`/me.html` showing `UnlockStage: S4` across worlds) is marked `test.skip` in `tests/e2e/w08.spec.ts` because `/me.html` is built in `W12 Accounts & Profiles`.
+- **Why it is like this:** `docs/plan/waves/W08-stages-goals.md` defers `W08-22` and `W08-28` to `H+` and `/me.html` to `W12`.
+- **Workaround / mitigation:** child tasks are visible in the Order Queue panel (`QueuePanel`) and in `window.__online.store.latest.colonies[0].queue`; `unlockStage` vs `threatStage` is exposed on `colonies[0]` and verified in `tests/e2e/w08.spec.ts` step 6.
+- **To resolve:** implement `W08-22` and `W08-28` in `H+`. W12 has now landed `/me.html`; enable and verify W08’s cross-wave step 7b during FF-72 (it remains skipped in the W08 browser suite).
+- **Found:** 2026-11-03, W08 wave implementation (lead)
+
+### FF-71 · Stage navigation replays lessons; later mechanics remain previews
+
+- **Status:** Accepted (W08 owner follow-up interpretation)
+- **Area / code:** `frontend/game/features/stages/{StageTrackHud,guide}.ts`, `frontend/game/features/goals/HqPanel.ts`
+- **What happens:** Clickable stage segments browse all S0–S10 guides; they never roll back the simulation, earned unlocks or threat. New-stage notices last 30 seconds with a visible timer. Replay has no timer. The compact Goals header opens the tracker; its minus button closes it completely and suppresses automatic notices until reopened. Goals and Priorities share tabs, with state preserved when switching. Unimplemented tutorial suggestions are disabled and describe future-wave prerequisites.
+- **Why it is like this:** interpreting “navigate back” as reviewing tutorial stages preserves world progress and irreversible gameplay. S5–S10 require future-wave mechanics, so their guides explicitly say Preview rather than claiming a playable lesson today.
+- **Workaround / mitigation:** Click the highlighted current stage to return to its guide; the dev-only `stage set` command still changes simulated stage for testing.
+- **To resolve:** extend each guide and executable suggestion when its owning wave lands, following the [progression contract](../plan/W08-PROGRESSION-CONTRACT.md).
+- **Found:** 2026-11-03, W08 owner fixes.
+
+
+### FF-72 · Full W08 Recheck
+
+- **Status:** Open (owner requested; landing is not acceptance of all W08 behavior)
+- **Area / code:** `frontend/game/features/{stages,goals,priorities}/`, `shared/sim/src/systems/{progression,goals,rule-engine}/`, [W08 owner guide](../plan/checks/w08-check.md), [progression contract](../plan/W08-PROGRESSION-CONTRACT.md).
+- **What happens:** the owner reports that W08 still has issues and explicitly requests a full recheck after landing. Exact remaining failures have not yet been enumerated; targeted automated passes do not close this report.
+- **Why it is like this:** W08 was reviewed in a limited wave stack, while W04 maps, W10 cargo and W12 persistent progression have since landed. The latest small UI revision removes Previous / Next / Current and Show / Hide guide, moves the stage tracker behind a compact Goals header, and makes minus close it. The ambiguous “dialog” was interpreted as the S0–S10 tracker; confirm this layout with the owner during recheck.
+- **Workaround / mitigation:** use the owner guide and a fresh scenario for reproduction; record URL, enabled waves, host, stage, goal parameters, console output and expected/actual behavior for each failure. Existing detailed boundaries remain in FF-70 / FF-71 and GP-67. The merged server browser run passes all six runnable W08 checks; the W08-to-profile persistence check remains skipped and must be enabled during this recheck.
+- **To resolve:** run the full checklist on both server and browser hosts with the current merged stack, then record individual reproducible failures, fix them and obtain owner confirmation. Cover:
+  1. Compact Goals header placement, click/open/minus/close, pointer and keyboard input, small viewports, and unobstructed tick/resource/map controls.
+  2. Every S0–S10 segment, 30-second automatic notice, manual untimed replay, Dismiss, hidden-state behavior and real stage/unlock/threat preservation.
+  3. Establish Colony and Grow Economy end to end: actual paid orders, walking workers, measured Metals/Minerals/Biomass production, storage/resources/power blockers, resume, cancel/reorder, queue limits and reload.
+  4. Secure Power across day/night, unsupported goals and Water extraction, budget values and the still-deferred spending ceilings (GP-67).
+  5. All five priorities and autopilot need scores (bp), suggestion/auto transitions, manual-order protection, safety overrides and future diplomacy/combat integration obligations.
+  6. Tutorial continuity beyond S4, dwell/trigger rules, wave-off behavior, Trade Hub contact/S2/S5 access, and W12 UnlockStage/profile persistence across reload and colony transitions.
+- **Found:** 2026-11-04, owner review: “full W8 Recheck, it has issues.”

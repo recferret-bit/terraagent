@@ -14,6 +14,8 @@ import { event as event_devPong } from './dev-pong';
 import { event as event_devTuned } from './dev-tuned';
 import { event as event_devWarp } from './dev-warp';
 import { event as event_energyCollapse } from './energy-collapse';
+import { event as event_goalDone } from './goal-done';
+import { event as event_goalProgress } from './goal-progress';
 import { event as event_groundRevealed } from './ground-revealed';
 import { event as event_hqLanded } from './hq-landed';
 import { event as event_obstacleRemoved } from './obstacle-removed';
@@ -23,12 +25,15 @@ import { event as event_relaySubmitted } from './relay-submitted';
 import { event as event_resourceProduced } from './resource-produced';
 import { event as event_resourceShortage } from './resource-shortage';
 import { event as event_resourceSpawned } from './resource-spawned';
+import { event as event_stageReached } from './stage-reached';
+import { event as event_stageUnlocked } from './stage-unlocked';
+import { event as event_suggestionOffered } from './suggestion-offered';
 import { event as event_tilePrepared } from './tile-prepared';
 import { event as event_treasuryRejected } from './treasury-rejected';
 import { event as event_unitProduced } from './unit-produced';
 import { event as event_xpLevelUp } from './xp-level-up';
 
-export const EVENTS = [event_accountCreated, event_achievementEarned, event_alertPing, event_brownout, event_buildingCompleted, event_cargoExported, event_cargoImported, event_cargoRefunded, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_groundRevealed, event_hqLanded, event_obstacleRemoved, event_relayFailed, event_relaySettled, event_relaySubmitted, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_tilePrepared, event_treasuryRejected, event_unitProduced, event_xpLevelUp] as const;
+export const EVENTS = [event_accountCreated, event_achievementEarned, event_alertPing, event_brownout, event_buildingCompleted, event_cargoExported, event_cargoImported, event_cargoRefunded, event_colonyFounded, event_devPong, event_devTuned, event_devWarp, event_energyCollapse, event_goalDone, event_goalProgress, event_groundRevealed, event_hqLanded, event_obstacleRemoved, event_relayFailed, event_relaySettled, event_relaySubmitted, event_resourceProduced, event_resourceShortage, event_resourceSpawned, event_stageReached, event_stageUnlocked, event_suggestionOffered, event_tilePrepared, event_treasuryRejected, event_unitProduced, event_xpLevelUp] as const;
 
 export type EventKind = (typeof EVENTS)[number]['kind'];
 export const EVENT_KINDS = [...EVENTS.map((d) => d.kind)] as unknown as readonly [EventKind, ...EventKind[]];

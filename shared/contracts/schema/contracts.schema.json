@@ -392,6 +392,126 @@
     }
   },
   "commands": {
+    "acceptSuggestion": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "radius": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resource": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sectorId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetColonyId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "targetNetEnergyPerS": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetRatePerMin": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "number"
+              },
+              "tier": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "stage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "suggestionId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Accepts an offered HQ suggestion (such as S0 Establish Colony or an early-stage rule suggestion, UO-LC-04 / UO-LC-05).",
+      "wave": "W08"
+    },
+    "cancelGoal": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "goalId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "goalId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Cancels an active or queued HQ goal and removes its waiting child orders from the order queue (UO-P §4.6).",
+      "wave": "W08"
+    },
     "cancelTask": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -580,6 +700,31 @@
       "origin": "client",
       "summary": "Demolishes an owned finished structure and refunds 50 % of its cost while keeping tiles Prepared (UO-Q-02, W02-09).",
       "wave": "W02"
+    },
+    "dev.autopilot": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "op": {
+            "enum": [
+              "next",
+              "step"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev command to inspect or step the HQ rule-engine decision (`autopilot next`).",
+      "wave": "W08"
     },
     "dev.cargoCapReset": {
       "args": {
@@ -794,6 +939,140 @@
       "origin": "client",
       "summary": "Dev console: fills a resource (or family / all T1 resources) up to its colony family storage cap, or sets it to `amount` when provided (clamped to cap, W02-30).",
       "wave": "W02"
+    },
+    "dev.goal": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "budgetBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "goalId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "add",
+              "cancel",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "radius": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resource": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sectorId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetColonyId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "targetNetEnergyPerS": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetRatePerMin": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "number"
+              },
+              "tier": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "resource": {
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "maximum": 100000,
+            "minimum": -10000,
+            "type": "number"
+          },
+          "targetNetEnergyPerS": {
+            "maximum": 100000,
+            "minimum": -10000,
+            "type": "number"
+          },
+          "targetRatePerMin": {
+            "exclusiveMinimum": 0,
+            "maximum": 100000,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev command to add, cancel, or clear HQ goals (`goal add <type>`).",
+      "wave": "W08"
     },
     "dev.grant": {
       "args": {
@@ -1051,6 +1330,88 @@
       "origin": "client",
       "summary": "Dev console: places a full resource deposit of `family` and `tier` on tile `(q, r)`, like a terraform find (`terraformFinds.deposit.richnessBp`).",
       "wave": "W02"
+    },
+    "dev.stage": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "colonyIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "op": {
+                "const": "set",
+                "type": "string"
+              },
+              "stage": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "op",
+              "stage"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "colonyIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "op": {
+                "const": "skip-dwell",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "colonyIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "op": {
+                "const": "trigger",
+                "type": "string"
+              },
+              "override": {
+                "enum": [
+                  "fauna",
+                  "rival",
+                  "resource",
+                  "power",
+                  "storage"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "override"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev command to set colony stage (`set`), skip stage dwell timer (`skip-dwell`), or trigger a safety override (`trigger`).",
+      "wave": "W08"
     },
     "dev.teleport": {
       "args": {
@@ -1583,6 +1944,187 @@
       "summary": "Queues construction of a structure at (q, r) and auto-links any missing site preparation ops (UO-TF-03).",
       "wave": "W01"
     },
+    "queueGoal": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "budgetBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "radius": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resource": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sectorId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetColonyId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "targetNetEnergyPerS": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetRatePerMin": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "number"
+              },
+              "tier": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "resource": {
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "maximum": 100000,
+            "minimum": -10000,
+            "type": "number"
+          },
+          "targetNetEnergyPerS": {
+            "maximum": 100000,
+            "minimum": -10000,
+            "type": "number"
+          },
+          "targetRatePerMin": {
+            "exclusiveMinimum": 0,
+            "maximum": 100000,
+            "type": "number"
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Queues an HQ goal onto the colony goal queue (subject to HQ tier limit 2 / 3 / 5, UO-P §4.6).",
+      "wave": "W08"
+    },
+    "reorderGoal": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "top",
+                  "bottom"
+                ],
+                "type": "string"
+              },
+              "goalId": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "toIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "goalId",
+              "toIndex"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "top",
+                  "bottom"
+                ],
+                "type": "string"
+              },
+              "goalId": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "goalId",
+              "direction"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Reorders a queued HQ goal within the colony goal queue (UO-P §4.6).",
+      "wave": "W08"
+    },
     "reorderTask": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1705,6 +2247,87 @@
       "summary": "Configures the authoritative planetary solar time of day (0..24h), day length in real hours, and time scale multiplier.",
       "wave": "W00"
     },
+    "setPriorities": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "defense": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "economy": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "expansion": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "power": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "terraform": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "priorities": {
+                "additionalProperties": false,
+                "properties": {
+                  "defense": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "economy": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expansion": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "power": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "terraform": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "priorities"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Sets the 5 canonical colony priority sliders (economy, expansion, defense, power, terraform; 0..100 step 10, SIM-R-02).",
+      "wave": "W08"
+    },
     "stopUnit": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1778,6 +2401,11 @@
           },
           "slotIndex": {
             "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "unlockStage": {
+            "maximum": 10,
             "minimum": 0,
             "type": "integer"
           }
@@ -2409,6 +3037,126 @@
       "summary": "Emitted when a colony remains in brownout for >= 30 s continuously (SIM §9, W02-06, W02-17).",
       "wave": "W02"
     },
+    "goalDone": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "goalId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "goalId",
+          "goal"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when an HQ goal reaches completion (UO-P §4.6).",
+      "wave": "W08"
+    },
+    "goalProgress": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "detail": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "goalId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "progress": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "active",
+              "done",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "stepsCompleted": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stepsTotal": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "goalId",
+          "goal",
+          "status",
+          "progress"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when an active HQ goal advances its completion progress (UO-P §4.6).",
+      "wave": "W08"
+    },
     "groundRevealed": {
       "audience": "player",
       "data": {
@@ -2867,6 +3615,257 @@
       "severity": "info",
       "summary": "Emitted when a completed terraform `work` job spawns a new resource deposit on its hex (1 % roll, `TERRAFORM_RESOURCE_SPAWN`; tier in the `depositTier` tile layer).",
       "wave": "W02"
+    },
+    "stageReached": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "buildings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "orders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "override": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "previousStage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "teaches": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "stage"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a colony reaches a new progression stage after trigger and dwell (or safety override, UO-P §6.2–§6.3).",
+      "wave": "W08"
+    },
+    "stageUnlocked": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "buildings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "orders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "previousUnlockStage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "unlockStage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "unlockStage"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a colony or player unlockStage advances, unlocking new buildable structures, units, and orders (UO-LC-02).",
+      "wave": "W08"
+    },
+    "suggestionOffered": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "goal",
+              "order"
+            ],
+            "type": "string"
+          },
+          "lane": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "need": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "radius": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resource": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sectorId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetColonyId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "targetNetEnergyPerS": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetRatePerMin": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "number"
+              },
+              "tier": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "reason": {
+            "maxLength": 160,
+            "type": "string"
+          },
+          "stage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "suggestionId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 96,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "suggestionId",
+          "stage"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when the stage tutorial or rule engine offers a suggestion instead of auto-queuing (UO-LC-04 / UO-LC-05).",
+      "wave": "W08"
     },
     "tilePrepared": {
       "audience": "player",
@@ -3562,6 +4561,8 @@
                 "planet_full",
                 "cannot_dismantle_hq",
                 "unknown_task",
+                "goal_limit",
+                "unknown_goal",
                 "insufficient_stock",
                 "insufficient_cargo",
                 "storage_full",
@@ -3574,6 +4575,10 @@
               "type": "string"
             },
             "id": {
+              "type": "string"
+            },
+            "unlocksAt": {
+              "maxLength": 16,
               "type": "string"
             }
           },

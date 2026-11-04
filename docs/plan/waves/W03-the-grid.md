@@ -120,3 +120,9 @@ Turn the single-generator colony from W02 into a real **power grid with workers 
 - With `TA_WAVES=..02`, no W03 building, lane, overlay or command exists, and W02's demo still passes. The e2e boots its app with `TA_WAVES=..03` (`npm run e2e -- --waves ..03`; not with `E2E_REUSE=1` or `--host local`, BE-32). The W02 pieces that still show under `?waves=..01` (dock, reworked TERRAFORM tool, REPAIR; FF-51) are not W03's to hide, and its e2e must not assert them hidden.
 - Tag `wave-03` is created.
 - Every row of "Features covered" is checked against its issue.
+
+## W08 follow-up: executable progression and priorities
+
+Complete the S2 grid/storage/night-power lesson and connect Secure Power to real night generators. Unblock Grow Economy storage expansion.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

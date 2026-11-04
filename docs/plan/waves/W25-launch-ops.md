@@ -115,6 +115,12 @@ Take the hosts W26 already serves and add monitoring, backups, a rollback deploy
 - The hosted demo is live. The video, X post and submission form are done before the deadline.
 - Tag `wave-25` is created.
 
+## W08 follow-up: executable progression and priorities
+
+Gate release on the complete available tutorial chain and priority-policy regressions.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
 ## W12 progression integration gate (revised)
 
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Monitor pending age, attempt count, lease expiry and errors; document replay and recovery without direct counter edits.

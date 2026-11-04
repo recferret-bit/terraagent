@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   applyContactFake,
   compileData,
+  checkItemUnlockStage,
   createRegistryPipeline,
   createState,
   ENTITY_KIND,
@@ -200,5 +201,21 @@ describe('W10-03: Trade Hub contact.fake, guildVisit, and Stage 5 unlock', () =>
       guildVisit: false,
       tradeHubAtS2: false,
     });
+  });
+});
+
+
+describe('W08 / W10 merged unlock rules', () => {
+  it('uses the W10 contact rule instead of the W08 S4 preview for Trade Hub commands', () => {
+    const state = makeTestPlanet();
+    const flags = new Set([...W10_FLAGS, 'W08']);
+    const data = compileData(flags);
+    expect(checkItemUnlockStage(state, 0, 'tradeHub', flags, data).ok).toBe(false);
+    state.colonies[0].stage = 2;
+    expect(checkItemUnlockStage(state, 0, 'tradeHub', flags, data).ok).toBe(true);
+    state.colonies[0].tradeHubAtS2 = false;
+    expect(checkItemUnlockStage(state, 0, 'tradeHub', flags, data).ok).toBe(false);
+    state.colonies[0].neighborContact = true;
+    expect(checkItemUnlockStage(state, 0, 'tradeHub', flags, data).ok).toBe(true);
   });
 });

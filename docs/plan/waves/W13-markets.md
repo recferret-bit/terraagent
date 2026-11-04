@@ -115,6 +115,12 @@ Every Trade Hub is a **market stall** whose owner sets a fee (0–3 %). Players 
 - The Intents contract suite passes on the mock. No restart ever executes a batch twice.
 - Tag `wave-13` created.
 
+## W08 follow-up: executable progression and priorities
+
+Register Negotiate Supply execution; economy priority affects supply/trade proposals under explicit spending bounds.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
 ## W12 progression integration gate (revised)
 
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Publish facts only for settled market trades and port throughput, with trade/settlement IDs.
