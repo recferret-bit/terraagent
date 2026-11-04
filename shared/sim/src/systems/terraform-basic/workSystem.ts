@@ -102,7 +102,7 @@ function completeGroundWork(state: PlanetState, job: WorkJobRecord, ctx: StepCon
 
   const colony = ensureColony(state, job.colonyId, ctx.tick);
   for (const [k, v] of Object.entries(job.yields) as [ResourceKey, number][]) {
-    if (v && v > 0) creditResource(colony, k, v, ctx.tick);
+    if (v && v > 0) creditResource(colony, k, v, ctx.tick, { reason: 'terraform.yield' });
   }
   const at = { count: 1, q: job.q, r: job.r };
   if (job.terrainKey === 'forest' || job.terrainKey === 'rock') {

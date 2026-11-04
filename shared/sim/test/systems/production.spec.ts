@@ -14,6 +14,7 @@ import {
   setTileDeposit,
   step,
 } from '../../src';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W02-08 Metals Extractor T1 production & deposit coverage', () => {
   it('place on non-deposit -> site_blocked (no deposit); place on metals deposit -> +1.0 * richness/s; fill to cap -> halts', () => {
@@ -45,15 +46,15 @@ describe('W02-08 Metals Extractor T1 production & deposit coverage', () => {
     // Advance 5 ticks (1 second at 5 TPS) -> produces 1.0 * 1.15 = 1.15 metals.t1
     step(state, [], 5, pipeline);
     const colony = ensureColonyLedger(state.colonies[0]);
-    expect(colony.stock['metals.t1']).toBeCloseTo(1.15, 5);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(1.15, 5);
     expect(colony.production.incomePerS['metals.t1']).toBeCloseTo(1.15, 4);
 
     // 3. Fill to cap (500) -> extractor halts (ENTITY_STATE.offlineCapped) and produces 0 additional stock
     creditResource(colony, 'metals.t1', 500, state.meta.tick);
-    expect(colony.stock['metals.t1']).toBe(500);
+    expect(colony.stock['metals.t1']).toBe(500); // whole units at the cap (a residual under 1 may ride on top)
 
     step(state, [], 5, pipeline);
-    expect(colony.stock['metals.t1']).toBe(500);
+    expect(colony.stock['metals.t1']).toBe(500); // whole units at the cap (a residual under 1 may ride on top)
     expect(state.entities.cols.state[0]).toBe(ENTITY_STATE.offlineCapped);
     expect(colony.production.incomePerS['metals.t1']).toBe(0);
   });
