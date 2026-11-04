@@ -5,7 +5,7 @@ import type { PlanetState } from '../../kernel/state';
 import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
-import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge } from '../factories-hub';
+import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge, produceTerraformerAtHubEdge } from '../factories-hub';
 import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
 import type { QueueEntry } from './types';
@@ -113,6 +113,8 @@ function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: 
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
   if (task?.unit === 'builder') {
     produceBuilderAtHubEdge(state, colIdx, ctx);
+  } else if (task?.unit === 'terraformer') {
+    produceTerraformerAtHubEdge(state, colIdx, ctx);
   } else {
     produceHarvesterAtHubEdge(state, colIdx, ctx);
   }

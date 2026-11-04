@@ -226,11 +226,19 @@ export function buildUnitsCatalog(
   const colonyStage = !fs.has('W08') && isLiveGameView ? undefined : resolveColonyUnlockStage(view);
   const candidateRows: Record<string, unknown>[] = [harvesterRow as Record<string, unknown>];
   if (colonyStage !== undefined) {
-    candidateRows.push(...STAGE_UNIT_ROWS.filter((row) => !(fs.has('W03') && row.unit === 'builder')));
+    candidateRows.push(
+      ...STAGE_UNIT_ROWS.filter(
+        (row) => !(fs.has('W03') && row.unit === 'builder') && !(fs.has('W05') && row.unit === 'terraformer'),
+      ),
+    );
   }
 
   const builderRow = fs.has('W03') ? data.tables['grid']?.['builder'] : undefined;
   if (builderRow) candidateRows.push({ ...builderRow, unit: 'builder' });
+  const terraformerRow = fs.has('W05')
+    ? (data.tables['terraform']?.['terraformer'] ?? unitsTable['terraformer'])
+    : undefined;
+  if (terraformerRow) candidateRows.push({ ...terraformerRow, unit: 'terraformer' });
   const cards: UnitCardModel[] = [];
   for (const row of candidateRows) {
     const itemStage = resolveUnitUnlockStage(row);

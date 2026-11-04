@@ -1,4 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
+import { ENTITY_KIND } from '../../ecs/columns';
 import { commandColony } from '../command';
 import { defineCommandHandler } from '../../kernel/commands';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -187,6 +188,24 @@ function tryStartQueueEntry(
   }
   entry.totalCost ??= { ...entry.cost };
   entry.spentCost ??= {};
+  if (entry.lane === 'terraform' && entry.workerEntityId === undefined) {
+    const busy = new Set(
+      allEntries
+        .filter((e) => e.colonyIndex === entry.colonyIndex && e.lane === 'terraform' && e.state === 'in_progress' && e.workerEntityId !== undefined)
+        .map((e) => e.workerEntityId!),
+    );
+    const { count, cols } = state.entities;
+    for (const targetKind of [ENTITY_KIND.terraformer, ENTITY_KIND.hq]) {
+      for (let r = 0; r < count; r++) {
+        if (cols.owner[r] === entry.colonyIndex && cols.hp[r] > 0 && cols.kind[r] === targetKind && !busy.has(cols.id[r])) {
+          entry.workerEntityId = cols.id[r];
+          if (cols.workRate[r] > 0) entry.workRate = cols.workRate[r];
+          break;
+        }
+      }
+      if (entry.workerEntityId !== undefined) break;
+    }
+  }
   entry.state = 'in_progress';
   entry.waitReason = undefined;
   entry.waitDetail = undefined;

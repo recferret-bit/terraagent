@@ -110,7 +110,14 @@ export function selectWorkerForDispatch(
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
     const kind = cols.kind[row];
-    if (kind !== ENTITY_KIND.hq && kind !== ENTITY_KIND.builder && kind !== ENTITY_KIND.harvester) continue;
+    if (
+      kind !== ENTITY_KIND.hq &&
+      kind !== ENTITY_KIND.builder &&
+      kind !== ENTITY_KIND.harvester &&
+      kind !== ENTITY_KIND.terraformer
+    ) {
+      continue;
+    }
     if (hasActiveWorkJobForWorker(state, cols.id[row])) continue; // on a `work` job / terraform chain (never pre-empted)
     const tier = cols.tier[row] || 1;
     if (!isWorkerEligibleForJob(kind, tier, job)) continue;

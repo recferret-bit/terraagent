@@ -18,6 +18,7 @@ const ARCHETYPE_BY_KIND: Readonly<Record<number, string>> = {
   [ENTITY_KIND.petroleumWell]: 'building.mine',
   [ENTITY_KIND.harvester]: 'robot.miner',
   [ENTITY_KIND.builder]: 'robot.builder',
+  [ENTITY_KIND.terraformer]: 'robot.builder',
 };
 
 const CONSTRUCTIBLE_KINDS: ReadonlySet<number> = new Set([
@@ -69,7 +70,13 @@ export function isConstructibleBuilding(kind: number): boolean {
 }
 
 export function isWorkerUnitKind(kind: number): boolean {
-  return kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder || kind === ENTITY_KIND.devProbe;
+  return (
+    kind === ENTITY_KIND.hq ||
+    kind === ENTITY_KIND.harvester ||
+    kind === ENTITY_KIND.builder ||
+    kind === ENTITY_KIND.terraformer ||
+    kind === ENTITY_KIND.devProbe
+  );
 }
 
 export function is2x2BuildingKind(kind: number): boolean {
