@@ -5,6 +5,7 @@ import { marketCancelOrderHandler, marketSetHubFeeHandler } from './player-comma
 
 export * from './market-state';
 export * from './colony';
+export * from './market-board';
 export * from './place-order';
 export * from './player-commands';
 export * from './module-commands';
