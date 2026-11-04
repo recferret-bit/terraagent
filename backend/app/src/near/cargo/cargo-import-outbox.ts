@@ -6,7 +6,7 @@ import {
   type OnModuleDestroy,
   type OnModuleInit,
 } from '@nestjs/common';
-import { cargoImportOpId, type ResourceKey } from '@terra/contracts';
+import { cargoImportOpId, marketWithdrawOpId, MARKET_TOKENS, type ResourceKey } from '@terra/contracts';
 import { withTransaction, type PrismaClient } from '@terra/db';
 import type { PlanetEventV1 } from '../../bus/channels.js';
 import { EventBus } from '../../bus/event-bus.js';
@@ -21,6 +21,7 @@ import {
   toCargoBaseUnits,
 } from '../application/ports/cargo-token.port.js';
 import { resolveColonyAccountId } from './cargo-export-outbox.js';
+import { FreeVerifierService } from './free-verifier.service.js';
 
 export interface CargoImportResult {
   readonly opId: string;
@@ -98,6 +99,7 @@ export class CargoImportOutboxService implements OnModuleInit, OnModuleDestroy {
     @Inject(APP_ENV) private readonly env: AppEnv,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Optional() @Inject(NEAR_ADAPTER_CARGO) private readonly cargo?: CargoTokenPort,
+    @Optional() private readonly freeVerifier?: FreeVerifierService,
   ) {}
 
   onModuleInit(): void {
@@ -143,8 +145,12 @@ export class CargoImportOutboxService implements OnModuleInit, OnModuleDestroy {
       const balance = this.cargo
         ? await this.cargo.balanceOf({ accountId, tokenId: parsed.resource })
         : '0';
-      if (BigInt(balance) < BigInt(parsed.baseAmount)) {
-        return this.rejectInsufficientCargo(prisma, parsed, accountId);
+      const shortfall = BigInt(parsed.baseAmount) - BigInt(balance);
+      if (shortfall > 0n) {
+        // W13-16: top up from the free verifier balance (market proceeds), never from funds reserved by open orders.
+        const free = this.freeVerifier ? await this.freeVerifier.freeChain(accountId, parsed.resource) : 0n;
+        if (free < shortfall) return this.rejectInsufficientCargo(prisma, parsed, accountId);
+        return this.enqueueBurn(prisma, parsed, accountId, shortfall);
       }
     }
 
@@ -202,8 +208,22 @@ export class CargoImportOutboxService implements OnModuleInit, OnModuleDestroy {
     prisma: PrismaClient,
     parsed: ParsedCargoImportEvent,
     accountId: string,
+    withdrawShortfall = 0n,
   ): Promise<CargoImportResult> {
+    const withdrawOpId = marketWithdrawOpId(parsed.colonyId, parsed.importSeq);
     return withTransaction(prisma, async (tx) => {
+      if (withdrawShortfall > 0n) {
+        // Same transaction as the burn row; the burn declares `dependsOn` so the relay runs it after the withdraw is DONE.
+        await this.outbox.enqueue(
+          {
+            opId: withdrawOpId,
+            port: 'Intents',
+            method: 'withdraw',
+            payload: { accountId, tokenId: MARKET_TOKENS[parsed.resource].verifierId, amount: withdrawShortfall.toString(), to: accountId },
+          },
+          tx,
+        );
+      }
       await tx.cargoTx.upsert({
         where: { opId: parsed.opId },
         create: {
@@ -240,6 +260,7 @@ export class CargoImportOutboxService implements OnModuleInit, OnModuleDestroy {
             importSeq: parsed.importSeq,
             simRef: parsed.simRef,
             direction: 'IMPORT',
+            ...(withdrawShortfall > 0n ? { dependsOn: withdrawOpId } : {}),
           },
         },
         tx,

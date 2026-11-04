@@ -6,7 +6,7 @@ import { snapshot } from '@terra/sim';
 import { CoreException } from '../core/errors';
 import { FlagsService } from '../flags/flags.service';
 import { GamePlanets } from '../game/game-planets.service';
-import { hasLiveColony } from '../game/live-colony';
+import { hasLiveColony, liveColonyIndices } from '../game/live-colony';
 
 export interface CreatedScenario { readonly planetId: string; readonly scenario: string; readonly tick: number }
 
@@ -28,7 +28,7 @@ export class ScenariosService {
     const planetId = newId('pl');
     const { host, setupPostings } = createScenarioPlanet(def.id, { planetId, flags: this.flags.list, worldSalt: randomUUID() }) // hidden-ground secret (WE-07, D-38);
     const tick = host.tick;
-    if (hasLiveColony(host.state)) this.planets.markScenarioColonyPlanet(planetId); // dev sessions play colony 0 (BE-07)
+    if (hasLiveColony(host.state)) this.planets.markScenarioColonyPlanet(planetId, liveColonyIndices(host.state)); // dev sessions play colony 0 (BE-07)
     // the journal starts with the setup postings (e.g. the real `landing.cargo`)
     await this.planets.load(planetId, { snapshot: snapshot(host.state), genesis: true, setupPostings });
     return { planetId, scenario: def.id, tick };

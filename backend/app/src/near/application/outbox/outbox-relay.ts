@@ -32,6 +32,8 @@ export function backoffMs(attempts: number, cfg: Pick<OutboxRelayConfig, 'backof
   return Math.floor(d / 2 + random() * (d / 2));
 }
 
+const DEPENDENCY_POLL_MS = 500;
+
 /**
  * Polls the outbox and executes due rows against the ports. Crash safety: a claim has a lease; a relay that dies mid-call leaves the
  * row RUNNING, another relay reclaims it after `lockedUntil` and calls again with the same `opId`, which the idempotent adapter
@@ -76,6 +78,7 @@ export class OutboxRelay {
 
   private async process(row: ClaimedRow): Promise<void> {
     try {
+      if (await this.waitingFor(row)) return;
       const port = this.hooks.resolve(row.port) as Record<string, unknown>;
       const fn = port[row.method];
       if (typeof fn !== 'function') throw new Error(`port ${row.port} has no method ${row.method}`);
@@ -89,6 +92,20 @@ export class OutboxRelay {
     } catch (e) {
       await this.fail(row, e);
     }
+  }
+
+  /**
+   * Ordering: a row with `payload.dependsOn = <opId>` runs only after that row is DONE (e.g. a cargo burn after the market withdraw that funds it).
+   * Until then it is deferred without using an attempt; a DEAD dependency fails the row.
+   */
+  private async waitingFor(row: ClaimedRow): Promise<boolean> {
+    const dep = row.payload.dependsOn;
+    if (typeof dep !== 'string') return false;
+    const status = (await this.repo.find(dep))?.status;
+    if (status === 'DONE') return false;
+    if (status === 'DEAD' || status === undefined) throw new Error(`dependency ${dep} is ${status ?? 'missing'}`);
+    await this.repo.defer(row, DEPENDENCY_POLL_MS);
+    return true;
   }
 
   private async fail(row: ClaimedRow, e: unknown): Promise<void> {

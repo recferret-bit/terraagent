@@ -8,7 +8,7 @@ import { layerLogger } from '../../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../../core/tokens';
 import { HomeRepository } from '../../core/home/home.repository';
 import { GamePlanets, type LoadOptions } from '../game-planets.service';
-import { hasLiveColony } from '../live-colony';
+import { hasLiveColony, liveColonyIndices } from '../live-colony';
 import { PlanetLedgerService } from '../ledger/planet-ledger.service';
 import { persistenceEnabled } from '../../core/persistence';
 import { SnapshotScheduler } from './snapshot-scheduler';
@@ -196,8 +196,9 @@ export class SnapshotService implements BeforeApplicationShutdown {
       // A scenario planet (no colony rows: its colonies are the scenario's) stays playable as colony 0 by dev sessions.
       // A planet with colony rows is never marked: its colonies belong to their players (BE-07).
       const isDev = devPlanetTypeOf(id) !== null;
-      if (!isDev && hasLiveColony(verdict.state ?? restore(snap.raw)) && !(await this.homes?.listColoniesByPlanetId(id))?.length) {
-        this.planets.markScenarioColonyPlanet(id);
+      const restored = verdict.state ?? restore(snap.raw);
+      if (!isDev && hasLiveColony(restored) && !(await this.homes?.listColoniesByPlanetId(id))?.length) {
+        this.planets.markScenarioColonyPlanet(id, liveColonyIndices(restored));
       }
       const tick = await this.planets.load(id, { snapshot: snap.raw });
       this.log.info({ planetId: id, tick, savedAt: snap.savedAt }, `restored ${id} at tick ${tick}`);

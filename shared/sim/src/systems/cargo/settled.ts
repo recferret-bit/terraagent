@@ -5,6 +5,7 @@ import type { StepContext } from '../../kernel/context';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { ensureColonyLedger } from '../economy/ledger';
 import { ensureColonyCargoState, type ColonyCargoState } from './state';
+import { settleTransport } from './transport';
 
 export interface CargoSettledCommandArgs {
   colonyId?: string;
@@ -126,6 +127,7 @@ function handleExportSettled(
   }
 
   delete cargoState.pendingMint[args.ref];
+  settleTransport(state, ctx, colonyIndex, cargoState, args.ref, args.ok === true);
 
   if (args.ok === true) {
     cargoState.inOrbit[resource] = (cargoState.inOrbit[resource] ?? 0) + amount;
@@ -169,6 +171,7 @@ function handleImportSettled(
   }
 
   delete cargoState.pendingImport[args.ref];
+  settleTransport(state, ctx, colonyIndex, cargoState, args.ref, args.ok === true);
   const fam = RESOURCE_FAMILY_OF[resource];
   cargoState.reservedByFamily[fam] = Math.max(0, (cargoState.reservedByFamily[fam] ?? 0) - amount);
 

@@ -14,6 +14,8 @@ import { FlagsService } from '../../flags/flags.service';
 export interface ProfileScope { readonly planetType?: string; readonly planetId?: string }
 export interface ScopeLayer { readonly scope: string; readonly versionId: string; readonly contentHash: string }
 export interface ResolvedProfile extends CompiledProfile { readonly layers: readonly ScopeLayer[] }
+/** What the host loaded at boot: an active version (`loaded`), the bundled bootstrap tables (`bootstrap`), or nothing it can trust (`unavailable`). */
+export type ProfileLoadState = 'unknown' | 'loaded' | 'bootstrap' | 'unavailable';
 export interface MutationMeta { readonly actor: string; readonly requestId: string }
 
 /** Raised for failures a client can act on; mapped to 4xx with the structured errors in `details.errors`. */
@@ -35,6 +37,8 @@ export class EconomyProfileService {
   private readonly repo: EconomyProfileRepository;
   private readonly compiledCache = new Map<string, ResolvedProfile>();
   private readonly versionCache = new Map<string, ExportedVersion>();
+  private readonly versionCompiled = new Map<string, CompiledProfile>();
+  private state: ProfileLoadState = 'unknown';
 
   constructor(@Inject(PRISMA) private readonly prisma: PrismaClient, @Inject(APP_ENV) private readonly env: AppEnv, private readonly flags: FlagsService) {
     const reg = defaultParamRegistry();
@@ -141,19 +145,51 @@ export class EconomyProfileService {
     return resolved;
   }
 
-  /** The overrides for the sim thread pool at boot: `{}` without persistence or without an active global version. */
+  /**
+   * The overrides for the sim thread pool at boot: `{}` without persistence or without an active global version. A
+   * database failure keeps the bundled tables but marks the profile `unavailable`, so cash actions fail closed
+   * (`cashAvailable`) until a version loads; a missing version in production is `unavailable` as well (cold start).
+   */
   async bootOverrides(): Promise<CompiledProfile['overrides']> {
-    if (!persistenceEnabled(this.env as Parameters<typeof persistenceEnabled>[0])) return {};
+    if (!persistenceEnabled(this.env as Parameters<typeof persistenceEnabled>[0])) { this.state = 'bootstrap'; return {}; }
     try {
       const c = await this.compiledFor({});
-      return c.layers.length > 0 ? c.overrides : {};
+      if (c.layers.length > 0) { this.state = 'loaded'; return c.overrides; }
+      this.state = this.env.NODE_ENV === 'production' ? 'unavailable' : 'bootstrap';
+      return {};
     } catch (e) {
       if (e instanceof CoreException) throw e; // an active version that does not compile is a hard stop
-      // Database unreachable at cold start: boot on the bundled bootstrap tables, loudly. Cash actions must fail closed
-      // for a missing pinned version (W13-39); known limitation recorded in docs/questions-and-limitations.
-      this.log.error(`economy: active profile unavailable (${e instanceof Error ? e.message : String(e)}); booting on bootstrap data tables`);
+      this.state = 'unavailable';
+      this.log.error(`economy: active profile unavailable (${e instanceof Error ? e.message : String(e)}); booting on bootstrap data tables, cash actions fail closed`);
       return {};
     }
+  }
+
+  get loadState(): ProfileLoadState { return this.state; }
+  /** Cash actions (market commands) need a loadable pinned version; only `unavailable` blocks them. */
+  cashAvailable(): boolean { return this.state !== 'unavailable'; }
+  /** Called by the host bridge once an activation is applied or the database became reachable again. */
+  markLoaded(): void { this.state = 'loaded'; }
+
+  /** Compiled snapshot of one immutable version (cached per content hash and flags); throws `ECONOMY_INVALID` when it does not compile. */
+  async compileVersion(versionId: string): Promise<CompiledProfile> {
+    const v = await this.immutableVersion(versionId);
+    const key = `${this.flags.flags.spec}|${v.version.contentHash}`;
+    const hit = this.versionCompiled.get(key);
+    if (hit) return hit;
+    const r = tryCompileProfile(v.content, this.flags.list);
+    if (!r.ok) throw economyException(r.errors);
+    this.versionCompiled.set(key, r.compiled);
+    return r.compiled;
+  }
+
+  /** Operator decision: VALIDATED → APPROVED (activate role, audited, idempotent on `requestId`). */
+  async approve(profileId: string, version: number, meta: MutationMeta): Promise<{ replayed: boolean; version: ExportedVersion }> {
+    const cur = await this.get(profileId, version);
+    return this.mutate(meta, 'approve', async (tx) => {
+      const next = await this.repo.markApproved(cur.version.id, tx);
+      return { out: next, versionId: next.version.id, diff: { status: [cur.version.status, 'APPROVED'] } };
+    });
   }
 
   private async immutableVersion(versionId: string): Promise<ExportedVersion> {

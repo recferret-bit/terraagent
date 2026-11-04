@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { eventDef, marketDepositOpId, marketToken, isResourceToken, pairId, type MarketTokenKey, type RejectCode, type ResourceKey } from '@terra/contracts';
+import { eventDef, marketDepositOpId, type ActorKind, marketToken, isResourceToken, pairId, type MarketTokenKey, type RejectCode, type ResourceKey } from '@terra/contracts';
 import { withTransaction, type DbClient, type PrismaClient, type TransactionClient } from '@terra/db';
 import { EventBus } from '../../bus/event-bus.js';
 import type { PlanetEventOf } from '../../bus/channels.js';
@@ -32,6 +32,12 @@ export interface PlaceOrderResult {
 
 /** Deterministic order id of a sim ref on one planet (refs repeat across planets: every scenario planet has `col_0`). */
 export const orderIdOf = (planetId: string, ref: string): string => `mo_${createHash('sha256').update(`${planetId}\u0000${ref}`).digest('hex').slice(0, 40)}`;
+
+/** Options of `handle`: `fixture` orders (dev seed bots, W13-30) are labelled `actorKind` fixture and never answered to the sim. */
+export interface PlaceOptions {
+  readonly actorKind?: ActorKind;
+  readonly answerSim?: boolean;
+}
 
 /**
  * Acts on the sim's `marketOrderRequested` (W13-09): in one transaction it creates the order idempotently with the policy
@@ -71,14 +77,14 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     void this.handle(event).catch((err: unknown) => this.log.warn(`place order failed: ${err instanceof Error ? err.message : String(err)}`));
   }
 
-  async handle(event: Requested): Promise<PlaceOrderResult | null> {
+  async handle(event: Requested, opts: PlaceOptions = {}): Promise<PlaceOrderResult | null> {
     if (!databaseEnabled(this.env)) return null;
     const d = eventDef('marketOrderRequested').data.parse(event.data);
     const target: SimTarget = { planetId: event.planetId, colonyId: d.colonyId, colonyIndex: d.colonyIndex };
     const accountId = await resolveMarketAccountId(this.prisma, d.colonyId, d.playerId ?? null, event.planetId, d.colonyIndex);
-    const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId));
+    const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId, opts.actorKind));
     await this.books.sync(result.order.orderId);
-    this.answerSim(target, result);
+    if (opts.answerSim !== false) this.answerSim(target, result);
     if (result.created && !result.rejected) await this.matchAndHand(result.order.orderId);
     return result;
   }
@@ -105,7 +111,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  private async place(tx: TransactionClient, planetId: string, d: Requested['data'], accountId: string): Promise<PlaceOrderResult> {
+  private async place(tx: TransactionClient, planetId: string, d: Requested['data'], accountId: string, actorKind?: ActorKind): Promise<PlaceOrderResult> {
     const cfg = this.policy.current();
     await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`market-funds:${accountId}`}, 0))`;
     const claimed = (await tx.nearColonyAccount.findUnique({ where: { accountId }, select: { claimedAt: true } }))?.claimedAt != null;
@@ -117,6 +123,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
       amount: BigInt(d.amount), priceAmount: BigInt(d.price.amount), fillPolicy: claimed ? 'all_or_nothing' : 'partial',
       policyVersion: cfg.policyVersion, policyHash: cfg.policyHash, platformFeeBp: cfg.platformFeeBp, stallFeeBp: d.stallFeeBp,
       maxStallFeeBp: d.side === 'buy' ? maxStall : null, ttlS: d.ttlS, expiresAt: new Date(Date.now() + d.ttlS * 1000),
+      ...(actorKind ? { actorKind } : {}),
     }, tx);
     if (!created) return { order, created, depositChain: 0n };
 
