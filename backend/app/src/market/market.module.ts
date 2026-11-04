@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { MarketBooks } from './book/market-books.js';
+import { PriceBoardService } from './board/price-board.service.js';
 import { MarketFaucetCommand } from './dev/market-faucet.command.js';
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
+import { MarketAccountsBootstrap } from './dev/market-accounts.bootstrap.js';
 import { MarketFaucetService } from './dev/market-faucet.service.js';
 import { MarketOrderRepository } from './book/market-order.repository.js';
 import { MarketMatcher } from './matching/market-matcher.service.js';
@@ -17,8 +19,10 @@ import { PlaceOrderService } from './orders/place-order.service.js';
 import { GameModule } from '../game/game.module.js';
 import { IntentTradeRepository } from './settlement/intent-trade.repository.js';
 import { SettlementFillsHook } from './settlement/settlement-fills.hook.js';
+import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
 import { NearModule } from '../near/near.module.js';
+import { MarketProgressionProducer } from './progression/market-progression.producer.js';
 
 /**
  * W13 F2 markets (mock settlement): order book, matcher, batch builder, settlement, cancellation/expiry, price board,
@@ -42,9 +46,13 @@ import { NearModule } from '../near/near.module.js';
     IntentTradeRepository,
     SettlementFillsHook,
     TradeSettlement,
+    PriceBoardService,
+    TradeRecovery,
+    MarketAccountsBootstrap,
     { provide: MarketFillsHook, useExisting: SettlementFillsHook },
     MarketFaucetService,
     MarketFaucetCommand,
+    MarketProgressionProducer,
   ],
   controllers: [
     MarketFaucetController,
@@ -64,6 +72,8 @@ import { NearModule } from '../near/near.module.js';
     MarketFillsHook,
     IntentTradeRepository,
     TradeSettlement,
+    PriceBoardService,
+    TradeRecovery,
   ],
 })
 export class MarketModule {}

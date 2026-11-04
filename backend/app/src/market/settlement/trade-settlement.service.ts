@@ -24,6 +24,7 @@ declare module '../../bus/channels.js' {
 }
 
 const TRADE_OP = /^trade:/;
+const NOTIFIED = 'notified';
 
 /**
  * Finishes a trade after its `Intents.execute` outbox row is DONE (W13-13): marks `chain.intent_trade` FINAL exactly once
@@ -67,12 +68,22 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
   /** FINAL once; the sims and sockets are told only by the call that made the transition. Returns whether it did. */
   async finalize(plan: TradePlan, txHash: string | null): Promise<boolean> {
     if (!(await this.trades.finalize(plan.tradeId, txHash))) return false;
-    for (const party of plan.parties) this.settleSim(plan, party, txHash);
-    this.pushTrade(plan, txHash);
+    await this.notify(plan, txHash);
     return true;
   }
 
-  /** Finalizes PENDING trades whose execute row is DONE (the process died between the two writes). */
+  /** Tells the sims and the sockets, then records that it was done (`notified` in the outbox payload) so a restart does not repeat or skip it. */
+  async notify(plan: TradePlan, txHash: string | null): Promise<void> {
+    for (const party of plan.parties) this.settleSim(plan, party, txHash);
+    this.pushTrade(plan, txHash);
+    await this.outbox.flagPayload(marketTradeOpId(plan.tradeId), NOTIFIED);
+  }
+
+  /**
+   * Boot recovery: (1) finalizes open trades whose execute row is DONE (died between the relay's DONE and FINAL); (2) re-sends the
+   * notifications of FINAL trades whose `notified` flag is missing (died between FINAL and the sends; the sim dedupes by trade
+   * id and role, so a repeat is harmless). Returns how many trades it completed.
+   */
   async recover(): Promise<number> {
     let n = 0;
     for (const t of await this.trades.inFlight()) {
@@ -80,6 +91,11 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
       if (row?.status !== 'DONE') continue;
       const plan = (row.payload as { trade?: TradePlan }).trade;
       if (plan && (await this.finalize(plan, row.txHash))) n++;
+    }
+    for (const row of await this.outbox.doneWithoutFlag('trade:', NOTIFIED)) {
+      const plan = (row.payload as { trade?: TradePlan }).trade;
+      const trade = plan ? await this.trades.find(plan.tradeId) : null;
+      if (plan && trade?.state === 'FINAL') { await this.notify(plan, trade.txHash); n++; }
     }
     return n;
   }

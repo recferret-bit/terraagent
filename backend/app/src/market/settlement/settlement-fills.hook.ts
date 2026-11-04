@@ -13,7 +13,7 @@ import { MarketFillsHook } from '../orders/market-fills.hook.js';
 import { MarketPolicyProvider } from '../orders/market-policy.provider.js';
 import { buildFillBatch } from './batch-builder.js';
 import { IntentTradeRepository } from './intent-trade.repository.js';
-import { planParties, type TradePlan } from './trade-plan.js';
+import { planParties, rollbackOf, type TradePlan } from './trade-plan.js';
 import { signTradeLegs, TRADE_INTENT_TTL_MS } from './trade-intents.js';
 import { legsToJson } from '@terra/sim/systems/trade/market-batch';
 
@@ -55,10 +55,11 @@ export class SettlementFillsHook extends MarketFillsHook {
       const buyer = cur.get(fill.buyerOrderId)!;
       const seller = cur.get(fill.sellerOrderId)!;
       const maker = cur.get(fill.makerOrderId)!;
+      const rollback = [rollbackOf(buyer, batch.buyer), rollbackOf(seller, batch.seller)];
       cur.set(buyer.orderId, await this.persist(buyer, batch.buyer, tx));
       cur.set(seller.orderId, await this.persist(seller, batch.seller, tx));
       touched.add(buyer.orderId).add(seller.orderId);
-      await this.enqueue(tx, batch, buyer, seller, maker);
+      await this.enqueue(tx, batch, buyer, seller, maker, rollback);
     }
     return [...touched];
   }
@@ -69,7 +70,7 @@ export class SettlementFillsHook extends MarketFillsHook {
     return this.orders.updateReservation(o.orderId, { reservedPrincipal: u.reservedPrincipal, reservedFees: u.reservedFees, state }, tx);
   }
 
-  private async enqueue(tx: TransactionClient, batch: TradeBatch, buyer: MarketOrderRecord, seller: MarketOrderRecord, maker: MarketOrderRecord): Promise<void> {
+  private async enqueue(tx: TransactionClient, batch: TradeBatch, buyer: MarketOrderRecord, seller: MarketOrderRecord, maker: MarketOrderRecord, rollback: TradePlan['rollback']): Promise<void> {
     const cfg = this.policy.current();
     const organic = isPlayerPair(buyer, seller);
     const pair = `${batch.base}/${batch.quote}`;
@@ -87,7 +88,7 @@ export class SettlementFillsHook extends MarketFillsHook {
     const plan: TradePlan = {
       tradeId: batch.tradeId, planetId: buyer.planetId, base: batch.base, quote: batch.quote, qty: Number(batch.qty), notional: batch.notional.toString(),
       platformFee: batch.platformFee.toString(), stallFee: batch.stallFee.toString(), stallFeeBp: batch.stallFeeBp, makerSide: maker.side, pair, organic,
-      parties: planParties(batch, buyer, seller, maker),
+      parties: planParties(batch, buyer, seller, maker), rollback,
     };
     const intents = await signTradeLegs(this.intents, batch.tradeId, batch.legs, Date.now() + TRADE_INTENT_TTL_MS);
     await this.outbox.enqueue({ opId: marketTradeOpId(batch.tradeId), port: 'Intents', method: 'execute', payload: { intents, trade: plan } }, tx);

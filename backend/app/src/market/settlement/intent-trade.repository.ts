@@ -3,6 +3,9 @@ import { RepositoryBase, type DbClient, type PrismaClient } from '@terra/db';
 import { PRISMA } from '../../db/db.module.js';
 import { toDecimalInput } from '../book/decimal.js';
 
+/** Trades whose settlement has not reached a final answer; their legs still count as debits and their reservations stay held. */
+export const OPEN_TRADE_STATES = ['PENDING', 'SUBMITTED', 'UNKNOWN'];
+
 type TradeRow = NonNullable<Awaited<ReturnType<PrismaClient['intentTrade']['findUnique']>>>;
 
 export interface NewIntentTrade {
@@ -63,10 +66,10 @@ export class IntentTradeRepository extends RepositoryBase {
     return this.db(tx).intentTrade.findUnique({ where: { tradeId } });
   }
 
-  /** `PENDING`/`SUBMITTED` -> `FINAL` once; returns false when it already was FINAL (a replay). */
+  /** `PENDING`/`SUBMITTED`/`UNKNOWN` -> `FINAL` once (a FAILED trade never becomes FINAL); returns false when it already was FINAL (a replay). */
   async finalize(tradeId: string, txHash: string | null, tx?: DbClient): Promise<boolean> {
     const r = await this.db(tx).intentTrade.updateMany({
-      where: { tradeId, state: { not: 'FINAL' } },
+      where: { tradeId, state: { in: OPEN_TRADE_STATES } },
       data: { state: 'FINAL', txHash, settledAt: new Date(), lastError: null },
     });
     return r.count === 1;
@@ -74,6 +77,22 @@ export class IntentTradeRepository extends RepositoryBase {
 
   /** Trades whose settlement has not finished (their legs are still to be debited at the verifier). */
   inFlight(tx?: DbClient): Promise<TradeRow[]> {
-    return this.db(tx).intentTrade.findMany({ where: { state: { in: ['PENDING', 'SUBMITTED'] } }, orderBy: { id: 'asc' } });
+    return this.db(tx).intentTrade.findMany({ where: { state: { in: OPEN_TRADE_STATES } }, orderBy: { id: 'asc' } });
+  }
+
+  /** Open -> `FAILED` once (the chain definitely did not apply the batch). */
+  async fail(tradeId: string, error: string, tx?: DbClient): Promise<boolean> {
+    const r = await this.db(tx).intentTrade.updateMany({ where: { tradeId, state: { in: OPEN_TRADE_STATES } }, data: { state: 'FAILED', lastError: error.slice(0, 400) } });
+    return r.count === 1;
+  }
+
+  /** `PENDING`/`SUBMITTED` -> `UNKNOWN` (outcome ambiguous: quarantined, nothing is released). */
+  async markUnknown(tradeId: string, error: string, tx?: DbClient): Promise<boolean> {
+    const r = await this.db(tx).intentTrade.updateMany({ where: { tradeId, state: { in: ['PENDING', 'SUBMITTED'] } }, data: { state: 'UNKNOWN', lastError: error.slice(0, 400) } });
+    return r.count === 1;
+  }
+
+  listUnknown(): Promise<TradeRow[]> {
+    return this.prisma.intentTrade.findMany({ where: { state: 'UNKNOWN' }, orderBy: { id: 'asc' } });
   }
 }
