@@ -48,6 +48,7 @@ export * from './systems/time';
 export * from './systems/harvest';
 export * from './systems/economy/ledger';
 export {
+  BUILDING_KIND_BY_NAME,
   buildingKindName,
   cancelBuildingConstruction,
   constructionSystem,
@@ -55,6 +56,7 @@ export {
   demolishHandler,
   getBuildingJobs,
   getFootprintTileIndices,
+  isEconomyBuildingKind,
   startBuildingConstruction,
   type BuildingJobRecord,
   type StartConstructionOptions,

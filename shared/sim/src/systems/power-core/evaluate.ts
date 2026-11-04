@@ -356,6 +356,9 @@ export function calculateUnitDemand(
   const idleMult = Number(dayCycleRow.unitIdleDrainMult ?? 0.5);
   const harvDrain = Number(resolvePowerRow(data, 'unitsWorkersBasic', 'harvester').powerDrainPerS ?? 1.5);
   const bldDrain = Number(resolvePowerRow(data, 'grid', 'builder').powerDrainPerS ?? 2.0);
+  const reconRow = resolvePowerRow(data, 'combatUnits', 'recon');
+  const reconActive = Number(reconRow.powerActive ?? reconRow.powerDrainPerS ?? 2.0);
+  const reconIdle = Number(reconRow.powerIdle ?? reconActive * idleMult);
   let unitDemand = 0;
   const cols = state.entities.cols;
   for (let r = 0; r < state.entities.count; r++) {
@@ -364,6 +367,11 @@ export function calculateUnitDemand(
     const idle = st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout;
     if (k === ENTITY_KIND.harvester) unitDemand += idle ? harvDrain * idleMult : harvDrain;
     else if (k === ENTITY_KIND.builder) unitDemand += idle ? bldDrain * idleMult : bldDrain;
+    else if (k === ENTITY_KIND.recon) {
+      if (st === ENTITY_STATE.inert || st === ENTITY_STATE.descending) continue;
+      const active = st === ENTITY_STATE.moving || st === ENTITY_STATE.working;
+      unitDemand += active ? reconActive : reconIdle;
+    }
   }
   return unitDemand;
 }

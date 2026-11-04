@@ -5,7 +5,7 @@ import { defineSimModule } from '../define';
 import { computeColonySupply, type ColonySupply, type SupplyReadOpts } from './compute';
 
 export * from './compute';
-export { supplySources, unitSupplyOfKind, unitSupplyOfName, type SupplyProvider, type SupplySources } from './sources';
+export { supplySources, UNIT_SUPPLY_TABLE_PATHS, unitSupplyOfKind, unitSupplyOfName, type SupplyProvider, type SupplySources } from './sources';
 
 /**
  * Unit supply (W02 production, owner feedback W03): the single source of truth for `colony.supply`
@@ -14,7 +14,7 @@ export { supplySources, unitSupplyOfKind, unitSupplyOfName, type SupplyProvider,
  */
 
 function sameSupply(a: ColonySupply | undefined, b: ColonySupply): boolean {
-  if (!a || a.used !== b.used || a.units !== b.units || a.reserved !== b.reserved || a.cap !== b.cap || a.max !== b.max) return false;
+  if (!a || a.used !== b.used || a.units !== b.units || a.reserved !== b.reserved || a.cap !== b.cap || a.max !== b.max || Boolean(a.overCap) !== Boolean(b.overCap)) return false;
   if (!Array.isArray(a.sources) || a.sources.length !== b.sources.length) return false;
   return a.sources.every((s, i) => s.building === b.sources[i].building && s.count === b.sources[i].count && s.total === b.sources[i].total);
 }
