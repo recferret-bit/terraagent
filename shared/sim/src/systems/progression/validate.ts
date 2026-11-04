@@ -22,6 +22,13 @@ const ITEM_STAGE_ALIASES: Readonly<Record<string, string>> = {
   trade_hub: 'tradeHub',
   combat_engineer: 'combatEngineer',
   recon: 'scout',
+  autocannon: 'turret',
+  autocannon_turret: 'turret',
+  laserTower: 'pulseTurret',
+  laser_tower: 'pulseTurret',
+  droneControlArray: 'roboticsFactory',
+  drone_control_array: 'roboticsFactory',
+  droneArray: 'roboticsFactory',
 };
 
 function snakeToCamel(id: string): string {
