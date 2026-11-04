@@ -35,6 +35,7 @@ import { extractPodDescentStatus } from './podStatus';
 import { PilotBridge } from './pilotBridge';
 import { createSessionHud } from './sessionHud';
 import { createSessionTarget, joinParam, scenarioParam } from './sessionTarget';
+import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
 import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
 import {
   applyChangedTileList, applyTerrainTileChanges, bindLocalSaveListeners, createSafeViewport, isEscapeBlockedByHudOverlay,
@@ -170,12 +171,10 @@ export class OnlineSession {
   }
 
   private bindTransportListeners(): void {
-    this.cleanups.push(this.transport.onMessage((m) => this.onHostMessage(m)));
+    this.cleanups.push(this.transport.onMessage((m) => this.onHostMessage(m)), bindStoreCombatEvents(this.store, this.entities.combatSync, () => this.terrain));
     this.dayNightSync = bindOnlineDayNightSync({
-      store: this.store,
-      commandBus: this.commandBus,
+      store: this.store, commandBus: this.commandBus, warp: () => this.warp,
       hasColony: () => Boolean(this.colonyId && this.store.latest?.colonies[this.colonyIndex]?.status !== 'eliminated'),
-      warp: () => this.warp,
     });
     this.cleanups.push(() => this.dayNightSync?.dispose());
   }
@@ -184,6 +183,7 @@ export class OnlineSession {
   private onHostMessage(m: ServerMessage): void {
     const k = warpOfMessage(m);
     if (k !== undefined) this.setWarp(k);
+    ingestHostMessageCombatEvents(m, this.entities.combatSync, this.terrain);
     if (m.t === 'welcome') {
       this.planetId = m.d.planet.id;
       if (m.d.colonyId && !this.colonyId) this.colonyId = m.d.colonyId;
@@ -216,10 +216,7 @@ export class OnlineSession {
         try { applyPlanetLook(this.viewport, look); } catch { /* Ignore in headless tests */ }
       }
       this.focusTile(this.cameraTargetTile.q, this.cameraTargetTile.r, true);
-      if (this.store.latest) {
-        this.onView(this.store.latest);
-        this.entities.update(0, this.terrain);
-      }
+      if (this.store.latest) { this.onView(this.store.latest); this.entities.update(0, this.terrain); }
     }
     return Boolean(this.terrain);
   }
@@ -230,10 +227,7 @@ export class OnlineSession {
     this.sendLandOnce();
     this.bootOverlay?.showColony(this.planetId || 'pl_dev');
     this.hud.setVisible(true);
-    if (this.store.latest) {
-      this.onView(this.store.latest);
-      this.entities.update(0, this.terrain);
-    }
+    if (this.store.latest) { this.onView(this.store.latest); this.entities.update(0, this.terrain); }
   }
 
   /** Fast start (FA-08), once per session: `landPod` opens the own pod once it has descended `podLandMinS`. */

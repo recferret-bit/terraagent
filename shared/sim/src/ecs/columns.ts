@@ -63,6 +63,8 @@ export const ENTITY_KIND = {
   laserTower: 20,
   pulseTurret: 20,
   recon: 51,
+  demoTank: 52,
+  demoArtillery: 53,
   blackAnt: 60,
   blueBeetle: 61,
   greenSpitter: 62,

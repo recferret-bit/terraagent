@@ -103,6 +103,9 @@ const geometryCache = new Map<string, THREE.BufferGeometry>();
 
 const ARCHETYPE_ALIAS_MAP: Readonly<Record<string, string>> = {
   'unit.recon': 'robot.recon',
+  'building.droneControlArray': 'building.droneArray',
+  'robot.tank': 'robot.combat',
+  'robot.artillery': 'robot.combat',
 };
 
 function resolveCanonicalArchetypeId(id: string): string {
