@@ -82,6 +82,8 @@ export {
   scopeDirective,
   screenDirective,
   screenProposal,
+  projectW11Context,
+  restoreW11Context,
   selectDirectorSkills,
   spatialAllowed,
   suppressGoal,

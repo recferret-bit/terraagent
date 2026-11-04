@@ -14,6 +14,7 @@ export { applyPriorityOverlay, awayGuardPoints, expirePriorityOverlays } from '.
 export { applyDirectorPolicy, colonyDirector, noteDirectorPlan, setDirectorPolicyHandler } from './policy';
 export { priorityKey, type ColonyDirectorRecord, type DirectorPlanRef } from './store';
 export { goalSuppressed, suppressGoal } from './suppress';
+export { projectW11Context, restoreW11Context, type W11ContextView, type W11Sector } from './w11';
 
 export default defineSimModule({
   id: 'director',
