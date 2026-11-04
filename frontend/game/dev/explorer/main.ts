@@ -3,6 +3,7 @@ import { fetchRows, ping, type Row, type TabId } from './api';
 import { TABS } from './columns';
 import { explorerIsOff, nearHealthStatus, wavesExcludeW06 } from './gate';
 import { renderTable } from './table';
+import { isEconomyTab, mountEconomy } from '../economy/main';
 
 const REFRESH_MS = 1000;
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls = '', text = ''): HTMLElementTagNameMap[K] => {
@@ -117,6 +118,7 @@ function mountOffPlate(root: HTMLElement): void {
 
 /** Waves below W06, or chain health 404, replace the explorer. Otherwise the page is unchanged. */
 async function boot(root: HTMLElement): Promise<void> {
+  if (isEconomyTab(location.search)) return mountEconomy(root); // the economy panel is not a chain view: no W06 gate
   const health = wavesExcludeW06(location.search) ? null : await nearHealthStatus();
   if (explorerIsOff(location.search, health)) {
     mountOffPlate(root);
