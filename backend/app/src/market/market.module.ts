@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MarketBooks } from './book/market-books.js';
+import { MarketFaucetCommand } from './dev/market-faucet.command.js';
+import { MarketFaucetController } from './dev/market-faucet.controller.js';
+import { MarketFaucetService } from './dev/market-faucet.service.js';
 import { MarketOrderRepository } from './book/market-order.repository.js';
 import { MarketMatcher } from './matching/market-matcher.service.js';
 import { LoggingMarketFillsHook, MarketFillsHook } from './orders/market-fills.hook.js';
@@ -19,8 +22,9 @@ import { NearModule } from '../near/near.module.js';
   providers: [
     MarketOrderRepository, MarketBooks, MarketMatcher, MarketPolicyProvider, MarketSimGateway, OrderFunds, PlaceOrderPrecheck, PlaceOrderService,
     { provide: MarketFillsHook, useClass: LoggingMarketFillsHook },
+    MarketFaucetService, MarketFaucetCommand,
   ],
-  controllers: [],
+  controllers: [MarketFaucetController],
   imports: [NearModule],
   exports: [MarketOrderRepository, MarketBooks, MarketMatcher, MarketPolicyProvider, MarketSimGateway, OrderFunds, MarketFillsHook],
 })
