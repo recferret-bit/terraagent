@@ -40,8 +40,8 @@ The 2026-10-30 review made every demo step name its URL, console command and vis
 | W06 · 6 | A concrete UI action that triggers a relayed call is not named |
 | W08 · 6 | The S3 fauna override name for `stage trigger <override>`: resolved in W08 (`stage trigger fauna` advances to `S3 First Contact`; `help stage` lists `overrides: fauna, rival, resource, power, storage`) |
 | W09 · 4 | URL or panel of the mock notifier viewer (W09-20) is not named |
-| W16 · revised story | Replanned 2026-11-04: implement explicit raid/injection/stale fixtures, worker restart checks and real-provider report; write exact working commands only after implementation |
-| W16 · admin controls | Revised spec requires authenticated admin and workload scopes; owner guide must give concrete credential-safe steps and private ports |
+| W16 · revised story | Settled in [`w16-check.md`](./w16-check.md): steps 1 and 9 are on the page; 2–8 and the admin kill have no play control yet (AI-13). Unit tests cover policy, raids, and the in-memory restart. |
+| W16 · admin controls | No admin token is printed. The kill switch is in-memory and not on the page. The guide does not ask for a credential. |
 | W13, W18, W22, W23 (second player) | Join with the link printed by the dev console `planet <name>` (`?join=<planet id>&as=<name>`, W00); the wave's scenario must give each named player its colony (W18 assumes `as=b`, `c`, `d`) |
 | W23 · 1–3 | Need real testnet/mainnet credentials (after the H2 gate) |
 | W24 · 2–3 | Android orientation lock and iOS standalone need a real device; browser device mode only approximates them |

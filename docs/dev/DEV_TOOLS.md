@@ -218,7 +218,7 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `NEAR_ADAPTER_<PORT>`, `AI_PROVIDER`, `AI_LIVE`, `NOTIFY_ADAPTER` | mock | Adapter selection for the other ports (see above). `AI_PROVIDER=zai` outside production also needs `AI_LIVE=1` or boot fails. `ZAI_API_KEY` is read from the environment when a live call runs. Put it in `infra/.env` (gitignored). Do not commit it. |
 | `AI_MODEL`, `AI_BASE_URL` | `glm-5.3`, `https://api.z.ai/api/paas/v4` | Live Z.ai model and OpenAI-compatible base URL |
 | `director.plan`, `director.trace` | — | In-game dev console (`` ` ``). Dev builds only. `director.plan` prints a forced mock plan, its trace, and queue depth. Absent when `NODE_ENV=production`. |
-| Director worker | — | `npm run start -w @terra/director` from this worktree starts only the director process (`director director up db=none`). Ctrl-C stops that process and leaves `npm run dev` running. `--check` prints the same line and exits. |
+| Director worker | — | `npm run start -w @terra/director -- --check` prints `director director up db=none` and exits. It does not join the game or open a database. The play page keeps ticking. |
 | `NEAR_ALLOW_MOCK_IN_PROD`, `AI_ALLOW_MOCK_IN_PROD`, `NOTIFY_ALLOW_MOCK_IN_PROD` | — | Allow mocks in production |
 | `ANALYTICS_DISABLED` | — | `true` drops analytics intake |
 | `TA_DB_POOL_SIZE` | 20 | Prisma connection pool |

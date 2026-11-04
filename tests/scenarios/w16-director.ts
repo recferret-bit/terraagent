@@ -12,7 +12,7 @@ export const w16DirectorScenario = defineScenario({
   waves: '..16',
   seed: 'w16-director',
   planet: { type: 'flat', planetType: 'temperate', radius: DEV_PLANET_RADIUS },
-  build(_host, api) {
+  build(host, api) {
     api.command('system.spawnColony', {
       colonyId: 'col_0',
       colonyIndex: 0,
@@ -20,6 +20,8 @@ export const w16DirectorScenario = defineScenario({
       slotIndex: 0,
     });
     api.command('dev.land', {}, 0);
+    // `?waves=..15` runs this seed with W16 off. The policy command is that wave, so skip it and still land.
+    if (![...host.pipeline.config.flags].includes('W16')) return;
     api.command('setDirectorPolicy', {
       risk: 'conservative',
       preset: 'resources',

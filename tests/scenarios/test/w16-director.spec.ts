@@ -1,3 +1,4 @@
+import { parseWaves } from '@terra/contracts';
 import { colonyDirector } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
 import { createScenarioPlanet, getScenario } from '../_loader';
@@ -28,5 +29,12 @@ describe('w16 director scenario', () => {
     });
     const sum = Object.values(view!.policy.priorities).reduce((n, v) => n + v, 0);
     expect(sum).toBe(250);
+  });
+
+  it('still lands the colony when W16 is off', () => {
+    const { host } = createScenarioPlanet('w16', { flags: parseWaves('..15').list });
+    expect([...host.pipeline.config.flags]).not.toContain('W16');
+    expect(host.state.colonies).toHaveLength(1);
+    expect(colonyDirector(host.state, 0)).toBeUndefined();
   });
 });
