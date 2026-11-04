@@ -89,3 +89,13 @@
 - **Workaround / mitigation:** one process. Unknown usage (`actual: null`) charges the full reservation. A reconcile that matches no outstanding reservation does not lower spent. Callers that retry reconcile while another reservation of the same size is open can close the wrong one.
 - **To resolve:** persist the same rules in one transaction (W16-44), with a reservation id so a retry cannot match a different row. The cost ceiling stays a separate check (AI §7).
 - **Found:** 2026-11-04, W16-08.
+
+### AI-10 · Eval report scores supplied outcomes and does not call a model
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/ai/eval/report.ts` (`scoreEval`), `backend/app/src/ai/eval/fixtures.ts` (`buildFixtures`)
+- **What happens:** `scoreEval` reads a caller-supplied outcome per fixture id. It returns three separate counters: invariant violations (only when `invariant !== 'none'`), paired-risk variation (`varied` is pairs where both risks are marked varied), and valid/total quality. It does not add those into one score, call a provider, or write `eval/out/report.json`. The fixture skill axis includes `power`, which is not a `DirectorSkillFamily`.
+- **Why it is like this:** W16-22's acceptance is the split report over at least 60 paired fixtures. Live model, latency and token gates are W16-48.
+- **Workaround / mitigation:** tests pass synthetic outcomes. A violation never changes `quality.valid`. One risk marked varied does not count as strategic variation.
+- **To resolve:** W16-48 runs the live provider against these fixtures and fills the outcome map from validator results.
+- **Found:** 2026-11-04, W16-22.
