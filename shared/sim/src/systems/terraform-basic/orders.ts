@@ -19,6 +19,7 @@ export interface TerraformJob {
   energyDrawnE: number;
   totalCost?: Partial<Record<ResourceKey, number>>;
   spentCost?: Partial<Record<ResourceKey, number>>;
+  status?: 'in_progress' | 'waiting';
   waitReason?: 'resources' | 'power';
   assignedUnitId?: number;
 }
@@ -34,6 +35,8 @@ export interface TerraformOrder {
   skippedCount: number;
   totalJobs: number;
   completedJobs: number;
+  status?: 'in_progress' | 'waiting';
+  waitReason?: 'resources' | 'power';
   /** Set on a construction order's linked site prep: the construction order it belongs to. */
   linkedOrderId?: string;
   linkedBuildingEntityId?: number;
