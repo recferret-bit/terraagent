@@ -4,7 +4,7 @@ Owner-requested W08 follow-up (2026-11-03). This is a landing requirement for th
 
 ## Runtime contract
 
-- Stage browsing is read-only: Previous / Next / a stage segment opens its guide. It never reduces earned unlocks, changes threat, refunds costs or resets the world. Newly reached stages show a visible 30-second countdown; manually reopened guides stay until dismissed. Hide / Show preserves access to the guide.
+- Stage browsing is read-only: A clickable stage segment opens its guide. It never reduces earned unlocks, changes threat, refunds costs or resets the world. Newly reached stages show a visible 30-second countdown; manually reopened guides stay until dismissed. The compact Goals header opens the tracker; minus closes it completely. Dismiss closes a lesson; clicking its stage reopens it.
 - One HQ panel contains Goals and Priorities tabs. The five sliders are **economy, expansion, defense, power, terraform**. They affect ranked autonomous decisions; they are not completion percentages. Display the resulting action and reason. Safety floors, explicit player orders, diplomacy permissions and spending limits take precedence.
 - Goal kinds have an executor registered with `registerGoalExecutor`. Without one, the option is disabled and the sim rejects it; enabling a wave flag alone does not make it executable. Register in the owning sim module, with shared capability metadata for UI availability and wave gating.
 - An accepted goal creates real queue/unit commands using existing placement, pathfinding, payment and worker systems. No direct position writes, invented income, free deposits, pretend production or completion from unit counts. Progress and completion read authoritative outcomes. Distinguish a total rate target from an increase over baseline.
@@ -24,6 +24,7 @@ Owner-requested W08 follow-up (2026-11-03). This is a landing requirement for th
 | S3 First Contact | W07, W08 | Defend Area and Clear Nest: train/dispatch through units runner, protect workers, observe outcome; defense changes protection allocation. |
 | S4 Neighbor | W10, W13, W18, W27 | Expand Toward and Negotiate Supply: discover a neighbor, claim/connect a site, deliver/trade supply. Expansion and economy affect choices and budgets; defense affects escorts. |
 | Away continuity | W09 | Resume active goal and tutorial, preserve slider state and wait reasons; away spending/raid settings constrain every action. |
+| Planet selection / reconnect | W11 | Restore active goals, tutorial completion, priorities and actionable wait reasons. Keep persisted UnlockStage separate from current-world ThreatStage; test reconnect/migration with a blocked goal and later waves disabled. |
 | Profile continuity | W12 | Persist UnlockStage and lesson completion; keep current-world ThreatStage separate. |
 | Fortification | W14 | Defend goal builds real coverage, walls and repair work; defense/power priorities choose supported orders. |
 | Guild / director | W15, W16 | Guild and AI proposals consume the same priorities/goals and permission checks, not parallel automation; economy/defense guide supplies and assistance. |
@@ -45,4 +46,6 @@ Owner-requested W08 follow-up (2026-11-03). This is a landing requirement for th
 4. Verify stage triggers, dwell and overrides from actual world outcomes; replay old lessons without altering unlocks/threat. S5–S10 content must extend this flow rather than introducing a separate tutorial.
 5. Run on both local and server hosts, with later waves disabled. Add executable sim and browser regressions, and extend the wave owner check guide with precise URLs, actions, expected orders, progress and completion.
 
-W08 currently runs on W00/W01/W02/W06 mechanics. Its S0–S4 stage metadata does not provide the missing W03/W07/W10 mechanics, and S5–S10 previews do not enable their waves. The later waves above own those implementations; they must not land with decorative goal cards.
+W08’s original slice used W00/W01/W02/W06 mechanics; W04/W10/W12 are now merged. Its S0–S4 metadata still does not provide missing W03/W07 mechanics, and S5–S10 previews do not enable their waves. The later waves above own those implementations; they must not land with decorative goal cards.
+
+W11 and W27 obligations above remain mandatory. Their in-progress plan rewrites in the main checkout were deliberately left untouched during the W08 follow-up landing (2026-11-04); this contract owns the progression handoff.

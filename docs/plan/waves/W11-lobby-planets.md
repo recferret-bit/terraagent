@@ -112,10 +112,6 @@ The app becomes multi-planet and multiplayer. Players pick a planet or get match
 - Tag `wave-11` is created.
 - Every `MM-*` rule, edge cases E1–E16 and `CT-01..05` map to issues above. E15 is covered by W11-03 (`capacity` copied at creation), E16 by W00-17 / W00-51 (snapshot version migrations).
 
-## W08 follow-up: progression continuity
-
-Planet selection and reconnect must restore active goals, tutorial completion and priorities. Keep persisted UnlockStage separate from current-world ThreatStage when matching or exposing colony strength. Follow the [progression contract](../W08-PROGRESSION-CONTRACT.md); test reconnect and migration with a blocked goal and later waves disabled.
-
 ## W12 progression integration gate (revised)
 
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Reuse W12’s authenticated `/v1/me/home?colonyId=` resume, ownership/status checks and selected-planet WebSocket seat resolution. Populate authoritative colony stage/outcome state for the checkpoint projector; extend unavailable-colony UX with lobby choices.

@@ -48,10 +48,11 @@
     0 100%,
     0 var(--ta-chamfer-s)
   );
-  position: absolute;
-  top: calc(100% + var(--ta-s2));
-  left: 0;
-  width: min(420px, calc(100vw - 160px));
+  position: fixed;
+  top: 52px;
+  left: 50vw;
+  transform: translateX(-50%);
+  width: min(420px, calc(100vw - var(--ta-s6)));
   max-height: calc(100dvh - 80px);
   overflow-y: auto;
   box-sizing: border-box;
