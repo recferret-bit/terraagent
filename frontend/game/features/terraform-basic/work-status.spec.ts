@@ -33,7 +33,7 @@ describe('TERRAFORM status line reads the colony work jobs (blobs.workJobs)', ()
     tf.update(viewWith({ a: job({}) }));
     expect(status.textContent).toBe('TERRAFORM TREES (3,1) 40% · hex 1');
     tf.update(viewWith({}));
-    expect(status.textContent).toMatch(/^Terraform chain ended/);
+    expect(status.textContent).toBe('Terraform done');
     tf.dispose();
   });
 });
@@ -84,7 +84,7 @@ describe('?waves=..01: the Terraform tab offers only TERRAFORM (REPAIR / DISMANT
 });
 
 describe('REPAIR / TERRAFORM status while the worker chains', () => {
-  it('REPAIR by a chaining worker says it comes after the current hex; TERRAFORM says it replaces the chain', async () => {
+  it('REPAIR by a chaining worker says it comes after the current hex', async () => {
     const { planPrimaryOp } = await import('./primaryOps');
     const entities = [
       { id: 2, kind: 'hq', kindName: 'hq', owner: 0, q: 0, r: 0, hp: 200, hpMax: 200, footprintW: 1, footprintD: 1 },
@@ -93,7 +93,6 @@ describe('REPAIR / TERRAFORM status while the worker chains', () => {
     const view = viewWith({ a: job({ workerEntityId: 2 }) });
     const ctx = { view, entities, colonyId: 0, workerId: 2 };
     expect(planPrimaryOp('repair', ctx, 4, 4).outcome.status).toMatch(/after the current hex; the terraform chain resumes after$/);
-    expect(planPrimaryOp('terraform', ctx, 7, 7).outcome.status).toMatch(/\(replaces the worker's chain\)$/);
     expect(planPrimaryOp('repair', { ...ctx, workerId: 9 }, 4, 4).outcome.status).toBe('Repair ordered (40% base cost for full repair)');
   });
 });

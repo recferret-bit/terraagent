@@ -13,14 +13,11 @@ import {
   setTileTerrain,
   spawnHqUnit,
 } from '@terra/sim';
+import * as THREE from 'three';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { ConstructionMenu, evaluatePlacementGhost } from '../construction-menu';
 import { formatGhostOps } from '../hub-placement/HubPlacementView';
-import {
-  hexRadiusTiles,
-  mountTerraformBasic as mountRaw,
-  rectTiles,
-} from './index';
+import { mountTerraformBasic as mountRaw } from './index';
 
 const mounted: Array<{ dispose(): void }> = [];
 const mountTerraformBasic: typeof mountRaw = (...args) => {
@@ -125,105 +122,104 @@ describe('W05-20: Construction ghost prep bill on sloped ground', () => {
   });
 });
 
-describe('W05-20: TerraformMenu W05 ops, costs, and locked Deep Reclaim chip', () => {
-  it('renders all 9 W05 ops with icons/costs and locks Deep Reclaim with "needs T2 worker" until a T2 worker exists', () => {
-    const container = document.createElement('div');
-    document.body.appendChild(container);
-    const tf = mountTerraformBasic(container, { flags: W05_FLAGS.list ? new Set(W05_FLAGS.list) : undefined });
+/** A scene service with a flat 1-unit-per-hex mapping (the real one adds terrain height). */
+function fakeScene3d() {
+  return { scene: new THREE.Scene(), tileToWorld: (x: number, y: number) => ({ x: x * 1.7, y: 0, z: y * 1.5 }), biomeKey: () => 'test' };
+}
 
-    const expectedOps = ['grade', 'clear', 'break', 'level', 'fill', 'reclaim', 'deepReclaim', 'irrigate', 'seed'];
-    for (const op of expectedOps) {
-      const chip = container.querySelector<HTMLButtonElement>(`[data-testid="tf-op-${op}"]`);
-      expect(chip, `chip tf-op-${op}`).not.toBeNull();
-      expect(chip?.getAttribute('data-icon')).toBeTruthy();
-      expect(chip?.getAttribute('data-energy-e')).toBeTruthy();
-      expect(chip?.getAttribute('data-time-s')).toBeTruthy();
-    }
+function mountOnW05Planet() {
+  const host = createW05SimHost();
+  const idx = hexIndex(host.state.grid.radius);
+  const set = (q: number, r: number, terrain: number) => {
+    setTileTerrain(host.state.grid, idx.indexOf(q, r), terrain);
+    setTilePrep(host.state.grid, idx.indexOf(q, r), PREP.wild);
+  };
+  set(1, 0, TERRAIN.slope);
+  set(2, 0, TERRAIN.forest);
+  set(3, 0, TERRAIN.rock);
+  set(1, 1, TERRAIN.shallow);
+  set(2, 1, TERRAIN.hole);
+  const canvas = document.createElement('canvas');
+  const container = document.createElement('div');
+  document.body.append(canvas, container);
+  let hover = { q: 1, r: 0 };
+  const scene3d = fakeScene3d();
+  const tf = mountTerraformBasic(container, {
+    services: { host, scene3d, canvas, pickTile: () => hover } as never,
+    flags: new Set(W05_FLAGS.list),
+  });
+  const click = (q: number, r: number, init: MouseEventInit = {}) => {
+    hover = { q, r };
+    canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true, cancelable: true, ...init }));
+    canvas.dispatchEvent(new MouseEvent('pointerup', { button: 0, bubbles: true, cancelable: true, ...init }));
+  };
+  return { host, tf, click, container, scene3d };
+}
 
-    const levelChip = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-level"]')!;
-    expect(levelChip.disabled).toBe(false);
-    expect(levelChip.textContent).toContain('Level');
-    expect(levelChip.textContent).toContain('60 E');
-    expect(levelChip.textContent).toContain('8s');
-    expect(levelChip.textContent).toContain('2 Minerals');
+describe('Terraform: one button does every ground job', () => {
+  it('slope, trees, rock, water and a crater each get the op their ground needs', () => {
+    const { host, tf } = mountOnW05Planet();
+    tf.selectOp('terraform');
+    const ops = [[1, 0], [2, 0], [3, 0], [1, 1], [2, 1]].map(([q, r]) => tf.strokeTile(q!, r!).jobs[0]?.op);
+    expect(ops).toEqual(['level', 'clear', 'break', 'reclaim', 'fill']);
+    host.step(1);
+    expect(getColonyTerraformOrders(host.state, 0).map((o) => o.op)).toEqual(['level', 'clear', 'break', 'reclaim', 'fill']);
+  });
 
-    const deepChip = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-deepReclaim"]')!;
-    expect(deepChip.disabled).toBe(true);
-    expect(deepChip.getAttribute('data-tier-locked')).toBe('true');
-    expect(deepChip.getAttribute('title')).toBe('needs T2 worker');
-    expect(deepChip.textContent).toContain('needs T2 worker');
-
-    // Desert planet doubles water cost on Irrigate (15 -> 30 Water)
-    tf.update({
-      planet: { id: 'd', type: 'desert', radius: 6 },
-      units: [{ id: 10, kind: 'terraformer', owner: 0, q: 0, r: 0, hp: 120, hpMax: 120, tier: 1 }],
-    } as never);
-    expect(tf.hasWorkerAvailable()).toBe(true);
-    const irrigateDesert = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-irrigate"]')!;
-    expect(irrigateDesert.textContent).toContain('30 Water');
-
-    // Upgrading worker to tier 2 unlocks Deep Reclaim
-    tf.update({
-      planet: { id: 'd', type: 'temperate', radius: 6 },
-      units: [{ id: 10, kind: 'terraformer', owner: 0, q: 0, r: 0, hp: 120, hpMax: 120, tier: 2 }],
-    } as never);
-    const deepUnlocked = container.querySelector<HTMLButtonElement>('[data-testid="tf-op-deepReclaim"]')!;
-    expect(deepUnlocked.disabled).toBe(false);
-    expect(deepUnlocked.getAttribute('data-tier-locked')).toBeNull();
+  it('the menu offers exactly Terraform, Repair, Dismantle', () => {
+    const { container } = mountOnW05Planet();
+    expect([...container.querySelectorAll('button')].map((b) => b.dataset.testid ?? b.getAttribute('data-testid'))).toEqual([
+      'tf-op-terraform',
+      'tf-op-repair',
+      'tf-op-dismantle',
+    ]);
   });
 });
 
-describe('W05-20: Area brush (hex radius + rect) and Cancel Area', () => {
-  it('strokes hex-radius and rectangular areas and cancels queued orders in an area', () => {
-    expect(hexRadiusTiles(0, 0, 1)).toHaveLength(7);
-    expect(hexRadiusTiles(0, 0, 2)).toHaveLength(19);
-    expect(rectTiles(1, 0, 2, 1)).toEqual([
-      { q: 1, r: 0 },
-      { q: 2, r: 0 },
-      { q: 1, r: 1 },
-      { q: 2, r: 1 },
-    ]);
+describe('Terraform targets: highlighted hexes and Ctrl+click queueing', () => {
+  it('a plain click orders one hex and disarms; Ctrl+click orders it and stays armed for the next', () => {
+    const { host, tf, click } = mountOnW05Planet();
+    tf.selectOp('terraform');
+    click(2, 0);
+    expect(tf.isArmed()).toBe(false);
 
-    const host = createW05SimHost();
-    const state = host.state;
-    const idx = hexIndex(state.grid.radius);
-    for (const pos of rectTiles(1, 0, 2, 1)) {
-      setTileTerrain(state.grid, idx.indexOf(pos.q, pos.r), TERRAIN.slope);
-      setTilePrep(state.grid, idx.indexOf(pos.q, pos.r), PREP.wild);
-    }
+    tf.selectOp('terraform');
+    click(3, 0, { ctrlKey: true });
+    click(1, 0, { ctrlKey: true });
+    expect(tf.isArmed()).toBe(true);
+    host.step(1);
+    expect(getColonyTerraformOrders(host.state, 0).map((o) => o.jobs[0]!.op)).toEqual(['clear', 'break', 'level']);
+  });
 
-    const canvas = document.createElement('canvas');
-    const container = document.createElement('div');
-    document.body.append(canvas, container);
-    let hover = { q: 1, r: 0 };
-    const tf = mountTerraformBasic(container, {
-      host,
-      surface: canvas,
-      pickTile: () => hover,
-      flags: new Set(W05_FLAGS.list),
-    });
-
-    // Click Level chip + Rect brush button, then drag (1,0) -> (2,1)
-    container.querySelector<HTMLButtonElement>('[data-testid="tf-op-level"]')!.click();
-    container.querySelector<HTMLButtonElement>('[data-testid="tf-brush-rect"]')!.click();
-    expect(tf.getSelectedOp()).toBe('level');
-    expect(tf.getBrushShape()).toBe('rect');
-
-    hover = { q: 1, r: 0 };
-    canvas.dispatchEvent(new MouseEvent('pointerdown', { button: 0, bubbles: true, cancelable: true }));
-    hover = { q: 2, r: 1 };
-    canvas.dispatchEvent(new MouseEvent('pointerup', { button: 0, bubbles: true, cancelable: true }));
-
-    expect(tf.getLastStroke()?.queuedCount).toBe(4);
+  it('every queued hex is highlighted in the 3D scene until its job is gone', () => {
+    const { host, tf, click, scene3d } = mountOnW05Planet();
+    tf.selectOp('terraform');
+    click(2, 0, { ctrlKey: true });
+    click(3, 0, { ctrlKey: true });
     host.step(1);
     tf.update(host.view() as never);
-    expect(getColonyTerraformOrders(state, 0)).toHaveLength(1);
-    expect(getColonyTerraformOrders(state, 0)[0]!.jobs).toHaveLength(4);
+    const key = (t: { q: number; r: number }) => `${t.q},${t.r}`;
+    expect(tf.getTargetTiles().map(key).sort()).toEqual(['2,0', '3,0']);
+    const group = scene3d.scene.getObjectByName('terraform-targets')!;
+    expect(group.visible).toBe(true);
+    expect(group.children).toHaveLength(2);
 
-    // Cancel area overlapping (1, 0) cancels the queued order
-    expect(tf.cancelArea([{ q: 1, r: 0 }])).toBe(1);
+    for (const o of getColonyTerraformOrders(host.state, 0)) tf.cancelOrder(o.orderId);
     host.step(1);
-    expect(getColonyTerraformOrders(state, 0)).toHaveLength(0);
-    canvas.remove();
+    tf.update(host.view() as never);
+    expect(tf.getTargetTiles()).toEqual([]);
+    expect(group.visible).toBe(false);
+  });
+
+  it('a macOS Ctrl+click (a contextmenu right after the press) does not disarm the brush', () => {
+    const { tf, click, container } = mountOnW05Planet();
+    const canvas = document.body.querySelector('canvas')!;
+    tf.selectOp('terraform');
+    click(2, 0, { ctrlKey: true });
+    const ev = new MouseEvent('contextmenu', { button: 0, ctrlKey: true, bubbles: true, cancelable: true });
+    canvas.dispatchEvent(ev);
+    expect(ev.defaultPrevented).toBe(true);
+    expect(tf.isArmed()).toBe(true);
+    expect(container.isConnected).toBe(true);
   });
 });

@@ -13,15 +13,10 @@ import type { InProcessHost } from '../shared/commandDispatch';
 import type { TilePickerFn } from '../shared/pointer';
 import {
   BrushController,
-  hexRadiusTiles,
-  rectTiles,
   type BrushCommandSink,
-  type BrushShape,
   type BrushStrokeOptions,
   type BrushStrokeOutcome,
   type BrushStrokeSummary,
-  type TerraformButtonOp,
-  type TerraformOpId,
   type TerraformPrimaryOp,
   type TerraformWireArgs,
   type TileCoord,
@@ -32,12 +27,11 @@ import {
   calculateRepairCost,
   DISMANTLE_REFUND_RATIO,
   FULL_REPAIR_COST_RATIO,
-  planBrushStroke,
-  type BrushOpSelection,
+  planTerraformTiles,
   type PlannedTileJob,
 } from './planner';
 import { bindResourceFoundToasts, resourceFoundText, type ResourceFoundSource } from './resourceFound';
-import { incomeReferenceRows, resourceFindRow, timeReferenceRows, type ReferenceTableRow } from './referenceTables';
+import { TargetHighlight3D, terraformTargetTiles } from './TargetHighlight3D';
 import { PRIMARY_OP_DEFS, TerraformMenu, type TerraformPrimaryOpDef } from './TerraformMenu';
 import {
   computeOverlayState,
@@ -59,19 +53,14 @@ export {
   DISMANTLE_REFUND_RATIO,
   extractColonyOrders,
   FULL_REPAIR_COST_RATIO,
-  hexRadiusTiles,
-  planBrushStroke,
-  incomeReferenceRows,
+  planTerraformTiles,
   PRIMARY_OP_DEFS,
-  rectTiles,
   resourceFoundText,
-  resourceFindRow,
+  TargetHighlight3D,
   TerraformMenu,
-  timeReferenceRows,
+  terraformTargetTiles,
   TileOverlay,
   type BrushCommandSink,
-  type BrushOpSelection,
-  type BrushShape,
   type BrushStrokeOptions,
   type BrushStrokeOutcome,
   type BrushStrokeSummary,
@@ -79,9 +68,6 @@ export {
   type OverlayOrderProgress,
   type OverlayTileEntry,
   type PlannedTileJob,
-  type ReferenceTableRow,
-  type TerraformButtonOp,
-  type TerraformOpId,
   type TerraformPrimaryOp,
   type TerraformPrimaryOpDef,
   type TerraformWireArgs,
@@ -97,18 +83,13 @@ export interface TerraformFeatureHandle extends HudPanelInstance {
   readonly menu: TerraformMenu;
   readonly brush: BrushController;
   readonly overlay: TileOverlay;
-  selectOp(op: BrushOpSelection): void;
-  getSelectedOp(): BrushOpSelection;
-  setBrushShape(shape: BrushShape): void;
-  getBrushShape(): BrushShape;
+  selectOp(op: TerraformPrimaryOp): void;
+  getSelectedOp(): TerraformPrimaryOp;
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
-  strokeArea(tiles: readonly TileCoord[], opts?: BrushStrokeOptions): BrushStrokeSummary;
-  strokeHexRadius(q: number, r: number, radius: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
-  strokeRect(q1: number, r1: number, q2: number, r2: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
   /** Cancels the host order `orderId` (default: the active order in the view); false when there is none. */
   cancelOrder(orderId?: string): boolean;
-  /** Cancels queued terraform orders overlapping `tiles` (or all open manual terraform orders when omitted). */
-  cancelArea(tiles?: readonly TileCoord[]): number;
+  /** The hexes lit as terraform targets now (the colony's open terraform jobs); empty without a 3D scene. */
+  getTargetTiles(): readonly TileCoord[];
   disarm(): void;
   isArmed(): boolean;
   hasWorkerAvailable(): boolean;
@@ -185,6 +166,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
 
   const overlay = new TileOverlay(container, getColonyId);
   let menu: TerraformMenu | null = null;
+  let targets: TargetHighlight3D | null = null;
   let lastSyncedTick = -1;
 
   const syncView = (v?: GameView | null) => {
@@ -194,6 +176,9 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
       brush.setView(resolved);
     }
     overlay.update(resolved);
+    // the 3D scene may come up after the menu mounts: the highlight attaches on the first view that finds it
+    if (!targets && services.scene3d) targets = new TargetHighlight3D(services.scene3d);
+    targets?.update(resolved, getColonyId());
     menu?.render();
   };
 
@@ -209,7 +194,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     onChange: () => syncView(),
   });
 
-  menu = new TerraformMenu(container, brush, overlay, { isBlocked, getColonyId, simData: () => store?.simData?.(), flags: opts?.flags });
+  menu = new TerraformMenu(container, brush, overlay, { isBlocked, getColonyId, flags: opts?.flags });
 
   const surface = opts?.surface ?? services.surface ?? services.canvas;
   const pickTile = opts?.pickTile ?? services.pickTile;
@@ -229,14 +214,9 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     overlay,
     selectOp: (op) => { brush.selectOp(op); menu?.render(); },
     getSelectedOp: () => brush.getSelectedOp(),
-    setBrushShape: (shape) => { brush.setBrushShape(shape); menu?.render(); },
-    getBrushShape: () => brush.getBrushShape(),
     strokeTile: (q, r, strokeOpts) => brush.strokeTile(q, r, strokeOpts),
-    strokeArea: (tiles, strokeOpts) => brush.strokeArea(tiles, strokeOpts),
-    strokeHexRadius: (q, r, radius, strokeOpts) => brush.strokeHexRadius(q, r, radius, strokeOpts),
-    strokeRect: (q1, r1, q2, r2, strokeOpts) => brush.strokeRect(q1, r1, q2, r2, strokeOpts),
     cancelOrder: (orderId) => brush.cancelOrder(orderId ?? overlay.getActiveOrder()?.orderId),
-    cancelArea: (tiles) => brush.cancelArea(tiles),
+    getTargetTiles: () => targets?.getTiles() ?? [],
     disarm: () => brush.disarm(),
     isArmed: () => brush.isArmed(),
     hasWorkerAvailable: () => brush.hasWorkerAvailable(),
@@ -249,7 +229,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     getLastOutcome: () => brush.getLastOutcome(),
     bindSurface: (surf, pick) => brush.bindSurface(surf, pick),
     update: (view) => syncView(view),
-    dispose: () => { offHostEvents?.(); offFound(); brush.dispose(); menu?.dispose(); overlay.dispose(); },
+    dispose: () => { offHostEvents?.(); offFound(); brush.dispose(); menu?.dispose(); overlay.dispose(); targets?.dispose(); },
   };
 
   if (opts?.services) opts.services.terraform = handle;

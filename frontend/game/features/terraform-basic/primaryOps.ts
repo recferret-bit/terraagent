@@ -1,9 +1,6 @@
 import { ENTITY_STATE, type CompiledDataLike, type PlanetState, type TerraformOpKind } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
-import { viewPlacementWorld } from '../shared/placementWorld';
 import type { TileCoord } from '../shared/pointer';
-import { groundWorkLabel, groundYields, previewGroundWork, type GroundKey } from './groundPreview';
-import { pct } from './referenceTables';
 import { colonyWorkJobs } from './workStatus';
 import {
   calculateDismantleRefund,
@@ -12,19 +9,23 @@ import {
   findEntityAtTile,
   FULL_REPAIR_COST_RATIO,
   hasWorkerEntity,
+  pct,
+  planTerraformTiles,
   resolveEntityBaseCost,
   type InspectableEntity,
   type PlannedTileJob,
-  type TerraformButtonOp,
   type TerraformPrimaryOp,
 } from './planner';
 
-/** What a `work` order is for: the sim chains TERRAFORM hex by hex, REPAIR targets one damaged own entity. */
+/** What a `work` order is for (REPAIR targets one damaged own entity). */
 export type WorkIntent = 'terraform' | 'repair';
 
-/** The `terraform` member of `enqueueTask` the dock buttons send (one tile per click). */
+/**
+ * The `terraform` member of `enqueueTask` the dock buttons send (one tile per click): TERRAFORM a per-hex op (`clear`,
+ * `break`, `level`, `fill`, `reclaim`, `grade`, ...), REPAIR `work` + `intent: 'repair'`, DISMANTLE `dismantle`.
+ */
 export interface TerraformWireArgs {
-  op: 'work' | 'dismantle';
+  op: TerraformOpKind;
   intent?: WorkIntent;
   tiles: TileCoord[];
   workerId?: number;
@@ -34,11 +35,10 @@ export interface BrushStrokeOutcome {
   ok: boolean;
   reason?: string;
   status?: string;
-  op?: TerraformButtonOp;
+  op?: TerraformPrimaryOp;
   targetId?: number;
   repairCost?: Record<string, number>;
   refund?: Record<string, number>;
-  yields?: Record<string, number>;
 }
 
 export interface PrimaryOpContext {
@@ -111,27 +111,31 @@ function planRepair(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPlan 
 const isChaining = (ctx: PrimaryOpContext, workerId: number | undefined): boolean =>
   workerId !== undefined && colonyWorkJobs(ctx.view, ctx.colonyId).some((j) => j.workerEntityId === workerId && j.chain);
 
-const CONCRETE_OP: Readonly<Record<GroundKey, TerraformOpKind>> = { forest: 'clear', rock: 'break', slope: 'grade', hole: 'grade', flat: 'grade' };
+const SKIP_STATUS: Readonly<Record<string, string>> = {
+  not_own_territory: 'Outside your territory',
+  invalid_args: 'Outside the map',
+  site_blocked: 'Nothing to terraform here (already done, queued, or built on)',
+  building_here: 'A building stands on this hex',
+  deposit_here: 'Resource deposit here: harvest it instead',
+};
 
+/**
+ * TERRAFORM on one hex: the sim's own per-hex op (`evaluateTerraform` with `auto`: trees → Clear, rock → Break, slope →
+ * Level, crater → Fill, water → Reclaim, plain ground → Grade) goes out as one `enqueueTask` order. The client names
+ * the concrete op because the host's multi-hex auto-prepare only applies from two hexes up.
+ */
 function planTerraform(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPlan {
-  const world = viewPlacementWorld(ctx.view);
-  const ground = previewGroundWork(world.tileCount > 0 || !ctx.hostState ? world : viewPlacementWorld(ctx.hostState), ctx.colonyId, q, r, ctx.data ?? undefined);
-  if (ground && !ground.ok) return skip('terraform', ground.reason, ground.status);
-  if (ground && !hasWorkerEntity(ctx.entities, ctx.colonyId, ctx.view)) return skip('terraform', 'no_worker', NO_WORKER);
-  // No tile layers in the view yet: the host judges alone.
-  const key = ground?.key;
   const data = ctx.data ?? undefined;
-  const yields = key ? groundYields(key, data) : undefined;
-  const what = key ? groundWorkLabel(key, data) : 'Terraform';
+  const preview = planTerraformTiles(ctx.view, [{ q, r }], { colonyId: ctx.colonyId, data });
+  const job = preview.jobs[0];
+  // No tile layers in the view yet (`queuedCount` 0 with no reason): the host judges alone.
+  if (!job && preview.firstReject) return skip('terraform', preview.firstReject, SKIP_STATUS[preview.firstReject] ?? `Cannot terraform: ${preview.firstReject.replace(/_/g, ' ')}`);
+  if (job && !hasWorkerEntity(ctx.entities, ctx.colonyId, ctx.view)) return skip('terraform', 'no_worker', NO_WORKER);
+  const op: TerraformOpKind = (job?.op as TerraformOpKind | undefined) ?? 'grade';
   return {
-    terraform: { op: 'work', intent: 'terraform', tiles: [{ q, r }], ...withWorker(ctx.workerId) },
-    outcome: {
-      ok: true,
-      op: 'terraform',
-      status: `Terraform ordered: ${what} · continues hex by hex${isChaining(ctx, ctx.workerId) ? ' (replaces the worker\'s chain)' : ''}`,
-      ...(yields ? { yields } : {}),
-    },
-    job: { q, r, op: key ? CONCRETE_OP[key] : 'terraform' },
+    terraform: { op, tiles: [{ q, r }] },
+    outcome: { ok: true, op: 'terraform', status: `Terraform ordered: ${op.toUpperCase()} (${q},${r})` },
+    job: { q, r, op },
   };
 }
 
