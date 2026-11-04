@@ -86,7 +86,7 @@ export class ColonyAccounts implements OnModuleInit, OnModuleDestroy {
   }
 }
 
-function kekEnv(env: AppEnv): KekEnv {
+export function kekEnv(env: AppEnv): KekEnv {
   const bag = env as { NEAR_KEK?: unknown; NEAR_KEK_VERSION?: unknown; NEAR_KEK_RING?: unknown };
   const str = (value: unknown): string | undefined => (typeof value === 'string' ? value : undefined);
   return {
