@@ -9,7 +9,7 @@ import { setBlob, type PlanetState } from '../../kernel/state';
 import { UnitBook } from '../../units/book';
 import { mobileStats, notifyUnitChanged } from '../../units/mobility';
 import { faceTowards } from '../../units/movement/locomotion';
-import { cancelMove, getMotion, requestMove, sameGoal, type MoveGoal } from '../../units/movement/orchestrator';
+import { cancelMove, getMotion, requestMove, type MoveGoal } from '../../units/movement/orchestrator';
 import { withoutUnitView } from '../harvest/unit';
 import { issueUnitCommand } from '../units/registry';
 import { clearEvasiveState, getEvasiveState, isUnitEvasive, stepEvasiveUnit } from './evasive';
@@ -38,11 +38,43 @@ export function readStancesBlob(state: PlanetState): Record<number, UnitStanceRe
   return out;
 }
 
+function stancesChanged(
+  prev: Record<number, UnitStanceRecord> | undefined,
+  next: Record<number, UnitStanceRecord>,
+): boolean {
+  if (!prev) return true;
+  const prevKeys = Object.keys(prev);
+  const nextKeys = Object.keys(next);
+  if (prevKeys.length !== nextKeys.length) return true;
+  for (const k of nextKeys) {
+    const a = prev[Number(k)];
+    const b = next[Number(k)];
+    if (!a || !b) return true;
+    if (
+      a.stance !== b.stance ||
+      a.anchorQ !== b.anchorQ ||
+      a.anchorR !== b.anchorR ||
+      (a.explicitTargetId ?? null) !== (b.explicitTargetId ?? null) ||
+      (a.attackMoveGoal?.q ?? null) !== (b.attackMoveGoal?.q ?? null) ||
+      (a.attackMoveGoal?.r ?? null) !== (b.attackMoveGoal?.r ?? null)
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function writeStancesBlob(
   state: PlanetState,
   byEntityId: Record<number, UnitStanceRecord>,
   tick: number,
 ): void {
+  const existing = state.blobs[COMBAT_STANCES_BLOB];
+  const prevMap = (existing?.value as Partial<CombatStancesBlob> | undefined)?.byEntityId;
+  if (existing && !stancesChanged(prevMap, byEntityId)) {
+    existing.value = { byEntityId };
+    return;
+  }
   setBlob(state, COMBAT_STANCES_BLOB, { byEntityId }, tick);
 }
 
@@ -58,17 +90,18 @@ export function mirrorUnitStanceToView(
   const owner = cols.owner[row]!;
 
   const unitsBlob = state.blobs.units?.value as Record<string, unknown> | undefined;
-  if (unitsBlob && typeof unitsBlob[entityId] === 'object' && unitsBlob[entityId] !== null) {
-    const updatedView = { ...(unitsBlob[entityId] as Record<string, unknown>), stance };
+  const curUnitView = unitsBlob?.[entityId] as Record<string, unknown> | undefined;
+  if (unitsBlob && curUnitView && typeof curUnitView === 'object' && curUnitView.stance !== stance) {
+    const updatedView = { ...curUnitView, stance };
     setBlob(state, 'units', { ...unitsBlob, [entityId]: updatedView }, tick);
   }
 
   if (owner >= 0 && state.colonies[owner]?.units) {
     const col = state.colonies[owner]!;
-    const existing = (col.units as Array<{ entityId?: number }> | undefined)?.find(
+    const existing = (col.units as Array<{ entityId?: number; stance?: CombatStance }> | undefined)?.find(
       (u) => u && u.entityId === entityId,
     );
-    if (existing) {
+    if (existing && existing.stance !== stance) {
       const updated = { ...(existing as Record<string, unknown>), stance };
       col.units = [...withoutUnitView(col.units, entityId), updated];
       col.changedAt = tick;
@@ -101,9 +134,10 @@ export function haltCombatUnit(
   const book = new UnitBook(state);
   const uRec = book.peek(entityId);
   if (uRec?.current) {
+    const stamp = uRec.current.source !== 'auto';
     uRec.current = null;
     uRec.queue = [];
-    book.touch();
+    book.touch(stamp);
     book.flush(tick);
   }
 
@@ -146,15 +180,14 @@ export function orderCombatUnitMove(
   const rec = book.get(entityId);
   const cur = rec.current;
   const motion = getMotion(state, entityId);
+  const goalDrift = cur?.kind === 'move' ? hexDistance(cur.q, cur.r, goal.q, goal.r) : Infinity;
+  const allowedDrift = distToGoal > 4 ? 2 : 0;
   const alreadyMovingToGoal =
     cur?.kind === 'move' &&
-    cur.q === goal.q &&
-    cur.r === goal.r &&
+    goalDrift <= allowedDrift &&
     (cur.minDist ?? 0) === goal.minDist &&
     (cur.maxDist ?? 0) === goal.maxDist &&
-    motion !== null &&
-    sameGoal(motion.goal, goal) &&
-    motion.status !== 'failed';
+    (motion === null || motion.status !== 'failed');
 
   if (alreadyMovingToGoal) return;
 
@@ -253,8 +286,9 @@ export function engageTargetInRangeOrApproach(
       const book = new UnitBook(state);
       const uRec = book.peek(entityId);
       if (uRec?.current) {
+        const stamp = uRec.current.source !== 'auto';
         uRec.current = null;
-        book.touch();
+        book.touch(stamp);
         book.flush(ctx.tick);
       }
       stepEvasiveUnit(state, row, targetId, ctx, maxRange);

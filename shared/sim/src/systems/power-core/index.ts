@@ -211,6 +211,27 @@ export function getColonyPower(state: PlanetState, colonyIndex = 0, data?: Compi
   return evaluateColonyPower(state, colonyIndex, data, state.meta.tick);
 }
 
+function powerSummaryChanged(prev: ColonyPowerSummary | undefined, next: ColonyPowerSummary): boolean {
+  if (!prev) return true;
+  return (
+    prev.hasHub !== next.hasHub ||
+    prev.supply !== next.supply ||
+    prev.buildingDemand !== next.buildingDemand ||
+    prev.workDemand !== next.workDemand ||
+    prev.brownout !== next.brownout ||
+    prev.daylight !== next.daylight ||
+    prev.phase !== next.phase ||
+    prev.capacitorStoredE !== next.capacitorStoredE ||
+    prev.capacitorCapacityE !== next.capacitorCapacityE ||
+    prev.hqCellStoredE !== next.hqCellStoredE ||
+    prev.hqCellCapacityE !== next.hqCellCapacityE ||
+    prev.shedEntityIds.length !== next.shedEntityIds.length ||
+    prev.unpoweredEntityIds.length !== next.unpoweredEntityIds.length ||
+    (prev.overloadedEntityIds?.length ?? 0) !== (next.overloadedEntityIds?.length ?? 0) ||
+    Object.keys(prev.entityPower ?? {}).length !== Object.keys(next.entityPower ?? {}).length
+  );
+}
+
 export function recomputeAllColonyPower(
   state: PlanetState,
   data?: CompiledDataLike,
@@ -218,14 +239,22 @@ export function recomputeAllColonyPower(
   dtTicks = 0,
   ctx?: StepContext,
 ): Record<number, ColonyPowerSummary> {
-  const prevTrackers = (state.blobs.power?.value as { trackers?: Record<number, PowerEventTracker> } | undefined)?.trackers ?? {};
+  const prevBlob = (state.blobs.power?.value as {
+    byColony?: Record<number, ColonyPowerSummary>;
+    trackers?: Record<number, PowerEventTracker>;
+  } | undefined) ?? {};
+  const prevTrackers = prevBlob.trackers ?? {};
   const byColony: Record<number, ColonyPowerSummary> = {};
   const trackers: Record<number, PowerEventTracker> = {};
   const colonyIndices = new Set<number>();
-  for (const c of state.colonies) colonyIndices.add(c.index);
-  for (let row = 0; row < state.entities.count; row++) colonyIndices.add(state.entities.cols.owner[row]);
+  for (const c of state.colonies) if (c.index >= 0) colonyIndices.add(c.index);
+  for (let row = 0; row < state.entities.count; row++) {
+    const owner = state.entities.cols.owner[row];
+    if (owner >= 0) colonyIndices.add(owner);
+  }
   if (colonyIndices.size === 0) colonyIndices.add(0);
 
+  let anyChanged = !state.blobs.power;
   for (const idx of colonyIndices) {
     const summary = evaluateColonyPower(state, idx, data, tick, dtTicks);
     byColony[idx] = summary;
@@ -233,9 +262,19 @@ export function recomputeAllColonyPower(
       trackers[idx] = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, data);
     }
     const col = state.colonies[idx];
-    if (col) { col.power = summary; col.changedAt = tick; }
+    const changed = powerSummaryChanged(prevBlob.byColony?.[idx], summary);
+    if (changed) anyChanged = true;
+    if (col) {
+      col.power = summary;
+      if (changed) col.changedAt = tick;
+    }
   }
-  setBlob(state, 'power', { byColony, trackers: ctx ? trackers : prevTrackers }, tick);
+  const nextValue = { byColony, trackers: ctx ? trackers : prevTrackers };
+  if (anyChanged || !state.blobs.power) {
+    setBlob(state, 'power', nextValue, tick);
+  } else {
+    state.blobs.power.value = nextValue;
+  }
   return byColony;
 }
 
@@ -244,26 +283,7 @@ const powerCoreSystem = defineSystem({
   slot: 7,
   wave: 'W02',
   run(state, ctx) {
-    const prevBlob = (state.blobs.power?.value as {
-      byColony?: Record<number, ColonyPowerSummary>;
-      trackers?: Record<number, PowerEventTracker>;
-    } | undefined) ?? {};
-    const prevTrackers = prevBlob.trackers ?? {};
-    const byColony: Record<number, ColonyPowerSummary> = {};
-    const trackers: Record<number, PowerEventTracker> = {};
-    const colonyIndices = new Set<number>();
-    for (const c of state.colonies) colonyIndices.add(c.index);
-    for (let row = 0; row < state.entities.count; row++) colonyIndices.add(state.entities.cols.owner[row]);
-    if (colonyIndices.size === 0) colonyIndices.add(0);
-
-    for (const idx of colonyIndices) {
-      const summary = evaluateColonyPower(state, idx, ctx.data, ctx.tick, ctx.dt);
-      byColony[idx] = summary;
-      trackers[idx] = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, ctx.data);
-      const col = state.colonies[idx];
-      if (col) { col.power = summary; col.changedAt = ctx.tick; }
-    }
-    setBlob(state, 'power', { byColony, trackers }, ctx.tick);
+    recomputeAllColonyPower(state, ctx.data, ctx.tick, ctx.dt, ctx);
   },
 });
 

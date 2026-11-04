@@ -25,6 +25,46 @@ export interface EntityStore {
 /** Removals older than this many ticks are forgotten; a replica further behind resyncs from a snapshot. */
 export const REMOVAL_WINDOW_TICKS = 3000;
 
+interface RowMotionTracker {
+  motionTick: Uint32Array;
+  motionMask: Uint16Array;
+  nonMotionAt: Uint32Array;
+}
+
+const rowTrackers = new WeakMap<EntityStore, RowMotionTracker>();
+
+function getTracker(s: EntityStore): RowMotionTracker {
+  let t = rowTrackers.get(s);
+  if (!t || t.motionTick.length < s.capacity) {
+    const cap = Math.max(s.capacity, 64);
+    const next: RowMotionTracker = {
+      motionTick: new Uint32Array(cap),
+      motionMask: new Uint16Array(cap),
+      nonMotionAt: new Uint32Array(cap),
+    };
+    if (t) {
+      next.motionTick.set(t.motionTick.subarray(0, s.count));
+      next.motionMask.set(t.motionMask.subarray(0, s.count));
+      next.nonMotionAt.set(t.nonMotionAt.subarray(0, s.count));
+    }
+    rowTrackers.set(s, next);
+    t = next;
+  }
+  return t;
+}
+
+const MOTION_COL_BITS: Readonly<Record<string, number>> = {
+  x: 1 << 0,
+  y: 1 << 1,
+  rot: 1 << 2,
+  q: 1 << 3,
+  r: 1 << 4,
+  targetQ: 1 << 3,
+  targetR: 1 << 4,
+  state: 1 << 0,
+  progress: 1 << 0,
+};
+
 export function createStore(capacity = 64): EntityStore {
   const cols = {} as Columns;
   for (const c of entityColumns()) cols[c.name] = allocate(c.dtype, capacity);
@@ -47,6 +87,7 @@ export function setCapacity(s: EntityStore, cap: number): void {
     s.cols[c.name] = next;
   }
   s.capacity = cap;
+  getTracker(s);
 }
 
 /** Row of an id (binary search on the sorted id column), or -1. */
@@ -69,11 +110,20 @@ export function rowOf(s: EntityStore, id: number): number {
  */
 export function insertRow(s: EntityStore, id: number, tick: number): number {
   if (s.count + 1 > s.capacity) grow(s, s.count + 1);
+  const t = getTracker(s);
   const ids = s.cols.id;
   let row = s.count;
   while (row > 0 && ids[row - 1] > id) row--;
-  if (row < s.count) for (const c of entityColumns()) s.cols[c.name].copyWithin(row + 1, row, s.count);
+  if (row < s.count) {
+    for (const c of entityColumns()) s.cols[c.name].copyWithin(row + 1, row, s.count);
+    t.motionTick.copyWithin(row + 1, row, s.count);
+    t.motionMask.copyWithin(row + 1, row, s.count);
+    t.nonMotionAt.copyWithin(row + 1, row, s.count);
+  }
   for (const c of entityColumns()) s.cols[c.name][row] = 0;
+  t.motionTick[row] = 0;
+  t.motionMask[row] = 0;
+  t.nonMotionAt[row] = tick;
   s.count++;
   ids[row] = id;
   s.cols.owner[row] = -1;
@@ -86,8 +136,15 @@ export function insertRow(s: EntityStore, id: number, tick: number): number {
 export function removeRow(s: EntityStore, id: number, tick: number): boolean {
   const row = rowOf(s, id);
   if (row < 0) return false;
+  const t = getTracker(s);
   for (const c of entityColumns()) s.cols[c.name].copyWithin(row, row + 1, s.count);
   for (const c of entityColumns()) s.cols[c.name][s.count - 1] = 0; // keep the vacated tail row canonical (deep-equal replicas)
+  t.motionTick.copyWithin(row, row + 1, s.count);
+  t.motionMask.copyWithin(row, row + 1, s.count);
+  t.nonMotionAt.copyWithin(row, row + 1, s.count);
+  t.motionTick[s.count - 1] = 0;
+  t.motionMask[s.count - 1] = 0;
+  t.nonMotionAt[s.count - 1] = 0;
   s.count--;
   s.removed.push({ id, at: tick });
   return true;
@@ -105,4 +162,30 @@ export function setField(s: EntityStore, row: number, col: string, value: number
   if (a[row] === value) return;
   a[row] = value;
   s.cols.changedAt[row] = tick;
+  const t = getTracker(s);
+  const bit = MOTION_COL_BITS[col];
+  if (bit !== undefined) {
+    if (t.motionTick[row] !== tick) {
+      t.motionTick[row] = tick;
+      t.motionMask[row] = bit;
+    } else {
+      t.motionMask[row] |= bit;
+    }
+  } else {
+    t.nonMotionAt[row] = tick;
+  }
+}
+
+/**
+ * Returns the `FAUNA_DIFF_MASK` bitmask for `row` since `fromTick`.
+ * Returns `0` when unchanged, a motion-only mask (`1..31`) when only `x,y,rot,q,r` changed via `setField`,
+ * or `1 << 11` (`other`) when created or non-motion fields changed since `fromTick`.
+ */
+export function rowDiffMaskSince(s: EntityStore, row: number, fromTick: number): number {
+  const changedAt = s.cols.changedAt[row];
+  if (changedAt <= fromTick) return 0;
+  if (s.cols.createdAt[row] > fromTick) return 1 << 9; // spawn
+  const t = getTracker(s);
+  if (t.nonMotionAt[row] > fromTick || t.motionTick[row] !== changedAt) return 1 << 11; // non-motion / direct write
+  return t.motionMask[row] || (1 << 11);
 }

@@ -1,11 +1,12 @@
 import { entityColumns } from '../ecs/columns';
-import { insertRow, pruneRemovals, removeRow, rowOf, setCapacity, type Removal } from '../ecs/store';
+import { insertRow, pruneRemovals, removeRow, rowDiffMaskSince, rowOf, setCapacity, type EntityStore, type Removal } from '../ecs/store';
 import { decodeValue, encodeValue } from '../codec/values';
 import { clientTileLayers, tileLayers } from '../grid/layers';
 import type { Blob, ColonyState, PlanetMeta, PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
 import { changedTileIndices, noteTilesStamped } from '../grid/sectors';
-import { clientMeta } from '../codec/snapshot';
+import { CLIENT_OMIT_BLOBS, clientMeta } from '../codec/snapshot';
+import { shouldOmitFaunaTransformFromRoutineDiff } from '../systems/fauna/directives';
 
 /** Engine diff wire format version (inside the MessagePack map). */
 export const DIFF_FORMAT = 1;
@@ -45,20 +46,29 @@ function gather(defs: readonly FieldDef[], src: Record<string, TypedArray>, idx:
   return out;
 }
 
-function changedIndices(stamp: ArrayLike<number>, length: number, fromTick: number): Uint32Array {
+function changedEntityIndices(e: EntityStore, fromTick: number, toTick: number, forClient?: boolean): Uint32Array {
   const out: number[] = [];
-  for (let i = 0; i < length; i++) if (stamp[i] > fromTick) out.push(i);
+  const stamp = e.cols.changedAt;
+  const kind = e.cols.kind;
+  for (let i = 0; i < e.count; i++) {
+    if (stamp[i] <= fromTick) continue;
+    if (forClient) {
+      const mask = rowDiffMaskSince(e, i, fromTick);
+      if (shouldOmitFaunaTransformFromRoutineDiff(kind[i], mask, toTick)) continue;
+    }
+    out.push(i);
+  }
   return Uint32Array.from(out);
 }
 
 /**
  * Everything stamped after `fromTick`, as MessagePack bytes (`@terra/sim` host diff, D-31). Pure read of `state`.
- * `forClient` drops `hidden` tile layers (D-38); the replica keeps zeros there (`applyTiles` skips absent layers).
+ * `forClient` drops `hidden` tile layers (D-38) and omits routine fauna motion transforms on non-correction ticks.
  */
 export function diffSince(state: PlanetState, fromTick: number, opts: { forClient?: boolean } = {}): Uint8Array {
   const e = state.entities;
   const tileIdx = changedTileIndices(state, fromTick);
-  const rows = changedIndices(e.cols.changedAt, e.count, fromTick);
+  const rows = changedEntityIndices(e, fromTick, state.meta.tick, opts.forClient);
   const diff: EngineDiff = {
     v: DIFF_FORMAT,
     fromTick,
@@ -73,7 +83,11 @@ export function diffSince(state: PlanetState, fromTick: number, opts: { forClien
       removed: e.removed.filter((r) => r.at > fromTick),
     },
     colonies: state.colonies.filter((c) => c.changedAt > fromTick),
-    blobs: Object.fromEntries(Object.entries(state.blobs).filter(([, b]) => b.changedAt > fromTick)),
+    blobs: Object.fromEntries(
+      Object.entries(state.blobs).filter(
+        ([k, b]) => (!opts.forClient || !CLIENT_OMIT_BLOBS.has(k)) && b.changedAt > fromTick,
+      ),
+    ),
   };
   return encodeValue(diff);
 }

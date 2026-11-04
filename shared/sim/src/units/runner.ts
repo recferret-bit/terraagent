@@ -70,20 +70,31 @@ function backOff(reg: UnitRegistry, u: UnitCtx, cmd: UnitCommand): void {
   u.record.skip[key] = u.ctx.tick + Math.min(u.stats.retryTicks * (1 << Math.min(n - 1, 20)), Math.max(u.stats.retryTicks, u.stats.retryMaxTicks));
 }
 
+function isClientVisibleCommand(cmd: UnitCommand | null | undefined): boolean {
+  if (!cmd) return false;
+  if (cmd.source !== 'auto') return true;
+  return cmd.kind === 'build' || cmd.kind === 'terraform' || cmd.kind === 'attack';
+}
+
 /** Ends the current command and lines up the next one (queue first, then auto work) without executing it yet. */
 function finish(reg: UnitRegistry, u: UnitCtx, book: UnitBook, status: Exclude<UnitCommandStatus, 'running'>): void {
   const rec = u.record;
   const cur = rec.current;
+  let needsStamp = isClientVisibleCommand(cur);
   if (cur && status === 'failed') {
     if (cur.source === 'auto') backOff(reg, u, cur);
-    else rec.lastFailure = { code: 'no_path', tick: u.ctx.tick, kind: cur.kind, source: cur.source };
+    else {
+      rec.lastFailure = { code: 'no_path', tick: u.ctx.tick, kind: cur.kind, source: cur.source };
+      needsStamp = true;
+    }
   } else if (cur && rec.fails) {
     delete rec.fails[commandKey(reg, cur)];
   }
   rec.current = null; // before proposing: a provider must not hand back the command that just ended
   rec.current = rec.queue.shift() ?? propose(reg, u, book);
+  if (isClientVisibleCommand(rec.current)) needsStamp = true;
   cancelMove(u.state, u.id, u.ctx.tick);
-  book.touch();
+  book.touch(needsStamp);
   if (!rec.current) {
     const cols = u.state.entities.cols;
     setUnitActivity(u, ENTITY_STATE.idle, cols.q[u.row], cols.r[u.row]);
@@ -111,9 +122,10 @@ function think(reg: UnitRegistry, u: UnitCtx, book: UnitBook): void {
       return;
     }
     if (!rec.current || commandKey(reg, rec.current) !== commandKey(reg, next)) {
+      const needsStamp = isClientVisibleCommand(rec.current) || isClientVisibleCommand(next);
       rec.current = next;
       cancelMove(u.state, u.id, u.ctx.tick);
-      book.touch();
+      book.touch(needsStamp);
     }
   }
   runCurrent(reg, u, book);
@@ -223,6 +235,7 @@ export function issueUnitCommand(
   if (!def) return 'unknown_kind';
   const code = def.validate?.(u, cmd as never);
   if (code) return code;
+  const prevCmd = u.record.current;
   if (def.immediate) {
     def.execute(u, cmd as never);
   } else if (opts.queue && u.record.current) {
@@ -232,6 +245,6 @@ export function issueUnitCommand(
     u.record.queue = [];
     cancelMove(state, u.id, ctx.tick);
   }
-  book.touch();
+  book.touch(isClientVisibleCommand(prevCmd) || isClientVisibleCommand(cmd));
   book.flush(ctx.tick);
 }
