@@ -480,7 +480,7 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 
 ### BE-28 · `resourceProduced` batch windows live in sim-thread memory
 
-- **Status:** Resolved (W12 checkpoint hardening; open windows flush with checkpoints, fractional carry follows lifetime counters)
+- **Status:** Resolved (bcaf867; open windows flush with checkpoints, fractional carry follows lifetime counters)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `backend/app/src/game/thread/production-batches.ts` (`ProductionBatches`, `PRODUCTION_WINDOW_TICKS`, `windowEndAfter`), `backend/app/src/game/thread/planet-host.ts` (`production`, `collect` after each step); W02-28
@@ -694,7 +694,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 ### BE-48 · Sim progression ingress still precedes durable commit
 
-- **Status:** Resolved (W12 checkpoint hardening)
+- **Status:** Resolved (bcaf867)
 - **Area / code:** `backend/app/src/progression/checkpoint-progression.ts`, `backend/app/src/game/persistence/snapshot-store.ts`
 - **What happened:** a process crash could lose a sim input independently of its saved world state; reset worlds reused source IDs.
 - **Resolution:** checkpoint, inbox and colony projection commit atomically; replay deduplicates rewards; per-planet incarnation IDs change on wipe. Open production/event windows flush before checkpoint. PostgreSQL tests cover rollback, fresh-worker replay, duplicate acknowledgment recovery and reset identity.
@@ -712,7 +712,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 
 ### BE-50 · Live colony profile stage and multi-colony resume
 
-- **Status:** Resolved (W12 checkpoint hardening); stage producers remain a future-wave dependency
+- **Status:** Resolved (bcaf867); stage producers remain a future-wave dependency
 - **Area / code:** `backend/app/src/game/persistence/colony-projection.ts`, `backend/app/src/core/home/home.service.ts`
 - **What happened:** stage was hardcoded and Dive in could resume a different latest home.
 - **Resolution:** the database stores stage; explicit sim stages/outcomes project with snapshots and settled/eliminated colonies archive idempotently. Dive in carries the colony ID; HTTP validates ownership/status and WS resolves the selected planet's seat. Foreign/missing/inactive destinations are rejected without replacement seating. Current sim colonies have no stage producer yet, so stage stays at the initial 1 until W08 supplies it; no invented progression is shown.

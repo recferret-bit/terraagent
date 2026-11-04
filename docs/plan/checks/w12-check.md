@@ -19,6 +19,8 @@ Latest validation (2026-11-04): full `npm run ci:fast` passed (1,697 tests plus 
 
 Remaining work and recommendations are saved in **BE-47** (extended profile/history), **BE-49** (external push/live chain prerequisites) and **BE-51** (checkpoint latency and exceptional rollback policy) in [backend limitations](../../questions-and-limitations/backend-contracts.md). **BE-28**, **BE-48** and **BE-50** record the fixes. Architecture: [Progression engine](../../spec/PROGRESSION_ENGINE.md).
 
+Final browser walkthrough on `bcaf867`: hub new-tab entry, all six tabs, desktop/mobile overflow, ticking mock Dive in, Google login from landing and X login from planet selection passed. Both authenticated profiles opened in new tabs without mock awards. The existing stack first needed `npm run db:migrate`; the popup probe also needed to wait for the mock OAuth page's load event before clicking its button. These were setup/synchronization failures, not passing checks; the corrected runs passed.
+
 Historical validation before this hardening:
 
 Full owner-check rerun (2026-11-04, implementation `7f2ddad`): **138/138 unit tests**, **10/10 PostgreSQL integration tests**, and **7/7 implemented W12 E2E tests** passed. Run the complete browser suite with `npm run e2e -- --waves 12` (without `--hack`); it creates a fresh database and starts an isolated stack on client 5674 / app 4502 with later waves off. Its three explicit skips are full colony-card acceptance (W12-17), history filtering/infinite scroll (W12-10/11/18), and badge mint UI delivery (W12-25/26). They are not passing tests.
