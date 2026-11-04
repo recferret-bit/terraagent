@@ -194,21 +194,13 @@ sequenceDiagram
 
 ## 8. Planet lifecycle & matchmaking (summary)
 
-```mermaid
-stateDiagram-v2
-  [*] --> PROVISIONING: matchmaker creates planet
-  PROVISIONING --> RECRUITING: planet loaded on a sim thread
-  RECRUITING --> SEALED: colonies == CAPACITY (5) OR age >= ADMISSION_WINDOW (24h)
-  SEALED --> ENDED: age >= PLANET_LIFETIME (14d) OR all colonies eliminated/settled OR victory
-  RECRUITING --> ENDED: all colonies eliminated
-  ENDED --> ARCHIVED: final snapshot + results persisted, planet unloaded
-  ARCHIVED --> [*]
-```
+D-12 was amended by the owner on 2026-11-04. W11 establishes exactly three canonical persistent worlds, one per type; sectors contain founding seats and validated landing slots. W27 adds large-world residency/streaming/navigation to the same admission model.
 
-- New players join only `RECRUITING` planets: not full **and** younger than the admission window. Seats freed by elimination are refilled only within the first 2 h (D-12). Planets seal at 24 h even with only 1–2 colonies.
-- The matchmaker is a loop inside the `lobby` module. There is one app instance, so there is **no leader election**. It processes the queue FIFO (parties are kept together, D-22): reserve seats → `spawnColony` command → confirm → push `match.assigned`.
-- **Warm pool:** `WARM_POOL_PER_TYPE = 1` empty `RECRUITING` planet per enabled type.
-- Full spec: [`MATCHMAKING.md`](./MATCHMAKING.md).
+- A full world queues new founders; it remains visible and existing players resume. No warm pool, overflow instance, age sealing, automatic expiry or all-settled/extinct ending.
+- The lobby loop reserves sector slots atomically, calls the existing idempotent spawn saga and confirms assignment. Parties reserve adjacent slots in the same or neighbouring sectors on one planet; partial failure is reconciled per member.
+- One authority/clock per planet. Border movement and expansion consume no new founding seats. Admin pause/resume/archival is explicit and audited; restart never creates a replacement world.
+- Preserve immutable atlas config and occupied saves. Founded-seat reclamation and production enlargement remain open with conservative defaults in WE-33.
+- Current rules, DTO changes and compatibility: [MATCHMAKING §0](./MATCHMAKING.md#0-persistent-sector-worlds--current-w11w27-policy-2026-11-04). Its historical instance specification is not normative for W11/W27.
 
 ---
 

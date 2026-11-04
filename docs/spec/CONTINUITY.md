@@ -190,7 +190,7 @@ sequenceDiagram
 | ID | Rule |
 |---|---|
 | `CT-50` | **Snapshots.** Every live planet is snapshotted every **60 s** and on graceful shutdown (SIMULATION `SIM-H-06`). Commands are not durable: a crash loses at most the player actions since the last snapshot (≤ 60 s). |
-| `CT-51` | **Restart fast-run.** On start the app loads each live planet's latest snapshot. It runs the missed wall-clock time (`now − savedAt`, capped at `RESTART_FASTRUN_MAX_H` = 24 h) in coarse steps, faster than real time, then resumes. Away digests, lifetimes and seal/end timers use wall clock. |
+| `CT-51` | **Restart fast-run.** On start the app loads each live planet's latest snapshot. It runs the missed wall-clock time (`now − savedAt`, capped at `RESTART_FASTRUN_MAX_H` = 24 h) in coarse steps, faster than real time, then resumes. Away digests use wall clock. Canonical W11/W27 worlds have no automatic lifetime/seal/end timers (MATCHMAKING §0); restart preserves admission/maintenance state. |
 | `CT-52` | **Deploy.** Stop intake → snapshot all planets (graceful shutdown, budget 30 s) → start the new version → fast-run the gap. Clients get `4012 server_restarting` and reconnect. There is no drain, lease handover or second worker. |
 | `CT-53` | **Fault.** A planet whose `step()` throws is quarantined and retried once from its latest snapshot (SIMULATION `SIM-H-08`). Other planets keep running. |
 | `CT-54` | **Hard mode during downtime (D-17).** The fast-run applies the same rules as live play, so a colony can take damage during missed time. Notifications for events found during the fast-run are sent once it completes, deduplicated per event. |

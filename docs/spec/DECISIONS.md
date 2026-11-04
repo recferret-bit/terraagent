@@ -16,7 +16,7 @@
 | D-09 | Z.ai `glm-5.3` via OpenAI-compatible API, behind a provider port | Accepted (2026-10-29): general endpoint, 20M tokens/day, raw logs 14 d |
 | D-10 | Guest-first auth, optional NEAR wallet link (NEP-413) | Proposed |
 | D-11 | Trades settle in-game in MVP with on-chain receipt; real NEAR Intents later | Superseded by D-19 |
-| D-12 | Planet lifecycle numbers: capacity 5, admission 24 h, lifetime 14 d | Accepted (2026-10-29), amended: seat refill within first 2 h |
+| D-12 | Persistent canonical planets and sector founding capacity | Amended by owner 2026-11-04: W11 foundation, W27 scale/navigation; supersedes instance lifetimes/warm pools |
 | D-13 | Planets always tick at full rate (no dormant fast-forward in MVP) | Superseded by D-24 (empty planets tick coarse) |
 | D-14 | All backend services are NestJS | Amended by D-24 (one NestJS app; sim threads plain TS) |
 | D-15 | MVP gameplay scope for the online build | Proposed — robot list superseded by D-16 if accepted |
@@ -118,11 +118,15 @@
 
 **Decision.** Offer/accept flows through core; settlement = paired commands to both planets' command streams in one transaction-like saga with compensation; `near-gateway` writes a receipt to `colony-registry`. Real NEAR Intents (solver network) is a follow-up epic once resources are tokenized.
 
-## D-12 — Planet lifecycle numbers
+## D-12 — Persistent canonical planets and sector admission
 
-**Decision.** `PLANET_CAPACITY=5`, `PLANET_ADMISSION_WINDOW_H=24`, `PLANET_LIFETIME_D=14`, seats on sealed planets never refill, warm pool 1 per type, global cap 200 active planets. Owner's example ("5 players on the planet for days → no new players") is satisfied by either gate.
+**Owner amendment (2026-11-04).** W11 becomes a small playable version of W27. Three canonical planets, one per existing type, persist from W11 onward. Founding capacity and safe landing slots belong to gameplay sectors; full worlds queue new players. No automatic overflow instances, warm pools, age sealing, lifetime expiry or extinction/all-settled ending. W11 includes small connected sectors and real border crossings; W27 expands scale, streaming and ground-to-globe navigation using the same admission model.
 
-**Resolved (2026-10-29).** Planets seal at 24 h even with only 1–2 colonies. A seat freed by elimination is refilled only within the first 2 h of a recruiting planet. Matchmaking join fallback: auto-place on the same planet type.
+**Superseded history.** The 2026-10-29 decision used capacity five per instance, 24-hour admission, 14-day lifetime, two-hour refill and warm pools. Those numbers are not current W11/W27 requirements. Pre-W11 dev seating remains a compatibility path.
+
+**Detailed policy:** [MATCHMAKING §0](./MATCHMAKING.md#0-persistent-sector-worlds--current-w11w27-policy-2026-11-04). Preserve tickets, atomic reservations, spawn recovery, parties, authorized resume and existing authority boundaries. Full is availability, not permanent sealing; admin maintenance/archival is explicit and audited.
+
+**Still open:** exact small-world sizing, abandoned/founded-seat reclaim, rejoin after elimination and occupied-world enlargement. [WE-33](../questions-and-limitations/sim-world-engine.md#we-33--w11-small-world-rollout-and-persistent-seat-policies) records conservative defaults and required follow-up; no inactivity eviction or automatic save reset is authorized.
 
 ## D-13 — Planets always tick at full rate
 

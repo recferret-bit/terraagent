@@ -1022,14 +1022,15 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 
 ### FF-65 · Global map shows nothing around the planet (no neighbouring sectors)
 
-- **Status:** Accepted (until W27)
+- **Status:** Accepted (W11 atlas adaptation; W27 streaming)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `MapsController.drawGlobalMap`, `frontend/game/maps/global-map.css`
-- **What happens:** the global map (an 80 % pop-up over the blurred scene) is endless to pan/zoom, but the area around the planet is the dialog's flat translucent fill. The decorative hex lattice that used to fill it was removed at the owner's request (it read as "blurred hexagons"). There is exactly one planet per session today, so there are no neighbouring sectors to draw; the `Resources` layer shows only the visible `deposit` layer of explored tiles (never the hidden `subDeposit`).
-- **Why it is like this:** real neighbouring sectors and streaming belong to W27 (planet atlas, `docs/plan/waves/W27-planet-sectors.md`).
+- **What happens:** the global map (an 80 % pop-up over the blurred scene) has bounded pan and 0.35×–8× zoom, but the area around the planet is the dialog's flat translucent fill. The decorative hex lattice that used to fill it was removed at the owner's request (it read as "blurred hexagons"). The current map consumes one dense hex disk; it has no gameplay-atlas neighbour data to draw; the `Resources` layer shows only the visible `deposit` layer of explored tiles (never the hidden `subDeposit`).
+- **Why it is like this:** W04 shipped a dense small-world map. W11 now owns the small connected atlas and map adaptation; W27 adds hierarchical summaries and streaming.
 - **Workaround / mitigation:** none needed; `RESET [0]` recenters on the planet.
-- **To resolve:** draw summary tiles of adjacent sectors around the planet when W27 lands.
+- **To resolve:** W11-37/-39/-42 adapts coordinate lookup, owner cache width and viewer exploration; W27-26/-27 adds bounded summaries/detail caches. Follow [the source-reviewed map handoff](../plan/MAP_EXTENSION_HANDOFF.md), including picking, cache invalidation and input regressions. No decorative neighbour lattice.
+- **Review update:** 2026-11-04: `PlanetRasterEntry.owner` is still `Int8Array`; map layers index a complete radius-based disk and normal updates scan dense arrays. These are explicit implementation gates, not fixed by this planning update.
 - **Found:** 2026-11-03, W04 map fixes
 
 ## W10 Cargo & Trade Hub (2026-11-03)

@@ -1,5 +1,7 @@
 # TerraAgent — Wire Protocols (WebSocket, in-process messages, REST)
 
+> **W11/W27 amendment (2026-11-04): W11 pins atlas/sector identities, wide owners and save versions while retaining bounded small-world replication. W27 adds negotiated interest epochs, sector baselines/deltas and partial replicas; full-world welcome/delta assumptions below remain only for supported small/legacy worlds. Incompatible clients/flags reject atlas saves without resetting them. Follow the W11/W27 wave contract gates.**
+
 > **Status:** v0.2 (2026-10-30). This covers the simplified one-app design (D-24) with no anti-cheat and no fog filtering (D-25; only crash/load limits, WS-16), plus the NEAR economy messages (D-26). The NATS contract and planet tickets are summarised in §13 as Future.
 > **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §6, §7, §13 · **Decisions:** [`DECISIONS.md`](./DECISIONS.md) D-24, D-25, D-26
 > **Code home:** `shared/contracts/src/{envelope,ws,rest,errors,commands,events}/**` (`@terra/contracts`; the server's internal bus payloads are `backend/app/src/bus/channels.ts`). Every shape below is a zod schema there; this document is the human-readable mirror. On conflict, ARCHITECTURE.md wins, then this file, then code (code must be fixed).

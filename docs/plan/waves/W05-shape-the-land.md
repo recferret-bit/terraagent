@@ -6,7 +6,7 @@
 > **Owned paths:** `shared/sim/src/systems/{terraform,territory,weather,hazards}/`, `shared/sim/src/gen/terrain-mix.ts`, `shared/sim/src/data/terraform.ts`, `frontend/game/features/{terraform,territory,weather}/`, terrain look in `frontend/render/visuals/terrain/` (bind only: terrain shader mask, `Liquids.ts`), weather VFX binding of `frontend/render/lighting/LightningStrikeSystem.ts`, new archetypes `frontend/render/kitbash/archetypes/units/terraformer.ts` and `frontend/render/kitbash/archetypes/buildings/{lightning-rod,hydro}.ts`, resource tiers `shared/sim/src/systems/resource-tiers/`, `shared/sim/src/data/resource-tiers.ts`, `frontend/game/features/resource-tiers/`, `tests/scenarios/w05-{tiers,desert,ocean}.ts`.
 > **Soft dependencies:** stage numbers (unlocks, meteor floor) ← W08; Deep Reclaim playable with W17's T2 workers; meteor breach consumer ← W14.
 
-**Generation review (2026-11-03):** D-38 already brought desert/ocean base generators forward; W05-17 extends their biome features and validation rather than recreating them. [W27](./W27-planet-sectors.md) adds continents and gameplay sectors and verifies that this wave's territory, placement and power rules cross sector boundaries.
+**Generation review (2026-11-03):** D-38 already brought desert/ocean base generators forward; W05-17 extends their biome features and validation rather than recreating them. [W11](./W11-lobby-planets.md) adds the small sector atlas and verifies terrain, placement, territory and power across borders; its full acceptance needs W05-12/-13. [W27](./W27-planet-sectors.md) scales the same world model to large continents and streamed queries.
 
 ## Goal
 

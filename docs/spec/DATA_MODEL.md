@@ -1,5 +1,7 @@
 # TerraAgent — Data Model (PostgreSQL / Prisma)
 
+> **W11/W27 amendment (2026-11-04): MATCHMAKING §0 and D-12 supersede the historical planet-capacity, NEW_PLANET, admission/lifetime and two-hour refill fields below. W11-02 adds canonical type uniqueness, immutable atlas/version records and sector landing-slot reservations; W11-37/-39 migrate identity/exploration. Keep existing live-colony and no-rejoin constraints pending WE-33. Do not implement the old instance schema as a second W27-off policy.**
+
 > **Status:** v0.2 (2026-10-30). This matches the one-app design (D-24): no lease or command-log fields. It adds sketch tables for the NEAR economy features F1–F8 (D-26).
 > **Parent:** [`ARCHITECTURE.md`](./ARCHITECTURE.md) §5.1, §8, §9 · **Decisions:** D-04 (one Prisma schema, namespaces, wave pre-step migrations), D-08 (Postgres is matchmaking truth), D-12 (lifecycle numbers)
 > **Implemented by:** [`TA-03`](../plan/issues/TA-03-database-and-persistence.md) (`TA-03.1` schema + `0001_init`, `TA-03.2` `@terra/db`, `TA-03.3` snapshot store). Later waves extend it only through the lead's pre-step (orchestrator §1.4).

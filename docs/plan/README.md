@@ -2,14 +2,14 @@
 
 This directory contains the product plan, not a live implementation-status board. The repository already includes the shared sim, backend and game client alongside the landing, orbital menu, descent and playground; inspect landed wave tags and code for implementation status. Waves extend those foundations. Layout: D-32.
 
-**Start with [`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md)** (2026-11-01). It is the plan: **28 product waves, 948 issues (≈ 692.5 agent-days)**, listed in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md), with one file per wave in [`waves/`](./waves/).
-- **New: [W27 — Planet Atlas, Continents & Sector Streaming](./waves/W27-planet-sectors.md)** reviews W04 and plans one world per type, configurable multiplayer sectors, continent generation, bounded streaming and continuous ground-to-globe map zoom with persistent location cues. Depends on W04/W05/W11.
+**Start with [`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md)** (2026-11-01). It is the plan: **28 product waves, 960 issues (≈ 704.5 agent-days)**, listed in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md), with one file per wave in [`waves/`](./waves/).
+- **Owner-approved split (2026-11-04): [W11 — Planet Foundations](./waves/W11-lobby-planets.md)** ships three persistent small sector worlds, sector admission and real border play after W01/W04/W05. **[W27 — Planet Scale, Streaming & Navigation](./waves/W27-planet-sectors.md)** expands that same foundation with large continents, bounded residency and continuous ground-to-globe navigation. No warm pools, overflow instances or age-based world resets.
 - **Every wave ships a working app.** Each wave has a flag, a git tag, a seed scenario and its own e2e suite, so it can be tested on its own and you can go back and forward.
 - **Waves run in parallel** on five tracks after the spine (W00–W02).
 - **Each wave has its own branch and worktree** and reaches `main` only after the owner's manual check; then the worktree and branch are deleted and `main` is pushed ([`PRODUCT_WAVES.md`](./PRODUCT_WAVES.md) §7).
 - **The old layer-based plan** (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`) is superseded and kept only for traceability.
 
-**Hackathon (2026-11-01 → 11-14):** option B: the `H` column in each wave file tags the must set (395 issues, ≈ 299.5 units). [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) has what ships, the pace check and the drop order; [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) has the generated critical path and start order. Decisions D-24..D-30 apply, plus D-40 (hosting on `terraagent.fun`, no Cloudflare):
+**Hackathon (2026-11-01 → 11-14):** option B: the `H` column in each wave file tags the must set (409 issues, ≈ 312 units). [`HACKATHON_CUT.md`](./HACKATHON_CUT.md) has what ships, the pace check and the drop order; [`HACKATHON_SCHEDULE.md`](./HACKATHON_SCHEDULE.md) has the generated critical path and start order. Decisions D-24..D-30 apply, plus D-40 (hosting on `terraagent.fun`, no Cloudflare):
 - one NestJS app + Postgres, a simplified server sim, no anti-cheat or anti-bot;
 - NEAR features F1–F8, **all on mock adapters behind real ports in phase 1** (D-30), with real adapters swapped in phase 2 (F5 → F1 → F2);
 - battle v1 (D-28);

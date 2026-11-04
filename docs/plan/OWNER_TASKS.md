@@ -166,3 +166,7 @@ The wave plan was reviewed against the specs and the existing `frontend/` protot
 **Obsolete owner items under D-24:** NATS ports, JetStream snapshot backups, worker routing / per-worker DNS, NATS credentials. Anything mentioning worker drain or leases in the W3–W5 lists applies only to the post-hackathon "Future" architecture.
 
 Still open for the owner: the social-login provider (F5), the Grafana exposure and alert destination (TA-13.2), and whether a wallet link is required across devices (D-10).
+
+## W11/W27 persistent-world follow-up (2026-11-04)
+
+The owner approved W11 as the small persistent-sector foundation and W27 as its scale/navigation expansion. Three canonical planets, no age-based ending and real W11 border crossings are settled. [WE-33](../questions-and-limitations/sim-world-engine.md#we-33--w11-small-world-rollout-and-persistent-seat-policies) tracks remaining rollout decisions: measured initial size, reclaim/rejoin/inactivity policy and occupied-world growth. Conservative defaults preserve colonies, seats and saves; these follow-ups do not reinstate the old instance lifecycle.
