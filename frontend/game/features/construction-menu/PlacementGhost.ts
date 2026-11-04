@@ -92,7 +92,7 @@ function scanFootprintTiles(
         // One rule with the host (D-37): trees, rock, slope, hole, water, ridge: terraform first.
         terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any');
         if (terrain === TERRAIN.deep || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
-        if (reqDepCode !== undefined && deposit === reqDepCode) coveredDepositIndices.push(tileIdx);
+        if (reqDepCode !== undefined && (deposit === reqDepCode || (reqDepCode === DEPOSIT.metals && deposit === DEPOSIT.minerals))) coveredDepositIndices.push(tileIdx);
       }
       const prepOp = tilesData ? getTilePrepOp(terrain, prep) : undefined;
       if (prepOp) prepBill[prepOp] = (prepBill[prepOp] ?? 0) + 1;
@@ -251,7 +251,7 @@ export class PlacementGhostController implements Disposable {
     this.element.onclick = (e) => {
       const target = e?.target as HTMLElement | null;
       if (target?.closest?.('.ta-placement-ghost__cancel')) return;
-      if (this.state?.valid) this.confirm();
+      this.confirm();
     };
 
     this.onKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
@@ -284,7 +284,7 @@ export class PlacementGhostController implements Disposable {
         if (e.button === 0 && this.activeBuilding) {
           const coord = resolvePointerTile(e, this.opts.ctx.services.pickTile);
           if (coord) this.setHoverTile(coord.q, coord.r);
-          if (this.state?.valid) this.confirm();
+          this.confirm();
         }
       },
       context: () => { if (this.activeBuilding) this.cancel(); },
@@ -359,7 +359,11 @@ export class PlacementGhostController implements Disposable {
   }
 
   confirm(): boolean {
-    if (!this.activeBuilding || !this.state || !this.state.valid) return false;
+    if (!this.activeBuilding || !this.state) return false;
+    if (!this.state.valid) {
+      this.opts.ctx.services.hudMin?.showToast(`Cannot build here: ${this.state.reason}`, 'warning', 5000, 'placement-invalid');
+      return false;
+    }
     const { building, q, r, rotation, tiles } = this.state;
     for (const t of tiles) if (t.tileIdx >= 0) this.pendingIndices.add(t.tileIdx);
     this.opts.ctx.services.sendCommand?.('enqueueTask', { task: { kind: 'build', building, q, r, rotation } });

@@ -388,7 +388,7 @@ export function evaluatePlacement(world: PlacementWorld, opts: EvaluatePlacement
   const bill = billFor(tiles, opts.data);
   for (const b of TILE_PRIORITY) if (tiles.some((t) => t.block === b)) return fail(b, tiles, bill);
   if (footprintSpread(world, tiles) > MAX_FOOTPRINT_SPREAD_M) return fail('uneven', tiles, bill);
-  if (rule.requiresDeposit !== undefined && !tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!))) return fail('noDeposit', tiles, bill);
+  if (rule.requiresDeposit !== undefined && !tiles.some((t) => coversDeposit(world, t, rule.requiresDeposit!) || (rule.requiresDeposit === DEPOSIT.metals && coversDeposit(world, t, DEPOSIT.minerals)))) return fail('noDeposit', tiles, bill);
   const cb = colonyBlock(world, rule, opts);
   if (cb) return fail(cb, tiles, bill);
   const prepared = tiles.filter((t) => t.prepared).length;

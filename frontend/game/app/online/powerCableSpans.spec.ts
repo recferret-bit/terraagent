@@ -24,7 +24,7 @@ describe('grid cable layout from synced power components', () => {
   it('wires the relays as a tree from the Hub (2 conductors each) and each building to its nearest relay', () => {
     const spans = derivePowerCableSpans([HUB, P1, P2, QUARRY], view({ entityIds: [1, 8, 9, 12], powered: true }), 0);
     expect(spans).toHaveLength(2 * 2 + 1);
-    expect(spans.every((s) => s.state === 'online')).toBe(true);
+    expect(spans.map((s) => s.state)).toEqual(['online', 'demand', 'online', 'demand', 'demand']);
     // Hub → P1 first, upstream end at the Hub (energy flows outward).
     expect(Math.hypot(spans[0].a[0] - HUB.mesh.position.x, spans[0].a[2] - HUB.mesh.position.z)).toBeLessThan(3);
     // The quarry's drop comes from P2, its nearest relay.
@@ -40,7 +40,7 @@ describe('grid cable layout from synced power components', () => {
     expect(brown.slice(0, 4).every((s) => s.state === 'brownout')).toBe(true);
     expect(brown[4].state).toBe('off');
     const over = derivePowerCableSpans(recs, view({ entityIds: [1, 8, 9, 12], powered: true }, { pylonLoads: { 9: { flow: 90, max: 80, overloaded: true } } }), 0);
-    expect(over.slice(0, 2).every((s) => s.state === 'online')).toBe(true);
+    expect(over.slice(0, 2).map((s) => s.state)).toEqual(['online', 'demand']);
     expect(over.slice(2).every((s) => s.state === 'overload')).toBe(true);
   });
 
@@ -58,4 +58,41 @@ describe('grid cable layout from synced power components', () => {
     const edges = relayTree(pts, (n) => n.id === 2, (a, b) => (a.x - b.x) ** 2);
     expect(edges.map(([p, c]) => `${p.id}>${c.id}`)).toEqual(['2>3', '3>9', '9>5']);
   });
+});
+
+it('sends generator pulses into the relay, and relay pulses toward consumers', () => {
+  const solar = node(30, ENTITY_KIND.solar, -3, 0);
+  const spans = derivePowerCableSpans([HUB, solar, QUARRY], view({ entityIds: [1, 30, 12], powered: true }), 0);
+  expect(spans).toHaveLength(2);
+  expect(spans[0].a[0]).toBeCloseTo(solar.mesh.position.x + 0.15);
+  expect(spans[0].b[0]).toBeCloseTo(HUB.mesh.position.x + 1.35);
+  expect(spans[1].a[0]).toBeCloseTo(HUB.mesh.position.x + 1.35);
+});
+
+it('raises the span above an intervening building roof', async () => {
+  const { clearCableRoofs } = await import('./cableClearance');
+  const { cablePoint } = await import('@terra/render/lighting/gridCables/cableGeometry');
+  const obstacle = new THREE.Mesh(new THREE.BoxGeometry(2, 8, 2));
+  obstacle.position.set(5, 4, 0);
+  const span = clearCableRoofs({ a: [0, 3, 0], b: [10, 3, 0], sag: 0.4, radius: 0.03, state: 'online', seed: 0 }, [obstacle]);
+  for (let t = 0.4; t <= 0.6; t += 0.01) expect(cablePoint(span, t, new THREE.Vector3()).y).toBeGreaterThan(8.3);
+});
+
+
+it('pairs pylon conductors in opposite directions and colors the request wire yellow', () => {
+  const spans = derivePowerCableSpans([HUB, P1], view({ entityIds: [1, 8], powered: true }), 0);
+  expect(spans[0].b[0]).toBeGreaterThan(spans[0].a[0]);
+  expect(spans[1].b[0]).toBeLessThan(spans[1].a[0]);
+  expect(spans.map((s) => s.state)).toEqual(['online', 'demand']);
+});
+
+it('turns the solar arc off at night and restores it by day while consumer demand stays yellow', () => {
+  const solar = node(30, ENTITY_KIND.solar, -3, 0);
+  const records = [HUB, solar, QUARRY];
+  const comp = { entityIds: [1, 30, 12], powered: true };
+  const night = derivePowerCableSpans(records, view(comp, { phase: 'night', daylight: 0 }), 0);
+  expect(night.map((s) => s.state)).toEqual(['off', 'demand']);
+  const day = derivePowerCableSpans(records, view(comp, { phase: 'day', daylight: 1 }), 0);
+  expect(day.map((s) => s.state)).toEqual(['online', 'demand']);
+  expect(derivePowerCableSpans(records, view(comp, { entityPower: { 30: { state: 'offline' } } }), 0)[0].state).toBe('off');
 });

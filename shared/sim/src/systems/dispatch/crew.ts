@@ -33,7 +33,10 @@ export function crewConfig(data?: CompiledDataLike): { helperEfficiency: number;
 /** The share of its work rate the k-th worker (0-based) on a job adds in one step. */
 export function crewShareAt(k: number, data?: CompiledDataLike): number {
   const { helperEfficiency, maxCrew } = crewConfig(data);
-  return k >= maxCrew ? 0 : Math.pow(helperEfficiency, k);
+  if (k >= maxCrew) return 0;
+  let share = 1;
+  for (let i = 0; i < k; i++) share *= helperEfficiency;
+  return share;
 }
 
 /**

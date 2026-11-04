@@ -128,7 +128,7 @@ describe('placement parity: W03 power zone (Hub, built pylon, queued pylon order
     expect(clientWorld.plannedSites).toEqual(serverWorld.plannedSites);
     const codes = new Set<string>();
     const R = host.state.grid.radius;
-    for (const building of ['solar', 'pylon']) {
+    for (const building of ['solar', 'wind', 'pylon']) {
       for (let r = -R; r <= R; r++) {
         for (let q = -R; q <= R; q++) {
           if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) > R) continue;

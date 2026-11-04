@@ -18,7 +18,7 @@ export interface CapacitorStepResult {
   chargePerS: number;
 }
 
-/** Computes Wind Turbine T1 output (E/s) based on colony wind factor (`0.5 .. 1.4`). */
+/** Computes Wind Turbine T1 output (E/s) at low (25%), medium (100%) or high (150%) wind. */
 export function evaluateWindOutput(
   state: PlanetState,
   colonyIndex: number,
@@ -35,20 +35,21 @@ export function evaluateWindOutput(
   let windFactor: number;
   if (typeof override === 'number' && Number.isFinite(override)) {
     windFactor = override;
-  } else if (tick < 1200) {
-    windFactor = 1.0;
   } else {
-    const period = Math.floor(tick / 1200);
-    const seed = ((period * 1103515245 + colonyIndex * 12345 + 12345) >>> 0) / 0xffffffff;
-    windFactor = Number((0.5 + seed * 0.9).toFixed(4));
+    const windowTicks = Number(windRow.windResampleTicks ?? 900);
+    const period = Math.floor(tick / windowTicks);
+    // Planet-wide deterministic weather, stable across replicas and colonies.
+    let hash = Math.imul(period + 1, 0x45d9f3b);
+    hash = Math.imul(hash ^ (hash >>> 16), 0x45d9f3b);
+    windFactor = [0.25, 1, 1.5][((hash ^ (hash >>> 16)) >>> 0) % 3];
   }
 
   if (colony) {
     (colony as { windFactor?: number }).windFactor = windFactor;
   }
 
-  const gross = Number((baseGross * windFactor).toFixed(4));
-  const net = Number((gross - internalDrain).toFixed(4));
+  const net = Number(((baseGross - internalDrain) * windFactor).toFixed(4));
+  const gross = Number((net + internalDrain).toFixed(4));
 
   return {
     windFactor,

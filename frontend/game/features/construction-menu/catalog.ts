@@ -48,7 +48,7 @@ function toFlagSet(flags: ReadonlySet<string> | FlagSet): FlagSet {
 
 const LABELS: Record<string, string> = {
   commandHub: 'Command Hub',
-  metalsExtractor: 'Metals Extractor',
+  metalsExtractor: 'Resource Extractor',
   solar: 'Solar Collector Array',
   pylon: 'Power Pylon',
   capacitor: 'Capacitor Bank',
@@ -201,7 +201,7 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
 
   const econTable = data.tables['economyT1Basic'];
   if (econTable) {
-    const buildingRows = Object.values(econTable).filter((r) => r.kind === 'building');
+    const buildingRows = Object.values(econTable).filter((r) => r.kind === 'building' && r.building !== 'mineralsQuarry');
     for (const row of buildingRows) {
       cards.push(makeCard(row as Record<string, unknown>, view));
     }
@@ -209,7 +209,7 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
 
   const gridTable = data.tables['grid'];
   if (gridTable) {
-    const gridBuildingRows = Object.values(gridTable).filter((r) => r.kind === 'building');
+    const gridBuildingRows = Object.values(gridTable).filter((r) => r.kind === 'building' && r.building !== 'mineralsQuarry');
     for (const row of gridBuildingRows) {
       cards.push(makeCard(row as Record<string, unknown>, view));
     }

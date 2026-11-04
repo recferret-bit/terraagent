@@ -1,3 +1,4 @@
+import { gridPort } from './gridPorts';
 // Power: pylon, capacitor, solar, wind, coal generator.
 import * as THREE from 'three';
 import { KitbashBuilder } from '../../KitbashRegistry';
@@ -178,5 +179,6 @@ export function coalGen() {
   strut(b, 'frameGunmetal', [0.4, 2.55, -0.3], [1.35, 2.05, -0.6], 0.07, { name: 'steam transfer pipe' });
   box(b, 'hullSecondary', [0.42, 0.52, 0.42], [-1.52, 0.19, 1.15], { r: 0.05, name: 'switchgear box' });
   cable(b, [-1.52, 0.82, 0.55], [-1.52, 0.66, 0.98], 0.08, 0.045, 'frameGunmetal', { name: 'generator power cable' });
+  gridPort(b, 'building.coalGen', 1.67);
   return b.build();
 }

@@ -1104,3 +1104,25 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** Collapse the dock (`Q`) on small screens.
 - **To resolve:** A HUD layout budget per breakpoint that reserves the top-left plate.
 - **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+
+### FF-72 · Resource counters expand beyond four digits
+
+- **Status:** Accepted (explicit owner request, 2026-11-04)
+- **Area / code:** `frontend/game/features/hud-min/MinimalHud.ts`, `hud-min.css`
+- **What happens:** Stock totals, caps and bio subtotals use four zero-padded digits with tabular numerals. Values above 9999 expand to their full number; hover retains the readable resource breakdown.
+- **Why it is like this:** Avoids width changes during ordinary production while preserving large quantities without abbreviation.
+- **Workaround / mitigation:** None needed.
+- **To resolve:** No change planned.
+- **Found:** 2026-11-04, owner feedback implementation.
+
+### FF-73 · Owner-feedback gameplay smoke check did not receive a local simulation view
+
+- **Status:** Open (verification limitation)
+- **Area / code:** `frontend/game/app/online/OnlineSession.ts`, browser local host startup
+- **What happens:** During this change's headless Chrome check, `/play.html?host=local&scenario=w03&planet=dune&skip=1` connected a streaming transport but stayed on “Deploying drop pod…” without a simulation view. A retry with native graphics and 120 seconds of waiting also did not reach gameplay. This does not establish the cause or whether normal interactive play is affected.
+- **Why it is like this:** Startup cause was not determined in this pass. The full regression suite passes, including local-host lifecycle tests.
+- **Workaround / mitigation:** Four-view model checks across all three biomes and a connected Hub/extractor/turbine/capacitor grid were inspected in the working playground. Placement, cap arithmetic, extractor output, wind windows and cable direction/clearance have automated regression checks.
+- **To resolve:** Repeat the owner-feedback story in an interactive local session and trace local worker boot if it reproduces. Construction continuity and minimap selection still need that interactive confirmation.
+- **Found:** 2026-11-04, owner-feedback visual QA.
+
+- **FF-73 follow-up (2026-11-04, stack restart):** Restarted the w03 frontend/backend and verified the server-backed `http://127.0.0.1:5273/play.html?scenario=w03&skip=1` reaches gameplay with advancing ticks and no page errors. Invalid-placement toast and wind placement limits were exercised there. The original browser-local startup observation remains open; use the server-backed URL for the owner check.

@@ -118,33 +118,34 @@ describe('W03-05 Wind Turbine T1 output & overrides', () => {
     spawnBuilding(state, ENTITY_KIND.commandHub, 0, 0, 3, 3, 1500);
     spawnBuilding(state, ENTITY_KIND.wind, 3, 0, 2, 2, 350);
 
-    // Default wind factor 1.0 at tick < 1200
+    // Explicit medium wind for the baseline.
+    (state.colonies[0] as { windFactorOverride?: number }).windFactorOverride = 1;
     step(state, [], 1, pipeline);
     const p1 = getColonyPower(state, 0);
     expect(p1.windGrossPerS).toBe(13);
     expect(p1.windInternalDrainPerS).toBe(1);
     expect(p1.windNetPerS).toBe(12);
 
-    // Override to min wind factor 0.5
-    (state.colonies[0] as { windFactorOverride?: number }).windFactorOverride = 0.5;
+    // Override to low wind factor 0.25
+    (state.colonies[0] as { windFactorOverride?: number }).windFactorOverride = 0.25;
     step(state, [], 1, pipeline);
     const pMin = getColonyPower(state, 0);
-    expect(pMin.windGrossPerS).toBe(6.5);
-    expect(pMin.windNetPerS).toBe(5.5);
+    expect(pMin.windGrossPerS).toBe(4);
+    expect(pMin.windNetPerS).toBe(3);
 
-    // Override to max wind factor 1.4
-    (state.colonies[0] as { windFactorOverride?: number }).windFactorOverride = 1.4;
+    // Override to high wind factor 1.5
+    (state.colonies[0] as { windFactorOverride?: number }).windFactorOverride = 1.5;
     step(state, [], 1, pipeline);
     const pMax = getColonyPower(state, 0);
-    expect(pMax.windGrossPerS).toBe(18.2);
-    expect(pMax.windNetPerS).toBe(17.2);
+    expect(pMax.windGrossPerS).toBe(19);
+    expect(pMax.windNetPerS).toBe(18);
 
     // Operates at night (midnight)
     setPlanetTime(state, { timeOfDay: 0 }, state.meta.tick);
     step(state, [], 1, pipeline);
     const pNight = getColonyPower(state, 0);
-    expect(pNight.windNetPerS).toBe(17.2);
-    expect(pNight.supply).toBeGreaterThanOrEqual(17.2);
+    expect(pNight.windNetPerS).toBe(18);
+    expect(pNight.supply).toBeGreaterThanOrEqual(18);
   });
 });
 

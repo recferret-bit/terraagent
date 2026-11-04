@@ -193,7 +193,8 @@ const extractorProductionSystem = defineSystem({
       if (cols.hp[row] <= 0) continue;
       const k = cols.kind[row];
       if (k === ENTITY_KIND.metalsExtractor) {
-        stepDepositExtractorRow(state, row, ctx, extRow, DEPOSIT.metals, 'metals', extractorIncomeByOwner);
+        const metal = checkExtractorDepositCoverage(state, cols.q[row], cols.r[row], cols.footprintW[row] || 2, cols.footprintD[row] || 2, cols.rot[row], DEPOSIT.metals).covered;
+        stepDepositExtractorRow(state, row, ctx, extRow, metal ? DEPOSIT.metals : DEPOSIT.minerals, metal ? 'metals' : 'minerals', extractorIncomeByOwner);
       } else if (k === ENTITY_KIND.mineralsQuarry) {
         stepDepositExtractorRow(state, row, ctx, quarryRow, DEPOSIT.minerals, 'minerals', extractorIncomeByOwner);
       } else if (k === ENTITY_KIND.waterExtractor) {

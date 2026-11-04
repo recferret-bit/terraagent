@@ -49,7 +49,7 @@ export function ghostData(flags: ReadonlySet<string> | FlagSet, store?: FeatureS
 
 const DEFAULT_LABELS: Record<string, string> = {
   commandHub: 'Command Hub',
-  metalsExtractor: 'Metals Extractor',
+  metalsExtractor: 'Resource Extractor',
   solar: 'Solar Collector Array',
   pylon: 'Power Pylon',
   capacitor: 'Capacitor Bank',

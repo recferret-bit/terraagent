@@ -862,3 +862,23 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** Run `cell 800` after an `addLoad` demo; the e2e runs the night step on a fresh colony.
 - **To resolve:** —
 - **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+
+### GP-75 · Unified extractor compatibility and mixed deposits
+
+- **Status:** Accepted (owner feedback, 2026-11-04)
+- **Area / code:** `systems/construction/placement.ts`, `systems/production/index.ts`, construction catalog
+- **What happens:** New Resource Extractors use the existing metalsExtractor entity kind on either metals or minerals. A footprint covering both mines metals first, then minerals when metals are exhausted. Existing quarry entities remain supported in saved worlds and legacy commands.
+- **Why it is like this:** One player-facing building without invalidating existing saves. Both resources use the extractor's cost and production rate; crystals tint its model violet.
+- **Workaround / mitigation:** Place over a single resource to choose the output explicitly.
+- **To resolve:** A future save migration can retire the legacy quarry kind if needed.
+- **Found:** 2026-11-04, owner feedback implementation.
+
+### GP-76 · Wind uses three-minute simulation windows
+
+- **Status:** Accepted (owner feedback, 2026-11-04)
+- **Area / code:** `systems/power-core/windAndCap.ts`, `data/grid.ts`
+- **What happens:** Planet-wide deterministic low/medium/high wind holds for 900 ticks (three simulated minutes), multiplying net turbine output by 25%/100%/150%. Consecutive windows may pick the same level. Warp accelerates the windows.
+- **Why it is like this:** Authoritative simulation time keeps replicas, electricity and environmental animation aligned.
+- **Workaround / mitigation:** HUD names the current level and percentage.
+- **To resolve:** Tune `windResampleTicks` if longer weather windows are desired.
+- **Found:** 2026-11-04, owner feedback implementation.

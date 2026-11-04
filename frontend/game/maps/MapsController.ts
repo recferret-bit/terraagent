@@ -323,6 +323,7 @@ export class MapsController {
       this.lastEntry = entry;
     }
 
+    this.minimapHud.selectedEntityId = this.ctx.services.landfall?.getSelectedEntityId() ?? null;
     this.minimapHud.updateData({
       entry: this.lastEntry,
       tiles: this.lastTiles,

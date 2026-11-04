@@ -1,5 +1,7 @@
 # W03 — The Grid: owner check
 
+For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-check.md). It supersedes the separate Quarry, old wind-output, and unpadded counter expectations below.
+
 > The wave's demo story ([`waves/W03-the-grid.md`](../waves/W03-the-grid.md)) as a hands-on checklist. Format and rules: [`README.md`](./README.md). About 25 minutes. Updated 2026-11-04 after the owner-feedback pass (W04 merged in, power zones, HQ-cell night store and energy retune, single Power Pylon card, grid cables, timed dismantle, crews, unit supply).
 
 ## Before you start

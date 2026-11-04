@@ -20,7 +20,7 @@ export default defineTable({
       wave: 'W02',
       kind: 'building',
       building: 'metalsExtractor',
-      label: 'Metals Extractor',
+      label: 'Resource Extractor',
       archetype: 'building.mine',
       tier: 1,
       unlockStage: 1,

@@ -1,5 +1,7 @@
 # Owner check guides
 
+Latest W03 feedback checks: [placement, selection, cables, extractors, counters and wind](./w03-feedback-check.md).
+
 Every wave ends with the owner playing its demo story by hand before the wave lands in `main` ([`PRODUCT_WAVES.md`](../PRODUCT_WAVES.md) §7 step 6). The wave lead writes that check as a **step-by-step guide** in this folder, `wNN-check.md`, commits it on the wave branch, and pastes it as its final message. [`w00-check.md`](./w00-check.md) is the worked example.
 
 `npm run wave:check -- NN` prints the guide (or, if there is none yet, the wave file's demo story) with the worktree's real ports.

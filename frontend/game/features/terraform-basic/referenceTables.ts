@@ -55,7 +55,7 @@ export function incomeReferenceRows(data?: CompiledDataLike): ReferenceTableRow[
     { target: 'Trees (Terraform)', detail: `${plusYield('forest', data)} (one-shot)` },
     { target: 'Rock (Terraform)', detail: plusYield('rock', data) },
     { target: 'Harvester (per deposit)', detail: `+${harvest}/s of its resource` },
-    { target: 'Metals Extractor', detail: `+${rate(resolveExtractorRow(data).outputPerS)} Metals/s` },
+    { target: 'Resource Extractor', detail: `+${rate(resolveExtractorRow(data).outputPerS)} Metals or Minerals/s` },
     { target: 'Solar Array (Day)', detail: `+${rate(computeSolarOutputPerS(1, 'temperate', data).net, 1)} Energy/s` },
   ];
 }

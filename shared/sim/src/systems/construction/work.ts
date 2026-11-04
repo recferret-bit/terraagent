@@ -150,8 +150,7 @@ export const buildProvider: UnitWorkProvider = {
     if (
       cur?.kind === 'build' &&
       !skipped(cur.orderId) &&
-      ready.some((o) => o.orderId === cur.orderId) &&
-      (!claimed.has(cur.orderId) || !unclaimed || u.state.entities.cols.state[u.row] === ENTITY_STATE.constructing)
+      ready.some((o) => o.orderId === cur.orderId)
     ) {
       return cur;
     }

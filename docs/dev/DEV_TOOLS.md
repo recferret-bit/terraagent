@@ -334,3 +334,5 @@ Scenario id `w06` (`tests/scenarios/w06-invisible-chain.ts`, seed `w06-invisible
 Vite rewrites `/dev/mock-oauth` (no trailing slash) to `dev/mock-oauth/index.html`, keeping the query. Without that, the SPA fallback serves the hub and the Save progress popup has no preset button. `/dev/mock-oauth/` already serves that page.
 
 A `dev:` session on a scenario planet (`?as=`) gets a `core.colony` row at index 0 when it joins, and Save progress sends that `dev:` token as the bearer so the upgrade keeps the player and enqueues the colony deposit. The colony row id is not the sim id `col_0` (BE-45). Production does not accept a `dev:` bearer.
+
+Wind in online/local gameplay now follows the authoritative power summary: low/medium/high = 25%/100%/150% net turbine output, held for `grid.wind.windResampleTicks` (900 ticks / three simulated minutes). The HUD displays the level. Gameplay synchronizes the F8 WIND strength to that value; standalone playground wind controls remain editable. Turbine rotation, foliage and water share this strength. Warp accelerates the weather windows.

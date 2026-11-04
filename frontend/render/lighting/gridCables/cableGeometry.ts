@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 /** Grid state a cable shows: dark and still, sputtering amber, steady cyan pulses, or fast crimson arcs. */
-export type CablePowerState = 'off' | 'brownout' | 'online' | 'overload';
+export type CablePowerState = 'off' | 'brownout' | 'online' | 'overload' | 'demand';
 
 /** Shader code of each state (`aCable.w`): `0` hides the arc overlay, the cable itself is always drawn. */
 export const CABLE_STATE_CODE: Readonly<Record<CablePowerState, number>> = {
@@ -9,6 +9,7 @@ export const CABLE_STATE_CODE: Readonly<Record<CablePowerState, number>> = {
   brownout: 1,
   online: 2,
   overload: 3,
+  demand: 4,
 };
 
 /** One conductor between two anchors, in world space. Energy flows from `a` (upstream) to `b`. */

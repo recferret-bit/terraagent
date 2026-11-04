@@ -128,12 +128,14 @@
 }
 
 .ta-hud-min__stock-val {
+  font-variant-numeric: tabular-nums;
   color: var(--ta-text);
   font-weight: 600;
 }
 
 .ta-hud-min__stock[data-capped='true'] .ta-hud-min__stock-val,
 .ta-hud-min__stock.ta-res-chip--capped .ta-hud-min__stock-val {
+  font-variant-numeric: tabular-nums;
   color: var(--ta-fault-text);
 }
 

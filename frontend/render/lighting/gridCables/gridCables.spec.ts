@@ -39,6 +39,12 @@ describe('grid cable geometry', () => {
     r.setSpans([span({ state: 'brownout' })]);
     expect((r.group.children[0] as THREE.Mesh).geometry).toBe(geo);
     expect(geo.getAttribute('aCable').getW(0)).toBe(1);
+    r.setSpans([span({ state: 'demand' })]);
+    expect((r.group.children[0] as THREE.Mesh).geometry).toBe(geo);
+    expect(geo.getAttribute('aCable').getW(0)).toBe(4);
+    expect(r.uniforms.uColorDemand.value.r).toBeGreaterThan(r.uniforms.uColorDemand.value.b);
+    r.setSpans([span({ state: 'off' })]);
+    expect(geo.getAttribute('aCable').getW(0)).toBe(0);
     r.setSpans([span({ b: [12, 4, 0] })]);
     expect((r.group.children[0] as THREE.Mesh).geometry).not.toBe(geo);
     r.update(1.5);

@@ -1,4 +1,7 @@
 import * as THREE from 'three';
+import { syncExtractorAppearance } from './extractorAppearance';
+import { updateSelectionPulse } from './selectionPulse';
+import { getWindUniforms } from '@terra/render/core/windConfig';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, stripBuildingPlinth, tickArchetypeMesh } from '@terra/render/kitbash';
 import { attachEntityProjectorRig } from '@terra/render/lighting';
@@ -91,6 +94,7 @@ export class EntityMeshes {
   private markerT = 99;
   private markerTile: { q: number; r: number } | null = null;
   private time = 0;
+  private windTime = 0;
   private biomeKey = 'forestRock';
   private latestTiles: ClientTiles | null = null;
   private latestView: ClientView | null = null;
@@ -231,6 +235,7 @@ export class EntityMeshes {
     forEachEntity(view.entities, view.count, (e) => {
       seen.add(e.id);
       correction = Math.max(correction, this.upsertEntity(e, terrain, tdState, view.tick, view));
+      syncExtractorAppearance(this.entries.get(e.id)?.mesh, e, view);
     });
     if (correction > 0) this.onCorrection?.(correction);
 
@@ -352,6 +357,7 @@ export class EntityMeshes {
   /** `dt`: animation time (warp-scaled); `realDt`: wall-clock seconds for the render clock (defaults to `dt`). */
   update(dt: number, terrain: HexTerrain | null = null, realDt = dt): void {
     this.time += dt;
+    this.windTime += dt * getWindUniforms().uWindStrength.value;
     this.hasTerrain = Boolean(terrain);
     const renderTick = this.clock.advance(realDt);
     const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
@@ -391,6 +397,7 @@ export class EntityMeshes {
 
       const isTrackedUnit = rec.kind === ENTITY_KIND.hq || rec.kind === ENTITY_KIND.harvester || rec.kind === ENTITY_KIND.builder;
       const wantWalk = isTrackedUnit ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
+      updateSelectionPulse(rec.mesh, rec.id === this.selectedEntityId, this.time);
       const wantWork = computeWorkTarget(rec.kind, rec.state, isDaylight);
       rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);
       rec.work += (wantWork - rec.work) * Math.min(1, dt * 10);
@@ -398,7 +405,7 @@ export class EntityMeshes {
       const animTime = isConstructibleBuilding(rec.kind) && wantWork === 0
         ? ((rec.mesh.userData as { uniforms?: { uTime?: { value: number } } })?.uniforms?.uTime?.value ?? 0)
         : this.time;
-      tickArchetypeMesh(rec.mesh, animTime, rec.walk, rec.work);
+      tickArchetypeMesh(rec.mesh, rec.kind === ENTITY_KIND.wind && wantWork > 0 ? this.windTime : animTime, rec.walk, rec.work);
     }
 
     const workSites = buildActiveWorkSites({
@@ -461,6 +468,12 @@ export class EntityMeshes {
       return;
     }
     this.selectionRing.visible = true;
+    const geometry = (sel.mesh as THREE.Mesh).geometry;
+    if (geometry && !geometry.boundingBox) geometry.computeBoundingBox();
+    const box = geometry?.boundingBox;
+    const radius = box ? Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * sel.mesh.scale.x * 0.65 : 1;
+    this.selectionRing.scale.setScalar(Math.max(1, radius) * (1 + 0.06 * Math.sin(this.time * 4)));
+    (this.selectionRing.material as THREE.MeshBasicMaterial).opacity = 0.65 + 0.3 * Math.sin(this.time * 4);
     this.selectionRing.position.set(sel.mesh.position.x, sel.mesh.position.y + 0.06, sel.mesh.position.z);
   }
 

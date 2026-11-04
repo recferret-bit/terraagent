@@ -3,7 +3,7 @@ import type { FeatureContext } from '../../core/registry/types';
 
 export const TASK_TITLES: Readonly<Record<string, string>> = {
   solar: 'Solar Array T1',
-  metalsExtractor: 'Metals Extractor T1',
+  metalsExtractor: 'Resource Extractor T1',
   commandHub: 'Command Hub T1',
   harvester: 'Harvester',
   pylon: 'Power Pylon T1',

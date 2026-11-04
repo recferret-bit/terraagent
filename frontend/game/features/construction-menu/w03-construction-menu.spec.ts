@@ -57,7 +57,6 @@ describe('W03-17 Construction catalog & deposit ghost rules', () => {
       'wind',
       'thermal',
       'supplyDepot',
-      'mineralsQuarry',
       'waterExtractor',
       'petroleumWell',
     ]);

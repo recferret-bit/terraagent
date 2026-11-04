@@ -94,11 +94,11 @@ describe('W01-29: Minimal HUD clock & view rendering', () => {
 
     expect(colonyEl.textContent).toBe("Colonist's Colony");
     expect(clockEl.textContent).toBe('00:25');
-    expect(metalsEl.textContent).toContain(`600 / ${initialCaps().metals}`);
-    expect(mineralsEl.textContent).toContain(`350 / ${initialCaps().minerals}`);
-    expect(bioEl.textContent).toContain(`400 / ${initialCaps().bio}`);
-    expect(bioEl.textContent).toContain('Biomass 200');
-    expect(bioEl.textContent).toContain('Water 200');
+    expect(metalsEl.textContent).toContain(`0600 / ${String(initialCaps().metals).padStart(4, '0')}`);
+    expect(mineralsEl.textContent).toContain(`0350 / ${String(initialCaps().minerals).padStart(4, '0')}`);
+    expect(bioEl.textContent).toContain(`0400 / ${String(initialCaps().bio).padStart(4, '0')}`);
+    expect(bioEl.textContent).toContain('Biomass 0200');
+    expect(bioEl.textContent).toContain('Water 0200');
     expect(cellEl.textContent).toContain('800 / 800 E');
     expect(cellBar.style.width).toBe('100%'); // the browser (and jsdom) normalises '100.0%'
 
@@ -361,9 +361,9 @@ describe('HUD shows whole resource units only', () => {
     };
     hud.update({ tick: 0, colonies: [colony] } as unknown as ClientView);
     // No caps in the view: the sim's INITIAL_CAPS (metals 600, minerals 500, bio 500), not a HUD constant.
-    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('199 / 600');
-    expect(parent.querySelector('[data-testid="hud-stock-minerals"]')!.textContent).toContain('100 / 500');
-    expect(parent.querySelector('[data-testid="hud-stock-bio"]')!.textContent).toContain('100 / 500');
+    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('0199 / 0600');
+    expect(parent.querySelector('[data-testid="hud-stock-minerals"]')!.textContent).toContain('0100 / 0500');
+    expect(parent.querySelector('[data-testid="hud-stock-bio"]')!.textContent).toContain('0100 / 0500');
     hud.dispose();
   });
 });
@@ -390,7 +390,7 @@ describe('Reject toasts per command kind, live costs, accessibility, placeholder
     expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('—');
     hud.update({ tick: 0, colonies: [{ index: 0, id: 'c', name: 'c', color: 0, status: 'active', stock: {} }] } as never);
     expect(parent.querySelector('[data-testid="hud-hq-cell"]')!.textContent).toContain('— E'); // no HQ in the view
-    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('0 / 600');
+    expect(parent.querySelector('[data-testid="hud-stock-metals"]')!.textContent).toContain('0000 / 0600');
     hud.dispose();
   });
 
@@ -482,3 +482,12 @@ function freshDaytime(hud: MinimalHud): { el: HTMLElement; clock: HTMLElement; l
     light: el.querySelector<HTMLElement>('[data-testid="hud-daytime-light"]')!,
   };
 }
+
+it('sums fractional tiers before rounding the family counter at its cap', () => {
+  const parent = document.createElement('div');
+  const hud = new MinimalHud(parent);
+  hud.update({ tick: 1, colonies: [{ index: 0, stock: { 'metals.t1': 250.5, 'metals.t2': 249.5 }, caps: { metals: 500 } }] } as any);
+  expect(parent.querySelector('[data-testid="hud-stock-metals"]')?.textContent).toContain('0500 / 0500');
+  expect(parent.querySelector('[data-testid="hud-stock-metals"]')?.getAttribute('data-capped')).toBe('true');
+  hud.dispose();
+});

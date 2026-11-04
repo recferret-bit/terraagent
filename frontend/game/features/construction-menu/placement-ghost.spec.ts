@@ -231,7 +231,7 @@ describe('evaluatePlacementGhost - metals deposit coverage', () => {
     });
     expect(ghostOff.valid).toBe(false);
     expect(ghostOff.statusColor).toBe('red');
-    expect(ghostOff.reason).toBe('must cover a metals deposit');
+    expect(ghostOff.reason).toBe('must cover a metals or minerals deposit');
     expect(ghostOff.depositCovered).toBe(false);
     expect(ghostOff.depositTileIndices).toEqual([]);
 
@@ -334,16 +334,17 @@ describe('PlacementGhostController - selection & placement', () => {
   beforeEach(() => { dom = setupMockDom(); });
   afterEach(() => { dom.restore(); });
 
-  it('selects Metals Extractor and displays "must cover a metals deposit" when off deposit', () => {
+  it('selects Metals Extractor and displays "must cover a metals or minerals deposit" when off deposit', () => {
     const { view, setTile } = createPlanetView(3);
     setTile(1, 1, { deposit: DEPOSIT.metals });
 
     const parentEl = new MockElement('div') as unknown as HTMLElement;
     const sendCommand = vi.fn().mockResolvedValue({ ok: true, appliedAtTick: 1 });
+    const showToast = vi.fn();
     const ctx = {
       flags: DEFAULT_FLAGS,
       host: 'server' as const,
-      services: { sendCommand, track: vi.fn() },
+      services: { sendCommand, track: vi.fn(), hudMin: { showToast } as any },
     };
 
     const menu = new ConstructionMenu(parentEl, ctx, view);
@@ -356,7 +357,7 @@ describe('PlacementGhostController - selection & placement', () => {
     expect(ghostState).not.toBeNull();
     expect(ghostState?.valid).toBe(false);
     expect(ghostState?.statusColor).toBe('red');
-    expect(ghostState?.reason).toBe('must cover a metals deposit');
+    expect(ghostState?.reason).toBe('must cover a metals or minerals deposit');
     expect(ghostState?.depositCovered).toBe(false);
 
     const ghostEl = mockParent.querySelector('.ta-placement-ghost');
@@ -364,11 +365,12 @@ describe('PlacementGhostController - selection & placement', () => {
     expect(ghostEl?.getAttribute('data-valid')).toBe('false');
     expect(ghostEl?.getAttribute('data-color')).toBe('red');
     expect(ghostEl?.getAttribute('data-deposit-covered')).toBe('false');
-    expect(ghostEl?.querySelector('.ta-placement-ghost__reason')?.textContent).toBe('must cover a metals deposit');
-    expect(ghostEl?.querySelector('.ta-placement-ghost__deposit')?.textContent).toBe('must cover a metals deposit');
+    expect(ghostEl?.querySelector('.ta-placement-ghost__reason')?.textContent).toBe('must cover a metals or minerals deposit');
+    expect(ghostEl?.querySelector('.ta-placement-ghost__deposit')?.textContent).toBe('must cover a metals or minerals deposit');
 
     const confirmResult = menu.confirm();
     expect(confirmResult).toBe(false);
+    expect(showToast).toHaveBeenCalledWith('Cannot build here: must cover a metals or minerals deposit', 'warning', 5000, 'placement-invalid');
     expect(sendCommand).not.toHaveBeenCalled();
 
     menu.setHoverTile(0, 0);

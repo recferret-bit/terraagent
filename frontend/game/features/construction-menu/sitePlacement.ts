@@ -12,7 +12,7 @@ export interface SiteVerdict {
 }
 
 /** The ghost's wording for an Extractor off a metals deposit (the card and the e2e read it). */
-export const NO_DEPOSIT_TEXT = 'must cover a metals deposit';
+export const NO_DEPOSIT_TEXT = 'must cover a metals or minerals deposit';
 
 export function depositReasonText(building: string, requiresDeposit?: string): string {
   if (requiresDeposit === 'minerals' || building === 'mineralsQuarry' || building === 'quarry') {

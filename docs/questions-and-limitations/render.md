@@ -929,10 +929,10 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `frontend/game/app/online/powerCableSpans.ts`, `frontend/render/lighting/gridCables/`
-- **What happens:** Cables are a minimum spanning tree per synced grid component (Hub + pylons, 2 conductors per span) plus one thin cable from each attached building to its nearest relay. A pylon may reach more relays in the sim than it is wired to on screen; cables can clip through a building between two nodes; only the own colony's cables are drawn, with no shroud tint and no quality / `?perf` switch.
+- **What happens:** Cables are a minimum spanning tree per synced grid component (Hub + pylons, 2 conductors per span) plus one thin cable from each attached building to its nearest relay. A pylon may reach more relays in the sim than it is wired to on screen; cables now rise above intervening building bounds (owner feedback, 2026-11-04); only the own colony's cables are drawn, with no shroud tint and no quality / `?perf` switch.
 - **Why it is like this:** Two draw calls, geometry rebuilt only on shape change, zero per-frame allocation.
 - **Workaround / mitigation:** —
-- **To resolve:** Route cables around footprints; add a quality switch if perf needs it.
+- **To resolve:** Add a quality switch if perf needs it. Roof clearance uses lifted arcs, so dense layouts can produce high spans; a future routing pass can place intermediate supports.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
 
 ### RN-65 · Buildings without their own light entry inherit the 4-corner mine rig

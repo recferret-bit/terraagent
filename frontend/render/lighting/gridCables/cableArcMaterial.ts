@@ -8,7 +8,7 @@ import * as THREE from 'three';
  * shader; the CPU only advances `uTime`.
  *
  * States (`aCable.w`): 0 off (overlay culled), 1 brownout (slow, sputtering amber), 2 online (steady cyan packets),
- * 3 overload (fast crimson arcs, wider jitter).
+ * 3 overload (fast crimson arcs, wider jitter), 4 demand (steady yellow packets).
  */
 
 /**
@@ -30,6 +30,7 @@ float arcHash(float n) { return fract(sin(mod(n, 3571.0)) * 43758.5453123); }
 /** Per state: packet speed (m/s), spacing between packets (m), jitter amplitude (m), resting shimmer (0..1). */
 const ARC_STATE_PARAMS = /* glsl */ `
 vec4 arcStateParams(float s) {
+  if (s > 3.5) return vec4(7.0, 9.0, 0.24, 0.07);
   if (s > 2.5) return vec4(14.0, 4.5, 0.32, 0.22);
   if (s > 1.5) return vec4(7.0, 9.0, 0.24, 0.07);
   return vec4(3.0, 11.0, 0.12, 0.03);
@@ -74,13 +75,14 @@ void main() {
 
 const ARC_FRAGMENT = /* glsl */ `
 uniform vec3 uColorOnline;
+uniform vec3 uColorDemand;
 uniform vec3 uColorBrownout;
 uniform vec3 uColorOverload;
 uniform float uStrength;
 varying float vGlow;
 varying float vState;
 void main() {
-  vec3 col = vState > 2.5 ? uColorOverload : (vState > 1.5 ? uColorOnline : uColorBrownout);
+  vec3 col = vState > 3.5 ? uColorDemand : vState > 2.5 ? uColorOverload : (vState > 1.5 ? uColorOnline : uColorBrownout);
   gl_FragColor = vec4(col * vGlow * uStrength, 1.0);
 }
 `;
@@ -90,12 +92,14 @@ export interface CableArcUniforms {
   uTime: { value: number };
   uStrength: { value: number };
   uColorOnline: { value: THREE.Color };
+  uColorDemand: { value: THREE.Color };
   uColorBrownout: { value: THREE.Color };
   uColorOverload: { value: THREE.Color };
 }
 
 /** HDR plasma colours (> 1.1 so the selective bloom, threshold 1.1, wraps the packet in a corona). */
 export const CABLE_ARC_COLORS = {
+  demand: new THREE.Color(1.0, 0.85, 0.08).multiplyScalar(6.0),
   online: new THREE.Color(0.45, 0.88, 1.0).multiplyScalar(6.0),
   brownout: new THREE.Color(1.0, 0.55, 0.12).multiplyScalar(3.4),
   overload: new THREE.Color(1.0, 0.22, 0.16).multiplyScalar(5.0),
@@ -110,6 +114,7 @@ export function createCableArcMaterial(): THREE.ShaderMaterial & { uniforms: Cab
   const uniforms: CableArcUniforms = {
     uTime: { value: 0 },
     uStrength: { value: 1 },
+    uColorDemand: { value: CABLE_ARC_COLORS.demand.clone() },
     uColorOnline: { value: CABLE_ARC_COLORS.online.clone() },
     uColorBrownout: { value: CABLE_ARC_COLORS.brownout.clone() },
     uColorOverload: { value: CABLE_ARC_COLORS.overload.clone() },

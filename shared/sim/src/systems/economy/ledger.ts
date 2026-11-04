@@ -188,7 +188,8 @@ export function creditResource(
   const capped = Math.max(0, amount - credited);
 
   if (credited > 0) {
-    c.stock[key] += credited;
+    const next = c.stock[key] + credited;
+    c.stock[key] = Math.abs(next - Math.round(next)) < 1e-9 ? Math.round(next) : next;
     if (opts.produced !== false) c.production.produced[key] += credited;
   }
   if (capped > 0) {

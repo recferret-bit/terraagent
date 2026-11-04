@@ -5,7 +5,7 @@ import { ownColonyIndex } from '../shared/colony';
 import { gridBalance, readColonyPower, readEntityPower, readPylonLoad } from '../shared/power';
 
 const KIND_NAMES: Record<number, string> = {
-  [ENTITY_KIND.metalsExtractor]: 'Metals Extractor',
+  [ENTITY_KIND.metalsExtractor]: 'Resource Extractor',
   [ENTITY_KIND.solar]: 'Solar Array',
   [ENTITY_KIND.commandHub]: 'Command Hub',
   [ENTITY_KIND.hq]: 'Colony HQ',

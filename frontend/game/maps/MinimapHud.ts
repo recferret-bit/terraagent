@@ -163,6 +163,7 @@ export class MinimapHud {
     const size = this.sizePx;
     const scale = mapScaleForRadius(size, radius);
     return {
+      selectedEntityId: this.selectedEntityId,
       width: size,
       height: size,
       planetId: this.lastEntry?.planetKey ?? undefined,
@@ -176,6 +177,8 @@ export class MinimapHud {
       rasterCanvas: this.lastEntry?.canvas ?? null,
     };
   }
+
+  selectedEntityId: number | null = null;
 
   render(): void {
     const w = this.canvas.width;

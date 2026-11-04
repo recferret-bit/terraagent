@@ -73,7 +73,7 @@ describe('PowerHud - brownout acceptance', () => {
     expect(banner.getAttribute('data-brownout')).toBe('false');
 
     const inspector = mockParent.querySelector('.ta-building-inspector')!;
-    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Metals Extractor');
+    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Resource Extractor');
     expect(inspector.querySelector('.ta-building-inspector__state')?.textContent).toBe('ONLINE');
     expect(inspector.getAttribute('data-offline')).toBe('false');
 
@@ -112,7 +112,7 @@ describe('PowerHud - brownout acceptance', () => {
     expect(banner.textContent).toContain('BROWNOUT — SHEDDING GROUP 3');
 
     // 2. Shed Extractor shows offline: brownout
-    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Metals Extractor');
+    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Resource Extractor');
     expect(inspector.querySelector('.ta-building-inspector__state')?.textContent).toBe('OFFLINE: BROWNOUT');
     expect(inspector.querySelector('.ta-building-inspector__reason')?.textContent).toBe('offline: brownout');
     expect(inspector.getAttribute('data-state')).toBe('offline: brownout');
@@ -163,7 +163,7 @@ describe('PowerHud - inspector and selection', () => {
 
     const mockParent = parent as unknown as MockElement;
     const inspector = mockParent.querySelector('.ta-building-inspector')!;
-    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Metals Extractor');
+    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Resource Extractor');
     expect(inspector.querySelector('.ta-building-inspector__hp')?.textContent).toBe('450 / 500 HP');
     expect(inspector.querySelector('.ta-building-inspector__state')?.textContent).toBe('OFFLINE: BROWNOUT');
     expect(inspector.getAttribute('data-offline')).toBe('true');
@@ -198,7 +198,7 @@ describe('PowerHud - inspector and selection', () => {
       ],
     });
 
-    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Metals Extractor');
+    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Resource Extractor');
 
     hud.dispose();
   });
@@ -265,7 +265,7 @@ describe('PowerHud - requested demand, brownout deficit and own colony', () => {
     const p = parent as unknown as MockElement;
     expect(p.querySelector('.ta-power-hud__brownout')?.textContent).toBe('BROWNOUT — SHEDDING GROUP 3 · 6 E/s OFFLINE');
     const inspector = p.querySelector('.ta-building-inspector')!;
-    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Metals Extractor');
+    expect(inspector.querySelector('.ta-building-inspector__title')?.textContent).toBe('Resource Extractor');
     expect(inspector.querySelector('.ta-building-inspector__state')?.textContent).toBe('OFFLINE: BROWNOUT');
     hud.dispose();
   });
@@ -304,13 +304,13 @@ describe('PowerHud - follows the landfall selection (FF-49)', () => {
     const title = () => (parent as unknown as MockElement).querySelector('.ta-building-inspector__title')?.textContent;
 
     hud.update(view);
-    expect(title()).toBe('Metals Extractor');
+    expect(title()).toBe('Resource Extractor');
     listener!({ selectedEntity: { entityId: 2, isUnit: false } });
     hud.update(view);
     expect(title()).toBe('Solar Array');
     listener!({ selectedEntity: { entityId: 9, isUnit: true } });
     hud.update(view);
-    expect(title()).toBe('Metals Extractor');
+    expect(title()).toBe('Resource Extractor');
     hud.dispose();
     expect(listener).toBeNull();
   });

@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GRID_PORTS } from '../../kitbash/archetypes/buildings/gridPorts';
 import { PYLON_CROSSBEAMS, PYLON_INSULATOR_DROP } from '../../kitbash/archetypes/buildings/power';
 
 /** Model-space point `[x, y, z]` a cable ends on. */
@@ -53,6 +54,8 @@ export function buildingCableAnchor(
   dz: number,
   stripOffsetY = 0,
 ): CableAnchor {
+  const port = GRID_PORTS[archetypeId];
+  if (port) return [port[0], port[1] - stripOffsetY, port[2]];
   const wall = WALL_ANCHORS[archetypeId] ?? (bounds ? boxAnchorFromBounds(bounds) : { cx: 0, cz: 0, r: 0.8, y: 1.0 });
   const m = Math.max(Math.abs(dx), Math.abs(dz), 1e-6);
   const k = wall.r / m;

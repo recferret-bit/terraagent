@@ -175,7 +175,8 @@ export function validateMetalsExtractorSite(
   const row = resolveExtractorRow(data);
   const w = Number(row.footprintW ?? 2);
   const d = Number(row.footprintD ?? 2);
-  const cov = checkExtractorDepositCoverage(state, q, r, w, d, rot, DEPOSIT.metals);
+  const metal = checkExtractorDepositCoverage(state, q, r, w, d, rot, DEPOSIT.metals);
+  const cov = metal.covered ? metal : checkExtractorDepositCoverage(state, q, r, w, d, rot, DEPOSIT.minerals);
   if (cov.invalidTile) return { ok: false, code: 'invalid_args', detail: 'out of bounds' };
   if (!cov.covered) return { ok: false, code: 'site_blocked', detail: 'no deposit' };
   return { ok: true, richnessMult: cov.richnessMult };

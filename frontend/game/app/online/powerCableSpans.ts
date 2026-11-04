@@ -1,3 +1,4 @@
+import { clearCableRoofs } from './cableClearance';
 import type * as THREE from 'three';
 import {
   buildingCableAnchor,
@@ -9,7 +10,7 @@ import {
 } from '@terra/render/lighting/gridCables';
 import { ENTITY_KIND } from '@terra/sim';
 import { readColonyPower } from '../../features/shared/power';
-import { archetypeForKind } from './entityKinds';
+import { archetypeForKind, isConstructibleBuilding } from './entityKinds';
 
 /**
  * Which cables the grid shows, derived from SYNCED power data only (no power rule is evaluated here, D-31): the sim's
@@ -39,6 +40,8 @@ interface ComponentView {
 interface Node {
   id: number;
   isPylon: boolean;
+  generator: boolean;
+  offline: boolean;
   relay: boolean;
   archetypeId: string;
   mesh: THREE.Object3D;
@@ -75,19 +78,19 @@ function anchorToward(node: Node, tx: number, tz: number, conductor: number): Ca
   } else {
     if (geo && !geo.boundingBox) geo.computeBoundingBox();
     local = buildingCableAnchor(node.archetypeId, geo?.boundingBox ?? null, lx, lz, strip);
-    local[1] += conductor * 0.32; // a second conductor enters the wall above the first
+    // Conductors share the physical terminal; never offset an endpoint into empty air.
   }
   const s = scale.x || 1;
   const [x, y, z] = local;
   return [p.x + (x * cos + z * sin) * s, p.y + y * s, p.z + (-x * sin + z * cos) * s];
 }
 
-function spanBetween(up: Node, down: Node, conductor: number, state: CablePowerState, drop: boolean): CableSpan {
+function spanBetween(up: Node, down: Node, conductor: number, state: CablePowerState, drop: boolean, nodes: readonly Node[]): CableSpan {
   const a = anchorToward(up, down.mesh.position.x, down.mesh.position.z, conductor);
   const b = anchorToward(down, up.mesh.position.x, up.mesh.position.z, conductor);
   const len = Math.hypot(b[0] - a[0], b[2] - a[2]);
   const sag = drop ? DROP_SAG.base + DROP_SAG.perM * len : RELAY_SAG.base + RELAY_SAG.perM * len;
-  return { a, b, sag, radius: drop ? DROP_RADIUS : RELAY_RADIUS, state, seed: seedOf(up.id, down.id, conductor) };
+  return clearCableRoofs({ a, b, sag: -Math.min(1.2, sag), radius: drop ? DROP_RADIUS : RELAY_RADIUS, state, seed: seedOf(up.id, down.id, conductor) }, nodes.filter((n) => n !== up && n !== down).map((n) => n.mesh));
 }
 
 const dist2 = (a: Node, b: Node) =>
@@ -132,14 +135,27 @@ function spansForComponent(comp: ComponentView, nodes: Map<number, Node>, overlo
   const out: CableSpan[] = [];
   for (const [up, down] of relayTree(relays, (n) => !n.isPylon, dist2)) {
     const state = base !== 'off' && (overloaded(up.id) || overloaded(down.id)) ? 'overload' : base;
-    for (let k = 0; k < PYLON_CONDUCTORS; k++) out.push(spanBetween(up, down, k, state, false));
+    for (let k = 0; k < PYLON_CONDUCTORS; k++) {
+      const reverse = k % 2 === 1;
+      const color = reverse && state === 'online' ? 'demand' : state;
+      out.push(spanBetween(reverse ? down : up, reverse ? up : down, k, color, false, [...nodes.values()]));
+    }
   }
   if (relays.length === 0) return out;
   for (const b of buildings) {
     let near = relays[0];
     for (const r of relays) if (dist2(r, b) < dist2(near, b)) near = r;
-    const state = shed.has(b.id) ? 'off' : base !== 'off' && overloaded(near.id) ? 'overload' : base;
-    out.push(spanBetween(near, b, 0, state, true));
+    const state = b.offline || shed.has(b.id) ? 'off' : base !== 'off' && overloaded(near.id) ? 'overload' : !b.generator && base === 'online' ? 'demand' : base;
+    out.push(b.generator ? spanBetween(b, near, 0, state, true, [...nodes.values()]) : spanBetween(near, b, 0, state, true, [...nodes.values()]));
+  }
+  for (const node of members.filter((n) => n.archetypeId === 'building.capacitor')) {
+    const points = [[-0.45, 3, -0.35], [0.45, 3.35, -0.35], [0, 3.7, 0.45]];
+    const strip = Number(geometryOf(node.mesh)?.userData.stripOffsetY ?? 0);
+    const anchors = points.map(([x, y, z]) => {
+      const c = Math.cos(node.mesh.rotation.y), s = Math.sin(node.mesh.rotation.y), scale = node.mesh.scale.x;
+      return [node.mesh.position.x + (x * c + z * s) * scale, node.mesh.position.y + (y - strip) * scale, node.mesh.position.z + (-x * s + z * c) * scale] as CableAnchor;
+    });
+    anchors.forEach((a, i) => out.push({ a, b: anchors[(i + 1) % 3], sag: -0.12, radius: 0.009, state: shed.has(node.id) ? 'off' : base, seed: i / 3 }));
   }
   return out;
 }
@@ -151,12 +167,14 @@ export function derivePowerCableSpans(records: Iterable<CableNodeSource>, view: 
   if (!Array.isArray(comps) || comps.length === 0) return [];
   const loads = (power?.pylonLoads ?? {}) as Record<number, { overloaded?: boolean } | undefined>;
   const overloaded = (id: number) => Boolean(loads[id]?.overloaded);
+  const entityPower = (power?.entityPower ?? {}) as Record<number, { state?: string }>;
+  const night = power?.phase === 'night' || power?.daylight === 0;
   const nodes = new Map<number, Node>();
   for (const r of records) {
-    if (r.owner !== colonyIndex || !r.mesh.visible) continue;
+    if (r.owner !== colonyIndex || !r.mesh.visible || !isConstructibleBuilding(r.kind)) continue;
     const isPylon = r.kind === ENTITY_KIND.pylon;
     const relay = isPylon || r.kind === ENTITY_KIND.commandHub;
-    nodes.set(r.id, { id: r.id, isPylon, relay, archetypeId: archetypeForKind(r.kind), mesh: r.mesh });
+    nodes.set(r.id, { id: r.id, isPylon, relay, offline: entityPower[r.id]?.state === 'offline' || (r.kind === ENTITY_KIND.solar && night), generator: new Set<number>([ENTITY_KIND.solar, ENTITY_KIND.wind, ENTITY_KIND.thermal]).has(r.kind), archetypeId: archetypeForKind(r.kind), mesh: r.mesh });
   }
   const sorted = [...comps].sort((a, b) => (a.componentId ?? 0) - (b.componentId ?? 0));
   return sorted.flatMap((c) => spansForComponent(c, nodes, overloaded));

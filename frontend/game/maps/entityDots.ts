@@ -284,6 +284,13 @@ export function drawEntityDots(
   const dots = collectEntityDots(view, options);
   for (let i = 0; i < dots.length; i++) {
     const dot = dots[i]!;
+    if (dot.id === view.selectedEntityId) {
+      ctx.strokeStyle = dot.color;
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(dot.x, dot.y, dot.radiusPx + 4, 0, Math.PI * 2);
+      ctx.stroke();
+    }
     ctx.fillStyle = dot.color;
     if (dot.shape === 'square') {
       const s = dot.radiusPx * 2;

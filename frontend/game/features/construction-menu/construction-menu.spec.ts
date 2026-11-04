@@ -123,7 +123,7 @@ describe('buildConstructionCatalog - enabled waves', () => {
     expect(hub.disabled).toBe(false);
 
     expect(extractor.building).toBe('metalsExtractor');
-    expect(extractor.label).toBe('Metals Extractor');
+    expect(extractor.label).toBe('Resource Extractor');
     expect(extractor.footprintText).toBe('2×2');
     expect(extractor.designBuildS).toBe(14);
     expect(extractor.hqBuildS).toBe(9.3);
@@ -237,7 +237,7 @@ describe('ConstructionMenu DOM HUD Component', () => {
 
     const extractorBtn = mockParent.querySelector('[data-building="metalsExtractor"]');
     expect(extractorBtn?.getAttribute('data-disabled')).toBe('false');
-    expect(extractorBtn?.querySelector('.ta-construction__title')?.textContent).toBe('Metals Extractor');
+    expect(extractorBtn?.querySelector('.ta-construction__title')?.textContent).toBe('Resource Extractor');
     expect(extractorBtn?.querySelector('.ta-construction__footprint')?.textContent).toBe('2×2');
     expect(extractorBtn?.querySelector('.ta-construction__time')?.textContent).toBe('14s (9.3s HQ)');
     expect(extractorBtn?.querySelector('.ta-construction__power')?.textContent).toBe('−8 E/s');

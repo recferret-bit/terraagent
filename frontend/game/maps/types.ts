@@ -18,6 +18,7 @@ export interface MapViewportTransform {
 }
 
 export interface MapLayerDrawView {
+  readonly selectedEntityId?: number | null;
   readonly width: number;
   readonly height: number;
   readonly planetId?: string;
