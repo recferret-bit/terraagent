@@ -8,6 +8,7 @@ export { buildColonyBrief, guardBriefText } from './brief';
 export { previewBatch, type BatchPreview, type PreviewLimits, type PreviewReason, type PreviewStock } from './preview';
 export { coreSkillAction, coreSkillLimits, type CoreSkill } from './strategies';
 export { directorSkillIds, selectDirectorSkills, type SkillSelectInput } from './skills';
+export { strategyPermitted, type StrategyPermissions } from './permissions';
 export { actionLeavesColony, scopeDirective, screenDirective, screenProposal, type ColonyScope } from './scope';
 export { spatialAllowed, type ObservedRoute, type ProtectedArea } from './spatial';
 export { applyPriorityOverlay, awayGuardPoints, expirePriorityOverlays } from './overlay';
