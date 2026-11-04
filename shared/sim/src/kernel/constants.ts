@@ -9,6 +9,6 @@ export const COARSE_DT = 5;
  * discarded (dev planets regenerate, a browser local save is dropped, any other v1 snapshot fails to restore).
  * From the first real (non-dev) planet on, every bump registers a migration in `codec/migrations` (WE-01).
  */
-export const SIM_VERSION = 2; // 2: colony stock is `col.stock` in whole units, the ledger journal is host-side (no `ledger`/`colonyStock` blobs)
+export const SIM_VERSION = 3; // 3: `col.stock` is whole units only, the sub-unit rest is `col.residual` in micro-units (LED-16; migration `codec/migrations/wholeStock.ts`). 2: colony stock is `col.stock` in whole units, the ledger journal is host-side (no `ledger`/`colonyStock` blobs)
 /** Number of pipeline slots (SIMULATION §3): 0 commands … 14 finalize. */
 export const PIPELINE_SLOTS = 15;

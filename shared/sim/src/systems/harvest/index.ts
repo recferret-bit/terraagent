@@ -372,7 +372,7 @@ function completeHarvesterWorkJob(
     cur.mode === 'clear' ? terraformYields('clear', data)
     : cur.mode === 'break' ? terraformYields('break', data)
     : groundWorkYields(prevTerrain === TERRAIN.forest ? 'forest' : prevTerrain === TERRAIN.rock ? 'rock' : 'flat', data);
-  for (const [k, v] of Object.entries(yields) as [ResourceKey, number][]) if (v > 0) creditResource(colony, k, v, tick);
+  for (const [k, v] of Object.entries(yields) as [ResourceKey, number][]) if (v > 0) creditResource(colony, k, v, tick, { reason: 'terraform.yield' });
 }
 
 const standingHarvestYieldSystem = defineSystem({
