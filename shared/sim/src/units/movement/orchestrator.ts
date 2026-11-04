@@ -1,11 +1,23 @@
+import { ENTITY_KIND } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
-import { pathBlockedFor } from '../../grid/pathProfiles';
+import { pathBlockedFor, type PathProfileId } from '../../grid/pathProfiles';
 import { cancelPathRequest, enqueuePathRequest, PATH_EXPANSION_BUDGET_PER_STEP, stepPathQueue } from '../../grid/pathQueue';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { mobileStats, notifyUnitChanged } from '../mobility';
 import { advanceAlongRoute, type Route } from './locomotion';
+
+function movementProfileForKind(kind: number, baseProfile: PathProfileId | undefined): PathProfileId {
+  if (
+    kind === ENTITY_KIND.blackAnt ||
+    kind === ENTITY_KIND.blueBeetle ||
+    kind === ENTITY_KIND.greenSpitter
+  ) {
+    return 'harvester';
+  }
+  return baseProfile ?? 'ground';
+}
 
 /**
  * Movement orchestrator. Unit commands never move a unit themselves: they ask the orchestrator for a move
@@ -72,7 +84,7 @@ function enqueueFor(state: PlanetState, motions: MotionBlobValue, row: number, g
       from: { q: cols.q[row], r: cols.r[row] },
       to: { q: goal.q, r: goal.r },
       radius: state.grid.radius,
-      profile: stats?.profile ?? 'ground',
+      profile: movementProfileForKind(cols.kind[row], stats?.profile),
       ...(goal.maxDist > 0 ? { band: { minDist: goal.minDist, maxDist: goal.maxDist } } : {}),
     },
     tick,
@@ -113,7 +125,8 @@ function routeFrom(state: PlanetState, row: number, path: readonly { q: number; 
   const atStart = x === path[0].q && y === path[0].r;
   const towardSecond = path.length > 1 && hexDistance(x, y, path[1].q, path[1].r) < 1 - 1e-6;
   const startIdx = hexIndex(state.grid.radius).indexOf(path[0].q, path[0].r);
-  const startBlocked = path.length > 1 && (pathBlockedFor(state, mobileStats(cols.kind[row], ctx.data)?.profile, -1, ctx.data)?.(startIdx) ?? false);
+  const effProfile = movementProfileForKind(cols.kind[row], mobileStats(cols.kind[row], ctx.data)?.profile);
+  const startBlocked = path.length > 1 && (pathBlockedFor(state, effProfile, -1, ctx.data)?.(startIdx) ?? false);
   return atStart || towardSecond || startBlocked ? path.slice(1) : path.slice();
 }
 
@@ -166,7 +179,8 @@ export function runMovement(state: PlanetState, ctx: StepContext): number[] {
     if (!stats) continue;
     const before = m.next;
     const here = hexIndex(state.grid.radius).indexOf(state.entities.cols.q[row], state.entities.cols.r[row]);
-    const res = advanceAlongRoute(state, row, m, stats, ctx, pathBlockedFor(state, stats.profile, here, ctx.data));
+    const effProfile = movementProfileForKind(state.entities.cols.kind[row], stats.profile);
+    const res = advanceAlongRoute(state, row, m, stats, ctx, pathBlockedFor(state, effProfile, here, ctx.data));
     if (m.next !== before) changed = true;
     if (res === 'arrived') {
       m.status = 'arrived';

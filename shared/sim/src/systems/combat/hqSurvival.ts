@@ -10,10 +10,12 @@ import { cancelMove, requestMove } from '../../units/movement/orchestrator';
 import { syncHqView } from '../hq/view';
 import { defaultW01Data, resolveHqT1Row, rowNum } from '../rows';
 import { cancelWorkerJobs, hasActiveWorkJobForWorker } from '../terraform-basic/workJobs';
+import { provokeHiveFromDamage } from '../fauna/provocation';
 import { issueUnitCommand } from '../units/registry';
 
 interface CombatDamageBlob {
   lastDamagedByEntity: Record<number, number>;
+  lastAttackerOwnerByEntity?: Record<number, number>;
 }
 
 function getDamageMap(state: PlanetState): Record<number, number> {
@@ -21,10 +23,31 @@ function getDamageMap(state: PlanetState): Record<number, number> {
   return raw ? { ...raw } : {};
 }
 
-export function recordEntityDamaged(state: PlanetState, entityId: number, tick: number): void {
+function getAttackerOwnerMap(state: PlanetState): Record<number, number> {
+  const raw = (state.blobs.combatDamage?.value as CombatDamageBlob | undefined)?.lastAttackerOwnerByEntity;
+  return raw ? { ...raw } : {};
+}
+
+export function recordEntityDamaged(
+  state: PlanetState,
+  entityId: number,
+  tick: number,
+  attackerOwner?: number,
+  attackerId?: number,
+): void {
   const lastDamagedByEntity = getDamageMap(state);
+  const lastAttackerOwnerByEntity = getAttackerOwnerMap(state);
   lastDamagedByEntity[entityId] = tick;
-  setBlob(state, 'combatDamage', { lastDamagedByEntity }, tick);
+  let resolvedOwner = attackerOwner;
+  if (resolvedOwner === undefined && attackerId !== undefined && attackerId > 0) {
+    const aRow = rowOf(state.entities, attackerId);
+    if (aRow >= 0) resolvedOwner = state.entities.cols.owner[aRow]!;
+  }
+  if (typeof resolvedOwner === 'number' && resolvedOwner >= 0) {
+    lastAttackerOwnerByEntity[entityId] = resolvedOwner;
+  }
+  setBlob(state, 'combatDamage', { lastDamagedByEntity, lastAttackerOwnerByEntity }, tick);
+  provokeHiveFromDamage(state, entityId, resolvedOwner, attackerId, tick);
 }
 
 export function clearEntityDamaged(state: PlanetState, entityId: number, tick: number): void {

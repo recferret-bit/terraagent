@@ -339,7 +339,7 @@ export function applyDamage(
   const prevHp = cols.hp[row];
   const rawHp = prevHp - amount;
 
-  recordEntityDamaged(state, targetId, tick);
+  recordEntityDamaged(state, targetId, tick, opts?.attackerOwner, opts?.attackerId);
 
   if (kind === ENTITY_KIND.hq) {
     const hpAfter = Math.fround(Math.max(1, rawHp));

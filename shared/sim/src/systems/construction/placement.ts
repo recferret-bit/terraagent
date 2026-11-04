@@ -255,6 +255,9 @@ const OCCUPYING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.droneControlArray,
   ENTITY_KIND.autocannon,
   ENTITY_KIND.laserTower,
+  ENTITY_KIND.hiveBlackAnt,
+  ENTITY_KIND.hiveBlueBeetle,
+  ENTITY_KIND.hiveGreenSpitter,
 ]);
 
 /** Whether an entity occupies ground with its footprint: an alive building (GP-23: one rule for placement and paths). */
@@ -270,7 +273,10 @@ export function entityFootprint(kind: number, data?: CompiledDataLike): number {
     kind === ENTITY_KIND.pylon ||
     kind === ENTITY_KIND.droneControlArray ||
     kind === ENTITY_KIND.autocannon ||
-    kind === ENTITY_KIND.laserTower
+    kind === ENTITY_KIND.laserTower ||
+    kind === ENTITY_KIND.hiveBlackAnt ||
+    kind === ENTITY_KIND.hiveBlueBeetle ||
+    kind === ENTITY_KIND.hiveGreenSpitter
   ) {
     return 1;
   }

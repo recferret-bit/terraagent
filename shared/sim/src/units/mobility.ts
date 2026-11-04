@@ -53,6 +53,28 @@ import { resolveBuilderRow, syncBuilderView } from '../systems/factories-hub/uni
 import { resolveHarvesterRow, syncHarvesterView } from '../systems/harvest/unit';
 import { revealVision } from '../systems/hq';
 
+function faunaMobileStats(
+  data: CompiledDataLike,
+  species: 'blackAnt' | 'blueBeetle' | 'greenSpitter',
+  defaults: { speedPerTick: number; viewRadius: number; weaponRange: number; dps: number },
+): MobileStats {
+  const row = (data?.tables?.fauna as Record<string, CompiledRow | undefined> | undefined)?.[species];
+  const rawSpeed = Number(row?.speed ?? defaults.speedPerTick);
+  const speedPerTick = rawSpeed > 0.75 ? rawSpeed * 0.2 : rawSpeed;
+  return {
+    speedPerTick: Math.fround(speedPerTick),
+    viewRadius: Number(row?.viewRadius ?? defaults.viewRadius),
+    profile: 'ground',
+    terraformReach: [0, 0],
+    buildReach: [0, 0],
+    weaponRange: Number(row?.range ?? defaults.weaponRange),
+    dps: Number(row?.dps ?? defaults.dps),
+    stopHoldTicks: 15,
+    retryTicks: 10,
+    retryMaxTicks: 80,
+  };
+}
+
 const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileKindDef>([
   [
     ENTITY_KIND.hq,
@@ -138,6 +160,42 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
         revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(rRow.viewRadius ?? 8), tick);
         syncReconView(state, row, tick, data);
       },
+    },
+  ],
+  [
+    ENTITY_KIND.blackAnt,
+    {
+      stats: (data) =>
+        faunaMobileStats(data, 'blackAnt', {
+          speedPerTick: 0.4,
+          viewRadius: 6,
+          weaponRange: 1,
+          dps: 8,
+        }),
+    },
+  ],
+  [
+    ENTITY_KIND.blueBeetle,
+    {
+      stats: (data) =>
+        faunaMobileStats(data, 'blueBeetle', {
+          speedPerTick: 0.16,
+          viewRadius: 6,
+          weaponRange: 1,
+          dps: 12,
+        }),
+    },
+  ],
+  [
+    ENTITY_KIND.greenSpitter,
+    {
+      stats: (data) =>
+        faunaMobileStats(data, 'greenSpitter', {
+          speedPerTick: 0.28,
+          viewRadius: 7,
+          weaponRange: 5,
+          dps: 6,
+        }),
     },
   ],
 ]);

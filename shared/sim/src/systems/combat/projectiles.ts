@@ -1,6 +1,5 @@
 import { rowOf } from '../../ecs/store';
 import { hexDistance, hexRound } from '../../grid/hex';
-import type { CompiledDataLike } from '../../kernel/config';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
