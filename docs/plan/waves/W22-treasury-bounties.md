@@ -21,7 +21,7 @@
 ## Demo story (wave e2e)
 
 1. Open `/play.html?scenario=w22` → a planet with 2 colonies, a fee history and a nest → **Planet menu → Council** → see the treasury balance (fees collected), 2 members and no proposals.
-2. Settle one market trade (W13, two profiles as in the W13 demo; or dev console `treasury.fund <planet> <amount>`) → the treasury balance rises by `TREASURY_FEE_SHARE_BP` of the fee.
+2. Settle one market trade (W13, two profiles as in the W13 demo; or dev console `treasury.fund <planet> <amount>`) → the treasury balance rises by `TREASURY_FEE_SHARE_BP` of the platform fee.
 3. Council → propose **Meteor shield** → colony B votes yes in a second profile (open the join link that the dev console `planet b` prints) → it passes → the HUD shows the shield badge with a timer. (Dev console `treasury.effect meteor_shield` shows the badge without a vote; the −75 % meteor rate itself is (e2e only).)
 4. **Planet menu → Bounties** → post "Clear nest N-3: 200 metals" → the escrow receipt (mock, `/dev/chain/`) appears and the reward leaves the poster's cargo.
 5. Colony B claims and destroys the nest (or dev console `bounty.complete <id>`) → `bountyCompleted` → B's cargo +200 metals, and the board shows Paid.
@@ -49,7 +49,7 @@ Uses from W00 without owning: `TreasuryDaoPort` / `EscrowPort` (W00-30), mock ba
 | 1 | Extensions of W00-30's `TreasuryDaoPort` / `EscrowPort`, commands, events, data tables, flag | W22-01, W22-02 |
 | 2 | Mock SputnikDAO-like DAO + contract suite | W22-03, W22-04 |
 | 3 | DAO per planet at creation; members = colony accounts (`NEAR-100`) | W22-05, W22-06 |
-| 4 | Fee share 20 % of the fee leg (`NEAR-101`) | W22-07 |
+| 4 | Fee share 20 % of the platform fee (`NEAR-101`) | W22-07 |
 | 5 | Proposals, voting, finalize (`NEAR-102`) | W22-08, W22-09 |
 | 6 | Sim effects: meteor shield, terraform boost, Guild subsidy (`NEAR-102`) | W22-10, W22-11, W22-12 |
 | 7 | Council UI, HUD effect badges, VFX | W22-13, W22-14, W22-15 |
@@ -76,7 +76,7 @@ Uses from W00 without owning: `TreasuryDaoPort` / `EscrowPort` (W00-30), mock ba
 | W22-04 | `TreasuryDaoPort` contract suite on the W00-38 harness: create idempotent, membership, single vote per member, finalize transitions, insufficient-funds error; W23-37 runs this same suite against the real DAO | test | S | H | W22-03, W00-38 | `npm run test:contract -- --port treasury` → green vs the mock | NEAR §1a rule 5 | — |
 | W22-05 | Planet DAO lifecycle: create on planet creation via the W00-37 outbox (`opId = dao-create:{planetId}`); planets created before W22 got enabled get a DAO lazily on first Council open | server | S | H | W22-03, W11-03, W00-37 | Create a planet → a DAO account `{planet}.dao.mock` exists; turn W22 on for an old planet → opening Council creates it once | NEAR-100 | — |
 | W22-06 | Membership sync: add the colony account on `colonyFounded`; on elimination remove it; Settled colonies stay members without proposing rights | server | S | H | W22-05 | Eliminate colony B → member count drops by 1 and B's open votes are ignored at finalize | NEAR-100 | — |
-| W22-07 | Fee share: plug a **treasury leg** into the W13 batch builder through its extension point (`registerFeeLeg`); the leg is `TREASURY_FEE_SHARE_BP` (2 000 bp) of the hub-owner fee, and the batch stays zero-sum per token | server | M | H | W13-12, W22-05 | Settle a 300-unit trade with a 1 % fee → the hub owner gets 2.4, the DAO gets 0.6, and the intent batch simulation reports sum = 0 | NEAR-101, NEAR-61 | — |
+| W22-07 | Treasury allocation: 2 000 bp of platform fee, carved from that fee via W13 batch builder; stall fee and buyer total unchanged; exact cumulative rounding | server | M | H | W13-12, W22-05 | 10 USDC notional at 1% platform + 1% stall: buyer pays 10.20, seller 10, stall 0.10, platform retains 0.08, DAO 0.02; zero-sum | NEAR-101, NEAR-61 | — |
 | W22-08 | Proposals API: `GET/POST /v1/near/treasury/{planetId}` (balance, members, effects, proposals), `POST …/proposals` (kind from the table, cost checked vs treasury balance, max 1 open proposal per colony), `POST …/proposals/{id}/vote` | server | M | H | W22-03 | Propose meteor shield with a treasury below its cost → `TREASURY_INSUFFICIENT` | NEAR-102, PROTOCOL F7 row | — |
 | W22-09 | Finalize job: deadline 6 h real time (config `TREASURY_PROPOSAL_TTL_H`), auto-finalize, pay the project cost from the DAO, emit the result event and `treasury.proposal` push | server | S | H | W22-08 | Time-warp past the deadline with only 1 yes vote of 3 → proposal `Expired`, no funds moved | NEAR-102 | — |
 | W22-10 | Sim effect **meteor_shield**: `system.treasuryEffect` → meteor and lightning rates −75 % on the planet for 6 h; effect timer in planet state; `treasuryEffectEnded` at the end | sim | M |  | W22-01, W05-16 | Apply the effect via the console and time-warp 1 h → hazard counter vs a control seed shows ≥ 60 % fewer strikes | NEAR-102 | — |

@@ -1,5 +1,9 @@
 # TerraAgent — Data Model (PostgreSQL / Prisma)
 
+**Regional economy tables:** ECONOMY §5 adds `economy.region_profile`, `region_resource`, `scope_binding` and `logistics_policy`. Atlas/sector manifests pin endowment hashes; profile activations pin runtime hashes. Persist assignments/reserves/grace and service-window IDs in existing sim snapshots/ledger references, not duplicate balance tables.
+
+> **W13 economy extension (D-44):** [ECONOMY §5](ECONOMY.md#5-database-management) defines the planned `economy` schema, typed immutable profiles, activation/audit and experiment tables. Reuse existing balance and settlement tables; migrations and management APIs are W13 work, not already deployed.
+
 > **W11/W27 amendment (2026-11-04): MATCHMAKING §0 and D-12 supersede the historical planet-capacity, NEW_PLANET, admission/lifetime and two-hour refill fields below. W11-02 adds canonical type uniqueness, immutable atlas/version records and sector landing-slot reservations; W11-37/-39 migrate identity/exploration. Keep existing live-colony and no-rejoin constraints pending WE-33. Do not implement the old instance schema as a second W27-off policy.**
 
 > **Status:** v0.2 (2026-10-30). This matches the one-app design (D-24): no lease or command-log fields. It adds sketch tables for the NEAR economy features F1–F8 (D-26).
@@ -455,8 +459,8 @@ Column details are decided in the TA-10 / TA-14 pre-step. The chain is the truth
 | Table | Feature | Key columns (sketch) | Notes |
 |---|---|---|---|
 | `chain.cargo_tx` | F1 | `id`, `colony_id`, `direction` (`EXPORT` / `IMPORT`), `resource` (`ResourceKey` = NEP-245 token id), `amount numeric(40,0)`, `state` (`PENDING`/`SENT`/`FINAL`/`FAILED`), `tx_hash`, `sim_ref` | Outbox for `mt_mint` / `mt_burn`; on failure the sim refunds via `cargo.settled{ok:false}`. Daily mint-cap counter per colony. |
-| `chain.market_order` | F2/F3 | `id` (`or_`), `planet_id`, `hub_entity_id`, `hub_owner_colony_id`, `maker_account_id`, `side`, `resource` (`ResourceKey`), `amount`, `price_token`, `price_amount`, `fee_bp`, `state` (`OPEN`/`MATCHED`/`FILLED`/`CANCELLED`/`EXPIRED`), `signed_intent jsonb`, `expires_at` | One row per order; the signed `token_diff` intent is stored until matched. |
-| `chain.intent_trade` | F2 | `id` (`tr_`), `planet_id`, `maker_order_id`, `taker_order_id`, `fee_leg jsonb`, `batch_hash`, `state` (`SUBMITTED`/`FINAL`/`FAILED`), `tx_hash`, `settled_at` | Replaces `trade_offer`/`trade_leg` as the settlement record. The old tables stay for direct player offers (Negotiate goal). |
+| `chain.market_order` | F2/F3 | id, planet/pair, maker/stall accounts, side, exact base amount/filled, exact rational price, policy_version/hash, platform/stall rates and beneficiaries, principal/fee reservations, cumulative rounding buckets, state (OPEN/PARTIAL/MATCHED/FILLED/CANCELLED/EXPIRED), signed terms, deadline | ECONOMY §3; policy-pinned terms and restart-safe reservations. Atomic token amounts use numeric(78,0), JSON decimal strings. |
+| `chain.intent_trade` | F2 | id, maker/taker orders, policy version/hash, exact base/notional, platform/stall/treasury legs, cumulative-fee deltas, actor/funding classifications, batch hash, state, tx hash, settled_at | Unique settlement operation; finalized fees/flows feed experiment metrics without double counting. Related/fixture/subsidized volume remains distinguishable. |
 | `chain.guild_npc` | F3 | `id`, `account_id`, `strategy jsonb`, `inventory_cache jsonb`, `home_route jsonb` | NPC trader wallets (sub-accounts of `npc.terraagent.near`). |
 | `chain.guild_visit` | F3 | `id`, `npc_id`, `planet_id`, `arrive_at`, `depart_at`, `offers jsonb` | Schedule and offers shown as `guild.arrived`. |
 | `chain.director_key` | F4 | `colony_id`, `public_key`, `allowance numeric`, `spent numeric`, `created_at`, `revoked_at` | Capped key used by the AI director while the player is away. |

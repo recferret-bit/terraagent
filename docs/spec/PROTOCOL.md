@@ -1,5 +1,7 @@
 # TerraAgent — Wire Protocols (WebSocket, in-process messages, REST)
 
+> **Planned W13 economy interface (D-44):** [ECONOMY](ECONOMY.md) governs policy-version/hash fields, exact decimal-string token amounts, inclusive buy limits, platform/stall/treasury fee breakdown and structured experiment APIs. W13-36 generates shared schemas; W13-46 exposes the authenticated tooling listed in DEV_TOOLS. No new endpoint is claimed implemented here.
+
 > **W11/W27 amendment (2026-11-04): W11 pins atlas/sector identities, wide owners and save versions while retaining bounded small-world replication. W27 adds negotiated interest epochs, sector baselines/deltas and partial replicas; full-world welcome/delta assumptions below remain only for supported small/legacy worlds. Incompatible clients/flags reject atlas saves without resetting them. Follow the W11/W27 wave contract gates.**
 
 > **Status:** v0.2 (2026-10-30). This covers the simplified one-app design (D-24) with no anti-cheat and no fog filtering (D-25; only crash/load limits, WS-16), plus the NEAR economy messages (D-26). The NATS contract and planet tickets are summarised in §13 as Future.

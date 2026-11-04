@@ -369,3 +369,25 @@ Open `/me.html?as=w12` from the hub's **PILOT / ME** mock card (new tab). Landin
 - `PROGRESSION_WORKERS=on|off` (default `on`) controls automatic inbox replay and effect delivery. `off` is an operational pause: checkpoint inputs remain durable and replay when re-enabled. HTTP-only production-mode unit fixtures set it off to avoid touching the development database.
 - Real sim facts appear after checkpoint (default 60 s); dev fact commands commit immediately. Badge delivery waits one **wall-clock** hour, not sim `warp` time, and needs a linked account. In-app notifications appear in ME History (latest 50).
 - Verify with `npm run test:integration -- backend/app/test/progression backend/app/test/game/snapshot.int.spec.ts` and `npm run e2e -- --waves 12`. See [remaining questions](../questions-and-limitations/backend-contracts.md#be-47--remaining-extended-w12-profile-work).
+
+
+## Planned W13 economy tooling (D-44; not implemented yet)
+
+[ECONOMY](../spec/ECONOMY.md) is the contract; W13-36–57 deliver these tools. The existing `tune` remains available today. Production cash profiles cannot be changed with dev tune once this extension lands.
+
+- `npm run economy -- schema --json`: discover typed parameters/units/bounds and registered recipes/metrics.
+- `profile export`, `profile clone`, `profile patch --file`, `validate --profile`: immutable candidate management; JSON examples in ECONOMY §6.
+- `simulate --manifest`, `experiment status`, `experiment cancel`, `compare`, `recommend`: bounded isolated runs and machine-readable evidence. No real settlement or automatic activation.
+- Authenticated planned `/v1/economy/schema`; `/profiles` and `/profiles/:id/versions` (read/create/clone/patch/validate/export); `/experiments` (submit/list), `/experiments/:id` (status/results/cancel), `/comparisons` and `/recommendations`. Mutation bodies include schemaVersion, requestId and expectedVersion; run submission pins hashes and budgets.
+- Separate operator-only `/v1/economy/activations` and `/activations/:id/rollback`: explicit scope/version/effective tick and evidence; audited and idempotent. Experiment credentials cannot call these routes. Read/edit/run/activate permissions are distinct; all routes authorize scope and paginate bounded results.
+- Operator UI extends `/dev/chain/?tab=economy` in the internal dev stack: profile forms, recipes, fees, bot budgets, diff, run results and mock activation/rollback. Production management uses the authenticated API/CLI; dev pages/faucets are not exposed publicly. The CLI's operator `activate` and `rollback` subcommands wrap those same routes and require scoped operator credentials.
+- Reports contain exact inputs, engine/data hashes, seeds, flow/fee/PnL metrics, pass/fail/insufficient_data gates and replay instructions. Exit codes: 0 success, 2 invalid input, 3 failed gates, 4 execution failure; asynchronous submission is not completion.
+
+On implementation, replace this planned marker with verified commands/URLs and update the owner guide in the same change. No new economic environment variables override pinned profiles; use database versions and audit records.
+
+
+### Planned regional resources and logistics controls
+
+W13-50–57 extend the planned economy schema/editor/API with global, planet-type, planet-ID, sector-archetype and sector-ID bindings, provenance and explicit zero/inherit values. `npm run economy -- profile resolve --profile candidate-a --planet <id> --sector <id> --json` returns all ten effective resources, endowment/runtime hashes and field sources. This command is planned, not available yet.
+
+The internal operator panel labels generation-only versus future-production fields, shows expected resource distribution and logistics cost curves, and compares base/army/route scenarios. Player UI shows abundant/scarce resources, reasoned shopping/surplus baskets, load/capacity, service reserves and cost breakdown. Sim reports include per-sector trade flows and congestion/distance effects. Live edits cannot refill deposits or overwrite a pinned world. See ECONOMY sections 2.1–2.3 and 9.
