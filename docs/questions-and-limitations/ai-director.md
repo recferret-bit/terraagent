@@ -50,7 +50,7 @@
 - **To resolve:** publish W16 load report and real W11/W27 integration results; revisit queue choice only on measured contention.
 - **Found:** 2026-11-04, W16 planning review.
 
-### AI-05 · Director audit store is in-memory only
+### AI-06 · Director audit store is in-memory only
 
 - **Status:** Open
 - **Area / code:** `backend/app/src/ai/audit/memory-store.ts` (`MemoryDirectorAudit`), `shared/db/prisma/ai.prisma`
