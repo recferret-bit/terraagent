@@ -2473,6 +2473,24 @@
       "summary": "Enqueues or dispatches a repair job on a damaged player-owned structure or unit (UO-P §3.2, W03-03).",
       "wave": "W03"
     },
+    "setAiEnabled": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "enabled"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Turns the colony AI (autonomous goal breakdown and rule-engine autopilot) on or off. Default off: bots only run explicit player commands.",
+      "wave": "W08"
+    },
     "setHarvestWeights": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

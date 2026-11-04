@@ -4,7 +4,8 @@ import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import { ensureColonyRecord } from '../../kernel/colonies';
 import type { PlanetState } from '../../kernel/state';
-import { occupiedGroundTiles } from '../construction/occupancy';
+import { buildingFootprints, occupiedGroundTiles } from '../construction/occupancy';
+import { buildGapField, compareRank, footprintGap, laneTier, organicTarget } from '../construction/siteSpacing';
 import { getConstructionOrders } from '../construction/orders';
 import { evaluatePlacement } from '../construction/placement';
 import { placementWorldFromState } from '../construction/placementWorld';
@@ -273,7 +274,9 @@ export function findHubSiteForGoal(
 }
 
 /**
- * Finds the nearest valid 2x2 placement site for `solar` or `depot` around the colony anchor.
+ * Finds a 2x2 `solar` / `depot` site around the colony anchor. Ranking (first difference wins): does not block the last
+ * extractor site, does not overlap a unit, inside own territory, keeps a walkable lane to other buildings, then closest
+ * to this building's organic target point (see `siteSpacing.ts`), then `r`, `q`. Every candidate passes `evaluatePlacement`.
  */
 export function findGeneratorSiteForGoal(
   state: PlanetState,
@@ -288,46 +291,34 @@ export function findGeneratorSiteForGoal(
   const { deposit } = state.grid.layers;
   const hasMetals = hasAnyDepositOnGrid(state, DEPOSIT.metals);
   const rad = Math.min(state.grid.radius, 10);
+  const gaps = buildGapField(state.grid.radius, reserved);
+  const target = organicTarget(anchor, colonyIndex, occupiedFootprintCount(state, data));
 
-  let best: { q: number; r: number; blocksExtractor: number; overlapsUnit: number; unowned: number; dist: number } | null = null;
+  let best: { q: number; r: number; rank: number[] } | null = null;
   for (let r = Math.max(-state.grid.radius, anchor.r - rad); r <= Math.min(state.grid.radius, anchor.r + rad); r++) {
     for (let q = Math.max(-state.grid.radius, anchor.q - rad); q <= Math.min(state.grid.radius, anchor.q + rad); q++) {
-      const dist = hexDistance(anchor.q, anchor.r, q, r);
-      if (dist > 10) continue;
+      if (hexDistance(anchor.q, anchor.r, q, r) > 10) continue;
       const fp = getFootprintTileIndices(state, q, r, 2, 2, 0);
       if (!fp.valid || fp.indices.some((i) => reserved.has(i))) continue;
-      const evalRes = evaluatePlacement(world, {
-        colonyId: colonyIndex,
-        building,
-        q,
-        r,
-        requireBuilder: false,
-        data,
-      });
+      const evalRes = evaluatePlacement(world, { colonyId: colonyIndex, building, q, r, requireBuilder: false, data });
       if (!evalRes.ok) continue;
-      const overlapsUnit = fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0;
-      const unowned = fp.indices.some((i) => state.grid.layers.owner[i] !== colonyIndex) ? 1 : 0;
       const touchesMetals = hasMetals && fp.indices.some((i) => deposit[i] === DEPOSIT.metals);
-      const blocksExtractor =
-        touchesMetals && !findExtractorSiteForGoal(state, colonyIndex, data, new Set(fp.indices)) ? 1 : 0;
-      if (
-        !best ||
-        blocksExtractor < best.blocksExtractor ||
-        (blocksExtractor === best.blocksExtractor && overlapsUnit < best.overlapsUnit) ||
-        (blocksExtractor === best.blocksExtractor && overlapsUnit === best.overlapsUnit && unowned < best.unowned) ||
-        (blocksExtractor === best.blocksExtractor &&
-          overlapsUnit === best.overlapsUnit &&
-          unowned === best.unowned &&
-          dist < best.dist) ||
-        (blocksExtractor === best.blocksExtractor &&
-          overlapsUnit === best.overlapsUnit &&
-          unowned === best.unowned &&
-          dist === best.dist &&
-          (r < best.r || (r === best.r && q < best.q)))
-      ) {
-        best = { q, r, blocksExtractor, overlapsUnit, unowned, dist };
-      }
+      const rank = [
+        touchesMetals && !findExtractorSiteForGoal(state, colonyIndex, data, new Set(fp.indices)) ? 1 : 0,
+        fp.indices.some((i) => unitTiles.has(i)) ? 1 : 0,
+        fp.indices.some((i) => state.grid.layers.owner[i] !== colonyIndex) ? 1 : 0,
+        laneTier(footprintGap(gaps, fp.indices)),
+        hexDistance(target.q, target.r, q, r),
+        r,
+        q,
+      ];
+      if (!best || compareRank(rank, best.rank) < 0) best = { q, r, rank };
     }
   }
   return best ? { q: best.q, r: best.r } : null;
+}
+
+/** Number of buildings standing or under construction: the stable "which building is this" index for `organicTarget`. */
+function occupiedFootprintCount(state: PlanetState, data?: CompiledDataLike): number {
+  return buildingFootprints(state, data).length;
 }

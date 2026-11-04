@@ -247,7 +247,7 @@ describe('W08-24 · Deterministic site selection (SIM-R-05 / SIM-R-06)', () => {
     expect(chosen!.r).toBe(-4);
   });
 
-  it('prefers valid buildable owned tiles at optimal distance (2..6 hexes) without blocking deposits', () => {
+  it('prefers valid buildable owned tiles around the hub (lane gap, organic 3..8 hex band) without blocking deposits', () => {
     const state = makeTestPlanet();
     claimTerritoryRadiusForTest(state, 0, 0, 0, 10);
     spawnEntity(state, { kind: ENTITY_KIND.commandHub, owner: 0, q: 0, r: 0, hp: 1500, hpMax: 1500 });
@@ -262,8 +262,8 @@ describe('W08-24 · Deterministic site selection (SIM-R-05 / SIM-R-06)', () => {
     for (const kind of ['solar', 'wind', 'depot', 'roboticsFactory']) {
       const site = selectDeterministicBuildSite(state, 0, kind);
       expect(site, `expected site for ${kind}`).not.toBeNull();
-      expect(site!.distanceToHub).toBeGreaterThanOrEqual(2);
-      expect(site!.distanceToHub).toBeLessThanOrEqual(6);
+      expect(site!.distanceToHub).toBeGreaterThanOrEqual(3);
+      expect(site!.distanceToHub).toBeLessThanOrEqual(8);
       expect(site!.tileIndex).not.toBe(depIdx);
     }
   });
