@@ -4,10 +4,10 @@
 
 - **Status:** Open
 - **Area / code:** [W16](../plan/waves/W16-ai-director.md), [AI spec](../spec/AI_ORCHESTRATOR.md), `backend/app/src/ai/`
-- **What happens:** current code has provider selection/interface wiring; the new worker, queue, MCP tools, policies and live provider acceptance remain implementation work.
-- **Why it is like this:** this task improves the wave plan; no feature implementation or paid call was requested.
-- **Workaround / mitigation:** W16 DoD explicitly separates mock completion from live-blocked status; no package or runtime settings changed.
-- **To resolve:** implement W16 issues and attach real provider, security, crash/replay and performance reports.
+- **What happens:** contracts, sim policy, the mock planner, the director plate, and one redacted glm-5.3 ping are in the tree. The director worker still prints `db=none` and does not plan against a live colony. pg-boss is installed and not connected to Postgres. The HUD does not show goals, priorities, or budget during play (AI-13).
+- **Why it is like this:** W16-01 through W16-49 (except the owner play-through) landed as in-memory or mock slices. A second paid call was not required after the one ping in `docs/plan/w16-live-report.md`.
+- **Workaround / mitigation:** play `/play.html?scenario=w16` for the plate and `director.plan` / `director.trace`. Treat the load and restart reports as the measurements they name, not as a saturated database pool.
+- **To resolve:** connect the worker to the game through the existing proposal path, and paint policy on the plate from the sim view.
 - **Found:** 2026-11-04, W16 planning review.
 
 ### AI-02 · Risk profiles need gameplay calibration
@@ -94,10 +94,10 @@
 
 - **Status:** Open
 - **Area / code:** `backend/app/src/ai/versions.ts`, `backend/app/package.json`
-- **What happens:** `ai@7.0.162`, `@ai-sdk/openai-compatible@3.0.84`, `@ai-sdk/mcp@2.0.90`, `@modelcontextprotocol/sdk@1.32.2`, and `pg-boss@12.38.0` import on Node 24. pg-boss is a named export `PgBoss` (no default). Sampling, elicitation, resource subscriptions, and remote MCP discovery stay unsupported. `npm audit` still reports high advisories in the tree after the install. glm-5.3 JSON, tools, usage, and abort were not called.
-- **Why it is like this:** W16-28 locks versions before the worker and the live eval. No API key was used.
-- **Workaround / mitigation:** do not enable the unsupported MCP features. Do not swap the model if a call fails.
-- **To resolve:** W16-48 runs one real call and records usage, cost, and any option the provider rejects. Revisit the audit findings before rollout.
+- **What happens:** `ai@7.0.162`, `@ai-sdk/openai-compatible@3.0.84`, `@ai-sdk/mcp@2.0.90`, `@modelcontextprotocol/sdk@1.32.2`, and `pg-boss@12.38.0` import on Node 24. pg-boss is a named export `PgBoss` (no default). Sampling, elicitation, resource subscriptions, and remote MCP discovery stay unsupported. `npm audit` still reports high advisories in the tree after the install. One glm-5.3 ping returned usage (`docs/plan/w16-live-report.md`: 21 input tokens, 16 output tokens, 1763 ms). Tool calls, JSON schema, and abort were not part of that ping.
+- **Why it is like this:** W16-28 locks versions. W16-48 made one credentialed call and stopped. The key stays in the gitignored env file.
+- **Workaround / mitigation:** do not enable the unsupported MCP features. Do not swap the model if a call fails. Do not treat the ping as a strategy-gate pass.
+- **To resolve:** run the live provider against the eval fixtures, including tools, JSON, and abort, and revisit the audit findings before rollout.
 - **Found:** 2026-11-04, W16-28.
 
 ### AI-11 · Eval report scores supplied outcomes and does not call a model
@@ -109,3 +109,23 @@
 - **Workaround / mitigation:** tests pass synthetic outcomes. A violation never changes `quality.valid`. One risk marked varied does not count as strategic variation.
 - **To resolve:** W16-48 runs the live provider against these fixtures and fills the outcome map from validator results.
 - **Found:** 2026-11-04, W16-22.
+
+### AI-12 · Restart replay and the load bench are in-process
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/ai/budget/global.ts`, `backend/app/src/ai/audit/outbox.ts`, `backend/director/src/claim.ts`, `backend/director/src/bench.ts`, `docs/plan/w16-director-load.md`
+- **What happens:** W16-44 saves and restores `GlobalTokenBudget`, `ProposalOutbox`, and `JobClaims` as JSON in the same process. It does not kill Postgres or a second worker. W16-47 times `summarizeRelevant` on a 450-sector synthetic world (50 samples, p95 0.014 ms, RSS 145 MB on the machine named in the load report). The pool line is `in-memory 1` and the oldest job age is 0. That is not a saturated pg-boss pool.
+- **Why it is like this:** the acceptance tests for those issues forbid a live database dependency. pg-boss is a library pin, not the scheduler the game runs.
+- **Workaround / mitigation:** read the two reports as measurements of those functions. Do not quote them as crash-safe delivery or as the §12 database bounds.
+- **To resolve:** run the same fences and token rules through Postgres, kill the worker around commit, and publish a new load report from that pool.
+- **Found:** 2026-11-04, W16-27.
+
+### AI-13 · The director plate does not show live policy during play
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/director/index.ts`, `DirectorPanel.ts`, `DirectorControls.ts`
+- **What happens:** with W16 on, the top-right plate title is `DIRECTOR` and the action list stays empty. Nothing in the session calls `render`. The risk, preset, and note controls are built in tests and are not mounted. `director.plan` and `director.trace` print fixed mock lines. They do not read the colony policy. `&waves=..15` removes the plate.
+- **Why it is like this:** W16-18 and W16-19 landed the plate and the control widget. The client view has no director policy field, so the session cannot fill the plate without a new snapshot field.
+- **Workaround / mitigation:** the `w16` scenario still stores Conservative Resources in the sim (`tests/scenarios/w16-director.ts`). Confirm that with the scenario unit test. The owner steps that need a visible goal, a budget, a rejected raid, or a delayed plan are deferred until the plate is fed from the sim.
+- **To resolve:** add a client-safe director view and call `render` from the feature `update`. Mount the controls only when that command path exists.
+- **Found:** 2026-11-04, W16-27.
