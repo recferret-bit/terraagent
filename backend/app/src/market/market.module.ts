@@ -1,5 +1,8 @@
 import { Module } from '@nestjs/common';
 import { MarketBooks } from './book/market-books.js';
+import { MarketFaucetCommand } from './dev/market-faucet.command.js';
+import { MarketFaucetController } from './dev/market-faucet.controller.js';
+import { MarketFaucetService } from './dev/market-faucet.service.js';
 import { MarketOrderRepository } from './book/market-order.repository.js';
 import { MarketMatcher } from './matching/market-matcher.service.js';
 import { CancelOrderHandler, OrderRelease } from './orders/cancel-order.service.js';
@@ -21,12 +24,38 @@ import { NearModule } from '../near/near.module.js';
  */
 @Module({
   providers: [
-    MarketOrderRepository, MarketBooks, MarketMatcher, MarketPolicyProvider, MarketSimGateway, OrderFunds, PlaceOrderPrecheck, PlaceOrderService,
-    OrderRelease, CancelOrderHandler, PlanetGameClock, OrderExpirySweep,
+    MarketOrderRepository,
+    MarketBooks,
+    MarketMatcher,
+    MarketPolicyProvider,
+    MarketSimGateway,
+    OrderFunds,
+    PlaceOrderPrecheck,
+    PlaceOrderService,
+    OrderRelease,
+    CancelOrderHandler,
+    PlanetGameClock,
+    OrderExpirySweep,
     { provide: MarketFillsHook, useClass: LoggingMarketFillsHook },
+    MarketFaucetService,
+    MarketFaucetCommand,
   ],
-  controllers: [],
-  imports: [NearModule, GameModule],
-  exports: [OrderRelease, MarketOrderRepository, MarketBooks, MarketMatcher, MarketPolicyProvider, MarketSimGateway, OrderFunds, MarketFillsHook],
+  controllers: [
+    MarketFaucetController,
+  ],
+  imports: [
+    NearModule,
+    GameModule,
+  ],
+  exports: [
+    OrderRelease,
+    MarketOrderRepository,
+    MarketBooks,
+    MarketMatcher,
+    MarketPolicyProvider,
+    MarketSimGateway,
+    OrderFunds,
+    MarketFillsHook,
+  ],
 })
 export class MarketModule {}

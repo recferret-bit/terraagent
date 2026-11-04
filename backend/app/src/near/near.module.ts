@@ -6,6 +6,7 @@ import { CargoExportOutboxService } from './cargo/cargo-export-outbox.js';
 import { CargoImportOutboxService } from './cargo/cargo-import-outbox.js';
 import { CargoStatusController } from './cargo/cargo-status.controller.js';
 import { CargoStatusService } from './cargo/cargo-status.service.js';
+import { FreeVerifierService } from './cargo/free-verifier.service.js';
 import { ChainDevController } from './infrastructure/dev/chain-dev.controller.js';
 import { ChainExplorerController } from './infrastructure/dev/chain-explorer.controller.js';
 import { NearHealthController } from './infrastructure/dev/near-health.controller.js';
@@ -37,6 +38,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
+    FreeVerifierService,
     ColonyAccounts,
     RelayStatusService,
     SocialAuthService,
@@ -48,6 +50,7 @@ export const env = { name: nearEnv.name, schema: z.intersection(nearEnv.schema, 
     CargoExportOutboxService,
     CargoImportOutboxService,
     CargoStatusService,
+    FreeVerifierService,
     NearInfrastructureModule,
     OutboxModule,
     SocialLink,

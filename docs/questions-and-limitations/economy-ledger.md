@@ -192,7 +192,7 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 
 ### LED-16 · W02 `economy/ledger.ts` mutates `colony.stock` directly with fractional tick increments without emitting `@terra/ledger` postings
 
-- **Status:** Open
+- **Status:** Resolved (W13-41, `ae25ebd`; rounding rules in LED-23)
 - **Severity:** low
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/economy/ledger.ts` (`creditResource`, `debitCost`, `refundCost`), `shared/sim/src/systems/production/index.ts`, `shared/sim/src/systems/harvest/`, `shared/sim/src/systems/terraform-basic/{dismantleAndWork,workJobs}.ts` (W02 `work` / `dismantle` jobs), `tests/scenarios/_loader.ts`
@@ -252,3 +252,41 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **Workaround / mitigation:** Display rounding never changes ledger amounts. A sim-accepted order lost by an app crash before the module handles the event never reserves anything (the sim mirror only changes on `market.reserve`).
 - **To resolve:** Owner may prefer per-unit tick prices or fractional resource atoms; both are contract changes in `shared/contracts/src/market/`. The legacy `tradeHub` rows' `marketFeeMinBp/MaxBp/DefaultBp` (50/300/100) predate D-44 and are superseded by `market.policy` (0–100 bp, default 100); W13-03 reconciles them.
 - **Found:** 2026-11-04, W13-01 (wave lead).
+
+
+### LED-21 · W13 market defaults taken by the implementation (sim mirror, matcher, fees, place order)
+
+- **Status:** Accepted (by design); proposed defaults, owner may change
+- **Area / code:** `shared/sim/src/systems/trade/` (`market-state.ts`, `place-order.ts`, `module-commands.ts`, `market-matcher.ts`, `market-fees.ts`, `market-batch.ts`), `backend/app/src/market/{book,orders,matching,settlement}/`.
+- **What happens:**
+  - Sim (W13-10): module commands arrive with a non-player source (`system`/`near`); a player sending one is `not_authorized`. Orders are counted against `order_limit` only once the server reserved them (`openOrders`); `requested` and `openOrders` are bounded (4 × limit, oldest evicted), `settledTrades` keeps the last 64 ids for replay dedupe. A repeated `market.reserve` for one ref replaces the reservation. A `stallId`/`hubId` the colony does not own is `invalid_args`.
+  - Matching (W13-11): policies are compatible only with equal `platformFeeBp` and `policyVersion`; the maker's stall rate must be ≤ the buyer's `maxStallFeeBp` (no maximum tolerates 0 bp only). An all-or-nothing incoming order that cannot complete rests unfilled; a resting all-or-nothing maker is skipped unless taken in full; matching is greedy (no backtracking).
+  - Fees (W13-12): notional rounds cumulatively per maker order, fees cumulatively per buyer order and `(quote, bp, beneficiary, policyVersion)` bucket. When the buyer is the maker, its own stall earns the stall fee, so the aggregated leg nets out while attribution still shows the charge. The W22 treasury allocation is a per-fill floor of the platform fee (not cumulative).
+  - Place order (W13-09): an advisory lock on the colony account serializes a colony's orders; claimed accounts get all-or-nothing, custodial partial. Policy terms come from the compiled active profile.
+- **Why it is like this:** Smallest rules that satisfy ECONOMY §3 exactly; each is a pure function with tests (`npm test -- market-matcher`).
+- **To resolve:** owner review of AON resting semantics and whether a buyer without an explicit maximum should accept the policy's stall maximum.
+- **Found:** 2026-11-05, W13 build (wave lead, from subagent reports).
+
+### LED-22 · W13 economy profile defaults (registry bounds, revisions, boot fallback)
+
+- **Status:** Accepted (by design) / Question for the owner (bounds)
+- **Area / code:** `shared/sim/src/economy/params/`, `shared/contracts/src/economy/`, `shared/db/src/economy/`, `backend/app/src/economy/`, `shared/db/seeds/0002_economy_baseline.ts`.
+- **What happens:** Parameter bounds are conservative design limits chosen by the implementer, not owner-approved values; per-resource policy defaults are uniform calibration hypotheses. `ProfilePatch.expectedVersion` is the draft's `revision` (CAS). Region and logistics sections were JSONB until W13-50. The baseline seed uses `bootstrap.*` source/consumer/cohort ids. `policyVersion` is a fixed one-value enum (a new market policy version needs a new registered value). Per-pair `ProfileContent.marketPolicies[]` overrides are not applied yet: pairs derive from the `market` table rows. `parseTunePath` (dev `tune`) cannot address dotted row ids such as `market.quote.USDC.tickAtomic`; the profile path parser can.
+- **Why it is like this:** W13-36–38 deliver the mechanism; calibration is LED-18/19.
+- **To resolve:** owner approves bounds and calibration ranges; extend `tune` paths if dev tuning of dotted rows is wanted.
+- **Found:** 2026-11-05, W13-36/37/38/03.
+
+### LED-23 · W13 whole-unit stock: rounding rules and residual accumulator (resolves LED-16)
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/economy/residual.ts`, `shared/sim/src/systems/economy/ledger.ts`, `shared/sim/src/kernel/ledgerSink.ts`, `shared/sim/src/codec/migrations/wholeStock.ts` (SIM_VERSION 2 → 3).
+- **What happens:** each resource's exact value is `stock × 10^6 + residual` micro-units; amounts convert by round-half-away-from-zero; whole parts post through `ColonyTreasury` (journal now explains `col.stock`), fractions stay in `col.residual`. A 50 % refund of 75 is 37 whole + 0.5 residual. Old snapshots migrate value-preservingly (12.75 → 12 + 0.75). Value including the residual can sit < 1 unit above the cap (whole stock never exceeds it); `production.produced/capped` count whole units; sub-micro remainders of per-tick rates round away; `col.residual` is synced to clients (harmless). `settleCargoImport` and `handleImportSettled` still duplicate settle logic. Dev `fill`/`drainfuel` now post as `dev.grant`.
+- **To resolve:** dedupe the two import-settle paths in a later cargo cleanup.
+- **Found:** 2026-11-05, W13-41.
+
+### LED-24 · W13 mock Intents and cargo-import specifics
+
+- **Status:** Accepted (by design); W23 verifies against the real verifier
+- **Area / code:** `backend/app/src/near/intents/nep413-token-diff.ts`, `near/infrastructure/adapters/mock/intents*`, `near/cargo/{cargo-import-outbox,free-verifier.service}.ts`, `application/outbox/`.
+- **What happens:** The NEP-413 `token_diff` payload follows NEAR Intents as known at build time (recipient `intents.near`, 32-byte base64 nonce, ISO deadline, sorted diff keys, sha256 over borsh, `ed25519:<b58>`); W23 must check it against the live verifier. Signatures verify against the signer's registered key (`near_colony_account`), not a key carried on the intent. Nonces are random when not supplied. `IntentsBalanceReadPort` is deliberately outside the 13-port env list (follows `NEAR_ADAPTER_INTENTS`). The contract suite's write cases are mock-only; a real run needs `CONTRACT_INTENTS_SIGNER` and only simulates. Import auto-withdraw assumes the verifier balance sits on the colony's own account; the new outbox `payload.dependsOn` defers a row until its dependency is DONE. The mock faucet records its funding note in `mock_chain_intent` (`actorKind: fixture`, `organic: false`).
+- **Found:** 2026-11-05, W13-04/05/06/07/16/17.
