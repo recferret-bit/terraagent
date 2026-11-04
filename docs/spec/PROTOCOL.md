@@ -345,3 +345,7 @@ Kept for the distributed design (ARCHITECTURE §16):
 - **Request/reply** `planet.{id}.ctl` and `worker.{id}.ctl` (assign, release, drain).
 - **Planet tickets.** Single-use Ed25519 JWTs bound to a `workerId`, connecting to `wss://ws.terraagent.com/w/{workerId}`.
 - Per-socket rate limits, and fog-filtered `ColonyViewV1` views.
+
+## Planned W07 fauna directive extension (D-43)
+
+The [fauna online contract](../game/fauna-hives-spec.md#3-determinism-and-online-transport) requires versioned, sequenced, tick-stamped hive/cohort directives in the existing transport, with authoritative combat events, bootstrap checkpoints and sparse corrections. This is planned; current generic entity diffs do not yet implement it. W07-33 owns shared contract/codec changes and backend replay recovery, W07-35 proves browser/local/server parity. Never omit fauna transforms until the receiving replica can reconstruct them, handle gaps and restore checkpoints. Hidden world salt is not exposed; fauna uses intentionally public seeded domains.

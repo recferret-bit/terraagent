@@ -48,6 +48,8 @@
 | D-41 | Clean root folder modelled on `../freightchain`: root holds only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, root `package.json` (`package-lock.json`), and the 7 domain folders (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`) | Accepted (2026-11-01, owner) |
 | D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
 
+| D-43 | Neutral hive fauna: three insect species, passive/aggressive behavior, shared planet models initially, deterministic directives and cosmetic hive life | Accepted direction (2026-11-04, owner); tuning proposals in fauna contract |
+
 ---
 
 ## D-01 — Server-authoritative deterministic simulation in planet workers
@@ -570,3 +572,13 @@ The log stays append-only; these notes record where the code built in W00–W01 
 - **D-37 (power zone, W03 owner check).** From the W03 grid on, only the Command Hub may stand anywhere on terraformed ground; every other building's footprint must lie inside the union of the colony's power zones (`outside_power_zone`): the hex disk of `powerZoneRadius` around each own Command Hub (`hub.t1`, 6) and Power Pylon (`grid.pylon`, 5). Placement counts Hubs / pylons that are built, under construction or still an open build order (players chain pylons); the power graph (`power-core/graph.ts`) uses the same zones but only built relays, so a building in an unfinished pylon's zone is `offline: no grid` until the pylon is done. One rule in `construction/powerZone.ts` for placement, the graph and the client's zone highlight. A Power Pylon is one `build` order; the multi-pylon `placePowerLine` command is gone.
 - **D-38 (tile stamps).** `stampTile` is private to `grid/tileModel.ts`; callers change tiles through the exported setters (`setTilePrep`, `setTileTerrain`, …) or `touchTile`.
 - **D-39 (landing history).** `landingHistory` is append-only except for one dev path: `dev.land` moving a pod that has not opened rewrites that colony's latest record (`relocateLanding`). The planner also refuses a site whose starter Hub site would take another colony's territory (`starterHubSiteBlocked`, WE-23).
+
+## D-43 — Neutral hive fauna
+
+**Decision (owner direction, 2026-11-04).** W07 fauna belongs to the planet and starts neutral. Each species has its own hive: black ants (melee hordes), blue beetles (armored tanks), green spitters (ranged acid). Two modes only: passive life and aggressive waves. Feeding/building are cosmetic, with no fauna economy or heavy AI. Shared models across planets are the initial implementation; a planet/species visual registry permits distinct planet models later. Six models and hive-life playground fixtures are required.
+
+**Online contract.** Shared seeded simulation and tick-stamped directives reproduce decisions; authoritative checkpoints, combat results and sparse corrections handle late joins and drift. Public fauna seeds are intentional; clients gain no authority. The [fauna specification](../game/fauna-hives-spec.md) defines integration and acceptance. This narrows D-31's routine fauna motion payload; other entity replication stays unchanged.
+
+**Scope and defaults.** This supersedes D-15's single-species fauna and old W07 proximity aggression. Blue armor is provisionally modeled as shell geometry + high HP, preserving D-28 plain damage; numerical balance, provocation/cooldown policy and that armor interpretation are proposals recorded as GP-80, not additional owner decisions. Existing W08 threat composition must be reconciled by W07; Brute/Drifter remain later extensions.
+
+**Alternatives.** Full per-bug transform streaming defeats the requested order-style replication. Seed-only replication cannot recover missing inputs or reconnects. Simulated food/building chains add complexity the owner explicitly excluded.

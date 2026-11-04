@@ -919,3 +919,14 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** Start a fresh W03 scenario after landing. Existing main saves keep Trade Hub identity. No database or saved world is automatically deleted.
 - **To resolve:** If an old W03 development world must be recovered, migrate its kind-8 builders using that snapshot's branch provenance before loading it.
 - **Found:** 2026-11-04, full merge review.
+
+
+### GP-80 · W07 hive fauna implementation and provisional balance
+
+- **Status:** Open (implementation planned; balance proposals)
+- **Area / code:** [W07](../plan/waves/W07-first-contact.md), [fauna contract](../game/fauna-hives-spec.md), future shared fauna/raids systems and codec integration
+- **What happens:** The revised plan specifies three neutral insect species and hives, passive/aggressive behavior, directive replication and playground scenes. Runtime combat/fauna code and the six meshes are not implemented by this planning change. Existing W08 threat helpers still return legacy Skitter/Brute/Drifter composition.
+- **Why it is like this:** The current checkout contains W07 planning, not its combat implementation. Species stats, a three-wave episode, cooldowns, provocation and sparse correction cadence are proposed starting values. “Armored” provisionally means visible plating and higher HP, preserving plain-damage battle v1.
+- **Workaround / mitigation:** W07-14/15/25/33–35 and the contract's delivery gates require the actual shared sim, backend, frontend, model and replay work before claiming completion. Shared planet models and cosmetic feeding/building are explicitly owner-requested simplifications.
+- **To resolve:** Implement and validate the wave; playtest proposed numbers and confirm whether blue beetles need actual damage mitigation. Reconcile existing progression helpers and later-wave roster references without inventing a second raid system.
+- **Found:** 2026-11-04, owner fauna redesign.

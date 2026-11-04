@@ -240,6 +240,8 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 
 ### 7.6 Environment, hazards & fauna **(all proposed, owner-tunable)**
 
+**Fauna revision (D-43, 2026-11-04):** [Hive fauna](../game/fauna-hives-spec.md) supersedes the fauna/nest/raid rows below: three neutral insect species, one hive type per species, passive cosmetic life and bounded aggressive waves. The old rows remain historical balance context only. Use actual `TICKS_PER_SECOND` conversions, not the legacy 10 TPS constants in this table.
+
 > **Pressure level: hard (D-17).** At default difficulty, an unattended colony **can be eliminated** by fauna, hazards or other players; the player is notified (CONTINUITY §5a). Stage-scaled raid sizes, Brute and Drifter species, meteor timing and wall rules are in `docs/game/units-orders-and-progression-spec.md` §6.3 and §4.8, and they supersede the raid row below. The "must survive a night offline" goal is dropped. What the tests guarantee instead is that the colony **defends itself sensibly** (AC-03 in the units spec), not that it survives.
 
 | Item | Temperate (`forestRock`) | Desert (`dune`) | Ocean (`oceanForest`) |
