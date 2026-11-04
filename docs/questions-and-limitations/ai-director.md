@@ -99,3 +99,13 @@
 - **Workaround / mitigation:** do not enable the unsupported MCP features. Do not swap the model if a call fails.
 - **To resolve:** W16-48 runs one real call and records usage, cost, and any option the provider rejects. Revisit the audit findings before rollout.
 - **Found:** 2026-11-04, W16-28.
+
+### AI-11 · Eval report scores supplied outcomes and does not call a model
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/ai/eval/report.ts` (`scoreEval`), `backend/app/src/ai/eval/fixtures.ts` (`buildFixtures`)
+- **What happens:** `scoreEval` reads a caller-supplied outcome per fixture id. It returns three separate counters: invariant violations (only when `invariant !== 'none'`), paired-risk variation (`varied` is pairs where both risks are marked varied), and valid/total quality. It does not add those into one score, call a provider, or write `eval/out/report.json`. The fixture skill axis includes `power`, which is not a `DirectorSkillFamily`.
+- **Why it is like this:** W16-22's acceptance is the split report over at least 60 paired fixtures. Live model, latency and token gates are W16-48.
+- **Workaround / mitigation:** tests pass synthetic outcomes. A violation never changes `quality.valid`. One risk marked varied does not count as strategic variation.
+- **To resolve:** W16-48 runs the live provider against these fixtures and fills the outcome map from validator results.
+- **Found:** 2026-11-04, W16-22.
