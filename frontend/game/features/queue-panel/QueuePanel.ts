@@ -3,6 +3,7 @@ import {
   enqueueQueueTask,
   getColonyQueue,
   reorderQueueTask,
+  sameKindTaskIds,
   terraformOrdersOf,
   type EnqueueQueueTaskOptions,
   type PlanetState,
@@ -25,6 +26,10 @@ import {
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 
 export { STORAGE_HINT_BUTTON_TEXT, STORAGE_HINT_TEXT };
+
+/** The kind a same-kind cancel groups by (all terraform work is one kind; builds group by building, units by unit). */
+const chipKind = (e: QueueEntry): string =>
+  e.task.kind === 'build' ? `build:${e.task.building}` : e.task.kind === 'buildUnit' ? `buildUnit:${e.task.unit}` : e.task.kind;
 
 const LANE_TABS: ReadonlyArray<{ id: QueueLane | 'all'; label: string }> = [
   { id: 'all', label: 'All' },
@@ -224,15 +229,21 @@ export class QueuePanel {
     return this.collapsed;
   }
 
+  /**
+   * The cancel click: ends this entry and every other open order of the same kind (several terraform orders go at once;
+   * the host does it in one `cancelTask { scope: 'sameKind' }`, this mirrors it on a local sim state / entry list).
+   */
   cancelTask(taskId: string): void {
     if (this.simState) {
-      cancelQueueTask(this.simState, taskId, this.colonyIndex);
+      for (const id of sameKindTaskIds(this.simState, taskId, this.colonyIndex)) cancelQueueTask(this.simState, id, this.colonyIndex);
       this.syncFromSimState();
     } else {
-      this.entries = this.entries.filter((e) => e.taskId !== taskId);
+      const hit = this.entries.find((e) => e.taskId === taskId);
+      const kind = hit ? chipKind(hit) : undefined;
+      this.entries = this.entries.filter((e) => e.taskId !== taskId && (kind === undefined || e.goalId !== undefined || chipKind(e) !== kind));
       this.render();
     }
-    this.ctx.services.sendCommand?.('cancelTask', { taskId });
+    this.ctx.services.sendCommand?.('cancelTask', { taskId, scope: 'sameKind' });
     this.ctx.services.cancelQueueTask?.(taskId);
   }
 

@@ -55,6 +55,7 @@ export * from './types';
 export * from './wait';
 export * from './earmarks';
 export { CANCEL_IN_PROGRESS_REFUND_RATIO };
+export { sameKindTaskIds } from './cancelGroup';
 
 /** `startBuildingConstruction` codes that mean the site (not the stock) holds the entry back. */
 const SITE_CODES: ReadonlySet<string> = new Set(['site_blocked', 'terrain_unbuildable', 'not_own_territory', 'outside_power_zone', 'invalid_args']);
