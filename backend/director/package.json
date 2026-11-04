@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit -p .",
-    "test": "vitest run --passWithNoTests"
+    "test": "vitest run --passWithNoTests",
+    "start": "node --experimental-strip-types src/cli.ts"
   },
   "dependencies": {
     "@terra/contracts": "0.1.0",
