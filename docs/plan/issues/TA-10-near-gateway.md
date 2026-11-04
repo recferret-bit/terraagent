@@ -558,7 +558,7 @@ sequenceDiagram
 - **Verify:** `npm run test -w @terra/app -- near/market`
 
 #### Definition of Done (DoD)
-- [ ] Each Trade Hub is a stall whose owner sets a fee of 0–3 %. Orders are price-time ordered; the matcher is the message bus.
+- [ ] Each Trade Hub is a stall whose owner sets a fee of 0–100 bp (default 100); the buyer pays it plus the platform fee in the quote token (D-44). Orders are price-time ordered; the matcher is the message bus.
 - [ ] A matched pair is settled as signed `token_diff`s through `IntentsPort.simulate` then `execute`, including the fee leg. A non-zero sum is rejected with `NEAR_INTENT_DIFF_NOT_ZERO`.
 - [ ] The price board shows the last price, 24 h volume and spread per resource. The HQ Negotiate goal places orders.
 - [ ] Status synced (§1.6).

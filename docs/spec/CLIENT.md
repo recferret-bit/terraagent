@@ -291,7 +291,7 @@ The chain stays invisible (F5): cargo reads as "cargo in orbit", trades as "cont
 | Surface | Where | Feature |
 |---|---|---|
 | Trade Hub panel: Export / Import cargo, in-orbit balances, pending mints | Click a Trade Hub | F1 |
-| Market stall: order book, place/cancel order, hub fee slider (owner), price board, last trades | Trade Hub panel → Market tab; pushes `market.book` / `market.trade` | F2 |
+| Market stall: order book, place/cancel order, hub fee slider (owner, 0-100 bp), exact quote-token fee preview (buyer pays), price board, last trades | Trade Hub panel → Market tab; pushes `market.book` / `market.trade` | F2 |
 | Guild ship arrival toast + offers list with "Accept" | Toast + Trade Hub panel | F3 |
 | Away settings: away budget, `autoTrade` limits, director key status (allowance spent / revoke) | Settings → Away | F4 |
 | Social login; "Your colony account" with a claim button | First-run and Settings → Account | F5 |
