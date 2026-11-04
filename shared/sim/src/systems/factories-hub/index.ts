@@ -18,34 +18,44 @@ import { checkUnitSupply, syncColonySupply } from '../supply';
 import {
   buildBuilderView,
   builderJobFromState,
+  buildTerraformerView,
   defaultHubData,
   resolveBuilderRow,
   resolveHubProducerRows,
+  resolveTerraformerRow,
   resolveUnitRowForHub,
   spawnBuilderUnit,
+  spawnTerraformerUnit,
   syncBuilderView,
+  syncTerraformerView,
   type BuilderJob,
   type BuilderUnitView,
   type SpawnBuilderOpts,
+  type TerraformerUnitView,
 } from './unit';
 
 export {
   buildBuilderView,
   builderJobFromState,
+  buildTerraformerView,
   defaultHubData,
   resolveBuilderRow,
   resolveHubProducerRows,
+  resolveTerraformerRow,
   resolveUnitRowForHub,
   spawnBuilderUnit,
+  spawnTerraformerUnit,
   syncBuilderView,
+  syncTerraformerView,
   type BuilderJob,
   type BuilderUnitView,
   type SpawnBuilderOpts,
+  type TerraformerUnitView,
 };
 
 export interface HubUnitQueueEntry {
   taskId: string;
-  unit: 'harvester' | 'builder';
+  unit: 'harvester' | 'builder' | 'terraformer';
   colonyIndex: number;
   producerId?: number;
   count: number;
@@ -200,6 +210,19 @@ export function produceBuilderAtHubEdge(state: PlanetState, colonyIndex: number,
   return spawned;
 }
 
+export function spawnTerraformerAtHubEdge(state: PlanetState, colonyIndex: number, tick: number, data?: CompiledDataLike, ctx?: StepContext): { entityId: number; q: number; r: number } {
+  const pos = findHubEdgeSpawnTile(state, colonyIndex, data);
+  const entityId = spawnTerraformerUnit(state, { owner: colonyIndex, q: pos.q, r: pos.r, tick, data }, ctx);
+  return { entityId, q: pos.q, r: pos.r };
+}
+
+export function produceTerraformerAtHubEdge(state: PlanetState, colonyIndex: number, ctx: StepContext): { entityId: number; q: number; r: number } {
+  const spawned = spawnTerraformerAtHubEdge(state, colonyIndex, ctx.tick, ctx.data, ctx);
+  const { colonyIdStr, who } = colonyWho(state, colonyIndex);
+  ctx.emit({ kind: 'unitProduced', colonyIds: [colonyIdStr], data: { ...who, entityId: spawned.entityId, unit: 'terraformer', q: spawned.q, r: spawned.r } });
+  return spawned;
+}
+
 function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueEntry[], colonyIndex: number, tick: number, data?: CompiledDataLike): void {
   const colony = ensureColony(state, colonyIndex, tick);
   const stock = colony.stock as Record<string, number>;
@@ -260,7 +283,7 @@ function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueE
 
 export interface EnqueueHubUnitOptions {
   colonyIndex?: number;
-  unit?: 'harvester' | 'builder' | string;
+  unit?: 'harvester' | 'builder' | 'terraformer' | string;
   count?: number;
   repeat?: boolean;
   producerId?: number;
@@ -269,7 +292,7 @@ export interface EnqueueHubUnitOptions {
   data?: CompiledDataLike;
 }
 
-/** Enqueues a unit production order (`harvester` or `builder`) at the Command Hub's Units lane (paid progressively as it builds). */
+/** Enqueues a unit production order (`harvester`, `builder`, or `terraformer`) at the Command Hub's Units lane (paid progressively as it builds). */
 export function enqueueHubUnit(
   state: PlanetState,
   opts: EnqueueHubUnitOptions = {},
@@ -278,7 +301,7 @@ export function enqueueHubUnit(
   const colonyIndex = opts.colonyIndex ?? 0;
   const unitName = opts.unit ?? 'harvester';
   const unitRow = resolveUnitRowForHub(unitName, opts.data);
-  if (!unitRow || (unitName !== 'harvester' && unitName !== 'builder')) {
+  if (!unitRow || (unitName !== 'harvester' && unitName !== 'builder' && unitName !== 'terraformer')) {
     return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
   }
   const { hubProd } = resolveHubProducerRows(opts.data);
@@ -393,7 +416,9 @@ export const hubProductionSystem = defineSystem({
           const carry = Math.max(0, active.elapsedTicks - active.buildTicks);
           const spawned = active.unit === 'builder'
             ? produceBuilderAtHubEdge(state, colIdx, ctx)
-            : produceHarvesterAtHubEdge(state, colIdx, ctx);
+            : active.unit === 'terraformer'
+              ? produceTerraformerAtHubEdge(state, colIdx, ctx)
+              : produceHarvesterAtHubEdge(state, colIdx, ctx);
           active.spawnedEntityIds.push(spawned.entityId);
 
           if (active.remainingCount > 1) {

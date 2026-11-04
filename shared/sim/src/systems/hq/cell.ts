@@ -152,7 +152,14 @@ export interface StepTerraformWorkResult {
  */
 export function stepTerraformWorkWithCell(state: SimState, hqRow: number, opts: StepTerraformWorkOpts): StepTerraformWorkResult {
   const e = state.entities;
-  if (Number.isInteger(hqRow) && hqRow >= 0 && hqRow < e.count && e.cols.kind[hqRow] === ENTITY_KIND.builder) {
+  if (
+    Number.isInteger(hqRow) &&
+    hqRow >= 0 &&
+    hqRow < e.count &&
+    (e.cols.kind[hqRow] === ENTITY_KIND.builder ||
+      e.cols.kind[hqRow] === ENTITY_KIND.terraformer ||
+      e.cols.kind[hqRow] === ENTITY_KIND.harvester)
+  ) {
     const d = stepDemand(workRateOf(state, hqRow, opts.data), opts, opts.dtS ?? TICK_MS / 1000, opts.remainingProgress, opts.remainingEnergyE);
     return { progressDelta: d ? d.desiredProgress : 1, energyDrawnE: d ? d.neededE : 0 };
   }

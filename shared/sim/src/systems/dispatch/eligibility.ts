@@ -45,12 +45,19 @@ export function isWorkerEligibleForJob(entityKind: number, workerTier: number, j
   if (entityKind === ENTITY_KIND.hq) {
     const maxBuildTier = workerTier >= 1 ? workerTier : 1;
     if (job.kind === 'build') return maxBuildTier >= (job.tier ?? 1);
+    if (job.op === 'deepReclaim') return workerTier >= 2;
     return true;
+  }
+  if (entityKind === ENTITY_KIND.terraformer) {
+    if (job.kind === 'build') return false;
+    if (job.op === 'dismantle' || job.op === 'repair') return false;
+    if (job.op === 'deepReclaim') return workerTier >= 2;
+    return job.kind === 'terraform' || job.kind === 'linkedPrep';
   }
   if (entityKind === ENTITY_KIND.builder) {
     const maxBuildTier = 1;
     if (job.kind === 'build') return maxBuildTier >= (job.tier ?? 1);
-    if (job.kind === 'linkedPrep') return true;
+    if (job.kind === 'linkedPrep') return job.op !== 'deepReclaim' || workerTier >= 2;
     return job.op === 'work' || job.op === 'repair' || job.op === 'grade' || job.op === 'dismantle';
   }
   if (entityKind === ENTITY_KIND.harvester) {

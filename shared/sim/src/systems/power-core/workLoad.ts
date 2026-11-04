@@ -1,6 +1,8 @@
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { SimState } from '../../kernel/state';
+import { colonyTerraformOrders } from '../terraform-basic/orders';
 import { isWorkerAtJob, storedActiveWorkJobs, workJobDrawPerS } from '../terraform-basic/workJobs';
 import { resolvePowerRow } from './index';
 import type { ShedCandidate } from './shedding';
@@ -42,6 +44,18 @@ export function collectWorkLoad(state: SimState, colonyIndex: number, data?: Com
     if (wRow < 0 || cols.hp[wRow] <= 0 || !isWorkerAtJob(state, wRow, job.q, job.r)) continue;
     demand += drainPerS;
     candidates.push({ entityId: job.workerEntityId, row: wRow, group, drainPerS, kind: cols.kind[wRow], jobId: job.jobId });
+  }
+  for (const order of colonyTerraformOrders(state, colonyIndex)) {
+    for (const job of order.jobs) {
+      if (job.totalEnergyE <= 0 || job.baseTimeS <= 0 || job.assignedUnitId === undefined) continue;
+      const wRow = rowOf(state.entities, job.assignedUnitId);
+      if (wRow < 0 || cols.hp[wRow] <= 0 || cols.kind[wRow] === ENTITY_KIND.hq) continue;
+      if (cols.state[wRow] !== ENTITY_STATE.working && cols.state[wRow] !== ENTITY_STATE.offlineBrownout) continue;
+      const workRate = cols.workRate[wRow] > 0 ? cols.workRate[wRow] : 1;
+      const drainPerS = (job.totalEnergyE / job.baseTimeS) * workRate;
+      demand += drainPerS;
+      candidates.push({ entityId: job.assignedUnitId, row: wRow, group, drainPerS, kind: cols.kind[wRow], jobId: `${order.orderId}:${job.q},${job.r}` });
+    }
   }
   return { demand: Number(demand.toFixed(4)), candidates };
 }

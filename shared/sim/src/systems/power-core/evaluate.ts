@@ -356,6 +356,10 @@ export function calculateUnitDemand(
   const idleMult = Number(dayCycleRow.unitIdleDrainMult ?? 0.5);
   const harvDrain = Number(resolvePowerRow(data, 'unitsWorkersBasic', 'harvester').powerDrainPerS ?? 1.5);
   const bldDrain = Number(resolvePowerRow(data, 'grid', 'builder').powerDrainPerS ?? 2.0);
+  const tfRow =
+    (data?.tables?.terraform as Record<string, { powerDrainPerS?: number }> | undefined)?.terraformer ??
+    (data?.tables?.unitsWorkersBasic as Record<string, { powerDrainPerS?: number }> | undefined)?.terraformer;
+  const tfDrain = Number(tfRow?.powerDrainPerS ?? 2.5);
   let unitDemand = 0;
   const cols = state.entities.cols;
   for (let r = 0; r < state.entities.count; r++) {
@@ -364,6 +368,7 @@ export function calculateUnitDemand(
     const idle = st === ENTITY_STATE.idle || st === ENTITY_STATE.offlineBrownout;
     if (k === ENTITY_KIND.harvester) unitDemand += idle ? harvDrain * idleMult : harvDrain;
     else if (k === ENTITY_KIND.builder) unitDemand += idle ? bldDrain * idleMult : bldDrain;
+    else if (k === ENTITY_KIND.terraformer) unitDemand += idle ? tfDrain * idleMult : tfDrain;
   }
   return unitDemand;
 }

@@ -16,6 +16,7 @@ export interface TerraformJob {
   baseTimeS: number;
   totalEnergyE: number;
   energyDrawnE: number;
+  assignedUnitId?: number;
 }
 
 export interface TerraformOrder {

@@ -181,6 +181,7 @@ export const terraformCommand = defineUnitCommand<TerraformCommand>({
     if (!atGoal(u, reachOf(u, c))) return 'running';
     const orders = readColonyOrders(u.state, u.owner);
     const order = orders.find((o) => o.orderId === c.orderId) as TerraformOrder;
+    if (order?.jobs[0]) order.jobs[0].assignedUnitId = u.id;
     setUnitActivity(u, ENTITY_STATE.working, c.q, c.r);
     const ended = workJob(u.state, order, u.row, u.ctx);
     writeColonyOrders(u.state, u.owner, orders, u.ctx.tick);
@@ -294,8 +295,12 @@ export const linkedPrepProvider: UnitWorkProvider = {
 
 const anyManualTerraform = terraformProviderFor('terraform', (o) => !o.isLinkedPrep);
 
-/** The player's manual terraform orders (asked after construction, GP-04; HQ only). */
+/** The player's manual terraform orders (asked after construction, GP-04; HQ and Terraformer Drone). */
 export const terraformProvider: UnitWorkProvider = {
   id: anyManualTerraform.id,
-  propose: (u) => (u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq ? anyManualTerraform.propose(u) : null),
+  propose: (u) =>
+    u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq ||
+    u.state.entities.cols.kind[u.row] === ENTITY_KIND.terraformer
+      ? anyManualTerraform.propose(u)
+      : null,
 };

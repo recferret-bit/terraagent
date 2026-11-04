@@ -48,7 +48,7 @@ function statsFromRow(row: CompiledRow): MobileStats {
   };
 }
 
-import { resolveBuilderRow, syncBuilderView } from '../systems/factories-hub/unit';
+import { resolveBuilderRow, resolveTerraformerRow, syncBuilderView, syncTerraformerView } from '../systems/factories-hub/unit';
 import { resolveHarvesterRow, syncHarvesterView } from '../systems/harvest/unit';
 import { revealVision } from '../systems/hq';
 
@@ -108,6 +108,32 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
         const bRow = resolveBuilderRow(data);
         revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(bRow.viewRadius ?? 7), tick);
         syncBuilderView(state, row, tick, data);
+      },
+    },
+  ],
+  [
+    ENTITY_KIND.terraformer,
+    {
+      stats: (data) => {
+        const row = resolveTerraformerRow(data);
+        return {
+          speedPerTick: Math.fround(Number(row.speedTilesPerS ?? 0.3)),
+          viewRadius: Number(row.viewRadius ?? 7),
+          profile: 'ground',
+          terraformReach: [Number(row.terraformReachMin ?? 0), Number(row.terraformReachTiles ?? 1)],
+          buildReach: [0, 0],
+          weaponRange: 0,
+          dps: 0,
+          stopHoldTicks: 15,
+          retryTicks: 10,
+          retryMaxTicks: 80,
+        };
+      },
+      onChanged: (state, row, tick, data) => {
+        const cols = state.entities.cols;
+        const tfRow = resolveTerraformerRow(data);
+        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(tfRow.viewRadius ?? 7), tick);
+        syncTerraformerView(state, row, tick, data);
       },
     },
   ],

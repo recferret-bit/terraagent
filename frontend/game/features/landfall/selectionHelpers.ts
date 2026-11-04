@@ -403,8 +403,9 @@ export function buildSelectedEntityFromRow(
 ): SelectedEntityView | null {
   if (e.hp <= 0 || e.state === ENTITY_STATE.descending || (e.kind === ENTITY_KIND.tradeHub && e.state === ENTITY_STATE.inert)) return null;
   const progress = resolveEntityActivityProgress(e, rawView);
-  if (e.kind === ENTITY_KIND.harvester || e.kind === ENTITY_KIND.builder) {
+  if (e.kind === ENTITY_KIND.harvester || e.kind === ENTITY_KIND.builder || e.kind === ENTITY_KIND.terraformer) {
     const isBuilder = e.kind === ENTITY_KIND.builder;
+    const isTerraformer = e.kind === ENTITY_KIND.terraformer;
     const job =
       e.state === ENTITY_STATE.moving ? 'moving'
       : e.state === ENTITY_STATE.harvesting ? 'harvesting'
@@ -412,14 +413,14 @@ export function buildSelectedEntityFromRow(
       : e.state === ENTITY_STATE.constructing ? 'constructing'
       : e.state === ENTITY_STATE.working ? 'working'
       : e.state === ENTITY_STATE.offlineBrownout ? 'offline: brownout'
-      : progress > 0 && progress < 1 ? (isBuilder ? 'working' : 'harvesting')
+      : progress > 0 && progress < 1 ? (isBuilder || isTerraformer ? 'working' : 'harvesting')
       : 'idle';
     const uRec = unitsById[String(e.id)];
     const queueCount = uRec ? (uRec.current ? 1 : 0) + (Array.isArray(uRec.queue) ? uRec.queue.length : 0) : (job === 'idle' ? 0 : 1);
     return {
       entityId: e.id, kind: e.kind,
-      kindLabel: isBuilder ? 'BUILDER DRONE' : 'HARVESTER DRONE',
-      shortCode: isBuilder ? 'BLD' : 'HRV',
+      kindLabel: isTerraformer ? 'TERRAFORMER DRONE' : isBuilder ? 'BUILDER DRONE' : 'HARVESTER DRONE',
+      shortCode: isTerraformer ? 'TRF' : isBuilder ? 'BLD' : 'HRV',
       isUnit: true, isMovable: true, tier: 1, q: e.q, r: e.r, x: e.x, y: e.y,
       hp: e.hp, hpMax: e.hpMax > 0 ? e.hpMax : (isBuilder ? 150 : 160), currentJob: job, queueCount,
       state: e.state, progress, terraformJob: unitHasTerraformJob(rawView, e.id),

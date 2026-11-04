@@ -7,7 +7,7 @@ import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState, SimState } from '../../kernel/state';
-import { syncBuilderView } from '../factories-hub';
+import { syncBuilderView, syncTerraformerView } from '../factories-hub';
 import { cancelHarvesterTask, syncHarvesterView } from '../harvest';
 import { syncHqView } from '../hq/view';
 import { UnitBook } from '../../units/book';
@@ -104,7 +104,9 @@ export function selectWorkerForWorkOp(
   const takes = (kind: number): boolean =>
     mode === 'dismantle'
       ? isWorkerEligibleForJob(kind, 1, { kind: 'terraform', op: 'dismantle' })
-      : kind === ENTITY_KIND.hq || kind === ENTITY_KIND.builder || kind === ENTITY_KIND.harvester;
+      : mode === 'repair'
+        ? kind === ENTITY_KIND.hq || kind === ENTITY_KIND.builder || kind === ENTITY_KIND.harvester
+        : kind === ENTITY_KIND.terraformer || kind === ENTITY_KIND.hq || kind === ENTITY_KIND.builder || kind === ENTITY_KIND.harvester;
   if (preferredWorkerId !== undefined) {
     const r0 = rowOf(e, preferredWorkerId);
     if (r0 >= 0 && cols.owner[r0] === colonyId && cols.hp[r0] > 0 && takes(cols.kind[r0])) {
@@ -127,9 +129,11 @@ export function selectWorkerForWorkOp(
         ? kind === ENTITY_KIND.builder
           ? 0
           : 50
-        : kind === ENTITY_KIND.builder
-          ? 25
-          : 0;
+        : kind === ENTITY_KIND.terraformer
+          ? -10
+          : kind === ENTITY_KIND.builder
+            ? 25
+            : 0;
     const selfPenalty = avoidEntityId !== undefined && id === avoidEntityId ? 1000 : 0;
     const score = dist + busyPenalty + rolePenalty + selfPenalty;
     if (score < bestScore) {
@@ -145,6 +149,7 @@ export function syncWorkerView(state: PlanetState, wRow: number, tick: number, d
   if (k === ENTITY_KIND.hq) syncHqView(state, wRow, tick, data);
   else if (k === ENTITY_KIND.harvester) syncHarvesterView(state, wRow, tick, data);
   else if (k === ENTITY_KIND.builder) syncBuilderView(state, wRow, tick, data);
+  else if (k === ENTITY_KIND.terraformer) syncTerraformerView(state, wRow, tick, data);
 }
 
 /** Drops the worker's unit commands (an auto terraform / build command, a player move): its work job drives it now. */

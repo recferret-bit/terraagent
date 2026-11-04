@@ -55,6 +55,14 @@ export function resolveTaskCostAndTicks(
         workRate: Number(builderRow?.workRate ?? 1.0),
       };
     }
+    if (task.unit === 'terraformer') {
+      const { terraformer } = resolveHubProducerRows(data);
+      return {
+        cost: { ...((terraformer?.cost ?? { 'metals.t1': 50, 'minerals.t1': 30, 'bio.biomass': 10 }) as Partial<Record<ResourceKey, number>>) },
+        buildTicks: Math.max(1, Number(terraformer?.buildS ?? 60)),
+        workRate: Number(terraformer?.workRate ?? 1.0),
+      };
+    }
     const { harvester } = resolveHubProducerRows(data);
     return {
       cost: { ...((harvester.cost ?? {}) as Partial<Record<ResourceKey, number>>) },
@@ -343,6 +351,15 @@ export function nextAutoTaskId(entries: readonly QueueEntry[], colonyIndex: numb
 }
 
 export function maxConcurrentInLane(state: PlanetState, colonyIndex: number, lane: QueueLane): number {
+  if (lane === 'terraform') {
+    let workers = 0;
+    const { count, cols } = state.entities;
+    for (let r = 0; r < count; r++) {
+      if (cols.owner[r] !== colonyIndex || cols.hp[r] <= 0) continue;
+      if (cols.kind[r] === ENTITY_KIND.hq || cols.kind[r] === ENTITY_KIND.terraformer) workers++;
+    }
+    return Math.max(1, workers);
+  }
   if (lane !== 'construction') return 1;
   let builders = 0;
   const { count, cols } = state.entities;
