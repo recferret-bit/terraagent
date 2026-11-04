@@ -17,6 +17,11 @@ export const ECONOMY_ERROR_CODES = [
   'invalid_patch',
   'dependency_violation',
   'schema_mismatch',
+  'ambiguous_binding',
+  'unknown_region_profile',
+  'invalid_region',
+  'missing_essential_access',
+  'contradictory_main_resource',
 ] as const;
 export const EconomyErrorCode = z.enum(ECONOMY_ERROR_CODES);
 export type EconomyErrorCode = z.infer<typeof EconomyErrorCode>;

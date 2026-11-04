@@ -4,3 +4,4 @@ export * from './profile';
 export * from './manifest';
 export * from './results';
 export * from './checks';
+export * from './regions';

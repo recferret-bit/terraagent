@@ -54,7 +54,7 @@ export class EconomyProfileRepository extends RepositoryBase {
         data: {
           id, profileId, version, parentId: meta.parentId ?? null, status: 'DRAFT', schemaVersion: ECONOMY_SCHEMA_VERSION,
           engineCompatibility: meta.engineCompatibility ?? '>=1', contentHash: contentHashOf(content), author: meta.author,
-          rationale: meta.rationale ?? '', regions: content.regions as Prisma.InputJsonValue, logistics: content.logistics as Prisma.InputJsonValue,
+          rationale: meta.rationale ?? '',
         },
       });
       await writeContent(t, id, content, this.unitOf);
@@ -82,8 +82,7 @@ export class EconomyProfileRepository extends RepositoryBase {
     return this.tx(async (t) => {
       const next = normalizeContent(content);
       const n = await t.$executeRaw`
-        UPDATE "economy"."profile_version" SET "revision" = "revision" + 1, "content_hash" = ${contentHashOf(next)},
-          "regions" = ${JSON.stringify(next.regions)}::jsonb, "logistics" = ${JSON.stringify(next.logistics)}::jsonb
+        UPDATE "economy"."profile_version" SET "revision" = "revision" + 1, "content_hash" = ${contentHashOf(next)}
         WHERE "id" = ${versionId} AND "revision" = ${expectedRevision} AND "status" = 'DRAFT'`;
       if (n === 0) await this.throwNotUpdatable(t, versionId, expectedRevision);
       await writeContent(t, versionId, next, this.unitOf);
@@ -113,7 +112,7 @@ export class EconomyProfileRepository extends RepositoryBase {
     const db = this.db(tx);
     const v = await db.economyProfileVersion.findUnique({ where: { id: versionId } });
     if (!v) throw repoError('version_conflict', `version ${versionId} does not exist`, undefined, { versionId });
-    const content = await readContent(db, versionId, { regions: v.regions, logistics: v.logistics });
+    const content = await readContent(db, versionId);
     return { ref: { id: v.profileId, version: v.version, hash: v.contentHash }, version: toVersion(v), content, revision: v.revision };
   }
 

@@ -6,13 +6,14 @@ const flags = new Set(['W00', 'W01']);
 const cargo = dataRow(compileData(flags), 'hq', 'startingKit').cargo as Record<string, number>;
 
 describe('resource amounts in data are whole, non-negative units (TableDef.amounts)', () => {
-  it('every shipped table compiles; hq, hub, opsBasic and tradeHub declare their amount fields', () => {
+  it('every shipped table compiles; hq, hub, opsBasic, regions and tradeHub declare their amount fields', () => {
     expect(() => compileData(flags)).not.toThrow();
     const declared = Object.fromEntries(allTables().filter((t) => t.amounts).map((t) => [t.name, t.amounts]));
     expect(declared).toEqual({
       hq: ['cargo'],
       hub: ['cost', 'storageCapPerFamily'],
       opsBasic: ['yields'],
+      regions: ['reserveUnitsMin', 'reserveUnitsMax', 'starterGuarantee', 'renewableUnitsPerSimHour'],
       tradeHub: ['cost', 'dailyMintCapPerResource'],
     });
   });

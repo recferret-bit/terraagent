@@ -155,8 +155,8 @@ model Colony {
 // --- economy.prisma ---
 /// W13 economy profile management (ECONOMY §5, W13-37). Exact amounts are `numeric(78,0)` (market atomic units),
 /// JSON carries them as decimal strings. Content of a non-DRAFT version is immutable (triggers in the
-/// `0013_w13_economy` migration); DRAFT edits are optimistic (`revision`). W13-50 adds region/logistics tables next
-/// to these; until then `regions` / `logistics` are JSONB sections of the version.
+/// `0013_w13_economy` migration); DRAFT edits are optimistic (`revision`). W13-50 (migration `0015_w13_regions`) adds the
+/// region/logistics tables below; their child rows follow the same immutability rule.
 
 /// A named baseline or candidate family.
 model EconomyProfile {
@@ -189,9 +189,6 @@ model EconomyProfileVersion {
   rationale           String    @default("") @db.VarChar(2000)
   /// Optimistic edit counter of a DRAFT: `UPDATE … WHERE revision = expected`.
   revision            Int       @default(1)
-  /// Placeholder sections W13-50 replaces with tables.
-  regions             Json      @default("{}")
-  logistics           Json      @default("{}")
   createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
   validatedAt         DateTime? @map("validated_at") @db.Timestamptz(3)
   approvedAt          DateTime? @map("approved_at") @db.Timestamptz(3)
@@ -204,6 +201,10 @@ model EconomyProfileVersion {
   resourcePolicies EconomyResourcePolicy[]
   marketPolicies   EconomyMarketPolicy[]
   agentPolicies    EconomyAgentPolicy[]
+  regionProfiles   EconomyRegionProfile[]
+  regionResources  EconomyRegionResource[]
+  scopeBindings    EconomyScopeBinding[]
+  logisticsPolicies EconomyLogisticsPolicy[]
   activations      EconomyActivation[]
   auditEvents      EconomyAuditEvent[]
   runs             EconomyExperimentRun[]
@@ -460,6 +461,84 @@ model EconomyGateResult {
 
   @@unique([runId, gateId, gateVersion])
   @@map("gate_result")
+  @@schema("economy")
+}
+
+/// Named set of PARTIAL regional overrides (ECONOMY §2.2). A scope binding attaches it to a resolution level.
+/// Null columns mean "inherit"; 0 is a deliberate value. `main_resource` is display intent, validated by the resolver.
+model EconomyRegionProfile {
+  versionId                 String  @map("version_id") @db.VarChar(64)
+  regionProfileId           String  @map("region_profile_id") @db.VarChar(64)
+  sectorArchetype           String  @default("") @map("sector_archetype") @db.VarChar(64)
+  depositDensityPer1000Tiles Int?   @map("deposit_density_per_1000_tiles")
+  mainResource              String? @map("main_resource") @db.VarChar(32)
+
+  version   EconomyProfileVersion  @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  resources EconomyRegionResource[]
+  bindings  EconomyScopeBinding[]
+
+  @@id([versionId, regionProfileId])
+  @@map("region_profile")
+  @@schema("economy")
+}
+
+/// One resource row of a region profile; every value column nullable (omitted = inherit).
+model EconomyRegionResource {
+  versionId                String  @map("version_id") @db.VarChar(64)
+  regionProfileId          String  @map("region_profile_id") @db.VarChar(64)
+  resourceKey              String  @map("resource_key") @db.VarChar(32)
+  occurrenceWeightBp       Int?    @map("occurrence_weight_bp")
+  reserveUnitsMin          BigInt? @map("reserve_units_min")
+  reserveUnitsMax          BigInt? @map("reserve_units_max")
+  terraformFindWeightBp    Int?    @map("terraform_find_weight_bp")
+  starterGuarantee         BigInt? @map("starter_guarantee")
+  extractionYieldBp        Int?    @map("extraction_yield_bp")
+  renewableUnitsPerSimHour BigInt? @map("renewable_units_per_sim_hour")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  profile EconomyRegionProfile  @relation(fields: [versionId, regionProfileId], references: [versionId, regionProfileId], onDelete: Cascade)
+
+  @@id([versionId, regionProfileId, resourceKey])
+  @@map("region_resource")
+  @@schema("economy")
+}
+
+/// Attaches a region profile to a scope level. Scope columns are '' when unused (so the unique key has no NULLs).
+/// Unique (version, kind, ids, priority): two bindings at the same level and priority cannot both exist.
+model EconomyScopeBinding {
+  versionId       String @map("version_id") @db.VarChar(64)
+  scopeKind       String @map("scope_kind") @db.VarChar(16)
+  planetType      String @default("") @map("planet_type") @db.VarChar(60)
+  planetId        String @default("") @map("planet_id") @db.VarChar(64)
+  sectorId        String @default("") @map("sector_id") @db.VarChar(64)
+  archetype       String @default("") @db.VarChar(64)
+  priority        Int    @default(0)
+  regionProfileId String @map("region_profile_id") @db.VarChar(64)
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  profile EconomyRegionProfile  @relation(fields: [versionId, regionProfileId], references: [versionId, regionProfileId], onDelete: NoAction)
+
+  @@id([versionId, scopeKind, planetType, planetId, sectorId, archetype, priority])
+  @@map("scope_binding")
+  @@schema("economy")
+}
+
+/// Building / unit / supply-node logistics row (ECONOMY §2.3). Loads and throughput in thousandths of a load unit.
+model EconomyLogisticsPolicy {
+  versionId       String  @map("version_id") @db.VarChar(64)
+  kind            String  @db.VarChar(12)
+  subjectId       String  @map("subject_id") @db.VarChar(80)
+  tier            Int     @default(1)
+  loadWeightMilli BigInt  @map("load_weight_milli")
+  throughputMilli BigInt? @map("throughput_milli")
+  reachTiles      Int?    @map("reach_tiles")
+  /// { "<ResourceKey>": whole units per supply window }
+  baseConsumption Json    @default("{}") @map("base_consumption")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, kind, subjectId, tier])
+  @@map("logistics_policy")
   @@schema("economy")
 }
 
