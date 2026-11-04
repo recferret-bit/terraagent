@@ -4,7 +4,7 @@ import { z } from 'zod';
 import { createApp } from '../../src/app';
 import { defineDevCommand, DevCommandRegistry } from '../../src/dev/dev-command.registry';
 
-const PROD = { NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' };
+const PROD = { NODE_ENV: 'production', PROGRESSION_WORKERS: 'off', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' };
 const echo = defineDevCommand({ name: 'test.echo', help: 'Echo n doubled', args: z.object({ n: z.number().int() }), run: ({ n }) => ({ doubled: n * 2 }) });
 
 const apps: INestApplication[] = [];

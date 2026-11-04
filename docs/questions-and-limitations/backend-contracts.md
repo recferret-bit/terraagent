@@ -480,7 +480,7 @@ dev routes, progression bus) plus `shared/contracts/**`, `shared/db/**` and thei
 
 ### BE-28 · `resourceProduced` batch windows live in sim-thread memory
 
-- **Status:** Open
+- **Status:** Resolved (bcaf867; open windows flush with checkpoints, fractional carry follows lifetime counters)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `backend/app/src/game/thread/production-batches.ts` (`ProductionBatches`, `PRODUCTION_WINDOW_TICKS`, `windowEndAfter`), `backend/app/src/game/thread/planet-host.ts` (`production`, `collect` after each step); W02-28
@@ -668,3 +668,62 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Workaround / mitigation:** one colony row per dev player per scenario planet. A unique clash on index 0 leaves the existing row.
 - **To resolve:** when scenario join seats through the same home path as a guest, drop this extra write and keep using that colony id.
 - **Found:** 2026-11-02, W06-28
+
+## W12 Player Page & Achievements
+
+### BE-46 · Progression stores (`FactsStore`, `AchievementUnlockStore`, `XpStore`) use Postgres when `databaseEnabled` is true and in-memory maps in unit tests
+
+- **Status:** Accepted (by design)
+- **Area / code:** `backend/app/src/progression/{facts.store,achievement-unlock.store,xp.store,w12-seed.service}.ts`, `backend/app/src/profile/{colony-history.store,me-profile.service,me-achievements.service}.ts`, `shared/db/prisma/progression.prisma`
+- **What happens:** `FactsStore`, `AchievementUnlockStore`, and `XpStore` persist to `core.player_fact`, `core.achievement_unlock`, `core.xp_ledger`, and `core.player_xp` (migration `0009_w12_progression`) when `PRISMA` is injected and `databaseEnabled(env)` is true, and fall back to in-memory maps when the database is off (`NODE_ENV=test` without `DATABASE_URL`). In non-production builds, `W12SeedService.ensureSeeded` automatically seeds only the explicit `pr_dev_w12` demo pilot with the W12 scenario baseline (9 earned achievements, Level 4 `1 120 / 1 500` XP, title `Surveyor`, `unlockStage = 4`, 1 active colony + 2 past colonies) unless `profile.reset` was called for that pilot in the current process.
+- **Why it is like this:** The W12 unit suites (`w12-facts`, `w12-evaluator`, `w12-xp`, `w12-me-profile`, `w12-me-achievements`, `w12-dev-commands`) run without Postgres, while the dev stack and e2e suite persist progression in Postgres across restarts.
+- **Workaround / mitigation:** `profile reset` in the dev console clears a pilot's Postgres and in-memory progression rows; `npm run dev:restart` after `profile reset` re-seeds the W12 baseline on the next `/me.html` or `/play.html?scenario=w12` load.
+- **To resolve:** Add catch-up evaluation (`W12-04`) and the `BadgeMint` outbox worker (`W12-25`).
+- **Validation note (2026-11-04):** the fixed-baseline W12 E2E suite failed on a reused demo pilot at 1,270 XP versus its expected 1,120 XP. `npm run e2e -- --waves 12` with a fresh isolated database passed all seven implemented checks (three explicit deferrals). Use the isolated run for baseline assertions; `E2E_REUSE=1` intentionally retains demo progress.
+- **Found:** 2026-11-03, W12
+
+### BE-47 · Remaining extended W12 profile work
+
+- **Status:** Open (explicit follow-up scope)
+- **Area / code:** `docs/plan/waves/W12-player-page-achievements.md`, `backend/app/src/profile/`
+- **What happens:** ME History shows the latest 50 delivered achievement notifications; full multi-event, planet/type-filtered cursor history and infinite scrolling are not implemented. Rich colony telemetry, lobby queue/party embedding, milestone XP for future stage/settlement/planet-result producers, additional level cosmetics, analytics consent events, and automated viewport screenshots remain follow-ups. The browser history test is explicitly skipped, not counted as passing.
+- **Why it is like this:** stage/combat/trade/lobby producers and notification preferences are not present; the complete history schema/retention and event catalogue must be integrated with those waves. A partial achievement feed is labeled accurately.
+- **Workaround / mitigation:** current/past colony cards, selected-colony resume, all 60 configurable tier rules, profile catch-up, durable statistics and independent mock badge/in-app delivery are implemented and tested. Real identity reads stored creation date/account ID; absent accounts are not fabricated.
+- **To resolve:** implement W12-10/11/18 with bounded cursor pagination and filters once the unified history events are defined; complete producer-dependent items in their owning waves. Preserve the current queue and catalogue. W12-04 catch-up and the mock W12-25 delivery path are now done.
+- **Found:** 2026-11-03, W12; revised 2026-11-04.
+
+### BE-48 · Sim progression ingress still precedes durable commit
+
+- **Status:** Resolved (bcaf867)
+- **Area / code:** `backend/app/src/progression/checkpoint-progression.ts`, `backend/app/src/game/persistence/snapshot-store.ts`
+- **What happened:** a process crash could lose a sim input independently of its saved world state; reset worlds reused source IDs.
+- **Resolution:** checkpoint, inbox and colony projection commit atomically; replay deduplicates rewards; per-planet incarnation IDs change on wipe. Open production/event windows flush before checkpoint. PostgreSQL tests cover rollback, fresh-worker replay, duplicate acknowledgment recovery and reset identity.
+- **Found:** 2026-11-03, W12 fixes.
+
+### BE-49 · Queued badge and notification consumers
+
+- **Status:** Partially resolved; external delivery remains open
+- **Area / code:** `backend/app/src/progression/effect-consumers.ts`, `docs/spec/PROGRESSION_ENGINE.md`
+- **What happens:** in-app achievement notifications are persisted and shown in ME; badges mint through the selected mock port after one wall-clock hour. Guests wait for account linking. Queue leases/retries and deterministic mint IDs survive retry after external success. Web push/Telegram and real-chain badge delivery are not available yet.
+- **Why it is like this:** there is no notification adapter, subscription/preferences store or deployed live badge adapter in this branch.
+- **Workaround / mitigation:** independent effect rows retain failures; the PostgreSQL mock adapter proves idempotent minting. `PROGRESSION_WORKERS=off` pauses automatic workers for maintenance.
+- **To resolve:** W09 adds opt-in recipients and a separate external-push effect kind (do not reuse acknowledged in-app effects); W23 registers the live badge adapter and reconciles pending receipts. Recommendation: retain this queue and effect-ID deduplication, not a second saga outbox.
+- **Found:** 2026-11-03, W12 fixes; updated 2026-11-04.
+
+### BE-50 · Live colony profile stage and multi-colony resume
+
+- **Status:** Resolved (bcaf867); stage producers remain a future-wave dependency
+- **Area / code:** `backend/app/src/game/persistence/colony-projection.ts`, `backend/app/src/core/home/home.service.ts`
+- **What happened:** stage was hardcoded and Dive in could resume a different latest home.
+- **Resolution:** the database stores stage; explicit sim stages/outcomes project with snapshots and settled/eliminated colonies archive idempotently. Dive in carries the colony ID; HTTP validates ownership/status and WS resolves the selected planet's seat. Foreign/missing/inactive destinations are rejected without replacement seating. Current sim colonies have no stage producer yet, so stage stays at the initial 1 until W08 supplies it; no invented progression is shown.
+- **Found:** 2026-11-03, W12 fixes.
+
+### BE-51 · Checkpoint latency and exceptional world rollback
+
+- **Status:** Accepted (checkpoint latency); Open (corruption reconciliation)
+- **Area / code:** `backend/app/src/game/persistence/snapshot-store.ts`, `backend/app/src/progression/checkpoint-progression.ts`
+- **What happens:** real sim statistics appear after the next saved checkpoint, normally up to 60 seconds plus polling. A CRC failure can restore an older checkpoint while lifetime achievements from a newer committed checkpoint remain earned. A dev profile reset is not an external NFT burn or a transactional cancellation of already-running effect handlers.
+- **Why it is like this:** world snapshots are the durability boundary; lifetime awards and external mints are append-only. Rewinding those needs explicit compensation policy.
+- **Workaround / mitigation:** normal restart replays committed inputs exactly once; uncheckpointed world/facts roll back together. Incarnation IDs isolate intentional planet wipes. Stop workers before administrative data resets.
+- **To resolve:** W09 recovery must quarantine/reconcile rollback beyond committed progression rather than automatically revoke earned badges. Recommendation: retain earned lifetime awards and record an audited recovery incident; choose compensation rules before enabling automatic rollback of external effects.
+- **Found:** 2026-11-04, W12 hardening.

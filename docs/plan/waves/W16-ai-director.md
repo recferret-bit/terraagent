@@ -89,3 +89,9 @@ Add a strategic LLM director that makes the rare high-level calls, about 5–10 
 - Tag `wave-16` is created.
 - `AI-01..15` and the §14 test matrix are mapped above.
 - A live Z.ai eval run is a manual gate, not part of the e2e.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Identify any new statistics producers and reuse the W12 catalogue, transaction and effect queue; do not introduce parallel counters or reward callbacks.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

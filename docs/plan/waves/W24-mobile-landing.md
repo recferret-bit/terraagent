@@ -123,3 +123,9 @@
 - The phone perf probe is ≥ 30 FPS, and the landing bundle budgets are green in the build report.
 - Tag `wave-24` exists.
 - Every row of the features table is covered by a closed issue.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Keep sign-in/profile access on landing and selection only; verify new-tab behavior and section navigation on mobile.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

@@ -114,3 +114,9 @@ Take the hosts W26 already serves and add monitoring, backups, a rollback deploy
 - The README passes the fresh-clone job, and its mock/real table matches the running adapters.
 - The hosted demo is live. The video, X post and submission form are done before the deadline.
 - Tag `wave-25` is created.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Monitor pending age, attempt count, lease expiry and errors; document replay and recovery without direct counter edits.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

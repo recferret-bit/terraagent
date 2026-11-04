@@ -1,3 +1,4 @@
+import { PilotAccess } from '../../design/pilot/PilotAccess';
 import { PLANET_KINDS, PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { getViewportPreset, isShaderOptimized, type ViewportPreset } from '@terra/render/core/perfConfig';
 import { worldCardHtml } from './worldCard';
@@ -28,6 +29,7 @@ export class MainMenu {
     optimized: isShaderOptimized(),
     resolution: getViewportPreset(),
   };
+  private pilotAccess: PilotAccess;
   private deployBtn!: HTMLButtonElement;
   private seedInput!: HTMLInputElement;
   private errEl!: HTMLElement;
@@ -68,6 +70,7 @@ export class MainMenu {
         </div>
       </div>`;
     parent.appendChild(this.el);
+    this.pilotAccess = new PilotAccess(this.el.querySelector<HTMLElement>('.menu-top')!);
     this.deployBtn = this.el.querySelector('#deploy')!;
     this.seedInput = this.el.querySelector('#seed')!;
     this.errEl = this.el.querySelector('#menu-err')!;
@@ -104,5 +107,5 @@ export class MainMenu {
   setError(msg: string) { this.errEl.textContent = msg; this.deployBtn.disabled = false; }
   hide() { this.el.classList.add('hide'); }
   show() { this.el.classList.remove('hide'); this.deployBtn.disabled = false; this.errEl.textContent = ''; }
-  dispose() { this.el.remove(); }
+  dispose() { this.pilotAccess.dispose(); this.el.remove(); }
 }

@@ -1,0 +1,35 @@
+# W12 fixes — owner check
+
+Worktree: `TerraAgent-wt/w12`, branch `wave/w12-player-page-achievements`.
+Client: http://127.0.0.1:5673/ · Backend: http://127.0.0.1:4501/v1/healthz.
+Run `npm run dev` in this worktree if the stack is stopped. The runner applies database migrations on startup. If it was already running when a migration was added, run `npm run db:migrate` before `npm run dev:restart`.
+
+1. Open http://127.0.0.1:5673/. The **PILOT / ME** card is a clearly labeled mock. Click **OPEN MOCK PILOT**: `/me.html?as=w12` opens in a new browser tab.
+2. On ME, inspect the six sections: PILOT, PROGRESS, PLANETS, HISTORY, ACHIEVEMENTS, PLAY. Each has a contrasting plate, blue upper border, larger heading and increased separation. Click every sticky navigation tab. Check at desktop width and at 390 px; no horizontal overflow should appear.
+3. In PLANETS, click the mock colony's **Dive in**. It enters `/play.html?scenario=w12&as=w12`, a supported scenario. A live card carries `colonyId` and resumes that specific owned active colony; an unavailable destination shows an error without allocating another colony. This is a demonstration colony, not a live join to the mock planet ID. Gameplay has no PILOT / ME chip or profile links in achievement/XP toasts.
+4. Open http://127.0.0.1:5673/landing.html in a fresh browser context. Guest sign-in controls appear in the header; ME is absent. Continue with Google or X (mock), complete the popup login, then click the pilot link. ME opens in a new tab for the authenticated pilot, without receiving W12 demo statistics.
+5. Repeat from http://127.0.0.1:5673/play.html?planet=dune on the planet-selection screen. The same controls appear. After login, deploying/resuming refreshes that session instead of silently switching to a new guest.
+6. For the explicit mock, open http://127.0.0.1:5673/play.html?scenario=w12&as=w12. Press the **`** key for the in-game dev console. Run `fact add groundbreaker 200`, then refresh http://127.0.0.1:5673/me.html?as=w12. The counter advances and any newly met tier earns XP once. A zero delta must not award it again. Existing persistent demo progress can differ from the original 800-tile baseline.
+7. Run `npm test -- --run backend/app/test/progression backend/app/test/profile frontend/game/pages/me frontend/game/features/identity frontend/game/features/achievements/w12-toasts.spec.ts frontend/game/app/online`.
+8. Run `npm run test:integration -- backend/app/test/progression backend/app/test/game/snapshot.int.spec.ts backend/app/test/core/home.int.spec.ts`. It creates and drops an isolated database. Verify source-to-profile persistence, all 60 tiers, replay, rollback, concurrent updates, cross-player isolation, independent effects, retries and expired leases.
+
+Current hardening: snapshots and progression inputs commit together, replay survives restart, and source IDs include planet incarnation. Statistics become visible after the next checkpoint (normally 60 s). Linked pilots' new badges queue for one wall-clock hour and then mint through the mock adapter; in-app notifications appear in History. Guest badges wait for account linking. Current stage and terminal colony outcomes project from explicit checkpoint state; the stage-producing wave still needs to populate that state.
+
+Latest validation (2026-11-04): full `npm run ci:fast` passed (1,697 tests plus one existing skip, typechecks, lint, generated-code checks, structure and production build). The expanded W12 E2E run passed **9 checks with 1 explicit history skip**. PostgreSQL progression/snapshot/home tests passed **24 checks**, including real mock-adapter mint idempotency after external success and retry, atomic rollback, fresh-worker replay, planet wipe identity, catch-up, archive projection, authenticated selected-colony resume and stored profile identity. Additional worker-isolation and frontend query tests passed. The landing command reruns CI on the final commit.
+
+Remaining work and recommendations are saved in **BE-47** (extended profile/history), **BE-49** (external push/live chain prerequisites) and **BE-51** (checkpoint latency and exceptional rollback policy) in [backend limitations](../../questions-and-limitations/backend-contracts.md). **BE-28**, **BE-48** and **BE-50** record the fixes. Architecture: [Progression engine](../../spec/PROGRESSION_ENGINE.md).
+
+Final browser walkthrough on `bcaf867`: hub new-tab entry, all six tabs, desktop/mobile overflow, ticking mock Dive in, Google login from landing and X login from planet selection passed. Both authenticated profiles opened in new tabs without mock awards. The existing stack first needed `npm run db:migrate`; the popup probe also needed to wait for the mock OAuth page's load event before clicking its button. These were setup/synchronization failures, not passing checks; the corrected runs passed.
+
+Historical validation before this hardening:
+
+Full owner-check rerun (2026-11-04, implementation `7f2ddad`): **138/138 unit tests**, **10/10 PostgreSQL integration tests**, and **7/7 implemented W12 E2E tests** passed. Run the complete browser suite with `npm run e2e -- --waves 12` (without `--hack`); it creates a fresh database and starts an isolated stack on client 5674 / app 4502 with later waves off. Its three explicit skips are full colony-card acceptance (W12-17), history filtering/infinite scroll (W12-10/11/18), and badge mint UI delivery (W12-25/26). They are not passing tests.
+
+The additional browser owner checks passed: hub new-tab mock link; all six tabs at 1280 px and 390 px without horizontal overflow; mock Dive in reaching a ticking game with no ME HUD; Google login on landing and X login on selection, each opening a fresh authenticated profile with zero mock awards; authenticated gameplay resume preserving the player and linked account; `fact add groundbreaker 200` persisting the increment and `fact add groundbreaker 0` changing neither counter nor XP.
+
+Do not use `E2E_REUSE=1` for the suite's fixed seed assertions unless the demo pilot is known to be at its initial baseline. This rerun first reused the existing stack and stopped at the expected 1,120 XP assertion because the pilot already had 1,270 XP. The subsequent isolated run passed; no application code was changed for the rerun. Browser artifacts are in `tests/e2e/.out/report/` and `tests/e2e/.out/results/`.
+
+Land through `npm run wave -- land 12`.
+
+
+Landing reconciliation: merged W10 main, regenerated shared event/scenario registries, and reran the merged-branch W12 browser suite (9 passed / 1 documented skip) and PostgreSQL suite (24 passed). The landing gate exposed stale Vitest disk-cached feature discovery; game tests now disable that cache (XC-34), keeping all assertions enabled.

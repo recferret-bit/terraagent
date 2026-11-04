@@ -4,7 +4,7 @@ import type { HomeService } from '../core/home/home.service';
 
 /** Resolves the player's `HomeResponse` for the WS `ready` payload (PROTOCOL §4.3, W01-03). */
 export interface HomeProvider {
-  getHome(playerId: string): Promise<HomeResponse>;
+  getHome(playerId: string, planetId?: string): Promise<HomeResponse>;
 }
 
 export const HOME_PROVIDER = Symbol('HOME_PROVIDER');
@@ -22,7 +22,7 @@ export const DEFAULT_HOME: HomeResponse = {
 export class DbHomeProvider implements HomeProvider {
   constructor(private readonly homeService?: Pick<HomeService, 'getExistingHome'>) {}
 
-  async getHome(playerId: string): Promise<HomeResponse> {
-    return (await this.homeService?.getExistingHome(playerId)) ?? DEFAULT_HOME;
+  async getHome(playerId: string, planetId?: string): Promise<HomeResponse> {
+    return (await this.homeService?.getExistingHome(playerId, planetId)) ?? DEFAULT_HOME;
   }
 }

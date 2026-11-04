@@ -182,3 +182,9 @@ Infra W23-01..06 come first (W23-07/08 are post-hackathon). The H2 order F5 → 
 - The README mock/real table is generated.
 - Monitoring and alerts are live, and the spend circuit breaker has been tested.
 - Tags `wave-23-<port>` and `wave-23` are created.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Consume achievement.badge through BadgeNftPort using the effect ID as mint idempotency key; cover failure, restart, delayed mint and notification independence.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

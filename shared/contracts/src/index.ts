@@ -10,4 +10,6 @@ export * from './commands/index.generated';
 export * from './events/index.generated';
 export * from './rest';
 export * from './precheck';
+export * from './progression';
+export * from './profile';
 export * from './maps';

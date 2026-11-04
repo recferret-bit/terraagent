@@ -119,6 +119,14 @@ describe('/v1/me/home answers of the hardened server (BE-14, BE-17, BE-21)', () 
 });
 
 describe('GuestBootTarget (FA-01)', () => {
+  it('keeps named dev guests isolated from another tab’s refresh cookie', async () => {
+    const f = server();
+    const target = new GuestBootTarget('ws://x/ws', { fetch: f, storage: memStorage(), search: '?as=other', onBooted: () => undefined });
+    await target.boot();
+    expect(target.accessToken).toBe('jwt-guest');
+    expect(f.calls).not.toContain('/v1/auth/refresh');
+  });
+
   it('keeps the token expiry from the auth response and refresh() swaps in a renewed token', async () => {
     let now = 1_000;
     const f = server();
@@ -126,16 +134,16 @@ describe('GuestBootTarget (FA-01)', () => {
     const t = new GuestBootTarget('ws://x/ws', { fetch: f, storage: memStorage(), search: '', now: () => now, onBooted: (b) => booted.push(b.colony.id) });
     const boot = await t.boot();
     expect(boot?.tokenExpiresInS).toBe(900);
-    expect(t.accessToken).toBe('jwt-guest');
+    expect(t.accessToken).toBe('jwt-refresh-1');
     expect(t.tokenExpiresAtMs).toBe(1_000 + 900_000);
     expect(booted).toEqual([TEST_COLONY_ID]); // a server-minted `co_<ULID>` colony id passes through as is
     expect(await t.resolve()).toEqual({ planetId: 'pl_dev' }); // a reconnect re-uses the seat, no new HTTP boot
     expect(f.calls.filter((u) => u.startsWith('/v1/me/home'))).toHaveLength(1);
     now = 841_000;
     expect(await t.refresh()).toBe(true);
-    expect(t.accessToken).toBe('jwt-refresh-1');
+    expect(t.accessToken).toBe('jwt-refresh-2');
     expect(t.tokenExpiresAtMs).toBe(841_000 + 900_000);
-    expect(t.result?.accessToken).toBe('jwt-refresh-1');
+    expect(t.result?.accessToken).toBe('jwt-refresh-2');
   });
 
   it('a local fallback has nothing to refresh', async () => {

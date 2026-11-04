@@ -115,3 +115,9 @@ Uses from W00 without owning: `TreasuryDaoPort` / `EscrowPort` (W00-30), mock ba
 - `TA_WAVES=..21` removes the Council, Bounties, mercenaries and the fee-share leg; W13 trades still settle zero-sum.
 - The treasury and escrow contract suites are green vs the mocks.
 - `NEAR-100..102` and `NEAR-110..112` each map to issues above. Tag `wave-22` is created.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Identify any new statistics producers and reuse the W12 catalogue, transaction and effect queue; do not introduce parallel counters or reward callbacks.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.
