@@ -8,6 +8,7 @@ import type { ColonyState, PlanetState } from '../../kernel/state';
 import { resolveBuildingRow } from '../economy/construction';
 import { resolveHubProducerRows } from '../factories-hub';
 import { normalizeRichness } from '../production';
+import { getTerraformJobCost, getTerraformOpSpec, isTerraformOpKind, isW01TerraformOpKind } from '../terraform-basic/ops';
 import { PRECEDENCE_RANK, type QueueEntry, type QueueLane, type QueuePrecedence, type QueueTaskPayload } from './types';
 
 export const CONSTRUCTION_LANE_LIMIT = 20;
@@ -72,6 +73,20 @@ export function resolveTaskCostAndTicks(
   }
   if (task.kind === 'hqGoal') {
     return { cost: {}, buildTicks: 1, workRate: 1.0 };
+  }
+  if (
+    task.kind === 'terraform' &&
+    isTerraformOpKind(task.op) &&
+    !isW01TerraformOpKind(task.op) &&
+    task.op !== 'dismantle' &&
+    task.op !== 'work'
+  ) {
+    const spec = getTerraformOpSpec(task.op, data);
+    return {
+      cost: getTerraformJobCost(task.op, data),
+      buildTicks: Math.max(1, Math.round(spec.baseTimeS * 5)),
+      workRate: 1.0,
+    };
   }
   return { cost: {}, buildTicks: 25, workRate: 1.5 };
 }

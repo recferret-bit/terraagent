@@ -159,3 +159,66 @@ describe('W05-03 · Level op resource wait & cancel refund', () => {
     expect(colony.stock['minerals.t1']).toBeCloseTo(0.5, 5);
   });
 });
+
+describe('W05-04 · Fill op (Hole -> Flat, 10 s, 100 E, 10 M + 5 Min)', () => {
+  it('Acceptance: Fill a crater tile -> Flat after 10 s (50 ticks) at 1.0x; stock drops by 10 M / 5 Min', () => {
+    const { state, colony, hx, pipeline } = createW05Colony();
+    const target = { q: 3, r: 0 };
+    const tIdx = hx.indexOf(target.q, target.r);
+    setTileTerrain(state.grid, tIdx, TERRAIN.hole, 0);
+    setTileHeight(state.grid, tIdx, -1.4, 0);
+
+    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    const startMetals = colony.stock['metals.t1'];
+    const startMinerals = colony.stock['minerals.t1'];
+
+    const enqRes = step(
+      state,
+      [
+        {
+          commandId: 'cmd-fill-1',
+          colonyIndex: 0,
+          source: 'player',
+          kind: 'enqueueTask',
+          args: { terraform: { op: 'fill', tiles: [target] } },
+        },
+      ],
+      1,
+      pipeline,
+    );
+    expect(enqRes.outcomes[0]?.code).toBeUndefined();
+    expect(colonyTerraformOrders(state, 0)[0]!.jobs[0]!.baseTimeS).toBe(10);
+    expect(colonyTerraformOrders(state, 0)[0]!.jobs[0]!.totalEnergyE).toBe(100);
+
+    const events: Array<{ kind: string; data: unknown }> = [];
+    for (let t = 0; t < 48; t++) {
+      const r = step(state, [], 1, pipeline);
+      events.push(...r.events);
+    }
+    expect(state.grid.layers.terrain[tIdx]).toBe(TERRAIN.hole);
+
+    for (let t = 0; t < 3; t++) {
+      const r = step(state, [], 1, pipeline);
+      events.push(...r.events);
+    }
+
+    expect(state.grid.layers.terrain[tIdx]).toBe(TERRAIN.flat);
+    expect(state.grid.layers.prep[tIdx]).toBe(PREP.flat);
+    expect(state.grid.layers.height[tIdx]).toBe(0);
+    expect(colony.stock['metals.t1']).toBeCloseTo(startMetals - 10, 5);
+    expect(colony.stock['minerals.t1']).toBeCloseTo(startMinerals - 5, 5);
+    expect(colonyTerraformOrders(state, 0)).toHaveLength(0);
+
+    const removed = events.find((e) => e.kind === 'obstacleRemoved');
+    expect(removed?.data).toMatchObject({ op: 'fill', count: 1, q: target.q, r: target.r });
+    const stateChanged = events.find((e) => e.kind === 'tileStateChanged');
+    expect(stateChanged?.data).toMatchObject({
+      op: 'fill',
+      q: target.q,
+      r: target.r,
+      prevTerrain: 'hole',
+      terrain: 'flat',
+    });
+  });
+});
+
