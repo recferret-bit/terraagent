@@ -141,3 +141,38 @@ export function turret() {
   cable(b, [-0.75, 0.56, 0.45], [-0.42, 1.38, 0.15], 0.06, 0.035, 'frameGunmetal', { name: 'ammo belt conduit' });
   return b.build();
 }
+
+// ---------------------------------------------------------------- Laser tower (1x1)
+export function laserTower() {
+  const b = new KitbashBuilder();
+  plinth(b, 2, 2);
+  cyl(b, 'frameGunmetal', 0.76, 0.86, 0.36, [0, 0.18, 0], { seg: 8, name: 'optical tower pedestal base' });
+  box(b, 'hullPrimary', [1.16, 0.62, 1.16], [0, 0.50, 0], { r: 0.10, seg: 1, name: 'optical capacitor housing' });
+  // Side cooling fin plates & status strips on the 4 housing walls
+  for (const sx of [-1, 1]) {
+    box(b, 'hullSecondary', [0.08, 0.38, 0.68], [sx * 0.58, 0.62, 0], { r: 0.02, name: 'housing side cooling fin' });
+  }
+  glow(b, 'energyCyan', [0.68, 0.08, 0.06], [0, 0.82, 0.58], { name: 'capacitor front status light' });
+  box(b, 'hullSecondary', [0.68, 0.34, 0.08], [0, 0.62, -0.58], { r: 0.02, name: 'capacitor rear manifold plate' });
+  // Vertical optical focus column + plasma rings
+  cyl(b, 'hullPrimary', 0.38, 0.48, 0.88, [0, 1.08, 0], { seg: 10, name: 'optical focus column' });
+  ring(b, 'energyCyan', 0.46, 0.04, [0, 1.36, 0], { seg: 10, name: 'column focus ring A light' });
+  ring(b, 'warningAmber', 0.42, 0.04, [0, 1.68, 0], { seg: 10, name: 'column focus ring B light' });
+  cyl(b, 'frameGunmetal', 0.44, 0.44, 0.18, [0, 1.92, 0], { seg: 10, name: 'emitter azimuth collar' });
+  // Rotating upper laser emitter head (animType 1 around tower axis)
+  const A = spin(0, 0);
+  box(b, 'hullSecondary', [0.76, 0.44, 0.84], [0, 2.08, 0], { r: 0.08, seg: 1, name: 'optical emitter head housing', ...A });
+  box(b, 'frameGunmetal', [0.56, 0.10, 0.56], [0, 2.50, 0], { r: 0.03, name: 'emitter roof heatsink cap', ...A });
+  lamp(b, 'dangerCrimson', 0.075, [0, 2.60, 0], { name: 'emitter targeting beacon light', ...A });
+  b.addPart(new THREE.CylinderGeometry(0.16, 0.20, 0.56, 10), 'frameGunmetal', {
+    name: 'optical focus barrel', position: [0, 2.30, 0.62], rotation: [PI / 2, 0, 0], ...A,
+  });
+  ring(b, 'hullPrimary', 0.19, 0.035, [0, 2.30, 0.72], { rotation: [PI / 2, 0, 0], name: 'barrel focusing collar', ...A });
+  b.addPart(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 10), 'dangerCrimson', {
+    name: 'laser aperture lens light', position: [0, 2.30, 0.91], rotation: [PI / 2, 0, 0], emissiveIntensity: 4.5, ...A,
+  });
+  // External power cell unit + anchored conduit cable
+  cyl(b, 'hullSecondary', 0.18, 0.20, 0.50, [0, 0.16, -0.76], { seg: 8, name: 'power cell transformer' });
+  cable(b, [0, 0.62, -0.76], [0, 0.86, -0.60], 0.03, 0.03, 'frameGunmetal', { name: 'emitter feeder cable' });
+  return b.build();
+}
