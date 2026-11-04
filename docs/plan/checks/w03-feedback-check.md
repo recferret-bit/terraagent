@@ -136,7 +136,7 @@ Run `warp 1` and watch the wind indicator for several minutes.
 
 ## Validation and reporting
 
-The implementation passed 2,045 tests (one skipped), repository checks and build. All 14 building archetypes passed with zero errors/warnings; all 48 validator self-tests passed. Model four-view checks were inspected across all three biomes.
+The merged implementation passed 2,045 unit tests (one skipped), all 94 database integration tests, 20 contract tests, both client/server parity scenarios, repository checks and the production build. All 14 building archetypes passed with zero errors/warnings; all 48 validator self-tests passed. Model four-view checks were inspected across all three biomes.
 
 Report the **step number**, what you expected, and what appeared instead. Keep the tab open if something fails so the scenario can be inspected.
 
