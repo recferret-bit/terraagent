@@ -85,7 +85,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId, opts.actorKind));
     await this.books.sync(result.order.orderId);
     if (opts.answerSim !== false) this.answerSim(target, result);
-    if (result.created && !result.rejected) await this.matchAndHand(result.order.orderId);
+    if (result.created && !result.rejected) await this.matchAndSettle(result.order.orderId);
     return result;
   }
 
@@ -99,7 +99,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Matches the new order and hands the fills to the hook inside one transaction (the matcher's locks stay held). */
-  private async matchAndHand(orderId: string): Promise<void> {
+  async matchAndSettle(orderId: string): Promise<void> {
     try {
       const touched = await withTransaction(this.prisma, async (tx) => {
         const outcome = await this.matcher.matchOrder(orderId, tx);
