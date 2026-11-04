@@ -44,6 +44,22 @@ export class ProposalOutbox {
     return this.stored.get(requestId);
   }
 
+  snapshot(): { requests: { id: string; actions: readonly unknown[] }[]; fences: { colonyId: string; fence: number }[]; intents: { colonyId: string; revision: number }[] } {
+    return {
+      requests: [...this.stored].map(([id, actions]) => ({ id, actions })),
+      fences: [...this.fenceByColony].map(([colonyId, fence]) => ({ colonyId, fence })),
+      intents: [...this.intentByColony].map(([colonyId, revision]) => ({ colonyId, revision })),
+    };
+  }
+
+  static fromSnapshot(snap: ReturnType<ProposalOutbox['snapshot']>): ProposalOutbox {
+    const box = new ProposalOutbox();
+    for (const row of snap.requests) box.stored.set(row.id, row.actions);
+    for (const row of snap.fences) box.fenceByColony.set(row.colonyId, row.fence);
+    for (const row of snap.intents) box.intentByColony.set(row.colonyId, row.revision);
+    return box;
+  }
+
   private stale(input: ProposalSubmit): boolean {
     const fence = this.fenceByColony.get(input.colonyId);
     if (fence !== undefined && input.fence < fence) return true;

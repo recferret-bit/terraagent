@@ -65,6 +65,20 @@ export class GlobalTokenBudget {
     return books.spent + outstandingSum(books);
   }
 
+  /** Plain snapshot so a restart can keep outstanding reservations. */
+  snapshot(): { cap: number; days: { day: string; spent: number; outstanding: number[] }[] } {
+    return {
+      cap: this.cap,
+      days: [...this.days].map(([day, books]) => ({ day, spent: books.spent, outstanding: [...books.outstanding] })),
+    };
+  }
+
+  static fromSnapshot(snap: { cap: number; days: { day: string; spent: number; outstanding: number[] }[] }): GlobalTokenBudget {
+    const budget = new GlobalTokenBudget(snap.cap);
+    for (const day of snap.days) budget.days.set(day.day, { spent: day.spent, outstanding: [...day.outstanding] });
+    return budget;
+  }
+
   private books(day: string): DayBooks {
     const existing = this.days.get(day);
     if (existing) return existing;
