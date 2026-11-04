@@ -25,6 +25,10 @@ export interface ColonyDirectorRecord {
   baselined: boolean;
   seenPriorities: string;
   seenGoals: string;
+  /** Last explicit player sliders. Overlays are measured against this, not against the previous overlay. */
+  baselinePriorities: IndependentPriorities;
+  /** Tick at which an overlay ends. Null when the effective sliders are the baseline. */
+  overlayUntilTick: number | null;
   /** Exclusive tick deadline per goal. An equivalent re-proposal stays quiet while `tick` is below it. */
   suppressUntil: Record<string, number>;
 }
@@ -61,6 +65,8 @@ function emptyRecord(): ColonyDirectorRecord {
     baselined: false,
     seenPriorities: '',
     seenGoals: '',
+    baselinePriorities: { ...DEFAULT_DIRECTOR_POLICY.priorities },
+    overlayUntilTick: null,
     suppressUntil: {},
   };
 }

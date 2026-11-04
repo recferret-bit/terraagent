@@ -70,6 +70,8 @@ export * from './systems/goals';
 export {
   applyDirectiveBatch,
   applyDirectorPolicy,
+  applyPriorityOverlay,
+  awayGuardPoints,
   buildColonyBrief,
   colonyDirector,
   goalSuppressed,

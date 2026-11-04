@@ -2,6 +2,7 @@ import type { PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { getOpenColonyGoals } from '../goals/store';
 import { getColonyPriorities } from '../goals/priorities';
+import { expirePriorityOverlays } from './overlay';
 import { ensureDirectorRecord, priorityKey, saveDirectorRecord, supersedeOpenPlans } from './store';
 
 export function goalKey(state: PlanetState, colonyIndex: number): string {
@@ -13,6 +14,7 @@ export function goalKey(state: PlanetState, colonyIndex: number): string {
  * supersede open director plans. The first observation only records the baseline.
  */
 export function syncDirectorIntent(state: PlanetState, tick: number): void {
+  expirePriorityOverlays(state, tick);
   for (const colony of state.colonies) {
     if (!colony) continue;
     const record = ensureDirectorRecord(state, colony.index, tick);
@@ -23,12 +25,15 @@ export function syncDirectorIntent(state: PlanetState, tick: number): void {
       record.seenPriorities = priorities;
       record.seenGoals = goals;
       record.policy.priorities = { ...getColonyPriorities(state, colony.index) };
+      record.baselinePriorities = { ...record.policy.priorities };
       saveDirectorRecord(state, colony.index, record, tick);
       continue;
     }
     let dirty = false;
     if (record.seenPriorities !== priorities) {
       record.policy.priorities = { ...getColonyPriorities(state, colony.index) };
+      record.baselinePriorities = { ...record.policy.priorities };
+      record.overlayUntilTick = null;
       record.policy.revision += 1;
       record.seenPriorities = priorities;
       supersedeOpenPlans(record);
