@@ -14,6 +14,8 @@ import { MetricsRegistry } from '../core/metrics.registry';
 import { ReadinessRegistry } from '../core/readiness.registry';
 import { layerLogger } from '../core/logging/logger';
 import { APP_ENV, LOGGER, type AppEnv } from '../core/tokens';
+import { EconomyModule } from '../economy/economy.module';
+import { EconomyProfileService } from '../economy/profile/profile.service';
 import { loadBalanceOverrides } from './balance-overrides';
 import { bridgePlanetEvents } from './bus-bridge';
 import { DevPlanetsController } from './dev-planets.controller';
@@ -58,13 +60,17 @@ export const env = defineEnv('game', {
 const POOL = Symbol('SIM_THREAD_POOL');
 
 @Module({
+  imports: [EconomyModule],
   controllers: [DevPlanetsController, DevLedgerController],
   providers: [
     {
       provide: POOL,
-      inject: [APP_ENV, FlagsService],
-      useFactory: (e: AppEnv, f: FlagsService) => {
-        const base = loadBalanceOverrides(e.TA_BALANCE_OVERRIDES as string | undefined, f.list);
+      inject: [APP_ENV, FlagsService, EconomyProfileService],
+      useFactory: async (e: AppEnv, f: FlagsService, economy: EconomyProfileService) => {
+        // Pinned economy profile (D-44): the active global version is read ONCE here and compiled into plain overrides; the
+        // file overrides (TA_BALANCE_OVERRIDES) and the env time settings layer on top. Sim threads never touch the DB.
+        const profile = await economy.bootOverrides();
+        const base = mergeOverrides(profile, loadBalanceOverrides(e.TA_BALANCE_OVERRIDES as string | undefined, f.list));
         const realHoursPerDay = e.PLANET_DAY_HOURS as number | undefined;
         const timeScale = e.PLANET_TIME_SCALE as number | undefined;
         const envTime: BalanceOverrides =
