@@ -1,5 +1,6 @@
 import type { OrderSide, QuoteToken, ResourceKey } from '@terra/contracts';
 import type { CompiledDataLike } from '../../kernel/config';
+import { marketConfigFromData } from '../../economy/market-config';
 import type { ColonyState } from '../../kernel/state';
 
 /** Compiled `market.policy` (+ `market.quote.*`) numbers the sim checks; balance values live only in `data/market.ts` (D-35). */
@@ -50,37 +51,16 @@ export interface ColonyMarketState {
 export const MAX_TRACKED_SETTLED_TRADES = 64;
 export const MAX_MIRRORED_OPEN_ORDERS_FACTOR = 4;
 
-const FALLBACK_POLICY: MarketPolicy = {
-  platformFeeBp: 100, stallFeeMinBp: 0, stallFeeMaxBp: 100, stallFeeDefaultBp: 100,
-  ttlOptionsS: [900, 3600, 21600, 86400], openOrderLimit: 20, baseLotUnits: 1,
-};
-
-type Table = Record<string, Record<string, unknown> | undefined>;
-
-/** Reads `market.policy` from compiled data (fallbacks mirror the bootstrap row only for hosts compiled without W13). */
+/** Compiled `market` policy numbers, from the one validated `MarketConfig` of the host's compiled data (W13-03). */
 export function readMarketPolicy(data: CompiledDataLike): MarketPolicy {
-  const row = (data.tables.market as Table | undefined)?.policy;
-  const num = (k: keyof MarketPolicy): number => {
-    const v = row?.[k];
-    return typeof v === 'number' && Number.isFinite(v) ? v : (FALLBACK_POLICY[k] as number);
-  };
-  const ttl = row?.ttlOptionsS;
-  return {
-    platformFeeBp: num('platformFeeBp'),
-    stallFeeMinBp: num('stallFeeMinBp'),
-    stallFeeMaxBp: num('stallFeeMaxBp'),
-    stallFeeDefaultBp: num('stallFeeDefaultBp'),
-    ttlOptionsS: Array.isArray(ttl) ? (ttl as number[]) : FALLBACK_POLICY.ttlOptionsS,
-    openOrderLimit: num('openOrderLimit'),
-    baseLotUnits: Math.max(1, num('baseLotUnits')),
-  };
+  return marketConfigFromData(data);
 }
 
 /** Minimum notional (market atomic units) of a quote token (`quote.USDC`, `quote.NEAR`, `quote.resource`). */
 export function readMinNotionalAtomic(data: CompiledDataLike, quote: QuoteToken): bigint {
-  const id = quote === 'USDC' || quote === 'NEAR' ? `quote.${quote}` : 'quote.resource';
-  const v = (data.tables.market as Table | undefined)?.[id]?.minNotionalAtomic;
-  return typeof v === 'string' && /^\d+$/.test(v) ? BigInt(v) : 1n;
+  const cfg = marketConfigFromData(data);
+  const pair = cfg.pairs.find((p) => p.quote === quote);
+  return pair ? BigInt(pair.minNotionalAtomic) : 1n;
 }
 
 /** Ensures `colony.market` is a well-formed `ColonyMarketState` (same pattern as `ensureColonyCargoState`). */
@@ -89,7 +69,7 @@ export function ensureColonyMarketState(colony: ColonyState, data?: CompiledData
   if (typeof raw.orderSeq !== 'number' || !Number.isFinite(raw.orderSeq) || raw.orderSeq < 0) raw.orderSeq = 0;
   else raw.orderSeq = Math.floor(raw.orderSeq);
   if (typeof raw.hubFeeBp !== 'number' || !Number.isFinite(raw.hubFeeBp)) {
-    raw.hubFeeBp = (data ? readMarketPolicy(data) : FALLBACK_POLICY).stallFeeDefaultBp;
+    raw.hubFeeBp = data ? readMarketPolicy(data).stallFeeDefaultBp : 100;
   }
   for (const k of ['reservedInOrbit', 'openOrders', 'requested'] as const) {
     if (!raw[k] || typeof raw[k] !== 'object' || Array.isArray(raw[k])) raw[k] = {};
