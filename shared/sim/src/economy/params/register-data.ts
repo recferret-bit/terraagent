@@ -14,6 +14,9 @@ const DERIVED: readonly { readonly table: string; readonly row: string; readonly
   { table: 'hub', row: '*', field: 'storageCapPerFamily', kind: 'int', max: 100000, what: 'Hub storage cap per resource family' },
   { table: 'hub', row: '*', field: 'cancelRefundBp', kind: 'bp', max: 10000, what: 'refund share when a Hub build is cancelled' },
   { table: 'opsBasic', row: '*', field: 'yields', kind: 'map', max: 1000, what: 'terraform yield per resource' },
+  { table: 'prestige', row: '*', field: 'cost', kind: 'map', max: 1000, what: 'inputs of a prestige project or one transport block' },
+  { table: 'prestige', row: '*', field: 'buildS', kind: 'int', max: 3600, what: 'duration of a prestige project' },
+  { table: 'prestige', row: '*', field: 'unitsPerBlock', kind: 'int', max: 100000, what: 'cargo units per paid transport block' },
   { table: 'workCrew', row: '*', field: 'maxCrew', kind: 'int', max: 64, what: 'maximum helpers on a work site' },
 ];
 

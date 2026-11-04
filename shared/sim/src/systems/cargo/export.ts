@@ -12,6 +12,7 @@ import {
   resolveDailyCargoMintCap,
 } from './caps';
 import { ensureColonyCargoState, type ColonyCargoState } from './state';
+import { checkTransportAffordable, reserveTransport } from './transport';
 import { getColonyTradeHubStatus, recordColonyTradeHubTransfer } from './trade-hub';
 
 export interface CargoExportCommandArgs {
@@ -110,6 +111,7 @@ function applyCargoExport(
   }
   ensureColonyLedger(colony);
 
+  reserveTransport(state, ctx, colonyIndex, cargoState, ref, amount);
   cargoState.exportSeq = exportSeq;
   cargoState.pendingMint[ref] = { ref, exportSeq, resource, amount, atTick: ctx.tick };
   cargoState.lastEvent = {
@@ -165,6 +167,9 @@ export const cargoExportHandler = defineCommandHandler({
     if ((stock[resource] ?? 0) < amount) {
       return { code: 'insufficient_stock', detail: 'Not enough in colony storage.' };
     }
+
+    const transportReject = checkTransportAffordable(state, colonyIndex, amount, ctx.data, { resource, amount });
+    if (transportReject) return transportReject;
 
     const cargoState = ensureColonyCargoState(colony);
     const effectiveUtcDay = resolveEffectiveUtcDay(state, cargoState, args.utcDay, ctx.tick);

@@ -33,6 +33,8 @@ export const CargoStatusPayload = z.object({
   colonyId: z.string().min(1),
   accountId: z.string().optional(),
   inOrbit: CargoResourceMap,
+  /** Locked by the player's open market sell orders (W13-16); `inOrbit` counts only the free part. Optional, absent without orders. */
+  reserved: CargoResourceMap.optional(),
   pending: z.array(CargoPendingItem).optional(),
   pendingExport: z.array(CargoPendingItem).optional(),
   pendingImport: z.array(CargoPendingItem).optional(),

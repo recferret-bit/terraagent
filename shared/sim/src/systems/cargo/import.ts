@@ -10,6 +10,7 @@ import type { StepContext } from '../../kernel/context';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { ensureColonyLedger, remainingFamilyCap } from '../economy/ledger';
 import { ensureColonyCargoState, type ColonyCargoState } from './state';
+import { checkTransportAffordable, reserveTransport, settleTransport } from './transport';
 import { getColonyTradeHubStatus } from './trade-hub';
 
 export interface CargoImportCommandArgs {
@@ -79,6 +80,7 @@ function applyCargoImportRequest(
   const importSeq = cargoState.importSeq + 1;
   const ref = cargoImportOpId(colonyIdStr, importSeq);
 
+  reserveTransport(state, ctx, colonyIndex, cargoState, ref, clampedAmount);
   cargoState.importSeq = importSeq;
   cargoState.pendingImport[ref] = {
     ref,
@@ -193,6 +195,7 @@ export function settleCargoImport(
   const prevReserved = cargoState.reservedByFamily[family] ?? 0;
   cargoState.reservedByFamily[family] = Math.max(0, prevReserved - pending.amount);
   delete cargoState.pendingImport[ref];
+  if (ctx) settleTransport(state, ctx, colonyIndex, cargoState, ref, ok);
 
   const tick = ctx?.tick ?? state.meta.tick;
   if (ok) {
@@ -285,6 +288,8 @@ export const cargoImportHandler = defineCommandHandler({
     }
 
     const clampedAmount = Math.min(amount, freeStorage);
+    const transportReject = checkTransportAffordable(state, colonyIndex, clampedAmount, ctx.data);
+    if (transportReject) return transportReject;
 
     let debitedInOrbit = false;
     const inOrbitBal = cargoState.inOrbit[resource];

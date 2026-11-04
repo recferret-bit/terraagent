@@ -24,6 +24,8 @@ export const LEDGER_REASONS = {
   'construction.refund': { directions: ['add'], counter: 'sys:construction', summary: 'Share of the paid cost returned when a build is cancelled.' },
   'building.sell': { directions: ['add'], counter: 'sys:construction', summary: 'Salvage returned when a building is sold.' },
   trade: { directions: ['add', 'withdraw'], counter: 'sys:market', summary: 'Goods bought from or sold to the market.' },
+  'transport.reserve': { directions: ['withdraw'], counter: 'sys:transport', summary: 'Inputs held for a cargo export or import transport service (W13); kept when the service settles.' },
+  'transport.release': { directions: ['add'], counter: 'sys:transport', summary: 'Transport inputs returned because the cargo operation failed before service (W13).' },
   'cargo.export': { directions: ['withdraw'], counter: 'sys:cargo', summary: 'Cargo exported to orbital custody via a Trade Hub.' },
   'cargo.import': { directions: ['add'], counter: 'sys:cargo', summary: 'Cargo imported from orbital custody via a Trade Hub.' },
   'cargo.refund': { directions: ['add'], counter: 'sys:cargo', summary: 'Failed cargo export refunded to the colony stockpile.' },
