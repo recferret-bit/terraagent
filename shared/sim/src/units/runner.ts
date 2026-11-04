@@ -1,9 +1,10 @@
-import { ENTITY_STATE } from '../ecs/columns';
+import { ENTITY_KIND, ENTITY_STATE } from '../ecs/columns';
 import { rowOf, setField } from '../ecs/store';
 import { hexDistance, hexIndex } from '../grid/hex';
 import { DEPOSIT } from '../grid/layers';
 import type { StepContext } from '../kernel/context';
 import type { PlanetState } from '../kernel/state';
+import { applyDamage, retreatHqToSafety } from '../systems/combat/damage';
 import { setUnitActivity } from './approach';
 import { UnitBook } from './book';
 import { mobileStats, notifyUnitChanged } from './mobility';
@@ -40,6 +41,10 @@ const isOut = (state: PlanetState, row: number): boolean => {
 
 function propose(reg: UnitRegistry, u: UnitCtx, book: UnitBook): UnitCommand | null {
   if (u.ctx.tick < u.record.holdUntil) return null;
+  if (u.ctx.flags.has('W07') && u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq) {
+    const hpMax = Math.max(1, u.state.entities.cols.hpMax[u.row]);
+    if (u.state.entities.cols.hp[u.row] / hpMax < 0.4) return null;
+  }
   for (const [key, until] of Object.entries(u.record.skip)) {
     if (until > u.ctx.tick) continue;
     delete u.record.skip[key];
@@ -99,7 +104,7 @@ function think(reg: UnitRegistry, u: UnitCtx, book: UnitBook): void {
     rec.current = rec.queue.shift() ?? null;
     book.touch();
   }
-  if (!rec.current || rec.current.source === 'auto') {
+  if (!rec.current || (rec.current.source === 'auto' && rec.current.kind !== 'move')) {
     const next = propose(reg, u, book);
     if (!next) {
       if (rec.current) finish(reg, u, book, 'done'); // the auto work is gone (done elsewhere or cancelled)
@@ -123,6 +128,17 @@ export function stepUnits(reg: UnitRegistry, state: PlanetState, ctx: StepContex
     const u = unitCtx(state, ctx, book, row);
     if (!u) continue;
     if (e.cols.hp[row] <= 0) {
+      if (ctx.flags.has('W07')) {
+        if (e.cols.kind[row] === ENTITY_KIND.hq) {
+          setField(e, row, 'hp', 1, ctx.tick);
+          retreatHqToSafety(state, row, ctx.tick, ctx);
+        } else {
+          applyDamage(state, e.cols.id[row], 1, { tick: ctx.tick, ctx, data: ctx.data });
+          row--;
+        }
+        book.touch();
+        continue;
+      }
       reg.commands.get('die')?.execute(u, { kind: 'die', source: 'auto' });
       book.touch();
       continue;
