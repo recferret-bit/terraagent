@@ -20,6 +20,7 @@ import { IntentTradeRepository } from './settlement/intent-trade.repository.js';
 import { SettlementFillsHook } from './settlement/settlement-fills.hook.js';
 import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
+import { MarketMetrics } from './telemetry/market-metrics.js';
 import { NearModule } from '../near/near.module.js';
 import { MarketProgressionProducer } from './progression/market-progression.producer.js';
 
@@ -51,6 +52,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketFaucetService,
     MarketFaucetCommand,
     MarketProgressionProducer,
+    MarketMetrics,
   ],
   controllers: [
     MarketFaucetController,

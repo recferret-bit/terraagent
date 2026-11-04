@@ -40,6 +40,10 @@ export interface TradePlan {
   readonly makerSide: 'buy' | 'sell';
   readonly pair: string;
   readonly organic: boolean;
+  /** Who rested the maker order (`player`, `npc`, `fixture`); absent on plans written before W13-29. */
+  readonly makerKind?: string;
+  /** Treasury share carved out of `platformFee` (0 while W22 is off), decimal string; absent = 0. */
+  readonly treasuryFee?: string;
   readonly parties: SettleParty[];
   readonly rollback: OrderRollback[];
 }
