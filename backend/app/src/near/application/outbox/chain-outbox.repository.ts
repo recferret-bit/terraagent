@@ -103,6 +103,17 @@ export class ChainOutboxRepository extends RepositoryBase {
     return r.count === 1;
   }
 
+  /**
+   * Gives a claim back without counting it as an attempt (a row whose `payload.dependsOn` is not DONE yet): `PENDING`, due in `delayMs`.
+   * Fenced like `markDone`.
+   */
+  async defer(row: ClaimedRow, delayMs: number): Promise<boolean> {
+    const n = await this.prisma.$executeRaw`UPDATE chain.chain_outbox SET status = 'PENDING'::chain.outbox_status, attempts = attempts - 1, locked_until = NULL,
+      next_attempt_at = now() + make_interval(secs => ${delayMs / 1000}), updated_at = now()
+      WHERE id = ${row.id} AND status = 'RUNNING'::chain.outbox_status AND attempts = ${row.attempts}`;
+    return n === 1;
+  }
+
   /** Failure: `FAILED` with the next attempt `delayMs` from now, or `DEAD` when `dead`. Fenced like `markDone`. */
   async markFailed(row: ClaimedRow, error: string, delayMs: number, dead: boolean): Promise<boolean> {
     const msg = error.slice(0, 400);

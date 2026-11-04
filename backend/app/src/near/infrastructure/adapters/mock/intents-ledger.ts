@@ -44,3 +44,26 @@ export async function verifierBalances(db: DbClient, accountId: string): Promise
   }
   return out;
 }
+
+/** Records `(signer, nonce)` as used; false when it already was (replay). Concurrent executes of one nonce: one wins on the primary key. */
+export async function consumeNonce(tx: DbClient, signer: string, nonce: string, opId: string | undefined): Promise<boolean> {
+  const rows = await tx.$executeRaw`INSERT INTO chain.mock_chain_intent_nonce (signer, nonce, op_id) VALUES (${signer}, ${nonce}, ${opId ?? null})
+    ON CONFLICT (signer, nonce) DO NOTHING`;
+  return rows === 1;
+}
+
+export async function nonceUsed(db: DbClient, signer: string, nonce: string): Promise<boolean> {
+  return (await db.mockChainIntentNonce.findUnique({ where: { signer_nonce: { signer, nonce } } })) !== null;
+}
+
+/** Net legs that would drive a verifier balance below zero (first one), for read-only simulation. */
+export async function firstShortfall(db: DbClient, legs: readonly { accountId: string; tokenId: string; delta: bigint }[]): Promise<boolean> {
+  for (const l of legs) if (l.delta < 0n && (await verifierChainBalance(db, l.accountId, l.tokenId)) < -l.delta) return true;
+  return false;
+}
+
+/** Applies net legs: debits (guarded, `NEAR_INSUFFICIENT_BALANCE`) then credits. Caller's transaction rolls back on throw. */
+export async function applyLegs(tx: DbClient, legs: readonly { accountId: string; tokenId: string; delta: bigint }[]): Promise<void> {
+  for (const l of legs.filter((x) => x.delta < 0n)) await debitVerifier(tx, l.accountId, l.tokenId, -l.delta);
+  for (const l of legs.filter((x) => x.delta > 0n)) await creditVerifier(tx, l.accountId, l.tokenId, l.delta);
+}

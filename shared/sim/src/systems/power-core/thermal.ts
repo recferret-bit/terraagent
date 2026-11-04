@@ -5,7 +5,7 @@ import { setField } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
 import type { PlanetState } from '../../kernel/state';
-import { ensureColonyLedger, type ColonyWithLedger } from '../economy/ledger';
+import { consumeResource, ensureColonyLedger, resourceValue, type ColonyWithLedger } from '../economy/ledger';
 
 export interface ThermalOutputBreakdown {
   grossOutputPerS: number;
@@ -86,7 +86,7 @@ export function stepThermalPlantFuel(
 
   const entityId = state.entities.cols.id[row];
   const curState = state.entities.cols.state[row];
-  const currentStock = Number(colony.stock[fuelResource] ?? 0);
+  const currentStock = resourceValue(colony, fuelResource);
 
   // If dtTicks === 0 (read-only evaluation in evaluateColonyPower), check if fueled on this tick or has stock
   if (dtTicks === 0) {
@@ -121,10 +121,7 @@ export function stepThermalPlantFuel(
 
   // Plant has fuel for this step
   const neededFuel = (fuelPerS * TICK_MS * dtTicks) / 1000;
-  const actualDeducted = Math.min(currentStock, neededFuel);
-  const remaining = Number((currentStock - actualDeducted).toFixed(6));
-  colony.stock[fuelResource] = remaining < 1e-6 ? 0 : remaining;
-  colony.changedAt = tick;
+  consumeResource(colony, fuelResource, neededFuel, tick);
 
   const pollutionDelta = (pollutionPerPlant * TICK_MS * dtTicks) / 1000;
   colony.pollution = Number(((Number(colony.pollution ?? 0)) + pollutionDelta).toFixed(4));

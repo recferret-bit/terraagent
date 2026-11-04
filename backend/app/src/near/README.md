@@ -46,6 +46,8 @@ State of the mock NEAR adapters lives in Postgres (`chain.mock_chain_*`: account
 
 Tests build the base with `new FixtureMock(prisma, config, { sleep })` (fake sleep, no real waits); see `backend/app/test/near/`. `MOCK_CHAIN_CONFIG` is an optional injection: no module provides it today, so the mocks fall back to `parseMockChainConfig()`.
 
+- **Intents mock** (`adapters/mock/intents.adapter.ts`, W13): verifier balances in `chain.mock_chain_intents_balance` (tokenId = verifier id, chain base units; `deposit`/`withdraw` amounts are chain base units too, convert with `toChainUnits`; own balance is `mock_chain_balance`, resources = the cargo ledger). `signTokenDiff` signs a NEP-413 payload (`near/intents/nep413-token-diff.ts`) with the colony's custodial key; `simulate` is read-only; `execute` re-checks signature (against the registered key), deadline, nonce (`mock_chain_intent_nonce`), per-token zero-sum and balances in one transaction. Balance reads for the market go through `IntentsBalanceReadPort`. Test/dev control `mockChainControls.setOutcomeUnknown('Intents', true)` commits the batch, then throws `NEAR_UNAVAILABLE`. Suite: `__contract__/intents.contract.ts` (`npm run test:contract -- --port intents`; a real adapter runs only the simulate cases with `CONTRACT_INTENTS_SIGNER`).
+
 ## Chain outbox
 
 **Rule: every chain write goes through the outbox, in the same database transaction as the game change that causes it, with a deterministic `opId`.** Game code never calls a NEAR port directly (NEAR §1a rule 6).

@@ -12,6 +12,7 @@ import {
   step,
 } from '../../src';
 import { readyBuilder } from '../helpers/builder';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 describe('W02-13 Queue v1 part 1 — Construction and Units lanes, progressive payment, cancel refunds, reorderTask', () => {
   it('cancel a waiting entry -> 100 % stock unchanged; cancel an in_progress entry -> 50 % of spentCost refunded', () => {
@@ -57,21 +58,21 @@ describe('W02-13 Queue v1 part 1 — Construction and Units lanes, progressive p
     // Step 30 ticks (halfway: 45/90 = 50% progress -> spent 30/37.5/5/2.5, remaining stock 70/62.5/15/7.5)
     const pipeline = createRegistryPipeline({ flags: parseWaves('..02') });
     step(state, [], 30, pipeline);
-    expect(colony.stock['metals.t1']).toBeCloseTo(70, 4);
-    expect(colony.stock['minerals.t1']).toBeCloseTo(62.5, 4);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(70, 4);
+    expect(resourceValue(colony, 'minerals.t1')).toBeCloseTo(62.5, 4);
 
     // 1. Cancel waiting entry (solar-2) -> stock unchanged
     const cWait = cancelQueueTask(state, 'solar-2', 0);
     expect(cWait).toEqual({ ok: true, refunded: false });
-    expect(colony.stock['metals.t1']).toBeCloseTo(70, 4);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(70, 4);
 
     // 2. Cancel in_progress entry (solar-1) -> 50% of spent (30/37.5/5/2.5) = (15/18.75/2.5/1.25) refunded!
     const cProg = cancelQueueTask(state, 'solar-1', 0);
     expect(cProg).toEqual({ ok: true, refunded: true });
-    expect(colony.stock['metals.t1']).toBeCloseTo(70 + 15, 4);
-    expect(colony.stock['minerals.t1']).toBeCloseTo(62.5 + 18.75, 4);
-    expect(colony.stock['bio.biomass']).toBeCloseTo(15 + 2.5, 4);
-    expect(colony.stock['bio.water']).toBeCloseTo(7.5 + 1.25, 4);
+    expect(resourceValue(colony, 'metals.t1')).toBeCloseTo(70 + 15, 4);
+    expect(resourceValue(colony, 'minerals.t1')).toBeCloseTo(62.5 + 18.75, 4);
+    expect(resourceValue(colony, 'bio.biomass')).toBeCloseTo(15 + 2.5, 4);
+    expect(resourceValue(colony, 'bio.water')).toBeCloseTo(7.5 + 1.25, 4);
   });
 
   it('reorderTask moves player entry within its lane, and the new head starts first', () => {

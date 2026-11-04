@@ -3,6 +3,7 @@ import type { CommandHandlerDef, CommandOutcome, SimCommand } from './commands';
 import type { EngineConfig } from './config';
 import type { LedgerPosting, StepContext } from './context';
 import type { SimEvent } from './events';
+import { withLedgerSink } from './ledgerSink';
 import type { PlanetState } from './state';
 import { orderSystems, type SimSystem } from './system';
 
@@ -101,8 +102,10 @@ export function step(state: PlanetState, cmds: readonly SimCommand[], dt: number
   const ctx = makeContext(state, dt, p, events, postings);
   let outcomes: CommandOutcome[] = [];
   try {
-    outcomes = applyCommands(state, cmds, ctx, p);
-    for (const s of p.systems) if (ctx.flags.has(s.wave)) s.run(state, ctx);
+    withLedgerSink(state, ctx, () => {
+      outcomes = applyCommands(state, cmds, ctx, p);
+      for (const s of p.systems) if (ctx.flags.has(s.wave)) s.run(state, ctx);
+    });
   } catch (err) {
     throw new StepError(err, ctx.tick, outcomes, postings, events);
   }
