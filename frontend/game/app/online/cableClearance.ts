@@ -25,10 +25,18 @@ export function clearCableRoofs(span: CableSpan, obstacles: Iterable<THREE.Objec
     }
     if (lo >= hi) continue;
     // A concave parabola's minimum over the crossing interval occurs at an endpoint.
-    for (const t of [Math.max(0.001, lo), Math.min(0.999, hi)]) {
+    for (const t of [Math.max(0.05, lo), Math.min(0.95, hi)]) {
       const lineY = span.a[1] + (span.b[1] - span.a[1]) * t;
       lift = Math.max(lift, (box.max.y - lineY) / (4 * t * (1 - t)));
     }
   }
-  return { ...span, sag: -lift };
+  return { ...span, sag: -capLift(lift, span) };
+}
+
+/** Tallest arc a span may have: proportional to its length (tiny for short spans), never above `MAX_LIFT_M`. */
+export const MAX_LIFT_M = 8;
+export function capLift(lift: number, span: CableSpan): number {
+  const len = Math.hypot(span.b[0] - span.a[0], span.b[1] - span.a[1], span.b[2] - span.a[2]);
+  const cap = Math.min(MAX_LIFT_M, Math.max(0.1, 0.6 * len));
+  return Number.isFinite(lift) ? Math.min(lift, cap) : cap;
 }
