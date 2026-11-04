@@ -69,6 +69,7 @@ export function normalizeEntityKindName(kind: unknown): string {
   if (kind === ENTITY_KIND.harvester || kind === 'harvester') return 'harvester';
   if (kind === ENTITY_KIND.metalsExtractor || kind === 'metalsExtractor' || kind === 'extractor') return 'metalsExtractor';
   if (kind === ENTITY_KIND.solar || kind === 'solar' || kind === 'solarCollector') return 'solar';
+  if (kind === ENTITY_KIND.tradeHub || kind === 'tradeHub') return 'tradeHub';
   if (kind === ENTITY_KIND.pod || kind === 'pod' || kind === 'dropPod') return 'pod';
   return typeof kind === 'string' ? kind : 'entity';
 }
@@ -110,7 +111,7 @@ export function calculateDismantleRefund(spentCost: Readonly<Record<string, numb
 
 function defaultFootprintForKind(kindName: string): number {
   if (kindName === 'commandHub') return 3;
-  if (kindName === 'metalsExtractor' || kindName === 'solar') return 2;
+  if (kindName === 'metalsExtractor' || kindName === 'solar' || kindName === 'tradeHub') return 2;
   return 1;
 }
 

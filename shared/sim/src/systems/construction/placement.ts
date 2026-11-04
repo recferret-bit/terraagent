@@ -153,10 +153,16 @@ export function resolveBuildingRow(building: string | undefined, data?: Compiled
 let defaultW02: CompiledDataLike | null = null;
 const W02_BUILDING_ALIASES: Readonly<Record<string, string>> = { extractor: 'metalsExtractor', solarCollector: 'solar' };
 
-/** The W02 T1 building row (`economyT1Basic`, `kind: 'building'`: Metals Extractor, Solar) named `building`, or `null`. */
+/** The W02/W10 T1 building row (`economyT1Basic` / `tradeHub`, `kind: 'building'`: Metals Extractor, Solar, Trade Hub) named `building`, or `null`. */
 export function resolveEconomyBuildingRow(building: string | undefined, data?: CompiledDataLike): CompiledRow | null {
   if (building === undefined) return null;
-  const src = data?.tables?.economyT1Basic ? data : (defaultW02 ??= compileData(new Set(['W00', 'W01', 'W02'])));
+  const fallback = (): CompiledDataLike => (defaultW02 ??= compileData(new Set(['W00', 'W01', 'W02', 'W10'])));
+  if (building === 'tradeHub' || building === 'interColonyTradeHub') {
+    const src = data?.tables ? data : fallback();
+    const thRow = (src.tables.tradeHub as Record<string, CompiledRow> | undefined)?.t1;
+    return thRow && thRow.kind === 'building' ? thRow : null;
+  }
+  const src = data?.tables?.economyT1Basic ? data : fallback();
   const row = (src.tables.economyT1Basic as Record<string, CompiledRow> | undefined)?.[W02_BUILDING_ALIASES[building] ?? building];
   return row && row.kind === 'building' ? row : null;
 }
@@ -211,6 +217,7 @@ const OCCUPYING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.commandHub,
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.solar,
+  ENTITY_KIND.tradeHub,
 ]);
 
 /** Whether an entity occupies ground with its footprint: an alive building (GP-23: one rule for placement and paths). */
@@ -221,7 +228,7 @@ export function occupiesGround(e: { kind: number; hp: number; hpMax: number }): 
 /** Footprint size of an existing building entity of `kind` (its row's `footprint`). */
 export function entityFootprint(kind: number, data?: CompiledDataLike): number {
   if (kind === ENTITY_KIND.commandHub) return rowNum(resolveHubT1Row(data), 'footprint');
-  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar) return 2;
+  if (kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.tradeHub) return 2;
   return 1;
 }
 

@@ -1,11 +1,20 @@
-import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Optional, type OnModuleInit } from '@nestjs/common';
+import { ResourceKey } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { z } from 'zod';
 import { AuthRepository } from '../../../core/auth/auth.repository.js';
 import { CoreException } from '../../../core/errors/index.js';
 import { PRISMA } from '../../../db/db.module.js';
 import { defineDevCommand, type DevCommand, DevCommandRegistry } from '../../../dev/dev-command.registry.js';
+import {
+  CARGO_MINTER_ACCOUNT,
+  CargoTokenPort,
+  NEAR_ADAPTER_CARGO,
+  toCargoBaseUnits,
+  type MintCargoInput,
+} from '../../application/ports/cargo-token.port.js';
 import { NearException, type NearErrorCode } from '../../domain/errors.js';
+import { CargoStatusService } from '../../cargo/cargo-status.service.js';
 import { mockOauthSecret, signMockToken } from '../../identity/mock-token.js';
 import { SocialAuthService } from '../../identity/social-auth.service.js';
 import { mockChainControls } from '../mock/mock-controls.js';
@@ -24,6 +33,11 @@ const upgradeArgs = z.object({
   subject: z.string().min(1).max(64),
 }).strict();
 const errorArgs = z.object({ code: z.string().min(1) }).strict();
+const cargoGrantArgs = z.object({
+  colony: z.union([z.string(), z.number()]),
+  resource: ResourceKey,
+  amount: z.number().int().positive(),
+}).strict();
 
 /** The four player-facing codes `near.error` may force. Anything else is 400 `VALIDATION_ERROR`. */
 const PLAYER_NEAR_CODES = [
@@ -46,6 +60,8 @@ export class NearMockCommand implements OnModuleInit {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     private readonly authRepo: AuthRepository,
     private readonly social: SocialAuthService,
+    @Optional() @Inject(NEAR_ADAPTER_CARGO) private readonly cargo?: CargoTokenPort,
+    @Optional() @Inject(CargoStatusService) private readonly cargoStatus?: CargoStatusService,
   ) {}
 
   onModuleInit(): void {
@@ -54,6 +70,7 @@ export class NearMockCommand implements OnModuleInit {
     this.registry.register(this.resetCommand());
     this.registry.register(this.upgradeCommand());
     this.registry.register(this.errorCommand());
+    this.registry.register(this.cargoGrantCommand());
   }
 
   private failCommand(): DevCommand<typeof failArgs> {
@@ -126,6 +143,59 @@ export class NearMockCommand implements OnModuleInit {
         return { playerId: player.id, accountId, accessToken };
       },
     });
+  }
+
+  private cargoGrantCommand(): DevCommand<typeof cargoGrantArgs> {
+    return defineDevCommand({
+      name: 'cargo.grant',
+      help: 'Grant cargo tokens to a colony on the mock chain.',
+      args: cargoGrantArgs,
+      run: async ({ colony, resource, amount }) => {
+        const accountId = await this.resolveColonyAccountId(colony);
+        if (!this.cargo) {
+          throw new CoreException('VALIDATION_ERROR', { status: 400, message: 'Cargo token port not configured' });
+        }
+        const opId = `cargo-grant:${accountId}:${Date.now()}`;
+        const res = await this.cargo.mint({
+          opId,
+          to: accountId,
+          tokenId: resource,
+          amount: toCargoBaseUnits(amount),
+          by: CARGO_MINTER_ACCOUNT,
+          caller: CARGO_MINTER_ACCOUNT,
+        } as MintCargoInput);
+        await this.cargoStatus?.pushColonyStatus(String(colony), undefined, undefined, accountId);
+        return { colony: String(colony), accountId, resource, amount, txHash: res.txHash };
+      },
+    });
+  }
+
+  private async resolveColonyAccountId(colony: string | number): Promise<string> {
+    const colonyStr = String(colony);
+    if ('nearColonyAccount' in this.prisma && this.prisma.nearColonyAccount) {
+      const found = await this.prisma.nearColonyAccount.findFirst({
+        where: {
+          OR: [{ colonyId: colonyStr }, { accountId: colonyStr }],
+        },
+      });
+      if (found) return found.accountId;
+      if (colonyStr === '0' || colonyStr === 'col-0') {
+        const first = await this.prisma.nearColonyAccount.findFirst({
+          where: { slot: { not: 'player' } },
+          orderBy: { createdAt: 'desc' },
+        });
+        if (first) return first.accountId;
+      }
+    }
+    const fallback = `${colonyStr}.terraagent.mock`;
+    if ('mockChainAccount' in this.prisma && this.prisma.mockChainAccount) {
+      await this.prisma.mockChainAccount.upsert({
+        where: { accountId: fallback },
+        create: { accountId: fallback, kind: 'named' },
+        update: {},
+      });
+    }
+    return fallback;
   }
 
   private async findPlayer(player: string): Promise<{ id: string; handle: string }> {

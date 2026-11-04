@@ -16,6 +16,12 @@ export interface RelayHooks {
   /** Resolves the port instance by name (the Nest container in the app). */
   resolve(port: string): object;
   onResult?(port: string, status: 'done' | 'failed' | 'dead'): void;
+  onRowDone?(row: ClaimedRow, result: object, txHash: string | null): Promise<void> | void;
+  onRowFailed?(row: ClaimedRow, error: string, dead: boolean): Promise<void> | void;
+  /** Optional per-row maxAttempts override (e.g. fast 2-attempt retry for interactive CargoToken operations). */
+  maxAttemptsFor?(row: ClaimedRow, defaultMax: number): number;
+  /** Optional per-row backoffBaseMs override. */
+  backoffBaseMsFor?(row: ClaimedRow, defaultBaseMs: number): number;
   onError?(row: ClaimedRow | undefined, error: unknown): void;
   random?(): number;
 }
@@ -76,7 +82,10 @@ export class OutboxRelay {
       const result = (await fn.call(port, { ...row.payload, opId: row.opId })) as object | undefined;
       const r = (result ?? {}) as { txHash?: unknown; receipt?: { txHash?: unknown } };
       const txHash = [r.txHash, r.receipt?.txHash].find((h): h is string => typeof h === 'string') ?? null;
-      if (await this.repo.markDone(row, result ?? {}, txHash)) this.hooks.onResult?.(row.port, 'done');
+      if (await this.repo.markDone(row, result ?? {}, txHash)) {
+        this.hooks.onResult?.(row.port, 'done');
+        await this.hooks.onRowDone?.(row, result ?? {}, txHash);
+      }
     } catch (e) {
       await this.fail(row, e);
     }
@@ -86,8 +95,13 @@ export class OutboxRelay {
     this.hooks.onError?.(row, e);
     const code = (e as { errorCode?: string }).errorCode;
     const text = `${code ? `${code}: ` : ''}${e instanceof Error ? e.message : String(e)}`;
-    const dead = row.attempts >= this.cfg.maxAttempts;
-    const delay = backoffMs(row.attempts, this.cfg, this.hooks.random ?? Math.random);
-    if (await this.repo.markFailed(row, text, delay, dead)) this.hooks.onResult?.(row.port, dead ? 'dead' : 'failed');
+    const maxAttempts = this.hooks.maxAttemptsFor ? this.hooks.maxAttemptsFor(row, this.cfg.maxAttempts) : this.cfg.maxAttempts;
+    const baseMs = this.hooks.backoffBaseMsFor ? this.hooks.backoffBaseMsFor(row, this.cfg.backoffBaseMs) : this.cfg.backoffBaseMs;
+    const dead = row.attempts >= maxAttempts;
+    const delay = backoffMs(row.attempts, { backoffBaseMs: baseMs, backoffMaxMs: this.cfg.backoffMaxMs }, this.hooks.random ?? Math.random);
+    if (await this.repo.markFailed(row, text, delay, dead)) {
+      this.hooks.onResult?.(row.port, dead ? 'dead' : 'failed');
+      await this.hooks.onRowFailed?.(row, text, dead);
+    }
   }
 }
