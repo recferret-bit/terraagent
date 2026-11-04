@@ -5,6 +5,7 @@ import scn_w01_landfall from './w01-landfall';
 import scn_w02_first_light from './w02-first-light';
 import scn_w03_the_grid from './w03-the-grid';
 import scn_w04_maps_camera from './w04-maps-camera';
+import scn_w05_shape_the_land from './w05-shape-the-land';
 import scn_w05_tiers from './w05-tiers';
 import scn_w06_invisible_chain from './w06-invisible-chain';
 import scn_w08_stages_goals from './w08-stages-goals';
@@ -17,6 +18,7 @@ export const SCENARIOS: readonly { readonly file: string; readonly def: Scenario
   { file: 'w02-first-light', def: scn_w02_first_light },
   { file: 'w03-the-grid', def: scn_w03_the_grid },
   { file: 'w04-maps-camera', def: scn_w04_maps_camera },
+  { file: 'w05-shape-the-land', def: scn_w05_shape_the_land },
   { file: 'w05-tiers', def: scn_w05_tiers },
   { file: 'w06-invisible-chain', def: scn_w06_invisible_chain },
   { file: 'w08-stages-goals', def: scn_w08_stages_goals },

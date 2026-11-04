@@ -16,6 +16,7 @@ export const TASK_TITLES: Readonly<Record<string, string>> = {
   waterExtractor: 'Water Extractor T1',
   petroleumWell: 'Petroleum Well T1',
   builder: 'Builder Drone',
+  terraformer: 'Terraformer Drone',
 };
 
 export const TASK_ICONS: Readonly<Record<string, string>> = {
@@ -33,6 +34,7 @@ export const TASK_ICONS: Readonly<Record<string, string>> = {
   waterExtractor: '💧',
   petroleumWell: '🛢',
   builder: '🔧',
+  terraformer: '🚜',
 };
 
 const RESOURCE_LABELS: Readonly<Record<string, string>> = {
@@ -87,9 +89,17 @@ export function formatChipStatus(entry: QueueEntry): string {
     return entry.waitReason ? (entry.waitDetail ?? `waiting: ${entry.waitReason}`) : `Dismantling ${Math.round((entry.progress ?? 0) * 100)}%`;
   }
   if (entry.state === 'in_progress') {
+    if (entry.waitReason === 'site' && entry.waitDetail) {
+      const m = /^waiting: site \(prep (\d+\/\d+)\)$/.exec(entry.waitDetail);
+      return m ? `waiting(site: ${m[1]} tiles prepared)` : entry.waitDetail;
+    }
     return `in_progress · ${Math.round((entry.progress ?? 0) * 100)}%`;
   }
   if (entry.state === 'waiting') {
+    if (entry.waitReason === 'site' && entry.waitDetail) {
+      const m = /^waiting: site \(prep (\d+\/\d+)\)$/.exec(entry.waitDetail);
+      if (m) return `waiting(site: ${m[1]} tiles prepared)`;
+    }
     return entry.waitDetail ?? `waiting: ${entry.waitReason ?? 'resources'}`;
   }
   return entry.state;

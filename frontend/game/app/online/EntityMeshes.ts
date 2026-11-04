@@ -19,7 +19,7 @@ import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRi
 import { derivePowerCableSpans } from './powerCableSpans';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { disposeObject3D, UnitHealthBars } from './unitHealthBars';
-import { entityWorldXZ, archetypeForKind, isConstructibleBuilding } from './entityKinds';
+import { entityWorldXZ, archetypeForKind, isConstructibleBuilding, isWorkerUnitKind } from './entityKinds';
 import {
   buildActiveWorkSites,
   computeWorkTarget,
@@ -394,8 +394,7 @@ export class EntityMeshes {
         continue;
       }
 
-      const isTrackedUnit = rec.kind === ENTITY_KIND.hq || rec.kind === ENTITY_KIND.harvester || rec.kind === ENTITY_KIND.builder;
-      const wantWalk = isTrackedUnit ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
+      const wantWalk = isWorkerUnitKind(rec.kind) ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
       updateSelectionPulse(rec.mesh, rec.id === this.selectedEntityId, this.time);
       const wantWork = computeWorkTarget(rec.kind, rec.state, isDaylight);
       rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);

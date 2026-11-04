@@ -29,6 +29,9 @@ export interface OverlayOrderProgress {
   currentJob: OverlayJobEntry | null;
   overallProgress: number;
   overallPercent: number;
+  status?: 'in_progress' | 'waiting';
+  waitReason?: 'resources' | 'power';
+  waitingText?: string;
 }
 
 export interface OverlayTileEntry {
@@ -108,6 +111,12 @@ function buildOrderProgress(order: TerraformOrder): {
   const currentJob = jobEntries[0] ?? null;
   const overallProgress =
     totalJobs > 0 ? Math.min(1, (completedJobs + (currentJob?.progress ?? 0)) / totalJobs) : 0;
+  const waitReason = order.waitReason ?? order.jobs[0]?.waitReason;
+  const status: 'in_progress' | 'waiting' =
+    order.status === 'waiting' || order.jobs[0]?.status === 'waiting' || Boolean(waitReason)
+      ? 'waiting'
+      : 'in_progress';
+  const waitingText = waitReason ? `waiting(${waitReason})` : undefined;
   return {
     summary: {
       orderId: order.orderId,
@@ -119,6 +128,8 @@ function buildOrderProgress(order: TerraformOrder): {
       currentJob,
       overallProgress,
       overallPercent: Math.round(overallProgress * 100),
+      status,
+      ...(waitReason ? { waitReason, waitingText } : {}),
     },
     jobEntries,
   };
