@@ -49,3 +49,13 @@
 - **Workaround / mitigation:** bounded jobs/reads, DB grants/pools and kill switch; W16 tests fake streaming, W27 repeats on actual stack. Game retains D-24 snapshot rollback and rejects old AI epochs after restart.
 - **To resolve:** publish W16 load report and real W11/W27 integration results; revisit queue choice only on measured contention.
 - **Found:** 2026-11-04, W16 planning review.
+
+### AI-05 · Director audit store is in-memory only
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/ai/audit/memory-store.ts` (`MemoryDirectorAudit`), `shared/db/prisma/ai.prisma`
+- **What happens:** policy, context and decision rows round-trip in memory. `expire` deletes context and decisions with `expiresAtMs <= now` and leaves `director_policy`. `director_attempt`, `director_proposal` and `director_action_result` have tables and no writer. Nothing here connects to Postgres. `loadUnchecked` exists so a test can plant corrupt policy JSON.
+- **Why it is like this:** W16-15's acceptance is the expiry rule without a database. The Prisma class waits for worker wiring and must not be required by unit tests when Postgres is down.
+- **Workaround / mitigation:** `partitionExpired` does not take policy rows. A later repository should implement `DirectorAuditPort` in `backend/app/src/ai/audit/types.ts`. Callers pass `expiresAtMs` (short-lived context, 30-day decision audit); this store does not choose those windows or redact secrets (W16-16).
+- **To resolve:** add a Prisma `DirectorAuditPort` against the generated client, plus attempt and action-result writers, without expiring `director_policy`.
+- **Found:** 2026-11-04, W16-15.
