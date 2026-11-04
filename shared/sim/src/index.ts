@@ -10,6 +10,7 @@ export * from './kernel/context';
 export * from './kernel/config';
 export * from './kernel/system';
 export * from './kernel/step';
+export { withLedgerSink } from './kernel/ledgerSink';
 export * from './ecs/columns';
 export * from './ecs/store';
 export * from './grid/hex';

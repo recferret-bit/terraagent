@@ -18,7 +18,7 @@ import { buildLinkedPrepJobs } from '../construction/prep';
 import { enqueueTerraformOrder, removeTerraformOrder } from '../terraform-basic/queue';
 import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildingRow } from './buildingRows';
 import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
-import { checkCostAffordability, debitCost, refundCost, syncColonyDepotCaps } from './ledger';
+import { checkCostAffordability, debitCost, refundCost, resourceValue, syncColonyDepotCaps } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
 import { onCommandHubCompleted } from '../progression';
 import { syncColonyThreatStage } from '../progression/threatStage';
@@ -148,7 +148,7 @@ function validateFootprintAndCost(
     } else {
       const firstSlice = Math.min(1, workRate / buildTicks);
       for (const [k, v] of Object.entries(cost) as [ResourceKey, number][]) {
-        if (v > 0 && (stock[k] ?? 0) + 1e-6 < v * firstSlice) return { ok: false, code: 'insufficient_resources' };
+        if (v > 0 && resourceValue(colony, k) + 1e-6 < v * firstSlice) return { ok: false, code: 'insufficient_resources' };
       }
     }
   }

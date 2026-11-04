@@ -26,6 +26,7 @@ import {
   type SimCommand,
 } from '../../src';
 import { crewRate } from '../../src/systems/dispatch/crew';
+import { resourceValue } from '../../src/systems/economy/ledger';
 
 /**
  * Owner feedback W03 #6 and #9: dismantle is builder work (half the build time, the 50 % refund step by step), repair
@@ -87,13 +88,13 @@ describe('crew: several builders on one construction site', () => {
     for (let i = 0; i < n; i++) spawnBuilderUnit(state, { owner: 0, q: SPOTS[i]![0], r: SPOTS[i]![1] });
     const b = startBuildingConstruction(state, { owner: 0, building: 'solar', q: 0, r: 0 });
     if (!b.ok) throw new Error(b.code);
-    const before = colony.stock['metals.t1'];
+    const before = resourceValue(colony, 'metals.t1');
     let ticks = 0;
     while (ticks < 400 && state.entities.cols.state[rowOf(state.entities, b.entityId)] === ENTITY_STATE.constructing) {
       run(state, pipeline);
       ticks++;
     }
-    return { ticks, spent: before - colony.stock['metals.t1'] };
+    return { ticks, spent: before - resourceValue(colony, 'metals.t1') };
   }
 
   it('1 → 2 → 3 builders finish sooner with diminishing returns, at the same total cost', () => {
@@ -122,11 +123,11 @@ describe('repair: pays by the HP it restores, stalls on an empty stock, a crew i
     spawnBuilderUnit(state, { owner: 0, q: 3, r: 0 });
     const ext = extractor(state, 5, 0, 150); // 50 % missing
     const rate = Number(DATA.tables.workCrew!.repair!.costRate);
-    const before = { m: colony.stock['metals.t1'], n: colony.stock['minerals.t1'] };
+    const before = { m: resourceValue(colony, 'metals.t1'), n: resourceValue(colony, 'minerals.t1') };
     run(state, pipeline, [], 80);
     expect(state.entities.cols.hp[rowOf(state.entities, ext)]).toBe(300);
-    expect(before.m - colony.stock['metals.t1']).toBeCloseTo(65 * rate * 0.5, 4);
-    expect(before.n - colony.stock['minerals.t1']).toBeCloseTo(20 * rate * 0.5, 4);
+    expect(before.m - resourceValue(colony, 'metals.t1')).toBeCloseTo(65 * rate * 0.5, 4);
+    expect(before.n - resourceValue(colony, 'minerals.t1')).toBeCloseTo(20 * rate * 0.5, 4);
   });
 
   it('stalls with wait reason `resources` at zero stock and resumes when the stock refills', () => {
@@ -149,13 +150,13 @@ describe('repair: pays by the HP it restores, stalls on an empty stock, a crew i
     const { state, colony, pipeline } = world(`rep-crew-${builders}`);
     for (let i = 0; i < builders; i++) spawnBuilderUnit(state, { owner: 0, q: 3, r: i === 0 ? 0 : -i });
     const ext = extractor(state, 5, 0, 30); // 90 % missing
-    const before = colony.stock['metals.t1'];
+    const before = resourceValue(colony, 'metals.t1');
     let ticks = 0;
     while (ticks < 200 && state.entities.cols.hp[rowOf(state.entities, ext)] < 300) {
       run(state, pipeline);
       ticks++;
     }
-    return { ticks, spent: before - colony.stock['metals.t1'] };
+    return { ticks, spent: before - resourceValue(colony, 'metals.t1') };
   }
 
   it('a repair order naming another worker on an open repair joins it as a helper (no second paid job)', () => {
@@ -190,7 +191,7 @@ function dismantleWorld(seed: string) {
 describe('dismantle: builder work, half the build time, the 50 % refund step by step', () => {
   it('a Builder walks over, works ½ × build time, refunds stepwise to exactly 50 %, then the building is gone', () => {
     const { state, colony, pipeline, builderId, ext } = dismantleWorld('dis-main');
-    const before = { m: colony.stock['metals.t1'], n: colony.stock['minerals.t1'] };
+    const before = { m: resourceValue(colony, 'metals.t1'), n: resourceValue(colony, 'minerals.t1') };
     const res = run(state, pipeline, [dismantleCmd('d1', 4, 0)]);
     expect(res.outcomes[0]!.code).toBeUndefined();
     expect(alive(state, ext)).toBe(true);
@@ -211,7 +212,7 @@ describe('dismantle: builder work, half the build time, the 50 % refund step by 
       if (j && j.progress > 0) worked++;
       if (j && j.progress > 0.3 && j.progress < 0.7 && !sawMid) {
         sawMid = true; // refund so far follows progress
-        expect(colony.stock['metals.t1'] - before.m).toBeCloseTo(65 * 0.5 * j.progress, 4);
+        expect(resourceValue(colony, 'metals.t1') - before.m).toBeCloseTo(65 * 0.5 * j.progress, 4);
         const entry = getColonyQueue(state, 0, 'construction').find((e) => e.task.kind === 'dismantle');
         expect(Math.abs((entry?.progress ?? 0) - j.progress)).toBeLessThanOrEqual(1 / job.durationTicks + 1e-3); // the queue runs a slot earlier
         expect(state.entities.cols.progress[rowOf(state.entities, ext)]).toBeCloseTo(1 - j.progress, 4);
@@ -220,8 +221,8 @@ describe('dismantle: builder work, half the build time, the 50 % refund step by 
     expect(sawMid).toBe(true);
     expect(alive(state, ext)).toBe(false);
     expect(worked).toBe(job.durationTicks - 1); // the last step finishes it (the job is gone after)
-    expect(colony.stock['metals.t1'] - before.m).toBeCloseTo(65 * 0.5, 6);
-    expect(colony.stock['minerals.t1'] - before.n).toBeCloseTo(20 * 0.5, 6);
+    expect(resourceValue(colony, 'metals.t1') - before.m).toBeCloseTo(65 * 0.5, 6);
+    expect(resourceValue(colony, 'minerals.t1') - before.n).toBeCloseTo(20 * 0.5, 6);
     expect(getWorkJobsMap(state)).toEqual({});
     run(state, pipeline); // the queue (slot 4) sees it next step
     expect(getColonyQueue(state, 0, 'construction').some((e) => e.task.kind === 'dismantle')).toBe(false);
@@ -260,11 +261,11 @@ describe('dismantle: host validation, cancel, crew, storage cap', () => {
 
   it('cancel mid-way: the building stands again with the hull it lost; the refund so far stays', () => {
     const { state, colony, pipeline, ext } = dismantleWorld('dis-cancel');
-    const before = colony.stock['metals.t1'];
+    const before = resourceValue(colony, 'metals.t1');
     run(state, pipeline, [dismantleCmd('d1', 4, 0)]);
     while (getWorkJobsMap(state).d1!.progress < 0.4) run(state, pipeline);
     const p = getWorkJobsMap(state).d1!.progress;
-    const refunded = colony.stock['metals.t1'] - before;
+    const refunded = resourceValue(colony, 'metals.t1') - before;
     expect(refunded).toBeCloseTo(65 * 0.5 * p, 4);
     const res = run(state, pipeline, [{ commandId: 'c1', colonyIndex: 0, source: 'player', kind: 'cancelTask', args: { taskId: `building:${ext}` } }]);
     expect(res.outcomes[0]!.code).toBeUndefined();
@@ -295,11 +296,11 @@ describe('dismantle: host validation, cancel, crew, storage cap', () => {
       const { state, colony, pipeline } = world(`dis-crew-${builders}`);
       for (let i = 0; i < builders; i++) spawnBuilderUnit(state, { owner: 0, q: 2, r: -1 - i });
       const ext = extractor(state, 4, 0);
-      const before = colony.stock['metals.t1'];
+      const before = resourceValue(colony, 'metals.t1');
       run(state, pipeline, [dismantleCmd('d1', 4, 0)]);
       let ticks = 1;
       while (ticks < 400 && alive(state, ext)) { run(state, pipeline); ticks++; }
-      return { ticks, refund: colony.stock['metals.t1'] - before };
+      return { ticks, refund: resourceValue(colony, 'metals.t1') - before };
     };
     const [one, two] = [go(1), go(2)];
     expect(two.ticks).toBeLessThan(one.ticks);
@@ -314,7 +315,7 @@ describe('dismantle: host validation, cancel, crew, storage cap', () => {
     colony.stock['metals.t1'] = cap - 5; // room for 5 of the 32.5 metals refund
     run(state, pipeline, [], 200);
     expect(alive(state, ext)).toBe(false);
-    expect(colony.stock['metals.t1']).toBeCloseTo(cap, 6);
+    expect(colony.stock['metals.t1']).toBe(cap);
     expect(getEntityBaseBuildCost(ENTITY_KIND.metalsExtractor, DATA)['metals.t1']).toBe(65);
   });
 });
