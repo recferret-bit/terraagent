@@ -9,7 +9,7 @@ generator client {
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
-  schemas  = ["core", "world", "ai", "chain"]
+  schemas  = ["core", "world", "ai", "chain", "economy"]
 }
 
 // --- analytics.prisma ---
@@ -150,6 +150,317 @@ model Colony {
   @@index([playerId])
   @@map("colony")
   @@schema("core")
+}
+
+// --- economy.prisma ---
+/// W13 economy profile management (ECONOMY §5, W13-37). Exact amounts are `numeric(78,0)` (market atomic units),
+/// JSON carries them as decimal strings. Content of a non-DRAFT version is immutable (triggers in the
+/// `0013_w13_economy` migration); DRAFT edits are optimistic (`revision`). W13-50 adds region/logistics tables next
+/// to these; until then `regions` / `logistics` are JSONB sections of the version.
+
+/// A named baseline or candidate family.
+model EconomyProfile {
+  id             String   @id @db.VarChar(64)
+  name           String   @unique @db.VarChar(120)
+  description    String   @default("") @db.VarChar(1000)
+  /// Latest APPROVED/VALIDATED version number and the open DRAFT version number (plain numbers, no FK cycle).
+  currentVersion Int?     @map("current_version")
+  draftVersion   Int?     @map("draft_version")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  versions EconomyProfileVersion[]
+
+  @@map("profile")
+  @@schema("economy")
+}
+
+/// One immutable-after-validation version. `contentHash` = sha256 of the canonical `ProfileContent` JSON.
+model EconomyProfileVersion {
+  id                  String    @id @db.VarChar(64)
+  profileId           String    @map("profile_id") @db.VarChar(64)
+  version             Int
+  parentId            String?   @map("parent_id") @db.VarChar(64)
+  /// DRAFT | VALIDATED | APPROVED
+  status              String    @default("DRAFT") @db.VarChar(12)
+  schemaVersion       Int       @map("schema_version")
+  engineCompatibility String    @map("engine_compatibility") @db.VarChar(80)
+  contentHash         String    @map("content_hash") @db.VarChar(80)
+  author              String    @db.VarChar(120)
+  rationale           String    @default("") @db.VarChar(2000)
+  /// Optimistic edit counter of a DRAFT: `UPDATE … WHERE revision = expected`.
+  revision            Int       @default(1)
+  /// Placeholder sections W13-50 replaces with tables.
+  regions             Json      @default("{}")
+  logistics           Json      @default("{}")
+  createdAt           DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  validatedAt         DateTime? @map("validated_at") @db.Timestamptz(3)
+  approvedAt          DateTime? @map("approved_at") @db.Timestamptz(3)
+
+  profile          EconomyProfile          @relation(fields: [profileId], references: [id])
+  parent           EconomyProfileVersion?  @relation("VersionParent", fields: [parentId], references: [id])
+  children         EconomyProfileVersion[] @relation("VersionParent")
+  parameters       EconomyParameter[]
+  recipes          EconomyRecipe[]
+  resourcePolicies EconomyResourcePolicy[]
+  marketPolicies   EconomyMarketPolicy[]
+  agentPolicies    EconomyAgentPolicy[]
+  activations      EconomyActivation[]
+  auditEvents      EconomyAuditEvent[]
+  runs             EconomyExperimentRun[]
+
+  @@unique([profileId, version])
+  @@index([contentHash])
+  @@index([parentId])
+  @@map("profile_version")
+  @@schema("economy")
+}
+
+/// Registered parameter override: path from the W13-36 registry, typed value (JSONB), unit.
+model EconomyParameter {
+  versionId String @map("version_id") @db.VarChar(64)
+  path      String @db.VarChar(200)
+  value     Json
+  unit      String @db.VarChar(24)
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, path])
+  @@map("parameter")
+  @@schema("economy")
+}
+
+model EconomyRecipe {
+  versionId     String @map("version_id") @db.VarChar(64)
+  recipeId      String @map("recipe_id") @db.VarChar(80)
+  activityKind  String @map("activity_kind") @db.VarChar(80)
+  durationTicks Int    @map("duration_ticks")
+  /// Registered eligibility rule ids.
+  eligibility   Json   @default("[]")
+  /// `{kind:'resource',resource,amount}` or `{kind:'fact',factId}` (RecipeOutput).
+  output        Json
+  enabledWave   String @map("enabled_wave") @db.VarChar(3)
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  inputs  EconomyRecipeInput[]
+
+  @@id([versionId, recipeId])
+  @@map("recipe")
+  @@schema("economy")
+}
+
+model EconomyRecipeInput {
+  versionId    String  @map("version_id") @db.VarChar(64)
+  recipeId     String  @map("recipe_id") @db.VarChar(80)
+  resourceKey  String  @map("resource_key") @db.VarChar(16)
+  amountAtomic Decimal @map("amount_atomic") @db.Decimal(78, 0)
+
+  recipe EconomyRecipe @relation(fields: [versionId, recipeId], references: [versionId, recipeId], onDelete: Cascade)
+
+  @@id([versionId, recipeId, resourceKey])
+  @@map("recipe_input")
+  @@schema("economy")
+}
+
+/// One row per ResourceKey and version (CHECK: the ten keys); full coverage is checked by `checkProfileContent`.
+model EconomyResourcePolicy {
+  versionId           String   @map("version_id") @db.VarChar(64)
+  resourceKey         String   @map("resource_key") @db.VarChar(16)
+  sources             String[]
+  consumers           String[]
+  producerCohorts     String[] @map("producer_cohorts")
+  buyerCohorts        String[] @map("buyer_cohorts")
+  reserveHorizonTicks Int      @map("reserve_horizon_ticks")
+  targetLoBp          Int      @map("target_lo_bp")
+  targetHiBp          Int      @map("target_hi_bp")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, resourceKey])
+  @@map("resource_policy")
+  @@schema("economy")
+}
+
+model EconomyMarketPolicy {
+  versionId         String  @map("version_id") @db.VarChar(64)
+  pairId            String  @map("pair_id") @db.VarChar(48)
+  tokenMetadataRef  String  @map("token_metadata_ref") @db.VarChar(16)
+  platformFeeBp     Int     @map("platform_fee_bp")
+  stallFeeBp        Int     @map("stall_fee_bp")
+  lotUnits          Decimal @map("lot_units") @db.Decimal(78, 0)
+  tickAtomic        Decimal @map("tick_atomic") @db.Decimal(78, 0)
+  minNotionalAtomic Decimal @map("min_notional_atomic") @db.Decimal(78, 0)
+  treasuryShareBp   Int     @map("treasury_share_bp")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, pairId])
+  @@map("market_policy")
+  @@schema("economy")
+}
+
+model EconomyAgentPolicy {
+  versionId            String  @map("version_id") @db.VarChar(64)
+  actorId              String  @map("actor_id") @db.VarChar(80)
+  targets              Json    @default("{}")
+  cashLimitAtomic      Decimal @map("cash_limit_atomic") @db.Decimal(78, 0)
+  spendLimitAtomic     Decimal @map("spend_limit_atomic") @db.Decimal(78, 0)
+  lossLimitAtomic      Decimal @map("loss_limit_atomic") @db.Decimal(78, 0)
+  /// `{ "<ResourceKey>": "<atomic decimal string>" }`, validated against the ten keys by the contract schema.
+  inventoryLimits      Json    @default("{}") @map("inventory_limits")
+  referenceWindowTicks Int     @map("reference_window_ticks")
+
+  version EconomyProfileVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+
+  @@id([versionId, actorId])
+  @@map("agent_policy")
+  @@schema("economy")
+}
+
+/// Activation is a per-scope record, separate from the version lifecycle. At most one ACTIVE row per scope
+/// (partial unique index in the migration). `scope`: `global`, `planetType:<t>`, `planet:<id>`, `archetype:<a>`, `sector:<id>`.
+model EconomyActivation {
+  id            String   @id @db.VarChar(64)
+  scope         String   @db.VarChar(120)
+  versionId     String   @map("version_id") @db.VarChar(64)
+  previousId    String?  @map("previous_id") @db.VarChar(64)
+  requestedTick BigInt?  @map("requested_tick")
+  appliedTick   BigInt?  @map("applied_tick")
+  /// PENDING | ACTIVE | SUPERSEDED | FAILED
+  state         String   @default("PENDING") @db.VarChar(12)
+  operator      String   @db.VarChar(120)
+  evidenceRunId String?  @map("evidence_run_id") @db.VarChar(64)
+  payloadHash   String?  @map("payload_hash") @db.VarChar(80)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  version     EconomyProfileVersion @relation(fields: [versionId], references: [id])
+  previous    EconomyActivation?    @relation("ActivationPrevious", fields: [previousId], references: [id])
+  next        EconomyActivation[]   @relation("ActivationPrevious")
+  evidenceRun EconomyExperimentRun? @relation(fields: [evidenceRunId], references: [id])
+
+  @@index([scope, state])
+  @@map("activation")
+  @@schema("economy")
+}
+
+/// Append-only (UPDATE/DELETE rejected by trigger). `requestId` makes every mutation idempotent.
+model EconomyAuditEvent {
+  id        BigInt   @id @default(autoincrement())
+  actor     String   @db.VarChar(120)
+  action    String   @db.VarChar(64)
+  versionId String?  @map("version_id") @db.VarChar(64)
+  requestId String   @unique @map("request_id") @db.VarChar(120)
+  diff      Json     @default("{}")
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  version EconomyProfileVersion? @relation(fields: [versionId], references: [id])
+
+  @@index([versionId, createdAt])
+  @@map("audit_event")
+  @@schema("economy")
+}
+
+/// Immutable versioned scenario (seeds, populations, shocks, assumptions).
+model EconomyScenario {
+  id        String   @db.VarChar(80)
+  version   Int
+  manifest  Json
+  hash      String   @db.VarChar(80)
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  runs EconomyExperimentRun[]
+
+  @@id([id, version])
+  @@map("scenario")
+  @@schema("economy")
+}
+
+model EconomyExperiment {
+  id             String    @id @db.VarChar(64)
+  requestId      String    @unique @map("request_id") @db.VarChar(120)
+  manifest       Json
+  manifestHash   String    @map("manifest_hash") @db.VarChar(80)
+  /// queued | running | completed | failed | cancelled | incomplete
+  status         String    @default("queued") @db.VarChar(12)
+  leaseOwner     String?   @map("lease_owner") @db.VarChar(120)
+  leaseExpiresAt DateTime? @map("lease_expires_at") @db.Timestamptz(3)
+  progress       Json      @default("{}")
+  failure        String?   @db.VarChar(2000)
+  parentId       String?   @map("parent_id") @db.VarChar(64)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  parent   EconomyExperiment?    @relation("ExperimentParent", fields: [parentId], references: [id])
+  children EconomyExperiment[]   @relation("ExperimentParent")
+  runs     EconomyExperimentRun[]
+
+  @@index([status, leaseExpiresAt])
+  @@map("experiment")
+  @@schema("economy")
+}
+
+model EconomyExperimentRun {
+  id              String   @id @db.VarChar(64)
+  experimentId    String   @map("experiment_id") @db.VarChar(64)
+  /// The candidate profile version id.
+  candidateId     String   @map("candidate_id") @db.VarChar(64)
+  scenarioId      String   @map("scenario_id") @db.VarChar(80)
+  scenarioVersion Int      @map("scenario_version")
+  seed            BigInt
+  hashes          Json     @default("{}")
+  status          String   @default("queued") @db.VarChar(12)
+  artifactRefs    Json     @default("[]") @map("artifact_refs")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  experiment  EconomyExperiment     @relation(fields: [experimentId], references: [id], onDelete: Cascade)
+  candidate   EconomyProfileVersion @relation(fields: [candidateId], references: [id])
+  scenario    EconomyScenario       @relation(fields: [scenarioId, scenarioVersion], references: [id, version])
+  metrics     EconomyMetric[]
+  gates       EconomyGateResult[]
+  activations EconomyActivation[]
+
+  @@unique([experimentId, candidateId, scenarioId, scenarioVersion, seed])
+  @@map("experiment_run")
+  @@schema("economy")
+}
+
+/// Sampled series, not per-tick writes. `value` null (undefined metric) needs a `reason` (CHECK).
+model EconomyMetric {
+  id              BigInt   @id @default(autoincrement())
+  runId           String   @map("run_id") @db.VarChar(64)
+  windowStartTick BigInt   @map("window_start_tick")
+  windowEndTick   BigInt   @map("window_end_tick")
+  scope           String   @db.VarChar(120)
+  resourceKey     String?  @map("resource_key") @db.VarChar(16)
+  pair            String?  @db.VarChar(48)
+  cohort          String?  @db.VarChar(80)
+  metricKey       String   @map("metric_key") @db.VarChar(80)
+  value           Decimal? @db.Decimal
+  reason          String?  @db.VarChar(120)
+  unit            String   @db.VarChar(24)
+
+  run EconomyExperimentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId, windowStartTick, metricKey])
+  @@map("metric")
+  @@schema("economy")
+}
+
+model EconomyGateResult {
+  id          BigInt   @id @default(autoincrement())
+  runId       String   @map("run_id") @db.VarChar(64)
+  gateId      String   @map("gate_id") @db.VarChar(80)
+  gateVersion Int      @map("gate_version")
+  /// pass | fail | insufficient_data
+  outcome     String   @db.VarChar(20)
+  observed    Decimal? @db.Decimal
+  threshold   String   @db.VarChar(80)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  run EconomyExperimentRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@unique([runId, gateId, gateVersion])
+  @@map("gate_result")
+  @@schema("economy")
 }
 
 // --- identity.prisma ---
