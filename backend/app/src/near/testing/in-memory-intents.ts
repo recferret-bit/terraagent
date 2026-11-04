@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { tokenKeyOfVerifierId, type MarketTokenKey } from '@terra/contracts';
 import {
   IntentsPort,
@@ -10,17 +11,21 @@ import {
 } from '../application/ports/intents.port';
 import { NearException } from '../domain/errors';
 import type { ChainReceipt } from '../domain/types';
+import { signTokenDiffPayload } from '../intents/nep413-token-diff';
+import { DEV_KEK, DEV_KEK_VERSION, KekRing } from '../keystore/kek';
+import { ed25519PrivateKeyFromSeed, KeyStore } from '../keystore/keys';
 import { InMemoryChain } from './in-memory-chain';
 
-const NOT_YET = 'not implemented until W13-05/W13-07';
+const NOT_YET = 'not implemented until W13-05';
 
 /**
- * In-memory `IntentsPort` for unit tests (NEAR §1a rule 8). Amounts are market atomic units. `own` is the account's own balance
+ * In-memory `IntentsPort` for unit tests (NEAR §1a rule 8). Amounts are chain base units. `own` is the account's own balance
  * (stand-in for the cargo / USDC / NEAR mock ledger) seeded with `fund`; `verifier` is the intents ledger.
  */
 export class InMemoryIntents extends IntentsPort {
   private readonly own = new Map<string, bigint>();
   private readonly verifier = new Map<string, bigint>();
+  private readonly keys = new Map<string, { seed: Buffer; publicKey: string }>();
 
   constructor(private readonly chain: InMemoryChain = new InMemoryChain()) {
     super();
@@ -54,8 +59,25 @@ export class InMemoryIntents extends IntentsPort {
     }).receipt;
   }
 
-  signTokenDiff(_input: SignTokenDiffInput): Promise<SignedIntent> {
-    return Promise.reject(new NearException('NEAR_UNAVAILABLE', { message: NOT_YET }));
+  /** Signs with a throwaway ed25519 key generated per account on first use (`publicKeyOf` returns it). */
+  async signTokenDiff(input: SignTokenDiffInput): Promise<SignedIntent> {
+    const k = this.keyOf(input.accountId);
+    const nonce = input.nonce ?? randomBytes(32).toString('base64');
+    return signTokenDiffPayload(ed25519PrivateKeyFromSeed(k.seed), k.publicKey, { accountId: input.accountId, deltas: input.deltas }, input.deadlineMs, nonce);
+  }
+
+  publicKeyOf(accountId: string): string {
+    return this.keyOf(accountId).publicKey;
+  }
+
+  private keyOf(accountId: string): { seed: Buffer; publicKey: string } {
+    let k = this.keys.get(accountId);
+    if (!k) {
+      const g = new KeyStore(new KekRing(DEV_KEK_VERSION, new Map([[DEV_KEK_VERSION, DEV_KEK]]))).generate();
+      k = { seed: g.seed, publicKey: g.row.publicKey };
+      this.keys.set(accountId, k);
+    }
+    return k;
   }
 
   simulate(_intents: readonly SignedIntent[]): Promise<IntentsSimulation> {
