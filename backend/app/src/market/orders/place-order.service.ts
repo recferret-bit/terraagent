@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
-import { eventDef, marketDepositOpId, marketToken, isResourceToken, pairId, type RejectCode, type ResourceKey } from '@terra/contracts';
-import { withTransaction, type PrismaClient, type TransactionClient } from '@terra/db';
+import { eventDef, marketDepositOpId, marketToken, isResourceToken, pairId, type MarketTokenKey, type RejectCode, type ResourceKey } from '@terra/contracts';
+import { withTransaction, type DbClient, type PrismaClient, type TransactionClient } from '@terra/db';
 import { EventBus } from '../../bus/event-bus.js';
 import type { PlanetEventOf } from '../../bus/channels.js';
 import { databaseEnabled } from '../../core/persistence.js';
@@ -16,7 +16,7 @@ import { resolveMarketAccountId } from './colony-account.js';
 import { MarketFillsHook } from './market-fills.hook.js';
 import { MarketPolicyProvider, PLATFORM_ACCOUNT_ID } from './market-policy.provider.js';
 import { MarketSimGateway, type SimTarget } from './market-sim-gateway.js';
-import { OrderFunds, requirementOf, type Requirement } from './order-funds.js';
+import { OrderFunds, requirementOf, type FundsView, type Requirement } from './order-funds.js';
 
 type Requested = PlanetEventOf<'marketOrderRequested'>;
 
@@ -30,7 +30,8 @@ export interface PlaceOrderResult {
   readonly depositChain: bigint;
 }
 
-export const orderIdOfRef = (ref: string): string => `mo_${createHash('sha256').update(ref).digest('hex').slice(0, 40)}`;
+/** Deterministic order id of a sim ref on one planet (refs repeat across planets: every scenario planet has `col_0`). */
+export const orderIdOf = (planetId: string, ref: string): string => `mo_${createHash('sha256').update(`${planetId}\u0000${ref}`).digest('hex').slice(0, 40)}`;
 
 /**
  * Acts on the sim's `marketOrderRequested` (W13-09): in one transaction it creates the order idempotently with the policy
@@ -91,10 +92,14 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /** Matches the new order and hands the fills to the hook inside one transaction (the matcher's locks stay held). */
   private async matchAndHand(orderId: string): Promise<void> {
     try {
-      const outcome = await this.matcher.matchOrder(orderId);
-      if (outcome.fills.length > 0) await this.fills.onFills(outcome);
+      const touched = await withTransaction(this.prisma, async (tx) => {
+        const outcome = await this.matcher.matchOrder(orderId, tx);
+        return outcome.fills.length > 0 ? this.fills.onFills(outcome, tx) : [];
+      });
+      if (touched.length > 0) await this.books.sync(...touched);
     } catch (err) {
       this.log.warn(`matching ${orderId} failed: ${err instanceof Error ? err.message : String(err)}`);
     }
@@ -106,7 +111,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     const claimed = (await tx.nearColonyAccount.findUnique({ where: { accountId }, select: { claimedAt: true } }))?.claimedAt != null;
     const maxStall = d.maxStallFeeBp ?? cfg.stallFeeMaxBp;
     const { order, created } = await this.repo.createFromRequest({
-      orderId: orderIdOfRef(d.ref), ref: d.ref, planetId, pair: pairId(d.resource, d.price.token), base: d.resource, quote: d.price.token,
+      orderId: orderIdOf(planetId, d.ref), ref: d.ref, planetId, pair: pairId(d.resource, d.price.token), base: d.resource, quote: d.price.token,
       side: d.side, colonyId: d.colonyId, colonyIndex: d.colonyIndex, playerId: d.playerId ?? null, accountId,
       stallColonyId: d.colonyId, stallAccountId: accountId, stallHubEntityId: d.hubEntityId, platformAccountId: PLATFORM_ACCOUNT_ID,
       amount: BigInt(d.amount), priceAmount: BigInt(d.price.amount), fillPolicy: claimed ? 'all_or_nothing' : 'partial',
@@ -127,7 +132,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     if (view.free < total) return this.reject(tx, order, 'insufficient_cargo', `Need ${total} ${need.token} (incl. fees), ${view.free} free.`);
 
     const reserved = await this.repo.updateReservation(order.orderId, { reservedPrincipal: need.principal, reservedFees: need.fees, state: 'OPEN' }, tx);
-    const depositChain = await this.enqueueDeposit(tx, reserved, accountId, need, view.verifier, view.reserved, view.cargo);
+    const depositChain = await this.enqueueDeposit(tx, reserved, accountId, need, view);
     return { order: reserved, created, depositChain };
   }
 
@@ -136,15 +141,20 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     return { order: rejected, created: true, rejected: { code, detail }, depositChain: 0n };
   }
 
-  /** Moves the part of the lock still in the cargo account to the verifier; the verifier's free balance is used first. */
-  private async enqueueDeposit(
-    tx: TransactionClient, order: MarketOrderRecord, accountId: string, need: Requirement,
-    verifier: bigint, reservedByOthers: bigint, cargo: bigint,
-  ): Promise<bigint> {
+  /**
+   * Moves the part of the lock still in the cargo account to the verifier. Funds at the verifier count together with deposits
+   * already enqueued but not landed (`pendingDepositUnits`), minus what the colony's other open orders lock, so concurrent
+   * orders neither double-use nor over-deposit.
+   */
+  private async enqueueDeposit(tx: TransactionClient, order: MarketOrderRecord, accountId: string, need: Requirement, view: FundsView): Promise<bigint> {
     if (!isResourceToken(need.token)) return 0n;
-    const verifierFree = verifier > reservedByOthers ? verifier - reservedByOthers : 0n;
+    const inflight = await pendingDepositUnits(tx, accountId, need.token);
+    const tradeDebit = await this.funds.inFlightDebit(accountId, need.token, tx);
+    const covered = view.verifier + inflight;
+    const locked = view.reserved + tradeDebit;
+    const verifierFree = covered > locked ? covered - locked : 0n;
     const shortfall = need.principal + need.fees - verifierFree;
-    const units = shortfall <= 0n ? 0n : shortfall < cargo ? shortfall : cargo;
+    const units = shortfall <= 0n ? 0n : shortfall < view.cargo ? shortfall : view.cargo;
     if (units === 0n) return 0n;
     const chain = OrderFunds.chainUnits(need.token, units);
     await this.outbox.enqueue({
@@ -153,6 +163,21 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     }, tx);
     return chain;
   }
+}
+
+/** Market atomic units of `token` the account has in market-deposit outbox rows that have not landed yet (not DONE, not DEAD). */
+export async function pendingDepositUnits(db: DbClient, accountId: string, token: MarketTokenKey): Promise<bigint> {
+  const rows = await db.chainOutbox.findMany({
+    where: { port: 'Intents', method: 'deposit', status: { in: ['PENDING', 'RUNNING', 'FAILED'] }, opId: { startsWith: 'market-deposit:' } },
+    select: { payload: true },
+  });
+  const verifierId = marketToken(token).verifierId;
+  let chain = 0n;
+  for (const r of rows) {
+    const p = r.payload as { accountId?: string; tokenId?: string; amount?: string };
+    if (p.accountId === accountId && p.tokenId === verifierId && p.amount) chain += BigInt(p.amount);
+  }
+  return chain / OrderFunds.chainUnits(token, 1n);
 }
 
 /** Whole-unit in-orbit resource reservations the sim mirrors: a sell locks base, a barter buy locks the quote resource. */

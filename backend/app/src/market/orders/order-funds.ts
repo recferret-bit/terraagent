@@ -4,6 +4,7 @@ import type { DbClient } from '@terra/db';
 import { CargoTokenPort, CARGO_BASE_UNIT } from '../../near/application/ports/cargo-token.port.js';
 import { IntentsBalanceReadPort } from '../../near/application/ports/intents-balance-read.port.js';
 import { MarketOrderRepository } from '../book/market-order.repository.js';
+import { IntentTradeRepository } from '../settlement/intent-trade.repository.js';
 import { maxBuyerSpend } from './max-buyer-spend.js';
 
 export interface OrderTerms {
@@ -45,6 +46,7 @@ export class OrderFunds {
     private readonly repo: MarketOrderRepository,
     private readonly cargo: CargoTokenPort,
     private readonly verifier: IntentsBalanceReadPort,
+    private readonly trades: IntentTradeRepository,
   ) {}
 
   /** Sum of reservations of `token` over the colony's OPEN/PARTIAL orders, optionally read inside `tx`. */
@@ -57,11 +59,25 @@ export class OrderFunds {
     return sum;
   }
 
+  /**
+   * Debits of trades that are matched (their orders' reservations already shrank) but not yet FINAL: the verifier still
+   * shows the funds, so they must not count as free (otherwise the same funds could back a new order).
+   */
+  async inFlightDebit(accountId: string, token: MarketTokenKey, tx?: DbClient): Promise<bigint> {
+    let sum = 0n;
+    for (const t of await this.trades.inFlight(tx)) {
+      for (const l of t.legs as unknown as Array<{ accountId: string; token: string; delta: string }>) {
+        if (l.accountId === accountId && l.token === token && BigInt(l.delta) < 0n) sum += -BigInt(l.delta);
+      }
+    }
+    return sum;
+  }
+
   async view(accountId: string, colonyId: string, token: MarketTokenKey, tx?: DbClient): Promise<FundsView> {
     const cargo = isResourceToken(token) ? BigInt(await this.cargo.balanceOf({ accountId, tokenId: token })) / CARGO_BASE_UNIT : 0n;
     const verifier = await this.verifier.verifierBalance(accountId, token);
     const reserved = await this.reservedBy(colonyId, token, tx);
-    const free = cargo + verifier - reserved;
+    const free = cargo + verifier - reserved - (await this.inFlightDebit(accountId, token, tx));
     return { cargo, verifier, reserved, free: free < 0n ? 0n : free };
   }
 

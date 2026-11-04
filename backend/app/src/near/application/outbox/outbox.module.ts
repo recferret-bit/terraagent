@@ -10,6 +10,7 @@ import { APP_ENV, LOGGER, type AppEnv } from '../../../core/tokens.js';
 import { CargoRelaySettlementService } from '../../cargo/cargo-relay-settlement.js';
 import { PORTS } from '../ports/index.js';
 import { ChainOutboxRepository } from './chain-outbox.repository.js';
+import { OutboxListeners } from './outbox-listeners.js';
 import { OutboxRelay, type OutboxRelayConfig } from './outbox-relay.js';
 
 const num = (d: number) => z.string().optional().transform((v) => (v === undefined || v === '' ? d : Number(v))).pipe(z.number().int().positive());
@@ -42,6 +43,7 @@ export class OutboxRelayService implements OnApplicationBootstrap, BeforeApplica
     @Inject(APP_ENV) appEnv: AppEnv,
     @Inject(LOGGER) root: Logger,
     @Optional() settlement?: CargoRelaySettlementService,
+    @Optional() listeners?: OutboxListeners,
   ) {
     const e = appEnv as unknown as Record<string, number | string | undefined>;
     this.log = layerLogger(root, 'infra', appEnv.LOG_LEVELS as string | undefined);
@@ -62,7 +64,7 @@ export class OutboxRelayService implements OnApplicationBootstrap, BeforeApplica
         return ref.get(token, { strict: false });
       },
       onResult: (port, status) => relayed.inc({ port, status }),
-      onRowDone: (row, res, txHash) => settlement?.onOutboxRowDone(row, res, txHash),
+      onRowDone: async (row, res, txHash) => { await settlement?.onOutboxRowDone(row, res, txHash); await listeners?.emitDone(row, res, txHash); },
       onRowFailed: (row, err, dead) => settlement?.onOutboxRowFailed(row, err, dead),
       maxAttemptsFor: (row, def) => (row.port === 'CargoToken' ? Math.min(def, 2) : def),
       backoffBaseMsFor: (row, def) => (row.port === 'CargoToken' ? Math.min(def, 150) : def),
@@ -86,7 +88,7 @@ export class OutboxRelayService implements OnApplicationBootstrap, BeforeApplica
 }
 
 @Module({
-  providers: [ChainOutboxRepository, CargoRelaySettlementService, OutboxRelayService],
-  exports: [ChainOutboxRepository, CargoRelaySettlementService, OutboxRelayService],
+  providers: [ChainOutboxRepository, CargoRelaySettlementService, OutboxListeners, OutboxRelayService],
+  exports: [ChainOutboxRepository, CargoRelaySettlementService, OutboxListeners, OutboxRelayService],
 })
 export class OutboxModule {}
