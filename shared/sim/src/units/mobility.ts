@@ -111,6 +111,33 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
       },
     },
   ],
+  [
+    ENTITY_KIND.recon,
+    {
+      stats: (data) => {
+        const tbl = data?.tables?.combatUnits as Record<string, CompiledRow> | undefined;
+        const row = tbl?.recon;
+        const rawSpeed = Number(row?.speed ?? row?.speedTilesPerS ?? 0.7);
+        const speedPerTick = rawSpeed > 1.5 ? rawSpeed * 0.2 : rawSpeed;
+        return {
+          speedPerTick: Math.fround(speedPerTick),
+          viewRadius: 10,
+          profile: 'none',
+          terraformReach: [0, 0],
+          buildReach: [0, 0],
+          weaponRange: Number(row?.range ?? 5),
+          dps: Number(row?.dps ?? 14),
+          stopHoldTicks: 15,
+          retryTicks: 10,
+          retryMaxTicks: 80,
+        };
+      },
+      onChanged: (state, row, tick) => {
+        const cols = state.entities.cols;
+        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], 10, tick);
+      },
+    },
+  ],
 ]);
 
 const statsCache = new WeakMap<CompiledDataLike, Map<number, MobileStats>>();
