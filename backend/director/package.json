@@ -1,0 +1,14 @@
+{
+  "name": "@terra/director",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit -p .",
+    "test": "vitest run --passWithNoTests"
+  },
+  "dependencies": {
+    "@terra/contracts": "0.1.0",
+    "@terra/sim": "0.1.0"
+  }
+}
