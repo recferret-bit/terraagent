@@ -2,6 +2,7 @@ import { PLANET_KINDS, type PlanetKind } from '@terra/render/planets/PlanetSpec'
 import { isPixelArtOn } from '@terra/render/core/pixelArtPass';
 import { DEPOSIT_STAGES, type ArchetypeCategory, type DepositVisualStage } from '@terra/render/kitbash';
 import type { InteractionTargetKind } from '@terra/render/particles';
+import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 
 export type View = 'iso' | 'front' | 'side' | 'top';
 export const VIEWS: View[] = ['iso', 'front', 'side', 'top'];
@@ -16,6 +17,8 @@ export const WORK_TARGETS: InteractionTargetKind[] = ['tree', 'rock', 'dune', 'h
 const parseBuild = (v: string | null): BuildStage => ({ '0': 0, '33': 0.33, '66': 0.66 } as Record<string, BuildStage>)[v ?? ''] ?? 1;
 const parseDepositStage = (v: string | null): DepositVisualStage =>
   DEPOSIT_STAGES.includes(v as DepositVisualStage) ? (v as DepositVisualStage) : 'full';
+const parseTileState = (v: string | null): TileStatePreset =>
+  TILE_STATE_PRESETS.includes(v as TileStatePreset) ? (v as TileStatePreset) : 'prepared';
 const parseWorkTarget = (v: string | null): InteractionTargetKind =>
   WORK_TARGETS.includes(v as InteractionTargetKind) ? (v as InteractionTargetKind) : 'tree';
 
@@ -30,22 +33,28 @@ export interface PgState {
   build: BuildStage;
   /** Visual stage of resource deposits (`full` | `half` | `depleted`). */
   depositStage: DepositVisualStage;
+  /** Tile preparation state preset (`prepared` | `irrigated` | `living` | `mixed`) on the sample hex terrain. */
+  tileState: TileStatePreset;
   row: ArchetypeCategory | null; filter: string;
 }
 
 /** Initial state from the URL parameters documented in README.md. */
 export function createState(params: URLSearchParams): PgState {
   const row = params.get('row') as ArchetypeCategory;
+  const rawTileState = params.get('tileState') ?? params.get('tilestate');
+  const surface = params.get('surface') === '1';
+  const hexTerrain = params.get('hexterrain') === '1' || (Boolean(rawTileState) && !surface);
   return {
     id: '',
     kind: (PLANET_KINDS.includes(params.get('biome') as PlanetKind) ? params.get('biome') : 'dune') as PlanetKind,
     view: (VIEWS.includes(params.get('view') as View) ? params.get('view') : 'iso') as View,
     turntable: params.get('turntable') === '1',
-    bloom: true, pixel: params.has('pixel') ? params.get('pixel') === '1' : isPixelArtOn(), wire: false, grid: true, shadows: true, hex: false, human: false, ruler: true, surface: params.get('surface') === '1', validate: params.get('validate') === '1', lights: params.get('lights') === '1',
-    hexTerrain: params.get('hexterrain') === '1', hatch: params.get('hatch') === '1', work: params.get('work') === '1',
+    bloom: true, pixel: params.has('pixel') ? params.get('pixel') === '1' : isPixelArtOn(), wire: false, grid: true, shadows: true, hex: false, human: false, ruler: true, surface, validate: params.get('validate') === '1', lights: params.get('lights') === '1',
+    hexTerrain, hatch: params.get('hatch') === '1', work: params.get('work') === '1',
     workTarget: parseWorkTarget(params.get('workTarget')),
     build: parseBuild(params.get('build')),
     depositStage: parseDepositStage(params.get('depositStage') ?? params.get('stage')), // `stage`: short alias
+    tileState: parseTileState(rawTileState),
     row: row && CATS.includes(row) ? row : null,
     filter: '',
   };
@@ -63,6 +72,7 @@ export function syncURL(state: PgState) {
   if (state.workTarget !== 'tree') q.set('workTarget', state.workTarget);
   if (state.build !== 1) q.set('build', String(Math.round(state.build * 100)));
   if (state.depositStage !== 'full') q.set('depositStage', state.depositStage); // the documented name
+  if (state.tileState !== 'prepared') q.set('tileState', state.tileState);
   if (state.turntable) q.set('turntable', '1');
   if (state.pixel) q.set('pixel', '1');
   if (state.validate) q.set('validate', '1');

@@ -18,6 +18,7 @@ import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec'
 import { ArchetypeCatalog, setDepositPreviewStage, type ArchetypeCategory, type DepositVisualStage } from '@terra/render/kitbash';
 import { validateArchetype } from '@terra/render/kitbash/validate';
 import { ParticlePresetRegistry, validateParticlePreset, type InteractionTargetKind } from '@terra/render/particles';
+import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 import { $ } from './dom';
 import { BUILD_STAGES, WORK_TARGETS, createState, syncURL, type BuildStage, type PgState, type ToggleKey, type View } from './state';
 import { StageRig } from './stage/StageRig';
@@ -75,6 +76,7 @@ export class PlaygroundApp {
         this.setWorkTarget(next, true);
       },
       onDepositStage: (s) => this.setDepositStage(s),
+      onTileState: (ts) => this.setTileState(ts),
     });
     this.lightsPanel = new LightsPanel(this.state, {
       onNightToggle: () => this.syncStageLighting(),
@@ -128,6 +130,9 @@ export class PlaygroundApp {
         return validateParticlePreset(preset);
       },
       setDepositStage: (s: DepositVisualStage) => this.setDepositStage(s),
+      setTileState: (ts: TileStatePreset) => this.setTileState(ts),
+      getTileState: () => this.state.tileState,
+      hexTerrain: () => this.hexSample.hexTerrain,
       getLights: (id = this.state.id) => getArchetypeLights(id),
       addLight: (patch?: Partial<ArchetypeLightSource>, id = this.state.id) => addArchetypeLight(id, patch),
       removeLight: (idx: number | string, id = this.state.id) => removeArchetypeLight(id, idx),
@@ -169,9 +174,9 @@ export class PlaygroundApp {
   private buildStage() { this.rig.build(this.state.kind, this.state); }
 
   private syncSurface() {
-    const { kind, surface, hexTerrain, hatch, depositStage } = this.state;
-    const onSurface = this.surface.sync(kind, surface); // both always run: each disposes what it showed before
-    const onHex = this.hexSample.sync(kind, hexTerrain, hatch, depositStage);
+    const { kind, surface, hexTerrain, hatch, depositStage, tileState } = this.state;
+    const onSurface = this.surface.sync(kind, surface, tileState); // both always run: each disposes what it showed before
+    const onHex = this.hexSample.sync(kind, hexTerrain, hatch, depositStage, tileState);
     if (onSurface || onHex) this.rig.hidePedestal();
   }
 
@@ -195,6 +200,21 @@ export class PlaygroundApp {
     this.rebuildContent();
     this.hexSample.setDepositStage(stage);
     this.refreshInfo();
+    this.toolbar.syncToggles();
+    syncURL(this.state);
+  }
+
+  private setTileState(preset: TileStatePreset) {
+    if (!TILE_STATE_PRESETS.includes(preset)) return;
+    this.state.tileState = preset;
+    if (!this.state.hexTerrain && !this.state.surface) {
+      this.state.hexTerrain = true;
+      this.buildStage();
+      this.syncSurface();
+    } else {
+      this.surface.setTileState(preset);
+      this.hexSample.setTileState(preset);
+    }
     this.toolbar.syncToggles();
     syncURL(this.state);
   }

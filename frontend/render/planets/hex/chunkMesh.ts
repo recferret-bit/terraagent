@@ -89,6 +89,18 @@ const CLASS_STYLES: Record<PlanetKind, Record<number, StyleSpec>> = {
   },
 };
 
+const IRRIGATED_STYLES: Record<PlanetKind, StyleSpec> = {
+  forestRock: [0x2b4238, 0x334e42, 0.94, 0.0],
+  dune: [0x754e30, 0x855a38, 0.94, 0.0],
+  oceanForest: [0x26443a, 0x2f5246, 0.94, 0.0],
+};
+
+const LIVING_STYLES: Record<PlanetKind, StyleSpec> = {
+  forestRock: [0x2c6e49, 0x38855a, 1.0, 0.0],
+  dune: [0x2c6e49, 0x3b8c5e, 1.0, 0.0],
+  oceanForest: [0x1e6f4c, 0x2b855c, 1.0, 0.0],
+};
+
 function unpackRgb(hex: number): [number, number, number] {
   return [((hex >> 16) & 0xff) / 255, ((hex >> 8) & 0xff) / 255, (hex & 0xff) / 255];
 }
@@ -104,8 +116,14 @@ export function tileStyle(
   const table = CLASS_STYLES[kind] ?? CLASS_STYLES.forestRock;
   const flatSpec = table[HEX_TERRAIN.flat]!;
   const hasDeposit = deposit !== HEX_DEPOSIT.none && terrain !== HEX_TERRAIN.rock;
-  // Prepared (terraformed) ground is plain levelled flat ground: same tint, AO and material as a flat tile.
-  const spec = prep === HEX_PREP.prepared || hasDeposit ? flatSpec : (table[terrain] ?? flatSpec);
+  // Prepared ground is plain levelled flat ground; Irrigated is damp hydro-soil; Living is lush terraformed ground.
+  const spec = hasDeposit || prep === HEX_PREP.prepared
+    ? flatSpec
+    : prep === HEX_PREP.irrigated
+      ? (IRRIGATED_STYLES[kind] ?? IRRIGATED_STYLES.forestRock)
+      : prep === HEX_PREP.living
+        ? (LIVING_STYLES[kind] ?? LIVING_STYLES.forestRock)
+        : (table[terrain] ?? flatSpec);
   const t = tileHash01(q, r, 31);
   const [r0, g0, b0] = unpackRgb(spec[0]);
   const [r1, g1, b1] = unpackRgb(spec[1]);

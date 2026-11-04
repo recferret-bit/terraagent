@@ -37,7 +37,13 @@ export {
   type TilePropInstance,
 } from './chunkPropScatter';
 export { createHexWater, HEX_WATER_LEVEL, type HexWater } from './hexWater';
-export { createHexTileTint, type HexTileTint } from './tileTint';
+export {
+  applyTileStatePreset,
+  createHexTileTint,
+  TILE_STATE_PRESETS,
+  type HexTileTint,
+  type TileStatePreset,
+} from './tileTint';
 export {
   BORDER_VERTS_PER_EDGE,
   BORDER_Y_OFFSET,

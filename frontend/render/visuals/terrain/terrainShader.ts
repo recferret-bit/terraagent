@@ -1,6 +1,7 @@
 /** GLSL for the terrain material: composed from named chunks, injected by `applyTerrainShader`. */
 import type * as THREE from 'three';
 import { COLONY_VISION_AND_LIGHTS_GLSL, getColonyVisionUniforms } from '../../lighting/ColonyVisionAndLights';
+import { TERRAFORM_EVAL_GLSL, TERRAFORM_UNIFORMS_GLSL } from '../TerrainAndWaterShaders';
 import { NOISE_GLSL } from './glsl';
 import { injectAll } from '../shaderInject';
 import { WATER_BED_TINT_GLSL } from '../water/glsl/bed';
@@ -118,6 +119,11 @@ const COLOR_POST = /* glsl */ `  col *= 0.9 + 0.2*n2;
   float bx = vnoise((p+e.xy)*2.4)*0.6 + vnoise((p+e.xy)*6.1)*0.3;
   float bz = vnoise((p+e.yx)*2.4)*0.6 + vnoise((p+e.yx)*6.1)*0.3;
   gBump += -vec3(bx-b0, 0.0, bz-b0)/0.06*0.07;
+#ifndef TA_HEX_TERRAFORM
+  vec2 tfGridUv = clamp(vLP.xz / uExt + 0.5, 0.0, 1.0);
+  vec4 tfWorldSample = texture2D(uTerraformMap, tfGridUv);
+  evalTerraformSurface(col, gRough, gEmis, p, tfWorldSample.r, tfWorldSample.g, uTime);
+#endif
   diffuseColor.rgb = col;
 }`;
 
@@ -131,9 +137,12 @@ const FRAG_COMMON = `#include <common>
 #ifndef TA_WATER_GATE
 #define TA_WATER_GATE 1.0
 #endif
-${FRAG_DECLS}${NOISE_GLSL}
+${FRAG_DECLS}
+${TERRAFORM_UNIFORMS_GLSL}
+${NOISE_GLSL}
 float hash1(float n){ return fract(sin(n * 127.1) * 43758.5453); }
 ${STRATA_ROCK}
+${TERRAFORM_EVAL_GLSL}
 ${WATER_BED_TINT_GLSL}
 ${COLONY_VISION_AND_LIGHTS_GLSL}`;
 
