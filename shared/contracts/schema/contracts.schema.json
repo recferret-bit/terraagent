@@ -1665,7 +1665,13 @@
                       "clear",
                       "break",
                       "dismantle",
-                      "work"
+                      "work",
+                      "level",
+                      "fill",
+                      "reclaim",
+                      "deepReclaim",
+                      "irrigate",
+                      "seed"
                     ],
                     "type": "string"
                   },
@@ -2000,7 +2006,13 @@
                           "clear",
                           "break",
                           "dismantle",
-                          "work"
+                          "work",
+                          "level",
+                          "fill",
+                          "reclaim",
+                          "deepReclaim",
+                          "irrigate",
+                          "seed"
                         ],
                         "type": "string"
                       },
@@ -2896,6 +2908,33 @@
       "summary": "Emitted when an alert ping occurs at hex (q, r) to drive the minimap ping ring (W04-01, W04-08).",
       "wave": "W04"
     },
+    "borderFrozen": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "beaconEntityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when territory border expansion freezes (e.g. beacon unpowered; W05-01).",
+      "wave": "W05"
+    },
     "brownout": {
       "audience": "player",
       "data": {
@@ -3596,6 +3635,100 @@
       "summary": "Emitted when the drop pod finishes its descent and deploys the HQ Commander drone (W01-09).",
       "wave": "W01"
     },
+    "lightningStrike": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "absorbed": {
+            "type": "boolean"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "damage": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "planetId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a lightning bolt strikes a tile or is absorbed by a Lightning Rod (W05-01).",
+      "wave": "W05"
+    },
+    "meteorImpact": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "destroyedEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "planetId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "radius": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "shielded": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a meteor impacts a tile or is blocked by a Hazard Shield (W05-01).",
+      "wave": "W05"
+    },
     "nightSurvived": {
       "audience": "player",
       "data": {
@@ -3644,7 +3777,12 @@
           "op": {
             "enum": [
               "clear",
-              "break"
+              "break",
+              "level",
+              "fill",
+              "reclaim",
+              "deepReclaim",
+              "seed"
             ],
             "type": "string"
           },
@@ -4197,6 +4335,60 @@
       "summary": "Emitted when a colony or player unlockStage advances, unlocking new buildable structures, units, and orders (UO-LC-02).",
       "wave": "W08"
     },
+    "stormEnded": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "kind": {
+            "enum": [
+              "ion",
+              "meteor",
+              "dust",
+              "electrical"
+            ],
+            "type": "string"
+          },
+          "planetId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a planetary storm hazard ends (W05-01).",
+      "wave": "W05"
+    },
+    "stormStarted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "durationS": {
+            "exclusiveMinimum": 0,
+            "type": "number"
+          },
+          "kind": {
+            "enum": [
+              "ion",
+              "meteor",
+              "dust",
+              "electrical"
+            ],
+            "type": "string"
+          },
+          "planetId": {
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a planetary storm hazard starts (W05-01).",
+      "wave": "W05"
+    },
     "suggestionOffered": {
       "audience": "player",
       "data": {
@@ -4335,6 +4527,133 @@
       "summary": "Emitted when the stage tutorial or rule engine offers a suggestion instead of auto-queuing (UO-LC-04 / UO-LC-05).",
       "wave": "W08"
     },
+    "territoryClaimed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "beaconEntityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "sectorId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "tiles": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "tiles"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a Territory Beacon or Command Hub claims tiles for a colony (W05-01).",
+      "wave": "W05"
+    },
+    "territoryReverting": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "beaconEntityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "tiles": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyId",
+          "tiles"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when territory tiles begin reverting after beacon loss (W05-01).",
+      "wave": "W05"
+    },
+    "tierUnlocked": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "extractorEntityId": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "family": {
+            "enum": [
+              "metals",
+              "minerals",
+              "bio"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 3,
+                "type": "number"
+              }
+            ]
+          }
+        },
+        "required": [
+          "colonyId",
+          "family",
+          "tier"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when an extractor unlocks T2 or T3 resource output via the Terraform % and local ring gate (D-34, W05-01, W05-34).",
+      "wave": "W05"
+    },
     "tilePrepared": {
       "audience": "player",
       "data": {
@@ -4375,6 +4694,68 @@
       "severity": "info",
       "summary": "Emitted when one or more tiles reach the Prepared state via Grade (Groundbreaker progression, W01-13, W01-31).",
       "wave": "W01"
+    },
+    "tileStateChanged": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "grade",
+              "clear",
+              "break",
+              "dismantle",
+              "work",
+              "level",
+              "fill",
+              "reclaim",
+              "deepReclaim",
+              "irrigate",
+              "seed"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "prep": {
+            "type": "string"
+          },
+          "prevPrep": {
+            "type": "string"
+          },
+          "prevTerrain": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "terrain": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a tile changes terrain class or prep state (e.g. Level, Fill, Reclaim, Irrigate, Seed, or building footprint revert; W05-01).",
+      "wave": "W05"
     },
     "treasuryRejected": {
       "audience": "server",

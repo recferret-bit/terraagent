@@ -10,6 +10,7 @@ import { TICK_MS } from '../kernel/constants';
  */
 
 let cachedW01Data: CompiledDataLike | null = null;
+let cachedW05Data: CompiledDataLike | null = null;
 
 /** The compiled W00 + W01 tables (cached): the data a caller without a step ctx reads. */
 export function defaultW01Data(): CompiledDataLike {
@@ -17,9 +18,22 @@ export function defaultW01Data(): CompiledDataLike {
   return cachedW01Data;
 }
 
+/** The compiled W00..W05 tables (cached): fallback for W05 rows when a caller has no step ctx. */
+export function defaultW05Data(): CompiledDataLike {
+  if (!cachedW05Data) cachedW05Data = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W04', 'W05']));
+  return cachedW05Data;
+}
+
 /** Row `table.id` of `data` when it has that table, else of {@link defaultW01Data}. Throws when the row is missing. */
 export function w01Row(data: CompiledDataLike | undefined, table: string, id: string): CompiledRow {
   const src = data?.tables[table] ? data : defaultW01Data();
+  return dataRow(src, table, id);
+}
+
+/** Row `table.id` of `data` when it has that row, else of {@link defaultW05Data}. Throws when the row is missing. */
+export function w05Row(data: CompiledDataLike | undefined, table: string, id: string): CompiledRow {
+  const tbl = data?.tables[table] as Record<string, CompiledRow> | undefined;
+  const src = tbl && id in tbl ? data! : defaultW05Data();
   return dataRow(src, table, id);
 }
 
