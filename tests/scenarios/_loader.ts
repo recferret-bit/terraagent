@@ -1,5 +1,5 @@
 import { parseCommandArgs, parseWaves } from '@terra/contracts';
-import { createPlanet, getColonyStock, PlanetJournal, SimHost, type LedgerPosting, type PlanetState } from '@terra/sim';
+import { createPlanet, getColonyStock, type CompiledDataLike, PlanetJournal, SimHost, type LedgerPosting, type PlanetState } from '@terra/sim';
 import type { ScenarioApi, ScenarioDef } from './_define';
 import { SCENARIOS } from './index.generated';
 
@@ -22,6 +22,8 @@ export interface CreateScenarioOptions {
    * layers from the public seed; browser and CLI hosts leave it out.
    */
   readonly worldSalt?: string;
+  /** Compiled data the host runs (an experiment's profile); default: the bootstrap tables of the flags. */
+  readonly data?: CompiledDataLike;
 }
 
 export interface ScenarioPlanet {
@@ -62,7 +64,7 @@ export function createScenarioPlanet(id: string, opts: CreateScenarioOptions = {
     ...(scenario.planet.radius ? { radius: scenario.planet.radius } : {}),
     ...(opts.worldSalt ? { worldSalt: opts.worldSalt } : {}),
   });
-  const host = new SimHost({ flags });
+  const host = new SimHost({ flags, ...(opts.data ? { data: opts.data } : {}) });
   host.load(state);
   const setupPostings: LedgerPosting[] = [];
   const off = host.onPostings((p) => { setupPostings.push(...p); });

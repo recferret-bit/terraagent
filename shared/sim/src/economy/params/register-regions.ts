@@ -35,5 +35,7 @@ export function registerRegionParams(r: ParamRegistry): void {
   rt('readinessMovingBp', 'Readiness factor of moving units.', 'bp', 10000);
   rt('readinessCombatBp', 'Readiness factor of units in combat.', 'bp', 10000);
   rt('minCombatServiceBp', 'Minimum combat service fraction (attack cadence floor).', 'ratio_bp', 10000);
+  registerField(r, logistics, 'node.*', 'throughputPerWindow', { description: 'Logistics throughput a supply node provides per window, by tier (load units).', unit: 'count', type: 'int', bounds: { min: 0, max: 1_000_000 }, mutability: 'runtime' });
+  registerField(r, logistics, 'node.*', 'reachTiles', { description: 'Service reach of a supply node in route tiles, by tier.', unit: 'count', type: 'int', bounds: { min: 0, max: 100_000 }, mutability: 'runtime' });
   rt('graceWindows', 'Supply windows of local reserve before throughput scales by delivered service.', 'count', 1000);
 }

@@ -1,0 +1,16 @@
+{
+  "schemaVersion": 1,
+  "id": "strict-gate-probe",
+  "version": 1,
+  "description": "DELIBERATELY FAILING probe: the baseline two-colony layout with a gate no run can meet (a million trades per sample). It proves a failing seed reproduces from its printed replay command and that the CLI exits 3.",
+  "waves": "..13",
+  "populations": [{ "cohort": "specialist", "colonies": 2, "params": {} }],
+  "shocks": [],
+  "assumptions": {
+    "baseScenario": "w13",
+    "tradeResources": ["bio.water", "metals.t1"],
+    "gates": [
+      { "gateId": "probe.impossible_trade_count", "gateVersion": 1, "metricKey": "market.trades", "scope": "global", "aggregate": "max", "op": "gte", "threshold": "1000000" }
+    ]
+  }
+}
