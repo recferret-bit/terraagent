@@ -3,6 +3,7 @@ import { directorIntentSystem } from './intent';
 import { setDirectorPolicyHandler } from './policy';
 
 export { goalKey, syncDirectorIntent } from './intent';
+export { applyDirectiveBatch, type ActionAck } from './apply';
 export { buildColonyBrief, guardBriefText } from './brief';
 export { previewBatch, type BatchPreview, type PreviewLimits, type PreviewReason, type PreviewStock } from './preview';
 export { actionLeavesColony, scopeDirective, screenDirective, screenProposal, type ColonyScope } from './scope';

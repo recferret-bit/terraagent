@@ -68,6 +68,7 @@ export * from './systems/queue';
 export * from './systems/dispatch';
 export * from './systems/goals';
 export {
+  applyDirectiveBatch,
   applyDirectorPolicy,
   buildColonyBrief,
   colonyDirector,
