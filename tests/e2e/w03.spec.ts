@@ -358,6 +358,8 @@ test('@hack 12. Dismantle [Z] on the Solar #3: a Builder walks there, "Dismantli
   await page.locator('[data-testid="dock-tab-queue"]').click();
   const chip = page.locator('[data-task-id]', { hasText: 'Dismantle Solar Array' });
   await expect(chip).toBeVisible();
+  // A second dismantle order on the same building is refused.
+  expect(await sendSimCmd(page, 'enqueueTask', { taskId: 'dis-again', task: { kind: 'terraform', op: 'dismantle', q: -3, r: 2 } })).toMatchObject({ ok: false, code: 'already_dismantling' });
   await expect(chip).toContainText(/Dismantling \d+%/, { timeout: 20_000 }); // the Builder arrived and works
   await screenshot(page, '12-dismantling');
 
