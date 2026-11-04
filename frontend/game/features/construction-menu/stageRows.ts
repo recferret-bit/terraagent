@@ -84,4 +84,3 @@ export const STAGE_BUILDING_ROWS: readonly Record<string, unknown>[] = [
     powerDrainPerS: 5,
   },
 ];
-

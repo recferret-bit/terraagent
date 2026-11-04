@@ -68,7 +68,8 @@ test('@hack 1 & 2. Load ?scenario=w03 (Hub, Extractor, Solar, 2 Harvesters; day 
   await expect.poll(async () => (await getColony0(page))?.stock?.['metals.t1'] ?? 0).toBeGreaterThanOrEqual(400);
   const col = await getColony0(page);
   // Founder core +16, Solar T1 net +13 = 29; Hub 7 + Extractor 8 + 2 Harvesters 2 each = 19.
-  expect(col?.power).toMatchObject({ supply: 29, demand: 19, net: 10, founderCorePerS: 16, solarNetPerS: 13, phase: 'day', brownout: false });
+  // Workers briefly draw less while walking to their first harvesting targets.
+  await expect.poll(async () => (await getColony0(page))?.power).toMatchObject({ supply: 29, demand: 19, net: 10, founderCorePerS: 16, solarNetPerS: 13, phase: 'day', brownout: false });
   expect(col?.power?.hqCellStoredE).toBe(800);
   expect(col?.supply).toMatchObject({ used: 2, units: 2, cap: 10 });
   await expect(page.locator('[data-testid="hud-supply"] .ta-hud-min__stock-val')).toHaveText('2 / 10');
