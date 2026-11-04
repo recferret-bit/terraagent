@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { MarketBooks } from './book/market-books.js';
+import { PriceBoardService } from './board/price-board.service.js';
 import { MarketFaucetCommand } from './dev/market-faucet.command.js';
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
 import { MarketFaucetService } from './dev/market-faucet.service.js';
@@ -42,6 +43,7 @@ import { NearModule } from '../near/near.module.js';
     IntentTradeRepository,
     SettlementFillsHook,
     TradeSettlement,
+    PriceBoardService,
     { provide: MarketFillsHook, useExisting: SettlementFillsHook },
     MarketFaucetService,
     MarketFaucetCommand,
@@ -64,6 +66,7 @@ import { NearModule } from '../near/near.module.js';
     MarketFillsHook,
     IntentTradeRepository,
     TradeSettlement,
+    PriceBoardService,
   ],
 })
 export class MarketModule {}
