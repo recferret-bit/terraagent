@@ -25,5 +25,9 @@ export default defineTable({
       minCombatServiceBp: 5000,
       graceWindows: 3,
     },
+    // Supply nodes (ECON-LOG-01): logistics throughput per supply window (same load units as entity weights) and the
+    // service reach in route tiles, by tier. Distinct from storage capacity and control slots. Calibration fixtures.
+    { id: 'node.commandHub.t1', wave: 'W13', building: 'commandHub', tier: 1, throughputPerWindow: 100, reachTiles: 90 },
+    { id: 'node.supplyDepot.t1', wave: 'W13', building: 'supplyDepot', tier: 1, throughputPerWindow: 60, reachTiles: 60 },
   ],
 });
