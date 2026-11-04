@@ -8,15 +8,22 @@ import type { StepContext } from '../../kernel/context';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
-import { creditResource, ensureColonyLedger, isFamilyAtCap } from '../economy/ledger';
+import {
+  creditResource,
+  ensureColonyLedger,
+  isFamilyAtCap,
+  type ExtractorLivingBonusRecord,
+} from '../economy/ledger';
 import { depositFamilyAndKey } from '../harvest/adjacency';
 import {
   checkExtractorDepositCoverage,
   ensureColonyForOwner,
+  getExtractorLivingBonus,
   resolveExtractorRow,
   resolveMineralsQuarryRow,
   resolvePetroleumWellRow,
   resolveWaterExtractorRow,
+  type ExtractorLivingBonusInfo,
   type IncomeMapByOwner,
 } from './helpers';
 
@@ -77,6 +84,26 @@ function extractTiered(
   return out;
 }
 
+function recordExtractorBonus(
+  colony: ColonyState,
+  entityId: number,
+  livingBonus: ExtractorLivingBonusInfo,
+  ratePerS: number,
+): void {
+  const c = ensureColonyLedger(colony);
+  const entry: ExtractorLivingBonusRecord = {
+    entityId,
+    adjacentToLiving: livingBonus.adjacentToLiving,
+    livingBonus: livingBonus.bonus,
+    livingBonusText: livingBonus.label,
+    ratePerS: Number(ratePerS.toFixed(4)),
+  };
+  if (!c.production.extractors) c.production.extractors = {};
+  c.production.extractors[entityId] = entry;
+  const bonuses = ((colony as { extractorBonuses?: Record<number, ExtractorLivingBonusRecord> }).extractorBonuses ??= {});
+  bonuses[entityId] = entry;
+}
+
 function stepDepositExtractorRow(
   state: PlanetState,
   row: number,
@@ -104,8 +131,10 @@ function stepDepositExtractorRow(
   const cov = checkExtractorDepositCoverage(state, cols.q[row], cols.r[row], w, d, cols.rot[row], depositKind);
   if (!cov.covered) return;
 
+  const livingBonus = getExtractorLivingBonus(state, cols.q[row], cols.r[row], w, d, cols.rot[row], ctx.data);
   const baseOutputPerS = Number(rowDef.outputPerS ?? 1.0);
-  const ratePerS = baseOutputPerS * cov.richnessMult;
+  const ratePerS = baseOutputPerS * cov.richnessMult * livingBonus.mult;
+  recordExtractorBonus(colony, cols.id[row], livingBonus, ratePerS);
   const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
   const byKey = extractTiered(state, colony, cov.depositTiles, desiredAmount, ctx.tick, depositKind, fallbackKey);
   let extracted = 0;
@@ -138,9 +167,13 @@ function stepWaterExtractorRow(
   }
   if (st === ENTITY_STATE.offlineCapped) setField(e, row, 'state', ENTITY_STATE.active, ctx.tick);
 
+  const w = cols.footprintW?.[row] || Number(waterRow.footprintW ?? 2);
+  const d = cols.footprintD?.[row] || Number(waterRow.footprintD ?? 2);
+  const livingBonus = getExtractorLivingBonus(state, cols.q[row], cols.r[row], w, d, cols.rot[row], ctx.data);
   const baseWaterPerS = Number(waterRow.outputPerS ?? 0.875);
   const planetMult = state.meta.planetType === 'desert' ? Number(waterRow.desertOutputMult ?? 0.5) : 1.0;
-  const ratePerS = baseWaterPerS * planetMult;
+  const ratePerS = baseWaterPerS * planetMult * livingBonus.mult;
+  recordExtractorBonus(colony, cols.id[row], livingBonus, ratePerS);
   const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
   const { credited } = creditResource(colony, 'bio.water', desiredAmount, ctx.tick);
   if (credited <= 0) return;

@@ -161,6 +161,16 @@ function lookupTerrainConfig(terrainCode: number, data?: CompiledDataLike): { pa
 function lookupLivingMoveBp(data?: CompiledDataLike): number {
   const terrainRows = data?.tables.terrain as Record<string, Record<string, unknown>> | undefined;
   const row = terrainRows?.temperate;
+  const tfCfg = (data?.tables.terraform as Record<string, Record<string, unknown>> | undefined)?.terraformConfig;
+  if (typeof row?.livingMoveMult === 'number' && row.livingMoveMult !== 1.1) {
+    return Math.round(row.livingMoveMult * 10000);
+  }
+  if (typeof tfCfg?.livingMoveSpeedMult === 'number') {
+    return Math.round(tfCfg.livingMoveSpeedMult * 10000);
+  }
+  if (typeof tfCfg?.livingMoveSpeedBonus === 'number') {
+    return Math.round((1 + tfCfg.livingMoveSpeedBonus) * 10000);
+  }
   if (typeof row?.livingMoveMult === 'number') return Math.round(row.livingMoveMult * 10000);
   return DEFAULT_LIVING_MOVE_BP;
 }
