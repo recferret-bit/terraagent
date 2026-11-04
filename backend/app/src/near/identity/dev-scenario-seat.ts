@@ -5,16 +5,19 @@ export interface DevScenarioSeat {
   readonly playerId: string;
   readonly handle: string;
   readonly planetId: string;
+  /** Colony indices that exist in the scenario's sim state (default `[0]`). */
+  readonly colonyIndices?: readonly number[];
 }
 
 /**
- * A `dev:` session on a scenario planet plays colony 0 without a `core.colony` row (BE-07).
+ * A `dev:` session on a scenario planet plays the next free scenario colony (BE-07; W13-30): the lowest index that exists in
+ * the sim state and has no `core.colony` row, else colony 0 (the old one-colony behaviour), without a row if it is taken.
  * Social upgrade only enqueues the colony deposit for rows it can see, so the join writes one.
  * The row id is a new `co_` id, not the sim's `col_0` (BE-45).
  */
 export async function seatDevScenarioPlayer(prisma: PrismaClient, input: DevScenarioSeat): Promise<void> {
   await ensurePlayer(prisma, input.playerId, input.handle);
-  await ensureIndexZero(prisma, input.playerId, input.planetId);
+  await ensureSeat(prisma, input.playerId, input.planetId, input.colonyIndices ?? [0]);
 }
 
 async function ensurePlayer(prisma: PrismaClient, id: string, handle: string): Promise<void> {
@@ -33,22 +36,26 @@ async function ensurePlayer(prisma: PrismaClient, id: string, handle: string): P
   throw new Error(`could not seat dev player ${id}`);
 }
 
-async function ensureIndexZero(prisma: PrismaClient, playerId: string, planetId: string): Promise<void> {
+/** The lowest scenario colony index with no `core.colony` row on the planet; undefined when every seat is taken. */
+export function nextFreeSeat(indices: readonly number[], taken: ReadonlySet<number>): number | undefined {
+  return [...indices].sort((a, b) => a - b).find((i) => !taken.has(i));
+}
+
+async function ensureSeat(prisma: PrismaClient, playerId: string, planetId: string, indices: readonly number[]): Promise<void> {
   const mine = await prisma.colony.findFirst({ where: { playerId, planetId }, select: { id: true } });
   if (mine) return;
-  try {
-    await prisma.colony.create({
-      data: {
-        id: newId('co'),
-        playerId,
-        planetId,
-        colonyIndex: 0,
-        name: "Colonist's Colony",
-        status: 'ACTIVE',
-      },
-    });
-  } catch (e) {
-    if (!isUnique(e)) throw e;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const taken = new Set((await prisma.colony.findMany({ where: { planetId }, select: { colonyIndex: true } })).map((c) => c.colonyIndex));
+    const index = nextFreeSeat(indices, taken);
+    if (index === undefined) return; // every scenario colony is taken: this session stays on the synthetic colony 0
+    try {
+      await prisma.colony.create({
+        data: { id: newId('co'), playerId, planetId, colonyIndex: index, name: index === 0 ? "Colonist's Colony" : `Colony ${index + 1}`, status: 'ACTIVE' },
+      });
+      return;
+    } catch (e) {
+      if (!isUnique(e)) throw e; // a concurrent join took this index: look again
+    }
   }
 }
 

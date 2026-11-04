@@ -7,13 +7,13 @@ const LATENCY_USAGE = 'near.mock.latency <port> <minMs> <maxMs>';
 const RESET_USAGE = 'account.reset <player>';
 const UPGRADE_USAGE = 'account.upgrade <provider> <subject>';
 
-function serverFor(ctx: FeatureContext, name: string): NonNullable<FeatureContext['services']['devServer']> {
+export function serverFor(ctx: FeatureContext, name: string): NonNullable<FeatureContext['services']['devServer']> {
   const server = ctx.services.devServer;
   if (!server) throw new DevServerError('host_unavailable', `${name} needs the game server; not available on this host`);
   return server;
 }
 
-function usage(line: string): never {
+export function usage(line: string): never {
   throw new Error(`usage: ${line}`);
 }
 
