@@ -28,6 +28,11 @@ const ARCHETYPE_BY_BUILDING: Record<string, string> = {
   waterExtractor: 'building.waterPump',
   petroleumWell: 'building.oilWell',
   tradeHub: 'building.tradeHub',
+  roboticsFactory: 'building.roboticsFactory',
+  droneControlArray: 'building.droneArray',
+  autocannon: 'building.turret',
+  turret: 'building.turret',
+  laserTower: 'building.laserTower',
 };
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());

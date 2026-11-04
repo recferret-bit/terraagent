@@ -1,20 +1,17 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
-import { ownColonyIndex, viewColony } from '../shared/colony';
-import { supplyBlockReason, supplyLevel } from '../shared/supply';
-import { buildUnitsCatalog, resolveSupply, type SupplySummary, type UnitCardModel } from './catalog';
 import { isGameInputBlocked } from '../../core/input/gameInputBlock';
+import { ownColonyIndex } from '../shared/colony';
+import { supplyBlockReason, supplyLevel } from '../shared/supply';
+import {
+  ArmySectionController,
+  createProgressBarElement,
+  formatBufferItem,
+  resolveUnitQueueEntries,
+  type QueueItemLike,
+} from './ArmySection';
+import { buildUnitsCatalog, resolveSupply, type SupplySummary, type UnitCardModel } from './catalog';
 
-interface QueueItemLike {
-  taskId?: string;
-  unit?: string;
-  count?: number;
-  remainingCount?: number;
-  repeat?: boolean;
-  state?: string;
-  waitReason?: string;
-  waitDetail?: string;
-  progress?: number;
-}
+export { formatBufferItem, type QueueItemLike };
 
 interface CachedUnitCard {
   readonly root: HTMLElement;
@@ -33,28 +30,13 @@ interface CachedUnitCard {
   costKey: string;
 }
 
-export function formatBufferItem(entry: QueueItemLike): string {
-  const unit = entry.unit ?? 'harvester';
-  const cnt = entry.remainingCount ?? entry.count ?? 1;
-  const repeatIcon = entry.repeat ? ' ↻' : '';
-  let status = entry.state ?? 'queued';
-
-  if (entry.state === 'in_progress') {
-    const pct = Math.round((entry.progress ?? 0) * 100);
-    status = `in_progress ${pct}%`;
-  } else if (entry.state === 'waiting') {
-    status = entry.waitDetail ?? (entry.waitReason ? `waiting(${entry.waitReason})` : 'waiting(supply)');
-  }
-
-  return `${unit} ×${cnt}${repeatIcon} · ${status}`;
-}
-
 export class UnitsMenu implements Disposable {
   readonly root: HTMLElement;
   private readonly headBtn: HTMLButtonElement;
   private readonly supplyEl: HTMLElement;
   private readonly cardsContainer: HTMLElement;
   private readonly bufferContainer: HTMLElement;
+  private readonly army: ArmySectionController | null = null;
   private readonly cardElements = new Map<string, CachedUnitCard>();
   private lastBufferKey: string | null = null;
   private isOpen = true;
@@ -69,6 +51,7 @@ export class UnitsMenu implements Disposable {
     initialView?: GameView,
   ) {
     this.view = initialView;
+    const hasW07 = this.ctx.flags.has('W07');
     this.root = document.createElement('div');
     this.root.className = 'ta-units plate-sm';
     this.root.dataset.open = 'true';
@@ -88,7 +71,9 @@ export class UnitsMenu implements Disposable {
     this.supplyEl.setAttribute('data-supply', '');
     this.supplyEl.setAttribute('data-warning', 'false');
     this.supplyEl.setAttribute('data-level', 'ok');
-    this.supplyEl.title = 'Unit supply: used / cap';
+    this.supplyEl.title = hasW07
+      ? 'Unit supply: used / cap (+10 Command Hub, +8 per Drone Control Array)'
+      : 'Unit supply: used / cap';
     this.supplyEl.textContent = '— / —';
 
     header.append(this.headBtn, this.supplyEl);
@@ -102,6 +87,12 @@ export class UnitsMenu implements Disposable {
     this.cardsContainer.className = 'ta-units__cards';
     this.cardsContainer.setAttribute('data-cards', '');
     body.appendChild(this.cardsContainer);
+
+    if (hasW07) {
+      this.army = new ArmySectionController(this.root, this.cardsContainer, body, this.ctx);
+      const s = this.ctx.services as unknown as Record<string, unknown>;
+      s.setRally = (q: number, r: number, producerId?: number) => this.setRally(q, r, producerId);
+    }
 
     const bufferSection = document.createElement('div');
     bufferSection.className = 'ta-units__buffer-section';
@@ -124,9 +115,14 @@ export class UnitsMenu implements Disposable {
     this.el.appendChild(this.root);
 
     this.onKeyDown = (e: KeyboardEvent) => {
-      if ((e.key === 'u' || e.key === 'U') && !isGameInputBlocked()) {
-        const target = e.target as HTMLElement | null;
-        if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (isGameInputBlocked()) return;
+      const target = e.target as HTMLElement | null;
+      if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+      if (e.key === 'Escape' && this.army?.isRallyMode()) {
+        this.army.setRallyMode(false);
+        return;
+      }
+      if (e.key === 'u' || e.key === 'U') {
         this.toggle();
       }
     };
@@ -145,6 +141,18 @@ export class UnitsMenu implements Disposable {
 
   toggle(): void {
     this.setOpen(!this.isOpen);
+  }
+
+  isRallyMode(): boolean {
+    return this.army?.isRallyMode() ?? false;
+  }
+
+  setRally(q: number, r: number, producerId?: number): void {
+    if (this.army) {
+      this.army.setRally(q, r, producerId);
+    } else {
+      this.ctx.services.sendCommand?.('setRally', producerId !== undefined ? { q, r, producerId } : { q, r });
+    }
   }
 
   update(view: GameView): void {
@@ -177,9 +185,13 @@ export class UnitsMenu implements Disposable {
         this.updateCardElement(existing, card);
       } else {
         this.cardElements.set(card.unit, cached);
-        this.cardsContainer.appendChild(cached.root);
+        const container = card.section === 'army' && this.army ? this.army.cardsEl : this.cardsContainer;
+        container.appendChild(cached.root);
       }
       this.applySupplyBlock(cached, supplyBlockReason(supply, card.supply));
+    }
+    if (this.army && this.army.sectionEl.parentElement === this.cardsContainer) {
+      this.cardsContainer.appendChild(this.army.sectionEl);
     }
     for (const [unit, cached] of this.cardElements) {
       if (!seen.has(unit)) {
@@ -193,7 +205,9 @@ export class UnitsMenu implements Disposable {
   private applySupplyBlock(cached: CachedUnitCard, reason: string | null): void {
     cached.root.setAttribute('data-supply-blocked', String(reason !== null));
     cached.queueBtn.disabled = reason !== null || Boolean(cached.card.disabled);
-    cached.queueBtn.title = reason ?? cached.card.disabledReason ?? 'Queue this unit at the Command Hub';
+    const defaultTitle =
+      cached.card.section === 'army' ? 'Queue this unit at the Robotics Factory' : 'Queue this unit at the Command Hub';
+    cached.queueBtn.title = reason ?? cached.card.disabledReason ?? defaultTitle;
     cached.supplyReason.hidden = reason === null;
     if (reason !== null && cached.supplyReason.textContent !== reason) cached.supplyReason.textContent = reason;
   }
@@ -286,6 +300,7 @@ export class UnitsMenu implements Disposable {
     const cardEl = document.createElement('div');
     cardEl.className = 'ta-units__card plate-sm';
     cardEl.setAttribute('data-unit', card.unit);
+    if (card.section) cardEl.setAttribute('data-unit-section', card.section);
 
     const headRow = document.createElement('div');
     headRow.className = 'ta-units__card-head';
@@ -440,11 +455,10 @@ export class UnitsMenu implements Disposable {
   }
 
   private renderBuffer(): void {
-    const v = this.view as { blobs?: { hubProduction?: { entries?: Array<QueueItemLike & { colonyIndex?: number }> } } } | undefined;
     const own = ownColonyIndex(this.ctx.services);
-    const raw = (viewColony(this.view, own)?.unitQueue as QueueItemLike[] | undefined)
-      ?? (v?.blobs?.hubProduction?.entries ?? []).filter((en) => (en.colonyIndex ?? own) === own);
-    const entries = raw.filter((en) => en.state !== 'done' && en.state !== 'cancelled');
+    const entries = resolveUnitQueueEntries(this.view, own);
+    this.army?.render(entries, this.view, own);
+
     const nextKey = entries.map((en) => `${en.taskId ?? ''}:${formatBufferItem(en)}`).join('|');
     if (this.lastBufferKey === nextKey) return;
     this.lastBufferKey = nextKey;
@@ -463,6 +477,10 @@ export class UnitsMenu implements Disposable {
       itemEl.className = 'ta-units__buffer-item';
       if (entry.taskId) itemEl.setAttribute('data-task-id', entry.taskId);
       itemEl.textContent = formatBufferItem(entry);
+      if (this.army) {
+        const pct = entry.state === 'in_progress' ? Math.round((entry.progress ?? 0) * 100) : 0;
+        itemEl.appendChild(createProgressBarElement(pct));
+      }
       this.bufferContainer.appendChild(itemEl);
     }
   }
@@ -471,6 +489,7 @@ export class UnitsMenu implements Disposable {
     if (typeof window !== 'undefined') {
       window.removeEventListener('keydown', this.onKeyDown);
     }
+    this.army?.dispose();
     this.cardElements.clear();
     this.root.remove();
   }
