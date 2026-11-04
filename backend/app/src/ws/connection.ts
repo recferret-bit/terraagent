@@ -24,7 +24,7 @@ export interface ConnectionDeps {
    * Dev scenario join: write the player and colony 0 so a later social login can attach the colony deposit.
    * Absent in unit tests that have no database.
    */
-  seatDevScenario?(input: { playerId: string; handle: string; planetId: string }): Promise<void>;
+  seatDevScenario?(input: { playerId: string; handle: string; planetId: string; colonyIndices?: readonly number[] }): Promise<void>;
   /** Called after the welcome of a join was sent; the gateway closes the player's older planet socket with 4001. */
   onJoined(conn: Connection): void;
   onClosed(conn: Connection): void;
@@ -151,7 +151,7 @@ export class Connection implements RoomMember {
     const playerId = this.playerId;
     if (!seat || !playerId || !this.session?.dev || !this.d.planets.isScenarioColonyPlanet(planetId)) return;
     try {
-      await seat({ playerId, handle: this.session.handle ?? 'pilot', planetId });
+      await seat({ playerId, handle: this.session.handle ?? 'pilot', planetId, colonyIndices: this.d.planets.scenarioColonyIndices?.(planetId) ?? [0] });
     } catch (e) {
       this.d.log.warn({ err: e, playerId, planetId }, 'scenario colony seat failed');
     }

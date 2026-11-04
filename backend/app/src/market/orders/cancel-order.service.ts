@@ -53,6 +53,7 @@ export class OrderRelease {
     if (out.kind === 'released') {
       await this.books.sync(out.order.orderId);
       const o = out.order;
+      if (o.actorKind === 'fixture') return out; // dev seed bots have no sim colony: nothing to tell the sim
       this.gateway.release(
         { planetId: o.planetId, colonyId: o.colonyId, colonyIndex: o.colonyIndex },
         { ref: o.ref, orderId: o.orderId, deltas: simDeltas(o), reason },

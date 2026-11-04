@@ -31,6 +31,9 @@ export default defineTable({
       bookDepthLevels: 10,
       bookPushHz: 1,
     },
+    // Dev only (`market.seed`, W13-30): fixture bot ladder around a mid price. `mid*Atomic` is quote atomic per whole base unit
+    // (USDC micro, NEAR yocto, resource whole units); each level moves `stepBp` away from mid; every order is `sizeUnits` big.
+    { id: 'dev.seed', wave: 'W13', levels: 5, stepBp: 500, sizeUnits: 100, midUsdcAtomic: '400000', midNearAtomic: '100000000000000000000000', midResourceAtomic: '2', ttlS: 86400 },
     { id: 'quote.USDC', wave: 'W13', minNotionalAtomic: '100000', tickAtomic: '1' },
     { id: 'quote.NEAR', wave: 'W13', minNotionalAtomic: '10000000000000000000000', tickAtomic: '1' },
     { id: 'quote.resource', wave: 'W13', minNotionalAtomic: '1', tickAtomic: '1' },
