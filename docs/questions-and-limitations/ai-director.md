@@ -59,3 +59,13 @@
 - **Workaround / mitigation:** `partitionExpired` does not take policy rows. A later repository should implement `DirectorAuditPort` in `backend/app/src/ai/audit/types.ts`. Callers pass `expiresAtMs` (short-lived context, 30-day decision audit); this store does not choose those windows or redact secrets (W16-16).
 - **To resolve:** add a Prisma `DirectorAuditPort` against the generated client, plus attempt and action-result writers, without expiring `director_policy`.
 - **Found:** 2026-11-04, W16-15.
+
+### AI-07 · Global token budget is process-local
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/ai/budget/global.ts` (`GlobalTokenBudget`), `shared/db/prisma/ai.prisma` (`DirectorBudgetDay`)
+- **What happens:** `reserve` / `reconcile` keep spent and outstanding tokens in a `Map` keyed by the day string. Another process, or this process after a restart, does not see those counters, so two workers can each reserve the full daily cap. `reconcile` closes the oldest outstanding reservation of the same token count. A repeat for that count, while another reservation of the same size is still open, closes the other one. Usage above the reservation is added to spent. Dollars are not tracked.
+- **Why it is like this:** W16-08's acceptance is the reservation rule (retry, unknown usage, UTC day) without a database. `DirectorBudgetDay` has no writer.
+- **Workaround / mitigation:** one process. Unknown usage (`actual: null`) charges the full reservation. A reconcile that matches no outstanding reservation does not lower spent. Callers that retry reconcile while another reservation of the same size is open can close the wrong one.
+- **To resolve:** persist the same rules in one transaction (W16-44), with a reservation id so a retry cannot match a different row. The cost ceiling stays a separate check (AI §7).
+- **Found:** 2026-11-04, W16-08.
