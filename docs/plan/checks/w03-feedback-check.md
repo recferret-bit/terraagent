@@ -4,12 +4,13 @@ About 10–15 minutes. Supplement to [the full W03 guide](./w03-check.md); this 
 
 ## Before you start
 
-Use the main stack after W03 lands. The W03 demo was checked against the merged W08, W10 and W12 features, including construction, repair, dismantling, night power and the shared resource extractor.
+W03 landed as `wave-03` (`f655f35`) on 2026-11-04. The main frontend and backend were restarted; health, database readiness and the frontend API proxy passed. The W03 demo was checked against the merged W08, W10 and W12 features, including construction, repair, dismantling, night power and the shared resource extractor.
 
 - **Game:** [fresh W03 colony](http://127.0.0.1:5173/play.html?scenario=w03&skip=1)
 - **Playground:** [model inspection](http://127.0.0.1:5173/playground.html?inspect=building.commandHub)
 - **Backend:** [health](http://127.0.0.1:4001/v1/healthz), [readiness](http://127.0.0.1:4001/v1/readyz)
 - **Checkout:** `/Users/ferretrec/work/TerraAgent` (main).
+- Main may log an old version-1 snapshot rejection at startup (WE-01); the fresh scenario link works and no saved data was deleted.
 - Use the server-backed link above for this check. The earlier browser-local startup issue remains tracked as FF-80.
 - Open the **in-game dev console** with the **backtick key (`)** under Esc. Enter commands one line at a time, press Enter, then close it with backtick. This is not browser DevTools.
 - **B** opens Build; **U** opens Production; **Esc** cancels placement. Click **QUEUE** to watch construction.
@@ -137,6 +138,12 @@ Run `warp 1` and watch the wind indicator for several minutes.
 ## Validation and reporting
 
 The merged implementation passed 2,045 unit tests (one skipped), all 94 database integration tests, 20 contract tests, both client/server parity scenarios, repository checks and the production build. All 14 building archetypes passed with zero errors/warnings; all 48 validator self-tests passed. Model four-view checks were inspected across all three biomes.
+
+Post-landing verification on main: **64 browser checks passed, 6 existing skips** across waves 00–12; W04 was rerun after correcting its live-world repaint assertion (XC-39). **2,045 unit tests passed, 1 skipped** with `npm test -- --maxWorkers=2`, and the production build passed. The initial concurrent unit/browser run hit timing limits; the sequential run passed without changing timeouts. Vite retains its existing large-chunk warning.
+
+The live main game also passed day/night cable checks with a completed pylon: opposite cyan/yellow directions, yellow consumer demand, and solar pulses off at night/on by day, with no JavaScript errors.
+
+Validation logs: `/private/tmp/ta-main-unit-final.log`, `/private/tmp/ta-main-e2e.log`, `/private/tmp/ta-main-map-e2e.log`, `/private/tmp/ta-main-build-final.log`.
 
 Report the **step number**, what you expected, and what appeared instead. Keep the tab open if something fails so the scenario can be inspected.
 

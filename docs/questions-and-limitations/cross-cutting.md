@@ -512,3 +512,13 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Workaround / mitigation:** The W01 flow verifies that the authenticated game view arrives afterward.
 - **To resolve:** No runtime change required.
 - **Found:** 2026-11-04, merged W01 browser check.
+
+### XC-39 · Live map repaint batches include active workers
+
+- **Status:** Accepted (live simulation)
+- **Area / code:** `tests/e2e/w04.spec.ts`, `frontend/game/maps/rasterCache.spec.ts`
+- **What happens:** Adding one deposit in a running scenario can coincide with harvesting or exploration changes, so the next minimap update may repaint several tiles. An exact `dirtyTiles === 1` browser assertion depends on timing.
+- **Why it is like this:** Synced updates batch all changed tiles while the world continues running.
+- **Workaround / mitigation:** The browser check verifies new repaint work and fewer repaints than the full map. The stationary raster-cache unit fixture still requires exactly one repaint for one changed tile.
+- **To resolve:** No runtime change needed.
+- **Found:** 2026-11-04, post-landing main browser suite.

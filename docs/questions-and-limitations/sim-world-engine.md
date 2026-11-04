@@ -28,6 +28,8 @@ Format: [README](./README.md).
 - **Found:** 2026-11-01, world/engine review
 - **Fix:** applied the recommendation: the rule is written next to `SIM_VERSION` (`shared/sim/src/kernel/constants.ts`): no non-dev planet was saved at v1, pre-W01 saves are discarded, and from the first real planet on every bump registers a migration. No behaviour change, no test.
 
+- **W03 landing follow-up (2026-11-04):** Main startup logged the same version-1 restore rejection for `pl_00000000000000000000000000`. Health and database readiness pass, and a fresh W03 scenario reaches gameplay. Existing saved data was left untouched; use the fresh scenario owner-check link.
+
 ### WE-02 · The `GEN_VERSION` fingerprint pins only the desert profile and three layers
 
 - **Status:** Resolved (review-fix round 2026-11-01)
