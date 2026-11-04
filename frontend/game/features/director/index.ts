@@ -1,5 +1,6 @@
 import { defineFeature } from '../../core/registry/types';
 import { DirectorPanel } from './DirectorPanel';
+import { directorDevCommands } from './devCommands';
 import './director.css';
 
 export { DirectorPanel } from './DirectorPanel';
@@ -21,4 +22,5 @@ export default defineFeature({
       return { dispose() { panel.dispose(); } };
     },
   }],
+  devCommands: directorDevCommands(import.meta.env.PROD ? 'production' : 'development'),
 });
