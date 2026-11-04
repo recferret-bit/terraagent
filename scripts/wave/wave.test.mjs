@@ -207,3 +207,14 @@ test('wave:check prints the owner check guide (or the demo story) and the worktr
   assert.match(r.out, /http:\/\/127\.0\.0\.1:5273\/play\.html\?scenario=w00/);
   assert.ok(readFileSync(join(sb.wt('w00'), 'infra', '.env.worktree'), 'utf8').includes('4100'));
 });
+
+test('wave accepts wave id directly or with W prefix (e.g. W00, 00)', () => {
+  const sb = makeSandbox();
+  const r1 = sb.run(['W00', '--dry-run']);
+  assert.equal(r1.status, 0, r1.out);
+  assert.match(r1.out, /would open W00/);
+
+  const r2 = sb.run(['next', 'W00', '--dry-run']);
+  assert.equal(r2.status, 0, r2.out);
+  assert.match(r2.out, /would open W00/);
+});

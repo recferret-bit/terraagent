@@ -11,6 +11,7 @@ import type { NetStatsBoard } from '../../net/netStats';
 import type { Transport } from '../../net/types';
 import type { LocalHost } from '../../store/local/LocalHost';
 import type { WorldStore } from '../../store/WorldStore';
+import type { RTSCamera } from '../RTSCamera';
 import { FeatureHud } from './featureHud';
 
 /** What the feature HUD reads from the online session; the getters are read on every use (live values). */
@@ -34,6 +35,9 @@ export interface SessionHudDeps {
   /** Own colony index (changes when the boot seats the colony). */
   colonyIndex(): number;
   pickAt(clientX: number, clientY: number): HexPick | null;
+  camera?(): THREE.PerspectiveCamera;
+  rtsCamera?(): RTSCamera | null;
+  focusTile?(q: number, r: number, snap?: boolean): void;
   /** Identity chip (W06). The session bridge; the panel subscribes. */
   pilot: FeatureServices['pilot'];
 }
@@ -60,11 +64,14 @@ export function createSessionHud(d: SessionHudDeps): FeatureHud {
     scene3d, netStats: d.netStats, transport: d.transport, store: d.store,
     getView: () => d.store.latest ?? undefined,
     landfall: d.landfall, pickTile: (cx, cy) => d.pickAt(cx, cy), canvas: d.canvas, surface: d.canvas,
+    focusTile: d.focusTile,
     pilot: d.pilot,
   };
   Object.defineProperties(services, {
     colonyId: { get: d.colonyIndex, enumerable: true, configurable: true },
     hexTerrain: { get: d.terrain, enumerable: true, configurable: true },
+    camera: { get: () => d.camera?.() ?? null, enumerable: true, configurable: true },
+    rtsCamera: { get: () => d.rtsCamera?.() ?? null, enumerable: true, configurable: true },
   });
   return new FeatureHud(d.uiParent, d.flags, d.local ? 'local' : 'server', services);
 }

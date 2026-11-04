@@ -1,0 +1,272 @@
+/* Full-screen backdrop: flat, half-transparent, blurred view of the live scene (GPU backdrop blur, no per-frame JS). */
+.ta-global-map {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(7, 8, 10, 0.45);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  color: var(--ta-text);
+  font-family: var(--ta-font-body);
+  pointer-events: auto;
+  user-select: none;
+}
+
+.ta-global-map[hidden] {
+  display: none;
+}
+
+/* Pop-up dialog: 80 % of the screen, chamfered plate with a visible border (diagonal seams drawn by the pseudo-elements). */
+.ta-global-map__dialog {
+  --gm-border: var(--ta-seam-3);
+  --gm-chamfer: var(--ta-chamfer-m);
+  position: relative;
+  width: 80vw;
+  height: 80vh;
+  display: flex;
+  flex-direction: column;
+  background: rgba(11, 13, 17, 0.6);
+  border: 2px solid var(--gm-border);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.5);
+}
+
+.ta-global-map__dialog::before,
+.ta-global-map__dialog::after {
+  content: "";
+  position: absolute;
+  z-index: 2;
+  width: calc(var(--gm-chamfer) * 1.4142 + 2px);
+  height: 2px;
+  background: var(--gm-border);
+  transform-origin: 0 0;
+  transform: rotate(-45deg);
+  pointer-events: none;
+}
+
+.ta-global-map__dialog::before {
+  left: -2px;
+  top: calc(var(--gm-chamfer) - 2px);
+}
+
+.ta-global-map__dialog::after {
+  left: calc(100% + 2px);
+  top: calc(100% + 2px - var(--gm-chamfer));
+  transform: rotate(135deg);
+}
+
+.ta-global-map__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s3);
+  padding: var(--ta-s3) var(--ta-s4) var(--ta-s3) calc(var(--ta-s4) + var(--ta-s2));
+  background: rgba(17, 19, 24, 0.75);
+  border-bottom: 1px solid var(--ta-seam-2);
+  flex-wrap: wrap;
+}
+
+.ta-global-map__title-group {
+  display: flex;
+  align-items: baseline;
+  gap: var(--ta-s2);
+}
+
+.ta-global-map__eyebrow {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-eyebrow);
+  color: var(--ta-orange);
+  text-transform: uppercase;
+}
+
+.ta-global-map__title {
+  margin: 0;
+  font-family: var(--ta-font-display);
+  font-size: var(--ta-fs-h3);
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--ta-text);
+}
+
+.ta-global-map__chips {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  flex-wrap: wrap;
+}
+
+.ta-global-map__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ta-s1);
+  padding: 6px 12px;
+  border: 1px solid var(--ta-seam-3);
+  background: var(--ta-plate-2);
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  text-transform: uppercase;
+  cursor: pointer;
+  clip-path: polygon(
+    var(--ta-chamfer-s) 0,
+    100% 0,
+    100% calc(100% - var(--ta-chamfer-s)),
+    calc(100% - var(--ta-chamfer-s)) 100%,
+    0 100%,
+    0 var(--ta-chamfer-s)
+  );
+  transition: background var(--ta-dur-quick) ease,
+    color var(--ta-dur-quick) ease,
+    border-color var(--ta-dur-quick) ease;
+}
+
+.ta-global-map__chip[data-active="true"] {
+  background: var(--ta-orange);
+  color: var(--ta-void);
+  border-color: var(--ta-orange-hi);
+}
+
+.ta-global-map__chip:hover {
+  border-color: var(--ta-orange);
+}
+
+.ta-global-map__close {
+  min-height: 36px;
+  padding: 6px 14px;
+}
+
+.ta-global-map__body {
+  flex: 1 1 auto;
+  display: flex;
+  min-height: 0;
+  position: relative;
+  overflow: hidden;
+}
+
+.ta-global-map__stage {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  position: relative;
+  overflow: hidden;
+  touch-action: none;
+}
+
+.ta-global-map__canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: transparent;
+  border: 0;
+  cursor: grab;
+  outline: none;
+}
+
+.ta-global-map__canvas:active {
+  cursor: grabbing;
+}
+
+.ta-global-map__legend {
+  position: absolute;
+  top: var(--ta-s3);
+  right: var(--ta-s3);
+  bottom: var(--ta-s3);
+  width: 220px;
+  background: rgba(21, 26, 34, 0.78);
+  border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--ta-s2);
+  overflow-y: auto;
+}
+
+.ta-global-map__legend-title {
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-eyebrow);
+  font-weight: 600;
+  letter-spacing: var(--ta-track-label);
+  color: var(--ta-steel);
+  text-transform: uppercase;
+  margin-bottom: var(--ta-s1);
+}
+
+.ta-global-map__legend-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text-2);
+}
+
+.ta-global-map__legend-swatch {
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  border: 1px solid var(--ta-seam-3);
+  clip-path: polygon(
+    3px 0,
+    100% 0,
+    100% calc(100% - 3px),
+    calc(100% - 3px) 100%,
+    0 100%,
+    0 3px
+  );
+}
+
+.ta-global-map__legend-swatch--dot {
+  clip-path: circle(50%);
+  border-color: rgba(11, 14, 19, 0.9);
+}
+
+.ta-global-map__readout {
+  position: absolute;
+  left: var(--ta-s3);
+  bottom: var(--ta-s3);
+  display: flex;
+  align-items: center;
+  gap: var(--ta-s3);
+  flex-wrap: wrap;
+  padding: var(--ta-s2) var(--ta-s3);
+  background: rgba(21, 26, 34, 0.78);
+  border: 1px solid var(--ta-seam-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  color: var(--ta-text);
+  pointer-events: auto;
+}
+
+.ta-global-map__readout-text {
+  font-variant-numeric: tabular-nums;
+  white-space: pre;
+}
+
+.ta-global-map__recenter {
+  padding: 3px 10px;
+  border: 1px solid var(--ta-seam-3);
+  background: var(--ta-plate-2);
+  color: var(--ta-text-2);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-label);
+  cursor: pointer;
+}
+
+.ta-global-map__recenter:hover {
+  border-color: var(--ta-orange);
+  color: var(--ta-orange);
+}
+
+.ta-global-map__hint {
+  color: var(--ta-steel);
+  font-size: var(--ta-fs-eyebrow);
+  letter-spacing: var(--ta-track-label);
+}

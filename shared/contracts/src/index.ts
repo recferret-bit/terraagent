@@ -12,3 +12,4 @@ export * from './rest';
 export * from './precheck';
 export * from './progression';
 export * from './profile';
+export * from './maps';
