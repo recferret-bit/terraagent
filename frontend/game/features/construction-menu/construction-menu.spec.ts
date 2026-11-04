@@ -133,12 +133,60 @@ describe('buildConstructionCatalog - enabled waves', () => {
 
     expect(solar.building).toBe('solar');
     expect(solar.label).toBe('Solar Collector Array');
+    expect(solar.category).toBe('Power');
     expect(solar.footprintText).toBe('2×2');
     expect(solar.designBuildS).toBe(18);
     expect(solar.hqBuildS).toBe(12);
     expect(solar.powerText).toBe('+20 E/s');
     expect(solar.cost).toEqual({ 'metals.t1': 60, 'minerals.t1': 75, 'bio.biomass': 10, 'bio.water': 5 });
     expect(solar.disabled).toBe(false);
+  });
+
+  it('includes tradeHub when W10 is enabled and evaluates stage/contact unlock rules', () => {
+    const flagsW10 = new Set(['W00', 'W01', 'W02', 'W10']);
+    const catalogS1 = buildConstructionCatalog(flagsW10);
+    expect(catalogS1).toHaveLength(4);
+    const tradeHubS1 = catalogS1[3];
+    expect(tradeHubS1.building).toBe('tradeHub');
+    expect(tradeHubS1.label).toBe('Inter-Colony Trade Hub');
+    expect(tradeHubS1.category).toBe('Economy');
+    expect(tradeHubS1.footprintW).toBe(2);
+    expect(tradeHubS1.footprintD).toBe(2);
+    expect(tradeHubS1.footprintText).toBe('2×2');
+    expect(tradeHubS1.designBuildS).toBe(22);
+    expect(tradeHubS1.hqBuildS).toBe(14.7);
+    expect(tradeHubS1.powerText).toBe('−6 E/s');
+    expect(tradeHubS1.cost).toEqual({ 'metals.t1': 100, 'minerals.t1': 80, 'bio.biomass': 30, 'bio.water': 10 });
+    expect(tradeHubS1.disabled).toBe(true);
+    expect(tradeHubS1.disabledReason).toBe('Requires Stage 2 + Neighbor Contact (or S5)');
+    expect(tradeHubS1.unlockHint).toBe('Requires Stage 2 + Neighbor Contact (or S5)');
+
+    const catalogS2 = buildConstructionCatalog(flagsW10, { colonies: [{ stage: 2 }] });
+    const tradeHubS2 = catalogS2.find((c) => c.building === 'tradeHub')!;
+    expect(tradeHubS2.disabled).toBe(false);
+    expect(tradeHubS2.unlockHint).toBe('Enables orbital cargo export/import (250/min)');
+
+    const catalogS2NoAuto = buildConstructionCatalog(flagsW10, {
+      colonies: [{ stage: 2, tradeHubAtS2: false }],
+    });
+    const tradeHubS2Locked = catalogS2NoAuto.find((c) => c.building === 'tradeHub')!;
+    expect(tradeHubS2Locked.disabled).toBe(true);
+    expect(tradeHubS2Locked.disabledReason).toBe('Requires Neighbor Contact, Guild Visit, or Stage 5');
+
+    const catalogContact = buildConstructionCatalog(flagsW10, {
+      colonies: [{ stage: 2, tradeHubAtS2: false, neighborContact: true }],
+    });
+    expect(catalogContact.find((c) => c.building === 'tradeHub')!.disabled).toBe(false);
+
+    const catalogGuild = buildConstructionCatalog(flagsW10, {
+      colonies: [{ stage: 1, guildVisit: true }],
+    });
+    expect(catalogGuild.find((c) => c.building === 'tradeHub')!.disabled).toBe(false);
+
+    const catalogS5 = buildConstructionCatalog(flagsW10, {
+      colonies: [{ stage: 5, tradeHubAtS2: false }],
+    });
+    expect(catalogS5.find((c) => c.building === 'tradeHub')!.disabled).toBe(false);
   });
 });
 

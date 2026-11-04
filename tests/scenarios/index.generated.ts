@@ -5,6 +5,7 @@ import scn_w01_landfall from './w01-landfall';
 import scn_w02_first_light from './w02-first-light';
 import scn_w04_maps_camera from './w04-maps-camera';
 import scn_w06_invisible_chain from './w06-invisible-chain';
+import scn_w10_cargo_trade_hub from './w10-cargo-trade-hub';
 import scn_w12_profile from './w12-profile';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
@@ -13,5 +14,6 @@ export const SCENARIOS: readonly { readonly file: string; readonly def: Scenario
   { file: 'w02-first-light', def: scn_w02_first_light },
   { file: 'w04-maps-camera', def: scn_w04_maps_camera },
   { file: 'w06-invisible-chain', def: scn_w06_invisible_chain },
+  { file: 'w10-cargo-trade-hub', def: scn_w10_cargo_trade_hub },
   { file: 'w12-profile', def: scn_w12_profile },
 ];

@@ -5,6 +5,7 @@ import { defineEnv } from '@terra/config';
 import type { Server } from 'node:http';
 import { z } from 'zod';
 import { AuthTokenService } from '../core/auth/auth-token.service';
+import { EventBus } from '../bus/event-bus';
 import { CoreModule } from '../core/core.module';
 import { HomeRepository } from '../core/home/home.repository';
 import { HomeService } from '../core/home/home.service';
@@ -65,7 +66,7 @@ export const env = defineEnv('ws', {
     },
     {
       provide: WsGateway,
-      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS, HOME_PROVIDER, { token: PRISMA, optional: true }],
+      inject: [APP_ENV, LOGGER, MetricsRegistry, FlagsService, GamePlanets, SESSION_VERIFIER, COMMAND_INGRESS, HOME_PROVIDER, { token: PRISMA, optional: true }, { token: EventBus, optional: true }],
       useFactory: (
         e: AppEnv,
         root: RootLogger,
@@ -76,12 +77,14 @@ export const env = defineEnv('ws', {
         ingress: CommandIngress,
         home: HomeProvider,
         prisma?: PrismaClient,
+        bus?: EventBus,
       ) =>
         new WsGateway({
           env: e, planets, verifier, ingress, home, flags: flags.list, registry: m.registry,
           log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
           helloTimeoutMs: Number(e.WS_HELLO_TIMEOUT_MS), idleTimeoutMs: Number(e.WS_IDLE_TIMEOUT_MS),
           seatDevScenario: prisma && databaseEnabled(e) ? (input) => seatDevScenarioPlayer(prisma, input) : undefined,
+          bus,
         }),
     },
   ],

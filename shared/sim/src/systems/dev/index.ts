@@ -225,8 +225,16 @@ const skipnight = defineCommandHandler({
 const power = defineCommandHandler({
   kind: 'dev.power', wave: 'W02',
   handle(s, c, ctx) {
-    const args = (c.args ?? {}) as { colonyIndex?: number };
+    const args = (c.args ?? {}) as { colonyIndex?: number; supplyOverride?: number | null };
     const colonyIndex = args.colonyIndex ?? c.colonyIndex ?? 0;
+    if (args.supplyOverride !== undefined) {
+      const col = ensureColony(s, colonyIndex, ctx.tick);
+      col.powerSupplyOverride =
+        typeof args.supplyOverride === 'number' && Number.isFinite(args.supplyOverride) && args.supplyOverride >= 0
+          ? args.supplyOverride
+          : null;
+      recomputeAllColonyPower(s, ctx.data, ctx.tick);
+    }
     const summary = evaluateColonyPower(s, colonyIndex, ctx.data, ctx.tick);
     ctx.emit({ kind: 'dev.powerDump', colonyIds: [colonyIndex], data: { ...(summary as unknown as Record<string, unknown>) } });
   },

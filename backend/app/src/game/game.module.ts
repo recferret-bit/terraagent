@@ -89,6 +89,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
   exports: [GamePlanets, ProgressionEventForwarder, SnapshotService],
 })
 export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown {
+  private unsubBridge: (() => void) | undefined;
   private unsubHomeSeat: (() => void) | undefined;
   private unsubRecovery: (() => void) | undefined;
   private readonly log: Logger;
@@ -111,7 +112,7 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
 
   async onApplicationBootstrap(): Promise<void> {
     await this.pool.start();
-    bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
+    this.unsubBridge = bridgePlanetEvents(this.planets, this.bus, this.progressionForwarder, this.log);
     const home = this.homeService;
     if (home) {
       const host = gameSeatHost(this.snapshots, this.planets, this.log, (a) => home.adoptLateLanding(a));
@@ -165,6 +166,8 @@ export class GameModule implements OnApplicationBootstrap, OnApplicationShutdown
   }
 
   async onApplicationShutdown(): Promise<void> {
+    this.unsubBridge?.();
+    this.unsubBridge = undefined;
     this.unsubHomeSeat?.();
     this.unsubHomeSeat = undefined;
     this.unsubRecovery?.();

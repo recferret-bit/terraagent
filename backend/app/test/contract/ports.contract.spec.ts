@@ -25,7 +25,12 @@ function selectedPorts(raw: string | undefined): ReadonlySet<string> | null {
 
 const only = process.env.CONTRACT_PORT;
 const selected = selectedPorts(only);
-const found = (await discoverContracts()).filter((c) => selected === null || selected.has(c.contract.port.toLowerCase()));
+const found = (await discoverContracts()).filter((c) => {
+  if (selected === null) return true;
+  const portLower = c.contract.port.toLowerCase();
+  const stem = c.file.split('/').pop()?.replace(/\.contract\.ts$/, '').toLowerCase() ?? '';
+  return selected.has(portLower) || selected.has(stem);
+});
 
 let db: TestDatabase;
 let app: INestApplication;

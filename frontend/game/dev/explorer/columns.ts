@@ -6,6 +6,10 @@ export interface TabDef { id: TabId; label: string; empty: string; key: (r: Row)
 const s = (v: unknown): string => (v === null || v === undefined ? '' : typeof v === 'string' ? v : JSON.stringify(v));
 const short = (v: unknown, n = 48): string => { const t = s(v); return t.length > n ? `${t.slice(0, n - 1)}…` : t; };
 const receiptHref = (hash: string): string | null => (hash ? `/dev/chain/tx/${encodeURIComponent(hash)}` : null);
+const fmtBalance = (r: Row): string => {
+  const raw = s(r.amount);
+  return /^\d{19,}$/.test(raw) && raw.endsWith('000000000000000000') && s(r.tokenId).includes('.') ? `${raw.slice(0, -18)} (${raw})` : raw;
+};
 
 export function age(ms: unknown, now = Date.now()): string {
   const d = Math.max(0, Math.round((now - Number(ms)) / 1000));
@@ -29,7 +33,7 @@ export const TABS: TabDef[] = [
       { head: 'OWNER', cell: (r) => s(r.ownerAccountId) },
     ] },
   { id: 'balances', label: 'Balances', empty: 'No balances.', key: (r) => `${s(r.accountId)}|${s(r.tokenId)}|${s(r.amount)}`,
-    columns: [{ head: 'ACCOUNT', cell: (r) => s(r.accountId) }, { head: 'TOKEN', cell: (r) => s(r.tokenId) }, { head: 'AMOUNT', cell: (r) => s(r.amount), cls: 'num' }] },
+    columns: [{ head: 'ACCOUNT', cell: (r) => s(r.accountId) }, { head: 'TOKEN', cell: (r) => s(r.tokenId) }, { head: 'AMOUNT', cell: (r) => fmtBalance(r), cls: 'num' }] },
   { id: 'nfts', label: 'NFTs', empty: 'No NFTs.', key: (r) => `${s(r.collection)}|${s(r.tokenId)}|${s(r.updatedAt)}`,
     columns: [
       { head: 'COLLECTION', cell: (r) => s(r.collection) }, { head: 'TOKEN', cell: (r) => short(r.tokenId, 36) }, { head: 'OWNER', cell: (r) => s(r.ownerAccountId) },

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Module, type BeforeApplicationShutdown, type OnApplicationBootstrap } from '@nestjs/common';
+import { Inject, Injectable, Module, Optional, type BeforeApplicationShutdown, type OnApplicationBootstrap } from '@nestjs/common';
 import { ModuleRef } from '@nestjs/core';
 import { defineEnv, envFlagTrue } from '@terra/config';
 import type { Logger } from 'pino';
@@ -7,6 +7,7 @@ import { z } from 'zod';
 import { layerLogger } from '../../../core/logging/logger.js';
 import { MetricsRegistry } from '../../../core/metrics.registry.js';
 import { APP_ENV, LOGGER, type AppEnv } from '../../../core/tokens.js';
+import { CargoRelaySettlementService } from '../../cargo/cargo-relay-settlement.js';
 import { PORTS } from '../ports/index.js';
 import { ChainOutboxRepository } from './chain-outbox.repository.js';
 import { OutboxRelay, type OutboxRelayConfig } from './outbox-relay.js';
@@ -16,7 +17,7 @@ const num = (d: number) => z.string().optional().transform((v) => (v === undefin
 /** `OUTBOX_RELAY_ENABLED`: `true`/`false`; unset = on, except under tests (`NODE_ENV=test`). */
 export const env = defineEnv('chain-outbox', {
   OUTBOX_RELAY_ENABLED: z.string().optional(),
-  OUTBOX_POLL_MS: num(1000),
+  OUTBOX_POLL_MS: num(250),
   OUTBOX_LEASE_MS: num(30_000),
   OUTBOX_MAX_ATTEMPTS: num(8),
 });
@@ -31,15 +32,22 @@ export function relayEnabled(e: { OUTBOX_RELAY_ENABLED?: unknown; NODE_ENV?: unk
 @Injectable()
 export class OutboxRelayService implements OnApplicationBootstrap, BeforeApplicationShutdown {
   private readonly log: Logger;
-  private readonly relay: OutboxRelay;
+  readonly relay: OutboxRelay;
   private readonly enabled: boolean;
 
-  constructor(repo: ChainOutboxRepository, ref: ModuleRef, metrics: MetricsRegistry, @Inject(APP_ENV) appEnv: AppEnv, @Inject(LOGGER) root: Logger) {
+  constructor(
+    repo: ChainOutboxRepository,
+    ref: ModuleRef,
+    metrics: MetricsRegistry,
+    @Inject(APP_ENV) appEnv: AppEnv,
+    @Inject(LOGGER) root: Logger,
+    @Optional() settlement?: CargoRelaySettlementService,
+  ) {
     const e = appEnv as unknown as Record<string, number | string | undefined>;
     this.log = layerLogger(root, 'infra', appEnv.LOG_LEVELS as string | undefined);
     this.enabled = relayEnabled(e);
     const cfg: OutboxRelayConfig = {
-      pollMs: Number(e.OUTBOX_POLL_MS ?? 1000), leaseMs: Number(e.OUTBOX_LEASE_MS ?? 30_000), maxAttempts: Number(e.OUTBOX_MAX_ATTEMPTS ?? 8),
+      pollMs: Number(e.OUTBOX_POLL_MS ?? 250), leaseMs: Number(e.OUTBOX_LEASE_MS ?? 30_000), maxAttempts: Number(e.OUTBOX_MAX_ATTEMPTS ?? 8),
       batch: 10, backoffBaseMs: 1000, backoffMaxMs: 600_000,
     };
     const registers = [metrics.registry];
@@ -54,8 +62,16 @@ export class OutboxRelayService implements OnApplicationBootstrap, BeforeApplica
         return ref.get(token, { strict: false });
       },
       onResult: (port, status) => relayed.inc({ port, status }),
+      onRowDone: (row, res, txHash) => settlement?.onOutboxRowDone(row, res, txHash),
+      onRowFailed: (row, err, dead) => settlement?.onOutboxRowFailed(row, err, dead),
+      maxAttemptsFor: (row, def) => (row.port === 'CargoToken' ? Math.min(def, 2) : def),
+      backoffBaseMsFor: (row, def) => (row.port === 'CargoToken' ? Math.min(def, 150) : def),
       onError: (row, err) => this.log.warn({ opId: row?.opId, port: row?.port, attempts: row?.attempts, err: err instanceof Error ? err.message : String(err) }, 'outbox relay error'),
     });
+  }
+
+  pollOnce(): Promise<number> {
+    return this.relay.pollOnce();
   }
 
   onApplicationBootstrap(): void {
@@ -69,5 +85,8 @@ export class OutboxRelayService implements OnApplicationBootstrap, BeforeApplica
   }
 }
 
-@Module({ providers: [ChainOutboxRepository, OutboxRelayService], exports: [ChainOutboxRepository] })
+@Module({
+  providers: [ChainOutboxRepository, CargoRelaySettlementService, OutboxRelayService],
+  exports: [ChainOutboxRepository, CargoRelaySettlementService, OutboxRelayService],
+})
 export class OutboxModule {}

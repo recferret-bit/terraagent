@@ -5,6 +5,8 @@ import type { Logger } from 'pino';
 import { Counter, Gauge, type Registry } from 'prom-client';
 import { WebSocketServer } from 'ws';
 import { corsOrigin } from '../core/cors';
+import type { EventBus } from '../bus/event-bus';
+import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service';
 import type { AppEnv } from '../core/tokens';
 import type { GamePlanets } from '../game/game-planets.service';
 import type { CommandIngress } from './command-ingress';
@@ -27,6 +29,7 @@ export interface GatewayOptions {
   readonly registry: Registry;
   readonly helloTimeoutMs: number;
   readonly idleTimeoutMs: number;
+  readonly bus?: EventBus;
 }
 
 /** `/ws` upgrade handling, origin allow-list, connection registry and the one-planet-socket-per-player rule (WS-13). */
@@ -40,6 +43,7 @@ export class WsGateway {
   private detach: (() => void) | undefined;
   private readonly unwarp: () => void;
   private readonly undown: () => void;
+  private readonly uncargo: (() => void) | undefined;
 
   constructor(private readonly o: GatewayOptions) {
     this.rooms = new PlanetRooms(o.planets);
@@ -51,6 +55,7 @@ export class WsGateway {
     this.undown = o.planets.onPlanetDown((planetId) => {
       for (const c of [...this.conns]) if (c.planetId === planetId) c.bye(CLOSE_CODES.server_restarting, 'planet_down');
     });
+    this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
     const conns = this.conns;
     new Gauge({ name: 'ta_ws_connections', help: 'Open WebSocket connections', registers: [o.registry], collect() { this.set(conns.size); } });
     this.welcomes = new Counter({ name: 'ta_planet_ws_welcome_total', help: 'welcome messages sent', registers: [o.registry] });
@@ -98,11 +103,28 @@ export class WsGateway {
     if (older && older !== c) older.bye(CLOSE_CODES.replaced, 'replaced');
   }
 
+  private broadcastCargoStatus(ev: NearCargoStatusBusEvent): void {
+    const frame = encodeWire({ v: 1, t: 'cargo.status', d: ev.status });
+    if (ev.planetId) this.rooms.broadcast(ev.planetId, frame);
+    for (const c of this.conns) {
+      if (ev.planetId && c.planetId === ev.planetId && c.welcomeTick !== undefined) continue;
+      if (
+        !ev.planetId ||
+        (ev.playerId && c.playerId === ev.playerId) ||
+        (c.colonyId && c.colonyId === ev.colonyId) ||
+        c.session?.dev
+      ) {
+        c.send(frame);
+      }
+    }
+  }
+
   /** Shutdown: `bye 4012` to everyone, then wait briefly for the closing handshakes. Must run before the sim threads stop. */
   async closeAll(graceMs = 1000): Promise<void> {
     this.detach?.();
     this.unwarp();
     this.undown();
+    this.uncargo?.();
     const all = [...this.conns];
     for (const c of all) c.bye(CLOSE_CODES.server_restarting, 'server_restarting');
     await new Promise<void>((resolve) => {

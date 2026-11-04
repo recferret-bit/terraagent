@@ -412,6 +412,155 @@
       "summary": "Cancels a queued or in-progress order (refunds 75 % if in progress and cancels linked prep, UO-Q-02 / UO-TF-03).",
       "wave": "W01"
     },
+    "cargo.export": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Exports `amount` whole units of `resource` from colony stock to orbital NEP-245 custody via an online Trade Hub (W10-01, NEAR-50).",
+      "wave": "W10"
+    },
+    "cargo.import": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Imports `amount` whole units of `resource` from orbital NEP-245 custody into colony stock via an online Trade Hub (W10-01, NEAR-51).",
+      "wave": "W10"
+    },
+    "cargo.settled": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "direction": {
+            "enum": [
+              "export",
+              "import"
+            ],
+            "type": "string"
+          },
+          "error": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "txHash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Module command from the NEAR outbox relay settling an export or import (`ok:true` finalises; `ok:false` refunds or releases reservation, W10-07 / W10-12).",
+      "wave": "W10"
+    },
     "demolish": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -431,6 +580,94 @@
       "origin": "client",
       "summary": "Demolishes an owned finished structure and refunds 50 % of its cost while keeping tiles Prepared (UO-Q-02, W02-09).",
       "wave": "W02"
+    },
+    "dev.cargoCapReset": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colony": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`cargo.cap.reset <colony>`): clears the rolling 60 s and UTC-day cargo mint counters for the colony (W10-26).",
+      "wave": "W10"
+    },
+    "dev.cargoGrant": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "colony": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`cargo.grant <colony> <res> <amt>`): grants or adjusts in-orbit cargo balance for the colony (W10-26).",
+      "wave": "W10"
     },
     "dev.cell": {
       "args": {
@@ -452,6 +689,27 @@
       "origin": "client",
       "summary": "Dev console: sets the colony HQ power cell energy to `energy` (clamped to cell capacity).",
       "wave": "W01"
+    },
+    "dev.contactFake": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`contact.fake`): fakes neighbour/Guild contact on the colony so Trade Hub unlock can be tested below Stage 5 (W10-03).",
+      "wave": "W10"
     },
     "dev.fill": {
       "args": {
@@ -654,13 +912,19 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "supplyOverride": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         },
         "type": "object"
       },
       "dev": true,
       "origin": "client",
-      "summary": "Dev console: dumps the colony power grid component balance and shed states (W02-30).",
+      "summary": "Dev console: dumps or overrides the colony power grid component balance and shed states (W02-30, W10-30).",
       "wave": "W02"
     },
     "dev.reveal": {
@@ -870,6 +1134,39 @@
       "origin": "client",
       "summary": "Dev command to configure the planet time of day (0..24h or `day`/`night`/`hh:mm`), real hours per day, and time scale without requiring a seated colony.",
       "wave": "W00"
+    },
+    "dev.tradehubSpawn": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "tier": {
+            "maximum": 3,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`tradehub.spawn`): spawns an instant completed online Trade Hub for the caller colony (W10-26).",
+      "wave": "W10"
     },
     "enqueueTask": {
       "args": {
@@ -1760,6 +2057,209 @@
       "summary": "Emitted when construction of a structure reaches 100 % completion (W01-16, W02-17, W02-28).",
       "wave": "W01"
     },
+    "cargoExported": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exportSeq": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "txHash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref",
+          "exportSeq",
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Colony stock was debited for export into orbital NEP-245 custody; triggers outbox mint on the server (W10-01, W10-05).",
+      "wave": "W10"
+    },
+    "cargoImported": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "importSeq": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "phase": {
+            "enum": [
+              "requested",
+              "settled"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "txHash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref",
+          "importSeq",
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Orbital cargo import requested or settled into colony stock (W10-01, W10-12).",
+      "wave": "W10"
+    },
+    "cargoRefunded": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "direction": {
+            "enum": [
+              "export",
+              "import"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref",
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A failed orbital cargo export was refunded to colony stock (even above cap) or a failed import reservation was released (W10-01, W10-07).",
+      "wave": "W10"
+    },
     "colonyFounded": {
       "audience": "player",
       "data": {
@@ -2622,6 +3122,362 @@
       ],
       "type": "object"
     },
+    "cargo.status": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "colonyId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "dailyCap": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "hubOnline": {
+              "type": "boolean"
+            },
+            "hubTier": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "hubUnlocked": {
+              "type": "boolean"
+            },
+            "inOrbit": {
+              "additionalProperties": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "propertyNames": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "mintCapPerDay": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "mintedToday": {
+              "additionalProperties": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "propertyNames": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "pending": {
+              "items": {
+                "properties": {
+                  "amount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "dir": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "ref": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "metals.t2",
+                      "metals.t3",
+                      "minerals.t1",
+                      "minerals.t2",
+                      "minerals.t3",
+                      "bio.water",
+                      "bio.biomass",
+                      "bio.t2",
+                      "bio.t3"
+                    ],
+                    "type": "string"
+                  },
+                  "seq": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "enum": [
+                      "PENDING",
+                      "SENT",
+                      "FINAL",
+                      "FAILED"
+                    ],
+                    "type": "string"
+                  },
+                  "txHash": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ref",
+                  "resource",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "pendingExport": {
+              "items": {
+                "properties": {
+                  "amount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "dir": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "ref": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "metals.t2",
+                      "metals.t3",
+                      "minerals.t1",
+                      "minerals.t2",
+                      "minerals.t3",
+                      "bio.water",
+                      "bio.biomass",
+                      "bio.t2",
+                      "bio.t3"
+                    ],
+                    "type": "string"
+                  },
+                  "seq": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "enum": [
+                      "PENDING",
+                      "SENT",
+                      "FINAL",
+                      "FAILED"
+                    ],
+                    "type": "string"
+                  },
+                  "txHash": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ref",
+                  "resource",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "pendingImport": {
+              "items": {
+                "properties": {
+                  "amount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "dir": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "ref": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "metals.t2",
+                      "metals.t3",
+                      "minerals.t1",
+                      "minerals.t2",
+                      "minerals.t3",
+                      "bio.water",
+                      "bio.biomass",
+                      "bio.t2",
+                      "bio.t3"
+                    ],
+                    "type": "string"
+                  },
+                  "seq": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "enum": [
+                      "PENDING",
+                      "SENT",
+                      "FINAL",
+                      "FAILED"
+                    ],
+                    "type": "string"
+                  },
+                  "txHash": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ref",
+                  "resource",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "throughputCapPerMin": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "throughputUsedPerMin": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "todayMinted": {
+              "additionalProperties": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "propertyNames": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "colonyId",
+            "inOrbit"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "cargo.status",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
     "cmd.ack": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "properties": {
@@ -2705,7 +3561,11 @@
                 "queue_full",
                 "planet_full",
                 "cannot_dismantle_hq",
-                "unknown_task"
+                "unknown_task",
+                "insufficient_stock",
+                "insufficient_cargo",
+                "storage_full",
+                "hub_offline"
               ],
               "type": "string"
             },
