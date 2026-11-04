@@ -49,6 +49,10 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   insufficient_cargo: 'Rejected: Insufficient orbital cargo',
   storage_full: 'Rejected: Colony storage is full',
   hub_offline: 'Rejected: Trade Hub is offline',
+  fee_out_of_range: 'Rejected: Stall fee is outside the allowed range',
+  order_limit: 'Rejected: Open-order limit reached',
+  order_too_small: 'Rejected: Order is below the minimum size',
+  unknown_order: 'Rejected: No such open order',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

@@ -4,6 +4,7 @@ import { CloseCode, RejectCode } from '../errors';
 import { WaveId } from '../flags';
 import { PlayerId } from '../ids';
 import { HomeColonyId, HomePlanetId } from '../rest/home';
+import { MarketBookPayload, MarketTradePayload } from '../market/views';
 import { CargoStatusPayload } from '../rest/near-cargo';
 import { PlanetType, SimDiffFrame, SimEventWire, SimSnapshotFrame } from './sim';
 
@@ -60,7 +61,10 @@ export const CmdReject = ServerEnvelope('cmd.reject', z.object({
 export const Pong = ServerEnvelope('pong', z.object({ clientTimeMs: z.number().int(), serverTimeMs: z.number().int(), tick: z.number().int().optional() }));
 export const Bye = ServerEnvelope('bye', z.object({ code: CloseCode, reason: z.string().max(120) }));
 export const CargoStatus = ServerEnvelope('cargo.status', CargoStatusPayload);
+/** W13 market pushes (PROTOCOL §6): book depth debounced to 1 Hz per pair, and one message per FINAL trade. */
+export const MarketBook = ServerEnvelope('market.book', MarketBookPayload);
+export const MarketTrade = ServerEnvelope('market.trade', MarketTradePayload);
 
-export const ServerMessage = z.discriminatedUnion('t', [Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus]);
+export const ServerMessage = z.discriminatedUnion('t', [Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus, MarketBook, MarketTrade]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 export type ServerMessageOf<T extends ServerMessage['t']> = Extract<ServerMessage, { t: T }>;
