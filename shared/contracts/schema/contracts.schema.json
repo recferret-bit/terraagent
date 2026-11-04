@@ -5870,6 +5870,28 @@
               },
               "type": "array"
             },
+            "reserved": {
+              "additionalProperties": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "propertyNames": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            },
             "throughputCapPerMin": {
               "minimum": 0,
               "type": "number"
