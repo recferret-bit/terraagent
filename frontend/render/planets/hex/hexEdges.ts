@@ -32,7 +32,7 @@ vec4 hexTerraformMask(vec2 axial) {
   return texture2D(uTerraformMap, (axial + uTileTintR + 0.5) / n);
 }`;
 
-const HEX_FRAG_COMMON = /* glsl */ `#include <common>
+const HEX_FRAG_COMMON = /* glsl */ `#define TA_TERRAIN_SHADER 1
 // Flat hex land is levelled to 0 m = water level and dry basins sit below it: only real water tiles (vHexShore = 1,
 // dry shore tiles <= 0.95) get the terrain shader's water-level bands. The dry beach next to water is drawn below.
 #define TA_WATER_GATE smoothstep(0.96, 1.0, vHexShore)
@@ -127,7 +127,7 @@ export function addHexEdges(sh: THREE.WebGLProgramParametersWithUniforms, edge: 
     ['vLP = position;', HEX_VERT_BEGIN],
   ], 'hex terrain vertex');
   sh.fragmentShader = injectAll(sh.fragmentShader, [
-    ['#include <common>', HEX_FRAG_COMMON],
+    ['#define TA_TERRAIN_SHADER 1', HEX_FRAG_COMMON],
     ['#include <alphatest_fragment>', EDGE_FRAG],
   ], 'hex terrain fragment');
 }

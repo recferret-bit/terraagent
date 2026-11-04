@@ -67,7 +67,7 @@ function claimW05Territory(state: PlanetState): void {
   const extraRing12: ReadonlyArray<readonly [number, number]> = [
     [0, -12], [1, -12], [2, -12], [3, -12], [4, -12], [5, -12], [6, -12],
     [7, -12], [8, -12], [9, -12], [10, -12], [11, -12], [12, -12],
-    [-12, 0], [-11, 0], [-10, 0],
+    [-12, 0], [-12, 1], [-12, 2],
   ];
   for (const [q, r] of extraRing12) {
     const idx = indexOf(state.grid.radius, q, r);

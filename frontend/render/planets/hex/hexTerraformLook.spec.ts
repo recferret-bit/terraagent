@@ -94,6 +94,9 @@ describe('W05-23: HexTileTint uTerraformMap and shader compilation', () => {
     expect(sh.fragmentShader).toContain('uniform vec3 uFrontierGlow;');
     expect(sh.fragmentShader).toContain('void evalTerraformSurface(');
     expect(sh.fragmentShader).toContain('vec4 hexTerraformMask(vec2 axial)');
+    expect(sh.fragmentShader.indexOf('uniform sampler2D uTerraformMap;')).toBeLessThan(
+      sh.fragmentShader.indexOf('vec4 hexTerraformMask(vec2 axial)'),
+    );
     expect(sh.fragmentShader).toContain('evalTerraformSurface(diffuseColor.rgb, gRough, gEmis, vLP.xz, tfMask, irrMask, uTime);');
 
     // Also verify standalone createTerraformingTerrainMaterial shares the same evaluator

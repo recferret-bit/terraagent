@@ -109,6 +109,7 @@ export class TerraformMenu {
   /** The newest stroke whose work showed up in the view (so its end can be reported). */
   private workSeenFor: string | null = null;
   private lastStageKey: string | null = null;
+  private lastW05Key: string | null = null;
 
   constructor(
     parent: HTMLElement,
@@ -226,16 +227,33 @@ export class TerraformMenu {
     if (this.w05Enabled) {
       const view = this.brush.getView();
       const planetType = (view as { planet?: { type?: string } } | null)?.planet?.type;
-      this.w05OpButtons = renderW05MenuOpChips({
-        container: this.w05OpsRow,
-        data: this.opts.simData?.() ?? undefined,
-        planetType,
-        maxWorkerTier: this.brush.getMaxWorkerTier(view),
-        selectedOp,
-        armed,
-        omitOps: this.stageOpsRow.hidden ? undefined : new Set(['fill']),
-        onSelectOp: (op) => this.toggleOp(op),
-      });
+      const simData = this.opts.simData?.() ?? undefined;
+      const maxWorkerTier = this.brush.getMaxWorkerTier(view);
+      const omitFill = !this.stageOpsRow.hidden;
+      const w05Key = `${planetType ?? ''}:${maxWorkerTier}:${omitFill ? 1 : 0}:${(simData as { hash?: string } | undefined)?.hash ?? ''}`;
+      if (this.lastW05Key !== w05Key) {
+        this.lastW05Key = w05Key;
+        this.w05OpButtons = renderW05MenuOpChips({
+          container: this.w05OpsRow,
+          data: simData,
+          planetType,
+          maxWorkerTier,
+          selectedOp,
+          armed,
+          omitOps: omitFill ? new Set(['fill']) : undefined,
+          onSelectOp: (op) => this.toggleOp(op),
+        });
+      } else {
+        for (const [op, btn] of this.w05OpButtons) {
+          const tierLocked = btn.getAttribute('data-tier-locked') === 'true';
+          const isSelected = armed && !tierLocked && selectedOp === op;
+          btn.setAttribute('aria-pressed', String(isSelected));
+          const baseCls = isSelected
+            ? 'btn btn-sm btn-primary ta-tf-menu__op-btn ta-tf-menu__w05-chip'
+            : 'btn btn-sm btn-ghost ta-tf-menu__op-btn ta-tf-menu__w05-chip';
+          btn.className = tierLocked ? `${baseCls} is-stage-locked is-tier-locked` : baseCls;
+        }
+      }
       if (this.brushBar) {
         syncBrushBarDom(this.brushBar, this.brush.getBrushShape(), this.brush.isCancelMode());
       }

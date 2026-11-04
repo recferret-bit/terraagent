@@ -11,7 +11,7 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: var(--ta-s3);
+  gap: var(--ta-s2);
   height: 28px;
   padding: 0 var(--ta-s3);
   background: transparent;
@@ -114,7 +114,7 @@
   display: flex;
   align-items: center;
   height: 100%;
-  gap: var(--ta-s3);
+  gap: var(--ta-s2);
 }
 
 .ta-hud-min__stock {
@@ -165,7 +165,7 @@
   align-items: center;
   height: 100%;
   gap: 6px;
-  padding-left: var(--ta-s3);
+  padding-left: var(--ta-s2);
   border-left: 1px solid var(--ta-seam);
   white-space: nowrap;
   cursor: pointer;
@@ -181,7 +181,7 @@
 }
 
 .ta-hud-min__cell-bar {
-  width: 44px;
+  width: 36px;
   height: 4px;
   background: var(--ta-deep);
   border: 1px solid var(--ta-seam-2);
@@ -200,7 +200,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding-left: var(--ta-s3);
+  padding-left: var(--ta-s2);
   border-left: 1px solid var(--ta-seam);
   white-space: nowrap;
   font-family: var(--ta-font-mono);
@@ -236,7 +236,7 @@
   align-items: center;
   height: 100%;
   gap: 5px;
-  padding-left: var(--ta-s3);
+  padding-left: var(--ta-s2);
   border-left: 1px solid var(--ta-seam);
   white-space: nowrap;
   font-family: var(--ta-font-mono);
@@ -260,7 +260,7 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  padding-left: var(--ta-s3);
+  padding-left: var(--ta-s2);
   border-left: 1px solid var(--ta-seam);
   white-space: nowrap;
 }

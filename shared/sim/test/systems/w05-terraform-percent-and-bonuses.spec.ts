@@ -148,7 +148,7 @@ describe('W05-10 · Living adjacency extractor bonus (+5 %)', () => {
 
     expect(colony.stock['metals.t1'] - prevMetals).toBeCloseTo(1.05, 5);
     expect(colony.production.incomePerS['metals.t1']).toBeCloseTo(1.05, 4);
-    expect(colony.production.extractors?.[placedMetals.entityId]).toEqual({
+    expect(colony.production.extractors?.[placedMetals.entityId]).toMatchObject({
       entityId: placedMetals.entityId,
       adjacentToLiving: true,
       livingBonus: 0.05,

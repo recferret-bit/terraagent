@@ -133,12 +133,12 @@ const COLOR_POST = /* glsl */ `  col *= 0.9 + 0.2*n2;
  * tiles, 0 on dry ground) before this chunk; the hex terrain does (`hexEdges.ts`), since it levels flat land to 0 m.
  */
 const FRAG_COMMON = `#include <common>
+${TERRAFORM_UNIFORMS_GLSL}
 #define TA_TERRAIN_SHADER 1
 #ifndef TA_WATER_GATE
 #define TA_WATER_GATE 1.0
 #endif
 ${FRAG_DECLS}
-${TERRAFORM_UNIFORMS_GLSL}
 ${NOISE_GLSL}
 float hash1(float n){ return fract(sin(n * 127.1) * 43758.5453); }
 ${STRATA_ROCK}

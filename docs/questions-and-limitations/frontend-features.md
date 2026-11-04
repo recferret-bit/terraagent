@@ -1228,3 +1228,15 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** Scroll the build list to reach lower cards; desktop sizing is unchanged.
 - **To resolve:** Revisit the landscape layout when adding more selection details.
 - **Found:** 2026-11-04, full merged browser suite at 844 × 390.
+
+### FF-82 · W05 deferred stretch (`H+`) and full-product items (Ridge/Moat, weather hazards, Ctrl+click/Shift-queue)
+
+- **Status:** Open (deferred by wave scope)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** [`docs/plan/waves/W05-shape-the-land.md`](../plan/waves/W05-shape-the-land.md), `frontend/game/features/terraform-basic/`, `shared/sim/src/systems/terraform-basic/`
+- **What happens:** The W05 `H` slice implements the 16 core issues (`W05-01`–`W05-05`, `W05-07`–`W05-10`, `W05-19`, `W05-20`, `W05-22`, `W05-23`, `W05-29`, `W05-33`, `W05-34`). Stretch (`H+`) and full-product items are deferred out of this landing: `W05-06` (`Raise Ridge` / `Dig Moat` defensive ops and `Deep Reclaim` T2 execution beyond the T1 lock gate), `W05-11`–`W05-18` (seeded weather scheduler, solar flares, dust storms, lightning strikes, meteor showers, weather mitigation and `weather` dev command), `W05-21` (`Ctrl+click` multi-tile and `Shift+click` unit order chaining), `W05-24`–`W05-28` (weather banner HUD, 3D weather VFX, global map Weather layer, procedural terraform/weather SFX), and `W05-30`–`W05-32` (weather determinism, delta chunk soak, and 600-tick `w05` parity spec). Also note: per W03 owner feedback (`GP-77`), `Metals Extractor` and `Minerals Quarry` share the unified `Resource Extractor` (`data-building="metalsExtractor"`) card in the Construction menu, which places on either metals or minerals deposits (`PlacementGhost.ts` matches both deposit codes for `metalsExtractor`).
+- **Why it is like this:** W05 wave scope filters to the 16 `H`-tagged issues.
+- **Workaround / mitigation:** Demo story steps 6–10 and 12 are marked deferred in `docs/plan/checks/w05-check.md`.
+- **To resolve:** Land the `H+` / full-scope W05 issues in a follow-up pass.
+- **Found:** 2026-11-04, W05 wave landing.

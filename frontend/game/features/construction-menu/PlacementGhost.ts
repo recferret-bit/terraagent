@@ -30,6 +30,10 @@ function depositCodeForRequired(requiresDeposit?: string): number | undefined {
   return undefined;
 }
 
+function matchesDeposit(deposit: number | undefined, reqCode: number | undefined): boolean {
+  return reqCode !== undefined && (deposit === reqCode || (reqCode === DEPOSIT.metals && deposit === DEPOSIT.minerals));
+}
+
 export interface EvaluatePlacementGhostOptions {
   building: string; q: number; r: number; rotation: number; flags: ReadonlySet<string> | FlagSet; view?: GameView; colonyId?: number;
 }
@@ -75,7 +79,7 @@ function scanFootprintTiles(
         // One rule with the host (D-37): trees, rock, slope, hole, water, ridge: terraform first (unless W05 linkedPrep).
         terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any', { linkedPrep: w05Active });
         if ((!w05Active && terrain === TERRAIN.deep) || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
-        if (reqDepCode !== undefined && (deposit === reqDepCode || (reqDepCode === DEPOSIT.metals && deposit === DEPOSIT.minerals))) coveredDepositIndices.push(tileIdx);
+        if (matchesDeposit(deposit, reqDepCode)) coveredDepositIndices.push(tileIdx);
       }
       const prepOp = tilesData ? getTilePrepOp(terrain, prep, w05Active) : undefined;
       if (prepOp) prepBill[prepOp] = (prepBill[prepOp] ?? 0) + 1;
@@ -160,7 +164,7 @@ function findValidPlacementSite(
       const st = evaluatePlacementGhost({ ...base, q: cq + dq, r: cr + dr }, ctx);
       if (!st.valid || st.tiles.some((t) => avoidIndices.has(t.tileIdx))) continue;
       const reqCode = depositCodeForRequired(st.requiresDeposit);
-      const anchorDep = reqCode !== undefined && st.tiles[0]?.deposit === reqCode ? 0 : 1;
+      const anchorDep = matchesDeposit(st.tiles[0]?.deposit, reqCode) ? 0 : 1;
       const depPenalty = reqCode !== undefined
         ? anchorDep * 20 - st.depositTileIndices.length * 4
         : st.tiles.filter((t) => t.deposit !== DEPOSIT.none).length * 50;
@@ -320,7 +324,7 @@ export class PlacementGhostController implements Disposable {
       const direct = evaluatePlacementGhost({ ...base, q, r }, ctx);
       const hoverIdx = ctx.hIndex.indexOf(q, r);
       const reqCode = depositCodeForRequired(direct.requiresDeposit);
-      if (!direct.valid && reqCode !== undefined && hoverIdx >= 0 && tilesData.deposit[hoverIdx] === reqCode) {
+      if (!direct.valid && hoverIdx >= 0 && matchesDeposit(tilesData.deposit[hoverIdx], reqCode)) {
         for (const [aq, ar] of [[q - 1, r], [q, r - 1], [q - 1, r - 1]]) {
           if (evaluatePlacementGhost({ ...base, q: aq, r: ar }, ctx).valid) {
             this.hoverQ = aq;

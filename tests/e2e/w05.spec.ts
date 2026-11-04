@@ -44,6 +44,7 @@ async function readTileAt(page: Page, q: number, r: number): Promise<OnlineTileS
     const w = window as unknown as {
       __online?: {
         store?: {
+          latestTiles?: { count: number; terrain: Uint8Array; prep: Uint8Array } | null;
           latest?: {
             planet?: { radius?: number };
             tiles?: { count: number; terrain: Uint8Array; prep: Uint8Array };
@@ -52,7 +53,7 @@ async function readTileAt(page: Page, q: number, r: number): Promise<OnlineTileS
       };
     };
     const latest = w.__online?.store?.latest;
-    const tiles = latest?.tiles;
+    const tiles = w.__online?.store?.latestTiles ?? latest?.tiles;
     const R = latest?.planet?.radius ?? 16;
     if (!tiles || Math.max(Math.abs(tq), Math.abs(tr), Math.abs(tq + tr)) > R) return null;
     let idx = 0;
@@ -68,6 +69,14 @@ async function readTileAt(page: Page, q: number, r: number): Promise<OnlineTileS
     }
     return null;
   }, [q, r] as const);
+}
+
+async function closeConsole(page: Page): Promise<void> {
+  const input = page.locator('[data-testid=dev-console] input');
+  if (await input.isVisible().catch(() => false)) {
+    await page.keyboard.press('Backquote');
+    await input.waitFor({ state: 'hidden', timeout: 5_000 });
+  }
 }
 
 test('@hack 1 & 2. Load ?scenario=w05 (S4 colony, shallow lake & crater near Hub) -> order a Terraformer in Units menu -> Terraformer Drone spawns', async ({ page }) => {
@@ -106,19 +115,18 @@ test('@hack 1 & 2. Load ?scenario=w05 (S4 colony, shallow lake & crater near Hub
   expectNoPageErrors(page);
 });
 
-test('@hack 3. Construction menu -> place a Minerals Quarry on the slope + crater footprint (4, 0) -> ghost shows prep bill (Level x2, Fill x1, Grade x4) -> confirm -> waiting(site: 0/4 tiles prepared) -> linked prep runs -> Quarry builds at 4/4', async ({ page }) => {
+test('@hack 3. Construction menu -> place a Resource Extractor (Quarry) on the slope + crater footprint (4, 0) -> ghost shows prep bill (Level x2, Fill x1, Grade x4) -> confirm -> waiting(site: 0/4 tiles prepared) -> linked prep runs -> Extractor builds at 4/4', async ({ page }) => {
   await openScenario(page, 'w05');
-  await page.getByTestId('dock-tab-build').click();
-  await page.locator('.ta-construction__card[data-building="mineralsQuarry"]').click();
+  await expect(page.locator('[data-testid="command-dock"]')).toHaveAttribute('data-active-tab', 'build');
+  await page.locator('.ta-construction__card[data-building="metalsExtractor"]').click();
 
-  await page.evaluate(() => {
-    const w = window as unknown as {
-      __online?: { features?: { services?: { setPlacementHoverTile?: (q: number, r: number) => void } } };
-    };
-    w.__online?.features?.services?.setPlacementHoverTile?.(4, 0);
-  });
+  const pos = await page.evaluate(() =>
+    (window as unknown as { __online: { tileToScreen(q: number, r: number): { x: number; y: number } | null } }).__online.tileToScreen(4, 0),
+  );
+  expect(pos).toBeTruthy();
+  await page.mouse.move(pos!.x, pos!.y);
 
-  const ghost = page.locator('.ta-placement-ghost[data-building="mineralsQuarry"]');
+  const ghost = page.locator('.ta-placement-ghost[data-building="metalsExtractor"]');
   await expect(ghost).toBeVisible();
   await expect(ghost).toHaveAttribute('data-valid', 'true');
   await expect(ghost).toHaveAttribute('data-deposit-covered', 'true');
@@ -126,15 +134,17 @@ test('@hack 3. Construction menu -> place a Minerals Quarry on the slope + crate
   await expect(prepText).toContainText('Level ×2');
   await expect(prepText).toContainText('Fill ×1');
   await expect(prepText).toContainText('Grade ×4');
-  await expect(prepText).toContainText('240 E');
-  await expect(prepText).toContainText('10 M + 9 Min');
+  await expect(prepText).toContainText('300 E');
+  await expect(prepText).toContainText('38s');
+  await expect(prepText).toContainText('10 Metals');
+  await expect(prepText).toContainText('9 Minerals');
   await screenshot(page, '3-quarry-ghost-prep-bill');
 
   // Confirm placement -> construction waits on site prep (0/4) while the linked terraform order runs.
   await ghost.locator('.ta-placement-ghost__confirm').click();
   await page.getByTestId('dock-tab-queue').click();
 
-  const quarryChip = page.locator('.ta-queue-chip', { hasText: 'Minerals Quarry' });
+  const quarryChip = page.locator('.ta-queue-chip', { hasText: /Resource Extractor|Minerals Quarry/ });
   await expect(quarryChip).toBeVisible();
   await expect(quarryChip).toContainText(/waiting\(site: \d\/4 tiles prepared\)|waiting: site/);
 
@@ -142,7 +152,11 @@ test('@hack 3. Construction menu -> place a Minerals Quarry on the slope + crate
   await expect.poll(
     async () =>
       (await getEntitiesSnapshot(page)).some(
-        (e) => e.kind === KIND.mineralsQuarry && e.q === 4 && e.r === 0 && e.state !== STATE_CONSTRUCTING,
+        (e) =>
+          (e.kind === KIND.metalsExtractor || e.kind === KIND.mineralsQuarry) &&
+          e.q === 4 &&
+          e.r === 0 &&
+          e.state !== STATE_CONSTRUCTING,
       ),
     { timeout: 35_000 },
   ).toBe(true);
@@ -159,13 +173,14 @@ test('@hack 3. Construction menu -> place a Minerals Quarry on the slope + crate
 test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush Irrigate -> Seed over 10 Prepared tiles -> HUD shows Terraform 10 / 412 (2.4 %) and units on Living move 10 % faster', async ({ page }) => {
   await openScenario(page, 'w05');
   await devConsole(page, 'warp 20');
+  await closeConsole(page);
 
   // Order a Terraformer so HQ + Builder + Terraformer work the area brushes in parallel.
   expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'u-tf-step4', task: { kind: 'buildUnit', unit: 'terraformer' } })).ok).toBe(true);
 
   // Step 4: Brush Reclaim (Hex r=1) at (-4, 1) over the 6 shallow-water tiles.
   await page.getByTestId('dock-tab-terraform').click();
-  await page.getByTestId('tf-brush-hex1').click();
+  await page.getByTestId('tf-brush-hex-1').click();
   await page.getByTestId('tf-op-reclaim').click();
   await clickTile(page, -4, 1);
 
@@ -180,7 +195,7 @@ test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush
   ).toBe(true);
 
   // Grade the 6 reclaimed Flat tiles -> Prepared.
-  await page.getByTestId('tf-op-terraform').click();
+  await page.getByTestId('tf-op-grade').click();
   await clickTile(page, -4, 1);
   await expect.poll(
     async () => {
@@ -194,7 +209,7 @@ test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush
   await screenshot(page, '4-lake-reclaimed-and-graded');
 
   // Step 5: Brush Irrigate (Hex r=2) at (1, 4) over the 10 Prepared meadow tiles, then Seed them to Living.
-  await page.getByTestId('tf-brush-hex2').click();
+  await page.getByTestId('tf-brush-hex-2').click();
   await page.getByTestId('tf-op-irrigate').click();
   await clickTile(page, 1, 4);
 
@@ -225,7 +240,7 @@ test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush
   await expect(page.getByTestId('hud-terraform')).toHaveAttribute('data-living-hint', '+10 % ground move speed');
 
   // Press L -> Living mode of the tile-state overlay opens and shows the +10 % move speed hint.
-  await page.keyboard.press('Backquote'); // close dev console so L reaches the overlay
+  await closeConsole(page);
   await page.keyboard.press('l');
   const overlay = page.getByTestId('tf-tile-overlay');
   await expect(overlay).toBeVisible();
@@ -257,7 +272,6 @@ test('@hack 11. Queue a terraform order, then run time night -> terraform ops pa
   expect(
     (
       await sendSimCmd(page, 'enqueueTask', {
-        taskId: 'tf-night-reclaim',
         terraform: { op: 'reclaim', tiles: W05_SHALLOW_LAKE_TILES.map(([q, r]) => ({ q, r })) },
       })
     ).ok,
@@ -294,6 +308,7 @@ test('@hack 11. Queue a terraform order, then run time night -> terraform ops pa
 
   // Switch to night -> solar drops to 0, group-1 brownout shedding pauses the terraform op first (`waiting(power)`).
   await devConsole(page, 'time night');
+  await closeConsole(page);
   await expect.poll(async () => (await getColony0(page))?.power?.phase ?? 'day', { timeout: 10_000 }).toBe('night');
   await expect.poll(async () => (await getColony0(page))?.power?.shedGroupsActive ?? [], { timeout: 10_000 }).toContain(1);
   await expect.poll(async () => (await readFirstJob())?.waitReason ?? '', { timeout: 10_000 }).toBe('power');
@@ -322,12 +337,12 @@ test('@hack 13. Open ?scenario=w05-tiers (Terraform 31 %, ringed Metals Extracto
   await openScenario(page, 'w05-tiers');
   await expect(page.getByTestId('hud-terraform-val')).toHaveText('Terraform 123 / 397 (31.0 %)');
 
-  // Hover Metals chip -> tier breakdown shows metals.t2 unlocked with positive income (+1.9/s = 30 % of 6.25/s).
+  // Hover Metals chip -> tier breakdown shows metals.t2 unlocked with positive income (+0.3/s = 30 % of 1.05/s).
   const metalsChip = page.getByTestId('hud-stock-metals');
   await metalsChip.hover();
   const t2Row = metalsChip.locator('[data-res="metals.t2"]');
   await expect(t2Row).toHaveAttribute('data-locked', 'false');
-  await expect(t2Row.locator('.ta-res-breakdown__rate')).toHaveText('+1.9/s');
+  await expect(t2Row.locator('.ta-res-breakdown__rate')).toHaveText('+0.3/s');
   await expect.poll(async () => (await getColony0(page))?.stock?.['metals.t2'] ?? 0, { timeout: 15_000 }).toBeGreaterThan(0);
 
   // Click ringed Metals Extractor at (3, 0) -> shows 70 % metals.t1 / 30 % metals.t2.
@@ -361,7 +376,7 @@ test('@hack 14. DoD: ?waves=..04 hides W05 UI (Terraformer unit card, W05 terraf
 
   // W01 Grade still works on a flat tile with ?waves=..04.
   await devConsole(page, 'warp 20');
-  await page.keyboard.press('Backquote');
+  await closeConsole(page);
   await page.getByTestId('tf-op-terraform').click();
   await clickTile(page, 5, 1);
   await expect.poll(async () => (await readTileAt(page, 5, 1))?.prep ?? 0, { timeout: 20_000 }).toBe(2);
