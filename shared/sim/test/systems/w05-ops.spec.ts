@@ -8,7 +8,9 @@ import {
   creditResource,
   ensureColonyLedger,
   ENTITY_STATE,
+  groundMoveMultiplierBp,
   hexIndex,
+  isGroundMoveBlocked,
   PREP,
   rowOf,
   setTileHeight,
@@ -221,4 +223,101 @@ describe('W05-04 · Fill op (Hole -> Flat, 10 s, 100 E, 10 M + 5 Min)', () => {
     });
   });
 });
+
+describe('W05-05 · Reclaim op (Shallow water -> Flat, 14 s, 200 E, 20 M + 10 Min)', () => {
+  it('Acceptance: Reclaim 1 shallow tile -> Flat after 14 s (70 ticks) at 1.0x; passability becomes 1.0x', () => {
+    const { state, colony, hx, pipeline } = createW05Colony();
+    const target = { q: 3, r: 0 };
+    const tIdx = hx.indexOf(target.q, target.r);
+    setTileTerrain(state.grid, tIdx, TERRAIN.shallow, 0);
+    setTileHeight(state.grid, tIdx, -0.35, 0);
+
+    // Before Reclaim: shallow water has 0.5x passability (5000 bp) and blocks normal ground movement
+    expect(groundMoveMultiplierBp(state.grid, tIdx)).toBe(5000);
+    expect(isGroundMoveBlocked(state.grid.layers.terrain[tIdx], state.grid.layers.deposit[tIdx])).toBe(true);
+
+    spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    const startMetals = colony.stock['metals.t1'];
+    const startMinerals = colony.stock['minerals.t1'];
+
+    const enqRes = step(
+      state,
+      [
+        {
+          commandId: 'cmd-reclaim-1',
+          colonyIndex: 0,
+          source: 'player',
+          kind: 'enqueueTask',
+          args: { terraform: { op: 'reclaim', tiles: [target] } },
+        },
+      ],
+      1,
+      pipeline,
+    );
+    expect(enqRes.outcomes[0]?.code).toBeUndefined();
+    expect(colonyTerraformOrders(state, 0)[0]!.jobs[0]!.baseTimeS).toBe(14);
+    expect(colonyTerraformOrders(state, 0)[0]!.jobs[0]!.totalEnergyE).toBe(200);
+
+    for (let t = 0; t < 68; t++) {
+      step(state, [], 1, pipeline);
+    }
+    expect(state.grid.layers.terrain[tIdx]).toBe(TERRAIN.shallow);
+
+    for (let t = 0; t < 3; t++) {
+      step(state, [], 1, pipeline);
+    }
+
+    expect(state.grid.layers.terrain[tIdx]).toBe(TERRAIN.flat);
+    expect(state.grid.layers.prep[tIdx]).toBe(PREP.flat);
+    expect(state.grid.layers.height[tIdx]).toBe(0);
+    expect(groundMoveMultiplierBp(state.grid, tIdx)).toBe(10000); // 1.0x passability
+    expect(isGroundMoveBlocked(state.grid.layers.terrain[tIdx], state.grid.layers.deposit[tIdx])).toBe(false);
+    expect(colony.stock['metals.t1']).toBeCloseTo(startMetals - 20, 5);
+    expect(colony.stock['minerals.t1']).toBeCloseTo(startMinerals - 10, 5);
+  });
+});
+
+describe('W05-05 · Deep Reclaim worker tier gate', () => {
+  it('rejects Deep Reclaim with worker_tier_locked when no T2 worker exists, and accepts it when a T2 worker exists', () => {
+    const { state, hx, pipeline } = createW05Colony();
+    const target = { q: 3, r: 0 };
+    const tIdx = hx.indexOf(target.q, target.r);
+    setTileTerrain(state.grid, tIdx, TERRAIN.deep, 0);
+
+    const tfId = spawnTerraformerUnit(state, { owner: 0, q: 2, r: 0 });
+    const rLocked = step(
+      state,
+      [
+        {
+          commandId: 'cmd-deep-reclaim-locked',
+          colonyIndex: 0,
+          source: 'player',
+          kind: 'enqueueTask',
+          args: { terraform: { op: 'deepReclaim', tiles: [target] } },
+        },
+      ],
+      1,
+      pipeline,
+    );
+    expect(rLocked.outcomes[0]?.code).toBe('worker_tier_locked');
+
+    state.entities.cols.tier[rowOf(state.entities, tfId)] = 2;
+    const rUnlocked = step(
+      state,
+      [
+        {
+          commandId: 'cmd-deep-reclaim-ok',
+          colonyIndex: 0,
+          source: 'player',
+          kind: 'enqueueTask',
+          args: { terraform: { op: 'deepReclaim', tiles: [target] } },
+        },
+      ],
+      1,
+      pipeline,
+    );
+    expect(rUnlocked.outcomes[0]?.code).toBeUndefined();
+  });
+});
+
 

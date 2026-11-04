@@ -34,6 +34,8 @@ export interface TerraformWorld {
   /** Before territory: unclaimed tiles must lie within `preHubRadius` of this point (the colony's pod); none = no limit. */
   preHubCenter: { q: number; r: number } | null;
   preHubRadius: number;
+  /** Highest worker tier owned by the colony (`1` in T1, `2` once a T2 worker exists; gates `deepReclaim`). */
+  maxWorkerTier?: number;
 }
 
 export type TerraformCheck = { ok: true } | { ok: false; reason: RejectCode };
@@ -45,6 +47,18 @@ export function worldHasTerritory(world: Pick<PlacementWorld, 'owner' | 'tileCou
   if (world.entities.some((e) => e.kind === ENTITY_KIND.hub && e.owner === colonyId && isAlive(e) && e.state === ENTITY_STATE.active)) return true;
   for (let i = 0; i < world.tileCount; i++) if (world.owner[i] === colonyId) return true;
   return false;
+}
+
+function resolveColonyMaxWorkerTier(entities: readonly PlacementEntity[], colonyId: number): number {
+  let maxTier = 1;
+  for (const e of entities) {
+    if (e.owner !== colonyId || !isAlive(e)) continue;
+    if (e.kind === ENTITY_KIND.hq || e.kind === ENTITY_KIND.builder || e.kind === ENTITY_KIND.terraformer) {
+      const t = typeof e.tier === 'number' && e.tier > 0 ? e.tier : 1;
+      if (t > maxTier) maxTier = t;
+    }
+  }
+  return maxTier;
 }
 
 /** The terraform view of a placement world (the client ghost's world works too) for `colonyId`. */
@@ -61,6 +75,7 @@ export function terraformWorldFrom(world: PlacementWorld, colonyId: number, data
     hasTerritory: worldHasTerritory(world, colonyId),
     preHubCenter: pod ? { q: pod.q, r: pod.r } : null,
     preHubRadius: rowNum(resolveStartingKitRow(data), 'preHubTerraformRadius'),
+    maxWorkerTier: resolveColonyMaxWorkerTier(world.entities, colonyId),
   };
 }
 
@@ -94,6 +109,7 @@ function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data
   const spec = getTerraformOpSpec(op, data);
   const terrain = world.terrain[i], prep = world.prep[i];
   if (terrain !== spec.fromTerrain) return 'site_blocked';
+  if (spec.minWorkerTier > (world.maxWorkerTier ?? 1)) return 'worker_tier_locked';
   if (spec.toTerrain !== spec.fromTerrain) return null;
   if (isTileUneven(world.radius, i, world.terrain, world.height)) return 'site_blocked';
   return prep === spec.toPrep || prep === PREP.living || prep === PREP.ridge || prep === PREP.moat ? 'site_blocked' : null;
