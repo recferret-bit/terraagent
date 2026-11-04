@@ -35,3 +35,25 @@ export function rayGround(o: { x: number; y: number; z: number }, d: { x: number
   const t = (t0 + t1) / 2, x = o.x + d.x * t, z = o.z + d.z * t;
   return { x, y: heightAt(x, z), z };
 }
+
+/**
+ * Where the ray meets the water surface (`y = level`) before it meets the ground `groundHit`, or null. The player
+ * clicks the water they see, not the lakebed under it: with a grazing camera the two differ by more than a tile edge,
+ * so a click on a lake hex must pick the hex whose surface is under the cursor (`isWater` tells which hexes have water).
+ */
+export function waterSurfaceHit(
+  o: { x: number; y: number; z: number },
+  d: { x: number; y: number; z: number },
+  level: number,
+  groundHit: { x: number; y: number; z: number } | null,
+  isWater: (x: number, z: number) => boolean,
+): { x: number; y: number; z: number } | null {
+  if (d.y >= -1e-6 || o.y <= level) return null;
+  const t = (level - o.y) / d.y;
+  const x = o.x + d.x * t, z = o.z + d.z * t;
+  if (groundHit) {
+    const tg = (groundHit.x - o.x) * d.x + (groundHit.y - o.y) * d.y + (groundHit.z - o.z) * d.z; // distance along the (unit) ray
+    if (tg < t - 1e-6) return null; // ground in front of the surface (a bank or ridge hides the water here)
+  }
+  return isWater(x, z) ? { x, y: level, z } : null;
+}

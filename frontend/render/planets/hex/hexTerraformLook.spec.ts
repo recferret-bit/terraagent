@@ -99,6 +99,14 @@ describe('W05-23: HexTileTint uTerraformMap and shader compilation', () => {
     );
     expect(sh.fragmentShader).toContain('evalTerraformSurface(diffuseColor.rgb, gRough, gEmis, vLP.xz, tfMask, irrMask, uTime);');
 
+    // The glowing frontier / hydro rings are off on the hex ground (they outlined every Living / Irrigated hex like a selection)
+    const hexDefine = sh.fragmentShader.indexOf('#define TA_HEX_TERRAFORM');
+    const ringGuard = sh.fragmentShader.indexOf('#ifndef TA_HEX_TERRAFORM');
+    expect(hexDefine).toBeGreaterThan(-1);
+    expect(ringGuard).toBeGreaterThan(hexDefine);
+    expect(sh.fragmentShader.indexOf('float tfRing', ringGuard)).toBeGreaterThan(ringGuard);
+    expect(sh.fragmentShader.indexOf('float irrRing', ringGuard)).toBeGreaterThan(ringGuard);
+
     // Also verify standalone createTerraformingTerrainMaterial shares the same evaluator
     const standalone = createTerraformingTerrainMaterial('temperate', 120);
     const sh2 = {
