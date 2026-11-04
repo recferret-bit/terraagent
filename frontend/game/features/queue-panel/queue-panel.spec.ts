@@ -92,7 +92,7 @@ describe('W02-25 Queue panel UI — Construction & Units lanes, ETA chip, cancel
     expect(host.querySelector('[data-task-id="solar-short"]')).toBeNull();
     expect(colony.stock['metals.t1']).toBe(100);
     expect(colony.stock['minerals.t1']).toBe(0);
-    expect(commands).toContainEqual({ kind: 'cancelTask', args: { taskId: 'solar-short' } });
+    expect(commands).toContainEqual({ kind: 'cancelTask', args: { taskId: 'solar-short', scope: 'sameKind' } });
 
     panel.dispose();
   });

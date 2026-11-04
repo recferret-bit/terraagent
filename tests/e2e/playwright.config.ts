@@ -7,7 +7,7 @@ const ci = !!process.env.CI;
 // One worker: all suites share one server + database. Output (traces, screenshots, results) under tests/e2e/.out/.
 export default defineConfig({
   testDir: '.',
-  testMatch: /w\d\d\.spec\.ts$|harness\/smoke\.spec\.ts$/,
+  testMatch: /w\d\d\.spec\.ts$|harness\/smoke\.spec\.ts$|probes\/[\w-]+\.spec\.ts$/,
   outputDir: './.out/results',
   workers: 1,
   fullyParallel: false,
