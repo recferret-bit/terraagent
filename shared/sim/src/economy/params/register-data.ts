@@ -9,9 +9,6 @@ import { RESOURCE_KEYS } from '@terra/contracts';
  * Bounds are conservative design limits: `[0, 10x default]`-style, wide enough to explore, narrow enough to stay safe.
  */
 const DERIVED: readonly { readonly table: string; readonly row: string; readonly field: string; readonly kind: 'int' | 'bp' | 'map'; readonly max: number; readonly what: string }[] = [
-  { table: 'tradeHub', row: '*', field: 'marketFeeMinBp', kind: 'bp', max: 1000, what: 'lowest stall fee a Trade Hub owner may set' },
-  { table: 'tradeHub', row: '*', field: 'marketFeeMaxBp', kind: 'bp', max: 1000, what: 'highest stall fee a Trade Hub owner may set' },
-  { table: 'tradeHub', row: '*', field: 'marketFeeDefaultBp', kind: 'bp', max: 1000, what: 'default stall fee of a new Trade Hub' },
   { table: 'tradeHub', row: '*', field: 'throughputPerMin', kind: 'int', max: 100000, what: 'Trade Hub throughput per minute' },
   { table: 'tradeHub', row: '*', field: 'dailyMintCapPerResource', kind: 'int', max: 1000000, what: 'daily cargo mint cap per resource' },
   { table: 'hub', row: '*', field: 'storageCapPerFamily', kind: 'int', max: 100000, what: 'Hub storage cap per resource family' },
