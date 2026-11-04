@@ -979,7 +979,6 @@ flow (`frontend/game/app/online/featureHud.ts`). Rules: D-37 (one placement rule
 - **To resolve:** register `time` in one feature; send a bare hour as `dev.time { target }`; make a bare `time` print the clock from the view (`blobs.planetTime` / colony power summary) instead of setting it. Update `docs/dev/DEV_TOOLS.md` with the split if it stays.
 - **Found:** 2026-11-03, W02 review round 2 (lead)
 
-
 ## W06 Invisible Chain
 
 These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-34..FF-61 on `main` first, so the W06 entries continue at FF-62.
@@ -1005,9 +1004,85 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Fix:** the guest auth response now carries `isGuest: false` and top-level `accountId` when the player has a `social_identity` row. `readAccountId` already reads that field, and `isGuest` is `player.isGuest !== false`, so a reload shows `Pilot ID …`. The chip was not rewritten. Refresh of a linked player returns the same two fields.
 - **Found:** 2026-11-02, W06-15
 
+## W04 Maps & Camera (2026-11-03)
+
+### FF-64 · W04 Maps & Camera deferred scope (tags F / L) and analytical frustum fallback
+
+- **Status:** Accepted (by wave scope `docs/plan/waves/W04-maps-camera.md`)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/maps/`, `frontend/game/features/maps/index.ts`, `docs/plan/waves/W04-maps-camera.md`
+- **What happens:**
+  1. **Deferred W04 issues (tags `F` and `L`):** per `docs/plan/waves/W04-maps-camera.md`, the 14 `H`-tagged issues (`W04-01`, `W04-03..05`, `W04-07`, `W04-09..11`, `W04-13..16`, `W04-22`, `W04-33`) ship in this wave. The `F` and `L` issues — `W04-02` (server `alertPing` emission; schema `alertPingEvent` is already registered in `shared/contracts/src/events/alert-ping.ts`), `W04-06` (separate three-state fog overlay pass; unexplored tiles are already painted `--ta-void` in `tileColors.ts`), `W04-08` (`alertPing` expanding ring + `Space` jump), `W04-12` (`Space` jump to last alert), `W04-17..20` (Resources, Power, Threats, Walls, Market map layers for W03/W05/W07/W08/W10/W11), `W04-21` (global map click-to-pan), and `W04-23..32` (unit follow ring, box-drag lasso, control groups `1..9`, double-tap, `Tab` sub-selection, `Home` key, touch pinch/pan) — remain scheduled for their respective full/launch waves and demo steps 6–9 are marked deferred in `docs/plan/checks/w04-check.md`.
+  2. **Analytical frustum fallback in `cameraTrapezoid.ts`:** `computeCameraTrapezoid` projects the 4 NDC screen corners onto the ground plane via `projectFrustumRaysToGround(camera, groundY, dist * 3.5)`; when no `THREE.PerspectiveCamera` is provided (e.g. unit specs passing explicit `{ targetX, targetZ, yaw, dist }`) or a near-horizon ray does not intersect within `3.5 × dist`, it falls back to `computeAnalyticalWorldCorners`.
+- **Why it is like this:** hackathon scope (`H`) focuses on the 180 px minimap, incremental hex raster cache, unit/building dots, camera trapezoid, minimap click/drag pan, and fullscreen global map (`M`) with `Territory`, `Terrain`, and `Units` layers.
+- **Workaround / mitigation:** none needed for `H` scope.
+- **To resolve:** implement `F` and `L` issues when those waves / tags are opened.
+- **Found:** 2026-11-03, W04 wave lead
+
+### FF-65 · Global map shows nothing around the planet (no neighbouring sectors)
+
+- **Status:** Accepted (until W27)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `MapsController.drawGlobalMap`, `frontend/game/maps/global-map.css`
+- **What happens:** the global map (an 80 % pop-up over the blurred scene) is endless to pan/zoom, but the area around the planet is the dialog's flat translucent fill. The decorative hex lattice that used to fill it was removed at the owner's request (it read as "blurred hexagons"). There is exactly one planet per session today, so there are no neighbouring sectors to draw; the `Resources` layer shows only the visible `deposit` layer of explored tiles (never the hidden `subDeposit`).
+- **Why it is like this:** real neighbouring sectors and streaming belong to W27 (planet atlas, `docs/plan/waves/W27-planet-sectors.md`).
+- **Workaround / mitigation:** none needed; `RESET [0]` recenters on the planet.
+- **To resolve:** draw summary tiles of adjacent sectors around the planet when W27 lands.
+- **Found:** 2026-11-03, W04 map fixes
+
+## W10 Cargo & Trade Hub (2026-11-03)
+
+### FF-66 · W10 Cargo & Trade Hub deferred scope (dedicated shuttle model, history, analytics/telemetry, mobile, send-to-account) and T1 250/min throughput in demo step 3
+
+- **Status:** Accepted (by wave scope `docs/plan/waves/W10-cargo-trade-hub.md`)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/data/trade-hub.ts`, `shared/sim/src/systems/cargo/`, `frontend/game/features/trade-hub/`, `tests/e2e/w10.spec.ts`, `docs/plan/waves/W10-cargo-trade-hub.md`
+- **What happens:**
+  1. **Deferred W10 issues (non-`H` and `H+`):** per `docs/plan/waves/W10-cargo-trade-hub.md` (§ Hackathon slice), the 21 `H`-tagged issues (`W10-01..14`, `W10-16`, `W10-19..22`, `W10-26`, `W10-30`) ship in this wave. `W10-15` (rocket carry-over hook for W21), `W10-23` (`H+` history/event-log rows for W12), `W10-24..25` (analytics funnel & Prometheus cargo telemetry), `W10-27..29` (mobile bottom sheet, `sim:bench` case, `ENVS.md` docs), and `W10-31` (`H+` send-to-account `cargo.transfer`) remain deferred.
+  2. **T1 throughput (`250/min`) vs Demo Story step 3 prose (`300`):** `docs/plan/waves/W10-cargo-trade-hub.md` Demo Story step 3 says "Export 300 metals" while step 5 says "at T1 throughput (250/min)", and both `colony-economy-and-buildings-spec.md` §3.5 and `W10-02` / `W10-06` define a single online T1 Trade Hub's rolling 60-second throughput cap as `250 units/min`. Accordingly, a single T1 Trade Hub bounds a single export to `250` (`metals.t1`: `900 → 650` on export, `0 → 250` in orbit, then `150` imported back to `800` stock and `100` in orbit).
+- **Why it is like this:** `W10-02` and `W10-06` enforce the economy spec's `250/min` T1 throughput cap (`TRADE_HUB_THROUGHPUT_PER_MIN[1] = 250`).
+- **Workaround / mitigation:** `tests/e2e/w10.spec.ts` and `docs/plan/checks/w10-check.md` use `250` for the T1 export and `150` for the import (leaving the same `100` in orbit as the `300 − 200` prose).
+- **To resolve:** implement the non-`H` / `H+` issues when their waves open.
+- **Found:** 2026-11-03, W10 wave lead
+
+### FF-67 · Cargo flights reuse the colony pod and are cosmetic
+
+- **Status:** Accepted (W10 fixes, 2026-11-04)
+- **Area / code:** `frontend/game/features/trade-hub/CargoFlights.ts`, `frontend/render/visuals/space/CargoFlight.ts`
+- **What happens:** accepted exports launch a pod and settled imports land one at the Trade Hub. The flight reuses `ship.dropPod` and the existing retro-engine shader; no separate cargo-shuttle archetype is introduced. Settlement and the rolling export allowance follow authoritative sim state, independently of the six-second visual flight.
+- **Why it is like this:** reuse preserves the established renderer and keeps financial settlement independent of frame rate or a closed browser. The previous FF-66 launch/land deferral is resolved by this change; the dedicated shuttle design remains deferred.
+- **Workaround / mitigation:** the panel shows authoritative balances, pending transfers and errors; reconnecting does not replay past flights.
+- **To resolve:** introduce a dedicated cargo-shuttle design when distinct spacecraft silhouettes are needed.
+- **Found:** 2026-11-04, W10 fixes.
+
+### FF-68 · Fix trading-spot shuttle animation
+
+- **Status:** Open
+- **Area / code:** `frontend/game/features/trade-hub/CargoFlights.ts`, `frontend/render/visuals/space/CargoFlight.ts`, Trade Hub cargo pad.
+- **What happens:** the owner requested a follow-up fix for the trading-spot shuttle animation after checking W10. The current launch/landing implementation remains in place; its animation is not considered finished.
+- **Why it is like this:** the owner explicitly chose to record this remaining issue and land W10, deferring the animation fix.
+- **Workaround / mitigation:** export/import settlement and throughput use authoritative simulation state independently of the cosmetic flight (FF-67).
+- **To resolve:** reproduce the animation at the Trade Hub during exports and imports, correct its launch/landing behavior and pad alignment as needed, then visually verify both directions with the owner.
+- **Found:** 2026-11-04, owner review and instruction to land W10 with this follow-up open.
+
+## W12 Player Page & Achievements
+
+### FF-69 · `/play.html?scenario=w12` and `/me.html` share the dev pilot session via `localStorage` (`ta_active_pilot`) and `?as=`
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/achievements/activePilot.ts` (`ActivePilotTracker`), `frontend/game/features/achievements/devCommands.ts`, `frontend/game/pages/me/api.ts`, `backend/app/src/profile/me-auth.ts`
+- **What happens:** Opening `/play.html?scenario=w12` (or passing `?as=<handle>`) locks `ActivePilotTracker` to `playerId = pr_dev_<handle>` (default `pr_dev_w12`) and `accessToken = dev:<handle>` (`dev:w12`), persists that record to `localStorage` (`ta_active_pilot`), and calls `profile.seed_w12` once so the pilot's W12 baseline is seeded. Opening `/me.html` in a second tab reads `?as=` (or `ta_active_pilot` from `localStorage`, or falls back to `pr_dev_w12` on the server in non-production) so dev console commands (`fact add`, `xp add`, `profile reset`) in the game tab and reloads of `/me.html` always address the same pilot. In-game achievement/level-up toasts (`W12-27`) are triggered both by server events on `WorldStore` and directly by the `fact add` / `xp add` dev console commands (`W12-31`), because dev command HTTP responses return synchronously without a separate non-sim socket push (BE-40).
+- **Why it is like this:** `?scenario=w12` joins `/ws` with a dev token whose hash-derived `ready.playerId` (`devPlayerId('w12')`) would otherwise differ from `/me.html`'s default dev pilot id (`pr_dev_w12`), and the websocket only forwards sim events (`rooms.ts`).
+- **Workaround / mitigation:** `ProgressionDevCommand` also mirrors `fact.add`, `xp.add`, `profile.reset`, and `profile.seed_w12` onto `pr_dev_w12` whenever a different dev player id is used.
+- **To resolve:** When a non-sim player websocket channel lands (BE-40), push `achievement.earned` and `xp.levelUp` over that socket for non-sim progression sources as well.
+- **Found:** 2026-11-03, W12
+
 ## W08 Stages & HQ Goals
 
-### FF-64 · W08 H-scope cut: Goal progress drawer, slider-impact preview, and `/me.html` UnlockStage profile view are deferred
+### FF-70 · W08 H-scope cut: Goal progress drawer, slider-impact preview, and `/me.html` UnlockStage profile view are deferred
 
 - **Status:** Accepted (by design, W08 H-scope cut)
 - **Severity:** low
@@ -1021,12 +1096,29 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **To resolve:** implement `W08-22` and `W08-28` in `H+` and enable step 7b when `W12` lands `/me.html`.
 - **Found:** 2026-11-03, W08 wave implementation (lead)
 
-### FF-65 · Stage navigation replays lessons; later mechanics remain previews
+### FF-71 · Stage navigation replays lessons; later mechanics remain previews
 
 - **Status:** Accepted (W08 owner follow-up interpretation)
 - **Area / code:** `frontend/game/features/stages/{StageTrackHud,guide}.ts`, `frontend/game/features/goals/HqPanel.ts`
-- **What happens:** Previous / Next and stage segments browse all S0–S10 guides; they never roll back the simulation, earned unlocks or threat. New-stage notices last 30 seconds with a visible timer. Replay has no timer; Hide suppresses subsequent automatic notices until Show. Goals and Priorities share tabs, with state preserved when switching. Unimplemented tutorial suggestions are disabled and describe future-wave prerequisites.
+- **What happens:** Clickable stage segments browse all S0–S10 guides; they never roll back the simulation, earned unlocks or threat. New-stage notices last 30 seconds with a visible timer. Replay has no timer. The compact Goals header opens the tracker; its minus button closes it completely and suppresses automatic notices until reopened. Goals and Priorities share tabs, with state preserved when switching. Unimplemented tutorial suggestions are disabled and describe future-wave prerequisites.
 - **Why it is like this:** interpreting “navigate back” as reviewing tutorial stages preserves world progress and irreversible gameplay. S5–S10 require future-wave mechanics, so their guides explicitly say Preview rather than claiming a playable lesson today.
-- **Workaround / mitigation:** Current returns to the current stage guide; the dev-only `stage set` command still changes simulated stage for testing.
+- **Workaround / mitigation:** Click the highlighted current stage to return to its guide; the dev-only `stage set` command still changes simulated stage for testing.
 - **To resolve:** extend each guide and executable suggestion when its owning wave lands, following the [progression contract](../plan/W08-PROGRESSION-CONTRACT.md).
 - **Found:** 2026-11-03, W08 owner fixes.
+
+
+### FF-72 · Full W08 Recheck
+
+- **Status:** Open (owner requested; landing is not acceptance of all W08 behavior)
+- **Area / code:** `frontend/game/features/{stages,goals,priorities}/`, `shared/sim/src/systems/{progression,goals,rule-engine}/`, [W08 owner guide](../plan/checks/w08-check.md), [progression contract](../plan/W08-PROGRESSION-CONTRACT.md).
+- **What happens:** the owner reports that W08 still has issues and explicitly requests a full recheck after landing. Exact remaining failures have not yet been enumerated; targeted automated passes do not close this report.
+- **Why it is like this:** W08 was reviewed in a limited wave stack, while W04 maps, W10 cargo and W12 persistent progression have since landed. The latest small UI revision removes Previous / Next / Current and Show / Hide guide, moves the stage tracker behind a compact Goals header, and makes minus close it. The ambiguous “dialog” was interpreted as the S0–S10 tracker; confirm this layout with the owner during recheck.
+- **Workaround / mitigation:** use the owner guide and a fresh scenario for reproduction; record URL, enabled waves, host, stage, goal parameters, console output and expected/actual behavior for each failure. Existing detailed boundaries remain in FF-70 / FF-71 and GP-67.
+- **To resolve:** run the full checklist on both server and browser hosts with the current merged stack, then record individual reproducible failures, fix them and obtain owner confirmation. Cover:
+  1. Compact Goals header placement, click/open/minus/close, pointer and keyboard input, small viewports, and unobstructed tick/resource/map controls.
+  2. Every S0–S10 segment, 30-second automatic notice, manual untimed replay, Dismiss, hidden-state behavior and real stage/unlock/threat preservation.
+  3. Establish Colony and Grow Economy end to end: actual paid orders, walking workers, measured Metals/Minerals/Biomass production, storage/resources/power blockers, resume, cancel/reorder, queue limits and reload.
+  4. Secure Power across day/night, unsupported goals and Water extraction, budget values and the still-deferred spending ceilings (GP-67).
+  5. All five priorities and autopilot need scores (bp), suggestion/auto transitions, manual-order protection, safety overrides and future diplomacy/combat integration obligations.
+  6. Tutorial continuity beyond S4, dwell/trigger rules, wave-off behavior, Trade Hub contact/S2/S5 access, and W12 UnlockStage/profile persistence across reload and colony transitions.
+- **Found:** 2026-11-04, owner review: “full W8 Recheck, it has issues.”

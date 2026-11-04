@@ -168,9 +168,23 @@ export class HomeService {
     return this.repo.setPlanetStatus(planetId, status);
   }
 
-  async getExistingHome(playerId: string): Promise<HomeResponse | null> {
+  async getExistingHome(playerId: string, planetId?: string): Promise<HomeResponse | null> {
+    if (planetId) {
+      const colony = await this.repo.findColonyByPlayerAndPlanet(playerId, planetId);
+      const planet = colony && await this.repo.findPlanetById(planetId);
+      return colony && planet ? this.buildHomeResponse(colony, planet) : null;
+    }
     const found = await this.existingColony(playerId);
     return found && this.buildHomeResponse(found.colony, found.planet);
+  }
+
+  async resumeColony(playerId: string, colonyId: string): Promise<HomeResponse> {
+    const colony = await this.repo.findColonyById(colonyId);
+    const planet = colony && colony.playerId === playerId ? await this.repo.findPlanetById(colony.planetId) : null;
+    if (!colony || !planet || colony.playerId !== playerId || colony.status !== 'ACTIVE' || ['ENDED', 'PLANET_ENDED'].includes(planet.status)) {
+      throw new CoreException('COLONY_UNAVAILABLE', { status: 404, message: 'This colony is unavailable. Return to your pilot page to choose an active colony.' });
+    }
+    return this.answerExisting(colony, planet);
   }
 
   private async existingColony(playerId: string): Promise<{ colony: ColonyRecord; planet: PlanetRecord } | null> {

@@ -1,17 +1,36 @@
 /* Faction Plate styling for Stage Track HUD (W08-12) */
 
-.ta-hud__slot[data-slot="top-left"]:has([data-testid="continue-google"]) {
-  z-index: 10;
+.ta-hud__slot[data-slot="top-left"]:has(.ta-stage-launcher) {
+  z-index: 30;
 }
 
 .ta-hud__panel[data-feature="stages"] {
-  position: fixed;
-  top: 52px;
-  left: 50%;
-  transform: translateX(-50%);
-  pointer-events: none;
+  position: absolute;
+  top: var(--ta-s4);
+  left: 140px;
+  pointer-events: auto;
   z-index: 15;
 }
+
+.ta-stage-launcher {
+  white-space: nowrap;
+  min-height: 24px;
+  height: 24px;
+  padding: var(--ta-s1) var(--ta-s2);
+  font-size: var(--ta-fs-label);
+  background: var(--ta-plate);
+  border: 1px solid var(--ta-seam-2);
+}
+
+.ta-stage-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font: 600 var(--ta-fs-small) var(--ta-font-display);
+  text-transform: uppercase;
+}
+
+.ta-stage-track-hud[hidden] { display: none; }
 
 .ta-stage-track-hud {
   display: flex;
@@ -29,10 +48,14 @@
     0 100%,
     0 var(--ta-chamfer-s)
   );
-  min-width: 280px;
-  max-width: 420px;
+  position: absolute;
+  top: calc(100% + var(--ta-s2));
+  left: 0;
+  width: min(420px, calc(100vw - 160px));
+  max-height: calc(100dvh - 80px);
+  overflow-y: auto;
   box-sizing: border-box;
-  pointer-events: none;
+  pointer-events: auto;
 }
 
 .ta-stage-toast,
@@ -301,7 +324,6 @@
   cursor: pointer;
 }
 
-.ta-stage-guide-controls { display: flex; gap: var(--ta-s1); pointer-events: auto; }
 .ta-stage-segment { pointer-events: auto; cursor: pointer; padding: 0; }
 .ta-stage-reached-toast { pointer-events: auto; max-height: 55vh; overflow-y: auto; }
 .ta-stage-toast__actions { align-items: center; justify-content: space-between; gap: var(--ta-s2); }

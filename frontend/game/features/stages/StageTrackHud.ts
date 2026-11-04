@@ -45,9 +45,9 @@ export class StageTrackHud implements Disposable {
   private readonly toast: StageToast;
   private readonly cleanups: Array<() => void> = [];
 
-  private selectedStage = 0;
-  private guideHidden = false;
-  private toggleGuide!: HTMLButtonElement;
+  private readonly launcher = document.createElement('button');
+  private panelHidden = true;
+  private suppressNotices = false;
   private currentStage = 0;
   private colonyIndex = 0;
   private hasBaseline = false;
@@ -61,6 +61,7 @@ export class StageTrackHud implements Disposable {
     this.root.className = 'ta-stage-track-hud plate-sm';
     this.root.setAttribute('data-testid', 'stage-track-hud');
 
+    this.buildPanelHeader(host);
     this.toast = new StageToast(this.root);
 
     // Segments container: 11 stage segments S0..S10
@@ -68,7 +69,6 @@ export class StageTrackHud implements Disposable {
     this.segmentsContainer.className = 'ta-stage-track__segments';
     this.segmentsContainer.setAttribute('data-testid', 'stage-track-segments');
     this.buildSegments();
-    this.buildGuideControls();
 
     // Meta section: current stage title/teaches + next condition & dwell countdown
     const meta = document.createElement('div');
@@ -131,6 +131,43 @@ export class StageTrackHud implements Disposable {
     }
   }
 
+  private buildPanelHeader(host: HTMLElement): void {
+    this.root.id = 'stage-goals-dialog';
+    this.root.setAttribute('aria-label', 'Stage goals');
+    this.launcher.type = 'button';
+    this.launcher.className = 'ta-stage-launcher btn btn-ghost btn-sm';
+    this.launcher.dataset.testid = 'stage-goals-launcher';
+    this.launcher.setAttribute('aria-controls', this.root.id);
+    this.launcher.onclick = () => this.setPanelVisible(this.panelHidden);
+    const header = document.createElement('div');
+    header.className = 'ta-stage-panel-header';
+    const title = document.createElement('span');
+    title.textContent = 'Goals';
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'btn btn-ghost btn-sm';
+    close.textContent = '−';
+    close.dataset.testid = 'stage-goals-close';
+    close.setAttribute('aria-label', 'Close stage goals');
+    close.onclick = () => {
+      this.suppressNotices = true;
+      this.setPanelVisible(false);
+      this.launcher.focus();
+    };
+    header.append(title, close);
+    this.root.append(header);
+    host.append(this.launcher);
+    this.setPanelVisible(false);
+  }
+
+  private setPanelVisible(visible: boolean): void {
+    this.panelHidden = !visible;
+    if (visible) this.suppressNotices = false;
+    this.root.hidden = !visible;
+    this.launcher.setAttribute('aria-expanded', String(visible));
+    if (!visible) this.toast?.dismiss();
+  }
+
   private buildSegments(): void {
     for (const row of STAGE_TABLE_ROWS) {
       const n = row.stage;
@@ -152,41 +189,10 @@ export class StageTrackHud implements Disposable {
     }
   }
 
-  private buildGuideControls(): void {
-    const controls = document.createElement('div');
-    controls.className = 'ta-stage-guide-controls';
-    for (const [label, id, action] of [
-      ['Previous', 'stage-guide-previous', () => this.browseStage(this.selectedStage - 1)],
-      ['Next', 'stage-guide-next', () => this.browseStage(this.selectedStage + 1)],
-      ['Current', 'stage-guide-current', () => this.browseStage(this.currentStage)],
-      ['Show guide', 'stage-guide-toggle', () => this.toggleStageGuide()],
-    ] as const) {
-      const button = document.createElement('button');
-      button.type = 'button';
-      button.className = 'btn btn-ghost btn-sm';
-      button.dataset.testid = id;
-      button.textContent = label;
-      button.onclick = action;
-      controls.append(button);
-      if (id === 'stage-guide-toggle') this.toggleGuide = button;
-    }
-    this.root.append(controls);
-  }
-
-  private toggleStageGuide(): void {
-    if (this.toast.getElement()) {
-      this.guideHidden = true;
-      this.dismissStageToast();
-    } else {
-      this.guideHidden = false;
-      this.browseStage(this.selectedStage);
-    }
-  }
-
   private browseStage(stage: number): void {
-    this.selectedStage = Math.max(0, Math.min(STAGE_TABLE_ROWS.length - 1, stage));
-    this.guideHidden = false;
-    this.showStageToast(this.selectedStage, { autoDismissMs: 0, replay: true });
+    const selected = Math.max(0, Math.min(STAGE_TABLE_ROWS.length - 1, stage));
+    this.setPanelVisible(true);
+    this.showStageToast(selected, { autoDismissMs: 0, replay: true });
   }
 
   private updateSegmentStates(stage: number): void {
@@ -211,6 +217,7 @@ export class StageTrackHud implements Disposable {
 
   private renderStage(stage: number, dwellS: number | null, nextConditionOverride?: string): void {
     this.currentStage = stage;
+    this.launcher.textContent = `Goals · S${stage}`;
     const currentSpec: StageRow = getStageSpec(stage) ?? STAGE_TABLE_ROWS[0];
 
     this.updateSegmentStates(stage);
@@ -273,19 +280,18 @@ export class StageTrackHud implements Disposable {
 
   showStageToast(stage: number, opts?: StageToastOptions): HTMLElement {
     if (!opts?.replay) this.previousStage = Math.max(this.previousStage, stage);
-    this.selectedStage = stage;
-    this.toggleGuide.textContent = 'Hide guide';
-    const el = this.toast.show(stage, { guide: stageGuideText(stage, opts?.replay ? this.currentStage : Math.max(stage, this.currentStage)), ...opts, onDismiss: () => {
-      this.toggleGuide.textContent = 'Show guide';
-      opts?.onDismiss?.();
-    } });
-    if (this.guideHidden && !opts?.replay) this.dismissStageToast();
+
+    if (!this.suppressNotices || opts?.replay) this.setPanelVisible(true);
+    const el = this.toast.show(stage, {
+      guide: stageGuideText(stage, opts?.replay ? this.currentStage : Math.max(stage, this.currentStage)),
+      ...opts,
+    });
+    if (this.suppressNotices && !opts?.replay) this.toast.dismiss();
     return el;
   }
 
   dismissStageToast(): void {
     this.toast.dismiss();
-    this.toggleGuide.textContent = 'Show guide';
   }
 
   getActiveToast(): HTMLElement | null {
@@ -322,5 +328,6 @@ export class StageTrackHud implements Disposable {
     this.cleanups.length = 0;
     this.toast.dispose();
     this.root.remove();
+    this.launcher.remove();
   }
 }

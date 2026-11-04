@@ -246,6 +246,9 @@ export class PlanetHost {
     for (const id of planetId ? [planetId] : [...this.planets.keys()]) {
       const p = this.planets.get(id);
       if (!p) continue;
+      const production = p.production?.collect(p.state, true) ?? [];
+      if (production.length) this.publish(id, p, production);
+      this.flushEvents(id, p); // checkpoint must follow every event it commits, including the open delta window
       const bytes = owned(snapshot(p.state));
       this.post({ t: 'snapshot', planetId: id, tick: p.state.meta.tick, bytes }, [bytes.buffer as ArrayBuffer]);
     }

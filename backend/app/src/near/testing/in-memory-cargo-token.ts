@@ -1,4 +1,11 @@
-import { CargoTokenPort, type BurnCargoInput, type CargoBalanceInput, type MintCargoInput, type TransferCargoInput } from '../application/ports/cargo-token.port';
+import {
+  CARGO_MINTER_ACCOUNT,
+  CargoTokenPort,
+  type BurnCargoInput,
+  type CargoBalanceInput,
+  type MintCargoInput,
+  type TransferCargoInput,
+} from '../application/ports/cargo-token.port';
 import { NearException } from '../domain/errors';
 import type { ChainReceipt, TokenAmount } from '../domain/types';
 import { InMemoryChain } from './in-memory-chain';
@@ -12,11 +19,19 @@ export class InMemoryCargoToken extends CargoTokenPort {
   }
 
   async mint(input: MintCargoInput): Promise<ChainReceipt> {
+    this.assertMinter(input.caller);
     return this.chain.write(input.opId, () => this.add(input.to, input.tokenId, BigInt(input.amount))).receipt;
   }
 
   async burn(input: BurnCargoInput): Promise<ChainReceipt> {
+    this.assertMinter(input.caller);
     return this.chain.write(input.opId, () => this.sub(input.from, input.tokenId, BigInt(input.amount))).receipt;
+  }
+
+  private assertMinter(caller?: string): void {
+    if (caller !== undefined && caller !== CARGO_MINTER_ACCOUNT) {
+      throw new NearException('NEAR_NOT_OWNER', { message: `Only ${CARGO_MINTER_ACCOUNT} may mint or burn cargo (got ${caller}).` });
+    }
   }
 
   async transfer(input: TransferCargoInput): Promise<ChainReceipt> {

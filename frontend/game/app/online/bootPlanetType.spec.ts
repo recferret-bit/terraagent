@@ -15,7 +15,7 @@ describe('orbit pick → dev planet of that type (one dev planet per type)', () 
     expect(devPlanetTypeOfKind(null)).toBeUndefined();
   });
 
-  it('sends ?type= with GET /v1/me/home', async () => {
+  it.each(['', '&colonyId=co_selected'])('sends the planet type and selected colony to home: %s', async (selected) => {
     const urls: string[] = [];
     const fetch: FetchLike = async (url) => {
       urls.push(String(url));
@@ -24,8 +24,8 @@ describe('orbit pick → dev planet of that type (one dev planet per type)', () 
         : activeHome({ planetId: 'pl_dev_ocean', type: 'ocean', spawnQ: 1, spawnR: 2 });
       return { ok: true, status: 200, json: async () => json } as unknown as Response;
     };
-    const boot = await bootAuthAndHome({ fetch, storage: memory(), search: '', planetType: 'ocean' });
-    expect(urls).toContain('/v1/me/home?type=ocean');
+    const boot = await bootAuthAndHome({ fetch, storage: memory(), search: `?skip=1${selected}`, planetType: 'ocean' });
+    expect(urls).toContain(`/v1/me/home?type=ocean${selected}`);
     expect([boot.mode, boot.planet.id, boot.planet.type]).toEqual(['online', 'pl_dev_ocean', 'ocean']);
   });
 

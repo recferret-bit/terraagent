@@ -224,7 +224,7 @@ describe('W01-38: /play.html fresh profile boot flow & conditional descent', () 
     await flush(6);
 
     expect(storage.getItem(DEVICE_SECRET_KEY)?.length).toBeGreaterThanOrEqual(16);
-    expect(calls.map((c) => c.url)).toEqual(['/v1/auth/guest', '/v1/me/home']);
+    expect(calls.map((c) => c.url)).toEqual(['/v1/auth/refresh', '/v1/auth/guest', '/v1/me/home']);
     expect(wsFramesSent.map((m) => m.t)).toEqual(['hello', 'join']);
     expect(wsFramesSent[1].d).toEqual({ planetId: 'pl_dev' });
 

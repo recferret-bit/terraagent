@@ -1,3 +1,5 @@
+import type { CompiledDataLike } from '../../kernel/config';
+import { evaluateTradeHubUnlock } from '../cargo/unlock';
 import { getItemUnlockStage } from '../../data/stages';
 import type { PlanetState } from '../../kernel/state';
 import { ownsCompletedBuilding } from './triggers';
@@ -109,7 +111,13 @@ export function checkItemUnlockStage(
   colonyIndex: number,
   itemId: string,
   flags?: { has(wave: string): boolean },
+  data?: CompiledDataLike,
 ): StageLockCheckResult {
+  // W10 owns Trade Hub access (contact/guild/demo override); the W08 preview's S4 lock must not override it.
+  if (flags?.has('W10') && ['tradeHub', 'trade_hub', 'interColonyTradeHub'].includes(itemId)) {
+    const access = evaluateTradeHubUnlock(state, colonyIndex, data);
+    return access.unlocked ? { ok: true } : { ok: false, code: 'stage_locked', detail: access.hint, unlocksAt: 'S2 contact / S5' };
+  }
   const requiredStage = resolveItemUnlockStage(itemId);
   if (requiredStage <= 0) return { ok: true };
 

@@ -17,7 +17,8 @@ export const BUILDING_KIND = {
   hub: ENTITY_KIND.hub,
   metalsExtractor: ENTITY_KIND.metalsExtractor,
   solar: ENTITY_KIND.solar,
-  mineralsExtractor: 8,
+  // W10 owns live kind 8; keep unimplemented extractor metadata on the unused preview code 22.
+  mineralsExtractor: 22,
   waterExtractor: 9,
   biomassExtractor: 10,
   wind: 11,
@@ -33,7 +34,7 @@ export const BUILDING_KIND = {
   wall: 19,
   radar: 20,
   outpostBeacon: 21,
-  tradeHub: 22,
+  tradeHub: ENTITY_KIND.tradeHub,
   road: 23,
   smelter: 24,
   chemicalPlant: 25,

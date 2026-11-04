@@ -157,14 +157,7 @@ const DEFAULT_FLAGS = new Set(['W00', 'W01', 'W02']);
 describe('evaluatePlacementGhost - terrain & bounds', () => {
   it('detects out of bounds tiles', () => {
     const { view } = createPlanetView(2);
-    const ghost = evaluatePlacementGhost({
-      building: 'solar',
-      q: 10,
-      r: 10,
-      rotation: 0,
-      flags: DEFAULT_FLAGS,
-      view,
-    });
+    const ghost = evaluatePlacementGhost({ building: 'solar', q: 10, r: 10, rotation: 0, flags: DEFAULT_FLAGS, view });
     expect(ghost.valid).toBe(false);
     expect(ghost.statusColor).toBe('red');
     expect(ghost.reason).toBe('outside the map'); // the shared sim text (D-37)
@@ -174,27 +167,13 @@ describe('evaluatePlacementGhost - terrain & bounds', () => {
     const { view, setTile } = createPlanetView(3);
     setTile(0, 0, { terrain: TERRAIN.deep });
 
-    const ghostDeep = evaluatePlacementGhost({
-      building: 'solar',
-      q: 0,
-      r: 0,
-      rotation: 0,
-      flags: DEFAULT_FLAGS,
-      view,
-    });
+    const ghostDeep = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
     expect(ghostDeep.valid).toBe(false);
     expect(ghostDeep.statusColor).toBe('red');
     expect(ghostDeep.reason).toBe('water');
 
     setTile(0, 0, { terrain: TERRAIN.flat, prep: PREP.ridge });
-    const ghostRidge = evaluatePlacementGhost({
-      building: 'solar',
-      q: 0,
-      r: 0,
-      rotation: 0,
-      flags: DEFAULT_FLAGS,
-      view,
-    });
+    const ghostRidge = evaluatePlacementGhost({ building: 'solar', q: 0, r: 0, rotation: 0, flags: DEFAULT_FLAGS, view });
     expect(ghostRidge.valid).toBe(false);
     expect(ghostRidge.statusColor).toBe('red');
     expect(ghostRidge.reason).toBe('ridge / moat');
@@ -473,6 +452,44 @@ describe('PlacementGhostController - cancellation', () => {
     expect(extGhost?.valid).toBe(true);
     expect(extGhost?.depositCovered).toBe(true);
     expect([extGhost?.q, extGhost?.r]).toEqual([3, 0]);
+
+    menu.dispose();
+  });
+});
+
+describe('PlacementGhostController - tradeHub', () => {
+  let dom: ReturnType<typeof setupMockDom>;
+  beforeEach(() => { dom = setupMockDom(); });
+  afterEach(() => { dom.restore(); });
+
+  it('activates a 2x2 ghost footprint with prep bill when placing tradeHub', () => {
+    const { view, setTile } = createPlanetView(4);
+    setTile(0, 0, { terrain: TERRAIN.flat, prep: PREP.prepared });
+    setTile(1, 0, { terrain: TERRAIN.flat, prep: PREP.wild });
+    setTile(0, 1, { terrain: TERRAIN.flat, prep: PREP.wild });
+    setTile(1, 1, { terrain: TERRAIN.flat, prep: PREP.wild });
+
+    const flagsW10 = new Set(['W00', 'W01', 'W02', 'W10']);
+    const parentEl = new MockElement('div') as unknown as HTMLElement;
+    const sendCommand = vi.fn().mockResolvedValue({ ok: true, appliedAtTick: 1 });
+    const ctx = { flags: flagsW10, host: 'server' as const, services: { sendCommand, track: vi.fn() } };
+    const menu = new ConstructionMenu(parentEl, ctx, view);
+
+    menu.startPlacement('tradeHub');
+    menu.setHoverTile(0, 0);
+    const ghost = menu.getGhostState();
+    expect(ghost?.building).toBe('tradeHub');
+    expect(ghost?.label).toBe('Inter-Colony Trade Hub');
+    expect(ghost?.footprintText).toBe('2×2');
+    expect(ghost?.tiles).toHaveLength(4);
+    expect(ghost?.valid).toBe(true);
+    expect(ghost?.prepBill).toEqual({ prepare: 3 });
+    expect(ghost?.prepBillText).toBe('Prep: 3× Prepare');
+
+    expect(menu.confirm()).toBe(true);
+    expect(sendCommand).toHaveBeenCalledWith('enqueueTask', {
+      task: { kind: 'build', building: 'tradeHub', q: 0, r: 0, rotation: 0 },
+    });
 
     menu.dispose();
   });

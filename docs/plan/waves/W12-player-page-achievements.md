@@ -89,7 +89,7 @@ Players have a home outside the planet. The `/me` page shows who they are (pilot
 | W12-22 | Client: card states (locked steel art at .85 opacity, next-tier description, earned gradient border + glow, tier colours, chamfered progress bar, back face, Share-to-X button) | client | M | H | W12-21 | An earned card shows "✓ date" in `--ta-terra` and the orange→terra border; Share opens the X intent URL with the text and link | Profile §4 | TA-15.4 |
 | W12-23 | Visual: badge art generator `frontend/design/achievements/generate.mjs` (1024² hex medallion SVG + PNG, tier rim gradients, 3 pips lit by tier, Gold outer ring + glow, 20 family glyphs) + `preview.html` | visual | M | H | W12-01 | `node generate.mjs` → 60 earned images + `preview.html` with all 60 at a glance | Profile §4 badge art | TA-15.5 |
 | W12-24 | Visual: locked steel + padlock variants, export to 512 px WebP in `frontend/public/img/achievements/`, glyph-placeholder fallback if art is missing | visual | S |  | W12-23 | Delete one PNG → its card shows the glyph placeholder; locked variants exist for all 60 | Profile §4 | TA-15.5 |
-| W12-25 | Server: `BadgeMint` outbox (`planned → sent → minted / failed / skipped`, 1 h delay, deterministic `opId`) through mock `BadgeNftPort` | server | M |  | W12-03, W00-35 | Earn a tier, warp 1 h → the outbox row is `minted` with a `mock:` tx; re-running the relay → no second mint | Profile §3, NEAR §1a | TA-15.8 |
+| W12-25 | Server: `BadgeMint` outbox (`planned → sent → minted / failed / skipped`, 1 h delay, deterministic `opId`) through mock `BadgeNftPort` | server | M |  | W12-03, W00-35 | Earn a tier, advance the worker wall-clock by 1 h in the integration test → the outbox row is `minted` with a `mock:` tx; re-running the relay → no second mint | Profile §3, NEAR §1a | TA-15.8 |
 | W12-26 | Client: card back mint status ("Badge minting…", "Recorded (mock)", real → "Recorded on NEAR" + explorer link) | client | S |  | W12-25, W12-22 | A mock-minted tier's back shows "Recorded (mock)" and no explorer link | Profile §3, PA-05 | TA-15.8 |
 | W12-27 | Client: in-game toasts for achievement earned and level up (server events only, D-31; Faction Plate; links to `/me.html#achievements`) | client | S | H | W12-03, W12-05 | Earn a tier in game → a toast with the badge art; click → `/me.html` scrolls to that card | Profile §1 | — |
 | W12-28 | Test PA-01: scripted scenario earns all 60 tiers via producer events (or dev grants for families whose wave is off); each adds exactly its XP once | test | M |  | W12-05 | `npm run test:int progression-all-tiers` → 60 unlocks, total XP 13 800 + milestones, no duplicates after re-evaluation | PA-01 | TA-15.1 |
@@ -114,3 +114,14 @@ Players have a home outside the planet. The `/me` page shows who they are (pilot
 Persist lesson completion and UnlockStage while keeping current-world threat independent.
 
 Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Identify any new statistics producers and reuse the W12 catalogue, transaction and effect queue; do not introduce parallel counters or reward callbacks.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.
+
+
+### Hardening completion (2026-11-04)
+
+Checkpoint-coupled input persistence, incarnation IDs, replay, atomic rewards, catch-up evaluation, stage/archive projection, selected-colony resume, one-hour mock badge delivery and an in-app achievement inbox are implemented. The full W12 browser suite now checks colony cards and pending/minted badge UI; full history filtering/pagination remains explicitly skipped. Remaining extended scope and external adapter prerequisites are tracked in [BE-47, BE-49 and BE-51](../../questions-and-limitations/backend-contracts.md), with recommendations. Future producer waves must populate explicit authoritative state/events rather than infer achievements from UI or dev grants.

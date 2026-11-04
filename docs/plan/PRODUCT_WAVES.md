@@ -177,3 +177,7 @@ Every wave is built in its **own branch and its own git worktree**. Nothing is c
 ### Progression integration gate (W08 owner follow-up)
 
 Every gameplay wave extends the [executable progression and priority contract](W08-PROGRESSION-CONTRACT.md). Its tutorial must produce real orders and complete from authoritative outcomes; its relevant HQ sliders must affect decisions under existing safety and permission rules. S5–S10 continue the same guide. See the contract for wave ownership and required landing evidence.
+
+## W12 progression handoff
+
+All later waves follow [the progression engine contract](../spec/PROGRESSION_ENGINE.md) and their per-wave integration gate. W09 owns notification delivery; W11 owns authenticated multi-colony resume; W23 owns delayed/idempotent badge mint consumers. Pending effects are durable and must not be marked delivered without a successful consumer. The hub mock card is explicit, and gameplay has no ME navigation.

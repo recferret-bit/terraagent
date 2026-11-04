@@ -41,6 +41,10 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   unknown_task: 'Rejected: Order no longer in the queue',
   goal_limit: 'Rejected: Goal limit reached',
   unknown_goal: 'Rejected: Goal no longer in the queue',
+  insufficient_stock: 'Rejected: Insufficient colony stock',
+  insufficient_cargo: 'Rejected: Insufficient orbital cargo',
+  storage_full: 'Rejected: Colony storage is full',
+  hub_offline: 'Rejected: Trade Hub is offline',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

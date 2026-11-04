@@ -8,6 +8,7 @@ export const command = defineCommand({
   dev: true,
   args: z.strictObject({
     colonyIndex: z.number().int().nonnegative().optional(),
+    supplyOverride: z.number().nullable().optional(),
   }),
-  summary: 'Dev console: dumps the colony power grid component balance and shed states (W02-30).',
+  summary: 'Dev console: dumps or overrides the colony power grid component balance and shed states (W02-30, W10-30).',
 });

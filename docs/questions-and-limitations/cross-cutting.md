@@ -449,3 +449,14 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Workaround / mitigation:** the features list in the wave file is unchecked for those rows. Returning login of the same subject is covered by `backend/app/test/near/social-auth.spec.ts`.
 - **To resolve:** build them in a later landing. W21 owns the claim button. W23 owns the real adapters and can run the same contract suites.
 - **Found:** 2026-11-03, W06 plan review
+
+
+### XC-34 · Frontend feature glob retained by Vitest disk transform cache
+
+- **Status:** Accepted (test cache disabled for the game project)
+- **Area / code:** `frontend/game/vitest.config.ts`, `frontend/game/core/registry/index.ts`
+- **What happens:** after merging W10 into W12, the on-disk transformed `import.meta.glob` omitted the newly added Trade Hub feature. Its registration test failed until the source text changed; reverting the temporary diagnostic text reproduced the failure. Disabling `fsModuleCache` restored discovery with unchanged application code.
+- **Why it is like this:** the cached transformation was keyed by source content without invalidating the glob's directory expansion on this branch merge.
+- **Workaround / mitigation:** game tests now transform their modules afresh. Test coverage and assertions are unchanged; startup is slower. Other projects retain their caches.
+- **To resolve:** re-enable only after a cache invalidation fix is verified with a feature directory added between consecutive runs.
+- **Found:** 2026-11-04, W12 landing gate after W10 merge.

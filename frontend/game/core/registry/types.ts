@@ -65,6 +65,7 @@ export interface Feature {
   menus?: MenuDef[];
   renderers?: RendererDef[];
   devCommands?: DevCommandDef[];
+  consoleCommands?: DevCommandDef[];
   /** Analytics event names this feature may track. */
   analytics?: string[];
 }

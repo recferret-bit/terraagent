@@ -1,3 +1,4 @@
+import { CheckpointProgression } from '../../progression/checkpoint-progression.js';
 import { Inject, Injectable, Optional, type BeforeApplicationShutdown } from '@nestjs/common';
 import { devPlanetTypeOf, GEN_VERSION, restore } from '@terra/sim';
 import type { Logger } from 'pino';
@@ -63,6 +64,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
     @Optional() private readonly ledger?: PlanetLedgerService,
     /** Colony rows: a restored planet with rows is never marked as a scenario planet (BE-07). */
     @Optional() private readonly homes?: HomeRepository,
+    @Optional() private readonly progression?: CheckpointProgression,
   ) {
     this.log = layerLogger(root, 'sim', env.LOG_LEVELS as string | undefined);
     this.enabled = persistenceEnabled(env);
@@ -75,7 +77,7 @@ export class SnapshotService implements BeforeApplicationShutdown {
       this.log.error({ planetId: id, err: errText(e) }, 'snapshot save failed');
     });
     if (!this.enabled) return;
-    planets.onPlanetLoaded((id) => this.scheduler.track(id));
+    planets.onPlanetLoaded((id) => { this.progression?.discardUncommitted(id); this.scheduler.track(id); });
     planets.onPlanetUnloaded((id) => this.scheduler.untrack(id));
     planets.onPlanetSnapshot((id, s) => this.scheduler.onSnapshot(id, s));
   }

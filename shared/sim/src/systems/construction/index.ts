@@ -40,7 +40,7 @@ export const placeBuilding = defineCommandHandler({
     if (!args) return 'invalid_args';
     if (isOrderIdTaken(state, colonyId, cmd.commandId)) return 'invalid_args';
     if (cmd.source !== 'system' && (cmd.source as string) !== 'module') {
-      const stageCheck = checkItemUnlockStage(state, colonyId, args.building, ctx.flags);
+      const stageCheck = checkItemUnlockStage(state, colonyId, args.building, ctx.flags, ctx.data);
       if (!stageCheck.ok) {
         return { code: stageCheck.code, detail: stageCheck.detail, unlocksAt: stageCheck.unlocksAt };
       }

@@ -9,7 +9,7 @@ export const errMods = fileURLToPath(new URL('./fixtures/errmods/', import.meta.
 export async function bootCapturing(source: Record<string, string> = {}, o: CreateAppOptions = {}) {
   const lines: Record<string, unknown>[] = [];
   const logDestination = { write: (s: string) => void lines.push(JSON.parse(s) as Record<string, unknown>) };
-  const created = await createApp({ source: { NODE_ENV: 'test', ...source }, modulesDirs: [srcDir, errMods], logDestination, ...o });
+  const created = await createApp({ source: { NODE_ENV: 'test', PROGRESSION_WORKERS: 'off', ...source }, modulesDirs: [srcDir, errMods], logDestination, ...o });
   await created.app.listen(0, '127.0.0.1');
   const url = (await created.app.getUrl()).replace('[::1]', '127.0.0.1');
   lines.length = 0; // drop Nest startup logs

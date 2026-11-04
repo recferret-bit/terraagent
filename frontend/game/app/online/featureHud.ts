@@ -29,6 +29,10 @@ export class FeatureHud {
   /** How many times the features were mounted (1 for the whole session unless the enabled waves changed). */
   mounts = 0;
 
+  get activeServices(): FeatureServices | null {
+    return this.ctx?.services ?? null;
+  }
+
   constructor(
     private readonly parent: HTMLElement,
     private readonly flags: ClientFlagsStore,

@@ -388,7 +388,7 @@ export const enqueueTaskHandler = defineCommandHandler({
               ? norm.task.op
               : undefined;
       if (itemId) {
-        const stageCheck = checkItemUnlockStage(state, colIdx, itemId, ctx.flags);
+        const stageCheck = checkItemUnlockStage(state, colIdx, itemId, ctx.flags, ctx.data);
         if (!stageCheck.ok) {
           return { code: stageCheck.code, detail: stageCheck.detail, unlocksAt: stageCheck.unlocksAt };
         }

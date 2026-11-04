@@ -43,3 +43,6 @@ export { GoalProgressDataSchema, event as goalProgress, type GoalProgressData } 
 export { GoalDoneDataSchema, event as goalDone, type GoalDoneData } from './events/goal-done';
 export * from './rest';
 export * from './precheck';
+export * from './progression';
+export * from './profile';
+export * from './maps';

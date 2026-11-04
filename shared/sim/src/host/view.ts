@@ -123,7 +123,7 @@ export function view(state: PlanetState): SimView {
     out.goalLimit = getHqGoalLimit(state, k.index);
     out.priorities = getColonyPriorities(state, k.index);
     const prog = getColonyProgression(state, k.index);
-    out.stage = typeof k.stage === 'number' ? k.stage : prog.stage;
+    out.stage = typeof k.stage === 'number' ? k.stage : state.blobs.progression ? prog.stage : undefined;
     out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : prog.unlockStage;
     out.threatStage = typeof k.threatStage === 'number' ? k.threatStage : prog.threatStage;
     if (typeof k.stageOverride === 'string') out.stageOverride = k.stageOverride;
@@ -140,7 +140,7 @@ export function view(state: PlanetState): SimView {
     out.nextStageConditionText =
       typeof k.nextStageConditionText === 'string'
         ? k.nextStageConditionText
-        : prog.nextStageConditionText || (getStageSpec(out.stage + 1)?.unlockConditionText ?? '');
+        : prog.nextStageConditionText || (getStageSpec((out.stage ?? 0) + 1)?.unlockConditionText ?? '');
     out.lastAutopilotDecision = getLastAutopilotDecision(state, k.index);
     return out;
   });

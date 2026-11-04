@@ -1,0 +1,175 @@
+.ta-pilot-body {
+  display: grid;
+  grid-template-columns: 1.3fr 1fr;
+  gap: 20px;
+  align-items: center;
+}
+
+.ta-pilot-identity {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.ta-pilot-avatar {
+  width: 72px;
+  height: 72px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--ta-plate-hi);
+  border: 1px solid var(--ta-seam-hi);
+}
+
+.ta-pilot-avatar.ta-frame-surveyor {
+  border-color: var(--ta-orange);
+  box-shadow: 0 0 14px rgba(255, 106, 19, 0.2);
+}
+
+.ta-pilot-avatar.ta-frame-ascendant-gold {
+  border-color: var(--ta-energy);
+  box-shadow: 0 0 16px rgba(255, 176, 32, 0.35);
+}
+
+.ta-pilot-avatar-glyph {
+  font-family: var(--font-display);
+  font-size: 28px;
+  font-weight: 700;
+  color: var(--ta-orange);
+}
+
+.ta-pilot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.ta-pilot-name-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ta-pilot-handle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--ta-bone);
+}
+
+.ta-pilot-title-chip {
+  padding: 3px 10px;
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ta-blue);
+  border-color: var(--ta-blue);
+}
+
+.ta-pilot-rename {
+  text-decoration: none;
+  font-size: 11px;
+}
+
+.ta-pilot-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.ta-pilot-meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.ta-pilot-id {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ta-bone);
+}
+
+.ta-pilot-since {
+  font-size: 13px;
+  color: var(--ta-ash);
+}
+
+.ta-pilot-xp-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ta-pilot-xp-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.ta-pilot-level-badge {
+  padding: 4px 12px;
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  background: var(--ta-orange);
+  color: var(--ta-void);
+}
+
+.ta-pilot-xp-label {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ta-bone);
+}
+
+.ta-pilot-xp-bar {
+  position: relative;
+  height: 26px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid var(--ta-seam-hi);
+  clip-path: polygon(
+    6px 0,
+    100% 0,
+    100% calc(100% - 6px),
+    calc(100% - 6px) 100%,
+    0 100%,
+    0 6px
+  );
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.ta-pilot-xp-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: linear-gradient(90deg, var(--ta-orange), var(--ta-energy));
+  opacity: 0.85;
+}
+
+.ta-pilot-xp-bar-text {
+  position: relative;
+  z-index: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ta-bone);
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.9);
+}
+
+@media (max-width: 720px) {
+  .ta-pilot-body {
+    grid-template-columns: 1fr;
+  }
+}

@@ -106,6 +106,8 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
 }) => {
   await openW08(page);
 
+  await page.getByTestId('stage-goals-launcher').click();
+
   // Step 1: Start at S0 Landing
   await expect(page.locator('[data-testid="stage-track-hud"]')).toBeVisible();
   await expect(page.locator('[data-testid="stage-current-label"]')).toHaveText('S0 Landing');
@@ -323,21 +325,25 @@ test('@hack 8. Goal queue limit: HQ T1 allows 2 active+queued goals, rejects a 3
   expectNoPageErrors(page);
 });
 
-test('owner fixes: replay, previous stage, hide/show and HQ tabs', async ({ page }) => {
+test('owner fixes: compact Goals launcher, clickable stages, minus and HQ tabs', async ({ page }) => {
   await openW08(page);
+  await expect(page.getByTestId('stage-track-hud')).toBeHidden();
+  await expect(page.getByTestId('stage-goals-launcher')).toHaveText('Goals · S0');
   await runConsole(page, 'stage set 2');
   await page.keyboard.press('Backquote');
   await expect(page.getByTestId('stage-toast-countdown')).toContainText(/Closes in \d+s/);
   await page.getByTestId('stage-toast-dismiss').click();
-  await page.getByTestId('stage-guide-toggle').click();
+  await page.getByTestId('stage-segment-S2').click();
   await expect(page.getByTestId('stage-toast-countdown')).toHaveCount(0);
-  await page.getByTestId('stage-guide-previous').click();
+  await page.getByTestId('stage-segment-S1').click();
   await expect(page.getByTestId('stage-toast-title')).toHaveText('S1 First Light');
   expect((await getColony0(page))?.stage).toBe(2);
-  await page.getByTestId('stage-guide-toggle').click();
+  await page.getByTestId('stage-goals-close').click();
+  await expect(page.getByTestId('stage-track-hud')).toBeHidden();
   await expect(page.getByTestId('stage-reached-toast')).toHaveCount(0);
-  await page.getByTestId('stage-guide-toggle').click();
-  await expect(page.getByTestId('stage-toast-title')).toHaveText('S1 First Light');
+  await page.getByTestId('stage-goals-launcher').click();
+  await expect(page.getByTestId('stage-track-hud')).toBeVisible();
+  await expect(page.getByTestId('stage-guide-previous')).toHaveCount(0);
   await page.getByTestId('stage-segment-S10').click();
   await expect(page.getByTestId('stage-guide-text')).toContainText('W21');
   await expect(page.getByTestId('stage-guide-text')).toContainText('Preview');

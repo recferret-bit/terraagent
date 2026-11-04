@@ -1,0 +1,77 @@
+.ta-achievements-body {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.ta-ach-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ta-ach-xp-total {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--ta-ash);
+}
+
+.ta-ach-families {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+
+.ta-ach-family-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ta-ach-family-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.ta-ach-family-eyebrow {
+  margin: 0;
+  font-size: 13px;
+  letter-spacing: 0.16em;
+  color: var(--ta-steel);
+}
+
+.ta-ach-family-progress {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ta-ash);
+}
+
+.ta-ach-ladder {
+  display: flex;
+  gap: 14px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: 4px;
+}
+
+.ta-ach-card {
+  flex: 0 0 100%;
+  scroll-snap-align: start;
+  min-height: 290px;
+}
+
+@media (min-width: 640px) {
+  .ta-ach-card {
+    flex: 0 0 48%;
+  }
+}
+
+@media (min-width: 960px) {
+  .ta-ach-card {
+    flex: 0 0 clamp(220px, calc((100% - 28px) / 3), 300px);
+  }
+}

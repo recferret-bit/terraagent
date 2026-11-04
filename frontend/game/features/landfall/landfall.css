@@ -152,7 +152,7 @@
 }
 
 .ta-hq-panel__fill--progress {
-  background: #38bdf8;
+  background: var(--ta-blue-hi);
 }
 
 .ta-hq-panel__cancel {
@@ -195,3 +195,8 @@
 .ta-hq-panel__queue {
   color: var(--ta-text-2);
 }
+
+.ta-hq-panel { flex-wrap: wrap; gap: var(--ta-s2); max-width: calc(100vw - 32px); }
+.ta-hq-panel[data-expanded='true'] { width: min(800px, calc(100vw - 32px)); }
+.ta-selection-details { flex-basis: 100%; min-width: 0; border-top: 1px solid var(--ta-seam); padding-top: var(--ta-s2); }
+.ta-selection-details[hidden] { display: none; }

@@ -4,6 +4,7 @@ import { CloseCode, RejectCode } from '../errors';
 import { WaveId } from '../flags';
 import { PlayerId } from '../ids';
 import { HomeColonyId, HomePlanetId } from '../rest/home';
+import { CargoStatusPayload } from '../rest/near-cargo';
 import { PlanetType, SimDiffFrame, SimEventWire, SimSnapshotFrame } from './sim';
 
 /** App → client messages (PROTOCOL §4.3). Parsed permissively by clients (PR-01). */
@@ -58,7 +59,8 @@ export const CmdReject = ServerEnvelope('cmd.reject', z.object({
 }));
 export const Pong = ServerEnvelope('pong', z.object({ clientTimeMs: z.number().int(), serverTimeMs: z.number().int(), tick: z.number().int().optional() }));
 export const Bye = ServerEnvelope('bye', z.object({ code: CloseCode, reason: z.string().max(120) }));
+export const CargoStatus = ServerEnvelope('cargo.status', CargoStatusPayload);
 
-export const ServerMessage = z.discriminatedUnion('t', [Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye]);
+export const ServerMessage = z.discriminatedUnion('t', [Ready, Welcome, Delta, Event, CmdAck, CmdReject, Pong, Bye, CargoStatus]);
 export type ServerMessage = z.infer<typeof ServerMessage>;
 export type ServerMessageOf<T extends ServerMessage['t']> = Extract<ServerMessage, { t: T }>;

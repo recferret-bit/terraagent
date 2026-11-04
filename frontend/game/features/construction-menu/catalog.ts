@@ -1,5 +1,5 @@
 import type { FlagSet } from '@terra/contracts';
-import { ENTITY_KIND, formatUnlockAtTooltip, getItemUnlockStage, getStageSpec, TICK_MS } from '@terra/sim';
+import { ENTITY_KIND, evaluateTradeHubUnlock, type CompiledDataLike, formatUnlockAtTooltip, getItemUnlockStage, getStageSpec, TICK_MS } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
 import type { GameView } from '../../core/registry/types';
 import { ENTITY_STRIDE } from '../../store/replica/viewCodec';
@@ -20,6 +20,8 @@ export interface BuildingCardModel {
   id: string;
   building: BuildingKind;
   label: string;
+  category?: 'Command' | 'Economy' | 'Power';
+  unlockHint?: string;
   tier: number;
   unlockStage: number;
   stageLocked: boolean;
@@ -251,11 +253,18 @@ function isStageLocked(unlockStage: number, colonyStage: number | undefined): bo
   return colonyStage < unlockStage;
 }
 
+function categoryForBuilding(building: BuildingKind): 'Command' | 'Economy' | 'Power' {
+  if (building === 'commandHub') return 'Command';
+  if (building === 'solar') return 'Power';
+  return 'Economy';
+}
+
 function makeCard(
   row: Record<string, unknown>,
   view: GameView | undefined,
   fs: FlagSet,
   colonyStage: number | undefined,
+  data: CompiledDataLike,
 ): BuildingCardModel {
   const building = String(row.building) as BuildingKind;
   const label = typeof row.label === 'string' ? row.label : (LABELS[building] ?? building);
@@ -271,7 +280,8 @@ function makeCard(
   const cost = (row.cost as Record<string, number>) ?? {};
   const powerText = formatPower(row);
 
-  const stageLocked = isStageLocked(unlockStage, colonyStage);
+  const tradeUnlock = building === 'tradeHub' && fs.has('W10') ? evaluateTradeHubUnlock(view, 0, data) : undefined;
+  const stageLocked = tradeUnlock ? !tradeUnlock.unlocked : isStageLocked(unlockStage, colonyStage);
   let disabled = false;
   let disabledReason: string | undefined;
   let unlockConditionText: string | undefined;
@@ -280,7 +290,10 @@ function makeCard(
   if (building === 'commandHub' && isHubBuilt(view)) {
     disabled = true;
     disabledReason = 'Already built';
-  } else if (stageLocked) {
+  } else if (tradeUnlock && !tradeUnlock.unlocked) {
+    disabled = true;
+    disabledReason = tradeUnlock.hint;
+  } else if (!tradeUnlock && stageLocked) {
     disabled = true;
     unlockConditionText = formatUnlockAtTooltip(unlockStage);
     unlockDetailText = formatUnlockDetail(unlockStage);
@@ -295,6 +308,8 @@ function makeCard(
     id: String(row.id),
     building,
     label,
+    category: categoryForBuilding(building),
+    unlockHint: tradeUnlock?.hint,
     tier,
     unlockStage,
     stageLocked,
@@ -335,6 +350,13 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
     }
   }
 
+  const tradeHubTable = data.tables['tradeHub'];
+  const tradeHubRow = tradeHubTable?.['t1'];
+  if (tradeHubRow) {
+    candidateRows.push(tradeHubRow as Record<string, unknown>);
+    seenBuildings.add('tradeHub');
+  }
+
   if (colonyStage !== undefined && fs.has('W02')) {
     for (const stageRow of STAGE_BUILDING_ROWS) {
       const bKey = String(stageRow.building);
@@ -348,10 +370,10 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
   const cards: BuildingCardModel[] = [];
   for (const row of candidateRows) {
     const itemStage = resolveRowUnlockStage(row);
-    if (colonyStage !== undefined && itemStage > colonyStage + 1) {
+    if (row !== tradeHubRow && colonyStage !== undefined && itemStage > colonyStage + 1) {
       continue;
     }
-    cards.push(makeCard(row, view, fs, colonyStage));
+    cards.push(makeCard(row, view, fs, colonyStage, data));
   }
 
   return cards;

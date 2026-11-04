@@ -48,7 +48,8 @@ class MockChainControls {
 }
 
 function portKey(port: string): string {
-  return port.toLowerCase();
+  const lower = port.toLowerCase();
+  return lower === 'cargotoken' ? 'cargo' : lower;
 }
 
 function isLatencyBound(ms: number): boolean {
