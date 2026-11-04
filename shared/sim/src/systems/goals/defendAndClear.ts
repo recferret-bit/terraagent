@@ -233,7 +233,7 @@ export function stepDefendColonyGoal(
         data: ctx?.data,
       });
       if (site) {
-        queued = enqueueGoalTask(
+        enqueueGoalTask(
           state,
           colonyIndex,
           goal,
@@ -384,9 +384,9 @@ export function stepClearCorridorGoal(
     return;
   }
 
-  goal.params.target = String(target.hiveId);
+  goal.params.target = target.hiveId;
   const combatUnitIds = collectColonyCombatUnits(state, colonyIndex);
-  const stepCtx = ctx ?? createFallbackGoalCtx(state, tick, ctx?.data);
+  const stepCtx = ctx ?? createFallbackGoalCtx(state, tick, undefined);
 
   if (combatUnitIds.length === 0) {
     const hasFactoryAny =

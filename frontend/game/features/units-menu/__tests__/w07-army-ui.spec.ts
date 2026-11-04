@@ -130,7 +130,8 @@ describe('W07-18 Army UI: Ordering 2 Recon, Factory Queue Progress, Supply 2/10 
     const pipeline = createRegistryPipeline({ flags });
 
     const host = document.createElement('div');
-    const sendCommand = vi.fn((kind: string, args: Record<string, unknown>) => {
+    const sendCommand = vi.fn((kind: string, rawArgs?: unknown) => {
+      const args = (rawArgs ?? {}) as Record<string, unknown>;
       if (kind === 'enqueueTask') {
         const task = args.task as { kind: 'buildUnit'; unit: string; count?: number; repeat?: boolean };
         enqueueQueueTask(state, { colonyIndex: 0, task, data: pipeline.config.data });
@@ -214,7 +215,8 @@ describe('W07-18 Army UI: Rally-flag placement', () => {
     const flags = parseWaves('..07');
     const surface = document.createElement('div');
     const host = document.createElement('div');
-    const sendCommand = vi.fn((kind: string, args: { q: number; r: number }) => {
+    const sendCommand = vi.fn((kind: string, rawArgs?: unknown) => {
+      const args = (rawArgs ?? {}) as { q: number; r: number };
       if (kind === 'setRally') {
         setFactoryRallyPoint(state, 0, args.q, args.r, factoryId, state.meta.tick);
       }

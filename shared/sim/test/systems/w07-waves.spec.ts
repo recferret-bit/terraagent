@@ -25,7 +25,6 @@ import {
   PREP,
   provokeHiveAgainstColony,
   queueColonyGoal,
-  rowOf,
   setColonyPriorities,
   SimHost,
   spawnHiveEntity,

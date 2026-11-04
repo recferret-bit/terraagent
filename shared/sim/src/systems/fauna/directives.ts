@@ -81,7 +81,7 @@ export interface FaunaSparseCorrection {
   bugs: FaunaSparseBugRecord[];
 }
 
-export interface FaunaCohortRecord {
+export interface FaunaDirectiveCohortRecord {
   cohortId: string;
   hiveId: number;
   species: FaunaSpeciesId;
@@ -92,6 +92,8 @@ export interface FaunaCohortRecord {
   objectiveR: number;
   dispatchedAtTick: number;
 }
+
+type FaunaCohortRecord = FaunaDirectiveCohortRecord;
 
 export interface FaunaBugWireSnapshot {
   hp: number;

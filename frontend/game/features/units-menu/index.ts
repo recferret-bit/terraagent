@@ -8,7 +8,7 @@ declare module '../../core/registry/types' {
   interface FeatureServices {
     /** Sim enqueue task command over the transport or local host. */
     enqueueHubUnit?: (opts: {
-      unit?: 'harvester' | 'builder' | 'recon' | string;
+      unit?: 'harvester';
       count?: number;
       repeat?: boolean;
       colonyIndex?: number;
