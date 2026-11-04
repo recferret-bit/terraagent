@@ -18,6 +18,7 @@ import { defineUnitCommand, type TerraformCommand, type UnitCtx, type UnitWorkPr
 import { canDoWork, isWorkerEligibleForJob } from '../dispatch/eligibility';
 import { hqCellGridLinked, stepTerraformWorkWithCell } from '../hq/cell';
 import { syncHqView } from '../hq/view';
+import { invalidateExtractorRingCache } from '../production/tierGate';
 import { getTerraformJobCost, getTerraformOpSpec, isW01TerraformOpKind } from './ops';
 import { colonyTerraformOrders, readColonyOrders, writeColonyOrders, type TerraformJob, type TerraformOrder } from './orders';
 import { evaluateTerraformTile, syncColonyTerraformStats, terraformWorldFromState } from './rules';
@@ -87,6 +88,7 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
     setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
     if (job.op === 'grade') levelToAdjacentFlat(state, tileIdx, tick);
     syncColonyTerraformStats(state, colonyId, tick);
+    invalidateExtractorRingCache(state);
     if (ctx.flags.has('W05')) {
       ctx.emit({
         kind: 'tileStateChanged',
@@ -106,6 +108,7 @@ function completeTerraformJob(state: PlanetState, colonyId: number, job: Terrafo
   setTilePrep(state.grid, tileIdx, spec.toPrep, tick);
   if (spec.toTerrain === TERRAIN.flat) levelToAdjacentFlat(state, tileIdx, tick);
   syncColonyTerraformStats(state, colonyId, tick);
+  invalidateExtractorRingCache(state);
   if (ctx.flags.has('W05')) {
     ctx.emit({
       kind: 'tileStateChanged',

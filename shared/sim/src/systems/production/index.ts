@@ -3,6 +3,7 @@ import { consumeDepositRichness, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { setField } from '../../ecs/store';
 import { DEPOSIT } from '../../grid/layers';
+import type { CompiledDataLike } from '../../kernel/config';
 import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import type { ColonyState, PlanetState } from '../../kernel/state';
@@ -14,7 +15,6 @@ import {
   isFamilyAtCap,
   type ExtractorLivingBonusRecord,
 } from '../economy/ledger';
-import { depositFamilyAndKey } from '../harvest/adjacency';
 import {
   checkExtractorDepositCoverage,
   ensureColonyForOwner,
@@ -26,8 +26,17 @@ import {
   type ExtractorLivingBonusInfo,
   type IncomeMapByOwner,
 } from './helpers';
+import {
+  computeColonyTierGates,
+  creditExtractedDepositSlice,
+  emitTierUnlockedIfNeeded,
+  evaluateExtractorTierGate,
+  type ColonyTierGatesSummary,
+  type ExtractorTierGateResult,
+} from './tierGate';
 
 export * from './helpers';
+export * from './tierGate';
 
 const METALS_KEYS: readonly ResourceKey[] = ['metals.t1', 'metals.t2', 'metals.t3'];
 const NON_METALS_EXTRACTOR_KEYS: readonly ResourceKey[] = [
@@ -54,7 +63,7 @@ function isOfflineExtractorState(st: number): boolean {
 
 /**
  * Extracts up to `desired` units from the covered deposit tiles (in order) and credits each tile's yield to the stock
- * key of its tier (`depositTier`). Returns what was extracted per key.
+ * key of its tier (`depositTier` or D-34 `tierGate` split). Returns what was extracted per key.
  */
 function extractTiered(
   state: PlanetState,
@@ -64,6 +73,7 @@ function extractTiered(
   tick: number,
   depositKind: number = DEPOSIT.metals,
   fallbackKey?: ResourceKey,
+  tierGate?: ExtractorTierGateResult,
 ): Map<ResourceKey, number> {
   const out = new Map<ResourceKey, number>();
   const tiers = state.grid.layers.depositTier as Uint8Array | undefined;
@@ -74,12 +84,7 @@ function extractTiered(
     if (got <= 0) continue;
     remaining -= got;
     const tier = tiers?.[depTileIdx] ?? 0;
-    const key =
-      fallbackKey && depositKind === DEPOSIT.oil && tier !== 3
-        ? fallbackKey
-        : depositFamilyAndKey(depositKind, tier)!.key;
-    creditResource(colony, key, got, tick);
-    out.set(key, (out.get(key) ?? 0) + got);
+    creditExtractedDepositSlice(colony, depositKind, tier, got, tick, tierGate, fallbackKey, out);
   }
   return out;
 }
@@ -87,16 +92,35 @@ function extractTiered(
 function recordExtractorBonus(
   colony: ColonyState,
   entityId: number,
+  q: number,
+  r: number,
+  family: ResourceFamily,
   livingBonus: ExtractorLivingBonusInfo,
   ratePerS: number,
+  tierGate: ExtractorTierGateResult,
+  incomePerSByKey?: Partial<Record<ResourceKey, number>>,
 ): void {
   const c = ensureColonyLedger(colony);
   const entry: ExtractorLivingBonusRecord = {
     entityId,
+    q,
+    r,
+    family,
     adjacentToLiving: livingBonus.adjacentToLiving,
     livingBonus: livingBonus.bonus,
     livingBonusText: livingBonus.label,
     ratePerS: Number(ratePerS.toFixed(4)),
+    unlockedTier: tierGate.unlockedTier,
+    ringRadius: tierGate.ring.ringRadius,
+    ringTotalTiles: tierGate.ring.totalTiles,
+    ringTerraformedTiles: tierGate.ring.terraformedTiles,
+    ringLivingTiles: tierGate.ring.livingTiles,
+    ringTerraformedRatio: Number(tierGate.ring.terraformedRatio.toFixed(4)),
+    ringLivingRatio: Number(tierGate.ring.livingRatio.toFixed(4)),
+    ringTerraformedPct: tierGate.ring.terraformedPct,
+    ringLivingPct: tierGate.ring.livingPct,
+    shares: tierGate.shares,
+    ...(incomePerSByKey ? { incomePerSByKey } : {}),
   };
   if (!c.production.extractors) c.production.extractors = {};
   c.production.extractors[entityId] = entry;
@@ -126,24 +150,38 @@ function stepDepositExtractorRow(
   }
   if (st === ENTITY_STATE.offlineCapped) setField(e, row, 'state', ENTITY_STATE.active, ctx.tick);
 
+  const q = cols.q[row], r = cols.r[row], rot = cols.rot[row];
   const w = cols.footprintW?.[row] || Number(rowDef.footprintW ?? 2);
   const d = cols.footprintD?.[row] || Number(rowDef.footprintD ?? 2);
-  const cov = checkExtractorDepositCoverage(state, cols.q[row], cols.r[row], w, d, cols.rot[row], depositKind);
+  const cov = checkExtractorDepositCoverage(state, q, r, w, d, rot, depositKind);
   if (!cov.covered) return;
 
-  const livingBonus = getExtractorLivingBonus(state, cols.q[row], cols.r[row], w, d, cols.rot[row], ctx.data);
+  const livingBonus = getExtractorLivingBonus(state, q, r, w, d, rot, ctx.data);
+  const tierGate = evaluateExtractorTierGate(state, owner, q, r, w, d, rot, ctx.data);
+  emitTierUnlockedIfNeeded(state, colony, owner, cols.id[row], family, q, r, tierGate.unlockedTier, ctx);
+
+  const entityTier = Math.max(1, Number(cols.tier?.[row] ?? 1));
+  const rowTier = Math.max(1, Number(rowDef.tier ?? 1));
+  const mkRateMult = entityTier > rowTier ? entityTier / rowTier : 1;
   const baseOutputPerS = Number(rowDef.outputPerS ?? 1.0);
-  const ratePerS = baseOutputPerS * cov.richnessMult * livingBonus.mult;
-  recordExtractorBonus(colony, cols.id[row], livingBonus, ratePerS);
+  const ratePerS = baseOutputPerS * mkRateMult * cov.richnessMult * livingBonus.mult;
+
   const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
-  const byKey = extractTiered(state, colony, cov.depositTiles, desiredAmount, ctx.tick, depositKind, fallbackKey);
+  const byKey = extractTiered(state, colony, cov.depositTiles, desiredAmount, ctx.tick, depositKind, fallbackKey, tierGate);
   let extracted = 0;
   for (const v of byKey.values()) extracted += v;
+  const incomePerSByKey: Partial<Record<ResourceKey, number>> = {};
+  if (extracted > 0) {
+    const income = extractorIncomeByOwner.get(owner) ?? {};
+    for (const [key, got] of byKey) {
+      const keyRate = (ratePerS * got) / extracted;
+      incomePerSByKey[key] = Number(keyRate.toFixed(4));
+      income[key] = (income[key] ?? 0) + keyRate;
+    }
+    extractorIncomeByOwner.set(owner, income);
+  }
+  recordExtractorBonus(colony, cols.id[row], q, r, family, livingBonus, ratePerS, tierGate, incomePerSByKey);
   if (extracted <= 0) return;
-
-  const income = extractorIncomeByOwner.get(owner) ?? {};
-  for (const [key, got] of byKey) income[key] = (income[key] ?? 0) + (ratePerS * got) / extracted;
-  extractorIncomeByOwner.set(owner, income);
 
   if (isFamilyAtCap(colony, family)) setField(e, row, 'state', ENTITY_STATE.offlineCapped, ctx.tick);
 }
@@ -167,28 +205,41 @@ function stepWaterExtractorRow(
   }
   if (st === ENTITY_STATE.offlineCapped) setField(e, row, 'state', ENTITY_STATE.active, ctx.tick);
 
+  const q = cols.q[row], r = cols.r[row], rot = cols.rot[row];
   const w = cols.footprintW?.[row] || Number(waterRow.footprintW ?? 2);
   const d = cols.footprintD?.[row] || Number(waterRow.footprintD ?? 2);
-  const livingBonus = getExtractorLivingBonus(state, cols.q[row], cols.r[row], w, d, cols.rot[row], ctx.data);
+  const livingBonus = getExtractorLivingBonus(state, q, r, w, d, rot, ctx.data);
+  const tierGate = evaluateExtractorTierGate(state, owner, q, r, w, d, rot, ctx.data);
   const baseWaterPerS = Number(waterRow.outputPerS ?? 0.875);
   const planetMult = state.meta.planetType === 'desert' ? Number(waterRow.desertOutputMult ?? 0.5) : 1.0;
   const ratePerS = baseWaterPerS * planetMult * livingBonus.mult;
-  recordExtractorBonus(colony, cols.id[row], livingBonus, ratePerS);
   const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
   const { credited } = creditResource(colony, 'bio.water', desiredAmount, ctx.tick);
+  const keyRate = credited > 0 ? (ratePerS * credited) / desiredAmount : 0;
+  recordExtractorBonus(colony, cols.id[row], q, r, 'bio', livingBonus, ratePerS, tierGate, {
+    'bio.water': Number(keyRate.toFixed(4)),
+  });
   if (credited <= 0) return;
 
   const income = extractorIncomeByOwner.get(owner) ?? {};
-  income['bio.water'] = (income['bio.water'] ?? 0) + (ratePerS * credited) / desiredAmount;
+  income['bio.water'] = (income['bio.water'] ?? 0) + keyRate;
   extractorIncomeByOwner.set(owner, income);
 
   if (isFamilyAtCap(colony, 'bio')) setField(e, row, 'state', ENTITY_STATE.offlineCapped, ctx.tick);
 }
 
-function applyExtractorIncomeToLedger(state: PlanetState, extractorIncomeByOwner: IncomeMapByOwner): void {
+function applyExtractorIncomeToLedger(
+  state: PlanetState,
+  extractorIncomeByOwner: IncomeMapByOwner,
+  data?: CompiledDataLike,
+): void {
   for (const colony of state.colonies) {
     if (!colony) continue;
     const c = ensureColonyLedger(colony);
+    const tierGates = computeColonyTierGates(state, c.index, data);
+    c.production.tierGates = tierGates;
+    (c as { tierGates?: ColonyTierGatesSummary }).tierGates = tierGates;
+
     const income = extractorIncomeByOwner.get(c.index) ?? {};
     let metalsFam = 0;
     for (const key of METALS_KEYS) {
@@ -238,7 +289,7 @@ const extractorProductionSystem = defineSystem({
     }
 
     lastExtractorIncomeByState.set(state, extractorIncomeByOwner);
-    applyExtractorIncomeToLedger(state, extractorIncomeByOwner);
+    applyExtractorIncomeToLedger(state, extractorIncomeByOwner, ctx.data);
   },
 });
 

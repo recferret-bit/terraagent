@@ -47,7 +47,7 @@ export const enqueueTask = defineCommandHandler({
       Array.isArray(rawTf.tiles) &&
       rawTf.tiles.length > 0
     ) {
-      const stageCheck = checkItemUnlockStage(state, colonyId, rawTf.op, ctx.flags);
+      const stageCheck = checkItemUnlockStage(state, colonyId, rawTf.op, ctx.flags, ctx.data);
       if (!stageCheck.ok) {
         return { code: stageCheck.code, detail: stageCheck.detail, unlocksAt: stageCheck.unlocksAt };
       }
