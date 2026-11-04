@@ -4,6 +4,7 @@ import { setDirectorPolicyHandler } from './policy';
 
 export { goalKey, syncDirectorIntent } from './intent';
 export { buildColonyBrief, guardBriefText } from './brief';
+export { actionLeavesColony, scopeDirective, screenDirective, screenProposal, type ColonyScope } from './scope';
 export { applyDirectorPolicy, colonyDirector, noteDirectorPlan, setDirectorPolicyHandler } from './policy';
 export { priorityKey, type ColonyDirectorRecord, type DirectorPlanRef } from './store';
 
