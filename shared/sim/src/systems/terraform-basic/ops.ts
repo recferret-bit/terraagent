@@ -154,6 +154,22 @@ export function terraformYields(op: TerraformOpKind, data?: CompiledDataLike): P
   return { ...getTerraformOpSpec(op, data).yields };
 }
 
+/**
+ * The per-tile resource cost of `op` (`opsBasic.<op>.cost`), applying `desertWaterMult` (`2x`) on `desert` planets for `irrigate`.
+ */
+export function getTerraformJobCost(
+  op: TerraformOpKind,
+  data?: CompiledDataLike,
+  planetType?: string,
+): Partial<Record<ResourceKey, number>> {
+  const spec = getTerraformOpSpec(op, data);
+  const out: Partial<Record<ResourceKey, number>> = { ...spec.cost };
+  if (planetType === 'desert' && spec.desertWaterMult !== 1 && typeof out['bio.water'] === 'number') {
+    out['bio.water'] = out['bio.water']! * spec.desertWaterMult;
+  }
+  return out;
+}
+
 /** The yield of a `work` job on ground `key` (forest → Clear's, rock → Break's, slope / hole / Flat → none). */
 export function groundWorkYields(key: string, data?: CompiledDataLike): Partial<Record<ResourceKey, number>> {
   return key === 'forest' ? terraformYields('clear', data) : key === 'rock' ? terraformYields('break', data) : {};

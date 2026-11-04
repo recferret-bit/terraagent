@@ -8,6 +8,7 @@ import { cancelQueueTask, enqueueAuthority, enqueueTaskHandler, getAllQueueEntri
 import { mirrorRepairQueueEntry } from './autoRepair';
 import { enqueueWorkAtTile, executeDismantleAtTile, hasWorkJob, workJobsSystem } from './dismantleAndWork';
 import { checkItemUnlockStage, resolveItemUnlockStage } from '../progression/validate';
+import { isTerraformOpKind } from './ops';
 import { cancelTerraformOrder, enqueueTerraformOrder, findTerraformOrder } from './queue';
 import { enqueueAutoPrepares } from './rules';
 import { enqueueWorkOrder } from './workOrder';
@@ -50,7 +51,7 @@ export const enqueueTask = defineCommandHandler({
       if (!stageCheck.ok) {
         return { code: stageCheck.code, detail: stageCheck.detail, unlocksAt: stageCheck.unlocksAt };
       }
-      if (ctx.flags.has('W02') && resolveItemUnlockStage(rawTf.op) >= 2 && rawTf.op !== 'dismantle') {
+      if (ctx.flags.has('W02') && !isTerraformOpKind(rawTf.op) && resolveItemUnlockStage(rawTf.op) >= 2 && rawTf.op !== 'dismantle') {
         return enqueueTaskHandler.handle(state, cmd, ctx);
       }
     }
@@ -84,7 +85,17 @@ export const enqueueTask = defineCommandHandler({
       tick: ctx.tick,
       data: ctx.data,
     });
-    if (!res.ok) return res.reason ?? 'site_blocked';
+    if (!res.ok) {
+      if (
+        res.reason === 'site_blocked' &&
+        ctx.flags.has('W08') &&
+        typeof state.colonies[colonyId]?.stage === 'number' &&
+        resolveItemUnlockStage(op) >= 2
+      ) {
+        return enqueueTaskHandler.handle(state, cmd, ctx);
+      }
+      return res.reason ?? 'site_blocked';
+    }
   },
 });
 
