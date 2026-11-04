@@ -59,10 +59,9 @@ const MOTION_COL_BITS: Readonly<Record<string, number>> = {
   rot: 1 << 2,
   q: 1 << 3,
   r: 1 << 4,
-  targetQ: 1 << 3,
-  targetR: 1 << 4,
-  state: 1 << 0,
-  progress: 1 << 0,
+  targetQ: 1 << 5,
+  targetR: 1 << 6,
+  state: 1 << 8,
 };
 
 export function createStore(capacity = 64): EntityStore {

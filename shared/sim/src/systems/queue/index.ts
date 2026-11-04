@@ -137,10 +137,6 @@ function tryStartQueueEntry(
     markWaiting(entry, 'storage', 'waiting: storage (no ETA)', null, tick);
     return;
   }
-  if (isBlockedByPower(state, colony, entry)) {
-    markWaiting(entry, 'power', 'waiting: power', null, tick);
-    return;
-  }
   if (
     entry.task.kind === 'buildUnit' &&
     !checkUnitSupply(state, entry.colonyIndex, entry.task.unit, unitSupplyData(entry.task.unit, data), {
@@ -149,6 +145,10 @@ function tryStartQueueEntry(
     }).ok
   ) {
     markWaiting(entry, 'supply', 'waiting: supply', null, tick);
+    return;
+  }
+  if (isBlockedByPower(state, colony, entry)) {
+    markWaiting(entry, 'power', 'waiting: power', null, tick);
     return;
   }
   const missingForStart = checkStartMissing(state, colony, entry, allEntries, data);

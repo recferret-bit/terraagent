@@ -158,7 +158,9 @@ function isFaunaTargetPassiveToAttacker(
     if (modeEntry === 'passive') return true;
     const hasScopedRecord =
       Boolean((state.blobs.faunaAggression?.value as { byEntityId?: Record<number, unknown> } | undefined)?.byEntityId?.[targetEntityId]) ||
-      Boolean((state.blobs.faunaHives?.value as { byEntityId?: Record<number, unknown> } | undefined)?.byEntityId?.[targetEntityId]);
+      Boolean((state.blobs.faunaHives?.value as { byEntityId?: Record<number, unknown>; hivesById?: Record<number, unknown>; bugsById?: Record<number, unknown> } | undefined)?.byEntityId?.[targetEntityId]) ||
+      Boolean((state.blobs.faunaHives?.value as { hivesById?: Record<number, unknown>; bugsById?: Record<number, unknown> } | undefined)?.hivesById?.[targetEntityId]) ||
+      Boolean((state.blobs.faunaHives?.value as { bugsById?: Record<number, unknown> } | undefined)?.bugsById?.[targetEntityId]);
     if (!hasScopedRecord) return false;
   }
   if (modeEntry && typeof modeEntry === 'object') {
@@ -177,16 +179,25 @@ function isFaunaTargetPassiveToAttacker(
     | {
         byEntityId?: Record<number, FaunaRecordLike>;
         hives?: Record<number, FaunaRecordLike>;
+        hivesById?: Record<number, FaunaRecordLike>;
+        bugsById?: Record<number, FaunaRecordLike & { homeHiveId?: number }>;
         residentHiveByEntityId?: Record<number, number>;
       }
     | undefined;
-  const directHiveRec = hivesBlob?.byEntityId?.[targetEntityId] ?? hivesBlob?.hives?.[targetEntityId];
+  const directHiveRec =
+    hivesBlob?.byEntityId?.[targetEntityId] ??
+    hivesBlob?.hivesById?.[targetEntityId] ??
+    hivesBlob?.bugsById?.[targetEntityId] ??
+    hivesBlob?.hives?.[targetEntityId];
   if (directHiveRec) {
     return !isFaunaAggressiveToColony(directHiveRec, attackerOwner);
   }
-  const homeHiveId = hivesBlob?.residentHiveByEntityId?.[targetEntityId];
+  const homeHiveId =
+    hivesBlob?.residentHiveByEntityId?.[targetEntityId] ??
+    hivesBlob?.bugsById?.[targetEntityId]?.homeHiveId;
   if (typeof homeHiveId === 'number') {
     const homeRec =
+      hivesBlob?.hivesById?.[homeHiveId] ??
       hivesBlob?.hives?.[homeHiveId] ??
       hivesBlob?.byEntityId?.[homeHiveId] ??
       aggroBlob?.byHiveId?.[homeHiveId];

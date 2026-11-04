@@ -69,8 +69,12 @@ function collectHiveCoords(view: MapLayerDrawView): Array<{ q: number; r: number
   }
 
   const blobs = (cv as { blobs?: Record<string, unknown> } | null | undefined)?.blobs;
-  const hivesBlob = (blobs?.faunaHives as { hives?: Record<string, Record<string, unknown>>; byEntityId?: Record<string, Record<string, unknown>> } | undefined);
-  for (const map of [hivesBlob?.hives, hivesBlob?.byEntityId]) {
+  const hivesBlob = (blobs?.faunaHives as {
+    hivesById?: Record<string, Record<string, unknown>>;
+    hives?: Record<string, Record<string, unknown>>;
+    byEntityId?: Record<string, Record<string, unknown>>;
+  } | undefined);
+  for (const map of [hivesBlob?.hivesById, hivesBlob?.hives, hivesBlob?.byEntityId]) {
     if (!map || typeof map !== 'object') continue;
     for (const h of Object.values(map)) {
       if (h && typeof h.q === 'number' && typeof h.r === 'number') {

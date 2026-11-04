@@ -30,7 +30,7 @@ import {
   stepScheduledHiveWaves,
 } from './waves';
 
-const WANDER_INTERVAL_TICKS = 15;
+const WANDER_INTERVAL_TICKS = 18;
 
 function syncFaunaLiveness(state: PlanetState, fauna: FaunaHivesBlob, tick = state.meta.tick): void {
   const cols = state.entities.cols;
@@ -93,7 +93,8 @@ function collectPatrolCandidates(
       out.push({ q, r });
     }
   }
-  return out;
+  const near = out.filter((c) => hexDistance(curQ, curR, c.q, c.r) <= 1);
+  return near.length > 0 ? near : out;
 }
 
 function findClosestProvokedColonyTarget(
@@ -164,7 +165,7 @@ function stepPassiveBug(
 
   const rng = seedStream(
     String(state.meta.seed),
-    `hive:${hive.hiveId}:dec:${hive.decisionIndex++}`,
+    `hive:${hive.hiveId}:bug:${bug.entityId}:wander:${ctx.tick}`,
   );
   const pick = candidates[nextInt(rng, 0, candidates.length - 1)]!;
   issueUnitCommand(

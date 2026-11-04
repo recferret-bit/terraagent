@@ -97,7 +97,7 @@ export function evaluateColonyPower(
   const col = state.colonies[colonyIndex];
   if (col) col.pollution = Number(col.pollution ?? 0);
 
-  const unitDemand = calculateUnitDemand(state, colonyIndex, data);
+  const unitDemand = graph.hasHub ? calculateUnitDemand(state, colonyIndex, data) : 0;
   const work = graph.hasHub ? collectWorkLoad(state, colonyIndex, data) : { demand: 0, candidates: [] };
 
   let totalSupply = 0, totalRawDemand = 0, totalDemand = 0, totalBuildingDemand = 0;
@@ -216,8 +216,12 @@ function powerSummaryChanged(prev: ColonyPowerSummary | undefined, next: ColonyP
   return (
     prev.hasHub !== next.hasHub ||
     prev.supply !== next.supply ||
+    prev.demand !== next.demand ||
+    prev.rawDemand !== next.rawDemand ||
     prev.buildingDemand !== next.buildingDemand ||
+    prev.unitDemand !== next.unitDemand ||
     prev.workDemand !== next.workDemand ||
+    prev.net !== next.net ||
     prev.brownout !== next.brownout ||
     prev.daylight !== next.daylight ||
     prev.phase !== next.phase ||
@@ -259,21 +263,27 @@ export function recomputeAllColonyPower(
     const summary = evaluateColonyPower(state, idx, data, tick, dtTicks);
     byColony[idx] = summary;
     if (ctx) {
-      trackers[idx] = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, data);
+      const nextT = evaluatePowerEventsForColony(state, idx, summary, prevTrackers[idx], ctx, data);
+      trackers[idx] = nextT;
+      const prevT = prevTrackers[idx];
+      if (
+        nextT.brownoutTicks !== (prevT?.brownoutTicks ?? 0) ||
+        nextT.collapseEmitted !== Boolean(prevT?.collapseEmitted)
+      ) {
+        anyChanged = true;
+      }
     }
     const col = state.colonies[idx];
     const changed = powerSummaryChanged(prevBlob.byColony?.[idx], summary);
     if (changed) anyChanged = true;
-    if (col) {
+    if (col && (changed || !col.power)) {
       col.power = summary;
-      if (changed) col.changedAt = tick;
+      col.changedAt = tick;
     }
   }
   const nextValue = { byColony, trackers: ctx ? trackers : prevTrackers };
   if (anyChanged || !state.blobs.power) {
     setBlob(state, 'power', nextValue, tick);
-  } else {
-    state.blobs.power.value = nextValue;
   }
   return byColony;
 }

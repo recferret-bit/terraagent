@@ -41,6 +41,7 @@ function createFactoryTestState(seed = 'w07-factory') {
   creditResource(colony, 'minerals.t1', 500, 0);
   creditResource(colony, 'bio.biomass', 200, 0);
   creditResource(colony, 'bio.water', 200, 0);
+  colony.powerSupplyOverride = 40;
 
   // Active Command Hub T1 at (-5, 0) for base unit supply cap
   const hubId = state.meta.nextEntityId++;
@@ -202,7 +203,7 @@ describe('W07-10 Robotics Factory T1 producer buffer cap and brownout pause', ()
   });
 
   it('pauses Recon production on Robotics Factory brownout and resumes when power is restored', () => {
-    const { state, facRow } = createFactoryTestState('w07-factory-brownout');
+    const { state, colony, facRow } = createFactoryTestState('w07-factory-brownout');
     const pipeline = createRegistryPipeline({ flags: parseWaves('..07') });
 
     const enq = enqueueQueueTask(state, {
@@ -220,6 +221,7 @@ describe('W07-10 Robotics Factory T1 producer buffer cap and brownout pause', ()
     expect(q[0].elapsedTicks).toBe(20);
 
     // Put Robotics Factory into offlineBrownout
+    colony.powerSupplyOverride = 5;
     state.entities.cols.state[facRow] = ENTITY_STATE.offlineBrownout;
     step(state, [], 10, pipeline);
 
@@ -230,6 +232,7 @@ describe('W07-10 Robotics Factory T1 producer buffer cap and brownout pause', ()
     expect(q[0].elapsedTicks).toBe(20);
 
     // Restore Robotics Factory to active -> resumes and finishes after remaining 30 ticks
+    colony.powerSupplyOverride = 40;
     state.entities.cols.state[facRow] = ENTITY_STATE.active;
     const resumeStep = step(state, [], 30, pipeline);
     expect(getColonyQueue(state, 0, 'units')).toHaveLength(0);

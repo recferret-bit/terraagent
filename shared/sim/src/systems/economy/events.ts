@@ -111,7 +111,8 @@ export const resourceShortageSystem = defineSystem({
         for (const fam of RESOURCE_FAMILIES) {
           if (
             prevCol[fam].lowAndNegativeTicks !== nextCol[fam].lowAndNegativeTicks ||
-            prevCol[fam].lastEmittedTick !== nextCol[fam].lastEmittedTick
+            prevCol[fam].lastEmittedTick !== nextCol[fam].lastEmittedTick ||
+            prevCol[fam].lastStock !== nextCol[fam].lastStock
           ) {
             shortageChanged = true;
             break;
@@ -121,8 +122,6 @@ export const resourceShortageSystem = defineSystem({
     }
     if (shortageChanged || !state.blobs.economyEvents) {
       setBlob(state, 'economyEvents', { byColony: nextMap }, ctx.tick);
-    } else {
-      state.blobs.economyEvents.value = { byColony: nextMap };
     }
   },
 });

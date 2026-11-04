@@ -143,9 +143,8 @@ export function environmentFromPlanetTime(state: PlanetState, data?: CompiledDat
 }
 
 export function getEnvironment(state: PlanetState, data?: CompiledDataLike): EnvironmentState {
-  const existing = state.blobs.environment?.value as EnvironmentState | undefined;
-  if (existing && typeof existing.daylight === 'number') return existing;
-  return environmentFromPlanetTime(state, data);
+  const existing = state.blobs.environment?.value as Partial<EnvironmentState> | undefined;
+  return environmentFromPlanetTime(state, data, existing?.stormActive === true);
 }
 
 export function applyEnvironmentState(state: PlanetState, env: EnvironmentState, tick: number): void {
@@ -157,15 +156,13 @@ export function applyEnvironmentState(state: PlanetState, env: EnvironmentState,
     prev?.stormActive !== env.stormActive;
   if (envChanged || !state.blobs.environment) {
     setBlob(state, 'environment', env, tick);
-  } else {
-    state.blobs.environment.value = env;
   }
   for (const colony of state.colonies) {
     const lightChanged = colony.daylight !== env.daylight || colony.dayPhase !== env.phase;
-    colony.daylight = env.daylight;
-    colony.dayPhase = env.phase;
-    colony.timeOfDay = env.clockText;
-    if (lightChanged) {
+    if (lightChanged || colony.timeOfDay === undefined) {
+      colony.daylight = env.daylight;
+      colony.dayPhase = env.phase;
+      colony.timeOfDay = env.clockText;
       colony.changedAt = tick;
     }
   }

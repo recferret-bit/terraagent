@@ -6,7 +6,11 @@ import type { Blob, ColonyState, PlanetMeta, PlanetState } from '../kernel/state
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
 import { changedTileIndices, noteTilesStamped } from '../grid/sectors';
 import { CLIENT_OMIT_BLOBS, clientMeta } from '../codec/snapshot';
-import { shouldOmitFaunaTransformFromRoutineDiff } from '../systems/fauna/directives';
+import { ENTITY_KIND } from '../ecs/columns';
+import {
+  FAUNA_CORRECTION_INTERVAL_TICKS,
+  shouldOmitFaunaTransformFromRoutineDiff,
+} from '../systems/fauna/directives';
 
 /** Engine diff wire format version (inside the MessagePack map). */
 export const DIFF_FORMAT = 1;
@@ -46,15 +50,31 @@ function gather(defs: readonly FieldDef[], src: Record<string, TypedArray>, idx:
   return out;
 }
 
-function changedEntityIndices(e: EntityStore, fromTick: number, toTick: number, forClient?: boolean): Uint32Array {
+function isFaunaBug(kind: number): boolean {
+  return (
+    kind === ENTITY_KIND.blackAnt ||
+    kind === ENTITY_KIND.blueBeetle ||
+    kind === ENTITY_KIND.greenSpitter
+  );
+}
+
+function changedEntityIndices(e: EntityStore, fromTick: number, toTick: number, omitFaunaMotion?: boolean): Uint32Array {
   const out: number[] = [];
   const stamp = e.cols.changedAt;
   const kind = e.cols.kind;
+  const isCorrectionTick =
+    Boolean(omitFaunaMotion) && toTick > 0 && toTick % FAUNA_CORRECTION_INTERVAL_TICKS === 0;
+  const faunaCorrectionFrom = Math.min(
+    fromTick,
+    Math.max(0, toTick - FAUNA_CORRECTION_INTERVAL_TICKS),
+  );
   for (let i = 0; i < e.count; i++) {
-    if (stamp[i] <= fromTick) continue;
-    if (forClient) {
+    const k = kind[i];
+    const minTick = isCorrectionTick && isFaunaBug(k) ? faunaCorrectionFrom : fromTick;
+    if (stamp[i] <= minTick) continue;
+    if (omitFaunaMotion && !isCorrectionTick) {
       const mask = rowDiffMaskSince(e, i, fromTick);
-      if (shouldOmitFaunaTransformFromRoutineDiff(kind[i], mask, toTick)) continue;
+      if (shouldOmitFaunaTransformFromRoutineDiff(k, mask, toTick)) continue;
     }
     out.push(i);
   }
@@ -63,12 +83,21 @@ function changedEntityIndices(e: EntityStore, fromTick: number, toTick: number, 
 
 /**
  * Everything stamped after `fromTick`, as MessagePack bytes (`@terra/sim` host diff, D-31). Pure read of `state`.
- * `forClient` drops `hidden` tile layers (D-38) and omits routine fauna motion transforms on non-correction ticks.
+ * `forClient` drops `hidden` tile layers (D-38) and internal server-only blobs.
  */
-export function diffSince(state: PlanetState, fromTick: number, opts: { forClient?: boolean } = {}): Uint8Array {
+export function diffSince(
+  state: PlanetState,
+  fromTick: number,
+  opts: { forClient?: boolean; omitFaunaMotion?: boolean } = {},
+): Uint8Array {
   const e = state.entities;
   const tileIdx = changedTileIndices(state, fromTick);
-  const rows = changedEntityIndices(e, fromTick, state.meta.tick, opts.forClient);
+  const rows = changedEntityIndices(
+    e,
+    fromTick,
+    state.meta.tick,
+    opts.omitFaunaMotion ?? opts.forClient,
+  );
   const diff: EngineDiff = {
     v: DIFF_FORMAT,
     fromTick,
