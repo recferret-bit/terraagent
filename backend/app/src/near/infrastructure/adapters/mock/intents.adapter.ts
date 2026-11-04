@@ -105,6 +105,28 @@ export class MockIntentsAdapter extends MockChainBase implements IntentsPort {
     return receipt;
   }
 
+  /** Test/dev only (contract suite, W13-06): registers a custodial signer key for `accountId`. Real adapters have no such method. */
+  async testRegisterSigner(accountId: string): Promise<void> {
+    const g = this.keys().generate();
+    await this.ensureAccount(this.prisma, accountId);
+    await this.prisma.nearColonyAccount.upsert({
+      where: { accountId },
+      create: { accountId, playerId: `contract-${accountId}`, slot: 'contract', ownerAccountId: accountId, publicKey: g.row.publicKey, encryptedSecret: g.row.encryptedSecret, kekVersion: g.row.kekVersion },
+      update: {},
+    });
+  }
+
+  /** Test/dev only: puts `chainAmount` of a verifier token on the account's verifier balance. */
+  async testSeedVerifier(accountId: string, verifierId: string, chainAmount: bigint): Promise<void> {
+    await this.ensureAccount(this.prisma, accountId);
+    await creditVerifier(this.prisma, accountId, verifierId, chainAmount);
+  }
+
+  /** Test/dev only: puts `chainAmount` on the account's own balance of a market token key (cargo ledger for resources). */
+  async testSeedOwn(accountId: string, tokenKey: string, chainAmount: bigint): Promise<void> {
+    await this.credit(this.prisma, accountId, tokenKey, chainAmount.toString());
+  }
+
   /** Static checks, then replayed/duplicate nonces, then balances; first failing code or null. In `execute` the nonce insert itself is the final arbiter. */
   private async checkAll(db: DbClient, intents: readonly SignedIntent[], inTx = false): Promise<NearErrorCode | null> {
     const key = async (accountId: string) => (await db.nearColonyAccount.findUnique({ where: { accountId }, select: { publicKey: true } }))?.publicKey;

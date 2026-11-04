@@ -67,6 +67,19 @@ export class InMemoryIntents extends IntentsPort {
     return signTokenDiffPayload(ed25519PrivateKeyFromSeed(k.seed), k.publicKey, { accountId: input.accountId, deltas: input.deltas }, input.deadlineMs, nonce);
   }
 
+  /** Test hooks mirroring `MockIntentsAdapter` (contract suite). */
+  async testRegisterSigner(accountId: string): Promise<void> {
+    this.keyOf(accountId);
+  }
+
+  async testSeedVerifier(accountId: string, verifierId: string, chainAmount: bigint): Promise<void> {
+    this.add(this.verifier, accountId, verifierId, chainAmount);
+  }
+
+  async testSeedOwn(accountId: string, tokenKey: string, chainAmount: bigint): Promise<void> {
+    this.add(this.own, accountId, tokenKey, chainAmount);
+  }
+
   publicKeyOf(accountId: string): string {
     return this.keyOf(accountId).publicKey;
   }
