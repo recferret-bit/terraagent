@@ -946,3 +946,15 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Workaround / mitigation:** —
 - **To resolve:** Give each building archetype an explicit light entry; route buildings through a building vision branch.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+## W07 First Contact
+
+### RN-66 · W07-23 collapse VFX and W07-24 dedicated Laser Tower / refitted Factory & DCA meshes are deferred (`H+`)
+
+- **Status:** Accepted (by design, hackathon slice)
+- **Area / code:** `docs/plan/waves/W07-first-contact.md` §"Hackathon slice" (`W07-23`, `W07-24`), `frontend/game/app/online/EntityMeshes.ts`, `frontend/render/kitbash/archetypes/units/bugs/`
+- **What happens:** The six insect fauna and hive models (`bug.blackAnt`, `bug.blueBeetle`, `bug.greenSpitter`, `hive.blackAnt`, `hive.blueBeetle`, `hive.greenSpitter`) and `robot.recon` are registered and pass `npm run validate:models -- --all --strict` (`44/44` models, 0 errors, 0 warnings). As specified by `docs/plan/waves/W07-first-contact.md` §"Hackathon slice", `W07-23` (3-second building rubble collapse VFX before the Prepared pad) and `W07-24` (refitting `building.roboticsFactory` / `building.droneArray` footprints and authoring a bespoke `building.laserTower` mesh instead of standing in with `building.turret` / `robot.combat`) are `H+` and deferred: destroyed buildings transition directly to their `PREP.prepared` pad, and `laserTower` uses the `building.turret` archetype stand-in.
+- **Why it is like this:** Explicit hackathon slice scope in `docs/plan/waves/W07-first-contact.md`.
+- **Workaround / mitigation:** Laser Tower vs Autocannon is distinguished in the HUD selection bar, ghost preview, range ring (`9` vs `8` tiles), and instant cyan/amber laser beam VFX (`ProjectileVfxSystem`).
+- **To resolve:** Land `W07-23` and `W07-24` when `H+` visual polish issues open.
+- **Found:** 2026-11-04, W07 wave execution.

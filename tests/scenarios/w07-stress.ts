@@ -22,7 +22,7 @@ function prepareStressTerrain(state: PlanetState): void {
   for (let r = -state.grid.radius; r <= state.grid.radius; r++) {
     for (let q = -state.grid.radius; q <= state.grid.radius; q++) {
       const dist = hexDistance(0, 0, q, r);
-      if (dist > state.grid.radius - 1) continue;
+      if (dist > state.grid.radius) continue;
       const idx = indexOf(state.grid.radius, q, r);
       if (idx < 0) continue;
       state.grid.layers.terrain[idx] = TERRAIN.flat;

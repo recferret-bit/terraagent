@@ -1,4 +1,4 @@
-import { ENTITY_KIND, getFaunaHivesState, hexDistance, snapshot } from '@terra/sim';
+import { ENTITY_KIND, evaluatePlacement, getFaunaHivesState, hexDistance, placementWorldFromState, snapshot } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
 import { createScenarioPlanet, getScenario } from '../_loader';
 import { getParityCase } from '../parity';
@@ -14,6 +14,12 @@ describe('W07 scenarios: w07-first-contact and w07-stress', () => {
     expect(col?.unlockStage).toBe(3);
     expect(col?.threatStage).toBe(2);
     expect(col?.supply).toMatchObject({ used: 7, units: 7, cap: 10 });
+
+    const world = placementWorldFromState(host.state);
+    expect(evaluatePlacement(world, { colonyId: 0, building: 'roboticsFactory', q: 4, r: -3 })).toMatchObject({ ok: true });
+    expect(evaluatePlacement(world, { colonyId: 0, building: 'droneControlArray', q: 2, r: -3 })).toMatchObject({ ok: true });
+    expect(evaluatePlacement(world, { colonyId: 0, building: 'autocannon', q: 6, r: -1 })).toMatchObject({ ok: true });
+    expect(evaluatePlacement(world, { colonyId: 0, building: 'laserTower', q: 6, r: -2 })).toMatchObject({ ok: true });
 
     const fauna = getFaunaHivesState(host.state);
     const hives = Object.values(fauna.hivesById);

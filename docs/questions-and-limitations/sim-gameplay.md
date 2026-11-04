@@ -854,17 +854,17 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **To resolve:** Owner: should depot supply ignore power? Remove the legacy Hub lane; word the unknown-unit reject.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
 
-### GP-74 · A building at 0 HP stays as an active wreck; no rebuild path
+### GP-74 · A building at 0 HP stays as an active wreck when W07 is off; removed to Prepared ground when W07 is on
 
-- **Status:** Open
+- **Status:** Resolved for W07+ (`wave/w07-first-contact`) / Open for `TA_WAVES=..03`
 - **Severity:** medium
 - **Confidence:** CONFIRMED
-- **Area / code:** `dev.damage`, `shared/sim/src/systems/terraform-basic/autoRepair.ts`, power graph
-- **What happens:** `damage <pylon> 100` leaves the pylon at hp 0 with state `active`. The power graph drops it (its downstream Quarry goes `offline: no grid`), but auto-repair skips it and nothing removes it, so its tile stays occupied and the player can't rebuild the bridge on the same tile. The W03 demo step "rebuild the pylon → online" is not covered by e2e.
-- **Why it is like this:** Destruction / wreck handling is not part of W03.
-- **Workaround / mitigation:** Place a new pylon on a neighbouring tile inside the zone.
-- **To resolve:** Remove (or turn into rubble) a building at 0 HP, or let repair restore it from 0.
-- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+- **Area / code:** `shared/sim/src/systems/dev/w03.ts` (`devDamage`), `shared/sim/src/systems/combat/damage.ts` (`applyDamage`), `shared/sim/src/systems/terraform-basic/autoRepair.ts`, power graph
+- **What happens:** With `W07` enabled, `damage <entity> 100` delegates to `applyDamage`, removing the building at 0 HP, converting its footprint tiles to `PREP.prepared`, and emitting `buildingDestroyed`. When `W07` is off (`TA_WAVES=..03`), `dev.damage` preserves the W03 unit-test behavior (`w03-dev-commands.spec.ts`) of clamping HP to `0` without removing the entity.
+- **Why it is like this:** Destruction / wreck removal is introduced by W07-02 (`UO-C`, `UO-TF-04`), while `w03-dev-commands.spec.ts` explicitly asserts `hp === 0` on a W03-only pipeline.
+- **Workaround / mitigation:** Enable `W07` (the default `all` wave set) for full building destruction and Prepared pad conversion.
+- **To resolve:** If W03-only runs also want 0-HP removal, update `w03-dev-commands.spec.ts` to expect entity removal at 100% damage.
+- **Found:** 2026-11-04, W03 owner-feedback pass; updated in W07 (`wave/w07-first-contact`).
 
 ### GP-75 · `dismantle` wire form is rejected by the contract
 
@@ -923,10 +923,20 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-80 · W07 hive fauna implementation and provisional balance
 
-- **Status:** Open (implementation planned; balance proposals)
-- **Area / code:** [W07](../plan/waves/W07-first-contact.md), [fauna contract](../game/fauna-hives-spec.md), future shared fauna/raids systems and codec integration
-- **What happens:** The revised plan specifies three neutral insect species and hives, passive/aggressive behavior, directive replication and playground scenes. Runtime combat/fauna code and the six meshes are not implemented by this planning change. Existing W08 threat helpers still return legacy Skitter/Brute/Drifter composition.
-- **Why it is like this:** The current checkout contains W07 planning, not its combat implementation. Species stats, a three-wave episode, cooldowns, provocation and sparse correction cadence are proposed starting values. “Armored” provisionally means visible plating and higher HP, preserving plain-damage battle v1.
-- **Workaround / mitigation:** W07-14/15/25/33–35 and the contract's delivery gates require the actual shared sim, backend, frontend, model and replay work before claiming completion. Shared planet models and cosmetic feeding/building are explicitly owner-requested simplifications.
-- **To resolve:** Implement and validate the wave; playtest proposed numbers and confirm whether blue beetles need actual damage mitigation. Reconcile existing progression helpers and later-wave roster references without inventing a second raid system.
-- **Found:** 2026-11-04, owner fauna redesign.
+- **Status:** Resolved (`wave/w07-first-contact`, 2026-11-04; balance defaults remain tunable via `tune`)
+- **Area / code:** `shared/sim/src/data/{weapons,combat-units,fauna}.ts`, `shared/sim/src/systems/{combat,fauna,progression}/`, `frontend/render/kitbash/archetypes/units/bugs/`, `frontend/playground/fauna/`
+- **What happens:** Implemented the three neutral insect species (`blackAnt`, `blueBeetle`, `greenSpitter`) and species-specific `3×3` hives (`hiveBlackAnt`, `hiveBlueBeetle`, `hiveGreenSpitter`), passive/aggressive state transitions, bounded 3-wave episodes with cooldowns, deterministic `FaunaDirectiveV1` replication + checkpoints, six validated kitbash models, and four playground hive-life fixtures. W08 `systems/progression/threat.ts` (`computeRaidWaveComposition`) now reconciles with the species threat-budget registry (`speciesComposition`) while keeping legacy `skitter`/`brute` fields for W08 callers.
+- **Why it is like this:** Follows the [Hive fauna contract](../game/fauna-hives-spec.md) and OWNER_TASKS defaults (`B2` view radii, `B4` air targeting, `B7` Laser Tower T1 at S3, `B8` footprints, `B9` stance radii, `B10` no ammo/laser spike in battle v1, `B11` bite cadence). Blue beetle armor is represented as higher plain HP (`420`) and chitin plating rather than a damage-reduction multiplier.
+- **Workaround / mitigation:** Every combat and fauna number is in `shared/sim/src/data/{weapons,combat-units,fauna}.ts` and live-tunable via `tune`.
+- **To resolve:** Owner playtest of the starting balance rows; W07-26 (CI duel harness port of `docs/game/tools/battle_duels.py`) is `H+` and deferred per `docs/plan/waves/W07-first-contact.md` §"Hackathon slice".
+- **Found:** 2026-11-04, owner fauna redesign; resolved in W07 (`wave/w07-first-contact`).
+
+### GP-81 · W07-26 CI duel harness (`shared/sim/test/duels.spec.ts`) is deferred (`H+`)
+
+- **Status:** Accepted (by design, hackathon slice)
+- **Area / code:** `docs/plan/waves/W07-first-contact.md` §"Hackathon slice", `docs/game/tools/battle_duels.py`
+- **What happens:** The ground-triangle CI duel suite (`W07-26`, `H+`) is deferred from the W07 hackathon slice; the Python duel harness in `docs/game/tools/battle_duels.py` and the unit/combat/fauna suites (`w07-combat-stats.spec.ts`, `w07-combat-fauna.spec.ts`, `w07-projectiles.spec.ts`, `w07-aoe.spec.ts`, `w07-lasers.spec.ts`, `w07-evasive.spec.ts`, `w07-layers.spec.ts`, `w07-vision.spec.ts`, `w07-targeting.spec.ts`, `w07-stances.spec.ts`) cover the battle v1 mechanics today.
+- **Why it is like this:** Explicit hackathon cut in `docs/plan/waves/W07-first-contact.md`; real Tank/Artillery rows land in W17-26 and air rows in W19-27.
+- **Workaround / mitigation:** Use `spawnUnit recon|demoTank|demoArtillery` and `hitDebug on` in `/play.html?scenario=w07` or run the unit suites.
+- **To resolve:** Land `W07-26` (`shared/sim/test/duels.spec.ts`) when `H+` issues open or alongside W17-26.
+- **Found:** 2026-11-04, W07 wave execution.

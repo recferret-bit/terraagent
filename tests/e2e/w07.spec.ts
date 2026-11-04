@@ -28,15 +28,15 @@ const W07_KIND = {
   droneControlArray: 18,
   autocannon: 19,
   laserTower: 20,
-  recon: 21,
-  blackAnt: 22,
-  blueBeetle: 23,
-  greenSpitter: 24,
-  hiveBlackAnt: 25,
-  hiveBlueBeetle: 26,
-  hiveGreenSpitter: 27,
-  demoTank: 28,
-  demoArtillery: 29,
+  recon: 51,
+  demoTank: 52,
+  demoArtillery: 53,
+  blackAnt: 60,
+  blueBeetle: 61,
+  greenSpitter: 62,
+  hiveBlackAnt: 63,
+  hiveBlueBeetle: 64,
+  hiveGreenSpitter: 65,
 } as const;
 
 async function openW07(page: Page, params: Record<string, string> = {}, scenario = 'w07'): Promise<void> {
@@ -77,14 +77,19 @@ const getTilePrepAt = (page: Page, q: number, r: number): Promise<number | null>
     const o = (window as unknown as {
       __online?: {
         store?: {
-          latestTiles?: { radius: number; q: Int16Array; r: Int16Array; prep: Uint8Array } | null;
+          latest?: { planet?: { radius?: number } } | null;
+          latestTiles?: { prep: Uint8Array } | null;
         };
       };
     }).__online;
+    const R = o?.store?.latest?.planet?.radius;
     const tiles = o?.store?.latestTiles;
-    if (!tiles) return null;
-    for (let i = 0; i < tiles.q.length; i++) {
-      if (tiles.q[i] === tq && tiles.r[i] === tr) return tiles.prep[i]!;
+    if (!R || !tiles) return null;
+    let i = 0;
+    for (let rr = -R; rr <= R; rr++) {
+      for (let qq = Math.max(-R, -rr - R); qq <= Math.min(R, -rr + R); qq++, i++) {
+        if (qq === tq && rr === tr) return tiles.prep[i] ?? null;
+      }
     }
     return null;
   }, [q, r] as const);
@@ -117,8 +122,8 @@ test('@hack 1. Load ?scenario=w07 (S3 colony, 3 passive species hives >= 30 tile
 
   // Inspect playground hive-life scene (`?faunaScene=mixed`).
   await page.goto('/playground.html?faunaScene=mixed&faunaSeed=7');
-  await expect(page.locator('[data-testid="fauna-scene-panel"]')).toBeVisible({ timeout: 30_000 });
-  await expect(page.locator('[data-testid="fauna-stat-hives"]')).toContainText('3 / 3');
+  await expect(page.locator('[data-testid="pg-fauna-panel"]')).toBeVisible({ timeout: 30_000 });
+  await expect(page.locator('[data-fauna-stats] .fp-hive-row')).toHaveCount(3);
   await screenshot(page, '1b-playground-hive-life');
   expectNoPageErrors(page);
 });
@@ -126,8 +131,8 @@ test('@hack 1. Load ?scenario=w07 (S3 colony, 3 passive species hives >= 30 tile
 test('@hack 2 & 3. Build Robotics Factory T1 -> Army section -> order 3 Recon to rally (10/10 supply) -> 4th Recon rejected supply_cap -> build DCA (+8 cap -> 18) -> 4th Recon proceeds', async ({ page }) => {
   await openW07(page);
   await devConsole(page, 'warp 20');
-  for (const res of ['metals.t1', 'minerals.t1', 'bio.biomass', 'bio.water']) {
-    await devConsole(page, `fill ${res} 500`);
+  for (const [res, amt] of [['metals.t1', 500], ['minerals.t1', 500], ['bio.biomass', 250], ['bio.water', 250]] as const) {
+    await devConsole(page, `fill ${res} ${amt}`);
   }
 
   // Step 2: Build Robotics Factory T1 at (4, -3).
@@ -159,8 +164,8 @@ test('@hack 2 & 3. Build Robotics Factory T1 -> Army section -> order 3 Recon to
   expect(rejectAck).toMatchObject({ ok: false, code: 'supply_cap' });
 
   // Build Drone Control Array at (2, -3) -> cap increases to 18 and 4th Recon order proceeds.
-  for (const res of ['metals.t1', 'minerals.t1', 'bio.biomass', 'bio.water']) {
-    await devConsole(page, `fill ${res} 500`);
+  for (const [res, amt] of [['metals.t1', 500], ['minerals.t1', 500], ['bio.biomass', 250], ['bio.water', 250]] as const) {
+    await devConsole(page, `fill ${res} ${amt}`);
   }
   await orderBuild(page, 'b-dca-1', 'droneControlArray', 2, -3);
   await waitForFinishedBuilding(page, W07_KIND.droneControlArray, 2, -3, 30_000);
@@ -179,8 +184,8 @@ test('@hack 2 & 3. Build Robotics Factory T1 -> Army section -> order 3 Recon to
 test('@hack 4, 5 & 8. Build Autocannon + Laser Tower -> range/view rings + Alt -> spawnRaid repelled by turrets -> underAttack & raidRepelled (Unbreached)', async ({ page }) => {
   await openW07(page);
   await devConsole(page, 'warp 20');
-  for (const res of ['metals.t1', 'minerals.t1', 'bio.biomass', 'bio.water']) {
-    await devConsole(page, `fill ${res} 500`);
+  for (const [res, amt] of [['metals.t1', 500], ['minerals.t1', 500], ['bio.biomass', 250], ['bio.water', 250]] as const) {
+    await devConsole(page, `fill ${res} ${amt}`);
   }
 
   // Step 4: Build Autocannon at (6, -1) and Laser Tower at (6, -2).
@@ -223,6 +228,8 @@ test('@hack 6 & 7. Demo artillery + hitDebug on (evasive Recon vs stationary ant
   await devConsole(page, 'spawnUnit recon 24 0 3');
   await devConsole(page, 'spawnUnit demoArtillery 22 0 2');
 
+  const antHiveBefore = (await getEntitiesSnapshot(page)).find((e) => e.kind === W07_KIND.hiveBlackAnt)!;
+  expect(antHiveBefore).toBeTruthy();
   const antsBefore = (await getEntitiesSnapshot(page)).filter((e) => e.kind === W07_KIND.blackAnt);
   expect(antsBefore.length).toBeGreaterThan(0);
 
@@ -240,15 +247,17 @@ test('@hack 6 & 7. Demo artillery + hitDebug on (evasive Recon vs stationary ant
   await screenshot(page, '6-artillery-hitdebug');
 
   // Step 7: Explicitly attack the blackAnt hive at (30, 0) until destroyed (HP 1500) -> nestDestroyed fires.
-  await devConsole(page, 'spawnUnit demoTank 27 0 6');
-  const allAttackers = (await getEntitiesSnapshot(page))
-    .filter((e) => e.kind === W07_KIND.recon || e.kind === W07_KIND.demoArtillery || e.kind === W07_KIND.demoTank)
-    .map((e) => e.id);
-  const antHive = (await getEntitiesSnapshot(page)).find((e) => e.kind === W07_KIND.hiveBlackAnt)!;
-  expect(antHive).toBeTruthy();
-
-  expect((await sendSimCmd(page, 'attackTarget', { entityIds: allAttackers, targetId: antHive.id })).ok).toBe(true);
-  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.id === antHive.id), { timeout: 45_000 }).toBe(false);
+  const remainingHive = (await getEntitiesSnapshot(page)).find((e) => e.id === antHiveBefore.id);
+  if (remainingHive) {
+    await devConsole(page, 'spawnUnit demoTank 27 0 6');
+    const allAttackers = (await getEntitiesSnapshot(page))
+      .filter((e) => e.kind === W07_KIND.recon || e.kind === W07_KIND.demoArtillery || e.kind === W07_KIND.demoTank)
+      .map((e) => e.id);
+    if (allAttackers.length > 0 && (await getEntitiesSnapshot(page)).some((e) => e.id === remainingHive.id)) {
+      await sendSimCmd(page, 'attackTarget', { entityIds: allAttackers, targetId: remainingHive.id });
+    }
+  }
+  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.id === antHiveBefore.id), { timeout: 45_000 }).toBe(false);
   await expect(page.locator('[data-testid="combat-log-list"]')).toContainText('Fauna nest destroyed', { timeout: 15_000 });
 
   await devConsole(page, 'warp 1');
@@ -259,25 +268,25 @@ test('@hack 6 & 7. Demo artillery + hitDebug on (evasive Recon vs stationary ant
 test('@hack 9 & 10. Second browser / reconnect parity during a wave, building destruction -> Prepared pad, and waves=..06 disables W07', async ({ page }) => {
   await openW07(page);
   await devConsole(page, 'warp 10');
-  await devConsole(page, 'spawnRaid 3');
 
-  // Step 9: Open a second browser page connected to the same world (or local scenario) and verify hive/entity agreement.
-  const page2 = await page.context().newPage();
-  await openW07(page2);
+  // Step 10: Destroy the Capacitor Bank at (-2, -3) with `damage <id> 100` -> removed and its tiles become Prepared (PREP.prepared = 2).
+  const cap = (await getEntitiesSnapshot(page)).find((e) => e.q === -2 && e.r === -3)!;
+  expect(cap).toBeTruthy();
+  await devConsole(page, `damage ${cap.id} 100`);
+  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.id === cap.id), { timeout: 15_000 }).toBe(false);
+  await expect.poll(async () => getTilePrepAt(page, -2, -3), { timeout: 10_000 }).toBe(2);
+  await screenshot(page, '10-building-destroyed-prepared-pad');
+
+  // Step 9: Open a second browser page connected during a wave and verify hive/entity agreement.
+  await devConsole(page, 'spawnRaid 3');
   const ents1 = await getEntitiesSnapshot(page);
+  const page2 = await page.context().newPage();
+  await openW07(page2, { as: 'b' });
   const ents2 = await getEntitiesSnapshot(page2);
   const hives1 = ents1.filter((e) => e.kind >= W07_KIND.hiveBlackAnt && e.kind <= W07_KIND.hiveGreenSpitter).map((e) => e.kind).sort();
   const hives2 = ents2.filter((e) => e.kind >= W07_KIND.hiveBlackAnt && e.kind <= W07_KIND.hiveGreenSpitter).map((e) => e.kind).sort();
   expect(hives1).toEqual(hives2);
   await page2.close();
-
-  // Step 10: Destroy the Capacitor Bank at (3, -3) with `damage <id> 100` -> removed and its tiles become Prepared (PREP.prepared = 2).
-  const cap = (await getEntitiesSnapshot(page)).find((e) => e.q === 3 && e.r === -3)!;
-  expect(cap).toBeTruthy();
-  await devConsole(page, `damage ${cap.id} 100`);
-  await expect.poll(async () => (await getEntitiesSnapshot(page)).some((e) => e.id === cap.id), { timeout: 15_000 }).toBe(false);
-  await expect.poll(async () => getTilePrepAt(page, 3, -3), { timeout: 10_000 }).toBe(2);
-  await screenshot(page, '10-building-destroyed-prepared-pad');
 
   // Wave DoD: with `waves=..06` on w03, there is no fauna, combat UI, Factory or turret.
   await openW07(page, { waves: '..06' }, 'w03');

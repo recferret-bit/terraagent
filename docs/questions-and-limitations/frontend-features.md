@@ -1228,3 +1228,13 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** Scroll the build list to reach lower cards; desktop sizing is unchanged.
 - **To resolve:** Revisit the landscape layout when adding more selection details.
 - **Found:** 2026-11-04, full merged browser suite at 844 × 390.
+
+### FF-82 · W07-28 combat analytics events are deferred from the hackathon slice
+
+- **Status:** Accepted (by design, hackathon slice)
+- **Area / code:** `docs/plan/waves/W07-first-contact.md` (`W07-28`), `frontend/game/features/combat/`
+- **What happens:** The combat HUD (`CombatLog`, screen-edge alert pings, HP bars) and backend progression facts (`faunaKilled`, `nestDestroyed`, `raidRepelled`) are active in W07, while the client analytics batch events (`first_combat_unit`, `first_raid`, `first_raid_repelled`, `first_nest_cleared`, `first_building_lost` in `W07-28`, blank `H` column) are deferred until post-hackathon analytics waves.
+- **Why it is like this:** `W07-28` is outside the `H` hackathon slice in `docs/plan/waves/W07-first-contact.md`.
+- **Workaround / mitigation:** Progression facts and combat log entries record raid repels, unit/building losses, and nest clears.
+- **To resolve:** Implement `W07-28` in `frontend/game/features/combat/` when post-hackathon analytics issues run.
+- **Found:** 2026-11-04, W07 wave execution.
