@@ -492,6 +492,148 @@
       "summary": "Accepts an offered HQ suggestion (such as S0 Establish Colony or an early-stage rule suggestion, UO-LC-04 / UO-LC-05).",
       "wave": "W08"
     },
+    "attackMove": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entityId": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "entityIds": {
+                "items": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maxItems": 256,
+                "minItems": 1,
+                "type": "array"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "entityId",
+              "q",
+              "r"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entityIds": {
+                "items": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maxItems": 256,
+                "minItems": 1,
+                "type": "array"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "entityIds",
+              "q",
+              "r"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Orders one or more owned combat units to advance to (q, r), engaging hostile targets along the way (W07-12).",
+      "wave": "W07"
+    },
+    "attackTarget": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entityId": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "entityIds": {
+                "items": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maxItems": 256,
+                "minItems": 1,
+                "type": "array"
+              },
+              "targetId": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "entityId",
+              "targetId"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entityIds": {
+                "items": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maxItems": 256,
+                "minItems": 1,
+                "type": "array"
+              },
+              "targetId": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "entityIds",
+              "targetId"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Orders one or more owned combat units to pursue and attack a specific target entity or hive (W07-12).",
+      "wave": "W07"
+    },
     "cancelGoal": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -2630,6 +2772,113 @@
       "summary": "Sets the 5 canonical colony priority sliders (economy, expansion, defense, power, terraform; 0..100 step 10, SIM-R-02).",
       "wave": "W08"
     },
+    "setRally": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "producerId": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Sets the rally hex (q, r) for a unit producer building or the colony (W07-10, W07-12).",
+      "wave": "W07"
+    },
+    "setStance": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entityId": {
+                "exclusiveMinimum": 0,
+                "maximum": 9007199254740991,
+                "type": "integer"
+              },
+              "entityIds": {
+                "items": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maxItems": 256,
+                "minItems": 1,
+                "type": "array"
+              },
+              "stance": {
+                "enum": [
+                  "hold",
+                  "defend",
+                  "hunt"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "entityId",
+              "stance"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "entityIds": {
+                "items": {
+                  "exclusiveMinimum": 0,
+                  "maximum": 9007199254740991,
+                  "type": "integer"
+                },
+                "maxItems": 256,
+                "minItems": 1,
+                "type": "array"
+              },
+              "stance": {
+                "enum": [
+                  "hold",
+                  "defend",
+                  "hunt"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "entityIds",
+              "stance"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Sets the combat stance (hold, defend, hunt) for one or more owned combat units (UO-C-09, W07-12).",
+      "wave": "W07"
+    },
     "stopUnit": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -3033,6 +3282,63 @@
       "summary": "Emitted when construction of a structure reaches 100 % completion (W01-16, W02-17, W02-28).",
       "wave": "W01"
     },
+    "buildingDestroyed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "attackerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "building": {
+            "type": "string"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "kind": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entityId",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "critical",
+      "summary": "Emitted when a colony building reaches 0 HP, removing it and returning its footprint to Prepared ground (UO-TF-04, W07-02, W07-16).",
+      "wave": "W07"
+    },
     "cargoExported": {
       "audience": "player",
       "data": {
@@ -3385,6 +3691,68 @@
       "summary": "Emitted when a colony remains in brownout for >= 30 s continuously (SIM §9, W02-06, W02-17).",
       "wave": "W02"
     },
+    "faunaKilled": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "attackerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "hiveId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "species": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityId",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a fauna unit is killed by a colony, driving the Exterminator achievement family (W07-01, W07-27).",
+      "wave": "W07"
+    },
     "goalDone": {
       "audience": "player",
       "data": {
@@ -3596,6 +3964,67 @@
       "summary": "Emitted when the drop pod finishes its descent and deploys the HQ Commander drone (W01-09).",
       "wave": "W01"
     },
+    "nestDestroyed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "attackerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "hiveId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "species": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a fauna hive is destroyed, halting further spawns and wave rolls from that hive (UO-T-09, W07-15, W07-16, W07-27).",
+      "wave": "W07"
+    },
     "nightSurvived": {
       "audience": "player",
       "data": {
@@ -3787,6 +4216,315 @@
       "severity": "warn",
       "summary": "Emitted when destroying or demolishing a pylon/generator splits the colony power graph or disconnects buildings (W03-05).",
       "wave": "W03"
+    },
+    "projectileFired": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "aimQ": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "aimR": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "aimX": {
+            "type": "number"
+          },
+          "aimY": {
+            "type": "number"
+          },
+          "aoe": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "arc": {
+            "enum": [
+              "direct",
+              "indirect"
+            ],
+            "type": "string"
+          },
+          "attackerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "damage": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "flightTicks": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "fromX": {
+            "type": "number"
+          },
+          "fromY": {
+            "type": "number"
+          },
+          "impactTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "speed": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "targetId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "weaponId": {
+            "type": "string"
+          },
+          "weaponType": {
+            "enum": [
+              "bullet",
+              "shell",
+              "rocket",
+              "laser"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "attackerId",
+          "weaponId",
+          "fromX",
+          "fromY",
+          "aimX",
+          "aimY"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a unit, turret, HQ, or fauna fires a projectile or instant beam (UO-C-01, UO-C-03, W07-03).",
+      "wave": "W07"
+    },
+    "projectileImpact": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "aimX": {
+            "type": "number"
+          },
+          "aimY": {
+            "type": "number"
+          },
+          "aoe": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "attackerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "damage": {
+            "minimum": 0,
+            "type": "number"
+          },
+          "hit": {
+            "type": "boolean"
+          },
+          "hitEntityIds": {
+            "items": {
+              "maximum": 9007199254740991,
+              "minimum": -9007199254740991,
+              "type": "integer"
+            },
+            "type": "array"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "targetId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "weaponId": {
+            "type": "string"
+          },
+          "weaponType": {
+            "enum": [
+              "bullet",
+              "shell",
+              "rocket",
+              "laser"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "aimX",
+          "aimY",
+          "hit"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a projectile or beam resolves at its aim point, applying primary and AoE damage (UO-C-01, UO-C-02, W07-03).",
+      "wave": "W07"
+    },
+    "raidRepelled": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hiveId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "species": {
+            "type": "string"
+          },
+          "unbreached": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "unbreached"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when an attacking fauna cohort is defeated or withdraws; unbreached is true if no colony building was destroyed (W07-16, W07-27).",
+      "wave": "W07"
+    },
+    "raidStarted": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "budget": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "count": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "hiveId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "species": {
+            "type": "string"
+          },
+          "waveIndex": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a hive dispatches an attacking fauna cohort toward a colony (UO-T-04, W07-15, W07-16).",
+      "wave": "W07"
     },
     "relay.failed": {
       "audience": "player",
@@ -4417,6 +5155,111 @@
       "severity": "warn",
       "summary": "A resource change a sim system expected to succeed (a terraform yield, a construction refund) was refused by the colony treasury (bad data); nothing moved.",
       "wave": "W01"
+    },
+    "underAttack": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "attackerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a player-owned entity takes hostile damage, debounced once per 60 s per colony (W07-16).",
+      "wave": "W07"
+    },
+    "unitDestroyed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "attackerId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "entityId": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "kind": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "q": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "unit": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "entityId",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "Emitted when a non-HQ unit reaches 0 HP and is removed from the world (W07-02, W07-16).",
+      "wave": "W07"
     },
     "unitProduced": {
       "audience": "player",

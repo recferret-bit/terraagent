@@ -2,6 +2,8 @@
 
 import { z } from 'zod';
 import { command as command_acceptSuggestion } from './accept-suggestion';
+import { command as command_attackMove } from './attack-move';
+import { command as command_attackTarget } from './attack-target';
 import { command as command_cancelGoal } from './cancel-goal';
 import { command as command_cancelTask } from './cancel-task';
 import { command as command_cargoExport } from './cargo-export';
@@ -44,10 +46,12 @@ import { command as command_repair } from './repair';
 import { command as command_setHarvestWeights } from './set-harvest-weights';
 import { command as command_setPlanetTime } from './set-planet-time';
 import { command as command_setPriorities } from './set-priorities';
+import { command as command_setRally } from './set-rally';
+import { command as command_setStance } from './set-stance';
 import { command as command_stopUnit } from './stop-unit';
 import { command as command_systemSpawnColony } from './system-spawn-colony';
 
-export const COMMANDS = [command_acceptSuggestion, command_cancelGoal, command_cancelTask, command_cargoExport, command_cargoImport, command_cargoSettled, command_demolish, command_devAddload, command_devAutopilot, command_devCargoCapReset, command_devCargoGrant, command_devCell, command_devContactFake, command_devDamage, command_devDrainfuel, command_devFill, command_devGoal, command_devGrant, command_devLand, command_devNudge, command_devPing, command_devPower, command_devReveal, command_devSeed, command_devSetwind, command_devSkipnight, command_devSpawn, command_devSpawndeposit, command_devStage, command_devTeleport, command_devTime, command_devTradehubSpawn, command_enqueueTask, command_landPod, command_moveUnit, command_placeBuilding, command_queueGoal, command_reorderGoal, command_reorderTask, command_repair, command_setHarvestWeights, command_setPlanetTime, command_setPriorities, command_stopUnit, command_systemSpawnColony] as const;
+export const COMMANDS = [command_acceptSuggestion, command_attackMove, command_attackTarget, command_cancelGoal, command_cancelTask, command_cargoExport, command_cargoImport, command_cargoSettled, command_demolish, command_devAddload, command_devAutopilot, command_devCargoCapReset, command_devCargoGrant, command_devCell, command_devContactFake, command_devDamage, command_devDrainfuel, command_devFill, command_devGoal, command_devGrant, command_devLand, command_devNudge, command_devPing, command_devPower, command_devReveal, command_devSeed, command_devSetwind, command_devSkipnight, command_devSpawn, command_devSpawndeposit, command_devStage, command_devTeleport, command_devTime, command_devTradehubSpawn, command_enqueueTask, command_landPod, command_moveUnit, command_placeBuilding, command_queueGoal, command_reorderGoal, command_reorderTask, command_repair, command_setHarvestWeights, command_setPlanetTime, command_setPriorities, command_setRally, command_setStance, command_stopUnit, command_systemSpawnColony] as const;
 
 export type CommandKind = (typeof COMMANDS)[number]['kind'];
 export const COMMAND_KINDS = [...COMMANDS.map((d) => d.kind)] as unknown as readonly [CommandKind, ...CommandKind[]];
