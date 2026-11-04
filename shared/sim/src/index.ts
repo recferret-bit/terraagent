@@ -89,5 +89,8 @@ export { DEFAULT_COLONY_PRIORITIES, type ColonyPriorities } from './systems/goal
 export * from './systems/cargo';
 export * from './systems/combat';
 export * from './systems/fauna';
+export * from './systems/fauna/directives';
+export * from './systems/fauna/directivePayloads';
+export * from './systems/fauna/checkpoints';
 export * from './data';
 export * from './host';
