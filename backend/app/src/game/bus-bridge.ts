@@ -3,6 +3,7 @@ import type { Logger } from 'pino';
 import type { PlanetEventV1 } from '../bus/channels';
 import type { EventBus } from '../bus/event-bus';
 import type { NearCargoSettledBusEvent } from '../near/cargo/cargo-relay-settlement';
+import type { NearMarketCommandBusEvent } from '../market/orders/market-sim-gateway';
 import type { GamePlanets } from './game-planets.service';
 import { isProgressionEventKind, ProgressionEventForwarder } from './progression-events.service';
 
@@ -66,8 +67,25 @@ export function bridgePlanetEvents(
           { module: 'GameBusBridge' },
         )
       : undefined;
+  let marketSeq = 0;
+  const unsubMarket =
+    typeof bus.on === 'function'
+      ? bus.on(
+          'near.market.command',
+          (ev: NearMarketCommandBusEvent) => {
+            if (typeof planets.submit !== 'function') return;
+            void planets
+              .submit(ev.planetId, { colonyIndex: ev.colonyIndex, source: 'near', commandId: `mk-${Date.now().toString(36)}-${(++marketSeq).toString(36)}`, kind: ev.kind, args: ev.args })
+              .catch((e: unknown) => {
+                log.error({ planetId: ev.planetId, err: e instanceof Error ? e.message : String(e) }, `bus bridge: ${ev.kind} submit failed`);
+              });
+          },
+          { module: 'GameBusBridge' },
+        )
+      : undefined;
   return () => {
     unsubEvents();
     unsubCargoSettled?.();
+    unsubMarket?.();
   };
 }
