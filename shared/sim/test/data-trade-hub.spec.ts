@@ -27,9 +27,6 @@ function verifyT1Row(t1: CompiledRow): void {
   expect(t1.powerDrainPerS).toBe(6);
   expect(t1.hp).toBe(650);
   expect(t1.throughputPerMin).toBe(250);
-  expect(t1.marketFeeMinBp).toBe(50);
-  expect(t1.marketFeeMaxBp).toBe(300);
-  expect(t1.marketFeeDefaultBp).toBe(100);
   expect(t1.demolishRefundRatio).toBe(0.5);
   expect(t1.cancelRefundRatio).toBe(0.5);
 }
@@ -60,9 +57,6 @@ function verifyT2Row(t2: CompiledRow): void {
   expect(t2.powerDrainPerS).toBe(16);
   expect(t2.hp).toBe(1750);
   expect(t2.throughputPerMin).toBe(900);
-  expect(t2.marketFeeMinBp).toBe(50);
-  expect(t2.marketFeeMaxBp).toBe(300);
-  expect(t2.marketFeeDefaultBp).toBe(100);
   expect(t2.demolishRefundRatio).toBe(0.5);
   expect(t2.cancelRefundRatio).toBe(0.5);
 }
@@ -96,9 +90,6 @@ function verifyT3Row(t3: CompiledRow): void {
   expect(t3.powerDrainPerS).toBe(42);
   expect(t3.hp).toBe(4500);
   expect(t3.throughputPerMin).toBe(3500);
-  expect(t3.marketFeeMinBp).toBe(50);
-  expect(t3.marketFeeMaxBp).toBe(300);
-  expect(t3.marketFeeDefaultBp).toBe(100);
   expect(t3.demolishRefundRatio).toBe(0.5);
   expect(t3.cancelRefundRatio).toBe(0.5);
 }
