@@ -9,6 +9,7 @@ import type { StepContext } from '../../kernel/context';
 import type { PlanetState, SimState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
+import { stepHqCombatSurvival } from '../combat/damage';
 import { resolveHqT1Row, rowNum } from '../rows';
 import { stepHq } from './cell';
 import { syncHqView } from './view';
@@ -86,6 +87,9 @@ export const hq = defineSystem({
   wave: 'W01',
   run(state, ctx) {
     stepHq(state, ctx);
+    if (ctx.flags.has('W07')) {
+      stepHqCombatSurvival(state, ctx);
+    }
   },
 });
 

@@ -2,6 +2,7 @@ import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { hexDistance } from '../../grid/hex';
 import { TICK_MS } from '../../kernel/constants';
+import { applyDamage } from '../../systems/combat/damage';
 import { approach, setUnitActivity } from '../approach';
 import { isUnitKind } from '../mobility';
 import { faceTowards } from '../movement/locomotion';
@@ -53,6 +54,17 @@ export const attackCommand = defineUnitCommand<AttackCommand>({
     if (t < 0 || cols.hp[t] <= 0) return 'done';
     if (hexDistance(cols.x[u.row], cols.y[u.row], cols.x[t], cols.y[t]) > u.stats.weaponRange) return 'running';
     const dmg = (u.stats.dps * TICK_MS * u.ctx.dt) / 1000;
+    if (u.ctx.flags.has('W07')) {
+      const res = applyDamage(u.state, c.targetId, dmg, {
+        attackerId: u.id,
+        attackerOwner: u.owner,
+        tick: u.ctx.tick,
+        ctx: u.ctx,
+        data: u.ctx.data,
+      });
+      if (res.destroyed || res.clampedHq) return 'done';
+      return 'running';
+    }
     const hp = Math.fround(Math.max(0, cols.hp[t] - dmg));
     setField(e, t, 'hp', hp, u.ctx.tick);
     if (hp > 0) return 'running';
