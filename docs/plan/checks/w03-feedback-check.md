@@ -10,10 +10,10 @@ The w03 frontend and backend were restarted on 2026-11-04. Backend health, datab
 - **Playground:** [model inspection](http://127.0.0.1:5273/playground.html?inspect=building.commandHub)
 - **Backend:** [health](http://127.0.0.1:4101/v1/healthz), [readiness](http://127.0.0.1:4101/v1/readyz)
 - **Worktree:** `/Users/ferretrec/work/TerraAgent-wt/w03`; database `terra_wave_w03_the_grid`.
-- Use the server-backed link above for this check. The earlier browser-local startup issue remains tracked as FF-73.
+- Use the server-backed link above for this check. The earlier browser-local startup issue remains tracked as FF-80.
 - Open the **in-game dev console** with the **backtick key (`)** under Esc. Enter commands one line at a time, press Enter, then close it with backtick. This is not browser DevTools.
 - **B** opens Build; **U** opens Production; **Esc** cancels placement. Click **QUEUE** to watch construction.
-- Each reload of the scenario link creates a fresh colony. Keep the same tab for steps 1–8; step 9 deliberately starts fresh.
+- Start fresh after the merge: pre-landing W03 builder snapshots used a conflicting entity code (GP-79). Each reload of the scenario link creates a fresh colony. Keep the same tab for steps 1–8; step 9 deliberately starts fresh.
 
 ## 1. Prepare the colony and check the counters
 
@@ -136,7 +136,7 @@ Run `warp 1` and watch the wind indicator for several minutes.
 
 ## Validation and reporting
 
-The implementation passed 1,772 tests (one skipped), repository checks and build. All 14 building archetypes passed with zero errors/warnings; all 48 validator self-tests passed. Model four-view checks were inspected across all three biomes.
+The implementation passed 2,045 tests (one skipped), repository checks and build. All 14 building archetypes passed with zero errors/warnings; all 48 validator self-tests passed. Model four-view checks were inspected across all three biomes.
 
 Report the **step number**, what you expected, and what appeared instead. Keep the tab open if something fails so the scenario can be inspected.
 

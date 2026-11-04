@@ -1,4 +1,6 @@
 import { compileData, dataRow, type CompiledRow } from '../../data';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { setField } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState, type PlanetType } from '../../kernel/state';
@@ -34,7 +36,7 @@ export { collectWorkLoad, terraformOpShedGroup, type WorkLoad } from './workLoad
 
 let cachedW02Data: CompiledDataLike | null = null;
 function defaultW02Data(): CompiledDataLike {
-  if (!cachedW02Data) cachedW02Data = compileData(new Set(['W00', 'W01', 'W02']));
+  if (!cachedW02Data) cachedW02Data = compileData(new Set(['W00', 'W01', 'W02', 'W10']));
   return cachedW02Data;
 }
 
@@ -67,6 +69,16 @@ export function computeSolarOutputPerS(
   return { gross, internalDrain, net };
 }
 
+function syncTradeHubPowerAvailability(state: PlanetState, colonyIndex: number, tick: number, data?: CompiledDataLike): void {
+  const e = state.entities, c = e.cols;
+  const enabled = !data?.tables || Boolean((data.tables.tradeHub as Record<string, unknown> | undefined)?.t1);
+  for (let row = 0; row < e.count; row++) {
+    if (c.owner[row] !== colonyIndex || c.kind[row] !== ENTITY_KIND.tradeHub || c.hp[row] <= 0 || c.state[row] === ENTITY_STATE.constructing) continue;
+    if (!enabled && c.state[row] !== ENTITY_STATE.inert) setField(e, row, 'state', ENTITY_STATE.inert, tick);
+    else if (enabled && c.state[row] === ENTITY_STATE.inert) setField(e, row, 'state', ENTITY_STATE.active, tick);
+  }
+}
+
 /** Evaluates colony power across all power graph components with per-component brownout shedding (W03-05, W03-07). */
 export function evaluateColonyPower(
   state: PlanetState,
@@ -77,6 +89,7 @@ export function evaluateColonyPower(
 ): ColonyPowerSummary {
   const env = getEnvironment(state, data);
   const windOut = evaluateWindOutput(state, colonyIndex, tick, data);
+  syncTradeHubPowerAvailability(state, colonyIndex, tick, data);
   const graph = buildPowerGraph(state, colonyIndex, data);
   const hubRow = resolvePowerRow(data, 'hub', 't1');
   const founderCorePerS = graph.hasHub ? Number(hubRow.founderCoreGenPerS ?? 8) * graph.hubAnchors.length : 0;

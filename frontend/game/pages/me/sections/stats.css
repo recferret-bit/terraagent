@@ -1,0 +1,33 @@
+.ta-stats-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ta-stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 10px;
+}
+
+.ta-stat-tile {
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ta-stat-label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  color: var(--ta-steel);
+}
+
+.ta-stat-value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--ta-bone);
+  word-spacing: -0.1em;
+}

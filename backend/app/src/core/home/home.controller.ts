@@ -21,7 +21,9 @@ export class HomeController {
     @Req() req: AuthenticatedRequest,
     @CurrentPlayer() player: AuthenticatedPlayer,
     @Query('type') type?: string,
+    @Query('colonyId') colonyId?: string,
   ): Promise<HomeResponse> {
+    if (colonyId) return this.homeService.resumeColony((req.player ?? player).id, colonyId);
     return this.homeService.getOrAssignHome(req.player ?? player, isDevPlanetType(type) ? type : undefined);
   }
 }

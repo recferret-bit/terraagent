@@ -59,7 +59,7 @@ describe('scenario dev route', () => {
   });
 
   it('404s in production', async () => {
-    const { url } = await boot({ NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
+    const { url } = await boot({ NODE_ENV: 'production', PROGRESSION_WORKERS: 'off', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
     expect((await create(url, 'w00')).status).toBe(404);
   });
 });

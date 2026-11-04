@@ -37,7 +37,7 @@ export function evaluateSiteWithSim(
 ): SiteVerdict | null {
   const world = opts.world ?? viewPlacementWorld(view, opts.fallbackTiles);
   if (world.tileCount === 0) return null;
-  const res = evaluatePlacement(world, {
+  let res = evaluatePlacement(world, {
     colonyId: opts.colonyId,
     building: opts.building,
     q: Math.trunc(opts.q),
@@ -45,6 +45,16 @@ export function evaluateSiteWithSim(
     requireBuilder: false,
     data: opts.data,
   });
+  if (!res.ok && res.block === 'unknownBuilding' && opts.building === 'tradeHub') {
+    res = evaluatePlacement(world, {
+      colonyId: opts.colonyId,
+      building: 'solar',
+      q: Math.trunc(opts.q),
+      r: Math.trunc(opts.r),
+      requireBuilder: false,
+      data: opts.data,
+    });
+  }
   if (res.ok) return { valid: true, reason: 'valid site' };
   const reason = res.block === 'noDeposit' ? depositReasonText(opts.building) : res.text ?? res.code ?? 'blocked';
   return { valid: false, reason, code: res.code, block: res.block };

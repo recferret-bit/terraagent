@@ -2,6 +2,7 @@ import type { QueueEntry } from '@terra/sim';
 import type { FeatureContext } from '../../core/registry/types';
 
 export const TASK_TITLES: Readonly<Record<string, string>> = {
+  tradeHub: 'Inter-Colony Trade Hub T1',
   solar: 'Solar Array T1',
   metalsExtractor: 'Resource Extractor T1',
   commandHub: 'Command Hub T1',
@@ -18,6 +19,7 @@ export const TASK_TITLES: Readonly<Record<string, string>> = {
 };
 
 export const TASK_ICONS: Readonly<Record<string, string>> = {
+  tradeHub: '⇵',
   solar: '☀',
   metalsExtractor: '⛏',
   commandHub: '⬡',

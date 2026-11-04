@@ -72,7 +72,7 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
   2. Run `warp 20` until everything is built, then `warp 1`, and click the Quarry.
 - **See:** The Quarry's inspector shows **`ONLINE`**; a cable runs to it; Minerals income rises. The energy hover now shows the grid running a small deficit by day (about `Income +29`, `Spending −36.5`) and a **`Stored: −7.5 E/s (draining)`** line: this is **expected** with the new, stricter power budget — build a Wind Turbine / Solar (step 5) to fix it.
 - **Do (lose the bridge):** click the pylon at `(6, -1)`, read its `#id` in the bottom selection bar, and run `damage <id> 100`.
-- **See:** The Quarry turns **`OFFLINE: NO GRID`** and its cable goes dark. *(A destroyed pylon is not auto-repaired or rebuilt — recorded as GP-72.)*
+- **See:** The Quarry turns **`OFFLINE: NO GRID`** and its cable goes dark. *(A destroyed pylon is not auto-repaired or rebuilt — recorded as GP-74.)*
 
 ### 5. Supply Depot (`500` → `1 500` caps, supply `10` → `18`), Wind Turbine & Capacitor Bank
 - **Do:**
@@ -130,7 +130,7 @@ For the latest owner-requested fixes, use [W03 feedback checks](./w03-feedback-c
 - **See:** the entry earmarks **`earmarked: Water 5`** and the bar **`Earmarked: Water 5`** appears at the top of the Queue panel.
 
 ### 11. Night Survived & Night Shift progression *(deferred)*
-- Deferred: `W03-15` and `W03-25` are outside the H slice (`XC-34`). The lightning on grid cables (owner feedback) now covers the "grid arcs" visual.
+- Deferred: `W03-15` and `W03-25` are outside the H slice (`XC-35`). The lightning on grid cables (owner feedback) now covers the "grid arcs" visual.
 
 ### 12. Earlier waves stay clean (`?waves=..02`)
 - **Open:** `http://127.0.0.1:5273/play.html?scenario=w03&waves=..02`

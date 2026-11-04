@@ -161,7 +161,11 @@ export function familyStock(colony: ColonyState, family: ResourceFamily): number
 /** Remaining storage capacity in `family` before hitting `caps[family]`. */
 export function remainingFamilyCap(colony: ColonyState, family: ResourceFamily): number {
   const c = ensureColonyLedger(colony);
-  return Math.max(0, c.caps[family] - familyStock(c, family));
+  const reserved = Number(
+    (colony.cargo as { reservedByFamily?: Partial<Record<ResourceFamily, number>> } | undefined)
+      ?.reservedByFamily?.[family] ?? 0,
+  );
+  return Math.max(0, c.caps[family] - familyStock(c, family) - Math.max(0, reserved));
 }
 
 export function isFamilyAtCap(colony: ColonyState, family: ResourceFamily): boolean {

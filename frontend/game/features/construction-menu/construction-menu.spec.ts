@@ -133,12 +133,60 @@ describe('buildConstructionCatalog - enabled waves', () => {
 
     expect(solar.building).toBe('solar');
     expect(solar.label).toBe('Solar Collector Array');
+    expect(solar.category).toBe('Power');
     expect(solar.footprintText).toBe('2×2');
     expect(solar.designBuildS).toBe(18);
     expect(solar.hqBuildS).toBe(12);
     expect(solar.powerText).toBe('+13 E/s');
     expect(solar.cost).toEqual({ 'metals.t1': 60, 'minerals.t1': 75, 'bio.biomass': 10, 'bio.water': 5 });
     expect(solar.disabled).toBe(false);
+  });
+
+  it('includes tradeHub when W10 is enabled and evaluates stage/contact unlock rules', () => {
+    const flagsW10 = new Set(['W00', 'W01', 'W02', 'W10']);
+    const catalogS1 = buildConstructionCatalog(flagsW10);
+    expect(catalogS1).toHaveLength(4);
+    const tradeHubS1 = catalogS1[3];
+    expect(tradeHubS1.building).toBe('tradeHub');
+    expect(tradeHubS1.label).toBe('Inter-Colony Trade Hub');
+    expect(tradeHubS1.category).toBe('Economy');
+    expect(tradeHubS1.footprintW).toBe(2);
+    expect(tradeHubS1.footprintD).toBe(2);
+    expect(tradeHubS1.footprintText).toBe('2×2');
+    expect(tradeHubS1.designBuildS).toBe(22);
+    expect(tradeHubS1.hqBuildS).toBe(14.7);
+    expect(tradeHubS1.powerText).toBe('−6 E/s');
+    expect(tradeHubS1.cost).toEqual({ 'metals.t1': 100, 'minerals.t1': 80, 'bio.biomass': 30, 'bio.water': 10 });
+    expect(tradeHubS1.disabled).toBe(true);
+    expect(tradeHubS1.disabledReason).toBe('Requires Stage 2 + Neighbor Contact (or Stage 5)');
+    expect(tradeHubS1.unlockHint).toBe('Requires Stage 2 + Neighbor Contact (or Stage 5)');
+
+    const catalogS2 = buildConstructionCatalog(flagsW10, { colonies: [{ stage: 2 }] });
+    const tradeHubS2 = catalogS2.find((c) => c.building === 'tradeHub')!;
+    expect(tradeHubS2.disabled).toBe(false);
+    expect(tradeHubS2.unlockHint).toBe('Unlocked at Stage 2 (TRADE_HUB_AT_S2)');
+
+    const catalogS2NoAuto = buildConstructionCatalog(flagsW10, {
+      colonies: [{ stage: 2, tradeHubAtS2: false }],
+    });
+    const tradeHubS2Locked = catalogS2NoAuto.find((c) => c.building === 'tradeHub')!;
+    expect(tradeHubS2Locked.disabled).toBe(true);
+    expect(tradeHubS2Locked.disabledReason).toBe('Requires Neighbor Contact, Guild Visit, or Stage 5');
+
+    const catalogContact = buildConstructionCatalog(flagsW10, {
+      colonies: [{ stage: 2, tradeHubAtS2: false, neighborContact: true }],
+    });
+    expect(catalogContact.find((c) => c.building === 'tradeHub')!.disabled).toBe(false);
+
+    const catalogGuild = buildConstructionCatalog(flagsW10, {
+      colonies: [{ stage: 1, guildVisit: true }],
+    });
+    expect(catalogGuild.find((c) => c.building === 'tradeHub')!.disabled).toBe(false);
+
+    const catalogS5 = buildConstructionCatalog(flagsW10, {
+      colonies: [{ stage: 5, tradeHubAtS2: false }],
+    });
+    expect(catalogS5.find((c) => c.building === 'tradeHub')!.disabled).toBe(false);
   });
 });
 
@@ -270,5 +318,74 @@ describe('ConstructionMenu DOM HUD Component', () => {
 
     instance.dispose();
     expect(mockParent.children).toHaveLength(0);
+  });
+});
+
+describe('W08-11: ConstructionMenu stage filtering', () => {
+  const origDoc = globalThis.document;
+  const origWin = globalThis.window;
+
+  beforeEach(() => {
+    (globalThis as unknown as { document: unknown }).document = { createElement: (tag: string) => new MockElement(tag) };
+    (globalThis as unknown as { window: unknown }).window = { addEventListener: () => {}, removeEventListener: () => {} };
+  });
+
+  afterEach(() => {
+    (globalThis as unknown as { document: unknown }).document = origDoc;
+    (globalThis as unknown as { window: unknown }).window = origWin;
+  });
+
+  it('at S1 shows Builder, Pylon, and Depot greyed out with unlock condition and unlocks them at S2', () => {
+    const parentEl = new MockElement('div') as unknown as HTMLElement;
+    const startPlacement = vi.fn();
+    const track = vi.fn();
+    const flags = new Set(['W00', 'W01', 'W02', 'W08']);
+    const ctx = { flags, host: 'server' as const, services: { startPlacement, track } };
+
+    const instance = constructionFeature.hud![0].mount(parentEl, ctx);
+    const mockParent = parentEl as unknown as MockElement;
+    instance.update?.({ colonies: [{ stage: 1, unlockStage: 1, hubBuilt: true }] });
+
+    for (const kind of ['builder', 'pylon', 'depot']) {
+      const btn = mockParent.querySelector(`[data-building="${kind}"]`);
+      expect(btn).not.toBeNull();
+      expect(btn?.disabled).toBe(true);
+      expect(btn?.getAttribute('data-disabled')).toBe('true');
+      expect(btn?.getAttribute('data-stage-locked')).toBe('true');
+      expect(btn?.className).toContain('is-stage-locked');
+      expect(btn?.querySelector('.ta-construction__reason')?.textContent).toBe(
+        'Unlocks at S2: extractor + generator · 2 min',
+      );
+      expect(btn?.getAttribute('data-unlock-detail')).toBe(
+        'Unlocks at S2: extractor + generator complete · 2 min',
+      );
+      btn?.click();
+      expect(startPlacement).not.toHaveBeenCalled();
+    }
+
+    // S3 items are more than 1 stage ahead at S1 and must be hidden
+    expect(mockParent.querySelector('[data-building="roboticsFactory"]')).toBeNull();
+    expect(mockParent.querySelector('[data-building="turret"]')).toBeNull();
+
+    // Advance to S2: Builder, Pylon, Depot unlock; S3 items appear greyed out
+    instance.update?.({ colonies: [{ stage: 2, unlockStage: 2, hubBuilt: true }] });
+    for (const kind of ['builder', 'pylon', 'depot']) {
+      const btn = mockParent.querySelector(`[data-building="${kind}"]`);
+      expect(btn?.disabled).toBe(false);
+      expect(btn?.getAttribute('data-disabled')).toBe('false');
+      expect(btn?.getAttribute('data-stage-locked')).toBeNull();
+      expect(btn?.querySelector('.ta-construction__reason')).toBeNull();
+    }
+
+    for (const kind of ['roboticsFactory', 'turret']) {
+      const btn = mockParent.querySelector(`[data-building="${kind}"]`);
+      expect(btn).not.toBeNull();
+      expect(btn?.disabled).toBe(true);
+      expect(btn?.querySelector('.ta-construction__reason')?.textContent).toBe(
+        'Unlocks at S3: 6 buildings + 2nd extractor · 3 min',
+      );
+    }
+
+    instance.dispose();
   });
 });

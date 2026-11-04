@@ -124,6 +124,8 @@ export default defineScenario({
       name: 'The Grid',
       color: 0xff6b00,
       status: 'active',
+      stage: 2,
+      unlockStage: 2,
       changedAt: 0,
     });
     state.colonies[0] = colony;

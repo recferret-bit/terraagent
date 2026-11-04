@@ -21,6 +21,8 @@ import type { PlanetState, SimState } from '../../kernel/state';
 import { nextCrewShare } from '../dispatch/crew';
 import { colonyWho } from '../find';
 import { resolveHqT1Row, resolveHubT1Row, rowNum, ticksToSeconds } from '../rows';
+import { onCommandHubCompleted } from '../progression';
+import { syncColonyThreatStage } from '../progression/threatStage';
 import { applyHubCompletionEffects } from '../territory-claim';
 import { setOrderStatus, type ConstructionOrder } from './orders';
 import { isHubBuildingKind, resolveBuildingRow } from './placement';
@@ -215,5 +217,9 @@ function completeConstruction(state: PlanetState, order: ConstructionOrder, enti
     colonyIds: [colonyIdStr],
     data: { ...who, entityId: order.entityId, building: order.building, kind: order.building, tier: order.tier, q: order.q, r: order.r },
   });
-  if (isHubBuildingKind(order.building, ctx?.data)) applyHubCompletionEffects(state, order, tick, ctx);
+  if (isHubBuildingKind(order.building, ctx?.data)) {
+    applyHubCompletionEffects(state, order, tick, ctx);
+    onCommandHubCompleted(state, order.colonyId, ctx ?? { tick });
+  }
+  syncColonyThreatStage(state, order.colonyId, tick);
 }

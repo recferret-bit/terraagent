@@ -19,7 +19,7 @@ import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRi
 import { derivePowerCableSpans } from './powerCableSpans';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { disposeObject3D, UnitHealthBars } from './unitHealthBars';
-import { archetypeForKind, isConstructibleBuilding } from './entityKinds';
+import { entityWorldXZ, archetypeForKind, isConstructibleBuilding } from './entityKinds';
 import {
   buildActiveWorkSites,
   computeWorkTarget,
@@ -28,7 +28,7 @@ import {
   is2x2BuildingKind,
 } from './workTargetResolver';
 
-export { archetypeForKind };
+export { entityWorldXZ, archetypeForKind };
 
 export interface EntityMeshRecord {
   id: number; kind: number; owner: number; q: number; r: number; x: number; y: number; rot: number;
@@ -54,9 +54,6 @@ const UNPREDICTABLE_REJECTS: ReadonlySet<string> = new Set([
 
 export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
 
-export function entityWorldXZ(kind: number, x: number, y: number): [number, number] {
-  return is2x2BuildingKind(kind) ? tileXZ(x + 0.5, y + 0.5) : tileXZ(x, y);
-}
 
 function planetKindForBiome(biomeKey: string): PlanetKind {
   if (biomeKey === 'desert' || biomeKey === 'dune') return 'dune';
@@ -88,6 +85,7 @@ export class EntityMeshes {
   readonly workParticles: WorkParticleSystem;
   /** Grid cables + lightning between the Hub, pylons and attached buildings (`powerCableSpans.ts`). */
   readonly gridCables: GridCableRenderer;
+  isW10Enabled: () => boolean = () => true;
   private readonly entries = new Map<number, EntityMeshRecord>();
   private selectedEntityId: number | null = null;
   private ownerColonyIndex = 0;
@@ -198,6 +196,7 @@ export class EntityMeshes {
     if (kind === ENTITY_KIND.commandHub && owner === this.ownerColonyIndex && !tdState.uiVisible) {
       return false;
     }
+    if (kind === ENTITY_KIND.tradeHub && (state === ENTITY_STATE.inert || !this.isW10Enabled())) return false;
     return true;
   }
 

@@ -29,6 +29,7 @@ export function lightArchetypeForKind(kind: number): string {
   if (kind === ENTITY_KIND.commandHub) return 'building.commandHub';
   if (kind === ENTITY_KIND.metalsExtractor) return 'building.mine';
   if (kind === ENTITY_KIND.solar) return 'building.solar';
+  if (kind === ENTITY_KIND.tradeHub) return 'building.tradeHub';
   if (kind === ENTITY_KIND.pod) return 'ship.dropPod';
   if (kind === ENTITY_KIND.hq) return 'robot.hero';
   if (kind === ENTITY_KIND.harvester) return 'robot.miner';
@@ -40,6 +41,7 @@ export function scaleForKind(kind: number): number {
   if (kind === ENTITY_KIND.commandHub) return 1.55;
   if (kind === ENTITY_KIND.metalsExtractor) return 1.3;
   if (kind === ENTITY_KIND.solar) return 1.3;
+  if (kind === ENTITY_KIND.tradeHub) return 1.3;
   if (kind === ENTITY_KIND.pod) return 1.15;
   if (kind === ENTITY_KIND.hq) return 1.15;
   if (kind === ENTITY_KIND.harvester) return 1.05;
@@ -158,7 +160,7 @@ function collectOwnedEntityVisionAndProjectors(
     return;
   }
 
-  if (rec.kind === ENTITY_KIND.metalsExtractor || rec.kind === ENTITY_KIND.solar) {
+  if (rec.kind === ENTITY_KIND.metalsExtractor || rec.kind === ENTITY_KIND.solar || rec.kind === ENTITY_KIND.tradeHub) {
     if (rec.state !== ENTITY_STATE.waiting && visionSources.length < MAX_VISION_SOURCES) {
       visionSources.push({ x: ux, z: uz, innerRadius: 10, outerRadius: 15 });
     }

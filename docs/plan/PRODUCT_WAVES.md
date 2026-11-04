@@ -173,3 +173,7 @@ Every wave is built in its **own branch and its own git worktree**. Nothing is c
 - **Isolation per worktree.** Each worktree gets its own `TA_PORT_BASE` (app, client, e2e) and its own database `terra_<branch>` on the shared Postgres, written to `infra/.env.worktree`, so several waves can run their dev stacks and e2e at once. Each worktree runs its own `npm ci`.
 - **One landing per wave in the hackathon.** The `H` rows (plus any `H+` rows done in time) land as `wave-NN`. Later rows of the same wave reopen it with the same steps and land as `wave-NN.2`, ….
 - **Going back** works on landed waves only: `git checkout wave-07` (§3). Unlanded work lives in its wave branch until the owner's check.
+
+## W12 progression handoff
+
+All later waves follow [the progression engine contract](../spec/PROGRESSION_ENGINE.md) and their per-wave integration gate. W09 owns notification delivery; W11 owns authenticated multi-colony resume; W23 owns delayed/idempotent badge mint consumers. Pending effects are durable and must not be marked delivered without a successful consumer. The hub mock card is explicit, and gameplay has no ME navigation.

@@ -118,10 +118,10 @@
 
   /*
    * Phone landscape: dock and minimap side by side, both bottom-aligned, lifted above the centred HQ panel
-   * (`.ta-hq-panel`, 76 px tall, 12 px from the bottom) that the side-by-side row would otherwise reach.
+   * (`.ta-hq-panel`, up to 154 px with the multi-selection strip, 12 px from the bottom) that the side-by-side row would otherwise reach.
    */
   .ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) {
-    bottom: 80px;
+    bottom: 168px;
     flex-direction: row;
     align-items: flex-end;
     gap: var(--ta-s2);
@@ -134,7 +134,7 @@
   }
 
   .ta-hud__slot[data-slot='bottom-left']:has(.ta-minimap) .ta-command-dock__body {
-    max-height: min(30vh, 120px);
+    max-height: min(12vh, 40px);
   }
 }
 

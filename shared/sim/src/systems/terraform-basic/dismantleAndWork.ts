@@ -37,7 +37,7 @@ export { workJobsSystem } from './workSystem';
 
 let cachedDefaultCostData: CompiledDataLike | null = null;
 function defaultBuildCostData(): CompiledDataLike {
-  cachedDefaultCostData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03']));
+  cachedDefaultCostData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W10']));
   return cachedDefaultCostData;
 }
 
@@ -82,7 +82,12 @@ export function findOwnEntitiesAtTile(
       // The landed pod (the wreck) is one hex and can be scrapped: it matches its own tile only.
       if (cols.state[row] !== ENTITY_STATE.descending && Math.round(cols.q[row]) === q && Math.round(cols.r[row]) === r) matches.push(row);
     } else {
-      const defFp = kind === ENTITY_KIND.commandHub ? 3 : kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar ? 2 : 1;
+      const defFp =
+        kind === ENTITY_KIND.commandHub
+          ? 3
+          : kind === ENTITY_KIND.metalsExtractor || kind === ENTITY_KIND.solar || kind === ENTITY_KIND.tradeHub
+            ? 2
+            : 1;
       const w = Math.max(1, cols.footprintW[row] || defFp);
       const d = Math.max(1, cols.footprintD[row] || defFp);
       const fp = getFootprintTileIndices(state as PlanetState, cols.q[row], cols.r[row], w, d, cols.rot[row]);

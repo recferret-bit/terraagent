@@ -8,7 +8,7 @@ import { devPlanetIds } from '../../src/game/dev-planets';
 import { GamePlanets } from '../../src/game/game-planets.service';
 
 const PLANET = devPlanetIds(1, 1)[0]!;
-const PROD = { NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' };
+const PROD = { NODE_ENV: 'production', PROGRESSION_WORKERS: 'off', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' };
 let app: INestApplication | undefined;
 const sockets: WebSocket[] = [];
 afterEach(async () => { for (const s of sockets.splice(0)) s.terminate(); await app?.close(); app = undefined; });

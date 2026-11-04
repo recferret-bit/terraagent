@@ -19,10 +19,10 @@ const windowEndAfter = (tick: number) => (Math.floor(tick / PRODUCTION_WINDOW_TI
 
 /**
  * Stockpile progression batches of one planet (W02-28): every {@link PRODUCTION_WINDOW_TICKS} (windows end on tick
- * multiples of it), one `resourceProduced {colonyId, res, amount}` event per colony and resource whose
+ * multiples of it), one whole-unit `resourceProduced {colonyId, res, amount}` event per colony and resource whose
  * `production.produced` counter grew in the window. Runs in the sim thread (the counters live in `PlanetState`, which
  * the main thread never sees, SIM-H-01); the events leave the thread with the step's own events and reach the bus
- * through the bus bridge. The batches of consecutive windows sum to the counters' growth since the planet was loaded.
+ * through the bus bridge. Checkpoint requests also close the open window. Batches sum to whole lifetime units; fractional carry remains in the saved counters.
  */
 export class ProductionBatches {
   /** Counter values at the start of the open window, per colony id. */
@@ -36,9 +36,9 @@ export class ProductionBatches {
   }
 
   /** Call after every step: the `resourceProduced` events of the window that just closed (none mid-window). */
-  collect(state: PlanetState): SimEvent[] {
+  collect(state: PlanetState, checkpoint = false): SimEvent[] {
     const tick = state.meta.tick;
-    if (tick < this.windowEnd) return [];
+    if (!checkpoint && tick < this.windowEnd) return [];
     this.windowEnd = windowEndAfter(tick);
     const out: SimEvent[] = [];
     for (const colony of state.colonies ?? []) {
@@ -47,7 +47,8 @@ export class ProductionBatches {
       // A colony founded after the load produced everything under observation: its baseline is zero.
       const before = this.baseline.get(colony.id) ?? {};
       for (const res of RESOURCE_KEYS) {
-        const amount = (now[res] ?? 0) - (before[res] ?? 0);
+        // Whole lifetime units preserve fractional carry across windows and checkpoint/restart.
+        const amount = Math.floor((now[res] ?? 0) + EPSILON) - Math.floor((before[res] ?? 0) + EPSILON);
         if (amount > EPSILON) {
           out.push({ kind: 'resourceProduced', severity: 'info', atTick: tick, colonyIds: [colony.id], data: { colonyId: colony.id, res, amount } });
         }

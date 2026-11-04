@@ -28,6 +28,7 @@ interface CardDomRefs {
   costs: HTMLElement;
   costKey: string;
   reason: HTMLElement | null;
+  unlockDetail: HTMLElement | null;
   card: BuildingCardModel;
 }
 
@@ -240,6 +241,7 @@ export class ConstructionMenu implements Disposable {
       costs,
       costKey: '',
       reason: null,
+      unlockDetail: null,
       card,
     };
 
@@ -317,6 +319,50 @@ export class ConstructionMenu implements Disposable {
     } else if (ref.reason) {
       ref.reason.remove();
       ref.reason = null;
+    }
+
+    this.syncCardLockState(ref, card);
+  }
+
+  private syncCardLockState(ref: CardDomRefs, card: BuildingCardModel): void {
+    const nextClass = card.stageLocked ? 'ta-construction__card plate-sm is-stage-locked' : 'ta-construction__card plate-sm';
+    if (ref.btn.className !== nextClass) {
+      ref.btn.className = nextClass;
+    }
+    ref.btn.setAttribute('data-unlock-stage', String(card.unlockStage));
+
+    if (card.stageLocked) {
+      ref.btn.setAttribute('data-stage-locked', 'true');
+      const cond = card.unlockConditionText ?? card.disabledReason ?? '';
+      const detail = card.unlockDetailText ?? cond;
+      const fullTooltip = detail && detail !== cond ? `${cond} (${detail})` : cond;
+      ref.btn.setAttribute('title', fullTooltip);
+      ref.btn.setAttribute('aria-label', `${card.label} — ${fullTooltip}`);
+      ref.btn.setAttribute('data-unlock-detail', detail);
+      if (detail && detail !== card.disabledReason) {
+        if (!ref.unlockDetail) {
+          ref.unlockDetail = document.createElement('span');
+          ref.unlockDetail.className = 'ta-construction__unlock-detail';
+          ref.btn.appendChild(ref.unlockDetail);
+        }
+        if (ref.unlockDetail.textContent !== detail) {
+          ref.unlockDetail.textContent = detail;
+        }
+      } else if (ref.unlockDetail) {
+        ref.unlockDetail.remove();
+        ref.unlockDetail = null;
+      }
+      return;
+    }
+
+    for (const attr of ['data-stage-locked', 'title', 'aria-label', 'data-unlock-detail']) {
+      if (typeof ref.btn.removeAttribute === 'function') {
+        ref.btn.removeAttribute(attr);
+      }
+    }
+    if (ref.unlockDetail) {
+      ref.unlockDetail.remove();
+      ref.unlockDetail = null;
     }
   }
 

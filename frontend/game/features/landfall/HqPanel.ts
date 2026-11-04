@@ -1,5 +1,6 @@
 import { ENTITY_STATE } from '@terra/sim';
-import { clampPct } from '../shared/dom';
+import { SelectionDetails } from '../shared/SelectionDetails';
+import { createProgressBar, setProgress } from '../shared/progress';
 import { depositResource } from '../shared/depositLabel';
 import type { HqStatusView, LandfallController, SelectedDepositView, SelectedEntityView } from './selection';
 
@@ -21,12 +22,7 @@ function buildStatBlock(labelText: string, valTestId: string, valInit: string, f
   valEl.dataset.testid = valTestId;
   valEl.textContent = valInit;
   row.append(keyEl, valEl);
-  const bar = document.createElement('div');
-  bar.className = 'ta-hq-panel__bar';
-  const fillEl = document.createElement('div');
-  fillEl.className = `ta-hq-panel__fill ${fillModifier}`;
-  fillEl.dataset.testid = fillTestId;
-  bar.appendChild(fillEl);
+  const { bar, fill: fillEl } = createProgressBar(labelText, 'ta-hq-panel__bar', `ta-hq-panel__fill ${fillModifier}`, fillTestId);
   stat.append(row, bar);
   return { stat, keyEl, valEl, fillEl };
 }
@@ -83,6 +79,7 @@ function depositMeta(deposit: number, tier: number): { code: string; name: strin
  */
 export class HqPanel {
   readonly el: HTMLElement;
+  readonly details: SelectionDetails;
   private readonly slotEl: HTMLElement;
   private readonly countEl: HTMLElement;
   private readonly titleEl: HTMLElement;
@@ -186,6 +183,7 @@ export class HqPanel {
     footer.append(this.jobText, this.queueText, this.cancelBtn);
 
     this.el.append(grid, head, hp.stat, this.cellStat, this.progressStat, footer);
+    this.details = new SelectionDetails(this.el);
     parent.appendChild(this.el);
 
     this.offChange = this.controller.onChange(({ hq, selectedEntityId, selectedEntity, selectedDeposit }) => {
@@ -211,7 +209,7 @@ export class HqPanel {
 
     this.hpKey.textContent = 'RESERVES';
     this.hpText.textContent = `${Math.round(deposit.remaining)} / ${deposit.maxUnits}`;
-    this.hpFill.style.width = `${clampPct(deposit.remaining, deposit.maxUnits).toFixed(1)}%`;
+    setProgress(this.hpFill, deposit.remaining, deposit.maxUnits);
 
     this.cellStat.hidden = true;
     this.progressStat.hidden = true;
@@ -259,12 +257,12 @@ export class HqPanel {
     this.titleEl.textContent = entity.kindLabel;
     this.hpKey.textContent = 'HULL HP';
     this.hpText.textContent = `${Math.round(entity.hp)} / ${Math.round(entity.hpMax)}`;
-    this.hpFill.style.width = `${clampPct(entity.hp, entity.hpMax).toFixed(1)}%`;
+    setProgress(this.hpFill, entity.hp, entity.hpMax);
 
     if (typeof entity.cell === 'number' && typeof entity.cellMax === 'number' && entity.cellMax > 0) {
       this.cellStat.hidden = false;
       this.cellText.textContent = `${Math.round(entity.cell)} / ${Math.round(entity.cellMax)} E`;
-      this.cellFill.style.width = `${clampPct(entity.cell, entity.cellMax).toFixed(1)}%`;
+      setProgress(this.cellFill, entity.cell, entity.cellMax);
     } else {
       this.cellStat.hidden = true;
     }
@@ -273,7 +271,7 @@ export class HqPanel {
     if (prog > 0 && prog < 1) {
       this.progressStat.hidden = false;
       this.progressText.textContent = `${Math.round(prog * 100)}%`;
-      this.progressFill.style.width = `${clampPct(prog, 1).toFixed(1)}%`;
+      setProgress(this.progressFill, prog, 1);
     } else {
       this.progressStat.hidden = true;
       this.progressFill.style.width = '0.0%';

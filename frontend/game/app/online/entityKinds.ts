@@ -7,6 +7,7 @@ const ARCHETYPE_BY_KIND: Readonly<Record<number, string>> = {
   [ENTITY_KIND.commandHub]: 'building.commandHub',
   [ENTITY_KIND.metalsExtractor]: 'building.mine',
   [ENTITY_KIND.solar]: 'building.solar',
+  [ENTITY_KIND.tradeHub]: 'building.tradeHub',
   [ENTITY_KIND.pylon]: 'building.pylon',
   [ENTITY_KIND.capacitor]: 'building.capacitor',
   [ENTITY_KIND.wind]: 'building.wind',
@@ -21,6 +22,7 @@ const ARCHETYPE_BY_KIND: Readonly<Record<number, string>> = {
 
 const CONSTRUCTIBLE_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.commandHub,
+  ENTITY_KIND.tradeHub,
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.solar,
   ENTITY_KIND.pylon,
@@ -34,6 +36,7 @@ const CONSTRUCTIBLE_KINDS: ReadonlySet<number> = new Set([
 ]);
 
 const BUILDING_2X2_KINDS: ReadonlySet<number> = new Set([
+  ENTITY_KIND.tradeHub,
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.solar,
   ENTITY_KIND.capacitor,
@@ -47,6 +50,7 @@ const BUILDING_2X2_KINDS: ReadonlySet<number> = new Set([
 
 const ANIMATED_BUILDING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.commandHub,
+  ENTITY_KIND.tradeHub,
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.wind,
   ENTITY_KIND.thermal,
@@ -105,4 +109,8 @@ export function hubBuildProgressForState(state: number, progress: number): numbe
   if (state === ENTITY_STATE.waiting) return 0;
   if (state === ENTITY_STATE.constructing) return progress;
   return 1;
+}
+
+export function entityWorldXZ(kind: number, x: number, y: number): [number, number] {
+  return is2x2BuildingKind(kind) ? tileXZ(x + 0.5, y + 0.5) : tileXZ(x, y);
 }

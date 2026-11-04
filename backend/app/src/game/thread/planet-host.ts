@@ -165,7 +165,7 @@ export class PlanetHost {
   private answer(planetId: string, tick: number, postings: readonly LedgerPosting[], outcomes: readonly CommandOutcome[]): void {
     if (postings.length) this.post({ t: 'ledger', planetId, tick, postings });
     for (const o of outcomes) {
-      if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick, ...(o.detail ? { detail: o.detail } : {}) });
+      if (o.code) this.post({ t: 'reject', planetId, commandId: o.commandId, code: o.code, appliedAtTick: o.appliedAtTick, ...(o.detail ? { detail: o.detail } : {}), ...(o.unlocksAt ? { unlocksAt: o.unlocksAt } : {}) });
       else this.post({ t: 'ack', planetId, commandId: o.commandId, appliedAtTick: o.appliedAtTick });
     }
   }
@@ -246,6 +246,9 @@ export class PlanetHost {
     for (const id of planetId ? [planetId] : [...this.planets.keys()]) {
       const p = this.planets.get(id);
       if (!p) continue;
+      const production = p.production?.collect(p.state, true) ?? [];
+      if (production.length) this.publish(id, p, production);
+      this.flushEvents(id, p); // checkpoint must follow every event it commits, including the open delta window
       const bytes = owned(snapshot(p.state));
       this.post({ t: 'snapshot', planetId: id, tick: p.state.meta.tick, bytes }, [bytes.buffer as ArrayBuffer]);
     }

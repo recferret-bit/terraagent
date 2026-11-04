@@ -87,3 +87,9 @@ Colonies on the same planet can fight and make peace. Players raid each other wi
 - With the flag off: no raid or truce commands and no shield UI. A Hub loss only makes the colony critical; there is no elimination, ruins or reprint.
 - AC-06, AC-12 and AC-13 pass.
 - Tag `wave-18` is created.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Publish diplomacy, victory and raid facts from authoritative outcomes, with match/raid IDs.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

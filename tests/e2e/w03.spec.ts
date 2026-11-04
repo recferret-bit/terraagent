@@ -92,7 +92,7 @@ test('@hack 1 & 2. Load ?scenario=w03 (Hub, Extractor, Solar, 2 Harvesters; day 
   expectNoPageErrors(page);
 });
 
-test('@hack 3 & 4. Power zones: an armed card shows the zone; a far Quarry is outside_power_zone; queued Pylons extend the zone -> the Quarry runs online; lose the bridging pylon -> offline: no grid', async ({ page }) => {
+test('@hack 3 & 4. Power zones: an armed card shows the zone; a far Resource Extractor is outside_power_zone; queued Pylons extend the zone -> the Resource Extractor runs online; lose the bridging pylon -> offline: no grid', async ({ page }) => {
   await openW03(page);
   await expect.poll(async () => (await getColony0(page))?.stock?.['metals.t1'] ?? 0).toBeGreaterThanOrEqual(400);
 
@@ -111,7 +111,7 @@ test('@hack 3 & 4. Power zones: an armed card shows the zone; a far Quarry is ou
   await devConsole(page, 'fill minerals.t1 500');
 
   // The far minerals deposit (10, 0) lies outside the Hub's zone: the host rejects it, and a Solar at (9, 0) too.
-  for (const [building, q] of [['mineralsQuarry', 10], ['solar', 9]] as const) {
+  for (const [building, q] of [['metalsExtractor', 10], ['solar', 9]] as const) {
     const ack = await sendSimCmd(page, 'enqueueTask', { taskId: `b-out-${building}`, task: { kind: 'build', building, q, r: 0 } });
     expect(ack).toMatchObject({ ok: false, code: 'outside_power_zone' });
   }
@@ -120,14 +120,14 @@ test('@hack 3 & 4. Power zones: an armed card shows the zone; a far Quarry is ou
   await orderBuild(page, 'b-pylon-e1', 'pylon', 3, -1);
   await orderBuild(page, 'b-pylon-e2', 'pylon', 6, -1);
   await orderBuild(page, 'b-pylon-e3', 'pylon', 9, -1);
-  // Step 4: the Quarry on the far deposit, inside the last pylon's zone.
-  await orderBuild(page, 'b-quarry-far', 'mineralsQuarry', 10, 0);
+  // Step 4: the Resource Extractor on the far deposit, inside the last pylon's zone.
+  await orderBuild(page, 'b-quarry-far', 'metalsExtractor', 10, 0);
 
-  const quarryId = await finishedEntity(page, KIND.mineralsQuarry, undefined, 40_000);
+  const quarryId = await finishedEntity(page, KIND.metalsExtractor, { q: 10, r: 0 }, 40_000);
   await expect.poll(async () => (await powerOf(page, quarryId))?.state ?? '', { timeout: 20_000 }).toBe('online');
   expect((await powerOf(page, quarryId))?.component).toBe(0); // the Hub's component
 
-  // Lose the bridging pylon (6, -1): the Quarry's branch is cut from the Hub.
+  // Lose the bridging pylon (6, -1): the Resource Extractor's branch is cut from the Hub.
   const bridge = (await getEntitiesSnapshot(page)).find((e) => e.kind === KIND.pylon && e.q === 6 && e.r === -1);
   expect(bridge, 'bridging pylon at (6, -1)').toBeTruthy();
   await devConsole(page, `damage ${bridge!.id} 100`);

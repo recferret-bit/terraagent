@@ -28,6 +28,32 @@ model AnalyticsEvent {
   @@schema("core")
 }
 
+// --- cargo.prisma ---
+/// F1 Orbital Cargo outbox & status ledger (DATA_MODEL `chain.cargo_tx`, W10-08).
+/// Written in the same transaction as the `chain_outbox` row (`cargo-export:{colonyId}:{seq}` / `cargo-import:{colonyId}:{seq}`).
+model CargoTx {
+  id          BigInt   @id @default(autoincrement())
+  opId        String   @unique @map("op_id") @db.VarChar(160)
+  planetId    String?  @map("planet_id") @db.VarChar(64)
+  colonyId    String   @map("colony_id") @db.VarChar(64)
+  colonyIndex Int?     @map("colony_index")
+  accountId   String?  @map("account_id") @db.VarChar(64)
+  direction   String   @db.VarChar(16)
+  resource    String   @db.VarChar(32)
+  amount      Decimal  @db.Decimal(40, 0)
+  state       String   @default("PENDING") @db.VarChar(16)
+  txHash      String?  @map("tx_hash") @db.VarChar(96)
+  simRef      String   @map("sim_ref") @db.VarChar(160)
+  lastError   String?  @map("last_error") @db.VarChar(400)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@index([colonyId, state])
+  @@index([colonyId, direction, createdAt])
+  @@map("cargo_tx")
+  @@schema("chain")
+}
+
 // --- chain-outbox.prisma ---
 enum OutboxStatus {
   PENDING
@@ -111,6 +137,7 @@ model Colony {
   id          String   @id
   playerId    String   @map("player_id")
   planetId    String   @map("planet_id")
+  stage       Int      @default(1)
   colonyIndex Int      @default(0) @map("colony_index")
   name        String
   color       Int      @default(0)
@@ -285,6 +312,146 @@ model MockChainReceipt {
   @@index([blockHeight])
   @@map("mock_chain_receipt")
   @@schema("chain")
+}
+
+// --- progression.prisma ---
+/// Per-player lifetime progression facts (`counter` += delta, `max` = GREATEST(old, new), W12-02).
+model PlayerFact {
+  playerId  String   @map("player_id")
+  family    String   @db.VarChar(64)
+  metric    String   @default("counter") @db.VarChar(16)
+  value     Int      @default(0)
+  updatedAt DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@id([playerId, family])
+  @@index([playerId])
+  @@map("player_fact")
+  @@schema("core")
+}
+
+/// Append-only achievement tier unlocks (`(playerId, achievementId)` unique, W12-03).
+model AchievementUnlock {
+  id            String   @id
+  playerId      String   @map("player_id")
+  achievementId String   @map("achievement_id") @db.VarChar(64)
+  family        String   @db.VarChar(64)
+  tier          Int
+  earnedAt      DateTime @default(now()) @map("earned_at") @db.Timestamptz(3)
+  nftStatus     String   @default("none") @map("nft_status") @db.VarChar(16)
+  nftTokenId    String?  @map("nft_token_id") @db.VarChar(128)
+  nftTxHash     String?  @map("nft_tx_hash") @db.VarChar(128)
+
+  @@unique([playerId, achievementId])
+  @@index([playerId])
+  @@map("achievement_unlock")
+  @@schema("core")
+}
+
+/// Player XP, level (`50*L*(L+1)` cap 30), active title, avatar frame, and career `unlockStage` (W12-05, W12-09).
+model PlayerXp {
+  playerId    String   @id @map("player_id")
+  xp          Int      @default(0)
+  level       Int      @default(0)
+  title       String   @default("Cadet") @db.VarChar(64)
+  frame       String   @default("default") @db.VarChar(64)
+  unlockStage Int      @default(1) @map("unlock_stage")
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("player_xp")
+  @@schema("core")
+}
+
+/// Idempotent XP awards (`(playerId, source, sourceId)` unique, W12-05).
+model XpLedger {
+  id        String   @id
+  playerId  String   @map("player_id")
+  source    String   @db.VarChar(32)
+  sourceId  String   @map("source_id") @db.VarChar(128)
+  delta     Int
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@unique([playerId, source, sourceId])
+  @@index([playerId])
+  @@map("xp_ledger")
+  @@schema("core")
+}
+
+/// Past colony records for `/v1/me/profile` and `/v1/me/history` (W12-09).
+model ColonyHistory {
+  id           String   @id
+  playerId     String   @map("player_id")
+  colonyId     String   @map("colony_id")
+  name         String   @db.VarChar(64)
+  planetId     String   @map("planet_id")
+  planetName   String   @map("planet_name") @db.VarChar(64)
+  planetType   String   @map("planet_type") @db.VarChar(32)
+  stageReached Int      @default(1) @map("stage_reached")
+  outcome      String   @db.VarChar(32)
+  foundedAt    DateTime @default(now()) @map("founded_at") @db.Timestamptz(3)
+  endedAt      DateTime @default(now()) @map("ended_at") @db.Timestamptz(3)
+
+  @@index([playerId])
+  @@map("colony_history")
+  @@schema("core")
+}
+
+/// Durable input journal. Producers retain eventId across retries.
+model ProgressionReceipt {
+  id        String   @id
+  playerId  String   @map("player_id")
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+
+  @@index([playerId])
+  @@map("progression_receipt")
+  @@schema("core")
+}
+
+/// Transactional effect queue; each consumer has its own idempotency key and retry lease.
+model ProgressionEffect {
+  id          String    @id
+  kind        String
+  playerId    String    @map("player_id")
+  payload     Json
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now()) @map("available_at") @db.Timestamptz(3)
+  completedAt DateTime? @map("completed_at") @db.Timestamptz(3)
+  lastError   String?   @map("last_error")
+  lease       String?
+
+  @@index([kind, completedAt, availableAt])
+  @@map("progression_effect")
+  @@schema("core")
+}
+
+/// Inputs committed with their authoritative simulation checkpoint, replayed until applied.
+model ProgressionInbox {
+  id        String @id
+  planetId  String @map("planet_id")
+  tick      Int
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@index([planetId, tick])
+  @@map("progression_inbox")
+  @@schema("core")
+}
+
+model ProgressionEpoch {
+  planetId String @id @map("planet_id")
+  epoch String
+  @@map("progression_epoch")
+  @@schema("core")
+}
+
+/// Durable in-app notification inbox; unique effect ID provides consumer idempotency.
+model PlayerNotification {
+  id String @id
+  playerId String @map("player_id")
+  payload Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@index([playerId, createdAt])
+  @@map("player_notification")
+  @@schema("core")
 }
 
 // --- world.prisma ---

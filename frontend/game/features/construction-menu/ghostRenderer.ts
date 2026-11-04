@@ -27,6 +27,7 @@ const ARCHETYPE_BY_BUILDING: Record<string, string> = {
   mineralsQuarry: 'building.quarry',
   waterExtractor: 'building.waterPump',
   petroleumWell: 'building.oilWell',
+  tradeHub: 'building.tradeHub',
 };
 
 const now = (): number => (typeof performance !== 'undefined' ? performance.now() : Date.now());

@@ -37,6 +37,7 @@ const KIND_BY_NAME: Record<string, number> = {
   metalsExtractor: ENTITY_KIND.metalsExtractor,
   solar: ENTITY_KIND.solar,
   solarArray: ENTITY_KIND.solar,
+  tradeHub: ENTITY_KIND.tradeHub,
   pod: ENTITY_KIND.pod,
   devProbe: ENTITY_KIND.devProbe,
   pylon: ENTITY_KIND.pylon,
@@ -379,6 +380,7 @@ export function enrichHqSelectedView(hq: HqStatusView, rawView: unknown): Select
 }
 
 const BLDG_META: Record<number, { label: string; code: string; w: number; d: number; hpMax: number }> = {
+  [ENTITY_KIND.tradeHub]: { label: 'TRADE HUB', code: 'TRD', w: 2, d: 2, hpMax: 900 },
   [ENTITY_KIND.commandHub]: { label: 'COMMAND HUB', code: 'HUB', w: 3, d: 3, hpMax: 1500 },
   [ENTITY_KIND.metalsExtractor]: { label: 'METALS EXTRACTOR', code: 'EXT', w: 2, d: 2, hpMax: 500 },
   [ENTITY_KIND.solar]: { label: 'SOLAR ARRAY', code: 'SOL', w: 2, d: 2, hpMax: 300 },
@@ -399,7 +401,7 @@ export function buildSelectedEntityFromRow(
   offlineReasons: Record<number, string>,
   unitsById: Record<string, { current?: unknown; queue?: unknown[] }>,
 ): SelectedEntityView | null {
-  if (e.hp <= 0 || e.state === ENTITY_STATE.descending) return null;
+  if (e.hp <= 0 || e.state === ENTITY_STATE.descending || (e.kind === ENTITY_KIND.tradeHub && e.state === ENTITY_STATE.inert)) return null;
   const progress = resolveEntityActivityProgress(e, rawView);
   if (e.kind === ENTITY_KIND.harvester || e.kind === ENTITY_KIND.builder) {
     const isBuilder = e.kind === ENTITY_KIND.builder;

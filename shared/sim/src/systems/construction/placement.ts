@@ -172,7 +172,12 @@ const ECONOMY_BUILDING_ALIASES: Readonly<Record<string, string>> = {
 export function resolveEconomyBuildingRow(building: string | undefined, data?: CompiledDataLike): CompiledRow | null {
   if (building === undefined) return null;
   const canonical = ECONOMY_BUILDING_ALIASES[building] ?? building;
-  const fallback = (defaultEconomyData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03'])));
+  const fallback = (defaultEconomyData ??= compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W10'])));
+  if (building === 'tradeHub' || building === 'interColonyTradeHub') {
+    const src = data?.tables ? data : fallback;
+    const thRow = (src.tables.tradeHub as Record<string, CompiledRow> | undefined)?.t1;
+    return thRow && thRow.kind === 'building' ? thRow : null;
+  }
   const ecoSrc = data?.tables?.economyT1Basic ? data : fallback;
   const ecoRow = (ecoSrc.tables.economyT1Basic as Record<string, CompiledRow> | undefined)?.[canonical];
   if (ecoRow && ecoRow.kind === 'building') return ecoRow;
@@ -239,6 +244,7 @@ const OCCUPYING_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.tradeHub,
 ]);
 
 /** Whether an entity occupies ground with its footprint: an alive building (GP-23: one rule for placement and paths). */

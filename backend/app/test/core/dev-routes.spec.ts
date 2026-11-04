@@ -4,7 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
 
 const PROD = {
-  NODE_ENV: 'production', SIM_THREADS: '1', LOG_LEVEL: 'info', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789',
+  NODE_ENV: 'production', PROGRESSION_WORKERS: 'off', SIM_THREADS: '1', LOG_LEVEL: 'info', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789',
   NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true',
 };
 

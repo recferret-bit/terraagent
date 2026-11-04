@@ -4,7 +4,7 @@ export class MockElement {
   textContent = '';
   type = '';
   disabled = false;
-  style: Record<string, string> = {};
+  style = Object.assign({} as Record<string, string>, { setProperty: (name: string, value: string) => { this.style[name] = value; } });
   dataset: Record<string, string>;
   private attrs = new Map<string, string>();
   children: MockElement[] = [];

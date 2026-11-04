@@ -9,7 +9,7 @@ import { ensureColonyLedger } from './ledger';
 
 let cachedData: CompiledDataLike | null = null;
 function defaultData(): CompiledDataLike {
-  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03']));
+  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W10']));
   return cachedData;
 }
 
@@ -52,6 +52,12 @@ export function resolveBuildingRow(building: string, data?: CompiledDataLike): {
   if (building === 'petroleumWell' || building === 'oilWell') {
     return grid?.petroleumWell ? { row: grid.petroleumWell, entityKind: ENTITY_KIND.petroleumWell } : null;
   }
+  if (building === 'tradeHub' || building === 'interColonyTradeHub') {
+    const tradeHubTable = data?.tables?.tradeHub as Record<string, CompiledRow> | undefined;
+    if (data?.tables && !tradeHubTable?.t1) return null;
+    const src = (d.tables?.tradeHub as Record<string, CompiledRow> | undefined)?.t1 ? d : defaultData();
+    return { row: dataRow(src, 'tradeHub', 't1'), entityKind: ENTITY_KIND.tradeHub };
+  }
   return null;
 }
 
@@ -67,6 +73,7 @@ export function buildingKindName(entityKind: number): string {
   if (entityKind === ENTITY_KIND.mineralsQuarry) return 'mineralsQuarry';
   if (entityKind === ENTITY_KIND.waterExtractor) return 'waterExtractor';
   if (entityKind === ENTITY_KIND.petroleumWell) return 'petroleumWell';
+  if (entityKind === ENTITY_KIND.tradeHub) return 'tradeHub';
   return 'building';
 }
 

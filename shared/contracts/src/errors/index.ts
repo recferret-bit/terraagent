@@ -23,6 +23,10 @@ export const REJECT_CODES = [
   'outside_power_zone',
   // W03 dismantle: the building is already being dismantled (owner feedback W03 #6)
   'already_dismantling',
+  // W08 HQ goals: goal queue is full for the colony's HQ tier (2 / 3 / 5); `cancelGoal` / `reorderGoal` names no open goal
+  'goal_limit', 'unknown_goal',
+  // W10 cargo & trade hub: insufficient stock/cargo, storage full on import, or Trade Hub offline
+  'insufficient_stock', 'insufficient_cargo', 'storage_full', 'hub_offline',
 ] as const;
 export const RejectCode = z.enum(REJECT_CODES);
 export type RejectCode = z.infer<typeof RejectCode>;

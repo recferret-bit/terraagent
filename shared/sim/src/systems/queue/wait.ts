@@ -292,7 +292,11 @@ export function enqueueAuthority(
   norm: { precedence?: string; costOverride?: Partial<Record<ResourceKey, number>> },
 ): { precedence?: QueuePrecedence; costOverride?: Partial<Record<ResourceKey, number>> } {
   const word = norm.precedence;
-  const asked = word === undefined ? undefined : CONTRACT_PRECEDENCE[word];
+  const asked =
+    word === undefined
+      ? undefined
+      : (CONTRACT_PRECEDENCE[word] ??
+        (word === 'system' || word === 'player' || word === 'hq' || word === 'ai' || word === 'auto' ? word : undefined));
   if (TRUSTED_SOURCES.has(source)) return { precedence: asked, costOverride: norm.costOverride };
   if (source === 'ai') {
     return { precedence: asked && PRECEDENCE_RANK[asked] <= PRECEDENCE_RANK.ai ? asked : 'ai' };

@@ -18,6 +18,7 @@ export const command = defineCommand({
     slotIndex: z.number().int().nonnegative().optional(),
     q: TileCoord.optional(),
     r: TileCoord.optional(),
+    unlockStage: z.number().int().min(0).max(10).optional(),
   }),
   summary: 'Spawns a colony drop pod at a free spawn slot with starting pod cargo (W01-09).',
 });

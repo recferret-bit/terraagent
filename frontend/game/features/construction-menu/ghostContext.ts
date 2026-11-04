@@ -59,9 +59,11 @@ const DEFAULT_LABELS: Record<string, string> = {
   mineralsQuarry: 'Minerals Quarry',
   waterExtractor: 'Water Extractor',
   petroleumWell: 'Petroleum Well',
+  tradeHub: 'Inter-Colony Trade Hub',
 };
 
 const TWO_BY_TWO_KINDS = new Set<number>([
+  ENTITY_KIND.tradeHub,
   ENTITY_KIND.metalsExtractor,
   ENTITY_KIND.solar,
   ENTITY_KIND.capacitor,
@@ -74,13 +76,19 @@ const TWO_BY_TWO_KINDS = new Set<number>([
 ]);
 
 export function resolveBuildingMeta(data: CompiledDataLike, building: string): BuildingRowMeta {
+  const tables = (data as { tables?: Record<string, Record<string, unknown> | undefined> }).tables ?? {};
   let row: Record<string, unknown> | undefined;
-  for (const table of Object.values((data as { tables?: Record<string, Record<string, unknown> | undefined> }).tables ?? {})) {
-    if (!table) continue;
-    for (const r of Object.values(table) as Array<Record<string, unknown> | undefined>) {
-      if (r && (r.building === building || r.id === building)) { row = r; break; }
+  if (building === 'tradeHub') {
+    row = tables['tradeHub']?.['t1'] as Record<string, unknown> | undefined;
+  }
+  if (!row) {
+    for (const table of Object.values(tables)) {
+      if (!table) continue;
+      for (const r of Object.values(table) as Array<Record<string, unknown> | undefined>) {
+        if (r && (r.building === building || r.id === building)) { row = r; break; }
+      }
+      if (row) break;
     }
-    if (row) break;
   }
   const label = typeof row?.label === 'string' ? row.label : (DEFAULT_LABELS[building] ?? building);
   const defFp = building === 'commandHub' ? 3 : building === 'pylon' ? 1 : 2;

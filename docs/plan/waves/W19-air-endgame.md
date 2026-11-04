@@ -102,3 +102,15 @@ The air layer and the top tier:
 
 - **W19-11** (Autocannon `hitsAir` + Laser Tower air hits) was dropped: W07-07 and W07-13 already flag both; W19-12's acceptance checks it against Drifters.
 - **Drifter roosts** were dropped from the scenario: §5.6 and `UO-T-03` bring Drifters only as raid flocks. If the owner wants roosts, their density, HP and spawn rate need a spec row first.
+
+## W08 follow-up: executable progression and priorities
+
+Deliver S8–S9 air/anti-air/orbital lessons, real goal executors and defense/power priority effects.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
+
+## W12 progression integration gate (revised)
+
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Identify any new statistics producers and reuse the W12 catalogue, transaction and effect queue; do not introduce parallel counters or reward callbacks.
+
+Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

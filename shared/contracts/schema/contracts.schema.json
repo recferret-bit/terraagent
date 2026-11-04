@@ -392,6 +392,126 @@
     }
   },
   "commands": {
+    "acceptSuggestion": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "radius": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resource": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sectorId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetColonyId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "targetNetEnergyPerS": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetRatePerMin": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "number"
+              },
+              "tier": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "stage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "suggestionId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Accepts an offered HQ suggestion (such as S0 Establish Colony or an early-stage rule suggestion, UO-LC-04 / UO-LC-05).",
+      "wave": "W08"
+    },
+    "cancelGoal": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "goalId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "goalId"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Cancels an active or queued HQ goal and removes its waiting child orders from the order queue (UO-P §4.6).",
+      "wave": "W08"
+    },
     "cancelTask": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -411,6 +531,155 @@
       "origin": "client",
       "summary": "Cancels a queued or in-progress order (refunds 75 % if in progress and cancels linked prep, UO-Q-02 / UO-TF-03).",
       "wave": "W01"
+    },
+    "cargo.export": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Exports `amount` whole units of `resource` from colony stock to orbital NEP-245 custody via an online Trade Hub (W10-01, NEAR-50).",
+      "wave": "W10"
+    },
+    "cargo.import": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Imports `amount` whole units of `resource` from orbital NEP-245 custody into colony stock via an online Trade Hub (W10-01, NEAR-51).",
+      "wave": "W10"
+    },
+    "cargo.settled": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "direction": {
+            "enum": [
+              "export",
+              "import"
+            ],
+            "type": "string"
+          },
+          "error": {
+            "maxLength": 200,
+            "type": "string"
+          },
+          "ok": {
+            "type": "boolean"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "txHash": {
+            "maxLength": 128,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "ref",
+          "ok"
+        ],
+        "type": "object"
+      },
+      "origin": "module",
+      "summary": "Module command from the NEAR outbox relay settling an export or import (`ok:true` finalises; `ok:false` refunds or releases reservation, W10-07 / W10-12).",
+      "wave": "W10"
     },
     "demolish": {
       "args": {
@@ -464,6 +733,119 @@
       "summary": "Dev console: injects synthetic electrical load (E/s) onto a colony or specific pylon branch (W03-27).",
       "wave": "W03"
     },
+    "dev.autopilot": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "op": {
+            "enum": [
+              "next",
+              "step"
+            ],
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev command to inspect or step the HQ rule-engine decision (`autopilot next`).",
+      "wave": "W08"
+    },
+    "dev.cargoCapReset": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colony": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`cargo.cap.reset <colony>`): clears the rolling 60 s and UTC-day cargo mint counters for the colony (W10-26).",
+      "wave": "W10"
+    },
+    "dev.cargoGrant": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "colony": {
+            "anyOf": [
+              {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            ]
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`cargo.grant <colony> <res> <amt>`): grants or adjusts in-orbit cargo balance for the colony (W10-26).",
+      "wave": "W10"
+    },
     "dev.cell": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -484,6 +866,27 @@
       "origin": "client",
       "summary": "Dev console: sets the colony HQ power cell energy to `energy` (clamped to cell capacity).",
       "wave": "W01"
+    },
+    "dev.contactFake": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "enabled": {
+            "type": "boolean"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`contact.fake`): fakes neighbour/Guild contact on the colony so Trade Hub unlock can be tested below Stage 5 (W10-03).",
+      "wave": "W10"
     },
     "dev.damage": {
       "args": {
@@ -619,6 +1022,140 @@
       "summary": "Dev console: fills a resource (or family / all T1 resources) up to its colony family storage cap, or sets it to `amount` when provided (clamped to cap, W02-30).",
       "wave": "W02"
     },
+    "dev.goal": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "budgetBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "goalId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "op": {
+            "enum": [
+              "add",
+              "cancel",
+              "clear"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "radius": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resource": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sectorId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetColonyId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "targetNetEnergyPerS": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetRatePerMin": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "number"
+              },
+              "tier": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "resource": {
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "maximum": 100000,
+            "minimum": -10000,
+            "type": "number"
+          },
+          "targetNetEnergyPerS": {
+            "maximum": 100000,
+            "minimum": -10000,
+            "type": "number"
+          },
+          "targetRatePerMin": {
+            "exclusiveMinimum": 0,
+            "maximum": 100000,
+            "type": "number"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev command to add, cancel, or clear HQ goals (`goal add <type>`).",
+      "wave": "W08"
+    },
     "dev.grant": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -736,13 +1273,19 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "supplyOverride": {
+            "type": [
+              "number",
+              "null"
+            ]
           }
         },
         "type": "object"
       },
       "dev": true,
       "origin": "client",
-      "summary": "Dev console: dumps the colony power grid component balance and shed states (W02-30).",
+      "summary": "Dev console: dumps or overrides the colony power grid component balance and shed states (W02-30, W10-30).",
       "wave": "W02"
     },
     "dev.reveal": {
@@ -896,6 +1439,88 @@
       "summary": "Dev console: places a full resource deposit of `family` and `tier` on tile `(q, r)`, like a terraform find (`terraformFinds.deposit.richnessBp`).",
       "wave": "W02"
     },
+    "dev.stage": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "colonyIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "op": {
+                "const": "set",
+                "type": "string"
+              },
+              "stage": {
+                "maximum": 10,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "op",
+              "stage"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "colonyIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "op": {
+                "const": "skip-dwell",
+                "type": "string"
+              }
+            },
+            "required": [
+              "op"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "colonyIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "op": {
+                "const": "trigger",
+                "type": "string"
+              },
+              "override": {
+                "enum": [
+                  "fauna",
+                  "rival",
+                  "resource",
+                  "power",
+                  "storage"
+                ],
+                "type": "string"
+              }
+            },
+            "required": [
+              "op",
+              "override"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev command to set colony stage (`set`), skip stage dwell timer (`skip-dwell`), or trigger a safety override (`trigger`).",
+      "wave": "W08"
+    },
     "dev.teleport": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -978,6 +1603,39 @@
       "origin": "client",
       "summary": "Dev command to configure the planet time of day (0..24h or `day`/`night`/`hh:mm`), real hours per day, and time scale without requiring a seated colony.",
       "wave": "W00"
+    },
+    "dev.tradehubSpawn": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "tier": {
+            "maximum": 3,
+            "minimum": 1,
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console (`tradehub.spawn`): spawns an instant completed online Trade Hub for the caller colony (W10-26).",
+      "wave": "W10"
     },
     "enqueueTask": {
       "args": {
@@ -1531,6 +2189,187 @@
       "summary": "Queues construction of a structure at (q, r) and auto-links any missing site preparation ops (UO-TF-03).",
       "wave": "W01"
     },
+    "queueGoal": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "budgetBp": {
+            "maximum": 10000,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "radius": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resource": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sectorId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetColonyId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "targetNetEnergyPerS": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetRatePerMin": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "number"
+              },
+              "tier": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "resource": {
+            "maxLength": 32,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "maximum": 100000,
+            "minimum": -10000,
+            "type": "number"
+          },
+          "targetNetEnergyPerS": {
+            "maximum": 100000,
+            "minimum": -10000,
+            "type": "number"
+          },
+          "targetRatePerMin": {
+            "exclusiveMinimum": 0,
+            "maximum": 100000,
+            "type": "number"
+          }
+        },
+        "required": [
+          "goal"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Queues an HQ goal onto the colony goal queue (subject to HQ tier limit 2 / 3 / 5, UO-P §4.6).",
+      "wave": "W08"
+    },
+    "reorderGoal": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "top",
+                  "bottom"
+                ],
+                "type": "string"
+              },
+              "goalId": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              },
+              "toIndex": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "required": [
+              "goalId",
+              "toIndex"
+            ],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "enum": [
+                  "up",
+                  "down",
+                  "top",
+                  "bottom"
+                ],
+                "type": "string"
+              },
+              "goalId": {
+                "maxLength": 64,
+                "minLength": 1,
+                "type": "string"
+              }
+            },
+            "required": [
+              "goalId",
+              "direction"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Reorders a queued HQ goal within the colony goal queue (UO-P §4.6).",
+      "wave": "W08"
+    },
     "reorderTask": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1710,6 +2549,87 @@
       "summary": "Configures the authoritative planetary solar time of day (0..24h), day length in real hours, and time scale multiplier.",
       "wave": "W00"
     },
+    "setPriorities": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "defense": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "economy": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "expansion": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "power": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "terraform": {
+                "maximum": 100,
+                "minimum": 0,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "priorities": {
+                "additionalProperties": false,
+                "properties": {
+                  "defense": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "economy": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "expansion": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "power": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "terraform": {
+                    "maximum": 100,
+                    "minimum": 0,
+                    "type": "integer"
+                  }
+                },
+                "type": "object"
+              }
+            },
+            "required": [
+              "priorities"
+            ],
+            "type": "object"
+          }
+        ]
+      },
+      "origin": "client",
+      "summary": "Sets the 5 canonical colony priority sliders (economy, expansion, defense, power, terraform; 0..100 step 10, SIM-R-02).",
+      "wave": "W08"
+    },
     "stopUnit": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -1785,6 +2705,11 @@
             "maximum": 9007199254740991,
             "minimum": 0,
             "type": "integer"
+          },
+          "unlockStage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
           }
         },
         "required": [
@@ -1837,6 +2762,99 @@
       "severity": "info",
       "summary": "Named account created and linked to the player (F5).",
       "wave": "W06"
+    },
+    "achievement.earned": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "achievementId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "earnedAt": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "familyId": {
+            "enum": [
+              "first-landfall",
+              "groundbreaker",
+              "stone-mason",
+              "hydro-engineer",
+              "green-thumb",
+              "architect",
+              "power-broker",
+              "night-shift",
+              "stockpile",
+              "tech-ascendant",
+              "exterminator",
+              "nest-breaker",
+              "great-wall",
+              "unbreached",
+              "warlord",
+              "merchant",
+              "port-authority",
+              "guild-contact",
+              "diplomat",
+              "settler"
+            ],
+            "type": "string"
+          },
+          "familyName": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "playerId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "tier": {
+            "anyOf": [
+              {
+                "const": 1,
+                "type": "number"
+              },
+              {
+                "const": 2,
+                "type": "number"
+              },
+              {
+                "const": 3,
+                "type": "number"
+              }
+            ]
+          },
+          "tierName": {
+            "enum": [
+              "Bronze",
+              "Silver",
+              "Gold"
+            ],
+            "type": "string"
+          },
+          "xp": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "playerId",
+          "achievementId",
+          "familyId",
+          "familyName",
+          "tier",
+          "tierName",
+          "xp",
+          "earnedAt"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "An achievement tier was unlocked.",
+      "wave": "W12"
     },
     "alertPing": {
       "audience": "player",
@@ -2015,6 +3033,209 @@
       "summary": "Emitted when construction of a structure reaches 100 % completion (W01-16, W02-17, W02-28).",
       "wave": "W01"
     },
+    "cargoExported": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "exportSeq": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "txHash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref",
+          "exportSeq",
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Colony stock was debited for export into orbital NEP-245 custody; triggers outbox mint on the server (W10-01, W10-05).",
+      "wave": "W10"
+    },
+    "cargoImported": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "importSeq": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "phase": {
+            "enum": [
+              "requested",
+              "settled"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          },
+          "txHash": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref",
+          "importSeq",
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Orbital cargo import requested or settled into colony stock (W10-01, W10-12).",
+      "wave": "W10"
+    },
+    "cargoRefunded": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "amount": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          },
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "direction": {
+            "enum": [
+              "export",
+              "import"
+            ],
+            "type": "string"
+          },
+          "playerId": {
+            "type": "string"
+          },
+          "reason": {
+            "type": "string"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          },
+          "resource": {
+            "enum": [
+              "metals.t1",
+              "metals.t2",
+              "metals.t3",
+              "minerals.t1",
+              "minerals.t2",
+              "minerals.t3",
+              "bio.water",
+              "bio.biomass",
+              "bio.t2",
+              "bio.t3"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref",
+          "resource",
+          "amount"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A failed orbital cargo export was refunded to colony stock (even above cap) or a failed import reservation was released (W10-01, W10-07).",
+      "wave": "W10"
+    },
     "colonyFounded": {
       "audience": "player",
       "data": {
@@ -2163,6 +3384,126 @@
       "severity": "critical",
       "summary": "Emitted when a colony remains in brownout for >= 30 s continuously (SIM §9, W02-06, W02-17).",
       "wave": "W02"
+    },
+    "goalDone": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "goalId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "goalId",
+          "goal"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when an HQ goal reaches completion (UO-P §4.6).",
+      "wave": "W08"
+    },
+    "goalProgress": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "detail": {
+            "maxLength": 120,
+            "type": "string"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "goalId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "progress": {
+            "maximum": 1,
+            "minimum": 0,
+            "type": "number"
+          },
+          "status": {
+            "enum": [
+              "queued",
+              "active",
+              "done",
+              "cancelled"
+            ],
+            "type": "string"
+          },
+          "stepsCompleted": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stepsTotal": {
+            "exclusiveMinimum": 0,
+            "maximum": 9007199254740991,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "goalId",
+          "goal",
+          "status",
+          "progress"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when an active HQ goal advances its completion progress (UO-P §4.6).",
+      "wave": "W08"
     },
     "groundRevealed": {
       "audience": "player",
@@ -2743,6 +4084,257 @@
       "summary": "Emitted when a completed terraform `work` job spawns a new resource deposit on its hex (1 % roll, `TERRAFORM_RESOURCE_SPAWN`; tier in the `depositTier` tile layer).",
       "wave": "W02"
     },
+    "stageReached": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "buildings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "orders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "override": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "previousStage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "stage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "teaches": {
+            "maxLength": 128,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "stage"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a colony reaches a new progression stage after trigger and dwell (or safety override, UO-P §6.2–§6.3).",
+      "wave": "W08"
+    },
+    "stageUnlocked": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "buildings": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "orders": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "previousUnlockStage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "units": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "unlockStage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "unlockStage"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when a colony or player unlockStage advances, unlocking new buildable structures, units, and orders (UO-LC-02).",
+      "wave": "W08"
+    },
+    "suggestionOffered": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "goal": {
+            "enum": [
+              "establish_colony",
+              "grow_economy",
+              "secure_power",
+              "defend_colony",
+              "clear_corridor",
+              "expand_territory",
+              "terraform_zone",
+              "tech_up",
+              "negotiate_supply",
+              "build_army",
+              "raid_target",
+              "build_rocket"
+            ],
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "goal",
+              "order"
+            ],
+            "type": "string"
+          },
+          "lane": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "need": {
+            "maxLength": 32,
+            "type": "string"
+          },
+          "params": {
+            "additionalProperties": false,
+            "properties": {
+              "op": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "q": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "r": {
+                "maximum": 32767,
+                "minimum": -32768,
+                "type": "integer"
+              },
+              "radius": {
+                "maximum": 32,
+                "minimum": 1,
+                "type": "integer"
+              },
+              "resource": {
+                "maxLength": 32,
+                "minLength": 1,
+                "type": "string"
+              },
+              "sectorId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "target": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetColonyId": {
+                "maximum": 9007199254740991,
+                "minimum": 0,
+                "type": "integer"
+              },
+              "targetNetEnergyPerS": {
+                "maximum": 100000,
+                "minimum": -10000,
+                "type": "number"
+              },
+              "targetRatePerMin": {
+                "exclusiveMinimum": 0,
+                "maximum": 100000,
+                "type": "number"
+              },
+              "tier": {
+                "maximum": 3,
+                "minimum": 1,
+                "type": "integer"
+              }
+            },
+            "type": "object"
+          },
+          "reason": {
+            "maxLength": 160,
+            "type": "string"
+          },
+          "stage": {
+            "maximum": 10,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "suggestionId": {
+            "maxLength": 64,
+            "minLength": 1,
+            "type": "string"
+          },
+          "target": {
+            "maxLength": 64,
+            "type": "string"
+          },
+          "title": {
+            "maxLength": 96,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyIndex",
+          "suggestionId",
+          "stage"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "Emitted when the stage tutorial or rule engine offers a suggestion instead of auto-queuing (UO-LC-04 / UO-LC-05).",
+      "wave": "W08"
+    },
     "tilePrepared": {
       "audience": "player",
       "data": {
@@ -2873,6 +4465,49 @@
       "severity": "info",
       "summary": "Emitted when a worker or combat unit completes production and spawns at its producer edge (W02-10, W02-17).",
       "wave": "W02"
+    },
+    "xp.levelUp": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "level": {
+            "maximum": 30,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "playerId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "previousLevel": {
+            "maximum": 30,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "title": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "xp": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "playerId",
+          "previousLevel",
+          "level",
+          "xp",
+          "title"
+        ],
+        "type": "object"
+      },
+      "severity": "info",
+      "summary": "The pilot reached a higher level.",
+      "wave": "W12"
     }
   },
   "serverMessages": {
@@ -2935,6 +4570,362 @@
         },
         "t": {
           "const": "bye",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "cargo.status": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "properties": {
+        "d": {
+          "properties": {
+            "accountId": {
+              "type": "string"
+            },
+            "colonyId": {
+              "minLength": 1,
+              "type": "string"
+            },
+            "dailyCap": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "hubOnline": {
+              "type": "boolean"
+            },
+            "hubTier": {
+              "maximum": 9007199254740991,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "hubUnlocked": {
+              "type": "boolean"
+            },
+            "inOrbit": {
+              "additionalProperties": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "propertyNames": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "mintCapPerDay": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "mintedToday": {
+              "additionalProperties": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "propertyNames": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            },
+            "pending": {
+              "items": {
+                "properties": {
+                  "amount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "dir": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "ref": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "metals.t2",
+                      "metals.t3",
+                      "minerals.t1",
+                      "minerals.t2",
+                      "minerals.t3",
+                      "bio.water",
+                      "bio.biomass",
+                      "bio.t2",
+                      "bio.t3"
+                    ],
+                    "type": "string"
+                  },
+                  "seq": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "enum": [
+                      "PENDING",
+                      "SENT",
+                      "FINAL",
+                      "FAILED"
+                    ],
+                    "type": "string"
+                  },
+                  "txHash": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ref",
+                  "resource",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "pendingExport": {
+              "items": {
+                "properties": {
+                  "amount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "dir": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "ref": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "metals.t2",
+                      "metals.t3",
+                      "minerals.t1",
+                      "minerals.t2",
+                      "minerals.t3",
+                      "bio.water",
+                      "bio.biomass",
+                      "bio.t2",
+                      "bio.t3"
+                    ],
+                    "type": "string"
+                  },
+                  "seq": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "enum": [
+                      "PENDING",
+                      "SENT",
+                      "FINAL",
+                      "FAILED"
+                    ],
+                    "type": "string"
+                  },
+                  "txHash": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ref",
+                  "resource",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "pendingImport": {
+              "items": {
+                "properties": {
+                  "amount": {
+                    "maximum": 9007199254740991,
+                    "minimum": 0,
+                    "type": "integer"
+                  },
+                  "dir": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "direction": {
+                    "enum": [
+                      "export",
+                      "import"
+                    ],
+                    "type": "string"
+                  },
+                  "error": {
+                    "type": "string"
+                  },
+                  "ref": {
+                    "maxLength": 160,
+                    "minLength": 1,
+                    "type": "string"
+                  },
+                  "resource": {
+                    "enum": [
+                      "metals.t1",
+                      "metals.t2",
+                      "metals.t3",
+                      "minerals.t1",
+                      "minerals.t2",
+                      "minerals.t3",
+                      "bio.water",
+                      "bio.biomass",
+                      "bio.t2",
+                      "bio.t3"
+                    ],
+                    "type": "string"
+                  },
+                  "seq": {
+                    "exclusiveMinimum": 0,
+                    "maximum": 9007199254740991,
+                    "type": "integer"
+                  },
+                  "state": {
+                    "enum": [
+                      "PENDING",
+                      "SENT",
+                      "FINAL",
+                      "FAILED"
+                    ],
+                    "type": "string"
+                  },
+                  "txHash": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ref",
+                  "resource",
+                  "amount"
+                ],
+                "type": "object"
+              },
+              "type": "array"
+            },
+            "throughputCapPerMin": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "throughputUsedPerMin": {
+              "minimum": 0,
+              "type": "number"
+            },
+            "todayMinted": {
+              "additionalProperties": {
+                "minimum": 0,
+                "type": "number"
+              },
+              "propertyNames": {
+                "enum": [
+                  "metals.t1",
+                  "metals.t2",
+                  "metals.t3",
+                  "minerals.t1",
+                  "minerals.t2",
+                  "minerals.t3",
+                  "bio.water",
+                  "bio.biomass",
+                  "bio.t2",
+                  "bio.t3"
+                ],
+                "type": "string"
+              },
+              "type": "object"
+            }
+          },
+          "required": [
+            "colonyId",
+            "inOrbit"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "cargo.status",
           "type": "string"
         },
         "tick": {
@@ -3040,7 +5031,13 @@
                 "unknown_task",
                 "lane_full",
                 "outside_power_zone",
-                "already_dismantling"
+                "already_dismantling",
+                "goal_limit",
+                "unknown_goal",
+                "insufficient_stock",
+                "insufficient_cargo",
+                "storage_full",
+                "hub_offline"
               ],
               "type": "string"
             },
@@ -3049,6 +5046,10 @@
               "type": "string"
             },
             "id": {
+              "type": "string"
+            },
+            "unlocksAt": {
+              "maxLength": 16,
               "type": "string"
             }
           },

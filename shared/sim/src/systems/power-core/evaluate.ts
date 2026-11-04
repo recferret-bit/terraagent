@@ -141,7 +141,8 @@ export function evaluateComponentBuildingRows(
         genSupply += res.netPerS; onlineEntityIds.push(id);
       }
     } else if (drains.has(kind)) {
-      const { drain, group } = drains.get(kind)!;
+      const tradeRow = kind === ENTITY_KIND.tradeHub ? resolvePowerRow(data, 'tradeHub', `t${cols.tier[row] || 1}`) : null;
+      const { drain, group } = tradeRow ? { drain: Number(tradeRow.powerDrainPerS ?? 6), group: Number(tradeRow.shedGroup ?? 2) } : drains.get(kind)!;
       if (kind === ENTITY_KIND.capacitor) capRows.push(row);
       compDemand += drain;
       shedCandidates.push({ entityId: id, row, group, drainPerS: drain, kind });
@@ -256,7 +257,9 @@ export function evaluateSingleComponent(
   const hubDrainPerHub = Number(hubRow.powerDrainPerS ?? 5);
 
   const bRes = evaluateComponentBuildingRows(state, colonyIndex, comp, env, windOut, dtTicks, tick, data);
-  const genSupply = comp.hubIds.length * founderCorePerHub + bRes.genSupply;
+  const override = state.colonies[colonyIndex]?.powerSupplyOverride;
+  const hasOverride = typeof override === 'number' && Number.isFinite(override);
+  const genSupply = hasOverride ? Math.max(0, override) / Math.max(1, graph.components.length) : comp.hubIds.length * founderCorePerHub + bRes.genSupply;
 
   const isW03 = Boolean((data?.tables?.grid as Record<string, unknown> | undefined)?.pylon);
   const overloadRes = isW03
@@ -268,16 +271,17 @@ export function evaluateSingleComponent(
   );
 
   const hasCapStored = bRes.capRows.some((r) => (cols.cell?.[r] ?? 0) > 0);
-  const isPowered = genSupply > 0 || hasCapStored;
+  const isPowered = hasOverride || genSupply > 0 || hasCapStored;
 
   if (!isPowered) {
     return buildUnpoweredComponentResult(state, comp, bRes, overloadRes, compRawDemand, isW03, tick);
   }
 
-  const { hqCell, capRes, effectiveSupply } = stepComponentStores(
-    state, colonyIndex, comp.hasHub, hubAnchors, bRes.capRows, genSupply, compRawDemand, dtTicks, tick, data,
+  const { hqCell, capRes, effectiveSupply: storedSupply } = stepComponentStores(
+    state, colonyIndex, comp.hasHub, hubAnchors, bRes.capRows, hasOverride ? compRawDemand : genSupply, compRawDemand, hasOverride ? 0 : dtTicks, tick, data,
   );
 
+  const effectiveSupply = hasOverride ? genSupply : storedSupply;
   const remainingCandidates = bRes.shedCandidates.filter((c) => !overloadRes.shedConsumerRows.has(c.row));
   const compWorkCandidates = comp.hasHub ? work.candidates : [];
   const compCandidates = [...remainingCandidates, ...compWorkCandidates];

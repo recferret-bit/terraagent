@@ -50,5 +50,9 @@ export interface QueueEntry {
   resourceWaitSinceTick?: number;
   /** Earmarked missing resources reserved by this entry after 60 s of resource starvation (W03-13). */
   earmarked?: Partial<Record<ResourceKey, number>>;
+  /** Optional parent HQ goal id (`ColonyGoalEntry.id`) when broken down from an HQ goal (`precedence: 'hq'`, W08-16/17). */
+  goalId?: string;
   createdAt: number;
 }
+
+export type OrderQueueEntry = QueueEntry;

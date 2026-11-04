@@ -12,7 +12,7 @@ export const nearAdapterKey = (port: NearPortName): string => `NEAR_ADAPTER_${po
  * readable before DI (boot guard, scripts).
  */
 export function nearAdapterFor(port: NearPortName, env: Source): NearAdapterKind {
-  const v = env[nearAdapterKey(port)];
+  const v = env[nearAdapterKey(port)] ?? (port === 'CargoToken' ? env.NEAR_ADAPTER_CARGO : undefined);
   return v === 'testnet' || v === 'mainnet' ? v : 'mock';
 }
 

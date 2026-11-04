@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-label="Exterminator – TerraAgent achievement">
+  <title>Exterminator</title>
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="30%" r="80%"><stop offset="0" stop-color="#141822"/><stop offset="1" stop-color="#050608"/></radialGradient>
+    <radialGradient id="halo" cx="50%" cy="45%" r="55%"><stop offset="0" stop-color="#C8844A" stop-opacity="0.35"/><stop offset="1" stop-color="#C8844A" stop-opacity="0"/></radialGradient>
+    <linearGradient id="rim" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#F0B888"/><stop offset="25%" stop-color="#C8844A"/><stop offset="50%" stop-color="#7D3E14"/><stop offset="75%" stop-color="#BD7138"/><stop offset="100%" stop-color="#F0B888"/></linearGradient>
+    <linearGradient id="rimB" x1="1" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#F0B888"/><stop offset="25%" stop-color="#C8844A"/><stop offset="50%" stop-color="#7D3E14"/><stop offset="75%" stop-color="#BD7138"/><stop offset="100%" stop-color="#F0B888"/></linearGradient>
+    <linearGradient id="bevel" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#502408"/><stop offset=".5" stop-color="#0B0D11"/><stop offset="1" stop-color="#502408"/></linearGradient>
+    <radialGradient id="plate" cx="50%" cy="40%" r="75%"><stop offset="0" stop-color="#13161F"/><stop offset=".7" stop-color="#0D0F15"/><stop offset="1" stop-color="#050608"/></radialGradient>
+    <linearGradient id="ga" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#F0B888"/><stop offset="1" stop-color="#7D3E14"/></linearGradient>
+    <linearGradient id="sheen" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#FFF" stop-opacity="0"/><stop offset=".48" stop-color="#FFF" stop-opacity="0"/><stop offset=".5" stop-color="#FFF" stop-opacity="0.18"/><stop offset=".54" stop-color="#FFF" stop-opacity="0"/><stop offset="1" stop-color="#FFF" stop-opacity="0"/></linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="8" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <circle cx="512" cy="445" r="460" fill="url(#halo)"/>
+  <text x="512" y="78" text-anchor="middle" font-family="'Chakra Petch','IBM Plex Mono',monospace" font-size="28" font-weight="700" fill="#C8844A" letter-spacing="12">TERRAAGENT</text>
+  
+  <polygon points="512,97 813.4,271 813.4,619 512,793 210.6,619 210.6,271" fill="url(#rim)" stroke="#502408" stroke-width="8" stroke-linejoin="round"/>
+  <polygon points="512,131 783.9,288 783.9,602 512,759 240.1,602 240.1,288" fill="url(#bevel)" stroke="url(#rimB)" stroke-width="5" stroke-linejoin="round"/>
+  <polygon points="512,153 764.9,299 764.9,591 512,737 259.1,591 259.1,299" fill="url(#plate)" stroke="#050608" stroke-width="3" stroke-linejoin="round"/>
+  <polygon points="512,173 747.6,309 747.6,581 512,717 276.4,581 276.4,309" fill="none" stroke="#C8844A" stroke-width="2.5" stroke-dasharray="4 10" opacity="0.65"/>
+  <circle cx="512" cy="123" r="9" fill="url(#rimB)" stroke="#502408" stroke-width="3"/><circle cx="512" cy="123" r="3" fill="#502408"/><circle cx="790.9" cy="284" r="9" fill="url(#rimB)" stroke="#502408" stroke-width="3"/><circle cx="790.9" cy="284" r="3" fill="#502408"/><circle cx="790.9" cy="606" r="9" fill="url(#rimB)" stroke="#502408" stroke-width="3"/><circle cx="790.9" cy="606" r="3" fill="#502408"/><circle cx="512" cy="767" r="9" fill="url(#rimB)" stroke="#502408" stroke-width="3"/><circle cx="512" cy="767" r="3" fill="#502408"/><circle cx="233.1" cy="606" r="9" fill="url(#rimB)" stroke="#502408" stroke-width="3"/><circle cx="233.1" cy="606" r="3" fill="#502408"/><circle cx="233.1" cy="284" r="9" fill="url(#rimB)" stroke="#502408" stroke-width="3"/><circle cx="233.1" cy="284" r="3" fill="#502408"/>
+  <g transform="translate(512 433) scale(1.65)" filter="url(#glow)"><g>
+    <path d="M-30 -20 L-75 -50 M30 -20 L75 -50 M-35 10 L-80 15 M35 10 L80 15 M-30 40 L-75 75 M30 40 L75 75" stroke="url(#ga)" stroke-width="7" stroke-linecap="round"/>
+    <path d="M-15 -60 Q-25 -92 0 -85 Q-10 -70 -5 -60 M15 -60 Q25 -92 0 -85 Q10 -70 5 -60" fill="#FFFFFF" stroke="url(#ga)" stroke-width="2"/>
+    <ellipse cx="0" cy="-50" rx="20" ry="15" fill="#FFFFFF"/>
+    <ellipse cx="0" cy="-15" rx="32" ry="25" fill="url(#ga)" stroke="#FFFFFF" stroke-width="3"/>
+    <ellipse cx="0" cy="35" rx="42" ry="48" fill="url(#ga)" stroke="#FFFFFF" stroke-width="4"/>
+    <line x1="0" y1="-10" x2="0" y2="80" stroke="#0B0D11" stroke-width="4"/>
+  </g></g>
+  
+  <polygon points="512,97 813.4,271 813.4,619 512,793 210.6,619 210.6,271" fill="url(#sheen)" stroke="none"/>
+  <rect x="92" y="792" width="840" height="100" rx="16" fill="url(#bevel)" stroke="url(#rim)" stroke-width="5"/>
+  <rect x="108" y="806" width="808" height="72" rx="10" fill="#07080A" opacity=".95"/>
+  <text x="512" y="856" text-anchor="middle" font-family="'Chakra Petch','IBM Plex Mono',monospace" font-size="58" font-weight="700" fill="#FFE3C7" letter-spacing="2">EXTERMINATOR</text>
+  <polygon points="444,906 450.4,923.2 468.7,924 454.4,935.4 459.3,953 444,942.9 428.7,953 433.6,935.4 419.3,924 437.6,923.2" fill="url(#rim)" stroke="#502408" stroke-width="3" filter="url(#glow)"/><polygon points="512,906 518.4,923.2 536.7,924 522.4,935.4 527.3,953 512,942.9 496.7,953 501.6,935.4 487.3,924 505.6,923.2" fill="#C8844A" fill-opacity=".15" stroke="#C8844A" stroke-width="3" stroke-dasharray="2 6" opacity="0.6"/><polygon points="580,906 586.4,923.2 604.7,924 590.4,935.4 595.3,953 580,942.9 564.7,953 569.6,935.4 555.3,924 573.6,923.2" fill="#C8844A" fill-opacity=".15" stroke="#C8844A" stroke-width="3" stroke-dasharray="2 6" opacity="0.6"/><text x="512" y="984" text-anchor="middle" font-family="'IBM Plex Mono',monospace" font-size="20" font-weight="600" fill="#C8844A" letter-spacing="6">BRONZE · TIER 1</text>
+</svg>

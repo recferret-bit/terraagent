@@ -450,7 +450,18 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **To resolve:** build them in a later landing. W21 owns the claim button. W23 owns the real adapters and can run the same contract suites.
 - **Found:** 2026-11-03, W06 plan review
 
-### XC-34 · W03 rows deferred past the hackathon cut
+
+### XC-34 · Frontend feature glob retained by Vitest disk transform cache
+
+- **Status:** Accepted (test cache disabled for the game project)
+- **Area / code:** `frontend/game/vitest.config.ts`, `frontend/game/core/registry/index.ts`
+- **What happens:** after merging W10 into W12, the on-disk transformed `import.meta.glob` omitted the newly added Trade Hub feature. Its registration test failed until the source text changed; reverting the temporary diagnostic text reproduced the failure. Disabling `fsModuleCache` restored discovery with unchanged application code.
+- **Why it is like this:** the cached transformation was keyed by source content without invalidating the glob's directory expansion on this branch merge.
+- **Workaround / mitigation:** game tests now transform their modules afresh. Test coverage and assertions are unchanged; startup is slower. Other projects retain their caches.
+- **To resolve:** re-enable only after a cache invalidation fix is verified with a feature directory added between consecutive runs.
+- **Found:** 2026-11-04, W12 landing gate after W10 merge.
+
+### XC-35 · W03 rows deferred past the hackathon cut
 
 - **Status:** Accepted (deferred, owner's hackathon cut)
 - **Severity:** low
@@ -470,7 +481,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **To resolve:** build the H+ and post-hackathon rows in a later landing (`wave-03.2`) or their downstream waves.
 - **Found:** 2026-11-03, W03 landing
 
-### XC-35 · `/dev/chain/` probed `/v1/near/health` (W06-gated), breaking `w00.spec.ts` when `TA_WAVES` is below `W06`
+### XC-36 · `/dev/chain/` probed `/v1/near/health` (W06-gated), breaking `w00.spec.ts` when `TA_WAVES` is below `W06`
 
 - **Status:** Resolved (W03 landing 2026-11-03)
 - **Severity:** medium
@@ -480,7 +491,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Fix:** `nearHealthStatus` in `frontend/game/dev/explorer/gate.ts` now probes `/v1/dev/chain/receipts?limit=1` (W00's dev chain explorer endpoint, guarded by `DevOnlyGuard` in production) while `wavesExcludeW06(location.search)` continues to gate explicit `?waves=..05` URLs (`w06.spec.ts` Test 7).
 - **Found:** 2026-11-03, W03 merge with `main`
 
-### XC-36 · Dead balance rows after the W03 owner-feedback pass
+### XC-37 · Dead balance rows after the W03 owner-feedback pass
 
 - **Status:** Open
 - **Severity:** low
@@ -491,3 +502,13 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Workaround / mitigation:** —
 - **To resolve:** Remove the rows and fields, update the spec text.
 - **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### XC-38 · Fresh guest refresh rejection is expected in browser smoke checks
+
+- **Status:** Accepted (auth bootstrap)
+- **Area / code:** `tests/e2e/harness/helpers.ts`
+- **What happens:** A fresh browser without a refresh cookie receives HTTP 401 from `/v1/auth/refresh`, then the app creates a guest session. The browser console reports that HTTP rejection even though bootstrap succeeds.
+- **Why it is like this:** Session restoration precedes guest creation. The error collector ignores only this endpoint's 401; other HTTP errors and JavaScript exceptions still fail the test.
+- **Workaround / mitigation:** The W01 flow verifies that the authenticated game view arrives afterward.
+- **To resolve:** No runtime change required.
+- **Found:** 2026-11-04, merged W01 browser check.

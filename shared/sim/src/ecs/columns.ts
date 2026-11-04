@@ -41,7 +41,7 @@ export const ENTITY_KIND = {
   metalsExtractor: 5,
   solar: 6,
   harvester: 7,
-  builder: 8,
+  builder: 50,
   pylon: 9,
   capacitor: 10,
   wind: 11,
@@ -54,6 +54,7 @@ export const ENTITY_KIND = {
   waterPump: 15,
   petroleumWell: 16,
   oilWell: 16,
+  tradeHub: 8,
 } as const;
 
 export const ENTITY_STATE = {

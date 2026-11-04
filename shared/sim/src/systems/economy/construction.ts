@@ -20,6 +20,8 @@ import { buildingKindName, ensureColony, getFootprintTileIndices, resolveBuildin
 import { buildJobKey, getBuildingJobs, saveBuildingJobs, stepBuildingSites, type BuildingJobRecord } from './buildJob';
 import { checkCostAffordability, debitCost, refundCost, syncColonyDepotCaps } from './ledger';
 import { buildingSiteBlock } from './siteTerrain';
+import { onCommandHubCompleted } from '../progression';
+import { syncColonyThreatStage } from '../progression/threatStage';
 import { claimTerritoryRadius } from '../territory-claim';
 
 export { buildingKindName, getBuildingJobs, getFootprintTileIndices, resolveBuildingRow, type BuildingJobRecord };
@@ -251,11 +253,14 @@ export function startBuildingConstruction(
       ...(prepOrderId ? { prepOrderId } : {}),
     };
     saveBuildingJobs(state, jobs, tick);
-  } else if (entityKind === ENTITY_KIND.commandHub) {
-    claimHubTerritory(state, opts.owner, opts.q, opts.r, Number(row.claimRadius ?? 10), tick);
-    syncColonyDepotCaps(state, opts.owner, tick);
-  } else if (entityKind === ENTITY_KIND.supplyDepot) {
-    syncColonyDepotCaps(state, opts.owner, tick);
+  } else {
+    if (entityKind === ENTITY_KIND.commandHub) {
+      claimHubTerritory(state, opts.owner, opts.q, opts.r, Number(row.claimRadius ?? 10), tick);
+      syncColonyDepotCaps(state, opts.owner, tick);
+      onCommandHubCompleted(state, opts.owner, ctx ?? { tick, data });
+    }
+    if (entityKind === ENTITY_KIND.supplyDepot) syncColonyDepotCaps(state, opts.owner, tick);
+    syncColonyThreatStage(state, opts.owner, tick);
   }
 
   return { ok: true, entityId, buildTicks, effectiveTicks };
@@ -279,11 +284,13 @@ function removeBuildingAndClearFootprint(
   job?: BuildingJobRecord,
 ): void {
   const cols = state.entities.cols;
+  const owner = cols.owner[eRow];
   const resolved = resolveBuildingRow(buildingKindName(cols.kind[eRow]), data);
   const w = cols.footprintW[eRow] || job?.footprintW || Number(resolved?.row.footprintW ?? resolved?.row.footprint ?? 2);
   const d = cols.footprintD[eRow] || job?.footprintD || Number(resolved?.row.footprintD ?? resolved?.row.footprint ?? 2);
   const fp = getFootprintTileIndices(state, cols.q[eRow], cols.r[eRow], w, d, cols.rot[eRow]);
   for (const tileIdx of fp.indices) setTilePrep(state, tileIdx, PREP.prepared, tick);
+  if (state.colonies[owner]?.hubEntityId === entityId) delete state.colonies[owner].hubEntityId;
   removeRow(state.entities, entityId, tick);
   bumpPathEpoch(state.meta);
 }
@@ -320,6 +327,7 @@ export function cancelBuildingConstruction(
   }
   if (refunded) refundCost(colony, spent, ratio, tick);
   dropJob(state, jobs, entityId, owner, tick, data);
+  syncColonyThreatStage(state, owner, tick);
   return { ok: true, refunded, refundedAmounts };
 }
 
@@ -340,16 +348,17 @@ export function demolishBuilding(
   const cols = state.entities.cols;
   const owner = cols.owner[eRow];
   if (colonyIndex !== undefined && colonyIndex !== null && owner !== colonyIndex) return { ok: false, code: 'not_own_colony' };
-  const resolved = resolveBuildingRow(buildingKindName(cols.kind[eRow]), data);
-  if (!resolved) return { ok: false, code: 'invalid_args' };
+  const kind = cols.kind[eRow];
+  const resolved = resolveBuildingRow(buildingKindName(kind), data);
+  if (!resolved && (kind < 8 || kind >= 50)) return { ok: false, code: 'invalid_args' };
 
   const jobs = getBuildingJobs(state);
   const job = jobs[entityId];
-  const ratio = refundRatio ?? Number(resolved.row.demolishRefundRatio ?? 0.5);
+  const ratio = refundRatio ?? Number(resolved?.row.demolishRefundRatio ?? 0.5);
   const cost =
     cols.state[eRow] === ENTITY_STATE.constructing && job?.spentCost
       ? job.spentCost
-      : ((resolved.row.cost ?? {}) as Partial<Record<ResourceKey, number>>);
+      : ((resolved?.row.cost ?? {}) as Partial<Record<ResourceKey, number>>);
   const colony = ensureColony(state, owner, tick);
   refundCost(colony, cost, ratio, tick);
   const refunded: Partial<Record<ResourceKey, number>> = {};
@@ -360,6 +369,7 @@ export function demolishBuilding(
   removeBuildingAndClearFootprint(state, entityId, eRow, tick, data, job);
   dropJob(state, jobs, entityId, owner, tick, data);
   if (wasSupplyDepot) syncColonyDepotCaps(state, owner, tick);
+  syncColonyThreatStage(state, owner, tick);
   return { ok: true, refunded };
 }
 

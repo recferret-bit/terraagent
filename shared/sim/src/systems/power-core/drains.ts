@@ -10,6 +10,7 @@ export interface ConsumerDrain {
 
 /** Entity kind → the balance row (`table.id`) of every building that only consumes grid power. */
 const CONSUMER_ROWS: ReadonlyArray<readonly [number, string, string]> = [
+  [ENTITY_KIND.tradeHub, 'tradeHub', 't1'],
   [ENTITY_KIND.capacitor, 'grid', 'capacitor'],
   [ENTITY_KIND.supplyDepot, 'grid', 'supplyDepot'],
   [ENTITY_KIND.mineralsQuarry, 'grid', 'mineralsQuarry'],

@@ -104,6 +104,7 @@ export function mountLandfall(ctx: MountLandfallCtx): MountedLandfall {
     ctx.services.landfall = controller;
   }
   const panel = new HqPanel(hostEl, controller);
+  if (ctx.services) ctx.services.selectionDetails = panel.details;
 
   return {
     controller,
@@ -123,6 +124,7 @@ export function mountLandfall(ctx: MountLandfallCtx): MountedLandfall {
     handleRightClick: (q, r) => controller.handleRightClick(q, r),
     update: (view) => controller.onView(view),
     dispose: () => {
+      if (ctx.services?.selectionDetails === panel.details) ctx.services.selectionDetails = undefined;
       panel.dispose();
       if (ownedCtl) controller.dispose();
     },

@@ -3,6 +3,7 @@ import {
   type ResourceFamily,
   type ResourceKey,
 } from '@terra/contracts';
+import { goalHarvestResource, goalHarvestWeights } from '../goals/harvestWeights';
 import { consumeDepositRichness, TERRAFORM_TIME_TABLE } from '../../data';
 import { groundWorkYields, terraformYields } from '../terraform-basic/ops';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
@@ -62,7 +63,9 @@ function ensureColony(state: PlanetState, owner: number, tick: number): ColonyWi
   return ensureColonyLedger(col);
 }
 
-export function getColonyHarvestWeights(state: PlanetState, colonyIndex = 0): HarvestWeights {
+export function getColonyHarvestWeights(state: PlanetState, colonyIndex = 0, useGoals = true): HarvestWeights {
+  const goalWeights = useGoals ? goalHarvestWeights(state, colonyIndex) : null;
+  if (goalWeights) return goalWeights;
   const col = state.colonies[colonyIndex]?.harvestWeights as Partial<HarvestWeights> | undefined;
   if (col && typeof col.metals === 'number') {
     return { metals: col.metals ?? 100, minerals: col.minerals ?? 100, bio: col.bio ?? 100 };
@@ -101,7 +104,7 @@ export function applyColonyHarvestWeights(
   weights: Partial<HarvestWeights>,
   tick: number = state.meta.tick,
 ): HarvestWeights {
-  const prev = getColonyHarvestWeights(state, colonyIndex);
+  const prev = getColonyHarvestWeights(state, colonyIndex, false);
   const next: HarvestWeights = {
     metals: typeof weights.metals === 'number' ? Math.max(0, Math.min(100, weights.metals)) : prev.metals,
     minerals: typeof weights.minerals === 'number' ? Math.max(0, Math.min(100, weights.minerals)) : prev.minerals,
@@ -287,17 +290,19 @@ const standingHarvestAssignSystem = defineSystem({
       }
 
       const colony = ensureColony(state, owner, ctx.tick);
-      const weights = getColonyHarvestWeights(state, owner);
+      const weights = getColonyHarvestWeights(state, owner, ctx.flags.has('W08'));
+      const goalResource = ctx.flags.has('W08') ? goalHarvestResource(state, owner) : null;
       const curDepleted = cur ? Number(state.grid.layers.richness?.[cur.tileIdx] ?? 10000) <= 0 : true;
       const needsTarget =
         !cur ||
         curDepleted ||
         occupied.has(cur.tileIdx) ||
         (cur.family && isFamilyAtCap(colony, cur.family)) ||
-        (!cur.playerAssigned && cur.family && (weights[cur.family] ?? 100) <= 0);
+        (!cur.playerAssigned && cur.family && (weights[cur.family] ?? 100) <= 0) ||
+        (!cur.playerAssigned && goalResource !== null && cur.resourceKey !== goalResource);
 
       if (needsTarget || (st === ENTITY_STATE.idle && !cur.playerAssigned)) {
-        const best = pickBestSurfaceDepositForUnit(state, colony, weights, cols.q[row], cols.r[row], id, assignments, occupied);
+        const best = pickBestSurfaceDepositForUnit(state, colony, weights, cols.q[row], cols.r[row], id, assignments, occupied, goalResource);
         if (!best) {
           if (cur) { delete assignments[id]; changed = true; }
           if (st === ENTITY_STATE.harvesting) {

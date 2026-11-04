@@ -90,7 +90,7 @@ function collectRelayNodes(
 
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    if (cols.state[row] === ENTITY_STATE.constructing) continue;
+    if (cols.state[row] === ENTITY_STATE.constructing || cols.state[row] === ENTITY_STATE.inert) continue;
     const kind = cols.kind[row];
     if (kind === ENTITY_KIND.commandHub) {
       hasHub = true;
@@ -202,6 +202,7 @@ const POWERED_BUILDING_KINDS: ReadonlySet<number> = new Set<number>([
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
   ENTITY_KIND.supplyDepot,
+  ENTITY_KIND.tradeHub,
 ]);
 
 function attachBuildingsToRelays(
@@ -234,7 +235,7 @@ function attachBuildingsToRelays(
     components.push(comp);
     for (let row = 0; row < e.count; row++) {
       if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-      if (cols.state[row] === ENTITY_STATE.constructing) continue;
+      if (cols.state[row] === ENTITY_STATE.constructing || cols.state[row] === ENTITY_STATE.inert) continue;
       if (!POWERED_BUILDING_KINDS.has(cols.kind[row])) continue;
       const bId = cols.id[row];
       componentByBuildingId.set(bId, 0);
@@ -246,7 +247,7 @@ function attachBuildingsToRelays(
 
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    if (cols.state[row] === ENTITY_STATE.constructing) continue;
+    if (cols.state[row] === ENTITY_STATE.constructing || cols.state[row] === ENTITY_STATE.inert) continue;
     if (!POWERED_BUILDING_KINDS.has(cols.kind[row])) continue;
     const bId = cols.id[row];
 

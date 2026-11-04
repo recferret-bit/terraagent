@@ -103,3 +103,9 @@ The colony teaches itself. A data-driven **stage engine** (S0–S10) unlocks con
 - `TA_WAVES=..07` hides the stage track, goals, suggestions and sliders; commands return `wave_disabled`.
 - Tag `wave-08` is created.
 - Every row of units spec §6.1, §6.2 and §4.6 that is owned here maps to an issue above.
+
+## W08 follow-up: executable progression and priorities
+
+Deliver replayable S0–S10 guidance, one tabbed HQ panel, actual resource-rate goals and explicit unavailable capabilities.
+
+Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.

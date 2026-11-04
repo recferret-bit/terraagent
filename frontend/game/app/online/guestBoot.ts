@@ -43,7 +43,7 @@ export class GuestBootTarget implements SessionTarget {
   async boot(): Promise<BootAuthResult | null> {
     for (;;) {
       try {
-        return this.adopt(await bootAuthAndHome(this.authOptions(false)));
+        return this.adopt(await bootAuthAndHome(this.authOptions(!new URLSearchParams(this.o.search).has('as'))));
       } catch (e) {
         if (!this.o.onError) throw e;
         if (!(await this.o.onError(`Couldn't reach orbit: ${e instanceof Error ? e.message : String(e)}`))) return null;

@@ -125,6 +125,7 @@ export class OnlineSession {
     this.commands = this.commandBus;
     this.entities = new EntityMeshes(this.viewport.scene, opts.makeMesh, !this.skipDescent);
     this.entities.healthBars.isEnabled = () => this.flags.current.flags.has('W02'); // overhead bars are W02 (`?waves=..01`: none)
+    this.entities.isW10Enabled = () => this.flags.current.flags.has('W10');
     if (this.fromSpaceDescent && !this.skipDescent) {
       this.entities.podTouchdown.setMode('full');
       this.entities.podTouchdown.setSpacePhase('orbit');
