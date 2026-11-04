@@ -1,5 +1,6 @@
 import { PLANET_KINDS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { DEPOSIT_STAGES, type DepositVisualStage } from '@terra/render/kitbash';
+import { TILE_STATE_PRESETS, type TileStatePreset } from '@terra/render/planets/hex';
 import { $, setBtn } from '../dom';
 import { PLANET_LABEL, TOGGLES, VIEWS, type PgState, type ToggleKey, type View } from '../state';
 
@@ -12,11 +13,12 @@ export interface ToolbarHandlers {
   onBuild(): void;
   onWorkTarget(): void;
   onDepositStage(stage: DepositVisualStage): void;
+  onTileState(preset: TileStatePreset): void;
 }
 
 const TOGGLE_LABEL: Partial<Record<ToggleKey, string>> = { pixel: 'pixel art', wire: 'wireframe', surface: 'planet surface', hexTerrain: 'hex terrain', hatch: 'border hatch', work: 'work pose', row: 'spawn row', validate: 'validate parts', lights: 'Lights [L]', hex: 'hex grid', human: '1.8m human' };
 
-/** Bottom toolbar (views, planets, deposit stages, toggles, capture) and the info/tip/toast overlay shell. */
+/** Bottom toolbar (views, planets, deposit stages, tile states, toggles, capture) and the info/tip/toast overlay shell. */
 export class Toolbar {
   constructor(private state: PgState, private on: ToolbarHandlers) {}
 
@@ -35,6 +37,11 @@ export class Toolbar {
       ${DEPOSIT_STAGES.map((st) => `<button class="pg-btn" data-v="${st}" data-deposit-stage="${st}">${st.toUpperCase()}</button>`).join('')}
     </div>
     <span class="sep"></span>
+    <div id="tile-state-btns" data-testid="pg-tile-state" class="planet" title="Terrain tile preparation state">
+      <span class="pg-stage-lbl">TILES:</span>
+      ${TILE_STATE_PRESETS.map((ts) => `<button class="pg-btn" data-v="${ts}" data-tile-state="${ts}">${ts.toUpperCase()}</button>`).join('')}
+    </div>
+    <span class="sep"></span>
     ${TOGGLES.map((k) => `<button class="pg-btn tog" data-k="${k}">${TOGGLE_LABEL[k] ?? k}</button>`).join('')}
     <button class="pg-btn" id="work-target" title="cycle interaction target for 3D work particles">target: tree</button>
     <button class="pg-btn" id="build" title="construction scaffold stage">build</button>
@@ -45,6 +52,9 @@ export class Toolbar {
     ov.querySelectorAll<HTMLElement>('#planet-btns [data-v]').forEach((b) => (b.onclick = () => this.on.onPlanet(b.dataset.v as PlanetKind)));
     ov.querySelectorAll<HTMLElement>('#deposit-stage-btns [data-deposit-stage]').forEach(
       (b) => (b.onclick = () => this.on.onDepositStage(b.dataset.depositStage as DepositVisualStage)),
+    );
+    ov.querySelectorAll<HTMLElement>('#tile-state-btns [data-tile-state]').forEach(
+      (b) => (b.onclick = () => this.on.onTileState(b.dataset.tileState as TileStatePreset)),
     );
     ov.querySelectorAll<HTMLElement>('.tog').forEach((b) => (b.onclick = () => this.on.onToggle(b.dataset.k as ToggleKey)));
     $('#shot').onclick = () => this.on.onShot();
@@ -64,6 +74,7 @@ export class Toolbar {
     const wt = document.querySelector<HTMLElement>('#work-target');
     if (wt) { wt.textContent = `target: ${this.state.workTarget}`; wt.classList.toggle('on', this.state.work); }
     setBtn('#deposit-stage-btns', this.state.depositStage);
+    setBtn('#tile-state-btns', this.state.tileState);
   }
   setView(v: View) { setBtn('#views', v); }
   setPlanet(k: PlanetKind) { setBtn('#planet-btns', k); }

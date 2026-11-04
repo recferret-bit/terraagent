@@ -25,12 +25,18 @@ const TILE_TINT_GLSL = /* glsl */ `vec4 hexTileTint(vec2 axial) {
   if (max(max(abs(axial.x), abs(axial.y)), abs(axial.x + axial.y)) > uTileTintR + 0.5) return vec4(0.0);
   float n = 2.0 * uTileTintR + 1.0;
   return texture2D(uTileTint, (axial + uTileTintR + 0.5) / n);
+}
+vec4 hexTerraformMask(vec2 axial) {
+  if (max(max(abs(axial.x), abs(axial.y)), abs(axial.x + axial.y)) > uTileTintR + 0.5) return vec4(0.0);
+  float n = 2.0 * uTileTintR + 1.0;
+  return texture2D(uTerraformMap, (axial + uTileTintR + 0.5) / n);
 }`;
 
 const HEX_FRAG_COMMON = /* glsl */ `#include <common>
 // Flat hex land is levelled to 0 m = water level and dry basins sit below it: only real water tiles (vHexShore = 1,
 // dry shore tiles <= 0.95) get the terrain shader's water-level bands. The dry beach next to water is drawn below.
 #define TA_WATER_GATE smoothstep(0.96, 1.0, vHexShore)
+#define TA_HEX_TERRAFORM 1
 uniform float uEdge;
 uniform sampler2D uTileTint;
 uniform float uTileTintR;
@@ -78,10 +84,18 @@ const HEX_SHORE_BEACH_GLSL = /* glsl */ `  float shoreZone = (1.0 - isDune) * sm
     gBump = mix(gBump, vec3(-0.8, 0.0, -0.6) * cos(dot(sp, vec2(0.8, 0.6)) * 14.0 + sandNoise * 5.0) * 0.08 * (1.0 - wetMask * 0.6), beachMask);
   }`;
 
+const HEX_TERRAFORM_GLSL = /* glsl */ `  vec4 ownTf = hexTerraformMask(ownAx);
+  vec4 nbTf = hexTerraformMask(ownAx + nbStep);
+  float tfNbW = 0.5 * (1.0 - smoothstep(0.0, 0.45, em)) * nbTf.a;
+  float hexSeam = (1.0 - smoothstep(0.0, 0.16, em)) * 0.46;
+  float tfMask = max(0.0, mix(ownTf.r, nbTf.r, tfNbW) - hexSeam * ownTf.r * nbTf.r);
+  float irrMask = max(0.0, mix(ownTf.g, nbTf.g, tfNbW) - hexSeam * ownTf.g * nbTf.g);
+  evalTerraformSurface(diffuseColor.rgb, gRough, gEmis, vLP.xz, tfMask, irrMask, uTime);`;
+
 /**
- * Per-cell terrain class tint (`uTileTint`), shore beach, and thin hex edge lines as a shader term (no line geometry:
- * nothing to z-fight, antialiased by `fwidth`). Hexagons are drawn strictly on level, buildable flat tiles
- * (`hexFlatMask` = 0 or 1, never faded); Prepared ground looks exactly like that flat ground.
+ * Per-cell terrain class tint (`uTileTint`), terraforming state (`uTerraformMap`), shore beach, and thin hex edge lines
+ * as a shader term (no line geometry: nothing to z-fight, antialiased by `fwidth`). Hexagons are drawn strictly on
+ * level, buildable flat tiles (`hexFlatMask` = 0 or 1, never faded); Prepared ground looks like that flat ground.
  */
 const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
 {
@@ -98,6 +112,7 @@ const EDGE_FRAG = /* glsl */ `#include <alphatest_fragment>
   float em = e * 2.0;                              // metres to the edge
 ${HEX_TINT_GLSL}
 ${HEX_SHORE_BEACH_GLSL}
+${HEX_TERRAFORM_GLSL}
   float w = max(0.025, fwidth(em) * 0.75);
   float line = 1.0 - smoothstep(w, w * 2.2, em);
   float hexFlatMask = step(0.1, vHexFlat) * step(length(cen - vFlatPos / max(vHexFlat, 1e-4)), 0.72);

@@ -2,13 +2,14 @@ import * as THREE from 'three';
 import { hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import { PLANET_SPECS, type PlanetKind } from '@terra/render/planets/PlanetSpec';
 import {
+  applyTileStatePreset,
   createHexTerrain,
   HEX_DEPOSIT,
-  HEX_PREP,
   HEX_TERRAIN,
   type DepositVisualStage,
   type HexTerrain,
   type HexTiles,
+  type TileStatePreset,
 } from '@terra/render/planets/hex';
 
 const RADIUS = 12;
@@ -24,11 +25,11 @@ function richnessBpForStage(stage: DepositVisualStage): number {
 }
 
 /**
- * Sample tiles (cosmetic demo data, no game rules): flat Prepared ground under the model, one class per sector further
- * out, a few deposits plus a tier 1 / 2 / 3 row (`TIER_SAMPLE`), colony 0 owning radius 5 and colony 1 a wedge next to
- * it (normal and frozen borders).
+ * Sample tiles (cosmetic demo data, no game rules): flat ground under the model (`tileState` preset), one class per
+ * sector further out, a few deposits plus a tier 1 / 2 / 3 row (`TIER_SAMPLE`), colony 0 owning radius 5 and colony 1 a
+ * wedge next to it (normal and frozen borders).
  */
-function sampleTiles(stage: DepositVisualStage = 'full'): HexTiles & { depositTiles: number[] } {
+function sampleTiles(stage: DepositVisualStage = 'full', tileState: TileStatePreset = 'prepared'): HexTiles & { depositTiles: number[] } {
   const hx = hexIndex(RADIUS);
   const terrain = new Uint8Array(hx.count), prep = new Uint8Array(hx.count), height = new Float32Array(hx.count);
   const deposit = new Uint8Array(hx.count), depositTier = new Uint8Array(hx.count), richness = new Uint16Array(hx.count);
@@ -41,7 +42,6 @@ function sampleTiles(stage: DepositVisualStage = 'full'): HexTiles & { depositTi
     const t = d <= 4 ? HEX_TERRAIN.flat : SECTOR_CLASS[sector]!;
     terrain[i] = t;
     height[i] = CLASS_HEIGHT[t]! * (d <= 4 ? 0 : Math.min(1, (d - 3) / 4));
-    prep[i] = d <= 2 ? HEX_PREP.prepared : t === HEX_TERRAIN.flat ? HEX_PREP.flat : HEX_PREP.wild;
     if (d === 7 && sector % 2 === 0) {
       deposit[i] = [HEX_DEPOSIT.metals, HEX_DEPOSIT.minerals, HEX_DEPOSIT.oil][(sector / 2) | 0]!;
       richness[i] = rBp;
@@ -50,6 +50,7 @@ function sampleTiles(stage: DepositVisualStage = 'full'): HexTiles & { depositTi
     if (d <= 5) owner[i] = 0;
     else if (d <= 8 && sector === 1) owner[i] = 1;
   }
+  applyTileStatePreset(RADIUS, prep, terrain, tileState, 4);
   for (const [q, r, tier] of TIER_SAMPLE) {
     const i = hx.indexOf(q, r);
     deposit[i] = HEX_DEPOSIT.metals;
@@ -65,14 +66,25 @@ export class HexSampleHost {
   private terrain: HexTerrain | null = null;
   private tiles: (HexTiles & { depositTiles: number[] }) | null = null;
   private depositStage: DepositVisualStage = 'full';
+  private tileState: TileStatePreset = 'prepared';
   constructor(private scene: THREE.Scene) {}
 
+  get hexTerrain(): HexTerrain | null { return this.terrain; }
+  get sampleTiles(): HexTiles | null { return this.tiles; }
+
   /** (Re)build for `kind`; returns true when the sample is now shown. */
-  sync(kind: PlanetKind, enabled: boolean, hatch: boolean, stage: DepositVisualStage = this.depositStage): boolean {
+  sync(
+    kind: PlanetKind,
+    enabled: boolean,
+    hatch: boolean,
+    stage: DepositVisualStage = this.depositStage,
+    tileState: TileStatePreset = this.tileState,
+  ): boolean {
     this.depositStage = stage;
+    this.tileState = tileState;
     if (this.terrain) { this.terrain.dispose(); this.terrain = null; }
     if (!enabled) return false;
-    this.tiles = sampleTiles(stage);
+    this.tiles = sampleTiles(stage, tileState);
     this.terrain = createHexTerrain({ radius: RADIUS, tiles: this.tiles, look: PLANET_SPECS[kind], colorBlindMode: hatch });
     this.terrain.group.position.y = -0.02; // just under the pedestal level so the model stays visible
     this.scene.add(this.terrain.group);
@@ -89,6 +101,13 @@ export class HexSampleHost {
     for (const idx of this.tiles.depositTiles) {
       this.terrain.setTileState(hx.q[idx]!, hx.r[idx]!, undefined, undefined, undefined, undefined, rBp);
     }
+  }
+
+  setTileState(preset: TileStatePreset) {
+    this.tileState = preset;
+    if (!this.terrain || !this.tiles) return;
+    const changed = applyTileStatePreset(RADIUS, this.tiles.prep as Uint8Array, this.tiles.terrain, preset, 4);
+    if (changed.length > 0) this.terrain.updateTiles(this.tiles, changed);
   }
 
   /** Advances the shader time (foliage sway, water ripples). */
