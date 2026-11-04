@@ -1,11 +1,12 @@
 import type { CompiledRow } from '../../data';
-import { rowOf } from '../../ecs/store';
+import { rowOf, setField } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { UnitBook } from '../../units/book';
+import { issueUnitCommand } from '../units/registry';
 import { getFaunaHivesState, saveFaunaHivesState } from './state';
-import { defaultFaunaData } from './types';
+import { defaultFaunaData, resolveSpeciesConfig, speciesOfEntityKind } from './types';
 import { dispatchHiveWave } from './waves';
 
 function resolveMaxWavesPerEpisode(data?: CompiledDataLike): number {
@@ -244,4 +245,84 @@ export function detectAndApplyDamageProvocation(
     latest.lastSeenHpByEntityId = { ...latest.lastSeenHpByEntityId, ...fauna.lastSeenHpByEntityId };
     saveFaunaHivesState(state, latest, tick);
   }
+}
+
+export const provokeHive = provokeHiveAgainstColony;
+export const clearHiveAggression = clearHiveAggressionAgainstColony;
+
+export interface ProvokeFaunaBugOptions {
+  targetId?: number;
+  targetQ?: number;
+  targetR?: number;
+  tick?: number;
+  data?: CompiledDataLike;
+}
+
+/**
+ * Provokes a specific fauna bug (`bugId`) against `colonyIndex` and optionally directs it toward
+ * `targetId` or `(targetQ, targetR)` via unit commands (`W07-29`).
+ */
+export function provokeFaunaBug(
+  state: PlanetState,
+  bugId: number,
+  colonyIndex = 0,
+  opts?: ProvokeFaunaBugOptions,
+  ctx?: StepContext,
+): boolean {
+  const row = rowOf(state.entities, bugId);
+  if (row < 0 || state.entities.cols.hp[row]! <= 0) return false;
+  const species = speciesOfEntityKind(state.entities.cols.kind[row]!);
+  if (!species) return false;
+
+  const tick = opts?.tick ?? ctx?.tick ?? state.meta.tick;
+  const data = opts?.data ?? ctx?.data ?? defaultFaunaData();
+  const fauna = getFaunaHivesState(state);
+  let bug = fauna.bugsById[bugId];
+  if (!bug) {
+    bug = {
+      entityId: bugId,
+      species,
+      homeHiveId: 0,
+      mode: 'aggressive',
+      targetColony: colonyIndex,
+      aggressiveColonies: [colonyIndex],
+      cohortId: null,
+      lastWanderTick: tick,
+      lastAttackTick: -9999,
+      spawnedTick: tick,
+    };
+    fauna.bugsById[bugId] = bug;
+  } else {
+    bug.mode = 'aggressive';
+    bug.targetColony = colonyIndex;
+    if (!bug.aggressiveColonies.includes(colonyIndex)) {
+      bug.aggressiveColonies = [...bug.aggressiveColonies, colonyIndex].sort((a, b) => a - b);
+    }
+  }
+  saveFaunaHivesState(state, fauna, tick);
+
+  let objQ = opts?.targetQ;
+  let objR = opts?.targetR;
+  if (opts?.targetId !== undefined) {
+    const tRow = rowOf(state.entities, opts.targetId);
+    if (tRow >= 0) {
+      objQ = objQ ?? state.entities.cols.q[tRow]!;
+      objR = objR ?? state.entities.cols.r[tRow]!;
+    }
+  }
+  if (objQ !== undefined && objR !== undefined) {
+    if (ctx) {
+      const cfg = resolveSpeciesConfig(species, data);
+      const bandMax = cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1;
+      issueUnitCommand(
+        state,
+        row,
+        { kind: 'move', source: 'player', q: objQ, r: objR, minDist: 0, maxDist: bandMax },
+        ctx,
+      );
+    }
+    setField(state.entities, row, 'targetQ', objQ, tick);
+    setField(state.entities, row, 'targetR', objR, tick);
+  }
+  return true;
 }

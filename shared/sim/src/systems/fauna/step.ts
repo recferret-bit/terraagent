@@ -184,6 +184,12 @@ function stepAggressiveBugMovement(
 ): void {
   const bugRow = rowOf(state.entities, bug.entityId);
   if (bugRow < 0) return;
+  const existingCmd = getUnitCommand(state, bug.entityId);
+  if (existingCmd?.kind === 'move' && existingCmd.source === 'player') {
+    state.entities.cols.targetQ[bugRow] = existingCmd.q;
+    state.entities.cols.targetR[bugRow] = existingCmd.r;
+    return;
+  }
   const cfg = resolveSpeciesConfig(bug.species, ctx.data);
   const searchRadius =
     bug.cohortId !== null

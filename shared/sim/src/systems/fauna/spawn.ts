@@ -28,6 +28,18 @@ export interface SpawnHiveOptions {
   replenishTicks?: number;
   patrolRadius?: number;
   hp?: number;
+  footprintW?: number;
+  footprintD?: number;
+}
+
+export interface SpawnFaunaBugOptions {
+  species: FaunaSpeciesId;
+  q: number;
+  r: number;
+  homeHiveId?: number;
+  mode?: 'passive' | 'aggressive';
+  targetColony?: number | null;
+  hp?: number;
 }
 
 function isTileWalkableForFauna(
@@ -230,8 +242,8 @@ export function spawnHiveEntity(
   cols.owner[row] = -1;
   cols.hp[row] = hpMax;
   cols.hpMax[row] = hpMax;
-  cols.footprintW[row] = 2;
-  cols.footprintD[row] = 2;
+  cols.footprintW[row] = opts.footprintW ?? 2;
+  cols.footprintD[row] = opts.footprintD ?? 2;
   cols.state[row] = ENTITY_STATE.active;
   placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
   bumpPathEpoch(state.meta);
@@ -272,6 +284,74 @@ export function spawnHiveEntity(
     spawnResidentBug(state, hiveId, tick, resolvedData);
   }
   return hiveId;
+}
+
+/**
+ * Spawns a 3×3 species hive site and its initial resident bugs (`W07-29`).
+ */
+export function spawnHiveSite(
+  state: PlanetState,
+  opts: SpawnHiveOptions,
+  tick = state.meta.tick,
+  data?: CompiledDataLike,
+): number {
+  return spawnHiveEntity(
+    state,
+    {
+      footprintW: 3,
+      footprintD: 3,
+      ...opts,
+    },
+    tick,
+    data,
+  );
+}
+
+/**
+ * Spawns a single fauna bug entity (`blackAnt`, `blueBeetle`, `greenSpitter`) at `(opts.q, opts.r)` (`W07-29`).
+ */
+export function spawnFaunaBug(
+  state: PlanetState,
+  opts: SpawnFaunaBugOptions,
+  tick = state.meta.tick,
+  data?: CompiledDataLike,
+): number {
+  const resolvedData = data ?? defaultFaunaData();
+  const cfg = resolveSpeciesConfig(opts.species, resolvedData);
+  const entityId = state.meta.nextEntityId++;
+  const row = insertRow(state.entities, entityId, tick);
+  const cols = state.entities.cols;
+  const hp = opts.hp ?? cfg.hp;
+  cols.kind[row] = cfg.bugKind;
+  cols.owner[row] = -1;
+  cols.hp[row] = hp;
+  cols.hpMax[row] = hp;
+  cols.state[row] = ENTITY_STATE.idle;
+  placeSpawnedEntity(state.entities, row, opts.q, opts.r, tick);
+
+  const fauna = getFaunaHivesState(state);
+  const homeHiveId = opts.homeHiveId ?? Object.values(fauna.hivesById).find((h) => !h.destroyed && h.species === opts.species)?.hiveId ?? 0;
+  const mode = opts.mode ?? 'passive';
+  const targetColony = mode === 'aggressive' ? (opts.targetColony ?? 0) : null;
+  const bugRecord: ResidentBugRecord = {
+    entityId,
+    species: opts.species,
+    homeHiveId,
+    mode,
+    targetColony,
+    aggressiveColonies: targetColony !== null ? [targetColony] : [],
+    cohortId: null,
+    lastWanderTick: tick,
+    lastAttackTick: -9999,
+    spawnedTick: tick,
+  };
+  fauna.bugsById[entityId] = bugRecord;
+  fauna.lastSeenHpByEntityId[entityId] = hp;
+  if (homeHiveId && fauna.hivesById[homeHiveId] && !fauna.hivesById[homeHiveId].residentIds.includes(entityId)) {
+    fauna.hivesById[homeHiveId].residentIds.push(entityId);
+  }
+  saveFaunaHivesState(state, fauna, tick);
+  return entityId;
 }
 
 /**

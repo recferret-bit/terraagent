@@ -45,6 +45,8 @@ export function syncAllColonySupply(state: PlanetState, tick: number, data?: Com
   for (const col of state.colonies) if (col) syncColonySupply(state, col.index, tick, data);
 }
 
+export const evaluateColonySupply = syncColonySupply;
+
 /** Lifecycle slot: after units moved / died (5), buildings finished (6), power shed (7) and factories spawned (9). */
 export const supplySystem = defineSystem({
   id: 'supply.sync',

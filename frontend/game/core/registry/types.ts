@@ -23,7 +23,7 @@ export interface FeatureServices {
 }
 
 /** The part of `WorldStore` features use; optional members, so a spec can pass a stand-in with only what it needs. */
-export type FeatureStore = Partial<Pick<WorldStore, 'latest' | 'latestTiles' | 'onView' | 'onCommandRejected' | 'sendCommand' | 'simData' | 'currentPlanetId'>>;
+export type FeatureStore = Partial<Pick<WorldStore, 'latest' | 'latestTiles' | 'onView' | 'onCommandRejected' | 'sendCommand' | 'simData' | 'currentPlanetId' | 'onServerEvents' | 'onRenderEvents'>>;
 
 export interface FeatureContext {
   readonly flags: ReadonlySet<string>;
