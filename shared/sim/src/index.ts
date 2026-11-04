@@ -79,6 +79,7 @@ export {
   scopeDirective,
   screenDirective,
   screenProposal,
+  selectDirectorSkills,
 } from './systems/director';
 export * from './systems/progression';
 export * from './systems/progression/validate';

@@ -6,6 +6,7 @@ export { goalKey, syncDirectorIntent } from './intent';
 export { applyDirectiveBatch, type ActionAck } from './apply';
 export { buildColonyBrief, guardBriefText } from './brief';
 export { previewBatch, type BatchPreview, type PreviewLimits, type PreviewReason, type PreviewStock } from './preview';
+export { directorSkillIds, selectDirectorSkills, type SkillSelectInput } from './skills';
 export { actionLeavesColony, scopeDirective, screenDirective, screenProposal, type ColonyScope } from './scope';
 export { applyDirectorPolicy, colonyDirector, noteDirectorPlan, setDirectorPolicyHandler } from './policy';
 export { priorityKey, type ColonyDirectorRecord, type DirectorPlanRef } from './store';
