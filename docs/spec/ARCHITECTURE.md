@@ -8,6 +8,8 @@ This document is the **single source of truth for topology and tunables**: modul
 
 ---
 
+**W16 planning override (2026-11-04):** AI provider/planning work moves to `backend/director/`, a separately capped worker sharing Postgres through pg-boss. The Nest `ai` module retains authorized projections, private MCP tools, policy ingress and proposal application. [AI_ORCHESTRATOR](./AI_ORCHESTRATOR.md) supersedes historical in-process AI topology and AI-specific tunables below; D-24 records this narrow exception. No second simulation authority or public player app is introduced. Queue leases are not planet leases. All other modules retain the existing topology. This is planned, not an implemented deployment.
+
 ## 1. Goals the architecture must satisfy
 
 | # | Requirement (from owner) | How it is met |
@@ -112,7 +114,7 @@ TerraAgent/
 | `api` | Auth (guest, social login, wallet link), players, `/me/home`, admin | `/v1/*` | `core.player*`, `core.auth*` |
 | `lobby` | Planet lifecycle, picker, queue, parties, matchmaker loop | `/v1/planets*`, lobby WS topics | `core.planet*`, `core.colony*`, `core.match*`, `core.party*` |
 | `game` | Sim thread pool, planet scheduler, snapshots, planet WS sessions, away digest | WS `/ws` planet topics | `world.*` |
-| `ai` | Director triggers, Z.ai calls, budgets, decision log | — | `ai.*` |
+| `ai` | Director triggers, scoped MCP, player policy and proposal ingress; W16 worker owns provider planning | Private worker-only MCP | `ai.*` |
 | `near` | Named accounts, NEP-366 relayer, cargo mint/burn, market matching + `intents.near` settlement, Guild NPCs, deeds, staking, treasury, bounties | `/v1/near/*`, `/v1/market/*` | `chain.*` |
 | `notify` | Web Push + Telegram delivery | `/v1/notify/*` | `core.notify*` |
 
@@ -225,7 +227,7 @@ stateDiagram-v2
 ## 10. AI orchestration (summary)
 
 - 90–95 % of decisions are made by the rule engine inside `@terra/sim`, every tick, for free.
-- 5–10 % come from the `ai` module through Z.ai **`glm-5.3`** (OpenAI-compatible, JSON output), triggered directly by sim events on the event bus.
+- 5–10 % come from W16 director proposals through the durable queue/private MCP boundary; the worker calls the configured Z.ai model and the game revalidates every action. Sim events feed bounded context projections.
 - **Caps per colony:** 1 call / 5 min normally, 1 call / 2 min for critical triggers, 150 calls per colony per day; global `AI_DAILY_TOKEN_BUDGET`; kill switch `AI_ENABLED=false`. These are cost caps, not anti-abuse (D-25).
 - Output is a validated `DirectiveV1` (v2 adds goals, units, truces), applied as a normal command. The director's key also signs `autoTrade` orders within the away budget (F4).
 - Full spec: [`AI_ORCHESTRATOR.md`](./AI_ORCHESTRATOR.md).

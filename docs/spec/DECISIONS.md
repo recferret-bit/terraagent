@@ -266,6 +266,8 @@ MVP ships stages S0–S6 with 8 unit types: HQ, Harvester, Builder, Terraformer,
 
 **Future (not built now).** Separate services, NATS, multi-host workers with leases, deterministic replay and anti-cheat audits. The earlier designs stay in git history and these docs as "Future".
 
+**W16 planning amendment (2026-11-04, owner request).** The director runs in a separately deployable `backend/director/` Node/TypeScript worker with a bounded durable Postgres queue (pg-boss) and private authenticated MCP queries/proposals to the Nest game app. This supersedes the one-process/no-work-queue requirement **only for AI orchestration**. Job leases/fences protect AI delivery; they do not introduce planet leases or deterministic sim replay. Game state, authorization, player settings, shared rules and final command application remain in the game authority. No Redis/NATS or additional game service is required. W16 implementation must add workspace/structure-check and deployment support; current runtime is unchanged. [AI_ORCHESTRATOR](./AI_ORCHESTRATOR.md) defines scope, guards and acceptance.
+
 ## D-25 — No anti-cheat, no anti-bot
 
 **Decision.**

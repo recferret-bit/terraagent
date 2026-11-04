@@ -9,7 +9,7 @@
 | **H** (must) | 395 | 299.5 | 21.0 |
 | H + H+ (stretch) | 459 | 341.0 | 21.0 |
 | H + H2 (real NEAR) | 416 | 314.5 | 21.0 |
-| Whole plan | 919 | 663.0 | 30.0 |
+| Whole plan | 948 | 692.5 | 32.0 |
 
 One **unit** = one M issue (an S is ½). The critical path is the longest chain of dependencies, including each wave e2e waiting for the e2e of the waves it depends on. No number of agents finishes faster than it.
 

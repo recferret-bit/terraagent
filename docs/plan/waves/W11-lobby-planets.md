@@ -117,3 +117,7 @@ The app becomes multi-planet and multiplayer. Players pick a planet or get match
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Reuse W12’s authenticated `/v1/me/home?colonyId=` resume, ownership/status checks and selected-planet WebSocket seat resolution. Populate authoritative colony stage/outcome state for the checkpoint projector; extend unavailable-colony UX with lobby choices.
 
 Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.
+
+## W16 director compatibility
+
+Expose stable planet/colony/global tile/sector IDs, epoch, observation timestamps and bounded colony-relevant summaries through the existing game read views for [W16](./W16-ai-director.md). Distinguish founding capacity from expansion/occupied sectors. W16's worker never controls admission, generates a replacement world or writes sim state directly. Test border-crossing context and restart invalidation when both flags are on; W11 remains independent of the optional director.
