@@ -508,13 +508,13 @@ model NearColonyAccount {
 /// Exact atomic amounts are `numeric(78,0)` (market atomic units: resources whole units, USDC micro, NEAR yocto);
 /// JSON carries them as decimal strings. `id` (autoincrement) is the time priority inside a price level.
 
-/// One resting or historical order. Created idempotently from the sim's `marketOrderRequested` (`ref` unique).
+/// One resting or historical order. Created idempotently from the sim's `marketOrderRequested` (`(planetId, ref)` unique: scenario planets reuse `col_0`).
 /// Terms (price, fees, policy, beneficiaries, deadline) are pinned at creation and never change; fills, reservations
 /// and cumulative rounding buckets change only under a row lock (`SELECT … FOR UPDATE`).
 model MarketOrder {
   id                BigInt   @id @default(autoincrement())
   orderId           String   @unique @map("order_id") @db.VarChar(64)
-  ref               String   @unique @db.VarChar(160)
+  ref               String   @db.VarChar(160)
   planetId          String   @map("planet_id") @db.VarChar(64)
   pair              String   @db.VarChar(48)
   base              String   @db.VarChar(32)
@@ -560,6 +560,7 @@ model MarketOrder {
   createdAt         DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
 
+  @@unique([planetId, ref])
   @@index([planetId, pair, state])
   @@index([colonyId, state])
   @@index([state, expiresAt])

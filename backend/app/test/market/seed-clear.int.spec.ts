@@ -3,6 +3,7 @@ import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EventBus } from '../../src/bus/event-bus.js';
 import { MarketBooks } from '../../src/market/book/market-books.js';
+import { IntentTradeRepository } from '../../src/market/settlement/intent-trade.repository';
 import { MarketOrderRepository } from '../../src/market/book/market-order.repository.js';
 import { MarketFaucetService } from '../../src/market/dev/market-faucet.service.js';
 import { MarketSeedService, botColonyId } from '../../src/market/dev/market-seed.service.js';
@@ -34,7 +35,7 @@ function rig(waveOn = true, nodeEnv = 'test') {
       return fromChainUnits(t, r?.amount.toFixed(0) ?? '0');
     },
   } as IntentsBalanceReadPort;
-  const funds = new OrderFunds(repo, cargoPort, verifierPort);
+  const funds = new OrderFunds(repo, cargoPort, verifierPort, new IntentTradeRepository(db.prisma));
   const gateway = new MarketSimGateway(bus);
   const env = { NODE_ENV: nodeEnv, DATABASE_URL: 'x' } as never;
   const place = new PlaceOrderService(bus, repo, books, new MarketMatcher(db.prisma, repo, books), funds, new ChainOutboxRepository(db.prisma),

@@ -78,7 +78,7 @@ export class MarketOrderRepository extends RepositoryBase {
     return order;
   }
 
-  /** Idempotent on `ref`: a repeat returns the existing row unchanged (`created: false`), never a second one. */
+  /** Idempotent on `(planetId, ref)`: a repeat returns the existing row unchanged (`created: false`), never a second one. */
   async createFromRequest(input: CreateMarketOrderInput, tx?: DbClient): Promise<{ order: MarketOrderRecord; created: boolean }> {
     const db = this.db(tx);
     const { count } = await db.marketOrder.createMany({
@@ -118,7 +118,7 @@ export class MarketOrderRepository extends RepositoryBase {
       ],
       skipDuplicates: true,
     });
-    const order = toRecord(await db.marketOrder.findUniqueOrThrow({ where: { ref: input.ref } }));
+    const order = toRecord(await db.marketOrder.findUniqueOrThrow({ where: { planetId_ref: { planetId: input.planetId, ref: input.ref } } }));
     if (count > 0) this.notify(order, tx);
     return { order, created: count > 0 };
   }

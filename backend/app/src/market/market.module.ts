@@ -2,21 +2,22 @@ import { Module } from '@nestjs/common';
 import { MarketBooks } from './book/market-books.js';
 import { MarketFaucetCommand } from './dev/market-faucet.command.js';
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
-import { MarketSeedCommand } from './dev/market-seed.command.js';
-import { MarketSeedService } from './dev/market-seed.service.js';
 import { MarketFaucetService } from './dev/market-faucet.service.js';
 import { MarketOrderRepository } from './book/market-order.repository.js';
 import { MarketMatcher } from './matching/market-matcher.service.js';
 import { CancelOrderHandler, OrderRelease } from './orders/cancel-order.service.js';
 import { PlanetGameClock } from './orders/expiry-clock.js';
 import { OrderExpirySweep } from './orders/expiry-sweep.js';
-import { LoggingMarketFillsHook, MarketFillsHook } from './orders/market-fills.hook.js';
+import { MarketFillsHook } from './orders/market-fills.hook.js';
 import { MarketPolicyProvider } from './orders/market-policy.provider.js';
 import { MarketSimGateway } from './orders/market-sim-gateway.js';
 import { OrderFunds } from './orders/order-funds.js';
 import { PlaceOrderPrecheck } from './orders/place-order.precheck.js';
 import { PlaceOrderService } from './orders/place-order.service.js';
 import { GameModule } from '../game/game.module.js';
+import { IntentTradeRepository } from './settlement/intent-trade.repository.js';
+import { SettlementFillsHook } from './settlement/settlement-fills.hook.js';
+import { TradeSettlement } from './settlement/trade-settlement.service.js';
 import { NearModule } from '../near/near.module.js';
 
 /**
@@ -38,11 +39,12 @@ import { NearModule } from '../near/near.module.js';
     CancelOrderHandler,
     PlanetGameClock,
     OrderExpirySweep,
-    { provide: MarketFillsHook, useClass: LoggingMarketFillsHook },
+    IntentTradeRepository,
+    SettlementFillsHook,
+    TradeSettlement,
+    { provide: MarketFillsHook, useExisting: SettlementFillsHook },
     MarketFaucetService,
     MarketFaucetCommand,
-    MarketSeedService,
-    MarketSeedCommand,
   ],
   controllers: [
     MarketFaucetController,
@@ -60,6 +62,8 @@ import { NearModule } from '../near/near.module.js';
     MarketSimGateway,
     OrderFunds,
     MarketFillsHook,
+    IntentTradeRepository,
+    TradeSettlement,
   ],
 })
 export class MarketModule {}
