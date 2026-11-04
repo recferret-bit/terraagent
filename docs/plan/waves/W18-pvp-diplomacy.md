@@ -88,12 +88,6 @@ Colonies on the same planet can fight and make peace. Players raid each other wi
 - AC-06, AC-12 and AC-13 pass.
 - Tag `wave-18` is created.
 
-## W08 follow-up: executable progression and priorities
-
-Make diplomacy, truces, raids, escorts and resupply respond to economy/expansion/defense priorities while preserving explicit raid authorization and truce rules.
-
-Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
-
 ## W12 progression integration gate (revised)
 
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Publish diplomacy, victory and raid facts from authoritative outcomes, with match/raid IDs.

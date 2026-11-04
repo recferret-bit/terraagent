@@ -48,4 +48,4 @@ Owner-requested W08 follow-up (2026-11-03). This is a landing requirement for th
 
 W08’s original slice used W00/W01/W02/W06 mechanics; W04/W10/W12 are now merged. Its S0–S4 metadata still does not provide missing W03/W07 mechanics, and S5–S10 previews do not enable their waves. The later waves above own those implementations; they must not land with decorative goal cards.
 
-W11 and W27 obligations above remain mandatory. Their in-progress plan rewrites in the main checkout were deliberately left untouched during the W08 follow-up landing (2026-11-04); this contract owns the progression handoff.
+The wave obligations above remain mandatory. Concurrent rewrites of PRODUCT_WAVES, the plan index and W04/W05/W11/W18/W21/W27 plans in the main checkout were left untouched during the W08 follow-up landing (2026-11-04). This contract owns their progression handoff, instead of duplicating notes into files another task is actively rewriting.

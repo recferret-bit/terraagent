@@ -86,12 +86,6 @@ The colony's endgame works end to end. The player terraforms all owned land to L
 - The transfer saga works with mock ports.
 - Tag `wave-21` is created.
 
-## W08 follow-up: executable progression and priorities
-
-Complete S10 Prepare Rocket through real child orders and measured supply; require explicit launch.
-
-Mandatory landing criteria: [Progression, tutorial goals and priorities contract](../W08-PROGRESSION-CONTRACT.md). Add a real accept → orders → progress → completion owner check, blocked/resume and reload tests, relevant slider low/high decision tests, and a later-waves-off test. Unimplemented goals stay unavailable; stage previews do not authorize gameplay.
-
 ## W12 progression integration gate (revised)
 
 Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Persist the settlement outcome, colony archive and settler fact; retries must not archive or reward twice.
