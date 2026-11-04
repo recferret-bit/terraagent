@@ -1,17 +1,22 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { isResourceToken, marketOrderRef, parsePairId, type MarketTokenKey, type OrderSide } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { defaultParamRegistry } from '@terra/sim';
 import { z } from 'zod';
 import type { PlanetEventOf } from '../../bus/channels.js';
 import { CoreException } from '../../core/errors/index.js';
+import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
+import { kekEnv } from '../../near/identity/colony-accounts.js';
+import { loadKekRing } from '../../near/keystore/kek.js';
+import { KeyStore } from '../../near/keystore/keys.js';
 import { MarketOrderRepository } from '../book/market-order.repository.js';
 import { OrderRelease } from '../orders/cancel-order.service.js';
 import { resolveMarketAccountId } from '../orders/colony-account.js';
 import { MarketPolicyProvider } from '../orders/market-policy.provider.js';
 import { requirementOf } from '../orders/order-funds.js';
 import { PlaceOrderService } from '../orders/place-order.service.js';
+import { ensureCustodialAccount } from './market-accounts.bootstrap.js';
 import { MarketFaucetService } from './market-faucet.service.js';
 
 export const SeedArgs = z.strictObject({ planetId: z.string().min(1), pair: z.string().min(1) });
@@ -66,6 +71,7 @@ export class MarketSeedService {
     private readonly policy: MarketPolicyProvider,
     private readonly repo: MarketOrderRepository,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
+    @Optional() @Inject(APP_ENV) private readonly env?: AppEnv,
   ) {}
 
   async seed(raw: unknown): Promise<SeedResult> {
@@ -80,6 +86,8 @@ export class MarketSeedService {
     await this.clearBook(planetId, pair);
     const colonyId = botColonyId(planetId);
     const accountId = await resolveMarketAccountId(this.prisma, colonyId, null, planetId, BOT_COLONY_INDEX);
+    // The bot's fills settle through the verifier like any trade: its account must be able to sign (dev only; same key path as the fee accounts).
+    await ensureCustodialAccount(this.prisma, new KeyStore(loadKekRing(this.env ? kekEnv(this.env) : { NODE_ENV: 'test' })), accountId);
     const ladder = this.ladder(row, parsed.quote);
     await this.fundBot(accountId, parsed.base, parsed.quote, row, ladder, cfg.platformFeeBp, cfg.stallFeeMaxBp);
 

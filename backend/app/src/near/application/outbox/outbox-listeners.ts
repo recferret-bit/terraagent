@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import type { ClaimedRow } from './chain-outbox.repository.js';
 
+export type RowFailedListener = (row: ClaimedRow, error: string, dead: boolean) => Promise<void> | void;
 export type RowDoneListener = (row: ClaimedRow, result: object, txHash: string | null) => Promise<void> | void;
 
 /**
@@ -10,6 +11,7 @@ export type RowDoneListener = (row: ClaimedRow, result: object, txHash: string |
 @Injectable()
 export class OutboxListeners {
   private readonly done = new Set<RowDoneListener>();
+  private readonly failed = new Set<RowFailedListener>();
 
   onDone(fn: RowDoneListener): () => void {
     this.done.add(fn);
@@ -19,6 +21,17 @@ export class OutboxListeners {
   async emitDone(row: ClaimedRow, result: object, txHash: string | null): Promise<void> {
     for (const fn of [...this.done]) {
       try { await fn(row, result, txHash); } catch { /* the module's own recovery sweep finishes the step */ }
+    }
+  }
+
+  onFailed(fn: RowFailedListener): () => void {
+    this.failed.add(fn);
+    return () => this.failed.delete(fn);
+  }
+
+  async emitFailed(row: ClaimedRow, error: string, dead: boolean): Promise<void> {
+    for (const fn of [...this.failed]) {
+      try { await fn(row, error, dead); } catch { /* the module's reconciler picks the row up again */ }
     }
   }
 }

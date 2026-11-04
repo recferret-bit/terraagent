@@ -73,6 +73,33 @@ export class ChainOutboxRepository extends RepositoryBase {
     return updated.count;
   }
 
+  /** Gives a not-yet-DONE row up for good (`DEAD`): used when the owning module decided the operation must never run (W13-14). */
+  async abandon(opId: string): Promise<boolean> {
+    const n = await this.prisma.$executeRaw`UPDATE chain.chain_outbox SET status = 'DEAD'::chain.outbox_status, locked_until = NULL, updated_at = now()
+      WHERE op_id = ${opId} AND status IN ('PENDING'::chain.outbox_status, 'FAILED'::chain.outbox_status, 'DEAD'::chain.outbox_status)`;
+    return n === 1;
+  }
+
+  /** Stores the result of an operation the owning module re-ran itself (idempotent by opId) on a row the relay gave up on. */
+  async markDoneByOpId(opId: string, receipt: object, txHash: string | null): Promise<boolean> {
+    const r = await this.prisma.chainOutbox.updateMany({
+      where: { opId, status: { in: ['PENDING', 'FAILED', 'DEAD'] } },
+      data: { status: 'DONE', receipt, txHash, lockedUntil: null, lastError: null },
+    });
+    return r.count === 1;
+  }
+
+  /** Merges `{ [key]: true }` into the row's payload (module bookkeeping that must survive a restart). */
+  async flagPayload(opId: string, key: string): Promise<void> {
+    const patch = JSON.stringify({ [key]: true });
+    await this.prisma.$executeRaw`UPDATE chain.chain_outbox SET payload = payload || ${patch}::jsonb WHERE op_id = ${opId}`;
+  }
+
+  /** DONE rows of `opIdPrefix` whose payload lacks `flag` (the owning module's follow-up step did not finish). */
+  async doneWithoutFlag(opIdPrefix: string, flag: string): Promise<OutboxRow[]> {
+    return this.prisma.$queryRaw<OutboxRow[]>`SELECT * FROM chain.chain_outbox WHERE op_id LIKE ${`${opIdPrefix}%`} AND status = 'DONE'::chain.outbox_status AND NOT (payload ? ${flag})`;
+  }
+
   /**
    * Atomically claims up to `limit` due rows (PENDING/FAILED with `nextAttemptAt <= now`, plus RUNNING rows whose lease expired because
    * their relay died). Every claim counts as an attempt. Uses `FOR UPDATE SKIP LOCKED`, so concurrent relays never take the same row.

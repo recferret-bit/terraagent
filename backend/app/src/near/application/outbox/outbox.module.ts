@@ -65,7 +65,7 @@ export class OutboxRelayService implements OnApplicationBootstrap, BeforeApplica
       },
       onResult: (port, status) => relayed.inc({ port, status }),
       onRowDone: async (row, res, txHash) => { await settlement?.onOutboxRowDone(row, res, txHash); await listeners?.emitDone(row, res, txHash); },
-      onRowFailed: (row, err, dead) => settlement?.onOutboxRowFailed(row, err, dead),
+      onRowFailed: async (row, err, dead) => { await settlement?.onOutboxRowFailed(row, err, dead); await listeners?.emitFailed(row, err, dead); },
       maxAttemptsFor: (row, def) => (row.port === 'CargoToken' ? Math.min(def, 2) : def),
       backoffBaseMsFor: (row, def) => (row.port === 'CargoToken' ? Math.min(def, 150) : def),
       onError: (row, err) => this.log.warn({ opId: row?.opId, port: row?.port, attempts: row?.attempts, err: err instanceof Error ? err.message : String(err) }, 'outbox relay error'),
