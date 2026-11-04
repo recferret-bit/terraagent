@@ -69,7 +69,9 @@ export * from './systems/dispatch';
 export * from './systems/goals';
 export {
   applyDirectorPolicy,
+  buildColonyBrief,
   colonyDirector,
+  guardBriefText,
   noteDirectorPlan,
   priorityKey,
 } from './systems/director';
