@@ -64,7 +64,7 @@ describe('W08 guide and HQ navigation', () => {
     (host.querySelector('[data-testid=hq-tab-goals]') as HTMLElement).click();
     expect(hq.goals.root.hidden).toBe(false);
     expect(select.value).toBe('grow_economy');
-    expect((select.querySelector('[value=defend_colony]') as HTMLOptionElement).disabled).toBe(true);
+    expect((select.querySelector('[value=expand_territory]') as HTMLOptionElement).disabled).toBe(true);
     hq.dispose();
     expect(host.childElementCount).toBe(0);
   });

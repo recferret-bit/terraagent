@@ -4,7 +4,7 @@ import {
   createState, createRegistryPipeline, ensureColonyLedger, ensureColonyRecord,
   spawnHqUnit, startBuildingConstruction, hexIndex, DEPOSIT, step,
   getColonyGoals, getColonyQueue, computeColonyResourceRatePerMin, setPlanetTime,
-  getColonyHarvestWeights,
+  getColonyHarvestWeights, queueColonyGoal,
 } from '../../src';
 
 function fixture() {
@@ -47,10 +47,15 @@ describe('W08 owner goal regressions', () => {
 
   it('unsupported goals and water growth are rejected without occupying a queue slot', () => {
     const { state, pipeline } = fixture();
-    for (const args of [{ goal: 'defend_colony' }, { goal: 'grow_economy', resource: 'bio.water' }]) {
+    for (const args of [{ goal: 'expand_territory' }, { goal: 'grow_economy', resource: 'bio.water' }]) {
       const result = step(state, [{ commandId: String(state.meta.tick), colonyIndex: 0, source: 'player', kind: 'queueGoal', args }], 1, pipeline);
       expect(result.outcomes[0].code).toBe('wave_disabled');
     }
+    const w06Res = queueColonyGoal(state, 0, { goal: 'defend_colony' }, state.meta.tick, {
+      flags: parseWaves('..06'),
+    } as never);
+    expect(w06Res.ok).toBe(false);
+    if (!w06Res.ok) expect(w06Res.code).toBe('wave_disabled');
     expect(getColonyGoals(state, 0)).toHaveLength(0);
   });
 

@@ -53,6 +53,23 @@ export interface HiveAggressionRecord {
   activeCohortId: string | null;
 }
 
+export interface FaunaCohortRecord {
+  cohortId: string;
+  hiveId: number;
+  species: FaunaSpeciesId;
+  colonyIndex: number;
+  memberIds: number[];
+  dispatchedAtTick: number;
+  targetEntityId: number | null;
+  timeoutTicks: number;
+}
+
+export interface PendingFaunaEvent {
+  kind: 'raidStarted' | 'raidRepelled';
+  colonyIndex: number;
+  data: Record<string, unknown>;
+}
+
 export interface HiveRecord {
   hiveId: number;
   species: FaunaSpeciesId;
@@ -72,6 +89,7 @@ export interface HiveRecord {
   mode: FaunaBehaviorMode;
   aggressionByColony: Record<number, HiveAggressionRecord>;
   aggressiveColonies: number[];
+  lastWaveTickByColony?: Record<number, number>;
 }
 
 export interface ResidentBugRecord {
@@ -103,6 +121,11 @@ export interface FaunaHivesBlob {
   byEntityId: Record<number, HiveRecord | ResidentBugRecord>;
   residentHiveByEntityId: Record<number, number>;
   lastSeenHpByEntityId: Record<number, number>;
+  cohortsById: Record<string, FaunaCohortRecord>;
+  nextCohortSeq: number;
+  lastScheduledRollTickByColony: Record<number, number>;
+  scheduledRollIndexByColony: Record<number, number>;
+  pendingEvents: PendingFaunaEvent[];
 }
 
 export interface ResolvedSpeciesConfig {
