@@ -37,6 +37,7 @@ function setupColonyWithHub(seed = 'w05-tf-test') {
   colony.stock['minerals.t1'] = 400;
   colony.stock['bio.biomass'] = 400;
   colony.stock['bio.water'] = 400;
+  colony.powerSupplyOverride = 50;
 
   const hubRes = startBuildingConstruction(state, {
     owner: 0,

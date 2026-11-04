@@ -40,6 +40,7 @@ function createW05Colony(planetType: 'temperate' | 'desert' = 'temperate') {
   creditResource(colony, 'minerals.t1', 200, 0);
   creditResource(colony, 'bio.biomass', 200, 0);
   creditResource(colony, 'bio.water', 200, 0);
+  colony.powerSupplyOverride = 200;
   const hx = hexIndex(state.grid.radius);
   for (let i = 0; i < state.grid.count; i++) {
     setTileOwner(state.grid, i, 0, 0);
