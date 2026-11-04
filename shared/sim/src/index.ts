@@ -86,6 +86,8 @@ export {
   restoreW11Context,
   selectDirectorSkills,
   spatialAllowed,
+  summarizeRelevant,
+  syntheticWorld,
   strategyPermitted,
   suppressGoal,
   type StrategyPermissions,
