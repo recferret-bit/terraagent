@@ -7,6 +7,8 @@ import type { MarketTokenKey } from '@terra/contracts';
 export abstract class IntentsBalanceReadPort {
   /** `token` is a market token key (`bio.water`, `USDC`) or a verifier id (`nep141:usdc.mock`). Unknown token: 0n. */
   abstract verifierBalance(accountId: string, token: string): Promise<bigint>;
+  /** Raw verifier balance in chain base units (resources: x10^18), for exact withdraw sizing. */
+  abstract verifierChainBalance(accountId: string, token: string): Promise<bigint>;
   /** Every non-zero balance of the account by market token key. */
   abstract verifierBalances(accountId: string): Promise<Partial<Record<MarketTokenKey, bigint>>>;
 }
