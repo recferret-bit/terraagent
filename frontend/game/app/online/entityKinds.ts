@@ -21,12 +21,12 @@ const ARCHETYPE_BY_KIND: Readonly<Record<number, string>> = {
   [ENTITY_KIND.harvester]: 'robot.miner',
   [ENTITY_KIND.builder]: 'robot.builder',
   [ENTITY_KIND.roboticsFactory]: 'building.roboticsFactory',
-  [ENTITY_KIND.droneControlArray]: 'building.droneControlArray',
+  [ENTITY_KIND.droneControlArray]: 'building.droneArray',
   [ENTITY_KIND.autocannon]: 'building.turret',
   [ENTITY_KIND.laserTower]: 'building.laserTower',
   [ENTITY_KIND.recon]: 'robot.recon',
-  [ENTITY_KIND.demoTank]: 'robot.tank',
-  [ENTITY_KIND.demoArtillery]: 'robot.artillery',
+  [ENTITY_KIND.demoTank]: 'robot.combat',
+  [ENTITY_KIND.demoArtillery]: 'robot.combat',
   [ENTITY_KIND.blackAnt]: 'fauna.blackAnt',
   [ENTITY_KIND.blueBeetle]: 'fauna.blueBeetle',
   [ENTITY_KIND.greenSpitter]: 'fauna.greenSpitter',
@@ -65,9 +65,6 @@ const BUILDING_2X2_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.mineralsQuarry,
   ENTITY_KIND.waterExtractor,
   ENTITY_KIND.petroleumWell,
-  ENTITY_KIND.droneControlArray,
-  ENTITY_KIND.autocannon,
-  ENTITY_KIND.laserTower,
 ]);
 
 const FOOTPRINT_3X3_KINDS: ReadonlySet<number> = new Set([

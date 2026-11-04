@@ -159,9 +159,8 @@ describe('W07-19: Stance bar and right-click attackTarget / move', () => {
       ownerColonyIndex: 0,
       scene3d: {
         scene,
-        tileElevation: () => 0,
-        hexToWorld: (q: number, r: number) => ({ x: q * 2, z: r * 2 }),
-        worldToHex: (x: number, z: number) => ({ q: Math.round(x / 2), r: Math.round(z / 2) }),
+        tileToWorld: (x: number, y: number) => ({ x: x * 2, y: 0, z: y * 2 }),
+        biomeKey: () => 'forestRock',
       },
     });
 
@@ -194,10 +193,10 @@ describe('W07-19: Stance bar and right-click attackTarget / move', () => {
 
 describe('W07-19: Selection metadata and wave gating', () => {
   it('supports W07 combat units and buildings in selectionHelpers and does not load army feature when W07 is off (..06)', () => {
-    const w06Features = loadFeatures({ flags: new Set(parseWaves('..06').list) });
+    const w06Features = loadFeatures({ flags: new Set(parseWaves('..06').list), host: 'server' });
     expect(w06Features.some((f) => f.id === 'army')).toBe(false);
 
-    const w07Features = loadFeatures({ flags: new Set(parseWaves('..07').list) });
+    const w07Features = loadFeatures({ flags: new Set(parseWaves('..07').list), host: 'server' });
     expect(w07Features.some((f) => f.id === 'army')).toBe(true);
 
     expect(normalizeKindCode('recon')).toBe(ENTITY_KIND.recon);

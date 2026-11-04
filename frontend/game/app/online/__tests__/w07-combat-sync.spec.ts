@@ -302,12 +302,12 @@ describe('W07-17 · Deduplicating view.blobs.projectileImpacts against store/hos
 describe('W07-17 · W07 entityKinds mappings, footprints, and tracked unit predicates', () => {
   it('maps all W07 ENTITY_KIND codes in archetypeForKind, isConstructibleBuilding, is2x2BuildingKind, is3x3FootprintKind, and isTrackedWalkingUnitKind', () => {
     expect(archetypeForKind(ENTITY_KIND.roboticsFactory)).toBe('building.roboticsFactory');
-    expect(archetypeForKind(ENTITY_KIND.droneControlArray)).toBe('building.droneControlArray');
+    expect(archetypeForKind(ENTITY_KIND.droneControlArray)).toBe('building.droneArray');
     expect(archetypeForKind(ENTITY_KIND.autocannon)).toBe('building.turret');
     expect(archetypeForKind(ENTITY_KIND.laserTower)).toBe('building.laserTower');
     expect(archetypeForKind(ENTITY_KIND.recon)).toBe('robot.recon');
-    expect(archetypeForKind(ENTITY_KIND.demoTank)).toBe('robot.tank');
-    expect(archetypeForKind(ENTITY_KIND.demoArtillery)).toBe('robot.artillery');
+    expect(archetypeForKind(ENTITY_KIND.demoTank)).toBe('robot.combat');
+    expect(archetypeForKind(ENTITY_KIND.demoArtillery)).toBe('robot.combat');
     expect(archetypeForKind(ENTITY_KIND.blackAnt)).toBe('fauna.blackAnt');
     expect(archetypeForKind(ENTITY_KIND.blueBeetle)).toBe('fauna.blueBeetle');
     expect(archetypeForKind(ENTITY_KIND.greenSpitter)).toBe('fauna.greenSpitter');
@@ -323,7 +323,7 @@ describe('W07-17 · W07 entityKinds mappings, footprints, and tracked unit predi
     expect(isConstructibleBuilding(ENTITY_KIND.greenSpitter)).toBe(false);
 
     for (const k of [ENTITY_KIND.droneControlArray, ENTITY_KIND.autocannon, ENTITY_KIND.laserTower]) {
-      expect(is2x2BuildingKind(k)).toBe(true);
+      expect(is2x2BuildingKind(k)).toBe(false);
     }
 
     for (const k of [ENTITY_KIND.commandHub, ENTITY_KIND.roboticsFactory, ENTITY_KIND.hiveBlackAnt, ENTITY_KIND.hiveBlueBeetle, ENTITY_KIND.hiveGreenSpitter]) {

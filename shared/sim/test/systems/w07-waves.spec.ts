@@ -25,7 +25,6 @@ import {
   PREP,
   provokeHiveAgainstColony,
   queueColonyGoal,
-  rowOf,
   setColonyPriorities,
   SimHost,
   spawnHiveEntity,
@@ -304,8 +303,8 @@ describe('W07-15 · W08 Defend Area (defend_colony), Clear Nest (clear_corridor)
     // Priority slider: defense=10 vs defense=90 on identical S3 state produces different ranked topNeed
     const rawNeeds = evaluateColonyNeeds(state, 0);
     expect(rawNeeds.defense).toBeGreaterThanOrEqual(5000);
-    const lowDef = weightColonyNeeds(rawNeeds, { defense: 10, economy: 90, power: 50, expansion: 50, research: 50 });
-    const highDef = weightColonyNeeds(rawNeeds, { defense: 90, economy: 10, power: 50, expansion: 50, research: 50 });
+    const lowDef = weightColonyNeeds(rawNeeds, { defense: 10, economy: 90, power: 50, expansion: 50, terraform: 50 });
+    const highDef = weightColonyNeeds(rawNeeds, { defense: 90, economy: 10, power: 50, expansion: 50, terraform: 50 });
     expect(highDef.top.need).toBe('defense');
     expect(lowDef.top.need).not.toBe('defense');
 

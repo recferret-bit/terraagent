@@ -21,7 +21,6 @@ import {
   ENTITY_KIND,
   getCombatEventsBlob,
   insertRow,
-  noteColonyBuildingDestroyedDuringRaid,
   placeSpawnedEntity,
   PREP,
   rowOf,

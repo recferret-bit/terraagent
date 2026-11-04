@@ -161,7 +161,7 @@ function collectOccupiedTileIndices(view: GameView | undefined, hIndex: { indexO
     if (!entry || entry.state === 'done' || entry.state === 'cancelled') continue;
     const t = entry.task;
     if (t?.kind === 'build' && typeof t.q === 'number' && typeof t.r === 'number') {
-      const sz = t.building === 'commandHub' || t.building === 'roboticsFactory' ? 3 : ONE_BY_ONE_BUILDINGS.has(t.building) ? 1 : 2;
+      const sz = t.building === 'commandHub' || t.building === 'roboticsFactory' ? 3 : ONE_BY_ONE_BUILDINGS.has(t.building ?? '') ? 1 : 2;
       markFootprintIndices(occupied, hIndex, t.q, t.r, sz, sz, t.rotation ?? 0);
     }
   }

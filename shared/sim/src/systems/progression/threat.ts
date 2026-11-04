@@ -1,9 +1,10 @@
-import { BUILDING_KIND as COL_BUILDING_KIND, ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import type { FaunaSpeciesId } from '../fauna/types';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { computeColonyThreatStage } from './threatStage';
 import { countColonyEntities } from './triggers';
+import { BUILDING_KIND } from './types';
 import { getColonyProgression } from './index';
 
 /** Minimum time after reaching S3 before fauna raids are allowed (`5 min = 300 s = 1500 ticks`, `UO-T-01`). */
@@ -209,18 +210,19 @@ function evaluateThreatFromInput(input: ColonyThreatInput): ColonyThreatSummary 
 }
 
 function resolveFallbackS3ReachedTick(state: PlanetState, colonyIndex: number): number {
-  const { size, cols } = state.entities;
+  const { count, cols } = state.entities;
   let earliestFactoryTick: number | null = null;
-  for (let row = 0; row < size; row++) {
-    if (!cols.alive[row] || cols.owner[row] !== colonyIndex) continue;
-    if (cols.kind[row] !== ENTITY_KIND.roboticsFactory && cols.kind[row] !== COL_BUILDING_KIND.roboticsFactory && cols.kind[row] !== 40) continue;
+  for (let row = 0; row < count; row++) {
+    if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
+    if (cols.owner[row] !== colonyIndex) continue;
+    if (cols.kind[row] !== ENTITY_KIND.roboticsFactory && cols.kind[row] !== BUILDING_KIND.roboticsFactory && cols.kind[row] !== 40) continue;
     if (cols.state[row] === ENTITY_STATE.constructing || (cols.progress[row] ?? 1) < 1) continue;
     const createdTick = Math.max(0, cols.createdAt[row] ?? 0);
     if (earliestFactoryTick === null || createdTick < earliestFactoryTick) {
       earliestFactoryTick = createdTick;
     }
   }
-  const col = state.colonies[colonyIndex];
+  const col = state.colonies[colonyIndex] as (ColonyState & { createdAtTick?: number }) | undefined;
   const fallback =
     earliestFactoryTick ??
     (typeof col?.changedAt === 'number'
