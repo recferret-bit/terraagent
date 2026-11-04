@@ -153,7 +153,11 @@ function isFaunaTargetPassiveToAttacker(
     | undefined;
   const modeEntry = modeBlob?.byEntityId?.[targetEntityId];
   if (typeof modeEntry === 'string') {
-    return modeEntry === 'passive';
+    if (modeEntry === 'passive') return true;
+    const hasScopedRecord =
+      Boolean((state.blobs.faunaAggression?.value as { byEntityId?: Record<number, unknown> } | undefined)?.byEntityId?.[targetEntityId]) ||
+      Boolean((state.blobs.faunaHives?.value as { byEntityId?: Record<number, unknown> } | undefined)?.byEntityId?.[targetEntityId]);
+    if (!hasScopedRecord) return false;
   }
   if (modeEntry && typeof modeEntry === 'object') {
     return !isFaunaAggressiveToColony(modeEntry, attackerOwner);
@@ -222,6 +226,12 @@ export function isHostileTargetForAttacker(
   if (!opts?.includePassiveFauna && attackerOwner >= 0 && targetOwner < 0) {
     const targetId = cols.id[targetRow]!;
     if (isFaunaTargetPassiveToAttacker(state, targetId, attackerOwner)) {
+      return false;
+    }
+  }
+  if (!opts?.includePassiveFauna && attackerOwner < 0 && targetOwner >= 0) {
+    const attackerId = cols.id[attackerRow]!;
+    if (isFaunaTargetPassiveToAttacker(state, attackerId, targetOwner)) {
       return false;
     }
   }

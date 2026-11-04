@@ -365,7 +365,7 @@ export function applyDamage(
   const prevHp = cols.hp[row];
   const rawHp = prevHp - amount;
 
-  recordEntityDamaged(state, targetId, tick);
+  recordEntityDamaged(state, targetId, tick, opts?.attackerOwner, opts?.attackerId);
 
   let result: DamageResult;
   if (kind === ENTITY_KIND.hq) {

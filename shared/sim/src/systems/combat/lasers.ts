@@ -6,6 +6,7 @@ import type { CompiledDataLike } from '../../kernel/config';
 import type { StepContext } from '../../kernel/context';
 import type { PlanetState } from '../../kernel/state';
 import { colonyWho } from '../find';
+import { recordEntityDamaged } from './hqSurvival';
 import { canWeaponHitTarget } from './layers';
 
 export type ApplyLaserDamageFn = (
@@ -326,8 +327,10 @@ export function fireLaserOrMelee(
   };
 
   if (opts.applyDmg) {
+    recordEntityDamaged(state, opts.targetId, tick, attackerOwner, opts.attackerId);
     opts.applyDmg(state, opts.targetId, damage, opts.attackerId, attackerOwner, ctx);
   } else {
+    recordEntityDamaged(state, opts.targetId, tick, attackerOwner, opts.attackerId);
     defaultApplyLaserDamage(state, opts.targetId, damage, tick);
   }
 
