@@ -145,7 +145,7 @@ describe('W05-22: Wave gating, hover hints, and Living overlay mode (L)', () => 
     } as unknown as ClientView;
 
     mounted.update(view);
-    const tfEl = mounted.hud.el.querySelector<HTMLElement>('[data-testid="hud-terraform"]')!;
+    const tfEl = document.querySelector<HTMLElement>('[data-testid="hud-terraform"]')!;
     expect(tfEl.hidden).toBe(true);
 
     flags.add('W05');
