@@ -1,7 +1,7 @@
-import { randomBytes } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import { MARKET_TOKENS, tokenKeyOfVerifierId, type MarketTokenKey } from '@terra/contracts';
-import type { PrismaClient } from '@terra/db';
+import type { DbClient, PrismaClient } from '@terra/db';
 import { adapterOf } from '../../../../ports/adapters.js';
 import {
   IntentsPort,
@@ -12,20 +12,21 @@ import {
   type SignedIntent,
   type SignTokenDiffInput,
 } from '../../../application/ports/intents.port.js';
-import { NearException } from '../../../domain/errors.js';
+import { NearException, type NearErrorCode } from '../../../domain/errors.js';
 import { TokenAmount, type ChainReceipt } from '../../../domain/types.js';
 import { PRISMA } from '../../../../db/db.module.js';
 import { APP_ENV, type AppEnv } from '../../../../core/tokens.js';
 import { kekEnv } from '../../../identity/colony-accounts.js';
+import { checkBatchStatic, hasDuplicateNonce, netLegs } from '../../../intents/intent-checks.js';
+import { mockChainControls } from '../../mock/mock-controls.js';
 import { signTokenDiffPayload } from '../../../intents/nep413-token-diff.js';
 import { ed25519PrivateKeyFromSeed, KeyStore } from '../../../keystore/keys.js';
 
 import { loadKekRing } from '../../../keystore/kek.js';
 import { MOCK_CHAIN_CONFIG, MOCK_CHAIN_RUNTIME, MockChainBase, type MockChainRuntime } from '../../mock/mock-chain.base.js';
 import type { MockChainConfig } from '../../mock/mock-chain.config.js';
-import { creditVerifier, debitVerifier, verifierBalance, verifierBalances } from './intents-ledger.js';
+import { applyLegs, consumeNonce, creditVerifier, debitVerifier, firstShortfall, nonceUsed, verifierBalance, verifierBalances } from './intents-ledger.js';
 
-const NOT_YET = 'not implemented until W13-05';
 
 /**
  * Mock `intents.near` verifier (W13-04). Verifier balances live in `chain.mock_chain_intents_balance`, keyed by verifier token id,
@@ -68,12 +69,51 @@ export class MockIntentsAdapter extends MockChainBase implements IntentsPort {
     return this.keyStore;
   }
 
-  simulate(_intents: readonly SignedIntent[]): Promise<IntentsSimulation> {
-    return Promise.reject(new NearException('NEAR_UNAVAILABLE', { message: NOT_YET }));
+  /** Read-only: the same checks as `execute` against current state, no writes, no latency. */
+  async simulate(intents: readonly SignedIntent[]): Promise<IntentsSimulation> {
+    const code = await this.checkAll(this.prisma, intents);
+    return { ok: code === null, ...(code === null ? {} : { errorCode: code }), effects: intents.map((i) => i.diff) };
   }
 
-  execute(_input: IntentsExecuteInput): Promise<ChainReceipt> {
-    return Promise.reject(new NearException('NEAR_UNAVAILABLE', { message: NOT_YET }));
+  /**
+   * One DB transaction: re-checks everything, consumes every `(signer, nonce)`, records the intents (`mock_chain_intent`, status executed)
+   * and applies all legs. Any failure rolls back the whole batch. Idempotent by opId. With `mockChainControls.setOutcomeUnknown('Intents', true)`
+   * the batch commits and then `NEAR_UNAVAILABLE` is thrown (test/dev only).
+   */
+  async execute(input: IntentsExecuteInput): Promise<ChainReceipt> {
+    const receipt = await this.call('Intents', 'execute_intents', input.opId, async (tx) => {
+      const code = await this.checkAll(tx, input.intents, true);
+      if (code !== null) throw new NearException(code, { details: { opId: input.opId } });
+      for (const [i, it] of input.intents.entries()) {
+        if (!(await consumeNonce(tx, it.diff.accountId, it.nonce, input.opId))) throw new NearException('NEAR_INTENT_NONCE_REUSED', { details: { signer: it.diff.accountId } });
+        await tx.mockChainIntent.create({
+          data: {
+            id: createHash('sha256').update(`${it.diff.accountId}\u0000${it.nonce}`).digest('hex'),
+            signer: it.diff.accountId,
+            diff: { deltas: it.diff.deltas, nonce: it.nonce, deadlineMs: it.deadlineMs, signature: it.signature },
+            status: 'executed',
+            opId: i === 0 ? input.opId : null,
+          },
+        });
+      }
+      await applyLegs(tx, netLegs(input.intents));
+      return { standard: 'intents', event: 'execute_intents', contract_id: 'intents.near', receiverId: 'intents.near', signers: input.intents.map((i) => i.diff.accountId), nonces: input.intents.map((i) => i.nonce) };
+    });
+    if (mockChainControls.isOutcomeUnknown('Intents')) {
+      throw new NearException('NEAR_UNAVAILABLE', { message: 'mock outcome-unknown injection: the batch was applied', details: { opId: input.opId } });
+    }
+    return receipt;
+  }
+
+  /** Static checks, then replayed/duplicate nonces, then balances; first failing code or null. In `execute` the nonce insert itself is the final arbiter. */
+  private async checkAll(db: DbClient, intents: readonly SignedIntent[], inTx = false): Promise<NearErrorCode | null> {
+    const key = async (accountId: string) => (await db.nearColonyAccount.findUnique({ where: { accountId }, select: { publicKey: true } }))?.publicKey;
+    const staticCode = await checkBatchStatic(intents, this.runtime.now(), key);
+    if (staticCode === 'NEAR_INTENT_BAD_SIGNATURE' || staticCode === 'NEAR_INTENT_EXPIRED') return staticCode;
+    if (hasDuplicateNonce(intents)) return 'NEAR_INTENT_NONCE_REUSED';
+    for (const it of intents) if (await nonceUsed(db, it.diff.accountId, it.nonce)) return 'NEAR_INTENT_NONCE_REUSED';
+    if (staticCode !== null) return staticCode;
+    return !inTx && (await firstShortfall(db, netLegs(intents))) ? 'NEAR_INSUFFICIENT_BALANCE' : null;
   }
 
   /** Verifier balance in market atomic units (0 when none). */
