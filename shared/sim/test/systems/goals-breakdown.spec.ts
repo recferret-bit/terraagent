@@ -6,6 +6,7 @@ import {
   DEPOSIT,
   ensureColonyLedger,
   ensureColonyRecord,
+  setColonyAiEnabled,
   ENTITY_KIND,
   ENTITY_STATE,
   enqueueQueueTask,
@@ -26,6 +27,7 @@ function createS0ColonyPlanet(seed = 'w08-17') {
   const state = createState({ planetId: `pl-${seed}`, planetType: 'temperate', seed, radius: 10 });
   const colony = ensureColonyLedger(ensureColonyRecord(state, 0, 0));
   colony.status = 'active';
+  setColonyAiEnabled(state, 0, true); // AI is off by default; goal breakdown only runs while on
   colony.stock['metals.t1'] = 600;
   colony.stock['minerals.t1'] = 350;
   colony.stock['bio.water'] = 200;

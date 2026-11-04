@@ -29,6 +29,7 @@ export {
   type PriorityKey,
   type SetPrioritiesArgs,
 } from './commands/set-priorities';
+export { SetAiEnabledArgsSchema, command as setAiEnabled, type SetAiEnabledArgs } from './commands/set-ai-enabled';
 export {
   STAGE_OVERRIDES,
   StageOverrideSchema,

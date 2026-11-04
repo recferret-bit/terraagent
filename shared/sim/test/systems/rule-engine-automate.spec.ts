@@ -11,7 +11,7 @@ import type { StepContext } from '../../src/kernel/context';
 import { createState, setBlob, type PlanetState } from '../../src/kernel/state';
 import { step } from '../../src/kernel/step';
 import { ensureColonyLedger } from '../../src/systems/economy/ledger';
-import { setColonyPriorities } from '../../src/systems/goals';
+import { setColonyAiEnabled, setColonyPriorities } from '../../src/systems/goals';
 import { getColonyQueue } from '../../src/systems/queue';
 import { createRegistryPipeline } from '../../src/systems/registry';
 import {
@@ -38,6 +38,7 @@ function makeColonyPlanet(stage = 2): PlanetState {
   col.status = 'active';
   col.stage = stage;
   col.unlockStage = stage;
+  setColonyAiEnabled(state, 0, true); // AI is off by default; the periodic system only runs while on
   const ledger = ensureColonyLedger(col, { baseCap: 500 });
   ledger.stock['metals.t1'] = 300;
   ledger.stock['minerals.t1'] = 250;

@@ -6,6 +6,7 @@ import {
   getColonyGoals,
   getColonyPriorities,
   getHqGoalLimit,
+  isColonyAiEnabled,
   type ColonyGoalEntry,
   type ColonyPriorities,
 } from '../systems/goals';
@@ -67,6 +68,8 @@ export interface ViewColony {
   goals?: ColonyGoalEntry[];
   goalLimit?: number;
   priorities?: ColonyPriorities;
+  /** Colony AI switch (default false): goals and autopilot only act while true. */
+  aiEnabled?: boolean;
   stage?: number;
   unlockStage?: number;
   threatStage?: number;
@@ -145,6 +148,7 @@ function buildViewColonies(
     out.goals = getColonyGoals(state, k.index);
     out.goalLimit = getHqGoalLimit(state, k.index);
     out.priorities = getColonyPriorities(state, k.index);
+    out.aiEnabled = isColonyAiEnabled(state, k.index);
     const prog = getColonyProgression(state, k.index);
     out.stage = typeof k.stage === 'number' ? k.stage : state.blobs.progression ? prog.stage : undefined;
     out.unlockStage = typeof k.unlockStage === 'number' ? k.unlockStage : prog.unlockStage;
