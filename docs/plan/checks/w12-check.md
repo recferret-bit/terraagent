@@ -30,3 +30,6 @@ The additional browser owner checks passed: hub new-tab mock link; all six tabs 
 Do not use `E2E_REUSE=1` for the suite's fixed seed assertions unless the demo pilot is known to be at its initial baseline. This rerun first reused the existing stack and stopped at the expected 1,120 XP assertion because the pilot already had 1,270 XP. The subsequent isolated run passed; no application code was changed for the rerun. Browser artifacts are in `tests/e2e/.out/report/` and `tests/e2e/.out/results/`.
 
 Land through `npm run wave -- land 12`.
+
+
+Landing reconciliation: merged W10 main, regenerated shared event/scenario registries, and reran the merged-branch W12 browser suite (9 passed / 1 documented skip) and PostgreSQL suite (24 passed). The landing gate exposed stale Vitest disk-cached feature discovery; game tests now disable that cache (XC-34), keeping all assertions enabled.
