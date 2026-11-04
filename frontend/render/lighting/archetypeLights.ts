@@ -127,6 +127,22 @@ export const DEFAULT_ARCHETYPE_LIGHTS: Readonly<Record<string, ReadonlyArray<Arc
     coneBottomRadius: 1.25,
     poolRadius: 1.8,
   }),
+  // The Pylon is a power node, not a floodlit building: ONE light source, from its `grid core light` (the cyan
+  // sphere at the top of the lattice, `power.ts`), dropping a narrow cyan pool around the tower foot. Without this
+  // entry it fell through to `building.mine`'s 4-corner rig (owner feedback W03 #5: "4 sources like the HQ").
+  'building.pylon': [
+    {
+      id: 'grid core',
+      pos: [0, 5.55, 0],
+      target: [0, 0.02, 0],
+      color: 0x9ee6ff,
+      intensity: 1.1,
+      range: 8.5,
+      coneTopRadius: 0.16,
+      coneBottomRadius: 1.35,
+      poolRadius: 2.0,
+    },
+  ],
   // The drop pod carries no projector lights (owner decision): no cones/pools in the orbit bay, freefall or on the
   // landed pod, and no GPU colony projectors from `entityVisionSync`. Kept as an explicit empty entry so the
   // playground LIGHTS editor still lists it and can author lights live.

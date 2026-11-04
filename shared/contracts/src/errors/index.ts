@@ -17,6 +17,12 @@ export const REJECT_CODES = [
   'cannot_dismantle_hq',
   // W02 queue: `cancelTask` / `reorderTask` names no open task of the colony
   'unknown_task',
+  // W03 queue: lane has reached its capacity and no `auto` entry can be dropped
+  'lane_full',
+  // W03 grid: a building other than the Command Hub must stand inside the colony's power zone (Hub / Power Pylon reach)
+  'outside_power_zone',
+  // W03 dismantle: the building is already being dismantled (owner feedback W03 #6)
+  'already_dismantling',
   // W08 HQ goals: goal queue is full for the colony's HQ tier (2 / 3 / 5); `cancelGoal` / `reorderGoal` names no open goal
   'goal_limit', 'unknown_goal',
   // W10 cargo & trade hub: insufficient stock/cargo, storage full on import, or Trade Hub offline

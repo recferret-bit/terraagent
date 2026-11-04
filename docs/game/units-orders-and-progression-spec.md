@@ -354,7 +354,7 @@ Distances are in **tiles** and speeds in **tiles/s** (`UO-C-00`). Weapons follow
 | HQ T1 / T2 / T3 (radius 0.6) | Bullet · 6 / 12.5 / 30 × 2/s = 12 / 25 / 60 DPS · range 5 / 5 / 6 | Ground | 9 / 10 / 12 |
 | Autocannon Turret T1 | Bullet · 9 × 2/s = 18 · range 8; no ammo drain in battle v1 (proposed, tunable D-35) | Ground **and air** (every colony's baseline AA from S3) | 9 |
 | Laser Tower T1 (S3) | Laser · 6 × 4/s = 24 · range 9; no grid spike on fire in battle v1 (proposed, tunable D-35) | Ground and air | 10 |
-| Skitter / Brute / Drifter | Melee bite = Laser at range 1 · 8 / 30 / 10 DPS, applied as **one bite per second dealing DPS × 1 s** (proposed, tunable D-35) | Ground (Drifter flies) | 6 |
+| Black ant / blue beetle / green spitter | Species weapon rows in [fauna contract](./fauna-hives-spec.md): melee bites / ranged acid projectile | Ground | Data row |
 | Higher turret tiers | DPS and range from the economy spec §3.7; same weapon kind as T1. T2/T3 special effects (Plasma Arc chain, Railgun AP, Shield dome, Beacon T3 turret range, …) are **not** in battle v1: plain stat bumps only (proposed, tunable D-35) | — | range + 1 |
 | Other buildings (no weapon) | — | — | footprint radius + 4; **Command Hub and Beacon T1: footprint radius + 6** (proposed, tunable D-35) |
 
@@ -432,13 +432,11 @@ The duel model follows the rules above: per-shot projectiles, impact check, evas
 
 The table is reproduced by [`tools/battle_duels.py`](./tools/battle_duels.py) (`python3 docs/game/tools/battle_duels.py`). It is ported to `shared/sim/test/duels.spec.ts` as a CI check (`AC-04`).
 
-### 5.6 Fauna roster (PvE teachers)
+### 5.6 Fauna roster (hive insects)
 
-| Species | Appears at | HP | Speed | Radius | Attack | Behaviour | Teaches |
-|---|---|---|---|---|---|---|---|
-| Skitter (`fauna.skitter`, exists) | S3 | 120 | 2.0 | 0.3 | Bite 8 DPS, range 1 (one bite per second, `UO-C` table) | Swarm, nests | Recon and turrets beat swarms |
-| Brute (new) | S6 | 1 400 | 1.0 | 0.8 | Bite 30 DPS, range 1 | Solo or pairs, walks at walls | Slow and big: artillery shells always land; recon takes too long |
-| Drifter (`fauna.drifter`, exists) | S8 | 180 | 4.0 | 0.6 | Bite 10 DPS, range 1 (flies, evasive) | Flocks of 4–8, drift over walls to extractors | Lasers and Anti-Air beat evasive air |
+The [hive fauna specification](./fauna-hives-spec.md) supersedes the original single-Skitter roster and proximity aggro (D-43, owner direction 2026-11-04). W07 has black ant melee hordes, blue armored beetle tanks and green ranged acid spitters, each with its own hive. All exist as neutral planet life; passive feeding/building is cosmetic. Aggressive hives issue bounded waves against a specific colony. The same six bug/hive models serve all planets initially.
+
+Initial stats and wave budgets live in that contract and become D-35 data rows. Beetle armor provisionally means high HP and shell plating, not damage reduction. Acid uses timed projectile impacts, not a new collision or damage-over-time system. Brute and Drifter are future W17/W19 extensions, not substitutes for W07's three bugs.
 
 ---
 
@@ -486,7 +484,7 @@ Times are targets for an engaged new player under `ECONOMY_RATE_SCALE = 0.25`. T
 |---|---|---|
 | `UO-T-01` First fauna raid | Not before S3 + 5 min | SIM §7.6 raids starting at tick 0 |
 | `UO-T-02` Raid size | `2 + threatStage` creatures, cap 12; +1 per Thermal Plant (pollution) | `3 + ⌊tick/72 000⌋` |
-| `UO-T-03` Raid composition | S3–S5 Skitters · S6+ adds 1 Brute per 4 · S8+ adds a Drifter flock | 1 species |
+| `UO-T-03` Raid composition | W07 species-specific resident waves with weighted threat budgets ([fauna contract](./fauna-hives-spec.md)); W17/W19 may extend the roster | 1 species |
 | `UO-T-04` Raid interval | 10 min per colony (unchanged), chance `10 % + 5 % × thermal` (unchanged) | — |
 | `UO-T-05` **Newcomer shield** (PvP) | Raid-protected until `threatStage ≥ S6` or 6 h of colony age, whichever comes first. The shield ends at once if the colony starts a raid itself | the fixed 2 h `raidProtectedUntil` |
 | `UO-T-06` `threatStage` | The highest stage whose **gating building** the colony currently owns, so losing the Factory T2 lowers it | — |

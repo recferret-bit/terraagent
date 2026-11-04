@@ -282,7 +282,11 @@ export function renderPowerBreakdown(
     shedEl.className = 'ta-res-breakdown__flow-line ta-res-breakdown__spending';
     shedEl.setAttribute('data-testid', 'res-shed-energy');
 
-    flowEl.append(incEl, spendEl, shedEl, netEl);
+    const storedEl = document.createElement('div');
+    storedEl.className = 'ta-res-breakdown__flow-line';
+    storedEl.setAttribute('data-testid', 'res-stored-energy');
+
+    flowEl.append(incEl, spendEl, shedEl, netEl, storedEl);
     container.appendChild(flowEl);
   }
 
@@ -315,6 +319,13 @@ export function renderPowerBreakdown(
   if (netEl) {
     netEl.hidden = !includeGrid;
     netEl.textContent = `Net: ${formatSignedEPerS(g.net)}`;
+  }
+
+  // Store flow (HQ cell first, then Capacitor Banks): the cell chip drains at night while this reads `draining`.
+  const storedEl = container.querySelector<HTMLElement>('[data-testid="res-stored-energy"]');
+  if (storedEl) {
+    storedEl.hidden = !includeGrid || g.stored === 0;
+    storedEl.textContent = `Stored: ${formatSignedEPerS(g.stored)} (${g.stored < 0 ? 'draining' : 'charging'})`;
   }
 }
 

@@ -7,7 +7,8 @@ import type { ColonyState, PlanetState } from '../../kernel/state';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { BASE_HUB_STORAGE_CAP } from '../economy/ledger';
 import { getEnvironment } from '../environment';
-import { getColonySupply, getHubUnitQueue } from '../factories-hub';
+import { getHubUnitQueue } from '../factories-hub';
+import { computeColonySupply } from '../supply';
 import { computeSolarOutputPerS, resolvePowerRow, type ColonyPowerSummary } from '../power-core';
 
 export const MAX_NEED_BP = 10000;
@@ -244,7 +245,7 @@ export function scoreSupplyNeed(
   const colSupply = colony?.supply as { used?: number; cap?: number } | undefined;
   const prodBlob = (state.blobs.production?.value as Record<string, { supplyUsed?: number; supplyCap?: number; factoryIdle?: boolean }> | undefined)?.[String(colonyIndex)];
   const queueEntries = getHubUnitQueue(state, colonyIndex);
-  const computed = getColonySupply(state, colonyIndex, queueEntries, overrides?.data);
+  const computed = computeColonySupply(state, colonyIndex, overrides?.data, { pending: { hub: queueEntries } });
 
   const supplyUsed = overrides?.supplyUsed ?? (typeof colony?.supplyUsed === 'number' ? colony.supplyUsed : undefined) ?? colSupply?.used ?? prodBlob?.supplyUsed ?? computed.used;
   const supplyCap = overrides?.supplyCap ?? (typeof colony?.supplyCap === 'number' ? colony.supplyCap : undefined) ?? colSupply?.cap ?? prodBlob?.supplyCap ?? computed.cap;

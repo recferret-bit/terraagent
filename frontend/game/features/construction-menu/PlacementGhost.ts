@@ -3,10 +3,11 @@ import { DEPOSIT, GEO_BLOCK_TEXT, PREP, TERRAIN, geoBuildBlock, hexDistance, typ
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { extractHqFromView } from '../shared/hqView';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { isHotkeyPress } from '../shared/hotkeys';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 import { buildGhostContext, resolveBuildingMeta, type GhostContext } from './ghostContext';
-import { evaluateSiteWithSim, ownColonyIndex } from './sitePlacement';
+import { depositReasonText, evaluateSiteWithSim, ownColonyIndex } from './sitePlacement';
 
 export interface PlacementGhostTile {
   q: number; r: number; tileIdx: number; deposit: number; terrain: number; prep: number; prepOp?: string;
@@ -18,6 +19,13 @@ export interface PlacementGhostState {
   tiles: PlacementGhostTile[]; prepBill: Record<string, number>; prepBillText: string;
   valid: boolean; statusColor: 'green' | 'red'; reason: string;
   requiresDeposit?: string; depositCovered: boolean; depositTileIndices: number[];
+}
+
+function depositCodeForRequired(requiresDeposit?: string): number | undefined {
+  if (requiresDeposit === 'metals') return DEPOSIT.metals;
+  if (requiresDeposit === 'minerals') return DEPOSIT.minerals;
+  if (requiresDeposit === 'oil') return DEPOSIT.oil;
+  return undefined;
 }
 
 export interface EvaluatePlacementGhostOptions {
@@ -69,6 +77,7 @@ function scanFootprintTiles(
   const coveredDepositIndices: number[] = [];
   let hasOutOfBounds = false, hasImpassable = false, hasOccupied = false, terrainBlock: GeoBlock | null = null;
 
+  const reqDepCode = depositCodeForRequired(requiresDeposit);
   const minQ = -Math.floor((w - 1) / 2), minR = -Math.floor((d - 1) / 2);
   for (let dr = 0; dr < d; dr++) {
     for (let dq = 0; dq < w; dq++) {
@@ -83,7 +92,7 @@ function scanFootprintTiles(
         // One rule with the host (D-37): trees, rock, slope, hole, water, ridge: terraform first.
         terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any');
         if (terrain === TERRAIN.deep || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
-        if (requiresDeposit === 'metals' && deposit === DEPOSIT.metals) coveredDepositIndices.push(tileIdx);
+        if (reqDepCode !== undefined && (deposit === reqDepCode || (reqDepCode === DEPOSIT.metals && deposit === DEPOSIT.minerals))) coveredDepositIndices.push(tileIdx);
       }
       const prepOp = tilesData ? getTilePrepOp(terrain, prep) : undefined;
       if (prepOp) prepBill[prepOp] = (prepBill[prepOp] ?? 0) + 1;
@@ -114,8 +123,8 @@ function evaluateValidity(
   if (hasImpassable) return { valid: false, statusColor: 'red', reason: 'impassable terrain', depositCovered: false };
   if (hasOccupied) return { valid: false, statusColor: 'red', reason: 'tile occupied', depositCovered: false };
   if (terrainBlock) return { valid: false, statusColor: 'red', reason: GEO_BLOCK_TEXT[terrainBlock], depositCovered: false };
-  if (requiresDeposit === 'metals') {
-    if (depositCount === 0) return { valid: false, statusColor: 'red', reason: 'must cover a metals deposit', depositCovered: false };
+  if (requiresDeposit === 'metals' || requiresDeposit === 'minerals' || requiresDeposit === 'oil') {
+    if (depositCount === 0) return { valid: false, statusColor: 'red', reason: depositReasonText('', requiresDeposit), depositCovered: false };
     return { valid: true, statusColor: 'green', reason: 'valid site', depositCovered: true };
   }
   return { valid: true, statusColor: 'green', reason: 'valid site', depositCovered: false };
@@ -162,8 +171,9 @@ function findValidPlacementSite(
       if (dist > searchR) continue;
       const st = evaluatePlacementGhost({ ...base, q: cq + dq, r: cr + dr }, ctx);
       if (!st.valid || st.tiles.some((t) => avoidIndices.has(t.tileIdx))) continue;
-      const anchorDep = st.tiles[0]?.deposit === DEPOSIT.metals ? 0 : 1;
-      const depPenalty = st.requiresDeposit === 'metals'
+      const reqCode = depositCodeForRequired(st.requiresDeposit);
+      const anchorDep = reqCode !== undefined && st.tiles[0]?.deposit === reqCode ? 0 : 1;
+      const depPenalty = reqCode !== undefined
         ? anchorDep * 20 - st.depositTileIndices.length * 4
         : st.tiles.filter((t) => t.deposit !== DEPOSIT.none).length * 50;
       const score = depPenalty + dist * 4 + Math.abs(dr) * 0.1 + Math.abs(dq) * 0.05;
@@ -241,11 +251,11 @@ export class PlacementGhostController implements Disposable {
     this.element.onclick = (e) => {
       const target = e?.target as HTMLElement | null;
       if (target?.closest?.('.ta-placement-ghost__cancel')) return;
-      if (this.state?.valid) this.confirm();
+      this.confirm();
     };
 
     this.onKeyDown = (e: KeyboardEvent) => this.handleKeyDown(e);
-    this.onContextMenu = (e: MouseEvent) => { if (this.activeBuilding) { e.preventDefault?.(); this.cancel(); } };
+    this.onContextMenu = (e: MouseEvent) => { if (this.activeBuilding && !isGameInputBlocked()) { e.preventDefault?.(); this.cancel(); } };
     if (typeof window !== 'undefined') {
       window.addEventListener('keydown', this.onKeyDown, { capture: true });
       window.addEventListener('contextmenu', this.onContextMenu);
@@ -274,7 +284,7 @@ export class PlacementGhostController implements Disposable {
         if (e.button === 0 && this.activeBuilding) {
           const coord = resolvePointerTile(e, this.opts.ctx.services.pickTile);
           if (coord) this.setHoverTile(coord.q, coord.r);
-          if (this.state?.valid) this.confirm();
+          this.confirm();
         }
       },
       context: () => { if (this.activeBuilding) this.cancel(); },
@@ -321,7 +331,8 @@ export class PlacementGhostController implements Disposable {
       const { base, ctx } = this.ghostInputs(this.activeBuilding, effView);
       const direct = evaluatePlacementGhost({ ...base, q, r }, ctx);
       const hoverIdx = ctx.hIndex.indexOf(q, r);
-      if (!direct.valid && direct.requiresDeposit === 'metals' && hoverIdx >= 0 && tilesData.deposit[hoverIdx] === DEPOSIT.metals) {
+      const reqCode = depositCodeForRequired(direct.requiresDeposit);
+      if (!direct.valid && reqCode !== undefined && hoverIdx >= 0 && tilesData.deposit[hoverIdx] === reqCode) {
         for (const [aq, ar] of [[q - 1, r], [q, r - 1], [q - 1, r - 1]]) {
           if (evaluatePlacementGhost({ ...base, q: aq, r: ar }, ctx).valid) {
             this.hoverQ = aq;
@@ -348,7 +359,11 @@ export class PlacementGhostController implements Disposable {
   }
 
   confirm(): boolean {
-    if (!this.activeBuilding || !this.state || !this.state.valid) return false;
+    if (!this.activeBuilding || !this.state) return false;
+    if (!this.state.valid) {
+      this.opts.ctx.services.hudMin?.showToast(`Cannot build here: ${this.state.reason}`, 'warning', 5000, 'placement-invalid');
+      return false;
+    }
     const { building, q, r, rotation, tiles } = this.state;
     for (const t of tiles) if (t.tileIdx >= 0) this.pendingIndices.add(t.tileIdx);
     this.opts.ctx.services.sendCommand?.('enqueueTask', { task: { kind: 'build', building, q, r, rotation } });
@@ -368,7 +383,8 @@ export class PlacementGhostController implements Disposable {
 
   private evaluate(): void {
     if (!this.activeBuilding) { this.state = null; return; }
-    const { base, ctx } = this.ghostInputs(this.activeBuilding, this.resolveEffectiveView());
+    const effView = this.resolveEffectiveView();
+    const { base, ctx } = this.ghostInputs(this.activeBuilding, effView);
     this.state = evaluatePlacementGhost({ ...base, q: this.hoverQ, r: this.hoverR }, ctx);
     this.renderState(this.state);
   }
@@ -381,9 +397,9 @@ export class PlacementGhostController implements Disposable {
     this.headTitle.textContent = state.label;
     this.headFootprint.textContent = `${state.footprintText} · rot ${state.rotation} [R]`;
 
-    if (state.requiresDeposit === 'metals') {
+    if (state.requiresDeposit === 'metals' || state.requiresDeposit === 'minerals' || state.requiresDeposit === 'oil') {
       if (this.depositBadge.style) this.depositBadge.style.display = '';
-      this.depositBadge.textContent = state.depositCovered ? 'Deposit covered ✔' : 'must cover a metals deposit';
+      this.depositBadge.textContent = state.depositCovered ? 'Deposit covered ✔' : depositReasonText(state.building, state.requiresDeposit);
       this.depositBadge.setAttribute('data-covered', String(state.depositCovered));
     } else {
       if (this.depositBadge.style) this.depositBadge.style.display = 'none';

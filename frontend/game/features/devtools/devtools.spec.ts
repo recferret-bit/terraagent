@@ -3,10 +3,10 @@ import type { FeatureContext } from '../../core/registry';
 import type { CommandResult } from '../../net/commandBus';
 import { CommandRunner } from '../../dev/console/runner';
 import { DevServerError, hostUnavailableDevServer } from '../../net/devServer';
-import devtools, { devtoolsW02 } from './index';
+import devtools, { devtoolsW02, devtoolsW03 } from './index';
 
 const run = async (line: string, services: Partial<FeatureContext['services']>, host: FeatureContext['host'] = 'server') => {
-  const r = await new CommandRunner([devtools, devtoolsW02], { flags: new Set(['W00', 'W02']), host, services: services as FeatureContext['services'] }).run(line);
+  const r = await new CommandRunner([devtools, devtoolsW02, devtoolsW03], { flags: new Set(['W00', 'W02', 'W03']), host, services: services as FeatureContext['services'] }).run(line);
   return r?.kind === 'text' ? r.text : '';
 };
 const acking = (res: CommandResult = { ok: true, appliedAtTick: 42 }) => vi.fn(async () => res);
@@ -138,5 +138,30 @@ describe('devtools W02 commands', () => {
     expect(devtoolsW02.wave).toBe('W02');
     expect(devtoolsW02.devCommands?.map((c) => c.name).sort()).toEqual(['fill', 'power', 'skipnight', 'spawndeposit']);
     expect(devtools.devCommands?.some((c) => ['fill', 'skipnight', 'power', 'spawndeposit'].includes(c.name))).toBe(false);
+  });
+});
+
+describe('devtools W03 commands', () => {
+  it('setWind, drainFuel, addLoad, and damage send their respective W03 dev.* commands', async () => {
+    const sendCommand = acking();
+    expect(await run('setWind 120', { sendCommand })).toBe('dev.setwind ok, applied at tick 42');
+    expect(sendCommand).toHaveBeenLastCalledWith('dev.setwind', { pct: 120 });
+
+    expect(await run('setwind 50', { sendCommand })).toBe('dev.setwind ok, applied at tick 42');
+    expect(sendCommand).toHaveBeenLastCalledWith('dev.setwind', { pct: 50 });
+
+    expect(await run('drainFuel', { sendCommand })).toBe('dev.drainfuel ok, applied at tick 42');
+    expect(sendCommand).toHaveBeenLastCalledWith('dev.drainfuel', {});
+
+    expect(await run('addLoad 90', { sendCommand })).toBe('dev.addload ok, applied at tick 42');
+    expect(sendCommand).toHaveBeenLastCalledWith('dev.addload', { loadPerS: 90 });
+
+    expect(await run('addLoad 90 12', { sendCommand })).toBe('dev.addload ok, applied at tick 42');
+    expect(sendCommand).toHaveBeenLastCalledWith('dev.addload', { loadPerS: 90, entityId: 12 });
+
+    expect(await run('damage 7 60', { sendCommand })).toBe('dev.damage ok, applied at tick 42');
+    expect(sendCommand).toHaveBeenLastCalledWith('dev.damage', { entityId: 7, pct: 60 });
+
+    expect(devtoolsW03.wave).toBe('W03');
   });
 });

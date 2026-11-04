@@ -1,3 +1,4 @@
+import { STAGE_BUILDING_ROWS } from './stageRows';
 import type { FlagSet } from '@terra/contracts';
 import { ENTITY_KIND, evaluateTradeHubUnlock, type CompiledDataLike, formatUnlockAtTooltip, getItemUnlockStage, getStageSpec, TICK_MS } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
@@ -8,8 +9,15 @@ export type BuildingKind =
   | 'commandHub'
   | 'metalsExtractor'
   | 'solar'
-  | 'builder'
   | 'pylon'
+  | 'capacitor'
+  | 'wind'
+  | 'thermal'
+  | 'supplyDepot'
+  | 'mineralsQuarry'
+  | 'waterExtractor'
+  | 'petroleumWell'
+  | 'builder'
   | 'depot'
   | 'roboticsFactory'
   | 'turret'
@@ -53,104 +61,35 @@ function toFlagSet(flags: ReadonlySet<string> | FlagSet): FlagSet {
 
 const LABELS: Record<string, string> = {
   commandHub: 'Command Hub',
-  metalsExtractor: 'Metals Extractor',
+  metalsExtractor: 'Resource Extractor',
   solar: 'Solar Collector Array',
   builder: 'Builder',
-  pylon: 'Pylon',
   depot: 'Depot',
   roboticsFactory: 'Robotics Factory',
   turret: 'Turret',
   outpostBeacon: 'Outpost Beacon',
   tradeHub: 'Trade Hub',
+  pylon: 'Power Pylon',
+  capacitor: 'Capacitor Bank',
+  wind: 'Wind Turbine',
+  thermal: 'Thermal Plant',
+  supplyDepot: 'Supply Depot',
+  mineralsQuarry: 'Minerals Quarry',
+  waterExtractor: 'Water Extractor',
+  petroleumWell: 'Petroleum Well',
 };
 
-const STAGE_BUILDING_ROWS: readonly Record<string, unknown>[] = [
-  {
-    id: 'builder',
-    building: 'builder',
-    label: 'Builder',
-    tier: 1,
-    unlockStage: 2,
-    footprintW: 1,
-    footprintD: 1,
-    designBuildS: 12,
-    cost: { 'metals.t1': 55, 'minerals.t1': 25, 'bio.biomass': 10, 'bio.water': 0 },
-    powerDrainPerS: 2,
-  },
-  {
-    id: 'pylon',
-    building: 'pylon',
-    label: 'Pylon',
-    tier: 1,
-    unlockStage: 2,
-    footprintW: 1,
-    footprintD: 1,
-    designBuildS: 6,
-    cost: { 'metals.t1': 20, 'minerals.t1': 15, 'bio.biomass': 0, 'bio.water': 0 },
-    powerDrainPerS: 0,
-  },
-  {
-    id: 'depot',
-    building: 'depot',
-    label: 'Depot',
-    tier: 1,
-    unlockStage: 2,
-    footprintW: 2,
-    footprintD: 2,
-    designBuildS: 16,
-    cost: { 'metals.t1': 80, 'minerals.t1': 40, 'bio.biomass': 0, 'bio.water': 0 },
-    powerDrainPerS: 2,
-  },
-  {
-    id: 'roboticsFactory',
-    building: 'roboticsFactory',
-    label: 'Robotics Factory',
-    tier: 1,
-    unlockStage: 3,
-    footprintW: 3,
-    footprintD: 3,
-    designBuildS: 25,
-    cost: { 'metals.t1': 150, 'minerals.t1': 100, 'bio.biomass': 25, 'bio.water': 25 },
-    powerDrainPerS: 8,
-  },
-  {
-    id: 'turret',
-    building: 'turret',
-    label: 'Turret',
-    tier: 1,
-    unlockStage: 3,
-    footprintW: 1,
-    footprintD: 1,
-    designBuildS: 12,
-    cost: { 'metals.t1': 70, 'minerals.t1': 40, 'bio.biomass': 0, 'bio.water': 0 },
-    powerDrainPerS: 4,
-  },
-  {
-    id: 'outpostBeacon',
-    building: 'outpostBeacon',
-    label: 'Outpost Beacon',
-    tier: 1,
-    unlockStage: 4,
-    footprintW: 1,
-    footprintD: 1,
-    designBuildS: 15,
-    cost: { 'metals.t1': 90, 'minerals.t1': 60, 'bio.biomass': 0, 'bio.water': 0 },
-    powerDrainPerS: 3,
-  },
-  {
-    id: 'tradeHub',
-    building: 'tradeHub',
-    label: 'Trade Hub',
-    tier: 1,
-    unlockStage: 4,
-    footprintW: 2,
-    footprintD: 2,
-    designBuildS: 20,
-    cost: { 'metals.t1': 120, 'minerals.t1': 80, 'bio.biomass': 20, 'bio.water': 20 },
-    powerDrainPerS: 5,
-  },
-];
+const numField = (row: Record<string, unknown>, key: string): number =>
+  typeof row[key] === 'number' && Number.isFinite(row[key]) ? (row[key] as number) : 0;
 
+/** Generator net at full output (E/s): `grossOutputPerS − internalDrainPerS` when the row has a gross, else `netOutputPerS`. */
+function generatorNet(row: Record<string, unknown>): number {
+  const gross = numField(row, 'grossOutputPerS');
+  if (gross > 0) return Number((gross - numField(row, 'internalDrainPerS')).toFixed(2));
+  return numField(row, 'netOutputPerS');
+}
+
+/** A card's power line, read from its balance row (`founderCoreGenPerS`, `powerDrainPerS`, gross / net, `capacityE`). */
 export function resolveColonyUnlockStage(view?: GameView, colonyIndex = 0): number | undefined {
   if (!view) return undefined;
   const v = view as {
@@ -193,15 +132,19 @@ function resolveRowUnlockStage(row: Record<string, unknown>): number {
 }
 
 function formatPower(row: Record<string, unknown>): string {
-  const gen = typeof row.founderCoreGenPerS === 'number' ? row.founderCoreGenPerS : 0;
-  const drain = typeof row.powerDrainPerS === 'number' ? row.powerDrainPerS : 0;
-  const net = typeof row.netOutputPerS === 'number' ? row.netOutputPerS : 0;
+  const gen = numField(row, 'founderCoreGenPerS');
+  const drain = numField(row, 'powerDrainPerS');
+  const net = generatorNet(row);
+  const capE = numField(row, 'capacityE');
 
   if (gen > 0 && drain > 0) {
     return `+${gen} / −${drain} E/s`;
   }
   if (net > 0) {
     return `+${net} E/s`;
+  }
+  if (capE > 0 && drain > 0) {
+    return `−${drain} E/s · ${capE} E`;
   }
   if (drain > 0) {
     return `−${drain} E/s`;
@@ -343,10 +286,20 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
 
   const econTable = data.tables['economyT1Basic'];
   if (econTable) {
-    const buildingRows = Object.values(econTable).filter((r) => r.kind === 'building');
+    const buildingRows = Object.values(econTable).filter((r) => r.kind === 'building' && r.building !== 'mineralsQuarry');
     for (const row of buildingRows) {
       candidateRows.push(row as Record<string, unknown>);
       seenBuildings.add(String(row.building));
+    }
+  }
+
+  const gridTable = data.tables['grid'];
+  if (gridTable) {
+    const gridBuildingRows = Object.values(gridTable).filter((r) => r.kind === 'building' && r.building !== 'mineralsQuarry');
+    for (const row of gridBuildingRows) {
+      candidateRows.push(row as Record<string, unknown>);
+      seenBuildings.add(String(row.building));
+      if (row.building === 'supplyDepot') seenBuildings.add('depot');
     }
   }
 

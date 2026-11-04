@@ -70,8 +70,8 @@ describe('W02-30 dev.time and dev.skipnight', () => {
     const initialPower = getColonyPower(state, 0);
     expect(initialPower.phase).toBe('day');
     expect(initialPower.daylight).toBe(1);
-    expect(initialPower.solarGrossPerS).toBe(21);
-    expect(initialPower.solarNetPerS).toBe(20);
+    expect(initialPower.solarGrossPerS).toBe(14);
+    expect(initialPower.solarNetPerS).toBe(13);
 
     // dev.time -> 18:00
     const res = step(state, [cmd('dev.time', { target: '18:00' })], 1, pipeline);
@@ -90,7 +90,7 @@ describe('W02-30 dev.time and dev.skipnight', () => {
     expect(nightPower.solarNetPerS).toBe(-1);
   });
 
-  it('skipnight jumps back to 06:00 sunrise (daylight = 1.0, solarGross = 21, solarNet = 20)', () => {
+  it('skipnight jumps back to 06:00 sunrise (daylight = 1.0, solarGross = 14, solarNet = 13)', () => {
     const { state, pipeline } = createSetup();
 
     // First jump to night 18:00
@@ -110,8 +110,8 @@ describe('W02-30 dev.time and dev.skipnight', () => {
     expect(morningPower.phase).toBe('day');
     expect(morningPower.clockText).toBe('06:00');
     expect(morningPower.daylight).toBe(1);
-    expect(morningPower.solarGrossPerS).toBe(21);
-    expect(morningPower.solarNetPerS).toBe(20);
+    expect(morningPower.solarGrossPerS).toBe(14);
+    expect(morningPower.solarNetPerS).toBe(13);
   });
 });
 
@@ -158,12 +158,12 @@ describe('W02-30 dev.fill and dev.power', () => {
     expect(dumpEvent?.data).toMatchObject({
       colonyIndex: 0,
       hasHub: true,
-      founderCorePerS: 8,
-      solarGrossPerS: 21,
-      solarNetPerS: 20,
-      supply: 28,
-      demand: 5,
-      net: 23,
+      founderCorePerS: 16,
+      solarGrossPerS: 14,
+      solarNetPerS: 13,
+      supply: 29,
+      demand: 7,
+      net: 22,
       brownout: false,
     });
   });

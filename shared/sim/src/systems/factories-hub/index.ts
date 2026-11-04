@@ -1,5 +1,5 @@
 import type { ResourceKey } from '@terra/contracts';
-import { CANCEL_REFUND_RATE, compileData, dataRow, type CompiledRow } from '../../data';
+import { CANCEL_REFUND_RATE } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
@@ -14,10 +14,38 @@ import { defineSimModule } from '../define';
 import { checkCostAffordability, ensureColonyLedger, payProgressiveSlice, refundCost } from '../economy/ledger';
 import { colonyWho } from '../find';
 import { revealVision } from '../hq';
+import { checkUnitSupply, syncColonySupply } from '../supply';
+import {
+  buildBuilderView,
+  builderJobFromState,
+  defaultHubData,
+  resolveBuilderRow,
+  resolveHubProducerRows,
+  resolveUnitRowForHub,
+  spawnBuilderUnit,
+  syncBuilderView,
+  type BuilderJob,
+  type BuilderUnitView,
+  type SpawnBuilderOpts,
+} from './unit';
+
+export {
+  buildBuilderView,
+  builderJobFromState,
+  defaultHubData,
+  resolveBuilderRow,
+  resolveHubProducerRows,
+  resolveUnitRowForHub,
+  spawnBuilderUnit,
+  syncBuilderView,
+  type BuilderJob,
+  type BuilderUnitView,
+  type SpawnBuilderOpts,
+};
 
 export interface HubUnitQueueEntry {
   taskId: string;
-  unit: 'harvester';
+  unit: 'harvester' | 'builder';
   colonyIndex: number;
   producerId?: number;
   count: number;
@@ -37,29 +65,6 @@ export interface HubUnitQueueEntry {
   spawnedEntityIds: number[];
 }
 
-export interface ColonySupplySummary {
-  used: number;
-  activeUnits: number;
-  inProgressSupply: number;
-  cap: number;
-  available: number;
-}
-
-let cachedData: CompiledDataLike | null = null;
-function defaultData(): CompiledDataLike {
-  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02']));
-  return cachedData;
-}
-
-export function resolveHubProducerRows(data?: CompiledDataLike): { harvester: CompiledRow; hubProd: CompiledRow; hub: CompiledRow } {
-  const d = data?.tables?.unitsWorkersBasic ? data : defaultData();
-  return {
-    harvester: dataRow(d, 'unitsWorkersBasic', 'harvester'),
-    hubProd: dataRow(d, 'unitsWorkersBasic', 'hubProduction'),
-    hub: dataRow(d, 'hub', 't1'),
-  };
-}
-
 function ensureColony(state: PlanetState, colonyIndex: number, tick: number): ColonyState {
   let col = state.colonies[colonyIndex];
   if (!col) {
@@ -67,35 +72,6 @@ function ensureColony(state: PlanetState, colonyIndex: number, tick: number): Co
     state.colonies[colonyIndex] = col;
   }
   return ensureColonyLedger(col);
-}
-
-/** Computes current unit supply usage and cap (`10` from Hub T1) for `colonyIndex`. */
-export function getColonySupply(
-  state: PlanetState,
-  colonyIndex = 0,
-  entries: readonly HubUnitQueueEntry[] = [],
-  data?: CompiledDataLike,
-): ColonySupplySummary {
-  const { harvester, hubProd, hub } = resolveHubProducerRows(data);
-  const unitSupply = Number(harvester.supply ?? 1);
-  const e = state.entities, cols = e.cols;
-  let activeUnits = 0;
-  let hubCount = 0;
-
-  for (let row = 0; row < e.count; row++) {
-    if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
-    if (cols.kind[row] === ENTITY_KIND.harvester) activeUnits += unitSupply;
-    else if (cols.kind[row] === ENTITY_KIND.commandHub && cols.state[row] !== ENTITY_STATE.constructing) hubCount++;
-  }
-
-  const inProgressSupply = entries
-    .filter((en) => en.colonyIndex === colonyIndex && en.state === 'in_progress')
-    .reduce((sum) => sum + unitSupply, 0);
-
-  const baseCap = Number(hub.supplyCap ?? hubProd.baseSupplyCap ?? 10);
-  const cap = hubCount > 0 ? hubCount * baseCap : baseCap;
-  const used = activeUnits + inProgressSupply;
-  return { used, activeUnits, inProgressSupply, cap, available: Math.max(0, cap - used) };
 }
 
 function getAllEntries(state: PlanetState): HubUnitQueueEntry[] {
@@ -121,8 +97,8 @@ function saveAllEntries(state: PlanetState, entries: HubUnitQueueEntry[], tick: 
     const col = ensureColony(state, idx, tick);
     const colEntries = entries.filter((en) => en.colonyIndex === idx && en.state !== 'done' && en.state !== 'cancelled');
     col.unitQueue = colEntries;
-    col.supply = getColonySupply(state, idx, colEntries, data);
     col.changedAt = tick;
+    syncColonySupply(state, idx, tick, data);
   }
 }
 
@@ -211,9 +187,20 @@ export function spawnHarvesterAtHubEdge(state: PlanetState, colonyIndex: number,
   return { entityId: id, q: pos.q, r: pos.r };
 }
 
+export function spawnBuilderAtHubEdge(state: PlanetState, colonyIndex: number, tick: number, data?: CompiledDataLike, ctx?: StepContext): { entityId: number; q: number; r: number } {
+  const pos = findHubEdgeSpawnTile(state, colonyIndex, data);
+  const entityId = spawnBuilderUnit(state, { owner: colonyIndex, q: pos.q, r: pos.r, tick, data }, ctx);
+  return { entityId, q: pos.q, r: pos.r };
+}
+
+export function produceBuilderAtHubEdge(state: PlanetState, colonyIndex: number, ctx: StepContext): { entityId: number; q: number; r: number } {
+  const spawned = spawnBuilderAtHubEdge(state, colonyIndex, ctx.tick, ctx.data, ctx);
+  const { colonyIdStr, who } = colonyWho(state, colonyIndex);
+  ctx.emit({ kind: 'unitProduced', colonyIds: [colonyIdStr], data: { ...who, entityId: spawned.entityId, unit: 'builder', q: spawned.q, r: spawned.r } });
+  return spawned;
+}
+
 function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueEntry[], colonyIndex: number, tick: number, data?: CompiledDataLike): void {
-  const { harvester } = resolveHubProducerRows(data);
-  const unitSupply = Number(harvester.supply ?? 1);
   const colony = ensureColony(state, colonyIndex, tick);
   const stock = colony.stock as Record<string, number>;
   const totalStock = Object.values(stock).reduce((a, b) => a + b, 0);
@@ -224,8 +211,7 @@ function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueE
     if (entry.colonyIndex !== colonyIndex || entry.state === 'done' || entry.state === 'cancelled' || entry.state === 'in_progress') {
       continue;
     }
-    const supply = getColonySupply(state, colonyIndex, entries, data);
-    if (supply.used + unitSupply > supply.cap) {
+    if (!checkUnitSupply(state, colonyIndex, entry.unit, data, { pending: { hub: entries }, excludeTaskId: entry.taskId }).ok) {
       entry.state = 'waiting';
       entry.waitReason = 'supply';
       entry.waitDetail = 'waiting(supply)';
@@ -274,7 +260,7 @@ function refreshColonyUnitQueueStates(state: PlanetState, entries: HubUnitQueueE
 
 export interface EnqueueHubUnitOptions {
   colonyIndex?: number;
-  unit?: 'harvester';
+  unit?: 'harvester' | 'builder' | string;
   count?: number;
   repeat?: boolean;
   producerId?: number;
@@ -283,14 +269,19 @@ export interface EnqueueHubUnitOptions {
   data?: CompiledDataLike;
 }
 
-/** Enqueues a Harvester unit production order at the Command Hub's Units lane (5-slot buffer, 1.0x rate, paid progressively as it builds). */
+/** Enqueues a unit production order (`harvester` or `builder`) at the Command Hub's Units lane (paid progressively as it builds). */
 export function enqueueHubUnit(
   state: PlanetState,
   opts: EnqueueHubUnitOptions = {},
 ): { ok: true; entry: HubUnitQueueEntry; entries: HubUnitQueueEntry[] } | { ok: false; code: string; detail?: string } {
   const tick = opts.tick ?? state.meta.tick;
   const colonyIndex = opts.colonyIndex ?? 0;
-  const { harvester, hubProd } = resolveHubProducerRows(opts.data);
+  const unitName = opts.unit ?? 'harvester';
+  const unitRow = resolveUnitRowForHub(unitName, opts.data);
+  if (!unitRow || (unitName !== 'harvester' && unitName !== 'builder')) {
+    return { ok: false, code: 'invalid_args', detail: 'unknown unit' };
+  }
+  const { hubProd } = resolveHubProducerRows(opts.data);
   const entries = getAllEntries(state);
   const activeForColony = entries.filter((e) => e.colonyIndex === colonyIndex && e.state !== 'done' && e.state !== 'cancelled');
   const limit = Number(hubProd.unitsLaneLimit ?? 10);
@@ -299,12 +290,12 @@ export function enqueueHubUnit(
   }
 
   const count = Math.max(1, Math.floor(opts.count ?? 1));
-  const cost = { ...(harvester.cost as Record<ResourceKey, number>) };
-  const buildTicks = Math.max(1, Number(harvester.buildS ?? 50));
+  const cost = { ...(unitRow.cost as Record<ResourceKey, number>) };
+  const buildTicks = Math.max(1, Number(unitRow.buildS ?? (unitName === 'builder' ? 60 : 50)));
 
   const entry: HubUnitQueueEntry = {
     taskId: opts.taskId ?? `u-${colonyIndex}-${tick}-${entries.length + 1}`,
-    unit: 'harvester',
+    unit: unitName,
     colonyIndex,
     producerId: opts.producerId,
     count,
@@ -400,7 +391,9 @@ export const hubProductionSystem = defineSystem({
 
         while (active.state === 'in_progress' && active.elapsedTicks >= active.buildTicks - 1e-6) {
           const carry = Math.max(0, active.elapsedTicks - active.buildTicks);
-          const spawned = produceHarvesterAtHubEdge(state, colIdx, ctx);
+          const spawned = active.unit === 'builder'
+            ? produceBuilderAtHubEdge(state, colIdx, ctx)
+            : produceHarvesterAtHubEdge(state, colIdx, ctx);
           active.spawnedEntityIds.push(spawned.entityId);
 
           if (active.remainingCount > 1) {

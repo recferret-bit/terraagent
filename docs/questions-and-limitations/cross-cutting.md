@@ -24,7 +24,7 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Status:** Resolved (review-fix round 2026-11-01)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
-- **Area / code:** sim: `shared/sim/src/systems/construction/build.ts:45-50` (Hub cost 200/100/50/50), `shared/sim/src/systems/landing/index.ts:58` (cargo 600/350/200/200), `shared/sim/src/systems/construction/build.ts:227` and `index.ts:203` (`hp ?? 1500`), `shared/sim/src/systems/territory-claim/index.ts:77,135,137,139` (`claimRadius ?? 10`, `supplyCap ?? 10`, `?? 8`), `shared/sim/src/systems/hq/index.ts:294-296` (`?? 3`, `?? 20`, `?? 6`), `shared/sim/src/systems/terraform-basic/queue.ts:65-66` (`?? 3`, `?? 20`); client: `frontend/game/features/hud-min/MinimalHud.ts:107,110` (`cellMax ?? 800`), `frontend/game/features/landfall/selection.ts:179,181` (`?? 900`, `?? 800`), `frontend/game/features/hud-min/MinimalHud.ts:214,223,232` (`'0 / 500'` placeholders)
+- **Area / code:** sim: `shared/sim/src/systems/construction/build.ts:45-50` (Hub cost 200/100/50/50), `shared/sim/src/systems/landing/index.ts:58` (cargo 600/350/200/200), `shared/sim/src/systems/construction/build.ts:227` and `index.ts:203` (`hp ?? 1500`), `shared/sim/src/systems/territory-claim/index.ts:77,135,137,139` (`claimRadius ?? 10`, `supplyCap ?? 10` — removed, Resolved (47facdc): supply is computed by `systems/supply/` from `supplyProvided` rows —, `?? 8`), `shared/sim/src/systems/hq/index.ts:294-296` (`?? 3`, `?? 20`, `?? 6`), `shared/sim/src/systems/terraform-basic/queue.ts:65-66` (`?? 3`, `?? 20`); client: `frontend/game/features/hud-min/MinimalHud.ts:107,110` (`cellMax ?? 800`), `frontend/game/features/landfall/selection.ts:179,181` (`?? 900`, `?? 800`), `frontend/game/features/hud-min/MinimalHud.ts:214,223,232` (`'0 / 500'` placeholders)
 - **What happens:** the same balance values live in the data rows and as literal fallbacks. If a row is renamed or its field dropped, the code silently keeps running on the stale literal instead of failing, and a fallback cannot tell design units from compiled ticks (`landing/index.ts:70` `podDescentS ?? 30` is ticks, `queue.ts:65` `?? 3` is seconds). The client fallbacks show 800 / 900 even when the data says otherwise.
 - **Why it is like this:** defensive defaults for tests and for hosts started without W01 data.
 - **Workaround / mitigation:** all hosts load the W01 data, so the fallbacks are not reached in normal play.
@@ -460,3 +460,65 @@ docs vs code and repo hygiene. Area reviews live in the other files of this fold
 - **Workaround / mitigation:** game tests now transform their modules afresh. Test coverage and assertions are unchanged; startup is slower. Other projects retain their caches.
 - **To resolve:** re-enable only after a cache invalidation fix is verified with a feature directory added between consecutive runs.
 - **Found:** 2026-11-04, W12 landing gate after W10 merge.
+
+### XC-35 · W03 rows deferred past the hackathon cut
+
+- **Status:** Accepted (deferred, owner's hackathon cut)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `docs/plan/waves/W03-the-grid.md` ("Hackathon slice" and Issues table), `docs/plan/HACKATHON_CUT.md`
+- **What happens:** this landing builds the 15 H-tagged issues (`W03-01..03`, `W03-05..07`, `W03-10..13`, `W03-16..17`, `W03-19`, `W03-27`, `W03-29`). The H+ / post-hackathon rows are not in this landing:
+  - `W03-04`: worker assist (up to 4 workers on one construction job);
+  - `W03-08`, `W03-09`: Capacitor T1 discharge/charge and Wind Turbine T1 wind-factor curve (`grid.capacitor` and `grid.wind` data rows compile in `W03-01`, and `dev.setwind` exists from `W03-27`; step 5 of the demo story builds only the Supply Depot in the H slice);
+  - `W03-15`, `W03-25`, `W03-26`: `nightSurvived` event, Night Shift / Power Broker progression events, and `first_*` analytics events;
+  - `W03-18`, `W03-20`: power overlay (`P` toggle) + full power HUD shed list (steps 3, 6, 7 assert the synced power fields from `W03-16`) and building context action plate (manual Repair/Dismantle already work from the Terraform tab);
+  - `W03-21..24`, `W03-31`: validator fixes/animations for `building.pylon`, `building.capacitor`, `building.wind`, `building.coalGen`, `building.supplyDepot`, `building.waterPump`, new `building.quarry` / `building.petroleumWell` archetypes (existing kitbash models stand in), sagging power-line cables/sparks VFX, and W02-18..21 visuals;
+  - `W03-28`: 300-node grid perf benchmark and `npm run sim:bench`;
+  - `W03-30`: Petroleum Well T1 `bio.t2` runtime hook (needs W05-34's terraforming gate);
+  - `W03-32..37`: multi-builder dispatch cleanup, single Units-lane consolidation, depleted-extractor offline state, economy-row territory/refund rules, day-window cleanup, and harvest-weight slider UI.
+- **Why it is like this:** per `docs/plan/waves/W03-the-grid.md` ("Hackathon slice"), only the 15 `H` issues are in scope for this wave landing.
+- **Workaround / mitigation:** the 15 H issues and all `@hack` demo steps (steps 1–4, 5 Depot, 6 night + group shedding, 7 pylon branch overload, 8 Builder 1.5× auto-repair, 9 `waiting(storage)` + Build Depot button, 10 60 s earmark, plus `?waves=..02` DoD) are built and verified in `tests/e2e/w03.spec.ts`.
+- **To resolve:** build the H+ and post-hackathon rows in a later landing (`wave-03.2`) or their downstream waves.
+- **Found:** 2026-11-03, W03 landing
+
+### XC-36 · `/dev/chain/` probed `/v1/near/health` (W06-gated), breaking `w00.spec.ts` when `TA_WAVES` is below `W06`
+
+- **Status:** Resolved (W03 landing 2026-11-03)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `frontend/game/dev/explorer/gate.ts` (`nearHealthStatus`), `backend/app/src/near/infrastructure/dev/near-health.controller.ts`, `tests/e2e/w00.spec.ts` (Test 7), `tests/e2e/w06.spec.ts` (Test 7)
+- **What happens:** W02 (`58956ab`) updated `tests/e2e/harness/stack.ts` so `npm run e2e -- --waves ..NN` boots the backend with `TA_WAVES=..NN`. W06 (`91aad6d`) gated `/dev/chain/` on `GET /v1/near/health` (`NearHealthController`), which returns `404` whenever `W06` is not in `TA_WAVES`. Because `/dev/chain/` is a W00 feature (`W00-35`, tested by `w00.spec.ts` Test 7), running `npm run e2e -- --waves ..03` booted the backend with `TA_WAVES=..03`, causing `/v1/near/health` to return `404` and `/dev/chain/` to render `Off` during `w00.spec.ts`.
+- **Fix:** `nearHealthStatus` in `frontend/game/dev/explorer/gate.ts` now probes `/v1/dev/chain/receipts?limit=1` (W00's dev chain explorer endpoint, guarded by `DevOnlyGuard` in production) while `wavesExcludeW06(location.search)` continues to gate explicit `?waves=..05` URLs (`w06.spec.ts` Test 7).
+- **Found:** 2026-11-03, W03 merge with `main`
+
+### XC-37 · Dead balance rows after the W03 owner-feedback pass
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/data/ops-basic.ts` (`TERRAFORM_TIME_TABLE.dismantle`), `hq.t1.cellFastRechargeShedGroup`, `ColonyPowerSummary.hqFastRechargeShed`, `docs/game/colony-economy-and-buildings-spec.md` (still says "Power Line Pylon"), `docs/plan/ISSUE_INDEX.md` (W03-01 row)
+- **What happens:** `TERRAFORM_TIME_TABLE.dismantle` (60 ticks, 5 E) no longer drives anything (dismantle is a work job, GP-69) and `w02-resource-harvest-terraform.spec.ts:49` still asserts its shape; the fast-recharge shed fields are unused (GP-67); design docs still describe the removed Power Line path tool.
+- **Why it is like this:** Left to avoid widening the owner-feedback change.
+- **Workaround / mitigation:** —
+- **To resolve:** Remove the rows and fields, update the spec text.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### XC-38 · Fresh guest refresh rejection is expected in browser smoke checks
+
+- **Status:** Accepted (auth bootstrap)
+- **Area / code:** `tests/e2e/harness/helpers.ts`
+- **What happens:** A fresh browser without a refresh cookie receives HTTP 401 from `/v1/auth/refresh`, then the app creates a guest session. The browser console reports that HTTP rejection even though bootstrap succeeds.
+- **Why it is like this:** Session restoration precedes guest creation. The error collector ignores only this endpoint's 401; other HTTP errors and JavaScript exceptions still fail the test.
+- **Workaround / mitigation:** The W01 flow verifies that the authenticated game view arrives afterward.
+- **To resolve:** No runtime change required.
+- **Found:** 2026-11-04, merged W01 browser check.
+
+### XC-39 · Live map repaint batches include active workers
+
+- **Status:** Accepted (live simulation)
+- **Area / code:** `tests/e2e/w04.spec.ts`, `frontend/game/maps/rasterCache.spec.ts`
+- **What happens:** Adding one deposit in a running scenario can coincide with harvesting or exploration changes, so the next minimap update may repaint several tiles. An exact `dirtyTiles === 1` browser assertion depends on timing.
+- **Why it is like this:** Synced updates batch all changed tiles while the world continues running.
+- **Workaround / mitigation:** The browser check verifies new repaint work and fewer repaints than the full map. The stationary raster-cache unit fixture still requires exactly one repaint for one changed tile.
+- **To resolve:** No runtime change needed.
+- **Found:** 2026-11-04, post-landing main browser suite.

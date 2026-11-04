@@ -16,7 +16,12 @@ import { hasActiveWorkJobForWorker } from '../terraform-basic/workJobs';
  */
 const unlessOnWorkJob = (p: UnitWorkProvider): UnitWorkProvider => ({
   id: p.id,
-  propose: (u) => (hasActiveWorkJobForWorker(u.state, u.id) ? null : p.propose(u)),
+  propose: (u) => {
+    if (hasActiveWorkJobForWorker(u.state, u.id)) return null;
+    // Finish an active construction site before accepting another site's preparation.
+    if (p.id === linkedPrepProvider.id && u.record.current?.kind === 'build' && buildProvider.propose(u) === u.record.current) return null;
+    return p.propose(u);
+  },
 });
 
 /**

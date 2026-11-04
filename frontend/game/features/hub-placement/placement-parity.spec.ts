@@ -9,6 +9,7 @@ import {
   SimHost,
   snapshot,
   spawnHqUnit,
+  startBuildingConstruction,
   view,
   type BalanceOverrides,
   type CompiledDataLike,
@@ -106,5 +107,40 @@ describe('placement parity: second colony, an existing Hub, a colony without HQ 
     }
     expect(blocks.has('hubExists')).toBe(true);
     expect(blocks.has('noBuilder')).toBe(true);
+  });
+});
+
+describe('placement parity: W03 power zone (Hub, built pylon, queued pylon order)', () => {
+  it('client and host agree on every tile for a Solar and a Power Pylon, out-of-zone rejects included', () => {
+    const host = new SimHost(buildPipeline(parseWaves('..03').list, {}));
+    host.load(createPlanet({ id: 'pl', seed: 'parity-zone', type: 'flat', planetType: 'temperate', radius: 16 }));
+    spawnHqUnit(host.state, { owner: 0, q: -2, r: 3 });
+    const data: CompiledDataLike = host.pipeline.config.data;
+    startBuildingConstruction(host.state, { owner: 0, building: 'commandHub', q: 0, r: 0, instant: true, costOverride: {}, tick: 0 });
+    startBuildingConstruction(host.state, { owner: 0, building: 'pylon', q: 6, r: 0, instant: true, costOverride: {}, tick: 0 });
+    const order = { taskId: 'p-north', task: { kind: 'build', building: 'pylon', q: 0, r: -6 } };
+    host.submit({ colonyIndex: 0, source: 'player', commandId: 'p', kind: 'enqueueTask', args: order });
+    expect(host.step(1).outcomes[0]?.code).toBeUndefined();
+
+    const { view: wire } = packView(view(restore(snapshot(host.state, { forClient: true }))), true);
+    const clientWorld = ghostPlacementWorld(unpackView(wire));
+    const serverWorld = placementWorldFromState(host.state);
+    expect(clientWorld.plannedSites).toEqual(serverWorld.plannedSites);
+    const codes = new Set<string>();
+    const R = host.state.grid.radius;
+    for (const building of ['solar', 'wind', 'pylon']) {
+      for (let r = -R; r <= R; r++) {
+        for (let q = -R; q <= R; q++) {
+          if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) > R) continue;
+          const s = evaluatePlacement(serverWorld, { colonyId: 0, q, r, building, requireBuilder: false, data });
+          const c = evaluatePlacement(clientWorld, { colonyId: 0, q, r, building, requireBuilder: false, data });
+          expect([building, q, r, c.ok, c.code, c.block]).toEqual([building, q, r, s.ok, s.code, s.block]);
+          if (s.code) codes.add(s.code);
+        }
+      }
+    }
+    expect(codes.has('outside_power_zone')).toBe(true);
+    // the queued pylon at (0, -6) extends the zone on both sides
+    expect(evaluatePlacement(clientWorld, { colonyId: 0, q: 0, r: -10, building: 'solar', requireBuilder: false, data }).ok).toBe(true);
   });
 });

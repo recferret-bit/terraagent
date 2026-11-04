@@ -42,3 +42,5 @@ Several files describe the earlier multi-service design that decision D-24 simpl
 The short, enforced version of these rules is in [`AGENTS.md`](../AGENTS.md) and the skills under [`.agents/skills/`](../.agents/skills).
 
 Progression: [W12 persistence, configurable achievement rules and durable effect delivery](spec/PROGRESSION_ENGINE.md).
+
+- [Hive fauna — W07 implementation contract](./game/fauna-hives-spec.md): species, behavior, online replay and playground gates.

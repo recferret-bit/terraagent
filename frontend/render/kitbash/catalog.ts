@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { SELECTION_PULSE } from '../visuals/unified/selectionPulse';
 import '../visuals/biomes';
 import { getDayNightParams } from '../core/dayNightConfig';
 import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
@@ -152,7 +153,7 @@ export interface ArchetypeMesh extends THREE.Mesh {
 
 /** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind) and optional deposit stage. */
 export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
-  const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD] });
+  const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD, SELECTION_PULSE] });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
   const geometry = ArchetypeCatalog.getGeometry(id, stage);
@@ -248,6 +249,8 @@ export function stripBuildingPlinth(mesh: THREE.Object3D): void {
   }
   newGeo.computeBoundingBox();
   newGeo.computeBoundingSphere();
+  // How far the model moved down (model-space anchors such as the grid cable insulators subtract it).
+  newGeo.userData = { stripOffsetY: Number.isFinite(minY) && minY > 0 ? minY : 0 };
   m.geometry = newGeo;
   oldGeo.dispose();
   const u = (m.userData as any)?.uniforms;

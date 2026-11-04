@@ -595,7 +595,7 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 
 ### GP-51 · HQ fast recharge: suspended in a group-3 brownout now, but never counted as grid load
 
-- **Status:** Question for the owner (suspension: Resolved (2f1f2c1))
+- **Status:** Resolved (7e901d5): the HQ cell is now the grid's first store; the fast recharge is paid from grid surplus only (a surplus sink, never a load), so `hqFastRechargeShed`, `cellFastRechargeShedGroup` and the `hqFastRecharge` shed category are unused (see GP-67)
 - **Severity:** medium
 - **Confidence:** CONFIRMED
 - **Area / code:** `shared/sim/src/systems/hq/cell.ts` (`rechargePerTick`, `fastRechargeShed`), `shared/sim/src/systems/power-core/shedding.ts` (`hqFastRechargeShed`), `hq.t1.cellFastRechargeShedGroup`; `UO-HQ-06`, W01-11, W02-06
@@ -781,3 +781,152 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** active goals show action/wait reasons. Spend full storage, supply missing resources, clear a valid site or cancel a blocked goal. Automatic harvesters follow the active resource goal without changing saved weights; manual assignments remain authoritative. Goals no longer create a fallback metals deposit in the live world.
 - **To resolve:** owning waves must implement the acceptance tests and tutorial chain in the progression contract, including storage growth, actual positive night output, Water extraction, finite-resource/reachability handling and budget ceilings (W08-20, still deferred). Current budget values remain metadata, not enforced spending ceilings.
 - **Found:** 2026-11-03, W08 owner fixes. Supersedes GP-66's claim that unfinished goals are intentionally queueable.
+
+### GP-68 · The HQ cell is the grid's first energy store (night brownout fix)
+
+- **Status:** Accepted (by design, 7e901d5)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/power-core/hqCell.ts`, `evaluate.ts`, `shared/sim/src/systems/hq/cell.ts` (`hqCellGridLinked`), `hq.t1.cellGridDischargePerS`
+- **What happens:** Owner report: "all works by day, all dies at night". The grid only used Capacitor Banks as storage and ignored the HQ cell, so at sunset group 3 was shed at once. Now, in the Hub's component, a deficit draws the HQ cell first (≤ 30 E/s), then the banks; surplus refills the cell first (≤ 20 E/s within 6 tiles of the Hub, else 3 E/s), then the banks. Shedding starts only when the stores can't cover the deficit. Once a Hub is built the free HQ self-recharge stops (it would be a free generator); with a deficit and an empty cell, HQ terraform progress drops to 0 — the 3 E/s trickle remains only before the Hub.
+- **Why it is like this:** A store that sits in the top bar should be the store the grid uses; the order cell → banks keeps the visible chip honest.
+- **Workaround / mitigation:** `cell <n>` sets it; the hover shows `Stored: ±N E/s`.
+- **To resolve:** Owner: confirm the order and the 30 / 20 / 3 E/s caps.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-69 · Energy retune: founder core 16 instead of a bigger cell
+
+- **Status:** Question for the owner
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** data rows `shared/sim/src/data/hub.ts`, `grid.ts`, `economy-t1-basic.ts`, `units-workers-basic.ts`, `hq.ts`
+- **What happens:** Owner feedback #3 ("too much energy"): every consumer costs more (Extractor −8, Quarry −10, Water −9, Well −12, Depot −3, Capacitor −2, Pylon −2.5, Harvester −2/−1, Builder −3; Solar net 13, Wind 12). To keep the W03 start alive through most of a night with the 800 E cell, the Hub founder core rose from +8 to +16 (drain −5 → −7). W03 start: day net about +10, night about −3 (cell lasts ~267 s with working Harvesters, the whole night when they idle); one more Extractor + Quarry browns out in under a minute at night. The W02 night-brownout demo no longer happens with one Extractor (+1 at night).
+- **Why it is like this:** The alternative, a bigger `hq.t1.cellCapacity`, needs the scenarios' hard-coded `cell` / `cellMax` changed too.
+- **Workaround / mitigation:** All numbers are data rows and `tune`-able.
+- **To resolve:** Owner: keep founder 16, or lower it and raise the cell capacity. Also: the `hqFastRechargeShed` / `cellFastRechargeShedGroup` fields are dead and `docs/game/colony-economy-and-buildings-spec.md` §2.2 ("fast recharge counts as group-3 load") is outdated — remove both.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-70 · Power zones: rule, radii and what counts
+
+- **Status:** Question for the owner (radii)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/construction/powerZone.ts`, `placement.ts` (`evaluatePlacement`), `power-core/graph.ts`; `hub.t1.powerZoneRadius` 6, `grid.pylon.powerZoneRadius` 5
+- **What happens:** Owner feedback #4 (Protoss-style pylons): with the W03 grid on (gated on the `grid.pylon` row) every building except the Command Hub must have its whole footprint inside the union of zones, else `outside_power_zone`; pylons too, which is how the network extends. Built, under-construction and queued pylons count for placement (so a chain can be queued in one go), only built ones power, so a building in an unfinished pylon's zone shows `offline: no grid` until it finishes. Cancelling or losing a Hub or pylon strands the buildings in its zone: unstarted orders wait `site (outside the power zone)`, built ones go `offline: no grid`, nothing is removed. W02-only planets place anywhere as before. `enqueueQueueTask` without `data` (internal / tests) skips the check at enqueue; it runs again when the order starts. The graph fallback "no Hub and no relays → everything powered" remains, reachable only through scenario / dev spawns.
+- **Why it is like this:** One field per source replaced `pylonSpan`, `attachRadius` and `dayCycle.pylonAttachRadius`; the graph uses the same zones so anything placeable is powered once its relays are built.
+- **Workaround / mitigation:** The zone is drawn while a building ghost is armed.
+- **To resolve:** Owner: tune the radii (6 / 5 picked by the agent).
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-71 · Dismantle is a timed work job; open details
+
+- **Status:** Accepted (by design, 7795d3d)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/terraform-basic/dismantleAndWork.ts`, the dismantle job files next to it, `shared/sim/src/data/work-crew.ts`
+- **What happens:** Owner feedback #6: a Builder Drone (else the HQ) walks to the building and takes it apart in 0.5 × build time, refunding 50 % step by step. Details: the building goes offline at order time (before the worker arrives), so dismantling a pylon splits the network at once; a cancel at ≥ 80 % leaves 1 HP and triggers a critical auto-repair; a dismantle takes a construction-lane slot from order time (with only the HQ, a queued build waits on `worker`); units are still recycled instantly (50 %) and the pod wreck is scrapped; the `demolish` command is still instant (unused by the client, a second path); multi-tile dismantles can't be cancelled by command id (job ids lack `chainRootId`; the client sends single tiles); no `buildingDismantled` event contract exists.
+- **Why it is like this:** Dismantle reuses the repair work-job machinery (`blobs.workJobs`), not a second worker path.
+- **Workaround / mitigation:** Cancel via CANCEL JOB on the building or the queue chip.
+- **To resolve:** Route `demolish` through the job or remove it; add a `buildingDismantled` event if a client needs it.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-72 · Crew speed-up and auto-help
+
+- **Status:** Accepted (by design, 7795d3d)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `workCrew.crew` (`helperEfficiency` 0.6, `maxCrew` 4, `autoHelpRadius` 12), `workCrew.repair.costRate` 0.4
+- **What happens:** Owner feedback #9: the k-th worker on a job adds `0.6^k` of its rate (1/2/3 Builders on a Solar site: 93 → 60 → 50 ticks, same 60 metals), payment and refunds follow progress so a crew costs what one worker costs. Repair costs 0.4 × cost × missing HP share and waits on `resources` at zero stock. Any idle Builder within 12 hexes joins an open repair or dismantle — including one the player parked — and can't take builds until that job ends; the HQ and Harvesters never auto-help.
+- **Why it is like this:** Diminishing returns stop a swarm from making work instant.
+- **Workaround / mitigation:** Give the Builder another order to pull it off.
+- **To resolve:** Owner: confirm that auto-help may grab parked Builders.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-73 · Unit supply: open details
+
+- **Status:** Question for the owner (depot power)
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/sim/src/systems/supply/`, `hub.t1.supplyProvided` 10, `grid.supplyDepot.supplyProvided` 8, `hub.t1.supplyCapMax` 200
+- **What happens:** Owner feedback #2: supply is one module (`computeColonySupply`, `checkUnitSupply`, system `supply.sync` → `colony.supply`). A depot's supply counts only while it is finished and powered (same rule as storage caps): a browned-out depot drops the cap, units can sit over it, and production pauses. The `supply_cap` reject applies to every `enqueueTask` source — a future AI / HQ path would be rejected instead of queued (internal `enqueueQueueTask` callers still wait). The legacy `hubProduction` lane is still registered next to the queue `units` lane and supply counts reservations from both. `REJECT_TEXT_BY_KIND.enqueueTask.invalid_args` says "Invalid terraform order" even for an unknown unit.
+- **Why it is like this:** Matching storage caps keeps one "active provider" rule (`isActiveCapacityProvider`).
+- **Workaround / mitigation:** Keep the depot inside a powered zone; the HQ cell now carries nights.
+- **To resolve:** Owner: should depot supply ignore power? Remove the legacy Hub lane; word the unknown-unit reject.
+- **Found:** 2026-11-04, W03 owner-feedback pass (lead + parallel agents)
+
+### GP-74 · A building at 0 HP stays as an active wreck; no rebuild path
+
+- **Status:** Open
+- **Severity:** medium
+- **Confidence:** CONFIRMED
+- **Area / code:** `dev.damage`, `shared/sim/src/systems/terraform-basic/autoRepair.ts`, power graph
+- **What happens:** `damage <pylon> 100` leaves the pylon at hp 0 with state `active`. The power graph drops it (its downstream Quarry goes `offline: no grid`), but auto-repair skips it and nothing removes it, so its tile stays occupied and the player can't rebuild the bridge on the same tile. The W03 demo step "rebuild the pylon → online" is not covered by e2e.
+- **Why it is like this:** Destruction / wreck handling is not part of W03.
+- **Workaround / mitigation:** Place a new pylon on a neighbouring tile inside the zone.
+- **To resolve:** Remove (or turn into rubble) a building at 0 HP, or let repair restore it from 0.
+- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+
+### GP-75 · `dismantle` wire form is rejected by the contract
+
+- **Status:** Open
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `shared/contracts/src/commands/enqueue-task.ts`, the sim dismantle handler
+- **What happens:** `enqueueTask {task:{kind:'dismantle', entityId}}` is rejected `invalid_args` by the wire contract though the sim handler and its docstring accept it; only `{kind:'terraform', op:'dismantle', q, r}` (what the client sends) gets through.
+- **Why it is like this:** The client never sends the entity form.
+- **Workaround / mitigation:** Use the terraform op form.
+- **To resolve:** Add the entity form to the contract or drop it from the handler.
+- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+
+### GP-76 · `addLoad` without an entity id lands on one branch and drains the stores colony-wide
+
+- **Status:** Accepted (dev tool)
+- **Severity:** low
+- **Confidence:** CONFIRMED
+- **Area / code:** `power-core/evaluate.ts` (`getComponentSyntheticLoad`), dev `addLoad`
+- **What happens:** With the HQ cell as the grid store, `addLoad 85` (overload demo) also drains the cell and capacitors (800 → 11 E in one run), so later steps start with an empty store.
+- **Why it is like this:** Synthetic load is real demand.
+- **Workaround / mitigation:** Run `cell 800` after an `addLoad` demo; the e2e runs the night step on a fresh colony.
+- **To resolve:** —
+- **Found:** 2026-11-04, W03 owner-feedback pass (e2e update)
+
+### GP-77 · Unified extractor compatibility and mixed deposits
+
+- **Status:** Accepted (owner feedback, 2026-11-04)
+- **Area / code:** `systems/construction/placement.ts`, `systems/production/index.ts`, construction catalog
+- **What happens:** New Resource Extractors use the existing metalsExtractor entity kind on either metals or minerals. A footprint covering both mines metals first, then minerals when metals are exhausted. Existing quarry entities remain supported in saved worlds and legacy commands.
+- **Why it is like this:** One player-facing building without invalidating existing saves. Both resources use the extractor's cost and production rate; crystals tint its model violet.
+- **Workaround / mitigation:** Place over a single resource to choose the output explicitly.
+- **To resolve:** A future save migration can retire the legacy quarry kind if needed.
+- **Found:** 2026-11-04, owner feedback implementation.
+
+### GP-78 · Wind uses three-minute simulation windows
+
+- **Status:** Accepted (owner feedback, 2026-11-04)
+- **Area / code:** `systems/power-core/windAndCap.ts`, `data/grid.ts`
+- **What happens:** Planet-wide deterministic low/medium/high wind holds for 900 ticks (three simulated minutes), multiplying net turbine output by 25%/100%/150%. Consecutive windows may pick the same level. Warp accelerates the windows.
+- **Why it is like this:** Authoritative simulation time keeps replicas, electricity and environmental animation aligned.
+- **Workaround / mitigation:** HUD names the current level and percentage.
+- **To resolve:** Tune `windResampleTicks` if longer weather windows are desired.
+- **Found:** 2026-11-04, owner feedback implementation.
+
+### GP-79 · Pre-landing W03 builder save identity
+
+- **Status:** Accepted (integration compatibility)
+- **Area / code:** `ecs/columns.ts`, `systems/progression/types.ts`
+- **What happens:** Builder uses kind 50 (the existing progression unit code); kind 8 remains the already-landed Trade Hub. A development snapshot made on the unlanded W03 branch with a kind-8 builder is not compatible with the merged registry.
+- **Why it is like this:** Both branches independently allocated kind 8. Preserving the landed Trade Hub ID avoids changing existing main saves. The live grid kinds now also replace W08's placeholder building codes.
+- **Workaround / mitigation:** Start a fresh W03 scenario after landing. Existing main saves keep Trade Hub identity. No database or saved world is automatically deleted.
+- **To resolve:** If an old W03 development world must be recovered, migrate its kind-8 builders using that snapshot's branch provenance before loading it.
+- **Found:** 2026-11-04, full merge review.
+
+
+### GP-80 · W07 hive fauna implementation and provisional balance
+
+- **Status:** Open (implementation planned; balance proposals)
+- **Area / code:** [W07](../plan/waves/W07-first-contact.md), [fauna contract](../game/fauna-hives-spec.md), future shared fauna/raids systems and codec integration
+- **What happens:** The revised plan specifies three neutral insect species and hives, passive/aggressive behavior, directive replication and playground scenes. Runtime combat/fauna code and the six meshes are not implemented by this planning change. Existing W08 threat helpers still return legacy Skitter/Brute/Drifter composition.
+- **Why it is like this:** The current checkout contains W07 planning, not its combat implementation. Species stats, a three-wave episode, cooldowns, provocation and sparse correction cadence are proposed starting values. “Armored” provisionally means visible plating and higher HP, preserving plain-damage battle v1.
+- **Workaround / mitigation:** W07-14/15/25/33–35 and the contract's delivery gates require the actual shared sim, backend, frontend, model and replay work before claiming completion. Shared planet models and cosmetic feeding/building are explicitly owner-requested simplifications.
+- **To resolve:** Implement and validate the wave; playtest proposed numbers and confirm whether blue beetles need actual damage mitigation. Reconcile existing progression helpers and later-wave roster references without inventing a second raid system.
+- **Found:** 2026-11-04, owner fauna redesign.

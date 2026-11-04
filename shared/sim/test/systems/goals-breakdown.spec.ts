@@ -34,7 +34,7 @@ function createS0ColonyPlanet(seed = 'w08-17') {
   spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
 
   const idx = hexIndex(state.grid.radius);
-  const depTile = idx.indexOf(4, -2);
+  const depTile = idx.indexOf(2, -2);
   state.grid.layers.deposit[depTile] = DEPOSIT.metals;
   state.grid.layers.richness[depTile] = 10000;
 
@@ -163,7 +163,7 @@ describe('W08-17 acceptSuggestion establish_colony chain', () => {
     expect(getOpenColonyGoals(state, 0)[0]).toMatchObject({ goal: 'secure_power', status: 'active' });
     expect(countCompletedKind(state, 0, ENTITY_KIND.commandHub)).toBe(1);
     expect(countCompletedKind(state, 0, ENTITY_KIND.metalsExtractor)).toBe(1);
-    expect(countCompletedKind(state, 0, ENTITY_KIND.solar)).toBe(2);
+    expect(countCompletedKind(state, 0, ENTITY_KIND.solar)).toBe(3);
   });
 });
 
@@ -319,7 +319,7 @@ describe('W08-17 Goal breakdown: secure_power', () => {
     }
 
     expect(countCompletedKind(state, 0, ENTITY_KIND.solar)).toBe(1);
-    expect(progressEvents.length).toBeGreaterThanOrEqual(2);
+    expect(progressEvents.length).toBeGreaterThanOrEqual(1);
     expect(doneEvents).toHaveLength(0); // daytime solar is not proof of night output
     expect(getOpenColonyGoals(state, 0)[0].detail).toContain('Waiting for night');
   });

@@ -1,6 +1,6 @@
 import { colonyActor, reportTreasuryReject, treasury, type AddRequest, type Amounts } from '../../economy';
-import { ENTITY_STATE } from '../../ecs/columns';
-import { setField } from '../../ecs/store';
+import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
+import { rowOf, setField } from '../../ecs/store';
 import { isTileUneven } from '../../grid/geo';
 import { HEX_DIRS, hexDistance, hexIndex } from '../../grid/hex';
 import { TERRAIN } from '../../grid/layers';
@@ -184,7 +184,9 @@ export const terraformCommand = defineUnitCommand<TerraformCommand>({
     setUnitActivity(u, ENTITY_STATE.working, c.q, c.r);
     const ended = workJob(u.state, order, u.row, u.ctx);
     writeColonyOrders(u.state, u.owner, orders, u.ctx.tick);
-    syncHqView(u.state, u.row, u.ctx.tick, u.ctx.data);
+    if (u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq) {
+      syncHqView(u.state, u.row, u.ctx.tick, u.ctx.data);
+    }
     return ended ? 'done' : 'running';
   },
 });
@@ -225,6 +227,22 @@ function pickJob(u: UnitCtx, order: TerraformOrder): { at: number; dropped: numb
   }
 }
 
+function claimedTerraformOrderIds(u: UnitCtx): Set<string> {
+  const out = new Set<string>();
+  const byId = (u.state.blobs.units?.value as { byId?: Record<string, { current?: { kind?: string; orderId?: string } | null }> } | undefined)?.byId;
+  if (!byId) return out;
+  const cols = u.state.entities.cols;
+  for (const [idStr, rec] of Object.entries(byId)) {
+    const otherId = Number(idStr);
+    if (otherId === u.id || rec?.current?.kind !== 'terraform' || !rec.current.orderId) continue;
+    const r = rowOf(u.state.entities, otherId);
+    if (r >= 0 && cols.owner[r] === u.owner && cols.hp[r] > 0) {
+      out.add(rec.current.orderId);
+    }
+  }
+  return out;
+}
+
 /**
  * A terraform work provider over the colony's orders that `lane` accepts. Two of them sit around the build provider
  * (GP-04): a Hub's linked prep first, then construction, then manual terraform orders.
@@ -235,7 +253,12 @@ function terraformProviderFor(id: string, lane: (o: TerraformOrder) => boolean):
     propose(u) {
       const view = colonyTerraformOrders(u.state, u.owner).filter(lane);
       const cur = u.record.current;
-      if (cur?.kind === 'terraform') {
+      const claimed = claimedTerraformOrderIds(u);
+      const hasUnclaimedOrder = view.some((o) => !claimed.has(o.orderId) && o.jobs.length > 0);
+      if (
+        cur?.kind === 'terraform' &&
+        (!claimed.has(cur.orderId) || !hasUnclaimedOrder || u.state.entities.cols.state[u.row] === ENTITY_STATE.working)
+      ) {
         const job = view.find((o) => o.orderId === cur.orderId)?.jobs[0];
         const skipped = (u.record.skip[jobKey(cur.orderId, cur.q, cur.r)] ?? 0) > u.ctx.tick;
         if (job && job.q === cur.q && job.r === cur.r && !skipped) return cur; // keep working the job already started
@@ -244,7 +267,7 @@ function terraformProviderFor(id: string, lane: (o: TerraformOrder) => boolean):
       const orders = readColonyOrders(u.state, u.owner);
       let dirty = false;
       for (const order of orders) {
-        if (!lane(order)) continue;
+        if (!lane(order) || claimed.has(order.orderId)) continue;
         const { at, dropped } = pickJob(u, order);
         dirty ||= dropped > 0 || at > 0;
         if (at < 0) continue;
@@ -262,12 +285,17 @@ const anyLinkedPrep = terraformProviderFor('terraformPrep', (o) => o.isLinkedPre
 
 /**
  * A building's linked site prep (asked before construction: a site is prepared before it is built on). Only a
- * terraform-capable builder takes it (the HQ in W02, `UO-D-03`); a Harvester never prepares a site.
+ * terraform-capable builder takes it (HQ and Builder Drone in W03, `UO-D-03`); a Harvester never prepares a site.
  */
 export const linkedPrepProvider: UnitWorkProvider = {
   id: anyLinkedPrep.id,
   propose: (u) => (canDoWork(u, 'linkedPrep') ? anyLinkedPrep.propose(u) : null),
 };
 
-/** The player's manual terraform orders (asked after construction, GP-04). */
-export const terraformProvider = terraformProviderFor('terraform', (o) => !o.isLinkedPrep);
+const anyManualTerraform = terraformProviderFor('terraform', (o) => !o.isLinkedPrep);
+
+/** The player's manual terraform orders (asked after construction, GP-04; HQ only). */
+export const terraformProvider: UnitWorkProvider = {
+  id: anyManualTerraform.id,
+  propose: (u) => (u.state.entities.cols.kind[u.row] === ENTITY_KIND.hq ? anyManualTerraform.propose(u) : null),
+};

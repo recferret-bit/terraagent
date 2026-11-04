@@ -18,7 +18,7 @@ function fixture() {
   spawnHqUnit(state, { owner: 0, q: 0, r: 0 });
   expect(startBuildingConstruction(state, { owner: 0, building: 'commandHub', q: -3, r: 0, instant: true }).ok).toBe(true);
   expect(startBuildingConstruction(state, { owner: 0, building: 'solar', q: -3, r: 3, instant: true }).ok).toBe(true);
-  const i = hexIndex(10).indexOf(3, -2);
+  const i = hexIndex(10).indexOf(2, -2);
   state.grid.layers.deposit[i] = DEPOSIT.metals;
   state.grid.layers.richness[i] = 10000;
   setPlanetTime(state, { timeOfDay: 12 }, 0);
@@ -27,13 +27,13 @@ function fixture() {
 }
 
 describe('W08 owner goal regressions', () => {
-  it('full starting metals does not stall on an unsupported depot: orders, builds and produces real metals', () => {
+  it('full starting metals expands storage, builds an extractor and produces real metals', () => {
     const { state, colony, pipeline } = fixture();
     colony.stock['metals.t1'] = colony.caps.metals;
     const result = step(state, [{ commandId: 'grow', colonyIndex: 0, source: 'player', kind: 'queueGoal',
       args: { goal: 'grow_economy', resource: 'metals.t1', targetRatePerMin: 10 } }], 1, pipeline);
     expect(result.outcomes[0].code).toBeUndefined();
-    expect(getColonyQueue(state, 0, 'construction').some((e) => e.task.kind === 'build' && e.task.building === 'metalsExtractor')).toBe(true);
+    expect(getColonyQueue(state, 0, 'construction').some((e) => e.task.kind === 'build' && e.task.building === 'depot')).toBe(true);
     for (let n = 0; n < 400 && getColonyGoals(state, 0)[0].status !== 'done'; n++) step(state, [], 5, pipeline);
     expect(getColonyGoals(state, 0)[0].status, JSON.stringify({ goal: getColonyGoals(state, 0)[0], queue: getColonyQueue(state, 0, 'construction'), power: colony.power, stock: colony.stock })).toBe('done');
     expect(computeColonyResourceRatePerMin(state, 0, 'metals.t1')).toBeGreaterThanOrEqual(10);

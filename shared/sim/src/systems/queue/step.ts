@@ -5,17 +5,30 @@ import type { PlanetState } from '../../kernel/state';
 import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
-import { produceHarvesterAtHubEdge } from '../factories-hub';
+import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge } from '../factories-hub';
+import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
 import type { QueueEntry } from './types';
 import { computeResourceWaitState } from './wait';
 
 /** Marks `entry` waiting on `reason` with its status text and ETA (seconds, `null` = none). */
-export function markWaiting(entry: QueueEntry, reason: QueueEntry['waitReason'], detail: string, eta: number | null = null): void {
+export function markWaiting(
+  entry: QueueEntry,
+  reason: QueueEntry['waitReason'],
+  detail: string,
+  eta: number | null = null,
+  tick?: number,
+): void {
   entry.state = 'waiting';
   entry.waitReason = reason;
   entry.etaSeconds = eta;
   entry.waitDetail = detail;
+  if (reason === 'resources') {
+    if (tick !== undefined) entry.resourceWaitSinceTick ??= tick;
+  } else {
+    entry.resourceWaitSinceTick = undefined;
+    entry.earmarked = undefined;
+  }
 }
 
 /** What an in-progress build entry shows while its job does not advance (`../economy/buildJob.ts`). */
@@ -47,13 +60,62 @@ function followBuildEntry(state: PlanetState, entry: QueueEntry & { entityId: nu
   entry.waitDetail = wait && job ? BUILD_WAIT_DETAIL[wait](state, job) : undefined;
 }
 
+/** A dismantle entry follows its dismantle work job; the job gone = the building is down (or the dismantle ended). */
+function followDismantleEntry(state: PlanetState, entry: QueueEntry & { task: { kind: 'dismantle' } }): void {
+  const job = leadJobOn(getWorkJobsMap(state), 'dismantle', entry.task.entityId);
+  if (!job) {
+    entry.progress = rowOf(state.entities, entry.task.entityId) < 0 ? 1 : entry.progress;
+    entry.state = 'done';
+    return;
+  }
+  entry.workerEntityId = job.workerEntityId;
+  entry.buildTicks = job.durationTicks;
+  entry.elapsedTicks = job.elapsedTicks;
+  entry.progress = Math.min(1, Number(job.progress.toFixed(4)));
+  entry.waitReason = job.status === 'waiting' ? ((job.waitReason as QueueEntry['waitReason']) ?? 'worker') : undefined;
+  entry.waitDetail = entry.waitReason === 'worker' ? 'waiting: worker (en route)' : entry.waitReason ? `waiting: ${entry.waitReason}` : undefined;
+}
+
+/** A repair entry follows its target entity's repair work job (W03-03). */
+function followRepairEntry(state: PlanetState, entry: QueueEntry): boolean {
+  if (entry.task.kind !== 'repair') return false;
+  const targetId = entry.task.entityId;
+  const eRow = rowOf(state.entities, targetId);
+  const job = leadJobOn(getWorkJobsMap(state), 'repair', targetId);
+  if (job) {
+    entry.workerEntityId = job.workerEntityId;
+    entry.cost = { ...job.totalCost };
+    entry.totalCost = { ...job.totalCost };
+    entry.spentCost = { ...job.spentCost };
+    entry.paid = Object.values(job.spentCost).some((v) => (v ?? 0) > 0);
+    entry.buildTicks = job.durationTicks;
+    entry.elapsedTicks = job.elapsedTicks;
+    entry.progress = Math.min(1, Number(job.progress.toFixed(4)));
+    entry.waitReason = job.status === 'waiting' ? ((job.waitReason as QueueEntry['waitReason']) ?? 'resources') : undefined;
+    entry.waitDetail = entry.waitReason ? `waiting: ${entry.waitReason}` : undefined;
+    return true;
+  }
+  if (eRow >= 0 && (state.entities.cols.hp[eRow] <= 0 || state.entities.cols.hp[eRow] >= state.entities.cols.hpMax[eRow])) {
+    entry.spentCost = { ...(entry.totalCost ?? entry.cost) };
+    entry.paid = Object.values(entry.spentCost).some((v) => (v ?? 0) > 0);
+    entry.progress = 1;
+    entry.state = 'done';
+    return true;
+  }
+  return eRow >= 0;
+}
+
 /**
  * A `buildUnit` entry finished one unit: with units of its `count` left, or `repeat` on, it starts the next one
  * (paid progressively again; `queued`, so the scan re-checks supply and resources first), else it is `done`.
  */
 function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
-  produceHarvesterAtHubEdge(state, colIdx, ctx);
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
+  if (task?.unit === 'builder') {
+    produceBuilderAtHubEdge(state, colIdx, ctx);
+  } else {
+    produceHarvesterAtHubEdge(state, colIdx, ctx);
+  }
   const count = Math.max(1, Math.floor(task?.count ?? 1));
   const left = (entry.remainingCount ?? count) - 1;
   if (left <= 0 && !task?.repeat) {
@@ -75,6 +137,13 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
     followBuildEntry(state, entry as QueueEntry & { entityId: number });
     return;
   }
+  if (entry.task.kind === 'repair' && followRepairEntry(state, entry)) {
+    return;
+  }
+  if (entry.task.kind === 'dismantle') {
+    followDismantleEntry(state, entry as QueueEntry & { task: { kind: 'dismantle' } });
+    return;
+  }
   const colony = ensureColony(state, colIdx, ctx.tick);
   const nextElapsed = entry.elapsedTicks + ctx.dt * entry.workRate;
   const nextProgress = Math.min(1, nextElapsed / entry.buildTicks);
@@ -84,7 +153,7 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
     const pay = payProgressiveSlice(colony, totalCost, spentCost, nextProgress, ctx.tick);
     if (!pay.ok) {
       const waitInfo = computeResourceWaitState(state, colony, totalCost, pay.missing);
-      markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds);
+      markWaiting(entry, 'resources', waitInfo.waitDetail, waitInfo.etaSeconds, ctx.tick);
       return;
     }
     entry.spentCost = spentCost;
@@ -92,6 +161,7 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
   }
   entry.elapsedTicks = nextElapsed;
   entry.progress = Math.min(1, Number(nextProgress.toFixed(4)));
+  if (entry.task.kind === 'hqGoal') return;
   if (entry.elapsedTicks < entry.buildTicks - 1e-6) return;
   if (entry.task.kind === 'buildUnit') {
     finishUnit(state, entry, colIdx, ctx);
@@ -99,4 +169,6 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
   }
   entry.progress = 1;
   entry.state = 'done';
+  entry.resourceWaitSinceTick = undefined;
+  entry.earmarked = undefined;
 }

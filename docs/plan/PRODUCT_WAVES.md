@@ -2,7 +2,7 @@
 
 > **Status:** v1 (2026-10-30). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
 > **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-42; D-42 = W02 as-built build rules; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
-> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**948 issues in 28 waves, ≈ 692.5 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
+> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**960 issues in 28 waves, ≈ 704.5 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
 
 ## 1. The rule
 
@@ -23,11 +23,11 @@
 | **W04** | Maps & Camera | Client | Minimap (click to pan), global planet map on `M` with layers, selection and camera polish, tile-state overlay | W01 |
 | **W05** | Shape the Land | Gameplay | Terraformer and all terrain ops (Level, Fill, Reclaim, Deep Reclaim, Irrigate, Seed), linked prep, beacons + territory + frozen borders, Terraform %, Living bonuses, T2/T3 resource tiers unlocked by terraforming (D-34), `desert` and `ocean` planet types next to `temperate` (D-33), lightning + meteors (holes) | W03 |
 | **W06** | Invisible Chain (F5, mock) | Economy/NEAR | Social login (mock), named account "Pilot ID", gasless relayer (mock), mock receipts in a dev chain explorer | W00, W01 |
-| **W07** | First Contact (battle v1) | Gameplay | Skitter nests and raids, Robotics Factory T1, Recon, Autocannon, Laser Tower, supply (DCA), battle v1 (projectiles judged at impact time, lasers, rockets, AoE, evasive units), range and view rings, projectile VFX | W03 |
+| **W07** | First Contact (battle v1) | Gameplay | Three neutral insect species and hives, passive life/aggressive waves, deterministic directive sync, hive-life playground, Robotics Factory T1, Recon, Autocannon, Laser Tower, supply (DCA), battle v1 (projectiles judged at impact time, lasers, rockets, AoE, evasive units), range and view rings, projectile VFX | W03 |
 | **W08** | Stages & HQ Goals | Autonomy | Stage engine S0–S10 (data-driven), triggers / dwell / overrides, `unlockStage` / `threatStage`, suggestion cards, HQ goals with budgets, rule-engine autopilot, priority sliders | W02 |
 | **W09** | Offline & Notifications | Autonomy | Presence, coarse ticking for empty planets, restart fast-run, away mode + away budget, "while you were away" digest, hard mode, Web Push + Telegram (via `NotifierPort`, mock first) | W02 |
 | **W10** | Cargo & Trade Hub (F1, mock) | Economy/NEAR | Trade Hub building, export mints cargo (mock NEP-245), import burns it, mint caps, cargo panel | W02, W06 |
-| **W11** | Lobby & Planets | Meta | Planet picker, queue, planet lifecycle (capacity, admission 24 h, seal, lifetime, end, early end), join fallback, 2 h seat refill, parties, many planets across sim threads | W01 |
+| **W11** | Planet Foundations | Sim/Meta/Client | Three persistent small sector worlds, atomic sector admission, parties/resume, pinned saves, border-crossing play and simple picker/map | W01, W04, W05 |
 | **W12** | Player Page & Achievements | Meta | `/me` (pilot, progress, planets, stats, history, play), XP and levels, 20 × 3 achievement flip cards, badge art, badge mint outbox (mock) | W01 (more families light up as producer waves land) |
 | **W13** | Markets (F2, mock) | Economy/NEAR | Market stalls at Trade Hubs, buy/sell orders, matching, owner fees, `token_diff` settlement on mock Intents, price board | W06, W10 |
 | **W14** | Fortify (walls) | Gameplay | Ridge, Moat, Lower, Wall Gate, line of fire + parapet, wall-aware pathing, fauna siege, `would_isolate` | W05, W07 |
@@ -37,13 +37,13 @@
 | **W18** | PvP & Diplomacy | Gameplay | Raids on colonies, newcomer shield, colony critical / elimination, HQ reprint, truces (offer, notice, Oathbreaker), AI raid opt-in | W07, W09, W11 |
 | **W19** | Air & Endgame (S8–S10) | Gameplay | Aero Hangar, Air Recon, Fighter, Gunship, Bomber, Anti-Air, Drifter, T3 structures, Multitask T3, HQ T3 | W08, W14, W17 |
 | **W20** | Colony Deed & Staking (F6, mock) | Economy/NEAR | A dynamic Deed NFT minted at founding that updates with milestones, a Deed card, own-NEAR staking (mock pool) | W00, W01, W06 |
-| **W21** | Rocket & Settlement | Gameplay | Rocket Silo, launch gate (100 % Living), countdown, Settled colony, carry-over to a new planet, all-settled planet ends early, account claim (mock) | W05, W06, W11, W17, W20 |
+| **W21** | Rocket & Settlement | Gameplay | Rocket Silo, launch gate (100 % Living), countdown, Settled colony, carry-over to an eligible different canonical planet, persistent world outcomes, account claim (mock) | W05, W06, W11, W17, W20 |
 | **W22** | Treasury & Bounties (F7, F8, mock) | Economy/NEAR | Planet treasury DAO (fees in, proposals, votes, projects), bounty escrow, mercenary NPCs | W06, W07, W10, W11, W13 (W18 optional) |
 | **W23** | Real NEAR (phase 2) | Economy/NEAR | Each port switches to its real adapter after its contract suite passes: Identity, Relayer → Cargo → Intents → Agent wallet → Deed / Staking → DAO → Escrow | per port: W00, W06, W10, W12, W13, W15, W20, W21, W22; ops: W25 |
 | **W24** | Mobile, PWA & Landing | Client | Landscape fullscreen play on phones, rotate prompt, iOS PWA path, touch controls, live landing diorama | W02, W04 |
 | **W25** | Launch Ops & Submission | Ops | Monitoring, backups, rollback deploy, first-party analytics, load test, balance harness + reference bot, README / LICENSE / video / X post / form. Hosting is W26 | W00 (grows with each wave; hosting issues name W26 ids) |
 | **W26** | Sites | Ops | `terraagent.fun` and its subdomains on one nginx, four compose stacks, local and on `DEPLOY_HOST` over SSH. No Cloudflare | W00 |
-| **W27** | [Planet Atlas, Continents & Sector Streaming](./waves/W27-planet-sectors.md) | Sim/Meta/Client | One planet per type, configurable hex sectors and continent generation, bounded streaming, cross-sector colonies, continuous ground-to-shaded-globe W04 map, persistent location cues, shared landing renderer and live picker | W04, W05, W11 |
+| **W27** | [Planet Scale, Streaming & Navigation](./waves/W27-planet-sectors.md) | Sim/Meta/Client | Extend W11 with large continent configs, bounded residency/streaming, hierarchical maps, ground-to-globe zoom and live globe/landing summaries | W04, W05, W11 |
 
 ```mermaid
 flowchart LR
@@ -56,7 +56,7 @@ flowchart LR
   W02 & W04 --> W24
   W02 --> W08 --> W16
   W02 --> W09
-  W01 --> W11
+  W01 & W04 & W05 --> W11
   W01 --> W12
   W05 & W07 & W08 --> W17
   W08 & W14 & W17 --> W19
@@ -73,7 +73,7 @@ flowchart LR
   W04 & W05 & W11 --> W27
 ```
 
-**W27 scheduling:** its number does not require W06–W26 to land first. It follows W04/W05/W11 and explicitly amends their small-world/full-state and multi-instance policies while enabled; see its review and compatibility sections.
+**W11/W27 split (owner-approved 2026-11-04):** W11 establishes persistent canonical sector worlds after W01/W04/W05. W27 scales that same model; its number does not require W06–W26 first. W27 requires actual W04 camera, W05 territory and full W11 party/recovery/cross-border readiness, not H-only tags. W11-only keeps persistent small worlds; W27 adds streaming/navigation without changing admission or resetting saves. See both wave readiness sections and MATCHMAKING §0.
 
 The **spine** is W00 → W01 → W02. Everything after W02 can run on up to **five parallel tracks**.
 

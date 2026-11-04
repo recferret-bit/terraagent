@@ -53,6 +53,8 @@ export class Predictor {
   autoOff: { p95Ms: number } | null = null;
   private renderEvents: SimEventWire[] = [];
   private renderHigh = -1;
+  private lastSampledTarget = -1;
+  private lastSampledPend = -1;
   private readonly p95LimitMs: number;
   private readonly maxLead: number;
   private readonly now: () => number;
@@ -175,7 +177,12 @@ export class Predictor {
     if (this.cache && this.cache.version === this.version && this.cache.target === target) return this.cache.host;
     const t0 = this.now();
     const host = this.rebuild(target);
-    this.steps.add(this.now() - t0);
+    const dt = this.now() - t0;
+    if (target !== this.lastSampledTarget || this.pend.length !== this.lastSampledPend) {
+      this.lastSampledTarget = target;
+      this.lastSampledPend = this.pend.length;
+      this.steps.add(dt);
+    }
     if (this.steps.exceeds(this.p95LimitMs)) { this.enabled = false; this.autoOff = { p95Ms: this.steps.p95() }; }
     this.cache = { version: this.version, target, host };
     return host;

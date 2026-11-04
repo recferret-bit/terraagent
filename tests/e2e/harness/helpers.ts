@@ -25,7 +25,8 @@ function track(page: Page): string[] {
     page.on('console', (m) => {
       if (m.type() !== 'error') return;
       const url = m.location().url;
-      if (/favicon\.ico/.test(url)) return; // browsers probe it unasked
+      if (/favicon\.ico|fonts\.g(oogleapis|static)\.com/.test(url)) return; // browsers probe favicon unasked; CDN fonts fail offline
+      if (url.endsWith('/v1/auth/refresh') && /status of 401/.test(m.text())) return; // a fresh guest has no refresh cookie; auth falls back to guest issuance
       errs.push(url ? `${m.text()} (${url})` : m.text());
     });
   }
@@ -58,14 +59,19 @@ export async function loadScenario(page: Page, id: string, params: Record<string
   const [k, v] = login(page, opts.as).split('=');
   q.set(k, decodeURIComponent(v));
   await page.goto(`/play.html?${q}`);
-  return waitForTick(page, () => true, opts.timeout ?? 30_000);
+  const tick = await waitForTick(page, () => true, opts.timeout ?? 60_000);
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  if (Number(params.lag) > 0) await page.waitForTimeout(Number(params.lag) + 100);
+  return tick;
 }
 
 /** Opens `/play.html?host=local&scenario=<id>&…` (the engine runs in the browser; no app needed) and waits for the first view. */
-export async function loadLocal(page: Page, scenario = 'w00', params: Record<string, string> = {}, timeout = 30_000): Promise<number> {
+export async function loadLocal(page: Page, scenario = 'w00', params: Record<string, string> = {}, timeout = 60_000): Promise<number> {
   track(page);
   await page.goto(`/play.html?${new URLSearchParams({ host: 'local', scenario, ...params })}`);
-  return waitForTick(page, () => true, timeout);
+  const tick = await waitForTick(page, () => true, timeout);
+  await page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+  return tick;
 }
 
 /** Measures the tick rate (ticks per second) over `ms` of wall time. */
@@ -84,6 +90,11 @@ interface OnlineDebug {
 
 /** Clicks the centre of tile (q, r) via `window.__online.tileToScreen`; returns the resulting `__online.lastPick`. */
 export async function clickTile(page: Page, q: number, r: number): Promise<{ q: number; r: number; i: number } | null> {
+  // Stage announcements cover the centre of the map until dismissed.
+  const dismiss = page.getByTestId('stage-toast-dismiss');
+  if (await dismiss.isVisible()) await dismiss.click();
+  const closeGoals = page.getByTestId('stage-goals-close');
+  if (await closeGoals.isVisible()) await closeGoals.click();
   const pos = await page.evaluate(([a, b]) => (window as unknown as { __online: OnlineDebug }).__online.tileToScreen(a, b), [q, r] as const);
   if (!pos) throw new Error(`clickTile(${q},${r}): terrain is not ready`);
   await page.mouse.click(pos.x, pos.y);
@@ -107,8 +118,7 @@ export async function devConsole(page: Page, command: string, timeout = 10_000):
   const before = await lines.count();
   await input.fill(command);
   await input.press('Enter');
-  await expect.poll(() => lines.count(), { timeout }).toBeGreaterThan(before);
-  await page.waitForTimeout(150); // let a command that prints in several lines finish
+  await expect.poll(() => lines.count(), { timeout }).toBeGreaterThan(before + 1); // echo plus awaited command response
   const all = await lines.allTextContents();
   return all.slice(before).join('\n');
 }

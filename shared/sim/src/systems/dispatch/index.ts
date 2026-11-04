@@ -4,12 +4,14 @@ import { hexDistance, hexIndex } from '../../grid/hex';
 import { TERRAIN } from '../../grid/layers';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { UnitBook } from '../../units/book';
 import { defineSimModule } from '../define';
+import { buildJobKey } from '../economy/buildJob';
 import { assignHarvesterSubJob } from '../harvest';
 import { hasActiveWorkJobForWorker } from '../terraform-basic/workJobs';
-import { isWorkerEligibleForJob } from './eligibility';
+import { checkWorkerBuildTier, isWorkerEligibleForJob } from './eligibility';
 
-export { canDoWork, colonyHasEligibleWorker, isWorkerEligibleForJob, type WorkEligibilitySpec, type WorkKind } from './eligibility';
+export { canDoWork, checkWorkerBuildTier, colonyHasEligibleWorker, isWorkerEligibleForJob, type WorkEligibilitySpec, type WorkKind } from './eligibility';
 
 export type DispatchPrecedence = 'system' | 'player' | 'auto';
 
@@ -108,12 +110,12 @@ export function selectWorkerForDispatch(
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyIndex || cols.hp[row] <= 0) continue;
     const kind = cols.kind[row];
-    if (kind !== ENTITY_KIND.hq && kind !== ENTITY_KIND.harvester) continue;
+    if (kind !== ENTITY_KIND.hq && kind !== ENTITY_KIND.builder && kind !== ENTITY_KIND.harvester) continue;
     if (hasActiveWorkJobForWorker(state, cols.id[row])) continue; // on a `work` job / terraform chain (never pre-empted)
     const tier = cols.tier[row] || 1;
     if (!isWorkerEligibleForJob(kind, tier, job)) continue;
 
-    const maxBuildTier = kind === ENTITY_KIND.hq ? tier : 0;
+    const maxBuildTier = kind === ENTITY_KIND.hq ? tier : kind === ENTITY_KIND.builder ? 1 : 0;
     const dist = hexDistance(cols.q[row], cols.r[row], job.q, job.r);
     const { isIdle, currentPrecedence } = determineWorkerPrecedence(state, row, byWorker);
 
@@ -213,6 +215,69 @@ export function dispatchJob(
 
 export function getWorkerDispatch(state: PlanetState, workerEntityId: number): WorkerDispatchRecord | null {
   return getDispatchMap(state)[workerEntityId] ?? null;
+}
+
+export interface AssignBuilderSiteSpec {
+  entityId?: number;
+  orderId?: string;
+  q: number;
+  r: number;
+  tier?: number;
+  precedence?: DispatchPrecedence;
+}
+
+/**
+ * Assigns a specific worker (`workerEntityId`) to construct `site`, enforcing `maxBuildTier` (`worker_tier_locked`
+ * when `site.tier` exceeds the worker's `maxBuildTier`, e.g. Builder Drone on a T2+ site).
+ */
+export function assignBuilderToSite(
+  state: PlanetState,
+  workerEntityId: number,
+  site: AssignBuilderSiteSpec,
+  tick: number = state.meta.tick,
+): { ok: true; record: WorkerDispatchRecord } | { ok: false; code: 'worker_tier_locked' | 'unknown_entity' } {
+  const row = rowOf(state.entities, workerEntityId);
+  if (row < 0 || state.entities.cols.hp[row] <= 0) {
+    return { ok: false, code: 'unknown_entity' };
+  }
+  const cols = state.entities.cols;
+  const siteRow = site.entityId !== undefined ? rowOf(state.entities, site.entityId) : -1;
+  const siteTier = site.tier ?? (siteRow >= 0 ? cols.tier[siteRow] || 1 : 1);
+  const tierCheck = checkWorkerBuildTier(cols.kind[row], cols.tier[row] || 1, siteTier);
+  if (!tierCheck.ok) return tierCheck;
+
+  const colonyIndex = cols.owner[row];
+  const precedence: DispatchPrecedence = site.precedence ?? 'player';
+  setField(state.entities, row, 'targetQ', site.q, tick);
+  setField(state.entities, row, 'targetR', site.r, tick);
+  const dist = hexDistance(cols.x[row], cols.y[row], site.q, site.r);
+  const nextState = dist <= 1e-4 ? ENTITY_STATE.constructing : ENTITY_STATE.moving;
+  setField(state.entities, row, 'state', nextState, tick);
+
+  const orderId = site.orderId ?? (site.entityId !== undefined ? buildJobKey(site.entityId) : undefined);
+  if (orderId) {
+    const book = new UnitBook(state);
+    const uRec = book.get(workerEntityId);
+    uRec.current = { kind: 'build', source: 'player', orderId, q: site.q, r: site.r };
+    uRec.queue = [];
+    book.touch();
+    book.flush(tick);
+  }
+
+  const record: WorkerDispatchRecord = {
+    workerEntityId,
+    colonyIndex,
+    jobId: orderId ?? `disp-${colonyIndex}-${tick}-${workerEntityId}`,
+    kind: 'build',
+    q: site.q,
+    r: site.r,
+    precedence,
+    assignedAtTick: tick,
+  };
+  const byWorker = getDispatchMap(state);
+  byWorker[workerEntityId] = record;
+  saveDispatchMap(state, byWorker, tick);
+  return { ok: true, record };
 }
 
 export const dispatchSystem = defineSystem({

@@ -63,9 +63,14 @@ describe('W04-03 PlanetRasterCache dirty tile repaints', () => {
     panel.update?.({ planet: { id: 'pl_1', type: 'temperate', radius }, tiles });
     expect(ctx.services.maps?.stats.dirtyTiles).toBe(tiles.count);
 
-    // Mutate 1 tile
-    tiles.prep[5] = PREP_CODES.living;
+    // The same tiles object again (every frame re-sends the latest view) is not re-scanned
     panel.update?.({ planet: { id: 'pl_1', type: 'temperate', radius }, tiles });
+    expect(ctx.services.maps?.stats.dirtyTiles).toBe(tiles.count);
+
+    // 1 tile changed: the replica sends fresh tile copies (`ClientTiles`, viewCodec), never mutates the last ones
+    const next = { ...tiles, prep: tiles.prep.slice() };
+    next.prep[5] = PREP_CODES.living;
+    panel.update?.({ planet: { id: 'pl_1', type: 'temperate', radius }, tiles: next });
     expect(ctx.services.maps?.stats.dirtyTiles).toBe(1);
 
     panel.dispose();

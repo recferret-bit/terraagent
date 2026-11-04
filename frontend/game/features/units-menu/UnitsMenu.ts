@@ -1,5 +1,8 @@
 import type { Disposable, FeatureContext, GameView } from '../../core/registry/types';
-import { buildUnitsCatalog, resolveSupply, type UnitCardModel } from './catalog';
+import { ownColonyIndex, viewColony } from '../shared/colony';
+import { supplyBlockReason, supplyLevel } from '../shared/supply';
+import { buildUnitsCatalog, resolveSupply, type SupplySummary, type UnitCardModel } from './catalog';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 
 interface QueueItemLike {
   taskId?: string;
@@ -26,6 +29,7 @@ interface CachedUnitCard {
   reason: HTMLElement | null;
   unlockDetail: HTMLElement | null;
   card: UnitCardModel;
+  readonly supplyReason: HTMLElement;
   costKey: string;
 }
 
@@ -83,7 +87,9 @@ export class UnitsMenu implements Disposable {
     this.supplyEl.className = 'ta-units__supply';
     this.supplyEl.setAttribute('data-supply', '');
     this.supplyEl.setAttribute('data-warning', 'false');
-    this.supplyEl.textContent = '0 / 10';
+    this.supplyEl.setAttribute('data-level', 'ok');
+    this.supplyEl.title = 'Unit supply: used / cap';
+    this.supplyEl.textContent = '— / —';
 
     header.append(this.headBtn, this.supplyEl);
     this.root.appendChild(header);
@@ -118,7 +124,7 @@ export class UnitsMenu implements Disposable {
     this.el.appendChild(this.root);
 
     this.onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'u' || e.key === 'U') {
+      if ((e.key === 'u' || e.key === 'U') && !isGameInputBlocked()) {
         const target = e.target as HTMLElement | null;
         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
         this.toggle();
@@ -147,30 +153,33 @@ export class UnitsMenu implements Disposable {
   }
 
   private render(): void {
-    this.renderSupply();
-    this.renderCards();
+    const supply = resolveSupply(this.view, ownColonyIndex(this.ctx.services));
+    this.renderSupply(supply);
+    this.renderCards(supply);
     this.renderBuffer();
   }
 
-  private renderSupply(): void {
-    const supply = resolveSupply(this.view);
-    this.supplyEl.textContent = `${supply.used} / ${supply.cap}`;
-    this.supplyEl.setAttribute('data-warning', String(supply.used >= supply.cap));
+  private renderSupply(supply: SupplySummary | null): void {
+    const level = supplyLevel(supply);
+    this.supplyEl.textContent = supply ? `${supply.used} / ${supply.cap}` : '— / —';
+    this.supplyEl.setAttribute('data-warning', String(level === 'full'));
+    this.supplyEl.setAttribute('data-level', level);
   }
 
-  private renderCards(): void {
+  private renderCards(supply: SupplySummary | null): void {
     const cards = buildUnitsCatalog(this.ctx.flags, this.view);
     const seen = new Set<string>();
     for (const card of cards) {
       seen.add(card.unit);
       const existing = this.cardElements.get(card.unit);
+      const cached = existing ?? this.createCardElement(card);
       if (existing) {
         this.updateCardElement(existing, card);
       } else {
-        const created = this.createCardElement(card);
-        this.cardElements.set(card.unit, created);
-        this.cardsContainer.appendChild(created.root);
+        this.cardElements.set(card.unit, cached);
+        this.cardsContainer.appendChild(cached.root);
       }
+      this.applySupplyBlock(cached, supplyBlockReason(supply, card.supply));
     }
     for (const [unit, cached] of this.cardElements) {
       if (!seen.has(unit)) {
@@ -178,6 +187,15 @@ export class UnitsMenu implements Disposable {
         this.cardElements.delete(unit);
       }
     }
+  }
+
+  /** At the cap the QUEUE button is disabled and the card says why (the host would reject with `supply_cap`). */
+  private applySupplyBlock(cached: CachedUnitCard, reason: string | null): void {
+    cached.root.setAttribute('data-supply-blocked', String(reason !== null));
+    cached.queueBtn.disabled = reason !== null || Boolean(cached.card.disabled);
+    cached.queueBtn.title = reason ?? cached.card.disabledReason ?? 'Queue this unit at the Command Hub';
+    cached.supplyReason.hidden = reason === null;
+    if (reason !== null && cached.supplyReason.textContent !== reason) cached.supplyReason.textContent = reason;
   }
 
   private updateCardElement(cached: CachedUnitCard, card: UnitCardModel): void {
@@ -299,7 +317,11 @@ export class UnitsMenu implements Disposable {
     }
 
     const { controls, countSpan, repeatBtn, queueBtn } = this.createControlsRow(card);
-    cardEl.append(headRow, metaRow, costs, controls);
+    const supplyReason = document.createElement('div');
+    supplyReason.className = 'ta-units__supply-reason';
+    supplyReason.setAttribute('data-supply-reason', '');
+    supplyReason.hidden = true;
+    cardEl.append(headRow, metaRow, costs, controls, supplyReason);
     const cached: CachedUnitCard = {
       root: cardEl,
       title,
@@ -310,6 +332,7 @@ export class UnitsMenu implements Disposable {
       countSpan,
       repeatBtn,
       queueBtn,
+      supplyReason,
       reason: null,
       unlockDetail: null,
       card,
@@ -417,12 +440,10 @@ export class UnitsMenu implements Disposable {
   }
 
   private renderBuffer(): void {
-    const v = this.view as {
-      colonies?: Array<{ unitQueue?: QueueItemLike[] }>;
-      blobs?: { hubProduction?: { entries?: QueueItemLike[] } };
-    } | undefined;
-
-    const raw = v?.colonies?.[0]?.unitQueue ?? v?.blobs?.hubProduction?.entries ?? [];
+    const v = this.view as { blobs?: { hubProduction?: { entries?: Array<QueueItemLike & { colonyIndex?: number }> } } } | undefined;
+    const own = ownColonyIndex(this.ctx.services);
+    const raw = (viewColony(this.view, own)?.unitQueue as QueueItemLike[] | undefined)
+      ?? (v?.blobs?.hubProduction?.entries ?? []).filter((en) => (en.colonyIndex ?? own) === own);
     const entries = raw.filter((en) => en.state !== 'done' && en.state !== 'cancelled');
     const nextKey = entries.map((en) => `${en.taskId ?? ''}:${formatBufferItem(en)}`).join('|');
     if (this.lastBufferKey === nextKey) return;

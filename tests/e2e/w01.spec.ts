@@ -141,9 +141,9 @@ test('@hack 2. drop pod descends onto spawn slot and HQ drone deploys; HUD shows
   await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText('600');
   await expect(page.locator('[data-testid=hud-stock-minerals]')).toContainText('350');
   await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('400');
-  await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('Biomass 200');
-  await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('Water 200');
-  await expect(page.locator('[data-testid=hud-hq-cell]')).toContainText('800 / 800 E');
+  await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('Biomass 0200');
+  await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('Water 0200');
+  await expect(page.locator('[data-testid=hud-hq-cell]')).toContainText('0800 / 0800 E');
   await screenshot(page, '2-hq-landed-hud');
   expectNoPageErrors(page);
 });
@@ -233,11 +233,11 @@ test('@hack 5. construction starts once all 9 tiles are Prepared, stock drops by
   await page.keyboard.press('Backquote');
 
   // Minerals has no clear/break yield so it is deterministically 350 - 100 = 250; Water is 200 - 50 = 150
-  await expect(page.locator('[data-testid=hud-stock-minerals]')).toContainText('250 / 500');
-  await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('Water 150');
+  await expect(page.locator('[data-testid=hud-stock-minerals]')).toContainText('0250 / 0500');
+  await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('Water 0150');
   const expectedMetals = 600 + chosenSite.metalsYield - 200;
   // the Hub never lowers a cap (GP-11): metals keep the landing cap 600, the other families rise to the Hub's 500
-  await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText(`${expectedMetals} / 600`);
+  await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText(`${String(expectedMetals).padStart(4, '0')} / 0600`);
 
   await screenshot(page, '5-hub-completed');
   expectNoPageErrors(page);
@@ -255,9 +255,9 @@ test('@hack 6. territory ring (R 10) appears in colony colour and HUD shows stor
     )
     .toBe(true);
 
-  await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText('/ 600');
-  await expect(page.locator('[data-testid=hud-stock-minerals]')).toContainText('/ 500');
-  await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('/ 500');
+  await expect(page.locator('[data-testid=hud-stock-metals]')).toContainText('/ 0600');
+  await expect(page.locator('[data-testid=hud-stock-minerals]')).toContainText('/ 0500');
+  await expect(page.locator('[data-testid=hud-stock-bio]')).toContainText('/ 0500');
   await expect(page.locator('[data-testid=hud-supply]')).toContainText('0 / 10');
 
   await screenshot(page, '6-territory-and-caps');

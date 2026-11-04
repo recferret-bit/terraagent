@@ -7,6 +7,7 @@ import {
 import { ENTITY_KIND } from '@terra/sim';
 import '../../net/services';
 import { isDockPaneShown } from '../../core/hud/CommandDock';
+import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { ownColonyIndex } from '../shared/colony';
 import type { InProcessHost } from '../shared/commandDispatch';
 import type { TilePickerFn } from '../shared/pointer';
@@ -153,6 +154,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
   const store = opts?.store ?? services.store;
   const getColonyId = () => ownColonyIndex(services, opts?.colonyId);
   const isBlocked = () =>
+    isGameInputBlocked() ||
     services.hubPlacement?.isPlacementActive() === true || (services.getPlacementGhostState?.() ?? null) !== null;
   /** The selected own alive worker (HQ Drone, Harvester) works the order; else (a building, a deposit, nothing) the host picks. */
   const getWorkerId = () => {

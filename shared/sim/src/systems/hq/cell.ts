@@ -71,6 +71,22 @@ function fastRechargeShed(state: PlanetState, owner: number): boolean {
 }
 
 /**
+ * Whether the colony's grid owns its HQ cell (`power-core/hqCell.ts`): the W02 power system runs (its shed-group rows
+ * `economyT1Basic.shedGroup*` are in the step's data) and the colony has a built Command Hub (the power graph's `hasHub`: alive, not under
+ * construction). The grid then charges the cell from surplus and draws it on a deficit; the free recharge stops. Read
+ * from the state, not from the last power summary, so the first step after the Hub completes is not a free top-up.
+ */
+export function hqCellGridLinked(state: PlanetState, owner: number, data?: CompiledDataLike): boolean {
+  if (!(data?.tables?.economyT1Basic as Record<string, unknown> | undefined)?.shedGroup1) return false;
+  const e = state.entities, cols = e.cols;
+  for (let h = 0; h < e.count; h++) {
+    if (cols.kind[h] !== ENTITY_KIND.hub || cols.owner[h] !== owner || cols.hp[h] <= 0) continue;
+    if (cols.state[h] !== ENTITY_STATE.constructing) return true;
+  }
+  return false;
+}
+
+/**
  * Recharge of HQ `row` in E per tick: fast within `cellFastRechargeRadius` of an active own Hub, else self. A grid
  * brownout that reaches shed group 3 suspends the fast rate (`UO-HQ-06`, W02-06): the HQ falls back to self recharge.
  */
@@ -89,10 +105,19 @@ function rechargePerTick(state: PlanetState, row: number, data?: CompiledDataLik
   return rowNum(hqRow, 'cellSelfRechargePerS');
 }
 
-/** The HQ power cell recharge rate in E/s (fast near an active own Hub, else self); 0 when `hqRow` is not an HQ. */
+/**
+ * The HQ power cell recharge rate in E/s (fast near an active own Hub, else self; while the grid owns the cell, the
+ * grid's last charge rate); 0 when `hqRow` is not an HQ.
+ */
 export function getHqRechargeRateEPerS(state: SimState, hqRow: number, data?: CompiledDataLike): number {
   const row = resolveHqRow(state, hqRow);
-  return row < 0 ? 0 : perTickToPerSecond(rechargePerTick(state, row, data));
+  if (row < 0) return 0;
+  const owner = state.entities.cols.owner[row];
+  if (hqCellGridLinked(state, owner, data)) {
+    const power = (state.colonies[owner]?.power ?? {}) as { hqCellChargePerS?: unknown };
+    return typeof power.hqCellChargePerS === 'number' ? power.hqCellChargePerS : 0;
+  }
+  return perTickToPerSecond(rechargePerTick(state, row, data));
 }
 
 /** Clamps `energyE` to `[0, cellMax]`, writes HQ `hqRow`'s cell and syncs its view. */
@@ -126,6 +151,11 @@ export interface StepTerraformWorkResult {
  * down (so at 0 cell, work continues at the self-recharge trickle).
  */
 export function stepTerraformWorkWithCell(state: SimState, hqRow: number, opts: StepTerraformWorkOpts): StepTerraformWorkResult {
+  const e = state.entities;
+  if (Number.isInteger(hqRow) && hqRow >= 0 && hqRow < e.count && e.cols.kind[hqRow] === ENTITY_KIND.builder) {
+    const d = stepDemand(workRateOf(state, hqRow, opts.data), opts, opts.dtS ?? TICK_MS / 1000, opts.remainingProgress, opts.remainingEnergyE);
+    return { progressDelta: d ? d.desiredProgress : 1, energyDrawnE: d ? d.neededE : 0 };
+  }
   const row = resolveHqRow(state, hqRow);
   if (row < 0) return { progressDelta: 0, energyDrawnE: 0 };
   const cols = state.entities.cols;
@@ -145,7 +175,10 @@ export function stepTerraformWorkWithCell(state: SimState, hqRow: number, opts: 
   return { progressDelta: d.desiredProgress * (availE / d.neededE), energyDrawnE: availE };
 }
 
-/** Power slot: recharges every alive HQ's cell (unless it drew from the cell for terraform work this step). */
+/**
+ * Power slot: recharges every alive HQ's cell (unless it drew from the cell for terraform work this step, or the
+ * colony grid owns the cell: then `power.core` charges it from surplus).
+ */
 export function stepHq(state: PlanetState, ctx?: Partial<StepContext>): void {
   const tick = ctx?.tick ?? state.meta.tick;
   const dtTicks = ctx?.dt ?? 1;
@@ -155,7 +188,7 @@ export function stepHq(state: PlanetState, ctx?: Partial<StepContext>): void {
   for (let row = 0; row < e.count; row++) {
     if (cols.kind[row] !== ENTITY_KIND.hq) continue;
     if (cols.hpMax[row] > 0 && cols.hp[row] <= 0) continue;
-    if (drawsFromCell(state, row, dtTicks, data)) {
+    if (hqCellGridLinked(state, cols.owner[row], data) || drawsFromCell(state, row, dtTicks, data)) {
       syncHqView(state, row, tick, data);
       continue;
     }

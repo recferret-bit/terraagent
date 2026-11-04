@@ -1,21 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import {
+  buildPowerGraph,
+  compileData,
   createPlanet,
   DEPOSIT,
+  ENTITY_STATE,
   evaluatePlacement,
   getHubFootprintTiles,
   hasColonyHub,
   hexIndex,
   PREP,
   placementWorldFromState,
+  rowOf,
   setTileDeposit,
   setTileHeight,
   setTilePrep,
   setTileTerrain,
   SimHost,
   spawnHqUnit,
+  startBuildingConstruction,
   TERRAIN,
+  type CompiledDataLike,
   type SimCommand,
 } from '../../src';
 
@@ -172,5 +178,81 @@ describe('shared placement rules: W02 building rows', () => {
     const h = w02Host();
     h.submit(mkCmd({ building: 'solar', q: 4, r: 2 }));
     expect(h.step(1).outcomes[0]?.code).toBe('invalid_args');
+  });
+});
+
+/**
+ * W03 power zone (owner feedback, Protoss pylons): every building but the Command Hub stands inside the union of the
+ * zones of the colony's Hubs (radius 6) and Power Pylons (radius 5); the power graph powers exactly what the zone allows.
+ */
+describe('shared placement rules: W03 power zone', () => {
+  const W03 = compileData(parseWaves('..03'));
+  function w03Host(withHub = true): SimHost {
+    const h = new SimHost({ flags: parseWaves('..03') });
+    h.load(createPlanet({ type: 'flat', seed: 'placement-rules-w03', radius: 14 }));
+    spawnHqUnit(h.state, { owner: 0, q: -2, r: 3 });
+    if (withHub) startBuildingConstruction(h.state, { owner: 0, building: 'commandHub', q: 0, r: 0, instant: true, costOverride: {}, tick: 0 });
+    return h;
+  }
+  const evalAt = (h: SimHost, building: string, q: number, r: number, data: CompiledDataLike = W03) =>
+    evaluatePlacement(placementWorldFromState(h.state), { colonyId: 0, building, q, r, requireBuilder: false, data });
+  const pylonAt = (h: SimHost, q: number, r: number, built = true): number => {
+    const res = startBuildingConstruction(h.state, { owner: 0, building: 'pylon', q, r, instant: true, costOverride: {}, tick: 0 });
+    if (!res.ok) throw new Error(`pylon at ${q},${r}: ${res.code}`);
+    if (!built) h.state.entities.cols.state[rowOf(h.state.entities, res.entityId)] = ENTITY_STATE.constructing;
+    return res.entityId;
+  };
+
+  it('accepts a building inside the Hub zone and rejects one outside it (outside_power_zone), also through enqueueTask', () => {
+    const h = w03Host();
+    expect(evalAt(h, 'solar', 3, -3).ok).toBe(true);
+    expect(evalAt(h, 'solar', 6, 0)).toMatchObject({ ok: false, code: 'outside_power_zone', block: 'outsidePowerZone' });
+    h.submit(mkCmd({ taskId: 'far-solar', task: { kind: 'build', building: 'solar', q: 6, r: 0 } }, 'enqueueTask'));
+    expect(h.step(1).outcomes[0]).toMatchObject({ code: 'outside_power_zone', detail: 'outside the power zone' });
+  });
+
+  it('a Power Pylon inside the zone extends it; a pylon outside every zone is rejected', () => {
+    const h = w03Host();
+    expect(evalAt(h, 'pylon', 6, 0).ok).toBe(true);
+    expect(evalAt(h, 'pylon', 7, 0).block).toBe('outsidePowerZone');
+    pylonAt(h, 6, 0);
+    expect(evalAt(h, 'solar', 9, 0).ok).toBe(true);
+    expect(evalAt(h, 'pylon', 11, 0).ok).toBe(true);
+    expect(evalAt(h, 'pylon', 12, 0).block).toBe('outsidePowerZone');
+  });
+
+  it('chains: a pylon under construction and a queued pylon order already extend the zone for placement', () => {
+    const h = w03Host();
+    pylonAt(h, 6, 0, false); // site placed, not built
+    expect(evalAt(h, 'pylon', 11, 0).ok).toBe(true);
+    h.submit(mkCmd({ taskId: 'p-north', task: { kind: 'build', building: 'pylon', q: 0, r: -6 } }, 'enqueueTask'));
+    expect(h.step(1).outcomes[0]?.code).toBeUndefined();
+    h.submit(mkCmd({ taskId: 's-north', task: { kind: 'build', building: 'solar', q: 0, r: -10 } }, 'enqueueTask'));
+    expect(h.step(1).outcomes[0]?.code).toBeUndefined();
+  });
+
+  it('the Command Hub is exempt; with no Hub nothing else is placeable; W02-only data has no zone rule', () => {
+    const h = w03Host(false);
+    expect(evalAt(h, 'commandHub', 6, 0).ok).toBe(true);
+    expect(evalAt(h, 'solar', 3, -3).block).toBe('outsidePowerZone');
+    expect(evalAt(h, 'solar', 3, -3, compileData(parseWaves('..02'))).ok).toBe(true);
+  });
+
+  it('every site the zone allows is powered once its relays are built (graph attach = zone)', () => {
+    const h = w03Host();
+    pylonAt(h, 6, 0);
+    const okSites: Array<{ q: number; r: number }> = [];
+    for (let q = -10; q <= 12; q++) for (let r = -10; r <= 10; r++) if (evalAt(h, 'solar', q, r).ok) okSites.push({ q, r });
+    expect(okSites.length).toBeGreaterThan(50);
+    for (const s of okSites) {
+      const res = startBuildingConstruction(h.state, { owner: 0, building: 'solar', q: s.q, r: s.r, instant: true, costOverride: {}, tick: 0 });
+      if (!res.ok) throw new Error(res.code);
+      const graph = buildPowerGraph(h.state, 0, W03);
+      expect(graph.componentByBuildingId.get(res.entityId), `solar at ${s.q},${s.r}`).toBe(0);
+      h.state.entities.cols.hp[rowOf(h.state.entities, res.entityId)] = 0; // out of the way for the next site
+    }
+    const outside = startBuildingConstruction(h.state, { owner: 0, building: 'solar', q: -9, r: 0, instant: true, costOverride: {}, tick: 0 });
+    if (!outside.ok) throw new Error(outside.code);
+    expect(buildPowerGraph(h.state, 0, W03).componentByBuildingId.get(outside.entityId)).toBe(-1);
   });
 });

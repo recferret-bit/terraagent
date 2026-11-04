@@ -19,6 +19,7 @@ import {
   ENTITY_STATE,
   evaluatePlacement,
   executeDismantleAtTile,
+  rowOf,
   getUnitRecord,
   hexDistance,
   hexIndex,
@@ -310,6 +311,12 @@ describe('W02 Simplified Terraform: Dismantle & Work (Repair + Ground)', () => {
       pipeline,
     );
     expect(disSol.outcomes[0].code).toBeUndefined();
+    // A dismantle is builder work now (owner feedback W03 #6): the HQ walks over, the solar comes down in half its
+    // build time and the 50 % refund arrives step by step.
+    expect(rowOf(state.entities, sol.entityId)).toBeGreaterThanOrEqual(0);
+    expect(colony.stock['metals.t1'] - metalsBeforeDis).toBeLessThan(30);
+    step(state, [], 200, pipeline);
+    expect(rowOf(state.entities, sol.entityId)).toBe(-1);
     expect(colony.stock['metals.t1'] - metalsBeforeDis).toBeCloseTo(30, 4);
   });
 });

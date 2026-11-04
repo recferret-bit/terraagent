@@ -7,10 +7,13 @@ import { hexDistance, hexIndex } from '../../grid/hex';
 import { DEPOSIT, PREP, TERRAIN } from '../../grid/layers';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState, SimState } from '../../kernel/state';
+import { syncBuilderView } from '../factories-hub';
 import { cancelHarvesterTask, syncHarvesterView } from '../harvest';
 import { syncHqView } from '../hq/view';
 import { UnitBook } from '../../units/book';
+import { cancelMove } from '../../units/movement/orchestrator';
 import { occupiedGroundTiles } from '../construction/occupancy';
+import { isWorkerEligibleForJob } from '../dispatch/eligibility';
 import { groundWorkYields } from './ops';
 import { terraformOwnershipBlock, terraformWorldFromState, type TerraformWorld } from './rules';
 import { getWorkJobsMap, type WorkJobRecord } from './workJobs';
@@ -81,7 +84,13 @@ export function createGroundWorkJob(
   };
 }
 
-/** The worker (HQ Drone or Harvester) for a work job at `(q, r)`: the preferred one if valid, else the nearest free one. */
+/**
+ * Selects a worker (`builder`, `hq`, or `harvester`) for a work job at `(q, r)`:
+ * - Uses `preferredWorkerId` if valid and alive.
+ * - For `mode === 'repair'`, prefers idle `ENTITY_KIND.builder` workers first (since Builder repairs at 1.5x),
+ *   falling back to nearest idle `hq` or `harvester` if no idle builder is free (or nearest candidate if all are busy).
+ * - For `mode === 'dismantle'`, only a Builder Drone or the HQ (`dispatch/eligibility.ts`), a Builder first.
+ */
 export function selectWorkerForWorkOp(
   state: SimState,
   colonyId: number,
@@ -89,11 +98,16 @@ export function selectWorkerForWorkOp(
   r: number,
   preferredWorkerId?: number,
   avoidEntityId?: number,
+  mode: 'repair' | 'terraform' | 'dismantle' = avoidEntityId !== undefined ? 'repair' : 'terraform',
 ): number | null {
   const e = state.entities, cols = e.cols;
+  const takes = (kind: number): boolean =>
+    mode === 'dismantle'
+      ? isWorkerEligibleForJob(kind, 1, { kind: 'terraform', op: 'dismantle' })
+      : kind === ENTITY_KIND.hq || kind === ENTITY_KIND.builder || kind === ENTITY_KIND.harvester;
   if (preferredWorkerId !== undefined) {
     const r0 = rowOf(e, preferredWorkerId);
-    if (r0 >= 0 && cols.owner[r0] === colonyId && cols.hp[r0] > 0 && (cols.kind[r0] === ENTITY_KIND.hq || cols.kind[r0] === ENTITY_KIND.harvester)) {
+    if (r0 >= 0 && cols.owner[r0] === colonyId && cols.hp[r0] > 0 && takes(cols.kind[r0])) {
       return preferredWorkerId;
     }
   }
@@ -104,12 +118,20 @@ export function selectWorkerForWorkOp(
   for (let row = 0; row < e.count; row++) {
     if (cols.owner[row] !== colonyId || cols.hp[row] <= 0) continue;
     const kind = cols.kind[row];
-    if (kind !== ENTITY_KIND.hq && kind !== ENTITY_KIND.harvester) continue;
+    if (!takes(kind)) continue;
     const id = cols.id[row];
     const dist = hexDistance(cols.q[row], cols.r[row], q, r);
-    const busyPenalty = busyWorkers.has(id) ? 100 : cols.state[row] === ENTITY_STATE.idle ? 0 : 10;
-    const selfPenalty = avoidEntityId !== undefined && id === avoidEntityId ? 500 : 0;
-    const score = dist + busyPenalty + selfPenalty;
+    const busyPenalty = busyWorkers.has(id) ? 500 : cols.state[row] === ENTITY_STATE.idle ? 0 : 100;
+    const rolePenalty =
+      mode !== 'terraform'
+        ? kind === ENTITY_KIND.builder
+          ? 0
+          : 50
+        : kind === ENTITY_KIND.builder
+          ? 25
+          : 0;
+    const selfPenalty = avoidEntityId !== undefined && id === avoidEntityId ? 1000 : 0;
+    const score = dist + busyPenalty + rolePenalty + selfPenalty;
     if (score < bestScore) {
       bestScore = score;
       bestId = id;
@@ -122,10 +144,12 @@ export function syncWorkerView(state: PlanetState, wRow: number, tick: number, d
   const k = state.entities.cols.kind[wRow];
   if (k === ENTITY_KIND.hq) syncHqView(state, wRow, tick, data);
   else if (k === ENTITY_KIND.harvester) syncHarvesterView(state, wRow, tick, data);
+  else if (k === ENTITY_KIND.builder) syncBuilderView(state, wRow, tick, data);
 }
 
 /** Drops the worker's unit commands (an auto terraform / build command, a player move): its work job drives it now. */
 function clearUnitCommands(state: PlanetState, workerId: number, tick: number): void {
+  cancelMove(state, workerId, tick);
   const book = new UnitBook(state);
   const rec = book.peek(workerId);
   if (!rec || (rec.current === null && rec.queue.length === 0)) return;

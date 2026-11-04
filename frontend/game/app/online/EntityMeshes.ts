@@ -1,7 +1,11 @@
 import * as THREE from 'three';
+import { syncExtractorAppearance } from './extractorAppearance';
+import { updateSelectionPulse } from './selectionPulse';
+import { getWindUniforms } from '@terra/render/core/windConfig';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, stripBuildingPlinth, tickArchetypeMesh } from '@terra/render/kitbash';
 import { attachEntityProjectorRig } from '@terra/render/lighting';
+import { GridCableRenderer } from '@terra/render/lighting/gridCables';
 import { WorkParticleSystem } from '@terra/render/particles';
 import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
@@ -12,8 +16,10 @@ import { isEntityInViewFocus } from './entityFocus';
 import { MotionTrack, RenderClock } from './entityMotion';
 import { isWorldPointInColonyFov, resetColonyVisionAndLights, syncColonyVisionAndProjectors } from './entityVisionSync';
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
+import { derivePowerCableSpans } from './powerCableSpans';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { disposeObject3D, UnitHealthBars } from './unitHealthBars';
+import { entityWorldXZ, archetypeForKind, isConstructibleBuilding } from './entityKinds';
 import {
   buildActiveWorkSites,
   computeWorkTarget,
@@ -21,6 +27,8 @@ import {
   hubBuildProgressForState,
   is2x2BuildingKind,
 } from './workTargetResolver';
+
+export { entityWorldXZ, archetypeForKind };
 
 export interface EntityMeshRecord {
   id: number; kind: number; owner: number; q: number; r: number; x: number; y: number; rot: number;
@@ -46,30 +54,6 @@ const UNPREDICTABLE_REJECTS: ReadonlySet<string> = new Set([
 
 export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
 
-export function archetypeForKind(kind: number): string {
-  if (kind === ENTITY_KIND.hq) return 'robot.hero';
-  if (kind === ENTITY_KIND.pod) return 'ship.dropPod';
-  if (kind === ENTITY_KIND.commandHub) return 'building.commandHub';
-  if (kind === ENTITY_KIND.metalsExtractor) return 'building.mine';
-  if (kind === ENTITY_KIND.solar) return 'building.solar';
-  if (kind === ENTITY_KIND.tradeHub) return 'building.tradeHub';
-  if (kind === ENTITY_KIND.harvester) return 'robot.miner';
-  // devProbe (W00 test entity) and any kind without its own model: a registered unit archetype (XC-25)
-  return 'robot.builder';
-}
-
-function isConstructibleBuilding(kind: number): boolean {
-  return (
-    kind === ENTITY_KIND.commandHub ||
-    kind === ENTITY_KIND.metalsExtractor ||
-    kind === ENTITY_KIND.solar ||
-    kind === ENTITY_KIND.tradeHub
-  );
-}
-
-export function entityWorldXZ(kind: number, x: number, y: number): [number, number] {
-  return is2x2BuildingKind(kind) ? tileXZ(x + 0.5, y + 0.5) : tileXZ(x, y);
-}
 
 function planetKindForBiome(biomeKey: string): PlanetKind {
   if (biomeKey === 'desert' || biomeKey === 'dune') return 'dune';
@@ -99,6 +83,8 @@ export class EntityMeshes {
   readonly podTouchdown: PodTouchdownFx;
   readonly healthBars: UnitHealthBars;
   readonly workParticles: WorkParticleSystem;
+  /** Grid cables + lightning between the Hub, pylons and attached buildings (`powerCableSpans.ts`). */
+  readonly gridCables: GridCableRenderer;
   isW10Enabled: () => boolean = () => true;
   private readonly entries = new Map<number, EntityMeshRecord>();
   private selectedEntityId: number | null = null;
@@ -106,6 +92,7 @@ export class EntityMeshes {
   private markerT = 99;
   private markerTile: { q: number; r: number } | null = null;
   private time = 0;
+  private windTime = 0;
   private biomeKey = 'forestRock';
   private latestTiles: ClientTiles | null = null;
   private latestView: ClientView | null = null;
@@ -125,6 +112,7 @@ export class EntityMeshes {
     this.podTouchdown = new PodTouchdownFx(this.scene, playPodTouchdown);
     this.healthBars = new UnitHealthBars(this.scene);
     this.workParticles = new WorkParticleSystem(this.scene);
+    this.gridCables = new GridCableRenderer(this.scene);
     this.selectionRing = makeGroundRing(0.75, 0.95, 0xff6a13, 'selection-ring');
     this.scene.add(this.selectionRing);
     this.targetMarker = makeGroundRing(0.55, 0.75, 0x00f0ff, 'target-marker');
@@ -246,6 +234,7 @@ export class EntityMeshes {
     forEachEntity(view.entities, view.count, (e) => {
       seen.add(e.id);
       correction = Math.max(correction, this.upsertEntity(e, terrain, tdState, view.tick, view));
+      syncExtractorAppearance(this.entries.get(e.id)?.mesh, e, view);
     });
     if (correction > 0) this.onCorrection?.(correction);
 
@@ -263,6 +252,8 @@ export class EntityMeshes {
     this.syncVisionAndForeignVisibility(terrain, tdState);
     this.healthBars.sync(this.entries.values());
     this.updateSelectionRing();
+    const ground = terrain ? (x: number, z: number) => terrain.heightAt(x, z) : undefined;
+    this.gridCables.setSpans(derivePowerCableSpans(this.entries.values(), view, this.ownerColonyIndex), ground);
   }
 
   private syncVisionAndForeignVisibility(terrain: HexTerrain | null, tdState: PodTouchdownState): void {
@@ -365,6 +356,7 @@ export class EntityMeshes {
   /** `dt`: animation time (warp-scaled); `realDt`: wall-clock seconds for the render clock (defaults to `dt`). */
   update(dt: number, terrain: HexTerrain | null = null, realDt = dt): void {
     this.time += dt;
+    this.windTime += dt * getWindUniforms().uWindStrength.value;
     this.hasTerrain = Boolean(terrain);
     const renderTick = this.clock.advance(realDt);
     const posLerp = Math.min(1, 1 - Math.exp(-dt * 12));
@@ -402,8 +394,9 @@ export class EntityMeshes {
         continue;
       }
 
-      const isTrackedUnit = rec.kind === ENTITY_KIND.hq || rec.kind === ENTITY_KIND.harvester;
+      const isTrackedUnit = rec.kind === ENTITY_KIND.hq || rec.kind === ENTITY_KIND.harvester || rec.kind === ENTITY_KIND.builder;
       const wantWalk = isTrackedUnit ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
+      updateSelectionPulse(rec.mesh, rec.id === this.selectedEntityId, this.time);
       const wantWork = computeWorkTarget(rec.kind, rec.state, isDaylight);
       rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);
       rec.work += (wantWork - rec.work) * Math.min(1, dt * 10);
@@ -411,7 +404,7 @@ export class EntityMeshes {
       const animTime = isConstructibleBuilding(rec.kind) && wantWork === 0
         ? ((rec.mesh.userData as { uniforms?: { uTime?: { value: number } } })?.uniforms?.uTime?.value ?? 0)
         : this.time;
-      tickArchetypeMesh(rec.mesh, animTime, rec.walk, rec.work);
+      tickArchetypeMesh(rec.mesh, rec.kind === ENTITY_KIND.wind && wantWork > 0 ? this.windTime : animTime, rec.walk, rec.work);
     }
 
     const workSites = buildActiveWorkSites({
@@ -431,6 +424,7 @@ export class EntityMeshes {
     }
     this.workParticles.syncSites(workSites);
     this.workParticles.update(dt);
+    this.gridCables.update(realDt);
 
     this.syncVisionAndForeignVisibility(terrain, tdState);
     this.healthBars.sync(this.entries.values());
@@ -473,6 +467,12 @@ export class EntityMeshes {
       return;
     }
     this.selectionRing.visible = true;
+    const geometry = (sel.mesh as THREE.Mesh).geometry;
+    if (geometry && !geometry.boundingBox) geometry.computeBoundingBox();
+    const box = geometry?.boundingBox;
+    const radius = box ? Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * sel.mesh.scale.x * 0.65 : 1;
+    this.selectionRing.scale.setScalar(Math.max(1, radius) * (1 + 0.06 * Math.sin(this.time * 4)));
+    (this.selectionRing.material as THREE.MeshBasicMaterial).opacity = 0.65 + 0.3 * Math.sin(this.time * 4);
     this.selectionRing.position.set(sel.mesh.position.x, sel.mesh.position.y + 0.06, sel.mesh.position.z);
   }
 
@@ -481,6 +481,7 @@ export class EntityMeshes {
     this.podTouchdown.dispose();
     this.healthBars.dispose();
     this.workParticles.dispose();
+    this.gridCables.dispose();
     for (const rec of this.entries.values()) {
       this.group.remove(rec.mesh);
       disposeObject3D(rec.mesh);

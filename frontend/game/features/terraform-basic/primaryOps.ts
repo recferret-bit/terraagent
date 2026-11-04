@@ -80,7 +80,8 @@ function planDismantle(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPl
     return skip('dismantle', 'cannot_dismantle_hq', 'Cannot dismantle Command Hub or HQ Drone');
   }
   const refund = calculateDismantleRefund(resolveEntityBaseCost(target.kindName, target.cost, ctx.data ?? undefined));
-  const status = `Dismantle ordered (+${pct(DISMANTLE_REFUND_RATIO)} spent resources refunded)`;
+  // Builder work (owner feedback W03 #6): a Builder Drone or the HQ takes it apart in half its build time.
+  const status = `Dismantle ordered: a Builder takes it apart (+${pct(DISMANTLE_REFUND_RATIO)} refunded step by step)`;
   return {
     terraform: { op: 'dismantle', tiles: [{ q, r }] },
     outcome: { ok: true, op: 'dismantle', targetId: target.id, refund, status },

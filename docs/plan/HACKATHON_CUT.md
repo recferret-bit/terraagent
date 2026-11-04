@@ -4,11 +4,11 @@
 >
 > | Set | Issues | Effort (units) | Critical path (units) |
 > |---|---|---|---|
-> | **H** must | 395 | ≈ 299.5 | 21.0 |
-> | H+ stretch | 64 more | ≈ 41.5 more | — |
+> | **H** must | 409 | ≈ 312.0 | 21.0 |
+> | H+ stretch | 62 more | ≈ 40.5 more | — |
 > | H2 real NEAR (after the D10 gate) | 21 | ≈ 15 | — |
 >
-> One **unit** = one M issue (S = ½). The earlier "≈ 185 agent-days" for option B was a guess; tagging every issue gives **≈ 299.5** (293 after the 2026-10-30 review, then W26's 9 units minus the two W25 deploy rows that left the H set). It fits **only if agents are fast**: with 12 parallel agents the `H` set takes 29.5 units of wall-clock, so each agent must close **≥ 2.3 units a day**. At 1 unit/agent/day it does not fit at any agent count, because the critical path alone is 21.0 units. §3 has the pace check and the drop order.
+> One **unit** = one M issue (S = ½). Updated 2026-11-04 after the W11/W27 split: H totals 312 units, with a 21-unit critical path and a 30.5-unit simulated schedule at 12 agents. This is an effort model, not a delivery forecast; historical calendar checkpoints below require reforecasting. See the regenerated schedule for current counts.
 >
 > **Decisions:**
 > - [`D-24`](../spec/DECISIONS.md): one app + simplified server sim
@@ -54,7 +54,7 @@ The demo can run on mocks in production on purpose: `NEAR_ALLOW_MOCK_IN_PROD=tru
 | W08 Stages & Goals | 20 · 15.5 | Stage engine S0–S4, dwell, unlock gating with greyed menus, stage HUD, HQ goals (3 kinds), rule engine + sliders, lane automation, autopilot | Suggestion cards, overrides, other goal kinds |
 | W09 Offline | 14 · 12.0 | Presence, coarse stepping, restart fast-run, away policy, digest + "While you were away", mock notifier + routing | Away settings panel, Web Push, Telegram, hard-mode elimination |
 | W10 Cargo (F1) | 21 · 14.0 | Trade Hub (new archetype), export/import with mint caps and refunds, mock NEP-245 with one token per sub-resource (D-34), panel, contract suite | Shuttle VFX, send-to-account (stretch) |
-| W11 Lobby | 12 · 11.5 | Planet list and picker (cards for the three landing worlds; only `temperate` is open), join via tickets → reservation → spawn | Parties, queue panel, sealing, refill, warm pool |
+| W11 Planet Foundations | See regenerated ISSUE_INDEX | Three canonical persistent small sector worlds, validated atlas/saves/identity, sector join and border play; revised 2026-11-04 scope | Full parties, advanced queue/admin UI and beacon-removal integration; large-world streaming/globe navigation in W27 |
 | W12 Player Page | 18 · 14.5 | `/me` with Pilot, Progress, stats, 20 × 3 flip cards with art, XP and levels, toasts | Planets cards, history, badge minting, titles |
 | W13 Markets (F2) | 25 · 18.5 | Order book per sub-resource pair (D-34; T1 from day one), matching with partial fills, mock Intents `token_diff` settlement, failure handling, cancel/expiry, market tab, price board | Fee controls (default fee used), extra quote tokens, matcher tests (stretch) |
 | W14 Fortify | 16 · 12.0 | Raise Ridge, Dig Moat, Lower, walls block ground units and fauna, Wall Gate, `would_isolate`, wall tool | Line of fire / parapet, meteor breach, gate archetype |
@@ -64,7 +64,9 @@ The demo can run on mocks in production on purpose: `NEAR_ALLOW_MOCK_IN_PROD=tru
 | W25 Launch | 13 · 8.0 | Secrets, backups, README, hosted demo on the W26 hosts, video, X post, submission | dashboards, load/soak, analytics page, rollback deploy, R2, TLS |
 | W26 Sites | 10 · 9.0 | nginx + four compose files, eight `terraagent.fun` hosts, `stack:local`, `deploy` over SSH to `DEPLOY_HOST` | TLS, Cloudflare, a second chain process |
 
-Counts are as of 2026-10-30; the live per-wave numbers are in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) and change when tags move.
+**W11 scope amendment (2026-11-04):** the owner requested the small persistent-world foundation. Its H set grew; the previous 11.5-unit estimate and D12 expectation are not a new delivery commitment. Regenerated ISSUE_INDEX/HACKATHON_SCHEDULE are the current effort/dependency source; reforecast calendar commitments before execution.
+
+Counts below and other calendar expectations are historical as of 2026-10-30; the live per-wave numbers are in [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) and change when tags move.
 
 W16 (AI director) is not in the cut: the W08 rule engine and autopilot carry the autonomy. Kitbash rule: the only new archetype on the `H` path is the Trade Hub (W10-16); the HQ and Command Hub are existing models cut to the triangle budget (W01-24, W01-25); everything else uses an existing archetype until its H+ row lands.
 
@@ -96,7 +98,7 @@ The prototype predates the window, so the README must disclose it as **pre-windo
 
 **Drop order when behind** (move a wave's `H` rows to `H+`, rerun the script; units saved):
 1. All `H+` work stops (agents stay on `H`).
-2. W11 Lobby (11.5): the W01 dev-seat flow stays.
+2. W11 Planet Foundations (current effort in ISSUE_INDEX): the W01 dev-seat flow stays if this expanded wave is deferred.
 3. W14 Fortify (12.0).
 4. W22 Treasury & Bounties (15.5).
 5. W20 Deed (8.5).
@@ -143,7 +145,7 @@ Every issue tagged `H+` (if not reached) or blank in [`waves/`](./waves/), plus 
 
 | Risk | Impact | Mitigation |
 |---|---|---|
-| **Scope:** the `H` set is ≈ 299.5 units against 13 build days | Waves late in the value order miss the window | Measured pace from D2 (§3), the drop order in §3, review only where it matters; every wave that lands is still a working app, and the D10 gate allows shipping on mocks |
+| **Scope:** the `H` set is ≈ 312 units against 13 build days | Waves late in the value order miss the window | Measured pace from D2 (§3), the drop order in §3, review only where it matters; every wave that lands is still a working app, and the D10 gate allows shipping on mocks |
 | **Judges want real NEAR usage** | All-mock looks weaker for track 09 | Phase 2 swaps F5 → F1 → F2. The README and the description state the mock/real table honestly. The contract suites show the swap is real, not a stub |
 | **NEAR Intents is mainnet-only** (no testnet) | Real funds while debugging | Mocks in phase 1. In phase 2: `dry: true` and `simulate_intents` first, then a single tiny trade between our own dev colonies |
 | **Social-login provider** not chosen | Real F5 (after the D10 gate) stalls | The mock `IdentityPort` carries phase 1. The owner picks a provider before D10 (HOT is a listed partner). **Fallback:** server-created named sub-accounts with custodial keys |

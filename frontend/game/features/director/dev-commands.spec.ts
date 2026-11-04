@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { FeatureContext } from '../../core/registry/types';
 import { directorDevCommands } from './devCommands';
 
-const ctx: FeatureContext = { flags: new Set(['W16']), host: 'local', services: {} };
+const ctx: FeatureContext = { flags: new Set(['W16']), host: 'local', services: { track: () => {} } };
 
 describe('W16-26 director dev tools', () => {
   it('is absent in production and prints a plan trace otherwise', async () => {

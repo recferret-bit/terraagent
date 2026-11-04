@@ -17,6 +17,7 @@ export * from './orders';
 export * from './place';
 export * from './placement';
 export * from './placementWorld';
+export * from './powerZone';
 export * from './prep';
 export * from './site';
 export * from './validate';

@@ -182,7 +182,7 @@ All numbers from `docs/game/colony-economy-and-buildings-spec.md` unless marked 
 | Command Hub | T2 | 4×4 | 75 s | 600/350/200/150 | −14 | 3 800 | Claim R 15; storage +1 500 per family; supply +25 |
 | Territory Claim Beacon | T1 | 1×1 | 18 s | 80/40/0/10 | −4 | 400 | Claim R 8 |
 | Territory Claim Beacon | T2 | 2×2 | 42 s | 220/140/40/30 | −11 | 1 100 | Claim R 14; vision R 20 |
-| Power Line Pylon | T1 | 1×1 | 4 s | 15/5/0/0 | −0.5 | 120 | Span 6; max load 80 E/s (enforced, `SIM-G-PWR`, D-21) |
+| Power Pylon | T1 | 1×1 | 4 s | 15/5/0/0 | −0.5 | 120 | Power zone radius 5 (Hub 6; buildings must stand in a zone, D-37); max load 80 E/s (enforced, `SIM-G-PWR`, D-21) |
 | Energy Capacitor Bank | T1 | 2×2 | 16 s | 70/60/10/10 | −1.5 | 450 | Stores 1 500 E; discharge ≤ 30 E/s |
 | Coal/Oil Thermal Plant | T1 | 2×2 | 15 s | 80/20/20/10 | −3 | 450 **(proposed HP)** | +28 gross; consumes 1.5 `bio.biomass`/s; pollution +1 |
 | Wind Turbine | T1 | 2×2 | 14 s | 70/35/5/0 | −1 | 400 **(proposed HP)** | +16 gross × wind factor 50–140 % (storms do not change it, B13) |
@@ -239,6 +239,8 @@ Exactly the economy spec §2: claim on construction completion (radius by tier),
 > **D-16 (accepted):** placement also requires every footprint tile to be **Prepared** (terraformed). Placement is one shared pure function (`evaluatePlacement`, D-37) run by the `placeBuilding` handler and the client ghost; trees, rock, water and deposits are `terrain_unbuildable` until terraformed. Terrain classes, the 8 terraform ops and their energy draw, linked prep orders, meteor holes and the spawn guarantee are in [`docs/game/units-orders-and-progression-spec.md`](../game/units-orders-and-progression-spec.md) §4.5.
 
 ### 7.6 Environment, hazards & fauna **(all proposed, owner-tunable)**
+
+**Fauna revision (D-43, 2026-11-04):** [Hive fauna](../game/fauna-hives-spec.md) supersedes the fauna/nest/raid rows below: three neutral insect species, one hive type per species, passive cosmetic life and bounded aggressive waves. The old rows remain historical balance context only. Use actual `TICKS_PER_SECOND` conversions, not the legacy 10 TPS constants in this table.
 
 > **Pressure level: hard (D-17).** At default difficulty, an unattended colony **can be eliminated** by fauna, hazards or other players; the player is notified (CONTINUITY §5a). Stage-scaled raid sizes, Brute and Drifter species, meteor timing and wall rules are in `docs/game/units-orders-and-progression-spec.md` §6.3 and §4.8, and they supersede the raid row below. The "must survive a night offline" goal is dropped. What the tests guarantee instead is that the colony **defends itself sensibly** (AC-03 in the units spec), not that it survives.
 
@@ -398,7 +400,7 @@ The planned test per rule (task plan). Files marked by a later wave's task do no
 | 13 | `powerOverload` debounce | 600 ticks in §7.4 and §9 (under `SIM-D-03` that is 60 s of game time) | R8 | §9 row |
 
 Follow-up design needed:
-- Settled colonies and the planet `ENDED` condition: resolved in MATCHMAKING `MM-07`. An all-settled planet ends early (proposed).
+- Settled colonies persist on canonical worlds; settlement does not end the planet. MATCHMAKING §0 and amended D-12 supersede the old MM-07 all-settled ending. Transfers await an eligible different selected world; no replacement instance or source respawn.
 
 ---
 

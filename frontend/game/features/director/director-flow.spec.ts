@@ -6,7 +6,7 @@ import { DirectorPanel } from './DirectorPanel';
 import directorFeature from './index';
 
 function ctx(flags: readonly string[]): FeatureContext {
-  return { flags: new Set(flags), host: 'local', services: {} };
+  return { flags: new Set(flags), host: 'local', services: { track: () => {} } };
 }
 
 describe('W16-45 director UI flow', () => {

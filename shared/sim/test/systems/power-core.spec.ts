@@ -11,7 +11,7 @@ import {
 } from '../../src';
 
 describe('W02-05 Power system (slot 7) v0 — single component', () => {
-  it('Hub alone -> +8 / -5; + 1 working Harvester -> -6.5 demand (idle Harvester -> 50% drain = -5.75)', () => {
+  it('Hub alone -> +16 / -7; + 1 working Harvester -> -9 demand (idle Harvester -> 50% drain = -8)', () => {
     const state = createState({ planetId: 'p1', planetType: 'temperate', seed: 'w02', radius: 8 });
     state.colonies.push({
       index: 0,
@@ -37,9 +37,9 @@ describe('W02-05 Power system (slot 7) v0 — single component', () => {
 
     step(state, [], 1, pipeline);
     const pHubOnly = getColonyPower(state, 0);
-    expect(pHubOnly.supply).toBe(8);
-    expect(pHubOnly.demand).toBe(5);
-    expect(pHubOnly.net).toBe(3);
+    expect(pHubOnly.supply).toBe(16);
+    expect(pHubOnly.demand).toBe(7);
+    expect(pHubOnly.net).toBe(9);
 
     // Spawn 1 working Harvester
     const harvRow = insertRow(state.entities, state.meta.nextEntityId++, 1);
@@ -51,14 +51,14 @@ describe('W02-05 Power system (slot 7) v0 — single component', () => {
 
     step(state, [], 1, pipeline);
     const pWithWorkingHarv = getColonyPower(state, 0);
-    expect(pWithWorkingHarv.supply).toBe(8);
-    expect(pWithWorkingHarv.demand).toBe(6.5);
-    expect(pWithWorkingHarv.net).toBe(1.5);
+    expect(pWithWorkingHarv.supply).toBe(16);
+    expect(pWithWorkingHarv.demand).toBe(9);
+    expect(pWithWorkingHarv.net).toBe(7);
 
-    // When Harvester is idle, its drain is 50% (0.75 E/s -> total demand 5.75)
+    // When Harvester is idle, its drain is 50% (1 E/s -> total demand 8)
     state.entities.cols.state[harvRow] = ENTITY_STATE.idle;
     step(state, [], 1, pipeline);
-    expect(getColonyPower(state, 0).demand).toBe(5.75);
+    expect(getColonyPower(state, 0).demand).toBe(8);
   });
 
   it('attaches buildings within pylon radius of Hub and marks distant buildings offlineUnpowered', () => {
@@ -99,8 +99,8 @@ describe('W02-05 Power system (slot 7) v0 — single component', () => {
 
     step(state, [], 1, pipeline);
     const power = getColonyPower(state, 0);
-    expect(power.supply).toBe(28); // 8 Founder Core + 20 Solar net
-    expect(power.demand).toBe(5); // Far extractor is unattached so it does not draw power
+    expect(power.supply).toBe(29); // 16 Founder Core + 13 Solar net
+    expect(power.demand).toBe(7); // Far extractor is unattached so it does not draw power
     expect(power.unpoweredEntityIds).toContain(state.entities.cols.id[farExtRow]);
     expect(state.entities.cols.state[farExtRow]).toBe(ENTITY_STATE.offlineUnpowered);
   });

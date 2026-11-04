@@ -1,4 +1,5 @@
 import { setBlob, type SimState } from '../../kernel/state';
+import type { CrewTally } from '../dispatch/crew';
 
 /**
  * The construction queue (`blobs.constructionQueue`): one shape, `{ orders: ConstructionOrder[] }` (GP-08). Open
@@ -8,7 +9,7 @@ import { setBlob, type SimState } from '../../kernel/state';
 
 export type ConstructionStatus = 'waiting_site' | 'waiting_resources' | 'in_progress' | 'completed' | 'cancelled';
 
-export interface ConstructionOrder {
+export interface ConstructionOrder extends CrewTally {
   /** Sim-made, unique on the planet (`build#<n>`). */
   orderId: string;
   /** The client's id for the order (its command id), or the order id. */

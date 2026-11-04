@@ -65,6 +65,8 @@ export interface ClientView {
   count: number;
   colonies: ViewColony[];
   blobs?: Record<string, unknown>;
+  entityPower?: Record<number, ViewEntity['power']>;
+  pylonLoads?: Record<number, ViewEntity['pylon']>;
 }
 
 /** The structured-clone form: only plain data and ArrayBuffers (listed in `transfer`). */
@@ -86,6 +88,8 @@ export interface WireView {
   count: number;
   colonies: ViewColony[];
   blobs?: Record<string, unknown>;
+  entityPower?: Record<number, ViewEntity['power']>;
+  pylonLoads?: Record<number, ViewEntity['pylon']>;
 }
 
 export function packEntities(entities: SimView['entities']): Float32Array {
@@ -104,7 +108,25 @@ const copy = <T extends Uint8Array | Int8Array | Float32Array>(a: T): T => a.sli
 export function packView(v: SimView, withTiles: boolean): { view: WireView; transfer: ArrayBuffer[] } {
   const entities = packEntities(v.entities);
   const transfer: ArrayBuffer[] = [entities.buffer as ArrayBuffer];
-  const view: WireView = { tick: v.tick, planet: v.planet, entities: entities.buffer as ArrayBuffer, count: v.entities.length, colonies: v.colonies, blobs: v.blobs };
+  const entityPower: Record<number, ViewEntity['power']> = {};
+  const pylonLoads: Record<number, ViewEntity['pylon']> = {};
+  for (let i = 0; i < v.entities.length; i++) {
+    const e = v.entities[i];
+    if (e.power) entityPower[e.id] = e.power;
+    if (e.pylon) pylonLoads[e.id] = e.pylon;
+  }
+  const hasPower = Object.keys(entityPower).length > 0;
+  const hasPylon = Object.keys(pylonLoads).length > 0;
+  const view: WireView = {
+    tick: v.tick,
+    planet: v.planet,
+    entities: entities.buffer as ArrayBuffer,
+    count: v.entities.length,
+    colonies: v.colonies,
+    blobs: v.blobs,
+    ...(hasPower ? { entityPower } : {}),
+    ...(hasPylon ? { pylonLoads } : {}),
+  };
   if (withTiles) {
     const t = v.tiles;
     const terrain = copy(t.terrain), prep = copy(t.prep), height = copy(t.height), owner = copy(t.owner);
@@ -129,7 +151,16 @@ export function packView(v: SimView, withTiles: boolean): { view: WireView; tran
 }
 
 export function unpackView(w: WireView, serverTimeMs?: number): ClientView {
-  const out: ClientView = { tick: w.tick, planet: w.planet, entities: new Float32Array(w.entities), count: w.count, colonies: w.colonies, blobs: w.blobs };
+  const out: ClientView = {
+    tick: w.tick,
+    planet: w.planet,
+    entities: new Float32Array(w.entities),
+    count: w.count,
+    colonies: w.colonies,
+    blobs: w.blobs,
+    ...(w.entityPower ? { entityPower: w.entityPower } : {}),
+    ...(w.pylonLoads ? { pylonLoads: w.pylonLoads } : {}),
+  };
   if (serverTimeMs !== undefined) out.serverTimeMs = serverTimeMs;
   if (w.tiles) {
     out.tiles = {

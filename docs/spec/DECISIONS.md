@@ -16,7 +16,7 @@
 | D-09 | Z.ai `glm-5.3` via OpenAI-compatible API, behind a provider port | Accepted (2026-10-29): general endpoint, 20M tokens/day, raw logs 14 d |
 | D-10 | Guest-first auth, optional NEAR wallet link (NEP-413) | Proposed |
 | D-11 | Trades settle in-game in MVP with on-chain receipt; real NEAR Intents later | Superseded by D-19 |
-| D-12 | Planet lifecycle numbers: capacity 5, admission 24 h, lifetime 14 d | Accepted (2026-10-29), amended: seat refill within first 2 h |
+| D-12 | Persistent canonical planets and sector founding capacity | Amended by owner 2026-11-04: W11 foundation, W27 scale/navigation; supersedes instance lifetimes/warm pools |
 | D-13 | Planets always tick at full rate (no dormant fast-forward in MVP) | Superseded by D-24 (empty planets tick coarse) |
 | D-14 | All backend services are NestJS | Amended by D-24 (one NestJS app; sim threads plain TS) |
 | D-15 | MVP gameplay scope for the online build | Proposed — robot list superseded by D-16 if accepted |
@@ -47,6 +47,8 @@
 | D-40 | Public host `terraagent.fun` on one nginx, four compose stacks (infra, frontend, backend, chain), SSH deploy from `DEPLOY_HOST` in `infra/.env`. No Cloudflare and no R2 in this phase | Accepted (2026-11-01) |
 | D-41 | Clean root folder modelled on `../freightchain`: root holds only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, root `package.json` (`package-lock.json`), and the 7 domain folders (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`) | Accepted (2026-11-01, owner) |
 | D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
+
+| D-43 | Neutral hive fauna: three insect species, passive/aggressive behavior, shared planet models initially, deterministic directives and cosmetic hive life | Accepted direction (2026-11-04, owner); tuning proposals in fauna contract |
 
 ---
 
@@ -118,11 +120,15 @@
 
 **Decision.** Offer/accept flows through core; settlement = paired commands to both planets' command streams in one transaction-like saga with compensation; `near-gateway` writes a receipt to `colony-registry`. Real NEAR Intents (solver network) is a follow-up epic once resources are tokenized.
 
-## D-12 — Planet lifecycle numbers
+## D-12 — Persistent canonical planets and sector admission
 
-**Decision.** `PLANET_CAPACITY=5`, `PLANET_ADMISSION_WINDOW_H=24`, `PLANET_LIFETIME_D=14`, seats on sealed planets never refill, warm pool 1 per type, global cap 200 active planets. Owner's example ("5 players on the planet for days → no new players") is satisfied by either gate.
+**Owner amendment (2026-11-04).** W11 becomes a small playable version of W27. Three canonical planets, one per existing type, persist from W11 onward. Founding capacity and safe landing slots belong to gameplay sectors; full worlds queue new players. No automatic overflow instances, warm pools, age sealing, lifetime expiry or extinction/all-settled ending. W11 includes small connected sectors and real border crossings; W27 expands scale, streaming and ground-to-globe navigation using the same admission model.
 
-**Resolved (2026-10-29).** Planets seal at 24 h even with only 1–2 colonies. A seat freed by elimination is refilled only within the first 2 h of a recruiting planet. Matchmaking join fallback: auto-place on the same planet type.
+**Superseded history.** The 2026-10-29 decision used capacity five per instance, 24-hour admission, 14-day lifetime, two-hour refill and warm pools. Those numbers are not current W11/W27 requirements. Pre-W11 dev seating remains a compatibility path.
+
+**Detailed policy:** [MATCHMAKING §0](./MATCHMAKING.md#0-persistent-sector-worlds--current-w11w27-policy-2026-11-04). Preserve tickets, atomic reservations, spawn recovery, parties, authorized resume and existing authority boundaries. Full is availability, not permanent sealing; admin maintenance/archival is explicit and audited.
+
+**Still open:** exact small-world sizing, abandoned/founded-seat reclaim, rejoin after elimination and occupied-world enlargement. [WE-33](../questions-and-limitations/sim-world-engine.md#we-33--w11-small-world-rollout-and-persistent-seat-policies) records conservative defaults and required follow-up; no inactivity eviction or automatic save reset is authorized.
 
 ## D-13 — Planets always tick at full rate
 
@@ -563,5 +569,16 @@ The log stays append-only; these notes record where the code built in W00–W01 
 - **D-02 (fault quarantine).** There is no `FAULTED` state. A step that throws (`StepError`) on the server: the thread journals the step's postings, answers its commands (their outcomes so far, `internal` for the rest), drops the planet and posts `planetFailed`; main closes its sockets (`bye 4012 planet_down`) and restores the latest snapshot, at most 3 times per 10 minutes (`RECOVER_LIMIT`), then holds the planet unloaded (BE-12, SIMULATION `SIM-H-08`).
 - **D-23 / D-24 (JSON deltas in v1).** Superseded by D-31: `welcome` and `delta` carry engine snapshot / diff bytes in one MessagePack binary frame; every other message is a JSON text frame (`shared/contracts/src/ws/wire.ts`). Coarse stepping of empty planets and the restart fast-run (D-24) are not built yet (W09).
 - **D-37 (placement).** Besides the footprint rules, `evaluatePlacement` blocks a Hub farther than `hq.startingKit.hubMaxDistFromLanding` from the colony's own pod (`farFromLanding`) and a Hub site closer to another colony's pod or Hub than to its own pod (`nearOtherColony`), both `site_blocked` (GP-06). Placement never rejects for cost: an unaffordable building is accepted and its order waits (`waiting_resources`, GP-30).
+- **D-37 (power zone, W03 owner check).** From the W03 grid on, only the Command Hub may stand anywhere on terraformed ground; every other building's footprint must lie inside the union of the colony's power zones (`outside_power_zone`): the hex disk of `powerZoneRadius` around each own Command Hub (`hub.t1`, 6) and Power Pylon (`grid.pylon`, 5). Placement counts Hubs / pylons that are built, under construction or still an open build order (players chain pylons); the power graph (`power-core/graph.ts`) uses the same zones but only built relays, so a building in an unfinished pylon's zone is `offline: no grid` until the pylon is done. One rule in `construction/powerZone.ts` for placement, the graph and the client's zone highlight. A Power Pylon is one `build` order; the multi-pylon `placePowerLine` command is gone.
 - **D-38 (tile stamps).** `stampTile` is private to `grid/tileModel.ts`; callers change tiles through the exported setters (`setTilePrep`, `setTileTerrain`, …) or `touchTile`.
 - **D-39 (landing history).** `landingHistory` is append-only except for one dev path: `dev.land` moving a pod that has not opened rewrites that colony's latest record (`relocateLanding`). The planner also refuses a site whose starter Hub site would take another colony's territory (`starterHubSiteBlocked`, WE-23).
+
+## D-43 — Neutral hive fauna
+
+**Decision (owner direction, 2026-11-04).** W07 fauna belongs to the planet and starts neutral. Each species has its own hive: black ants (melee hordes), blue beetles (armored tanks), green spitters (ranged acid). Two modes only: passive life and aggressive waves. Feeding/building are cosmetic, with no fauna economy or heavy AI. Shared models across planets are the initial implementation; a planet/species visual registry permits distinct planet models later. Six models and hive-life playground fixtures are required.
+
+**Online contract.** Shared seeded simulation and tick-stamped directives reproduce decisions; authoritative checkpoints, combat results and sparse corrections handle late joins and drift. Public fauna seeds are intentional; clients gain no authority. The [fauna specification](../game/fauna-hives-spec.md) defines integration and acceptance. This narrows D-31's routine fauna motion payload; other entity replication stays unchanged.
+
+**Scope and defaults.** This supersedes D-15's single-species fauna and old W07 proximity aggression. Blue armor is provisionally modeled as shell geometry + high HP, preserving D-28 plain damage; numerical balance, provocation/cooldown policy and that armor interpretation are proposals recorded as GP-80, not additional owner decisions. Existing W08 threat composition must be reconciled by W07; Brute/Drifter remain later extensions.
+
+**Alternatives.** Full per-bug transform streaming defeats the requested order-style replication. Seed-only replication cannot recover missing inputs or reconnects. Simulated food/building chains add complexity the owner explicitly excluded.
