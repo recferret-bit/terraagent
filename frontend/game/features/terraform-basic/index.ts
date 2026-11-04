@@ -13,7 +13,10 @@ import type { InProcessHost } from '../shared/commandDispatch';
 import type { TilePickerFn } from '../shared/pointer';
 import {
   BrushController,
+  hexRadiusTiles,
+  rectTiles,
   type BrushCommandSink,
+  type BrushShape,
   type BrushStrokeOptions,
   type BrushStrokeOutcome,
   type BrushStrokeSummary,
@@ -56,9 +59,11 @@ export {
   DISMANTLE_REFUND_RATIO,
   extractColonyOrders,
   FULL_REPAIR_COST_RATIO,
+  hexRadiusTiles,
   planBrushStroke,
   incomeReferenceRows,
   PRIMARY_OP_DEFS,
+  rectTiles,
   resourceFoundText,
   resourceFindRow,
   TerraformMenu,
@@ -66,6 +71,7 @@ export {
   TileOverlay,
   type BrushCommandSink,
   type BrushOpSelection,
+  type BrushShape,
   type BrushStrokeOptions,
   type BrushStrokeOutcome,
   type BrushStrokeSummary,
@@ -93,9 +99,16 @@ export interface TerraformFeatureHandle extends HudPanelInstance {
   readonly overlay: TileOverlay;
   selectOp(op: BrushOpSelection): void;
   getSelectedOp(): BrushOpSelection;
+  setBrushShape(shape: BrushShape): void;
+  getBrushShape(): BrushShape;
   strokeTile(q: number, r: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
+  strokeArea(tiles: readonly TileCoord[], opts?: BrushStrokeOptions): BrushStrokeSummary;
+  strokeHexRadius(q: number, r: number, radius: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
+  strokeRect(q1: number, r1: number, q2: number, r2: number, opts?: BrushStrokeOptions): BrushStrokeSummary;
   /** Cancels the host order `orderId` (default: the active order in the view); false when there is none. */
   cancelOrder(orderId?: string): boolean;
+  /** Cancels queued terraform orders overlapping `tiles` (or all open manual terraform orders when omitted). */
+  cancelArea(tiles?: readonly TileCoord[]): number;
   disarm(): void;
   isArmed(): boolean;
   hasWorkerAvailable(): boolean;
@@ -146,6 +159,18 @@ export interface MountTerraformOptions {
   services?: Partial<FeatureContext['services']>;
 }
 
+function resolveSelectedWorkerId(services: Partial<FeatureContext['services']>): number | undefined {
+  const sel = services.landfall?.getSelectedEntity?.();
+  const isWorker =
+    sel?.isUnit &&
+    (sel.kind === ENTITY_KIND.hq ||
+      sel.kind === ENTITY_KIND.harvester ||
+      sel.kind === ENTITY_KIND.builder ||
+      sel.kind === ENTITY_KIND.terraformer) &&
+    !(sel.hp <= 0);
+  return isWorker ? sel.entityId : undefined;
+}
+
 /** Mounts the `terraform-basic` menu, brush controller, and tile-state overlay into `el`. */
 export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptions): TerraformFeatureHandle {
   const container = el ?? document.body;
@@ -156,12 +181,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
   const isBlocked = () =>
     isGameInputBlocked() ||
     services.hubPlacement?.isPlacementActive() === true || (services.getPlacementGhostState?.() ?? null) !== null;
-  /** The selected own alive worker (HQ Drone, Harvester) works the order; else (a building, a deposit, nothing) the host picks. */
-  const getWorkerId = () => {
-    const sel = services.landfall?.getSelectedEntity?.();
-    const isWorker = sel?.isUnit && (sel.kind === ENTITY_KIND.hq || sel.kind === ENTITY_KIND.harvester) && !(sel.hp <= 0);
-    return isWorker ? sel.entityId : undefined;
-  };
+  const getWorkerId = () => resolveSelectedWorkerId(services);
 
   const overlay = new TileOverlay(container, getColonyId);
   let menu: TerraformMenu | null = null;
@@ -184,7 +204,6 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     host: simHost,
     getColonyId,
     getWorkerId,
-    // an armed tool on a hidden / collapsed dock tab never takes map clicks (the menu disarms it on its next render)
     isBlocked: () => isBlocked() || (menu !== null && !isDockPaneShown(menu.el)),
     simData: () => store?.simData?.(),
     onChange: () => syncView(),
@@ -208,43 +227,32 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     menu,
     brush,
     overlay,
-    selectOp: (op) => {
-      brush.selectOp(op);
-      menu?.render();
-    },
+    selectOp: (op) => { brush.selectOp(op); menu?.render(); },
     getSelectedOp: () => brush.getSelectedOp(),
+    setBrushShape: (shape) => { brush.setBrushShape(shape); menu?.render(); },
+    getBrushShape: () => brush.getBrushShape(),
     strokeTile: (q, r, strokeOpts) => brush.strokeTile(q, r, strokeOpts),
+    strokeArea: (tiles, strokeOpts) => brush.strokeArea(tiles, strokeOpts),
+    strokeHexRadius: (q, r, radius, strokeOpts) => brush.strokeHexRadius(q, r, radius, strokeOpts),
+    strokeRect: (q1, r1, q2, r2, strokeOpts) => brush.strokeRect(q1, r1, q2, r2, strokeOpts),
     cancelOrder: (orderId) => brush.cancelOrder(orderId ?? overlay.getActiveOrder()?.orderId),
+    cancelArea: (tiles) => brush.cancelArea(tiles),
     disarm: () => brush.disarm(),
     isArmed: () => brush.isArmed(),
     hasWorkerAvailable: () => brush.hasWorkerAvailable(),
-    toggleOverlay: (on) => {
-      const next = overlay.setVisible(on);
-      menu?.render();
-      return next;
-    },
+    toggleOverlay: (on) => { const next = overlay.setVisible(on); menu?.render(); return next; },
     getOverlayState: () => {
-      if (simHost && (simHost.tick ?? -1) !== lastSyncedTick) {
-        syncView(simHost.view());
-      }
+      if (simHost && (simHost.tick ?? -1) !== lastSyncedTick) syncView(simHost.view());
       return overlay.getState();
     },
     getLastStroke: () => brush.getLastStroke(),
     getLastOutcome: () => brush.getLastOutcome(),
     bindSurface: (surf, pick) => brush.bindSurface(surf, pick),
     update: (view) => syncView(view),
-    dispose: () => {
-      offHostEvents?.();
-      offFound();
-      brush.dispose();
-      menu?.dispose();
-      overlay.dispose();
-    },
+    dispose: () => { offHostEvents?.(); offFound(); brush.dispose(); menu?.dispose(); overlay.dispose(); },
   };
 
-  if (opts?.services) {
-    opts.services.terraform = handle;
-  }
+  if (opts?.services) opts.services.terraform = handle;
   return handle;
 }
 

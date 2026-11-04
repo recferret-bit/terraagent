@@ -40,6 +40,54 @@
   display: none;
 }
 
+.ta-tf-menu__w05-ops {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--ta-s1);
+}
+
+.ta-tf-menu__w05-ops[hidden] {
+  display: none;
+}
+
+.ta-tf-menu__chip-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s1);
+  width: 100%;
+}
+
+.ta-tf-menu__op-icon {
+  color: var(--ta-orange);
+  font-size: var(--ta-fs-label);
+}
+
+.ta-tf-menu__op-meta {
+  margin-left: auto;
+  font-size: var(--ta-fs-label);
+  color: var(--ta-energy);
+}
+
+.ta-tf-menu__w05-chip.is-tier-locked {
+  cursor: not-allowed;
+  opacity: 0.55;
+  border-color: var(--ta-seam);
+  background: var(--ta-deep);
+}
+
+.ta-tf-menu__brush-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--ta-s1);
+}
+
+.ta-tf-menu__brush-btn {
+  flex: 1 1 auto;
+  padding: var(--ta-s1) var(--ta-s2);
+  font-size: var(--ta-fs-label);
+}
+
 .ta-tf-menu__stage-op.is-stage-locked {
   cursor: not-allowed;
   opacity: 0.55;

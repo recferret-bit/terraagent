@@ -7,6 +7,7 @@ import { isGameInputBlocked } from '../../core/input/gameInputBlock';
 import { isHotkeyPress } from '../shared/hotkeys';
 import { bindExclusivePointer, resolvePointerTile } from '../shared/pointer';
 import { buildGhostContext, resolveBuildingMeta, type GhostContext } from './ghostContext';
+import { getTilePrepOp, isW05LinkedPrepActive, resolveGhostPrepBill } from './prepBillFormat';
 import { depositReasonText, evaluateSiteWithSim, ownColonyIndex } from './sitePlacement';
 
 export interface PlacementGhostTile {
@@ -17,6 +18,7 @@ export interface PlacementGhostState {
   building: string; label: string; q: number; r: number; rotation: number;
   footprintW: number; footprintD: number; footprintText: string;
   tiles: PlacementGhostTile[]; prepBill: Record<string, number>; prepBillText: string;
+  prepEnergyE?: number; prepTimeS?: number; prepCost?: Record<string, number>;
   valid: boolean; statusColor: 'green' | 'red'; reason: string;
   requiresDeposit?: string; depositCovered: boolean; depositTileIndices: number[];
 }
@@ -30,26 +32,6 @@ function depositCodeForRequired(requiresDeposit?: string): number | undefined {
 
 export interface EvaluatePlacementGhostOptions {
   building: string; q: number; r: number; rotation: number; flags: ReadonlySet<string> | FlagSet; view?: GameView; colonyId?: number;
-}
-
-function getTilePrepOp(terrain: number, prep: number): string | undefined {
-  if (prep === PREP.prepared || prep === PREP.living) return undefined;
-  return 'prepare';
-}
-
-const PREP_LABELS: Record<string, string> = {
-  prepare: 'Prepare',
-  'clear + prepare': 'Clear + Prepare',
-  'break + prepare': 'Break + Prepare',
-  'flatten + prepare': 'Flatten + Prepare',
-};
-
-function formatPrepBillText(bill: Record<string, number>): string {
-  const entries = Object.entries(bill);
-  if (entries.length === 0) return 'Site prepared';
-  const order: Record<string, number> = { 'clear + prepare': 1, 'break + prepare': 2, 'flatten + prepare': 3, prepare: 4 };
-  entries.sort((a, b) => (order[a[0]] ?? 99) - (order[b[0]] ?? 99));
-  return `Prep: ${entries.map(([op, count]) => `${count}× ${PREP_LABELS[op] ?? (op.charAt(0).toUpperCase() + op.slice(1))}`).join(', ')}`;
 }
 
 interface FootprintScanResult {
@@ -71,6 +53,7 @@ function scanFootprintTiles(
   occupied: ReadonlySet<number>,
   tilesData?: ClientTiles,
   requiresDeposit?: string,
+  w05Active = false,
 ): FootprintScanResult {
   const tiles: PlacementGhostTile[] = [];
   const prepBill: Record<string, number> = {};
@@ -89,12 +72,12 @@ function scanFootprintTiles(
       const prep = tilesData?.prep ? (tilesData.prep[tileIdx] ?? PREP.wild) : PREP.wild;
       const deposit = tilesData?.deposit ? (tilesData.deposit[tileIdx] ?? DEPOSIT.none) : DEPOSIT.none;
       if (tilesData) {
-        // One rule with the host (D-37): trees, rock, slope, hole, water, ridge: terraform first.
-        terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any');
-        if (terrain === TERRAIN.deep || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
+        // One rule with the host (D-37): trees, rock, slope, hole, water, ridge: terraform first (unless W05 linkedPrep).
+        terrainBlock ??= geoBuildBlock(terrain, prep, DEPOSIT.none, 'any', { linkedPrep: w05Active });
+        if ((!w05Active && terrain === TERRAIN.deep) || prep === PREP.ridge || prep === PREP.moat) hasImpassable = true;
         if (reqDepCode !== undefined && (deposit === reqDepCode || (reqDepCode === DEPOSIT.metals && deposit === DEPOSIT.minerals))) coveredDepositIndices.push(tileIdx);
       }
-      const prepOp = tilesData ? getTilePrepOp(terrain, prep) : undefined;
+      const prepOp = tilesData ? getTilePrepOp(terrain, prep, w05Active) : undefined;
       if (prepOp) prepBill[prepOp] = (prepBill[prepOp] ?? 0) + 1;
       tiles.push({ q: tq, r: tr, tileIdx, deposit, terrain, prep, prepOp });
     }
@@ -141,15 +124,20 @@ export function evaluatePlacementGhost(opts: EvaluatePlacementGhostOptions, ctx:
   const footprintW = isSwapped ? meta.footprintD : meta.footprintW;
   const footprintD = isSwapped ? meta.footprintW : meta.footprintD;
   const tilesData = (opts.view as { tiles?: ClientTiles } | undefined)?.tiles;
-  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, tilesData, meta.requiresDeposit);
+  const w05Active = isW05LinkedPrepActive(opts.flags, ctx.data);
+  const scan = scanFootprintTiles(opts.q, opts.r, footprintW, footprintD, ctx.hIndex, ctx.occupied, tilesData, meta.requiresDeposit, w05Active);
   const sim = scan.hasOccupied ? null : evaluateSiteWithSim(opts.view, { building: opts.building, q: opts.q, r: opts.r, colonyId: opts.colonyId ?? 0, data: ctx.data, world: ctx.world });
   const val = sim ? { valid: sim.valid, statusColor: sim.valid ? 'green' as const : 'red' as const, reason: sim.reason, depositCovered: sim.valid && scan.coveredDepositIndices.length > 0 }
     : evaluateValidity(Boolean(tilesData), scan.hasOutOfBounds, scan.hasImpassable, scan.hasOccupied, scan.terrainBlock, meta.requiresDeposit, scan.coveredDepositIndices.length);
+  const billSummary = resolveGhostPrepBill(scan.tiles, scan.prepBill, sim?.bill, ctx.data, w05Active);
 
   return {
     building: opts.building, label: meta.label, q: opts.q, r: opts.r, rotation: rot,
     footprintW, footprintD, footprintText: `${footprintW}×${footprintD}`,
-    tiles: scan.tiles, prepBill: scan.prepBill, prepBillText: formatPrepBillText(scan.prepBill),
+    tiles: scan.tiles, prepBill: billSummary.prepBill, prepBillText: billSummary.prepBillText,
+    ...(billSummary.prepEnergyE !== undefined ? { prepEnergyE: billSummary.prepEnergyE } : {}),
+    ...(billSummary.prepTimeS !== undefined ? { prepTimeS: billSummary.prepTimeS } : {}),
+    ...(billSummary.prepCost !== undefined ? { prepCost: billSummary.prepCost } : {}),
     valid: val.valid, statusColor: val.statusColor, reason: val.reason,
     requiresDeposit: meta.requiresDeposit, depositCovered: val.depositCovered, depositTileIndices: scan.coveredDepositIndices,
   };
