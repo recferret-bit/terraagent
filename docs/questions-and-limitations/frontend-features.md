@@ -1240,3 +1240,16 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** Demo story steps 6–10 and 12 are marked deferred in `docs/plan/checks/w05-check.md`.
 - **To resolve:** Land the `H+` / full-scope W05 issues in a follow-up pass.
 - **Found:** 2026-11-04, W05 wave landing.
+
+## W05 owner feedback pass (2026-11-05)
+
+Open items, see the format in `README.md`:
+- **Terraform chain removed from the UI.** The button queues one order per click (Ctrl+click for many) and no longer chains to neighbours; the sim `work` chain remains for Repair and right-click work. Terraform does not send `workerId` any more (the host picks).
+- **Growth ladder costs water on click.** Terraform on a prepared hex irrigates, on an irrigated hex seeds. Owner question: keep this on the one button?
+- **Queue cap not predicted.** `terraformMaxOrders` = 16; the client preview does not predict a rejected Ctrl+click.
+- **`..01` to `..04` configs** skip slope, crater and water hexes (their ops are W05 data).
+- **Ghost prep bill and the DOM `TileOverlay` panel** were deliberately left as they are.
+- **Header panel hidden on phone landscape** (height ≤ 500 or width ≤ 900): the time, wind and Terraform readouts are not visible there.
+- **Wind label shows power %, not rotor %.** The rotor follows the new curve in `rotorSpeed.ts`; the label is the sim output factor.
+- **Cable lift cap.** A very tall obstacle on a short span may leave the wire passing through its roof instead of spiking up.
+

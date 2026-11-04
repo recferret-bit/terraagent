@@ -89,14 +89,10 @@ test('@hack 1 & 2. Load ?scenario=w05 (S4 colony, shallow lake & crater near Hub
   expect(await readTileAt(page, 4, 0)).toMatchObject({ terrain: 3, prep: 1 }); // TERRAIN.slope = 3
   expect(await readTileAt(page, 4, 1)).toMatchObject({ terrain: 4, prep: 1 }); // TERRAIN.hole = 4
 
-  // Terraform menu lists the W05 ops and locks Deep Reclaim with "needs T2 worker".
+  // Terraform menu has exactly three buttons: Terraform, Repair, Dismantle.
   await page.getByTestId('dock-tab-terraform').click();
-  await expect(page.getByTestId('tf-w05-ops')).toBeVisible();
-  for (const op of ['level', 'fill', 'reclaim', 'deepReclaim', 'irrigate', 'seed']) {
-    await expect(page.getByTestId(`tf-op-${op}`)).toBeVisible();
-  }
-  await expect(page.getByTestId('tf-op-deepReclaim')).toBeDisabled();
-  await expect(page.getByTestId('tf-op-deepReclaim')).toContainText('needs T2 worker');
+  await expect(page.getByTestId('tf-op-terraform')).toBeVisible();
+  await expect(page.getByTestId('tf-w05-ops')).toHaveCount(0);
 
   // Step 2: Units menu -> order a Terraformer -> it spawns.
   await devConsole(page, 'warp 20');
@@ -170,7 +166,7 @@ test('@hack 3. Construction menu -> place a Resource Extractor (Quarry) on the s
   expectNoPageErrors(page);
 });
 
-test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush Irrigate -> Seed over 10 Prepared tiles -> HUD shows Terraform 10 / 412 (2.4 %) and units on Living move 10 % faster', async ({ page }) => {
+test('@hack 4 & 5. Ctrl+click Terraform: reclaim -> grade 6 shallow-water tiles, then irrigate -> seed 10 Prepared tiles -> HUD shows Terraform 10 / 412 (2.4 %) and units on Living move 10 % faster', async ({ page }) => {
   await openScenario(page, 'w05');
   await devConsole(page, 'warp 20');
   await closeConsole(page);
@@ -178,11 +174,15 @@ test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush
   // Order a Terraformer so HQ + Builder + Terraformer work the area brushes in parallel.
   expect((await sendSimCmd(page, 'enqueueTask', { taskId: 'u-tf-step4', task: { kind: 'buildUnit', unit: 'terraformer' } })).ok).toBe(true);
 
-  // Step 4: Brush Reclaim (Hex r=1) at (-4, 1) over the 6 shallow-water tiles.
+  // Step 4: one Terraform button; Ctrl+click queues each hex. First pass reclaims the 6 shallow-water tiles.
   await page.getByTestId('dock-tab-terraform').click();
-  await page.getByTestId('tf-brush-hex-1').click();
-  await page.getByTestId('tf-op-reclaim').click();
-  await clickTile(page, -4, 1);
+  await page.getByTestId('tf-op-terraform').click();
+  const ctrlClickAll = async (tiles: ReadonlyArray<readonly [number, number]>) => {
+    await page.keyboard.down('Control');
+    for (const [q, r] of tiles) await clickTile(page, q, r);
+    await page.keyboard.up('Control');
+  };
+  await ctrlClickAll(W05_SHALLOW_LAKE_TILES);
 
   await expect.poll(
     async () => {
@@ -194,9 +194,8 @@ test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush
     { timeout: 45_000 },
   ).toBe(true);
 
-  // Grade the 6 reclaimed Flat tiles -> Prepared.
-  await page.getByTestId('tf-op-grade').click();
-  await clickTile(page, -4, 1);
+  // Second pass: the same button grades the reclaimed Flat tiles -> Prepared.
+  await ctrlClickAll(W05_SHALLOW_LAKE_TILES);
   await expect.poll(
     async () => {
       for (const [q, r] of W05_SHALLOW_LAKE_TILES) {
@@ -208,11 +207,8 @@ test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush
   ).toBe(true);
   await screenshot(page, '4-lake-reclaimed-and-graded');
 
-  // Step 5: Brush Irrigate (Hex r=2) at (1, 4) over the 10 Prepared meadow tiles, then Seed them to Living.
-  await page.getByTestId('tf-brush-hex-2').click();
-  await page.getByTestId('tf-op-irrigate').click();
-  await clickTile(page, 1, 4);
-
+  // Step 5: Terraform irrigates the 10 Prepared meadow tiles, then seeds them to Living.
+  await ctrlClickAll(W05_PREPARED_MEADOW_TILES);
   await expect.poll(
     async () => {
       for (const [q, r] of W05_PREPARED_MEADOW_TILES) {
@@ -223,9 +219,7 @@ test('@hack 4 & 5. Brush Reclaim -> Grade over 6 shallow-water tiles, then brush
     { timeout: 45_000 },
   ).toBe(true);
 
-  await page.getByTestId('tf-op-seed').click();
-  await clickTile(page, 1, 4);
-
+  await ctrlClickAll(W05_PREPARED_MEADOW_TILES);
   await expect.poll(
     async () => {
       for (const [q, r] of W05_PREPARED_MEADOW_TILES) {

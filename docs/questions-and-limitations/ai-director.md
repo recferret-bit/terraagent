@@ -39,3 +39,11 @@
 - **Workaround / mitigation:** bounded jobs/reads, DB grants/pools and kill switch; W16 tests fake streaming, W27 repeats on actual stack. Game retains D-24 snapshot rollback and rejects old AI epochs after restart.
 - **To resolve:** publish W16 load report and real W11/W27 integration results; revisit queue choice only on measured contention.
 - **Found:** 2026-11-04, W16 planning review.
+
+## W05 AI switch (2026-11-05)
+
+- **Owner question: should AI off stop idle harvesters?** Harvester auto-targeting (`systems/harvest`, `goalHarvestWeights`) is not gated; only goal breakdown and the rule-engine autopilot are.
+- **Goals queued by the player sit idle while AI is off**, and the UI does not say so yet.
+- **Existing `hq`/`ai` queue entries are not cancelled** when AI is switched off; they finish.
+- **Spacing is a soft rule** (`siteSpacing.ts`): it falls back to touching sites when no lane site exists; hub and extractor pickers are unchanged; manual placement is not constrained.
+

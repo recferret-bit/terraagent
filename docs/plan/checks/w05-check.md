@@ -26,29 +26,23 @@
      **`Prep: Level ×2 + Fill ×1 + Grade ×4 · 300 E · 38s · 9 Minerals · 10 Metals`**.
    - Left-click **`(4, 0)`** to confirm placement, then open the **`QUEUE`** tab in the Command Dock → **see** the extractor order in **`waiting(site: 0/4 tiles prepared)`** while the linked terraform prep jobs run first (`Level` on the 2 slopes, `Fill` on the crater, then `Grade` on all 4 footprint hexes).
    - Run `warp 20` in the dev console (**`` ` ``**) for a few seconds (then `warp 1`) → **see** the linked prep progress through `4/4` tiles prepared, and the Builder Drone immediately construct and finish the Resource Extractor on the levelled pad.
-4. **Brush Reclaim (then Grade) over 6 shallow-water tiles in the lake (`(6, 6)`).**
-   - In the Command Dock, click **`TERRAFORM [T]`** → **see** the W05 9-operation strip (`Clear`, `Break`, `Grade`, `Level`, `Fill`, `Reclaim`, `Deep Reclaim` disabled with **`needs T2 worker`**, `Irrigate`, `Seed`) and the area-brush strip (`1×1`, `Hex r=1`, `Hex r=2`, `Rect`, `Cancel Area`).
-   - Click **`Reclaim`** (`[data-testid="tf-op-reclaim"]`) and select **`Hex r=1`** (`[data-testid="tf-brush-hex1"]`, 7-hex brush).
-   - Click the shallow lake at **`(6, 6)`** and run `warp 20` in the dev console (**`` ` ``**) → **see** the area order split across your workers (`≤ 8` concurrent workers) and turn those shallow-water hexes (`0.5×` move speed) into **Flat** dry land (`1.0×` move speed, `20 Metals + 10 Minerals` per hex paid progressively).
-   - Still in **`TERRAFORM [T]`** with **`Hex r=1`**, click **`Grade`** (`[data-testid="tf-op-grade"]`) and click **`(6, 6)`** again → **see** the reclaimed hexes finish grading into buildable **Prepared** ground.
-5. **Brush Irrigate → Seed over 10 Prepared tiles → `Terraform 10 / 412 (2.4 %)` and `+10 %` move speed.**
-   - In **`TERRAFORM [T]`**, click **`Irrigate`** (`[data-testid="tf-op-irrigate"]`):
-     - With **`Hex r=1`** (`7` hexes), click the prepared pad at **`(-2, 0)`** (left of the Command Hub).
-     - Switch the brush to **`1×1`** (`[data-testid="tf-brush-1x1"]`) and click **`(-4, 0)`**, **`(-4, 1)`**, and **`(-4, 2)`** (`10` Prepared tiles total).
-   - At `warp 20`, **see** those 10 Prepared tiles darken with the wet **Irrigated** sheen (`15 Water` per hex).
-   - Next, click **`Seed`** (`[data-testid="tf-op-seed"]`), select **`Hex r=1`** and click **`(-2, 0)`**, then select **`1×1`** and click **`(-4, 0)`**, **`(-4, 1)`**, and **`(-4, 2)`**.
-   - As the 10 tiles finish seeding (`10 Water + 5 Minerals` per hex), **see**:
-     - The 10 hexes turn lush green **Living** ground (`uTerraformMap` + `uTerraformedLush` shader blend with the frontier glow ring).
-     - The top HUD **Terraform %** meter updates to **`Terraform 10 / 412 (2.4 %)`** (hover it to see `Living tiles: 10`, `Eligible owned: 412`, `Colony ratio: 2.4 %`, and the T2/T3 gate status).
-   - Press **`L`** on the keyboard (with the dev console closed) → **see** the **Living overlay** highlight the 10 Living hexes in bright emerald and display the **`+10% move speed on Living tiles`** badge (`[data-testid="living-overlay-hint"]`). Right-click across the Living tiles with a selected unit to see it traverse them 10 % faster (`1.10×`). Press **`L`** again to turn the overlay off.
-   - *(Optional 3D shader inspection: open `<client>/playground.html?hexterrain=1&tileState=mixed` to inspect `prepared`, `irrigated`, `living`, and `mixed` tile states side-by-side on the 3D hex terrain sample.)*
+4. **Terraform the lake: reclaim, then grade, over 6 shallow-water tiles (`(6, 6)`).**
+   - In the Command Dock, click **`TERRAFORM [T]`** → **see** exactly three buttons: `Terraform [G]`, `Repair [R]`, `Dismantle [Z]`.
+   - Click **`Terraform`** (`[data-testid="tf-op-terraform"]`), then **hold Ctrl and click** each shallow-water hex of the lake → **see** every queued hex lit orange (3D target highlight) until its job is done. A plain click sends one order and disarms; Ctrl+click on an already queued hex cancels it.
+   - Run `warp 20` in the dev console (**`` ` ``**) → **see** the workers turn those shallow-water hexes into **Flat** dry land (`20 Metals + 10 Minerals` per hex), then Ctrl+click the same hexes again → they finish grading into buildable **Prepared** ground. The button picks the operation per hex itself (trees → clear, rock → break, slope → level, crater → fill, shallow water → reclaim, plain ground → grade).
+5. **Terraform → irrigate → seed over 10 Prepared tiles → `Terraform 10 / 412 (2.4 %)` and `+10 %` move speed.**
+   - With **`Terraform`** armed, Ctrl+click the prepared pad around **`(-2, 0)`** and **`(-4, 0)`**, **`(-4, 1)`**, **`(-4, 2)`** (`10` Prepared tiles) → **see** them irrigated (`15 Water` per hex). Ctrl+click them again → they are seeded (`10 Water + 5 Minerals` per hex). A mis-click on prepared ground costs water.
+   - As the 10 tiles finish seeding, **see**:
+     - The 10 hexes turn lush green **Living** ground.
+     - The **Terraform %** meter in the panel **under the minimap** updates to **`Terraform 10 / 412 (2.4 %)`** (hover it for `Living tiles: 10`, `Eligible owned: 412`, `Colony ratio: 2.4 %`, and the T2/T3 gate status).
+   - Press **`L`** (with the dev console closed) → **see** the **Living overlay** highlight the 10 Living hexes and show **`+10% move speed on Living tiles`**. Press **`L`** again to turn it off.
 6. **Build a Territory Beacon T1 (`R 8` claim)** — *not in this landing* (`W05-12`, `W05-21`, `W05-25` are full-product scope, deferred out of the `H` slice; see [`frontend-features.md`](../../questions-and-limitations/frontend-features.md) FF-82). Skip.
 7. **Frozen border (`spawnColony <q> <r>`)** — *not in this landing* (`W05-13`, `W05-31` are full-product scope). Skip.
 8. **Destroy the beacon & 60 s revert countdown** — *not in this landing* (`W05-13`, `W05-21` are full-product scope). Skip.
 9. **Storms, lightning strikes & Lightning Rod T1 (`startStorm`)** — *not in this landing* (`W05-14`, `W05-15`, `W05-26`, `W05-28` are stretch `H+` / full-product scope). Skip.
 10. **Meteor impacts (`meteor <q> <r>`)** — *not in this landing* (`W05-16`, `W05-28`, `W05-31` are stretch `H+` / full-product scope). Skip.
 11. **Op energy & group-1 brownout shedding (`time night` → `waiting(power)` → `time day`).**
-    - On `<client>/play.html?scenario=w05` (set `warp 1` in the dev console **`` ` ``**), open **`TERRAFORM [T]`**, click **`Level`** (`[data-testid="tf-op-level"]`) and **`1×1`** (`[data-testid="tf-brush-1x1"]`), and click the slope hex at **`(-3, 4)`**.
+    - On `<client>/play.html?scenario=w05` (set `warp 1` in the dev console **`` ` ``**), open **`TERRAFORM [T]`**, click **`Terraform`** and click the slope hex at **`(-3, 4)`**.
     - Once a worker reaches `(-3, 4)` and starts levelling (or right after queuing), open the dev console (**`` ` ``**) and run:
       - `time night`
       - `cell 0` *(drains the HQ power cell store so the night solar drop immediately triggers brownout shedding)*
@@ -73,3 +67,12 @@
 
 - **All good:** from the main checkout (`/Users/ferretrec/work/TerraAgent`) run `npm run wave -- land 05`. It re-runs the gates, merges W05 into `main`, tags `wave-05`, pushes, and removes the W05 worktree and branch. (Plain `npm run wave` does the same and then opens the next ready wave.)
 - **Something is wrong:** tell the wave lead which step and what you saw; it is fixed on the wave branch before anything lands.
+
+## Owner feedback pass (simplification)
+
+12. **Terraform menu** — see steps 4–5: three buttons, Ctrl+click queue, orange target highlight.
+13. **AI off by default.** Open the HQ panel → **see** `AI OFF` above the Goals/Priorities tabs; bots stay idle apart from your explicit orders. Click `AI ON` → bots work on goals again.
+14. **Natural base layout.** With `AI ON`, let bots build 5–6 solar/depot buildings → **see** them spread around the Hub with a free lane between them, not packed together.
+15. **Header and panel.** The top bar shows the energy icon and numbers only (no bar). Under the minimap, **see** the panel with time of day, `Wind …` and `Terraform …`.
+16. **Wind turbine speed.** In the dev console run `setWind` at 25 %, 100 %, 150 % → **see** the rotor turn slowly (about 4 s per turn at the 100 % rotor scale).
+17. **Wires between close buildings.** Look at power wires between adjacent buildings → **see** short low arcs, no spikes into the sky.
