@@ -57,6 +57,11 @@ export const EnqueueHqGoalTask = z.strictObject({
   }),
 });
 
+/** W13: a prestige project selected at the Command Hub (`prestige` data row id, e.g. `project.survey_array`). */
+export const EnqueueProjectTask = z.strictObject({
+  project: z.strictObject({ project: z.string().min(1).max(64) }),
+});
+
 export const EnqueueDirectTask = z.strictObject({
   taskId: z.string().min(1).max(64).optional(),
   precedence: z.enum(['explicit', 'autoSitePrep', 'queued', 'standing', 'system', 'player', 'hq', 'ai', 'auto']).optional(),
@@ -102,6 +107,7 @@ export const EnqueueDirectTask = z.strictObject({
       q: TileCoord.optional(),
       r: TileCoord.optional(),
     }),
+    z.strictObject({ kind: z.literal('project'), project: z.string().min(1).max(64) }),
   ]),
 });
 
@@ -115,8 +121,9 @@ export const command = defineCommand({
     EnqueueBuildUnitTask,
     EnqueueRepairTask,
     EnqueueHqGoalTask,
+    EnqueueProjectTask,
     EnqueueDirectTask,
   ]),
   summary:
-    'Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a repair / HQ-goal order (W03; a Power Pylon is a plain `build` order) in the colony queue.',
+    'Enqueues a terraform order (W01), a building construction order (W02), a unit production order (W02), or a repair / HQ-goal order (W03; a Power Pylon is a plain `build` order), or a prestige project order (W13) in the colony queue.',
 });

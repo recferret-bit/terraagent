@@ -6,6 +6,7 @@ import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
 import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge } from '../factories-hub';
+import { completePrestigeProject } from '../prestige/project';
 import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
 import type { QueueEntry } from './types';
@@ -167,6 +168,7 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
     finishUnit(state, entry, colIdx, ctx);
     return;
   }
+  if (entry.task.kind === 'project') completePrestigeProject(state, colIdx, entry.task.project, ctx);
   entry.progress = 1;
   entry.state = 'done';
   entry.resourceWaitSinceTick = undefined;

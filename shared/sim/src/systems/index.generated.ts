@@ -13,6 +13,7 @@ import mod_harvest from './harvest/index';
 import mod_hq from './hq/index';
 import mod_landing from './landing/index';
 import mod_power_core from './power-core/index';
+import mod_prestige from './prestige/index';
 import mod_production from './production/index';
 import mod_progression from './progression/index';
 import mod_queue from './queue/index';
@@ -24,4 +25,4 @@ import mod_time from './time/index';
 import mod_trade from './trade/index';
 import mod_units from './units/index';
 
-export const SIM_MODULES: readonly SimModule[] = [mod_cargo, mod_construction, mod_dev, mod_dispatch, mod_economy, mod_environment, mod_factories_hub, mod_finalize, mod_goals, mod_harvest, mod_hq, mod_landing, mod_power_core, mod_production, mod_progression, mod_queue, mod_rule_engine, mod_supply, mod_terraform_basic, mod_territory_claim, mod_time, mod_trade, mod_units];
+export const SIM_MODULES: readonly SimModule[] = [mod_cargo, mod_construction, mod_dev, mod_dispatch, mod_economy, mod_environment, mod_factories_hub, mod_finalize, mod_goals, mod_harvest, mod_hq, mod_landing, mod_power_core, mod_prestige, mod_production, mod_progression, mod_queue, mod_rule_engine, mod_supply, mod_terraform_basic, mod_territory_claim, mod_time, mod_trade, mod_units];
