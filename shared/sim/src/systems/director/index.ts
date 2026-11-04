@@ -15,6 +15,7 @@ export { applyDirectorPolicy, colonyDirector, noteDirectorPlan, setDirectorPolic
 export { priorityKey, type ColonyDirectorRecord, type DirectorPlanRef } from './store';
 export { goalSuppressed, suppressGoal } from './suppress';
 export { projectW11Context, restoreW11Context, type W11ContextView, type W11Sector } from './w11';
+export { summarizeRelevant, syntheticWorld, type SummaryPage } from './w27';
 
 export default defineSimModule({
   id: 'director',
