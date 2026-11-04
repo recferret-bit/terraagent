@@ -29,6 +29,14 @@ import {
   stepHqCombatSurvival,
   stepHqSelfRepair,
 } from './hqSurvival';
+import {
+  emitRaidRepelled,
+  emitRaidStarted,
+  emitUnderAttackIfDue,
+  noteColonyBuildingDestroyedDuringRaid,
+} from './events';
+
+export * from './events';
 
 export {
   getLastDamagedTick,
@@ -286,6 +294,9 @@ function handleBuildingDestruction(
       touchTile(state, tileIdx, tick);
     }
   }
+  if (owner >= 0) {
+    noteColonyBuildingDestroyedDuringRaid(state, owner, tick);
+  }
 
   const jobs = getBuildingJobs(state);
   if (jobs[targetId]) {
@@ -308,6 +319,19 @@ function handleBuildingDestruction(
   }
 
   return { applied: Math.max(0, prevHp), hpAfter: 0, destroyed: true, clampedHq: false, retreatedHq: false };
+}
+
+function isHostileDamage(state: PlanetState, targetOwner: number, opts?: ApplyDamageOptions): boolean {
+  if (targetOwner < 0) return false;
+  if (opts?.attackerOwner !== undefined) {
+    return opts.attackerOwner !== targetOwner;
+  }
+  if (opts?.attackerId !== undefined) {
+    const aRow = rowOf(state.entities, opts.attackerId);
+    if (aRow < 0) return false;
+    return state.entities.cols.owner[aRow] !== targetOwner;
+  }
+  return true;
 }
 
 /**
@@ -336,11 +360,14 @@ export function applyDamage(
   const tick = opts?.tick ?? opts?.ctx?.tick ?? state.meta.tick;
   const data = opts?.data ?? opts?.ctx?.data;
   const kind = cols.kind[row];
+  const q = cols.q[row];
+  const r = cols.r[row];
   const prevHp = cols.hp[row];
   const rawHp = prevHp - amount;
 
   recordEntityDamaged(state, targetId, tick);
 
+  let result: DamageResult;
   if (kind === ENTITY_KIND.hq) {
     const hpAfter = Math.fround(Math.max(1, rawHp));
     setField(state.entities, row, 'hp', hpAfter, tick);
@@ -350,23 +377,26 @@ export function applyDamage(
       retreatedHq = retreatHqToSafety(state, row, tick, opts?.ctx);
     }
     syncHqView(state, row, tick, data);
-    return {
+    result = {
       applied: Math.max(0, prevHp - hpAfter),
       hpAfter,
       destroyed: false,
       clampedHq: rawHp <= 1,
       retreatedHq,
     };
-  }
-
-  const hpAfter = Math.fround(Math.max(0, rawHp));
-  if (hpAfter > 0) {
+  } else if (rawHp > 0) {
+    const hpAfter = Math.fround(rawHp);
     setField(state.entities, row, 'hp', hpAfter, tick);
-    return { applied: prevHp - hpAfter, hpAfter, destroyed: false, clampedHq: false, retreatedHq: false };
+    result = { applied: prevHp - hpAfter, hpAfter, destroyed: false, clampedHq: false, retreatedHq: false };
+  } else if (isCombatOrWorkerUnitKind(kind)) {
+    result = handleUnitDestruction(state, row, targetId, prevHp, tick, opts);
+  } else {
+    result = handleBuildingDestruction(state, row, targetId, prevHp, tick, opts);
   }
 
-  if (isCombatOrWorkerUnitKind(kind)) {
-    return handleUnitDestruction(state, row, targetId, prevHp, tick, opts);
+  if (result.applied > 0 && owner >= 0 && isHostileDamage(state, owner, opts)) {
+    emitUnderAttackIfDue(state, owner, { targetId, attackerId: opts?.attackerId, q, r, tick }, opts?.ctx);
   }
-  return handleBuildingDestruction(state, row, targetId, prevHp, tick, opts);
+
+  return result;
 }
