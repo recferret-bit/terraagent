@@ -4,12 +4,12 @@ About 10–15 minutes. Supplement to [the full W03 guide](./w03-check.md); this 
 
 ## Before you start
 
-The w03 frontend and backend were restarted on 2026-11-04. Backend health, database readiness, frontend proxy and a fresh server-backed W03 game were verified. The invalid-placement toast, wind/capacitor sites, wind overrides, resource-fill commands and mineral-deposit extractor ghost were exercised on this running stack.
+Use the main stack after W03 lands. The W03 demo was checked against the merged W08, W10 and W12 features, including construction, repair, dismantling, night power and the shared resource extractor.
 
-- **Game:** [fresh W03 colony](http://127.0.0.1:5273/play.html?scenario=w03&skip=1)
-- **Playground:** [model inspection](http://127.0.0.1:5273/playground.html?inspect=building.commandHub)
-- **Backend:** [health](http://127.0.0.1:4101/v1/healthz), [readiness](http://127.0.0.1:4101/v1/readyz)
-- **Worktree:** `/Users/ferretrec/work/TerraAgent-wt/w03`; database `terra_wave_w03_the_grid`.
+- **Game:** [fresh W03 colony](http://127.0.0.1:5173/play.html?scenario=w03&skip=1)
+- **Playground:** [model inspection](http://127.0.0.1:5173/playground.html?inspect=building.commandHub)
+- **Backend:** [health](http://127.0.0.1:4001/v1/healthz), [readiness](http://127.0.0.1:4001/v1/readyz)
+- **Checkout:** `/Users/ferretrec/work/TerraAgent` (main).
 - Use the server-backed link above for this check. The earlier browser-local startup issue remains tracked as FF-80.
 - Open the **in-game dev console** with the **backtick key (`)** under Esc. Enter commands one line at a time, press Enter, then close it with backtick. This is not browser DevTools.
 - **B** opens Build; **U** opens Production; **Esc** cancels placement. Click **QUEUE** to watch construction.
@@ -17,7 +17,7 @@ The w03 frontend and backend were restarted on 2026-11-04. Backend health, datab
 
 ## 1. Prepare the colony and check the counters
 
-Open the game link. Wait until terrain, units and buildings appear and the tick counter advances.
+Open the game link. Wait until terrain, units and buildings appear and the tick counter advances. Dismiss the stage announcement and close Goals to expose the map. This demo starts at Stage 2 so Builder and Pylon orders are unlocked.
 
 In the in-game console enter:
 
@@ -128,7 +128,7 @@ Pause briefly between commands to inspect the header.
 
 ## 9. Check natural wind windows
 
-Open a **fresh** [W03 scenario](http://127.0.0.1:5273/play.html?scenario=w03&skip=1), so the manual wind override from step 6 is gone.
+Open a **fresh** [W03 scenario](http://127.0.0.1:5173/play.html?scenario=w03&skip=1), so the manual wind override from step 6 is gone.
 
 Run `warp 1` and watch the wind indicator for several minutes.
 
@@ -140,10 +140,10 @@ The implementation passed 2,045 tests (one skipped), repository checks and build
 
 Report the **step number**, what you expected, and what appeared instead. Keep the tab open if something fails so the scenario can be inspected.
 
-Stack control from this worktree:
+Stack control from the main checkout:
 
 ```sh
 npm run dev:restart
 ```
 
-This restarts the backend only. `npm run dev` starts the complete stack when stopped. Current restart log: `/private/tmp/ta-w03-stack.log`.
+This restarts the backend only. `npm run dev` starts the complete stack when stopped. Current restart log: `/private/tmp/ta-main-stack.log`.

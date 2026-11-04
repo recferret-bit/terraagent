@@ -118,8 +118,7 @@ export async function devConsole(page: Page, command: string, timeout = 10_000):
   const before = await lines.count();
   await input.fill(command);
   await input.press('Enter');
-  await expect.poll(() => lines.count(), { timeout }).toBeGreaterThan(before);
-  await page.waitForTimeout(150); // let a command that prints in several lines finish
+  await expect.poll(() => lines.count(), { timeout }).toBeGreaterThan(before + 1); // echo plus awaited command response
   const all = await lines.allTextContents();
   return all.slice(before).join('\n');
 }

@@ -73,7 +73,7 @@ Known follow-up: **FF-68 — Fix trading-spot shuttle animation** remains open. 
 
 8. **Check power loss and recovery.**
 
-   Run `time night` in the console, then close it. The Trade Hub should become **OFFLINE**, show the unpowered message, and disable transfer controls.
+   Run `time night` and `warp 20` in the console, then close it. The HQ battery initially carries the deficit; after its reserve drains, run `warp 1`. The Trade Hub should become **OFFLINE**, show the unpowered message, and disable transfer controls.
 
    Run `skipnight`, then close the console. It should return to **ONLINE**, with valid transfers enabled.
 
