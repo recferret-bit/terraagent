@@ -679,6 +679,7 @@ These entries were BE-28..BE-40 on `wave/w06-invisible-chain`. W02 landed BE-28.
 - **Why it is like this:** The W12 unit suites (`w12-facts`, `w12-evaluator`, `w12-xp`, `w12-me-profile`, `w12-me-achievements`, `w12-dev-commands`) run without Postgres, while the dev stack and e2e suite persist progression in Postgres across restarts.
 - **Workaround / mitigation:** `profile reset` in the dev console clears a pilot's Postgres and in-memory progression rows; `npm run dev:restart` after `profile reset` re-seeds the W12 baseline on the next `/me.html` or `/play.html?scenario=w12` load.
 - **To resolve:** Add catch-up evaluation (`W12-04`) and the `BadgeMint` outbox worker (`W12-25`).
+- **Validation note (2026-11-04):** the fixed-baseline W12 E2E suite failed on a reused demo pilot at 1,270 XP versus its expected 1,120 XP. `npm run e2e -- --waves 12` with a fresh isolated database passed all seven implemented checks (three explicit deferrals). Use the isolated run for baseline assertions; `E2E_REUSE=1` intentionally retains demo progress.
 - **Found:** 2026-11-03, W12
 
 ### BE-47 · Deferred W12 progression & profile issues (`H+` / post-hackathon)

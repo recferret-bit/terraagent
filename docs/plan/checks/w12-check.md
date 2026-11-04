@@ -17,4 +17,10 @@ External badge minting and notifications remain queued for their future adapters
 
 Validation recorded: 138 targeted unit tests and 10 PostgreSQL integration tests passed; frontend/backend/e2e TypeScript checks, focused lint, structure checks and production build passed. Browser checks covered the hub popup, authenticated landing login, zero demo achievements on a fresh account, planet-selection new-tab link, mobile overflow and a ticking mock Dive in with no ME HUD link. The build retains existing dependency annotation/chunk-size warnings.
 
+Full owner-check rerun (2026-11-04, implementation `7f2ddad`): **138/138 unit tests**, **10/10 PostgreSQL integration tests**, and **7/7 implemented W12 E2E tests** passed. Run the complete browser suite with `npm run e2e -- --waves 12` (without `--hack`); it creates a fresh database and starts an isolated stack on client 5674 / app 4502 with later waves off. Its three explicit skips are full colony-card acceptance (W12-17), history filtering/infinite scroll (W12-10/11/18), and badge mint UI delivery (W12-25/26). They are not passing tests.
+
+The additional browser owner checks passed: hub new-tab mock link; all six tabs at 1280 px and 390 px without horizontal overflow; mock Dive in reaching a ticking game with no ME HUD; Google login on landing and X login on selection, each opening a fresh authenticated profile with zero mock awards; authenticated gameplay resume preserving the player and linked account; `fact add groundbreaker 200` persisting the increment and `fact add groundbreaker 0` changing neither counter nor XP.
+
+Do not use `E2E_REUSE=1` for the suite's fixed seed assertions unless the demo pilot is known to be at its initial baseline. This rerun first reused the existing stack and stopped at the expected 1,120 XP assertion because the pilot already had 1,270 XP. The subsequent isolated run passed; no application code was changed for the rerun. Browser artifacts are in `tests/e2e/.out/report/` and `tests/e2e/.out/results/`.
+
 After review, land through `npm run wave -- land 12`.
