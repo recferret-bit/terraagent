@@ -59,3 +59,13 @@
 - **Workaround / mitigation:** `partitionExpired` does not take policy rows. A later repository should implement `DirectorAuditPort` in `backend/app/src/ai/audit/types.ts`. Callers pass `expiresAtMs` (short-lived context, 30-day decision audit); this store does not choose those windows or redact secrets (W16-16).
 - **To resolve:** add a Prisma `DirectorAuditPort` against the generated client, plus attempt and action-result writers, without expiring `director_policy`.
 - **Found:** 2026-11-04, W16-15.
+
+### AI-07 · Director metrics are in-memory counters, not alerts
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/ai/metrics/director.ts` (`DirectorMetrics`)
+- **What happens:** the load report stores bounded trigger/skill/risk labels, the max wait, and per-action counts. It does not export Prometheus series or raise the §13 alarms (budget 0.8/1.0, queue starvation, repeated authorization failures, missing worker heartbeat, tool denials, sim regression).
+- **Why it is like this:** W16-23's acceptance here is that a load-style report cannot take colony ids as labels. Queue, budget and worker producers are not in this change.
+- **Workaround / mitigation:** callers pass the small enums only. A label containing a prefixed id (`co_`, `pl_`, …), a colon, or more than 40 characters throws and is not stored. `oldestWaitMs` is the max observed `waitMs`, not a live queue age.
+- **To resolve:** register the series on `MetricsRegistry` and wire the §13 alerts when those producers exist.
+- **Found:** 2026-11-04, W16-23.
