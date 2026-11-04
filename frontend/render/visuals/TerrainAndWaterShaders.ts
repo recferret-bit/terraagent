@@ -76,7 +76,10 @@ uniform vec3 uFrontierGlow;`;
 
 /**
  * Shared GLSL evaluator for Irrigated (`irrMask`: wet darkening, moisture sheen, hydro edge) and Living (`tfMask`:
- * `uTerraformedLush` biosphere blend + pulsing HDR `uFrontierGlow` ring at `tfMask ~= 0.5`).
+ * `uTerraformedLush` biosphere blend + pulsing HDR `uFrontierGlow` ring at `tfMask ~= 0.5`). The two rings belong to the
+ * continuous terrain / globe only: on the hex ground (`TA_HEX_TERRAFORM`) the per-cell mask crosses 0.5 at every hex
+ * edge, so they drew a glowing green / blue outline around each tile that read as a selection. Orange is the only
+ * selection colour there (`TargetHighlight3D`).
  */
 export const TERRAFORM_EVAL_GLSL = /* glsl */ `float tfHash21(vec2 p) {
   p = fract(p * vec2(123.34, 456.21));
@@ -91,8 +94,10 @@ void evalTerraformSurface(inout vec3 col, inout float rough, inout vec3 emis, ve
     vec3 wetSoil = col * vec3(0.45, 0.54, 0.62) + vec3(0.012, 0.038, 0.062) * (0.85 + 0.3 * moistGrain);
     col = mix(col, wetSoil, irrFill);
     rough = mix(rough, 0.34, irrFill);
+#ifndef TA_HEX_TERRAFORM
     float irrRing = smoothstep(0.40, 0.50, irrMask) * (1.0 - smoothstep(0.50, 0.60, irrMask)) * (1.0 - smoothstep(0.35, 0.55, tfMask));
     col += vec3(0.04, 0.32, 0.48) * irrRing * 0.6;
+#endif
   }
   if (tfMask > 0.001) {
     float lushFill = smoothstep(0.45, 0.55, tfMask);
@@ -102,11 +107,13 @@ void evalTerraformSurface(inout vec3 col, inout float rough, inout vec3 emis, ve
     vec3 lushCol = mix(lushBase, lushBase * lumDetail, 0.38) + uFrontierGlow * (0.035 * meadow);
     col = mix(col, lushCol, lushFill);
     rough = mix(rough, 0.76, lushFill);
+#ifndef TA_HEX_TERRAFORM
     float tfRing = smoothstep(0.42, 0.50, tfMask) * (1.0 - smoothstep(0.50, 0.58, tfMask));
     float pulse = 0.75 + 0.25 * sin(time * 4.0 + worldXZ.x * 2.0);
     vec3 ringGlow = uFrontierGlow * tfRing * 3.8 * pulse;
     col += ringGlow * 0.35;
     emis += ringGlow * 0.65;
+#endif
   }
 }`;
 

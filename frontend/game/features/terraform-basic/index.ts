@@ -92,6 +92,8 @@ export interface TerraformFeatureHandle extends HudPanelInstance {
   cancelOrder(orderId?: string): boolean;
   /** The hexes lit as terraform targets now (the colony's open terraform jobs); empty without a 3D scene. */
   getTargetTiles(): readonly TileCoord[];
+  /** The hex the armed brush previews under the pointer, or `null`. */
+  getHoverTile(): TileCoord | null;
   disarm(): void;
   isArmed(): boolean;
   hasWorkerAvailable(): boolean;
@@ -181,6 +183,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     // the 3D scene may come up after the menu mounts: the highlight attaches on the first view that finds it
     if (!targets && services.scene3d) targets = new TargetHighlight3D(services.scene3d);
     targets?.update(resolved, getColonyId());
+    if (!brush.isPointerActive()) targets?.setHover(null); // disarmed (or another mode owns the pointer): no preview
     menu?.render();
   };
 
@@ -201,6 +204,18 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
   const surface = opts?.surface ?? services.surface ?? services.canvas;
   const pickTile = opts?.pickTile ?? services.pickTile;
   if (surface) brush.bindSurface(surface, pickTile);
+  // Hover preview: the armed brush lights the hex under the pointer in the target orange (picked at most every 50 ms).
+  let hoverAt = 0;
+  const onMove = (e: PointerEvent) => {
+    if (!pickTile || !brush.isPointerActive()) return targets?.setHover(null);
+    const t = performance.now();
+    if (t - hoverAt < 50) return;
+    hoverAt = t;
+    targets?.setHover(pickTile(e.clientX, e.clientY));
+  };
+  const onLeave = () => targets?.setHover(null);
+  surface?.addEventListener('pointermove', onMove);
+  surface?.addEventListener('pointerleave', onLeave);
 
   const offHostEvents = simHost?.onEvents ? simHost.onEvents(() => syncView(simHost.view())) : null;
   const offFound = bindResourceFoundToasts(store as ResourceFoundSource | undefined, getColonyId, (m) =>
@@ -219,6 +234,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     strokeTile: (q, r, strokeOpts) => brush.strokeTile(q, r, strokeOpts),
     cancelOrder: (orderId) => brush.cancelOrder(orderId ?? overlay.getActiveOrder()?.orderId),
     getTargetTiles: () => targets?.getTiles() ?? [],
+    getHoverTile: () => targets?.getHover() ?? null,
     disarm: () => brush.disarm(),
     isArmed: () => brush.isArmed(),
     hasWorkerAvailable: () => brush.hasWorkerAvailable(),
@@ -231,7 +247,7 @@ export function mountTerraformBasic(el?: HTMLElement, opts?: MountTerraformOptio
     getLastOutcome: () => brush.getLastOutcome(),
     bindSurface: (surf, pick) => brush.bindSurface(surf, pick),
     update: (view) => syncView(view),
-    dispose: () => { offHostEvents?.(); offFound(); brush.dispose(); menu?.dispose(); overlay.dispose(); targets?.dispose(); },
+    dispose: () => { surface?.removeEventListener('pointermove', onMove); surface?.removeEventListener('pointerleave', onLeave); offHostEvents?.(); offFound(); brush.dispose(); menu?.dispose(); overlay.dispose(); targets?.dispose(); },
   };
 
   if (opts?.services) opts.services.terraform = handle;
