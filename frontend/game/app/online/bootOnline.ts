@@ -210,6 +210,7 @@ const retryableHome = (status: number, code: string | undefined): boolean => sta
 const realWait = (ms: number): Promise<void> => new Promise((ok) => setTimeout(ok, ms));
 
 interface HomeRequest {
+  colonyId?: string;
   deviceSecret: string;
   doFetch: FetchLike;
   planetType?: DevPlanetType;
@@ -226,7 +227,10 @@ async function fetchHomeWithRetry(initialToken: string, o: HomeRequest): Promise
   let token = initialToken;
   let expiresIn: number | undefined;
   let renewed = false;
-  const url = o.planetType ? `/v1/me/home?type=${o.planetType}` : '/v1/me/home';
+  const query = new URLSearchParams();
+  if (o.planetType) query.set('type', o.planetType);
+  if (o.colonyId) query.set('colonyId', o.colonyId);
+  const url = '/v1/me/home' + (query.size ? `?${query}` : '');
   for (let attempt = 1; ; attempt++) {
     const res = await o.doFetch(url, { method: 'GET', headers: { Authorization: `Bearer ${token}` }, credentials: 'include' });
     if (res.ok) return { accessToken: token, expiresIn, home: await res.json() };
@@ -373,7 +377,7 @@ export async function bootAuthAndHome(opts: BootAuthOptions = {}): Promise<BootA
   try {
     const auth = opts.tryRefresh ? await refreshOrGuest(deviceSecret, doFetch) : await guestLogin(deviceSecret, doFetch);
     const { accessToken, expiresIn, home } = await fetchHomeWithRetry(auth.accessToken, {
-      deviceSecret, doFetch, planetType: opts.planetType, wait: opts.wait, random: opts.random, onStatus: opts.onStatus,
+      deviceSecret, doFetch, colonyId: new URLSearchParams(search).get('colonyId') ?? undefined, planetType: opts.planetType, wait: opts.wait, random: opts.random, onStatus: opts.onStatus,
     });
     const { state, planet, colony } = normalizeHomePayload(home);
     opts.onStatus?.(`Entering orbit: ${planet.id}…`);

@@ -341,3 +341,11 @@ A `dev:` session on a scenario planet (`?as=`) gets a `core.colony` row at index
 ### W12 pilot navigation and progression
 
 Open `/me.html?as=w12` from the hub's **PILOT / ME** mock card (new tab). Landing and planet selection show guest sign-in buttons, then a new-tab pilot link after login. Gameplay has no ME chip. Mock **Dive in** uses `/play.html?scenario=w12&as=w12`; authenticated home resume uses `/play.html?skip=1`. The existing dev-only `?join=` flow does not resume an authenticated colony or make mock planet IDs real. See [progression persistence, event IDs and queue recovery](../spec/PROGRESSION_ENGINE.md). Run the PostgreSQL checks with `npm run test:integration -- backend/app/test/progression/progression-engine.int.spec.ts`.
+
+
+### W12 durable progression and colony resume
+
+- `/play.html?skip=1&colonyId=<owned-active-colony-id>` resumes that colony through authenticated `/v1/me/home?colonyId=...`. Missing, foreign or inactive destinations return `COLONY_UNAVAILABLE`; no replacement colony is allocated.
+- `PROGRESSION_WORKERS=on|off` (default `on`) controls automatic inbox replay and effect delivery. `off` is an operational pause: checkpoint inputs remain durable and replay when re-enabled. HTTP-only production-mode unit fixtures set it off to avoid touching the development database.
+- Real sim facts appear after checkpoint (default 60 s); dev fact commands commit immediately. Badge delivery waits one **wall-clock** hour, not sim `warp` time, and needs a linked account. In-app notifications appear in ME History (latest 50).
+- Verify with `npm run test:integration -- backend/app/test/progression backend/app/test/game/snapshot.int.spec.ts` and `npm run e2e -- --waves 12`. See [remaining questions](../questions-and-limitations/backend-contracts.md#be-47--remaining-extended-w12-profile-work).

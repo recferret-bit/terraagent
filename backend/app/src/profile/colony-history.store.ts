@@ -112,7 +112,7 @@ export class ColonyHistoryStore {
     return colonies.flatMap(c => {
       const planet = planets.find(p => p.id === c.planetId);
       return planet ? [{ colonyId: c.id, name: c.name, planetId: planet.id, planetName: planet.name,
-        planetType: planet.type, stage: 1, status: 'active', foundedAt: c.createdAt.toISOString() }] : [];
+        planetType: planet.type, stage: c.stage, status: 'active', foundedAt: c.createdAt.toISOString() }] : [];
     });
   }
 

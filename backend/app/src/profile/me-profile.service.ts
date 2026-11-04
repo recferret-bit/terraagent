@@ -1,3 +1,6 @@
+import type { PrismaClient } from '@terra/db';
+import { PRISMA } from '../db/db.module.js';
+import { ProgressionEngine } from '../progression/progression-engine.js';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   ACHIEVEMENTS,
@@ -93,6 +96,8 @@ export class MeProfileService {
     @Inject(ColonyHistoryStore) private readonly colonies: ColonyHistoryStore,
     @Inject(FlagsService) private readonly flags: FlagsService,
     @Optional() @Inject(W12SeedService) private readonly seed?: W12SeedService,
+    @Optional() @Inject(ProgressionEngine) private readonly engine?: ProgressionEngine,
+    @Optional() @Inject(PRISMA) private readonly db?: PrismaClient,
   ) {
     if (this.seed) {
       this.seed.onReset(async (pid) => {
@@ -116,6 +121,7 @@ export class MeProfileService {
         : playerInput;
     const playerId = resolved.id;
 
+    await this.engine?.catchUp(playerId);
     const [facts, xpState, achRes] = await Promise.all([
       this.facts.getAll(playerId),
       this.xp.get(playerId),
@@ -151,7 +157,13 @@ export class MeProfileService {
       unlockStage >= 10 ? null : (STAGE_UNLOCK_CONDITIONS[unlockStage + 1] ?? null);
 
     const handleSlug = sanitizeHandle(resolved.handle);
-    const accountId = `${handleSlug}.terraagent.mock`;
+    const liveDb = this.engine?.enabled ? this.db : undefined;
+    const [player, linked, notices] = await Promise.all([
+      liveDb?.player.findUnique({ where: { id: playerId } }),
+      liveDb?.socialIdentity.findFirst({ where: { playerId }, orderBy: { createdAt: 'asc' } }),
+      liveDb?.playerNotification.findMany({ where: { playerId }, orderBy: [{ createdAt: 'desc' }, { id: 'desc' }], take: 50 }),
+    ]);
+    const accountId = linked?.accountId ?? (playerId === 'pr_dev_w12' ? `${handleSlug}.terraagent.mock` : null);
     const stats = buildProfileStats(facts, unlockStage, currentColonies, allPastColonies);
     const next3 = this.achievements.nextAchievements(achRes.achievements, 3);
 
@@ -161,7 +173,7 @@ export class MeProfileService {
         handle: resolved.handle,
         accountId,
         isGuest: resolved.isGuest,
-        pilotSince: '2026-10-01T00:00:00.000Z',
+        pilotSince: player?.createdAt.toISOString() ?? (playerId === 'pr_dev_w12' ? '2026-10-01T00:00:00.000Z' : 'Unknown'),
         avatarSeed: playerId,
         frame: xpState.frame || (levelProg.level >= 4 ? 'surveyor' : 'default'),
       },
@@ -179,6 +191,10 @@ export class MeProfileService {
       stats,
       currentColonies,
       pastColonies: visiblePastColonies,
+      activity: (notices ?? []).map(n => {
+        const payload = n.payload as { familyName?: string; tierName?: string; xp?: number };
+        return { id: n.id, title: `${payload.familyName ?? 'Achievement'} · ${payload.tierName ?? ''} (+${payload.xp ?? 0} XP)`, createdAt: n.createdAt.toISOString() };
+      }),
       nextAchievements: next3,
       earnedAchievementsCount: achRes.earnedCount,
       totalAchievementsCount: ACHIEVEMENTS.length,

@@ -1,5 +1,5 @@
 import 'reflect-metadata';
-import { AuthResponseSchema, HomeResponseSchema } from '@terra/contracts';
+import { AuthResponseSchema, HomeResponseSchema, MeProfileResponseSchema } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
@@ -39,6 +39,15 @@ describe('seating on Postgres (PrismaHomeStore, BE-03/BE-14/LED-14)', () => {
       const again = await home(second.url);
       expect(again).toMatchObject({ state: 'ACTIVE', colony: { id: seated.colony.id }, planet: { id: 'pl_dev' } });
       expect(await db.prisma.colony.count()).toBe(1);
+      const headers = { authorization: `Bearer ${login.accessToken}` };
+      const selected = await fetch(`${second.url}/v1/me/home?colonyId=${seated.colony.id}`, { headers });
+      expect(selected.status).toBe(200);
+      expect(await selected.json()).toMatchObject({ colony: { id: seated.colony.id } });
+      expect((await fetch(`${second.url}/v1/me/home?colonyId=missing`, { headers })).status).toBe(404);
+      expect((await fetch(`${second.url}/v1/me/home?colonyId=${seated.colony.id}`)).status).toBe(401);
+      const profile = MeProfileResponseSchema.parse(await (await fetch(`${second.url}/v1/me/profile`, { headers })).json());
+      const stored = await db.prisma.player.findUniqueOrThrow({ where: { id: login.player.id } });
+      expect(profile.identity).toMatchObject({ accountId: null, pilotSince: stored.createdAt.toISOString() });
     } finally {
       await second.app.close();
     }

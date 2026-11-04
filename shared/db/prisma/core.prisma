@@ -44,6 +44,7 @@ model Colony {
   id          String   @id
   playerId    String   @map("player_id")
   planetId    String   @map("planet_id")
+  stage       Int      @default(1)
   colonyIndex Int      @default(0) @map("colony_index")
   name        String
   color       Int      @default(0)

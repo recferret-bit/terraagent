@@ -157,10 +157,10 @@ export class Connection implements RoomMember {
     }
   }
 
-  private async resolveHome(playerId: string): Promise<HomeResponse> {
+  private async resolveHome(playerId: string, planetId?: string): Promise<HomeResponse> {
     if (!this.d.home) return DEFAULT_HOME;
     try {
-      return await this.d.home.getHome(playerId);
+      return await this.d.home.getHome(playerId, planetId);
     } catch (e) {
       this.d.log.warn({ err: e, playerId }, 'home lookup failed: answered as NEW (a join is refused until it works)');
       return DEFAULT_HOME;
@@ -237,7 +237,7 @@ export class Connection implements RoomMember {
     if (!session?.playerId || session.playerId !== this.playerId) {
       return this.bye(CLOSE_CODES.forbidden, 'forbidden');
     }
-    const home = await this.resolveHome(session.playerId);
+    const home = await this.resolveHome(session.playerId, this.planetId ?? undefined);
     if (this.state === 'closed') return;
     this.session = session;
     this.armExpTimer(session.exp);
@@ -260,7 +260,7 @@ export class Connection implements RoomMember {
     this.state = 'joining';
     this.planetId = planetId;
     await this.seatScenario(planetId);
-    const home = this.playerId ? await this.resolveHome(this.playerId) : DEFAULT_HOME;
+    const home = this.playerId ? await this.resolveHome(this.playerId, planetId) : DEFAULT_HOME;
     if (this.state !== 'joining') return; // closed or left meanwhile
     const own = home.state === 'ACTIVE' && home.colony.planetId === planetId;
     if (!own && !this.session?.dev) return this.bye(CLOSE_CODES.forbidden, 'not_your_planet');

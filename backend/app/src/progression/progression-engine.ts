@@ -1,10 +1,9 @@
 import { withProgressionTransaction } from './progression-transaction.js';
-import { recordReward, creditRewardXp } from './progression-rewards.js';
+import { evaluatePlayer } from './progression-rewards.js';
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   ACHIEVEMENT_FAMILY_BY_ID,
-  evaluateNewUnlocks,
   ProgressEventV1Schema,
   type ProgressEventV1,
 } from '@terra/contracts';
@@ -28,8 +27,13 @@ export class ProgressionEngine {
     this.enabled = !env || databaseEnabled(env);
   }
 
+  async catchUp(playerId: string): Promise<void> {
+    if (this.enabled) await withProgressionTransaction(this.db, playerId, tx => evaluatePlayer(tx, playerId, this.availability.availableFamilies()));
+  }
+
   async resetPlayer(playerId: string): Promise<void> {
     await withProgressionTransaction(this.db, playerId, async tx => {
+      await tx.playerNotification.deleteMany({ where: { playerId } });
       await tx.progressionEffect.deleteMany({ where: { playerId } });
       await tx.progressionReceipt.deleteMany({ where: { playerId } });
       await tx.xpLedger.deleteMany({ where: { playerId } });
@@ -72,16 +76,7 @@ export class ProgressionEngine {
         create: { playerId: event.playerId, family: event.family, metric: event.metric, value: result.value },
         update: { value: result.value },
       });
-      const facts = Object.fromEntries(
-        (await tx.playerFact.findMany({ where: { playerId: event.playerId } })).map((r) => [r.family, r.value]),
-      );
-      const earned = new Set(
-        (await tx.achievementUnlock.findMany({ where: { playerId: event.playerId } })).map((r) => r.achievementId),
-      );
-      const candidates = evaluateNewUnlocks(facts, earned, this.availability.availableFamilies());
-      for (const def of candidates) result.unlocked!.push(await recordReward(tx, event.playerId, def));
-      const levelUp = await creditRewardXp(tx, event.playerId, candidates.reduce((sum, def) => sum + def.xp, 0));
-      return { ...result, levelUp };
+      return { ...result, ...await evaluatePlayer(tx, event.playerId, this.availability.availableFamilies()) };
     });
   }
 }

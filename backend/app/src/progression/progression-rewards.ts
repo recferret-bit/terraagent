@@ -1,5 +1,5 @@
 import type { XpLevelUpEventV1 } from './xp-ledger.service.js';
-import { levelForXp, titleForLevel, type AchievementDef } from '@terra/contracts';
+import { evaluateNewUnlocks, levelForXp, titleForLevel, type AchievementDef, type AchievementFamilyId } from '@terra/contracts';
 import type { TransactionClient } from '@terra/db';
 import type { AchievementUnlockedEventV1 } from './achievement-evaluator.service.js';
 
@@ -11,10 +11,10 @@ export async function recordReward(tx: TransactionClient, playerId: string, def:
     playerId, achievementId: def.id, familyId: def.familyId, familyName: def.familyName,
     tier: def.tier, tierName: def.tierName, xp: def.xp, earnedAt: earnedAt.toISOString(),
   };
-  await tx.achievementUnlock.create({ data: { id: unlockId, playerId, achievementId: def.id, family: def.familyId, tier: def.tier, earnedAt } });
+  await tx.achievementUnlock.create({ data: { id: unlockId, playerId, achievementId: def.id, family: def.familyId, tier: def.tier, earnedAt, nftStatus: 'pending' } });
   await tx.xpLedger.create({ data: { id: `xp:${unlockId}`, playerId, source: 'achievement', sourceId: def.id, delta: def.xp } });
   for (const kind of ['achievement.notification', 'achievement.badge']) {
-    await tx.progressionEffect.create({ data: { id: `${kind}:${unlockId}`, kind, playerId, payload: { ...event } } });
+    await tx.progressionEffect.create({ data: { id: `${kind}:${unlockId}`, kind, playerId, availableAt: new Date(earnedAt.getTime() + (kind === 'achievement.badge' ? 3600_000 : 0)), payload: { ...event } } });
   }
   return event;
 }
@@ -26,4 +26,15 @@ export async function creditRewardXp(tx: TransactionClient, playerId: string, de
   const title = titleForLevel(level);
   await tx.playerXp.update({ where: { playerId }, data: { level, title } });
   return level > row.level ? { playerId, previousLevel: row.level, level, xp: row.xp, title } : null;
+}
+
+/** Shared evaluation for new facts and catalogue/wave catch-up; caller holds the player's lock. */
+export async function evaluatePlayer(tx: TransactionClient, playerId: string, available: ReadonlySet<AchievementFamilyId>) {
+  const facts = Object.fromEntries((await tx.playerFact.findMany({ where: { playerId } })).map(r => [r.family, r.value]));
+  const earned = new Set((await tx.achievementUnlock.findMany({ where: { playerId } })).map(r => r.achievementId));
+  const candidates = evaluateNewUnlocks(facts, earned, available);
+  const unlocked = [];
+  for (const def of candidates) unlocked.push(await recordReward(tx, playerId, def));
+  const levelUp = await creditRewardXp(tx, playerId, candidates.reduce((sum, def) => sum + def.xp, 0));
+  return { unlocked, levelUp };
 }

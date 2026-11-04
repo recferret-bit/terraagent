@@ -114,6 +114,6 @@ The app becomes multi-planet and multiplayer. Players pick a planet or get match
 
 ## W12 progression integration gate (revised)
 
-Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Implement an authenticated colony-specific resume contract, ownership/status checks and unavailable-colony UX. Replace the current home-resume fallback only when its route is handled end to end.
+Follow [Progression persistence and delivery](../../spec/PROGRESSION_ENGINE.md). Reuse W12’s authenticated `/v1/me/home?colonyId=` resume, ownership/status checks and selected-planet WebSocket seat resolution. Populate authoritative colony stage/outcome state for the checkpoint projector; extend unavailable-colony UX with lobby choices.
 
 Acceptance: producer-to-profile persistence, replay/restart, concurrent inputs, threshold boundaries, independent queue retries and disabled-wave behavior are covered by unit and PostgreSQL integration tests. New achievement conditions use catalogue configuration; new event semantics use registered producers. Keep earned achievements and lifetime statistics across colony transitions. ME opens in a new tab from authenticated landing/selection only; the hub's W12 mock is explicit.

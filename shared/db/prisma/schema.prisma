@@ -111,6 +111,7 @@ model Colony {
   id          String   @id
   playerId    String   @map("player_id")
   planetId    String   @map("planet_id")
+  stage       Int      @default(1)
   colonyIndex Int      @default(0) @map("colony_index")
   name        String
   color       Int      @default(0)
@@ -394,6 +395,36 @@ model ProgressionEffect {
 
   @@index([kind, completedAt, availableAt])
   @@map("progression_effect")
+  @@schema("core")
+}
+
+/// Inputs committed with their authoritative simulation checkpoint, replayed until applied.
+model ProgressionInbox {
+  id        String @id
+  planetId  String @map("planet_id")
+  tick      Int
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@index([planetId, tick])
+  @@map("progression_inbox")
+  @@schema("core")
+}
+
+model ProgressionEpoch {
+  planetId String @id @map("planet_id")
+  epoch String
+  @@map("progression_epoch")
+  @@schema("core")
+}
+
+/// Durable in-app notification inbox; unique effect ID provides consumer idempotency.
+model PlayerNotification {
+  id String @id
+  playerId String @map("player_id")
+  payload Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  @@index([playerId, createdAt])
+  @@map("player_notification")
   @@schema("core")
 }
 

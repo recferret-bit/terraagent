@@ -1,8 +1,10 @@
+import { CheckpointProgression } from '../../progression/checkpoint-progression.js';
+import { projectColonies } from './colony-projection.js';
 import { crc32, gunzip, gzip } from 'node:zlib';
 import { promisify } from 'node:util';
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { RepositoryBase, type PrismaClient } from '@terra/db';
-import { SIM_VERSION } from '@terra/sim';
+import { SIM_VERSION, restore } from '@terra/sim';
 import { PRISMA } from '../../db/db.module';
 import { prunableIds } from './retention';
 
@@ -30,7 +32,8 @@ export interface LoadedSnapshot extends SavedSnapshot {
 /** `world.planet_snapshot` (DATA_MODEL §4.2): gzip + crc on the main thread, never on a sim thread. */
 @Injectable()
 export class SnapshotStore extends RepositoryBase {
-  constructor(@Inject(PRISMA) prisma: PrismaClient) {
+  constructor(@Inject(PRISMA) prisma: PrismaClient,
+    @Optional() @Inject(CheckpointProgression) private readonly progression?: CheckpointProgression) {
     super(prisma);
   }
 
@@ -40,7 +43,13 @@ export class SnapshotStore extends RepositoryBase {
       planetId, tick: BigInt(tick), simVersion: SIM_VERSION, codec: SNAPSHOT_CODEC, sizeBytes: data.length, rawBytes: rawBytes.length,
       crc32: crc32(data) | 0, kind, savedAt, data,
     };
-    await this.prisma.planetSnapshot.upsert({ where: { planetId_tick: { planetId, tick: row.tick } }, create: row, update: row });
+    const batch = this.progression?.batch(planetId, tick) ?? [];
+    await this.prisma.$transaction(async tx => {
+      await tx.planetSnapshot.upsert({ where: { planetId_tick: { planetId, tick: row.tick } }, create: row, update: row });
+      await this.progression?.persist(tx, planetId, batch);
+      if (this.progression) await projectColonies(tx, planetId, restore(rawBytes).colonies);
+    });
+    this.progression?.committed(planetId, batch);
     return { planetId, tick, kind, simVersion: SIM_VERSION, savedAt, sizeBytes: row.sizeBytes, rawBytes: row.rawBytes };
   }
 
@@ -97,6 +106,7 @@ export class SnapshotStore extends RepositoryBase {
   async wipePlanet(planetId: string): Promise<void> {
     await this.prisma.$transaction([
       this.prisma.planetSnapshot.deleteMany({ where: { planetId } }),
+      this.prisma.progressionEpoch.deleteMany({ where: { planetId } }),
       this.prisma.ledgerEntry.deleteMany({ where: { planetId } }), // the old planet's resource journal goes with it
       this.prisma.colony.deleteMany({ where: { planetId } }),
       this.prisma.planet.deleteMany({ where: { id: planetId } }),

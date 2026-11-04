@@ -1,3 +1,4 @@
+import { CheckpointProgression } from './checkpoint-progression.js';
 import { PROGRESSION_EVENT_RULES, progressEventId } from './event-rules.js';
 import { ProgressionEngine } from './progression-engine.js';
 import { Inject, Injectable, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
@@ -63,6 +64,7 @@ export class FactsUpdaterService implements OnModuleInit, OnModuleDestroy {
     @Optional() @Inject(EventBus) private readonly bus?: EventBus,
     @Optional() @Inject(HomeRepository) private readonly homeRepo?: HomeRepository,
     @Optional() @Inject(ProgressionEngine) private readonly engine?: ProgressionEngine,
+    @Optional() @Inject(CheckpointProgression) private readonly checkpoint?: CheckpointProgression,
   ) {}
 
   onModuleInit(): void {
@@ -72,7 +74,8 @@ export class FactsUpdaterService implements OnModuleInit, OnModuleDestroy {
         'planet.event',
         (ev) => {
           const prog = planetEventToProgress(ev, (cid) => this.homeRepo?.findCachedColonyById(cid)?.playerId);
-          if (prog) return this.applyProgressEvent(prog);
+          if (prog && this.checkpoint?.enabled) this.checkpoint.stage(prog);
+          else if (prog) return this.applyProgressEvent(prog);
         },
         { module: 'progression' },
       ),

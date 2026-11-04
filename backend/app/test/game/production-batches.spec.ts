@@ -101,6 +101,29 @@ describe('W02-28 Stockpile: resourceProduced batches from the sim thread', () =>
     ]);
   });
 
+  it('flushes whole units before a checkpoint and preserves fractional carry after restart', () => {
+    const messages: FromThread[] = [];
+    const host = new PlanetHost(0, W02_ON, m => messages.push(m));
+    host.handle({ t: 'load', planetId: PLANET, params: { type: W00_PLANET_TYPE } });
+    const colony = addColony(host);
+    colony.production.produced['metals.t1'] = 1.75;
+    host.handle({ t: 'snapshotNow', planetId: PLANET });
+    const checkpoint = messages.find(m => m.t === 'snapshot');
+    if (!checkpoint || checkpoint.t !== 'snapshot') throw new Error('No snapshot');
+    const events = messages.flatMap(m => m.t === 'event' || m.t === 'delta' ? m.events : []);
+    expect(sumOf(events, 'metals.t1')).toBe(1);
+    expect(messages.findIndex(m => m.t === 'event')).toBeLessThan(messages.indexOf(checkpoint));
+    const restored = hostWith(W02_ON);
+    restored.host.handle({ t: 'load', planetId: PLANET, snapshot: checkpoint.bytes });
+    const c = restored.host.planets.get(PLANET)!.state.colonies[0] as ReturnType<typeof addColony>;
+    c.production.produced['metals.t1'] += 0.5;
+    restored.host.handle({ t: 'snapshotNow', planetId: PLANET });
+    expect(sumOf(restored.events, 'metals.t1')).toBe(1);
+  });
+
+});
+
+describe('Stockpile wave and bridge boundaries', () => {
   it('W02 off (TA_WAVES=..01): no resourceProduced batch', () => {
     const { host, events } = hostWith(W02_OFF);
     host.handle({ t: 'load', planetId: PLANET, params: { type: W00_PLANET_TYPE } });

@@ -12,7 +12,7 @@ import {
 /**
  * W12 Player Page & Achievements — demo steps 1–10 (docs/plan/waves/W12-player-page-achievements.md).
  * Steps 1, 2, 3, 6, 7, 9, 10 are the hackathon slice (`npm run e2e -- --waves ..12 --hack`).
- * Steps 4, 5, 8 are deferred (`H+` / post-hackathon).
+ * Steps 4 and 8 cover colony cards and badge/in-app delivery; full history (step 5) remains deferred.
  */
 test.describe.configure({ mode: 'serial' });
 
@@ -73,8 +73,11 @@ test('@hack 3. Progress section lights S0..S4 stage track, shows 3 closest achie
   await expect(mePage.locator('[data-testid="me-stat-resourcesProduced"]')).toContainText('24 500');
 });
 
-test('4. Planets section current & past colony cards', () => {
-  test.skip(true, 'deferred to W12-17');
+test('4. Planets section current & past colony cards', async () => {
+  serverOnly();
+  await expect(mePage.locator('[data-testid="me-current-colony"]')).toHaveCount(1);
+  await expect(mePage.locator('[data-testid="me-past-colony"]')).toHaveCount(1);
+  await expect(mePage.locator('[data-testid="me-colony-dive-in"]')).toHaveAttribute('href', '/play.html?scenario=w12&as=w12');
 });
 
 test('5. History timeline filter and infinite scroll', () => {
@@ -128,8 +131,14 @@ test('@hack 7. Dev console fact add groundbreaker 900 unlocks Silver (+150 XP on
   await expect(playPage.locator('[data-testid="xp-level-up-toast"]')).toBeVisible();
 });
 
-test('8. Card back badge minting outbox', () => {
-  test.skip(true, 'deferred to W12-25/26');
+test('8. Card back shows delivered mock badge and newly queued badge', async () => {
+  serverOnly();
+  await expect(mePage.locator('[data-testid="ach-card-first-landfall"]')).toContainText('Recorded (mock)');
+  await expect(mePage.locator('[data-testid="ach-card-groundbreaker-2"]')).toContainText('Badge minting');
+  await expect.poll(async () => {
+    await mePage.reload();
+    return mePage.locator('[data-testid="me-history-body"]').textContent();
+  }).toContain('Groundbreaker');
 });
 
 test('@hack 9. Families whose producer wave is off under waves=..12 (Warlord, Diplomat, Merchant, Settler) show Coming soon', async () => {

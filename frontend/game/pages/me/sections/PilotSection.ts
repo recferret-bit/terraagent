@@ -22,7 +22,7 @@ function xpPercent(xp: number, currentLevelXp: number, nextLevelXp: number): num
  */
 export function renderPilotSection(profile: MeProfileResponse): HTMLElement {
   const { identity, progression } = profile;
-  const pilotIdText = identity.accountId ?? `${identity.handle}.terraagent.mock`;
+  const pilotIdText = identity.accountId ?? identity.playerId;
   const pct = xpPercent(progression.xp, progression.currentLevelXp, progression.nextLevelXp);
   const xpLabel = `${formatThinInt(progression.xp)} / ${formatThinInt(progression.nextLevelXp)}`;
 

@@ -128,6 +128,7 @@ export const MeProfileResponseSchema = z.strictObject({
   stats: ProfileStatsSchema,
   currentColonies: z.array(CurrentColonySummarySchema),
   pastColonies: z.array(PastColonySummarySchema),
+  activity: z.array(z.strictObject({ id: z.string(), title: z.string(), createdAt: z.string() })).optional(),
   nextAchievements: z.array(PlayerAchievementEntrySchema),
   earnedAchievementsCount: z.number().int().nonnegative(),
   totalAchievementsCount: z.number().int().positive(),
