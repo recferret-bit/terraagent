@@ -86,7 +86,9 @@ export {
   restoreW11Context,
   selectDirectorSkills,
   spatialAllowed,
+  strategyPermitted,
   suppressGoal,
+  type StrategyPermissions,
 } from './systems/director';
 export * from './systems/progression';
 export * from './systems/progression/validate';
