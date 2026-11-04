@@ -161,6 +161,7 @@ test('@hack 5–8. Queue waiting ETA, night brownout & restore, fill to cap & st
 
   await devConsole(page, 'time day');
   await expect.poll(async () => (await getColony0(page))?.power?.brownout ?? true).toBe(false);
+  await devConsole(page, 'cell 200'); // the HQ works on its cell: refill it for the orders of steps 7–8
 
   // Step 7: Fill Metals to cap (500/500)
   await devConsole(page, 'fill metals.t1 9999');
