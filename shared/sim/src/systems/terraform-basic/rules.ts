@@ -108,14 +108,18 @@ export function terraformOwnershipBlock(world: TerraformWorld, colonyId: number,
 function groundBlock(world: TerraformWorld, op: TerraformOpKind, i: number, data?: CompiledDataLike): RejectCode | null {
   const spec = getTerraformOpSpec(op, data);
   const terrain = world.terrain[i], prep = world.prep[i];
+  // The end of the growth ladder: nothing may be done to a Living hex (it only reverts when a building covers it).
+  if (prep === PREP.living) return 'already_terraformed';
+  // The hex already is what the op would make it (a no-op that would only cost a worker's time and resources).
+  if (terrain === spec.toTerrain && spec.toTerrain !== spec.fromTerrain) return 'already_at_target';
   if (terrain !== spec.fromTerrain) return 'site_blocked';
+  if (spec.toTerrain === spec.fromTerrain && prep === spec.toPrep && spec.toPrep !== spec.fromPrep) return 'already_at_target';
   if (spec.minWorkerTier > (world.maxWorkerTier ?? 1)) return 'worker_tier_locked';
   if (spec.toTerrain !== spec.fromTerrain) return null;
   if (isTileUneven(world.radius, i, world.terrain, world.height)) return 'site_blocked';
   if (spec.fromPrep !== null) return prep === spec.fromPrep ? null : 'site_blocked';
-  return prep === spec.toPrep || prep === PREP.irrigated || prep === PREP.living || prep === PREP.ridge || prep === PREP.moat
-    ? 'site_blocked'
-    : null;
+  if (prep === spec.toPrep || prep === PREP.irrigated) return 'already_at_target';
+  return prep === PREP.ridge || prep === PREP.moat ? 'site_blocked' : null;
 }
 
 export interface ColonyTerraformStats {
@@ -287,12 +291,19 @@ export const terraformJobKey = (op: string, q: number, r: number): string => `${
 export function evaluateTerraform(world: TerraformWorld, opts: EvaluateTerraformOpts): TerraformPlan {
   const plan: TerraformPlan = { jobs: [], skipped: [] };
   const seen = new Set<string>(opts.pending ?? []);
+  // A hex with any queued or running job is taken, whatever its op: a second job on it is wasted work.
+  const queuedTiles = new Set<string>();
+  for (const k of seen) queuedTiles.add(k.slice(k.indexOf(':') + 1));
   const skip = (q: number, r: number, reason: RejectCode): void => {
     plan.skipped.push({ q, r, reason });
     plan.firstReject ??= reason;
   };
   const tileOpts = { allowUnclaimed: opts.allowUnclaimed, data: opts.data };
   for (const { q, r } of opts.tiles) {
+    if (queuedTiles.has(`${q},${r}`)) {
+      skip(q, r, 'already_queued');
+      continue;
+    }
     const res = opts.auto
       ? resolveTerraformTileOp(world, opts.colonyId, q, r, tileOpts)
       : (() => {
@@ -303,12 +314,7 @@ export function evaluateTerraform(world: TerraformWorld, opts: EvaluateTerraform
       skip(q, r, res.reason);
       continue;
     }
-    const key = terraformJobKey(res.op, q, r);
-    if (seen.has(key)) {
-      skip(q, r, 'site_blocked');
-      continue;
-    }
-    seen.add(key);
+    queuedTiles.add(`${q},${r}`);
     plan.jobs.push({ q, r, op: res.op });
   }
   return plan;

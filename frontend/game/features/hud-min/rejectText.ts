@@ -49,6 +49,9 @@ export const REJECT_TEXT: Readonly<Record<ToastRejectCode, string>> = {
   insufficient_cargo: 'Rejected: Insufficient orbital cargo',
   storage_full: 'Rejected: Colony storage is full',
   hub_offline: 'Rejected: Trade Hub is offline',
+  already_terraformed: 'Rejected: Already terraformed (Living): nothing more to do here',
+  already_queued: 'Rejected: Already queued: a terraform job is waiting or running on this hex',
+  already_at_target: 'Rejected: Nothing to change: the hex is already in that state',
   timeout: 'Not confirmed: Timeout',
   not_connected: 'Not connected',
 };

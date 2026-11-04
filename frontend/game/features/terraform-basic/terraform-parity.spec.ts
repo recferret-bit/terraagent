@@ -6,7 +6,9 @@ import {
   evaluateTerraform,
   hexIndex,
   inHex,
+  PREP,
   restore,
+  setTilePrep,
   setTileOwner,
   SimHost,
   snapshot,
@@ -122,5 +124,33 @@ describe('terraform parity: authoritative state vs client replica view (FF-03)',
       if (p.terraform) expect(canRunTerraformOpOnTile(host.state, 0, p.terraform.op, t.q, t.r, { data }).ok).toBe(true);
     }
     expect(sent).toBeGreaterThan(0);
+  });
+});
+
+describe('terraform parity: no-op targets get the same typed reason on client and host', () => {
+  it('Living, queued, prepared and irrigated hexes: the preview matches the host', () => {
+    const host = hostWithPod('..05', 'temperate', false);
+    const data = host.pipeline.config.data;
+    const idx = hexIndex(host.state.grid.radius);
+    const cols = host.state.entities.cols;
+    const [pq, pr] = [cols.q[0]!, cols.r[0]!];
+    const living = { q: pq + 1, r: pr };
+    setTilePrep(host.state.grid, idx.indexOf(living.q, living.r), PREP.living);
+    const s = evaluateTerraform(terraformWorldFromState(host.state, 0, data), { colonyId: 0, op: 'grade', tiles: [living], auto: true, data });
+    const c = planTerraformTiles(clientViewOf(host), [living], { colonyId: 0, data });
+    expect([s.firstReject, c.firstReject, c.jobs.length]).toEqual(['already_terraformed', 'already_terraformed', 0]);
+    // queued: the host's own queue is what the client view carries
+    const queued = { q: pq - 1, r: pr };
+    host.submit({ commandId: 'tp-1', colonyIndex: 0, source: 'player', kind: 'enqueueTask', args: { terraform: { op: 'grade', tiles: [queued] } } } as never);
+    host.step(1);
+    expect(planTerraformTiles(clientViewOf(host), [queued], { colonyId: 0, data }).firstReject).toBe('already_queued');
+    // prepared / irrigated ground climbs the ladder, and the host accepts the plan
+    for (const prep of [PREP.prepared, PREP.irrigated]) {
+      const t = { q: pq, r: pr + 1 };
+      setTilePrep(host.state.grid, idx.indexOf(t.q, t.r), prep);
+      const p = planTerraformTiles(clientViewOf(host), [t], { colonyId: 0, data });
+      expect(p.jobs.map((j) => j.op)).toEqual([prep === PREP.prepared ? 'irrigate' : 'seed']);
+      expect(canRunTerraformOpOnTile(host.state, 0, p.jobs[0]!.op as TerraformOpKind, t.q, t.r, { data }).ok).toBe(true);
+    }
   });
 });

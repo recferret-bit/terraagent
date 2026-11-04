@@ -139,8 +139,9 @@ describe('W08-10 · enqueueTask S2 and S3/S4 unlock-stage validation', () => {
       1,
       pipeline,
     );
-    expect(rUnlocked.outcomes.map((o) => o.code)).toEqual([undefined, undefined, undefined, undefined, undefined]);
-    expect(getColonyQueue(state, 0).length).toBe(5);
+    // Fill on plain flat ground would change nothing: the shared terraform rule refuses it (`already_at_target`).
+    expect(rUnlocked.outcomes.map((o) => o.code)).toEqual([undefined, undefined, undefined, 'already_at_target', undefined]);
+    expect(getColonyQueue(state, 0).length).toBe(4);
   });
 
   it('rejects S3 and S4 items at S2, and unlocks them when unlockStage is raised (including inherited unlockStage > stage)', () => {

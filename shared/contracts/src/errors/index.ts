@@ -23,6 +23,9 @@ export const REJECT_CODES = [
   'outside_power_zone',
   // W03 dismantle: the building is already being dismantled (owner feedback W03 #6)
   'already_dismantling',
+  // W05 terraform: the hex is already Living (end of the growth ladder), the hex already has a queued or running
+  // terraform job, or the op would change nothing (the hex is already in the op's target state)
+  'already_terraformed', 'already_queued', 'already_at_target',
   // W08 HQ goals: goal queue is full for the colony's HQ tier (2 / 3 / 5); `cancelGoal` / `reorderGoal` names no open goal
   'goal_limit', 'unknown_goal',
   // W10 cargo & trade hub: insufficient stock/cargo, storage full on import, or Trade Hub offline

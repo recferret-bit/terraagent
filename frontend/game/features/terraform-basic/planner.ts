@@ -281,15 +281,19 @@ export function planTerraformTiles(
   for (const t of tiles) {
     const auto = evaluateTerraform(world, { ...base, op: 'grade', tiles: [t], auto: true });
     let job = auto.jobs[0];
-    for (const op of job ? [] : GROWTH_LADDER) {
+    let reject = auto.firstReject;
+    // Ground that already is prepared (`already_at_target`) is judged by the growth ladder's own verdict.
+    for (const op of job || reject !== 'already_at_target' ? [] : GROWTH_LADDER) {
       if (table && !(op in table)) continue; // the op's wave is off: no such row in the compiled data
-      job = evaluateTerraform(world, { ...base, op, tiles: [t] }).jobs[0];
+      const step = evaluateTerraform(world, { ...base, op, tiles: [t] });
+      job = step.jobs[0];
       if (job) break;
+      reject = step.firstReject ?? reject;
     }
     if (job) jobs.push(job);
     else {
       skippedCount++;
-      firstReject ??= auto.firstReject;
+      firstReject ??= reject;
     }
   }
   return { jobs, queuedCount: jobs.length, skippedCount, ...(firstReject ? { firstReject } : {}) };

@@ -114,6 +114,9 @@ const isChaining = (ctx: PrimaryOpContext, workerId: number | undefined): boolea
 const SKIP_STATUS: Readonly<Record<string, string>> = {
   not_own_territory: 'Outside your territory',
   invalid_args: 'Outside the map',
+  already_terraformed: 'Already terraformed (Living)',
+  already_queued: 'Already queued: a terraform job is waiting or running here',
+  already_at_target: 'Nothing to change: already in that state',
   site_blocked: 'Nothing to terraform here (already done, queued, or built on)',
   building_here: 'A building stands on this hex',
   deposit_here: 'Resource deposit here: harvest it instead',
