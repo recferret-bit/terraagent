@@ -89,3 +89,13 @@
 - **Workaround / mitigation:** one process. Unknown usage (`actual: null`) charges the full reservation. A reconcile that matches no outstanding reservation does not lower spent. Callers that retry reconcile while another reservation of the same size is open can close the wrong one.
 - **To resolve:** persist the same rules in one transaction (W16-44), with a reservation id so a retry cannot match a different row. The cost ceiling stays a separate check (AI §7).
 - **Found:** 2026-11-04, W16-08.
+
+### AI-10 · Library pins are loaded, live model behavior is not
+
+- **Status:** Open
+- **Area / code:** `backend/app/src/ai/versions.ts`, `backend/app/package.json`
+- **What happens:** `ai@7.0.162`, `@ai-sdk/openai-compatible@3.0.84`, `@ai-sdk/mcp@2.0.90`, `@modelcontextprotocol/sdk@1.32.2`, and `pg-boss@12.38.0` import on Node 24. pg-boss is a named export `PgBoss` (no default). Sampling, elicitation, resource subscriptions, and remote MCP discovery stay unsupported. `npm audit` still reports high advisories in the tree after the install. glm-5.3 JSON, tools, usage, and abort were not called.
+- **Why it is like this:** W16-28 locks versions before the worker and the live eval. No API key was used.
+- **Workaround / mitigation:** do not enable the unsupported MCP features. Do not swap the model if a call fails.
+- **To resolve:** W16-48 runs one real call and records usage, cost, and any option the provider rejects. Revisit the audit findings before rollout.
+- **Found:** 2026-11-04, W16-28.
