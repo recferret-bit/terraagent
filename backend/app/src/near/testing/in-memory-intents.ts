@@ -67,6 +67,19 @@ export class InMemoryIntents extends IntentsPort {
     return signTokenDiffPayload(ed25519PrivateKeyFromSeed(k.seed), k.publicKey, { accountId: input.accountId, deltas: input.deltas }, input.deadlineMs, nonce);
   }
 
+  /** Test hooks mirroring `MockIntentsAdapter` (contract suite). */
+  async testRegisterSigner(accountId: string): Promise<void> {
+    this.keyOf(accountId);
+  }
+
+  async testSeedVerifier(accountId: string, verifierId: string, chainAmount: bigint): Promise<void> {
+    this.add(this.verifier, accountId, verifierId, chainAmount);
+  }
+
+  async testSeedOwn(accountId: string, tokenKey: string, chainAmount: bigint): Promise<void> {
+    this.add(this.own, accountId, tokenKey, chainAmount);
+  }
+
   publicKeyOf(accountId: string): string {
     return this.keyOf(accountId).publicKey;
   }
@@ -87,7 +100,7 @@ export class InMemoryIntents extends IntentsPort {
     return { ok: code === null, ...(code === null ? {} : { errorCode: code }), effects: intents.map((i) => i.diff) };
   }
 
-  /** Atomic: any failing check or short balance leaves the ledger and nonces untouched. Idempotent by opId. */
+  /** Atomic — a failing check or short balance leaves the ledger and nonces untouched. Idempotent by opId. */
   async execute(input: IntentsExecuteInput): Promise<ChainReceipt> {
     return this.chain.write(input.opId, () => {
       const code = this.checkSync(input.intents);

@@ -17,7 +17,7 @@ import { cancelMove } from '../../units/movement/orchestrator';
 import { commandColony, parseArgs } from '../command';
 import { cancelConstructionOrder, getConstructionOrders } from '../construction';
 import { defineSimModule } from '../define';
-import { creditResource, ensureColonyLedger, remainingFamilyCap } from '../economy/ledger';
+import { creditResource, ensureColonyLedger, remainingFamilyCap, zeroResource } from '../economy/ledger';
 import {
   applyEnvironmentState,
   environmentFromPlanetTime,
@@ -144,6 +144,13 @@ function ensureColony(state: PlanetState, colonyIndex: number, tick: number) {
   return ensureColonyLedger(colony);
 }
 
+type DevColony = ReturnType<typeof ensureColony>;
+
+/** A dev console grant: posted as `dev.grant`, whole units like every other credit. */
+function devCredit(colony: DevColony, key: ResourceKey, amount: number, tick: number): void {
+  creditResource(colony, key, amount, tick, { reason: 'dev.grant' });
+}
+
 function setOrFillKey(
   colony: ReturnType<typeof ensureColony>,
   key: ResourceKey,
@@ -152,11 +159,11 @@ function setOrFillKey(
 ): void {
   const family = RESOURCE_FAMILY_OF[key];
   if (amount !== undefined) {
-    colony.stock[key] = 0;
+    zeroResource(colony, key, tick);
     colony.changedAt = tick;
-    if (amount > 0) creditResource(colony, key, amount, tick);
+    if (amount > 0) devCredit(colony, key, amount, tick);
   } else {
-    creditResource(colony, key, remainingFamilyCap(colony, family), tick);
+    devCredit(colony, key, remainingFamilyCap(colony, family), tick);
   }
 }
 
@@ -171,37 +178,37 @@ const fill = defineCommandHandler({
 
     if (targetRes === 'all') {
       if (amount !== undefined) {
-        for (const k of RESOURCE_KEYS) colony.stock[k] = 0;
+        for (const k of RESOURCE_KEYS) zeroResource(colony, k, ctx.tick);
         colony.changedAt = ctx.tick;
-        creditResource(colony, 'metals.t1', amount, ctx.tick);
-        creditResource(colony, 'minerals.t1', amount, ctx.tick);
-        creditResource(colony, 'bio.biomass', amount, ctx.tick);
-        creditResource(colony, 'bio.water', amount, ctx.tick);
+        devCredit(colony, 'metals.t1', amount, ctx.tick);
+        devCredit(colony, 'minerals.t1', amount, ctx.tick);
+        devCredit(colony, 'bio.biomass', amount, ctx.tick);
+        devCredit(colony, 'bio.water', amount, ctx.tick);
       } else {
-        creditResource(colony, 'metals.t1', remainingFamilyCap(colony, 'metals'), ctx.tick);
-        creditResource(colony, 'minerals.t1', remainingFamilyCap(colony, 'minerals'), ctx.tick);
+        devCredit(colony, 'metals.t1', remainingFamilyCap(colony, 'metals'), ctx.tick);
+        devCredit(colony, 'minerals.t1', remainingFamilyCap(colony, 'minerals'), ctx.tick);
         const bioRem = remainingFamilyCap(colony, 'bio');
         const half = Math.floor(bioRem / 2);
-        creditResource(colony, 'bio.biomass', half, ctx.tick);
-        creditResource(colony, 'bio.water', remainingFamilyCap(colony, 'bio'), ctx.tick);
+        devCredit(colony, 'bio.biomass', half, ctx.tick);
+        devCredit(colony, 'bio.water', remainingFamilyCap(colony, 'bio'), ctx.tick);
       }
     } else if (targetRes === 'metals') {
       if (amount !== undefined) {
-        colony.stock['metals.t2'] = 0;
-        colony.stock['metals.t3'] = 0;
+        zeroResource(colony, 'metals.t2', ctx.tick);
+        zeroResource(colony, 'metals.t3', ctx.tick);
       }
       setOrFillKey(colony, 'metals.t1', amount, ctx.tick);
     } else if (targetRes === 'minerals') {
       if (amount !== undefined) {
-        colony.stock['minerals.t2'] = 0;
-        colony.stock['minerals.t3'] = 0;
+        zeroResource(colony, 'minerals.t2', ctx.tick);
+        zeroResource(colony, 'minerals.t3', ctx.tick);
       }
       setOrFillKey(colony, 'minerals.t1', amount, ctx.tick);
     } else if (targetRes === 'bio') {
       if (amount !== undefined) {
-        colony.stock['bio.water'] = 0;
-        colony.stock['bio.t2'] = 0;
-        colony.stock['bio.t3'] = 0;
+        zeroResource(colony, 'bio.water', ctx.tick);
+        zeroResource(colony, 'bio.t2', ctx.tick);
+        zeroResource(colony, 'bio.t3', ctx.tick);
       }
       setOrFillKey(colony, 'bio.biomass', amount, ctx.tick);
     } else if ((RESOURCE_KEYS as readonly string[]).includes(targetRes)) {

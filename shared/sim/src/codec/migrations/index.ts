@@ -1,8 +1,10 @@
 /**
  * Snapshot migration registry (SIM-D-07). A migration upgrades the DECODED plain snapshot object (envelope with
  * `header` and `state`) from one `SIM_VERSION` to a later one. Chains are followed greedily (largest step that does
- * not overshoot). The registry ships empty; waves register migrations when they bump `SIM_VERSION`.
+ * not overshoot). Waves register migrations when they bump `SIM_VERSION`; the built-in ones are at the bottom.
  */
+import { migrateWholeStock } from './wholeStock';
+
 export type SnapshotObject = { header: { simVersion: number; [k: string]: unknown }; state: Record<string, unknown> };
 export type MigrationFn = (snapshot: SnapshotObject) => SnapshotObject;
 
@@ -30,3 +32,6 @@ export function migrate(snap: SnapshotObject, target: number): SnapshotObject {
   }
   return cur;
 }
+
+// Built in: 2 -> 3 splits fractional colony stock into whole units + residual (LED-16).
+registerMigration(2, 3, migrateWholeStock);
