@@ -1,6 +1,7 @@
 import { ProfileContent, type ProfileContent as Content } from '@terra/contracts';
 import type { Prisma } from '@prisma/client';
 import type { DbClient } from '../repository';
+import { normalizeLogistics, normalizeRegions, readLogistics, readRegions, writeRegionRows } from './region-rows';
 
 type Json = Prisma.InputJsonValue;
 
@@ -18,6 +19,7 @@ export async function writeContent(db: DbClient, versionId: string, content: Con
   await db.economyResourcePolicy.deleteMany({ where: { versionId } });
   await db.economyMarketPolicy.deleteMany({ where: { versionId } });
   await db.economyAgentPolicy.deleteMany({ where: { versionId } });
+  await writeRegionRows(db, versionId, content);
   await db.economyParameter.createMany({
     data: Object.entries(content.parameters).map(([path, value]) => ({ versionId, path, value: value as Json, unit: unitOf(path) })),
   });
@@ -52,13 +54,15 @@ export async function writeContent(db: DbClient, versionId: string, content: Con
 }
 
 /** The W13-36 `ProfileContent` stored for `versionId`, in canonical order (parameters by path, rows by key). */
-export async function readContent(db: DbClient, versionId: string, sections: { regions: unknown; logistics: unknown }): Promise<Content> {
-  const [params, recipes, resources, markets, agents] = await Promise.all([
+export async function readContent(db: DbClient, versionId: string): Promise<Content> {
+  const [params, recipes, resources, markets, agents, regionSection, logisticsSection] = await Promise.all([
     db.economyParameter.findMany({ where: { versionId } }),
     db.economyRecipe.findMany({ where: { versionId }, include: { inputs: true } }),
     db.economyResourcePolicy.findMany({ where: { versionId } }),
     db.economyMarketPolicy.findMany({ where: { versionId } }),
     db.economyAgentPolicy.findMany({ where: { versionId } }),
+    readRegions(db, versionId),
+    readLogistics(db, versionId),
   ]);
   return ProfileContent.parse({
     parameters: Object.fromEntries(params.sort(byKey((p) => p.path)).map((p) => [p.path, p.value])),
@@ -79,8 +83,8 @@ export async function readContent(db: DbClient, versionId: string, sections: { r
       actorId: a.actorId, targets: a.targets, cashLimitAtomic: a.cashLimitAtomic.toFixed(), spendLimitAtomic: a.spendLimitAtomic.toFixed(),
       lossLimitAtomic: a.lossLimitAtomic.toFixed(), inventoryLimits: a.inventoryLimits, referenceWindowTicks: a.referenceWindowTicks,
     })),
-    regions: sections.regions,
-    logistics: sections.logistics,
+    regions: regionSection,
+    logistics: logisticsSection,
   });
 }
 
@@ -94,5 +98,7 @@ export function normalizeContent(content: unknown): Content {
     resourcePolicies: sorted(c.resourcePolicies, (p) => p.resource),
     marketPolicies: sorted(c.marketPolicies, (m) => m.pairId),
     agentPolicies: sorted(c.agentPolicies, (a) => a.actorId),
+    regions: normalizeRegions(c.regions),
+    logistics: normalizeLogistics(c.logistics),
   };
 }

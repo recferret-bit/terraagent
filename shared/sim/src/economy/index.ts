@@ -18,3 +18,4 @@ export * from './params';
 export * from './market-config';
 export { sha256Hex } from './sha256';
 export * from './compile-profile';
+export * from './regions';

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { WaveId } from '../flags';
 import { QuoteToken, AtomicAmount } from '../market/tokens';
 import { ResourceKey } from '../ws/sim';
+import { LogisticsContent, RegionsContent } from './regions';
 
 /** Content hash, `sha256:<hex>` (the §6 example shows the `sha256:...` placeholder, so any non-space tail parses). */
 export const ContentHash = z.string().regex(/^sha256:\S+$/, 'expected sha256:<hex>');
@@ -104,17 +105,14 @@ export const AgentPolicy = z.strictObject({
 });
 export type AgentPolicy = z.infer<typeof AgentPolicy>;
 
-/** Placeholder sections W13-50 fills (region/logistics schemas); untyped until then. */
-export const ProfileSection = z.record(z.string(), z.unknown());
-
 export const ProfileContent = z.strictObject({
   parameters: z.record(z.string(), ParamValue).default({}),
   recipes: z.array(RecipeDef).default([]),
   resourcePolicies: z.array(ResourcePolicy).default([]),
   marketPolicies: z.array(MarketPolicy).default([]),
   agentPolicies: z.array(AgentPolicy).default([]),
-  regions: ProfileSection.default({}),
-  logistics: ProfileSection.default({}),
+  regions: RegionsContent.default({ profiles: [], bindings: [] }),
+  logistics: LogisticsContent.default({ entries: [] }),
 });
 export type ProfileContent = z.infer<typeof ProfileContent>;
 
