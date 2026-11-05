@@ -6,6 +6,7 @@ import { boardHud, boardMenu } from './board';
 import { registerMarketTab } from './tab/register';
 import './contracts/contracts.css';
 import './tab/market-tab.css';
+import './stall/stall.css';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
