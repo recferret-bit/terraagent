@@ -7,6 +7,7 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { ChainOutboxRepository, type ClaimedRow } from '../../near/application/outbox/chain-outbox.repository.js';
 import { OutboxListeners } from '../../near/application/outbox/outbox-listeners.js';
+import { MarketMetrics } from '../telemetry/market-metrics.js';
 import { MarketSimGateway } from '../orders/market-sim-gateway.js';
 import { IntentTradeRepository } from './intent-trade.repository.js';
 import type { SettleParty, TradePlan } from './trade-plan.js';
@@ -44,6 +45,7 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
     private readonly gateway: MarketSimGateway,
     private readonly bus: EventBus,
     private readonly listeners: OutboxListeners,
+    private readonly metrics: MarketMetrics,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
   ) {}
@@ -74,6 +76,7 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
 
   /** Tells the sims and the sockets, then records that it was done (`notified` in the outbox payload) so a restart does not repeat or skip it. */
   async notify(plan: TradePlan, txHash: string | null): Promise<void> {
+    this.metrics.tradeFinal(plan);
     for (const party of plan.parties) this.settleSim(plan, party, txHash);
     this.pushTrade(plan, txHash);
     await this.outbox.flagPayload(marketTradeOpId(plan.tradeId), NOTIFIED);
