@@ -3,9 +3,11 @@ import { ContractsController } from './contracts/ContractsController';
 import { ContractsLog } from './contracts/contractsLog';
 import { ContractsPanel } from './contracts/ContractsPanel';
 import { boardHud, boardMenu } from './board';
+import { MARKET_EVENTS } from './analytics/marketTracker';
 import { registerMarketTab } from './tab/register';
 import './contracts/contracts.css';
 import './tab/market-tab.css';
+import './order/order.css';
 import './stall/stall.css';
 import './supply/supply.css';
 import { mountSupplyPanel } from './supply/register';
@@ -24,6 +26,7 @@ export default defineFeature({
   id: 'market',
   wave: 'W13',
   hostOnly: 'server',
+  analytics: [...MARKET_EVENTS],
   hud: [
     boardHud,
     { id: 'supply-trade', slot: 'bottom-left', order: 64, mount: mountSupplyPanel },

@@ -2,6 +2,8 @@ import { formatUnitPrice, mockLabel, pairId, type BookLevel, type MarketTokenKey
 import type { FeatureContext, TradeHubTabInstance } from '../../../core/registry/types';
 import { makeDiv } from '../../shared/dom';
 import { MarketState } from './marketState';
+import { MarketTracker } from '../analytics/marketTracker';
+import { OrderSection } from '../order/OrderSection';
 import { StallSection } from '../stall/StallSection';
 import { baseGroups, quoteChoices, resourceLabel } from './pairs';
 
@@ -54,6 +56,8 @@ export class MarketTab implements TradeHubTabInstance {
   private readonly offs: Array<() => void> = [];
   private readonly stall: StallSection;
   private loading = false;
+  private readonly order: OrderSection;
+  private readonly tracker: MarketTracker;
 
   constructor(private readonly root: HTMLElement, private readonly ctx: FeatureContext) {
     const planetId = (): string | null => ctx.services.session?.planetId() ?? null;
@@ -73,7 +77,10 @@ export class MarketTab implements TradeHubTabInstance {
     const head = makeDiv('ta-market__head');
     head.append(el('span', 'ta-market__col', 'PRICE'), el('span', 'ta-market__col', 'AMOUNT'), el('span', 'ta-market__col', 'ORDERS'));
     this.root.classList.add('ta-market');
-    this.root.append(picker, this.statusEl, head, this.asksEl, makeDiv('ta-market__mid'), this.bidsEl, el('div', 'ta-market__title', 'LAST TRADES'), this.tradesEl, this.stall.el);
+    this.root.append(picker, this.statusEl, head, this.asksEl, makeDiv('ta-market__mid'), this.bidsEl, el('div', 'ta-market__title', 'LAST TRADES'), this.tradesEl);
+    this.tracker = new MarketTracker(ctx.services.track);
+    this.order = new OrderSection(ctx, () => ({ base: this.base, quote: this.quote }));
+    this.root.append(this.order.root, this.stall.el);
     this.offs.push(this.state.onChange(() => this.render()));
     const store = ctx.services.store;
     if (store?.onMarketBook) this.offs.push(store.onMarketBook((p) => this.state.applyBook(p)));
@@ -107,6 +114,8 @@ export class MarketTab implements TradeHubTabInstance {
   onShow(): void {
     const id = this.ctx.services.session?.planetId() ?? null;
     const load = this.ctx.services.marketSnapshot;
+    this.order.refresh();
+    this.tracker.tabOpened();
     if (!id || !load || this.loading) { this.render(); return; }
     this.loading = true;
     load(id).then((s) => { this.statusEl.textContent = ''; this.state.applySnapshot(s); this.stall.apply(s); }, () => { this.statusEl.textContent = 'Market unavailable.'; })
@@ -127,6 +136,7 @@ export class MarketTab implements TradeHubTabInstance {
   }
 
   render(): void {
+    this.order.update();
     const book = this.state.book(this.selected());
     this.asksEl.replaceChildren(...levelRows([...(book?.asks ?? [])].slice(0, DEPTH_ROWS).reverse(), this.quote, 'ask'));
     this.bidsEl.replaceChildren(...levelRows(book?.bids ?? [], this.quote, 'bid'));
@@ -141,6 +151,7 @@ export class MarketTab implements TradeHubTabInstance {
 
   dispose(): void {
     for (const o of this.offs.splice(0)) o();
+    this.order.dispose();
     this.stall.dispose();
     this.root.replaceChildren();
   }

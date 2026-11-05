@@ -1,3 +1,4 @@
+import { MarketTracker } from '../analytics/marketTracker';
 import type { MarketSnapshotResponse } from '@terra/contracts';
 import type { FeatureContext } from '../../../core/registry/types';
 import { makeDiv } from '../../shared/dom';
@@ -52,6 +53,7 @@ export class StallSection {
     const res = await send('market.setHubFee', { bp });
     this.busy = false;
     if (res.ok) {
+      new MarketTracker(this.ctx.services.track).stallFeeChanged(bp);
       this.draftBp = null;
       this.message = `Stall fee set to ${bpText(bp)} for new orders.`;
       const id = this.ctx.services.session?.planetId() ?? null;
