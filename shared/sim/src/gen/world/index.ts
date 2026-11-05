@@ -1,7 +1,9 @@
 import { createState, type PlanetState } from '../../kernel/state';
 import { registerGenerator, type PlanetGenerator } from '../generators';
 import { DEFAULT_SPAWN_CAPACITY } from '../spawnSlots';
+import { writeRegionPin } from '../../economy/regions/pin';
 import { createContext, type WorldStage } from './context';
+import { applyRegionalDeposits } from './regionalDeposits';
 import { classifyDesert } from './stages/classifyDesert';
 import { landing } from './stages/landing';
 import { reliefDesert } from './stages/reliefDesert';
@@ -36,6 +38,10 @@ export function generateWorld(p: Parameters<PlanetGenerator>[0], onStage?: (id: 
     if (!stage) throw new Error(`world profile ${ctx.profile.id}: unknown stage ${id}`);
     stage.run(ctx);
     onStage?.(id);
+  }
+  if (p.region) { // W13 (W13-51): compose the visible deposits by the regional policy and pin the endowment; W13 off never gets here
+    applyRegionalDeposits(ctx, p.region);
+    writeRegionPin(state, p.region, 0);
   }
   state.meta.genVersion = GEN_VERSION;
   return state;
