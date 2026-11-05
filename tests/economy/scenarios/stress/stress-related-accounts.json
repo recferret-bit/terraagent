@@ -1,0 +1,112 @@
+{
+  "schemaVersion": 1,
+  "id": "stress-related-accounts",
+  "version": 1,
+  "description": "Related accounts (colonies 0 and 1 share an owner) trade with each other; those trades are reported apart and excluded from organic metrics.",
+  "waves": "..13",
+  "populations": [
+    {
+      "cohort": "related",
+      "colonies": 4,
+      "params": {
+        "relatedColonies": [
+          "col_0",
+          "col_1"
+        ]
+      }
+    }
+  ],
+  "shocks": [],
+  "assumptions": {
+    "label": "ASSUMPTIONS, NOT OBSERVATIONS: every number here is a stress-suite assumption; demand source is 'assumed'.",
+    "assumptionsVersion": 1,
+    "demandSource": "assumed",
+    "baseScenario": "stress",
+    "tradeResources": [
+      "bio.water",
+      "bio.biomass",
+      "metals.t1",
+      "minerals.t1"
+    ],
+    "behavior": {
+      "exportLot": 40,
+      "buyLot": 30,
+      "keepUnits": 150,
+      "exportAbove": 320,
+      "buyBelow": 280
+    },
+    "stress": {
+      "colonies": 4,
+      "extractors": 1,
+      "radius": 80,
+      "planetType": "temperate",
+      "starterStock": {
+        "bio.water": 300,
+        "bio.biomass": 200,
+        "metals.t1": 300,
+        "minerals.t1": 300,
+        "minerals.t2": 60
+      },
+      "stockByColony": {
+        "0": {
+          "bio.water": 700,
+          "bio.biomass": 200,
+          "metals.t1": 300,
+          "minerals.t1": 300,
+          "minerals.t2": 60
+        },
+        "1": {
+          "bio.water": 100,
+          "bio.biomass": 200,
+          "metals.t1": 300,
+          "minerals.t1": 300,
+          "minerals.t2": 60
+        },
+        "2": {
+          "bio.water": 700,
+          "bio.biomass": 200,
+          "metals.t1": 300,
+          "minerals.t1": 300,
+          "minerals.t2": 60
+        },
+        "3": {
+          "bio.water": 100,
+          "bio.biomass": 200,
+          "metals.t1": 300,
+          "minerals.t1": 300,
+          "minerals.t2": 60
+        }
+      },
+      "behavior": {
+        "projectId": "project.survey_array",
+        "projectEveryTicks": 300
+      }
+    },
+    "gates": [
+      {
+        "gateId": "econ.position_nonnegative",
+        "gateVersion": 1,
+        "metricKey": "inventory.position",
+        "scope": "global",
+        "resource": "bio.water",
+        "aggregate": "min",
+        "op": "gte",
+        "threshold": "0"
+      },
+      {
+        "gateId": "stress.production_flows_exist",
+        "gateVersion": 1,
+        "metricKey": "flow.production",
+        "scope": "global",
+        "resource": "metals.t1",
+        "aggregate": "max",
+        "op": "gte",
+        "threshold": "1"
+      }
+    ],
+    "relatedColonies": [
+      "col_0",
+      "col_1"
+    ]
+  }
+}
