@@ -81,6 +81,10 @@ export const marketReleaseHandler = defineCommandHandler({
       if (args.reason !== 'filled' || sumAmounts(order.reserved) === 0) delete market.openOrders[args.ref];
     }
     colony.changedAt = ctx.tick;
+    if (args.reason === 'settlement_failed') {
+      const colonyId = colonyIdOf(colony, index);
+      ctx.emit({ kind: 'marketSettlementFailed', severity: 'warn', colonyIds: [colonyId], data: { colonyId, colonyIndex: index, ref: args.ref } });
+    }
     if (args.reason === 'rejected') {
       const colonyId = colonyIdOf(colony, index);
       ctx.emit({

@@ -54,11 +54,13 @@ const SOURCE_OF_REASON: Readonly<Record<string, SourceKind>> = {
   'dev.grant': 'subsidy',
   'admin.correction': 'subsidy',
 };
-const RECOVERED_REASONS: ReadonlySet<string> = new Set(['construction.refund', 'building.sell', 'transport.release']);
+const RECOVERED_REASONS: ReadonlySet<string> = new Set(['construction.refund', 'building.sell', 'transport.release', 'logistics.release']);
 const ACTIVITY_OF_REASON: Readonly<Record<string, string>> = {
   'construction.spend': 'construction',
   'production.consume': 'production_input',
   'transport.reserve': 'transport',
+  'logistics.supply': 'logistics',
+  'logistics.activate': 'logistics',
   'dev.grant': 'adjustment',
   'admin.correction': 'adjustment',
 };

@@ -9,6 +9,7 @@
     "dev:client": "vite --config frontend/vite.config.ts --host 127.0.0.1 --port 5173",
     "ci:fast": "npm run check && npm test && npm run build",
     "scenario": "tsx scripts/dev/scenario.ts",
+    "economy": "tsx scripts/economy/cli.ts",
     "e2e": "node scripts/dev/e2e.mjs",
     "test:parity": "SWC_NODE_PROJECT=shared/tsconfig.base.json node --import @swc-node/register/esm-register tests/e2e/parity/run.ts",
     "sim:bench": "node scripts/dev/sim-bench.mjs",

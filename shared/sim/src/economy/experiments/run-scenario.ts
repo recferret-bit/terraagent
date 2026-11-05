@@ -102,8 +102,10 @@ function setup(manifest: ExperimentManifest, scenario: ExperimentScenarioDef, se
   const behavior = createBehavior(manifest.behaviorProfile, scenario.manifest.assumptions.behavior as Record<string, unknown> | undefined);
   if (!behavior) throw new ExperimentInputError('unknown_behavior', `unknown behaviorProfile "${manifest.behaviorProfile}"`);
   const harness = new MarketHarness(harnessConfig(manifest, compiled, runId, flags));
-  const budget = manifest.demandModel.perPayingActorMonthlyBudgetUsdcAtomic;
-  for (const c of host.state.colonies) if (c) harness.fund(c.id, 'USDC', BigInt(budget));
+  // `assumptions.buyerBudgetPct` (stress suite): the scenario's share of the manifest's per-actor buyer budget (assumed, default 100).
+  const pct = BigInt(Math.round(Number(scenario.manifest.assumptions.buyerBudgetPct ?? 100)));
+  const budget = (BigInt(manifest.demandModel.perPayingActorMonthlyBudgetUsdcAtomic) * pct) / 100n;
+  for (const c of host.state.colonies) if (c) harness.fund(c.id, 'USDC', budget);
   const stats: BehaviorStats = { exports: 0, imports: 0, ordersRequested: 0, rejected: {} };
   const bridge = new MarketBridge(host, harness);
   let n = 0;
@@ -128,7 +130,8 @@ export function runScenario(manifest: ExperimentManifest, scenario: ExperimentSc
   const start = host.tick;
   const measureStart = start + manifest.warmupTicks;
   const end = measureStart + manifest.measureTicks;
-  const sampler = new Sampler({ runId, resources: loop.ctx.resources, ticksPerDay: BigInt(manifest.ticksPerSecond) * 86_400n });
+  const related = new Set<string>(Array.isArray(scenario.manifest.assumptions.relatedColonies) ? (scenario.manifest.assumptions.relatedColonies as string[]) : []);
+  const sampler = new Sampler({ runId, resources: loop.ctx.resources, ticksPerDay: BigInt(manifest.ticksPerSecond) * 86_400n, related });
   loop.behavior.init?.(loop.ctx);
   const advanceTo = (target: number): void => {
     while (host.tick < target) stepOnce(loop, Math.min(loop.behavior.actEveryTicks, target - host.tick));

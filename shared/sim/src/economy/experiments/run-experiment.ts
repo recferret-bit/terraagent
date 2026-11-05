@@ -1,5 +1,6 @@
-import type { ExperimentManifest, GateResult } from '@terra/contracts';
+import { GateResult as GateResultSchema, type ExperimentManifest, type GateResult } from '@terra/contracts';
 import type { CompiledProfile } from '../compile-profile';
+import { plannedSeeds } from './seeds';
 import { ExperimentInputError } from './errors';
 import { evaluateGates, parseGateDefs } from './gates';
 import { replayCommand } from './replay';
@@ -70,7 +71,7 @@ export function runExperiment(
 ): ExperimentResult {
   const plan = scenarios
     .filter((s) => filter.scenarioId === undefined || s.manifest.id === filter.scenarioId)
-    .flatMap((s) => manifest.seeds.filter((seed) => filter.seed === undefined || seed === filter.seed).map((seed) => ({ s, seed })));
+    .flatMap((s) => plannedSeeds(manifest).filter((seed) => filter.seed === undefined || seed === filter.seed).map((seed) => ({ s, seed })));
   if (plan.length === 0) throw new ExperimentInputError('empty_plan', 'the scenario/seed filter selects no run of this manifest');
   const runs: RunRecord[] = [];
   const failing: FailingSeed[] = [];
@@ -79,6 +80,10 @@ export function runExperiment(
     if (runs.length >= manifest.budget.maxRuns || ports.shouldStop?.()) { stopped = true; break; }
     const run = runScenario(manifest, s, seed, compiled);
     const gates = evaluateGates(run, parseGateDefs(s.manifest.assumptions.gates));
+    // A future-wave mechanic is a counterfactual (labelled in `assumptions.counterfactual`): it can never pass the current gates.
+    if (s.manifest.assumptions.counterfactual) {
+      gates.push(GateResultSchema.parse({ gateId: 'hard.counterfactual_not_evidence', gateVersion: 1, outcome: 'insufficient_data', observed: null, threshold: 'current-wave', runId: run.runId }));
+    }
     runs.push({ run, gates });
     for (const g of gates) {
       if (g.outcome === 'pass') continue;

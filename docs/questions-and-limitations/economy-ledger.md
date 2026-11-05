@@ -290,3 +290,38 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **Area / code:** `backend/app/src/near/intents/nep413-token-diff.ts`, `near/infrastructure/adapters/mock/intents*`, `near/cargo/{cargo-import-outbox,free-verifier.service}.ts`, `application/outbox/`.
 - **What happens:** The NEP-413 `token_diff` payload follows NEAR Intents as known at build time (recipient `intents.near`, 32-byte base64 nonce, ISO deadline, sorted diff keys, sha256 over borsh, `ed25519:<b58>`); W23 must check it against the live verifier. Signatures verify against the signer's registered key (`near_colony_account`), not a key carried on the intent. Nonces are random when not supplied. `IntentsBalanceReadPort` is deliberately outside the 13-port env list (follows `NEAR_ADAPTER_INTENTS`). The contract suite's write cases are mock-only; a real run needs `CONTRACT_INTENTS_SIGNER` and only simulates. Import auto-withdraw assumes the verifier balance sits on the colony's own account; the new outbox `payload.dependsOn` defers a row until its dependency is DONE. The mock faucet records its funding note in `mock_chain_intent` (`actorKind: fixture`, `organic: false`).
 - **Found:** 2026-11-05, W13-04/05/06/07/16/17.
+
+
+### LED-25 · W13 settlement, recovery and order lifecycle defaults
+
+- **Status:** Accepted (by design); owner may change
+- **Area / code:** `backend/app/src/market/{settlement,orders,board,api,progression,telemetry}/`.
+- **What happens:**
+  - Settlement calls `IntentsPort.execute` straight from the outbox row `trade:{tradeId}` (like cargo, no `RelayerPort` wrapper). Each batch signs an intent for every account in its legs, so platform/treasury/seed-bot accounts get custodial keys from `MarketAccountsBootstrap` (non-production only).
+  - Recovery (W13-14): a final chain error rolls the fill back and re-checks funds; a partly filled order that cannot reacquire funds ends `CANCELLED`. Relay errors that are neither final codes nor `NEAR_UNAVAILABLE` stay PENDING until the outbox row is DEAD, then become `UNKNOWN` (quarantined; reconciler at boot and every 30 s re-executes with the same opId). Undoing a fill's fee bucket by subtraction can leave rounding dust on a later fill's already-fixed fee.
+  - Cancel/expiry (W13-15): TTL follows planet time by integrating the warp factor in memory (resets on app restart, where wall-clock `expiresAt` still applies); sweep every 30 s. A cancel of an unknown/foreign order answers `market.release {reason:'rejected', code:'unknown_order'}`.
+  - Place order (W13-09/13): `ref` is unique per planet (`orderIdOf(planetId, ref)`, migration 0014); in-flight deposits are counted so concurrent orders don't over-deposit.
+  - `market.book` and `market.trade` pushes go to the whole planet room (no per-socket `market` topic tracking yet). `GET /v1/market` falls back to the caller's first colony account when it has no order on that planet.
+  - Price board (W13-18): `last`/change/volume/candles use all FINAL trades; only VWAP and eligible volume use organic trades; a counterparty above the weight cap withholds the reference (`concentrated`); same-player colonies are not merged. Limits (window 24 h, ≥ 3 organic trades / 10 units / 3 counterparties, cap 4000 bp, move 5000 bp, stale 1 h) are data rows (`market.board`).
+  - Progression (W13-27): Port Authority counts one "fee unit" per started whole display unit of fee (a 0.10 USDC fee = 1), so the demo reaches +3 only over three fee-earning fills, and many tiny fees can farm it (bounded by minimum notional). A crash between FINAL and the fact write loses that fact.
+  - Telemetry (W13-29): money metrics are doubles (exact below 2^53); counters reset on restart; no `npc` series until NPC orders exist.
+  - Client (W13-23/24): the toast says plain "USDC", the Contracts list badge says "MOCK USDC"; there is no separate client event log (Contracts rows are it); a third-party stall owner gets no history row; the sparkline plots one point per FINAL trade (max 30, even spacing).
+- **To resolve:** per-socket topic subscriptions; durable fact outbox for progression; owner review of the fee-unit definition.
+- **Found:** 2026-11-05, W13-13/14/15/18/19/23/24/27/29.
+
+### LED-26 · W13 regional endowments and logistics: what is wired and what is not
+
+- **Status:** Open (partly); calibration in LED-19
+- **Area / code:** `shared/sim/src/economy/regions/`, `shared/sim/src/gen/world/regionalDeposits.ts`, `shared/sim/src/systems/logistics/`, `shared/sim/src/economy/logistics/`, `shared/sim/src/data/{regions,logistics}.ts`.
+- **What happens:**
+  - Regions (W13-50/51): one binding wins per level (highest priority; equal priority = ambiguous); region content comes from the most specific layer that defines any; main-resource badge must match weight × mean reserve × yield; essential access = water, `metals.t1`, `minerals.t1` with starter guarantee > 0 and yield > 0. `GEN_VERSION` is not bumped: a W13 world is identified by its region pin (`regionGenVersion: 1`), and generation without a region is unchanged. Not implemented: `starterGuarantee` placement, eligible source kinds / tier shares, per-sector regions (one planet region pre-W11), runtime re-activation by a host. `yieldShare` / the "20 % crystal share" in `data/resources.ts` are dead data. Default `bio.water` renewal is 12 600 units per sim hour (implementer's choice), split equally across active water extractors. Clearing yields floor to whole units.
+  - Logistics (W13-52/53/54): the service domain is the colony; unit readiness maps from entity state; only routed entities count in L/u; postings carry no `ref` (dedupe by the window key); thermal fuel is excluded by having no logistics row; extractors halt when supply is unavailable after grace; a returned reserve uses `clampToCap` (can overflow at full storage); terraform/dismantle/clear work rates are not scaled yet; the HQ drone has no logistics row; W07 combat is not in this tree (pure `combatServiceFactor` + `withSuppliedCadence` hook only) and the W09 away budget hook is a no-op. Re-entering reserve while deploying does not refund the activation cost.
+- **To resolve:** wire regions into the hosts that create planets with W13 on (W13-57), sector pins with W11/W27, the remaining work-rate paths, starter guarantees.
+- **Found:** 2026-11-05, W13-50..54.
+
+### LED-27 · W13 experiments, jobs, CLI and stress suite defaults
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/economy/experiments/`, `backend/app/src/economy/experiments/`, `scripts/economy/`, `tests/economy/`.
+- **What happens:** The world is fixed per scenario and the seed drives only the behaviour PRNG; runs are serial (`maxWorkers` not parallel in the runner; the job service uses `TA_ECONOMY_EXPERIMENT_WORKERS`). `incomplete` exits 4; a gate with `insufficient_data` counts as a failing seed. Job run leases live in `experiment_run.hashes.lease`. CLI: every 4xx (including 401/403) exits 2; `profile clone --name` is stored as the version rationale (no named-profile create route); `recommend` auto-finds the baseline as the latest completed experiment of the parent profile with the same scenarios/seeds and never activates. Stress suite: external venue leakage is modelled as an exogenous inventory inflow (no platform-fee accounting), related-account exclusion is a metric split, only `exogenousInflow` shocks exist, the Guild (W15) case is a counterfactual label that can never pass. All coefficients and demand inputs are labelled assumptions; no mock result is evidence of real demand.
+- **Found:** 2026-11-05, W13-44..48.

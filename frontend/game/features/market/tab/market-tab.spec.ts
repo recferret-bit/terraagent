@@ -111,7 +111,7 @@ describe('market feature and the Trade Hub tab extension', () => {
     const changes: Array<string | null> = [];
     const ext = new TabExtensions(tabsRow, form, ctx, (id) => changes.push(id));
     const services = ctx.services as unknown as Record<string, unknown>;
-    const inst = marketFeature.hud![0].mount(document.createElement('div'), ctx);
+    const inst = marketFeature.hud!.find((h) => h.id === 'market-tab')!.mount(document.createElement('div'), ctx);
     expect(parent.querySelector('[data-testid=trade-hub-tab-market]')).toBeNull();
     services.registerTradeHubTab = (d: TradeHubTabDef) => ext.register(d);
     inst.update!({});
