@@ -12,7 +12,7 @@ describe('resource amounts in data are whole, non-negative units (TableDef.amoun
     expect(declared).toEqual({
       hq: ['cargo'],
       hub: ['cost', 'storageCapPerFamily'],
-      logistics: ['consumption'],
+      logistics: ['consumption', 'activationCost'],
       opsBasic: ['yields'],
       prestige: ['cost'],
       regions: ['reserveUnitsMin', 'reserveUnitsMax', 'starterGuarantee', 'renewableUnitsPerSimHour'],

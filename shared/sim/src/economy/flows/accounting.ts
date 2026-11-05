@@ -60,6 +60,7 @@ const ACTIVITY_OF_REASON: Readonly<Record<string, string>> = {
   'production.consume': 'production_input',
   'transport.reserve': 'transport',
   'logistics.supply': 'logistics',
+  'logistics.activate': 'logistics',
   'dev.grant': 'adjustment',
   'admin.correction': 'adjustment',
 };

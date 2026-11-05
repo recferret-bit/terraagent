@@ -8,8 +8,8 @@ import { defineTable } from './_define';
  */
 export default defineTable({
   name: 'logistics',
-  units: { windowS: 'seconds' },
-  amounts: ['consumption'],
+  units: { windowS: 'seconds', activationDelayS: 'seconds' },
+  amounts: ['consumption', 'activationCost'],
   summary: 'W13 logistics congestion/distance/readiness coefficients (calibration fixture, runtime-tunable).',
   rows: [
     // Supply window (ECON-LOG-02, W13-53): length in seconds (compiled to ticks; the sim tick is the only clock) and the
@@ -17,6 +17,9 @@ export default defineTable({
     { id: 'service', wave: 'W13', windowS: 60, localReserveBp: 10000 },
     // Logistics load rows (ECON-LOG-01): weight in load units per window at full activity and the recipe in whole units per
     // window. Thermal plants are excluded on purpose: their fuel is already billed once by `production.consume`.
+    // Reserve mode (ECON-LOG-02): leaving reserve takes a versioned deployment delay and costs the activation recipe, charged
+    // through the treasury every time (toggling never skips it). Calibration fixture.
+    { id: 'deploy.v1', wave: 'W13', version: 1, activationDelayS: 10, activationCost: { 'bio.water': 1, 'metals.t1': 1 } },
     { id: 'building.metalsExtractor', wave: 'W13', kind: 'metalsExtractor', weight: 20, consumption: { 'bio.water': 2 } },
     { id: 'building.mineralsQuarry', wave: 'W13', kind: 'mineralsQuarry', weight: 20, consumption: { 'bio.water': 2 } },
     { id: 'building.waterExtractor', wave: 'W13', kind: 'waterExtractor', weight: 10, consumption: { 'metals.t1': 1 } },
