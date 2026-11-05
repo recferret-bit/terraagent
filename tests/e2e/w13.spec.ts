@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, login, stack, test, urls, waitForTick } from './harness';
+import { clickTile, devConsole, expect, expectNoPageErrors, hostMode, loadLocal, loadScenario, login, stack, test, urls, waitForTick } from './harness';
 
 /**
  * W13 Markets (F2, mock) wave E2E suite, part 1 (W13-35): demo story `docs/plan/waves/W13-markets.md` steps 1, 3-11 through the
@@ -31,7 +31,7 @@ interface Snap {
   board: Array<{ pair: string; last: { num: string; den: number } | null; classification: string; reason?: string; volume24h: number }>;
   recentTrades: Array<{ tradeId: string; pair: string; amount: number; notional: string; platformFee: string; stallFee: string; stallFeeBp: number; state: string; organic: boolean }>;
   policy: { platformFeeBp: number; stallFeeMaxBp: number; stallFeeDefaultBp: number; ttlOptionsS: number[] };
-  myOrders?: Array<{ orderId: string; side: string; amount: number; filled: number; state: string; reserved: string; stallFeeBp: number; policyVersion: string }>;
+  myOrders?: Array<{ orderId: string; side: string; amount: number; filled: number; state: string; reserved: string; stallFeeBp: number; platformFeeBp: number; policyVersion: string }>;
   balances?: Record<string, string>;
   reserved?: Record<string, string>;
   stall?: { hubFeeBp: number; earned: Record<string, string> };
@@ -59,11 +59,61 @@ async function dev(name: string, body: unknown): Promise<{ status: number; json:
 const order = (side: 'buy' | 'sell', amount: number, usdc: string, extra: Record<string, unknown> = {}) =>
   ({ side, resource: WATER, amount, price: { token: 'USDC', amount: USDC(usdc) }, ttlS: 3600, ...(side === 'buy' ? { maxStallFeeBp: 100 } : {}), ...extra });
 
+/** Hub tiles of the w13 scenario: Port A's Trade Hub at (-6, 1), Port B's at (10, 1) (`tests/scenarios/w13-markets.ts`). */
+const HUB = { a: [-6, 1], b: [10, 1] } as const;
+const ids = (p: Page, id: string) => p.getByTestId(id);
+
+/** Clicks the colony's Trade Hub, switches the panel to its MARKET tab and picks water / USDC in the pair picker. */
+async function openMarket(p: Page, who: 'a' | 'b'): Promise<void> {
+  const [q, r] = HUB[who];
+  // the joiner's camera does not start on its own colony: centre the hub first
+  await p.evaluate(([x, y]) => (window as unknown as { __online: { focusTile(q: number, r: number): void } }).__online.focusTile(x!, y!), [q, r] as const);
+  await p.waitForTimeout(500);
+  const panel = ids(p, 'trade-hub-panel');
+  const tried: string[] = [];
+  for (const [dq, dr] of [[0, 0], [1, 0], [0, 1], [1, 1], [-1, 0], [0, -1], [-1, -1], [2, 1], [1, 2]] as const) {
+    if ((await panel.getAttribute('data-open')) === 'true') break;
+    const pick = await clickTile(p, q + dq, r + dr);
+    tried.push(`${q + dq},${r + dr} -> ${JSON.stringify(pick)}`);
+    await p.waitForTimeout(500);
+  }
+  test.info().annotations.push({ type: 'observed', description: `openMarket ${who}: ${tried.join(' ; ')}` });
+  const diag = await p.evaluate(([x, y]) => {
+    const o = (window as unknown as { __online: { tileToScreen(q: number, r: number): { x: number; y: number } | null; terrain: unknown; viewport?: unknown } }).__online;
+    const pos = o.tileToScreen(x!, y!);
+    const el = pos ? document.elementFromPoint(pos.x, pos.y) : null;
+    return { pos, terrain: !!o.terrain, el: el ? `${el.tagName}.${el.className}#${el.id}` : null, win: [innerWidth, innerHeight] };
+  }, [q, r] as const);
+  expect(await panel.getAttribute('data-open'), `Trade Hub not opened by clicks: ${tried.join(' ; ')} diag ${JSON.stringify(diag)}`).toBe('true');
+  if (!(await ids(p, 'trade-hub-ext-market').isVisible())) await ids(p, 'trade-hub-tab-market').click();
+  await expect(ids(p, 'trade-hub-ext-market')).toBeVisible();
+  await ids(p, 'market-base').selectOption(WATER);
+  await ids(p, 'market-quote').selectOption('USDC');
+  await expect(ids(p, 'market-status')).toHaveText('', { timeout: 10_000 });
+}
+
+/** Sets the stall slider (range input: value + input event) and presses APPLY. */
+async function applyStall(p: Page, bp: number): Promise<void> {
+  await ids(p, 'stall-slider').evaluate((el, v) => { const i = el as HTMLInputElement; i.value = String(v); i.dispatchEvent(new Event('input', { bubbles: true })); }, bp);
+  await expect(ids(p, 'stall-draft')).toContainText((bp / 100).toFixed(2));
+  await ids(p, 'stall-apply').click();
+}
+
+/** Fills the order form (amount, total price, TTL 1 h) for one side; the order is not submitted. */
+async function fillOrder(p: Page, side: 'buy' | 'sell', amount: number, usdc: string): Promise<void> {
+  await ids(p, `order-side-${side}`).click();
+  await ids(p, 'order-amount').fill(String(amount));
+  await ids(p, 'order-price').fill(usdc);
+  await ids(p, 'order-ttl').selectOption('3600');
+}
+
+const askPrices = (p: Page) => p.locator('[data-testid=market-asks] .ta-market__price');
+
 test.beforeAll(async ({ browser }) => {
   a = await (await browser.newContext()).newPage();
   b = await (await browser.newContext()).newPage();
 });
-test.afterAll(async () => { await a?.context().close(); await b?.context().close(); });
+test.afterAll(async () => { await a?.context().close().catch(() => undefined); await b?.context().close().catch(() => undefined); });
 
 test('@hack 1. A opens ?scenario=w13&as=a, B joins with ?join=<planetId>&as=b: A holds 600 water, B 20 mock USDC, both have online Trade Hubs', async () => {
   test.setTimeout(300_000);
@@ -84,7 +134,18 @@ test('@hack 1. A opens ?scenario=w13&as=a, B joins with ?join=<planetId>&as=b: A
   expectNoPageErrors(a);
 });
 
-test.fixme('@hack 2. A opens Market, selects water/USDC and sets its stall fee to 1 % in the stall slider (UI: W13-20/22, part 2)', () => undefined);
+test('@hack 2. A opens the Trade Hub, MARKET tab, picks water / USDC and sets the stall slider (0.5 %, then back to the 1 % maximum) -> "Stall fee set"; the server stores it', async () => {
+  test.setTimeout(120_000);
+  await openMarket(a, 'a');
+  await expect(ids(a, 'stall-slider')).toBeEnabled({ timeout: 15_000 });
+  await applyStall(a, 50);
+  await expect(ids(a, 'stall-message')).toContainText('Stall fee set to 0.50', { timeout: 15_000 });
+  await expect.poll(async () => (await snap('a')).stall?.hubFeeBp, { timeout: 15_000, message: 'market.setHubFee persisted in chain.market_stall' }).toBe(50);
+  await applyStall(a, 100);
+  await expect(ids(a, 'stall-message')).toContainText('Stall fee set to 1.00', { timeout: 15_000 });
+  await expect.poll(async () => (await snap('a')).stall?.hubFeeBp, { timeout: 15_000 }).toBe(100);
+  expectNoPageErrors(a);
+});
 
 test('@hack 2b. (command path of step 2) A sets its stall fee to 1 %: the market snapshot shows hubFeeBp 100', async () => {
   const ack = await send(a, 'market.setHubFee', { bp: 100 });
@@ -92,9 +153,15 @@ test('@hack 2b. (command path of step 2) A sets its stall fee to 1 %: the market
   await expect.poll(async () => (await snap('a')).stall?.hubFeeBp, { timeout: 15_000 }).toBe(100);
 });
 
-test('@hack 3. A offers 300 water for 10 USDC, TTL 1 h: order OPEN pinning policy and fee, 300 water reserved in REST and in the sim mirror', async () => {
-  const ack = await send(a, 'market.placeOrder', order('sell', 300, '10'));
-  expect(ack.ok, JSON.stringify(ack)).toBe(true);
+test('@hack 3. A offers 300 water for 10 USDC through the order form (preview notional 10.00), TTL 1 h: the ask shows in the depth within 1 s; order OPEN pinning policy and fee, 300 water reserved in REST and in the sim mirror', async () => {
+  await fillOrder(a, 'sell', 300, '10');
+  await expect(ids(a, 'order-preview-notional')).toContainText('10.00');
+  const t0 = Date.now();
+  await ids(a, 'order-submit').click();
+  await expect(askPrices(a)).toHaveCount(1, { timeout: 5000 });
+  const ms = Date.now() - t0;
+  test.info().annotations.push({ type: 'observed', description: `step 3: ask visible in A's depth ${ms} ms after Place order` });
+  expect(ms, 'ask in the depth within 1 s (+ UI poll slack)').toBeLessThan(2500);
   await expect.poll(async () => (await snap('a')).myOrders?.length ?? 0, { timeout: 20_000 }).toBe(1);
   const s = await snap('a');
   const o = s.myOrders![0]!;
@@ -105,10 +172,21 @@ test('@hack 3. A offers 300 water for 10 USDC, TTL 1 h: order OPEN pinning polic
   await expect.poll(async () => (await colony(a))?.market?.reservedInOrbit?.[WATER] ?? 0, { timeout: 15_000 }).toBe(300);
 });
 
-test.fixme('@hack 4a. B opens the order form and previews 300 water, 10 USDC notional, 0.10 platform fee, 0.10 stall fee, total 10.20 (UI: W13-21, part 2)', () => undefined);
+test('@hack 4a. B opens the MARKET tab, sees A\'s ask, and the buy preview shows 300 water, 10.00 notional, 0.10 platform fee, 0.10 stall fee, total 10.20', async () => {
+  test.setTimeout(120_000);
+  await openMarket(b, 'b');
+  await expect(askPrices(b)).toHaveCount(1, { timeout: 15_000 });
+  await fillOrder(b, 'buy', 300, '10');
+  await expect(ids(b, 'order-preview-notional')).toContainText('10.00');
+  await expect(ids(b, 'order-preview-platform')).toContainText('0.10');
+  await expect(ids(b, 'order-preview-stall')).toContainText('0.10');
+  await expect(ids(b, 'order-preview-total')).toContainText('10.20');
+  await expect(ids(b, 'order-submit')).toBeEnabled();
+  test.info().annotations.push({ type: 'observed', description: `step 4a: preview ${(await ids(b, 'order-preview').innerText()).replace(/\s+/g, ' ')}` });
+});
 
 let aUsdcBefore = 0n;
-test('@hack 4. B buys 300 water for 10 USDC: trade FINAL, A +10 USDC, stall +0.10, platform +0.10, B +300 water, contract toast on both pages', async () => {
+test('@hack 4. B places the preview (order form) and buys 300 water for 10 USDC: trade FINAL, A +10 USDC, stall +0.10, platform +0.10, B +300 water, contract toast on both pages', async () => {
   test.setTimeout(150_000);
   aUsdcBefore = await bal('a', 'USDC');
   const bBefore = await bal('b', 'USDC');
@@ -122,8 +200,7 @@ test('@hack 4. B buys 300 water for 10 USDC: trade FINAL, A +10 USDC, stall +0.1
   }
   const toasts = Promise.all([a, b].map((p) => p.getByText(toast).first().waitFor({ state: 'visible', timeout: 100_000 })));
   toasts.catch(() => undefined);
-  const ack = await send(b, 'market.placeOrder', order('buy', 300, '10'));
-  expect(ack.ok, JSON.stringify(ack)).toBe(true);
+  await ids(b, 'order-submit').click();
   await expect.poll(async () => (await snap('a')).recentTrades.length, { timeout: 40_000 }).toBe(1);
   const t = (await snap('a')).recentTrades[0]!;
   expect(t).toMatchObject({ pair: 'bio.water/USDC', amount: 300, notional: USDC('10'), platformFee: USDC('0.10'), stallFee: USDC('0.10'), stallFeeBp: 100, state: 'FINAL' });
@@ -139,6 +216,10 @@ test('@hack 4. B buys 300 water for 10 USDC: trade FINAL, A +10 USDC, stall +0.1
     const seen = await a.evaluate(() => JSON.stringify((window as unknown as { __ev: unknown[] }).__ev).slice(0, 1500));
     throw new Error(`no contract toast: ${(e as Error).message.split('\n')[0]}; events on A: ${seen}`);
   }); // both pages showed the contract toast
+  // the filled ask leaves the depth on both pages; the contracts list shows the trade
+  for (const p of [a, b]) await expect(askPrices(p)).toHaveCount(0, { timeout: 15_000 });
+  await expect(ids(b, 'contract-row').first()).toBeAttached({ timeout: 15_000 });
+  await expect(ids(a, 'contract-row').first()).toBeAttached({ timeout: 15_000 });
 });
 
 test('@hack 5. Price board shows the gross execution price and the organic/fixture classification; a pair without history is labelled insufficient_data', async () => {
@@ -261,17 +342,80 @@ test('@hack 9. Operator economy API: clone baseline, patch the platform fee, val
   expect(act.status, JSON.stringify(act.json)).toBe(202);
   await expect.poll(async () => (await call('GET', '/activations?scope=global', undefined, EDIT)).json.activations.find((x: Record<string, unknown>) => x.state === 'ACTIVE')?.versionId, { timeout: 30_000 }).toBe(`baseline@${v}`);
   await expect.poll(policyHash, { timeout: 30_000, message: 'resolved market policy after activation' }).not.toBe(hash0);
-  // KNOWN GAP (reported): the server's MarketPolicyProvider still serves the bootstrap policy, so new orders do not pin the activated fee yet
-  test.info().annotations.push({ type: 'gap', description: `GET /v1/market policy.platformFeeBp after activation = ${(await snap('a')).policy.platformFeeBp} (candidate 80)` });
+  // the market policy follows the activated profile: GET /v1/market shows the new fee and a NEW order pins it, the open one keeps 100
+  await expect.poll(async () => (await snap('a')).policy.platformFeeBp, { timeout: 30_000, message: 'GET /v1/market policy after activation' }).toBe(80);
+  expect((await send(a, 'market.placeOrder', order('sell', 20, '1'))).ok).toBe(true);
+  await expect.poll(async () => (await snap('a')).myOrders?.length ?? 0, { timeout: 20_000 }).toBe(2);
+  const fresh = (await snap('a')).myOrders!.find((o) => o.orderId !== pinned.orderId)!;
+  expect(fresh.platformFeeBp).toBe(80);
   expect((await snap('a')).myOrders![0]).toMatchObject({ orderId: pinned.orderId, platformFeeBp: 100, policyVersion: pinned.policyVersion }); // open order keeps its terms
   const rb = await call('POST', `/activations/${act.json.activation.id}/rollback`, { requestId: 'e2e-rb' }, ACT);
   expect(rb.status, JSON.stringify(rb.json)).toBe(202);
   await expect.poll(async () => (await call('GET', '/activations?scope=global', undefined, EDIT)).json.activations.find((x: Record<string, unknown>) => x.state === 'ACTIVE')?.versionId, { timeout: 30_000 }).toBe('baseline@1');
   await expect.poll(policyHash, { timeout: 30_000, message: 'resolved market policy after rollback' }).toBe(hash0);
-  await send(a, 'market.cancelOrder', { orderId: pinned.orderId });
+  await expect.poll(async () => (await snap('a')).policy.platformFeeBp, { timeout: 30_000, message: 'GET /v1/market policy after rollback' }).toBe(100);
+  expect((await send(a, 'market.placeOrder', order('sell', 10, '1'))).ok).toBe(true);
+  await expect.poll(async () => (await snap('a')).myOrders?.length ?? 0, { timeout: 20_000 }).toBe(3);
+  expect((await snap('a')).myOrders!.filter((o) => o.platformFeeBp === 100)).toHaveLength(2); // the pinned one and the post-rollback one
+  for (const o of (await snap('a')).myOrders!) await send(a, 'market.cancelOrder', { orderId: o.orderId });
+  await expect.poll(async () => (await snap('a')).myOrders?.length ?? 0, { timeout: 20_000 }).toBe(0);
 });
 
-test.fixme('@hack 9b. The operator panel UI (clone, edit, validate, compare, activate, rollback) is driven in the browser (UI issue, part 2)', () => undefined);
+test('@hack 9b. The operator panel UI /dev/chain/?tab=economy: dev tokens, clone, edit the platform fee, validate, approve, activate (sandbox), then roll back', async ({ browser }) => {
+  test.setTimeout(240_000);
+  const op = await (await browser.newContext()).newPage();
+  const status = op.locator('#xe-status');
+  const activeNow = async (): Promise<string> => (await (await fetch(`${APP}/v1/economy/activations?scope=global`, { headers: { authorization: 'Bearer dev-economy-reader' } })).json() as { activations: Array<{ state: string; versionId: string }> }).activations.find((x) => x.state === 'ACTIVE')?.versionId ?? '';
+  try {
+    await op.goto('/dev/chain/?tab=economy');
+    await op.locator('#xe-dev-tokens').click();
+    const before = await activeNow();
+    await op.locator('[id="xe-ver-baseline@1"]').click();
+    await expect(status).toContainText('Opened baseline@1', { timeout: 15_000 });
+    await op.locator('#xe-clone').click();
+    await expect(status).toContainText(/Opened baseline@\d+ \(DRAFT/, { timeout: 15_000 });
+    const version = /Opened (baseline@\d+)/.exec((await status.textContent()) ?? '')![1]!;
+    const fee = op.locator('input[data-path="market.policy.platformFeeBp"]');
+    await fee.fill('90');
+    await op.locator('#xe-save').click();
+    await expect(status).toContainText('Saved: revision', { timeout: 15_000 });
+    await op.locator('#xe-validate').click();
+    await expect(status).toContainText(`${version} is VALIDATED`, { timeout: 15_000 });
+    await op.locator('#xe-approve').click();
+    await expect(status).toContainText(`${version} is APPROVED`, { timeout: 15_000 });
+    await op.locator('#xe-activate').click();
+    await expect(status).toContainText(`Active version is now ${version}`, { timeout: 30_000 });
+    expect(await activeNow()).toBe(version);
+    await expect.poll(async () => (await snap('a')).policy.platformFeeBp, { timeout: 30_000, message: 'GET /v1/market after the UI activation' }).toBe(90);
+    await op.locator('[id^="xe-rollback-"]').first().click();
+    await expect(status).toContainText(`Active version is now ${before}`, { timeout: 30_000 });
+    expect(await activeNow()).toBe(before);
+    await expect.poll(async () => (await snap('a')).policy.platformFeeBp, { timeout: 30_000, message: 'GET /v1/market after the UI rollback' }).toBe(100);
+    test.info().annotations.push({ type: 'observed', description: `step 9b: ${before} -> ${version} (fee 90) -> ${before} (fee 100) via the panel` });
+  } finally {
+    await op.context().close();
+  }
+});
+
+test('@hack 9c. Supply & trade panel: open it, BUY prefills the MARKET order form with side and amount and never submits', async () => {
+  test.setTimeout(120_000);
+  // the open Trade Hub panel covers the HQ panel that holds Supply & trade: close it first (BUY re-opens the MARKET tab)
+  if ((await ids(a, 'trade-hub-panel').getAttribute('data-open')) === 'true') await ids(a, 'trade-hub-close').click();
+  await expect(ids(a, 'trade-hub-panel')).toHaveAttribute('data-open', 'false');
+  const mine = (await snap('a')).myOrders?.length ?? 0;
+  await ids(a, 'supply-toggle').click();
+  await expect(ids(a, 'supply-body')).toBeVisible();
+  const buy = ids(a, 'supply-buy-act').first();
+  const hasBuy = await buy.isVisible().catch(() => false);
+  test.info().annotations.push({ type: 'observed', description: `supply panel: buy rows ${await ids(a, 'supply-buy').count()}, sell rows ${await ids(a, 'supply-sell').count()}, badges ${await ids(a, 'supply-badges').innerText()}` });
+  test.skip(!hasBuy, 'the w13 scenario shopping basket has no buy line right now');
+  await buy.click();
+  await expect(ids(a, 'trade-hub-ext-market')).toBeVisible();
+  await expect(ids(a, 'order-side-buy')).toHaveAttribute('data-active', 'true');
+  expect(Number(await ids(a, 'order-amount').inputValue())).toBeGreaterThan(0);
+  await a.waitForTimeout(1500);
+  expect((await snap('a')).myOrders?.length ?? 0, 'prefill never submits').toBe(mine);
+});
 
 test('@hack 10. Prestige project through the queue, and a transport-recipe export/import: actual consumption is separate from the representation transfer', async () => {
   test.setTimeout(180_000);
@@ -315,4 +459,38 @@ test('@hack 11. Later waves off: with TA_WAVES=..12 the server refuses market co
   expect(after.status).toBe(200);
   const snapAfter = (await after.json()) as Snap;
   expect(snapAfter.recentTrades.length, 'persisted trades survive the waves-off restart').toBe(before);
+});
+
+test('@hack 12. /play.html?scenario=w13r&as=a: region badges show desert scarcity; spawning builders raises the logistics bill; reserve on stops it', async ({ browser }) => {
+  test.setTimeout(480_000);
+  // one dev session per player name: release the w13 pages first, else the new page answers "playing elsewhere"
+  for (const p of [a, b]) await p.context().close().catch(() => undefined);
+  const r = await (await browser.newContext()).newPage();
+  try {
+    await loadScenario(r, 'w13r', { skip: '1' }, { as: 'a', timeout: 120_000 }); // `as=a` is free again once the w13 pages are closed
+    const toggle = ids(r, 'supply-toggle');
+    await expect(toggle).toBeVisible({ timeout: 30_000 });
+    await toggle.click();
+    await expect(ids(r, 'supply-badges')).toBeVisible();
+    const chips = await ids(r, 'supply-badges').locator('.ta-supply__chip').allInnerTexts();
+    test.info().annotations.push({ type: 'observed', description: `step 12 badges: ${chips.join(' | ')}` });
+    expect(chips.some((c) => /SCARCE|RARE|LOW/i.test(c)), `desert scarcity badge in ${chips.join(', ')}`).toBe(true);
+    const bill = async (): Promise<string> => ((await ids(r, 'supply-logistics').textContent()) ?? '').replace(/\s+/g, ' ');
+    const load = async (): Promise<number> => Number(/Load (\d+(?:\.\d+)?) \//.exec(await bill())?.[1] ?? NaN);
+    await expect.poll(async () => (await bill()).slice(0, 400), { timeout: 90_000, message: 'logistics section shows a supply window' }).toMatch(/Load \d/);
+    const l0 = await load();
+    expect(l0, `logistics text: ${(await bill()).slice(0, 300)}`).not.toBeNaN();
+    const out = await devConsole(r, 'spawn builder -13 5 20');
+    test.info().annotations.push({ type: 'observed', description: `step 12 spawn: ${out.trim().slice(0, 200)}` });
+    expect(out).not.toMatch(/error/i);
+    await expect.poll(load, { timeout: 150_000, message: 'logistics load after spawning 20 builders' }).toBeGreaterThan(l0);
+    const l1 = await load();
+    const rsv = await devConsole(r, 'reserve on');
+    test.info().annotations.push({ type: 'observed', description: `step 12 reserve: ${rsv.trim().slice(0, 200)}` });
+    await expect.poll(load, { timeout: 150_000, message: 'logistics load after reserve on' }).toBeLessThan(l1);
+    test.info().annotations.push({ type: 'observed', description: `step 12 load ${l0} -> ${l1} -> ${await load()}; ${await bill()}` });
+    expectNoPageErrors(r);
+  } finally {
+    await r.context().close();
+  }
 });

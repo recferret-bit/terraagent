@@ -43,6 +43,14 @@ describe('Supply & trade model', () => {
     expect(l.remedies[0]).toContain('+60 per window');
   });
 
+  it('shows the sim\'s exact ratio strings as decimals (not "210/1" or NaN%)', () => {
+    const v = view();
+    const l = logisticsLines({ ...v, logistics: { ...v.logistics!, L: '210/1', u: '21/10', M: '521/400' } })!;
+    expect(l.load).toBe('Load 210 / capacity 100 (210%)');
+    expect(l.congestion).toBe('Congestion x1.3');
+    expect(l.remedies[0]).toContain('Over capacity (load 210 on 100)');
+  });
+
   it('the four remedies for crystal: buy incl. fees, produce, depot, reserve', () => {
     const rows = remedyRows(view(), view().basket.buy[0]!, snap);
     expect(rows.map((r) => r.kind)).toEqual(['buy', 'produce', 'depot', 'reserve']);

@@ -21,20 +21,30 @@ export const sellText = (l: SellLine): string => `Surplus ${l.qty} ${resourceLab
 
 export interface LogisticsLines { load: string; congestion: string; distance: string; reserve: string; bottleneck: string; bill: string[]; remedies: string[] }
 
+/** The sim sends exact ratios as `"num/den"` (a plain decimal is accepted too); `asNumber` is for comparisons, `asText` for display. */
+const asNumber = (v: string): number => {
+  const [n, d] = v.split('/');
+  return d === undefined ? Number(n) : Number(n) / Number(d);
+};
+const asText = (v: string, digits = 2): string => {
+  const [n, d] = v.split('/');
+  return d === undefined || !/^-?\d+$/.test(n!) || !/^\d+$/.test(d) || BigInt(d) === 0n ? v : ratioToDecimal(ratio(BigInt(n!), BigInt(d)), digits);
+};
+
 const secs = (windows: number, windowTicks: number): number => Math.round((windows * windowTicks * TICK_MS) / 1000);
 
 /** The next-window bill, reserve duration, congestion and distance, bottleneck and remediation (ECONOMY 2.3 last paragraph). */
 export function logisticsLines(sv: SupplyTradeView): LogisticsLines | null {
   const g = sv.logistics;
   if (!g) return null;
-  const over = g.M !== null && Number(g.M) > 1;
+  const over = g.M !== null && asNumber(g.M) > 1;
   const remedies: string[] = [];
-  if (over) remedies.push(`Over capacity (load ${g.L} on ${g.K}): build a Supply Depot${sv.remedy.depot ? ` (+${sv.remedy.depot.throughputAdd} per window)` : ''}, put units in reserve, or buy from a closer source.`);
+  if (over) remedies.push(`Over capacity (load ${asText(g.L)} on ${g.K}): build a Supply Depot${sv.remedy.depot ? ` (+${sv.remedy.depot.throughputAdd} per window)` : ''}, put units in reserve, or buy from a closer source.`);
   for (const r of g.unavailable) remedies.push(`Unsupplied: ${UNREASONS[r] ?? r}. Build a Supply Depot near it or shorten the route.`);
   if (g.status.partial + g.status.grace > 0) remedies.push(`${g.status.grace} in grace, ${g.status.partial} partly supplied: buy the missing basket below.`);
   return {
-    load: `Load ${g.L} / capacity ${g.K}${g.u !== null ? ` (${Math.round(Number(g.u) * 100)}%)` : ''}`,
-    congestion: g.M !== null ? `Congestion x${g.M}` : 'Congestion n/a (no capacity)',
+    load: `Load ${asText(g.L)} / capacity ${g.K}${g.u !== null ? ` (${Math.round(asNumber(g.u) * 100)}%)` : ''}`,
+    congestion: g.M !== null ? `Congestion x${asText(g.M)}` : 'Congestion n/a (no capacity)',
     distance: g.maxRouteTiles !== null ? `Farthest route ${g.maxRouteTiles} tiles` : 'No routes',
     reserve: g.reserveWindows === null ? 'Reserve: nothing billed' : `Reserve lasts ${g.reserveWindows} windows (${secs(g.reserveWindows, g.windowTicks)} s)`,
     bottleneck: g.bottleneck ? `Bottleneck node #${g.bottleneck.nodeId} serves ${g.bottleneck.entities}` : 'No supply node',
@@ -63,7 +73,7 @@ export function remedyRows(sv: SupplyTradeView, line: BuyLine, snap: MarketSnaps
   const rs = compareRemedies({
     resource: line.resource, qty: line.qty, ask: bestAsk(snap, line.resource),
     localMinutesPerUnit: p ? ratio(BigInt(p.num), BigInt(p.den)) : null, depot: sv.remedy.depot,
-    ...(g && g.u !== null && g.K > 0 ? { logistics: { L: ratio(BigInt(Math.round(Number(g.L) * 1000)), 1000n), K: g.K } } : {}),
+    ...(g && g.u !== null && g.K > 0 ? { logistics: { L: ratio(BigInt(Math.round(asNumber(g.L) * 1000)), 1000n), K: g.K } } : {}),
   });
   const title: Record<Remedy['kind'], string> = { buy: 'Buy', produce: 'Produce locally', depot: 'Build a Supply Depot', reserve: 'Put units in reserve' };
   return rs.map((r): RemedyRow => {
