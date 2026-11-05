@@ -1,0 +1,19 @@
+.ta-market { display: flex; flex-direction: column; gap: var(--ta-s1); font-family: var(--ta-font-body); font-size: var(--ta-fs-small); color: var(--ta-text); }
+.ta-market__picker { display: flex; flex-wrap: wrap; gap: var(--ta-s1); }
+.ta-market__select {
+  flex: 1 1 8rem; min-width: 0; background: var(--ta-plate-2); color: var(--ta-text); border: 1px solid var(--ta-seam-2);
+  padding: var(--ta-s1) var(--ta-s2); font-family: var(--ta-font-display); font-size: var(--ta-fs-label);
+}
+.ta-market__select:focus-visible { outline: 2px solid var(--ta-orange); outline-offset: 1px; }
+.ta-market__status { color: var(--ta-fault-text); min-height: 0; }
+.ta-market__head, .ta-market__row { display: grid; grid-template-columns: 1.4fr 1fr 0.8fr; gap: var(--ta-s2); padding: 2px var(--ta-s1); font-family: var(--ta-font-mono); }
+.ta-market__head { color: var(--ta-text-3); font-size: var(--ta-fs-eyebrow); letter-spacing: var(--ta-track-label); border-bottom: 1px solid var(--ta-seam); }
+.ta-market__row > :nth-child(n+2), .ta-market__head > :nth-child(n+2) { text-align: right; }
+.ta-market__row--ask .ta-market__price { color: var(--ta-orange-hi); }
+.ta-market__row--bid .ta-market__price { color: var(--ta-blue-hi); }
+.ta-market__row--trade { grid-template-columns: 1.4fr 1fr 1fr; color: var(--ta-text-2); }
+.ta-market__side { display: flex; flex-direction: column; }
+.ta-market__mid { height: 1px; background: var(--ta-seam-2); margin: var(--ta-s1) 0; }
+.ta-market__title { font-family: var(--ta-font-display); font-size: var(--ta-fs-eyebrow); letter-spacing: var(--ta-track-eyebrow); color: var(--ta-text-3); margin-top: var(--ta-s2); }
+.ta-market__trades { display: flex; flex-direction: column; max-height: 9rem; overflow-y: auto; scrollbar-width: thin; }
+.ta-market__empty { color: var(--ta-text-3); padding: var(--ta-s1); }
