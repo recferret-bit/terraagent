@@ -17,3 +17,11 @@
 .ta-order__my { display: grid; grid-template-columns: 1fr auto auto; gap: 0 var(--ta-s2); padding: 2px var(--ta-s1); border-bottom: 1px solid var(--ta-seam); font-family: var(--ta-font-mono); }
 .ta-order__my-fees { grid-column: 1 / -1; color: var(--ta-text-3); font-size: var(--ta-fs-eyebrow); }
 .ta-order__my-state { color: var(--ta-blue-hi); }
+.ta-order__form .ta-market__select { flex: none; width: 100%; height: auto; min-height: 0; }
+.ta-order__side:not([data-active='true']) { background: var(--ta-plate-2); color: var(--ta-text-2); }
+.ta-order__submit { width: 100%; }
+.ta-order__submit:disabled { background: var(--ta-deep); color: var(--ta-dim); border-color: var(--ta-seam); }
+.ta-order__form > * { min-width: 0; }
+.ta-order__field input { width: 100%; box-sizing: border-box; }
+.ta-order__cancel { background: var(--ta-plate-2); color: var(--ta-text-2); }
+.ta-order__cancel:hover { background: var(--ta-orange); color: var(--ta-void); }

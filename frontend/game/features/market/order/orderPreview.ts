@@ -49,7 +49,8 @@ export function previewOrder(i: PreviewInput): OrderPreview {
   if (!i.policy) return { ...empty, ...(terms ? { terms } : {}), blocked: 'Market policy not loaded yet.' };
   if (!terms) return { ...empty, blocked: error ?? 'Invalid order.' };
   const p = i.policy;
-  const have = BigInt(i.balances?.[spendToken] ?? '0');
+  if (!i.balances) return { ...empty, terms, blocked: 'Balances unavailable: no colony account on this planet yet.' };
+  const have = BigInt(i.balances[spendToken] ?? '0');
   const withTerms = { terms };
   if (i.side === 'sell') {
     const need = BigInt(terms.amount);

@@ -44,6 +44,10 @@ describe('previewOrder', () => {
     expect(previewOrder({ ...base, balances: { USDC: '10200000' } }).blocked).toBeUndefined();
   });
 
+  it('without balances the order is blocked with a clear reason', () => {
+    expect(previewOrder({ ...base, balances: undefined }).blocked).toContain('Balances unavailable');
+  });
+
   it('sells need free base; invalid text and stall fee out of range are explained', () => {
     expect(previewOrder({ ...base, side: 'sell', balances: { 'bio.water': '299' } }).blocked).toContain('Insufficient mock bio.water');
     expect(previewOrder({ ...base, side: 'sell', balances: { 'bio.water': '300' } }).blocked).toBeUndefined();

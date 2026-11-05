@@ -45,7 +45,7 @@ export class OrderSection {
   private readonly previewEl = makeDiv('ta-order__preview', 'order-preview');
   private readonly blockedEl = makeDiv('ta-order__blocked', 'order-blocked');
   private readonly resultEl = makeDiv('ta-order__result', 'order-result');
-  private readonly submitBtn = makeBtn('btn plate-sm ta-order__submit', 'order-submit', 'Place order', () => void this.submit());
+  private readonly submitBtn = makeBtn('btn btn-primary btn-sm plate-sm ta-order__submit', 'order-submit', 'Place order', () => void this.submit());
   private readonly myEl = makeDiv('ta-order__mine', 'order-mine');
   private readonly stallRow = field('Max stall fee (bp)', this.stallIn, 'order-stall');
   private readonly offs: Array<() => void> = [];
