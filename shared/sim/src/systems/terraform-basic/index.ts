@@ -19,6 +19,7 @@ import { enqueueWorkOrder } from './workOrder';
 export * from './autoRepair';
 export * from './chain';
 export * from './dismantleAndWork';
+export * from './dismantleRule';
 export * from './ops';
 export * from './orders';
 export * from './queue';
@@ -60,7 +61,7 @@ export const enqueueTask = defineCommandHandler({
     }
     const args = parseArgs('enqueueTask', cmd.args);
     if (!args || !('terraform' in args)) return 'invalid_args';
-    const { op, tiles, entityId } = args.terraform;
+    const { op, tiles, entityId, workerId } = args.terraform;
 
     if (op === 'dismantle') {
       if (hasWorkJob(state, cmd.commandId)) return 'invalid_args';
@@ -69,7 +70,7 @@ export const enqueueTask = defineCommandHandler({
       for (let i = 0; i < tiles.length; i++) {
         const t = tiles[i]!;
         const taskId = tiles.length > 1 ? `${cmd.commandId}:${i}` : cmd.commandId; // a dismantle job's id (cancelTask)
-        const dRes = executeDismantleAtTile(state, colonyId, t.q, t.r, ctx.tick, ctx.data, entityId, taskId);
+        const dRes = executeDismantleAtTile(state, colonyId, t.q, t.r, ctx.tick, ctx.data, entityId, taskId, workerId);
         if (dRes.ok) anyOk = true;
         else if (!firstReject || dRes.reason === 'cannot_dismantle_hq') firstReject = dRes.reason;
       }
