@@ -62,6 +62,8 @@ export interface ViewColony {
   stock?: Record<string, number>;
   caps?: Record<string, number>;
   hq?: HqUnitView;
+  /** Highest tier among the colony's live HQ / Builder / Terraformer (the replica's entity rows carry no tier); gates Deep Reclaim in the client's terraform preview. */
+  maxWorkerTier?: number;
   currentJob?: HqJob;
   queueCount?: number;
   power?: ColonyPowerSummary | Record<string, unknown>;
@@ -128,6 +130,18 @@ function applyPowerToEntity(
   }
 }
 
+function colonyMaxWorkerTier(state: PlanetState, owner: number): number {
+  const c = state.entities.cols;
+  let max = 1;
+  for (let row = 0; row < state.entities.count; row++) {
+    const kind = c.kind[row];
+    if (c.owner[row] !== owner || (kind !== ENTITY_KIND.hq && kind !== ENTITY_KIND.builder && kind !== ENTITY_KIND.terraformer)) continue;
+    if (c.hpMax[row] > 0 && c.hp[row] <= 0) continue;
+    if (c.tier[row] > max) max = c.tier[row];
+  }
+  return max;
+}
+
 function buildViewColonies(
   state: PlanetState,
   hqBlob?: HqUnitView & { byColony?: Record<number, HqUnitView> },
@@ -135,7 +149,7 @@ function buildViewColonies(
 ): ViewColony[] {
   return state.colonies.map((k) => {
     const hq = (k.hq as HqUnitView | undefined) ?? hqBlob?.byColony?.[k.index];
-    const out: ViewColony = { ...k };
+    const out: ViewColony = { ...k, maxWorkerTier: colonyMaxWorkerTier(state, k.index) };
     if (hq) {
       out.hq = hq;
       out.currentJob = (k.currentJob as HqJob | undefined) ?? hq.currentJob;

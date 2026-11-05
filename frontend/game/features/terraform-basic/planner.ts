@@ -271,7 +271,9 @@ export function planTerraformTiles(
 ): BrushPlan {
   const placement = viewPlacementWorld(view);
   if (placement.tileCount === 0) return { jobs: [], queuedCount: 0, skippedCount: tiles.length };
-  const world = terraformWorldFrom(placement, opts.colonyId, opts.data);
+  const built = terraformWorldFrom(placement, opts.colonyId, opts.data);
+  // The replica's entity rows carry no tier: the host publishes the colony's best worker tier on its view (`maxWorkerTier`).
+  const world = { ...built, maxWorkerTier: Math.max(built.maxWorkerTier ?? 1, colonyMaxWorkerTier([], opts.colonyId, view)) };
   const pending = pendingJobKeys(view, opts.colonyId);
   const base = { colonyId: opts.colonyId, pending, data: opts.data } as const;
   const table = opts.data?.tables?.opsBasic as Record<string, unknown> | undefined;
