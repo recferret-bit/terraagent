@@ -1,7 +1,7 @@
 import { defineCommandHandler } from '../../kernel/commands';
 import { rowOf } from '../../ecs/store';
 import { commandColony, parseArgs } from '../command';
-import { issueUnitCommand } from '../units/registry';
+import { issueUnitCommand } from './registry';
 
 /** Client command `unitReserve { entityIds, reserve }`: every id must be an own unit; the first reject code wins, nothing partial. */
 export const unitReserve = defineCommandHandler({
