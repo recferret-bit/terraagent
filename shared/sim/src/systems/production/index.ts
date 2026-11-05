@@ -10,6 +10,7 @@ import type { ColonyState, PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
 import { creditResource, ensureColonyLedger, isFamilyAtCap } from '../economy/ledger';
+import { deliveredServiceBp, serviceScaled } from '../logistics/state';
 import { depositFamilyAndKey } from '../harvest/adjacency';
 import {
   checkExtractorDepositCoverage,
@@ -107,7 +108,9 @@ function stepDepositExtractorRow(
   if (!cov.covered) return;
 
   const baseOutputPerS = Number(rowDef.outputPerS ?? 1.0);
-  const ratePerS = baseOutputPerS * cov.richnessMult;
+  // W13 logistics: throughput scales once by the delivered-service ratio (exactly unchanged at full service / W13 off)
+  const ratePerS = serviceScaled(baseOutputPerS * cov.richnessMult, deliveredServiceBp(state, owner, cols.id[row]));
+  if (ratePerS <= 0) return;
   const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
   const byKey = extractTiered(state, colony, cov.depositTiles, desiredAmount, ctx.tick, depositKind, fallbackKey);
   let extracted = 0;
@@ -153,7 +156,8 @@ function stepWaterExtractorRow(
 
   const baseWaterPerS = Number(waterRow.outputPerS ?? 0.875);
   const planetMult = state.meta.planetType === 'desert' ? Number(waterRow.desertOutputMult ?? 0.5) : 1.0;
-  const ratePerS = baseWaterPerS * planetMult;
+  const ratePerS = serviceScaled(baseWaterPerS * planetMult, deliveredServiceBp(state, owner, cols.id[row]));
+  if (ratePerS <= 0) return;
   const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
   // Regional renewable allowance (W13-51): the sector budget is shared by all active water extractors; none pinned = unlimited.
   const grant = waterProducers === undefined ? desiredAmount : Math.min(desiredAmount * waterProducers.yieldScale, waterProducers.perProducer);

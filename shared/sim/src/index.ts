@@ -49,6 +49,7 @@ export * from './systems/time';
 export * from './systems/harvest';
 export * from './systems/economy/ledger';
 export * from './systems/prestige';
+export * from './systems/logistics';
 export {
   buildingKindName,
   cancelBuildingConstruction,
