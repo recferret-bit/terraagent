@@ -34,7 +34,7 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
    - **How:** B: click B's Trade Hub → **MARKET**, pair **Water / mock USDC** (B sees A's ask). Order form: **BUY**, Amount **300**, Total price **10**, **1 h**.
    - **See (preview):** You receive **300**, Notional **10.00**, Platform fee **0.10**, Max stall fee **0.10**, Network cost **0 (mock, no gas)**, **Total maximum spend 10.20 mock USDC**. Click **PLACE ORDER**.
    - **See (fill, ~1–3 s):** both windows toast **"Contract signed: 300 water for 10.00 USDC at Port A (1 % fee)"**; the ask disappears from both depths; **BOARD/CONTRACTS → CONTRACTS** lists the trade. Balances (REST): B `USDC 9.80`, `bio.water 300`; A `USDC 10.10` (10.00 sale + 0.10 stall fee: A owns the stall); A's stall section shows realized **0.10 mock USDC**.
-   - **Explorer:** <http://127.0.0.1:5473/dev/chain/> → **RECEIPTS**: one `Intents.execute_intents` receipt whose op id is `trade:tr_…` (one atomic batch for all legs). Platform `platform.terraagent.mock` +0.10; per-token sums are zero.
+   - **Explorer:** <http://127.0.0.1:5473/dev/chain/> → **RECEIPTS**: one `Intents.execute_intents` receipt whose op id is `trade:tr_…` (one atomic batch for all legs). (The explorer's balance views show the cargo ledger, not the verifier; check the verifier balances with the REST snapshot above: B `USDC 9800000`, A `USDC 10100000`.)
 
 5. **Price board.**
    - **How:** close A's Trade Hub panel, click **BOARD** in the launcher bar; scroll to **bio.water / USDC**.
@@ -42,7 +42,7 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
 
 6. **Partial fills and the resting buy (e2e checks the exact numbers).**
    - **How:** A sells **200 water for 4 USDC**. B buys **100 for 2** twice (two separate orders).
-   - **See:** A's order goes **PARTIAL 100/200**, then **FILLED**. Each lot costs B **2.04** (2.00 + 0.02 + 0.02), the same as one 200-unit fill split in two. Then B places a **BUY 100 for 2** first (it rests), and A sells into it: B (the buyer) still pays the fees.
+   - **See:** A's order is partially filled after the first lot, then FILLED. Each lot costs B **2.04** (2.00 + 0.02 + 0.02), the same as one 200-unit fill split in two. Then B places a **BUY 100 for 2** first (it rests), and A sells into it: B (the buyer) still pays the fees.
    - (e2e asserts the exact atomic amounts: `npm run e2e -- --waves 13 -g "6\."`.)
 
 7. **Cancel releases the reservation exactly once.**
