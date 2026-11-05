@@ -10,6 +10,7 @@ import scn_w08_stages_goals from './w08-stages-goals';
 import scn_w10_cargo_trade_hub from './w10-cargo-trade-hub';
 import scn_w12_profile from './w12-profile';
 import scn_w13_markets from './w13-markets';
+import scn_w13_regions from './w13-regions';
 
 export const SCENARIOS: readonly { readonly file: string; readonly def: ScenarioDef }[] = [
   { file: 'w00-empty', def: scn_w00_empty },
@@ -22,4 +23,5 @@ export const SCENARIOS: readonly { readonly file: string; readonly def: Scenario
   { file: 'w10-cargo-trade-hub', def: scn_w10_cargo_trade_hub },
   { file: 'w12-profile', def: scn_w12_profile },
   { file: 'w13-markets', def: scn_w13_markets },
+  { file: 'w13-regions', def: scn_w13_regions },
 ];

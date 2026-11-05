@@ -17,7 +17,7 @@ import {
 import { defineScenario } from './_define';
 
 /** Colony layout: Command Hub at `origin`, Solar, online Trade Hub and two Supply Depots around it, HQ drone below. */
-interface ColonySeed {
+export interface ColonySeed {
   readonly index: number;
   readonly id: string;
   readonly name: string;
@@ -32,7 +32,7 @@ export const W13_COLONIES: readonly ColonySeed[] = [
   { index: 1, id: 'col_1', name: 'Port B', color: 0x2f8fff, origin: [8, 0], stock: { 'metals.t1': 600, 'minerals.t1': 300, 'bio.water': 200, 'bio.biomass': 200 } },
 ];
 
-function flattenBox(state: PlanetState, [cq, cr]: readonly [number, number], radius: number): void {
+export function flattenBox(state: PlanetState, [cq, cr]: readonly [number, number], radius: number): void {
   for (let r = cr - radius; r <= cr + radius; r++) {
     for (let q = cq - radius; q <= cq + radius; q++) {
       const idx = indexOf(state.grid.radius, q, r);
@@ -46,12 +46,12 @@ function flattenBox(state: PlanetState, [cq, cr]: readonly [number, number], rad
   }
 }
 
-function build(state: PlanetState, owner: number, building: string, q: number, r: number): void {
+export function build(state: PlanetState, owner: number, building: string, q: number, r: number): void {
   const out = startBuildingConstruction(state, { owner, building, q, r, instant: true, costOverride: {}, tick: 0 });
   if (!out.ok) throw new Error(`w13 scenario: ${building} at (${q}, ${r}) for colony ${owner}: ${out.code} ${out.detail ?? ''}`);
 }
 
-function spawnHq(state: PlanetState, owner: number, q: number, r: number): void {
+export function spawnHq(state: PlanetState, owner: number, q: number, r: number): void {
   const id = state.meta.nextEntityId++;
   const row = insertRow(state.entities, id, 0);
   const c = state.entities.cols;
