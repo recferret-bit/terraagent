@@ -215,7 +215,7 @@ Use the actual `@terra/sim` step/queue/resource rules and extracted shared marke
 
 A versioned JSON Schema advertises registered parameters, descriptions, units, bounds, defaults, mutability, required wave and dependencies. An AI can discover valid inputs without reading source. Candidate patches use these paths; unknown paths or disabled features fail with structured errors. Export minimal anonymized aggregate snapshots; no private keys, auth tokens or player-identifying records in artifacts.
 
-Planned CLI (not yet available):
+Planned CLI (W13-46, being built; the routes and the experiment runner below are already built, see Implementation status):
 
 ```sh
 npm run economy -- schema --json
@@ -278,3 +278,25 @@ The schema exposes resolved inheritance and editable regional/logistics paths wi
 Required comparisons: desert crystal weight 15 vs 30 vs 60; identical planets with homogeneous vs specialized sectors; army load 100/150/200/300 under fixed/expanded depot capacity; routes 0/30/60/90 tiles; congestion alpha 0/0.1/0.25/0.5; small/new vs mature colonies; supply-cut and reserve-toggle adversaries; multi-colony exports/imports, allied sourcing and external-market leakage. These are candidate grids, not automatic production changes. Optimizers must preserve local starter viability, affordable basic operations and shared accounting/combat constraints.
 
 Export per-sector expected/realized sources and sinks, imports/exports, delivered price, trade reasons, production-minute savings, route/throughput and resource bill breakdowns, base/army progression costs, shortage windows and observed purchase conversion. Report which shortage was resolved by trading versus local production, logistics investment or reserve mode. Directors receive the same explainable alternatives under player budgets; simulations cannot prove real buyer willingness to pay.
+
+## Implementation status (W13)
+
+What the W13 branch builds of this contract. The contract above is unchanged; items marked planned are not built.
+
+| Part | Built | Where |
+|---|---|---|
+| Parameter registry, JSON Schema, units/bounds, profile/manifest/result DTOs (W13-36) | yes | `shared/contracts/src/economy/`, `shared/sim/src/economy/params/` |
+| Profile tables, immutable versions, scope bindings, run/gate tables (W13-37, W13-50) | yes | `shared/db/prisma/economy.prisma` |
+| Profile service: clone/patch/validate/approve/export, compile + hash, scope resolve (W13-38) | yes | `backend/app/src/economy/profile/`, `shared/sim/src/economy/compile-profile.ts` |
+| Activation, rollback, expected-version CAS, host swap (W13-39) | yes | `backend/app/src/economy/activation/`, `backend/app/src/game/economy-activation-bridge.ts` |
+| Flow, inventory and metric calculators (W13-42) | yes | `shared/sim/src/economy/flows/` |
+| Regional endowments and logistics evaluators (W13-50..53) | yes | `shared/sim/src/economy/regions/`, `shared/sim/src/economy/logistics/` |
+| Headless integrated runner (W13-44) | yes | `shared/sim/src/economy/experiments/`, `scripts/economy/run-experiment.ts`, fixtures `tests/economy/` |
+| Experiment queue with workers, leases, cancel/resume, checksummed artifacts | yes | `backend/app/src/economy/experiments/` |
+| `/v1/economy/*` API and operator panel | yes | `backend/app/src/economy/*/*.controller.ts`, `frontend/game/dev/economy/` (`/dev/chain/?tab=economy`) |
+| Telemetry: flows, inventories, profile hashes, market counters | yes | `backend/app/src/economy/telemetry/`, `backend/app/src/market/telemetry/` |
+| `npm run economy -- ...` CLI | planned (W13-46) | - |
+| Comparison and recommendation routes (`/comparisons`, `/recommendations`) | planned | - |
+| Real cash settlement and live activation of cash profiles | not in F2 (mock only) | W23 |
+
+Operator workflow and the mock/cash distinction: [`docs/dev/ECONOMY_OPERATOR.md`](../dev/ECONOMY_OPERATOR.md). Commands, routes and env: [`DEV_TOOLS.md`](../dev/DEV_TOOLS.md).

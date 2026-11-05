@@ -87,8 +87,8 @@ Every NEAR feature, the LLM director and notifications sit behind ports (abstrac
 | ChainRead | receipts, health | mock (Postgres) | W23 |
 | BadgeNft | achievements | mock (Postgres, NEP-171) | W23 |
 | Identity, Relayer | F5 accounts, gasless tx | mock (Postgres) | W23 |
-| CargoToken | F1 cargo (NEP-245) | — (W10 mock) | W23 |
-| Intents | F2 markets | — (W13 mock) | W23 |
+| CargoToken | F1 cargo (NEP-245) | mock (Postgres, W10) | W23 |
+| Intents | F2 markets | mock (Postgres verifier ledger, W13) | W23 |
 | AgentWallet | F3/F4 | — (W15 mock) | W23 |
 | DeedNft, Staking | F6 | — (W20 mock) | W23 |
 | TreasuryDao, Escrow | F7/F8 | — (W22 mock) | W23 |
