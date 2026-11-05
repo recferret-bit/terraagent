@@ -23,6 +23,10 @@ export const REJECT_CODES = [
   'outside_power_zone',
   // W03 dismantle: the building is already being dismantled (owner feedback W03 #6)
   'already_dismantling',
+  // W05 dismantle (owner bug "my drone self-dismantled"): dismantle is a worker action on a finished own building. A
+  // unit (drone) or the worker itself cannot be dismantled, a building still under construction is cancelled instead,
+  // the landed pod is only scrapped with a worker next to it.
+  'cannot_dismantle_unit', 'cannot_dismantle_self', 'dismantle_unfinished', 'no_worker_in_reach',
   // W05 terraform: the hex is already Living (end of the growth ladder), the hex already has a queued or running
   // terraform job, or the op would change nothing (the hex is already in the op's target state)
   'already_terraformed', 'already_queued', 'already_at_target',

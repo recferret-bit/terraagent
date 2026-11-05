@@ -1,5 +1,6 @@
-import { ENTITY_STATE, type CompiledDataLike, type PlanetState, type TerraformOpKind } from '@terra/sim';
+import { dismantleTargetRejectByName, ENTITY_KIND, ENTITY_STATE, isUnitKind, type CompiledDataLike, type PlanetState, type TerraformOpKind } from '@terra/sim';
 import type { GameView } from '../../core/registry/types';
+import { REJECT_TEXT } from '../hud-min/rejectText';
 import type { TileCoord } from '../shared/pointer';
 import { colonyWorkJobs } from './workStatus';
 import {
@@ -66,11 +67,22 @@ const skip = (op: TerraformPrimaryOp, reason: string, status: string): PrimaryOp
 
 const NO_WORKER = 'No HQ Drone or Harvester to do the work';
 
-const withWorker = (workerId: number | undefined) => (workerId === undefined ? {} : { workerId });
+/** A unit by kind name (drones, harvesters): never a dismantle target. The HQ Drone is left to the HQ reject. */
+const isUnitName = (kindName: string): boolean => {
+  const kind = (ENTITY_KIND as Record<string, number>)[kindName];
+  return kind !== undefined && kindName !== 'hq' && isUnitKind(kind);
+};
+
+const withWorker =(workerId: number | undefined) => (workerId === undefined ? {} : { workerId });
 
 function planDismantle(ctx: PrimaryOpContext, q: number, r: number): PrimaryOpPlan {
-  const target = findEntityAtTile(ctx.entities, q, r, ctx.colonyId, true);
-  if (!target) return skip('dismantle', 'no_target_to_dismantle', 'No unit or building at target hex to dismantle');
+  // The host's own rule (`dismantleTargetReject`): a unit / drone, the worker itself, HQ / Hub or a site never is a target.
+  const target =
+    findEntityAtTile(ctx.entities.filter((e) => !isUnitName(e.kindName)), q, r, ctx.colonyId, true) ??
+    findEntityAtTile(ctx.entities, q, r, ctx.colonyId, true);
+  if (!target) return skip('dismantle', 'no_target_to_dismantle', 'No building at target hex to dismantle');
+  const reject = dismantleTargetRejectByName(target.kindName, target.state, { isSelf: ctx.workerId !== undefined && ctx.workerId === target.id });
+  if (reject && reject !== 'cannot_dismantle_hq') return skip('dismantle', reject, REJECT_TEXT[reject]);
   if (target.kindName === 'pod') {
     const hubBuilt = ctx.entities.some((e) => e.owner === ctx.colonyId && (e.kindName === 'commandHub' || e.kindName === 'hub') && e.state === ENTITY_STATE.active);
     if (!hubBuilt) return skip('dismantle', 'pod_needed', 'Build the Command Hub first: the pod marks your landing site until then');
