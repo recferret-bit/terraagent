@@ -1439,6 +1439,46 @@
       "summary": "Dev console: places a full resource deposit of `family` and `tier` on tile `(q, r)`, like a terraform find (`terraformFinds.deposit.richnessBp`).",
       "wave": "W02"
     },
+    "dev.spawnunit": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "maximum": 32,
+            "minimum": 1,
+            "type": "integer"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "unit": {
+            "enum": [
+              "builder",
+              "harvester"
+            ],
+            "type": "string"
+          }
+        },
+        "required": [
+          "unit",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "dev": true,
+      "origin": "client",
+      "summary": "Dev console: inserts `count` (default 1) idle units of a kind with a logistics row for the caller colony around tile (q, r), to grow the logistics load (W13-57).",
+      "wave": "W13"
+    },
     "dev.stage": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",

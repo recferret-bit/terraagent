@@ -4,7 +4,7 @@ import {
 } from '@terra/contracts';
 import { EconomyProfileRepository, EconomyRepoError, withTransaction, type DbClient, type ExportedVersion } from '@terra/db';
 import type { PrismaClient } from '@prisma/client';
-import { defaultParamRegistry, describeSchema, resolveRegion, tryCompileProfile, validatePatch, validateRegionContent, type CompiledProfile, type ResolveRegionResult } from '@terra/sim';
+import { defaultParamRegistry, describeSchema, REGION_WAVE, resolvePlanetRegion, resolveRegion, tryCompileProfile, validatePatch, validateRegionContent, type CompiledProfile, type RegionContext, type ResolvedRegion, type ResolveRegionResult } from '@terra/sim';
 import { CoreException } from '../../core/errors';
 import { persistenceEnabled } from '../../core/persistence';
 import { APP_ENV, type AppEnv } from '../../core/tokens';
@@ -157,6 +157,26 @@ export class EconomyProfileService {
    * active layer that defines any (bindings of different versions are never concatenated, so a layer cannot create an ambiguity).
    */
   async regionFor(scope: ProfileScope): Promise<ResolveRegionResult> {
+    return resolveRegion(await this.regionContent(scope), this.regionContext(scope));
+  }
+
+  /**
+   * The region a NEW planet is pinned to (W13-57): `undefined` without W13 or without a database (the caller then falls back to the
+   * bootstrap tables, `regionForNewPlanet`); otherwise the pre-W11 single planet region of the active profile, with the planet-type
+   * preset (`resolvePlanetRegion`). A profile that does not resolve is an error: no planet is created with another endowment.
+   */
+  async regionForNewPlanet(scope: ProfileScope): Promise<ResolvedRegion | undefined> {
+    if (!this.flags.list.includes(REGION_WAVE) || !persistenceEnabled(this.env as Parameters<typeof persistenceEnabled>[0])) return undefined;
+    const res = resolvePlanetRegion(await this.regionContent(scope), { planetType: scope.planetType ?? 'temperate', planetId: scope.planetId ?? '' });
+    if (!res.ok) throw economyException(res.errors);
+    return res.region;
+  }
+
+  private regionContext(scope: ProfileScope): RegionContext {
+    return { planetType: scope.planetType ?? '', planetId: scope.planetId ?? '', sectorArchetype: scope.sectorArchetype, sectorId: scope.sectorId };
+  }
+
+  private async regionContent(scope: ProfileScope): Promise<{ parameters: Record<string, ParamValue>; regions: ProfileContent['regions'] }> {
     const layers = await this.resolve(scope);
     const parameters: Record<string, ParamValue> = {};
     let regions: ProfileContent['regions'] = { profiles: [], bindings: [] };
@@ -165,7 +185,7 @@ export class EconomyProfileService {
       Object.assign(parameters, c.parameters);
       if (c.regions.profiles.length > 0 || c.regions.bindings.length > 0) regions = c.regions;
     }
-    return resolveRegion({ parameters, regions }, { planetType: scope.planetType ?? '', planetId: scope.planetId ?? '', sectorArchetype: scope.sectorArchetype, sectorId: scope.sectorId });
+    return { parameters, regions };
   }
 
   /**

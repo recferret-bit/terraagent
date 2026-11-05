@@ -1,5 +1,5 @@
 import { parseCommandArgs, parseWaves } from '@terra/contracts';
-import { createPlanet, getColonyStock, type CompiledDataLike, PlanetJournal, SimHost, type LedgerPosting, type PlanetState } from '@terra/sim';
+import { createPlanet, getColonyStock, regionForNewPlanet, type ResolvedRegion, type CompiledDataLike, PlanetJournal, SimHost, type LedgerPosting, type PlanetState } from '@terra/sim';
 import type { ScenarioApi, ScenarioDef } from './_define';
 import { SCENARIOS } from './index.generated';
 
@@ -24,6 +24,11 @@ export interface CreateScenarioOptions {
   readonly worldSalt?: string;
   /** Compiled data the host runs (an experiment's profile); default: the bootstrap tables of the flags. */
   readonly data?: CompiledDataLike;
+  /**
+   * W13: the planet's resolved regional endowment (the server passes the active profile's `regionFor`). Default with W13 on:
+   * the bootstrap-table region (`regionForNewPlanet`, what the browser local host and the CLI use); with W13 off: none.
+   */
+  readonly region?: ResolvedRegion;
 }
 
 export interface ScenarioPlanet {
@@ -58,8 +63,10 @@ export function createScenarioPlanet(id: string, opts: CreateScenarioOptions = {
   const waves = parseWaves(scenario.waves);
   const want = opts.flags ? new Set(opts.flags) : null;
   const flags = waves.list.filter((w) => !want || want.has(w));
+  const region = flags.includes('W13') ? (opts.region ?? regionForNewPlanet({ flags, planetType: scenario.planet.planetType, planetId: opts.planetId })) : undefined; // W13 off: no pin, whatever the host passed
   const state = createPlanet({
     type: scenario.planet.type, seed: scenario.seed, planetId: opts.planetId,
+    ...(region ? { region } : {}),
     ...(scenario.planet.planetType ? { planetType: scenario.planet.planetType } : {}),
     ...(scenario.planet.radius ? { radius: scenario.planet.radius } : {}),
     ...(opts.worldSalt ? { worldSalt: opts.worldSalt } : {}),

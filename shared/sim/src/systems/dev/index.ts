@@ -32,6 +32,7 @@ import { claimTerritoryRadius } from '../territory-claim';
 import { setPlanetTime } from '../time';
 import { devLand } from './land';
 import { devSpawnDeposit } from './spawnDeposit';
+import { devSpawnUnit } from './spawnUnit';
 import { devAddLoad, devDamage, devDrainFuel, devSetWind } from './w03';
 
 /** `kind` of the W00 test entity spawned by `dev.spawn` (no gameplay meaning). */
@@ -339,6 +340,7 @@ export default defineSimModule({
     skipnight,
     power,
     devSpawnDeposit,
+    devSpawnUnit,
     devSetWind,
     devDrainFuel,
     devAddLoad,

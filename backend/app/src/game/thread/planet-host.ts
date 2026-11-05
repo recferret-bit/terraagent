@@ -5,6 +5,7 @@ import {
   StepError, tune,
   type BalanceOverrides, type CommandOutcome, type LedgerPosting, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent,
   type SimModule, type TuneRequest,
+  regionForNewPlanet, type ResolvedRegion,
 } from '@terra/sim';
 import { ProductionBatches } from './production-batches';
 import { type LoadMsg, type PassStat, type Post, type PlanetStats, type ToThread, W00_PLANET_TYPE } from './protocol';
@@ -46,6 +47,12 @@ export interface HostOptions {
   readonly now?: () => number;
   /** Balance overrides from `TA_BALANCE_OVERRIDES`, under every planet's scenario overrides. */
   readonly overrides?: BalanceOverrides;
+}
+
+/** New planets with W13 on get the server's resolved region (`params.region`) or, without one, the bootstrap-table region. */
+function regionParam(msg: LoadMsg, flags: readonly string[]): { region?: ResolvedRegion } {
+  const region = msg.params?.region ?? regionForNewPlanet({ flags, planetType: msg.params?.type, planetId: msg.planetId });
+  return region ? { region } : {};
 }
 
 /** Exact-size copy so the buffer can be transferred without dragging along unrelated bytes. */
@@ -114,6 +121,7 @@ export class PlanetHost {
   }
 
   private load(msg: LoadMsg): void {
+    const flags = msg.flags ?? this.flags;
     const state = msg.snapshot
       ? restore(msg.snapshot)
       : createPlanet({
@@ -123,9 +131,9 @@ export class PlanetHost {
           radius: msg.params?.radius,
           capacity: msg.params?.capacity,
           worldSalt: randomUUID(), // hidden-ground secret: never leaves the server (D-38)
+          ...regionParam(msg, flags), // W13: the endowment is pinned at creation (never for a restore)
         });
     const modules = this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined;
-    const flags = msg.flags ?? this.flags;
     const scenario = msg.overrides ?? {};
     const base = mergeOverrides(this.threadOverrides, scenario);
     const pipeline = buildPipeline(flags, base, modules);
