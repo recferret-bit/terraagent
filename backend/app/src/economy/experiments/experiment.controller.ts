@@ -4,6 +4,7 @@ import { ZodPipe } from '../../core/errors';
 import { EconomyAuthGuard, RequireEconomyRole } from '../economy-auth';
 import { ARTIFACT_NAME } from './experiment-artifacts';
 import { ExperimentJobService } from './experiment-job.service';
+import { ExperimentReportService } from './experiment-report.service';
 
 const SubmitBody = z.strictObject({ requestId: z.string().min(1).max(120), manifest: z.unknown() });
 
@@ -37,4 +38,20 @@ export class ExperimentController {
     const a = await this.jobs.artifact(id, name);
     return res.type(a.type).send(a.text);
   }
+}
+
+const CompareBody = z.strictObject({ baselineId: z.string().min(1).max(64), candidateId: z.string().min(1).max(64) });
+const RecommendBody = z.strictObject({ experimentId: z.string().min(1).max(64), baselineId: z.string().min(1).max(64).optional() });
+
+/** Paired comparison and candidate recommendation (W13-46). Read-only on the database; `recommend` never activates. */
+@Controller('economy')
+@UseGuards(EconomyAuthGuard)
+export class ExperimentReportController {
+  constructor(private readonly reports: ExperimentReportService) {}
+
+  @Post('comparisons') @HttpCode(200) @RequireEconomyRole('read')
+  compare(@Body(new ZodPipe(CompareBody)) b: z.infer<typeof CompareBody>) { return this.reports.compare(b.baselineId, b.candidateId); }
+
+  @Post('recommendations') @HttpCode(200) @RequireEconomyRole('read')
+  recommend(@Body(new ZodPipe(RecommendBody)) b: z.infer<typeof RecommendBody>) { return this.reports.recommend(b.experimentId, b.baselineId); }
 }
