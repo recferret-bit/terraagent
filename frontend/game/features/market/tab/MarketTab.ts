@@ -2,6 +2,7 @@ import { formatUnitPrice, mockLabel, pairId, type BookLevel, type MarketTokenKey
 import type { FeatureContext, TradeHubTabInstance } from '../../../core/registry/types';
 import { makeDiv } from '../../shared/dom';
 import { MarketState } from './marketState';
+import { MarketTracker } from '../analytics/marketTracker';
 import { OrderSection } from '../order/OrderSection';
 import { StallSection } from '../stall/StallSection';
 import { baseGroups, quoteChoices, resourceLabel } from './pairs';
@@ -56,6 +57,7 @@ export class MarketTab implements TradeHubTabInstance {
   private readonly stall: StallSection;
   private loading = false;
   private readonly order: OrderSection;
+  private readonly tracker: MarketTracker;
 
   constructor(private readonly root: HTMLElement, private readonly ctx: FeatureContext) {
     const planetId = (): string | null => ctx.services.session?.planetId() ?? null;
@@ -76,6 +78,7 @@ export class MarketTab implements TradeHubTabInstance {
     head.append(el('span', 'ta-market__col', 'PRICE'), el('span', 'ta-market__col', 'AMOUNT'), el('span', 'ta-market__col', 'ORDERS'));
     this.root.classList.add('ta-market');
     this.root.append(picker, this.statusEl, head, this.asksEl, makeDiv('ta-market__mid'), this.bidsEl, el('div', 'ta-market__title', 'LAST TRADES'), this.tradesEl);
+    this.tracker = new MarketTracker(ctx.services.track);
     this.order = new OrderSection(ctx, () => ({ base: this.base, quote: this.quote }));
     this.root.append(this.order.root, this.stall.el);
     this.offs.push(this.state.onChange(() => this.render()));
@@ -112,6 +115,7 @@ export class MarketTab implements TradeHubTabInstance {
     const id = this.ctx.services.session?.planetId() ?? null;
     const load = this.ctx.services.marketSnapshot;
     this.order.refresh();
+    this.tracker.tabOpened();
     if (!id || !load || this.loading) { this.render(); return; }
     this.loading = true;
     load(id).then((s) => { this.statusEl.textContent = ''; this.state.applySnapshot(s); this.stall.apply(s); }, () => { this.statusEl.textContent = 'Market unavailable.'; })
