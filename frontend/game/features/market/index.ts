@@ -2,6 +2,7 @@ import { defineFeature, type FeatureContext } from '../../core/registry/types';
 import { ContractsController } from './contracts/ContractsController';
 import { ContractsLog } from './contracts/contractsLog';
 import { ContractsPanel } from './contracts/ContractsPanel';
+import { boardHud, boardMenu } from './board';
 import './contracts/contracts.css';
 
 declare module '../../core/registry/types' {
@@ -19,6 +20,7 @@ export default defineFeature({
   wave: 'W13',
   hostOnly: 'server',
   hud: [
+    boardHud,
     {
       id: 'contracts',
       slot: 'bottom-left',
@@ -46,5 +48,5 @@ export default defineFeature({
       },
     },
   ],
-  menus: [{ id: 'contracts', label: 'Contracts', open() { active?.setOpen(true); } }],
+  menus: [boardMenu, { id: 'contracts', label: 'Contracts', open() { active?.setOpen(true); } }],
 });
