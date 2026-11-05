@@ -4,8 +4,6 @@ import type { FeatureContext, HudPanelInstance } from '../../../core/registry/ty
 import { ownColonyIndex, viewColony } from '../../shared/colony';
 import { SupplyPanel } from './SupplyPanel';
 
-interface PrefillServices { prefillMarketOrder?: (o: { side: 'buy' | 'sell'; resource: ResourceKey; amount: number }) => void; openMarketPair?: (base: ResourceKey, quote: string) => void }
-
 /** The Supply & trade HUD panel: reads `colony.supplyTrade` of the player's colony; its buttons only prefill / open the market tab. */
 export function mountSupplyPanel(el: HTMLElement, ctx: FeatureContext): HudPanelInstance & { panel: SupplyPanel } {
   const svc = ctx.services;
