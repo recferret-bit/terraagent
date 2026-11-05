@@ -372,9 +372,12 @@ test('@hack 12. Dismantle [Z] on the Solar #3: a Builder walks there, "Dismantli
     return (await getEntitiesSnapshot(page)).some((e) => e.id === 3);
   }, { timeout: 30_000, intervals: [200] }).toBe(false);
   expect(sawStep, 'a partial refund before the end').toBe(true);
-  const stock = (await getColony0(page))?.stock ?? {};
-  expect(stock['bio.biomass']).toBeCloseTo(105, 5);
-  expect(stock['bio.water']).toBeCloseTo(102.5, 5);
+  const col = await getColony0(page);
+  const stock = col?.stock ?? {};
+  // Whole-unit stock (W13-41, LED-23): the 50 % refund of 5 water is 2 whole + 0.5 in `residual` (millionths).
+  const exact = (k: string): number => (stock[k] ?? 0) + (col?.residual?.[k] ?? 0) / 1_000_000;
+  expect(exact('bio.biomass')).toBeCloseTo(105, 5);
+  expect(exact('bio.water')).toBeCloseTo(102.5, 5);
   await expect(chip).toHaveCount(0);
   await screenshot(page, '12-dismantled');
   expectNoPageErrors(page);

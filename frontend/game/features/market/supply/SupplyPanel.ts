@@ -10,6 +10,9 @@ export interface SupplyActions {
   sell(resource: ResourceKey, qty: number): void;
   /** Market snapshot for the remedy quote (null when unavailable). */
   snapshot(): Promise<MarketSnapshotResponse | null>;
+  /** Launchers of the other W13 market panels (price board, contracts list); absent → no button. */
+  openBoard?(): void;
+  openContracts?(): void;
 }
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] => {
@@ -42,6 +45,9 @@ export class SupplyPanel {
   constructor(private readonly actions: SupplyActions) {
     const head = makeDiv('ta-supply__head');
     head.append(el('span', 'ta-supply__heading', 'SUPPLY & TRADE'), makeBtn('ta-supply__toggle btn-sm plate-sm', 'supply-toggle', 'SHOW', () => this.setOpen(!this.open)));
+    // The market's only on-screen entry points: the feature menus are not rendered by the HUD, so the bar launches them.
+    if (actions.openBoard) head.append(makeBtn('ta-supply__toggle btn-sm plate-sm', 'market-open-board', 'BOARD', () => actions.openBoard?.()));
+    if (actions.openContracts) head.append(makeBtn('ta-supply__toggle btn-sm plate-sm', 'market-open-contracts', 'CONTRACTS', () => actions.openContracts?.()));
     this.el.append(head, this.body);
     this.setOpen(false);
   }

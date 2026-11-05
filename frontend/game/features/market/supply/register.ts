@@ -13,6 +13,8 @@ export function mountSupplyPanel(el: HTMLElement, ctx: FeatureContext): HudPanel
   };
   const panel = new SupplyPanel({
     buy: go('buy'), sell: go('sell'),
+    openBoard: () => svc.priceBoard?.setOpen(true),
+    openContracts: () => svc.contracts?.toggle(),
     snapshot: async (): Promise<MarketSnapshotResponse | null> => {
       const id = ctx.services.session?.planetId() ?? null;
       return id && ctx.services.marketSnapshot ? ctx.services.marketSnapshot(id) : null;

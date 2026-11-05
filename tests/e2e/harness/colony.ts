@@ -32,6 +32,8 @@ export interface OnlineColonySupply {
 
 export interface OnlineColonyView {
   stock?: Record<string, number>;
+  /** W13-41 whole-unit stock: the fractional part of each resource, in millionths of a unit (`col.residual`). */
+  residual?: Record<string, number>;
   caps?: Record<string, number>;
   earmarks?: Record<string, number>;
   supply?: OnlineColonySupply;

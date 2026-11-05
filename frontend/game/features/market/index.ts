@@ -29,7 +29,8 @@ export default defineFeature({
   analytics: [...MARKET_EVENTS],
   hud: [
     boardHud,
-    { id: 'supply-trade', slot: 'bottom-left', order: 64, mount: mountSupplyPanel },
+    // bottom-right, not bottom-left: an extra bar in the left stack pushed the command dock under the pilot chip (W02/W03/W08 e2e)
+    { id: 'supply-trade', slot: 'bottom-right', order: 64, mount: mountSupplyPanel },
     { id: 'market-tab', slot: 'bottom-right', order: 30, mount: (_el, ctx: FeatureContext) => registerMarketTab(ctx) },
     {
       id: 'contracts',
