@@ -144,7 +144,7 @@ export class OnlineSession {
       terrain: () => this.terrain, biomeKey: () => this.biomeKey, localHost: () => this.localHost, colonyIndex: () => this.colonyIndex,
       planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
       camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s),
-      pilot: this.pilot,
+      pilot: this.pilot, token: () => this.bootTarget.accessToken,
     });
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
     if (local) this.cleanups.push(bindLocalSaveListeners(local));
