@@ -7,6 +7,8 @@ import { MarketController } from './api/market.controller.js';
 import { MarketSnapshotService } from './api/market-snapshot.service.js';
 import { MarketColonies } from './orders/market-colonies.js';
 import { MarketFaucetCommand } from './dev/market-faucet.command.js';
+import { MarketAnalyticsController } from './analytics/market-analytics.controller.js';
+import { MarketAnalyticsService } from './analytics/market-analytics.service.js';
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
 import { MarketAccountsBootstrap } from './dev/market-accounts.bootstrap.js';
 import { MarketFaucetService } from './dev/market-faucet.service.js';
@@ -68,10 +70,12 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketProgressionProducer,
     TradeHistoryProducer,
     MarketMetrics,
+    MarketAnalyticsService,
   ],
   controllers: [
     MarketController,
     MarketFaucetController,
+    MarketAnalyticsController,
   ],
   imports: [
     NearModule,
