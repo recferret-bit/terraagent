@@ -3,6 +3,7 @@ import type { FeatureContext, TradeHubTabInstance } from '../../../core/registry
 import { makeDiv } from '../../shared/dom';
 import { MarketState } from './marketState';
 import { OrderSection } from '../order/OrderSection';
+import { StallSection } from '../stall/StallSection';
 import { baseGroups, quoteChoices, resourceLabel } from './pairs';
 
 export const DEPTH_ROWS = 10;
@@ -52,12 +53,14 @@ export class MarketTab implements TradeHubTabInstance {
   private readonly tradesEl = makeDiv('ta-market__trades', 'market-trades');
   private readonly statusEl = el('div', 'ta-market__status');
   private readonly offs: Array<() => void> = [];
+  private readonly stall: StallSection;
   private loading = false;
   private readonly order: OrderSection;
 
   constructor(private readonly root: HTMLElement, private readonly ctx: FeatureContext) {
     const planetId = (): string | null => ctx.services.session?.planetId() ?? null;
     this.state = new MarketState(planetId);
+    this.stall = new StallSection(ctx);
     this.baseSel.dataset.testid = 'market-base';
     this.quoteSel.dataset.testid = 'market-quote';
     this.statusEl.dataset.testid = 'market-status';
@@ -74,7 +77,7 @@ export class MarketTab implements TradeHubTabInstance {
     this.root.classList.add('ta-market');
     this.root.append(picker, this.statusEl, head, this.asksEl, makeDiv('ta-market__mid'), this.bidsEl, el('div', 'ta-market__title', 'LAST TRADES'), this.tradesEl);
     this.order = new OrderSection(ctx, () => ({ base: this.base, quote: this.quote }));
-    this.root.append(this.order.root);
+    this.root.append(this.order.root, this.stall.el);
     this.offs.push(this.state.onChange(() => this.render()));
     const store = ctx.services.store;
     if (store?.onMarketBook) this.offs.push(store.onMarketBook((p) => this.state.applyBook(p)));
@@ -111,7 +114,7 @@ export class MarketTab implements TradeHubTabInstance {
     this.order.refresh();
     if (!id || !load || this.loading) { this.render(); return; }
     this.loading = true;
-    load(id).then((s) => { this.statusEl.textContent = ''; this.state.applySnapshot(s); }, () => { this.statusEl.textContent = 'Market unavailable.'; })
+    load(id).then((s) => { this.statusEl.textContent = ''; this.state.applySnapshot(s); this.stall.apply(s); }, () => { this.statusEl.textContent = 'Market unavailable.'; })
       .finally(() => { this.loading = false; });
   }
 
@@ -136,6 +139,7 @@ export class MarketTab implements TradeHubTabInstance {
   dispose(): void {
     for (const o of this.offs.splice(0)) o();
     this.order.dispose();
+    this.stall.dispose();
     this.root.replaceChildren();
   }
 }

@@ -1,3 +1,4 @@
+import { MarketColonies } from '../../src/market/orders/market-colonies.js';
 import { MARKET_TOKENS, fromChainUnits, type MarketTokenKey } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -40,7 +41,7 @@ function rig(waveOn = true, nodeEnv = 'test') {
   const env = { NODE_ENV: nodeEnv, DATABASE_URL: 'x' } as never;
   const place = new PlaceOrderService(bus, repo, books, new MarketMatcher(db.prisma, repo, books), funds, new ChainOutboxRepository(db.prisma),
     new MarketPolicyProvider(), gateway, new LoggingMarketFillsHook(), db.prisma, env);
-  const faucet = new MarketFaucetService(db.prisma, env, { has: () => waveOn } as never);
+  const faucet = new MarketFaucetService(db.prisma, env, { has: () => waveOn } as never, new MarketColonies(db.prisma, { isScenarioColonyPlanet: () => false } as never));
   const seed = new MarketSeedService(place, new OrderRelease(repo, books, gateway, db.prisma), faucet, new MarketPolicyProvider(), repo, db.prisma);
   return { seed, books, cmds, repo };
 }

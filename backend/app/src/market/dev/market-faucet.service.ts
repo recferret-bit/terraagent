@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { CoreException } from '../../core/errors/index.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
-import { resolveMarketAccountId } from '../orders/colony-account.js';
+import { MarketColonies } from '../orders/market-colonies.js';
 import { FlagsService } from '../../flags/flags.service.js';
 
 export const FAUCET_TOKENS = ['USDC', 'NEAR'] as const;
@@ -46,6 +46,7 @@ export class MarketFaucetService {
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
     private readonly flags: FlagsService,
+    private readonly colonies: MarketColonies,
   ) {}
 
   async credit(raw: unknown): Promise<FaucetResult> {
@@ -69,8 +70,8 @@ export class MarketFaucetService {
   private async accountOf(args: FaucetArgs): Promise<string> {
     if (args.planetId) {
       const index = args.colonyIndex ?? 0;
-      const row = await this.prisma.colony.findFirst({ where: { planetId: args.planetId, colonyIndex: index }, orderBy: { createdAt: 'desc' }, select: { playerId: true } });
-      return resolveMarketAccountId(this.prisma, `col-${index}`, row?.playerId ?? null, args.planetId, index);
+      const row = await this.prisma.colony.findFirst({ where: { planetId: args.planetId, colonyIndex: index }, orderBy: { createdAt: 'desc' }, select: { id: true, playerId: true } });
+      return (await this.colonies.resolve(args.planetId, index, row?.id ?? null, row?.playerId ?? null)).accountId;
     }
     const account = await this.prisma.nearColonyAccount.findFirst({
       where: args.colonyId ? { colonyId: args.colonyId } : { playerId: args.playerId },

@@ -1,3 +1,4 @@
+import { MarketColonies } from '../../src/market/orders/market-colonies.js';
 import { marketDepositOpId, marketOrderRef } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -42,7 +43,7 @@ function rig(colony: string): Rig {
   const env = { NODE_ENV: 'test', DATABASE_URL: 'x' } as never;
   const service = new PlaceOrderService(bus, repo, books, new MarketMatcher(db.prisma, repo, books), funds, outbox, policy,
     new MarketSimGateway(bus), new LoggingMarketFillsHook(), db.prisma, env);
-  const precheck = new PlaceOrderPrecheck(new CommandPrechecks(), funds, repo, policy, db.prisma, env);
+  const precheck = new PlaceOrderPrecheck(new CommandPrechecks(), funds, repo, policy, new MarketColonies(db.prisma, { isScenarioColonyPlanet: () => false } as never), db.prisma, env);
   void colony;
   return { service, precheck, repo, cmds, cargo, verifier, outbox };
 }
