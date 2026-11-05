@@ -1,0 +1,18 @@
+.ta-contracts {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: min(420px, calc(100vw - 32px));
+  max-height: 50vh;
+  padding: 12px 14px;
+  background: var(--ta-plate-2);
+  border: 1px solid var(--ta-blue);
+  color: var(--ta-hull);
+}
+.ta-contracts[hidden] { display: none; }
+.ta-contracts-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ta-contracts-list { list-style: none; margin: 0; padding: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
+.ta-contracts-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 13px; border-left: 3px solid var(--ta-energy); padding-left: 8px; }
+.ta-contracts-row--failed { border-left-color: var(--ta-hull); opacity: 0.8; }
+.ta-contracts-badge { flex: none; color: var(--ta-blue); }
+.ta-contracts-empty { font-size: 13px; opacity: 0.7; }
