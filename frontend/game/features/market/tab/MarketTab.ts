@@ -131,6 +131,12 @@ export class MarketTab implements TradeHubTabInstance {
     this.render();
   }
 
+  /** Pair, side and amount of a suggestion; the order is only prefilled. */
+  prefill(base: ResourceKey, quote: MarketTokenKey, side: 'buy' | 'sell', amount: number): void {
+    this.setPair(base, quote);
+    this.order.prefill(side, amount);
+  }
+
   selected(): string {
     return pairId(this.base, this.quote);
   }

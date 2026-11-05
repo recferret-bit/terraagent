@@ -8,9 +8,9 @@ interface PrefillServices { prefillMarketOrder?: (o: { side: 'buy' | 'sell'; res
 
 /** The Supply & trade HUD panel: reads `colony.supplyTrade` of the player's colony; its buttons only prefill / open the market tab. */
 export function mountSupplyPanel(el: HTMLElement, ctx: FeatureContext): HudPanelInstance & { panel: SupplyPanel } {
-  const svc = ctx.services as typeof ctx.services & PrefillServices;
+  const svc = ctx.services;
   const go = (side: 'buy' | 'sell') => (resource: ResourceKey, amount: number): void => {
-    if (svc.prefillMarketOrder) svc.prefillMarketOrder({ side, resource, amount });
+    if (svc.prefillMarketOrder) svc.prefillMarketOrder({ base: resource, quote: 'USDC', side, amount });
     else svc.openMarketPair?.(resource, 'USDC');
   };
   const panel = new SupplyPanel({

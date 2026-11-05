@@ -2,7 +2,8 @@
 import type { MarketSnapshotResponse } from '@terra/contracts';
 import type { SupplyTradeView } from '@terra/sim';
 import { describe, expect, it, vi } from 'vitest';
-import type { FeatureContext } from '../../../core/registry/types';
+import type { FeatureContext, TradeHubTabDef } from '../../../core/registry/types';
+import { TabExtensions } from '../../trade-hub/tabExtensions';
 import marketFeature from '../index';
 import { SupplyPanel } from './SupplyPanel';
 import { buyText, logisticsLines, remedyRows } from './supplyModel';
@@ -101,5 +102,43 @@ describe('SupplyPanel', () => {
     (el.querySelector('[data-testid=supply-toggle]') as HTMLElement).click();
     expect(el.querySelector('[data-testid=supply-basket]')).not.toBeNull();
     inst.dispose();
+  });
+});
+
+describe('BUY / SELL prefill the MARKET order form (W13-55)', () => {
+  it('prefillMarketOrder opens the MARKET tab on the pair with side and amount filled, and never sends a command', () => {
+    const tabsRow = document.createElement('div');
+    const form = document.createElement('div');
+    const parent = document.createElement('div');
+    parent.append(tabsRow, form);
+    document.body.append(parent);
+    const sendCommand = vi.fn(async () => ({ ok: true as const, appliedAtTick: 1 }));
+    const services: Record<string, unknown> = { session: { planetId: () => 'p1' }, store: {}, sendCommand, marketSnapshot: vi.fn(async () => snap) };
+    const ctx = { flags: new Set(['W13']), host: 'server', services } as unknown as FeatureContext;
+    const ext = new TabExtensions(tabsRow, form, ctx, () => undefined);
+    services.registerTradeHubTab = (d: TradeHubTabDef) => ext.register(d);
+    services.showTradeHubTab = (id: string) => ext.show(id);
+    const market = marketFeature.hud!.find((h) => h.id === 'market-tab')!.mount(document.createElement('div'), ctx);
+    market.update!({});
+    const supply = marketFeature.hud!.find((h) => h.id === 'supply-trade')!.mount(document.createElement('div'), ctx);
+    supply.update!({ colonies: [{ index: 0, supplyTrade: view() }] } as never);
+    const el = (supply as unknown as { panel: SupplyPanel }).panel.el;
+    (el.querySelector('[data-testid=supply-toggle]') as HTMLElement).click();
+
+    (el.querySelector('[data-testid=supply-buy-act]') as HTMLElement).click(); // buy 8 minerals.t3
+    const q = (id: string) => parent.querySelector(`[data-testid=${id}]`) as HTMLInputElement;
+    expect((parent.querySelector('[data-testid=trade-hub-ext-market]') as HTMLElement).hidden).toBe(false);
+    expect(q('market-base').value).toBe('minerals.t3');
+    expect(q('market-quote').value).toBe('USDC');
+    expect(q('order-amount').value).toBe('8');
+    expect(q('order-side-buy').getAttribute('data-active')).toBe('true');
+
+    (el.querySelector('[data-testid=supply-sell-act]') as HTMLElement).click(); // sell 450 minerals.t1
+    expect(q('market-base').value).toBe('minerals.t1');
+    expect(q('order-amount').value).toBe('450');
+    expect(q('order-side-sell').getAttribute('data-active')).toBe('true');
+    expect(sendCommand).not.toHaveBeenCalled();
+    supply.dispose();
+    market.dispose();
   });
 });

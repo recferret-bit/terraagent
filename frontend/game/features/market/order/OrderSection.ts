@@ -75,6 +75,13 @@ export class OrderSection {
     return makeBtn('ta-order__side btn-sm plate-sm', `order-side-${side}`, side.toUpperCase(), () => { this.side = side; this.update(); });
   }
 
+  /** Fills side and amount from a suggestion (Supply & trade). Never submits: the player still reviews the preview and presses Place order. */
+  prefill(side: OrderSide, amount: number): void {
+    this.side = side;
+    this.amountIn.value = String(Math.max(0, Math.floor(amount)));
+    this.update();
+  }
+
   /** Reloads the snapshot (policy, balances, my orders). */
   refresh(): Promise<void> {
     const id = this.ctx.services.session?.planetId() ?? null;
