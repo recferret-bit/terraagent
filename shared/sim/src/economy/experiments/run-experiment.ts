@@ -1,5 +1,6 @@
 import { GateResult as GateResultSchema, type ExperimentManifest, type GateResult } from '@terra/contracts';
 import type { CompiledProfile } from '../compile-profile';
+import { plannedSeeds } from './seeds';
 import { ExperimentInputError } from './errors';
 import { evaluateGates, parseGateDefs } from './gates';
 import { replayCommand } from './replay';
@@ -70,7 +71,7 @@ export function runExperiment(
 ): ExperimentResult {
   const plan = scenarios
     .filter((s) => filter.scenarioId === undefined || s.manifest.id === filter.scenarioId)
-    .flatMap((s) => manifest.seeds.filter((seed) => filter.seed === undefined || seed === filter.seed).map((seed) => ({ s, seed })));
+    .flatMap((s) => plannedSeeds(manifest).filter((seed) => filter.seed === undefined || seed === filter.seed).map((seed) => ({ s, seed })));
   if (plan.length === 0) throw new ExperimentInputError('empty_plan', 'the scenario/seed filter selects no run of this manifest');
   const runs: RunRecord[] = [];
   const failing: FailingSeed[] = [];

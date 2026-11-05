@@ -40,8 +40,9 @@ export class ExperimentController {
   }
 }
 
-const CompareBody = z.strictObject({ baselineId: z.string().min(1).max(64), candidateId: z.string().min(1).max(64) });
-const RecommendBody = z.strictObject({ experimentId: z.string().min(1).max(64), baselineId: z.string().min(1).max(64).optional() });
+const Sensitivity = z.array(z.strictObject({ label: z.string().min(1).max(60), baselineId: z.string().min(1).max(64), candidateId: z.string().min(1).max(64) })).max(12).optional();
+const CompareBody = z.strictObject({ baselineId: z.string().min(1).max(64), candidateId: z.string().min(1).max(64), sensitivity: Sensitivity });
+const RecommendBody = z.strictObject({ experimentId: z.string().min(1).max(64), baselineId: z.string().min(1).max(64).optional(), sensitivity: Sensitivity });
 
 /** Paired comparison and candidate recommendation (W13-46). Read-only on the database; `recommend` never activates. */
 @Controller('economy')
@@ -50,8 +51,8 @@ export class ExperimentReportController {
   constructor(private readonly reports: ExperimentReportService) {}
 
   @Post('comparisons') @HttpCode(200) @RequireEconomyRole('read')
-  compare(@Body(new ZodPipe(CompareBody)) b: z.infer<typeof CompareBody>) { return this.reports.compare(b.baselineId, b.candidateId); }
+  compare(@Body(new ZodPipe(CompareBody)) b: z.infer<typeof CompareBody>) { return this.reports.compare(b.baselineId, b.candidateId, b.sensitivity); }
 
   @Post('recommendations') @HttpCode(200) @RequireEconomyRole('read')
-  recommend(@Body(new ZodPipe(RecommendBody)) b: z.infer<typeof RecommendBody>) { return this.reports.recommend(b.experimentId, b.baselineId); }
+  recommend(@Body(new ZodPipe(RecommendBody)) b: z.infer<typeof RecommendBody>) { return this.reports.recommend(b.experimentId, b.baselineId, b.sensitivity); }
 }

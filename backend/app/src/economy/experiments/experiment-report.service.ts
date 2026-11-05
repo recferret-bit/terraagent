@@ -1,11 +1,12 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma, type PrismaClient } from '@prisma/client';
 import type { ExperimentManifest, ParamValue } from '@terra/contracts';
-import { canonical, compareExperiments, type ComparableExperiment, type ComparableMetric, type ComparisonResult } from '@terra/sim';
+import { canonical, compareExperiments, isHeldOutSeed, plannedSeeds, type SensitivityCase, type ComparableExperiment, type ComparableMetric, type ComparisonResult } from '@terra/sim';
 import { CoreException } from '../../core/errors';
 import { PRISMA } from '../../db/db.module';
 import { EconomyProfileService } from '../profile/profile.service';
 
+export interface SensitivityRef { readonly label: string; readonly baselineId: string; readonly candidateId: string }
 const notFound = (id: string): CoreException => new CoreException('NOT_FOUND', { status: 404, message: `experiment ${id} not found` });
 
 interface MetricRowSql { run_id: string; metric_key: string; scope: string; resource_key: string | null; pair: string | null; cohort: string | null; window_end_tick: bigint; value: Prisma.Decimal | null }
@@ -19,7 +20,7 @@ export class ExperimentReportService {
   constructor(@Inject(PRISMA) private readonly prisma: PrismaClient, private readonly profiles: EconomyProfileService) {}
 
   private async load(id: string): Promise<ComparableExperiment & { manifest: ExperimentManifest }> {
-    const e = await this.prisma.economyExperiment.findUnique({ where: { id }, include: { runs: { orderBy: { id: 'asc' }, include: { gates: true } } } });
+    const e = await this.prisma.economyExperiment.findUnique({ where: { id }, include: { runs: { orderBy: { id: 'asc' }, include: { gates: true, scenario: true } } } });
     if (!e) throw notFound(id);
     const runIds = e.runs.filter((r) => r.status === 'completed').map((r) => r.id);
     const rows = runIds.length === 0 ? [] : await this.prisma.$queryRaw<MetricRowSql[]>`
@@ -36,13 +37,20 @@ export class ExperimentReportService {
       id: e.id, status: e.status, manifest: e.manifest as unknown as ExperimentManifest,
       runs: e.runs.map((r) => ({
         scenarioId: r.scenarioId, scenarioVersion: r.scenarioVersion, seed: Number(r.seed), status: r.status,
+        heldOut: isHeldOutSeed(e.manifest as unknown as ExperimentManifest, Number(r.seed)),
+        stress: !!(r.scenario.manifest as { assumptions?: { stress?: unknown } }).assumptions?.stress,
         gates: r.gates.map((g) => ({ gateId: g.gateId, gateVersion: g.gateVersion, outcome: g.outcome })), metrics: byRun.get(r.id) ?? [],
       })),
     };
   }
 
-  async compare(baselineId: string, candidateId: string): Promise<ComparisonResult> {
-    return compareExperiments(await this.load(baselineId), await this.load(candidateId));
+  private async sensitivityCases(cases: readonly SensitivityRef[] | undefined): Promise<SensitivityCase[]> {
+    return Promise.all((cases ?? []).map(async (c) => ({ label: c.label, baseline: await this.load(c.baselineId), candidate: await this.load(c.candidateId) })));
+  }
+
+  /** `cashApproval` is always false here: the API takes no pilot evidence in W13. */
+  async compare(baselineId: string, candidateId: string, sensitivity?: readonly SensitivityRef[]): Promise<ComparisonResult> {
+    return compareExperiments(await this.load(baselineId), await this.load(candidateId), { sensitivity: await this.sensitivityCases(sensitivity) });
   }
 
   /** The candidate profile version's parameter changes against its parent, as `set` ops (what an operator would review). */
@@ -62,32 +70,32 @@ export class ExperimentReportService {
   private async findBaseline(manifest: ExperimentManifest, parent: { id: string; version: number } | null, excludeId: string): Promise<string | null> {
     if (!parent) return null;
     const rows = await this.prisma.economyExperiment.findMany({ where: { status: 'completed', id: { not: excludeId } }, orderBy: { createdAt: 'desc' }, take: 200, select: { id: true, manifest: true } });
-    const want = canonical({ s: manifest.scenarios, seeds: manifest.seeds });
+    const want = canonical({ s: manifest.scenarios, seeds: plannedSeeds(manifest) });
     return rows.find((r) => {
       const m = r.manifest as unknown as ExperimentManifest;
-      return m.profile.id === parent.id && m.profile.version === parent.version && canonical({ s: m.scenarios, seeds: m.seeds }) === want;
+      return m.profile.id === parent.id && m.profile.version === parent.version && canonical({ s: m.scenarios, seeds: plannedSeeds(m) }) === want;
     })?.id ?? null;
   }
 
-  async recommend(experimentId: string, baselineId?: string) {
+  /**
+   * Candidate patch + evidence; never activates. The decision is the comparison's assessment (paired seeds with
+   * intervals, held-out seeds, Pareto dimensions, sensitivity): a revenue-only gain or a favourable subset of seeds is refused.
+   */
+  async recommend(experimentId: string, baselineId?: string, sensitivity?: readonly SensitivityRef[]) {
     const exp = await this.load(experimentId);
     const { parent, ops } = await this.patchOf(exp.manifest);
     const base = baselineId ?? (await this.findBaseline(exp.manifest, parent, experimentId));
-    const comparison = base ? compareExperiments(await this.load(base), exp) : null;
-    const gates = exp.runs.flatMap((r) => r.gates);
-    const failing = gates.filter((g) => g.outcome !== 'pass').length;
-    const reasons: string[] = [];
-    if (exp.status !== 'completed') reasons.push(`experiment is ${exp.status}`);
-    if (failing > 0) reasons.push(`${failing} gate result(s) are not pass`);
-    if (!comparison) reasons.push('no completed paired baseline experiment on the parent profile');
-    else if (!comparison.ok) reasons.push(...comparison.errors.map((e) => e.message));
-    else if (comparison.verdict === 'regression') reasons.push(`${comparison.regressions.length} gate(s) regress against the baseline`);
-    const decision = reasons.length === 0 ? 'recommend' : exp.status === 'completed' && failing === 0 && !comparison?.regressions.length ? 'insufficient_evidence' : 'do_not_recommend';
+    const comparison = base ? compareExperiments(await this.load(base), exp, { sensitivity: await this.sensitivityCases(sensitivity) }) : null;
+    const a = comparison?.assessment ?? null;
+    const reasons = a ? a.reasons : comparison ? comparison.errors.map((e) => e.message) : ['no completed paired baseline experiment on the parent profile'];
+    const decision = a ? a.decision : 'insufficient_evidence';
     return {
-      experimentId, decision, reasons,
+      experimentId, decision, reasons, caveats: a?.caveats ?? [],
       candidate: exp.manifest.profile, parent,
-      patch: { schemaVersion: 1, ops, rationale: `recommended from experiment ${experimentId}` },
-      evidence: { status: exp.status, gates: { total: gates.length, notPass: failing }, baselineId: base, comparison },
+      patch: { schemaVersion: 1, ops, rationale: `candidate from experiment ${experimentId}` },
+      explanation: a ? { movedGates: a.movedGates, movedMetrics: a.movedMetrics, sensitivity: a.sensitivity.status } : null,
+      evidence: { status: exp.status, baselineId: base, comparison },
+      cashApproval: false,
       activation: 'never performed here: an operator activates with the activate token (POST /v1/economy/activations)',
     };
   }
