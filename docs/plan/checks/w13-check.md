@@ -78,8 +78,8 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
 
 ## Automated checks (green on this branch)
 
-- `npm run ci:fast` (typecheck, lint, check:structure, gen:check, full unit suite ≈ 416 files, build).
-- `npm run test:integration -- backend/app/test/market backend/app/test/economy shared/db/test tests/economy/acceptance` (Postgres: market, settlement/recovery, economy DB/profile/activation/experiments/CLI).
+- `npm run ci:fast` (typecheck, lint, check:structure, gen:check, unit suite **416 files / 2378 tests**, build).
+- `npm run test:integration` (Postgres, **52 files / 204 tests**: market, settlement/recovery, economy DB/profile/activation/experiments/CLI, acceptance pack).
 - `npm run test:contract -- --port intents` (9/9 against the mock).
 - `npm test -- market-matcher` (matcher/fee/property, incl. 1 % fee on 7 units = 0).
 - `npm run test:parity` (incl. `w13r-logistics`, server vs `?host=local`).
