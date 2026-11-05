@@ -8,8 +8,21 @@ import { defineTable } from './_define';
  */
 export default defineTable({
   name: 'logistics',
+  units: { windowS: 'seconds' },
+  amounts: ['consumption'],
   summary: 'W13 logistics congestion/distance/readiness coefficients (calibration fixture, runtime-tunable).',
   rows: [
+    // Supply window (ECON-LOG-02, W13-53): length in seconds (compiled to ticks; the sim tick is the only clock) and the
+    // bounded local reserve each entity may hold, in bp of one full window's requirement.
+    { id: 'service', wave: 'W13', windowS: 60, localReserveBp: 10000 },
+    // Logistics load rows (ECON-LOG-01): weight in load units per window at full activity and the recipe in whole units per
+    // window. Thermal plants are excluded on purpose: their fuel is already billed once by `production.consume`.
+    { id: 'building.metalsExtractor', wave: 'W13', kind: 'metalsExtractor', weight: 20, consumption: { 'bio.water': 2 } },
+    { id: 'building.mineralsQuarry', wave: 'W13', kind: 'mineralsQuarry', weight: 20, consumption: { 'bio.water': 2 } },
+    { id: 'building.waterExtractor', wave: 'W13', kind: 'waterExtractor', weight: 10, consumption: { 'metals.t1': 1 } },
+    { id: 'building.petroleumWell', wave: 'W13', kind: 'petroleumWell', weight: 20, consumption: { 'bio.water': 2 } },
+    { id: 'unit.harvester', wave: 'W13', kind: 'harvester', weight: 10, consumption: { 'bio.water': 1 } },
+    { id: 'unit.builder', wave: 'W13', kind: 'builder', weight: 10, consumption: { 'bio.water': 1 } },
     {
       id: 'coefficients',
       wave: 'W13',
