@@ -11,7 +11,7 @@ import { GamePlanets } from '../../game/game-planets.service.js';
 import { kekEnv } from '../../near/identity/colony-accounts.js';
 import { loadKekRing } from '../../near/keystore/kek.js';
 import { KeyStore } from '../../near/keystore/keys.js';
-import { resolveMarketAccountId } from '../orders/colony-account.js';
+import { MarketColonies } from '../orders/market-colonies.js';
 import { ensureCustodialAccount } from './market-accounts.bootstrap.js';
 import { MarketFaucetService } from './market-faucet.service.js';
 
@@ -47,6 +47,7 @@ export class MarketFixtures implements OnModuleInit {
     @Inject(APP_ENV) private readonly env: AppEnv,
     private readonly faucet: MarketFaucetService,
     private readonly planets: GamePlanets,
+    private readonly colonies: MarketColonies,
   ) {}
 
   onModuleInit(): void {
@@ -76,8 +77,9 @@ export class MarketFixtures implements OnModuleInit {
       const fixture = W13_FIXTURES[e.colonyIndex];
       if (!plan || !fixture) return;
       if (!(await this.mark(`${SEAT}${e.planetId}:${e.colonyIndex}`, { kind: 'w13FixtureSeat', planetId: e.planetId, colonyIndex: e.colonyIndex }))) return;
-      const accountId = await resolveMarketAccountId(this.prisma, `col_${e.colonyIndex}`, e.playerId, e.planetId, e.colonyIndex);
-      await ensureCustodialAccount(this.prisma, new KeyStore(loadKekRing(kekEnv(this.env))), accountId, { playerId: e.playerId, slot: `col_${e.colonyIndex}` });
+      // the one shared resolver (W13-20): `col_<index>` and the account `cargo.export` mints to
+      const { accountId } = await this.colonies.resolve(e.planetId, e.colonyIndex, null, e.playerId);
+      await ensureCustodialAccount(this.prisma, new KeyStore(loadKekRing(kekEnv(this.env))), accountId);
       for (const [resource, units] of Object.entries(fixture.inOrbit ?? {})) {
         await this.faucet.fund(accountId, resource as MarketTokenKey, BigInt(units));
         await this.mirrorInOrbit(e, resource as ResourceKey, units);
