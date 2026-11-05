@@ -105,6 +105,14 @@ describe('W13-10 market mirror: acceptance', () => {
     expect(c.events).toHaveLength(0);
   });
 
+  it('release: settlement_failed emits marketSettlementFailed (W13-24 contract-failed toast)', () => {
+    const s = setup();
+    run(s, sell());
+    run(s, module_('market.reserve', { ref: REF, deltas: { 'bio.water': 300 } }));
+    const r = run(s, module_('market.release', { ref: REF, deltas: { 'bio.water': 300 }, reason: 'settlement_failed' }));
+    expect(r.events.find((e) => e.kind === 'marketSettlementFailed')!.data).toMatchObject({ colonyId: 'col_0', colonyIndex: 0, ref: REF });
+  });
+
 });
 
 describe('W13-10 market mirror: rejects and commands', () => {
