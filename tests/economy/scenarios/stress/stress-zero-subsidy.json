@@ -1,0 +1,76 @@
+{
+  "schemaVersion": 1,
+  "id": "stress-zero-subsidy",
+  "version": 1,
+  "description": "No starter grant at all and no treasury subsidy: stock comes only from production; colonies start with a thin buffer.",
+  "waves": "..13",
+  "populations": [
+    {
+      "cohort": "zero-subsidy",
+      "colonies": 4,
+      "params": {
+        "subsidyBp": 0
+      }
+    }
+  ],
+  "shocks": [],
+  "assumptions": {
+    "label": "ASSUMPTIONS, NOT OBSERVATIONS: every number here is a stress-suite assumption; demand source is 'assumed'.",
+    "assumptionsVersion": 1,
+    "demandSource": "assumed",
+    "baseScenario": "stress",
+    "tradeResources": [
+      "bio.water",
+      "bio.biomass",
+      "metals.t1",
+      "minerals.t1"
+    ],
+    "behavior": {
+      "exportLot": 20,
+      "buyLot": 20,
+      "keepUnits": 30,
+      "exportAbove": 80,
+      "buyBelow": 60
+    },
+    "stress": {
+      "colonies": 4,
+      "extractors": 1,
+      "radius": 80,
+      "planetType": "temperate",
+      "starterStock": {
+        "bio.water": 40,
+        "bio.biomass": 40,
+        "metals.t1": 40,
+        "minerals.t1": 40,
+        "minerals.t2": 60
+      },
+      "behavior": {
+        "projectId": "project.survey_array",
+        "projectEveryTicks": 300
+      }
+    },
+    "gates": [
+      {
+        "gateId": "econ.position_nonnegative",
+        "gateVersion": 1,
+        "metricKey": "inventory.position",
+        "scope": "global",
+        "resource": "bio.water",
+        "aggregate": "min",
+        "op": "gte",
+        "threshold": "0"
+      },
+      {
+        "gateId": "stress.production_flows_exist",
+        "gateVersion": 1,
+        "metricKey": "flow.production",
+        "scope": "global",
+        "resource": "metals.t1",
+        "aggregate": "max",
+        "op": "gte",
+        "threshold": "1"
+      }
+    ],
+    "subsidyBp": 0
+  }
+}
