@@ -70,6 +70,13 @@ export async function bootStack(): Promise<Stack> {
   }
   const { createTestDatabase } = await import('@terra/db/testing');
   const db = await createTestDatabase();
+  // W13: the economy operator API needs the baseline profile (`baseline@1`); seeded like the integration suites do
+  try {
+    const seed = (await import('../../../shared/db/seeds/0002_economy_baseline')).default;
+    await seed({ prisma: db.prisma, log: () => undefined });
+  } catch (e) {
+    console.warn(`e2e: baseline economy profile not seeded: ${(e as Error).message}`);
+  }
   const waves = appWavesFor(process.env.E2E_WAVES);
   const appEnv: NodeJS.ProcessEnv = {
     ...process.env, NODE_ENV: 'development', PORT: String(u.appPort), DATABASE_URL: db.url,

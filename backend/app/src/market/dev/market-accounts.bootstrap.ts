@@ -41,14 +41,17 @@ export class MarketAccountsBootstrap implements OnModuleInit {
   }
 }
 
-/** Idempotent: the mock chain account plus a sealed custodial signing key (a row that exists keeps its key). Dev/demo only. */
-export async function ensureCustodialAccount(prisma: PrismaClient, keys: KeyStore, accountId: string): Promise<void> {
+/**
+ * Idempotent: the mock chain account plus a sealed custodial signing key (a row that exists keeps its key). Dev/demo only.
+ * `owner` makes the row a player's colony account (`slot` = the sim colony id, so `GET /v1/market` finds it); default: a system account.
+ */
+export async function ensureCustodialAccount(prisma: PrismaClient, keys: KeyStore, accountId: string, owner?: { readonly playerId: string; readonly slot: string }): Promise<void> {
   await prisma.mockChainAccount.upsert({ where: { accountId }, create: { accountId, kind: 'system' }, update: {} });
   if (await prisma.nearColonyAccount.findUnique({ where: { accountId }, select: { accountId: true } })) return;
   const g = keys.generate();
   await prisma.nearColonyAccount.upsert({
     where: { accountId },
-    create: { accountId, playerId: `system:${accountId}`, slot: 'system', ownerAccountId: accountId, publicKey: g.row.publicKey, encryptedSecret: g.row.encryptedSecret, kekVersion: g.row.kekVersion },
+    create: { accountId, playerId: owner?.playerId ?? `system:${accountId}`, slot: owner?.slot ?? 'system', ownerAccountId: accountId, publicKey: g.row.publicKey, encryptedSecret: g.row.encryptedSecret, kekVersion: g.row.kekVersion },
     update: {},
   });
 }

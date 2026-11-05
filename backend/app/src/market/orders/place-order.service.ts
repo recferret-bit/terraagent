@@ -83,10 +83,20 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     const target: SimTarget = { planetId: event.planetId, colonyId: d.colonyId, colonyIndex: d.colonyIndex };
     const accountId = await resolveMarketAccountId(this.prisma, d.colonyId, d.playerId ?? null, event.planetId, d.colonyIndex);
     const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId, opts.actorKind));
+    if (d.stallName) await this.rememberStall(event.planetId, d, accountId);
     await this.books.sync(result.order.orderId);
     if (opts.answerSim !== false) this.answerSim(target, result);
     if (result.created && !result.rejected) await this.matchAndSettle(result.order.orderId);
     return result;
+  }
+
+  /** The stall's display name (the colony's) for the contract toast; the fee column keeps the policy default until `market.setHubFee` is persisted. */
+  private async rememberStall(planetId: string, d: Requested['data'], accountId: string): Promise<void> {
+    await this.prisma.marketStall.upsert({
+      where: { planetId_colonyId: { planetId, colonyId: d.colonyId } },
+      create: { planetId, colonyId: d.colonyId, colonyIndex: d.colonyIndex, hubEntityId: d.hubEntityId, accountId, name: d.stallName ?? null, feeBp: d.stallFeeBp },
+      update: { name: d.stallName ?? null },
+    }).catch((err: unknown) => this.log.warn(`stall name not stored: ${err instanceof Error ? err.message : String(err)}`));
   }
 
   private answerSim(target: SimTarget, r: PlaceOrderResult): void {

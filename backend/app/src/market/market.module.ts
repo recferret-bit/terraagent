@@ -9,6 +9,7 @@ import { MarketFaucetCommand } from './dev/market-faucet.command.js';
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
 import { MarketAccountsBootstrap } from './dev/market-accounts.bootstrap.js';
 import { MarketFaucetService } from './dev/market-faucet.service.js';
+import { MarketFixtures } from './dev/market-fixtures.service.js';
 import { MarketOrderRepository } from './book/market-order.repository.js';
 import { MarketMatcher } from './matching/market-matcher.service.js';
 import { CancelOrderHandler, OrderRelease } from './orders/cancel-order.service.js';
@@ -60,6 +61,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketSnapshotService,
     { provide: MarketFillsHook, useExisting: SettlementFillsHook },
     MarketFaucetService,
+    MarketFixtures,
     MarketFaucetCommand,
     MarketProgressionProducer,
     TradeHistoryProducer,
