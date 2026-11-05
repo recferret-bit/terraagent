@@ -2,6 +2,7 @@ import { defineFeature, type DevCommandDef, type FeatureContext } from '../../co
 import '../../net/services';
 import { DevServerError } from '../../net/devServer';
 import { serverFor, usage } from '../near-dev';
+import { reserveCommand } from './reserve';
 
 const FAUCET_USAGE = 'faucet near|usdc <amount>';
 const SEED_USAGE = 'market.seed here|<planetId> <base/quote>';
@@ -56,5 +57,5 @@ const clear: DevCommandDef = {
 export default defineFeature({
   id: 'market-dev',
   wave: 'W13',
-  devCommands: [faucet, seed, clear],
+  devCommands: [faucet, seed, clear, reserveCommand],
 });

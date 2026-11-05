@@ -163,6 +163,20 @@ describe('W13-57 logistics bill (owner story: desert metal specialist with a gro
   });
 });
 
+describe('W13-57 dev.spawnunit grows the load', () => {
+  it('spawns own idle builders with a logistics row; the bill follows', () => {
+    const { host } = createScenarioPlanet('w13r');
+    host.step(2);
+    const before = bill(host);
+    host.submit({ colonyIndex: 0, source: 'dev', commandId: 'su', kind: 'dev.spawnunit', args: { unit: 'builder', q: -13, r: 5, count: 8 } });
+    expect(host.step(1).outcomes.find((o) => o.commandId === 'su')?.code).toBeUndefined();
+    host.step(WINDOW + 1);
+    const after = bill(host);
+    expect(after.entities).toBe(before.entities + 8);
+    expect(after.waterMicro).toBeGreaterThan(before.waterMicro);
+  });
+});
+
 describe('W13-57 reconnect: snapshot restore repeats nothing', () => {
   it('a restored host posts exactly what the live host posts (no duplicate supply posting, no extra surcharge) and ends equal', () => {
     const { host: live } = createScenarioPlanet('w13r');
