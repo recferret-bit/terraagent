@@ -41,6 +41,8 @@ export { isUnitKind, mobileStats, type MobileStats } from './units/mobility';
 export { getMotion, type MoveGoal, type MotionStatus, type UnitMotion } from './units/movement/orchestrator';
 export type { IssueOpts } from './units/runner';
 export * from './economy';
+// Experiments import the host (SimHost → systems); exported from the root, not from `economy/index`, to avoid an import cycle.
+export * from './economy/experiments';
 export * from './systems/landing';
 export * from './systems/terraform-basic';
 export * from './systems/construction';
