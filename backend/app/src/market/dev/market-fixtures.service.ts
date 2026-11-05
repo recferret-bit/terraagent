@@ -9,6 +9,7 @@ import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { GamePlanets } from '../../game/game-planets.service.js';
 import { kekEnv } from '../../near/identity/colony-accounts.js';
+import { IntentsBalanceReadPort } from '../../near/application/ports/intents-balance-read.port.js';
 import { loadKekRing } from '../../near/keystore/kek.js';
 import { KeyStore } from '../../near/keystore/keys.js';
 import { MarketColonies } from '../orders/market-colonies.js';
@@ -35,7 +36,9 @@ const isUnique = (e: unknown): boolean => typeof e === 'object' && e !== null &&
  * on the scenario's colony: the colony's mock chain account gets a custodial signing key, the verifier balance is credited
  * through the faucet path (a labelled `organic: false` fixture note) and the in-orbit water is mirrored into the sim with
  * `dev.cargoGrant` so the sim pre-check passes. Idempotent: one marker row per (planet, colony) in `chain.mock_chain_intent`
- * makes a reload, a reconnect or a second seat a no-op.
+ * makes a reload, a reconnect or a second seat a no-op. Scenario colonies share their account across scenario planets
+ * (`col_<index>`), so funding is a **top-up** to the fixture amount, never an addition: a second w13 planet starts A at
+ * 600 water and B at 20 USDC again (more if that account already holds more).
  */
 @Injectable()
 export class MarketFixtures implements OnModuleInit {
@@ -48,6 +51,7 @@ export class MarketFixtures implements OnModuleInit {
     private readonly faucet: MarketFaucetService,
     private readonly planets: GamePlanets,
     private readonly colonies: MarketColonies,
+    private readonly verifier: IntentsBalanceReadPort,
   ) {}
 
   onModuleInit(): void {
@@ -81,14 +85,21 @@ export class MarketFixtures implements OnModuleInit {
       const { accountId } = await this.colonies.resolve(e.planetId, e.colonyIndex, null, e.playerId);
       await ensureCustodialAccount(this.prisma, new KeyStore(loadKekRing(kekEnv(this.env))), accountId);
       for (const [resource, units] of Object.entries(fixture.inOrbit ?? {})) {
-        await this.faucet.fund(accountId, resource as MarketTokenKey, BigInt(units));
-        await this.mirrorInOrbit(e, resource as ResourceKey, units);
+        const held = await this.topUp(accountId, resource as MarketTokenKey, BigInt(units));
+        await this.mirrorInOrbit(e, resource as ResourceKey, Number(held));
       }
-      if (fixture.usdc) await this.faucet.fund(accountId, 'USDC', parseDisplayAmount('USDC', fixture.usdc));
+      if (fixture.usdc) await this.topUp(accountId, 'USDC', parseDisplayAmount('USDC', fixture.usdc));
       this.log.log(`w13 fixtures applied to ${accountId} (${e.planetId} colony ${e.colonyIndex}): ${JSON.stringify(fixture)} (mock, fixture)`);
     } catch (err) {
       this.log.warn(`w13 fixtures failed for ${e.planetId} colony ${e.colonyIndex}: ${err instanceof Error ? err.message : String(err)}`);
     }
+  }
+
+  /** Credits only the shortfall up to `target` (market atomic); returns the balance afterwards. */
+  private async topUp(accountId: string, token: MarketTokenKey, target: bigint): Promise<bigint> {
+    const have = await this.verifier.verifierBalance(accountId, token);
+    if (have < target) await this.faucet.fund(accountId, token, target - have);
+    return have < target ? target : have;
   }
 
   private async mirrorInOrbit(e: ScenarioSeatedBusEvent, resource: ResourceKey, amount: number): Promise<void> {
