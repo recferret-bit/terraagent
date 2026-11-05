@@ -19,14 +19,18 @@ declare module '../../bus/channels.js' {
 const keyOf = (planetId: string, pair: string): string => `${planetId}\u0000${pair}`;
 
 /**
- * Debounces book changes (place/fill/cancel/expire) to `bookPushHz` per (planet, pair): the first change starts a window of
- * `1000 / hz` ms, and when it ends ONE push carries the book as it is then (so every order placed inside the window is in it).
- * `seq` is monotonic per planet and pair.
+ * Throttles book changes (place/fill/cancel/expire) to `bookPushHz` per (planet, pair), leading and trailing: when the pair
+ * has not been pushed for a whole window (`1000 / hz` ms) the push goes out at once; otherwise one push is scheduled at the
+ * end of the window carrying the book as it is then (so every order placed inside the window is in it). At most one push per
+ * pair and window. `seq` is monotonic per planet and pair.
  */
 @Injectable()
 export class MarketBookPush implements OnModuleInit, OnModuleDestroy {
   private off: (() => void) | null = null;
   private readonly timers = new Map<string, ReturnType<typeof setTimeout>>();
+  private readonly lastPush = new Map<string, number>();
+  /** Test seam. */
+  now: () => number = () => Date.now();
   private readonly seqs = new Map<string, number>();
 
   constructor(
@@ -46,15 +50,22 @@ export class MarketBookPush implements OnModuleInit, OnModuleDestroy {
     this.timers.clear();
   }
 
-  /** Schedules a push of this pair unless one is already pending. */
+  /** Pushes now when the pair is quiet, else schedules one push at the end of the current window. */
   touch(planetId: string, pair: string): void {
     const key = keyOf(planetId, pair);
     if (this.timers.has(key)) return;
     const windowMs = Math.ceil(1000 / this.policy.current().bookPushHz);
+    const wait = (this.lastPush.get(key) ?? -Infinity) + windowMs - this.now();
+    if (wait <= 0) {
+      this.lastPush.set(key, this.now());
+      void this.push(planetId, pair).catch(() => undefined);
+      return;
+    }
     this.timers.set(key, setTimeout(() => {
       this.timers.delete(key);
+      this.lastPush.set(key, this.now());
       void this.push(planetId, pair).catch(() => undefined);
-    }, windowMs));
+    }, wait));
   }
 
   /** Current depth of a pair as a `market.book` payload (also the REST snapshot's book). */

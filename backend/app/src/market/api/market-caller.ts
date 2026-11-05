@@ -1,15 +1,13 @@
 import type { IncomingMessage } from 'node:http';
 import { Inject, Injectable } from '@nestjs/common';
-import type { PrismaClient } from '@terra/db';
 import { AuthTokenService, extractBearerPlayer } from '../../core/auth/index.js';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
-import { PRISMA } from '../../db/db.module.js';
+import { MarketColonies } from '../orders/market-colonies.js';
 import { devBearerPlayer, devPlayerId } from '../../ws/session-verifier.js';
 
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
 const AS_NAME_RE = /^[a-z0-9_-]{1,32}$/i;
-const PLAYER_SLOT = 'player';
 
 export interface MarketCaller {
   readonly playerId: string;
@@ -22,7 +20,7 @@ export interface MarketCaller {
 export class MarketCallers {
   constructor(
     @Inject(AuthTokenService) private readonly tokens: AuthTokenService,
-    @Inject(PRISMA) private readonly prisma: PrismaClient,
+    private readonly colonies: MarketColonies,
     @Inject(APP_ENV) private readonly env: AppEnv,
   ) {}
 
@@ -39,12 +37,9 @@ export class MarketCallers {
     return dev && asName && AS_NAME_RE.test(asName) ? devPlayerId(asName.toLowerCase()) : null;
   }
 
-  /** Colony with this player's orders on the planet, else the first colony account the player owns. */
+  /** The player's colony on the planet as the sim and the cargo ledger know it (see `MarketColonies`). */
   async colonyOf(playerId: string, planetId: string): Promise<MarketCaller['colony']> {
     if (!databaseEnabled(this.env)) return null;
-    const order = await this.prisma.marketOrder.findFirst({ where: { playerId, planetId }, orderBy: { id: 'desc' }, select: { colonyId: true, accountId: true } });
-    if (order) return order;
-    const acct = await this.prisma.nearColonyAccount.findFirst({ where: { playerId, slot: { not: PLAYER_SLOT } }, orderBy: { createdAt: 'asc' }, select: { colonyId: true, slot: true, accountId: true } });
-    return acct ? { colonyId: acct.colonyId || acct.slot, accountId: acct.accountId } : null;
+    return this.colonies.ofPlayer(playerId, planetId, this.env.NODE_ENV !== 'production');
   }
 }

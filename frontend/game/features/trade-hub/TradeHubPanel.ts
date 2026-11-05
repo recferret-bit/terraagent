@@ -31,6 +31,7 @@ import {
   formatPendingExportChipText,
   formatPendingImportChipText,
 } from './cargoUx';
+import { TabExtensions } from './tabExtensions';
 import { formatTransferPreview, syncMockTreeText, TradeHubForms } from './TradeHubForms';
 
 export {
@@ -44,6 +45,7 @@ export class TradeHubPanel implements Disposable {
   readonly root: HTMLElement;
   readonly tabBodyEl: HTMLElement;
   readonly forms: TradeHubForms;
+  readonly extensions: TabExtensions;
   private readonly tierBadgeEl: HTMLElement;
   private readonly statusBadgeEl: HTMLElement;
   private readonly closeBtn: HTMLButtonElement;
@@ -132,6 +134,7 @@ export class TradeHubPanel implements Disposable {
       onError: (code, detail, retryInS) => this.notifyError(code, detail, retryInS),
     });
 
+    this.extensions = new TabExtensions(tabsBuild.tabsRow, this.tabBodyEl, ctx, (id) => this.root.setAttribute('data-tab', id ? `ext:${id}` : this.activeTab));
     const content = makeDiv('ta-trade-hub__content');
     const balances = makeDiv('ta-trade-hub__column');
     const transfer = makeDiv('ta-trade-hub__column');
@@ -275,6 +278,7 @@ export class TradeHubPanel implements Disposable {
   }
 
   setTab(tab: TradeHubTab): void {
+    this.extensions.show(null);
     this.activeTab = tab;
     this.root.setAttribute('data-tab', tab);
     const isExport = tab === 'export';
@@ -482,6 +486,7 @@ export class TradeHubPanel implements Disposable {
     this.offStoreEvents = null;
     this.offStoreCargo?.();
     this.offStoreCargo = null;
+    this.extensions.dispose();
     this.toastController.dispose();
     this.orbitRows.clear();
     this.root.remove();
