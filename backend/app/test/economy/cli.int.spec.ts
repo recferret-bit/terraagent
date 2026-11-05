@@ -22,7 +22,7 @@ const cli = async (...argv: string[]): Promise<{ code: number; out: Json }> => {
 
 const manifest = (hash: string): Json => ({
   schemaVersion: 1, profile: { id: 'baseline', version: 0, hash }, engineCommit: 'workspace', waves: '..13', scenarios: [{ id: 'baseline-two-colony', version: 1 }],
-  seeds: [101], warmupTicks: 50, measureTicks: 400, sampleEveryTicks: 200, ticksPerSecond: 5, budget: { maxRuns: 4, maxWallSeconds: 120, maxWorkers: 1 },
+  seeds: [101, 102], heldOutSeeds: [201], warmupTicks: 50, measureTicks: 400, sampleEveryTicks: 200, ticksPerSecond: 5, budget: { maxRuns: 4, maxWallSeconds: 120, maxWorkers: 1 },
   behaviorProfile: 'specialists-v1', demandModel: { source: 'assumed', perPayingActorMonthlyBudgetUsdcAtomic: '30000000' }, output: { format: 'jsonl', trace: 'failures' },
 });
 
@@ -80,7 +80,11 @@ describe('candidate to report with JSON alone', () => {
 
     const rec = await cli('recommend', '--experiment', c.out.id, '--json');
     expect(rec.code).toBe(0);
-    expect(rec.out.decision).toBe('recommend');
+    // a fee increase only moves platform revenue (or something worse): never a recommendation
+    expect(rec.out.decision).toBe('do_not_recommend');
+    expect(rec.out.cashApproval).toBe(false);
+    expect(cmp.out.cashApproval).toBe(false);
+    expect(cmp.out.assessment.heldOut.seeds).toEqual([201]);
     expect(rec.out.patch.ops).toEqual([{ op: 'set', path: 'market.policy.platformFeeBp', value: 150 }]);
     expect(rec.out.evidence.baselineId).toBe(b.out.id);
     expect(rec.out.activation).toMatch(/never performed/);

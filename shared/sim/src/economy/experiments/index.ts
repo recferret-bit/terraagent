@@ -12,3 +12,8 @@ export { behaviorIds, createBehavior, SPECIALISTS_V1_PARAMS, specialistsParams }
 export * from './artifacts';
 export * from './compare';
 export * from './region';
+export * from './seeds';
+export * from './gate-catalog';
+export * from './metric-dimensions';
+export * from './sensitivity';
+export * from './stats';

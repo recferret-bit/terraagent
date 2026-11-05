@@ -1,4 +1,4 @@
-import { GateResult, type MetricRow } from '@terra/contracts';
+import { GateResult } from '@terra/contracts';
 import { ratio, ratioToDecimal, subRatio, type Ratio } from '../flows/ratio';
 import type { RunResult } from './types';
 
@@ -9,7 +9,11 @@ export interface GateDef {
   readonly metricKey: string;
   readonly scope: string;
   readonly resource?: string;
+  /** The window the series is read over: the last sample, or the min/max over the measure window. */
   readonly aggregate: 'last' | 'min' | 'max';
+  /** `hard` gates are conservation/safety invariants (evaluated by code); `economic` gates are calibration hypotheses (ECONOMY §7). */
+  readonly kind?: 'hard' | 'economic';
+  readonly cohort?: string;
   readonly op: 'gte' | 'lte';
   /** Exact decimal. */
   readonly threshold: string;
@@ -34,8 +38,11 @@ export function parseGateDefs(raw: unknown): GateDef[] {
   return raw.filter((g): g is GateDef => !!g && typeof g === 'object' && typeof (g as GateDef).gateId === 'string' && typeof (g as GateDef).metricKey === 'string');
 }
 
-function evaluateOne(def: GateDef, metrics: readonly MetricRow[], runId: string): GateResult {
-  const rows = metrics.filter((m) => m.metricKey === def.metricKey && m.scope === def.scope && (def.resource === undefined || m.resource === def.resource) && m.value !== null);
+/** The fields a gate reads of a metric row (a `MetricRow` or a stored/compared row). */
+export interface GateRow { readonly metricKey: string; readonly scope: string; readonly resource?: string | null; readonly cohort?: string | null; readonly value: string | null }
+
+export function evaluateOne(def: GateDef, metrics: readonly GateRow[], runId: string): GateResult {
+  const rows = metrics.filter((m) => m.metricKey === def.metricKey && m.scope === def.scope && (def.resource === undefined || m.resource === def.resource) && (def.cohort === undefined || m.cohort === def.cohort) && m.value !== null);
   const values = rows.map((r) => parseDecimal(r.value as string)).filter((v): v is Ratio => v !== null);
   const base = { gateId: def.gateId, gateVersion: def.gateVersion, threshold: def.threshold, runId };
   const limit = parseDecimal(def.threshold);

@@ -1,9 +1,11 @@
 import type { BehaviorProfile } from '../types';
 import { specialistsV1 } from './specialists-v1';
+import { stressV1 } from './stress-v1';
 
 /** Scripted behaviour profiles by manifest `behaviorProfile` id. A new policy registers here and nowhere else. */
 const FACTORIES: Readonly<Record<string, (overrides?: Readonly<Record<string, unknown>>) => BehaviorProfile>> = {
   'specialists-v1': specialistsV1,
+  'stress-v1': stressV1,
 };
 
 export const behaviorIds = (): string[] => Object.keys(FACTORIES).sort();

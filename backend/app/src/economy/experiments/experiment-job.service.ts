@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import type { PrismaClient } from '@prisma/client';
 import { parseExperimentManifest, type ExperimentManifest } from '@terra/contracts';
-import { behaviorIds, hashJson, metricsCsv, metricsJsonl, scenarioHashOf, type ExperimentResult, type RunResult } from '@terra/sim';
+import { behaviorIds, hashJson, plannedSeeds, metricsCsv, metricsJsonl, scenarioHashOf, type ExperimentResult, type RunResult } from '@terra/sim';
 import { CoreException } from '../../core/errors';
 import { databaseEnabled } from '../../core/persistence';
 import { APP_ENV, type AppEnv } from '../../core/tokens';
@@ -77,7 +77,7 @@ export class ExperimentJobService implements OnModuleInit, OnModuleDestroy {
     const plan = manifest.scenarios.flatMap((ref) => {
       const def = known.find((s) => s.manifest.id === ref.id && s.manifest.version === ref.version);
       if (!def) throw bad('unknown_scenario', `scenario ${ref.id}@${ref.version} is not available`);
-      return manifest.seeds.map((seed) => ({ def, seed }));
+      return plannedSeeds(manifest).map((seed) => ({ def, seed }));
     });
     const id = `exp_${createHash('sha256').update(requestId).digest('hex').slice(0, 24)}`;
     const manifestHash = hashJson(manifest);
