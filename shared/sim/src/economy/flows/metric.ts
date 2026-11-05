@@ -2,7 +2,7 @@ import { MetricRow, type ResourceKey } from '@terra/contracts';
 import { ratioToDecimal, type Ratio } from './ratio';
 
 /** Why a metric has no value (`MetricRow.reason`): never infinity, never a fabricated number. */
-export type NullReason = 'no_consumption' | 'uncertain_price' | 'insufficient_data' | 'no_resource_output';
+export type NullReason = 'no_consumption' | 'uncertain_price' | 'insufficient_data' | 'no_resource_output' | 'no_capacity';
 
 /** Tick window `[startTick, endTick]` a value was measured over. */
 export interface FlowWindow {

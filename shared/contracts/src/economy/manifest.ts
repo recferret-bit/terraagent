@@ -52,6 +52,11 @@ const ExperimentManifestShape = z.strictObject({
   runtimeEconomyHash: Hash.optional(),
   logisticsPolicyHash: Hash.optional(),
   distributions: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * §9 candidate mode against a baseline: `endowment` = an isolated, seeded fixture regenerated from the candidate endowment
+   * (terrain differs by design); `runtime` = the same checkpoint and terrain, operational/logistics inputs only, reserves preserved.
+   */
+  candidateMode: z.enum(['endowment', 'runtime']).optional(),
 });
 export const ExperimentManifest = ExperimentManifestShape.refine(
   (m) => !(m.heldOutSeeds ?? []).some((s) => m.seeds.includes(s)),
