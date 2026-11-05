@@ -7,8 +7,9 @@ import { EconomyActivationService } from './activation/activation.service';
 import { EconomyProfileController } from './profile/profile.controller';
 import { EconomyCashPrecheck } from './cash-precheck';
 import { EconomyProfileService } from './profile/profile.service';
-import { ExperimentController } from './experiments/experiment.controller';
+import { ExperimentController, ExperimentReportController } from './experiments/experiment.controller';
 import { ExperimentJobService } from './experiments/experiment-job.service';
+import { ExperimentReportService } from './experiments/experiment-report.service';
 
 export const env = defineEnv('economy', {
   /** Bearer token with the economy `read` role. Unset: dev builds use `dev-economy-reader`, production has none (role unavailable). */
@@ -37,11 +38,13 @@ export const env = defineEnv('economy', {
     EconomyAuthGuard,
     EconomyCashPrecheck,
     ExperimentJobService,
+    ExperimentReportService,
   ],
   controllers: [
     EconomyProfileController,
     EconomyActivationController,
     ExperimentController,
+    ExperimentReportController,
   ],
   imports: [],
   exports: [EconomyProfileService, EconomyActivationService, ExperimentJobService],
