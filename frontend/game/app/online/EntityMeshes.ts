@@ -39,6 +39,7 @@ export interface EntityMeshRecord {
   track: MotionTrack;
   /** The drawn pose moved during the last half tick (drives the walk animation, in step with what is drawn). */
   trackMoving: boolean;
+  lightLevel?: number; // drawn light level 0..1 (entityVisionSync eases it to the sim's `entityLightLevel`)
 }
 
 /**

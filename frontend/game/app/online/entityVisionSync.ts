@@ -1,8 +1,10 @@
 import * as THREE from 'three';
 import { computeSolarState, getDayNightParams, isDayNightOn } from '@terra/render/core/dayNightConfig';
 import {
+  applyBuildingLight,
   attachEntityProjectorRig,
   peekArchetypeLights,
+  stepLightLevel,
   getColonyLightingBlend,
   isWorldPointInColonyFov,
   MAX_PROJECTOR_CANDIDATES,
@@ -11,12 +13,11 @@ import {
   setColonyLightingBlend,
   updateColonyProjectorsAndVision,
   updateColonyVisionTexture,
-  updateEntityProjectorRig,
   type ColonyProjectorDesc,
   type ColonyVisionSourceDesc,
 } from '@terra/render/lighting';
 import type { HexTerrain } from '@terra/render/planets/hex';
-import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, entityLightLevel } from '@terra/sim';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { archetypeForKind, type EntityMeshRecord } from './EntityMeshes';
 import { isEntityInViewFocus } from './entityFocus';
@@ -46,22 +47,6 @@ export function scaleForKind(kind: number): number {
   if (kind === ENTITY_KIND.hq) return 1.15;
   if (kind === ENTITY_KIND.harvester) return 1.05;
   if (kind === ENTITY_KIND.devProbe) return 0.95;
-  return 1.0;
-}
-
-function computeEntityLightStateMul(rec: EntityMeshRecord, nightFactor: number): number {
-  if (rec.kind === ENTITY_KIND.solar && nightFactor > 0.5) return 0;
-  if (
-    rec.state === ENTITY_STATE.offlineBrownout ||
-    rec.state === ENTITY_STATE.offlineUnpowered ||
-    rec.state === ENTITY_STATE.inert
-  ) {
-    return 0;
-  }
-  if (rec.state === ENTITY_STATE.waiting) return 0.18;
-  if (rec.state === ENTITY_STATE.constructing) {
-    return 0.35 + 0.65 * Math.max(0, Math.min(1, rec.buildStage));
-  }
   return 1.0;
 }
 
@@ -183,6 +168,8 @@ function collectOwnedEntityVisionAndProjectors(
 /** Seconds the colony FoV shroud / night factor / projectors take to ease in after the descent hands over. */
 export const COLONY_FADE_IN_S = 0.8;
 let lastBlendMs = -1;
+/** Wall seconds (≤ 0.1) between the last two `syncColonyVisionAndProjectors` calls: the light fade step. */
+let lastDtS = 0;
 
 /**
  * 0 while the space phase / descent renders, then eases 0 → 1 over `COLONY_FADE_IN_S` of wall time. The value lives
@@ -192,6 +179,7 @@ function stepColonyBlend(active: boolean): number {
   const now = typeof performance !== 'undefined' ? performance.now() : Date.now();
   const dt = lastBlendMs < 0 ? 0 : Math.min(0.1, Math.max(0, (now - lastBlendMs) / 1000));
   lastBlendMs = now;
+  lastDtS = dt;
   setColonyLightingBlend(active ? getColonyLightingBlend() + dt / COLONY_FADE_IN_S : 0);
   return getColonyLightingBlend();
 }
@@ -227,9 +215,13 @@ export function syncColonyVisionAndProjectors(opts: {
 
   for (const rec of records) {
     const archetypeId = archetypeForKind(rec.kind);
-    const stateMul = computeEntityLightStateMul(rec, nightFactor);
+    // The building light state (power, brownout group, construction) is decided by `entityLightLevel` in the sim; the
+    // renderer only eases to it and applies it through `applyBuildingLight`.
+    const target = entityLightLevel({ kind: rec.kind, state: rec.state, buildStage: rec.buildStage }, nightFactor);
+    rec.lightLevel = rec.lightLevel === undefined ? target : stepLightLevel(rec.lightLevel, target, lastDtS);
+    const stateMul = rec.lightLevel;
     attachEntityProjectorRig(rec.mesh, archetypeId);
-    if (isEntityInViewFocus(rec.mesh)) updateEntityProjectorRig(rec.mesh, rigIntensity * stateMul, rec.buildStage);
+    if (isEntityInViewFocus(rec.mesh)) applyBuildingLight(rec.mesh, stateMul, rigIntensity, rec.buildStage);
 
     if (rec.owner === ownerColonyIndex) {
       collectOwnedEntityVisionAndProjectors(rec, baseCenters, visionSources, projectors, lightScale, stateMul);

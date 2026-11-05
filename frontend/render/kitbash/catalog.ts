@@ -6,6 +6,8 @@ import { getColonyVisionUniforms } from '../lighting/ColonyVisionAndLights';
 import { attachEntityProjectorRig, updateEntityProjectorRig } from '../lighting/EntityProjectorRig';
 import { createUnifiedColonyMaterial } from '../visuals/UnifiedColonyMaterial';
 import { BUILD_SCAFFOLD } from '../visuals/unified/buildScaffold';
+import { BUILDING_LIT } from '../visuals/unified/buildingLit';
+import { getBuildingLightLevel } from '../lighting/buildingLights';
 
 export type DepositVisualStage = 'full' | 'half' | 'depleted';
 export const DEPOSIT_STAGES: readonly DepositVisualStage[] = ['full', 'half', 'depleted'];
@@ -145,6 +147,8 @@ export type ArchetypeUniforms = ReturnType<typeof createUnifiedColonyMaterial>['
   uBuildStage: THREE.IUniform<number>;
   /** Model height (m) the scaffold cut fractions refer to. */
   uBuildHeight: THREE.IUniform<number>;
+  /** Drawn light level 0..1 of the emissive parts (`applyBuildingLight` only). */
+  uLit: THREE.IUniform<number>;
 };
 
 export interface ArchetypeMesh extends THREE.Mesh {
@@ -153,7 +157,7 @@ export interface ArchetypeMesh extends THREE.Mesh {
 
 /** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind) and optional deposit stage. */
 export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
-  const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD, SELECTION_PULSE] });
+  const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, BUILDING_LIT] });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
   const geometry = ArchetypeCatalog.getGeometry(id, stage);
@@ -178,7 +182,7 @@ export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight
   if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
   const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;
   const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
-  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity * getBuildingLightLevel(mesh), stage);
 }
 
 /** Quantizes a normalized construction progress (0..1) into one of the 4 scaffold stages (0, 0.33, 0.66, 1). */
@@ -200,7 +204,7 @@ export function setArchetypeBuildProgress(mesh: THREE.Object3D, progress: number
   if (u?.uBuildStage) u.uBuildStage.value = stage;
   if (mesh.userData) (mesh.userData as any).buildStage = stage;
   const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
-  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);
+  updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity * getBuildingLightLevel(mesh), stage);
   return stage;
 }
 
