@@ -27,6 +27,17 @@ export interface ColonySeed {
 }
 
 /** A = seller (600 water for the demo), B = buyer (gets 20 mock USDC from the server fixture, not from the sim). */
+/**
+ * Fixture balances of the demo story step 1 (W13-35), labelled FIXTURE (`organic: false`): they live in Postgres (the mock
+ * cargo ledger / mock verifier), not in the sim, so the backend applies them when a dev session is seated on this planet
+ * (`market/dev/market-fixtures.service.ts`). Colony index -> what it gets. `inOrbit` is whole resource units (minted on
+ * the verifier ledger and mirrored into the sim `cargo.inOrbit`); `usdc` is a display amount credited by the mock faucet.
+ */
+export const W13_FIXTURES: Readonly<Record<number, { readonly inOrbit?: Readonly<Record<string, number>>; readonly usdc?: string }>> = {
+  0: { inOrbit: { 'bio.water': 600 } },
+  1: { usdc: '20' },
+};
+
 export const W13_COLONIES: readonly ColonySeed[] = [
   { index: 0, id: 'col_0', name: 'Port A', color: 0xff6b00, origin: [-8, 0], stock: { 'metals.t1': 600, 'minerals.t1': 300, 'bio.water': 900, 'bio.biomass': 200 } },
   { index: 1, id: 'col_1', name: 'Port B', color: 0x2f8fff, origin: [8, 0], stock: { 'metals.t1': 600, 'minerals.t1': 300, 'bio.water': 200, 'bio.biomass': 200 } },
@@ -67,7 +78,7 @@ export function spawnHq(state: PlanetState, owner: number, q: number, r: number)
   c.state[row] = ENTITY_STATE.idle;
 }
 
-function seedColony(state: PlanetState, s: ColonySeed): void {
+export function seedColony(state: PlanetState, s: ColonySeed): void {
   const colony = ensureColonyLedger(
     {
       index: s.index, id: s.id, name: s.name, color: s.color, status: 'active', stage: 2, tradeHubAtS2: true,

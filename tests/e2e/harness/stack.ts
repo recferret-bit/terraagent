@@ -70,6 +70,13 @@ export async function bootStack(): Promise<Stack> {
   }
   const { createTestDatabase } = await import('@terra/db/testing');
   const db = await createTestDatabase();
+  // W13: the economy operator API needs the baseline profile (`baseline@1`); seeded like the integration suites do
+  try {
+    const seed = (await import('../../../shared/db/seeds/0002_economy_baseline')).default;
+    await seed({ prisma: db.prisma, log: () => undefined });
+  } catch (e) {
+    console.warn(`e2e: baseline economy profile not seeded: ${(e as Error).message}`);
+  }
   const waves = appWavesFor(process.env.E2E_WAVES);
   const appEnv: NodeJS.ProcessEnv = {
     ...process.env, NODE_ENV: 'development', PORT: String(u.appPort), DATABASE_URL: db.url,
@@ -78,7 +85,10 @@ export async function bootStack(): Promise<Stack> {
   };
   process.env.E2E_APP_WAVES = appEnv.TA_WAVES ?? ''; // the suites (workers) read it: `expectedOnWaves()`
   let app: ChildProcess | undefined;
-  const startApp = async () => {
+  const baseWaves = appEnv.TA_WAVES;
+  /** `waves` (restart only): `TA_WAVES` of the app from now on (`''` = the suite's own value again), for flag-off steps. */
+  const startApp = async (waves?: string) => {
+    if (waves !== undefined) { if (waves) appEnv.TA_WAVES = waves; else if (baseWaves) appEnv.TA_WAVES = baseWaves; else delete appEnv.TA_WAVES; }
     if (app && !exited(app)) return;
     app = logged(process.execPath, ['--import', '@swc-node/register/esm-register', 'src/main.ts'], resolve(ROOT, 'backend/app'), appEnv, 'app.log');
     await waitFor(`${u.app}/v1/readyz`, 'app');
@@ -113,25 +123,28 @@ async function bootViteOnly(u: ReturnType<typeof urls>): Promise<Stack> {
   return { stop: () => terminate(vite) };
 }
 
-function listenControl(h: { startApp(): Promise<void>; stopApp(): Promise<void> }): Promise<Server> {
+function listenControl(h: { startApp(waves?: string): Promise<void>; stopApp(): Promise<void> }): Promise<Server> {
   const server = createServer((req, res) => {
-    const op = (req.url ?? '').slice(1);
-    const run = op === 'start' ? h.startApp() : op === 'stop' ? h.stopApp() : op === 'restart' ? h.stopApp().then(h.startApp) : Promise.reject(new Error(`unknown op ${op}`));
+    const url = new URL(req.url ?? '/', 'http://control');
+    const op = url.pathname.slice(1);
+    const waves = url.searchParams.get('waves') ?? undefined;
+    const run = op === 'start' ? h.startApp(waves) : op === 'stop' ? h.stopApp() : op === 'restart' ? h.stopApp().then(() => h.startApp(waves)) : Promise.reject(new Error(`unknown op ${op}`));
     run.then(() => res.writeHead(204).end(), (e: Error) => res.writeHead(500).end(e.message));
   });
   return new Promise((ok) => server.listen(0, '127.0.0.1', () => ok(server)));
 }
 
-async function control(op: 'start' | 'stop' | 'restart'): Promise<void> {
+async function control(op: 'start' | 'stop' | 'restart', waves?: string): Promise<void> {
   const url = process.env.E2E_CONTROL;
   if (!url) throw new Error('stack control is not available (E2E_REUSE=1 attaches to a dev stack: restart the app yourself)');
-  const res = await fetch(`${url}/${op}`, { method: 'POST' });
+  const res = await fetch(`${url}/${op}${waves === undefined ? '' : `?waves=${encodeURIComponent(waves)}`}`, { method: 'POST' });
   if (!res.ok) throw new Error(`stack ${op}: ${res.status} ${await res.text()}`);
 }
 
 /** For suites (worker process): the app is SIGTERMed, awaited, started again and readyz is 200 on return. */
 export const stack = {
-  restartApp: () => control('restart'),
+  /** `waves`: restart with `TA_WAVES=<waves>` (e.g. `..12`); `''` restores the suite's own waves. */
+  restartApp: (opts: { waves?: string } = {}) => control('restart', opts.waves),
   /** SIGTERM and wait for exit (the local-host step runs with the app stopped). */
   stopApp: () => control('stop'),
   startApp: () => control('start'),

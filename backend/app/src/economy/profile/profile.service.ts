@@ -42,6 +42,7 @@ export class EconomyProfileService {
   private readonly log = new Logger('EconomyProfileService');
   private readonly repo: EconomyProfileRepository;
   private readonly compiledCache = new Map<string, ResolvedProfile>();
+  private readonly loadedListeners = new Set<() => void>();
   private readonly versionCache = new Map<string, ExportedVersion>();
   private readonly versionCompiled = new Map<string, CompiledProfile>();
   private state: ProfileLoadState = 'unknown';
@@ -212,7 +213,16 @@ export class EconomyProfileService {
   /** Cash actions (market commands) need a loadable pinned version; only `unavailable` blocks them. */
   cashAvailable(): boolean { return this.state !== 'unavailable'; }
   /** Called by the host bridge once an activation is applied or the database became reachable again. */
-  markLoaded(): void { this.state = 'loaded'; }
+  markLoaded(): void {
+    this.state = 'loaded';
+    for (const l of this.loadedListeners) l();
+  }
+
+  /** Subscribe to "a profile version was applied/loaded" (the market policy reloads its compiled config); returns the unsubscribe. */
+  onLoaded(l: () => void): () => void {
+    this.loadedListeners.add(l);
+    return () => void this.loadedListeners.delete(l);
+  }
 
   /** Compiled snapshot of one immutable version (cached per content hash and flags); throws `ECONOMY_INVALID` when it does not compile. */
   async compileVersion(versionId: string): Promise<CompiledProfile> {

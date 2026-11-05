@@ -77,7 +77,8 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
   /** Tells the sims and the sockets, then records that it was done (`notified` in the outbox payload) so a restart does not repeat or skip it. */
   async notify(plan: TradePlan, txHash: string | null): Promise<void> {
     this.metrics.tradeFinal(plan);
-    for (const party of plan.parties) this.settleSim(plan, party, txHash);
+    const stallName = await this.stallNameOf(plan); // for the contract toast and history row (W13-35)
+    for (const party of plan.parties) this.settleSim(plan, party, txHash, stallName);
     this.pushTrade(plan, txHash);
     await this.outbox.flagPayload(marketTradeOpId(plan.tradeId), NOTIFIED);
   }
@@ -103,7 +104,14 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
     return n;
   }
 
-  private settleSim(plan: TradePlan, p: SettleParty, txHash: string | null): void {
+  private async stallNameOf(plan: TradePlan): Promise<string | undefined> {
+    const stall = plan.parties.find((x) => x.role === 'stall');
+    if (!stall) return undefined;
+    const row = await this.prisma.marketStall.findUnique({ where: { planetId_colonyId: { planetId: plan.planetId, colonyId: stall.colonyId } }, select: { name: true } }).catch(() => null);
+    return row?.name ?? undefined;
+  }
+
+  private settleSim(plan: TradePlan, p: SettleParty, txHash: string | null, stallName?: string): void {
     const args: Omit<MarketSettledArgs, 'colonyId' | 'colonyIndex'> = {
       tradeId: plan.tradeId, role: p.role, ...(p.ref ? { ref: p.ref } : {}),
       deltas: p.deltas as MarketResourceDeltas,
@@ -111,6 +119,7 @@ export class TradeSettlement implements OnModuleInit, OnModuleDestroy {
       trade: {
         base: plan.base as MarketSettledArgs['trade']['base'], amount: plan.qty, quote: plan.quote as MarketSettledArgs['trade']['quote'],
         notional: plan.notional, platformFee: plan.platformFee, stallFee: plan.stallFee, stallFeeBp: plan.stallFeeBp, makerSide: plan.makerSide,
+        ...(stallName ? { stallName } : {}),
         ...(txHash ? { txHash } : {}),
       },
     };

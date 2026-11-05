@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { newId } from '@terra/contracts';
 import { createScenarioPlanet, getScenario, listScenarios } from '@terra/scenarios';
 import { snapshot } from '@terra/sim';
 import { CoreException } from '../core/errors';
+import { EventBus } from '../bus/event-bus';
 import { EconomyProfileService } from '../economy/profile/profile.service';
 import { FlagsService } from '../flags/flags.service';
 import { GamePlanets } from '../game/game-planets.service';
@@ -17,7 +18,12 @@ export interface CreatedScenario { readonly planetId: string; readonly scenario:
  */
 @Injectable()
 export class ScenariosService {
-  constructor(private readonly planets: GamePlanets, private readonly flags: FlagsService, private readonly profiles: EconomyProfileService) {}
+  constructor(
+    private readonly planets: GamePlanets,
+    private readonly flags: FlagsService,
+    private readonly profiles: EconomyProfileService,
+    @Optional() private readonly bus?: EventBus,
+  ) {}
 
   list(): { id: string; title: string; waves: string }[] {
     return listScenarios().map(({ id, title, waves }) => ({ id, title, waves }));
@@ -34,6 +40,7 @@ export class ScenariosService {
     if (hasLiveColony(host.state)) this.planets.markScenarioColonyPlanet(planetId, liveColonyIndices(host.state)); // dev sessions play colony 0 (BE-07)
     // the journal starts with the setup postings (e.g. the real `landing.cargo`)
     await this.planets.load(planetId, { snapshot: snapshot(host.state), genesis: true, setupPostings });
+    this.bus?.emit('dev.scenario.created', { planetId, scenario: def.id }); // dev fixtures that live outside the sim (W13-35)
     return { planetId, scenario: def.id, tick };
   }
 }

@@ -15,9 +15,9 @@ export interface DevScenarioSeat {
  * Social upgrade only enqueues the colony deposit for rows it can see, so the join writes one.
  * The row id is a new `co_` id, not the sim's `col_0` (BE-45).
  */
-export async function seatDevScenarioPlayer(prisma: PrismaClient, input: DevScenarioSeat): Promise<void> {
+export async function seatDevScenarioPlayer(prisma: PrismaClient, input: DevScenarioSeat): Promise<number | undefined> {
   await ensurePlayer(prisma, input.playerId, input.handle);
-  await ensureSeat(prisma, input.playerId, input.planetId, input.colonyIndices ?? [0]);
+  return ensureSeat(prisma, input.playerId, input.planetId, input.colonyIndices ?? [0]);
 }
 
 async function ensurePlayer(prisma: PrismaClient, id: string, handle: string): Promise<void> {
@@ -41,22 +41,24 @@ export function nextFreeSeat(indices: readonly number[], taken: ReadonlySet<numb
   return [...indices].sort((a, b) => a - b).find((i) => !taken.has(i));
 }
 
-async function ensureSeat(prisma: PrismaClient, playerId: string, planetId: string, indices: readonly number[]): Promise<void> {
-  const mine = await prisma.colony.findFirst({ where: { playerId, planetId }, select: { id: true } });
-  if (mine) return;
+/** The seated colony index (the existing seat's, or the new one); undefined when every seat is taken. */
+async function ensureSeat(prisma: PrismaClient, playerId: string, planetId: string, indices: readonly number[]): Promise<number | undefined> {
+  const mine = await prisma.colony.findFirst({ where: { playerId, planetId }, select: { colonyIndex: true } });
+  if (mine) return mine.colonyIndex;
   for (let attempt = 0; attempt < 3; attempt++) {
     const taken = new Set((await prisma.colony.findMany({ where: { planetId }, select: { colonyIndex: true } })).map((c) => c.colonyIndex));
     const index = nextFreeSeat(indices, taken);
-    if (index === undefined) return; // every scenario colony is taken: this session stays on the synthetic colony 0
+    if (index === undefined) return undefined; // every scenario colony is taken: this session stays on the synthetic colony 0
     try {
       await prisma.colony.create({
         data: { id: newId('co'), playerId, planetId, colonyIndex: index, name: index === 0 ? "Colonist's Colony" : `Colony ${index + 1}`, status: 'ACTIVE' },
       });
-      return;
+      return index;
     } catch (e) {
       if (!isUnique(e)) throw e; // a concurrent join took this index: look again
     }
   }
+  return undefined;
 }
 
 function isUnique(e: unknown): boolean {

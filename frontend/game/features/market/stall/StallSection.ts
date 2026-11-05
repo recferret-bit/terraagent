@@ -28,12 +28,16 @@ const panel = (title: string, testid: string, ...body: HTMLElement[]): HTMLEleme
  * inventory / estimated valuation / realized stall fees. The slider only ever sends `market.setHubFee`; it never edits an
  * order (open orders keep the stall fee pinned at placement, see `market-mirror.spec.ts` "setHubFee").
  */
+const APPLIED_GRACE_MS = 8000;
+
 export class StallSection {
   readonly el = makeDiv('ta-stall', 'market-stall');
   private snap: MarketSnapshotResponse | null = null;
   private draftBp: number | null = null;
   private busy = false;
   private message = '';
+  /** The fee the host just acknowledged: the REST snapshot lags the sim event by a moment, so it wins over a stale `hubFeeBp` for a few seconds. */
+  private applied: { bp: number; at: number } | null = null;
 
   constructor(private readonly ctx: FeatureContext, private readonly now: () => number = Date.now) {
     this.render();
@@ -42,6 +46,12 @@ export class StallSection {
   apply(s: MarketSnapshotResponse): void {
     this.snap = s;
     this.render();
+  }
+
+  private currentBp(): number {
+    const served = this.snap?.stall?.hubFeeBp ?? 0;
+    if (this.applied && (served === this.applied.bp || this.now() - this.applied.at > APPLIED_GRACE_MS)) this.applied = null;
+    return this.applied?.bp ?? served;
   }
 
   private async send(bp: number): Promise<void> {
@@ -55,6 +65,7 @@ export class StallSection {
     if (res.ok) {
       new MarketTracker(this.ctx.services.track).stallFeeChanged(bp);
       this.draftBp = null;
+      this.applied = { bp, at: this.now() };
       this.message = `Stall fee set to ${bpText(bp)} for new orders.`;
       const id = this.ctx.services.session?.planetId() ?? null;
       const load = this.ctx.services.marketSnapshot;
@@ -67,7 +78,7 @@ export class StallSection {
 
   private controls(): HTMLElement {
     const max = this.snap?.policy?.stallFeeMaxBp ?? 0;
-    const cur = this.snap?.stall?.hubFeeBp ?? 0;
+    const cur = this.currentBp();
     const draft = this.draftBp ?? cur;
     const slider = el('input', 'ta-stall__slider');
     slider.type = 'range';

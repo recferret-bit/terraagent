@@ -86,7 +86,12 @@ export const env = defineEnv('ws', {
           env: e, planets, verifier, ingress, home, flags: flags.list, registry: m.registry,
           log: layerLogger(root, 'http', e.LOG_LEVELS as string | undefined),
           helloTimeoutMs: Number(e.WS_HELLO_TIMEOUT_MS), idleTimeoutMs: Number(e.WS_IDLE_TIMEOUT_MS),
-          seatDevScenario: prisma && databaseEnabled(e) ? (input) => seatDevScenarioPlayer(prisma, input) : undefined,
+          seatDevScenario: prisma && databaseEnabled(e)
+            ? async (input) => {
+                const colonyIndex = await seatDevScenarioPlayer(prisma, input);
+                if (colonyIndex !== undefined) bus?.emit('dev.scenario.seated', { planetId: input.planetId, playerId: input.playerId, colonyIndex }); // dev fixtures (W13-35)
+              }
+            : undefined,
           bus,
         }),
     },

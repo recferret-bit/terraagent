@@ -12,8 +12,10 @@ import { MarketAnalyticsService } from './analytics/market-analytics.service.js'
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
 import { MarketAccountsBootstrap } from './dev/market-accounts.bootstrap.js';
 import { MarketFaucetService } from './dev/market-faucet.service.js';
+import { MarketFixtures } from './dev/market-fixtures.service.js';
 import { MarketOrderRepository } from './book/market-order.repository.js';
 import { MarketMatcher } from './matching/market-matcher.service.js';
+import { HubFeeHandler } from './orders/hub-fee.handler.js';
 import { CancelOrderHandler, OrderRelease } from './orders/cancel-order.service.js';
 import { PlanetGameClock } from './orders/expiry-clock.js';
 import { OrderExpirySweep } from './orders/expiry-sweep.js';
@@ -30,6 +32,7 @@ import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
 import { MarketMetrics } from './telemetry/market-metrics.js';
 import { NearModule } from '../near/near.module.js';
+import { EconomyModule } from '../economy/economy.module.js';
 import { TradeHistoryProducer } from './progression/trade-history.producer.js';
 import { MarketProgressionProducer } from './progression/market-progression.producer.js';
 
@@ -50,6 +53,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     PlaceOrderService,
     OrderRelease,
     CancelOrderHandler,
+    HubFeeHandler,
     PlanetGameClock,
     OrderExpirySweep,
     IntentTradeRepository,
@@ -64,6 +68,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketSnapshotService,
     { provide: MarketFillsHook, useExisting: SettlementFillsHook },
     MarketFaucetService,
+    MarketFixtures,
     MarketFaucetCommand,
     MarketProgressionProducer,
     TradeHistoryProducer,
@@ -77,6 +82,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
   ],
   imports: [
     NearModule,
+    EconomyModule,
     GameModule,
   ],
   exports: [
