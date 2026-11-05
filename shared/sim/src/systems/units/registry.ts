@@ -3,6 +3,8 @@ import type { PlanetState } from '../../kernel/state';
 import { attackCommand } from '../../units/commands/attack';
 import { dieCommand } from '../../units/commands/die';
 import { moveCommand } from '../../units/commands/move';
+import { reserveCommand } from '../logistics/reserve';
+import { withSuppliedCadence } from '../logistics/service';
 import { stopCommand } from '../../units/commands/stop';
 import { issueUnitCommand as issueWith, stepUnitWork as workWith, stepUnits as stepWith, type IssueOpts } from '../../units/runner';
 import { createUnitRegistry, type UnitCommand, type UnitWorkPhase, type UnitWorkProvider } from '../../units/types';
@@ -30,7 +32,7 @@ const unlessOnWorkJob = (p: UnitWorkProvider): UnitWorkProvider => ({
  * construction, then the player's manual terraform orders.
  */
 export const UNIT_REGISTRY = createUnitRegistry(
-  [moveCommand, stopCommand, dieCommand, attackCommand, buildCommand, terraformCommand],
+  [moveCommand, stopCommand, dieCommand, withSuppliedCadence(attackCommand), reserveCommand, buildCommand, terraformCommand],
   [linkedPrepProvider, buildProvider, terraformProvider].map(unlessOnWorkJob),
 );
 

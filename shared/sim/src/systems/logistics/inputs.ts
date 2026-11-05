@@ -3,6 +3,7 @@ import type { CompiledRow } from '../../data';
 import type { LogisticsBuilding, LogisticsNode, LogisticsUnit, UnitReadiness } from '../../economy/logistics';
 import type { CompiledDataLike } from '../../kernel/config';
 import type { PlanetState } from '../../kernel/state';
+import { UnitBook } from '../../units/book';
 import { isActiveCapacityProvider } from '../economy/ledger';
 import { w01Row } from '../rows';
 
@@ -65,7 +66,7 @@ export function collectInputs(state: PlanetState, colony: number, data: Compiled
       out.buildings.push({ id, domainId, tile, weight: br.weight, consumption: br.consumption, operatingBp: OFFLINE.has(st) ? 0 : 10000 });
     }
     const ur = u.get(kind);
-    const readiness = ur ? readinessOf(st) : null;
+    const readiness = ur ? (state.blobs.units && new UnitBook(state).peek(c.id[r])?.reserve ? 'reserve' : readinessOf(st)) : null;
     if (ur) out.liveIds.add(id);
     if (ur && readiness) out.units.push({ id, domainId, tile, weight: ur.weight, consumption: ur.consumption, readiness });
   }
