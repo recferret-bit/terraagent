@@ -18,6 +18,7 @@ import { TICK_MS } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { defineSystem } from '../../kernel/system';
+import { deliveredServiceBp, serviceScaled } from '../logistics/state';
 import { UnitBook } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
 import { cancelMove, requestMove } from '../../units/movement/orchestrator';
@@ -280,7 +281,7 @@ const standingHarvestAssignSystem = defineSystem({
       let cur = assignments[id];
 
       const uRec = book.peek(id);
-      if (uRec && (uRec.current !== null || uRec.queue.length > 0 || ctx.tick < uRec.holdUntil)) {
+      if (uRec && (uRec.current !== null || uRec.queue.length > 0 || ctx.tick < uRec.holdUntil || uRec.reserve)) {
         if (cur && cur.mode === 'harvest' && !cur.playerAssigned) { delete assignments[id]; changed = true; }
         continue;
       }
@@ -383,6 +384,7 @@ const standingHarvestYieldSystem = defineSystem({
   run(state, ctx) {
     const harvRow = resolveHarvesterRow(ctx.data);
     const ratePerS = Number(harvRow.harvestRatePerS ?? 0.5);
+    const reservedBook = new UnitBook(state);
     const e = state.entities, cols = e.cols;
     const rawBlob = (state.blobs.harvest?.value as { weightsByColony?: Record<number, HarvestWeights>; assignments?: Record<number, HarvesterTargetAssignment> } | undefined) ?? {};
     const assignments = { ...(rawBlob.assignments ?? {}) };
@@ -403,6 +405,8 @@ const standingHarvestYieldSystem = defineSystem({
       if (cols.kind[row] !== ENTITY_KIND.harvester || cols.hp[row] <= 0) continue;
       const id = cols.id[row], owner = cols.owner[row];
       const cur = assignments[id];
+      if (reservedBook.peek(id)?.reserve) continue; // reserve mode stops production
+      const workBp = deliveredServiceBp(state, owner, id);
 
       if (cur && (cur.mode === 'clear' || cur.mode === 'break' || cur.mode === 'work') && hexDistance(cols.q[row], cols.r[row], cur.q, cur.r) <= 1) {
         cur.elapsedTicks += ctx.dt;
@@ -447,7 +451,7 @@ const standingHarvestYieldSystem = defineSystem({
           const cycleProg = ((cur.elapsedTicks - 1) % HARVEST_CYCLE_TICKS + 1) / HARVEST_CYCLE_TICKS;
           setField(e, row, 'progress', Math.fround(cycleProg), ctx.tick);
           faceTowards(state, row, cur.q, cur.r, ctx.tick);
-          const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
+          const desiredAmount = (serviceScaled(ratePerS, workBp) * TICK_MS * ctx.dt) / 1000; // W13 delivered-service ratio, once
           const actualAmount = drawDeposit(state, cur.tileIdx, desiredAmount, ctx.tick, cur.resourceKey).got; // W13-51: regional yield
           if (actualAmount > 0) {
             creditResource(colony, cur.resourceKey, actualAmount, ctx.tick);

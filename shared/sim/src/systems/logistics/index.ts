@@ -5,10 +5,13 @@ import type { PlanetState } from '../../kernel/state';
 import { defineSimModule } from '../define';
 import { ensureColonyLedger } from '../economy/ledger';
 import { collectInputs, planWindow, serviceParams, coefficientsOf } from './plan';
+import { unitReserve } from './reserve-handler';
 import { releaseGone, settleWindow, windowStillValid } from './settle';
 import { colonyLogistics, readLogistics, writeLogistics, type ColonyLogistics } from './state';
 
 export * from './state';
+export * from './service';
+export { unitReserve } from './reserve-handler';
 export { readinessOf } from './inputs';
 
 /**
@@ -55,4 +58,4 @@ export const logisticsSystem = defineSystem({
   },
 });
 
-export default defineSimModule({ id: 'logistics', wave: 'W13', systems: [logisticsSystem] });
+export default defineSimModule({ id: 'logistics', wave: 'W13', systems: [logisticsSystem], handlers: [unitReserve] });
