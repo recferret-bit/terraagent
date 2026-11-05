@@ -1261,3 +1261,14 @@ Open items, see the format in `README.md`:
 - **Unclickable last water hex not reproduced.** Picking now intersects the water surface first (a hardening, not a confirmed cause). The likeliest cause is the deep hex next to the lake, which is picked but refused with `Deep water needs a T2 worker` on the status line only. Follow-up: a hover hint.
 - **Cancel-same-kind refunds** for a partly paid queue entry are not covered by a spec.
 
+## W05 dismantle, lights and terrain scene (2026-11-05)
+
+- **Owner question: drones are not dismantlable** (the safer reading). If recycling is wanted it needs a worker walking to the drone, a timed job and an on-site refund.
+- **Pod scrap is instant** once a Builder or HQ is in reach; should it be a timed worker job? The client preview does not check pod reach (the host rejects `no_worker_in_reach`).
+- **Unfinished sites** are cancelled only via the Queue panel `cancelTask`; the dismantle tool refuses them. `cannot_dismantle_hq` covers HQ and Hub.
+- **Lights:** an unpowered building's emissives are dead by day too; storage-full (`offlineCapped`) counts as powered; no kind is marked `UnlitLightState` yet (owner: which kinds have no lights?); dimming is per mesh, so no part (for example a status LED) is exempt.
+- **Terrain kinds:** the sim has no Dune or Mountain terrain and no op for them (dunes and hills are `slope` → Level, mountain is tall `rock` → Break). Ridge and Moat are `prep` codes with no terraform op and no 3D visual, and rock height does not show.
+- **Enclosed hexes** wait until their neighbours are cleared (workers clear a patch edge-first); Ctrl+click the whole patch.
+- **Large `host.step(n)` / `warp`** stalled terraform jobs in a headless run (cause unconfirmed; stepping in slices of 10 ticks works).
+- **Replica entity rows carry no `tier`;** the colony view now publishes `maxWorkerTier`. Online path of `w05-terrain` was not opened in a browser (needs the Postgres stack).
+

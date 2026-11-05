@@ -63,6 +63,10 @@
 19. **Cancel cancels all.** Queue 3 terraform orders, open **`QUEUE`** and click the × once → **see** all three leave the queue, the workers go idle and the orange targets vanish.
 20. **Deep water.** The deep hex next to the lake says `Deep water needs a T2 worker` on click; order a Terraformer to reclaim it.
 
+21. **Terrain test scene.** Open `<client>/play.html?host=local&scenario=w05-terrain` → **see** 12 patches on a ring around the Hub: forest, rocks, mountain, ridge, moat, Living, shallow lake, deep lake, craters, hills, dunes, plain ground. Click `Terraform` and Ctrl+click a whole patch (edge hexes first) → each orderable type is accepted (the deep centre uses the pre-spawned T2 Terraformer); Ridge, Moat and Living say `Nothing to terraform here` / `Already terraformed (Living)`.
+22. **Dismantle.** Click `DISMANTLE` on a drone or on yourself → **see** `Drones and other units cannot be dismantled`. Dismantle a far building → nothing happens until the Builder walks there and works; no instant refund.
+23. **Lights at night.** `time night` → buildings glow. Run `cell 0` → **see** the BROWNOUT banner; shed buildings fade to dark (windows and light cones), the Hub and HQ stay lit. `cell` refill or `time day` restores them.
+
 ## Automated checks (already green on the branch)
 
 `npm run check` · `npm test` · `npm run build` · `npm run e2e -- --waves 05 --hack` (6/6 passing) · `npm run e2e -- --waves 05 --host local --hack` (5 passed, 1 server-only skipped) · `npm run e2e -- --waves ..05 --hack` (W00 + W01 + W02 + W03 + W04 + W05 = 42/42 passing).
