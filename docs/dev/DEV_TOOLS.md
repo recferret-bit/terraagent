@@ -371,23 +371,54 @@ Open `/me.html?as=w12` from the hub's **PILOT / ME** mock card (new tab). Landin
 - Verify with `npm run test:integration -- backend/app/test/progression backend/app/test/game/snapshot.int.spec.ts` and `npm run e2e -- --waves 12`. See [remaining questions](../questions-and-limitations/backend-contracts.md#be-47--remaining-extended-w12-profile-work).
 
 
-## Planned W13 economy tooling (D-44; not implemented yet)
+## W13 markets and economy tooling (D-44)
 
-[ECONOMY](../spec/ECONOMY.md) is the contract; W13-36–57 deliver these tools. The existing `tune` remains available today. Production cash profiles cannot be changed with dev tune once this extension lands.
+[ECONOMY](../spec/ECONOMY.md) is the contract. Operator workflow, artifacts and the mock/cash distinction: [`ECONOMY_OPERATOR.md`](./ECONOMY_OPERATOR.md). The existing `tune` stays for dev balance experiments; a pinned database profile is the way to change an economy that is not a dev sandbox.
 
-- `npm run economy -- schema --json`: discover typed parameters/units/bounds and registered recipes/metrics.
-- `profile export`, `profile clone`, `profile patch --file`, `validate --profile`: immutable candidate management; JSON examples in ECONOMY §6.
-- `simulate --manifest`, `experiment status`, `experiment cancel`, `compare`, `recommend`: bounded isolated runs and machine-readable evidence. No real settlement or automatic activation.
-- Authenticated planned `/v1/economy/schema`; `/profiles` and `/profiles/:id/versions` (read/create/clone/patch/validate/export); `/experiments` (submit/list), `/experiments/:id` (status/results/cancel), `/comparisons` and `/recommendations`. Mutation bodies include schemaVersion, requestId and expectedVersion; run submission pins hashes and budgets.
-- Separate operator-only `/v1/economy/activations` and `/activations/:id/rollback`: explicit scope/version/effective tick and evidence; audited and idempotent. Experiment credentials cannot call these routes. Read/edit/run/activate permissions are distinct; all routes authorize scope and paginate bounded results.
-- Operator UI extends `/dev/chain/?tab=economy` in the internal dev stack: profile forms, recipes, fees, bot budgets, diff, run results and mock activation/rollback. Production management uses the authenticated API/CLI; dev pages/faucets are not exposed publicly. The CLI's operator `activate` and `rollback` subcommands wrap those same routes and require scoped operator credentials.
-- Reports contain exact inputs, engine/data hashes, seeds, flow/fee/PnL metrics, pass/fail/insufficient_data gates and replay instructions. Exit codes: 0 success, 2 invalid input, 3 failed gates, 4 execution failure; asynchronous submission is not completion.
+### Operator panel and `/v1/economy/*`
 
-On implementation, replace this planned marker with verified commands/URLs and update the owner guide in the same change. No new economic environment variables override pinned profiles; use database versions and audit records.
+`/dev/chain/?tab=economy` (dev stack only, `frontend/game/dev/economy/`) is the operator panel: profile versions, parameter forms with units and bounds, diff, validate, experiments, approve/activate/rollback. Every action goes through the authenticated API below; there is no SQL path. The routes are Nest controllers under `backend/app/src/economy/` and need `Authorization: Bearer <token>`:
 
+| Role | Token env | Dev default (not production) | Routes |
+|---|---|---|---|
+| `read` | `TA_ECONOMY_READ_TOKEN` | `dev-economy-reader` | `GET /v1/economy/schema`, `/profiles`, `/profiles/:id/versions`, `/profiles/:id/versions/:version`, `/profiles/:id/versions/:version/export`, `/resolve?planetType=&planetId=&sectorArchetype=&sectorId=` (layers, overrides, hashes, resolved endowment with per-field provenance), `/activations?scope=`, `/experiments`, `/experiments/:id`, `/experiments/:id/artifacts/:name` |
+| `edit` (includes read) | `TA_ECONOMY_EDIT_TOKEN` | `dev-economy-operator` | `POST /profiles/:id/versions/:version/clone`, `PATCH /profiles/:id/versions/:version` (draft only; `expectedVersion` is the revision), `POST .../validate`, `POST /experiments` (202, `{manifest, requestId}`), `POST /experiments/:id/cancel`, `POST /experiments/:id/resume` |
+| `activate` (operators only; AI experiment credentials never get it) | `TA_ECONOMY_ACTIVATE_TOKEN` | `dev-economy-activator` | `POST /profiles/:id/versions/:version/approve`, `POST /activations` (202, scope + version + effective tick + evidence), `POST /activations/:id/rollback` |
 
-### Planned regional resources and logistics controls
+In production an unset token env means the role does not exist (no dev default). Mutations carry a `requestId` and are idempotent by it.
 
-W13-50–57 extend the planned economy schema/editor/API with global, planet-type, planet-ID, sector-archetype and sector-ID bindings, provenance and explicit zero/inherit values. `npm run economy -- profile resolve --profile candidate-a --planet <id> --sector <id> --json` returns all ten effective resources, endowment/runtime hashes and field sources. This command is planned, not available yet.
+| Env | Default | Meaning |
+|---|---|---|
+| `TA_ECONOMY_EXPERIMENT_WORKERS` | `1` (1..16) | Concurrent experiment run threads (each manifest's `budget.maxWorkers` also applies) |
+| `TA_ECONOMY_EXPERIMENT_LEASE_MS` | `30000` | Run lease; an expired lease lets a crashed run be reclaimed |
+| `TA_ECONOMY_ARTIFACT_DIR` | `tests/economy/artifacts/` (gitignored) | Checksummed artifact files, `<dir>/<experimentId>/<name>` |
 
-The internal operator panel labels generation-only versus future-production fields, shows expected resource distribution and logistics cost curves, and compares base/army/route scenarios. Player UI shows abundant/scarce resources, reasoned shopping/surplus baskets, load/capacity, service reserves and cost breakdown. Sim reports include per-sector trade flows and congestion/distance effects. Live edits cannot refill deposits or overwrite a pinned world. See ECONOMY sections 2.1–2.3 and 9.
+### Experiment runner CLI (built, W13-44)
+
+`npx tsx scripts/economy/run-experiment.ts --manifest <file.json> --out <dir> [--profile <profile.json>] [--scenario <id>] [--seed <n>]` runs the headless integrated experiment (the same `@terra/sim` rules, mock adapters, no DB). It writes `manifest.json` (immutable: a different manifest in an existing `--out` is refused), `summary.json`, `metrics.jsonl`, `metrics.csv` and `replay.txt` there, prints one JSON line on stdout and diagnostics on stderr. Exit codes: 0 pass, 2 invalid input, 3 failed gates, 4 execution failure or budget exhausted (incomplete, never a pass). Scenario fixtures: `tests/economy/scenarios/*.json`; sample profiles: `tests/economy/profiles/`.
+
+### `npm run economy -- ...` CLI (W13-46, being built; from ECONOMY §6, not verified here)
+
+`schema --json`, `profile export|clone|patch|resolve`, `validate --profile`, `simulate --manifest`, `experiment status|cancel`, `compare`, `recommend`, plus operator `activate` / `rollback` wrapping the activation routes. Same exit codes as above (0/2/3/4). Until it lands, use the routes above or the runner CLI.
+
+### Markets (F2 mock)
+
+- **REST:** `GET /v1/market/{planetId}`: books, price board, recent trades, policy; with a bearer (dev: `?as=<name>` or `dev:<name>`) also the caller's orders, balances, reservations and stall. Pushes on the game socket: `market.book` (depth, debounced 1 Hz per pair) and `market.trade` (one per FINAL trade). Commands: `market.placeOrder`, `market.cancelOrder`, `market.setHubFee` (wave `W13`).
+- **Two players:** `/play.html?scenario=w13&as=a` seats A (colony 0); the `planet` console command prints the join link `?join=<planetId>&as=b`, which seats B as colony 1 (`tests/scenarios/w13-markets.ts`).
+- **Console commands** (client feature `market-dev`, server only; each posts `POST /v1/dev/commands/<name>`):
+
+| Command | Does |
+|---|---|
+| `faucet near\|usdc <amount>` | Credit mock NEAR or USDC to this colony's verifier balance. Fixture funding, never organic volume (server command `faucet {token, amount, colonyId\|playerId}`) |
+| `market.seed here\|<planetId> <base/quote>` | A fixture bot colony places 5 bids and 5 asks on the pair (server command `market.seed {planetId, pair}`) |
+| `market.clear here\|<planetId>` | Cancel every open fixture-bot order on the planet (`market.clear {planetId}`) |
+| `project <survey_array\|monument>` | Queue a prestige project at the Hub (inputs paid as it builds; no cash reward) |
+
+`POST /v1/dev/market/faucet` is the same faucet as a plain route (dev only, 404 in production, W13 only). `fill` and `drainfuel` now post their ledger entries as `dev.grant`, like `grant`.
+- **Mock chain controls:** `near.mock.fail intents <rate>` (0..1) makes the mock `IntentsPort` fail that share of calls; the outcome-unknown control `mockChainControls.setOutcomeUnknown('Intents', true)` (tests and dev) commits the batch and then throws `NEAR_UNAVAILABLE`, so the trade stays `UNKNOWN` until reconciliation. Both ports are mock: see `NEAR_ADAPTER_INTENTS` in [`ENVS.md`](./ENVS.md).
+- **Metrics** (`GET /metrics`, units in each `help`): `market_trades_total{planet,maker_kind}` (player/npc/fixture, once per FINAL trade), `market_fees_total{planet,token,kind}` (platform/stall/treasury, quote atomic units), `intent_batch_failed_total{reason}`, `market_orders_open{planet}`, `market_reserved_principal{planet,token}`, `market_reserved_fees{planet,token}`, `ta_economy_flow_total{planet,resource,flow}` (whole units; production/capped/consumption/imports/exports), `ta_economy_inventory{planet,resource}`, `ta_economy_profile_info{profile_hash,data_hash}` (value 1). Money values are doubles: exact below 2^53; the Postgres ledger stays exact.
+- **Client:** menu entries `Price board` and `Contracts` (feature `market`); `tradeSettled` shows `Contract signed: 300 water for 10.00 USDC at Port A (1 % fee)` and a `history.trade` row in `/me.html` activity; a failed settlement shows a "Contract failed" toast.
+
+### Regional resources and logistics
+
+W13-50–57 add global, planet-type, planet-ID, sector-archetype and sector-ID bindings with provenance and explicit zero/inherit values. Resolve them today with `GET /v1/economy/resolve?planetId=&sectorId=` (all ten effective resources, endowment/runtime hashes, field sources). The `npm run economy -- profile resolve` form is part of W13-46. Live edits cannot refill deposits or overwrite a pinned world. See ECONOMY sections 2.1–2.3 and 9.
