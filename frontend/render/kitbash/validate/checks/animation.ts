@@ -30,7 +30,7 @@ function coupledPair(ta: number, tb: number, pa: [number, number, number], pb: [
   const lo = Math.min(ta, tb), hi = Math.max(ta, tb);
   if (lo === 8 && (hi === 18 || hi === 28 || hi === 38)) return true;
   if (hi === 8 && (lo === 4 || lo === 5)) return true;
-  if (lo === 9 && (hi === 19 || hi === 29 || hi === 39)) return true;
+  if (lo === 9 && (hi === 19 || hi === 29 || hi === 39 || hi === 49 || hi === 59 || hi === 69)) return true;
   if (hi === 9 && lo === 6) return true;
   if (samePivot(pa, pb) && (((lo === 4 || lo === 14) && (hi === 14 || hi === 24)) || (lo === 6 && hi === 16))) return true;
   return false;
@@ -70,7 +70,9 @@ function buildSweeps(ctx: ValidationContext, anim: P[]): Map<number, Sweep> {
       maxDrift = Math.max(maxDrift, maxEdgeDrift(a.def.tris, pose.tris));
     }
     sweeps.set(a.def.index, { poses: ps, box });
-    if (maxDrift > 0.0005) ctx.add('error', 'ANIM_DISTORTION', `${a.label} distorts/resizes by ${fmt(maxDrift)} while animating (moving parts must be 100% rigid bodies).`, [a.def.index], at(a.box), 'Use pure rigid-body rotations and translations per part; never scale or blend per-vertex coordinates.');
+    const flexible = a.def.tissue === 3 && (a.def.animType === 60 || a.def.animType === 69);
+    const maxEdge = a.def.tris.reduce((m, _, i, t) => i % 9 === 0 ? Math.max(m, Math.hypot(t[i + 3] - t[i], t[i + 4] - t[i + 1], t[i + 5] - t[i + 2])) : m, 0);
+    if (maxDrift > (flexible ? maxEdge * 0.019 + 0.000001 : 0.0005)) ctx.add('error', 'ANIM_DISTORTION', `${a.label} distorts/resizes by ${fmt(maxDrift)} while animating (moving parts must be 100% rigid bodies).`, [a.def.index], at(a.box), 'Use pure rigid-body rotations and translations per part; never scale or blend per-vertex coordinates.');
     if (ctx.o.grounded && a.def.animType >= 2 && box[1] < -0.02) ctx.add('warn', 'ANIM_BELOW_GROUND', `${a.label} dips ${fmt(-box[1])} below the ground while animating.`, [a.def.index], at(a.box));
   }
   return sweeps;

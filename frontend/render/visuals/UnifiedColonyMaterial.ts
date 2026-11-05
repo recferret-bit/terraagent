@@ -1,3 +1,4 @@
+import { ORGANIC_NORMAL } from './unified/organicSurface';
 // .agents/skills/shader-texture-tuning/examples/UnifiedColonyMaterial.ts
 import * as THREE from 'three';
 import { onColonyShaderTune } from '../core/shadowConfig';
@@ -107,6 +108,7 @@ export function createUnifiedColonyMaterial(
       ['#include <color_fragment>', fragColor(joinPlugins((p) => p.fragmentColorChunk))],
       ['#include <roughnessmap_fragment>', FRAG_ROUGHNESS],
       ['#include <metalnessmap_fragment>', FRAG_METALNESS],
+      ['#include <normal_fragment_maps>', '#include <normal_fragment_maps>\n' + ORGANIC_NORMAL],
       ['#include <opaque_fragment>', FRAG_RIM],
     ], 'unified colony fragment');
   };

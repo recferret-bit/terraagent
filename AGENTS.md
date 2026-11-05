@@ -29,6 +29,8 @@ Before writing any 3D, shader, or asset-pipeline code, read the `SKILL.md` for t
 
 ## 2. Non-Negotiable Visual Quality Guardrails (The 4 Pillars)
 
+**Organic fauna exception (owner-approved 2026-11-05):** insects and species hives follow [.agents/skills/procedural-kitbash-3d/references/organic-fauna.md](./.agents/skills/procedural-kitbash-3d/references/organic-fauna.md). Organic anatomy, procedural surface detail, nonmetallic tissue palettes and explicitly bounded flexible tissue replace mechanical-only appearance prescriptions below. Connectivity, motion/CPU/shadow parity, ground contact, production triangle budgets and visual QA still apply.
+
 1. **Pillar 1 — Modular Kitbashing Over Raw Primitives (`procedural-kitbash-3d` & `procedural-particles-3d`):**
    - **Never** use raw sharp `THREE.BoxGeometry` for hulls or chassis; always use `RoundedBoxGeometry` or beveled profiles so edges catch specular highlights. **Never** use flat 2D sprite templates for interaction particles; always use instanced 3D low-poly chunk meshes (`procedural-particles-3d`) with ground bounce (`bounce >= 0.15`), 60/30/10 primary/secondary/accent role balance, and CIE Lab contrast ($\Delta E_{76} \ge 15$), validated via `npm run validate:particles -- --all` (`particle-effect-validator`).
    - Enforce the **60 / 30 / 10 Material Hierarchy**: 60% Primary Hull (`hullPrimary`), 30% Dark Gunmetal Skeleton (`frameGunmetal`), 10% Faction Accent & HDR Emissive (`hullSecondary` + `energyCyan` / `warningAmber` with `emissiveIntensity >= 3.0`).

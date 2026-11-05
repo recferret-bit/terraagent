@@ -29,31 +29,23 @@ export const DEFAULT_FAUNA_ARCHETYPES: Readonly<
   },
 };
 
-/**
- * Species-specific chitin & nest material palettes preserving `MaterialZoneId` 60/30/10 semantics
- * while keeping existing robot/building `DEFAULT_MATERIAL_ZONES` untouched (`procedural-bug-3d`).
- */
-export const FAUNA_SPECIES_ZONES: Readonly<
-  Record<FaunaVisualSpecies, Partial<Record<MaterialZoneId, MaterialZoneSpec>>>
-> = {
-  blackAnt: {
-    hullPrimary: { color: 0x566074, roughness: 0.34, metalness: 0.25, emissiveIntensity: 0.0 },
-    hullSecondary: { color: 0xd4944e, roughness: 0.38, metalness: 0.20, emissiveIntensity: 0.0 },
-    frameGunmetal: { color: 0x242933, roughness: 0.52, metalness: 0.65, emissiveIntensity: 0.0 },
-    rubberDark: { color: 0x15181f, roughness: 0.80, metalness: 0.08, emissiveIntensity: 0.0 },
-  },
-  blueBeetle: {
-    hullPrimary: { color: 0x2e6bd2, roughness: 0.30, metalness: 0.32, emissiveIntensity: 0.0 },
-    hullSecondary: { color: 0xdca450, roughness: 0.34, metalness: 0.24, emissiveIntensity: 0.0 },
-    frameGunmetal: { color: 0x1d2636, roughness: 0.52, metalness: 0.68, emissiveIntensity: 0.0 },
-    rubberDark: { color: 0x121722, roughness: 0.78, metalness: 0.12, emissiveIntensity: 0.0 },
-  },
-  greenSpitter: {
-    hullPrimary: { color: 0x3b8462, roughness: 0.36, metalness: 0.20, emissiveIntensity: 0.0 },
-    hullSecondary: { color: 0xd8c858, roughness: 0.38, metalness: 0.15, emissiveIntensity: 0.0 },
-    frameGunmetal: { color: 0x1e2c25, roughness: 0.55, metalness: 0.55, emissiveIntensity: 0.0 },
-    rubberDark: { color: 0x131c17, roughness: 0.80, metalness: 0.08, emissiveIntensity: 0.0 },
-  },
+/** Biological palettes are nonmetallic; fine surface response comes from anatomical tissue fields. */
+const surface = (color: number, roughness: number): MaterialZoneSpec =>
+  ({ color, roughness, metalness: 0, emissiveIntensity: 0 });
+const palette = (shell: number, joint: number, accent: number, roughness = 0.34) => ({
+  hullPrimary: surface(shell, roughness), frameGunmetal: surface(joint, 0.68),
+  hullSecondary: surface(accent, 0.42), rubberDark: surface(joint, 0.74),
+  glassVisor: surface(0x171b16, 0.14),
+});
+export const FAUNA_SPECIES_ZONES: Readonly<Record<FaunaVisualSpecies, Partial<Record<MaterialZoneId, MaterialZoneSpec>>>> = {
+  blackAnt: palette(0x424449, 0x65534a, 0x88684c, 0.40),
+  blueBeetle: palette(0x235e91, 0x343b44, 0x6a8095, 0.25),
+  greenSpitter: palette(0x426c48, 0x555540, 0xa1b955, 0.38),
+};
+export const FAUNA_HIVE_ZONES: typeof FAUNA_SPECIES_ZONES = {
+  blackAnt: palette(0x89705a, 0x69503e, 0xb59a75, 0.88),
+  blueBeetle: palette(0x496581, 0x605d51, 0x889eab, 0.55),
+  greenSpitter: palette(0x57664a, 0x7c8860, 0xadc565, 0.65),
 };
 
 const PLANET_TYPE_ALIASES: Readonly<Record<string, string>> = {

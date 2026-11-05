@@ -191,7 +191,14 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
 /** Call once per frame with elapsed seconds (and optional 0..1 walkWeight / workWeight) so aPartAnim GPU animation advances. */
 export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight?: number, workWeight?: number) {
   const u = (mesh.userData as any)?.uniforms ?? (mesh.children?.[0]?.userData as any)?.uniforms;
-  if (u?.uTime) u.uTime.value = time;
+  if (u?.uTime) {
+    const id = mesh.userData?.archetypeId as string | undefined;
+    const rate = id === 'fauna.blackAnt' ? 1.22 : id === 'fauna.blueBeetle' ? 0.68 : id === 'fauna.greenSpitter' ? 0.92 : 1;
+    if (rate !== 1) {
+      mesh.userData.faunaPhase ??= Math.abs(Math.sin(mesh.position.x * 12.9898 + mesh.position.z * 78.233)) * 1.25;
+      u.uTime.value = time * rate + mesh.userData.faunaPhase;
+    } else u.uTime.value = time;
+  }
   if (walkWeight !== undefined && u?.uWalkWeight) u.uWalkWeight.value = walkWeight;
   if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
   const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;

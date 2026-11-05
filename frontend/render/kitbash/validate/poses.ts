@@ -35,7 +35,7 @@ const spiderBody = (x: number, y: number, z: number, g: number, w = 1, wk = 0) =
     Math.sin(g * 2) * 0.024 * w + (0.015 + Math.sin(g * 2) * 0.015) * wk,
   );
 
-function bipedLegPoint(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, w = 1, wk = 0): [number, number, number] {
+function bipedLegPoint(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, w = 1, wk = 0, _organic = false): [number, number, number] {
   const tau = g + (px >= 0 ? 0 : Math.PI), s = Math.sin(tau), lift = Math.max(0, Math.cos(tau));
   const [bhx, bhy, bhz] = bipedBody(px, py, pz, g, w, wk);
   const dhx = bhx - px, dhy = bhy - py, dhz = bhz - pz;
@@ -54,8 +54,8 @@ function bipedLegPoint(x: number, y: number, z: number, px: number, py: number, 
   return [x + dhx, kmy + ay0 * cs + (y - (py + ky0 + ay0)), kmz + ay0 * ss + (z - pz)];
 }
 
-function spiderLegPoint(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, w = 1, wk = 0): [number, number, number] {
-  const sideSign = px >= 0 ? 1 : -1, tau = g + (px >= 0 ? 0 : Math.PI) + pz * 4.9;
+function spiderLegPoint(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, w = 1, wk = 0, organic = false): [number, number, number] {
+  const sideSign = px >= 0 ? 1 : -1, tau = g + (px >= 0 ? 0 : Math.PI) + (organic ? (Math.abs(pz) > 0.1 ? Math.PI : 0) : pz * 4.9);
   const yaw = sideSign * Math.sin(tau) * 0.18 * w, cy = Math.cos(yaw), sy = Math.sin(yaw);
   const [bhx, bhy, bhz] = spiderBody(px, py, pz, g, w, wk);
   const dhx = bhx - px, dhy = bhy - py, dhz = bhz - pz;
@@ -99,7 +99,7 @@ function addArmPoses(make: MakePoseFn, px: number, py: number, pz: number): void
   }
 }
 
-function addBodyCarrierPoses(make: MakePoseFn, base: number, sub: number, px: number, pz: number): void {
+function addBodyCarrierPoses(make: MakePoseFn, base: number, sub: number, px: number, py: number, pz: number): void {
   const fn = base === 8 ? bipedBody : spiderBody, name = base === 8 ? 'biped body step' : 'spider body step';
   for (let k = 1; k < 16; k++) {
     const g = (k * Math.PI * 2) / 16, c = Math.cos(g), s = Math.sin(g);
@@ -108,6 +108,7 @@ function addBodyCarrierPoses(make: MakePoseFn, base: number, sub: number, px: nu
       if (sub === 1) { const rx = x - px, rz = z - pz; tx = px + rx * c - rz * s; tz = pz + rx * s + rz * c; }
       else if (sub === 2) { ty += Math.sin(g + px * 3.1) * 0.025; }
       else if (sub === 3) { tz -= Math.pow(Math.max(Math.sin(g + px * 2.3), 0), 6) * 0.06; }
+      [tx, ty, tz] = organicPose(tx, ty, tz, px, py, pz, g, sub, 0);
       const [bx, by, bz] = fn(tx, ty, tz, g, 1, 0);
       t[i] = bx; t[i + 1] = by; t[i + 2] = bz;
     });
@@ -119,10 +120,27 @@ function addBodyCarrierPoses(make: MakePoseFn, base: number, sub: number, px: nu
       if (sub === 1) { const rx = x - px, rz = z - pz; tx = px + rx * c - rz * s; tz = pz + rx * s + rz * c; }
       else if (sub === 2) { ty += Math.sin(g + px * 3.1) * 0.025; }
       else if (sub === 3) { tz -= Math.pow(Math.max(Math.sin(g * 2 + px * 2.3), 0), 6) * 0.06; }
+      [tx, ty, tz] = organicPose(tx, ty, tz, px, py, pz, g, sub, 1);
       const [bx, by, bz] = fn(tx, ty, tz, g, 0, 1);
       t[i] = bx; t[i + 1] = by; t[i + 2] = bz;
     });
   }
+}
+
+/** Mirrors ORGANIC_MOTION: jaws/feelers rotate; gland tissue has a bounded 1.8% strain. */
+function organicPose(x: number, y: number, z: number, px: number, py: number, pz: number, g: number, sub: number, wk: number): [number, number, number] {
+  const side = px >= 0 ? 1 : -1;
+  if (sub === 4 || sub === 5) {
+    const a = sub === 4 ? -side * (0.06 + 0.24 * wk * (0.5 + 0.5 * Math.sin(g * 2)))
+      : side * (0.10 * Math.sin(g + px * 9) + 0.04 * Math.sin(g * 2));
+    const rx = x - px, rz = z - pz;
+    return [px + rx * Math.cos(a) - rz * Math.sin(a), y, pz + rx * Math.sin(a) + rz * Math.cos(a)];
+  }
+  if (sub === 6) {
+    const pulse = 1 + 0.018 * Math.sin(g + px * 3.1);
+    return [px + (x - px) * pulse, py + (y - py) * pulse, pz + (z - pz) * pulse];
+  }
+  return [x, y, z];
 }
 
 export function poses(p: PartDef): Pose[] {
@@ -134,7 +152,12 @@ export function poses(p: PartDef): Pose[] {
   };
   const [px, py, pz] = p.pivot;
   const raw = Math.round(p.animType), sub = Math.floor(raw / 10), base = raw - sub * 10;
-  if (base === 1 && sub === 0) {
+  if (raw === 60) {
+    for (let k = 1; k < 16; k++) make(`gland pulse ${k}`, (x, y, z, i, t) => {
+      const point = organicPose(x, y, z, px, py, pz, k * Math.PI * 2 / 16, 6, 0);
+      t[i] = point[0]; t[i + 1] = point[1]; t[i + 2] = point[2];
+    });
+  } else if (base === 1 && sub === 0) {
     for (let k = 1; k < 24; k++) {
       const a = (k * Math.PI * 2) / 24, c = Math.cos(a), s = Math.sin(a);
       make(`${k * 15}° of its spin`, (x, y, z, i, t) => { const rx = x - px, rz = z - pz; t[i] = px + rx * c - rz * s; t[i + 1] = y; t[i + 2] = pz + rx * s + rz * c; });
@@ -148,14 +171,14 @@ export function poses(p: PartDef): Pose[] {
     for (let k = 1; k < 16; k++) {
       const g = (k * Math.PI * 2) / 16;
       make(`${Math.round((k * 360) / 16)}° of its ${label} gait`, (x, y, z, i, t) => {
-        const [tx, ty, tz] = fn(x, y, z, px, py, pz, g, sub, 1, 0);
+        const [tx, ty, tz] = fn(x, y, z, px, py, pz, g, sub, 1, 0, (p.tissue ?? 0) > 0);
         t[i] = tx; t[i + 1] = ty; t[i + 2] = tz;
       });
     }
     for (let k = 0; k < 8; k++) {
       const g = (k * Math.PI * 2) / 8;
       make(`${Math.round((k * 360) / 8)}° of its ${label} work stance`, (x, y, z, i, t) => {
-        const [tx, ty, tz] = fn(x, y, z, px, py, pz, g, sub, 0, 1);
+        const [tx, ty, tz] = fn(x, y, z, px, py, pz, g, sub, 0, 1, (p.tissue ?? 0) > 0);
         t[i] = tx; t[i + 1] = ty; t[i + 2] = tz;
       });
     }
@@ -170,7 +193,7 @@ export function poses(p: PartDef): Pose[] {
       });
     }
   } else if (base === 8 || base === 9) {
-    addBodyCarrierPoses(make, base, sub, px, pz);
+    addBodyCarrierPoses(make, base, sub, px, py, pz);
   }
   return out;
 }

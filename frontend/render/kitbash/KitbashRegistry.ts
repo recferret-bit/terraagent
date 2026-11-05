@@ -57,7 +57,7 @@ export const DEFAULT_MATERIAL_ZONES: Record<MaterialZoneId, MaterialZoneSpec> = 
  * - 9: SpiderBody — Arachnid/quadruped carapace/turret step-reaction (2ω stomp compression, diagonal roll, pitch, surge, yaw)
  *      (19 = SpinY on SpiderBody, 29 = HoverBob on SpiderBody, 39 = RecoilPulse on SpiderBody)
  */
-export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18 | 19 | 24 | 28 | 29 | 38 | 39;
+export type AnimChannelId = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 14 | 16 | 18 | 19 | 24 | 28 | 29 | 38 | 39 | 49 | 59 | 60 | 69;
 
 /**
  * What a part is for, when a geometry check must treat it specially (the validator never infers this from names):
@@ -93,6 +93,7 @@ export interface PartMeta {
   emissive: number;
   /** Zone surface the part was stamped with (sRGB hex, roughness, metalness): the appearance checks read these. */
   color: number; roughness: number; metalness: number;
+  tissue?: number;
   /** Vertices this part owns in the merged buffer (parts are concatenated in order, non-indexed). */
   vertexCount: number;
 }
@@ -148,7 +149,7 @@ export class KitbashBuilder {
     const animType = options.animType ?? 0;
     this.meta.push({
       index: this.parts.length, name: options.name ?? `${geometry.type.replace('Geometry', '')}#${this.parts.length}`, zone: zoneId,
-      kind: geometry.type, ...(options.role ? { role: options.role } : {}), animType, pivot: [pivot[0], pivot[1], pivot[2]], emissive: glow, color: zone.color, roughness: zone.roughness, metalness: zone.metalness, vertexCount: count,
+      kind: geometry.type, tissue: geometry.getAttribute('aOrganic')?.getX(0) ?? 0, ...(options.role ? { role: options.role } : {}), animType, pivot: [pivot[0], pivot[1], pivot[2]], emissive: glow, color: zone.color, roughness: zone.roughness, metalness: zone.metalness, vertexCount: count,
     });
 
     for (let i = 0; i < count; i++) {
@@ -166,6 +167,7 @@ export class KitbashBuilder {
       animAttr[i * 4 + 3] = pivot[2];
     }
 
+    if (!g.hasAttribute('aOrganic')) g.setAttribute('aOrganic', new THREE.BufferAttribute(new Float32Array(count), 1));
     g.setAttribute('color', new THREE.BufferAttribute(colorAttr, 4));
     g.setAttribute('aSurfacePBR', new THREE.BufferAttribute(surfaceAttr, 2));
     g.setAttribute('aPartAnim', new THREE.BufferAttribute(animAttr, 4));
@@ -191,7 +193,15 @@ export class KitbashBuilder {
       cursor += m.vertexCount;
     }
     merged.userData.partRanges = partRanges;
+    const authoredNormals = this.meta.some(p => p.kind === 'OrganicGeometry') ? merged.attributes.normal.array.slice() : null;
     merged.computeVertexNormals();
+    let normalOffset = 0;
+    for (const part of this.meta) {
+      if (part.kind === 'OrganicGeometry' && authoredNormals) {
+        for (let i = normalOffset; i < normalOffset + part.vertexCount * 3; i++) merged.attributes.normal.array[i] = authoredNormals[i];
+      }
+      normalOffset += part.vertexCount * 3;
+    }
     merged.computeBoundingBox();
     merged.computeBoundingSphere();
     KitbashBuilder.sink?.push({ geometry: merged, parts: this.meta.slice() });

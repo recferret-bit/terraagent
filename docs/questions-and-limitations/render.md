@@ -958,3 +958,23 @@ This entry was RN-26 on `wave/w06-invisible-chain`. W02 landed RN-26..RN-62 on `
 - **Workaround / mitigation:** Laser Tower vs Autocannon is distinguished in the HUD selection bar, ghost preview, range ring (`9` vs `8` tiles), and instant cyan/amber laser beam VFX (`ProjectileVfxSystem`).
 - **To resolve:** Land `W07-23` and `W07-24` when `H+` visual polish issues open.
 - **Found:** 2026-11-04, W07 wave execution.
+
+### RN-68 · Organic tissue optics and animation remain inexpensive approximations
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/render/visuals/unified/organicSurface.ts`, `kitbash/catalog.ts`, `kitbash/greebles/organic/`, `.agents/skills/procedural-kitbash-3d/references/organic-fauna.md`
+- **What happens:** Chitin, soil, membranes and eyes use nonmetallic PBR with shared procedural pigmentation/roughness/micro-normal fields. Acid sacs use opaque wet shading and thickness-inspired color, not physical transmission, subsurface scattering or thin-film iridescence. Glands pulse by at most 1.8%; antennae and jaws articulate rigidly. Feet retain the shared flat-ground gait rather than terrain-aware IK. Per-creature animation phase derives from the initial mesh position; colocated initial poses can share phase.
+- **Why it is like this:** Keeps the six regenerated models below 3.5k triangles, in the existing merged geometry and visible/depth shader pipeline, without transparent sorting or CPU skeletal rigs. This pass establishes anatomical shape and material differentiation first.
+- **Workaround / mitigation:** Species gait rates differ; organic legs use explicit alternating tripods. All six models pass geometry/motion validation. Actual GPU poses were compared with the CPU validator; see [review evidence](../visuals/organic-fauna-review.md).
+- **To resolve:** Add measured optical or terrain-foot-placement improvements through the existing renderer if close-up shots justify their cost; use stable app-provided instance seeds when exact duplicate-position phase separation is needed. No 200-unit performance benchmark was run in this visual pass.
+- **Found:** 2026-11-05, organic bugs and hives regeneration.
+
+### RN-69 · Mixed hive-life preview can overlap neighboring insects
+
+- **Status:** Open
+- **Area / code:** `frontend/playground/content/FaunaSceneHost.ts`, `frontend/playground/content/faunaSimHelpers.ts`
+- **What happens:** The existing cosmetic passive/aggressive scene places 17 residents around three hives. The mixed preview visibly crowds neighboring bodies and antennae; the geometry validator checks parts within one creature, not inter-creature collision. This is visible in `docs/visuals/evidence/organic-fauna/mixed-passive.png`.
+- **Why it is like this:** The cosmetic wander fixture and mesh easing do not enforce the regenerated silhouettes as inter-creature clearance envelopes. Gameplay movement was outside this model/skill regeneration.
+- **Workaround / mitigation:** Inspect individual models with `?inspect=fauna.<species>` and each hive separately. Do not use this cosmetic crowd as proof of gameplay collision correctness.
+- **To resolve:** Move passive/aggressive life fixtures onto shared sim movement with appropriate clearance and review emergence using the final silhouettes; avoid adding renderer-side position corrections.
+- **Found:** 2026-11-05, mixed-scene visual check during organic regeneration.

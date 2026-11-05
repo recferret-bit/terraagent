@@ -11,7 +11,7 @@ export interface PartDef {
   pivot: [number, number, number];
   emissive: number;
   /** Zone surface (sRGB hex, roughness, metalness). Optional: falls back to the zone's default. */
-  color?: number; roughness?: number; metalness?: number;
+  color?: number; roughness?: number; metalness?: number; tissue?: number;
   tris: Float32Array;
 }
 export interface ModelInput { id: string; label: string; source: 'builder' | 'components'; parts: PartDef[] }

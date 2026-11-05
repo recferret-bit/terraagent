@@ -9,6 +9,8 @@ description: >-
   skill whenever animating robots, walkers, vehicles, buildings, or props.
 ---
 
+> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
+
 # Procedural 3D Animation Skill (`procedural-animation-3d`)
 
 This skill enforces **Zero-CPU Runtime Procedural Animation** across all `TerraAgent` 3D units and buildings. Instead of spawning expensive `THREE.SkinnedMesh` bone hierarchies, `THREE.AnimationMixer` instances, or per-frame CPU Inverse Kinematics solvers that break instancing, all mechanical rigging is stamped into vertex attributes (`aPartAnim`) at build time and evaluated in closed form inside the `UnifiedColonyMaterial` vertex shader.
