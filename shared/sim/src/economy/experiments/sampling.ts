@@ -15,6 +15,8 @@ export interface SamplerOptions {
   readonly runId: string;
   readonly resources: readonly ResourceKey[];
   readonly ticksPerDay: bigint;
+  /** Colony ids of related accounts (one owner): trades among them are reported apart and excluded from organic metrics. */
+  readonly related?: ReadonlySet<string>;
 }
 
 const stockOf = (state: PlanetState, ci: number, key: ResourceKey): bigint => BigInt((state.colonies[ci]?.stock as Record<string, number> | undefined)?.[key] ?? 0);
@@ -70,6 +72,13 @@ export class Sampler {
     const scope = 'global';
     const trades = this.tradesIn(harness, window);
     this.push(metricOf(BigInt(trades.length), 'count', window, scope), 'market.trades');
+    if (this.opts.related && this.opts.related.size > 0) {
+      const rel = this.opts.related;
+      const isRelated = (t: HarnessTrade): boolean => t.parties.filter((p) => p.role === 'buyer' || p.role === 'seller').every((p) => rel.has(p.colonyId));
+      const related = trades.filter(isRelated).length;
+      this.push(metricOf(BigInt(related), 'count', window, scope), 'market.trades.related');
+      this.push(metricOf(BigInt(trades.length - related), 'count', window, scope), 'market.trades.organic');
+    }
     this.push(metricOf(BigInt(harness.openOrders().length), 'count', window, scope), 'market.open_orders');
     const sum = (f: (t: HarnessTrade) => bigint): bigint => trades.reduce((a, t) => a + f(t), 0n);
     this.push(metricOf(sum((t) => t.batch.notional), 'usdc_atomic', window, scope), 'market.notional');
