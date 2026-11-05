@@ -10,6 +10,7 @@ import { IntentsPort } from '../../near/application/ports/intents.port.js';
 import { MarketBooks } from '../book/market-books.js';
 import { isBookable, type MarketOrderRecord } from '../book/market-order.record.js';
 import { MarketOrderRepository } from '../book/market-order.repository.js';
+import { MarketMetrics } from '../telemetry/market-metrics.js';
 import { MarketSimGateway } from '../orders/market-sim-gateway.js';
 import { OrderFunds } from '../orders/order-funds.js';
 import { PlaceOrderService } from '../orders/place-order.service.js';
@@ -62,6 +63,7 @@ export class TradeRecovery implements OnModuleInit, OnModuleDestroy {
     private readonly place: PlaceOrderService,
     private readonly intents: IntentsPort,
     private readonly listeners: OutboxListeners,
+    private readonly metrics: MarketMetrics,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
   ) {}
@@ -122,6 +124,7 @@ export class TradeRecovery implements OnModuleInit, OnModuleDestroy {
   async failTrade(plan: TradePlan, error: string): Promise<FailOutcome> {
     const res = await withTransaction(this.prisma, (tx) => this.rollBack(tx, plan, error));
     if (!res.failed) return res;
+    this.metrics.batchFailed(codeOf(error) ?? 'unknown');
     const ids = plan.rollback.map((r) => r.orderId);
     await this.books.sync(...ids);
     for (const rel of res.releases) {

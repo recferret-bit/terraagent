@@ -3,6 +3,9 @@ import { OrderBook } from '@terra/sim/systems/trade/market-book';
 import { isBookable, type MarketOrderRecord } from './market-order.record.js';
 import { MarketOrderRepository } from './market-order.repository.js';
 
+/** Called after an order was put into or taken out of its pair's book (`market.book` push, W13-19). */
+export type BookChangeListener = (change: { planetId: string; pair: string }) => void;
+
 const keyOf = (planetId: string, pair: string): string => `${planetId}\u0000${pair}`;
 
 /**
@@ -14,6 +17,7 @@ const keyOf = (planetId: string, pair: string): string => `${planetId}\u0000${pa
 export class MarketBooks implements OnModuleInit, OnModuleDestroy {
   private readonly books = new Map<string, Promise<OrderBook<MarketOrderRecord>>>();
   private unsubscribe: (() => void) | undefined;
+  private readonly changeListeners = new Set<BookChangeListener>();
 
   constructor(private readonly repo: MarketOrderRepository) {
     this.unsubscribe = repo.onWrite((o) => void this.apply(o));
@@ -30,6 +34,11 @@ export class MarketBooks implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy(): void {
     this.unsubscribe?.();
+  }
+
+  onChange(listener: BookChangeListener): () => void {
+    this.changeListeners.add(listener);
+    return () => this.changeListeners.delete(listener);
   }
 
   /** Drops every book and reloads all resting orders from the database. */
@@ -85,9 +94,11 @@ export class MarketBooks implements OnModuleInit, OnModuleDestroy {
   /** Puts a persisted order into (or takes it out of) its book according to its state. Idempotent. */
   async apply(order: MarketOrderRecord): Promise<void> {
     const loading = this.books.get(keyOf(order.planetId, order.pair));
-    if (!loading) return; // not loaded: the first access reads the committed row
-    const book = await loading;
-    if (isBookable(order.state)) book.add(order);
-    else book.remove(order.orderId);
+    if (loading) { // not loaded: the first access reads the committed row
+      const book = await loading;
+      if (isBookable(order.state)) book.add(order);
+      else book.remove(order.orderId);
+    }
+    for (const l of this.changeListeners) l({ planetId: order.planetId, pair: order.pair });
   }
 }

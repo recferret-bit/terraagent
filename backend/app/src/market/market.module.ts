@@ -1,6 +1,10 @@
 import { Module } from '@nestjs/common';
 import { MarketBooks } from './book/market-books.js';
 import { PriceBoardService } from './board/price-board.service.js';
+import { MarketBookPush } from './api/market-book-push.service.js';
+import { MarketCallers } from './api/market-caller.js';
+import { MarketController } from './api/market.controller.js';
+import { MarketSnapshotService } from './api/market-snapshot.service.js';
 import { MarketFaucetCommand } from './dev/market-faucet.command.js';
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
 import { MarketAccountsBootstrap } from './dev/market-accounts.bootstrap.js';
@@ -21,7 +25,9 @@ import { IntentTradeRepository } from './settlement/intent-trade.repository.js';
 import { SettlementFillsHook } from './settlement/settlement-fills.hook.js';
 import { TradeRecovery } from './settlement/trade-recovery.service.js';
 import { TradeSettlement } from './settlement/trade-settlement.service.js';
+import { MarketMetrics } from './telemetry/market-metrics.js';
 import { NearModule } from '../near/near.module.js';
+import { TradeHistoryProducer } from './progression/trade-history.producer.js';
 import { MarketProgressionProducer } from './progression/market-progression.producer.js';
 
 /**
@@ -46,15 +52,21 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     IntentTradeRepository,
     SettlementFillsHook,
     TradeSettlement,
-    PriceBoardService,
     TradeRecovery,
     MarketAccountsBootstrap,
+    PriceBoardService,
+    MarketBookPush,
+    MarketCallers,
+    MarketSnapshotService,
     { provide: MarketFillsHook, useExisting: SettlementFillsHook },
     MarketFaucetService,
     MarketFaucetCommand,
     MarketProgressionProducer,
+    TradeHistoryProducer,
+    MarketMetrics,
   ],
   controllers: [
+    MarketController,
     MarketFaucetController,
   ],
   imports: [
@@ -72,8 +84,8 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     MarketFillsHook,
     IntentTradeRepository,
     TradeSettlement,
-    PriceBoardService,
     TradeRecovery,
+    PriceBoardService,
   ],
 })
 export class MarketModule {}

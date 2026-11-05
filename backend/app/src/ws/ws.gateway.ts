@@ -6,6 +6,7 @@ import { Counter, Gauge, type Registry } from 'prom-client';
 import { WebSocketServer } from 'ws';
 import { corsOrigin } from '../core/cors';
 import type { EventBus } from '../bus/event-bus';
+import type { MarketBookBusEvent } from '../market/api/market-book-push.service';
 import type { MarketTradeBusEvent } from '../market/settlement/trade-settlement.service';
 import type { NearCargoStatusBusEvent } from '../near/cargo/cargo-status.service';
 import type { AppEnv } from '../core/tokens';
@@ -46,6 +47,7 @@ export class WsGateway {
   private readonly undown: () => void;
   private readonly uncargo: (() => void) | undefined;
   private readonly unmarket: (() => void) | undefined;
+  private readonly unbook: (() => void) | undefined;
 
   constructor(private readonly o: GatewayOptions) {
     this.rooms = new PlanetRooms(o.planets);
@@ -59,6 +61,8 @@ export class WsGateway {
     });
     this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
     this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcast(ev.planetId, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
+    // No per-socket topic tracking exists yet: market pushes go to the whole planet room (W13-19 limitation).
+    this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcast(ev.planetId, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
     const conns = this.conns;
     new Gauge({ name: 'ta_ws_connections', help: 'Open WebSocket connections', registers: [o.registry], collect() { this.set(conns.size); } });
     this.welcomes = new Counter({ name: 'ta_planet_ws_welcome_total', help: 'welcome messages sent', registers: [o.registry] });
@@ -129,6 +133,7 @@ export class WsGateway {
     this.undown();
     this.uncargo?.();
     this.unmarket?.();
+    this.unbook?.();
     const all = [...this.conns];
     for (const c of all) c.bye(CLOSE_CODES.server_restarting, 'server_restarting');
     await new Promise<void>((resolve) => {
