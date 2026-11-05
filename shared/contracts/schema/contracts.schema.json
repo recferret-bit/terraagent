@@ -3277,6 +3277,35 @@
       "origin": "module",
       "summary": "Spawns a colony drop pod at a free spawn slot with starting pod cargo (W01-09).",
       "wave": "W01"
+    },
+    "unitReserve": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityIds": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
+          "reserve": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "entityIds",
+          "reserve"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Puts owned units in reserve (stops attack and production, keeps control slots) or deploys them again (activation recipe and delay apply).",
+      "wave": "W13"
     }
   },
   "events": {
