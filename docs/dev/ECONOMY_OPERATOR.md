@@ -1,6 +1,6 @@
 # Economy operator workflow (W13, F2 mock)
 
-How an operator changes the economy without a code deployment. The contract is [`ECONOMY.md`](../spec/ECONOMY.md) (sections 5, 6, 8); commands, routes and env variables are in [`DEV_TOOLS.md`](./DEV_TOOLS.md) ("W13 markets and economy tooling") and [`ENVS.md`](./ENVS.md). Everything below runs against the mock chain: no real cash moves.
+How an operator changes the economy without a code deployment. The contract is [`ECONOMY.md`](../spec/ECONOMY.md) (sections 5, 6, 8); commands, routes and env variables are in [`DEV_TOOLS.md`](./DEV_TOOLS.md) ("W13 markets and economy tooling") and [`ENVS.md`](./ENVS.md). Everything below runs against the mock chain: no real cash moves. Owner review, acceptance pack and stress suite commands: [`ECONOMY_REVIEW.md`](./ECONOMY_REVIEW.md).
 
 ## Mock versus cash
 
