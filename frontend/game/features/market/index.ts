@@ -9,6 +9,8 @@ import './contracts/contracts.css';
 import './tab/market-tab.css';
 import './order/order.css';
 import './stall/stall.css';
+import './supply/supply.css';
+import { mountSupplyPanel } from './supply/register';
 
 declare module '../../core/registry/types' {
   interface FeatureServices {
@@ -27,6 +29,7 @@ export default defineFeature({
   analytics: [...MARKET_EVENTS],
   hud: [
     boardHud,
+    { id: 'supply-trade', slot: 'bottom-left', order: 64, mount: mountSupplyPanel },
     { id: 'market-tab', slot: 'bottom-right', order: 30, mount: (_el, ctx: FeatureContext) => registerMarketTab(ctx) },
     {
       id: 'contracts',

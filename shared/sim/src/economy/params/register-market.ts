@@ -30,6 +30,7 @@ export function registerMarketParams(r: ParamRegistry): void {
   registerField(r, t, 'quote.*', 'minNotionalAtomic', { description: 'Minimum order notional in the quote token market atomic units (USDC micro, NEAR yocto, resources whole units).', unit: 'atomic', type: 'atomic', bounds: { min: 0, max: ATOMIC_MAX } });
   registerField(r, t, 'quote.*', 'tickAtomic', { description: 'Price tick in the quote token market atomic units.', unit: 'atomic', type: 'atomic', bounds: { min: 1, max: '1000000000000' } });
   registerBoard(r);
+  registerSupply(r);
   registerDevSeed(r);
   for (const k of RESOURCE_KEYS) registerResource(r, k);
 }
@@ -47,6 +48,12 @@ function registerBoard(r: ParamRegistry): void {
   int('counterpartyWeightCapBp', 'Price board: largest share of organic volume one counterparty may take part in (bp of 2x volume); above it the reference is withheld.', 'ratio_bp', 1, 10000);
   int('maxMoveBp', 'Price board: organic trades further than this from the median organic price are excluded as outliers.', 'ratio_bp', 1, 1000000);
   int('stalenessS', 'Price board: the newest organic trade must be younger than this.', 'seconds', 1, 2592000);
+}
+
+/** Badge thresholds of the Supply & trade panel (W13-55). */
+function registerSupply(r: ParamRegistry): void {
+  registerField(r, market, 'supply', 'abundantWeightBp', { description: 'A resource whose pinned occurrence weight is at least this (bp, 10000 = reference) is badged abundant.', unit: 'ratio_bp', type: 'int', bounds: { min: 1, max: 1000000 }, dependencies: [{ path: 'market.supply.scarceWeightBp', relation: 'gte' }] });
+  registerField(r, market, 'supply', 'scarceWeightBp', { description: 'A resource whose pinned occurrence weight is at most this (bp, 10000 = reference) is badged scarce.', unit: 'ratio_bp', type: 'int', bounds: { min: 0, max: 1000000 } });
 }
 
 /** Dev fixture ladder of `market.seed` (never used by the sim or settlement). */

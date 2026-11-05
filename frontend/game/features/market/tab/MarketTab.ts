@@ -122,6 +122,21 @@ export class MarketTab implements TradeHubTabInstance {
       .finally(() => { this.loading = false; });
   }
 
+  /** Selects a pair (the Supply & trade panel's buy / sell buttons land here; nothing is ever submitted). */
+  setPair(base: ResourceKey, quote: MarketTokenKey): void {
+    this.base = base;
+    this.quote = quote;
+    this.fillBases();
+    this.fillQuotes();
+    this.render();
+  }
+
+  /** Pair, side and amount of a suggestion; the order is only prefilled. */
+  prefill(base: ResourceKey, quote: MarketTokenKey, side: 'buy' | 'sell', amount: number): void {
+    this.setPair(base, quote);
+    this.order.prefill(side, amount);
+  }
+
   selected(): string {
     return pairId(this.base, this.quote);
   }
