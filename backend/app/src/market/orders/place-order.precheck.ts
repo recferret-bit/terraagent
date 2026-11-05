@@ -6,7 +6,7 @@ import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { MarketOrderRepository } from '../book/market-order.repository.js';
-import { resolveMarketAccountId } from './colony-account.js';
+import { MarketColonies } from './market-colonies.js';
 import { OrderFunds, requirementOf } from './order-funds.js';
 import { MarketPolicyProvider } from './market-policy.provider.js';
 
@@ -23,6 +23,7 @@ export class PlaceOrderPrecheck implements OnModuleInit, OnModuleDestroy {
     private readonly funds: OrderFunds,
     private readonly repo: MarketOrderRepository,
     private readonly policy: MarketPolicyProvider,
+    private readonly colonies: MarketColonies,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
   ) {}
@@ -41,13 +42,12 @@ export class PlaceOrderPrecheck implements OnModuleInit, OnModuleDestroy {
     const a = input.args as Partial<MarketPlaceOrderArgs>;
     if (!a.price || typeof a.amount !== 'number' || !a.resource || !a.side) return null; // the sim reports bad args
     const cfg = this.policy.current();
-    const colonyId = input.colony.id;
+    const { colonyId, accountId } = await this.colonies.resolve(input.planetId, input.colony.colonyIndex, input.colony.id, input.playerId);
     if ((await this.repo.listOpenByColony(colonyId)).length >= cfg.openOrderLimit) return { code: 'order_limit', detail: `At most ${cfg.openOrderLimit} open orders.` };
     const need = requirementOf({
       side: a.side, base: a.resource, quote: a.price.token, amount: BigInt(a.amount), priceAmount: BigInt(a.price.amount),
       platformFeeBp: cfg.platformFeeBp, maxStallFeeBp: a.maxStallFeeBp ?? cfg.stallFeeMaxBp,
     });
-    const accountId = await resolveMarketAccountId(this.prisma, colonyId, input.playerId, input.planetId, input.colony.colonyIndex);
     const view = await this.funds.view(accountId, colonyId, need.token);
     const total = need.principal + need.fees;
     if (view.free < total) return { code: 'insufficient_cargo', detail: `Need ${total} ${need.token} (incl. fees), ${view.free} free.` };

@@ -10,6 +10,7 @@ import { ExperimentInputError } from './errors';
 import { scenarioHashOf, stateHashOf } from './hashes';
 import { MarketBridge } from './market-bridge';
 import { MarketHarness, type HarnessConfig } from './market-harness';
+import { RegionSampler, applyShocks, parseRegionSpec, regionHashesOf } from './region';
 import { Sampler } from './sampling';
 import type { BehaviorContext, BehaviorProfile, BehaviorStats, ExperimentScenarioDef, FlowsReconciliation, RunResult, RunSummary } from './types';
 
@@ -43,9 +44,14 @@ interface Loop {
   readonly postings: LedgerPosting[];
   readonly stats: BehaviorStats;
   readonly negative: Set<string>;
+  /** Region scenarios only (`assumptions.region`): per-sector metrics and scripted shocks. */
+  readonly region?: RegionSampler;
+  readonly shocks: ExperimentScenarioDef['manifest']['shocks'];
+  nextShockId(): string;
 }
 
 function stepOnce(l: Loop, dt: number): void {
+  if (l.shocks.length > 0) applyShocks(l.host, l.shocks, l.host.tick, l.host.tick + dt, l.nextShockId);
   l.behavior.act(l.ctx);
   const res = l.host.step(dt);
   for (const o of res.outcomes) if (o.code) l.stats.rejected[`${o.kind}:${o.code}`] = (l.stats.rejected[`${o.kind}:${o.code}`] ?? 0) + 1;
@@ -90,12 +96,22 @@ function summarize(l: Loop, ticks: number): RunSummary {
   };
 }
 
+/** A manifest that pins a §9 hash must match the fixture's resolved one (a silently different terrain is never compared). */
+function checkPins(manifest: ExperimentManifest, h: ReturnType<typeof regionHashesOf>): void {
+  for (const k of ['regionBindingsHash', 'endowmentHash', 'runtimeEconomyHash', 'logisticsPolicyHash'] as const) {
+    const pinned = manifest[k];
+    if (pinned !== undefined && pinned !== h[k]) throw new ExperimentInputError(`${k}_mismatch`, `manifest pins ${k} ${pinned} but the scenario fixture resolves ${h[k]}`);
+  }
+}
+
 function setup(manifest: ExperimentManifest, scenario: ExperimentScenarioDef, seed: number, compiled: CompiledProfile): { loop: Loop; runId: string; flags: string[] } {
   const flags = [...parseWaves(manifest.waves).list];
   if (!sameFlags(flags, compiled.flags)) throw new ExperimentInputError('waves_mismatch', `manifest waves "${manifest.waves}" differ from the compiled profile's (${compiled.flags.join(',')})`);
   if (manifest.profile.hash !== compiled.overridesHash) throw new ExperimentInputError('profile_hash_mismatch', `manifest pins profile hash ${manifest.profile.hash} but the compiled profile is ${compiled.overridesHash}`);
   const data = compileData(new Set(flags), compiled.overrides);
   if (data.hash !== compiled.dataHash) throw new ExperimentInputError('data_hash_mismatch', `compiled data hash ${data.hash} differs from the profile's ${compiled.dataHash}`);
+  const regionSpec = parseRegionSpec(scenario.manifest.assumptions);
+  if (regionSpec) checkPins(manifest, regionHashesOf(regionSpec));
   const host = scenario.createHost({ seed, flags, data });
   if (host.pipeline.config.data.hash !== compiled.dataHash) throw new ExperimentInputError('data_hash_mismatch', 'the scenario host does not run the compiled profile data');
   const runId = `${scenario.manifest.id}@${scenario.manifest.version}:seed${seed}`;
@@ -115,7 +131,9 @@ function setup(manifest: ExperimentManifest, scenario: ExperimentScenarioDef, se
   };
   const postings: LedgerPosting[] = [];
   host.onPostings((p) => { postings.push(...p); });
-  return { loop: { host, bridge, harness, behavior, ctx, postings, stats, negative: new Set() }, runId, flags };
+  let shockN = 0;
+  const region = regionSpec ? new RegionSampler(scenario.manifest.assumptions, runId, ctx.resources) : undefined;
+  return { loop: { host, bridge, harness, behavior, ctx, postings, stats, negative: new Set(), ...(region ? { region } : {}), shocks: scenario.manifest.shocks, nextShockId: () => `shock${++shockN}` }, runId, flags };
 }
 
 /**
@@ -144,11 +162,12 @@ export function runScenario(manifest: ExperimentManifest, scenario: ExperimentSc
     const next = Math.min(windowStart + manifest.sampleEveryTicks, end);
     advanceTo(next);
     sampler.sample(host.state, loop.harness, loop.postings, { startTick: windowStart, endTick: next });
+    loop.region?.sample(host.state, loop.postings, { startTick: windowStart, endTick: next });
     loop.postings.length = 0;
     windowStart = next;
   }
   const rng = loop.ctx.rng;
-  const metrics: MetricRow[] = sampler.rows;
+  const metrics: MetricRow[] = loop.region ? [...sampler.rows, ...loop.region.rows] : sampler.rows;
   return {
     runId, scenarioId: scenario.manifest.id, scenarioVersion: scenario.manifest.version, seed, metrics,
     flowsReconciliation: reconcile(loop, sampler, opening, { startTick: measureStart, endTick: end }),

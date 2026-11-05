@@ -5,6 +5,7 @@ import { MarketBookPush } from './api/market-book-push.service.js';
 import { MarketCallers } from './api/market-caller.js';
 import { MarketController } from './api/market.controller.js';
 import { MarketSnapshotService } from './api/market-snapshot.service.js';
+import { MarketColonies } from './orders/market-colonies.js';
 import { MarketFaucetCommand } from './dev/market-faucet.command.js';
 import { MarketFaucetController } from './dev/market-faucet.controller.js';
 import { MarketAccountsBootstrap } from './dev/market-accounts.bootstrap.js';
@@ -58,6 +59,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     PriceBoardService,
     MarketBookPush,
     MarketCallers,
+    MarketColonies,
     MarketSnapshotService,
     { provide: MarketFillsHook, useExisting: SettlementFillsHook },
     MarketFaucetService,

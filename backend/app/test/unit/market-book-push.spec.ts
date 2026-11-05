@@ -29,26 +29,42 @@ describe('MarketBookPush debounce', () => {
   });
   afterEach(() => { push.onModuleDestroy(); vi.useRealTimers(); });
 
-  it('5 changes within 1 s give one push containing all 5 orders', async () => {
+  it('after a quiet period the first change pushes at once; the rest of the second go in ONE trailing push with all 5', async () => {
     for (let i = 0; i < 5; i++) {
       book.add(order(i) as never);
       change({ planetId: 'p', pair: 'bio.water/USDC' });
       await vi.advanceTimersByTimeAsync(100);
+      if (i === 0) {
+        expect(out).toHaveLength(1);
+        expect(out[0]!.payload.asks.reduce((n, l) => n + l.orders, 0)).toBe(1);
+      }
     }
-    expect(out).toHaveLength(0);
-    await vi.advanceTimersByTimeAsync(600);
     expect(out).toHaveLength(1);
-    expect(out[0]!.payload.asks.reduce((n, l) => n + l.orders, 0)).toBe(5);
-    expect(out[0]!.payload).toMatchObject({ planetId: 'p', pair: 'bio.water/USDC', seq: 1 });
+    await vi.advanceTimersByTimeAsync(600);
+    expect(out).toHaveLength(2);
+    expect(out[1]!.payload.asks.reduce((n, l) => n + l.orders, 0)).toBe(5);
+    expect(out.map((e) => e.payload.seq)).toEqual([1, 2]);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(out).toHaveLength(2);
+  });
+
+  it('never pushes a pair more than once per second', async () => {
+    for (let i = 0; i < 30; i++) {
+      change({ planetId: 'p', pair: 'a/USDC' });
+      await vi.advanceTimersByTimeAsync(100);
+    }
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(out.length).toBeLessThanOrEqual(4);
+    expect(out.length).toBeGreaterThanOrEqual(3);
   });
 
   it('is per pair, keeps a monotonic seq and sends nothing without changes', async () => {
     change({ planetId: 'p', pair: 'a/USDC' });
     change({ planetId: 'p', pair: 'b/USDC' });
-    await vi.advanceTimersByTimeAsync(1000);
+    await vi.advanceTimersByTimeAsync(10);
     expect(out.map((e) => e.payload.pair).sort()).toEqual(['a/USDC', 'b/USDC']);
+    await vi.advanceTimersByTimeAsync(2000);
     change({ planetId: 'p', pair: 'a/USDC' });
-    await vi.advanceTimersByTimeAsync(1000);
     await vi.advanceTimersByTimeAsync(5000);
     expect(out.filter((e) => e.payload.pair === 'a/USDC').map((e) => e.payload.seq)).toEqual([1, 2]);
     expect(out).toHaveLength(3);

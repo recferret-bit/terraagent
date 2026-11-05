@@ -453,3 +453,7 @@
 @media (max-width: 800px) {
   .ta-trade-hub__content { grid-template-columns: 1fr; }
 }
+
+.ta-trade-hub__tab-body[hidden] {
+  display: none;
+}

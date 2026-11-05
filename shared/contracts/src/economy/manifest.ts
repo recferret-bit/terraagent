@@ -19,13 +19,15 @@ export const ScenarioRef = z.strictObject({ id: Id, version: z.number().int().po
 export type ScenarioRef = z.infer<typeof ScenarioRef>;
 
 /** ECONOMY §6 manifest. Integer amounts are decimal strings. §9 hashes are optional. */
-export const ExperimentManifest = z.strictObject({
+const ExperimentManifestShape = z.strictObject({
   schemaVersion: z.literal(MANIFEST_SCHEMA_VERSION),
   profile: EconomyProfileRef,
   engineCommit: Id,
   waves: WavesSpec,
   scenarios: z.array(ScenarioRef).min(1),
   seeds: z.array(z.number().int()).min(1),
+  /** Independent held-out seeds (ECONOMY §6): run like `seeds`, never used to tune; a recommendation must hold on them too. Disjoint from `seeds`. */
+  heldOutSeeds: z.array(z.number().int()).optional(),
   warmupTicks: Tick,
   measureTicks: Tick.refine((n) => n > 0, 'measureTicks must be positive'),
   sampleEveryTicks: z.number().int().positive(),
@@ -50,8 +52,17 @@ export const ExperimentManifest = z.strictObject({
   runtimeEconomyHash: Hash.optional(),
   logisticsPolicyHash: Hash.optional(),
   distributions: z.record(z.string(), z.unknown()).optional(),
+  /**
+   * §9 candidate mode against a baseline: `endowment` = an isolated, seeded fixture regenerated from the candidate endowment
+   * (terrain differs by design); `runtime` = the same checkpoint and terrain, operational/logistics inputs only, reserves preserved.
+   */
+  candidateMode: z.enum(['endowment', 'runtime']).optional(),
 });
-export type ExperimentManifest = z.infer<typeof ExperimentManifest>;
+export const ExperimentManifest = ExperimentManifestShape.refine(
+  (m) => !(m.heldOutSeeds ?? []).some((s) => m.seeds.includes(s)),
+  { message: 'heldOutSeeds must be disjoint from seeds', path: ['heldOutSeeds'] },
+);
+export type ExperimentManifest = z.infer<typeof ExperimentManifestShape>;
 
 export const ScenarioShock = z.strictObject({ kind: Id, atTick: Tick, params: z.record(z.string(), z.unknown()).default({}) });
 export const ScenarioPopulation = z.strictObject({ cohort: Id, colonies: z.number().int().nonnegative(), params: z.record(z.string(), z.unknown()).default({}) });

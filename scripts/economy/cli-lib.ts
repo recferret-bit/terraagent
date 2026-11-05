@@ -7,7 +7,7 @@ const USAGE = `usage: npm run economy -- <command> [flags] --json
   schema | profile export --id <p>:<v> [--out f] | profile clone --from <p>:<v> [--name text] | profile patch --id <p>:<v> --file f|-
   profile resolve [--planet id] [--sector id] [--planet-type t] [--sector-archetype a] | validate --profile <p>:<v>
   simulate --manifest f|- | experiment status|cancel|resume|list|artifact --id <exp> [--name file]
-  compare --baseline <exp> --candidate <exp> | recommend --experiment <exp> [--baseline <exp>]
+  compare --baseline <exp> --candidate <exp> [--sensitivity f.json] | recommend --experiment <exp> [--baseline <exp>] [--sensitivity f.json]
   activate --version <p>:<v> --expected-previous <p>:<v>|none [--effective-tick n] [--evidence-run id] [--non-production] | rollback --id <activation>
 exit codes: 0 ok, 2 invalid input / no permission, 3 failed gates, 4 execution failure`;
 

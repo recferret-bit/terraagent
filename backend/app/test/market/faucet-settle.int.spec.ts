@@ -1,3 +1,4 @@
+import { MarketColonies } from '../../src/market/orders/market-colonies.js';
 import 'reflect-metadata';
 import { MARKET_TOKENS, formatAtomic, toChainUnits } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
@@ -47,7 +48,7 @@ describe('faucet + exact settlement of the demo trade (W13-17)', () => {
     }
     await db.prisma.$executeRaw`INSERT INTO chain.mock_chain_intents_balance (account_id, token_id, amount) VALUES ('seller.mock', ${verifier(WATER)}, ${toChainUnits(WATER, 300n).toString()}::numeric)`;
 
-    const faucet = new MarketFaucetService(db.prisma, env, on);
+    const faucet = new MarketFaucetService(db.prisma, env, on, new MarketColonies(db.prisma, { isScenarioColonyPlanet: () => false } as never));
     const funded = await faucet.credit({ colonyId: 'col-b', token: 'usdc', amount: '20' });
     expect(funded).toMatchObject({ accountId: 'buyer.mock', amountAtomic: '20000000', display: '20.00', label: 'mock USDC', funding: 'fixture' });
     expect(await bal('buyer.mock', 'USDC')).toBe(20_000_000n);
@@ -81,9 +82,9 @@ describe('faucet + exact settlement of the demo trade (W13-17)', () => {
   });
 
   it('refuses outside dev: production, W13 off, bad amounts and unknown colonies', async () => {
-    await expect(new MarketFaucetService(db.prisma, { NODE_ENV: 'production' } as never, on).credit({ colonyId: 'col-b', token: 'USDC', amount: '1' })).rejects.toMatchObject({ status: 404 });
-    await expect(new MarketFaucetService(db.prisma, env, { has: () => false } as never).credit({ colonyId: 'col-b', token: 'USDC', amount: '1' })).rejects.toMatchObject({ status: 403, details: { code: 'wave_disabled' } });
-    const f = new MarketFaucetService(db.prisma, env, on);
+    await expect(new MarketFaucetService(db.prisma, { NODE_ENV: 'production' } as never, on, new MarketColonies(db.prisma, { isScenarioColonyPlanet: () => false } as never)).credit({ colonyId: 'col-b', token: 'USDC', amount: '1' })).rejects.toMatchObject({ status: 404 });
+    await expect(new MarketFaucetService(db.prisma, env, { has: () => false } as never, new MarketColonies(db.prisma, { isScenarioColonyPlanet: () => false } as never)).credit({ colonyId: 'col-b', token: 'USDC', amount: '1' })).rejects.toMatchObject({ status: 403, details: { code: 'wave_disabled' } });
+    const f = new MarketFaucetService(db.prisma, env, on, new MarketColonies(db.prisma, { isScenarioColonyPlanet: () => false } as never));
     await expect(f.credit({ colonyId: 'col-b', token: 'USDC', amount: '0.0000001' })).rejects.toMatchObject({ status: 400 });
     await expect(f.credit({ colonyId: 'nope', token: 'NEAR', amount: '1' })).rejects.toMatchObject({ status: 404 });
     await expect(f.credit({ token: 'USDC', amount: '1' })).rejects.toThrow();
