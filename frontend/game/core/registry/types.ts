@@ -20,6 +20,8 @@ export interface FeatureServices {
   store?: FeatureStore;
   /** Axial tile under a pointer position (the online session's terrain pick), or null off the planet. */
   /** Adds a tab to the Trade Hub panel; returns its unregister. Provided by the `trade-hub` feature while its panel is mounted. */
+  /** Opens the Trade Hub panel on the extension tab `id` (e.g. `market`). */
+  showTradeHubTab?: (id: string) => void;
   registerTradeHubTab?: (def: TradeHubTabDef) => () => void;
   pickTile?: (clientX: number, clientY: number, target?: EventTarget | null) => { q: number; r: number } | null;
 }
