@@ -28,6 +28,7 @@ import { gameLandingHost } from './home-landing-host';
 import { DevLedgerController } from './ledger/dev-ledger.controller';
 import { InMemoryLedgerStore } from './ledger/in-memory-ledger-store';
 import { LedgerStorePort } from './ledger/ledger-store.port';
+import { EconomyTelemetry } from '../economy/telemetry/economy-telemetry';
 import { PlanetLedgerService } from './ledger/planet-ledger.service';
 import { PrismaLedgerStore } from './ledger/prisma-ledger-store';
 import { persistenceEnabled } from '../core/persistence';
@@ -105,6 +106,7 @@ const POOL = Symbol('SIM_THREAD_POOL');
       useFactory: (e: AppEnv, prisma: PrismaClient) => (persistenceEnabled(e) ? new PrismaLedgerStore(prisma) : new InMemoryLedgerStore()),
     },
     PlanetLedgerService,
+    EconomyTelemetry,
     SnapshotService,
     ProgressionEventForwarder,
   ],

@@ -95,4 +95,15 @@ export class IntentTradeRepository extends RepositoryBase {
   listUnknown(): Promise<TradeRow[]> {
     return this.prisma.intentTrade.findMany({ where: { state: 'UNKNOWN' }, orderBy: { id: 'asc' } });
   }
+
+  /** Newest FINAL trades of a planet (all pairs), newest first. */
+  recentFinal(planetId: string, limit: number, tx?: DbClient): Promise<TradeRow[]> {
+    return this.db(tx).intentTrade.findMany({ where: { planetId, state: 'FINAL' }, orderBy: { id: 'desc' }, take: limit });
+  }
+
+  /** Sum of FINAL stall fees the colony's stall earned, per quote token (decimal strings, market atomic). */
+  async stallEarned(planetId: string, stallColonyId: string, tx?: DbClient): Promise<Record<string, string>> {
+    const rows = await this.db(tx).intentTrade.groupBy({ by: ['quote'], where: { planetId, stallColonyId, state: 'FINAL' }, _sum: { stallFee: true } });
+    return Object.fromEntries(rows.map((r) => [r.quote, r._sum.stallFee?.toFixed() ?? '0']).filter(([, v]) => v !== '0'));
+  }
 }

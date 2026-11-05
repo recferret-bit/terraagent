@@ -53,6 +53,8 @@ export const PriceBoardRow = z.object({
   reason: z.string().optional(),
   eligibleVolume: z.number().int().nonnegative().optional(),
   counterparties: z.number().int().nonnegative().optional(),
+  /** Largest share one counterparty takes in organic volume (bp of 2x volume: each trade has two sides). */
+  concentrationBp: z.number().int().nonnegative().optional(),
 });
 export type PriceBoardRow = z.infer<typeof PriceBoardRow>;
 
