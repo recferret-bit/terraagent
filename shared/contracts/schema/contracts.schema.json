@@ -4505,6 +4505,37 @@
       "summary": "The sim accepted `market.placeOrder` (Hub online, size, TTL, fee range); the market module creates the order, reserves funds and matches (W13-09). Server-only input.",
       "wave": "W13"
     },
+    "marketSettlementFailed": {
+      "audience": "player",
+      "data": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "colonyId": {
+            "minLength": 1,
+            "type": "string"
+          },
+          "colonyIndex": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
+          },
+          "ref": {
+            "maxLength": 160,
+            "minLength": 1,
+            "type": "string"
+          }
+        },
+        "required": [
+          "colonyId",
+          "ref"
+        ],
+        "type": "object"
+      },
+      "severity": "warn",
+      "summary": "A trade the colony's order was part of definitely failed on settlement and the order ended with its reservation released; nothing changed hands: \"Contract failed\" toast (W13-24).",
+      "wave": "W13"
+    },
     "nightSurvived": {
       "audience": "player",
       "data": {
