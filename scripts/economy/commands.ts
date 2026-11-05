@@ -80,11 +80,13 @@ const expList: Handler = async (_p, ctx) => ok(await api(ctx, 'GET', '/experimen
 const expArtifact: Handler = async (p, ctx) => ok(await api(ctx, 'GET', `/experiments/${encodeURIComponent(need(p, 'id'))}/artifacts/${encodeURIComponent(need(p, 'name'))}`));
 
 /** Exit 3 when the candidate regresses a gate that passed on the baseline, 2 when the experiments cannot be paired. */
-const compare: Handler = async (p, ctx) => {
-  const res = (await api(ctx, 'POST', '/comparisons', { role: 'edit', body: { baselineId: need(p, 'baseline'), candidateId: need(p, 'candidate') } })) as { ok: boolean; verdict: string };
+const sensitivityOf = (p: Parsed, io: CliIo): { sensitivity?: unknown } => (p.flags.get('sensitivity') ? { sensitivity: readJson(p, 'sensitivity', io) } : {});
+
+const compare: Handler = async (p, ctx, io) => {
+  const res = (await api(ctx, 'POST', '/comparisons', { role: 'edit', body: { baselineId: need(p, 'baseline'), candidateId: need(p, 'candidate'), ...sensitivityOf(p, io) } })) as { ok: boolean; verdict: string };
   return { code: !res.ok ? ECONOMY_EXIT_CODES.invalidInput : res.verdict === 'regression' ? ECONOMY_EXIT_CODES.failedGates : ECONOMY_EXIT_CODES.ok, out: res };
 };
-const recommend: Handler = async (p, ctx) => ok(await api(ctx, 'POST', '/recommendations', { role: 'edit', body: { experimentId: need(p, 'experiment'), ...(p.flags.get('baseline') ? { baselineId: p.flags.get('baseline') } : {}) } }));
+const recommend: Handler = async (p, ctx, io) => ok(await api(ctx, 'POST', '/recommendations', { role: 'edit', body: { experimentId: need(p, 'experiment'), ...(p.flags.get('baseline') ? { baselineId: p.flags.get('baseline') } : {}), ...sensitivityOf(p, io) } }));
 
 /** Operator only: uses the activate token. The AI's edit token gets 403, which is exit 2. */
 const activate: Handler = async (p, ctx) => {
