@@ -54,6 +54,20 @@ const simCommand = (name: string, help: string, args: (a: string[]) => unknown):
   return { name, help, async run(a, ctx) { return ackText(kind, await sim(ctx, kind, args(a), !name.endsWith('!'))); } };
 };
 
+const SPAWN_UNITS = ['builder', 'harvester'];
+
+/** `spawn [q r]` inserts the W00 test entity; `spawn builder|harvester [q r] [n]` (W13) adds idle units that load the logistics window. */
+const spawn: DevCommandDef = {
+  name: 'spawn',
+  help: 'spawn [q r]  Insert a test entity at tile (default 0 0); spawn builder|harvester [q r] [n]  W13: n (1..32) idle own units (logistics load) from tile (q, r)',
+  async run(a, ctx) {
+    const unit = a[0] && SPAWN_UNITS.includes(a[0]) ? a[0] : undefined;
+    if (!unit) return ackText('dev.spawn', await sim(ctx, 'dev.spawn', { q: numArg(a, 0, 'q', 0), r: numArg(a, 1, 'r', 0) }));
+    const args = { unit, q: numArg(a, 1, 'q', 0), r: numArg(a, 2, 'r', 0), count: numArg(a, 3, 'n', 1) };
+    return ackText('dev.spawnunit', await sim(ctx, 'dev.spawnunit', args, false));
+  },
+};
+
 const chainPing: DevCommandDef = {
   name: 'chain.ping',
   help: 'Server: write a ping receipt through the mock chain, print its mock: hash',
@@ -164,7 +178,7 @@ export default defineFeature({
     planetWipe,
     planet,
     simCommand('ping', 'Round-trip a no-op sim command; prints the ack tick', () => ({})),
-    simCommand('spawn', 'spawn [q r]  Insert a test entity at tile (default 0 0)', (a) => ({ q: numArg(a, 0, 'q', 0), r: numArg(a, 1, 'r', 0) })),
+    spawn,
     simCommand('nudge', 'nudge <id> [dq dr]  Move a test entity one nudge step (default +q)', (a) => {
       const dq = a[1] === undefined ? undefined : numArg(a, 1, 'dq');
       const dr = a[2] === undefined ? undefined : numArg(a, 2, 'dr');

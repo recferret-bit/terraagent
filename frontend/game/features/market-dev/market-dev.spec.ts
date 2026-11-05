@@ -1,6 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { FeatureContext } from '../../core/registry/types';
 import { CommandRunner } from '../../dev/console/runner';
+import { ENTITY_KIND } from '@terra/sim';
+import { E, ENTITY_STRIDE } from '../../store/replica/viewCodec';
 import marketDev from './index';
 
 const run = async (line: string, services: Partial<FeatureContext['services']> = {}, host: FeatureContext['host'] = 'server') => {
@@ -36,5 +38,32 @@ describe('market dev console commands (W13-30)', () => {
     expect(await run('market.clear here', { devServer, session: { planetId: () => null } })).toContain('host_unavailable');
     expect(await run('market.seed here a/b', { session }, 'local')).toContain('host_unavailable');
     expect(devServer).not.toHaveBeenCalled();
+  });
+});
+
+describe('reserve dev console command (W13-57)', () => {
+  const unitRows = [[11, ENTITY_KIND.builder, 0], [12, ENTITY_KIND.harvester, 0], [13, ENTITY_KIND.builder, 1], [14, ENTITY_KIND.commandHub, 0]];
+  const entities = new Float32Array(unitRows.length * ENTITY_STRIDE);
+  unitRows.forEach(([id, kind, owner], i) => { entities[i * ENTITY_STRIDE + E.id] = id; entities[i * ENTITY_STRIDE + E.kind] = kind; entities[i * ENTITY_STRIDE + E.owner] = owner; });
+  const store = { latest: { entities, count: unitRows.length } } as unknown as FeatureContext['services']['store'];
+  const ok = { ok: true, appliedAtTick: 7 };
+
+  it('all = own units with a logistics row; explicit ids pass through; off deploys', async () => {
+    const sendCommand = vi.fn(async () => ok);
+    expect(await run('reserve on', { sendCommand: sendCommand as never, store })).toBe('reserve on: 2 unit(s), applied at tick 7');
+    expect(sendCommand).toHaveBeenLastCalledWith('unitReserve', { entityIds: [11, 12], reserve: true });
+    await run('reserve off 5,6', { sendCommand: sendCommand as never, store });
+    expect(sendCommand).toHaveBeenLastCalledWith('unitReserve', { entityIds: [5, 6], reserve: false });
+    await run('reserve off all', { sendCommand: sendCommand as never, store, colonyId: 1 });
+    expect(sendCommand).toHaveBeenLastCalledWith('unitReserve', { entityIds: [13], reserve: false });
+  });
+
+  it('usage, rejects and missing connection are errors', async () => {
+    const sendCommand = vi.fn(async () => ({ ok: false, code: 'not_own_colony' }));
+    expect(await run('reserve maybe', { sendCommand: sendCommand as never, store })).toContain('usage: reserve on|off');
+    expect(await run('reserve on x,y', { sendCommand: sendCommand as never, store })).toContain('usage: reserve on|off');
+    expect(await run('reserve on 3', { sendCommand: sendCommand as never, store })).toBe('error: reserve rejected: not_own_colony');
+    expect(await run('reserve on', { store })).toContain('not_connected');
+    expect(await run('reserve on', { sendCommand: sendCommand as never, store: { latest: { entities: new Float32Array(0), count: 0 } } as never })).toBe('error: no own units with a logistics row');
   });
 });

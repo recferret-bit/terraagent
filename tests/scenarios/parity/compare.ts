@@ -50,6 +50,17 @@ class Differ {
   }
 }
 
+/**
+ * The blobs without what each host mints for itself: the pinned region's `context.planetId` is the planet id (like `meta.planetId`,
+ * which is not compared); everything else of the pin (type, hashes, endowment fields) must match.
+ */
+function comparableBlobs(s: PlanetState): PlanetState['blobs'] {
+  const pin = s.blobs.regionEndowment;
+  if (!pin) return s.blobs;
+  const value = pin.value as { context: Record<string, unknown> };
+  return { ...s.blobs, regionEndowment: { ...pin, value: { ...value, context: { ...value.context, planetId: '<minted by host>' } } } };
+}
+
 function compareStates(a: PlanetState, b: PlanetState, d: Differ): void {
   // Everything but the planet id (each host mints its own) is discrete state that must match.
   for (const k of ['simVersion', 'planetType', 'seed', 'tick', 'nextEntityId', 'ended'] as const) d.scalar(`meta.${k}`, a.meta[k], b.meta[k]);
@@ -61,7 +72,7 @@ function compareStates(a: PlanetState, b: PlanetState, d: Differ): void {
     if (!la || !lb) d.add(`grid.layers.${name}: missing on one side`); else d.column(`grid.layers.${name}`, la, lb);
   }
   d.deep('colonies', a.colonies, b.colonies);
-  d.deep('blobs', a.blobs, b.blobs);
+  d.deep('blobs', comparableBlobs(a), comparableBlobs(b));
   d.scalar('entities.count', a.entities.count, b.entities.count);
   const n = Math.min(a.entities.count, b.entities.count);
   for (const name of new Set([...Object.keys(a.entities.cols), ...Object.keys(b.entities.cols)])) {
