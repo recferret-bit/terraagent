@@ -381,7 +381,7 @@ Open `/me.html?as=w12` from the hub's **PILOT / ME** mock card (new tab). Landin
 
 | Role | Token env | Dev default (not production) | Routes |
 |---|---|---|---|
-| `read` | `TA_ECONOMY_READ_TOKEN` | `dev-economy-reader` | `GET /v1/economy/schema`, `/profiles`, `/profiles/:id/versions`, `/profiles/:id/versions/:version`, `/profiles/:id/versions/:version/export`, `/resolve?planetType=&planetId=&sectorArchetype=&sectorId=` (layers, overrides, hashes, resolved endowment with per-field provenance), `/activations?scope=`, `/experiments`, `/experiments/:id`, `/experiments/:id/artifacts/:name` |
+| `read` | `TA_ECONOMY_READ_TOKEN` | `dev-economy-reader` | `GET /v1/economy/schema`, `/profiles`, `/profiles/:id/versions`, `/profiles/:id/versions/:version`, `/profiles/:id/versions/:version/export`, `/resolve?planetType=&planetId=&sectorArchetype=&sectorId=` (layers, overrides, hashes, resolved endowment with per-field provenance), `/activations?scope=`, `/experiments`, `/experiments/:id`, `/experiments/:id/artifacts/:name`, `POST /comparisons` and `POST /recommendations` (read-only reports: paired-seed comparison and an explained candidate patch; neither mutates or activates; `cashApproval` is always false in W13) |
 | `edit` (includes read) | `TA_ECONOMY_EDIT_TOKEN` | `dev-economy-operator` | `POST /profiles/:id/versions/:version/clone`, `PATCH /profiles/:id/versions/:version` (draft only; `expectedVersion` is the revision), `POST .../validate`, `POST /experiments` (202, `{manifest, requestId}`), `POST /experiments/:id/cancel`, `POST /experiments/:id/resume` |
 | `activate` (operators only; AI experiment credentials never get it) | `TA_ECONOMY_ACTIVATE_TOKEN` | `dev-economy-activator` | `POST /profiles/:id/versions/:version/approve`, `POST /activations` (202, scope + version + effective tick + evidence), `POST /activations/:id/rollback` |
 
@@ -397,9 +397,27 @@ In production an unset token env means the role does not exist (no dev default).
 
 `npx tsx scripts/economy/run-experiment.ts --manifest <file.json> --out <dir> [--profile <profile.json>] [--scenario <id>] [--seed <n>]` runs the headless integrated experiment (the same `@terra/sim` rules, mock adapters, no DB). It writes `manifest.json` (immutable: a different manifest in an existing `--out` is refused), `summary.json`, `metrics.jsonl`, `metrics.csv` and `replay.txt` there, prints one JSON line on stdout and diagnostics on stderr. Exit codes: 0 pass, 2 invalid input, 3 failed gates, 4 execution failure or budget exhausted (incomplete, never a pass). Scenario fixtures: `tests/economy/scenarios/*.json`; sample profiles: `tests/economy/profiles/`.
 
-### `npm run economy -- ...` CLI (W13-46, being built; from ECONOMY §6, not verified here)
+### `npm run economy -- ...` CLI (W13-46, built)
 
-`schema --json`, `profile export|clone|patch|resolve`, `validate --profile`, `simulate --manifest`, `experiment status|cancel`, `compare`, `recommend`, plus operator `activate` / `rollback` wrapping the activation routes. Same exit codes as above (0/2/3/4). Until it lands, use the routes above or the runner CLI.
+Noninteractive CLI over `/v1/economy/*` (`scripts/economy/cli.ts`; tests `backend/app/test/economy/cli.int.spec.ts`). JSON on stdout (errors as `{ok:false,error:{kind,message,details}}`), one diagnostic line on stderr. Environment: `TA_ECONOMY_API` (default `http://127.0.0.1:<TA_PORT_BASE+1>` from `infra/.env.worktree`), `TA_ECONOMY_TOKEN` (edit/run token, default `dev-economy-operator`), `TA_ECONOMY_ACTIVATE_TOKEN` (operator token, default `dev-economy-activator`).
+
+| Command | Does |
+|---|---|
+| `schema --json` | `GET /schema`: typed parameters, units, bounds, defaults |
+| `profile export --id <p>:<v> [--out f]` | the portable profile content and ref |
+| `profile clone --from <p>:<v> [--name text]` | new DRAFT version (`--name` is its rationale; clones stay inside the profile) |
+| `profile patch --id <p>:<v> --file f\|-` | file needs only `ops`; `schemaVersion`, `requestId`, `expectedVersion` are filled in |
+| `profile resolve [--planet id] [--sector id] [--planet-type t] [--sector-archetype a]` | `GET /resolve` (all ten effective resources, hashes, provenance) |
+| `validate --profile <p>:<v>` | registry, coverage and compile checks; invalid is exit 2 |
+| `simulate --manifest f\|-` | submit only: returns an experiment id (idempotent: default requestId is the manifest hash) |
+| `experiment status\|cancel\|resume\|list\|artifact --id <exp> [--name file]` | job control and results |
+| `compare --baseline <exp> --candidate <exp> [--sensitivity f.json]` | paired-seed report (below) |
+| `recommend --experiment <exp> [--baseline <exp>] [--sensitivity f.json]` | explained candidate patch; never activates |
+| `activate --version <p>:<v> --expected-previous <p>:<v>\|none [--effective-tick n] [--evidence-run id] [--non-production]`, `rollback --id <activation>` | operator only (activate token) |
+
+Exit codes (ECONOMY §6): `0` ok (also queued/running/cancelled status), `2` invalid input and every 4xx including 401/403 (the AI token on `activate`/`rollback` is 403, so exit 2), `3` completed with failing gates or a `compare` gate regression, `4` execution failure (5xx, unreachable API, `failed` or `incomplete` experiment).
+
+**Comparison and recommendation (W13-48).** Statistics are exact: paired differences per seed, Student t 95 % interval (`shared/sim/src/economy/experiments/stats.ts`), no floats and no random draws; one seed gives `insufficient_data`, never a zero-width interval. Manifest `heldOutSeeds` (disjoint from `seeds`) run like `seeds` but only confirm: the improvement must not reverse on them. Dimensions (`metric-dimensions.ts`): retention, progression, affordability, trading depth, inventory growth, net contribution (platform revenue); no scalar score. `recommend` refuses when: a hard gate fails; a gate regresses; any dimension is worse (tuning, held-out or stress); the only improvement is platform revenue/fees; the improvement holds only on a subset of seeds (not worse on any seed and better on at least 3 of 4); held-out seeds disagree or are absent (`insufficient_evidence`); a demand-sensitivity case fails. `--sensitivity` takes `[{label, baselineId, candidateId}]` of experiments re-run with `sensitivityManifests(manifest)` (budget x0.5/x1/x2). Gates are versioned data in `gate-catalog.ts` (hard invariants plus economic calibration hypotheses, all `approved: false`). `cashApproval` is always false in W13: it needs every gate approved and passing on tuning, held-out and stress runs plus an external pilot reference, and the API accepts none.
 
 ### Markets (F2 mock)
 
