@@ -1,0 +1,77 @@
+{
+  "schemaVersion": 1,
+  "profile": {
+    "id": "baseline",
+    "version": 1,
+    "hash": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a"
+  },
+  "engineCommit": "workspace",
+  "waves": "..13",
+  "scenarios": [
+    {
+      "id": "stress-desert-crystal-poor",
+      "version": 1
+    },
+    {
+      "id": "stress-double-output",
+      "version": 1
+    },
+    {
+      "id": "stress-external-venue-leakage",
+      "version": 1
+    },
+    {
+      "id": "stress-half-buyer-budget",
+      "version": 1
+    },
+    {
+      "id": "stress-mature-flat-population",
+      "version": 1
+    },
+    {
+      "id": "stress-related-accounts",
+      "version": 1
+    },
+    {
+      "id": "stress-returning-inventory",
+      "version": 1
+    },
+    {
+      "id": "stress-ten-x-colonies",
+      "version": 1
+    },
+    {
+      "id": "stress-thin-market",
+      "version": 1
+    },
+    {
+      "id": "stress-zero-subsidy",
+      "version": 1
+    }
+  ],
+  "seeds": [
+    101,
+    202
+  ],
+  "heldOutSeeds": [
+    303
+  ],
+  "warmupTicks": 200,
+  "measureTicks": 3000,
+  "sampleEveryTicks": 500,
+  "ticksPerSecond": 5,
+  "budget": {
+    "maxRuns": 60,
+    "maxWallSeconds": 900,
+    "maxWorkers": 1
+  },
+  "behaviorProfile": "stress-v1",
+  "demandModel": {
+    "source": "assumed",
+    "perPayingActorMonthlyBudgetUsdcAtomic": "30000000"
+  },
+  "output": {
+    "format": "jsonl",
+    "trace": "failures"
+  }
+}
