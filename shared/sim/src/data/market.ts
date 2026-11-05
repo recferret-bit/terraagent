@@ -8,6 +8,7 @@ import { defineTable } from './_define';
  *  - `resource.<ResourceKey>` (all ten): per-resource policy defaults (reserve horizon, target inventory band as bp of
  *    the family storage cap, lot, tradable flag); ECONOMY §2. Calibration hypotheses, not facts.
  *  - `board`: price-board limits (window, candle size, thin-data minimums, counterparty weight cap, outlier move, staleness).
+ *  - `supply`: weight thresholds of the abundant / scarce resource badges.
  *  - `quote.<token>`: minimum notional and price tick per quote token, market atomic units as decimal strings
  *    (USDC micro, NEAR yocto, resources whole units). A resource quote (barter) uses `quote.resource`.
  */
@@ -37,6 +38,8 @@ export default defineTable({
     { id: 'dev.seed', wave: 'W13', levels: 5, stepBp: 500, sizeUnits: 100, midUsdcAtomic: '400000', midNearAtomic: '100000000000000000000000', midResourceAtomic: '2', ttlS: 86400 },
     // Price board (W13-18): what counts as an organic reference price. Calibration hypotheses.
     { id: 'board', wave: 'W13', windowS: 86400, candleS: 3600, minEligibleTrades: 3, minEligibleVolume: 10, minCounterparties: 3, counterpartyWeightCapBp: 4000, maxMoveBp: 5000, stalenessS: 3600 },
+    // Supply & trade panel (W13-55): regional abundance badges from the pinned endowment weight (10000 = reference weight).
+    { id: 'supply', wave: 'W13', abundantWeightBp: 12000, scarceWeightBp: 5000 },
     { id: 'quote.USDC', wave: 'W13', minNotionalAtomic: '100000', tickAtomic: '1' },
     { id: 'quote.NEAR', wave: 'W13', minNotionalAtomic: '10000000000000000000000', tickAtomic: '1' },
     { id: 'quote.resource', wave: 'W13', minNotionalAtomic: '1', tickAtomic: '1' },

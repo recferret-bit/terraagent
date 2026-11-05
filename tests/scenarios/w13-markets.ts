@@ -57,12 +57,12 @@ export function flattenBox(state: PlanetState, [cq, cr]: readonly [number, numbe
   }
 }
 
-function build(state: PlanetState, owner: number, building: string, q: number, r: number): void {
+export function build(state: PlanetState, owner: number, building: string, q: number, r: number): void {
   const out = startBuildingConstruction(state, { owner, building, q, r, instant: true, costOverride: {}, tick: 0 });
   if (!out.ok) throw new Error(`w13 scenario: ${building} at (${q}, ${r}) for colony ${owner}: ${out.code} ${out.detail ?? ''}`);
 }
 
-function spawnHq(state: PlanetState, owner: number, q: number, r: number): void {
+export function spawnHq(state: PlanetState, owner: number, q: number, r: number): void {
   const id = state.meta.nextEntityId++;
   const row = insertRow(state.entities, id, 0);
   const c = state.entities.cols;

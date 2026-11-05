@@ -1,5 +1,5 @@
 import type { SimCommandV1 } from '@terra/contracts';
-import type { BalanceOverrides, LedgerPosting, SimEvent } from '@terra/sim';
+import type { BalanceOverrides, LedgerPosting, ResolvedRegion, SimEvent } from '@terra/sim';
 import type { TuneRequest } from '@terra/sim';
 
 /** In-process MessagePort protocol between the main thread and a sim thread (PROTOCOL §6). Plain structured-clone data only. */
@@ -43,6 +43,8 @@ export interface LoadMsg {
     readonly seed?: string;
     readonly radius?: number;
     readonly capacity?: number;
+    /** W13 only: the resolved regional endowment (server profile); absent with W13 on = the bootstrap-table region (`regionForNewPlanet`). */
+    readonly region?: ResolvedRegion;
   };
   /** Overrides the thread's wave flags for this planet. */
   readonly flags?: readonly string[];

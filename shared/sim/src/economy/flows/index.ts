@@ -5,3 +5,5 @@ export * from './coverage';
 export * from './inventory';
 export * from './metric';
 export * from './ratio';
+export * from './remedies';
+export * from './shopping';
