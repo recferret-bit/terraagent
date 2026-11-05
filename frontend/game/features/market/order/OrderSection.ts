@@ -1,6 +1,7 @@
 import { formatAtomic, mockLabel, type MarketSnapshotResponse, type MarketTokenKey, type MyOrderView, type OrderSide, type ResourceKey } from '@terra/contracts';
 import type { FeatureContext } from '../../../core/registry/types';
 import { makeBtn, makeDiv } from '../../shared/dom';
+import { MarketTracker, type OrderEventProps } from '../analytics/marketTracker';
 import { failedText } from '../contracts/ContractsController';
 import { myOrderRow } from './myOrders';
 import { previewOrder, type OrderPreview } from './orderPreview';
@@ -51,8 +52,11 @@ export class OrderSection {
   private readonly offs: Array<() => void> = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private awaitingReject = 0;
+  private readonly tracker: MarketTracker;
+  private lastPreviewKey = '';
 
   constructor(private readonly ctx: FeatureContext, private readonly pair: () => OrderPair) {
+    this.tracker = new MarketTracker(ctx.services.track);
     this.ttlSel.className = 'ta-market__select';
     const sides = makeDiv('ta-order__sides');
     sides.append(this.sideBtns.buy, this.sideBtns.sell);
@@ -123,10 +127,26 @@ export class OrderSection {
     for (const s of ['buy', 'sell'] as const) this.sideBtns[s].setAttribute('data-active', String(this.side === s));
     this.stallRow.hidden = this.side !== 'buy';
     this.previewEl.replaceChildren(...this.previewRows(p).map(([id, k, v]) => { const r = makeDiv('ta-order__line', `order-preview-${id}`); r.append(span(k), span(v, 'ta-order__val')); return r; }));
+    this.trackPreview(p);
     this.blockedEl.textContent = p.blocked ?? '';
     this.submitBtn.disabled = p.blocked !== undefined;
     const orders = this.snapshot?.myOrders ?? [];
     this.myEl.replaceChildren(...(orders.length ? orders.map((o) => myOrderRow(o, (x) => void this.cancel(x))) : [makeDiv('ta-market__empty', undefined, 'No orders yet.')]));
+  }
+
+  private eventProps(p: OrderPreview): OrderEventProps | null {
+    if (!p.terms) return null;
+    const { base, quote } = this.pair();
+    return { pair: `${base}/${quote}`, side: this.side, amount: p.terms.amount, quoteToken: quote, totalAtomic: p.terms.priceAtomic.toString(), maxSpendAtomic: p.totalMax.toString() };
+  }
+
+  /** One `market_order_previewed` per distinct valid set of terms (not per keystroke render). */
+  private trackPreview(p: OrderPreview): void {
+    const props = this.eventProps(p);
+    const key = props ? JSON.stringify(props) : '';
+    if (!props || key === this.lastPreviewKey) return;
+    this.lastPreviewKey = key;
+    this.tracker.previewed(props);
   }
 
   async submit(): Promise<void> {
@@ -142,6 +162,9 @@ export class OrderSection {
     this.awaitingReject = Date.now();
     const r = await send('market.placeOrder', args);
     this.resultEl.textContent = r.ok ? 'Order sent.' : `Order refused: ${r.detail ?? r.code}`;
+    const props = this.eventProps(p);
+    if (props && r.ok) this.tracker.placed(props);
+    else if (!r.ok) this.tracker.rejected(r.code, props ?? undefined);
     if (r.ok) { this.amountIn.value = ''; this.priceIn.value = ''; }
     await this.refresh();
     this.update();
@@ -150,6 +173,7 @@ export class OrderSection {
   async cancel(o: MyOrderView): Promise<void> {
     const r = await this.ctx.services.sendCommand?.('market.cancelOrder', { orderId: o.orderId });
     this.resultEl.textContent = r && !r.ok ? `Cancel refused: ${r.detail ?? r.code}` : '';
+    if (r?.ok) this.tracker.cancelled(o.pair, o.side, o.amount);
     await this.refresh();
   }
 
@@ -158,9 +182,19 @@ export class OrderSection {
       if (e.kind === 'marketOrderRejected' && Date.now() - this.awaitingReject < REJECT_WINDOW_MS) {
         this.resultEl.textContent = failedText(e.data?.detail as string | undefined, e.data?.code as string | undefined);
         this.awaitingReject = 0;
+        this.tracker.rejected(String(e.data?.code ?? 'unknown'));
       }
+      if (e.kind === 'tradeSettled' && e.data) this.trackSettled(e.data);
       if (e.kind === 'tradeSettled' || e.kind === 'marketOrderRejected') this.scheduleRefresh();
     }
+  }
+
+  private trackSettled(d: Record<string, unknown>): void {
+    const fees = BigInt(String(d.platformFee ?? '0')) + BigInt(String(d.stallFee ?? '0'));
+    this.tracker.settled({
+      pair: `${String(d.base)}/${String(d.quote)}`, role: d.role === 'seller' ? 'seller' : 'buyer', amount: Number(d.amount),
+      notional: String(d.notional), fees: fees.toString(), makerSide: d.makerSide === 'sell' ? 'sell' : 'buy',
+    });
   }
 
   dispose(): void {
