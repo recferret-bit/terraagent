@@ -4,7 +4,8 @@ import {
   type ResourceKey,
 } from '@terra/contracts';
 import { goalHarvestResource, goalHarvestWeights } from '../goals/harvestWeights';
-import { consumeDepositRichness, TERRAFORM_TIME_TABLE } from '../../data';
+import { TERRAFORM_TIME_TABLE } from '../../data';
+import { drawDeposit, regionalClearingYields } from '../../economy/regions/sources';
 import { groundWorkYields, terraformYields } from '../terraform-basic/ops';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
@@ -368,10 +369,10 @@ function completeHarvesterWorkJob(
   const prevTerrain = state.grid.layers.terrain[cur.tileIdx];
   setTileTerrain(state, cur.tileIdx, TERRAIN.flat, tick);
   setTilePrep(state, cur.tileIdx, cur.mode === 'work' ? PREP.prepared : PREP.flat, tick);
-  const yields =
+  const yields = regionalClearingYields(state,
     cur.mode === 'clear' ? terraformYields('clear', data)
     : cur.mode === 'break' ? terraformYields('break', data)
-    : groundWorkYields(prevTerrain === TERRAIN.forest ? 'forest' : prevTerrain === TERRAIN.rock ? 'rock' : 'flat', data);
+    : groundWorkYields(prevTerrain === TERRAIN.forest ? 'forest' : prevTerrain === TERRAIN.rock ? 'rock' : 'flat', data));
   for (const [k, v] of Object.entries(yields) as [ResourceKey, number][]) if (v > 0) creditResource(colony, k, v, tick, { reason: 'terraform.yield' });
 }
 
@@ -447,7 +448,7 @@ const standingHarvestYieldSystem = defineSystem({
           setField(e, row, 'progress', Math.fround(cycleProg), ctx.tick);
           faceTowards(state, row, cur.q, cur.r, ctx.tick);
           const desiredAmount = (ratePerS * TICK_MS * ctx.dt) / 1000;
-          const actualAmount = consumeDepositRichness(state, cur.tileIdx, desiredAmount, ctx.tick);
+          const actualAmount = drawDeposit(state, cur.tileIdx, desiredAmount, ctx.tick, cur.resourceKey).got; // W13-51: regional yield
           if (actualAmount > 0) {
             creditResource(colony, cur.resourceKey, actualAmount, ctx.tick);
             colony.production.incomePerS[cur.resourceKey] = Number(

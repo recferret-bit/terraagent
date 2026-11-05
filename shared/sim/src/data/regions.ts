@@ -47,7 +47,8 @@ export default defineTable({
       }),
       renewableUnitsPerSimHour: ten({
         'metals.t1': 0, 'metals.t2': 0, 'metals.t3': 0, 'minerals.t1': 0, 'minerals.t2': 0, 'minerals.t3': 0,
-        'bio.water': 0, 'bio.biomass': 0, 'bio.t2': 0, 'bio.t3': 0,
+        // Water is the one renewable source (the Water Extractor has no deposit): 12600 = four extractors at 0.875/s; 0 would mean no water (W13-51).
+        'bio.water': 12600, 'bio.biomass': 0, 'bio.t2': 0, 'bio.t3': 0,
       }),
     },
     // §2.2 illustrative abundance weights (iron = metals.t1, silica = minerals.t1, crystal = minerals.t3), 100 points = 100 bp.

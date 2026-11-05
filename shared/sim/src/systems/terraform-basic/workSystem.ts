@@ -3,6 +3,7 @@ import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, setField } from '../../ecs/store';
 import { hexDistance } from '../../grid/hex';
 import { PREP, TERRAIN } from '../../grid/layers';
+import { regionalClearingYields } from '../../economy/regions/sources';
 import { revealSubsurface } from '../../grid/subsurface';
 import { setTilePrep, setTileTerrain } from '../../grid/tileModel';
 import type { StepContext } from '../../kernel/context';
@@ -101,7 +102,7 @@ function completeGroundWork(state: PlanetState, job: WorkJobRecord, ctx: StepCon
   if (found) ctx.emit({ kind: 'groundRevealed', severity: 'info', colonyIds: [colonyIdStr], data: { ...who, q: job.q, r: job.r, ...found } });
 
   const colony = ensureColony(state, job.colonyId, ctx.tick);
-  for (const [k, v] of Object.entries(job.yields) as [ResourceKey, number][]) {
+  for (const [k, v] of Object.entries(regionalClearingYields(state, job.yields)) as [ResourceKey, number][]) { // W13-51: regional clearing yield
     if (v && v > 0) creditResource(colony, k, v, ctx.tick, { reason: 'terraform.yield' });
   }
   const at = { count: 1, q: job.q, r: job.r };
