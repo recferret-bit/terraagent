@@ -3,7 +3,7 @@
 > **Status:** Replanned 2026-11-04; implementation and live-provider verification remain to be done.
 > **Track:** Autonomy · **Flag:** `W16` · **Tag:** `wave-16` · **Scenario:** `tests/scenarios/w16-director.ts` · **E2E:** `tests/e2e/w16.spec.ts`
 > **Depends on waves:** W08 (landed HQ goals, independent priorities and rule engine).
-> **Optional integrations:** W09 away policy/digest; W11 persistent sectors; W15 Guild; W27 streamed summaries. Test explicit capability absence when off. Later-wave skill bodies activate only when their executors land.
+> **Optional integrations:** W09 away policy/digest; W11 persistent sectors; W15 Guild (an agent on the W13 bot API); W27 streamed summaries. Test explicit capability absence when off. Later-wave skill bodies activate only when their executors land.
 > **Spec:** [AI_ORCHESTRATOR](../../spec/AI_ORCHESTRATOR.md) is the revised normative contract; historical TA-09 issues are traceability only.
 > **Owned paths:** `backend/director/`, existing `backend/app/src/ai/`, `shared/contracts/src/ai/`, `shared/db/prisma/ai.prisma`, shared sim policy/context/directive modules, existing game Director/HQ UI; workspace/stack wiring and structure checks. Match actual landed paths before implementation.
 
@@ -62,7 +62,7 @@ Existing IDs 01–27 remain, with revised acceptance; 28–49 make the added arc
 | W16-18 | HUD explanation, goal linkage, proposed/applied/rejected states and ordinary cancel | client | S |  | W16-13 | Sim rejection is never displayed as applied; malicious rationale renders as text | AI AI-10 | TA-09 |
 | W16-19 | Director controls integrated with W08 priorities/goals and W09 mode | client | M |  | W16-34, W16-18 | Edit preset, individual weights and risk; reload preserves effective policy without rescaling sliders | AI §4 | TA-09 |
 | W16-20 | Away story provider using shared budget and narrative-only capability | server | S |  | W16-08, W09-18 | Return digest gets bounded story; failure omits it and narrative cannot submit actions | AI §6, §7 | TA-09 |
-| W16-21 | Guild strategy provider with separate NPC principal and shared global budget | server | S |  | W16-08, W15-13 | Hourly NPC strategy cannot read or command unrelated player colony | AI §6 | TA-09 |
+| W16-21 | Guild strategy provider with separate NPC principal and shared global budget; output is strategy only (route, stockpile goals, specialisation, reserve targets, risk) consumed by the W15 agent on the W13 bot API and quote library | server | S |  | W16-08, W15-13 | Hourly NPC strategy cannot read or command unrelated player colony, and a free price in its output is rejected with a reason code | AI §6 | TA-09 |
 | W16-22 | Evaluation harness with at least 60 paired-risk/security/world fixtures | test | M |  | W16-11, W16-36 | Report separates zero-tolerance invariants, strategic variation and model-quality scores | AI §12 | TA-09 |
 | W16-23 | Metrics and alerts for budget, queue, tool denials, worker health and sim regression | ops | S |  | W16-15, W16-30 | Load run reports bounded labels, oldest wait and accurate per-action outcomes | AI §13 | TA-09 |
 | W16-24 | Policy, authorization, revocation and malformed-input regression suite | test | M |  | W16-17, W16-33 | Hostile tool/text, forged principal, expired scope and risky escalation yield zero violations | AI §2, §12 | TA-09 |
@@ -79,7 +79,7 @@ Existing IDs 01–27 remain, with revised acceptance; 28–49 make the added arc
 | W16-35 | Runtime skill registry and capability-filtered selection | server | M |  | W16-01, W16-34 | Each skill declares prerequisites, permissions, variants and fixtures; disabled executor absent | AI §6 | — |
 | W16-36 | Core skill strategies: survival, power and economy | server | M |  | W16-35, W16-11 | Both risk profiles achieve goal-specific fixtures through existing executors | AI §6 | — |
 | W16-37 | Spatial skill strategies: defence, scouting, expansion and terraforming | server | M |  | W16-35, W16-11 | Flank/frontier/terraform variants remain within observed routes and protected areas | AI §6 | — |
-| W16-38 | Wave-gated strategy adapters: trade, tech, aggression and settlement | server | M |  | W16-35, W16-11 | Disabled wave/stage removes skills; raid/upgrade/launch permissions stay mandatory | AI §6 | — |
+| W16-38 | Wave-gated strategy adapters: trade, tech, aggression and settlement. The trade skill calls the W13 bot trading API (`/v1/trade/*`, actor kind `bot`) with a colony-bound key and sets strategy only (specialisation, reserve targets, risk, goals); the W13 quote library prices within the key's allowances and the LLM never types a free price | server | M |  | W16-35, W16-11, W13-58, W13-59, W13-61 | Disabled wave/stage removes skills; raid/upgrade/launch permissions stay mandatory; a trade-skill proposal with a free price, an out-of-band price or an over-allowance order is rejected, and an in-bounds one becomes a W13 order with source `'bot'` within the budget | AI §6 | — |
 | W16-39 | Bounded action history, intent invalidation and cancellation suppression | server | M |  | W16-06, W16-34 | Cancel a goal during provider call: stale plan drops and equivalent re-proposal is suppressed | AI §3 | — |
 | W16-40 | W11 world/context adapter and persistent sector compatibility | server | M |  | W16-06 | Canonical IDs and border-crossing colony context survive restart; full sector is not an expansion wall | AI §5 | — |
 | W16-41 | W27 summary/read port and unknown/stale/unloaded fake streaming fixtures | contract | M |  | W16-40 | 450-sector synthetic world returns bounded relevant summaries with no forced full residency | AI §5 | — |
@@ -98,6 +98,7 @@ Existing IDs 01–27 remain, with revised acceptance; 28–49 make the added arc
 - Owner story covers both risk profiles, player intent changes, W11 context compatibility and W27 synthetic partial-world contracts.
 - Performance report meets AI §12 gates with actual hardware/load stated; real W27 scale is separately validated when W27 lands.
 - Manual live Z.ai report passes; missing key/model support is explicitly **live-blocked**, not complete W16.
+- The trade skill never signs, never holds chain keys and cannot raise its own allowances: the bot key's allowances (max open orders, order notional, daily spend/loss budget, allowed pairs, price band, kill switch) are set by the player and the W16 token/cost budget is separate from the trade budget; the AI kill switch also stops its bot key (D-45).
 - Prior-wave e2e and local shared-policy parity pass with W16 on/off. Deployment/rollback and DEV_TOOLS are current.
 - Commit the exercised owner guide on the wave branch before owner landing and `wave-16` tag.
 
