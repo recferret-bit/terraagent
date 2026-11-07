@@ -60,8 +60,9 @@ export function fitBid(maxAmount: bigint, lot: bigint, principalAt: (units: bigi
 }
 
 /** Why `fitBid` found nothing, most specific first. */
-export function noFitReason(cashLimit: bigint, walkCapForOneLot: bigint): AgentReason {
+export function noFitReason(cashLimit: bigint, oneLot: { principal: bigint; spend: bigint }): AgentReason {
   if (cashLimit <= 0n) return 'no_cash';
-  if (walkCapForOneLot <= 0n) return 'below_walkaway';
+  if (oneLot.principal <= 0n) return 'below_walkaway';
+  if (oneLot.spend > cashLimit) return 'no_cash';
   return 'size_zero';
 }

@@ -20,6 +20,8 @@ export interface BehaviorStats {
   imports: number;
   ordersRequested: number;
   rejected: Record<string, number>;
+  /** Behaviour-specific counters that are not rejects (e.g. `demand-agents-v1`: subsidy quotes, paused-bid reasons). Absent unless a behaviour sets it. */
+  notes?: Record<string, number>;
 }
 
 export interface BehaviorContext {

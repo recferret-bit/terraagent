@@ -1,5 +1,6 @@
 import { ratio, type Ratio } from '../../../economy/flows/ratio';
 import { ceilTimes, fitBid, floorTimes, noFitReason, principalForSpend } from './limits';
+import { maxBuyerSpend } from '../market-fees';
 import { desiredBuyQty, sellableQty, wholeLots } from './need';
 import type { AgentParams } from './params';
 import { askTotal, bidTotal, midPrice, referenceReasons, type MidPrice } from './quote';
@@ -26,12 +27,16 @@ export function quoteBid(i: AgentColonyInput, p: AgentParams, mid: MidPrice | nu
   const cap = wholeLots(want < BigInt(p.maxOrderUnits) ? want : BigInt(p.maxOrderUnits), Number(lot));
   const transport = i.transportPerUnit;
   const walkCap = (units: bigint): bigint => principalForSpend(floorTimes(units, wa.value) - ceilTimes(units, transport), i.platformFeeBp, i.maxStallFeeBp);
-  const fit = fitBid(cap, lot, (units) => {
+  const principalAt = (units: bigint): bigint => {
     const wanted = bidTotal(mid.mid, units, p);
     const limit = walkCap(units);
     return wanted < limit ? wanted : limit;
-  }, { platformFeeBp: i.platformFeeBp, maxStallFeeBp: i.maxStallFeeBp, cashLimit: nonNeg(cash), maxOrderQuote: p.maxOrderQuoteAtomic, transportPerUnit: transport });
-  if (!fit) return paused(cap === 0n ? 'size_zero' : noFitReason(cash, walkCap(lot)));
+  };
+  const fit = fitBid(cap, lot, principalAt, { platformFeeBp: i.platformFeeBp, maxStallFeeBp: i.maxStallFeeBp, cashLimit: nonNeg(cash), maxOrderQuote: p.maxOrderQuoteAtomic, transportPerUnit: transport });
+  if (!fit) {
+    const principal = principalAt(lot);
+    return paused(cap === 0n ? 'size_zero' : noFitReason(cash, { principal, spend: maxBuyerSpend(principal, i.platformFeeBp, i.maxStallFeeBp) + ceilTimes(lot, transport) }));
+  }
   if (fit.principal < i.minNotionalAtomic) return paused('below_min_notional');
   return { quote: { side: 'buy', token: i.quote, amount: fit.amount, priceAmount: fit.principal, maxSpend: fit.maxSpend }, reasons: [] };
 }
