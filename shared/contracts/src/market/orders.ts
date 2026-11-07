@@ -32,7 +32,7 @@ export const FillPolicy = z.enum(['partial', 'all_or_nothing']);
 export type FillPolicy = z.infer<typeof FillPolicy>;
 
 /** Who funded/placed an order: organic-price metrics count only `player` fills between unrelated colonies (D-44). */
-export const ActorKind = z.enum(['player', 'npc', 'guild', 'fixture', 'subsidy']);
+export const ActorKind = z.enum(['player', 'bot', 'npc', 'guild', 'fixture', 'subsidy']);
 export type ActorKind = z.infer<typeof ActorKind>;
 
 // --- deterministic ids (opIds / refs; NEAR §1a rule 6: derived from the game fact, never random) -------------------
