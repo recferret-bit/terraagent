@@ -63,8 +63,8 @@ export interface Actor {
 
 export interface World {
   readonly planetId: string;
-  bot(o?: { name?: string; fund?: Partial<Record<MarketTokenKey, string>>; allowance?: Body; scopes?: string[]; stallBp?: number }): Promise<Actor>;
-  player(o?: { name?: string; stallBp?: number }): Promise<Actor>;
+  bot(o?: { name?: string; idx?: number; fund?: Partial<Record<MarketTokenKey, string>>; allowance?: Body; scopes?: string[]; stallBp?: number }): Promise<Actor>;
+  player(o?: { name?: string; idx?: number; stallBp?: number }): Promise<Actor>;
 }
 
 const SEATS = Array.from({ length: 600 }, (_, i) => i);
@@ -81,13 +81,16 @@ export class Exchange {
   stallBp = new Map<number, number>();
   /** Emulates the sim version that echoes the command id in `marketOrderRequested`. */
   echoCommandId = false;
+  /** Real planet sim thread instead of the stand-in (`Exchange.boot(env, { realSim: true })`): the sim validates and emits the events. */
+  useRealSim = false;
   private nextIdx = 1;
   private readonly planets: string[] = [];
   private readonly orderSeq = new Map<string, number>();
   private envExtra: Record<string, string> = {};
 
-  static async boot(env: Record<string, string> = {}): Promise<Exchange> {
+  static async boot(env: Record<string, string> = {}, opts: { realSim?: boolean } = {}): Promise<Exchange> {
     const ex = new Exchange();
+    ex.useRealSim = opts.realSim ?? false;
     ex.envExtra = env;
     ex.db = await createTestDatabase();
     await ex.start();
@@ -108,7 +111,7 @@ export class Exchange {
     bus.on('market.trade', (p) => this.pushes.push(p), { module: 'exchange-test' });
     await app.init();
     for (const p of this.planets) app.get(GamePlanets).markScenarioColonyPlanet(p, SEATS);
-    app.get(TradeSimPort).override = (planetId, cmd) => this.fakeSim(planetId, cmd);
+    if (!this.useRealSim) app.get(TradeSimPort).override = (planetId, cmd) => this.fakeSim(planetId, cmd);
     await app.listen(0, '127.0.0.1');
     this.url = (await app.getUrl()).replace('[::1]', '127.0.0.1');
     await (this.get(IntentsPort) as unknown as MockIntentsAdapter).testRegisterSigner(PLATFORM);
@@ -200,6 +203,13 @@ export class Exchange {
     return w;
   }
 
+  /** Adopts an existing (real sim) planet id as a world. */
+  adopt(planetId: string, colonyIndices: readonly number[]): World {
+    this.planets.push(planetId);
+    this.app.get(GamePlanets).markScenarioColonyPlanet(planetId, colonyIndices);
+    return { planetId, bot: (o = {}) => this.makeBot(planetId, o), player: (o = {}) => this.makePlayer(planetId, o) };
+  }
+
   private async call<T>(method: string, path: string, o: { body?: unknown; idem?: string; auth?: string | null; as?: string } = {}): Promise<Reply<T>> {
     const headers: Record<string, string> = { 'content-type': 'application/json' };
     if (o.auth) headers.authorization = `Bearer ${o.auth}`;
@@ -234,21 +244,33 @@ export class Exchange {
   }
 
   private async makeBot(planetId: string, o: Parameters<World['bot']>[0] = {}): Promise<Actor> {
-    const idx = this.nextIdx++;
-    const name = o.name ?? `bot${idx}`;
+    const idx = o.idx ?? this.nextIdx++;
+    const name = o.name ?? (this.useRealSim ? `bot${idx}${planetId.slice(-6)}` : `bot${idx}`);
     if (o.stallBp !== undefined) this.stallBp.set(idx, o.stallBp);
     const fund = o.fund ?? { USDC: '1000', 'bio.water': '500' };
     const r = await this.call<{ keyId: string; secret: string; ownerId: string; accountId?: string }>('POST', '/dev/trade/bots', {
       body: { name, planetId, colonyIndex: idx, fund, ...(o.allowance ? { allowance: o.allowance } : {}), ...(o.scopes ? { scopes: o.scopes } : {}) },
     });
     expect(r.status, JSON.stringify(r.body)).toBe(201);
+    if (this.useRealSim) await this.mirrorInOrbit(planetId, idx, fund);
     const row = await this.prisma.tradeApiKey.findUniqueOrThrow({ where: { keyId: r.body.keyId } });
     return this.actor({ kind: 'bot', name, ownerId: r.body.ownerId, idx, accountId: row.accountId, planetId, secret: r.body.secret, keyId: r.body.keyId });
   }
 
+  /** Real sim only: the sim pre-checks `cargo.inOrbit`, which the verifier faucet does not touch, so mirror resource funding with `dev.cargoGrant`. */
+  async mirrorInOrbit(planetId: string, idx: number, fund: Partial<Record<MarketTokenKey, string>>): Promise<void> {
+    for (const [token, whole] of Object.entries(fund)) {
+      if (token === 'USDC' || token === 'NEAR') continue;
+      const out = await this.get(GamePlanets).submit(planetId, {
+        colonyIndex: idx, source: 'dev', commandId: `fx-${randomUUID()}`, kind: 'dev.cargoGrant', args: { colonyIndex: idx, resource: token, amount: Number(whole) },
+      } as never);
+      expect((out as { code?: string }).code, `cargoGrant ${token}`).toBeUndefined();
+    }
+  }
+
   private async makePlayer(planetId: string, o: Parameters<World['player']>[0] = {}): Promise<Actor> {
-    const idx = this.nextIdx++;
-    const name = (o.name ?? `pl${idx}`).toLowerCase();
+    const idx = o.idx ?? this.nextIdx++;
+    const name = (o.name ?? (this.useRealSim ? `pl${idx}${planetId.slice(-6)}` : `pl${idx}`)).toLowerCase();
     if (o.stallBp !== undefined) this.stallBp.set(idx, o.stallBp);
     const ownerId = devPlayerId(name);
     await this.prisma.player.upsert({ where: { id: ownerId }, create: { id: ownerId, handle: name }, update: {} });
