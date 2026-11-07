@@ -2,13 +2,15 @@ import type { MarketCancelOrderArgs, MarketSetHubFeeArgs } from '@terra/contract
 import { defineCommandHandler } from '../../kernel/commands';
 import { getColonyTradeHubStatus } from '../cargo/trade-hub';
 import { colonyIdOf, resolvePlayerColony } from './colony';
+import { authorizeMarketActor } from './command-source';
 import { ensureColonyMarketState, readMarketPolicy } from './market-state';
 
 export const marketCancelOrderHandler = defineCommandHandler({
   kind: 'market.cancelOrder',
   wave: 'W13',
   handle(state, cmd, ctx) {
-    if (cmd.source !== 'player') return 'not_authorized';
+    const denied = authorizeMarketActor(cmd, true);
+    if (denied) return denied;
     const args = (cmd.args ?? {}) as Partial<MarketCancelOrderArgs>;
     const resolved = resolvePlayerColony(state, cmd, args.colonyId);
     if ('code' in resolved) return resolved;
@@ -35,7 +37,8 @@ export const marketSetHubFeeHandler = defineCommandHandler({
   kind: 'market.setHubFee',
   wave: 'W13',
   handle(state, cmd, ctx) {
-    if (cmd.source !== 'player') return 'not_authorized';
+    const denied = authorizeMarketActor(cmd, false);
+    if (denied) return denied;
     const args = (cmd.args ?? {}) as Partial<MarketSetHubFeeArgs>;
     const resolved = resolvePlayerColony(state, cmd, args.colonyId);
     if ('code' in resolved) return resolved;
