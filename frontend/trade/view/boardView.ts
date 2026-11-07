@@ -1,4 +1,5 @@
 import { formatAtomic, formatUnitPrice, parsePairId, type MarketTokenKey, type PriceBoardRow } from '@terra/contracts';
+import { ACTOR_BADGE, mixEntries } from '../model/allOrders';
 import { buildChart } from '../model/chart';
 import type { TradeState } from '../model/state';
 import { changeLabel, fmtUnit } from '../model/units';
@@ -27,6 +28,15 @@ export function candleChart(row: PriceBoardRow, quote: MarketTokenKey): SVGEleme
   return h('figure', { class: 'tr-fig' }, svg, h('figcaption', { class: 'tr-hint' }, `1 h candles, low ${lo} / high ${hi} ${quote} per unit; blue = volume`));
 }
 
+/** Bot share of the eligible window volume plus the actor mix of its final trades, as chips next to the classification. */
+function mixChips(row: PriceBoardRow): HTMLElement[] {
+  const chips: HTMLElement[] = [];
+  if (row.botShareBp !== undefined) chips.push(h('span', { class: 'tr-chipstat', 'data-bot-share': String(row.botShareBp), title: 'Share of the eligible volume whose trade had a bot on at least one side' }, 'BOT SHARE ', h('b', {}, `${(row.botShareBp / 100).toFixed(1)} %`)));
+  const mix = mixEntries(row.actorMix);
+  if (mix.length) chips.push(h('span', { class: 'tr-chipstat', 'data-actor-mix': mix.map(([k, n]) => `${k}:${n}`).join(',') }, 'ACTOR MIX ', ...mix.map(([k, n]) => h('span', { class: 'tr-mix' }, badge(`${k} ${n}`, ACTOR_BADGE[k])))));
+  return chips.length ? chips : [h('span', { class: 'tr-hint' }, 'No bot share or actor mix reported for this pair yet.')];
+}
+
 export function renderBoard(body: HTMLElement, s: TradeState): void {
   if (!gate(body, s.panels.board, null)) return;
   const row = s.board.find((r) => r.pair === s.pair);
@@ -44,8 +54,7 @@ export function renderBoard(body: HTMLElement, s: TradeState): void {
     stat('COUNTERPARTIES', row.counterparties === undefined ? 'n/a' : String(row.counterparties), row.concentrationBp === undefined ? undefined : `top share ${(row.concentrationBp / 100).toFixed(1)} %`),
     stat('ELIGIBLE VOLUME', row.eligibleVolume === undefined ? 'n/a' : String(row.eligibleVolume)));
   fill(body,
-    h('div', { class: 'tr-badges' }, badge(row.classification.replace('_', ' ').toUpperCase(), CLASS_BADGE[row.classification] ?? 'dim'),
-      h('span', { class: 'tr-hint' }, 'Bot share: not reported by the board (only organic / mixed / fixture classification).')),
+    h('div', { class: 'tr-badges' }, badge(row.classification.replace('_', ' ').toUpperCase(), CLASS_BADGE[row.classification] ?? 'dim'), ...mixChips(row)),
     stats, candleChart(row, q),
     row.last ? h('p', { class: 'tr-hint' }, `Prices are mock ${q} per unit; the smallest unit is ${formatAtomic(q, '1')}.`) : null);
 }

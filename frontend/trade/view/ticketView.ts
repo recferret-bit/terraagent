@@ -47,9 +47,17 @@ export class OrderTicket {
       h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-amount' }, 'AMOUNT (UNITS)'), this.amount),
       h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-total' }, 'TOTAL PRICE (WHOLE ORDER)'), this.total, this.unit),
       h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-ttl' }, 'EXPIRES IN'), this.ttl),
-      this.stallField, this.policyNote, this.preview, this.reason,
+      this.stallField, this.aonToggle(), this.policyNote, this.preview, this.reason,
       h('div', { class: 'tr-row' }, this.place, suggest), h('div', { class: 'field' }, h('label', { class: 'field-label', for: 'tk-cost' }, 'SUGGEST: YOUR UNIT COST'), this.cost, h('span', { class: 'field-hint' }, 'What one unit costs you; the quote engine needs it to price an ask.')), this.suggestMsg, this.result);
     this.setSide('sell');
+  }
+
+  /** All-or-nothing is in the request contract, but the backend accepts only `partial` today (`all_or_nothing` answers 400 `invalid_request`). */
+  private aonToggle(): HTMLElement {
+    const tip = 'All-or-nothing is not supported yet: the market accepts only partial fills today. Your order may fill in several lots.';
+    return h('label', { class: 'tr-check tr-aon', id: 'tk-aon-label', title: tip },
+      h('input', { type: 'checkbox', id: 'tk-aon', disabled: true, 'aria-describedby': 'tk-aon-hint' }), ' ALL-OR-NOTHING ',
+      h('span', { class: 'tr-hint', id: 'tk-aon-hint' }, '(not supported yet: partial fills only)'));
   }
 
   private setSide(s: OrderSide): void {
@@ -107,7 +115,7 @@ export class OrderTicket {
     this.place.disabled = pv.blocked !== null;
     this.place.title = pv.blocked ?? '';
     const lastPolicy = st.orders[0]?.fillPolicy;
-    this.policyNote.textContent = `Fill policy is set by your account${lastPolicy ? ` (your last order: ${lastPolicy.replace(/_/g, ' ')})` : ''}: custodial accounts may fill partially, claimed accounts are all-or-nothing. The order form cannot change it.`;
+    this.policyNote.textContent = `Orders are sent with the partial fill policy${lastPolicy ? ` (your last order: ${lastPolicy.replace(/_/g, ' ')})` : ''}.`;
   }
 
   private drawPreview(pv: TicketPreview, q: Parameters<typeof fmtAmount>[0], base: string, st: TradeState): void {
@@ -129,7 +137,7 @@ export class OrderTicket {
     const req: PlaceTradeOrderRequest = {
       planetId: st.planetId, side: this.side, resource: parsed.base, amount,
       price: { token: parsed.quote, amount: (tryParse(parsed.quote, this.total.value) ?? 0n).toString() },
-      ttlS: Number(this.ttl.value),
+      ttlS: Number(this.ttl.value), fillPolicy: 'partial',
       ...(this.side === 'buy' ? { maxStallFeeBp: this.stallBp(st) } : {}),
     };
     this.busy = true;

@@ -1,7 +1,7 @@
-import type { BookLevel, MarketPolicyView, MarketBookPayload, PriceBoardRow, TradeBalancesResponse, TradeBookResponse, TradeFillView, TradeKeyView, TradeOrderView, TradePairsResponse, TradeStreamEvent } from '@terra/contracts';
+import type { BookLevel, MarketPolicyView, MarketBookPayload, PriceBoardRow, TradeBalancesResponse, TradeBookOrdersResponse, TradeBookResponse, MarketSnapshotResponse, TradeFillView, TradeKeyView, TradeOrderView, TradePairsResponse, TradeStreamEvent } from '@terra/contracts';
 
 export type PairView = TradePairsResponse['pairs'][number];
-export type PanelId = 'pairs' | 'policy' | 'book' | 'board' | 'orders' | 'fills' | 'balances' | 'keys' | 'overview';
+export type PanelId = 'pairs' | 'policy' | 'book' | 'board' | 'orders' | 'fills' | 'balances' | 'keys' | 'overview' | 'bookOrders' | 'stall';
 export type PanelStatus = { readonly status: 'idle' | 'loading' | 'ready' | 'error'; readonly error?: string };
 export type ConnState = 'connecting' | 'live' | 'reconnecting' | 'offline' | 'no_colony';
 
@@ -17,6 +17,10 @@ export interface TradeState {
   readonly orders: readonly TradeOrderView[];
   readonly fills: readonly TradeFillView[];
   readonly balances: TradeBalancesResponse | null;
+  /** Every resting order of the selected pair (public list). */
+  readonly bookOrders: TradeBookOrdersResponse | null;
+  /** The caller's stall (hub fee, earned fees); null without a colony here. */
+  readonly stall: MarketSnapshotResponse['stall'] | null;
   readonly keys: readonly TradeKeyView[];
   /** Best bid/ask per pair of the planet (all-pairs overview). */
   readonly top: Readonly<Record<string, TopOfBook>>;
@@ -24,11 +28,11 @@ export interface TradeState {
   readonly panels: Readonly<Record<PanelId, PanelStatus>>;
 }
 
-export const PANEL_IDS: readonly PanelId[] = ['pairs', 'policy', 'book', 'board', 'orders', 'fills', 'balances', 'keys', 'overview'];
+export const PANEL_IDS: readonly PanelId[] = ['pairs', 'policy', 'book', 'board', 'orders', 'fills', 'balances', 'keys', 'overview', 'bookOrders', 'stall'];
 
 export function initialState(planetId: string, pair: string): TradeState {
   const panels = Object.fromEntries(PANEL_IDS.map((id) => [id, { status: 'idle' } as PanelStatus])) as Record<PanelId, PanelStatus>;
-  return { planetId, pair, pairs: [], policy: null, book: null, board: [], orders: [], fills: [], balances: null, keys: [], top: {}, conn: 'connecting', panels };
+  return { planetId, pair, pairs: [], policy: null, book: null, board: [], orders: [], fills: [], balances: null, bookOrders: null, stall: null, keys: [], top: {}, conn: 'connecting', panels };
 }
 
 export const setPanel = (s: TradeState, id: PanelId, p: PanelStatus): TradeState => ({ ...s, panels: { ...s.panels, [id]: p } });

@@ -1,8 +1,20 @@
 import { TRADE_SCOPES, type CreateTradeKeyRequest, type CreateTradeKeyResponse, type TradeKeyView, type TradeScope } from '@terra/contracts';
 import { TradeApiFailure, type TradeClient } from '../api/client';
+import { usagePercent } from '../model/allOrders';
 import type { TradeState } from '../model/state';
 import { fmtAmount, tryParse } from '../model/units';
 import { badge, copyText, gate, h, note, table, td, fill } from './dom';
+
+/** Today's committed budget (UTC day) and open orders of one key, from the usage fields of `GET /v1/trade/keys`. */
+export function usageMeter(k: TradeKeyView): HTMLElement | null {
+  const pct = usagePercent(k.dailySpent, k.allowance.dailyBudget);
+  if (pct === null) return null;
+  const hot = pct >= 90 ? ' is-hot' : pct >= 70 ? ' is-warm' : '';
+  const remaining = k.dailyRemaining !== undefined ? ` (${fmtAmount('USDC', k.dailyRemaining)} left)` : '';
+  return h('div', { class: 'tr-usage', 'data-usage': k.keyId },
+    h('div', { class: 'tr-meter', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(pct), 'aria-label': `Daily budget used by ${k.label}` }, h('span', { class: `tr-meter-fill${hot}`, style: `width:${pct}%` })),
+    h('span', { class: 'tr-hint' }, `today ${fmtAmount('USDC', k.dailySpent ?? '0')} of ${fmtAmount('USDC', k.allowance.dailyBudget)}${remaining}${k.openOrders !== undefined ? `; ${k.openOrders} open order${k.openOrders === 1 ? '' : 's'} of ${k.allowance.maxOpenOrders}` : ''}`));
+}
 
 export interface KeysDeps { client: TradeClient; state(): TradeState; reload(): void }
 
@@ -39,7 +51,7 @@ export class KeysPanel {
     ];
     return h('tr', { 'data-key': k.keyId },
       td(h('span', {}, k.label, h('br'), h('span', { class: 'tr-hint' }, k.keyId))), td(k.scopes.join(', ')), td(state),
-      td(`max ${a.maxOpenOrders} open, order <= ${fmtAmount('USDC', a.maxOrderNotional)}, day <= ${fmtAmount('USDC', a.dailyBudget)}${a.priceBandBp === null ? '' : `, band ${a.priceBandBp / 100} %`}${a.allowedPairs.length ? `, pairs: ${a.allowedPairs.join(' ')}` : ''}`, 'tr-wrap'),
+      td(h('div', {}, `max ${a.maxOpenOrders} open, order <= ${fmtAmount('USDC', a.maxOrderNotional)}, day <= ${fmtAmount('USDC', a.dailyBudget)}${a.priceBandBp === null ? '' : `, band ${a.priceBandBp / 100} %`}${a.allowedPairs.length ? `, pairs: ${a.allowedPairs.join(' ')}` : ''}`, usageMeter(k)), 'tr-wrap'),
       td(k.lastUsedAtMs ? new Date(k.lastUsedAtMs).toLocaleString() : 'never'), td(h('div', { class: 'tr-row' }, ...(act ?? []))));
   }
 

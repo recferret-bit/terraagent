@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { BookLevel, MarketPolicyView, TradeFillView, TradeOrderView } from '@terra/contracts';
-import { buildMarketLines } from './allOrders';
+import type { TradeBookOrderView, BookLevel, MarketPolicyView, TradeFillView, TradeOrderView } from '@terra/contracts';
+import { actorCounts, mixEntries, usagePercent, visibleOrders } from './allOrders';
 import { buildChart } from './chart';
 import { buildLadder, spreadRatio } from './ladder';
 import { previewTicket, type TicketInput } from './preview';
@@ -146,14 +146,27 @@ describe('state reducers', () => {
 });
 
 describe('all orders table', () => {
-  it('puts own orders under their level and keeps own orders beyond the fetched depth', () => {
-    const asks = [lvl('5000000', 100, 100, 2), lvl('6000000', 100, 10)];
-    const mine = order('mine'); // 5,000,000 / 100
-    const far = order('far', { price: { token: 'USDC', amount: '9000000' } });
-    const lines = buildMarketLines(asks, [lvl('3000000', 100, 5)], [mine, far, order('done', { state: 'FILLED' })], 'bio.water/USDC');
-    expect(lines.map((l) => (l.kind === 'own' ? `own:${l.order.orderId}` : `${l.side}:${l.price.num}`))).toEqual(['sell:6000000', 'sell:5000000', 'own:mine', 'own:far', 'buy:3000000']);
-    const level = lines.find((l) => l.kind === 'level' && l.price.num === '5000000');
-    expect(level && level.kind === 'level' ? level.ownAtLevel : -1).toBe(1);
+  const bo = (id: string, side: 'buy' | 'sell', actorKind: TradeBookOrderView['actorKind']): TradeBookOrderView => ({
+    orderId: id, side, price: { num: '5000000', den: 100 }, amount: 100, remaining: 100, actorKind, stallFeeBp: 100, expiresAtMs: 9, fillPolicy: 'partial', colonyRef: 'c',
+  });
+  const rows = [bo('a', 'buy', 'player'), bo('b', 'sell', 'fixture'), bo('c', 'sell', 'bot'), bo('d', 'sell', 'fixture')];
+  it('filters by side and keeps the API order', () => {
+    expect(visibleOrders(rows, 'sell').map((o) => o.orderId)).toEqual(['b', 'c', 'd']);
+    expect(visibleOrders(rows, null).map((o) => o.orderId)).toEqual(['a', 'b', 'c', 'd']);
+  });
+  it('counts actor kinds in a fixed order and drops empty ones', () => {
+    expect(actorCounts(rows)).toEqual([['player', 1], ['bot', 1], ['fixture', 2]]);
+    expect(mixEntries({ fixture: 3, bot: 0, player: 2 })).toEqual([['player', 2], ['fixture', 3]]);
+    expect(mixEntries(undefined)).toEqual([]);
+  });
+});
+
+describe('key usage', () => {
+  it('computes the used percent of the daily budget, clamped', () => {
+    expect(usagePercent('2500000', '10000000')).toBe(25);
+    expect(usagePercent('20000000', '10000000')).toBe(100);
+    expect(usagePercent('0', '0')).toBe(100);
+    expect(usagePercent(undefined, '10')).toBeNull();
   });
 });
 

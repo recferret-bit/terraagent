@@ -1,3 +1,4 @@
+import type { OrderSide } from '@terra/contracts';
 import { TradeApiFailure, type TradeClient } from './api/client';
 import { signOut, mockOauthUrl } from './api/identity';
 import { TradeStream } from './api/stream';
@@ -33,6 +34,8 @@ export class TradePage {
   private stream: TradeStream | null = null;
   private tab: TabId = 'market';
   private filter: OrderFilter = 'open';
+  private marketSide: OrderSide | null = null;
+  private marketTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly busy = new Set<string>();
   private attempt = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -62,9 +65,23 @@ export class TradePage {
     this.pickers.setPlanets(await this.client.devPlanets());
     this.openStream();
     setInterval(() => this.tick(), 5000);
-    await this.loaders.all();
+    window.addEventListener('hashchange', () => this.applyHash());
+    this.applyHash();
+    await Promise.all([this.loaders.all(), this.loaders.bookOrders(this.marketSide)]);
     this.pickers.sync(this.store.get().pairs, this.store.get().planetId, this.store.get().pair);
     this.ensureValidPair();
+    this.applyHash();
+  }
+
+  /** `#board` scrolls to the price board, `#orders` opens the All orders tab (the in-game hub links to `/trade.html?planet=<id>#board`). */
+  private applyHash(): void {
+    const target = location.hash.replace(/^#/, '');
+    const el = target === 'board' ? this.p.board.root : target === 'orders' || target === 'market' ? document.getElementById('tr-lower') : null;
+    if (target === 'orders' || target === 'market') this.setTab('market');
+    if (!el) return;
+    el.scrollIntoView({ block: 'start' });
+    el.classList.add('is-target');
+    setTimeout(() => el.classList.remove('is-target'), 2500);
   }
 
   /** The URL pair may not be tradable on this server: fall back to the first listed one. */
@@ -89,7 +106,7 @@ export class TradePage {
       h('main', { class: 'tr-grid', id: 'tr-main' },
         h('div', { class: 'tr-col tr-col-a' }, this.p.ladder.root, this.p.board.root),
         h('div', { class: 'tr-col tr-col-b' }, this.p.ticket.root, this.p.balances.root)),
-      h('section', { class: 'tr-lower', 'aria-label': 'Orders, fills and keys' }, tabs, ...panes));
+      h('section', { class: 'tr-lower', id: 'tr-lower', 'aria-label': 'Orders, fills and keys' }, tabs, ...panes));
   }
 
   private tabKey(e: KeyboardEvent, id: TabId): void {
@@ -121,10 +138,10 @@ export class TradePage {
       renderLadder(this.p.ladder.body, s, own, (lv, side) => this.ticket.prefillFromLevel(lv, side));
     }
     if (has('board') || has('book')) renderBoard(this.p.board.body, s);
-    if (has('balances')) renderBalances(this.p.balances.body, s);
+    if (has('balances') || has('stall') || has('policy')) renderBalances(this.p.balances.body, s);
     if (has('pairs') || has('policy') || has('balances') || has('book') || has('orders') || all) this.ticket.update();
     if (all || changed.has('pairs')) this.pickers.sync(s.pairs, s.planetId, s.pair);
-    if (this.tab === 'market' && (has('book') || has('orders'))) renderMarketOrders(this.p.market.body, s, Date.now());
+    if (this.tab === 'market' && (has('bookOrders') || has('orders'))) this.renderMarket(s);
     if (this.tab === 'pairs' && (has('overview') || has('board') || has('pairs') || has('book'))) renderOverview(this.p.pairs.body, s, (pair) => this.selectPair(pair));
     if (this.tab === 'orders' && has('orders')) this.renderOrdersTab(s);
     if (this.tab === 'fills' && has('fills')) renderFills(this.p.fills.body, s);
@@ -134,11 +151,21 @@ export class TradePage {
 
   /** On tab change every pane draws once from current state. */
   private renderLazyTabs(s: TradeState): void {
-    if (this.tab === 'market') renderMarketOrders(this.p.market.body, s, Date.now());
+    if (this.tab === 'market') this.renderMarket(s);
     if (this.tab === 'pairs') renderOverview(this.p.pairs.body, s, (pair) => this.selectPair(pair));
     if (this.tab === 'orders') this.renderOrdersTab(s);
     if (this.tab === 'fills') renderFills(this.p.fills.body, s);
     if (this.tab === 'keys') this.keys.render();
+  }
+
+  private renderMarket(s: TradeState): void {
+    renderMarketOrders(this.p.market.body, s, Date.now(), this.marketSide, { setSide: (side) => { this.marketSide = side; void this.loaders.bookOrders(side); this.renderMarket(this.store.get()); } });
+  }
+
+  /** Book pushes arrive at up to 1 Hz: refetch the full order list at most every 400 ms after the last one. */
+  private scheduleMarketRefresh(): void {
+    if (this.marketTimer) return;
+    this.marketTimer = setTimeout(() => { this.marketTimer = null; void this.loaders.bookOrders(this.marketSide, true); }, 400);
   }
 
   private renderOrdersTab(s: TradeState): void {
@@ -152,7 +179,7 @@ export class TradePage {
     const s = this.store.get();
     const focused = (el: HTMLElement): boolean => el.contains(document.activeElement);
     if (this.tab === 'orders' && !focused(this.p.orders.body)) this.renderOrdersTab(s);
-    if (this.tab === 'market' && !focused(this.p.market.body)) renderMarketOrders(this.p.market.body, s, Date.now());
+    if (this.tab === 'market' && !focused(this.p.market.body)) this.renderMarket(s);
   }
 
   // --- actions ----------------------------------------------------------------------------------------------------
@@ -178,15 +205,16 @@ export class TradePage {
   private afterOrderChange(): void {
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
     this.refreshTimer = setTimeout(() => {
-      void this.loaders.orders(true); void this.loaders.balances(true); void this.loaders.fills(true); void this.loaders.book(true); void this.loaders.board(true);
+      void this.loaders.orders(true); void this.loaders.balances(true); void this.loaders.fills(true); void this.loaders.book(true); void this.loaders.board(true); void this.loaders.bookOrders(this.marketSide, true); void this.loaders.stall(true);
     }, 400);
   }
 
   selectPair(pair: string): void {
     if (pair === this.store.get().pair) return;
-    this.store.update((s) => ({ ...s, pair, book: null }), ['all']);
+    this.store.update((s) => ({ ...s, pair, book: null, bookOrders: null }), ['all']);
     this.syncUrl();
     void this.loaders.book();
+    void this.loaders.bookOrders(this.marketSide);
     void this.loaders.board(true);
   }
 
@@ -195,7 +223,9 @@ export class TradePage {
     this.store.set({ ...initialState(planetId, this.store.get().pair), pairs: this.store.get().pairs, policy: this.store.get().policy }, ['all']);
     this.syncUrl();
     this.openStream();
+    this.marketSide = null;
     void this.loaders.all();
+    void this.loaders.bookOrders(null);
   }
 
   private syncUrl(): void {
@@ -213,6 +243,7 @@ export class TradePage {
       onEvent: (e) => {
         if (e.type === 'hello') this.pickers.setConn('live', 0);
         this.store.update((x) => applyStreamEvent(x, e), e.type === 'book' ? ['book', 'overview'] : e.type === 'order' ? ['orders', 'book'] : e.type === 'fill' ? ['fills'] : ['all']);
+        if (e.type === 'book') this.scheduleMarketRefresh();
         if (e.type === 'fill' || e.type === 'order') this.afterOrderChange();
       },
       onState: (c, attempt) => { this.attempt = attempt; this.store.update((x) => ({ ...x, conn: c }), []); this.pickers.setConn(c, attempt); },

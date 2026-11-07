@@ -1,6 +1,5 @@
-import { isResourceToken, type MarketTokenKey } from '@terra/contracts';
 import type {
-  AgentQuoteResponse, CancelTradeOrderResponse, CreateTradeKeyRequest, CreateTradeKeyResponse, PlaceTradeOrderRequest, PlaceTradeOrderResponse,
+  AgentQuoteResponse, MarketSnapshotResponse, OrderSide, TradeBookOrdersResponse, CancelTradeOrderResponse, CreateTradeKeyRequest, CreateTradeKeyResponse, PlaceTradeOrderRequest, PlaceTradeOrderResponse,
   RevokeTradeKeyResponse, TradeAllowanceUpdate, TradeBalancesResponse, TradeBoardResponse, TradeBookResponse, TradeFillsResponse, TradeKeyListResponse,
   TradeKeyView, TradeOrdersResponse, TradePairsResponse, TradePolicyResponse,
 } from '@terra/contracts';
@@ -48,27 +47,18 @@ export class TradeClient {
   board = (planetId: string): Promise<TradeBoardResponse> => this.call('GET', `/board/${enc(planetId)}`);
   orders = (planetId: string, limit = 200): Promise<TradeOrdersResponse> => this.call('GET', `/orders?planetId=${enc(planetId)}&limit=${limit}`);
   fills = (planetId: string): Promise<TradeFillsResponse> => this.call('GET', `/fills?planetId=${enc(planetId)}&limit=100`);
-  /** Raw `GET /v1/trade/balances` (kept for when the backend counts verifier-held cargo; see `balances`). */
+  /** `GET /v1/trade/balances`: the caller's quote tokens and in-orbit cargo (free / reserved / total, same numbers as `/v1/market/:planet`). */
   tradeBalances = (planetId: string): Promise<TradeBalancesResponse> => this.call('GET', `/balances?planetId=${enc(planetId)}`);
+  /** Public: every resting order of a pair (best price first per side). With a session `mine` marks the caller's own. */
+  bookOrders = (planetId: string, pair: string, side: OrderSide | null, limit = 200): Promise<TradeBookOrdersResponse> =>
+    this.call('GET', `/book/${enc(planetId)}/${enc(pair)}/orders?limit=${limit}${side ? `&side=${side}` : ''}`);
 
-  /**
-   * The caller's balances from the market snapshot (`GET /v1/market/:planet`: free = cargo + verifier - reservations, caller only).
-   * `/v1/trade/balances` reads only the cargo ledger, so cargo already deposited at the verifier (a fixture seat, or the part of a
-   * resting sell) is missing from it; the snapshot has the right free / reserved. Returns null when the caller has no colony here.
-   */
-  async balances(planetId: string): Promise<TradeBalancesResponse | null> {
+  /** The caller's stall (`GET /v1/market/:planet` -> `stall`): current hub fee and earned fees. Null without a colony here. */
+  async stall(planetId: string): Promise<MarketSnapshotResponse['stall'] | null> {
     const res = await this.doFetch(`/v1/market/${enc(planetId)}`, { headers: { accept: 'application/json', ...this.authHeaders() }, credentials: 'include' });
-    const json = (await res.json().catch(() => null)) as { balances?: Record<string, string>; reserved?: Record<string, string>; error?: { code?: string; message?: string } } | null;
-    if (!res.ok) throw new TradeApiFailure(res.status, json?.error?.code ?? `http_${res.status}`, json?.error?.message ?? `Balances failed (${res.status})`);
-    if (!json?.balances) return null;
-    const out: TradeBalancesResponse = { planetId, colonyId: 'your colony', quote: {}, inOrbit: {} };
-    for (const token of new Set([...Object.keys(json.balances), ...Object.keys(json.reserved ?? {})]) as Set<MarketTokenKey>) {
-      const free = BigInt(json.balances[token] ?? '0');
-      const reserved = BigInt(json.reserved?.[token] ?? '0');
-      const row = { free: free.toString(), reserved: reserved.toString(), total: (free + reserved).toString() };
-      if (isResourceToken(token)) (out.inOrbit as Record<string, typeof row>)[token] = row; else (out.quote as Record<string, typeof row>)[token] = row;
-    }
-    return out;
+    const json = (await res.json().catch(() => null)) as (Partial<MarketSnapshotResponse> & { error?: { code?: string; message?: string } }) | null;
+    if (!res.ok) throw new TradeApiFailure(res.status, json?.error?.code ?? `http_${res.status}`, json?.error?.message ?? `Stall failed (${res.status})`);
+    return json?.stall ?? null;
   }
   place = (req: PlaceTradeOrderRequest): Promise<PlaceTradeOrderResponse> => this.call('POST', '/orders', req, true);
   cancel = (orderId: string): Promise<CancelTradeOrderResponse> => this.call('DELETE', `/orders/${enc(orderId)}`, undefined, true);
