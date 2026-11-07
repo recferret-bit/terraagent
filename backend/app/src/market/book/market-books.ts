@@ -4,7 +4,7 @@ import { isBookable, type MarketOrderRecord } from './market-order.record.js';
 import { MarketOrderRepository } from './market-order.repository.js';
 
 /** Called after an order was put into or taken out of its pair's book (`market.book` push, W13-19). */
-export type BookChangeListener = (change: { planetId: string; pair: string }) => void;
+export type BookChangeListener = (change: { planetId: string; pair: string; order: MarketOrderRecord }) => void;
 
 const keyOf = (planetId: string, pair: string): string => `${planetId}\u0000${pair}`;
 
@@ -99,6 +99,6 @@ export class MarketBooks implements OnModuleInit, OnModuleDestroy {
       if (isBookable(order.state)) book.add(order);
       else book.remove(order.orderId);
     }
-    for (const l of this.changeListeners) l({ planetId: order.planetId, pair: order.pair });
+    for (const l of this.changeListeners) l({ planetId: order.planetId, pair: order.pair, order });
   }
 }

@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { Inject, Injectable, Logger, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import { eventDef, marketDepositOpId, type ActorKind, marketToken, isResourceToken, pairId, type MarketTokenKey, type RejectCode, type ResourceKey } from '@terra/contracts';
 import { withTransaction, type DbClient, type PrismaClient, type TransactionClient } from '@terra/db';
 import { EventBus } from '../../bus/event-bus.js';
@@ -8,6 +8,7 @@ import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
 import { PRISMA } from '../../db/db.module.js';
 import { ChainOutboxRepository } from '../../near/application/outbox/chain-outbox.repository.js';
+import { TradeRequestLinker, type OrderLink } from '../trade/trade-request-linker.js';
 import { MarketBooks } from '../book/market-books.js';
 import type { MarketOrderRecord } from '../book/market-order.record.js';
 import { MarketOrderRepository } from '../book/market-order.repository.js';
@@ -62,6 +63,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     private readonly fills: MarketFillsHook,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
     @Inject(APP_ENV) private readonly env: AppEnv,
+    @Optional() private readonly linker?: TradeRequestLinker,
   ) {}
 
   onModuleInit(): void {
@@ -79,12 +81,25 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
 
   async handle(event: Requested, opts: PlaceOptions = {}): Promise<PlaceOrderResult | null> {
     if (!databaseEnabled(this.env)) return null;
-    const d = eventDef('marketOrderRequested').data.parse(event.data);
+    const parsed = eventDef('marketOrderRequested').data.parse(event.data);
+    const link = opts.actorKind ? null : await this.linker?.claim(event.planetId, parsed).catch(() => null) ?? null;
+    try {
+      return await this.handleLinked(event, parsed, opts, link);
+    } catch (err) {
+      if (link) await this.linker?.fail(link, err instanceof Error ? err.message : String(err)).catch(() => undefined);
+      throw err;
+    }
+  }
+
+  private async handleLinked(event: Requested, parsed: Requested['data'], opts: PlaceOptions, link: OrderLink | null): Promise<PlaceOrderResult> {
+    const d = link && !parsed.playerId ? { ...parsed, playerId: link.ownerId } : parsed; // an API order carries its owner (organic rule)
+    const actorKind = opts.actorKind ?? link?.actorKind ?? parsed.actorKind;
     const target: SimTarget = { planetId: event.planetId, colonyId: d.colonyId, colonyIndex: d.colonyIndex };
     const accountId = await resolveMarketAccountId(this.prisma, d.colonyId, d.playerId ?? null, event.planetId, d.colonyIndex);
-    const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId, opts.actorKind));
+    const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId, actorKind));
     if (d.stallName) await this.rememberStall(event.planetId, d, accountId);
     await this.books.sync(result.order.orderId);
+    if (link) await this.linker?.complete(link, { orderId: result.order.orderId, ...(result.rejected ? { rejected: result.rejected } : {}) });
     if (opts.answerSim !== false) this.answerSim(target, result);
     if (result.created && !result.rejected) await this.matchAndSettle(result.order.orderId);
     return result;

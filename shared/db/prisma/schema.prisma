@@ -1002,6 +1002,84 @@ model PlayerNotification {
   @@schema("core")
 }
 
+// --- trade-api.prisma ---
+/// API key of a bot / agent bound to one colony account (W13 trade API). Only the SHA-256 of the secret is stored; the
+/// secret is shown once at creation. `scopes`: read | trade | manage.
+model TradeApiKey {
+  keyId         String    @id @map("key_id") @db.VarChar(40)
+  secretHash    String    @unique @map("secret_hash") @db.VarChar(64)
+  ownerId       String    @map("owner_id") @db.VarChar(64)
+  label         String    @db.VarChar(64)
+  planetId      String    @map("planet_id") @db.VarChar(64)
+  colonyId      String    @map("colony_id") @db.VarChar(64)
+  colonyIndex   Int       @map("colony_index")
+  accountId     String    @map("account_id") @db.VarChar(64)
+  scopes        String[]
+  /// Per-key rate limit; null = module default.
+  ratePerSecond Int?      @map("rate_per_second")
+  rateBurst     Int?      @map("rate_burst")
+  createdAt     DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
+  lastUsedAt    DateTime? @map("last_used_at") @db.Timestamptz(3)
+  revokedAt     DateTime? @map("revoked_at") @db.Timestamptz(3)
+
+  @@index([ownerId])
+  @@map("trade_api_key")
+  @@schema("chain")
+}
+
+/// Safety rails of one key (W13 agent allowance). Amounts are quote atomic (USDC unless the pair's quote differs).
+model TradeApiAllowance {
+  keyId            String   @id @map("key_id") @db.VarChar(40)
+  maxOpenOrders    Int      @map("max_open_orders")
+  maxOrderNotional Decimal  @map("max_order_notional") @db.Decimal(78, 0)
+  dailyBudget      Decimal  @map("daily_budget") @db.Decimal(78, 0)
+  allowedPairs     String[] @map("allowed_pairs")
+  /// Max distance of the order's unit price from the reference (organic VWAP) in bp; null = no band.
+  priceBandBp      Int?     @map("price_band_bp")
+  killSwitch       Boolean  @default(false) @map("kill_switch")
+  updatedAt        DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@map("trade_api_allowance")
+  @@schema("chain")
+}
+
+/// One mutating trade API request (place / cancel): the idempotency record AND the allowance ledger (outstanding orders
+/// count from the moment the row exists, before any fill). `ownerRef` = `key:<keyId>` or `player:<playerId>`.
+model TradeApiRequest {
+  requestId     String   @id @map("request_id") @db.VarChar(40)
+  ownerRef      String   @map("owner_ref") @db.VarChar(80)
+  keyId         String?  @map("key_id") @db.VarChar(40)
+  idemKey       String   @map("idem_key") @db.VarChar(80)
+  bodyHash      String   @map("body_hash") @db.VarChar(64)
+  kind          String   @db.VarChar(8)
+  planetId      String   @map("planet_id") @db.VarChar(64)
+  colonyId      String   @map("colony_id") @db.VarChar(64)
+  colonyIndex   Int      @map("colony_index")
+  ownerId       String   @map("owner_id") @db.VarChar(64)
+  pair          String?  @db.VarChar(48)
+  side          String?  @db.VarChar(4)
+  resource      String?  @db.VarChar(32)
+  amount        Decimal? @db.Decimal(78, 0)
+  priceAmount   Decimal? @map("price_amount") @db.Decimal(78, 0)
+  /// Quote atomic this request commits against the allowance (the order's total quote).
+  notional      Decimal  @default(0) @db.Decimal(78, 0)
+  /// PENDING (row written, sim not called) | SUBMITTED | ACCEPTED (order exists) | REJECTED | CANCELLED | FAILED
+  state         String   @default("PENDING") @db.VarChar(12)
+  commandId     String?  @map("command_id") @db.VarChar(40)
+  orderId       String?  @map("order_id") @db.VarChar(64)
+  targetOrderId String?  @map("target_order_id") @db.VarChar(64)
+  errorCode     String?  @map("error_code") @db.VarChar(48)
+  errorDetail   String?  @map("error_detail") @db.VarChar(400)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(3)
+
+  @@unique([ownerRef, idemKey])
+  @@index([keyId, createdAt])
+  @@index([colonyId, state])
+  @@map("trade_api_request")
+  @@schema("chain")
+}
+
 // --- world.prisma ---
 enum SnapshotKind {
   PERIODIC

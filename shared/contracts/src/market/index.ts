@@ -4,3 +4,4 @@ export * from './orders';
 export * from './views';
 export * from './format';
 export * from './contract-text';
+export * from './trade-api';

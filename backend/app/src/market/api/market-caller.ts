@@ -3,7 +3,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { AuthTokenService, extractBearerPlayer } from '../../core/auth/index.js';
 import { databaseEnabled } from '../../core/persistence.js';
 import { APP_ENV, type AppEnv } from '../../core/tokens.js';
-import { MarketColonies } from '../orders/market-colonies.js';
+import { MarketColonies, type MarketColony } from '../orders/market-colonies.js';
 import { devBearerPlayer, devPlayerId } from '../../ws/session-verifier.js';
 
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
@@ -38,7 +38,7 @@ export class MarketCallers {
   }
 
   /** The player's colony on the planet as the sim and the cargo ledger know it (see `MarketColonies`). */
-  async colonyOf(playerId: string, planetId: string): Promise<MarketCaller['colony']> {
+  async colonyOf(playerId: string, planetId: string): Promise<MarketColony | null> {
     if (!databaseEnabled(this.env)) return null;
     return this.colonies.ofPlayer(playerId, planetId, this.env.NODE_ENV !== 'production');
   }

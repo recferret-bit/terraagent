@@ -1,0 +1,132 @@
+import type { IncomingMessage } from 'node:http';
+import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, Res, UseFilters } from '@nestjs/common';
+import {
+  CreateTradeKeyRequest, ListTradeOrdersQuery, PlaceTradeOrderRequest, TradeAllowanceUpdate,
+  type CancelTradeOrderResponse, type CreateTradeKeyResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
+  type TradeBoardResponse, type TradeBookResponse, type TradeFillsResponse, type TradeKeyListResponse, type TradeKeyView, type TradeOrdersResponse,
+  type TradePairsResponse, type TradePolicyResponse,
+} from '@terra/contracts';
+import type { ZodType } from 'zod';
+import type { HttpRes } from '../../core/logging/request-id.js';
+import { TradeAuth, type TradePrincipal } from './trade-auth.js';
+import { TradeError, TradeErrorFilter } from './trade-error.js';
+import { TradeKeysService } from './trade-keys.service.js';
+import { TradeOrdersService, type HttpResult } from './trade-orders.service.js';
+import { TradeReadService } from './trade-read.service.js';
+import { TradeStreamService } from './trade-stream.service.js';
+
+/** Strict zod parse of a body/query; failures are `invalid_request` with the issue list. */
+export function parseBody<T>(schema: ZodType<T>, raw: unknown): T {
+  const r = schema.safeParse(raw ?? {});
+  if (!r.success) throw new TradeError('invalid_request', 'The request does not match the schema.', { issues: r.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) });
+  return r.data;
+}
+
+/**
+ * The trade API (W13): one controller for humans (session / `?as=` dev identity, actor `player`) and bots (API key bearer,
+ * actor `bot`). Routes, schemas and auth are listed in `TRADE_API_ROUTES` (`@terra/contracts`); curl examples in `market/README.md`.
+ */
+@Controller('trade')
+@UseFilters(TradeErrorFilter)
+export class TradeController {
+  constructor(
+    private readonly auth: TradeAuth,
+    private readonly orders: TradeOrdersService,
+    private readonly read: TradeReadService,
+    private readonly keys: TradeKeysService,
+    private readonly stream: TradeStreamService,
+  ) {}
+
+  private who(req: IncomingMessage, as?: string): Promise<TradePrincipal> {
+    this.orders.gate();
+    return this.auth.authenticate(req, as);
+  }
+
+  private static reply<T>(res: HttpRes, r: HttpResult<T>): T {
+    res.statusCode = r.status;
+    return r.body;
+  }
+
+  // --- keys ---------------------------------------------------------------------------------------------------
+  @Post('keys')
+  @HttpCode(201)
+  async createKey(@Req() req: IncomingMessage, @Query('as') as: string | undefined, @Body() body: unknown): Promise<CreateTradeKeyResponse> {
+    return this.keys.create(await this.who(req, as), parseBody(CreateTradeKeyRequest, body));
+  }
+
+  @Get('keys')
+  async listKeys(@Req() req: IncomingMessage, @Query('as') as?: string): Promise<TradeKeyListResponse> {
+    return this.keys.list(await this.who(req, as));
+  }
+
+  @Patch('keys/:keyId/allowance')
+  async allowance(@Req() req: IncomingMessage, @Param('keyId') keyId: string, @Body() body: unknown, @Query('as') as?: string): Promise<TradeKeyView> {
+    return this.keys.updateAllowance(await this.who(req, as), keyId, parseBody(TradeAllowanceUpdate, body));
+  }
+
+  @Delete('keys/:keyId')
+  async revoke(@Req() req: IncomingMessage, @Param('keyId') keyId: string, @Query('as') as?: string): Promise<RevokeTradeKeyResponse> {
+    return this.keys.revoke(await this.who(req, as), keyId);
+  }
+
+  // --- orders -------------------------------------------------------------------------------------------------
+  @Post('orders')
+  async place(
+    @Req() req: IncomingMessage, @Res({ passthrough: true }) res: HttpRes, @Body() body: unknown, @Query('as') as?: string,
+  ): Promise<PlaceTradeOrderResponse> {
+    const p = await this.who(req, as);
+    const idem = req.headers['idempotency-key'];
+    return TradeController.reply(res, await this.orders.place(p, parseBody(PlaceTradeOrderRequest, body), Array.isArray(idem) ? idem[0] : idem));
+  }
+
+  @Delete('orders/:orderId')
+  async cancel(@Req() req: IncomingMessage, @Res({ passthrough: true }) res: HttpRes, @Param('orderId') orderId: string, @Query('as') as?: string): Promise<CancelTradeOrderResponse> {
+    const p = await this.who(req, as);
+    const idem = req.headers['idempotency-key'];
+    return TradeController.reply(res, await this.orders.cancel(p, orderId, Array.isArray(idem) ? idem[0] : idem));
+  }
+
+  @Get('orders')
+  async listOrders(@Req() req: IncomingMessage, @Query() query: Record<string, string>, @Query('as') as?: string): Promise<TradeOrdersResponse> {
+    return this.read.listOrders(await this.who(req, as), parseBody(ListTradeOrdersQuery, query));
+  }
+
+  @Get('fills')
+  async fills(@Req() req: IncomingMessage, @Query('planetId') planetId?: string, @Query('limit') limit?: string, @Query('as') as?: string): Promise<TradeFillsResponse> {
+    return this.read.listFills(await this.who(req, as), planetId, limit ? Number(limit) : undefined);
+  }
+
+  @Get('balances')
+  async balances(@Req() req: IncomingMessage, @Query('planetId') planetId?: string, @Query('as') as?: string): Promise<TradeBalancesResponse> {
+    return this.read.balances(await this.who(req, as), planetId);
+  }
+
+  // --- public market data -------------------------------------------------------------------------------------
+  @Get('book/:planetId/:pair')
+  book(@Param('planetId') planetId: string, @Param('pair') pair: string, @Query('levels') levels?: string): Promise<TradeBookResponse> {
+    return this.read.book(planetId, decodeURIComponent(pair), levels ? Number(levels) : undefined);
+  }
+
+  @Get('board/:planetId')
+  board(@Param('planetId') planetId: string): Promise<TradeBoardResponse> {
+    return this.read.board(planetId);
+  }
+
+  @Get('pairs')
+  pairs(): TradePairsResponse {
+    return this.read.pairs();
+  }
+
+  @Get('policy')
+  async policy(@Req() req: IncomingMessage, @Query('as') as?: string): Promise<TradePolicyResponse> {
+    this.orders.gate();
+    const p = req.headers.authorization ? await this.auth.authenticate(req, as) : null;
+    return this.read.policyView(p);
+  }
+
+  // --- push stream --------------------------------------------------------------------------------------------
+  @Get('stream')
+  async events(@Req() req: IncomingMessage, @Res() res: HttpRes, @Query('planetId') planetId?: string, @Query('pairs') pairs?: string, @Query('as') as?: string): Promise<void> {
+    await this.stream.open(await this.who(req, as), res, planetId, pairs ? pairs.split(',').filter(Boolean) : []);
+  }
+}

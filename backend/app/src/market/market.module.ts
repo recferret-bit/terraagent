@@ -25,6 +25,17 @@ import { MarketSimGateway } from './orders/market-sim-gateway.js';
 import { OrderFunds } from './orders/order-funds.js';
 import { PlaceOrderPrecheck } from './orders/place-order.precheck.js';
 import { PlaceOrderService } from './orders/place-order.service.js';
+import { TradeAuth } from './trade/trade-auth.js';
+import { TradeController } from './trade/trade.controller.js';
+import { TradeDevController } from './trade/trade-dev.controller.js';
+import { TradeKeyRepository } from './trade/trade-key.repository.js';
+import { TradeKeysService } from './trade/trade-keys.service.js';
+import { TradeOrdersService } from './trade/trade-orders.service.js';
+import { TradeReadService } from './trade/trade-read.service.js';
+import { TradeRequestLinker } from './trade/trade-request-linker.js';
+import { TradeRequestRepository } from './trade/trade-request.repository.js';
+import { TradeSimPort } from './trade/trade-sim.port.js';
+import { TradeStreamService } from './trade/trade-stream.service.js';
 import { GameModule } from '../game/game.module.js';
 import { IntentTradeRepository } from './settlement/intent-trade.repository.js';
 import { SettlementFillsHook } from './settlement/settlement-fills.hook.js';
@@ -74,11 +85,22 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeHistoryProducer,
     MarketMetrics,
     MarketAnalyticsService,
+    TradeKeyRepository,
+    TradeRequestRepository,
+    TradeRequestLinker,
+    TradeSimPort,
+    TradeAuth,
+    TradeOrdersService,
+    TradeKeysService,
+    TradeReadService,
+    TradeStreamService,
   ],
   controllers: [
     MarketController,
     MarketFaucetController,
     MarketAnalyticsController,
+    TradeController,
+    TradeDevController,
   ],
   imports: [
     NearModule,
@@ -98,6 +120,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeSettlement,
     TradeRecovery,
     PriceBoardService,
+    TradeSimPort,
   ],
 })
 export class MarketModule {}

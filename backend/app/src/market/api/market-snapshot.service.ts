@@ -11,6 +11,7 @@ import { PriceBoardService } from '../board/price-board.service.js';
 import { MarketPolicyProvider } from '../orders/market-policy.provider.js';
 import { OrderFunds } from '../orders/order-funds.js';
 import { IntentTradeRepository } from '../settlement/intent-trade.repository.js';
+import { colonyFunds } from './colony-funds.js';
 import { MarketBookPush } from './market-book-push.service.js';
 import type { MarketCaller } from './market-caller.js';
 
@@ -18,14 +19,14 @@ export const RECENT_TRADES = 50;
 
 type TradeRow = Awaited<ReturnType<IntentTradeRepository['recentFinal']>>[number];
 
-const tradeView = (t: TradeRow): TradeView => ({
+export const tradeView = (t: TradeRow): TradeView => ({
   tradeId: t.tradeId, pair: t.pair, base: t.base as TradeView['base'], quote: t.quote as TradeView['quote'], amount: Number(t.amount.toFixed()),
   notional: t.notional.toFixed(), platformFee: t.platformFee.toFixed(), stallFee: t.stallFee.toFixed(), stallFeeBp: t.stallFeeBp,
   makerSide: t.makerSide as TradeView['makerSide'], state: 'FINAL', organic: t.organic,
   ...(t.txHash ? { txHash: t.txHash } : {}), atMs: (t.settledAt ?? t.createdAt).getTime(),
 });
 
-const myOrderView = (o: MarketOrderRecord): MyOrderView => ({
+export const myOrderView = (o: MarketOrderRecord): MyOrderView => ({
   orderId: o.orderId, ref: o.ref, pair: o.pair, side: o.side, resource: o.base as MyOrderView['resource'], amount: Number(o.amount), filled: Number(o.filled),
   price: { token: o.quote as QuoteToken, amount: o.priceAmount.toString() }, state: o.state as MyOrderView['state'], fillPolicy: o.fillPolicy as MyOrderView['fillPolicy'],
   policyVersion: o.policyVersion, platformFeeBp: o.platformFeeBp, stallFeeBp: o.stallFeeBp, reserved: (o.reservedPrincipal + o.reservedFees).toString(),
@@ -59,7 +60,7 @@ export class MarketSnapshotService {
     return Promise.all(pairs.map((p) => this.push.payload(planetId, p.pair, this.push.seqOf(planetId, p.pair))));
   }
 
-  private async boardRows(planetId: string): Promise<PriceBoardRow[]> {
+  async boardRows(planetId: string): Promise<PriceBoardRow[]> {
     const rows = new Map((await this.board.board(planetId)).map((r) => [r.pair, r]));
     return this.policy.current().pairs.map((p) => rows.get(p.pair) ?? insufficient(p.pair));
   }
@@ -78,11 +79,11 @@ export class MarketSnapshotService {
     const open = await this.orders.listOpenByColony(colony.colonyId);
     const balances: Partial<Record<MarketTokenKey, string>> = {};
     const reserved: Partial<Record<MarketTokenKey, string>> = {};
-    await Promise.all(MARKET_TOKEN_KEYS.map(async (token) => {
-      const v = await this.funds.view(colony.accountId, colony.colonyId, token);
-      if (v.free > 0n) balances[token] = v.free.toString();
-      if (v.reserved > 0n) reserved[token] = v.reserved.toString();
-    }));
+    const views = await colonyFunds(this.funds, colony);
+    for (const token of MARKET_TOKEN_KEYS) {
+      if (views[token].free > 0n) balances[token] = views[token].free.toString();
+      if (views[token].reserved > 0n) reserved[token] = views[token].reserved.toString();
+    }
     const stall = await this.prisma.marketStall.findUnique({ where: { planetId_colonyId: { planetId, colonyId: colony.colonyId } }, select: { feeBp: true } });
     const earned = await this.trades.stallEarned(planetId, colony.colonyId);
     return {
