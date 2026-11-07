@@ -108,21 +108,20 @@ describe('exchange place-order: fee, size, caller', () => {
     for (const bp of [0, 100]) expect(run(setup().s, cmd(sellArgs({ maxStallFeeBp: bp }))).code).toBeUndefined();
     for (const bp of [-1, 101, 10_000]) expect(run(setup().s, cmd(sellArgs({ maxStallFeeBp: bp }))).code).toBe('fee_out_of_range');
   });
-  // BUG (it.fails): place-order.ts validateFeeAndSize compares with < and >, so NaN and numeric strings pass, and a
-  // fractional value reaches BigInt() in checkCargo and throws a StepError for the whole tick.
-  it.fails('maxStallFeeBp NaN is rejected', () => {
+  // Regression: NaN, numeric strings and fractions are invalid_args (a fraction would otherwise reach BigInt()).
+  it('maxStallFeeBp NaN is rejected', () => {
     const r = run(setup().s, cmd(sellArgs({ maxStallFeeBp: Number.NaN })));
-    expect(['fee_out_of_range', 'invalid_args']).toContain(r.code);
+    expect(r.code).toBe('invalid_args');
   });
-  it.fails('maxStallFeeBp as a string is rejected', () => {
+  it('maxStallFeeBp as a string is rejected', () => {
     const r = run(setup().s, cmd(sellArgs({ maxStallFeeBp: '50' })));
-    expect(['fee_out_of_range', 'invalid_args']).toContain(r.code);
+    expect(r.code).toBe('invalid_args');
   });
-  it.fails('maxStallFeeBp fractional is rejected (barter buy would otherwise BigInt(50.5))', () => {
+  it('maxStallFeeBp fractional is rejected (barter buy would otherwise BigInt(50.5))', () => {
     const { s } = setup({ metals: 100_000 });
     let r: { code?: string; events: SimEvent[] } | undefined;
     expect(() => { r = run(s, cmd(buyArgs({ maxStallFeeBp: 50.5 }))); }).not.toThrow();
-    expect(['fee_out_of_range', 'invalid_args']).toContain(r?.code);
+    expect(r?.code).toBe('invalid_args');
   });
   it('minimum notional boundary per quote token: min-1 reject, min and min+1 pass', () => {
     const cases: [string, bigint][] = [['USDC', 100_000n], ['NEAR', 10_000_000_000_000_000_000_000n], ['metals.t1', 1n]];
@@ -139,12 +138,22 @@ describe('exchange place-order: fee, size, caller', () => {
   it('base lot: any positive integer is a multiple of lot 1 (and the min lot passes)', () => {
     expect(run(setup().s, cmd(sellArgs({ amount: 1 }))).code).toBeUndefined();
   });
-  it('non-player sources are not_authorized', () => {
-    for (const source of ['system', 'bot', 'admin']) {
+  it('only player and bot (with an integer colonyIndex >= 0) sources may place orders', () => {
+    for (const source of ['system', 'admin', 'dev', 'ai', 'unknown']) {
       const { s } = setup();
       expect(run(s, cmd(sellArgs(), { source } as Partial<SimCommand>)).code).toBe('not_authorized');
       expect(mkt(s).orderSeq).toBe(0);
     }
+    const { s: noSrc } = setup();
+    expect(run(noSrc, cmd(sellArgs(), { source: undefined } as Partial<SimCommand>)).code).toBe('not_authorized');
+    for (const colonyIndex of [null, undefined, -1, 0.5]) {
+      const { s } = setup();
+      expect(run(s, cmd(sellArgs(), { source: 'bot', colonyIndex } as unknown as Partial<SimCommand>)).code).toBe('invalid_args');
+      expect(mkt(s).orderSeq).toBe(0);
+    }
+    const { s: ok } = setup();
+    expect(run(ok, cmd(sellArgs(), { source: 'bot', colonyIndex: 0 } as Partial<SimCommand>)).code).toBeUndefined();
+    expect(mkt(ok).orderSeq).toBe(1);
   });
   it('wrong colonyId, wrong player and missing colony are not_own_colony', () => {
     expect(run(setup().s, cmd(sellArgs({ colonyId: 'col_9' }))).code).toBe('not_own_colony');
@@ -201,10 +210,10 @@ describe('exchange place-order: cargo and limits', () => {
     expect(run(setup({ metals: 1019 }).s, cmd(buyArgs())).code).toBe('insufficient_cargo');
     expect(run(setup({ metals: 1020 }).s, cmd(buyArgs())).code).toBeUndefined();
   });
-  it('barter buy fee reservation rounds UP: 101 at 1%+1% needs 101+2+2', () => {
+  it('barter buy fee reservation floors (maxBuyerSpend): 101 at 1%+1% needs 101+1+1', () => {
     const buy = cmd(buyArgs({ price: { token: 'metals.t1', amount: '101' } }));
-    expect(run(setup({ metals: 104 }).s, buy).code).toBe('insufficient_cargo');
-    expect(run(setup({ metals: 105 }).s, cmd(buyArgs({ price: { token: 'metals.t1', amount: '101' } }))).code).toBeUndefined();
+    expect(run(setup({ metals: 102 }).s, buy).code).toBe('insufficient_cargo');
+    expect(run(setup({ metals: 103 }).s, cmd(buyArgs({ price: { token: 'metals.t1', amount: '101' } }))).code).toBeUndefined();
   });
   it('barter buy uses the explicit maxStallFeeBp for the reservation (0 bp: needs price + 1%)', () => {
     expect(run(setup({ metals: 1009 }).s, cmd(buyArgs({ maxStallFeeBp: 0 }))).code).toBe('insufficient_cargo');
@@ -247,6 +256,7 @@ describe('exchange place-order: success payload', () => {
     expect(ev[0]!.data).toEqual({
       ref: marketOrderRef('col_0', 1), orderSeq: 1, colonyId: 'col_0', colonyIndex: 0, playerId: 'pr_a', side: 'sell', resource: 'bio.water',
       amount: 10, price: { token: 'metals.t1', amount: '50' }, ttlS: 3600, stallFeeBp: 100, maxStallFeeBp: 40, hubEntityId: hubIds[0], stallName: 'Port A',
+      commandId: expect.any(String), actorKind: 'player',
     });
     expect(mkt(s).orderSeq).toBe(1);
     expect(mkt(s).requested[marketOrderRef('col_0', 1)]).toEqual({ side: 'sell', resource: 'bio.water', amount: 10 });

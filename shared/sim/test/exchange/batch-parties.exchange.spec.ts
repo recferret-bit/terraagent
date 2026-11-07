@@ -164,9 +164,8 @@ describe('exchange batch: account aggregation', () => {
     const bat = fillBatch(xo('buy', 10n, 1_000_000n), xo('sell', 10n, 1_000_000n), 'buyer', { enabled: true, shareBp: 2000, accountId: 'platform' });
     expect(bat.legs.filter((l) => l.accountId === 'platform')).toEqual([{ accountId: 'platform', token: 'USDC', delta: 10_000n }]);
   });
-  // BUG (it.fails): batch builder keys the platform and the stall bucket by (quote, bp, ACCOUNT, policy). When both fee
-  // accounts and rates coincide the keys collide and the second charge floors over a base that already holds this fill.
-  it.fails('platform and stall fees do not share a bucket when platform account == stall account and rates are equal', () => {
+  // Regression: the stall bucket key carries a `|stall` suffix, so platform and stall fees never share a bucket.
+  it('platform and stall fees do not share a bucket when platform account == stall account and rates are equal', () => {
     let s = xo('sell', 3n, 150n, { stallFeeBp: 100, stallAccountId: 'platform' });
     let b = xo('buy', 3n, 150n, { platformFeeBp: 100, platformAccountId: 'platform' });
     let notional = 0n, plat = 0n, stall = 0n;

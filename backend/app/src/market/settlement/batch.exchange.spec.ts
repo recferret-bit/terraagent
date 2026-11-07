@@ -103,7 +103,7 @@ describe('exchange backend: PlaceOrderPrecheck', () => {
     const calls: { token?: string } = {};
     const registered: Record<string, unknown> = {};
     const prechecks = { register: (k: string, fn: unknown) => { registered[k] = fn; return () => { delete registered[k]; }; } };
-    const funds = { view: async (_a: string, _c: string, token: string) => { calls.token = token; return { free: over.free ?? 10_000_000n }; } };
+    const funds = { view: async (_a: string, token: string) => { calls.token = token; return { free: over.free ?? 10_000_000n }; } };
     const repo = { listOpenByColony: async () => Array.from({ length: over.open ?? 0 }) };
     const policy = { current: () => ({ openOrderLimit: 20, platformFeeBp: 100, stallFeeMaxBp: 100, ...over.cfg }) };
     const colonies = { resolve: async () => ({ colonyId: 'c1', accountId: 'a1' }) };
