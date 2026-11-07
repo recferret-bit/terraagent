@@ -107,6 +107,15 @@ a('no accent colour anywhere → NO_ACCENT', () => [base('hullPrimary'), part(bo
 a('light that is not emissive → ROLE_ZONE', () => [base(), part(box(0.1, 0.1, 0.1), [0, 0.25, 0], { zone: 'hullPrimary', name: 'status light' })], (r) => acodes(r).includes('ROLE_ZONE'));
 
 let fail = 0;
+const { organicValidatorFixtures } = await vite.ssrLoadModule('/render/kitbash/validate/organicFixtures.ts');
+const organicCases = organicValidatorFixtures();
+for (const c of organicCases) {
+  const found = codes(c.report);
+  const ok = c.expected ? found.includes(c.expected) : found.length === 0;
+  console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name}${ok ? '' : ` → ${found.join(', ')}`}`);
+  if (!ok) fail++;
+}
+
 for (const c of at_) {
   const r = amodel(c.build);
   const ok = c.expect(r);
@@ -120,6 +129,6 @@ for (const c of cases.slice(0, cases.length - at_.length)) {
   console.log(`${ok ? 'PASS' : 'FAIL'}  ${c.name}${ok ? '' : `   → got [${codes(r).join(', ') || 'nothing'}]`}`);
   if (!ok) fail++;
 }
-console.log(`\n${cases.length - fail}/${cases.length} validator self-tests pass`);
+console.log(`\n${cases.length + organicCases.length - fail}/${cases.length + organicCases.length} validator self-tests pass`);
 await vite.close();
 process.exit(fail ? 1 : 0);

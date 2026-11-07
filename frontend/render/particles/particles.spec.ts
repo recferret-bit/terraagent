@@ -220,7 +220,7 @@ describe('Tool origins kinematics (@terra/render/particles)', () => {
 
 describe('Preset coverage & emitter robustness (@terra/render/particles)', () => {
   it('has exactly one preset per target kind, and NaN beam emissive fails the validator', () => {
-    const kinds = ParticlePresetRegistry.list().map((p) => p.targetKind).sort();
+    const kinds = ParticlePresetRegistry.list().filter(p => p.targetKind !== 'combat').map((p) => p.targetKind).sort();
     expect(kinds).toEqual(['dune', 'flat', 'hole', 'metals', 'minerals', 'oil', 'repair', 'rock', 'tree']);
     expect(new Set(BUILTIN_PARTICLE_PRESETS.map((p) => p.id)).size).toBe(9);
     const clean = structuredClone(ParticlePresetRegistry.getByTargetKind('rock'));

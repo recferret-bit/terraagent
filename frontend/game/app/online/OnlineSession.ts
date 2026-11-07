@@ -7,6 +7,7 @@ import type { ServerMessage } from '@terra/contracts';
 import { COMMAND_TIMEOUT_MS, CommandBus } from '../../net/commandBus';
 import { NOT_YOUR_PLANET } from '../../net/closeCodes';
 import { ConnectionBanner } from '../../net/ConnectionBanner';
+import { bindVersionMismatchNotice } from '../../net/VersionMismatchNotice';
 import { LagTransport, withDevLag } from '../../net/LagTransport';
 import { createLocalWorker, LocalTransport, workerLink } from '../../net/LocalTransport';
 import { NetStatsBoard } from '../../net/netStats';
@@ -35,6 +36,7 @@ import { extractPodDescentStatus } from './podStatus';
 import { PilotBridge } from './pilotBridge';
 import { createSessionHud } from './sessionHud';
 import { createSessionTarget, joinParam, scenarioParam } from './sessionTarget';
+import { bindStoreCombatEvents, ingestHostMessageCombatEvents } from './combatSync';
 import { bindOnlineDayNightSync, type OnlineDayNightSync } from './dayNightSync';
 import {
   applyChangedTileList, applyTerrainTileChanges, bindLocalSaveListeners, createSafeViewport, isEscapeBlockedByHudOverlay,
@@ -119,6 +121,7 @@ export class OnlineSession {
       ? new ConnectionBanner(uiParent, this.transport, () => this.transport.start())
       : null;
     this.store = opts.store ?? new WorldStore(this.transport);
+    this.cleanups.push(bindVersionMismatchNotice(uiParent, this.store, () => this.store.currentPlanetId() || this.planetId || null));
     // `?lag=` adds its round trip to the confirm timeout, so a slow test link does not roll predictions back
     const lagMs = this.transport instanceof LagTransport ? 2 * this.transport.ms : 0;
     this.commandBus = new CommandBus(this.transport, COMMAND_TIMEOUT_MS + lagMs, (id, kind, args) => this.store.notifySent(id, kind, args), (id) => this.store.notifyTimedOut(id));
@@ -145,6 +148,7 @@ export class OnlineSession {
       planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
       camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s),
       pilot: this.pilot,
+      renderedEntityPosition: (id) => this.entities.getRecord(id)?.mesh.position ?? null,
     });
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
     if (local) this.cleanups.push(bindLocalSaveListeners(local));
@@ -170,12 +174,10 @@ export class OnlineSession {
   }
 
   private bindTransportListeners(): void {
-    this.cleanups.push(this.transport.onMessage((m) => this.onHostMessage(m)));
+    this.cleanups.push(this.transport.onMessage((m) => this.onHostMessage(m)), bindStoreCombatEvents(this.store, this.entities.combatSync, () => this.terrain));
     this.dayNightSync = bindOnlineDayNightSync({
-      store: this.store,
-      commandBus: this.commandBus,
+      store: this.store, commandBus: this.commandBus, warp: () => this.warp,
       hasColony: () => Boolean(this.colonyId && this.store.latest?.colonies[this.colonyIndex]?.status !== 'eliminated'),
-      warp: () => this.warp,
     });
     this.cleanups.push(() => this.dayNightSync?.dispose());
   }
@@ -184,6 +186,7 @@ export class OnlineSession {
   private onHostMessage(m: ServerMessage): void {
     const k = warpOfMessage(m);
     if (k !== undefined) this.setWarp(k);
+    ingestHostMessageCombatEvents(m, this.entities.combatSync, this.terrain);
     if (m.t === 'welcome') {
       this.planetId = m.d.planet.id;
       if (m.d.colonyId && !this.colonyId) this.colonyId = m.d.colonyId;
@@ -216,10 +219,7 @@ export class OnlineSession {
         try { applyPlanetLook(this.viewport, look); } catch { /* Ignore in headless tests */ }
       }
       this.focusTile(this.cameraTargetTile.q, this.cameraTargetTile.r, true);
-      if (this.store.latest) {
-        this.onView(this.store.latest);
-        this.entities.update(0, this.terrain);
-      }
+      if (this.store.latest) { this.onView(this.store.latest); this.entities.update(0, this.terrain); }
     }
     return Boolean(this.terrain);
   }
@@ -230,10 +230,7 @@ export class OnlineSession {
     this.sendLandOnce();
     this.bootOverlay?.showColony(this.planetId || 'pl_dev');
     this.hud.setVisible(true);
-    if (this.store.latest) {
-      this.onView(this.store.latest);
-      this.entities.update(0, this.terrain);
-    }
+    if (this.store.latest) { this.onView(this.store.latest); this.entities.update(0, this.terrain); }
   }
 
   /** Fast start (FA-08), once per session: `landPod` opens the own pod once it has descended `podLandMinS`. */
@@ -348,7 +345,7 @@ export class OnlineSession {
     if (!this.cameraCentered && !this.landSent && !this.fromSpaceDescent && !status.descending && status.hqLanded) {
       this.entities.podTouchdown.setEnabled(false);
     }
-    this.entities.syncView(v, this.terrain, this.biomeKey, this.store.confirmedTick);
+    this.entities.syncView(v, this.terrain, this.biomeKey, this.store.confirmedTick, this.store.simData() ?? undefined);
     const hqReady = this.entities.isHqDeployed();
     this.hqDeployedSynced = hqReady;
     this.landfall.onView(v);

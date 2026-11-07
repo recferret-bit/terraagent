@@ -1,6 +1,6 @@
 import { commandGate, flagsFromList, newId, parseCommandArgs, parseWaves, PlanetType, precheckClientCommand, REJECT_CODES, REJECT_DETAIL_MAX, type RejectCode, type ServerMessage } from '@terra/contracts';
 import {
-  buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, previewPlanetTimePatch, SIM_VERSION, SimHost, TICK_MS, tune,
+  applyTunedEntityHealth, buildPipeline, effectiveOverrides, GEN_VERSION, PlanetJournal, PlanetScheduler, previewPlanetTimePatch, SIM_VERSION, SimHost, TICK_MS, tune,
   type BalanceOverrides, type JournalProblem, type CommandOutcome, type PlanetTimePatch, type PlanetTuning, type SimCommand, type SimEvent, type TuneRequest,
 } from '@terra/sim';
 import { ownBytes } from '../bytes';
@@ -186,6 +186,7 @@ export class LocalHostCore {
 
   /** Replaces the pipeline (tune) without touching the planet or the queued commands. */
   private swapPipeline(next: SimHost['pipeline'], live: BalanceOverrides): void {
+    applyTunedEntityHealth(this.host.state, this.host.pipeline.config.data, next.config.data);
     const next_ = new SimHost(next);
     next_.load(this.host.state);
     const { queue, window, lastDeltaTick } = this;

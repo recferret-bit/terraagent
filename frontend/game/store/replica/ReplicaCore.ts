@@ -1,5 +1,5 @@
 import { flagsFromList } from '@terra/contracts';
-import { allModules, DiffGapError, type BalanceOverrides, SIM_VERSION, SimHost, type PlanetState, type SimModule, type SimView } from '@terra/sim';
+import { allModules, DiffGapError, FaunaMotionReplica, type BalanceOverrides, SIM_VERSION, SimHost, type PlanetState, type SimModule, type SimView } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
 import { applyTuned, type TunedData } from './tuneEvent';
 
@@ -45,6 +45,7 @@ export class ReplicaCore {
   private lastViewTick = -1;
   private flags: readonly string[] = [];
   private overrides: BalanceOverrides | undefined;
+  private faunaMotion: FaunaMotionReplica | null = null;
   constructor(private readonly opts: ReplicaOptions = {}) {}
 
   get status(): ReplicaStatus { return this.current; }
@@ -61,11 +62,18 @@ export class ReplicaCore {
 
   welcome(w: WelcomeInput): WelcomeResult {
     this.host = null;
+    this.faunaMotion = null;
     if (w.simVersion !== SIM_VERSION) return this.fail('simVersion', `server sim ${w.simVersion}, client ${SIM_VERSION}`);
     const data = clientDataFor(flagsFromList(w.flags), w.overrides);
     if (data.hash !== w.dataHash) return this.fail('dataHash', `server data ${w.dataHash}, client ${data.hash}`);
     const host = new SimHost({ flags: w.flags, data, modules: this.opts.modules ?? allModules() });
-    try { host.load(w.state); } catch (e) { return this.fail('badSnapshot', (e as Error).message); }
+    try {
+      host.load(w.state);
+      if (w.flags.includes('W07')) {
+        this.faunaMotion = new FaunaMotionReplica();
+        this.faunaMotion.welcome(host.state, data);
+      }
+    } catch (e) { return this.fail('badSnapshot', (e as Error).message); }
     this.host = host;
     this.flags = [...w.flags];
     this.overrides = w.overrides;
@@ -108,6 +116,7 @@ export class ReplicaCore {
     if (!this.host) return { ok: false, reason: 'noState', detail: 'delta before welcome', request: true };
     try {
       this.host.applyDiff(d.diff);
+      this.faunaMotion?.apply(d.diff, this.host.state, this.host.pipeline.config.data);
     } catch (e) {
       this.current = 'needsResync';
       if (e instanceof DiffGapError) return { ok: false, reason: 'gap', detail: e.message, request: true };

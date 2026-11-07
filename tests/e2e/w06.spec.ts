@@ -1,4 +1,6 @@
 import type { BrowserContext, Page } from '@playwright/test';
+import { independentBrowser } from './harness/independentBrowser';
+import { observeTransientVisibility } from './harness/transientVisibility';
 import {
   devConsole, expect, hostMode, loadScenario, readTick, test,
 } from './harness';
@@ -57,7 +59,7 @@ async function setRelayerFail(target: Page, rate: number): Promise<void> {
 
 test('@hack 1. open ?scenario=w06 as a guest with a colony; the chip says Guest pilot and the tick rises', async () => {
   serverOnly();
-  const t0 = await loadScenario(page, 'w06', {}, { as: 'w06' });
+  const t0 = await loadScenario(page, 'w06', { skip: '1' }, { as: 'w06' });
   await expect(page.locator('[data-testid=pilot-chip]')).toContainText('Guest pilot');
   await expect.poll(async () => page.evaluate(() => {
     const o = (window as unknown as {
@@ -110,16 +112,21 @@ test('5. Returning login on a second device', () => {
 test('@hack 6. relayer fail shows the orbit retry toast; clearing the fail rate and Retry removes it', async ({ browser }) => {
   serverOnly();
   test.setTimeout(120_000);
+  await loadScenario(page, 'w06', { skip: '1' }, { timeout: 45_000 });
   await setRelayerFail(page, 1);
   // A second WebGL view does not come up while this page still holds the context.
   await page.goto('about:blank');
-  const fresh = await browser.newContext();
-  const other = await fresh.newPage();
+  const fresh = await independentBrowser(browser, {}, 'relayer-retry');
+  const other = await fresh.context.newPage();
+  let failed = false;
   try {
-    await loadScenario(other, 'w06', {}, { as: 'w06b', timeout: 45_000 });
-    const sawSaving = other.locator('[data-testid=orbit-save]').waitFor({ state: 'visible', timeout: 30_000 });
-    await saveWithGoogle(other, RETRY_SUBJECT);
-    await sawSaving;
+    // This story starts at a ready colony; W01 covers the normal descent sequence.
+    await loadScenario(other, 'w06', { skip: '1' }, { as: 'w06b', timeout: 45_000 });
+    // The tick exists during descent while the HUD is hidden. Time the save only once its action is available.
+    await expect(other.locator('[data-testid=save-progress]')).toBeVisible({ timeout: 30_000 });
+    const saving = await observeTransientVisibility(other, '[data-testid=orbit-save]', 30_000, { text: 'Saving to orbit…', role: 'status' });
+    try { await Promise.all([saveWithGoogle(other, RETRY_SUBJECT), saving.assertSeen()]); }
+    finally { await saving.dispose(); }
     await expect(other.locator('[data-testid=orbit-toast]')).toContainText("Couldn't save to orbit, retrying", { timeout: 30_000 });
     await setRelayerFail(other, 0);
     await other.locator('[data-testid=orbit-retry]').click();
@@ -128,9 +135,9 @@ test('@hack 6. relayer fail shows the orbit retry toast; clearing the fail rate 
       const saving = await other.locator('[data-testid=orbit-save]').count();
       return toast === 0 && saving === 0;
     }, { timeout: 20_000 }).toBe(true);
-  } finally {
+  } catch (error) { failed = true; throw error; } finally {
     await devConsole(other, 'near.mock.fail relayer 0', 15_000).catch(() => undefined);
-    await fresh.close();
+    await fresh.close(failed);
   }
 });
 

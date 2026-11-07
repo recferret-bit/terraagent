@@ -134,6 +134,47 @@ function createComposer(renderer: THREE.WebGLRenderer, scene: THREE.Scene, camer
   return { composer, renderPass, bloom, pixelArt, offPixel };
 }
 
+// F8 → PERF → RENDER SCALE: AUTO / fixed ratio, capped at `maxDpr` (display ≤ 2 or the LOW quality cap).
+function sizeColonyViewport(
+  renderer: THREE.WebGLRenderer, composer: EffectComposer, bloom: UnrealBloomPass, pixelArt: ShaderPass,
+  renderPass: RenderPass, camera: THREE.PerspectiveCamera,
+  cssW: number, cssH: number, customRes: { width: number; height: number } | null, dpr: number,
+) {
+  const rw = customRes ? customRes.width : cssW;
+  const rh = customRes ? customRes.height : cssH;
+  renderer.setPixelRatio(dpr);
+  renderer.setSize(rw, rh, false);
+  composer.setPixelRatio(dpr);
+  composer.setSize(rw, rh);
+  bloom.resolution.set(rw * dpr, rh * dpr);
+  setPixelArtSize(pixelArt, rw * dpr, rh * dpr);
+  Object.assign(perfTelemetry, { dpr, canvasW: renderer.domElement.width, canvasH: renderer.domElement.height });
+  for (const p of renderPass.camera ? [renderPass.camera as THREE.PerspectiveCamera] : []) {
+    p.aspect = cssW / cssH;
+    p.updateProjectionMatrix();
+  }
+  camera.aspect = cssW / cssH;
+  camera.updateProjectionMatrix();
+}
+
+function paintColonyFrame(
+  vp: ColonyViewport, renderPass: RenderPass, composer: EffectComposer,
+  focusRing: ReturnType<typeof createViewFocusRing>,
+  renderScale: ReturnType<typeof createRenderScaleController>,
+  focusGroundY: number, customRes: { width: number; height: number } | null,
+) {
+  stepSunOrbit(vp);
+  tickWindClock();
+  tickWaterClock();
+  // Effects restrict themselves to the visible ground (+ margin); the shadow boxes fit to it.
+  const focus = updateViewFocus(renderPass.camera, focusGroundY);
+  fitShadowToView(vp, focus);
+  focusRing.update(renderPass.scene, focus, focusGroundY, isFocusRingOn());
+  composer.render();
+  // AUTO stepped: one resize, not per frame (a `?res=` preset renders at ratio 1: nothing to resize)
+  if (renderScale.frame(performance.now()) && !customRes) vp.resize();
+}
+
 /** Pillar 4 bootstrap: 28° FOV, ACES, PMREM RoomEnvironment, warm sun + cool hemi, bloom threshold 1.1. */
 export function createColonyViewport(container: HTMLElement): ColonyViewport {
   installShadowShaderPatch();
@@ -184,42 +225,16 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
     },
     resize() {
       const cw = w(), ch = h();
-      const rw = customRes ? customRes.width : cw;
-      const rh = customRes ? customRes.height : ch;
-      // F8 → PERF → RENDER SCALE: AUTO / fixed ratio, capped at `maxDpr` (display ≤ 2 or the LOW quality cap).
       const dpr = customRes ? 1 : renderScale.resolve(maxDpr);
-      renderer.setPixelRatio(dpr);
-      renderer.setSize(rw, rh, false);
-      composer.setPixelRatio(dpr);
-      composer.setSize(rw, rh);
-      bloom.resolution.set(rw * dpr, rh * dpr);
-      setPixelArtSize(pixelArt, rw * dpr, rh * dpr);
-      Object.assign(perfTelemetry, { dpr, canvasW: renderer.domElement.width, canvasH: renderer.domElement.height });
-      for (const p of renderPass.camera ? [renderPass.camera as THREE.PerspectiveCamera] : []) {
-        p.aspect = cw / ch;
-        p.updateProjectionMatrix();
-      }
-      camera.aspect = cw / ch;
-      camera.updateProjectionMatrix();
+      sizeColonyViewport(renderer, composer, bloom, pixelArt, renderPass, camera, cw, ch, customRes, dpr);
     },
-    render() {
-      stepSunOrbit(vp);
-      tickWindClock();
-      tickWaterClock();
-      // Effects restrict themselves to the visible ground (+ margin); the shadow boxes fit to it.
-      const focus = updateViewFocus(renderPass.camera, focusGroundY);
-      fitShadowToView(vp, focus);
-      focusRing.update(renderPass.scene, focus, focusGroundY, isFocusRingOn());
-      composer.render();
-      // AUTO stepped: one resize, not per frame (a `?res=` preset renders at ratio 1: nothing to resize)
-      if (renderScale.frame(performance.now()) && !customRes) vp.resize();
-    },
+    render() { paintColonyFrame(vp, renderPass, composer, focusRing, renderScale, focusGroundY, customRes); },
     dispose() {
       renderScale.dispose();
       focusRing.dispose();
       window.removeEventListener('resize', onResize);
-      offShadow();
-      offPixel();
+      resizeObserver.disconnect();
+      offShadow(); offPixel();
       sun.dispose(); secondaryShadowLight.dispose(); // their shadow-map render targets
       composer.dispose(); pmrem.dispose(); renderer.dispose();
       renderer.domElement.remove();
@@ -230,6 +245,8 @@ export function createColonyViewport(container: HTMLElement): ColonyViewport {
   const offShadow = registerShadowViewport(vp);
   const onResize = () => vp.resize();
   window.addEventListener('resize', onResize);
+  const resizeObserver = new ResizeObserver(() => vp.resize());
+  resizeObserver.observe(container);
   vp.resize(); // applies a fixed render scale from the first frame
   return vp;
 }

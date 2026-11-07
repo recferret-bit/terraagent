@@ -1,7 +1,11 @@
+import { ORGANIC_DECL, ORGANIC_COLOR, ORGANIC_ROUGHNESS, ORGANIC_MOTION } from './organicSurface';
 /** GLSL chunks injected into MeshStandardMaterial by the Unified Colony material (see UnifiedColonyMaterial.ts). */
 import { COLONY_VISION_AND_LIGHTS_GLSL } from '../../lighting/ColonyVisionAndLights';
 
 export const VERT_COMMON = /* glsl */ `#include <common>
+        attribute float aOrganic;
+        varying float vOrganic;
+        varying vec2 vAnatomy;
         attribute vec2 aSurfacePBR;
         attribute vec4 aPartAnim;
         varying vec3 vLocalPos;
@@ -127,7 +131,7 @@ const VERT_GAIT_ANIM = /* glsl */ `
           transformed = bipedBodyTransform(transformed, g, uWalkWeight, uWorkWeight);
         } else if (abs(animType - 6.0) < 0.1) {
           // 6 (Femur) & 16 (Tibia+Foot): Rigid 2-link spider kinematic chain
-          float phase = ((pivot.x >= 0.0) ? 0.0 : 3.14159265) + pivot.z * 4.9;
+          float phase = ((pivot.x >= 0.0) ? 0.0 : 3.14159265) + (aOrganic > 0.5 ? (abs(pivot.z) > 0.1 ? 3.14159265 : 0.0) : pivot.z * 4.9);
           float tau = g + phase;
           float sideSign = (pivot.x >= 0.0) ? 1.0 : -1.0;
           float yaw = sideSign * sin(tau) * 0.18 * uWalkWeight;
@@ -168,6 +172,8 @@ const VERT_GAIT_ANIM = /* glsl */ `
 
 /** Pass local pos/normal & decode GPU part animations; `pluginChunk` is appended (plugin vertex transforms). */
 export const vertBeginVertex = (pluginChunk: string) => /* glsl */ `#include <begin_vertex>
+        vOrganic = aOrganic;
+        vAnatomy = uv;
         vLocalPos = position;
         vObjectNormal = normal;
         vSurfacePBR = aSurfacePBR;
@@ -179,11 +185,16 @@ export const vertBeginVertex = (pluginChunk: string) => /* glsl */ `#include <be
         vec3 pivot = aPartAnim.yzw;
         float g = uTime * 5.0;
         ${VERT_SUB_ANIM}
+        ${ORGANIC_MOTION}
         ${VERT_GAIT_ANIM}
         ${pluginChunk}
-        vTaWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vec4 taWorldPosition = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          taWorldPosition = instanceMatrix * taWorldPosition;
+        #endif
+        vTaWorldPos = (modelMatrix * taWorldPosition).xyz;
         // MeshDepthMaterial (shadow pass) does not declare Three's objectNormal. Match beginnormal_vertex.
-        vec3 taObjectNormal = normal;
+        vec3 taObjectNormal = vObjectNormal;
         #ifdef USE_INSTANCING
           taObjectNormal = mat3(instanceMatrix) * taObjectNormal;
         #endif
@@ -204,6 +215,7 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
         uniform float uTriplanarScale;
         uniform float uRimStrength;
         ${COLONY_VISION_AND_LIGHTS_GLSL}
+        ${ORGANIC_DECL}
 
         float hash31(vec3 p) {
           p = fract(p * 0.1031);
@@ -222,6 +234,8 @@ export const FRAG_COMMON = /* glsl */ `#include <common>
 
 /** Triplanar grain, ground-up weathering, top-down gradient; `pluginChunk` (e.g. the build scaffold) is appended. */
 export const fragColor = (pluginChunk: string) => /* glsl */ `#include <color_fragment>
+        vec2 organicUvScale = vAnatomy * vec2(6.2831853, 28.0);
+        float organicFootprint = max(length(dFdx(organicUvScale)), length(dFdy(organicUvScale)));
         float grain = triplanarGrain(vLocalPos, vObjectNormal, uTriplanarScale);
         // Subtle micro-surface variation
         diffuseColor.rgb *= (0.96 + 0.08 * grain);
@@ -229,12 +243,13 @@ export const fragColor = (pluginChunk: string) => /* glsl */ `#include <color_fr
         // Vertical Ground-Up Biome Weathering (skipped on HDR emissive zones)
         float isEmissive = step(1.2, max(diffuseColor.r, max(diffuseColor.g, diffuseColor.b)));
         float heightMask = 1.0 - smoothstep(0.0, uWeatheringHeight, max(vLocalPos.y, 0.0));
-        float weatherMix = clamp(heightMask * uWeatheringIntensity * (0.75 + 0.5 * grain), 0.0, 1.0) * (1.0 - isEmissive);
+        float weatherMix = clamp(heightMask * uWeatheringIntensity * organicWeather() * (0.75 + 0.5 * grain), 0.0, 1.0) * (1.0 - isEmissive);
         diffuseColor.rgb = mix(diffuseColor.rgb, uBiomeDustColor, weatherMix);
 
         // Top-Down Hemisphere Gradient for RTS readability
         float topGrad = mix(0.78, 1.08, clamp(vLocalPos.y * 0.6, 0.0, 1.0));
         diffuseColor.rgb *= mix(topGrad, 1.0, isEmissive);
+        ${ORGANIC_COLOR}
         ${pluginChunk}
         `;
 
@@ -242,7 +257,8 @@ export const FRAG_ROUGHNESS = /* glsl */ `#include <roughnessmap_fragment>
         if (vSurfacePBR.x > 0.01) {
           roughnessFactor = vSurfacePBR.x;
         }
-        roughnessFactor = mix(roughnessFactor, 0.90, clamp(1.0 - smoothstep(0.0, uWeatheringHeight, max(vLocalPos.y, 0.0)), 0.0, 1.0) * uWeatheringIntensity);`;
+        roughnessFactor = mix(roughnessFactor, 0.90, clamp(1.0 - smoothstep(0.0, uWeatheringHeight, max(vLocalPos.y, 0.0)), 0.0, 1.0) * uWeatheringIntensity * organicWeather());
+        ${ORGANIC_ROUGHNESS}`;
 
 export const FRAG_METALNESS = /* glsl */ `#include <metalnessmap_fragment>
         if (vSurfacePBR.x > 0.01) {

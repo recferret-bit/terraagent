@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Runs `npm run build` and fails on any build warning except Vite's chunk-size notice (W00 DoD: "warning-free").
+// Runs `npm run build` and checks warning text, allowing Vite's chunk-size notice.
+// This is a text heuristic, not an exhaustive check of structured Rollup warning codes.
 import { spawnSync } from 'node:child_process';
 
 const r = spawnSync('npm', ['run', 'build'], { encoding: 'utf8', shell: process.platform === 'win32' });
@@ -11,4 +12,4 @@ if (warnings.length) {
   console.error(`\nbuild produced ${warnings.length} warning line(s):\n  ${warnings.join('\n  ')}`);
   process.exit(1);
 }
-console.log('build ok: no warnings apart from chunk size');
+console.log('build ok: warning-text policy passed (chunk-size notices allowed)');

@@ -58,51 +58,71 @@ register({
 });
 
 // ---------------------------------------------------------------------------
-// fauna.drifter — large floating jelly-manta (~1.8 m), bobbing
+// fauna.drifter — flying grazer (~1.8 m bell). Hovers; nothing meets the ground.
 // ---------------------------------------------------------------------------
+const DRIFTER_BOB = { animType: 2 as const, animPivot: [0, 1.2, 0] as V3 };
+const BELL_Y = 1.36;
+const BELL_R: V3 = [0.8, 0.336, 0.92];
+
+/** Centre of a sphere sitting on the bell, overlapping the shell by `sink` metres. */
+function onDrifterBell(theta: number, phi: number, radius: number, sink = 0.045): V3 {
+  const [rx, ry, rz] = BELL_R;
+  const st = Math.sin(theta), ct = Math.cos(theta);
+  const px = rx * st * Math.cos(phi), py = ry * ct, pz = rz * st * Math.sin(phi);
+  const nx = px / (rx * rx), ny = py / (ry * ry), nz = pz / (rz * rz);
+  const n = Math.hypot(nx, ny, nz) || 1;
+  const out = radius - sink;
+  return [px + (nx / n) * out, BELL_Y + py + (ny / n) * out, pz + (nz / n) * out];
+}
+
+function buildDrifter(b: KitbashBuilder): void {
+  const bob = DRIFTER_BOB;
+  b.addPart(sph(0.8, 16, 10), 'hullSecondary', { name: 'drifter bell', position: [0, BELL_Y, 0], scale: [1, 0.42, 1.15], ...bob });
+  b.addPart(cyl(0.82, 0.72, 0.14, 16), 'hullPrimary', { name: 'bell collar', position: [0, 1.25, 0], scale: [1, 1, 1.15], ...bob });
+  b.addPart(sph(0.36, 12, 8), 'frameGunmetal', { name: 'oral disc', position: [0, 1.04, 0], scale: [1.2, 0.52, 1.3], ...bob });
+  for (let i = 0; i < 7; i++) {
+    const a = (i / 7) * Math.PI * 2;
+    b.addPart(sph(0.08, 8, 6), 'terraformEmerald', {
+      name: 'mantle spot', position: [Math.cos(a) * 0.48, 1.61, Math.sin(a) * 0.55], emissiveIntensity: 3.5, ...bob,
+    });
+  }
+  b.addPart(sph(0.15, 10, 8), 'energyCyan', { name: 'crown node', position: [0, 1.66, 0], emissiveIntensity: 4, ...bob });
+  // Ranged spores: a piled cluster on the dorsal rear, not a flat ring of paint.
+  const rear = -Math.PI / 2;
+  const spores: [number, number, number][] = [
+    [0.98, rear, 0.13],
+    [1.16, rear - 0.36, 0.09],
+    [1.14, rear + 0.38, 0.078],
+    [0.82, rear - 0.2, 0.062],
+    [1.28, rear + 0.12, 0.055],
+  ];
+  for (const [theta, phi, radius] of spores) {
+    b.addPart(sph(radius, 8, 6), 'terraformEmerald', {
+      name: 'dorsal spore', position: onDrifterBell(theta, phi, radius), emissiveIntensity: 3.6, ...bob,
+    });
+  }
+  const rand = rng(11);
+  for (let i = 0; i < 6; i++) {
+    const a = (i / 6) * Math.PI * 2 + 0.35;
+    const x = Math.cos(a) * 0.18, z = Math.sin(a) * 0.2;
+    cable(
+      b,
+      [[x, 1.0, z], [x * 1.4 + (rand() - 0.5) * 0.04, 0.78, z * 1.35], [x * 1.65, 0.58, z * 1.5]] as V3[],
+      0.018,
+      i % 2 ? 'terraformEmerald' : 'frameGunmetal',
+      { name: 'drifter tendril', role: 'whip', ...(i % 2 ? { emissiveIntensity: 3.4 } : {}), ...bob },
+    );
+  }
+}
+
 register({
   id: 'fauna.drifter',
   label: 'Drifter',
   category: 'fauna',
   footprint: [2, 2],
-  notes: 'Floating grazer: bell dome, glowing spots, trailing tendrils that touch ground, side fins; body bobs (animType 2).',
-  build: (b) => {
-    const bob = { animType: 2 as const, animPivot: [0, 1.2, 0] as V3 };
-    // Grounded bio-anchor pad & central oral stalk
-    b.addPart(cyl(0.24, 0.3, 0.12, 10), 'frameGunmetal', { position: [0, 0.06, 0] });
-    b.addPart(cyl(0.04, 0.04, 1.02, 8), 'terraformEmerald', { position: [0, 0.51, 0], emissiveIntensity: 3.2 });
-    // Bobbing bell assembly (closed watertight dome + collar)
-    b.addPart(rbox(0.2, 0.44, 0.2, 0.04), 'frameGunmetal', { position: [0, 1.02, 0], ...bob });
-    b.addPart(sph(0.8, 16, 10), 'hullSecondary', { position: [0, 1.36, 0], scale: [1, 0.42, 1.15], ...bob });
-    b.addPart(cyl(0.82, 0.72, 0.14, 16), 'hullPrimary', { position: [0, 1.25, 0], scale: [1, 1, 1.15], ...bob });
-    for (let i = 0; i < 7; i++) {
-      const a = (i / 7) * Math.PI * 2;
-      b.addPart(sph(0.08, 8, 6), 'terraformEmerald', {
-        position: [Math.cos(a) * 0.48, 1.61, Math.sin(a) * 0.55],
-        emissiveIntensity: 3.5,
-        ...bob,
-      });
-    }
-    b.addPart(sph(0.15, 10, 8), 'energyCyan', { position: [0, 1.66, 0.0], emissiveIntensity: 4, ...bob });
-    // Side fins + dorsal fin ridges
-    mirror((s) => {
-      b.addPart(rbox(0.85, 0.06, 0.56, 0.02), 'hullPrimary', { position: [0.78 * s, 1.24, 0], rotation: [0, 0.25 * s, -0.3 * s], ...bob });
-      b.addPart(rbox(0.55, 0.05, 0.18, 0.02), 'hullSecondary', { position: [0.82 * s, 1.27, 0], rotation: [0, 0.25 * s, -0.3 * s], ...bob });
-    });
-    // Trailing tendrils moving with the bell
-    const r = rng(11);
-    for (let i = 0; i < 6; i++) {
-      const a = (i / 6) * Math.PI * 2 + 0.3;
-      const x = Math.cos(a) * 0.48, z = Math.sin(a) * 0.52;
-      cable(
-        b,
-        [[x, 1.22, z], [x * 1.25 + r() * 0.08, 0.75, z * 1.25], [x * 1.55, 0.4, z * 1.55 + 0.08], [x * 1.75, 0.14, z * 1.75]] as V3[],
-        0.025,
-        i % 2 ? 'terraformEmerald' : 'frameGunmetal',
-        { name: 'drifter tendril', role: 'whip', ...(i % 2 ? { emissiveIntensity: 3.2 } : {}), ...bob },
-      );
-    }
-  },
+  snap: false,
+  notes: 'Flying grazer: no ground contact, spore cluster on the back, no wings. Bell, collar and mantle spots bob (animType 2).',
+  build: buildDrifter,
 });
 
 // ---------------------------------------------------------------------------

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { SimCommandV1 } from '@terra/contracts';
 import {
   allModules, buildPipeline, createPlanet, diffSince, effectiveOverrides, getColonyStock, mergeOverrides, nextLandingSite, restore, snapshot, step,
-  StepError, tune,
+  StepError, tune, applyTunedEntityHealth,
   type BalanceOverrides, type CommandOutcome, type LedgerPosting, type Pipeline, type PlanetSchedule, type PlanetState, type PlanetTuning, type SimEvent,
   type SimModule, type TuneRequest,
 } from '@terra/sim';
@@ -280,6 +280,7 @@ export class PlanetHost {
     try {
       const out = tune(p.tuning, req, this.opts.modules ? [...allModules(), ...this.opts.modules] : undefined);
       if (out.next) {
+        applyTunedEntityHealth(p.state, p.pipeline.config.data, out.next.pipeline.config.data);
         p.pipeline = out.next.pipeline;
         p.tuning.live = out.next.live;
       }

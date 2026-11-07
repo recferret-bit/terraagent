@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { clearMigrations, createState, decodeValue, encodeValue, registerMigration, restore, SIM_VERSION, snapshot, entityColumns } from '../../src';
+import { canMigrateSnapshot, clearMigrations, createState, decodeValue, encodeValue, registerMigration, restore, SIM_VERSION, snapshot, entityColumns } from '../../src';
 
 const mk = () => createState({ planetId: 'pl_m', planetType: 'desert', seed: 's', radius: 3 });
 const asVersion = (v: number) => {
@@ -11,9 +11,20 @@ afterEach(clearMigrations);
 
 describe('migrations and envelope', () => {
   it('equal version is a no-op', () => { expect(restore(snapshot(mk()))).toEqual(mk()); });
+  it('keeps v2 persisted state losslessly through the live transport version boundary', () => {
+    const expected = mk();
+    expected.meta.tick = 87;
+    expected.blobs.legacyExtension = { changedAt: 71, value: { nested: [1, 'kept', null] } };
+    const raw = decodeValue(snapshot(expected)) as { header: { simVersion: number }; state: typeof expected };
+    raw.header.simVersion = raw.state.meta.simVersion = 2;
+    clearMigrations(); // test cleanup must never erase built-in save support
+    expect(canMigrateSnapshot(2, SIM_VERSION)).toBe(true);
+    expect(canMigrateSnapshot(1, SIM_VERSION)).toBe(false);
+    expect(restore(encodeValue(raw))).toEqual(expected);
+  });
   it('migrates an older snapshot (test-only migration)', () => {
-    registerMigration(SIM_VERSION - 1, SIM_VERSION, (s) => { s.state.migrated = true; return s; });
-    const r = restore(asVersion(SIM_VERSION - 1)) as unknown as { migrated: boolean; meta: { simVersion: number } };
+    registerMigration(-1, SIM_VERSION, (s) => { s.state.migrated = true; return s; });
+    const r = restore(asVersion(-1)) as unknown as { migrated: boolean; meta: { simVersion: number } };
     expect(r.migrated).toBe(true);
     expect(r.meta.simVersion).toBe(SIM_VERSION);
   });
@@ -24,7 +35,7 @@ describe('migrations and envelope', () => {
     expect([r.a, r.b]).toEqual([1, 2]);
   });
   it('refuses without a path or for newer snapshots', () => {
-    expect(() => restore(asVersion(SIM_VERSION - 1))).toThrow(/no migration path/);
+    expect(() => restore(asVersion(1))).toThrow(/no migration path/);
     expect(() => restore(asVersion(SIM_VERSION + 1))).toThrow(/newer than engine/);
   });
   it('keeps unknown columns and zero-fills missing ones', () => {

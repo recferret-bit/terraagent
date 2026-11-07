@@ -1,3 +1,4 @@
+import type { CompiledDataLike } from '@terra/sim';
 import type { MapLayerId, WaveId } from '@terra/contracts';
 import type { ClientTiles, ClientView } from '../store/replica/viewCodec';
 import type { CompositeMapRenderResult } from './builtinLayers';
@@ -18,6 +19,7 @@ export interface MapViewportTransform {
 }
 
 export interface MapLayerDrawView {
+  readonly simData?: CompiledDataLike;
   readonly selectedEntityId?: number | null;
   readonly width: number;
   readonly height: number;

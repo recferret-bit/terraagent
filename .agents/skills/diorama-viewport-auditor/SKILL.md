@@ -8,6 +8,8 @@ description: >-
   verifying generated 3D models and shaders.
 ---
 
+> **Fauna and organic hives:** apply the [organic fauna policy](../procedural-kitbash-3d/references/organic-fauna.md). It overrides mechanical-only material, detail and rigid-tissue requirements below; geometry safety, shader/pose parity and visual QA remain mandatory.
+
 # Tabletop Diorama Viewport & Visual QA Auditor (`diorama-viewport-auditor`)
 
 This skill enforces **Pillar 4 (The Tabletop Diorama Viewport & Visual Self-Correction Loop)** so every 3D asset and shader in **TerraAgent** is rendered under studio-grade lighting and visually verified by the agent.

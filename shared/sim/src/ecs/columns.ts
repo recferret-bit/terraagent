@@ -55,6 +55,22 @@ export const ENTITY_KIND = {
   petroleumWell: 16,
   oilWell: 16,
   tradeHub: 8,
+  roboticsFactory: 17,
+  droneControlArray: 18,
+  droneArray: 18,
+  autocannon: 19,
+  turret: 19,
+  laserTower: 20,
+  pulseTurret: 20,
+  recon: 51,
+  demoTank: 52,
+  demoArtillery: 53,
+  blackAnt: 60,
+  blueBeetle: 61,
+  greenSpitter: 62,
+  hiveBlackAnt: 63,
+  hiveBlueBeetle: 64,
+  hiveGreenSpitter: 65,
 } as const;
 
 export const ENTITY_STATE = {

@@ -36,7 +36,7 @@ interface Blockers { blocked: Predicate; goalBlocked: Predicate }
  * Named movement profiles for path requests. A request in the path queue is plain data (it lives in a blob), so it
  * names its obstacle rule instead of carrying a function. `none` = terrain passability only (Deep, Ridge, Moat block).
  */
-export type PathProfileId = 'none' | 'ground' | 'harvester';
+export type PathProfileId = 'none' | 'ground' | 'harvester' | 'hover';
 
 const PROFILES: Record<PathProfileId, ((state: PlanetState, fromIdx: number, data?: CompiledDataLike) => Blockers) | null> = {
   none: null,
@@ -61,6 +61,19 @@ const PROFILES: Record<PathProfileId, ((state: PlanetState, fromIdx: number, dat
           prep[i] === PREP.ridge ||
           prep[i] === PREP.moat ||
           deposit[i] !== DEPOSIT.none)) ||
+      others.has(i);
+    return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) };
+  },
+  /** Hover units: cross flat, slope, forest, rock, resource deposits and shallow water freely; blocked only by deep water, holes, ridges, moats and buildings. */
+  hover: (state, fromIdx, data) => {
+    const { terrain, prep } = state.grid.layers;
+    const { own, others } = occupiedTiles(state, fromIdx, data);
+    const blocked: Predicate = (i) =>
+      (i !== fromIdx &&
+        (terrain[i] === TERRAIN.deep ||
+          terrain[i] === TERRAIN.hole ||
+          prep[i] === PREP.ridge ||
+          prep[i] === PREP.moat)) ||
       others.has(i);
     return { blocked, goalBlocked: (i) => blocked(i) || own.has(i) };
   },

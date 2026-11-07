@@ -1,6 +1,6 @@
 import { flagsFromList } from '@terra/contracts';
 import { describe, expect, it } from 'vitest';
-import { compileData, createEngineConfig, createPlanet, SIM_VERSION, SimHost } from '@terra/sim';
+import { compileData, createEngineConfig, createPlanet, decodeValue, DIFF_FORMAT, encodeValue, SIM_VERSION, SimHost } from '@terra/sim';
 import { ReplicaCore, type DeltaInput, type WelcomeInput } from './ReplicaCore';
 import { ENTITY_STRIDE, packView, unpackView } from './viewCodec';
 import { TEST_MODULES } from './testModule';
@@ -84,6 +84,21 @@ describe('ReplicaCore (acceptance: replica deep-equals the authority)', () => {
 
   it('config built the same way as the replica hashes identically', () => {
     expect(createEngineConfig({ flags: FLAGS, modules: TEST_MODULES }).data.hash).toBe(compileData(flagsFromList(FLAGS)).hash);
+  });
+
+  it('rejects the previous live protocol even when its balance hash matches', () => {
+    const auth = authority(), replica = new ReplicaCore({ modules: TEST_MODULES });
+    expect(SIM_VERSION).toBeGreaterThan(2);
+    expect(DIFF_FORMAT).toBeGreaterThan(1);
+    expect(replica.welcome(welcomeOf(auth, { simVersion: 2 }))).toMatchObject({ ok: false, reason: 'simVersion' });
+    expect(replica.status).toBe('versionMismatch');
+    expect(replica.welcome(welcomeOf(auth))).toEqual({ ok: true });
+    auth.step(1);
+    const raw = decodeValue(auth.diffSince(0, { forClient: true })) as { v: number };
+    expect(raw.v).toBe(DIFF_FORMAT); // the old decoder's strict v===1 check rejects this frame
+    raw.v = 1;
+    expect(replica.delta({ fromTick: 0, toTick: auth.tick, diff: encodeValue(raw) }))
+      .toMatchObject({ ok: false, reason: 'badDiff', request: true });
   });
 });
 

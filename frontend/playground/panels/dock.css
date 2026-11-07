@@ -1,0 +1,5 @@
+/* Shared hide / show chrome for every playground dialog. */
+.is-dock-hidden{display:none!important}
+.pg-dock-show[hidden]{display:none!important}
+#pg-show-bar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;flex-wrap:wrap;justify-content:center;gap:4px;z-index:7;pointer-events:auto;max-width:calc(100% - 16px)}
+#pg-show-bar:not(:has(.pg-dock-show:not([hidden]))){display:none}

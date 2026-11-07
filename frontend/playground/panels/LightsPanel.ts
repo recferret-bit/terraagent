@@ -9,6 +9,7 @@ import {
 } from '@terra/render/lighting/archetypeLights';
 import { $, esc } from '../dom';
 import type { PgState } from '../state';
+import { bindDock, setDockHidden, setDockSuppressed } from './dock';
 import { toast } from './Toast';
 
 export interface LightsPanelHandlers {
@@ -70,6 +71,7 @@ export class LightsPanel {
   private nightMode = true;
   private codeOpen = false;
   private isInlineUpdating = false;
+  private lightsOpen = false;
 
   constructor(private state: PgState, private on: LightsPanelHandlers) {}
 
@@ -90,7 +92,6 @@ export class LightsPanel {
         </div>
         <div class="lp-head-actions">
           <button type="button" class="pg-btn tog on" id="lp-night-btn" title="Dim sun &amp; ambient to preview lights at night">Night</button>
-          <button type="button" class="pg-btn" id="lp-close-btn" title="Close Lights Editor (L)">×</button>
         </div>
       </div>
       <div class="lp-actions">
@@ -105,6 +106,13 @@ export class LightsPanel {
       </div>`;
     $('#overlay').appendChild(el);
     this.root = el;
+    bindDock({
+      id: 'lights',
+      panel: el,
+      edge: 'right',
+      showLabel: 'LIGHTS',
+      showTitle: 'Hide or show the lights editor',
+    });
     this.bindHeaderEvents();
     this.bindListEvents();
   }
@@ -115,7 +123,6 @@ export class LightsPanel {
       this.syncNightButton();
       this.on.onNightToggle(this.isNightPreview);
     };
-    this.root.querySelector<HTMLButtonElement>('#lp-close-btn')!.onclick = () => this.on.onClose();
     this.root.querySelector<HTMLButtonElement>('#lp-add-btn')!.onclick = () => {
       if (!this.state.id) return;
       addArchetypeLight(this.state.id);
@@ -222,9 +229,17 @@ export class LightsPanel {
     }
   }
 
+  private syncLightsDock(): void {
+    const on = this.state.lights;
+    if (on && !this.lightsOpen) setDockHidden('lights', false);
+    this.lightsOpen = on;
+    this.root.hidden = !on;
+    setDockSuppressed('lights', !on);
+  }
+
   render() {
     if (!this.root) return;
-    this.root.hidden = !this.state.lights;
+    this.syncLightsDock();
     this.syncNightButton();
     if (!this.state.lights) return;
     const id = this.state.id;

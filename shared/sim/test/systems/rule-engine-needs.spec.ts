@@ -228,3 +228,29 @@ describe('W08-23 · Rule-engine needs scoring (expand, extraction, table)', () =
     }
   });
 });
+
+
+describe('Sustainable power demand forecasts', () => {
+  it.each([0, 20])('keeps existing wind and thermal generation in the night forecast (solar %s E/s)', (solar) => {
+    const state = makeTestPlanet();
+    setBlob(state, 'power', { byColony: { 0: {
+      founderCorePerS: 8, solarNetPerS: solar, solarInternalDrainPerS: 1,
+      windNetPerS: 15, thermalNetPerS: 10, generationPerS: 33 + solar,
+      supply: 33 + solar, rawDemand: 17, net: 16 + solar, brownout: false,
+    } } }, 0);
+    const needs = evaluateColonyNeeds(state, 0);
+    expect(needs.detail.nightNetPerS).toBe(16);
+    expect(needs.energy).toBeLessThan(5000);
+  });
+
+  it('does not count battery discharge as sustainable generation', () => {
+    const state = makeTestPlanet();
+    setBlob(state, 'power', { byColony: { 0: {
+      founderCorePerS: 8, solarNetPerS: 0, generationPerS: 8,
+      supply: 17, rawDemand: 17, net: 0, hqCellDischargePerS: 9, brownout: false,
+    } } }, 0);
+    const needs = evaluateColonyNeeds(state, 0);
+    expect(needs.detail.nightNetPerS).toBe(-9);
+    expect(needs.energy).toBeGreaterThanOrEqual(6000);
+  });
+});

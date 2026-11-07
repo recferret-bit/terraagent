@@ -21,7 +21,19 @@ export * from './gen/generators';
 export { createPlanet } from './gen/createPlanet';
 export { DEV_PLANET_CAPACITY, DEV_PLANET_RADIUS, DEV_PLANET_SEED, DEV_PLANET_TYPE, DEV_PLANET_TYPES, devPlanetIdFor, devPlanetTypeOf, isDevPlanetType, type DevPlanetType } from './gen/flat';
 export { getDepositRichnessBp } from './gen/temperate';
-export { GEN_VERSION, generateWorld, generateWorld as generateTemperate, registerWorldStage, worldProfile, type WorldGenContext, type WorldStage } from './gen/world';
+export {
+  faunaHives,
+  GEN_VERSION,
+  generateWorld,
+  generateWorld as generateTemperate,
+  getWorldgenHiveSites,
+  planWorldgenHiveSites,
+  registerWorldStage,
+  worldProfile,
+  type PlanHiveSitesOptions,
+  type WorldGenContext,
+  type WorldStage,
+} from './gen/world';
 export * from './grid/sectors';
 export * from './grid/subsurface';
 export * from './world/presence';
@@ -38,6 +50,8 @@ export * from './units/types';
 export { getUnitCommand, getUnitRecord, type UnitRecord } from './units/book';
 export { isUnitKind, mobileStats, type MobileStats } from './units/mobility';
 export { getMotion, type MoveGoal, type MotionStatus, type UnitMotion } from './units/movement/orchestrator';
+export { advancePose } from './units/movement/locomotion';
+export { assignSlots, ringCoords, type SlotUnit } from './units/movement/slots';
 export type { IssueOpts } from './units/runner';
 export * from './economy';
 export * from './systems/landing';
@@ -48,6 +62,7 @@ export * from './systems/time';
 export * from './systems/harvest';
 export * from './systems/economy/ledger';
 export {
+  BUILDING_KIND_BY_NAME,
   buildingKindName,
   cancelBuildingConstruction,
   constructionSystem,
@@ -55,6 +70,7 @@ export {
   demolishHandler,
   getBuildingJobs,
   getFootprintTileIndices,
+  isEconomyBuildingKind,
   startBuildingConstruction,
   type BuildingJobRecord,
   type StartConstructionOptions,
@@ -73,5 +89,10 @@ export * from './systems/progression/validate';
 export * from './systems/rule-engine';
 export { DEFAULT_COLONY_PRIORITIES, type ColonyPriorities } from './systems/goals';
 export * from './systems/cargo';
+export * from './systems/combat';
+export * from './systems/fauna';
+export * from './systems/fauna/directives';
+export * from './systems/fauna/directivePayloads';
+export * from './systems/fauna/checkpoints';
 export * from './data';
 export * from './host';

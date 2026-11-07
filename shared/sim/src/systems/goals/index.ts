@@ -43,6 +43,7 @@ export * from './store';
 export * from './priorities';
 export * from './handlers';
 export * from './sites';
+export * from './defendAndClear';
 export * from './breakdown';
 
 export function normalizeGoalParams(args: Partial<QueueGoalArgs>): GoalParams {
@@ -101,7 +102,7 @@ export function queueColonyGoal(
     return { ok: false, code: 'goal_limit' };
   }
 
-  if (!isGoalExecutable(args.goal)) return { ok: false, code: 'wave_disabled' };
+  if (!isGoalExecutable(args.goal, ctx?.flags)) return { ok: false, code: 'wave_disabled' };
 
   if (args.goal === 'grow_economy' && ['water', 'bio.water'].includes(String(normalizeGoalParams(args).resource))) {
     return { ok: false, code: 'wave_disabled' };

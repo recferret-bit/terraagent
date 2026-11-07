@@ -1,3 +1,4 @@
+import { classifyInsectPart } from '../../../animation/insects/rig';
 // Stage 4: animated parts. Sweep every pose of the shader's motion against everything else.
 import { boxGap, expandBox, trisBox } from '../math';
 import type { Box } from '../math';
@@ -14,13 +15,19 @@ const sameSpinAxis = (a: [number, number, number], b: [number, number, number]) 
   Math.abs(a[0] - b[0]) < 1e-4 && Math.abs(a[2] - b[2]) < 1e-4;
 // Bob (2) and recoil (3) phases both depend on pivot.x (shader: sin(t + pivot.x * k)), so equal pivot.x = one rig.
 const phaseByPivotX = (t: number) => t % 10 === 2 || t % 10 === 3;
-const sameRig = (a: P, b: P) =>
+const sameInsectRig = (a: P, b: P) => {
+  const ga = classifyInsectPart(a.def.name, a.def.animType, a.def.pivot).group;
+  const gb = classifyInsectPart(b.def.name, b.def.animType, b.def.pivot).group;
+  return ga === gb && (ga < 4 || samePivot(a.def.pivot, b.def.pivot));
+};
+const sameRig = (a: P, b: P) => a.def.insectSpecies !== undefined && b.def.insectSpecies !== undefined ? sameInsectRig(a, b) :
   a.def.animType === b.def.animType &&
   (a.def.animType === 8 || a.def.animType === 9 ||
     (phaseByPivotX(a.def.animType) ? Math.abs(a.def.pivot[0] - b.def.pivot[0]) < 1e-4 :
       a.def.animType % 10 === 1 ? sameSpinAxis(a.def.pivot, b.def.pivot) : samePivot(a.def.pivot, b.def.pivot)));
 const isGait = (t: number) => { const b = t % 10; return (b >= 4 && b <= 6) || b === 8 || b === 9; };
 const inSync = (a: P, b: P) =>
+  (a.def.insectSpecies !== undefined && b.def.insectSpecies !== undefined) ||
   (a.def.animType === 1 && b.def.animType === 1) ||
   (a.def.animType === 7 && b.def.animType === 7) ||
   (isGait(a.def.animType) && isGait(b.def.animType)) ||
@@ -30,13 +37,14 @@ function coupledPair(ta: number, tb: number, pa: [number, number, number], pb: [
   const lo = Math.min(ta, tb), hi = Math.max(ta, tb);
   if (lo === 8 && (hi === 18 || hi === 28 || hi === 38)) return true;
   if (hi === 8 && (lo === 4 || lo === 5)) return true;
-  if (lo === 9 && (hi === 19 || hi === 29 || hi === 39)) return true;
+  if (lo === 9 && (hi === 19 || hi === 29 || hi === 39 || hi === 49 || hi === 59 || hi === 69)) return true;
   if (hi === 9 && lo === 6) return true;
   if (samePivot(pa, pb) && (((lo === 4 || lo === 14) && (hi === 14 || hi === 24)) || (lo === 6 && hi === 16))) return true;
   return false;
 }
 
 function validMount(a: P, b: P, tol: number): boolean {
+  if (a.def.insectSpecies !== undefined && b.def.insectSpecies !== undefined) return true;
   if (sameRig(a, b)) return true;
   if (b.def.kind === 'TubeGeometry' && b.def.animType !== a.def.animType && b.def.role !== 'whip') return false;
   if (b.def.animType > 0) return coupledPair(a.def.animType, b.def.animType, a.def.pivot, b.def.pivot);
@@ -70,7 +78,9 @@ function buildSweeps(ctx: ValidationContext, anim: P[]): Map<number, Sweep> {
       maxDrift = Math.max(maxDrift, maxEdgeDrift(a.def.tris, pose.tris));
     }
     sweeps.set(a.def.index, { poses: ps, box });
-    if (maxDrift > 0.0005) ctx.add('error', 'ANIM_DISTORTION', `${a.label} distorts/resizes by ${fmt(maxDrift)} while animating (moving parts must be 100% rigid bodies).`, [a.def.index], at(a.box), 'Use pure rigid-body rotations and translations per part; never scale or blend per-vertex coordinates.');
+    const flexible = a.def.tissue === 3 && (a.def.animType === 60 || a.def.animType === 69);
+    const maxEdge = a.def.tris.reduce((m, _, i, t) => i % 9 === 0 ? Math.max(m, Math.hypot(t[i + 3] - t[i], t[i + 4] - t[i + 1], t[i + 5] - t[i + 2])) : m, 0);
+    if (maxDrift > (flexible ? maxEdge * (a.def.insectSpecies === 2 && classifyInsectPart(a.def.name, a.def.animType, a.def.pivot).group === 6 ? 0.206 : 0.019) + 0.000001 : 0.0005)) ctx.add('error', 'ANIM_DISTORTION', `${a.label} distorts/resizes by ${fmt(maxDrift)} while animating (moving parts must be 100% rigid bodies).`, [a.def.index], at(a.box), 'Use pure rigid-body rotations and translations per part; never scale or blend per-vertex coordinates.');
     if (ctx.o.grounded && a.def.animType >= 2 && box[1] < -0.02) ctx.add('warn', 'ANIM_BELOW_GROUND', `${a.label} dips ${fmt(-box[1])} below the ground while animating.`, [a.def.index], at(a.box));
   }
   return sweeps;

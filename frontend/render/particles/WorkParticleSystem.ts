@@ -27,7 +27,7 @@ export class WorkParticleSystem {
       if ((site.intensity ?? 1) <= 0.02) continue;
       seen.add(site.workerId);
       const preset =
-        (site.presetId ? ParticlePresetRegistry.get(site.presetId) : undefined) ??
+        (site.presetId ? ParticlePresetRegistry.getWork(site.presetId) : undefined) ??
         ParticlePresetRegistry.getByTargetKind(site.targetKind);
 
       const existing = this.activeByWorker.get(site.workerId);
@@ -58,7 +58,7 @@ export class WorkParticleSystem {
     durationSeconds = 0.95,
   ): void {
     const preset =
-      (site.presetId ? ParticlePresetRegistry.get(site.presetId) : undefined) ??
+      (site.presetId ? ParticlePresetRegistry.getWork(site.presetId) : undefined) ??
       ParticlePresetRegistry.getByTargetKind(site.targetKind);
     const fullSite: ActiveWorkSiteInput = {
       ...site,

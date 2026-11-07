@@ -1,0 +1,27 @@
+{
+  "elapsedMs": 8315,
+  "states": {
+    "2": [
+      "idle",
+      "moving",
+      "windup",
+      "attack",
+      "recovery"
+    ],
+    "5": [
+      "idle",
+      "moving",
+      "windup",
+      "attack",
+      "recovery"
+    ],
+    "8": [
+      "idle",
+      "windup",
+      "attack",
+      "recovery"
+    ]
+  },
+  "acid": true,
+  "errors": []
+}

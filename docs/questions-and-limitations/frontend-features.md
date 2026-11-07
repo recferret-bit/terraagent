@@ -1228,3 +1228,34 @@ These entries were FF-34 and FF-35 on `wave/w06-invisible-chain`. W02 landed FF-
 - **Workaround / mitigation:** Scroll the build list to reach lower cards; desktop sizing is unchanged.
 - **To resolve:** Revisit the landscape layout when adding more selection details.
 - **Found:** 2026-11-04, full merged browser suite at 844 × 390.
+
+### FF-82 · W07-28 combat analytics events are deferred from the hackathon slice
+
+- **Status:** Accepted (by design, hackathon slice)
+- **Area / code:** `docs/plan/waves/W07-first-contact.md` (`W07-28`), `frontend/game/features/combat/`
+- **What happens:** The combat HUD (`CombatLog`, screen-edge alert pings, HP bars) and backend progression facts (`faunaKilled`, `nestDestroyed`, `raidRepelled`) are active in W07, while the client analytics batch events (`first_combat_unit`, `first_raid`, `first_raid_repelled`, `first_nest_cleared`, `first_building_lost` in `W07-28`, blank `H` column) are deferred until post-hackathon analytics waves.
+- **Why it is like this:** `W07-28` is outside the `H` hackathon slice in `docs/plan/waves/W07-first-contact.md`.
+- **Workaround / mitigation:** Progression facts and combat log entries record raid repels, unit/building losses, and nest clears.
+- **To resolve:** Implement `W07-28` in `frontend/game/features/combat/` when post-hackathon analytics issues run.
+- **Found:** 2026-11-04, W07 wave execution.
+
+### FF-83 · The game page still orders one unit; the group march is a playground scene
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/playground/content/marchScene.ts`, `frontend/game/features/landfall/selection.ts` (`orderMove`)
+- **What happens:** `/playground.html?march=own` spawns 30 units and sends one `moveGroup`. The play page still sends `moveUnit` for the single selected unit. There is no box select.
+- **Why it is like this:** The march had to be visible before the selection UI grew a multi-unit order.
+- **Workaround / mitigation:** Use the playground MARCH tab (OWN PACE, TOGETHER, ROCK). The sim command is already accepted online.
+- **To resolve:** When several units are selected, send one `moveGroup` instead of one `moveUnit` per unit.
+- **Found:** 2026-11-05, group-march playground scene.
+
+### FF-84 · Corrected live fog preserves saved exploration
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/maps/`, `frontend/game/app/online/entityVisionSync.ts`, `shared/sim/src/systems/combat/vision.ts`, `tests/scenarios/w07-first-contact.ts`
+- **What happens:** Active units and buildings reveal terrain using shared sight ranges. Explored terrain dims after sight leaves; foreign unit/hive markers and models disappear outside current visibility. Newly created W07 scenarios no longer reveal distant hives in advance. Old saves retain their explored terrain, including exploration granted by the previous fixture.
+- **Why it is like this:** Exploration is persistent knowledge; current sight is recomputed. Removing previously saved exploration would discard player progress.
+- **Workaround / mitigation:** Open a fresh W07 scenario to check initial hidden terrain; existing saves still re-shroud areas outside current sight.
+- **To resolve:** No migration to erase exploration is planned.
+- **Presentation / transport limits:** The terrain fog uses a smooth 128² raster while entity and map visibility use shared hex-based spotting, so the cosmetic edge can differ slightly. Client snapshots still contain foreign entity state: this fixes visible disclosure, while server-side per-colony redaction remains tracked by `SIM-V-06` in `docs/spec/SIMULATION.md` §6.
+- **Found:** 2026-11-06, owner report of unseen hive markers and permanent fog removal.

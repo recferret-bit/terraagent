@@ -1,25 +1,37 @@
+import { InsectSwarmRenderer } from '@terra/render/animation/insects/InsectSwarmRenderer';
+import type { EntityMeshRecord } from './EntityMeshRecord';
+export type { EntityMeshRecord } from './EntityMeshRecord';
 import * as THREE from 'three';
 import { syncExtractorAppearance } from './extractorAppearance';
-import { updateSelectionPulse } from './selectionPulse';
+import { updateSelectionPulse, updateGroundSelection } from './selectionPulse';
 import { getWindUniforms } from '@terra/render/core/windConfig';
 import { computeSolarState, getDayNightParams, isDayNightOn, isSceneInDescent } from '@terra/render/core/dayNightConfig';
 import { createArchetypeMesh, setArchetypeBuildProgress, stripBuildingPlinth, tickArchetypeMesh } from '@terra/render/kitbash';
 import { attachEntityProjectorRig } from '@terra/render/lighting';
 import { GridCableRenderer } from '@terra/render/lighting/gridCables';
 import { WorkParticleSystem } from '@terra/render/particles';
-import type { PlanetKind } from '@terra/render/planets/PlanetSpec';
 import { tileXZ, type HexTerrain } from '@terra/render/planets/hex';
-import { ENTITY_KIND, ENTITY_STATE, TICK_MS } from '@terra/sim';
+import { ENTITY_KIND, ENTITY_STATE, TICK_MS, type CompiledDataLike } from '@terra/sim';
+import { createMapVisibility } from '../../maps/visibility';
 import { forEachEntity, type ClientTiles, type ClientView, type EntityRow } from '../../store/replica/viewCodec';
 import { resolveEntityActivityProgress } from '../../features/landfall/selectionHelpers';
 import { isEntityInViewFocus } from './entityFocus';
-import { MotionTrack, RenderClock } from './entityMotion';
+import { MotionTrack, RenderClock } from '@terra/render/motion/entityMotion';
 import { isWorldPointInColonyFov, resetColonyVisionAndLights, syncColonyVisionAndProjectors } from './entityVisionSync';
 import { POD_EGRESS_DIR, POD_EGRESS_YAW, POD_LAND_OFFSET_M } from './PodImpactRig';
 import { derivePowerCableSpans } from './powerCableSpans';
 import { PodTouchdownFx, type PodTouchdownState } from './PodTouchdownFx';
 import { disposeObject3D, UnitHealthBars } from './unitHealthBars';
-import { entityWorldXZ, archetypeForKind, isConstructibleBuilding } from './entityKinds';
+import { CombatSyncController } from './combatSync';
+import {
+  archetypeForKind,
+  entityWorldXZ,
+  is3x3FootprintKind,
+  isConstructibleBuilding,
+  isTrackedWalkingUnitKind,
+  makeGroundRing,
+  planetKindForBiome,
+} from './entityKinds';
 import {
   buildActiveWorkSites,
   computeWorkTarget,
@@ -29,16 +41,6 @@ import {
 } from './workTargetResolver';
 
 export { entityWorldXZ, archetypeForKind };
-
-export interface EntityMeshRecord {
-  id: number; kind: number; owner: number; q: number; r: number; x: number; y: number; rot: number;
-  hp: number; hpMax: number; state: number; progress: number; buildStage: number;
-  mesh: THREE.Object3D; targetPos: THREE.Vector3; targetYaw: number; walk: number; work: number;
-  /** Poses by tick, drawn at the shared render clock (smooth constant-speed walking, see `entityMotion.ts`). */
-  track: MotionTrack;
-  /** The drawn pose moved during the last half tick (drives the walk animation, in step with what is drawn). */
-  trackMoving: boolean;
-}
 
 /**
  * How fast the drawn mesh follows its interpolated pose (1/s). Ordinary walking is followed within ~50 ms; a correction
@@ -54,23 +56,6 @@ const UNPREDICTABLE_REJECTS: ReadonlySet<string> = new Set([
 
 export type MeshFactory = (archetypeId: string, biomeKey: string) => THREE.Object3D;
 
-
-function planetKindForBiome(biomeKey: string): PlanetKind {
-  if (biomeKey === 'desert' || biomeKey === 'dune') return 'dune';
-  if (biomeKey === 'ocean' || biomeKey === 'oceanForest') return 'oceanForest';
-  return 'forestRock';
-}
-
-function makeGroundRing(innerR: number, outerR: number, color: number, name: string): THREE.Mesh {
-  const ring = new THREE.Mesh(
-    new THREE.RingGeometry(innerR, outerR, 32).rotateX(-Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9, depthWrite: false, fog: false }),
-  );
-  ring.name = name;
-  ring.visible = false;
-  return ring;
-}
-
 /**
  * Renders sim entities (`devProbe`, `pod`, `hq`, `commandHub`, `metalsExtractor`, `solar`, `harvester`) in the online
  * 3D scene, interpolating continuous axial coordinates `(x, y)` smoothly and driving `aPartAnim` walk/work weights,
@@ -78,11 +63,13 @@ function makeGroundRing(innerR: number, outerR: number, color: number, name: str
  */
 export class EntityMeshes {
   readonly group = new THREE.Group();
+  private readonly swarms = new InsectSwarmRenderer(this.group);
   readonly selectionRing: THREE.Mesh;
   readonly targetMarker: THREE.Mesh;
   readonly podTouchdown: PodTouchdownFx;
   readonly healthBars: UnitHealthBars;
   readonly workParticles: WorkParticleSystem;
+  readonly combatSync: CombatSyncController;
   /** Grid cables + lightning between the Hub, pylons and attached buildings (`powerCableSpans.ts`). */
   readonly gridCables: GridCableRenderer;
   isW10Enabled: () => boolean = () => true;
@@ -97,6 +84,8 @@ export class EntityMeshes {
   private latestTiles: ClientTiles | null = null;
   private latestView: ClientView | null = null;
   private hasTerrain = false;
+  private simData?: CompiledDataLike;
+  private isTileVisible: ((q: number, r: number) => boolean) | null = null;
   private readonly clock = new RenderClock(TICK_MS / 1000);
   private dropPredictedFuture = false;
   /** Called with the largest pose correction (tiles) of a view that moved an already drawn sample (dev net stats). */
@@ -112,6 +101,8 @@ export class EntityMeshes {
     this.podTouchdown = new PodTouchdownFx(this.scene, playPodTouchdown);
     this.healthBars = new UnitHealthBars(this.scene);
     this.workParticles = new WorkParticleSystem(this.scene);
+    this.combatSync = new CombatSyncController(this.scene);
+    this.combatSync.meshForEntity = id => this.entries.get(id)?.mesh;
     this.gridCables = new GridCableRenderer(this.scene);
     this.selectionRing = makeGroundRing(0.75, 0.95, 0xff6a13, 'selection-ring');
     this.scene.add(this.selectionRing);
@@ -148,6 +139,7 @@ export class EntityMeshes {
   setOwnerColonyIndex(colonyIndex: number): void {
     if (this.ownerColonyIndex === colonyIndex) return;
     this.ownerColonyIndex = colonyIndex;
+    this.healthBars.setOwnColonyIndex(colonyIndex);
     const tdState = this.podTouchdown.computeState(false, 1);
     for (const rec of this.entries.values()) {
       rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState);
@@ -157,6 +149,7 @@ export class EntityMeshes {
 
   setSelectedEntityId(entityId: number | null): void {
     this.selectedEntityId = entityId;
+    this.healthBars.setSelectedEntityId(entityId);
     this.updateSelectionRing();
   }
 
@@ -212,10 +205,14 @@ export class EntityMeshes {
    * `confirmedTick`: the newest server-confirmed tick. The render clock follows it, not the view's tick (which runs
    * ahead while a command is predicted), so walking speed never changes with prediction. Defaults to the view's tick.
    */
-  syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey, confirmedTick = view.tick): void {
+  syncView(view: ClientView, terrain: HexTerrain | null, biomeKey = this.biomeKey, confirmedTick = view.tick, data?: CompiledDataLike): void {
+    this.simData = data;
     this.biomeKey = biomeKey;
     this.latestView = view;
     if (view.tiles) this.latestTiles = view.tiles;
+    this.isTileVisible = createMapVisibility({
+      simData: data, clientView: view, tiles: this.latestTiles, radius: view.planet.radius, ownColonySlot: this.ownerColonyIndex,
+    });
     this.hasTerrain = Boolean(terrain);
     this.clock.observe(Math.min(confirmedTick, view.tick));
     const seen = new Set<number>();
@@ -235,13 +232,15 @@ export class EntityMeshes {
       seen.add(e.id);
       correction = Math.max(correction, this.upsertEntity(e, terrain, tdState, view.tick, view));
       syncExtractorAppearance(this.entries.get(e.id)?.mesh, e, view);
+      const mesh = this.entries.get(e.id)?.mesh;
+      if (mesh) this.combatSync.battle.insects.track(e.id, mesh, e.hp, e.state === ENTITY_STATE.moving);
     });
     if (correction > 0) this.onCorrection?.(correction);
 
     for (const [id, rec] of [...this.entries]) {
       if (!seen.has(id)) {
-        this.group.remove(rec.mesh);
-        disposeObject3D(rec.mesh);
+        const dispose = () => { this.group.remove(rec.mesh); disposeObject3D(rec.mesh); };
+        if (!this.combatSync.battle.insects.retire(id, dispose, rec.hp <= 0 || this.combatSync.confirmedDeaths.has(id))) dispose();
         this.entries.delete(id);
       }
     }
@@ -250,7 +249,9 @@ export class EntityMeshes {
       for (const rec of this.entries.values()) rec.track.dropAfter(view.tick);
     }
     this.syncVisionAndForeignVisibility(terrain, tdState);
+    this.swarms.sync(this.biomeKey);
     this.healthBars.sync(this.entries.values());
+    this.combatSync.syncView(view, terrain);
     this.updateSelectionRing();
     const ground = terrain ? (x: number, z: number) => terrain.heightAt(x, z) : undefined;
     this.gridCables.setSpans(derivePowerCableSpans(this.entries.values(), view, this.ownerColonyIndex), ground);
@@ -258,7 +259,7 @@ export class EntityMeshes {
 
   private syncVisionAndForeignVisibility(terrain: HexTerrain | null, tdState: PodTouchdownState): void {
     syncColonyVisionAndProjectors({
-      records: this.entries.values(),
+      records: this.entries.values(), data: this.simData,
       ownerColonyIndex: this.ownerColonyIndex,
       terrain,
       tiles: this.latestTiles,
@@ -268,7 +269,8 @@ export class EntityMeshes {
     });
     for (const rec of this.entries.values()) {
       if (rec.owner !== this.ownerColonyIndex) {
-        rec.mesh.visible = this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState, rec.mesh.position.x, rec.mesh.position.z);
+        const spotted = !this.isTileVisible || this.isTileVisible(rec.q, rec.r);
+        rec.mesh.visible = spotted && this.computeMeshVisible(rec.kind, rec.owner, rec.state, tdState, rec.mesh.position.x, rec.mesh.position.z);
       }
     }
   }
@@ -374,7 +376,7 @@ export class EntityMeshes {
       if (isOwnedPod && tdState.state !== 'done') {
         rec.mesh.position.y = rec.targetPos.y;
       } else if (!isOwnedPod) {
-        rec.mesh.position.y = is2x2BuildingKind(rec.kind)
+        rec.mesh.position.y = is2x2BuildingKind(rec.kind) || is3x3FootprintKind(rec.kind)
           ? baseWy
           : terrain ? terrain.heightAt(rec.mesh.position.x, rec.mesh.position.z) : baseWy;
       }
@@ -394,9 +396,9 @@ export class EntityMeshes {
         continue;
       }
 
-      const isTrackedUnit = rec.kind === ENTITY_KIND.hq || rec.kind === ENTITY_KIND.harvester || rec.kind === ENTITY_KIND.builder;
-      const wantWalk = isTrackedUnit ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
+      const wantWalk = isTrackedWalkingUnitKind(rec.kind) ? (rec.trackMoving ? 1 : 0) : rec.state === ENTITY_STATE.moving ? 1 : 0;
       updateSelectionPulse(rec.mesh, rec.id === this.selectedEntityId, this.time);
+      this.combatSync.battle.insects.track(rec.id, rec.mesh, rec.hp, wantWalk > 0);
       const wantWork = computeWorkTarget(rec.kind, rec.state, isDaylight);
       rec.walk += (wantWalk - rec.walk) * Math.min(1, dt * 10);
       rec.work += (wantWork - rec.work) * Math.min(1, dt * 10);
@@ -424,9 +426,11 @@ export class EntityMeshes {
     }
     this.workParticles.syncSites(workSites);
     this.workParticles.update(dt);
+    this.combatSync.update(dt);
     this.gridCables.update(realDt);
 
     this.syncVisionAndForeignVisibility(terrain, tdState);
+    this.swarms.sync(this.biomeKey);
     this.healthBars.sync(this.entries.values());
     this.updateSelectionRing();
     this.updateTargetMarker(dt, terrain);
@@ -462,25 +466,16 @@ export class EntityMeshes {
 
   private updateSelectionRing(): void {
     const sel = this.selectedEntityId !== null ? this.entries.get(this.selectedEntityId) : undefined;
-    if (!sel || !sel.mesh.visible) {
-      this.selectionRing.visible = false;
-      return;
-    }
-    this.selectionRing.visible = true;
-    const geometry = (sel.mesh as THREE.Mesh).geometry;
-    if (geometry && !geometry.boundingBox) geometry.computeBoundingBox();
-    const box = geometry?.boundingBox;
-    const radius = box ? Math.max(box.max.x - box.min.x, box.max.z - box.min.z) * sel.mesh.scale.x * 0.65 : 1;
-    this.selectionRing.scale.setScalar(Math.max(1, radius) * (1 + 0.06 * Math.sin(this.time * 4)));
-    (this.selectionRing.material as THREE.MeshBasicMaterial).opacity = 0.65 + 0.3 * Math.sin(this.time * 4);
-    this.selectionRing.position.set(sel.mesh.position.x, sel.mesh.position.y + 0.06, sel.mesh.position.z);
+    updateGroundSelection(this.selectionRing, sel, this.time);
   }
 
   dispose(): void {
+    this.swarms.dispose();
     resetColonyVisionAndLights();
     this.podTouchdown.dispose();
     this.healthBars.dispose();
     this.workParticles.dispose();
+    this.combatSync.dispose();
     this.gridCables.dispose();
     for (const rec of this.entries.values()) {
       this.group.remove(rec.mesh);

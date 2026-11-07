@@ -15,6 +15,7 @@ import { checkCostAffordability, ensureColonyLedger, payProgressiveSlice, refund
 import { colonyWho } from '../find';
 import { revealVision } from '../hq';
 import { checkUnitSupply, syncColonySupply } from '../supply';
+import { flushPendingRallyMoves } from './robotics';
 import {
   buildBuilderView,
   builderJobFromState,
@@ -42,6 +43,7 @@ export {
   type BuilderUnitView,
   type SpawnBuilderOpts,
 };
+export * from './robotics';
 
 export interface HubUnitQueueEntry {
   taskId: string;
@@ -355,6 +357,7 @@ export const hubProductionSystem = defineSystem({
   slot: 9,
   wave: 'W02',
   run(state, ctx) {
+    flushPendingRallyMoves(state, ctx);
     const entries = getAllEntries(state);
     if (entries.length === 0) return;
     const { hubProd } = resolveHubProducerRows(ctx.data);

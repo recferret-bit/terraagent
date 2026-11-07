@@ -40,6 +40,10 @@ Several files describe the earlier multi-service design that decision D-24 simpl
 | [`agent-3d-coding-rules.md`](./visuals/agent-3d-coding-rules.md) | Mandatory rules and reference code for any agent writing Three.js, shaders or procedural models |
 | [`ai-3d-visuals-and-models-spec.md`](./visuals/ai-3d-visuals-and-models-spec.md) | Why AI meshes look bad and the pipeline that fixes it |
 | [`textures-shaders-lighting-spec.md`](./visuals/textures-shaders-lighting-spec.md) | Procedural PBR textures, terrain and water shaders, day/night lighting, lightning |
+| [`organic-fauna-review.md`](./visuals/organic-fauna-review.md) | Organic bug/hive skills, regenerated models, visual evidence and validation results |
+| [`battle-aiming.md`](./visuals/battle-aiming.md) | Stationary shooting gallery, shared battle orchestration, GPU weapon rigs and muzzle validation |
+| [`hive-rework.md`](./visuals/hive-rework.md) | Larger species habitats, 35% smaller ant, entrance clearance and visual review |
+| [`insect-animation.md`](./visuals/insect-animation.md) | Insect state machine, species attacks, hive attack controls, liquid effects and review guide |
 
 The short, enforced version of these rules is in [`AGENTS.md`](../AGENTS.md) and the skills under [`.agents/skills/`](../.agents/skills).
 

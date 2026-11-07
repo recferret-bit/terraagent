@@ -5,11 +5,11 @@ import type { PlanetState } from '../../kernel/state';
 import { colonyHasEligibleWorker } from '../dispatch/eligibility';
 import type { BuildingJobRecord, BuildJobWait } from '../economy/buildJob';
 import { payProgressiveSlice } from '../economy/ledger';
-import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge } from '../factories-hub';
+import { produceBuilderAtHubEdge, produceHarvesterAtHubEdge, produceReconAtFactoryEdge } from '../factories-hub';
 import { getWorkJobsMap, leadJobOn } from '../terraform-basic/workJobs';
 import { ensureColony } from './cancel';
 import type { QueueEntry } from './types';
-import { computeResourceWaitState } from './wait';
+import { computeResourceWaitState, isBlockedByPower } from './wait';
 
 /** Marks `entry` waiting on `reason` with its status text and ETA (seconds, `null` = none). */
 export function markWaiting(
@@ -111,7 +111,9 @@ function followRepairEntry(state: PlanetState, entry: QueueEntry): boolean {
  */
 function finishUnit(state: PlanetState, entry: QueueEntry, colIdx: number, ctx: StepContext): void {
   const task = entry.task.kind === 'buildUnit' ? entry.task : null;
-  if (task?.unit === 'builder') {
+  if (task?.unit === 'recon') {
+    produceReconAtFactoryEdge(state, colIdx, ctx, task.producerId);
+  } else if (task?.unit === 'builder') {
     produceBuilderAtHubEdge(state, colIdx, ctx);
   } else {
     produceHarvesterAtHubEdge(state, colIdx, ctx);
@@ -145,6 +147,10 @@ export function stepQueueEntry(state: PlanetState, entry: QueueEntry, colIdx: nu
     return;
   }
   const colony = ensureColony(state, colIdx, ctx.tick);
+  if (isBlockedByPower(state, colony, entry)) {
+    markWaiting(entry, 'power', 'waiting: power', null, ctx.tick);
+    return;
+  }
   const nextElapsed = entry.elapsedTicks + ctx.dt * entry.workRate;
   const nextProgress = Math.min(1, nextElapsed / entry.buildTicks);
   const totalCost = entry.totalCost ?? entry.cost;

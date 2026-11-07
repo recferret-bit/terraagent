@@ -1,0 +1,6 @@
+/* Selected-object details. The head stays put while the table scrolls. */
+.info-head{display:flex;justify-content:space-between;align-items:flex-start;gap:8px;position:sticky;top:0;z-index:1;margin:-12px -14px 10px;padding:12px 14px 8px;background:rgba(11,13,17,.96)}
+.info-head h3{flex:1;min-width:0}
+#info{max-height:calc(100vh - 80px);overflow:auto}
+#info::-webkit-scrollbar{width:8px}
+#info::-webkit-scrollbar-thumb{background:var(--ta-seam-2)}

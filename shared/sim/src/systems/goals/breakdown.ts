@@ -24,6 +24,7 @@ import {
 import { emitGoalProgress, getColonyGoals, saveColonyGoals } from './store';
 import type { ColonyGoalEntry } from './types';
 import { getGoalExecutor, registerGoalExecutor } from './executors';
+import { stepClearCorridorGoal, stepDefendColonyGoal } from './defendAndClear';
 import { planGrowth } from './growth';
 
 const SECURE_POWER_HOLD_TICKS_NIGHT = 5;
@@ -399,7 +400,7 @@ export function stepColonyGoalsBreakdown(
   const active = goals.find((g) => g.status === 'active');
   if (!active) return;
 
-  const executor = getGoalExecutor(active.goal);
+  const executor = getGoalExecutor(active.goal, ctx?.flags);
   if (executor) executor(state, colonyIndex, active, goals, tick, ctx);
   else {
     active.detail = 'Unavailable: this goal requires its owning feature wave. Cancel to continue.';
@@ -410,3 +411,5 @@ export function stepColonyGoalsBreakdown(
 registerGoalExecutor('establish_colony', stepEstablishColonyGoal);
 registerGoalExecutor('grow_economy', stepGrowEconomyGoal);
 registerGoalExecutor('secure_power', stepSecurePowerGoal);
+registerGoalExecutor('defend_colony', stepDefendColonyGoal, { wave: 'W07' });
+registerGoalExecutor('clear_corridor', stepClearCorridorGoal, { wave: 'W07' });

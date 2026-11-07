@@ -9,8 +9,65 @@ import { ensureColonyLedger } from './ledger';
 
 let cachedData: CompiledDataLike | null = null;
 function defaultData(): CompiledDataLike {
-  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W10']));
+  if (!cachedData) cachedData = compileData(new Set(['W00', 'W01', 'W02', 'W03', 'W07', 'W10']));
   return cachedData;
+}
+
+export const BUILDING_KIND_BY_NAME: Readonly<Record<string, number>> = {
+  commandHub: ENTITY_KIND.commandHub,
+  hub: ENTITY_KIND.commandHub,
+  t1: ENTITY_KIND.commandHub,
+  metalsExtractor: ENTITY_KIND.metalsExtractor,
+  extractor: ENTITY_KIND.metalsExtractor,
+  solar: ENTITY_KIND.solar,
+  solarCollector: ENTITY_KIND.solar,
+  pylon: ENTITY_KIND.pylon,
+  capacitor: ENTITY_KIND.capacitor,
+  wind: ENTITY_KIND.wind,
+  thermal: ENTITY_KIND.thermal,
+  coalGen: ENTITY_KIND.thermal,
+  thermalPlant: ENTITY_KIND.thermal,
+  supplyDepot: ENTITY_KIND.supplyDepot,
+  depot: ENTITY_KIND.supplyDepot,
+  mineralsQuarry: ENTITY_KIND.mineralsQuarry,
+  quarry: ENTITY_KIND.mineralsQuarry,
+  waterExtractor: ENTITY_KIND.waterExtractor,
+  waterPump: ENTITY_KIND.waterExtractor,
+  water: ENTITY_KIND.waterExtractor,
+  petroleumWell: ENTITY_KIND.petroleumWell,
+  oilWell: ENTITY_KIND.petroleumWell,
+  tradeHub: ENTITY_KIND.tradeHub,
+  interColonyTradeHub: ENTITY_KIND.tradeHub,
+  roboticsFactory: ENTITY_KIND.roboticsFactory,
+  droneControlArray: ENTITY_KIND.droneControlArray,
+  droneArray: ENTITY_KIND.droneControlArray,
+  autocannon: ENTITY_KIND.autocannon,
+  turret: ENTITY_KIND.autocannon,
+  laserTower: ENTITY_KIND.laserTower,
+  pulseTurret: ENTITY_KIND.laserTower,
+};
+
+const ECONOMY_BUILDING_KINDS: ReadonlySet<number> = new Set([
+  ENTITY_KIND.commandHub,
+  ENTITY_KIND.metalsExtractor,
+  ENTITY_KIND.solar,
+  ENTITY_KIND.pylon,
+  ENTITY_KIND.capacitor,
+  ENTITY_KIND.wind,
+  ENTITY_KIND.thermal,
+  ENTITY_KIND.supplyDepot,
+  ENTITY_KIND.mineralsQuarry,
+  ENTITY_KIND.waterExtractor,
+  ENTITY_KIND.petroleumWell,
+  ENTITY_KIND.tradeHub,
+  ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.droneControlArray,
+  ENTITY_KIND.autocannon,
+  ENTITY_KIND.laserTower,
+]);
+
+export function isEconomyBuildingKind(kind: number): boolean {
+  return ECONOMY_BUILDING_KINDS.has(kind);
 }
 
 export function resolveBuildingRow(building: string, data?: CompiledDataLike): { row: CompiledRow; entityKind: number } | null {
@@ -58,6 +115,24 @@ export function resolveBuildingRow(building: string, data?: CompiledDataLike): {
     const src = (d.tables?.tradeHub as Record<string, CompiledRow> | undefined)?.t1 ? d : defaultData();
     return { row: dataRow(src, 'tradeHub', 't1'), entityKind: ENTITY_KIND.tradeHub };
   }
+  const combatSrc = data?.tables?.combatUnits ? data : defaultData();
+  const combat = combatSrc.tables.combatUnits as Record<string, CompiledRow> | undefined;
+  if (building === 'roboticsFactory') {
+    const row = combat?.roboticsFactory ?? grid?.roboticsFactory;
+    return row ? { row, entityKind: ENTITY_KIND.roboticsFactory } : null;
+  }
+  if (building === 'droneControlArray' || building === 'droneArray') {
+    const row = combat?.droneControlArray ?? combat?.droneArray ?? grid?.droneControlArray ?? grid?.droneArray;
+    return row ? { row, entityKind: ENTITY_KIND.droneControlArray } : null;
+  }
+  if (building === 'autocannon' || building === 'turret') {
+    const row = combat?.autocannon ?? combat?.turret ?? grid?.autocannon ?? grid?.turret;
+    return row ? { row, entityKind: ENTITY_KIND.autocannon } : null;
+  }
+  if (building === 'laserTower' || building === 'pulseTurret') {
+    const row = combat?.laserTower ?? combat?.pulseTurret ?? grid?.laserTower ?? grid?.pulseTurret;
+    return row ? { row, entityKind: ENTITY_KIND.laserTower } : null;
+  }
   return null;
 }
 
@@ -74,6 +149,10 @@ export function buildingKindName(entityKind: number): string {
   if (entityKind === ENTITY_KIND.waterExtractor) return 'waterExtractor';
   if (entityKind === ENTITY_KIND.petroleumWell) return 'petroleumWell';
   if (entityKind === ENTITY_KIND.tradeHub) return 'tradeHub';
+  if (entityKind === ENTITY_KIND.roboticsFactory) return 'roboticsFactory';
+  if (entityKind === ENTITY_KIND.droneControlArray) return 'droneControlArray';
+  if (entityKind === ENTITY_KIND.autocannon) return 'autocannon';
+  if (entityKind === ENTITY_KIND.laserTower) return 'laserTower';
   return 'building';
 }
 

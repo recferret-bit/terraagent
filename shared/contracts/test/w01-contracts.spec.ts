@@ -27,6 +27,10 @@ describe('W01-01 contracts: commands, events, ResourceKey, reject codes', () => 
 
     expect(parseCommandArgs('cancelTask', { taskId: 'tsk_1' }).success).toBe(true);
     expect(parseCommandArgs('moveUnit', { entityId: 1, q: 4, r: -2 }).success).toBe(true);
+    expect(parseCommandArgs('moveGroup', { entityIds: [1, 2], q: 4, r: -2 }).success).toBe(true);
+    expect(parseCommandArgs('moveGroup', { entityIds: [1], q: 4, r: -2, pace: 'together' }).success).toBe(true);
+    expect(parseCommandArgs('moveGroup', { entityIds: [], q: 0, r: 0 }).success).toBe(false);
+    expect(parseCommandArgs('moveGroup', { entityIds: Array.from({ length: 65 }, (_, i) => i + 1), q: 0, r: 0 }).success).toBe(false);
   });
 
   it('registers all W01 events in EventKind', () => {

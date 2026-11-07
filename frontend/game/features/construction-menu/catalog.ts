@@ -20,6 +20,9 @@ export type BuildingKind =
   | 'builder'
   | 'depot'
   | 'roboticsFactory'
+  | 'droneControlArray'
+  | 'autocannon'
+  | 'laserTower'
   | 'turret'
   | 'outpostBeacon'
   | 'tradeHub';
@@ -66,6 +69,9 @@ const LABELS: Record<string, string> = {
   builder: 'Builder',
   depot: 'Depot',
   roboticsFactory: 'Robotics Factory',
+  droneControlArray: 'Drone Control Array',
+  autocannon: 'Autocannon Turret',
+  laserTower: 'Laser Tower',
   turret: 'Turret',
   outpostBeacon: 'Outpost Beacon',
   tradeHub: 'Trade Hub',
@@ -126,6 +132,10 @@ export function formatUnlockDetail(stage: number): string {
 function resolveRowUnlockStage(row: Record<string, unknown>): number {
   if (typeof row.unlockStage === 'number' && Number.isFinite(row.unlockStage)) {
     return row.unlockStage;
+  }
+  if (typeof row.unlock === 'string') {
+    const m = /^S(\d+)$/i.exec(row.unlock.trim());
+    if (m) return Number(m[1]);
   }
   const key = String(row.building ?? row.id ?? '');
   return getItemUnlockStage(key);
@@ -300,6 +310,19 @@ export function buildConstructionCatalog(flags: ReadonlySet<string> | FlagSet, v
       candidateRows.push(row as Record<string, unknown>);
       seenBuildings.add(String(row.building));
       if (row.building === 'supplyDepot') seenBuildings.add('depot');
+    }
+  }
+
+  const combatTable = fs.has('W07') ? data.tables['combatUnits'] : undefined;
+  if (combatTable) {
+    const combatBuildingRows = Object.values(combatTable).filter((r) => r && r.kind === 'building');
+    for (const row of combatBuildingRows) {
+      const bKey = String(row.building ?? row.id);
+      if (!seenBuildings.has(bKey)) {
+        candidateRows.push(row as Record<string, unknown>);
+        seenBuildings.add(bKey);
+        if (bKey === 'autocannon') seenBuildings.add('turret');
+      }
     }
   }
 

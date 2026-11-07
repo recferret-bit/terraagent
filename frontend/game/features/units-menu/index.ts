@@ -2,6 +2,8 @@ import { defineFeature } from '../../core/registry/types';
 import { UnitsMenu } from './UnitsMenu';
 import './units-menu.css';
 
+export { UnitsMenu };
+
 declare module '../../core/registry/types' {
   interface FeatureServices {
     /** Sim enqueue task command over the transport or local host. */
@@ -12,10 +14,13 @@ declare module '../../core/registry/types' {
       colonyIndex?: number;
       [key: string]: unknown;
     }) => void;
+    /** Sets the Factory / colony unit rally point (q, r). */
+    setRally?: (q: number, r: number, producerId?: number) => void;
   }
 
   interface GameView {
     unitQueue?: Array<unknown>;
+    rallyPoint?: { q: number; r: number };
     supply?: {
       used: number;
       cap: number;
