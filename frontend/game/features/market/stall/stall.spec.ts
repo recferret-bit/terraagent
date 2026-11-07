@@ -22,7 +22,6 @@ const snap = (over: Partial<MarketSnapshotResponse> = {}): MarketSnapshotRespons
 const ctxOf = (sendCommand = vi.fn(async () => ({ ok: true as const, appliedAtTick: 1 })), extra: Record<string, unknown> = {}) =>
   ({ flags: new Set(['W13']), host: 'server', services: { sendCommand, session: { planetId: () => 'p1' }, ...extra } }) as unknown as FeatureContext;
 const q = (root: HTMLElement, id: string) => root.querySelector(`[data-testid=${id}]`) as HTMLElement;
-const slide = (root: HTMLElement, v: number) => { const s = q(root, 'stall-slider') as HTMLInputElement; s.value = String(v); s.dispatchEvent(new Event('input')); };
 
 describe('stall model', () => {
   it('earned shows the demo 0.10 mock USDC; zero tokens are hidden', () => {
@@ -44,51 +43,21 @@ describe('stall model', () => {
 });
 
 describe('StallSection', () => {
-  it('shows the demo owner fee 0.10 mock USDC, the current fee and separate panels', () => {
-    const s = new StallSection(ctxOf(), () => NOW);
+  it('shows ONE read-only stall fee line and only the own in-orbit resources; no editor, earnings or valuation', () => {
+    const s = new StallSection(ctxOf());
     s.apply(snap());
-    expect(q(s.el, 'stall-earned').textContent).toContain('0.10 mock USDC');
     expect(q(s.el, 'stall-current').textContent).toContain('1.00 %');
-    for (const id of ['stall-inventory', 'stall-valuation', 'stall-earnings']) expect(q(s.el, id)).not.toBeNull();
-    expect(q(s.el, 'stall-valuation').textContent).toContain('estimate');
-    expect(q(s.el, 'stall-earnings').textContent).not.toContain('estimate');
-    expect((q(s.el, 'stall-slider') as HTMLInputElement).max).toBe('100');
-  });
-
-  it('moving the slider changes only the draft: no command, existing order terms stay pinned; Apply sends market.setHubFee', async () => {
-    const send = vi.fn(async () => ({ ok: true as const, appliedAtTick: 1 }));
-    const snapshot = snap();
-    const load = vi.fn(async () => snap({ stall: { hubFeeBp: 25, earned: { USDC: '100000' } } }));
-    const s = new StallSection(ctxOf(send, { marketSnapshot: load }), () => NOW);
-    s.apply(snapshot);
-    const before = JSON.stringify(snapshot.myOrders);
-    expect((q(s.el, 'stall-apply') as HTMLButtonElement).disabled).toBe(true);
-    slide(s.el, 23);
-    expect(q(s.el, 'stall-draft').textContent).toBe('0.25 %');
-    expect(send).not.toHaveBeenCalled();
-    expect(JSON.stringify(snapshot.myOrders)).toBe(before);
-    expect(q(s.el, 'stall-pinned').textContent).toContain('1.00 % (1)');
-    (q(s.el, 'stall-apply') as HTMLButtonElement).click();
-    expect(send).toHaveBeenCalledWith('market.setHubFee', { bp: 25 });
-    await vi.waitFor(() => expect(q(s.el, 'stall-current').textContent).toContain('0.25 %'));
-    expect(q(s.el, 'stall-pinned').textContent).toContain('1.00 % (1)'); // the order still shows its pinned 1.00 %
-  });
-
-  it('shows the host reject reason', async () => {
-    const send = vi.fn(async () => ({ ok: false as const, code: 'fee_out_of_range', detail: 'fee above max' }));
-    const s = new StallSection(ctxOf(send as never), () => NOW);
-    s.apply(snap());
-    slide(s.el, 50);
-    (q(s.el, 'stall-apply') as HTMLButtonElement).click();
-    await vi.waitFor(() => expect(q(s.el, 'stall-message').textContent).toContain('fee above max'));
+    expect(s.el.querySelectorAll('[data-testid=stall-inv]').length).toBeGreaterThan(0);
+    expect(s.el.textContent).toContain('300 free');
+    for (const id of ['stall-slider', 'stall-apply', 'stall-valuation', 'stall-earnings']) expect(s.el.querySelector(`[data-testid=${id}]`)).toBeNull();
   });
 
   it('is mounted in the Market tab and fed by the snapshot', async () => {
-    const ctx = ctxOf(undefined, { marketSnapshot: vi.fn(async () => snap()) });
+    const ctx = ctxOf(undefined, { marketSnapshot: vi.fn(async () => snap({ stall: { hubFeeBp: 50, earned: {} } })) });
     const root = document.createElement('div');
     const tab = new MarketTab(root, ctx);
     tab.onShow();
-    await vi.waitFor(() => expect(q(root, 'stall-earned').textContent).toContain('0.10 mock USDC'));
+    await vi.waitFor(() => expect(q(root, 'stall-current').textContent).toContain('0.50 %'));
     tab.dispose();
   });
 });

@@ -2,7 +2,6 @@ import { defineFeature, type FeatureContext } from '../../core/registry/types';
 import { ContractsController } from './contracts/ContractsController';
 import { ContractsLog } from './contracts/contractsLog';
 import { ContractsPanel } from './contracts/ContractsPanel';
-import { boardHud, boardMenu } from './board';
 import { MARKET_EVENTS } from './analytics/marketTracker';
 import { registerMarketTab } from './tab/register';
 import './contracts/contracts.css';
@@ -28,7 +27,6 @@ export default defineFeature({
   hostOnly: 'server',
   analytics: [...MARKET_EVENTS],
   hud: [
-    boardHud,
     // bottom-right, not bottom-left: an extra bar in the left stack pushed the command dock under the pilot chip (W02/W03/W08 e2e)
     { id: 'supply-trade', slot: 'bottom-right', order: 64, mount: mountSupplyPanel },
     { id: 'market-tab', slot: 'bottom-right', order: 30, mount: (_el, ctx: FeatureContext) => registerMarketTab(ctx) },
@@ -59,5 +57,5 @@ export default defineFeature({
       },
     },
   ],
-  menus: [boardMenu, { id: 'contracts', label: 'Contracts', open() { active?.setOpen(true); } }],
+  menus: [{ id: 'contracts', label: 'Contracts', open() { active?.setOpen(true); } }],
 });

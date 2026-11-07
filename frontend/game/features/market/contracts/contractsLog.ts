@@ -1,6 +1,6 @@
 import { contractSignedText, mockLabel, type ContractSignedFields, type MarketTokenKey } from '@terra/contracts';
 
-export const CONTRACTS_LIMIT = 20;
+export const CONTRACTS_LIMIT = 5;
 
 /** One row of the Contracts list; `kind` is the event-log row kind (`history.trade` for a signed contract). */
 export interface ContractRow {

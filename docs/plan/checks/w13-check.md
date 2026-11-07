@@ -12,8 +12,8 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
 - Fresh numbers: the scenario funds A and B **up to** 600 water / 20 mock USDC each time a w13 planet is seated. After several demo runs A may hold more water than 600, or B more USDC than 20. For the exact numbers below, run `npm run db:reset && npm run db:migrate && npm run db:seed` with the stack stopped, then start it again.
 - **Two players:** A in one browser window, B in a **second browser profile** (or a private window). Each player name may only be open once.
 - **In-game dev console:** click the game, press **`` ` ``** (the key under Esc), type a command, press **Enter**, **Esc** to close. This is not the browser DevTools console.
-- **Trade Hub panel:** click **your Trade Hub** in the 3D view. It is the 2×2 building just east of your Command Hub (A: tile −6,1; B: tile 10,1). The bottom bar shows **TRADE HUB**. Click **SHOW DETAILS** if it is collapsed, then the **MARKET** tab. The Market tab scrolls: depth and last trades at the top, then the order form, my orders, and the stall section at the bottom.
-- **Market launcher bar** (bottom right, above the stats box): **SUPPLY & TRADE · SHOW · BOARD · CONTRACTS**. It sits below the Trade Hub panel; close the Trade Hub panel (**CLOSE**) to reach it.
+- **Trade Hub panel:** click **your Trade Hub** in the 3D view. It is the 2×2 building just east of your Command Hub (A: tile −6,1; B: tile 10,1). The bottom bar shows **TRADE HUB**. Click **SHOW DETAILS** if it is collapsed, then the **MARKET** tab. The in-game Market tab is a compact quick-trade panel: **OPEN FULL TRADING PAGE** button at the top (opens `/trade.html?planet=<planetId>` in a new tab; that page holds every order, the stall-fee editor, candles, analytics and API keys), the pair picker (short list, mock USDC / NEAR), **BEST BID / BEST ASK / LAST / 24H**, a 5-level depth, the ticket (**ADVANCED** is collapsed), **MY OPEN ORDERS**, **LAST FILLS** (5) and, at the bottom, the read-only stall fee and your **IN ORBIT** resources.
+- **Market launcher bar** (bottom right, above the stats box): **SUPPLY & TRADE · SHOW · BOARD · CONTRACTS** (**BOARD** opens `/trade.html?planet=<planetId>#board` in a new tab; **CONTRACTS** is the small in-game list of the last 5 contracts). It sits below the Trade Hub panel; close the Trade Hub panel (**CLOSE**) to reach it.
 - Reference: [DEV_TOOLS.md → W13 markets and economy tooling](../../dev/DEV_TOOLS.md#w13-markets-and-economy-tooling-d-44), [ECONOMY_OPERATOR.md](../../dev/ECONOMY_OPERATOR.md), [ECONOMY_REVIEW.md](../../dev/ECONOMY_REVIEW.md).
 
 ## Steps
@@ -22,22 +22,22 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
    - **Where:** window A: <http://127.0.0.1:5473/play.html?scenario=w13&as=a>. In A's dev console run `planet b`; it prints a link `…/play.html?join=<planetId>&as=b`. Open that link in the **second profile** (B).
    - **See:** A plays **Port A** (colony 0), B plays **Port B** (colony 1). Both Trade Hubs show **ONLINE**. In A's Trade Hub → **IN ORBIT → Bio → Water 600**. Every USDC amount in the MARKET tab is labelled *mock USDC*. Balances (raw check, use the planet id printed by `planet b`): <http://127.0.0.1:4301/v1/market/PLANET_ID?as=a> → `balances: {"bio.water":"600"}`, `?as=b` → `{"USDC":"20000000"}` (6 decimals).
 
-2. **A opens Market, picks water/USDC and sets the stall fee to 1 %.**
-   - **How:** A: Trade Hub → **MARKET**. Pair picker: base **Water (T1)**, quote **mock USDC**. Scroll to the stall section; drag the slider to **0.50 %**, **APPLY**, then back to **1.00 %** (the maximum), **APPLY**.
-   - **See:** "Stall fee set to 0.50 % for new orders." then "Stall fee set to 1.00 % for new orders." Current fee **1.00 %**.
+2. **A opens Market, picks water/USDC and checks the stall fee (1 %).**
+   - **How:** A: Trade Hub → **MARKET**. Pair picker: base **Water (T1)**, quote **mock USDC**. Scroll to the bottom: the stall section shows **Stall fee (read-only) 1.00 %**. Editing the fee moved to the trade page: open **OPEN FULL TRADING PAGE** and use its stall-fee editor (0.50 %, then back to 1.00 %, the maximum).
+   - **See:** in-game: read-only **1.00 %** and your **IN ORBIT** list. On the trade page: "Stall fee set to 0.50 % for new orders." then "... 1.00 % ..." (the trade page owns this step now).
 
 3. **A offers 300 water for 10 USDC, TTL 1 h.**
-   - **How:** A's order form: **SELL**, Amount **300**, Total price **10**, Expires in **1 h**, **PLACE ORDER**.
-   - **See:** the preview says "You give 300 … You receive 10.00 mock USDC · Policy version bootstrap-1". Within a second the ask appears in the depth: price **0.0333**, amount **300**, orders **1**. Under **My orders**: **OPEN 0/300**. In-orbit water now shows 300 reserved (REST `reserved: {"bio.water":"300"}`; the order pins `stallFeeBp 100`).
+   - **How:** A's ticket: **SELL**, Amount **300**, Total price **10**, open **ADVANCED** and set Expires in **1 h**, **PLACE ORDER**.
+   - **See:** the preview says "You give 300 … You receive 10.00 mock USDC · Policy version bootstrap-1". Within a second the ask appears in the depth: price **0.0333**, amount **300**, orders **1**. Under **MY OPEN ORDERS**: **OPEN 0/300**. In-orbit water now shows 300 reserved (REST `reserved: {"bio.water":"300"}`; the order pins `stallFeeBp 100`).
 
 4. **B previews and buys: buyer pays 10.20, seller gets 10, stall and platform 0.10 each.**
-   - **How:** B: click B's Trade Hub → **MARKET**, pair **Water / mock USDC** (B sees A's ask). Order form: **BUY**, Amount **300**, Total price **10**, **1 h**.
+   - **How:** B: click B's Trade Hub → **MARKET**, pair **Water / mock USDC** (B sees A's ask). Quick-trade ticket: **BUY**, Amount **300**, Total price **10** (expiry **ADVANCED**, default 15 min; to pick **1 h** open **ADVANCED**).
    - **See (preview):** You receive **300**, Notional **10.00**, Platform fee **0.10**, Max stall fee **0.10**, Network cost **0 (mock, no gas)**, **Total maximum spend 10.20 mock USDC**. Click **PLACE ORDER**.
-   - **See (fill, ~1–3 s):** both windows toast **"Contract signed: 300 water for 10.00 USDC at Port A (1 % fee)"**; the ask disappears from both depths; **BOARD/CONTRACTS → CONTRACTS** lists the trade. Balances (REST): B `USDC 9.80`, `bio.water 300`; A `USDC 10.10` (10.00 sale + 0.10 stall fee: A owns the stall); A's stall section shows realized **0.10 mock USDC**.
+   - **See (fill, ~1–3 s):** both windows toast **"Contract signed: 300 water for 10.00 USDC at Port A (1 % fee)"**; the ask disappears from both depths; **BOARD/CONTRACTS → CONTRACTS** lists the trade (last 5; **LAST FILLS** in the Market tab shows it too). Balances (REST): B `USDC 9.80`, `bio.water 300`; A `USDC 10.10` (10.00 sale + 0.10 stall fee: A owns the stall); A's realized stall fees (**0.10 mock USDC**) are shown on the trade page, not in the hub.
    - **Explorer:** <http://127.0.0.1:5473/dev/chain/> → **RECEIPTS**: one `Intents.execute_intents` receipt whose op id is `trade:tr_…` (one atomic batch for all legs). (The explorer's balance views show the cargo ledger, not the verifier; check the verifier balances with the REST snapshot above: B `USDC 9800000`, A `USDC 10100000`.)
 
 5. **Price board.**
-   - **How:** close A's Trade Hub panel, click **BOARD** in the launcher bar; scroll to **bio.water / USDC**.
+   - **How:** close A's Trade Hub panel, click **BOARD** in the launcher bar: it opens `/trade.html?planet=<planetId>#board` in a new tab; find **bio.water / USDC** there. (The in-game price board panel was removed.)
    - **See:** last price **0.0333** (gross execution price), volume **300**, label **INSUFFICIENT DATA** with reason `insufficient_data` (one trade, 2 counterparties: below the 3-trade / 3-counterparty minimum, so it can't set a reference price or drive bot bids). Other pairs show **INSUFFICIENT DATA** too. `market.seed here bio.water/USDC` (dev console) adds a labelled **FIXTURE** bot; its fills never count as organic.
 
 6. **Partial fills and the resting buy (e2e checks the exact numbers).**

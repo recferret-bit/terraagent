@@ -5,7 +5,6 @@ import type { FeatureContext, TradeHubTabDef } from '../../../core/registry/type
 import marketFeature from '../index';
 import { MarketTab } from './MarketTab';
 import { MarketState } from './marketState';
-import { baseGroups } from './pairs';
 import { TabExtensions } from '../../trade-hub/tabExtensions';
 
 const PAIR = 'bio.water/USDC';
@@ -40,10 +39,10 @@ describe('MarketTab', () => {
     tab.dispose();
   });
 
-  it('shows only the top 10 levels per side', () => {
+  it('shows only the top 5 levels per side (mini depth)', () => {
     const { root, push } = setup();
     push(book(1, Array.from({ length: 14 }, (_, i) => [String(100_000 * (i + 1)), 1, 1] as [string, number, number])));
-    expect(prices(root, 'asks')).toHaveLength(10);
+    expect(prices(root, 'asks')).toHaveLength(5);
   });
 
   it('a push replaces the book: the filled ask disappears; an older seq is dropped', () => {
@@ -65,19 +64,52 @@ describe('MarketTab', () => {
     expect(root.querySelectorAll('[data-testid=market-trade]')).toHaveLength(2);
   });
 
-  it('pair picker: grouped Metals/Minerals/Bio by tier; switching pair shows that pair book', () => {
-    expect(baseGroups().map((g) => [g.label, g.keys.map((k) => k.split('.')[1]).join()])).toEqual([
-      ['Metals', 't1,t2,t3'], ['Minerals', 't1,t2,t3'], ['Bio', 'water,biomass,t2,t3'],
-    ]);
+  it('pair picker: a short list of bases and USDC / NEAR; switching pair shows that pair book', () => {
     const { tab, root, push } = setup();
     const quote = root.querySelector('[data-testid=market-quote]') as HTMLSelectElement;
     expect(quote.value).toBe('USDC');
-    expect([...root.querySelectorAll('[data-testid=market-base] optgroup')].map((g) => (g as HTMLOptGroupElement).label)).toEqual(['Metals', 'Minerals', 'Bio']);
+    expect([...quote.options].map((o) => o.value)).toEqual(['USDC', 'NEAR']);
+    expect((root.querySelector('[data-testid=market-base]') as HTMLSelectElement).options.length).toBeLessThanOrEqual(6);
     push(book(1, [['400000', 100, 1]]));
     quote.value = 'NEAR';
     quote.dispatchEvent(new Event('change'));
     expect(tab.selected()).toBe('bio.water/NEAR');
     expect(prices(root, 'asks')).toEqual([]);
+  });
+
+  it('a pair set from a suggestion outside the short list is still selectable', () => {
+    const { tab, root } = setup();
+    tab.setPair('metals.t3', 'USDC');
+    expect((root.querySelector('[data-testid=market-base]') as HTMLSelectElement).value).toBe('metals.t3');
+  });
+
+  it('shows best bid / ask / last price and 24h change', () => {
+    const { root, push, pushTrade } = setup();
+    push(book(1, [['400000', 100, 1]], [['300000', 70, 1]]));
+    pushTrade(trade('a', Date.now() - 3600_000));
+    pushTrade(trade('b', Date.now() - 1000));
+    const stat = (id: string) => root.querySelector(`[data-testid=market-stat-${id}] .ta-market__stat-v`)!.textContent;
+    expect([stat('bid'), stat('ask'), stat('last'), stat('change')]).toEqual(['0.300', '0.400', '0.500', '+0.0 %']);
+  });
+
+  it('lists only the last 5 fills', () => {
+    const { root, pushTrade } = setup();
+    for (let i = 1; i <= 8; i++) pushTrade(trade(`t${i}`, i * 1000));
+    expect(root.querySelectorAll('[data-testid=market-trade]')).toHaveLength(5);
+  });
+
+  it('the full trading page link opens /trade.html in a new tab with noopener and carries the planet', () => {
+    const { root } = setup();
+    const a = root.querySelector('[data-testid=market-open-full]') as HTMLAnchorElement;
+    expect(a.getAttribute('href')).toBe('/trade.html?planet=p1');
+    expect(a.target).toBe('_blank');
+    expect(a.rel).toBe('noopener');
+  });
+
+  it('the ticket keeps advanced options collapsed and no stall editor, analytics or board in the hub', () => {
+    const { root } = setup();
+    expect((root.querySelector('[data-testid=order-advanced]') as HTMLDetailsElement).open).toBe(false);
+    for (const id of ['stall-slider', 'stall-valuation', 'stall-earnings', 'market-candles']) expect(root.querySelector(`[data-testid=${id}]`)).toBeNull();
   });
 
   it('onShow loads the REST snapshot', async () => {

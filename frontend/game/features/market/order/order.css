@@ -25,3 +25,5 @@
 .ta-order__field input { width: 100%; box-sizing: border-box; }
 .ta-order__cancel { background: var(--ta-plate-2); color: var(--ta-text-2); }
 .ta-order__cancel:hover { background: var(--ta-orange); color: var(--ta-void); }
+.ta-order__adv > summary { cursor: pointer; color: var(--ta-text-3); font-size: var(--ta-fs-eyebrow); letter-spacing: var(--ta-track-label); padding: 2px 0; }
+.ta-order__adv[open] > summary { color: var(--ta-text-2); }

@@ -1,6 +1,6 @@
 import { CONTRACTS_LIMIT, rowBadge, type ContractsLog } from './contractsLog';
 
-/** The Contracts list (last 20), Faction Plate chrome, DOM built with textContent only. Hidden until opened from the menu. */
+/** The Contracts list (last 5; the full history is on the trade page), Faction Plate chrome, DOM built with textContent only. Hidden until opened from the menu. */
 export class ContractsPanel {
   private readonly list: HTMLElement;
   private readonly off: () => void;
