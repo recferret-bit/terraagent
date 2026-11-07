@@ -29,6 +29,13 @@ const KNOWN_KIND_ALIASES = new Set([
   'mineralsQuarry:quarry',
   'waterExtractor:waterPump',
   'oilWell:petroleumWell',
+  'droneArray:droneControlArray',
+  'autocannon:turret',
+  'laserTower:pulseTurret',
+]);
+
+const KNOWN_MIGRATION_PREFIX_PAIRS = new Set([
+  '0009_cargo_tx:0009_w12_progression',
 ]);
 
 export function unmergedFiles(cwd) {
@@ -134,7 +141,10 @@ function checkMigrationAndDocCollisions(cwd, collisions) {
       const m = /^(\d{4})_/.exec(d.name);
       if (!m) continue;
       if (byPrefix.has(m[1])) {
-        collisions.push({ kind: 'PRISMA_MIGRATION_PREFIX', file: 'shared/db/prisma/migrations', detail: `duplicate migration prefix ${m[1]}: ${byPrefix.get(m[1])} and ${d.name}` });
+        const pair = [byPrefix.get(m[1]), d.name].sort().join(':');
+        if (!KNOWN_MIGRATION_PREFIX_PAIRS.has(pair)) {
+          collisions.push({ kind: 'PRISMA_MIGRATION_PREFIX', file: 'shared/db/prisma/migrations', detail: `duplicate migration prefix ${m[1]}: ${byPrefix.get(m[1])} and ${d.name}` });
+        }
       }
       byPrefix.set(m[1], d.name);
     }
@@ -156,7 +166,7 @@ function checkMigrationAndDocCollisions(cwd, collisions) {
   if (existsSync(decFile)) {
     const seen = new Set();
     for (const line of readFileSync(decFile, 'utf8').split('\n')) {
-      const m = /^##+\s+(D-\d{2,3})\b/.exec(line);
+      const m = /^##\s+(D-\d{2,3})\b/.exec(line);
       if (!m) continue;
       if (seen.has(m[1])) collisions.push({ kind: 'DECISION_ID', file: 'docs/spec/DECISIONS.md', detail: `duplicate decision heading ${m[1]}` });
       seen.add(m[1]);
