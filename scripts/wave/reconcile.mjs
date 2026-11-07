@@ -166,7 +166,7 @@ function checkMigrationAndDocCollisions(cwd, collisions) {
   if (existsSync(decFile)) {
     const seen = new Set();
     for (const line of readFileSync(decFile, 'utf8').split('\n')) {
-      const m = /^##+\s+(D-\d{2,3})\b/.exec(line);
+      const m = /^##\s+(D-\d{2,3})\b/.exec(line);
       if (!m) continue;
       if (seen.has(m[1])) collisions.push({ kind: 'DECISION_ID', file: 'docs/spec/DECISIONS.md', detail: `duplicate decision heading ${m[1]}` });
       seen.add(m[1]);
