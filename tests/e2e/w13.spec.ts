@@ -5,8 +5,7 @@ import { clickTile, devConsole, expect, expectNoPageErrors, hostMode, loadLocal,
 /**
  * W13 Markets (F2, mock) wave E2E suite, part 1 (W13-35): demo story `docs/plan/waves/W13-markets.md` steps 1, 3-11 through the
  * commands, REST and dev routes, with TWO browser contexts (A = `?scenario=w13&as=a`, B joins with `?join=<planetId>&as=b`).
- * Steps that need the Market UI (W13-20/21/22: Market tab, order form preview, stall slider) are named `test.fixme`
- * placeholders that part 2 fills. Every step is tagged `@hack` for `npm run e2e -- --waves ..13 --hack`.
+ * Steps that need the Market UI (W13-20/21/22: Market tab, order form preview, stall slider) are covered by the steps below (no `test.fixme` remains). Every step is tagged `@hack` for `npm run e2e -- --waves ..13 --hack`.
  *
  * Money in this suite is MOCK: balances live in the mock `intents.near` verifier and are labelled fixtures (`organic: false`).
  */

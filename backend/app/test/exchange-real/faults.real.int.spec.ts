@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- loosely typed JSON replies */
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest';
 import { auditPlanet } from '../exchange/exchange-audit.js';
 import { Exchange, mockChainControls, ord } from '../exchange/exchange-harness.js';
