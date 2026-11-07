@@ -4,7 +4,7 @@ import type { PlanetState } from '../../kernel/state';
 import { getColonyTradeHubStatus } from '../cargo/trade-hub';
 import { ensureColonyCargoState } from '../cargo/state';
 import { colonyIdOf, resolvePlayerColony } from './colony';
-import { authorizeMarketActor } from './command-source';
+import { BOT_SOURCE, authorizeMarketActor } from './command-source';
 import { maxBuyerSpend } from './market-fees';
 import {
   boundOpenOrders,
@@ -134,6 +134,8 @@ export const marketPlaceOrderHandler = defineCommandHandler({
         ...(order.maxStallFeeBp !== undefined ? { maxStallFeeBp: order.maxStallFeeBp } : {}),
         hubEntityId: hub.entityId,
         ...(colony.name ? { stallName: String(colony.name).slice(0, 64) } : {}),
+        ...(typeof cmd.commandId === 'string' && cmd.commandId ? { commandId: cmd.commandId } : {}),
+        actorKind: (cmd.source as string) === BOT_SOURCE ? 'bot' : 'player',
       },
     });
     return undefined;

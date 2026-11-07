@@ -4475,6 +4475,11 @@
             "minimum": 0,
             "type": "integer"
           },
+          "commandId": {
+            "maxLength": 40,
+            "minLength": 1,
+            "type": "string"
+          },
           "hubEntityId": {
             "maximum": 9007199254740991,
             "minimum": 0,

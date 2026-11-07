@@ -26,6 +26,8 @@ export const event = defineEvent({
     stallName: z.string().max(64).optional(),
     /** Who the command came from: the sim sets `bot` for `source: 'bot'` commands (API keys); absent = a player. */
     actorKind: ActorKind.optional(),
+    /** The `SimCommandV1.commandId` of the `market.placeOrder` that caused this event (optional; absent on old events). */
+    commandId: z.string().min(1).max(40).optional(),
   }),
   summary: 'The sim accepted `market.placeOrder` (Hub online, size, TTL, fee range); the market module creates the order, reserves funds and matches (W13-09). Server-only input.',
 });

@@ -43,6 +43,16 @@ describe('market.placeOrder command sources (bot API)', () => {
     expect(res.events.find((e) => e.kind === 'marketOrderRequested')?.data).toMatchObject({ colonyId: 'col_0', side: 'sell', amount: 100 });
   });
 
+  it('marketOrderRequested carries the commandId and actorKind of its command', () => {
+    const botCmd = cmd('market.placeOrder', 'bot', sellArgs, 0);
+    const bot = step(setup(), [botCmd], 1, pipe()).events.find((e) => e.kind === 'marketOrderRequested')?.data;
+    expect(bot).toMatchObject({ commandId: botCmd.commandId, actorKind: 'bot' });
+    const playerCmd = cmd('market.placeOrder', 'player', sellArgs);
+    const pl = step(setup(), [playerCmd], 1, pipe()).events.find((e) => e.kind === 'marketOrderRequested')?.data;
+    expect(pl).toMatchObject({ commandId: playerCmd.commandId, actorKind: 'player' });
+    expect(step(setup(), [cmd('market.placeOrder', 'bot', { ...sellArgs, amount: 0 })], 1, pipe()).events.some((e) => e.kind === 'marketOrderRequested')).toBe(false);
+  });
+
   it('bot is still validated: bad args, missing cargo and a foreign colony id are rejected', () => {
     expect(code(setup(), cmd('market.placeOrder', 'bot', { ...sellArgs, amount: 0 }))).toBe('invalid_args');
     expect(code(setup(), cmd('market.placeOrder', 'bot', { ...sellArgs, amount: 301 }))).toBe('insufficient_cargo');
