@@ -49,7 +49,7 @@ export class InMemoryIntents extends IntentsPort {
     return this.chain.write(input.opId, () => {
       this.sub(this.own, input.accountId, key, amount);
       this.add(this.verifier, input.accountId, input.tokenId, amount);
-    }).receipt;
+    }, { port: 'Intents', method: 'deposit' }).receipt;
   }
 
   async withdraw(input: IntentsWithdrawInput): Promise<ChainReceipt> {
@@ -57,7 +57,7 @@ export class InMemoryIntents extends IntentsPort {
     return this.chain.write(input.opId, () => {
       this.sub(this.verifier, input.accountId, input.tokenId, amount);
       this.add(this.own, input.to, key, amount);
-    }).receipt;
+    }, { port: 'Intents', method: 'withdraw' }).receipt;
   }
 
   /** Signs with a throwaway ed25519 key generated per account on first use (`publicKeyOf` returns it). */
@@ -117,7 +117,7 @@ export class InMemoryIntents extends IntentsPort {
         throw e;
       }
       for (const it of input.intents) this.nonces.add(slot(it.diff.accountId, it.nonce));
-    }).receipt;
+    }, { port: 'Intents', method: 'execute' }).receipt;
   }
 
   private async check(intents: readonly SignedIntent[]): Promise<NearErrorCode | null> {

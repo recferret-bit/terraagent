@@ -40,7 +40,7 @@ export class PlaceOrderPrecheck implements OnModuleInit, OnModuleDestroy {
   readonly check: CommandPrecheck = async (input) => {
     if (!input.colony || !databaseEnabled(this.env)) return null;
     const a = input.args as Partial<MarketPlaceOrderArgs>;
-    if (!a.price || typeof a.amount !== 'number' || !a.resource || !a.side) return null; // the sim reports bad args
+    if (!wellFormed(a)) return null; // malformed args never throw here: the sim rejects them with invalid_args
     const cfg = this.policy.current();
     const { colonyId, accountId } = await this.colonies.resolve(input.planetId, input.colony.colonyIndex, input.colony.id, input.playerId);
     if ((await this.repo.listOpenByColony(colonyId)).length >= cfg.openOrderLimit) return { code: 'order_limit', detail: `At most ${cfg.openOrderLimit} open orders.` };
@@ -53,4 +53,15 @@ export class PlaceOrderPrecheck implements OnModuleInit, OnModuleDestroy {
     if (view.free < total) return { code: 'insufficient_cargo', detail: `Need ${total} ${need.token} (incl. fees), ${view.free} free.` };
     return null;
   };
+}
+
+const ATOMIC_RE = /^(0|[1-9]\d{0,77})$/;
+
+/** True when `a` has the shape the BigInt conversions in `check` need; anything else is left to the sim's strict args check. */
+export function wellFormed(a: Partial<MarketPlaceOrderArgs>): a is MarketPlaceOrderArgs {
+  if (!a.price || typeof a.price !== 'object' || typeof a.price.amount !== 'string' || !ATOMIC_RE.test(a.price.amount)) return false;
+  if (typeof a.amount !== 'number' || !Number.isSafeInteger(a.amount) || a.amount <= 0) return false;
+  if (typeof a.resource !== 'string' || typeof a.side !== 'string' || typeof a.price.token !== 'string') return false;
+  const bp = a.maxStallFeeBp;
+  return bp === undefined || (typeof bp === 'number' && Number.isInteger(bp) && bp >= 0 && bp <= 10_000);
 }

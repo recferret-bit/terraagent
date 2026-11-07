@@ -1,3 +1,4 @@
+import { FaultPlan } from './fault-plan.js';
 import type { MockChainConfig } from './mock-chain.config.js';
 
 interface LatencyOverride {
@@ -16,6 +17,8 @@ class MockChainControls {
   private readonly failRates = new Map<string, number>();
   private readonly latencies = new Map<string, LatencyOverride>();
   private readonly outcomeUnknown = new Set<string>();
+  /** Deterministic one-shot / counted faults (fail before/after submit, insufficient funds, duplicate delivery, hold); see `fault-plan.ts`. */
+  readonly faults = new FaultPlan();
 
   setFail(port: string, rate: number): void {
     if (typeof rate !== 'number' || !Number.isFinite(rate) || rate < 0 || rate > 1) {
@@ -59,6 +62,7 @@ class MockChainControls {
     this.failRates.clear();
     this.latencies.clear();
     this.outcomeUnknown.clear();
+    this.faults.reset();
   }
 }
 
