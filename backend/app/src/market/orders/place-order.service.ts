@@ -34,6 +34,12 @@ export interface PlaceOrderResult {
 /** Deterministic order id of a sim ref on one planet (refs repeat across planets: every scenario planet has `col_0`). */
 export const orderIdOf = (planetId: string, ref: string): string => `mo_${createHash('sha256').update(`${planetId}\u0000${ref}`).digest('hex').slice(0, 40)}`;
 
+/** The sim's echo of the API command id (absent until the sim emits it; read from the raw event so the contract schema need not know it). */
+const commandIdOf = (data: unknown): string | undefined => {
+  const id = (data as { commandId?: unknown }).commandId;
+  return typeof id === 'string' && id.length > 0 ? id : undefined;
+};
+
 /** Options of `handle`: `fixture` orders (dev seed bots, W13-30) are labelled `actorKind` fixture and never answered to the sim. */
 export interface PlaceOptions {
   readonly actorKind?: ActorKind;
@@ -82,7 +88,7 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
   async handle(event: Requested, opts: PlaceOptions = {}): Promise<PlaceOrderResult | null> {
     if (!databaseEnabled(this.env)) return null;
     const parsed = eventDef('marketOrderRequested').data.parse(event.data);
-    const link = opts.actorKind ? null : await this.linker?.claim(event.planetId, parsed).catch(() => null) ?? null;
+    const link = opts.actorKind ? null : await this.linker?.claim(event.planetId, { ...parsed, commandId: commandIdOf(event.data) }).catch(() => null) ?? null;
     try {
       return await this.handleLinked(event, parsed, opts, link);
     } catch (err) {
@@ -126,14 +132,23 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
 
   /** Matches the new order and hands the fills to the hook inside one transaction (the matcher's locks stay held). */
   async matchAndSettle(orderId: string): Promise<void> {
-    try {
-      const touched = await withTransaction(this.prisma, async (tx) => {
-        const outcome = await this.matcher.matchOrder(orderId, tx);
-        return outcome.fills.length > 0 ? this.fills.onFills(outcome, tx) : [];
-      });
-      if (touched.length > 0) await this.books.sync(...touched);
-    } catch (err) {
-      this.log.warn(`matching ${orderId} failed: ${err instanceof Error ? err.message : String(err)}`);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const touched = await withTransaction(this.prisma, async (tx) => {
+          const outcome = await this.matcher.matchOrder(orderId, tx);
+          return outcome.fills.length > 0 ? this.fills.onFills(outcome, tx) : [];
+        });
+        if (touched.length > 0) await this.books.sync(...touched);
+        return;
+      } catch (err) {
+        // A lock conflict with another writer (deadlock 40P01 / serialization 40001) rolled the whole match back: the order still rests, try again.
+        if (attempt < 8 && /40P01|40001|deadlock detected/.test(String((err as { code?: string; message?: string }).code ?? '') + String((err as Error).message ?? ''))) {
+          await new Promise((r) => setTimeout(r, 10 + Math.random() * 40 * attempt));
+          continue;
+        }
+        this.log.warn(`matching ${orderId} failed: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
     }
   }
 

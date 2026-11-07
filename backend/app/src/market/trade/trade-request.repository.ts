@@ -80,7 +80,14 @@ export class TradeRequestRepository {
    * Atomically takes the oldest SUBMITTED place request of the colony with these terms (SUBMITTED -> LINKED) and returns it:
    * matches a `marketOrderRequested` event to its API call. Two concurrent events never take the same request.
    */
-  async claimSubmitted(t: { planetId: string; colonyId: string; side: string; resource: string; amount: bigint; priceAmount: bigint }): Promise<RequestRow | null> {
+  async claimSubmitted(t: { planetId: string; colonyId: string; side: string; resource: string; amount: bigint; priceAmount: bigint; commandId?: string }): Promise<RequestRow | null> {
+    if (t.commandId) { // the sim echoed the command id: exact match first, the terms match below is the fallback
+      const exact = await this.prisma.tradeApiRequest.findFirst({ where: { kind: 'place', state: 'SUBMITTED', planetId: t.planetId, colonyId: t.colonyId, commandId: t.commandId } });
+      if (exact) {
+        const won = await this.prisma.tradeApiRequest.updateMany({ where: { requestId: exact.requestId, state: 'SUBMITTED' }, data: { state: 'LINKED' } });
+        if (won.count === 1) return { ...exact, state: 'LINKED' };
+      }
+    }
     const where = { kind: 'place', state: 'SUBMITTED', planetId: t.planetId, colonyId: t.colonyId, side: t.side, resource: t.resource, amount: t.amount.toString(), priceAmount: t.priceAmount.toString() };
     for (const c of await this.prisma.tradeApiRequest.findMany({ where, orderBy: { createdAt: 'asc' }, take: 5 })) {
       const won = await this.prisma.tradeApiRequest.updateMany({ where: { requestId: c.requestId, state: 'SUBMITTED' }, data: { state: 'LINKED' } });

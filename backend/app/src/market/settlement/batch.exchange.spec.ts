@@ -73,27 +73,27 @@ describe('exchange backend: buildFillBatch', () => {
 });
 
 describe('exchange backend: maxBuyerSpend and requirementOf', () => {
-  it('ceil rounding: principal + ceil(1%) + ceil(1%)', () => {
-    expect(maxBuyerSpend(101n, 100, 100)).toBe(105n);
+  it('floor rounding: principal + floor(1%) + floor(1%), the rule the sim\'s cargo check uses', () => {
+    expect(maxBuyerSpend(101n, 100, 100)).toBe(103n);
     expect(maxBuyerSpend(100n, 100, 100)).toBe(102n);
-    expect(maxBuyerSpend(1n, 100, 100)).toBe(3n);
+    expect(maxBuyerSpend(1n, 100, 100)).toBe(1n);
     expect(maxBuyerSpend(0n, 100, 100)).toBe(0n);
     expect(maxBuyerSpend(12345n, 0, 0)).toBe(12345n);
   });
-  it('is never below the sim floor bound for the same terms', () => {
+  it('is exactly the sim bound for the same terms (the sim never accepts an order the server then refuses for funds)', () => {
     for (let p = 0n; p < 400n; p++) for (const [a, b] of [[100, 100], [100, 0], [50, 70], [0, 100]] as const) {
-      expect(maxBuyerSpend(p, a, b)).toBeGreaterThanOrEqual(simMaxBuyerSpend(p, a, b));
+      expect(maxBuyerSpend(p, a, b)).toBe(simMaxBuyerSpend(p, a, b));
     }
   });
   it('huge amounts stay exact beyond 2^64', () => {
     const p = 2n ** 80n;
-    expect(maxBuyerSpend(p, 100, 100)).toBe(p + 2n * ((p * 100n + 9999n) / 10000n));
+    expect(maxBuyerSpend(p, 100, 100)).toBe(p + 2n * ((p * 100n) / 10000n));
   });
   it('requirementOf: sell locks base units, buy locks quote principal + fee headroom', () => {
     const sell = requirementOf({ side: 'sell', base: 'bio.water', quote: 'USDC', amount: 7n, priceAmount: 999n, platformFeeBp: 100, maxStallFeeBp: 100 });
     expect(sell).toEqual({ token: 'bio.water', principal: 7n, fees: 0n });
     const buy = requirementOf({ side: 'buy', base: 'bio.water', quote: 'USDC', amount: 7n, priceAmount: 101n, platformFeeBp: 100, maxStallFeeBp: 100 });
-    expect(buy).toEqual({ token: 'USDC', principal: 101n, fees: 4n });
+    expect(buy).toEqual({ token: 'USDC', principal: 101n, fees: 2n });
   });
 });
 
@@ -160,7 +160,7 @@ describe('exchange backend: PlaceOrderPrecheck', () => {
   });
   // BUG (it.fails): place-order.precheck.ts calls BigInt(a.price.amount) / BigInt(a.amount) before the sim validates them;
   // CommandPrechecks.run does not catch, so a crafted '1.5' / 'abc' price throws out of the command path.
-  it.fails('a fractional / garbage price string from a crafted client does not crash the precheck into a non-reject', async () => {
+  it('a fractional / garbage price string from a crafted client does not crash the precheck into a non-reject', async () => {
     // BigInt('1.5') throws; the sim reports bad args, so the precheck must not surface an exception.
     await expect(make().p.check(input({ ...buy, price: { token: 'USDC', amount: '1.5' } }))).resolves.toBeNull();
   });

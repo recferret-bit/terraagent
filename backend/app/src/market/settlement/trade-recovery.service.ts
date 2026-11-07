@@ -16,6 +16,7 @@ import { OrderFunds } from '../orders/order-funds.js';
 import { PlaceOrderService } from '../orders/place-order.service.js';
 import { IntentTradeRepository } from './intent-trade.repository.js';
 import { TradeSettlement } from './trade-settlement.service.js';
+import { chargeBucketed, feeBucketKey, type FeeBuckets } from '@terra/sim/systems/trade/market-fees';
 import type { OrderRollback, TradePlan } from './trade-plan.js';
 
 /** Errors after which the chain definitely did not (and will not) apply the batch. Everything else is ambiguous. */
@@ -144,17 +145,37 @@ export class TradeRecovery implements OnModuleInit, OnModuleDestroy {
     for (const rb of plan.rollback) {
       const row = locked.find((o) => o.orderId === rb.orderId);
       if (!row) continue;
-      const end = await this.restore(tx, row, rb);
+      const end = await this.restore(tx, row, rb, plan.tradeId);
       if (end.active) out.reactivated.push(row.orderId);
       else { out.terminated.push(row.orderId); out.releases.push({ order: row, deltas: end.release }); }
     }
     return out;
   }
 
+  /**
+   * Fee buckets of a buyer order without the rolled-back fill: re-charged from scratch over its remaining (non-failed) fills in
+   * order with the same cumulative-floor rule, so no rounding dust is left behind (a subtraction would keep the failed fill's floors).
+   */
+  private async rebuiltBuckets(tx: TransactionClient, o: MarketOrderRecord, rb: OrderRollback, failedTradeId: string): Promise<Record<string, { base: string; fee: string }>> {
+    if (Object.keys(rb.buckets).length === 0) return { ...o.feeBuckets };
+    const fills = await tx.intentTrade.findMany({
+      where: { state: { not: 'FAILED' }, tradeId: { not: failedTradeId }, OR: [{ makerOrderId: o.orderId, makerSide: 'buy' }, { takerOrderId: o.orderId, makerSide: 'sell' }] },
+      orderBy: { id: 'asc' },
+    });
+    let buckets: FeeBuckets = {};
+    for (const t of fills) {
+      const platformKey = feeBucketKey(t.quote, t.platformFeeBp, t.platformAccountId, t.policyVersion);
+      const stallKey = `${feeBucketKey(t.quote, t.stallFeeBp, t.stallAccountId, t.policyVersion)}|stall`;
+      const n = BigInt(t.notional.toFixed());
+      buckets = chargeBucketed(chargeBucketed(buckets, platformKey, n, t.platformFeeBp).buckets, stallKey, n, t.stallFeeBp).buckets;
+    }
+    return { ...buckets };
+  }
+
   /** Reverses one fill on one locked order; returns whether the order is executable again or ended (and what to release in the sim). */
-  private async restore(tx: TransactionClient, o: MarketOrderRecord, rb: OrderRollback): Promise<{ active: boolean; release: Record<string, number> }> {
+  private async restore(tx: TransactionClient, o: MarketOrderRecord, rb: OrderRollback, failedTradeId: string): Promise<{ active: boolean; release: Record<string, number> }> {
     const filled = o.filled - BigInt(rb.qty);
-    const fill = { filled, cumNotional: o.cumNotional - BigInt(rb.notional), feeBuckets: undoBuckets(o, rb) };
+    const fill = { filled, cumNotional: o.cumNotional - BigInt(rb.notional), feeBuckets: await this.rebuiltBuckets(tx, o, rb, failedTradeId) };
     const restoreP = BigInt(rb.restorePrincipal);
     const restoreF = BigInt(rb.restoreFees);
     const token = (o.side === 'sell' ? o.base : o.quote) as MarketTokenKey;
@@ -178,13 +199,4 @@ export class TradeRecovery implements OnModuleInit, OnModuleDestroy {
     const units = restoreP + restoreF + stillHeld;
     return { active: false, release: isResourceToken(token) && units > 0n ? { [token]: Number(units) } : {} };
   }
-}
-
-function undoBuckets(o: MarketOrderRecord, rb: OrderRollback): Record<string, { base: string; fee: string }> {
-  const out: Record<string, { base: string; fee: string }> = { ...o.feeBuckets };
-  for (const [k, d] of Object.entries(rb.buckets)) {
-    const cur = out[k] ?? { base: '0', fee: '0' };
-    out[k] = { base: (BigInt(cur.base) - BigInt(d.base)).toString(), fee: (BigInt(cur.fee) - BigInt(d.fee)).toString() };
-  }
-  return out;
 }
