@@ -11,6 +11,10 @@ import { defaultAllowance, mergeAllowance, newKey } from './trade-keys.js';
 import { TradeOrdersService } from './trade-orders.service.js';
 import { TradeRequestRepository } from './trade-request.repository.js';
 import { TradeSimPort } from './trade-sim.port.js';
+import { TradeStreamService } from './trade-stream.service.js';
+
+/** Active (not revoked) keys one owner may hold: every key brings its own rate-limit bucket and allowance. */
+export const MAX_ACTIVE_KEYS_PER_OWNER = 20;
 
 /** Key lifecycle (create, list, allowance, kill switch, revoke) for the colony owner; every mutation is by a session, except a `manage` key's own kill switch. */
 @Injectable()
@@ -21,6 +25,7 @@ export class TradeKeysService implements OnModuleInit {
     private readonly policy: MarketPolicyProvider,
     private readonly orders: TradeOrdersService,
     private readonly sim: TradeSimPort,
+    private readonly streams: TradeStreamService,
     @Inject(PRISMA) private readonly prisma: PrismaClient,
   ) {}
 
@@ -35,6 +40,8 @@ export class TradeKeysService implements OnModuleInit {
     this.orders.gate();
     this.sessionOnly(p);
     const colony = await this.orders.colonyOrThrow(p, body.planetId);
+    const active = await this.keys.countActive(p.ownerId);
+    if (active >= MAX_ACTIVE_KEYS_PER_OWNER) throw new TradeError('key_limit', `At most ${MAX_ACTIVE_KEYS_PER_OWNER} active keys per owner; revoke one first.`, { max: MAX_ACTIVE_KEYS_PER_OWNER });
     const usdcPairs = this.policy.current().pairs.filter((x) => x.quote === 'USDC').map((x) => x.pair);
     const allowance = mergeAllowance(defaultAllowance(usdcPairs), body.allowance);
     const key = newKey();
@@ -77,8 +84,10 @@ export class TradeKeysService implements OnModuleInit {
 
   /** Revokes: unsubmitted requests are cancelled, resting orders get a cancel through the sim; a second sweep catches orders that were in flight. */
   async revoke(p: TradePrincipal, keyId: string): Promise<RevokeTradeKeyResponse> {
+    this.sessionOnly(p); // route table: session only; a key (even read-only) must not revoke its siblings
     const key = await this.owned(p, keyId);
     await this.keys.revoke(key.keyId);
+    this.streams.closeKey(key.keyId);
     const cancelledUnsubmitted = await this.requests.cancelUnsubmitted(key.keyId);
     const cancelRequested = await this.cancelOpen(key);
     setTimeout(() => void this.cancelOpen(key).catch(() => undefined), 1500).unref();

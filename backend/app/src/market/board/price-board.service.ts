@@ -9,6 +9,9 @@ import { actorStats, type ActorTrade } from './board-actors.js';
 /** Cached boards also expire by time: staleness changes while no trade arrives. */
 export const BOARD_CACHE_TTL_MS = 5_000;
 
+/** Boards cached at most: public `GET /board/:planetId` takes any planet id, so the map is swept of expired entries and capped. */
+export const BOARD_CACHE_MAX = 256;
+
 interface Cached { readonly at: number; readonly rows: PriceBoardRow[] }
 
 /**
@@ -48,8 +51,16 @@ export class PriceBoardService implements OnModuleInit, OnModuleDestroy {
     if (hit && now - hit.at < BOARD_CACHE_TTL_MS) return hit.rows;
     const trades = await this.loadTrades(planetId, now);
     const rows = marketBoard(trades, now, this.limits).map((r) => ({ ...r, ...actorStats(r.pair, trades, now, this.limits) }));
-    this.cache.set(planetId, { at: now, rows });
+    this.remember(planetId, { at: now, rows });
     return rows;
+  }
+
+  private remember(planetId: string, entry: Cached): void {
+    if (this.cache.size >= BOARD_CACHE_MAX) {
+      for (const [k, v] of this.cache) if (entry.at - v.at >= BOARD_CACHE_TTL_MS) this.cache.delete(k);
+      while (this.cache.size >= BOARD_CACHE_MAX) this.cache.delete(this.cache.keys().next().value as string);
+    }
+    this.cache.set(planetId, entry);
   }
 
   private async loadTrades(planetId: string, now: number): Promise<ActorTrade[]> {

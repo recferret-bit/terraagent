@@ -21,7 +21,7 @@ export const TRADE_KEY_PREFIX = 'ta_bot_';
 export const TRADE_ERROR_CODES = [
   'unauthorized', 'forbidden_scope', 'key_revoked', 'wave_disabled', 'rate_limited', 'invalid_request', 'no_colony',
   'idempotency_key_required', 'idempotency_key_reuse', 'order_not_found', 'wrong_planet',
-  'kill_switch', 'pair_not_allowed', 'max_open_orders', 'max_order_notional', 'daily_budget_exceeded', 'price_out_of_band', 'key_not_found', 'order_not_open', 'fill_policy_not_allowed', 'fee_out_of_range',
+  'kill_switch', 'pair_not_allowed', 'max_open_orders', 'max_order_notional', 'daily_budget_exceeded', 'price_out_of_band', 'key_not_found', 'order_not_open', 'fill_policy_not_allowed', 'fee_out_of_range', 'key_limit', 'too_many_streams',
 ] as const;
 export const TradeErrorCode = z.enum(TRADE_ERROR_CODES);
 export type TradeErrorCode = z.infer<typeof TradeErrorCode>;
@@ -129,6 +129,10 @@ export const ListTradeOrdersQuery = z.object({
 export type ListTradeOrdersQuery = z.infer<typeof ListTradeOrdersQuery>;
 export const TradeOrdersResponse = z.object({ orders: z.array(TradeOrderView) });
 export type TradeOrdersResponse = z.infer<typeof TradeOrdersResponse>;
+
+/** Numeric query values are parsed, never `Number()`-ed: `limit=abc` is a 400, not a 500. */
+export const TradeFillsQuery = z.object({ planetId: z.string().min(1).max(64).optional(), limit: z.coerce.number().int().min(1).max(200).optional() });
+export const TradeBookQuery = z.object({ levels: z.coerce.number().int().min(1).max(50).optional() });
 
 export const TradeFillView = TradeView.extend({ side: OrderSide, orderId: z.string(), counterpartyKind: ActorKind });
 export type TradeFillView = z.infer<typeof TradeFillView>;

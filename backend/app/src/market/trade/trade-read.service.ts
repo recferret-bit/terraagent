@@ -78,7 +78,7 @@ export class TradeReadService {
     this.orders.gate();
     if (!parsePairId(pair) || !this.policy.current().pairs.some((x) => x.pair === pair)) throw new TradeError('invalid_request', `Unknown pair ${pair}.`, { pair });
     const levels = Math.min(Math.max(Math.trunc(levelsIn ?? this.policy.current().bookDepthLevels), 1), MAX_BOOK_LEVELS);
-    const book = await this.books.book(planetId, pair);
+    const book = await this.books.readBook(planetId, pair);
     const ref = await this.orders.reference(planetId, pair);
     return {
       planetId, pair, seq: this.push.seqOf(planetId, pair), bids: book.depth('buy', levels), asks: book.depth('sell', levels),
@@ -92,7 +92,7 @@ export class TradeReadService {
     if (!parsePairId(pair) || !this.policy.current().pairs.some((x) => x.pair === pair)) throw new TradeError('invalid_request', `Unknown pair ${pair}.`, { pair });
     if (principal) TradeAuth.require(principal, 'read');
     const mine = principal ? ((await principal.colonyFor(planetId))?.colonyId ?? null) : undefined;
-    const book = await this.books.book(planetId, pair);
+    const book = await this.books.readBook(planetId, pair);
     const all = (q.side ? [q.side] : (['buy', 'sell'] as const)).flatMap((side) => book.orders(side));
     return { planetId, pair, seq: this.push.seqOf(planetId, pair), orders: all.slice(0, q.limit).map((o) => bookOrderView(o, mine)), truncated: all.length > q.limit };
   }

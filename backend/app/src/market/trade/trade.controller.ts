@@ -1,7 +1,7 @@
 import type { IncomingMessage } from 'node:http';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Put, Query, Req, Res, UseFilters } from '@nestjs/common';
 import {
-  AgentQuoteQuery, CreateTradeKeyRequest, TradeBookOrdersQuery, ListTradeOrdersQuery, PlaceTradeOrderRequest, PutTradeStallRequest, TradeAllowanceUpdate, TradeStallQuery,
+  AgentQuoteQuery, CreateTradeKeyRequest, TradeFillsQuery, TradeBookQuery, TradeBookOrdersQuery, ListTradeOrdersQuery, PlaceTradeOrderRequest, PutTradeStallRequest, TradeAllowanceUpdate, TradeStallQuery,
   type AgentQuoteResponse, type CancelTradeOrderResponse, type CreateTradeKeyResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
   type TradeBoardResponse, type TradeBookOrdersResponse, type TradeBookResponse, type TradeFillsResponse, type TradeKeyListResponse, type TradeKeyView, type TradeOrdersResponse,
   type TradePairsResponse, type TradePolicyResponse, type TradeStallResponse,
@@ -22,6 +22,11 @@ export function parseBody<T>(schema: ZodType<T>, raw: unknown): T {
   const r = schema.safeParse(raw ?? {});
   if (!r.success) throw new TradeError('invalid_request', 'The request does not match the schema.', { issues: r.error.issues.map((i) => ({ path: i.path.join('.'), message: i.message })) });
   return r.data;
+}
+
+/** `decodeURIComponent` of an already route-decoded param (`%2F` pairs): a malformed escape is a 400, never a thrown URIError (500). */
+export function pairParam(raw: string): string {
+  try { return decodeURIComponent(raw); } catch { throw new TradeError('invalid_request', 'Malformed pair id.'); }
 }
 
 /**
@@ -97,7 +102,8 @@ export class TradeController {
 
   @Get('fills')
   async fills(@Req() req: IncomingMessage, @Query('planetId') planetId?: string, @Query('limit') limit?: string, @Query('as') as?: string): Promise<TradeFillsResponse> {
-    return this.read.listFills(await this.who(req, as), planetId, limit ? Number(limit) : undefined);
+    const q = parseBody(TradeFillsQuery, { planetId, limit });
+    return this.read.listFills(await this.who(req, as), q.planetId, q.limit);
   }
 
   @Get('balances')
@@ -126,7 +132,7 @@ export class TradeController {
   // --- public market data -------------------------------------------------------------------------------------
   @Get('book/:planetId/:pair')
   book(@Param('planetId') planetId: string, @Param('pair') pair: string, @Query('levels') levels?: string): Promise<TradeBookResponse> {
-    return this.read.book(planetId, decodeURIComponent(pair), levels ? Number(levels) : undefined);
+    return this.read.book(planetId, pairParam(pair), parseBody(TradeBookQuery, { levels }).levels);
   }
 
   /** Public list of every resting order of the pair; a bearer token / `?as=` identity only adds `mine`. */
@@ -137,7 +143,7 @@ export class TradeController {
     this.orders.gate();
     const q = parseBody(TradeBookOrdersQuery, { side: query.side, limit: query.limit });
     const p = req.headers.authorization || as ? await this.auth.authenticate(req, as) : null;
-    return this.read.bookOrders(planetId, decodeURIComponent(pair), q, p);
+    return this.read.bookOrders(planetId, pairParam(pair), q, p);
   }
 
   @Get('board/:planetId')

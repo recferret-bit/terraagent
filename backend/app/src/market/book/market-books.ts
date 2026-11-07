@@ -73,6 +73,20 @@ export class MarketBooks implements OnModuleInit, OnModuleDestroy {
     return p;
   }
 
+  /**
+   * Read-only access for PUBLIC routes: the cached book when there is one, else a throwaway one built from the database. Unlike
+   * `book()` it never stores anything, so unauthenticated probes of random planet ids cannot grow this map.
+   */
+  readBook(planetId: string, pair: string): Promise<OrderBook<MarketOrderRecord>> {
+    const cached = this.books.get(keyOf(planetId, pair));
+    if (cached) return cached;
+    return this.repo.listOpen(planetId, pair).then((list) => {
+      const book = new OrderBook<MarketOrderRecord>(pair);
+      for (const o of list) book.add(o);
+      return book;
+    });
+  }
+
   /** Books currently loaded, as `{ planetId, pair }` keys. */
   async loadedPairs(): Promise<{ planetId: string; pair: string }[]> {
     const out: { planetId: string; pair: string }[] = [];

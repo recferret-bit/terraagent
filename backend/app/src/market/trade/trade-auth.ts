@@ -22,6 +22,8 @@ export interface TradePrincipal {
 
 export const DEFAULT_KEY_RATE = { perSecond: 10, burst: 20 } as const;
 export const SESSION_RATE = { perSecond: 20, burst: 40 } as const;
+/** All keys of one owner share this bucket on top of their own: minting many keys never multiplies the allowed request rate. */
+export const OWNER_KEYS_RATE = { perSecond: 100, burst: 200 } as const;
 const ALL_SCOPES: readonly TradeScope[] = ['read', 'trade', 'manage'];
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
 
@@ -29,6 +31,7 @@ const BEARER_RE = /^Bearer\s+(\S+)$/i;
 @Injectable()
 export class TradeAuth {
   private readonly limiters = new Map<string, TokenBucketLimiter>();
+  private ownerLimiter: TokenBucketLimiter | null = null;
   private readonly touched = new Map<string, number>();
   /** Test seam. */
   now: () => number = () => Date.now();
@@ -70,6 +73,8 @@ export class TradeAuth {
     const id = `${rate.perSecond}/${rate.burst}`;
     let limiter = this.limiters.get(id);
     if (!limiter) this.limiters.set(id, (limiter = new TokenBucketLimiter({ ...rate, now: () => this.now() })));
+    this.ownerLimiter ??= new TokenBucketLimiter({ ...OWNER_KEYS_RATE, now: () => this.now() });
+    if (p.key && !this.ownerLimiter.take(`owner:${p.ownerId}`)) throw new TradeError('rate_limited', `More than ${OWNER_KEYS_RATE.perSecond} requests per second across the keys of one owner.`, { ...OWNER_KEYS_RATE });
     if (!limiter.take(p.ownerRef)) throw new TradeError('rate_limited', `More than ${rate.perSecond} requests per second.`, { perSecond: rate.perSecond, burst: rate.burst });
   }
 

@@ -64,7 +64,11 @@ export class OrderExpirySweep implements OnModuleInit, OnModuleDestroy {
     for (const c of candidates) {
       const due = c.expiresAt.getTime() <= nowMs || this.clock.gameMsBetween(c.planetId, c.createdAt.getTime(), nowMs) >= c.ttlS * 1000;
       if (!due) continue;
-      if ((await this.release.release(c.orderId, 'expired')).kind === 'released') expired.push(c.orderId);
+      try { // one poisoned order must not starve every later one of its expiry (the sweep would hit it first on every run)
+        if ((await this.release.release(c.orderId, 'expired')).kind === 'released') expired.push(c.orderId);
+      } catch (err) {
+        this.log.warn(`expiring ${c.orderId} failed: ${err instanceof Error ? err.message : String(err)}`);
+      }
     }
     return expired;
   }

@@ -92,6 +92,10 @@ export class TradeKeyRepository {
     return out;
   }
 
+  countActive(ownerId: string): Promise<number> {
+    return this.prisma.tradeApiKey.count({ where: { ownerId, revokedAt: null } });
+  }
+
   async updateAllowance(keyId: string, patch: TradeAllowanceUpdate): Promise<KeyRecord | null> {
     const data = {
       ...(patch.maxOpenOrders === undefined ? {} : { maxOpenOrders: patch.maxOpenOrders }),

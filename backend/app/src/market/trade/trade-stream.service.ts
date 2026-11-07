@@ -7,10 +7,13 @@ import type { HttpRes } from '../../core/logging/request-id.js';
 import { MarketBooks } from '../book/market-books.js';
 import type { MarketTradeBusEvent } from '../settlement/trade-settlement.service.js';
 import { TradeAuth, type TradePrincipal } from './trade-auth.js';
+import { TradeError } from './trade-error.js';
 import { TradeOrdersService } from './trade-orders.service.js';
 import { tradeFillView, tradeOrderView } from './trade-views.js';
 
 export const STREAM_HEARTBEAT_MS = 15_000;
+/** Open SSE connections one caller (key or session) may hold: each registers bus handlers and a timer. */
+export const MAX_STREAMS_PER_CALLER = 5;
 
 /**
  * Server-sent events of `GET /v1/trade/stream`: the caller's own order state changes and fills, plus the book updates of the
@@ -19,6 +22,8 @@ export const STREAM_HEARTBEAT_MS = 15_000;
  */
 @Injectable()
 export class TradeStreamService {
+  private readonly open_ = new Map<string, Set<{ res: HttpRes; keyId: string | null }>>();
+
   constructor(
     private readonly bus: EventBus,
     private readonly books: MarketBooks,
@@ -31,6 +36,11 @@ export class TradeStreamService {
     TradeAuth.require(p, 'read');
     const planetId = this.orders.planetOf(p, planetIdIn);
     const colony = await this.orders.colonyOrThrow(p, planetId);
+    const mine = this.open_.get(p.ownerRef) ?? new Set();
+    if (mine.size >= MAX_STREAMS_PER_CALLER) throw new TradeError('too_many_streams', `At most ${MAX_STREAMS_PER_CALLER} open streams per caller.`, { max: MAX_STREAMS_PER_CALLER });
+    const entry = { res, keyId: p.key?.keyId ?? null };
+    mine.add(entry);
+    this.open_.set(p.ownerRef, mine);
     res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache, no-transform', Connection: 'keep-alive', 'X-Accel-Buffering': 'no' });
     const send = (e: TradeStreamEvent): void => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(e)}\n\n`); };
     const wanted = (pair: string): boolean => pairs.length === 0 || pairs.includes(pair);
@@ -50,6 +60,16 @@ export class TradeStreamService {
     ];
     const beat = setInterval(() => { if (!res.writableEnded) res.write(': ping\n\n'); }, STREAM_HEARTBEAT_MS);
     beat.unref();
-    res.on('close', () => { clearInterval(beat); for (const off of offs) off(); });
+    res.on('close', () => {
+      clearInterval(beat);
+      for (const off of offs) off();
+      mine.delete(entry);
+      if (mine.size === 0 && this.open_.get(p.ownerRef) === mine) this.open_.delete(p.ownerRef);
+    });
+  }
+
+  /** Ends every stream of a revoked key (a long-lived connection must not outlive the key's authority). */
+  closeKey(keyId: string): void {
+    for (const set of this.open_.values()) for (const e of [...set]) if (e.keyId === keyId && !e.res.writableEnded) e.res.end();
   }
 }
