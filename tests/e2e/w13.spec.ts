@@ -92,18 +92,12 @@ async function openMarket(p: Page, who: 'a' | 'b'): Promise<void> {
   await expect(ids(p, 'market-status')).toHaveText('', { timeout: 10_000 });
 }
 
-/** Sets the stall slider (range input: value + input event) and presses APPLY. */
-async function applyStall(p: Page, bp: number): Promise<void> {
-  await ids(p, 'stall-slider').evaluate((el, v) => { const i = el as HTMLInputElement; i.value = String(v); i.dispatchEvent(new Event('input', { bubbles: true })); }, bp);
-  await expect(ids(p, 'stall-draft')).toContainText((bp / 100).toFixed(2));
-  await ids(p, 'stall-apply').click();
-}
-
 /** Fills the order form (amount, total price, TTL 1 h) for one side; the order is not submitted. */
 async function fillOrder(p: Page, side: 'buy' | 'sell', amount: number, usdc: string): Promise<void> {
   await ids(p, `order-side-${side}`).click();
   await ids(p, 'order-amount').fill(String(amount));
   await ids(p, 'order-price').fill(usdc);
+  await ids(p, 'order-advanced').evaluate((d) => { (d as HTMLDetailsElement).open = true; }); // expiry sits under ADVANCED in the quick-trade panel
   await ids(p, 'order-ttl').selectOption('3600');
 }
 
@@ -134,20 +128,21 @@ test('@hack 1. A opens ?scenario=w13&as=a, B joins with ?join=<planetId>&as=b: A
   expectNoPageErrors(a);
 });
 
-test('@hack 2. A opens the Trade Hub, MARKET tab, picks water / USDC and sets the stall slider (0.5 %, then back to the 1 % maximum) -> "Stall fee set"; the server stores it', async () => {
+test('@hack 2. The in-game MARKET tab is the quick-trade panel: the stall fee is a read-only line and "OPEN FULL TRADING PAGE" links to /trade.html with the planet', async () => {
   test.setTimeout(120_000);
   await openMarket(a, 'a');
-  await expect(ids(a, 'stall-slider')).toBeEnabled({ timeout: 15_000 });
-  await applyStall(a, 50);
-  await expect(ids(a, 'stall-message')).toContainText('Stall fee set to 0.50', { timeout: 15_000 });
-  await expect.poll(async () => (await snap('a')).stall?.hubFeeBp, { timeout: 15_000, message: 'market.setHubFee persisted in chain.market_stall' }).toBe(50);
-  await applyStall(a, 100);
-  await expect(ids(a, 'stall-message')).toContainText('Stall fee set to 1.00', { timeout: 15_000 });
-  await expect.poll(async () => (await snap('a')).stall?.hubFeeBp, { timeout: 15_000 }).toBe(100);
+  await expect(ids(a, 'stall-slider')).toHaveCount(0);
+  const link = a.locator('a[href^="/trade.html"]').first();
+  await expect(link).toBeVisible();
+  expect(await link.getAttribute('target')).toBe('_blank');
+  expect(await link.getAttribute('href')).toMatch(/^\/trade\.html\?planet=/);
   expectNoPageErrors(a);
 });
 
-test('@hack 2b. (command path of step 2) A sets its stall fee to 1 %: the market snapshot shows hubFeeBp 100', async () => {
+test('@hack 2b. A sets its stall fee by command (0.5 %, then back to the 1 % maximum): the market snapshot shows hubFeeBp 50, then 100 (the editor lives on the trade page)', async () => {
+  const low = await send(a, 'market.setHubFee', { bp: 50 });
+  expect(low.ok, JSON.stringify(low)).toBe(true);
+  await expect.poll(async () => (await snap('a')).stall?.hubFeeBp, { timeout: 15_000 }).toBe(50);
   const ack = await send(a, 'market.setHubFee', { bp: 100 });
   expect(ack.ok, JSON.stringify(ack)).toBe(true);
   await expect.poll(async () => (await snap('a')).stall?.hubFeeBp, { timeout: 15_000 }).toBe(100);
