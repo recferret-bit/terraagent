@@ -57,7 +57,7 @@ describe('fail_before / retries', () => {
     expect((await trade(c.tradeId)).state).toBe('UNKNOWN');
     expect(await effects(c.tradeId)).toBe(0);
     // reservations stay held: the buyer's funds cannot back a new order while the trade is unresolved
-    expect((await ex.funds.view(c.buyer.accountId, c.buyer.colonyId, 'USDC')).free).toBe(44_900_000n); // 50 USDC minus the 5.1 in flight
+    expect((await ex.funds.view(c.buyer.accountId, 'USDC')).free).toBe(44_900_000n); // 50 USDC minus the 5.1 in flight
     expect(ex.settledCmds(c.tradeId)).toHaveLength(0);
     expect(await ex.recovery.reconcile()).toBe(1);
     expect((await trade(c.tradeId)).state).toBe('FINAL');
@@ -78,7 +78,7 @@ describe('unknown outcome (fail_after)', () => {
     const buyerUsdc = await c.buyer.bal('USDC');
     expect(buyerUsdc).toBe(50_000_000n - 5_100_000n); // the batch is on chain
     // the debit still counts in flight on top of the applied batch (conservative: free never over-reports)
-    expect((await ex.funds.view(c.buyer.accountId, c.buyer.colonyId, 'USDC')).free).toBeLessThanOrEqual(buyerUsdc);
+    expect((await ex.funds.view(c.buyer.accountId, 'USDC')).free).toBeLessThanOrEqual(buyerUsdc);
     expect(ex.settledCmds(c.tradeId)).toHaveLength(0);
     expect(ex.releasesOf(c.bid)).toHaveLength(0);
     // the buyer cannot spend the same money again meanwhile
@@ -141,7 +141,7 @@ describe('insufficient funds, duplicates, holds', () => {
     expect((await trade(c.tradeId)).state).toBe('PENDING');
     expect([(await ex.order(c.ask)).state, (await ex.order(c.bid)).state]).toEqual(['FILLED', 'FILLED']);
     expect((await ex.books.book(c.w.planetId, 'bio.water/USDC')).size).toBe(0);
-    expect((await ex.funds.view(c.seller.accountId, c.seller.colonyId, 'bio.water')).free).toBe(400n); // 500 - 100 in flight
+    expect((await ex.funds.view(c.seller.accountId, 'bio.water')).free).toBe(400n); // 500 - 100 in flight
     await auditPlanet(ex, c.w.planetId, { inFlight: true });
     // a new bid cannot trade against the in-flight sell; it rests
     const late = await c.buyer.place(ord('buy', 5, 250_000));

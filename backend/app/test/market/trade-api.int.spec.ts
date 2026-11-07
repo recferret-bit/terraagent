@@ -9,11 +9,14 @@ import type { PlanetEventOf } from '../../src/bus/channels.js';
 import { TradeKeysService } from '../../src/market/trade/trade-keys.service.js';
 import { TradeSimPort } from '../../src/market/trade/trade-sim.port.js';
 import { devPlayerId } from '../../src/ws/session-verifier.js';
+import { mockAccountStem } from '../../src/near/cargo/cargo-export-outbox.js';
 import { acct, bootHarness, type Harness } from './market-harness.js';
 
 let h: Harness;
 let url: string;
 const PLANET = 'ptrade';
+/** Scenario colonies (`col_<n>`) have planet-scoped mock accounts. */
+const scoped = (colony: string): string => acct(mockAccountStem(colony, PLANET));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const seqs = new Map<string, number>();
 const simCmds: SimCommandV1[] = [];
@@ -146,7 +149,7 @@ describe('trade API: orders through the sim path', () => {
     const seller = await bot('seller9', 1, { name: 'seller9' });
     const sold = await call('POST', '/trade/orders', { key: seller.secret, idem: randomUUID(), body: sell({ price: { token: 'USDC', amount: '4000000' } }) });
     expect(sold.status).toBe(201);
-    await h.intents.testRegisterSigner(acct('col_0')); // alice's seat colony needs a custodial signer to settle
+    await h.intents.testRegisterSigner(scoped('col_0')); // alice's seat colony needs a custodial signer to settle
     await call('POST', '/dev/market/faucet', { body: { planetId: PLANET, colonyIndex: 0, token: 'USDC', amount: '100' } });
     const bought = await call('POST', '/trade/orders', { as: 'alice', idem: randomUUID(), body: buy({ planetId: PLANET, price: { token: 'USDC', amount: '4000000' } }) });
     expect(bought.status).toBe(201);
@@ -159,7 +162,7 @@ describe('trade API: orders through the sim path', () => {
     expect(settled.state).toBe('FINAL');
     expect(await h.db.prisma.mockChainReceipt.count({ where: { opId: `trade:${trade.tradeId}`, status: 'success' } })).toBe(1);
 
-    const explorer = await call<Array<{ opId: string; status: string }>>('GET', `/dev/chain/receipts?account=${acct('col_1')}&limit=50`);
+    const explorer = await call<Array<{ opId: string; status: string }>>('GET', `/dev/chain/receipts?account=${scoped('col_1')}&limit=50`);
     expect(explorer.body.find((r) => r.opId === `trade:${trade.tradeId}`)).toMatchObject({ status: 'success' }); // the bot's fill is on the explorer
     const fills = TradeFillsResponse.parse((await call('GET', `/trade/fills?planetId=${PLANET}`, { key: seller.secret })).body);
     expect(fills.fills.find((f) => f.tradeId === trade.tradeId)).toMatchObject({ side: 'sell', state: 'FINAL', counterpartyKind: 'player', amount: 100 });

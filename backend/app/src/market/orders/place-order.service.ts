@@ -168,14 +168,14 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     }, tx);
     if (!created) return { order, created, depositChain: 0n };
 
-    await this.repo.lockForUpdate((await this.repo.listOpenByColony(d.colonyId, tx)).map((o) => o.orderId), tx);
-    const open = (await this.repo.listOpenByColony(d.colonyId, tx)).length;
+    await this.repo.lockForUpdate((await this.repo.listOpenByColony(planetId, d.colonyId, tx)).map((o) => o.orderId), tx);
+    const open = (await this.repo.listOpenByColony(planetId, d.colonyId, tx)).length;
     if (open >= cfg.openOrderLimit) return this.reject(tx, order, 'order_limit', `At most ${cfg.openOrderLimit} open orders.`);
     const need = requirementOf({
       side: d.side, base: d.resource, quote: d.price.token, amount: BigInt(d.amount), priceAmount: BigInt(d.price.amount),
       platformFeeBp: cfg.platformFeeBp, maxStallFeeBp: maxStall,
     });
-    const view = await this.funds.view(accountId, d.colonyId, need.token, tx);
+    const view = await this.funds.view(accountId, need.token, tx);
     const total = need.principal + need.fees;
     if (view.free < total) return this.reject(tx, order, 'insufficient_cargo', `Need ${total} ${need.token} (incl. fees), ${view.free} free.`);
 

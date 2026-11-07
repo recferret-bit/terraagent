@@ -51,6 +51,8 @@ curl -s "$API/trade/agent/quote?resource=bio.water&ownUnitCost=1000&transportPer
 curl -s -XPOST $API/trade/orders -H "authorization: Bearer $KEY" -H 'idempotency-key: 7d3e-0001' -H 'content-type: application/json' -d '{"side":"sell","resource":"bio.water","amount":100,"price":{"token":"USDC","amount":"4000000"},"ttlS":3600}'
 curl -s "$API/trade/orders?state=open&pair=bio.water%2FUSDC" -H "authorization: Bearer $KEY"
 curl -s -XDELETE $API/trade/orders/<orderId> -H "authorization: Bearer $KEY"
+curl -s -XPUT "$API/trade/stall?as=alice" -H 'content-type: application/json' -d '{"bp":40,"planetId":"w13-dev"}'   # own stall fee (session/?as= only; keys get 403); 0..stallFeeMaxBp else 422 fee_out_of_range
+curl -s "$API/trade/stall?as=alice&planetId=w13-dev"   # {planetId,hubFeeBp,minBp,maxBp,defaultBp,earned}
 curl -s $API/trade/fills -H "authorization: Bearer $KEY"; curl -s $API/trade/balances -H "authorization: Bearer $KEY"
 curl -sN $API/trade/stream -H "authorization: Bearer $KEY"      # SSE: hello, own order + fill events, book updates
 # the owner session tunes or revokes (revoke cancels unsubmitted requests and asks the sim to cancel resting orders)
@@ -60,7 +62,7 @@ curl -s -XDELETE "$API/trade/keys/<keyId>?as=alice"
 
 Errors are `{ "error": { "code", "message", "details?" } }` with a stable `code`: `unauthorized`, `forbidden_scope`, `key_revoked`, `rate_limited`,
 `idempotency_key_required`, `idempotency_key_reuse`, `wrong_planet`, `no_colony`, `order_not_found`, `order_not_open`, `invalid_request`, and the
-allowance rails `kill_switch`, `pair_not_allowed`, `max_order_notional`, `max_open_orders`, `daily_budget_exceeded`, `price_out_of_band`. A sim or
+allowance rails `kill_switch`, `pair_not_allowed`, `max_order_notional`, `max_open_orders`, `daily_budget_exceeded`, `price_out_of_band`, and `fill_policy_not_allowed`. A sim or
 reservation rejection passes through as its own code (`insufficient_cargo`, `order_limit`, ...). Placement answers 201 `accepted` (the order exists,
 fills included), 202 `pending` (poll `GET /orders`) or 422 `rejected`.
 
@@ -69,3 +71,15 @@ Allowance (`chain.trade_api_allowance`, one persisted row per key): `maxOpenOrde
 
 Organic rule (`settlement/organic.ts`): a fill is organic when both sides are `player` or `bot`, in different colonies, with different owners.
 Same owner, fixture, subsidy, npc and guild are never organic; the price-board limits are unchanged.
+
+Fill policy is a property of the account, not of the order (ECONOMY section 3, NEAR-60/61): custodial = `partial`, claimed (`near_colony_account.claimed_at`) =
+`all_or_nothing`. `fillPolicy` in `PlaceTradeOrderRequest` is optional; naming the other policy than the account's is `422 fill_policy_not_allowed`
+(`details.allowed`). The sim command carries no policy; `PlaceOrderService` pins it on the order.
+
+Accounts and reservations: real colony ids (`co_<cuid>`) are unique, so their mock account is named by the id. Scenario planets repeat `col_<n>` on every
+planet, so `resolveColonyAccountId` names those accounts `<planet>--col_<n>` (`mockAccountStem`), and open-order counts key on (planet, colony). Funds are
+reserved per chain account (`listOpenByAccount`). Dev fixtures that need an account name must go through the resolver.
+
+Known trade-off: an `UNKNOWN` trade (ambiguous chain outcome) keeps its debit counted in flight. If the chain did apply the batch the verifier balance already
+shows it and free funds are under-reported until `reconcile()` resolves the trade (<= 30 s). Telling the two cases apart needs a receipt lookup that
+`IntentsPort` does not offer; guessing "applied" could over-report and allow a double spend, so the conservative figure stays.

@@ -171,6 +171,16 @@ export class Exchange {
         planetId, tick: 2, kind: 'marketCancelRequested', severity: 'info', colonyIds: [colonyId],
         data: { colonyId, colonyIndex: cmd.colonyIndex, orderId: (cmd.args as { orderId: string }).orderId },
       } as unknown as PlanetEventOf<'marketCancelRequested'>);
+    } else if (cmd.kind === 'market.setHubFee') {
+      const bp = (cmd.args as { bp: number }).bp;
+      if ((cmd.source as string) !== 'player') return { ok: false, code: 'not_authorized' } as never;
+      if (bp < cfg.stallFeeMinBp || bp > cfg.stallFeeMaxBp) return reject('fee_out_of_range', 'stall fee out of range');
+      const previousBp = this.stallBp.get(cmd.colonyIndex ?? 0) ?? 100;
+      this.stallBp.set(cmd.colonyIndex ?? 0, bp);
+      this.get(EventBus).emit('planet.event', {
+        planetId, tick: 3, kind: 'marketHubFeeSet', severity: 'info', colonyIds: [colonyId],
+        data: { colonyId, colonyIndex: cmd.colonyIndex, hubEntityId: 3, bp, previousBp },
+      } as unknown as PlanetEventOf<'marketHubFeeSet'>);
     }
     this.simCmds.push(cmd);
     return { ok: true, commandId: cmd.commandId, appliedAtTick: 1 } as never;

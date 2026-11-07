@@ -21,7 +21,7 @@ export const TRADE_KEY_PREFIX = 'ta_bot_';
 export const TRADE_ERROR_CODES = [
   'unauthorized', 'forbidden_scope', 'key_revoked', 'wave_disabled', 'rate_limited', 'invalid_request', 'no_colony',
   'idempotency_key_required', 'idempotency_key_reuse', 'order_not_found', 'wrong_planet',
-  'kill_switch', 'pair_not_allowed', 'max_open_orders', 'max_order_notional', 'daily_budget_exceeded', 'price_out_of_band', 'key_not_found', 'order_not_open',
+  'kill_switch', 'pair_not_allowed', 'max_open_orders', 'max_order_notional', 'daily_budget_exceeded', 'price_out_of_band', 'key_not_found', 'order_not_open', 'fill_policy_not_allowed', 'fee_out_of_range',
 ] as const;
 export const TradeErrorCode = z.enum(TRADE_ERROR_CODES);
 export type TradeErrorCode = z.infer<typeof TradeErrorCode>;
@@ -239,9 +239,25 @@ export const AgentQuoteResponse = z.object({
 });
 export type AgentQuoteResponse = z.infer<typeof AgentQuoteResponse>;
 
+// --- stall (hub fee) ---------------------------------------------------------------------------------------------
+export const PutTradeStallRequest = z.strictObject({ bp: z.number().int().min(0).max(10_000), planetId: z.string().min(1).max(64).optional() });
+export type PutTradeStallRequest = z.infer<typeof PutTradeStallRequest>;
+export const TradeStallQuery = z.strictObject({ planetId: z.string().min(1).max(64).optional() });
+export type TradeStallQuery = z.infer<typeof TradeStallQuery>;
+/** The caller's own Trade Hub stall: the fee it charges buyers on fills where it is the maker's stall, its policy range and what it earned (FINAL fills). */
+export const TradeStallResponse = z.object({
+  planetId: z.string(),
+  hubFeeBp: z.number().int().min(0).max(10_000),
+  minBp: z.number().int().min(0).max(10_000),
+  maxBp: z.number().int().min(0).max(10_000),
+  defaultBp: z.number().int().min(0).max(10_000),
+  earned: z.partialRecord(MarketTokenKey, AtomicAmount),
+});
+export type TradeStallResponse = z.infer<typeof TradeStallResponse>;
+
 // --- route table (client / OpenAPI generation) -------------------------------------------------------------------
 export interface TradeRouteDef {
-  readonly method: 'GET' | 'POST' | 'DELETE' | 'PATCH';
+  readonly method: 'GET' | 'POST' | 'DELETE' | 'PATCH' | 'PUT';
   readonly path: string;
   /** `session`: session or dev identity (actor player); `key`: API key (actor bot); `either`: both. */
   readonly auth: 'session' | 'key' | 'either' | 'none';
@@ -268,6 +284,8 @@ export const TRADE_API_ROUTES = {
   pairs: { method: 'GET', path: '/v1/trade/pairs', auth: 'none', summary: 'Tradable pairs', response: TradePairsResponse },
   policy: { method: 'GET', path: '/v1/trade/policy', auth: 'none', summary: 'Market policy and the rate limit of the caller', response: TradePolicyResponse },
   agentQuote: { method: 'GET', path: '/v1/trade/agent/quote', auth: 'either', scope: 'read', summary: 'Deterministic bid/ask for the caller\'s colony and one resource (quote library), with reason codes; bodies are ready to POST', request: AgentQuoteQuery, response: AgentQuoteResponse },
+  getStall: { method: 'GET', path: '/v1/trade/stall', auth: 'session', summary: 'The caller\'s stall: own hub fee, allowed range, earned stall fees', request: TradeStallQuery, response: TradeStallResponse },
+  setStall: { method: 'PUT', path: '/v1/trade/stall', auth: 'session', summary: 'Set the caller\'s Trade Hub stall fee (sim `market.setHubFee`); session only, API keys are refused; out of range is `fee_out_of_range`', request: PutTradeStallRequest, response: TradeStallResponse },
   stream: { method: 'GET', path: '/v1/trade/stream', auth: 'either', scope: 'read', summary: 'SSE stream of own order/fill events and book updates (query planetId, pairs)', response: TradeStreamEvent },
 } as const satisfies Record<string, TradeRouteDef>;
 export type TradeRouteName = keyof typeof TRADE_API_ROUTES;

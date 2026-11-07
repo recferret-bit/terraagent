@@ -119,7 +119,7 @@ describe('market order book persistence', () => {
     await repo.updateReservation('ord-30', { reservedPrincipal: 10n, reservedFees: 0n, state: 'OPEN' });
     await books.book('planet-2', PAIR);
     expect(live.bestAsk()?.orderId).toBe('ord-30');
-    expect((await repo.listOpenByColony('c30')).map((o) => o.orderId)).toEqual(['ord-30']);
+    expect((await repo.listOpenByColony('planet-2', 'c30')).map((o) => o.orderId)).toEqual(['ord-30']);
     expect((await repo.listOpen('planet-2', PAIR)).length).toBe(1);
 
     await withTransaction(db.prisma, async (tx) => {

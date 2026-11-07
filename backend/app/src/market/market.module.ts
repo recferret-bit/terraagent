@@ -38,6 +38,7 @@ import { TradeReadService } from './trade/trade-read.service.js';
 import { TradeRequestLinker } from './trade/trade-request-linker.js';
 import { TradeRequestRepository } from './trade/trade-request.repository.js';
 import { TradeSimPort } from './trade/trade-sim.port.js';
+import { TradeStallService } from './trade/trade-stall.service.js';
 import { TradeStreamService } from './trade/trade-stream.service.js';
 import { GameModule } from '../game/game.module.js';
 import { IntentTradeRepository } from './settlement/intent-trade.repository.js';
@@ -100,6 +101,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeReadService,
     TradeStreamService,
     TradeAgentService,
+    TradeStallService,
   ],
   controllers: [
     MarketController,

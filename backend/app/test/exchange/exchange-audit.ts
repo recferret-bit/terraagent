@@ -68,7 +68,7 @@ export async function auditPlanet(ex: Exchange, planetId: string, o: AuditOption
   }
   for (const [k, reserved] of need) {
     const [account, token] = k.split('|') as [string, MarketTokenKey];
-    const view = await ex.funds.view(account, '', token);
+    const view = await ex.funds.view(account, token);
     const held = (await ex.balOf(account, token)) + view.cargo;
     expect(reserved + (await ex.funds.inFlightDebit(account, token)) <= held, `reserved ${reserved} > held ${held} for ${k}`).toBe(true);
   }
