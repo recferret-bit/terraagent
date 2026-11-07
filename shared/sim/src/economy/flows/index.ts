@@ -2,6 +2,7 @@
 export * from './accounting';
 export * from './calculators';
 export * from './coverage';
+export * from './depth';
 export * from './inventory';
 export * from './metric';
 export * from './ratio';

@@ -1,4 +1,5 @@
 import type { QuoteToken, ResourceKey } from '@terra/contracts';
+import { walkAsks, type DepthLevel, type DepthState } from './depth';
 import { ratio, mulRatio, type Ratio } from './ratio';
 
 /**
@@ -10,8 +11,15 @@ export interface RemedyInput {
   readonly resource: ResourceKey;
   /** Whole units missing. */
   readonly qty: number;
-  /** Best ask: quote atomic `num` per `den` whole base units, with both buyer fees (bp). Null when nobody sells. */
-  readonly ask: { readonly num: bigint; readonly den: bigint; readonly quote: QuoteToken; readonly platformFeeBp: number; readonly stallFeeBp: number } | null;
+  /**
+   * Best ask: quote atomic `num` per `den` whole base units, with both buyer fees (bp). Null when nobody sells. Without
+   * `levels` the whole quantity is priced at this one ask (unlimited depth); with `levels` (the visible ask book) the buy
+   * walks them (`walkAsks`) and reports what is actually for sale.
+   */
+  readonly ask: {
+    readonly num: bigint; readonly den: bigint; readonly quote: QuoteToken; readonly platformFeeBp: number; readonly stallFeeBp: number;
+    readonly levels?: readonly DepthLevel[];
+  } | null;
   /** Production minutes per unit here (extractor / recipe); null when the region cannot produce it. */
   readonly localMinutesPerUnit: Ratio | null;
   /** The cheapest depot that adds supply capacity; null when not applicable. */
@@ -30,24 +38,34 @@ export interface Remedy {
   readonly note?: string;
   /** Minutes until the need is met (0 = at once after the trade settles). */
   readonly minutes: Ratio | null;
-  /** Buy: notional + fees in the quote token, atomic (ceil). */
+  /** Buy: notional + fees in the quote token, atomic, for the `depth.fillable` units (not for units nobody offers). */
   readonly quoteCost?: { readonly token: QuoteToken; readonly notional: bigint; readonly fees: bigint; readonly total: bigint };
+  /** Buy: how much of the missing quantity the visible asks cover (`partial` / `insufficient_depth` say it is not all). */
+  readonly depth?: { readonly requested: bigint; readonly fillable: bigint; readonly missing: bigint; readonly state: DepthState };
   /** Depot: resources spent. */
   readonly resourceCost?: Readonly<Partial<Record<ResourceKey, number>>>;
   /** Depot / reserve: utilization L/K after the remedy (exact). */
   readonly utilizationAfter?: Ratio | null;
 }
 
-const ceilDiv = (a: bigint, b: bigint): bigint => (a + b - 1n) / b;
+/** The buy remedy: the whole quantity at the one ask, or the visible levels walked in price order. */
+function buyRemedy(i: RemedyInput, qty: bigint): Remedy {
+  const ask = i.ask;
+  if (!ask || ask.den <= 0n || ask.num <= 0n) return { kind: 'buy', available: false, note: 'no_ask', minutes: null };
+  const levels = ask.levels ?? [{ num: ask.num, den: ask.den, amount: qty }];
+  const q = walkAsks(levels, qty, { platformFeeBp: ask.platformFeeBp, stallFeeBp: ask.stallFeeBp, quote: ask.quote });
+  const depth = { requested: q.requested, fillable: q.fillable, missing: q.missing, state: q.state };
+  if (q.fillable === 0n && qty > 0n) return { kind: 'buy', available: false, note: 'insufficient_depth', minutes: null, depth };
+  return {
+    kind: 'buy', available: true, minutes: ratio(0n), depth, ...(q.state === 'partial' ? { note: 'partial_depth' } : {}),
+    quoteCost: { token: ask.quote, notional: q.notional, fees: q.fees, total: q.total },
+  };
+}
 
 export function compareRemedies(i: RemedyInput): Remedy[] {
-  const qty = BigInt(Math.max(0, Math.floor(i.qty)));
+  const qty = BigInt(Number.isFinite(i.qty) ? Math.max(0, Math.floor(i.qty)) : 0);
   const out: Remedy[] = [];
-  if (i.ask && i.ask.den > 0n) {
-    const notional = ceilDiv(qty * i.ask.num, i.ask.den);
-    const fees = ceilDiv(notional * BigInt(i.ask.platformFeeBp + i.ask.stallFeeBp), 10_000n);
-    out.push({ kind: 'buy', available: true, minutes: ratio(0n), quoteCost: { token: i.ask.quote, notional, fees, total: notional + fees } });
-  } else out.push({ kind: 'buy', available: false, note: 'no_ask', minutes: null });
+  out.push(buyRemedy(i, qty));
   out.push(i.localMinutesPerUnit
     ? { kind: 'produce', available: true, minutes: mulRatio(i.localMinutesPerUnit, ratio(qty)) }
     : { kind: 'produce', available: false, note: 'not_producible_here', minutes: null });
