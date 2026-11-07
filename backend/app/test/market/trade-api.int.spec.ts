@@ -159,6 +159,8 @@ describe('trade API: orders through the sim path', () => {
     expect(settled.state).toBe('FINAL');
     expect(await h.db.prisma.mockChainReceipt.count({ where: { opId: `trade:${trade.tradeId}`, status: 'success' } })).toBe(1);
 
+    const explorer = await call<Array<{ opId: string; status: string }>>('GET', `/dev/chain/receipts?account=${acct('col_1')}&limit=50`);
+    expect(explorer.body.find((r) => r.opId === `trade:${trade.tradeId}`)).toMatchObject({ status: 'success' }); // the bot's fill is on the explorer
     const fills = TradeFillsResponse.parse((await call('GET', `/trade/fills?planetId=${PLANET}`, { key: seller.secret })).body);
     expect(fills.fills.find((f) => f.tradeId === trade.tradeId)).toMatchObject({ side: 'sell', state: 'FINAL', counterpartyKind: 'player', amount: 100 });
     const afterFills = TradeFillsResponse.parse((await call('GET', `/trade/fills?planetId=${PLANETS_ALICE}`, { as: 'alice' })).body);
