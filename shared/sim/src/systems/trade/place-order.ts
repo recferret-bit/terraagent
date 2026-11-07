@@ -43,7 +43,10 @@ function validateFeeAndSize(
   policy: MarketPolicy,
   minNotional: bigint,
 ): CommandReject | undefined {
-  if (args.maxStallFeeBp !== undefined && (args.maxStallFeeBp < policy.stallFeeMinBp || args.maxStallFeeBp > policy.stallFeeMaxBp)) {
+  if (args.maxStallFeeBp !== undefined && !Number.isInteger(args.maxStallFeeBp)) {
+    return { code: 'invalid_args', detail: 'maxStallFeeBp must be an integer number of basis points' };
+  }
+  if (args.maxStallFeeBp !== undefined && (args.maxStallFeeBp <policy.stallFeeMinBp || args.maxStallFeeBp > policy.stallFeeMaxBp)) {
     return { code: 'fee_out_of_range', detail: `maxStallFeeBp must be within ${policy.stallFeeMinBp}..${policy.stallFeeMaxBp}` };
   }
   if (BigInt(args.price.amount) < minNotional) {

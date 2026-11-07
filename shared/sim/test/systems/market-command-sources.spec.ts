@@ -50,6 +50,12 @@ describe('market.placeOrder command sources (bot API)', () => {
     expect(code(setup(), cmd('market.placeOrder', 'bot', sellArgs, 5))).toBe('not_own_colony');
   });
 
+  it.each([Number.NaN, '50', 50.5, null, Infinity])('maxStallFeeBp %j is rejected as invalid_args (never throws)', (bad) => {
+    const buy = { side: 'buy', resource: 'bio.water', amount: 10, price: { token: 'metals.t1', amount: '100' }, ttlS: 3600, maxStallFeeBp: bad };
+    expect(code(setup(), cmd('market.placeOrder', 'player', buy))).toBe('invalid_args');
+    expect(code(setup(), cmd('market.placeOrder', 'player', { ...buy, maxStallFeeBp: 500 }))).toBe('fee_out_of_range');
+  });
+
   it('bot without a colonyIndex never falls back to colony 0', () => {
     expect(code(setup(), cmd('market.placeOrder', 'bot', sellArgs, null))).toBe('invalid_args');
     const noIndex = { ...cmd('market.placeOrder', 'bot', sellArgs), colonyIndex: 0.5 } as unknown as SimCommand;
