@@ -105,9 +105,10 @@ Uses from W00 without owning: `TreasuryDaoPort` / `EscrowPort` (W00-30), mock ba
 | W22-33 | Edge cases and tests: proposal on an ended planet → rejected; double vote → `ALREADY_VOTED`; bounty on a nest already dead → `invalid_target`; escrow mock failure (fail rate 1) → bounty stays `pending` and the poster's cargo is untouched; claimer eliminated → bounty reopens | test | M |  | W22-08, W22-23 | `npm run test -- treasury-bounty-edges` → all 5 cases green | NEAR §15 | — |
 | W22-34 | Telemetry + analytics: metrics `treasury_balance{planet}`, `treasury_proposals_total{kind,result}`, `bounties_total{kind,state}`, `mercenary_contracts_total`; `track()` events `council_opened`, `proposal_created`, `vote_cast`, `bounty_posted`, `bounty_claimed`, `bounty_paid`, `mercenary_hired` | server | S |  | W22-14, W22-25 | Run the demo story → each analytics event appears once in the table | NEAR §14, CLIENT §10 | — |
 | W22-35 | Dev-console commands: `treasury.fund <planet> <amount>`, `treasury.effect <kind>`, `bounty.post …`, `bounty.complete <id>`, `merc.hire <hours>`; failure injection uses W06-25's `near.mock.fail escrow\|treasury <rate>` | client | S |  | W22-10, W22-23, W22-28, W06-25 | Run `treasury.effect meteor_shield` → the shield badge shows without a vote | PRODUCT_WAVES §3 | — |
-| W22-36 | Wave e2e + scenario + tag: `tests/scenarios/w22-treasury-bounties.ts` (2 colonies, fee history, nest, funded cargo); `tests/e2e/w22.spec.ts` covers the demo story with two browser contexts; all earlier e2e suites pass; flag-off check; tag `wave-22` | test | M | H | W22-01..35 | `npm run e2e -- --waves ..22` → green | PRODUCT_WAVES §3 | — |
+| W22-37 | Bind clear_nest bounties and mercenary squads to W07 species hives (hiveBlackAnt/hiveBlueBeetle/hiveGreenSpitter), colony spotting, and robot.recon archetype | sim | S | H | W22-19, W22-20, W07-08, W07-14 | Post a clear_nest bounty on a spotted species hive and destroy it → nestDestroyed completes the bounty for the top-damage claimer | D-43, NEAR-110, NEAR-111 | — |
+| W22-36 | Wave e2e + scenario + tag: `tests/scenarios/w22-treasury-bounties.ts` (2 colonies, fee history, nest, funded cargo); `tests/e2e/w22.spec.ts` covers the demo story with two browser contexts; all earlier e2e suites pass; flag-off check; tag `wave-22` | test | M | H | W22-01..35, W22-37 | `npm run e2e -- --waves ..22` → green | PRODUCT_WAVES §3 | — |
 
-**Issue count: 36.**
+**Issue count: 37.**
 
 ## Wave DoD
 

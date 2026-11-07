@@ -5,8 +5,8 @@
 > **W13/W15 economy revision (2026-11-04, D-44):** [ECONOMY](../spec/ECONOMY.md) adds database-managed profiles, recurring consumption, USDC buyer fees and reproducible AI experiments. W13-36–57 are required mock scope; W15 risk/requote/tests are required. W23 distinguishes capped smoke tests from public cash gates. Regenerated ISSUE_INDEX/HACKATHON_SCHEDULE supersede older totals and dates.
 
 > **Status:** v1 (2026-10-30). This replaces the layer-based plan (`EXECUTION_ORCHESTRATOR.md`, `STATUS.md`, `issues/TA-*.md`, 116 tasks), which is kept for traceability only. Every new issue carries a `Replaces` reference to the old TA ids.
-> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-42; D-42 = W02 as-built build rules; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
-> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**960 issues in 28 waves, ≈ 704.5 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
+> **Specs:** [`../spec/DECISIONS.md`](../spec/DECISIONS.md) (D-01 … D-44; D-42 = W02 as-built build rules; D-43 = W07 neutral hive fauna & combat/motion rules; D-44 = regional specialization & market fees; D-32 = frontend layout; D-40 = hosting on `terraagent.fun`; D-41 = 7-domain layout) · [`../game/`](../game/) · [`../spec/`](../spec/)
+> **Issue index:** [`ISSUE_INDEX.md`](./ISSUE_INDEX.md) (**994 issues in 28 waves, ≈ 738.5 agent-days**; regenerate with `python3 scripts/plan/index_waves.py --write`) · **Wave files:** [`waves/`](./waves/) · **Hackathon subset:** [`HACKATHON_CUT.md`](./HACKATHON_CUT.md)
 
 ## 1. The rule
 

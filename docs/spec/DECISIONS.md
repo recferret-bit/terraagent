@@ -587,6 +587,15 @@ The log stays append-only; these notes record where the code built in W00–W01 
 
 **Alternatives.** Full per-bug transform streaming defeats the requested order-style replication. Seed-only replication cannot recover missing inputs or reconnects. Simulated food/building chains add complexity the owner explicitly excluded.
 
+### D-43 extension — W07 combat, motion and protocol rules (as built)
+
+**As-built rules (2026-11-07).**
+- **Recon Armored Scout (`robot.recon`, `ENTITY_KIND.recon = 51`).** Per owner direction, Recon is a six-wheel armored scout with an independently aiming cannon turret (`frontend/render/kitbash/archetypes/units/recon.ts`) that holds position while firing rather than strafing (`evasive: false` for Recon; `evasive.ts` remains available for air units in W19). Dedicated `building.laserTower` (`ENTITY_KIND.laserTower = 20`) ships in W07; Factory (`4×3` vs `3×3`) and DCA (`2×2` vs `1×1`) footprint refits and building collapse rubble VFX remain `H+` (`RN-66`).
+- **Shared approach band, spotting gate & fractional cadence.** All combat pursuit, hive waves, replay directives and generic attacks share `combatApproachBand` and `footprintAttackRange` (`shared/sim/src/systems/combat/approachBand.ts`). Target acquisition, pursuit and firing require colony spotting (`vision.ts`, `isEntityVisibleToColony`). Fractional firing deadlines (`weaponFire.ts`) preserve exact sustained rates at 5 TPS (e.g. `2/s` → 20 shots in 10 s, `4/s` → 40 shots in 10 s).
+- **Group march & flow-field slots (`moveGroup`).** Multi-unit ground movement uses `moveGroup` (`shared/contracts/src/commands/move-group.ts`), shared flow-field routing (`shared/sim/src/grid/flowField.ts`) and deterministic slot assignment (`shared/sim/src/units/movement/groupMarch.ts`, `slots.ts`), rebuilding seating routes when terrain/blockers change (`GP-89`).
+- **Protocol v2 (`DIFF_FORMAT = 2`, `SIM_VERSION = 3`).** Sparse stance patches (`stancePatch.ts`), stamped compact projectile queues (`projectileQueue.ts`), and welcome/transition fauna motion seeds (`faunaMotionSeed.ts`, `faunaMotionReplica.ts`) synchronize client replicas without per-tick transform streams (`FA-38`, `FA-39`). Canonical v2 snapshots migrate losslessly to v3; `VersionMismatchNotice` prompts reload on protocol mismatch.
+- **GPU-instanced insect swarms & `F6` Combat Lab.** `InsectSwarmRenderer` (`frontend/render/animation/insects/InsectSwarmRenderer.ts`) batches insects by species with per-instance GPU combat/locomotion/death states (`procedural-insect-animation`) and pooled 3D combat/liquid bursts (`CombatBurstSystem.ts`). `F6` Combat Lab (`frontend/game/features/combat-tuning/`) provides live planet-wide stat tuning (preserving HP fractions on max-HP edits, `tunedHealth.ts`) and JSON export.
+
 
 ## D-44 — Resource demand, cash fees and database-managed experiments
 

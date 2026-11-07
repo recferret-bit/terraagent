@@ -82,6 +82,7 @@ The colony moves past T1:
 | W17-27 | Analytics: `hub_t2_ordered`, `first_tank`, `first_artillery_hit` (`stage_reached` for S5–S7 is W08-29's event) | client | S |  | W00-44 | Play to S6 → analytics table has the three events for the session | CLIENT §10 | — |
 | W17-28 | Dev console: `upgradeHub <tier>`, `spawnBrute <n>`, `setDwell <stage> <min>`, `spawnUnit <id> <n> enemy` | server | S |  | W00-40 | Type `upgradeHub 2` → Hub becomes T2 instantly and HQ refits | PRODUCT_WAVES §3 | — |
 | W17-29 | Touch: upgrade button + Multitask lane chips usable in phone landscape | client | S |  | W24-11 | On a 844×390 viewport, tap Hub → Upgrade → confirm works without hover | D-22 | — |
+| W17-31 | Integrate W07 stationary robot.recon Armored Scout, WeaponRig, F6 Combat Lab, InsectSwarmRenderer, and H+ Factory/DCA footprint refits into T2 units and Brute raids | sim | M |  | W17-09, W17-10, W17-14, W07-13, W07-24 | Tune Tank/Artillery/Brute in F6 Combat Lab and trigger an S6 species+Brute raid → WeaponRig recoil/aiming, moveGroup slot march, and duel rows work with stationary robot.recon | D-43, UO-C-08, RN-66 | — |
 | W17-30 | Wave e2e `tests/e2e/w17.spec.ts` + scenario `w17-second-tier` + tag `wave-17` | test | M |  | all W17 | `npm run e2e -- --waves ..17` → demo story passes; `TA_WAVES=..16` hides every W17 item | PRODUCT_WAVES §3 | — |
 
 ## Wave DoD
