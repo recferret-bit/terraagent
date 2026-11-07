@@ -67,12 +67,10 @@ export class TradeOrdersService {
   async place(p: TradePrincipal, body: PlaceTradeOrderRequest, idemKey: string | undefined): Promise<HttpResult<PlaceTradeOrderResponse>> {
     this.gate();
     TradeAuth.require(p, 'trade');
-    if (body.fillPolicy === 'all_or_nothing') {
-      throw new TradeError('invalid_request', 'fillPolicy "all_or_nothing" is not supported yet: the sim market.placeOrder command has no such argument. Omit it (partial fills).', { field: 'fillPolicy' });
-    }
     const key = this.idemOf(idemKey, true)!;
     const planetId = this.planetOf(p, body.planetId);
     const colony = await this.colonyOrThrow(p, planetId);
+    await this.checkFillPolicy(colony, body.fillPolicy);
     const pair = pairId(body.resource, body.price.token);
     const hash = bodyHashOf({ ...body, planetId });
     const reference = await this.reference(planetId, pair);
@@ -90,6 +88,20 @@ export class TradeOrdersService {
     });
     const settled = row.fresh ? await this.submitPlace(p, row.row, colony, body) : await this.settle(row.row);
     return this.renderPlace(settled);
+  }
+
+  /**
+   * The fill policy is a property of the ACCOUNT, not of the order (ECONOMY section 3: "Keep custodial partial fills and claimed-account
+   * all-or-nothing orders"; NEAR-60/61). `PlaceOrderService` derives it from `claimedAt`; a request that names the other one is refused
+   * with `fill_policy_not_allowed` instead of being silently changed.
+   */
+  private async checkFillPolicy(colony: MarketColony, requested: PlaceTradeOrderRequest['fillPolicy']): Promise<void> {
+    if (requested === undefined) return;
+    const claimed = (await this.prisma.nearColonyAccount.findUnique({ where: { accountId: colony.accountId }, select: { claimedAt: true } }))?.claimedAt != null;
+    const allowed = claimed ? 'all_or_nothing' : 'partial';
+    if (requested !== allowed) {
+      throw new TradeError('fill_policy_not_allowed', `This colony account is ${claimed ? 'claimed: its orders are all-or-nothing' : 'custodial: its orders fill partially'}; fillPolicy "${requested}" is not allowed.`, { field: 'fillPolicy', allowed });
+    }
   }
 
   private idemOf(idemKey: string | undefined, required: boolean): string | undefined {

@@ -231,7 +231,7 @@ describe('cancel semantics', () => {
     expect(await state(theirs)).toBe('OPEN');
   });
 
-  it.fails('KNOWN: two colonies with the same index on different planets do not share funds or reservations (scenario planets share col_<n> accounts)', async () => {
+  it('two colonies with the same index on different planets do not share funds or reservations (scenario accounts are planet-scoped)', async () => {
     const w1 = ex.world(); const w2 = ex.world();
     const idx = 880 + Math.floor(Math.random() * 90);
     const mk = (planetId: string, name: string, fund: object) => ex.api('POST', '/dev/trade/bots', { body: { name, planetId, colonyIndex: idx, fund } });

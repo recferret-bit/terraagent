@@ -43,12 +43,12 @@ export class PlaceOrderPrecheck implements OnModuleInit, OnModuleDestroy {
     if (!wellFormed(a)) return null; // malformed args never throw here: the sim rejects them with invalid_args
     const cfg = this.policy.current();
     const { colonyId, accountId } = await this.colonies.resolve(input.planetId, input.colony.colonyIndex, input.colony.id, input.playerId);
-    if ((await this.repo.listOpenByColony(colonyId)).length >= cfg.openOrderLimit) return { code: 'order_limit', detail: `At most ${cfg.openOrderLimit} open orders.` };
+    if ((await this.repo.listOpenByColony(input.planetId, colonyId)).length >= cfg.openOrderLimit) return { code: 'order_limit', detail: `At most ${cfg.openOrderLimit} open orders.` };
     const need = requirementOf({
       side: a.side, base: a.resource, quote: a.price.token, amount: BigInt(a.amount), priceAmount: BigInt(a.price.amount),
       platformFeeBp: cfg.platformFeeBp, maxStallFeeBp: a.maxStallFeeBp ?? cfg.stallFeeMaxBp,
     });
-    const view = await this.funds.view(accountId, colonyId, need.token);
+    const view = await this.funds.view(accountId, need.token);
     const total = need.principal + need.fees;
     if (view.free < total) return { code: 'insufficient_cargo', detail: `Need ${total} ${need.token} (incl. fees), ${view.free} free.` };
     return null;

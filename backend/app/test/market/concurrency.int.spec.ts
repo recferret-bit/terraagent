@@ -108,7 +108,7 @@ describe('settlement-dependent cases (W13-13 / W13-14)', () => {
     expect((await h.trades.find(t.tradeId))!.state).toBe('UNKNOWN');
     expect(await h.recovery.reconcile()).toBe(0); // still ambiguous: not released, not finalized
     expect((await h.trades.find(t.tradeId))!.state).toBe('UNKNOWN');
-    expect((await h.funds.view(acct(t.buyer), t.buyer, 'USDC')).free).toBe(0n);
+    expect((await h.funds.view(acct(t.buyer), 'USDC')).free).toBe(0n);
     mockChainControls.reset();
     expect(await h.recovery.reconcile()).toBe(1);
     expect((await h.trades.find(t.tradeId))!.state).toBe('FINAL');

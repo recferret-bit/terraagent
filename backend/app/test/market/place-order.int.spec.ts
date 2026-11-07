@@ -97,7 +97,7 @@ describe('W13-09 place order: reservations', () => {
     const loser = a!.rejected ? a! : b!;
     expect(loser.rejected!.code).toBe('insufficient_cargo');
     expect(r.cmds.filter((c) => c.kind === 'market.release')[0].args).toMatchObject({ reason: 'rejected', code: 'insufficient_cargo' });
-    const reserved = (await r.repo.listOpenByColony('col_s3')).reduce((s, o) => s + o.reservedPrincipal, 0n);
+    const reserved = (await r.repo.listOpenByColony('p1', 'col_s3')).reduce((s, o) => s + o.reservedPrincipal, 0n);
     expect(reserved).toBe(300n);
   });
 

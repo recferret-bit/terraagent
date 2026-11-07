@@ -49,10 +49,10 @@ export class OrderFunds {
     private readonly trades: IntentTradeRepository,
   ) {}
 
-  /** Sum of reservations of `token` over the colony's OPEN/PARTIAL orders, optionally read inside `tx`. */
-  async reservedBy(colonyId: string, token: MarketTokenKey, tx?: DbClient): Promise<bigint> {
+  /** Sum of reservations of `token` over the account's OPEN/PARTIAL orders, optionally read inside `tx`. */
+  async reservedBy(accountId: string, token: MarketTokenKey, tx?: DbClient): Promise<bigint> {
     let sum = 0n;
-    for (const o of await this.repo.listOpenByColony(colonyId, tx)) {
+    for (const o of await this.repo.listOpenByAccount(accountId, tx)) {
       const locks = o.side === 'sell' ? o.base : o.quote;
       if (locks === token) sum += o.reservedPrincipal + o.reservedFees;
     }
@@ -73,10 +73,10 @@ export class OrderFunds {
     return sum;
   }
 
-  async view(accountId: string, colonyId: string, token: MarketTokenKey, tx?: DbClient): Promise<FundsView> {
+  async view(accountId: string, token: MarketTokenKey, tx?: DbClient): Promise<FundsView> {
     const cargo = isResourceToken(token) ? BigInt(await this.cargo.balanceOf({ accountId, tokenId: token })) / CARGO_BASE_UNIT : 0n;
     const verifier = await this.verifier.verifierBalance(accountId, token);
-    const reserved = await this.reservedBy(colonyId, token, tx);
+    const reserved = await this.reservedBy(accountId, token, tx);
     const free = cargo + verifier - reserved - (await this.inFlightDebit(accountId, token, tx));
     return { cargo, verifier, reserved, free: free < 0n ? 0n : free };
   }

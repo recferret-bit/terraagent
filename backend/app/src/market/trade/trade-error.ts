@@ -7,7 +7,7 @@ import type { HttpRes } from '../../core/logging/request-id.js';
 const STATUS: Record<TradeErrorCode, number> = {
   unauthorized: 401, forbidden_scope: 403, key_revoked: 401, wave_disabled: 403, rate_limited: 429, invalid_request: 400, no_colony: 409,
   idempotency_key_required: 400, idempotency_key_reuse: 422, order_not_found: 404, wrong_planet: 409, kill_switch: 422, pair_not_allowed: 422,
-  max_open_orders: 422, max_order_notional: 422, daily_budget_exceeded: 422, price_out_of_band: 422, key_not_found: 404, order_not_open: 409,
+  max_open_orders: 422, max_order_notional: 422, daily_budget_exceeded: 422, price_out_of_band: 422, key_not_found: 404, order_not_open: 409, fill_policy_not_allowed: 422, fee_out_of_range: 422,
 };
 
 /** A trade API error with a stable `code` (contract `TradeErrorCode` or a sim `RejectCode`). */

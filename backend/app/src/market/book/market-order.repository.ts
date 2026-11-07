@@ -172,8 +172,15 @@ export class MarketOrderRepository extends RepositoryBase {
     return rows.map(toRecord);
   }
 
-  async listOpenByColony(colonyId: string, tx?: DbClient): Promise<MarketOrderRecord[]> {
-    const rows = await this.db(tx).marketOrder.findMany({ where: { colonyId, state: { in: [...OPEN_STATES] } }, orderBy: { id: 'asc' } });
+  /** A colony's resting orders. Scenario planets reuse `col_<n>`, so the planet is part of the key. */
+  async listOpenByColony(planetId: string, colonyId: string, tx?: DbClient): Promise<MarketOrderRecord[]> {
+    const rows = await this.db(tx).marketOrder.findMany({ where: { planetId, colonyId, state: { in: [...OPEN_STATES] } }, orderBy: { id: 'asc' } });
+    return rows.map(toRecord);
+  }
+
+  /** Resting orders locking funds of one chain account (the funds, not the colony, are what reservations compete for). */
+  async listOpenByAccount(accountId: string, tx?: DbClient): Promise<MarketOrderRecord[]> {
+    const rows = await this.db(tx).marketOrder.findMany({ where: { accountId, state: { in: [...OPEN_STATES] } }, orderBy: { id: 'asc' } });
     return rows.map(toRecord);
   }
 

@@ -150,11 +150,11 @@ describe('GET /v1/trade/book/:planet/:pair/orders', () => {
 });
 
 describe('PlaceTradeOrderRequest.fillPolicy', () => {
-  it('partial (explicit) is accepted; all_or_nothing is refused until the sim command carries it; junk is invalid', async () => {
+  it('partial (explicit) is accepted; all_or_nothing on a custodial account is fill_policy_not_allowed; junk is invalid', async () => {
     const before = simCmds.length;
     const aon = await call<{ error: { code: string } }>('POST', '/trade/orders', { key: daveKey, idem: randomUUID(), body: { ...sell({ amount: 1, price: { token: 'USDC', amount: '9000' } }), fillPolicy: 'all_or_nothing' } });
-    expect(aon.status).toBe(400);
-    expect(aon.body.error.code).toBe('invalid_request');
+    expect(aon.status).toBe(422);
+    expect(aon.body.error.code).toBe('fill_policy_not_allowed');
     expect(simCmds.length).toBe(before); // nothing reached the sim
     expect((await call('POST', '/trade/orders', { key: daveKey, idem: randomUUID(), body: { ...sell(), fillPolicy: 'maybe' } })).status).toBe(400);
     const ok = await call('POST', '/trade/orders', { key: daveKey, idem: randomUUID(), body: { ...sell({ amount: 1, price: { token: 'USDC', amount: '9000' } }), fillPolicy: 'partial' } });

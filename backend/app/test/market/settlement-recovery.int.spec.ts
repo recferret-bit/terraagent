@@ -92,7 +92,7 @@ describe('W13-14 ambiguous outcome: quarantined, reconciled by the same opId', (
     const usdc = await h.verifier(acct(t.buyer), USDC);
     expect(usdc).toBe((10_000_000n - 5_100_000n).toString()); // the mock applied the batch before reporting "unavailable"
     // the buyer's in-flight debit still counts, so the same funds cannot back a new order
-    const view = await h.funds.view(acct(t.buyer), t.buyer, 'USDC');
+    const view = await h.funds.view(acct(t.buyer), 'USDC');
     expect(view.free).toBe(0n);
     expect(settledFor(t.tradeId)).toHaveLength(0);
     expect(await h.recovery.reconcile()).toBe(0); // still unknown: nothing released, nothing finalized

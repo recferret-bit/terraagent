@@ -76,7 +76,7 @@ export class MarketSnapshotService {
   }
 
   private async mine(planetId: string, colony: NonNullable<MarketCaller['colony']>): Promise<Partial<MarketSnapshotResponse>> {
-    const open = await this.orders.listOpenByColony(colony.colonyId);
+    const open = await this.orders.listOpenByColony(planetId, colony.colonyId);
     const balances: Partial<Record<MarketTokenKey, string>> = {};
     const reserved: Partial<Record<MarketTokenKey, string>> = {};
     const views = await colonyFunds(this.funds, colony);

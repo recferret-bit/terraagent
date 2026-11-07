@@ -183,7 +183,7 @@ export class TradeRecovery implements OnModuleInit, OnModuleDestroy {
     const expired = o.expiresAt.getTime() <= Date.now();
     let next: string | null = null;
     if (wasActive && !expired) {
-      const view = await this.funds.view(o.accountId, o.colonyId, token, tx);
+      const view = await this.funds.view(o.accountId, token, tx);
       if (view.free >= restoreP + restoreF) {
         const state = filled === 0n ? 'OPEN' : 'PARTIAL';
         await this.orders.updateFill(o.orderId, { ...fill, state }, tx);
