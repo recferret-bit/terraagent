@@ -10,6 +10,8 @@ export interface RoomMember {
   readonly bufferedAmount: number;
   /** True from the moment the socket backed up until its resync welcome went out; the room sends it nothing meanwhile. */
   paused: boolean;
+  /** Per-socket market topic filter (LED-25): absent = every pair of the planet (a socket that never subscribed). */
+  wantsMarketPair?(pair: string): boolean;
   /** Sends a fresh `welcome {reason:'resync'}` and sets `welcomeTick`; must set `paused = false` when done (or on failure). */
   resync(): void;
 }
@@ -47,6 +49,13 @@ export class PlanetRooms {
   /** Sends one already-encoded frame to every joined socket of the planet (host-level notices such as `dev.warp`). */
   broadcast(planetId: string, frame: string | Uint8Array): void {
     for (const m of this.rooms.get(planetId)?.members ?? []) if (m.welcomeTick !== undefined && this.writable(m)) m.send(frame);
+  }
+
+  /** Like `broadcast`, for a `market.*` push of one pair: only sockets subscribed to that pair (or never subscribed) get it. */
+  broadcastMarket(planetId: string, pair: string, frame: string | Uint8Array): void {
+    for (const m of this.rooms.get(planetId)?.members ?? []) {
+      if (m.welcomeTick !== undefined && (m.wantsMarketPair?.(pair) ?? true) && this.writable(m)) m.send(frame);
+    }
   }
 
   size(planetId: string): number {

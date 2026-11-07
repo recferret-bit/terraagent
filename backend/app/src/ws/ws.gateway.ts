@@ -60,9 +60,9 @@ export class WsGateway {
       for (const c of [...this.conns]) if (c.planetId === planetId) c.bye(CLOSE_CODES.server_restarting, 'planet_down');
     });
     this.uncargo = o.bus?.on('near.cargo.status', (ev) => this.broadcastCargoStatus(ev), { module: 'WsGateway' });
-    this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcast(ev.planetId, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
-    // No per-socket topic tracking exists yet: market pushes go to the whole planet room (W13-19 limitation).
-    this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcast(ev.planetId, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
+    this.unmarket = o.bus?.on('market.trade', (ev: MarketTradeBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.trade.pair, encodeWire({ v: 1, t: 'market.trade', d: ev.payload })), { module: 'WsGateway' });
+    // Per-socket market topics (LED-25): a socket gets the pairs it subscribed to, or all pairs if it never subscribed.
+    this.unbook = o.bus?.on('market.book', (ev: MarketBookBusEvent) => this.rooms.broadcastMarket(ev.planetId, ev.payload.pair, encodeWire({ v: 1, t: 'market.book', d: ev.payload })), { module: 'WsGateway' });
     const conns = this.conns;
     new Gauge({ name: 'ta_ws_connections', help: 'Open WebSocket connections', registers: [o.registry], collect() { this.set(conns.size); } });
     this.welcomes = new Counter({ name: 'ta_planet_ws_welcome_total', help: 'welcome messages sent', registers: [o.registry] });

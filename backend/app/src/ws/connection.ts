@@ -4,6 +4,7 @@ import type { RawData, WebSocket } from 'ws';
 import type { FullState, GamePlanets } from '../game/game-planets.service';
 import type { CommandIngress } from './command-ingress';
 import { DEFAULT_HOME, type HomeProvider } from './home-provider';
+import { MarketTopics } from './market-topics';
 import type { PlanetRooms, RoomMember } from './rooms';
 import { BadHelloTokenError, type SessionVerifier, type VerifiedSession } from './session-verifier';
 
@@ -53,6 +54,8 @@ export class Connection implements RoomMember {
   colonyId: string | null = null;
   welcomeTick: number | undefined;
   paused = false;
+  /** W13 per-socket market pair filter; reset to "all pairs" whenever the socket leaves its planet. */
+  private readonly market = new MarketTopics();
   private resyncing = false;
   /** Per-socket colony-lookup memo for the ingress (BE-09); reset when the socket leaves its planet. */
   private readonly colonyMemo: { planetId?: string; colony?: null } = {};
@@ -75,6 +78,10 @@ export class Connection implements RoomMember {
 
   send(frame: string | Uint8Array): void {
     if (this.ws.readyState === this.ws.OPEN) this.ws.send(frame);
+  }
+
+  wantsMarketPair(pair: string): boolean {
+    return this.market.wants(pair);
   }
 
   get bufferedAmount(): number {
@@ -172,6 +179,7 @@ export class Connection implements RoomMember {
     delete this.colonyMemo.planetId;
     delete this.colonyMemo.colony;
     this.planetId = undefined;
+    this.market.reset();
     this.colonyId = null;
     this.welcomeTick = undefined;
   }
@@ -201,9 +209,16 @@ export class Connection implements RoomMember {
       case 'reauth': return this.onReauth(msg);
       case 'join': return this.onJoin(msg);
       case 'leave': return this.onLeave();
+      case 'market.subscribe': return this.onMarketTopic(() => this.market.subscribe(msg.d.pairs), msg.d.planetId);
+      case 'market.unsubscribe': return this.onMarketTopic(() => this.market.unsubscribe(msg.d.pairs), msg.d.planetId);
       case 'cmd': return this.onCmd(msg);
       default: this.d.log.debug({ t: msg.t }, 'ws message not supported yet');
     }
+  }
+
+  /** Market topic changes apply to the joined planet only; any other state or planet is ignored. */
+  private onMarketTopic(apply: () => void, planetId: string): void {
+    if (this.state === 'playing' && this.planetId === planetId) apply();
   }
 
   private async onHello(msg: ClientMessageOf<'hello'>): Promise<void> {

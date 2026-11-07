@@ -198,6 +198,107 @@
       ],
       "type": "object"
     },
+    "market.subscribe": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "d": {
+          "additionalProperties": false,
+          "properties": {
+            "pairs": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 64,
+              "type": "array"
+            },
+            "planetId": {
+              "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "planetId",
+            "pairs"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "market.subscribe",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
+    "market.unsubscribe": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "additionalProperties": false,
+      "properties": {
+        "d": {
+          "additionalProperties": false,
+          "properties": {
+            "pairs": {
+              "items": {
+                "type": "string"
+              },
+              "maxItems": 64,
+              "type": "array"
+            },
+            "planetId": {
+              "pattern": "^pl_[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            }
+          },
+          "required": [
+            "planetId"
+          ],
+          "type": "object"
+        },
+        "id": {
+          "maxLength": 40,
+          "minLength": 1,
+          "type": "string"
+        },
+        "t": {
+          "const": "market.unsubscribe",
+          "type": "string"
+        },
+        "tick": {
+          "maximum": 9007199254740991,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "v": {
+          "const": 1,
+          "type": "number"
+        }
+      },
+      "required": [
+        "v",
+        "t",
+        "d"
+      ],
+      "type": "object"
+    },
     "ping": {
       "$schema": "https://json-schema.org/draft/2020-12/schema",
       "additionalProperties": false,
