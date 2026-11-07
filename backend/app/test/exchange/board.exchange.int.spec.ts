@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- test harness: loosely typed JSON replies */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Exchange, ord, type Actor, type World } from './exchange-harness.js';
 

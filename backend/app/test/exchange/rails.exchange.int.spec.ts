@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- test harness: loosely typed JSON replies */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { auditPlanet } from './exchange-audit.js';
@@ -148,7 +149,7 @@ describe('malformed bodies: always a 4xx, never a 500, nothing created', () => {
     ['string amount', ord('sell', 'abc' as never, 1_000_000)],
     ['negative amount', ord('sell', -5, 1_000_000)],
     ['zero amount', ord('sell', 0, 1_000_000)],
-    ['unsafe integer amount', ord('sell', 9_007_199_254_740_993, 1_000_000)],
+    ['unsafe integer amount', ord('sell', Number.MAX_SAFE_INTEGER + 2, 1_000_000)],
     ['price abc', ord('sell', 10, 'abc')],
     ['price decimal', ord('sell', 10, '1.5')],
     ['price negative', ord('sell', 10, '-5')],

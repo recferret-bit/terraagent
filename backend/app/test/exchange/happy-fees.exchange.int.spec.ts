@@ -68,7 +68,7 @@ describe('fills: partial, many, sweep', () => {
     const buyers = await Promise.all(sizes.map(() => w.bot({ fund: { USDC: '50' } })));
     const before = await snap();
     ok(await seller.place(ord('sell', 37, T)));
-    let cum = 0n, expectN: bigint[] = [];
+    let cum = 0n; const expectN: bigint[] = [];
     for (const [i, n] of sizes.entries()) {
       // buy exactly n units at the ask's unit price rounded up so it crosses
       const total = (BigInt(n) * T + A - 1n) / A;

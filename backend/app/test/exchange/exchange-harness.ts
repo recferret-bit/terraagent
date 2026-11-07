@@ -1,8 +1,9 @@
+/* eslint-disable @typescript-eslint/no-explicit-any, no-useless-assignment, @typescript-eslint/no-this-alias -- test harness: loosely typed JSON replies */
 import 'reflect-metadata';
 import { randomUUID } from 'node:crypto';
 import type { INestApplication } from '@nestjs/common';
 import {
-  MARKET_TOKENS, fromChainUnits, marketOrderRef, toChainUnits, type MarketTokenKey, type SimCommandV1,
+  MARKET_TOKENS, fromChainUnits, marketOrderRef, type MarketTokenKey, type SimCommandV1,
 } from '@terra/contracts';
 import { createTestDatabase, type TestDatabase } from '@terra/db/testing';
 import { expect } from 'vitest';

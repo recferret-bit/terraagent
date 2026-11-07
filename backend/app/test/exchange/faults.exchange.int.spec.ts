@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any -- test harness: loosely typed JSON replies */
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 import { auditPlanet, expectLedgerDelta } from './exchange-audit.js';
 import { Exchange, mockChainControls, ord, type Actor } from './exchange-harness.js';

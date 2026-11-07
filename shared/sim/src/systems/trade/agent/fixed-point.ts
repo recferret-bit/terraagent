@@ -9,7 +9,20 @@
  * Every step rounds down, so the result is within (p + 1) units of 10^-18 of the real value and is identical on every host.
  * Callers round the final price once (bids down, asks up), never inside this function.
  */
-export const WAD = 10n ** 18n;
+export const WAD = 1_000_000_000_000_000_000n;
+
+/** `base^exp` for `exp >= 0` by square-and-multiply (integer only; the sim lint bans `**`). */
+export function bigPow(base: bigint, exp: number): bigint {
+  let result = 1n;
+  let b = base;
+  let e = exp;
+  while (e > 0) {
+    if (e % 2 === 1) result *= b;
+    b *= b;
+    e = Math.floor(e / 2);
+  }
+  return result;
+}
 
 /** `floor(n^(1/q))` for `n >= 0`, `q >= 1`, by Newton iteration from an upper bound (exact, terminates). */
 export function integerRoot(n: bigint, q: number): bigint {
@@ -19,7 +32,7 @@ export function integerRoot(n: bigint, q: number): bigint {
   const deg = BigInt(q);
   let x = 1n << BigInt(Math.floor(n.toString(2).length / q) + 1); // 2^(ceil(bits/q)) >= root
   for (;;) {
-    const next = ((deg - 1n) * x + n / x ** (deg - 1n)) / deg;
+    const next = ((deg - 1n) * x + n / bigPow(x, q - 1)) / deg;
     if (next >= x) return x;
     x = next;
   }
@@ -30,6 +43,6 @@ export function powRatioWad(num: bigint, den: bigint, p: number, q: number): big
   if (num <= 0n || den <= 0n || !Number.isInteger(p) || p < 0 || !Number.isInteger(q) || q < 1) return null;
   if (p === 0) return WAD;
   const xw = (num * WAD) / den;
-  const y = integerRoot(xw * WAD ** BigInt(q - 1), q);
-  return y ** BigInt(p) / WAD ** BigInt(p - 1);
+  const y = integerRoot(xw * bigPow(WAD, q - 1), q);
+  return bigPow(y, p) / bigPow(WAD, p - 1);
 }
