@@ -9,6 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { analyzeWaveFiles } from '../../../../scripts/wave/audit-ast.mjs';
 import { expandBracePattern, parseWaveSpec, auditWaveTaskAndWiring } from '../../../../scripts/wave/audit-wave.mjs';
+import { auditWaveTestPyramid } from '../../../../scripts/wave/audit-tests.mjs';
 import { waveValidationPrompt, formatWaveValidationReport } from '../../../../scripts/wave/validate.mjs';
 import { makeSandbox, openWaveBranch, git } from '../../../../scripts/wave/testkit.mjs';
 
@@ -204,7 +205,93 @@ t('auditWaveTaskAndWiring catches unwired contracts, missing owner guide, and ow
   assert.ok(codes.has('DEV_TOOLS_UNDOCUMENTED'), 'expected DEV_TOOLS_UNDOCUMENTED');
 }));
 
-t('waveValidationPrompt embeds the 6 pillars, mandatory 2-iteration loop, and pre-audit leads', () => {
+t('auditWaveTestPyramid passes when major sim + backend + frontend features have unit, integration, backend E2E, and pos/neg/corner cases', () => withTempDir((dir) => {
+  const prodLines = Array.from({ length: 24 }, (_, i) => `export const c${i} = ${i};`).join('\n');
+  writeRel(dir, 'shared/sim/src/systems/reactor/core.ts', `export function stepReactor(power: number) { return Math.max(0, power); }\n${prodLines}\n`);
+  writeRel(dir, 'backend/app/src/reactor/reactor.service.ts', `export class ReactorService { async save(prisma: any) { return prisma.colony.findMany(); } }\n${prodLines}\n`);
+  writeRel(dir, 'frontend/game/features/reactor-hud/ReactorHud.ts', `export class ReactorHud { mount() {} }\n${prodLines}\n`);
+
+  writeRel(dir, 'shared/sim/test/systems/reactor.spec.ts', [
+    "import { stepReactor } from '../../src/systems/reactor/core';",
+    'describe("reactor unit & sim integration", () => {',
+    '  it("computes positive output via step(state)", () => { step(state); expect(stepReactor(10)).toBe(10); });',
+    '  it("rejects invalid negative overload when disabled", () => { expect({ ok: false, rejectReason: "wave_disabled" }.ok).toBe(false); });',
+    '  it("clamps at zero and max cap boundary on snapshot restore", () => { restoreSnapshot(s); expect(stepReactor(0)).toBe(0); });',
+    '});',
+  ].join('\n'));
+  writeRel(dir, 'backend/app/test/reactor/reactor.spec.ts', [
+    "import { ReactorService } from '../../src/reactor/reactor.service';",
+    'it("handles valid reactor state", () => { expect(new ReactorService()).toBeTruthy(); });',
+    'it("rejects unauthorized call", () => { expect(() => { throw new Error("unauthorized"); }).toThrow(); });',
+    'it("handles empty zero boundary", () => { expect([].length).toBe(0); });',
+  ].join('\n'));
+  writeRel(dir, 'backend/app/test/reactor/reactor.int.spec.ts', [
+    "import { ReactorService } from '../../src/reactor/reactor.service';",
+    'it("persists reactor state via createTestDatabase() and rolls back duplicate replay at cap", async () => {',
+    '  createTestDatabase();',
+    '  expect(ReactorService).toBeTruthy();',
+    '  expect({ ok: false }.ok).toBe(false);',
+    '});',
+  ].join('\n'));
+  writeRel(dir, 'frontend/game/features/reactor-hud/reactor-hud.spec.ts', [
+    "import { ReactorHud } from './ReactorHud';",
+    'it("mounts reactor-hud in OnlineSession", () => { OnlineSession; expect(new ReactorHud()).toBeTruthy(); });',
+    'it("hides HUD when wave_disabled", () => { expect(null).toBeNull(); });',
+    'it("clamps at zero and max cap threshold", () => { expect(0).toBe(0); });',
+  ].join('\n'));
+  writeRel(dir, 'tests/e2e/w02.spec.ts', [
+    'test("1. reactor online", async ({ page }) => { await loadScenario(page, "w02"); await sendSimCmd(page, "ping", {}); expect(1).toBe(1); });',
+  ].join('\n'));
+
+  const res = auditWaveTestPyramid(dir, { id: 'W02' }, [
+    'shared/sim/src/systems/reactor/core.ts',
+    'backend/app/src/reactor/reactor.service.ts',
+    'frontend/game/features/reactor-hud/ReactorHud.ts',
+    'shared/sim/test/systems/reactor.spec.ts',
+    'backend/app/test/reactor/reactor.spec.ts',
+    'backend/app/test/reactor/reactor.int.spec.ts',
+    'frontend/game/features/reactor-hud/reactor-hud.spec.ts',
+    'tests/e2e/w02.spec.ts',
+  ]);
+  assert.equal(res.issues.length, 0, JSON.stringify(res.issues));
+  assert.equal(res.testPyramid.majorFeatures, 3);
+  assert.equal(res.testPyramid.unitCoveredFeatures, 3);
+  assert.equal(res.testPyramid.integrationCoveredFeatures, 3);
+  assert.equal(res.testPyramid.backendE2eOk, true);
+}));
+
+t('auditWaveTestPyramid catches missing unit/integration tests, missing backend E2E, missing negative/corner cases, and assertionless tests', () => withTempDir((dir) => {
+  const prodLines = Array.from({ length: 24 }, (_, i) => `export const v${i} = ${i};`).join('\n');
+  writeRel(dir, 'shared/sim/src/systems/untested/logic.ts', `export function runUntested() { return 1; }\n${prodLines}\n`);
+  writeRel(dir, 'backend/app/src/vault/vault.service.ts', `export class VaultService { query(prisma: any) { return prisma.vault.findFirst(); } }\n${prodLines}\n`);
+  writeRel(dir, 'backend/app/test/vault/vault.spec.ts', [
+    "import { VaultService } from '../../src/vault/vault.service';",
+    'describe("vault happy path only", () => {',
+    '  it("returns vault", () => { expect(new VaultService()).toBeTruthy(); });',
+    '  it("works normally", () => { expect(1 + 1).toBe(2); });',
+    '  it("forgot assertion", () => { const x = 42; });',
+    '});',
+  ].join('\n'));
+  writeRel(dir, 'tests/e2e/w02.spec.ts', [
+    'test("local only", async ({ page }) => { await loadLocal(page, "w02"); expect(1).toBe(1); });',
+  ].join('\n'));
+
+  const res = auditWaveTestPyramid(dir, { id: 'W02' }, [
+    'shared/sim/src/systems/untested/logic.ts',
+    'backend/app/src/vault/vault.service.ts',
+    'backend/app/test/vault/vault.spec.ts',
+    'tests/e2e/w02.spec.ts',
+  ]);
+  const codes = new Set(res.issues.map((i) => i.code));
+  assert.ok(codes.has('MISSING_FEATURE_UNIT_TESTS'), 'expected MISSING_FEATURE_UNIT_TESTS');
+  assert.ok(codes.has('MISSING_FEATURE_INTEGRATION_TESTS'), 'expected MISSING_FEATURE_INTEGRATION_TESTS');
+  assert.ok(codes.has('MISSING_BACKEND_E2E'), 'expected MISSING_BACKEND_E2E');
+  assert.ok(codes.has('MISSING_NEGATIVE_TESTS'), 'expected MISSING_NEGATIVE_TESTS');
+  assert.ok(codes.has('MISSING_CORNER_CASE_TESTS'), 'expected MISSING_CORNER_CASE_TESTS');
+  assert.ok(codes.has('TEST_WITHOUT_ASSERTION'), 'expected TEST_WITHOUT_ASSERTION');
+}));
+
+t('waveValidationPrompt embeds the 6 pillars, test pyramid requirements, mandatory 2-iteration loop, and pre-audit leads', () => {
   const wave = { id: 'W02', file: 'docs/plan/waves/W02-first-light.md', branch: 'wave/w02-first-light', slug: 'w02-first-light' };
   const preset = { label: 'agy:argon', skills: ['procedural-kitbash-3d'] };
   const progress = { total: ['W02-01', 'W02-02'], done: ['W02-01', 'W02-02'], remaining: [], complete: true };
@@ -216,17 +303,31 @@ t('waveValidationPrompt embeds the 6 pillars, mandatory 2-iteration loop, and pr
     errors: 0,
     warnings: 1,
     pass: true,
+    touchedBackend: true,
+    testPyramid: {
+      majorFeatures: 2,
+      unitCoveredFeatures: 2,
+      integrationCoveredFeatures: 2,
+      backendE2eOk: true,
+      positiveCases: 12,
+      negativeCases: 6,
+      cornerCases: 5,
+    },
     gateResults: [],
     issues: [{ code: 'GOD_ORCHESTRATOR', severity: 'warn', file: 'frontend/game/app/Big.ts', line: 1, message: 'Too big', fix: 'Split it' }],
   };
   const prompt = waveValidationPrompt(wave, 'First Light', { preset, progress, report });
-  assert.match(prompt, /ITERATION 1 — Deep Audit, Gap Closure, Service\/Orchestrator Split & Fix Pass/);
+  assert.match(prompt, /ITERATION 1 — Deep Audit, Gap Closure, Service\/Orchestrator Split, Test Pyramid & Fix Pass/);
   assert.match(prompt, /ITERATION 2 — Cold-Eye Re-Audit, Second-Order Regression Sweep & Final Polish/);
+  assert.match(prompt, /Every major feature MUST be covered by BOTH Unit Tests AND Integration Tests/);
+  assert.match(prompt, /Mandatory Positive, Negative & Corner\/Boundary Cases/);
+  assert.match(prompt, /Backend E2E Requirement/);
   assert.match(prompt, /Orchestrators compose; Services & Parts do the work/);
   assert.match(prompt, /Client \+ Server \+ Shared Sim End-to-End Integration/);
   assert.match(prompt, /GOD_ORCHESTRATOR/);
   const formatted = formatWaveValidationReport(report);
   assert.match(formatted, /PASS \(with warnings\)/);
+  assert.match(formatted, /Test Pyramid: 2\/2 features unit-tested · 2\/2 integration-tested · backend E2E ✔/);
   assert.match(formatted, /GOD_ORCHESTRATOR/);
 });
 

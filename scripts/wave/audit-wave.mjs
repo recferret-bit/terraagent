@@ -25,28 +25,29 @@ export function expandBracePattern(pattern) {
   return body.split(',').flatMap((part) => expandBracePattern(`${pre}${part.trim()}${post}`));
 }
 
-export function parseWaveSpec(markdown) {
-  const lines = markdown.split('\n');
-  const flag = /\*\*Flag:\*\*\s*`([^`]+)`/.exec(markdown)?.[1] ?? null;
-  const scenario = /\*\*Scenario:\*\*\s*`([^`]+)`/.exec(markdown)?.[1] ?? null;
-
+function parseOwnedPathsFromLines(lines) {
   const ownedPaths = [];
   let inOwned = false;
   for (const l of lines) {
     if (/^>\s*\*\*Owned paths:\*\*/i.test(l)) { inOwned = true; continue; }
-    if (inOwned) {
-      if (/^>\s*-\s+/.test(l)) {
-        const backticks = [...l.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
-        for (const raw of backticks) {
-          if (raw.includes('/') || raw.endsWith('.ts') || raw.endsWith('.js')) {
-            ownedPaths.push(...expandBracePattern(raw));
-          }
-        }
-        continue;
-      }
+    if (!inOwned) continue;
+    if (!/^>\s*-\s+/.test(l)) {
       if (/^>\s*\*\*/.test(l) || !l.startsWith('>')) inOwned = false;
+      continue;
+    }
+    const rawList = [...l.matchAll(/`([^`]+)`/g)].map((m) => m[1]);
+    for (const raw of rawList.filter((r) => r.includes('/') || r.endsWith('.ts') || r.endsWith('.js'))) {
+      ownedPaths.push(...expandBracePattern(raw));
     }
   }
+  return ownedPaths;
+}
+
+export function parseWaveSpec(markdown) {
+  const lines = markdown.split('\n');
+  const flag = /\*\*Flag:\*\*\s*`([^`]+)`/.exec(markdown)?.[1] ?? null;
+  const scenario = /\*\*Scenario:\*\*\s*`([^`]+)`/.exec(markdown)?.[1] ?? null;
+  const ownedPaths = parseOwnedPathsFromLines(lines);
 
   const demoSteps = [];
   let inDemo = false;

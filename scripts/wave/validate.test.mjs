@@ -11,5 +11,5 @@ const selfTest = join(root, '.agents', 'skills', 'wave-landing-validator', 'scri
 test('wave-landing-validator self-test suite passes all AST, duplication, architecture, wiring, and 2-iteration harness checks', () => {
   const r = spawnSync('node', [selfTest], { cwd: root, encoding: 'utf8' });
   assert.equal(r.status, 0, `${r.stdout}\n${r.stderr}`);
-  assert.match(r.stdout, /11\/11 wave-landing-validator self-tests passed/);
+  assert.match(r.stdout, /13\/13 wave-landing-validator self-tests passed/);
 });

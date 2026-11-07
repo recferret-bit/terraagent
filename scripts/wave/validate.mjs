@@ -8,6 +8,7 @@ import { ensureWorktreeEnv } from './isolation.mjs';
 import { resolvePreset, buildRunnerCommand, GROK_CONTEXT_WINDOW } from './prompt.mjs';
 import { analyzeWaveFiles } from './audit-ast.mjs';
 import { auditWaveTaskAndWiring } from './audit-wave.mjs';
+import { auditWaveTestPyramid } from './audit-tests.mjs';
 
 const pad = (n) => String(n).padStart(2, '0');
 
@@ -17,16 +18,29 @@ function runGateStep(cwd, label, cmd, args) {
   return { label, command: `${cmd} ${args.join(' ')}`, ok: r.status === 0, status: r.status ?? 1 };
 }
 
-function executeValidationGates(cwd, waveNumber, { e2e = false, touchedModels = false, touchedParticles = false } = {}) {
+function executeValidationGates(cwd, waveNumber, {
+  e2e = false,
+  touchedModels = false,
+  touchedParticles = false,
+  touchedSimOrClient = false,
+  touchedBackend = false,
+} = {}) {
   if (process.env.TA_WAVE_GATES) {
     const r = runGateStep(cwd, 'custom-gates', 'sh', ['-c', process.env.TA_WAVE_GATES]);
     return [r];
   }
   const results = [];
-  results.push(runGateStep(cwd, 'ci:fast (check + test + build)', 'npm', ['run', 'ci:fast']));
+  results.push(runGateStep(cwd, 'ci:fast (check + unit tests + build)', 'npm', ['run', 'ci:fast']));
+  if (touchedSimOrClient) {
+    results.push(runGateStep(cwd, 'test:parity (sim/client dual-host parity)', 'npm', ['run', 'test:parity']));
+  }
+  if (touchedBackend && e2e) {
+    results.push(runGateStep(cwd, 'test:integration (*.int.spec.ts)', 'npm', ['run', 'test:integration']));
+    results.push(runGateStep(cwd, 'test:contract (port contracts)', 'npm', ['run', 'test:contract']));
+  }
   if (touchedModels) results.push(runGateStep(cwd, 'validate:models', 'npm', ['run', 'validate:models', '--', '--all', '--quiet']));
   if (touchedParticles) results.push(runGateStep(cwd, 'validate:particles', 'npm', ['run', 'validate:particles', '--', '--all', '--quiet']));
-  if (e2e && waveNumber != null) {
+  if ((e2e || touchedBackend) && e2e && waveNumber != null) {
     results.push(runGateStep(cwd, `e2e (..${pad(waveNumber)})`, 'npm', ['run', 'e2e', '--', '--waves', `..${pad(waveNumber)}`, '--hack']));
   }
   return results;
@@ -45,13 +59,16 @@ export function runWaveValidation(root, wave, {
     : rawProgress;
   const taskAudit = auditWaveTaskAndWiring(root, cwd, wave, { progress, baseRef });
   const astAudit = analyzeWaveFiles(cwd, taskAudit.changedFiles);
-  const issues = [...taskAudit.issues, ...astAudit.issues];
+  const testAudit = auditWaveTestPyramid(cwd, wave, taskAudit.changedFiles);
+  const issues = [...taskAudit.issues, ...astAudit.issues, ...testAudit.issues];
 
   const gateResults = gates
     ? executeValidationGates(cwd, Number(wave.id.slice(1)), {
       e2e,
       touchedModels: taskAudit.touchedModels,
       touchedParticles: taskAudit.touchedParticles,
+      touchedSimOrClient: testAudit.touchedSimOrClient,
+      touchedBackend: testAudit.touchedBackend,
     })
     : [];
 
@@ -79,6 +96,8 @@ export function runWaveValidation(root, wave, {
     filesAnalyzed: astAudit.filesAnalyzed,
     touchedModels: taskAudit.touchedModels,
     touchedParticles: taskAudit.touchedParticles,
+    touchedBackend: testAudit.touchedBackend,
+    testPyramid: testAudit.testPyramid,
     demoStepsCount: taskAudit.spec.demoSteps.length,
     gateResults,
     errors,
@@ -94,6 +113,15 @@ export function formatWaveValidationReport(report, { quiet = false } = {}) {
   if (quiet) return header;
 
   const lines = [header];
+  if (report.testPyramid) {
+    const tp = report.testPyramid;
+    const beStatus = report.touchedBackend ? (tp.backendE2eOk ? ' · backend E2E ✔' : ' · backend E2E ✖') : '';
+    lines.push(
+      `  Test Pyramid: ${tp.unitCoveredFeatures}/${tp.majorFeatures} features unit-tested · ` +
+      `${tp.integrationCoveredFeatures}/${tp.majorFeatures} integration-tested${beStatus} · ` +
+      `cases (+pos / -neg / ◇corner): +${tp.positiveCases} / -${tp.negativeCases} / ◇${tp.cornerCases}`,
+    );
+  }
   if (report.issues.length > 0) {
     lines.push('');
     for (const issue of report.issues) {
@@ -156,8 +184,18 @@ function validationPillarsText(w, nn, prevNn) {
      4. **Frontend Client (\`frontend/game\`, \`frontend/render\`)**: command dispatch (client never mutates world state directly), optimistic prediction + server reconciliation, replica store selectors, Faction Plate \`--ta-*\` CSS tokens (no raw hex or \`border-radius\`), and 3D kitbash/particle/shader visuals.
    - Verify **Dual-Host Parity**: new gameplay logic must work identically on the online server (\`/play.html?scenario=w${nn}\`) AND the browser-only local host (\`/play.html?host=local&scenario=w${nn}\`).
 
-6. **Full Test Pyramid & Visual/Domain Gates:**
-   - Every new feature and bugfix must have automated tests at the right layer (unit specs, contract specs, engine parity specs, integration specs, and wave E2E \`tests/e2e/w${nn}.spec.ts\`).
+6. **Full Test Pyramid Coverage (Unit + Integration + Backend E2E) & Positive / Negative / Corner Cases:**
+   - **Every major feature MUST be covered by BOTH Unit Tests AND Integration Tests**:
+     - **Unit tests (\`*.spec.ts\`)**: test every pure function, evaluator, service, store, and UI component in isolation.
+     - **Integration tests**:
+       - For \`backend/app/src/<domain>/\`: require \`*.int.spec.ts\` (real Postgres via \`@terra/db/testing\` or \`createApp()\`), \`*.contract.spec.ts\`, or multi-module HTTP/WS/PlanetHost integration specs.
+       - For \`shared/sim/src/systems/<feature>/\`: require multi-tick \`SimHost\` / \`step(\` / \`createRegistryPipeline\` / command-dispatch / snapshot round-trip / scenario / parity integration specs (never pure-function unit tests alone).
+       - For \`frontend/game/\`: require store/session/DOM/command-bus integration specs and wave E2E coverage.
+     - **Backend E2E Requirement**: whenever \`backend/app/src/\` is touched, \`tests/e2e/w${nn}.spec.ts\` MUST test the online backend server end-to-end (\`loadScenario\`, \`sendSimCmd\`, \`/v1/*\` HTTP routes, WS deltas, persistence, and server-backed pages — never local-only or skipped on server).
+   - **Mandatory Positive, Negative & Corner/Boundary Cases**:
+     - **Positive cases**: valid inputs, expected state transitions, happy-path command execution, and UI updates.
+     - **Negative cases**: invalid/malformed inputs, unauthorized/unseated/wrong-owner requests (\`401\`/\`403\`/\`404\`/\`409\`), command rejections (\`ok: false\`, \`rejectReason\`), insufficient resources/power/cap, disabled wave flags (\`wave_disabled\`, \`?waves=..${prevNn}\`), and error/rollback paths.
+     - **Corner / boundary cases**: \`0\` / empty / negative / max cap & threshold edges (\`cap - 1\`, \`cap\`, \`cap + 1\`), duplicate/idempotent replay, concurrent calls (\`Promise.all\`), mid-progress cancel/disconnect/reconnect, brownout/zero-cell transitions, and snapshot/restore round-trips.
    - If any 3D model or particle preset changed, run \`npm run validate:models -- --all\` and \`npm run validate:particles -- --all\` (0 errors, 0 warnings) and verify the 4 diagnostic views in \`/playground.html\`.`;
 }
 
@@ -166,16 +204,17 @@ function validationIterationsText(w, nn, prevNn) {
 
 You MUST execute **two complete review-and-fix iterations** in order. Do not stop after Iteration 1.
 
-### 🔄 ITERATION 1 — Deep Audit, Gap Closure, Service/Orchestrator Split & Fix Pass
+### 🔄 ITERATION 1 — Deep Audit, Gap Closure, Service/Orchestrator Split, Test Pyramid & Fix Pass
 1. Run \`npm run validate:wave -- ${nn}\` and inspect \`git diff main...${w.branch}\` against \`${w.file}\`.
-2. Enumerate every functional gap, missing acceptance criterion, client/server wiring bug, code duplication, and orchestrator/service split violation across the wave.
-3. **Fix all of them directly in code**: implement missing behavior, refactor fat orchestrators into thin orchestrators + focused services/parts, extract duplicated blocks/functions, fix boundary/error handling, and add unit/parity/e2e tests for every gap.
-4. Run the verification suite (\`npm run validate:wave -- ${nn}\`, \`npm run check\`, \`npm test\`, \`npm run test:parity\`, \`npm run build\`, \`npm run e2e -- --waves ..${nn} --hack\`) and fix all failures until green. Commit your Iteration 1 fixes cleanly on \`${w.branch}\`.
+2. Enumerate every functional gap, missing acceptance criterion, client/server wiring bug, code duplication, orchestrator/service split violation, and missing test pyramid layer (unit, integration, backend E2E, or missing positive/negative/corner cases) across the wave.
+3. **Fix all of them directly in code**: implement missing behavior, refactor fat orchestrators into thin orchestrators + focused services/parts, extract duplicated blocks/functions, fix boundary/error handling, and ensure every major feature has **unit tests + integration tests + backend E2E** covering **positive, negative, and corner cases**.
+4. Run the verification suite (\`npm run validate:wave -- ${nn}\`, \`npm run check\`, \`npm test\`, \`npm run test:integration\`, \`npm run test:contract\`, \`npm run test:parity\`, \`npm run build\`, \`npm run e2e -- --waves ..${nn} --hack\`) and fix all failures until green. Commit your Iteration 1 fixes cleanly on \`${w.branch}\`.
 
 ### 🔄 ITERATION 2 — Cold-Eye Re-Audit, Second-Order Regression Sweep & Final Polish
 1. **Reset your assumptions** and review the post-Iteration-1 codebase with a cold eye, as if auditing someone else's pull request from scratch.
 2. Re-run \`npm run validate:wave -- ${nn} --gates\` and inspect the full diff (\`git diff main...${w.branch}\`), paying special attention to code touched in Iteration 1:
    - Did Iteration 1's refactoring introduce any subtle regressions, broken imports, uncleaned listeners, or edge-case desyncs between client prediction and server authority?
+   - Does every major feature have both unit and integration tests, is the backend tested end-to-end in \`tests/e2e/w${nn}.spec.ts\`, and does every test file include positive, negative, and corner/boundary cases?
    - Are there any remaining functions > 75 lines, files > 420 lines, residual copy-paste blocks, raw hex colours in CSS, or undocumented dev tools?
    - Does every step of the Demo Story in \`${w.file}\` work smoothly end-to-end on both online and \`?host=local\` (where applicable) and with \`?waves=..${prevNn}\`?
 3. Fix every issue, edge case, or warning uncovered in Iteration 2.
@@ -183,7 +222,7 @@ You MUST execute **two complete review-and-fix iterations** in order. Do not sto
    - Write or update the **owner check guide** \`docs/plan/checks/w${nn}-check.md\` (following \`docs/plan/checks/README.md\`: worktree ports from \`infra/.env.worktree\`, how to start/stop, exact URL/console/click steps matching \`${w.file}\`, automated checks, and \`npm run wave -- land ${nn}\`).
    - Document any new URL parameters, dev console commands, dev pages, or env variables in \`docs/dev/DEV_TOOLS.md\`.
    - Record any knowingly deferred items, deliberate trade-offs, or open owner questions in \`docs/questions-and-limitations/<area>.md\` (AGENTS.md §5).
-5. Re-run \`npm run validate:wave -- ${nn} --gates --e2e\` so all static checks, unit/contract/parity tests, build, and wave E2E suites pass with 0 errors. Commit any final Iteration 2 changes on \`${w.branch}\`.
+5. Re-run \`npm run validate:wave -- ${nn} --gates --e2e\` so all static checks, unit/integration/contract/parity tests, build, and wave E2E suites pass with 0 errors. Commit any final Iteration 2 changes on \`${w.branch}\`.
 
 ---
 
@@ -194,7 +233,7 @@ Conclude with a clear, structured **Wave ${w.id} Pre-Landing Validation Summary*
 2. **Iteration 1 Findings & Fixes:** bulleted list of functional gaps, bugs, duplications, and architectural issues found and fixed in Pass 1.
 3. **Iteration 2 Cold-Eye Findings & Fixes:** second-order issues, edge cases, client/server parity fixes, and polish applied in Pass 2.
 4. **Architecture & Service/Orchestrator Split:** how new logic is organized across thin orchestrators and focused services/parts/registries.
-5. **Client + Server + Shared Sim Parity:** confirmation of contracts → sim → backend (\`PlanetHost\`/WS/DB) → client (online + \`?host=local\`) wiring.
+5. **Client + Server + Shared Sim Parity & Test Pyramid Matrix:** confirmation of contracts → sim → backend (\`PlanetHost\`/WS/DB) → client (online + \`?host=local\`) wiring, plus per-feature Unit + Integration + Backend E2E coverage and Positive / Negative / Corner case counts.
 6. **Automated Gate Results & Owner Check Guide:** exact commands run with pass counts, new \`docs/questions-and-limitations/\` entries recorded, and the complete \`docs/plan/checks/w${nn}-check.md\` guide.`;
 }
 
@@ -223,6 +262,31 @@ ${validationPillarsText(w, nn, prevNn)}
 ---
 
 ${validationIterationsText(w, nn, prevNn)}`;
+}
+
+function runValidationRunnerSessions(root, wave, cwd, title, preset, initialReport, rounds) {
+  const totalRounds = Math.max(1, Number(rounds) || 1);
+  for (let r = 1; r <= totalRounds; r++) {
+    const roundReport = r === 1 ? initialReport : runWaveValidation(root, wave, { cwd, tags: preset.tags, gates: false });
+    const roundPrompt = waveValidationPrompt(wave, title, {
+      preset,
+      progress: roundReport.progress,
+      report: roundReport,
+      round: totalRounds > 1 ? r : null,
+    });
+    const { cmd, args: cmdArgs, env: extraEnv } = buildRunnerCommand(preset, roundPrompt, [dirname(cwd), root]);
+    console.log(
+      `\n▶ Validating ${wave.id} ${wave.slug}${totalRounds > 1 ? ` [Round ${r}/${totalRounds}]` : ' [2-Iteration Protocol]'} in ${cwd}` +
+      ` — preset ${preset.label}${preset.runner === 'grok' ? ` (context=${GROK_CONTEXT_WINDOW})` : ''}`,
+    );
+    const res = spawnSync(cmd, cmdArgs, {
+      cwd,
+      stdio: 'inherit',
+      env: extraEnv ? { ...process.env, ...extraEnv } : undefined,
+    });
+    if (res.error) fail(`could not start \`${cmd}\` (${res.error.message}); run with --no-launch and start it yourself`);
+    if (res.status !== 0) fail(`validation runner exited with status ${res.status}`);
+  }
 }
 
 export function validateWaveCli(root, wave, {
@@ -255,55 +319,29 @@ export function validateWaveCli(root, wave, {
   }
 
   const report = runWaveValidation(root, wave, { cwd, tags: preset.tags, gates: checkOnly && gates, e2e });
+  const failed = (rep) => !rep.pass || (strict && rep.warnings > 0);
 
   if (json && checkOnly && !printPrompt) {
     console.log(JSON.stringify(report, null, 2));
-    return !report.pass || (strict && report.warnings > 0) ? 1 : 0;
+    return failed(report) ? 1 : 0;
   }
 
-  if (!json) {
-    console.log(formatWaveValidationReport(report, { quiet }));
-  }
+  if (!json) console.log(formatWaveValidationReport(report, { quiet }));
 
   const prompt = waveValidationPrompt(wave, title, { preset, progress: report.progress, report });
-
   if (printPrompt || noLaunch) {
     const { cmd, args: cmdArgs, env: extraEnv } = buildRunnerCommand(preset, prompt, [dirname(cwd), root]);
     const envPrefix = extraEnv ? `${Object.entries(extraEnv).map(([k, v]) => `${k}=${v}`).join(' ')} ` : '';
     console.log(`\n# Runner command (${preset.label}):\ncd ${cwd} && ${envPrefix}${cmd} ${cmdArgs.slice(0, -1).join(' ')} "<prompt below>"\n\n${prompt}`);
-    return checkOnly && (!report.pass || (strict && report.warnings > 0)) ? 1 : 0;
+    return checkOnly && failed(report) ? 1 : 0;
   }
 
-  if (checkOnly) {
-    return !report.pass || (strict && report.warnings > 0) ? 1 : 0;
-  }
-
+  if (checkOnly) return failed(report) ? 1 : 0;
   if (!wave.open || !existsSync(wave.worktree)) {
     fail(`${wave.id} has no open worktree at ${wave.worktree}; run \`npm run wave:open -- ${wave.id.slice(1)}\` or pass \`--check-only\` / \`--print-prompt\`.`);
   }
 
-  const totalRounds = Math.max(1, Number(rounds) || 1);
-  for (let r = 1; r <= totalRounds; r++) {
-    const roundReport = r === 1 ? report : runWaveValidation(root, wave, { cwd, tags: preset.tags, gates: false });
-    const roundPrompt = waveValidationPrompt(wave, title, {
-      preset,
-      progress: roundReport.progress,
-      report: roundReport,
-      round: totalRounds > 1 ? r : null,
-    });
-    const { cmd, args: cmdArgs, env: extraEnv } = buildRunnerCommand(preset, roundPrompt, [dirname(cwd), root]);
-    console.log(
-      `\n▶ Validating ${wave.id} ${wave.slug}${totalRounds > 1 ? ` [Round ${r}/${totalRounds}]` : ' [2-Iteration Protocol]'} in ${cwd}` +
-      ` — preset ${preset.label}${preset.runner === 'grok' ? ` (context=${GROK_CONTEXT_WINDOW})` : ''}`,
-    );
-    const res = spawnSync(cmd, cmdArgs, {
-      cwd,
-      stdio: 'inherit',
-      env: extraEnv ? { ...process.env, ...extraEnv } : undefined,
-    });
-    if (res.error) fail(`could not start \`${cmd}\` (${res.error.message}); run with --no-launch and start it yourself`);
-    if (res.status !== 0) fail(`validation runner exited with status ${res.status}`);
-  }
+  runValidationRunnerSessions(root, wave, cwd, title, preset, report, rounds);
 
   console.log(`\n▶ Running post-validation audit & gates for ${wave.id} in ${cwd}…`);
   if (!out('git', ['status', '--porcelain', '--untracked-files=no'], { cwd })) {
@@ -311,7 +349,7 @@ export function validateWaveCli(root, wave, {
   }
   const finalReport = runWaveValidation(root, wave, { cwd, tags: preset.tags, gates: true, e2e });
   console.log(formatWaveValidationReport(finalReport));
-  if (!finalReport.pass || (strict && finalReport.warnings > 0)) {
+  if (failed(finalReport)) {
     fail(`${wave.id} post-validation check failed (${finalReport.errors} errors, ${finalReport.warnings} warnings)`);
   }
   return 0;

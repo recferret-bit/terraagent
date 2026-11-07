@@ -160,7 +160,7 @@ function checkTextHygiene(rel, text, issues) {
   const isUiCss = /^frontend\/(game|landing|playground)\/.*\.css$/.test(rel);
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
-    if (/\b(?:TODO|FIXME)\b/.test(line) && !/\b(?:W\d{2}-\d{2}|[A-Z]{2,5}-\d{2})\b/.test(line)) {
+    if (/(?:\/\/|\/\*).*\b(?:TODO|FIXME)\b/.test(line) && !/\b(?:W\d{2}-\d{2}|[A-Z]{2,5}-\d{2})\b/.test(line)) {
       issues.push({
         code: 'UNTRACKED_TODO',
         severity: 'warn',
