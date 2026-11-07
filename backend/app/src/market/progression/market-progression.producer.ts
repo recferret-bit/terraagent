@@ -1,13 +1,17 @@
-import { Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional, type OnModuleDestroy, type OnModuleInit } from '@nestjs/common';
 import type { ProgressEventV1 } from '@terra/contracts';
 import type { PlanetEventOf } from '../../bus/channels.js';
 import { EventBus, type Unsubscribe } from '../../bus/event-bus.js';
 import { FlagsService } from '../../flags/flags.service.js';
 import { ProgressionEventForwarder } from '../../game/progression-events.service.js';
 import { FactsUpdaterService } from '../../progression/facts-updater.service.js';
+import { PRISMA } from '../../db/db.module.js';
+import { MarketFactReplay, type ReplayDb } from './market-fact-replay.js';
 import { merchantEvent, portAuthorityEvent, type MarketProgressSource } from './market-progress-events.js';
 
 const ATTEMPTS = 3;
+/** Durable-outbox replay of FINAL trades missing a fact (LED-25): at boot and then every 5 minutes. */
+const REPLAY_EVERY_MS = 5 * 60_000;
 
 /**
  * W13-27 registered progression producer (PROGRESSION_ENGINE.md): turns the sim's FINAL-trade events into W12 facts.
@@ -21,12 +25,15 @@ export class MarketProgressionProducer implements OnModuleInit, OnModuleDestroy 
   private readonly log = new Logger(MarketProgressionProducer.name);
   private readonly unsubs: Unsubscribe[] = [];
   private readonly inflight = new Set<Promise<void>>();
+  private replay: MarketFactReplay | undefined;
+  private replayTimer: NodeJS.Timeout | undefined;
 
   constructor(
     private readonly bus: EventBus,
     private readonly facts: FactsUpdaterService,
     private readonly forwarder: ProgressionEventForwarder,
     @Optional() private readonly flags?: FlagsService,
+    @Optional() @Inject(PRISMA) private readonly prisma?: ReplayDb,
   ) {}
 
   onModuleInit(): void {
@@ -35,9 +42,29 @@ export class MarketProgressionProducer implements OnModuleInit, OnModuleDestroy 
       this.bus.onPlanetEvent('tradeSettled', (e) => this.onSettled(e), opts),
       this.bus.onPlanetEvent('feeEarned', (e) => this.onFee(e), opts),
     );
+    if (this.prisma) this.startReplay(this.prisma);
+  }
+
+  /** Test seam and boot hook: one replay pass; resolves with its counters (never throws, nothing while W13 is off). */
+  async replayMissingFacts(now = Date.now()): Promise<{ scanned: number; replayed: number; skipped: number; failed: number }> {
+    const none = { scanned: 0, replayed: 0, skipped: 0, failed: 0 };
+    if (!this.replay || (this.flags && !this.flags.has('W13'))) return none;
+    try { return await this.replay.runOnce(now); } catch (err) {
+      this.log.error(`market fact replay failed: ${err instanceof Error ? err.message : String(err)}`);
+      return none;
+    }
+  }
+
+  private startReplay(db: ReplayDb): void {
+    this.replay = new MarketFactReplay(db, (ev) => this.facts.applyProgressEvent(ev));
+    const run = (): void => { const p = this.replayMissingFacts().then(() => undefined).finally(() => this.inflight.delete(p)); this.inflight.add(p); };
+    run();
+    this.replayTimer = setInterval(run, REPLAY_EVERY_MS);
+    this.replayTimer.unref();
   }
 
   onModuleDestroy(): void {
+    clearInterval(this.replayTimer);
     for (const u of this.unsubs.splice(0)) u();
   }
 
