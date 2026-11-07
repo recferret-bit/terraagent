@@ -217,6 +217,9 @@ describe('quoteColony: hard limits and reason codes', () => {
     }
   });
 
+});
+
+describe('quoteColony: asks, scarcity and conversions', () => {
   it('asks never go below own cost + margin even when the mid is lower (abundant inventory)', () => {
     const q = quoteColony(base({ inventory: 50_000n, ownUnitCost: ratio(390_000n) }), P);
     expect(q.ask!.priceAmount).toBeGreaterThanOrEqual(100n * 409_500n);
