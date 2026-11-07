@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { withTransaction, type PrismaClient, type TransactionClient } from '@terra/db';
+import { OrderBook } from '@terra/sim/systems/trade/market-book';
 import { matchIncoming, type Fill } from '@terra/sim/systems/trade/market-matcher';
 import { PRISMA } from '../../db/db.module.js';
 import { MarketBooks } from '../book/market-books.js';
@@ -18,6 +19,15 @@ export interface MatchOutcome {
 }
 
 const MAX_ATTEMPTS = 5;
+
+/** The book without orders whose TTL has run out (the sweep expires them within 30 s; until then they must not fill). The book itself is untouched. */
+export function executableView(book: OrderBook<MarketOrderRecord>, nowMs: number): OrderBook<MarketOrderRecord> {
+  const all = [...book.orders('buy'), ...book.orders('sell')];
+  if (!all.some((o) => o.expiresAt.getTime() <= nowMs)) return book;
+  const live = new OrderBook<MarketOrderRecord>(book.pair);
+  for (const o of all) if (o.expiresAt.getTime() > nowMs) live.add(o);
+  return live;
+}
 const same = (a: MarketOrderRecord, b: MarketOrderRecord): boolean =>
   a.state === b.state && a.filled === b.filled && a.amount === b.amount;
 
@@ -52,7 +62,7 @@ export class MarketMatcher {
     if (!locked) return { incoming: null, ...empty };
     if (!isBookable(locked.state)) return { incoming: locked, ...empty, restingRemainder: locked.amount - locked.filled };
     const book = await this.books.book(locked.planetId, locked.pair);
-    const preview = matchIncoming(book, locked);
+    const preview = matchIncoming(executableView(book, Date.now()), locked); // a quote past its TTL is not executable before the sweep expires it
     const ids = [...new Set(preview.fills.map((f) => f.makerOrderId))];
     const rows = await this.repo.lockForUpdate(ids, tx);
     const fresh = new Map(rows.map((r) => [r.orderId, r]));

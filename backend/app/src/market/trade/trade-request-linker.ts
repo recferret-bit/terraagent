@@ -12,6 +12,8 @@ export interface RequestedTerms {
   readonly playerId?: string | undefined;
   /** Set by a sim that knows the command's source; used in preference to the request row when present. */
   readonly actorKind?: ActorKind | undefined;
+  /** Set by a sim that echoes the command id of the request; the SUBMITTED request with this `commandId` is taken first. */
+  readonly commandId?: string | undefined;
 }
 
 export interface OrderLink { readonly requestId: string; readonly actorKind: 'player' | 'bot'; readonly ownerId: string }
@@ -32,6 +34,7 @@ export class TradeRequestLinker {
   async claim(planetId: string, d: RequestedTerms): Promise<OrderLink | null> {
     const row = await this.requests.claimSubmitted({
       planetId, colonyId: d.colonyId, side: d.side, resource: d.resource, amount: BigInt(d.amount), priceAmount: BigInt(d.price.amount),
+      ...(d.commandId ? { commandId: d.commandId } : {}),
     });
     if (!row) return null;
     return { requestId: row.requestId, actorKind: row.keyId ? 'bot' : 'player', ownerId: row.ownerId };
