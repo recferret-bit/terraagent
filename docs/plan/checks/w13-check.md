@@ -1,6 +1,6 @@
 # W13 — Markets (F2, mock): owner check
 
-[W13 wave](../waves/W13-markets.md) · About 35–45 minutes (steps 1–8 ≈ 15 min, operator/economy 9–10 ≈ 15 min, waves-off 11 ≈ 5 min, regions 12 ≈ 10 min).
+[W13 wave](../waves/W13-markets.md) · About 55–65 minutes (steps 1–8 ≈ 15 min, operator/economy 9–10 ≈ 15 min, waves-off 11 ≈ 5 min, regions 12 ≈ 10 min, trading page and bot API 13–15 ≈ 20 min).
 
 Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, mock cargo tokens. No real money, no real chain. Economic numbers (fees aside) are uncalibrated fixtures; cash eligibility is **false** in W13 (LED-18).
 
@@ -76,19 +76,35 @@ Everything here is **mock**: mock USDC/NEAR, a mock `intents.near` verifier, moc
     - **See:** **Regional abundance** chips like *Minerals T3 SCARCE*, *Minerals T1 ABUNDANT*; **Shopping basket and surplus** with reasons and **BUY/SELL** buttons (they prefill the MARKET order form; they never submit); a **Logistics** section: Load, Capacity **K 100**, congestion **×M**, next-window bill.
     - Dev console: `spawn builder -13 5 20` → after the next supply window (≈ 60 s) Load and the bill rise. Build a **Supply Depot** (BUILD tab) → capacity rises and the bill drops. `reserve on` → reserved units stop billing; `reserve off` redeploys them (activation cost 1 water + 1 metals each, 10 s delay).
 
+13. **Trading page `/trade.html` (all orders, only your own orbital cargo).**
+    - **Where:** the root hub <http://127.0.0.1:5473/> has a new card **06 · Trade**; click it (or open <http://127.0.0.1:5473/trade.html?as=a&planet=PLANET_ID&pair=bio.water/USDC>, planet id from `planet b` in step 1; without `?as=` you are sent to the mock login and back). Keep window A's game open so the colony stays seated; for B use `?as=b` in a private window.
+    - **How:** A: pair **Water / mock USDC**. In the **Balances** panel read the in-orbit list. Place a **SELL** of 20 water for 1 mock USDC with the ticket (preview shows notional 1.00, no fee for the seller), then click **SUGGEST** (it only fills the ticket; with no "your unit cost" it says `no_unit_cost`). Open **All orders**: the ask appears with an actor badge and TTL; filter **Asks**. In B's window the same table shows the ask without "YOURS". Run `market.seed here bio.water/USDC` in A's dev console: the table shows 10 extra rows, all with the dashed **FIXTURE** badge. In **Stall fee** set 0.50 %, **APPLY**, then back to 1.00 %.
+    - **See:** A's balances list only A's cargo (e.g. Water 600 minus reserved 20); B's page never shows A's 600 water. Placing the order is accepted within seconds and appears in **My orders** (Open) and in A's in-game Trade Hub under **MY OPEN ORDERS**. Typing 1.5 % in the stall editor shows "outside the allowed range (0.00 % to 1.00 %)". At phone width (resize the window to 390 px) the order tables become cards, no sideways scrolling. The hub's **OPEN FULL TRADING PAGE** and **BOARD** both land here (`#board` scrolls to the price board).
+    - **Check:** `curl "http://127.0.0.1:4301/v1/trade/balances?as=a"` → `inOrbit["bio.water"] = {free, reserved, total}`; the same call with `?as=b` has no water of A's. `curl http://127.0.0.1:4301/v1/trade/book/PLANET_ID/bio.water%2FUSDC/orders` lists every resting order and never contains an account, owner or player id.
+
+14. **Bots trade through the API (keys, allowances, idempotency, kill switch).**
+    - **Where:** trade page → **Bot / API keys**, signed in as A.
+    - **How:** **Create key** with scopes read + trade, max open orders 2, max order 5 mock USDC, daily budget 50. Copy the secret (shown once). In a terminal: `KEY=ta_bot_…`, `API=http://127.0.0.1:4301/v1`, then `curl -s $API/trade/balances -H "authorization: Bearer $KEY"`; place `curl -s -XPOST $API/trade/orders -H "authorization: Bearer $KEY" -H 'idempotency-key: chk-1' -H 'content-type: application/json' -d '{"side":"sell","resource":"bio.water","amount":20,"price":{"token":"USDC","amount":"1000000"},"ttlS":3600}'` (run it twice: the second answer has the same `requestId`, one order). Without the `idempotency-key` header: `idempotency_key_required`. A 100-water order for 6 USDC: `max_order_notional`. Ask for a quote: `curl -s "$API/trade/agent/quote?resource=bio.water&ownUnitCost=500000&transportPerUnit=0&keep=50" -H "authorization: Bearer $KEY"` (deterministic bid/ask with reason codes; the LLM never types a price). From B's page BUY the 20 water: the bot's fill reaches FINAL and `curl -s $API/trade/fills -H "authorization: Bearer $KEY"` lists it. Back on the trade page click the key's **kill switch**, then repeat the POST with a new idempotency key; then **Revoke**.
+    - **See:** the key panel's budget meter moves (today X of 50, N open orders); after the kill switch the POST answers `kill_switch` and resting orders of the key are cancelled; after revoke every call answers `unauthorized`/`key_revoked`. The trade between A's key and B is **organic** only if the two owners differ (see 15); the board's **BOT SHARE** chip shows the bot's volume share.
+
+15. **Organic prices, fixtures and failures (dev console or curl).**
+    - **How:** after steps 4 and 14 the board row for bio.water/USDC shows the classification of each trade source. Only fills between a player or a bot and a different owner's player or bot count towards the reference price (VWAP needs ≥ 3 trades, 10 units, 3 counterparties). Seed fixtures (`market.seed`), faucet funding and subsidy quotes never count. Inject a settlement fault: `near.mock.fault {"kind":"fail_after","times":1}` in the dev console (or `curl -XPOST $APP/v1/dev/commands/near.mock.fault -H 'content-type: application/json' -d '{"kind":"fail_after","times":1}'`), place a crossing pair, then `near.mock.fault {"kind":"reset"}`.
+    - **See:** the fixture rows keep the dashed badge and the board stays `insufficient_data` until three organic trades by different owners exist; during the fault the trade is `UNKNOWN` with funds locked (never credited twice) and after the reset exactly one FINAL trade appears (as in step 8).
+
 ## Automated checks (green on this branch)
 
-- `npm run ci:fast` (typecheck, lint, check:structure, gen:check, unit suite **416 files / 2378 tests**, build).
-- `npm run test:integration` (Postgres, **52 files / 204 tests**: market, settlement/recovery, economy DB/profile/activation/experiments/CLI, acceptance pack).
-- `npm run test:contract -- --port intents` (9/9 against the mock).
-- `npm test -- market-matcher` (matcher/fee/property, incl. 1 % fee on 7 units = 0).
-- `npm run test:parity` (incl. `w13r-logistics`, server vs `?host=local`).
-- `npm run e2e -- --waves ..13 --workers=1` → **80 passed**, 6 skipped (pre-existing W00/W01/W06/W08/W12 skips), W13 suite **16/16** (~5 min alone: `npm run e2e -- --waves 13 --workers=1`).
+- `npm run typecheck`, `npm run lint`, `npm run check:structure`, `npm run build` (only the chunk-size warning).
+- `npm test`: **434 files / 2732 tests** (3 skipped). One run showed a single timing flake in `test/ws/commands.spec.ts` that passed on rerun. Includes the exchange unit/property suite (`shared/sim/test/exchange`, `backend/app/src/market/settlement/batch.exchange.spec.ts`: **202 tests**).
+- `npm run test:integration` (Postgres + the DB-backed mock chain): **64 files / 344 tests**, of which `backend/app/test/exchange` is the exchange suite (happy paths, matching corners, concurrency, fault injection, allowance rails, board); run it alone with `TA_PORT_BASE=<p> TA_DB_NAME=<db> npm run test:integration -- backend/app/test/exchange`.
+- `npm run test:contract`: 29/29 (mock `IntentsPort`).
+- `npm run test:parity`: 3 cases pass on both hosts (`w00-empty`, `w03-supply`, `w13r-logistics`).
+- `npm run e2e -- --waves ..13 --workers=1` → **82 passed**, 6 skipped (pre-existing W00/W01/W06/W08/W12 skips), ~18 min on a loaded machine; the W13 suite alone is **18/18** (~6 min: `npm run e2e -- --waves 13`), including `@hack 9d` (trade API as human + bot key) and `@hack 9e` (`/trade.html`).
 
-## Known limitations (see `docs/questions-and-limitations/economy-ledger.md` LED-20…LED-28)
+## Known limitations (see `docs/questions-and-limitations/economy-ledger.md` LED-20…LED-30)
 
 - Defaults taken on open questions: total-quote prices, whole-unit resource atoms, sim-first commands (LED-20); matcher/fee/AON rules (LED-21); registry bounds are not owner-approved (LED-22).
-- Price board / Contracts / Supply panels are dev-grade HUD panels; an open Price board can push the left command dock up. The feature menus are not rendered, so the launcher bar is the entry point (LED-28).
+- The in-game Market tab is the simplified quick-trade panel; the full tools (all orders, board, keys, stall editor) live on `/trade.html`. Supply & trade is still a dev-grade HUD panel; the launcher bar is the entry point (LED-28).
+- Bots/agents (D-45, LED-29): the organic rule is a default I took, the daily budget is a spend cap, the API rate limit is per process, all-or-nothing is decided by the account (claimed = AON, custodial = partial), and bot demand is not verified to be consumed. Test-suite residuals: LED-30.
 - Per-sector regions need W11; the region story uses one desert region with stock fixtures (LED-26).
 - Calibration, real demand evidence and cash gates remain open (LED-18/19).
 

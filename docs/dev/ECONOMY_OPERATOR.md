@@ -5,7 +5,7 @@ How an operator changes the economy without a code deployment. The contract is [
 ## Mock versus cash
 
 - Every market token (resources, `USDC`, `NEAR`) is a **mock** in F2. The mock `IntentsPort` keeps balances in Postgres (`NEAR_ADAPTER_INTENTS=mock`, default). Every UI labels them "mock"; a production process refuses mock adapters unless `NEAR_ALLOW_MOCK_IN_PROD=true`.
-- Dev faucets (`faucet`, `POST /v1/dev/market/faucet`) credit fixture money. Fixture bot trades are classified `fixture`, never organic, and cannot drive a price board reference or a real cash bot bid.
+- Dev faucets (`faucet`, `POST /v1/dev/market/faucet`) credit fixture money. Fixture bot trades are classified `fixture`, never organic (D-45: organic = both sides player or bot, different colonies and different owners), and cannot drive a price board reference or a real cash bot bid.
 - An experiment never settles anything. Its revenue, fee and PnL numbers are simulated and must not be shown as real revenue.
 - A "cash profile" is a profile whose activation would change real-money behaviour. F2 has none; activations in the dev stack are non-production (`nonProduction`). Dev `tune` cannot change a pinned database profile.
 
