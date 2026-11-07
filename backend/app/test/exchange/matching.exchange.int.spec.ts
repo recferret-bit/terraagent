@@ -114,6 +114,9 @@ describe('matching corners over the real stack', () => {
     await settled(w.planetId, before);
   });
 
+});
+
+describe('matching corners over the real stack (policy, limits, TTL)', () => {
   it('policy version change mid-book: incompatible orders do not cross until the old one is cancelled and reposted', async () => {
     const w = ex.world();
     const [s, b] = [await w.bot(), await w.bot({ fund: { USDC: '100' } })];
