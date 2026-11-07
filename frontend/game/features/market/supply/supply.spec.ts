@@ -6,7 +6,7 @@ import type { FeatureContext, TradeHubTabDef } from '../../../core/registry/type
 import { TabExtensions } from '../../trade-hub/tabExtensions';
 import marketFeature from '../index';
 import { SupplyPanel } from './SupplyPanel';
-import { buyText, logisticsLines, remedyRows } from './supplyModel';
+import { askBook, buyText, logisticsLines, parseExactRatio, remedyRows } from './supplyModel';
 
 const view = (over: Partial<SupplyTradeView> = {}): SupplyTradeView => ({
   badges: [{ resource: 'metals.t1', level: 'abundant', weightBp: 15000 }, { resource: 'minerals.t3', level: 'scarce', weightBp: 1500 }, { resource: 'bio.water', level: 'normal', weightBp: 8000 }],
@@ -57,6 +57,35 @@ describe('Supply & trade model', () => {
     expect(rows[0]!.detail).toContain('3.20 + 0.064 fees = 3.264 mock USDC');
     expect(rows[1]!.detail).toContain('not available'); // crystal has no local extractor row in this fixture
     expect(rows[2]!.detail).toContain('60 Metals T1');
+  });
+});
+
+describe('Supply & trade buy remedy walks the book depth', () => {
+  const book = (asks: { num: string; den: number; amount: number }[]): MarketSnapshotResponse => ({
+    ...snap, books: [{ planetId: 'p', pair: 'minerals.t3/USDC', seq: 1, bids: [], asks: asks.map((a) => ({ ...a, orders: 1 })) }],
+  } as unknown as MarketSnapshotResponse);
+  const line = { resource: 'minerals.t3' as const, qty: 60, reason: 'job' as const, label: 'Survey Array' };
+
+  it('says how many units are really for sale and prices only those across levels', () => {
+    const rows = remedyRows(view(), line, book([{ num: '400000', den: 1, amount: 50 }, { num: '500000', den: 1, amount: 5 }]));
+    expect(rows[0]!.detail).toContain('Only 55 of 60 are for sale in the shown levels');
+    expect(rows[0]!.detail).toContain('5 more are not on offer');
+    expect(rows[0]!.detail).toContain('22.50 + 0.45 fees = 22.95 mock USDC'); // 50 x 0.40 + 5 x 0.50, 2 % fees
+  });
+
+  it('an enough-deep book keeps the one-line price; an empty book is unavailable', () => {
+    expect(remedyRows(view(), { ...line, qty: 8 }, book([{ num: '400000', den: 1, amount: 50 }]))[0]!.detail).toContain('8 at best ask');
+    expect(remedyRows(view(), line, book([]))[0]!.detail).toBe('not available: nobody sells it right now');
+    expect(askBook(book([{ num: '400000', den: 1, amount: 0 }]), 'minerals.t3')).not.toBeNull();
+    expect(remedyRows(view(), line, book([{ num: '400000', den: 1, amount: 0 }]))[0]!.detail).toContain('no units are for sale');
+  });
+
+  it('exact load ratios are parsed without floats', () => {
+    expect(parseExactRatio('521/400')).toEqual({ num: 521n, den: 400n });
+    expect(parseExactRatio('200')).toEqual({ num: 200n, den: 1n });
+    expect(parseExactRatio('1.25')).toEqual({ num: 5n, den: 4n });
+    expect(parseExactRatio('1/0')).toBeNull();
+    expect(parseExactRatio('abc')).toBeNull();
   });
 });
 

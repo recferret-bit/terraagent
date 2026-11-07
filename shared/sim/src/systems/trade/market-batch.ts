@@ -113,6 +113,18 @@ const hashOf = (tradeId: string, legs: Leg[], attribution: AttributionLeg[]): st
   `sha256:${sha256Hex(canonical({ tradeId, legs: legsToJson(legs), attribution: legsToJson(attribution) }))}`;
 
 /**
+ * The stall fee bucket has its own role-suffixed key: with the platform account equal to the maker's stall account and equal
+ * rates the plain `(quote, bp, account, policyVersion)` keys collide and the second charge floors over a base that already
+ * holds this fill. Orders persisted before the suffix keep their stall bucket under the plain key: it is adopted as the
+ * stall bucket unless that key is the platform's own (a collided bucket is the platform's; the stall starts afresh).
+ */
+export function stallBucket(buckets: FeeBuckets, legacyKey: string, platformKey: string): { key: string; buckets: FeeBuckets } {
+  const key = `${legacyKey}|stall`;
+  if (buckets[key] || !buckets[legacyKey] || legacyKey === platformKey) return { key, buckets };
+  return { key, buckets: { ...buckets, [key]: buckets[legacyKey]! } };
+}
+
+/**
  * Builds the exact zero-sum settlement batch of one fill and the resulting order states. Pure. The buyer pays the
  * notional plus the platform fee and the maker's stall fee (whoever is the maker) and receives all base; the seller
  * receives the notional and delivers the base; the treasury share is carved out of the platform fee.
@@ -127,8 +139,8 @@ export function buildTradeBatch(input: BuildBatchInput): TradeBatch {
   const notional = makerNotional(maker.priceAmount, maker.amount, maker.filled, qty);
 
   const platformKey = feeBucketKey(quote, buyer.platformFeeBp, buyer.platformAccountId, buyer.policyVersion);
-  const stallKey = feeBucketKey(quote, maker.stallFeeBp, maker.stallAccountId, buyer.policyVersion);
-  const p = chargeBucketed(buyer.feeBuckets, platformKey, notional, buyer.platformFeeBp);
+  const { key: stallKey, buckets: startBuckets } = stallBucket(buyer.feeBuckets, feeBucketKey(quote, maker.stallFeeBp, maker.stallAccountId, buyer.policyVersion), platformKey);
+  const p = chargeBucketed(startBuckets, platformKey, notional, buyer.platformFeeBp);
   const s = chargeBucketed(p.buckets, stallKey, notional, maker.stallFeeBp);
   const platformFee = p.fee;
   const stallFee = s.fee;

@@ -4,6 +4,7 @@ import type { StepContext } from '../../kernel/context';
 import type { ColonyState, PlanetState } from '../../kernel/state';
 import { ensureColonyCargoState } from '../cargo/state';
 import { colonyIdOf, resolveModuleColonyIndex } from './colony';
+import { isModuleSource } from './command-source';
 import {
   MAX_TRACKED_SETTLED_TRADES,
   addAmounts,
@@ -25,7 +26,7 @@ function resolveModule(
   args: { colonyId?: string; colonyIndex?: number },
   ctx: StepContext,
 ): Resolved | string {
-  if (cmd.source === 'player') return 'not_authorized';
+  if (!isModuleSource(cmd)) return 'not_authorized';
   const index = resolveModuleColonyIndex(state, cmd, args);
   const colony = index >= 0 ? state.colonies[index] : undefined;
   if (!colony) return 'not_own_colony';
@@ -37,7 +38,7 @@ export const marketReserveHandler = defineCommandHandler({
   wave: 'W13',
   handle(state, cmd, ctx) {
     const args = (cmd.args ?? {}) as Partial<MarketReserveArgs>;
-    if (typeof args.ref !== 'string' || args.ref.length === 0 || !args.deltas) return cmd.source === 'player' ? 'not_authorized' : 'invalid_args';
+    if (typeof args.ref !== 'string' || args.ref.length === 0 || !args.deltas) return isModuleSource(cmd) ? 'invalid_args' : 'not_authorized';
     const r = resolveModule(state, cmd, args, ctx);
     if (typeof r === 'string') return r;
     const { colony, market } = r;
@@ -68,7 +69,7 @@ export const marketReleaseHandler = defineCommandHandler({
   wave: 'W13',
   handle(state, cmd, ctx) {
     const args = (cmd.args ?? {}) as Partial<MarketReleaseArgs>;
-    if (typeof args.ref !== 'string' || args.ref.length === 0 || !args.deltas || !args.reason) return cmd.source === 'player' ? 'not_authorized' : 'invalid_args';
+    if (typeof args.ref !== 'string' || args.ref.length === 0 || !args.deltas || !args.reason) return isModuleSource(cmd) ? 'invalid_args' : 'not_authorized';
     const r = resolveModule(state, cmd, args, ctx);
     if (typeof r === 'string') return r;
     const { colony, index, market } = r;
@@ -138,7 +139,7 @@ export const marketSettledHandler = defineCommandHandler({
     const args = (cmd.args ?? {}) as Partial<MarketSettledArgs>;
     const valid = typeof args.tradeId === 'string' && args.tradeId.length > 0 && !!args.deltas && !!args.trade &&
       (args.role === 'buyer' || args.role === 'seller' || args.role === 'stall');
-    if (!valid) return cmd.source === 'player' ? 'not_authorized' : 'invalid_args';
+    if (!valid) return isModuleSource(cmd) ? 'invalid_args' : 'not_authorized';
     const full = args as MarketSettledArgs;
     const r = resolveModule(state, cmd, full, ctx);
     if (typeof r === 'string') return r;

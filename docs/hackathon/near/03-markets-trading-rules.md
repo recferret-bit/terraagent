@@ -82,7 +82,7 @@ Every Trade Hub is a **market stall**. Colonies sell surplus cargo and buy what 
 | R03-48 | `market.acceptGuildOffer` crosses the NPC quote at once through the W13 path. A stale offer id gets `offer_expired` with the new price. | Planned | W15-11 (H) |
 | R03-49 | Negotiate goal hook: places and refreshes orders within the goal's give/want bounds and budget. | Planned | W13-26 (—), units §4.6 |
 | R03-50 | `autoTrade` orders are signed with the director key within limits. `withinAutoTrade` runs in the sim and again in the matcher (`autotrade_limit`). | Decided | NEAR-81 · W15-20, W15-21 (H) → [04](./04-agents-and-communication.md) R04-25 |
-| R03-51 | No rate limits and no anti-bot. Farm bots trading for value is an accepted risk. | Decided | D-25, D-26 |
+| R03-51 | No anti-bot identity programme. Farm bots trading for value is an accepted risk. *Amended by D-45: the bot API `/v1/trade/*` has per-key allowances, kill switch and rate limits; organic fills need `player`/`bot` sides of different colonies and owners.* | Decided; amended D-45 | D-25, D-26, D-45 |
 | R03-52 | With `TA_WAVES` below 13: the Market tab is gone, market commands get `wave_disabled`, and orders stay in the DB untouched. | Planned | W13 DoD, W13-35 (H) |
 | R03-53 | Placement checks: own colony; the maker's own online Trade Hub T1 (`no_trade_hub`, `hub_offline`); an online stall; amounts within config. | Planned | W13-09 (H) |
 | R03-54 | Treasury leg = `TREASURY_FEE_SHARE_BP` 2 000 bp **of the stall fee, carved out of the hub owner's fee** (300 at 1 % → owner 2.4, DAO 0.6), plugged in through `registerFeeLeg`; the batch stays zero-sum. The 2 000 value itself is Decided (value proposed) in NEAR §12. | Planned | W22-07 (H); NEAR §12 |

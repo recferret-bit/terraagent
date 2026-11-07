@@ -40,6 +40,14 @@ export default defineTable({
     { id: 'board', wave: 'W13', windowS: 86400, candleS: 3600, minEligibleTrades: 3, minEligibleVolume: 10, minCounterparties: 3, counterpartyWeightCapBp: 4000, maxMoveBp: 5000, stalenessS: 3600 },
     // Supply & trade panel (W13-55): regional abundance badges from the pinned endowment weight (10000 = reference weight).
     { id: 'supply', wave: 'W13', abundantWeightBp: 12000, scarceWeightBp: 5000 },
+    // Quote agent (ECONOMY section 4, `systems/trade/agent/`): the mid-price exponent k = Num/Den, the inventory-scarcity clamp and
+    // epsilon, half-spreads, the saving a bid must promise and the margin an ask keeps over own cost, per-order size and
+    // quote budget, and when a reference price is too old or too thin to bid on. Calibration hypotheses, not facts.
+    {
+      id: 'agent', wave: 'W13', scarcityExponentNum: 1, scarcityExponentDen: 2, epsilonUnits: 10, clampLowBp: 5000, clampHighBp: 20000,
+      bidHalfSpreadBp: 200, askHalfSpreadBp: 200, minSavingBp: 200, reserveMarginBp: 500, maxOrderUnits: 100,
+      maxOrderQuoteAtomic: '1000000000', referenceMaxAgeS: 3600, minReferenceVolume: 10,
+    },
     { id: 'quote.USDC', wave: 'W13', minNotionalAtomic: '100000', tickAtomic: '1' },
     { id: 'quote.NEAR', wave: 'W13', minNotionalAtomic: '10000000000000000000000', tickAtomic: '1' },
     { id: 'quote.resource', wave: 'W13', minNotionalAtomic: '1', tickAtomic: '1' },

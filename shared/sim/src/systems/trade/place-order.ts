@@ -4,6 +4,8 @@ import type { PlanetState } from '../../kernel/state';
 import { getColonyTradeHubStatus } from '../cargo/trade-hub';
 import { ensureColonyCargoState } from '../cargo/state';
 import { colonyIdOf, resolvePlayerColony } from './colony';
+import { authorizeMarketActor } from './command-source';
+import { maxBuyerSpend } from './market-fees';
 import {
   boundOpenOrders,
   ensureColonyMarketState,
@@ -13,7 +15,6 @@ import {
   type MarketPolicy,
 } from './market-state';
 
-const bpCeil = (amount: bigint, bp: number): bigint => (amount * BigInt(bp) + 9_999n) / 10_000n;
 
 /** Free in-orbit units of `resource`: mirror `inOrbit` minus what open orders already reserve. */
 export function freeInOrbit(state: PlanetState, colonyIndex: number, market: ColonyMarketState, resource: ResourceKey): number {
@@ -42,7 +43,10 @@ function validateFeeAndSize(
   policy: MarketPolicy,
   minNotional: bigint,
 ): CommandReject | undefined {
-  if (args.maxStallFeeBp !== undefined && (args.maxStallFeeBp < policy.stallFeeMinBp || args.maxStallFeeBp > policy.stallFeeMaxBp)) {
+  if (args.maxStallFeeBp !== undefined && !Number.isInteger(args.maxStallFeeBp)) {
+    return { code: 'invalid_args', detail: 'maxStallFeeBp must be an integer number of basis points' };
+  }
+  if (args.maxStallFeeBp !== undefined && (args.maxStallFeeBp <policy.stallFeeMinBp || args.maxStallFeeBp > policy.stallFeeMaxBp)) {
     return { code: 'fee_out_of_range', detail: `maxStallFeeBp must be within ${policy.stallFeeMinBp}..${policy.stallFeeMaxBp}` };
   }
   if (BigInt(args.price.amount) < minNotional) {
@@ -66,7 +70,8 @@ function checkCargo(
   if (!isResourceToken(args.price.token)) return undefined; // USDC / NEAR funds are checked by the server
   const price = BigInt(args.price.amount);
   const maxStall = args.maxStallFeeBp ?? policy.stallFeeMaxBp;
-  const need = price + bpCeil(price, policy.platformFeeBp) + bpCeil(price, maxStall);
+  // Same reservation as the server and the harness (floor fees, `maxBuyerSpend`): the sim never rejects what the book accepts.
+  const need = maxBuyerSpend(price, policy.platformFeeBp, maxStall);
   const free = BigInt(freeInOrbit(state, colonyIndex, market, args.price.token));
   return free < need ? short(`Not enough free ${args.price.token} in orbit (need ${need} incl. fees).`) : undefined;
 }
@@ -75,7 +80,8 @@ export const marketPlaceOrderHandler = defineCommandHandler({
   kind: 'market.placeOrder',
   wave: 'W13',
   handle(state, cmd, ctx) {
-    if (cmd.source !== 'player') return 'not_authorized';
+    const denied = authorizeMarketActor(cmd, true);
+    if (denied) return denied;
     const args = (cmd.args ?? {}) as Partial<MarketPlaceOrderArgs>;
     const resolved = resolvePlayerColony(state, cmd, args.colonyId);
     if ('code' in resolved) return resolved;
