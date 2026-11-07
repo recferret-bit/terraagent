@@ -32,6 +32,7 @@ export function registerMarketParams(r: ParamRegistry): void {
   registerBoard(r);
   registerSupply(r);
   registerDevSeed(r);
+  registerAgent(r);
   for (const k of RESOURCE_KEYS) registerResource(r, k);
 }
 
@@ -54,6 +55,26 @@ function registerBoard(r: ParamRegistry): void {
 function registerSupply(r: ParamRegistry): void {
   registerField(r, market, 'supply', 'abundantWeightBp', { description: 'A resource whose pinned occurrence weight is at least this (bp, 10000 = reference) is badged abundant.', unit: 'ratio_bp', type: 'int', bounds: { min: 1, max: 1000000 }, dependencies: [{ path: 'market.supply.scarceWeightBp', relation: 'gte' }] });
   registerField(r, market, 'supply', 'scarceWeightBp', { description: 'A resource whose pinned occurrence weight is at most this (bp, 10000 = reference) is badged scarce.', unit: 'ratio_bp', type: 'int', bounds: { min: 0, max: 1000000 } });
+}
+
+/** Quote agent knobs (`systems/trade/agent/`, ECONOMY section 4): every number of the need/value quote functions. */
+function registerAgent(r: ParamRegistry): void {
+  const row = 'agent';
+  const int = (f: string, description: string, unit: ParamUnit, min: number, max: number): void =>
+    registerField(r, market, row, f, { description, unit, type: 'int', bounds: { min, max } });
+  int('scarcityExponentNum', 'Agent quote: numerator of the mid-price exponent k = num / den (mid = reference * clamp(scarcity)^k).', 'count', 0, 32);
+  int('scarcityExponentDen', 'Agent quote: denominator of the exponent k (an exact integer root is taken).', 'count', 1, 8);
+  int('epsilonUnits', 'Agent quote: epsilon added to target and inventory so an empty store is finite.', 'whole_units', 1, 1000000);
+  registerField(r, market, row, 'clampLowBp', { description: 'Agent quote: lower clamp of (target + eps) / (inventory + eps), bp of 1.0.', unit: 'ratio_bp', type: 'int', bounds: { min: 1, max: 10000 }, dependencies: [{ path: 'market.agent.clampHighBp', relation: 'lte' }] });
+  int('clampHighBp', 'Agent quote: upper clamp of (target + eps) / (inventory + eps), bp of 1.0.', 'ratio_bp', 10000, 1000000);
+  int('bidHalfSpreadBp', 'Agent quote: bid = mid * (1 - this).', 'bp', 0, 5000);
+  int('askHalfSpreadBp', 'Agent quote: ask = mid * (1 + this).', 'bp', 0, 5000);
+  int('minSavingBp', 'Agent bid: a bid must stay this far below the cheapest alternative (own production or need value).', 'bp', 0, 10000);
+  int('reserveMarginBp', 'Agent ask: markup over own unit cost that stands for the value of keeping the unit.', 'bp', 0, 100000);
+  int('maxOrderUnits', 'Agent: largest order, whole base units.', 'whole_units', 1, 1000000000);
+  registerField(r, market, row, 'maxOrderQuoteAtomic', { description: 'Agent: largest quote amount of one bid (budget per order), quote atomic.', unit: 'atomic', type: 'atomic', bounds: { min: 1, max: ATOMIC_MAX } });
+  int('referenceMaxAgeS', 'Agent: a reference price older than this pauses bids.', 'seconds', 1, 2592000);
+  int('minReferenceVolume', 'Agent: a reference built on less eligible volume (whole units) is thin and pauses bids.', 'whole_units', 0, 1000000000);
 }
 
 /** Dev fixture ladder of `market.seed` (never used by the sim or settlement). */
