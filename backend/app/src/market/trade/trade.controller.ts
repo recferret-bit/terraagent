@@ -1,8 +1,8 @@
 import type { IncomingMessage } from 'node:http';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, Res, UseFilters } from '@nestjs/common';
 import {
-  CreateTradeKeyRequest, ListTradeOrdersQuery, PlaceTradeOrderRequest, TradeAllowanceUpdate,
-  type CancelTradeOrderResponse, type CreateTradeKeyResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
+  AgentQuoteQuery, CreateTradeKeyRequest, ListTradeOrdersQuery, PlaceTradeOrderRequest, TradeAllowanceUpdate,
+  type AgentQuoteResponse, type CancelTradeOrderResponse, type CreateTradeKeyResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
   type TradeBoardResponse, type TradeBookResponse, type TradeFillsResponse, type TradeKeyListResponse, type TradeKeyView, type TradeOrdersResponse,
   type TradePairsResponse, type TradePolicyResponse,
 } from '@terra/contracts';
@@ -13,6 +13,7 @@ import { TradeError, TradeErrorFilter } from './trade-error.js';
 import { TradeKeysService } from './trade-keys.service.js';
 import { TradeOrdersService, type HttpResult } from './trade-orders.service.js';
 import { TradeReadService } from './trade-read.service.js';
+import { TradeAgentService } from './trade-agent.service.js';
 import { TradeStreamService } from './trade-stream.service.js';
 
 /** Strict zod parse of a body/query; failures are `invalid_request` with the issue list. */
@@ -35,6 +36,7 @@ export class TradeController {
     private readonly read: TradeReadService,
     private readonly keys: TradeKeysService,
     private readonly stream: TradeStreamService,
+    private readonly agent: TradeAgentService,
   ) {}
 
   private who(req: IncomingMessage, as?: string): Promise<TradePrincipal> {
@@ -99,6 +101,12 @@ export class TradeController {
   @Get('balances')
   async balances(@Req() req: IncomingMessage, @Query('planetId') planetId?: string, @Query('as') as?: string): Promise<TradeBalancesResponse> {
     return this.read.balances(await this.who(req, as), planetId);
+  }
+
+  /** Deterministic bid/ask + reason codes from the quote library; the order bodies can be POSTed as they are. */
+  @Get('agent/quote')
+  async agentQuote(@Req() req: IncomingMessage, @Query() query: Record<string, string>, @Query('as') as?: string): Promise<AgentQuoteResponse> {
+    return this.agent.quote(await this.who(req, as), parseBody(AgentQuoteQuery, query));
   }
 
   // --- public market data -------------------------------------------------------------------------------------

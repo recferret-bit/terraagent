@@ -166,6 +166,44 @@ export const TradeStreamEvent = z.discriminatedUnion('type', [
 ]);
 export type TradeStreamEvent = z.infer<typeof TradeStreamEvent>;
 
+
+// --- agent quote (GET /v1/trade/agent/quote) -----------------------------------------------------------------------
+const Rational = z.string().regex(/^\d+(\/[1-9]\d*)?$/, 'expected an integer or num/den');
+const Units = z.string().regex(/^\d{1,15}$/, 'expected a non-negative integer');
+/** Planning inputs the sim holds and the backend cannot see; all optional (unknown stays unknown and shows up as a reason code). */
+export const AgentQuoteQuery = z.object({
+  planetId: z.string().min(1).optional(),
+  resource: ResourceKey,
+  quote: MarketTokenKey.default('USDC'),
+  ttlS: z.coerce.number().int().positive().max(7 * 86_400).default(3600),
+  /** Whole units: planned consumption, reserve to keep for it, already available, and expected own production. */
+  planned: Units.default('0'), reserve: Units.default('0'), available: Units.default('0'), expectedOwn: Units.default('0'),
+  /** Target inventory (default: the current inventory, i.e. neutral scarcity) and units a sell must keep. */
+  target: Units.optional(), keep: Units.default('0'),
+  /** Quote atomic per unit as `n` or `num/den`; omitted = unmeasured (the matching side pauses with a reason). */
+  ownUnitCost: Rational.optional(), transportPerUnit: Rational.optional(), localUnitCost: Rational.optional(),
+  localMinutesPerUnit: Rational.optional(), minuteValue: Rational.optional(), needValue: Rational.optional(),
+});
+export type AgentQuoteQuery = z.infer<typeof AgentQuoteQuery>;
+
+export const AgentSideQuote = z.object({
+  /** Ready to POST to `/v1/trade/orders` (with an Idempotency-Key). */
+  order: PlaceTradeOrderRequest,
+  /** Quote atomic the colony must hold for a bid (principal + maximum fees + transport); 0 for asks. */
+  maxSpend: AtomicAmount,
+});
+export const AgentQuoteResponse = z.object({
+  planetId: z.string(), resource: ResourceKey, quote: MarketTokenKey,
+  basis: z.enum(['organic', 'bootstrap_subsidy']).nullable(),
+  mid: z.object({ num: AtomicAmount, den: AtomicAmount }).nullable(),
+  bid: AgentSideQuote.nullable(), ask: AgentSideQuote.nullable(),
+  /** Why a side is null (`no_reference`, `stale_reference`, `thin_reference`, `no_cash`, ...); empty when quoted. */
+  bidReasons: z.array(z.string()), askReasons: z.array(z.string()),
+  /** What the quote was computed from, so a strategy layer can log it. */
+  inputs: z.object({ freeUnits: AtomicAmount, inventory: AtomicAmount, freeQuote: AtomicAmount, budgetLeft: AtomicAmount.nullable(), referenceAgeS: z.number().nullable(), eligibleVolume: z.number().nullable() }),
+});
+export type AgentQuoteResponse = z.infer<typeof AgentQuoteResponse>;
+
 // --- route table (client / OpenAPI generation) -------------------------------------------------------------------
 export interface TradeRouteDef {
   readonly method: 'GET' | 'POST' | 'DELETE' | 'PATCH';
@@ -193,6 +231,7 @@ export const TRADE_API_ROUTES = {
   board: { method: 'GET', path: '/v1/trade/board/:planetId', auth: 'none', summary: 'Price board of a planet', response: TradeBoardResponse },
   pairs: { method: 'GET', path: '/v1/trade/pairs', auth: 'none', summary: 'Tradable pairs', response: TradePairsResponse },
   policy: { method: 'GET', path: '/v1/trade/policy', auth: 'none', summary: 'Market policy and the rate limit of the caller', response: TradePolicyResponse },
+  agentQuote: { method: 'GET', path: '/v1/trade/agent/quote', auth: 'either', scope: 'read', summary: 'Deterministic bid/ask for the caller\'s colony and one resource (quote library), with reason codes; bodies are ready to POST', request: AgentQuoteQuery, response: AgentQuoteResponse },
   stream: { method: 'GET', path: '/v1/trade/stream', auth: 'either', scope: 'read', summary: 'SSE stream of own order/fill events and book updates (query planetId, pairs)', response: TradeStreamEvent },
 } as const satisfies Record<string, TradeRouteDef>;
 export type TradeRouteName = keyof typeof TRADE_API_ROUTES;

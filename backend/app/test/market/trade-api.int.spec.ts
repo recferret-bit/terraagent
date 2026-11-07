@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import {
   CancelTradeOrderResponse, CreateTradeKeyResponse, PlaceTradeOrderResponse, TradeBalancesResponse, TradeBookResponse, TradeBoardResponse, TradeFillsResponse,
-  TradeKeyListResponse, TradeOrdersResponse, TradePairsResponse, TradePolicyResponse, TradeStreamEvent, marketOrderRef, type SimCommandV1,
+  TradeKeyListResponse, TradeOrdersResponse, TradePairsResponse, TradePolicyResponse, TradeStreamEvent, AgentQuoteResponse, marketOrderRef, type SimCommandV1,
 } from '@terra/contracts';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GamePlanets } from '../../src/game/game-planets.service.js';
@@ -62,7 +62,7 @@ const orderCount = (colonyId: string) => h.db.prisma.marketOrder.count({ where: 
 
 beforeAll(async () => {
   h = await bootHarness();
-  h.app.get(GamePlanets).markScenarioColonyPlanet(PLANET, [0, 1, 2, 3, 4, 5, 6]);
+  h.app.get(GamePlanets).markScenarioColonyPlanet(PLANET, [0, 1, 2, 3, 4, 5, 6, 7]);
   h.app.get(TradeSimPort).override = fakeSim(h);
   await h.app.listen(0, '127.0.0.1');
   url = (await h.app.getUrl()).replace('[::1]', '127.0.0.1');
@@ -265,6 +265,24 @@ describe('trade API: allowance rails and revoke', () => {
 });
 
 describe('trade API: reads', () => {
+  it('agent quote: library bid/ask with reason codes; an ask body posts as it is; bad inputs are 400', async () => {
+    const b = await bot('quoter', 5, { fund: { USDC: '500', 'bio.water': '400' } });
+    const q = AgentQuoteResponse.parse((await call('GET', '/trade/agent/quote?resource=bio.water&ownUnitCost=1000&transportPerUnit=0&keep=100', { key: b.secret })).body);
+    expect(q.bid).toBeNull();
+    expect(q.bidReasons).toContain('no_reference'); // no organic reference yet: never a made-up price
+    expect(q.ask).not.toBeNull();
+    expect(q.ask!.order).toMatchObject({ side: 'sell', resource: 'bio.water', planetId: PLANET, price: { token: 'USDC' } });
+    expect(q.ask!.order.amount).toBeLessThanOrEqual(300); // keeps 100 of 400
+    const posted = await call('POST', '/trade/orders', { key: b.secret, idem: randomUUID(), body: q.ask!.order });
+    expect(posted.status).toBe(201);
+    const noCost = AgentQuoteResponse.parse((await call('GET', '/trade/agent/quote?resource=bio.water', { key: b.secret })).body);
+    expect(noCost.ask).toBeNull();
+    expect(noCost.askReasons).toContain('no_unit_cost');
+    expect((await call('GET', '/trade/agent/quote?resource=bio.water&ownUnitCost=abc', { key: b.secret })).status).toBe(400);
+    expect((await call('GET', '/trade/agent/quote?resource=nope', { key: b.secret })).status).toBe(400);
+    expect((await call('GET', '/trade/agent/quote?resource=bio.water')).status).toBe(401);
+  });
+
   it('balances show only the caller colony: quote and in-orbit, reserved vs free', async () => {
     const b = await bot('bal1', 2, { fund: { USDC: '20' } });
     await h.relay.pollOnce();

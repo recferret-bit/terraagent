@@ -25,6 +25,7 @@ import { MarketSimGateway } from './orders/market-sim-gateway.js';
 import { OrderFunds } from './orders/order-funds.js';
 import { PlaceOrderPrecheck } from './orders/place-order.precheck.js';
 import { PlaceOrderService } from './orders/place-order.service.js';
+import { TradeAgentService } from './trade/trade-agent.service.js';
 import { TradeAuth } from './trade/trade-auth.js';
 import { TradeController } from './trade/trade.controller.js';
 import { TradeDevController } from './trade/trade-dev.controller.js';
@@ -94,6 +95,7 @@ import { MarketProgressionProducer } from './progression/market-progression.prod
     TradeKeysService,
     TradeReadService,
     TradeStreamService,
+    TradeAgentService,
   ],
   controllers: [
     MarketController,
