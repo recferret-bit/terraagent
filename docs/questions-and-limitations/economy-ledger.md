@@ -252,6 +252,7 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **Workaround / mitigation:** Display rounding never changes ledger amounts. A sim-accepted order lost by an app crash before the module handles the event never reserves anything (the sim mirror only changes on `market.reserve`).
 - **To resolve:** Owner may prefer per-unit tick prices or fractional resource atoms; both are contract changes in `shared/contracts/src/market/`. The legacy `tradeHub` rows' `marketFeeMinBp/MaxBp/DefaultBp` (50/300/100) predate D-44 and are superseded by `market.policy` (0–100 bp, default 100); W13-03 reconciles them.
 - **Found:** 2026-11-04, W13-01 (wave lead).
+- **Update (2026-11-07):** the legacy `tradeHub` `marketFee*Bp` rows no longer exist in code: Resolved.
 
 
 ### LED-21 · W13 market defaults taken by the implementation (sim mirror, matcher, fees, place order)
@@ -266,6 +267,8 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - **Why it is like this:** Smallest rules that satisfy ECONOMY §3 exactly; each is a pure function with tests (`npm test -- market-matcher`).
 - **To resolve:** owner review of AON resting semantics and whether a buyer without an explicit maximum should accept the policy's stall maximum.
 - **Found:** 2026-11-05, W13 build (wave lead, from subagent reports).
+- **Update (2026-11-07):** the barter-buy reservation now uses the sim's `maxBuyerSpend` (floor) everywhere (Resolved). Still an owner decision: whether a buyer without an explicit maximum may accept up to the policy stall maximum (the code now defaults the maximum to the policy ceiling in the REST path, see `matching.exchange.int.spec.ts`), and how a RESTING all-or-nothing order should behave when a smaller taker arrives (today: skipped, taken only in full).
+
 
 ### LED-22 · W13 economy profile defaults (registry bounds, revisions, boot fallback)
 
@@ -306,7 +309,7 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
   - Progression (W13-27): Port Authority counts one "fee unit" per started whole display unit of fee (a 0.10 USDC fee = 1), so the demo reaches +3 only over three fee-earning fills, and many tiny fees can farm it (bounded by minimum notional). A crash between FINAL and the fact write loses that fact.
   - Telemetry (W13-29): money metrics are doubles (exact below 2^53); counters reset on restart; no `npc` series until NPC orders exist.
   - Client (W13-23/24): the toast says plain "USDC", the Contracts list badge says "MOCK USDC"; there is no separate client event log (Contracts rows are it); a third-party stall owner gets no history row; the sparkline plots one point per FINAL trade (max 30, even spacing).
-- **To resolve:** per-socket topic subscriptions; durable fact outbox for progression; owner review of the fee-unit definition.
+- **To resolve:** Per-socket topics: Resolved (2026-11-07, `market.subscribe` / `market.unsubscribe`; a socket that never subscribes still gets all pairs; clients re-subscribe after reconnect). Progression facts: Resolved (boot + 5-minute replay of FINAL trades without a receipt, 60 s grace, 7-day window; replayed facts carry `atTick` 0). Still open: owner review of the fee-unit definition.
 - **Found:** 2026-11-05, W13-13/14/15/18/19/23/24/27/29.
 
 ### LED-26 · W13 regional endowments and logistics: what is wired and what is not
@@ -342,3 +345,32 @@ the host journal `PlanetJournal` (`shared/sim/src/host/journal.ts`), the server 
 - HUD (wave lead, owner check): the feature `menus` are declared but not rendered by the HUD, so the market panels are launched from the Supply & trade bar (BOARD, CONTRACTS, SHOW), which sits in the bottom-right stack under an open Trade Hub panel; an open Price board in the bottom-left stack pushes the command dock up; the Supply & trade panel can overlap the Goals panel at 1440×900; the order preview names resources by key (`bio.water`). The economy operator API (`/v1/economy/*`) stays available with `TA_WAVES=..12` (operator tool; gameplay commands, market REST, faucet and HUD are off). The Survey Array project needs `minerals.t2`, which the w13 scenario colony lacks (grant it, or buy it on the market).
 - Docs (W13-02): the SVG fee diagrams in `docs/hackathon/public/near-features.html` and `money.html` still draw pre-D-44 numbers (notes added, drawings not redone); historical hackathon docs keep old 0–3 % figures under D-44 banners.
 - **Found:** 2026-11-05, W13-02/19..28/35/55.
+
+
+### LED-29 · W13 bot/agent trading API, organic rule and quote agents (D-45)
+
+- **Status:** Accepted (by design); defaults taken by the wave lead, owner may change
+- **Area / code:** `shared/contracts/src/market/trade-api.ts`, `backend/app/src/market/{trade,board,settlement/organic.ts}`, `shared/sim/src/systems/trade/{command-source.ts,agent/}`, `shared/sim/src/economy/experiments/behaviors/demand-agents-*.ts`, [D-45](../spec/DECISIONS.md), [PROTOCOL §8a](../spec/PROTOCOL.md).
+- **What happens:**
+  - Bots and humans trade on one book through `/v1/trade/*` (API key = actor `bot`; session or `?as=` = actor `player`). Both go through the same sim reservation, `PlaceOrderService`, matcher and settlement; there is no second path.
+  - **Organic rule (default taken, the owner never answered):** a fill is organic when both sides are `player` or `bot`, different colonies AND different owner ids. Same owner (also two bots of one person), fixture, subsidy, npc and guild fills never count. A null owner counts as different. Without this change a bot-only market could never establish a reference price (VWAP stays null, Guild quotes never start). Whether a bot consumes what it buys is NOT verified at settlement; it is a hypothesis to calibrate (LED-18) and bot demand can be fake demand.
+  - Per-key allowance (persisted, restart-safe): open orders (default 10), order notional (100 mock USDC), daily budget (1000 mock USDC, UTC day), allowed pairs, price band vs the organic VWAP (skipped while no reference exists), kill switch (also cancels unsubmitted requests and resting orders). The daily budget is a SPEND cap (open and pending orders in full, ended orders what they filled), not a profit-and-loss loss budget. The rate limiter is in memory per process.
+  - The LLM never types a free price: `GET /v1/trade/agent/quote` runs the deterministic `quoteColony` (need, walk-away price, own-cost floor, inventory-skew mid, spreads, hard limits, reason codes). An external bot that calls `POST /orders` can still send any price; the allowance and price band bound it, they do not make it economically sensible.
+  - Quote library defaults (`market.agent.*`: k = 1/2, epsilon 10, clamp 0.5..2, spreads 200 bp) are calibration hypotheses. A missing, stale or thin reference pauses bids only; asks fall back to the own-cost floor; unmeasured transport pauses both. Subsidy-priced (bootstrap) trades are never organic, so a market that only has bootstrap trades cannot set its own organic reference: it needs organic trades or an operator-funded bounded bootstrap.
+  - The REST API answers after matching: 201 with fills, 202 pending after a 4 s wait (the order still completes). Order-to-request linking uses `commandId` first and falls back to colony + exact terms. Do not drive one colony with a key and a game session at the same time with identical orders.
+  - Dev bots (`POST /v1/dev/trade/bots`) need an existing sim seat; they are labelled fixture-funded.
+- **Open:** (1) the depth preview in Supply & trade reads only the visible levels (`bookDepthLevels`, 10): it cannot exclude own asks or makers above the buyer's maximum stall fee; (2) the sell-side depth walk (`walkBids`) is built but no UI uses it; (3) `market.seed` bot ladder (mid 0.40 USDC) and `referencePriceAtomic 250000` are fixture/assumption values, never demand; (4) real cash stays off until the W23 pilot (LED-18).
+- **Found:** 2026-11-07, W13 exchange pass (D-45).
+
+
+### LED-30 · W13 exchange test suite: coverage limits and known residuals
+
+- **Status:** Accepted (by design) / Open where noted
+- **Area / code:** `shared/sim/test/exchange/`, `backend/app/test/exchange/`, `backend/app/src/market/settlement/batch.exchange.spec.ts`.
+- **What happens:**
+  - Unit/property suite (202 tests, seeded PRNG loops; `fast-check` is not a dependency) and a Postgres integration suite on the DB-backed mock NEAR chain (101 tests) with deterministic fault injection (`near.mock.fault`). The REST path is tested against a stand-in planet sim that applies the real lot/TTL/fee/min-notional rules; the real sim is covered by the unit suite and the w13 e2e.
+  - Bugs the suite found and that are fixed: maxStallFeeBp accepted NaN/fractions (crashed the step); platform and stall fee buckets collided when both pay one account; malformed price/amount threw out of the precheck; concurrent crossing orders deadlocked the matcher (Postgres 40P01, now a per-pair advisory lock + retry); a re-match after a FAILED trade reused the trade id and left both orders FILLED without settlement; expired makers still filled before the 30 s sweep; the buy reservation rounded fees up while the sim floors them (now one function); the kill switch did not cancel resting orders.
+  - Residual: after a rolled-back fill the paid fee rows can be 1 atomic unit per bucket below an unsplit run, because a later committed fill stays priced against the old cumulative; fixing it means re-pricing a committed fill.
+  - During an UNKNOWN trade after `fail_after` free funds are conservative (counted twice); `fail_before` only retries and goes UNKNOWN when DEAD, order restoration comes from `insufficient_funds`; `market-deposit:` faults are not covered (the faucet credits the verifier directly); `planParties` converts amounts with `Number()` (exact below 2^53, resource totals are far below).
+  - Under 16 concurrent REST places some answer 202 after the 4 s wait on a loaded machine (CPU-bound signing in the match transaction); they complete.
+- **Found:** 2026-11-07, W13 exchange pass.
