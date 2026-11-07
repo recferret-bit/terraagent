@@ -11,6 +11,7 @@ import { MarketOrderRepository } from '../book/market-order.repository.js';
 import type { MatchOutcome } from '../matching/market-matcher.service.js';
 import { MarketFillsHook } from '../orders/market-fills.hook.js';
 import { MarketPolicyProvider } from '../orders/market-policy.provider.js';
+import { isOrganicFill } from './organic.js';
 import { buildFillBatch } from './batch-builder.js';
 import { IntentTradeRepository } from './intent-trade.repository.js';
 import { planParties, rollbackOf, type TradePlan } from './trade-plan.js';
@@ -25,7 +26,7 @@ export const tradeIdOf = (fill: Fill, takerFilledBefore: bigint): string =>
   `tr_${createHash('sha256').update(`${fill.takerOrderId}\u0000${fill.makerOrderId}\u0000${takerFilledBefore}`).digest('hex').slice(0, 40)}`;
 
 const isPlayerPair = (a: MarketOrderRecord, b: MarketOrderRecord): boolean =>
-  a.actorKind === 'player' && b.actorKind === 'player' && !(a.playerId !== null && a.playerId === b.playerId);
+  isOrganicFill({ actorKind: a.actorKind, colonyId: a.colonyId, ownerId: a.playerId }, { actorKind: b.actorKind, colonyId: b.colonyId, ownerId: b.playerId });
 
 /**
  * W13-13 fills hook, run in the matcher's transaction: per fill it builds the exact batch, persists both orders' fills
