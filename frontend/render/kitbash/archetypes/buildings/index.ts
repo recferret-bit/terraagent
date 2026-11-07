@@ -25,6 +25,6 @@ reg('building.supplyDepot', 'Supply Depot', supplyDepot, [2, 2], 'Vaulted wareho
 reg('building.tradeHub', 'Inter-Colony Trade Hub', tradeHub, [2, 2], 'Orbital cargo pad, logistics hall, container gantry, rotating uplink dish.');
 reg('building.droneArray', 'Drone Control Array', droneArray, [2, 2], 'Tower + 3 rotating dishes, pads, hovering drone (animType 2).');
 reg('building.roboticsFactory', 'Robotics Factory', roboticsFactory, [4, 3], 'Sawtooth hall, roof gantry arm, conveyor w/ robot torso.');
-reg('building.turret', 'Turret', turret, [1, 1], 'Rotating sensor head (1), twin barrels (animType 3 recoil).');
-reg('building.laserTower', 'Laser Tower', laserTower, [1, 1], 'Optical focus column, plasma rings, rotating laser emitter head (animType 1), power cell.');
+reg('building.turret', 'Turret', turret, [1, 1], 'Target-driven turret head, independently aimed twin barrels and shot-driven recoil.');
+reg('building.laserTower', 'Laser Tower', laserTower, [1, 1], 'Optical focus column, plasma rings, target-driven laser emitter head, power cell.');
 reg('building.rocket', 'Rocket', rocket, [3, 3], 'Hero landmark: rocket on pad with lattice gantry, fuel sphere, umbilicals.');

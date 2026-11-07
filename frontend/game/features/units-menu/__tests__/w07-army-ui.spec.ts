@@ -78,7 +78,7 @@ function setupW07Colony() {
 }
 
 describe('W07-18 Army UI: Units & Construction Catalogs', () => {
-  it('includes Recon Drone in Army section when W07 is active and hides dev-only units', () => {
+  it('includes Recon Armored Scout in Army section when W07 is active and hides dev-only units', () => {
     const w07Flags = parseWaves('..07');
     const unitCards = buildUnitsCatalog(w07Flags);
     const units = unitCards.map((c) => c.unit);
@@ -90,7 +90,7 @@ describe('W07-18 Army UI: Units & Construction Catalogs', () => {
     expect(units).not.toContain('demoArtillery');
 
     const reconCard = unitCards.find((c) => c.unit === 'recon')!;
-    expect(reconCard.label).toBe('Recon Drone');
+    expect(reconCard.label).toBe('Recon Armored Scout');
     expect(reconCard.section).toBe('army');
     expect(reconCard.category).toBe('Army');
     expect(reconCard.producer).toBe('roboticsFactory');

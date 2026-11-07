@@ -1,9 +1,10 @@
 import type { CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { hexDistance, hexIndex } from '../../grid/hex';
+import { isTileExplored, markTileExplored } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
-import { defaultW01Data } from '../rows';
+import { defaultHubData } from '../factories-hub/unit';
 import { mobileStats } from '../../units/mobility';
 
 export const COMBAT_VISION_BLOB = 'combatVision';
@@ -90,12 +91,13 @@ export function getEntitySpottingRadius(kind: number, data?: CompiledDataLike): 
   if (kind === ENTITY_KIND.recon) {
     const combatUnits = data?.tables?.combatUnits as Record<string, CompiledRow> | undefined;
     const raw = Number(combatUnits?.recon?.viewRadius);
-    if (Number.isFinite(raw) && raw > 0 && raw !== 8) return raw;
+    if (Number.isFinite(raw) && raw > 0) return raw;
     return 10;
   }
 
-  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder) {
-    return mobileStats(kind, data ?? defaultW01Data())?.viewRadius ?? 7;
+  if (kind === ENTITY_KIND.hq || kind === ENTITY_KIND.harvester || kind === ENTITY_KIND.builder ||
+    kind === ENTITY_KIND.demoTank || kind === ENTITY_KIND.demoArtillery) {
+    return mobileStats(kind, data ?? defaultHubData())?.viewRadius ?? 7;
   }
 
   if (
@@ -106,7 +108,9 @@ export function getEntitySpottingRadius(kind: number, data?: CompiledDataLike): 
     kind === ENTITY_KIND.hiveBlueBeetle ||
     kind === ENTITY_KIND.hiveGreenSpitter
   ) {
-    return 6;
+    const name = Object.keys(ENTITY_KIND).find(key => ENTITY_KIND[key as keyof typeof ENTITY_KIND] === kind);
+    const row = (data?.tables.fauna as Record<string, CompiledRow> | undefined)?.[name ?? ''];
+    return Number(row?.viewRadius ?? 6);
   }
 
   const cfg = getCombatConfigRow(data);
@@ -123,8 +127,9 @@ export function getEntitySpottingRadius(kind: number, data?: CompiledDataLike): 
   return footprint + buildingBonus;
 }
 
-function isEntityContributingVision(stateCode: number): boolean {
+export function isEntityContributingVision(stateCode: number): boolean {
   return (
+    stateCode !== ENTITY_STATE.waiting &&
     stateCode !== ENTITY_STATE.constructing &&
     stateCode !== ENTITY_STATE.inert &&
     stateCode !== ENTITY_STATE.descending
@@ -221,6 +226,12 @@ export function updateColonyVisionCache(
   for (const colonyIndex of collectActiveColonyIndices(state)) {
     const set = computeColonySpottedTileIndices(state, colonyIndex, data);
     byColony[colonyIndex] = Array.from(set);
+    // Exploration remembers every currently spotted tile, including stationary units and completed buildings.
+    if (colonyIndex < 8) {
+      for (const tile of set) {
+        if (!isTileExplored(state.grid, tile, colonyIndex)) markTileExplored(state.grid, tile, colonyIndex, tick);
+      }
+    }
     setMap.set(colonyIndex, set);
   }
 
@@ -230,12 +241,7 @@ export function updateColonyVisionCache(
     byColony,
   };
   colonySetCache.set(nextBlob, setMap);
-  const existingBlob = state.blobs[COMBAT_VISION_BLOB];
-  if (existingBlob) {
-    existingBlob.value = nextBlob;
-  } else {
-    setBlob(state, COMBAT_VISION_BLOB, nextBlob, tick);
-  }
+  setBlob(state, COMBAT_VISION_BLOB, nextBlob, tick);
   return nextBlob;
 }
 

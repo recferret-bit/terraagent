@@ -25,6 +25,7 @@ import {
   type PlanetRasterEntry,
 } from './rasterCache';
 import { MapRedrawScheduler } from './redrawScheduler';
+import { drawMapFog } from './visibility';
 import { resolveTileColorFromTokens } from './tileColors';
 import type { MapLayer, MapLayerDrawView, MinimapStats } from './types';
 
@@ -62,7 +63,7 @@ export class MapsController {
     this.ctx = opts.ctx;
     this.registry = opts.registry ?? mapLayerRegistry;
     this.rasterCache = opts.rasterCache ?? new PlanetRasterCache(resolveTileColorFromTokens);
-    this.rasterCache.setColorResolver(resolveTileColorFromTokens);
+    this.rasterCache.setColorResolver((tiles, index) => resolveTileColorFromTokens(tiles, index, this.ctx.services.colonyId ?? 0));
 
     this.chipController = new MapLayerChipController({
       registry: this.registry,
@@ -203,6 +204,7 @@ export class MapsController {
     drawView: MapLayerDrawView,
   ): void {
     if (this.chipController.isLayerActive('resources')) drawResourcesLayer(ctx2d, drawView);
+    drawMapFog(ctx2d, drawView);
     const dots = drawEntityDots(ctx2d, drawView);
     this.lastDotCount = dots.length;
     this.lastTrapezoid = drawCameraTrapezoid(ctx2d, drawView, {
@@ -227,6 +229,7 @@ export class MapsController {
       radius,
       tiles: this.lastTiles,
       clientView: this.lastClientView,
+      simData: this.ctx.services.store?.simData?.() ?? undefined,
       ownColonySlot: this.ctx.services.colonyId ?? 0,
       axialToPixel: (q, r) => axialToCanvasPixel(q, r, size, radius),
       pixelToAxial: (x, y) => canvasPixelToAxial(x, y, size, radius),
@@ -328,6 +331,7 @@ export class MapsController {
       entry: this.lastEntry,
       tiles: this.lastTiles,
       clientView: this.lastClientView,
+      simData: this.ctx.services.store?.simData?.() ?? undefined,
       ownColonySlot: this.ctx.services.colonyId ?? 0,
     });
 

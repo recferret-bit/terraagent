@@ -78,6 +78,10 @@ describe('W08 owner goal regressions', () => {
     expect(getColonyGoals(state, 0)[0].status).toBe('active');
     for (let i = 0; i < 10; i++) step(state, [], 1, pipeline);
     expect(getColonyGoals(state, 0)[0].status).toBe('done');
+    const goalId = getColonyGoals(state, 0)[0].id;
+    for (let i = 0; i < 20; i++) step(state, [], 5, pipeline);
+    expect(getColonyGoals(state, 0)[0].status).toBe('done');
+    expect(getColonyQueue(state, 0).filter((entry) => entry.goalId === goalId)).toHaveLength(0);
   });
 
   it('night deficit stays explained and does not build an endless queue of solar panels', () => {

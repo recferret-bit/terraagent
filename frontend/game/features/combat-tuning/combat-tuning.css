@@ -1,0 +1,43 @@
+.ta-combat-tuning {
+  position: fixed;
+  top: var(--ta-s7);
+  right: var(--ta-s4);
+  z-index: 90;
+  box-sizing: border-box;
+  width: min(440px, calc(100vw - var(--ta-s6)));
+  max-height: calc(100dvh - var(--ta-s8));
+  overflow: auto;
+  padding: var(--ta-s4);
+  background: var(--ta-plate);
+  color: var(--ta-text);
+  border: 1px solid var(--ta-seam-3);
+  font-family: var(--ta-font-mono);
+  font-size: var(--ta-fs-label);
+  clip-path: polygon(var(--ta-chamfer-s) 0, 100% 0, 100% calc(100% - var(--ta-chamfer-s)), calc(100% - var(--ta-chamfer-s)) 100%, 0 100%, 0 var(--ta-chamfer-s));
+}
+.ta-combat-tuning[hidden], .ta-combat-tuning textarea[hidden] { display: none; }
+.ta-combat-tuning__header, .ta-combat-tuning__actions, .ta-combat-tuning__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ta-s2);
+}
+.ta-combat-tuning__header { font-family: var(--ta-font-display); font-size: var(--ta-fs-body); }
+.ta-combat-tuning__note, .ta-combat-tuning__status { margin: var(--ta-s3) 0; line-height: 1.5; color: var(--ta-text-3); }
+.ta-combat-tuning__status { color: var(--ta-blue-hi); min-height: 3em; }
+.ta-combat-tuning select, .ta-combat-tuning input, .ta-combat-tuning textarea {
+  box-sizing: border-box;
+  background: var(--ta-deep);
+  color: var(--ta-text);
+  border: 1px solid var(--ta-seam-3);
+  padding: var(--ta-s2);
+  font: inherit;
+  width: 100%;
+}
+.ta-combat-tuning input:focus, .ta-combat-tuning select:focus, .ta-combat-tuning textarea:focus { outline: 1px solid var(--ta-orange); }
+.ta-combat-tuning__fields { display: grid; gap: var(--ta-s2); margin: var(--ta-s3) 0; }
+.ta-combat-tuning__row label { display: grid; grid-template-columns: 1fr 90px; align-items: center; gap: var(--ta-s2); flex: 1; }
+.ta-combat-tuning .btn { font-size: var(--ta-fs-label); padding: var(--ta-s2); }
+.ta-combat-tuning textarea { min-height: 160px; resize: vertical; }
+.ta-combat-tuning :disabled { opacity: 0.55; cursor: wait; }
+@media (max-width: 480px) { .ta-combat-tuning__row label { grid-template-columns: 1fr 70px; } }

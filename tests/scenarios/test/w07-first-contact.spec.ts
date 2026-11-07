@@ -1,4 +1,4 @@
-import { ENTITY_KIND, evaluatePlacement, getFaunaHivesState, hexDistance, placementWorldFromState, snapshot } from '@terra/sim';
+import { ENTITY_KIND, evaluatePlacement, getFaunaHivesState, hexDistance, hexIndex, isTileExplored, placementWorldFromState, snapshot } from '@terra/sim';
 import { describe, expect, it } from 'vitest';
 import { createScenarioPlanet, getScenario } from '../_loader';
 import { getParityCase } from '../parity';
@@ -27,6 +27,7 @@ describe('W07 scenarios: w07-first-contact and w07-stress', () => {
     expect(new Set(hives.map((h) => h.species))).toEqual(new Set(['blackAnt', 'blueBeetle', 'greenSpitter']));
     for (const h of hives) {
       expect(h.mode).toBe('passive');
+      expect(isTileExplored(host.state.grid, hexIndex(host.state.grid.radius).indexOf(h.q, h.r), 0)).toBe(false);
       expect(hexDistance(0, 0, h.q, h.r)).toBeGreaterThanOrEqual(30);
       expect(h.residentIds.length).toBeGreaterThan(0);
     }

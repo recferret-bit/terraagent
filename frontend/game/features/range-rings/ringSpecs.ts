@@ -1,5 +1,5 @@
 import type { FlagSet } from '@terra/contracts';
-import { ENTITY_KIND, type CompiledDataLike } from '@terra/sim';
+import { ENTITY_KIND, getEntitySpottingRadius, isFaunaBugKind, isFaunaHiveKind, resolveKindWeaponRow, type CompiledDataLike } from '@terra/sim';
 import { clientDataFor } from '../../core/flags/data';
 import type { FeatureStore } from '../../core/registry/types';
 
@@ -148,283 +148,31 @@ export function is2x2RingBuildingKind(kind: number): boolean {
   return TWO_BY_TWO_BUILDING_CODES.has(kind);
 }
 
-type TableRowMap = Record<string, Record<string, unknown> | undefined> | undefined;
+const OTHER_BUILDINGS = new Set<number>([
+  ENTITY_KIND.commandHub, ENTITY_KIND.pod, ENTITY_KIND.pylon, ENTITY_KIND.roboticsFactory,
+  ENTITY_KIND.droneControlArray, ENTITY_KIND.autocannon, ENTITY_KIND.laserTower, RING_ENTITY_KIND.outpostBeacon,
+]);
 
-function readTables(data?: CompiledDataLike): {
-  hq: TableRowMap;
-  combatUnits: TableRowMap;
-  weapons: TableRowMap;
-  fauna: TableRowMap;
-  workers: TableRowMap;
-  grid: TableRowMap;
-} {
-  const tables = (data as { tables?: Record<string, TableRowMap> } | undefined)?.tables;
-  return {
-    hq: tables?.hq,
-    combatUnits: tables?.combatUnits,
-    weapons: tables?.weapons,
-    fauna: tables?.fauna,
-    workers: tables?.unitsWorkersBasic,
-    grid: tables?.grid,
-  };
-}
-
-function resolveCombatUnitOrTurretSpec(
-  kind: number,
-  kindName: string,
-  tables: ReturnType<typeof readTables>,
-): EntityRingSpec | null {
-  if (kind === RING_ENTITY_KIND.hq) {
-    const hqRow = tables.hq?.t1;
-    const wRow = tables.weapons?.hqAutoTurret ?? tables.weapons?.hqPulse;
-    return {
-      kind,
-      kindName,
-      weaponId: 'hqAutoTurret',
-      weaponRangeTiles: Number(hqRow?.weaponRange ?? wRow?.range ?? 5),
-      minRangeTiles: Number(wRow?.minRange ?? 0),
-      viewRangeTiles: Number(hqRow?.viewRadius ?? 9),
-      isCombatUnitOrTurret: true,
-      isBuilding: false,
-      isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.recon) {
-    const rRow = tables.combatUnits?.recon;
-    const wRow = tables.weapons?.reconGun ?? tables.weapons?.reconAutogun;
-    const rawView = Number(rRow?.viewRadius);
-    const viewRangeTiles = Number.isFinite(rawView) && rawView > 0 && rawView !== 8 ? rawView : 10;
-    return {
-      kind,
-      kindName,
-      weaponId: 'reconGun',
-      weaponRangeTiles: Number(rRow?.range ?? wRow?.range ?? 4),
-      minRangeTiles: Number(rRow?.minRange ?? wRow?.minRange ?? 0),
-      viewRangeTiles,
-      isCombatUnitOrTurret: true,
-      isBuilding: false,
-      isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.demoTank) {
-    const wRow = tables.weapons?.tankCannon;
-    return {
-      kind,
-      kindName,
-      weaponId: 'tankCannon',
-      weaponRangeTiles: Number(wRow?.range ?? 7),
-      minRangeTiles: Number(wRow?.minRange ?? 0),
-      viewRangeTiles: 8,
-      isCombatUnitOrTurret: true,
-      isBuilding: false,
-      isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.demoArtillery) {
-    const wRow = tables.weapons?.artilleryShell;
-    return {
-      kind,
-      kindName,
-      weaponId: 'artilleryShell',
-      weaponRangeTiles: Number(wRow?.range ?? 14),
-      minRangeTiles: Number(wRow?.minRange ?? 3),
-      viewRangeTiles: 6,
-      isCombatUnitOrTurret: true,
-      isBuilding: false,
-      isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.autocannon) {
-    const aRow = tables.combatUnits?.autocannon;
-    const wRow = tables.weapons?.autocannon;
-    return {
-      kind,
-      kindName,
-      weaponId: 'autocannon',
-      weaponRangeTiles: Number(aRow?.range ?? wRow?.range ?? 8),
-      minRangeTiles: Number(aRow?.minRange ?? wRow?.minRange ?? 0),
-      viewRangeTiles: Number(aRow?.viewRadius ?? 9),
-      isCombatUnitOrTurret: true,
-      isBuilding: true,
-      isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.laserTower) {
-    const lRow = tables.combatUnits?.laserTower;
-    const wRow = tables.weapons?.laserTower ?? tables.weapons?.pulsedLaser;
-    return {
-      kind,
-      kindName,
-      weaponId: 'laserTower',
-      weaponRangeTiles: Number(lRow?.range ?? wRow?.range ?? 9),
-      minRangeTiles: Number(lRow?.minRange ?? wRow?.minRange ?? 0),
-      viewRangeTiles: Number(lRow?.viewRadius ?? 10),
-      isCombatUnitOrTurret: true,
-      isBuilding: true,
-      isFauna: false,
-    };
-  }
-  return null;
-}
-
-function resolveFaunaSpec(
-  kind: number,
-  kindName: string,
-  tables: ReturnType<typeof readTables>,
-): EntityRingSpec | null {
-  if (kind === RING_ENTITY_KIND.blackAnt) {
-    const row = tables.fauna?.blackAnt;
-    const wRow = tables.weapons?.antBite;
-    return {
-      kind,
-      kindName,
-      weaponId: 'antBite',
-      weaponRangeTiles: Number(row?.range ?? wRow?.range ?? 1),
-      minRangeTiles: Number(wRow?.minRange ?? 0),
-      viewRangeTiles: Number(row?.viewRadius ?? 6),
-      isCombatUnitOrTurret: true,
-      isBuilding: false,
-      isFauna: true,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.blueBeetle) {
-    const row = tables.fauna?.blueBeetle;
-    const wRow = tables.weapons?.beetleBite;
-    return {
-      kind,
-      kindName,
-      weaponId: 'beetleBite',
-      weaponRangeTiles: Number(row?.range ?? wRow?.range ?? 1),
-      minRangeTiles: Number(wRow?.minRange ?? 0),
-      viewRangeTiles: Number(row?.viewRadius ?? 6),
-      isCombatUnitOrTurret: true,
-      isBuilding: false,
-      isFauna: true,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.greenSpitter) {
-    const row = tables.fauna?.greenSpitter;
-    const wRow = tables.weapons?.acidSpit ?? tables.weapons?.spitterAcid;
-    const rawRange = Number(tables.weapons?.acidSpit?.range ?? row?.range ?? wRow?.range);
-    const weaponRangeTiles = Number.isFinite(rawRange) && rawRange > 0 && rawRange !== 5 ? rawRange : 6;
-    return {
-      kind,
-      kindName,
-      weaponId: 'acidSpit',
-      weaponRangeTiles,
-      minRangeTiles: Number(wRow?.minRange ?? 0),
-      viewRangeTiles: Number(row?.viewRadius ?? 7),
-      isCombatUnitOrTurret: true,
-      isBuilding: false,
-      isFauna: true,
-    };
-  }
-  if (
-    kind === RING_ENTITY_KIND.hiveBlackAnt ||
-    kind === RING_ENTITY_KIND.hiveBlueBeetle ||
-    kind === RING_ENTITY_KIND.hiveGreenSpitter
-  ) {
-    return {
-      kind,
-      kindName,
-      weaponId: null,
-      weaponRangeTiles: 0,
-      minRangeTiles: 0,
-      viewRangeTiles: 6,
-      isCombatUnitOrTurret: false,
-      isBuilding: true,
-      isFauna: true,
-    };
-  }
-  return null;
-}
-
-/**
- * Resolves weapon range, minimum range, and view radius (all in hex tiles) for an entity kind (`UO-C-08`, `CLIENT.md` §8b).
- */
+/** UI metadata only: combat and sight numbers come from the same shared rules the host enforces. */
 export function resolveEntityRingSpec(
   kindOrName: number | string,
   data?: CompiledDataLike,
   weaponIdOverride?: string,
 ): EntityRingSpec {
-  const { kind, kindName } = normalizeRingEntityKind(
-    weaponIdOverride === 'artilleryShell' || weaponIdOverride === 'demoArtillery'
-      ? 'demoArtillery'
-      : weaponIdOverride === 'tankCannon' || weaponIdOverride === 'tankRocket' || weaponIdOverride === 'demoTank'
-        ? 'demoTank'
-        : kindOrName,
-  );
-  const tables = readTables(data);
-
-  const combat = resolveCombatUnitOrTurretSpec(kind, kindName, tables);
-  if (combat) return combat;
-
-  const fauna = resolveFaunaSpec(kind, kindName, tables);
-  if (fauna) return fauna;
-
-  if (kind === RING_ENTITY_KIND.harvester || kind === RING_ENTITY_KIND.builder) {
-    const workerRow = kind === RING_ENTITY_KIND.harvester ? tables.workers?.harvester : (tables.grid?.builder ?? tables.workers?.builder);
-    return {
-      kind,
-      kindName,
-      weaponId: null,
-      weaponRangeTiles: 0,
-      minRangeTiles: 0,
-      viewRangeTiles: Number(workerRow?.viewRadius ?? 6),
-      isCombatUnitOrTurret: false,
-      isBuilding: false,
-      isFauna: false,
-    };
-  }
-
-  const cfg = tables.combatUnits?.combatConfig;
-  const hubBonus = Number(cfg?.hubBeaconViewBonus ?? 6);
-  const buildingBonus = Number(cfg?.buildingViewBonus ?? 4);
-
-  if (kind === RING_ENTITY_KIND.commandHub) {
-    return {
-      kind, kindName, weaponId: null, weaponRangeTiles: 0, minRangeTiles: 0,
-      viewRangeTiles: 1.5 + hubBonus, isCombatUnitOrTurret: false, isBuilding: true, isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.outpostBeacon || kind === RING_ENTITY_KIND.pod) {
-    return {
-      kind, kindName, weaponId: null, weaponRangeTiles: 0, minRangeTiles: 0,
-      viewRangeTiles: 0.5 + hubBonus, isCombatUnitOrTurret: false, isBuilding: true, isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.roboticsFactory) {
-    const row = tables.combatUnits?.roboticsFactory;
-    return {
-      kind, kindName, weaponId: null, weaponRangeTiles: 0, minRangeTiles: 0,
-      viewRangeTiles: Number(row?.viewRadius ?? 1.5 + buildingBonus),
-      isCombatUnitOrTurret: false, isBuilding: true, isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.droneControlArray) {
-    const row = tables.combatUnits?.droneControlArray;
-    return {
-      kind, kindName, weaponId: null, weaponRangeTiles: 0, minRangeTiles: 0,
-      viewRangeTiles: Number(row?.viewRadius ?? 0.5 + buildingBonus),
-      isCombatUnitOrTurret: false, isBuilding: true, isFauna: false,
-    };
-  }
-  if (TWO_BY_TWO_BUILDING_CODES.has(kind)) {
-    return {
-      kind, kindName, weaponId: null, weaponRangeTiles: 0, minRangeTiles: 0,
-      viewRangeTiles: 1.0 + buildingBonus, isCombatUnitOrTurret: false, isBuilding: true, isFauna: false,
-    };
-  }
-  if (kind === RING_ENTITY_KIND.pylon) {
-    return {
-      kind, kindName, weaponId: null, weaponRangeTiles: 0, minRangeTiles: 0,
-      viewRangeTiles: 0.5 + buildingBonus, isCombatUnitOrTurret: false, isBuilding: true, isFauna: false,
-    };
-  }
-
+  const overrideKind = weaponIdOverride === 'artilleryShell' || weaponIdOverride === 'demoArtillery' ? 'demoArtillery'
+    : ['tankCannon', 'tankRocket', 'demoTank'].includes(weaponIdOverride ?? '') ? 'demoTank' : kindOrName;
+  const { kind, kindName } = normalizeRingEntityKind(overrideKind);
+  const weapon = resolveKindWeaponRow(kind, data);
+  const hive = isFaunaHiveKind(kind);
   return {
-    kind, kindName, weaponId: null, weaponRangeTiles: 0, minRangeTiles: 0,
-    viewRangeTiles: 0, isCombatUnitOrTurret: false, isBuilding: false, isFauna: false,
+    kind, kindName,
+    weaponId: weapon?.id ?? null,
+    weaponRangeTiles: Number(weapon?.range ?? 0),
+    minRangeTiles: Number(weapon?.minRange ?? 0),
+    viewRangeTiles: CODE_TO_KIND_NAME[kind] ? getEntitySpottingRadius(kind, data) : 0,
+    isCombatUnitOrTurret: Boolean(weapon),
+    isBuilding: hive || TWO_BY_TWO_BUILDING_CODES.has(kind) || OTHER_BUILDINGS.has(kind),
+    isFauna: hive || isFaunaBugKind(kind),
   };
 }
 

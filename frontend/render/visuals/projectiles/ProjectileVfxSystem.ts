@@ -1,4 +1,6 @@
 import * as THREE from 'three';
+import { CombatBurstSystem } from '../../particles/CombatBurstSystem';
+import { ArtilleryTrail } from './ArtilleryTrail';
 import {
   clearProjectileVfxPools,
   countActivePools,
@@ -9,13 +11,12 @@ import {
   LASER_BEAM_DURATION_S,
   meshForProjectileKind,
   stepAuxiliaryPools,
-  writeAoeMatrices,
-  writeDebrisMatrix,
   writeImpactMatrix,
   writeLaserMatrix,
   writeProjectileMatrix,
   writeSmokeMatrix,
   type ProjectileVfxPools,
+  type ProjectileSlot,
 } from './pools';
 import type {
   ActiveAoeDecalSnapshot,
@@ -101,7 +102,7 @@ function defaultFlightSpeedMps(kind: Exclude<VfxWeaponKind, 'laser'>): number {
   }
 }
 
-function computeArcHeight(
+export function computeArcHeight(
   kind: Exclude<VfxWeaponKind, 'laser'>,
   y0: number,
   y1: number,
@@ -122,6 +123,8 @@ export class ProjectileVfxSystem {
   readonly group = new THREE.Group();
   readonly tileSizeM: number;
   private readonly pools: ProjectileVfxPools;
+  private readonly bursts: CombatBurstSystem;
+  private readonly artilleryTrail: ArtilleryTrail;
   private rngSeed = 0x5f3759df;
 
   constructor(parent?: THREE.Object3D, config: ProjectileVfxPoolConfig = {}) {
@@ -129,6 +132,8 @@ export class ProjectileVfxSystem {
     this.tileSizeM = config.tileSizeM ?? DEFAULT_TILE_SIZE_M;
     parent?.add(this.group);
     this.pools = createProjectileVfxPools(this.group, config);
+    this.bursts = new CombatBurstSystem(this.group);
+    this.artilleryTrail = new ArtilleryTrail(this.group);
   }
 
   private nextRand(): number {
@@ -153,7 +158,7 @@ export class ProjectileVfxSystem {
     const toZ = input.to.z ?? 0;
 
     if (kind === 'laser') {
-      this.spawnLaserBeam(fromX, fromY, fromZ, toX, toY, toZ, input.durationS ?? LASER_BEAM_DURATION_S);
+      this.spawnLaserBeam(fromX, fromY, fromZ, toX, toY, toZ, input.durationS ?? LASER_BEAM_DURATION_S, input.source);
       return;
     }
 
@@ -183,12 +188,20 @@ export class ProjectileVfxSystem {
     slot.z = fromZ;
     slot.t = 0;
     slot.durationS = durationS;
-    slot.arcHeight = computeArcHeight(kind, fromY, toY, horizDist, input.arc);
+    slot.arcHeight = input.arcHeight ?? computeArcHeight(kind, fromY, toY, horizDist, input.arc);
     slot.aoe = Math.max(0, input.aoe ?? 0);
     slot.autoImpactOnArrival = input.autoImpactOnArrival ?? true;
     slot.smokeCooldownS = 0;
 
     writeProjectileMatrix(this.pools, slotIdx, slot);
+    if (kind !== 'acid') {
+      const axis = input.direction?.();
+      const normal = axis ? new THREE.Vector3(axis.x, axis.y, axis.z ?? 0)
+        : new THREE.Vector3(dx, dy + 4 * slot.arcHeight, dz).normalize();
+      this.bursts.emit('combat.muzzle', { at: new THREE.Vector3(fromX, fromY, fromZ), normal,
+        groundY: fromY - 1, scale: kind === 'shell' ? 1.4 : 1,
+        source: input.source, direction: input.direction });
+    }
     if (kind === 'rocket') {
       this.spawnSmokePuff(fromX, fromY, fromZ);
     }
@@ -206,6 +219,7 @@ export class ProjectileVfxSystem {
     toY: number,
     toZ: number,
     durationS: number,
+    source?: ProjectileFiredVfxInput['source'],
   ): void {
     const idx = this.allocSlot(this.pools.lasers);
     const slot = this.pools.lasers[idx]!;
@@ -217,6 +231,7 @@ export class ProjectileVfxSystem {
     slot.toY = toY;
     slot.toZ = toZ;
     slot.ageS = 0;
+    slot.source = source;
     slot.durationS = Math.max(0.02, durationS);
     writeLaserMatrix(this.pools, idx, slot);
   }
@@ -242,7 +257,6 @@ export class ProjectileVfxSystem {
     const x = input.at.x;
     const y = input.at.y;
     const z = input.at.z ?? 0;
-    const aoe = Math.max(0, input.aoe ?? 0);
 
     const idx = this.allocSlot(this.pools.impacts);
     const imp = this.pools.impacts[idx]!;
@@ -251,8 +265,8 @@ export class ProjectileVfxSystem {
     imp.y = y;
     imp.z = z;
     imp.ageS = 0;
-    imp.durationS = aoe > 0 ? 0.34 : 0.24;
-    imp.maxScale = aoe > 0 ? 1.45 + Math.min(2.0, aoe * 0.4) : 0.95;
+    imp.durationS = 0.1;
+    imp.maxScale = kind === 'acid' ? 0 : 0.45;
 
     TMP_COLOR.setHex(kind === 'acid' ? 0x69f0ae : kind === 'laser' ? 0x84ffff : 0xffe082);
     this.pools.impactPool.mesh.setColorAt(idx, TMP_COLOR);
@@ -261,49 +275,17 @@ export class ProjectileVfxSystem {
     }
     writeImpactMatrix(this.pools, idx, imp);
 
-    const debrisCount = aoe > 0 ? 6 : 4;
-    const groundY = Math.max(0, y - 0.35);
-    for (let i = 0; i < debrisCount; i++) {
-      this.spawnDebrisChunk(x, y, z, groundY, aoe > 0 ? 5.5 : 3.6);
-    }
-    if (aoe > 0) {
-      this.spawnAoeDecal(x, groundY, z, aoe * this.tileSizeM);
-    }
+    const preset = kind === 'rocket' ? 'rocket' : kind === 'shell' ? 'artillery'
+      : kind === 'laser' ? 'laserHit' : kind === 'acid' ? 'acidHit' : 'impact';
+    const n = input.normal;
+    this.bursts.emit(`combat.${preset}`, {
+      at: new THREE.Vector3(x, y, z), normal: n ? new THREE.Vector3(n.x, n.y, n.z ?? 0) : new THREE.Vector3(0, 1, 0),
+      groundY: input.groundY ?? y - 0.35, scale: kind === 'rocket' || kind === 'shell' ? 1.25 : 1,
+    });
   }
 
   spawnProjectileImpact(input: ProjectileImpactVfxInput): void {
     this.onProjectileImpact(input);
-  }
-
-  private spawnDebrisChunk(x: number, y: number, z: number, groundY: number, speedScale: number): void {
-    const idx = this.allocSlot(this.pools.debris);
-    const d = this.pools.debris[idx]!;
-    const angle = this.nextRand() * Math.PI * 2;
-    const horizSpeed = (0.45 + this.nextRand() * 0.55) * speedScale;
-    d.active = true;
-    d.x = x;
-    d.y = y;
-    d.z = z;
-    d.vx = Math.cos(angle) * horizSpeed;
-    d.vy = (0.6 + this.nextRand() * 0.65) * speedScale;
-    d.vz = Math.sin(angle) * horizSpeed;
-    d.groundY = groundY;
-    d.ageS = 0;
-    d.durationS = 0.38 + this.nextRand() * 0.2;
-    writeDebrisMatrix(this.pools, idx, d);
-  }
-
-  private spawnAoeDecal(x: number, groundY: number, z: number, radiusM: number): void {
-    const idx = this.allocSlot(this.pools.aoeDecals);
-    const decal = this.pools.aoeDecals[idx]!;
-    decal.active = true;
-    decal.x = x;
-    decal.y = groundY;
-    decal.z = z;
-    decal.radiusM = Math.max(0.5, radiusM);
-    decal.ageS = 0;
-    decal.durationS = 0.65;
-    writeAoeMatrices(this.pools, idx, decal);
   }
 
   spawnFromSimFiredEvent(
@@ -354,6 +336,7 @@ export class ProjectileVfxSystem {
     ev: SimProjectileImpactEventLike,
     heightLookup?: WorldHeightLookup,
     tileSizeM = this.tileSizeM,
+    present: (input: ProjectileImpactVfxInput) => ProjectileImpactVfxInput = input => input,
   ): void {
     const data: SimProjectileImpactPayloadLike =
       ev && typeof ev === 'object' && 'data' in ev && ev.data ? ev.data : (ev as SimProjectileImpactPayloadLike);
@@ -362,18 +345,26 @@ export class ProjectileVfxSystem {
     const atPt = axialToWorldVfxPoint(atQ, atR, 0, tileSizeM);
     atPt.y = (heightLookup ? heightLookup(atPt.x, atPt.z) : 0) + 0.35;
 
-    this.onProjectileImpact({
+    this.onProjectileImpact(present({
       weaponKind: resolveVfxWeaponKind(data),
       weaponType: data.weaponType,
       weaponId: data.weaponId,
       at: atPt,
+      groundY: atPt.y - 0.35,
       hit: data.hit,
       aoe: data.aoe ?? 0,
-    });
+    }));
   }
 
   update(dtSeconds: number): void {
     if (dtSeconds <= 0) return;
+    for (const beam of this.pools.lasers) {
+      if (!beam.active || !beam.source) continue;
+      const from = beam.source();
+      beam.fromX = from.x; beam.fromY = from.y; beam.fromZ = from.z ?? 0;
+    }
+    this.bursts.update(dtSeconds);
+    this.artilleryTrail.update(dtSeconds);
     stepAuxiliaryPools(this.pools, dtSeconds);
     this.stepProjectiles(dtSeconds);
   }
@@ -382,7 +373,12 @@ export class ProjectileVfxSystem {
     for (let i = 0; i < this.pools.projectiles.length; i++) {
       const p = this.pools.projectiles[i]!;
       if (!p.active) continue;
-      p.t += dt / p.durationS;
+      const previousT = p.t;
+      p.t = Math.min(1, p.t + dt / p.durationS);
+      p.x = p.fromX + (p.toX - p.fromX) * p.t;
+      p.z = p.fromZ + (p.toZ - p.fromZ) * p.t;
+      p.y = evalParabolicArcY(p.fromY, p.toY, p.arcHeight, p.t);
+      if (p.weaponKind === 'shell') this.traceShell(p, previousT);
       if (p.t >= 1) {
         p.t = 1;
         p.active = false;
@@ -396,10 +392,7 @@ export class ProjectileVfxSystem {
         }
         continue;
       }
-      p.x = p.fromX + (p.toX - p.fromX) * p.t;
-      p.z = p.fromZ + (p.toZ - p.fromZ) * p.t;
-      p.y = evalParabolicArcY(p.fromY, p.toY, p.arcHeight, p.t);
-
+      if (p.weaponKind === 'acid') this.shedAcid(p, dt);
       if (p.weaponKind === 'rocket') {
         p.smokeCooldownS -= dt;
         if (p.smokeCooldownS <= 0) {
@@ -410,6 +403,35 @@ export class ProjectileVfxSystem {
       writeProjectileMatrix(this.pools, i, p);
     }
   }
+
+  private shedAcid(p: ProjectileSlot, dt: number): void {
+    p.smokeCooldownS -= dt;
+    if (p.smokeCooldownS > 0) return;
+    p.smokeCooldownS = 0.07;
+    const reverse = new THREE.Vector3(p.fromX - p.toX,
+      p.fromY - p.toY - 4 * p.arcHeight * (1 - 2 * p.t), p.fromZ - p.toZ).normalize();
+    this.bursts.emit('combat.acidTrail', { at: new THREE.Vector3(p.x, p.y, p.z).addScaledVector(reverse, 0.18),
+      normal: reverse, groundY: Math.min(p.fromY, p.toY) - 0.35 });
+  }
+
+  private traceShell(p: ProjectileSlot, previousT: number): void {
+    const start = Math.max(previousT, p.t - 0.24 / p.durationS);
+    const steps = Math.max(1, Math.ceil((p.t - start) * p.durationS / 0.025));
+    const at = (t: number) => new THREE.Vector3(
+      p.fromX + (p.toX - p.fromX) * t,
+      evalParabolicArcY(p.fromY, p.toY, p.arcHeight, t),
+      p.fromZ + (p.toZ - p.fromZ) * t,
+    );
+    let previous = at(start);
+    for (let i = 1; i <= steps; i++) {
+      const current = at(start + (p.t - start) * i / steps);
+      this.artilleryTrail.add(previous, current);
+      previous = current;
+    }
+  }
+
+  getBurstCounts(): Record<string, number> { return this.bursts.counts(); }
+  getArtilleryTrailCount(): number { return this.artilleryTrail.count; }
 
   getActiveCounts(): ProjectileVfxActiveCounts {
     return countActivePools(this.pools);
@@ -429,10 +451,14 @@ export class ProjectileVfxSystem {
 
   clear(): void {
     clearProjectileVfxPools(this.pools);
+    this.bursts.clear();
+    this.artilleryTrail.clear();
   }
 
   dispose(): void {
     disposeProjectileVfxPools(this.pools);
+    this.bursts.dispose();
+    this.artilleryTrail.dispose();
     this.group.removeFromParent();
   }
 }

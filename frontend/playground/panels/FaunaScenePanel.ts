@@ -1,4 +1,5 @@
-import { $, esc } from '../dom';
+import './insect-controls.css';
+import { esc } from '../dom';
 import type { FaunaSceneStats } from '../content/FaunaSceneHost';
 import type { FaunaMode, FaunaSceneKind, PgState } from '../state';
 
@@ -12,8 +13,7 @@ export interface FaunaScenePanelHandlers {
   onAcidPreview(): void;
 }
 
-const SCENE_BUTTONS: ReadonlyArray<{ key: FaunaSceneKind | 'off'; label: string }> = [
-  { key: 'off', label: 'OFF' },
+const SCENE_BUTTONS: ReadonlyArray<{ key: FaunaSceneKind; label: string }> = [
   { key: 'blackAnt', label: 'ANT HIVE' },
   { key: 'blueBeetle', label: 'BEETLE NEST' },
   { key: 'greenSpitter', label: 'SPITTER HIVE' },
@@ -22,7 +22,7 @@ const SCENE_BUTTONS: ReadonlyArray<{ key: FaunaSceneKind | 'off'; label: string 
 
 /**
  * Faction-Plate Hive-Life Playground panel (`fauna-hives-spec.md` §4).
- * Provides scene fixtures, passive/aggressive mode switch, deterministic seed, pause/step/reset, and acid preview.
+ * Provides insect attack direction, legacy life/gallery modes, deterministic stepping, and acid preview.
  */
 export class FaunaScenePanel {
   private root!: HTMLElement;
@@ -34,13 +34,14 @@ export class FaunaScenePanel {
   ) {}
 
   build(): void {
+    const mount = document.querySelector<HTMLElement>('[data-side-pane="hive"]');
+    if (!mount) throw new Error('Missing sidebar pane [data-side-pane="hive"]. Call Sidebar.build() before FaunaScenePanel.build().');
     const el = document.createElement('section');
     el.id = 'fauna-panel';
     el.className = 'panel plate-sm fp-panel';
     el.setAttribute('data-testid', 'pg-fauna-panel');
     el.innerHTML = `
       <div class="fp-head">
-        <span class="fp-title">HIVE-LIFE FIXTURES</span>
         <span class="fp-badge" id="fp-mode-badge" data-fauna-badge>NEUTRAL</span>
       </div>
       <div class="fp-scenes" id="fp-scene-btns">
@@ -50,8 +51,14 @@ export class FaunaScenePanel {
         ).join('')}
       </div>
       <div class="fp-body" id="fp-body">
+        <fieldset class="fp-attack-direction" aria-label="Attack direction">
+          <legend>ATTACK DIRECTION</legend>
+          <label class="pg-btn fp-attack-choice"><input type="radio" name="fauna-attack" value="bugs" data-fauna-attack="bugs" /> Bugs attack</label>
+          <label class="pg-btn fp-attack-choice"><input type="radio" name="fauna-attack" value="robots" data-fauna-attack="robots" /> Robot attacks</label>
+        </fieldset>
         <div class="fp-controls">
           <button type="button" class="pg-btn" id="fp-mode-btn" data-fauna-mode="passive" title="Toggle Passive (Neutral) vs Aggressive raid mode">PASSIVE</button>
+          <button type="button" class="pg-btn" data-fauna-range="gallery" title="Stationary turrets and units, each with its own bug target">SHOOTING GALLERY</button>
           <label class="fp-seed-lbl">SEED
             <input type="number" class="fp-seed-input" id="fp-seed-input" data-fauna-seed value="${this.state.faunaSeed}" step="1" />
           </label>
@@ -64,7 +71,7 @@ export class FaunaScenePanel {
         </div>
         <div class="fp-stats" id="fp-stats" data-fauna-stats></div>
       </div>`;
-    $('#overlay').appendChild(el);
+    mount.appendChild(el);
     this.root = el;
     this.bindEvents();
     this.render();
@@ -83,6 +90,18 @@ export class FaunaScenePanel {
       const next: FaunaMode = this.state.faunaMode === 'passive' ? 'aggressive' : 'passive';
       this.on.onMode(next);
     };
+    this.root.querySelectorAll<HTMLButtonElement>('[data-fauna-range]').forEach((btn) => {
+      btn.onclick = () => {
+        const mode = btn.dataset.faunaRange;
+        if (mode === 'gallery' || mode === 'turrets' || mode === 'units' || mode === 'bugs') this.on.onMode(mode);
+      };
+    });
+
+    this.root.querySelectorAll<HTMLInputElement>('[data-fauna-attack]').forEach((input) => {
+      input.onchange = () => {
+        if (input.checked) this.on.onMode(input.value as 'bugs' | 'robots');
+      };
+    });
 
     const seedInput = this.root.querySelector<HTMLInputElement>('[data-fauna-seed]')!;
     seedInput.onchange = () => {
@@ -112,17 +131,25 @@ export class FaunaScenePanel {
     const badge = this.root.querySelector<HTMLElement>('#fp-mode-badge')!;
     const isAggro = this.state.faunaMode === 'aggressive';
     badge.textContent = this.state.faunaScene === null ? 'STANDBY' : stats.modeLabel;
-    badge.classList.toggle('aggro', isAggro && this.state.faunaScene !== null);
+    badge.classList.toggle('aggro', this.state.faunaMode !== 'passive' && this.state.faunaScene !== null);
 
     const modeBtn = this.root.querySelector<HTMLButtonElement>('[data-fauna-mode]')!;
     modeBtn.dataset.faunaMode = this.state.faunaMode;
-    modeBtn.textContent = isAggro ? 'MODE: AGGRESSIVE' : 'MODE: PASSIVE';
+    modeBtn.textContent = `MODE: ${stats.modeLabel === 'NEUTRAL' ? 'PASSIVE' : stats.modeLabel}`;
     modeBtn.classList.toggle('on', isAggro);
+    this.root.querySelectorAll<HTMLButtonElement>('[data-fauna-range]').forEach((btn) => {
+      btn.classList.toggle('on', btn.dataset.faunaRange === this.state.faunaMode);
+    });
 
     const seedInput = this.root.querySelector<HTMLInputElement>('[data-fauna-seed]')!;
     if (document.activeElement !== seedInput) {
       seedInput.value = String(this.state.faunaSeed);
     }
+
+    this.root.querySelectorAll<HTMLInputElement>('[data-fauna-attack]').forEach((input) => {
+      input.checked = input.value === this.state.faunaMode;
+      input.parentElement?.classList.toggle('on', input.checked);
+    });
 
     const pauseBtn = this.root.querySelector<HTMLButtonElement>('[data-fauna-pause]')!;
     pauseBtn.textContent = stats.paused ? 'PLAY' : 'PAUSE';
@@ -151,6 +178,10 @@ export class FaunaScenePanel {
         <span>WAVES <b>${stats.waveCount}</b></span>
         <span>MODE <b>${stats.modeLabel}</b></span>
       </div>
-      ${hiveRows}`;
+      ${hiveRows}
+      <div class="fp-animation-states" data-fauna-animation-states>${(stats.animations ?? []).map((animation) => {
+        const species = stats.bugs.find(bug => bug.bugId.endsWith(`:${animation.id}`))?.species ?? 'insect';
+        return `<div>#${animation.id} ${esc(species)} · <b>${esc(animation.state)}</b> ${Math.round(animation.phase * 100)}%${animation.retired ? ' · removed' : ''}</div>`;
+      }).join('')}</div>`;
   }
 }

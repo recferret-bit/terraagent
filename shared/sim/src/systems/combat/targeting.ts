@@ -1,10 +1,10 @@
-import { compileData, type CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf, type Columns } from '../../ecs/store';
 import { HEX_DIRS, hexDistance, inHex } from '../../grid/hex';
 import type { CompiledDataLike } from '../../kernel/config';
 import { setBlob, type PlanetState } from '../../kernel/state';
 import { canWeaponHitTarget } from './layers';
+import { lookupWeaponById, resolveKindWeaponRow } from './weaponRows';
 import { isTargetSpottedByColony, updateColonyVisionCache } from './vision';
 
 export const COMBAT_WEAPONS_BLOB = 'combatWeapons';
@@ -31,54 +31,6 @@ export interface AcquireTargetOptions extends HostileCheckOptions {
   stickyTargetRow?: number;
   stickyTargetId?: number;
   data?: CompiledDataLike;
-}
-
-const W07_WAVE_SET = new Set(['W00', 'W01', 'W02', 'W03', 'W04', 'W05', 'W06', 'W07']);
-let cachedW07Data: CompiledDataLike | null = null;
-
-function defaultW07Data(): CompiledDataLike {
-  if (!cachedW07Data) cachedW07Data = compileData(W07_WAVE_SET);
-  return cachedW07Data;
-}
-
-const WEAPON_ID_ALIASES: Readonly<Record<string, string>> = {
-  lightLaser: 'reconGun',
-  pulsedLaser: 'laserTower',
-  mandibleBite: 'antBite',
-  hornGore: 'beetleBite',
-  spitterGlob: 'spitterAcid',
-  artillery: 'artilleryShell',
-  demoArtillery: 'artilleryShell',
-  tank: 'tankRocket',
-  demoTank: 'tankRocket',
-};
-
-const KIND_TO_WEAPON_ID: Readonly<Record<number, string>> = {
-  [ENTITY_KIND.hq]: 'hqAutoTurret',
-  [ENTITY_KIND.recon]: 'reconGun',
-  [ENTITY_KIND.demoTank]: 'tankRocket',
-  [ENTITY_KIND.demoArtillery]: 'artilleryShell',
-  [ENTITY_KIND.autocannon]: 'autocannon',
-  [ENTITY_KIND.laserTower]: 'laserTower',
-  [ENTITY_KIND.blackAnt]: 'antBite',
-  [ENTITY_KIND.blueBeetle]: 'beetleBite',
-  [ENTITY_KIND.greenSpitter]: 'spitterAcid',
-};
-
-function lookupWeaponById(
-  data: CompiledDataLike | undefined,
-  rawId: string,
-): CompiledRow | undefined {
-  const canonicalId = WEAPON_ID_ALIASES[rawId] ?? rawId;
-  const fallback = defaultW07Data();
-  const primaryTable = data?.tables?.weapons as Readonly<Record<string, CompiledRow | undefined>> | undefined;
-  const fallbackTable = fallback.tables.weapons as Readonly<Record<string, CompiledRow | undefined>> | undefined;
-  return (
-    primaryTable?.[rawId] ??
-    primaryTable?.[canonicalId] ??
-    fallbackTable?.[rawId] ??
-    fallbackTable?.[canonicalId]
-  );
 }
 
 function readWeaponOverrides(state: PlanetState): Record<number, string> {
@@ -119,9 +71,7 @@ export function resolveAttackerWeaponRow(
     return lookupWeaponById(data, entityOverride);
   }
 
-  const weaponId = KIND_TO_WEAPON_ID[cols.kind[attackerRow]!];
-  if (!weaponId) return undefined;
-  return lookupWeaponById(data, weaponId);
+  return resolveKindWeaponRow(cols.kind[attackerRow]!, data);
 }
 
 interface FaunaRecordLike {

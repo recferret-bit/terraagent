@@ -215,7 +215,7 @@ describe('W04-07 dot cap and exploration filtering', () => {
     expect(dots.length).toBe(1500);
   });
 
-  it('skips entities on unexplored tiles unless own colony', () => {
+  it('skips entities outside current sight unless own colony', () => {
     const radius = 2;
     const count = hexCount(radius);
     const explored = new Uint8Array(count).fill(0);
@@ -244,6 +244,7 @@ describe('W04-07 dot cap and exploration filtering', () => {
       count: entities.length,
       colonies: [],
     };
+    clientView.blobs = { combatVision: { byColony: { 0: [centerIdx] } } };
     const view = makeView({ radius, tiles, clientView });
     const dots = collectEntityDots(view);
 

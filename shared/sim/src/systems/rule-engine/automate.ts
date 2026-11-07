@@ -10,14 +10,12 @@ import {
   type QueueEntry,
   type QueueTaskPayload,
 } from '../queue';
-import { evaluateColonyNeeds, type ColonyNeedsScore, type NeedKey } from './needs';
+import { evaluateColonyNeeds, type NeedKey } from './needs';
 import { selectDeterministicBuildSite, type BuildSiteSelection } from './site';
 import {
-  DEFAULT_PRIORITY_VALUE,
   readColonyPriorities,
   resolveColonyPriorities,
   weightColonyNeeds,
-  type ColonyPriorities,
   type PriorityKey,
 } from './weight';
 import {
@@ -53,83 +51,6 @@ export {
   type AutopilotStepOptions,
   type NeedAutomationSpec,
 };
-
-function buildEffectiveNeedsForAutopilot(
-  raw: ColonyNeedsScore,
-  priorities: ColonyPriorities,
-  stage: number,
-): ColonyNeedsScore {
-  if (
-    stage <= 2 &&
-    priorities.expansion > DEFAULT_PRIORITY_VALUE &&
-    priorities.expansion > priorities.power
-  ) {
-    const targetExpand = Math.max(
-      raw.expand,
-      6500,
-      raw.energy,
-      raw.storage,
-      raw.extraction,
-      raw.supply,
-      raw.defense,
-      raw.repair,
-    );
-    if (targetExpand !== raw.expand) {
-      const scores = { ...raw.scores, expand: targetExpand };
-      return {
-        ...raw,
-        expand: targetExpand,
-        scores,
-      };
-    }
-  }
-  if (
-    stage >= 3 &&
-    priorities.defense > DEFAULT_PRIORITY_VALUE &&
-    priorities.defense > priorities.power &&
-    priorities.defense >= priorities.economy
-  ) {
-    const targetDefense = Math.max(
-      raw.defense,
-      6800,
-      raw.energy,
-      raw.storage,
-      raw.extraction,
-      raw.supply,
-      raw.expand,
-      raw.repair,
-    );
-    if (targetDefense !== raw.defense) {
-      const scores = { ...raw.scores, defense: targetDefense };
-      return {
-        ...raw,
-        defense: targetDefense,
-        scores,
-      };
-    }
-  }
-  if ((stage === 2 || stage === 3) && priorities.power >= DEFAULT_PRIORITY_VALUE) {
-    const targetEnergy = Math.max(
-      raw.energy,
-      6800,
-      raw.storage + 100,
-      raw.extraction + 100,
-      raw.supply + 100,
-      raw.expand + 100,
-      raw.defense + 100,
-      raw.repair + 100,
-    );
-    if (targetEnergy !== raw.energy) {
-      const scores = { ...raw.scores, energy: targetEnergy };
-      return {
-        ...raw,
-        energy: targetEnergy,
-        scores,
-      };
-    }
-  }
-  return raw;
-}
 
 function formatDecisionReason(
   spec: NeedAutomationSpec,
@@ -175,8 +96,8 @@ export function evaluateAutopilotDecision(
     : readColonyPriorities(state, colonyIndex);
   const away = opts?.away ?? Boolean(state.colonies[colonyIndex]?.away);
   const raw = evaluateColonyNeeds(state, colonyIndex, opts);
-  const effectiveRaw = buildEffectiveNeedsForAutopilot(raw, priorities, stage);
-  const weighted = weightColonyNeeds(effectiveRaw, priorities, { ...opts, away });
+  // Preferences rank observed demand; they must never invent a standing build job.
+  const weighted = weightColonyNeeds(raw, priorities, { ...opts, away });
   const top = weighted.top;
   const actionable = top.weightedBp >= ACTIONABLE_NEED_THRESHOLD_BP;
   const spec = getNeedAutomationSpec(top.need);
@@ -222,12 +143,8 @@ export function evaluateAutopilotDecision(
   };
 }
 
-function findOpenAutoOrder(state: PlanetState, colonyIndex: number, target: string): QueueEntry | undefined {
+function findOpenMatchingOrder(state: PlanetState, colonyIndex: number, target: string): QueueEntry | undefined {
   return getColonyQueue(state, colonyIndex).find((e) => {
-    const rec = e as QueueEntry & { tag?: string; source?: string };
-    const isAuto =
-      e.precedence === 'ai' || e.precedence === 'auto' || rec.tag === 'auto' || rec.source === 'auto';
-    if (!isAuto) return false;
     if (e.task.kind === 'build') return e.task.building === target;
     if (e.task.kind === 'buildUnit') return e.task.unit === target;
     if (e.task.kind === 'terraform') return e.task.op === target;
@@ -244,7 +161,7 @@ function enqueueAutoOrder(
   data?: CompiledDataLike,
   ctx?: StepContext,
 ): { taskId: string; newlyQueued: boolean } {
-  const existing = findOpenAutoOrder(state, colonyIndex, decision.target);
+  const existing = findOpenMatchingOrder(state, colonyIndex, decision.target);
   if (existing) {
     return { taskId: existing.taskId, newlyQueued: false };
   }
@@ -392,6 +309,16 @@ export function applyAutopilotStep(
   const decision = evaluateAutopilotDecision(state, colonyIndex, merged);
   decision.tick = tick;
   const spec = getNeedAutomationSpec(decision.need);
+
+  if (decision.mode !== 'suggestion') {
+    const colony = ensureColonyRecord(state, colonyIndex, tick);
+    const active = colony.activeSuggestion as { suggestionId?: string } | undefined;
+    if (active?.suggestionId?.startsWith('sug_auto_')) {
+      delete colony.activeSuggestion;
+      delete colony.lastAutopilotSuggestionKey;
+      delete colony.lastAutopilotSuggestionEmittedToBus;
+    }
+  }
 
   if (decision.actionable && decision.mode === 'suggestion') {
     handleSuggestionDecision(state, colonyIndex, decision, tick, merged.emit);

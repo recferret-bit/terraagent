@@ -1,3 +1,4 @@
+import { Combatant } from './Combatant';
 import { rowOf } from '../../ecs/store';
 import { hexDistance, hexRound } from '../../grid/hex';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
@@ -194,6 +195,7 @@ export function fireProjectile(
   ctx?: StepContext,
 ): PendingProjectileImpact {
   const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
+  new Combatant(state, opts.attackerId).target(opts.targetId ?? null, tick);
   const { attackerOwner, from, to } = resolveProjectileEndpoints(state, opts);
   const weaponKind = inferWeaponKind(opts.weaponId, opts.weaponKind);
   const weaponId = opts.weaponId ?? weaponKind;
@@ -225,11 +227,7 @@ export function fireProjectile(
   };
 
   const nextBlobVal = { nextProjectileId: blob.nextProjectileId + 1, queue: [...blob.queue, entry] };
-  if (state.blobs[PROJECTILE_IMPACTS_BLOB]) {
-    state.blobs[PROJECTILE_IMPACTS_BLOB]!.value = nextBlobVal;
-  } else {
-    setBlob(state, PROJECTILE_IMPACTS_BLOB, nextBlobVal, tick);
-  }
+  setBlob(state, PROJECTILE_IMPACTS_BLOB, nextBlobVal, tick);
 
   emitCombatEvent(
     state,
@@ -331,6 +329,7 @@ function resolveSingleImpact(
     impact.attackerOwner,
     {
       attackerId: impact.attackerId,
+      firedTick: impact.firedTick,
       targetId: impact.targetId,
       weaponId: impact.weaponId,
       weaponType: toContractWeaponType(impact.weaponKind),
@@ -388,11 +387,7 @@ export function stepProjectileImpacts(
 
   due.sort((a, b) => a.id - b.id);
   const nextVal = { nextProjectileId: blob.nextProjectileId, queue: remaining };
-  if (state.blobs[PROJECTILE_IMPACTS_BLOB]) {
-    state.blobs[PROJECTILE_IMPACTS_BLOB]!.value = nextVal;
-  } else {
-    setBlob(state, PROJECTILE_IMPACTS_BLOB, nextVal, tick);
-  }
+  setBlob(state, PROJECTILE_IMPACTS_BLOB, nextVal, tick);
 
   const resolved: ProjectileImpactEvent[] = [];
   for (const impact of due) {

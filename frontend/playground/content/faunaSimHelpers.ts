@@ -1,3 +1,5 @@
+import { MotionTrack } from '@terra/render/motion/entityMotion';
+import { placeTickPose } from '@terra/render/motion/pose';
 import * as THREE from 'three';
 import {
   ArchetypeCatalog,
@@ -156,7 +158,7 @@ export interface FaunaSceneStats {
   tick: number;
   rngDraws: number;
   mode: FaunaMode;
-  modeLabel: 'NEUTRAL' | 'AGGRESSIVE';
+  modeLabel: 'GALLERY' | 'NEUTRAL' | 'AGGRESSIVE' | 'TURRETS' | 'UNITS' | 'BUGS' | 'ROBOTS';
   scene: FaunaSceneKind | null;
   biomeKey: string;
   seed: number;
@@ -167,6 +169,26 @@ export interface FaunaSceneStats {
   activeProjectiles: number;
   hives: FaunaHiveStat[];
   bugs: FaunaBugSnapshot[];
+  animations?: Array<{ id: number; state: string; phase: number; retired: boolean }>;
+}
+
+export function faunaModeLabel(mode: FaunaMode): FaunaSceneStats['modeLabel'] {
+  if (mode === 'gallery') return 'GALLERY';
+  if (mode === 'aggressive') return 'AGGRESSIVE';
+  if (mode === 'turrets') return 'TURRETS';
+  if (mode === 'units') return 'UNITS';
+  if (mode === 'bugs') return 'BUGS';
+  if (mode === 'robots') return 'ROBOTS';
+  return 'NEUTRAL';
+}
+
+/** Draw passive/aggressive fixtures with the same tick sampler as combat and March. */
+export function followBugMeshes(bugs: readonly BugEntity[], dt: number, renderTick: number, snap = false): void {
+  for (const b of bugs) {
+    const pose = b.track.at(renderTick);
+    if (pose) placeTickPose(b.mesh, pose, dt, snap);
+    b.mesh.position.y = b.y;
+  }
 }
 
 export interface FaunaRenderOptions {
@@ -194,6 +216,7 @@ export interface HiveEntity {
 }
 
 export interface BugEntity {
+  track: MotionTrack;
   bugId: string;
   index: number;
   species: FaunaVisualSpecies;

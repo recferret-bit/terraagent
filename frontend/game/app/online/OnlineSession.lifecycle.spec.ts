@@ -9,6 +9,7 @@ import type { SocketLike, WsTransportDeps } from '../../net/WsTransport';
 import type { FetchLike, StorageLike } from './bootOnline';
 import { activeHome } from './homeFixture';
 import { OnlineSession } from './OnlineSession';
+import { WorldStore, type WorkerLike } from '../../store/WorldStore';
 
 const PLAYER = 'pr_01ARZ3NDEKTSV4RRFFQ69G5FAV';
 const flush = async (rounds = 6) => { for (let i = 0; i < rounds; i++) await new Promise((r) => setTimeout(r, 0)); };
@@ -188,6 +189,28 @@ describe('OnlineSession on the in-process fallback host (FA-07)', () => {
 });
 
 describe('OnlineSession keys, net stats and dispose', () => {
+  it('shows replica incompatibility even on a healthy connection and removes its listener and UI on dispose', () => {
+    const transport = new IdleTransport();
+    const worker: WorkerLike = { onmessage: null, postMessage() {}, terminate() {} };
+    const store = new WorldStore(transport, () => worker);
+    const s = session('scenario', { transport, store });
+    const notice = q('version-mismatch')!;
+    expect(notice.hidden).toBe(true);
+    worker.onmessage!({ data: { t: 'status', status: 'versionMismatch', detail: 'server sim 3, client 2' } });
+    expect(notice.hidden).toBe(false);
+    expect(notice.textContent).toContain('Game updated. Reload to continue.');
+    const button = notice.querySelector('button')!;
+    expect(button.textContent).toBe('Reload');
+    worker.onmessage!({ data: { t: 'status', status: 'ready' } });
+    expect(notice.hidden).toBe(true);
+    worker.onmessage!({ data: { t: 'status', status: 'versionMismatch' } });
+    s.dispose();
+    expect(q('version-mismatch')).toBeNull();
+    expect(button.onclick).toBeNull();
+    worker.onmessage!({ data: { t: 'status', status: 'ready' } });
+    expect(notice.hidden).toBe(false); // The detached notice no longer subscribes to worker status.
+  });
+
   it('FA-11: Esc pauses on a planet without a pod; keys typed into a text field are ignored', async () => {
     const t = new IdleTransport();
     const s = session('scenario', { transport: t });

@@ -52,12 +52,7 @@ function readEvasiveBlob(state: PlanetState): CombatEvasiveBlob {
 }
 
 function writeEvasiveBlob(state: PlanetState, blob: CombatEvasiveBlob, tick: number): void {
-  const existing = state.blobs[COMBAT_EVASIVE_BLOB];
-  if (existing) {
-    existing.value = blob;
-  } else {
-    setBlob(state, COMBAT_EVASIVE_BLOB, blob, tick);
-  }
+  setBlob(state, COMBAT_EVASIVE_BLOB, blob, tick);
 }
 
 /**
@@ -74,7 +69,7 @@ export function getEvasiveHeadingIntervalS(data?: CompiledDataLike): number {
 }
 
 /**
- * Returns `true` when entities of `kind` have `evasive: true` (`UO-C-09`, Recon Drone).
+ * Returns `true` when entities of `kind` have `evasive: true` (opt-in balance override).
  */
 export function isUnitEvasive(kind: number, data?: CompiledDataLike): boolean {
   if (kind !== ENTITY_KIND.recon) return false;
@@ -83,7 +78,7 @@ export function isUnitEvasive(kind: number, data?: CompiledDataLike): boolean {
   if (reconRow && 'evasive' in reconRow) {
     return Boolean(reconRow.evasive);
   }
-  return true;
+  return false;
 }
 
 /**

@@ -195,8 +195,9 @@ describe('W07-31 · Colony-scoped provocation (aggressiveColonies isolated to of
     const hiveA = spawnHiveEntity(state, { species: 'blackAnt', q: 8, r: 0, initialResidents: 4 }, 0, data);
     const hiveB = spawnHiveEntity(state, { species: 'blueBeetle', q: -8, r: 0, initialResidents: 2 }, 0, data);
 
-    const col0Unit = spawnUnit(state, { kind: ENTITY_KIND.recon, owner: 0, q: 6, r: 0, hp: 160 });
-    const col1Unit = spawnUnit(state, { kind: ENTITY_KIND.recon, owner: 1, q: 9, r: 0, hp: 160 });
+    // Unarmed workers isolate fauna provocation from player-versus-player gunfire.
+    const col0Unit = spawnUnit(state, { kind: ENTITY_KIND.builder, owner: 0, q: 6, r: 0, hp: 160 });
+    const col1Unit = spawnUnit(state, { kind: ENTITY_KIND.builder, owner: 1, q: 9, r: 0, hp: 160 });
 
     // Standing within 5 tiles for > 3 ticks does not provoke passive hives
     host.step(6);

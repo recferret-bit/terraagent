@@ -10,8 +10,8 @@ import { ownColonyIndex } from '../shared/colony';
 import type { FeatureContext, GameView, RendererInstance } from '../../core/registry/types';
 import { forEachEntity } from '../../store/replica/viewCodec';
 import type { PlacementGhostState } from '../construction-menu/PlacementGhost';
+import { computeEntityWorldPos } from './ringPosition';
 import {
-  is2x2RingBuildingKind,
   normalizeRingEntityKind,
   rangeRingsData,
   resolveEntityRingSpec,
@@ -123,23 +123,6 @@ function extractRingEntities(view: GameView | undefined): NormalizedRingEntity[]
   return out;
 }
 
-function computeEntityWorldPos(
-  ctx: FeatureContext,
-  kind: number,
-  x: number,
-  y: number,
-): { worldX: number; groundY: number; worldZ: number } {
-  const ox = is2x2RingBuildingKind(kind) ? x + 0.5 : x;
-  const oy = is2x2RingBuildingKind(kind) ? y + 0.5 : y;
-  const s3 = ctx.services.scene3d;
-  if (s3) {
-    const p = s3.tileToWorld(ox, oy);
-    return { worldX: p.x, groundY: p.y, worldZ: p.z };
-  }
-  const [wx, wz] = tileXZ(ox, oy);
-  return { worldX: wx, groundY: 0, worldZ: wz };
-}
-
 function computeGhostWorldPos(
   ctx: FeatureContext,
   ghost: PlacementGhostState,
@@ -169,7 +152,7 @@ function pushOwnEntityRings(
   data: CompiledDataLike,
 ): void {
   const spec = resolveEntityRingSpec(ent.kindOrName, data, ent.weaponId);
-  const { worldX, groundY, worldZ } = computeEntityWorldPos(ctx, spec.kind, ent.x, ent.y);
+  const { worldX, groundY, worldZ } = computeEntityWorldPos(ctx, ent.id, spec.kind, ent.x, ent.y);
   if (spec.weaponRangeTiles > 0) {
     out.push({
       entityId: ent.id,
@@ -435,6 +418,7 @@ export class RangeRingsController implements RangeRingsService, RendererInstance
       if (spec.weaponRangeTiles > 0) {
         const { worldX, groundY, worldZ } = computeEntityWorldPos(
           this.ctx,
+          hoveredEnemy.id,
           spec.kind,
           hoveredEnemy.x,
           hoveredEnemy.y,

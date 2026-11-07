@@ -101,8 +101,6 @@ export function scoreEnergyNeed(
   const supply = overrides?.supplyPerS ?? overrides?.supply ?? Number(stored?.supply ?? est?.supply ?? 0);
   const rawDemand = overrides?.rawDemandPerS ?? overrides?.rawDemand ?? overrides?.demand ?? Number(stored?.rawDemand ?? stored?.demand ?? est?.rawDemand ?? 0);
   const solarNetPerS = overrides?.solarNetPerS ?? Number(stored?.solarNetPerS ?? est?.solarNetPerS ?? 0);
-  const solarDrain = Number(stored?.solarInternalDrainPerS ?? est?.solarInternalDrainPerS ?? 0);
-  const founderCore = overrides?.founderCorePerS ?? Number(stored?.founderCorePerS ?? est?.founderCorePerS ?? 0);
   const netPowerPerS = overrides?.netPowerPerS ?? overrides?.net ?? Number(stored?.net ?? supply - rawDemand);
   const deficitTicks = overrides?.deficitTicks ?? readDeficitTicks(state, colonyIndex, stored);
   const brownout = overrides?.brownout ?? (Boolean(stored?.brownout) || deficitTicks > 0 || netPowerPerS < 0 || rawDemand > supply + 1e-6);
@@ -113,9 +111,11 @@ export function scoreEnergyNeed(
   } else if (typeof stored?.nightNetPerS === 'number') {
     nightNetPerS = stored.nightNetPerS;
   } else {
-    const nonSolarSupply = solarNetPerS !== 0
-      ? supply - Math.max(0, solarNetPerS) - solarDrain
-      : founderCore > 0 && founderCore < supply ? founderCore : supply;
+    // Storage discharge cannot sustain future demand. Keep wind and thermal output;
+    // solar switches off at night, including its internal drain.
+    const generation = overrides?.supplyPerS ?? overrides?.supply ?? stored?.generationPerS
+      ?? supply - Number(stored?.capacitorDischargePerS ?? 0) - Number(stored?.hqCellDischargePerS ?? 0);
+    const nonSolarSupply = generation - Math.max(0, solarNetPerS);
     nightNetPerS = nonSolarSupply - rawDemand;
   }
 

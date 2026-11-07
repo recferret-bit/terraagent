@@ -14,6 +14,8 @@ export { BiomeMaterialRegistry, ShaderPluginRegistry };
 export type { BiomeWeatheringPreset, ShaderModifierPlugin } from './unified/registries';
 
 export interface UnifiedColonyMaterialOptions {
+  /** Additional world-space receiver offset for large concave shells; cast geometry stays exact. */
+  shadowNormalBias?: number;
   biome?: string;
   triplanarScale?: number;
   rimStrength?: number;
@@ -62,6 +64,7 @@ export function createUnifiedColonyMaterial(
   const baseWeathering = biome.weatheringIntensity;
 
   const uniforms: UnifiedColonyMaterialUniforms = {
+    uShadowNormalBias: { value: options.shadowNormalBias ?? 0 },
     uTime: { value: 0 },
     uWalkWeight: { value: 1.0 },
     uWorkWeight: { value: 0.0 },
@@ -100,9 +103,11 @@ export function createUnifiedColonyMaterial(
   material.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, getColonyVisionUniforms(), uniforms);
     shader.vertexShader = injectAll(shader.vertexShader, [
-      ['#include <common>', VERT_COMMON],
+      ['#include <common>', VERT_COMMON + '\nuniform float uShadowNormalBias;\n' + joinPlugins((p) => p.vertexDeclarations)],
       ['#include <begin_vertex>', vertBeginVertex(vertPluginChunk)],
+      ['#include <shadowmap_vertex>', THREE.ShaderChunk.shadowmap_vertex.replace(/(\w+LightShadows\[ i \]\.shadowNormalBias)/g, '($1 + uShadowNormalBias)')],
     ], 'unified colony vertex');
+    shader.vertexShader = shader.vertexShader.replace('#include <beginnormal_vertex>', '#include <beginnormal_vertex>\n' + joinPlugins((p) => p.vertexNormalChunk));
     shader.fragmentShader = injectAll(shader.fragmentShader, [
       ['#include <common>', `${FRAG_COMMON}\n${joinPlugins((p) => p.fragmentDeclarations)}`],
       ['#include <color_fragment>', fragColor(joinPlugins((p) => p.fragmentColorChunk))],
@@ -113,13 +118,16 @@ export function createUnifiedColonyMaterial(
     ], 'unified colony fragment');
   };
 
+  material.customProgramCacheKey = () => `unified:${activePlugins.map(p => p.name).join(',')}`;
+
   const depthMaterial = new THREE.MeshDepthMaterial({
     depthPacking: THREE.RGBADepthPacking,
   });
+  depthMaterial.customProgramCacheKey = () => `unified-depth:${activePlugins.map(p => p.name).join(',')}`;
   depthMaterial.onBeforeCompile = (shader) => {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = injectAll(shader.vertexShader, [
-      ['#include <common>', VERT_COMMON],
+      ['#include <common>', VERT_COMMON + joinPlugins((p) => p.vertexDeclarations)],
       ['#include <begin_vertex>', vertBeginVertex(vertPluginChunk)],
     ], 'unified colony depth vertex');
     if (hasScaffold) {

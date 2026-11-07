@@ -3,6 +3,9 @@ name: procedural-bug-3d
 description: Create or modify TerraAgent insect fauna meshes with segmented bodies, chitin armor, mandibles, acid sacs and six-legged silhouettes. Use with the existing kitbash and model validator skills; not for mechanical robots or aquatic ambient fauna.
 ---
 
+For state-driven insect actions and hive-life combat, use [procedural-insect-animation](../procedural-insect-animation/SKILL.md) alongside this skill. It covers shared attack phases, species acting, animated release sockets, hit/death lifetimes and liquid contact effects.
+
+
 # Living insect models
 
 Read the [fauna contract](../../../docs/game/fauna-hives-spec.md), [organic policy](../procedural-kitbash-3d/references/organic-fauna.md), animation, shader and validator skills. The organic policy takes precedence over mechanical kitbash appearance rules for fauna.

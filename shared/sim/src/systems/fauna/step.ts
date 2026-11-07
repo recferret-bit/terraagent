@@ -1,3 +1,6 @@
+import { combatApproachBand, footprintAttackRange } from '../combat/approachBand';
+import { InsectActionBook } from './insectActions';
+import { Combatant } from '../combat/Combatant';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import { hexDistance, hexIndex, inHex } from '../../grid/hex';
@@ -9,8 +12,14 @@ import type { PlanetState } from '../../kernel/state';
 import { getUnitCommand } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
 import { applyDamage } from '../combat/damage';
+import { firingRangeUnitRowInRange } from '../combat/firingRange';
+import {
+  firingRangeBugPolicy,
+  orderFiringRangeBug,
+  releaseFiringRangeBug,
+} from '../combat/firingRangeCombat';
 import { fireLaserOrMelee } from '../combat/lasers';
-import { fireProjectile, stepProjectileImpacts } from '../combat/projectiles';
+import { fireProjectile } from '../combat/projectiles';
 import { occupiedGroundTiles } from '../construction/occupancy';
 import { issueUnitCommand } from '../units/registry';
 import { detectAndApplyDamageProvocation } from './provocation';
@@ -107,8 +116,6 @@ function findClosestProvokedColonyTarget(
   const cols = state.entities.cols;
   const bx = cols.x[bugRow]!;
   const by = cols.y[bugRow]!;
-  const bq = cols.q[bugRow]!;
-  const br = cols.r[bugRow]!;
   let bestRow = -1;
   let bestDist = Infinity;
   let bestId = Infinity;
@@ -122,10 +129,8 @@ function findClosestProvokedColonyTarget(
     if (st === ENTITY_STATE.inert || st === ENTITY_STATE.descending) continue;
 
     const contDist = hexDistance(bx, by, cols.x[r]!, cols.y[r]!);
-    const tileDist = hexDistance(bq, br, cols.q[r]!, cols.r[r]!);
-    const d = Math.min(contDist, tileDist);
-    const fpPad = Math.floor(Math.max(1, cols.footprintW[r] || 1) / 2);
-    if (d > maxDist + fpPad + 1e-4) continue;
+    const d = contDist;
+    if (d > footprintAttackRange(maxDist, cols.footprintW[r]) + 1e-4) continue;
     const id = cols.id[r]!;
     if (contDist < bestDist - 1e-5 || (Math.abs(contDist - bestDist) <= 1e-5 && id < bestId)) {
       bestDist = contDist;
@@ -213,11 +218,12 @@ function stepAggressiveBugMovement(
     );
     const tq = cols.q[targetRow]!;
     const tr = cols.r[targetRow]!;
-    const tileDist = hexDistance(cols.q[bugRow]!, cols.r[bugRow]!, tq, tr);
-    const dist = Math.min(contDist, tileDist);
-    const fpPad = Math.floor(Math.max(1, cols.footprintW[targetRow] || 1) / 2);
-    if (dist > cfg.range + fpPad + 1e-4) {
-      const bandMax = (cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1) + fpPad;
+    const dist = contDist;
+    const attackRange = footprintAttackRange(cfg.range, cols.footprintW[targetRow]);
+    if (dist > attackRange + 1e-4) {
+      const bandMax = combatApproachBand(attackRange, 0,
+        hexDistance(cols.q[bugRow], cols.r[bugRow], tq, tr),
+        hexDistance(cols.x[targetRow], cols.y[targetRow], tq, tr)).maxDist;
       const curCmd = getUnitCommand(state, bug.entityId);
       const driftAllowance = dist > 3 ? 2 : 1;
       if (
@@ -278,7 +284,8 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
   }
 
   flushPendingFaunaEvents(state, ctx);
-  detectAndApplyDamageProvocation(state, ctx.tick, ctx);
+  const bugPolicy = firingRangeBugPolicy(state);
+  if (bugPolicy === null) detectAndApplyDamageProvocation(state, ctx.tick, ctx);
   fauna = getFaunaHivesState(state);
   syncFaunaLiveness(state, fauna, ctx.tick);
   saveFaunaHivesState(state, fauna, ctx.tick);
@@ -305,7 +312,13 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
     }
   }
 
-  fauna = getFaunaHivesState(state);
+  stepFaunaMovement(state, ctx);
+}
+
+/** Movement decisions shared by authority and sparse client reconstruction; no spawn, economy or damage. */
+export function stepFaunaMovement(state: PlanetState, ctx: StepContext): void {
+  const bugPolicy = firingRangeBugPolicy(state);
+  const fauna = getFaunaHivesState(state);
   const occupied = occupiedGroundTiles(state, ctx.data);
   const bugIds = Object.keys(fauna.bugsById)
     .map(Number)
@@ -315,7 +328,12 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
     const bug = fauna.bugsById[bugId];
     if (!bug) continue;
     const hive = fauna.hivesById[bug.homeHiveId];
-    if (bug.mode === 'aggressive' && bug.aggressiveColonies.length > 0) {
+    if (bugPolicy === 'attack') {
+      const bugRow = rowOf(state.entities, bug.entityId);
+      if (bugRow >= 0) orderFiringRangeBug(state, bugRow, ctx, resolveSpeciesConfig(bug.species, ctx.data).range);
+    } else if (bugPolicy === 'hold') {
+      releaseFiringRangeBug(state, bug.entityId, ctx);
+    } else if (bug.mode === 'aggressive' && bug.aggressiveColonies.length > 0) {
       stepAggressiveBugMovement(state, bug, hive, ctx);
     } else {
       stepPassiveBug(state, bug, hive, occupied, ctx);
@@ -325,40 +343,41 @@ export function stepFauna(state: PlanetState, ctx: StepContext): void {
   saveFaunaHivesState(state, fauna, ctx.tick);
 }
 
-/**
- * Combat slot (10): resolves damage provocation from player attacks, fires melee bites (`antBite` /
- * `beetleBite`) or ranged acid (`spitterAcid`) for provoked bugs in range, and steps due projectile impacts.
- */
+/** BattleOrchestrator calls this after due arrivals: provoked bug bites and acid attacks. */
 export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
   flushPendingFaunaEvents(state, ctx);
-  detectAndApplyDamageProvocation(state, ctx.tick, ctx);
+  const bugPolicy = firingRangeBugPolicy(state);
+  if (bugPolicy === null) detectAndApplyDamageProvocation(state, ctx.tick, ctx);
   const fauna = getFaunaHivesState(state);
   syncFaunaLiveness(state, fauna, ctx.tick);
   saveFaunaHivesState(state, fauna, ctx.tick);
 
   const cols = state.entities.cols;
+  const actions = new InsectActionBook(state);
   const bugIds = Object.keys(fauna.bugsById)
     .map(Number)
     .sort((a, b) => a - b);
 
   for (const bugId of bugIds) {
     const bug = fauna.bugsById[bugId];
-    if (!bug || bug.mode !== 'aggressive' || bug.aggressiveColonies.length === 0) continue;
+    if (!bug) continue;
+    const combatant = new Combatant(state, bug.entityId);
     const bugRow = rowOf(state.entities, bug.entityId);
     if (bugRow < 0 || cols.hp[bugRow]! <= 0) continue;
 
     const cfg = resolveSpeciesConfig(bug.species, ctx.data);
-    if (ctx.tick - bug.lastAttackTick < cfg.attackIntervalTicks) continue;
 
-    const targetRow = findClosestProvokedColonyTarget(
-      state,
-      bugRow,
-      bug.aggressiveColonies,
-      cfg.range,
-    );
-    if (targetRow < 0) continue;
-
-    const targetId = cols.id[targetRow]!;
+    const canAttack = bugPolicy === 'attack' || (bugPolicy !== 'hold' && bug.mode === 'aggressive' && bug.aggressiveColonies.length > 0);
+    const targetRow = !canAttack ? -1 : bugPolicy === 'attack'
+      ? firingRangeUnitRowInRange(state, bugRow, cfg.range)
+      : findClosestProvokedColonyTarget(state, bugRow, bug.aggressiveColonies, cfg.range);
+    const targetId = targetRow < 0 ? null : cols.id[targetRow]!;
+    combatant.target(targetId, ctx.tick);
+    const release = actions.advance(bug.entityId, {
+      tick: ctx.tick, species: bug.species, intervalTicks: cfg.attackIntervalTicks,
+      lastAttackTick: bug.lastAttackTick, moving: cols.state[bugRow] === ENTITY_STATE.moving, targetId,
+    });
+    if (!release || targetId === null || targetRow < 0) continue;
     bug.lastAttackTick = ctx.tick;
     faceTowards(state, bugRow, cols.q[targetRow]!, cols.r[targetRow]!, ctx.tick);
 
@@ -379,7 +398,7 @@ export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
         ctx,
       );
     } else {
-      const fpPad = Math.floor(Math.max(1, cols.footprintW[targetRow] || 1) / 2);
+      const attackRange = footprintAttackRange(cfg.range, cols.footprintW[targetRow]);
       fireLaserOrMelee(
         state,
         {
@@ -387,7 +406,7 @@ export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
           targetId,
           weaponId: cfg.weaponId,
           damage: cfg.damage,
-          range: cfg.range + fpPad,
+          range: attackRange,
           tick: ctx.tick,
           applyDmg: (s, tId, amt, aId, aOwner, c) => {
             applyDamage(s, tId, amt, {
@@ -404,8 +423,8 @@ export function stepFaunaCombat(state: PlanetState, ctx: StepContext): void {
     }
   }
 
+  actions.flush(ctx.tick);
   saveFaunaHivesState(state, fauna, ctx.tick);
-  stepProjectileImpacts(state, ctx.tick, ctx);
   const afterCombat = getFaunaHivesState(state);
   syncFaunaLiveness(state, afterCombat, ctx.tick);
   saveFaunaHivesState(state, afterCombat, ctx.tick);

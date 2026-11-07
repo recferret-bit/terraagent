@@ -3,6 +3,9 @@ name: procedural-hive-3d
 description: Create TerraAgent species-specific insect hive models and passive hive-life playground scenes, using existing kitbash rendering and shared simulation fixtures. Use for ant mounds, armored beetle nests and acid-spitter hives; not for a resource economy or independent fauna AI.
 ---
 
+For state-driven insect actions and hive-life combat, use [procedural-insect-animation](../procedural-insect-animation/SKILL.md) alongside this skill. It covers shared attack phases, species acting, animated release sockets, hit/death lifetimes and liquid contact effects.
+
+
 # Hives that look inhabited
 
 Read the [fauna contract](../../../docs/game/fauna-hives-spec.md), [organic policy](../procedural-kitbash-3d/references/organic-fauna.md), bug, shader, viewport and validator skills. Hives use organic rules even though gameplay treats them as buildings.

@@ -188,9 +188,13 @@ export const vertBeginVertex = (pluginChunk: string) => /* glsl */ `#include <be
         ${ORGANIC_MOTION}
         ${VERT_GAIT_ANIM}
         ${pluginChunk}
-        vTaWorldPos = (modelMatrix * vec4(transformed, 1.0)).xyz;
+        vec4 taWorldPosition = vec4(transformed, 1.0);
+        #ifdef USE_INSTANCING
+          taWorldPosition = instanceMatrix * taWorldPosition;
+        #endif
+        vTaWorldPos = (modelMatrix * taWorldPosition).xyz;
         // MeshDepthMaterial (shadow pass) does not declare Three's objectNormal. Match beginnormal_vertex.
-        vec3 taObjectNormal = normal;
+        vec3 taObjectNormal = vObjectNormal;
         #ifdef USE_INSTANCING
           taObjectNormal = mat3(instanceMatrix) * taObjectNormal;
         #endif

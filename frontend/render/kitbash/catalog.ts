@@ -1,3 +1,9 @@
+import { attachInsectAnimator, getInsectAnimator } from '../animation/insects/InsectAnimationController';
+import { INSECT_SPECIES, stampInsectRig } from '../animation/insects/rig';
+import { INSECT_ANIMATION } from '../animation/insects/shader';
+import { attachWeaponRig, getWeaponRig } from '../combat/WeaponRig';
+import { WeaponRigRegistry, stampWeaponRig } from '../combat/weaponRigs';
+import { WEAPON_RIG } from '../combat/weaponShader';
 import * as THREE from 'three';
 import { SELECTION_PULSE } from '../visuals/unified/selectionPulse';
 import '../visuals/biomes';
@@ -171,10 +177,14 @@ export interface ArchetypeMesh extends THREE.Mesh {
 
 /** Builds a ready-to-render mesh with the Unifier material for a biome (PlanetKind) and optional deposit stage. */
 export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: DepositVisualStage): ArchetypeMesh {
-  const made = createUnifiedColonyMaterial({ biome: biomeKey, plugins: [BUILD_SCAFFOLD, SELECTION_PULSE] });
+  const rig = WeaponRigRegistry.get(id);
+  const insect = INSECT_SPECIES[id];
+  const made = createUnifiedColonyMaterial({ biome: biomeKey, shadowNormalBias: id.startsWith('fauna.hive.') ? 0.065 : 0, plugins: [BUILD_SCAFFOLD, SELECTION_PULSE, ...(rig ? [WEAPON_RIG] : []), ...(insect ? [INSECT_ANIMATION] : [])] });
   const { material, depthMaterial } = made;
   const uniforms = made.uniforms as ArchetypeUniforms; // the scaffold plugin adds uBuild*
   const geometry = ArchetypeCatalog.getGeometry(id, stage);
+  if (rig) stampWeaponRig(geometry, rig);
+  if (insect) stampInsectRig(geometry);
   if (!geometry.boundingBox) geometry.computeBoundingBox();
   // Scaffold cut heights are fractions of the model's own height (RN-14).
   uniforms.uBuildHeight.value = Math.max(0.1, geometry.boundingBox!.max.y);
@@ -184,6 +194,8 @@ export function createArchetypeMesh(id: string, biomeKey = 'dune', stage?: Depos
   mesh.receiveShadow = true;
   mesh.name = id;
   mesh.userData = { archetypeId: id, uniforms };
+  if (rig) attachWeaponRig(mesh, rig);
+  if (insect) attachInsectAnimator(mesh);
   attachEntityProjectorRig(mesh, id);
   return mesh;
 }
@@ -201,6 +213,12 @@ export function tickArchetypeMesh(mesh: THREE.Object3D, time: number, walkWeight
   }
   if (walkWeight !== undefined && u?.uWalkWeight) u.uWalkWeight.value = walkWeight;
   if (workWeight !== undefined && u?.uWorkWeight) u.uWorkWeight.value = workWeight;
+  getWeaponRig(mesh)?.update(0);
+  const insect = getInsectAnimator(mesh);
+  if (insect) {
+    if (walkWeight !== undefined) insect.setMoving(walkWeight > 0.05);
+    insect.update(0);
+  }
   const stage = typeof (mesh.userData as any)?.buildStage === 'number' ? (mesh.userData as any).buildStage : 1;
   const nightFactor = (getColonyVisionUniforms().uNightFactor.value as number) ?? 0;
   updateEntityProjectorRig(mesh, (0.22 + 0.78 * nightFactor) * getDayNightParams().projectorIntensity, stage);

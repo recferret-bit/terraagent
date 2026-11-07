@@ -1,3 +1,5 @@
+import { recordStanceChanges } from './stanceChanges';
+import { combatApproachBand } from './approachBand';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { setField, type Columns } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
@@ -14,6 +16,7 @@ import { withoutUnitView } from '../harvest/unit';
 import { issueUnitCommand } from '../units/registry';
 import { clearEvasiveState, getEvasiveState, isUnitEvasive, stepEvasiveUnit } from './evasive';
 import { canWeaponHitTarget } from './layers';
+import { isTargetSpottedByColony } from './vision';
 import type { CombatStance, CombatStancesBlob, UnitStanceRecord } from './stances';
 import { COMBAT_STANCES_BLOB } from './stances';
 import {
@@ -21,7 +24,7 @@ import {
   isHostileTargetForAttacker,
   pickMinRangeBackoffNeighbor,
 } from './targeting';
-import { fireWeaponAtTarget, weaponCooldownTicks } from './turrets';
+import { consumeWeaponShot, fireWeaponAtTarget } from './weaponFire';
 
 export function readStancesBlob(state: PlanetState): Record<number, UnitStanceRecord> {
   const raw = state.blobs[COMBAT_STANCES_BLOB]?.value as Partial<CombatStancesBlob> | undefined;
@@ -38,32 +41,6 @@ export function readStancesBlob(state: PlanetState): Record<number, UnitStanceRe
   return out;
 }
 
-function stancesChanged(
-  prev: Record<number, UnitStanceRecord> | undefined,
-  next: Record<number, UnitStanceRecord>,
-): boolean {
-  if (!prev) return true;
-  const prevKeys = Object.keys(prev);
-  const nextKeys = Object.keys(next);
-  if (prevKeys.length !== nextKeys.length) return true;
-  for (const k of nextKeys) {
-    const a = prev[Number(k)];
-    const b = next[Number(k)];
-    if (!a || !b) return true;
-    if (
-      a.stance !== b.stance ||
-      a.anchorQ !== b.anchorQ ||
-      a.anchorR !== b.anchorR ||
-      (a.explicitTargetId ?? null) !== (b.explicitTargetId ?? null) ||
-      (a.attackMoveGoal?.q ?? null) !== (b.attackMoveGoal?.q ?? null) ||
-      (a.attackMoveGoal?.r ?? null) !== (b.attackMoveGoal?.r ?? null)
-    ) {
-      return true;
-    }
-  }
-  return false;
-}
-
 export function writeStancesBlob(
   state: PlanetState,
   byEntityId: Record<number, UnitStanceRecord>,
@@ -71,7 +48,8 @@ export function writeStancesBlob(
 ): void {
   const existing = state.blobs[COMBAT_STANCES_BLOB];
   const prevMap = (existing?.value as Partial<CombatStancesBlob> | undefined)?.byEntityId;
-  if (existing && !stancesChanged(prevMap, byEntityId)) {
+  const changed = recordStanceChanges(state, prevMap, byEntityId, tick);
+  if (existing && !changed) {
     existing.value = { byEntityId };
     return;
   }
@@ -239,8 +217,9 @@ export function tryFireUnitWeapon(
   rec: UnitStanceRecord,
   ctx: StepContext,
 ): boolean {
-  const cooldown = weaponCooldownTicks(weaponRow);
-  if (rec.lastFiredTick !== undefined && ctx.tick - rec.lastFiredTick < cooldown) {
+  const owner = state.entities.cols.owner[attackerRow];
+  if (owner >= 0 && !isTargetSpottedByColony(state, owner, targetRow, ctx.data)) return false;
+  if (!consumeWeaponShot(rec, weaponRow, ctx.tick)) {
     return false;
   }
   const targetId = state.entities.cols.id[targetRow]!;
@@ -306,15 +285,11 @@ export function engageTargetInRangeOrApproach(
 
   clearEvasiveState(state, entityId, ctx.tick);
   const tileDist = hexDistance(cols.q[row]!, cols.r[row]!, cols.q[targetRow]!, cols.r[targetRow]!);
-  const minBand = Math.ceil(minRange);
-  const maxBand =
-    tileDist <= Math.floor(maxRange)
-      ? Math.max(minBand, Math.floor(maxRange) - 1)
-      : Math.max(minBand, Math.floor(maxRange));
+  const band = combatApproachBand(maxRange, minRange, tileDist, hexDistance(tx, ty, cols.q[targetRow], cols.r[targetRow]));
   orderCombatUnitMove(
     state,
     row,
-    { q: cols.q[targetRow]!, r: cols.r[targetRow]!, minDist: minBand, maxDist: maxBand },
+    { q: cols.q[targetRow]!, r: cols.r[targetRow]!, ...band },
     ctx,
   );
 }
@@ -392,6 +367,7 @@ export function findClosestHostileInAnchorLeash(
     if (r === row) continue;
     if (!isHostileTargetForAttacker(state, row, r, { includePassiveFauna: false })) continue;
     if (!canWeaponHitTarget(state, weaponRow, r, ctx.data)) continue;
+    if (cols.owner[row] >= 0 && !isTargetSpottedByColony(state, cols.owner[row], r, ctx.data)) continue;
     const [tx, ty] = getUnitContinuousCoords(cols, r);
     const dAnchor = hexDistance(rec.anchorQ, rec.anchorR, tx, ty);
     if (dAnchor > leashRadius + 1e-5) continue;
@@ -440,7 +416,7 @@ export function stepAttackMoveGoal(
     weaponRow,
     minRange: 0,
     maxRange: Math.max(weaponRange, leashRadius),
-    requireSpotting: false,
+    requireSpotting: true,
     includePassiveFauna: false,
     stickyTargetId: rec.targetId ?? undefined,
     data: ctx.data,

@@ -1,3 +1,5 @@
+import { InsectSwarmRenderer } from '@terra/render/animation/insects/InsectSwarmRenderer';
+import { MotionTrack } from '@terra/render/motion/entityMotion';
 import * as THREE from 'three';
 import {
   DEFAULT_FAUNA_ARCHETYPES,
@@ -10,6 +12,7 @@ import {
 } from '@terra/render/kitbash';
 import { ProjectileVfxSystem } from '@terra/render/visuals/projectiles';
 import type { FaunaMode, FaunaSceneKind } from '../state';
+import { FiringRangeScene, isFiringRangeMode } from './faunaFiringRange';
 import {
   buildSafeArchetypeMesh,
   COSMETIC_GESTURES,
@@ -17,6 +20,8 @@ import {
   deriveCosmeticGesture,
   DT_TICK_S,
   FAUNA_TICK_MS,
+  faunaModeLabel,
+  followBugMeshes,
   MAX_EPISODE_WAVES,
   SPECIES_TUNING,
   stepAggressiveBugState,
@@ -51,6 +56,7 @@ export {
  */
 export class FaunaSceneHost {
   readonly group = new THREE.Group();
+  private readonly swarms = new InsectSwarmRenderer(this.group);
   readonly projectiles: ProjectileVfxSystem;
   private sceneKind: FaunaSceneKind | null = null;
   private mode: FaunaMode = 'passive';
@@ -60,6 +66,8 @@ export class FaunaSceneHost {
   private tick = 0;
   private waveCount = 0;
   private accumMs = 0;
+  private caughtUp = true;
+  private visualTime = 0;
   private rng: SeededRng = createSeededRng(42);
   private hives: HiveEntity[] = [];
   private bugs: BugEntity[] = [];
@@ -72,7 +80,10 @@ export class FaunaSceneHost {
     this.group.visible = false;
     parent?.add(this.group);
     this.projectiles = new ProjectileVfxSystem(this.group);
+    this.firing = new FiringRangeScene(this.group, this.projectiles);
   }
+
+  private firing: FiringRangeScene;
 
   isPaused(): boolean {
     return this.paused;
@@ -97,6 +108,7 @@ export class FaunaSceneHost {
     for (const h of this.hives) (h.mesh.material as THREE.MeshStandardMaterial).wireframe = wire;
     for (const b of this.bugs) (b.mesh.material as THREE.MeshStandardMaterial).wireframe = wire;
     for (const d of this.dummyMeshes) (d.material as THREE.MeshStandardMaterial).wireframe = wire;
+    this.firing.applyWire(wire);
   }
 
   setScene(
@@ -113,7 +125,12 @@ export class FaunaSceneHost {
 
   setMode(mode: FaunaMode): void {
     if (this.mode === mode) return;
+    const wasRange = isFiringRangeMode(this.mode);
     this.mode = mode;
+    if (wasRange || isFiringRangeMode(mode)) {
+      this.rebuild();
+      return;
+    }
     if (mode === 'aggressive' && this.sceneKind !== null) {
       this.dispatchAggressiveWaves();
     } else if (mode === 'passive') {
@@ -141,6 +158,7 @@ export class FaunaSceneHost {
   }
 
   private clearMeshes(): void {
+    this.swarms.clear();
     this.projectiles.clear();
     const all = [...this.hives.map((h) => h.mesh), ...this.bugs.map((b) => b.mesh), ...this.dummyMeshes];
     for (const m of all) {
@@ -151,6 +169,7 @@ export class FaunaSceneHost {
     this.hives = [];
     this.bugs = [];
     this.dummyMeshes = [];
+    this.firing.dispose();
   }
 
   private rebuild(): void {
@@ -158,6 +177,8 @@ export class FaunaSceneHost {
     this.tick = 0;
     this.waveCount = 0;
     this.accumMs = 0;
+    this.caughtUp = true;
+    this.visualTime = 0;
     this.rng = createSeededRng(this.seed);
 
     if (this.sceneKind === null) {
@@ -165,6 +186,11 @@ export class FaunaSceneHost {
       return;
     }
     this.group.visible = true;
+    if (isFiringRangeMode(this.mode)) {
+      this.firing.build(this.sceneKind, this.mode, this.seed, this.biomeKey);
+      this.applyWire(!!this.renderOpts.wire);
+      return;
+    }
 
     const speciesList: FaunaVisualSpecies[] =
       this.sceneKind === 'mixed' ? [...FAUNA_VISUAL_SPECIES] : [this.sceneKind];
@@ -188,7 +214,7 @@ export class FaunaSceneHost {
     if (this.mode === 'aggressive') {
       this.dispatchAggressiveWaves();
     }
-    this.syncTransforms();
+    this.placeBugMeshes();
     this.applyWire(!!this.renderOpts.wire);
   }
 
@@ -245,6 +271,7 @@ export class FaunaSceneHost {
       const bugMesh = buildSafeArchetypeMesh(bugArchId, fallbackBug, this.biomeKey);
       this.group.add(bugMesh);
       this.bugs.push({
+        track: new MotionTrack(),
         bugId,
         index: i,
         species,
@@ -286,11 +313,14 @@ export class FaunaSceneHost {
 
   /** Advance deterministic simulation by `ticks` fixed steps (`200 ms` each), even while paused. */
   stepTick(ticks = 1): void {
+    if (this.sceneKind === null) return;
     const count = Math.max(0, Math.trunc(ticks));
+    if (count > 0) { this.caughtUp = true; this.accumMs = 0; }
     for (let i = 0; i < count; i++) {
-      this.stepSingleTick();
+      if (isFiringRangeMode(this.mode)) this.firing.stepTicks(1);
+      else this.stepSingleTick();
+      this.advanceVisuals(DT_TICK_S, true);
     }
-    this.syncTransforms();
   }
 
   private stepSingleTick(): void {
@@ -311,8 +341,8 @@ export class FaunaSceneHost {
       } else {
         stepAggressiveBugState(bug, tuning, this.dummyPos, this.tick, (from, to) => this.fireAcidGlob(from, to));
       }
+      bug.track.push({ tick: this.tick, x: bug.x, y: bug.z, rot: bug.yaw });
     }
-    this.projectiles.update(DT_TICK_S);
   }
 
   private fireAcidGlob(
@@ -334,6 +364,14 @@ export class FaunaSceneHost {
   /** Fires a demonstration acid glob + splash preview without consuming gameplay RNG. */
   triggerAcidPreview(): void {
     this.group.visible = true;
+    if (isFiringRangeMode(this.mode)) {
+      const ends = this.firing.acidEnds();
+      const from = ends?.from ?? { x: 0, y: 0.75, z: -0.6 };
+      const to = ends?.to ?? { x: this.dummyPos.x, y: 0.55, z: this.dummyPos.z };
+      this.fireAcidGlob(from, to);
+      this.projectiles.onProjectileImpact({ weaponKind: 'acid', weaponId: 'spitterAcid', at: to });
+      return;
+    }
     const spitter = this.bugs.find((b) => b.species === 'greenSpitter') ?? this.bugs[0];
     const from = spitter ? { x: spitter.x, y: 0.65, z: spitter.z } : { x: 0, y: 0.75, z: -0.6 };
     const to = { x: this.dummyPos.x, y: 0.55, z: this.dummyPos.z };
@@ -345,35 +383,55 @@ export class FaunaSceneHost {
     });
   }
 
-  private syncTransforms(): void {
+  /** Spawn / reset only. Playback samples the tick history instead of chasing each logical pose. */
+  private placeBugMeshes(): void {
     for (const b of this.bugs) {
+      b.track.push({ tick: this.tick, x: b.x, y: b.z, rot: b.yaw });
       b.mesh.position.set(b.x, b.y, b.z);
       b.mesh.rotation.y = b.yaw;
     }
   }
 
   /** Frame visual update: advances fixed ticks when unpaused and updates GPU shader uniforms. */
-  update(time: number, dt: number, opts?: Partial<FaunaRenderOptions>): void {
+  update(_time: number, dt: number, opts?: Partial<FaunaRenderOptions>): void {
     if (opts) this.setRenderOptions(opts);
     if (this.sceneKind === null) return;
-
-    if (!this.paused && dt > 0) {
-      this.accumMs += dt * 1000;
+    const elapsed = this.paused ? 0 : Math.max(0, dt);
+    if (elapsed > 0) {
+      this.accumMs += elapsed * 1000;
       while (this.accumMs >= FAUNA_TICK_MS) {
         this.accumMs -= FAUNA_TICK_MS;
-        this.stepSingleTick();
+        this.caughtUp = false;
+        if (isFiringRangeMode(this.mode)) this.firing.stepTicks(1);
+        else this.stepSingleTick();
       }
-      this.syncTransforms();
-      this.projectiles.update(dt);
     }
+    this.advanceVisuals(elapsed);
+  }
 
+  /** One local clock for pose, corpse, and VFX time; wall-clock/camera updates cannot unpause it. */
+  private advanceVisuals(dt: number, snap = false): void {
+    this.visualTime += dt;
+    const tick = isFiringRangeMode(this.mode) ? this.firing.tick : this.tick;
+    const renderTick = this.caughtUp ? tick : tick - 1 + this.accumMs / FAUNA_TICK_MS;
+    if (isFiringRangeMode(this.mode)) {
+      this.firing.follow(dt, renderTick, snap);
+      this.firing.tickMeshes(this.visualTime, !!this.renderOpts.culled, dt);
+      this.projectiles.update(dt);
+      this.swarms.sync(this.biomeKey);
+      return;
+    }
+    followBugMeshes(this.bugs, dt, renderTick, snap);
+    this.projectiles.update(dt);
     if (this.renderOpts.culled) return;
-    for (const h of this.hives) tickArchetypeMesh(h.mesh, time, 0, 0);
-    for (const b of this.bugs) tickArchetypeMesh(b.mesh, time, b.walkWeight, b.workWeight);
-    for (const d of this.dummyMeshes) tickArchetypeMesh(d, time, 0, this.mode === 'aggressive' ? 1 : 0);
+    for (const h of this.hives) tickArchetypeMesh(h.mesh, this.visualTime, 0, 0);
+    for (const b of this.bugs) tickArchetypeMesh(b.mesh, this.visualTime, b.walkWeight, b.workWeight);
+    for (const d of this.dummyMeshes) tickArchetypeMesh(d, this.visualTime, 0, this.mode === 'aggressive' ? 1 : 0);
+    this.swarms.sync(this.biomeKey);
   }
 
   bounds(): THREE.Box3 {
+    if (isFiringRangeMode(this.mode) && this.sceneKind !== null) return this.firing.bounds();
     if (this.sceneKind === 'mixed') {
       return new THREE.Box3(new THREE.Vector3(-5.2, 0, -4.4), new THREE.Vector3(5.2, 2.6, 4.8));
     }
@@ -381,6 +439,9 @@ export class FaunaSceneHost {
   }
 
   getStats(): FaunaSceneStats {
+    if (isFiringRangeMode(this.mode)) {
+      return this.firing.stats(this.sceneKind, this.paused, this.projectiles.getActiveProjectiles().length);
+    }
     const hives: FaunaHiveStat[] = this.hives.map((h) => {
       const residents = this.bugs.filter((b) => b.hiveId === h.hiveId).length;
       const elapsed = this.tick - h.lastWaveTick;
@@ -408,7 +469,7 @@ export class FaunaSceneHost {
       tick: this.tick,
       rngDraws: this.rng.draws,
       mode: this.mode,
-      modeLabel: this.mode === 'aggressive' ? 'AGGRESSIVE' : 'NEUTRAL',
+      modeLabel: faunaModeLabel(this.mode),
       scene: this.sceneKind,
       biomeKey: this.biomeKey,
       seed: this.seed,

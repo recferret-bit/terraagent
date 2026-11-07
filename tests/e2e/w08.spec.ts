@@ -75,7 +75,7 @@ interface OnlineDebugWindow {
 }
 
 async function openW08(page: Page, params: Record<string, string> = {}): Promise<void> {
-  const merged = { shadow: '0', crt: '0', wind: '0', ...params };
+  const merged = { waves: '..08', shadow: '0', crt: '0', wind: '0', ...params };
   login(page);
   if (local) {
     await page.goto(`/play.html?${new URLSearchParams({ host: 'local', scenario: 'w08', ...merged })}`);
@@ -200,7 +200,7 @@ test('@hack 1–4. S0 Landfall -> Accept Establish Colony -> S1 First Light toas
   expectNoPageErrors(page);
 });
 
-test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (0 orders), expansion=80 shifts to outpostBeacon, S3 queues auto Wind order', async ({
+test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (0 orders), expansion=80 respects actual demand, S3 queues auto Wind order', async ({
   page,
 }) => {
   await openW08(page);
@@ -214,7 +214,9 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
   await expect(page.locator('[data-testid="priorities-panel"]')).toBeVisible();
   await expect(page.locator('[data-testid="priority-sum"]')).toHaveText('250');
 
-  // At S2 with default priorities: autopilot next emits suggestion for wind and queues 0 orders
+  // Inject a real power deficit: default preferences alone must not order generators.
+  await runConsole(page, 'addLoad 30');
+  // At S2 with unmet power demand: suggest wind and queue 0 orders.
   const outS2Wind = await runConsole(page, 'autopilot next');
   expect(outS2Wind).toContain('suggestion');
   expect(outS2Wind).toContain('wind');
@@ -222,7 +224,7 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
     0,
   );
 
-  // Move expansion slider to 80 -> suggestion shifts toward outpostBeacon (0 orders queued)
+  // A larger expansion preference does not invent territorial demand.
   const expSlider = page.locator('[data-testid="priority-slider-expansion"]');
   await expSlider.fill('80');
   await expSlider.dispatchEvent('change');
@@ -232,7 +234,7 @@ test('@hack 5. Priorities & "learn by hand, then automate": S2 suggestion only (
 
   const outS2Expand = await runConsole(page, 'autopilot next');
   expect(outS2Expand).toContain('suggestion');
-  expect(outS2Expand).toContain('outpostBeacon');
+  expect(outS2Expand).toContain('wind');
   expect(((await getColony0(page))?.queue ?? []).filter((e) => e.precedence === 'ai' || e.tag === 'auto')).toHaveLength(
     0,
   );

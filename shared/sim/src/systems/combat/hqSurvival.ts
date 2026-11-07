@@ -29,12 +29,7 @@ function getAttackerOwnerMap(state: PlanetState): Record<number, number> {
 }
 
 function writeCombatDamageBlob(state: PlanetState, value: CombatDamageBlob, tick: number): void {
-  const existing = state.blobs.combatDamage;
-  if (existing) {
-    existing.value = value;
-  } else {
-    setBlob(state, 'combatDamage', value, tick);
-  }
+  setBlob(state, 'combatDamage', value, tick);
 }
 
 export function recordEntityDamaged(

@@ -1,3 +1,4 @@
+import { combatApproachBand, footprintAttackRange } from '../combat/approachBand';
 import { ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow, rowOf, setField, type EntityStore } from '../../ecs/store';
@@ -165,7 +166,7 @@ function applyCohortDispatchPayload(
     hive.decisionIndex = Math.max(hive.decisionIndex, directive.decisionIndex);
   }
 
-  const bandMax = cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1;
+  const bandMax = combatApproachBand(footprintAttackRange(cfg.range, tRow >= 0 ? state.entities.cols.footprintW[tRow] : 1)).maxDist;
   const stepCtx = makeDirectiveStepCtx(state, tick, data);
   for (const bugId of memberIds) {
     const bug = fauna.bugsById[bugId];
@@ -297,7 +298,7 @@ function applyTargetChangePayload(
       : (hive?.residentIds ?? []));
   const species = directive.payload.species ?? cohort?.species ?? hive?.species ?? 'blackAnt';
   const cfg = resolveSpeciesConfig(species, data);
-  const bandMax = cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1;
+  const bandMax = combatApproachBand(footprintAttackRange(cfg.range, tRow >= 0 ? state.entities.cols.footprintW[tRow] : 1)).maxDist;
   const stepCtx = makeDirectiveStepCtx(state, tick, data);
 
   for (const bugId of memberIds) {

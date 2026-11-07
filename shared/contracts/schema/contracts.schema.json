@@ -2502,6 +2502,50 @@
       "summary": "Opens the caller colony's descending pod as soon as it has descended `hq.startingKit.podLandMinS` (the client's touchdown animation); `already_landed` once it is open.",
       "wave": "W01"
     },
+    "moveGroup": {
+      "args": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "additionalProperties": false,
+        "properties": {
+          "entityIds": {
+            "items": {
+              "exclusiveMinimum": 0,
+              "maximum": 9007199254740991,
+              "type": "integer"
+            },
+            "maxItems": 64,
+            "minItems": 1,
+            "type": "array"
+          },
+          "pace": {
+            "enum": [
+              "own",
+              "together"
+            ],
+            "type": "string"
+          },
+          "q": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          },
+          "r": {
+            "maximum": 32767,
+            "minimum": -32768,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "entityIds",
+          "q",
+          "r"
+        ],
+        "type": "object"
+      },
+      "origin": "client",
+      "summary": "Orders owned units to distinct standable tiles around hex (q, r). pace \"together\" holds the group to its slowest member.",
+      "wave": "W01"
+    },
     "moveUnit": {
       "args": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
@@ -4601,6 +4645,11 @@
           "damage": {
             "minimum": 0,
             "type": "number"
+          },
+          "firedTick": {
+            "maximum": 9007199254740991,
+            "minimum": 0,
+            "type": "integer"
           },
           "hit": {
             "type": "boolean"

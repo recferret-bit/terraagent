@@ -2,8 +2,10 @@ import 'reflect-metadata';
 import type { INestApplication } from '@nestjs/common';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../../src/app';
+import { UNIT_APP_ENV } from '../unit-app-env';
 
 const PROD = {
+  ...UNIT_APP_ENV,
   NODE_ENV: 'production', PROGRESSION_WORKERS: 'off', SIM_THREADS: '1', LOG_LEVEL: 'info', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789',
   NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true',
 };

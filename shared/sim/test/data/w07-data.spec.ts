@@ -33,10 +33,10 @@ describe('W07-01 data rows: combatUnits table', () => {
     expect(recon.damage).toBe(7);
     expect(recon.ratePerS).toBe(2.0);
     expect(recon.range).toBe(4);
-    expect(recon.viewRadius).toBe(8);
+    expect(recon.viewRadius).toBe(10);
     expect(recon.hitsGround).toBe(true);
     expect(recon.hitsAir).toBe(false);
-    expect(recon.evasive).toBe(true);
+    expect(recon.evasive).toBe(false);
 
     const factory = dataRow(compiled, 'combatUnits', 'roboticsFactory');
     expect(factory).toMatchObject({ footprintW: 3, footprintD: 3, buildS: 125, powerDrainPerS: 10, hp: 800, shedGroup: 2, queueSlots: 5 });

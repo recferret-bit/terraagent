@@ -1,3 +1,4 @@
+import { INSECT_SCALE, SPECIES_CODE } from '../../../animation/insects/rig';
 import { FAUNA_SPECIES_ZONES } from '../../faunaVisualRegistry';
 import type { KitbashBuilder, PartOptions } from '../../KitbashRegistry';
 import { organ, tendril } from '../../greebles/organic/shapes';
@@ -82,6 +83,6 @@ for (const [species, label, build, footprint] of [
   ['greenSpitter', 'Green Acid Spitter', spitter, [1, 1]],
 ] as const) register({
   id: `fauna.${species}`, label, category: 'fauna', footprint: [...footprint],
-  zones: FAUNA_SPECIES_ZONES[species], build,
+  zones: FAUNA_SPECIES_ZONES[species], build, scale: INSECT_SCALE[SPECIES_CODE[species]],
   notes: 'Organic chitin, articulated hooked legs, glossy compound eyes and anatomical growth textures. GPU jaws, antennae and bounded secretory-tissue motion.',
 });

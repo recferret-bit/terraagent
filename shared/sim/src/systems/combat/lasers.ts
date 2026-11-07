@@ -1,3 +1,4 @@
+import { Combatant } from './Combatant';
 import { compileData, type CompiledRow } from '../../data';
 import { ENTITY_KIND } from '../../ecs/columns';
 import { removeRow, rowOf, setField } from '../../ecs/store';
@@ -312,6 +313,7 @@ export function fireLaserOrMelee(
   }
 
   const tick = opts.tick ?? ctx?.tick ?? state.meta.tick;
+  new Combatant(state, opts.attackerId).target(opts.targetId ?? null, tick);
   const attackerOwner = cols.owner[aRow]!;
   const weaponId = inferredWeaponId ?? 'laser';
   const from: LaserPoint = {

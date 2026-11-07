@@ -3,6 +3,8 @@ import { parseWaves } from '@terra/contracts';
 import { compileData } from '../../src/data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../src/ecs/columns';
 import { adminRelocateEntity, placeSpawnedEntity } from '../../src/ecs/placement';
+import { isTileExplored } from '../../src/grid/tileModel';
+import { hexIndex } from '../../src/grid/hex';
 import { insertRow } from '../../src/ecs/store';
 import { createState, type PlanetState } from '../../src/kernel/state';
 import {
@@ -160,5 +162,32 @@ describe('W07-08: Long-range weapon spotting acceptance check', () => {
 
     expect(isTargetSpottedByColony(state, 0, antRow, data)).toBe(true);
     expect(canAttackerSpotOrFireOnTarget(state, autocannonRow, antRow, 8, data)).toBe(true);
+  });
+});
+
+
+describe('stationary units explore and departed units lose current sight', () => {
+  it.each([ENTITY_KIND.recon, ENTITY_KIND.hq, ENTITY_KIND.builder, ENTITY_KIND.harvester, ENTITY_KIND.demoTank, ENTITY_KIND.demoArtillery])('uses unit kind %i as a real vision source', kind => {
+    const state = createState({ planetId: 'fog', planetType: 'temperate', seed: 'fog', radius: 40 });
+    const row = spawnTestEntity(state, { kind, owner: 0, q: 0, r: 0 });
+    const radius = getEntitySpottingRadius(kind, data);
+    expect(getEntitySpottingRadius(kind)).toBe(radius);
+    const tile = hexIndex(40).indexOf(radius, 0);
+    updateColonyVisionCache(state, 0, data, true);
+    expect(isTileSpottedByColony(state, 0, radius, 0, data)).toBe(true);
+    expect(isTileExplored(state.grid, tile, 0)).toBe(true);
+    expect(isTileExplored(state.grid, tile, 1)).toBe(false);
+    adminRelocateEntity(state.entities, row, -25, 0, 5);
+    state.meta.tick = 5;
+    updateColonyVisionCache(state, 5, data, true);
+    expect(isTileSpottedByColony(state, 0, radius, 0, data)).toBe(false);
+    expect(isTileExplored(state.grid, tile, 0)).toBe(true);
+  });
+
+  it('does not reveal from dead units or unbuilt sites', () => {
+    const state = createState({ planetId: 'fog', planetType: 'temperate', seed: 'fog', radius: 20 });
+    spawnTestEntity(state, { kind: ENTITY_KIND.recon, owner: 0, q: 0, r: 0, hp: 0 });
+    spawnTestEntity(state, { kind: ENTITY_KIND.hub, owner: 0, q: 0, r: 0, entityState: ENTITY_STATE.waiting });
+    expect(computeColonySpottedTileIndices(state, 0, data).size).toBe(0);
   });
 });

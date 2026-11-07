@@ -1,3 +1,4 @@
+import { combatApproachBand } from '../combat/approachBand';
 import { rowOf } from '../../ecs/store';
 import type { StepContext } from '../../kernel/context';
 import { nextFloat, seedStream } from '../../kernel/rng';
@@ -173,7 +174,7 @@ export function stepActiveCohorts(state: PlanetState, ctx: StepContext): void {
     const fromQ = leadRow >= 0 ? cols.q[leadRow]! : 0;
     const fromR = leadRow >= 0 ? cols.r[leadRow]! : 0;
     const speciesCfg = resolveSpeciesConfig(cohort.species, ctx.data);
-    const bandMax = speciesCfg.range >= 2 ? Math.floor(speciesCfg.range) - 1 : 1;
+    const bandMax = combatApproachBand(speciesCfg.range).maxDist;
     const nearestTarget = colonyEliminated
       ? null
       : findNearestColonyTarget(state, fromQ, fromR, cohort.colonyIndex, bandMax, ctx.data);

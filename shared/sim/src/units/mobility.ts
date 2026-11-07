@@ -5,6 +5,7 @@ import type { CompiledDataLike } from '../kernel/config';
 import type { PlanetState } from '../kernel/state';
 import { syncHqView } from '../systems/hq/view';
 import { resolveHqT1Row, rowNum } from '../systems/rows';
+import { resolveKindWeaponRow } from '../systems/combat/weaponRows';
 
 /**
  * Which entity kinds are units (take commands and move) and their stats from the data rows. Every unit moves the
@@ -60,7 +61,7 @@ function faunaMobileStats(
 ): MobileStats {
   const row = (data?.tables?.fauna as Record<string, CompiledRow | undefined> | undefined)?.[species];
   const rawSpeed = Number(row?.speed ?? defaults.speedPerTick);
-  const speedPerTick = rawSpeed > 0.75 ? rawSpeed * 0.2 : rawSpeed;
+  const speedPerTick = rawSpeed;
   return {
     speedPerTick: Math.fround(speedPerTick),
     viewRadius: Number(row?.viewRadius ?? defaults.viewRadius),
@@ -140,11 +141,11 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
       stats: (data) => {
         const row = resolveReconRow(data);
         const rawSpeed = Number(row.speed ?? row.speedTilesPerS ?? 0.7);
-        const speedPerTick = rawSpeed > 1.5 ? rawSpeed * 0.2 : rawSpeed;
+        const speedPerTick = rawSpeed;
         return {
           speedPerTick: Math.fround(speedPerTick),
           viewRadius: Number(row.viewRadius ?? 8),
-          profile: 'hover',
+          profile: row.mobility === 'hover' ? 'hover' : 'ground',
           terraformReach: [0, 0],
           buildReach: [0, 0],
           weaponRange: Number(row.range ?? 4),
@@ -157,7 +158,7 @@ const MOBILE_KINDS: ReadonlyMap<number, MobileKindDef> = new Map<number, MobileK
       onChanged: (state, row, tick, data) => {
         const cols = state.entities.cols;
         const rRow = resolveReconRow(data);
-        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(rRow.viewRadius ?? 8), tick);
+        revealVision(state, cols.owner[row], cols.q[row], cols.r[row], Number(rRow.viewRadius ?? 10), tick);
       },
     },
   ],
@@ -260,11 +261,25 @@ export function mobileStats(kind: number, data: CompiledDataLike): MobileStats |
   let byKind = statsCache.get(data);
   if (!byKind) statsCache.set(data, (byKind = new Map()));
   let s = byKind.get(kind);
-  if (!s) byKind.set(kind, (s = def.stats(data)));
+  if (!s) {
+    s = def.stats(data);
+    const weapon = data.tables.weapons ? resolveKindWeaponRow(kind, data) : undefined;
+    if (weapon) {
+      s.weaponRange = Number(weapon.range ?? s.weaponRange);
+      s.dps = Number(weapon.damage ?? 0) * Number(weapon.ratePerS ?? 0);
+    }
+    byKind.set(kind, s);
+  }
   return s;
 }
 
 export const isUnitKind = (kind: number): boolean => MOBILE_KINDS.has(kind);
+
+/** Path profile the movement orchestrator uses. Fauna share the harvester rule whatever their row says. */
+export function movementProfile(kind: number, data: CompiledDataLike): PathProfileId {
+  if (kind === ENTITY_KIND.blackAnt || kind === ENTITY_KIND.blueBeetle || kind === ENTITY_KIND.greenSpitter) return 'harvester';
+  return mobileStats(kind, data)?.profile ?? 'ground';
+}
 
 /** Lets the unit kind refresh its derived views after the runner changed its columns. */
 export function notifyUnitChanged(state: PlanetState, row: number, tick: number, data: CompiledDataLike): void {

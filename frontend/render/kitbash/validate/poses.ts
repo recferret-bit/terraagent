@@ -1,3 +1,4 @@
+import { insectPartPoses } from '../../animation/insects/validationPoses';
 // Animation poses of a part, mirroring the vertex shader of UnifiedColonyMaterial.
 import type { PartDef } from './types';
 
@@ -144,6 +145,7 @@ function organicPose(x: number, y: number, z: number, px: number, py: number, pz
 }
 
 export function poses(p: PartDef): Pose[] {
+  if (p.insectSpecies !== undefined) return insectPartPoses(p);
   const src = p.tris, out: Pose[] = [];
   const make: MakePoseFn = (label, f) => {
     const t = new Float32Array(src.length);

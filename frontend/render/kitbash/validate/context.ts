@@ -1,3 +1,4 @@
+import { INSECT_SPECIES, SPECIES_CODE } from '../../animation/insects/rig';
 // Shared state of one validation run: the prepared parts, their pairwise relations and the issue list the check stages append to.
 import { emptyBox, isWatertight } from './math';
 import type { Box } from './math';
@@ -19,7 +20,8 @@ export class ValidationContext {
   private rel = new Map<string, Rel>();
 
   constructor(readonly model: ModelInput, readonly o: ValidatorOptions) {
-    this.parts = model.parts.map((d) => { const p = prepare(d); p.closed = isWatertight(d.tris); return p; });
+    const insect = INSECT_SPECIES[model.id];
+    this.parts = model.parts.map((original) => { const d = insect ? { ...original, insectSpecies: SPECIES_CODE[insect] } : original; const p = prepare(d); p.closed = isWatertight(d.tris); return p; });
     let triCount = 0;
     for (const p of this.parts) {
       triCount += p.n;

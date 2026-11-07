@@ -187,9 +187,9 @@ export class KitbashBuilder {
     }
     const merged = BufferGeometryUtils.mergeGeometries(this.parts, false);
     let cursor = 0;
-    const partRanges: Array<{ role?: PartRole; start: number; count: number }> = [];
+    const partRanges: Array<{ name: string; role?: PartRole; start: number; count: number }> = [];
     for (const m of this.meta) {
-      partRanges.push({ ...(m.role ? { role: m.role } : {}), start: cursor, count: m.vertexCount });
+      partRanges.push({ name: m.name, ...(m.role ? { role: m.role } : {}), start: cursor, count: m.vertexCount });
       cursor += m.vertexCount;
     }
     merged.userData.partRanges = partRanges;

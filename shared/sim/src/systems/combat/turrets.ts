@@ -1,12 +1,11 @@
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
-import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { StepContext } from '../../kernel/context';
 import { setBlob, type PlanetState } from '../../kernel/state';
-import { applyDamage } from './damage';
-import { fireLaserOrMelee, isLaserWeapon } from './lasers';
-import { fireProjectile } from './projectiles';
-import { acquireClosestTargetInRange, resolveAttackerWeaponRow } from './targeting';
+import { firingRangeTargetRow, readFiringRangeMode } from './firingRange';
+import { consumeWeaponShot, fireWeaponAtTarget } from './weaponFire';
+export { fireWeaponAtTarget, weaponCooldownTicks } from './weaponFire';
+import { acquireClosestTargetInRange, isTargetValidInRange, resolveAttackerWeaponRow } from './targeting';
 
 export const COMBAT_TURRETS_BLOB = 'combatTurrets';
 
@@ -14,6 +13,8 @@ export interface TurretCombatRecord {
   entityId: number;
   targetId?: number | null;
   lastFiredTick?: number;
+  nextShotTick?: number;
+  shotIntervalTicks?: number;
 }
 
 export interface CombatTurretsBlob {
@@ -46,89 +47,6 @@ export function getTurretCombatRecord(state: PlanetState, entityId: number): Tur
   return existing ?? { entityId, targetId: null };
 }
 
-/**
- * Computes weapon cooldown in ticks (`Math.max(1, Math.round(TICKS_PER_SECOND / ratePerS))`).
- */
-export function weaponCooldownTicks(weaponRow: Record<string, unknown>): number {
-  const ratePerS = Number(weaponRow.ratePerS ?? 0);
-  if (Number.isFinite(ratePerS) && ratePerS > 0) {
-    return Math.max(1, Math.round(TICKS_PER_SECOND / ratePerS));
-  }
-  const intervalS = Number(weaponRow.intervalS ?? 0);
-  if (Number.isFinite(intervalS) && intervalS > 0) {
-    return Math.max(1, Math.round(intervalS * TICKS_PER_SECOND));
-  }
-  return Math.max(1, Math.round(TICKS_PER_SECOND / 2));
-}
-
-/**
- * Fires `weaponRow` from `attackerRow` at `targetRow` (instant laser/melee via `fireLaserOrMelee`
- * or scheduled projectile via `fireProjectile`).
- */
-export function fireWeaponAtTarget(
-  state: PlanetState,
-  attackerRow: number,
-  targetRow: number,
-  weaponRow: Record<string, unknown>,
-  ctx: StepContext,
-): void {
-  const cols = state.entities.cols;
-  const attackerId = cols.id[attackerRow]!;
-  const attackerOwner = cols.owner[attackerRow]!;
-  const targetId = cols.id[targetRow]!;
-  const weaponId = typeof weaponRow.id === 'string' ? weaponRow.id : 'reconGun';
-  const damage = Math.max(0, Number(weaponRow.damage ?? 0));
-  const range = Math.max(0, Number(weaponRow.range ?? 4));
-  const minRange = Math.max(0, Number(weaponRow.minRange ?? 0));
-
-  if (isLaserWeapon(weaponRow)) {
-    fireLaserOrMelee(
-      state,
-      {
-        attackerId,
-        targetId,
-        weaponId,
-        weaponRow,
-        damage,
-        range,
-        minRange,
-        tick: ctx.tick,
-        applyDmg: (s, tId, amount, aId, aOwner, c) => {
-          applyDamage(s, tId, amount, {
-            attackerId: aId,
-            attackerOwner: aOwner,
-            tick: c?.tick ?? s.meta.tick,
-            ctx: c,
-            data: c?.data,
-          });
-        },
-      },
-      ctx,
-    );
-    return;
-  }
-
-  const projSpeed = Math.max(1, Number(weaponRow.projSpeed ?? 20));
-  const aoe = Math.max(0, Number(weaponRow.aoe ?? 0));
-  const arc = weaponRow.arc === 'indirect' ? 'indirect' : 'direct';
-
-  fireProjectile(
-    state,
-    {
-      attackerId,
-      attackerOwner,
-      targetId,
-      weaponId,
-      damage,
-      speed: projSpeed,
-      aoe,
-      arc,
-      tick: ctx.tick,
-    },
-    ctx,
-  );
-}
-
 function isTurretOrHqKind(kind: number): boolean {
   return (
     kind === ENTITY_KIND.autocannon ||
@@ -142,7 +60,63 @@ function isTurretOrHqKind(kind: number): boolean {
  * in the combat slot (`slot: 10`). HQ fires at ground hostiles in range 5 while moving or working
  * without interrupting HQ movement or work.
  */
+/** Gallery defenses use their fixed pair; legacy fixtures without pairs use the first living bug. */
+function stepFiringRangeTurrets(state: PlanetState, ctx: StepContext): void {
+  const cols = state.entities.cols;
+  const byEntityId = readTurretsBlob(state);
+  let changed = false;
+
+  for (let row = 0; row < state.entities.count; row++) {
+    const kind = cols.kind[row]!;
+    if (kind !== ENTITY_KIND.autocannon && kind !== ENTITY_KIND.laserTower) continue;
+    if (cols.hp[row]! <= 0) continue;
+    const entityState = cols.state[row]!;
+    if (entityState === ENTITY_STATE.descending || entityState === ENTITY_STATE.inert) continue;
+
+    const weaponRow = resolveAttackerWeaponRow(state, row, ctx.data);
+    if (!weaponRow) continue;
+    const entityId = cols.id[row]!;
+    const bugRow = firingRangeTargetRow(state, entityId);
+    const rec = byEntityId[entityId] ?? { entityId, targetId: null };
+    const inRange =
+      bugRow >= 0 &&
+      isTargetValidInRange(state, row, bugRow, {
+        weaponRow,
+        requireSpotting: true,
+        includePassiveFauna: true,
+        data: ctx.data,
+      });
+    if (!inRange) {
+      if (rec.targetId != null) {
+        rec.targetId = null;
+        byEntityId[entityId] = rec;
+        changed = true;
+      }
+      continue;
+    }
+    const targetId = cols.id[bugRow]!;
+    if (rec.targetId !== targetId) {
+      rec.targetId = targetId;
+      byEntityId[entityId] = rec;
+      changed = true;
+    }
+    if (consumeWeaponShot(rec, weaponRow, ctx.tick)) {
+      fireWeaponAtTarget(state, row, bugRow, weaponRow, ctx);
+      rec.lastFiredTick = ctx.tick;
+      byEntityId[entityId] = rec;
+      changed = true;
+    }
+  }
+  if (changed) writeTurretsBlob(state, byEntityId, ctx.tick);
+}
+
 export function stepCombatTurrets(state: PlanetState, ctx: StepContext): void {
+  const mode = readFiringRangeMode(state);
+  if (mode === 'units' || mode === 'bugs' || mode === 'robots') return;
+  if (mode === 'gallery' || mode === 'turrets') {
+    stepFiringRangeTurrets(state, ctx);
+    return;
+  }
   const cols = state.entities.cols;
   const byEntityId = readTurretsBlob(state);
   let changed = false;
@@ -185,8 +159,7 @@ export function stepCombatTurrets(state: PlanetState, ctx: StepContext): void {
       changed = true;
     }
 
-    const cooldown = weaponCooldownTicks(weaponRow);
-    if (rec.lastFiredTick === undefined || ctx.tick - rec.lastFiredTick >= cooldown) {
+    if (consumeWeaponShot(rec, weaponRow, ctx.tick)) {
       fireWeaponAtTarget(state, row, targetRow, weaponRow, ctx);
       rec.lastFiredTick = ctx.tick;
       byEntityId[entityId] = rec;

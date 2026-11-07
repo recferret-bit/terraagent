@@ -23,7 +23,7 @@ import {
 import { runMovement } from '../../src/units/movement/orchestrator';
 
 const w07Flags = new Set(['W00', 'W01', 'W02', 'W03', 'W04', 'W05', 'W06', 'W07']);
-const w07Data = compileData(parseWaves('..07'));
+const w07Data = compileData(parseWaves('..07'), { combatUnits: { recon: { evasive: true } } });
 
 function makeTestState(seed = 'w07-evasive-seed', radius = 12): PlanetState {
   const state = createState({
@@ -76,9 +76,10 @@ function spawnEntity(
 }
 
 describe('W07-06: isUnitEvasive and evasive destination selection', () => {
-  it('identifies Recon as evasive and non-evasive units/fauna as false', () => {
+  it('supports opt-in evasion while armored Recon defaults to stationary fire', () => {
     expect(isUnitEvasive(ENTITY_KIND.recon, w07Data)).toBe(true);
-    expect(isUnitEvasive(ENTITY_KIND.recon)).toBe(true);
+    expect(isUnitEvasive(ENTITY_KIND.recon)).toBe(false);
+    expect(isUnitEvasive(ENTITY_KIND.recon, compileData(parseWaves('..07')))).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.hq, w07Data)).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.harvester, w07Data)).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.builder, w07Data)).toBe(false);

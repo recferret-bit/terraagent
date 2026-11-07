@@ -273,7 +273,7 @@ describe('W07-31 · Combat layers (ground | air) and hitsGround / hitsAir target
   });
 });
 
-describe('W07-31 · Evasive Recon Drone vs slow artilleryShell / autocannon (>= 30% miss rate over 20 shots)', () => {
+describe('W07-31 · Opt-in evasive Recon vs slow artilleryShell / autocannon (>= 30% miss rate over 20 shots)', () => {
   function runTwentyShots(evasive: boolean, seed: string, projSpeed = 12): { hits: number; misses: number; missRate: number } {
     const state = createState({ planetId: 'p-ev', planetType: 'temperate', seed, radius: 12 });
     state.grid.layers.terrain.fill(TERRAIN.flat);
@@ -285,7 +285,7 @@ describe('W07-31 · Evasive Recon Drone vs slow artilleryShell / autocannon (>= 
     let hits = 0;
     let misses = 0;
     for (let tick = 1; fired < 20 || getPendingProjectileImpacts(state).length > 0; tick++) {
-      const { ctx } = makeStepCtx(state, tick);
+      const ctx = { ...makeStepCtx(state, tick).ctx, data: compileData(parseWaves('..07'), { combatUnits: { recon: { evasive } } }) };
       if (fired < 20 && (tick - 1) % 2 === 0) {
         fireProjectile(
           state,
@@ -307,7 +307,7 @@ describe('W07-31 · Evasive Recon Drone vs slow artilleryShell / autocannon (>= 
   }
 
   it('hits 20/20 on stationary target, misses >= 30% on evasive Recon, and reproduces deterministically from combat PRNG', () => {
-    expect(isUnitEvasive(ENTITY_KIND.recon, w07Data)).toBe(true);
+    expect(isUnitEvasive(ENTITY_KIND.recon, w07Data)).toBe(false);
     expect(isUnitEvasive(ENTITY_KIND.blackAnt, w07Data)).toBe(false);
 
     const stationary = runTwentyShots(false, 'ev-seed-1', 12);

@@ -1,4 +1,5 @@
 import type { Page } from '@playwright/test';
+import { checkLocalCombatResume, checkServerCombatReconnect } from './w07-reconnect';
 import {
   clickTile,
   devConsole,
@@ -40,11 +41,11 @@ const W07_KIND = {
 } as const;
 
 async function openW07(page: Page, params: Record<string, string> = {}, scenario = 'w07'): Promise<void> {
-  const merged = { shadow: '0', crt: '0', wind: '0', ...params };
+  const merged = { waves: '..07', shadow: '0', crt: '0', wind: '0', ...params };
   if (local) {
-    await loadLocal(page, scenario, merged, 60_000);
+    await loadLocal(page, scenario, merged, 120_000);
   } else {
-    await loadScenario(page, scenario, merged, { timeout: 60_000 });
+    await loadScenario(page, scenario, merged, { timeout: 120_000 });
   }
 }
 
@@ -206,9 +207,9 @@ test('@hack 4, 5 & 8. Build Autocannon + Laser Tower -> range/view rings + Alt -
   await screenshot(page, '4-turret-range-rings-alt');
   await page.keyboard.up('Alt');
 
-  // Step 5 & 8: Trigger a 3-ant raid (`spawnRaid 3`), turrets fire and repel the raid with 0 buildings lost.
+  // Step 5 & 8: Trigger a 3-ant raid, turrets fire and repel it with 0 buildings lost.
   await devConsole(page, 'warp 20');
-  await devConsole(page, 'spawnRaid 3');
+  await devConsole(page, 'spawnRaid blackAnt 3');
   await expect(page.locator('[data-testid="combat-log"]')).toHaveAttribute('data-empty', 'false', { timeout: 25_000 });
   await expect(page.locator('[data-testid="combat-log-list"]')).toContainText(/Raid incoming|Colony under attack/, { timeout: 25_000 });
   await expect(page.locator('[data-testid="combat-log-list"]')).toContainText('Raid repelled (Unbreached)', { timeout: 45_000 });
@@ -218,7 +219,7 @@ test('@hack 4, 5 & 8. Build Autocannon + Laser Tower -> range/view rings + Alt -
   expectNoPageErrors(page);
 });
 
-test('@hack 6 & 7. Demo artillery + hitDebug on (evasive Recon vs stationary ant) and explicit attack on passive hive -> nestDestroyed', async ({ page }) => {
+test('@hack 6 & 7. Demo artillery + hitDebug on (armored Recon and stationary ant) and explicit attack on passive hive -> nestDestroyed', async ({ page }) => {
   await openW07(page);
   await devConsole(page, 'warp 20');
 
@@ -266,7 +267,8 @@ test('@hack 6 & 7. Demo artillery + hitDebug on (evasive Recon vs stationary ant
 });
 
 test('@hack 9 & 10. Second browser / reconnect parity during a wave, building destruction -> Prepared pad, and waves=..06 disables W07', async ({ page }) => {
-  await openW07(page);
+  test.setTimeout(300_000); // Three independent renderer/worker cold boots, including reconnect.
+  await openW07(page, { predict: '0' });
   await devConsole(page, 'warp 10');
 
   // Step 10: Destroy the Capacitor Bank at (-2, -3) with `damage <id> 100` -> removed and its tiles become Prepared (PREP.prepared = 2).
@@ -277,16 +279,8 @@ test('@hack 9 & 10. Second browser / reconnect parity during a wave, building de
   await expect.poll(async () => getTilePrepAt(page, -2, -3), { timeout: 10_000 }).toBe(2);
   await screenshot(page, '10-building-destroyed-prepared-pad');
 
-  // Step 9: Open a second browser page connected during a wave and verify hive/entity agreement.
-  await devConsole(page, 'spawnRaid 3');
-  const ents1 = await getEntitiesSnapshot(page);
-  const page2 = await page.context().newPage();
-  await openW07(page2, { as: 'b' });
-  const ents2 = await getEntitiesSnapshot(page2);
-  const hives1 = ents1.filter((e) => e.kind >= W07_KIND.hiveBlackAnt && e.kind <= W07_KIND.hiveGreenSpitter).map((e) => e.kind).sort();
-  const hives2 = ents2.filter((e) => e.kind >= W07_KIND.hiveBlackAnt && e.kind <= W07_KIND.hiveGreenSpitter).map((e) => e.kind).sort();
-  expect(hives1).toEqual(hives2);
-  await page2.close();
+  if (local) await checkLocalCombatResume(page);
+  else await checkServerCombatReconnect(page);
 
   // Wave DoD: with `waves=..06` on w03, there is no fauna, combat UI, Factory or turret.
   await openW07(page, { waves: '..06' }, 'w03');

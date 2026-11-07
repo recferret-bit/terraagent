@@ -25,7 +25,7 @@ describe('W07-34 URL state and registry fixtures', () => {
   it('createState and syncURL parse and serialize faunaScene, faunaMode, and faunaSeed while preserving existing controls', () => {
     const defaults = createState(new URLSearchParams(''));
     expect(defaults.faunaScene).toBeNull();
-    expect(defaults.faunaMode).toBe('passive');
+    expect(defaults.faunaMode).toBe('bugs');
     expect(defaults.faunaSeed).toBe(42);
 
     const replaceState = vi.fn();

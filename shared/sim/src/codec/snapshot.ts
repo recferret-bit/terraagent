@@ -6,6 +6,7 @@ import type { PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
 import { migrate, type SnapshotObject } from './migrations';
 import { decodeValue, encodeValue } from './values';
+import { FAUNA_MOTION_SEED, faunaMotionSeed } from './faunaMotionSeed';
 
 /**
  * Snapshot codec (SIM-S-01). `snapshot(state)` is MessagePack of `{ header, state }`; the host gzips it (Node
@@ -32,11 +33,13 @@ export function clientMeta(meta: PlanetState['meta']): PlanetState['meta'] {
 /** Internal engine blobs omitted from client-bound snapshots and diffs (`forClient: true`). */
 export const CLIENT_OMIT_BLOBS: ReadonlySet<string> = new Set([
   'unitMotion',
+  'groupMarch',
   'pathQueue',
   'pathStats',
   'combatVision',
   'combatEvasive',
   'combatDamage',
+  'combatStanceChanges',
   'faunaAggression',
 ]);
 
@@ -53,9 +56,12 @@ export function snapshot(state: PlanetState, opts: SnapshotOpts = {}): Uint8Arra
   if (!opts.forClient) return encodeValue({ header, state });
   const layers: Record<string, TypedArray> = {};
   for (const l of tileLayers()) if (!l.hidden && state.grid.layers[l.name]) layers[l.name] = state.grid.layers[l.name];
+  const blobs = clientBlobs(state.blobs);
+  const motionSeed = faunaMotionSeed(state);
+  if (motionSeed) blobs[FAUNA_MOTION_SEED] = motionSeed;
   return encodeValue({
     header,
-    state: { ...state, meta: clientMeta(state.meta), grid: { ...state.grid, layers }, blobs: clientBlobs(state.blobs) },
+    state: { ...state, meta: clientMeta(state.meta), grid: { ...state.grid, layers }, blobs },
   });
 }
 

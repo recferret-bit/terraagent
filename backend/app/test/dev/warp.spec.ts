@@ -6,6 +6,7 @@ import WebSocket from 'ws';
 import { createApp } from '../../src/app';
 import { devPlanetIds } from '../../src/game/dev-planets';
 import { GamePlanets } from '../../src/game/game-planets.service';
+import { UNIT_APP_ENV } from '../unit-app-env';
 
 const PLANET = devPlanetIds(1, 1)[0]!;
 const PROD = { NODE_ENV: 'production', PROGRESSION_WORKERS: 'off', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' };
@@ -14,7 +15,7 @@ const sockets: WebSocket[] = [];
 afterEach(async () => { for (const s of sockets.splice(0)) s.terminate(); await app?.close(); app = undefined; });
 
 async function boot(extra: Record<string, string> = {}) {
-  const created = await createApp({ source: { NODE_ENV: 'test', SIM_THREADS: '1', GAME_DEV_PLANETS: '1', ...extra } });
+  const created = await createApp({ source: { NODE_ENV: 'test', GAME_DEV_PLANETS: '1', ...UNIT_APP_ENV, ...extra } });
   await created.app.listen(0, '127.0.0.1');
   app = created.app;
   const url = (await created.app.getUrl()).replace('[::1]', '127.0.0.1');

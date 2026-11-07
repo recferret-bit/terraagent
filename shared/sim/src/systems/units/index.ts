@@ -1,9 +1,10 @@
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
+import { moveGroup } from './groupHandler';
 import { moveUnit, stopUnit } from './handlers';
 import { issueUnitCommand, stepUnits, stepUnitWork, UNIT_REGISTRY } from './registry';
 
-export { issueUnitCommand, moveUnit, stopUnit, UNIT_REGISTRY };
+export { issueUnitCommand, moveGroup, moveUnit, stopUnit, UNIT_REGISTRY };
 
 /**
  * Units (slot 5): every unit's commands, the movement orchestrator and locomotion, in one deterministic pass
@@ -43,5 +44,5 @@ export default defineSimModule({
   id: 'units',
   wave: 'W01',
   systems: [units, constructionProgress, combat],
-  handlers: [moveUnit, stopUnit],
+  handlers: [moveUnit, stopUnit, moveGroup],
 });

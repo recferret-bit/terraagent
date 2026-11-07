@@ -201,7 +201,7 @@ function hasStructuralFaunaChange(prev: FaunaHivesBlob | undefined, next: FaunaH
   if (pHives.length !== nHives.length) return true;
   for (const k of nHives) {
     const ph = prev.hivesById[Number(k)], nh = next.hivesById[Number(k)]!;
-    if (!ph || ph.destroyed !== nh.destroyed || ph.mode !== nh.mode || ph.decisionIndex !== nh.decisionIndex) return true;
+    if (!ph || ph.destroyed !== nh.destroyed || ph.mode !== nh.mode || ph.decisionIndex !== nh.decisionIndex || ph.hpMax !== nh.hpMax) return true;
     if (!sameNumArr(ph.aggressiveColonies, nh.aggressiveColonies)) return true;
   }
   for (const k of Object.keys(next.bugsById)) {

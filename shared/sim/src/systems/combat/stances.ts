@@ -9,6 +9,7 @@ import { UnitBook } from '../../units/book';
 import { faceTowards } from '../../units/movement/locomotion';
 import { clearEvasiveState } from './evasive';
 import { canWeaponHitTarget } from './layers';
+import { isTargetSpottedByColony } from './vision';
 import {
   engageTargetInRangeOrApproach,
   findClosestHostileInAnchorLeash,
@@ -28,6 +29,7 @@ import {
   isHostileTargetForAttacker,
   resolveAttackerWeaponRow,
 } from './targeting';
+import { applyFiringRangeUnitGate } from './firingRangeCombat';
 import { stepCombatTurrets } from './turrets';
 
 export type CombatStance = 'hold' | 'defend' | 'hunt';
@@ -45,6 +47,8 @@ export interface UnitStanceRecord {
   attackMoveGoal?: { q: number; r: number } | null;
   explicitTargetId?: number | null;
   lastFiredTick?: number;
+  nextShotTick?: number;
+  shotIntervalTicks?: number;
   returningToAnchor?: boolean;
 }
 
@@ -141,6 +145,8 @@ export function setUnitStance(
     attackMoveGoal: null,
     explicitTargetId: null,
     lastFiredTick: prev?.lastFiredTick,
+    nextShotTick: prev?.nextShotTick,
+    shotIntervalTicks: prev?.shotIntervalTicks,
     returningToAnchor: false,
   };
   writeStancesBlob(state, byEntityId, tick);
@@ -180,7 +186,8 @@ function stepDefendStance(
     if (
       tRow >= 0 &&
       isHostileTargetForAttacker(state, row, tRow, { includePassiveFauna: false }) &&
-      canWeaponHitTarget(state, weaponRow, tRow, ctx.data)
+      canWeaponHitTarget(state, weaponRow, tRow, ctx.data) &&
+      (cols.owner[row] < 0 || isTargetSpottedByColony(state, cols.owner[row], tRow, ctx.data))
     ) {
       targetRow = tRow;
     }
@@ -281,7 +288,7 @@ function stepHuntStance(
     weaponRow,
     minRange: 0,
     maxRange: huntRadius,
-    requireSpotting: false,
+    requireSpotting: true,
     includePassiveFauna: false,
     stickyTargetId: rec.targetId ?? undefined,
     data: ctx.data,
@@ -332,7 +339,8 @@ function stepSingleCombatUnit(
     if (
       tRow >= 0 &&
       isHostileTargetForAttacker(state, row, tRow, { includePassiveFauna: true }) &&
-      canWeaponHitTarget(state, weaponRow, tRow, ctx.data)
+      canWeaponHitTarget(state, weaponRow, tRow, ctx.data) &&
+      (cols.owner[row] < 0 || isTargetSpottedByColony(state, cols.owner[row], tRow, ctx.data))
     ) {
       engageTargetInRangeOrApproach(state, row, tRow, weaponRow, rec, ctx, { allowEvasive: true });
       return;
@@ -419,6 +427,7 @@ export function orderUnitAttackTarget(
  * Steps all combat unit stances (`hold`, `defend`, `hunt`, `attackMove`, `attackTarget`) in the combat slot.
  */
 export function stepCombatStances(state: PlanetState, ctx: StepContext): void {
+  if (applyFiringRangeUnitGate(state, ctx)) return;
   const cols = state.entities.cols;
   const byEntityId = readStancesBlob(state);
   const leashRadius = getDefendLeashRadius(ctx.data);

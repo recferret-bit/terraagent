@@ -19,7 +19,7 @@ import { issueUnitCommand } from './registry';
  */
 
 /** Resolves the commanded unit's row (the caller's own unit), or a reject code. */
-function ownUnitRow(state: PlanetState, cmd: SimCommand, id: number): number | string {
+export function ownUnitRow(state: PlanetState, cmd: SimCommand, id: number): number | string {
   const row = rowOf(state.entities, id);
   if (cmd.colonyIndex === undefined) {
     return row < 0 ? 'unknown_entity' : row;

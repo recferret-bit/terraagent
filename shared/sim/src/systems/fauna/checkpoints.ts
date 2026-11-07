@@ -59,6 +59,11 @@ export class FaunaCheckpointStore {
 
   constructor(private readonly maxCheckpoints = 32) {}
 
+  clear(): void {
+    this.checkpoints.length = 0;
+    this.directivesBySeq.clear();
+  }
+
   save(state: PlanetState): FaunaCheckpoint {
     const cp = buildCheckpointObject(state);
     this.add(cp);

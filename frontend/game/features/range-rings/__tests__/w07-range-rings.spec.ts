@@ -3,8 +3,8 @@ import * as THREE from 'three';
 import { describe, expect, it } from 'vitest';
 import { parseWaves } from '@terra/contracts';
 import { TILE_M, tileXZ } from '@terra/render/planets/hex';
-import { InstancedRangeRings, RING_STYLE_BY_KIND } from '@terra/render/visuals/rings';
-import { ENTITY_KIND } from '@terra/sim';
+import { InstancedRangeRings, RING_STYLE_BY_KIND, RING_Y_OFFSET } from '@terra/render/visuals/rings';
+import { compileData, ENTITY_KIND, getEntitySpottingRadius } from '@terra/sim';
 import { loadFeatures, type FeatureContext, type GameView } from '../../../core/registry';
 import { LandfallController } from '../../landfall';
 import type { PlacementGhostState } from '../../construction-menu/PlacementGhost';
@@ -40,8 +40,54 @@ function makeContext(overrides?: Partial<FeatureContext['services']>): {
   return { ctx, scene };
 }
 
+describe('W07-21 rendered pose alignment', () => {
+  it.each(['selected', 'alt', 'enemy hover'] as const)('%s rings follow the rendered scout between snapshots', (mode) => {
+    const { ctx } = makeContext();
+    const rendered = new THREE.Vector3(0.25, 0.3, -0.1);
+    ctx.services.scene3d!.renderedEntityGroundPosition = (id) => id === 91 ? rendered : null;
+    const renderer = createRangeRingsRenderer(ctx);
+    if (mode === 'selected') renderer.setSelectedEntityIds([91]);
+    if (mode === 'alt') renderer.setAltPressed(true);
+    if (mode === 'enemy hover') renderer.setHoveredEntityId(91);
+    const view: GameView = { entities: [
+      { id: 91, kind: ENTITY_KIND.recon, owner: mode === 'enemy hover' ? 1 : 0, q: 2, r: 0, x: 2, y: 0, hp: 160 },
+    ] };
+
+    for (let frame = 0; frame < 5; frame++) {
+      rendered.x += 0.035;
+      rendered.z += 0.015;
+      renderer.update(view, 1 / 60);
+      const active = renderer.getActiveRings();
+      expect(active.length).toBeGreaterThan(0);
+      for (const ring of active) {
+        expect(ring).toMatchObject({ worldX: rendered.x, worldZ: rendered.z });
+        expect(ring.worldY).toBeCloseTo(rendered.y + RING_Y_OFFSET, 6);
+      }
+      const matrix = new THREE.Matrix4();
+      renderer.rings.mesh.getMatrixAt(0, matrix);
+      const centre = new THREE.Vector3().setFromMatrixPosition(matrix);
+      expect(centre.x).toBeCloseTo(rendered.x, 5);
+      expect(centre.z).toBeCloseTo(rendered.z, 5);
+    }
+    renderer.dispose();
+  });
+
+  it('falls back to the authoritative position before an entity mesh exists', () => {
+    const { ctx } = makeContext();
+    ctx.services.scene3d!.renderedEntityGroundPosition = () => null;
+    const renderer = createRangeRingsRenderer(ctx);
+    renderer.setSelectedEntityIds([92]);
+    renderer.update({ entities: [
+      { id: 92, kind: ENTITY_KIND.recon, owner: 0, q: 2, r: 3, x: 2.3, y: 3.1, hp: 160 },
+    ] }, 1 / 60);
+    const [worldX, worldZ] = tileXZ(2.3, 3.1);
+    expect(renderer.getActiveRings()[0]).toMatchObject({ worldX, worldY: RING_Y_OFFSET, worldZ });
+    renderer.dispose();
+  });
+});
+
 describe('W07-21 selection range and view rings', () => {
-  it('selects the Autocannon -> renders an 8-tile weapon ring (16 m, solid orange) and a 9-tile view ring (18 m, dashed white 0.4)', () => {
+  it('selects the Autocannon -> renders an 8-tile weapon ring (16 m, solid orange) and a 5-tile view ring (10 m, dashed white 0.4)', () => {
     const landfall = new LandfallController({ ownerColonyIndex: 0, autoSelect: false });
     const { ctx, scene } = makeContext({ landfall });
     const renderer = createRangeRingsRenderer(ctx);
@@ -76,8 +122,8 @@ describe('W07-21 selection range and view rings', () => {
     expect(viewRing).toMatchObject({
       entityId: 101,
       kind: 'viewRange',
-      radiusTiles: 9,
-      radiusMeters: 9 * TILE_M,
+      radiusTiles: 5,
+      radiusMeters: 5 * TILE_M,
       colorHex: 0xffffff,
       opacity: 0.4,
       dashed: true,
@@ -196,8 +242,8 @@ describe('W07-21 Alt all-units view and enemy hover rings', () => {
     expect(spitterRings[0]).toMatchObject({
       entityId: 77,
       kind: 'enemyWeapon',
-      radiusTiles: 6,
-      radiusMeters: 12,
+      radiusTiles: 5,
+      radiusMeters: 10,
       colorHex: 0xff3b3b,
     });
 
@@ -261,8 +307,8 @@ describe('W07-21 turret placement ghost rings and wave gating', () => {
     expect(autoWeapon?.worldZ).toBeCloseTo(expectedZ, 4);
     expect(autoView).toMatchObject({
       kind: 'viewRange',
-      radiusTiles: 9,
-      radiusMeters: 18,
+      radiusTiles: 5,
+      radiusMeters: 10,
     });
 
     ghostState = { ...ghostState, building: 'laserTower', label: 'Laser Tower' };
@@ -276,8 +322,8 @@ describe('W07-21 turret placement ghost rings and wave gating', () => {
     });
     expect(laserGhostRings.find((r) => r.kind === 'viewRange')).toMatchObject({
       kind: 'viewRange',
-      radiusTiles: 10,
-      radiusMeters: 20,
+      radiusTiles: 5,
+      radiusMeters: 10,
     });
 
     renderer.dispose();
@@ -294,13 +340,38 @@ describe('W07-21 turret placement ghost rings and wave gating', () => {
 
     expect(resolveEntityRingSpec('hq')).toMatchObject({ weaponRangeTiles: 5, minRangeTiles: 0, viewRangeTiles: 9 });
     expect(resolveEntityRingSpec('recon')).toMatchObject({ weaponRangeTiles: 4, minRangeTiles: 0, viewRangeTiles: 10 });
-    expect(resolveEntityRingSpec('demoTank')).toMatchObject({ weaponRangeTiles: 7, minRangeTiles: 0, viewRangeTiles: 8 });
+    expect(resolveEntityRingSpec('demoTank')).toMatchObject({ weaponRangeTiles: 5, minRangeTiles: 0, viewRangeTiles: 6 });
     expect(resolveEntityRingSpec('demoArtillery')).toMatchObject({ weaponRangeTiles: 14, minRangeTiles: 3, viewRangeTiles: 6 });
-    expect(resolveEntityRingSpec('commandHub')).toMatchObject({ weaponRangeTiles: 0, viewRangeTiles: 7.5 });
-    expect(resolveEntityRingSpec('outpostBeacon')).toMatchObject({ weaponRangeTiles: 0, viewRangeTiles: 6.5 });
+    expect(resolveEntityRingSpec('commandHub')).toMatchObject({ weaponRangeTiles: 0, viewRangeTiles: 9 });
+    expect(resolveEntityRingSpec('outpostBeacon')).toMatchObject({ weaponRangeTiles: 0, viewRangeTiles: 7 });
     expect(resolveEntityRingSpec('blackAnt')).toMatchObject({ weaponRangeTiles: 1 });
     expect(resolveEntityRingSpec('blueBeetle')).toMatchObject({ weaponRangeTiles: 1 });
-    expect(resolveEntityRingSpec('greenSpitter')).toMatchObject({ weaponRangeTiles: 6 });
+    expect(resolveEntityRingSpec('greenSpitter')).toMatchObject({ weaponRangeTiles: 5 });
+  });
+
+});
+
+describe('W07 live range settings', () => {
+  it('keeps every known sight indicator on the shared tuned spotting rule', () => {
+    const data = compileData(new Set(parseWaves('..07').list), {
+      combatUnits: { combatConfig: { hubBeaconViewBonus: 8, buildingViewBonus: 3 }, recon: { viewRadius: 12 } },
+      fauna: { greenSpitter: { viewRadius: 9 } },
+    });
+    for (const kind of new Set(Object.values(RING_ENTITY_KIND))) {
+      expect(resolveEntityRingSpec(kind, data).viewRangeTiles, `kind ${kind}`).toBe(getEntitySpottingRadius(kind, data));
+    }
+  });
+
+  it('shows the host weapon and fauna ranges after live combat tuning', () => {
+    const data = compileData(new Set(parseWaves('..07').list), {
+      weapons: { reconGun: { range: 9, minRange: 2 }, autocannon: { range: 11 }, hqAutoTurret: { range: 8 }, tankRocket: { range: 10 } },
+      combatUnits: { recon: { viewRadius: 13 } }, fauna: { greenSpitter: { range: 7 } },
+    });
+    expect(resolveEntityRingSpec('recon', data)).toMatchObject({ weaponRangeTiles: 9, minRangeTiles: 2, viewRangeTiles: 13 });
+    expect(resolveEntityRingSpec('autocannon', data)).toMatchObject({ weaponRangeTiles: 11 });
+    expect(resolveEntityRingSpec('hq', data)).toMatchObject({ weaponRangeTiles: 8 });
+    expect(resolveEntityRingSpec('demoTank', data)).toMatchObject({ weaponRangeTiles: 10 });
+    expect(resolveEntityRingSpec('greenSpitter', data)).toMatchObject({ weaponRangeTiles: 7 });
   });
 
   it('InstancedRangeRings shader chunks compile into named vertex/fragment shaders without monolithic templates', () => {

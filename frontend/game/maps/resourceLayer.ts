@@ -1,5 +1,6 @@
 import { DEPOSIT_CODES } from '@terra/contracts/tiles/codes';
 import { hexIndex } from '@terra/sim/grid/hex';
+import { isMapTileExplored } from './visibility';
 import { RESOURCE_LEGEND } from './tileColors';
 import type { MapLayerDrawView } from './types';
 
@@ -27,7 +28,7 @@ export function drawResourcesLayer(ctx: CanvasRenderingContext2D, view: MapLayer
   for (let i = 0; i < limit; i++) {
     const code = deposit[i] ?? 0;
     if (code === 0) continue;
-    if (tiles.explored && tiles.explored[i] === 0) continue;
+    if (!isMapTileExplored(view, i)) continue;
     const color = DEPOSIT_COLOR[code];
     if (!color) continue;
     const { x, y } = view.axialToPixel(hx.q[i]!, hx.r[i]!);

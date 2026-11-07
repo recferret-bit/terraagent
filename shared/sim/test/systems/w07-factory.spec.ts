@@ -70,12 +70,12 @@ function createFactoryTestState(seed = 'w07-factory') {
   return { state, colony, hubId, factoryId, facRow };
 }
 
-describe('W07-10 Robotics Factory T1 Recon Drone production, buffer cap, brownout pause, and rally walk', () => {
-  it('enqueueTask {buildUnit:"recon"} -> Recon spawns at Factory edge after 10 s (50 ticks) and walks over hover terrain to rally point', () => {
+describe('W07-10 Robotics Factory T1 Recon Armored Scout production, buffer cap, brownout pause, and rally walk', () => {
+  it('enqueueTask {buildUnit:"recon"} -> Recon spawns at Factory edge after 10 s (50 ticks) and routes around blocked terrain to rally point', () => {
     const { state, colony, factoryId } = createFactoryTestState('w07-factory-1');
     const pipeline = createRegistryPipeline({ flags: parseWaves('..07') });
 
-    // Place shallow water, forest, rock, and deposit along (3, 0)..(6, 0) to verify hover pathing
+    // Place shallow water, forest, rock, and deposit along (3, 0)..(6, 0) to verify ground pathing
     const idx = hexIndex(state.grid.radius);
     setTileTerrain(state, idx.indexOf(3, 0), TERRAIN.shallow, 0);
     setTileTerrain(state, idx.indexOf(4, 0), TERRAIN.forest, 0);
@@ -85,7 +85,7 @@ describe('W07-10 Robotics Factory T1 Recon Drone production, buffer cap, brownou
     // Set rally point at (7, 0)
     setFactoryRallyPoint(state, 0, 7, 0, factoryId, 0);
 
-    // Enqueue Recon Drone via enqueueTask command on step 1
+    // Enqueue Recon Armored Scout via enqueueTask command on step 1
     const firstStep = step(
       state,
       [
@@ -142,11 +142,11 @@ describe('W07-10 Robotics Factory T1 Recon Drone production, buffer cap, brownou
     expect(state.entities.cols.targetR[reconRow]).toBe(0);
 
     const stats = mobileStats(ENTITY_KIND.recon, pipeline.config.data);
-    expect(stats?.profile).toBe('hover');
+    expect(stats?.profile).toBe('ground');
     expect(stats?.speedPerTick).toBeCloseTo(0.7, 4);
 
-    // Step 15 more ticks so Recon walks across shallow water / forest / rock / deposit and arrives at rally (7, 0)
-    for (let i = 0; i < 15; i++) {
+    // Allow the ground vehicle to route around blocked terrain and arrive at its rally.
+    for (let i = 0; i < 30; i++) {
       step(state, [], 1, pipeline);
     }
     expect(state.entities.cols.q[reconRow]).toBe(7);

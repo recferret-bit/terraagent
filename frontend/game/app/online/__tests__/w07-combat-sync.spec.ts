@@ -294,6 +294,13 @@ describe('W07-17 · Deduplicating view.blobs.projectileImpacts against store/hos
     expect(entities.combatSync.vfxImpactSpawnCount).toBe(1);
     expect(entities.combatSync.duplicateImpactIgnored).toBe(1);
 
+    // Two launches can converge on one impact tick/cell when the target moves or speed is tuned.
+    const shotA = { ...impactEv, data: { ...impactEv.data, firedTick: 1 } };
+    const shotB = { ...impactEv, data: { ...impactEv.data, firedTick: 2 } };
+    serverListeners.forEach((fn) => fn([shotA, shotB, shotA]));
+    expect(entities.combatSync.vfxImpactSpawnCount).toBe(3);
+    expect(entities.combatSync.duplicateImpactIgnored).toBe(2);
+
     unbind();
     entities.dispose();
   });

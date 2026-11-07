@@ -401,7 +401,8 @@ describe('W07-12 · stationary defense turrets and HQ auto-turret firing', () =>
     });
 
     stepTicks(host, 6);
-    // In 6 ticks: laserTower fires at ticks 1,6 (2 * 15 = 30), autocannon at 1,3,5 (3 * 8 = 24), HQ at 1,6 (2 * 6 = 12) => 300 - 66 = 234
-    expect(state.entities.cols.hp[ant.row]).toBe(234);
+    // At the configured rates: 5 laser hits (30), 2 arrived autocannon bullets (18), 2 HQ bullets (12).
+    // Tick-6 bullets are still in flight.
+    expect(state.entities.cols.hp[ant.row]).toBe(240);
   });
 });

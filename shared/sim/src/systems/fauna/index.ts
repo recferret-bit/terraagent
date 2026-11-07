@@ -1,8 +1,9 @@
 import { defineSystem } from '../../kernel/system';
 import { defineSimModule } from '../define';
-import { stepFauna, stepFaunaCombat } from './step';
+import { stepFauna } from './step';
 
 export * from './types';
+export * from './insectActions';
 export * from './state';
 export * from './spawn';
 export * from './provocation';
@@ -22,22 +23,9 @@ export const faunaSystem = defineSystem({
   },
 });
 
-/**
- * Fauna combat system (slot 10): executes melee bites and ranged acid shots for provoked bugs in range,
- * and resolves due projectile impacts.
- */
-export const faunaCombatSystem = defineSystem({
-  id: 'fauna.combat',
-  slot: 10,
-  wave: 'W07',
-  run(state, ctx) {
-    stepFaunaCombat(state, ctx);
-  },
-});
-
 export default defineSimModule({
   id: 'fauna',
   wave: 'W07',
-  systems: [faunaSystem, faunaCombatSystem],
+  systems: [faunaSystem],
   handlers: [],
 });

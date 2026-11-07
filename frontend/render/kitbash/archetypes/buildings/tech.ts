@@ -134,11 +134,11 @@ export function turret() {
     b.addPart(new THREE.CylinderGeometry(0.095, 0.11, 0.95, 10), 'frameGunmetal', { name: 'autocannon barrel', position: [sx * 0.3, 1.49, 0.72], rotation: [PI / 2, 0, 0], ...R3 });
     b.addPart(new THREE.CylinderGeometry(0.065, 0.065, 0.52, 8), 'frameGunmetal', { name: 'muzzle accelerator tube', position: [sx * 0.3, 1.49, 1.4], rotation: [PI / 2, 0, 0], ...R3 });
     ring(b, 'hullSecondary', 0.115, 0.03, [sx * 0.3, 1.49, 0.95], { rotation: [0, 0, 0], name: 'barrel cooling collar', ...R3 });
-    glow(b, 'warningAmber', [0.09, 0.09, 0.1], [sx * 0.3 - 0.045, 1.445, 1.62], { name: 'muzzle flash suppressor light', ...R3 });
+    b.addPart(new THREE.CylinderGeometry(0.045, 0.045, 0.02, 8), 'warningAmber', { name: 'muzzle flash suppressor light', position: [sx * 0.3, 1.49, 1.66], rotation: [PI / 2, 0, 0], ...R3 });
   }
   // ammo box + cable anchored to turret housing
   box(b, 'hullSecondary', [0.4, 0.42, 0.4], [-0.75, 0.19, 0.45], { r: 0.05, name: 'ammo feed magazine' });
-  cable(b, [-0.75, 0.56, 0.45], [-0.42, 1.38, 0.15], 0.06, 0.035, 'frameGunmetal', { name: 'ammo belt conduit' });
+  cable(b, [-0.75, 0.56, 0.45], [-0.58, 1.04, 0.15], 0.03, 0.035, 'frameGunmetal', { name: 'ammo belt conduit' });
   return b.build();
 }
 
@@ -167,7 +167,7 @@ export function laserTower() {
   b.addPart(new THREE.CylinderGeometry(0.16, 0.20, 0.56, 10), 'frameGunmetal', {
     name: 'optical focus barrel', position: [0, 2.30, 0.62], rotation: [PI / 2, 0, 0], ...A,
   });
-  ring(b, 'hullPrimary', 0.19, 0.035, [0, 2.30, 0.72], { rotation: [PI / 2, 0, 0], name: 'barrel focusing collar', ...A });
+  ring(b, 'hullPrimary', 0.19, 0.035, [0, 2.30, 0.72], { rotation: [0, 0, 0], name: 'barrel focusing collar', ...A });
   b.addPart(new THREE.CylinderGeometry(0.11, 0.11, 0.06, 10), 'dangerCrimson', {
     name: 'laser aperture lens light', position: [0, 2.30, 0.91], rotation: [PI / 2, 0, 0], emissiveIntensity: 4.5, ...A,
   });

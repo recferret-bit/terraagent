@@ -1,3 +1,4 @@
+import type { CompiledDataLike } from '@terra/sim';
 import {
   axialToCanvasPixel,
   canvasPixelToAxial,
@@ -146,12 +147,16 @@ export class MinimapHud {
     this.el.style.display = visible ? '' : 'none';
   }
 
+  private simData?: CompiledDataLike;
+
   updateData(opts: {
+    simData?: CompiledDataLike;
     entry?: PlanetRasterEntry | null;
     tiles?: ClientTiles | null;
     clientView?: ClientView | null;
     ownColonySlot?: number;
   }): void {
+    this.simData = opts.simData;
     if (opts.entry !== undefined) this.lastEntry = opts.entry;
     if (opts.tiles !== undefined) this.lastTiles = opts.tiles;
     if (opts.clientView !== undefined) this.lastClientView = opts.clientView;
@@ -170,6 +175,7 @@ export class MinimapHud {
       radius,
       tiles: this.lastTiles,
       clientView: this.lastClientView,
+      simData: this.simData,
       ownColonySlot: this.ownColonySlot,
       axialToPixel: (q, r) => axialToCanvasPixel(q, r, size, radius),
       pixelToAxial: (x, y) => canvasPixelToAxial(x, y, size, radius),

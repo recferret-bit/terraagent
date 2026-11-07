@@ -16,7 +16,7 @@ function applyPedestalProjectorShader(mat: THREE.MeshStandardMaterial) {
   };
 }
 
-/** Pedestal + calibration grid + ruler + human reference; rebuilt whenever the biome or grid style changes. */
+/** Pedestal + square calibration grid + hidden ruler + human reference; rebuilt when the biome changes. */
 export class StageRig {
   readonly group = new THREE.Group();
   grid = new THREE.Group();
@@ -27,7 +27,7 @@ export class StageRig {
 
   constructor(private getMinX: () => number) {}
 
-  build(kind: PlanetKind, opts: { hex: boolean; grid: boolean; ruler: boolean; human: boolean }) {
+  build(kind: PlanetKind, opts: { human: boolean }) {
     this.group.clear();
     const spec = PLANET_SPECS[kind];
     const slabMat = new THREE.MeshStandardMaterial({ color: spec.palette.rockDark, roughness: 0.75, metalness: 0.2 });
@@ -43,10 +43,10 @@ export class StageRig {
     this.top = top;
     this.group.add(slab, top, rim);
 
-    this.grid = buildGrid(opts.hex); this.group.add(this.grid);
-    this.ruler = buildRuler(); this.ruler.visible = opts.ruler; this.group.add(this.ruler);
+    this.grid = buildGrid(false); this.group.add(this.grid);
+    this.ruler = buildRuler(); this.ruler.visible = false; this.group.add(this.ruler);
     this.human = buildHuman(); this.human.visible = opts.human; this.group.add(this.human);
-    this.grid.visible = opts.grid;
+    this.grid.visible = true;
     this.placeHuman();
   }
 

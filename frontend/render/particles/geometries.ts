@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
+import { liquidGlobGeometry, liquidDropGeometry, liquidFilamentGeometry, liquidCrownGeometry } from './liquidGeometries';
 import type { ParticleGeometryKind } from './types';
 
 const geometryCache = new Map<ParticleGeometryKind, THREE.BufferGeometry>();
@@ -107,6 +108,10 @@ function buildShockRing(): THREE.BufferGeometry {
 
 function createGeometryByKind(kind: ParticleGeometryKind): THREE.BufferGeometry {
   switch (kind) {
+    case 'liquidGlob': return liquidGlobGeometry();
+    case 'liquidDrop': return liquidDropGeometry();
+    case 'liquidFilament': return liquidFilamentGeometry();
+    case 'liquidCrown': return liquidCrownGeometry();
     case 'leafCluster':
       return buildLeafCluster();
     case 'pineNeedle':

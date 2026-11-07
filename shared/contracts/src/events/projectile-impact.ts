@@ -6,6 +6,7 @@ export const ProjectileImpactDataSchema = z.strictObject({
   colonyId: z.string().optional(),
   colonyIndex: z.number().int().nonnegative().optional(),
   attackerId: z.number().int().optional(),
+  firedTick: z.number().int().nonnegative().optional(),
   targetId: z.number().int().optional(),
   weaponId: z.string().optional(),
   weaponType: WeaponTypeSchema.optional(),

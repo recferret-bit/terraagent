@@ -298,7 +298,7 @@ export function syncReconView(
     entityId: cols.id[row],
     kind: cols.kind[row],
     unit: 'recon',
-    label: String(rRow.label ?? 'Recon Drone'),
+    label: String(rRow.label ?? 'Recon Armored Scout'),
     archetype: String(rRow.archetype ?? 'unit.recon'),
     owner: cols.owner[row],
     tier: cols.tier[row],
@@ -312,7 +312,7 @@ export function syncReconView(
     powerDrainPerS: Number(rRow.powerDrainPerS ?? 2),
     speedTilesPerS: Number(rRow.designSpeed ?? 3.5),
     designSpeedTilesPerS: Number(rRow.designSpeed ?? 3.5),
-    viewRadius: Number(rRow.viewRadius ?? 8),
+    viewRadius: Number(rRow.viewRadius ?? 10),
     radius: Number(rRow.radius ?? 0.35),
     cost: { ...((rRow.cost ?? {}) as Record<string, number>) },
     buildS: Number(rRow.buildS ?? 50),
@@ -386,7 +386,7 @@ export function produceReconAtFactoryEdge(
   cols.createdAt[row] = tick;
   cols.changedAt[row] = tick;
 
-  revealVision(state, owner, spawn.q, spawn.r, Number(reconRow.viewRadius ?? 8), tick);
+  revealVision(state, owner, spawn.q, spawn.r, Number(reconRow.viewRadius ?? 10), tick);
 
   const rally = getFactoryRallyPoint(state, owner, spawn.producerEntityId);
   if (rally && (rally.q !== spawn.q || rally.r !== spawn.r)) {

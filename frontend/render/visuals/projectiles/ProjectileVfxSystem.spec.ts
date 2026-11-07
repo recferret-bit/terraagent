@@ -77,12 +77,12 @@ describe('ProjectileVfxSystem (W07-22)', () => {
     expect(shell.y).toBeGreaterThan(Math.max(y0, y1));
     expect(shell.y).toBeCloseTo(evalParabolicArcY(y0, y1, shell.arcHeight, 0.5), 5);
 
-    // Arrival at t >= 1 triggers impact flash + AoE decal
+    // Arrival triggers a layered artillery detonation; no expanding damage-radius circle.
     vfx.update(0.55);
     expect(vfx.getActiveCounts().projectiles).toBe(0);
     expect(vfx.getActiveCounts().impacts).toBe(1);
-    expect(vfx.getActiveCounts().aoeDecals).toBe(1);
-    expect(vfx.getActiveAoeDecals()[0]!.radiusM).toBeCloseTo(1.5 * vfx.tileSizeM, 5);
+    expect(vfx.getActiveCounts().aoeDecals).toBe(0);
+    expect(vfx.getBurstCounts()['combat.artillery']).toBe(50);
     vfx.dispose();
   });
 });
@@ -145,7 +145,7 @@ describe('ProjectileVfxSystem — rockets, acid, lasers & impacts (W07-22)', () 
     vfx.dispose();
   });
 
-  it('spawns impact flashes and AoE decals when aoe > 0 on onProjectileImpact', () => {
+  it('spawns surface chips and artillery bursts instead of expanding AoE circles', () => {
     const vfx = new ProjectileVfxSystem();
 
     vfx.onProjectileImpact({
@@ -164,8 +164,8 @@ describe('ProjectileVfxSystem — rockets, acid, lasers & impacts (W07-22)', () 
       aoe: 2,
     });
     expect(vfx.getActiveCounts().impacts).toBe(2);
-    expect(vfx.getActiveCounts().aoeDecals).toBe(1);
-    expect(vfx.getActiveAoeDecals()[0]!.radiusM).toBeCloseTo(4, 5);
+    expect(vfx.getActiveCounts().aoeDecals).toBe(0);
+    expect(vfx.getBurstCounts()['combat.artillery']).toBe(50);
     vfx.dispose();
   });
 });
@@ -241,7 +241,8 @@ describe('ProjectileVfxSystem — @terra/sim event compatibility (W07-22)', () =
       heightAt,
     );
     expect(vfx.getActiveCounts().impacts).toBe(1);
-    expect(vfx.getActiveCounts().aoeDecals).toBe(1);
+    expect(vfx.getActiveCounts().aoeDecals).toBe(0);
+    expect(vfx.getBurstCounts()['combat.artillery']).toBe(50);
     vfx.dispose();
   });
 });

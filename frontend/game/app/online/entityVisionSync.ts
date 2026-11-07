@@ -6,7 +6,6 @@ import {
   getColonyLightingBlend,
   isWorldPointInColonyFov,
   MAX_PROJECTOR_CANDIDATES,
-  MAX_VISION_SOURCES,
   resetColonyVisionAndLights,
   setColonyLightingBlend,
   updateColonyProjectorsAndVision,
@@ -15,8 +14,8 @@ import {
   type ColonyProjectorDesc,
   type ColonyVisionSourceDesc,
 } from '@terra/render/lighting';
-import type { HexTerrain } from '@terra/render/planets/hex';
-import { ENTITY_KIND, ENTITY_STATE } from '@terra/sim';
+import { TILE_M, type HexTerrain } from '@terra/render/planets/hex';
+import { ENTITY_KIND, ENTITY_STATE, getEntitySpottingRadius, isEntityContributingVision, type CompiledDataLike } from '@terra/sim';
 import type { ClientTiles } from '../../store/replica/viewCodec';
 import { archetypeForKind, type EntityMeshRecord } from './EntityMeshes';
 import { isEntityInViewFocus } from './entityFocus';
@@ -126,11 +125,11 @@ function appendArchetypeProjectors(opts: {
 
 function collectOwnedEntityVisionAndProjectors(
   rec: EntityMeshRecord,
-  baseCenters: Array<{ x: number; z: number; innerRadius: number; outerRadius: number }>,
   visionSources: ColonyVisionSourceDesc[],
   projectors: ColonyProjectorDesc[],
   lightScale: number,
   stateMul: number,
+  data?: CompiledDataLike,
 ): void {
   const ux = rec.mesh.position.x;
   const uy = rec.mesh.position.y;
@@ -149,35 +148,12 @@ function collectOwnedEntityVisionAndProjectors(
     stateMul,
   };
 
-  if (rec.kind === ENTITY_KIND.commandHub || rec.kind === ENTITY_KIND.pod) {
-    const innerRadius = rec.kind === ENTITY_KIND.commandHub ? 21 : 17;
-    const outerRadius = rec.kind === ENTITY_KIND.commandHub ? 30 : 24;
-    baseCenters.push({ x: rec.targetPos.x, z: rec.targetPos.z, innerRadius, outerRadius });
-    if (visionSources.length < MAX_VISION_SOURCES) {
-      visionSources.push({ x: ux, z: uz, innerRadius, outerRadius });
-    }
-    if (rec.mesh.visible) appendArchetypeProjectors(projOpts);
-    return;
+  // Lighting cones are cosmetic. Sight is omnidirectional and uses the shared simulation radius.
+  if (rec.hp > 0 && isEntityContributingVision(rec.state)) {
+    const outerRadius = getEntitySpottingRadius(rec.kind, data) * TILE_M;
+    if (outerRadius > 0) visionSources.push({ x: ux, z: uz, innerRadius: outerRadius * 0.88, outerRadius });
   }
-
-  if (rec.kind === ENTITY_KIND.metalsExtractor || rec.kind === ENTITY_KIND.solar || rec.kind === ENTITY_KIND.tradeHub) {
-    if (rec.state !== ENTITY_STATE.waiting && visionSources.length < MAX_VISION_SOURCES) {
-      visionSources.push({ x: ux, z: uz, innerRadius: 10, outerRadius: 15 });
-    }
-    if (rec.mesh.visible) appendArchetypeProjectors(projOpts);
-    return;
-  }
-
-  if (rec.state === ENTITY_STATE.descending || !rec.mesh.visible) return;
-  const fx = Math.sin(yaw);
-  const fz = Math.cos(yaw);
-  if (visionSources.length < MAX_VISION_SOURCES) {
-    visionSources.push({ x: ux + fx * 2.8, z: uz + fz * 2.8, innerRadius: 3.5, outerRadius: 6.2 });
-  }
-  if (visionSources.length < MAX_VISION_SOURCES) {
-    visionSources.push({ x: ux + fx * 7.5, z: uz + fz * 7.5, innerRadius: 8.0, outerRadius: 13.5 });
-  }
-  appendArchetypeProjectors(projOpts);
+  if (rec.mesh.visible && rec.state !== ENTITY_STATE.descending) appendArchetypeProjectors(projOpts);
 }
 
 /** Seconds the colony FoV shroud / night factor / projectors take to ease in after the descent hands over. */
@@ -201,6 +177,7 @@ function stepColonyBlend(active: boolean): number {
  * (around user base territory, owned buildings, and owned units) for the active online colony scene.
  */
 export function syncColonyVisionAndProjectors(opts: {
+  data?: CompiledDataLike;
   records: Iterable<EntityMeshRecord>;
   ownerColonyIndex: number;
   terrain: HexTerrain | null;
@@ -221,7 +198,6 @@ export function syncColonyVisionAndProjectors(opts: {
   const rigIntensity = (0.22 + 0.78 * nightFactor) * dnParams.projectorIntensity * nightGate;
   const lightScale = (0.32 + 0.98 * nightFactor) * dnParams.projectorIntensity * nightGate;
 
-  const baseCenters: Array<{ x: number; z: number; innerRadius: number; outerRadius: number }> = [];
   const visionSources: ColonyVisionSourceDesc[] = [];
   const projectors: ColonyProjectorDesc[] = [];
 
@@ -232,7 +208,7 @@ export function syncColonyVisionAndProjectors(opts: {
     if (isEntityInViewFocus(rec.mesh)) updateEntityProjectorRig(rec.mesh, rigIntensity * stateMul, rec.buildStage);
 
     if (rec.owner === ownerColonyIndex) {
-      collectOwnedEntityVisionAndProjectors(rec, baseCenters, visionSources, projectors, lightScale, stateMul);
+      collectOwnedEntityVisionAndProjectors(rec, visionSources, projectors, lightScale, stateMul, opts.data);
     }
   }
 
@@ -240,9 +216,8 @@ export function syncColonyVisionAndProjectors(opts: {
     updateColonyVisionTexture({
       radius: terrain.radius,
       colonyIndex: ownerColonyIndex,
-      owner: tiles?.owner,
       explored: tiles?.explored,
-      baseCenters,
+      visionSources,
     });
   }
 

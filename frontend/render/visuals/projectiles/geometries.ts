@@ -61,11 +61,14 @@ function buildRocketBodyGeo(): THREE.BufferGeometry {
 }
 
 function buildAcidGlobGeo(): THREE.BufferGeometry {
-  const main = new THREE.IcosahedronGeometry(0.19, 0);
-  main.scale(0.92, 0.88, 1.35);
-  const lobe = new THREE.OctahedronGeometry(0.13, 0);
-  lobe.translate(0, 0.03, -0.18);
-  return finalizeGeo(mergeGeometries([nonIdx(main), nonIdx(lobe)], false));
+  const main = new THREE.SphereGeometry(0.21, 10, 6);
+  main.scale(0.95, 0.92, 1.05);
+  const lobe = new THREE.SphereGeometry(0.105, 7, 4);
+  lobe.scale(0.8, 0.8, 1.35);
+  lobe.translate(0.035, 0.02, -0.2);
+  const merged = mergeGeometries([nonIdx(main), nonIdx(lobe)], false);
+  merged.computeBoundingSphere();
+  return merged; // Preserve smooth normals: a thrown liquid sphere, not a faceted energy bolt.
 }
 
 function buildLaserCylinderGeo(radius: number): THREE.BufferGeometry {
@@ -185,7 +188,7 @@ export function createPooledInstancedMesh(
         emissiveIntensity: spec.emissiveIntensity,
         roughness: spec.roughness ?? 0.3,
         metalness: spec.metalness ?? 0.1,
-        flatShading: true,
+        flatShading: spec.key !== 'acid',
       });
 
   const mesh = new THREE.InstancedMesh(geo, material, spec.count);

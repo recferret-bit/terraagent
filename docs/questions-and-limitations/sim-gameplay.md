@@ -940,3 +940,109 @@ Ledger and journal limits are in [`economy-ledger.md`](./economy-ledger.md) (LED
 - **Workaround / mitigation:** Use `spawnUnit recon|demoTank|demoArtillery` and `hitDebug on` in `/play.html?scenario=w07` or run the unit suites.
 - **To resolve:** Land `W07-26` (`shared/sim/test/duels.spec.ts`) when `H+` issues open or alongside W17-26.
 - **Found:** 2026-11-04, W07 wave execution.
+
+### GP-82 · Hive-life firing range locks every shooter onto the lowest id and deals no damage
+
+- **Status:** Resolved (shooting-gallery and battle-orchestrator change)
+- **Area / code:** `shared/sim/src/systems/combat/firingRange.ts`, `damage.ts` (`isCombatDryFire`), `frontend/playground/content/faunaFiringRange.ts`
+- **What happens:** Playground modes `turrets`, `units`, and `bugs` set `blobs.firingRange` and `blobs.combatDryFire` on a real radius-8 planet and step the combat and fauna systems. Dry fire makes `applyDamage` apply 0, so shots and bites still emit and never destroy the target. Every turret, or every battle unit, or every bug, aims at the lowest living entity id of the other side. A turret that loses that bug to range goes quiet instead of picking another. Tank and artillery both draw `robot.combat`. A hive scene also shows the playground hex sample, which is now entirely flat prepared ground with no deposits and no colony border.
+- **Why it is like this:** The range is a dry run of the game's own fire and walk code. Lowest id keeps the shot deterministic. The hex sample used to be a class-and-deposit diorama; hive life needed one terraformed field.
+- **Workaround / mitigation:** Turn dry fire off and the same shot reduces HP (`w07-firing-range.spec.ts`). Passive and aggressive hive scenes still use the cosmetic wander stepper, with the mesh easing toward the logical pose.
+- **Resolution:** `gallery` now combines the turret and unit modes, assigns one fixed bug to each shooter, and holds both sides stationary. `BattleOrchestrator` runs units, defenses, fauna weapons and one impact pass on every host. Old URL modes redirect to the gallery. Dry fire remains intentional; the separate `bugs` mode retains its attack preview. Shared tank/artillery geometry is tracked in RN-70.
+- **Found:** 2026-11-05, playground hive-life pass.
+
+### GP-83 · A together march walks slower than each member's data speed
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/units/movement/orchestrator.ts` (`marchSpeed`), `shared/sim/src/systems/units/groupHandler.ts`, `docs/spec/SIMULATION.md` (SIM-M-01)
+- **What happens:** `moveGroup` with `pace: "together"` freezes every member at the slowest member's `speedPerTick` for that order. A faster unit takes shorter steps than its data row. The cached `mobileStats` object is not written. Default pace is each unit's own speed.
+- **Why it is like this:** SIM-M-01 says movement is at the unit's data speed. The no-teleport checks only forbid going faster, so a slower group pace stays inside them. The frozen number is how a mixed group stays together without a second mover.
+- **Workaround / mitigation:** Omit `pace` (or send `"own"`) and each kind keeps its own speed.
+- **To resolve:** If the owner wants the spec sentence to allow a group pace, add that sentence next to SIM-M-01.
+- **Found:** 2026-11-05, group-march implementation.
+
+### GP-84 · Units in a march may share a tile while they walk
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/units/movement/groupMarch.ts`, `shared/sim/src/grid/flowField.ts`
+- **What happens:** The shared field does not treat other units as obstacles. Two members can stand on the same hex on the way. After the march, each fitted member occupies a different slot.
+- **Why it is like this:** Making units into costs would break the shared field and the snapshot replay. Distinct tiles are reserved only at the destination.
+- **Workaround / mitigation:** The arrival check in `group-march.spec.ts` requires 50 distinct final tiles.
+- **To resolve:** A later change could reserve the slot disk only, still without physics steering.
+- **Found:** 2026-11-05, group-march implementation.
+
+### GP-85 · A member who leaves does not speed the together march back up
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/units/movement/groupMarch.ts` (`marchSpeed` copied onto each motion at issue)
+- **What happens:** `stopUnit` or a later `moveUnit` detaches that one unit. Everyone else keeps the speed frozen when the order was given, even if the slowest member was the one who left.
+- **Why it is like this:** Recomputing the minimum mid-order would change steps that a restored snapshot has already replayed.
+- **Workaround / mitigation:** Send a new `moveGroup` to pick a new pace.
+- **To resolve:** Only if a live pace is required. It would have to be plain data on the march and covered by the restore test.
+- **Found:** 2026-11-05, group-march implementation.
+
+### GP-86 · The long leg of a group march is one shared corridor
+
+- **Status:** Resolved (group seating, 2026-11-06)
+- **Area / code:** `shared/sim/src/units/movement/slots.ts` (`assignSlots`, `leaveCorridor`), `shared/sim/src/units/movement/groupMarch.ts` (`pathToSlot`)
+- **What happens:** Seats used to be handed out by entity id, ring 0 first, and every outside member walked to the anchor before stepping out to that seat. A unit from the middle of the group could be sent to the rim and then walk back out through the units arriving behind it.
+- **Why it is like this:** One reverse Dijkstra still builds the long leg. The seat is now the tile that keeps the unit's offset from the group centre, and the member leaves the corridor at the closest tile with a clear line to that seat.
+- **Workaround / mitigation:** When that line is blocked, the member still follows the corridor to the anchor and takes the disk path around the blockage.
+- **Resolution:** Open ground no longer funnels the group onto the anchor and back out. The blocked-line fallback remains, because a second private search per unit would not fit the expansion budget.
+- **Found:** 2026-11-05, group-march implementation. Seating reported as chaos on 2026-11-06.
+
+### GP-87 · Melee, ranged, and attack approach bands still disagree
+
+- **Status:** Resolved (2026-11-07 working-tree review fixes; commit pending)
+- **Area / code:** `shared/sim/src/systems/fauna/step.ts`, `shared/sim/src/units/commands/attack.ts`
+- **What happens:** Fauna melee stops at distance 1. Ranged fauna use `floor(range) - 1`. The generic attack command uses the full weapon range. A dispatched wave and the live chase can also differ by the target's footprint pad. `moveGroup` does not change any of these.
+- **Why it is like this:** The group march only assigns move slots. Combat approach was left as it stood.
+- **Workaround / mitigation:** None for combat spacing. Group move orders are exact slot tiles (`minDist` 0, `maxDist` 0).
+- **To resolve:** Pick one band rule for melee, ranged chase, and the attack command, and cover it with a time-sampled position test.
+- **Found:** 2026-11-05, movement research.
+
+- **Resolution:** Shared combatApproachBand and footprintAttackRange now serve live fauna chase, waves, directives, provocation, generic attacks and playground combat. Sampled ant/spitter approaches against a real 3×3 hub remain at the same valid edge over 100 ticks.
+
+### GP-88 · Weapon cooldown rounding changes configured battle rates
+
+- **Status:** Resolved (2026-11-07 working-tree cadence fix; commit pending)
+- **Area / code:** `shared/sim/src/systems/combat/weaponFire.ts:10`, `turrets.ts`, `stanceHelpers.ts`
+- **What happens:** At 5 TPS, rounding `5 / ratePerS` makes the Recon/Autocannon 2/s rows fire every 3 ticks (1.667/s), while Laser Tower 4/s fires every tick (5/s). Their sustained damage differs from W07-13 by −16.7% and +25%.
+- **Why it is like this:** The firing scheduler stores an integer cooldown without retaining fractional cadence.
+- **Workaround / mitigation:** None; data snapshots passing do not prove sustained rates.
+- **To resolve:** Accumulate fractional shot credit or deadlines and test sustained shot counts through the production combat system.
+- **Found:** 2026-11-06, W07 full-branch review; direct production-helper probe.
+
+- **Fix:** Fractional firing deadlines retain cadence at 5 TPS; production tests verify 20 Recon/Autocannon shots and 40 laser shots over 10 seconds. Zero rate disables fire. Maximum remains one shot per tick (5/s).
+
+### GP-89 · Group local routes survive terrain invalidation
+
+- **Status:** Resolved (2026-11-07 working-tree review fixes; commit pending)
+- **Area / code:** `shared/sim/src/units/movement/groupMarch.ts:197` (`pathToSlot`, `replanGroupMember`)
+- **What happens:** A member starting inside the destination disk retains `slot.local`. After an intermediate tile becomes rock, replanning returns that same original route, even after a replacement field is solved. A 20-HQ group initially at (1,0), ordered around (0,0), leaves member 12 stuck at (1,-1) for 100 ticks when (0,-1) becomes rock; its destination (0,-2) remains reachable.
+- **Why it is like this:** `pathToSlot` returns cached `slot.local` before validating it against current terrain or rebuilding from the member's current position.
+- **Workaround / mitigation:** Issue a fresh move order after the terrain change.
+- **To resolve:** Invalidate/rebuild local seating paths on blockage and epoch change; add coverage for members initially inside the destination disk.
+- **Found:** 2026-11-06, W07 full-branch review, executable SimHost probe.
+
+- **Resolution:** Local seating routes are rebuilt from the current position against current terrain. A blocked destination fails explicitly; a reachable destination routes around a new rock. The 20-member regression advances 120 individual ticks and checks all reachable assigned slots.
+
+### GP-90 · Demand-based autopilot preserves previously accepted orders
+
+- **Status:** Accepted (by design)
+- **Area / code:** `shared/sim/src/systems/rule-engine/automate.ts`, `needs.ts`
+- **What happens:** Priorities now weight observed shortages instead of manufacturing power/expansion/defense demand. Wind and thermal generation count toward night supply; battery discharge does not. Already accepted orders, including old excess wind orders, finish normally. Explicit feasible Secure Power goals complete and stay complete.
+- **Why it is like this:** Correcting future decisions must not silently cancel paid player or goal work.
+- **Workaround / mitigation:** Cancel any unwanted existing queue entries manually. Matching queued work is reused before another automatic order is added.
+- **To resolve:** No automatic queue purge planned; generation forecasts remain heuristic (AI-02).
+- **Found:** 2026-11-06, owner report of endless default-priority turbines.
+
+### GP-91 · Combat Lab tunes types across the planet
+
+- **Status:** Accepted (by design)
+- **Area / code:** `frontend/game/features/combat-tuning/`, `shared/sim/src/host/tunedHealth.ts`
+- **What happens:** F6 edits affect every current and future entity of a type across all colonies on this planet. Health changes preserve remaining HP percentage. Weapon rate is capped at 5/s; insect attack intervals use 0.2-second steps with animation minimums (ant 0.8s, beetle/spitter 1s). Demo tank/artillery expose weapon settings only because they have no normal production health row.
+- **Why it is like this:** Uses the existing authoritative planet balance overrides and 5 TPS simulation. Type-wide tuning was the recommended default; individual-instance editing was not requested in reply to clarification.
+- **Workaround / mitigation:** Export JSON for reusable balance overrides. Reload values after other players tune. The existing console `tune reset` restores file/scenario values; no broad reset button is added to the combat panel.
+- **To resolve:** Add individual-instance overrides only if required; support higher firing rates with explicit multi-shot scheduling.
+- **Found:** 2026-11-07, combat tuning and armored scout request.

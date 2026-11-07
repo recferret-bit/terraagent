@@ -303,15 +303,18 @@ describe('W07-15 · W08 Defend Area (defend_colony), Clear Nest (clear_corridor)
     // Priority slider: defense=10 vs defense=90 on identical S3 state produces different ranked topNeed
     const rawNeeds = evaluateColonyNeeds(state, 0);
     expect(rawNeeds.defense).toBeGreaterThanOrEqual(5000);
-    const lowDef = weightColonyNeeds(rawNeeds, { defense: 10, economy: 90, power: 50, expansion: 50, terraform: 50 });
-    const highDef = weightColonyNeeds(rawNeeds, { defense: 90, economy: 10, power: 50, expansion: 50, terraform: 50 });
+    const lowDefensePriorities = { defense: 10, economy: 90, power: 50, expansion: 50, terraform: 50 };
+    const highDefensePriorities = { defense: 90, economy: 10, power: 50, expansion: 50, terraform: 50 };
+    const lowDef = weightColonyNeeds(rawNeeds, lowDefensePriorities);
+    const highDef = weightColonyNeeds(rawNeeds, highDefensePriorities);
     expect(highDef.top.need).toBe('defense');
     expect(lowDef.top.need).not.toBe('defense');
 
-    setColonyPriorities(state, 0, { defense: 90, power: 40, economy: 40 }, host.tick);
-    expect(evaluateAutopilotDecision(state, 0).topNeed).toBe('defense');
-    setColonyPriorities(state, 0, { defense: 10, power: 80, economy: 80 }, host.tick);
-    expect(evaluateAutopilotDecision(state, 0).topNeed).not.toBe('defense');
+    // Autopilot must apply the same weights to actual demand as the needs preview.
+    setColonyPriorities(state, 0, highDefensePriorities, host.tick);
+    expect(evaluateAutopilotDecision(state, 0).topNeed).toBe(highDef.top.need);
+    setColonyPriorities(state, 0, lowDefensePriorities, host.tick);
+    expect(evaluateAutopilotDecision(state, 0).topNeed).toBe(lowDef.top.need);
     void applyAutopilotStep;
 
     // Queue defend_colony with a recon unit -> sets defend stance and completes when perimeter is clear

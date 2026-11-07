@@ -1,0 +1,21 @@
+.fp-attack-direction {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0 0 8px;
+  padding: 6px;
+  border: 1px solid var(--ta-seam);
+}
+.fp-attack-direction legend { color: var(--ta-text-3); font-size: 10px; }
+.fp-attack-choice { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.fp-attack-choice input {
+  appearance: none;
+  width: 10px;
+  height: 10px;
+  margin: 0;
+  border: 1px solid currentColor;
+  clip-path: polygon(2px 0, 100% 0, 100% calc(100% - 2px), calc(100% - 2px) 100%, 0 100%, 0 2px);
+}
+.fp-attack-choice input:checked { background: currentColor; box-shadow: inset 0 0 0 2px var(--ta-orange); }
+.fp-attack-choice:focus-within { outline: 1px solid var(--ta-blue); outline-offset: 2px; }
+.fp-animation-states { margin-top: 8px; color: var(--ta-text-3); font-size: 10px; line-height: 1.6; }

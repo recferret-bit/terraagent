@@ -18,9 +18,16 @@ export interface ProjectileFiredVfxInput {
   arc?: 'direct' | 'indirect';
   /**
    * When true (default), non-laser projectiles automatically trigger an impact flash
-   * (and AoE decal when `aoe > 0`) when their flight progress reaches `t >= 1`.
+   * and layered burst when their flight progress reaches `t >= 1`.
    */
   autoImpactOnArrival?: boolean;
+  /** Authored muzzle callback for beams and brief discharge flames attached to a moving weapon. */
+  source?: () => VfxPoint3D;
+  arcHeight?: number;
+  targetId?: number;
+  impactTick?: number;
+  firedTick?: number;
+  direction?: () => VfxPoint3D;
 }
 
 export interface ProjectileImpactVfxInput {
@@ -30,6 +37,10 @@ export interface ProjectileImpactVfxInput {
   at: VfxPoint3D;
   hit?: boolean;
   aoe?: number;
+  targetId?: number;
+  impactTick?: number;
+  normal?: VfxPoint3D;
+  groundY?: number;
 }
 
 export interface ProjectileVfxActiveCounts {
@@ -70,6 +81,7 @@ export interface ActiveProjectileSnapshot {
 }
 
 export interface ActiveLaserSnapshot {
+  source?: () => VfxPoint3D;
   active: boolean;
   fromX: number;
   fromY: number;
@@ -129,6 +141,7 @@ export type SimProjectileFiredEventLike =
  */
 export interface SimProjectileImpactPayloadLike {
   attackerId?: number;
+  firedTick?: number;
   targetId?: number;
   weaponKind?: VfxWeaponKind | string;
   weaponType?: string;

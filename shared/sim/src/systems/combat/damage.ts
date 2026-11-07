@@ -33,6 +33,7 @@ import {
   emitUnderAttackIfDue,
   noteColonyBuildingDestroyedDuringRaid,
 } from './events';
+import { isCombatDryFire } from './firingRange';
 
 export * from './events';
 
@@ -366,7 +367,7 @@ export function applyDamage(
 
   const cols = state.entities.cols;
   const owner = cols.owner[row];
-  const rawDamage = owner >= 0 && isColonyGodMode(state, owner) ? 0 : amount;
+  const rawDamage = isCombatDryFire(state) || (owner >= 0 && isColonyGodMode(state, owner)) ? 0 : amount;
   if (rawDamage <= 0) {
     return { applied: 0, hpAfter: cols.hp[row], destroyed: false, clampedHq: false, retreatedHq: false };
   }

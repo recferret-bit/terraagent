@@ -1,5 +1,6 @@
 import { MAP_LAYER_META } from '@terra/contracts';
 import { ENTITY_KIND } from '@terra/sim';
+import { createMapVisibility } from '../../maps/visibility';
 import { resolveCssToken } from '../../maps/entityDots';
 import type { MapLayer, MapLayerDrawView } from '../../maps/types';
 import { forEachEntity } from '../../store/replica/viewCodec';
@@ -39,10 +40,11 @@ export function isFaunaHiveKind(rawKind: number | string): boolean {
 }
 
 function collectHiveCoords(view: MapLayerDrawView): Array<{ q: number; r: number }> {
+  const visible = createMapVisibility(view);
   const coords: Array<{ q: number; r: number }> = [];
   const seen = new Set<string>();
   const push = (q: number, r: number) => {
-    if (!Number.isFinite(q) || !Number.isFinite(r)) return;
+    if (!Number.isFinite(q) || !Number.isFinite(r) || !visible(q, r)) return;
     const key = `${q},${r}`;
     if (seen.has(key)) return;
     seen.add(key);

@@ -50,6 +50,8 @@ export * from './units/types';
 export { getUnitCommand, getUnitRecord, type UnitRecord } from './units/book';
 export { isUnitKind, mobileStats, type MobileStats } from './units/mobility';
 export { getMotion, type MoveGoal, type MotionStatus, type UnitMotion } from './units/movement/orchestrator';
+export { advancePose } from './units/movement/locomotion';
+export { assignSlots, ringCoords, type SlotUnit } from './units/movement/slots';
 export type { IssueOpts } from './units/runner';
 export * from './economy';
 export * from './systems/landing';

@@ -1,3 +1,4 @@
+import { combatApproachBand, footprintAttackRange } from '../combat/approachBand';
 import type { CompiledRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
@@ -183,14 +184,13 @@ export function findNearestColonyTarget(
     if (st === ENTITY_STATE.inert || st === ENTITY_STATE.descending) continue;
     const q = cols.q[r]!;
     const rv = cols.r[r]!;
-    const fpPad = Math.floor(Math.max(1, cols.footprintW[r] || 1) / 2);
     candidates.push({
       id: cols.id[r]!,
       row: r,
       q,
       r: rv,
       dist: hexDistance(fromQ, fromR, q, rv),
-      bandMax: bandMax + fpPad,
+      bandMax: footprintAttackRange(bandMax, cols.footprintW[r]),
     });
   }
   if (candidates.length === 0) return null;
@@ -348,7 +348,7 @@ export function dispatchHiveWave(
   const memberIds = collectAvailableResidentIds(state, fauna, hive, maxMembers);
   if (memberIds.length === 0) return null;
 
-  const bandMax = speciesCfg.range >= 2 ? Math.floor(speciesCfg.range) - 1 : 1;
+  const bandMax = combatApproachBand(speciesCfg.range).maxDist;
   const target = findNearestColonyTarget(
     state,
     hive.entranceQ,
@@ -416,7 +416,7 @@ export function selectCandidateHiveForRaid(
   for (const h of hives) {
     if (opts?.requireReachable) {
       const cfg = resolveSpeciesConfig(h.species, opts.data);
-      const bandMax = cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1;
+      const bandMax = combatApproachBand(cfg.range).maxDist;
       const targetMatch = findNearestColonyTarget(
         state,
         h.entranceQ,

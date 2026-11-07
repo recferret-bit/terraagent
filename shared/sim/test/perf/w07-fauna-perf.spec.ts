@@ -3,7 +3,7 @@ import { parseWaves } from '@terra/contracts';
 import {
   createRegistryPipeline,
   createState,
-  decodeDiff,
+  decodeValue,
   encodeValue,
   ensureColonyLedger,
   ensureColonyRecord,
@@ -22,6 +22,7 @@ import {
   TERRAIN,
   updateColonyVisionCache,
   type FaunaSpeciesId,
+  type EngineDiff,
   type PlanetState,
 } from '../../src';
 
@@ -210,6 +211,7 @@ describe('W07-30 · Fauna wire bandwidth benchmark (50-unit encounter)', () => {
     let entitiesBytes = 0;
     let coloniesBytes = 0;
     let tilesBytes = 0;
+    const packedBytes = { projectiles: 0, stances: 0, faunaRoutes: 0 };
 
     const encounterTicks = 50; // 10 seconds at 5 TPS
     for (let i = 0; i < encounterTicks; i++) {
@@ -218,10 +220,13 @@ describe('W07-30 · Fauna wire bandwidth benchmark (50-unit encounter)', () => {
       const diff = host.diffSince(prevTick, { forClient: true });
       totalDiffBytes += diff.byteLength;
 
-      const decoded = decodeDiff(diff);
+      const decoded = decodeValue(diff) as EngineDiff;
       entitiesBytes += encodeValue(decoded.entities).byteLength;
       coloniesBytes += encodeValue(decoded.colonies).byteLength;
       tilesBytes += encodeValue(decoded.tiles).byteLength;
+      if (decoded.projectileQueue) packedBytes.projectiles += encodeValue(decoded.projectileQueue).byteLength;
+      if (decoded.stancePatch) packedBytes.stances += encodeValue(decoded.stancePatch).byteLength;
+      if (decoded.faunaMotion) packedBytes.faunaRoutes += encodeValue(decoded.faunaMotion).byteLength;
       for (const [k, v] of Object.entries(decoded.blobs)) {
         blobBytesByKey[k] = (blobBytesByKey[k] ?? 0) + encodeValue(v).byteLength;
       }
@@ -232,10 +237,12 @@ describe('W07-30 · Fauna wire bandwidth benchmark (50-unit encounter)', () => {
       `[W07-30 Bandwidth] bootstrap=${bootstrapBytes} B (${(bootstrapBytes / 1024).toFixed(1)} KB), steadyState=${steadyStateBytesPerSec.toFixed(0)} B/s (${(steadyStateBytesPerSec / 1024).toFixed(2)} KB/s)`,
     );
     console.info(
-      `[W07-30 Breakdown over 10s] entities=${entitiesBytes} B, colonies=${coloniesBytes} B, tiles=${tilesBytes} B, blobs=${JSON.stringify(blobBytesByKey)}`,
+      `[W07-30 Wire sections over 10s] entities=${entitiesBytes} B, colonies=${coloniesBytes} B, tiles=${tilesBytes} B, packed=${JSON.stringify(packedBytes)}, blobs=${JSON.stringify(blobBytesByKey)}`,
     );
 
     expect(bootstrapBytes).toBeGreaterThan(0);
+    expect(packedBytes.projectiles).toBeGreaterThan(0);
+    expect(packedBytes.stances).toBeGreaterThan(0);
     expect(steadyStateBytesPerSec).toBeLessThanOrEqual(15 * 1024);
   });
 });

@@ -7,6 +7,7 @@ import type { ServerMessage } from '@terra/contracts';
 import { COMMAND_TIMEOUT_MS, CommandBus } from '../../net/commandBus';
 import { NOT_YOUR_PLANET } from '../../net/closeCodes';
 import { ConnectionBanner } from '../../net/ConnectionBanner';
+import { bindVersionMismatchNotice } from '../../net/VersionMismatchNotice';
 import { LagTransport, withDevLag } from '../../net/LagTransport';
 import { createLocalWorker, LocalTransport, workerLink } from '../../net/LocalTransport';
 import { NetStatsBoard } from '../../net/netStats';
@@ -120,6 +121,7 @@ export class OnlineSession {
       ? new ConnectionBanner(uiParent, this.transport, () => this.transport.start())
       : null;
     this.store = opts.store ?? new WorldStore(this.transport);
+    this.cleanups.push(bindVersionMismatchNotice(uiParent, this.store, () => this.store.currentPlanetId() || this.planetId || null));
     // `?lag=` adds its round trip to the confirm timeout, so a slow test link does not roll predictions back
     const lagMs = this.transport instanceof LagTransport ? 2 * this.transport.ms : 0;
     this.commandBus = new CommandBus(this.transport, COMMAND_TIMEOUT_MS + lagMs, (id, kind, args) => this.store.notifySent(id, kind, args), (id) => this.store.notifyTimedOut(id));
@@ -146,6 +148,7 @@ export class OnlineSession {
       planetId: () => this.store.currentPlanetId() || this.planetId || null, pickAt: (cx, cy) => this.pickAt(cx, cy),
       camera: () => this.viewport.camera, rtsCamera: () => this.cam, focusTile: (q, r, s) => this.focusTile(q, r, s),
       pilot: this.pilot,
+      renderedEntityPosition: (id) => this.entities.getRecord(id)?.mesh.position ?? null,
     });
     this.pauseOverlay = new PauseOverlay(uiParent, { onResume: () => this.setPaused(false), onReturnToOrbit: () => this.returnToOrbit() });
     if (local) this.cleanups.push(bindLocalSaveListeners(local));
@@ -342,7 +345,7 @@ export class OnlineSession {
     if (!this.cameraCentered && !this.landSent && !this.fromSpaceDescent && !status.descending && status.hqLanded) {
       this.entities.podTouchdown.setEnabled(false);
     }
-    this.entities.syncView(v, this.terrain, this.biomeKey, this.store.confirmedTick);
+    this.entities.syncView(v, this.terrain, this.biomeKey, this.store.confirmedTick, this.store.simData() ?? undefined);
     const hqReady = this.entities.isHqDeployed();
     this.hqDeployedSynced = hqReady;
     this.landfall.onView(v);

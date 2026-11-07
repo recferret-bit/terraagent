@@ -1,16 +1,21 @@
 import type { ArgumentsHost, INestApplication } from '@nestjs/common';
 import { REST_ERROR_CODES } from '@terra/contracts';
 import pino from 'pino';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { AllExceptionsFilter } from '../../src/core/errors/all-exceptions.filter';
 import { CoreConflict, CoreException, CoreNotFound } from '../../src/core/errors/core-exception';
 import { restCodeFor } from '../../src/core/errors/map-error';
-import { bootCapturing } from './logging-helpers';
+import { SnapshotStore } from '../../src/game/persistence/snapshot-store';
+import { SnapshotService } from '../../src/game/persistence/snapshot.service';
+import { InMemoryLedgerStore } from '../../src/game/ledger/in-memory-ledger-store';
+import { LedgerStorePort } from '../../src/game/ledger/ledger-store.port';
+import { bootCapturing, logsForRequest } from './logging-helpers';
 
 let current: INestApplication | undefined;
 afterEach(async () => {
   await current?.close();
   current = undefined;
+  vi.restoreAllMocks();
 });
 async function boot(source: Record<string, string> = {}) {
   const b = await bootCapturing(source);
@@ -61,8 +66,9 @@ describe('error responses', () => {
     expect(r.status).toBe(418);
     expect(r.headers.get('x-request-id')).toBe('req-123');
     expect(body).toEqual({ errorCode: 'TEST_CODE', error: { code: 'validation_error', message: 'teapot', details: { a: 1 } }, requestId: 'req-123' });
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatchObject({ level: 40, layer: 'http', errorCode: 'TEST_CODE', status: 418, requestId: 'req-123', method: 'GET', path: '/v1/_test/throw' });
+    const requestLines = logsForRequest(lines, r.headers.get('x-request-id'));
+    expect(requestLines, JSON.stringify(lines)).toHaveLength(1);
+    expect(requestLines[0]).toMatchObject({ level: 40, layer: 'http', errorCode: 'TEST_CODE', status: 418, requestId: 'req-123', method: 'GET', path: '/v1/_test/throw' });
   });
 
   it('generates a request id when none is sent', async () => {
@@ -81,7 +87,7 @@ describe('error responses', () => {
     expect(body.errorCode).toBe('VALIDATION_ERROR');
     expect(body.error.code).toBe('validation_error');
     expect(body.error.details.fieldErrors.name).toBeTruthy();
-    expect(lines).toHaveLength(1);
+    expect(logsForRequest(lines, r.headers.get('x-request-id')), JSON.stringify(lines)).toHaveLength(1);
     const ok = await fetch(`${url}/v1/_test/dto`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ name: 'a' }) });
     expect(await ok.json()).toEqual({ ok: true, name: 'a' });
   });
@@ -93,8 +99,9 @@ describe('error responses', () => {
     expect(r.status).toBe(404);
     expect(body).toMatchObject({ errorCode: 'NOT_FOUND', error: { code: 'not_found' } });
     expect(typeof body.requestId).toBe('string');
-    expect(lines).toHaveLength(1);
-    expect(lines[0]).toMatchObject({ level: 40, status: 404 });
+    const requestLines = logsForRequest(lines, r.headers.get('x-request-id'));
+    expect(requestLines, JSON.stringify(lines)).toHaveLength(1);
+    expect(requestLines[0]).toMatchObject({ level: 40, layer: 'http', status: 404 });
   });
 
   it('prisma P2002 duck-typed to 409 CONFLICT', async () => {
@@ -105,14 +112,19 @@ describe('error responses', () => {
   });
 
   it('unknown error: 500 INTERNAL hides the message in production, shows it in test; logs at error level', async () => {
+    const persistedPlanets = vi.spyOn(SnapshotStore.prototype, 'livePlanetIds').mockRejectedValue(new Error('unit fixture must not query persisted planets'));
     const prod = await boot({ NODE_ENV: 'production', JWT_ACCESS_SECRET: 'prod-test-jwt-secret-0123456789', NEAR_ALLOW_MOCK_IN_PROD: 'true', AI_ALLOW_MOCK_IN_PROD: 'true', NOTIFY_ALLOW_MOCK_IN_PROD: 'true' });
+    expect(prod.app.get(SnapshotService).enabled).toBe(false);
+    expect(prod.app.get(LedgerStorePort)).toBeInstanceOf(InMemoryLedgerStore);
+    expect(persistedPlanets).not.toHaveBeenCalled();
     const r = await fetch(`${prod.url}/v1/_test/boom`);
     const text = await r.text();
     expect(r.status).toBe(500);
     expect(JSON.parse(text)).toMatchObject({ errorCode: 'INTERNAL', error: { code: 'internal', message: 'Internal server error' } });
     expect(text).not.toContain('secret');
-    expect(prod.lines).toHaveLength(1);
-    expect(prod.lines[0]).toMatchObject({ level: 50, errorCode: 'INTERNAL' });
+    const requestLines = logsForRequest(prod.lines, r.headers.get('x-request-id'));
+    expect(requestLines, JSON.stringify(prod.lines)).toHaveLength(1);
+    expect(requestLines[0]).toMatchObject({ level: 50, layer: 'http', errorCode: 'INTERNAL', status: 500, path: '/v1/_test/boom' });
     await prod.app.close();
     const dev = await boot();
     const body = (await (await fetch(`${dev.url}/v1/_test/boom`)).json()) as { error: { message: string } };

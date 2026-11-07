@@ -246,7 +246,7 @@ export function resolveSpeciesConfig(
   if (!bugRow && !hiveRow) return base;
 
   const rawSpeed = Number(bugRow?.speed ?? base.speedPerTick);
-  const speedPerTick = Math.fround(rawSpeed > 0.75 ? rawSpeed * 0.2 : rawSpeed);
+  const speedPerTick = Math.fround(rawSpeed);
   const attackIntervalS = Number(bugRow?.attackIntervalS ?? base.attackIntervalTicks / TICKS_PER_SECOND);
   const replenishS = Number(
     hiveRow?.replenishS ?? bugRow?.replenishS ?? base.replenishTicks / TICKS_PER_SECOND,

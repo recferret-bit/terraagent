@@ -1,3 +1,4 @@
+import { addHeroDefenseWeapon } from '../../greebles/heroWeapon';
 import { rbox, cyl, sph, strut, sag, cable, mirror, lathe, solarPanel, type V3 } from '../../greebles/unitParts';
 import * as THREE from 'three';
 import { register } from './common';
@@ -44,6 +45,7 @@ register({
       b.addPart(box(0.135, 0.04, 0.155), 'warningAmber', { name: 'arm cuff light', position: [ax, 1.0, 0.09], rotation: [-0.45, 0, 0], emissiveIntensity: 3.4, ...armAnim });
     });
 
+    addHeroDefenseWeapon(b);
     // Pelvis + belt + torso (animType 8: BipedBody step-reaction carrier)
     const bodyAnim = { animType: 8 as const };
     b.addPart(rbox(0.48, 0.18, 0.32, 0.05, 1), 'frameGunmetal', { name: 'body pelvis', position: [0, 1.11, 0], ...bodyAnim });
@@ -242,80 +244,5 @@ register({
     // Ammo box + external power cable (riding on SpiderBody)
     b.addPart(rbox(0.3, 0.18, 0.24, 0.04, 1), 'hullPrimary', { name: 'ammo box', position: [0, 1.09, -0.32], ...spiderBody });
     cable(b, [[0.14, 1.12, -0.32], [0.28, 1.08, -0.14], [0.22, 1.14, 0.04]] as V3[], 0.016, 'frameGunmetal', { name: 'power cable', ...spiderBody });
-  },
-});
-
-// ---------------------------------------------------------------------------
-// robot.recon (aliased as unit.recon) — agile hover-skid recon drone. ~1.15m
-// ---------------------------------------------------------------------------
-register({
-  id: 'robot.recon',
-  label: 'Recon Drone',
-  category: 'robot',
-  footprint: [1, 1],
-  notes: 'Agile recon drone: grounded landing skids, swept thruster pods, visor scanner, twin recoiling recon guns (animType 3), rotating radar dish (animType 1).',
-  build: (b) => {
-    const box = (w: number, h: number, d: number) => new THREE.BoxGeometry(w, h, d);
-    // Landing skids (locomotion group, flush on y = 0.000) + struts to lower chassis
-    mirror((s) => {
-      b.addPart(rbox(0.10, 0.08, 0.88, 0.025, 1), 'rubberDark', { name: 'skid runner', position: [0.32 * s, 0.04, 0.0] });
-      b.addPart(box(0.11, 0.04, 0.16), 'hullSecondary', { name: 'skid toe cap', position: [0.32 * s, 0.08, 0.32] });
-      b.addPart(box(0.11, 0.04, 0.14), 'hullPrimary', { name: 'skid heel cap', position: [0.32 * s, 0.08, -0.32] });
-      strut(b, [0.32 * s, 0.07, 0.22], [0.20 * s, 0.38, 0.18], 0.024, 'frameGunmetal', { name: 'skid front leg' });
-      strut(b, [0.32 * s, 0.07, -0.22], [0.20 * s, 0.38, -0.18], 0.024, 'frameGunmetal', { name: 'skid rear leg' });
-    });
-
-    // Core fuselage + under-chassis + swept side thruster nacelles (platform group)
-    b.addPart(rbox(0.48, 0.18, 0.68, 0.05, 1), 'frameGunmetal', { name: 'under chassis', position: [0, 0.42, -0.02] });
-    b.addPart(rbox(0.58, 0.28, 0.84, 0.08, 1), 'hullPrimary', { name: 'body fuselage hull', position: [0, 0.60, 0.0] });
-    b.addPart(box(0.42, 0.06, 0.46), 'hullSecondary', { name: 'hull dorsal deck', position: [0, 0.76, -0.06] });
-    b.addPart(box(0.32, 0.14, 0.10), 'hullSecondary', { name: 'hull aft tail cap', position: [0, 0.62, -0.44] });
-    b.addPart(cyl(0.06, 0.08, 0.06, 8), 'energyCyan', {
-      name: 'aft thruster core light', position: [0, 0.62, -0.50], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 4.0,
-    });
-
-    // Swept side wing pods + dorsal intake strakes + hover fan shrouds
-    mirror((s) => {
-      b.addPart(rbox(0.28, 0.12, 0.48, 0.035, 1), 'hullSecondary', {
-        name: 'hull wing nacelle', position: [0.40 * s, 0.60, -0.04], rotation: [0, 0, -0.12 * s],
-      });
-      b.addPart(box(0.14, 0.04, 0.24), 'frameGunmetal', {
-        name: 'wing dorsal strake', position: [0.40 * s, 0.67, -0.04], rotation: [0, 0, -0.12 * s],
-      });
-      b.addPart(cyl(0.09, 0.09, 0.06, 8), 'frameGunmetal', {
-        name: 'wing thruster shroud', position: [0.44 * s, 0.55, -0.04],
-      });
-      b.addPart(cyl(0.055, 0.055, 0.03, 8), 'energyCyan', {
-        name: 'wing thruster glow light', position: [0.44 * s, 0.51, -0.04], emissiveIntensity: 3.8,
-      });
-    });
-
-    // Front sensor nose visor + optic scanner eye (sensor group)
-    b.addPart(rbox(0.42, 0.12, 0.06, 0.02, 1), 'glassVisor', { name: 'sensor nose visor', position: [0, 0.62, 0.43] });
-    b.addPart(sph(0.048, 8, 6), 'energyCyan', { name: 'scanner optic light', position: [0, 0.62, 0.465], emissiveIntensity: 4.2 });
-
-    // Twin under-slung light recon guns (manipulator group, animType 3 recoil)
-    const gunPivot: V3 = [0, 0.46, 0.34];
-    const gunAnim = { animType: 3 as const, animPivot: gunPivot };
-    mirror((s) => {
-      b.addPart(cyl(0.042, 0.048, 0.12, 8), 'frameGunmetal', {
-        name: 'gun mantlet mount', position: [0.16 * s, 0.46, 0.34], rotation: [Math.PI / 2, 0, 0],
-      });
-      b.addPart(cyl(0.028, 0.032, 0.32, 8), 'hullSecondary', {
-        name: 'torch recon gun barrel', position: [0.16 * s, 0.46, 0.48], rotation: [Math.PI / 2, 0, 0], ...gunAnim,
-      });
-      b.addPart(cyl(0.022, 0.022, 0.03, 8), 'warningAmber', {
-        name: 'recon muzzle flash light', position: [0.16 * s, 0.46, 0.65], rotation: [Math.PI / 2, 0, 0], emissiveIntensity: 3.8, ...gunAnim,
-      });
-    });
-
-    // Rotating dorsal radar dish (animType 1) + angled antenna mast + telemetry cable
-    b.addPart(cyl(0.022, 0.028, 0.18, 8), 'frameGunmetal', { name: 'radar mast', position: [0, 0.86, -0.08] });
-    b.addPart(lathe([[0.004, 0], [0.07, 0.015], [0.14, 0.06], [0.004, 0.02]], 12), 'hullPrimary', {
-      name: 'radar dish', position: [0, 0.95, -0.08], rotation: [-0.45, 0, 0], animType: 1, animPivot: [0, 0.95, -0.08],
-    });
-    strut(b, [-0.16, 0.76, -0.22], [-0.28, 1.14, -0.34], 0.012, 'frameGunmetal', { name: 'antenna whip mast' });
-    b.addPart(sph(0.032, 8, 6), 'warningAmber', { name: 'antenna beacon light', position: [-0.28, 1.15, -0.34], emissiveIntensity: 4.0 });
-    cable(b, [[0.18, 0.77, -0.14], [0.28, 0.76, -0.08], [0.34, 0.63, -0.04]] as V3[], 0.014, 'frameGunmetal', { name: 'telemetry cable' });
   },
 });

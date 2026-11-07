@@ -108,7 +108,7 @@ export function createProjectileVfxPools(
       group,
     ),
     acidPool: createPooledInstancedMesh(
-      { key: 'acid', count: maxProj, color: 0x69f0ae, emissive: 0x00e676, emissiveIntensity: 3.6 },
+      { key: 'acid', count: maxProj, color: 0x78c33d, emissive: 0x446e1d, emissiveIntensity: 0.3, roughness: 0.23, metalness: 0 },
       group,
     ),
     laserCorePool: createPooledInstancedMesh(
@@ -234,6 +234,7 @@ export function writeSmokeMatrix(pools: ProjectileVfxPools, idx: number, s: Smok
 }
 
 export function writeImpactMatrix(pools: ProjectileVfxPools, idx: number, imp: ImpactSlot): void {
+  if (imp.maxScale <= 0) { hideInstance(pools.impactPool.mesh, idx); return; }
   const u = imp.ageS / imp.durationS;
   const scale = imp.maxScale * Math.sin(Math.min(1, u) * Math.PI);
   DUMMY.position.set(imp.x, imp.y, imp.z);

@@ -1,3 +1,4 @@
+import { combatApproachBand, footprintAttackRange } from '../combat/approachBand';
 import type { CompiledRow } from '../../data';
 import { rowOf, setField } from '../../ecs/store';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -313,7 +314,8 @@ export function provokeFaunaBug(
   if (objQ !== undefined && objR !== undefined) {
     if (ctx) {
       const cfg = resolveSpeciesConfig(species, data);
-      const bandMax = cfg.range >= 2 ? Math.floor(cfg.range) - 1 : 1;
+      const targetRow = opts?.targetId === undefined ? -1 : rowOf(state.entities, opts.targetId);
+      const bandMax = combatApproachBand(footprintAttackRange(cfg.range, targetRow >= 0 ? state.entities.cols.footprintW[targetRow] : 1)).maxDist;
       issueUnitCommand(
         state,
         row,

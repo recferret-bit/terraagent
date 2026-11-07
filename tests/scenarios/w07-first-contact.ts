@@ -127,9 +127,7 @@ function spawnW07SpeciesHives(state: PlanetState): void {
   spawnHiveSite(state, { species: 'greenSpitter', q: -30, r: 15, entranceQ: -28, entranceR: 14, initialResidents: 4 }, 0);
 
   revealVision(state, 0, 0, 0, 14, 0);
-  revealVision(state, 0, 30, 0, 6, 0);
-  revealVision(state, 0, -15, 30, 6, 0);
-  revealVision(state, 0, -30, 15, 6, 0);
+  // Remote hives must be discovered by a scout, just like in normal gameplay.
 }
 
 /**
