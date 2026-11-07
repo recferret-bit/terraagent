@@ -67,6 +67,9 @@ export class TradeOrdersService {
   async place(p: TradePrincipal, body: PlaceTradeOrderRequest, idemKey: string | undefined): Promise<HttpResult<PlaceTradeOrderResponse>> {
     this.gate();
     TradeAuth.require(p, 'trade');
+    if (body.fillPolicy === 'all_or_nothing') {
+      throw new TradeError('invalid_request', 'fillPolicy "all_or_nothing" is not supported yet: the sim market.placeOrder command has no such argument. Omit it (partial fills).', { field: 'fillPolicy' });
+    }
     const key = this.idemOf(idemKey, true)!;
     const planetId = this.planetOf(p, body.planetId);
     const colony = await this.colonyOrThrow(p, planetId);

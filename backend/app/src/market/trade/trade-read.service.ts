@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  isResourceToken, parsePairId, MARKET_TOKEN_KEYS, type ListTradeOrdersQuery, type TokenBalance, type TradeBalancesResponse, type TradeBoardResponse, type TradeBookResponse,
+  isResourceToken, parsePairId, MARKET_TOKEN_KEYS, type ListTradeOrdersQuery, type TradeBookOrdersResponse, type TokenBalance, type TradeBalancesResponse, type TradeBoardResponse, type TradeBookResponse,
   type TradeFillsResponse, type TradeOrdersResponse, type TradePairsResponse, type TradePolicyResponse, type MarketTokenKey, type ResourceKey,
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
@@ -14,6 +14,7 @@ import { OrderFunds } from '../orders/order-funds.js';
 import { DEFAULT_KEY_RATE, SESSION_RATE, TradeAuth, type TradePrincipal } from './trade-auth.js';
 import { TradeError } from './trade-error.js';
 import { TradeOrdersService } from './trade-orders.service.js';
+import { bookOrderView } from './trade-book-orders.js';
 import { tradeFillView, tradeOrderView } from './trade-views.js';
 
 export const MAX_BOOK_LEVELS = 50;
@@ -53,7 +54,7 @@ export class TradeReadService {
     return { fills: rows.map((t) => tradeFillView(t, colony.colonyId)) };
   }
 
-  /** Quote tokens come from the verifier; `inOrbit` is ONLY this colony's cargo account (whole units), reserved by its open sell orders vs free. */
+  /** Quote tokens come from the verifier; `inOrbit` is ONLY this colony's resources (cargo account + verifier balance, whole units), reserved by its open sell orders vs free. Same figures as `GET /v1/market/:planet`. */
   async balances(p: TradePrincipal, planetIdIn: string | undefined): Promise<TradeBalancesResponse> {
     this.orders.gate();
     TradeAuth.require(p, 'read');
@@ -64,13 +65,11 @@ export class TradeReadService {
     const inOrbit: Partial<Record<ResourceKey, TokenBalance>> = {};
     for (const token of MARKET_TOKEN_KEYS) {
       const v = views[token];
-      if (isResourceToken(token)) {
-        if (v.cargo === 0n) continue;
-        const reserved = v.reserved < v.cargo ? v.reserved : v.cargo;
-        inOrbit[token] = { free: (v.cargo - reserved).toString(), reserved: reserved.toString(), total: v.cargo.toString() };
-      } else if (v.verifier > 0n || v.reserved > 0n) {
-        quote[token] = { free: v.free.toString(), reserved: v.reserved.toString(), total: v.verifier.toString() };
-      }
+      if (v.verifier === 0n && v.cargo === 0n && v.reserved === 0n) continue;
+      // The same numbers as `GET /v1/market/:planet` (`balances` = free, `reserved`): free already nets reservations and in-flight debits.
+      const entry = { free: v.free.toString(), reserved: v.reserved.toString(), total: (v.cargo + v.verifier).toString() };
+      if (isResourceToken(token)) inOrbit[token] = entry;
+      else quote[token] = entry;
     }
     return { planetId, colonyId: colony.colonyId, quote, inOrbit };
   }
@@ -85,6 +84,17 @@ export class TradeReadService {
       planetId, pair, seq: this.push.seqOf(planetId, pair), bids: book.depth('buy', levels), asks: book.depth('sell', levels),
       reference: ref ? { num: ref.num.toString(), den: Number(ref.den) } : null,
     };
+  }
+
+  /** Every resting order of a pair, best price first per side (bids, then asks). `mine` only for an authenticated caller (`principal`). */
+  async bookOrders(planetId: string, pair: string, q: { side?: 'buy' | 'sell'; limit: number }, principal: TradePrincipal | null): Promise<TradeBookOrdersResponse> {
+    this.orders.gate();
+    if (!parsePairId(pair) || !this.policy.current().pairs.some((x) => x.pair === pair)) throw new TradeError('invalid_request', `Unknown pair ${pair}.`, { pair });
+    if (principal) TradeAuth.require(principal, 'read');
+    const mine = principal ? ((await principal.colonyFor(planetId))?.colonyId ?? null) : undefined;
+    const book = await this.books.book(planetId, pair);
+    const all = (q.side ? [q.side] : (['buy', 'sell'] as const)).flatMap((side) => book.orders(side));
+    return { planetId, pair, seq: this.push.seqOf(planetId, pair), orders: all.slice(0, q.limit).map((o) => bookOrderView(o, mine)), truncated: all.length > q.limit };
   }
 
   async board(planetId: string): Promise<TradeBoardResponse> {

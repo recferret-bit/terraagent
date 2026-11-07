@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { Inject, Injectable, type OnModuleInit } from '@nestjs/common';
 import type { CreateTradeKeyRequest, CreateTradeKeyResponse, RevokeTradeKeyResponse, TradeAllowanceUpdate, TradeKeyListResponse, TradeKeyView } from '@terra/contracts';
-import type { PrismaClient } from '@terra/db';
+import { withTransaction, type PrismaClient } from '@terra/db';
 import { PRISMA } from '../../db/db.module.js';
 import { MarketPolicyProvider } from '../orders/market-policy.provider.js';
 import { TradeAuth, type TradePrincipal } from './trade-auth.js';
@@ -42,12 +42,12 @@ export class TradeKeysService implements OnModuleInit {
       key, ownerId: p.ownerId, label: body.label, planetId: body.planetId, colonyId: colony.colonyId, colonyIndex: colony.colonyIndex, accountId: colony.accountId,
       scopes: body.scopes, ...(body.ratePerSecond ? { ratePerSecond: body.ratePerSecond } : {}), ...(body.rateBurst ? { rateBurst: body.rateBurst } : {}), allowance,
     });
-    return { ...keyView(rec), secret: key.secret };
+    return { ...(await this.withUsage(keyView(rec))), secret: key.secret };
   }
 
   async list(p: TradePrincipal): Promise<TradeKeyListResponse> {
     this.sessionOnly(p);
-    return { keys: (await this.keys.listByOwner(p.ownerId)).map(keyView) };
+    return { keys: await Promise.all((await this.keys.listByOwner(p.ownerId)).map((k) => this.withUsage(keyView(k)))) };
   }
 
   /** Owner session: any field. A key holding `manage`: only its own `killSwitch: true` (an agent may stop itself, never loosen its rails). */
@@ -60,7 +60,14 @@ export class TradeKeysService implements OnModuleInit {
       }
     }
     const updated = await this.keys.updateAllowance(key.keyId, patch);
-    return keyView(updated!);
+    return this.withUsage(keyView(updated!));
+  }
+
+  /** Adds `dailySpent` / `dailyRemaining` (the committed quote the `dailyBudget` check counts, current UTC day) and `openOrders` (open + in flight). */
+  private async withUsage(view: TradeKeyView): Promise<TradeKeyView> {
+    const use = await withTransaction(this.prisma, (tx) => this.requests.usage(view.keyId, view.colonyId, tx, Date.now()));
+    const budget = BigInt(view.allowance.dailyBudget);
+    return { ...view, dailySpent: use.committedToday.toString(), dailyRemaining: (use.committedToday >= budget ? 0n : budget - use.committedToday).toString(), openOrders: use.outstandingOrders };
   }
 
   /** Revokes: unsubmitted requests are cancelled, resting orders get a cancel through the sim; a second sweep catches orders that were in flight. */

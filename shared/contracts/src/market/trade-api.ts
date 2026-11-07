@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { ResourceKey } from '../ws/sim';
-import { ActorKind, BookLevel, MarketPrice, OrderSide, OrderState, TradeView } from './orders';
+import { ActorKind, BookLevel, FillPolicy, MarketPrice, OrderSide, OrderState, TradeView } from './orders';
 import { AtomicAmount, MarketTokenKey, PairId } from './tokens';
 import { MarketBookPayload, MarketPolicyView, MyOrderView, PriceBoardRow } from './views';
 
@@ -70,6 +70,10 @@ export const TradeKeyView = z.object({
   lastUsedAtMs: z.number().int().nullable(),
   revokedAtMs: z.number().int().nullable(),
   allowance: TradeAllowance,
+  /** Usage (optional, present on `GET /v1/trade/keys` and key mutations): quote atomic committed today (UTC day; same count as the `dailyBudget` check), the budget left, and the key's colony's open + in-flight orders. */
+  dailySpent: AtomicAmount.optional(),
+  dailyRemaining: AtomicAmount.optional(),
+  openOrders: z.number().int().nonnegative().optional(),
 });
 export type TradeKeyView = z.infer<typeof TradeKeyView>;
 /** The secret is returned exactly once, here. */
@@ -90,6 +94,8 @@ export const PlaceTradeOrderRequest = z.strictObject({
   price: MarketPrice,
   ttlS: z.number().int().positive().max(7 * 86_400),
   maxStallFeeBp: z.number().int().min(0).max(10_000).optional(),
+  /** Default `partial`. `all_or_nothing` is accepted by the schema but the sim `market.placeOrder` command has no such argument yet: the server answers `invalid_request` until it does. */
+  fillPolicy: FillPolicy.optional(),
 });
 export type PlaceTradeOrderRequest = z.infer<typeof PlaceTradeOrderRequest>;
 
@@ -147,6 +153,35 @@ export const TradeBookResponse = z.object({
   reference: z.object({ num: AtomicAmount, den: z.number().int().positive() }).nullable(),
 });
 export type TradeBookResponse = z.infer<typeof TradeBookResponse>;
+
+/** One resting order of a public book. No account, owner or reservation data; `colonyRef` is a per-planet pseudonym of the placing colony. */
+export const TradeBookOrderView = z.object({
+  orderId: z.string(),
+  side: OrderSide,
+  price: z.object({ num: AtomicAmount, den: z.number().int().positive() }),
+  amount: z.number().int().positive(),
+  remaining: z.number().int().nonnegative(),
+  actorKind: ActorKind,
+  stallFeeBp: z.number().int().min(0).max(10_000),
+  expiresAtMs: z.number().int(),
+  fillPolicy: FillPolicy,
+  colonyRef: z.string(),
+  /** Only when the request was authenticated. */
+  mine: z.boolean().optional(),
+});
+export type TradeBookOrderView = z.infer<typeof TradeBookOrderView>;
+export const TradeBookOrdersQuery = z.object({
+  side: OrderSide.optional(),
+  limit: z.coerce.number().int().min(1).max(500).default(200),
+});
+export const TradeBookOrdersResponse = z.object({
+  planetId: z.string(), pair: PairId, seq: z.number().int().nonnegative(),
+  /** Best price first per side, bids then asks. */
+  orders: z.array(TradeBookOrderView),
+  /** True when `limit` cut the list. */
+  truncated: z.boolean(),
+});
+export type TradeBookOrdersResponse = z.infer<typeof TradeBookOrdersResponse>;
 
 export const TradeBoardResponse = z.object({ planetId: z.string(), board: z.array(PriceBoardRow) });
 export type TradeBoardResponse = z.infer<typeof TradeBoardResponse>;
@@ -228,6 +263,7 @@ export const TRADE_API_ROUTES = {
   listFills: { method: 'GET', path: '/v1/trade/fills', auth: 'either', scope: 'read', summary: 'The caller\'s fills, newest first', response: TradeFillsResponse },
   balances: { method: 'GET', path: '/v1/trade/balances', auth: 'either', scope: 'read', summary: 'Quote balances and the caller\'s in-orbit cargo, reserved vs free', response: TradeBalancesResponse },
   book: { method: 'GET', path: '/v1/trade/book/:planetId/:pair', auth: 'none', summary: 'Book depth (query levels=N) and reference price', response: TradeBookResponse },
+  bookOrders: { method: 'GET', path: '/v1/trade/book/:planetId/:pair/orders', auth: 'none', summary: 'Every resting order of a pair (query side, limit); with a bearer/dev identity each order carries `mine`', response: TradeBookOrdersResponse },
   board: { method: 'GET', path: '/v1/trade/board/:planetId', auth: 'none', summary: 'Price board of a planet', response: TradeBoardResponse },
   pairs: { method: 'GET', path: '/v1/trade/pairs', auth: 'none', summary: 'Tradable pairs', response: TradePairsResponse },
   policy: { method: 'GET', path: '/v1/trade/policy', auth: 'none', summary: 'Market policy and the rate limit of the caller', response: TradePolicyResponse },
