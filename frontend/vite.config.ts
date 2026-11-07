@@ -82,6 +82,7 @@ export default defineConfig({
         landing: resolve(frontend, 'landing.html'),
         play: resolve(frontend, 'play.html'),
         me: resolve(frontend, 'me.html'),
+        trade: resolve(frontend, 'trade.html'),
         playground: resolve(frontend, 'playground.html'),
         devChain: resolve(frontend, 'dev/chain/index.html'),
         devChainTx: resolve(frontend, 'dev/chain/tx.html'),
