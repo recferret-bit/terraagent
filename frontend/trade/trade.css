@@ -69,7 +69,6 @@ body { margin: 0; background: var(--ta-void); color: var(--ta-text); font-family
 .tr-badge-info { border-color: var(--ta-blue-hi); color: var(--ta-blue-hi); }
 .tr-badge-system { background: var(--ta-blue); color: var(--ta-hull); border-color: var(--ta-blue); }
 .tr-badge-fixture { border-style: dashed; border-color: var(--ta-energy); color: var(--ta-energy); }
-.tr-badge-own { background: var(--ta-orange); color: var(--ta-void); border-color: var(--ta-orange); }
 
 /* ticket */
 .tr-ticket { display: flex; flex-direction: column; gap: 12px; }
@@ -90,7 +89,6 @@ body { margin: 0; background: var(--ta-void); color: var(--ta-text); font-family
 .tr-table th.num { text-align: right; }
 .tr-table td { padding: 6px 8px; border-bottom: 1px solid var(--ta-seam); vertical-align: middle; white-space: nowrap; }
 .tr-table td.tr-wrap { white-space: normal; min-width: 220px; }
-.tr-table tr.tr-level td { background: var(--ta-plate-2); }
 .tr-table tr.tr-own td { background: rgba(255, 106, 19, 0.12); }
 .tr-table tr.tr-own td:first-child { box-shadow: inset 3px 0 0 var(--ta-orange); }
 .tr-table tr.is-sel td { background: var(--ta-plate-3); }
@@ -143,3 +141,26 @@ body { margin: 0; background: var(--ta-void); color: var(--ta-text); font-family
 .tr-meter-fill.is-warm { background: var(--ta-orange); }
 .tr-meter-fill.is-hot { background: var(--ta-fault); }
 .is-target { outline: 2px solid var(--ta-orange); outline-offset: 2px; }
+
+/* stall fee editor, key allowance fields */
+.tr-stall { display: flex; flex-direction: column; gap: 8px; padding-top: 10px; border-top: 1px solid var(--ta-seam); }
+.tr-stall-form { display: flex; flex-direction: column; gap: 6px; }
+.tr-stall-form .tr-row { flex-wrap: nowrap; }
+.tr-stall-form input[type='range'] { flex: 1 1 120px; min-width: 0; accent-color: var(--ta-orange); min-height: 32px; }
+.tr-stall-form .tr-pct { width: 88px; min-height: 36px; padding: 6px 10px; text-align: right; }
+.tr-stall [hidden] { display: none; }
+.tr-allow { display: flex; flex-wrap: wrap; gap: 2px 12px; }
+
+/* under 640 px the stacked tables (.tr-stack) turn every row into a card: each cell carries its column label */
+@media (max-width: 640px) {
+  .tr-stack, .tr-stack tbody, .tr-stack tr, .tr-stack td { display: block; width: 100%; box-sizing: border-box; }
+  .tr-stack thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); }
+  .tr-stack tr { margin-bottom: 10px; padding: 4px 10px; background: var(--ta-plate-3); border: 1px solid var(--ta-seam); }
+  .tr-stack td { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 5px 0; white-space: normal; text-align: right; }
+  .tr-stack td[data-label]::before { content: attr(data-label); flex: none; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.1em; color: var(--ta-steel); text-align: left; }
+  .tr-stack td.tr-wrap { min-width: 0; flex-direction: column; align-items: stretch; text-align: left; }
+  .tr-stack td.tr-wrap::before { margin-bottom: 4px; }
+  .tr-allow { flex-direction: column; gap: 2px; }
+  .tr-stack tr.tr-own { background: rgba(255, 106, 19, 0.12); box-shadow: inset 3px 0 0 var(--ta-orange); }
+  .tr-stack tr.tr-own td, .tr-stack tr.tr-own td:first-child { background: none; box-shadow: none; }
+}

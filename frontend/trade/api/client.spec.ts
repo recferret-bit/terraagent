@@ -20,10 +20,14 @@ describe('TradeClient reads', () => {
     expect(urls).toEqual(['/v1/trade/book/p/bio.water%2FUSDC/orders?limit=50&side=sell', '/v1/trade/book/p/bio.water%2FUSDC/orders?limit=200']);
   });
 
-  it('reads the stall from the market snapshot and surfaces errors as TradeApiFailure', async () => {
-    const ok = new TradeClient('dev:a', async () => jsonRes({ planetId: 'p', stall: { hubFeeBp: 50, earned: {} } }));
-    expect((await ok.stall('p'))?.hubFeeBp).toBe(50);
-    const bad = new TradeClient('dev:a', async () => jsonRes({ error: { code: 'no_colony', message: 'x' } }, 404));
-    await expect(bad.stall('p')).rejects.toMatchObject({ code: 'no_colony' });
+  it('reads and sets the stall through /v1/trade/stall and surfaces errors as TradeApiFailure', async () => {
+    const calls: Array<[string, string | undefined, string | undefined]> = [];
+    const stall = { planetId: 'p', hubFeeBp: 50, minBp: 0, maxBp: 100, defaultBp: 100, earned: {} };
+    const ok = new TradeClient('dev:a', async (u, init) => { calls.push([u, init?.method, init?.body as string | undefined]); return jsonRes(stall); });
+    expect((await ok.getStall('p')).hubFeeBp).toBe(50);
+    expect((await ok.setStall('p', 50)).hubFeeBp).toBe(50);
+    expect(calls).toEqual([['/v1/trade/stall?planetId=p', 'GET', undefined], ['/v1/trade/stall', 'PUT', '{"bp":50,"planetId":"p"}']]);
+    const bad = new TradeClient('dev:a', async () => jsonRes({ error: { code: 'fee_out_of_range', message: 'x', details: { minBp: 0, maxBp: 100 } } }, 422));
+    await expect(bad.setStall('p', 101)).rejects.toMatchObject({ code: 'fee_out_of_range', details: { maxBp: 100 } });
   });
 });

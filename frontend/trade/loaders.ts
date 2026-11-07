@@ -47,7 +47,7 @@ export class Loaders {
 
   stall(quiet = false): Promise<void> {
     return this.store.load('stall', async (s) => {
-      try { const r = await this.client.stall(s.planetId); return (x) => ({ ...x, stall: r }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, stall: null }); throw e; }
+      try { const r = await this.client.getStall(s.planetId); return (x) => ({ ...x, stall: r }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, stall: null }); throw e; }
     }, quiet);
   }
 

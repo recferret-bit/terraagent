@@ -60,9 +60,11 @@ export function copyText(text: string): Promise<boolean> {
 
 export const badge = (text: string, kind: string): HTMLElement => h('span', { class: `tr-badge tr-badge-${kind}` }, text);
 
-export function table(headers: ReadonlyArray<{ label: string; num?: boolean }>, rows: HTMLElement[], caption: string): HTMLElement {
+/** `stack`: under 640 px every row becomes a card (each cell shows its column label), so no column is pushed off-screen. */
+export function table(headers: ReadonlyArray<{ label: string; num?: boolean }>, rows: HTMLElement[], caption: string, stack = false): HTMLElement {
+  if (stack) for (const r of rows) [...(r as HTMLTableRowElement).cells].forEach((c, i) => { if (headers[i]?.label) c.setAttribute('data-label', headers[i]!.label); });
   return h('div', { class: 'tr-scroll', tabindex: 0, role: 'region', 'aria-label': caption },
-    h('table', { class: 'tr-table' },
+    h('table', { class: stack ? 'tr-table tr-stack' : 'tr-table' },
       h('caption', { class: 'tr-sr' }, caption),
       h('thead', {}, h('tr', {}, ...headers.map((x) => h('th', { scope: 'col', class: x.num ? 'num' : '' }, x.label)))),
       h('tbody', {}, ...rows)));

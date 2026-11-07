@@ -60,6 +60,3 @@ export function timeLeft(expiresAtMs: number, nowMs: number): string {
 /** Basis points as a percentage label: 100 -> "1.00 %". */
 export const bpLabel = (bp: number): string => `${(bp / 100).toFixed(2)} %`;
 export const changeLabel = (bp: number | null): string => (bp === null ? '-' : `${bp >= 0 ? '+' : ''}${(bp / 100).toFixed(2)} %`);
-
-/** Mock label for the quote token column headers etc. */
-export const quoteLabel = (token: MarketTokenKey): string => mockLabel(token);

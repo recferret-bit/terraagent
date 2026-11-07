@@ -26,7 +26,7 @@ export function renderMarketOrders(body: HTMLElement, s: TradeState, now: number
   const trunc = res.truncated ? note(`Showing the best ${res.orders.length} orders only; the book holds more. Use the side filter to see more of one side.`, 'warn') : null;
   if (rows.length === 0) { body.replaceChildren(head, note('No resting orders on this pair.')); return; }
   fill(body, head, trunc,
-    table([{ label: 'SIDE' }, { label: 'UNIT PRICE', num: true }, { label: 'AMOUNT', num: true }, { label: 'REMAINING', num: true }, { label: 'ACTOR' }, { label: 'STALL FEE', num: true }, { label: 'TTL LEFT', num: true }, { label: 'FLAGS' }], rows.map((o) => orderRow(o, q, now)), `All resting orders ${s.pair}`),
+    table([{ label: 'SIDE' }, { label: 'UNIT PRICE', num: true }, { label: 'AMOUNT', num: true }, { label: 'REMAINING', num: true }, { label: 'ACTOR' }, { label: 'STALL FEE', num: true }, { label: 'TTL LEFT', num: true }, { label: 'FLAGS' }], rows.map((o) => orderRow(o, q, now)), `All resting orders ${s.pair}`, true),
     h('p', { class: 'tr-hint' }, `${rows.length} order${rows.length === 1 ? '' : 's'} shown; refreshes live on book updates. Unit price is ${q} per unit.`));
 }
 

@@ -1,5 +1,5 @@
 import type {
-  AgentQuoteResponse, MarketSnapshotResponse, OrderSide, TradeBookOrdersResponse, CancelTradeOrderResponse, CreateTradeKeyRequest, CreateTradeKeyResponse, PlaceTradeOrderRequest, PlaceTradeOrderResponse,
+  AgentQuoteResponse, TradeStallResponse, OrderSide, TradeBookOrdersResponse, CancelTradeOrderResponse, CreateTradeKeyRequest, CreateTradeKeyResponse, PlaceTradeOrderRequest, PlaceTradeOrderResponse,
   RevokeTradeKeyResponse, TradeAllowanceUpdate, TradeBalancesResponse, TradeBoardResponse, TradeBookResponse, TradeFillsResponse, TradeKeyListResponse,
   TradeKeyView, TradeOrdersResponse, TradePairsResponse, TradePolicyResponse,
 } from '@terra/contracts';
@@ -18,7 +18,7 @@ const enc = encodeURIComponent;
 
 /** Typed client of `/v1/trade/*` for a session / dev identity. Every mutation carries a fresh `Idempotency-Key`. */
 export class TradeClient {
-  constructor(private readonly token: string, private readonly doFetch: FetchFn = (i, init) => fetch(i, init)) {}
+  constructor(readonly token: string, private readonly doFetch: FetchFn = (i, init) => fetch(i, init)) {}
 
   authHeaders(): Record<string, string> { return { authorization: `Bearer ${this.token}` }; }
 
@@ -53,13 +53,10 @@ export class TradeClient {
   bookOrders = (planetId: string, pair: string, side: OrderSide | null, limit = 200): Promise<TradeBookOrdersResponse> =>
     this.call('GET', `/book/${enc(planetId)}/${enc(pair)}/orders?limit=${limit}${side ? `&side=${side}` : ''}`);
 
-  /** The caller's stall (`GET /v1/market/:planet` -> `stall`): current hub fee and earned fees. Null without a colony here. */
-  async stall(planetId: string): Promise<MarketSnapshotResponse['stall'] | null> {
-    const res = await this.doFetch(`/v1/market/${enc(planetId)}`, { headers: { accept: 'application/json', ...this.authHeaders() }, credentials: 'include' });
-    const json = (await res.json().catch(() => null)) as (Partial<MarketSnapshotResponse> & { error?: { code?: string; message?: string } }) | null;
-    if (!res.ok) throw new TradeApiFailure(res.status, json?.error?.code ?? `http_${res.status}`, json?.error?.message ?? `Stall failed (${res.status})`);
-    return json?.stall ?? null;
-  }
+  /** `GET /v1/trade/stall`: own hub fee, allowed range, earned fees (session or `?as=` only). */
+  getStall = (planetId: string): Promise<TradeStallResponse> => this.call('GET', `/stall?planetId=${enc(planetId)}`);
+  /** `PUT /v1/trade/stall`: set the own hub fee in basis points (422 `fee_out_of_range`, 403 `forbidden_scope` for keys). */
+  setStall = (planetId: string, bp: number): Promise<TradeStallResponse> => this.call('PUT', '/stall', { bp, planetId }, true);
   place = (req: PlaceTradeOrderRequest): Promise<PlaceTradeOrderResponse> => this.call('POST', '/orders', req, true);
   cancel = (orderId: string): Promise<CancelTradeOrderResponse> => this.call('DELETE', `/orders/${enc(orderId)}`, undefined, true);
   agentQuote = (q: Record<string, string>): Promise<AgentQuoteResponse> => this.call('GET', `/agent/quote?${new URLSearchParams(q)}`);
