@@ -1,9 +1,9 @@
 import type { IncomingMessage } from 'node:http';
 import { Body, Controller, Delete, Get, HttpCode, Param, Patch, Post, Query, Req, Res, UseFilters } from '@nestjs/common';
 import {
-  AgentQuoteQuery, CreateTradeKeyRequest, ListTradeOrdersQuery, PlaceTradeOrderRequest, TradeAllowanceUpdate,
+  AgentQuoteQuery, CreateTradeKeyRequest, TradeBookOrdersQuery, ListTradeOrdersQuery, PlaceTradeOrderRequest, TradeAllowanceUpdate,
   type AgentQuoteResponse, type CancelTradeOrderResponse, type CreateTradeKeyResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
-  type TradeBoardResponse, type TradeBookResponse, type TradeFillsResponse, type TradeKeyListResponse, type TradeKeyView, type TradeOrdersResponse,
+  type TradeBoardResponse, type TradeBookOrdersResponse, type TradeBookResponse, type TradeFillsResponse, type TradeKeyListResponse, type TradeKeyView, type TradeOrdersResponse,
   type TradePairsResponse, type TradePolicyResponse,
 } from '@terra/contracts';
 import type { ZodType } from 'zod';
@@ -113,6 +113,17 @@ export class TradeController {
   @Get('book/:planetId/:pair')
   book(@Param('planetId') planetId: string, @Param('pair') pair: string, @Query('levels') levels?: string): Promise<TradeBookResponse> {
     return this.read.book(planetId, decodeURIComponent(pair), levels ? Number(levels) : undefined);
+  }
+
+  /** Public list of every resting order of the pair; a bearer token / `?as=` identity only adds `mine`. */
+  @Get('book/:planetId/:pair/orders')
+  async bookOrders(
+    @Req() req: IncomingMessage, @Param('planetId') planetId: string, @Param('pair') pair: string, @Query() query: Record<string, string>, @Query('as') as?: string,
+  ): Promise<TradeBookOrdersResponse> {
+    this.orders.gate();
+    const q = parseBody(TradeBookOrdersQuery, { side: query.side, limit: query.limit });
+    const p = req.headers.authorization || as ? await this.auth.authenticate(req, as) : null;
+    return this.read.bookOrders(planetId, decodeURIComponent(pair), q, p);
   }
 
   @Get('board/:planetId')

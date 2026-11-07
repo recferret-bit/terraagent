@@ -44,6 +44,7 @@ KEY=ta_bot_...                   # from the response
 
 curl -s $API/trade/pairs; curl -s $API/trade/policy -H "authorization: Bearer $KEY"
 curl -s "$API/trade/book/w13-dev/bio.water%2FUSDC?levels=5"; curl -s $API/trade/board/w13-dev
+curl -s "$API/trade/book/w13-dev/bio.water%2FUSDC/orders?side=sell&limit=100"   # every resting order (public); add -H "authorization: Bearer $KEY" for `mine`
 curl -s "$API/trade/agent/quote?resource=bio.water&ownUnitCost=1000&transportPerUnit=0&keep=50" -H "authorization: Bearer $KEY"
 
 # place: Idempotency-Key is required; a retry with the same key and body returns the first answer and reserves nothing twice

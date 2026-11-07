@@ -55,6 +55,10 @@ export const PriceBoardRow = z.object({
   counterparties: z.number().int().nonnegative().optional(),
   /** Largest share one counterparty takes in organic volume (bp of 2x volume: each trade has two sides). */
   concentrationBp: z.number().int().nonnegative().optional(),
+  /** Share (bp, 0..10000) of the eligible window volume whose trade had at least one `bot` side (actor kinds of FINAL trades). */
+  botShareBp: z.number().int().min(0).max(10_000).optional(),
+  /** FINAL trades of the window by actor kind of either side (a trade counts once per kind present on its sides). */
+  actorMix: z.partialRecord(ActorKind, z.number().int().nonnegative()).optional(),
 });
 export type PriceBoardRow = z.infer<typeof PriceBoardRow>;
 
