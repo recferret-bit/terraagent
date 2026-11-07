@@ -292,6 +292,7 @@ The chain stays invisible (F5): cargo reads as "cargo in orbit", trades as "cont
 |---|---|---|
 | Trade Hub panel: Export / Import cargo, in-orbit balances, pending mints | Click a Trade Hub | F1 |
 | Market stall: order book, place/cancel order, hub fee slider (owner, 0-100 bp), exact quote-token fee preview (buyer pays), price board, last trades | Trade Hub panel → Market tab; pushes `market.book` / `market.trade` | F2 |
+| Standalone trading page `/trade.html` (D-45): all pairs' depth, all my orders, fills with organic flag, price board, my orbital cargo only, bot API key management and allowance usage; the in-game Trade Hub stays a simplified quick buy/sell with depth-aware price preview | `/trade.html`; Trade Hub panel link | F2 (W13-63, W13-64) |
 | Guild ship arrival toast + offers list with "Accept" | Toast + Trade Hub panel | F3 |
 | Away settings: away budget, `autoTrade` limits, director key status (allowance spent / revoke) | Settings → Away | F4 |
 | Social login; "Your colony account" with a claim button | First-run and Settings → Account | F5 |

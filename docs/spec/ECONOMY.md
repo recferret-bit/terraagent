@@ -2,7 +2,7 @@
 
 **Status:** Accepted design, owner direction 2026-11-04 (D-44); implementation is assigned to W13, W15 and W23. This document defines the economy rules, database management and reproducible analysis interface. It does not claim the new tools or migrations already exist.
 
-**Authority:** Extends D-31/D-35 and amends the market fees and Guild exclusivity in D-19/D-26. See [W13](../plan/waves/W13-markets.md), [W15](../plan/waves/W15-guild-agents.md), [W23](../plan/waves/W23-real-near.md), [NEAR](NEAR.md), [data model](DATA_MODEL.md), and [LED-18](../questions-and-limitations/economy-ledger.md#led-18--w13-economy-implementation-and-empirical-calibration-remain-outstanding).
+**Authority:** Extends D-31/D-35 and amends the market fees and Guild exclusivity in D-19/D-26. D-45 adds bot participation and the organic-fill rule. See [W13](../plan/waves/W13-markets.md), [W15](../plan/waves/W15-guild-agents.md), [W23](../plan/waves/W23-real-near.md), [NEAR](NEAR.md), [data model](DATA_MODEL.md), and [LED-18](../questions-and-limitations/economy-ledger.md#led-18--w13-economy-implementation-and-empirical-calibration-remain-outstanding).
 
 ## 1. Economic objective and scope
 
@@ -12,7 +12,7 @@ Keep the ten existing ResourceKeys and off-chain production. Cargo export remove
 
 USDC is the default quote for the cash-market experience. Resource barter remains supported; NEAR is an optional quote. Resource and NEAR balances are reported in their native units; any USDC valuation includes its source, age and confidence. A mark-to-market estimate is not realized revenue.
 
-D-25 remains: no new identity verification or anti-bot programme. Automation uses the same resource, territory, production and trading rules. Test multi-colony supply; per-colony quotas are not a global scarcity guarantee. Starter grants and system subsidies are separate production sources in the ledger and reports.
+D-25 remains: no new identity verification or anti-bot programme; D-45 makes automation first-class. LLM-controlled bots and humans trade on the same per-planet books through the bot API (`/v1/trade/*`, actor kind `bot`) and obey the same resource, territory, production and trading rules; bot allowances limit economic exposure, not identity. Test multi-colony supply; per-colony quotas are not a global scarcity guarantee. Starter grants and system subsidies are separate production sources in the ledger and reports.
 
 ## 2. Demand and resource balance
 
@@ -143,7 +143,9 @@ platform: +0.10 USDC
 stall:    +0.10 USDC
 ```
 
-Aggregate legs when accounts coincide, but retain fee attribution. Same-colony orders do not match. Known same-player colonies and Guild-to-Guild fills are excluded from reference-price and organic-volume metrics; this is not proof that unknown wallets have independent owners. Do not reward raw trading volume with withdrawable subsidies.
+Aggregate legs when accounts coincide, but retain fee attribution. Same-colony orders do not match. **Organic fills (D-45).** A finalized fill is organic only when both sides are actor kind `player` or `bot`, the two sides are different colonies **and** different owners. Same-owner fills (including any known related colonies), fixture, subsidy, `npc` and Guild fills are never organic. A bot-only market can therefore establish a reference price, so the exchange runs fully automatically; this is not proof that unknown wallets have independent owners, and the earlier rule (organic only when both sides are `player`) is superseded. Bot demand is credible only if the bot actually consumes what it buys (Guild/director/bot purchases that are only re-sold are reported separately as intermediary volume); this is a tracked hypothesis, calibrated in LED-18. Do not reward raw trading volume with withdrawable subsidies.
+
+**Bot participation (D-45).** Bots place and cancel orders through the same `market.placeOrder` / `market.cancelOrder` commands (command source `'bot'`) via the bot REST+stream API `/v1/trade/*`. An API key is bound to one colony account (actor kind `bot`) and carries allowances: max open orders, max order notional, daily spend/loss budget, allowed pairs, price band versus the reference price, kill switch, per-key rate limits and idempotency keys. Allowances are reserved on order creation and follow §4's reservation rules. Fees, minimum notional, reservations and rounding are identical to human orders.
 
 Amounts use integer atomic units (`numeric(78,0)` in Postgres, bigint in calculations, decimal strings in JSON). Token metadata defines decimals; display precision never defines settlement precision. Prices are rational integer numerator/denominator or equivalent exact tick-scaled integers; no binary floats in settlement. Round notional and each fee using cumulative floor differences per taker order and `(quote, rate, beneficiary, policyVersion)` bucket, so splitting a fill within a bucket cannot avoid fees. Buyer reservations include maximum quote spend and both fees; seller reservations cover base quantity. Enforce per-pair minimum notional and base lot so separately submitted dust orders cannot bypass fees. Preview exact totals, base quantity, execution/network charges and maximum spend; any slippage cap includes fees.
 
@@ -157,9 +159,11 @@ Unrestricted token transfers remain enabled. Accept external-market fee leakage:
 
 Player directors use the shared shortage/surplus functions, stock floors, maximum effective prices, order reservations and session spend limits. Outstanding orders count against limits before fills. Reserve allowance on order creation, consume on final settlement and release on cancel/expiry/final failure; a signing operation alone does not spend principal. Revoke cancels unsubmitted orders; already submitted irrevocable settlement must reconcile and remains counted.
 
-Guild funding is an explicit finite treasury allocation. Initial real cargo comes from treasury-owned, stock-backed exported cargo or purchased cargo. Mock seed grants are labeled fixtures and excluded from organic demand. No silent mint exception, automatic refill or unlimited standing buyback.
+Guild NPCs are one kind of agent on the same bot API and quote library, not a separate market path. They differ only in funding: Guild funding is an explicit finite treasury allocation. Initial real cargo comes from treasury-owned, stock-backed exported cargo or purchased cargo. Mock seed grants are labeled fixtures and excluded from organic demand. No silent mint exception, automatic refill or unlimited standing buyback.
 
 Profile policy includes per-NPC and global cash ceilings, inventory targets/caps, maximum per-order size, daily spend/loss budgets, reference-price staleness, minimum eligible trade volume and counterparties, max price move, allowed pairs and kill switch. Hard checks run transactionally before reservations/signing, after fills and on restart. Loss includes conservative inventory valuation; if it cannot be valued reliably, pause new cash bids rather than assume zero loss. Persist rolling-window counters so restart cannot reset budgets.
+
+**Need/value quote library (D-45, W13).** A pure deterministic library (`shared/sim/src/systems/trade/agent/`) serves scripted bots, player directors and Guild NPCs: desired quantity from `potentialBuy` (shortage/surplus after queues, reserve targets and outstanding orders), walk-away bid/ask from unit production cost and the alternatives (produce, haul, depot, reserve), the inventory-skew quote below, hard reservation/budget/staleness limits and a reason code for every quote or refusal. An LLM never types a free price: it sets strategy (specialisation, reserve targets, risk, goals) and the deterministic layer prices within bounds. LLM output that violates bounds is rejected with a reason code, not clamped silently.
 
 Pure quote function (fixed-point implementation):
 
@@ -171,7 +175,7 @@ ask = mid * (1 + ask_half_spread)
 
 `epsilon`, clamps, k and spreads belong to the profile. A full spread of 4% means 2% on each side. Inventory scarcity widens asks; excess inventory reduces bids; cash scarcity reduces bid size or disables bids. Quotes cannot exceed inventory/cash reservations, and must account for fees and transport. Exponentiation has one specified deterministic rounding implementation shared by runtime and experiments.
 
-Reference price uses only finalized eligible trades, a rolling window, per-counterparty weight cap and configured outlier/change bounds. Guild/self/known related trades do not establish the reference. On stale/thin markets, real cash bids pause. A manually funded bootstrap session can use explicit temporary bounded prices, expiry and loss budget; label it subsidy and exclude it from organic-price validation. Re-quote after each fill, cancel invalid resting quotes, and serialize per-NPC updates. LLM route suggestions cannot bypass these checks.
+Reference price uses only finalized eligible trades, a rolling window, per-counterparty weight cap and configured outlier/change bounds. Fills that are not organic under §3 (same-owner, fixture, subsidy, npc, Guild) do not establish the reference. On stale/thin markets, real cash bids pause. A manually funded bootstrap session can use explicit temporary bounded prices, expiry and loss budget; label it subsidy and exclude it from organic-price validation. Depth-aware pricing: Supply & trade valuation and previews walk the book depth, not only the best level. Re-quote after each fill, cancel invalid resting quotes, and serialize per-NPC updates. LLM route suggestions cannot bypass these checks.
 
 ## 5. Database management
 
@@ -265,7 +269,7 @@ Hard gates always apply: exact conservation/reconciliation; no negative stock or
 
 Economic gates are versioned data: regional realized supply and specialist import/export flows, logistics load/cost/shortage by base/army size, distance burden, reserve-mode usage and effective combat service; inventory days and mature growth trend, shortage duration, progression time, specialist delivered-cost advantage, fill ratio/spread, repeat buyer demand, payer concentration, organic vs subsidized volume, realized fee contribution and NPC drawdown. Every resource has explicit threshold/window/cohort coverage before approval; missing observations return `insufficient_data`. Initial numerical targets are calibration hypotheses, not a guaranteed result. Cash launch requires all hard gates, all approved economic gates across baseline/held-out/stress runs, plus a limited real-player pilot showing repeated voluntary purchases. A mock-only demo can ship with uncalibrated economics visibly labeled; it cannot claim cash-launch approval.
 
-W13 lands with schema/DB management, shared accounting, mock USDC fees, regional resource configuration, base/army logistics, at least one recurring project and transport recipe, deterministic headless simulations and comparison reports. W15 adds actual funded Guild/autoTrade stress runs. W23-48 enforces cash modes and W23-49 records pilot evidence. W23 permits a capped smoke trade after technical gates, with no public cash trading until the full pilot/gate record is approved. No calendar deadline waives these gates.
+W13 lands with schema/DB management, shared accounting, mock USDC fees, regional resource configuration, base/army logistics, at least one recurring project and transport recipe, deterministic headless simulations and comparison reports. W13 also lands the bot trading API, allowances, the need/value quote library, scripted bot traders, the standalone `/trade.html` page and a fully emulated NEAR chain with deterministic fault injection (W13-58..67). W15 adds actual funded Guild/autoTrade stress runs on that same bot API. W23-48 enforces cash modes and W23-49 records pilot evidence. W23 permits a capped smoke trade after technical gates, with no public cash trading until the full pilot/gate record is approved. No calendar deadline waives these gates.
 
 ## 8. Management API and operator surface
 
@@ -296,6 +300,11 @@ What the W13 branch builds of this contract. The contract above is unchanged; it
 | `/v1/economy/*` API and operator panel | yes | `backend/app/src/economy/*/*.controller.ts`, `frontend/game/dev/economy/` (`/dev/chain/?tab=economy`) |
 | Telemetry: flows, inventories, profile hashes, market counters | yes | `backend/app/src/economy/telemetry/`, `backend/app/src/market/telemetry/` |
 | `npm run economy -- ...` CLI | planned (W13-46) | - |
+| Bot trading API `/v1/trade/*`, API keys, allowances, command source `'bot'` (W13-58..60) | planned (D-45) | - |
+| Need/value quote library `shared/sim/src/systems/trade/agent/` and scripted traders (W13-61, W13-66) | planned (D-45) | - |
+| Organic-fill rule `player`/`bot`, different colony and owner (W13-62) | planned (D-45); the prior `both player` price-board rule is superseded | - |
+| `/trade.html` standalone trading page and simplified in-game Trade Hub (W13-63, W13-64) | planned (D-45) | - |
+| Fully emulated NEAR chain with fault injection (W13-65) | planned (D-45) | - |
 | Comparison and recommendation routes (`/comparisons`, `/recommendations`) | planned | - |
 | Real cash settlement and live activation of cash profiles | not in F2 (mock only) | W23 |
 

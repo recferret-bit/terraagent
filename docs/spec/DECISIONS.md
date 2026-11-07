@@ -1,5 +1,7 @@
 # TerraAgent — Architecture Decisions
 
+> **D-45 (2026-11-07):** LLM-controlled bots and humans trade on the same per-planet books through the bot API; organic fills are `player`/`bot` pairs with different colonies and owners. See [ECONOMY](ECONOMY.md) §3/§4.
+
 > **D-44 (2026-11-04):** owner-approved resource economy, database profiles and reproducible experiments amend D-19/D-26/D-35. See [ECONOMY](ECONOMY.md).
 
 > Numbered, append-only. Status: `Proposed` (awaiting owner grill) · `Accepted` · `Superseded by D-NN`.
@@ -51,6 +53,7 @@
 | D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
 | D-43 | Neutral hive fauna | Accepted (2026-11-04, owner) |
 | D-44 | Resource demand, buyer quote fees, database profiles and reproducible AI experiments | Accepted (2026-11-04, owner); ECONOMY contract |
+| D-45 | Bot participation on the shared exchange (bot API `/v1/trade/*`, actor kind `bot`, allowances, deterministic need/value quotes, strategy-only LLMs) and the organic-fill rule (`player`/`bot`, different colony and owner) | Accepted (2026-11-07, lead default; owner may change) |
 
 | D-43 | Neutral hive fauna: three insect species, passive/aggressive behavior, shared planet models initially, deterministic directives and cosmetic hive life | Accepted direction (2026-11-04, owner); tuning proposals in fauna contract |
 
@@ -606,3 +609,20 @@ The log stays append-only; these notes record where the code built in W00–W01 
 **Owner direction (2026-11-04).** Players need clear reasons to buy and sell. Configure main/scarce resources per planet and canonical sector, independently by ResourceKey/tier (a sand planet may be silica-rich but crystal-poor). Resolve global/type/planet/archetype/sector overrides with explicit provenance. All production/discovery paths respect the same endowment; generated reserves stay pinned for existing worlds. W11 provides identity/persistence hooks; W13 owns database configuration and economics; W27 preserves them under streaming.
 
 Large active bases and armies consume recurring resource supplies. Load relative to powered logistics capacity and route distance increases delivery/resource cost; players can build depots, trade locally, reduce activity or reserve units. Keep storage, command slots and logistics distinct. Supply shortage limits active work/attack cadence after local reserves/grace, while retreat remains possible. Reserve/deployment and away-budget rules are explicit in [ECONOMY](ECONOMY.md); do not raise another player's order price or debit cash automatically. Initial coefficients/shortage floors require calibration and are recorded in LED-19, not presented as measured balance. Multi-colony cost avoidance is tested; D-25 remains unchanged.
+
+
+## D-45 — Bot participation and the organic-fill rule
+
+**Decision (lead default, 2026-11-07; the owner may change it).** The W13 exchange runs fully automatically: LLM-controlled bots and humans trade on the same per-planet order book, and prices come from real demand.
+
+- **Bot actor.** New actor kind `bot` (agent-operated account). A bot uses a REST+stream trading API at `/v1/trade/*` with an API key bound to one colony account. Keys carry allowances: max open orders, max order notional, daily spend/loss budget, allowed pairs, price band versus the reference price, kill switch, idempotency keys and rate limits. The sim accepts command source `'bot'` on `market.placeOrder`; there is one order path for humans, bots, Guild NPCs and directors. Fees, reservations, rounding and minimum notional are the human rules.
+- **Strategy versus price.** A pure deterministic need/value quote library (`shared/sim/src/systems/trade/agent/`) derives desired quantity from `potentialBuy`, walk-away bid/ask from unit cost and alternatives, applies the ECONOMY §4 inventory-skew quote and hard reservation/budget/staleness limits, and returns reason codes. An LLM (W16 director, external agent) sets strategy only (specialisation, reserve targets, risk, goals); it never types a free price.
+- **Organic rule (amends D-44).** A fill is organic when both sides are actor kind `player` or `bot`, are different colonies and have different owners. Same-owner, fixture, subsidy, `npc` and Guild fills are never organic. The earlier rule (organic only when both sides are `player`) blocked a bot-only market from establishing a reference price and is superseded. The no-identity-verification stance of D-25 stands: owner identity is the account owner known to the platform, not a proof of human independence.
+- **Credibility hypothesis.** Bot demand is only credible if the bot consumes what it buys; this is tracked (intermediary versus consumed volume) and calibrated in LED-18, not asserted.
+- **Surfaces.** Standalone `/trade.html` (all pairs' depth, all my orders, fills, board, my orbital cargo only) plus a simplified in-game Trade Hub. Supply & trade pricing is depth-aware.
+- **Testing.** W13 ships a fully emulated NEAR chain with deterministic fault injection (fail-before-submit, unknown outcome, delayed finality, duplicate delivery, insufficient funds). Real cash settlement stays W23; W23 swaps real FT/Intents behind the same ports and puts bot API keys on real accounts behind the pilot gates.
+- **Guild.** Guild NPCs (W15) become one kind of agent on the same bot API and quote library; their bootstrap session is labelled subsidy and is never organic.
+
+**Alternatives.** Keep organic = both `player` (a bot-only market never gets a reference price; the exchange needs humans online). Let LLMs quote free prices (unbounded loss, prompt-injection exposure). A separate bot-only venue (splits liquidity, hides bot behaviour from humans). Count every distinct-wallet fill as organic (wash trading by one owner).
+
+**Consequences.** Bot-to-bot volume can move the reference price, so allowance, price-band and concentration limits are hard gates; real-cash exposure of bots stays behind W23-48/49.
