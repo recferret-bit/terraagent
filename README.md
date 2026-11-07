@@ -47,6 +47,11 @@ npm run gen            # regenerate registries (command/event kinds, sim systems
 npm run db:up | db:gen -- --name x | db:migrate | db:reset | db:seed
 npm run scenario -- w00    # run a scenario headless
 npm run wave           # work on the next wave of the build plan (see "Building the game: waves")
+npm run wave:land -- <NN>              # Mode 1 ("merge wave into main"): 3-iteration audit/test/E2E loop, auto-heal conflicts, merge --no-ff to main, tag wave-NN, push, cleanup + future-wave propagation
+npm run wave:sync -- <NN|--all> [--sync-issues]  # Mode 2 ("merge main into wave"): merge updated main into WIP wave worktree (and active issue/WNN-XX worktrees) with 3-iteration verification
+npm run wave:audit -- <NN> [--sync]    # semantic collision scan (ECS codes, migrations, Q&L/Decision IDs, unlanded issues) + as-built scope delta
+npm run wave:propagate -- <NN> [--add-issue WMM ...]  # post-merge self-review feature audit & safe issue injection into downstream future wave plans (`docs/plan/waves/W*.md`)
+npm run validate:wave -- [NN] [--gates] [--strict]   # pre-landing wave validator (task parity, AST duplication, orchestrator/service split, client+server wiring)
 npm run validate:models -- <id|--category robot|--all>   # kitbash geometry/colour/detail validator
 ```
 
@@ -172,8 +177,12 @@ npm run wave -- status  # full board: state, issue progress (done/total), preset
 npm run wave:open -- 07              # open (only once every dependency is in main) or resume the wave worktree; no agent started
 npm run wave:issue -- W07-03         # ../TerraAgent-wt/W07-03 on issue/W07-03 from the wave branch (node_modules cloned)
 npm run wave:issue:land -- W07-03    # gates, then `git merge --no-ff` as "W07-03: <title>"; removes worktree + branch; stops on a conflict
+npm run wave:validate -- 07          # full 2-iteration pre-landing review & fix loop (or `npm run validate:wave -- 07 [--gates]`; or tell your agent: "validate the wave")
 npm run wave:check -- 07             # merge main in, ci:fast + e2e --waves ..07 --hack, prints the demo story and ?scenario=w07 URL
-npm run wave:land -- 07              # refuses unless every depended-on wave is in main, gates pass and no dirty main-checkout file is touched; tags wave-07 (or wave-07.k), pushes, cleans up
+npm run wave:land -- 07              # Mode 1 ("merge wave into main"): refuses unless every depended-on wave is in main; runs 3-iteration semantic audit + ci:fast + e2e loop, auto-heals generated files, merges --no-ff to main, tags wave-07 (or wave-07.k), pushes, cleans up, and propagates self-review feature extensions into future wave plans
+npm run wave:sync -- 07 [--sync-issues]  # Mode 2 ("merge main into wave", alias `wave -- merge-main 07` or `--all`): saves recovery ref `refs/wave-sync-backup/W07`, merges updated main into WIP wave worktree (and active `issue/W07-XX` worktrees) with generated-file auto-heal, runs 3-iteration verification, and reports new/modified `W07-XX` issues from main
+npm run wave:audit -- 07 [--sync]    # scan ECS codes, Prisma migrations, Q&L/Decision IDs, unlanded issue branches, and as-built scope deltas
+npm run wave:propagate -- 07 [--add-issue WMM ...]  # inspect self-review extensions in W07 and inject new integration issues into downstream future waves (`docs/plan/waves/W*.md` + `index_waves.py --write`)
 ```
 
 Every worktree these scripts create gets a gitignored `infra/.env.worktree` with its own `TA_PORT_BASE` (4100, 4200, …) and `TA_DB_NAME=terra_<branch>`.
@@ -183,8 +192,10 @@ Every wave has a built-in preset in [`scripts/wave/prompt.mjs`](./scripts/wave/p
 **Your loop:**
 
 1. Run `npm run wave` and let the wave lead session build its issues.
-2. When it finishes, it hands you an **owner check guide**, `docs/plan/checks/wNN-check.md` (also printed by `npm run wave:check -- NN`): the exact URLs with this worktree's ports, where to type (the in-game dev console is the `` ` `` key), what to see, step by step. Follow it on the running dev stack. Example: [`docs/plan/checks/w00-check.md`](./docs/plan/checks/w00-check.md).
-3. All good → land it: **`npm run wave -- land NN`** (e.g. `npm run wave -- land 00`) re-runs the gates, merges into `main`, tags `wave-NN`, pushes, and removes the worktree and branch. Plain `npm run wave` does the same for every completed wave whose dependencies are in `main`, then opens the next ready wave. Something wrong → tell the wave lead which step and what you saw.
+2. At any point before landing, tell your coding agent **"validate the wave"** (or run `npm run validate:wave` / `npm run wave:validate -- NN`) to execute the 2-iteration pre-landing review-and-fix harness (`wave-landing-validator`: compares against the initial wave task, fixes gaps, eliminates AST duplication, enforces the orchestrator/service split, and verifies client + server + shared sim parity).
+3. When it finishes, it hands you an **owner check guide**, `docs/plan/checks/wNN-check.md` (also printed by `npm run wave:check -- NN`): the exact URLs with this worktree's ports, where to type (the in-game dev console is the `` ` `` key), what to see, step by step. Follow it on the running dev stack. Example: [`docs/plan/checks/w00-check.md`](./docs/plan/checks/w00-check.md).
+4. All good → land it: tell your coding agent **"merge wave into main"** (or run **`npm run wave:land -- NN`** / **`npm run wave -- land NN`**). That activates `wave-land-and-sync` (Mode 1), auto-heals generated registry/schema conflicts, runs a **3-iteration** semantic collision + test/E2E + as-built audit loop, merges `--no-ff` into `main`, tags `wave-NN`, pushes, removes the worktree and branch, and propagates new self-review features into downstream future wave plans (`docs/plan/waves/W*.md`, `PRODUCT_WAVES.md`, `DEV_TOOLS.md`, `DECISIONS.md`, `questions-and-limitations/*.md`, `ISSUE_INDEX.md`, `HACKATHON_SCHEDULE.md`). Plain `npm run wave` does the same for every completed wave whose dependencies are in `main`, then opens the next ready wave. Something wrong → tell the wave lead which step and what you saw.
+5. Whenever `main` advances while a wave is still WIP in `../TerraAgent-wt/wNN`, tell your coding agent **"merge main into wave"** (or run **`npm run wave:sync -- NN [--sync-issues]`** / **`npm run wave:sync -- --all`**). That activates `wave-land-and-sync` (Mode 2), saves a recovery ref (`refs/wave-sync-backup/WNN`), merges updated `main` into `wave/wNN-<slug>` (and active `issue/WNN-XX` sub-worktrees) with generated-file auto-heal, runs the 3-iteration verification loop, and reports any new or updated `WNN-XX` issues added to `WNN` on `main`.
 
 **Plan files:** the hackathon cut and drop order are in [`HACKATHON_CUT.md`](./docs/plan/HACKATHON_CUT.md), the generated start order in [`HACKATHON_SCHEDULE.md`](./docs/plan/HACKATHON_SCHEDULE.md), your to-dos and open decisions in [`OWNER_TASKS.md`](./docs/plan/OWNER_TASKS.md). After editing a wave file, run `python3 scripts/plan/index_waves.py` (must print `problems 0`) and `--write` to regenerate the index and schedule.
 

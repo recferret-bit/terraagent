@@ -1,5 +1,7 @@
 # TerraAgent — Architecture Decisions
 
+> **D-44 (2026-11-04):** owner-approved resource economy, database profiles and reproducible experiments amend D-19/D-26/D-35. See [ECONOMY](ECONOMY.md).
+
 > Numbered, append-only. Status: `Proposed` (awaiting owner grill) · `Accepted` · `Superseded by D-NN`.
 > Each decision lists the alternatives so the owner can overturn it with full context. Agents must not silently deviate; propose a new decision instead.
 
@@ -47,6 +49,8 @@
 | D-40 | Public host `terraagent.fun` on one nginx, four compose stacks (infra, frontend, backend, chain), SSH deploy from `DEPLOY_HOST` in `infra/.env`. No Cloudflare and no R2 in this phase | Accepted (2026-11-01) |
 | D-41 | Clean root folder modelled on `../freightchain`: root holds only agentic files (`.agents/`, `.claude/`, `AGENTS.md`, `CLAUDE.md`), `README.md`, git files (`.git`, `.github/`, `.gitignore`), `LICENSE`, root `package.json` (`package-lock.json`), and the 7 domain folders (`backend/`, `docs/`, `frontend/`, `infra/`, `scripts/`, `shared/`, `tests/`) | Accepted (2026-11-01, owner) |
 | D-42 | W02 economy build rules (as built): the day follows the planet solar clock, W02 building rows go through `evaluatePlacement` and are built on site by the HQ through the W01 `build` command, orders are paid progressively and a cancel refunds 50 % of what was paid, clamped at the family storage cap | Accepted (2026-11-03, W02 review); open points in GP-53..56 and LED-17 |
+| D-43 | Neutral hive fauna | Accepted (2026-11-04, owner) |
+| D-44 | Resource demand, buyer quote fees, database profiles and reproducible AI experiments | Accepted (2026-11-04, owner); ECONOMY contract |
 
 | D-43 | Neutral hive fauna: three insect species, passive/aggressive behavior, shared planet models initially, deterministic directives and cosmetic hive life | Accepted direction (2026-11-04, owner); tuning proposals in fauna contract |
 
@@ -582,3 +586,23 @@ The log stays append-only; these notes record where the code built in W00–W01 
 **Scope and defaults.** This supersedes D-15's single-species fauna and old W07 proximity aggression. Blue armor is provisionally modeled as shell geometry + high HP, preserving D-28 plain damage; numerical balance, provocation/cooldown policy and that armor interpretation are proposals recorded as GP-80, not additional owner decisions. Existing W08 threat composition must be reconciled by W07; Brute/Drifter remain later extensions.
 
 **Alternatives.** Full per-bug transform streaming defeats the requested order-style replication. Seed-only replication cannot recover missing inputs or reconnects. Simulated food/building chains add complexity the owner explicitly excluded.
+
+
+## D-44 — Resource demand, cash fees and database-managed experiments
+
+**Decision (owner, 2026-11-04).** Adopt [ECONOMY](ECONOMY.md) as the implementation contract. Useful recurring consumption, mixed-tier recipes and regional specialization create trading opportunities; prices remain market-discovered and no farming return is guaranteed. USDC is the default cash quote. Buyer pays quote-token fees: platform 100 bp plus stall 0–100 bp (default 100), independent of maker/taker role; W22 treasury allocation comes from platform fees. Exact arithmetic, versioned order terms and funded reservations are mandatory.
+
+**D-19/D-26 amendment.** Our books remain planet-local, but unrestricted cargo transfers and imports permit external trading and cross-planet access. Accept external fee leakage; Guild NPCs offer a service, not an enforceable transport monopoly. Real Guild cargo is stock-backed or purchased, cash is explicitly allocated, and inventory/cash/loss caps and thin-market pauses are required. D-25 permits bots; limits govern economic exposure, not human identity.
+
+**D-35 extension.** Postgres stores typed, validated, immutable economy profile versions. Existing compileData exports the same snapshot/hash to live hosts and headless experiments. Operators can edit candidates, compare evidence, activate at an effective tick and roll back without code deployment. Dev tune stays a sandbox override; old orders/jobs retain their pinned terms.
+
+**AI workflow.** Discover JSON Schema, clone/patch a candidate, run bounded seeded scenarios on the real shared rules, compare paired/held-out results and emit recommendations with evidence. AI experiment credentials cannot activate production or access chain signing keys. Do not maintain a separate authoritative economic simulator.
+
+**Delivery.** W13 includes database management, recurring project/transport consumption, mock USDC fees and simulation tools; W15 adds funded bot policies/tests; W23 gates public cash trading on exact accounting, approved stress results and a real-player pilot. New coefficients and gate thresholds require calibration, recorded in LED-18. This decision accepts the design, not an unmeasured claim of sustainability or a fixed hackathon date.
+
+
+### D-44 extension — Regional specialization and operating logistics
+
+**Owner direction (2026-11-04).** Players need clear reasons to buy and sell. Configure main/scarce resources per planet and canonical sector, independently by ResourceKey/tier (a sand planet may be silica-rich but crystal-poor). Resolve global/type/planet/archetype/sector overrides with explicit provenance. All production/discovery paths respect the same endowment; generated reserves stay pinned for existing worlds. W11 provides identity/persistence hooks; W13 owns database configuration and economics; W27 preserves them under streaming.
+
+Large active bases and armies consume recurring resource supplies. Load relative to powered logistics capacity and route distance increases delivery/resource cost; players can build depots, trade locally, reduce activity or reserve units. Keep storage, command slots and logistics distinct. Supply shortage limits active work/attack cadence after local reserves/grace, while retreat remains possible. Reserve/deployment and away-budget rules are explicit in [ECONOMY](ECONOMY.md); do not raise another player's order price or debit cash automatically. Initial coefficients/shortage floors require calibration and are recorded in LED-19, not presented as measured balance. Multi-colony cost avoidance is tested; D-25 remains unchanged.

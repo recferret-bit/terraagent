@@ -1,5 +1,7 @@
 # TerraAgent — Unit Roster, Orders & Learning-Curve Specification
 
+**Planned W13 logistics extension:** [ECONOMY §2.3](../spec/ECONOMY.md#23-base-and-army-logistics-costs) adds readiness-based material supplies, reserve/deployment rules and supplied work/attack cadence. Existing command-slot limits remain; no automatic HP loss, cash debit or retreat lock. Integrate through the existing unit runner and battle rules, gated by enabled waves; coefficients are calibration fixtures (LED-19).
+
 > **Status:** v0.3 (2026-10-29). **Accepted as D-16** ([`docs/spec/DECISIONS.md`](../spec/DECISIONS.md)). Related owner decisions: D-17 (hard offline mode), D-18 (launch gate and Settled colonies), D-21 (pylon load). Plan: epic TA-14.
 > **Supersedes:** robot table in [`docs/game/colony-economy-and-buildings-spec.md`](./colony-economy-and-buildings-spec.md) §4 and [`docs/spec/SIMULATION.md`](../spec/SIMULATION.md) §7.2.
 > **Builds on:** buildings, costs, power and territory from `docs/game/colony-economy-and-buildings-spec.md`; tick model, commands and rule engine from `SIMULATION.md`; away-mode rules from `CONTINUITY.md`; directives from `AI_ORCHESTRATOR.md`.

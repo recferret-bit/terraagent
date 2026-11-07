@@ -1,5 +1,7 @@
 # W11 — Planet Foundations: Persistent Worlds & Sector Admission
 
+> **Resource geography extension (2026-11-04):** W11-46 pins canonical regional resource inputs; [ECONOMY §2.2](../../spec/ECONOMY.md#22-planet-and-sector-resource-endowments) defines W13 database inheritance and scarcity. W11 uses bootstrap profiles without depending on W13. Existing worlds keep their pinned endowment; startup never rerolls resources.
+
 > **Status:** Replanned 2026-11-04 after owner approval; implementation is not claimed.
 > **Track:** Sim / Meta / Client · **Flag:** `W11` · **Tag:** `wave-11` · **Scenario:** `tests/scenarios/w11-lobby.ts` · **E2E:** `tests/e2e/w11.spec.ts`
 > **Depends on waves:** W01 (spine), W04 (maps), W05 (terrain and territory).
@@ -110,6 +112,7 @@ The old hackathon demo is superseded. Existing H/H+ labels retain scheduling cat
 | W11-43 | Small-world memory/wire/tick/render measurement and enforced configuration caps | test | M | H | W11-40, W11-41, W11-42 | Exceed validated atlas budget → rejected before allocation; publish measured supported fixture | W11 contract; MATCHMAKING §0 | Revised W11 / W27 foundation |
 | W11-44 | Cross-sector beacon claims/removal and territory-outline regression | test | M |  | W11-41, W05-12, W05-13 | Build/remove three-sector base anchors → continuous territory and correct reversion | W11 contract; MATCHMAKING §0 | Revised W11 / W27 foundation |
 | W11-45 | Atlas generation, local/online rule parity and save-upgrade fixtures for W27 handoff | test | M |  | W11-40, W11-44 | Replay corpus in both hosts and read upgrade fixture → preserved IDs/terrain | W11 contract; MATCHMAKING §0 | Revised W11 / W27 foundation |
+| W11-46 | Pin regional-resource profile identity/hash in atlas and sector manifests; bootstrap optional type/sector bindings, preserve source attribution and essential starter access; stable inputs for later W13 DB resolver | sim | M | H | W11-36, W11-38 | Same seed/profile and shuffled sector loads reproduce resources; absent optional profile preserves baseline; no W13 runtime dependency or T3 starter giveaway | ECONOMY section 2.2 | — |
 | W11-32 | Wave e2e + w11-lobby scenario, owner guide and W27 readiness manifest | test | M | H | all W11 | Play delivered demo slice → green prior suites and explicit completed/deferred rows | W11 contract; MATCHMAKING §0 | Revised W11 / W27 foundation |
 
 ## Execution and acceptance gates

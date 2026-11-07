@@ -7,8 +7,12 @@
 //   wave:issue -- WNN-XX    create the issue worktree `issue/WNN-XX` from its wave branch
 //   wave:issue:land -- WNN-XX   merge the issue into its wave branch (gates green, `--no-ff`, subject `WNN-XX: <title>`)
 //   wave:check -- NN        merge main into the wave, run the gates, print the demo steps and URL
-//   wave:land -- NN         land the wave in main (refusals, gates, tag, push, cleanup)
-// Options: --dry-run, --root <dir> (or TA_WAVE_ROOT: another repository, e.g. a sandbox clone), --no-e2e.
+//   wave:validate -- NN     run full pre-landing wave validation (task parity, AST duplication, orchestrator/service split, client+server wiring & 2-iteration review/fix loop)
+//   wave:land -- NN         land the wave in main (3-iteration audit/gates/plan check, tag, push, cleanup)
+//   wave:sync -- NN         merge updated main into a WIP wave (auto-heal generated conflicts, 3 iterations, incoming plan delta)
+//   wave:audit -- NN        audit semantic collisions, as-built feature extensions, and future-wave impact
+//   wave:propagate -- NN    inspect/propagate self-review features into future wave plans (--add-issue WMM --title "...")
+// Options: --dry-run, --root <dir> (or TA_WAVE_ROOT: another repository, e.g. a sandbox clone), --no-e2e, --e2e, --iterations <N>, --rounds <N>.
 import { existsSync } from 'node:fs';
 import { spawnSync } from 'node:child_process';
 import { dirname, join } from 'node:path';
@@ -17,15 +21,20 @@ import { mainRoot, loadPlan, ordered, withState, waveProgress, readiness, curren
 import { ensureWorktreeEnv } from './isolation.mjs';
 import { openIssue, landIssue } from './issue.mjs';
 import { checkWave } from './check.mjs';
-import { runGates } from './gates.mjs';
+import { runLandHarness, syncWaveWithMain, runAuditCommand } from './harness.mjs';
+import { runPropagateCommand } from './propagate.mjs';
+import { validateWaveCli } from './validate.mjs';
 import { wavePrompt, resolvePreset, buildRunnerCommand, GROK_CONTEXT_WINDOW } from './prompt.mjs';
 
 const args = process.argv.slice(2);
-const VALUE_OPTS = ['--tags', '--parallel', '--runner', '--model', '--advisor', '--mode', '--effort', '--root'];
+const VALUE_OPTS = [
+  '--tags', '--parallel', '--runner', '--model', '--advisor', '--mode', '--effort', '--root',
+  '--iterations', '--rounds', '--add-issue', '--title', '--type', '--size', '--tag', '--deps', '--accept', '--spec', '--replaces',
+];
 const flag = (n) => args.includes(n);
 const opt = (n, d) => { const i = args.indexOf(n); return i >= 0 ? args[i + 1] : d; };
 const positional = args.filter((a, i) => !a.startsWith('--') && !VALUE_OPTS.includes(args[i - 1]));
-const KNOWN = ['next', 'status', 'land', 'open', 'check', 'issue', 'issue:land'];
+const KNOWN = ['next', 'status', 'land', 'sync', 'merge-main', 'audit', 'propagate', 'validate', 'open', 'check', 'issue', 'issue:land'];
 const [command, waveArg] = KNOWN.includes(positional[0])
   ? [positional[0] ?? 'next', positional[1]]
   : (/^w?\d+$/i.test(positional[0] ?? '') ? ['next', positional[0]] : [positional[0] ?? 'next', positional[1]]);
@@ -84,11 +93,16 @@ function checkLandable(w) {
   const dirty = out('git', ['status', '--porcelain'], { cwd: root }).split('\n').map((l) => l.replace(/^\s*\S{1,2}\s+/, '').replace(/^.* -> /, '')).filter((f) => touched.has(f)); // out() trims, so the first status line may lack its leading space
   if (dirty.length) fail(`the merge would touch uncommitted files in the main checkout:\n  ${dirty.join('\n  ')}`);
   if (!existsSync(w.worktree)) fail(`${w.id} has no worktree ${w.worktree} to run the gates in: run \`npm run wave:open -- ${w.id.slice(1)}\``);
-  runGates(w.worktree, { dryRun: flag('--dry-run') });
+  return runLandHarness(root, plan, w, {
+    iterations: Number(opt('--iterations', 3)),
+    e2e: flag('--e2e'),
+    dryRun: flag('--dry-run'),
+    requirePlanSync: flag('--require-plan-sync'),
+  });
 }
 
 function landWave(w) {
-  checkLandable(w);
+  const delta = checkLandable(w);
   const dry = flag('--dry-run');
   const tag = w.landed ? `${w.tag}.${1 + out('git', ['tag', '--list', `${w.tag}*`], { cwd: root }).split('\n').length}` : w.tag;
   if (dry) return console.log(`would merge ${w.branch} into main as "${waveTitle(root, w)}", tag ${tag}, push main + ${tag}, remove ${w.worktree}, delete ${w.branch}`);
@@ -105,6 +119,9 @@ function landWave(w) {
   plan = withState(root, loadPlan(root));
   const others = plan.waves.filter((x) => x.open).map((x) => x.id);
   console.log(`\n✔ ${w.id} landed as ${tag}.${others.length ? ` Open waves to merge main next: ${others.join(', ')}.` : ''}`);
+  if (delta?.futureWaveImpacts?.length) {
+    console.log(`  Future waves impacted by ${w.id} (${delta.futureWaveImpacts.map((f) => `${f.waveId}→${f.nextIssueId}`).join(', ')}): run \`npm run wave:propagate -- ${w.id.slice(1)}\` to review/update future plans.`);
+  }
 }
 
 /**
@@ -205,5 +222,41 @@ function open() {
 const check = () => checkWave(root, byId(waveArg ?? fail('usage: npm run wave:check -- NN')), { dryRun: flag('--dry-run'), e2e: !flag('--no-e2e') });
 const issue = () => openIssue(root, plan, waveArg, { dryRun: flag('--dry-run') });
 const issueLand = () => landIssue(root, plan, waveArg, { dryRun: flag('--dry-run'), e2e: !flag('--no-e2e') });
+const sync = () => {
+  const opts = { iterations: Number(opt('--iterations', 3)), e2e: flag('--e2e'), dryRun: flag('--dry-run'), syncIssues: flag('--sync-issues') };
+  if (flag('--all')) {
+    const openWaves = ordered(plan).filter((w) => w.open);
+    if (!openWaves.length) fail('no open WIP waves to sync');
+    for (const w of openWaves) syncWaveWithMain(root, plan, w, opts);
+    return;
+  }
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open) ?? fail('usage: npm run wave:sync -- NN (or --all)');
+  syncWaveWithMain(root, plan, target, opts);
+};
+const audit = () => {
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open) ?? fail('usage: npm run wave:audit -- NN');
+  runAuditCommand(root, plan, target, { mode: flag('--sync') ? 'sync' : 'land', json: flag('--json') });
+};
+const propagate = () => {
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open) ?? fail('usage: npm run wave:propagate -- NN');
+  runPropagateCommand(root, plan, target, { opt, flag });
+};
+const validate = () => {
+  const target = waveArg ? byId(waveArg) : currentWave(plan) ?? plan.waves.find((w) => w.open) ?? fail('usage: npm run wave:validate -- NN');
+  const code = validateWaveCli(root, target, {
+    overrides: overrides(),
+    dryRun: flag('--dry-run'),
+    checkOnly: flag('--check-only'),
+    printPrompt: flag('--print-prompt'),
+    noLaunch: flag('--no-launch'),
+    gates: flag('--gates'),
+    e2e: flag('--e2e') && !flag('--no-e2e'),
+    strict: flag('--strict'),
+    json: flag('--json'),
+    quiet: flag('--quiet'),
+    rounds: Number(opt('--rounds', 1)),
+  });
+  if (code !== 0) process.exit(code);
+};
 
-({ next, status, land, open, check, issue, 'issue:land': issueLand }[command] ?? (() => fail(`unknown command "${command}" (use \`npm run wave\` or \`npm run wave -- status\`)`)))();
+({ next, status, land, sync, 'merge-main': sync, audit, propagate, validate, open, check, issue, 'issue:land': issueLand }[command] ?? (() => fail(`unknown command "${command}" (use \`npm run wave\` or \`npm run wave -- status\`)`)))();

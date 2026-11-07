@@ -28,6 +28,8 @@ Everything that is not code lives here. Following the D-41 root cleanliness rule
 
 ## Online architecture (`spec/`)
 
+[Resource economy and experiment contract](./spec/ECONOMY.md): database profile lifecycle, exact fees, recurring consumption, funded bots, AI simulation manifests and release gates (D-44).
+
 `ARCHITECTURE`, `SIMULATION`, `PROTOCOL`, `CLIENT`, `NEAR`, `AI_ORCHESTRATOR`, `CONTINUITY`, `MATCHMAKING`, `DATA_MODEL`, `DEPLOYMENT` and `DECISIONS` cover the planned backend. [`tech-stack-spec.md`](./spec/tech-stack-spec.md) covers the browser 3D stack.
 Several files describe the earlier multi-service design that decision D-24 simplified to one Node app. Check `DECISIONS.md` before relying on a detail.
 
