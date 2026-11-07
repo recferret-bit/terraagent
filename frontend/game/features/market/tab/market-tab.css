@@ -17,3 +17,10 @@
 .ta-market__title { font-family: var(--ta-font-display); font-size: var(--ta-fs-eyebrow); letter-spacing: var(--ta-track-eyebrow); color: var(--ta-text-3); margin-top: var(--ta-s2); }
 .ta-market__trades { display: flex; flex-direction: column; max-height: 9rem; overflow-y: auto; scrollbar-width: thin; }
 .ta-market__empty { color: var(--ta-text-3); padding: var(--ta-s1); }
+.ta-market__full { display: block; width: 100%; box-sizing: border-box; text-align: center; text-decoration: none; }
+.ta-market__stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: var(--ta-s1); }
+.ta-market__stat { display: flex; flex-direction: column; padding: 2px var(--ta-s1); border-left: 2px solid var(--ta-seam-2); }
+.ta-market__stat-k { color: var(--ta-text-3); font-size: var(--ta-fs-eyebrow); letter-spacing: var(--ta-track-label); }
+.ta-market__stat-v { font-family: var(--ta-font-mono); color: var(--ta-text); }
+.ta-market__stat[data-testid='market-stat-bid'] .ta-market__stat-v { color: var(--ta-blue-hi); }
+.ta-market__stat[data-testid='market-stat-ask'] .ta-market__stat-v { color: var(--ta-orange-hi); }

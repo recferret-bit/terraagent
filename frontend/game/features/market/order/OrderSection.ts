@@ -3,7 +3,7 @@ import type { FeatureContext } from '../../../core/registry/types';
 import { makeBtn, makeDiv } from '../../shared/dom';
 import { MarketTracker, type OrderEventProps } from '../analytics/marketTracker';
 import { failedText } from '../contracts/ContractsController';
-import { myOrderRow } from './myOrders';
+import { CANCELABLE_STATES, myOrderRow } from './myOrders';
 import { previewOrder, type OrderPreview } from './orderPreview';
 
 export interface OrderPair { base: ResourceKey; quote: MarketTokenKey }
@@ -61,8 +61,17 @@ export class OrderSection {
     const sides = makeDiv('ta-order__sides');
     sides.append(this.sideBtns.buy, this.sideBtns.sell);
     const grid = makeDiv('ta-order__form');
-    grid.append(field('Amount', this.amountIn, 'order-amount'), field('Total price', this.priceIn, 'order-price'), field('Expires in', this.ttlSel, 'order-ttl'), this.stallRow);
-    this.root.append(title('ORDER'), sides, grid, this.previewEl, this.blockedEl, this.submitBtn, this.resultEl, title('MY ORDERS'), this.myEl);
+    grid.append(field('Amount', this.amountIn, 'order-amount'), field('Total price', this.priceIn, 'order-price'));
+    // Advanced options stay collapsed: the default expiry and the policy's default max stall fee apply unless opened.
+    const adv = document.createElement('details');
+    adv.className = 'ta-order__adv';
+    adv.dataset.testid = 'order-advanced';
+    const advGrid = makeDiv('ta-order__form');
+    advGrid.append(field('Expires in', this.ttlSel, 'order-ttl'), this.stallRow);
+    const sum = document.createElement('summary');
+    sum.textContent = 'ADVANCED';
+    adv.append(sum, advGrid);
+    this.root.append(title('QUICK TRADE'), sides, grid, adv, this.previewEl, this.blockedEl, this.submitBtn, this.resultEl, title('MY OPEN ORDERS'), this.myEl);
     for (const i of [this.amountIn, this.priceIn, this.stallIn]) i.addEventListener('input', () => this.update());
     this.ttlSel.addEventListener('change', () => this.update());
     const store = ctx.services.store as { onServerEvents?: (f: (e: EventList) => void) => () => void } | undefined;
@@ -137,8 +146,8 @@ export class OrderSection {
     this.trackPreview(p);
     this.blockedEl.textContent = p.blocked ?? '';
     this.submitBtn.disabled = p.blocked !== undefined;
-    const orders = this.snapshot?.myOrders ?? [];
-    this.myEl.replaceChildren(...(orders.length ? orders.map((o) => myOrderRow(o, (x) => void this.cancel(x))) : [makeDiv('ta-market__empty', undefined, 'No orders yet.')]));
+    const orders = (this.snapshot?.myOrders ?? []).filter((x) => CANCELABLE_STATES.includes(x.state));
+    this.myEl.replaceChildren(...(orders.length ? orders.map((o) => myOrderRow(o, (x) => void this.cancel(x))) : [makeDiv('ta-market__empty', undefined, 'No open orders.')]));
   }
 
   private eventProps(p: OrderPreview): OrderEventProps | null {

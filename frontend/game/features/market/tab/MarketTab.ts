@@ -5,9 +5,10 @@ import { MarketState } from './marketState';
 import { MarketTracker } from '../analytics/marketTracker';
 import { OrderSection } from '../order/OrderSection';
 import { StallSection } from '../stall/StallSection';
-import { baseGroups, quoteChoices, resourceLabel } from './pairs';
+import { resourceLabel } from './pairs';
+import { FILLS_SHOWN, MINI_DEPTH_LEVELS, QUICK_BASES, QUICK_QUOTES, pairStats, tradePageUrl } from './quickModel';
 
-export const DEPTH_ROWS = 10;
+export const DEPTH_ROWS = MINI_DEPTH_LEVELS;
 const DEFAULT_BASE: ResourceKey = 'bio.water';
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls: string, text?: string): HTMLElementTagNameMap[K] => {
@@ -42,7 +43,10 @@ const tradeRow = (t: TradeView): HTMLElement => {
   return row;
 };
 
-/** The MARKET tab of the Trade Hub panel (W13-20): pair picker, depth (top 10 per side) and last trades, live from the pushes. */
+/**
+ * The MARKET tab of the Trade Hub panel: a compact quick-trade panel (short pair list, best bid / ask / last + 24 h change, 5-level
+ * depth, simple ticket, my open orders, last fills). The full order book, analytics and every power feature live on /trade.html.
+ */
 export class MarketTab implements TradeHubTabInstance {
   readonly state: MarketState;
   private base: ResourceKey = DEFAULT_BASE;
@@ -53,6 +57,8 @@ export class MarketTab implements TradeHubTabInstance {
   private readonly bidsEl = makeDiv('ta-market__side', 'market-bids');
   private readonly tradesEl = makeDiv('ta-market__trades', 'market-trades');
   private readonly statusEl = el('div', 'ta-market__status');
+  private readonly statsEl = makeDiv('ta-market__stats', 'market-stats');
+  private readonly fullLink = el('a', 'btn btn-primary plate-sm ta-market__full', 'OPEN FULL TRADING PAGE');
   private readonly offs: Array<() => void> = [];
   private readonly stall: StallSection;
   private loading = false;
@@ -70,6 +76,9 @@ export class MarketTab implements TradeHubTabInstance {
     this.quoteSel.setAttribute('aria-label', 'Quote token');
     this.baseSel.addEventListener('change', () => { this.base = this.baseSel.value as ResourceKey; this.fillQuotes(); this.render(); });
     this.quoteSel.addEventListener('change', () => { this.quote = this.quoteSel.value as MarketTokenKey; this.render(); });
+    this.fullLink.dataset.testid = 'market-open-full';
+    this.fullLink.target = '_blank';
+    this.fullLink.rel = 'noopener';
     this.fillBases();
     this.fillQuotes();
     const picker = makeDiv('ta-market__picker');
@@ -77,10 +86,10 @@ export class MarketTab implements TradeHubTabInstance {
     const head = makeDiv('ta-market__head');
     head.append(el('span', 'ta-market__col', 'PRICE'), el('span', 'ta-market__col', 'AMOUNT'), el('span', 'ta-market__col', 'ORDERS'));
     this.root.classList.add('ta-market');
-    this.root.append(picker, this.statusEl, head, this.asksEl, makeDiv('ta-market__mid'), this.bidsEl, el('div', 'ta-market__title', 'LAST TRADES'), this.tradesEl);
+    this.root.append(this.fullLink, picker, this.statusEl, this.statsEl, head, this.asksEl, makeDiv('ta-market__mid'), this.bidsEl);
     this.tracker = new MarketTracker(ctx.services.track);
     this.order = new OrderSection(ctx, () => ({ base: this.base, quote: this.quote }));
-    this.root.append(this.order.root, this.stall.el);
+    this.root.append(this.order.root, el('div', 'ta-market__title', 'LAST FILLS'), this.tradesEl, this.stall.el);
     this.offs.push(this.state.onChange(() => this.render()));
     const store = ctx.services.store;
     if (store?.onMarketBook) this.offs.push(store.onMarketBook((p) => this.state.applyBook(p)));
@@ -89,31 +98,21 @@ export class MarketTab implements TradeHubTabInstance {
   }
 
   private fillBases(): void {
-    this.baseSel.replaceChildren();
-    for (const g of baseGroups()) {
-      const og = document.createElement('optgroup');
-      og.label = g.label;
-      for (const k of g.keys) og.append(option(k, resourceLabel(k), k === this.base));
-      this.baseSel.append(og);
-    }
+    const keys = QUICK_BASES.includes(this.base) ? [...QUICK_BASES] : [...QUICK_BASES, this.base];
+    this.baseSel.replaceChildren(...keys.map((k) => option(k, resourceLabel(k), k === this.base)));
   }
 
   private fillQuotes(): void {
-    const { cash, barter } = quoteChoices(this.base);
-    if (!cash.includes(this.quote) && !barter.includes(this.quote as ResourceKey)) this.quote = 'USDC';
     if (this.quote === this.base) this.quote = 'USDC';
-    this.quoteSel.replaceChildren();
-    for (const q of cash) this.quoteSel.append(option(q, mockLabel(q), q === this.quote));
-    const og = document.createElement('optgroup');
-    og.label = 'Barter';
-    for (const k of barter) og.append(option(k, resourceLabel(k), k === this.quote));
-    this.quoteSel.append(og);
+    const keys: Array<MarketTokenKey | ResourceKey> = QUICK_QUOTES.includes(this.quote) ? [...QUICK_QUOTES] : [...QUICK_QUOTES, this.quote as ResourceKey];
+    this.quoteSel.replaceChildren(...keys.map((q) => option(q, QUICK_QUOTES.includes(q as MarketTokenKey) ? mockLabel(q as MarketTokenKey) : resourceLabel(q as ResourceKey), q === this.quote)));
   }
 
   /** Loads the REST snapshot (also when the tab is shown again, so a missed push is repaired). */
   onShow(): void {
     const id = this.ctx.services.session?.planetId() ?? null;
     const load = this.ctx.services.marketSnapshot;
+    this.fullLink.href = tradePageUrl(id);
     this.order.refresh();
     this.tracker.tabOpened();
     if (!id || !load || this.loading) { this.render(); return; }
@@ -142,6 +141,7 @@ export class MarketTab implements TradeHubTabInstance {
   }
 
   render(): void {
+    this.fullLink.href = tradePageUrl(this.ctx.services.session?.planetId() ?? null);
     this.order.update();
     const book = this.state.book(this.selected());
     this.asksEl.replaceChildren(...levelRows([...(book?.asks ?? [])].slice(0, DEPTH_ROWS).reverse(), this.quote, 'ask'));
@@ -151,8 +151,15 @@ export class MarketTab implements TradeHubTabInstance {
       empty.dataset.testid = 'market-empty';
       this.asksEl.append(empty);
     }
-    const t = this.state.trades(this.selected()).slice(0, 20);
-    this.tradesEl.replaceChildren(...(t.length ? t.map(tradeRow) : [el('div', 'ta-market__empty', 'No trades yet.')]));
+    const all = this.state.trades(this.selected());
+    const st = pairStats(book, all, this.quote, Date.now());
+    this.statsEl.replaceChildren(...([['BEST BID', st.bid, 'bid'], ['BEST ASK', st.ask, 'ask'], ['LAST', st.last, 'last'], ['24H', st.change24h, 'change']] as const).map(([k, v, id]) => {
+      const cell = makeDiv('ta-market__stat', `market-stat-${id}`);
+      cell.append(el('span', 'ta-market__stat-k', k), el('span', 'ta-market__stat-v', v));
+      return cell;
+    }));
+    const t = all.slice(0, FILLS_SHOWN);
+    this.tradesEl.replaceChildren(...(t.length ? t.map(tradeRow) : [el('div', 'ta-market__empty', 'No fills yet.')]));
   }
 
   dispose(): void {

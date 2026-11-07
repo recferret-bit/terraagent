@@ -88,8 +88,8 @@ describe('Market tab order form', () => {
     await vi.waitFor(() => expect(q('order-result').textContent).toBe('Order refused: funds changed'));
   });
 
-  it('lists my orders with filled/amount and Cancel sends market.cancelOrder', async () => {
-    const { tab, q, root, sendCommand } = setup('0', [myOrder]);
+  it('lists my OPEN orders with filled/amount and Cancel sends market.cancelOrder; closed orders are not listed', async () => {
+    const { tab, q, root, sendCommand } = setup('0', [myOrder, { ...myOrder, orderId: 'o2', state: 'FILLED' }]);
     tab.onShow();
     await vi.waitFor(() => expect(root.querySelectorAll('[data-testid=order-my]')).toHaveLength(1));
     const row = root.querySelector('[data-testid=order-my]')!;

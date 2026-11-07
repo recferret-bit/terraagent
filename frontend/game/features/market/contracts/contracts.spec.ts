@@ -63,12 +63,12 @@ describe('W13-24 contracts controller and list', () => {
     expect(panel.isOpen).toBe(false);
   });
 
-  it('keeps only the newest 20, newest first', () => {
+  it('keeps only the newest 5, newest first', () => {
     const { ctl, log } = setup();
     for (let i = 0; i < 25; i++) ctl.handle([settled(`tr_${i}`, { amount: i + 1 }) as never]);
     expect(log.list).toHaveLength(CONTRACTS_LIMIT);
     expect(log.list[0]!.text).toContain('25 water');
-    expect(log.list.at(-1)!.text).toContain('6 water');
+    expect(log.list.at(-1)!.text).toContain('21 water');
   });
 
   it('toasts a failed contract for a settlement failure and a refused order; ignores another colony', () => {
