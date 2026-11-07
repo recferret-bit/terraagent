@@ -60,6 +60,11 @@ export class TradeKeysService implements OnModuleInit {
       }
     }
     const updated = await this.keys.updateAllowance(key.keyId, patch);
+    if (patch.killSwitch === true) { // W13-59: the kill switch stops the key's exposure now, not only its next order
+      await this.requests.cancelUnsubmitted(key.keyId);
+      await this.cancelOpen(key);
+      setTimeout(() => void this.cancelOpen(key).catch(() => undefined), 1500).unref();
+    }
     return keyView(updated!);
   }
 

@@ -247,6 +247,17 @@ export class Exchange {
     return this.actor({ kind: 'player', name, ownerId, idx, accountId: colony.accountId, planetId });
   }
 
+  /** Places an order straight through `PlaceOrderService` with an explicit actor kind (fixture / subsidy / npc: not reachable over REST). */
+  async placeAs(actor: Actor, actorKind: 'fixture' | 'subsidy' | 'npc' | 'guild', over: Body): Promise<void> {
+    const orderSeq = (this.orderSeq.get(`${actor.planetId}${actor.colonyId}`) ?? 0) + 1000;
+    this.orderSeq.set(`${actor.planetId}${actor.colonyId}`, orderSeq);
+    const ev = {
+      planetId: actor.planetId, tick: 1, kind: 'marketOrderRequested', severity: 'info', colonyIds: [actor.colonyId],
+      data: { ref: marketOrderRef(actor.colonyId, orderSeq), orderSeq, colonyId: actor.colonyId, colonyIndex: actor.idx, resource: 'bio.water', amount: 10, ttlS: 3600, stallFeeBp: 100, hubEntityId: 3, ...over },
+    } as unknown as PlanetEventOf<'marketOrderRequested'>;
+    await this.place.handle(ev, { actorKind, answerSim: false });
+  }
+
   // --- chain drivers and observers ---------------------------------------------------------------------------------
   /** Runs the relay until nothing is due (every outbox row due now); returns the rows processed. */
   async settle(maxRounds = 40): Promise<number> {
