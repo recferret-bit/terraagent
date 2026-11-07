@@ -4450,6 +4450,17 @@
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "additionalProperties": false,
         "properties": {
+          "actorKind": {
+            "enum": [
+              "player",
+              "bot",
+              "npc",
+              "guild",
+              "fixture",
+              "subsidy"
+            ],
+            "type": "string"
+          },
           "amount": {
             "exclusiveMinimum": 0,
             "maximum": 9007199254740991,
@@ -6531,6 +6542,7 @@
                 "actorKind": {
                   "enum": [
                     "player",
+                    "bot",
                     "npc",
                     "guild",
                     "fixture",
@@ -6706,6 +6718,7 @@
                 "actorKind": {
                   "enum": [
                     "player",
+                    "bot",
                     "npc",
                     "guild",
                     "fixture",
