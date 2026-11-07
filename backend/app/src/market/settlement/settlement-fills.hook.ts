@@ -51,7 +51,7 @@ export class SettlementFillsHook extends MarketFillsHook {
     const touched = new Set<string>();
     for (const fill of outcome.fills) {
       const taker = cur.get(fill.takerOrderId)!;
-      const tradeId = tradeIdOf(fill, taker.filled);
+      const tradeId = await this.freshTradeId(tradeIdOf(fill, taker.filled), tx);
       const batch = buildFillBatch({ tradeId, fill, orders: cur, treasury: { enabled: false, shareBp: this.policy.current().treasuryShareBp, accountId: TREASURY_ACCOUNT_ID } });
       const buyer = cur.get(fill.buyerOrderId)!;
       const seller = cur.get(fill.sellerOrderId)!;
@@ -63,6 +63,16 @@ export class SettlementFillsHook extends MarketFillsHook {
       await this.enqueue(tx, batch, buyer, seller, maker, rollback);
     }
     return [...touched];
+  }
+
+  /**
+   * A fill that is matched again after its first trade FAILED (orders restored, same taker/maker/filled-before) must be a NEW trade:
+   * the deterministic id would hit the FAILED row, `insert` would report "not created" and no outbox row would ever settle the fill.
+   */
+  private async freshTradeId(base: string, tx: TransactionClient): Promise<string> {
+    let id = base;
+    for (let n = 1; (await this.trades.find(id, tx))?.state === 'FAILED'; n++) id = `${base}~${n}`;
+    return id;
   }
 
   private async persist(o: MarketOrderRecord, u: TradeBatch['buyer'], tx: TransactionClient): Promise<MarketOrderRecord> {

@@ -81,6 +81,7 @@ export class Exchange {
   /** Emulates the sim version that echoes the command id in `marketOrderRequested`. */
   echoCommandId = false;
   private nextIdx = 1;
+  private readonly planets: string[] = [];
   private readonly orderSeq = new Map<string, number>();
   private envExtra: Record<string, string> = {};
 
@@ -100,12 +101,13 @@ export class Exchange {
       },
     });
     this.app = app;
-    await app.init();
-    app.get(GamePlanets).markScenarioColonyPlanet('exchange-seats', SEATS);
-    app.get(TradeSimPort).override = (planetId, cmd) => this.fakeSim(planetId, cmd);
+    // listeners first: boot recovery (module init) already sends notifications
     const bus = app.get(EventBus);
     bus.on('near.market.command', (c) => this.cmds.push(c), { module: 'exchange-test' });
     bus.on('market.trade', (p) => this.pushes.push(p), { module: 'exchange-test' });
+    await app.init();
+    for (const p of this.planets) app.get(GamePlanets).markScenarioColonyPlanet(p, SEATS);
+    app.get(TradeSimPort).override = (planetId, cmd) => this.fakeSim(planetId, cmd);
     await app.listen(0, '127.0.0.1');
     this.url = (await app.getUrl()).replace('[::1]', '127.0.0.1');
     await (this.get(IntentsPort) as unknown as MockIntentsAdapter).testRegisterSigner(PLATFORM);
@@ -177,6 +179,7 @@ export class Exchange {
   // --- worlds and actors ---------------------------------------------------------------------------------------------
   world(): World {
     const planetId = `px${randomUUID().slice(0, 8)}`;
+    this.planets.push(planetId);
     this.app.get(GamePlanets).markScenarioColonyPlanet(planetId, SEATS);
     const w: World = {
       planetId,
