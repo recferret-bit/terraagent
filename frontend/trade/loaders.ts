@@ -1,4 +1,5 @@
 import { TradeApiFailure, type TradeClient } from './api/client';
+import type { OrderSide } from '@terra/contracts';
 import { applyBookSnapshot } from './model/state';
 import type { Store } from './Store';
 
@@ -35,7 +36,18 @@ export class Loaders {
 
   balances(quiet = false): Promise<void> {
     return this.store.load('balances', async (s) => {
-      try { const r = await this.client.balances(s.planetId); return (x) => ({ ...x, balances: r }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, balances: null }); throw e; }
+      try { const r = await this.client.tradeBalances(s.planetId); return (x) => ({ ...x, balances: r }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, balances: null }); throw e; }
+    }, quiet);
+  }
+
+  /** Every resting order of the selected pair (public endpoint; own ones carry `mine`). */
+  bookOrders(side: OrderSide | null, quiet = false): Promise<void> {
+    return this.store.load('bookOrders', async (s) => { const r = await this.client.bookOrders(s.planetId, s.pair, side); return (x) => (x.pair === r.pair && x.planetId === r.planetId ? { ...x, bookOrders: r } : x); }, quiet);
+  }
+
+  stall(quiet = false): Promise<void> {
+    return this.store.load('stall', async (s) => {
+      try { const r = await this.client.stall(s.planetId); return (x) => ({ ...x, stall: r }); } catch (e) { if (noColony(e)) return (x) => ({ ...x, stall: null }); throw e; }
     }, quiet);
   }
 
@@ -59,6 +71,6 @@ export class Loaders {
   }
 
   all(): Promise<unknown> {
-    return Promise.all([this.catalog().then(() => this.overview()), this.book(), this.board(), this.orders(), this.fills(), this.balances(), this.keys()]);
+    return Promise.all([this.catalog().then(() => this.overview()), this.book(), this.board(), this.orders(), this.fills(), this.balances(), this.keys(), this.stall()]);
   }
 }

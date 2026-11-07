@@ -129,3 +129,17 @@ body { margin: 0; background: var(--ta-void); color: var(--ta-text); font-family
   .tr-lv-head, .tr-lv { grid-template-columns: 1.3fr 1fr 1fr 0.4fr; gap: 4px; padding: 4px; }
 }
 @media (prefers-reduced-motion: reduce) { .tr-panel, .btn { transition: none; } }
+
+/* all orders / board chips / key usage / hash target */
+.tr-market-head { justify-content: space-between; margin-bottom: 8px; }
+.tr-mix { display: inline-flex; align-items: center; gap: 4px; font-family: var(--ta-font-mono); font-size: 12px; color: var(--ta-text-2); }
+.tr-chipstat { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 2px 8px; font-family: var(--ta-font-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--ta-steel); background: var(--ta-plate-3); border: 1px solid var(--ta-seam-3); }
+.tr-chipstat b { color: var(--ta-text); font-weight: 600; }
+.tr-badge-dim { color: var(--ta-steel); }
+.tr-aon[title] { opacity: 0.7; cursor: not-allowed; }
+.tr-usage { display: flex; flex-direction: column; gap: 4px; margin-top: 6px; }
+.tr-meter { height: 8px; background: var(--ta-black-hole); border: 1px solid var(--ta-seam-3); }
+.tr-meter-fill { display: block; height: 100%; background: var(--ta-blue-hi); }
+.tr-meter-fill.is-warm { background: var(--ta-orange); }
+.tr-meter-fill.is-hot { background: var(--ta-fault); }
+.is-target { outline: 2px solid var(--ta-orange); outline-offset: 2px; }

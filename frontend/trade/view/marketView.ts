@@ -1,37 +1,40 @@
-import { parsePairId, type TradeOrderView } from '@terra/contracts';
-import { buildMarketLines, orderPrice, type MarketLine } from '../model/allOrders';
+import { parsePairId, type OrderSide, type TradeBookOrderView } from '@terra/contracts';
+import { ACTOR_BADGE, actorCounts, visibleOrders } from '../model/allOrders';
 import type { TradeState } from '../model/state';
 import { bpLabel, fmtAmount, fmtUnit, timeLeft } from '../model/units';
-import { badge, gate, h, note, table, td } from './dom';
+import { badge, fill, gate, h, note, table, td } from './dom';
+
+export interface MarketActions { setSide(side: OrderSide | null): void }
+
+const SIDES: ReadonlyArray<readonly [OrderSide | null, string]> = [[null, 'Both sides'], ['buy', 'Bids'], ['sell', 'Asks']];
 
 /**
- * Market-wide table of the selected pair. The public book only exposes aggregated levels (price, amount, order count): per-order
- * rows with actor kind, stall fee, TTL and AON exist only for the caller's own orders, which are highlighted under their level.
+ * Every resting order of the selected pair (public `GET /v1/trade/book/:planet/:pair/orders`): actor kind, stall fee, TTL left and
+ * the all-or-nothing flag per order. The caller's own orders (`mine`) are highlighted. Colony refs are per-planet pseudonyms.
  */
-export function renderMarketOrders(body: HTMLElement, s: TradeState, now: number): void {
-  if (!gate(body, s.panels.book, null)) return;
-  const book = s.book;
+export function renderMarketOrders(body: HTMLElement, s: TradeState, now: number, side: OrderSide | null, a: MarketActions): void {
+  if (!gate(body, s.panels.bookOrders, null)) return;
+  const res = s.bookOrders;
   const parsed = parsePairId(s.pair);
-  if (!book || !parsed) { body.replaceChildren(note('No book loaded.')); return; }
+  if (!res || !parsed || res.pair !== s.pair) { body.replaceChildren(note('No orders loaded.')); return; }
   const q = parsed.quote;
-  const lines = buildMarketLines(book.asks, book.bids, s.orders, s.pair);
-  if (lines.length === 0) { body.replaceChildren(note('No resting orders on this pair.')); return; }
-  const rows = lines.map((l) => lineRow(l, q, now));
-  body.replaceChildren(
-    note('Every resting order is counted below as a price level. The API does not list other actors\' individual orders, so actor kind, stall fee, TTL and all-or-nothing show only on your own orders (highlighted).'),
-    table([{ label: 'SIDE' }, { label: 'UNIT PRICE', num: true }, { label: 'AMOUNT', num: true }, { label: 'REMAINING', num: true }, { label: 'ORDERS', num: true }, { label: 'ACTOR' }, { label: 'STALL FEE', num: true }, { label: 'TTL LEFT', num: true }, { label: 'FLAGS' }], rows, `All resting orders ${s.pair}`));
+  const rows = visibleOrders(res.orders, side);
+  const chips = h('div', { class: 'tr-chips', role: 'group', 'aria-label': 'Side filter' }, ...SIDES.map(([v, label]) =>
+    h('button', { type: 'button', class: `tr-chip${v === side ? ' is-on' : ''}`, 'data-side-filter': v ?? 'all', 'aria-pressed': String(v === side), onclick: () => a.setSide(v) }, label)));
+  const mix = actorCounts(res.orders).map(([k, n]) => h('span', { class: 'tr-mix', 'data-actor-count': k }, badge(k, ACTOR_BADGE[k]), ` ${n}`));
+  const head = h('div', { class: 'tr-row tr-market-head' }, chips, h('div', { class: 'tr-badges', 'aria-label': 'Actor mix of the listed orders' }, ...mix));
+  const trunc = res.truncated ? note(`Showing the best ${res.orders.length} orders only; the book holds more. Use the side filter to see more of one side.`, 'warn') : null;
+  if (rows.length === 0) { body.replaceChildren(head, note('No resting orders on this pair.')); return; }
+  fill(body, head, trunc,
+    table([{ label: 'SIDE' }, { label: 'UNIT PRICE', num: true }, { label: 'AMOUNT', num: true }, { label: 'REMAINING', num: true }, { label: 'ACTOR' }, { label: 'STALL FEE', num: true }, { label: 'TTL LEFT', num: true }, { label: 'FLAGS' }], rows.map((o) => orderRow(o, q, now)), `All resting orders ${s.pair}`),
+    h('p', { class: 'tr-hint' }, `${rows.length} order${rows.length === 1 ? '' : 's'} shown; refreshes live on book updates. Unit price is ${q} per unit.`));
 }
 
-function lineRow(l: MarketLine, q: Parameters<typeof fmtUnit>[1], now: number): HTMLElement {
-  const sideCls = l.side === 'buy' ? 'tr-buy' : 'tr-sell';
-  if (l.kind === 'level') {
-    return h('tr', { class: 'tr-level', 'data-level': l.side }, td(l.side === 'buy' ? 'BID' : 'ASK', sideCls), td(fmtUnit(l.price, q), 'num'), td(String(l.amount), 'num'), td(String(l.amount), 'num'), td(String(l.orders), 'num'),
-      td(l.ownAtLevel > 0 ? badge(`${l.ownAtLevel} yours`, 'own') : h('span', { class: 'tr-hint' }, 'all actors')), td('-', 'num'), td('-', 'num'), td(''));
-  }
-  const o: TradeOrderView = l.order;
-  return h('tr', { class: 'tr-own', 'data-own-order': o.orderId },
-    td(`${o.side === 'buy' ? 'BID' : 'ASK'} - YOURS`, sideCls), td(fmtUnit(orderPrice(o), q), 'num'), td(String(o.amount), 'num'), td(String(l.remaining), 'num'), td('1', 'num'),
-    td(badge(l.actor, 'info')), td(bpLabel(o.stallFeeBp), 'num'), td(timeLeft(o.expiresAtMs, now), 'num'),
+function orderRow(o: TradeBookOrderView, q: Parameters<typeof fmtUnit>[1], now: number): HTMLElement {
+  const sideCls = o.side === 'buy' ? 'tr-buy' : 'tr-sell';
+  return h('tr', { class: o.mine ? 'tr-own' : '', 'data-book-order': o.orderId, 'data-actor': o.actorKind, 'data-mine': o.mine ? '1' : null },
+    td(`${o.side === 'buy' ? 'BID' : 'ASK'}${o.mine ? ' - YOURS' : ''}`, sideCls), td(fmtUnit(o.price, q), 'num'), td(String(o.amount), 'num'), td(String(o.remaining), 'num'),
+    td(badge(o.actorKind, ACTOR_BADGE[o.actorKind])), td(bpLabel(o.stallFeeBp), 'num'), td(timeLeft(o.expiresAtMs, now), 'num'),
     td(o.fillPolicy === 'all_or_nothing' ? badge('AON', 'info') : badge('partial ok', 'dim')));
 }
 
