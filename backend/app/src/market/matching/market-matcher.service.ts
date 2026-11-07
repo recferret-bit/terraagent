@@ -48,6 +48,9 @@ export class MarketMatcher {
 
   matchOrder(orderId: string, tx?: TransactionClient): Promise<MatchOutcome> {
     return withTransaction(tx ?? this.prisma, async (t) => {
+      // One matcher per (planet, pair) at a time: incoming-first / makers-second row locking of two crossing orders deadlocks otherwise.
+      const head = await t.marketOrder.findUnique({ where: { orderId }, select: { planetId: true, pair: true } });
+      if (head) await t.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`market-match:${head.planetId}:${head.pair}`}, 0))`;
       for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
         const out = await this.attempt(orderId, t);
         if (out) return out;

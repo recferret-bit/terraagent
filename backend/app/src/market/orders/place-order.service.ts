@@ -132,14 +132,23 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
 
   /** Matches the new order and hands the fills to the hook inside one transaction (the matcher's locks stay held). */
   async matchAndSettle(orderId: string): Promise<void> {
-    try {
-      const touched = await withTransaction(this.prisma, async (tx) => {
-        const outcome = await this.matcher.matchOrder(orderId, tx);
-        return outcome.fills.length > 0 ? this.fills.onFills(outcome, tx) : [];
-      });
-      if (touched.length > 0) await this.books.sync(...touched);
-    } catch (err) {
-      this.log.warn(`matching ${orderId} failed: ${err instanceof Error ? err.message : String(err)}`);
+    for (let attempt = 1; ; attempt++) {
+      try {
+        const touched = await withTransaction(this.prisma, async (tx) => {
+          const outcome = await this.matcher.matchOrder(orderId, tx);
+          return outcome.fills.length > 0 ? this.fills.onFills(outcome, tx) : [];
+        });
+        if (touched.length > 0) await this.books.sync(...touched);
+        return;
+      } catch (err) {
+        // A lock conflict with another writer (deadlock 40P01 / serialization 40001) rolled the whole match back: the order still rests, try again.
+        if (attempt < 8 && /40P01|40001|deadlock detected/.test(String((err as { code?: string; message?: string }).code ?? '') + String((err as Error).message ?? ''))) {
+          await new Promise((r) => setTimeout(r, 10 + Math.random() * 40 * attempt));
+          continue;
+        }
+        this.log.warn(`matching ${orderId} failed: ${err instanceof Error ? err.message : String(err)}`);
+        return;
+      }
     }
   }
 
