@@ -99,9 +99,10 @@ export class PlaceOrderService implements OnModuleInit, OnModuleDestroy {
     const result = await withTransaction(this.prisma, (tx) => this.place(tx, event.planetId, d, accountId, actorKind));
     if (d.stallName) await this.rememberStall(event.planetId, d, accountId);
     await this.books.sync(result.order.orderId);
-    if (link) await this.linker?.complete(link, { orderId: result.order.orderId, ...(result.rejected ? { rejected: result.rejected } : {}) });
     if (opts.answerSim !== false) this.answerSim(target, result);
     if (result.created && !result.rejected) await this.matchAndSettle(result.order.orderId);
+    // after matching, so the API caller's response already shows the fills of the order it placed
+    if (link) await this.linker?.complete(link, { orderId: result.order.orderId, ...(result.rejected ? { rejected: result.rejected } : {}) });
     return result;
   }
 
