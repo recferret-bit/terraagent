@@ -14,6 +14,7 @@ import { renderLadder } from './view/ladderView';
 import { renderMarketOrders, renderOverview } from './view/marketView';
 import { renderFills, renderOrders } from './view/ordersView';
 import { Pickers } from './view/pickers';
+import { StallEditor } from './view/stallView';
 import { OrderTicket } from './view/ticketView';
 
 const TABS = [['market', 'All orders'], ['pairs', 'All pairs'], ['orders', 'My orders'], ['fills', 'My fills'], ['keys', 'Bot / API keys']] as const;
@@ -30,6 +31,7 @@ export class TradePage {
   private readonly pickers: Pickers;
   private readonly ticket: OrderTicket;
   private readonly keys: KeysPanel;
+  private readonly stallEditor: StallEditor;
   private readonly p: Record<'ladder' | 'board' | 'ticket' | 'balances' | 'market' | 'pairs' | 'orders' | 'fills' | 'keys', Panel>;
   private stream: TradeStream | null = null;
   private tab: TabId = 'market';
@@ -56,6 +58,7 @@ export class TradePage {
     this.ticket = new OrderTicket({ client, state: () => this.store.get(), onSent: () => this.afterOrderChange() });
     this.p.ticket.body.append(this.ticket.root);
     this.keys = new KeysPanel(this.p.keys.body, { client, state: () => this.store.get(), reload: () => { void this.loaders.keys(true); } });
+    this.stallEditor = new StallEditor({ client, token: client.token, onSaved: (stall) => this.store.update((x) => ({ ...x, stall }), ['stall']) });
     this.store.subscribe((s, changed) => this.render(s, changed));
   }
 
@@ -138,7 +141,8 @@ export class TradePage {
       renderLadder(this.p.ladder.body, s, own, (lv, side) => this.ticket.prefillFromLevel(lv, side));
     }
     if (has('board') || has('book')) renderBoard(this.p.board.body, s);
-    if (has('balances') || has('stall') || has('policy')) renderBalances(this.p.balances.body, s);
+    if (has('stall') || all) this.stallEditor.update(s);
+    if (has('balances') || has('stall') || has('policy')) renderBalances(this.p.balances.body, s, this.stallEditor.root);
     if (has('pairs') || has('policy') || has('balances') || has('book') || has('orders') || all) this.ticket.update();
     if (all || changed.has('pairs')) this.pickers.sync(s.pairs, s.planetId, s.pair);
     if (this.tab === 'market' && (has('bookOrders') || has('orders'))) this.renderMarket(s);

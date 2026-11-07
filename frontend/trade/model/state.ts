@@ -1,4 +1,4 @@
-import type { BookLevel, MarketPolicyView, MarketBookPayload, PriceBoardRow, TradeBalancesResponse, TradeBookOrdersResponse, TradeBookResponse, MarketSnapshotResponse, TradeFillView, TradeKeyView, TradeOrderView, TradePairsResponse, TradeStreamEvent } from '@terra/contracts';
+import type { BookLevel, MarketPolicyView, MarketBookPayload, PriceBoardRow, TradeBalancesResponse, TradeBookOrdersResponse, TradeBookResponse, TradeStallResponse, TradeFillView, TradeKeyView, TradeOrderView, TradePairsResponse, TradeStreamEvent } from '@terra/contracts';
 
 export type PairView = TradePairsResponse['pairs'][number];
 export type PanelId = 'pairs' | 'policy' | 'book' | 'board' | 'orders' | 'fills' | 'balances' | 'keys' | 'overview' | 'bookOrders' | 'stall';
@@ -20,7 +20,7 @@ export interface TradeState {
   /** Every resting order of the selected pair (public list). */
   readonly bookOrders: TradeBookOrdersResponse | null;
   /** The caller's stall (hub fee, earned fees); null without a colony here. */
-  readonly stall: MarketSnapshotResponse['stall'] | null;
+  readonly stall: TradeStallResponse | null;
   readonly keys: readonly TradeKeyView[];
   /** Best bid/ask per pair of the planet (all-pairs overview). */
   readonly top: Readonly<Record<string, TopOfBook>>;

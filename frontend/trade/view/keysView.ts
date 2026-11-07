@@ -34,7 +34,7 @@ export class KeysPanel {
     fill(this.body,
       this.secret ? this.secretBox(this.secret) : null,
       this.message,
-      rows.length ? table([{ label: 'LABEL' }, { label: 'SCOPES' }, { label: 'STATE' }, { label: 'ALLOWANCE (mock USDC / UTC day)' }, { label: 'LAST USED' }, { label: '' }], rows, 'API keys')
+      rows.length ? table([{ label: 'LABEL' }, { label: 'SCOPES' }, { label: 'STATE' }, { label: 'ALLOWANCE (mock USDC / UTC day)' }, { label: 'LAST USED' }, { label: '' }], rows, 'API keys', true)
         : h('p', { class: 'tr-note' }, 'No API keys yet. Create one below to let a bot trade for this colony within a hard allowance.'),
       this.createForm(s));
   }
@@ -51,7 +51,9 @@ export class KeysPanel {
     ];
     return h('tr', { 'data-key': k.keyId },
       td(h('span', {}, k.label, h('br'), h('span', { class: 'tr-hint' }, k.keyId))), td(k.scopes.join(', ')), td(state),
-      td(h('div', {}, `max ${a.maxOpenOrders} open, order <= ${fmtAmount('USDC', a.maxOrderNotional)}, day <= ${fmtAmount('USDC', a.dailyBudget)}${a.priceBandBp === null ? '' : `, band ${a.priceBandBp / 100} %`}${a.allowedPairs.length ? `, pairs: ${a.allowedPairs.join(' ')}` : ''}`, usageMeter(k)), 'tr-wrap'),
+      td(h('div', { class: 'tr-allow' },
+        h('span', {}, `max ${a.maxOpenOrders} open`), h('span', {}, `order <= ${fmtAmount('USDC', a.maxOrderNotional)}`), h('span', {}, `day <= ${fmtAmount('USDC', a.dailyBudget)}`),
+        a.priceBandBp === null ? null : h('span', {}, `band ${a.priceBandBp / 100} %`), a.allowedPairs.length ? h('span', {}, `pairs: ${a.allowedPairs.join(' ')}`) : null, usageMeter(k)), 'tr-wrap'),
       td(k.lastUsedAtMs ? new Date(k.lastUsedAtMs).toLocaleString() : 'never'), td(h('div', { class: 'tr-row' }, ...(act ?? []))));
   }
 

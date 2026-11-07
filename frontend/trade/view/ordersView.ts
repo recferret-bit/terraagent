@@ -39,7 +39,7 @@ export function renderOrders(body: HTMLElement, s: TradeState, filter: OrderFilt
       td(live ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-cancel': o.orderId, disabled: busy.has(o.orderId) ? true : null, 'aria-label': `Cancel order ${o.orderId.slice(-8)}`, onclick: () => a.cancel(o.orderId) }, busy.has(o.orderId) ? '...' : 'CANCEL') : o.lastError ? h('span', { class: 'tr-hint' }, o.lastError) : null));
   });
   body.replaceChildren(h('div', { class: 'tr-row tr-between' }, tabs, cancelAll),
-    rows.length ? table([{ label: 'STATE' }, { label: 'SIDE' }, { label: 'PAIR' }, { label: 'FILLED', num: true }, { label: 'TOTAL', num: true }, { label: 'UNIT', num: true }, { label: 'RESERVED', num: true }, { label: 'FEES PLAT + STALL', num: true }, { label: 'TTL LEFT', num: true }, { label: 'FILL' }, { label: '' }], rows, 'My orders')
+    rows.length ? table([{ label: 'STATE' }, { label: 'SIDE' }, { label: 'PAIR' }, { label: 'FILLED', num: true }, { label: 'TOTAL', num: true }, { label: 'UNIT', num: true }, { label: 'RESERVED', num: true }, { label: 'FEES PLAT + STALL', num: true }, { label: 'TTL LEFT', num: true }, { label: 'FILL' }, { label: '' }], rows, 'My orders', true)
       : h('p', { class: 'tr-note' }, filter === 'open' ? 'You have no open orders on this planet. Use the ticket to place one.' : 'No orders in this state.'));
 }
 

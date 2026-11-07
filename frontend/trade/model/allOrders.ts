@@ -3,7 +3,6 @@ import type { Ratio } from './units';
 
 /** Unit price of an own order as an exact rational: total quote / amount. */
 export const orderPrice = (o: TradeOrderView): Ratio => ({ num: o.price.amount, den: o.amount });
-export const orderRemaining = (o: TradeOrderView): number => Math.max(0, o.amount - o.filled);
 
 export const ACTOR_ORDER: readonly ActorKind[] = ['player', 'bot', 'npc', 'guild', 'fixture', 'subsidy'];
 /** Badge style per actor kind (`tr-badge-*`): fixtures dashed, bots blue-outline, subsidy system blue. */
