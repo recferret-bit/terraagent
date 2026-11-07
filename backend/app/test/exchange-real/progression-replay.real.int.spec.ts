@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- loosely typed JSON replies */
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { FlagsService } from '../../src/flags/flags.service.js';
 import { MarketProgressionProducer } from '../../src/market/progression/market-progression.producer.js';
@@ -118,13 +117,16 @@ describe('REAL DB: market fact replay (LED-25 outbox)', () => {
     } finally { p.flags = on; }
     expect((await producer().replayMissingFacts(later())).replayed).toBe(3);
   });
+});
 
+describe('REAL DB: market fact replay, edge cases and crash', () => {
   it('a FAILED or PENDING trade never produces a fact; a colony without a player row produces none', async () => {
     await producer().replayMissingFacts(later());
     const t = await finalTrade();
     const copy = (await ex.prisma.intentTrade.findUniqueOrThrow({ where: { tradeId: t } }));
-    const { id: _id, ...rest } = copy;
+    const { id: _id, ...base } = copy;
     void _id;
+    const rest = { ...base, legs: base.legs as never };
     await ex.prisma.intentTrade.create({ data: { ...rest, tradeId: `${t}-failed`, state: 'FAILED' } });
     await ex.prisma.intentTrade.create({ data: { ...rest, tradeId: `${t}-pending`, state: 'PENDING', settledAt: null } });
     await ex.prisma.intentTrade.create({ data: { ...rest, tradeId: `${t}-ghost`, buyerColonyId: 'col_ghost', sellerColonyId: 'col_ghost2', stallColonyId: 'col_ghost2' } });

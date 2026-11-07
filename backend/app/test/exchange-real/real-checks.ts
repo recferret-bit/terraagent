@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { MarketTokenKey } from '@terra/contracts';
+import { parseDisplayAmount, type MarketTokenKey } from '@terra/contracts';
 import { expect } from 'vitest';
 import { GamePlanets } from '../../src/game/game-planets.service.js';
 import { auditPlanet, expectLedgerDelta } from '../exchange/exchange-audit.js';
@@ -11,6 +11,7 @@ export const code = (r: { body: { error?: { code?: string } } }): string | undef
 
 /** Verifier funding plus the sim's `cargo.inOrbit` mirror (the real sim pre-checks cargo, the faucet only credits the verifier). */
 export async function grant(ex: Exchange, a: Actor, token: MarketTokenKey, whole: number): Promise<void> {
+  if (token === 'USDC' || token === 'NEAR') { await a.fund(token, parseDisplayAmount(token, String(whole))); return; }
   await a.fund(token, BigInt(whole));
   const out = await ex.get(GamePlanets).submit(a.planetId, {
     colonyIndex: a.idx, source: 'dev', commandId: `fx-${randomUUID()}`, kind: 'dev.cargoGrant', args: { colonyIndex: a.idx, resource: token, amount: whole },

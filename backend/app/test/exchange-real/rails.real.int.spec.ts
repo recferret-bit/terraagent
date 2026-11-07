@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-explicit-any -- loosely typed JSON replies */
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { GamePlanets } from '../../src/game/game-planets.service.js';

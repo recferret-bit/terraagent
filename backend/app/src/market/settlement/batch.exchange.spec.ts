@@ -158,8 +158,7 @@ describe('exchange backend: PlaceOrderPrecheck', () => {
   it('order_limit is reported before funds', async () => {
     expect(await make({ open: 20, free: 0n }).p.check(input(buy))).toMatchObject({ code: 'order_limit' });
   });
-  // BUG (it.fails): place-order.precheck.ts calls BigInt(a.price.amount) / BigInt(a.amount) before the sim validates them;
-  // CommandPrechecks.run does not catch, so a crafted '1.5' / 'abc' price throws out of the command path.
+  // Regression (fixed; was `it.fails`): the precheck used to throw on BigInt('1.5') / BigInt('abc') before the sim validated the args.
   it('a fractional / garbage price string from a crafted client does not crash the precheck into a non-reject', async () => {
     // BigInt('1.5') throws; the sim reports bad args, so the precheck must not surface an exception.
     await expect(make().p.check(input({ ...buy, price: { token: 'USDC', amount: '1.5' } }))).resolves.toBeNull();
