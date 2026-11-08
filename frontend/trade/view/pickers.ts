@@ -1,6 +1,7 @@
 import { mockLabel, pairId, parsePairId, type MarketTokenKey, type ResourceKey } from '@terra/contracts';
 import { connLabel } from '../model/sse';
 import type { ConnState, PairView } from '../model/state';
+import { pickQuote } from '../model/units';
 import { h } from './dom';
 
 export interface PickerHandlers { pair(pair: string): void; planet(id: string): void; signOut(): void }
@@ -12,7 +13,7 @@ export class Pickers {
   private readonly planets = h('datalist', { id: 'pk-planets' });
   private readonly base = h('select', { class: 'input', id: 'pk-base', 'aria-label': 'Resource' });
   private readonly quote = h('select', { class: 'input', id: 'pk-quote', 'aria-label': 'Quote token' });
-  private readonly conn = h('span', { class: 'chip-live tr-conn', id: 'tr-conn', role: 'status', 'data-conn': 'connecting' });
+  private readonly conn = h('span', { class: 'chip-live tr-conn', id: 'tr-conn', 'data-testid': 'trade-conn', role: 'status', 'data-conn': 'connecting' });
   private pairs: readonly PairView[] = [];
 
   constructor(private readonly who: string, private readonly hd: PickerHandlers) {
@@ -41,8 +42,10 @@ export class Pickers {
 
   private fillQuotes(want?: MarketTokenKey): void {
     const qs = this.pairs.filter((p) => p.base === this.base.value).map((p) => p.quote);
+    const keep = (this.quote.value || undefined) as MarketTokenKey | undefined;
     this.quote.replaceChildren(...qs.map((q) => h('option', { value: q }, mockLabel(q))));
-    if (want && qs.includes(want)) this.quote.value = want;
+    const pick = pickQuote(qs, want, keep);
+    if (pick) this.quote.value = pick;
   }
 
   private emit(): void {

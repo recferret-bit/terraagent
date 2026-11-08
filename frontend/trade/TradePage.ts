@@ -4,6 +4,7 @@ import { signOut, mockOauthUrl } from './api/identity';
 import { TradeStream } from './api/stream';
 import { Loaders } from './loaders';
 import { orderPrice } from './model/allOrders';
+import { AFTER_ORDER_CHANGE, onTabOpen, tickRefresh, type LoaderName } from './model/refresh';
 import { applyStreamEvent, cancellable, initialState, type OrderFilter, type PanelId, type TradeState } from './model/state';
 import { Store } from './Store';
 import { renderBalances } from './view/balancesView';
@@ -70,6 +71,9 @@ export class TradePage {
     setInterval(() => this.tick(), 5000);
     window.addEventListener('hashchange', () => this.applyHash());
     this.applyHash();
+    // an untradable `?pair=` is replaced before any book is requested (the book routes answer 400 for it)
+    await this.loaders.catalog();
+    this.ensureValidPair();
     await Promise.all([this.loaders.all(), this.loaders.bookOrders(this.marketSide)]);
     this.pickers.sync(this.store.get().pairs, this.store.get().planetId, this.store.get().pair);
     this.ensureValidPair();
@@ -95,7 +99,7 @@ export class TradePage {
 
   private shell(): HTMLElement {
     const tabs = h('div', { class: 'tr-tabs', role: 'tablist', 'aria-label': 'Orders and keys' }, ...TABS.map(([id, label]) =>
-      h('button', { type: 'button', role: 'tab', id: `tab-${id}`, class: 'tr-tab', 'aria-selected': String(id === this.tab), 'aria-controls': `tabpanel-${id}`, onclick: () => this.setTab(id), onkeydown: (e) => this.tabKey(e as KeyboardEvent, id) }, label)));
+      h('button', { type: 'button', role: 'tab', id: `tab-${id}`, 'data-testid': `tab-${id}`, class: 'tr-tab', 'aria-selected': String(id === this.tab), 'aria-controls': `tabpanel-${id}`, onclick: () => this.setTab(id), onkeydown: (e) => this.tabKey(e as KeyboardEvent, id) }, label)));
     const panes = TABS.map(([id]) => {
       const pane = id === 'market' ? this.p.market : id === 'pairs' ? this.p.pairs : this.p[id];
       return h('div', { role: 'tabpanel', id: `tabpanel-${id}`, 'aria-labelledby': `tab-${id}`, class: 'tr-pane', hidden: id !== this.tab ? true : null }, pane.root);
@@ -130,6 +134,12 @@ export class TradePage {
       if (pane) pane.hidden = id !== t;
     }
     this.render(this.store.get(), new Set(['all']));
+    this.reload(onTabOpen(t));
+  }
+
+  /** Quietly refetches the named data (see `model/refresh.ts`). */
+  private reload(names: readonly LoaderName[]): void {
+    for (const n of names) void (n === 'bookOrders' ? this.loaders.bookOrders(this.marketSide, true) : this.loaders[n](true));
   }
 
   // --- rendering --------------------------------------------------------------------------------------------------
@@ -184,6 +194,7 @@ export class TradePage {
     const focused = (el: HTMLElement): boolean => el.contains(document.activeElement);
     if (this.tab === 'orders' && !focused(this.p.orders.body)) this.renderOrdersTab(s);
     if (this.tab === 'market' && !focused(this.p.market.body)) this.renderMarket(s);
+    this.reload(tickRefresh(this.tab));
   }
 
   // --- actions ----------------------------------------------------------------------------------------------------
@@ -208,9 +219,7 @@ export class TradePage {
   /** After a placement / cancel: refresh what the stream might lag on (the stream also pushes). */
   private afterOrderChange(): void {
     if (this.refreshTimer) clearTimeout(this.refreshTimer);
-    this.refreshTimer = setTimeout(() => {
-      void this.loaders.orders(true); void this.loaders.balances(true); void this.loaders.fills(true); void this.loaders.book(true); void this.loaders.board(true); void this.loaders.bookOrders(this.marketSide, true); void this.loaders.stall(true);
-    }, 400);
+    this.refreshTimer = setTimeout(() => this.reload(AFTER_ORDER_CHANGE), 400);
   }
 
   selectPair(pair: string): void {

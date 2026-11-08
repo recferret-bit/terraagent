@@ -11,7 +11,7 @@ export function usageMeter(k: TradeKeyView): HTMLElement | null {
   if (pct === null) return null;
   const hot = pct >= 90 ? ' is-hot' : pct >= 70 ? ' is-warm' : '';
   const remaining = k.dailyRemaining !== undefined ? ` (${fmtAmount('USDC', k.dailyRemaining)} left)` : '';
-  return h('div', { class: 'tr-usage', 'data-usage': k.keyId },
+  return h('div', { class: 'tr-usage', 'data-testid': 'key-usage', 'data-usage': k.keyId },
     h('div', { class: 'tr-meter', role: 'meter', 'aria-valuemin': 0, 'aria-valuemax': 100, 'aria-valuenow': Math.round(pct), 'aria-label': `Daily budget used by ${k.label}` }, h('span', { class: `tr-meter-fill${hot}`, style: `width:${pct}%` })),
     h('span', { class: 'tr-hint' }, `today ${fmtAmount('USDC', k.dailySpent ?? '0')} of ${fmtAmount('USDC', k.allowance.dailyBudget)}${remaining}${k.openOrders !== undefined ? `; ${k.openOrders} open order${k.openOrders === 1 ? '' : 's'} of ${k.allowance.maxOpenOrders}` : ''}`));
 }
@@ -44,12 +44,12 @@ export class KeysPanel {
     const revoked = k.revokedAtMs !== null;
     const state = revoked ? badge('REVOKED', 'dim') : a.killSwitch ? badge('KILL SWITCH ON', 'err') : badge('ACTIVE', 'ok');
     const act = revoked ? null : [
-      h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-kill': k.keyId, onclick: () => { void this.run(() => this.d.client.allowance(k.keyId, { killSwitch: !a.killSwitch }), a.killSwitch ? 'Kill switch released.' : 'Kill switch on: the key cannot place orders.'); } }, a.killSwitch ? 'RELEASE' : 'KILL SWITCH'),
+      h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-kill': k.keyId, 'data-testid': 'key-kill', onclick: () => { void this.run(() => this.d.client.allowance(k.keyId, { killSwitch: !a.killSwitch }), a.killSwitch ? 'Kill switch released.' : 'Kill switch on: the key cannot place orders.'); } }, a.killSwitch ? 'RELEASE' : 'KILL SWITCH'),
       this.confirm === k.keyId
-        ? h('button', { type: 'button', class: 'btn btn-danger btn-sm', 'data-revoke-confirm': k.keyId, onclick: () => { this.confirm = null; void this.run(() => this.d.client.revoke(k.keyId), 'Key revoked; its open orders get a cancel request.'); } }, 'CONFIRM REVOKE')
-        : h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-revoke': k.keyId, onclick: () => { this.confirm = k.keyId; this.render(); } }, 'REVOKE'),
+        ? h('button', { type: 'button', class: 'btn btn-danger btn-sm', 'data-revoke-confirm': k.keyId, 'data-testid': 'key-revoke-confirm', onclick: () => { this.confirm = null; void this.run(() => this.d.client.revoke(k.keyId), 'Key revoked; its open orders get a cancel request.'); } }, 'CONFIRM REVOKE')
+        : h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-revoke': k.keyId, 'data-testid': 'key-revoke', onclick: () => { this.confirm = k.keyId; this.render(); } }, 'REVOKE'),
     ];
-    return h('tr', { 'data-key': k.keyId },
+    return h('tr', { 'data-testid': 'key-row', 'data-key': k.keyId },
       td(h('span', {}, k.label, h('br'), h('span', { class: 'tr-hint' }, k.keyId))), td(k.scopes.join(', ')), td(state),
       td(h('div', { class: 'tr-allow' },
         h('span', {}, `max ${a.maxOpenOrders} open`), h('span', {}, `order <= ${fmtAmount('USDC', a.maxOrderNotional)}`), h('span', {}, `day <= ${fmtAmount('USDC', a.dailyBudget)}`),
@@ -58,12 +58,12 @@ export class KeysPanel {
   }
 
   private secretBox(k: CreateTradeKeyResponse): HTMLElement {
-    const copy = h('button', { type: 'button', class: 'btn btn-primary btn-sm', id: 'key-copy' }, 'COPY');
+    const copy = h('button', { type: 'button', class: 'btn btn-primary btn-sm', id: 'key-copy', 'data-testid': 'key-copy' }, 'COPY');
     copy.addEventListener('click', () => { void copyText(k.secret).then((ok) => { copy.textContent = ok ? 'COPIED' : 'COPY FAILED'; }); });
     return h('div', { class: 'tr-secret', role: 'alert' },
       h('strong', {}, `Key "${k.label}" created. Copy the secret now: it is shown only once.`),
-      h('code', { class: 'tr-code', id: 'key-secret' }, k.secret), copy,
-      h('button', { type: 'button', class: 'btn btn-ghost btn-sm', onclick: () => { this.secret = null; this.render(); } }, 'I SAVED IT'));
+      h('code', { class: 'tr-code', id: 'key-secret', 'data-testid': 'key-secret' }, k.secret), copy,
+      h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-testid': 'key-saved', onclick: () => { this.secret = null; this.render(); } }, 'I SAVED IT'));
   }
 
   private createForm(s: TradeState): HTMLElement {
@@ -77,7 +77,7 @@ export class KeysPanel {
       f('MAX ORDER (mock USDC)', 'key-notional', '5', 'Largest single order, total quote.'),
       f('DAILY BUDGET (mock USDC)', 'key-daily', '50', 'Committed per UTC day, open orders count in full.'),
       f('PRICE BAND (%)', 'key-band', '', 'Max distance from the organic reference; empty = no band.'),
-      h('div', { class: 'tr-row' }, h('button', { type: 'submit', class: 'btn btn-primary btn-sm', id: 'key-create' }, 'CREATE KEY')));
+      h('div', { class: 'tr-row' }, h('button', { type: 'submit', class: 'btn btn-primary btn-sm', id: 'key-create', 'data-testid': 'key-create' }, 'CREATE KEY')));
     form.addEventListener('submit', (e) => { e.preventDefault(); void this.create(form, s.planetId); });
     this.form = form;
     return form;

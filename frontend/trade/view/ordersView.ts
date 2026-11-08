@@ -20,12 +20,12 @@ export function renderOrders(body: HTMLElement, s: TradeState, filter: OrderFilt
   const shown = filterOrders(s.orders, filter);
   const open = cancellable(s.orders);
   const tabs = h('div', { class: 'tr-chips', role: 'group', 'aria-label': 'Order filter' }, ...FILTERS.map(([f, label]) =>
-    h('button', { type: 'button', class: `tr-chip${f === filter ? ' is-on' : ''}`, 'aria-pressed': String(f === filter), onclick: () => a.setFilter(f) }, `${label} (${filterOrders(s.orders, f).length})`)));
-  const cancelAll = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', id: 'orders-cancel-all', disabled: open.length === 0 ? true : null, onclick: () => a.cancelAll() }, `CANCEL ALL (${open.length})`);
+    h('button', { type: 'button', class: `tr-chip${f === filter ? ' is-on' : ''}`, 'data-testid': `orders-filter-${f}`, 'aria-pressed': String(f === filter), onclick: () => a.setFilter(f) }, `${label} (${filterOrders(s.orders, f).length})`)));
+  const cancelAll = h('button', { type: 'button', class: 'btn btn-ghost btn-sm', id: 'orders-cancel-all', 'data-testid': 'orders-cancel-all', disabled: open.length === 0 ? true : null, onclick: () => a.cancelAll() }, `CANCEL ALL (${open.length})`);
   const rows = shown.map((o) => {
     const q = parsePairId(o.pair)?.quote ?? 'USDC';
     const live = o.state === 'OPEN' || o.state === 'PARTIAL';
-    return h('tr', { 'data-order': o.orderId, 'data-state': o.state },
+    return h('tr', { 'data-testid': 'my-order', 'data-order': o.orderId, 'data-state': o.state },
       td(badge(o.state, STATE_KIND[o.state] ?? 'dim')),
       td(o.side.toUpperCase(), o.side === 'buy' ? 'tr-buy' : 'tr-sell'),
       td(o.pair),
@@ -36,7 +36,7 @@ export function renderOrders(body: HTMLElement, s: TradeState, filter: OrderFilt
       td(`${bpLabel(o.platformFeeBp)} + ${bpLabel(o.stallFeeBp)}`, 'num'),
       td(live ? timeLeft(o.expiresAtMs, now) : '-', 'num'),
       td(o.fillPolicy === 'all_or_nothing' ? badge('AON', 'info') : badge('partial', 'dim')),
-      td(live ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-cancel': o.orderId, disabled: busy.has(o.orderId) ? true : null, 'aria-label': `Cancel order ${o.orderId.slice(-8)}`, onclick: () => a.cancel(o.orderId) }, busy.has(o.orderId) ? '...' : 'CANCEL') : o.lastError ? h('span', { class: 'tr-hint' }, o.lastError) : null));
+      td(live ? h('button', { type: 'button', class: 'btn btn-ghost btn-sm', 'data-cancel': o.orderId, 'data-testid': 'my-order-cancel', disabled: busy.has(o.orderId) ? true : null, 'aria-label': `Cancel order ${o.orderId.slice(-8)}`, onclick: () => a.cancel(o.orderId) }, busy.has(o.orderId) ? '...' : 'CANCEL') : o.lastError ? h('span', { class: 'tr-hint' }, o.lastError) : null));
   });
   body.replaceChildren(h('div', { class: 'tr-row tr-between' }, tabs, cancelAll),
     rows.length ? table([{ label: 'STATE' }, { label: 'SIDE' }, { label: 'PAIR' }, { label: 'FILLED', num: true }, { label: 'TOTAL', num: true }, { label: 'UNIT', num: true }, { label: 'RESERVED', num: true }, { label: 'FEES PLAT + STALL', num: true }, { label: 'TTL LEFT', num: true }, { label: 'FILL' }, { label: '' }], rows, 'My orders', true)
@@ -51,13 +51,13 @@ export function renderFills(body: HTMLElement, s: TradeState): void {
   const rows = s.fills.slice(0, 100).map((f: TradeFillView) => {
     const q = f.quote;
     const when = new Date(f.atMs).toLocaleTimeString();
-    return h('tr', { 'data-trade': f.tradeId },
+    return h('tr', { 'data-testid': 'my-fill', 'data-trade': f.tradeId },
       td(when), td(f.side.toUpperCase(), f.side === 'buy' ? 'tr-buy' : 'tr-sell'), td(f.pair),
       td(String(f.amount), 'num'), td(fmtAmount(q, f.notional), 'num'),
       td(`${fmtAmount(q, f.platformFee)}`, 'num'), td(`${fmtAmount(q, f.stallFee)} (${bpLabel(f.stallFeeBp)})`, 'num'),
       td(badge(f.counterpartyKind, KIND_BADGE[f.counterpartyKind] ?? 'dim')),
       td(badge(f.state, f.state === 'FINAL' ? 'ok' : f.state === 'FAILED' ? 'err' : 'warn'), ''),
-      td(f.txHash ? h('a', { href: `/dev/chain/tx/${encodeURIComponent(f.txHash)}`, target: '_blank', rel: 'noopener' }, `${f.txHash.slice(0, 10)}...`) : h('span', { class: 'tr-hint' }, 'pending')));
+      td(f.txHash ? h('a', { 'data-testid': 'fill-receipt', href: `/dev/chain/tx/${encodeURIComponent(f.txHash)}`, target: '_blank', rel: 'noopener' }, `${f.txHash.slice(0, 10)}...`) : h('span', { class: 'tr-hint' }, 'pending')));
   });
   body.replaceChildren(table([{ label: 'TIME' }, { label: 'SIDE' }, { label: 'PAIR' }, { label: 'AMOUNT', num: true }, { label: 'NOTIONAL', num: true }, { label: 'PLATFORM FEE', num: true }, { label: 'STALL FEE', num: true }, { label: 'COUNTERPARTY' }, { label: 'SETTLEMENT' }, { label: 'RECEIPT' }], rows, 'My fills'),
     h('p', { class: 'tr-hint' }, 'Fees are paid by the buyer. Receipts open the dev chain explorer.'));
