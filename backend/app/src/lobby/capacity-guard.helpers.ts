@@ -8,7 +8,6 @@ import {
   type AtlasConfigV1,
   type AtlasManifestV1,
   type CanonicalPlanetDef,
-  type PlanetType,
 } from '@terra/contracts';
 import {
   hexCount,
