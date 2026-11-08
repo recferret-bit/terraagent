@@ -1,3 +1,4 @@
+import { isColonyTileExplored } from '@terra/sim';
 import { axialToPlane, hexCount, hexIndex, planeToAxial } from '@terra/sim/grid/hex';
 import { PREP_CODES, TERRAIN_CODES } from '@terra/contracts/tiles/codes';
 import type { ClientTiles } from '../store/replica/viewCodec';
@@ -8,7 +9,7 @@ export type TileColorResolver = (tiles: ClientTiles, index: number) => string;
 
 /** Fallback tile colour resolver (replaced/extended by W04-04 token table). */
 export const defaultTileColorResolver: TileColorResolver = (tiles, index) => {
-  if (tiles.explored && tiles.explored[index] === 0) {
+  if ((tiles.explored || tiles.exploredByColony) && !isColonyTileExplored(tiles, index, 0)) {
     return '#3B4C6B';
   }
   const prep = tiles.prep[index] ?? PREP_CODES.wild;
@@ -157,6 +158,7 @@ export interface PlanetRasterEntry {
   readonly prep: Uint8Array;
   readonly owner: Int16Array;
   readonly explored: Uint8Array;
+  readonly exploredByColony: Record<number, Uint8Array>;
   readonly deposit: Uint8Array;
   initialized: boolean;
 }
@@ -207,6 +209,7 @@ export class PlanetRasterCache {
       prep: new Uint8Array(count),
       owner: new Int16Array(count),
       explored: new Uint8Array(count),
+      exploredByColony: {},
       deposit: new Uint8Array(count),
       initialized: false,
     };
@@ -278,6 +281,57 @@ export class PlanetRasterCache {
     return dirty;
   }
 
+  private isColonyExploredDirty(
+    entry: PlanetRasterEntry,
+    tiles: ClientTiles,
+    i: number,
+  ): boolean {
+    const byteIdx = i >> 3;
+    const bitMask = 1 << (i & 7);
+    const incoming = tiles.exploredByColony;
+    if (incoming) {
+      for (const [k, bitset] of Object.entries(incoming)) {
+        const col = Number(k);
+        const curBit = (bitset[byteIdx] ?? 0) & bitMask;
+        const prevBit = (entry.exploredByColony[col]?.[byteIdx] ?? 0) & bitMask;
+        if (curBit !== prevBit) return true;
+      }
+    }
+    for (const [k, prevBitset] of Object.entries(entry.exploredByColony)) {
+      const col = Number(k);
+      if (incoming && incoming[col]) continue;
+      if (((prevBitset[byteIdx] ?? 0) & bitMask) !== 0) return true;
+    }
+    return false;
+  }
+
+  private syncColonyExploredTile(
+    entry: PlanetRasterEntry,
+    tiles: ClientTiles,
+    i: number,
+  ): void {
+    const byteIdx = i >> 3;
+    const bitMask = 1 << (i & 7);
+    const byteLen = Math.ceil(entry.count / 8);
+    const incoming = tiles.exploredByColony;
+    if (incoming) {
+      for (const [k, bitset] of Object.entries(incoming)) {
+        const col = Number(k);
+        const dst = entry.exploredByColony[col] ?? (entry.exploredByColony[col] = new Uint8Array(byteLen));
+        if (((bitset[byteIdx] ?? 0) & bitMask) !== 0) {
+          dst[byteIdx] |= bitMask;
+        } else {
+          dst[byteIdx] &= ~bitMask;
+        }
+      }
+    }
+    for (const [k, dst] of Object.entries(entry.exploredByColony)) {
+      const col = Number(k);
+      if (incoming && incoming[col]) continue;
+      dst[byteIdx] &= ~bitMask;
+    }
+  }
+
   private isTileDirty(
     entry: PlanetRasterEntry,
     tiles: ClientTiles,
@@ -290,7 +344,8 @@ export class PlanetRasterCache {
       entry.prep[i] !== tiles.prep[i] ||
       entry.owner[i] !== tiles.owner[i] ||
       entry.explored[i] !== exp ||
-      entry.deposit[i] !== dep
+      entry.deposit[i] !== dep ||
+      this.isColonyExploredDirty(entry, tiles, i)
     );
   }
 
@@ -307,6 +362,7 @@ export class PlanetRasterCache {
     entry.owner[i] = tiles.owner[i]!;
     entry.explored[i] = tiles.explored ? tiles.explored[i]! : 1;
     entry.deposit[i] = tiles.deposit ? tiles.deposit[i]! : 0;
+    this.syncColonyExploredTile(entry, tiles, i);
     const { x, y } = axialToCanvasPixel(q, r, entry.size, entry.radius);
     const fill = this.colorResolver(tiles, i);
     drawPointyHex(entry.ctx, x, y, hexRadius, fill);

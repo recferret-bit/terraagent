@@ -1,13 +1,13 @@
-import { getEntitySpottingRadius, isEntityContributingVision, type CombatVisionBlob } from '@terra/sim';
+import { getEntitySpottingRadius, isColonyTileExplored, isEntityContributingVision, type CombatVisionBlob } from '@terra/sim';
 import { hexDistance, hexIndex } from '@terra/sim/grid/hex';
 import { forEachEntity } from '../store/replica/viewCodec';
 import type { MapLayerDrawView } from './types';
 
 export function isMapTileExplored(view: MapLayerDrawView, index: number): boolean {
-  const explored = view.tiles?.explored;
-  if (!explored) return true; // Preview maps without fog data.
+  const tiles = view.tiles;
+  if (!tiles || (!tiles.explored && !tiles.exploredByColony)) return true; // Preview maps without fog data.
   const colony = view.ownColonySlot ?? 0;
-  return index >= 0 && colony >= 0 && colony < 8 && ((explored[index] ?? 0) & (1 << colony)) !== 0;
+  return isColonyTileExplored(tiles, index, colony);
 }
 
 /** Prefer the authoritative spotting set. Earlier-wave/local previews use the same shared sight rules. */
@@ -20,7 +20,7 @@ export function createMapVisibility(view: Pick<MapLayerDrawView, 'tiles' | 'ownC
     const live = new Set(spotted);
     return (q, r) => live.has(index.indexOf(q, r));
   }
-  if (!view.tiles?.explored) return () => true; // Preview maps without fog data.
+  if (!view.tiles?.explored && !view.tiles?.exploredByColony) return () => true; // Preview maps without fog data.
   const sources: Array<{ q: number; r: number; radius: number }> = [];
   if (view.clientView?.entities) {
     forEachEntity(view.clientView.entities, view.clientView.count, row => {
@@ -34,7 +34,7 @@ export function createMapVisibility(view: Pick<MapLayerDrawView, 'tiles' | 'ownC
 
 /** Darken explored terrain outside current sight while preserving its map memory. */
 export function drawMapFog(ctx: CanvasRenderingContext2D, view: MapLayerDrawView): void {
-  if (!view.tiles?.explored || !view.clientView) return;
+  if ((!view.tiles?.explored && !view.tiles?.exploredByColony) || !view.clientView) return;
   const live = createMapVisibility(view);
   const index = hexIndex(view.radius);
   ctx.save();

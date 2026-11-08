@@ -227,7 +227,7 @@ export function updateColonyVisionCache(
     const set = computeColonySpottedTileIndices(state, colonyIndex, data);
     byColony[colonyIndex] = Array.from(set);
     // Exploration remembers every currently spotted tile, including stationary units and completed buildings.
-    if (colonyIndex < 8) {
+    if (colonyIndex >= 0) {
       for (const tile of set) {
         if (!isTileExplored(state.grid, tile, colonyIndex)) markTileExplored(state.grid, tile, colonyIndex, tick);
       }

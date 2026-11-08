@@ -43,6 +43,7 @@ export interface Grid {
   readonly height?: Float32Array;
   readonly owner?: Int16Array;
   readonly explored?: Uint8Array;
+  readonly exploredByColony?: Record<number, Uint8Array>;
   readonly anchors?: Uint8Array;
   readonly graceUntil?: Float64Array;
   readonly changedAt?: Uint32Array;
@@ -93,14 +94,15 @@ export function createState(p: NewStateParams): PlanetState {
   layers.owner.fill(-1);
   const meta: PlanetMeta = { simVersion: SIM_VERSION, planetId: p.planetId, planetType: p.planetType, seed: p.seed, tick: 0, nextEntityId: 1, ended: false };
   const grid: Grid = { radius: p.radius, count, layers };
-  linkGridMeta(grid, meta);
+  const blobs: Record<string, Blob> = {};
+  linkGridMeta(grid, meta, blobs);
   return {
     meta,
     rng: seedRng(p.seed),
     grid,
     colonies: [],
     entities: createStore(),
-    blobs: {},
+    blobs,
   };
 }
 

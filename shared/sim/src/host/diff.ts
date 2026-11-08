@@ -2,6 +2,7 @@ import { entityColumns } from '../ecs/columns';
 import { insertRow, pruneRemovals, removeRow, rowDiffMaskSince, rowOf, setCapacity, type EntityStore, type Removal } from '../ecs/store';
 import { decodeValue, encodeValue } from '../codec/values';
 import { clientTileLayers, tileLayers } from '../grid/layers';
+import { linkGridMeta } from '../grid/tileModel';
 import type { Blob, ColonyState, PlanetMeta, PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
 import { changedTileIndices, noteTilesStamped } from '../grid/sectors';
@@ -341,6 +342,7 @@ export function applyDiff(state: PlanetState, diff: Uint8Array | EngineDiff | { 
   Object.assign(state.meta, d.meta);
   for (const k of Object.keys(d.rng) as Array<keyof PlanetState['rng']>) state.rng[k] = d.rng[k];
   if (d.faunaMotion) installFaunaMotionSeed(state, d.faunaMotion.value as FaunaMotionSeed);
+  linkGridMeta(state.grid, state.meta, state.blobs);
 }
 
 /** Codec reconstruction of omitted motion, after authoritative rows have won the merge. No gameplay movement rule. */

@@ -1,6 +1,6 @@
 import { entityColumns } from '../ecs/columns';
 import { tileLayers } from '../grid/layers';
-import { linkGridMeta } from '../grid/tileModel';
+import { hydrateStateColonyExplored, linkGridMeta } from '../grid/tileModel';
 import { SIM_VERSION } from '../kernel/constants';
 import type { PlanetState } from '../kernel/state';
 import { allocate, type FieldDef, type TypedArray } from '../kernel/types';
@@ -52,6 +52,7 @@ export function clientBlobs(blobs: PlanetState['blobs']): PlanetState['blobs'] {
 }
 
 export function snapshot(state: PlanetState, opts: SnapshotOpts = {}): Uint8Array {
+  hydrateStateColonyExplored(state);
   const header: SnapshotHeader = { simVersion: SIM_VERSION, codec: 'msgpack', tick: state.meta.tick, planetId: state.meta.planetId };
   if (!opts.forClient) return encodeValue({ header, state });
   const layers: Record<string, TypedArray> = {};
@@ -89,7 +90,8 @@ function validate(s: unknown): PlanetState {
   const state = s as unknown as PlanetState;
   fillMissing(state.grid.layers, tileLayers(), state.grid.count, 'grid layer');
   fillMissing(state.entities.cols as Record<string, TypedArray>, entityColumns(), state.entities.capacity, 'entity');
-  linkGridMeta(state.grid, state.meta);
+  linkGridMeta(state.grid, state.meta, state.blobs);
+  hydrateStateColonyExplored(state);
   return state;
 }
 

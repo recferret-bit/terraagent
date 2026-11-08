@@ -14,6 +14,7 @@ export * from './ecs/columns';
 export * from './ecs/store';
 export * from './grid/hex';
 export * from './grid/layers';
+export * from './grid/exploration';
 export * from './grid/tileModel';
 export * from './grid/path';
 export * from './grid/geo';

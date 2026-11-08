@@ -2,6 +2,7 @@ import { getStageSpec, type CompiledRow, type StageRow } from '../../data';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { rowOf } from '../../ecs/store';
 import { hexDistance, hexIndex } from '../../grid/hex';
+import { isTileExplored } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
 import { TICKS_PER_SECOND } from '../../kernel/constants';
 import type { PlanetState } from '../../kernel/state';
@@ -260,14 +261,12 @@ export function isColonyLanded(state: PlanetState, colonyIndex: number): boolean
   return countCompletedBuildings(state, colonyIndex) > 0;
 }
 
-/** Counts total tiles marked explored for `colonyIndex` in `state.grid.layers.explored`. */
+/** Counts total tiles marked explored for `colonyIndex`. */
 export function countTotalExploredTiles(state: PlanetState, colonyIndex: number): number {
-  const explored = state.grid.layers.explored as Uint8Array | undefined;
-  if (!explored) return 0;
-  const mask = colonyIndex >= 0 && colonyIndex < 8 ? 1 << colonyIndex : 1;
+  if (!Number.isInteger(colonyIndex) || colonyIndex < 0) return 0;
   let total = 0;
   for (let i = 0; i < state.grid.count; i++) {
-    if ((explored[i] & mask) !== 0) total++;
+    if (isTileExplored(state.grid, i, colonyIndex)) total++;
   }
   return total;
 }
@@ -282,9 +281,7 @@ export function countScoutedTilesOutsideRing(
   const col = state.colonies[colonyIndex];
   if (typeof col?.scoutedTiles === 'number') return col.scoutedTiles;
   if (typeof col?.exploredOutsideRing === 'number') return col.exploredOutsideRing;
-
-  const explored = state.grid.layers.explored as Uint8Array | undefined;
-  if (!explored) return 0;
+  if (!Number.isInteger(colonyIndex) || colonyIndex < 0) return 0;
 
   let anchorQ = 0;
   let anchorR = 0;
@@ -299,11 +296,10 @@ export function countScoutedTilesOutsideRing(
 
   const ringRadius = hqViewRadius(data);
   const hx = hexIndex(state.grid.radius);
-  const mask = colonyIndex >= 0 && colonyIndex < 8 ? 1 << colonyIndex : 1;
   let outsideRing = 0;
   let totalExplored = 0;
   for (let i = 0; i < state.grid.count; i++) {
-    if ((explored[i] & mask) === 0) continue;
+    if (!isTileExplored(state.grid, i, colonyIndex)) continue;
     totalExplored++;
     if (hexDistance(anchorQ, anchorR, hx.q[i]!, hx.r[i]!) > ringRadius) {
       outsideRing++;
