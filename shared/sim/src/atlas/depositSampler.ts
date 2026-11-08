@@ -4,6 +4,7 @@ import { HEX_DIRS, levelledFlatHeight } from '../grid/hex';
 import { HEX_LEVEL_EPS_M, isOpenGround } from '../grid/hexTile';
 import { DEPOSIT, TERRAIN } from '../grid/layers';
 import type { PlanetType } from '../kernel/state';
+import { packAtlasCoord } from './landingPlan';
 import { sampleBaseAtlasTile, type AtlasSamplerContext, type BaseSampledTile } from './sampler';
 import type { SampledAtlasTileValues } from './types';
 
@@ -82,7 +83,15 @@ export function sampleAtlasTile(q: number, r: number, ctx: AtlasSamplerContext):
   let depositTier = 0;
   let richness = 0;
 
-  if (isGlobalHexTile(q, r, ctx)) {
+  const coordKey = packAtlasCoord(q, r);
+  const starterKind = base.isLandSector ? ctx.landingPlan?.starterDepositsByCoord.get(coordKey) : undefined;
+  const suppressed = ctx.landingPlan?.suppressedDepositCoords.has(coordKey) ?? false;
+
+  if (starterKind !== undefined) {
+    deposit = starterKind;
+    depositTier = 0;
+    richness = computeGlobalRichnessBp(q, r, deposit, ctx.seedRichness, ctx.planetType);
+  } else if (!suppressed && isGlobalHexTile(q, r, ctx)) {
     const myScore = depositCandidateScore(q, r, base.mx, base.my, ctx);
     const threshold = ctx.planetType === 'desert' ? 0.5 : 0.56;
     if (myScore >= threshold) {

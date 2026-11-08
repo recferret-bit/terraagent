@@ -12,8 +12,9 @@ import { axialToPlane, HEX_DIRS, hexDistance } from '../grid/hex';
 import { PREP, TERRAIN } from '../grid/layers';
 import type { PlanetType } from '../kernel/state';
 import { isGlobalHexTile, sampleAtlasTile } from './depositSampler';
+import { buildSamplerLandingPlan } from './landingPlan';
 import { sectorCenterForMacro } from './partition';
-import type { GenerateSmallAtlasOptions } from './types';
+import type { AtlasSamplerLandingPlan, GenerateSmallAtlasOptions } from './types';
 
 export { isGlobalHexTile, sampleAtlasTile };
 
@@ -81,6 +82,7 @@ export interface AtlasSamplerContext {
   readonly seedRichness: number;
   readonly seedSubVein: number;
   readonly seedSubKind: number;
+  readonly landingPlan: AtlasSamplerLandingPlan;
   readonly baseCache: Map<number, BaseSampledTile>;
   num(field: string, fallback: number): number;
 }
@@ -158,6 +160,12 @@ export function createAtlasSamplerContext(opts?: GenerateSmallAtlasOptions): Atl
   const prefix = `${seed}|${planetType}|atlas`;
   const windSeed = seedOf(`${prefix}:wind`);
   const windDir = WIND_DIRS[Math.floor(hash2d(11, 13, windSeed) * WIND_DIRS.length)]!;
+  const landingPlan = buildSamplerLandingPlan({
+    landMacros,
+    sectorRadius,
+    foundingSeatsPerSector: opts?.foundingSeatsPerSector,
+    seed,
+  });
 
   return {
     planetType,
@@ -186,6 +194,7 @@ export function createAtlasSamplerContext(opts?: GenerateSmallAtlasOptions): Atl
     seedRichness: seedOf(`${prefix}:richness`),
     seedSubVein: seedOf(`${prefix}|${worldSalt}:subVein`),
     seedSubKind: seedOf(`${prefix}|${worldSalt}:subKind`),
+    landingPlan,
     baseCache: new Map<number, BaseSampledTile>(),
     num: (f, fallback) => profileNumber(profile, f, fallback),
   };
@@ -311,7 +320,7 @@ function sampleTemperateOrOceanLand(
     terrain = TERRAIN.slope;
   } else {
     const forestScore = moist + 0.12 * smoothstep(0.18, 0.48, u) - 0.32 * smoothstep(0.35, 0.85, corridor);
-    const forestCutoff = isOceanBiome ? 0.49 : 0.46;
+    const forestCutoff = isOceanBiome ? 0.49 : 0.435;
     terrain = forestScore > forestCutoff && u > 0.05 ? TERRAIN.forest : TERRAIN.flat;
   }
   return { terrain, prep: terrain === TERRAIN.flat ? PREP.flat : PREP.wild, height };
@@ -436,6 +445,8 @@ export function sampleBaseAtlasTile(q: number, r: number, ctx: AtlasSamplerConte
   let sampled: { terrain: number; prep: number; height: number };
   if (!isLandSector) {
     sampled = sampleOceanHaloTile(mx, my, distanceToLand, ctx);
+  } else if (ctx.landingPlan.flatOverrideCoords.has(key)) {
+    sampled = { terrain: TERRAIN.flat, prep: PREP.flat, height: Math.fround(0.08) };
   } else {
     const corridor = computeCorridorProximity(mx, my, ctx);
     sampled =
