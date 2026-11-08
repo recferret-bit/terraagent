@@ -96,6 +96,8 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
         ...spec,
         seatsTaken: 0,
         faultCode: null,
+        retryCount: 0,
+        placementAttempts: 0,
         createdAt: now,
         updatedAt: now,
       };
@@ -143,6 +145,9 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
         health: input.health ?? existing.health,
         admission: input.admission ?? existing.admission,
         faultCode: input.faultCode === undefined ? existing.faultCode : input.faultCode,
+        retryCount: input.retryCount === undefined ? (existing.retryCount ?? 0) : input.retryCount,
+        placementAttempts:
+          input.placementAttempts === undefined ? (existing.placementAttempts ?? 0) : input.placementAttempts,
         updatedAt: nextUpdatedAt,
       };
       input.onTransition?.(existing, next);

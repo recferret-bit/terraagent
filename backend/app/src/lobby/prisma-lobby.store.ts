@@ -60,8 +60,13 @@ function isUniqueConstraintError(err: unknown): boolean {
 
 export class PrismaLobbyStore implements LobbyPersistenceStore {
   private readonly mutex = new KeyedMutex();
+  private readonly worldAttempts = new Map<string, { retryCount: number; placementAttempts: number }>();
   private readonly reservationOps: PrismaReservationOps;
   private readonly ticketPartyOps: PrismaTicketPartyOps;
+
+  private mapWorld(row: Parameters<typeof mapCanonicalWorldRow>[0]): CanonicalWorldRecord {
+    return mapCanonicalWorldRow(row, this.worldAttempts.get(row.id));
+  }
 
   constructor(private readonly prisma: PrismaClient) {
     this.reservationOps = new PrismaReservationOps(this.prisma, this.mutex);
@@ -80,12 +85,12 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
         where: { OR: [{ canonicalType: spec.canonicalType }, { id: spec.id }] },
       });
       if (existing) {
-        const mapped = mapCanonicalWorldRow(existing);
+        const mapped = this.mapWorld(existing);
         assertCanonicalWorldCompatible(mapped, spec);
         const pinned = input.manifest ? (await this.pinAtlasVersionInternal(input.manifest)).record : undefined;
         const refreshed = await this.prisma.planet.findUniqueOrThrow({ where: { id: existing.id } });
         return {
-          world: mapCanonicalWorldRow(refreshed),
+          world: this.mapWorld(refreshed),
           created: false,
           ...(pinned ? { pinnedAtlas: pinned } : {}),
         };
@@ -118,12 +123,12 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
           where: { OR: [{ canonicalType: spec.canonicalType }, { id: spec.id }] },
         });
         if (!raced) throw err;
-        assertCanonicalWorldCompatible(mapCanonicalWorldRow(raced), spec);
+        assertCanonicalWorldCompatible(this.mapWorld(raced), spec);
       }
       const pinned = input.manifest ? (await this.pinAtlasVersionInternal(input.manifest)).record : undefined;
       const finalRow = await this.prisma.planet.findUniqueOrThrow({ where: { id: spec.id } });
       return {
-        world: mapCanonicalWorldRow(finalRow),
+        world: this.mapWorld(finalRow),
         created,
         ...(pinned ? { pinnedAtlas: pinned } : {}),
       };
@@ -132,19 +137,19 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
 
   async getCanonicalWorldByType(type: PlanetType): Promise<CanonicalWorldRecord | null> {
     const row = await this.prisma.planet.findUnique({ where: { canonicalType: type } });
-    return row ? mapCanonicalWorldRow(row) : null;
+    return row ? this.mapWorld(row) : null;
   }
 
   async getCanonicalWorldById(planetId: string): Promise<CanonicalWorldRecord | null> {
     const row = await this.prisma.planet.findUnique({ where: { id: planetId } });
-    return row && row.canonicalType ? mapCanonicalWorldRow(row) : null;
+    return row && row.canonicalType ? this.mapWorld(row) : null;
   }
 
   async listCanonicalWorlds(): Promise<CanonicalWorldRecord[]> {
     const rows = await this.prisma.planet.findMany({ where: { canonicalType: { not: null } } });
     const order: readonly PlanetType[] = ['desert', 'ocean', 'temperate'];
     return rows
-      .map(mapCanonicalWorldRow)
+      .map((r) => this.mapWorld(r))
       .sort((a, b) => order.indexOf(a.canonicalType) - order.indexOf(b.canonicalType));
   }
 
@@ -154,16 +159,25 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
       if (!existingRow) {
         throw new LobbyPersistenceConflictError('planet_not_found', `planet "${input.planetId}" not found`);
       }
-      const existing = mapCanonicalWorldRow(existingRow);
+      const existing = this.mapWorld(existingRow);
       validateCanonicalWorldStateUpdate(existing, input);
       const baseNow = input.now ?? new Date();
       const nextUpdatedAt = new Date(Math.max(baseNow.getTime(), existing.updatedAt.getTime() + 1));
+      const nextRetryCount = input.retryCount === undefined ? (existing.retryCount ?? 0) : input.retryCount;
+      const nextPlacementAttempts =
+        input.placementAttempts === undefined ? (existing.placementAttempts ?? 0) : input.placementAttempts;
+      this.worldAttempts.set(input.planetId, {
+        retryCount: nextRetryCount,
+        placementAttempts: nextPlacementAttempts,
+      });
       const candidate: CanonicalWorldRecord = {
         ...existing,
         lifecycle: input.lifecycle ?? existing.lifecycle,
         health: input.health ?? existing.health,
         admission: input.admission ?? existing.admission,
         faultCode: input.faultCode === undefined ? existing.faultCode : input.faultCode,
+        retryCount: nextRetryCount,
+        placementAttempts: nextPlacementAttempts,
         updatedAt: nextUpdatedAt,
       };
       input.onTransition?.(existing, candidate);
@@ -177,7 +191,7 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
           updatedAt: nextUpdatedAt,
         },
       });
-      return mapCanonicalWorldRow(updated);
+      return this.mapWorld(updated);
     });
   }
 

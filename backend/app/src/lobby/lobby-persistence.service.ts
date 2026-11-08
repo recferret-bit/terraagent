@@ -72,6 +72,10 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
     return this.store.provisionCanonicalWorld(input);
   }
 
+  upsertCanonicalWorld(input: ProvisionCanonicalWorldInput): Promise<ProvisionCanonicalWorldResult> {
+    return this.store.provisionCanonicalWorld(input);
+  }
+
   /**
    * Provisions all three canonical worlds (`desert`, `ocean`, `temperate`) with pinned W11 manifests.
    * Idempotent under concurrent calls.
@@ -110,6 +114,10 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
     return this.store.pinAtlasVersion(manifest);
   }
 
+  saveAtlasManifest(manifest: AtlasManifestV1): Promise<PinAtlasVersionResult> {
+    return this.store.pinAtlasVersion(manifest);
+  }
+
   getAtlasVersion(planetId: string, atlasVersion: number): Promise<PinnedAtlasVersionRecord | null> {
     return this.store.getAtlasVersion(planetId, atlasVersion);
   }
@@ -122,6 +130,21 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
     input: UpsertSectorWithSlotsInput,
   ): Promise<{ readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }> {
     return this.store.upsertSectorWithSlots(input);
+  }
+
+  async upsertSectors(
+    planetIdOrSectors: string | readonly UpsertSectorWithSlotsInput[],
+    sectors?: readonly (Omit<UpsertSectorWithSlotsInput, 'planetId'> & { readonly planetId?: string })[],
+  ): Promise<readonly { readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }[]> {
+    const items: UpsertSectorWithSlotsInput[] =
+      typeof planetIdOrSectors === 'string'
+        ? (sectors ?? []).map((s) => ({ ...s, planetId: s.planetId ?? planetIdOrSectors }))
+        : [...planetIdOrSectors];
+    const out: { readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }[] = [];
+    for (const item of items) {
+      out.push(await this.store.upsertSectorWithSlots(item));
+    }
+    return out;
   }
 
   getSector(planetId: string, sectorId: SectorId): Promise<PlanetSectorRecord | null> {

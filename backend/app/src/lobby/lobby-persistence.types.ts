@@ -71,6 +71,8 @@ export interface CanonicalWorldRecord {
   readonly atlasHash: string;
   readonly configHash: string;
   readonly faultCode: string | null;
+  readonly retryCount?: number;
+  readonly placementAttempts?: number;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -196,6 +198,8 @@ export interface UpdateCanonicalWorldStateInput {
   readonly health?: WorldHealthState;
   readonly admission?: WorldAdmissionState;
   readonly faultCode?: string | null;
+  readonly retryCount?: number;
+  readonly placementAttempts?: number;
   readonly expectedUpdatedAt?: Date | string | number;
   readonly now?: Date;
   readonly onTransition?: (previous: CanonicalWorldRecord, next: CanonicalWorldRecord) => void;

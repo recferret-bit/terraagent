@@ -199,6 +199,10 @@ export function spawnColonyLanding(
     slot.claimedBy = colonyId;
     setBlob(state, 'spawnSlots', getSpawnSlots(state), tick);
   }
+  const resolvedLandingSlotId = opts.landingSlotId ?? slot?.landingSlotId ?? slot?.slotId;
+  if (typeof resolvedLandingSlotId === 'string') {
+    col.landingSlotId = resolvedLandingSlotId;
+  }
   // Remembered forever: the planner never lands anyone here (or within the separation) again (D-39).
   recordLanding(state, { colony: colonyId, ...(col.id ? { colonyId: col.id } : {}), ...(opts.playerId ? { playerId: opts.playerId } : {}), q, r, tick, ...(slot ? { slot: slot.index } : {}) }, tick);
   ensureStarterHubSpace(state, q, r, colonyId);

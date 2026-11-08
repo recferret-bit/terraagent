@@ -12,3 +12,4 @@ export * from './manifest';
 export * from './sectorMetrics';
 export * from './crossSectorGameplay';
 export * from './seamTerraforming';
+export * from './persistence';
