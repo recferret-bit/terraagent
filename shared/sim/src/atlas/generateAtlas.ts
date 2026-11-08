@@ -395,7 +395,13 @@ export function createAtlasPlanetState(opts?: CreateAtlasPlanetOptions): PlanetS
       foundingCapacity: s.foundingCapacity,
       validatedSafeSites: s.validatedSafeSites,
       safeLandingSlots: s.safeLandingSlots.map((sl) => ({ ...sl })),
+      foundedSeats: 0,
+      freeSeats: s.validatedSafeSites,
+      livingColonies: 0,
+      presentColonies: 0,
     })),
+    foundingSectorByColony: {},
+    presentSectorsByColony: {},
   };
   setBlob(state, 'atlas', blobValue, state.meta.tick);
   const spawnSlots: SpawnSlot[] = atlas.safeLandingSlots.map((slot, index) => ({

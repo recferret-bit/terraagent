@@ -1,3 +1,5 @@
+import { W11_MAX_SMALL_ATLAS_COLONIES } from '@terra/contracts';
+import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { checkMove, initialCaps, systemActor, treasury, treasuryCtx, type Amounts, type AddRequest } from '../../economy';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
@@ -132,7 +134,7 @@ export function checkColonyLanding(
   opts: Pick<SpawnColonyLandingOpts, 'colonyId' | 'slotIndex' | 'sectorId' | 'landingSlotId' | 'q' | 'r' | 'data'>,
 ): { ok: true; plan: SpawnPlan } | { ok: false; code: LandingRejectCode } {
   if (!Number.isInteger(opts.colonyId) || opts.colonyId < 0) return { ok: false, code: 'invalid_args' };
-  const maxColonies = state.blobs.atlas ? 64 : MAX_COLONIES_PER_PLANET;
+  const maxColonies = state.blobs.atlas ? W11_MAX_SMALL_ATLAS_COLONIES : MAX_COLONIES_PER_PLANET;
   if (opts.colonyId >= maxColonies) return { ok: false, code: 'planet_full' };
   // Planets saved before the landing history existed still know their pods.
   if (getLandingPods(state).some((p) => p.colonyId === opts.colonyId)) return { ok: false, code: 'already_landed' };
@@ -235,6 +237,8 @@ export function spawnColonyLanding(
     deployed: false,
   });
   setBlob(state, 'landingPods', pods, tick);
+  recordAtlasColonyFounding(state, colonyId, q, r, tick);
+  syncAtlasColonySectorState(state, tick);
 
   return { ok: true, podEntityId, q, r };
 }

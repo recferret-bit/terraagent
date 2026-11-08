@@ -391,6 +391,12 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
   findActiveTicketByPlayer(playerId: string): Promise<MatchTicketRecord | null> {
     return this.ticketPartyOps.findActiveTicketByPlayer(playerId);
   }
+  listTickets(filter?: {
+    readonly planetId?: string;
+    readonly state?: MatchTicketRecord['state'];
+  }): Promise<MatchTicketRecord[]> {
+    return this.ticketPartyOps.listTickets(filter);
+  }
   updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
     return this.ticketPartyOps.updateTicketState(input);
   }

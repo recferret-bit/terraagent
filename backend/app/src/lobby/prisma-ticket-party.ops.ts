@@ -89,6 +89,20 @@ export class PrismaTicketPartyOps {
     return row ? mapTicketRow(row) : null;
   }
 
+  async listTickets(filter?: {
+    readonly planetId?: string;
+    readonly state?: MatchTicketRecord['state'];
+  }): Promise<MatchTicketRecord[]> {
+    const rows = await this.prisma.matchTicket.findMany({
+      where: {
+        ...(filter?.planetId === undefined ? {} : { planetId: filter.planetId }),
+        ...(filter?.state === undefined ? {} : { state: filter.state }),
+      },
+      orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
+    });
+    return rows.map(mapTicketRow);
+  }
+
   async updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
     const updated = await this.prisma.matchTicket.update({
       where: { id: input.ticketId },
@@ -102,29 +116,32 @@ export class PrismaTicketPartyOps {
   }
 
   async cancelTicket(ticketId: string, playerId: string): Promise<MatchTicketRecord> {
-    const row = await this.prisma.matchTicket.findUnique({ where: { id: ticketId } });
-    if (!row || row.playerId !== playerId) {
-      throw new LobbyPersistenceConflictError('ticket_open', `ticket "${ticketId}" not found for player "${playerId}"`);
-    }
-    if (row.state === 'CANCELLED') return mapTicketRow(row);
-    if (row.state !== 'QUEUED' && row.state !== 'RESERVED') {
-      throw new LobbyPersistenceConflictError('ticket_open', `cannot cancel ticket in state ${row.state}`);
-    }
-    const res = await this.findReservationByTicketId(ticketId);
-    if (res && res.state === 'HELD') {
-      await this.releaseReservation(res.reservationId);
-    }
-    const updated = await this.prisma.matchTicket.update({
-      where: { id: ticketId },
-      data: {
-        state: 'CANCELLED',
-        reservedPlanetId: null,
-        reservedSectorId: null,
-        reservedLandingSlotId: null,
-        reservationExpiresAt: null,
-      },
+    return this.mutex.run(`ticket:${playerId}`, async () => {
+      const row = await this.prisma.matchTicket.findUnique({ where: { id: ticketId } });
+      if (!row || row.playerId !== playerId) {
+        throw new LobbyPersistenceConflictError('ticket_open', `ticket "${ticketId}" not found for player "${playerId}"`);
+      }
+      if (row.state === 'CANCELLED') return mapTicketRow(row);
+      if (row.state !== 'QUEUED' && row.state !== 'RESERVED') {
+        throw new LobbyPersistenceConflictError('ticket_open', `cannot cancel ticket in state ${row.state}`);
+      }
+      const res = await this.findReservationByTicketId(ticketId);
+      if (res && res.state === 'HELD') {
+        await this.releaseReservation(res.reservationId);
+      }
+      const updated = await this.prisma.matchTicket.update({
+        where: { id: ticketId },
+        data: {
+          state: 'CANCELLED',
+          reservedPlanetId: null,
+          reservedSectorId: null,
+          reservedLandingSlotId: null,
+          reservationEpoch: null,
+          reservationExpiresAt: null,
+        },
+      });
+      return mapTicketRow(updated);
     });
-    return mapTicketRow(updated);
   }
 
   async createParty(input: CreatePartyInput): Promise<PartyV1> {

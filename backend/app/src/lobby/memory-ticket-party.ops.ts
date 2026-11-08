@@ -102,6 +102,24 @@ export class MemoryTicketPartyOps {
     );
   }
 
+  async listTickets(filter?: {
+    readonly planetId?: string;
+    readonly state?: MatchTicketRecord['state'];
+  }): Promise<MatchTicketRecord[]> {
+    return [...this.ticketsById.values()]
+      .filter(
+        (t) =>
+          (filter?.planetId === undefined || t.planetId === filter.planetId) &&
+          (filter?.state === undefined || t.state === filter.state),
+      )
+      .sort(
+        (a, b) =>
+          b.priority - a.priority ||
+          a.createdAt.localeCompare(b.createdAt) ||
+          a.id.localeCompare(b.id),
+      );
+  }
+
   async updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
     const ticket = this.ticketsById.get(input.ticketId);
     if (!ticket) {
@@ -110,6 +128,8 @@ export class MemoryTicketPartyOps {
     const updated: MatchTicketRecord = {
       ...ticket,
       state: input.state,
+      position: input.state === 'QUEUED' ? (ticket.position ?? 0) : null,
+      etaS: input.state === 'QUEUED' ? ticket.etaS : null,
       failureCode: input.failureCode === undefined ? ticket.failureCode : input.failureCode,
       attempts: input.attempts ?? ticket.attempts,
       updatedAt: (input.now ?? new Date()).toISOString(),
@@ -119,29 +139,34 @@ export class MemoryTicketPartyOps {
   }
 
   async cancelTicket(ticketId: string, playerId: string, now: Date = new Date()): Promise<MatchTicketRecord> {
-    const ticket = this.ticketsById.get(ticketId);
-    if (!ticket || ticket.playerId !== playerId) {
-      throw new LobbyPersistenceConflictError('ticket_open', `ticket "${ticketId}" not found for player "${playerId}"`);
-    }
-    if (ticket.state === 'CANCELLED') return ticket;
-    if (ticket.state !== 'QUEUED' && ticket.state !== 'RESERVED') {
-      throw new LobbyPersistenceConflictError('ticket_open', `cannot cancel ticket in state ${ticket.state}`);
-    }
-    const res = await this.findReservationByTicketId(ticketId);
-    if (res && res.state === 'HELD') {
-      await this.releaseReservation(res.reservationId);
-    }
-    const updated: MatchTicketRecord = {
-      ...ticket,
-      state: 'CANCELLED',
-      reservedPlanetId: null,
-      reservedSectorId: null,
-      reservedLandingSlotId: null,
-      reservationExpiresAt: null,
-      updatedAt: now.toISOString(),
-    };
-    this.ticketsById.set(updated.id, updated);
-    return updated;
+    return this.mutex.run(`ticket:${playerId}`, async () => {
+      const ticket = this.ticketsById.get(ticketId);
+      if (!ticket || ticket.playerId !== playerId) {
+        throw new LobbyPersistenceConflictError('ticket_open', `ticket "${ticketId}" not found for player "${playerId}"`);
+      }
+      if (ticket.state === 'CANCELLED') return ticket;
+      if (ticket.state !== 'QUEUED' && ticket.state !== 'RESERVED') {
+        throw new LobbyPersistenceConflictError('ticket_open', `cannot cancel ticket in state ${ticket.state}`);
+      }
+      const res = await this.findReservationByTicketId(ticketId);
+      if (res && res.state === 'HELD') {
+        await this.releaseReservation(res.reservationId);
+      }
+      const updated: MatchTicketRecord = {
+        ...ticket,
+        state: 'CANCELLED',
+        position: null,
+        etaS: null,
+        reservedPlanetId: null,
+        reservedSectorId: null,
+        reservedLandingSlotId: null,
+        reservationEpoch: null,
+        reservationExpiresAt: null,
+        updatedAt: now.toISOString(),
+      };
+      this.ticketsById.set(updated.id, updated);
+      return updated;
+    });
   }
 
   async createParty(input: CreatePartyInput): Promise<PartyV1> {
