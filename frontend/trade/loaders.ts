@@ -1,6 +1,6 @@
 import { TradeApiFailure, type TradeClient } from './api/client';
 import type { OrderSide } from '@terra/contracts';
-import { applyBookSnapshot } from './model/state';
+import { applyBookSnapshot, applyOverview } from './model/state';
 import type { Store } from './Store';
 
 const noColony = (e: unknown): boolean => e instanceof TradeApiFailure && (e.code === 'no_colony' || e.code === 'wrong_planet');
@@ -55,19 +55,9 @@ export class Loaders {
     return this.store.load('keys', async () => { const r = await this.client.keys(); return (x) => ({ ...x, keys: r.keys.filter((k) => k.planetId === x.planetId) }); }, quiet);
   }
 
-  /** Best bid / ask of every pair of the planet (levels=1), four requests at a time to stay inside the session rate limit. */
-  overview(): Promise<void> {
-    return this.store.load('overview', async (s) => {
-      const out = new Map<string, Awaited<ReturnType<TradeClient['book']>>>();
-      const queue = [...s.pairs];
-      const worker = async (): Promise<void> => {
-        for (let p = queue.shift(); p; p = queue.shift()) {
-          try { out.set(p.pair, await this.client.book(s.planetId, p.pair, 1)); } catch { /* one pair failing leaves its row empty */ }
-        }
-      };
-      await Promise.all([worker(), worker(), worker(), worker()]);
-      return (x) => ({ ...x, top: { ...x.top, ...Object.fromEntries([...out].map(([k, v]) => [k, { bid: v.bids[0] ?? null, ask: v.asks[0] ?? null }])) } });
-    });
+  /** Best bid / ask of every pair of the planet: ONE request (`GET /v1/trade/overview/:planet`), never one book call per pair. */
+  overview(quiet = false): Promise<void> {
+    return this.store.load('overview', async (s) => { const r = await this.client.overview(s.planetId); return (x) => applyOverview(x, r); }, quiet);
   }
 
   all(): Promise<unknown> {

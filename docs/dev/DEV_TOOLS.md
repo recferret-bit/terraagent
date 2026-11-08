@@ -205,6 +205,7 @@ Real environment wins over `infra/.env.worktree`, which wins over `infra/.env` (
 | `SNAPSHOT_EVERY_S`, `SNAPSHOTS` | 60, on | Snapshot cadence; `SNAPSHOTS=off` (default off under `NODE_ENV=test`). The ledger journal and the planet/colony rows (`core.planet`, `core.colony`) follow the same switch: off keeps them in memory. Players and sessions use Postgres whenever it is configured |
 | `DELTA_HZ` | 5 | Deltas per second per joined planet |
 | `TA_DB_POOL_SIZE` | 20 | Prisma connection pool of the backend process (1..200) |
+| `TA_TRADE_PUBLIC_RPS`, `TA_TRADE_PUBLIC_BURST` | 30, 90 | Per-IP token bucket of the public `/v1/trade/*` reads (book, board, overview, pairs, policy, book orders); one request is one token. Invalid or non-positive values keep the default |
 | `TA_TRADE_MAX_INFLIGHT`, `TA_TRADE_QUEUE_WAIT_MS` | `floor(pool/2)-1`, 8000 | Cap on concurrent trade API placements/cancels (excess queues, then 503 `server_busy` + `Retry-After`) and the queue wait in ms |
 | `PLANET_DAY_HOURS`, `PLANET_TIME_SCALE` | 0.25, 1 | Default real-world hours for 1 full planetary day (24 solar hours) and time-scale multiplier on newly created server planets |
 | `TA_BALANCE_OVERRIDES` | — | Path to `balance.overrides.json` merged over the data tables (D-35) |

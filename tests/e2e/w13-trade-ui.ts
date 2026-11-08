@@ -2,7 +2,7 @@ import { expect, test } from './harness';
 import type { Page } from '@playwright/test';
 import { registerOrderSteps } from './w13-trade-ui-orders';
 import { registerLiveSteps } from './w13-trade-ui-live';
-import { closeAndCheck, makeApi, openTrade, previewMath, readPreview, waitReady, whole, type Api, type UiCtx } from './w13-trade-ui-lib';
+import { closeAndCheck, makeApi, openTrade, previewMath, readPreview, tab, waitReady, whole, type Api, type UiCtx } from './w13-trade-ui-lib';
 
 /**
  * W13 D-45 `/trade.html` UI steps (9f..9r): everything is driven through the real page (clicks and typing, `data-testid`s / roles);
@@ -88,6 +88,31 @@ function registerSetupSteps(ctx: UiCtx, api: Api): void {
       await page.evaluate(() => { location.hash = '#orders'; });
       await expect(page.getByTestId('tab-market')).toHaveAttribute('aria-selected', 'true');
       await expect(page.locator('#tr-lower')).toBeInViewport();
+    } finally {
+      await closeAndCheck(page);
+    }
+  });
+
+  test('@hack 9g2. /trade.html request budget: <= 20 API requests per load, <= 2 overview calls (no per-pair book fan-out), no polling beyond the 5 s keys tick', async ({ browser }) => {
+    test.setTimeout(120_000);
+    const page = await openTrade(browser, ctx, 'b');
+    try {
+      const urls: string[] = [];
+      page.on('request', (r) => { const u = new URL(r.url()); if (u.pathname.startsWith('/v1/')) urls.push(`${r.method()} ${u.pathname}`); });
+      await page.goto(`/trade.html?${new URLSearchParams({ as: 'b', planet: ctx.planetId(), pair: `${ctx.water}/USDC` })}`);
+      await waitReady(page);
+      await tab(page, 'pairs');
+      await expect(page.locator('[data-panel-body=overview] tbody tr').first()).toBeVisible({ timeout: 30_000 });
+      await page.waitForTimeout(1500);
+      const load = urls.length;
+      console.log(`[9g2] requests per load (incl. opening All pairs): ${load}`);
+      expect(urls.filter((u) => u.includes('/v1/trade/overview/')).length, 'one on load, one when the tab opens').toBeLessThanOrEqual(2);
+      expect(urls.filter((u) => /\/v1\/trade\/book\/[^/]+\/[^/]+(\?|$)/.test(u)).length, 'book calls: the selected pair only').toBeLessThanOrEqual(2);
+      expect(load).toBeLessThanOrEqual(20);
+      urls.length = 0;
+      await page.waitForTimeout(10_000);
+      console.log(`[9g2] requests in 10 s idle on All pairs: ${urls.length}`);
+      expect(urls.length).toBeLessThanOrEqual(10);
     } finally {
       await closeAndCheck(page);
     }

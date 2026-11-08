@@ -44,6 +44,7 @@ KEY=ta_bot_...                   # from the response
 
 curl -s $API/trade/pairs; curl -s $API/trade/policy -H "authorization: Bearer $KEY"
 curl -s "$API/trade/book/w13-dev/bio.water%2FUSDC?levels=5"; curl -s $API/trade/board/w13-dev
+curl -s $API/trade/overview/w13-dev   # every pair in ONE request: [{pair,bestBid,bestAsk,last,volume24h}] (BookLevel rationals, null when empty); use it instead of a book call per pair
 curl -s "$API/trade/book/w13-dev/bio.water%2FUSDC/orders?side=sell&limit=100"   # every resting order (public); add -H "authorization: Bearer $KEY" for `mine`
 curl -s "$API/trade/agent/quote?resource=bio.water&ownUnitCost=1000&transportPerUnit=0&keep=50" -H "authorization: Bearer $KEY"
 
@@ -71,7 +72,7 @@ Hardening: every path and query id of `/v1/trade/*` and `/v1/market/*` is valida
 Allowance (`chain.trade_api_allowance`, one persisted row per key): `maxOpenOrders`, `maxOrderNotional`, `dailyBudget` (quote atomic, UTC day),
 `allowedPairs`, `priceBandBp` (against the organic VWAP when one exists), `killSwitch`. Outstanding and in-flight orders count before any fill. `dailyBudget` is a spend cap on exposure: orders of an earlier UTC day that still rest (or are in flight) count in full towards today's budget until they end, so the midnight reset never frees budget that resting orders still hold.
 A cancel without an `Idempotency-Key` is retried as a new attempt after a REJECTED/FAILED one; a settled or in-flight one is replayed. Per owner: at most 20 active keys, 5 SSE streams per caller, and one shared rate bucket across the owner's keys.
-Public `/v1/trade/*` reads (and failed key lookups) share a bounded per-IP token bucket (`req.ip`, honouring `TA_TRUST_PROXY`; without it the socket address, so behind an untrusted proxy all callers share one bucket). `colonyRef` in the public order list is an HMAC keyed by `TA_COLONY_REF_SECRET` (random per process when unset in dev; in production an unset secret logs a warning and uses a random per-process one, so refs change on restart).
+Public `/v1/trade/*` reads (and failed key lookups) share a bounded per-IP token bucket (30 requests/s, burst 90 by default; override with `TA_TRADE_PUBLIC_RPS` / `TA_TRADE_PUBLIC_BURST`; one call is one token, `overview` included; `req.ip`, honouring `TA_TRUST_PROXY`; without it the socket address, so behind an untrusted proxy all callers share one bucket). `colonyRef` in the public order list is an HMAC keyed by `TA_COLONY_REF_SECRET` (random per process when unset in dev; in production an unset secret logs a warning and uses a random per-process one, so refs change on restart).
 
 Organic rule (`settlement/organic.ts`): a fill is organic when both sides are `player` or `bot`, in different colonies, with different owners.
 Same owner, fixture, subsidy, npc and guild are never organic; a missing owner counts as different outside production (dev scenario seats carry none) and as NOT organic in production (fail closed); the price-board limits are unchanged.

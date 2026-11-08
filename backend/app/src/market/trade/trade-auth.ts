@@ -26,6 +26,11 @@ export const SESSION_RATE = { perSecond: 20, burst: 40 } as const;
 export const OWNER_KEYS_RATE = { perSecond: 100, burst: 200 } as const;
 /** Per client IP: public reads, and (separately) failed key lookups. The IP is `req.ip` (honours `TA_TRUST_PROXY`), else the socket address. */
 export const PUBLIC_IP_RATE = { perSecond: 30, burst: 90, maxKeys: 5000 } as const;
+/** `TA_TRADE_PUBLIC_RPS` / `TA_TRADE_PUBLIC_BURST` override the per-IP public read rate (positive numbers; anything else keeps the default). */
+export function publicIpRate(env: Readonly<Record<string, string | undefined>> = process.env): { perSecond: number; burst: number; maxKeys: number } {
+  const num = (v: string | undefined, d: number): number => { const n = Number(v); return v !== undefined && v !== '' && Number.isFinite(n) && n > 0 ? n : d; };
+  return { perSecond: num(env.TA_TRADE_PUBLIC_RPS, PUBLIC_IP_RATE.perSecond), burst: num(env.TA_TRADE_PUBLIC_BURST, PUBLIC_IP_RATE.burst), maxKeys: PUBLIC_IP_RATE.maxKeys };
+}
 export const FAILED_KEY_IP_RATE = { perSecond: 1, burst: 20, maxKeys: 5000 } as const;
 const ALL_SCOPES: readonly TradeScope[] = ['read', 'trade', 'manage'];
 const BEARER_RE = /^Bearer\s+(\S+)$/i;
@@ -35,7 +40,8 @@ const BEARER_RE = /^Bearer\s+(\S+)$/i;
 export class TradeAuth {
   private readonly limiters = new Map<string, TokenBucketLimiter>();
   private ownerLimiter: TokenBucketLimiter | null = null;
-  private readonly publicIp = new TokenBucketLimiter({ ...PUBLIC_IP_RATE, now: () => this.now() });
+  private readonly publicRate = publicIpRate();
+  private readonly publicIp = new TokenBucketLimiter({ ...this.publicRate, now: () => this.now() });
   private readonly failedIp = new TokenBucketLimiter({ ...FAILED_KEY_IP_RATE, now: () => this.now() });
   private readonly touched = new Map<string, number>();
   /** Test seam. */
@@ -50,7 +56,7 @@ export class TradeAuth {
   /** Per-IP throttle of the PUBLIC reads (book, board, pairs, policy): `rate_limited` (429) when the caller's IP bucket is empty. */
   throttlePublic(req: IncomingMessage): void {
     const ip = TradeAuth.ipOf(req);
-    if (!this.publicIp.take(ip)) throw TradeError.rateLimited(`More than ${PUBLIC_IP_RATE.perSecond} public requests per second from this address.`, { perSecond: PUBLIC_IP_RATE.perSecond }, this.publicIp.retryAfterMs(ip));
+    if (!this.publicIp.take(ip)) throw TradeError.rateLimited(`More than ${this.publicRate.perSecond} public requests per second from this address.`, { perSecond: this.publicRate.perSecond }, this.publicIp.retryAfterMs(ip));
   }
 
   async authenticate(req: IncomingMessage, asName?: string): Promise<TradePrincipal> {

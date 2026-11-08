@@ -197,6 +197,19 @@ export type TradeBookOrdersResponse = z.infer<typeof TradeBookOrdersResponse>;
 export const TradeBoardResponse = z.object({ planetId: z.string(), board: z.array(PriceBoardRow) });
 export type TradeBoardResponse = z.infer<typeof TradeBoardResponse>;
 
+/** One row of the planet overview: best bid / ask level of the pair (exact rationals as in `BookLevel`, null when that side is empty), last price and 24 h volume. */
+export const TradeOverviewRow = z.object({
+  pair: PairId,
+  bestBid: BookLevel.nullable(), bestAsk: BookLevel.nullable(),
+  last: z.object({ num: AtomicAmount, den: z.number().int().positive() }).nullable(),
+  volume24h: z.number().int().nonnegative(),
+});
+export type TradeOverviewRow = z.infer<typeof TradeOverviewRow>;
+/** One row per tradable pair (policy order); the list is bounded by the market policy (`TRADE_OVERVIEW_MAX_PAIRS`). */
+export const TRADE_OVERVIEW_MAX_PAIRS = 500;
+export const TradeOverviewResponse = z.object({ planetId: z.string(), overview: z.array(TradeOverviewRow).max(TRADE_OVERVIEW_MAX_PAIRS) });
+export type TradeOverviewResponse = z.infer<typeof TradeOverviewResponse>;
+
 export const TradePairView = z.object({ pair: PairId, base: ResourceKey, quote: MarketTokenKey, lot: z.number().int().positive(), minNotionalAtomic: AtomicAmount });
 export const TradePairsResponse = z.object({ pairs: z.array(TradePairView) });
 export type TradePairsResponse = z.infer<typeof TradePairsResponse>;
@@ -292,6 +305,7 @@ export const TRADE_API_ROUTES = {
   book: { method: 'GET', path: '/v1/trade/book/:planetId/:pair', auth: 'none', summary: 'Book depth (query levels=N) and reference price', response: TradeBookResponse },
   bookOrders: { method: 'GET', path: '/v1/trade/book/:planetId/:pair/orders', auth: 'none', summary: 'Every resting order of a pair (query side, limit); with a bearer/dev identity each order carries `mine`', response: TradeBookOrdersResponse },
   board: { method: 'GET', path: '/v1/trade/board/:planetId', auth: 'none', summary: 'Price board of a planet', response: TradeBoardResponse },
+  overview: { method: 'GET', path: '/v1/trade/overview/:planetId', auth: 'none', summary: 'Best bid / ask, last price and 24 h volume of every tradable pair in ONE request (one per-IP rate token); prefer it to one book call per pair', response: TradeOverviewResponse },
   pairs: { method: 'GET', path: '/v1/trade/pairs', auth: 'none', summary: 'Tradable pairs', response: TradePairsResponse },
   policy: { method: 'GET', path: '/v1/trade/policy', auth: 'none', summary: 'Market policy and the rate limit of the caller', response: TradePolicyResponse },
   agentQuote: { method: 'GET', path: '/v1/trade/agent/quote', auth: 'either', scope: 'read', summary: 'Deterministic bid/ask for the caller\'s colony and one resource (quote library), with reason codes; bodies are ready to POST', request: AgentQuoteQuery, response: AgentQuoteResponse },

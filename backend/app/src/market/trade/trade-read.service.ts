@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import {
-  isResourceToken, parsePairId, MARKET_TOKEN_KEYS, type ListTradeOrdersQuery, type TradeBookOrdersResponse, type TokenBalance, type TradeBalancesResponse, type TradeBoardResponse, type TradeBookResponse,
-  type TradeFillsResponse, type TradeOrdersResponse, type TradePairsResponse, type TradePolicyResponse, type MarketTokenKey, type ResourceKey,
+  type BookLevel, isResourceToken, parsePairId, MARKET_TOKEN_KEYS, TRADE_OVERVIEW_MAX_PAIRS, type TradeOverviewRow, type ListTradeOrdersQuery, type TradeBookOrdersResponse, type TokenBalance, type TradeBalancesResponse, type TradeBoardResponse, type TradeBookResponse,
+  type TradeFillsResponse, type TradeOrdersResponse, type TradeOverviewResponse, type TradePairsResponse, type TradePolicyResponse, type MarketTokenKey, type ResourceKey,
 } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import { PRISMA } from '../../db/db.module.js';
@@ -100,6 +100,34 @@ export class TradeReadService {
   async board(planetId: string): Promise<TradeBoardResponse> {
     this.orders.gate();
     return { planetId, board: await this.snapshots.boardRows(planetId) };
+  }
+
+  /** All pairs in one answer from the in-memory books and the cached price board (same sources as `book` and `board`). One query finds the pairs that have resting orders; only those books are read (8 at a time), so a probe of an unknown planet costs one cheap query. */
+  async overview(planetId: string): Promise<TradeOverviewResponse> {
+    this.orders.gate();
+    const pairs = this.policy.current().pairs.slice(0, TRADE_OVERVIEW_MAX_PAIRS);
+    const [boardRows, active] = await Promise.all([
+      this.snapshots.boardRows(planetId),
+      this.prisma.marketOrder.findMany({ where: { planetId, state: { in: ['OPEN', 'PARTIAL'] } }, distinct: ['pair'], select: { pair: true } }),
+    ]);
+    const board = new Map(boardRows.map((r) => [r.pair, r]));
+    const live = new Set(active.map((a) => a.pair));
+    const top = new Map<string, { bid: BookLevel | null; ask: BookLevel | null }>();
+    const todo = pairs.filter((p) => live.has(p.pair));
+    let next = 0;
+    const worker = async (): Promise<void> => {
+      for (let i = next++; i < todo.length; i = next++) {
+        const book = await this.books.readBook(planetId, todo[i]!.pair);
+        top.set(todo[i]!.pair, { bid: book.depth('buy', 1)[0] ?? null, ask: book.depth('sell', 1)[0] ?? null });
+      }
+    };
+    await Promise.all(Array.from({ length: Math.min(8, todo.length) }, worker));
+    const overview = pairs.map((p): TradeOverviewRow => {
+      const t = top.get(p.pair);
+      const row = board.get(p.pair);
+      return { pair: p.pair, bestBid: t?.bid ?? null, bestAsk: t?.ask ?? null, last: row?.last ?? null, volume24h: row?.volume24h ?? 0 };
+    });
+    return { planetId, overview };
   }
 
   pairs(): TradePairsResponse {

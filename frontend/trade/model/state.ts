@@ -1,4 +1,4 @@
-import type { BookLevel, MarketPolicyView, MarketBookPayload, PriceBoardRow, TradeBalancesResponse, TradeBookOrdersResponse, TradeBookResponse, TradeStallResponse, TradeFillView, TradeKeyView, TradeOrderView, TradePairsResponse, TradeStreamEvent } from '@terra/contracts';
+import type { BookLevel, MarketPolicyView, MarketBookPayload, PriceBoardRow, TradeBalancesResponse, TradeBookOrdersResponse, TradeBookResponse, TradeStallResponse, TradeFillView, TradeKeyView, TradeOrderView, TradeOverviewResponse, TradePairsResponse, TradeStreamEvent } from '@terra/contracts';
 
 export type PairView = TradePairsResponse['pairs'][number];
 export type PanelId = 'pairs' | 'policy' | 'book' | 'board' | 'orders' | 'fills' | 'balances' | 'keys' | 'overview' | 'bookOrders' | 'stall';
@@ -38,6 +38,12 @@ export function initialState(planetId: string, pair: string): TradeState {
 export const setPanel = (s: TradeState, id: PanelId, p: PanelStatus): TradeState => ({ ...s, panels: { ...s.panels, [id]: p } });
 
 const topOf = (b: { bids: readonly BookLevel[]; asks: readonly BookLevel[] }): TopOfBook => ({ bid: b.bids[0] ?? null, ask: b.asks[0] ?? null });
+
+/** The one-request planet overview: replaces the best bid / ask of every listed pair (a stale answer for another planet is dropped). */
+export function applyOverview(s: TradeState, o: TradeOverviewResponse): TradeState {
+  if (o.planetId !== s.planetId) return s;
+  return { ...s, top: { ...s.top, ...Object.fromEntries(o.overview.map((r) => [r.pair, { bid: r.bestBid, ask: r.bestAsk }])) } };
+}
 
 /** A full book fetched over REST. Never replaces a newer pushed book of the same pair. */
 export function applyBookSnapshot(s: TradeState, book: TradeBookResponse): TradeState {

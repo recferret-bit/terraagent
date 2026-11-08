@@ -1,7 +1,7 @@
 import type {
   AgentQuoteResponse, TradeStallResponse, OrderSide, TradeBookOrdersResponse, CancelTradeOrderResponse, CreateTradeKeyRequest, CreateTradeKeyResponse, PlaceTradeOrderRequest, PlaceTradeOrderResponse,
   RevokeTradeKeyResponse, TradeAllowanceUpdate, TradeBalancesResponse, TradeBoardResponse, TradeBookResponse, TradeFillsResponse, TradeKeyListResponse,
-  TradeKeyView, TradeOrdersResponse, TradePairsResponse, TradePolicyResponse,
+  TradeKeyView, TradeOrdersResponse, TradeOverviewResponse, TradePairsResponse, TradePolicyResponse,
 } from '@terra/contracts';
 
 /** Stable error of the trade API (`{ error: { code, message, details? } }`) or a transport failure (`network`). */
@@ -43,6 +43,7 @@ export class TradeClient {
 
   pairs = (): Promise<TradePairsResponse> => this.call('GET', '/pairs');
   policy = (): Promise<TradePolicyResponse> => this.call('GET', '/policy');
+  overview = (planetId: string): Promise<TradeOverviewResponse> => this.call('GET', `/overview/${enc(planetId)}`);
   book = (planetId: string, pair: string, levels = 20): Promise<TradeBookResponse> => this.call('GET', `/book/${enc(planetId)}/${enc(pair)}?levels=${levels}`);
   board = (planetId: string): Promise<TradeBoardResponse> => this.call('GET', `/board/${enc(planetId)}`);
   orders = (planetId: string, limit = 200): Promise<TradeOrdersResponse> => this.call('GET', `/orders?planetId=${enc(planetId)}&limit=${limit}`);

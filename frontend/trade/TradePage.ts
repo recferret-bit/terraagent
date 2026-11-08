@@ -4,7 +4,7 @@ import { signOut, mockOauthUrl } from './api/identity';
 import { TradeStream } from './api/stream';
 import { Loaders } from './loaders';
 import { orderPrice } from './model/allOrders';
-import { AFTER_ORDER_CHANGE, onTabOpen, tickRefresh, type LoaderName } from './model/refresh';
+import { AFTER_ORDER_CHANGE, onTabOpen, overviewDelay, tickRefresh, type LoaderName } from './model/refresh';
 import { applyStreamEvent, cancellable, initialState, type OrderFilter, type PanelId, type TradeState } from './model/state';
 import { Store } from './Store';
 import { renderBalances } from './view/balancesView';
@@ -39,6 +39,8 @@ export class TradePage {
   private filter: OrderFilter = 'open';
   private marketSide: OrderSide | null = null;
   private marketTimer: ReturnType<typeof setTimeout> | null = null;
+  private overviewTimer: ReturnType<typeof setTimeout> | null = null;
+  private overviewAt = 0;
   private readonly busy = new Set<string>();
   private attempt = 0;
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
@@ -182,6 +184,12 @@ export class TradePage {
     this.marketTimer = setTimeout(() => { this.marketTimer = null; void this.loaders.bookOrders(this.marketSide, true); }, 400);
   }
 
+  /** Book pushes refetch the all-pairs overview as ONE request, at most every `OVERVIEW_MIN_GAP_MS`, and only while that tab is open. */
+  private scheduleOverviewRefresh(): void {
+    if (this.tab !== 'pairs' || this.overviewTimer) return;
+    this.overviewTimer = setTimeout(() => { this.overviewTimer = null; this.overviewAt = Date.now(); void this.loaders.overview(true); }, overviewDelay(this.overviewAt, Date.now()));
+  }
+
   private renderOrdersTab(s: TradeState): void {
     renderOrders(this.p.orders.body, s, this.filter, this.busy, {
       cancel: (id) => { void this.cancel(id); }, cancelAll: () => { void this.cancelAll(); },
@@ -256,7 +264,7 @@ export class TradePage {
       onEvent: (e) => {
         if (e.type === 'hello') this.pickers.setConn('live', 0);
         this.store.update((x) => applyStreamEvent(x, e), e.type === 'book' ? ['book', 'overview'] : e.type === 'order' ? ['orders', 'book'] : e.type === 'fill' ? ['fills'] : ['all']);
-        if (e.type === 'book') this.scheduleMarketRefresh();
+        if (e.type === 'book') { this.scheduleMarketRefresh(); this.scheduleOverviewRefresh(); }
         if (e.type === 'fill' || e.type === 'order') this.afterOrderChange();
       },
       onState: (c, attempt) => { this.attempt = attempt; this.store.update((x) => ({ ...x, conn: c }), []); this.pickers.setConn(c, attempt); },

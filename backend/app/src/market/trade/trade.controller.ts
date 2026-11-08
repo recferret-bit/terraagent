@@ -4,7 +4,7 @@ import {
   AgentQuoteQuery, CreateTradeKeyRequest, TradeFillsQuery, TradeBookQuery, TradeBookOrdersQuery, ListTradeOrdersQuery, PlaceTradeOrderRequest, PutTradeStallRequest, TradeAllowanceUpdate, TradeStallQuery,
   type AgentQuoteResponse, type CancelTradeOrderResponse, type CreateTradeKeyResponse, type PlaceTradeOrderResponse, type RevokeTradeKeyResponse, type TradeBalancesResponse,
   type TradeBoardResponse, type TradeBookOrdersResponse, type TradeBookResponse, type TradeFillsResponse, type TradeKeyListResponse, type TradeKeyView, type TradeOrdersResponse,
-  type TradePairsResponse, type TradePolicyResponse, type TradeStallResponse,
+  type TradeOverviewResponse, type TradePairsResponse, type TradePolicyResponse, type TradeStallResponse,
 } from '@terra/contracts';
 import type { ZodType } from 'zod';
 import type { HttpRes } from '../../core/logging/request-id.js';
@@ -154,6 +154,13 @@ export class TradeController {
   board(@Req() req: IncomingMessage, @Param('planetId') planetId: string): Promise<TradeBoardResponse> {
     this.auth.throttlePublic(req);
     return this.read.board(planetId);
+  }
+
+  /** Every tradable pair's best bid / ask, last and 24 h volume; counts as ONE public request. */
+  @Get('overview/:planetId')
+  overview(@Req() req: IncomingMessage, @Param('planetId') planetId: string): Promise<TradeOverviewResponse> {
+    this.auth.throttlePublic(req);
+    return this.read.overview(planetId);
   }
 
   @Get('pairs')
