@@ -89,17 +89,41 @@ export function extractEnqueueCallArgs(
 }
 
 function toRawRequestFromNormalized(raw: Record<string, unknown>): Record<string, unknown> {
-  if (!isObjectRecord(raw.sectorIntent)) return raw;
-  const si = raw.sectorIntent as { kind?: unknown; sectorId?: unknown };
-  const { sectorIntent: _omit, ...rest } = raw;
-  return {
-    ...rest,
-    ...(si.kind === 'chosen' && typeof si.sectorId === 'string'
-      ? { sectorId: si.sectorId }
-      : si.kind === 'auto'
-        ? { autoSector: true }
+  let next: Record<string, unknown> = { ...raw };
+  if (isObjectRecord(next.sectorIntent)) {
+    const si = next.sectorIntent as { kind?: unknown; mode?: unknown; sectorId?: unknown };
+    const { sectorIntent: _omit, ...rest } = next;
+    const kindOrMode = si.kind ?? si.mode;
+    next = {
+      ...rest,
+      ...(kindOrMode === 'chosen' && typeof si.sectorId === 'string'
+        ? { sectorId: si.sectorId }
+        : kindOrMode === 'auto'
+          ? { autoSector: true }
+          : {}),
+    };
+  }
+  if (isObjectRecord(next.transferCarry)) {
+    const tc = next.transferCarry as {
+      sourcePlanetId?: unknown;
+      sourceColonyId?: unknown;
+      carryOver?: unknown;
+    };
+    const { transferCarry: _omitTc, ...rest } = next;
+    next = {
+      ...rest,
+      ...(next.sourcePlanetId === undefined && typeof tc.sourcePlanetId === 'string'
+        ? { sourcePlanetId: tc.sourcePlanetId }
         : {}),
-  };
+      ...(next.sourceColonyId === undefined && typeof tc.sourceColonyId === 'string'
+        ? { sourceColonyId: tc.sourceColonyId }
+        : {}),
+      ...(next.carryOver === undefined && isObjectRecord(tc.carryOver)
+        ? { carryOver: tc.carryOver }
+        : {}),
+    };
+  }
+  return next;
 }
 
 /**
@@ -158,13 +182,21 @@ export function computeAlternativeSectorsForIntent(
   sectors: readonly PlanetSectorRecord[],
   sectorIntent: SectorPlacementIntentV1,
 ): SectorId[] {
-  if (sectorIntent.kind !== 'chosen' || sectors.length === 0) return [];
-  const chosen = sectors.find((s) => s.sectorId === sectorIntent.sectorId);
+  const kind =
+    (sectorIntent as { kind?: string; mode?: string }).kind ??
+    (sectorIntent as { mode?: string }).mode;
+  if (kind !== 'chosen' || sectors.length === 0) return [];
+  const chosenSectorId = (sectorIntent as { sectorId: SectorId }).sectorId;
+  const chosen = sectors.find((s) => s.sectorId === chosenSectorId);
   if (!chosen || chosen.freeSeats > 0) return [];
   return sectors
-    .filter((s) => s.kind === 'land' && s.freeSeats > 0 && s.sectorId !== sectorIntent.sectorId)
-    .map((s) => s.sectorId)
-    .sort((a, b) => a.localeCompare(b));
+    .filter((s) => s.kind === 'land' && s.freeSeats > 0 && s.sectorId !== chosenSectorId)
+    .sort(
+      (a, b) =>
+        b.reservedSeats + b.foundedSeats - (a.reservedSeats + a.foundedSeats) ||
+        a.sectorId.localeCompare(b.sectorId),
+    )
+    .map((s) => s.sectorId);
 }
 
 export function computeQueuePositionAndEta(

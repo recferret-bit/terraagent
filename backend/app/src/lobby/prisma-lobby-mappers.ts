@@ -23,7 +23,7 @@ import type {
   SectorLandingSlotState,
   SectorReservationRecord,
 } from './lobby-persistence.types';
-import { computeFreeSectorSeats } from './lobby-store.helpers';
+import { computeFreeSectorSeats, withSectorIntentModeAlias } from './lobby-store.helpers';
 
 export interface PrismaPlanetRow {
   id: string;
@@ -251,10 +251,11 @@ export interface PrismaTicketRow {
 }
 
 export function mapTicketRow(row: PrismaTicketRow): MatchTicketRecord {
-  const sectorIntent: SectorPlacementIntentV1 =
+  const sectorIntent = withSectorIntentModeAlias(
     row.sectorIntentKind === 'chosen' && row.requestedSectorId
       ? { kind: 'chosen', sectorId: row.requestedSectorId }
-      : { kind: 'auto' };
+      : { kind: 'auto' },
+  );
   return {
     id: row.id,
     playerId: row.playerId,
@@ -274,6 +275,7 @@ export function mapTicketRow(row: PrismaTicketRow): MatchTicketRecord {
     reservedLandingSlotId: row.reservedLandingSlotId,
     reservationEpoch: row.reservationEpoch,
     reservationExpiresAt: row.reservationExpiresAt ? row.reservationExpiresAt.toISOString() : null,
+    alternativeSectors: [],
     attempts: row.attempts,
     failureCode: row.failureCode,
     createdAt: row.createdAt.toISOString(),

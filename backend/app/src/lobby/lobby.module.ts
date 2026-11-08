@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
+import { MatchmakerService } from './matchmaker.service';
 import { PlanetsController } from './planets.controller';
 import { PlanetsService } from './planets.service';
 import { SectorReservationService } from './reservation.service';
@@ -10,7 +11,8 @@ import { MatchTicketsService } from './tickets.service';
 /**
  * Lobby domain module (W11): persistent canonical worlds, immutable atlas versions,
  * sector slot reservations, tickets, 5-member parties, persistent lifecycle/admission policy,
- * planet/sector summaries & public stats, and idempotent matchmaking ticket REST endpoints.
+ * planet/sector summaries & public stats, idempotent matchmaking ticket REST endpoints,
+ * and same-planet sector matchmaker + pending `TRANSFER` coordinator.
  */
 @Global()
 @Module({
@@ -21,6 +23,7 @@ import { MatchTicketsService } from './tickets.service';
     PlanetsService,
     SectorReservationService,
     MatchTicketsService,
+    MatchmakerService,
   ],
   exports: [
     LobbyPersistenceService,
@@ -28,6 +31,7 @@ import { MatchTicketsService } from './tickets.service';
     PlanetsService,
     SectorReservationService,
     MatchTicketsService,
+    MatchmakerService,
   ],
 })
 export class LobbyModule {}

@@ -197,6 +197,9 @@ export class MemoryReservationOps {
       this.ticketsById.set(ticket.id, {
         ...ticket,
         state: 'RESERVED',
+        position: null,
+        etaS: null,
+        alternativeSectors: [],
         reservedPlanetId: input.planetId,
         reservedSectorId: input.sectorId,
         reservedLandingSlotId: slot.landingSlotId,

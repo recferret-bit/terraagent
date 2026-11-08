@@ -21,7 +21,11 @@ import {
 import {
   LobbyPersistenceConflictError,
   type CanonicalWorldRecord,
+  type EnqueueTicketRequestInput,
   type ProvisionCanonicalWorldInput,
+  type SectorIntentInput,
+  type SectorIntentWithMode,
+  type TransferCarryRecord,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
 
@@ -226,42 +230,168 @@ export function computeFreeSectorSeats(
   }).freeSeats;
 }
 
-export function normalizeTicketIntentOrThrow(
-  raw: EnqueueTicketRequestV1 | NormalizedTicketIntentV1,
-): NormalizedTicketIntentV1 {
-  if ('sectorIntent' in raw && typeof raw.sectorIntent === 'object' && raw.sectorIntent !== null) {
-    const req: EnqueueTicketRequestV1 = {
-      mode: raw.mode,
-      planetId: raw.planetId,
-      planetType: raw.planetType,
-      ...(raw.sectorIntent.kind === 'chosen' ? { sectorId: raw.sectorIntent.sectorId } : { autoSector: true }),
-      ...(raw.partyId ? { partyId: raw.partyId } : {}),
-      ...(raw.sourcePlanetId ? { sourcePlanetId: raw.sourcePlanetId } : {}),
-      ...(raw.sourceColonyId ? { sourceColonyId: raw.sourceColonyId } : {}),
-      ...(raw.carryOver ? { carryOver: raw.carryOver } : {}),
-    };
-    const parsed = parseMatchTicketRequest(req);
-    if (!parsed.ok) {
-      throw new LobbyPersistenceConflictError(
-        parsed.errorCode === 'validation_error' ? 'invalid_ticket_intent' : parsed.errorCode,
-        parsed.message,
-      );
-    }
-    return parsed.value;
-  }
-  const parsed = parseMatchTicketRequest(raw);
-  if (!parsed.ok) {
-    throw new LobbyPersistenceConflictError(
-      parsed.errorCode === 'validation_error' ? 'invalid_ticket_intent' : parsed.errorCode,
-      parsed.message,
-    );
-  }
-  return parsed.value;
+export function withSectorIntentModeAlias(intent: SectorPlacementIntentV1): SectorIntentWithMode {
+  const base: SectorPlacementIntentV1 =
+    intent.kind === 'chosen'
+      ? { kind: 'chosen', sectorId: intent.sectorId }
+      : { kind: 'auto' };
+  Object.defineProperty(base, 'mode', {
+    value: base.kind,
+    enumerable: false,
+    configurable: true,
+    writable: false,
+  });
+  return base as SectorIntentWithMode;
 }
 
-export function sameSectorIntent(a: SectorPlacementIntentV1, b: SectorPlacementIntentV1): boolean {
-  if (a.kind !== b.kind) return false;
-  if (a.kind === 'chosen' && b.kind === 'chosen') return a.sectorId === b.sectorId;
+export function normalizeSectorIntentInput(
+  input: SectorIntentInput | string | null | undefined,
+): SectorIntentWithMode {
+  if (typeof input === 'string') {
+    const trimmed = input.trim();
+    if (!trimmed || trimmed === 'auto') {
+      return withSectorIntentModeAlias({ kind: 'auto' });
+    }
+    return withSectorIntentModeAlias({ kind: 'chosen', sectorId: trimmed });
+  }
+  if (typeof input === 'object' && input !== null) {
+    const raw = input as { kind?: unknown; mode?: unknown; sectorId?: unknown };
+    const kind = raw.kind ?? raw.mode;
+    if (kind === 'chosen' && typeof raw.sectorId === 'string' && raw.sectorId.trim().length > 0) {
+      return withSectorIntentModeAlias({ kind: 'chosen', sectorId: raw.sectorId.trim() });
+    }
+    if (kind === 'auto') {
+      return withSectorIntentModeAlias({ kind: 'auto' });
+    }
+  }
+  throw new LobbyPersistenceConflictError(
+    'invalid_ticket_intent',
+    'Invalid sector placement intent: expected { kind/mode: "auto" } or { kind/mode: "chosen", sectorId }',
+  );
+}
+
+export function extractTransferCarryFromInput(
+  raw: EnqueueTicketRequestInput,
+  intent: NormalizedTicketIntentV1,
+  explicitCarry?: Partial<TransferCarryRecord> | null,
+): TransferCarryRecord | null {
+  const rawRec = raw as {
+    sourcePlanetId?: string;
+    sourceColonyId?: string;
+    carryOver?: Readonly<Record<string, unknown>>;
+    transferCarry?: Partial<TransferCarryRecord> | null;
+  };
+  const merged = explicitCarry ?? rawRec.transferCarry ?? null;
+  const sourcePlanetId =
+    merged?.sourcePlanetId ?? intent.sourcePlanetId ?? rawRec.sourcePlanetId ?? '';
+  const sourceColonyId =
+    merged?.sourceColonyId ?? intent.sourceColonyId ?? rawRec.sourceColonyId ?? '';
+  const carryOver = merged?.carryOver ?? intent.carryOver ?? rawRec.carryOver;
+
+  if (!sourcePlanetId && !sourceColonyId && !carryOver) {
+    return null;
+  }
+  return {
+    sourcePlanetId,
+    sourceColonyId,
+    ...(carryOver ? { carryOver: { ...carryOver } } : {}),
+  };
+}
+
+export function normalizeTicketIntentOrThrow(
+  raw: EnqueueTicketRequestInput,
+  fallbackTransferCarry?: Partial<TransferCarryRecord> | null,
+): NormalizedTicketIntentV1 {
+  const rawRec = raw as Record<string, unknown>;
+  const rawTc =
+    (typeof rawRec.transferCarry === 'object' && rawRec.transferCarry !== null
+      ? (rawRec.transferCarry as Partial<TransferCarryRecord>)
+      : undefined) ??
+    fallbackTransferCarry ??
+    undefined;
+  const sourcePlanetId =
+    (typeof rawRec.sourcePlanetId === 'string' ? rawRec.sourcePlanetId : undefined) ??
+    rawTc?.sourcePlanetId;
+  const sourceColonyId =
+    (typeof rawRec.sourceColonyId === 'string' ? rawRec.sourceColonyId : undefined) ??
+    rawTc?.sourceColonyId;
+  const carryOver =
+    (typeof rawRec.carryOver === 'object' && rawRec.carryOver !== null
+      ? (rawRec.carryOver as Record<string, unknown>)
+      : undefined) ??
+    (rawTc?.carryOver ? { ...rawTc.carryOver } : undefined);
+
+  let sectorFields: { sectorId?: string; autoSector?: boolean } = {};
+  if ('sectorIntent' in rawRec && typeof rawRec.sectorIntent === 'object' && rawRec.sectorIntent !== null) {
+    const si = rawRec.sectorIntent as { kind?: unknown; mode?: unknown; sectorId?: unknown };
+    const kind = si.kind ?? si.mode;
+    sectorFields =
+      kind === 'chosen' && typeof si.sectorId === 'string'
+        ? { sectorId: si.sectorId }
+        : { autoSector: true };
+  } else if (typeof rawRec.sectorId === 'string') {
+    sectorFields = { sectorId: rawRec.sectorId };
+  } else if (rawRec.autoSector === true || rawRec.mode === 'AUTO' || rawRec.mode === 'TRANSFER') {
+    sectorFields = { autoSector: true };
+  }
+
+  const req: EnqueueTicketRequestV1 = {
+    mode: String(rawRec.mode ?? ''),
+    ...(typeof rawRec.planetId === 'string' ? { planetId: rawRec.planetId } : {}),
+    ...(typeof rawRec.planetType === 'string' ? { planetType: rawRec.planetType as PlanetType } : {}),
+    ...sectorFields,
+    ...(typeof rawRec.partyId === 'string' ? { partyId: rawRec.partyId } : {}),
+    ...(sourcePlanetId ? { sourcePlanetId } : {}),
+    ...(sourceColonyId ? { sourceColonyId } : {}),
+    ...(carryOver ? { carryOver } : {}),
+  };
+
+  const parsed = parseMatchTicketRequest(req);
+  if (parsed.ok) {
+    return {
+      ...parsed.value,
+      sectorIntent: withSectorIntentModeAlias(parsed.value.sectorIntent),
+    };
+  }
+  if (req.mode === 'TRANSFER' && parsed.errorCode !== 'unsupported_mode') {
+    const planetType: PlanetType =
+      req.planetType ??
+      (req.planetId === CANONICAL_PLANETS.ocean.id
+        ? 'ocean'
+        : req.planetId === CANONICAL_PLANETS.temperate.id
+          ? 'temperate'
+          : 'desert');
+    const planetId = req.planetId ?? CANONICAL_PLANETS[planetType].id;
+    const sectorIntent = withSectorIntentModeAlias(
+      req.sectorId ? { kind: 'chosen', sectorId: req.sectorId } : { kind: 'auto' },
+    );
+    return {
+      mode: 'TRANSFER',
+      planetId,
+      planetType,
+      sectorIntent,
+      ...(req.partyId ? { partyId: req.partyId } : {}),
+      ...(sourcePlanetId ? { sourcePlanetId } : {}),
+      ...(sourceColonyId ? { sourceColonyId } : {}),
+      ...(carryOver ? { carryOver } : {}),
+    };
+  }
+  throw new LobbyPersistenceConflictError(
+    parsed.errorCode === 'validation_error' ? 'invalid_ticket_intent' : parsed.errorCode,
+    parsed.message,
+  );
+}
+
+export function sameSectorIntent(
+  a: SectorPlacementIntentV1 | SectorIntentInput,
+  b: SectorPlacementIntentV1 | SectorIntentInput,
+): boolean {
+  const kindA = (a as { kind?: string; mode?: string }).kind ?? (a as { mode?: string }).mode;
+  const kindB = (b as { kind?: string; mode?: string }).kind ?? (b as { mode?: string }).mode;
+  if (kindA !== kindB) return false;
+  if (kindA === 'chosen' && kindB === 'chosen') {
+    return (a as { sectorId: string }).sectorId === (b as { sectorId: string }).sectorId;
+  }
   return true;
 }
 

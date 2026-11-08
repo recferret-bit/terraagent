@@ -35,6 +35,7 @@ import {
   type SectorReservationRecord,
   type SetPartyIntentInput,
   type UpdateCanonicalWorldStateInput,
+  type UpdateTicketInput,
   type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
@@ -224,6 +225,17 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
 
   updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
     return this.store.updateTicketState(input);
+  }
+
+  updateTicket(
+    inputOrTicketId: UpdateTicketInput | string,
+    patch?: Omit<UpdateTicketInput, 'ticketId'>,
+  ): Promise<MatchTicketRecord> {
+    const input: UpdateTicketInput =
+      typeof inputOrTicketId === 'string'
+        ? { ticketId: inputOrTicketId, ...(patch ?? {}) }
+        : inputOrTicketId;
+    return this.store.updateTicket(input);
   }
 
   cancelTicket(ticketId: string, playerId: string, now?: Date): Promise<MatchTicketRecord> {

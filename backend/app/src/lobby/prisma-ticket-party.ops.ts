@@ -1,4 +1,4 @@
-import { newId, PARTY_MAX_MEMBERS, type PartyV1 } from '@terra/contracts';
+import { newId, PARTY_MAX_MEMBERS, type PartyV1, type SectorId } from '@terra/contracts';
 import type { PrismaClient } from '@terra/db';
 import {
   LobbyPersistenceConflictError,
@@ -10,18 +10,31 @@ import {
   type MatchTicketRecord,
   type SectorReservationRecord,
   type SetPartyIntentInput,
+  type TransferCarryRecord,
+  type UpdateTicketInput,
   type UpdateTicketStateInput,
 } from './lobby-persistence.types';
 import {
   ACTIVE_TICKET_STATES,
+  extractTransferCarryFromInput,
   generatePartyCode,
   type KeyedMutex,
+  normalizeSectorIntentInput,
   normalizeTicketIntentOrThrow,
   sameSectorIntent,
 } from './lobby-store.helpers';
 import { mapPartyRow, mapTicketRow } from './prisma-lobby-mappers';
 
+interface TicketOverlayMeta {
+  readonly position?: number | null;
+  readonly etaS?: number | null;
+  readonly alternativeSectors?: readonly SectorId[];
+  readonly transferCarry?: TransferCarryRecord | null;
+}
+
 export class PrismaTicketPartyOps {
+  private readonly metaByTicketId = new Map<string, TicketOverlayMeta>();
+
   constructor(
     private readonly prisma: PrismaClient,
     private readonly mutex: KeyedMutex,
@@ -29,20 +42,40 @@ export class PrismaTicketPartyOps {
     private readonly releaseReservation: (reservationId: string) => Promise<unknown>,
   ) {}
 
+  private applyMeta(record: MatchTicketRecord): MatchTicketRecord {
+    const meta = this.metaByTicketId.get(record.id);
+    if (!meta) return record;
+    return {
+      ...record,
+      position: meta.position !== undefined ? meta.position : record.position,
+      etaS: meta.etaS !== undefined ? meta.etaS : record.etaS,
+      alternativeSectors:
+        meta.alternativeSectors !== undefined ? [...meta.alternativeSectors] : record.alternativeSectors,
+      ...(meta.transferCarry
+        ? {
+            sourcePlanetId: meta.transferCarry.sourcePlanetId,
+            sourceColonyId: meta.transferCarry.sourceColonyId,
+            ...(meta.transferCarry.carryOver ? { carryOver: { ...meta.transferCarry.carryOver } } : {}),
+            transferCarry: meta.transferCarry,
+          }
+        : {}),
+    };
+  }
+
   async enqueueTicket(input: EnqueueTicketInput): Promise<EnqueueTicketResult> {
-    const intent = normalizeTicketIntentOrThrow(input.request);
+    const intent = normalizeTicketIntentOrThrow(input.request, input.transferCarry);
     return this.mutex.run(`ticket:${input.playerId}`, async () => {
       if (input.idempotencyKey) {
         const byKey = await this.prisma.matchTicket.findUnique({
           where: { playerId_idempotencyKey: { playerId: input.playerId, idempotencyKey: input.idempotencyKey } },
         });
-        if (byKey) return { ticket: mapTicketRow(byKey), created: false };
+        if (byKey) return { ticket: this.applyMeta(mapTicketRow(byKey)), created: false };
       }
       const openRow = await this.prisma.matchTicket.findFirst({
         where: { playerId: input.playerId, state: { in: [...ACTIVE_TICKET_STATES] } },
       });
       if (openRow) {
-        const open = mapTicketRow(openRow);
+        const open = this.applyMeta(mapTicketRow(openRow));
         if (
           open.mode === intent.mode &&
           open.planetId === intent.planetId &&
@@ -57,6 +90,7 @@ export class PrismaTicketPartyOps {
           { ticketId: open.id },
         );
       }
+      const transferCarry = extractTransferCarryFromInput(input.request, intent, input.transferCarry);
       const created = await this.prisma.matchTicket.create({
         data: {
           id: input.id ?? newId('mt'),
@@ -73,20 +107,23 @@ export class PrismaTicketPartyOps {
           colonyId: input.colonyId ?? newId('co'),
         },
       });
-      return { ticket: mapTicketRow(created), created: true };
+      if (transferCarry) {
+        this.metaByTicketId.set(created.id, { transferCarry });
+      }
+      return { ticket: this.applyMeta(mapTicketRow(created)), created: true };
     });
   }
 
   async getTicketById(ticketId: string): Promise<MatchTicketRecord | null> {
     const row = await this.prisma.matchTicket.findUnique({ where: { id: ticketId } });
-    return row ? mapTicketRow(row) : null;
+    return row ? this.applyMeta(mapTicketRow(row)) : null;
   }
 
   async findActiveTicketByPlayer(playerId: string): Promise<MatchTicketRecord | null> {
     const row = await this.prisma.matchTicket.findFirst({
       where: { playerId, state: { in: [...ACTIVE_TICKET_STATES] } },
     });
-    return row ? mapTicketRow(row) : null;
+    return row ? this.applyMeta(mapTicketRow(row)) : null;
   }
 
   async listTickets(filter?: {
@@ -100,19 +137,66 @@ export class PrismaTicketPartyOps {
       },
       orderBy: [{ priority: 'desc' }, { createdAt: 'asc' }, { id: 'asc' }],
     });
-    return rows.map(mapTicketRow);
+    return rows.map((r) => this.applyMeta(mapTicketRow(r)));
   }
 
   async updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
+    return this.updateTicket({
+      ticketId: input.ticketId,
+      state: input.state,
+      ...(input.failureCode !== undefined ? { failureCode: input.failureCode } : {}),
+      ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+      ...(input.now !== undefined ? { now: input.now } : {}),
+    });
+  }
+
+  async updateTicket(input: UpdateTicketInput): Promise<MatchTicketRecord> {
+    const nextIntent =
+      input.sectorIntent !== undefined ? normalizeSectorIntentInput(input.sectorIntent) : undefined;
     const updated = await this.prisma.matchTicket.update({
       where: { id: input.ticketId },
       data: {
-        state: input.state,
+        ...(input.state !== undefined ? { state: input.state } : {}),
+        ...(input.planetId !== undefined ? { planetId: input.planetId } : {}),
+        ...(input.planetType !== undefined ? { planetType: input.planetType } : {}),
+        ...(nextIntent !== undefined
+          ? {
+              sectorIntentKind: nextIntent.kind,
+              requestedSectorId: nextIntent.kind === 'chosen' ? nextIntent.sectorId : null,
+            }
+          : {}),
+        ...(input.priority !== undefined ? { priority: input.priority } : {}),
+        ...(input.reservedPlanetId !== undefined ? { reservedPlanetId: input.reservedPlanetId } : {}),
+        ...(input.reservedSectorId !== undefined ? { reservedSectorId: input.reservedSectorId } : {}),
+        ...(input.reservedLandingSlotId !== undefined
+          ? { reservedLandingSlotId: input.reservedLandingSlotId }
+          : {}),
+        ...(input.reservationEpoch !== undefined ? { reservationEpoch: input.reservationEpoch } : {}),
+        ...(input.reservationExpiresAt !== undefined
+          ? {
+              reservationExpiresAt: input.reservationExpiresAt
+                ? new Date(input.reservationExpiresAt)
+                : null,
+            }
+          : {}),
         ...(input.failureCode !== undefined ? { failureCode: input.failureCode } : {}),
         ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
       },
     });
-    return mapTicketRow(updated);
+    const prevMeta = this.metaByTicketId.get(input.ticketId) ?? {};
+    this.metaByTicketId.set(input.ticketId, {
+      position:
+        input.position !== undefined
+          ? input.position
+          : updated.state === 'QUEUED'
+            ? (prevMeta.position ?? 0)
+            : null,
+      etaS: input.etaS !== undefined ? input.etaS : updated.state === 'QUEUED' ? prevMeta.etaS : null,
+      alternativeSectors:
+        input.alternativeSectors !== undefined ? [...input.alternativeSectors] : prevMeta.alternativeSectors,
+      transferCarry: input.transferCarry !== undefined ? input.transferCarry : prevMeta.transferCarry,
+    });
+    return this.applyMeta(mapTicketRow(updated));
   }
 
   async cancelTicket(ticketId: string, playerId: string): Promise<MatchTicketRecord> {

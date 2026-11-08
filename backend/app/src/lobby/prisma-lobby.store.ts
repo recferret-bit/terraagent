@@ -29,6 +29,7 @@ import {
   type SectorReservationRecord,
   type SetPartyIntentInput,
   type UpdateCanonicalWorldStateInput,
+  type UpdateTicketInput,
   type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
@@ -399,6 +400,9 @@ export class PrismaLobbyStore implements LobbyPersistenceStore {
   }
   updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
     return this.ticketPartyOps.updateTicketState(input);
+  }
+  updateTicket(input: UpdateTicketInput): Promise<MatchTicketRecord> {
+    return this.ticketPartyOps.updateTicket(input);
   }
   cancelTicket(ticketId: string, playerId: string): Promise<MatchTicketRecord> {
     return this.ticketPartyOps.cancelTicket(ticketId, playerId);

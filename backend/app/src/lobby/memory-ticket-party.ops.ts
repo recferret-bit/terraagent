@@ -9,14 +9,18 @@ import {
   type MatchTicketRecord,
   type SectorReservationRecord,
   type SetPartyIntentInput,
+  type UpdateTicketInput,
   type UpdateTicketStateInput,
 } from './lobby-persistence.types';
 import {
   ACTIVE_TICKET_STATES,
+  extractTransferCarryFromInput,
   generatePartyCode,
   type KeyedMutex,
+  normalizeSectorIntentInput,
   normalizeTicketIntentOrThrow,
   sameSectorIntent,
+  withSectorIntentModeAlias,
 } from './lobby-store.helpers';
 
 export class MemoryTicketPartyOps {
@@ -30,7 +34,7 @@ export class MemoryTicketPartyOps {
   ) {}
 
   async enqueueTicket(input: EnqueueTicketInput): Promise<EnqueueTicketResult> {
-    const intent = normalizeTicketIntentOrThrow(input.request);
+    const intent = normalizeTicketIntentOrThrow(input.request, input.transferCarry);
     return this.mutex.run(`ticket:${input.playerId}`, async () => {
       if (input.idempotencyKey) {
         const byKey = [...this.ticketsById.values()].find(
@@ -61,6 +65,7 @@ export class MemoryTicketPartyOps {
         throw new LobbyPersistenceConflictError('ticket_open', `colonyId "${colonyId}" is already bound to a ticket`);
       }
       const nowIso = (input.now ?? new Date()).toISOString();
+      const transferCarry = extractTransferCarryFromInput(input.request, intent, input.transferCarry);
       const ticket: MatchTicketRecord = {
         id: input.id ?? newId('mt'),
         playerId: input.playerId,
@@ -69,7 +74,7 @@ export class MemoryTicketPartyOps {
         mode: intent.mode,
         planetId: intent.planetId,
         planetType: intent.planetType,
-        sectorIntent: intent.sectorIntent,
+        sectorIntent: withSectorIntentModeAlias(intent.sectorIntent),
         state: 'QUEUED',
         priority: input.priority ?? (intent.mode === 'TRANSFER' ? 10 : 0),
         position: 0,
@@ -80,8 +85,17 @@ export class MemoryTicketPartyOps {
         reservedLandingSlotId: null,
         reservationEpoch: null,
         reservationExpiresAt: null,
+        alternativeSectors: [],
         attempts: 0,
         failureCode: null,
+        ...(transferCarry
+          ? {
+              sourcePlanetId: transferCarry.sourcePlanetId,
+              sourceColonyId: transferCarry.sourceColonyId,
+              ...(transferCarry.carryOver ? { carryOver: { ...transferCarry.carryOver } } : {}),
+              transferCarry,
+            }
+          : {}),
         createdAt: nowIso,
         updatedAt: nowIso,
       };
@@ -121,17 +135,69 @@ export class MemoryTicketPartyOps {
   }
 
   async updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
+    return this.updateTicket({
+      ticketId: input.ticketId,
+      state: input.state,
+      ...(input.failureCode !== undefined ? { failureCode: input.failureCode } : {}),
+      ...(input.attempts !== undefined ? { attempts: input.attempts } : {}),
+      ...(input.now !== undefined ? { now: input.now } : {}),
+    });
+  }
+
+  async updateTicket(input: UpdateTicketInput): Promise<MatchTicketRecord> {
     const ticket = this.ticketsById.get(input.ticketId);
     if (!ticket) {
       throw new LobbyPersistenceConflictError('ticket_open', `ticket "${input.ticketId}" not found`);
     }
+    const nextState = input.state ?? ticket.state;
+    const nextSectorIntent =
+      input.sectorIntent !== undefined
+        ? normalizeSectorIntentInput(input.sectorIntent)
+        : withSectorIntentModeAlias(ticket.sectorIntent);
+    const nextTransferCarry =
+      input.transferCarry !== undefined ? input.transferCarry : ticket.transferCarry;
     const updated: MatchTicketRecord = {
       ...ticket,
-      state: input.state,
-      position: input.state === 'QUEUED' ? (ticket.position ?? 0) : null,
-      etaS: input.state === 'QUEUED' ? ticket.etaS : null,
+      state: nextState,
+      planetId: input.planetId ?? ticket.planetId,
+      planetType: input.planetType ?? ticket.planetType,
+      sectorIntent: nextSectorIntent,
+      priority: input.priority ?? ticket.priority,
+      position:
+        input.position !== undefined
+          ? input.position
+          : nextState === 'QUEUED'
+            ? (ticket.position ?? 0)
+            : null,
+      etaS: input.etaS !== undefined ? input.etaS : nextState === 'QUEUED' ? ticket.etaS : null,
+      alternativeSectors:
+        input.alternativeSectors !== undefined
+          ? [...input.alternativeSectors]
+          : (ticket.alternativeSectors ?? []),
+      reservedPlanetId:
+        input.reservedPlanetId !== undefined ? input.reservedPlanetId : ticket.reservedPlanetId,
+      reservedSectorId:
+        input.reservedSectorId !== undefined ? input.reservedSectorId : ticket.reservedSectorId,
+      reservedLandingSlotId:
+        input.reservedLandingSlotId !== undefined
+          ? input.reservedLandingSlotId
+          : ticket.reservedLandingSlotId,
+      reservationEpoch:
+        input.reservationEpoch !== undefined ? input.reservationEpoch : ticket.reservationEpoch,
+      reservationExpiresAt:
+        input.reservationExpiresAt !== undefined
+          ? input.reservationExpiresAt
+          : ticket.reservationExpiresAt,
       failureCode: input.failureCode === undefined ? ticket.failureCode : input.failureCode,
       attempts: input.attempts ?? ticket.attempts,
+      ...(nextTransferCarry !== undefined
+        ? {
+            transferCarry: nextTransferCarry,
+            sourcePlanetId: nextTransferCarry?.sourcePlanetId ?? ticket.sourcePlanetId ?? null,
+            sourceColonyId: nextTransferCarry?.sourceColonyId ?? ticket.sourceColonyId ?? null,
+            carryOver: nextTransferCarry?.carryOver ?? ticket.carryOver ?? null,
+          }
+        : {}),
       updatedAt: (input.now ?? new Date()).toISOString(),
     };
     this.ticketsById.set(updated.id, updated);

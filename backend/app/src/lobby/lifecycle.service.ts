@@ -255,6 +255,50 @@ export class WorldLifecycleService {
   }
 
   /**
+   * Operator convenience action: pauses global matchmaking queue processing (MM-46, MM-49).
+   */
+  async pauseQueue(
+    inputOrActor?: Partial<Omit<SetQueuePausedInput, 'paused'>> | string,
+    reason?: string,
+  ): Promise<QueuePauseStatus> {
+    if (typeof inputOrActor === 'string') {
+      return this.setQueuePaused({
+        paused: true,
+        actor: inputOrActor,
+        reason: reason ?? 'queue paused by operator',
+      });
+    }
+    return this.setQueuePaused({
+      paused: true,
+      actor: inputOrActor?.actor ?? 'system:ops',
+      reason: inputOrActor?.reason ?? 'queue paused by operator',
+      ...(inputOrActor?.now ? { now: inputOrActor.now } : {}),
+    });
+  }
+
+  /**
+   * Operator convenience action: resumes global matchmaking queue processing (MM-46, MM-49).
+   */
+  async resumeQueue(
+    inputOrActor?: Partial<Omit<SetQueuePausedInput, 'paused'>> | string,
+    reason?: string,
+  ): Promise<QueuePauseStatus> {
+    if (typeof inputOrActor === 'string') {
+      return this.setQueuePaused({
+        paused: false,
+        actor: inputOrActor,
+        reason: reason ?? 'queue resumed by operator',
+      });
+    }
+    return this.setQueuePaused({
+      paused: false,
+      actor: inputOrActor?.actor ?? 'system:ops',
+      reason: inputOrActor?.reason ?? 'queue resumed by operator',
+      ...(inputOrActor?.now ? { now: inputOrActor.now } : {}),
+    });
+  }
+
+  /**
    * Updates a canonical world's health (`OK`, `LOADING`, `RETRYING`, `FAULTED`) with optimistic concurrency.
    * Non-`OK` health derives `'faulted'` availability without altering `lifecycle` or `admission`.
    */
