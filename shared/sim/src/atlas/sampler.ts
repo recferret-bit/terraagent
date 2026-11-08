@@ -14,6 +14,7 @@ import type { PlanetType } from '../kernel/state';
 import { isGlobalHexTile, sampleAtlasTile } from './depositSampler';
 import { buildSamplerLandingPlan } from './landingPlan';
 import { sectorCenterForMacro } from './partition';
+import { resolveAtlasRegionalResources, type ResolvedAtlasResourceProfile } from './regionalResources';
 import type { AtlasSamplerLandingPlan, GenerateSmallAtlasOptions } from './types';
 
 export { isGlobalHexTile, sampleAtlasTile };
@@ -83,6 +84,8 @@ export interface AtlasSamplerContext {
   readonly seedSubVein: number;
   readonly seedSubKind: number;
   readonly landingPlan: AtlasSamplerLandingPlan;
+  readonly regionalResources: ResolvedAtlasResourceProfile;
+  readonly hasCustomRegionalResources: boolean;
   readonly baseCache: Map<number, BaseSampledTile>;
   num(field: string, fallback: number): number;
 }
@@ -149,6 +152,8 @@ function buildCanonicalMacroTopology(opts?: GenerateSmallAtlasOptions): {
   return { landMacros, oceanBoundaryMacros, corridors };
 }
 
+const BASE_SAMPLER_CACHE = new Map<string, { landingPlan: AtlasSamplerLandingPlan; baseCache: Map<number, BaseSampledTile> }>();
+
 export function createAtlasSamplerContext(opts?: GenerateSmallAtlasOptions): AtlasSamplerContext {
   const planetType: PlanetType = opts?.planetType ?? 'temperate';
   const seed = opts?.seed ?? `w11-${planetType}-v1`;
@@ -160,43 +165,48 @@ export function createAtlasSamplerContext(opts?: GenerateSmallAtlasOptions): Atl
   const prefix = `${seed}|${planetType}|atlas`;
   const windSeed = seedOf(`${prefix}:wind`);
   const windDir = WIND_DIRS[Math.floor(hash2d(11, 13, windSeed) * WIND_DIRS.length)]!;
-  const landingPlan = buildSamplerLandingPlan({
-    landMacros,
-    sectorRadius,
-    foundingSeatsPerSector: opts?.foundingSeatsPerSector,
-    seed,
-  });
-
-  return {
+  const baseKey = `${planetType}|${seed}|${sectorRadius}|${opts?.foundingSeatsPerSector ?? ''}|${landMacros.map((m) => m.sectorId).join(',')}|${oceanBoundaryMacros.map((m) => m.sectorId).join(',')}`;
+  let sharedBase = BASE_SAMPLER_CACHE.get(baseKey);
+  if (!sharedBase) {
+    if (BASE_SAMPLER_CACHE.size >= 24) {
+      const oldest = BASE_SAMPLER_CACHE.keys().next().value;
+      if (oldest !== undefined) BASE_SAMPLER_CACHE.delete(oldest);
+    }
+    sharedBase = {
+      landingPlan: buildSamplerLandingPlan({ landMacros, sectorRadius, foundingSeatsPerSector: opts?.foundingSeatsPerSector, seed }),
+      baseCache: new Map<number, BaseSampledTile>(),
+    };
+    BASE_SAMPLER_CACHE.set(baseKey, sharedBase);
+  }
+  const regionalResources = resolveAtlasRegionalResources({
+    planetId: opts?.planetId,
     planetType,
-    seed,
-    worldSalt,
-    sectorRadius,
-    profile,
-    shares,
-    landMacros,
-    oceanBoundaryMacros,
-    corridors,
-    windDir,
-    seedElev: seedOf(`${prefix}:elev`),
-    seedMoist: seedOf(`${prefix}:moist`),
-    seedBasin: seedOf(`${prefix}:basin`),
-    seedCoast: seedOf(`${prefix}:coast`),
-    seedWarp: seedOf(`${prefix}:warp`),
-    seedErg: seedOf(`${prefix}:erg`),
-    seedDune: seedOf(`${prefix}:dune`),
-    seedRange: seedOf(`${prefix}:range`),
-    seedRidge: seedOf(`${prefix}:ridge`),
-    seedHole: seedOf(`${prefix}:hole`),
-    seedLandform: seedOf(`${prefix}:landform`),
-    seedDeposit: seedOf(`${prefix}:deposit`),
-    seedDepositKind: seedOf(`${prefix}:depositKind`),
-    seedRichness: seedOf(`${prefix}:richness`),
-    seedSubVein: seedOf(`${prefix}|${worldSalt}:subVein`),
-    seedSubKind: seedOf(`${prefix}|${worldSalt}:subKind`),
-    landingPlan,
-    baseCache: new Map<number, BaseSampledTile>(),
-    num: (f, fallback) => profileNumber(profile, f, fallback),
+    resourceProfileId: opts?.resourceProfileId,
+    sectors: [
+      ...landMacros.map((m) => ({
+        sectorId: m.sectorId, macroQ: m.macroQ, macroR: m.macroR, kind: 'land' as const,
+        archetype: opts?.sectorArchetypes?.[m.sectorId] ?? (m.macroQ === 0 && m.macroR === 0 ? 'heartland' : 'frontier'),
+      })),
+      ...oceanBoundaryMacros.map((m) => ({
+        sectorId: m.sectorId, macroQ: m.macroQ, macroR: m.macroR, kind: 'ocean' as const,
+        archetype: opts?.sectorArchetypes?.[m.sectorId],
+      })),
+    ],
+    sectorArchetypes: opts?.sectorArchetypes,
+    sectorResourceOverrides: opts?.sectorResourceOverrides,
+    planetResourceOverride: opts?.planetResourceOverride,
+    config: opts?.regionalResourceConfig,
+  });
+  return {
+    planetType, seed, worldSalt, sectorRadius, profile, shares, landMacros, oceanBoundaryMacros, corridors, windDir,
+    seedElev: seedOf(`${prefix}:elev`), seedMoist: seedOf(`${prefix}:moist`), seedBasin: seedOf(`${prefix}:basin`),
+    seedCoast: seedOf(`${prefix}:coast`), seedWarp: seedOf(`${prefix}:warp`), seedErg: seedOf(`${prefix}:erg`),
+    seedDune: seedOf(`${prefix}:dune`), seedRange: seedOf(`${prefix}:range`), seedRidge: seedOf(`${prefix}:ridge`),
+    seedHole: seedOf(`${prefix}:hole`), seedLandform: seedOf(`${prefix}:landform`), seedDeposit: seedOf(`${prefix}:deposit`),
+    seedDepositKind: seedOf(`${prefix}:depositKind`), seedRichness: seedOf(`${prefix}:richness`),
+    seedSubVein: seedOf(`${prefix}|${worldSalt}:subVein`), seedSubKind: seedOf(`${prefix}|${worldSalt}:subKind`),
+    landingPlan: sharedBase.landingPlan, regionalResources, hasCustomRegionalResources: regionalResources.hasCustomOverrides,
+    baseCache: sharedBase.baseCache, num: (f, fallback) => profileNumber(profile, f, fallback),
   };
 }
 
