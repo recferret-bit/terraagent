@@ -302,6 +302,7 @@ export const HomeV1Schema = z.discriminatedUnion('state', [
   z.strictObject({
     state: z.literal('NEW'),
     planets: z.array(PlanetSummaryV1Schema).length(3),
+    newPlanetTypes: z.array(PlanetType).max(0).optional(),
     queuePaused: z.boolean().optional(),
   }),
   z.strictObject({
@@ -329,6 +330,7 @@ export const HomeV1Schema = z.discriminatedUnion('state', [
     recap: HomeRecapV1Schema,
     recapSeen: z.boolean(),
     planets: z.array(PlanetSummaryV1Schema).length(3),
+    newPlanetTypes: z.array(PlanetType).max(0).optional(),
   }),
   z.strictObject({
     state: z.literal('PLANET_ENDED'),
@@ -337,6 +339,7 @@ export const HomeV1Schema = z.discriminatedUnion('state', [
     results: HomeResultsV1Schema,
     recapSeen: z.boolean(),
     planets: z.array(PlanetSummaryV1Schema).length(3),
+    newPlanetTypes: z.array(PlanetType).max(0).optional(),
   }),
 ]);
 export type HomeV1 = z.infer<typeof HomeV1Schema>;

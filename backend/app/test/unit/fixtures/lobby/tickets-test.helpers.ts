@@ -45,9 +45,11 @@ export function createTicketFixture() {
   const persistence = new LobbyPersistenceService(undefined, undefined, new MemoryLobbyStore());
   const lifecycle = new WorldLifecycleService(persistence);
   const homeRepo = new HomeRepository();
-  const tickets = new MatchTicketsService(persistence, lifecycle, homeRepo);
+  const homeService = new HomeService(homeRepo, undefined, persistence, lifecycle);
+  const homeController = new HomeController(homeService);
+  const tickets = new MatchTicketsService(persistence, lifecycle, homeRepo, homeService);
   const controller = new MatchTicketsController(tickets);
-  return { persistence, lifecycle, homeRepo, tickets, controller };
+  return { persistence, lifecycle, homeRepo, homeService, homeController, tickets, controller };
 }
 
 export async function bootTicketsHttpApp(onAppCreated?: (app: INestApplication) => void) {
@@ -73,6 +75,7 @@ export async function bootTicketsHttpApp(onAppCreated?: (app: INestApplication) 
     persistence,
     lifecycle: created.app.get(WorldLifecycleService),
     homeRepo: created.app.get(HomeRepository),
+    homeService: created.app.get(HomeService),
     tickets: created.app.get(MatchTicketsService),
   };
 }
