@@ -14,7 +14,6 @@ import {
   type AtlasManifestV1,
   type ContinentId,
   type RegionalResourceManifestHookV1,
-  type ResourceKey,
   type SafeLandingSlotV1,
   type SectorConfigV1,
   type SectorId,
