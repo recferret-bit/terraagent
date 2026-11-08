@@ -1,4 +1,5 @@
 import type { CompiledDataLike } from '@terra/sim';
+import type { AtlasMapAdapter } from './atlasMapAdapter';
 import {
   axialToCanvasPixel,
   canvasPixelToAxial,
@@ -148,6 +149,7 @@ export class MinimapHud {
   }
 
   private simData?: CompiledDataLike;
+  private atlasAdapter: AtlasMapAdapter | null = null;
 
   updateData(opts: {
     simData?: CompiledDataLike;
@@ -155,16 +157,20 @@ export class MinimapHud {
     tiles?: ClientTiles | null;
     clientView?: ClientView | null;
     ownColonySlot?: number;
+    atlasAdapter?: AtlasMapAdapter | null;
   }): void {
     this.simData = opts.simData;
     if (opts.entry !== undefined) this.lastEntry = opts.entry;
     if (opts.tiles !== undefined) this.lastTiles = opts.tiles;
     if (opts.clientView !== undefined) this.lastClientView = opts.clientView;
     if (opts.ownColonySlot !== undefined) this.ownColonySlot = opts.ownColonySlot;
+    if (opts.atlasAdapter !== undefined) this.atlasAdapter = opts.atlasAdapter;
   }
 
   buildDrawView(): MapLayerDrawView {
-    const radius = this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 6;
+    const adapter = this.atlasAdapter?.isAtlas ? this.atlasAdapter : null;
+    const radius =
+      adapter?.projectionRadius ?? this.lastEntry?.radius ?? this.rasterCache.lastRadius ?? 6;
     const size = this.sizePx;
     const scale = mapScaleForRadius(size, radius);
     return {
@@ -177,10 +183,13 @@ export class MinimapHud {
       clientView: this.lastClientView,
       simData: this.simData,
       ownColonySlot: this.ownColonySlot,
-      axialToPixel: (q, r) => axialToCanvasPixel(q, r, size, radius),
-      pixelToAxial: (x, y) => canvasPixelToAxial(x, y, size, radius),
+      axialToPixel: (q, r) =>
+        adapter ? adapter.axialToPixel(q, r, size) : axialToCanvasPixel(q, r, size, radius),
+      pixelToAxial: (x, y) =>
+        adapter ? adapter.pixelToAxial(x, y, size) : canvasPixelToAxial(x, y, size, radius),
       tilePixelRadius: Math.max(1.25, scale / Math.sqrt(3)),
       rasterCanvas: this.lastEntry?.canvas ?? null,
+      atlasAdapter: adapter,
     };
   }
 

@@ -1,9 +1,15 @@
-import { HEX_DIRS, hexIndex } from '@terra/sim/grid/hex';
+import { HEX_DIRS } from '@terra/sim/grid/hex';
 import { DEFAULT_COLONY_COLORS } from '@terra/contracts/tiles/codes';
 import { MAP_LAYER_META, type MapLayerId } from '@terra/contracts';
+import { resolveMapAdapterForView } from './atlasMapAdapter';
 import { drawMapFog, isMapTileExplored } from './visibility';
 import { drawEntityDots } from './entityDots';
 import { drawResourcesLayer } from './resourceLayer';
+import {
+  createSectorsMapLayer,
+  drawSectorsLayer,
+  type SectorLayerDrawSummary,
+} from './sectorLayer';
 import { resolveTileColorFromTokens } from './tileColors';
 import type { MapLayer, MapLayerDrawView } from './types';
 
@@ -68,12 +74,13 @@ export function drawTerrainLayer(
   }
   const tiles = view.tiles;
   if (!tiles) return;
-  const hx = hexIndex(view.radius);
-  const limit = Math.min(hx.count, tiles.count);
+  const adapter = resolveMapAdapterForView(view);
+  const drawableTiles = adapter.getDrawableTiles(tiles.count);
   const r = view.tilePixelRadius * 1.08;
-  for (let i = 0; i < limit; i++) {
-    const { x, y } = view.axialToPixel(hx.q[i]!, hx.r[i]!);
-    ctx.fillStyle = resolveTileColorFromTokens(tiles, i, view.ownColonySlot ?? 0);
+  for (let idx = 0; idx < drawableTiles.length; idx++) {
+    const t = drawableTiles[idx]!;
+    const { x, y } = view.axialToPixel(t.q, t.r);
+    ctx.fillStyle = resolveTileColorFromTokens(tiles, t.bufferIndex, view.ownColonySlot ?? 0);
     drawHexPolygonPath(ctx, x, y, r);
     ctx.fill();
   }
@@ -91,8 +98,8 @@ export function drawTerritoryLayer(
   const tiles = view.tiles;
   if (!tiles) return { ownedTileCount: 0, borderEdgeCount: 0 };
 
-  const hx = hexIndex(view.radius);
-  const limit = Math.min(hx.count, tiles.count);
+  const adapter = resolveMapAdapterForView(view);
+  const drawableTiles = adapter.getDrawableTiles(tiles.count);
   const r = view.tilePixelRadius * 1.05;
   const ownSlot = view.ownColonySlot ?? 0;
 
@@ -100,14 +107,16 @@ export function drawTerritoryLayer(
   let borderEdgeCount = 0;
 
   ctx.save();
-  for (let i = 0; i < limit; i++) {
+  for (let idx = 0; idx < drawableTiles.length; idx++) {
+    const t = drawableTiles[idx]!;
+    const i = t.bufferIndex;
     const owner = tiles.owner[i] ?? -1;
     if (owner < 0) continue;
     if (!isMapTileExplored(view, i) && owner !== ownSlot) continue;
 
     ownedTileCount++;
-    const q = hx.q[i]!;
-    const rv = hx.r[i]!;
+    const q = t.q;
+    const rv = t.r;
     const { x, y } = view.axialToPixel(q, rv);
     const color = resolveColonyMapColor(owner, ownSlot, view.colonyColors);
 
@@ -121,8 +130,8 @@ export function drawTerritoryLayer(
     ctx.lineWidth = Math.max(1.5, view.tilePixelRadius * 0.22);
     for (let k = 0; k < HEX_DIRS.length; k++) {
       const [dq, dr] = HEX_DIRS[k]!;
-      const nIdx = hx.indexOf(q + dq, rv + dr);
-      const nOwner = nIdx >= 0 && nIdx < limit ? (tiles.owner[nIdx] ?? -1) : -1;
+      const nIdx = adapter.tileIndexOf(q + dq, rv + dr, tiles.count);
+      const nOwner = nIdx >= 0 && nIdx < tiles.count ? (tiles.owner[nIdx] ?? -1) : -1;
       if (nOwner === owner) continue;
       borderEdgeCount++;
       const a0 = (Math.PI / 180) * (60 * k - 30);
@@ -145,7 +154,10 @@ export function drawUnitsLayer(
   return drawEntityDots(ctx, view).length;
 }
 
-export function createBuiltinW04Layers(): Record<'terrain' | 'territory' | 'units' | 'resources', MapLayer> {
+export function createBuiltinW04Layers(): Record<
+  'terrain' | 'territory' | 'sectors' | 'units' | 'resources',
+  MapLayer
+> {
   return {
     territory: {
       ...MAP_LAYER_META.territory,
@@ -153,6 +165,7 @@ export function createBuiltinW04Layers(): Record<'terrain' | 'territory' | 'unit
         drawTerritoryLayer(ctx, view);
       },
     },
+    sectors: createSectorsMapLayer(),
     terrain: {
       ...MAP_LAYER_META.terrain,
       draw: (ctx, view) => {
@@ -178,6 +191,7 @@ export interface CompositeMapRenderResult {
   readonly drewFlatBackground: boolean;
   readonly drawnLayers: MapLayerId[];
   readonly territory: TerritoryDrawSummary;
+  readonly sectors?: SectorLayerDrawSummary;
   readonly unitDots: number;
 }
 
@@ -194,6 +208,7 @@ export function renderCompositeMapLayers(
 
   const drawnLayers: MapLayerId[] = [];
   let territory: TerritoryDrawSummary = { ownedTileCount: 0, borderEdgeCount: 0 };
+  let sectors: SectorLayerDrawSummary | undefined;
   let unitDots = 0;
 
   if (activeLayers.has('terrain')) {
@@ -209,6 +224,10 @@ export function renderCompositeMapLayers(
     drawnLayers.push('resources');
   }
   drawMapFog(ctx, view);
+  if (activeLayers.has('sectors')) {
+    sectors = drawSectorsLayer(ctx, view);
+    drawnLayers.push('sectors');
+  }
   if (activeLayers.has('units')) {
     unitDots = drawUnitsLayer(ctx, view);
     drawnLayers.push('units');
@@ -218,6 +237,7 @@ export function renderCompositeMapLayers(
     if (
       layer.id !== 'terrain' &&
       layer.id !== 'territory' &&
+      layer.id !== 'sectors' &&
       layer.id !== 'units' &&
       layer.id !== 'resources' &&
       activeLayers.has(layer.id)
@@ -227,5 +247,11 @@ export function renderCompositeMapLayers(
     }
   }
 
-  return { drewFlatBackground, drawnLayers, territory, unitDots };
+  return {
+    drewFlatBackground,
+    drawnLayers,
+    territory,
+    ...(sectors ? { sectors } : {}),
+    unitDots,
+  };
 }
