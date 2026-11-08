@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { WorldLifecycleService } from './lifecycle.service';
 import { LobbyPersistenceService } from './lobby-persistence.service';
+import { SectorReservationService } from './reservation.service';
 import { MatchTicketsController } from './tickets.controller';
 import { MatchTicketsService } from './tickets.service';
 
@@ -12,7 +13,17 @@ import { MatchTicketsService } from './tickets.service';
 @Global()
 @Module({
   controllers: [MatchTicketsController],
-  providers: [LobbyPersistenceService, WorldLifecycleService, MatchTicketsService],
-  exports: [LobbyPersistenceService, WorldLifecycleService, MatchTicketsService],
+  providers: [
+    LobbyPersistenceService,
+    WorldLifecycleService,
+    SectorReservationService,
+    MatchTicketsService,
+  ],
+  exports: [
+    LobbyPersistenceService,
+    WorldLifecycleService,
+    SectorReservationService,
+    MatchTicketsService,
+  ],
 })
 export class LobbyModule {}

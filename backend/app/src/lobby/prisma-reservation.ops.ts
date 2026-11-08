@@ -74,10 +74,13 @@ export class PrismaReservationOps {
       },
     });
     for (const r of conflicts) {
-      const isActive = r.state === 'HELD' || r.state === 'COMMITTED';
+      const isActive = r.state === 'HELD' || r.state === 'COMMITTED' || r.state === 'SPAWNING';
       if (r.ticketId === input.ticketId || r.colonyId === input.colonyId) {
+        if (!isActive) {
+          await tx.sectorReservation.delete({ where: { id: r.id } });
+          continue;
+        }
         if (
-          isActive &&
           r.ticketId === input.ticketId &&
           r.colonyId === input.colonyId &&
           r.playerId === input.playerId &&
@@ -221,7 +224,7 @@ export class PrismaReservationOps {
           );
         }
         if (current.state === 'COMMITTED') return mapReservationRow(current);
-        if (current.state !== 'HELD') {
+        if (current.state !== 'HELD' && current.state !== 'SPAWNING') {
           throw new LobbyPersistenceConflictError(
             'reservation_fenced',
             `cannot commit reservation "${reservationId}" in state ${current.state}`,
@@ -287,6 +290,18 @@ export class PrismaReservationOps {
           where: { planetId: current.planetId, sectorId: current.sectorId },
           data: { reservedSeats: { decrement: 1 } },
         });
+        await tx.matchTicket.updateMany({
+          where: { id: current.ticketId, state: { in: ['RESERVED', 'SPAWNING'] } },
+          data: {
+            state: 'QUEUED',
+            reservedPlanetId: null,
+            reservedSectorId: null,
+            reservedLandingSlotId: null,
+            reservationEpoch: null,
+            reservationExpiresAt: null,
+            ...(reason === 'EXPIRED' ? { attempts: { increment: 1 } } : {}),
+          },
+        });
         return { released: true, reservation: mapReservationRow(updated) };
       }),
     );
@@ -294,7 +309,7 @@ export class PrismaReservationOps {
 
   async expireReservations(now: Date = new Date()): Promise<SectorReservationRecord[]> {
     const candidates = await this.prisma.sectorReservation.findMany({
-      where: { state: 'HELD', expiresAt: { lte: now } },
+      where: { state: { in: ['HELD', 'SPAWNING'] }, expiresAt: { lte: now } },
     });
     const expired: SectorReservationRecord[] = [];
     for (const c of candidates) {
