@@ -31,8 +31,9 @@ import {
 import {
   computeAtlasConfigHash,
   computeAtlasManifestHash,
-  computeResourceProfileHash,
+  hashAtlasCanonicalJson,
 } from './manifestHash';
+import { resolveSectorResourceProfile } from './regionalResources';
 import {
   cloneAtlasManifest,
   createAtlasQueryViewFromManifest,
@@ -44,6 +45,7 @@ import type { AtlasBlobValue, CreateAtlasPlanetOptions } from './types';
 
 function reconstructSectorsFromBlob(
   blob: AtlasBlobValue,
+  planetId: string,
   resourceProfileId: string,
   topologyVersion: number,
   genVersion: number,
@@ -59,6 +61,9 @@ function reconstructSectorsFromBlob(
   return blob.sectors.map((sec) => {
     const slots =
       sec.safeLandingSlots?.map((s) => ({ ...s })) ?? slotsBySector.get(sec.sectorId) ?? [];
+    const secProfileId = sec.resourceProfileId ?? resourceProfileId;
+    const archetype =
+      sec.archetype ?? (sec.kind === 'land' ? defaultSectorArchetype(sec.macroQ, sec.macroR) : undefined);
     return {
       sectorId: sec.sectorId,
       continentId: sec.continentId,
@@ -73,16 +78,19 @@ function reconstructSectorsFromBlob(
       validatedSafeSites: sec.validatedSafeSites ?? slots.length,
       safeLandingSlots: slots,
       neighbours: macroNeighbors(sec.macroQ, sec.macroR, blob.sectorRadius, knownSectorIds),
-      resourceEndowment: buildSectorResourceEndowment({
-        planetType: blob.planetType,
-        sectorId: sec.sectorId,
-        kind: sec.kind,
-        profileId: resourceProfileId,
-        topologyVersion,
-        genVersion,
-        archetype: sec.kind === 'land' ? defaultSectorArchetype(sec.macroQ, sec.macroR) : undefined,
-        planetResourceProfileId: resourceProfileId,
-      }),
+      resourceEndowment:
+        sec.resourceEndowment ??
+        buildSectorResourceEndowment({
+          planetId,
+          planetType: blob.planetType,
+          sectorId: sec.sectorId,
+          kind: sec.kind,
+          profileId: secProfileId,
+          topologyVersion,
+          genVersion,
+          archetype,
+          planetResourceProfileId: resourceProfileId,
+        }),
     };
   });
 }
@@ -95,76 +103,52 @@ function reconstructManifestFromBlob(blob: AtlasBlobValue): AtlasManifestV1 {
   const topologyVersion = blob.topologyVersion ?? W11_DEFAULT_TOPOLOGY_VERSION;
   const genVersion = blob.genVersion ?? GEN_VERSION;
   const configVersion = blob.configVersion ?? W11_DEFAULT_CONFIG_VERSION;
-  const resourceProfileId =
-    blob.resourceProfileId ?? defaultResourceProfileIdForType(blob.planetType);
+  const resourceProfileId = blob.resourceProfileId ?? defaultResourceProfileIdForType(blob.planetType);
 
   const config = buildDefaultAtlasConfig({
-    planetId,
-    planetType: blob.planetType,
-    seed: blob.seed,
-    topologyVersion,
-    genVersion,
-    configVersion,
-    sectorRadius: blob.sectorRadius,
-    foundingSeatsPerSector: blob.foundingSeatsPerSector,
-    resourceProfileId,
+    planetId, planetType: blob.planetType, seed: blob.seed, topologyVersion, genVersion, configVersion,
+    sectorRadius: blob.sectorRadius, foundingSeatsPerSector: blob.foundingSeatsPerSector, resourceProfileId,
     sectors: blob.sectors.map((sec) =>
       sec.kind === 'land'
         ? {
-            sectorId: sec.sectorId,
-            continentId: sec.continentId ?? blob.continentId,
-            macroQ: sec.macroQ,
-            macroR: sec.macroR,
-            kind: 'land' as const,
-            radius: sec.radius,
-            foundingCapacity: sec.foundingCapacity,
-            archetype: defaultSectorArchetype(sec.macroQ, sec.macroR),
-            resourceProfileId,
+            sectorId: sec.sectorId, continentId: sec.continentId ?? blob.continentId,
+            macroQ: sec.macroQ, macroR: sec.macroR, kind: 'land' as const,
+            radius: sec.radius, foundingCapacity: sec.foundingCapacity,
+            archetype: sec.archetype ?? defaultSectorArchetype(sec.macroQ, sec.macroR),
+            resourceProfileId: sec.resourceProfileId ?? resourceProfileId,
           }
         : {
-            sectorId: sec.sectorId,
-            continentId: null,
-            macroQ: sec.macroQ,
-            macroR: sec.macroR,
-            kind: 'ocean' as const,
-            radius: sec.radius,
-            foundingCapacity: 0,
+            sectorId: sec.sectorId, continentId: null, macroQ: sec.macroQ, macroR: sec.macroR,
+            kind: 'ocean' as const, radius: sec.radius, foundingCapacity: 0,
+            ...(sec.archetype ? { archetype: sec.archetype } : {}),
           },
     ),
   });
 
-  const sectors = reconstructSectorsFromBlob(
-    blob,
-    resourceProfileId,
-    topologyVersion,
-    genVersion,
-  );
+  const sectors = reconstructSectorsFromBlob(blob, planetId, resourceProfileId, topologyVersion, genVersion);
+  const planetEndowment = resolveSectorResourceProfile({
+    planetId, planetType: blob.planetType, sectorId: 'sec_0_0', kind: 'land',
+    profileId: resourceProfileId, planetResourceProfileId: resourceProfileId, topologyVersion, genVersion,
+  });
+  const canonicalSortedSectors = [...sectors].sort((a, b) => a.macroQ - b.macroQ || a.macroR - b.macroR);
   const landSectors = sectors.filter((s) => s.kind === 'land').length;
   const oceanSectors = sectors.length - landSectors;
   const baseManifest: Omit<AtlasManifestV1, 'atlasHash'> = {
-    planetId,
-    planetType: blob.planetType,
-    look: planetLookForType(blob.planetType),
-    seed: blob.seed,
-    atlasVersion: blob.atlasVersion ?? W11_DEFAULT_ATLAS_VERSION,
-    topologyVersion,
-    genVersion,
-    configVersion,
-    configHash: blob.configHash ?? computeAtlasConfigHash(config),
-    resourceProfileId,
+    planetId, planetType: blob.planetType, look: planetLookForType(blob.planetType), seed: blob.seed,
+    atlasVersion: blob.atlasVersion ?? W11_DEFAULT_ATLAS_VERSION, topologyVersion, genVersion, configVersion,
+    configHash: blob.configHash ?? computeAtlasConfigHash(config), resourceProfileId,
     resourceProfileHash:
       blob.resourceProfileHash ??
-      computeResourceProfileHash({
-        resourceProfileId,
-        planetType: blob.planetType,
-        topologyVersion,
-        genVersion,
+      hashAtlasCanonicalJson({
+        resourceProfileId, planetId, planetType: blob.planetType, topologyVersion, genVersion,
+        planetEndowmentHash: planetEndowment.sectorResourceHash,
+        sectors: canonicalSortedSectors.map((s) => ({
+          sectorId: s.sectorId,
+          endowmentHash: s.resourceEndowment?.endowmentHash ?? planetEndowment.sectorResourceHash,
+        })),
       }),
-    sectorRadius: blob.sectorRadius,
-    foundingSeatsPerSector: blob.foundingSeatsPerSector,
-    totalSectors: sectors.length,
-    landSectors,
-    oceanSectors,
+    sectorRadius: blob.sectorRadius, foundingSeatsPerSector: blob.foundingSeatsPerSector,
+    totalSectors: sectors.length, landSectors, oceanSectors,
     nominalCapacity: sectors.reduce((sum, s) => sum + s.foundingCapacity, 0),
     validatedCapacity: sectors.reduce((sum, s) => sum + s.validatedSafeSites, 0),
     bounds: {

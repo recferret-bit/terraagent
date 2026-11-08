@@ -3,6 +3,8 @@ import {
   type AtlasConfigV1,
   type AtlasManifestV1,
   type ContinentId,
+  type RegionalResourceManifestHookV1,
+  type ResourceKey,
   type SafeLandingSlotV1,
   type SectorId,
   type SectorKind,
@@ -10,6 +12,12 @@ import {
 } from '@terra/contracts';
 import type { PlanetType } from '../kernel/state';
 import type { AtlasLandingValidationReport, ValidateAtlasLandingSitesOptions } from './landingTypes';
+import type {
+  RegionalResourceLayerPatch,
+  RegionalResourceResolutionConfig,
+  ResolvedAtlasResourceProfile,
+  ResolvedSectorResourceProfile,
+} from './regionalResourceTypes';
 
 export * from './landingTypes';
 
@@ -161,6 +169,11 @@ export interface GenerateSmallAtlasOptions extends BuildSmallAtlasPartitionOptio
   readonly seed?: string;
   readonly worldSalt?: string;
   readonly foundingSeatsPerSector?: number;
+  readonly resourceProfileId?: string;
+  readonly regionalResourceConfig?: RegionalResourceResolutionConfig;
+  readonly sectorArchetypes?: Readonly<Record<SectorId, string>>;
+  readonly sectorResourceOverrides?: Readonly<Record<SectorId, RegionalResourceLayerPatch>>;
+  readonly planetResourceOverride?: RegionalResourceLayerPatch;
   /**
    * Optional explicit order of sector IDs to iterate when populating sector buffers.
    * Global coordinate sampling guarantees identical tile outputs under any permutation.
@@ -219,6 +232,13 @@ export interface GeneratedAtlasSector {
   readonly foundingCapacity: number;
   readonly validatedSafeSites: number;
   readonly safeLandingSlots: readonly SafeLandingSlotV1[];
+  readonly archetype?: string;
+  readonly resourceProfileId: string;
+  readonly sectorResourceHash: string;
+  readonly mainResource: ResourceKey;
+  readonly scarceResources: readonly ResourceKey[];
+  readonly resourceEndowment: RegionalResourceManifestHookV1;
+  readonly resourceProfile: ResolvedSectorResourceProfile;
   readonly neighbors: readonly SectorNeighborV1[];
   readonly atlasNeighbors: readonly SectorNeighborV1[];
   readonly tiles: readonly SectorTileEntry[];
@@ -293,6 +313,12 @@ export interface AtlasSectorBlobSummary {
   readonly foundingCapacity: number;
   readonly validatedSafeSites?: number;
   readonly safeLandingSlots?: readonly SafeLandingSlotV1[];
+  readonly archetype?: string;
+  readonly resourceProfileId?: string;
+  readonly sectorResourceHash?: string;
+  readonly mainResource?: ResourceKey;
+  readonly scarceResources?: readonly ResourceKey[];
+  readonly resourceEndowment?: RegionalResourceManifestHookV1;
   readonly foundedSeats?: number;
   readonly freeSeats?: number;
   readonly livingColonies?: number;
@@ -332,6 +358,9 @@ export interface GeneratedSmallAtlas {
   readonly planetType: PlanetType;
   readonly seed: string;
   readonly genVersion: number;
+  readonly resourceProfileId: string;
+  readonly resourceProfileHash: string;
+  readonly regionalResources: ResolvedAtlasResourceProfile;
   readonly sectorRadius: number;
   readonly tilesPerSector: number;
   readonly foundingSeatsPerSector: number;

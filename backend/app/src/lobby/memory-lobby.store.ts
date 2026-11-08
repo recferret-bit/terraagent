@@ -28,6 +28,7 @@ import {
   type SectorReservationRecord,
   type SetPartyIntentInput,
   type UpdateCanonicalWorldStateInput,
+  type UpdateTicketInput,
   type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
@@ -95,6 +96,8 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
         ...spec,
         seatsTaken: 0,
         faultCode: null,
+        retryCount: 0,
+        placementAttempts: 0,
         createdAt: now,
         updatedAt: now,
       };
@@ -142,6 +145,9 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
         health: input.health ?? existing.health,
         admission: input.admission ?? existing.admission,
         faultCode: input.faultCode === undefined ? existing.faultCode : input.faultCode,
+        retryCount: input.retryCount === undefined ? (existing.retryCount ?? 0) : input.retryCount,
+        placementAttempts:
+          input.placementAttempts === undefined ? (existing.placementAttempts ?? 0) : input.placementAttempts,
         updatedAt: nextUpdatedAt,
       };
       input.onTransition?.(existing, next);
@@ -363,6 +369,9 @@ export class MemoryLobbyStore implements LobbyPersistenceStore {
   }
   updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
     return this.ticketPartyOps.updateTicketState(input);
+  }
+  updateTicket(input: UpdateTicketInput): Promise<MatchTicketRecord> {
+    return this.ticketPartyOps.updateTicket(input);
   }
   cancelTicket(ticketId: string, playerId: string, now?: Date): Promise<MatchTicketRecord> {
     return this.ticketPartyOps.cancelTicket(ticketId, playerId, now);

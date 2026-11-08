@@ -35,6 +35,7 @@ import {
   type SectorReservationRecord,
   type SetPartyIntentInput,
   type UpdateCanonicalWorldStateInput,
+  type UpdateTicketInput,
   type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
 } from './lobby-persistence.types';
@@ -68,6 +69,10 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
   }
 
   provisionCanonicalWorld(input: ProvisionCanonicalWorldInput): Promise<ProvisionCanonicalWorldResult> {
+    return this.store.provisionCanonicalWorld(input);
+  }
+
+  upsertCanonicalWorld(input: ProvisionCanonicalWorldInput): Promise<ProvisionCanonicalWorldResult> {
     return this.store.provisionCanonicalWorld(input);
   }
 
@@ -109,6 +114,10 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
     return this.store.pinAtlasVersion(manifest);
   }
 
+  saveAtlasManifest(manifest: AtlasManifestV1): Promise<PinAtlasVersionResult> {
+    return this.store.pinAtlasVersion(manifest);
+  }
+
   getAtlasVersion(planetId: string, atlasVersion: number): Promise<PinnedAtlasVersionRecord | null> {
     return this.store.getAtlasVersion(planetId, atlasVersion);
   }
@@ -121,6 +130,21 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
     input: UpsertSectorWithSlotsInput,
   ): Promise<{ readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }> {
     return this.store.upsertSectorWithSlots(input);
+  }
+
+  async upsertSectors(
+    planetIdOrSectors: string | readonly UpsertSectorWithSlotsInput[],
+    sectors?: readonly (Omit<UpsertSectorWithSlotsInput, 'planetId'> & { readonly planetId?: string })[],
+  ): Promise<readonly { readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }[]> {
+    const items: UpsertSectorWithSlotsInput[] =
+      typeof planetIdOrSectors === 'string'
+        ? (sectors ?? []).map((s) => ({ ...s, planetId: s.planetId ?? planetIdOrSectors }))
+        : [...planetIdOrSectors];
+    const out: { readonly sector: PlanetSectorRecord; readonly slots: SectorLandingSlotRecord[] }[] = [];
+    for (const item of items) {
+      out.push(await this.store.upsertSectorWithSlots(item));
+    }
+    return out;
   }
 
   getSector(planetId: string, sectorId: SectorId): Promise<PlanetSectorRecord | null> {
@@ -224,6 +248,17 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
 
   updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord> {
     return this.store.updateTicketState(input);
+  }
+
+  updateTicket(
+    inputOrTicketId: UpdateTicketInput | string,
+    patch?: Omit<UpdateTicketInput, 'ticketId'>,
+  ): Promise<MatchTicketRecord> {
+    const input: UpdateTicketInput =
+      typeof inputOrTicketId === 'string'
+        ? { ticketId: inputOrTicketId, ...(patch ?? {}) }
+        : inputOrTicketId;
+    return this.store.updateTicket(input);
   }
 
   cancelTicket(ticketId: string, playerId: string, now?: Date): Promise<MatchTicketRecord> {

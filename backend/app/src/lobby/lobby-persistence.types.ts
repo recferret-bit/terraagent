@@ -71,6 +71,8 @@ export interface CanonicalWorldRecord {
   readonly atlasHash: string;
   readonly configHash: string;
   readonly faultCode: string | null;
+  readonly retryCount?: number;
+  readonly placementAttempts?: number;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -137,8 +139,35 @@ export interface SectorReservationRecord extends SectorReservationV1 {
   readonly updatedAt: Date;
 }
 
-export interface MatchTicketRecord extends MatchTicketV1 {
+export interface TransferCarryRecord {
+  readonly sourcePlanetId: string;
+  readonly sourceColonyId: string;
+  readonly carryOver?: Readonly<Record<string, unknown>>;
+}
+
+export type SectorIntentWithMode =
+  | {
+      readonly kind: 'chosen';
+      readonly mode?: 'chosen';
+      readonly sectorId: SectorId;
+    }
+  | {
+      readonly kind: 'auto';
+      readonly mode?: 'auto';
+    };
+
+export type SectorIntentInput =
+  | SectorPlacementIntentV1
+  | { readonly mode: 'chosen'; readonly sectorId: SectorId; readonly kind?: 'chosen' }
+  | { readonly mode: 'auto'; readonly kind?: 'auto' };
+
+export interface MatchTicketRecord extends Omit<MatchTicketV1, 'sectorIntent'> {
+  readonly sectorIntent: SectorIntentWithMode;
   readonly idempotencyKey: string | null;
+  readonly sourcePlanetId?: string | null;
+  readonly sourceColonyId?: string | null;
+  readonly carryOver?: Readonly<Record<string, unknown>> | null;
+  readonly transferCarry?: TransferCarryRecord | null;
 }
 
 export type PartyState = PartyV1['state'];
@@ -169,6 +198,8 @@ export interface UpdateCanonicalWorldStateInput {
   readonly health?: WorldHealthState;
   readonly admission?: WorldAdmissionState;
   readonly faultCode?: string | null;
+  readonly retryCount?: number;
+  readonly placementAttempts?: number;
   readonly expectedUpdatedAt?: Date | string | number;
   readonly now?: Date;
   readonly onTransition?: (previous: CanonicalWorldRecord, next: CanonicalWorldRecord) => void;
@@ -227,13 +258,31 @@ export type ReserveSectorSlotOutcome =
       readonly message: string;
     };
 
+export type EnqueueTicketRequestInput =
+  | EnqueueTicketRequestV1
+  | NormalizedTicketIntentV1
+  | {
+      readonly mode: string;
+      readonly planetId?: string;
+      readonly planetType?: PlanetType;
+      readonly sectorId?: SectorId;
+      readonly autoSector?: boolean;
+      readonly sectorIntent?: SectorIntentInput;
+      readonly partyId?: string;
+      readonly sourcePlanetId?: string;
+      readonly sourceColonyId?: string;
+      readonly carryOver?: Readonly<Record<string, unknown>>;
+      readonly transferCarry?: Partial<TransferCarryRecord> | null;
+    };
+
 export interface EnqueueTicketInput {
   readonly id?: string;
   readonly playerId: string;
   readonly idempotencyKey?: string;
-  readonly request: EnqueueTicketRequestV1 | NormalizedTicketIntentV1;
+  readonly request: EnqueueTicketRequestInput;
   readonly colonyId?: string;
   readonly priority?: number;
+  readonly transferCarry?: Partial<TransferCarryRecord> | null;
   readonly now?: Date;
 }
 
@@ -247,6 +296,27 @@ export interface UpdateTicketStateInput {
   readonly state: TicketStateV1;
   readonly failureCode?: string | null;
   readonly attempts?: number;
+  readonly now?: Date;
+}
+
+export interface UpdateTicketInput {
+  readonly ticketId: string;
+  readonly state?: TicketStateV1;
+  readonly planetId?: string;
+  readonly planetType?: PlanetType;
+  readonly sectorIntent?: SectorIntentInput | SectorId;
+  readonly priority?: number;
+  readonly position?: number | null;
+  readonly etaS?: number | null;
+  readonly alternativeSectors?: readonly SectorId[];
+  readonly reservedPlanetId?: string | null;
+  readonly reservedSectorId?: SectorId | null;
+  readonly reservedLandingSlotId?: LandingSlotId | null;
+  readonly reservationEpoch?: number | null;
+  readonly reservationExpiresAt?: string | null;
+  readonly failureCode?: string | null;
+  readonly attempts?: number;
+  readonly transferCarry?: TransferCarryRecord | null;
   readonly now?: Date;
 }
 
@@ -319,6 +389,7 @@ export interface LobbyPersistenceStore {
   findActiveTicketByPlayer(playerId: string): Promise<MatchTicketRecord | null>;
   listTickets(filter?: { readonly planetId?: string; readonly state?: TicketStateV1 }): Promise<MatchTicketRecord[]>;
   updateTicketState(input: UpdateTicketStateInput): Promise<MatchTicketRecord>;
+  updateTicket(input: UpdateTicketInput): Promise<MatchTicketRecord>;
   cancelTicket(ticketId: string, playerId: string, now?: Date): Promise<MatchTicketRecord>;
 
   createParty(input: CreatePartyInput): Promise<PartyV1>;

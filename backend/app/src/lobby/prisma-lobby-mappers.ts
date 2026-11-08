@@ -23,7 +23,7 @@ import type {
   SectorLandingSlotState,
   SectorReservationRecord,
 } from './lobby-persistence.types';
-import { computeFreeSectorSeats } from './lobby-store.helpers';
+import { computeFreeSectorSeats, withSectorIntentModeAlias } from './lobby-store.helpers';
 
 export interface PrismaPlanetRow {
   id: string;
@@ -45,7 +45,10 @@ export interface PrismaPlanetRow {
   updatedAt: Date;
 }
 
-export function mapCanonicalWorldRow(row: PrismaPlanetRow): CanonicalWorldRecord {
+export function mapCanonicalWorldRow(
+  row: PrismaPlanetRow,
+  attempts?: { readonly retryCount: number; readonly placementAttempts: number },
+): CanonicalWorldRecord {
   return {
     id: row.id,
     name: row.name,
@@ -62,6 +65,8 @@ export function mapCanonicalWorldRow(row: PrismaPlanetRow): CanonicalWorldRecord
     atlasHash: row.atlasHash,
     configHash: row.configHash,
     faultCode: row.faultCode,
+    retryCount: attempts?.retryCount ?? 0,
+    placementAttempts: attempts?.placementAttempts ?? 0,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   };
@@ -251,10 +256,11 @@ export interface PrismaTicketRow {
 }
 
 export function mapTicketRow(row: PrismaTicketRow): MatchTicketRecord {
-  const sectorIntent: SectorPlacementIntentV1 =
+  const sectorIntent = withSectorIntentModeAlias(
     row.sectorIntentKind === 'chosen' && row.requestedSectorId
       ? { kind: 'chosen', sectorId: row.requestedSectorId }
-      : { kind: 'auto' };
+      : { kind: 'auto' },
+  );
   return {
     id: row.id,
     playerId: row.playerId,
@@ -274,6 +280,7 @@ export function mapTicketRow(row: PrismaTicketRow): MatchTicketRecord {
     reservedLandingSlotId: row.reservedLandingSlotId,
     reservationEpoch: row.reservationEpoch,
     reservationExpiresAt: row.reservationExpiresAt ? row.reservationExpiresAt.toISOString() : null,
+    alternativeSectors: [],
     attempts: row.attempts,
     failureCode: row.failureCode,
     createdAt: row.createdAt.toISOString(),
