@@ -26,9 +26,14 @@ import { planSectorLandingSites } from './landingPlan';
 import {
   computeAtlasConfigHash,
   computeAtlasManifestHash,
-  computeResourceProfileHash,
+  hashAtlasCanonicalJson,
 } from './manifestHash';
 import { isGeneratedSmallAtlas } from './manifestRollout';
+import {
+  resolveSectorResourceProfile,
+  type RegionalResourceLayerPatch,
+  type RegionalResourceResolutionConfig,
+} from './regionalResources';
 import { buildSmallAtlasPartition } from './smallAtlas';
 import type {
   AtlasBlobValue,
@@ -57,6 +62,10 @@ export interface BuildAtlasConfigOptions extends BuildSmallAtlasPartitionOptions
   readonly foundingSeatsPerSector?: number;
   readonly sectors?: readonly SectorConfigV1[];
   readonly resourceProfileId?: string;
+  readonly regionalResourceConfig?: RegionalResourceResolutionConfig;
+  readonly sectorArchetypes?: Readonly<Record<SectorId, string>>;
+  readonly sectorResourceOverrides?: Readonly<Record<SectorId, RegionalResourceLayerPatch>>;
+  readonly planetResourceOverride?: RegionalResourceLayerPatch;
 }
 
 export interface BuildAtlasManifestOptions extends BuildAtlasConfigOptions {
@@ -98,6 +107,7 @@ export function defaultSectorArchetype(macroQ: number, macroR: number): string {
 }
 
 export function buildSectorResourceEndowment(params: {
+  readonly planetId?: string;
   readonly planetType: PlanetType;
   readonly sectorId: SectorId;
   readonly kind: 'land' | 'ocean';
@@ -106,31 +116,24 @@ export function buildSectorResourceEndowment(params: {
   readonly genVersion: number;
   readonly archetype?: string;
   readonly planetResourceProfileId: string;
+  readonly planetIdOverride?: RegionalResourceLayerPatch;
+  readonly sectorIdOverride?: RegionalResourceLayerPatch;
+  readonly config?: RegionalResourceResolutionConfig;
 }): RegionalResourceManifestHookV1 {
-  const { planetType, sectorId, kind, profileId, topologyVersion, genVersion, archetype, planetResourceProfileId } =
-    params;
-  const mainResource: ResourceKey =
-    planetType === 'desert' ? 'metals.t1' : planetType === 'ocean' ? 'bio.water' : 'minerals.t1';
-  const scarceResources: ResourceKey[] =
-    planetType === 'desert' ? ['bio.water'] : planetType === 'ocean' ? ['minerals.t1'] : ['metals.t2'];
-  const sourceLayer = profileId !== planetResourceProfileId ? 'sectorId' : 'planetType';
-
-  return {
-    profileId,
-    endowmentHash: computeResourceProfileHash({
-      resourceProfileId: profileId,
-      planetType,
-      topologyVersion,
-      genVersion,
-      sectorId,
-      kind,
-      archetype,
-    }),
-    sourceLayer,
-    depositDensityPer1000Tiles: kind === 'land' ? 12 : 0,
-    mainResource,
-    scarceResources,
-  };
+  return resolveSectorResourceProfile({
+    planetId: params.planetId,
+    planetType: params.planetType,
+    sectorId: params.sectorId,
+    kind: params.kind,
+    archetype: params.archetype,
+    profileId: params.profileId,
+    planetResourceProfileId: params.planetResourceProfileId,
+    topologyVersion: params.topologyVersion,
+    genVersion: params.genVersion,
+    planetIdOverride: params.planetIdOverride,
+    sectorIdOverride: params.sectorIdOverride,
+    config: params.config,
+  }).manifestHook;
 }
 
 /**
@@ -175,8 +178,12 @@ export function buildDefaultAtlasConfig(opts?: BuildAtlasConfigOptions | PlanetT
             kind: 'land' as const,
             radius: sectorRadius,
             foundingCapacity: foundingSeatsPerSector,
-            archetype: defaultSectorArchetype(sec.macroQ, sec.macroR),
-            resourceProfileId,
+            archetype:
+              resolvedOpts.sectorArchetypes?.[sec.sectorId] ??
+              defaultSectorArchetype(sec.macroQ, sec.macroR),
+            resourceProfileId:
+              resolvedOpts.sectorResourceOverrides?.[sec.sectorId]?.profileId ??
+              resourceProfileId,
           }
         : {
             sectorId: sec.sectorId,
@@ -186,6 +193,9 @@ export function buildDefaultAtlasConfig(opts?: BuildAtlasConfigOptions | PlanetT
             kind: 'ocean' as const,
             radius: sectorRadius,
             foundingCapacity: 0,
+            ...(resolvedOpts.sectorArchetypes?.[sec.sectorId]
+              ? { archetype: resolvedOpts.sectorArchetypes[sec.sectorId] }
+              : {}),
           },
     );
   }
@@ -217,13 +227,34 @@ function finalizeAtlasManifest(params: {
     config.resourceProfileId ??
     defaultResourceProfileIdForType(config.planetType);
   const configHash = opts?.configHash ?? computeAtlasConfigHash(config);
+  const planetEndowment = resolveSectorResourceProfile({
+    planetId: config.planetId,
+    planetType: config.planetType,
+    sectorId: 'sec_0_0',
+    kind: 'land',
+    profileId: resourceProfileId,
+    planetResourceProfileId: resourceProfileId,
+    topologyVersion: config.topologyVersion,
+    genVersion: config.genVersion,
+    planetIdOverride: opts?.planetResourceOverride,
+    config: opts?.regionalResourceConfig,
+  });
+  const canonicalSortedSectors = [...sectors].sort(
+    (a, b) => a.macroQ - b.macroQ || a.macroR - b.macroR,
+  );
   const resourceProfileHash =
     opts?.resourceProfileHash ??
-    computeResourceProfileHash({
+    hashAtlasCanonicalJson({
       resourceProfileId,
+      planetId: config.planetId,
       planetType: config.planetType,
       topologyVersion: config.topologyVersion,
       genVersion: config.genVersion,
+      planetEndowmentHash: planetEndowment.sectorResourceHash,
+      sectors: canonicalSortedSectors.map((s) => ({
+        sectorId: s.sectorId,
+        endowmentHash: s.resourceEndowment?.endowmentHash ?? planetEndowment.sectorResourceHash,
+      })),
     });
   const landSectors = sectors.filter((s) => s.kind === 'land').length;
   const oceanSectors = sectors.length - landSectors;
@@ -282,6 +313,7 @@ function buildManifestFromGeneratedAtlas(
   const resourceProfileId =
     opts?.resourceProfileId ??
     opts?.config?.resourceProfileId ??
+    atlas.resourceProfileId ??
     defaultResourceProfileIdForType(planetType);
   const secCfgById = new Map<SectorId, SectorConfigV1>(
     (opts?.config?.sectors ?? []).map((s) => [s.sectorId, s]),
@@ -299,59 +331,59 @@ function buildManifestFromGeneratedAtlas(
       sectorRadius: atlas.sectorRadius,
       foundingSeatsPerSector: atlas.foundingSeatsPerSector,
       resourceProfileId,
-      sectors: atlas.sectors.map((sec) =>
-        sec.kind === 'land'
-          ? {
-              sectorId: sec.sectorId,
-              continentId: sec.continentId ?? atlas.continentId,
-              macroQ: sec.macroQ,
-              macroR: sec.macroR,
-              kind: 'land' as const,
-              radius: sec.radius,
-              foundingCapacity: sec.foundingCapacity,
-              archetype: defaultSectorArchetype(sec.macroQ, sec.macroR),
-              resourceProfileId,
-            }
-          : {
-              sectorId: sec.sectorId,
-              continentId: null,
-              macroQ: sec.macroQ,
-              macroR: sec.macroR,
-              kind: 'ocean' as const,
-              radius: sec.radius,
-              foundingCapacity: 0,
-            },
-      ),
+      sectors: atlas.sectors.map((sec) => {
+        const arch = opts?.sectorArchetypes?.[sec.sectorId] ?? sec.archetype;
+        if (sec.kind === 'land') {
+          return {
+            sectorId: sec.sectorId,
+            continentId: sec.continentId ?? atlas.continentId,
+            macroQ: sec.macroQ,
+            macroR: sec.macroR,
+            kind: 'land' as const,
+            radius: sec.radius,
+            foundingCapacity: sec.foundingCapacity,
+            archetype: arch ?? defaultSectorArchetype(sec.macroQ, sec.macroR),
+            resourceProfileId:
+              opts?.sectorResourceOverrides?.[sec.sectorId]?.profileId ??
+              (opts?.resourceProfileId ? resourceProfileId : sec.resourceProfileId ?? resourceProfileId),
+          };
+        }
+        return {
+          sectorId: sec.sectorId,
+          continentId: null,
+          macroQ: sec.macroQ,
+          macroR: sec.macroR,
+          kind: 'ocean' as const,
+          radius: sec.radius,
+          foundingCapacity: 0,
+          ...(arch ? { archetype: arch } : {}),
+        };
+      }),
     });
 
   const sectors: SectorManifestV1[] = atlas.sectors.map((sec) => {
     const secCfg = secCfgById.get(sec.sectorId);
-    const secProfileId = secCfg?.resourceProfileId ?? resourceProfileId;
+    const secProfileId =
+      secCfg?.resourceProfileId ??
+      opts?.sectorResourceOverrides?.[sec.sectorId]?.profileId ??
+      (opts?.resourceProfileId ? resourceProfileId : sec.resourceProfileId ?? resourceProfileId);
     const archetype =
-      secCfg?.archetype ?? (sec.kind === 'land' ? defaultSectorArchetype(sec.macroQ, sec.macroR) : undefined);
+      secCfg?.archetype ??
+      opts?.sectorArchetypes?.[sec.sectorId] ??
+      sec.archetype ??
+      (sec.kind === 'land' ? defaultSectorArchetype(sec.macroQ, sec.macroR) : undefined);
     return {
-      sectorId: sec.sectorId,
-      continentId: sec.continentId,
-      macroQ: sec.macroQ,
-      macroR: sec.macroR,
-      centerQ: sec.centerQ,
-      centerR: sec.centerR,
-      kind: sec.kind,
-      radius: sec.radius,
-      tileCount: sec.tileCount,
-      foundingCapacity: sec.foundingCapacity,
-      validatedSafeSites: sec.validatedSafeSites,
+      sectorId: sec.sectorId, continentId: sec.continentId, macroQ: sec.macroQ, macroR: sec.macroR,
+      centerQ: sec.centerQ, centerR: sec.centerR, kind: sec.kind, radius: sec.radius,
+      tileCount: sec.tileCount, foundingCapacity: sec.foundingCapacity, validatedSafeSites: sec.validatedSafeSites,
       safeLandingSlots: sec.safeLandingSlots.map((slot) => ({ ...slot })),
       neighbours: sec.atlasNeighbors.map((nb) => ({ ...nb })),
       resourceEndowment: buildSectorResourceEndowment({
-        planetType,
-        sectorId: sec.sectorId,
-        kind: sec.kind,
-        profileId: secProfileId,
-        topologyVersion,
-        genVersion,
-        archetype,
-        planetResourceProfileId: resourceProfileId,
+        planetId, planetType, sectorId: sec.sectorId, kind: sec.kind, profileId: secProfileId,
+        topologyVersion, genVersion, archetype, planetResourceProfileId: resourceProfileId,
+        planetIdOverride: opts?.planetResourceOverride,
+        sectorIdOverride: opts?.sectorResourceOverrides?.[sec.sectorId],
+        config: opts?.regionalResourceConfig,
       }),
     };
   });
@@ -403,32 +435,26 @@ function buildManifestFromConfig(
   const sectors: SectorManifestV1[] = config.sectors.map((spec) => {
     const secPart = partition.sectorById.get(spec.sectorId)!;
     const slots = spec.kind === 'land' ? [...(slotsBySectorId.get(spec.sectorId) ?? [])] : [];
-    const secProfileId = spec.resourceProfileId ?? resourceProfileId;
+    const secProfileId =
+      spec.resourceProfileId ??
+      opts?.sectorResourceOverrides?.[spec.sectorId]?.profileId ??
+      resourceProfileId;
     const archetype =
-      spec.archetype ?? (spec.kind === 'land' ? defaultSectorArchetype(spec.macroQ, spec.macroR) : undefined);
+      opts?.sectorArchetypes?.[spec.sectorId] ??
+      spec.archetype ??
+      (spec.kind === 'land' ? defaultSectorArchetype(spec.macroQ, spec.macroR) : undefined);
     return {
-      sectorId: spec.sectorId,
-      continentId: spec.continentId,
-      macroQ: spec.macroQ,
-      macroR: spec.macroR,
-      centerQ: secPart.centerQ,
-      centerR: secPart.centerR,
-      kind: spec.kind,
-      radius: spec.radius,
-      tileCount: secPart.tileCount,
-      foundingCapacity: spec.foundingCapacity,
-      validatedSafeSites: slots.length,
-      safeLandingSlots: slots,
-      neighbours: secPart.atlasNeighbors.map((nb) => ({ ...nb })),
+      sectorId: spec.sectorId, continentId: spec.continentId, macroQ: spec.macroQ, macroR: spec.macroR,
+      centerQ: secPart.centerQ, centerR: secPart.centerR, kind: spec.kind, radius: spec.radius,
+      tileCount: secPart.tileCount, foundingCapacity: spec.foundingCapacity, validatedSafeSites: slots.length,
+      safeLandingSlots: slots, neighbours: secPart.atlasNeighbors.map((nb) => ({ ...nb })),
       resourceEndowment: buildSectorResourceEndowment({
-        planetType: config.planetType,
-        sectorId: spec.sectorId,
-        kind: spec.kind,
-        profileId: secProfileId,
-        topologyVersion: config.topologyVersion,
-        genVersion: config.genVersion,
-        archetype,
-        planetResourceProfileId: resourceProfileId,
+        planetId: config.planetId, planetType: config.planetType, sectorId: spec.sectorId, kind: spec.kind,
+        profileId: secProfileId, topologyVersion: config.topologyVersion, genVersion: config.genVersion,
+        archetype, planetResourceProfileId: resourceProfileId,
+        planetIdOverride: opts?.planetResourceOverride,
+        sectorIdOverride: opts?.sectorResourceOverrides?.[spec.sectorId],
+        config: opts?.regionalResourceConfig,
       }),
     };
   });

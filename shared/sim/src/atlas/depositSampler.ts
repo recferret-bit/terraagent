@@ -5,6 +5,11 @@ import { HEX_LEVEL_EPS_M, isOpenGround } from '../grid/hexTile';
 import { DEPOSIT, TERRAIN } from '../grid/layers';
 import type { PlanetType } from '../kernel/state';
 import { packAtlasCoord } from './landingPlan';
+import { globalTileToSector } from './partition';
+import {
+  W11_DEFAULT_LAND_DEPOSIT_DENSITY_PER_1000,
+  selectOptionalDepositFromSectorProfile,
+} from './regionalResources';
 import { sampleBaseAtlasTile, type AtlasSamplerContext, type BaseSampledTile } from './sampler';
 import type { SampledAtlasTileValues } from './types';
 
@@ -93,7 +98,20 @@ export function sampleAtlasTile(q: number, r: number, ctx: AtlasSamplerContext):
     richness = computeGlobalRichnessBp(q, r, deposit, ctx.seedRichness, ctx.planetType);
   } else if (!suppressed && isGlobalHexTile(q, r, ctx)) {
     const myScore = depositCandidateScore(q, r, base.mx, base.my, ctx);
-    const threshold = ctx.planetType === 'desert' ? 0.5 : 0.56;
+    const baseThreshold = ctx.planetType === 'desert' ? 0.5 : 0.56;
+    const ownerSectorId = ctx.hasCustomRegionalResources
+      ? globalTileToSector(q, r, ctx.sectorRadius).sectorId
+      : undefined;
+    const secProfile = ownerSectorId
+      ? (ctx.regionalResources.sectorById.get(ownerSectorId) ?? ctx.regionalResources.planetEndowment)
+      : undefined;
+    const density = secProfile?.depositDensityPer1000Tiles ?? W11_DEFAULT_LAND_DEPOSIT_DENSITY_PER_1000;
+    const densityDelta =
+      secProfile && density !== W11_DEFAULT_LAND_DEPOSIT_DENSITY_PER_1000
+        ? Math.max(-0.2, Math.min(0.2, ((W11_DEFAULT_LAND_DEPOSIT_DENSITY_PER_1000 - density) / 100) * 0.8))
+        : 0;
+    const threshold = density <= 0 ? 1e9 : baseThreshold + densityDelta;
+
     if (myScore >= threshold) {
       let isLocalMax = true;
       for (const [dq, dr] of HEX_DIRS) {
@@ -106,10 +124,23 @@ export function sampleAtlasTile(q: number, r: number, ctx: AtlasSamplerContext):
         }
       }
       if (isLocalMax) {
-        const cycleIdx = Math.floor(hash2d(q, r, ctx.seedDepositKind) * DEPOSIT_CYCLE.length);
-        deposit = DEPOSIT_CYCLE[cycleIdx]!;
-        depositTier = 0;
-        richness = computeGlobalRichnessBp(q, r, deposit, ctx.seedRichness, ctx.planetType);
+        if (secProfile && ctx.hasCustomRegionalResources) {
+          const picked = selectOptionalDepositFromSectorProfile({
+            q,
+            r,
+            seedDepositKind: ctx.seedDepositKind,
+            baseRichnessBp: (kind) => computeGlobalRichnessBp(q, r, kind, ctx.seedRichness, ctx.planetType),
+            sectorProfile: secProfile,
+          });
+          deposit = picked.deposit;
+          depositTier = picked.depositTier;
+          richness = picked.richness;
+        } else {
+          const cycleIdx = Math.floor(hash2d(q, r, ctx.seedDepositKind) * DEPOSIT_CYCLE.length);
+          deposit = DEPOSIT_CYCLE[cycleIdx]!;
+          depositTier = 0;
+          richness = computeGlobalRichnessBp(q, r, deposit, ctx.seedRichness, ctx.planetType);
+        }
       }
     }
   }

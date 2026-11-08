@@ -9,5 +9,6 @@ export * from './landingPlan';
 export * from './landingSites';
 export * from './generateAtlas';
 export * from './manifest';
+export * from './regionalResources';
 export * from './sectorMetrics';
 export * from './crossSectorGameplay';
