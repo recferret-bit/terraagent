@@ -35,6 +35,7 @@ import {
   type SectorReservationRecord,
   type SetPartyIntentInput,
   type UpdateCanonicalWorldStateInput,
+  type UpdateSectorCountersInput,
   type UpdateTicketInput,
   type UpdateTicketStateInput,
   type UpsertSectorWithSlotsInput,
@@ -149,6 +150,44 @@ export class LobbyPersistenceService implements LobbyPersistenceStore {
 
   getSector(planetId: string, sectorId: SectorId): Promise<PlanetSectorRecord | null> {
     return this.store.getSector(planetId, sectorId);
+  }
+
+  async updateSectorCounters(input: UpdateSectorCountersInput): Promise<PlanetSectorRecord> {
+    const existing = await this.store.getSector(input.planetId, input.sectorId);
+    if (!existing) {
+      throw new LobbyPersistenceConflictError(
+        'sector_not_found',
+        `sector "${input.sectorId}" on "${input.planetId}" not found`,
+        { planetId: input.planetId, sectorId: input.sectorId },
+      );
+    }
+    const existingSlots = await this.store.listLandingSlots(input.planetId, input.sectorId);
+    const out = await this.store.upsertSectorWithSlots({
+      planetId: existing.planetId,
+      sectorId: existing.sectorId,
+      continentId: existing.continentId,
+      macroQ: existing.macroQ,
+      macroR: existing.macroR,
+      centerQ: existing.centerQ,
+      centerR: existing.centerR,
+      kind: existing.kind,
+      radius: existing.radius,
+      foundingCapacity: existing.foundingCapacity,
+      validatedCapacity: existing.validatedCapacity,
+      reservedSeats:
+        input.reservedSeats !== undefined ? input.reservedSeats : existing.reservedSeats,
+      foundedSeats:
+        input.foundedSeats !== undefined ? input.foundedSeats : existing.foundedSeats,
+      mainResource: existing.mainResource,
+      scarceResources: existing.scarceResources,
+      slots: existingSlots.map((s) => ({
+        slotId: s.landingSlotId,
+        slotIndex: s.slotIndex,
+        q: s.q,
+        r: s.r,
+      })),
+    });
+    return out.sector;
   }
 
   listSectors(planetId: string): Promise<PlanetSectorRecord[]> {

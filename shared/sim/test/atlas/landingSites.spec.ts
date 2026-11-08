@@ -462,6 +462,7 @@ describe('W11-36 structured rejection for missing starter resources and unachiev
       planetType: 'temperate',
       seed: CANONICAL_PLANETS.temperate.seed,
       foundingSeatsPerSector: 20,
+      skipPerfCaps: true,
     });
     expect(overloadedAtlas.landingValidation.ok).toBe(false);
     expect(overloadedAtlas.landingValidation.reason).toBe('capacity_unachievable');
