@@ -1,6 +1,10 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import type { MatchTicketV1, SectorId } from '@terra/contracts';
 import { WorldLifecycleService } from './lifecycle.service';
+import {
+  getSharedCapacityMetricsState,
+  recordCapacityBlockedForProcessResult,
+} from './capacity-guard.helpers';
 import { LobbyPersistenceService } from './lobby-persistence.service';
 import type {
   CanonicalWorldRecord,
@@ -411,7 +415,9 @@ export class MatchmakerService {
     );
     const outcome =
       ticket.mode === 'TRANSFER' ? 'transfer_pending' : 'queued_chosen_sector_full';
-    return buildQueuedProcessResult(outcome, updated, alternatives, transferCarry, res.code);
+    const out = buildQueuedProcessResult(outcome, updated, alternatives, transferCarry, res.code);
+    recordCapacityBlockedForProcessResult(getSharedCapacityMetricsState(this.persistence), out);
+    return out;
   }
 
   private async processAutoSectorTicket(
@@ -465,7 +471,9 @@ export class MatchmakerService {
     );
     const outcome = ticket.mode === 'TRANSFER' ? 'transfer_pending' : 'queued_planet_full';
     const reason = ticket.mode === 'TRANSFER' ? 'destination_planet_full' : lastFailureCode;
-    return buildQueuedProcessResult(outcome, updated, [], transferCarry, reason);
+    const out = buildQueuedProcessResult(outcome, updated, [], transferCarry, reason);
+    recordCapacityBlockedForProcessResult(getSharedCapacityMetricsState(this.persistence), out);
+    return out;
   }
 
   private recordAssignmentWaitSeconds(ticket: MatchTicketRecord, now: Date): void {

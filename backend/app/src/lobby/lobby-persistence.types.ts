@@ -41,7 +41,12 @@ export type LobbyConflictCode =
   | 'slot_not_found'
   | 'concurrency_conflict'
   | 'invalid_lifecycle_transition'
-  | 'audit_metadata_required';
+  | 'audit_metadata_required'
+  | 'non_canonical_world_forbidden'
+  | 'warm_pool_disabled'
+  | 'overflow_world_forbidden'
+  | 'rollout_limit_exceeded'
+  | 'safe_site_budget_exceeded';
 
 export class LobbyPersistenceConflictError extends ConflictException {
   readonly code: LobbyConflictCode;

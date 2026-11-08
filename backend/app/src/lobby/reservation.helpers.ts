@@ -31,6 +31,7 @@ import {
   type ManagedReservationState,
   type ManagedSectorReservationRecord,
   type ReservationFailureCode,
+  type ReservationSlotFencePolicy,
   type SectorReservationFailureResult,
   type SimLandingAuthorityCheckInput,
   type SimLandingAuthorityDecision,
@@ -175,6 +176,7 @@ export async function findCandidateFreeSlots(
   sectorId: SectorId,
   requestedSlotId: string | undefined,
   ticket: MatchTicketRecord | null,
+  slotFencePolicy?: ReservationSlotFencePolicy,
 ): Promise<
   | { readonly ok: true; readonly slots: readonly SectorLandingSlotRecord[] }
   | { readonly ok: false; readonly failure: SectorReservationFailureResult }
@@ -188,12 +190,15 @@ export async function findCandidateFreeSlots(
         { planetId, sectorId, landingSlotId: requestedSlotId },
       );
     }
-    if (slot.state !== 'FREE') {
+    if (
+      slot.state !== 'FREE' ||
+      slotFencePolicy?.isSlotBlockedByPendingSpawn(planetId, slot.landingSlotId)
+    ) {
       return {
         ok: false,
         failure: makeFailureResult(
           'slot_taken',
-          `Landing slot "${requestedSlotId}" is already ${slot.state}`,
+          `Landing slot "${requestedSlotId}" is already ${slot.state === 'FREE' ? 'fenced by an unresolved spawn' : slot.state}`,
           { ticket },
         ),
       };
@@ -203,8 +208,16 @@ export async function findCandidateFreeSlots(
 
   const sectorSlots = await persistence.listLandingSlots(planetId, sectorId);
   const freeSlots = sectorSlots
-    .filter((s) => s.state === 'FREE')
-    .sort((a, b) => a.slotIndex - b.slotIndex);
+    .filter(
+      (s) =>
+        s.state === 'FREE' &&
+        !slotFencePolicy?.isSlotBlockedByPendingSpawn(planetId, s.landingSlotId),
+    )
+    .sort((a, b) => {
+      const depA = slotFencePolicy?.isSlotDeprioritized?.(planetId, a.landingSlotId) ? 1 : 0;
+      const depB = slotFencePolicy?.isSlotDeprioritized?.(planetId, b.landingSlotId) ? 1 : 0;
+      return depA - depB || a.slotIndex - b.slotIndex;
+    });
 
   if (freeSlots.length === 0) {
     return {
