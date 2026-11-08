@@ -11,3 +11,4 @@ export * from './generateAtlas';
 export * from './manifest';
 export * from './sectorMetrics';
 export * from './crossSectorGameplay';
+export * from './seamTerraforming';
