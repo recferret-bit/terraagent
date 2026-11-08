@@ -15,7 +15,8 @@ import { resetDeviceSecret } from './online/bootOnline';
 import { OnlineSession } from './online/OnlineSession';
 import { writeStoredPlanetKind } from './online/viewportHelper';
 import { track } from '../core/analytics';
-import { MainMenu, type MenuSettings } from '../ui/menu';
+import { MainMenu, type MenuSettings, type SectorIntentV1 } from '../ui/menu';
+import { normalizeSectorIntent } from '../ui/lobby/orbitalPickerModel';
 import { DescentHud, GameHud } from '../ui/hud';
 import { HudRoot } from '../core/hud/HudRoot';
 import { loadFeatures } from '../core/registry';
@@ -49,6 +50,7 @@ export class Game {
   private menu!: MainMenu;
   private stage: OrbitalStage | null = null;
   private settings: MenuSettings = { bloom: true, quality: 'high', skipCinematic: false, optimized: isShaderOptimized(), resolution: getViewportPreset() };
+  private sectorIntent: SectorIntentV1 = { mode: 'auto' };
   private baseChildren = new Set<THREE.Object3D>();
   // per-session
   private spec!: PlanetSpec; private surface: PlanetSurface | null = null;
@@ -74,6 +76,7 @@ export class Game {
     writeStoredPlanetKind(kind);
     if (q.has('menutime')) this.time = parseFloat(q.get('menutime')!) || 0;
     const seed = q.get('seed') ? parseInt(q.get('seed')!, 10) : undefined;
+    this.sectorIntent = normalizeSectorIntent(q.get('sector'));
     const store = this.flagsStore ??= createClientFlagsStore();
     const isLegacyQa = q.has('autodeploy') || q.has('qat') || q.has('t') || (q.has('seed') && q.get('skip') === '1');
     this.useOnlineGameplay = store.set.has('W01') && !isLegacyQa;
@@ -86,9 +89,10 @@ export class Game {
         this.schedulePrepare();
       },
       onSeed: () => this.schedulePrepare(),
-      onDeploy: (k, s, st) => { this.settings = st; this.deploy(k, s); },
+      onSector: (intent) => { this.sectorIntent = intent; },
+      onDeploy: (k, s, st, intent) => { this.settings = st; this.sectorIntent = intent; this.deploy(k, s); },
       onSettings: (st) => { this.settings = st; this.applySettings(); this.schedulePrepare(); },
-    }, kind, seed);
+    }, kind, seed, { sectorIntent: this.sectorIntent });
     this.settings = this.menu.settings;
     this.mountStage(this.makeSpec(kind, this.menu.seed));
     this.applySettings();
@@ -210,6 +214,7 @@ export class Game {
         this.online = new OnlineSession(this.root, 'boot', {
           viewport: this.viewport,
           planetKind: this.spec.kind,
+          sectorIntent: this.sectorIntent,
           skipDescent: false,
           fromSpaceDescent: true,
           search: '',
@@ -309,6 +314,7 @@ export class Game {
         this.online = new OnlineSession(this.root, 'boot', {
           viewport: this.viewport,
           planetKind: this.spec.kind,
+          sectorIntent: this.sectorIntent,
           skipDescent: true,
           fromSpaceDescent: false,
           search: '',
@@ -369,7 +375,7 @@ export class Game {
   }
 
   private async returnToOrbit() {
-    if (this.phase !== 'gameplay') return;
+    if (this.phase !== 'gameplay' && this.phase !== 'deploying' && this.phase !== 'descent') return;
     this.phase = 'loading';
     this.fade.classList.add('on'); await new Promise((r) => setTimeout(r, 750));
     const kind = this.spec.kind, seed = this.spec.seed;
