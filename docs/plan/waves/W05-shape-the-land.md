@@ -132,3 +132,11 @@ All three planet types (`temperate`, `desert`, `ocean`; D-33) generate with thei
 
 - **Deep Reclaim** is gated by worker tier, not by a later wave. Worker Drone T2 (W03) and T3 can do it; Worker Drone T1 cannot. HQ T2 and Multitask T2 can too, when those exist. Its unlock stage (S5) is enforced only when W08 is on.
 - **Meteor timing** uses the stage engine when W08 is on. Otherwise it falls back to colony age.
+
+## As-built self-review extensions
+
+- **Worker Drone T1–T3 unification (`ENTITY_KIND.worker`):** Unified legacy `harvester` and `builder` entity kinds into a single `worker` kind with `tier: 1 | 2 | 3` (`W01` T1, `W03` T2, `W05` T3), updating unit commands (`set-ai-enabled`), queue/priorities/army/goals/landfall/hub-placement/hud-min/power-hud/queue-panel/range-rings/terraform-basic/flags client features, and worker AI job dispatch.
+- **Hex-tile footprint rule (D-45) & R4 plane joining:** Every building footprint and terrain modification resolves to exact integer axial `(q, r)` hex tiles (`footprintHexes`, `worldToHex`, `hexToWorld`), and the hex terrain mesh merges coplanar same-kind R4 flat hex regions to cut triangle count while keeping crisp vertical steps (`updateHexRegion`).
+- **Weather & hazard dev commands and events:** Added dev-console and protocol commands `dev-storm`, `dev-rain`, `dev-twister`, `dev-lightning`, `dev-meteor` and events `storm-ended`, `twister-started` alongside `stormStarted`, `lightningStrike`, and `meteorImpact`.
+- **Planar water reflections (`WaterReflectionPass`) & projector cone alignment:** Added stencil-masked planar reflection pass for calm water tiles (`WaterReflectionPass`, `waterReflectionMask`) with storm roughness gating, and aligned Worker Drone projector beam cones and dust clouds with the terrain surface target (`RobotProjectorDust`).
+

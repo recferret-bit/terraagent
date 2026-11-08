@@ -48,6 +48,7 @@ function createS3WaveTestHost(seed = 'w07-15-waves', waves = '..08') {
   state.grid.layers.prep.fill(PREP.prepared);
   const col = ensureColonyLedger(ensureColonyRecord(state, 0, 0), { baseCap: 2000 });
   col.status = 'active';
+  col.aiEnabled = true;
   col.stock['metals.t1'] = 800;
   col.stock['minerals.t1'] = 600;
   spawnHqUnit(state, { owner: 0, q: -2, r: 0 });

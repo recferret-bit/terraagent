@@ -33,7 +33,14 @@ const ARCHETYPE_BY_KIND: Readonly<Record<number, string>> = {
   [ENTITY_KIND.hiveGreenSpitter]: 'fauna.hive.greenSpitter',
 };
 
-const CONSTRUCTIBLE_KINDS: ReadonlySet<number> = OCCUPYING_BUILDING_KINDS;
+const CONSTRUCTIBLE_KINDS: ReadonlySet<number> = new Set(
+  [...OCCUPYING_BUILDING_KINDS].filter(
+    (k) =>
+      k !== ENTITY_KIND.hiveBlackAnt &&
+      k !== ENTITY_KIND.hiveBlueBeetle &&
+      k !== ENTITY_KIND.hiveGreenSpitter,
+  ),
+);
 
 const BUILDING_2X2_KINDS: ReadonlySet<number> = new Set([
   ENTITY_KIND.tradeHub,
