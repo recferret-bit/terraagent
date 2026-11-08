@@ -1,3 +1,4 @@
+import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { hexDistance, hexIndex } from '../../grid/hex';
 import { isValidTileIndex, setTileOwner } from '../../grid/tileModel';
 import type { CompiledDataLike } from '../../kernel/config';
@@ -84,6 +85,10 @@ export function claimTerritoryRadius(state: PlanetState, opts: ClaimTerritoryOpt
 
   if (claimedCount > 0 && state.colonies[opts.colonyId]) {
     syncColonyTerraformStats(state, opts.colonyId, tick);
+  }
+  if (claimedCount > 0 || anchoredCount > 0) {
+    recordAtlasColonyFounding(state, opts.colonyId, opts.q, opts.r, tick);
+    syncAtlasColonySectorState(state, tick);
   }
 
   return { claimedCount, anchoredCount, frozenCount, claimedTiles };

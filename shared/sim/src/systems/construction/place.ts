@@ -1,4 +1,5 @@
 import type { RejectCode } from '@terra/contracts';
+import { recordAtlasColonyFounding, syncAtlasColonySectorState } from '../../atlas/sectorMetrics';
 import { ENTITY_KIND, ENTITY_STATE } from '../../ecs/columns';
 import { placeSpawnedEntity } from '../../ecs/placement';
 import { insertRow } from '../../ecs/store';
@@ -120,5 +121,7 @@ export function placeBuildingOrder(
     }
   }
   writeConstructionOrders(state, [...readConstructionOrders(state), order], tick);
+  recordAtlasColonyFounding(state, opts.colonyId, opts.q, opts.r, tick);
+  syncAtlasColonySectorState(state, tick);
   return { ok: true, entityId, order, prepOrder, validation };
 }

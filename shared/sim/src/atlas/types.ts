@@ -281,6 +281,10 @@ export interface AtlasSectorBlobSummary {
   readonly radius: number;
   readonly tileCount: number;
   readonly foundingCapacity: number;
+  readonly foundedSeats?: number;
+  readonly freeSeats?: number;
+  readonly livingColonies?: number;
+  readonly presentColonies?: number;
 }
 
 export interface AtlasBlobValue {
@@ -296,6 +300,8 @@ export interface AtlasBlobValue {
   readonly oceanSectorIds: readonly SectorId[];
   readonly bounds: AtlasPartition['bounds'];
   readonly sectors: readonly AtlasSectorBlobSummary[];
+  readonly foundingSectorByColony?: Readonly<Record<number, SectorId>>;
+  readonly presentSectorsByColony?: Readonly<Record<number, readonly SectorId[]>>;
 }
 
 export interface GeneratedSmallAtlas {
