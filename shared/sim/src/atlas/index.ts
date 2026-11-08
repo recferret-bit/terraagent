@@ -14,3 +14,5 @@ export * from './sectorMetrics';
 export * from './crossSectorGameplay';
 export * from './seamTerraforming';
 export * from './persistence';
+export * from './perfCaps';
+export * from './perfBenchmark';

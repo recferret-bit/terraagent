@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import type { SectorId, SimCommandV1 } from '@terra/contracts';
+import type { SimCommandV1 } from '@terra/contracts';
 import { HomeRepository, type ColonyRecord } from '../core/home/home.repository';
 import { GamePlanets } from '../game/game-planets.service';
 import { WorldLifecycleService } from './lifecycle.service';
@@ -221,7 +221,7 @@ export class SpawnSagaService implements ReservationSlotFencePolicy {
       reservation.colonyId,
       buildProvisionalColonyRecord(reservation, 'FOUNDING', options),
     );
-    let spawning: ManagedSectorReservationRecord | null = null;
+    let spawning: ManagedSectorReservationRecord | null;
     try {
       spawning = await this.reservations.markReservationSpawning(
         reservation.reservationId,

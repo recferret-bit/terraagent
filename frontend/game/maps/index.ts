@@ -1,6 +1,7 @@
 export * from './types';
 export * from './layerRegistry';
 export * from './rasterCache';
+export * from './atlasMapAdapter';
 export * from './tileColors';
 export * from './MinimapHud';
 export * from './entityDots';
@@ -10,6 +11,7 @@ export * from './openCloseController';
 export * from './GlobalMapOverlay';
 export * from './globalMapViewport';
 export * from './layerChipsState';
+export * from './sectorLayer';
 export * from './builtinLayers';
 export * from './redrawScheduler';
 export * from './MapsController';
