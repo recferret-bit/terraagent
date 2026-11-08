@@ -450,7 +450,7 @@ export async function finalizeSuccessfulSpawnAttemptHelper(params: {
     return handleExpiredDuringSpawnAttempt({ ...params, now: getNow() });
   }
 
-  let committed: ManagedSectorReservationRecord | null = null;
+  let committed: ManagedSectorReservationRecord | null;
   try {
     committed = await reservations.commitReservation(reservation.reservationId, {
       expectedEpoch: reservation.epoch,
